@@ -15,13 +15,14 @@ import {
 	type Document,
 	type SearchPriorityFilter,
 	type SearchResultType,
+	type Task,
 	type TaskUpdateInput,
 } from "../types/index.ts";
-import { detectDuplicateTaskIds } from "../utils/duplicate-detection.ts";
 import { resolveMilestoneInputForStorage } from "../utils/milestone-storage.ts";
 import { formatValidPriorityValues, resolvePriorityValue } from "../utils/priority-config.ts";
 import { formatValidStatuses, getCanonicalStatuses, getValidStatuses } from "../utils/status.ts";
 import { resolveTaskById } from "../utils/task-id.ts";
+import { isAmbiguousTaskIdError } from "../utils/task-path.ts";
 import { getVersion } from "../utils/version.ts";
 
 // Regex pattern to match any prefix (letters followed by dash)
@@ -382,6 +383,7 @@ export class BacklogServer {
 					},
 					"/api/tasks/duplicates": {
 						GET: async () => await this.handleGetDuplicateTasks(),
+						POST: async (req: Request) => await this.handleRepairDuplicateTasks(req),
 					},
 					"/api/tasks/cleanup/execute": {
 						POST: async (req: Request) => await this.handleCleanupExecute(req),
@@ -639,19 +641,35 @@ export class BacklogServer {
 		let parentTaskId: string | undefined;
 		if (parent) {
 			const store = await this.getContentStoreInstance();
-			const allTasks = store.getTasks();
-			const parentResolution = resolveTaskById(allTasks, parent);
-			if (parentResolution.status === "ambiguous") {
-				return Response.json({ error: `Parent task ${parent} is ambiguous` }, { status: 409 });
-			}
-			let parentTask = parentResolution.status === "found" ? parentResolution.task : undefined;
-			if (!parentTask) {
-				const fallbackId = ensurePrefix(parent);
-				const fallback = await this.core.filesystem.loadTask(fallbackId);
-				if (fallback) {
-					store.upsertTask(fallback);
-					parentTask = fallback;
+			let parentTask: Task | undefined;
+			try {
+				const localTask = await this.core.filesystem.loadTask(parent);
+				if (localTask) {
+					store.upsertTask(localTask);
+					parentTask = localTask;
+				} else {
+					const parentResolution = resolveTaskById(store.getTasks(), parent);
+					if (parentResolution.status === "ambiguous") {
+						return Response.json(
+							{ error: `Parent task ${parent} is ambiguous. Repair duplicate task IDs before using it.` },
+							{ status: 409 },
+						);
+					}
+					parentTask = parentResolution.status === "found" ? parentResolution.task : undefined;
+					if (!parentTask) {
+						const fallbackId = ensurePrefix(parent);
+						const fallback = await this.core.filesystem.loadTask(fallbackId);
+						if (fallback) {
+							store.upsertTask(fallback);
+							parentTask = fallback;
+						}
+					}
 				}
+			} catch (error) {
+				if (isAmbiguousTaskIdError(error)) {
+					return Response.json({ error: error.message }, { status: 409 });
+				}
+				throw error;
 			}
 			if (!parentTask) {
 				const normalizedParent = ensurePrefix(parent);
@@ -872,6 +890,17 @@ export class BacklogServer {
 		if (localResolution.status === "invalid") {
 			return Response.json({ error: `Invalid task ID: ${taskId}` }, { status: 400 });
 		}
+		let localTask: Task | null;
+		try {
+			// loadTask checks active and completed task paths together, so a collision
+			// cannot be hidden by whichever directory happens to be read first.
+			localTask = await this.core.filesystem.loadTask(taskId);
+		} catch (error) {
+			if (isAmbiguousTaskIdError(error)) {
+				return Response.json({ error: error.message }, { status: 409 });
+			}
+			throw error;
+		}
 
 		const store = await this.getContentStoreInstance();
 		await this.core.refreshTasksForTaskRead();
@@ -891,18 +920,18 @@ export class BacklogServer {
 		}
 		if (
 			checkActiveBranches &&
-			localResolution.status === "found" &&
+			localTask &&
 			storedResolution.status === "found" &&
-			localResolution.task.id.toLowerCase() !== storedResolution.task.id.toLowerCase()
+			localTask.id.toLowerCase() !== storedResolution.task.id.toLowerCase()
 		) {
 			return Response.json(
 				{ error: `Task ID ${taskId} is ambiguous. Repair duplicate task IDs before opening it.` },
 				{ status: 409 },
 			);
 		}
-		if (localResolution.status === "found") {
-			store.upsertTask(localResolution.task);
-			return Response.json(localResolution.task);
+		if (localTask) {
+			store.upsertTask(localTask);
+			return Response.json(localTask);
 		}
 		if (storedResolution.status === "found") {
 			return Response.json(storedResolution.task);
@@ -913,7 +942,15 @@ export class BacklogServer {
 
 	private async handleUpdateTask(req: Request, taskId: string): Promise<Response> {
 		const updates = await req.json();
-		const existingTask = await this.core.filesystem.loadTask(taskId);
+		let existingTask: Task | null;
+		try {
+			existingTask = await this.core.filesystem.loadTask(taskId);
+		} catch (error) {
+			if (isAmbiguousTaskIdError(error)) {
+				return Response.json({ error: error.message }, { status: 409 });
+			}
+			throw error;
+		}
 		if (!existingTask) {
 			return Response.json({ error: "Task not found" }, { status: 404 });
 		}
@@ -1036,11 +1073,18 @@ export class BacklogServer {
 	}
 
 	private async handleDeleteTask(taskId: string): Promise<Response> {
-		const success = await this.core.archiveTask(taskId);
-		if (!success) {
-			return Response.json({ error: "Task not found" }, { status: 404 });
+		try {
+			const success = await this.core.archiveTask(taskId);
+			if (!success) {
+				return Response.json({ error: "Task not found" }, { status: 404 });
+			}
+			return Response.json({ success: true });
+		} catch (error) {
+			if (isAmbiguousTaskIdError(error)) {
+				return Response.json({ error: error.message }, { status: 409 });
+			}
+			throw error;
 		}
-		return Response.json({ success: true });
 	}
 
 	private async handleCompleteTask(taskId: string): Promise<Response> {
@@ -1060,8 +1104,10 @@ export class BacklogServer {
 			return Response.json({ success: true });
 		} catch (error) {
 			const message = error instanceof Error ? error.message : "Failed to complete task";
-			console.error("Error completing task:", error);
-			return Response.json({ error: message }, { status: 500 });
+			if (!isAmbiguousTaskIdError(error)) {
+				console.error("Error completing task:", error);
+			}
+			return Response.json({ error: message }, { status: isAmbiguousTaskIdError(error) ? 409 : 500 });
 		}
 	}
 
@@ -1589,11 +1635,25 @@ export class BacklogServer {
 
 	private async handleGetDuplicateTasks(): Promise<Response> {
 		try {
-			const tasks = await this.core.filesystem.listTasks();
-			const groups = detectDuplicateTaskIds(tasks);
-			return Response.json(groups);
+			return Response.json(await this.core.previewDuplicateTaskIdRepair());
 		} catch (error) {
 			return Response.json({ error: String(error) }, { status: 500 });
+		}
+	}
+
+	private async handleRepairDuplicateTasks(req: Request): Promise<Response> {
+		try {
+			const body = (await req.json()) as { fingerprint?: unknown };
+			const fingerprint = typeof body.fingerprint === "string" ? body.fingerprint.trim() : "";
+			if (!fingerprint) {
+				return Response.json({ error: "A repair preview fingerprint is required." }, { status: 400 });
+			}
+			const result = await this.core.repairDuplicateTaskIds(fingerprint);
+			return Response.json(result);
+		} catch (error) {
+			const message = error instanceof Error ? error.message : String(error);
+			const status = message.includes("changed after the preview") ? 409 : 400;
+			return Response.json({ error: message }, { status });
 		}
 	}
 

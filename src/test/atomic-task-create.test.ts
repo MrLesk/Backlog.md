@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { Core } from "../core/backlog.ts";
 import { CREATE_LOCK_ERROR_MESSAGE } from "../file-system/operations.ts";
 import type { Task } from "../types";
+import { AmbiguousTaskIdError } from "../utils/task-path.ts";
 import { initializeTestProject } from "./test-utils.ts";
 
 type Deferred<T> = {
@@ -102,7 +103,7 @@ describe("atomic task creation", () => {
 		expect([createdA.task.id, createdB.task.id].sort()).toEqual(["TASK-1", "TASK-2"]);
 	});
 
-	it("allows concurrent entry into the save path when USE_GLOBAL_TASK_ID_LOCK=false", async () => {
+	it("allows concurrent entry without the global lock and fails closed if that creates a collision", async () => {
 		process.env.USE_GLOBAL_TASK_ID_LOCK = "false";
 
 		const first = new Core(testDir);
@@ -131,7 +132,10 @@ describe("atomic task creation", () => {
 		await expectResolvesWithin(bothEnteredSave.promise, 250, "both creates should reach saveTask without the lock");
 		expect(saveEntries).toBe(2);
 
-		await Promise.all([firstCreate, secondCreate]);
+		const outcomes = await Promise.allSettled([firstCreate, secondCreate]);
+		const rejected = outcomes.filter((outcome): outcome is PromiseRejectedResult => outcome.status === "rejected");
+		expect(rejected.length).toBeGreaterThanOrEqual(1);
+		expect(rejected.every((outcome) => outcome.reason instanceof AmbiguousTaskIdError)).toBe(true);
 	});
 
 	it("assigns unique ids when two draft promotions race", async () => {

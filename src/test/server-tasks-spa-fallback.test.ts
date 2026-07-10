@@ -278,9 +278,10 @@ describe("BacklogServer task SPA fallback", () => {
 
 		const response = await request("/api/task/BACK-PREFIXED");
 		expect(response.status).toBe(409);
-		expect((await response.json()) as { error: string }).toEqual({
-			error: "Task ID BACK-PREFIXED is ambiguous. Repair duplicate task IDs before opening it.",
-		});
+		const { error } = (await response.json()) as { error: string };
+		expect(error).toContain("back-prefixed - Legacy one.md");
+		expect(error).toContain("back-prefixed - Legacy two.md");
+		expect(error).toContain("backlog doctor");
 	});
 
 	it("never returns or mutates an adjacent huge task ID and fails closed on ambiguity", async () => {
@@ -315,9 +316,10 @@ describe("BacklogServer task SPA fallback", () => {
 		await saveTaskFile("BACK-09007199254740992", "Huge padded duplicate");
 		const ambiguous = await request("/api/task/BACK-9007199254740992");
 		expect(ambiguous.status).toBe(409);
-		expect((await ambiguous.json()) as { error: string }).toEqual({
-			error: "Task ID BACK-9007199254740992 is ambiguous. Repair duplicate task IDs before opening it.",
-		});
+		const { error } = (await ambiguous.json()) as { error: string };
+		expect(error).toContain("back-9007199254740992 - Huge target.md");
+		expect(error).toContain("back-09007199254740992 - Huge padded duplicate.md");
+		expect(error).toContain("backlog doctor");
 	});
 
 	it("fails closed instead of opening an arbitrary zero-padded duplicate", async () => {
@@ -329,9 +331,10 @@ describe("BacklogServer task SPA fallback", () => {
 		const response = await request("/api/task/BACK-1.2");
 		expect(response.status).toBe(409);
 		expect(response.headers.get("content-type")).toContain("application/json");
-		expect((await response.json()) as { error: string }).toEqual({
-			error: "Task ID BACK-1.2 is ambiguous. Repair duplicate task IDs before opening it.",
-		});
+		const { error } = (await response.json()) as { error: string };
+		expect(error).toContain("back-001.02 - Fix-labels-and-docs.md");
+		expect(error).toContain("back-1.2 - Duplicate.md");
+		expect(error).toContain("backlog doctor");
 	});
 
 	it("fails closed when a visible cross-branch task collides with a local padded ID", async () => {

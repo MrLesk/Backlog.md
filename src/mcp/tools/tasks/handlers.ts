@@ -1,5 +1,6 @@
 import { basename, join } from "node:path";
 import { DEFAULT_STATUSES } from "../../../constants/index.ts";
+import { findLocalDuplicateTaskIds } from "../../../core/duplicate-task-repair.ts";
 import { isCreateLockError } from "../../../file-system/operations.ts";
 import {
 	isLocalEditableTask,
@@ -8,7 +9,7 @@ import {
 	type TaskListFilter,
 } from "../../../types/index.ts";
 import type { TaskEditArgs, TaskEditRequest } from "../../../types/task-edit-args.ts";
-import { buildDuplicateCleanupPrompt, detectDuplicateTaskIds } from "../../../utils/duplicate-detection.ts";
+import { formatDuplicateTaskIdWarning } from "../../../utils/duplicate-detection.ts";
 import {
 	createMilestoneFilterValueResolver,
 	normalizeMilestoneFilterValue,
@@ -321,16 +322,11 @@ export class TaskHandlers {
 		}
 
 		try {
-			const allLocalTasks = await this.core.filesystem.listTasks();
-			const duplicateGroups = detectDuplicateTaskIds(allLocalTasks);
+			const duplicateGroups = await findLocalDuplicateTaskIds(this.core);
 			if (duplicateGroups.length > 0) {
-				const warningLines = [
-					"⚠️  WARNING: Duplicate task IDs detected. One task per duplicate ID is hidden.",
-					buildDuplicateCleanupPrompt(duplicateGroups),
-				];
 				contentItems.unshift({
 					type: "text",
-					text: warningLines.join("\n\n"),
+					text: formatDuplicateTaskIdWarning(duplicateGroups),
 				});
 			}
 		} catch {

@@ -25,7 +25,7 @@ import {
 	type TaskSearchResult,
 } from '../types';
 import { ApiError, apiClient } from './lib/api';
-import type { DuplicateGroup } from '../utils/duplicate-detection';
+import type { DuplicateRepairPlan } from '../core/duplicate-task-repair';
 import { isValidTaskId } from '../utils/task-id';
 import { useHealthCheckContext } from './contexts/HealthCheckContext';
 import { getWebVersion } from './utils/version';
@@ -199,7 +199,7 @@ function AppContent() {
   const [docs, setDocs] = useState<Document[]>([]);
   const [decisions, setDecisions] = useState<Decision[]>([]);
   const [isLoading, setIsLoading] = useState(true);
-  const [duplicateGroups, setDuplicateGroups] = useState<DuplicateGroup[]>([]);
+  const [duplicateRepairPlan, setDuplicateRepairPlan] = useState<DuplicateRepairPlan | null>(null);
   
   const { isOnline } = useHealthCheckContext();
   const previousOnlineRef = useRef<boolean | null>(null);
@@ -296,13 +296,13 @@ function AppContent() {
     loadAllDataRequestRef.current = requestId;
     try {
       setIsLoading(true);
-      const [statusesData, configData, searchResults, milestonesData, archivedMilestonesData, duplicates] = await Promise.all([
+      const [statusesData, configData, searchResults, milestonesData, archivedMilestonesData, duplicatePlan] = await Promise.all([
         apiClient.fetchStatuses(),
         apiClient.fetchConfig(),
         apiClient.search(),
         apiClient.fetchMilestones(),
         apiClient.fetchArchivedMilestones(),
-        apiClient.fetchDuplicateTasks(),
+        apiClient.fetchDuplicateTaskRepairPlan().catch(() => null),
       ]);
 
       if (loadAllDataRequestRef.current !== requestId) {
@@ -313,7 +313,7 @@ function AppContent() {
       const milestoneAliases = buildMilestoneAliasMap(milestonesData, archivedMilestonesData);
       const { tasks: tasksList } = applySearchResults(searchResults, archivedKeys, milestoneAliases);
 
-      setDuplicateGroups(duplicates);
+      setDuplicateRepairPlan(duplicatePlan);
       setStatuses(statusesData);
       setProjectName(configData.projectName);
       setAvailableLabels(configData.labels || []);
@@ -653,7 +653,7 @@ function AppContent() {
                 decisions={decisions}
                 isLoading={isLoading}
                 onRefreshData={refreshData}
-                duplicateGroups={duplicateGroups}
+                duplicateRepairPlan={duplicateRepairPlan}
               />
             }
           >

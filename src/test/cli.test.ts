@@ -1505,9 +1505,12 @@ describe("CLI Integration", () => {
 				.nothrow()
 				.quiet();
 			const ambiguousOutput = normalizeCliOutput(ambiguous.stdout.toString() + ambiguous.stderr.toString());
-			expect(ambiguousOutput).toContain("Task TASK-9007199254740992 not found.");
-			expect(ambiguousOutput).not.toContain("Huge target");
-			expect(ambiguousOutput).not.toContain("Huge padded duplicate");
+			expect(ambiguous.exitCode).toBe(1);
+			expect(ambiguousOutput).toContain("Task ID TASK-9007199254740992 is ambiguous");
+			expect(ambiguousOutput).toContain("task-9007199254740992 - Huge-target.md");
+			expect(ambiguousOutput).toContain("task-09007199254740992 - Huge-padded-duplicate.md");
+			expect(ambiguousOutput).toContain("backlog doctor");
+			expect(ambiguousOutput).not.toContain("Huge neighbor");
 		});
 
 		it("should return null for non-existent tasks", async () => {

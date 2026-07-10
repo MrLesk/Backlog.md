@@ -1,3 +1,4 @@
+import type { DuplicateRepairPlan, DuplicateRepairResult } from "../../core/duplicate-task-repair.ts";
 import type { TaskStatistics } from "../../core/statistics.ts";
 import type {
 	BacklogConfig,
@@ -10,7 +11,6 @@ import type {
 	Task,
 	TaskStatus,
 } from "../../types/index.ts";
-import type { DuplicateGroup } from "../../utils/duplicate-detection.ts";
 
 const API_BASE = "/api";
 
@@ -321,12 +321,15 @@ export class ApiClient {
 		return this.updateTask(id, { status });
 	}
 
-	async fetchDuplicateTasks(): Promise<DuplicateGroup[]> {
-		try {
-			return await this.fetchJson<DuplicateGroup[]>(`${API_BASE}/tasks/duplicates`);
-		} catch {
-			return [];
-		}
+	async fetchDuplicateTaskRepairPlan(): Promise<DuplicateRepairPlan> {
+		return await this.fetchJson<DuplicateRepairPlan>(`${API_BASE}/tasks/duplicates`);
+	}
+
+	async repairDuplicateTaskIds(fingerprint: string): Promise<DuplicateRepairResult> {
+		return await this.fetchJson<DuplicateRepairResult>(`${API_BASE}/tasks/duplicates`, {
+			method: "POST",
+			body: JSON.stringify({ fingerprint }),
+		});
 	}
 
 	async fetchStatuses(): Promise<string[]> {

@@ -1,3 +1,4 @@
+import { isAmbiguousTaskIdError } from "../../utils/task-path.ts";
 import type { CallToolResult } from "../types.ts";
 
 /**
@@ -71,6 +72,9 @@ function buildErrorResult(code: string, message: string, details?: unknown): Cal
 export function handleBacklogToolError(error: unknown): CallToolResult {
 	if (error instanceof BacklogToolError) {
 		return buildErrorResult(error.code, error.message, error.details);
+	}
+	if (isAmbiguousTaskIdError(error)) {
+		return buildErrorResult("AMBIGUOUS_TASK_ID", error.message, { candidates: error.candidates });
 	}
 
 	console.error("Unexpected MCP error:", error);

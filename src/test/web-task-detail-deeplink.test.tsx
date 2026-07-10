@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it } from "bun:test";
 import { JSDOM } from "jsdom";
 import { StrictMode, act } from "react";
 import { createRoot, type Root } from "react-dom/client";
+import type { DuplicateRepairPlan } from "../core/duplicate-task-repair.ts";
 import type { SearchResult, Task } from "../types/index.ts";
 import { resolveTaskById } from "../utils/task-id.ts";
 import App from "../web/App.tsx";
@@ -83,6 +84,18 @@ const originalElement = globalThis.Element;
 const originalHTMLElement = globalThis.HTMLElement;
 const originalNode = globalThis.Node;
 let beforeTaskResponse: ((id: string) => Promise<void>) | null = null;
+let duplicatePlanResponse: (() => Promise<Response>) | null = null;
+
+const emptyDuplicatePlan = (): DuplicateRepairPlan => ({
+	groups: [],
+	crossBranchFindings: [],
+	changes: [],
+	references: [],
+	referenceScanComplete: true,
+	blockedReasons: [],
+	repairable: false,
+	fingerprint: "empty",
+});
 let activeWebSocket: FakeWebSocket | null = null;
 let queuedConfigResponses: ResponseFactory[] = [];
 let queuedSearchResponses: ResponseFactory[] = [];
@@ -91,6 +104,7 @@ class FakeWebSocket {
 	static readonly CONNECTING = 0;
 	static readonly OPEN = 1;
 	static readonly CLOSED = 3;
+	static instances: FakeWebSocket[] = [];
 	readyState = FakeWebSocket.OPEN;
 	onopen: (() => void) | null = null;
 	onclose: (() => void) | null = null;
@@ -98,6 +112,7 @@ class FakeWebSocket {
 	onmessage: ((event: { data: string }) => void) | null = null;
 
 	constructor() {
+		FakeWebSocket.instances.push(this);
 		activeWebSocket = this;
 	}
 
@@ -148,7 +163,7 @@ const installFetchMock = () => {
 			return json([]);
 		}
 		if (url.pathname === "/api/tasks/duplicates") {
-			return json([]);
+			return duplicatePlanResponse ? await duplicatePlanResponse() : json(emptyDuplicatePlan());
 		}
 		if (url.pathname === "/api/version") {
 			return json({ version: "test" });
@@ -306,6 +321,8 @@ afterEach(async () => {
 	globalThis.HTMLElement = originalHTMLElement;
 	globalThis.Node = originalNode;
 	beforeTaskResponse = null;
+	duplicatePlanResponse = null;
+	FakeWebSocket.instances = [];
 	activeWebSocket = null;
 	queuedConfigResponses = [];
 	queuedSearchResponses = [];
@@ -803,6 +820,53 @@ describe("task detail routes", () => {
 		const closeButton = container.querySelector("button[aria-label='Close modal']");
 		await click(closeButton as HTMLButtonElement);
 		await waitFor(() => window.location.pathname === "/tasks", "race winner close");
+	});
+
+	it("ignores a stale duplicate repair plan when a newer data load wins", async () => {
+		let requestCount = 0;
+		let releaseStalePlan = (_response: Response) => {};
+		const staleResponse = new Promise<Response>((resolve) => {
+			releaseStalePlan = resolve;
+		});
+		const stalePlan: DuplicateRepairPlan = {
+			...emptyDuplicatePlan(),
+			groups: [
+				{
+					id: "BACK-101",
+					tasks: [
+						{ ...tasks[0], filePath: "backlog/tasks/back-101 - Alpha.md" } as Task,
+						{ ...tasks[0], title: "Duplicate", filePath: "backlog/tasks/back-0101 - Duplicate.md" } as Task,
+					],
+				},
+			],
+			repairable: true,
+			fingerprint: "stale-plan",
+		};
+		duplicatePlanResponse = async () => {
+			requestCount += 1;
+			return requestCount === 1 ? await staleResponse : json(emptyDuplicatePlan());
+		};
+
+		const container = await renderApp("/tasks");
+		await waitFor(
+			() => FakeWebSocket.instances.some((socket) => socket.onmessage !== null),
+			"data refresh socket",
+		);
+		await act(async () => {
+			FakeWebSocket.instances.findLast((socket) => socket.onmessage !== null)?.onmessage?.({ data: "tasks-updated" });
+			await Promise.resolve();
+		});
+		await waitFor(
+			() => requestCount >= 2 && (container.textContent?.includes(tasks[0]?.title ?? "") ?? false),
+			"newer data load",
+		);
+		releaseStalePlan(json(stalePlan));
+		await act(async () => {
+			await Promise.resolve();
+			await Promise.resolve();
+		});
+
+		expect(container.textContent).not.toContain("Duplicate task IDs:");
 	});
 
 	it("opens a padded custom-prefix subtask directly and closes to the board", async () => {

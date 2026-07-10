@@ -34,6 +34,18 @@ function canonicalDecimalSegment(segment: string): string {
 	return withoutLeadingZeroes || "0";
 }
 
+/** Return the stable identity used to group task IDs without numeric coercion. */
+export function canonicalTaskId(taskId: string, prefix: string = DEFAULT_TASK_PREFIX): string {
+	const trimmed = taskId.trim();
+	const inferredPrefix = extractAnyPrefix(trimmed);
+	const effectivePrefix = inferredPrefix ?? prefix;
+	const body = extractTaskBody(trimmed, effectivePrefix);
+	if (body) {
+		return `${effectivePrefix.toUpperCase()}-${body.split(".").map(canonicalDecimalSegment).join(".")}`;
+	}
+	return normalizeTaskId(trimmed, effectivePrefix).toUpperCase();
+}
+
 /** Compare dotted decimal ID bodies without coercing segments to JavaScript numbers. */
 export function numericIdBodiesEqual(left: string, right: string): boolean {
 	const leftSegments = left.split(".");

@@ -4,6 +4,7 @@ import { $ } from "bun";
 import { Core } from "../core/backlog.ts";
 import { serializeTask } from "../markdown/serializer.ts";
 import type { Document, Task } from "../types/index.ts";
+import { AmbiguousTaskIdError } from "../utils/task-path.ts";
 import { createUniqueTestDir, initializeTestProject, safeCleanup } from "./test-utils.ts";
 
 let TEST_DIR: string;
@@ -186,7 +187,15 @@ describe("Core", () => {
 				serializeTask({ ...sampleTask, id: "task-prefixed", title: "Legacy two" }),
 			);
 
-			expect(await core.getTask("TASK-PREFIXED")).toBeNull();
+			await expect(core.getTask("TASK-PREFIXED")).rejects.toBeInstanceOf(AmbiguousTaskIdError);
+			try {
+				await core.getTask("TASK-PREFIXED");
+			} catch (error) {
+				const message = toPosixPath(String(error));
+				expect(message).toContain("task-prefixed - Legacy one.md");
+				expect(message).toContain("task-prefixed - Legacy two.md");
+				expect(message).toContain("backlog doctor");
+			}
 		});
 
 		it("should resolve numeric-only IDs with custom prefix (BACK-364)", async () => {

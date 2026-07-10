@@ -21,6 +21,7 @@ import { registerInstructionsCommand } from "./commands/instructions.ts";
 import { registerMcpCommand } from "./commands/mcp.ts";
 import { pickTaskForEditWizard, runTaskCreateWizard, runTaskEditWizard } from "./commands/task-wizard.ts";
 import { DEFAULT_DIRECTORIES, DEFAULT_FILES, DEFAULT_STATUSES } from "./constants/index.ts";
+import { type DuplicateRepairPlan, findLocalDuplicateTaskIds } from "./core/duplicate-task-repair.ts";
 import { initializeProject } from "./core/init.ts";
 import { buildMilestoneBuckets, collectArchivedMilestoneKeys, milestoneKey } from "./core/milestones.ts";
 import { formatTaskPlainText } from "./formatters/task-plain-text.ts";
@@ -61,6 +62,7 @@ import { viewTaskEnhanced } from "./ui/task-viewer-with-search.ts";
 import { scrollableViewer } from "./ui/tui.ts";
 import { type AgentSelectionValue, processAgentSelection } from "./utils/agent-selection.ts";
 import { normalizeProjectBacklogDirectory } from "./utils/backlog-directory.ts";
+import { formatDuplicateTaskIdWarning } from "./utils/duplicate-detection.ts";
 import { findBacklogRoot } from "./utils/find-backlog-root.ts";
 import { labelsToLower } from "./utils/label-filter.ts";
 import {
@@ -321,6 +323,55 @@ function printToolResult(result: CallToolResult): void {
 	}
 	if (result.isError) {
 		process.exitCode = 1;
+	}
+}
+
+async function printDuplicateIntegrityWarning(core: Core): Promise<boolean> {
+	const groups = await findLocalDuplicateTaskIds(core);
+	if (groups.length === 0) return false;
+	console.error(formatDuplicateTaskIdWarning(groups));
+	process.exitCode = 1;
+	return true;
+}
+
+function printDuplicateRepairPlan(plan: DuplicateRepairPlan): void {
+	if (plan.groups.length > 0) {
+		console.log(formatDuplicateTaskIdWarning(plan.groups));
+		console.log("\nRepair preview (no files changed):");
+		for (const change of plan.changes) {
+			console.log(`  ${change.sourcePath}`);
+			console.log(`    ${change.oldId} -> ${change.newId}`);
+			console.log(`    new path: ${change.targetPath}`);
+		}
+	}
+	if (plan.crossBranchFindings.length > 0) {
+		console.log("\nPossible cross-branch ID collisions (diagnostic only):");
+		for (const finding of plan.crossBranchFindings) {
+			console.log(`  ${finding.id}:`);
+			for (const location of finding.locations) {
+				console.log(`    - ${location.branch}:${location.path} (${location.state})`);
+			}
+		}
+		console.log("Switch to the affected branches and reconcile these paths; Backlog.md will not edit another branch.");
+	}
+	if (plan.groups.length > 0) {
+		if (plan.references.length > 0) {
+			console.log("\nReferences requiring human review after repair:");
+			for (const reference of plan.references) {
+				console.log(`  ${reference.path}:${reference.line} [${reference.ids.join(", ")}]`);
+				if (reference.text) console.log(`    ${reference.text}`);
+			}
+			console.log("These references are not changed automatically because the original ID is ambiguous.");
+		}
+		if (!plan.referenceScanComplete) {
+			console.log("\nReference scan incomplete; repair is blocked. See the failures below.");
+		} else if (plan.references.length === 0) {
+			console.log("\nNo textual references to the duplicate IDs were found in backlog Markdown files.");
+		}
+	}
+	if (plan.blockedReasons.length > 0) {
+		console.log("\nRepair is blocked:");
+		for (const reason of plan.blockedReasons) console.log(`  - ${reason}`);
 	}
 }
 
@@ -1837,6 +1888,7 @@ addHelpSchema(program.command("search [query]"), {
 	.action(async (query: string | undefined, options) => {
 		const cwd = await requireProjectRoot();
 		const core = new Core(cwd);
+		await printDuplicateIntegrityWarning(core);
 		const searchService = await core.getSearchService();
 		const contentStore = await core.getContentStore();
 		const cleanup = () => {
@@ -2209,6 +2261,7 @@ addHelpSchema(taskCmd.command("list"), {
 	.action(async (options) => {
 		const cwd = await requireProjectRoot();
 		const core = new Core(cwd);
+		await printDuplicateIntegrityWarning(core);
 		const cleanup = () => {
 			core.disposeSearchService();
 			core.disposeContentStore();
@@ -3705,6 +3758,7 @@ boardCmd
 		const core = new Core(cwd);
 		const config = await core.filesystem.loadConfig();
 		const statuses = config?.statuses || [];
+		if (await printDuplicateIntegrityWarning(core)) return;
 
 		// Load tasks with progress tracking
 		const loadingScreen = await createLoadingScreen("Loading tasks for export");
@@ -4525,6 +4579,97 @@ addHelpSchema(configCmd.command("list"), {
 			process.exitCode = 1;
 		}
 	});
+addHelpSchema(program.command("doctor"), {
+	reads: "Active and completed task files plus Backlog Markdown references",
+	required: [],
+	optional: [
+		{ name: "fix", type: "Boolean", description: "Apply the displayed duplicate-ID repair" },
+		{ name: "yes", type: "Boolean", description: "Confirm --fix without an interactive prompt" },
+	],
+	writes:
+		"With --fix, atomically renames duplicate task files and updates only their frontmatter IDs; ambiguous references are reported for human review",
+	output: "Duplicate-ID diagnosis, deterministic repair preview, and reference-review report",
+	examples: ["backlog doctor", "backlog doctor --fix", "backlog doctor --fix --yes"],
+})
+	.description("diagnose and safely repair duplicate task IDs")
+	.option("--fix", "apply the displayed duplicate task ID repair")
+	.option("--yes", "confirm --fix without prompting")
+	.action(async (options: { fix?: boolean; yes?: boolean }) => {
+		if (options.yes && !options.fix) {
+			console.error("--yes can only be used together with --fix.");
+			process.exitCode = 1;
+			return;
+		}
+
+		const cwd = await requireProjectRoot();
+		const core = new Core(cwd);
+		try {
+			const plan = await core.previewDuplicateTaskIdRepair({ includeBranches: true });
+			if (plan.groups.length === 0 && plan.crossBranchFindings.length === 0) {
+				console.log("No duplicate task IDs found in active or completed tasks.");
+				return;
+			}
+
+			printDuplicateRepairPlan(plan);
+			if (!options.fix) {
+				if (plan.groups.length > 0 && plan.repairable) {
+					console.log("\nRun 'backlog doctor --fix' to apply this repair after reviewing the preview.");
+				} else if (plan.groups.length > 0) {
+					console.log("\nResolve the blocked reasons above, then run 'backlog doctor' again.");
+				}
+				process.exitCode = 1;
+				return;
+			}
+			if (plan.groups.length === 0) {
+				console.error("Cross-branch findings cannot be repaired from the current branch.");
+				process.exitCode = 1;
+				return;
+			}
+			if (!plan.repairable) {
+				process.exitCode = 1;
+				return;
+			}
+
+			let confirmed = Boolean(options.yes);
+			if (!confirmed) {
+				if (!hasInteractiveTTY) {
+					console.error("Interactive confirmation is unavailable. Review the preview, then use --fix --yes.");
+					process.exitCode = 1;
+					return;
+				}
+				const confirmation = await clack.confirm({
+					message: `Rename ${plan.changes.length} duplicate task ${plan.changes.length === 1 ? "file" : "files"}?`,
+					initialValue: false,
+				});
+				confirmed = !clack.isCancel(confirmation) && confirmation === true;
+			}
+			if (!confirmed) {
+				console.log("Repair cancelled. No files changed.");
+				return;
+			}
+
+			const result = await core.repairDuplicateTaskIds(plan.fingerprint);
+			console.log(
+				`\nRepaired ${result.repairedFiles} duplicate task ${result.repairedFiles === 1 ? "file" : "files"}.`,
+			);
+			for (const change of result.changes) {
+				console.log(`  ${change.sourcePath} -> ${change.targetPath} (${change.oldId} -> ${change.newId})`);
+			}
+			if (result.references.length > 0) {
+				console.log(
+					`Review the ${result.references.length} reported reference ${result.references.length === 1 ? "line" : "lines"}; they were intentionally not changed.`,
+				);
+			}
+			console.log("Verification passed: no duplicate active/completed task IDs remain.");
+			if (plan.crossBranchFindings.length > 0) {
+				console.log("Cross-branch findings remain diagnostic-only and still require branch-by-branch review.");
+				process.exitCode = 1;
+			}
+		} catch (error) {
+			console.error(error instanceof Error ? error.message : String(error));
+			process.exitCode = 1;
+		}
+	});
 
 // Cleanup command for managing completed tasks
 addHelpSchema(program.command("cleanup"), {
@@ -4783,9 +4928,15 @@ registerInstructionsCommand(program);
 // MCP command group
 registerMcpCommand(program);
 
-program.parseAsync(process.argv).finally(() => {
-	// Restore BUN_OPTIONS after CLI parsing completes so it's available for subsequent commands
-	if (originalBunOptions) {
-		process.env.BUN_OPTIONS = originalBunOptions;
-	}
-});
+program
+	.parseAsync(process.argv)
+	.catch((error) => {
+		console.error(error instanceof Error ? error.message : String(error));
+		process.exitCode = 1;
+	})
+	.finally(() => {
+		// Restore BUN_OPTIONS after CLI parsing completes so it's available for subsequent commands
+		if (originalBunOptions) {
+			process.env.BUN_OPTIONS = originalBunOptions;
+		}
+	});

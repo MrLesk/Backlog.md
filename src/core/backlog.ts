@@ -1,5 +1,5 @@
 import { rename as moveFile, stat, unlink } from "node:fs/promises";
-import { isAbsolute, join, relative } from "node:path";
+import { basename, isAbsolute, join, relative } from "node:path";
 import { DEFAULT_DIRECTORIES, DEFAULT_STATUSES, FALLBACK_STATUS } from "../constants/index.ts";
 import { FileSystem, isCreateLockError } from "../file-system/operations.ts";
 import { GitOperations } from "../git/operations.ts";
@@ -40,6 +40,8 @@ import {
 	buildGlobPattern,
 	buildIdRegex,
 	extractAnyPrefix,
+	generateNextId as generateNextPrefixedId,
+	generateNextSubtaskId,
 	getPrefixForType,
 	normalizeId,
 } from "../utils/prefix-config.ts";
@@ -57,13 +59,25 @@ import {
 	validateDependencies,
 } from "../utils/task-builders.ts";
 import { resolveTaskById } from "../utils/task-id.ts";
-import { getTaskFilename, getTaskPath, normalizeTaskId, taskIdsEqual } from "../utils/task-path.ts";
+import {
+	AmbiguousTaskIdError,
+	getTaskFilename,
+	getTaskPath,
+	normalizeTaskId,
+	taskIdsEqual,
+} from "../utils/task-path.ts";
 import { attachSubtaskSummaries } from "../utils/task-subtasks.ts";
 import { formatValidTaskTypeValues, matchesTaskTypeFilter, resolveTaskTypeValue } from "../utils/task-type-config.ts";
 import { upsertTaskUpdatedDate } from "../utils/task-updated-date.ts";
 import { isTerminalStatus } from "../utils/terminal-status.ts";
 import { migrateConfig, needsMigration } from "./config-migration.ts";
 import { ContentStore } from "./content-store.ts";
+import {
+	applyDuplicateTaskIdRepair,
+	type DuplicateRepairPlan,
+	type DuplicateRepairResult,
+	previewDuplicateTaskIdRepair,
+} from "./duplicate-task-repair.ts";
 import { migrateDraftPrefixes, needsDraftPrefixMigration } from "./prefix-migration.ts";
 import { calculateNewOrdinal, DEFAULT_ORDINAL_STEP, resolveOrdinalConflicts } from "./reorder.ts";
 import { SearchService } from "./search-service.ts";
@@ -253,6 +267,18 @@ export class Core {
 
 	async withCreateLock<T>(fn: () => Promise<T>): Promise<T> {
 		return await this.fs.withCreateLock(fn);
+	}
+
+	async previewDuplicateTaskIdRepair(options: { includeBranches?: boolean } = {}): Promise<DuplicateRepairPlan> {
+		return await previewDuplicateTaskIdRepair(this, options);
+	}
+
+	async repairDuplicateTaskIds(expectedFingerprint: string): Promise<DuplicateRepairResult> {
+		const result = await applyDuplicateTaskIdRepair(this, expectedFingerprint);
+		if (this.contentStore) {
+			await this.contentStore.refreshTasks();
+		}
+		return result;
 	}
 
 	private async resolveCreateOrdinal(inputOrdinal: number | undefined, isDraft: boolean): Promise<number | undefined> {
@@ -588,22 +614,40 @@ export class Core {
 
 	async getTask(taskId: string): Promise<Task | null> {
 		const localResolution = resolveTaskById(await this.fs.listTasks(), taskId);
-		if (localResolution.status === "ambiguous" || localResolution.status === "invalid") {
+		if (localResolution.status === "invalid") {
 			return null;
 		}
+		if (localResolution.status === "ambiguous") {
+			throw new AmbiguousTaskIdError(
+				taskId,
+				localResolution.tasks.map((task) => task.filePath ?? task.id),
+			);
+		}
+
+		// Also fail closed when an active task collides with a completed file.
+		await this.fs.loadTask(taskId);
 
 		const store = await this.getContentStore();
 		const tasks = store.getTasks();
 		const resolution = resolveTaskById(tasks, taskId);
-		if (resolution.status === "ambiguous" || resolution.status === "invalid") {
+		if (resolution.status === "invalid") {
 			return null;
+		}
+		if (resolution.status === "ambiguous") {
+			throw new AmbiguousTaskIdError(
+				taskId,
+				resolution.tasks.map((task) => task.filePath ?? `${task.branch ?? "unknown branch"}:${task.id}`),
+			);
 		}
 		if (
 			localResolution.status === "found" &&
 			resolution.status === "found" &&
 			localResolution.task.id.toLowerCase() !== resolution.task.id.toLowerCase()
 		) {
-			return null;
+			throw new AmbiguousTaskIdError(taskId, [
+				localResolution.task.filePath ?? localResolution.task.id,
+				resolution.task.filePath ?? `${resolution.task.branch ?? "unknown branch"}:${resolution.task.id}`,
+			]);
 		}
 		if (resolution.status === "found") {
 			return resolution.task;
@@ -611,9 +655,7 @@ export class Core {
 		if (localResolution.status === "found") {
 			return localResolution.task;
 		}
-
-		// Pass raw ID to loadTask - it will handle prefix detection via getTaskPath
-		return await this.fs.loadTask(taskId);
+		return null;
 	}
 
 	async hasActiveBranchTaskIdCollision(taskId: string, localTasks: Task[]): Promise<boolean> {
@@ -707,7 +749,8 @@ export class Core {
 	}
 
 	async getTaskContent(taskId: string): Promise<string | null> {
-		const filePath = await getTaskPath(taskId, this);
+		const task = await this.fs.loadTask(taskId);
+		const filePath = task?.filePath ?? null;
 		if (!filePath) return null;
 		return await Bun.file(filePath).text();
 	}
@@ -1028,47 +1071,10 @@ export class Core {
 		if (parent) {
 			// Subtask generation (only applicable for tasks)
 			const normalizedParent = allIds.find((id) => taskIdsEqual(parent, id)) ?? normalizeTaskId(parent);
-			const upperParent = normalizedParent.toUpperCase();
-			let max = 0;
-			for (const id of allIds) {
-				// Case-insensitive comparison to handle legacy lowercase IDs
-				if (id.toUpperCase().startsWith(`${upperParent}.`)) {
-					const rest = id.slice(normalizedParent.length + 1);
-					const num = Number.parseInt(rest.split(".")[0] || "0", 10);
-					if (num > max) max = num;
-				}
-			}
-			const nextSubIdNumber = max + 1;
-			const padding = config?.zeroPaddedIds;
-
-			if (padding && padding > 0) {
-				const paddedSubId = String(nextSubIdNumber).padStart(2, "0");
-				return `${normalizedParent}.${paddedSubId}`;
-			}
-
-			return `${normalizedParent}.${nextSubIdNumber}`;
+			return generateNextSubtaskId(allIds, normalizedParent, prefix, config?.zeroPaddedIds);
 		}
 
-		// Top-level ID generation using prefix-aware regex
-		const regex = buildIdRegex(prefix);
-		const upperPrefix = prefix.toUpperCase();
-		let max = 0;
-		for (const id of allIds) {
-			const match = id.match(regex);
-			if (match?.[1] && !match[1].includes(".")) {
-				const num = Number.parseInt(match[1], 10);
-				if (num > max) max = num;
-			}
-		}
-		const nextIdNumber = max + 1;
-		const padding = config?.zeroPaddedIds;
-
-		if (padding && padding > 0) {
-			const paddedId = String(nextIdNumber).padStart(padding, "0");
-			return `${upperPrefix}-${paddedId}`;
-		}
-
-		return `${upperPrefix}-${nextIdNumber}`;
+		return generateNextPrefixedId(allIds, prefix, config?.zeroPaddedIds);
 	}
 
 	/**
@@ -2473,10 +2479,12 @@ export class Core {
 	}
 
 	async completeTask(taskId: string, autoCommit?: boolean): Promise<boolean> {
+		const task = await this.fs.loadTask(taskId);
+		if (!task) return false;
 		// Get paths before moving the file
 		const completedDir = this.fs.completedDir;
-		const taskPath = await getTaskPath(taskId, this);
-		const taskFilename = await getTaskFilename(taskId, this);
+		const taskPath = task.filePath ?? (await getTaskPath(task.id, this));
+		const taskFilename = taskPath ? basename(taskPath) : null;
 
 		if (!taskPath || !taskFilename) return false;
 
@@ -2855,7 +2863,7 @@ export class Core {
 		const tasks = await this.fs.listTasks();
 		return await Promise.all(
 			tasks.map(async (task) => {
-				const filePath = await getTaskPath(task.id, this);
+				const filePath = task.filePath ?? (await getTaskPath(task.id, this));
 
 				if (filePath) {
 					const bunFile = Bun.file(filePath);

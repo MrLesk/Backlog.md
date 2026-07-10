@@ -1,4 +1,4 @@
-import { join } from "node:path";
+import { basename, join } from "node:path";
 import { Core } from "../core/backlog.ts";
 import type { Task } from "../types/index.ts";
 import {
@@ -9,14 +9,15 @@ import {
 	idForFilename,
 	normalizeId,
 } from "./prefix-config.ts";
-import { normalizeTaskId, numericIdBodiesEqual, taskIdsEqual } from "./task-id.ts";
+import { canonicalTaskId, normalizeTaskId, numericIdBodiesEqual, taskIdsEqual } from "./task-id.ts";
 
-export { normalizeTaskId, taskIdsEqual } from "./task-id.ts";
+export { canonicalTaskId, normalizeTaskId, taskIdsEqual } from "./task-id.ts";
 
 // Interface for task path resolution context
 interface TaskPathContext {
 	filesystem: {
 		tasksDir: string;
+		completedDir?: string;
 	};
 }
 
@@ -35,6 +36,29 @@ export function normalizeTaskIdentity(task: Task): Task {
 		id: normalizedId,
 		parentTaskId: normalizedParent,
 	};
+}
+
+export class AmbiguousTaskIdError extends Error {
+	readonly taskId: string;
+	readonly candidates: string[];
+
+	constructor(taskId: string, candidates: string[]) {
+		const sortedCandidates = [...candidates].sort((left, right) => left.localeCompare(right));
+		super(
+			[
+				`Task ID ${canonicalTaskId(taskId)} is ambiguous; ${sortedCandidates.length} files match:`,
+				...sortedCandidates.map((candidate) => `  - ${candidate}`),
+				"Run 'backlog doctor' to preview a safe repair.",
+			].join("\n"),
+		);
+		this.name = "AmbiguousTaskIdError";
+		this.taskId = taskId;
+		this.candidates = sortedCandidates;
+	}
+}
+
+export function isAmbiguousTaskIdError(error: unknown): error is AmbiguousTaskIdError {
+	return error instanceof AmbiguousTaskIdError;
 }
 
 /**
@@ -61,51 +85,40 @@ export function extractTaskIdFromFilename(filename: string): string | null {
  */
 export async function getTaskPath(taskId: string, core?: Core | TaskPathContext): Promise<string | null> {
 	const coreInstance = core || new Core(process.cwd());
+	const activeMatches = await findMatchingTaskPaths(coreInstance.filesystem.tasksDir, taskId);
+	const completedMatches = coreInstance.filesystem.completedDir
+		? await findMatchingTaskPaths(coreInstance.filesystem.completedDir, taskId)
+		: [];
+	const allMatches = [...activeMatches, ...completedMatches];
+	if (allMatches.length > 1) {
+		throw new AmbiguousTaskIdError(taskId, allMatches);
+	}
+	return activeMatches[0] ?? null;
+}
 
-	// Extract prefix from the taskId
+async function findMatchingTaskPaths(directory: string, taskId: string): Promise<string[]> {
 	const detectedPrefix = extractAnyPrefix(taskId);
-
-	// If prefix is detected, search only for that prefix
-	if (detectedPrefix) {
-		const globPattern = buildGlobPattern(detectedPrefix);
-		try {
-			const files = await Array.fromAsync(
-				new Bun.Glob(globPattern).scan({ cwd: coreInstance.filesystem.tasksDir, followSymlinks: true }),
-			);
-			const taskFile = findMatchingTaskFile(files, taskId);
-			if (taskFile) {
-				return join(coreInstance.filesystem.tasksDir, taskFile);
-			}
-		} catch {
-			// Fall through to return null
-		}
-		return null;
-	}
-
-	// For numeric-only IDs, scan all .md files and find one matching the number
 	try {
-		const allFiles = await Array.fromAsync(
-			new Bun.Glob("*.md").scan({ cwd: coreInstance.filesystem.tasksDir, followSymlinks: true }),
+		const files = await Array.fromAsync(
+			new Bun.Glob(detectedPrefix ? buildGlobPattern(detectedPrefix) : "*.md").scan({
+				cwd: directory,
+				followSymlinks: true,
+			}),
 		);
-
-		const taskFile = findMatchingTaskFile(allFiles, taskId.trim());
-		return taskFile ? join(coreInstance.filesystem.tasksDir, taskFile) : null;
+		return files
+			.filter((file) => {
+				const fileTaskId = extractTaskIdFromFilename(file);
+				if (!fileTaskId) return false;
+				const filePrefix = extractAnyPrefix(fileTaskId);
+				if (detectedPrefix && filePrefix?.toLowerCase() !== detectedPrefix.toLowerCase()) return false;
+				return taskIdsEqual(taskId, fileTaskId);
+			})
+			.map((file) => join(directory, file))
+			.sort((left, right) => left.localeCompare(right));
 	} catch {
-		return null;
+		return [];
 	}
 }
-
-/**
- * Helper to find a matching file from a list of files
- */
-function findMatchingTaskFile(files: string[], taskId: string): string | undefined {
-	const matches = files.filter((file) => {
-		const filenameTaskId = extractTaskIdFromFilename(file);
-		return filenameTaskId ? taskIdsEqual(taskId, filenameTaskId) : false;
-	});
-	return matches.length === 1 ? matches[0] : undefined;
-}
-
 /** Default prefix for drafts */
 const DEFAULT_DRAFT_PREFIX = "draft";
 
@@ -194,34 +207,8 @@ export async function getDraftPath(draftId: string, core: Core): Promise<string 
  * For numeric-only IDs, automatically detects the prefix from existing files.
  */
 export async function getTaskFilename(taskId: string, core?: Core | TaskPathContext): Promise<string | null> {
-	const coreInstance = core || new Core(process.cwd());
-
-	// Extract prefix from the taskId
-	const detectedPrefix = extractAnyPrefix(taskId);
-
-	// If prefix is detected, search only for that prefix
-	if (detectedPrefix) {
-		const globPattern = buildGlobPattern(detectedPrefix);
-		try {
-			const files = await Array.fromAsync(
-				new Bun.Glob(globPattern).scan({ cwd: coreInstance.filesystem.tasksDir, followSymlinks: true }),
-			);
-			return findMatchingTaskFile(files, taskId) ?? null;
-		} catch {
-			return null;
-		}
-	}
-
-	// For numeric-only IDs, scan all .md files and find one matching the number
-	try {
-		const allFiles = await Array.fromAsync(
-			new Bun.Glob("*.md").scan({ cwd: coreInstance.filesystem.tasksDir, followSymlinks: true }),
-		);
-
-		return findMatchingTaskFile(allFiles, taskId.trim()) ?? null;
-	} catch {
-		return null;
-	}
+	const path = await getTaskPath(taskId, core);
+	return path ? basename(path) : null;
 }
 
 /**

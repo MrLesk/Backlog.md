@@ -3,7 +3,14 @@ import { mkdir, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { $ } from "bun";
 import { Core } from "../core/backlog.ts";
-import { getTaskFilename, getTaskPath, normalizeTaskId, taskFileExists, taskIdsEqual } from "../utils/task-path.ts";
+import {
+	AmbiguousTaskIdError,
+	getTaskFilename,
+	getTaskPath,
+	normalizeTaskId,
+	taskFileExists,
+	taskIdsEqual,
+} from "../utils/task-path.ts";
 import { createUniqueTestDir, initializeTestProject, safeCleanup } from "./test-utils.ts";
 
 describe("Task path utilities", () => {
@@ -183,8 +190,8 @@ describe("Task path utilities", () => {
 			expect(await getTaskFilename("bAcK-1.2", core)).toBe("back-0001.002 - Padded dotted.md");
 
 			await writeFile(join(tasksDir, "back-1.2 - Canonical duplicate.md"), "# Canonical duplicate");
-			expect(await getTaskPath("BACK-001.02", core)).toBeNull();
-			expect(await getTaskFilename("back-1.2", core)).toBeNull();
+			await expect(getTaskPath("BACK-001.02", core)).rejects.toBeInstanceOf(AmbiguousTaskIdError);
+			await expect(getTaskFilename("back-1.2", core)).rejects.toBeInstanceOf(AmbiguousTaskIdError);
 		});
 
 		it("should resolve zero-padded numeric IDs to the same task", async () => {
@@ -228,9 +235,9 @@ describe("Task path utilities", () => {
 			await writeFile(join(tasksDir, "task-9007199254740992 - Huge target.md"), "# Huge target");
 			await writeFile(join(tasksDir, "task-09007199254740992 - Huge duplicate.md"), "# Huge duplicate");
 
-			expect(await getTaskPath("TASK-9007199254740992", core)).toBeNull();
-			expect(await getTaskFilename("09007199254740992", core)).toBeNull();
-			expect(await taskFileExists("9007199254740992", core)).toBe(false);
+			await expect(getTaskPath("TASK-9007199254740992", core)).rejects.toBeInstanceOf(AmbiguousTaskIdError);
+			await expect(getTaskFilename("09007199254740992", core)).rejects.toBeInstanceOf(AmbiguousTaskIdError);
+			await expect(taskFileExists("9007199254740992", core)).rejects.toBeInstanceOf(AmbiguousTaskIdError);
 		});
 
 		it("should return null for non-existent task", async () => {
