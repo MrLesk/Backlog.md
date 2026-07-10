@@ -3,7 +3,14 @@ import { mkdir, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { $ } from "bun";
 import { Core } from "../core/backlog.ts";
-import { getTaskFilename, getTaskPath, normalizeTaskId, taskFileExists, taskIdsEqual } from "../utils/task-path.ts";
+import {
+	AmbiguousTaskIdError,
+	getTaskFilename,
+	getTaskPath,
+	normalizeTaskId,
+	taskFileExists,
+	taskIdsEqual,
+} from "../utils/task-path.ts";
 import { createUniqueTestDir, initializeTestProject, safeCleanup } from "./test-utils.ts";
 
 describe("Task path utilities", () => {
@@ -88,6 +95,8 @@ describe("Task path utilities", () => {
 		it("should handle numeric comparison (leading zeros)", () => {
 			expect(taskIdsEqual("task-1", "task-01")).toBe(true);
 			expect(taskIdsEqual("task-001", "task-1")).toBe(true);
+			expect(taskIdsEqual("task-0", "TASK-0000")).toBe(true);
+			expect(taskIdsEqual("task-0.00", "TASK-000.0")).toBe(true);
 		});
 
 		it("should compare subtask IDs correctly", () => {
@@ -155,6 +164,36 @@ describe("Task path utilities", () => {
 			expect(path).toContain("task-456 - Another Task.md");
 		});
 
+		it("matches a legacy ID exactly when a longer legacy ID shares its prefix", async () => {
+			const tasksDir = core.filesystem.tasksDir;
+			await writeFile(join(tasksDir, "task-prefixed - Exact.md"), "# Exact");
+			await writeFile(join(tasksDir, "task-prefixed-extra - Longer.md"), "# Longer");
+
+			expect(await getTaskPath("TASK-PREFIXED", core)).toContain("task-prefixed - Exact.md");
+			expect(await getTaskPath("TASK-PREFIXED-EXTRA", core)).toContain("task-prefixed-extra - Longer.md");
+		});
+
+		it("requires the complete filename ID token before matching numeric IDs", async () => {
+			const tasksDir = core.filesystem.tasksDir;
+			await writeFile(join(tasksDir, "back-1-extra - Longer sibling.md"), "# Longer sibling");
+
+			expect(await getTaskPath("BACK-1", core)).toBeNull();
+			expect(await getTaskFilename("back-001", core)).toBeNull();
+			expect(await taskFileExists("BaCk-1", core)).toBe(false);
+			expect(await getTaskPath("BACK-1-EXTRA", core)).toContain("back-1-extra - Longer sibling.md");
+		});
+
+		it("preserves case-insensitive padded and dotted matching while failing closed on duplicates", async () => {
+			const tasksDir = core.filesystem.tasksDir;
+			await writeFile(join(tasksDir, "back-0001.002 - Padded dotted.md"), "# Padded dotted");
+
+			expect(await getTaskFilename("bAcK-1.2", core)).toBe("back-0001.002 - Padded dotted.md");
+
+			await writeFile(join(tasksDir, "back-1.2 - Canonical duplicate.md"), "# Canonical duplicate");
+			await expect(getTaskPath("BACK-001.02", core)).rejects.toBeInstanceOf(AmbiguousTaskIdError);
+			await expect(getTaskFilename("back-1.2", core)).rejects.toBeInstanceOf(AmbiguousTaskIdError);
+		});
+
 		it("should resolve zero-padded numeric IDs to the same task", async () => {
 			// File exists as task-0001; query with 1
 			const path1 = await getTaskPath("1", core);
@@ -175,6 +214,30 @@ describe("Task path utilities", () => {
 			const mixedCase = await getTaskPath("Task-456", core);
 			expect(mixedCase).toBeTruthy();
 			expect(mixedCase).toContain("task-456 - Another Task.md");
+		});
+
+		it("resolves huge adjacent and dotted IDs without precision loss", async () => {
+			const tasksDir = core.filesystem.tasksDir;
+			await writeFile(join(tasksDir, "task-9007199254740992 - Huge target.md"), "# Huge target");
+			await writeFile(join(tasksDir, "task-9007199254740993 - Huge neighbor.md"), "# Huge neighbor");
+			await writeFile(join(tasksDir, "task-9007199254740992.0002 - Huge subtask.md"), "# Huge subtask");
+
+			const target = await getTaskPath("TASK-9007199254740992", core);
+			expect(target).toContain("task-9007199254740992 - Huge target.md");
+			const neighbor = await getTaskPath("TASK-9007199254740993", core);
+			expect(neighbor).toContain("task-9007199254740993 - Huge neighbor.md");
+			const dotted = await getTaskPath("task-09007199254740992.2", core);
+			expect(dotted).toContain("task-9007199254740992.0002 - Huge subtask.md");
+		});
+
+		it("fails closed when huge padded file identities are ambiguous", async () => {
+			const tasksDir = core.filesystem.tasksDir;
+			await writeFile(join(tasksDir, "task-9007199254740992 - Huge target.md"), "# Huge target");
+			await writeFile(join(tasksDir, "task-09007199254740992 - Huge duplicate.md"), "# Huge duplicate");
+
+			await expect(getTaskPath("TASK-9007199254740992", core)).rejects.toBeInstanceOf(AmbiguousTaskIdError);
+			await expect(getTaskFilename("09007199254740992", core)).rejects.toBeInstanceOf(AmbiguousTaskIdError);
+			await expect(taskFileExists("9007199254740992", core)).rejects.toBeInstanceOf(AmbiguousTaskIdError);
 		});
 
 		it("should return null for non-existent task", async () => {

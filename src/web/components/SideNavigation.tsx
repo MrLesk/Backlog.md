@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useCallback, memo } from 'react';
+import { useState, useEffect, useMemo, useCallback, useRef, memo } from 'react';
 import { NavLink, useLocation, useNavigate } from 'react-router-dom';
 import { Tooltip } from 'react-tooltip';
 import {
@@ -13,7 +13,7 @@ import {
 } from '../../types';
 import ErrorBoundary from './ErrorBoundary';
 import { SidebarSkeleton } from './LoadingSpinner';
-import { sanitizeUrlTitle } from '../utils/urlHelpers';
+import { createUrlPath, sanitizeUrlTitle } from '../utils/urlHelpers';
 import { getWebVersion } from '../utils/version';
 import { apiClient } from '../lib/api';
 import { parseSearchCommandQuery } from '../utils/search-command-query';
@@ -251,6 +251,11 @@ const SideNavigation = memo(function SideNavigation({
 	const [isSearching, setIsSearching] = useState(false);
 	const [searchError, setSearchError] = useState<string | null>(null);
 	const [searchInputRef, setSearchInputRef] = useState<HTMLInputElement | null>(null);
+	const focusSearchOnExpandRef = useRef(false);
+	const expandAndFocusSearch = useCallback(() => {
+		focusSearchOnExpandRef.current = true;
+		setIsCollapsed(false);
+	}, []);
 	const [isDocsCollapsed, setIsDocsCollapsed] = useState(() => {
 		const saved = localStorage.getItem('docsCollapsed');
 		if (saved !== null) {
@@ -328,8 +333,7 @@ const SideNavigation = memo(function SideNavigation({
 			if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
 				e.preventDefault();
 				if (isCollapsed) {
-					// Expand sidebar first, then focus will happen on next render
-					setIsCollapsed(false);
+					expandAndFocusSearch();
 				} else if (searchInputRef) {
 					searchInputRef.focus();
 				}
@@ -338,16 +342,13 @@ const SideNavigation = memo(function SideNavigation({
 
 		document.addEventListener('keydown', handleKeyDown);
 		return () => document.removeEventListener('keydown', handleKeyDown);
-	}, [searchInputRef, isCollapsed]);
+	}, [expandAndFocusSearch, searchInputRef, isCollapsed]);
 
-	// Auto-focus search input when sidebar expands
+	// Auto-focus search only after an explicit collapsed-to-expanded transition.
 	useEffect(() => {
-		if (!isCollapsed && searchInputRef) {
-			// Small delay to ensure the input is rendered
-			const timer = setTimeout(() => {
-				searchInputRef.focus();
-			}, 100);
-			return () => clearTimeout(timer);
+		if (!isCollapsed && searchInputRef && focusSearchOnExpandRef.current) {
+			focusSearchOnExpandRef.current = false;
+			searchInputRef.focus();
 		}
 	}, [isCollapsed, searchInputRef]);
 
@@ -422,8 +423,12 @@ const SideNavigation = memo(function SideNavigation({
 	}, []);
 
 	const toggleCollapse = useCallback(() => {
-		setIsCollapsed((prev: any) => !prev);
-	}, []);
+		if (isCollapsed) {
+			expandAndFocusSearch();
+			return;
+		}
+		setIsCollapsed(true);
+	}, [expandAndFocusSearch, isCollapsed]);
 
 	return (
 		<ErrorBoundary>
@@ -469,7 +474,7 @@ const SideNavigation = memo(function SideNavigation({
 				) : (
 						<div className="flex items-center justify-center">
 							<button
-								onClick={() => setIsCollapsed(false)}
+								onClick={expandAndFocusSearch}
 								className="flex items-center justify-center p-2 text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg transition-colors duration-200"
 								title="Search (⌘K)"
 							>
@@ -502,7 +507,7 @@ const SideNavigation = memo(function SideNavigation({
 								if (result.type === 'decision') {
 									return `/decisions/${stripIdPrefix(item.id)}/${sanitizeUrlTitle(item.title)}`;
 								}
-								return `/?highlight=${encodeURIComponent(item.id)}`;
+								return createUrlPath('/board', item.id, item.title);
 							};
 
 							const getResultIcon = () => {
@@ -515,6 +520,11 @@ const SideNavigation = memo(function SideNavigation({
 								<NavLink
 									key={`${result.type}-${item.id}-${index}`}
 									to={getResultLink()}
+									state={
+										result.type === 'task'
+											? { taskModalFrom: `${location.pathname}${location.search}` }
+											: undefined
+									}
 									className="flex items-center space-x-3 px-3 py-2 text-sm rounded-lg transition-colors duration-200 hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-900 dark:text-gray-100"
 								>
 									{getResultIcon()}
@@ -589,7 +599,7 @@ const SideNavigation = memo(function SideNavigation({
 					<div className="px-4 space-y-1">
 						{/* Board Navigation */}
 						<NavLink
-							to="/"
+							to="/board"
 							className={({ isActive }) =>
 								`flex items-center px-3 py-2 rounded-lg transition-colors duration-200 ${
 									isActive
@@ -789,7 +799,7 @@ const SideNavigation = memo(function SideNavigation({
 				{isCollapsed && (
 					<div className="px-2 py-2 space-y-2">
 						<NavLink
-							to="/"
+							to="/board"
 							data-tooltip-id="sidebar-tooltip"
 							data-tooltip-content="Kanban Board"
 							className={({ isActive }) =>

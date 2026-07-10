@@ -11,17 +11,17 @@ export function DuplicateIdWarning({ plan, onRepaired }: DuplicateIdWarningProps
 	const [dismissed, setDismissed] = useState(false);
 	const [isRepairOpen, setIsRepairOpen] = useState(false);
 
-	if (!plan || plan.groups.length === 0 || dismissed) return null;
+	if (!plan || !Array.isArray(plan.groups) || plan.groups.length === 0 || dismissed) return null;
 
 	const duplicateTaskCount = plan.groups.reduce((count, group) => count + group.tasks.length, 0);
 
 	return (
 		<>
 			<section
-				className="border-b border-amber-200 bg-amber-50 px-6 py-2 text-amber-950 dark:border-amber-800 dark:bg-amber-950/60 dark:text-amber-100 lg:px-8"
+				className="border-b border-amber-200 bg-amber-50 px-3 py-2 text-amber-950 dark:border-amber-800 dark:bg-amber-950/60 dark:text-amber-100 sm:px-6 lg:px-8"
 				aria-live="polite"
 			>
-				<div className="flex min-h-9 items-center justify-between gap-4">
+				<div className="flex min-h-9 flex-wrap items-center justify-between gap-2 sm:flex-nowrap sm:gap-4">
 					<div className="flex min-w-0 items-center gap-3">
 						<svg className="h-5 w-5 shrink-0 text-amber-700 dark:text-amber-300" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
 							<path
@@ -34,7 +34,7 @@ export function DuplicateIdWarning({ plan, onRepaired }: DuplicateIdWarningProps
 							<span className="font-semibold">Duplicate task IDs:</span> {plan.groups.length} {plan.groups.length === 1 ? "group" : "groups"} across {duplicateTaskCount} files. Some tasks may be hidden.
 						</p>
 					</div>
-					<div className="flex shrink-0 items-center gap-2">
+					<div className="ml-auto flex shrink-0 items-center gap-2">
 						<button
 							type="button"
 							onClick={() => setIsRepairOpen(true)}

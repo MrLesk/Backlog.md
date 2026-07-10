@@ -263,7 +263,7 @@ export function idsEqual(id1: string, id2: string, prefix: string): boolean {
 export function generateNextId(existingIds: string[], prefix: string, zeroPadding?: number): string {
 	const regex = buildIdRegex(prefix);
 	const upperPrefix = prefix.toUpperCase();
-	let max = 0;
+	let max = 0n;
 
 	for (const id of existingIds) {
 		const match = id.match(regex);
@@ -271,18 +271,18 @@ export function generateNextId(existingIds: string[], prefix: string, zeroPaddin
 			// Only consider top-level IDs (no dots for subtasks)
 			const body = match[1];
 			if (!body.includes(".")) {
-				const num = Number.parseInt(body, 10);
-				if (!Number.isNaN(num) && num > max) {
+				const num = BigInt(body);
+				if (num > max) {
 					max = num;
 				}
 			}
 		}
 	}
 
-	const nextNum = max + 1;
+	const nextNum = (max + 1n).toString();
 
 	if (zeroPadding && zeroPadding > 0) {
-		return `${upperPrefix}-${String(nextNum).padStart(zeroPadding, "0")}`;
+		return `${upperPrefix}-${nextNum.padStart(zeroPadding, "0")}`;
 	}
 
 	return `${upperPrefix}-${nextNum}`;
@@ -308,27 +308,40 @@ export function generateNextSubtaskId(
 ): string {
 	const normalizedParent = normalizeId(parentId, prefix);
 	const parentBody = extractIdBody(normalizedParent, prefix);
+	const parentSegments = parentBody.split(".");
+	const canonicalizeNumericSegments = (segments: string[]): string[] | null => {
+		if (!segments.every((segment) => /^\d+$/.test(segment))) return null;
+		return segments.map((segment) => segment.replace(/^0+/, "") || "0");
+	};
+	const canonicalParentSegments = canonicalizeNumericSegments(parentSegments);
 
-	let max = 0;
+	let max = 0n;
 
 	for (const id of existingIds) {
 		const body = extractIdBody(id, prefix);
-		if (body.startsWith(`${parentBody}.`)) {
-			const rest = body.slice(parentBody.length + 1);
-			const firstSegment = rest.split(".")[0];
-			if (firstSegment) {
-				const num = Number.parseInt(firstSegment, 10);
-				if (!Number.isNaN(num) && num > max) {
+		const bodySegments = body.split(".");
+		if (bodySegments.length > parentSegments.length) {
+			const candidateParentSegments = bodySegments.slice(0, parentSegments.length);
+			const canonicalCandidateParentSegments = canonicalizeNumericSegments(candidateParentSegments);
+			const parentMatches =
+				canonicalParentSegments && canonicalCandidateParentSegments
+					? canonicalParentSegments.every((segment, index) => segment === canonicalCandidateParentSegments[index])
+					: candidateParentSegments.join(".").toLowerCase() === parentBody.toLowerCase();
+			if (!parentMatches) continue;
+			const firstSegment = bodySegments[parentSegments.length];
+			if (firstSegment && /^\d+$/.test(firstSegment)) {
+				const num = BigInt(firstSegment);
+				if (num > max) {
 					max = num;
 				}
 			}
 		}
 	}
 
-	const nextNum = max + 1;
+	const nextNum = (max + 1n).toString();
 
 	if (zeroPadding && zeroPadding > 0) {
-		return `${normalizedParent}.${String(nextNum).padStart(2, "0")}`;
+		return `${normalizedParent}.${nextNum.padStart(2, "0")}`;
 	}
 
 	return `${normalizedParent}.${nextNum}`;

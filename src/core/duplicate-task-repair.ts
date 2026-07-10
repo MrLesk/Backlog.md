@@ -2,8 +2,8 @@ import { link, rename, unlink } from "node:fs/promises";
 import { basename, dirname, join, relative, resolve, sep } from "node:path";
 import { EntityType, type Task } from "../types/index.ts";
 import { type DuplicateGroup, detectDuplicateTaskIds } from "../utils/duplicate-detection.ts";
-import { extractAnyPrefix, generateNextId, generateNextSubtaskId, idForFilename } from "../utils/prefix-config.ts";
-import { canonicalTaskId } from "../utils/task-path.ts";
+import { escapeRegex, generateNextId, generateNextSubtaskId, idForFilename } from "../utils/prefix-config.ts";
+import { canonicalTaskId, isNumericTaskId } from "../utils/task-id.ts";
 import type { Core } from "./backlog.ts";
 import { type BranchTaskStateEntry, loadLocalBranchTasks, loadRemoteTasks } from "./task-loader.ts";
 
@@ -84,9 +84,9 @@ export async function findLocalDuplicateTaskIds(core: Core): Promise<DuplicateGr
 
 function logicalBranchTaskPath(path: string, id: string): string {
 	const filename = basename(path).toLowerCase();
-	const prefix = extractAnyPrefix(id);
-	if (!prefix) return filename;
-	return filename.replace(new RegExp(`^${prefix}-(\\d+(?:\\.\\d+)*)`, "i"), canonicalTaskId(id).toLowerCase());
+	const separatorIndex = filename.indexOf(" - ");
+	if (separatorIndex < 0) return filename;
+	return `${canonicalTaskId(id).toLowerCase()}${filename.slice(separatorIndex)}`;
 }
 
 export async function findCrossBranchDuplicateTaskIds(core: Core): Promise<CrossBranchDuplicateFinding[]> {
@@ -170,7 +170,7 @@ function matchesConfiguredPadding(taskId: string, zeroPaddedIds?: number): boole
 	if (zeroPaddedIds && zeroPaddedIds > 0) {
 		return segments.every((segment, index) => segment.length === (index === 0 ? zeroPaddedIds : 2));
 	}
-	return segments.every((segment) => segment === String(Number.parseInt(segment, 10)));
+	return segments.every((segment) => (segment.replace(/^0+/, "") || "0") === segment);
 }
 
 function sortGroupTasks(tasks: Task[], zeroPaddedIds?: number): Task[] {
@@ -218,23 +218,29 @@ async function allocateRepairId(
 	zeroPaddedIds?: number,
 ): Promise<string> {
 	const generatedId = await core.generateNextId(EntityType.Task, parentId);
-	if (!plannedIds.some((plannedId) => canonicalTaskId(plannedId) === canonicalTaskId(generatedId))) {
+	const occupiedIds = [...existingIds, ...plannedIds];
+	if (!occupiedIds.some((occupiedId) => canonicalTaskId(occupiedId) === canonicalTaskId(generatedId))) {
 		return generatedId;
 	}
 
-	const ids = [...existingIds, ...plannedIds];
-	if (!parentId) return generateNextId(ids, taskPrefix, zeroPaddedIds);
-	const generatedParent = generatedId.slice(0, generatedId.lastIndexOf("."));
-	return generateNextSubtaskId(ids, generatedParent, taskPrefix, zeroPaddedIds);
+	let nextId: string;
+	if (!parentId) {
+		nextId = generateNextId(occupiedIds, taskPrefix, zeroPaddedIds);
+	} else {
+		const generatedParent = generatedId.slice(0, generatedId.lastIndexOf("."));
+		nextId = generateNextSubtaskId(occupiedIds, generatedParent, taskPrefix, zeroPaddedIds);
+	}
+	if (occupiedIds.some((occupiedId) => canonicalTaskId(occupiedId) === canonicalTaskId(nextId))) {
+		throw new Error(`Could not allocate an unused repair ID after ${generatedId}.`);
+	}
+	return nextId;
 }
 
 function buildTargetPath(sourcePath: string, oldId: string, newId: string): string | null {
 	const filename = basename(sourcePath);
-	const prefix = extractAnyPrefix(oldId);
-	if (!prefix) return null;
-	const match = filename.match(new RegExp(`^${prefix.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}-(\\d+(?:\\.\\d+)*)`, "i"));
-	if (!match?.[0] || canonicalTaskId(match[0]) !== canonicalTaskId(oldId)) return null;
-	return join(dirname(sourcePath), `${idForFilename(newId)}${filename.slice(match[0].length)}`)
+	const separatorIndex = filename.indexOf(" - ");
+	if (separatorIndex < 0 || canonicalTaskId(filename.slice(0, separatorIndex)) !== canonicalTaskId(oldId)) return null;
+	return join(dirname(sourcePath), `${idForFilename(newId)}${filename.slice(separatorIndex)}`)
 		.split(sep)
 		.join("/");
 }
@@ -270,6 +276,24 @@ function replaceFrontmatterTaskId(content: string, expectedId: string, newId: st
 	const match = line.match(/^(id\s*:\s*)([^#]*?)(\s+#.*)?$/);
 	if (!match) throw new Error("Task frontmatter id field could not be updated safely.");
 	const rawValue = (match[2] ?? "").trim();
+	const idStart = frontmatterStart + idLine.index;
+	if (/^[>|][+-]?$/.test(rawValue)) {
+		const continuation = content.slice(idStart + line.length, closing.index).match(/^((?:\r?\n[ \t]+[^\r\n]*)+)/)?.[1];
+		const indentation = continuation?.match(/^\r?\n([ \t]+)/)?.[1];
+		if (!continuation || !indentation) {
+			throw new Error("Task frontmatter block id field has no value.");
+		}
+		const currentValue = continuation
+			.split(/\r?\n/)
+			.map((part) => part.trim())
+			.join("");
+		if (canonicalTaskId(currentValue) !== canonicalTaskId(expectedId)) {
+			throw new Error(`Task frontmatter id ${currentValue || "(empty)"} does not match ${expectedId}.`);
+		}
+		const newline = continuation.startsWith("\r\n") ? "\r\n" : "\n";
+		const replacement = `${line}${newline}${indentation}${newId}`;
+		return `${content.slice(0, idStart)}${replacement}${content.slice(idStart + line.length + continuation.length)}`;
+	}
 	const quote =
 		rawValue.length >= 2 && rawValue[0] === rawValue.at(-1) && /['"]/.test(rawValue[0] ?? "") ? rawValue[0] : "";
 	const currentValue = quote ? rawValue.slice(1, -1) : rawValue;
@@ -277,7 +301,6 @@ function replaceFrontmatterTaskId(content: string, expectedId: string, newId: st
 		throw new Error(`Task frontmatter id ${currentValue || "(empty)"} does not match ${expectedId}.`);
 	}
 	const replacement = `${match[1]}${quote}${newId}${quote}${match[3] ?? ""}`;
-	const idStart = frontmatterStart + idLine.index;
 	return `${content.slice(0, idStart)}${replacement}${content.slice(idStart + line.length)}`;
 }
 
@@ -292,7 +315,10 @@ function errorMessage(error: unknown): string {
 
 async function findReferenceReviews(core: Core, groupIds: string[]): Promise<DuplicateReferenceScanResult> {
 	if (groupIds.length === 0) return { references: [], failures: [] };
-	const canonicalIds = new Set(groupIds.map(canonicalTaskId));
+	const canonicalIds = new Set(groupIds.map((id) => canonicalTaskId(id)));
+	const legacyPatterns = groupIds
+		.filter((id) => !isNumericTaskId(id))
+		.map((id) => new RegExp(`(?<![A-Za-z0-9._-])${escapeRegex(id)}(?![A-Za-z0-9_-]|\\.[A-Za-z0-9])`, "gi"));
 	let files: string[];
 	try {
 		files = await Array.fromAsync(
@@ -307,7 +333,7 @@ async function findReferenceReviews(core: Core, groupIds: string[]): Promise<Dup
 
 	const reviews: DuplicateReferenceReview[] = [];
 	const failures: string[] = [];
-	const tokenPattern = /\b[A-Za-z]+-\d+(?:\.\d+)*\b/g;
+	const numericTokenPattern = /\b[A-Za-z]+-\d+(?:\.\d+)*\b/g;
 	for (const file of files.sort((left, right) => left.localeCompare(right))) {
 		const projectPath = normalizeRelativePath(core.filesystem.rootDir, join(core.filesystem.backlogDir, file));
 		let content: string;
@@ -326,10 +352,12 @@ async function findReferenceReviews(core: Core, groupIds: string[]): Promise<Dup
 				continue;
 			}
 			if (inFrontmatter && /^id\s*:/.test(line)) continue;
-			const ids = Array.from(line.matchAll(tokenPattern), (match) => match[0]).filter((id) =>
-				canonicalIds.has(canonicalTaskId(id)),
-			);
-			const uniqueIds = [...new Set(ids.map(canonicalTaskId))];
+			const candidates = Array.from(line.matchAll(numericTokenPattern), (match) => match[0]);
+			for (const pattern of legacyPatterns) {
+				candidates.push(...Array.from(line.matchAll(pattern), (match) => match[0]));
+			}
+			const ids = candidates.filter((id) => canonicalIds.has(canonicalTaskId(id)));
+			const uniqueIds = [...new Set(ids.map((id) => canonicalTaskId(id)))];
 			if (uniqueIds.length === 0) continue;
 			reviews.push({
 				path: projectPath,
@@ -469,6 +497,9 @@ export async function installFileNoReplace(stagedPath: string, targetPath: strin
 export async function applyDuplicateTaskIdRepair(
 	core: Core,
 	expectedFingerprint: string,
+	options: {
+		installFile?: (stagedPath: string, targetPath: string, index: number) => Promise<void>;
+	} = {},
 ): Promise<DuplicateRepairResult> {
 	return await core.withCreateLock(async () => {
 		const plan = await previewDuplicateTaskIdRepair(core);
@@ -505,6 +536,11 @@ export async function applyDuplicateTaskIdRepair(
 		const staged: string[] = [];
 		const backups: Array<{ sourcePath: string; backupPath: string }> = [];
 		const installed: string[] = [];
+		const installFile =
+			options.installFile ??
+			(async (stagedPath: string, targetPath: string) => {
+				await installFileNoReplace(stagedPath, targetPath);
+			});
 		try {
 			for (const item of prepared) {
 				await Bun.write(item.stagedPath, item.content);
@@ -514,9 +550,9 @@ export async function applyDuplicateTaskIdRepair(
 				await rename(item.sourcePath, item.backupPath);
 				backups.push({ sourcePath: item.sourcePath, backupPath: item.backupPath });
 			}
-			for (const item of prepared) {
+			for (const [index, item] of prepared.entries()) {
 				try {
-					await installFileNoReplace(item.stagedPath, item.targetPath);
+					await installFile(item.stagedPath, item.targetPath, index);
 				} catch (error) {
 					if ((error as NodeJS.ErrnoException | undefined)?.code === "EEXIST") {
 						throw new Error(`${item.targetPath} now exists; no files were changed.`);
@@ -533,8 +569,6 @@ export async function applyDuplicateTaskIdRepair(
 			}
 
 			for (const item of backups) await removeIfPresent(item.backupPath).catch(() => {});
-			core.disposeSearchService();
-			core.disposeContentStore();
 			return {
 				repairedFiles: plan.changes.length,
 				changes: plan.changes,

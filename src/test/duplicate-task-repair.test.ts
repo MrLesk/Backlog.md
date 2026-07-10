@@ -3,7 +3,11 @@ import { chmod, mkdir, readdir, rmdir, unlink } from "node:fs/promises";
 import { join } from "node:path";
 import { $ } from "bun";
 import { Core } from "../core/backlog.ts";
-import { findLocalDuplicateTaskIds, installFileNoReplace } from "../core/duplicate-task-repair.ts";
+import {
+	applyDuplicateTaskIdRepair,
+	findLocalDuplicateTaskIds,
+	installFileNoReplace,
+} from "../core/duplicate-task-repair.ts";
 import { serializeTask } from "../markdown/serializer.ts";
 import type { Task } from "../types/index.ts";
 import { AmbiguousTaskIdError } from "../utils/task-path.ts";
@@ -153,6 +157,7 @@ describe("duplicate task repair", () => {
 		});
 
 		const plan = await core.previewDuplicateTaskIdRepair();
+		expect(plan.blockedReasons).toEqual([]);
 		expect(plan.repairable).toBe(true);
 		expect(plan.changes).toHaveLength(1);
 		expect(plan.changes[0]).toMatchObject({
@@ -200,6 +205,104 @@ describe("duplicate task repair", () => {
 		expect(plan.changes).toHaveLength(1);
 		expect(plan.changes[0]?.sourcePath).toBe("backlog/tasks/task-1 - Plain.md");
 		expect(plan.changes[0]?.newId).toBe("TASK-002");
+	});
+
+	it("allocates adjacent, padded, and dotted huge repair IDs without precision loss", async () => {
+		await writeTask(
+			core.filesystem.tasksDir,
+			"task-9007199254740992 - Huge.md",
+			makeTask("TASK-9007199254740992", "Huge"),
+		);
+		await writeTask(
+			core.filesystem.tasksDir,
+			"task-09007199254740992 - Huge padded.md",
+			makeTask("TASK-09007199254740992", "Huge padded"),
+		);
+		await writeTask(
+			core.filesystem.tasksDir,
+			"task-9007199254740993 - Huge neighbor.md",
+			makeTask("TASK-9007199254740993", "Huge neighbor"),
+		);
+
+		const parentId = "TASK-999999999999999999999999999999999999999";
+		const childId = `${parentId}.999999999999999999999999999999999999999`;
+		await writeTask(
+			core.filesystem.tasksDir,
+			"task-999999999999999999999999999999999999999 - Parent.md",
+			makeTask(parentId, "Parent"),
+		);
+		await writeTask(
+			core.filesystem.tasksDir,
+			"task-999999999999999999999999999999999999999.999999999999999999999999999999999999999 - Child.md",
+			{ ...makeTask(childId, "Child"), parentTaskId: parentId },
+		);
+		await writeTask(
+			core.filesystem.tasksDir,
+			"task-0999999999999999999999999999999999999999.0999999999999999999999999999999999999999 - Child padded.md",
+			{
+				...makeTask(
+					"TASK-0999999999999999999999999999999999999999.0999999999999999999999999999999999999999",
+					"Child padded",
+				),
+				parentTaskId: "TASK-0999999999999999999999999999999999999999",
+			},
+		);
+
+		const plan = await core.previewDuplicateTaskIdRepair();
+		expect(plan.blockedReasons).toEqual([]);
+		expect(plan.repairable).toBe(true);
+		expect(plan.changes.map((change) => change.newId)).toEqual([
+			"TASK-1000000000000000000000000000000000000000",
+			"TASK-999999999999999999999999999999999999999.1000000000000000000000000000000000000000",
+		]);
+		expect(plan.changes.some((change) => change.newId.toLowerCase().includes("e+"))).toBe(false);
+
+		await core.repairDuplicateTaskIds(plan.fingerprint);
+		expect(await findLocalDuplicateTaskIds(core)).toEqual([]);
+	});
+
+	it("repairs an exact legacy duplicate and reports only exact legacy references", async () => {
+		await writeTask(core.filesystem.tasksDir, "task-prefixed - Alpha.md", makeTask("TASK-PREFIXED", "Alpha"));
+		const betaPath = await writeTask(
+			core.filesystem.tasksDir,
+			"task-prefixed - Beta.md",
+			makeTask("TASK-PREFIXED", "Beta"),
+		);
+		await writeTask(
+			core.filesystem.tasksDir,
+			"task-prefixed-extra - Longer.md",
+			makeTask("TASK-PREFIXED-EXTRA", "Longer"),
+		);
+		await mkdir(core.filesystem.docsDir, { recursive: true });
+		await Bun.write(
+			join(core.filesystem.docsDir, "legacy-reference.md"),
+			"See TASK-PREFIXED.\nDo not confuse TASK-PREFIXED-EXTRA.\n",
+		);
+		const betaBefore = await Bun.file(betaPath).text();
+
+		const plan = await core.previewDuplicateTaskIdRepair();
+		expect(plan.repairable).toBe(true);
+		expect(plan.groups.map((group) => group.id)).toEqual(["TASK-PREFIXED"]);
+		expect(plan.changes).toHaveLength(1);
+		expect(plan.changes[0]).toMatchObject({
+			sourcePath: "backlog/tasks/task-prefixed - Beta.md",
+			targetPath: "backlog/tasks/task-1 - Beta.md",
+			newId: "TASK-1",
+		});
+		expect(plan.references.filter((reference) => reference.path.endsWith("legacy-reference.md"))).toEqual([
+			{
+				path: "backlog/docs/legacy-reference.md",
+				line: 1,
+				text: "See TASK-PREFIXED.",
+				ids: ["TASK-PREFIXED"],
+			},
+		]);
+
+		await core.repairDuplicateTaskIds(plan.fingerprint);
+		expect(await Bun.file(join(core.filesystem.tasksDir, "task-1 - Beta.md")).text()).toBe(
+			betaBefore.replace("id: TASK-PREFIXED", "id: TASK-1"),
+		);
+		expect(await core.filesystem.loadTask("TASK-PREFIXED-EXTRA")).not.toBeNull();
 	});
 
 	it("previews and applies deterministic human repair without changing task bodies", async () => {
@@ -324,6 +427,43 @@ describe("duplicate task repair", () => {
 
 		expect(await Bun.file(targetPath).text()).toBe("external content");
 		expect(await Bun.file(stagedPath).text()).toBe("staged repair content");
+	});
+
+	it("rolls back the whole transaction when an external writer wins the second target", async () => {
+		const alphaPath = await writeTask(core.filesystem.tasksDir, "task-1 - Alpha.md", makeTask("TASK-1", "Alpha"));
+		const betaPath = await writeTask(core.filesystem.tasksDir, "task-01 - Beta.md", makeTask("TASK-01", "Beta"));
+		const gammaPath = await writeTask(
+			core.filesystem.completedDir,
+			"task-001 - Gamma.md",
+			makeTask("TASK-001", "Gamma"),
+		);
+		const originals = await Promise.all(
+			[alphaPath, betaPath, gammaPath].map(async (path) => await Bun.file(path).text()),
+		);
+		const plan = await core.previewDuplicateTaskIdRepair();
+		const firstTarget = join(testDir, plan.changes[0]?.targetPath ?? "");
+		const secondTarget = join(testDir, plan.changes[1]?.targetPath ?? "");
+
+		await expect(
+			applyDuplicateTaskIdRepair(core, plan.fingerprint, {
+				installFile: async (stagedPath, targetPath, index) => {
+					if (index === 1) {
+						await Bun.write(targetPath, "external winner");
+					}
+					await installFileNoReplace(stagedPath, targetPath);
+				},
+			}),
+		).rejects.toThrow("now exists; no files were changed");
+
+		expect(
+			await Promise.all([alphaPath, betaPath, gammaPath].map(async (path) => await Bun.file(path).text())),
+		).toEqual(originals);
+		expect(await Bun.file(firstTarget).exists()).toBe(false);
+		expect(await Bun.file(secondTarget).text()).toBe("external winner");
+		for (const directory of [core.filesystem.tasksDir, core.filesystem.completedDir]) {
+			const files = await readdir(directory);
+			expect(files.filter((file) => file.includes(".backlog-doctor-"))).toEqual([]);
+		}
 	});
 
 	it.skipIf(process.platform === "win32")("blocks repair when a reference file cannot be read", async () => {

@@ -204,4 +204,22 @@ describe("DuplicateIdWarning", () => {
 		expect(container.textContent).toContain("could not inspect every Markdown file");
 		expect(container.textContent).not.toContain("References requiring review: 0");
 	});
+
+	it("keeps warning, IDs, and actions flexible for a 390px viewport", async () => {
+		const container = renderWarning();
+		Object.defineProperty(window, "innerWidth", { configurable: true, value: 390 });
+		const warningLayout = container.querySelector("section > div");
+		expect(warningLayout?.className).toContain("flex-wrap");
+
+		await click(buttonWithText(container, "Review repair"));
+		const dialog = container.querySelector('[role="dialog"]');
+		expect(dialog?.className).toContain("w-full");
+		const renameRow = Array.from(container.querySelectorAll("li > div")).find((element) =>
+			element.textContent?.includes("TASK-01"),
+		);
+		expect(renameRow?.className).toContain("flex-wrap");
+		expect(renameRow?.querySelector("span")?.className).toContain("break-all");
+		const actionRow = buttonWithText(container, "Cancel").parentElement;
+		expect(actionRow?.className).toContain("flex-wrap");
+	});
 });

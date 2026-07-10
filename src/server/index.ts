@@ -18,10 +18,10 @@ import {
 	type Task,
 	type TaskUpdateInput,
 } from "../types/index.ts";
-import { watchConfig } from "../utils/config-watcher.ts";
 import { resolveMilestoneInputForStorage } from "../utils/milestone-storage.ts";
 import { formatValidPriorityValues, resolvePriorityValue } from "../utils/priority-config.ts";
 import { formatValidStatuses, getCanonicalStatuses, getValidStatuses } from "../utils/status.ts";
+import { resolveTaskById } from "../utils/task-id.ts";
 import { isAmbiguousTaskIdError } from "../utils/task-path.ts";
 import { getVersion } from "../utils/version.ts";
 
@@ -102,13 +102,6 @@ function isDocumentValidationError(error: Error): boolean {
 }
 
 /**
- * Strip any prefix from an ID (e.g., "task-123" -> "123", "JIRA-456" -> "456")
- */
-function stripPrefix(id: string): string {
-	return id.replace(PREFIX_PATTERN, "");
-}
-
-/**
  * Ensure an ID has a prefix. If it already has one, return as-is.
  * Otherwise, add the default "task-" prefix.
  */
@@ -117,42 +110,6 @@ function ensurePrefix(id: string): string {
 		return id;
 	}
 	return `${DEFAULT_PREFIX}${id}`;
-}
-
-function parseTaskIdSegments(value: string): number[] | null {
-	const withoutPrefix = stripPrefix(value);
-	if (!/^[0-9]+(?:\.[0-9]+)*$/.test(withoutPrefix)) {
-		return null;
-	}
-	return withoutPrefix.split(".").map((segment) => Number.parseInt(segment, 10));
-}
-
-function findTaskByLooseId(tasks: Task[], inputId: string): Task | undefined {
-	// First try exact match (case-insensitive)
-	const lowerInputId = inputId.toLowerCase();
-	const exact = tasks.find((task) => task.id.toLowerCase() === lowerInputId);
-	if (exact) {
-		return exact;
-	}
-
-	// Try matching by numeric segments only
-	const inputSegments = parseTaskIdSegments(inputId);
-	if (!inputSegments) {
-		return undefined;
-	}
-
-	return tasks.find((task) => {
-		const candidateSegments = parseTaskIdSegments(task.id);
-		if (!candidateSegments || candidateSegments.length !== inputSegments.length) {
-			return false;
-		}
-		for (let index = 0; index < candidateSegments.length; index += 1) {
-			if (candidateSegments[index] !== inputSegments[index]) {
-				return false;
-			}
-		}
-		return true;
-	});
 }
 
 function parseOptionalBoolean(value: unknown): boolean | undefined {
@@ -230,7 +187,6 @@ export class BacklogServer {
 	private searchService: SearchService | null = null;
 	private unsubscribeContentStore?: () => void;
 	private storeReadyBroadcasted = false;
-	private configWatcher: { stop: () => void } | null = null;
 
 	constructor(projectPath: string) {
 		this.core = new Core(projectPath, { enableWatchers: true });
@@ -250,6 +206,13 @@ export class BacklogServer {
 
 		if (!this.unsubscribeContentStore) {
 			this.unsubscribeContentStore = store.subscribe((event) => {
+				if (event.type === "config") {
+					this.storeReadyBroadcasted = true;
+					this.projectName = event.config.projectName;
+					this.broadcastConfigUpdated();
+					return;
+				}
+
 				if (event.type === "ready") {
 					if (!this.storeReadyBroadcasted) {
 						this.storeReadyBroadcasted = true;
@@ -285,17 +248,6 @@ export class BacklogServer {
 		return this.searchService;
 	}
 
-	private async reloadContentServices(): Promise<void> {
-		this.unsubscribeContentStore?.();
-		this.unsubscribeContentStore = undefined;
-		this.core.disposeSearchService();
-		this.core.disposeContentStore();
-		this.searchService = null;
-		this.contentStore = null;
-		this.storeReadyBroadcasted = false;
-		await this.ensureServicesReady();
-	}
-
 	getPort(): number | null {
 		return this.server?.port ?? null;
 	}
@@ -322,6 +274,7 @@ export class BacklogServer {
 			console.log("Server already running");
 			return;
 		}
+		this._stopping = false;
 		// Load config (migration is handled globally by CLI)
 		const config = await this.core.filesystem.loadConfig();
 
@@ -333,13 +286,6 @@ export class BacklogServer {
 		// Default to true if autoOpenBrowser is not explicitly set to false
 		const shouldOpenBrowser = openBrowser && (config?.autoOpenBrowser ?? true);
 
-		// Set up config watcher to broadcast changes
-		this.configWatcher = watchConfig(this.core, {
-			onConfigChanged: () => {
-				this.broadcastConfigUpdated();
-			},
-		});
-
 		try {
 			await this.ensureServicesReady();
 			const serveOptions = {
@@ -348,6 +294,9 @@ export class BacklogServer {
 				routes: {
 					"/": spaIndexHtml,
 					"/tasks": spaIndexHtml,
+					"/tasks/*": spaIndexHtml,
+					"/board": spaIndexHtml,
+					"/board/*": spaIndexHtml,
 					"/milestones": spaIndexHtml,
 					"/drafts": spaIndexHtml,
 					"/documentation": spaIndexHtml,
@@ -522,12 +471,6 @@ export class BacklogServer {
 		try {
 			this.unsubscribeContentStore?.();
 			this.unsubscribeContentStore = undefined;
-		} catch {}
-
-		// Stop config watcher
-		try {
-			this.configWatcher?.stop();
-			this.configWatcher = null;
 		} catch {}
 
 		this.core.disposeSearchService();
@@ -705,7 +648,22 @@ export class BacklogServer {
 					store.upsertTask(localTask);
 					parentTask = localTask;
 				} else {
-					parentTask = findTaskByLooseId(store.getTasks(), parent);
+					const parentResolution = resolveTaskById(store.getTasks(), parent);
+					if (parentResolution.status === "ambiguous") {
+						return Response.json(
+							{ error: `Parent task ${parent} is ambiguous. Repair duplicate task IDs before using it.` },
+							{ status: 409 },
+						);
+					}
+					parentTask = parentResolution.status === "found" ? parentResolution.task : undefined;
+					if (!parentTask) {
+						const fallbackId = ensurePrefix(parent);
+						const fallback = await this.core.filesystem.loadTask(fallbackId);
+						if (fallback) {
+							store.upsertTask(fallback);
+							parentTask = fallback;
+						}
+					}
 				}
 			} catch (error) {
 				if (isAmbiguousTaskIdError(error)) {
@@ -926,27 +884,59 @@ export class BacklogServer {
 	}
 
 	private async handleGetTask(taskId: string): Promise<Response> {
+		const localTasks = await this.core.filesystem.listTasks();
+		const localResolution = resolveTaskById(localTasks, taskId);
+		if (localResolution.status === "invalid") {
+			return Response.json({ error: `Invalid task ID: ${taskId}` }, { status: 400 });
+		}
+		let localTask: Task | null;
 		try {
-			const store = await this.getContentStoreInstance();
-
-			const localTask = await this.core.filesystem.loadTask(taskId);
-			if (localTask) {
-				store.upsertTask(localTask);
-				return Response.json(localTask);
-			}
-
-			const task = findTaskByLooseId(store.getTasks(), taskId);
-			if (task) {
-				return Response.json(task);
-			}
-
-			return Response.json({ error: "Task not found" }, { status: 404 });
+			// loadTask checks active and completed task paths together, so a collision
+			// cannot be hidden by whichever directory happens to be read first.
+			localTask = await this.core.filesystem.loadTask(taskId);
 		} catch (error) {
 			if (isAmbiguousTaskIdError(error)) {
 				return Response.json({ error: error.message }, { status: 409 });
 			}
 			throw error;
 		}
+
+		const store = await this.getContentStoreInstance();
+		await this.core.refreshTasksForTaskRead();
+		const config = await this.core.filesystem.loadConfig();
+		const checkActiveBranches = config?.checkActiveBranches !== false;
+		const storedResolution = resolveTaskById(store.getTasks(), taskId);
+		const activeBranchCollision = await this.core.hasActiveBranchTaskIdCollision(taskId, localTasks);
+		if (
+			localResolution.status === "ambiguous" ||
+			(checkActiveBranches && storedResolution.status === "ambiguous") ||
+			activeBranchCollision
+		) {
+			return Response.json(
+				{ error: `Task ID ${taskId} is ambiguous. Repair duplicate task IDs before opening it.` },
+				{ status: 409 },
+			);
+		}
+		if (
+			checkActiveBranches &&
+			localTask &&
+			storedResolution.status === "found" &&
+			localTask.id.toLowerCase() !== storedResolution.task.id.toLowerCase()
+		) {
+			return Response.json(
+				{ error: `Task ID ${taskId} is ambiguous. Repair duplicate task IDs before opening it.` },
+				{ status: 409 },
+			);
+		}
+		if (localTask) {
+			store.upsertTask(localTask);
+			return Response.json(localTask);
+		}
+		if (storedResolution.status === "found") {
+			return Response.json(storedResolution.task);
+		}
+
+		return Response.json({ error: `Task ${taskId} not found` }, { status: 404 });
 	}
 
 	private async handleUpdateTask(req: Request, taskId: string): Promise<Response> {
@@ -1337,9 +1327,6 @@ export class BacklogServer {
 				this.projectName = updatedConfig.projectName;
 			}
 
-			// Notify connected clients so that they refresh configuration-dependent data (e.g., statuses)
-			this.broadcastTasksUpdated();
-
 			return Response.json(updatedConfig);
 		} catch (error) {
 			console.error("Error updating config:", error);
@@ -1657,8 +1644,6 @@ export class BacklogServer {
 				return Response.json({ error: "A repair preview fingerprint is required." }, { status: 400 });
 			}
 			const result = await this.core.repairDuplicateTaskIds(fingerprint);
-			await this.reloadContentServices();
-			this.broadcastTasksUpdated();
 			return Response.json(result);
 		} catch (error) {
 			const message = error instanceof Error ? error.message : String(error);
@@ -1856,7 +1841,7 @@ export class BacklogServer {
 
 			// Ensure config watcher is set up now that config file exists
 			if (this.contentStore) {
-				this.contentStore.ensureConfigWatcher();
+				await this.contentStore.ensureConfigWatcher();
 			}
 
 			return Response.json({

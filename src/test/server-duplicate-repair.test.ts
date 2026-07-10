@@ -11,6 +11,7 @@ import { createUniqueTestDir, retry, safeCleanup } from "./test-utils.ts";
 let testDir: string;
 let server: BacklogServer | null = null;
 let serverPort = 0;
+let setupCore: Core;
 
 function makeTask(id: string, title: string): Task {
 	return {
@@ -32,10 +33,13 @@ async function request(path: string, init?: RequestInit): Promise<Response> {
 beforeEach(async () => {
 	testDir = createUniqueTestDir("server-duplicate-repair");
 	await mkdir(testDir, { recursive: true });
-	const core = new Core(testDir);
-	await core.filesystem.ensureBacklogStructure();
-	await core.filesystem.saveConfig({
+	setupCore = new Core(testDir);
+	setupCore.filesystem.setBacklogDirectory("planning/custom-backlog");
+	setupCore.filesystem.setConfigLocation("root");
+	await setupCore.filesystem.ensureBacklogStructure();
+	await setupCore.filesystem.saveConfig({
 		projectName: "Server duplicate repair",
+		backlogDirectory: "planning/custom-backlog",
 		statuses: ["To Do", "In Progress", "Done"],
 		labels: [],
 		milestones: [],
@@ -44,10 +48,10 @@ beforeEach(async () => {
 		checkActiveBranches: false,
 		autoCommit: false,
 	});
-	await Bun.write(join(core.filesystem.tasksDir, "task-1 - Alpha.md"), serializeTask(makeTask("TASK-1", "Alpha")));
-	await Bun.write(join(core.filesystem.tasksDir, "task-01 - Beta.md"), serializeTask(makeTask("TASK-01", "Beta")));
+	await Bun.write(join(setupCore.filesystem.tasksDir, "task-1 - Alpha.md"), serializeTask(makeTask("TASK-1", "Alpha")));
+	await Bun.write(join(setupCore.filesystem.tasksDir, "task-01 - Beta.md"), serializeTask(makeTask("TASK-01", "Beta")));
 	await Bun.write(
-		join(core.filesystem.completedDir, "task-001 - Gamma.md"),
+		join(setupCore.filesystem.completedDir, "task-001 - Gamma.md"),
 		serializeTask(makeTask("TASK-001", "Gamma")),
 	);
 
@@ -127,5 +131,39 @@ describe("duplicate repair server boundary", () => {
 		});
 		expect(update.status).toBe(409);
 		expect(await update.text()).toContain("backlog doctor");
+	});
+
+	it("keeps custom-root content and search services live while repair, config, and reads overlap", async () => {
+		const internals = server as unknown as {
+			getContentStoreInstance: () => Promise<unknown>;
+			getSearchServiceInstance: () => Promise<unknown>;
+		};
+		const storeBefore = await internals.getContentStoreInstance();
+		const searchBefore = await internals.getSearchServiceInstance();
+		const preview = (await (await request("/api/tasks/duplicates")).json()) as DuplicateRepairPlan;
+		const config = await setupCore.filesystem.loadConfig();
+		if (!config) throw new Error("Missing custom-root config");
+
+		const [repairResponse, configWrite, concurrentRead] = await Promise.all([
+			request("/api/tasks/duplicates", {
+				method: "POST",
+				headers: { "Content-Type": "application/json" },
+				body: JSON.stringify({ fingerprint: preview.fingerprint }),
+			}),
+			setupCore.filesystem.saveConfig({ ...config, projectName: "Server repair remained live" }),
+			request("/api/search"),
+		]);
+		expect(configWrite).toBeUndefined();
+		expect(repairResponse.status).toBe(200);
+		expect(concurrentRead.status).toBe(200);
+
+		await retry(async () => {
+			const response = await request("/api/config");
+			const latest = (await response.json()) as { projectName?: string };
+			if (latest.projectName !== "Server repair remained live") throw new Error("Config watcher has not published yet");
+		});
+		expect(await internals.getContentStoreInstance()).toBe(storeBefore);
+		expect(await internals.getSearchServiceInstance()).toBe(searchBefore);
+		expect(((await (await request("/api/tasks/duplicates")).json()) as DuplicateRepairPlan).groups).toEqual([]);
 	});
 });

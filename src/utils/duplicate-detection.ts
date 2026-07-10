@@ -1,5 +1,5 @@
 import type { Task } from "../types/index.ts";
-import { canonicalTaskId } from "./task-path.ts";
+import { canonicalTaskId } from "./task-id.ts";
 
 export type DuplicateGroup = {
 	id: string;

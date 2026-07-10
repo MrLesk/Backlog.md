@@ -63,10 +63,10 @@ export function DuplicateIdRepairModal({ isOpen, plan, onClose, onRepaired }: Du
 						<ul className="divide-y divide-gray-200 dark:divide-gray-700">
 							{plan.changes.map((change) => (
 								<li key={change.sourcePath} className="space-y-1 px-4 py-3">
-									<div className="flex items-center gap-2 text-sm font-medium text-gray-900 dark:text-gray-100">
-										<span className="font-mono">{change.oldId}</span>
+									<div className="flex min-w-0 flex-wrap items-center gap-2 text-sm font-medium text-gray-900 dark:text-gray-100">
+										<span className="break-all font-mono">{change.oldId}</span>
 										<span aria-hidden="true">→</span>
-										<span className="font-mono text-blue-700 dark:text-blue-300">{change.newId}</span>
+										<span className="break-all font-mono text-blue-700 dark:text-blue-300">{change.newId}</span>
 										<span className="truncate text-gray-600 dark:text-gray-400">{change.title}</span>
 									</div>
 									<p className="break-all font-mono text-xs text-gray-500 dark:text-gray-400">{change.sourcePath}</p>
@@ -127,7 +127,7 @@ export function DuplicateIdRepairModal({ isOpen, plan, onClose, onRepaired }: Du
 					</div>
 				)}
 
-				<div className="flex justify-end gap-3">
+				<div className="flex flex-wrap justify-end gap-3">
 					<button
 						ref={cancelButtonRef}
 						type="button"

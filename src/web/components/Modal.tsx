@@ -1,19 +1,4 @@
-import React, { useEffect, useRef } from 'react';
-
-const FOCUSABLE_SELECTOR = [
-	'a[href]',
-	'button:not([disabled])',
-	'input:not([disabled])',
-	'select:not([disabled])',
-	'textarea:not([disabled])',
-	'[tabindex]:not([tabindex="-1"])',
-].join(',');
-
-function getFocusableElements(container: HTMLElement): HTMLElement[] {
-	return Array.from(container.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR)).filter(
-		(element) => !element.hasAttribute('disabled') && element.getAttribute('aria-hidden') !== 'true',
-	);
-}
+import React, { useEffect, useRef } from "react";
 
 interface ModalProps {
 	isOpen: boolean;
@@ -36,7 +21,7 @@ const Modal: React.FC<ModalProps> = ({
 	actions,
 	initialFocusRef,
 }) => {
-	const dialogRef = useRef<HTMLDivElement>(null);
+	const dialogRef = useRef<HTMLDivElement | null>(null);
 	const onCloseRef = useRef(onClose);
 	const disableEscapeCloseRef = useRef(disableEscapeClose);
 	const initialFocusRefRef = useRef(initialFocusRef);
@@ -45,47 +30,77 @@ const Modal: React.FC<ModalProps> = ({
 	initialFocusRefRef.current = initialFocusRef;
 
 	useEffect(() => {
-		if (!isOpen) return;
-		const dialog = dialogRef.current;
-		if (!dialog) return;
+		if (!isOpen) {
+			return;
+		}
 
-		const previouslyFocused = document.activeElement as HTMLElement | null;
-		const previousOverflow = document.body.style.overflow;
+		const dialog = dialogRef.current;
+		if (!dialog) {
+			return;
+		}
+
+		const ownerDocument = dialog.ownerDocument;
+		const activeElement = ownerDocument.activeElement;
+		const previouslyFocused = activeElement && "focus" in activeElement ? (activeElement as HTMLElement) : null;
+		const previousOverflow = ownerDocument.body.style.overflow;
 		const handleKeyDown = (event: KeyboardEvent) => {
-			if (event.key === 'Escape') {
+			if (event.key === "Escape") {
 				event.preventDefault();
 				event.stopPropagation();
-				if (!disableEscapeCloseRef.current) onCloseRef.current();
+				if (!disableEscapeCloseRef.current) {
+					onCloseRef.current();
+				}
 				return;
 			}
-			if (event.key !== 'Tab') return;
 
-			const focusableElements = getFocusableElements(dialog);
-			if (focusableElements.length === 0) {
+			if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
+				event.preventDefault();
+				event.stopPropagation();
+				if (!dialog.contains(ownerDocument.activeElement)) {
+					dialog.focus();
+				}
+				return;
+			}
+
+			if (event.key !== "Tab") {
+				return;
+			}
+
+			const focusable = Array.from(
+				dialog.querySelectorAll<HTMLElement>(
+					'a[href], button:not([disabled]), input:not([disabled]):not([type="hidden"]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
+				),
+			);
+			const first = focusable[0];
+			const last = focusable.at(-1);
+			if (!first || !last) {
 				event.preventDefault();
 				dialog.focus();
 				return;
 			}
-			const first = focusableElements[0] as HTMLElement;
-			const last = focusableElements[focusableElements.length - 1] as HTMLElement;
-			const activeElement = document.activeElement;
-			if (event.shiftKey && (activeElement === first || !dialog.contains(activeElement))) {
+			if (!dialog.contains(ownerDocument.activeElement)) {
+				event.preventDefault();
+				event.stopPropagation();
+				(event.shiftKey ? last : first).focus();
+			} else if (event.shiftKey && (ownerDocument.activeElement === first || ownerDocument.activeElement === dialog)) {
 				event.preventDefault();
 				last.focus();
-			} else if (!event.shiftKey && (activeElement === last || !dialog.contains(activeElement))) {
+			} else if (!event.shiftKey && ownerDocument.activeElement === last) {
 				event.preventDefault();
 				first.focus();
 			}
 		};
 
-		document.addEventListener('keydown', handleKeyDown);
-		document.body.style.overflow = 'hidden';
-		(initialFocusRefRef.current?.current ?? getFocusableElements(dialog)[0] ?? dialog).focus();
+		ownerDocument.addEventListener("keydown", handleKeyDown, true);
+		ownerDocument.body.style.overflow = "hidden";
+		(initialFocusRefRef.current?.current ?? dialog).focus();
 
 		return () => {
-			document.removeEventListener('keydown', handleKeyDown);
-			document.body.style.overflow = previousOverflow;
-			if (previouslyFocused?.isConnected) previouslyFocused.focus();
+			ownerDocument.removeEventListener("keydown", handleKeyDown, true);
+			ownerDocument.body.style.overflow = previousOverflow;
+			if (previouslyFocused?.isConnected) {
+				previouslyFocused.focus();
+			}
 		};
 	}, [isOpen]);
 
@@ -100,30 +115,30 @@ const Modal: React.FC<ModalProps> = ({
 			<div
 				ref={dialogRef}
 				className={`bg-white dark:bg-gray-800 rounded-lg shadow-2xl ${maxWidthClass} w-full max-h-[94vh] overflow-y-auto transition-colors duration-200`}
-				onClick={(e) => e.stopPropagation()}
+				onClick={(event) => event.stopPropagation()}
 				role="dialog"
+				tabIndex={-1}
 				aria-modal="true"
 				aria-labelledby="modal-title"
-				tabIndex={-1}
 			>
 				<div className="sticky top-0 z-10 flex items-center justify-between px-6 pt-4 pb-3 border-b border-gray-200 dark:border-gray-700 bg-white/95 dark:bg-gray-800/95 backdrop-blur supports-[backdrop-filter]:bg-white/75 supports-[backdrop-filter]:dark:bg-gray-800/75">
-					<h2 id="modal-title" className="text-base font-semibold text-gray-900 dark:text-gray-100">{title}</h2>
+					<h2 id="modal-title" className="text-base font-semibold text-gray-900 dark:text-gray-100">
+						{title}
+					</h2>
 					<div className="flex items-center gap-2">
 						{actions}
-							<button
-								type="button"
-								onClick={onClose}
-								disabled={disableEscapeClose}
-								className="text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 rounded p-1 transition-colors duration-200 text-2xl leading-none w-8 h-8 flex items-center justify-center focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:cursor-not-allowed disabled:opacity-50"
-								aria-label="Close modal"
-							>
-								×
-							</button>
+						<button
+							type="button"
+							onClick={onClose}
+							disabled={disableEscapeClose}
+							className="text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 rounded p-1 transition-colors duration-200 text-2xl leading-none w-8 h-8 flex items-center justify-center focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:cursor-not-allowed disabled:opacity-50"
+							aria-label="Close modal"
+						>
+							×
+						</button>
 					</div>
 				</div>
-				<div className="px-6 pt-4 pb-6">
-					{children}
-				</div>
+				<div className="px-6 pt-4 pb-6">{children}</div>
 			</div>
 		</div>
 	);

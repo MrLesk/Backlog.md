@@ -73,6 +73,17 @@ describe("detectDuplicateTaskIds", () => {
 		expect(groups[0]?.tasks).toHaveLength(2);
 	});
 
+	it("keeps adjacent huge IDs distinct while grouping their padded spelling", () => {
+		const groups = detectDuplicateTaskIds([
+			makeTask("TASK-9007199254740992", "Huge"),
+			makeTask("TASK-09007199254740992", "Huge padded"),
+			makeTask("TASK-9007199254740993", "Huge neighbor"),
+		]);
+		expect(groups).toHaveLength(1);
+		expect(groups[0]?.id).toBe("TASK-9007199254740992");
+		expect(groups[0]?.tasks.map((task) => task.title).sort()).toEqual(["Huge", "Huge padded"]);
+	});
+
 	it("does not flag three unique tasks as duplicates", () => {
 		const tasks = [makeTask("TASK-1", "A"), makeTask("TASK-2", "B"), makeTask("TASK-3", "C")];
 		expect(detectDuplicateTaskIds(tasks)).toHaveLength(0);

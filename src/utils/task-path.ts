@@ -9,6 +9,9 @@ import {
 	idForFilename,
 	normalizeId,
 } from "./prefix-config.ts";
+import { canonicalTaskId, normalizeTaskId, numericIdBodiesEqual, taskIdsEqual } from "./task-id.ts";
+
+export { canonicalTaskId, normalizeTaskId, taskIdsEqual } from "./task-id.ts";
 
 // Interface for task path resolution context
 interface TaskPathContext {
@@ -18,28 +21,7 @@ interface TaskPathContext {
 	};
 }
 
-/** Default prefix for tasks */
-const DEFAULT_TASK_PREFIX = "task";
-
-/**
- * Normalize a task ID by ensuring the prefix is present (uppercase).
- * If no explicit prefix is provided, preserve any prefix already in the input.
- *
- * @param taskId - The ID to normalize (e.g., "123", "task-123", "TASK-123")
- * @param prefix - The prefix to use (default: "task")
- * @returns Normalized ID with uppercase prefix (e.g., "TASK-123")
- *
- * @example
- * normalizeTaskId("123") // => "TASK-123"
- * normalizeTaskId("task-123") // => "TASK-123"
- * normalizeTaskId("TASK-123") // => "TASK-123"
- * normalizeTaskId("JIRA-456") // => "JIRA-456"
- */
-export function normalizeTaskId(taskId: string, prefix: string = DEFAULT_TASK_PREFIX): string {
-	const inferredPrefix = extractAnyPrefix(taskId);
-	const effectivePrefix = inferredPrefix && prefix === DEFAULT_TASK_PREFIX ? inferredPrefix : prefix;
-	return normalizeId(taskId, effectivePrefix);
-}
+const TASK_FILENAME_ID_PATTERN = /^([a-zA-Z]+)-([a-zA-Z0-9]+(?:[._-][a-zA-Z0-9]+)*) -/;
 
 export function normalizeTaskIdentity(task: Task): Task {
 	const normalizedId = normalizeTaskId(task.id);
@@ -54,24 +36,6 @@ export function normalizeTaskIdentity(task: Task): Task {
 		id: normalizedId,
 		parentTaskId: normalizedParent,
 	};
-}
-
-/**
- * Return the canonical identity used by task lookup.
- * Numeric segments are normalized so TASK-1 and TASK-01 share one identity.
- */
-export function canonicalTaskId(taskId: string): string {
-	const trimmed = taskId.trim();
-	const prefix = extractAnyPrefix(trimmed) ?? DEFAULT_TASK_PREFIX;
-	const body = extractTaskBody(trimmed, prefix);
-	if (body) {
-		const canonicalBody = body
-			.split(".")
-			.map((segment) => String(Number.parseInt(segment, 10)))
-			.join(".");
-		return `${prefix.toUpperCase()}-${canonicalBody}`;
-	}
-	return normalizeTaskId(trimmed, prefix).toUpperCase();
 }
 
 export class AmbiguousTaskIdError extends Error {
@@ -98,89 +62,21 @@ export function isAmbiguousTaskIdError(error: unknown): error is AmbiguousTaskId
 }
 
 /**
- * Extracts the body (numeric portion) from a task ID.
- *
- * @param value - The value to extract from (e.g., "task-123", "123", "task-5.2.1")
- * @param prefix - The prefix to strip (default: "task")
- * @returns The body portion, or null if invalid format
- *
- * @example
- * extractTaskBody("task-123") // => "123"
- * extractTaskBody("123") // => "123"
- * extractTaskBody("task-5.2.1") // => "5.2.1"
- * extractTaskBody("JIRA-456", "JIRA") // => "456"
- */
-function extractTaskBody(value: string, prefix: string = DEFAULT_TASK_PREFIX): string | null {
-	const trimmed = value.trim();
-	if (trimmed === "") return "";
-	// Build a pattern that optionally matches the prefix
-	const prefixPattern = new RegExp(`^(?:${escapeRegex(prefix)}-)?([0-9]+(?:\\.[0-9]+)*)$`, "i");
-	const match = trimmed.match(prefixPattern);
-	return match?.[1] ?? null;
-}
-
-/**
  * Extracts the task ID from a filename.
  *
  * @param filename - The filename to extract from (e.g., "task-123 - Some Title.md")
- * @param prefix - The prefix to match (default: "task")
  * @returns The normalized task ID, or null if not found
  *
  * @example
  * extractTaskIdFromFilename("task-123 - Title.md") // => "task-123"
- * extractTaskIdFromFilename("JIRA-456 - Title.md", "JIRA") // => "JIRA-456"
+ * extractTaskIdFromFilename("JIRA-456 - Title.md") // => "JIRA-456"
  */
-function extractTaskIdFromFilename(filename: string, prefix: string = DEFAULT_TASK_PREFIX): string | null {
-	const regex = buildFilenameIdRegex(prefix);
-	const match = filename.match(regex);
-	if (!match?.[1]) return null;
-	return normalizeTaskId(`${prefix}-${match[1]}`, prefix);
-}
-
-/**
- * Compares two task IDs for equality.
- * Handles numeric comparison to treat "task-1" and "task-01" as equal.
- * Automatically detects prefix from either ID when comparing numeric-only input.
- *
- * @param left - First ID to compare
- * @param right - Second ID to compare
- * @param prefix - The prefix both IDs should have (default: "task")
- * @returns true if IDs are equivalent
- *
- * @example
- * taskIdsEqual("task-123", "TASK-123") // => true
- * taskIdsEqual("task-1", "task-01") // => true (numeric comparison)
- * taskIdsEqual("task-1.2", "task-1.2") // => true
- * taskIdsEqual("358", "BACK-358") // => true (detects prefix from right)
- */
-export function taskIdsEqual(left: string, right: string, prefix: string = DEFAULT_TASK_PREFIX): boolean {
-	// Detect actual prefix from either ID - if one has a prefix, use it
-	const leftPrefix = extractAnyPrefix(left);
-	const rightPrefix = extractAnyPrefix(right);
-	const effectivePrefix = leftPrefix ?? rightPrefix ?? prefix;
-
-	const leftBody = extractTaskBody(left, effectivePrefix);
-	const rightBody = extractTaskBody(right, effectivePrefix);
-
-	if (leftBody && rightBody) {
-		const leftSegs = leftBody.split(".").map((seg) => Number.parseInt(seg, 10));
-		const rightSegs = rightBody.split(".").map((seg) => Number.parseInt(seg, 10));
-		if (leftSegs.length !== rightSegs.length) {
-			return false;
-		}
-		return leftSegs.every((value, index) => value === rightSegs[index]);
-	}
-
-	return normalizeTaskId(left, effectivePrefix).toLowerCase() === normalizeTaskId(right, effectivePrefix).toLowerCase();
-}
-
-/**
- * Checks if an input ID matches a filename loosely (ignoring leading zeros).
- */
-function idsMatchLoosely(inputId: string, filename: string, prefix: string = DEFAULT_TASK_PREFIX): boolean {
-	const candidate = extractTaskIdFromFilename(filename, prefix);
-	if (!candidate) return false;
-	return taskIdsEqual(inputId, candidate, prefix);
+export function extractTaskIdFromFilename(filename: string): string | null {
+	const match = filename.match(TASK_FILENAME_ID_PATTERN);
+	const prefix = match?.[1];
+	const body = match?.[2];
+	if (!prefix || !body) return null;
+	return normalizeTaskId(`${prefix}-${body}`, prefix);
 }
 
 /**
@@ -211,10 +107,11 @@ async function findMatchingTaskPaths(directory: string, taskId: string): Promise
 		);
 		return files
 			.filter((file) => {
-				const filePrefix = extractAnyPrefix(file);
-				if (!filePrefix) return false;
-				if (detectedPrefix && filePrefix.toLowerCase() !== detectedPrefix.toLowerCase()) return false;
-				return idsMatchLoosely(taskId, file, filePrefix);
+				const fileTaskId = extractTaskIdFromFilename(file);
+				if (!fileTaskId) return false;
+				const filePrefix = extractAnyPrefix(fileTaskId);
+				if (detectedPrefix && filePrefix?.toLowerCase() !== detectedPrefix.toLowerCase()) return false;
+				return taskIdsEqual(taskId, fileTaskId);
 			})
 			.map((file) => join(directory, file))
 			.sort((left, right) => left.localeCompare(right));
@@ -222,7 +119,6 @@ async function findMatchingTaskPaths(directory: string, taskId: string): Promise
 		return [];
 	}
 }
-
 /** Default prefix for drafts */
 const DEFAULT_DRAFT_PREFIX = "draft";
 
@@ -260,12 +156,7 @@ function draftIdsEqual(left: string, right: string): boolean {
 	const rightBody = extractDraftBody(right);
 
 	if (leftBody && rightBody) {
-		const leftSegs = leftBody.split(".").map((seg) => Number.parseInt(seg, 10));
-		const rightSegs = rightBody.split(".").map((seg) => Number.parseInt(seg, 10));
-		if (leftSegs.length !== rightSegs.length) {
-			return false;
-		}
-		return leftSegs.every((value, index) => value === rightSegs[index]);
+		return numericIdBodiesEqual(leftBody, rightBody);
 	}
 
 	return normalizeDraftId(left).toLowerCase() === normalizeDraftId(right).toLowerCase();
