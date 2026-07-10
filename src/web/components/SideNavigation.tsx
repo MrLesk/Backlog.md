@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useCallback, memo } from 'react';
+import { useState, useEffect, useMemo, useCallback, useRef, memo } from 'react';
 import { NavLink, useLocation, useNavigate } from 'react-router-dom';
 import { Tooltip } from 'react-tooltip';
 import {
@@ -251,6 +251,7 @@ const SideNavigation = memo(function SideNavigation({
 	const [isSearching, setIsSearching] = useState(false);
 	const [searchError, setSearchError] = useState<string | null>(null);
 	const [searchInputRef, setSearchInputRef] = useState<HTMLInputElement | null>(null);
+	const focusSearchOnExpandRef = useRef(false);
 	const [isDocsCollapsed, setIsDocsCollapsed] = useState(() => {
 		const saved = localStorage.getItem('docsCollapsed');
 		if (saved !== null) {
@@ -328,7 +329,7 @@ const SideNavigation = memo(function SideNavigation({
 			if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
 				e.preventDefault();
 				if (isCollapsed) {
-					// Expand sidebar first, then focus will happen on next render
+					focusSearchOnExpandRef.current = true;
 					setIsCollapsed(false);
 				} else if (searchInputRef) {
 					searchInputRef.focus();
@@ -340,14 +341,11 @@ const SideNavigation = memo(function SideNavigation({
 		return () => document.removeEventListener('keydown', handleKeyDown);
 	}, [searchInputRef, isCollapsed]);
 
-	// Auto-focus search input when sidebar expands
+	// Auto-focus search only after an explicit collapsed-to-expanded transition.
 	useEffect(() => {
-		if (!isCollapsed && searchInputRef) {
-			// Small delay to ensure the input is rendered
-			const timer = setTimeout(() => {
-				searchInputRef.focus();
-			}, 100);
-			return () => clearTimeout(timer);
+		if (!isCollapsed && searchInputRef && focusSearchOnExpandRef.current) {
+			focusSearchOnExpandRef.current = false;
+			searchInputRef.focus();
 		}
 	}, [isCollapsed, searchInputRef]);
 
@@ -422,8 +420,11 @@ const SideNavigation = memo(function SideNavigation({
 	}, []);
 
 	const toggleCollapse = useCallback(() => {
-		setIsCollapsed((prev: any) => !prev);
-	}, []);
+		if (isCollapsed) {
+			focusSearchOnExpandRef.current = true;
+		}
+		setIsCollapsed(!isCollapsed);
+	}, [isCollapsed]);
 
 	return (
 		<ErrorBoundary>

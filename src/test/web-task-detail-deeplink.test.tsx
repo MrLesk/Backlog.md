@@ -296,6 +296,24 @@ describe("task detail routes", () => {
 	it("pushes a stable list URL and keeps close, Back, and Forward coherent", async () => {
 		const container = await renderApp("/tasks?status=To%20Do");
 		await waitFor(() => container.textContent?.includes(tasks[0]?.title ?? "") ?? false, "task list");
+		const ownerDocument = container.ownerDocument;
+
+		// The expanded sidebar must not claim focus on mount.
+		await act(async () => {
+			await new Promise((resolve) => setTimeout(resolve, 125));
+		});
+		const initialSearch = container.querySelector("input[placeholder='Search (⌘K)...']");
+		expect(ownerDocument.activeElement).not.toBe(initialSearch);
+
+		const collapseButton = container.querySelector("button[aria-label='Collapse sidebar']");
+		expect(collapseButton).toBeTruthy();
+		await click(collapseButton as HTMLButtonElement);
+		const expandButton = container.querySelector("button[aria-label='Expand sidebar']");
+		expect(expandButton).toBeTruthy();
+		await click(expandButton as HTMLButtonElement);
+		const expandedSearch = container.querySelector("input[placeholder='Search (⌘K)...']");
+		expect(expandedSearch).toBeTruthy();
+		expect(ownerDocument.activeElement).toBe(expandedSearch);
 
 		const title = Array.from(container.querySelectorAll("button")).find(
 			(element) => element.textContent === tasks[0]?.title,
@@ -305,16 +323,14 @@ describe("task detail routes", () => {
 		await click(title as HTMLButtonElement);
 
 		await waitFor(
-			() => {
-				const dialog = container.querySelector("[role='dialog']");
-				return (
-					window.location.pathname === "/tasks/BACK-101/fix-labels-caf-docs" &&
-					dialog !== null &&
-					document.activeElement === dialog
-				);
-			},
+			() =>
+				window.location.pathname === "/tasks/BACK-101/fix-labels-caf-docs" &&
+				container.querySelector("[role='dialog']") !== null,
 			"stable task route and modal",
 		);
+		const initialDialog = container.querySelector("[role='dialog']");
+		expect(initialDialog).toBeTruthy();
+		expect(initialDialog?.ownerDocument.activeElement).toBe(initialDialog);
 		expect(window.location.search).toBe("?status=To%20Do");
 
 		await travel("back");
@@ -325,16 +341,14 @@ describe("task detail routes", () => {
 
 		await travel("forward");
 		await waitFor(
-			() => {
-				const dialog = container.querySelector("[role='dialog']");
-				return (
-					window.location.pathname === "/tasks/BACK-101/fix-labels-caf-docs" &&
-					dialog !== null &&
-					document.activeElement === dialog
-				);
-			},
+			() =>
+				window.location.pathname === "/tasks/BACK-101/fix-labels-caf-docs" &&
+				container.querySelector("[role='dialog']") !== null,
 			"Forward to reopen the modal",
 		);
+		const reopenedDialog = container.querySelector("[role='dialog']");
+		expect(reopenedDialog).toBeTruthy();
+		expect(reopenedDialog?.ownerDocument.activeElement).toBe(reopenedDialog);
 
 		await press(container.querySelector("[role='dialog']") as HTMLElement, "Escape");
 		await waitFor(

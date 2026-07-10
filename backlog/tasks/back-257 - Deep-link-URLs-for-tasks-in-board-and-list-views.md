@@ -5,7 +5,7 @@ status: Done
 assignee:
   - '@pr755-takeover'
 created_date: '2025-09-06 22:11'
-updated_date: '2026-07-10 07:26'
+updated_date: '2026-07-10 07:42'
 labels: []
 dependencies: []
 references:
@@ -88,10 +88,14 @@ Exact-head CI follow-up: run 29075849302 independently reproduced the modal-focu
 Final exact-tree correction: generated task links now retain the canonical explicit task ID, so same-number tasks under different prefixes remain unambiguous; numeric direct links remain supported. Modal focus coverage now waits across React's passive-effect boundary on initial open and Forward without changing production focus behavior. Sequential stress passed 100/100 focus runs, 100/100 cross-prefix runs, 270/270 full route-file runs, and 270/270 randomized-order runs across seeds 755, 754, and 257. The final CI-style suite passed 1,531 tests with 2 expected skips, 0 failures, and 5,304 assertions across 183 files. TypeScript, Biome over 319 files, production build, and git diff hygiene also passed. These final counts supersede all earlier focused and full-suite counts.
 
 Focused changed-surface verification passed 20/20 tests with 97 assertions across task route history/focus, identity resolution, server SPA/API isolation, and URL generation.
+
+Final-candidate CI run 29076728712 reproduced the routed-modal focus wait timeout on Ubuntu and Windows shard 1 under matrix load. The unrelated MCP task-type expectation also reproduces on main and remains out of scope. This pass will replace the focus test's fixed 50x5ms polling budget with deterministic, focus-specific synchronization while preserving initial-open and Forward focus assertions.
+
+Final focus-race correction: matrix-like contention showed that the modal did focus, but SideNavigation's 100ms mount timer later moved focus to Search. Sidebar search now focuses synchronously only after a genuine collapsed-to-expanded action and never on initial expanded mount. The regression scopes focus to each dialog's ownerDocument and verifies mount, explicit expand, initial modal open, and Forward. Verification passed 200/200 focused runs across four simultaneous processes, 270/270 route-file runs, 270/270 randomized-order runs, 20/20 changed-surface tests with 106 assertions, and the full CI-style suite with 1,531 passes, 2 expected skips, 0 failures, and 5,313 assertions across 183 files. TypeScript, Biome over 319 files, production build, and diff hygiene passed. No timeout was widened and no MCP code changed; the independently reproduced MCP watcher/store race remains outside BACK-257.
 <!-- SECTION:NOTES:END -->
 
 ## Final Summary
 
 <!-- SECTION:FINAL_SUMMARY:BEGIN -->
-Added safe, shareable task-modal routes for Board and All Tasks with reliable history, direct refresh, legacy highlight compatibility, canonical prefix-preserving URLs, padded and dotted ID support, ambiguity-safe duplicate handling, and keyboard/focus UX. Verified with the full 1,531-test suite, focused and randomized stress runs, static checks, production build, compiled desktop browser QA, and independent review.
+Added safe, shareable task-modal routes for Board and All Tasks with reliable history, direct refresh, canonical prefix-preserving URLs, ambiguity-safe IDs, and keyboard/focus UX. Removed an initial sidebar autofocus race so the modal retains focus while explicit sidebar expansion still focuses search. Verified with the full 1,531-test suite, 200-run contention stress, focused and randomized checks, static checks, production build, compiled desktop browser QA, and independent review.
 <!-- SECTION:FINAL_SUMMARY:END -->
