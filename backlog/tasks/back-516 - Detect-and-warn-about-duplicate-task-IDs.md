@@ -5,7 +5,7 @@ status: In Progress
 assignee:
   - '@pr749-takeover'
 created_date: '2026-05-03 20:54'
-updated_date: '2026-07-10 17:17'
+updated_date: '2026-07-10 17:56'
 labels:
   - enhancement
   - ux
@@ -78,30 +78,30 @@ Implement a human-first, CLI-canonical diagnosis and repair workflow. The CLI de
 ## Implementation Plan
 
 <!-- SECTION:PLAN:BEGIN -->
-1. Merge current main 2b6b2adb normally and resolve conflicts by preserving main task identity, branch freshness, config-root lifecycle, route history, and modal focus semantics.
-2. Compose duplicate diagnosis and repair with the shared task-id resolver so large numeric, legacy, padded, active/completed, and cross-branch identities fail closed without duplicate normalization logic.
-3. Preserve the CLI-canonical doctor transaction and all six review remediations: no-clobber install, board-export preflight, parent-aware dotted IDs, complete reference scans, Windows-safe paths, and human-readable blocked repair.
-4. Integrate server and Web recovery into current content-store reload, latest-request-wins data loading, route/history/error behavior, and shared modal focus lifecycle; keep MCP as an adapter.
-5. Add deterministic merge-era regressions for large/legacy ambiguity, config/root service refresh, stale duplicate-plan loads, task-route coexistence, destructive focus transitions, and best-effort 390px layout.
-6. Run focused and full tests, TypeScript, Biome, build, compiled CLI smokes, and Browser QA only after permission; update task evidence and freeze for independent review without push or merge.
+1. Normally merge exact main c18bc44e and preserve main-authoritative task-type API, App latest-wins loading, query state, single-flight edits, and two-row board behavior while composing duplicate recovery.
+2. Add deterministic red tests for an external writer recreating an original source after backup and externally editing or replacing an installed target before a later failure.
+3. Make rollback ownership-safe: restore backups without replacement, quarantine and identify installed targets before deleting only transaction-owned content, preserve external content and recovery artifacts on conflicts, and return actionable paths.
+4. Verify successful repairs and no-race rollback remove all transaction artifacts while source/target conflicts retain explicit recoverable state.
+5. Run huge, legacy, transaction, concurrency, and latest-main integration tests, then the full suite, TypeScript, Biome, build, diff-check, and compiled CLI smoke.
+6. Update task evidence and refreeze locally for independent review without push, merge, or public edit; keep #711 related and open.
 <!-- SECTION:PLAN:END -->
 
 ## Implementation Notes
 
 <!-- SECTION:NOTES:BEGIN -->
-Merge takeover context (2026-07-10)
+Refreeze evidence (2026-07-10)
 
-Integrated main 2b6b2adb by a normal merge while preserving main task identity, active-branch freshness, config-root lifecycle, SPA route history, and ownerDocument modal focus containment. Duplicate recovery composes with those surfaces through one precision-safe identity implementation, one existing ContentStore refresh, and the CLI-canonical doctor preview, fingerprint, and apply contract.
+Integrated exact main c18bc44e by a normal merge. The composed result preserves main-authoritative task-type API behavior, App latest-request-wins loading, URL query state, single-flight type edits, and two-row board controls while adding shared duplicate diagnosis and repair.
 
-Scope stops at human-first recovery. Issue #711 remains related and open for any separate collision-prevention policy.
+Independent review of freeze 4e271fc found a P1 rollback ownership defect. Deterministic red tests reproduced both losses: a recreated original source was overwritten after source-to-backup rename, and an externally edited installed target was deleted after a later failure. Rollback now records each staged file identity as device, inode, and byte-level SHA-256; moves installed targets into unique same-directory recovery storage before checking identity; deletes only transaction-owned content; restores changed targets and original backups with hard-link no-replace semantics; preserves conflicting content and backup paths; and returns actionable recovery errors. The source-winner test keeps external source bytes plus the original .bak, and the target-edit test keeps external target bytes at the original target. Successful and ordinary rollback paths leave no transaction artifacts.
 
-Validation is clean: focused merged matrix 192 passed with 962 assertions; full suite 1627 passed with 2 intentional interactive skips and 6569 assertions; TypeScript, Biome, build, and diff-check passed. Compiled CLI doctor preview, confirmed repair, and verification passed. Chrome QA passed at 1920px and best-effort 390px: deterministic TASK-2 and TASK-3 preview, ambiguous reference review, focus trap and restoration, no viewport overflow after sidebar collapse, zero console warnings or errors, successful repair refresh, and post-repair doctor verification.
+Validation is clean: the composed focused matrix passes 248 tests with 1429 assertions; the authoritative suite passes 1643 tests with 2 intentional interactive skips, 0 failures, and 6700 assertions across 189 files. TypeScript, Biome over 324 files, build, and diff-check pass. Compiled CLI preview reports one group across three files, deterministic TASK-2 and TASK-3 changes, and two manual references. Compiled Chrome QA passes at 1920px and 390px with the task-type filter and two-row controls intact, correct Cancel then Repair focus, no document or dialog horizontal overflow, visible confirmation actions and overlay, zero console warnings or errors, successful repair refresh, TASK-1/TASK-2/TASK-3 post-doctor verification, unchanged ambiguous references, and no backlog-doctor artifacts.
 
-The local merge commit remains intentionally unpushed pending independent code, specification, and UX review. PR relationship wording must remain neutral and must not close #711.
+The local merge commit remains intentionally unpushed pending independent code, specification, and UX review. Scope remains recovery-only; PR relationship wording must be neutral and must not close #711.
 <!-- SECTION:NOTES:END -->
 
 ## Final Summary
 
 <!-- SECTION:FINAL_SUMMARY:BEGIN -->
-Implemented human-first duplicate task ID diagnosis and deterministic repair across CLI, core, MCP, server, TUI, and Web. The flow fails closed on ambiguity, preserves manual reference review, handles precision-safe numeric, dotted, padded, legacy, active/completed, lifecycle, stale-plan, and no-clobber cases, and keeps issue #711 as related follow-up scope. Verified by 1627 passing tests, TypeScript, Biome, build, compiled CLI smoke, and desktop/390px Chrome repair QA with no console errors.
+Implemented human-first duplicate task ID diagnosis and deterministic repair across CLI, core, MCP, server, TUI, and Web, then hardened rollback ownership after independent P1 review. Concurrently recreated sources and changed installed targets are preserved with explicit recovery paths instead of overwritten or deleted. Verified on exact main c18bc44e by 1643 passing tests, TypeScript, Biome, build, compiled CLI smoke, and desktop/390px Chrome repair QA with no console errors.
 <!-- SECTION:FINAL_SUMMARY:END -->

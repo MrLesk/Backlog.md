@@ -507,7 +507,9 @@ const SideNavigation = memo(function SideNavigation({
 								if (result.type === 'decision') {
 									return `/decisions/${stripIdPrefix(item.id)}/${sanitizeUrlTitle(item.title)}`;
 								}
-								return createUrlPath('/board', item.id, item.title);
+								const taskPath = createUrlPath('/board', item.id, item.title);
+								const isBoardLocation = location.pathname === '/board' || location.pathname.startsWith('/board/');
+								return isBoardLocation ? `${taskPath}${location.search}` : taskPath;
 							};
 
 							const getResultIcon = () => {

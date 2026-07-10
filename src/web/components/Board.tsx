@@ -6,6 +6,7 @@ import { collectAvailableLabels, labelsToLower } from '../../utils/label-filter'
 import { collectArchivedMilestoneKeys, milestoneKey } from '../utils/milestones';
 import { getTerminalStatus } from '../../utils/terminal-status';
 import { getPriorityOptions, normalizePriorityValue } from '../../utils/priority-config';
+import { getTaskTypeValues, matchesTaskTypeFilter } from '../../utils/task-type-config';
 import { resolveTaskById } from '../../utils/task-id';
 import TaskColumn from './TaskColumn';
 import CleanupModal from './CleanupModal';
@@ -31,7 +32,9 @@ interface BoardProps {
   filterLabels?: string[];
   filterPriority?: string;
   availablePriorities?: string[];
-  onFiltersChange?: (filters: { assignee: string; labels: string[]; priority: string }) => void;
+  filterType?: string;
+  availableTypes?: string[];
+  onFiltersChange?: (filters: { assignee: string; labels: string[]; priority: string; taskType: string }) => void;
   hideEmptyColumns?: boolean;
   dateFormat?: string;
 }
@@ -60,6 +63,8 @@ const Board: React.FC<BoardProps> = ({
   filterLabels = [],
   filterPriority = '',
   availablePriorities,
+  filterType = '',
+  availableTypes,
   onFiltersChange,
   hideEmptyColumns = false,
   dateFormat,
@@ -75,6 +80,7 @@ const Board: React.FC<BoardProps> = ({
     () => [{ label: 'All priorities', value: '' }, ...getPriorityOptions(availablePriorities)],
     [availablePriorities]
   );
+  const typeOptions = useMemo(() => getTaskTypeValues(availableTypes), [availableTypes]);
   const archivedMilestoneIds = useMemo(
     () => collectArchivedMilestoneKeys(archivedMilestones, milestoneEntities),
     [archivedMilestones, milestoneEntities]
@@ -232,7 +238,8 @@ const Board: React.FC<BoardProps> = ({
     [filterLabels]
   );
 
-  const hasActiveFilters = filterAssignee !== '' || normalizedFilterLabels.length > 0 || filterPriority !== '';
+  const hasActiveFilters =
+    filterAssignee !== '' || normalizedFilterLabels.length > 0 || filterPriority !== '' || filterType !== '';
 
   // Filter tasks by milestone when milestoneFilter is set, then apply assignee/label/priority filters
   const filteredTasks = useMemo(() => {
@@ -253,8 +260,11 @@ const Board: React.FC<BoardProps> = ({
       const normalizedFilterPriority = normalizePriorityValue(filterPriority);
       result = result.filter(task => normalizePriorityValue(task.priority) === normalizedFilterPriority);
     }
+    if (filterType) {
+      result = result.filter(task => matchesTaskTypeFilter(task.type, filterType));
+    }
     return result;
-  }, [tasks, milestoneFilter, canonicalMilestoneFilter, milestoneAliasToCanonical, filterAssignee, normalizedFilterLabels, filterPriority]);
+  }, [tasks, milestoneFilter, canonicalMilestoneFilter, milestoneAliasToCanonical, filterAssignee, normalizedFilterLabels, filterPriority, filterType]);
 
   // Handle highlighting a task (opening its edit popup)
   useEffect(() => {
@@ -464,10 +474,17 @@ const Board: React.FC<BoardProps> = ({
           {updateError}
         </div>
       )}
-      <div className="flex items-center justify-between mb-6 flex-wrap gap-3">
-        <div className="flex flex-wrap items-center gap-3">
+      <div className="mb-6 space-y-3">
+        <div className="flex flex-wrap items-center justify-between gap-3">
           <h2 className="text-2xl font-bold text-gray-900 dark:text-gray-100 transition-colors duration-200">Kanban Board</h2>
-          <div className="flex flex-wrap items-center gap-3" role="toolbar" aria-label="Board view controls">
+          <button
+            className="inline-flex items-center px-4 py-2 bg-blue-500 dark:bg-blue-600 text-white text-sm font-medium rounded-md hover:bg-blue-600 dark:hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-400 dark:focus:ring-blue-500 dark:focus:ring-offset-gray-800 transition-colors duration-200"
+            onClick={onNewTask}
+          >
+            + New Task
+          </button>
+        </div>
+        <div className="flex flex-wrap items-center gap-3" role="toolbar" aria-label="Board view controls">
             <div className="inline-flex rounded-lg border border-gray-200 dark:border-gray-700 p-1 bg-gray-50 dark:bg-gray-800/50 transition-colors duration-200">
               <button
                 type="button"
@@ -501,7 +518,7 @@ const Board: React.FC<BoardProps> = ({
                 <select
                   aria-label="Filter board by assignee"
                   value={filterAssignee}
-                  onChange={e => onFiltersChange({ assignee: e.target.value, labels: normalizedFilterLabels, priority: filterPriority })}
+                  onChange={e => onFiltersChange({ assignee: e.target.value, labels: normalizedFilterLabels, priority: filterPriority, taskType: filterType })}
                   className={BOARD_FILTER_SELECT_CLASS}
                 >
                   <option value="">All assignees</option>
@@ -514,15 +531,27 @@ const Board: React.FC<BoardProps> = ({
                 <LabelFilterDropdown
                   availableLabels={uniqueLabels}
                   selectedLabels={normalizedFilterLabels}
-                  onChange={labels => onFiltersChange({ assignee: filterAssignee, labels, priority: filterPriority })}
+                  onChange={labels => onFiltersChange({ assignee: filterAssignee, labels, priority: filterPriority, taskType: filterType })}
                   menuId="board-labels-filter-menu"
                   className="min-w-[200px]"
                 />
 
                 <select
+                  aria-label="Filter board by type"
+                  value={filterType}
+                  onChange={e => onFiltersChange({ assignee: filterAssignee, labels: normalizedFilterLabels, priority: filterPriority, taskType: e.target.value })}
+                  className={BOARD_FILTER_SELECT_CLASS}
+                >
+                  <option value="">All types</option>
+                  {typeOptions.map(type => (
+                    <option key={type} value={type}>{type}</option>
+                  ))}
+                </select>
+
+                <select
                   aria-label="Filter board by priority"
                   value={filterPriority}
-                  onChange={e => onFiltersChange({ assignee: filterAssignee, labels: normalizedFilterLabels, priority: e.target.value })}
+                  onChange={e => onFiltersChange({ assignee: filterAssignee, labels: normalizedFilterLabels, priority: e.target.value, taskType: filterType })}
                   className={BOARD_FILTER_SELECT_CLASS}
                 >
                   {priorityOptions.map(opt => (
@@ -533,7 +562,7 @@ const Board: React.FC<BoardProps> = ({
                 {hasActiveFilters && (
                   <button
                     type="button"
-                    onClick={() => onFiltersChange({ assignee: '', labels: [], priority: '' })}
+                    onClick={() => onFiltersChange({ assignee: '', labels: [], priority: '', taskType: '' })}
                     className={BOARD_FILTER_BUTTON_CLASS}
                   >
                     Clear filters
@@ -541,14 +570,7 @@ const Board: React.FC<BoardProps> = ({
                 )}
               </div>
             )}
-          </div>
         </div>
-        <button
-          className="inline-flex items-center px-4 py-2 bg-blue-500 dark:bg-blue-600 text-white text-sm font-medium rounded-md hover:bg-blue-600 dark:hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-400 dark:focus:ring-blue-500 dark:focus:ring-offset-gray-800 transition-colors duration-200"
-          onClick={onNewTask}
-        >
-          + New Task
-        </button>
       </div>
 
       {laneMode === 'milestone' ? (
@@ -616,6 +638,7 @@ const Board: React.FC<BoardProps> = ({
                             laneId={lane.key}
                             targetMilestone={lane.milestone ?? null}
                             priorityOrder={availablePriorities}
+                            availableTypes={typeOptions}
                             onDragStart={({ status: draggedStatus, laneId }) => {
                               setDragSourceStatus(draggedStatus);
                               setDragSourceLane(laneId ?? null);
@@ -650,6 +673,7 @@ const Board: React.FC<BoardProps> = ({
                   dragSourceLane={dragSourceLane}
                   laneId={DEFAULT_LANE_KEY}
                   priorityOrder={availablePriorities}
+                  availableTypes={typeOptions}
                   onDragStart={({ status: draggedStatus, laneId }) => {
                     setDragSourceStatus(draggedStatus);
                     setDragSourceLane(laneId ?? null);

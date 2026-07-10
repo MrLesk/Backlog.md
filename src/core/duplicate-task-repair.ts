@@ -1,4 +1,4 @@
-import { link, rename, unlink } from "node:fs/promises";
+import { link, lstat, mkdtemp, rename, rmdir, unlink } from "node:fs/promises";
 import { basename, dirname, join, relative, resolve, sep } from "node:path";
 import { EntityType, type Task } from "../types/index.ts";
 import { type DuplicateGroup, detectDuplicateTaskIds } from "../utils/duplicate-detection.ts";
@@ -59,8 +59,27 @@ function normalizeRelativePath(rootDir: string, path: string): string {
 	return relative(rootDir, path).split(sep).join("/");
 }
 
-function sha256(value: string): string {
+function sha256(value: string | Uint8Array): string {
 	return new Bun.CryptoHasher("sha256").update(value).digest("hex");
+}
+
+interface FileOwnershipIdentity {
+	device: bigint;
+	inode: bigint;
+	contentHash: string;
+}
+
+async function readFileOwnershipIdentity(path: string): Promise<FileOwnershipIdentity> {
+	const [stats, content] = await Promise.all([lstat(path, { bigint: true }), Bun.file(path).arrayBuffer()]);
+	return {
+		device: stats.dev,
+		inode: stats.ino,
+		contentHash: sha256(new Uint8Array(content)),
+	};
+}
+
+function isSameOwnedFile(left: FileOwnershipIdentity, right: FileOwnershipIdentity): boolean {
+	return left.device === right.device && left.inode === right.inode && left.contentHash === right.contentHash;
 }
 
 function withLocation(task: Task, location: DuplicateTaskLocation, rootDir: string): Task {
@@ -494,6 +513,95 @@ export async function installFileNoReplace(stagedPath: string, targetPath: strin
 	await link(stagedPath, targetPath);
 }
 
+interface InstalledRepairFile {
+	targetPath: string;
+	identity: FileOwnershipIdentity;
+}
+
+async function rollbackInstalledFile(rootDir: string, installed: InstalledRepairFile): Promise<string | null> {
+	const targetProjectPath = normalizeRelativePath(rootDir, installed.targetPath);
+	let recoveryDirectory: string;
+	try {
+		recoveryDirectory = await mkdtemp(join(dirname(installed.targetPath), ".backlog-doctor-rollback-"));
+	} catch (error) {
+		return `Could not prepare recovery storage for ${targetProjectPath}: ${errorMessage(error)}. The target was left in place.`;
+	}
+	const recoveryPath = join(recoveryDirectory, basename(installed.targetPath));
+	const recoveryProjectPath = normalizeRelativePath(rootDir, recoveryPath);
+	try {
+		await rename(installed.targetPath, recoveryPath);
+	} catch (error) {
+		await rmdir(recoveryDirectory).catch(() => {});
+		if ((error as NodeJS.ErrnoException | undefined)?.code === "ENOENT") return null;
+		return `Could not secure ${targetProjectPath} for ownership-safe rollback: ${errorMessage(error)}. The target was left in place.`;
+	}
+
+	let recoveredIdentity: FileOwnershipIdentity;
+	try {
+		recoveredIdentity = await readFileOwnershipIdentity(recoveryPath);
+	} catch (error) {
+		return `Could not verify ${targetProjectPath} during rollback: ${errorMessage(error)}. Preserved its content at ${recoveryProjectPath}.`;
+	}
+
+	if (isSameOwnedFile(installed.identity, recoveredIdentity)) {
+		try {
+			await unlink(recoveryPath);
+		} catch (error) {
+			return `Could not remove the transaction-owned target ${targetProjectPath}: ${errorMessage(error)}. Preserved it at ${recoveryProjectPath}.`;
+		}
+		try {
+			await rmdir(recoveryDirectory);
+			return null;
+		} catch (error) {
+			return `Removed the transaction-owned target ${targetProjectPath}, but could not remove empty recovery directory ${normalizeRelativePath(rootDir, recoveryDirectory)}: ${errorMessage(error)}.`;
+		}
+	}
+
+	try {
+		await installFileNoReplace(recoveryPath, installed.targetPath);
+	} catch (error) {
+		if ((error as NodeJS.ErrnoException | undefined)?.code === "EEXIST") {
+			return `Target ${targetProjectPath} changed during repair, and another file now occupies that path. Preserved the concurrent content at ${recoveryProjectPath}.`;
+		}
+		return `Target ${targetProjectPath} changed during repair. Could not restore it without replacement: ${errorMessage(error)}. Preserved the concurrent content at ${recoveryProjectPath}.`;
+	}
+
+	try {
+		await unlink(recoveryPath);
+	} catch (error) {
+		return `Target ${targetProjectPath} changed during repair. Preserved the concurrent content at its original path and retained recovery copy ${recoveryProjectPath}: ${errorMessage(error)}.`;
+	}
+	try {
+		await rmdir(recoveryDirectory);
+		return `Target ${targetProjectPath} changed during repair. Preserved the concurrent content at its original path.`;
+	} catch (error) {
+		return `Target ${targetProjectPath} changed during repair. Preserved the concurrent content at its original path, but could not remove empty recovery directory ${normalizeRelativePath(rootDir, recoveryDirectory)}: ${errorMessage(error)}.`;
+	}
+}
+
+async function restoreBackupNoReplace(
+	rootDir: string,
+	backup: { sourcePath: string; backupPath: string },
+): Promise<string | null> {
+	const sourceProjectPath = normalizeRelativePath(rootDir, backup.sourcePath);
+	const backupProjectPath = normalizeRelativePath(rootDir, backup.backupPath);
+	try {
+		await installFileNoReplace(backup.backupPath, backup.sourcePath);
+	} catch (error) {
+		if ((error as NodeJS.ErrnoException | undefined)?.code === "EEXIST") {
+			return `Source ${sourceProjectPath} was recreated during repair. Preserved the concurrent source and original backup at ${backupProjectPath}; reconcile them manually.`;
+		}
+		return `Could not restore ${sourceProjectPath} without replacement: ${errorMessage(error)}. Preserved the original backup at ${backupProjectPath}.`;
+	}
+
+	try {
+		await unlink(backup.backupPath);
+		return null;
+	} catch (error) {
+		return `Restored ${sourceProjectPath}, but could not remove recovery backup ${backupProjectPath}: ${errorMessage(error)}.`;
+	}
+}
+
 export async function applyDuplicateTaskIdRepair(
 	core: Core,
 	expectedFingerprint: string,
@@ -534,8 +642,9 @@ export async function applyDuplicateTaskIdRepair(
 		);
 
 		const staged: string[] = [];
+		const stagedIdentities = new Map<string, FileOwnershipIdentity>();
 		const backups: Array<{ sourcePath: string; backupPath: string }> = [];
-		const installed: string[] = [];
+		const installed: InstalledRepairFile[] = [];
 		const installFile =
 			options.installFile ??
 			(async (stagedPath: string, targetPath: string) => {
@@ -545,6 +654,7 @@ export async function applyDuplicateTaskIdRepair(
 			for (const item of prepared) {
 				await Bun.write(item.stagedPath, item.content);
 				staged.push(item.stagedPath);
+				stagedIdentities.set(item.stagedPath, await readFileOwnershipIdentity(item.stagedPath));
 			}
 			for (const item of prepared) {
 				await rename(item.sourcePath, item.backupPath);
@@ -559,7 +669,9 @@ export async function applyDuplicateTaskIdRepair(
 					}
 					throw error;
 				}
-				installed.push(item.targetPath);
+				const identity = stagedIdentities.get(item.stagedPath);
+				if (!identity) throw new Error(`Could not verify staged repair file ${item.stagedPath}.`);
+				installed.push({ targetPath: item.targetPath, identity });
 				await unlink(item.stagedPath);
 			}
 
@@ -576,11 +688,28 @@ export async function applyDuplicateTaskIdRepair(
 				remainingGroups,
 			};
 		} catch (error) {
-			for (const path of installed.reverse()) await removeIfPresent(path).catch(() => {});
+			const rollbackIssues: string[] = [];
+			for (const item of installed.reverse()) {
+				const issue = await rollbackInstalledFile(core.filesystem.rootDir, item).catch(
+					(rollbackError) =>
+						`Could not roll back ${normalizeRelativePath(core.filesystem.rootDir, item.targetPath)}: ${errorMessage(rollbackError)}.`,
+				);
+				if (issue) rollbackIssues.push(issue);
+			}
 			for (const item of backups.reverse()) {
-				await rename(item.backupPath, item.sourcePath).catch(() => {});
+				const issue = await restoreBackupNoReplace(core.filesystem.rootDir, item).catch(
+					(rollbackError) =>
+						`Could not restore ${normalizeRelativePath(core.filesystem.rootDir, item.sourcePath)}: ${errorMessage(rollbackError)}. Preserved backup ${normalizeRelativePath(core.filesystem.rootDir, item.backupPath)}.`,
+				);
+				if (issue) rollbackIssues.push(issue);
 			}
 			for (const path of staged) await removeIfPresent(path).catch(() => {});
+			if (rollbackIssues.length > 0) {
+				throw new Error(
+					`Repair failed: ${errorMessage(error)}\nRollback preserved concurrent changes instead of overwriting them:\n${rollbackIssues.map((issue) => `- ${issue}`).join("\n")}`,
+					{ cause: error },
+				);
+			}
 			throw error;
 		}
 	});

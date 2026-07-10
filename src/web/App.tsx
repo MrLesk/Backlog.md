@@ -30,6 +30,7 @@ import { isValidTaskId } from '../utils/task-id';
 import { useHealthCheckContext } from './contexts/HealthCheckContext';
 import { getWebVersion } from './utils/version';
 import { collectArchivedMilestoneKeys, collectMilestoneIds, milestoneKey } from './utils/milestones';
+import { getTaskTypeValues } from '../utils/task-type-config';
 import { createUrlPath } from './utils/urlHelpers';
 
 type TaskRouteNavigationState = {
@@ -183,6 +184,7 @@ function AppContent() {
   const [availableLabels, setAvailableLabels] = useState<string[]>([]);
   const [projectName, setProjectName] = useState<string>('');
   const [config, setConfig] = useState<BacklogConfig | null>(null);
+  const availableTypes = React.useMemo(() => getTaskTypeValues(config), [config]);
   const [milestones, setMilestones] = useState<string[]>([]);
   const [milestoneEntities, setMilestoneEntities] = useState<Milestone[]>([]);
   const [archivedMilestones, setArchivedMilestones] = useState<Milestone[]>([]);
@@ -202,6 +204,7 @@ function AppContent() {
   const { isOnline } = useHealthCheckContext();
   const previousOnlineRef = useRef<boolean | null>(null);
   const hasBeenRunningRef = useRef(false);
+  const loadAllDataRequestRef = useRef(0);
   const location = useLocation();
   const navigate = useNavigate();
   const tasksRouteWithTitle = useMatch('/tasks/:id/:title');
@@ -209,7 +212,6 @@ function AppContent() {
   const boardRouteWithTitle = useMatch('/board/:id/:title');
   const boardRoute = useMatch('/board/:id');
   const taskRouteRequestRef = useRef(0);
-  const loadAllDataRequestRef = useRef(0);
   const isTaskRouteModalRef = useRef(false);
   const taskRouteAlertRef = useRef<HTMLDivElement | null>(null);
   const routeTaskId =
@@ -615,6 +617,7 @@ function AppContent() {
       hideEmptyColumns={config?.hideEmptyColumns ?? false}
       dateFormat={config?.dateFormat}
       availablePriorities={config?.priorities}
+      availableTypes={availableTypes}
     />
   );
 
@@ -737,6 +740,7 @@ function AppContent() {
         availableStatuses={isDraftMode ? ['Draft', ...statuses] : statuses}
         availableMilestones={milestones}
         availablePriorities={config?.priorities}
+        availableTypes={availableTypes}
         milestoneEntities={milestoneEntities}
         archivedMilestoneEntities={archivedMilestones}
         isDraftMode={isDraftMode}

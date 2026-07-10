@@ -336,6 +336,10 @@ describe("duplicate task repair", () => {
 		const betaAfter = await Bun.file(join(core.filesystem.tasksDir, "task-10 - Beta.md")).text();
 		expect(betaAfter).toBe(betaBefore.replace(/^id:\s*TASK-1$/m, "id: TASK-10"));
 		expect(await Bun.file(betaPath).exists()).toBe(false);
+		for (const directory of [core.filesystem.tasksDir, core.filesystem.completedDir]) {
+			const files = await readdir(directory);
+			expect(files.filter((file) => file.includes(".backlog-doctor-"))).toEqual([]);
+		}
 	});
 
 	it("changes only the ID line when a task contains mixed line endings", async () => {
@@ -460,6 +464,84 @@ describe("duplicate task repair", () => {
 		).toEqual(originals);
 		expect(await Bun.file(firstTarget).exists()).toBe(false);
 		expect(await Bun.file(secondTarget).text()).toBe("external winner");
+		for (const directory of [core.filesystem.tasksDir, core.filesystem.completedDir]) {
+			const files = await readdir(directory);
+			expect(files.filter((file) => file.includes(".backlog-doctor-"))).toEqual([]);
+		}
+	});
+
+	it("preserves a recreated source and its recoverable backup when rollback loses ownership", async () => {
+		await writeTask(core.filesystem.tasksDir, "task-1 - Alpha.md", makeTask("TASK-1", "Alpha"));
+		await writeTask(core.filesystem.tasksDir, "task-01 - Beta.md", makeTask("TASK-01", "Beta"));
+		await writeTask(core.filesystem.completedDir, "task-001 - Gamma.md", makeTask("TASK-001", "Gamma"));
+		const plan = await core.previewDuplicateTaskIdRepair();
+		const firstChange = plan.changes[0];
+		if (!firstChange) throw new Error("Expected a first repair change");
+		const firstSource = join(testDir, firstChange.sourcePath);
+		const originalSource = await Bun.file(firstSource).text();
+		const externalSource = "external source winner\n";
+		let failure: unknown;
+
+		try {
+			await applyDuplicateTaskIdRepair(core, plan.fingerprint, {
+				installFile: async (stagedPath, targetPath, index) => {
+					if (index === 1) {
+						await Bun.write(firstSource, externalSource);
+						throw new Error("forced later failure");
+					}
+					await installFileNoReplace(stagedPath, targetPath);
+				},
+			});
+		} catch (error) {
+			failure = error;
+		}
+
+		expect(String(failure)).toContain(firstChange.sourcePath);
+		expect(String(failure)).toContain("preserved");
+		expect(await Bun.file(firstSource).text()).toBe(externalSource);
+		const sourceFilename = firstChange.sourcePath.split("/").at(-1) ?? "";
+		const backupFilename = (await readdir(core.filesystem.tasksDir)).find(
+			(file) => file.startsWith(`${sourceFilename}.backlog-doctor-`) && file.endsWith(".bak"),
+		);
+		expect(backupFilename).toBeDefined();
+		expect(await Bun.file(join(core.filesystem.tasksDir, backupFilename ?? "")).text()).toBe(originalSource);
+	});
+
+	it("preserves an externally edited installed target when a later install fails", async () => {
+		await writeTask(core.filesystem.tasksDir, "task-1 - Alpha.md", makeTask("TASK-1", "Alpha"));
+		const betaPath = await writeTask(core.filesystem.tasksDir, "task-01 - Beta.md", makeTask("TASK-01", "Beta"));
+		const gammaPath = await writeTask(
+			core.filesystem.completedDir,
+			"task-001 - Gamma.md",
+			makeTask("TASK-001", "Gamma"),
+		);
+		const [betaOriginal, gammaOriginal] = await Promise.all([Bun.file(betaPath).text(), Bun.file(gammaPath).text()]);
+		const plan = await core.previewDuplicateTaskIdRepair();
+		const firstChange = plan.changes[0];
+		if (!firstChange) throw new Error("Expected a first repair change");
+		const firstTarget = join(testDir, firstChange.targetPath);
+		const externalTarget = "external target edit\n";
+		let failure: unknown;
+
+		try {
+			await applyDuplicateTaskIdRepair(core, plan.fingerprint, {
+				installFile: async (stagedPath, targetPath, index) => {
+					if (index === 1) {
+						await Bun.write(firstTarget, externalTarget);
+						throw new Error("forced later failure");
+					}
+					await installFileNoReplace(stagedPath, targetPath);
+				},
+			});
+		} catch (error) {
+			failure = error;
+		}
+
+		expect(String(failure)).toContain(firstChange.targetPath);
+		expect(String(failure)).toContain("preserved");
+		expect(await Bun.file(firstTarget).text()).toBe(externalTarget);
+		expect(await Bun.file(betaPath).text()).toBe(betaOriginal);
+		expect(await Bun.file(gammaPath).text()).toBe(gammaOriginal);
 		for (const directory of [core.filesystem.tasksDir, core.filesystem.completedDir]) {
 			const files = await readdir(directory);
 			expect(files.filter((file) => file.includes(".backlog-doctor-"))).toEqual([]);
