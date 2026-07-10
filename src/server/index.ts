@@ -281,7 +281,8 @@ export class BacklogServer {
 
 		// Set up config watcher to broadcast changes
 		this.configWatcher = watchConfig(this.core, {
-			onConfigChanged: () => {
+			onConfigChanged: async () => {
+				await this.contentStore?.refreshTasks();
 				this.broadcastConfigUpdated();
 			},
 		});
@@ -873,17 +874,22 @@ export class BacklogServer {
 	}
 
 	private async handleGetTask(taskId: string): Promise<Response> {
-		const store = await this.getContentStoreInstance();
 		const localTasks = await this.core.filesystem.listTasks();
 		const localResolution = resolveTaskById(localTasks, taskId);
 		if (localResolution.status === "invalid") {
 			return Response.json({ error: `Invalid task ID: ${taskId}` }, { status: 400 });
 		}
+
+		const store = await this.getContentStoreInstance();
+		await store.refreshTasks();
+		const config = await this.core.filesystem.loadConfig();
+		const checkActiveBranches = config?.checkActiveBranches !== false;
 		const storedResolution = resolveTaskById(store.getTasks(), taskId);
+		const activeBranchCollision = await this.core.hasActiveBranchTaskIdCollision(taskId, localTasks);
 		if (
 			localResolution.status === "ambiguous" ||
-			storedResolution.status === "ambiguous" ||
-			this.core.hasActiveBranchTaskIdCollision(taskId, localTasks)
+			(checkActiveBranches && storedResolution.status === "ambiguous") ||
+			activeBranchCollision
 		) {
 			return Response.json(
 				{ error: `Task ID ${taskId} is ambiguous. Repair duplicate task IDs before opening it.` },
@@ -891,6 +897,7 @@ export class BacklogServer {
 			);
 		}
 		if (
+			checkActiveBranches &&
 			localResolution.status === "found" &&
 			storedResolution.status === "found" &&
 			localResolution.task.id.toLowerCase() !== storedResolution.task.id.toLowerCase()
@@ -899,6 +906,10 @@ export class BacklogServer {
 				{ error: `Task ID ${taskId} is ambiguous. Repair duplicate task IDs before opening it.` },
 				{ status: 409 },
 			);
+		}
+		if (!checkActiveBranches && localResolution.status === "found") {
+			store.upsertTask(localResolution.task);
+			return Response.json(localResolution.task);
 		}
 		if (storedResolution.status === "found") {
 			return Response.json(storedResolution.task);
@@ -1276,6 +1287,7 @@ export class BacklogServer {
 
 			// Save configuration
 			await this.core.filesystem.saveConfig(updatedConfig);
+			await this.contentStore?.refreshTasks();
 
 			// Update local project name if changed
 			if (updatedConfig.projectName !== this.projectName) {

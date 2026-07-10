@@ -12,6 +12,7 @@ let TEST_DIR: string;
 let filesystem: FileSystem;
 let server: BacklogServer | null = null;
 let serverPort = 0;
+let auxiliaryWorktreeDir: string | null = null;
 
 const routedTask: Task = {
 	id: "BACK-001.02",
@@ -110,6 +111,11 @@ describe("BacklogServer task SPA fallback", () => {
 		if (server) {
 			await server.stop();
 			server = null;
+		}
+		if (auxiliaryWorktreeDir) {
+			await $`git worktree remove --force ${auxiliaryWorktreeDir}`.cwd(TEST_DIR).quiet().nothrow();
+			await safeCleanup(auxiliaryWorktreeDir);
+			auxiliaryWorktreeDir = null;
 		}
 		await safeCleanup(TEST_DIR);
 	});
@@ -252,19 +258,25 @@ describe("BacklogServer task SPA fallback", () => {
 		const contentStore = await (
 			server as unknown as { getContentStoreInstance: () => Promise<ContentStore> }
 		).getContentStoreInstance();
-		contentStore.upsertTask({
-			...routedTask,
-			id: "REMOTE-1.2",
-			title: "Cross-branch collision",
-			branch: "feature/collision",
-			source: "remote",
-		});
+		const refreshTasks = contentStore.refreshTasks.bind(contentStore);
+		contentStore.refreshTasks = async () => {};
+		try {
+			contentStore.upsertTask({
+				...routedTask,
+				id: "REMOTE-1.2",
+				title: "Cross-branch collision",
+				branch: "feature/collision",
+				source: "remote",
+			});
 
-		const response = await request("/api/task/1.2");
-		expect(response.status).toBe(409);
-		expect((await response.json()) as { error: string }).toEqual({
-			error: "Task ID 1.2 is ambiguous. Repair duplicate task IDs before opening it.",
-		});
+			const response = await request("/api/task/1.2");
+			expect(response.status).toBe(409);
+			expect((await response.json()) as { error: string }).toEqual({
+				error: "Task ID 1.2 is ambiguous. Repair duplicate task IDs before opening it.",
+			});
+		} finally {
+			contentStore.refreshTasks = refreshTasks;
+		}
 	});
 
 	for (const branchTaskId of ["BACK-1", "BACK-001"] as const) {
@@ -278,4 +290,78 @@ describe("BacklogServer task SPA fallback", () => {
 			});
 		});
 	}
+
+	it("uses the current config when active-branch collision checks are toggled", async () => {
+		await restartWithActiveBranchCollision("BACK-1");
+
+		expect((await request("/api/task/BACK-1")).status).toBe(409);
+		const configResponse = await request("/api/config");
+		expect(configResponse.status).toBe(200);
+		const config = (await configResponse.json()) as Record<string, unknown>;
+
+		const disabled = await request(
+			"/api/config",
+			{
+				method: "PUT",
+				headers: { "Content-Type": "application/json" },
+				body: JSON.stringify({ ...config, checkActiveBranches: false }),
+			},
+			5000,
+		);
+		expect(disabled.status).toBe(200);
+		await Bun.sleep(200);
+		const localOnly = await request("/api/task/BACK-1");
+		expect(localOnly.status).toBe(200);
+		expect(((await localOnly.json()) as Task).title).toBe("Main collision task");
+
+		const enabled = await request(
+			"/api/config",
+			{
+				method: "PUT",
+				headers: { "Content-Type": "application/json" },
+				body: JSON.stringify({ ...config, checkActiveBranches: true }),
+			},
+			5000,
+		);
+		expect(enabled.status).toBe(200);
+		expect((await request("/api/task/BACK-1")).status).toBe(409);
+	});
+
+	it("drops a cached collision after the active branch is removed", async () => {
+		await restartWithActiveBranchCollision("BACK-1");
+		expect((await request("/api/task/BACK-1")).status).toBe(409);
+
+		await $`git branch -D collision-shadow`.cwd(TEST_DIR).quiet();
+
+		const response = await request("/api/task/BACK-1", {}, 5000);
+		expect(response.status).toBe(200);
+		expect(((await response.json()) as Task).title).toBe("Main collision task");
+	});
+
+	it("rebuilds cached collision entries after an active branch task changes", async () => {
+		await restartWithActiveBranchCollision("BACK-1");
+		expect((await request("/api/task/BACK-1")).status).toBe(409);
+
+		auxiliaryWorktreeDir = createUniqueTestDir("server-task-collision-worktree");
+		await $`git worktree add ${auxiliaryWorktreeDir} collision-shadow`.cwd(TEST_DIR).quiet();
+		const branchFilesystem = new FileSystem(auxiliaryWorktreeDir);
+		const branchTask = await branchFilesystem.loadTask("BACK-1");
+		expect(branchTask?.filePath).toBeDefined();
+		await $`git rm -- ${relative(auxiliaryWorktreeDir, branchTask?.filePath as string)}`
+			.cwd(auxiliaryWorktreeDir)
+			.quiet();
+		await Bun.write(
+			join(branchFilesystem.tasksDir, "back-2 - Branch-replacement.md"),
+			serializeTask({ ...routedTask, id: "BACK-2", title: "Branch replacement" }),
+		);
+		await $`git add backlog`.cwd(auxiliaryWorktreeDir).quiet();
+		await $`git commit -m "Replace colliding branch task"`.cwd(auxiliaryWorktreeDir).quiet();
+		await $`git worktree remove --force ${auxiliaryWorktreeDir}`.cwd(TEST_DIR).quiet();
+		await safeCleanup(auxiliaryWorktreeDir);
+		auxiliaryWorktreeDir = null;
+
+		const response = await request("/api/task/BACK-1", {}, 5000);
+		expect(response.status).toBe(200);
+		expect(((await response.json()) as Task).title).toBe("Main collision task");
+	});
 });

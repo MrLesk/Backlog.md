@@ -166,6 +166,27 @@ describe("Task path utilities", () => {
 			expect(await getTaskPath("TASK-PREFIXED-EXTRA", core)).toContain("task-prefixed-extra - Longer.md");
 		});
 
+		it("requires the complete filename ID token before matching numeric IDs", async () => {
+			const tasksDir = core.filesystem.tasksDir;
+			await writeFile(join(tasksDir, "back-1-extra - Longer sibling.md"), "# Longer sibling");
+
+			expect(await getTaskPath("BACK-1", core)).toBeNull();
+			expect(await getTaskFilename("back-001", core)).toBeNull();
+			expect(await taskFileExists("BaCk-1", core)).toBe(false);
+			expect(await getTaskPath("BACK-1-EXTRA", core)).toContain("back-1-extra - Longer sibling.md");
+		});
+
+		it("preserves case-insensitive padded and dotted matching while failing closed on duplicates", async () => {
+			const tasksDir = core.filesystem.tasksDir;
+			await writeFile(join(tasksDir, "back-0001.002 - Padded dotted.md"), "# Padded dotted");
+
+			expect(await getTaskFilename("bAcK-1.2", core)).toBe("back-0001.002 - Padded dotted.md");
+
+			await writeFile(join(tasksDir, "back-1.2 - Canonical duplicate.md"), "# Canonical duplicate");
+			expect(await getTaskPath("BACK-001.02", core)).toBeNull();
+			expect(await getTaskFilename("back-1.2", core)).toBeNull();
+		});
+
 		it("should resolve zero-padded numeric IDs to the same task", async () => {
 			// File exists as task-0001; query with 1
 			const path1 = await getTaskPath("1", core);

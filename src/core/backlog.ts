@@ -551,10 +551,16 @@ export class Core {
 		return await this.fs.loadTask(taskId);
 	}
 
-	hasActiveBranchTaskIdCollision(taskId: string, localTasks: Task[]): boolean {
+	async hasActiveBranchTaskIdCollision(taskId: string, localTasks: Task[]): Promise<boolean> {
 		let matchCount = localTasks.filter((task) => taskIdsEqual(taskId, task.id)).length;
 		if (matchCount > 1) {
 			return true;
+		}
+
+		const config = await this.fs.loadConfig();
+		if (config?.checkActiveBranches === false) {
+			this.activeBranchTaskEntries = [];
+			return false;
 		}
 
 		const branchLocations = new Set<string>();
@@ -672,6 +678,7 @@ export class Core {
 			this.contentStore.dispose();
 			this.contentStore = undefined;
 		}
+		this.activeBranchTaskEntries = [];
 	}
 
 	// Backward compatibility aliases

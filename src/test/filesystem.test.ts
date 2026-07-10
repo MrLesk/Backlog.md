@@ -150,6 +150,37 @@ describe("FileSystem", () => {
 			expect(task).toBeNull();
 		});
 
+		it("does not read a longer legacy sibling for a shorter numeric ID", async () => {
+			await filesystem.saveTask({ ...sampleTask, id: "BACK-1-EXTRA", title: "Longer sibling" });
+
+			expect(await filesystem.loadTask("BACK-1")).toBeNull();
+			expect((await filesystem.loadTask("back-1-extra"))?.title).toBe("Longer sibling");
+		});
+
+		it("does not archive a longer legacy sibling for a shorter numeric ID", async () => {
+			await filesystem.saveTask({ ...sampleTask, id: "BACK-1-EXTRA", title: "Longer sibling" });
+
+			expect(await filesystem.archiveTask("BACK-1")).toBe(false);
+			expect((await filesystem.loadTask("BACK-1-EXTRA"))?.title).toBe("Longer sibling");
+			expect(await readdir(filesystem.archiveTasksDir)).toHaveLength(0);
+		});
+
+		it("does not complete a longer legacy sibling for a shorter numeric ID", async () => {
+			await filesystem.saveTask({ ...sampleTask, id: "BACK-1-EXTRA", title: "Longer sibling" });
+
+			expect(await filesystem.completeTask("BACK-1")).toBe(false);
+			expect((await filesystem.loadTask("BACK-1-EXTRA"))?.title).toBe("Longer sibling");
+			expect(await readdir(filesystem.completedDir)).toHaveLength(0);
+		});
+
+		it("does not delete a longer legacy sibling during numeric save cleanup", async () => {
+			await filesystem.saveTask({ ...sampleTask, id: "BACK-1-EXTRA", title: "Longer sibling" });
+			await filesystem.saveTask({ ...sampleTask, id: "BACK-1", title: "Numeric target" });
+
+			expect((await filesystem.loadTask("BACK-1"))?.title).toBe("Numeric target");
+			expect((await filesystem.loadTask("BACK-1-EXTRA"))?.title).toBe("Longer sibling");
+		});
+
 		it("should list all tasks", async () => {
 			await filesystem.saveTask(sampleTask);
 			await filesystem.saveTask({

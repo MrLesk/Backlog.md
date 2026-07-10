@@ -117,6 +117,15 @@ describe("Core", () => {
 			expect(lastCommit.length).toBeGreaterThan(0);
 		});
 
+		it("does not update a longer legacy sibling for a shorter numeric ID", async () => {
+			await core.createTask({ ...sampleTask, id: "BACK-1-EXTRA", title: "Longer sibling" }, false);
+
+			await expect(core.updateTaskFromInput("BACK-1", { title: "Wrong target" }, false)).rejects.toThrow(
+				"Task not found: BACK-1",
+			);
+			expect((await core.filesystem.loadTask("BACK-1-EXTRA"))?.title).toBe("Longer sibling");
+		});
+
 		it("should archive task with auto-commit", async () => {
 			await core.createTask(sampleTask, true);
 

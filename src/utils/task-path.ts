@@ -9,7 +9,7 @@ import {
 	idForFilename,
 	normalizeId,
 } from "./prefix-config.ts";
-import { isNumericTaskId, normalizeTaskId, numericIdBodiesEqual, taskIdsEqual } from "./task-id.ts";
+import { normalizeTaskId, numericIdBodiesEqual, taskIdsEqual } from "./task-id.ts";
 
 export { normalizeTaskId, taskIdsEqual } from "./task-id.ts";
 
@@ -20,7 +20,7 @@ interface TaskPathContext {
 	};
 }
 
-const DEFAULT_TASK_PREFIX = "task";
+const TASK_FILENAME_ID_PATTERN = /^([a-zA-Z]+)-([a-zA-Z0-9]+(?:[._-][a-zA-Z0-9]+)*) -/;
 
 export function normalizeTaskIdentity(task: Task): Task {
 	const normalizedId = normalizeTaskId(task.id);
@@ -41,27 +41,18 @@ export function normalizeTaskIdentity(task: Task): Task {
  * Extracts the task ID from a filename.
  *
  * @param filename - The filename to extract from (e.g., "task-123 - Some Title.md")
- * @param prefix - The prefix to match (default: "task")
  * @returns The normalized task ID, or null if not found
  *
  * @example
  * extractTaskIdFromFilename("task-123 - Title.md") // => "task-123"
- * extractTaskIdFromFilename("JIRA-456 - Title.md", "JIRA") // => "JIRA-456"
+ * extractTaskIdFromFilename("JIRA-456 - Title.md") // => "JIRA-456"
  */
-function extractTaskIdFromFilename(filename: string, prefix: string = DEFAULT_TASK_PREFIX): string | null {
-	const regex = buildFilenameIdRegex(prefix);
-	const match = filename.match(regex);
-	if (!match?.[1]) return null;
-	return normalizeTaskId(`${prefix}-${match[1]}`, prefix);
-}
-
-/**
- * Checks if an input ID matches a filename loosely (ignoring leading zeros).
- */
-function idsMatchLoosely(inputId: string, filename: string, prefix: string = DEFAULT_TASK_PREFIX): boolean {
-	const candidate = extractTaskIdFromFilename(filename, prefix);
-	if (!candidate) return false;
-	return taskIdsEqual(inputId, candidate, prefix);
+function extractTaskIdFromFilename(filename: string): string | null {
+	const match = filename.match(TASK_FILENAME_ID_PATTERN);
+	const prefix = match?.[1];
+	const body = match?.[2];
+	if (!prefix || !body) return null;
+	return normalizeTaskId(`${prefix}-${body}`, prefix);
 }
 
 /**
@@ -81,7 +72,7 @@ export async function getTaskPath(taskId: string, core?: Core | TaskPathContext)
 			const files = await Array.fromAsync(
 				new Bun.Glob(globPattern).scan({ cwd: coreInstance.filesystem.tasksDir, followSymlinks: true }),
 			);
-			const taskFile = findMatchingFile(files, taskId, detectedPrefix);
+			const taskFile = findMatchingTaskFile(files, taskId);
 			if (taskFile) {
 				return join(coreInstance.filesystem.tasksDir, taskFile);
 			}
@@ -97,7 +88,7 @@ export async function getTaskPath(taskId: string, core?: Core | TaskPathContext)
 			new Bun.Glob("*.md").scan({ cwd: coreInstance.filesystem.tasksDir, followSymlinks: true }),
 		);
 
-		const taskFile = findMatchingNumericTaskFile(allFiles, taskId.trim());
+		const taskFile = findMatchingTaskFile(allFiles, taskId.trim());
 		return taskFile ? join(coreInstance.filesystem.tasksDir, taskFile) : null;
 	} catch {
 		return null;
@@ -107,35 +98,12 @@ export async function getTaskPath(taskId: string, core?: Core | TaskPathContext)
 /**
  * Helper to find a matching file from a list of files
  */
-function findMatchingFile(files: string[], taskId: string, prefix: string): string | undefined {
-	if (!isNumericTaskId(taskId)) {
-		const filenameId = idForFilename(normalizeTaskId(taskId, prefix));
-		const exactMatches = files.filter((file) => file.startsWith(`${filenameId} -`));
-		return exactMatches.length === 1 ? exactMatches[0] : undefined;
-	}
-
-	const matches = files.filter((file) => idsMatchLoosely(taskId, file, prefix));
-	return matches.length === 1 ? matches[0] : undefined;
-}
-
-function findMatchingNumericTaskFile(files: string[], numericPart: string): string | undefined {
+function findMatchingTaskFile(files: string[], taskId: string): string | undefined {
 	const matches = files.filter((file) => {
-		const filePrefix = extractAnyPrefix(file);
-		if (!filePrefix) return false;
-		const fileBody = extractTaskBodyFromFilename(file, filePrefix);
-		return fileBody ? numericIdBodiesEqual(numericPart, fileBody) : false;
+		const filenameTaskId = extractTaskIdFromFilename(file);
+		return filenameTaskId ? taskIdsEqual(taskId, filenameTaskId) : false;
 	});
 	return matches.length === 1 ? matches[0] : undefined;
-}
-
-/**
- * Extract the numeric body from a filename given a prefix
- */
-function extractTaskBodyFromFilename(filename: string, prefix: string): string | null {
-	// Pattern: <prefix>-<number> - <title>.md or <prefix>-<number>.<subtask> - <title>.md
-	const regex = new RegExp(`^${escapeRegex(prefix)}-(\\d+(?:\\.\\d+)*)\\s*-`, "i");
-	const match = filename.match(regex);
-	return match?.[1] ?? null;
 }
 
 /** Default prefix for drafts */
@@ -238,7 +206,7 @@ export async function getTaskFilename(taskId: string, core?: Core | TaskPathCont
 			const files = await Array.fromAsync(
 				new Bun.Glob(globPattern).scan({ cwd: coreInstance.filesystem.tasksDir, followSymlinks: true }),
 			);
-			return findMatchingFile(files, taskId, detectedPrefix) ?? null;
+			return findMatchingTaskFile(files, taskId) ?? null;
 		} catch {
 			return null;
 		}
@@ -250,7 +218,7 @@ export async function getTaskFilename(taskId: string, core?: Core | TaskPathCont
 			new Bun.Glob("*.md").scan({ cwd: coreInstance.filesystem.tasksDir, followSymlinks: true }),
 		);
 
-		return findMatchingNumericTaskFile(allFiles, taskId.trim()) ?? null;
+		return findMatchingTaskFile(allFiles, taskId.trim()) ?? null;
 	} catch {
 		return null;
 	}

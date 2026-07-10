@@ -5,7 +5,7 @@ status: Done
 assignee:
   - '@pr755-takeover'
 created_date: '2025-09-06 22:11'
-updated_date: '2026-07-10 09:05'
+updated_date: '2026-07-10 09:41'
 labels: []
 dependencies: []
 references:
@@ -72,6 +72,8 @@ Out of scope
 5. Cover server routing, identity edge cases, not-found/ambiguous behavior, StrictMode races, and history; then run focused and full automated checks plus compiled desktop browser QA.
 6. Resolve final review boundaries with precision-safe canonical ID matching across public paths, routed-modal cleanup on failed switches, focus containment against background shortcuts, and shared expand-and-focus behavior for collapsed search.
 7. Restore safe exact legacy-ID compatibility end to end through Core, HTTP, and browser routes while preserving numeric canonical ambiguity and traversal-safe validation.
+8. Unify numeric and legacy task filename lookup on a complete canonical ID token terminated by " -", preserving exactly-one-match ambiguity safety across read, update, archive, complete, and save cleanup.
+9. Keep active-branch collision state aligned with current configuration, content-store/root lifecycle, and live Git refs; cover toggle, branch removal, and branch change freshness without broad cache redesign.
 <!-- SECTION:PLAN:END -->
 
 ## Implementation Notes
@@ -104,10 +106,19 @@ Exact-head review found that legacy nonnumeric task IDs remained rejected above 
 Legacy exact-ID correction verified: safe prefixed nonnumeric IDs now resolve by exact identity through the shared resolver, Core, HTTP API, ordinary browser clicks, and direct routes. Malformed and path-like inputs remain invalid, missing safe legacy IDs return not found, duplicate exact IDs fail closed, and numeric/dotted/huge canonical ambiguity remains unchanged. Core checks the uncollapsed local filesystem view before returning a cached task, while the canonical filename separator keeps TASK-PREFIXED and TASK-PREFIXED-EXTRA independent during load and save cleanup.
 
 Final exact-tree evidence: focused compatibility matrix passed 166 tests with 493 assertions; the unchanged full bun test --isolate --timeout=10000 suite passed 1,553 tests with 2 expected interactive skips, 0 failures, and 5,425 assertions across 183 files. TypeScript, Biome over 319 files, production build, and diff hygiene passed. Delegated compiled Chrome QA at 2174x1315 verified ordinary click, lowercase direct route, independent longer-sibling route, focused missing and encoded-traversal errors with no stale modal, and no console warnings/errors or framework overlay. Separate visual observation: the unusually long TASK-PREFIXED-EXTRA ID overlaps its title in the All Tasks table; no layout change was made in this narrow identity correction.
+
+Final code-quality gate on 72f6073 found two bounded correctness defects: numeric filename parsing can target BACK-1-EXTRA as BACK-1, and active-branch duplicate collisions remain stale after config or branch lifecycle changes. Reopened for exact-token parsing and collision-cache freshness regressions; no MCP or broad cache redesign scope.
+
+Final gate corrections on the post-72f6073 tree:
+- Task filename lookup now extracts one complete canonical filename ID token terminated by " -" and sends both numeric and legacy candidates through the same taskIdsEqual matcher with exactly-one-match ambiguity handling. BACK-1 no longer reads, updates, archives, completes, or deletes BACK-1-EXTRA; mixed-case padded/dotted numeric identities still match and canonical duplicates still fail closed.
+- Active-branch collision checks now read current config, ContentStore refreshes before branch-sensitive single-task reads and after config writes/watch events, and cached branch entries clear with content-store/root lifecycle. Real-Git tests cover 409 -> config off 200 -> on 409, branch deletion, and out-of-worktree branch content changes without relying on the main task watcher.
+- Focused verification: 149 tests passed, 0 failed, 416 assertions across task-path, FileSystem, Core, and server regressions.
+- Full verification: bun test --isolate --timeout=10000 passed 1,563 tests with 2 expected interactive skips, 0 failures, and 5,464 assertions across 183 files. bunx tsc --noEmit, Biome over 319 files, production build, and git diff --check passed.
+- Rebuilt compiled desktop Chrome QA at the normal desktop viewport verified: BACK-2 returned a focused not-found alert while BACK-2-EXTRA remained unopened; BACK-2-EXTRA opened exactly; a real active-branch BACK-1 duplicate returned the repair alert; after PUT /api/config set checkActiveBranches=false, the same route opened the local BACK-1 modal and closed cleanly to /tasks. No console warnings/errors or framework overlay appeared. The previously documented long-ID table overlap remains a separate visual observation and was not changed.
 <!-- SECTION:NOTES:END -->
 
 ## Final Summary
 
 <!-- SECTION:FINAL_SUMMARY:BEGIN -->
-Delivered safe shareable task-modal URLs for Board and All Tasks, including exact legacy nonnumeric IDs, without weakening numeric precision, duplicate ambiguity, or traversal safety. Verified through Core/API/browser regressions, 1,553 full-suite passes, static/build checks, and compiled desktop Chrome QA. A separate long-ID table overlap remains a documented layout observation outside this correction.
+Closed the final destructive-identity and stale-collision gaps in PR #755. Task filenames now require a complete "ID -" token before numeric or legacy matching, preventing BACK-1 operations from targeting BACK-1-EXTRA while retaining padding, dotted IDs, case folding, and duplicate fail-closed behavior. Active-branch collisions now follow current configuration and live Git branch state across config, cache, and root lifecycle changes. Verified with 149 focused passes, 1,563 full-suite passes at the unchanged 10-second timeout, static/build checks, and rebuilt compiled desktop browser QA.
 <!-- SECTION:FINAL_SUMMARY:END -->
