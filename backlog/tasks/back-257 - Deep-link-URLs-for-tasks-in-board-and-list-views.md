@@ -5,16 +5,16 @@ status: Done
 assignee:
   - '@pr755-takeover'
 created_date: '2025-09-06 22:11'
-updated_date: '2026-07-10 12:50'
+updated_date: '2026-07-10 13:43'
 labels: []
 dependencies: []
 references:
   - 'https://github.com/MrLesk/Backlog.md/issues/754'
   - 'https://github.com/MrLesk/Backlog.md/pull/755'
 modified_files:
-  - src/file-system/operations.ts
-  - src/utils/config-watcher.ts
-  - src/test/config-watcher.test.ts
+  - src/core/content-store.ts
+  - src/server/index.ts
+  - src/test/content-store.test.ts
   - src/test/server-tasks-spa-fallback.test.ts
 ---
 
@@ -83,6 +83,7 @@ Out of scope
 11. Replace per-task full-store reloads with coalesced fingerprinted collision refreshes that preserve existing branch-difference semantics, make watcher publication retry-safe, and unref the stat fallback with deterministic correctness, concurrency, and process-lifecycle coverage.
 12. Keep the last valid shared config observable while watcher candidates are incomplete or invalid; publish a validated candidate and collision-store transition coherently, with direct-watcher and real-server concurrency regressions plus exact-head verification.
 13. Reject malformed recognized config fields without replacing safe state, reconcile cache-versus-disk changes at watcher startup, and deliver each successful content snapshot exactly once while newer content wins.
+14. Make ContentStore the sole server config publisher, atomically replace task/document/decision snapshots on accepted root changes, rebind one root watcher set with epoch cancellation, and make disposal terminal with deterministic A-to-B-to-A and restart coverage.
 <!-- SECTION:PLAN:END -->
 
 ## Implementation Notes
@@ -138,10 +139,14 @@ Final config fail-closed release gate: the watcher now parses stable candidate b
 Exact-head remediation reopened after d3194f1 audit: preserve custom statuses, root resolution, and active-branch collision safety for malformed recognized fields; reconcile a config changed between cache load and watcher creation; suppress same-content generations after callback success while retaining rejection retries and newer-content delivery.
 
 Authoritative d3194f1 remediation evidence on frozen diff 242d54f34e7abd955afd6f1da80e2859ddb7523764bcc9bc78ead54a2047ba17: malformed explicit statuses and no-colon root pointers retain custom statuses, custom root, checkActiveBranches=true, and duplicate-ID 409 until later valid recovery; cache-A/disk-B startup reconciles exactly once; held successful callbacks suppress same-content generations while rejected callbacks retry and newer content publishes. Focused watcher passed 9/9 with 463 assertions (and independent 27/27 three-run stress); real-server fail-closed integration passed 1/1 with 335 assertions. Two independent read-only reviewers approved the exact diff with no blockers. A first full run was discarded after an unrelated server-assets timeout that immediately passed 4/4 in isolation; the authoritative fresh suite passed 1,583 tests with 2 expected interactive skips, 0 failures, and 6,325 assertions across 184 files in 146.98s. TypeScript, Biome over 320 files, diff hygiene, and production build passed; the frozen fingerprint remained unchanged through those gates.
+
+Reopened after the 4a87f5b exact-head code gate found root-change lifecycle drift: ContentStore refreshed tasks once but retained task/document/decision watchers bound to the previous backlog directory, so later writes under the published root were missed. Remediation is limited to atomic content refresh plus root-dependent watcher rebinding and close/reuse lifecycle hardening.
+
+Final root-lifecycle remediation: ContentStore is now the sole server config publisher. Accepted root changes synchronously retire old root handles, serialize behind queued work, bind the new task/document/decision watchers before loading, atomically replace all three maps, and emit one coherent config snapshot. Epoch checks cancel old-root work after awaits; dispose is terminal and browser initialization rebinds a config watcher whose path changed. Deterministic tests cover held A to B to A transitions, writes during load, post-close old-root writes, later writes at both roots, post-dispose immutability, fresh-store recreation, and custom-root browser initialization. Two independent pre-push reviews approved the frozen diff with no P1 or P2 findings. Authoritative verification: content-store 7 of 7 with 33 assertions; server route suite 20 of 20 with 488 assertions; full isolated suite 1,585 pass, 2 expected interactive skips, 0 failures, 6,348 assertions across 184 files; TypeScript, Biome across 320 files, diff hygiene, and production build passed. Fresh compiled Chrome smoke at desktop viewport verified the deep-link modal, live custom/a to custom/b replacement of task/document/decision state, later writes on all three surfaces, canonical close routing, nonblank rendering, no framework overlay, and empty warning/error logs.
 <!-- SECTION:NOTES:END -->
 
 ## Final Summary
 
 <!-- SECTION:FINAL_SUMMARY:BEGIN -->
-Completed the BACK-257 deep-link takeover and final config-watcher release hardening. Malformed recognized fields can no longer publish parser defaults, switch a safe custom root, or disable duplicate-ID collision protection; watcher startup reconciles cached and on-disk snapshots exactly once; successful content is delivered once while callback failures still retry and newer content wins. Verified by two independent approvals, focused watcher/server regressions, a fresh 1,583-pass full suite with 0 failures, and clean TypeScript, Biome, build, and diff gates. The earlier compiled desktop Board/All Tasks deep-link QA remains applicable because this remediation changed no browser code.
+Completed the root-change release gate by making ContentStore the sole server config publisher, atomically swapping task/document/decision snapshots, rebinding one epoch-guarded watcher set, and making disposal terminal. Deterministic A to B to A, write-during-load, initialization, shutdown, and recreation regressions pass; the authoritative full suite passed 1,585 tests with 0 failures, static/build gates are clean, two independent reviews approved, and freshly compiled Chrome QA verified coherent live root switching and later writes with no console or overlay errors.
 <!-- SECTION:FINAL_SUMMARY:END -->

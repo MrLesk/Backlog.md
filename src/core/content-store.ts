@@ -1,9 +1,9 @@
 import { type FSWatcher, watch } from "node:fs";
 import { readdir, stat } from "node:fs/promises";
-import { basename, join, relative, sep } from "node:path";
+import { basename, join, relative, resolve, sep } from "node:path";
 import type { FileSystem } from "../file-system/operations.ts";
 import { parseDecision, parseDocument, parseTask } from "../markdown/parser.ts";
-import type { Decision, Document, Task, TaskListFilter } from "../types/index.ts";
+import type { BacklogConfig, Decision, Document, Task, TaskListFilter } from "../types/index.ts";
 import { watchConfigFile } from "../utils/config-watcher.ts";
 import { normalizeDocumentRelativePath } from "../utils/document-path.ts";
 import { normalizePriorityValue } from "../utils/priority-config.ts";
@@ -23,7 +23,8 @@ export type ContentStoreEvent =
 	| { type: "ready"; snapshot: ContentSnapshot; version: number }
 	| { type: "tasks"; tasks: Task[]; snapshot: ContentSnapshot; version: number }
 	| { type: "documents"; documents: Document[]; snapshot: ContentSnapshot; version: number }
-	| { type: "decisions"; decisions: Decision[]; snapshot: ContentSnapshot; version: number };
+	| { type: "decisions"; decisions: Decision[]; snapshot: ContentSnapshot; version: number }
+	| { type: "config"; config: BacklogConfig; snapshot: ContentSnapshot; version: number };
 
 export type ContentStoreListener = (event: ContentStoreEvent) => void;
 
@@ -45,11 +46,16 @@ export class ContentStore {
 	private cachedDecisions: Decision[] = [];
 
 	private readonly listeners = new Set<ContentStoreListener>();
-	private readonly watchers: WatchHandle[] = [];
+	private readonly rootWatchers: WatchHandle[] = [];
+	private configWatcher: WatchHandle | null = null;
+	private configWatcherPath: string | null = null;
 	private restoreFilesystemPatch?: () => void;
 	private chainTail: Promise<void> = Promise.resolve();
-	private watchersInitialized = false;
+	private rootWatchersInitialized = false;
 	private configWatcherActive = false;
+	private rootWatcherEpoch = 0;
+	private boundBacklogDir: string | null = null;
+	private closed = false;
 
 	private attachWatcherErrorHandler(watcher: FSWatcher, context: string): void {
 		watcher.on("error", (error) => {
@@ -68,6 +74,7 @@ export class ContentStore {
 	}
 
 	subscribe(listener: ContentStoreListener): () => void {
+		this.assertOpen();
 		this.listeners.add(listener);
 
 		if (this.initialized) {
@@ -82,6 +89,7 @@ export class ContentStore {
 	}
 
 	async ensureInitialized(): Promise<ContentSnapshot> {
+		this.assertOpen();
 		if (this.initialized) {
 			return this.getSnapshot();
 		}
@@ -98,11 +106,15 @@ export class ContentStore {
 	}
 
 	async refreshTasks(): Promise<void> {
+		this.assertOpen();
 		if (!this.initialized) {
 			await this.ensureInitialized();
 			return;
 		}
-		await this.refreshTasksFromDisk();
+		const epoch = this.rootWatcherEpoch;
+		await this.enqueueRoot(epoch, async () => {
+			await this.refreshTasksFromDisk(undefined, undefined, epoch);
+		});
 	}
 
 	getTasks(filter?: TaskListFilter): Task[] {
@@ -144,7 +156,7 @@ export class ContentStore {
 	}
 
 	upsertTask(task: Task): void {
-		if (!this.initialized) {
+		if (this.closed || !this.initialized) {
 			return;
 		}
 		this.tasks.set(task.id, task);
@@ -175,28 +187,34 @@ export class ContentStore {
 	}
 
 	dispose(): void {
+		if (this.closed) {
+			return;
+		}
+		this.closed = true;
+		this.rootWatcherEpoch += 1;
+		this.stopRootWatchers();
+		this.stopConfigWatcher();
 		if (this.restoreFilesystemPatch) {
 			this.restoreFilesystemPatch();
 			this.restoreFilesystemPatch = undefined;
 		}
-		for (const watcher of this.watchers) {
-			try {
-				watcher.stop();
-			} catch {
-				// Ignore watcher shutdown errors
-			}
-		}
-		this.watchers.length = 0;
-		this.watchersInitialized = false;
+		this.listeners.clear();
+		this.initializing = null;
 	}
 
 	private emit(event: ContentStoreEvent): void {
+		if (this.closed) {
+			return;
+		}
 		for (const listener of [...this.listeners]) {
 			listener(event);
 		}
 	}
 
 	private notify(type: ContentStoreEventType): void {
+		if (this.closed) {
+			return;
+		}
 		this.version += 1;
 		const snapshot = this.getSnapshot();
 
@@ -218,6 +236,20 @@ export class ContentStore {
 		this.emit({ type: "ready", snapshot, version: this.version });
 	}
 
+	private notifyConfig(config: BacklogConfig): void {
+		if (this.closed) {
+			return;
+		}
+		this.version += 1;
+		this.emit({ type: "config", config, snapshot: this.getSnapshot(), version: this.version });
+	}
+
+	private assertOpen(): void {
+		if (this.closed) {
+			throw new Error("ContentStore has been disposed.");
+		}
+	}
+
 	private async loadInitialData(): Promise<void> {
 		await this.filesystem.ensureBacklogStructure();
 
@@ -228,6 +260,7 @@ export class ContentStore {
 			this.filesystem.listDocuments(),
 			this.filesystem.listDecisions(),
 		]);
+		if (this.closed) return;
 
 		this.replaceTasks(tasks);
 		this.replaceDocuments(documents);
@@ -241,97 +274,174 @@ export class ContentStore {
 	}
 
 	private async setupWatchers(): Promise<void> {
-		if (this.watchersInitialized) return;
-		this.watchersInitialized = true;
-
-		try {
-			this.watchers.push(this.createTaskWatcher());
-		} catch (error) {
-			if (process.env.DEBUG) {
-				console.error("Failed to initialize task watcher", error);
+		if (this.closed) return;
+		if (!this.rootWatchersInitialized) {
+			const epoch = this.rootWatcherEpoch + 1;
+			this.rootWatcherEpoch = epoch;
+			this.boundBacklogDir = this.filesystem.backlogDir;
+			try {
+				await this.bindRootWatchers(epoch);
+			} catch (error) {
+				if (process.env.DEBUG) {
+					console.error("Failed to initialize content watchers", error);
+				}
 			}
 		}
-
-		try {
-			this.watchers.push(this.createDecisionWatcher());
-		} catch (error) {
-			if (process.env.DEBUG) {
-				console.error("Failed to initialize decision watcher", error);
-			}
-		}
-
-		try {
-			const docWatcher = await this.createDocumentWatcher();
-			this.watchers.push(docWatcher);
-		} catch (error) {
-			if (process.env.DEBUG) {
-				console.error("Failed to initialize document watcher", error);
-			}
-		}
-
-		try {
-			const configWatcher = this.createConfigWatcher();
-			if (configWatcher) {
-				this.watchers.push(configWatcher);
-				this.configWatcherActive = true;
-			}
-		} catch (error) {
-			if (process.env.DEBUG) {
-				console.error("Failed to initialize config watcher", error);
-			}
-		}
+		await this.ensureConfigWatcher();
 	}
 
 	/**
 	 * Retry setting up the config watcher after initialization.
 	 * Called when the config file is created after the server started.
 	 */
-	ensureConfigWatcher(): void {
-		if (this.configWatcherActive) {
+	async ensureConfigWatcher(): Promise<void> {
+		if (this.closed) {
 			return;
 		}
-		try {
-			const configWatcher = this.createConfigWatcher();
-			if (configWatcher) {
-				this.watchers.push(configWatcher);
-				this.configWatcherActive = true;
+		const rootNeedsReconciliation =
+			this.boundBacklogDir !== null && resolve(this.boundBacklogDir) !== resolve(this.filesystem.backlogDir);
+		const configPath = resolve(this.filesystem.configFilePath);
+		if (!this.configWatcherActive || this.configWatcherPath !== configPath) {
+			this.stopConfigWatcher();
+			try {
+				const configWatcher = this.createConfigWatcher();
+				if (configWatcher) {
+					this.configWatcher = configWatcher;
+					this.configWatcherPath = configPath;
+					this.configWatcherActive = true;
+				}
+			} catch (error) {
+				if (process.env.DEBUG) {
+					console.error("Failed to setup config watcher after init", error);
+				}
 			}
-		} catch (error) {
-			if (process.env.DEBUG) {
-				console.error("Failed to setup config watcher after init", error);
+		}
+
+		if (rootNeedsReconciliation) {
+			const config = await this.filesystem.loadConfig();
+			if (config && !this.closed) {
+				await this.handleConfigChanged(config);
 			}
 		}
 	}
 
 	private createConfigWatcher(): WatchHandle | null {
 		return watchConfigFile(this.filesystem, {
-			onConfigChanged: () => {
-				this.enqueue(async () => {
-					this.notify("tasks");
-				});
+			onConfigChanged: async (config) => {
+				if (config) {
+					await this.handleConfigChanged(config);
+				}
 			},
 		});
 	}
 
-	private createTaskWatcher(): WatchHandle {
+	private async handleConfigChanged(config: BacklogConfig): Promise<void> {
+		if (this.closed) return;
+
+		const nextBacklogDir = resolve(this.filesystem.backlogDir);
+		const previousBacklogDir = this.boundBacklogDir ? resolve(this.boundBacklogDir) : null;
+		const rootChanged = previousBacklogDir !== null && previousBacklogDir !== nextBacklogDir;
+		const needsRootWatcher = !this.rootWatchersInitialized;
+		let transitionEpoch = this.rootWatcherEpoch;
+
+		if (rootChanged) {
+			transitionEpoch += 1;
+			this.rootWatcherEpoch = transitionEpoch;
+			this.stopRootWatchers();
+		}
+
+		await this.enqueue(async () => {
+			if (this.closed || (rootChanged && transitionEpoch !== this.rootWatcherEpoch)) return;
+
+			await this.filesystem.ensureBacklogStructure();
+			if (this.closed || (rootChanged && transitionEpoch !== this.rootWatcherEpoch)) return;
+
+			if (rootChanged || needsRootWatcher) {
+				this.boundBacklogDir = this.filesystem.backlogDir;
+				await this.bindRootWatchers(transitionEpoch);
+				if (!this.isRootWatcherCurrent(transitionEpoch)) return;
+			}
+
+			const [tasks, documents, decisions] = await Promise.all([
+				this.loadTasksWithLoader(),
+				this.filesystem.listDocuments(),
+				this.filesystem.listDecisions(),
+			]);
+			if (this.closed || (rootChanged && !this.isRootWatcherCurrent(transitionEpoch))) return;
+
+			this.replaceTasks(tasks);
+			this.replaceDocuments(documents);
+			this.replaceDecisions(decisions);
+			this.notifyConfig(config);
+		});
+	}
+
+	private async bindRootWatchers(epoch: number): Promise<void> {
+		if (this.closed || epoch !== this.rootWatcherEpoch || this.rootWatchersInitialized) return;
+		const created: WatchHandle[] = [];
+		try {
+			created.push(this.createTaskWatcher(epoch));
+			created.push(this.createDecisionWatcher(epoch));
+			created.push(await this.createDocumentWatcher(epoch));
+			if (!this.isRootWatcherCurrent(epoch)) {
+				for (const watcher of created) watcher.stop();
+				return;
+			}
+			this.rootWatchers.push(...created);
+			this.rootWatchersInitialized = true;
+		} catch (error) {
+			for (const watcher of created) {
+				try {
+					watcher.stop();
+				} catch {}
+			}
+			throw error;
+		}
+	}
+
+	private stopRootWatchers(): void {
+		for (const watcher of this.rootWatchers) {
+			try {
+				watcher.stop();
+			} catch {}
+		}
+		this.rootWatchers.length = 0;
+		this.rootWatchersInitialized = false;
+	}
+
+	private stopConfigWatcher(): void {
+		try {
+			this.configWatcher?.stop();
+		} catch {}
+		this.configWatcher = null;
+		this.configWatcherPath = null;
+		this.configWatcherActive = false;
+	}
+
+	private isRootWatcherCurrent(epoch: number): boolean {
+		return !this.closed && epoch === this.rootWatcherEpoch;
+	}
+
+	private createTaskWatcher(epoch: number): WatchHandle {
 		const tasksDir = this.filesystem.tasksDir;
 		const watcher: FSWatcher = watch(tasksDir, { recursive: false }, (eventType, filename) => {
 			const file = this.normalizeFilename(filename);
 			// Accept any prefix pattern (task-, jira-, etc.) followed by ID and ending in .md
 			if (!file || !/^[a-zA-Z]+-/.test(file) || !file.endsWith(".md")) {
-				this.enqueue(async () => {
-					await this.refreshTasksFromDisk();
+				this.enqueueRoot(epoch, async () => {
+					await this.refreshTasksFromDisk(undefined, undefined, epoch);
 				});
 				return;
 			}
 
-			this.enqueue(async () => {
+			this.enqueueRoot(epoch, async () => {
 				const [taskId] = file.split(" ");
 				if (!taskId) return;
 				const normalizedTaskId = normalizeTaskId(taskId);
 
 				const fullPath = join(tasksDir, file);
 				const exists = await Bun.file(fullPath).exists();
+				if (!this.isRootWatcherCurrent(epoch)) return;
 
 				if (!exists) {
 					if (this.tasks.delete(normalizedTaskId)) {
@@ -342,7 +452,7 @@ export class ContentStore {
 				}
 
 				if (eventType === "rename" && exists) {
-					await this.refreshTasksFromDisk();
+					await this.refreshTasksFromDisk(undefined, undefined, epoch);
 					return;
 				}
 
@@ -368,12 +478,17 @@ export class ContentStore {
 						}
 						return this.hasTaskChanged(previous, result);
 					},
+					12,
+					75,
+					() => this.isRootWatcherCurrent(epoch),
 				);
+				if (!this.isRootWatcherCurrent(epoch)) return;
 				if (!task) {
-					await this.refreshTasksFromDisk(normalizedTaskId, previous);
+					await this.refreshTasksFromDisk(normalizedTaskId, previous, epoch);
 					return;
 				}
 
+				if (!this.isRootWatcherCurrent(epoch)) return;
 				this.tasks.set(task.id, task);
 				this.cachedTasks = sortByTaskId(Array.from(this.tasks.values()));
 				this.notify("tasks");
@@ -388,23 +503,24 @@ export class ContentStore {
 		};
 	}
 
-	private createDecisionWatcher(): WatchHandle {
+	private createDecisionWatcher(epoch: number): WatchHandle {
 		const decisionsDir = this.filesystem.decisionsDir;
 		const watcher: FSWatcher = watch(decisionsDir, { recursive: false }, (eventType, filename) => {
 			const file = this.normalizeFilename(filename);
 			if (!file?.startsWith("decision-") || !file.endsWith(".md")) {
-				this.enqueue(async () => {
-					await this.refreshDecisionsFromDisk();
+				this.enqueueRoot(epoch, async () => {
+					await this.refreshDecisionsFromDisk(undefined, undefined, epoch);
 				});
 				return;
 			}
 
-			this.enqueue(async () => {
+			this.enqueueRoot(epoch, async () => {
 				const [idPart] = file.split(" - ");
 				if (!idPart) return;
 
 				const fullPath = join(decisionsDir, file);
 				const exists = await Bun.file(fullPath).exists();
+				if (!this.isRootWatcherCurrent(epoch)) return;
 
 				if (!exists) {
 					if (this.decisions.delete(idPart)) {
@@ -415,7 +531,7 @@ export class ContentStore {
 				}
 
 				if (eventType === "rename" && exists) {
-					await this.refreshDecisionsFromDisk();
+					await this.refreshDecisionsFromDisk(undefined, undefined, epoch);
 					return;
 				}
 
@@ -441,11 +557,16 @@ export class ContentStore {
 						}
 						return this.hasDecisionChanged(previous, result);
 					},
+					12,
+					75,
+					() => this.isRootWatcherCurrent(epoch),
 				);
+				if (!this.isRootWatcherCurrent(epoch)) return;
 				if (!decision) {
-					await this.refreshDecisionsFromDisk(idPart, previous);
+					await this.refreshDecisionsFromDisk(idPart, previous, epoch);
 					return;
 				}
+				if (!this.isRootWatcherCurrent(epoch)) return;
 				this.decisions.set(decision.id, decision);
 				this.cachedDecisions = sortByTaskId(Array.from(this.decisions.values()));
 				this.notify("decisions");
@@ -460,29 +581,31 @@ export class ContentStore {
 		};
 	}
 
-	private async createDocumentWatcher(): Promise<WatchHandle> {
+	private async createDocumentWatcher(epoch: number): Promise<WatchHandle> {
 		const docsDir = this.filesystem.docsDir;
-		return this.createDirectoryWatcher(docsDir, async (eventType, absolutePath, relativePath) => {
+		return this.createDirectoryWatcher(docsDir, epoch, async (eventType, absolutePath, relativePath) => {
+			if (!this.isRootWatcherCurrent(epoch)) return;
 			const base = basename(absolutePath);
 			if (!base.endsWith(".md")) {
 				if (relativePath === null) {
-					await this.refreshDocumentsFromDisk();
+					await this.refreshDocumentsFromDisk(undefined, undefined, epoch);
 				}
 				return;
 			}
 
 			if (!base.startsWith("doc-")) {
-				await this.refreshDocumentsFromDisk();
+				await this.refreshDocumentsFromDisk(undefined, undefined, epoch);
 				return;
 			}
 
 			const [idPart] = base.split(" - ");
 			if (!idPart) {
-				await this.refreshDocumentsFromDisk();
+				await this.refreshDocumentsFromDisk(undefined, undefined, epoch);
 				return;
 			}
 
 			const exists = await Bun.file(absolutePath).exists();
+			if (!this.isRootWatcherCurrent(epoch)) return;
 
 			if (!exists) {
 				if (this.documents.delete(idPart)) {
@@ -493,7 +616,7 @@ export class ContentStore {
 			}
 
 			if (eventType === "rename" && exists) {
-				await this.refreshDocumentsFromDisk();
+				await this.refreshDocumentsFromDisk(undefined, undefined, epoch);
 				return;
 			}
 
@@ -520,12 +643,17 @@ export class ContentStore {
 					}
 					return this.hasDocumentChanged(previous, result);
 				},
+				12,
+				75,
+				() => this.isRootWatcherCurrent(epoch),
 			);
+			if (!this.isRootWatcherCurrent(epoch)) return;
 			if (!document) {
-				await this.refreshDocumentsFromDisk(idPart, previous);
+				await this.refreshDocumentsFromDisk(idPart, previous, epoch);
 				return;
 			}
 
+			if (!this.isRootWatcherCurrent(epoch)) return;
 			this.documents.set(document.id, document);
 			this.cachedDocuments = [...this.documents.values()].sort((a, b) => a.title.localeCompare(b.title));
 			this.notify("documents");
@@ -544,6 +672,7 @@ export class ContentStore {
 
 	private async createDirectoryWatcher(
 		rootDir: string,
+		epoch: number,
 		handler: (eventType: string, absolutePath: string, relativePath: string | null) => Promise<void> | void,
 	): Promise<WatchHandle> {
 		try {
@@ -551,7 +680,7 @@ export class ContentStore {
 				const relativePath = this.normalizeFilename(filename);
 				const absolutePath = relativePath ? join(rootDir, relativePath) : rootDir;
 
-				this.enqueue(async () => {
+				this.enqueueRoot(epoch, async () => {
 					await handler(eventType, absolutePath, relativePath);
 				});
 			});
@@ -564,7 +693,7 @@ export class ContentStore {
 			};
 		} catch (error) {
 			if (this.isRecursiveUnsupported(error)) {
-				return this.createManualRecursiveWatcher(rootDir, handler);
+				return this.createManualRecursiveWatcher(rootDir, epoch, handler);
 			}
 			throw error;
 		}
@@ -619,20 +748,23 @@ export class ContentStore {
 		const originalSaveDecision = this.filesystem.saveDecision;
 
 		this.filesystem.saveTask = (async (task: Task): Promise<string> => {
+			const epoch = this.rootWatcherEpoch;
 			const result = await originalSaveTask.call(this.filesystem, task);
-			await this.handleTaskWrite(task.id);
+			await this.handleTaskWrite(task.id, epoch);
 			return result;
 		}) as FileSystem["saveTask"];
 
 		this.filesystem.saveDocument = (async (document: Document, subPath = ""): Promise<string> => {
+			const epoch = this.rootWatcherEpoch;
 			const result = await originalSaveDocument.call(this.filesystem, document, subPath);
-			await this.handleDocumentWrite(document.id);
+			await this.handleDocumentWrite(document.id, epoch);
 			return result;
 		}) as FileSystem["saveDocument"];
 
 		this.filesystem.saveDecision = (async (decision: Decision): Promise<void> => {
+			const epoch = this.rootWatcherEpoch;
 			await originalSaveDecision.call(this.filesystem, decision);
-			await this.handleDecisionWrite(decision.id);
+			await this.handleDecisionWrite(decision.id, epoch);
 		}) as FileSystem["saveDecision"];
 
 		this.restoreFilesystemPatch = () => {
@@ -642,18 +774,22 @@ export class ContentStore {
 		};
 	}
 
-	private async handleTaskWrite(taskId: string): Promise<void> {
-		if (!this.initialized) {
+	private async handleTaskWrite(taskId: string, epoch: number): Promise<void> {
+		if (!this.initialized || !this.isRootWatcherCurrent(epoch)) {
 			return;
 		}
-		await this.updateTaskFromDisk(taskId);
+		await this.enqueueRoot(epoch, async () => {
+			await this.updateTaskFromDisk(taskId, epoch);
+		});
 	}
 
-	private async handleDocumentWrite(documentId: string): Promise<void> {
-		if (!this.initialized) {
+	private async handleDocumentWrite(documentId: string, epoch: number): Promise<void> {
+		if (!this.initialized || !this.isRootWatcherCurrent(epoch)) {
 			return;
 		}
-		await this.refreshDocumentsFromDisk(documentId, this.documents.get(documentId));
+		await this.enqueueRoot(epoch, async () => {
+			await this.refreshDocumentsFromDisk(documentId, this.documents.get(documentId), epoch);
+		});
 	}
 
 	private hasTaskChanged(previous: Task, next: Task): boolean {
@@ -680,7 +816,11 @@ export class ContentStore {
 		});
 	}
 
-	private async refreshTasksFromDisk(expectedId?: string, previous?: Task): Promise<void> {
+	private async refreshTasksFromDisk(
+		expectedId?: string,
+		previous?: Task,
+		epoch = this.rootWatcherEpoch,
+	): Promise<void> {
 		const tasks = await this.retryRead(
 			async () => this.loadTasksWithLoader(),
 			(expected) => {
@@ -696,8 +836,11 @@ export class ContentStore {
 				}
 				return true;
 			},
+			12,
+			75,
+			() => this.isRootWatcherCurrent(epoch),
 		);
-		if (!tasks) {
+		if (!tasks || !this.isRootWatcherCurrent(epoch)) {
 			return;
 		}
 		if (!this.hasTaskCollectionChanged(tasks)) {
@@ -707,7 +850,11 @@ export class ContentStore {
 		this.notify("tasks");
 	}
 
-	private async refreshDocumentsFromDisk(expectedId?: string, previous?: Document): Promise<void> {
+	private async refreshDocumentsFromDisk(
+		expectedId?: string,
+		previous?: Document,
+		epoch = this.rootWatcherEpoch,
+	): Promise<void> {
 		const documents = await this.retryRead(
 			async () => this.filesystem.listDocuments(),
 			(expected) => {
@@ -723,15 +870,22 @@ export class ContentStore {
 				}
 				return true;
 			},
+			12,
+			75,
+			() => this.isRootWatcherCurrent(epoch),
 		);
-		if (!documents) {
+		if (!documents || !this.isRootWatcherCurrent(epoch)) {
 			return;
 		}
 		this.replaceDocuments(documents);
 		this.notify("documents");
 	}
 
-	private async refreshDecisionsFromDisk(expectedId?: string, previous?: Decision): Promise<void> {
+	private async refreshDecisionsFromDisk(
+		expectedId?: string,
+		previous?: Decision,
+		epoch = this.rootWatcherEpoch,
+	): Promise<void> {
 		const decisions = await this.retryRead(
 			async () => this.filesystem.listDecisions(),
 			(expected) => {
@@ -747,29 +901,37 @@ export class ContentStore {
 				}
 				return true;
 			},
+			12,
+			75,
+			() => this.isRootWatcherCurrent(epoch),
 		);
-		if (!decisions) {
+		if (!decisions || !this.isRootWatcherCurrent(epoch)) {
 			return;
 		}
 		this.replaceDecisions(decisions);
 		this.notify("decisions");
 	}
 
-	private async handleDecisionWrite(decisionId: string): Promise<void> {
-		if (!this.initialized) {
+	private async handleDecisionWrite(decisionId: string, epoch: number): Promise<void> {
+		if (!this.initialized || !this.isRootWatcherCurrent(epoch)) {
 			return;
 		}
-		await this.updateDecisionFromDisk(decisionId);
+		await this.enqueueRoot(epoch, async () => {
+			await this.updateDecisionFromDisk(decisionId, epoch);
+		});
 	}
 
-	private async updateTaskFromDisk(taskId: string): Promise<void> {
+	private async updateTaskFromDisk(taskId: string, epoch = this.rootWatcherEpoch): Promise<void> {
 		const normalizedTaskId = normalizeTaskId(taskId);
 		const previous = this.tasks.get(normalizedTaskId);
 		const task = await this.retryRead(
 			async () => this.filesystem.loadTask(taskId),
 			(result) => result !== null && (!previous || this.hasTaskChanged(previous, result)),
+			12,
+			75,
+			() => this.isRootWatcherCurrent(epoch),
 		);
-		if (!task) {
+		if (!task || !this.isRootWatcherCurrent(epoch)) {
 			return;
 		}
 		this.tasks.set(task.id, task);
@@ -777,13 +939,16 @@ export class ContentStore {
 		this.notify("tasks");
 	}
 
-	private async updateDecisionFromDisk(decisionId: string): Promise<void> {
+	private async updateDecisionFromDisk(decisionId: string, epoch = this.rootWatcherEpoch): Promise<void> {
 		const previous = this.decisions.get(decisionId);
 		const decision = await this.retryRead(
 			async () => this.filesystem.loadDecision(decisionId),
 			(result) => result !== null && (!previous || this.hasDecisionChanged(previous, result)),
+			12,
+			75,
+			() => this.isRootWatcherCurrent(epoch),
 		);
-		if (!decision) {
+		if (!decision || !this.isRootWatcherCurrent(epoch)) {
 			return;
 		}
 		this.decisions.set(decision.id, decision);
@@ -793,6 +958,7 @@ export class ContentStore {
 
 	private async createManualRecursiveWatcher(
 		rootDir: string,
+		epoch: number,
 		handler: (eventType: string, absolutePath: string, relativePath: string | null) => Promise<void> | void,
 	): Promise<WatchHandle> {
 		const watchers = new Map<string, FSWatcher>();
@@ -809,7 +975,7 @@ export class ContentStore {
 		};
 
 		const addWatcher = async (dir: string): Promise<void> => {
-			if (disposed || watchers.has(dir)) {
+			if (disposed || !this.isRootWatcherCurrent(epoch) || watchers.has(dir)) {
 				return;
 			}
 
@@ -821,12 +987,14 @@ export class ContentStore {
 				const absolutePath = relativePath ? join(dir, relativePath) : dir;
 				const normalizedRelative = relativePath ? relative(rootDir, absolutePath) : null;
 
-				this.enqueue(async () => {
+				this.enqueueRoot(epoch, async () => {
 					await handler(eventType, absolutePath, normalizedRelative);
+					if (!this.isRootWatcherCurrent(epoch)) return;
 
 					if (eventType === "rename" && relativePath) {
 						try {
 							const stats = await stat(absolutePath);
+							if (!this.isRootWatcherCurrent(epoch)) return;
 							if (stats.isDirectory()) {
 								await addWatcher(absolutePath);
 							}
@@ -837,12 +1005,18 @@ export class ContentStore {
 				});
 			});
 			this.attachWatcherErrorHandler(watcher, `manual:${dir}`);
+			if (disposed || !this.isRootWatcherCurrent(epoch)) {
+				watcher.close();
+				return;
+			}
 
 			watchers.set(dir, watcher);
 
 			try {
 				const entries = await readdir(dir, { withFileTypes: true });
+				if (disposed || !this.isRootWatcherCurrent(epoch)) return;
 				for (const entry of entries) {
+					if (disposed || !this.isRootWatcherCurrent(epoch)) return;
 					const entryPath = join(dir, entry.name);
 					if (entry.isDirectory()) {
 						await addWatcher(entryPath);
@@ -850,7 +1024,7 @@ export class ContentStore {
 					}
 
 					if (entry.isFile()) {
-						this.enqueue(async () => {
+						this.enqueueRoot(epoch, async () => {
 							await handler("change", entryPath, relative(rootDir, entryPath));
 						});
 					}
@@ -878,11 +1052,14 @@ export class ContentStore {
 		isValid: (result: T) => boolean = (value) => value !== null && value !== undefined,
 		attempts = 12,
 		delayMs = 75,
+		shouldContinue: () => boolean = () => !this.closed,
 	): Promise<T | null> {
 		let lastError: unknown = null;
 		for (let attempt = 1; attempt <= attempts; attempt++) {
+			if (!shouldContinue()) return null;
 			try {
 				const result = await loader();
+				if (!shouldContinue()) return null;
 				if (isValid(result)) {
 					return result;
 				}
@@ -891,6 +1068,7 @@ export class ContentStore {
 			}
 			if (attempt < attempts) {
 				await this.delay(delayMs * attempt);
+				if (!shouldContinue()) return null;
 			}
 		}
 
@@ -904,14 +1082,25 @@ export class ContentStore {
 		await new Promise((resolve) => setTimeout(resolve, ms));
 	}
 
-	private enqueue(fn: () => Promise<void>): void {
-		this.chainTail = this.chainTail
-			.then(() => fn())
-			.catch((error) => {
-				if (process.env.DEBUG) {
-					console.error("ContentStore update failed", error);
-				}
-			});
+	private enqueue(fn: () => Promise<void>): Promise<void> {
+		if (this.closed) return Promise.resolve();
+		const run = this.chainTail.then(async () => {
+			if (this.closed) return;
+			await fn();
+		});
+		this.chainTail = run.catch((error) => {
+			if (process.env.DEBUG) {
+				console.error("ContentStore update failed", error);
+			}
+		});
+		return run;
+	}
+
+	private enqueueRoot(epoch: number, fn: () => Promise<void>): Promise<void> {
+		return this.enqueue(async () => {
+			if (!this.isRootWatcherCurrent(epoch)) return;
+			await fn();
+		});
 	}
 
 	private async loadTasksWithLoader(): Promise<Task[]> {

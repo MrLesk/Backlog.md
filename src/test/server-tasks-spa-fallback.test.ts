@@ -584,9 +584,11 @@ describe("BacklogServer task SPA fallback", () => {
 
 		const activeServer = server as unknown as {
 			core: { filesystem: FileSystem };
-			queueConfigRefresh: (config: BacklogConfig | null) => Promise<void>;
+			contentStore: ContentStore | null;
 		};
 		const serverFilesystem = activeServer.core.filesystem;
+		const contentStore = activeServer.contentStore;
+		if (!contentStore) throw new Error("Expected active content store");
 		const canonicalContent = await Bun.file(serverFilesystem.configFilePath).text();
 		const disabledContent = canonicalContent.replace("check_active_branches: true", "check_active_branches: false");
 		const unusableContents = [
@@ -650,12 +652,10 @@ describe("BacklogServer task SPA fallback", () => {
 			return parsed;
 		};
 
-		const originalQueueConfigRefresh = activeServer.queueConfigRefresh.bind(server);
 		let publicationAttempts = 0;
-		activeServer.queueConfigRefresh = async (config) => {
-			publicationAttempts += 1;
-			await originalQueueConfigRefresh(config);
-		};
+		const unsubscribe = contentStore.subscribe((event) => {
+			if (event.type === "config") publicationAttempts += 1;
+		});
 
 		try {
 			for (const unusableContent of unusableContents) {
@@ -722,8 +722,8 @@ describe("BacklogServer task SPA fallback", () => {
 			expect(publicationAttempts).toBe(1);
 			expect((await serverFilesystem.loadConfig())?.checkActiveBranches).toBe(false);
 		} finally {
+			unsubscribe();
 			serverFilesystem.parseConfig = originalParseConfig;
-			activeServer.queueConfigRefresh = originalQueueConfigRefresh;
 		}
 	});
 

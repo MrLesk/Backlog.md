@@ -11,14 +11,12 @@ import { isCreateLockError } from "../file-system/operations.ts";
 import { BacklogToolError } from "../mcp/errors/mcp-errors.ts";
 import { MilestoneHandlers } from "../mcp/tools/milestones/handlers.ts";
 import {
-	type BacklogConfig,
 	DOCUMENT_TYPE_VALUES,
 	type Document,
 	type SearchPriorityFilter,
 	type SearchResultType,
 	type TaskUpdateInput,
 } from "../types/index.ts";
-import { watchConfig } from "../utils/config-watcher.ts";
 import { detectDuplicateTaskIds } from "../utils/duplicate-detection.ts";
 import { resolveMilestoneInputForStorage } from "../utils/milestone-storage.ts";
 import { formatValidPriorityValues, resolvePriorityValue } from "../utils/priority-config.ts";
@@ -188,8 +186,6 @@ export class BacklogServer {
 	private searchService: SearchService | null = null;
 	private unsubscribeContentStore?: () => void;
 	private storeReadyBroadcasted = false;
-	private configWatcher: { stop: () => void } | null = null;
-	private configRefreshTail: Promise<void> = Promise.resolve();
 
 	constructor(projectPath: string) {
 		this.core = new Core(projectPath, { enableWatchers: true });
@@ -209,6 +205,13 @@ export class BacklogServer {
 
 		if (!this.unsubscribeContentStore) {
 			this.unsubscribeContentStore = store.subscribe((event) => {
+				if (event.type === "config") {
+					this.storeReadyBroadcasted = true;
+					this.projectName = event.config.projectName;
+					this.broadcastConfigUpdated();
+					return;
+				}
+
 				if (event.type === "ready") {
 					if (!this.storeReadyBroadcasted) {
 						this.storeReadyBroadcasted = true;
@@ -264,30 +267,13 @@ export class BacklogServer {
 		}
 	}
 
-	private queueConfigRefresh(updatedConfig: BacklogConfig | null): Promise<void> {
-		if (!updatedConfig || this._stopping) {
-			return Promise.resolve();
-		}
-
-		const refresh = this.configRefreshTail.then(async () => {
-			if (this._stopping) {
-				return;
-			}
-			await this.contentStore?.refreshTasks();
-			if (!this._stopping) {
-				this.broadcastConfigUpdated();
-			}
-		});
-		this.configRefreshTail = refresh.catch(() => {});
-		return refresh;
-	}
-
 	async start(port?: number, openBrowser = true): Promise<void> {
 		// Prevent duplicate starts (e.g., accidental re-entry)
 		if (this.server) {
 			console.log("Server already running");
 			return;
 		}
+		this._stopping = false;
 		// Load config (migration is handled globally by CLI)
 		const config = await this.core.filesystem.loadConfig();
 
@@ -298,11 +284,6 @@ export class BacklogServer {
 		// Check if browser should open (config setting or CLI override)
 		// Default to true if autoOpenBrowser is not explicitly set to false
 		const shouldOpenBrowser = openBrowser && (config?.autoOpenBrowser ?? true);
-
-		// Set up config watcher to broadcast changes
-		this.configWatcher = watchConfig(this.core, {
-			onConfigChanged: async (updatedConfig) => await this.queueConfigRefresh(updatedConfig),
-		});
 
 		try {
 			await this.ensureServicesReady();
@@ -489,13 +470,6 @@ export class BacklogServer {
 			this.unsubscribeContentStore?.();
 			this.unsubscribeContentStore = undefined;
 		} catch {}
-
-		// Stop config watcher
-		try {
-			this.configWatcher?.stop();
-			this.configWatcher = null;
-		} catch {}
-		await this.configRefreshTail;
 
 		this.core.disposeSearchService();
 		this.core.disposeContentStore();
@@ -1307,9 +1281,6 @@ export class BacklogServer {
 				this.projectName = updatedConfig.projectName;
 			}
 
-			// Notify connected clients so that they refresh configuration-dependent data (e.g., statuses)
-			this.broadcastTasksUpdated();
-
 			return Response.json(updatedConfig);
 		} catch (error) {
 			console.error("Error updating config:", error);
@@ -1810,7 +1781,7 @@ export class BacklogServer {
 
 			// Ensure config watcher is set up now that config file exists
 			if (this.contentStore) {
-				this.contentStore.ensureConfigWatcher();
+				await this.contentStore.ensureConfigWatcher();
 			}
 
 			return Response.json({
