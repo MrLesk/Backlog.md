@@ -22,10 +22,9 @@ export function sanitizeUrlTitle(title: string): string {
 	);
 }
 
-/** Creates a URL-friendly path for an item with a prefixed numeric ID. */
+/** Creates a URL-friendly path for a task using its canonical ID. */
 export function createUrlPath(basePath: string, id: string, title: string): string {
 	const sanitizedTitle = sanitizeUrlTitle(title);
-	const cleanId = id.replace(/^[a-zA-Z]+-/, "");
-	const path = `${basePath.replace(/\/$/, "")}/${encodeURIComponent(cleanId)}`;
+	const path = `${basePath.replace(/\/$/, "")}/${encodeURIComponent(id)}`;
 	return sanitizedTitle ? `${path}/${encodeURIComponent(sanitizedTitle)}` : path;
 }

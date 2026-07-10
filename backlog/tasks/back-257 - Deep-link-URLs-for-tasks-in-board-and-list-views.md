@@ -5,7 +5,7 @@ status: Done
 assignee:
   - '@pr755-takeover'
 created_date: '2025-09-06 22:11'
-updated_date: '2026-07-10 07:08'
+updated_date: '2026-07-10 07:26'
 labels: []
 dependencies: []
 references:
@@ -82,10 +82,16 @@ Pinned Bun 1.3.14 production behavior: direct HTMLBundle routes accept POST, PUT
 Final implementation: canonicalized the browser root to /board; added optional board/list task routes backed by the existing modal; preserved cosmetic slug mismatches, filters, Back/Forward/close history, unified search, and legacy highlight links. Shared task identity resolution now supports configured prefixes, padded and dotted IDs, and fails closed on local, cross-branch, or canonical duplicate ambiguity instead of opening an arbitrary task. Added keyboard-openable task rows/cards plus modal focus entry, trap, restoration, and focused route errors. Fixed routed archive history so it closes exactly once. Validation: 62 focused tests passed with 230 assertions; full bun test passed 1,529 with 2 expected interactive TUI skips and 0 failures (5,305 assertions across 183 files); bunx tsc --noEmit, Biome over 319 files, git diff --check, and production build passed. Compiled-binary desktop Chrome QA at 1440x1000 covered direct/refresh routes, Back/Forward/close, keyboard and focus behavior, legacy highlight, invalid/malformed links, padded custom-prefix subtasks, and an injected duplicate-ID repair path. No unexpected console, page, request, or HTTP failures occurred in normal flows. An independent code review found no remaining actionable issues after the collision, archive-history, and root-canonicalization fixes.
 
 CI correction: the initial GitHub Actions run showed that a HEAD request against a Bun 1.3.14 HTMLBundle wildcard can return 500 inside the all-files isolated test runner and then trigger cascading Bun socket errors. The browser GET routes and all compiled-binary smoke jobs passed. HEAD is not part of BACK-257 or Bun's documented method-specific HTMLBundle contract, so the destabilizing HEAD probe was removed; GET route coverage and API wildcard isolation remain. The exact CI-style local suite, bun test --isolate --timeout=10000, now passes 1,529 tests with 2 expected skips, 0 failures, and 5,301 assertions across 183 files. This supersedes the earlier note's HEAD and 5,305-assertion claims.
+
+Exact-head CI follow-up: run 29075849302 independently reproduced the modal-focus assertion race on macOS (line 292), while Windows shard 2 passed after the HEAD probe removal. Spec review also found that ordinary task links stripped explicit alphabetic prefixes, so cross-prefix identities such as BACK-7 and JIRA-007 could collapse to an ambiguous numeric route. This correction pass keeps production focus behavior unchanged, synchronizes both focus assertions with the modal effect, and preserves explicit task prefixes in generated routes with composition coverage.
+
+Final exact-tree correction: generated task links now retain the canonical explicit task ID, so same-number tasks under different prefixes remain unambiguous; numeric direct links remain supported. Modal focus coverage now waits across React's passive-effect boundary on initial open and Forward without changing production focus behavior. Sequential stress passed 100/100 focus runs, 100/100 cross-prefix runs, 270/270 full route-file runs, and 270/270 randomized-order runs across seeds 755, 754, and 257. The final CI-style suite passed 1,531 tests with 2 expected skips, 0 failures, and 5,304 assertions across 183 files. TypeScript, Biome over 319 files, production build, and git diff hygiene also passed. These final counts supersede all earlier focused and full-suite counts.
+
+Focused changed-surface verification passed 20/20 tests with 97 assertions across task route history/focus, identity resolution, server SPA/API isolation, and URL generation.
 <!-- SECTION:NOTES:END -->
 
 ## Final Summary
 
 <!-- SECTION:FINAL_SUMMARY:BEGIN -->
-Added safe, shareable task-modal routes for Board and All Tasks, including canonical /board navigation, reliable history and direct refresh behavior, legacy highlight compatibility, custom/padded/subtask ID support, ambiguity-safe duplicate handling, and keyboard/focus UX. Verified with the complete automated suite, production build, compiled desktop browser QA, and independent review.
+Added safe, shareable task-modal routes for Board and All Tasks with reliable history, direct refresh, legacy highlight compatibility, canonical prefix-preserving URLs, padded and dotted ID support, ambiguity-safe duplicate handling, and keyboard/focus UX. Verified with the full 1,531-test suite, focused and randomized stress runs, static checks, production build, compiled desktop browser QA, and independent review.
 <!-- SECTION:FINAL_SUMMARY:END -->

@@ -26,6 +26,24 @@ const tasks: Task[] = [
 		dependencies: [],
 		createdDate: "2026-07-10",
 	},
+	{
+		id: "BACK-7",
+		title: "Backlog task",
+		status: "To Do",
+		assignee: [],
+		labels: [],
+		dependencies: [],
+		createdDate: "2026-07-10",
+	},
+	{
+		id: "JIRA-007",
+		title: "Jira task",
+		status: "To Do",
+		assignee: [],
+		labels: [],
+		dependencies: [],
+		createdDate: "2026-07-10",
+	},
 ];
 
 const searchResults: SearchResult[] = tasks.map((task) => ({ type: "task", task, score: 1 }));
@@ -242,7 +260,9 @@ describe("task detail routes", () => {
 		await click(card as HTMLElement);
 
 		await waitFor(
-			() => window.location.pathname === "/board/101/fix-labels-caf-docs" && Boolean(container.querySelector("[role='dialog']")),
+			() =>
+				window.location.pathname === "/board/BACK-101/fix-labels-caf-docs" &&
+				Boolean(container.querySelector("[role='dialog']")),
 			"canonical board task route",
 		);
 
@@ -257,7 +277,7 @@ describe("task detail routes", () => {
 		const container = await renderApp("/?highlight=BACK-101&lane=none");
 		await waitFor(
 			() =>
-				window.location.pathname === "/board/101/fix-labels-caf-docs" &&
+				window.location.pathname === "/board/BACK-101/fix-labels-caf-docs" &&
 				Boolean(container.querySelector("[role='dialog']")),
 			"legacy highlight route",
 		);
@@ -285,11 +305,17 @@ describe("task detail routes", () => {
 		await click(title as HTMLButtonElement);
 
 		await waitFor(
-			() => window.location.pathname === "/tasks/101/fix-labels-caf-docs" && Boolean(container.querySelector("[role='dialog']")),
+			() => {
+				const dialog = container.querySelector("[role='dialog']");
+				return (
+					window.location.pathname === "/tasks/BACK-101/fix-labels-caf-docs" &&
+					dialog !== null &&
+					document.activeElement === dialog
+				);
+			},
 			"stable task route and modal",
 		);
 		expect(window.location.search).toBe("?status=To%20Do");
-		expect(document.activeElement).toBe(container.querySelector("[role='dialog']"));
 
 		await travel("back");
 		await waitFor(
@@ -299,16 +325,41 @@ describe("task detail routes", () => {
 
 		await travel("forward");
 		await waitFor(
-			() => window.location.pathname === "/tasks/101/fix-labels-caf-docs" && Boolean(container.querySelector("[role='dialog']")),
+			() => {
+				const dialog = container.querySelector("[role='dialog']");
+				return (
+					window.location.pathname === "/tasks/BACK-101/fix-labels-caf-docs" &&
+					dialog !== null &&
+					document.activeElement === dialog
+				);
+			},
 			"Forward to reopen the modal",
 		);
-		expect(document.activeElement).toBe(container.querySelector("[role='dialog']"));
 
 		await press(container.querySelector("[role='dialog']") as HTMLElement, "Escape");
 		await waitFor(
 			() => window.location.pathname === "/tasks" && container.querySelector("[role='dialog']") === null,
 			"close button to return to list",
 		);
+	});
+
+	it("keeps an explicit task prefix when equal numeric IDs would be ambiguous", async () => {
+		const container = await renderApp("/tasks");
+		await waitFor(() => container.textContent?.includes("Jira task") ?? false, "cross-prefix task list");
+
+		const title = Array.from(container.querySelectorAll("button")).find(
+			(element) => element.textContent === "Jira task",
+		);
+		expect(title).toBeTruthy();
+		await click(title as HTMLButtonElement);
+
+		await waitFor(
+			() =>
+				window.location.pathname === "/tasks/JIRA-007/jira-task" &&
+				container.querySelector("#modal-title")?.textContent?.includes("Jira task") === true,
+			"unambiguous cross-prefix task route",
+		);
+		expect(container.querySelector("[role='alert']")).toBeNull();
 	});
 
 	it("archives a routed task with a single history close", async () => {
@@ -329,7 +380,9 @@ describe("task detail routes", () => {
 		expect(title).toBeTruthy();
 		await click(title as HTMLButtonElement);
 		await waitFor(
-			() => window.location.pathname.startsWith("/tasks/101/") && Boolean(container.querySelector("[role='dialog']")),
+			() =>
+				window.location.pathname.startsWith("/tasks/BACK-101/") &&
+				Boolean(container.querySelector("[role='dialog']")),
 			"routed task modal",
 		);
 
@@ -353,7 +406,7 @@ describe("task detail routes", () => {
 		const firstResponse = new Promise<void>((resolve) => {
 			releaseFirstResponse = resolve;
 		});
-		beforeTaskResponse = (id) => (id === "101" ? firstResponse : Promise.resolve());
+		beforeTaskResponse = (id) => (id === "BACK-101" ? firstResponse : Promise.resolve());
 
 		const container = await renderApp("/tasks");
 		await waitFor(() => container.textContent?.includes(tasks[0]?.title ?? "") ?? false, "task list");
@@ -362,7 +415,7 @@ describe("task detail routes", () => {
 			(element) => element.textContent === tasks[0]?.title,
 		);
 		await click(firstTitle as HTMLButtonElement);
-		await waitFor(() => window.location.pathname.startsWith("/tasks/101/"), "first pending route");
+		await waitFor(() => window.location.pathname.startsWith("/tasks/BACK-101/"), "first pending route");
 
 		const secondTitle = Array.from(container.querySelectorAll("button")).find(
 			(element) => element.textContent === tasks[1]?.title,
@@ -370,7 +423,7 @@ describe("task detail routes", () => {
 		await click(secondTitle as HTMLButtonElement);
 		await waitFor(
 			() =>
-				window.location.pathname === "/tasks/001.02/padded-subtask" &&
+				window.location.pathname === "/tasks/BACK-001.02/padded-subtask" &&
 				container.querySelector("#modal-title")?.textContent?.includes("Padded subtask") === true,
 			"newer task modal",
 		);
@@ -379,7 +432,7 @@ describe("task detail routes", () => {
 		await act(async () => {
 			await Promise.resolve();
 		});
-		expect(window.location.pathname).toBe("/tasks/001.02/padded-subtask");
+		expect(window.location.pathname).toBe("/tasks/BACK-001.02/padded-subtask");
 		expect(container.querySelector("#modal-title")?.textContent).toContain("Padded subtask");
 
 		const closeButton = container.querySelector("button[aria-label='Close modal']");
