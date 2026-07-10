@@ -16,13 +16,42 @@ const CONFIG_SETTLE_DELAY_MS = 50;
 const CONFIG_STABILITY_DELAY_MS = 25;
 const CONFIG_READ_ATTEMPTS = 8;
 const CONFIG_POLL_INTERVAL_MS = 500;
+const BOOLEAN_CONFIG_KEYS = new Set([
+	"auto_open_browser",
+	"hide_empty_columns",
+	"remote_operations",
+	"auto_commit",
+	"filesystem_only",
+	"filesystemOnly",
+	"bypass_git_hooks",
+	"check_active_branches",
+]);
 
-function isUsableConfig(config: BacklogConfig | null): config is BacklogConfig {
+function hasValidExplicitValues(content: string): boolean {
+	for (const rawLine of content.split(/\r?\n/)) {
+		const line = rawLine.trim();
+		if (!line || line.startsWith("#")) continue;
+		const colonIndex = line.indexOf(":");
+		if (colonIndex === -1) continue;
+		const key = line.slice(0, colonIndex).trim();
+		const value = line.slice(colonIndex + 1).trim();
+		if (BOOLEAN_CONFIG_KEYS.has(key) && !/^(?:true|false)$/i.test(value)) return false;
+		if (key === "active_branch_days") {
+			const days = Number(value);
+			if (!/^\d+$/.test(value) || !Number.isFinite(days) || !Number.isInteger(days) || days < 0) return false;
+		}
+		if (key === "task_prefix" && !/^[a-zA-Z]+$/.test(value.replace(/['"]/g, ""))) return false;
+	}
+	return true;
+}
+
+function isUsableConfig(config: BacklogConfig | null, content: string): config is BacklogConfig {
 	return Boolean(
 		config?.projectName.trim() &&
 			Array.isArray(config.statuses) &&
 			Array.isArray(config.labels) &&
-			config.dateFormat.trim(),
+			config.dateFormat.trim() &&
+			hasValidExplicitValues(content),
 	);
 }
 
@@ -65,16 +94,27 @@ export function watchConfigFile(filesystem: FileSystem, callbacks: ConfigWatcher
 					return;
 				}
 
-				filesystem.invalidateConfigCache();
-				const config = await filesystem.loadConfig();
-				if (!isUsableConfig(config)) {
+				const config = filesystem.parseConfig(secondContent);
+				if (!isUsableConfig(config, secondContent)) {
 					continue;
 				}
 				if (stopped || eventGeneration !== generation) {
 					return;
 				}
-				await callbacks.onConfigChanged?.(config);
-				lastPublishedContent = secondContent;
+				if (!filesystem.publishConfig(config, configPath)) {
+					continue;
+				}
+				while (!stopped && eventGeneration === generation) {
+					try {
+						await callbacks.onConfigChanged?.(config);
+						if (!stopped && eventGeneration === generation) {
+							lastPublishedContent = secondContent;
+						}
+						break;
+					} catch {
+						await delay(CONFIG_STABILITY_DELAY_MS);
+					}
+				}
 				return;
 			} catch {
 				// Atomic writes can temporarily remove or lock the watched path on Windows.

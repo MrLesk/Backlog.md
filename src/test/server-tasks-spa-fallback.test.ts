@@ -1,11 +1,12 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
+import { rename } from "node:fs/promises";
 import { join, relative } from "node:path";
 import { $ } from "bun";
 import type { ContentStore } from "../core/content-store.ts";
 import { FileSystem } from "../file-system/operations.ts";
 import { serializeTask } from "../markdown/serializer.ts";
 import { BacklogServer } from "../server/index.ts";
-import type { Task } from "../types/index.ts";
+import type { BacklogConfig, Task } from "../types/index.ts";
 import { createUniqueTestDir, retry, safeCleanup } from "./test-utils.ts";
 
 let TEST_DIR: string;
@@ -32,6 +33,12 @@ async function request(path: string, init: RequestInit = {}, timeoutMs = 1500): 
 	} finally {
 		clearTimeout(timeout);
 	}
+}
+
+async function replaceWatchedConfigFile(configPath: string, content: string): Promise<void> {
+	const replacementPath = `${configPath}.replacement`;
+	await Bun.write(replacementPath, content);
+	await rename(replacementPath, configPath);
 }
 
 async function startServer(): Promise<void> {
@@ -563,6 +570,144 @@ describe("BacklogServer task SPA fallback", () => {
 		expect((await restoredCollision.json()) as { error: string }).toEqual({
 			error: "Task ID BACK-1 is ambiguous. Repair duplicate task IDs before opening it.",
 		});
+	});
+
+	it("keeps config and duplicate-task reads fail-closed while a watched config is unusable", async () => {
+		await restartWithActiveBranchCollision("BACK-1");
+		expect((await request("/api/task/BACK-1")).status).toBe(409);
+
+		const activeServer = server as unknown as {
+			core: { filesystem: FileSystem };
+			queueConfigRefresh: (config: BacklogConfig | null) => Promise<void>;
+		};
+		const serverFilesystem = activeServer.core.filesystem;
+		const canonicalContent = await Bun.file(serverFilesystem.configFilePath).text();
+		const disabledContent = canonicalContent.replace("check_active_branches: true", "check_active_branches: false");
+		const unusableContents = [
+			[
+				'project_name: ""',
+				'statuses: ["To Do", "In Progress", "Done"]',
+				'labels: ["web"]',
+				"date_format: YYYY-MM-DD",
+				"check_active_branches: false",
+				'task_prefix: "BACK"',
+				"",
+			].join("\n"),
+			[
+				'project_name: "Malformed boolean"',
+				'statuses: ["To Do", "In Progress", "Done"]',
+				'labels: ["web"]',
+				"date_format: YYYY-MM-DD",
+				"check_active_branches: fals",
+				'task_prefix: "BACK"',
+				"",
+			].join("\n"),
+			[
+				'project_name: "Malformed active days"',
+				'statuses: ["To Do", "In Progress", "Done"]',
+				'labels: ["web"]',
+				"date_format: YYYY-MM-DD",
+				"check_active_branches: true",
+				"active_branch_days: nope",
+				'task_prefix: "BACK"',
+				"",
+			].join("\n"),
+			[
+				'project_name: "Malformed task prefix"',
+				'statuses: ["To Do", "In Progress", "Done"]',
+				'labels: ["web"]',
+				"date_format: YYYY-MM-DD",
+				"check_active_branches: true",
+				"active_branch_days: 30",
+				'task_prefix: "BACK-2"',
+				"",
+			].join("\n"),
+		];
+
+		const originalParseConfig = serverFilesystem.parseConfig.bind(serverFilesystem);
+		const unusableParseAttempts = new Map(unusableContents.map((content) => [content, 0]));
+		serverFilesystem.parseConfig = (content) => {
+			const parsed = originalParseConfig(content);
+			const attempts = unusableParseAttempts.get(content);
+			if (attempts !== undefined) {
+				unusableParseAttempts.set(content, attempts + 1);
+			}
+			return parsed;
+		};
+
+		const originalQueueConfigRefresh = activeServer.queueConfigRefresh.bind(server);
+		let publicationAttempts = 0;
+		activeServer.queueConfigRefresh = async (config) => {
+			publicationAttempts += 1;
+			await originalQueueConfigRefresh(config);
+		};
+
+		try {
+			for (const unusableContent of unusableContents) {
+				await replaceWatchedConfigFile(serverFilesystem.configFilePath, unusableContent);
+				await retry(
+					async () => {
+						if ((unusableParseAttempts.get(unusableContent) ?? 0) < 8) {
+							throw new Error("watchers have not exhausted the unusable candidate");
+						}
+						return true;
+					},
+					12,
+					25,
+				);
+				expect(publicationAttempts).toBe(0);
+
+				const concurrentReads = await Promise.all(
+					Array.from({ length: 8 }, async () => {
+						const [configResponse, coreConfig, taskResponse] = await Promise.all([
+							request("/api/config", {}, 5000),
+							serverFilesystem.loadConfig(),
+							request("/api/task/BACK-1", {}, 5000),
+						]);
+						return {
+							apiConfig: (await configResponse.json()) as BacklogConfig,
+							configStatus: configResponse.status,
+							coreConfig,
+							taskStatus: taskResponse.status,
+						};
+					}),
+				);
+				for (const read of concurrentReads) {
+					expect(read.configStatus).toBe(200);
+					expect(read.apiConfig.projectName).toBe("Task SPA Fallback");
+					expect(read.apiConfig.checkActiveBranches).toBe(true);
+					expect(read.coreConfig?.projectName).toBe("Task SPA Fallback");
+					expect(read.coreConfig?.checkActiveBranches).toBe(true);
+					expect(read.taskStatus).toBe(409);
+				}
+				expect(publicationAttempts).toBe(0);
+			}
+
+			await replaceWatchedConfigFile(serverFilesystem.configFilePath, disabledContent);
+			await retry(
+				async () => {
+					const [configResponse, taskResponse] = await Promise.all([
+						request("/api/config", {}, 5000),
+						request("/api/task/BACK-1", {}, 5000),
+					]);
+					const config = (await configResponse.json()) as BacklogConfig;
+					if (publicationAttempts !== 1 || config.checkActiveBranches !== false || taskResponse.status !== 200) {
+						throw new Error("valid config has not published coherently");
+					}
+					return true;
+				},
+				12,
+				25,
+			);
+
+			await replaceWatchedConfigFile(serverFilesystem.configFilePath, disabledContent);
+			await Bun.sleep(250);
+			expect(publicationAttempts).toBe(1);
+			expect((await serverFilesystem.loadConfig())?.checkActiveBranches).toBe(false);
+		} finally {
+			serverFilesystem.parseConfig = originalParseConfig;
+			activeServer.queueConfigRefresh = originalQueueConfigRefresh;
+		}
 	});
 
 	it("drops a cached collision after the active branch is removed", async () => {

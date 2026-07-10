@@ -134,6 +134,58 @@ function resolveBuiltInBacklogDirectory(projectRoot: string): {
 	return null;
 }
 
+export function resolveBacklogDirectoryFromRootConfig(
+	projectRoot: string,
+	backlogDirectory: string | null | undefined,
+): BacklogDirectoryResolution {
+	const rootConfigPath = join(projectRoot, DEFAULT_FILES.ROOT_CONFIG);
+	const configuredBacklogDir = normalizeProjectBacklogDirectory(backlogDirectory);
+	if (configuredBacklogDir) {
+		const configuredBacklogPath = join(projectRoot, configuredBacklogDir);
+		const configuredSource: BacklogDirectorySource =
+			configuredBacklogDir === DEFAULT_DIRECTORIES.BACKLOG
+				? "backlog"
+				: configuredBacklogDir === DEFAULT_DIRECTORIES.HIDDEN_BACKLOG
+					? ".backlog"
+					: "custom";
+		return {
+			projectRoot,
+			backlogDir: configuredBacklogDir,
+			backlogPath: configuredBacklogPath,
+			source: configuredSource,
+			configPath: rootConfigPath,
+			configSource: "root",
+			rootConfigPath,
+			rootConfigExists: true,
+		};
+	}
+
+	const builtIn = resolveBuiltInBacklogDirectory(projectRoot);
+	if (builtIn) {
+		return {
+			projectRoot,
+			backlogDir: builtIn.backlogDir,
+			backlogPath: builtIn.backlogPath,
+			source: builtIn.source,
+			configPath: rootConfigPath,
+			configSource: "root",
+			rootConfigPath,
+			rootConfigExists: true,
+		};
+	}
+
+	return {
+		projectRoot,
+		backlogDir: null,
+		backlogPath: null,
+		source: null,
+		configPath: null,
+		configSource: null,
+		rootConfigPath,
+		rootConfigExists: true,
+	};
+}
+
 export function normalizeProjectBacklogDirectory(value: string | null | undefined): string | null {
 	const trimmed = String(value ?? "").trim();
 	if (!trimmed) {
@@ -159,52 +211,8 @@ export function resolveBacklogDirectory(projectRoot: string): BacklogDirectoryRe
 
 	if (rootConfigExists) {
 		const metadata = readRootBacklogConfigMetadata(rootConfigPath);
-		const configuredBacklogDir = metadata?.backlogDirectory ?? null;
-		if (metadata && configuredBacklogDir) {
-			const configuredBacklogPath = join(projectRoot, configuredBacklogDir);
-			const configuredSource: BacklogDirectorySource =
-				configuredBacklogDir === DEFAULT_DIRECTORIES.BACKLOG
-					? "backlog"
-					: configuredBacklogDir === DEFAULT_DIRECTORIES.HIDDEN_BACKLOG
-						? ".backlog"
-						: "custom";
-			return {
-				projectRoot,
-				backlogDir: configuredBacklogDir,
-				backlogPath: configuredBacklogPath,
-				source: configuredSource,
-				configPath: rootConfigPath,
-				configSource: "root",
-				rootConfigPath,
-				rootConfigExists,
-			};
-		}
-
 		if (metadata) {
-			const builtIn = resolveBuiltInBacklogDirectory(projectRoot);
-			if (builtIn) {
-				return {
-					projectRoot,
-					backlogDir: builtIn.backlogDir,
-					backlogPath: builtIn.backlogPath,
-					source: builtIn.source,
-					configPath: rootConfigPath,
-					configSource: "root",
-					rootConfigPath,
-					rootConfigExists,
-				};
-			}
-
-			return {
-				projectRoot,
-				backlogDir: null,
-				backlogPath: null,
-				source: null,
-				configPath: null,
-				configSource: null,
-				rootConfigPath,
-				rootConfigExists,
-			};
+			return resolveBacklogDirectoryFromRootConfig(projectRoot, metadata.backlogDirectory);
 		}
 	}
 

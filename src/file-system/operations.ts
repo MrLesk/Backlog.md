@@ -7,7 +7,11 @@ import { parseDecision, parseDocument, parseMilestone, parseTask } from "../mark
 import { serializeDecision, serializeDocument, serializeTask } from "../markdown/serializer.ts";
 import type { BacklogConfig, Decision, Document, Milestone, Task, TaskListFilter } from "../types/index.ts";
 import type { BacklogConfigSource } from "../utils/backlog-directory.ts";
-import { normalizeProjectBacklogDirectory, resolveBacklogDirectory } from "../utils/backlog-directory.ts";
+import {
+	normalizeProjectBacklogDirectory,
+	resolveBacklogDirectory,
+	resolveBacklogDirectoryFromRootConfig,
+} from "../utils/backlog-directory.ts";
 import { documentIdsEqual, normalizeDocumentId } from "../utils/document-id.ts";
 import { normalizeDocumentRelativePath, normalizeDocumentSubPath } from "../utils/document-path.ts";
 import {
@@ -126,7 +130,30 @@ export class FileSystem {
 
 	invalidateConfigCache(): void {
 		this.cachedConfig = null;
-		const resolution = resolveBacklogDirectory(this.projectRoot);
+		this.refreshConfigResolution();
+	}
+
+	publishConfig(config: BacklogConfig, sourceConfigPath: string): boolean {
+		const rootConfigPath = join(this.projectRoot, DEFAULT_FILES.ROOT_CONFIG);
+		if (resolve(sourceConfigPath) === resolve(rootConfigPath)) {
+			if (config.backlogDirectory !== undefined && normalizeProjectBacklogDirectory(config.backlogDirectory) === null) {
+				return false;
+			}
+			const resolution = resolveBacklogDirectoryFromRootConfig(this.projectRoot, config.backlogDirectory);
+			if (!resolution.backlogDir || !resolution.backlogPath || resolution.configSource !== "root") {
+				return false;
+			}
+			this.applyConfigResolution(resolution);
+		}
+		this.cachedConfig = config;
+		return true;
+	}
+
+	private refreshConfigResolution(): void {
+		this.applyConfigResolution(resolveBacklogDirectory(this.projectRoot));
+	}
+
+	private applyConfigResolution(resolution: ReturnType<typeof resolveBacklogDirectory>): void {
 		this.resolvedBacklogDirName = resolution.backlogDir ?? DEFAULT_DIRECTORIES.BACKLOG;
 		this.resolvedBacklogDir = resolution.backlogPath ?? join(this.projectRoot, DEFAULT_DIRECTORIES.BACKLOG);
 		this.resolvedConfigPath = resolution.configPath ?? join(this.resolvedBacklogDir, DEFAULT_FILES.CONFIG);
@@ -1402,7 +1429,7 @@ ${description || `Milestone: ${title}`}`,
 		}
 	}
 
-	private parseConfig(content: string): BacklogConfig {
+	parseConfig(content: string): BacklogConfig {
 		const config: Partial<BacklogConfig> = {};
 		const parsedDefinitionOfDone = this.parseDefinitionOfDone(content);
 		const lines = content.split("\n");
