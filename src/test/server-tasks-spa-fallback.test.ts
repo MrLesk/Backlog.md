@@ -483,7 +483,7 @@ describe("BacklogServer task SPA fallback", () => {
 		}
 		const branchContent = await (
 			server as unknown as { core: { git: { showFile: (ref: string, path: string) => Promise<string> } } }
-		).core.git.showFile("collision-shadow", relative(TEST_DIR, mainTask.filePath));
+		).core.git.showFile("collision-shadow", relative(TEST_DIR, mainTask.filePath).replaceAll("\\", "/"));
 		await Bun.write(mainTask.filePath, branchContent);
 
 		const identical = await request("/api/task/BACK-1", {}, 5000);
