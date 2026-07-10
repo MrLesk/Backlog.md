@@ -350,4 +350,68 @@ describe("Web task type UI", () => {
 		expect(typeSelect.getAttribute("aria-describedby")).toBe("task-type-update-error");
 		expect(container.querySelector("#task-type-update-error")?.getAttribute("role")).toBe("alert");
 	});
+
+	it("keeps an in-flight type write locked across same-task refreshes", async () => {
+		const container = setupDom();
+		const task = createTask({ type: "Bug" });
+		let updateCalls = 0;
+		let savedCalls = 0;
+		let receivedUpdate: TaskUpdateRequest | undefined;
+		let resolveUpdate: ((updatedTask: Task) => void) | undefined;
+		const updateResult = new Promise<Task>((resolve) => {
+			resolveUpdate = resolve;
+		});
+		apiClient.updateTask = async (taskId, updates) => {
+			expect(taskId).toBe(task.id);
+			updateCalls += 1;
+			receivedUpdate = updates;
+			return updateResult;
+		};
+
+		const renderModal = async (refreshedTask: Task, availableTypes: string[], availableStatuses: string[]) => {
+			await act(async () => {
+				activeRoot?.render(
+					<ThemeProvider>
+						<TaskDetailsModal
+							task={refreshedTask}
+							isOpen
+							onClose={() => {}}
+							onSaved={async () => {
+								savedCalls += 1;
+							}}
+							availableTypes={availableTypes}
+							availableStatuses={availableStatuses}
+						/>
+					</ThemeProvider>,
+				);
+				await Promise.resolve();
+			});
+		};
+
+		activeRoot = createRoot(container);
+		await renderModal(task, ["Bug", "feature"], ["To Do", "Done"]);
+		let typeSelect = container.querySelector("select[aria-label='Task type']") as HTMLSelectElement;
+		await setSelectValue(typeSelect, "feature");
+		await waitFor(() => updateCalls === 1 && typeSelect.disabled);
+
+		const refreshedTask = { ...task, description: "Refreshed while the type write is pending" };
+		await renderModal(refreshedTask, ["Bug", "Feature"], ["Backlog", "To Do", "Done"]);
+		typeSelect = container.querySelector("select[aria-label='Task type']") as HTMLSelectElement;
+		expect(typeSelect.disabled).toBe(true);
+		expect(typeSelect.value).toBe("Feature");
+
+		await setSelectValue(typeSelect, "Bug");
+		expect(updateCalls).toBe(1);
+		expect(receivedUpdate).toEqual({ type: "feature" });
+
+		await act(async () => {
+			resolveUpdate?.({ ...refreshedTask, type: "Feature" });
+			await updateResult;
+			await Promise.resolve();
+		});
+		await waitFor(() => !typeSelect.disabled && typeSelect.value === "Feature");
+
+		expect(updateCalls).toBe(1);
+		expect(savedCalls).toBe(1);
+	});
 });

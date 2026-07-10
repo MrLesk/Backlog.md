@@ -377,11 +377,14 @@ export const TaskDetailsModal: React.FC<Props> = ({
 
   // Reset local state when task changes or modal opens
   useEffect(() => {
-    typeUpdateRequestRef.current += 1;
-    typeUpdateInFlightRef.current = false;
-    setIsTypeUpdating(false);
-    setTypeUpdateError(null);
     const nextTaskId = task?.id ?? "";
+    const modalIdentityChanged = previousTaskId.current !== nextTaskId || previousIsOpen.current !== isOpen;
+    if (modalIdentityChanged) {
+      typeUpdateRequestRef.current += 1;
+      typeUpdateInFlightRef.current = false;
+      setIsTypeUpdating(false);
+      setTypeUpdateError(null);
+    }
     const nextFormState = buildTaskDetailsFormState({
       task,
       isCreateMode,

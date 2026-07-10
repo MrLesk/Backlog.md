@@ -189,6 +189,20 @@ const expectBoardFiltersInHeader = (container: HTMLElement) => {
 	expect(toolbar).toBeTruthy();
 	expect(toolbar?.textContent).toContain("All Tasks");
 	expect(toolbar?.textContent).toContain("Milestone");
+	const heading = Array.from(container.querySelectorAll("h2")).find(
+		(element) => element.textContent?.trim() === "Kanban Board",
+	);
+	const newTaskButton = Array.from(container.querySelectorAll("button")).find(
+		(button) => button.textContent?.trim() === "+ New Task",
+	);
+	const header = heading?.parentElement?.parentElement;
+	expect(heading).toBeTruthy();
+	expect(newTaskButton).toBeTruthy();
+	expect(heading?.parentElement?.contains(newTaskButton as HTMLButtonElement)).toBe(true);
+	expect(heading?.parentElement?.className).toContain("flex-wrap");
+	expect(header?.className).toContain("space-y-3");
+	expect(toolbar?.parentElement).toBe(header);
+	expect(heading?.parentElement?.contains(toolbar as HTMLElement)).toBe(false);
 
 	const boardFilters = toolbar?.querySelector("[aria-label='Board filters']");
 	expect(boardFilters).toBeTruthy();
