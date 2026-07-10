@@ -11,6 +11,7 @@ import { isCreateLockError } from "../file-system/operations.ts";
 import { BacklogToolError } from "../mcp/errors/mcp-errors.ts";
 import { MilestoneHandlers } from "../mcp/tools/milestones/handlers.ts";
 import {
+	type BacklogConfig,
 	DOCUMENT_TYPE_VALUES,
 	type Document,
 	type SearchPriorityFilter,
@@ -188,6 +189,7 @@ export class BacklogServer {
 	private unsubscribeContentStore?: () => void;
 	private storeReadyBroadcasted = false;
 	private configWatcher: { stop: () => void } | null = null;
+	private configRefreshTail: Promise<void> = Promise.resolve();
 
 	constructor(projectPath: string) {
 		this.core = new Core(projectPath, { enableWatchers: true });
@@ -262,6 +264,24 @@ export class BacklogServer {
 		}
 	}
 
+	private queueConfigRefresh(updatedConfig: BacklogConfig | null): Promise<void> {
+		if (!updatedConfig || this._stopping) {
+			return Promise.resolve();
+		}
+
+		const refresh = this.configRefreshTail.then(async () => {
+			if (this._stopping) {
+				return;
+			}
+			await this.contentStore?.refreshTasks();
+			if (!this._stopping) {
+				this.broadcastConfigUpdated();
+			}
+		});
+		this.configRefreshTail = refresh.catch(() => {});
+		return refresh;
+	}
+
 	async start(port?: number, openBrowser = true): Promise<void> {
 		// Prevent duplicate starts (e.g., accidental re-entry)
 		if (this.server) {
@@ -281,10 +301,7 @@ export class BacklogServer {
 
 		// Set up config watcher to broadcast changes
 		this.configWatcher = watchConfig(this.core, {
-			onConfigChanged: async () => {
-				await this.contentStore?.refreshTasks();
-				this.broadcastConfigUpdated();
-			},
+			onConfigChanged: async (updatedConfig) => await this.queueConfigRefresh(updatedConfig),
 		});
 
 		try {
@@ -478,6 +495,7 @@ export class BacklogServer {
 			this.configWatcher?.stop();
 			this.configWatcher = null;
 		} catch {}
+		await this.configRefreshTail;
 
 		this.core.disposeSearchService();
 		this.core.disposeContentStore();
@@ -1287,7 +1305,6 @@ export class BacklogServer {
 
 			// Save configuration
 			await this.core.filesystem.saveConfig(updatedConfig);
-			await this.contentStore?.refreshTasks();
 
 			// Update local project name if changed
 			if (updatedConfig.projectName !== this.projectName) {

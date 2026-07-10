@@ -4,6 +4,7 @@ import { basename, join, relative, sep } from "node:path";
 import type { FileSystem } from "../file-system/operations.ts";
 import { parseDecision, parseDocument, parseTask } from "../markdown/parser.ts";
 import type { Decision, Document, Task, TaskListFilter } from "../types/index.ts";
+import { watchConfigFile } from "../utils/config-watcher.ts";
 import { normalizeDocumentRelativePath } from "../utils/document-path.ts";
 import { normalizePriorityValue } from "../utils/priority-config.ts";
 import { normalizeTaskId, normalizeTaskIdentity, taskIdsEqual } from "../utils/task-path.ts";
@@ -303,30 +304,13 @@ export class ContentStore {
 	}
 
 	private createConfigWatcher(): WatchHandle | null {
-		const configPath = this.filesystem.configFilePath;
-		try {
-			const watcher: FSWatcher = watch(configPath, (eventType) => {
-				if (eventType !== "change" && eventType !== "rename") {
-					return;
-				}
+		return watchConfigFile(this.filesystem, {
+			onConfigChanged: () => {
 				this.enqueue(async () => {
-					this.filesystem.invalidateConfigCache();
 					this.notify("tasks");
 				});
-			});
-			this.attachWatcherErrorHandler(watcher, "config");
-
-			return {
-				stop() {
-					watcher.close();
-				},
-			};
-		} catch (error) {
-			if (process.env.DEBUG) {
-				console.error("Failed to watch config file", error);
-			}
-			return null;
-		}
+			},
+		});
 	}
 
 	private createTaskWatcher(): WatchHandle {

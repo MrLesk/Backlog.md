@@ -294,11 +294,6 @@ export class Core {
 			return;
 		}
 
-		const config = await this.fs.loadConfig();
-		if (config?.checkActiveBranches === false) {
-			return;
-		}
-
 		await this.contentStore.refreshTasks();
 	}
 

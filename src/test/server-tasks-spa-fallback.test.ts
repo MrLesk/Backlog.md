@@ -52,7 +52,10 @@ async function startServer(): Promise<void> {
 	);
 }
 
-async function restartWithActiveBranchCollision(branchTaskId: "BACK-1" | "BACK-001"): Promise<void> {
+async function restartWithActiveBranchCollision(
+	branchTaskId: "BACK-1" | "BACK-001",
+	includeBranchOnlyTask = false,
+): Promise<void> {
 	await server?.stop();
 	server = null;
 
@@ -78,6 +81,12 @@ async function restartWithActiveBranchCollision(branchTaskId: "BACK-1" | "BACK-0
 		await Bun.write(
 			join(filesystem.tasksDir, "back-001 - Padded branch collision.md"),
 			serializeTask({ ...mainTask, id: branchTaskId, title: "Padded branch collision" }),
+		);
+	}
+	if (includeBranchOnlyTask) {
+		await Bun.write(
+			join(filesystem.tasksDir, "back-2 - Branch-only task.md"),
+			serializeTask({ ...mainTask, id: "BACK-2", title: "Branch-only task" }),
 		);
 	}
 
@@ -292,9 +301,16 @@ describe("BacklogServer task SPA fallback", () => {
 	}
 
 	it("uses the current config when active-branch collision checks are toggled", async () => {
-		await restartWithActiveBranchCollision("BACK-1");
+		await restartWithActiveBranchCollision("BACK-1", true);
 
-		expect((await request("/api/task/BACK-1")).status).toBe(409);
+		const initialCollision = await request("/api/task/BACK-1");
+		expect(initialCollision.status).toBe(409);
+		expect((await initialCollision.json()) as { error: string }).toEqual({
+			error: "Task ID BACK-1 is ambiguous. Repair duplicate task IDs before opening it.",
+		});
+		const initialTasks = await request("/api/tasks?crossBranch=true");
+		expect(initialTasks.status).toBe(200);
+		expect(((await initialTasks.json()) as Task[]).map((task) => task.id)).toContain("BACK-2");
 		const configResponse = await request("/api/config");
 		expect(configResponse.status).toBe(200);
 		const config = (await configResponse.json()) as Record<string, unknown>;
@@ -309,10 +325,20 @@ describe("BacklogServer task SPA fallback", () => {
 			5000,
 		);
 		expect(disabled.status).toBe(200);
-		await Bun.sleep(200);
+		expect((await disabled.json()) as { checkActiveBranches: boolean }).toMatchObject({
+			checkActiveBranches: false,
+		});
+		const disabledReadback = await request("/api/config");
+		expect(disabledReadback.status).toBe(200);
+		expect((await disabledReadback.json()) as { checkActiveBranches: boolean }).toMatchObject({
+			checkActiveBranches: false,
+		});
 		const localOnly = await request("/api/task/BACK-1");
 		expect(localOnly.status).toBe(200);
 		expect(((await localOnly.json()) as Task).title).toBe("Main collision task");
+		const localTasks = await request("/api/tasks?crossBranch=true");
+		expect(localTasks.status).toBe(200);
+		expect(((await localTasks.json()) as Task[]).map((task) => task.id)).not.toContain("BACK-2");
 
 		const enabled = await request(
 			"/api/config",
@@ -324,7 +350,22 @@ describe("BacklogServer task SPA fallback", () => {
 			5000,
 		);
 		expect(enabled.status).toBe(200);
-		expect((await request("/api/task/BACK-1")).status).toBe(409);
+		expect((await enabled.json()) as { checkActiveBranches: boolean }).toMatchObject({
+			checkActiveBranches: true,
+		});
+		const enabledReadback = await request("/api/config");
+		expect(enabledReadback.status).toBe(200);
+		expect((await enabledReadback.json()) as { checkActiveBranches: boolean }).toMatchObject({
+			checkActiveBranches: true,
+		});
+		const restoredTasks = await request("/api/tasks?crossBranch=true");
+		expect(restoredTasks.status).toBe(200);
+		expect(((await restoredTasks.json()) as Task[]).map((task) => task.id)).toContain("BACK-2");
+		const restoredCollision = await request("/api/task/BACK-1");
+		expect(restoredCollision.status).toBe(409);
+		expect((await restoredCollision.json()) as { error: string }).toEqual({
+			error: "Task ID BACK-1 is ambiguous. Repair duplicate task IDs before opening it.",
+		});
 	});
 
 	it("drops a cached collision after the active branch is removed", async () => {
