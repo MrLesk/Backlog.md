@@ -5,7 +5,7 @@ status: Done
 assignee:
   - '@pr755-takeover'
 created_date: '2025-09-06 22:11'
-updated_date: '2026-07-10 10:18'
+updated_date: '2026-07-10 11:23'
 labels: []
 dependencies: []
 references:
@@ -71,10 +71,11 @@ Out of scope
 4. Update ordinary board/list and unified-search task opens to generate stable URLs without changing non-task views.
 5. Cover server routing, identity edge cases, not-found/ambiguous behavior, StrictMode races, and history; then run focused and full automated checks plus compiled desktop browser QA.
 6. Resolve final review boundaries with precision-safe canonical ID matching across public paths, routed-modal cleanup on failed switches, focus containment against background shortcuts, and shared expand-and-focus behavior for collapsed search.
-7. Restore safe exact legacy-ID compatibility end to end through Core, HTTP, and browser routes while preserving numeric canonical ambiguity and traversal-safe validation.
+7. Restore safe exact legacy-ID compatibility end to end through Core, HTTP, and browser routes without weakening numeric ambiguity or URL safety.
 8. Unify numeric and legacy task filename lookup on a complete canonical ID token terminated by " -", preserving exactly-one-match ambiguity safety across read, update, archive, complete, and save cleanup.
 9. Keep active-branch collision state aligned with current configuration, content-store/root lifecycle, and live Git refs; cover toggle, branch removal, and branch change freshness without broad cache redesign.
 10. Make config-write refreshes fail-safe across transient watcher null/partial reads, retain immediate active-branch off/on behavior, and add deterministic Windows-like race coverage without changing unrelated ViewSwitcher behavior.
+11. Replace per-task full-store reloads with coalesced fingerprinted collision refreshes that preserve existing branch-difference semantics, make watcher publication retry-safe, and unref the stat fallback with deterministic correctness, concurrency, and process-lifecycle coverage.
 <!-- SECTION:PLAN:END -->
 
 ## Implementation Notes
@@ -118,10 +119,12 @@ Final gate corrections on the post-72f6073 tree:
 - Rebuilt compiled desktop Chrome QA at the normal desktop viewport verified: BACK-2 returned a focused not-found alert while BACK-2-EXTRA remained unopened; BACK-2-EXTRA opened exactly; a real active-branch BACK-1 duplicate returned the repair alert; after PUT /api/config set checkActiveBranches=false, the same route opened the local BACK-1 modal and closed cleanly to /tasks. No console warnings/errors or framework overlay appeared. The previously documented long-ID table overlap remains a separate visual observation and was not changed.
 
 Final Windows config-write race correction: shared one atomic-replacement-safe config watcher across server and ContentStore, publishes only stable parser-valid config after transient null/partial reads, preserves sparse supported config, serializes and drains server refresh work, removes the redundant config-PUT refresh, and refreshes branch-sensitive list reads against the current flag. Deterministic null-to-valid, sparse-config, prefix-only, off/on list, and shutdown regressions were added without widening the 10-second timeout or touching ViewSwitcher. Stress evidence: watcher 150/150 and server toggle 30/30. Exact final tree: bun test --isolate --timeout=10000 passed 1,566 tests with 2 expected interactive skips, 0 failures, and 5,491 assertions across 184 files; TypeScript, Biome over 320 files, production build, and diff hygiene passed. Compiled real-Git desktop Chrome QA verified collision repair alert/no modal, immediate config false/true readback, branch-only list removal/restoration, local modal/close routing while disabled, restored 409 ambiguity, and zero console warnings/errors.
+
+Final per-task read correction: GET now compares a coalesced one-process config/ref/current-branch fingerprint and refreshes the existing ContentStore only when that snapshot changes. Branch collision state carries pinned tree blob IDs, collapses byte-identical inherited tasks, fails closed on changed or duplicate identities, hashes live files through Git clean filters, retries when refs/config move during indexing, returns current-worktree content before store fallback, and includes complete configured-prefix legacy IDs for local and remote branches. Config publication now advances its marker only after callback success, serializes retries, suppresses post-success duplicates, and unreferences the stat fallback while retaining cleanup. Objective evidence: 43 focused tests passed; final bun test --isolate --timeout=10000 passed 1,578 with 2 expected skips, 0 failures, and 5,544 assertions across 184 files; TypeScript, Biome over 320 files, production build, and diff hygiene passed. Exact-tree compiled Chrome QA verified All Tasks BACK-532 and Board BACK-522 click-to-canonical-route plus hard-refresh dialog restoration at 2174x1315 with nonblank DOM, no framework overlay, and no console warnings/errors. Real-repository steady GET sampling was 61-72ms across 12 sequential reads; deterministic instrumentation proves 0 full reloads for unchanged refs and exactly 1 coalesced reload after a changed ref. Independent final re-review approved with no release blockers.
 <!-- SECTION:NOTES:END -->
 
 ## Final Summary
 
 <!-- SECTION:FINAL_SUMMARY:BEGIN -->
-Completed BACK-257 task deep links and hardened the config/active-branch refresh path exposed by Windows CI. The final implementation preserves Bun SPA routing, exact and legacy task identity safety, modal history/focus behavior, and immediate branch-collision toggles without accepting transient config watcher reads. Verified by the unchanged 10-second full suite (1,566 pass, 2 expected skips, 0 fail, 5,491 assertions/184 files), deterministic stress regressions, TypeScript, Biome, build, diff hygiene, and compiled real-Git desktop browser QA with a clean console.
+Completed BACK-257 deep-link takeover and release hardening. Task routes remain canonical and refresh-safe; single-task reads now avoid steady full cross-branch reloads while preserving immediate config/ref/worktree correctness, byte-identical inherited-task behavior, changed/legacy duplicate repair alerts, and branch-only discovery. Config watcher delivery is retry-safe and its fallback no longer keeps processes alive. Verified by 1,578 passing full-suite tests (2 expected skips, 0 failures), static/build checks, deterministic ref/concurrency/lifecycle regressions, independent approval, and compiled Chrome list/board click plus hard-refresh QA with clean console.
 <!-- SECTION:FINAL_SUMMARY:END -->

@@ -47,7 +47,7 @@ export function normalizeTaskIdentity(task: Task): Task {
  * extractTaskIdFromFilename("task-123 - Title.md") // => "task-123"
  * extractTaskIdFromFilename("JIRA-456 - Title.md") // => "JIRA-456"
  */
-function extractTaskIdFromFilename(filename: string): string | null {
+export function extractTaskIdFromFilename(filename: string): string | null {
 	const match = filename.match(TASK_FILENAME_ID_PATTERN);
 	const prefix = match?.[1];
 	const body = match?.[2];

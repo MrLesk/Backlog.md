@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, spyOn } from "bun:test";
-import { buildLocalBranchTaskIndex, loadLocalBranchTasks } from "../core/task-loader.ts";
+import { buildLocalBranchTaskIndex, buildRemoteTaskIndex, loadLocalBranchTasks } from "../core/task-loader.ts";
 import type { GitOperations } from "../git/operations.ts";
 import type { BacklogConfig, Task } from "../types/index.ts";
 
@@ -89,6 +89,42 @@ describe("Local branch task discovery", () => {
 	});
 
 	describe("buildLocalBranchTaskIndex", () => {
+		it("indexes complete legacy IDs for local and remote branch state", async () => {
+			const legacyPath = "backlog/tasks/back-prefixed - Legacy.md";
+			const mockGit = {
+				resolveCommit: async (ref: string) => `commit:${ref}`,
+				listTreeEntries: async () => [{ path: legacyPath, objectId: "legacy-blob" }],
+				listFilesInTree: async () => [legacyPath],
+				getBranchLastModifiedMap: async () => new Map([[legacyPath, new Date("2026-07-10")]]),
+			} as unknown as GitOperations;
+			const localState: Parameters<typeof buildLocalBranchTaskIndex>[5] = [];
+			const remoteState: Parameters<typeof buildRemoteTaskIndex>[4] = [];
+
+			const localIndex = await buildLocalBranchTaskIndex(
+				mockGit,
+				["main", "feature"],
+				"main",
+				"backlog",
+				undefined,
+				localState,
+				"BACK",
+			);
+			const remoteIndex = await buildRemoteTaskIndex(mockGit, ["feature"], "backlog", undefined, remoteState, "BACK");
+
+			expect(localIndex.has("BACK-PREFIXED")).toBe(true);
+			expect(remoteIndex.has("BACK-PREFIXED")).toBe(true);
+			expect(localState).toEqual([
+				expect.objectContaining({ id: "BACK-PREFIXED", objectId: "legacy-blob", tree: "commit:feature" }),
+			]);
+			expect(remoteState).toEqual([
+				expect.objectContaining({
+					id: "BACK-PREFIXED",
+					objectId: "legacy-blob",
+					tree: "commit:origin/feature",
+				}),
+			]);
+		});
+
 		it("should build index from local branches excluding current branch", async () => {
 			const mockGit = new MockGitOperations() as unknown as GitOperations;
 			const branches = ["main", "feature-a", "feature-b", "origin/main"];

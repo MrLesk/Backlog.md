@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import { rename } from "node:fs/promises";
+import { join } from "node:path";
 import { Core } from "../core/backlog.ts";
 import type { BacklogConfig } from "../types/index.ts";
 import { watchConfig } from "../utils/config-watcher.ts";
@@ -151,6 +152,67 @@ describe("config watcher", () => {
 			expect(config.dateFormat).toBe("yyyy-mm-dd");
 		} finally {
 			configWatcher.stop();
+		}
+	});
+
+	it("retries a rejected publication and suppresses duplicate delivery after success", async () => {
+		const canonicalContent = await Bun.file(core.filesystem.configFilePath).text();
+		const updatedContent = canonicalContent.replace(
+			'project_name: "Config watcher"',
+			'project_name: "Retried publication"',
+		);
+		let callbackAttempts = 0;
+		let resolvePublished: () => void = () => {};
+		const published = new Promise<void>((resolve) => {
+			resolvePublished = resolve;
+		});
+		const configWatcher = watchConfig(core, {
+			onConfigChanged: (config) => {
+				callbackAttempts += 1;
+				if (callbackAttempts === 1) {
+					throw new Error("Injected publication failure");
+				}
+				expect(config?.projectName).toBe("Retried publication");
+				resolvePublished();
+			},
+		});
+
+		try {
+			await replaceConfigFile(updatedContent);
+			await withTimeout(published, "retried config publication");
+			expect(callbackAttempts).toBe(2);
+
+			await replaceConfigFile(updatedContent);
+			await Bun.sleep(250);
+			expect(callbackAttempts).toBe(2);
+		} finally {
+			configWatcher.stop();
+		}
+	});
+
+	it("does not keep a child process alive when only the missing-file poll fallback exists", async () => {
+		const missingProjectRoot = join(testDir, "missing-parent", "project");
+		const script = `
+			import { FileSystem } from "./src/file-system/operations.ts";
+			import { watchConfigFile } from "./src/utils/config-watcher.ts";
+			watchConfigFile(new FileSystem(${JSON.stringify(missingProjectRoot)}), {});
+		`;
+		const child = Bun.spawn(["bun", "-e", script], {
+			cwd: process.cwd(),
+			stdin: "ignore",
+			stdout: "ignore",
+			stderr: "pipe",
+		});
+
+		try {
+			const exitCode = await withTimeout(child.exited, "unrefed config watcher child exit");
+			if (exitCode !== 0) {
+				const stderr = child.stderr ? await new Response(child.stderr).text() : "";
+				throw new Error(`Watcher child exited with ${exitCode}: ${stderr}`);
+			}
+			expect(exitCode).toBe(0);
+		} finally {
+			child.kill();
 		}
 	});
 });

@@ -66,6 +66,7 @@ async function restartWithActiveBranchCollision(
 	await filesystem.saveConfig({ ...config, checkActiveBranches: true });
 	const mainTask = { ...routedTask, id: "BACK-1", title: "Main collision task" };
 	const mainTaskPath = await filesystem.saveTask(mainTask);
+	await filesystem.saveTask({ ...mainTask, id: "BACK-002", title: "Inherited unchanged task" });
 
 	await $`git init -b main`.cwd(TEST_DIR).quiet();
 	await $`git config user.name "Test User"`.cwd(TEST_DIR).quiet();
@@ -85,8 +86,8 @@ async function restartWithActiveBranchCollision(
 	}
 	if (includeBranchOnlyTask) {
 		await Bun.write(
-			join(filesystem.tasksDir, "back-2 - Branch-only task.md"),
-			serializeTask({ ...mainTask, id: "BACK-2", title: "Branch-only task" }),
+			join(filesystem.tasksDir, "back-099 - Branch-only task.md"),
+			serializeTask({ ...mainTask, id: "BACK-099", title: "Branch-only task" }),
 		);
 	}
 
@@ -94,6 +95,51 @@ async function restartWithActiveBranchCollision(
 	await $`git commit -m "Add branch collision"`.cwd(TEST_DIR).quiet();
 	await $`git switch main`.cwd(TEST_DIR).quiet();
 	await startServer();
+}
+
+async function restartWithActiveLegacyCollision(): Promise<void> {
+	await server?.stop();
+	server = null;
+
+	const config = await filesystem.loadConfig();
+	if (!config) {
+		throw new Error("Expected test config");
+	}
+	await filesystem.saveConfig({ ...config, checkActiveBranches: true });
+	const localTask = { ...routedTask, id: "BACK-PREFIXED", title: "Local legacy task" };
+	const localTaskPath = await filesystem.saveTask(localTask);
+
+	await $`git init -b main`.cwd(TEST_DIR).quiet();
+	await $`git config user.name "Test User"`.cwd(TEST_DIR).quiet();
+	await $`git config user.email test@example.com`.cwd(TEST_DIR).quiet();
+	await $`git add backlog`.cwd(TEST_DIR).quiet();
+	await $`git commit -m "Add local legacy task"`.cwd(TEST_DIR).quiet();
+	await $`git switch -c legacy-collision-shadow`.cwd(TEST_DIR).quiet();
+	await Bun.write(localTaskPath, serializeTask({ ...localTask, title: "Changed legacy branch task" }));
+	await $`git add backlog`.cwd(TEST_DIR).quiet();
+	await $`git commit -m "Change legacy task on branch"`.cwd(TEST_DIR).quiet();
+	await $`git switch main`.cwd(TEST_DIR).quiet();
+	await startServer();
+}
+
+async function replaceCollisionBranchTask(replacementId: string, title: string): Promise<void> {
+	auxiliaryWorktreeDir = createUniqueTestDir("server-task-collision-worktree");
+	await $`git worktree add ${auxiliaryWorktreeDir} collision-shadow`.cwd(TEST_DIR).quiet();
+	const branchFilesystem = new FileSystem(auxiliaryWorktreeDir);
+	const branchTask = await branchFilesystem.loadTask("BACK-1");
+	if (!branchTask?.filePath) {
+		throw new Error("Expected colliding branch task");
+	}
+	await $`git rm -- ${relative(auxiliaryWorktreeDir, branchTask.filePath)}`.cwd(auxiliaryWorktreeDir).quiet();
+	await Bun.write(
+		join(branchFilesystem.tasksDir, `${replacementId.toLowerCase()} - Branch-replacement.md`),
+		serializeTask({ ...routedTask, id: replacementId, title }),
+	);
+	await $`git add backlog`.cwd(auxiliaryWorktreeDir).quiet();
+	await $`git commit -m "Replace colliding branch task"`.cwd(auxiliaryWorktreeDir).quiet();
+	await $`git worktree remove --force ${auxiliaryWorktreeDir}`.cwd(TEST_DIR).quiet();
+	await safeCleanup(auxiliaryWorktreeDir);
+	auxiliaryWorktreeDir = null;
 }
 
 describe("BacklogServer task SPA fallback", () => {
@@ -170,6 +216,24 @@ describe("BacklogServer task SPA fallback", () => {
 		});
 		expect(createResponse.status).toBe(400);
 		expect(createResponse.headers.get("content-type")).toContain("application/json");
+	});
+
+	it("prefers the freshly read current-worktree task over stale store content", async () => {
+		const contentStore = await (
+			server as unknown as { getContentStoreInstance: () => Promise<ContentStore> }
+		).getContentStoreInstance();
+		const originalGetTasks = contentStore.getTasks.bind(contentStore);
+		const liveTask = { ...routedTask, title: "Live current-worktree title" };
+		await filesystem.saveTask(liveTask);
+		contentStore.getTasks = () => [{ ...routedTask, title: "Stale cached title" }];
+
+		try {
+			const response = await request(`/api/task/${routedTask.id}`);
+			expect(response.status).toBe(200);
+			expect(((await response.json()) as Task).title).toBe(liveTask.title);
+		} finally {
+			contentStore.getTasks = originalGetTasks;
+		}
 	});
 
 	it("serves an exact legacy task ID and distinguishes missing from malformed inputs", async () => {
@@ -288,6 +352,96 @@ describe("BacklogServer task SPA fallback", () => {
 		}
 	});
 
+	it("coalesces concurrent ref fingerprints and skips full reloads while refs are unchanged", async () => {
+		const serverInternals = server as unknown as {
+			core: {
+				git: {
+					listRecentBranchTips: (days: number) => Promise<Array<{ name: string; commit: string }>>;
+				};
+			};
+			getContentStoreInstance: () => Promise<ContentStore>;
+		};
+		const contentStore = await serverInternals.getContentStoreInstance();
+		const originalRefreshTasks = contentStore.refreshTasks.bind(contentStore);
+		const originalListRecentBranchTips = serverInternals.core.git.listRecentBranchTips.bind(serverInternals.core.git);
+		let refreshCount = 0;
+		let fingerprintCount = 0;
+		let releaseFingerprint: () => void = () => {};
+		let resolveFingerprintStarted: () => void = () => {};
+		const fingerprintStarted = new Promise<void>((resolve) => {
+			resolveFingerprintStarted = resolve;
+		});
+		const fingerprintGate = new Promise<void>((resolve) => {
+			releaseFingerprint = resolve;
+		});
+		contentStore.refreshTasks = async () => {
+			refreshCount += 1;
+			await originalRefreshTasks();
+		};
+		serverInternals.core.git.listRecentBranchTips = async (days) => {
+			fingerprintCount += 1;
+			resolveFingerprintStarted();
+			await fingerprintGate;
+			return await originalListRecentBranchTips(days);
+		};
+
+		try {
+			const requests = Array.from({ length: 8 }, () => request("/api/task/BACK-001.02", {}, 5000));
+			await fingerprintStarted;
+			await Bun.sleep(20);
+			expect(fingerprintCount).toBe(1);
+			releaseFingerprint();
+			const responses = await Promise.all(requests);
+			expect(responses.every((response) => response.status === 200)).toBe(true);
+			expect(refreshCount).toBe(0);
+
+			expect((await request("/api/task/BACK-001.02", {}, 5000)).status).toBe(200);
+			expect(refreshCount).toBe(0);
+		} finally {
+			releaseFingerprint();
+			contentStore.refreshTasks = originalRefreshTasks;
+			serverInternals.core.git.listRecentBranchTips = originalListRecentBranchTips;
+		}
+	});
+
+	it("coalesces one full reload when concurrent reads observe a changed ref snapshot", async () => {
+		await restartWithActiveBranchCollision("BACK-1");
+		const contentStore = await (
+			server as unknown as { getContentStoreInstance: () => Promise<ContentStore> }
+		).getContentStoreInstance();
+		const originalRefreshTasks = contentStore.refreshTasks.bind(contentStore);
+		let refreshCount = 0;
+		let releaseRefresh: () => void = () => {};
+		let resolveRefreshStarted: () => void = () => {};
+		const refreshStarted = new Promise<void>((resolve) => {
+			resolveRefreshStarted = resolve;
+		});
+		const refreshGate = new Promise<void>((resolve) => {
+			releaseRefresh = resolve;
+		});
+		contentStore.refreshTasks = async () => {
+			refreshCount += 1;
+			resolveRefreshStarted();
+			await refreshGate;
+			await originalRefreshTasks();
+		};
+
+		try {
+			await $`git branch fingerprint-only`.cwd(TEST_DIR).quiet();
+			const requests = Array.from({ length: 8 }, () => request("/api/task/BACK-1", {}, 5000));
+			await refreshStarted;
+			await Bun.sleep(20);
+			expect(refreshCount).toBe(1);
+			releaseRefresh();
+			const responses = await Promise.all(requests);
+			expect(responses.every((response) => response.status === 409)).toBe(true);
+			expect(refreshCount).toBe(1);
+		} finally {
+			releaseRefresh();
+			contentStore.refreshTasks = originalRefreshTasks;
+		}
+	});
+
 	for (const branchTaskId of ["BACK-1", "BACK-001"] as const) {
 		it(`fails closed when active branch collision-shadow contains ${branchTaskId}`, async () => {
 			await restartWithActiveBranchCollision(branchTaskId);
@@ -300,6 +454,46 @@ describe("BacklogServer task SPA fallback", () => {
 		});
 	}
 
+	it("fails closed when an active branch changes an exact legacy task ID", async () => {
+		await restartWithActiveLegacyCollision();
+
+		const response = await request("/api/task/BACK-PREFIXED");
+		expect(response.status).toBe(409);
+		expect((await response.json()) as { error: string }).toEqual({
+			error: "Task ID BACK-PREFIXED is ambiguous. Repair duplicate task IDs before opening it.",
+		});
+	});
+
+	it("opens an unchanged task inherited by an active branch", async () => {
+		await restartWithActiveBranchCollision("BACK-1");
+
+		const response = await request("/api/task/BACK-2");
+		expect(response.status).toBe(200);
+		expect(((await response.json()) as Task).title).toBe("Inherited unchanged task");
+	});
+
+	it("uses live current-worktree content when comparing an active branch", async () => {
+		await restartWithActiveBranchCollision("BACK-1");
+		expect((await request("/api/task/BACK-1")).status).toBe(409);
+
+		const mainTask = await filesystem.loadTask("BACK-1");
+		expect(mainTask?.filePath).toBeDefined();
+		if (!mainTask?.filePath) {
+			throw new Error("Expected current-branch task path");
+		}
+		const branchContent = await (
+			server as unknown as { core: { git: { showFile: (ref: string, path: string) => Promise<string> } } }
+		).core.git.showFile("collision-shadow", relative(TEST_DIR, mainTask.filePath));
+		await Bun.write(mainTask.filePath, branchContent);
+
+		const identical = await request("/api/task/BACK-1", {}, 5000);
+		expect(identical.status).toBe(200);
+
+		await Bun.write(mainTask.filePath, serializeTask({ ...mainTask, title: "Different current-worktree content" }));
+		const changed = await request("/api/task/BACK-1", {}, 5000);
+		expect(changed.status).toBe(409);
+	});
+
 	it("uses the current config when active-branch collision checks are toggled", async () => {
 		await restartWithActiveBranchCollision("BACK-1", true);
 
@@ -310,7 +504,10 @@ describe("BacklogServer task SPA fallback", () => {
 		});
 		const initialTasks = await request("/api/tasks?crossBranch=true");
 		expect(initialTasks.status).toBe(200);
-		expect(((await initialTasks.json()) as Task[]).map((task) => task.id)).toContain("BACK-2");
+		expect(((await initialTasks.json()) as Task[]).map((task) => task.id)).toContain("BACK-099");
+		const branchOnlyTask = await request("/api/task/BACK-099");
+		expect(branchOnlyTask.status).toBe(200);
+		expect(((await branchOnlyTask.json()) as Task).title).toBe("Branch-only task");
 		const configResponse = await request("/api/config");
 		expect(configResponse.status).toBe(200);
 		const config = (await configResponse.json()) as Record<string, unknown>;
@@ -338,7 +535,7 @@ describe("BacklogServer task SPA fallback", () => {
 		expect(((await localOnly.json()) as Task).title).toBe("Main collision task");
 		const localTasks = await request("/api/tasks?crossBranch=true");
 		expect(localTasks.status).toBe(200);
-		expect(((await localTasks.json()) as Task[]).map((task) => task.id)).not.toContain("BACK-2");
+		expect(((await localTasks.json()) as Task[]).map((task) => task.id)).not.toContain("BACK-099");
 
 		const enabled = await request(
 			"/api/config",
@@ -360,7 +557,7 @@ describe("BacklogServer task SPA fallback", () => {
 		});
 		const restoredTasks = await request("/api/tasks?crossBranch=true");
 		expect(restoredTasks.status).toBe(200);
-		expect(((await restoredTasks.json()) as Task[]).map((task) => task.id)).toContain("BACK-2");
+		expect(((await restoredTasks.json()) as Task[]).map((task) => task.id)).toContain("BACK-099");
 		const restoredCollision = await request("/api/task/BACK-1");
 		expect(restoredCollision.status).toBe(409);
 		expect((await restoredCollision.json()) as { error: string }).toEqual({
@@ -383,26 +580,52 @@ describe("BacklogServer task SPA fallback", () => {
 		await restartWithActiveBranchCollision("BACK-1");
 		expect((await request("/api/task/BACK-1")).status).toBe(409);
 
-		auxiliaryWorktreeDir = createUniqueTestDir("server-task-collision-worktree");
-		await $`git worktree add ${auxiliaryWorktreeDir} collision-shadow`.cwd(TEST_DIR).quiet();
-		const branchFilesystem = new FileSystem(auxiliaryWorktreeDir);
-		const branchTask = await branchFilesystem.loadTask("BACK-1");
-		expect(branchTask?.filePath).toBeDefined();
-		await $`git rm -- ${relative(auxiliaryWorktreeDir, branchTask?.filePath as string)}`
-			.cwd(auxiliaryWorktreeDir)
-			.quiet();
-		await Bun.write(
-			join(branchFilesystem.tasksDir, "back-2 - Branch-replacement.md"),
-			serializeTask({ ...routedTask, id: "BACK-2", title: "Branch replacement" }),
-		);
-		await $`git add backlog`.cwd(auxiliaryWorktreeDir).quiet();
-		await $`git commit -m "Replace colliding branch task"`.cwd(auxiliaryWorktreeDir).quiet();
-		await $`git worktree remove --force ${auxiliaryWorktreeDir}`.cwd(TEST_DIR).quiet();
-		await safeCleanup(auxiliaryWorktreeDir);
-		auxiliaryWorktreeDir = null;
+		await replaceCollisionBranchTask("BACK-100", "Branch replacement");
 
 		const response = await request("/api/task/BACK-1", {}, 5000);
 		expect(response.status).toBe(200);
 		expect(((await response.json()) as Task).title).toBe("Main collision task");
+		const addedTask = await request("/api/task/BACK-100", {}, 5000);
+		expect(addedTask.status).toBe(200);
+		expect(((await addedTask.json()) as Task).title).toBe("Branch replacement");
+	});
+
+	it("retries a branch scan when a ref moves after its tree was indexed", async () => {
+		await restartWithActiveBranchCollision("BACK-1");
+		expect((await request("/api/task/BACK-1")).status).toBe(409);
+
+		const collisionCommit = (await $`git rev-parse collision-shadow`.cwd(TEST_DIR).quiet()).text().trim();
+		const coreGit = (
+			server as unknown as {
+				core: {
+					git: {
+						listTreeEntries: (ref: string, path: string) => Promise<Array<{ path: string; objectId: string }>>;
+					};
+				};
+			}
+		).core.git;
+		const originalListTreeEntries = coreGit.listTreeEntries.bind(coreGit);
+		let movedDuringScan = false;
+		coreGit.listTreeEntries = async (ref, path) => {
+			const entries = await originalListTreeEntries(ref, path);
+			if (!movedDuringScan && ref === collisionCommit) {
+				movedDuringScan = true;
+				await replaceCollisionBranchTask("BACK-100", "Moved during scan");
+			}
+			return entries;
+		};
+
+		try {
+			await $`git branch fingerprint-trigger`.cwd(TEST_DIR).quiet();
+			const response = await request("/api/task/BACK-1", {}, 10000);
+			expect(movedDuringScan).toBe(true);
+			expect(response.status).toBe(200);
+			expect(((await response.json()) as Task).title).toBe("Main collision task");
+			const replacement = await request("/api/task/BACK-100", {}, 5000);
+			expect(replacement.status).toBe(200);
+			expect(((await replacement.json()) as Task).title).toBe("Moved during scan");
+		} finally {
+			coreGit.listTreeEntries = originalListTreeEntries;
+		}
 	});
 });

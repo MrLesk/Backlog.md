@@ -12,8 +12,8 @@ import { DEFAULT_DIRECTORIES } from "../constants/index.ts";
 import type { GitOperations } from "../git/operations.ts";
 import { parseTask } from "../markdown/parser.ts";
 import type { BacklogConfig, Task } from "../types/index.ts";
-import { buildPathIdRegex, normalizeId } from "../utils/prefix-config.ts";
-import { normalizeTaskId, normalizeTaskIdentity } from "../utils/task-path.ts";
+import { extractAnyPrefix, normalizeId } from "../utils/prefix-config.ts";
+import { extractTaskIdFromFilename, normalizeTaskId, normalizeTaskIdentity } from "../utils/task-path.ts";
 import type { TaskDirectoryType } from "./cross-branch-tasks.ts";
 
 /** Default prefix for tasks */
@@ -25,6 +25,32 @@ export interface BranchTaskStateEntry {
 	lastModified: Date;
 	branch: string;
 	path: string;
+	objectId?: string;
+	tree?: string;
+}
+
+interface BranchTreeFile {
+	path: string;
+	objectId?: string;
+}
+
+async function listBranchTreeFiles(
+	git: GitOperations,
+	ref: string,
+	path: string,
+	includeObjectIds: boolean,
+): Promise<BranchTreeFile[]> {
+	if (includeObjectIds && typeof git.listTreeEntries === "function") {
+		return await git.listTreeEntries(ref, path);
+	}
+	return (await git.listFilesInTree(ref, path)).map((filePath) => ({ path: filePath }));
+}
+
+function extractConfiguredTaskId(filePath: string, prefix: string): string | null {
+	const filename = filePath.slice(filePath.lastIndexOf("/") + 1);
+	const taskId = extractTaskIdFromFilename(filename);
+	const taskPrefix = taskId ? extractAnyPrefix(taskId) : null;
+	return taskPrefix?.toLowerCase() === prefix.toLowerCase() ? taskId : null;
 }
 
 const STATE_DIRECTORIES: Array<{ path: string; type: TaskDirectoryType }> = [
@@ -145,21 +171,17 @@ export async function buildRemoteTaskIndex(
 				const indexRef = commit ?? ref;
 
 				// Get backlog files for this branch
-				const files = await git.listFilesInTree(indexRef, listPath);
+				const treeFiles = await listBranchTreeFiles(git, indexRef, listPath, Boolean(stateCollector));
+				const files = treeFiles.map((entry) => entry.path);
+				const objectIds = new Map(treeFiles.map((entry) => [entry.path, entry.objectId]));
 				if (files.length === 0) continue;
 
 				// Get last modified times for all files in one pass
 				const lm = await git.getBranchLastModifiedMap(indexRef, listPath, sinceDays);
 
-				// Build regex for configured prefix (no ^ anchor for path matching)
-				const idRegex = buildPathIdRegex(prefix);
-
 				for (const f of files) {
-					// Extract task ID from filename using configured prefix
-					const m = f.match(idRegex);
-					if (!m?.[1]) continue;
-
-					const id = normalizeId(m[1], prefix);
+					const id = extractConfiguredTaskId(f, prefix);
+					if (!id) continue;
 					const lastModified = lm.get(f) ?? new Date(0);
 					const entry: RemoteIndexEntry = { id, branch: br, path: f, lastModified, commit };
 
@@ -175,6 +197,8 @@ export async function buildRemoteTaskIndex(
 							branch: br,
 							path: f,
 							lastModified,
+							objectId: objectIds.get(f),
+							tree: commit ?? ref,
 						});
 					}
 
@@ -283,21 +307,17 @@ export async function buildLocalBranchTaskIndex(
 				const indexRef = commit ?? br;
 
 				// Get backlog files in this branch
-				const files = await git.listFilesInTree(indexRef, listPath);
+				const treeFiles = await listBranchTreeFiles(git, indexRef, listPath, Boolean(stateCollector));
+				const files = treeFiles.map((entry) => entry.path);
+				const objectIds = new Map(treeFiles.map((entry) => [entry.path, entry.objectId]));
 				if (files.length === 0) continue;
 
 				// Get last modified times for all files in one pass
 				const lm = await git.getBranchLastModifiedMap(indexRef, listPath, sinceDays);
 
-				// Build regex for configured prefix (no ^ anchor for path matching)
-				const idRegex = buildPathIdRegex(prefix);
-
 				for (const f of files) {
-					// Extract task ID from filename using configured prefix
-					const m = f.match(idRegex);
-					if (!m?.[1]) continue;
-
-					const id = normalizeId(m[1], prefix);
+					const id = extractConfiguredTaskId(f, prefix);
+					if (!id) continue;
 					const lastModified = lm.get(f) ?? new Date(0);
 					const entry: RemoteIndexEntry = { id, branch: br, path: f, lastModified, commit };
 
@@ -313,6 +333,8 @@ export async function buildLocalBranchTaskIndex(
 							branch: br,
 							path: f,
 							lastModified,
+							objectId: objectIds.get(f),
+							tree: commit ?? br,
 						});
 					}
 

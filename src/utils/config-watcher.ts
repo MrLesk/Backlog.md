@@ -37,6 +37,8 @@ export function watchConfigFile(filesystem: FileSystem, callbacks: ConfigWatcher
 	let watcher: FSWatcher | null = null;
 	let generation = 0;
 	let stopped = false;
+	let processing = false;
+	let pending = false;
 	let lastPublishedContent: string | null = null;
 	try {
 		lastPublishedContent = readFileSync(configPath, "utf8");
@@ -71,20 +73,37 @@ export function watchConfigFile(filesystem: FileSystem, callbacks: ConfigWatcher
 				if (stopped || eventGeneration !== generation) {
 					return;
 				}
-				lastPublishedContent = secondContent;
 				await callbacks.onConfigChanged?.(config);
+				lastPublishedContent = secondContent;
 				return;
 			} catch {
 				// Atomic writes can temporarily remove or lock the watched path on Windows.
 			}
 		}
 	};
+	const drainStableReads = async (): Promise<void> => {
+		if (processing) return;
+		processing = true;
+		try {
+			do {
+				pending = false;
+				await notifyAfterStableRead(generation);
+			} while (!stopped && pending);
+		} finally {
+			processing = false;
+			if (!stopped && pending) {
+				void drainStableReads().catch(() => {});
+			}
+		}
+	};
 	const scheduleStableRead = () => {
-		const eventGeneration = ++generation;
-		void notifyAfterStableRead(eventGeneration).catch(() => {});
+		generation += 1;
+		pending = true;
+		void drainStableReads().catch(() => {});
 	};
 	const pollListener = () => scheduleStableRead();
-	watchFile(configPath, { interval: CONFIG_POLL_INTERVAL_MS }, pollListener);
+	const pollWatcher = watchFile(configPath, { interval: CONFIG_POLL_INTERVAL_MS }, pollListener);
+	pollWatcher.unref();
 
 	const stop = () => {
 		stopped = true;

@@ -899,7 +899,7 @@ export class BacklogServer {
 		}
 
 		const store = await this.getContentStoreInstance();
-		await store.refreshTasks();
+		await this.core.refreshTasksForTaskRead();
 		const config = await this.core.filesystem.loadConfig();
 		const checkActiveBranches = config?.checkActiveBranches !== false;
 		const storedResolution = resolveTaskById(store.getTasks(), taskId);
@@ -925,16 +925,12 @@ export class BacklogServer {
 				{ status: 409 },
 			);
 		}
-		if (!checkActiveBranches && localResolution.status === "found") {
+		if (localResolution.status === "found") {
 			store.upsertTask(localResolution.task);
 			return Response.json(localResolution.task);
 		}
 		if (storedResolution.status === "found") {
 			return Response.json(storedResolution.task);
-		}
-		if (localResolution.status === "found") {
-			store.upsertTask(localResolution.task);
-			return Response.json(localResolution.task);
 		}
 
 		return Response.json({ error: `Task ${taskId} not found` }, { status: 404 });

@@ -5,6 +5,7 @@ import { FileSystem, isCreateLockError } from "../file-system/operations.ts";
 import { GitOperations } from "../git/operations.ts";
 import {
 	type AcceptanceCriterion,
+	type BacklogConfig,
 	type Decision,
 	DOCUMENT_TYPE_VALUES,
 	type Document,
@@ -237,6 +238,9 @@ export class Core {
 	private searchService?: SearchService;
 	private readonly enableWatchers: boolean;
 	private activeBranchTaskEntries: BranchTaskStateEntry[] = [];
+	private activeBranchFingerprint: string | null = null;
+	private activeBranchFingerprintPromise: Promise<string> | null = null;
+	private activeBranchRefreshPromise: Promise<void> | null = null;
 
 	constructor(projectRoot: string, options?: { enableWatchers?: boolean }) {
 		this.fs = new FileSystem(projectRoot);
@@ -295,6 +299,72 @@ export class Core {
 		}
 
 		await this.contentStore.refreshTasks();
+	}
+
+	private async computeActiveBranchFingerprint(config: BacklogConfig | null): Promise<string> {
+		const settings = {
+			checkActiveBranches: config?.checkActiveBranches !== false,
+			activeBranchDays: config?.activeBranchDays ?? 30,
+			remoteOperations: config?.remoteOperations !== false,
+			filesystemOnly: config?.filesystemOnly === true,
+			taskPrefix: config?.prefixes?.task ?? "task",
+			taskResolutionStrategy: config?.taskResolutionStrategy ?? "most_progressed",
+			statuses: config?.statuses ?? DEFAULT_STATUSES,
+			backlogDir: this.fs.backlogDirName,
+		};
+
+		this.git.setConfig(config);
+		if (!settings.checkActiveBranches || settings.filesystemOnly) {
+			return JSON.stringify(settings);
+		}
+
+		const branchTips = await this.git.listRecentBranchTips(settings.activeBranchDays);
+		return JSON.stringify({ ...settings, branchTips });
+	}
+
+	private async getActiveBranchFingerprint(config?: BacklogConfig | null): Promise<string> {
+		if (config !== undefined) {
+			return await this.computeActiveBranchFingerprint(config);
+		}
+		if (!this.activeBranchFingerprintPromise) {
+			const fingerprintPromise = this.fs
+				.loadConfig()
+				.then((loadedConfig) => this.computeActiveBranchFingerprint(loadedConfig));
+			this.activeBranchFingerprintPromise = fingerprintPromise;
+			const clearFingerprintPromise = () => {
+				if (this.activeBranchFingerprintPromise === fingerprintPromise) {
+					this.activeBranchFingerprintPromise = null;
+				}
+			};
+			void fingerprintPromise.then(clearFingerprintPromise, clearFingerprintPromise);
+		}
+		return await this.activeBranchFingerprintPromise;
+	}
+
+	/** Refresh the existing cross-branch store only when relevant config or refs changed. */
+	async refreshTasksForTaskRead(): Promise<void> {
+		while (true) {
+			const fingerprint = await this.getActiveBranchFingerprint();
+			if (fingerprint === this.activeBranchFingerprint) {
+				return;
+			}
+
+			if (!this.activeBranchRefreshPromise) {
+				const refreshPromise = (async () => {
+					const store = await this.getContentStore();
+					await store.refreshTasks();
+				})();
+				this.activeBranchRefreshPromise = refreshPromise;
+				const clearRefreshPromise = () => {
+					if (this.activeBranchRefreshPromise === refreshPromise) {
+						this.activeBranchRefreshPromise = null;
+					}
+				};
+				void refreshPromise.then(clearRefreshPromise, clearRefreshPromise);
+			}
+
+			await this.activeBranchRefreshPromise;
+		}
 	}
 
 	private applyTaskFilters(
@@ -547,8 +617,8 @@ export class Core {
 	}
 
 	async hasActiveBranchTaskIdCollision(taskId: string, localTasks: Task[]): Promise<boolean> {
-		let matchCount = localTasks.filter((task) => taskIdsEqual(taskId, task.id)).length;
-		if (matchCount > 1) {
+		const localMatches = localTasks.filter((task) => taskIdsEqual(taskId, task.id));
+		if (localMatches.length > 1) {
 			return true;
 		}
 
@@ -558,23 +628,34 @@ export class Core {
 			return false;
 		}
 
-		const branchLocations = new Set<string>();
-		for (const entry of this.activeBranchTaskEntries) {
-			if (!taskIdsEqual(taskId, entry.id)) {
-				continue;
-			}
-			const location = `${entry.branch}\0${entry.path}`;
-			if (branchLocations.has(location)) {
-				continue;
-			}
-			branchLocations.add(location);
-			matchCount += 1;
-			if (matchCount > 1) {
+		const branchMatches = this.activeBranchTaskEntries.filter((entry) => taskIdsEqual(taskId, entry.id));
+		if (branchMatches.length === 0) {
+			return false;
+		}
+
+		const branchPaths = new Map<string, Set<string>>();
+		for (const entry of branchMatches) {
+			const tree = entry.tree ?? entry.branch;
+			const paths = branchPaths.get(tree) ?? new Set<string>();
+			paths.add(entry.path);
+			branchPaths.set(tree, paths);
+			if (paths.size > 1) {
 				return true;
 			}
 		}
 
-		return false;
+		const identities = new Set(
+			branchMatches.map((entry) =>
+				entry.objectId ? `blob:${entry.objectId}` : `location:${entry.branch}\0${entry.path}`,
+			),
+		);
+		const localTask = localMatches[0];
+		if (localTask) {
+			const objectId = localTask.filePath ? await this.git.hashFile(localTask.filePath) : null;
+			identities.add(objectId ? `blob:${objectId}` : `local:${localTask.id}\0${localTask.filePath ?? ""}`);
+		}
+
+		return identities.size > 1;
 	}
 
 	async getTaskWithSubtasks(taskId: string, localTasks?: Task[]): Promise<Task | null> {
@@ -674,6 +755,9 @@ export class Core {
 			this.contentStore = undefined;
 		}
 		this.activeBranchTaskEntries = [];
+		this.activeBranchFingerprint = null;
+		this.activeBranchFingerprintPromise = null;
+		this.activeBranchRefreshPromise = null;
 	}
 
 	// Backward compatibility aliases
@@ -3004,7 +3088,18 @@ export class Core {
 		abortSignal?: AbortSignal,
 		options?: { includeCompleted?: boolean },
 	): Promise<Task[]> {
+		return await this.loadTasksWithStableBranchSnapshot(progressCallback, abortSignal, options, 0);
+	}
+
+	private async loadTasksWithStableBranchSnapshot(
+		progressCallback: ((msg: string) => void) | undefined,
+		abortSignal: AbortSignal | undefined,
+		options: { includeCompleted?: boolean } | undefined,
+		snapshotAttempt: number,
+	): Promise<Task[]> {
 		const config = await this.fs.loadConfig();
+		this.git.setConfig(config);
+		const snapshotBefore = await this.getActiveBranchFingerprint(config);
 		const statuses = config?.statuses || [...DEFAULT_STATUSES];
 		const resolutionStrategy = config?.taskResolutionStrategy || "most_progressed";
 		const includeCompleted = options?.includeCompleted ?? false;
@@ -3058,7 +3153,7 @@ export class Core {
 		}
 
 		const currentBranch = config?.checkActiveBranches === false ? null : await this.git.getCurrentBranch();
-		this.activeBranchTaskEntries = (branchStateEntries ?? []).filter(
+		const nextActiveBranchTaskEntries = (branchStateEntries ?? []).filter(
 			(entry) => entry.type === "task" && entry.branch !== currentBranch,
 		);
 
@@ -3165,6 +3260,15 @@ export class Core {
 			}
 		}
 
+		const snapshotAfter = await this.getActiveBranchFingerprint();
+		if (snapshotBefore !== snapshotAfter) {
+			if (snapshotAttempt >= 2) {
+				throw new Error("Active branch refs or configuration kept changing while tasks were loading");
+			}
+			return await this.loadTasksWithStableBranchSnapshot(progressCallback, abortSignal, options, snapshotAttempt + 1);
+		}
+		this.activeBranchTaskEntries = nextActiveBranchTaskEntries;
+		this.activeBranchFingerprint = snapshotAfter;
 		return filteredTasks;
 	}
 }
