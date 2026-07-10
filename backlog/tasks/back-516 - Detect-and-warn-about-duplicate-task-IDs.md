@@ -1,11 +1,11 @@
 ---
 id: BACK-516
 title: Human-first duplicate task ID recovery
-status: In Progress
+status: Done
 assignee:
   - '@pr749-takeover'
 created_date: '2026-05-03 20:54'
-updated_date: '2026-07-10 17:56'
+updated_date: '2026-07-10 18:30'
 labels:
   - enhancement
   - ux
@@ -13,6 +13,7 @@ dependencies: []
 references:
   - 'https://github.com/MrLesk/Backlog.md/issues/711'
 modified_files:
+  - backlog/tasks/back-516 - Detect-and-warn-about-duplicate-task-IDs.md
   - src/cli.ts
   - src/core/backlog.ts
   - src/core/duplicate-task-repair.ts
