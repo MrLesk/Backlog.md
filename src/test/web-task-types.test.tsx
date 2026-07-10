@@ -199,17 +199,81 @@ describe("Web task type UI", () => {
 		expect(submitted?.type).toBe("Customer Request");
 	});
 
-	it("updates type from the task detail selector and preserves removed configured values", async () => {
+	it("keeps the selected type visible when create validation fails", async () => {
+		const container = setupDom();
+		const errorMessage = "Invalid type: Feature. Valid types are: Bug";
+		let closeCalls = 0;
+		activeRoot = createRoot(container);
+		await act(async () => {
+			activeRoot?.render(
+				<ThemeProvider>
+					<TaskDetailsModal
+						isOpen
+						onClose={() => {
+							closeCalls += 1;
+						}}
+						onSubmit={async () => {
+							throw new Error(errorMessage);
+						}}
+						availableStatuses={["To Do", "In Progress", "Done"]}
+						availableTypes={["Bug", "Feature"]}
+					/>
+				</ThemeProvider>,
+			);
+			await Promise.resolve();
+		});
+
+		const typeSelect = container.querySelector("select[aria-label='Task type']") as HTMLSelectElement;
+		const titleInput = container.querySelector("input[placeholder='Enter task title']") as HTMLInputElement;
+		await setInputValue(titleInput, "Stale configured type");
+		await setSelectValue(typeSelect, "Feature");
+		const createButton = Array.from(container.querySelectorAll("button")).find(
+			(button) => button.textContent?.trim() === "Create",
+		);
+		await act(async () => {
+			createButton?.dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
+			await Promise.resolve();
+		});
+		await waitFor(() => container.querySelector("[role='alert']")?.textContent === errorMessage);
+
+		expect(typeSelect.value).toBe("Feature");
+		expect(closeCalls).toBe(0);
+	});
+
+	it("updates and clears type while preserving a removed value across a config refresh", async () => {
 		const container = setupDom();
 		const task = createTask({ type: "Legacy Type" });
-		let receivedUpdate: TaskUpdateRequest | undefined;
+		const receivedUpdates: TaskUpdateRequest[] = [];
 		apiClient.updateTask = async (taskId, updates) => {
 			expect(taskId).toBe(task.id);
-			receivedUpdate = updates;
-			return { ...task, type: typeof updates.type === "string" ? updates.type : task.type };
+			receivedUpdates.push(updates);
+			return { ...task, type: typeof updates.type === "string" && updates.type ? updates.type : undefined };
 		};
 
 		activeRoot = createRoot(container);
+		await act(async () => {
+			activeRoot?.render(
+				<ThemeProvider>
+					<TaskDetailsModal
+							task={task}
+							isOpen
+							onClose={() => {}}
+							availableTypes={["Legacy Type", "Bug", "Feature"]}
+						/>
+					</ThemeProvider>,
+				);
+			await Promise.resolve();
+		});
+
+		let typeSelect = container.querySelector("select[aria-label='Task type']") as HTMLSelectElement;
+		expect(typeSelect.value).toBe("Legacy Type");
+		expect(Array.from(typeSelect.options).map((option) => option.textContent)).toEqual([
+			"No type",
+			"Legacy Type",
+			"Bug",
+			"Feature",
+		]);
+
 		await act(async () => {
 			activeRoot?.render(
 				<ThemeProvider>
@@ -224,19 +288,66 @@ describe("Web task type UI", () => {
 			await Promise.resolve();
 		});
 
-		const typeSelect = container.querySelector("select[aria-label='Task type']") as HTMLSelectElement | null;
-		expect(typeSelect).toBeTruthy();
-		expect(typeSelect?.value).toBe("Legacy Type");
-		expect(Array.from(typeSelect?.options ?? []).map((option) => option.textContent)).toEqual([
+		typeSelect = container.querySelector("select[aria-label='Task type']") as HTMLSelectElement;
+		expect(typeSelect.value).toBe("Legacy Type");
+		expect(Array.from(typeSelect.options).map((option) => option.textContent)).toEqual([
 			"No type",
 			"Legacy Type (not configured)",
 			"Bug",
 			"Feature",
 		]);
 
-		await setSelectValue(typeSelect as HTMLSelectElement, "Feature");
-		await waitFor(() => receivedUpdate !== undefined);
+		await setSelectValue(typeSelect, "Feature");
+		await waitFor(() => receivedUpdates.length === 1);
+		expect(receivedUpdates[0]).toEqual({ type: "Feature" });
+		expect(typeSelect.value).toBe("Feature");
 
-		expect(receivedUpdate).toEqual({ type: "Feature" });
+		await setSelectValue(typeSelect, "");
+		await waitFor(() => receivedUpdates.length === 2);
+
+		expect(receivedUpdates[1]).toEqual({ type: "" });
+		expect(typeSelect.value).toBe("");
+	});
+
+	it("rolls back a rejected edit type and exposes the server error accessibly", async () => {
+		const container = setupDom();
+		const task = createTask({ type: "Bug" });
+		const errorMessage = "Invalid type: Feature. Valid types are: Bug";
+		let updateCalls = 0;
+		let savedCalls = 0;
+		apiClient.updateTask = async () => {
+			updateCalls += 1;
+			throw new Error(errorMessage);
+		};
+
+		activeRoot = createRoot(container);
+		await act(async () => {
+			activeRoot?.render(
+				<ThemeProvider>
+					<TaskDetailsModal
+						task={task}
+						isOpen
+						onClose={() => {}}
+						onSaved={async () => {
+							savedCalls += 1;
+						}}
+						availableTypes={["Bug", "Feature"]}
+					/>
+				</ThemeProvider>,
+			);
+			await Promise.resolve();
+		});
+
+		const typeSelect = container.querySelector("select[aria-label='Task type']") as HTMLSelectElement;
+		await setSelectValue(typeSelect, "Feature");
+		await waitFor(() => container.querySelector("#task-type-update-error")?.textContent?.trim() === errorMessage);
+
+		expect(updateCalls).toBe(1);
+		expect(savedCalls).toBe(0);
+		expect(typeSelect.value).toBe("Bug");
+		expect(typeSelect.disabled).toBe(false);
+		expect(typeSelect.getAttribute("aria-invalid")).toBe("true");
+		expect(typeSelect.getAttribute("aria-describedby")).toBe("task-type-update-error");
+		expect(container.querySelector("#task-type-update-error")?.getAttribute("role")).toBe("alert");
 	});
 });

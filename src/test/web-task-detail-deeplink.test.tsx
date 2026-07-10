@@ -58,6 +58,20 @@ const tasks: Task[] = [
 
 const searchResults: SearchResult[] = tasks.map((task) => ({ type: "task", task, score: 1 }));
 
+const defaultConfig = {
+	projectName: "Route QA",
+	statuses: ["To Do", "In Progress", "Done"],
+	labels: ["web"],
+	types: ["Bug", "Feature", "Customer Request"],
+	milestones: [],
+	dateFormat: "YYYY-MM-DD",
+	remoteOperations: false,
+	prefixes: { task: "BACK" },
+	zeroPaddedIds: 3,
+};
+
+type ResponseFactory = () => Response | Promise<Response>;
+
 let activeRoot: Root | null = null;
 let activeDom: JSDOM | null = null;
 const originalFetch = globalThis.fetch;
@@ -69,6 +83,9 @@ const originalElement = globalThis.Element;
 const originalHTMLElement = globalThis.HTMLElement;
 const originalNode = globalThis.Node;
 let beforeTaskResponse: ((id: string) => Promise<void>) | null = null;
+let activeWebSocket: FakeWebSocket | null = null;
+let queuedConfigResponses: ResponseFactory[] = [];
+let queuedSearchResponses: ResponseFactory[] = [];
 
 class FakeWebSocket {
 	static readonly CONNECTING = 0;
@@ -79,6 +96,14 @@ class FakeWebSocket {
 	onclose: (() => void) | null = null;
 	onerror: (() => void) | null = null;
 	onmessage: ((event: { data: string }) => void) | null = null;
+
+	constructor() {
+		activeWebSocket = this;
+	}
+
+	emit(data: string) {
+		this.onmessage?.({ data });
+	}
 
 	close() {
 		this.readyState = FakeWebSocket.CLOSED;
@@ -105,20 +130,19 @@ const installFetchMock = () => {
 			return json(["To Do", "In Progress", "Done"]);
 		}
 		if (url.pathname === "/api/config") {
-			return json({
-				projectName: "Route QA",
-				statuses: ["To Do", "In Progress", "Done"],
-				labels: ["web"],
-				types: ["Bug", "Feature"],
-				milestones: [],
-				dateFormat: "YYYY-MM-DD",
-				remoteOperations: false,
-				prefixes: { task: "BACK" },
-				zeroPaddedIds: 3,
-			});
+			const queuedResponse = queuedConfigResponses.shift();
+			return queuedResponse ? await queuedResponse() : json(defaultConfig);
 		}
 		if (url.pathname === "/api/search") {
-			return json(searchResults);
+			const queuedResponse = queuedSearchResponses.shift();
+			if (queuedResponse) {
+				return await queuedResponse();
+			}
+			return json(
+				url.searchParams.has("query")
+					? searchResults.map((result) => ({ ...result, score: 0.1 }))
+					: searchResults,
+			);
 		}
 		if (url.pathname === "/api/milestones" || url.pathname === "/api/milestones/archived") {
 			return json([]);
@@ -225,6 +249,24 @@ const click = async (element: Element) => {
 	});
 };
 
+const setInputValue = async (input: HTMLInputElement, value: string) => {
+	await act(async () => {
+		const valueSetter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, "value")?.set;
+		input.focus();
+		valueSetter?.call(input, value);
+		input.dispatchEvent(new window.InputEvent("input", { bubbles: true, inputType: "insertText", data: value }));
+		input.dispatchEvent(new window.Event("change", { bubbles: true }));
+		const reactPropsKey = Object.keys(input).find((key) => key.startsWith("__reactProps$"));
+		if (reactPropsKey) {
+			const reactProps = (input as unknown as Record<string, { onChange?: (event: { target: HTMLInputElement }) => void }>)[
+				reactPropsKey
+			];
+			reactProps?.onChange?.({ target: input });
+		}
+		await Promise.resolve();
+	});
+};
+
 const press = async (element: Element, key: string, init: KeyboardEventInit = {}) => {
 	await act(async () => {
 		(element as HTMLElement).focus();
@@ -264,6 +306,9 @@ afterEach(async () => {
 	globalThis.HTMLElement = originalHTMLElement;
 	globalThis.Node = originalNode;
 	beforeTaskResponse = null;
+	activeWebSocket = null;
+	queuedConfigResponses = [];
+	queuedSearchResponses = [];
 });
 
 describe("task detail routes", () => {
@@ -352,6 +397,118 @@ describe("task detail routes", () => {
 			"direct filtered board close",
 		);
 		expect(window.location.search).toBe("?type=Bug&lane=none");
+	});
+
+	it("keeps the latest config and tasks when overlapping refreshes resolve out of order", async () => {
+		const container = await renderApp("/board?type=Customer%20Request");
+		await waitFor(
+			() =>
+				new URLSearchParams(window.location.search).get("type") === "Customer Request" &&
+				activeWebSocket?.onmessage !== null,
+			"initial typed board and WebSocket",
+		);
+
+		let releaseFirstConfig: (() => void) | undefined;
+		let markFirstConfigStarted: (() => void) | undefined;
+		const firstConfigGate = new Promise<void>((resolve) => {
+			releaseFirstConfig = resolve;
+		});
+		const firstConfigStarted = new Promise<void>((resolve) => {
+			markFirstConfigStarted = resolve;
+		});
+		const customerTask: Task = {
+			id: "BACK-202",
+			title: "Newest customer request",
+			status: "To Do",
+			assignee: [],
+			labels: ["web"],
+			dependencies: [],
+			createdDate: "2026-07-10",
+			type: "Customer Request",
+		};
+
+		queuedConfigResponses.push(
+			async () => {
+				markFirstConfigStarted?.();
+				await firstConfigGate;
+				return json({ ...defaultConfig, types: ["Bug"] });
+			},
+			() => json(defaultConfig),
+		);
+		queuedSearchResponses.push(
+			() => json(searchResults),
+			() => json([{ type: "task", task: customerTask, score: 1 } satisfies SearchResult]),
+		);
+
+		await act(async () => {
+			activeWebSocket?.emit("config-updated");
+			await Promise.resolve();
+		});
+		await firstConfigStarted;
+		await act(async () => {
+			activeWebSocket?.emit("tasks-updated");
+			await Promise.resolve();
+		});
+
+		await waitFor(
+			() => container.textContent?.includes(customerTask.title) ?? false,
+			"newer refresh result",
+		);
+		expect(new URLSearchParams(window.location.search).get("type")).toBe("Customer Request");
+
+		await act(async () => {
+			releaseFirstConfig?.();
+			await firstConfigGate;
+			await new Promise((resolve) => setTimeout(resolve, 10));
+		});
+
+		expect(container.textContent).toContain(customerTask.title);
+		expect(container.textContent).not.toContain(tasks[0]?.title ?? "");
+		expect(new URLSearchParams(window.location.search).get("type")).toBe("Customer Request");
+		const typeSelect = container.querySelector("select[aria-label='Filter board by type']") as HTMLSelectElement;
+		expect(Array.from(typeSelect.options).map((option) => option.value)).toContain("Customer Request");
+	});
+
+	it("keeps a filtered board query when a sidebar search result opens and closes", async () => {
+		const container = await renderApp("/board?type=bug&lane=none");
+		await waitFor(
+			() =>
+				new URLSearchParams(window.location.search).get("type") === "Bug" &&
+				(container.textContent?.includes(tasks[0]?.title ?? "") ?? false),
+			"filtered board before sidebar search",
+		);
+		const filteredSearch = window.location.search;
+		const searchInput = container.querySelector("input[placeholder='Search (⌘K)...']") as HTMLInputElement | null;
+		expect(searchInput).toBeTruthy();
+		await setInputValue(searchInput as HTMLInputElement, "Fix labels");
+
+		await waitFor(
+			() =>
+				Array.from(container.querySelectorAll("a")).some(
+					(link) => link.textContent?.includes(tasks[0]?.title ?? "") ?? false,
+				),
+			"sidebar task search result",
+		);
+		const resultLink = Array.from(container.querySelectorAll("a")).find(
+			(link) => link.textContent?.includes(tasks[0]?.title ?? "") ?? false,
+		);
+		expect(resultLink?.getAttribute("href")).toContain(filteredSearch);
+		await click(resultLink as HTMLAnchorElement);
+
+		await waitFor(
+			() =>
+				window.location.pathname === "/board/BACK-101/fix-labels-caf-docs" &&
+				Boolean(container.querySelector("[role='dialog']")),
+			"sidebar filtered task route",
+		);
+		expect(window.location.search).toBe(filteredSearch);
+
+		await click(container.querySelector("button[aria-label='Close modal']") as HTMLButtonElement);
+		await waitFor(
+			() => window.location.pathname === "/board" && container.querySelector("[role='dialog']") === null,
+			"sidebar return to filtered board",
+		);
+		expect(window.location.search).toBe(filteredSearch);
 	});
 
 	it("keeps legacy highlight links while canonicalizing and closing them cleanly", async () => {

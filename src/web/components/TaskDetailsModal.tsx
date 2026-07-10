@@ -307,6 +307,10 @@ export const TaskDetailsModal: React.FC<Props> = ({
   const [labels, setLabels] = useState<string[]>(task?.labels || []);
   const [priority, setPriority] = useState<string>(task?.priority || "");
   const [taskType, setTaskType] = useState<string>(task?.type || "");
+  const [typeUpdateError, setTypeUpdateError] = useState<string | null>(null);
+  const [isTypeUpdating, setIsTypeUpdating] = useState(false);
+  const typeUpdateInFlightRef = useRef(false);
+  const typeUpdateRequestRef = useRef(0);
   const [dependencies, setDependencies] = useState<string[]>(task?.dependencies || []);
   const [references, setReferences] = useState<string[]>(task?.references || []);
   const [milestone, setMilestone] = useState<string>(task?.milestone || "");
@@ -373,6 +377,10 @@ export const TaskDetailsModal: React.FC<Props> = ({
 
   // Reset local state when task changes or modal opens
   useEffect(() => {
+    typeUpdateRequestRef.current += 1;
+    typeUpdateInFlightRef.current = false;
+    setIsTypeUpdating(false);
+    setTypeUpdateError(null);
     const nextTaskId = task?.id ?? "";
     const nextFormState = buildTaskDetailsFormState({
       task,
@@ -694,6 +702,8 @@ export const TaskDetailsModal: React.FC<Props> = ({
     // Don't allow updates for cross-branch tasks
     if (isFromOtherBranch) return;
 
+    setError(null);
+
     // Optimistic UI
     if (updates.status !== undefined) setStatus(String(updates.status));
     if (updates.assignee !== undefined) setAssignee(updates.assignee as string[]);
@@ -711,7 +721,47 @@ export const TaskDetailsModal: React.FC<Props> = ({
         if (onSaved) await onSaved();
       } catch (err) {
         console.error("Failed to update task metadata", err);
-        // No rollback for simplicity; caller can refresh
+        setError(err instanceof Error ? err.message : String(err));
+      }
+    }
+  };
+
+  const handleTaskTypeChange = async (nextType: string) => {
+    if (isFromOtherBranch) return;
+    if (!task) {
+      setTaskType(nextType);
+      setTypeUpdateError(null);
+      return;
+    }
+    if (typeUpdateInFlightRef.current) return;
+
+    const previousType = taskType;
+    const requestId = typeUpdateRequestRef.current + 1;
+    typeUpdateRequestRef.current = requestId;
+    typeUpdateInFlightRef.current = true;
+    setIsTypeUpdating(true);
+    setTypeUpdateError(null);
+    setTaskType(nextType);
+
+    try {
+      const updatedTask = await apiClient.updateTask(task.id, { type: nextType });
+      if (typeUpdateRequestRef.current !== requestId) return;
+      setTaskType(updatedTask.type ?? "");
+      if (onSaved) {
+        try {
+          await onSaved();
+        } catch (refreshError) {
+          console.error("Task type was saved, but refreshing task data failed", refreshError);
+        }
+      }
+    } catch (updateError) {
+      if (typeUpdateRequestRef.current !== requestId) return;
+      setTaskType(previousType);
+      setTypeUpdateError(updateError instanceof Error ? updateError.message : String(updateError));
+    } finally {
+      if (typeUpdateRequestRef.current === requestId) {
+        typeUpdateInFlightRef.current = false;
+        setIsTypeUpdating(false);
       }
     }
   };
@@ -845,7 +895,7 @@ export const TaskDetailsModal: React.FC<Props> = ({
       }
     >
       {error && (
-        <div className="mb-3 text-sm text-red-600 dark:text-red-400">{error}</div>
+        <div role="alert" className="mb-3 text-sm text-red-600 dark:text-red-400">{error}</div>
       )}
 
       {/* Cross-branch task indicator */}
@@ -1249,10 +1299,12 @@ export const TaskDetailsModal: React.FC<Props> = ({
             <SectionHeader title="Type" />
             <select
               aria-label="Task type"
-              className={`w-full h-10 px-3 pr-10 py-2 border border-gray-300 dark:border-gray-600 rounded-md text-sm bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-stone-500 dark:focus:ring-stone-400 focus:border-transparent transition-colors duration-200 ${isFromOtherBranch ? 'opacity-60 cursor-not-allowed' : ''}`}
+              aria-invalid={typeUpdateError ? true : undefined}
+              aria-describedby={typeUpdateError ? "task-type-update-error" : undefined}
+              className={`w-full h-10 px-3 pr-10 py-2 border border-gray-300 dark:border-gray-600 rounded-md text-sm bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-stone-500 dark:focus:ring-stone-400 focus:border-transparent transition-colors duration-200 ${isFromOtherBranch || isTypeUpdating ? 'opacity-60 cursor-not-allowed' : ''}`}
               value={typeSelectionValue}
-              onChange={(event) => void handleInlineMetaUpdate({ type: event.target.value })}
-              disabled={isFromOtherBranch}
+              onChange={(event) => void handleTaskTypeChange(event.target.value)}
+              disabled={isFromOtherBranch || isTypeUpdating}
             >
               <option value="">No type</option>
               {!canonicalTypeSelection && taskType.trim() ? (
@@ -1264,6 +1316,11 @@ export const TaskDetailsModal: React.FC<Props> = ({
                 </option>
               ))}
             </select>
+            {typeUpdateError ? (
+              <p id="task-type-update-error" role="alert" className="mt-2 text-xs text-red-600 dark:text-red-400">
+                {typeUpdateError}
+              </p>
+            ) : null}
           </div>
 
           {/* Assignee */}
