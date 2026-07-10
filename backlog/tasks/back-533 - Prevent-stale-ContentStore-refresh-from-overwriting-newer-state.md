@@ -1,11 +1,11 @@
 ---
 id: BACK-533
 title: Prevent stale ContentStore refresh from overwriting newer state
-status: In Progress
+status: Done
 assignee:
   - '@issue753-takeover'
 created_date: '2026-07-10 19:28'
-updated_date: '2026-07-10 22:43'
+updated_date: '2026-07-10 22:45'
 labels:
   - concurrency
   - release-blocker
@@ -75,7 +75,7 @@ Publication gate: final frozen fingerprint f888e6cb2db68cc12283260d1a5381ef949a3
 ## Final Summary
 
 <!-- SECTION:FINAL_SUMMARY:BEGIN -->
-Prevented stale ContentStore refreshes from overwriting newer state by reconciling concurrent per-item publications under root and refresh-generation guards. Added deterministic coverage for same-item, unrelated-item, microtask, starvation, and ABA orderings. Verified with 1,652 full-suite passes, static checks, build, stress reruns, and independent spec plus quality approvals.
+Prevented stale ContentStore refreshes from overwriting newer state through guarded full-refresh generations and per-item publication reconciliation. Added deterministic coverage for same-item, unrelated-item, microtask, starvation, and ABA orderings. Verified with 1,652 full-suite passes, static checks, build, stress reruns, independent spec and quality approvals, and publication as PR #757.
 <!-- SECTION:FINAL_SUMMARY:END -->
 
 ## Definition of Done
