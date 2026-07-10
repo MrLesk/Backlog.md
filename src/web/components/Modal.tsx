@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useRef } from 'react';
 
 interface ModalProps {
 	isOpen: boolean;
@@ -11,27 +11,69 @@ interface ModalProps {
 }
 
 const Modal: React.FC<ModalProps> = ({ isOpen, onClose, title, children, maxWidthClass = "max-w-2xl", disableEscapeClose, actions }) => {
-	useEffect(() => {
-		const handleEscape = (e: KeyboardEvent) => {
-			if (e.key === 'Escape' && !disableEscapeClose) {
-				onClose();
-			}
-		};
+	const dialogRef = useRef<HTMLDivElement | null>(null);
+	const onCloseRef = useRef(onClose);
 
-		if (isOpen) {
-			if (!disableEscapeClose) {
-				document.addEventListener('keydown', handleEscape);
-			}
-			document.body.style.overflow = 'hidden';
+	useEffect(() => {
+		onCloseRef.current = onClose;
+	}, [onClose]);
+
+	useEffect(() => {
+		if (!isOpen) {
+			return;
 		}
 
-		return () => {
-			if (!disableEscapeClose) {
-				document.removeEventListener('keydown', handleEscape);
+		const activeElement = document.activeElement;
+		const previouslyFocused = activeElement && "focus" in activeElement ? (activeElement as HTMLElement) : null;
+		const previousOverflow = document.body.style.overflow;
+		const handleKeyDown = (e: KeyboardEvent) => {
+			if (e.key === 'Escape' && !disableEscapeClose) {
+				e.preventDefault();
+				onCloseRef.current();
+				return;
 			}
-			document.body.style.overflow = 'unset';
+
+			if (e.key !== 'Tab') {
+				return;
+			}
+
+			const dialog = dialogRef.current;
+			if (!dialog) {
+				return;
+			}
+			const focusable = Array.from(
+				dialog.querySelectorAll<HTMLElement>(
+					'a[href], button:not([disabled]), input:not([disabled]):not([type="hidden"]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
+				),
+			);
+			const first = focusable[0];
+			const last = focusable.at(-1);
+			if (!first || !last) {
+				e.preventDefault();
+				dialog.focus();
+				return;
+			}
+			if (e.shiftKey && (document.activeElement === first || document.activeElement === dialog)) {
+				e.preventDefault();
+				last.focus();
+			} else if (!e.shiftKey && document.activeElement === last) {
+				e.preventDefault();
+				first.focus();
+			}
 		};
-	}, [isOpen, onClose, disableEscapeClose]);
+
+		document.addEventListener('keydown', handleKeyDown);
+		document.body.style.overflow = 'hidden';
+		dialogRef.current?.focus();
+
+		return () => {
+			document.removeEventListener('keydown', handleKeyDown);
+			document.body.style.overflow = previousOverflow;
+			if (previouslyFocused?.isConnected) {
+				previouslyFocused.focus();
+			}
+		};
+	}, [isOpen, disableEscapeClose]);
 
 	if (!isOpen) return null;
 
@@ -42,9 +84,11 @@ const Modal: React.FC<ModalProps> = ({ isOpen, onClose, title, children, maxWidt
 			role="presentation"
 		>
 			<div
+				ref={dialogRef}
 				className={`bg-white dark:bg-gray-800 rounded-lg shadow-2xl ${maxWidthClass} w-full max-h-[94vh] overflow-y-auto transition-colors duration-200`}
 				onClick={(e) => e.stopPropagation()}
 				role="dialog"
+				tabIndex={-1}
 				aria-modal="true"
 				aria-labelledby="modal-title"
 			>

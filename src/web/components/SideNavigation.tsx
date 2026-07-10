@@ -13,7 +13,7 @@ import {
 } from '../../types';
 import ErrorBoundary from './ErrorBoundary';
 import { SidebarSkeleton } from './LoadingSpinner';
-import { sanitizeUrlTitle } from '../utils/urlHelpers';
+import { createUrlPath, sanitizeUrlTitle } from '../utils/urlHelpers';
 import { getWebVersion } from '../utils/version';
 import { apiClient } from '../lib/api';
 import { parseSearchCommandQuery } from '../utils/search-command-query';
@@ -502,7 +502,7 @@ const SideNavigation = memo(function SideNavigation({
 								if (result.type === 'decision') {
 									return `/decisions/${stripIdPrefix(item.id)}/${sanitizeUrlTitle(item.title)}`;
 								}
-								return `/?highlight=${encodeURIComponent(item.id)}`;
+								return createUrlPath('/board', item.id, item.title);
 							};
 
 							const getResultIcon = () => {
@@ -515,6 +515,11 @@ const SideNavigation = memo(function SideNavigation({
 								<NavLink
 									key={`${result.type}-${item.id}-${index}`}
 									to={getResultLink()}
+									state={
+										result.type === 'task'
+											? { taskModalFrom: `${location.pathname}${location.search}` }
+											: undefined
+									}
 									className="flex items-center space-x-3 px-3 py-2 text-sm rounded-lg transition-colors duration-200 hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-900 dark:text-gray-100"
 								>
 									{getResultIcon()}
@@ -589,7 +594,7 @@ const SideNavigation = memo(function SideNavigation({
 					<div className="px-4 space-y-1">
 						{/* Board Navigation */}
 						<NavLink
-							to="/"
+							to="/board"
 							className={({ isActive }) =>
 								`flex items-center px-3 py-2 rounded-lg transition-colors duration-200 ${
 									isActive
@@ -789,7 +794,7 @@ const SideNavigation = memo(function SideNavigation({
 				{isCollapsed && (
 					<div className="px-2 py-2 space-y-2">
 						<NavLink
-							to="/"
+							to="/board"
 							data-tooltip-id="sidebar-tooltip"
 							data-tooltip-content="Kanban Board"
 							className={({ isActive }) =>

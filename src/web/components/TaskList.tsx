@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { useParams, useSearchParams } from "react-router-dom";
+import { useSearchParams } from "react-router-dom";
 import { apiClient } from "../lib/api";
 import type {
 	Milestone,
@@ -39,14 +39,6 @@ interface TaskListProps {
 
 type TaskSortColumn = "id" | "title" | "status" | "priority" | "ordinal" | "milestone" | "created";
 type SortDirection = "asc" | "desc";
-
-function normalizeTaskIdForRoute(taskId: string, prefix = "task"): string {
-	const trimmed = taskId.trim();
-	const inferredPrefix = trimmed.match(/^([a-zA-Z]+)-/)?.[1]?.toLowerCase() ?? null;
-	const effectivePrefix = inferredPrefix && prefix === "task" ? inferredPrefix : prefix;
-	const body = trimmed.replace(/^[a-zA-Z]+-/, "");
-	return `${effectivePrefix.toUpperCase()}-${body.toUpperCase()}`;
-}
 
 function compareTaskIdsAscending(a: Task, b: Task): number {
 	return compareTaskIds(a.id, b.id);
@@ -118,8 +110,6 @@ const TaskList: React.FC<TaskListProps> = ({
 	const tableBodyScrollRef = useRef<HTMLDivElement | null>(null);
 	const isSyncingTableScrollRef = useRef(false);
 	const statusOptions = availableStatuses.length > 0 ? availableStatuses : [...DEFAULT_STATUSES];
-	const deepLinkedTaskIdRef = useRef<string | null>(null);
-	const { id: routeTaskId } = useParams<{ id?: string; title?: string }>();
 	const isFilteringTerminalStatus = isTerminalStatus(statusFilter, statusOptions);
 	const milestoneAliasToCanonical = useMemo(() => {
 		const aliasMap = new Map<string, string>();
@@ -464,51 +454,6 @@ const TaskList: React.FC<TaskListProps> = ({
 		setDisplayTasks(sortedBaseTasks);
 		setError(null);
 	};
-
-	useEffect(() => {
-		if (!routeTaskId) {
-			deepLinkedTaskIdRef.current = null;
-			return;
-		}
-
-		const normalizedTaskId = normalizeTaskIdForRoute(routeTaskId);
-		if (deepLinkedTaskIdRef.current === normalizedTaskId) {
-			return;
-		}
-
-			let cancelled = false;
-
-			const resolveDeepLinkedTask = async () => {
-				const existingTask = tasks.find((task) => task.id === normalizedTaskId);
-				if (existingTask) {
-					if (cancelled) {
-						return;
-					}
-					deepLinkedTaskIdRef.current = normalizedTaskId;
-					onEditTask(existingTask);
-					return;
-				}
-
-				try {
-					const fetchedTask = await apiClient.fetchTask(normalizedTaskId);
-					if (cancelled) {
-						return;
-					}
-					deepLinkedTaskIdRef.current = normalizedTaskId;
-					onEditTask(fetchedTask);
-				} catch (error) {
-					if (!cancelled) {
-						console.error("Failed to load task from deep link:", error);
-					}
-				}
-			};
-
-		void resolveDeepLinkedTask();
-
-		return () => {
-			cancelled = true;
-		};
-	}, [onEditTask, routeTaskId, tasks]);
 
 	const handleCleanupSuccess = async (movedCount: number) => {
 		setShowCleanupModal(false);
@@ -882,16 +827,22 @@ const TaskList: React.FC<TaskListProps> = ({
 											</td>
 											<td className="px-3 py-2.5">
 												<div className="flex items-center gap-2 min-w-0">
-													<span
-														className={`block truncate text-sm ${
-															isFromOtherBranch
-																? "text-gray-600 dark:text-gray-300"
-																: "text-gray-900 dark:text-gray-100"
-														}`}
-														title={task.title}
-													>
-														{task.title}
-													</span>
+											<button
+												type="button"
+												onClick={(event) => {
+													event.stopPropagation();
+													onEditTask(task);
+												}}
+												className={`block truncate text-sm ${
+													isFromOtherBranch
+														? "text-gray-600 dark:text-gray-300"
+														: "text-gray-900 dark:text-gray-100"
+												} rounded text-left focus:outline-none focus:ring-2 focus:ring-stone-500`}
+												title={task.title}
+												aria-label={`Open ${task.id}: ${task.title}`}
+											>
+												{task.title}
+											</button>
 													{isFromOtherBranch && task.branch && (
 														<span
 															className="inline-flex shrink-0 items-center rounded-circle bg-amber-100 px-2 py-0.5 text-[10px] font-medium text-amber-700 dark:bg-amber-900/40 dark:text-amber-300"

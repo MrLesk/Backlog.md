@@ -15,7 +15,6 @@ import {
 	type Document,
 	type SearchPriorityFilter,
 	type SearchResultType,
-	type Task,
 	type TaskUpdateInput,
 } from "../types/index.ts";
 import { watchConfig } from "../utils/config-watcher.ts";
@@ -23,6 +22,7 @@ import { detectDuplicateTaskIds } from "../utils/duplicate-detection.ts";
 import { resolveMilestoneInputForStorage } from "../utils/milestone-storage.ts";
 import { formatValidPriorityValues, resolvePriorityValue } from "../utils/priority-config.ts";
 import { formatValidStatuses, getCanonicalStatuses, getValidStatuses } from "../utils/status.ts";
+import { resolveTaskById } from "../utils/task-id.ts";
 import { getVersion } from "../utils/version.ts";
 
 // Regex pattern to match any prefix (letters followed by dash)
@@ -102,13 +102,6 @@ function isDocumentValidationError(error: Error): boolean {
 }
 
 /**
- * Strip any prefix from an ID (e.g., "task-123" -> "123", "JIRA-456" -> "456")
- */
-function stripPrefix(id: string): string {
-	return id.replace(PREFIX_PATTERN, "");
-}
-
-/**
  * Ensure an ID has a prefix. If it already has one, return as-is.
  * Otherwise, add the default "task-" prefix.
  */
@@ -117,42 +110,6 @@ function ensurePrefix(id: string): string {
 		return id;
 	}
 	return `${DEFAULT_PREFIX}${id}`;
-}
-
-function parseTaskIdSegments(value: string): number[] | null {
-	const withoutPrefix = stripPrefix(value);
-	if (!/^[0-9]+(?:\.[0-9]+)*$/.test(withoutPrefix)) {
-		return null;
-	}
-	return withoutPrefix.split(".").map((segment) => Number.parseInt(segment, 10));
-}
-
-function findTaskByLooseId(tasks: Task[], inputId: string): Task | undefined {
-	// First try exact match (case-insensitive)
-	const lowerInputId = inputId.toLowerCase();
-	const exact = tasks.find((task) => task.id.toLowerCase() === lowerInputId);
-	if (exact) {
-		return exact;
-	}
-
-	// Try matching by numeric segments only
-	const inputSegments = parseTaskIdSegments(inputId);
-	if (!inputSegments) {
-		return undefined;
-	}
-
-	return tasks.find((task) => {
-		const candidateSegments = parseTaskIdSegments(task.id);
-		if (!candidateSegments || candidateSegments.length !== inputSegments.length) {
-			return false;
-		}
-		for (let index = 0; index < candidateSegments.length; index += 1) {
-			if (candidateSegments[index] !== inputSegments[index]) {
-				return false;
-			}
-		}
-		return true;
-	});
 }
 
 function parseOptionalBoolean(value: unknown): boolean | undefined {
@@ -337,8 +294,9 @@ export class BacklogServer {
 				routes: {
 					"/": spaIndexHtml,
 					"/tasks": spaIndexHtml,
-					"/tasks/:id": spaIndexHtml,
-					"/tasks/:id/:title": spaIndexHtml,
+					"/tasks/*": spaIndexHtml,
+					"/board": spaIndexHtml,
+					"/board/*": spaIndexHtml,
 					"/milestones": spaIndexHtml,
 					"/drafts": spaIndexHtml,
 					"/documentation": spaIndexHtml,
@@ -689,7 +647,11 @@ export class BacklogServer {
 		if (parent) {
 			const store = await this.getContentStoreInstance();
 			const allTasks = store.getTasks();
-			let parentTask = findTaskByLooseId(allTasks, parent);
+			const parentResolution = resolveTaskById(allTasks, parent);
+			if (parentResolution.status === "ambiguous") {
+				return Response.json({ error: `Parent task ${parent} is ambiguous` }, { status: 409 });
+			}
+			let parentTask = parentResolution.status === "found" ? parentResolution.task : undefined;
 			if (!parentTask) {
 				const fallbackId = ensurePrefix(parent);
 				const fallback = await this.core.filesystem.loadTask(fallbackId);
@@ -912,19 +874,36 @@ export class BacklogServer {
 
 	private async handleGetTask(taskId: string): Promise<Response> {
 		const store = await this.getContentStoreInstance();
-
-		const localTask = await this.core.filesystem.loadTask(taskId);
-		if (localTask) {
-			store.upsertTask(localTask);
-			return Response.json(localTask);
+		const localResolution = resolveTaskById(await this.core.filesystem.listTasks(), taskId);
+		if (localResolution.status === "invalid") {
+			return Response.json({ error: `Invalid task ID: ${taskId}` }, { status: 400 });
+		}
+		const storedResolution = resolveTaskById(store.getTasks(), taskId);
+		if (localResolution.status === "ambiguous" || storedResolution.status === "ambiguous") {
+			return Response.json(
+				{ error: `Task ID ${taskId} is ambiguous. Repair duplicate task IDs before opening it.` },
+				{ status: 409 },
+			);
+		}
+		if (
+			localResolution.status === "found" &&
+			storedResolution.status === "found" &&
+			localResolution.task.id.toLowerCase() !== storedResolution.task.id.toLowerCase()
+		) {
+			return Response.json(
+				{ error: `Task ID ${taskId} is ambiguous. Repair duplicate task IDs before opening it.` },
+				{ status: 409 },
+			);
+		}
+		if (storedResolution.status === "found") {
+			return Response.json(storedResolution.task);
+		}
+		if (localResolution.status === "found") {
+			store.upsertTask(localResolution.task);
+			return Response.json(localResolution.task);
 		}
 
-		const task = findTaskByLooseId(store.getTasks(), taskId);
-		if (task) {
-			return Response.json(task);
-		}
-
-		return Response.json({ error: "Task not found" }, { status: 404 });
+		return Response.json({ error: `Task ${taskId} not found` }, { status: 404 });
 	}
 
 	private async handleUpdateTask(req: Request, taskId: string): Promise<Response> {

@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { BrowserRouter, Routes, Route, useLocation, useNavigate } from 'react-router-dom';
+import { BrowserRouter, Navigate, Route, Routes, useLocation, useMatch, useNavigate } from 'react-router-dom';
 import Layout from './components/Layout';
 import BoardPage from './components/BoardPage';
 import DocumentationDetail from './components/DocumentationDetail';
@@ -24,11 +24,25 @@ import {
 	type Task,
 	type TaskSearchResult,
 } from '../types';
-import { apiClient } from './lib/api';
+import { ApiError, apiClient } from './lib/api';
 import type { DuplicateGroup } from '../utils/duplicate-detection';
+import { isValidTaskId } from '../utils/task-id';
 import { useHealthCheckContext } from './contexts/HealthCheckContext';
 import { getWebVersion } from './utils/version';
 import { collectArchivedMilestoneKeys, collectMilestoneIds, milestoneKey } from './utils/milestones';
+import { createUrlPath } from './utils/urlHelpers';
+
+type TaskRouteNavigationState = {
+  taskModalFrom?: string;
+  taskRouteError?: string;
+};
+
+const getTaskRouteNavigationState = (value: unknown): TaskRouteNavigationState => {
+  if (!value || typeof value !== 'object') {
+    return {};
+  }
+  return value as TaskRouteNavigationState;
+};
 
 const buildMilestoneAliasMap = (milestones: Milestone[], archivedMilestones: Milestone[]): Map<string, string> => {
   const aliasMap = new Map<string, string>();
@@ -190,6 +204,21 @@ function AppContent() {
   const hasBeenRunningRef = useRef(false);
   const location = useLocation();
   const navigate = useNavigate();
+  const tasksRouteWithTitle = useMatch('/tasks/:id/:title');
+  const tasksRoute = useMatch('/tasks/:id');
+  const boardRouteWithTitle = useMatch('/board/:id/:title');
+  const boardRoute = useMatch('/board/:id');
+  const taskRouteRequestRef = useRef(0);
+  const isTaskRouteModalRef = useRef(false);
+  const taskRouteAlertRef = useRef<HTMLDivElement | null>(null);
+  const routeTaskId =
+    tasksRouteWithTitle?.params.id ??
+    tasksRoute?.params.id ??
+    boardRouteWithTitle?.params.id ??
+    boardRoute?.params.id;
+  const routeBasePath = tasksRouteWithTitle || tasksRoute ? '/tasks' : boardRouteWithTitle || boardRoute ? '/board' : null;
+  const routeNavigationState = getTaskRouteNavigationState(location.state);
+  const taskRouteError = routeNavigationState.taskRouteError;
 
   // Set version data attribute on body
   React.useEffect(() => {
@@ -376,19 +405,121 @@ function AppContent() {
     setShowModal(true);
   };
 
-  const handleEditTask = (task: Task) => {
+  const openTaskModal = useCallback((task: Task) => {
     setEditingTask(task);
+    setIsDraftMode(false);
     setShowModal(true);
-  };
+  }, []);
+
+  const handleEditTask = useCallback((task: Task) => {
+    const basePath =
+      location.pathname.startsWith('/board')
+        ? '/board'
+        : location.pathname.startsWith('/tasks')
+          ? '/tasks'
+          : null;
+
+    if (!basePath) {
+      openTaskModal(task);
+      return;
+    }
+
+    const returnPath = `${basePath}${location.search}`;
+    const isReplacingTaskRoute = routeBasePath === basePath && Boolean(routeTaskId);
+    const taskModalFrom = isReplacingTaskRoute ? routeNavigationState.taskModalFrom : returnPath;
+    navigate(`${createUrlPath(basePath, task.id, task.title)}${location.search}`, {
+      replace: isReplacingTaskRoute,
+      state: taskModalFrom ? ({ taskModalFrom } satisfies TaskRouteNavigationState) : undefined,
+    });
+  }, [
+    location.pathname,
+    location.search,
+    navigate,
+    openTaskModal,
+    routeBasePath,
+    routeNavigationState.taskModalFrom,
+    routeTaskId,
+  ]);
 
   const handleCloseModal = () => {
     setShowModal(false);
     setEditingTask(null);
     setIsDraftMode(false);
-    if (location.pathname.startsWith('/tasks/')) {
-      navigate('/tasks', { replace: true });
+    if (routeBasePath && routeTaskId) {
+      isTaskRouteModalRef.current = false;
+      if (routeNavigationState.taskModalFrom) {
+        navigate(-1);
+      } else {
+        navigate(`${routeBasePath}${location.search}`, { replace: true });
+      }
     }
   };
+
+  useEffect(() => {
+    const requestId = taskRouteRequestRef.current + 1;
+    taskRouteRequestRef.current = requestId;
+
+    if (!routeTaskId || !routeBasePath || isInitialized !== true) {
+      if (!routeTaskId && isTaskRouteModalRef.current) {
+        isTaskRouteModalRef.current = false;
+        setShowModal(false);
+        setEditingTask(null);
+        setIsDraftMode(false);
+      }
+      return;
+    }
+
+    if (!isValidTaskId(routeTaskId)) {
+      navigate(`${routeBasePath}${location.search}`, {
+        replace: true,
+        state: { taskRouteError: `"${routeTaskId}" is not a valid task ID.` } satisfies TaskRouteNavigationState,
+      });
+      return;
+    }
+
+    const loadTaskFromRoute = async () => {
+      try {
+        const task = await apiClient.fetchTask(routeTaskId);
+        if (taskRouteRequestRef.current !== requestId) {
+          return;
+        }
+        isTaskRouteModalRef.current = true;
+        openTaskModal(task);
+      } catch (error) {
+        if (taskRouteRequestRef.current !== requestId) {
+          return;
+        }
+
+        isTaskRouteModalRef.current = false;
+        const message =
+          error instanceof ApiError && error.status === 409
+            ? `Task "${routeTaskId}" is ambiguous. Repair duplicate task IDs before opening this link.`
+            : error instanceof ApiError && error.status === 400
+              ? `"${routeTaskId}" is not a valid task ID.`
+              : error instanceof ApiError && error.status === 404
+                ? `Task "${routeTaskId}" was not found.`
+                : `Task "${routeTaskId}" could not be opened. Try again.`;
+        navigate(`${routeBasePath}${location.search}`, {
+          replace: true,
+          state: { taskRouteError: message } satisfies TaskRouteNavigationState,
+        });
+      }
+    };
+
+    void loadTaskFromRoute();
+
+    return () => {
+      if (taskRouteRequestRef.current === requestId) {
+        taskRouteRequestRef.current += 1;
+      }
+    };
+  }, [isInitialized, location.search, navigate, openTaskModal, routeBasePath, routeTaskId]);
+
+  useEffect(() => {
+    if (taskRouteError) {
+      taskRouteAlertRef.current?.focus();
+    }
+  }, [taskRouteError]);
 
   const refreshData = useCallback(async () => {
     await loadAllData();
@@ -478,6 +609,41 @@ function AppContent() {
     );
   }
 
+  const boardPage = (
+    <BoardPage
+      onEditTask={handleEditTask}
+      onNewTask={handleNewTask}
+      tasks={tasks}
+      onRefreshData={refreshData}
+      statuses={statuses}
+      milestones={milestones}
+      availableLabels={availableLabels}
+      milestoneEntities={milestoneEntities}
+      archivedMilestones={archivedMilestones}
+      isLoading={isLoading}
+      hideEmptyColumns={config?.hideEmptyColumns ?? false}
+      dateFormat={config?.dateFormat}
+      availablePriorities={config?.priorities}
+    />
+  );
+
+  const taskListPage = (
+    <TaskList
+      onEditTask={handleEditTask}
+      onNewTask={handleNewTask}
+      tasks={tasks}
+      availableStatuses={statuses}
+      availableLabels={availableLabels}
+      availableMilestones={milestones}
+      availablePriorities={config?.priorities}
+      milestoneEntities={milestoneEntities}
+      archivedMilestones={archivedMilestones}
+      onRefreshData={refreshData}
+      dateFormat={config?.dateFormat}
+      isLoading={isLoading}
+    />
+  );
+
   return (
     <ThemeProvider>
       <Routes>
@@ -499,77 +665,34 @@ function AppContent() {
           >
             <Route
               index
-              element={
-                <BoardPage
-                  onEditTask={handleEditTask}
-                  onNewTask={handleNewTask}
-                tasks={tasks}
-                onRefreshData={refreshData}
-                statuses={statuses}
-                milestones={milestones}
-                availableLabels={availableLabels}
-                milestoneEntities={milestoneEntities}
-                archivedMilestones={archivedMilestones}
-                isLoading={isLoading}
-                hideEmptyColumns={config?.hideEmptyColumns ?? false}
-                dateFormat={config?.dateFormat}
-                availablePriorities={config?.priorities}
-              />
-            }
-          />
+              element={<Navigate to={{ pathname: '/board', search: location.search }} replace state={location.state} />}
+            />
+            <Route path="board" element={boardPage} />
+            <Route path="board/:id" element={boardPage} />
+            <Route path="board/:id/:title" element={boardPage} />
             <Route
-              path="tasks"
+              path="board/*"
               element={
-	                <TaskList
-	                  onEditTask={handleEditTask}
-	                  onNewTask={handleNewTask}
-	                  tasks={tasks}
-	                  availableStatuses={statuses}
-	                  availableLabels={availableLabels}
-	                  availableMilestones={milestones}
-	                  availablePriorities={config?.priorities}
-	                  milestoneEntities={milestoneEntities}
-	                  archivedMilestones={archivedMilestones}
-	                  onRefreshData={refreshData}
-	                  dateFormat={config?.dateFormat}
-	                  isLoading={isLoading}
-	                />
-	              }
-	            />
+                <Navigate
+                  to={{ pathname: '/board', search: location.search }}
+                  replace
+                  state={{ taskRouteError: 'That task link is not valid.' } satisfies TaskRouteNavigationState}
+                />
+              }
+            />
+            <Route path="tasks" element={taskListPage} />
+            <Route path="tasks/:id" element={taskListPage} />
+            <Route path="tasks/:id/:title" element={taskListPage} />
             <Route
-              path="tasks/:id"
+              path="tasks/*"
               element={
-	                <TaskList
-	                  onEditTask={handleEditTask}
-	                  onNewTask={handleNewTask}
-	                  tasks={tasks}
-	                  availableStatuses={statuses}
-	                  availableLabels={availableLabels}
-	                  availableMilestones={milestones}
-	                  milestoneEntities={milestoneEntities}
-	                  archivedMilestones={archivedMilestones}
-	                  onRefreshData={refreshData}
-	                  dateFormat={config?.dateFormat}
-	                />
-	              }
-	            />
-            <Route
-              path="tasks/:id/:title"
-              element={
-	                <TaskList
-	                  onEditTask={handleEditTask}
-	                  onNewTask={handleNewTask}
-	                  tasks={tasks}
-	                  availableStatuses={statuses}
-	                  availableLabels={availableLabels}
-	                  availableMilestones={milestones}
-	                  milestoneEntities={milestoneEntities}
-	                  archivedMilestones={archivedMilestones}
-	                  onRefreshData={refreshData}
-	                  dateFormat={config?.dateFormat}
-	                />
-	              }
-	            />
+                <Navigate
+                  to={{ pathname: '/tasks', search: location.search }}
+                  replace
+                  state={{ taskRouteError: 'That task link is not valid.' } satisfies TaskRouteNavigationState}
+                />
+              }
+            />
             <Route
               path="milestones"
               element={
@@ -594,6 +717,24 @@ function AppContent() {
             <Route path="settings" element={<Settings />} />
           </Route>
       </Routes>
+
+      {taskRouteError && (
+        <div
+          ref={taskRouteAlertRef}
+          role="alert"
+          tabIndex={-1}
+          className="fixed left-1/2 top-4 z-[70] flex w-[min(32rem,calc(100%-2rem))] -translate-x-1/2 items-start justify-between gap-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800 shadow-lg focus:outline-none focus:ring-2 focus:ring-red-500 dark:border-red-800 dark:bg-red-950 dark:text-red-200"
+        >
+          <span>{taskRouteError}</span>
+          <button
+            type="button"
+            className="shrink-0 font-medium underline decoration-red-300 underline-offset-2 hover:no-underline focus:outline-none focus:ring-2 focus:ring-red-500"
+            onClick={() => navigate(`${location.pathname}${location.search}`, { replace: true, state: null })}
+          >
+            Dismiss
+          </button>
+        </div>
+      )}
 
       <TaskDetailsModal
         task={editingTask || undefined}

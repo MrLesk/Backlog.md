@@ -256,7 +256,7 @@ export class ApiClient {
 	}
 
 	async fetchTask(id: string): Promise<Task> {
-		return this.fetchJson<Task>(`${API_BASE}/task/${id}`);
+		return this.fetchJson<Task>(`${API_BASE}/task/${encodeURIComponent(id)}`);
 	}
 
 	async createTask(task: Omit<Task, "id" | "createdDate">): Promise<Task> {

@@ -22,12 +22,10 @@ export function sanitizeUrlTitle(title: string): string {
 	);
 }
 
-/**
- * Creates a URL-friendly path for documentation or decision items
- */
+/** Creates a URL-friendly path for an item with a prefixed numeric ID. */
 export function createUrlPath(basePath: string, id: string, title: string): string {
 	const sanitizedTitle = sanitizeUrlTitle(title);
-	// Remove prefix from ID for cleaner URLs
-	const cleanId = id.replace(/^(doc-|decision-)/, "");
-	return `${basePath}/${cleanId}/${sanitizedTitle}`;
+	const cleanId = id.replace(/^[a-zA-Z]+-/, "");
+	const path = `${basePath.replace(/\/$/, "")}/${encodeURIComponent(cleanId)}`;
+	return sanitizedTitle ? `${path}/${encodeURIComponent(sanitizedTitle)}` : path;
 }

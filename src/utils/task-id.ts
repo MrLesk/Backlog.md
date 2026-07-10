@@ -1,0 +1,78 @@
+import type { Task } from "../types/index.ts";
+import { escapeRegex, extractAnyPrefix, normalizeId } from "./prefix-config.ts";
+
+const DEFAULT_TASK_PREFIX = "task";
+const TASK_ID_PATTERN = /^(?:[a-zA-Z]+-)?[0-9]+(?:\.[0-9]+)*$/;
+
+export type TaskIdResolution =
+	| { status: "found"; task: Task }
+	| { status: "ambiguous"; tasks: Task[] }
+	| { status: "invalid" }
+	| { status: "not-found" };
+
+/**
+ * Normalize a task ID by ensuring the prefix is present and uppercase.
+ * An existing prefix is preserved when the caller does not provide one.
+ */
+export function normalizeTaskId(taskId: string, prefix: string = DEFAULT_TASK_PREFIX): string {
+	const inferredPrefix = extractAnyPrefix(taskId);
+	const effectivePrefix = inferredPrefix && prefix === DEFAULT_TASK_PREFIX ? inferredPrefix : prefix;
+	return normalizeId(taskId, effectivePrefix);
+}
+
+function extractTaskBody(value: string, prefix: string = DEFAULT_TASK_PREFIX): string | null {
+	const trimmed = value.trim();
+	if (trimmed === "") return "";
+	const prefixPattern = new RegExp(`^(?:${escapeRegex(prefix)}-)?([0-9]+(?:\\.[0-9]+)*)$`, "i");
+	const match = trimmed.match(prefixPattern);
+	return match?.[1] ?? null;
+}
+
+/**
+ * Compare task IDs by prefix and numeric segments.
+ * Leading zeroes are cosmetic, including within dotted subtask IDs.
+ */
+export function taskIdsEqual(left: string, right: string, prefix: string = DEFAULT_TASK_PREFIX): boolean {
+	const leftPrefix = extractAnyPrefix(left);
+	const rightPrefix = extractAnyPrefix(right);
+	const effectivePrefix = leftPrefix ?? rightPrefix ?? prefix;
+
+	const leftBody = extractTaskBody(left, effectivePrefix);
+	const rightBody = extractTaskBody(right, effectivePrefix);
+
+	if (leftBody && rightBody) {
+		const leftSegments = leftBody.split(".").map((segment) => Number.parseInt(segment, 10));
+		const rightSegments = rightBody.split(".").map((segment) => Number.parseInt(segment, 10));
+		return (
+			leftSegments.length === rightSegments.length &&
+			leftSegments.every((value, index) => value === rightSegments[index])
+		);
+	}
+
+	return normalizeTaskId(left, effectivePrefix).toLowerCase() === normalizeTaskId(right, effectivePrefix).toLowerCase();
+}
+
+export function isValidTaskId(value: string): boolean {
+	return TASK_ID_PATTERN.test(value.trim());
+}
+
+/**
+ * Resolve a human-facing route ID without guessing when canonical IDs collide.
+ */
+export function resolveTaskById(tasks: Task[], inputId: string): TaskIdResolution {
+	const normalizedInput = inputId.trim();
+	if (!isValidTaskId(normalizedInput)) {
+		return { status: "invalid" };
+	}
+
+	const matches = tasks.filter((task) => taskIdsEqual(normalizedInput, task.id));
+	if (matches.length === 0) {
+		return { status: "not-found" };
+	}
+	if (matches.length > 1) {
+		return { status: "ambiguous", tasks: matches };
+	}
+
+	const task = matches[0];
+	return task ? { status: "found", task } : { status: "not-found" };
+}
