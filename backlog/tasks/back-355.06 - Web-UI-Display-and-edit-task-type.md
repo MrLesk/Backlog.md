@@ -5,12 +5,21 @@ status: Done
 assignee:
   - '@pr751-takeover'
 created_date: '2026-01-01 23:38'
-updated_date: '2026-07-10 17:15'
+updated_date: '2026-07-10 17:22'
 labels:
   - web
 dependencies:
   - task-355.01
 modified_files:
+  - src/server/index.ts
+  - src/test/server-search-endpoint.test.ts
+  - src/test/web-task-detail-deeplink.test.tsx
+  - src/web/App.tsx
+  - src/web/components/BoardPage.tsx
+  - src/web/components/SideNavigation.tsx
+  - src/web/components/TaskCard.tsx
+  - src/web/components/TaskColumn.tsx
+  - src/web/components/TaskTypeBadge.tsx
   - src/web/components/Board.tsx
   - src/web/components/TaskDetailsModal.tsx
   - src/test/web-board-filters.test.tsx
