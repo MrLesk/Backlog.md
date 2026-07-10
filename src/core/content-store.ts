@@ -18,6 +18,7 @@ interface ContentSnapshot {
 }
 
 type ContentStoreEventType = "ready" | "tasks" | "documents" | "decisions";
+type ContentCollection = "tasks" | "documents" | "decisions";
 
 export type ContentStoreEvent =
 	| { type: "ready"; snapshot: ContentSnapshot; version: number }
@@ -54,6 +55,21 @@ export class ContentStore {
 	private rootWatchersInitialized = false;
 	private configWatcherActive = false;
 	private rootWatcherEpoch = 0;
+	private readonly contentRefreshGenerations: Record<ContentCollection, number> = {
+		tasks: 0,
+		documents: 0,
+		decisions: 0,
+	};
+	private readonly contentItemGenerations: Record<ContentCollection, Map<string, number>> = {
+		tasks: new Map(),
+		documents: new Map(),
+		decisions: new Map(),
+	};
+	private readonly contentItemVersions: Record<ContentCollection, Map<string, number>> = {
+		tasks: new Map(),
+		documents: new Map(),
+		decisions: new Map(),
+	};
 	private boundBacklogDir: string | null = null;
 	private closed = false;
 
@@ -159,6 +175,12 @@ export class ContentStore {
 		if (this.closed || !this.initialized) {
 			return;
 		}
+		const previous = this.tasks.get(task.id);
+		if (previous && !this.hasTaskChanged(previous, task)) {
+			return;
+		}
+		this.nextContentItemGeneration("tasks", normalizeTaskId(task.id));
+		this.nextContentItemVersion("tasks", normalizeTaskId(task.id));
 		this.tasks.set(task.id, task);
 		this.cachedTasks = sortByTaskId(Array.from(this.tasks.values()));
 		this.notify("tasks");
@@ -255,16 +277,12 @@ export class ContentStore {
 
 		// Use custom task loader if provided (e.g., loadTasks for cross-branch support)
 		// Otherwise fall back to filesystem-only loading
-		const [tasks, documents, decisions] = await Promise.all([
-			this.loadTasksWithLoader(),
-			this.filesystem.listDocuments(),
-			this.filesystem.listDecisions(),
-		]);
-		if (this.closed) return;
-
-		this.replaceTasks(tasks);
-		this.replaceDocuments(documents);
-		this.replaceDecisions(decisions);
+		const loaded = await this.loadCurrentContent(this.rootWatcherEpoch, (snapshot) => {
+			this.replaceTasks(snapshot.tasks);
+			this.replaceDocuments(snapshot.documents);
+			this.replaceDecisions(snapshot.decisions);
+		});
+		if (!loaded) return;
 
 		this.initialized = true;
 		if (this.enableWatchers) {
@@ -362,16 +380,12 @@ export class ContentStore {
 				if (!this.isRootWatcherCurrent(transitionEpoch)) return;
 			}
 
-			const [tasks, documents, decisions] = await Promise.all([
-				this.loadTasksWithLoader(),
-				this.filesystem.listDocuments(),
-				this.filesystem.listDecisions(),
-			]);
-			if (this.closed || (rootChanged && !this.isRootWatcherCurrent(transitionEpoch))) return;
-
-			this.replaceTasks(tasks);
-			this.replaceDocuments(documents);
-			this.replaceDecisions(decisions);
+			const loaded = await this.loadCurrentContent(transitionEpoch, (snapshot) => {
+				this.replaceTasks(snapshot.tasks);
+				this.replaceDocuments(snapshot.documents);
+				this.replaceDecisions(snapshot.decisions);
+			});
+			if (!loaded) return;
 			this.notifyConfig(config);
 		});
 	}
@@ -422,6 +436,117 @@ export class ContentStore {
 		return !this.closed && epoch === this.rootWatcherEpoch;
 	}
 
+	private nextContentRefreshGeneration(collection: ContentCollection): number {
+		const generation = this.contentRefreshGenerations[collection] + 1;
+		this.contentRefreshGenerations[collection] = generation;
+		return generation;
+	}
+
+	private isContentRefreshCurrent(collection: ContentCollection, generation: number): boolean {
+		return !this.closed && generation === this.contentRefreshGenerations[collection];
+	}
+
+	private nextContentItemGeneration(collection: ContentCollection, id: string): number {
+		const generations = this.contentItemGenerations[collection];
+		const generation = (generations.get(id) ?? 0) + 1;
+		generations.set(id, generation);
+		return generation;
+	}
+
+	private nextContentItemVersion(collection: ContentCollection, id: string): number {
+		const versions = this.contentItemVersions[collection];
+		const version = (versions.get(id) ?? 0) + 1;
+		versions.set(id, version);
+		return version;
+	}
+
+	private isContentItemGenerationCurrent(collection: ContentCollection, id: string, generation: number): boolean {
+		return !this.closed && generation === this.contentItemGenerations[collection].get(id);
+	}
+
+	private invalidateContentItemGenerations(collection: ContentCollection): void {
+		const generations = this.contentItemGenerations[collection];
+		for (const [id, generation] of generations) {
+			generations.set(id, generation + 1);
+		}
+	}
+
+	private async loadCurrentContent(epoch: number, publish: (snapshot: ContentSnapshot) => void): Promise<boolean> {
+		const generations: Record<ContentCollection, number> = {
+			tasks: this.nextContentRefreshGeneration("tasks"),
+			documents: this.nextContentRefreshGeneration("documents"),
+			decisions: this.nextContentRefreshGeneration("decisions"),
+		};
+		const before = this.getSnapshot();
+		const itemVersions: Record<ContentCollection, Map<string, number>> = {
+			tasks: new Map(this.contentItemVersions.tasks),
+			documents: new Map(this.contentItemVersions.documents),
+			decisions: new Map(this.contentItemVersions.decisions),
+		};
+		const [tasks, documents, decisions] = await Promise.all([
+			this.loadTasksWithLoader(),
+			this.filesystem.listDocuments(),
+			this.filesystem.listDecisions(),
+		]);
+		if (
+			!this.isRootWatcherCurrent(epoch) ||
+			!this.isContentRefreshCurrent("tasks", generations.tasks) ||
+			!this.isContentRefreshCurrent("documents", generations.documents) ||
+			!this.isContentRefreshCurrent("decisions", generations.decisions)
+		) {
+			return false;
+		}
+
+		publish({
+			tasks: this.mergeConcurrentChanges(
+				tasks,
+				before.tasks,
+				this.cachedTasks,
+				(task) => normalizeTaskId(task.id),
+				itemVersions.tasks,
+				this.contentItemVersions.tasks,
+			),
+			documents: this.mergeConcurrentChanges(
+				documents,
+				before.documents,
+				this.cachedDocuments,
+				(document) => document.id,
+				itemVersions.documents,
+				this.contentItemVersions.documents,
+			),
+			decisions: this.mergeConcurrentChanges(
+				decisions,
+				before.decisions,
+				this.cachedDecisions,
+				(decision) => decision.id,
+				itemVersions.decisions,
+				this.contentItemVersions.decisions,
+			),
+		});
+		return true;
+	}
+
+	private async loadCurrentCollection<T, S>(
+		collection: ContentCollection,
+		epoch: number,
+		loader: () => Promise<T>,
+		isValid: (result: T) => boolean,
+		capture: () => S,
+		reconcile: (result: T, before: S) => T,
+		publish: (result: T) => boolean,
+	): Promise<boolean | null> {
+		const generation = this.nextContentRefreshGeneration(collection);
+		const before = capture();
+		const result = await this.retryRead(loader, isValid, 12, 75, () => {
+			return this.isRootWatcherCurrent(epoch) && this.isContentRefreshCurrent(collection, generation);
+		});
+		if (result === null || !this.isRootWatcherCurrent(epoch) || !this.isContentRefreshCurrent(collection, generation)) {
+			return null;
+		}
+
+		return publish(reconcile(result, before));
+	}
+
 	private createTaskWatcher(epoch: number): WatchHandle {
 		const tasksDir = this.filesystem.tasksDir;
 		const watcher: FSWatcher = watch(tasksDir, { recursive: false }, (eventType, filename) => {
@@ -438,13 +563,19 @@ export class ContentStore {
 				const [taskId] = file.split(" ");
 				if (!taskId) return;
 				const normalizedTaskId = normalizeTaskId(taskId);
+				const generation = this.nextContentItemGeneration("tasks", normalizedTaskId);
 
 				const fullPath = join(tasksDir, file);
 				const exists = await Bun.file(fullPath).exists();
-				if (!this.isRootWatcherCurrent(epoch)) return;
+				if (
+					!this.isRootWatcherCurrent(epoch) ||
+					!this.isContentItemGenerationCurrent("tasks", normalizedTaskId, generation)
+				)
+					return;
 
 				if (!exists) {
 					if (this.tasks.delete(normalizedTaskId)) {
+						this.nextContentItemVersion("tasks", normalizedTaskId);
 						this.cachedTasks = sortByTaskId(Array.from(this.tasks.values()));
 						this.notify("tasks");
 					}
@@ -480,15 +611,26 @@ export class ContentStore {
 					},
 					12,
 					75,
-					() => this.isRootWatcherCurrent(epoch),
+					() =>
+						this.isRootWatcherCurrent(epoch) &&
+						this.isContentItemGenerationCurrent("tasks", normalizedTaskId, generation),
 				);
-				if (!this.isRootWatcherCurrent(epoch)) return;
+				if (
+					!this.isRootWatcherCurrent(epoch) ||
+					!this.isContentItemGenerationCurrent("tasks", normalizedTaskId, generation)
+				)
+					return;
 				if (!task) {
 					await this.refreshTasksFromDisk(normalizedTaskId, previous, epoch);
 					return;
 				}
 
-				if (!this.isRootWatcherCurrent(epoch)) return;
+				if (
+					!this.isRootWatcherCurrent(epoch) ||
+					!this.isContentItemGenerationCurrent("tasks", normalizedTaskId, generation)
+				)
+					return;
+				this.nextContentItemVersion("tasks", normalizedTaskId);
 				this.tasks.set(task.id, task);
 				this.cachedTasks = sortByTaskId(Array.from(this.tasks.values()));
 				this.notify("tasks");
@@ -517,13 +659,16 @@ export class ContentStore {
 			this.enqueueRoot(epoch, async () => {
 				const [idPart] = file.split(" - ");
 				if (!idPart) return;
+				const generation = this.nextContentItemGeneration("decisions", idPart);
 
 				const fullPath = join(decisionsDir, file);
 				const exists = await Bun.file(fullPath).exists();
-				if (!this.isRootWatcherCurrent(epoch)) return;
+				if (!this.isRootWatcherCurrent(epoch) || !this.isContentItemGenerationCurrent("decisions", idPart, generation))
+					return;
 
 				if (!exists) {
 					if (this.decisions.delete(idPart)) {
+						this.nextContentItemVersion("decisions", idPart);
 						this.cachedDecisions = sortByTaskId(Array.from(this.decisions.values()));
 						this.notify("decisions");
 					}
@@ -559,14 +704,18 @@ export class ContentStore {
 					},
 					12,
 					75,
-					() => this.isRootWatcherCurrent(epoch),
+					() =>
+						this.isRootWatcherCurrent(epoch) && this.isContentItemGenerationCurrent("decisions", idPart, generation),
 				);
-				if (!this.isRootWatcherCurrent(epoch)) return;
+				if (!this.isRootWatcherCurrent(epoch) || !this.isContentItemGenerationCurrent("decisions", idPart, generation))
+					return;
 				if (!decision) {
 					await this.refreshDecisionsFromDisk(idPart, previous, epoch);
 					return;
 				}
-				if (!this.isRootWatcherCurrent(epoch)) return;
+				if (!this.isRootWatcherCurrent(epoch) || !this.isContentItemGenerationCurrent("decisions", idPart, generation))
+					return;
+				this.nextContentItemVersion("decisions", idPart);
 				this.decisions.set(decision.id, decision);
 				this.cachedDecisions = sortByTaskId(Array.from(this.decisions.values()));
 				this.notify("decisions");
@@ -603,12 +752,15 @@ export class ContentStore {
 				await this.refreshDocumentsFromDisk(undefined, undefined, epoch);
 				return;
 			}
+			const generation = this.nextContentItemGeneration("documents", idPart);
 
 			const exists = await Bun.file(absolutePath).exists();
-			if (!this.isRootWatcherCurrent(epoch)) return;
+			if (!this.isRootWatcherCurrent(epoch) || !this.isContentItemGenerationCurrent("documents", idPart, generation))
+				return;
 
 			if (!exists) {
 				if (this.documents.delete(idPart)) {
+					this.nextContentItemVersion("documents", idPart);
 					this.cachedDocuments = [...this.documents.values()].sort((a, b) => a.title.localeCompare(b.title));
 					this.notify("documents");
 				}
@@ -645,15 +797,18 @@ export class ContentStore {
 				},
 				12,
 				75,
-				() => this.isRootWatcherCurrent(epoch),
+				() => this.isRootWatcherCurrent(epoch) && this.isContentItemGenerationCurrent("documents", idPart, generation),
 			);
-			if (!this.isRootWatcherCurrent(epoch)) return;
+			if (!this.isRootWatcherCurrent(epoch) || !this.isContentItemGenerationCurrent("documents", idPart, generation))
+				return;
 			if (!document) {
 				await this.refreshDocumentsFromDisk(idPart, previous, epoch);
 				return;
 			}
 
-			if (!this.isRootWatcherCurrent(epoch)) return;
+			if (!this.isRootWatcherCurrent(epoch) || !this.isContentItemGenerationCurrent("documents", idPart, generation))
+				return;
+			this.nextContentItemVersion("documents", idPart);
 			this.documents.set(document.id, document);
 			this.cachedDocuments = [...this.documents.values()].sort((a, b) => a.title.localeCompare(b.title));
 			this.notify("documents");
@@ -715,6 +870,7 @@ export class ContentStore {
 	}
 
 	private replaceTasks(tasks: Task[]): void {
+		this.invalidateContentItemGenerations("tasks");
 		this.tasks.clear();
 		for (const task of tasks) {
 			this.tasks.set(task.id, task);
@@ -723,6 +879,7 @@ export class ContentStore {
 	}
 
 	private replaceDocuments(documents: Document[]): void {
+		this.invalidateContentItemGenerations("documents");
 		this.documents.clear();
 		for (const document of documents) {
 			this.documents.set(document.id, document);
@@ -731,6 +888,7 @@ export class ContentStore {
 	}
 
 	private replaceDecisions(decisions: Decision[]): void {
+		this.invalidateContentItemGenerations("decisions");
 		this.decisions.clear();
 		for (const decision of decisions) {
 			this.decisions.set(decision.id, decision);
@@ -804,6 +962,38 @@ export class ContentStore {
 		return JSON.stringify(previous) !== JSON.stringify(next);
 	}
 
+	private mergeConcurrentChanges<T>(
+		loaded: T[],
+		before: T[],
+		current: T[],
+		getId: (item: T) => string,
+		beforeVersions: ReadonlyMap<string, number>,
+		currentVersions: ReadonlyMap<string, number>,
+	): T[] {
+		const merged = new Map(loaded.map((item) => [getId(item), item]));
+		const beforeById = new Map(before.map((item) => [getId(item), item]));
+		const currentById = new Map(current.map((item) => [getId(item), item]));
+
+		for (const [id] of beforeById) {
+			if (beforeVersions.get(id) === currentVersions.get(id)) {
+				continue;
+			}
+			const currentItem = currentById.get(id);
+			if (!currentItem) {
+				merged.delete(id);
+				continue;
+			}
+			merged.set(id, currentItem);
+		}
+		for (const [id, currentItem] of currentById) {
+			if (!beforeById.has(id) && beforeVersions.get(id) !== currentVersions.get(id)) {
+				merged.set(id, currentItem);
+			}
+		}
+
+		return [...merged.values()];
+	}
+
 	private hasTaskCollectionChanged(nextTasks: Task[]): boolean {
 		const nextCachedTasks = sortByTaskId(nextTasks);
 		if (this.cachedTasks.length !== nextCachedTasks.length) {
@@ -821,7 +1011,9 @@ export class ContentStore {
 		previous?: Task,
 		epoch = this.rootWatcherEpoch,
 	): Promise<void> {
-		const tasks = await this.retryRead(
+		const changed = await this.loadCurrentCollection(
+			"tasks",
+			epoch,
 			async () => this.loadTasksWithLoader(),
 			(expected) => {
 				if (!expectedId) {
@@ -836,17 +1028,27 @@ export class ContentStore {
 				}
 				return true;
 			},
-			12,
-			75,
-			() => this.isRootWatcherCurrent(epoch),
+			() => ({ items: this.cachedTasks.slice(), versions: new Map(this.contentItemVersions.tasks) }),
+			(tasks, before) =>
+				this.mergeConcurrentChanges(
+					tasks,
+					before.items,
+					this.cachedTasks,
+					(task) => normalizeTaskId(task.id),
+					before.versions,
+					this.contentItemVersions.tasks,
+				),
+			(tasks) => {
+				if (!this.hasTaskCollectionChanged(tasks)) {
+					return false;
+				}
+				this.replaceTasks(tasks);
+				return true;
+			},
 		);
-		if (!tasks || !this.isRootWatcherCurrent(epoch)) {
+		if (!changed) {
 			return;
 		}
-		if (!this.hasTaskCollectionChanged(tasks)) {
-			return;
-		}
-		this.replaceTasks(tasks);
 		this.notify("tasks");
 	}
 
@@ -855,7 +1057,9 @@ export class ContentStore {
 		previous?: Document,
 		epoch = this.rootWatcherEpoch,
 	): Promise<void> {
-		const documents = await this.retryRead(
+		const changed = await this.loadCurrentCollection(
+			"documents",
+			epoch,
 			async () => this.filesystem.listDocuments(),
 			(expected) => {
 				if (!expectedId) {
@@ -870,14 +1074,24 @@ export class ContentStore {
 				}
 				return true;
 			},
-			12,
-			75,
-			() => this.isRootWatcherCurrent(epoch),
+			() => ({ items: this.cachedDocuments.slice(), versions: new Map(this.contentItemVersions.documents) }),
+			(documents, before) =>
+				this.mergeConcurrentChanges(
+					documents,
+					before.items,
+					this.cachedDocuments,
+					(document) => document.id,
+					before.versions,
+					this.contentItemVersions.documents,
+				),
+			(documents) => {
+				this.replaceDocuments(documents);
+				return true;
+			},
 		);
-		if (!documents || !this.isRootWatcherCurrent(epoch)) {
+		if (!changed) {
 			return;
 		}
-		this.replaceDocuments(documents);
 		this.notify("documents");
 	}
 
@@ -886,7 +1100,9 @@ export class ContentStore {
 		previous?: Decision,
 		epoch = this.rootWatcherEpoch,
 	): Promise<void> {
-		const decisions = await this.retryRead(
+		const changed = await this.loadCurrentCollection(
+			"decisions",
+			epoch,
 			async () => this.filesystem.listDecisions(),
 			(expected) => {
 				if (!expectedId) {
@@ -901,14 +1117,24 @@ export class ContentStore {
 				}
 				return true;
 			},
-			12,
-			75,
-			() => this.isRootWatcherCurrent(epoch),
+			() => ({ items: this.cachedDecisions.slice(), versions: new Map(this.contentItemVersions.decisions) }),
+			(decisions, before) =>
+				this.mergeConcurrentChanges(
+					decisions,
+					before.items,
+					this.cachedDecisions,
+					(decision) => decision.id,
+					before.versions,
+					this.contentItemVersions.decisions,
+				),
+			(decisions) => {
+				this.replaceDecisions(decisions);
+				return true;
+			},
 		);
-		if (!decisions || !this.isRootWatcherCurrent(epoch)) {
+		if (!changed) {
 			return;
 		}
-		this.replaceDecisions(decisions);
 		this.notify("decisions");
 	}
 
@@ -923,34 +1149,48 @@ export class ContentStore {
 
 	private async updateTaskFromDisk(taskId: string, epoch = this.rootWatcherEpoch): Promise<void> {
 		const normalizedTaskId = normalizeTaskId(taskId);
+		const generation = this.nextContentItemGeneration("tasks", normalizedTaskId);
 		const previous = this.tasks.get(normalizedTaskId);
 		const task = await this.retryRead(
 			async () => this.filesystem.loadTask(taskId),
 			(result) => result !== null && (!previous || this.hasTaskChanged(previous, result)),
 			12,
 			75,
-			() => this.isRootWatcherCurrent(epoch),
+			() =>
+				this.isRootWatcherCurrent(epoch) && this.isContentItemGenerationCurrent("tasks", normalizedTaskId, generation),
 		);
-		if (!task || !this.isRootWatcherCurrent(epoch)) {
+		if (
+			!task ||
+			!this.isRootWatcherCurrent(epoch) ||
+			!this.isContentItemGenerationCurrent("tasks", normalizedTaskId, generation)
+		) {
 			return;
 		}
+		this.nextContentItemVersion("tasks", normalizedTaskId);
 		this.tasks.set(task.id, task);
 		this.cachedTasks = sortByTaskId(Array.from(this.tasks.values()));
 		this.notify("tasks");
 	}
 
 	private async updateDecisionFromDisk(decisionId: string, epoch = this.rootWatcherEpoch): Promise<void> {
+		const generation = this.nextContentItemGeneration("decisions", decisionId);
 		const previous = this.decisions.get(decisionId);
 		const decision = await this.retryRead(
 			async () => this.filesystem.loadDecision(decisionId),
 			(result) => result !== null && (!previous || this.hasDecisionChanged(previous, result)),
 			12,
 			75,
-			() => this.isRootWatcherCurrent(epoch),
+			() =>
+				this.isRootWatcherCurrent(epoch) && this.isContentItemGenerationCurrent("decisions", decisionId, generation),
 		);
-		if (!decision || !this.isRootWatcherCurrent(epoch)) {
+		if (
+			!decision ||
+			!this.isRootWatcherCurrent(epoch) ||
+			!this.isContentItemGenerationCurrent("decisions", decisionId, generation)
+		) {
 			return;
 		}
+		this.nextContentItemVersion("decisions", decisionId);
 		this.decisions.set(decision.id, decision);
 		this.cachedDecisions = sortByTaskId(Array.from(this.decisions.values()));
 		this.notify("decisions");

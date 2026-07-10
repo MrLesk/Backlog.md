@@ -2,8 +2,9 @@ import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import { rename, unlink } from "node:fs/promises";
 import { join } from "node:path";
 import { ContentStore, type ContentStoreEvent } from "../core/content-store.ts";
+import { SearchService } from "../core/search-service.ts";
 import { FileSystem } from "../file-system/operations.ts";
-import type { Decision, Document, Task } from "../types/index.ts";
+import type { BacklogConfig, Decision, Document, Task } from "../types/index.ts";
 import { createUniqueTestDir, getPlatformTimeout, safeCleanup, sleep } from "./test-utils.ts";
 
 let TEST_DIR: string;
@@ -84,6 +85,374 @@ describe("ContentStore", () => {
 
 		const tasks = store.getTasks();
 		expect(tasks.map((task) => task.title)).toContain("Updated Task");
+	});
+
+	it("does not let an older task refresh overwrite a newer persisted upsert", async () => {
+		store.dispose();
+		const saveTaskToDisk = filesystem.saveTask.bind(filesystem);
+		await saveTaskToDisk({ ...sampleTask, type: "bug" });
+
+		let nextLoadGate: DeferredGate | null = null;
+		store = new ContentStore(filesystem, async () => {
+			const tasks = await filesystem.listTasks();
+			const gate = nextLoadGate;
+			if (gate) {
+				nextLoadGate = null;
+				gate.markStarted();
+				await gate.waitForRelease;
+			}
+			return tasks;
+		});
+		await store.ensureInitialized();
+
+		const search = new SearchService(store);
+		await search.ensureInitialized();
+		const heldOldLoad = createDeferredGate();
+		nextLoadGate = heldOldLoad;
+		const heldOldRefresh = (store as unknown as { refreshTasksFromDisk: () => Promise<void> }).refreshTasksFromDisk();
+		await withTimeout(heldOldLoad.started, "old task refresh");
+
+		await saveTaskToDisk({ ...sampleTask, type: "feature" });
+		const persistedTask = await filesystem.loadTask(sampleTask.id);
+		expect(persistedTask?.type).toBe("feature");
+		store.upsertTask(persistedTask as Task);
+		expect(store.getTasks()[0]?.type).toBe("feature");
+
+		heldOldLoad.release();
+		await heldOldRefresh;
+
+		expect(store.getTasks()[0]?.type).toBe("feature");
+		const featureResults = search.search({ types: ["task"], filters: { type: "feature" } });
+		expect(featureResults).toHaveLength(1);
+		expect(featureResults[0]?.type).toBe("task");
+		if (featureResults[0]?.type === "task") {
+			expect(featureResults[0].task.type).toBe("feature");
+		}
+		search.dispose();
+	});
+
+	it("publishes a validated task refresh without a microtask overwrite window", async () => {
+		store.dispose();
+		const taskWithTitle = (title: string): Task => ({ ...sampleTask, title });
+		const heldRefresh = createDeferredGate();
+		let loadCount = 0;
+		store = new ContentStore(filesystem, async () => {
+			loadCount += 1;
+			if (loadCount === 1) {
+				return [taskWithTitle("base")];
+			}
+			if (loadCount === 2) {
+				heldRefresh.markStarted();
+				await heldRefresh.waitForRelease;
+				return [taskWithTitle("stale")];
+			}
+			return [taskWithTitle("new")];
+		});
+		await store.ensureInitialized();
+
+		const refresh = store.refreshTasks();
+		await withTimeout(heldRefresh.started, "held public task refresh");
+		let upsert = Promise.resolve();
+		for (let depth = 0; depth < 5; depth += 1) {
+			upsert = upsert.then(() => {});
+		}
+		upsert = upsert.then(() => store.upsertTask(taskWithTitle("new")));
+		heldRefresh.release();
+		await Promise.all([refresh, upsert]);
+
+		expect(store.getTasks()[0]?.title).toBe("new");
+	});
+
+	it("preserves the newest task after concurrent updates return to the starting value", async () => {
+		store.dispose();
+		const taskWithTitle = (title: string): Task => ({ ...sampleTask, title });
+		const heldRefresh = createDeferredGate();
+		let loadCount = 0;
+		store = new ContentStore(filesystem, async () => {
+			loadCount += 1;
+			if (loadCount === 1) {
+				return [taskWithTitle("base")];
+			}
+			heldRefresh.markStarted();
+			await heldRefresh.waitForRelease;
+			return [taskWithTitle("stale captured")];
+		});
+		await store.ensureInitialized();
+
+		const refresh = store.refreshTasks();
+		await withTimeout(heldRefresh.started, "held ABA task refresh");
+		store.upsertTask(taskWithTitle("intermediate newer"));
+		store.upsertTask(taskWithTitle("base"));
+		heldRefresh.release();
+		await refresh;
+
+		expect(store.getTasks()[0]?.title).toBe("base");
+	});
+
+	it("terminates a refresh under sustained invalidation without publishing stale tasks", async () => {
+		store.dispose();
+		const secondTask: Task = { ...sampleTask, id: "TASK-2", title: "Task 2 old" };
+		let loadCount = 0;
+		let invalidateLoads = false;
+		store = new ContentStore(filesystem, async () => {
+			loadCount += 1;
+			if (invalidateLoads) {
+				for (let update = 1; update <= 20; update += 1) {
+					store.upsertTask({ ...secondTask, title: `Task 2 upsert ${update}` });
+				}
+				return [
+					{ ...sampleTask, title: "Task 1 external new" },
+					{ ...secondTask, title: "Task 2 stale refresh" },
+				];
+			}
+			return [{ ...sampleTask, title: "Task 1 old" }, secondTask];
+		});
+		await store.ensureInitialized();
+
+		invalidateLoads = true;
+		await withTimeout(store.refreshTasks(), "refresh under sustained invalidation");
+
+		expect(loadCount).toBe(2);
+		expect(store.getTasks().map((task) => [task.id, task.title])).toEqual([
+			["task-1", "Task 1 external new"],
+			["TASK-2", "Task 2 upsert 20"],
+		]);
+	});
+
+	it("does not invalidate content refreshes for identical task upserts", async () => {
+		await filesystem.saveTask(sampleTask);
+		await store.ensureInitialized();
+		let taskEvents = 0;
+		const unsubscribe = store.subscribe((event) => {
+			if (event.type === "tasks") {
+				taskEvents += 1;
+			}
+		});
+
+		const cachedTask = store.getTasks()[0];
+		if (!cachedTask) {
+			throw new Error("Expected a cached task");
+		}
+		store.upsertTask(cachedTask);
+
+		expect(taskEvents).toBe(0);
+		unsubscribe();
+	});
+
+	it("retries a full refresh invalidated by an unrelated task upsert", async () => {
+		store.dispose();
+		const saveTaskToDisk = filesystem.saveTask.bind(filesystem);
+		const firstTask: Task = { ...sampleTask, title: "Task 1 old" };
+		const secondTask: Task = { ...sampleTask, id: "task-2", title: "Task 2 old" };
+		await Promise.all([saveTaskToDisk(firstTask), saveTaskToDisk(secondTask)]);
+
+		let nextLoadGate: DeferredGate | null = null;
+		store = new ContentStore(filesystem, async () => {
+			const tasks = await filesystem.listTasks();
+			const gate = nextLoadGate;
+			nextLoadGate = null;
+			if (gate) {
+				gate.markStarted();
+				await gate.waitForRelease;
+			}
+			return tasks;
+		});
+		await store.ensureInitialized();
+
+		await saveTaskToDisk({ ...firstTask, title: "Task 1 external new" });
+		const heldOldLoad = createDeferredGate();
+		nextLoadGate = heldOldLoad;
+		const refresh = (store as unknown as { refreshTasksFromDisk: () => Promise<void> }).refreshTasksFromDisk();
+		await withTimeout(heldOldLoad.started, "full task refresh");
+
+		await saveTaskToDisk({ ...secondTask, title: "Task 2 upsert new" });
+		const persistedSecondTask = await filesystem.loadTask(secondTask.id);
+		if (!persistedSecondTask) {
+			throw new Error("Expected the persisted second task");
+		}
+		store.upsertTask(persistedSecondTask);
+		heldOldLoad.release();
+		await refresh;
+
+		expect(store.getTasks().map((task) => [task.id, task.title])).toEqual([
+			["TASK-1", "Task 1 external new"],
+			["TASK-2", "Task 2 upsert new"],
+		]);
+	});
+
+	it("does not drop a targeted task refresh when an unrelated task is upserted", async () => {
+		store.dispose();
+		const saveTaskToDisk = filesystem.saveTask.bind(filesystem);
+		const secondTask: Task = { ...sampleTask, id: "task-2", title: "Second task" };
+		await Promise.all([saveTaskToDisk({ ...sampleTask, type: "bug" }), saveTaskToDisk(secondTask)]);
+		store = new ContentStore(filesystem);
+		await store.ensureInitialized();
+
+		await saveTaskToDisk({ ...sampleTask, type: "feature" });
+		const originalLoadTask = filesystem.loadTask.bind(filesystem);
+		const heldTaskLoad = createDeferredGate();
+		filesystem.loadTask = async (taskId: string) => {
+			const task = await originalLoadTask(taskId);
+			if (taskId.toLowerCase() === sampleTask.id.toLowerCase()) {
+				heldTaskLoad.markStarted();
+				await heldTaskLoad.waitForRelease;
+			}
+			return task;
+		};
+
+		const targetedRefresh = (
+			store as unknown as { updateTaskFromDisk: (taskId: string) => Promise<void> }
+		).updateTaskFromDisk(sampleTask.id);
+		await withTimeout(heldTaskLoad.started, "targeted task refresh");
+		const cachedSecondTask = store.getTasks().find((task) => task.id === "TASK-2");
+		if (!cachedSecondTask) {
+			throw new Error("Expected the second task in the content store");
+		}
+		store.upsertTask({ ...cachedSecondTask, title: "Second task refreshed" });
+
+		heldTaskLoad.release();
+		await targetedRefresh;
+
+		expect(store.getTasks().find((task) => task.id === "TASK-1")?.type).toBe("feature");
+		expect(store.getTasks().find((task) => task.id === "TASK-2")?.title).toBe("Second task refreshed");
+	});
+
+	it("reloads a same-root config snapshot invalidated by a newer task upsert", async () => {
+		store.dispose();
+		const saveTaskToDisk = filesystem.saveTask.bind(filesystem);
+		await saveTaskToDisk({ ...sampleTask, type: "bug" });
+		const config: BacklogConfig = {
+			projectName: "Content generation fixture",
+			statuses: ["To Do", "Done"],
+			labels: [],
+			dateFormat: "YYYY-MM-DD",
+			checkActiveBranches: false,
+			prefixes: { task: "TASK" },
+		};
+		await filesystem.saveConfig(config);
+
+		let nextTaskLoadGate: DeferredGate | null = null;
+		store = new ContentStore(
+			filesystem,
+			async () => {
+				const tasks = await filesystem.listTasks();
+				const gate = nextTaskLoadGate;
+				nextTaskLoadGate = null;
+				if (gate) {
+					gate.markStarted();
+					await gate.waitForRelease;
+				}
+				return tasks;
+			},
+			true,
+		);
+		await store.ensureInitialized();
+
+		const heldConfigLoad = createDeferredGate();
+		nextTaskLoadGate = heldConfigLoad;
+		const configRefresh = (
+			store as unknown as { handleConfigChanged: (nextConfig: BacklogConfig) => Promise<void> }
+		).handleConfigChanged(config);
+		await withTimeout(heldConfigLoad.started, "same-root config task snapshot");
+
+		await saveTaskToDisk({ ...sampleTask, type: "feature" });
+		const persistedTask = await filesystem.loadTask(sampleTask.id);
+		if (!persistedTask) {
+			throw new Error("Expected the persisted task after the config snapshot started");
+		}
+		store.upsertTask(persistedTask);
+		heldConfigLoad.release();
+		await configRefresh;
+
+		expect(store.getTasks()[0]?.type).toBe("feature");
+	});
+
+	it("keeps newer task, document, and decision refresh generations", async () => {
+		store.dispose();
+		const saveTaskToDisk = filesystem.saveTask.bind(filesystem);
+		const saveDocumentToDisk = filesystem.saveDocument.bind(filesystem);
+		const saveDecisionToDisk = filesystem.saveDecision.bind(filesystem);
+		await Promise.all([
+			saveTaskToDisk({ ...sampleTask, title: "Task A" }),
+			saveDocumentToDisk({ ...sampleDocument, title: "Document A" }),
+			saveDecisionToDisk({ ...sampleDecision, title: "Decision A" }),
+		]);
+
+		const originalListDocuments = filesystem.listDocuments.bind(filesystem);
+		const originalListDecisions = filesystem.listDecisions.bind(filesystem);
+		let nextTaskLoadGate: DeferredGate | null = null;
+		let nextDocumentLoadGate: DeferredGate | null = null;
+		let nextDecisionLoadGate: DeferredGate | null = null;
+		const holdNextLoad = async <T>(result: T, gate: DeferredGate | null): Promise<T> => {
+			if (gate) {
+				gate.markStarted();
+				await gate.waitForRelease;
+			}
+			return result;
+		};
+
+		filesystem.listDocuments = async () => {
+			const documents = await originalListDocuments();
+			const gate = nextDocumentLoadGate;
+			nextDocumentLoadGate = null;
+			return await holdNextLoad(documents, gate);
+		};
+		filesystem.listDecisions = async () => {
+			const decisions = await originalListDecisions();
+			const gate = nextDecisionLoadGate;
+			nextDecisionLoadGate = null;
+			return await holdNextLoad(decisions, gate);
+		};
+		store = new ContentStore(filesystem, async () => {
+			const tasks = await filesystem.listTasks();
+			const gate = nextTaskLoadGate;
+			nextTaskLoadGate = null;
+			return await holdNextLoad(tasks, gate);
+		});
+		await store.ensureInitialized();
+
+		const heldTaskLoad = createDeferredGate();
+		const heldDocumentLoad = createDeferredGate();
+		const heldDecisionLoad = createDeferredGate();
+		nextTaskLoadGate = heldTaskLoad;
+		nextDocumentLoadGate = heldDocumentLoad;
+		nextDecisionLoadGate = heldDecisionLoad;
+		const refreshes = store as unknown as {
+			refreshTasksFromDisk: () => Promise<void>;
+			refreshDocumentsFromDisk: () => Promise<void>;
+			refreshDecisionsFromDisk: () => Promise<void>;
+		};
+		const heldOldRefreshes = [
+			refreshes.refreshTasksFromDisk(),
+			refreshes.refreshDocumentsFromDisk(),
+			refreshes.refreshDecisionsFromDisk(),
+		];
+		await Promise.all([
+			withTimeout(heldTaskLoad.started, "old task collection refresh"),
+			withTimeout(heldDocumentLoad.started, "old document collection refresh"),
+			withTimeout(heldDecisionLoad.started, "old decision collection refresh"),
+		]);
+
+		await Promise.all([
+			saveTaskToDisk({ ...sampleTask, title: "Task B" }),
+			saveDocumentToDisk({ ...sampleDocument, title: "Document B" }),
+			saveDecisionToDisk({ ...sampleDecision, title: "Decision B" }),
+		]);
+		await Promise.all([
+			refreshes.refreshTasksFromDisk(),
+			refreshes.refreshDocumentsFromDisk(),
+			refreshes.refreshDecisionsFromDisk(),
+		]);
+
+		heldTaskLoad.release();
+		heldDocumentLoad.release();
+		heldDecisionLoad.release();
+		await Promise.all(heldOldRefreshes);
+
+		const snapshot = store.getSnapshot();
+		expect(snapshot.tasks[0]?.title).toBe("Task B");
+		expect(snapshot.documents[0]?.title).toBe("Document B");
+		expect(snapshot.decisions[0]?.title).toBe("Decision B");
 	});
 
 	it("updates documents when new files are added", async () => {
