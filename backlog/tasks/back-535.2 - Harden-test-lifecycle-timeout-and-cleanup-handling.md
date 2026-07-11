@@ -5,7 +5,7 @@ status: In Progress
 assignee:
   - '@test-hygiene-slice-b'
 created_date: '2026-07-11 09:20'
-updated_date: '2026-07-11 09:26'
+updated_date: '2026-07-11 10:15'
 labels: []
 dependencies: []
 parent_task_id: BACK-535
@@ -35,10 +35,10 @@ Make test lifecycle failures deterministic and visible without changing producti
 
 <!-- SECTION:PLAN:BEGIN -->
 1. Inventory and classify every broad catch/swallow site and all rejecting timeout races.
-2. Introduce or reuse the smallest self-cleaning timeout pattern and repair config-hang-repro isolation.
-3. Convert only high-risk setup/teardown sites that currently hide lifecycle failures.
+2. Introduce the smallest self-cleaning timeout helper and repair config-hang-repro isolation.
+3. Replace the probabilistic atomic-create escape-hatch assertion with direct deterministic concurrency coverage; drain both outcomes and reject unexpected error types without claiming legacy unlocked writes must collide.
 4. Update the Testing Style Guide and create scoped child follow-ups for remaining mechanical batches.
-5. Run repeated focused stress, full/static/build checks, record runtime evidence, and complete sequential reviews.
+5. Run repeated focused stress, full/static/build checks on current main, record runtime evidence, and complete sequential reviews.
 <!-- SECTION:PLAN:END -->
 
 ## Implementation Notes
@@ -55,6 +55,10 @@ Timeout audit: config-hang-repro had the only unowned rejecting Promise.race and
 Implemented the bounded lifecycle slice: config-hang-repro now allocates a unique project path, cleans it without swallowing teardown failures, and uses the shared self-clearing withTimeout helper. atomic-task-create now uses the same helper instead of leaving a losing sleep timer alive. Added focused helper tests for resolve, reject, and timeout paths. Updated doc-001 through the Backlog CLI with isolation, cleanup, resource ownership, synchronization, global-state, surface assertion, platform, and verification rules. No production file changed.
 
 Verification before review: 10 repeated focused runs passed 15/15 each with 32 assertions in 0.39-0.40s. config-hang-repro alone remained 7/7 and measured 0.11-0.14s after versus 0.12-0.14s before. Full isolated suite passed 1,625 tests with 2 expected interactive-TUI skips, 0 failures, 6,631 assertions across 189 files in 154.91s; prior main baseline was 1,625 tests in 160.66s, so the two new helper tests produce 1,627 total with no measurable runtime regression. TypeScript, Biome over 323 files, build, and diff checks pass.
+
+Post-main fail-first evidence: after merging origin/main 75c2528, atomic-task-create failed 1 of 30 identical focused runs because both unlocked creates sometimes fulfilled. The barrier proves both calls reached saveTask concurrently, but filesystem scheduling may let one write replace the other before duplicate ambiguity is observable. Therefore the >=1 rejection assertion is probabilistic and overstates the documented USE_GLOBAL_TASK_ID_LOCK=false escape-hatch contract. The deterministic replacement will retain direct concurrent-entry evidence, await both operations, and require every rejection (if any) to be AmbiguousTaskIdError.
+
+Post-repair verification on merged main 75c2528: the direct escape-hatch contract passed 50/50 atomic stress runs and the combined timeout/config/atomic focus passed 10/10 (15 tests, 32 assertions per run). Full suite passed 1,636 with 2 intentional interactive-TUI skips, 0 failures, and 6,716 assertions across 189 files in 169.72s. bunx tsc --noEmit, Biome over 323 files, bun run build, and diff checks passed. The higher total relative to the earlier 1,625 baseline comes from main changes merged through #759 plus the two helper tests.
 <!-- SECTION:NOTES:END -->
 
 ## Definition of Done
