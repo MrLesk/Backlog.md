@@ -1,11 +1,11 @@
 ---
 id: BACK-533
 title: Prevent stale ContentStore refresh from overwriting newer state
-status: Done
+status: In Progress
 assignee:
-  - '@issue753-takeover'
+  - '@pr755-f768-code'
 created_date: '2026-07-10 19:28'
-updated_date: '2026-07-11 00:24'
+updated_date: '2026-07-11 00:42'
 labels:
   - concurrency
   - release-blocker
@@ -31,18 +31,18 @@ Issue #753 reports a release-blocking read-after-write race: an older asynchrono
 - [x] #1 A deterministic held-older/newer-write regression proves stale refresh completion cannot overwrite the newer task state
 - [x] #2 Immediate task read, list, and search consumers observe the persisted edit rather than an older refresh snapshot
 - [x] #3 The shared publication-order guarantee applies consistently to tasks, documents, decisions, configuration, and root lifecycle without cross-root leakage
-- [x] #4 Genuine external watcher changes still refresh state, including after shutdown and restart
+- [ ] #4 Genuine external watcher changes still refresh state, including after shutdown and restart
 - [x] #5 Duplicate-repair serialization and existing watcher semantics remain intact
-- [x] #6 Focused stress, typecheck, Biome, full tests, and compiled build pass
+- [ ] #6 Focused stress, typecheck, Biome, full tests, and compiled build pass
 <!-- AC:END -->
 
 ## Implementation Plan
 
 <!-- SECTION:PLAN:BEGIN -->
-1. Reproduce every stale-publication path deterministically across ordinary refreshes, initialization, configuration transitions, watcher restart/failure, disposal, and cross-root A→B/A→B→A sequences.
-2. Enforce shared lifecycle invariants: physical-root provenance for persisted publications, epoch ownership for watcher instances, coherent bounded initialization attempts, matching configured/published/watcher roots, and fail-closed ambiguous direct upserts.
-3. Keep internal pre-ready reconciliation silent until one coherent ready event; preserve post-ready notifications and best-effort watcher recovery without swallowing content errors.
-4. Verify focused consumers and the full lifecycle state matrix under stress, then run TypeScript, Biome, build, full isolated tests, and independent spec/concurrency plus quality/simplicity reviews before publication.
+1. Make the lifecycle regression self-cleaning and phase-diagnostic: cancel event subscriptions/timers on settle, label every watcher/config wait, and ensure helper timeouts fire before Bun’s outer Windows test timeout without increasing either limit.
+2. Push the test-only diagnostic head and use Windows CI to identify the exact stalled transition; do not infer a production fix from local-only passes.
+3. Correct the smallest proven watcher or test-lifecycle defect while preserving epoch/root publication guarantees and existing config watcher semantics.
+4. Re-run focused Windows-equivalent stress, impacted/full tests, TypeScript, Biome, build, and fresh independent spec plus quality reviews before a new final-head CI gate.
 <!-- SECTION:PLAN:END -->
 
 ## Implementation Notes
@@ -75,17 +75,13 @@ Publication gate: final frozen fingerprint f888e6cb2db68cc12283260d1a5381ef949a3
 Post-publication exact-head review closed the merge gate with two deterministic P1 gaps: concurrent persisted publications during initialization can be dropped and overwritten by the initial stale snapshot; a late publication owned by root A can be reconciled into root B during A→B transition. PR #757 remains open but must not merge until both gaps are fixed, fully reverified, and independently reapproved.
 
 Final lifecycle correction and verification: publication ownership now uses physical-root provenance while watcher instance cancellation remains epoch-based; initialization retries bounded coherent root attempts across structure creation, content load, and watcher binding; stable reconciliation requires configured root, published cache owner, and active watcher owner to match; watcher invalidation advances epoch before stopping; ambiguous pathless direct upserts fail closed unless an explicit root owner is supplied; pre-ready state changes remain internal until one coherent ready event. Frozen code/test fingerprint f75bbda2 received independent spec/concurrency APPROVED and independent quality/simplicity APPROVED with no P1/P2/P3. Final verification: impacted tests 62/62; expanded 23-scenario lifecycle matrix 1,150/1,150; TypeScript, Biome across 324 files, diff check, and compiled build passed; authoritative full suite 1,672 passed, 2 expected interactive skips, 0 failed, 6,779 assertions across 189 files.
+
+Merge gate reopened after exact-head Windows CI reproduced the A→B→A watcher lifecycle test timeout twice at 30 seconds. Two outstanding event waits then rejected after the outer timeout and contaminated the following test. No merge; add phase-local diagnostics and correct the Windows-specific behavior/test before re-verification.
 <!-- SECTION:NOTES:END -->
-
-## Final Summary
-
-<!-- SECTION:FINAL_SUMMARY:BEGIN -->
-Completed the ContentStore ordering fix with coherent initialization, physical-root publication provenance, root/watcher lifecycle invariants, fail-closed ambiguous upserts, and pre-ready notification ordering. Verified on frozen f75bbda2 with 1,672 full-suite passes, 1,150 lifecycle stress executions, static checks, compiled build, and independent spec plus quality approvals.
-<!-- SECTION:FINAL_SUMMARY:END -->
 
 ## Definition of Done
 <!-- DOD:BEGIN -->
 - [x] #1 bunx tsc --noEmit passes when TypeScript touched
 - [x] #2 bun run check . passes when formatting/linting touched
-- [x] #3 bun test (or scoped test) passes
+- [ ] #3 bun test (or scoped test) passes
 <!-- DOD:END -->

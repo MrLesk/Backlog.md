@@ -1434,6 +1434,8 @@ describe("ContentStore", () => {
 
 	it("publishes coherent A to B to A snapshots and rebinds every root watcher", async () => {
 		store.dispose();
+		const lifecycleGateTimeout = getPlatformTimeout(5000);
+		const lifecycleEventTimeout = getPlatformTimeout(8000);
 		const rootA = "custom/a";
 		const rootB = "custom/b";
 		const configPath = join(TEST_DIR, "backlog.config.yml");
@@ -1478,12 +1480,13 @@ describe("ContentStore", () => {
 			gates.push(heldOldLoad);
 			nextTaskLoadGate = heldOldLoad;
 			const heldOldRefresh = store.refreshTasks();
-			await withTimeout(heldOldLoad.started, "old-root task refresh");
+			await withTimeout(heldOldLoad.started, "old-root task refresh", lifecycleGateTimeout);
 
 			const rootBPublished = waitForEventWithTimeout(
 				store,
 				(event) => event.type === "config" && event.config.projectName === "Root B",
-				getPlatformTimeout(15000),
+				lifecycleEventTimeout,
+				"root B config publication",
 			);
 			await replaceRootConfig(configPath, rootConfig("Root B", rootB));
 			await waitUntil(() => filesystem.backlogDirName === rootB, "root B publication");
@@ -1495,8 +1498,8 @@ describe("ContentStore", () => {
 			gates.push(heldBLoad);
 			nextTaskLoadGate = heldBLoad;
 			heldOldLoad.release();
-			await heldOldRefresh;
-			await withTimeout(heldBLoad.started, "root B snapshot load");
+			await withTimeout(heldOldRefresh, "old-root refresh completion", lifecycleGateTimeout);
+			await withTimeout(heldBLoad.started, "root B snapshot load", lifecycleGateTimeout);
 
 			const rootBLaterWrites = waitForEventWithTimeout(
 				store,
@@ -1504,13 +1507,13 @@ describe("ContentStore", () => {
 					event.snapshot.tasks.some((task) => task.id === "TASK-202") &&
 					event.snapshot.documents.some((document) => document.id === "doc-b-2") &&
 					event.snapshot.decisions.some((decision) => decision.id === "decision-b-2"),
-				getPlatformTimeout(15000),
+				lifecycleEventTimeout,
+				"root B watcher publications after rebinding",
 			);
 			await writeFixture(fixtureB, "202", "b-2");
 			heldBLoad.release();
 
-			const rootBEvent = await rootBPublished;
-			await rootBLaterWrites;
+			const [rootBEvent] = await Promise.all([rootBPublished, rootBLaterWrites]);
 			expect(rootBEvent.snapshot.tasks.every((task) => task.id.startsWith("TASK-2"))).toBe(true);
 			expect(rootBEvent.snapshot.documents.every((document) => document.id.startsWith("doc-b-"))).toBe(true);
 			expect(rootBEvent.snapshot.decisions.every((decision) => decision.id.startsWith("decision-b-"))).toBe(true);
@@ -1524,21 +1527,22 @@ describe("ContentStore", () => {
 			const heldBPublished = waitForEventWithTimeout(
 				store,
 				(event) => event.type === "config" && event.config.projectName === "Root B held",
-				getPlatformTimeout(15000),
+				lifecycleEventTimeout,
+				"held root B config publication",
 			);
+			await replaceRootConfig(configPath, rootConfig("Root B held", rootB));
+			await withTimeout(heldBConfigLoad.started, "held root B config load", lifecycleGateTimeout);
 			const rootAReturned = waitForEventWithTimeout(
 				store,
 				(event) => event.type === "config" && event.config.projectName === "Root A returned",
-				getPlatformTimeout(15000),
+				lifecycleEventTimeout,
+				"returned root A config publication",
 			);
-			await replaceRootConfig(configPath, rootConfig("Root B held", rootB));
-			await withTimeout(heldBConfigLoad.started, "held root B config load");
 			await replaceRootConfig(configPath, rootConfig("Root A returned", rootA));
 			await sleep(getPlatformTimeout(150));
 			heldBConfigLoad.release();
 
-			await heldBPublished;
-			const rootAEvent = await rootAReturned;
+			const [, rootAEvent] = await Promise.all([heldBPublished, rootAReturned]);
 			expect(rootAEvent.snapshot.tasks.map((task) => task.id).sort()).toEqual(["TASK-101", "TASK-103"]);
 			expect(rootAEvent.snapshot.documents.map((document) => document.id).sort()).toEqual(["doc-a-1", "doc-a-3"]);
 			expect(rootAEvent.snapshot.decisions.map((decision) => decision.id).sort()).toEqual([
@@ -1552,7 +1556,8 @@ describe("ContentStore", () => {
 					event.snapshot.tasks.some((task) => task.id === "TASK-104") &&
 					event.snapshot.documents.some((document) => document.id === "doc-a-4") &&
 					event.snapshot.decisions.some((decision) => decision.id === "decision-a-4"),
-				getPlatformTimeout(15000),
+				lifecycleEventTimeout,
+				"root A watcher publications after return",
 			);
 			await writeFixture(fixtureA, "104", "a-4");
 			await rootALaterWrites;
@@ -1577,7 +1582,8 @@ describe("ContentStore", () => {
 					event.snapshot.tasks.some((task) => task.id === "TASK-106") &&
 					event.snapshot.documents.some((document) => document.id === "doc-a-6") &&
 					event.snapshot.decisions.some((decision) => decision.id === "decision-a-6"),
-				getPlatformTimeout(15000),
+				lifecycleEventTimeout,
+				"restarted root A watcher publications",
 			);
 			await writeFixture(fixtureA, "106", "a-6");
 			await restartedWrite;
@@ -1648,23 +1654,30 @@ function waitForEventWithTimeout(
 	store: ContentStore,
 	predicate: (event: ContentStoreEvent) => boolean,
 	timeout = getPlatformTimeout(),
+	label = "content store event",
 ): Promise<ContentStoreEvent> {
-	const eventPromise = new Promise<ContentStoreEvent>((resolve) => {
-		const unsubscribe = store.subscribe((event) => {
-			if (!predicate(event)) {
+	return new Promise<ContentStoreEvent>((resolve, reject) => {
+		let unsubscribe = () => {};
+		let settled = false;
+		const timer = setTimeout(() => {
+			settled = true;
+			unsubscribe();
+			reject(new Error(`Timed out waiting for ${label}`));
+		}, timeout);
+
+		unsubscribe = store.subscribe((event) => {
+			if (settled || !predicate(event)) {
 				return;
 			}
+			settled = true;
+			clearTimeout(timer);
 			unsubscribe();
 			resolve(event);
 		});
+		if (settled) {
+			unsubscribe();
+		}
 	});
-
-	return Promise.race([
-		eventPromise,
-		sleep(timeout).then(() => {
-			throw new Error("Timed out waiting for content store event");
-		}),
-	]);
 }
 
 interface DeferredGate {
@@ -1748,13 +1761,20 @@ async function replaceRootConfig(configPath: string, content: string): Promise<v
 	await rename(replacementPath, configPath);
 }
 
-async function withTimeout<T>(promise: Promise<T>, label: string): Promise<T> {
-	return await Promise.race([
-		promise,
-		sleep(getPlatformTimeout(15000)).then(() => {
-			throw new Error(`Timed out waiting for ${label}`);
-		}),
-	]);
+async function withTimeout<T>(promise: Promise<T>, label: string, timeout = getPlatformTimeout(15000)): Promise<T> {
+	return await new Promise<T>((resolve, reject) => {
+		const timer = setTimeout(() => reject(new Error(`Timed out waiting for ${label}`)), timeout);
+		promise.then(
+			(value) => {
+				clearTimeout(timer);
+				resolve(value);
+			},
+			(error) => {
+				clearTimeout(timer);
+				reject(error);
+			},
+		);
+	});
 }
 
 async function waitUntil(predicate: () => boolean, label: string): Promise<void> {
