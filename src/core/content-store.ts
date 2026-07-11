@@ -32,6 +32,30 @@ interface WatchHandle {
 	stop(): void;
 }
 
+interface DeferredRecheck {
+	epoch: number;
+	attempt: number;
+	budgetRefreshed: boolean;
+	timer: ReturnType<typeof setTimeout> | null;
+	reconcile: () => Promise<boolean>;
+}
+
+interface RenameReconciliation<T> {
+	key: string;
+	epoch: number;
+	readEventPath: () => Promise<T | null>;
+	findIdentity: () => Promise<IdentityLookup<T>>;
+	current: () => T | undefined;
+	hasChanged: (previous: T, next: T) => boolean;
+	publish: (item: T) => void;
+	remove: () => void;
+}
+
+type IdentityLookup<T> = { state: "found"; item: T } | { state: "absent" } | { state: "incomplete" };
+
+const CONTENT_RETRY_ATTEMPTS = 12;
+const CONTENT_RETRY_DELAY_MS = 75;
+
 export class ContentStore {
 	private initialized = false;
 	private initializing: Promise<void> | null = null;
@@ -56,6 +80,7 @@ export class ContentStore {
 	private rootWatcherEpoch = 0;
 	private boundBacklogDir: string | null = null;
 	private closed = false;
+	private readonly deferredRechecks = new Map<string, DeferredRecheck>();
 
 	private attachWatcherErrorHandler(watcher: FSWatcher, context: string): void {
 		watcher.on("error", (error) => {
@@ -113,7 +138,7 @@ export class ContentStore {
 		}
 		const epoch = this.rootWatcherEpoch;
 		await this.enqueueRoot(epoch, async () => {
-			await this.refreshTasksFromDisk(undefined, undefined, epoch);
+			await this.refreshTasksFromDisk(undefined, epoch);
 		});
 	}
 
@@ -400,6 +425,7 @@ export class ContentStore {
 	}
 
 	private stopRootWatchers(): void {
+		this.clearDeferredRechecks();
 		for (const watcher of this.rootWatchers) {
 			try {
 				watcher.stop();
@@ -429,7 +455,7 @@ export class ContentStore {
 			// Accept any prefix pattern (task-, jira-, etc.) followed by ID and ending in .md
 			if (!file || !/^[a-zA-Z]+-/.test(file) || !file.endsWith(".md")) {
 				this.enqueueRoot(epoch, async () => {
-					await this.refreshTasksFromDisk(undefined, undefined, epoch);
+					await this.refreshTasksFromDisk(undefined, epoch);
 				});
 				return;
 			}
@@ -440,58 +466,94 @@ export class ContentStore {
 				const normalizedTaskId = normalizeTaskId(taskId);
 
 				const fullPath = join(tasksDir, file);
-				const exists = await Bun.file(fullPath).exists();
-				if (!this.isRootWatcherCurrent(epoch)) return;
+				if (eventType === "rename") {
+					await this.reconcileRenamedItem({
+						key: `task:${normalizedTaskId}`,
+						epoch,
+						readEventPath: async () => {
+							if (!(await Bun.file(fullPath).exists())) return null;
+							const content = await Bun.file(fullPath).text();
+							const task = { ...normalizeTaskIdentity(parseTask(content)), filePath: fullPath };
+							if (!taskIdsEqual(task.id, normalizedTaskId)) {
+								throw new Error("Task identity does not match watcher filename");
+							}
+							return task;
+						},
+						findIdentity: async () => {
+							const local = await this.findIdentityCandidate(
+								tasksDir,
+								"*.md",
+								(relativePath) => {
+									const [candidateId] = basename(relativePath).split(" ");
+									return candidateId ? taskIdsEqual(candidateId, normalizedTaskId) : false;
+								},
+								async (candidatePath) => {
+									const content = await Bun.file(candidatePath).text();
+									const task = { ...normalizeTaskIdentity(parseTask(content)), filePath: candidatePath };
+									if (!taskIdsEqual(task.id, normalizedTaskId)) {
+										throw new Error("Task identity does not match candidate filename");
+									}
+									return task;
+								},
+							);
+							if (local.state !== "absent" || !this.taskLoader) {
+								return local;
+							}
+							try {
+								const matches = (await this.loadTasksWithLoader()).filter((task) =>
+									taskIdsEqual(task.id, normalizedTaskId),
+								);
+								if (matches.length === 0) return { state: "absent" };
+								if (matches.length > 1) return { state: "incomplete" };
+								const item = matches[0];
+								return item ? { state: "found", item } : { state: "incomplete" };
+							} catch {
+								return { state: "incomplete" };
+							}
+						},
+						current: () => this.tasks.get(normalizedTaskId),
+						hasChanged: (previous, next) => this.hasTaskChanged(previous, next),
+						publish: (task) => {
+							this.tasks.set(task.id, task);
+							this.cachedTasks = sortByTaskId(Array.from(this.tasks.values()));
+							this.notify("tasks");
+						},
+						remove: () => {
+							if (!this.tasks.delete(normalizedTaskId)) return;
+							this.cachedTasks = sortByTaskId(Array.from(this.tasks.values()));
+							this.notify("tasks");
+						},
+					});
+					return;
+				}
 
-				if (!exists) {
-					if (this.tasks.delete(normalizedTaskId)) {
-						this.cachedTasks = sortByTaskId(Array.from(this.tasks.values()));
-						this.notify("tasks");
+				await this.reconcileOrSchedule(`task:${normalizedTaskId}`, epoch, async () => {
+					if (!(await Bun.file(fullPath).exists())) {
+						if (this.tasks.delete(normalizedTaskId)) {
+							this.cachedTasks = sortByTaskId(Array.from(this.tasks.values()));
+							this.notify("tasks");
+						}
+						return false;
 					}
-					return;
-				}
 
-				if (eventType === "rename" && exists) {
-					await this.refreshTasksFromDisk(undefined, undefined, epoch);
-					return;
-				}
-
-				const previous = this.tasks.get(normalizedTaskId);
-				const task = await this.retryRead(
-					async () => {
-						const stillExists = await Bun.file(fullPath).exists();
-						if (!stillExists) {
-							return null;
-						}
+					try {
 						const content = await Bun.file(fullPath).text();
-						return normalizeTaskIdentity(parseTask(content));
-					},
-					(result) => {
-						if (!result) {
-							return false;
-						}
-						if (!taskIdsEqual(result.id, normalizedTaskId)) {
-							return false;
-						}
-						if (!previous) {
+						const task = { ...normalizeTaskIdentity(parseTask(content)), filePath: fullPath };
+						if (!taskIdsEqual(task.id, normalizedTaskId)) {
 							return true;
 						}
-						return this.hasTaskChanged(previous, result);
-					},
-					12,
-					75,
-					() => this.isRootWatcherCurrent(epoch),
-				);
-				if (!this.isRootWatcherCurrent(epoch)) return;
-				if (!task) {
-					await this.refreshTasksFromDisk(normalizedTaskId, previous, epoch);
-					return;
-				}
-
-				if (!this.isRootWatcherCurrent(epoch)) return;
-				this.tasks.set(task.id, task);
-				this.cachedTasks = sortByTaskId(Array.from(this.tasks.values()));
-				this.notify("tasks");
+						const previous = this.tasks.get(normalizedTaskId);
+						if (previous && !this.hasTaskChanged(previous, task)) {
+							return true;
+						}
+						this.tasks.set(task.id, task);
+						this.cachedTasks = sortByTaskId(Array.from(this.tasks.values()));
+						this.notify("tasks");
+						return false;
+					} catch {
+						return true;
+					}
+				});
 			});
 		});
 		this.attachWatcherErrorHandler(watcher, "tasks");
@@ -509,7 +571,7 @@ export class ContentStore {
 			const file = this.normalizeFilename(filename);
 			if (!file?.startsWith("decision-") || !file.endsWith(".md")) {
 				this.enqueueRoot(epoch, async () => {
-					await this.refreshDecisionsFromDisk(undefined, undefined, epoch);
+					await this.refreshDecisionsFromDisk(undefined, epoch);
 				});
 				return;
 			}
@@ -519,57 +581,77 @@ export class ContentStore {
 				if (!idPart) return;
 
 				const fullPath = join(decisionsDir, file);
-				const exists = await Bun.file(fullPath).exists();
-				if (!this.isRootWatcherCurrent(epoch)) return;
-
-				if (!exists) {
-					if (this.decisions.delete(idPart)) {
-						this.cachedDecisions = sortByTaskId(Array.from(this.decisions.values()));
-						this.notify("decisions");
-					}
-					return;
-				}
-
-				if (eventType === "rename" && exists) {
-					await this.refreshDecisionsFromDisk(undefined, undefined, epoch);
-					return;
-				}
-
-				const previous = this.decisions.get(idPart);
-				const decision = await this.retryRead(
-					async () => {
-						try {
+				if (eventType === "rename") {
+					await this.reconcileRenamedItem({
+						key: `decision:${idPart}`,
+						epoch,
+						readEventPath: async () => {
+							if (!(await Bun.file(fullPath).exists())) return null;
 							const content = await Bun.file(fullPath).text();
-							return parseDecision(content);
-						} catch {
-							return null;
+							const decision = parseDecision(content);
+							if (decision.id !== idPart) {
+								throw new Error("Decision identity does not match watcher filename");
+							}
+							return decision;
+						},
+						findIdentity: async () => {
+							return await this.findIdentityCandidate(
+								decisionsDir,
+								"decision-*.md",
+								(relativePath) => basename(relativePath).split(" - ")[0] === idPart,
+								async (candidatePath) => {
+									const content = await Bun.file(candidatePath).text();
+									const decision = parseDecision(content);
+									if (decision.id !== idPart) {
+										throw new Error("Decision identity does not match candidate filename");
+									}
+									return decision;
+								},
+							);
+						},
+						current: () => this.decisions.get(idPart),
+						hasChanged: (previous, next) => this.hasDecisionChanged(previous, next),
+						publish: (decision) => {
+							this.decisions.set(decision.id, decision);
+							this.cachedDecisions = sortByTaskId(Array.from(this.decisions.values()));
+							this.notify("decisions");
+						},
+						remove: () => {
+							if (!this.decisions.delete(idPart)) return;
+							this.cachedDecisions = sortByTaskId(Array.from(this.decisions.values()));
+							this.notify("decisions");
+						},
+					});
+					return;
+				}
+
+				await this.reconcileOrSchedule(`decision:${idPart}`, epoch, async () => {
+					if (!(await Bun.file(fullPath).exists())) {
+						if (this.decisions.delete(idPart)) {
+							this.cachedDecisions = sortByTaskId(Array.from(this.decisions.values()));
+							this.notify("decisions");
 						}
-					},
-					(result) => {
-						if (!result) {
-							return false;
-						}
-						if (result.id !== idPart) {
-							return false;
-						}
-						if (!previous) {
+						return false;
+					}
+
+					try {
+						const content = await Bun.file(fullPath).text();
+						const decision = parseDecision(content);
+						if (decision.id !== idPart) {
 							return true;
 						}
-						return this.hasDecisionChanged(previous, result);
-					},
-					12,
-					75,
-					() => this.isRootWatcherCurrent(epoch),
-				);
-				if (!this.isRootWatcherCurrent(epoch)) return;
-				if (!decision) {
-					await this.refreshDecisionsFromDisk(idPart, previous, epoch);
-					return;
-				}
-				if (!this.isRootWatcherCurrent(epoch)) return;
-				this.decisions.set(decision.id, decision);
-				this.cachedDecisions = sortByTaskId(Array.from(this.decisions.values()));
-				this.notify("decisions");
+						const previous = this.decisions.get(idPart);
+						if (previous && !this.hasDecisionChanged(previous, decision)) {
+							return true;
+						}
+						this.decisions.set(decision.id, decision);
+						this.cachedDecisions = sortByTaskId(Array.from(this.decisions.values()));
+						this.notify("decisions");
+						return false;
+					} catch {
+						return true;
+					}
+				});
 			});
 		});
 		this.attachWatcherErrorHandler(watcher, "decisions");
@@ -588,75 +670,98 @@ export class ContentStore {
 			const base = basename(absolutePath);
 			if (!base.endsWith(".md")) {
 				if (relativePath === null) {
-					await this.refreshDocumentsFromDisk(undefined, undefined, epoch);
+					await this.refreshDocumentsFromDisk(undefined, epoch);
 				}
 				return;
 			}
 
 			if (!base.startsWith("doc-")) {
-				await this.refreshDocumentsFromDisk(undefined, undefined, epoch);
+				await this.refreshDocumentsFromDisk(undefined, epoch);
 				return;
 			}
 
 			const [idPart] = base.split(" - ");
 			if (!idPart) {
-				await this.refreshDocumentsFromDisk(undefined, undefined, epoch);
+				await this.refreshDocumentsFromDisk(undefined, epoch);
 				return;
 			}
 
-			const exists = await Bun.file(absolutePath).exists();
-			if (!this.isRootWatcherCurrent(epoch)) return;
-
-			if (!exists) {
-				if (this.documents.delete(idPart)) {
-					this.cachedDocuments = [...this.documents.values()].sort((a, b) => a.title.localeCompare(b.title));
-					this.notify("documents");
-				}
-				return;
-			}
-
-			if (eventType === "rename" && exists) {
-				await this.refreshDocumentsFromDisk(undefined, undefined, epoch);
-				return;
-			}
-
-			const previous = this.documents.get(idPart);
-			const document = await this.retryRead(
-				async () => {
-					try {
+			if (eventType === "rename") {
+				await this.reconcileRenamedItem({
+					key: `document:${idPart}`,
+					epoch,
+					readEventPath: async () => {
+						if (!(await Bun.file(absolutePath).exists())) return null;
 						const content = await Bun.file(absolutePath).text();
 						const documentPath = normalizeDocumentRelativePath(relativePath ?? relative(docsDir, absolutePath));
-						return { ...parseDocument(content), path: documentPath };
-					} catch {
-						return null;
-					}
-				},
-				(result) => {
-					if (!result) {
-						return false;
-					}
-					if (result.id !== idPart) {
-						return false;
-					}
-					if (!previous) {
-						return true;
-					}
-					return this.hasDocumentChanged(previous, result);
-				},
-				12,
-				75,
-				() => this.isRootWatcherCurrent(epoch),
-			);
-			if (!this.isRootWatcherCurrent(epoch)) return;
-			if (!document) {
-				await this.refreshDocumentsFromDisk(idPart, previous, epoch);
+						const document = { ...parseDocument(content), path: documentPath };
+						if (document.id !== idPart) {
+							throw new Error("Document identity does not match watcher filename");
+						}
+						return document;
+					},
+					findIdentity: async () => {
+						return await this.findIdentityCandidate(
+							docsDir,
+							"**/*.md",
+							(relativePath) => basename(relativePath).split(" - ")[0] === idPart,
+							async (candidatePath, relativeCandidatePath) => {
+								const content = await Bun.file(candidatePath).text();
+								const document = {
+									...parseDocument(content),
+									path: normalizeDocumentRelativePath(relativeCandidatePath),
+								};
+								if (document.id !== idPart) {
+									throw new Error("Document identity does not match candidate filename");
+								}
+								return document;
+							},
+						);
+					},
+					current: () => this.documents.get(idPart),
+					hasChanged: (previous, next) => this.hasDocumentChanged(previous, next),
+					publish: (document) => {
+						this.documents.set(document.id, document);
+						this.cachedDocuments = [...this.documents.values()].sort((a, b) => a.title.localeCompare(b.title));
+						this.notify("documents");
+					},
+					remove: () => {
+						if (!this.documents.delete(idPart)) return;
+						this.cachedDocuments = [...this.documents.values()].sort((a, b) => a.title.localeCompare(b.title));
+						this.notify("documents");
+					},
+				});
 				return;
 			}
 
-			if (!this.isRootWatcherCurrent(epoch)) return;
-			this.documents.set(document.id, document);
-			this.cachedDocuments = [...this.documents.values()].sort((a, b) => a.title.localeCompare(b.title));
-			this.notify("documents");
+			await this.reconcileOrSchedule(`document:${idPart}`, epoch, async () => {
+				if (!(await Bun.file(absolutePath).exists())) {
+					if (this.documents.delete(idPart)) {
+						this.cachedDocuments = [...this.documents.values()].sort((a, b) => a.title.localeCompare(b.title));
+						this.notify("documents");
+					}
+					return false;
+				}
+
+				try {
+					const content = await Bun.file(absolutePath).text();
+					const documentPath = normalizeDocumentRelativePath(relativePath ?? relative(docsDir, absolutePath));
+					const document = { ...parseDocument(content), path: documentPath };
+					if (document.id !== idPart) {
+						return true;
+					}
+					const previous = this.documents.get(idPart);
+					if (previous && !this.hasDocumentChanged(previous, document)) {
+						return true;
+					}
+					this.documents.set(document.id, document);
+					this.cachedDocuments = [...this.documents.values()].sort((a, b) => a.title.localeCompare(b.title));
+					this.notify("documents");
+					return false;
+				} catch {
+					return true;
+				}
+			});
 		});
 	}
 
@@ -788,7 +893,7 @@ export class ContentStore {
 			return;
 		}
 		await this.enqueueRoot(epoch, async () => {
-			await this.refreshDocumentsFromDisk(documentId, this.documents.get(documentId), epoch);
+			await this.refreshDocumentsFromDisk(documentId, epoch);
 		});
 	}
 
@@ -804,112 +909,287 @@ export class ContentStore {
 		return JSON.stringify(previous) !== JSON.stringify(next);
 	}
 
-	private hasTaskCollectionChanged(nextTasks: Task[]): boolean {
-		const nextCachedTasks = sortByTaskId(nextTasks);
-		if (this.cachedTasks.length !== nextCachedTasks.length) {
+	// Keep read validity separate from change detection: duplicate watcher events are valid no-ops.
+	private hasCollectionChanged<T>(
+		current: readonly T[],
+		next: readonly T[],
+		hasItemChanged: (previous: T, next: T) => boolean,
+	): boolean {
+		if (current.length !== next.length) {
 			return true;
 		}
 
-		return nextCachedTasks.some((task, index) => {
-			const previous = this.cachedTasks[index];
-			return !previous || this.hasTaskChanged(previous, task);
+		return next.some((item, index) => {
+			const previous = current[index];
+			return !previous || hasItemChanged(previous, item);
 		});
 	}
 
-	private async refreshTasksFromDisk(
-		expectedId?: string,
-		previous?: Task,
-		epoch = this.rootWatcherEpoch,
-	): Promise<void> {
-		const tasks = await this.retryRead(
-			async () => this.loadTasksWithLoader(),
-			(expected) => {
-				if (!expectedId) {
-					return true;
-				}
-				const match = expected.find((task) => taskIdsEqual(task.id, expectedId));
-				if (!match) {
-					return false;
-				}
-				if (previous && !this.hasTaskChanged(previous, match)) {
-					return false;
-				}
-				return true;
-			},
-			12,
-			75,
-			() => this.isRootWatcherCurrent(epoch),
+	private hasTaskCollectionChanged(nextTasks: Task[]): boolean {
+		return this.hasCollectionChanged(this.cachedTasks, sortByTaskId(nextTasks), (previous, next) =>
+			this.hasTaskChanged(previous, next),
 		);
-		if (!tasks || !this.isRootWatcherCurrent(epoch)) {
-			return;
-		}
-		if (!this.hasTaskCollectionChanged(tasks)) {
-			return;
-		}
-		this.replaceTasks(tasks);
-		this.notify("tasks");
 	}
 
-	private async refreshDocumentsFromDisk(
-		expectedId?: string,
-		previous?: Document,
-		epoch = this.rootWatcherEpoch,
-	): Promise<void> {
-		const documents = await this.retryRead(
-			async () => this.filesystem.listDocuments(),
-			(expected) => {
-				if (!expectedId) {
-					return true;
-				}
-				const match = expected.find((doc) => doc.id === expectedId);
-				if (!match) {
-					return false;
-				}
-				if (previous && !this.hasDocumentChanged(previous, match)) {
-					return false;
-				}
-				return true;
-			},
-			12,
-			75,
-			() => this.isRootWatcherCurrent(epoch),
+	private hasDocumentCollectionChanged(nextDocuments: Document[]): boolean {
+		const sortedDocuments = [...nextDocuments].sort((a, b) => a.title.localeCompare(b.title));
+		return this.hasCollectionChanged(this.cachedDocuments, sortedDocuments, (previous, next) =>
+			this.hasDocumentChanged(previous, next),
 		);
-		if (!documents || !this.isRootWatcherCurrent(epoch)) {
-			return;
-		}
-		this.replaceDocuments(documents);
-		this.notify("documents");
 	}
 
-	private async refreshDecisionsFromDisk(
-		expectedId?: string,
-		previous?: Decision,
-		epoch = this.rootWatcherEpoch,
-	): Promise<void> {
-		const decisions = await this.retryRead(
-			async () => this.filesystem.listDecisions(),
-			(expected) => {
-				if (!expectedId) {
-					return true;
-				}
-				const match = expected.find((decision) => decision.id === expectedId);
-				if (!match) {
-					return false;
-				}
-				if (previous && !this.hasDecisionChanged(previous, match)) {
-					return false;
-				}
-				return true;
-			},
-			12,
-			75,
-			() => this.isRootWatcherCurrent(epoch),
+	private hasDecisionCollectionChanged(nextDecisions: Decision[]): boolean {
+		return this.hasCollectionChanged(this.cachedDecisions, sortByTaskId(nextDecisions), (previous, next) =>
+			this.hasDecisionChanged(previous, next),
 		);
-		if (!decisions || !this.isRootWatcherCurrent(epoch)) {
+	}
+
+	private async reconcileOrSchedule(key: string, epoch: number, reconcile: () => Promise<boolean>): Promise<void> {
+		if (!this.isRootWatcherCurrent(epoch)) {
 			return;
 		}
-		this.replaceDecisions(decisions);
-		this.notify("decisions");
+
+		let shouldRetry = true;
+		try {
+			shouldRetry = await reconcile();
+		} catch {
+			// Retry transient read failures outside the serialized queue.
+		}
+		if (!this.isRootWatcherCurrent(epoch)) {
+			return;
+		}
+		if (!shouldRetry) {
+			this.cancelDeferredRecheck(key);
+			return;
+		}
+
+		this.scheduleDeferredRecheck(key, epoch, reconcile);
+	}
+
+	private async reconcileRenamedItem<T>(options: RenameReconciliation<T>): Promise<void> {
+		await this.reconcileOrSchedule(options.key, options.epoch, async () => {
+			let lookup: IdentityLookup<T>;
+			try {
+				const eventItem = await options.readEventPath();
+				lookup = eventItem ? { state: "found", item: eventItem } : await options.findIdentity();
+			} catch {
+				return true;
+			}
+			if (!this.isRootWatcherCurrent(options.epoch)) {
+				return false;
+			}
+			if (lookup.state === "incomplete") {
+				return true;
+			}
+			if (lookup.state === "found") {
+				const previous = options.current();
+				if (!previous || options.hasChanged(previous, lookup.item)) {
+					options.publish(lookup.item);
+				}
+				return false;
+			}
+			options.remove();
+			return false;
+		});
+	}
+
+	private async findIdentityCandidate<T>(
+		rootDir: string,
+		pattern: string,
+		matchesIdentity: (relativePath: string) => boolean,
+		readCandidate: (absolutePath: string, relativePath: string) => Promise<T>,
+	): Promise<IdentityLookup<T>> {
+		let relativePaths: string[];
+		try {
+			const root = await stat(rootDir);
+			if (!root.isDirectory()) {
+				return { state: "incomplete" };
+			}
+			relativePaths = await Array.fromAsync(new Bun.Glob(pattern).scan({ cwd: rootDir, followSymlinks: true }));
+			await stat(rootDir);
+		} catch {
+			return { state: "incomplete" };
+		}
+		const candidates = relativePaths.filter(matchesIdentity);
+		if (candidates.length === 0) {
+			return { state: "absent" };
+		}
+		if (candidates.length > 1) {
+			return { state: "incomplete" };
+		}
+		const relativePath = candidates[0];
+		if (!relativePath) {
+			return { state: "incomplete" };
+		}
+		try {
+			const absolutePath = join(rootDir, ...relativePath.split("/"));
+			const item = await readCandidate(absolutePath, relativePath);
+			return { state: "found", item };
+		} catch {
+			return { state: "incomplete" };
+		}
+	}
+
+	private scheduleDeferredRecheck(key: string, epoch: number, reconcile: () => Promise<boolean>): void {
+		const existing = this.deferredRechecks.get(key);
+		if (existing?.epoch === epoch) {
+			if (existing.attempt > 1 && !existing.budgetRefreshed) {
+				if (existing.timer) {
+					clearTimeout(existing.timer);
+				}
+				const refreshed: DeferredRecheck = {
+					epoch,
+					attempt: 1,
+					budgetRefreshed: true,
+					timer: null,
+					reconcile,
+				};
+				this.deferredRechecks.set(key, refreshed);
+				this.armDeferredRecheck(key, refreshed);
+				return;
+			}
+			existing.reconcile = reconcile;
+			return;
+		}
+		if (existing) {
+			this.cancelDeferredRecheck(key);
+		}
+
+		const recheck: DeferredRecheck = {
+			epoch,
+			attempt: 1,
+			budgetRefreshed: false,
+			timer: null,
+			reconcile,
+		};
+		this.deferredRechecks.set(key, recheck);
+		this.armDeferredRecheck(key, recheck);
+	}
+
+	private armDeferredRecheck(key: string, recheck: DeferredRecheck): void {
+		if (recheck.attempt >= CONTENT_RETRY_ATTEMPTS || !this.isRootWatcherCurrent(recheck.epoch)) {
+			if (this.deferredRechecks.get(key) === recheck) {
+				this.deferredRechecks.delete(key);
+			}
+			return;
+		}
+
+		recheck.timer = this.startDeferredTimer(() => {
+			recheck.timer = null;
+			void this.enqueueRoot(recheck.epoch, async () => {
+				if (this.deferredRechecks.get(key) !== recheck) {
+					return;
+				}
+
+				let shouldRetry = true;
+				try {
+					shouldRetry = await recheck.reconcile();
+				} catch {
+					// Retry transient read failures until the bounded budget is exhausted.
+				}
+				if (this.deferredRechecks.get(key) !== recheck || !this.isRootWatcherCurrent(recheck.epoch)) {
+					return;
+				}
+				if (!shouldRetry) {
+					this.deferredRechecks.delete(key);
+					return;
+				}
+
+				recheck.attempt += 1;
+				this.armDeferredRecheck(key, recheck);
+			}).catch((error) => {
+				if (process.env.DEBUG) {
+					console.error("ContentStore deferred recheck failed", error);
+				}
+			});
+		}, CONTENT_RETRY_DELAY_MS * recheck.attempt);
+	}
+
+	private startDeferredTimer(callback: () => void, delayMs: number): ReturnType<typeof setTimeout> {
+		const timer = setTimeout(callback, delayMs);
+		timer.unref();
+		return timer;
+	}
+
+	private cancelDeferredRecheck(key: string): void {
+		const recheck = this.deferredRechecks.get(key);
+		if (!recheck) {
+			return;
+		}
+		if (recheck.timer) {
+			clearTimeout(recheck.timer);
+		}
+		this.deferredRechecks.delete(key);
+	}
+
+	private clearDeferredRechecks(): void {
+		for (const recheck of this.deferredRechecks.values()) {
+			if (recheck.timer) {
+				clearTimeout(recheck.timer);
+			}
+		}
+		this.deferredRechecks.clear();
+	}
+
+	private async refreshTasksFromDisk(expectedId?: string, epoch = this.rootWatcherEpoch): Promise<void> {
+		const normalizedExpectedId = expectedId ? normalizeTaskId(expectedId) : "*";
+		await this.reconcileOrSchedule(`task:${normalizedExpectedId}`, epoch, async () => {
+			let tasks: Task[];
+			try {
+				tasks = await this.loadTasksWithLoader();
+			} catch {
+				return true;
+			}
+			if (expectedId && !tasks.some((task) => taskIdsEqual(task.id, expectedId))) {
+				return true;
+			}
+			if (!this.hasTaskCollectionChanged(tasks)) {
+				return false;
+			}
+			this.replaceTasks(tasks);
+			this.notify("tasks");
+			return false;
+		});
+	}
+
+	private async refreshDocumentsFromDisk(expectedId?: string, epoch = this.rootWatcherEpoch): Promise<void> {
+		await this.reconcileOrSchedule(`document:${expectedId ?? "*"}`, epoch, async () => {
+			let documents: Document[];
+			try {
+				documents = await this.filesystem.listDocuments();
+			} catch {
+				return true;
+			}
+			if (expectedId && !documents.some((document) => document.id === expectedId)) {
+				return true;
+			}
+			if (!this.hasDocumentCollectionChanged(documents)) {
+				return false;
+			}
+			this.replaceDocuments(documents);
+			this.notify("documents");
+			return false;
+		});
+	}
+
+	private async refreshDecisionsFromDisk(expectedId?: string, epoch = this.rootWatcherEpoch): Promise<void> {
+		await this.reconcileOrSchedule(`decision:${expectedId ?? "*"}`, epoch, async () => {
+			let decisions: Decision[];
+			try {
+				decisions = await this.filesystem.listDecisions();
+			} catch {
+				return true;
+			}
+			if (expectedId && !decisions.some((decision) => decision.id === expectedId)) {
+				return true;
+			}
+			if (!this.hasDecisionCollectionChanged(decisions)) {
+				return false;
+			}
+			this.replaceDecisions(decisions);
+			this.notify("decisions");
+			return false;
+		});
 	}
 
 	private async handleDecisionWrite(decisionId: string, epoch: number): Promise<void> {
@@ -923,37 +1203,47 @@ export class ContentStore {
 
 	private async updateTaskFromDisk(taskId: string, epoch = this.rootWatcherEpoch): Promise<void> {
 		const normalizedTaskId = normalizeTaskId(taskId);
-		const previous = this.tasks.get(normalizedTaskId);
-		const task = await this.retryRead(
-			async () => this.filesystem.loadTask(taskId),
-			(result) => result !== null && (!previous || this.hasTaskChanged(previous, result)),
-			12,
-			75,
-			() => this.isRootWatcherCurrent(epoch),
-		);
-		if (!task || !this.isRootWatcherCurrent(epoch)) {
-			return;
-		}
-		this.tasks.set(task.id, task);
-		this.cachedTasks = sortByTaskId(Array.from(this.tasks.values()));
-		this.notify("tasks");
+		await this.reconcileOrSchedule(`task:${normalizedTaskId}`, epoch, async () => {
+			let task: Task | null;
+			try {
+				task = await this.filesystem.loadTask(taskId);
+			} catch {
+				return true;
+			}
+			if (!task || !taskIdsEqual(task.id, normalizedTaskId)) {
+				return true;
+			}
+			const previous = this.tasks.get(normalizedTaskId);
+			if (previous && !this.hasTaskChanged(previous, task)) {
+				return false;
+			}
+			this.tasks.set(task.id, task);
+			this.cachedTasks = sortByTaskId(Array.from(this.tasks.values()));
+			this.notify("tasks");
+			return false;
+		});
 	}
 
 	private async updateDecisionFromDisk(decisionId: string, epoch = this.rootWatcherEpoch): Promise<void> {
-		const previous = this.decisions.get(decisionId);
-		const decision = await this.retryRead(
-			async () => this.filesystem.loadDecision(decisionId),
-			(result) => result !== null && (!previous || this.hasDecisionChanged(previous, result)),
-			12,
-			75,
-			() => this.isRootWatcherCurrent(epoch),
-		);
-		if (!decision || !this.isRootWatcherCurrent(epoch)) {
-			return;
-		}
-		this.decisions.set(decision.id, decision);
-		this.cachedDecisions = sortByTaskId(Array.from(this.decisions.values()));
-		this.notify("decisions");
+		await this.reconcileOrSchedule(`decision:${decisionId}`, epoch, async () => {
+			let decision: Decision | null;
+			try {
+				decision = await this.filesystem.loadDecision(decisionId);
+			} catch {
+				return true;
+			}
+			if (!decision || decision.id !== decisionId) {
+				return true;
+			}
+			const previous = this.decisions.get(decisionId);
+			if (previous && !this.hasDecisionChanged(previous, decision)) {
+				return false;
+			}
+			this.decisions.set(decision.id, decision);
+			this.cachedDecisions = sortByTaskId(Array.from(this.decisions.values()));
+			this.notify("decisions");
+			return false;
+		});
 	}
 
 	private async createManualRecursiveWatcher(
@@ -1045,41 +1335,6 @@ export class ContentStore {
 				watchers.clear();
 			},
 		};
-	}
-
-	private async retryRead<T>(
-		loader: () => Promise<T>,
-		isValid: (result: T) => boolean = (value) => value !== null && value !== undefined,
-		attempts = 12,
-		delayMs = 75,
-		shouldContinue: () => boolean = () => !this.closed,
-	): Promise<T | null> {
-		let lastError: unknown = null;
-		for (let attempt = 1; attempt <= attempts; attempt++) {
-			if (!shouldContinue()) return null;
-			try {
-				const result = await loader();
-				if (!shouldContinue()) return null;
-				if (isValid(result)) {
-					return result;
-				}
-			} catch (error) {
-				lastError = error;
-			}
-			if (attempt < attempts) {
-				await this.delay(delayMs * attempt);
-				if (!shouldContinue()) return null;
-			}
-		}
-
-		if (lastError && process.env.DEBUG) {
-			console.error("ContentStore retryRead exhausted attempts", lastError);
-		}
-		return null;
-	}
-
-	private async delay(ms: number): Promise<void> {
-		await new Promise((resolve) => setTimeout(resolve, ms));
 	}
 
 	private enqueue(fn: () => Promise<void>): Promise<void> {
