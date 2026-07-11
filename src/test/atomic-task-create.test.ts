@@ -6,7 +6,7 @@ import { Core } from "../core/backlog.ts";
 import { CREATE_LOCK_ERROR_MESSAGE } from "../file-system/operations.ts";
 import type { Task } from "../types";
 import { AmbiguousTaskIdError } from "../utils/task-path.ts";
-import { initializeTestProject } from "./test-utils.ts";
+import { initializeTestProject, withTimeout } from "./test-utils.ts";
 
 type Deferred<T> = {
 	promise: Promise<T>;
@@ -24,13 +24,8 @@ function createDeferred<T>(): Deferred<T> {
 	return { promise, resolve, reject };
 }
 
-function sleep(ms: number): Promise<void> {
-	return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
 async function expectResolvesWithin(promise: Promise<unknown>, timeoutMs: number, label: string): Promise<void> {
-	const result = await Promise.race([promise.then(() => "resolved"), sleep(timeoutMs).then(() => "timeout")]);
-	expect(result, label).toBe("resolved");
+	await withTimeout(promise, label, timeoutMs);
 }
 
 describe("atomic task creation", () => {

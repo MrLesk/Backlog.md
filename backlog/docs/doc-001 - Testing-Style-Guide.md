@@ -3,189 +3,72 @@ id: doc-001
 title: Testing Style Guide
 type: guide
 created_date: '2025-07-21'
+updated_date: '2026-07-11 09:22'
 ---
-
 # Testing Style Guide
 
-This document establishes consistent patterns for test files in the Backlog.md project.
+Tests protect shipped behavior and should fail for the same reasons users would observe. Choose the narrowest test level that proves the contract: focused domain units for shared semantics, and real CLI, MCP, TUI, browser, server, or packaged-binary tests for surface behavior. A test named for a public surface must execute that surface rather than synthesize its output.
 
-## Import Organization
+## Isolation
 
-**Standard order:**
-1. `bun:test` imports first
-2. `node:*` imports second  
-3. External library imports (like `bun`)
-4. Local relative imports (`../`)
-5. Test utility imports (`./test-utils.ts`, `./test-helpers.ts`)
-
-```typescript
-import { afterEach, beforeEach, describe, expect, it } from "bun:test";
-import { mkdir, rm } from "node:fs/promises";
-import { join } from "node:path";
-import { $ } from "bun";
-import { Core } from "../core/backlog.ts";
-import type { Task } from "../types/index.ts";
-import { createUniqueTestDir, safeCleanup } from "./test-utils.ts";
-```
-
-## Variable Declarations
-
-**Standard pattern:**
-- Declare `let TEST_DIR: string;` outside describe blocks
-- Assign unique directory in beforeEach using `createUniqueTestDir()`
+- Create a fresh directory with `createUniqueTestDir()` for every test or suite.
+- Never use a shared fixed path such as `/tmp/test-project`.
+- Do not pre-delete a path returned by `createUniqueTestDir()`; uniqueness is the isolation guarantee.
+- Initialize Git only when the behavior under test requires Git.
+- Do not read or mutate the repository backlog as fixture data.
 
 ```typescript
-let TEST_DIR: string;
+let testDir: string;
 
-describe("Feature name", () => {
-    let core: Core;
-    
-    beforeEach(async () => {
-        TEST_DIR = createUniqueTestDir("test-feature-name");
-        // ... rest of setup
-    });
-});
-```
-
-## Directory and Cleanup Patterns
-
-**Standard test directory setup:**
-
-```typescript
 beforeEach(async () => {
-    TEST_DIR = createUniqueTestDir("test-feature-name");
-    await rm(TEST_DIR, { recursive: true, force: true }).catch(() => {});
-    await mkdir(TEST_DIR, { recursive: true });
-    
-    // Git setup if needed
-    await $`git init`.cwd(TEST_DIR).quiet();
-    await $`git config user.name "Test User"`.cwd(TEST_DIR).quiet();
-    await $`git config user.email test@example.com`.cwd(TEST_DIR).quiet();
-    
-    // Core initialization
-    core = new Core(TEST_DIR);
-    await core.initializeProject("Test Project Name");
+  testDir = createUniqueTestDir("feature-name");
+  await mkdir(testDir, { recursive: true });
 });
-```
 
-**Standard cleanup:**
-
-```typescript
 afterEach(async () => {
-    try {
-        await safeCleanup(TEST_DIR);
-    } catch {
-        // Ignore cleanup errors - the unique directory names prevent conflicts
-    }
+  await safeCleanup(testDir);
 });
 ```
 
-## Git Configuration
+## Cleanup and resource ownership
 
-**When git setup is needed:**
-- Tests that create/modify tasks with auto-commit
-- Tests that use CLI commands requiring git
-- Board view tests that need git for remote branch operations
+Cleanup is part of the assertion, not optional housekeeping.
 
-**Standard git setup:**
-```typescript
-await $`git init`.cwd(TEST_DIR).quiet();
-await $`git config user.name "Test User"`.cwd(TEST_DIR).quiet();
-await $`git config user.email test@example.com`.cwd(TEST_DIR).quiet();
-```
+- Do not catch and ignore `safeCleanup()`, `rm()`, server shutdown, client close, watcher stop, unsubscribe, or child-process exit failures.
+- Stop watchers, servers, subscriptions, streams, clients, and child processes before removing their directories.
+- If a test owns a child process, kill it when needed and await its exit.
+- Use `try/finally` around resources acquired inside a test.
+- Let test hooks report teardown failures. Bun reports hook failures alongside the test failure, preserving both pieces of evidence.
+- A best-effort catch is acceptable only when failure is the behavior being modeled, such as an existence probe returning `false`; make that fallback explicit.
 
-## Error Handling
+## Timers and asynchronous synchronization
 
-**Standard error handling:**
-- Use try/catch blocks for cleanup operations
-- Use `.catch(() => {})` for non-critical operations like initial cleanup
-- Include descriptive comments explaining error handling decisions
+- Synchronize on an observable event, promise, stream message, file state, or process exit.
+- Do not add sleeps to make a race less likely.
+- Use `withTimeout()` to bound an operation. It clears its timer when the operation resolves or rejects.
+- Event waiters must clear timers and unsubscribe on success, error, timeout, and teardown.
+- A timeout increase is not a lifecycle fix. Platform-specific values need evidence and a comment naming the platform risk.
 
 ```typescript
-// For cleanup operations
-try {
-    await safeCleanup(TEST_DIR);
-} catch {
-    // Ignore cleanup errors - the unique directory names prevent conflicts
-}
-
-// For non-critical setup operations
-await rm(TEST_DIR, { recursive: true, force: true }).catch(() => {});
+const result = await withTimeout(operation, "config loading", 5000);
 ```
 
-## Sample Data Patterns
+## Global state
 
-**Preferred patterns:**
-- Declare reusable sample objects outside describe blocks when used across multiple tests
-- Create inline objects when specific to single test
-- Use meaningful, descriptive data that clearly indicates test purpose
+Tests that change `process.env`, the working directory, console methods, clocks, DOM globals, or module mocks must capture the original value and restore it in `finally` or a test hook. Keep files isolated when they intentionally mutate process-wide state.
 
-```typescript
-// Reusable across multiple tests
-const sampleTask: Task = {
-    id: "task-1",
-    title: "Test Task",
-    status: "To Do",
-    assignee: [],
-    createdDate: "2025-07-21",
-    labels: ["test"],
-    dependencies: [],
-    body: "This is a test task",
-};
+## Assertions and surface coverage
 
-describe("task operations", () => {
-    it("should create task", async () => {
-        await core.createTask(sampleTask, false);
-        // ...
-    });
-    
-    it("should handle specific case", async () => {
-        // Inline for specific test
-        const specialTask: Task = {
-            ...sampleTask,
-            id: "task-special",
-            title: "Special Case Task",
-        };
-        // ...
-    });
-});
-```
+- Prefer direct assertions over conditional or vacuous checks.
+- Use known fixture data so the expected result is always present.
+- Assert subprocess exit codes as well as user-visible output and persisted state.
+- Do not assert private object identity or reproduce production formatting in a test helper when observable behavior is available.
+- Keep legacy compatibility tests only when the CLI, MCP, configuration, instruction, or file-format contract still promises that behavior.
 
-## File Organization
+## Platform coverage
 
-**Test file structure:**
-1. Imports
-2. Global variable declarations (TEST_DIR, constants)
-3. Sample data declarations (if reused)
-4. Main describe block
-5. beforeEach/afterEach hooks
-6. Nested describe blocks for logical grouping
-7. Individual test cases
+Run portable behavior on every supported CI operating system. Use platform-specific skips only when the operating system cannot provide the underlying capability, and record the retained coverage on supported platforms. Windows resource pressure is handled by CI sharding; it is not a reason to replace CLI execution with Core simulations.
 
-## Naming Conventions
+## Verification
 
-**Test directories:** Use descriptive kebab-case names prefixed with "test-"
-- `createUniqueTestDir("test-feature-name")`
-
-**Test descriptions:** Use clear, action-oriented descriptions
-- ✅ "should create task with auto-commit"
-- ❌ "task creation test"
-
-**Variables:** Use UPPER_CASE for test directory constants, camelCase for other variables
-
-## Why These Patterns?
-
-- **Unique directories:** Prevent test conflicts and cleanup issues
-- **Consistent cleanup:** Ensure clean test environment
-- **Standard git setup:** Predictable behavior across git-dependent tests  
-- **Organized imports:** Easy to scan and maintain
-- **Error handling:** Graceful failure without masking real issues
-
-## Migration Notes
-
-When updating existing test files:
-1. Add missing imports for `createUniqueTestDir` and `safeCleanup`
-2. Replace hardcoded paths with `createUniqueTestDir()` pattern
-3. Update cleanup to use `safeCleanup()` with try/catch
-4. Ensure consistent import order
-5. Move TEST_DIR declaration outside describe blocks
+Run focused tests first, including repeated stress for lifecycle or concurrency changes. Then run the full suite, typecheck, Biome, and build. Record test counts, runtime, expected skips, and the exact platform-specific evidence used for any exception.

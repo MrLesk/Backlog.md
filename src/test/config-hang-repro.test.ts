@@ -3,20 +3,22 @@ import { mkdir, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { Core } from "../core/backlog.ts";
 import { FileSystem } from "../file-system/operations.ts";
-import type { BacklogConfig } from "../types/index.ts";
+import { createUniqueTestDir, safeCleanup, withTimeout } from "./test-utils.ts";
 
 describe("Config Loading & Migration", () => {
-	const testRoot = "/tmp/test-config-migration";
-	const backlogDir = join(testRoot, "backlog");
-	const configPath = join(backlogDir, "config.yml");
+	let testRoot: string;
+	let backlogDir: string;
+	let configPath: string;
 
 	beforeEach(async () => {
-		await rm(testRoot, { recursive: true, force: true });
+		testRoot = createUniqueTestDir("test-config-migration");
+		backlogDir = join(testRoot, "backlog");
+		configPath = join(backlogDir, "config.yml");
 		await mkdir(backlogDir, { recursive: true });
 	});
 
 	afterEach(async () => {
-		await rm(testRoot, { recursive: true, force: true });
+		await safeCleanup(testRoot);
 	});
 
 	it("should load config from standard backlog directory", async () => {
@@ -33,12 +35,7 @@ auto_commit: false`;
 
 		const fs = new FileSystem(testRoot);
 
-		// This should complete without hanging
-		const timeoutPromise = new Promise((_, reject) => {
-			setTimeout(() => reject(new Error("Config loading timed out - infinite loop detected!")), 5000);
-		});
-
-		const loadedConfig = (await Promise.race([fs.loadConfig(), timeoutPromise])) as BacklogConfig | null;
+		const loadedConfig = await withTimeout(fs.loadConfig(), "config loading", 5000);
 
 		expect(loadedConfig).toBeTruthy();
 		expect(loadedConfig?.projectName).toBe("Test Project");
