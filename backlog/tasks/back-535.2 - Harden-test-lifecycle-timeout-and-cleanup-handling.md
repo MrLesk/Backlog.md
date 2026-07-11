@@ -5,7 +5,7 @@ status: In Progress
 assignee:
   - '@test-hygiene-slice-b'
 created_date: '2026-07-11 09:20'
-updated_date: '2026-07-11 10:27'
+updated_date: '2026-07-11 10:47'
 labels: []
 dependencies: []
 parent_task_id: BACK-535
@@ -34,10 +34,10 @@ Make test lifecycle failures deterministic and visible without changing producti
 ## Implementation Plan
 
 <!-- SECTION:PLAN:BEGIN -->
-1. Inventory and classify every broad catch/swallow site and all rejecting timeout races.
-2. Introduce the smallest self-cleaning timeout helper and repair config-hang-repro isolation.
-3. Replace the probabilistic atomic-create escape-hatch assertion with direct deterministic concurrency coverage; drain both outcomes and reject unexpected error types without claiming legacy unlocked writes must collide.
-4. Update the Testing Style Guide and create scoped child follow-ups for remaining mechanical batches.
+1. Inventory every block catch, empty catch, and Promise .catch site; assign cleanup sites to exact follow-ups and document justified exclusions.
+2. Introduce the smallest self-cleaning timeout helper, prove timer cancellation on every settlement path, and repair config-hang-repro isolation.
+3. Cover the undocumented legacy lock escape hatch as a deterministic internal withCreateLock test with finally release and drained exact outcomes; retain the adjacent persisted unique-ID contract test.
+4. Update the Testing Style Guide and create non-overlapping, site-level child follow-ups for filesystem and resource cleanup.
 5. Run repeated focused stress, full/static/build checks on current main, record runtime evidence, and complete sequential reviews.
 <!-- SECTION:PLAN:END -->
 
@@ -61,6 +61,16 @@ Post-main fail-first evidence: after merging origin/main 75c2528, atomic-task-cr
 Post-repair verification on merged main 75c2528: the direct escape-hatch contract passed 50/50 atomic stress runs and the combined timeout/config/atomic focus passed 10/10 (15 tests, 32 assertions per run). Full suite passed 1,636 with 2 intentional interactive-TUI skips, 0 failures, and 6,716 assertions across 189 files in 169.72s. bunx tsc --noEmit, Biome over 323 files, bun run build, and diff checks passed. The higher total relative to the earlier 1,625 baseline comes from main changes merged through #759 plus the two helper tests.
 
 Specification-review repairs: doc-001 now prefers framework teardown hooks and gives an AggregateError pattern that preserves both primary and cleanup failures for in-test resources. The undocumented USE_GLOBAL_TASK_ID_LOCK=false case is explicitly an internal test of FileSystem.withCreateLock; it now directly proves two operations enter and resolve without serialization, with no patched persistence or vacuous allSettled assertions. The adjacent persisted-state test, serializes create-time writes and assigns unique ids by default, remains the shipped default-behavior coverage and asserts TASK-1/TASK-2; duplicate-task-repair and task-path retain fail-closed duplicate coverage. BACK-535.3 now names exactly 13 setup and 53 filesystem teardown files, excludes 17 exact BACK-535.4 resource-owning files, and requires actual Windows GitHub Actions evidence. BACK-535.4 was reconciled to own those 17 files. Re-verification: 50/50 atomic internal stress, 10/10 combined focus (15 tests, 31 assertions), full suite 1,636 pass plus 2 intentional skips and 0 failures across 189 files in 165.77s, 6,715 assertions; tsc, Biome over 323 files, build, and diff checks pass.
+
+Quality-review inventory correction: the original 89-site count covered broad block catches only and is superseded. An exact current-main scan for block catches, empty catches, and Promise .catch calls found 144 sites. Every site is now assigned once: 37 redundant pre-clean sites and 58 filesystem-only teardown sites to BACK-535.3; 24 resource-owning cleanup/pre-clean sites to BACK-535.4; and 25 explicit exclusions below. Counts reconcile: 37 + 58 + 24 + 25 = 144. BACK-535.3 now includes previously missed claude-agent-install setup/teardown, cli-root-entry teardown, and pre-clean sites paired with already listed teardown files such as agent-instructions and config-commands.
+
+Explicit expected-error/assertion exclusions (16): src/test/core.test.ts:193; src/test/acceptance-criteria.test.ts:385 and :400; src/test/offline-mode.test.ts:75; src/test/duplicate-task-repair.test.ts:88, :428, :495, and :536; src/test/offline-integration.test.ts:143; src/test/dependency.test.ts:28; src/test/board-config-simple.test.ts:72, :131, and :183, where intentionally incomplete mocks may throw after the progress assertion; and src/test/cli.test.ts:473, :733, and :762.
+
+Explicit justified fallback/diagnostic exclusions (9): src/test/cli-init-no-git.test.ts:17 returns false for an existence probe; src/test/mcp-workspace-root.test.ts:52 returns an empty list for a missing task directory; src/test/tui-interactive-editor-handoff.test.ts:86 optionally falls back when /dev/tty is unavailable, :188 supplies missing transcript diagnostics, :192 rethrows a richer diagnostic error rather than swallowing, and :203/:204 supply optional editor diagnostic content; src/test/build.test.ts:68 records the last bounded server-start retry error and :115 rethrows except for the named cross-filesystem build limitation.
+
+Shared withTimeout coverage now directly spies on clearTimeout for both early resolution and early rejection and restores the global spy in finally. The internal legacy escape-hatch test now releases held operations in finally, attaches allSettled before assertions, drains both outcomes without replacing a primary assertion failure, and then asserts the two exact fulfilled values.
+
+Quality-review fix verification: timeout plus atomic tests passed 50/50 repeated runs; the combined timeout/config/atomic focus passed 10/10 with 16 tests and 33 assertions per run. Full suite passed 1,637 with 2 intentional interactive-TUI skips, 0 failures, and 6,717 assertions across 189 files in 169.69s. bunx tsc --noEmit, Biome over 323 files, bun run build, and diff checks passed. The added test is the separate early-rejection cancellation assertion; no production files changed.
 <!-- SECTION:NOTES:END -->
 
 ## Definition of Done

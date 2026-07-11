@@ -114,12 +114,21 @@ describe("atomic task creation", () => {
 
 		const firstOperation = first.fs.withCreateLock(() => enter("first"));
 		const secondOperation = second.fs.withCreateLock(() => enter("second"));
+		const outcomesPromise = Promise.allSettled([firstOperation, secondOperation]);
+		let outcomes: PromiseSettledResult<string>[];
 
-		await expectResolvesWithin(bothEntered.promise, 250, "both operations should enter without serialization");
-		expect(entries).toBe(2);
+		try {
+			await expectResolvesWithin(bothEntered.promise, 250, "both operations should enter without serialization");
+			expect(entries).toBe(2);
+		} finally {
+			releaseBoth.resolve();
+			outcomes = await outcomesPromise;
+		}
 
-		releaseBoth.resolve();
-		await expect(Promise.all([firstOperation, secondOperation])).resolves.toEqual(["first", "second"]);
+		expect(outcomes).toEqual([
+			{ status: "fulfilled", value: "first" },
+			{ status: "fulfilled", value: "second" },
+		]);
 	});
 
 	it("assigns unique ids when two draft promotions race", async () => {
