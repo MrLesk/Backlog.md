@@ -5,7 +5,7 @@ status: In Progress
 assignee:
   - '@pr755-f768-code'
 created_date: '2026-07-10 19:28'
-updated_date: '2026-07-11 00:42'
+updated_date: '2026-07-11 00:52'
 labels:
   - concurrency
   - release-blocker
@@ -77,6 +77,8 @@ Post-publication exact-head review closed the merge gate with two deterministic 
 Final lifecycle correction and verification: publication ownership now uses physical-root provenance while watcher instance cancellation remains epoch-based; initialization retries bounded coherent root attempts across structure creation, content load, and watcher binding; stable reconciliation requires configured root, published cache owner, and active watcher owner to match; watcher invalidation advances epoch before stopping; ambiguous pathless direct upserts fail closed unless an explicit root owner is supplied; pre-ready state changes remain internal until one coherent ready event. Frozen code/test fingerprint f75bbda2 received independent spec/concurrency APPROVED and independent quality/simplicity APPROVED with no P1/P2/P3. Final verification: impacted tests 62/62; expanded 23-scenario lifecycle matrix 1,150/1,150; TypeScript, Biome across 324 files, diff check, and compiled build passed; authoritative full suite 1,672 passed, 2 expected interactive skips, 0 failed, 6,779 assertions across 189 files.
 
 Merge gate reopened after exact-head Windows CI reproduced the A→B→A watcher lifecycle test timeout twice at 30 seconds. Two outstanding event waits then rejected after the outer timeout and contaminated the following test. No merge; add phase-local diagnostics and correct the Windows-specific behavior/test before re-verification.
+
+Windows diagnostic head f2f5693 localized the repeated failure in CI run 29133276160, job 86492659570: `Timed out waiting for held root B config load` after 10.216 seconds. The queue never reached the config snapshot loader. Self-cleaning labeled waits prevented the prior rejection leak, and the following ContentStore test passed. Independent BACK-534 investigation on main measured duplicate unchanged watcher work occupying the same serialized queue for 4,986 ms in targeted retry plus 4,987 ms in fallback refresh (9,973 ms total). Keep PR #757 blocked and do not duplicate that shared production fix here; rebase onto corrected main after BACK-534 lands, then reassess the temporary diagnostic harness and rerun all gates.
 <!-- SECTION:NOTES:END -->
 
 ## Definition of Done
