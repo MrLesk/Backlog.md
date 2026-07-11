@@ -5,7 +5,7 @@ status: In Progress
 assignee:
   - '@test-hygiene-slice-a'
 created_date: '2026-07-11 08:52'
-updated_date: '2026-07-11 08:59'
+updated_date: '2026-07-11 09:11'
 labels: []
 dependencies: []
 references:
@@ -47,6 +47,8 @@ Remove false assurance from tests that synthesize CLI behavior through Core or h
 Implemented Slice A without production changes. Deleted the simulated test-helpers.ts surface and converted every consumer: cli-dependency now runs the real CLI for --dep, --depends-on, repeated flags, edit, view, and validation; cli-parent-shorthand runs real -p and help; implementation plan/notes edits run real CLI; cli.test uses real -s and task shortcut commands. Deleted cli-priority-filtering.test.ts because it ran against the repository and duplicated named isolated coverage in cli.test.ts, cli-task-type.test.ts, priority.test.ts, task-sorting.test.ts, and cli-search-command.test.ts.
 
 Verification: changed focused suites passed 5 consecutive runs (11/11 each, 0 failures; 5.53s to 6.34s). Full isolated suite: 1,623 pass, 2 intentional interactive-TUI skips, 0 fail, 1,625 total across 188 files in 160.66s. Baseline was 1,645 tests across 189 files in 184.87s, so 20 redundant/misleading tests and one file were removed while runtime fell 24.21s (13.1%). bunx tsc --noEmit, bun run check . (322 files), bun run build, and git diff --check pass.
+
+Quality review requested restoration of CLI help discoverability coverage for --dod and --no-dod-defaults plus an explicit help exit-code assertion. Added all three assertions to the real subprocess test. Post-fix verification: parent shorthand/help passed 5 consecutive runs; Definition of Done CLI passed 5/5; TypeScript, focused Biome, and diff checks pass.
 <!-- SECTION:NOTES:END -->
 
 ## Definition of Done

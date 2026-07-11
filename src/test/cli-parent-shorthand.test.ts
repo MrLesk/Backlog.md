@@ -55,9 +55,12 @@ describe("CLI parent shorthand option", () => {
 	it("should show -p in help text", async () => {
 		const helpResult = await $`bun ${CLI_PATH} task create --help`.cwd(testDir).quiet().nothrow();
 
+		expect(helpResult.exitCode).toBe(0);
 		const stdout = helpResult.stdout.toString();
 		expect(stdout).toContain("-p, --parent <taskId>");
 		expect(stdout).toContain("specify existing parent task ID, not a");
 		expect(stdout).toContain("milestone ID");
+		expect(stdout).toContain("--dod <item>");
+		expect(stdout).toContain("--no-dod-defaults");
 	});
 });
