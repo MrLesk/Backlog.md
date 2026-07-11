@@ -1,11 +1,11 @@
 ---
 id: BACK-535.4
 title: Make server and process test teardown deterministic
-status: In Progress
+status: Done
 assignee:
   - '@test-hygiene-resources'
 created_date: '2026-07-11 09:21'
-updated_date: '2026-07-11 15:36'
+updated_date: '2026-07-11 15:51'
 labels: []
 dependencies: []
 parent_task_id: BACK-535
@@ -28,7 +28,7 @@ Stop servers and watchers, close clients, streams, content stores, and search se
 - [x] #1 Every owned server, watcher, client, stream, subscription, and child process is deterministically released
 - [x] #2 Shutdown failures remain visible and primary assertion failures remain diagnosable
 - [x] #3 No arbitrary sleeps or timeout increases are used as lifecycle fixes
-- [ ] #4 Focused repeated stress and full cross-platform CI pass
+- [x] #4 Focused repeated stress and full cross-platform CI pass
 <!-- AC:END -->
 
 ## Implementation Plan
@@ -60,7 +60,15 @@ Final rebase verification on unified-main 1f617b6: integrated lifecycle set pass
 Final stage-1 review found and corrected one shutdown-observation race: the raw MCP stdio test had attached the shared close helper at spawn, which also started its one-second graceful timer before shutdown was requested. The shared helper now observes close/error immediately but exposes an idempotent startTimeout operation; the raw test activates it only after stdin closes or cleanup begins, while the transport test activates it immediately before client.close. This preserves the existing four-second startup allowance and keeps bounded shutdown diagnostics separate from tested process lifetime.
 
 Post-correction exact verification: focused stdio/helper tests passed 5/5; integrated lifecycle set passed 172/172 twice (27.44s and 27.16s); shared full command passed 1,665 with two intentional skips across 188 files in 170.39s; typecheck, Biome over 324 files, build, and diff checks passed. Unified-main operational baseline is green in CI run 29157797520 and CodeQL run 29157797240. AC4 remains open for this repair head.
+
+Exact implementation-head PR verification at 446e47d: CI run 29158369735 passed full unit jobs on Ubuntu (3m53s), macOS (3m53s), and Windows (9m49s), plus compiled build/smoke on Ubuntu (20s), macOS (29s), and Windows (1m32s). JUnit artifacts were non-empty: Ubuntu 66,166 bytes, macOS 66,955 bytes, Windows 65,505 bytes. CodeQL run 29158369248 passed both JavaScript/TypeScript and Actions analyses. Both independent final reviews approved the exact diff with no blockers.
 <!-- SECTION:NOTES:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+Made resource-owning tests deterministic and fail-visible: MCP servers/clients, watchers, stores, child processes, and Git worktrees now release before fixture deletion; cleanup failures aggregate without hiding primary assertions. Shared child-close observation captures events immediately while bounded shutdown timers begin only when cleanup starts. Verified with repeated 172-test lifecycle stress, the 1,665-test full suite, static/build gates, independent specification and quality reviews, and unified Linux/macOS/Windows CI, compiled smoke, JUnit artifacts, and CodeQL.
+<!-- SECTION:FINAL_SUMMARY:END -->
 
 ## Definition of Done
 <!-- DOD:BEGIN -->
