@@ -1,11 +1,11 @@
 ---
 id: BACK-533
 title: Prevent stale ContentStore refresh from overwriting newer state
-status: In Progress
+status: Done
 assignee:
   - '@pr755-f768-code'
 created_date: '2026-07-10 19:28'
-updated_date: '2026-07-11 10:36'
+updated_date: '2026-07-11 10:44'
 labels:
   - concurrency
   - release-blocker
@@ -83,7 +83,15 @@ Windows diagnostic head f2f5693 localized the repeated failure in CI run 2913327
 Integrated corrected main/BACK-534 without force. Preserved physical-root publication ownership and per-item generation/version reconciliation while adopting bounded coalesced deferred watcher rechecks outside the serialized queue. Removed superseded watcher/refresh/retry implementations after semantic merge. Kept the self-cleaning labeled lifecycle waits; replaced one flaky native fs.watch delivery assertion with deterministic bound-root and active-watcher invariants after reproducing the flake 1/4, then passed that transition pair 100/100. Final merged verification: focused ContentStore/Search/MCP 85/85; critical lifecycle/concurrency stress 40/40 plus transition recovery 100/100; TypeScript, Biome (322 files), diff check, build green; authoritative isolated suite 1,663 passed, 2 expected interactive skips, 0 failed, 6,796 assertions across 188 files in 171.37s. Full log: /tmp/back533-final-full.log.
 
 Post-review synchronization correction: the reviewer reproduced the post-restart lifecycle test failing 45/1 in the full ContentStore file while isolated runs passed 10/10. The wait was coupled to one event sequence even though the requirement is eventual observable state after real external writes. A complete file audit found the same pattern in document add, task/document/decision deletion, root-transition writes, restart writes, and custom-root writes; one repeated run reproduced deletion timing out after two prior full-file passes. Consolidated these state-convergence checks on one bounded accessor-poll helper without calling refresh or ensure. Retained event subscriptions only where notification or config-publication ordering is the behavior under test. Final evidence: complete ContentStore file 920/920 across 20 consecutive runs; combined ContentStore/Search/MCP 85/85 (351 assertions); TypeScript, Biome 322 files, diff check and build pass; authoritative suite 1,663 pass, 2 expected skips, 0 fail, 6,802 assertions across 188 files in 169.38s. Log: /tmp/back533-final-full-sync.log.
+
+Final independent integration review approved commit 7bfa4ce with no P1/P2/P3 findings. Specification evidence: full ContentStore file 920/920 across 20 runs, critical concurrency/root matrix 220/220, focused semantics 53/53, MCP queue 10/10, duplicate repair 4/4. Quality evidence: focused ContentStore/Search/MCP 85/85, server fallback 20/20, native A-to-B-to-A lifecycle 10/10, TypeScript, Biome, and diff checks green. The final full isolated suite passed 1,663 with 2 expected interactive skips and 0 failures (6,802 assertions across 188 files).
 <!-- SECTION:NOTES:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+Prevented older ContentStore refreshes and cross-root lifecycle work from overwriting newer persisted state by combining per-item publication generations/versions and physical-root ownership with bounded deferred watcher reconciliation. The integrated implementation preserves concurrent updates, ABA and delete/re-add cycles, coherent initialization/config snapshots, rename/delete recovery, duplicate repair, and external watcher behavior across root transitions, disposal, and restart. Hardened state-convergence tests use bounded cached-state polling after real filesystem operations while retaining event assertions for notification contracts. Verified by 20 complete ContentStore-file runs, concurrency/root stress, focused semantic suites, full isolated tests, static checks, and independent specification and quality approval.
+<!-- SECTION:FINAL_SUMMARY:END -->
 
 ## Definition of Done
 <!-- DOD:BEGIN -->
