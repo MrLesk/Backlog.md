@@ -1,11 +1,11 @@
 ---
 id: BACK-535.5
 title: Replace vacuous catch-based test assertions
-status: In Progress
+status: Done
 assignee:
   - '@test-hygiene-assertions'
 created_date: '2026-07-11 10:56'
-updated_date: '2026-07-11 16:13'
+updated_date: '2026-07-11 16:25'
 labels: []
 dependencies: []
 parent_task_id: BACK-535
@@ -27,7 +27,7 @@ Inventory boundary after merging main 251aba8: these four sites are distinct fro
 - [x] #2 The offline-mode fetch case asserts one deterministic observable contract and cannot pass for arbitrary errors
 - [x] #3 Any removed test names the retained replacement coverage and why no public behavior is lost
 - [x] #4 No production behavior changes
-- [ ] #5 Focused stress, full local gates, and supported-platform CI pass
+- [x] #5 Focused stress, full local gates, and supported-platform CI pass
 <!-- AC:END -->
 
 ## Implementation Plan
@@ -55,12 +55,19 @@ These retained tests use real initialized Core fixtures, await a successful load
 Offline exact fetch contract: Offline Mode Configuration > GitOperations.fetch() > "should proceed with fetch when remoteOperations is true" forces hasAnyRemote=true, captures execGit, and asserts exactly ["fetch", "origin", "--prune", "--quiet"]. It is deterministic and requires neither a repository remote nor network access; arbitrary errors can no longer make it pass.
 
 Scope and review evidence: test-only diff; no production files or behavior changed. Independent specification review APPROVED and independent quality review APPROVED. Validation passed: focused 19 tests / 43 assertions; full 1,662 tests passed + 2 intentional skips / 0 failed / 6,791 assertions / 187 files; bunx tsc --noEmit passed; bun run check . passed (323 files); bun run build passed; git diff --check passed. AC5 remains open pending supported-platform GitHub 3OS CI.
+
+Final CI evidence for implementation head 407cb30e8d8c36ad9dc27a8e8f048bdec3c38654:
+
+- CI run 29159423173 (https://github.com/MrLesk/Backlog.md/actions/runs/29159423173): SUCCESS. lint-and-unit-test passed on ubuntu-latest, macos-latest, and windows-latest; compile-and-smoke-test passed on ubuntu-latest/bun-linux-x64-baseline, macos-latest/bun-darwin-x64, and windows-latest/bun-windows-x64-baseline.
+- CodeQL run 29159422376 (https://github.com/MrLesk/Backlog.md/actions/runs/29159422376): SUCCESS. Analyze (javascript-typescript) and Analyze (actions) both passed.
+- JUnit artifacts from CI run 29159423173 exist, are unexpired, and were downloaded with nonempty test-results.xml files: test-results-ubuntu-latest (artifact 8250402726; archive 66,114 bytes; XML 494,085 bytes), test-results-macos-latest (artifact 8250399240; archive 66,702 bytes; XML 524,279 bytes), test-results-windows-latest (artifact 8250456816; archive 65,406 bytes; XML 487,088 bytes).
+- Review evidence remains APPROVED for both independent specification review and independent quality review.
 <!-- SECTION:NOTES:END -->
 
 ## Final Summary
 
 <!-- SECTION:FINAL_SUMMARY:BEGIN -->
-Removed a vacuous duplicate board-config test file in favor of deterministic retained board-loading coverage and replaced the offline fetch catch-based assertion with an exact, network-free fetch-command contract. This is test-only with no production behavior changes. Local focused, full test, typecheck, Biome, build, and diff checks passed; specification and quality reviews approved. Task remains In Progress until supported-platform GitHub 3OS CI satisfies AC5.
+Removed the vacuous duplicate board-config tests in favor of deterministic retained coverage and replaced the offline fetch catch path with an exact network-free command assertion. Test-only scope; local gates, independent specification and quality reviews, 3OS unit and compile/smoke CI, both CodeQL analyses, and all three nonempty JUnit artifacts passed.
 <!-- SECTION:FINAL_SUMMARY:END -->
 
 ## Definition of Done
