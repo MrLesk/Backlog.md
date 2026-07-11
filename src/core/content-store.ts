@@ -44,12 +44,14 @@ interface RenameReconciliation<T> {
 	key: string;
 	epoch: number;
 	readEventPath: () => Promise<T | null>;
-	findIdentity: () => Promise<T | null>;
+	findIdentity: () => Promise<IdentityLookup<T>>;
 	current: () => T | undefined;
 	hasChanged: (previous: T, next: T) => boolean;
 	publish: (item: T) => void;
 	remove: () => void;
 }
+
+type IdentityLookup<T> = { state: "found"; item: T } | { state: "absent" } | { state: "incomplete" };
 
 const CONTENT_RETRY_ATTEMPTS = 12;
 const CONTENT_RETRY_DELAY_MS = 75;
@@ -478,8 +480,36 @@ export class ContentStore {
 							return task;
 						},
 						findIdentity: async () => {
-							const tasks = await this.loadTasksWithLoader();
-							return tasks.find((task) => taskIdsEqual(task.id, normalizedTaskId)) ?? null;
+							const local = await this.findIdentityCandidate(
+								tasksDir,
+								"*.md",
+								(relativePath) => {
+									const [candidateId] = basename(relativePath).split(" ");
+									return candidateId ? taskIdsEqual(candidateId, normalizedTaskId) : false;
+								},
+								async (candidatePath) => {
+									const content = await Bun.file(candidatePath).text();
+									const task = { ...normalizeTaskIdentity(parseTask(content)), filePath: candidatePath };
+									if (!taskIdsEqual(task.id, normalizedTaskId)) {
+										throw new Error("Task identity does not match candidate filename");
+									}
+									return task;
+								},
+							);
+							if (local.state !== "absent" || !this.taskLoader) {
+								return local;
+							}
+							try {
+								const matches = (await this.loadTasksWithLoader()).filter((task) =>
+									taskIdsEqual(task.id, normalizedTaskId),
+								);
+								if (matches.length === 0) return { state: "absent" };
+								if (matches.length > 1) return { state: "incomplete" };
+								const item = matches[0];
+								return item ? { state: "found", item } : { state: "incomplete" };
+							} catch {
+								return { state: "incomplete" };
+							}
 						},
 						current: () => this.tasks.get(normalizedTaskId),
 						hasChanged: (previous, next) => this.hasTaskChanged(previous, next),
@@ -565,8 +595,19 @@ export class ContentStore {
 							return decision;
 						},
 						findIdentity: async () => {
-							const decisions = await this.filesystem.listDecisions();
-							return decisions.find((decision) => decision.id === idPart) ?? null;
+							return await this.findIdentityCandidate(
+								decisionsDir,
+								"decision-*.md",
+								(relativePath) => basename(relativePath).split(" - ")[0] === idPart,
+								async (candidatePath) => {
+									const content = await Bun.file(candidatePath).text();
+									const decision = parseDecision(content);
+									if (decision.id !== idPart) {
+										throw new Error("Decision identity does not match candidate filename");
+									}
+									return decision;
+								},
+							);
 						},
 						current: () => this.decisions.get(idPart),
 						hasChanged: (previous, next) => this.hasDecisionChanged(previous, next),
@@ -660,8 +701,22 @@ export class ContentStore {
 						return document;
 					},
 					findIdentity: async () => {
-						const documents = await this.filesystem.listDocuments();
-						return documents.find((document) => document.id === idPart) ?? null;
+						return await this.findIdentityCandidate(
+							docsDir,
+							"**/*.md",
+							(relativePath) => basename(relativePath).split(" - ")[0] === idPart,
+							async (candidatePath, relativeCandidatePath) => {
+								const content = await Bun.file(candidatePath).text();
+								const document = {
+									...parseDocument(content),
+									path: normalizeDocumentRelativePath(relativeCandidatePath),
+								};
+								if (document.id !== idPart) {
+									throw new Error("Document identity does not match candidate filename");
+								}
+								return document;
+							},
+						);
 					},
 					current: () => this.documents.get(idPart),
 					hasChanged: (previous, next) => this.hasDocumentChanged(previous, next),
@@ -913,28 +968,66 @@ export class ContentStore {
 
 	private async reconcileRenamedItem<T>(options: RenameReconciliation<T>): Promise<void> {
 		await this.reconcileOrSchedule(options.key, options.epoch, async () => {
-			let item: T | null;
+			let lookup: IdentityLookup<T>;
 			try {
-				item = await options.readEventPath();
-				if (!item) {
-					item = await options.findIdentity();
-				}
+				const eventItem = await options.readEventPath();
+				lookup = eventItem ? { state: "found", item: eventItem } : await options.findIdentity();
 			} catch {
 				return true;
 			}
 			if (!this.isRootWatcherCurrent(options.epoch)) {
 				return false;
 			}
-			if (item) {
+			if (lookup.state === "incomplete") {
+				return true;
+			}
+			if (lookup.state === "found") {
 				const previous = options.current();
-				if (!previous || options.hasChanged(previous, item)) {
-					options.publish(item);
+				if (!previous || options.hasChanged(previous, lookup.item)) {
+					options.publish(lookup.item);
 				}
 				return false;
 			}
 			options.remove();
 			return false;
 		});
+	}
+
+	private async findIdentityCandidate<T>(
+		rootDir: string,
+		pattern: string,
+		matchesIdentity: (relativePath: string) => boolean,
+		readCandidate: (absolutePath: string, relativePath: string) => Promise<T>,
+	): Promise<IdentityLookup<T>> {
+		let relativePaths: string[];
+		try {
+			const root = await stat(rootDir);
+			if (!root.isDirectory()) {
+				return { state: "incomplete" };
+			}
+			relativePaths = await Array.fromAsync(new Bun.Glob(pattern).scan({ cwd: rootDir, followSymlinks: true }));
+			await stat(rootDir);
+		} catch {
+			return { state: "incomplete" };
+		}
+		const candidates = relativePaths.filter(matchesIdentity);
+		if (candidates.length === 0) {
+			return { state: "absent" };
+		}
+		if (candidates.length > 1) {
+			return { state: "incomplete" };
+		}
+		const relativePath = candidates[0];
+		if (!relativePath) {
+			return { state: "incomplete" };
+		}
+		try {
+			const absolutePath = join(rootDir, ...relativePath.split("/"));
+			const item = await readCandidate(absolutePath, relativePath);
+			return { state: "found", item };
+		} catch {
+			return { state: "incomplete" };
+		}
 	}
 
 	private scheduleDeferredRecheck(key: string, epoch: number, reconcile: () => Promise<boolean>): void {

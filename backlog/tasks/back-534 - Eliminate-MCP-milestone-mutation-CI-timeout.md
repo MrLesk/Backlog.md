@@ -5,7 +5,7 @@ status: Done
 assignee:
   - '@back534-review-fix'
 created_date: '2026-07-11 00:41'
-updated_date: '2026-07-11 09:40'
+updated_date: '2026-07-11 09:53'
 labels:
   - ci
   - mcp
@@ -42,9 +42,10 @@ The Linux full-suite CI repeatedly times out the MCP milestone task_create/task_
 3. Preserve fast duplicate no-ops, wrong-identity rejection, incomplete-read recovery, collection symmetry, and filename/existence-driven deletion; cover root-change and disposal cancellation.
 4. Treat only authoritative filename-derived rename reconciliation as evidence to cancel a pending identity job; unrelated, null, and equal wildcard snapshots must leave targeted delayed writes alive.
 5. Give a genuinely fresh same-key watcher event a fresh bounded retry window while retaining a single coalesced timer and a hard bound for duplicate storms.
-6. Reconcile rename/delete by identity: read the event path when present, otherwise scan only to recover that identity, then mutate only that map entry so transiently unreadable siblings remain cached.
-7. Preserve absent-identity recovery, wildcard no-polling, root/dispose guards, task/document/decision symmetry, then stress queue timing, rename/delete, lifecycle, and MCP milestone mutation.
-8. Run TypeScript, Biome, build, diff review, and the full isolated suite; record fail-first and final verification fingerprints without pushing or touching GitHub threads.
+6. Reconcile rename/delete by identity: read the event path when present, otherwise enumerate only filename candidates for that identity and classify the result as found, authoritatively absent, or incomplete.
+7. Preserve cached content and schedule bounded retry for incomplete candidate reads; delete only after a complete absent result, while malformed unrelated siblings never influence the target.
+8. Preserve wildcard no-polling, root/dispose guards, task/document/decision symmetry, then stress queue timing, rename/delete, lifecycle, and MCP milestone mutation.
+9. Run TypeScript, Biome, build, diff review, and the full isolated suite; record fail-first and final verification fingerprints without pushing or touching GitHub threads.
 <!-- SECTION:PLAN:END -->
 
 ## Implementation Notes
@@ -83,12 +84,20 @@ PR #759 review fail-first fingerprints on cc4de56: (1) null/unrelated wildcard n
 Review fixes use one shared identity-targeted rename reconciliation path. A rename event reads its event path when present, otherwise scans only to recover that filename-derived identity, then upserts or deletes only that map entry. Successful same-identity rename evidence cancels stale old-path work even when content is equal; unrelated/null wildcard snapshots no longer cancel targeted jobs. A fresh same-key event replaces a near-exhausted DeferredRecheck token once with a new bounded budget, while synchronous duplicate storms keep one timer/registry entry and remain hard-bounded across at most two budgets.
 
 Final verification after the review fixes: ContentStore 15/15 with 98 assertions; 10x ContentStore stress 150/150; MCP milestones 33/33 with 127 assertions; full bun test --isolate --timeout=10000 1,632 pass, 2 expected interactive skips, 0 fail, 6,696 assertions across 188 files in 166.24s. bunx tsc --noEmit, bun run check . (322 files), bun run build, and git diff --check passed.
+
+Post-0acbeb6 spec review identified that an empty collection result cannot distinguish a true filename-derived deletion from a moved target hidden by an unrelated malformed document or decision. Follow-up will use a shared tri-state identity candidate scan and exact no-second-event coverage before changing production code.
+
+Post-0acbeb6 tri-state fail-first evidence: a valid doc-1 moved to `doc-1 - Moved target.md` disappeared when unrelated doc-2 was malformed (expected the new path, received undefined); an incomplete moved TASK-1 was deleted instead of retained and no retry was armed; a separate detached 0acbeb6 decision probe moved decision-1, made unrelated decision-2 guaranteed-invalid, fired only the old-path rename event, and observed decision-1 missing (expected true, received false).
+
+The correction uses one shared filename-filtered identity candidate enumerator for tasks, documents, and decisions. It verifies the root directory before and after enumeration and returns found, authoritatively absent, or incomplete. Only complete zero-candidate results delete; matching unreadable, invalid, or ambiguous candidates preserve the cache and schedule the existing bounded identity retry. Unrelated malformed files are never read. Task recovery retains the custom cross-branch loader fallback only after complete local absence. Deterministic controls prove valid moved identities recover with malformed siblings and no second event, incomplete moved identities recover after one deferred timer round without a second event, and subsequent real deletion still removes only the target while preserving cached siblings.
+
+Final tri-state verification: ContentStore 17/17 with 117 assertions; 10x ContentStore stress 170/170; MCP milestones 33/33 with 127 assertions; full bun test --isolate --timeout=10000 1,634 pass, 2 expected interactive skips, 0 fail, 6,715 assertions across 188 files in 180.74s. bunx tsc --noEmit, bun run check . (322 files), bun run build, and git diff --check passed.
 <!-- SECTION:NOTES:END -->
 
 ## Final Summary
 
 <!-- SECTION:FINAL_SUMMARY:BEGIN -->
-Eliminated the three remaining PR #759 watcher races: unrelated wildcard snapshots cannot cancel delayed targeted writes, fresh same-key events receive one new bounded retry budget without unbounded duplicate-storm resets, and filename-derived rename/delete reconciliation mutates only the affected identity so transiently unreadable siblings remain cached. Same-content renames still cancel stale old-path work through authoritative identity reconciliation. Final verification passed 1,632 tests with 2 expected skips and 0 failures, 10x ContentStore stress, MCP milestones, TypeScript, Biome, build, and diff checks.
+Completed the watcher reconciliation repair with fail-closed identity recovery. Rename/delete handling now enumerates and reads only filename candidates for the affected task, document, or decision and distinguishes found, authoritatively absent, and incomplete results. Malformed unrelated siblings cannot cause deletion; incomplete moved targets remain cached and retry without another watcher event; complete absence still performs real deletion. This retains wildcard isolation, stale-path cancellation, bounded fresh-event retry budgets, cross-branch task fallback, and root/disposal guards. Final verification passed 1,634 tests with 2 expected skips and 0 failures, 10x ContentStore stress, MCP milestones, TypeScript, Biome, build, and diff checks.
 <!-- SECTION:FINAL_SUMMARY:END -->
 
 ## Definition of Done

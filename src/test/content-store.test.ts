@@ -456,6 +456,166 @@ describe("ContentStore", () => {
 		}
 	});
 
+	it("recovers moved identities without letting malformed siblings decide deletion", async () => {
+		store.dispose();
+		const targetTask = { ...sampleTask, filePath: undefined };
+		const siblingTask = { ...sampleTask, id: "task-2", title: "Malformed sibling task", filePath: undefined };
+		const targetDocument = { ...sampleDocument, path: undefined };
+		const siblingDocument = {
+			...sampleDocument,
+			id: "doc-2",
+			title: "Malformed sibling document",
+			path: undefined,
+		};
+		const siblingDecision = { ...sampleDecision, id: "decision-2", title: "Malformed sibling decision" };
+		await Promise.all([
+			filesystem.saveTask(targetTask),
+			filesystem.saveTask(siblingTask),
+			filesystem.saveDocument(targetDocument),
+			filesystem.saveDocument(siblingDocument),
+			filesystem.saveDecision(sampleDecision),
+			filesystem.saveDecision(siblingDecision),
+		]);
+
+		const callbacks = new Map<string, CapturedWatchCallback>();
+		const watchSpy = captureWatchCallbacks(callbacks);
+		try {
+			store = new ContentStore(filesystem, undefined, true);
+			const initial = await store.ensureInitialized();
+			const oldTaskPath = initial.tasks.find((task) => task.id === "TASK-1")?.filePath;
+			const oldDocumentPath = initial.documents.find((document) => document.id === "doc-1")?.path;
+			const siblingTaskPath = initial.tasks.find((task) => task.id === "TASK-2")?.filePath;
+			const siblingDocumentPath = initial.documents.find((document) => document.id === "doc-2")?.path;
+			const oldDecisionFile = await findDecisionFile(filesystem.decisionsDir, "decision-1");
+			const siblingDecisionFile = await findDecisionFile(filesystem.decisionsDir, "decision-2");
+			if (!oldTaskPath || !oldDocumentPath || !siblingTaskPath || !siblingDocumentPath) {
+				throw new Error("Expected target and sibling paths");
+			}
+
+			const newTaskPath = join(filesystem.tasksDir, "task-1 - Moved target.md");
+			const newDocumentPath = "doc-1 - Moved target.md";
+			const newDecisionFile = "decision-1 - Moved target.md";
+			await Promise.all([
+				rename(oldTaskPath, newTaskPath),
+				rename(join(filesystem.docsDir, oldDocumentPath), join(filesystem.docsDir, newDocumentPath)),
+				rename(join(filesystem.decisionsDir, oldDecisionFile), join(filesystem.decisionsDir, newDecisionFile)),
+				Bun.write(siblingTaskPath, '---\nid: "\n---\n'),
+				Bun.write(join(filesystem.docsDir, siblingDocumentPath), "---\nid: {\n---\n"),
+				Bun.write(join(filesystem.decisionsDir, siblingDecisionFile), "---\n[id\n---\n"),
+			]);
+			getCapturedWatcher(callbacks, filesystem.tasksDir)("rename", basename(oldTaskPath));
+			getCapturedWatcher(callbacks, filesystem.docsDir)("rename", oldDocumentPath);
+			getCapturedWatcher(callbacks, filesystem.decisionsDir)("rename", oldDecisionFile);
+			const internals = store as unknown as {
+				deferredRechecks: Map<string, unknown>;
+				enqueue: (fn: () => Promise<void>) => Promise<void>;
+			};
+			await internals.enqueue(async () => {});
+
+			expect(store.getTasks().find((task) => task.id === "TASK-1")?.filePath).toBe(newTaskPath);
+			expect(store.getDocuments().find((document) => document.id === "doc-1")?.path).toBe(newDocumentPath);
+			expect(store.getDecisions().some((decision) => decision.id === "decision-1")).toBe(true);
+			expect(internals.deferredRechecks.size).toBe(0);
+
+			await Promise.all([
+				unlink(newTaskPath),
+				unlink(join(filesystem.docsDir, newDocumentPath)),
+				unlink(join(filesystem.decisionsDir, newDecisionFile)),
+			]);
+			getCapturedWatcher(callbacks, filesystem.tasksDir)("rename", basename(newTaskPath));
+			getCapturedWatcher(callbacks, filesystem.docsDir)("rename", newDocumentPath);
+			getCapturedWatcher(callbacks, filesystem.decisionsDir)("rename", newDecisionFile);
+			await internals.enqueue(async () => {});
+
+			expect(store.getTasks().some((task) => task.id === "TASK-1")).toBe(false);
+			expect(store.getDocuments().some((document) => document.id === "doc-1")).toBe(false);
+			expect(store.getDecisions().some((decision) => decision.id === "decision-1")).toBe(false);
+			expect(store.getTasks().some((task) => task.id === "TASK-2")).toBe(true);
+			expect(store.getDocuments().some((document) => document.id === "doc-2")).toBe(true);
+			expect(store.getDecisions().some((decision) => decision.id === "decision-2")).toBe(true);
+		} finally {
+			watchSpy.mockRestore();
+		}
+	});
+
+	it("retries incomplete moved identities without a second watcher event", async () => {
+		store.dispose();
+		await Promise.all([
+			filesystem.saveTask({ ...sampleTask, filePath: undefined }),
+			filesystem.saveDocument({ ...sampleDocument, path: undefined }),
+			filesystem.saveDecision(sampleDecision),
+		]);
+
+		const callbacks = new Map<string, CapturedWatchCallback>();
+		const watchSpy = captureWatchCallbacks(callbacks);
+		try {
+			store = new ContentStore(filesystem, undefined, true);
+			const initial = await store.ensureInitialized();
+			const task = initial.tasks[0];
+			const document = initial.documents[0];
+			const decision = initial.decisions[0];
+			if (!task?.filePath || !document?.path || !decision) {
+				throw new Error("Expected initialized target paths");
+			}
+			const oldDecisionFile = await findDecisionFile(filesystem.decisionsDir, decision.id);
+			const taskContent = await Bun.file(task.filePath).text();
+			const documentContent = await Bun.file(join(filesystem.docsDir, document.path)).text();
+			const decisionContent = await Bun.file(join(filesystem.decisionsDir, oldDecisionFile)).text();
+			const newTaskPath = join(filesystem.tasksDir, "task-1 - Delayed target.md");
+			const newDocumentPath = "doc-1 - Delayed target.md";
+			const newDecisionFile = "decision-1 - Delayed target.md";
+			await Promise.all([
+				rename(task.filePath, newTaskPath),
+				rename(join(filesystem.docsDir, document.path), join(filesystem.docsDir, newDocumentPath)),
+				rename(join(filesystem.decisionsDir, oldDecisionFile), join(filesystem.decisionsDir, newDecisionFile)),
+			]);
+			await Promise.all([
+				Bun.write(newTaskPath, '---\nid: "\n---\n'),
+				Bun.write(join(filesystem.docsDir, newDocumentPath), "---\nid: {\n---\n"),
+				Bun.write(join(filesystem.decisionsDir, newDecisionFile), "---\n[id\n---\n"),
+			]);
+
+			const timerCallbacks: Array<() => void> = [];
+			const internals = store as unknown as {
+				chainTail: Promise<void>;
+				deferredRechecks: Map<string, unknown>;
+				enqueue: (fn: () => Promise<void>) => Promise<void>;
+				startDeferredTimer: (callback: () => void, delayMs: number) => ReturnType<typeof setTimeout>;
+			};
+			internals.startDeferredTimer = (callback) => {
+				timerCallbacks.push(callback);
+				const timer = setTimeout(() => {}, 60_000);
+				timer.unref();
+				return timer;
+			};
+			getCapturedWatcher(callbacks, filesystem.tasksDir)("rename", basename(task.filePath));
+			getCapturedWatcher(callbacks, filesystem.docsDir)("rename", document.path);
+			getCapturedWatcher(callbacks, filesystem.decisionsDir)("rename", oldDecisionFile);
+			await internals.enqueue(async () => {});
+
+			expect(store.getTasks().some((item) => item.id === task.id)).toBe(true);
+			expect(store.getDocuments().some((item) => item.id === document.id)).toBe(true);
+			expect(store.getDecisions().some((item) => item.id === decision.id)).toBe(true);
+			expect(internals.deferredRechecks.size).toBe(3);
+			expect(timerCallbacks).toHaveLength(3);
+
+			await Promise.all([
+				Bun.write(newTaskPath, taskContent),
+				Bun.write(join(filesystem.docsDir, newDocumentPath), documentContent),
+				Bun.write(join(filesystem.decisionsDir, newDecisionFile), decisionContent),
+			]);
+			for (const callback of timerCallbacks) callback();
+			await internals.chainTail;
+
+			expect(store.getTasks()[0]?.filePath).toBe(newTaskPath);
+			expect(store.getDocuments()[0]?.path).toBe(newDocumentPath);
+			expect(store.getDecisions()[0]?.id).toBe(decision.id);
+			expect(internals.deferredRechecks.size).toBe(0);
+		} finally {
+			watchSpy.mockRestore();
+		}
+	});
+
 	it("coalesces deferred rechecks and invalidates them across root changes and disposal", async () => {
 		await store.ensureInitialized();
 		const timerCallbacks: Array<() => void> = [];
@@ -1189,6 +1349,19 @@ async function withTimeout<T>(promise: Promise<T>, label: string): Promise<T> {
 }
 
 type CapturedWatchCallback = (eventType: string, filename: string | Buffer | null) => void;
+
+function captureWatchCallbacks(callbacks: Map<string, CapturedWatchCallback>) {
+	return spyOn(nodeFs, "watch").mockImplementation(((path: Parameters<typeof nodeFs.watch>[0], ...args: unknown[]) => {
+		const callback = args.findLast((argument) => typeof argument === "function");
+		if (typeof callback !== "function") {
+			throw new Error(`Expected a watcher callback for ${String(path)}`);
+		}
+		callbacks.set(resolve(String(path)), callback as CapturedWatchCallback);
+		const watcher = new EventEmitter() as EventEmitter & { close(): void };
+		watcher.close = () => {};
+		return watcher as unknown as nodeFs.FSWatcher;
+	}) as typeof nodeFs.watch);
+}
 
 function getCapturedWatcher(callbacks: Map<string, CapturedWatchCallback>, path: string): CapturedWatchCallback {
 	const callback = callbacks.get(resolve(path));
