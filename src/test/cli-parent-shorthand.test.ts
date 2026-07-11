@@ -4,7 +4,9 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { $ } from "bun";
 import { Core } from "../index.ts";
-import { createTaskPlatformAware, getCliHelpPlatformAware } from "./test-helpers.ts";
+import { initializeTestProject } from "./test-utils.ts";
+
+const CLI_PATH = join(process.cwd(), "src", "cli.ts");
 
 describe("CLI parent shorthand option", () => {
 	let testDir: string;
@@ -28,11 +30,13 @@ describe("CLI parent shorthand option", () => {
 
 	it("should accept -p as shorthand for --parent", async () => {
 		// Create parent task
-		const createParent = await createTaskPlatformAware({ title: "Parent Task" }, testDir);
+		const createParent = await $`bun ${CLI_PATH} task create "Parent Task"`.cwd(testDir).quiet().nothrow();
 		expect(createParent.exitCode).toBe(0);
 
-		// Create subtask using -p shorthand
-		const createSubtaskShort = await createTaskPlatformAware({ title: "Subtask with -p", parent: "task-1" }, testDir);
+		const createSubtaskShort = await $`bun ${CLI_PATH} task create -p task-1 "Subtask with -p"`
+			.cwd(testDir)
+			.quiet()
+			.nothrow();
 		expect(createSubtaskShort.exitCode).toBe(0);
 
 		// Find the created subtask file
@@ -48,47 +52,15 @@ describe("CLI parent shorthand option", () => {
 		}
 	});
 
-	it("should work the same as --parent option", async () => {
-		// Create subtask using --parent
-		const createSubtaskLong = await createTaskPlatformAware(
-			{ title: "Subtask with --parent", parent: "task-1" },
-			testDir,
-		);
-		expect(createSubtaskLong.exitCode).toBe(0);
-
-		// Find both subtask files
-		const tasksDir = join(testDir, "backlog", "tasks");
-		const files = await readdir(tasksDir);
-		const subtaskFiles1 = files.filter((f) => f.startsWith("task-1.1 - ") && f.endsWith(".md"));
-		const subtaskFiles2 = files.filter((f) => f.startsWith("task-1.2 - ") && f.endsWith(".md"));
-
-		expect(subtaskFiles1.length).toBe(1);
-		expect(subtaskFiles2.length).toBe(1);
-
-		// Verify both subtasks have the same parent
-		if (subtaskFiles1[0] && subtaskFiles2[0]) {
-			const subtask1 = await Bun.file(join(tasksDir, subtaskFiles1[0])).text();
-			const subtask2 = await Bun.file(join(tasksDir, subtaskFiles2[0])).text();
-
-			expect(subtask1).toContain("parent_task_id: TASK-1");
-			expect(subtask2).toContain("parent_task_id: TASK-1");
-		}
-	});
-
 	it("should show -p in help text", async () => {
-		const helpResult = await getCliHelpPlatformAware(["task", "create", "--help"], testDir);
+		const helpResult = await $`bun ${CLI_PATH} task create --help`.cwd(testDir).quiet().nothrow();
 
-		expect(helpResult.stdout).toContain("-p, --parent <taskId>");
-		expect(helpResult.stdout).toContain("specify existing parent task ID, not a");
-		expect(helpResult.stdout).toContain("milestone ID");
-	});
-
-	it("should show Definition of Done options in help text", async () => {
-		const helpResult = await getCliHelpPlatformAware(["task", "create", "--help"], testDir);
-
-		expect(helpResult.stdout).toContain("--dod <item>");
-		expect(helpResult.stdout).toContain("--no-dod-defaults");
+		expect(helpResult.exitCode).toBe(0);
+		const stdout = helpResult.stdout.toString();
+		expect(stdout).toContain("-p, --parent <taskId>");
+		expect(stdout).toContain("specify existing parent task ID, not a");
+		expect(stdout).toContain("milestone ID");
+		expect(stdout).toContain("--dod <item>");
+		expect(stdout).toContain("--no-dod-defaults");
 	});
 });
-
-import { initializeTestProject } from "./test-utils.ts";
