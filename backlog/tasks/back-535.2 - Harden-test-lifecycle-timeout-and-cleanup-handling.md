@@ -1,11 +1,11 @@
 ---
 id: BACK-535.2
 title: 'Harden test lifecycle, timeout, and cleanup handling'
-status: In Progress
+status: Done
 assignee:
   - '@test-hygiene-slice-b'
 created_date: '2026-07-11 09:20'
-updated_date: '2026-07-11 11:02'
+updated_date: '2026-07-11 11:06'
 labels: []
 dependencies: []
 parent_task_id: BACK-535
@@ -28,7 +28,7 @@ Make test lifecycle failures deterministic and visible without changing producti
 - [x] #5 The Testing Style Guide requires isolated temp paths, observable synchronization, cancellable timers/subscriptions/processes, global-state restoration, and fail-visible cleanup
 - [x] #6 Remaining mechanical cleanup batches are captured as scoped BACK-535 child follow-ups with named files and no duplicate scope
 - [x] #7 No production behavior changes
-- [ ] #8 Focused repeated stress, full tests, typecheck, Biome, build, and before/after runtime measurements pass, followed by sequential specification and quality approval
+- [x] #8 Focused repeated stress, full tests, typecheck, Biome, build, and before/after runtime measurements pass, followed by sequential specification and quality approval
 <!-- AC:END -->
 
 ## Implementation Plan
@@ -75,11 +75,19 @@ Quality-review fix verification: timeout plus atomic tests passed 50/50 repeated
 Final classification boundary: src/test/test-utils.ts:65 remains the tenth justified fallback because retry() retains the last attempt error and rethrows after exhaustion. src/test/dependency.test.ts:28 is filesystem teardown owned by BACK-535.3. src/test/board-config-simple.test.ts:72, :131, and :183 plus src/test/offline-mode.test.ts:75 are not legitimate exclusions; BACK-535.5 owns their observable-contract repair or evidence-backed removal. After merging main 251aba8, the complete inventory is 146 = 37 pre-clean + 59 filesystem teardown + 24 resource cleanup + 22 legitimate explicit sites + 4 BACK-535.5 sites; the added legitimate site is src/test/content-store.test.ts:2157.
 
 Post-main-251aba8 verification: the exact infrastructure scan found 146 sites because the merged ContentStore suite adds one legitimate asserted accessor-capture catch at src/test/content-store.test.ts:2157 and moves its resource teardown catch to :62. Timeout plus atomic stress passed 50/50; combined timeout/config/atomic stress passed 10/10 with 16 tests and 33 assertions per run. Full suite passed 1,666 with 2 intentional interactive-TUI skips, 0 failures, and 6,804 assertions across 189 files in 191.83s. bunx tsc --noEmit, Biome over 323 files, bun run build, and diff checks passed. No production file is changed by BACK-535.2; production differences are solely the merged main commit 251aba8.
+
+After merging task-only main 50aa2c, focused tests passed 16/16 with 33 assertions; TypeScript, Biome over 323 files, build, and diff checks passed. The approved implementation/test diff is unchanged. Sequential specification and quality reviews approved exact implementation head cb9643b before this task-only merge.
 <!-- SECTION:NOTES:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+Hardened test lifecycle handling without changing product behavior: introduced a self-clearing timeout helper with direct cancellation coverage, isolated config migration tests, replaced a probabilistic atomic-create assertion with deterministic internal coverage, and modernized the Testing Style Guide. Classified all 146 catch/pre-clean sites into exact filesystem, resource, legitimate, and vacuous-assertion ownership; created BACK-535.3, BACK-535.4, and BACK-535.5 for the remaining work. Verified 50 repeated focused runs, 10 combined stress runs, a full 1,666-pass suite with 2 intentional skips, TypeScript, Biome, build, and sequential specification/quality approval.
+<!-- SECTION:FINAL_SUMMARY:END -->
 
 ## Definition of Done
 <!-- DOD:BEGIN -->
-- [ ] #1 bunx tsc --noEmit passes when TypeScript touched
-- [ ] #2 bun run check . passes when formatting/linting touched
-- [ ] #3 bun test (or scoped test) passes
+- [x] #1 bunx tsc --noEmit passes when TypeScript touched
+- [x] #2 bun run check . passes when formatting/linting touched
+- [x] #3 bun test (or scoped test) passes
 <!-- DOD:END -->
