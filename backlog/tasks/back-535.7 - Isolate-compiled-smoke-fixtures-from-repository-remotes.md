@@ -1,0 +1,55 @@
+---
+id: BACK-535.7
+title: Isolate compiled smoke fixtures from repository remotes
+status: In Progress
+assignee:
+  - '@build-ci-cleanup'
+created_date: '2026-07-11 13:23'
+updated_date: '2026-07-11 13:54'
+labels: []
+dependencies: []
+references:
+  - 'https://github.com/MrLesk/Backlog.md/actions/runs/29154161647'
+parent_task_id: BACK-535
+priority: high
+ordinal: 178000
+---
+
+## Description
+
+<!-- SECTION:DESCRIPTION:BEGIN -->
+Repair the post-merge compiled browser smoke so packaging verification cannot depend on the repository checkout, remote refs, or host filesystem case sensitivity. Replace the Windows-only shard topology with Alex-approved one-full-test-job-per-OS coverage so Ubuntu, macOS, and Windows use the same unit-test workflow and report independently.
+<!-- SECTION:DESCRIPTION:END -->
+
+## Definition of Done
+<!-- DOD:BEGIN -->
+- [x] #1 bunx tsc --noEmit passes when TypeScript touched
+- [x] #2 bun run check . passes when formatting/linting touched
+- [x] #3 bun test (or scoped test) passes
+<!-- DOD:END -->
+
+## Acceptance Criteria
+<!-- AC:BEGIN -->
+- [x] #1 Compiled browser and MCP smoke checks run in a temporary filesystem-only Backlog project created through the shipped CLI
+- [x] #2 Smoke teardown removes the temporary project without masking primary failures
+- [ ] #3 Ubuntu, macOS, and Windows each run the complete unit suite through one shared matrix job with the same install, typecheck, lint, test command, timeout, concurrency, and JUnit artifact behavior
+- [x] #4 Unit and build matrices use fail-fast false so one OS cannot cancel diagnostic coverage on another
+- [x] #5 Windows sharding and its aggregate compatibility job are removed, while the Linux-only interactive TUI step remains explicitly justified as a PTY-specific supplemental gate
+- [ ] #6 The exact repair head and resulting main commit pass Linux, macOS, and Windows build/unit gates plus CodeQL
+<!-- AC:END -->
+
+## Implementation Plan
+
+<!-- SECTION:PLAN:BEGIN -->
+1. Preserve the macOS post-merge failure evidence from run 29154161647. 2. Initialize an isolated no-Git fixture using the compiled CLI and run browser/MCP smoke from it with fail-visible cleanup. 3. Replace Windows sharding with one fail-fast-false Ubuntu/macOS/Windows full-test matrix using one shared command and artifact pattern. 4. Remove obsolete shard machinery, retain and document the Linux PTY-only supplemental step, and lint all TypeScript scripts. 5. Run focused stress, full/static/build/workflow validation, two independent reviews, then exact-head and post-merge CI.
+<!-- SECTION:PLAN:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+Maintainer decision (Alex, 2026-07-11): CI must use one full test job per OS. Ubuntu, macOS, and Windows should be treated as similarly as technically possible; the prior standalone Windows shards and split aggregate job are not acceptable. Use one shared test command with equal timeouts and limits, no timeout inflation, and fail-fast false. The existing interactive TUI regression step is supplemental Linux-only PTY coverage rather than a difference in the full unit-suite job.
+
+Exception audit: the project-pinned Bun 1.3.14 is also the latest stable release. oven-sh/bun#13513 remains open and documents `bun-windows-x64-baseline` failing on `windows-latest` while moving the downloaded target into the Windows Bun cache; proposed fix PR #13556 is unmerged, and related #11198 was still reproducible on Bun 1.3.10. Keep the Windows per-target C-drive cache primer with updated upstream rationale. Keep Linux-only interactive TUI as supplemental coverage because the harness explicitly requires a Unix-like PTY and `expect`; the complete unit-suite command remains identical on all OSes. Local shared CI command passed 1,665 tests, skipped 2 interactive-only tests, failed 0 across 188 files in 158.15s. Compiled isolated smoke passed 5/5 with zero residual temporary projects. Stage-1 specification review approved the unified topology and retained exceptions with no blockers.
+
+Final local verification: the exact shared CI command with `--timeout=10000 --max-concurrency=4` passed 1,665 tests, skipped 2 Linux-only interactive cases, failed 0 across 188 files in 168.28s. The compiled binary built successfully; isolated CLI/browser/MCP smoke passed 10/10 and left zero temporary projects. Typecheck, Biome over 324 files including TypeScript scripts, workflow YAML parse, and diff checks passed. Stage-1 specification review approved the final evidence wording and implementation with no blockers.
+<!-- SECTION:NOTES:END -->
