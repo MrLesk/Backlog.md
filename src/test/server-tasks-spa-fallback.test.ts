@@ -344,13 +344,16 @@ describe("BacklogServer task SPA fallback", () => {
 		const refreshTasks = contentStore.refreshTasks.bind(contentStore);
 		contentStore.refreshTasks = async () => {};
 		try {
-			contentStore.upsertTask({
-				...routedTask,
-				id: "REMOTE-1.2",
-				title: "Cross-branch collision",
-				branch: "feature/collision",
-				source: "remote",
-			});
+			contentStore.upsertTask(
+				{
+					...routedTask,
+					id: "REMOTE-1.2",
+					title: "Cross-branch collision",
+					branch: "feature/collision",
+					source: "remote",
+				},
+				{ root: filesystem.backlogDir },
+			);
 
 			const response = await request("/api/task/1.2");
 			expect(response.status).toBe(409);

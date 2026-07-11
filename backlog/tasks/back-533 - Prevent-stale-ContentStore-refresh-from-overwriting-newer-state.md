@@ -5,7 +5,7 @@ status: Done
 assignee:
   - '@issue753-takeover'
 created_date: '2026-07-10 19:28'
-updated_date: '2026-07-10 22:45'
+updated_date: '2026-07-11 00:24'
 labels:
   - concurrency
   - release-blocker
@@ -15,6 +15,7 @@ references:
 modified_files:
   - src/core/content-store.ts
   - src/test/content-store.test.ts
+  - src/test/server-tasks-spa-fallback.test.ts
 priority: high
 ordinal: 169000
 ---
@@ -38,10 +39,10 @@ Issue #753 reports a release-blocking read-after-write race: an older asynchrono
 ## Implementation Plan
 
 <!-- SECTION:PLAN:BEGIN -->
-1. Trace ContentStore refresh, watcher, upsert, initialization, root-switch, and shutdown publication paths and reproduce the stale completion with deterministic gates.
-2. Introduce the smallest store-owned ordering/generation guard so only the newest relevant publication can commit, with lifecycle invalidation and no adapter-specific layer.
-3. Add deterministic task regression coverage plus shared-store/lifecycle tests where the same publication mechanism applies.
-4. Run focused stress reruns, static checks, the full suite, and compiled build; record exact evidence before independent review.
+1. Reproduce every stale-publication path deterministically across ordinary refreshes, initialization, configuration transitions, watcher restart/failure, disposal, and cross-root A→B/A→B→A sequences.
+2. Enforce shared lifecycle invariants: physical-root provenance for persisted publications, epoch ownership for watcher instances, coherent bounded initialization attempts, matching configured/published/watcher roots, and fail-closed ambiguous direct upserts.
+3. Keep internal pre-ready reconciliation silent until one coherent ready event; preserve post-ready notifications and best-effort watcher recovery without swallowing content errors.
+4. Verify focused consumers and the full lifecycle state matrix under stress, then run TypeScript, Biome, build, full isolated tests, and independent spec/concurrency plus quality/simplicity reviews before publication.
 <!-- SECTION:PLAN:END -->
 
 ## Implementation Notes
@@ -70,12 +71,16 @@ Final spec review of bounded-retry fingerprint found a P1: exhausting the cap co
 Final spec review of value-reconciliation fingerprint found a P1 ABA gap: base → intermediate → base during a held load compared equal to the captured value and allowed stale disk content to win. Corrected by separating per-item publication versions from per-item request generations. Every actual targeted/upsert add, update, or delete advances the publication version; reconciliation compares versions captured before the load, so ABA and delete/re-add cycles are preserved without treating mere read attempts as publications. Added the exact public refreshTasks ABA regression. Nine concurrency regressions passed 50/50 stress runs; focused ContentStore + SearchService passed 22 tests; typecheck, Biome, diff check, and build pass; final full suite passed 1,652 tests with 2 expected interactive skips and 0 failures (6,718 assertions across 189 files).
 
 Publication gate: final frozen fingerprint f888e6cb2db68cc12283260d1a5381ef949a3307b292140b5434a7390b205b64 received independent APPROVED verdicts from both spec/concurrency and code-quality reviewers. Reviewer stress evidence included all prior P1 reproductions at 50/50 each, nine focused concurrency scenarios at 180/180, focused ContentStore + SearchService at 22/22, and root/custom-root lifecycle coverage. Authorized for commit, push, and ready-for-review PR; task intentionally remains In Progress until merge.
+
+Post-publication exact-head review closed the merge gate with two deterministic P1 gaps: concurrent persisted publications during initialization can be dropped and overwritten by the initial stale snapshot; a late publication owned by root A can be reconciled into root B during A→B transition. PR #757 remains open but must not merge until both gaps are fixed, fully reverified, and independently reapproved.
+
+Final lifecycle correction and verification: publication ownership now uses physical-root provenance while watcher instance cancellation remains epoch-based; initialization retries bounded coherent root attempts across structure creation, content load, and watcher binding; stable reconciliation requires configured root, published cache owner, and active watcher owner to match; watcher invalidation advances epoch before stopping; ambiguous pathless direct upserts fail closed unless an explicit root owner is supplied; pre-ready state changes remain internal until one coherent ready event. Frozen code/test fingerprint f75bbda2 received independent spec/concurrency APPROVED and independent quality/simplicity APPROVED with no P1/P2/P3. Final verification: impacted tests 62/62; expanded 23-scenario lifecycle matrix 1,150/1,150; TypeScript, Biome across 324 files, diff check, and compiled build passed; authoritative full suite 1,672 passed, 2 expected interactive skips, 0 failed, 6,779 assertions across 189 files.
 <!-- SECTION:NOTES:END -->
 
 ## Final Summary
 
 <!-- SECTION:FINAL_SUMMARY:BEGIN -->
-Prevented stale ContentStore refreshes from overwriting newer state through guarded full-refresh generations and per-item publication reconciliation. Added deterministic coverage for same-item, unrelated-item, microtask, starvation, and ABA orderings. Verified with 1,652 full-suite passes, static checks, build, stress reruns, independent spec and quality approvals, and publication as PR #757.
+Completed the ContentStore ordering fix with coherent initialization, physical-root publication provenance, root/watcher lifecycle invariants, fail-closed ambiguous upserts, and pre-ready notification ordering. Verified on frozen f75bbda2 with 1,672 full-suite passes, 1,150 lifecycle stress executions, static checks, compiled build, and independent spec plus quality approvals.
 <!-- SECTION:FINAL_SUMMARY:END -->
 
 ## Definition of Done

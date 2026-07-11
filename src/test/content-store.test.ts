@@ -1,10 +1,13 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
-import { rename, unlink } from "node:fs/promises";
+import { rename, stat, unlink } from "node:fs/promises";
 import { join } from "node:path";
+import { Core } from "../core/backlog.ts";
 import { ContentStore, type ContentStoreEvent } from "../core/content-store.ts";
 import { SearchService } from "../core/search-service.ts";
 import { FileSystem } from "../file-system/operations.ts";
+import { parseTask } from "../markdown/parser.ts";
 import type { BacklogConfig, Decision, Document, Task } from "../types/index.ts";
+import { normalizeTaskIdentity } from "../utils/task-path.ts";
 import { createUniqueTestDir, getPlatformTimeout, safeCleanup, sleep } from "./test-utils.ts";
 
 let TEST_DIR: string;
@@ -70,6 +73,421 @@ describe("ContentStore", () => {
 		expect(snapshot.documents).toHaveLength(1);
 		expect(snapshot.decisions).toHaveLength(1);
 		expect(snapshot.tasks.map((task) => task.id)).toContain("TASK-1");
+	});
+
+	it("propagates content load failures during initialization", async () => {
+		store.dispose();
+		store = new ContentStore(
+			filesystem,
+			async () => {
+				throw new Error("Deterministic content load failure");
+			},
+			true,
+		);
+
+		await expect(store.ensureInitialized()).rejects.toThrow("Deterministic content load failure");
+	});
+
+	it("retries initialization when the physical root changes during the first snapshot", async () => {
+		store.dispose();
+		const rootA = fixtureFilesystem(TEST_DIR, "root-a");
+		const rootB = fixtureFilesystem(TEST_DIR, "root-b");
+		await rootA.ensureBacklogStructure();
+		await rootB.ensureBacklogStructure();
+		await rootA.saveTask({ ...sampleTask, title: "Root A" });
+		await rootB.saveTask({ ...sampleTask, id: "TASK-2", title: "Root B" });
+
+		filesystem = fixtureFilesystem(TEST_DIR, "root-a");
+		const heldInitialLoad = createDeferredGate();
+		let taskLoads = 0;
+		store = new ContentStore(
+			filesystem,
+			async () => {
+				const tasks = await filesystem.listTasks();
+				taskLoads += 1;
+				if (taskLoads === 1) {
+					heldInitialLoad.markStarted();
+					await heldInitialLoad.waitForRelease;
+				}
+				return tasks;
+			},
+			true,
+		);
+
+		const initialization = store.ensureInitialized();
+		await withTimeout(heldInitialLoad.started, "held initial root A snapshot");
+		filesystem.setBacklogDirectory("root-b");
+		heldInitialLoad.release();
+		const firstSnapshot = await withTimeout(initialization, "root-changing initialization");
+
+		expect(firstSnapshot.tasks.map((task) => task.id)).toEqual(["TASK-2"]);
+		expect(store.getTasks().map((task) => task.id)).toEqual(["TASK-2"]);
+		expect((await store.ensureInitialized()).tasks.map((task) => task.id)).toEqual(["TASK-2"]);
+		expect(taskLoads).toBe(2);
+	});
+
+	it("bounds initialization retries during repeated root churn and remains retryable", async () => {
+		store.dispose();
+		const rootA = fixtureFilesystem(TEST_DIR, "root-a");
+		const rootB = fixtureFilesystem(TEST_DIR, "root-b");
+		await rootA.ensureBacklogStructure();
+		await rootB.ensureBacklogStructure();
+		await rootA.saveTask({ ...sampleTask, title: "Root A" });
+		await rootB.saveTask({ ...sampleTask, id: "TASK-2", title: "Root B" });
+
+		filesystem = fixtureFilesystem(TEST_DIR, "root-a");
+		let churnRoots = true;
+		let taskLoads = 0;
+		store = new ContentStore(filesystem, async () => {
+			const tasks = await filesystem.listTasks();
+			taskLoads += 1;
+			if (churnRoots) {
+				filesystem.setBacklogDirectory(filesystem.backlogDirName === "root-a" ? "root-b" : "root-a");
+			}
+			return tasks;
+		});
+
+		await expect(store.ensureInitialized()).rejects.toThrow(
+			"ContentStore initialization could not stabilize after concurrent changes.",
+		);
+		expect(taskLoads).toBe(12);
+		churnRoots = false;
+
+		const snapshot = await store.ensureInitialized();
+
+		expect(snapshot.tasks.map((task) => task.id)).toEqual(["TASK-1"]);
+		expect(taskLoads).toBe(13);
+	});
+
+	it("cancels initialization retries when disposed", async () => {
+		store.dispose();
+		const heldInitialLoad = createDeferredGate();
+		store = new ContentStore(filesystem, async () => {
+			const tasks = await filesystem.listTasks();
+			heldInitialLoad.markStarted();
+			await heldInitialLoad.waitForRelease;
+			return tasks;
+		});
+
+		const initialization = store.ensureInitialized();
+		await withTimeout(heldInitialLoad.started, "held initialization before disposal");
+		store.dispose();
+		heldInitialLoad.release();
+
+		await expect(initialization).rejects.toThrow("ContentStore has been disposed.");
+	});
+
+	it("keeps initialization structure setup and snapshot on the same physical root", async () => {
+		store.dispose();
+		filesystem = fixtureFilesystem(TEST_DIR, "root-a");
+		const rootB = fixtureFilesystem(TEST_DIR, "root-b");
+		const heldStructureSetup = createDeferredGate();
+		const ensureBacklogStructure = filesystem.ensureBacklogStructure.bind(filesystem);
+		let structureSetups = 0;
+		filesystem.ensureBacklogStructure = async () => {
+			await ensureBacklogStructure();
+			structureSetups += 1;
+			if (structureSetups === 1) {
+				heldStructureSetup.markStarted();
+				await heldStructureSetup.waitForRelease;
+			}
+		};
+		store = new ContentStore(filesystem, undefined, true);
+
+		const initialization = store.ensureInitialized();
+		await withTimeout(heldStructureSetup.started, "held root A structure setup");
+		filesystem.setBacklogDirectory("root-b");
+		heldStructureSetup.release();
+		await withTimeout(initialization, "root-changing structure setup");
+
+		expect(structureSetups).toBe(2);
+		expect((await stat(rootB.tasksDir)).isDirectory()).toBe(true);
+		expect((store as unknown as { rootWatchersInitialized: boolean }).rootWatchersInitialized).toBe(true);
+	});
+
+	it("retries initialization when the root changes after a coherent load resolves", async () => {
+		store.dispose();
+		const rootA = fixtureFilesystem(TEST_DIR, "root-a");
+		const rootB = fixtureFilesystem(TEST_DIR, "root-b");
+		await rootA.ensureBacklogStructure();
+		await rootB.ensureBacklogStructure();
+		await rootA.saveTask({ ...sampleTask, title: "Root A" });
+		await rootB.saveTask({ ...sampleTask, id: "TASK-2", title: "Root B" });
+
+		filesystem = fixtureFilesystem(TEST_DIR, "root-a");
+		store = new ContentStore(filesystem, undefined, true);
+		type Snapshot = { tasks: Task[]; documents: Document[]; decisions: Decision[] };
+		const initializationInternals = store as unknown as {
+			hasCurrentRootWatchers: () => boolean;
+			loadCurrentContent: (epoch: number, publish: (snapshot: Snapshot) => void) => Promise<boolean>;
+			publishedRoot: string;
+		};
+		const loadCurrentContent = initializationInternals.loadCurrentContent.bind(store);
+		let switchAfterLoad = true;
+		let loads = 0;
+		initializationInternals.loadCurrentContent = async (epoch, publish) => {
+			loads += 1;
+			const loaded = await loadCurrentContent(epoch, publish);
+			if (loaded && switchAfterLoad) {
+				switchAfterLoad = false;
+				filesystem.setBacklogDirectory("root-b");
+			}
+			return loaded;
+		};
+
+		const snapshot = await store.ensureInitialized();
+
+		expect(loads).toBe(2);
+		expect(snapshot.tasks.map((task) => task.id)).toEqual(["TASK-2"]);
+		expect(initializationInternals.publishedRoot).toBe(rootB.backlogDir);
+		expect(initializationInternals.hasCurrentRootWatchers()).toBe(true);
+	});
+
+	it("retries initialization when the root changes after initial watchers bind", async () => {
+		store.dispose();
+		const rootA = fixtureFilesystem(TEST_DIR, "root-a");
+		const rootB = fixtureFilesystem(TEST_DIR, "root-b");
+		await rootA.ensureBacklogStructure();
+		await rootB.ensureBacklogStructure();
+		await rootA.saveTask({ ...sampleTask, title: "Root A" });
+		await rootB.saveTask({ ...sampleTask, id: "TASK-2", title: "Root B" });
+
+		filesystem = fixtureFilesystem(TEST_DIR, "root-a");
+		store = new ContentStore(filesystem, undefined, true);
+		const initializationInternals = store as unknown as {
+			bindRootWatchers: (epoch: number) => Promise<void>;
+			hasCurrentRootWatchers: () => boolean;
+			publishedRoot: string;
+		};
+		const bindRootWatchers = initializationInternals.bindRootWatchers.bind(store);
+		let watcherBindings = 0;
+		initializationInternals.bindRootWatchers = async (epoch) => {
+			await bindRootWatchers(epoch);
+			watcherBindings += 1;
+			if (watcherBindings === 1) {
+				filesystem.setBacklogDirectory("root-b");
+			}
+		};
+
+		const snapshot = await store.ensureInitialized();
+
+		expect(watcherBindings).toBe(2);
+		expect(snapshot.tasks.map((task) => task.id)).toEqual(["TASK-2"]);
+		expect(initializationInternals.publishedRoot).toBe(rootB.backlogDir);
+		expect(initializationInternals.hasCurrentRootWatchers()).toBe(true);
+	});
+
+	it("invalidates queued old-root watcher work before retrying initialization", async () => {
+		store.dispose();
+		const rootA = fixtureFilesystem(TEST_DIR, "root-a");
+		const rootB = fixtureFilesystem(TEST_DIR, "root-b");
+		await rootA.ensureBacklogStructure();
+		await rootB.ensureBacklogStructure();
+		await rootA.saveTask({ ...sampleTask, title: "Root A stale" });
+		await rootB.saveTask({ ...sampleTask, title: "Root B authoritative" });
+		const rootATask = await rootA.loadTask(sampleTask.id);
+		const rootBTask = await rootB.loadTask(sampleTask.id);
+		if (!rootATask || !rootBTask) {
+			throw new Error("Expected both root fixtures");
+		}
+
+		filesystem = fixtureFilesystem(TEST_DIR, "root-a");
+		const heldRootBLoad = createDeferredGate();
+		let loads = 0;
+		store = new ContentStore(
+			filesystem,
+			async () => {
+				loads += 1;
+				if (loads === 1) {
+					return [rootATask];
+				}
+				heldRootBLoad.markStarted();
+				await heldRootBLoad.waitForRelease;
+				return [rootBTask];
+			},
+			true,
+		);
+		const initializationInternals = store as unknown as {
+			bindRootWatchers: (epoch: number) => Promise<void>;
+			cachedTasks: Task[];
+			enqueue: (fn: () => Promise<void>) => Promise<void>;
+			enqueueRoot: (epoch: number, fn: () => Promise<void>) => Promise<void>;
+			hasCurrentRootWatchers: () => boolean;
+			nextContentItemGeneration: (collection: "tasks", id: string) => number;
+			nextContentItemVersion: (collection: "tasks", id: string) => number;
+			notify: (type: "tasks") => void;
+			publishedRoot: string;
+			rootWatchers: Array<{ stop(): void }>;
+			rootWatchersInitialized: boolean;
+			tasks: Map<string, Task>;
+		};
+		const heldChain = createDeferredGate();
+		const blockedChain = initializationInternals.enqueue(async () => {
+			heldChain.markStarted();
+			await heldChain.waitForRelease;
+		});
+		await withTimeout(heldChain.started, "blocked content-store queue");
+		let watcherBindings = 0;
+		let stalePublication: Promise<void> | null = null;
+		initializationInternals.bindRootWatchers = async (epoch) => {
+			watcherBindings += 1;
+			initializationInternals.rootWatchers.push({ stop() {} });
+			initializationInternals.rootWatchersInitialized = true;
+			if (watcherBindings === 1) {
+				stalePublication = initializationInternals.enqueueRoot(epoch, async () => {
+					initializationInternals.nextContentItemGeneration("tasks", "TASK-1");
+					initializationInternals.nextContentItemVersion("tasks", "TASK-1");
+					initializationInternals.tasks.set("TASK-1", rootATask);
+					initializationInternals.cachedTasks = [rootATask];
+					initializationInternals.notify("tasks");
+				});
+				filesystem.setBacklogDirectory("root-b");
+			}
+		};
+
+		const initialization = store.ensureInitialized();
+		await withTimeout(heldRootBLoad.started, "held root B initialization load");
+		heldChain.release();
+		await blockedChain;
+		if (!stalePublication) {
+			throw new Error("Expected queued root A watcher publication");
+		}
+		await stalePublication;
+		heldRootBLoad.release();
+		const snapshot = await initialization;
+
+		expect(loads).toBe(2);
+		expect(watcherBindings).toBe(2);
+		expect(snapshot.tasks[0]?.title).toBe("Root B authoritative");
+		expect(initializationInternals.publishedRoot).toBe(rootB.backlogDir);
+		expect(initializationInternals.hasCurrentRootWatchers()).toBe(true);
+	});
+
+	it("keeps a persisted Core task update that completes during initialization", async () => {
+		store.dispose();
+		const core = new Core(TEST_DIR);
+		await core.fs.ensureBacklogStructure();
+		await core.fs.saveTask({ ...sampleTask, type: "bug" });
+
+		const heldInitialLoad = createDeferredGate();
+		core.loadTasks = async () => {
+			const tasks = await core.fs.listTasks();
+			heldInitialLoad.markStarted();
+			await heldInitialLoad.waitForRelease;
+			return tasks;
+		};
+
+		const storePromise = core.getContentStore();
+		await withTimeout(heldInitialLoad.started, "held Core initialization");
+		await core.updateTask({ ...sampleTask, type: "feature", rawContent: "## Description\nNew content" });
+		heldInitialLoad.release();
+		store = await storePromise;
+
+		expect((await core.fs.loadTask(sampleTask.id))?.type).toBe("feature");
+		expect(store.getTasks()[0]?.type).toBe("feature");
+	});
+
+	it("keeps persisted task, document, and decision writes that complete during initialization", async () => {
+		await filesystem.saveTask({ ...sampleTask, title: "Old task" });
+		await filesystem.saveDocument({ ...sampleDocument, title: "Old document" });
+		await filesystem.saveDecision({ ...sampleDecision, title: "Old decision" });
+		store.dispose();
+
+		const initialTaskLoad = createDeferredGate();
+		const initialDocumentLoad = createDeferredGate();
+		const initialDecisionLoad = createDeferredGate();
+		const originalListDocuments = filesystem.listDocuments.bind(filesystem);
+		const originalListDecisions = filesystem.listDecisions.bind(filesystem);
+		let holdDocumentLoad = true;
+		let holdDecisionLoad = true;
+		filesystem.listDocuments = async () => {
+			const documents = await originalListDocuments();
+			if (holdDocumentLoad) {
+				holdDocumentLoad = false;
+				initialDocumentLoad.markStarted();
+				await initialDocumentLoad.waitForRelease;
+			}
+			return documents;
+		};
+		filesystem.listDecisions = async () => {
+			const decisions = await originalListDecisions();
+			if (holdDecisionLoad) {
+				holdDecisionLoad = false;
+				initialDecisionLoad.markStarted();
+				await initialDecisionLoad.waitForRelease;
+			}
+			return decisions;
+		};
+		store = new ContentStore(filesystem, async () => {
+			const tasks = await filesystem.listTasks();
+			initialTaskLoad.markStarted();
+			await initialTaskLoad.waitForRelease;
+			return tasks;
+		});
+
+		const initialization = store.ensureInitialized();
+		await Promise.all([
+			withTimeout(initialTaskLoad.started, "initial task snapshot"),
+			withTimeout(initialDocumentLoad.started, "initial document snapshot"),
+			withTimeout(initialDecisionLoad.started, "initial decision snapshot"),
+		]);
+		await filesystem.saveTask({ ...sampleTask, title: "New task" });
+		await filesystem.saveDocument({ ...sampleDocument, title: "New document" });
+		await filesystem.saveDecision({ ...sampleDecision, title: "New decision" });
+		const persistedTask = await filesystem.loadTask(sampleTask.id);
+		if (persistedTask) {
+			store.upsertTask(persistedTask);
+		}
+
+		initialTaskLoad.release();
+		initialDocumentLoad.release();
+		initialDecisionLoad.release();
+		await initialization;
+
+		expect(store.getSnapshot()).toEqual({
+			tasks: [expect.objectContaining({ title: "New task" })],
+			documents: [expect.objectContaining({ title: "New document" })],
+			decisions: [expect.objectContaining({ title: "New decision" })],
+		});
+	});
+
+	it("keeps a same-root persisted write that spans initial watcher setup", async () => {
+		await filesystem.saveTask({ ...sampleTask, title: "Old task" });
+		store.dispose();
+
+		const persistedWrite = createDeferredGate();
+		const finishSave = createDeferredGate();
+		const originalSaveTask = filesystem.saveTask.bind(filesystem);
+		filesystem.saveTask = async (task) => {
+			const path = await originalSaveTask(task);
+			persistedWrite.markStarted();
+			await finishSave.waitForRelease;
+			return path;
+		};
+		const heldInitialLoad = createDeferredGate();
+		store = new ContentStore(
+			filesystem,
+			async () => {
+				const tasks = await filesystem.listTasks();
+				heldInitialLoad.markStarted();
+				await heldInitialLoad.waitForRelease;
+				return tasks;
+			},
+			true,
+		);
+
+		const initialization = store.ensureInitialized();
+		await withTimeout(heldInitialLoad.started, "held initial task load");
+		const saving = filesystem.saveTask({ ...sampleTask, title: "Persisted newer" });
+		await withTimeout(persistedWrite.started, "persisted initialization-spanning write");
+		heldInitialLoad.release();
+		await initialization;
+		(store as unknown as { stopRootWatchers: () => void }).stopRootWatchers();
+		finishSave.release();
+		await saving;
+
+		expect((await filesystem.loadTask(sampleTask.id))?.title).toBe("Persisted newer");
+		expect(store.getTasks()[0]?.title).toBe("Persisted newer");
 	});
 
 	it("emits task updates when underlying files change", async () => {
@@ -156,7 +574,7 @@ describe("ContentStore", () => {
 		for (let depth = 0; depth < 5; depth += 1) {
 			upsert = upsert.then(() => {});
 		}
-		upsert = upsert.then(() => store.upsertTask(taskWithTitle("new")));
+		upsert = upsert.then(() => store.upsertTask(taskWithTitle("new"), { root: filesystem.backlogDir }));
 		heldRefresh.release();
 		await Promise.all([refresh, upsert]);
 
@@ -181,8 +599,8 @@ describe("ContentStore", () => {
 
 		const refresh = store.refreshTasks();
 		await withTimeout(heldRefresh.started, "held ABA task refresh");
-		store.upsertTask(taskWithTitle("intermediate newer"));
-		store.upsertTask(taskWithTitle("base"));
+		store.upsertTask(taskWithTitle("intermediate newer"), { root: filesystem.backlogDir });
+		store.upsertTask(taskWithTitle("base"), { root: filesystem.backlogDir });
 		heldRefresh.release();
 		await refresh;
 
@@ -198,7 +616,7 @@ describe("ContentStore", () => {
 			loadCount += 1;
 			if (invalidateLoads) {
 				for (let update = 1; update <= 20; update += 1) {
-					store.upsertTask({ ...secondTask, title: `Task 2 upsert ${update}` });
+					store.upsertTask({ ...secondTask, title: `Task 2 upsert ${update}` }, { root: filesystem.backlogDir });
 				}
 				return [
 					{ ...sampleTask, title: "Task 1 external new" },
@@ -540,6 +958,478 @@ describe("ContentStore", () => {
 
 		const decisions = store.getDecisions();
 		expect(decisions.find((decision) => decision.id === "decision-1")).toBeUndefined();
+	});
+
+	it("does not reconcile a late old-root publication into a new-root snapshot", async () => {
+		store.dispose();
+		const rootA = fixtureFilesystem(TEST_DIR, "root-a");
+		const rootB = fixtureFilesystem(TEST_DIR, "root-b");
+		await rootA.ensureBacklogStructure();
+		await rootB.ensureBacklogStructure();
+		await rootA.saveTask({ ...sampleTask, title: "Root A" });
+		await rootB.saveTask({ ...sampleTask, id: "TASK-2", title: "Root B" });
+
+		filesystem = fixtureFilesystem(TEST_DIR, "root-a");
+		let nextTaskLoad: DeferredGate | null = null;
+		store = new ContentStore(
+			filesystem,
+			async () => {
+				const tasks = await filesystem.listTasks();
+				const gate = nextTaskLoad;
+				nextTaskLoad = null;
+				if (gate) {
+					gate.markStarted();
+					await gate.waitForRelease;
+				}
+				return tasks;
+			},
+			true,
+		);
+		await store.ensureInitialized();
+
+		const heldRootBLoad = createDeferredGate();
+		nextTaskLoad = heldRootBLoad;
+		filesystem.setBacklogDirectory("root-b");
+		const rootBConfig: BacklogConfig = {
+			projectName: "Root B",
+			backlogDirectory: "root-b",
+			statuses: ["To Do", "Done"],
+			labels: [],
+			dateFormat: "YYYY-MM-DD",
+			checkActiveBranches: false,
+			prefixes: { task: "TASK" },
+		};
+		const switchingRoots = (
+			store as unknown as { handleConfigChanged: (config: BacklogConfig) => Promise<void> }
+		).handleConfigChanged(rootBConfig);
+		await withTimeout(heldRootBLoad.started, "held root B snapshot");
+
+		const oldRootTask = store.getTasks()[0];
+		if (!oldRootTask) {
+			throw new Error("Expected the old-root task");
+		}
+		store.upsertTask({ ...oldRootTask, title: "Late root A publication" });
+		heldRootBLoad.release();
+		await switchingRoots;
+
+		expect(store.getTasks().map(({ id, title }) => ({ id, title }))).toEqual([{ id: "TASK-2", title: "Root B" }]);
+	});
+
+	it("keeps a target-root persisted publication during a held root transition", async () => {
+		store.dispose();
+		const rootA = fixtureFilesystem(TEST_DIR, "root-a");
+		const rootB = fixtureFilesystem(TEST_DIR, "root-b");
+		await rootA.ensureBacklogStructure();
+		await rootB.ensureBacklogStructure();
+		await rootA.saveTask({ ...sampleTask, title: "Root A" });
+		await rootB.saveTask({ ...sampleTask, title: "Root B old" });
+
+		filesystem = fixtureFilesystem(TEST_DIR, "root-a");
+		let nextTaskLoad: DeferredGate | null = null;
+		store = new ContentStore(
+			filesystem,
+			async () => {
+				const tasks = await filesystem.listTasks();
+				const gate = nextTaskLoad;
+				nextTaskLoad = null;
+				if (gate) {
+					gate.markStarted();
+					await gate.waitForRelease;
+				}
+				return tasks;
+			},
+			true,
+		);
+		await store.ensureInitialized();
+
+		const heldRootBLoad = createDeferredGate();
+		nextTaskLoad = heldRootBLoad;
+		filesystem.setBacklogDirectory("root-b");
+		const rootBConfig: BacklogConfig = {
+			projectName: "Root B",
+			backlogDirectory: "root-b",
+			statuses: ["To Do", "Done"],
+			labels: [],
+			dateFormat: "YYYY-MM-DD",
+			checkActiveBranches: false,
+			prefixes: { task: "TASK" },
+		};
+		const switchingRoots = (
+			store as unknown as { handleConfigChanged: (config: BacklogConfig) => Promise<void> }
+		).handleConfigChanged(rootBConfig);
+		await withTimeout(heldRootBLoad.started, "held target-root snapshot");
+		(store as unknown as { stopRootWatchers: () => void }).stopRootWatchers();
+
+		await rootB.saveTask({ ...sampleTask, title: "Root B persisted newer" });
+		const persistedRootBTask = await rootB.loadTask(sampleTask.id);
+		if (!persistedRootBTask) {
+			throw new Error("Expected the persisted target-root task");
+		}
+		store.upsertTask(persistedRootBTask);
+		heldRootBLoad.release();
+		await switchingRoots;
+
+		expect((await rootB.loadTask(sampleTask.id))?.title).toBe("Root B persisted newer");
+		expect(store.getTasks()[0]?.title).toBe("Root B persisted newer");
+	});
+
+	it("rejects an old-root task publication after the new root is live", async () => {
+		store.dispose();
+		const rootA = fixtureFilesystem(TEST_DIR, "root-a");
+		const rootB = fixtureFilesystem(TEST_DIR, "root-b");
+		await rootA.ensureBacklogStructure();
+		await rootB.ensureBacklogStructure();
+		await rootA.saveTask({ ...sampleTask, title: "Root A late result" });
+		await rootB.saveTask({ ...sampleTask, title: "Root B authoritative" });
+
+		filesystem = fixtureFilesystem(TEST_DIR, "root-a");
+		store = new ContentStore(filesystem, () => filesystem.listTasks(), true);
+		await store.ensureInitialized();
+		const lateRootATask = await rootA.loadTask(sampleTask.id);
+		if (!lateRootATask) {
+			throw new Error("Expected the late old-root task");
+		}
+
+		filesystem.setBacklogDirectory("root-b");
+		const rootBConfig: BacklogConfig = {
+			projectName: "Root B",
+			backlogDirectory: "root-b",
+			statuses: ["To Do", "Done"],
+			labels: [],
+			dateFormat: "YYYY-MM-DD",
+			checkActiveBranches: false,
+			prefixes: { task: "TASK" },
+		};
+		await (store as unknown as { handleConfigChanged: (config: BacklogConfig) => Promise<void> }).handleConfigChanged(
+			rootBConfig,
+		);
+		store.upsertTask(lateRootATask);
+
+		expect((await rootB.loadTask(sampleTask.id))?.title).toBe("Root B authoritative");
+		expect(store.getTasks()[0]?.title).toBe("Root B authoritative");
+	});
+
+	it("does not assign an ambiguous pathless task to the newly published root", async () => {
+		store.dispose();
+		const rootA = fixtureFilesystem(TEST_DIR, "root-a");
+		const rootB = fixtureFilesystem(TEST_DIR, "root-b");
+		await rootA.ensureBacklogStructure();
+		await rootB.ensureBacklogStructure();
+		await rootA.saveTask({ ...sampleTask, title: "Root A", type: "feature" });
+		await rootB.saveTask({ ...sampleTask, title: "Root B", type: "bug" });
+
+		filesystem = fixtureFilesystem(TEST_DIR, "root-a");
+		store = new ContentStore(filesystem, undefined, true);
+		await store.ensureInitialized();
+		const rootATask = await rootA.loadTask(sampleTask.id);
+		if (!rootATask?.filePath) {
+			throw new Error("Expected the root A task file");
+		}
+		const watcherShapedRootATask = normalizeTaskIdentity(parseTask(await Bun.file(rootATask.filePath).text()));
+		store.upsertTask(watcherShapedRootATask);
+		const heldRootATask = store.getTasks()[0];
+		if (!heldRootATask) {
+			throw new Error("Expected the root A task in the content store");
+		}
+
+		filesystem.setBacklogDirectory("root-b");
+		await (store as unknown as { handleConfigChanged: (config: BacklogConfig) => Promise<void> }).handleConfigChanged({
+			projectName: "Root B",
+			backlogDirectory: "root-b",
+			statuses: ["To Do", "Done"],
+			labels: [],
+			dateFormat: "YYYY-MM-DD",
+			checkActiveBranches: false,
+			prefixes: { task: "TASK" },
+		});
+		expect(store.getTasks()[0]?.type).toBe("bug");
+
+		store.upsertTask({ ...heldRootATask, rawContent: "## Description\nLate root A publication" });
+
+		expect((await rootB.loadTask(sampleTask.id))?.type).toBe("bug");
+		expect(store.getTasks()[0]?.type).toBe("bug");
+	});
+
+	it("does not publish a superseded root transition with the current root snapshot", async () => {
+		store.dispose();
+		const rootA = fixtureFilesystem(TEST_DIR, "root-a");
+		const rootB = fixtureFilesystem(TEST_DIR, "root-b");
+		await rootA.ensureBacklogStructure();
+		await rootB.ensureBacklogStructure();
+		await rootA.saveTask({ ...sampleTask, title: "Root A" });
+		await rootB.saveTask({ ...sampleTask, id: "TASK-2", title: "Root B" });
+
+		filesystem = fixtureFilesystem(TEST_DIR, "root-a");
+		const heldRefresh = createDeferredGate();
+		let taskLoadCount = 0;
+		store = new ContentStore(
+			filesystem,
+			async () => {
+				const tasks = await filesystem.listTasks();
+				taskLoadCount += 1;
+				if (taskLoadCount === 2) {
+					heldRefresh.markStarted();
+					await heldRefresh.waitForRelease;
+				}
+				return tasks;
+			},
+			true,
+		);
+		await store.ensureInitialized();
+
+		const configEvents: Array<{ name: string; root: string; taskIds: string[] }> = [];
+		store.subscribe((event) => {
+			if (event.type === "config") {
+				configEvents.push({
+					name: event.config.projectName,
+					root: filesystem.backlogDirName,
+					taskIds: event.snapshot.tasks.map((task) => task.id),
+				});
+			}
+		});
+
+		const refresh = store.refreshTasks();
+		await withTimeout(heldRefresh.started, "held root A refresh");
+		filesystem.setBacklogDirectory("root-b");
+		const transitionToB = (
+			store as unknown as { handleConfigChanged: (config: BacklogConfig) => Promise<void> }
+		).handleConfigChanged({
+			projectName: "Root B",
+			backlogDirectory: "root-b",
+			statuses: ["To Do", "Done"],
+			labels: [],
+			dateFormat: "YYYY-MM-DD",
+			checkActiveBranches: false,
+			prefixes: { task: "TASK" },
+		});
+		filesystem.setBacklogDirectory("root-a");
+		const transitionBackToA = (
+			store as unknown as { handleConfigChanged: (config: BacklogConfig) => Promise<void> }
+		).handleConfigChanged({
+			projectName: "Root A returned",
+			backlogDirectory: "root-a",
+			statuses: ["To Do", "Done"],
+			labels: [],
+			dateFormat: "YYYY-MM-DD",
+			checkActiveBranches: false,
+			prefixes: { task: "TASK" },
+		});
+		heldRefresh.release();
+
+		await Promise.all([refresh, transitionToB, transitionBackToA]);
+
+		expect(configEvents).toEqual([{ name: "Root A returned", root: "root-a", taskIds: ["TASK-1"] }]);
+		expect(store.getTasks().map((task) => task.id)).toEqual(["TASK-1"]);
+	});
+
+	it("reconciles stopped current-root watchers after a root transition is superseded", async () => {
+		store.dispose();
+		await Bun.write(join(TEST_DIR, "backlog.config.yml"), rootConfig("Root A", "root-a"));
+		const rootA = fixtureFilesystem(TEST_DIR, "root-a");
+		const rootB = fixtureFilesystem(TEST_DIR, "root-b");
+		await rootA.ensureBacklogStructure();
+		await rootB.ensureBacklogStructure();
+		await rootA.saveTask({ ...sampleTask, title: "Root A" });
+		await rootB.saveTask({ ...sampleTask, id: "TASK-2", title: "Root B" });
+
+		filesystem = new FileSystem(TEST_DIR);
+		const heldRefresh = createDeferredGate();
+		let taskLoadCount = 0;
+		store = new ContentStore(
+			filesystem,
+			async () => {
+				const tasks = await filesystem.listTasks();
+				taskLoadCount += 1;
+				if (taskLoadCount === 2) {
+					heldRefresh.markStarted();
+					await heldRefresh.waitForRelease;
+				}
+				return tasks;
+			},
+			true,
+		);
+		await store.ensureInitialized();
+
+		const refresh = store.refreshTasks();
+		await withTimeout(heldRefresh.started, "held root A refresh before watcher recovery");
+		filesystem.setBacklogDirectory("root-b");
+		const transitionToB = (
+			store as unknown as { handleConfigChanged: (config: BacklogConfig) => Promise<void> }
+		).handleConfigChanged({
+			projectName: "Root B",
+			backlogDirectory: "root-b",
+			statuses: ["To Do", "Done"],
+			labels: [],
+			dateFormat: "YYYY-MM-DD",
+			checkActiveBranches: false,
+			prefixes: { task: "TASK" },
+		});
+		filesystem.setBacklogDirectory("root-a");
+		const reconcileRootA = store.ensureConfigWatcher();
+		heldRefresh.release();
+		await Promise.all([refresh, transitionToB, reconcileRootA]);
+
+		expect((store as unknown as { rootWatchersInitialized: boolean }).rootWatchersInitialized).toBe(true);
+		const externalWrite = waitForEventWithTimeout(
+			store,
+			(event) => event.type === "tasks" && event.tasks.some((task) => task.id === "TASK-3"),
+			getPlatformTimeout(15000),
+		);
+		await rootA.saveTask({ ...sampleTask, id: "TASK-3", title: "Root A after recovery" });
+		await externalWrite;
+	});
+
+	it("keeps watcher binding best-effort and retries after initialization", async () => {
+		await filesystem.saveConfig({
+			projectName: "Watcher retry",
+			statuses: ["To Do", "Done"],
+			labels: [],
+			dateFormat: "YYYY-MM-DD",
+			checkActiveBranches: false,
+			prefixes: { task: "TASK" },
+		});
+		store.dispose();
+		let taskLoads = 0;
+		store = new ContentStore(
+			filesystem,
+			async () => {
+				taskLoads += 1;
+				return [{ ...sampleTask, title: taskLoads === 1 ? "Initial snapshot" : "Best-effort reload" }];
+			},
+			true,
+		);
+		const watcherInternals = store as unknown as {
+			bindRootWatchers: (epoch: number) => Promise<void>;
+			rootWatchersInitialized: boolean;
+		};
+		const bindRootWatchers = watcherInternals.bindRootWatchers.bind(store);
+		let bindAttempts = 0;
+		watcherInternals.bindRootWatchers = async (epoch) => {
+			bindAttempts += 1;
+			if (bindAttempts <= 2) {
+				throw new Error("Deterministic watcher bind failure");
+			}
+			await bindRootWatchers(epoch);
+		};
+		const observedEvents: Array<{ type: ContentStoreEvent["type"]; accessor: string }> = [];
+		const unsubscribe = store.subscribe((event) => {
+			let accessor: string;
+			try {
+				accessor = store.getTasks()[0]?.title ?? "empty";
+			} catch (error) {
+				accessor = `throws: ${error instanceof Error ? error.message : String(error)}`;
+			}
+			observedEvents.push({ type: event.type, accessor });
+		});
+
+		await store.ensureInitialized();
+
+		expect(observedEvents).toEqual([{ type: "ready", accessor: "Best-effort reload" }]);
+		unsubscribe();
+		expect(bindAttempts).toBe(2);
+		expect(watcherInternals.rootWatchersInitialized).toBe(false);
+		expect(taskLoads).toBe(2);
+		expect(store.getTasks()[0]?.title).toBe("Best-effort reload");
+		await store.ensureConfigWatcher();
+		expect(bindAttempts).toBe(3);
+		expect(watcherInternals.rootWatchersInitialized).toBe(true);
+		expect(taskLoads).toBe(3);
+	});
+
+	it("rejects a transition bind failure so the config watcher can retry", async () => {
+		store.dispose();
+		const rootA = fixtureFilesystem(TEST_DIR, "root-a");
+		const rootB = fixtureFilesystem(TEST_DIR, "root-b");
+		await rootA.ensureBacklogStructure();
+		await rootB.ensureBacklogStructure();
+		await rootA.saveTask({ ...sampleTask, title: "Root A" });
+		await rootB.saveTask({ ...sampleTask, id: "TASK-2", title: "Root B" });
+
+		filesystem = fixtureFilesystem(TEST_DIR, "root-a");
+		store = new ContentStore(filesystem, undefined, true);
+		await store.ensureInitialized();
+		const watcherInternals = store as unknown as {
+			bindRootWatchers: (epoch: number) => Promise<void>;
+			handleConfigChanged: (config: BacklogConfig) => Promise<void>;
+			rootWatchersInitialized: boolean;
+		};
+		const bindRootWatchers = watcherInternals.bindRootWatchers.bind(store);
+		let failNextBind = true;
+		watcherInternals.bindRootWatchers = async (epoch) => {
+			if (failNextBind) {
+				failNextBind = false;
+				throw new Error("Transient transition bind failure");
+			}
+			await bindRootWatchers(epoch);
+		};
+		const rootBConfig: BacklogConfig = {
+			projectName: "Root B",
+			backlogDirectory: "root-b",
+			statuses: ["To Do", "Done"],
+			labels: [],
+			dateFormat: "YYYY-MM-DD",
+			checkActiveBranches: false,
+			prefixes: { task: "TASK" },
+		};
+
+		filesystem.setBacklogDirectory("root-b");
+		await expect(watcherInternals.handleConfigChanged(rootBConfig)).rejects.toThrow(
+			"Transient transition bind failure",
+		);
+		expect(watcherInternals.rootWatchersInitialized).toBe(false);
+
+		await watcherInternals.handleConfigChanged(rootBConfig);
+
+		expect(watcherInternals.rootWatchersInitialized).toBe(true);
+		expect(store.getTasks().map((task) => task.id)).toEqual(["TASK-2"]);
+	});
+
+	it("retries public root reconciliation when content loading fails after watchers bind", async () => {
+		store.dispose();
+		const configPath = join(TEST_DIR, "backlog.config.yml");
+		await Bun.write(configPath, rootConfig("Root A", "root-a"));
+		const rootA = fixtureFilesystem(TEST_DIR, "root-a");
+		const rootB = fixtureFilesystem(TEST_DIR, "root-b");
+		await rootA.ensureBacklogStructure();
+		await rootB.ensureBacklogStructure();
+		await rootA.saveTask({ ...sampleTask, title: "Root A" });
+		await rootB.saveTask({ ...sampleTask, id: "TASK-2", title: "Root B" });
+
+		filesystem = new FileSystem(TEST_DIR);
+		let taskLoads = 0;
+		store = new ContentStore(
+			filesystem,
+			async () => {
+				taskLoads += 1;
+				if (taskLoads === 2) {
+					throw new Error("Transient root content load failure");
+				}
+				return filesystem.listTasks();
+			},
+			true,
+		);
+		await store.ensureInitialized();
+		const watcherInternals = store as unknown as {
+			createConfigWatcher: () => null;
+			hasCurrentRootWatchers: () => boolean;
+			publishedRoot: string;
+			stopConfigWatcher: () => void;
+		};
+		watcherInternals.stopConfigWatcher();
+		watcherInternals.createConfigWatcher = () => null;
+		filesystem.setBacklogDirectory("root-b");
+		await Bun.write(configPath, rootConfig("Root B", "root-b"));
+
+		await expect(store.ensureConfigWatcher()).rejects.toThrow("Transient root content load failure");
+		expect(watcherInternals.hasCurrentRootWatchers()).toBe(true);
+		expect(watcherInternals.publishedRoot).toBe(rootA.backlogDir);
+		expect(store.getTasks().map((task) => task.id)).toEqual(["TASK-1"]);
+
+		await store.ensureConfigWatcher();
+
+		expect(taskLoads).toBe(3);
+		expect(store.getTasks().map((task) => task.id)).toEqual(["TASK-2"]);
+		expect(watcherInternals.publishedRoot).toBe(rootB.backlogDir);
 	});
 
 	it("publishes coherent A to B to A snapshots and rebinds every root watcher", async () => {

@@ -1,6 +1,6 @@
 import { type FSWatcher, watch } from "node:fs";
 import { readdir, stat } from "node:fs/promises";
-import { basename, join, relative, resolve, sep } from "node:path";
+import { basename, dirname, join, relative, resolve, sep } from "node:path";
 import type { FileSystem } from "../file-system/operations.ts";
 import { parseDecision, parseDocument, parseTask } from "../markdown/parser.ts";
 import type { BacklogConfig, Decision, Document, Task, TaskListFilter } from "../types/index.ts";
@@ -31,6 +31,10 @@ export type ContentStoreListener = (event: ContentStoreEvent) => void;
 
 interface WatchHandle {
 	stop(): void;
+}
+
+interface PublicationOwner {
+	root: string;
 }
 
 export class ContentStore {
@@ -70,6 +74,13 @@ export class ContentStore {
 		documents: new Map(),
 		decisions: new Map(),
 	};
+	private readonly contentItemPublicationRoots: Record<ContentCollection, Map<string, string>> = {
+		tasks: new Map(),
+		documents: new Map(),
+		decisions: new Map(),
+	};
+	private readonly pendingTaskPublications = new Map<string, { root: string; task: Task }>();
+	private publishedRoot: string;
 	private boundBacklogDir: string | null = null;
 	private closed = false;
 
@@ -86,6 +97,7 @@ export class ContentStore {
 		private readonly taskLoader?: () => Promise<Task[]>,
 		private readonly enableWatchers = false,
 	) {
+		this.publishedRoot = this.currentRoot();
 		this.patchFilesystem();
 	}
 
@@ -171,19 +183,40 @@ export class ContentStore {
 		return tasks.slice();
 	}
 
-	upsertTask(task: Task): void {
-		if (this.closed || !this.initialized) {
+	upsertTask(task: Task, owner?: PublicationOwner): void {
+		if (!this.canPublishContent()) {
 			return;
 		}
-		const previous = this.tasks.get(task.id);
+		const publicationRoot = task.filePath
+			? resolve(dirname(dirname(task.filePath)))
+			: owner
+				? resolve(owner.root)
+				: null;
+		if (!publicationRoot) {
+			return;
+		}
+		if (publicationRoot !== this.currentRoot()) {
+			return;
+		}
+		const normalizedId = normalizeTaskId(task.id);
+		const previous =
+			publicationRoot === this.publishedRoot
+				? this.tasks.get(task.id)
+				: this.pendingTaskPublications.get(normalizedId)?.task;
 		if (previous && !this.hasTaskChanged(previous, task)) {
 			return;
 		}
-		this.nextContentItemGeneration("tasks", normalizeTaskId(task.id));
-		this.nextContentItemVersion("tasks", normalizeTaskId(task.id));
+		this.nextContentItemGeneration("tasks", normalizedId);
+		this.nextContentItemVersion("tasks", normalizedId, publicationRoot);
+		if (publicationRoot !== this.publishedRoot) {
+			this.pendingTaskPublications.set(normalizedId, { root: publicationRoot, task });
+			return;
+		}
 		this.tasks.set(task.id, task);
 		this.cachedTasks = sortByTaskId(Array.from(this.tasks.values()));
-		this.notify("tasks");
+		if (this.initialized) {
+			this.notify("tasks");
+		}
 	}
 
 	getDocuments(): Document[] {
@@ -213,13 +246,13 @@ export class ContentStore {
 			return;
 		}
 		this.closed = true;
-		this.rootWatcherEpoch += 1;
-		this.stopRootWatchers();
+		this.invalidateRootWatchers();
 		this.stopConfigWatcher();
 		if (this.restoreFilesystemPatch) {
 			this.restoreFilesystemPatch();
 			this.restoreFilesystemPatch = undefined;
 		}
+		this.pendingTaskPublications.clear();
 		this.listeners.clear();
 		this.initializing = null;
 	}
@@ -234,7 +267,7 @@ export class ContentStore {
 	}
 
 	private notify(type: ContentStoreEventType): void {
-		if (this.closed) {
+		if (this.closed || !this.initialized) {
 			return;
 		}
 		this.version += 1;
@@ -259,7 +292,7 @@ export class ContentStore {
 	}
 
 	private notifyConfig(config: BacklogConfig): void {
-		if (this.closed) {
+		if (this.closed || !this.initialized) {
 			return;
 		}
 		this.version += 1;
@@ -272,22 +305,72 @@ export class ContentStore {
 		}
 	}
 
-	private async loadInitialData(): Promise<void> {
-		await this.filesystem.ensureBacklogStructure();
+	private canPublishContent(): boolean {
+		return !this.closed && (this.initialized || this.initializing !== null);
+	}
 
-		// Use custom task loader if provided (e.g., loadTasks for cross-branch support)
-		// Otherwise fall back to filesystem-only loading
-		const loaded = await this.loadCurrentContent(this.rootWatcherEpoch, (snapshot) => {
-			this.replaceTasks(snapshot.tasks);
-			this.replaceDocuments(snapshot.documents);
-			this.replaceDecisions(snapshot.decisions);
-		});
-		if (!loaded) return;
+	private currentRoot(): string {
+		return resolve(this.filesystem.backlogDir);
+	}
+
+	private isPublicationOwnerCurrent(owner: PublicationOwner): boolean {
+		return !this.closed && owner.root === this.currentRoot();
+	}
+
+	private tasksForPublicationRoot(root: string): Task[] {
+		const tasks = new Map(this.cachedTasks.map((task) => [normalizeTaskId(task.id), task]));
+		for (const [id, publication] of this.pendingTaskPublications) {
+			if (publication.root === root) {
+				tasks.set(id, publication.task);
+			}
+		}
+		return [...tasks.values()];
+	}
+
+	private async loadInitialData(): Promise<void> {
+		let ready = false;
+		for (let attempt = 0; attempt < 12 && !ready; attempt += 1) {
+			if (this.closed) {
+				throw new Error("ContentStore has been disposed.");
+			}
+			const owner: PublicationOwner = { root: this.currentRoot() };
+			await this.filesystem.ensureBacklogStructure();
+			if (!this.isPublicationOwnerCurrent(owner)) {
+				continue;
+			}
+
+			// Use custom task loader if provided (e.g., loadTasks for cross-branch support)
+			// Otherwise fall back to filesystem-only loading
+			const epoch = this.rootWatcherEpoch;
+			const attemptLoaded = await this.loadCurrentContent(epoch, (snapshot) => {
+				this.replaceTasks(snapshot.tasks);
+				this.replaceDocuments(snapshot.documents);
+				this.replaceDecisions(snapshot.decisions);
+			});
+			if (!attemptLoaded || !this.isPublicationOwnerCurrent(owner)) {
+				continue;
+			}
+
+			if (this.enableWatchers) {
+				await this.setupWatchers();
+				if (
+					this.publishedRoot !== this.currentRoot() ||
+					(this.rootWatchersInitialized && !this.hasCurrentRootWatchers())
+				) {
+					this.invalidateRootWatchers();
+					continue;
+				}
+			}
+			ready = true;
+		}
+		if (!ready) {
+			if (this.closed) {
+				throw new Error("ContentStore has been disposed.");
+			}
+			throw new Error("ContentStore initialization could not stabilize after concurrent changes.");
+		}
 
 		this.initialized = true;
-		if (this.enableWatchers) {
-			await this.setupWatchers();
-		}
 		this.notify("ready");
 	}
 
@@ -317,7 +400,9 @@ export class ContentStore {
 			return;
 		}
 		const rootNeedsReconciliation =
-			this.boundBacklogDir !== null && resolve(this.boundBacklogDir) !== resolve(this.filesystem.backlogDir);
+			this.canPublishContent() &&
+			this.enableWatchers &&
+			(!this.hasCurrentRootWatchers() || this.publishedRoot !== this.currentRoot());
 		const configPath = resolve(this.filesystem.configFilePath);
 		if (!this.configWatcherActive || this.configWatcherPath !== configPath) {
 			this.stopConfigWatcher();
@@ -338,7 +423,7 @@ export class ContentStore {
 		if (rootNeedsReconciliation) {
 			const config = await this.filesystem.loadConfig();
 			if (config && !this.closed) {
-				await this.handleConfigChanged(config);
+				await this.handleConfigChanged(config, true);
 			}
 		}
 	}
@@ -353,32 +438,52 @@ export class ContentStore {
 		});
 	}
 
-	private async handleConfigChanged(config: BacklogConfig): Promise<void> {
+	private async handleConfigChanged(config: BacklogConfig, bestEffortWatcherBinding = false): Promise<void> {
 		if (this.closed) return;
 
 		const nextBacklogDir = resolve(this.filesystem.backlogDir);
+		const transitionOwner: PublicationOwner = { root: nextBacklogDir };
 		const previousBacklogDir = this.boundBacklogDir ? resolve(this.boundBacklogDir) : null;
 		const rootChanged = previousBacklogDir !== null && previousBacklogDir !== nextBacklogDir;
-		const needsRootWatcher = !this.rootWatchersInitialized;
+		const needsRootWatcher = !this.hasCurrentRootWatchers();
 		let transitionEpoch = this.rootWatcherEpoch;
 
 		if (rootChanged) {
-			transitionEpoch += 1;
-			this.rootWatcherEpoch = transitionEpoch;
-			this.stopRootWatchers();
+			this.invalidateRootWatchers();
+			transitionEpoch = this.rootWatcherEpoch;
 		}
 
 		await this.enqueue(async () => {
-			if (this.closed || (rootChanged && transitionEpoch !== this.rootWatcherEpoch)) return;
+			if (
+				this.closed ||
+				(rootChanged && transitionEpoch !== this.rootWatcherEpoch) ||
+				!this.isPublicationOwnerCurrent(transitionOwner)
+			)
+				return;
 
 			await this.filesystem.ensureBacklogStructure();
-			if (this.closed || (rootChanged && transitionEpoch !== this.rootWatcherEpoch)) return;
+			if (
+				this.closed ||
+				(rootChanged && transitionEpoch !== this.rootWatcherEpoch) ||
+				!this.isPublicationOwnerCurrent(transitionOwner)
+			)
+				return;
 
 			if (rootChanged || needsRootWatcher) {
-				this.boundBacklogDir = this.filesystem.backlogDir;
-				await this.bindRootWatchers(transitionEpoch);
-				if (!this.isRootWatcherCurrent(transitionEpoch)) return;
+				this.boundBacklogDir = nextBacklogDir;
+				try {
+					await this.bindRootWatchers(transitionEpoch);
+				} catch (error) {
+					if (process.env.DEBUG) {
+						console.error("Failed to reconcile content watchers", error);
+					}
+					if (!bestEffortWatcherBinding) {
+						throw error;
+					}
+				}
+				if (!this.isRootWatcherCurrent(transitionEpoch) || !this.isPublicationOwnerCurrent(transitionOwner)) return;
 			}
+			if (!this.isPublicationOwnerCurrent(transitionOwner)) return;
 
 			const loaded = await this.loadCurrentContent(transitionEpoch, (snapshot) => {
 				this.replaceTasks(snapshot.tasks);
@@ -423,6 +528,11 @@ export class ContentStore {
 		this.rootWatchersInitialized = false;
 	}
 
+	private invalidateRootWatchers(): void {
+		this.rootWatcherEpoch += 1;
+		this.stopRootWatchers();
+	}
+
 	private stopConfigWatcher(): void {
 		try {
 			this.configWatcher?.stop();
@@ -434,6 +544,14 @@ export class ContentStore {
 
 	private isRootWatcherCurrent(epoch: number): boolean {
 		return !this.closed && epoch === this.rootWatcherEpoch;
+	}
+
+	private hasCurrentRootWatchers(): boolean {
+		return (
+			this.rootWatchersInitialized &&
+			this.boundBacklogDir !== null &&
+			resolve(this.boundBacklogDir) === this.currentRoot()
+		);
 	}
 
 	private nextContentRefreshGeneration(collection: ContentCollection): number {
@@ -453,10 +571,15 @@ export class ContentStore {
 		return generation;
 	}
 
-	private nextContentItemVersion(collection: ContentCollection, id: string): number {
+	private nextContentItemVersion(
+		collection: ContentCollection,
+		id: string,
+		publicationRoot = this.currentRoot(),
+	): number {
 		const versions = this.contentItemVersions[collection];
 		const version = (versions.get(id) ?? 0) + 1;
 		versions.set(id, version);
+		this.contentItemPublicationRoots[collection].set(id, publicationRoot);
 		return version;
 	}
 
@@ -472,6 +595,7 @@ export class ContentStore {
 	}
 
 	private async loadCurrentContent(epoch: number, publish: (snapshot: ContentSnapshot) => void): Promise<boolean> {
+		const targetRoot = this.currentRoot();
 		const generations: Record<ContentCollection, number> = {
 			tasks: this.nextContentRefreshGeneration("tasks"),
 			documents: this.nextContentRefreshGeneration("documents"),
@@ -490,6 +614,7 @@ export class ContentStore {
 		]);
 		if (
 			!this.isRootWatcherCurrent(epoch) ||
+			targetRoot !== this.currentRoot() ||
 			!this.isContentRefreshCurrent("tasks", generations.tasks) ||
 			!this.isContentRefreshCurrent("documents", generations.documents) ||
 			!this.isContentRefreshCurrent("decisions", generations.decisions)
@@ -501,10 +626,12 @@ export class ContentStore {
 			tasks: this.mergeConcurrentChanges(
 				tasks,
 				before.tasks,
-				this.cachedTasks,
+				this.tasksForPublicationRoot(targetRoot),
 				(task) => normalizeTaskId(task.id),
 				itemVersions.tasks,
 				this.contentItemVersions.tasks,
+				this.contentItemPublicationRoots.tasks,
+				targetRoot,
 			),
 			documents: this.mergeConcurrentChanges(
 				documents,
@@ -513,6 +640,8 @@ export class ContentStore {
 				(document) => document.id,
 				itemVersions.documents,
 				this.contentItemVersions.documents,
+				this.contentItemPublicationRoots.documents,
+				targetRoot,
 			),
 			decisions: this.mergeConcurrentChanges(
 				decisions,
@@ -521,8 +650,12 @@ export class ContentStore {
 				(decision) => decision.id,
 				itemVersions.decisions,
 				this.contentItemVersions.decisions,
+				this.contentItemPublicationRoots.decisions,
+				targetRoot,
 			),
 		});
+		this.publishedRoot = targetRoot;
+		this.pendingTaskPublications.clear();
 		return true;
 	}
 
@@ -532,19 +665,29 @@ export class ContentStore {
 		loader: () => Promise<T>,
 		isValid: (result: T) => boolean,
 		capture: () => S,
-		reconcile: (result: T, before: S) => T,
+		reconcile: (result: T, before: S, targetRoot: string) => T,
 		publish: (result: T) => boolean,
 	): Promise<boolean | null> {
+		const targetRoot = this.currentRoot();
 		const generation = this.nextContentRefreshGeneration(collection);
 		const before = capture();
 		const result = await this.retryRead(loader, isValid, 12, 75, () => {
-			return this.isRootWatcherCurrent(epoch) && this.isContentRefreshCurrent(collection, generation);
+			return (
+				this.isRootWatcherCurrent(epoch) &&
+				targetRoot === this.currentRoot() &&
+				this.isContentRefreshCurrent(collection, generation)
+			);
 		});
-		if (result === null || !this.isRootWatcherCurrent(epoch) || !this.isContentRefreshCurrent(collection, generation)) {
+		if (
+			result === null ||
+			!this.isRootWatcherCurrent(epoch) ||
+			targetRoot !== this.currentRoot() ||
+			!this.isContentRefreshCurrent(collection, generation)
+		) {
 			return null;
 		}
 
-		return publish(reconcile(result, before));
+		return publish(reconcile(result, before, targetRoot));
 	}
 
 	private createTaskWatcher(epoch: number): WatchHandle {
@@ -595,7 +738,7 @@ export class ContentStore {
 							return null;
 						}
 						const content = await Bun.file(fullPath).text();
-						return normalizeTaskIdentity(parseTask(content));
+						return normalizeTaskIdentity({ ...parseTask(content), filePath: fullPath });
 					},
 					(result) => {
 						if (!result) {
@@ -906,23 +1049,23 @@ export class ContentStore {
 		const originalSaveDecision = this.filesystem.saveDecision;
 
 		this.filesystem.saveTask = (async (task: Task): Promise<string> => {
-			const epoch = this.rootWatcherEpoch;
+			const owner: PublicationOwner = { root: this.currentRoot() };
 			const result = await originalSaveTask.call(this.filesystem, task);
-			await this.handleTaskWrite(task.id, epoch);
+			await this.handleTaskWrite(task.id, owner);
 			return result;
 		}) as FileSystem["saveTask"];
 
 		this.filesystem.saveDocument = (async (document: Document, subPath = ""): Promise<string> => {
-			const epoch = this.rootWatcherEpoch;
+			const owner: PublicationOwner = { root: this.currentRoot() };
 			const result = await originalSaveDocument.call(this.filesystem, document, subPath);
-			await this.handleDocumentWrite(document.id, epoch);
+			await this.handleDocumentWrite(document.id, owner);
 			return result;
 		}) as FileSystem["saveDocument"];
 
 		this.filesystem.saveDecision = (async (decision: Decision): Promise<void> => {
-			const epoch = this.rootWatcherEpoch;
+			const owner: PublicationOwner = { root: this.currentRoot() };
 			await originalSaveDecision.call(this.filesystem, decision);
-			await this.handleDecisionWrite(decision.id, epoch);
+			await this.handleDecisionWrite(decision.id, owner);
 		}) as FileSystem["saveDecision"];
 
 		this.restoreFilesystemPatch = () => {
@@ -932,21 +1075,21 @@ export class ContentStore {
 		};
 	}
 
-	private async handleTaskWrite(taskId: string, epoch: number): Promise<void> {
-		if (!this.initialized || !this.isRootWatcherCurrent(epoch)) {
+	private async handleTaskWrite(taskId: string, owner: PublicationOwner): Promise<void> {
+		if (!this.canPublishContent() || !this.isPublicationOwnerCurrent(owner)) {
 			return;
 		}
-		await this.enqueueRoot(epoch, async () => {
-			await this.updateTaskFromDisk(taskId, epoch);
+		await this.enqueuePublication(owner, async () => {
+			await this.updateTaskFromDisk(taskId, owner);
 		});
 	}
 
-	private async handleDocumentWrite(documentId: string, epoch: number): Promise<void> {
-		if (!this.initialized || !this.isRootWatcherCurrent(epoch)) {
+	private async handleDocumentWrite(documentId: string, owner: PublicationOwner): Promise<void> {
+		if (!this.canPublishContent() || !this.isPublicationOwnerCurrent(owner)) {
 			return;
 		}
-		await this.enqueueRoot(epoch, async () => {
-			await this.refreshDocumentsFromDisk(documentId, this.documents.get(documentId), epoch);
+		await this.enqueuePublication(owner, async () => {
+			await this.updateDocumentFromDisk(documentId, owner);
 		});
 	}
 
@@ -969,6 +1112,8 @@ export class ContentStore {
 		getId: (item: T) => string,
 		beforeVersions: ReadonlyMap<string, number>,
 		currentVersions: ReadonlyMap<string, number>,
+		currentPublicationRoots: ReadonlyMap<string, string>,
+		targetRoot: string,
 	): T[] {
 		const merged = new Map(loaded.map((item) => [getId(item), item]));
 		const beforeById = new Map(before.map((item) => [getId(item), item]));
@@ -976,6 +1121,9 @@ export class ContentStore {
 
 		for (const [id] of beforeById) {
 			if (beforeVersions.get(id) === currentVersions.get(id)) {
+				continue;
+			}
+			if (currentPublicationRoots.get(id) !== targetRoot) {
 				continue;
 			}
 			const currentItem = currentById.get(id);
@@ -986,7 +1134,11 @@ export class ContentStore {
 			merged.set(id, currentItem);
 		}
 		for (const [id, currentItem] of currentById) {
-			if (!beforeById.has(id) && beforeVersions.get(id) !== currentVersions.get(id)) {
+			if (
+				!beforeById.has(id) &&
+				beforeVersions.get(id) !== currentVersions.get(id) &&
+				currentPublicationRoots.get(id) === targetRoot
+			) {
 				merged.set(id, currentItem);
 			}
 		}
@@ -1029,7 +1181,7 @@ export class ContentStore {
 				return true;
 			},
 			() => ({ items: this.cachedTasks.slice(), versions: new Map(this.contentItemVersions.tasks) }),
-			(tasks, before) =>
+			(tasks, before, targetRoot) =>
 				this.mergeConcurrentChanges(
 					tasks,
 					before.items,
@@ -1037,6 +1189,8 @@ export class ContentStore {
 					(task) => normalizeTaskId(task.id),
 					before.versions,
 					this.contentItemVersions.tasks,
+					this.contentItemPublicationRoots.tasks,
+					targetRoot,
 				),
 			(tasks) => {
 				if (!this.hasTaskCollectionChanged(tasks)) {
@@ -1075,7 +1229,7 @@ export class ContentStore {
 				return true;
 			},
 			() => ({ items: this.cachedDocuments.slice(), versions: new Map(this.contentItemVersions.documents) }),
-			(documents, before) =>
+			(documents, before, targetRoot) =>
 				this.mergeConcurrentChanges(
 					documents,
 					before.items,
@@ -1083,6 +1237,8 @@ export class ContentStore {
 					(document) => document.id,
 					before.versions,
 					this.contentItemVersions.documents,
+					this.contentItemPublicationRoots.documents,
+					targetRoot,
 				),
 			(documents) => {
 				this.replaceDocuments(documents);
@@ -1118,7 +1274,7 @@ export class ContentStore {
 				return true;
 			},
 			() => ({ items: this.cachedDecisions.slice(), versions: new Map(this.contentItemVersions.decisions) }),
-			(decisions, before) =>
+			(decisions, before, targetRoot) =>
 				this.mergeConcurrentChanges(
 					decisions,
 					before.items,
@@ -1126,6 +1282,8 @@ export class ContentStore {
 					(decision) => decision.id,
 					before.versions,
 					this.contentItemVersions.decisions,
+					this.contentItemPublicationRoots.decisions,
+					targetRoot,
 				),
 			(decisions) => {
 				this.replaceDecisions(decisions);
@@ -1138,16 +1296,19 @@ export class ContentStore {
 		this.notify("decisions");
 	}
 
-	private async handleDecisionWrite(decisionId: string, epoch: number): Promise<void> {
-		if (!this.initialized || !this.isRootWatcherCurrent(epoch)) {
+	private async handleDecisionWrite(decisionId: string, owner: PublicationOwner): Promise<void> {
+		if (!this.canPublishContent() || !this.isPublicationOwnerCurrent(owner)) {
 			return;
 		}
-		await this.enqueueRoot(epoch, async () => {
-			await this.updateDecisionFromDisk(decisionId, epoch);
+		await this.enqueuePublication(owner, async () => {
+			await this.updateDecisionFromDisk(decisionId, owner);
 		});
 	}
 
-	private async updateTaskFromDisk(taskId: string, epoch = this.rootWatcherEpoch): Promise<void> {
+	private async updateTaskFromDisk(
+		taskId: string,
+		owner: PublicationOwner = { root: this.currentRoot() },
+	): Promise<void> {
 		const normalizedTaskId = normalizeTaskId(taskId);
 		const generation = this.nextContentItemGeneration("tasks", normalizedTaskId);
 		const previous = this.tasks.get(normalizedTaskId);
@@ -1157,22 +1318,58 @@ export class ContentStore {
 			12,
 			75,
 			() =>
-				this.isRootWatcherCurrent(epoch) && this.isContentItemGenerationCurrent("tasks", normalizedTaskId, generation),
+				this.isPublicationOwnerCurrent(owner) &&
+				this.isContentItemGenerationCurrent("tasks", normalizedTaskId, generation),
 		);
 		if (
 			!task ||
-			!this.isRootWatcherCurrent(epoch) ||
+			!this.isPublicationOwnerCurrent(owner) ||
 			!this.isContentItemGenerationCurrent("tasks", normalizedTaskId, generation)
 		) {
 			return;
 		}
-		this.nextContentItemVersion("tasks", normalizedTaskId);
+		this.nextContentItemVersion("tasks", normalizedTaskId, owner.root);
 		this.tasks.set(task.id, task);
 		this.cachedTasks = sortByTaskId(Array.from(this.tasks.values()));
-		this.notify("tasks");
+		if (this.initialized) {
+			this.notify("tasks");
+		}
 	}
 
-	private async updateDecisionFromDisk(decisionId: string, epoch = this.rootWatcherEpoch): Promise<void> {
+	private async updateDocumentFromDisk(
+		documentId: string,
+		owner: PublicationOwner = { root: this.currentRoot() },
+	): Promise<void> {
+		const generation = this.nextContentItemGeneration("documents", documentId);
+		const previous = this.documents.get(documentId);
+		const document = await this.retryRead(
+			async () => this.filesystem.loadDocument(documentId),
+			(result) => !previous || this.hasDocumentChanged(previous, result),
+			12,
+			75,
+			() =>
+				this.isPublicationOwnerCurrent(owner) &&
+				this.isContentItemGenerationCurrent("documents", documentId, generation),
+		);
+		if (
+			!document ||
+			!this.isPublicationOwnerCurrent(owner) ||
+			!this.isContentItemGenerationCurrent("documents", documentId, generation)
+		) {
+			return;
+		}
+		this.nextContentItemVersion("documents", documentId, owner.root);
+		this.documents.set(document.id, document);
+		this.cachedDocuments = [...this.documents.values()].sort((a, b) => a.title.localeCompare(b.title));
+		if (this.initialized) {
+			this.notify("documents");
+		}
+	}
+
+	private async updateDecisionFromDisk(
+		decisionId: string,
+		owner: PublicationOwner = { root: this.currentRoot() },
+	): Promise<void> {
 		const generation = this.nextContentItemGeneration("decisions", decisionId);
 		const previous = this.decisions.get(decisionId);
 		const decision = await this.retryRead(
@@ -1181,19 +1378,22 @@ export class ContentStore {
 			12,
 			75,
 			() =>
-				this.isRootWatcherCurrent(epoch) && this.isContentItemGenerationCurrent("decisions", decisionId, generation),
+				this.isPublicationOwnerCurrent(owner) &&
+				this.isContentItemGenerationCurrent("decisions", decisionId, generation),
 		);
 		if (
 			!decision ||
-			!this.isRootWatcherCurrent(epoch) ||
+			!this.isPublicationOwnerCurrent(owner) ||
 			!this.isContentItemGenerationCurrent("decisions", decisionId, generation)
 		) {
 			return;
 		}
-		this.nextContentItemVersion("decisions", decisionId);
+		this.nextContentItemVersion("decisions", decisionId, owner.root);
 		this.decisions.set(decision.id, decision);
 		this.cachedDecisions = sortByTaskId(Array.from(this.decisions.values()));
-		this.notify("decisions");
+		if (this.initialized) {
+			this.notify("decisions");
+		}
 	}
 
 	private async createManualRecursiveWatcher(
@@ -1339,6 +1539,13 @@ export class ContentStore {
 	private enqueueRoot(epoch: number, fn: () => Promise<void>): Promise<void> {
 		return this.enqueue(async () => {
 			if (!this.isRootWatcherCurrent(epoch)) return;
+			await fn();
+		});
+	}
+
+	private enqueuePublication(owner: PublicationOwner, fn: () => Promise<void>): Promise<void> {
+		return this.enqueue(async () => {
+			if (!this.isPublicationOwnerCurrent(owner)) return;
 			await fn();
 		});
 	}
