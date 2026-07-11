@@ -5,7 +5,7 @@ status: In Progress
 assignee:
   - '@test-hygiene-resources'
 created_date: '2026-07-11 09:21'
-updated_date: '2026-07-11 12:53'
+updated_date: '2026-07-11 15:28'
 labels: []
 dependencies: []
 parent_task_id: BACK-535
@@ -52,6 +52,10 @@ Independent spec review found and corrected two lifecycle gaps before freeze: bo
 Scope/evidence correction (supersedes the earlier 17-file/39-catch statement): the two process-close implementations converged, so src/test/test-utils.ts is an intentional 18th test-infrastructure file used to keep close/error/kill/listener semantics single-sourced. The current catch inventory is 40 sites: 26 baseline sites (22 legitimate plus four reserved for BACK-535.5) and 14 new fail-visible error-preservation sites, including the shared helper kill-error capture.
 
 Final local lifecycle candidate passed focused shared-helper/build/stdio coverage 6/6, integrated coverage 173/173 twice, typecheck, Biome over 323 files, build, and diff-check. The exact full suite then reported 1665 pass, two intentional interactive-TUI skips, and one failure: the unchanged monolithic CLI packaging test hit Bun’s 5000ms outer timeout under full-suite contention for the second time. Isolated packaging passed repeatedly around 2-3.3s. Per maintainer coordination, do not alter packaging/workflows or mark AC4 complete in BACK-535.4; BACK-535.6 owns that repeated build/CI duplication and timeout. Rebase this frozen lifecycle commit after BACK-535.6 merges, then rerun exact integrated/full/static and independent reviews before PR/finalization.
+
+Post-BACK-535.6/BACK-535.7 reconciliation (supersedes earlier build-inclusive counts): BACK-535.6 removed src/test/build.test.ts and its four assigned cleanup sites as part of the accepted compiled-smoke consolidation. BACK-535.4 therefore owns the remaining 20 original resource-cleanup sites plus config-watcher lifecycle verification across 16 original test files, with src/test/test-utils.ts as the single shared close/error/kill helper file (17 changed test files total). Current catch inventory is 35: 24 baseline sites (20 legitimate explicit catches and four BACK-535.5 vacuous assertions) plus 11 new fail-visible error-preservation sites (mcp-stdio-exit 4, mcp-tasks 4, worktree-refresh 2, shared child-close helper 1). No production, CI, or BACK-535.5 files changed.
+
+Final rebase verification on unified-main 1f617b6: integrated lifecycle set passed 172/172 twice (30.72s and 30.01s); exact shared full command `bun test --isolate --timeout=10000 --max-concurrency=4` passed 1,665 with two intentional interactive-TUI skips across 188 files in 182.07s; bunx tsc --noEmit, Biome over 324 files, bun run build, and git diff --check passed. AC4 remains open pending this exact repair head in unified Linux/macOS/Windows CI.
 <!-- SECTION:NOTES:END -->
 
 ## Definition of Done
