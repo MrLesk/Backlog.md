@@ -223,6 +223,98 @@ describe("ContentStore", () => {
 		}
 	});
 
+	it("cancels stale path rechecks after rename reconciliation publishes the same identities", async () => {
+		store.dispose();
+		await Promise.all([
+			filesystem.saveTask(sampleTask),
+			filesystem.saveDocument(sampleDocument),
+			filesystem.saveDecision(sampleDecision),
+		]);
+
+		const callbacks = new Map<string, CapturedWatchCallback>();
+		const watchSpy = spyOn(nodeFs, "watch").mockImplementation(((
+			path: Parameters<typeof nodeFs.watch>[0],
+			...args: unknown[]
+		) => {
+			const callback = args.findLast((argument) => typeof argument === "function");
+			if (typeof callback !== "function") {
+				throw new Error(`Expected a watcher callback for ${String(path)}`);
+			}
+			callbacks.set(resolve(String(path)), callback as CapturedWatchCallback);
+			const watcher = new EventEmitter() as EventEmitter & { close(): void };
+			watcher.close = () => {};
+			return watcher as unknown as nodeFs.FSWatcher;
+		}) as typeof nodeFs.watch);
+
+		try {
+			store = new ContentStore(filesystem, undefined, true);
+			const initial = await store.ensureInitialized();
+			const task = initial.tasks[0];
+			const document = initial.documents[0];
+			const decision = initial.decisions[0];
+			if (!task?.filePath || !document?.path || !decision) {
+				throw new Error("Expected initialized task, document, and decision paths");
+			}
+
+			const oldTaskFile = basename(task.filePath);
+			const oldDocumentPath = document.path;
+			const oldDecisionFile = await findDecisionFile(filesystem.decisionsDir, decision.id);
+			const timerCallbacks: Array<() => void> = [];
+			const internals = store as unknown as {
+				chainTail: Promise<void>;
+				deferredRechecks: Map<string, unknown>;
+				enqueue: (fn: () => Promise<void>) => Promise<void>;
+				startDeferredTimer: (callback: () => void, delayMs: number) => ReturnType<typeof setTimeout>;
+			};
+			internals.startDeferredTimer = (callback) => {
+				timerCallbacks.push(callback);
+				const timer = setTimeout(() => {}, 60_000);
+				timer.unref();
+				return timer;
+			};
+
+			getCapturedWatcher(callbacks, filesystem.tasksDir)("change", oldTaskFile);
+			getCapturedWatcher(callbacks, filesystem.docsDir)("change", oldDocumentPath);
+			getCapturedWatcher(callbacks, filesystem.decisionsDir)("change", oldDecisionFile);
+			await internals.enqueue(async () => {});
+			expect(internals.deferredRechecks.size).toBe(3);
+			expect(timerCallbacks).toHaveLength(3);
+
+			const writer = new FileSystem(TEST_DIR);
+			const renamedTask = { ...sampleTask, title: "Renamed Task" };
+			const renamedDocument = { ...sampleDocument, title: "Renamed Architecture Guide" };
+			const renamedDecision = { ...sampleDecision, title: "Renamed shared cache decision" };
+			const [newTaskPath, newDocumentPath] = await Promise.all([
+				writer.saveTask(renamedTask),
+				writer.saveDocument(renamedDocument),
+				writer.saveDecision(renamedDecision),
+			]);
+			const newDecisionFile = await findDecisionFile(filesystem.decisionsDir, decision.id);
+
+			getCapturedWatcher(callbacks, filesystem.tasksDir)("rename", basename(newTaskPath));
+			getCapturedWatcher(callbacks, filesystem.docsDir)("rename", newDocumentPath);
+			getCapturedWatcher(callbacks, filesystem.decisionsDir)("rename", newDecisionFile);
+			await internals.enqueue(async () => {});
+
+			expect(store.getTasks()[0]?.title).toBe(renamedTask.title);
+			expect(store.getTasks()[0]?.filePath).toBe(newTaskPath);
+			expect(store.getDocuments()[0]?.title).toBe(renamedDocument.title);
+			expect(store.getDocuments()[0]?.path).toBe(newDocumentPath);
+			expect(store.getDecisions()[0]?.title).toBe(renamedDecision.title);
+
+			for (const callback of timerCallbacks) callback();
+			await internals.chainTail;
+
+			expect(store.getTasks()[0]?.title).toBe(renamedTask.title);
+			expect(store.getTasks()[0]?.filePath).toBe(newTaskPath);
+			expect(store.getDocuments()[0]?.title).toBe(renamedDocument.title);
+			expect(store.getDocuments()[0]?.path).toBe(newDocumentPath);
+			expect(store.getDecisions()[0]?.title).toBe(renamedDecision.title);
+		} finally {
+			watchSpy.mockRestore();
+		}
+	});
+
 	it("coalesces deferred rechecks and invalidates them across root changes and disposal", async () => {
 		await store.ensureInitialized();
 		const timerCallbacks: Array<() => void> = [];
