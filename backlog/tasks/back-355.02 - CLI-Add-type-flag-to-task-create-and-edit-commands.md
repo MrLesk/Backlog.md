@@ -1,11 +1,11 @@
 ---
 id: BACK-355.02
 title: 'CLI: Add --type flag to task create and edit commands'
-status: In Progress
+status: Done
 assignee:
   - '@codex-types-cli'
 created_date: '2026-01-01 23:37'
-updated_date: '2026-07-09 22:34'
+updated_date: '2026-07-10 19:33'
 labels:
   - cli
 dependencies:

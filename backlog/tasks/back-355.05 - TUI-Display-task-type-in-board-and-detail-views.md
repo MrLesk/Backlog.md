@@ -1,11 +1,11 @@
 ---
 id: BACK-355.05
 title: 'TUI: Display task type in board and detail views'
-status: In Progress
+status: Done
 assignee:
   - '@impl_types_tui'
 created_date: '2026-01-01 23:37'
-updated_date: '2026-07-09 23:09'
+updated_date: '2026-07-10 19:33'
 labels:
   - tui
 dependencies:
