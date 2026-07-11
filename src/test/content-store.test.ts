@@ -1,6 +1,8 @@
-import { afterEach, beforeEach, describe, expect, it } from "bun:test";
+import { afterEach, beforeEach, describe, expect, it, spyOn } from "bun:test";
+import { EventEmitter } from "node:events";
+import * as nodeFs from "node:fs";
 import { rename, unlink } from "node:fs/promises";
-import { join } from "node:path";
+import { basename, join, resolve } from "node:path";
 import { ContentStore, type ContentStoreEvent } from "../core/content-store.ts";
 import { FileSystem } from "../file-system/operations.ts";
 import type { Decision, Document, Task } from "../types/index.ts";
@@ -110,16 +112,19 @@ describe("ContentStore", () => {
 
 		const delays: number[] = [];
 		const internals = store as unknown as {
-			delay: (ms: number) => Promise<void>;
 			enqueue: (fn: () => Promise<void>) => Promise<void>;
 			refreshDecisionsFromDisk: (expectedId?: string) => Promise<void>;
 			refreshDocumentsFromDisk: (expectedId?: string) => Promise<void>;
 			refreshTasksFromDisk: (expectedId?: string) => Promise<void>;
+			startDeferredTimer: (callback: () => void, delayMs: number) => ReturnType<typeof setTimeout>;
 			updateDecisionFromDisk: (decisionId: string) => Promise<void>;
 			updateTaskFromDisk: (taskId: string) => Promise<void>;
 		};
-		internals.delay = async (ms) => {
-			delays.push(ms);
+		internals.startDeferredTimer = (callback, delayMs) => {
+			delays.push(delayMs);
+			const timer = setTimeout(callback, 0);
+			timer.unref();
+			return timer;
 		};
 
 		const alreadyPublishedWork = internals.enqueue(async () => {
@@ -138,6 +143,148 @@ describe("ContentStore", () => {
 		expect(delays).toEqual([]);
 		expect(followUpRan).toBe(true);
 		expect(store.getSnapshot()).toEqual(published);
+	});
+
+	it("rechecks delayed task, document, and decision writes after a single watcher event", async () => {
+		store.dispose();
+		await Promise.all([
+			filesystem.saveTask(sampleTask),
+			filesystem.saveDocument(sampleDocument),
+			filesystem.saveDecision(sampleDecision),
+		]);
+
+		const callbacks = new Map<string, CapturedWatchCallback>();
+		const watchSpy = spyOn(nodeFs, "watch").mockImplementation(((
+			path: Parameters<typeof nodeFs.watch>[0],
+			...args: unknown[]
+		) => {
+			const callback = args.findLast((argument) => typeof argument === "function");
+			if (typeof callback !== "function") {
+				throw new Error(`Expected a watcher callback for ${String(path)}`);
+			}
+			callbacks.set(resolve(String(path)), callback as CapturedWatchCallback);
+			const watcher = new EventEmitter() as EventEmitter & { close(): void };
+			watcher.close = () => {};
+			return watcher as unknown as nodeFs.FSWatcher;
+		}) as typeof nodeFs.watch);
+
+		try {
+			store = new ContentStore(filesystem, undefined, true);
+			const initial = await store.ensureInitialized();
+			const task = initial.tasks[0];
+			const document = initial.documents[0];
+			const decision = initial.decisions[0];
+			if (!task?.filePath || !document?.path || !decision) {
+				throw new Error("Expected initialized task, document, and decision paths");
+			}
+
+			const decisionFile = await findDecisionFile(filesystem.decisionsDir, decision.id);
+			getCapturedWatcher(callbacks, filesystem.tasksDir)("change", basename(task.filePath));
+			getCapturedWatcher(callbacks, filesystem.docsDir)("change", document.path);
+			getCapturedWatcher(callbacks, filesystem.decisionsDir)("change", decisionFile);
+
+			const internals = store as unknown as {
+				chainTail: Promise<void>;
+				enqueue: (fn: () => Promise<void>) => Promise<void>;
+			};
+			let followUpRan = false;
+			await internals.enqueue(async () => {
+				followUpRan = true;
+			});
+			expect(followUpRan).toBe(true);
+			expect(store.getTasks()[0]?.status).toBe(sampleTask.status);
+			expect(store.getDocuments()[0]?.type).toBe(sampleDocument.type);
+			expect(store.getDecisions()[0]?.status).toBe(sampleDecision.status);
+
+			const writer = new FileSystem(TEST_DIR);
+			await Promise.all([
+				writer.saveTask({ ...sampleTask, status: "In Progress" }),
+				writer.saveDocument({ ...sampleDocument, type: "specification" }),
+				writer.saveDecision({ ...sampleDecision, status: "accepted" }),
+			]);
+
+			await waitUntil(
+				() => store.getTasks()[0]?.status === "In Progress",
+				"delayed task visibility after one watcher event",
+				getPlatformTimeout(1000),
+			);
+			await waitUntil(
+				() => store.getDocuments()[0]?.type === "specification",
+				"delayed document visibility after one watcher event",
+				getPlatformTimeout(1000),
+			);
+			await waitUntil(
+				() => store.getDecisions()[0]?.status === "accepted",
+				"delayed decision visibility after one watcher event",
+				getPlatformTimeout(1000),
+			);
+		} finally {
+			watchSpy.mockRestore();
+		}
+	});
+
+	it("coalesces deferred rechecks and invalidates them across root changes and disposal", async () => {
+		await store.ensureInitialized();
+		const timerCallbacks: Array<() => void> = [];
+		const internals = store as unknown as {
+			chainTail: Promise<void>;
+			deferredRechecks: Map<string, unknown>;
+			enqueue: (fn: () => Promise<void>) => Promise<void>;
+			reconcileOrSchedule: (key: string, epoch: number, reconcile: () => Promise<boolean>) => Promise<void>;
+			rootWatcherEpoch: number;
+			startDeferredTimer: (callback: () => void, delayMs: number) => ReturnType<typeof setTimeout>;
+			stopRootWatchers: () => void;
+		};
+		internals.startDeferredTimer = (callback) => {
+			timerCallbacks.push(callback);
+			const timer = setTimeout(() => {}, 60_000);
+			timer.unref();
+			return timer;
+		};
+
+		let oldRootReads = 0;
+		const oldRootReconcile = async () => {
+			oldRootReads += 1;
+			return true;
+		};
+		await internals.enqueue(async () => {
+			await internals.reconcileOrSchedule("task:TASK-1", internals.rootWatcherEpoch, oldRootReconcile);
+		});
+		await internals.enqueue(async () => {
+			await internals.reconcileOrSchedule("task:TASK-1", internals.rootWatcherEpoch, oldRootReconcile);
+		});
+		let followUpRan = false;
+		await internals.enqueue(async () => {
+			followUpRan = true;
+		});
+		expect(followUpRan).toBe(true);
+		expect(oldRootReads).toBe(2);
+		expect(timerCallbacks).toHaveLength(1);
+		expect(internals.deferredRechecks.size).toBe(1);
+
+		internals.rootWatcherEpoch += 1;
+		internals.stopRootWatchers();
+		expect(internals.deferredRechecks.size).toBe(0);
+		timerCallbacks[0]?.();
+		await internals.chainTail;
+		expect(oldRootReads).toBe(2);
+
+		let newRootReads = 0;
+		await internals.enqueue(async () => {
+			await internals.reconcileOrSchedule("task:TASK-1", internals.rootWatcherEpoch, async () => {
+				newRootReads += 1;
+				return true;
+			});
+		});
+		expect(newRootReads).toBe(1);
+		expect(timerCallbacks).toHaveLength(2);
+		expect(internals.deferredRechecks.size).toBe(1);
+
+		store.dispose();
+		expect(internals.deferredRechecks.size).toBe(0);
+		timerCallbacks[1]?.();
+		await Promise.resolve();
+		expect(newRootReads).toBe(1);
 	});
 
 	it("retries incomplete content observations before publishing them", async () => {
@@ -178,16 +325,20 @@ describe("ContentStore", () => {
 
 		const delays: number[] = [];
 		const internals = store as unknown as {
-			delay: (ms: number) => Promise<void>;
+			enqueue: (fn: () => Promise<void>) => Promise<void>;
 			loadTasksWithLoader: () => Promise<Task[]>;
 			refreshDecisionsFromDisk: (expectedId?: string) => Promise<void>;
 			refreshDocumentsFromDisk: (expectedId?: string) => Promise<void>;
 			refreshTasksFromDisk: (expectedId?: string) => Promise<void>;
+			startDeferredTimer: (callback: () => void, delayMs: number) => ReturnType<typeof setTimeout>;
 			updateDecisionFromDisk: (decisionId: string) => Promise<void>;
 			updateTaskFromDisk: (taskId: string) => Promise<void>;
 		};
-		internals.delay = async (ms) => {
-			delays.push(ms);
+		internals.startDeferredTimer = (callback, delayMs) => {
+			delays.push(delayMs);
+			const timer = setTimeout(callback, 0);
+			timer.unref();
+			return timer;
 		};
 
 		const loadTask = filesystem.loadTask.bind(filesystem);
@@ -200,7 +351,15 @@ describe("ContentStore", () => {
 			return targetedReads === 2 ? null : { ...publishedTask, title: "Targeted retry" };
 		};
 		try {
-			await internals.updateTaskFromDisk(publishedTask.id);
+			await internals.enqueue(async () => {
+				await internals.updateTaskFromDisk(publishedTask.id);
+			});
+			let followUpRan = false;
+			await internals.enqueue(async () => {
+				followUpRan = true;
+			});
+			expect(followUpRan).toBe(true);
+			await waitUntil(() => targetedReads === 3, "targeted task retries", getPlatformTimeout(1000));
 		} finally {
 			filesystem.loadTask = loadTask;
 		}
@@ -214,6 +373,7 @@ describe("ContentStore", () => {
 			return collectionReads === 2 ? [] : [{ ...publishedTask, title: "Collection retry" }];
 		};
 		await internals.refreshTasksFromDisk(publishedTask.id);
+		await waitUntil(() => collectionReads === 3, "task collection retries", getPlatformTimeout(1000));
 
 		const listDocuments = filesystem.listDocuments.bind(filesystem);
 		let documentReads = 0;
@@ -226,6 +386,7 @@ describe("ContentStore", () => {
 		};
 		try {
 			await internals.refreshDocumentsFromDisk(publishedDocument.id);
+			await waitUntil(() => documentReads === 3, "document collection retries", getPlatformTimeout(1000));
 		} finally {
 			filesystem.listDocuments = listDocuments;
 		}
@@ -241,6 +402,7 @@ describe("ContentStore", () => {
 		};
 		try {
 			await internals.updateDecisionFromDisk(publishedDecision.id);
+			await waitUntil(() => targetedDecisionReads === 3, "targeted decision retries", getPlatformTimeout(1000));
 		} finally {
 			filesystem.loadDecision = loadDecision;
 		}
@@ -256,6 +418,7 @@ describe("ContentStore", () => {
 		};
 		try {
 			await internals.refreshDecisionsFromDisk(publishedDecision.id);
+			await waitUntil(() => decisionCollectionReads === 3, "decision collection retries", getPlatformTimeout(1000));
 		} finally {
 			filesystem.listDecisions = listDecisions;
 		}
@@ -443,6 +606,7 @@ describe("ContentStore", () => {
 				store,
 				(event) => event.type === "config" && event.config.projectName === "Root B",
 				getPlatformTimeout(15000),
+				"root B config publication",
 			);
 			await replaceRootConfig(configPath, rootConfig("Root B", rootB));
 			await waitUntil(() => filesystem.backlogDirName === rootB, "root B publication");
@@ -464,6 +628,7 @@ describe("ContentStore", () => {
 					event.snapshot.documents.some((document) => document.id === "doc-b-2") &&
 					event.snapshot.decisions.some((decision) => decision.id === "decision-b-2"),
 				getPlatformTimeout(15000),
+				"root B content writes",
 			);
 			await writeFixture(fixtureB, "202", "b-2");
 			heldBLoad.release();
@@ -484,11 +649,13 @@ describe("ContentStore", () => {
 				store,
 				(event) => event.type === "config" && event.config.projectName === "Root B held",
 				getPlatformTimeout(15000),
+				"held root B config publication",
 			);
 			const rootAReturned = waitForEventWithTimeout(
 				store,
 				(event) => event.type === "config" && event.config.projectName === "Root A returned",
 				getPlatformTimeout(15000),
+				"root A return publication",
 			);
 			await replaceRootConfig(configPath, rootConfig("Root B held", rootB));
 			await withTimeout(heldBConfigLoad.started, "held root B config load");
@@ -512,6 +679,7 @@ describe("ContentStore", () => {
 					event.snapshot.documents.some((document) => document.id === "doc-a-4") &&
 					event.snapshot.decisions.some((decision) => decision.id === "decision-a-4"),
 				getPlatformTimeout(15000),
+				"root A content writes",
 			);
 			await writeFixture(fixtureA, "104", "a-4");
 			await rootALaterWrites;
@@ -537,6 +705,7 @@ describe("ContentStore", () => {
 					event.snapshot.documents.some((document) => document.id === "doc-a-6") &&
 					event.snapshot.decisions.some((decision) => decision.id === "decision-a-6"),
 				getPlatformTimeout(15000),
+				"restarted root A content writes",
 			);
 			await writeFixture(fixtureA, "106", "a-6");
 			await restartedWrite;
@@ -607,6 +776,7 @@ function waitForEventWithTimeout(
 	store: ContentStore,
 	predicate: (event: ContentStoreEvent) => boolean,
 	timeout = getPlatformTimeout(),
+	label = "content store event",
 ): Promise<ContentStoreEvent> {
 	const eventPromise = new Promise<ContentStoreEvent>((resolve) => {
 		const unsubscribe = store.subscribe((event) => {
@@ -621,7 +791,7 @@ function waitForEventWithTimeout(
 	return Promise.race([
 		eventPromise,
 		sleep(timeout).then(() => {
-			throw new Error("Timed out waiting for content store event");
+			throw new Error(`Timed out waiting for ${label}`);
 		}),
 	]);
 }
@@ -716,8 +886,25 @@ async function withTimeout<T>(promise: Promise<T>, label: string): Promise<T> {
 	]);
 }
 
-async function waitUntil(predicate: () => boolean, label: string): Promise<void> {
-	const deadline = Date.now() + getPlatformTimeout(15000);
+type CapturedWatchCallback = (eventType: string, filename: string | Buffer | null) => void;
+
+function getCapturedWatcher(callbacks: Map<string, CapturedWatchCallback>, path: string): CapturedWatchCallback {
+	const callback = callbacks.get(resolve(path));
+	if (!callback) {
+		throw new Error(`Expected captured watcher for ${path}`);
+	}
+	return callback;
+}
+
+async function findDecisionFile(decisionsDir: string, decisionId: string): Promise<string> {
+	for await (const file of new Bun.Glob(`${decisionId}*.md`).scan({ cwd: decisionsDir, followSymlinks: true })) {
+		return file;
+	}
+	throw new Error(`Expected decision file for ${decisionId}`);
+}
+
+async function waitUntil(predicate: () => boolean, label: string, timeout = getPlatformTimeout(15000)): Promise<void> {
+	const deadline = Date.now() + timeout;
 	while (Date.now() < deadline) {
 		if (predicate()) return;
 		await sleep(25);

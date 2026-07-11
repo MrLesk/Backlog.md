@@ -5,7 +5,7 @@ status: In Progress
 assignee:
   - '@mcp-milestone-ci'
 created_date: '2026-07-11 00:41'
-updated_date: '2026-07-11 01:16'
+updated_date: '2026-07-11 01:50'
 labels:
   - ci
   - mcp
@@ -28,19 +28,20 @@ The Linux full-suite CI repeatedly times out the MCP milestone task_create/task_
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 The full-suite interaction that causes the MCP milestone mutation test to stall is reproduced or localized with deterministic focused coverage
-- [ ] #2 The underlying wait, resource leak, or concurrency defect is fixed without increasing the test or CI timeout
-- [ ] #3 Focused regression coverage proves task_create milestone assignment and task_edit milestone clearing complete and preserve existing semantics
-- [ ] #4 TypeScript, Biome, focused tests, full isolated tests, and compiled build pass
+- [x] #1 The full-suite interaction that causes the MCP milestone mutation test to stall is reproduced or localized with deterministic focused coverage
+- [x] #2 The underlying wait, resource leak, or concurrency defect is fixed without increasing the test or CI timeout
+- [x] #3 Focused regression coverage proves task_create milestone assignment and task_edit milestone clearing complete and preserve existing semantics
+- [x] #4 TypeScript, Biome, focused tests, full isolated tests, and compiled build pass
 <!-- AC:END -->
 
 ## Implementation Plan
 
 <!-- SECTION:PLAN:BEGIN -->
-1. Preserve the CI evidence and deterministic queue-liveness coverage for ContentStore plus MCP milestone create/clear semantics.
-2. Treat valid same-identity unchanged task, document, and decision reads as no-ops, while retrying null, missing, or wrong-identity observations until the requested entity is available.
-3. Verify task, document, and decision deletion remains filename/existence-driven and independent of publication identity checks.
-4. Stress focused paths, run TypeScript, Biome, full isolated tests, build, and diff review, then hand the isolated commits to sequential spec and quality review.
+1. Add deterministic fake-watcher regressions for task, document, and decision events where the first same-identity read is the unchanged cache, changed bytes appear later, and no second watcher event fires.
+2. Replace in-queue retry sleeps with coalesced per-identity deferred rechecks scheduled outside chainTail; each timer enqueues one targeted reconciliation read and uses root epoch, disposal, and watcher-stop guards.
+3. Preserve fast duplicate no-ops, wrong-identity rejection, incomplete-read recovery, collection symmetry, and filename/existence-driven deletion; cover root-change and disposal cancellation.
+4. Stress queue timing, delayed/incomplete reads, identity, deletion, and MCP milestone mutation, then run TypeScript, Biome, build, diff review, and the full isolated suite.
+5. Record fail-first and final verification fingerprints and hand the isolated commit to sequential review without pushing.
 <!-- SECTION:PLAN:END -->
 
 ## Implementation Notes
@@ -53,11 +54,19 @@ Implemented shared ContentStore no-op reconciliation: readable expected task, do
 Spec review of bf247f5 found that targeted task and decision reads accepted any non-null entity. The fail-first regression returned foreign ID, then null, then the requested entity; bf247f5 stopped after one read instead of three and could publish TASK-999 or decision-999. Re-audit reasoning: updateTaskFromDisk and updateDecisionFromDisk are invoked only after the patched filesystem save promise completes. A parsed result with the requested identity—even if already equal to the cache—is therefore a converged no-op published earlier in the queue. Null or a different identity cannot represent the completed requested save and must remain retryable. The document collection path already requires the expected document ID before publication, and direct watcher parsers validate filename identity. Deletion is separate: watcher branches require exists=false and remove only the filename-derived cached ID; focused coverage now exercises task, document, and decision deletion together.
 
 Review fix completed: targeted task reads now require taskIdsEqual with the normalized requested ID, and targeted decision reads require exact decision ID equality. The fail-first fingerprint on bf247f5 was expected three reads but received one after a foreign-ID result; the corrected regression observes foreign ID, null, then the requested entity and proves no foreign task, document, or decision ID is ever published. The analogous document collection validator was already identity-strict. An initial simultaneous three-file deletion stress exposed watcher event coalescing in the test itself, so deletion coverage now removes and observes task, document, and decision sequentially; it passed 100/100 without timeout changes. Final review-fix verification: focused ContentStore plus MCP suites 42/42 with 179 assertions; queue/retry stress 200/200; deletion stress 100/100; MCP milestone create/clear stress 50/50; bunx tsc --noEmit, bun run check ., bun run build, and git diff --check passed. Full bun test --isolate --timeout=10000 passed 1,646 with 2 intentional skips, 0 failures, and 6,720 assertions across 189 files in 172.32s.
+
+Quality audit of 0125c0e identified a delayed-valid-write gap: a single filesystem event can observe old but valid same-identity bytes, treat them as a completed no-op, and never see later changed bytes when no second event arrives. The follow-up will model exactly one watcher callback with captured fake node:fs watchers and keep every retry delay outside the shared serialized chain.
+
+Quality-audit correction completed. Exact fail-first harness replaces node:fs.watch with captured callbacks, fires one task, document, and decision change event while disk still exposes the cached same-identity bytes, waits for the shared queue to drain, then writes changed bytes through an unpatched FileSystem without a second event. On 0125c0e it failed in 1.055s with “Timed out waiting for delayed content visibility after one watcher event”; the corrected implementation converges in about 80–107ms.
+
+ContentStore now uses one epoch-bound, per-identity deferred recheck registry. Every queue turn performs a single read; invalid or direct-watcher unchanged observations arm the existing 12-attempt linear backoff outside chainTail, and each timer enqueues a fresh targeted read against current disk and cache state. Same-key events coalesce without resetting the job, successful/new/deleted observations cancel it, and root watcher stop/dispose clear timers and tokens. Task direct reads preserve filePath so an old snapshot compares equal accurately. Wildcard collection no-ops deliberately remain terminal: an initial attempt to retry them caused pending collection loads to steal the lifecycle test’s config-load gate; after restoring the targeted-vs-wildcard policy, A→B→A lifecycle stress passed 20/20.
+
+Final corrective verification: ContentStore 11/11 with 68 assertions; MCP milestones 33/33 with 127 assertions; queue/delayed/lifecycle/incomplete stress 200/200; deletion stress 50/50; MCP milestone create/clear stress 50/50; A→B→A lifecycle stress 20/20. bunx tsc --noEmit, bun run check . (324 files), bun run build, and git diff --check passed. Authoritative bun test --isolate --timeout=10000 passed 1,648 tests with 2 intentional skips, 0 failures, and 6,736 assertions across 189 files in 173.86s.
 <!-- SECTION:NOTES:END -->
 
 ## Definition of Done
 <!-- DOD:BEGIN -->
-- [ ] #1 bunx tsc --noEmit passes when TypeScript touched
-- [ ] #2 bun run check . passes when formatting/linting touched
-- [ ] #3 bun test (or scoped test) passes
+- [x] #1 bunx tsc --noEmit passes when TypeScript touched
+- [x] #2 bun run check . passes when formatting/linting touched
+- [x] #3 bun test (or scoped test) passes
 <!-- DOD:END -->
