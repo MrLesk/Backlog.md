@@ -5,7 +5,7 @@ status: In Progress
 assignee:
   - '@build-ci-cleanup'
 created_date: '2026-07-11 13:23'
-updated_date: '2026-07-11 14:32'
+updated_date: '2026-07-11 14:43'
 labels: []
 dependencies: []
 references:
@@ -38,8 +38,6 @@ Repair the post-merge compiled browser smoke so packaging verification cannot de
 - [ ] #6 The exact repair head passes Linux, macOS, and Windows build/unit gates plus CodeQL; the resulting main commit is verified as a separate post-merge operational gate
 <!-- AC:END -->
 
-
-
 ## Implementation Plan
 
 <!-- SECTION:PLAN:BEGIN -->
@@ -60,6 +58,8 @@ First unified PR CI run 29155206350: Ubuntu full passed in 3m33s, macOS full pas
 Second exact-head CI run 29155601390 passed the unified matrix: Ubuntu full 4m10s, macOS full 4m20s, Windows full 7m59s, with identical 10s/max4 commands and non-empty JUnit artifacts of 66,255/67,072/65,315 bytes. Compiled build/smoke passed on Ubuntu 18s, macOS 34s, and Windows 1m10s; CodeQL passed both analyses. The terminal acceptance criterion is worded around evidence available before merge; resulting-main CI remains a mandatory separate operational gate because checking it before the merge event would be fabricated.
 
 Final task-only CI run 29155889111 exposed a second intermittent test seam on macOS after the same code passed prior heads: the first SPA route request hit the test helper’s hardcoded 1.5s abort while the static shell was warming under full-suite load. Repair keeps all timeout values unchanged and extends server readiness to observe both `/api/status` and a valid `/` SPA shell before route assertions begin. Targeted route stress passed 20/20 sequential and 4/4 concurrent; typecheck, Biome, and diff checks passed.
+
+Fifth CI run 29156306681 disproved the common SPA readiness probe. On macOS, all 19 tests in server-tasks-spa-fallback.test.ts failed because each beforeEach retried and aborted the first root HTML compilation at 500ms; on Ubuntu, the same abort pattern cascaded into Bun ENOENT socket reads across later files. The scoped repair restores API-only common readiness and performs one observable, non-aborted root shell fetch only in the SPA navigation test, bounded by the unchanged 10-second test-runner limit; every subsequent route assertion retains its 1.5-second request bound. No timeout or concurrency value changed. Focused SPA stress passed 20/20 and the exact full local CI command passed 1,667 tests with 2 skips and 0 failures in 158.15s; typecheck, lint, and diff checks passed.
 <!-- SECTION:NOTES:END -->
 
 ## Final Summary

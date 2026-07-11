@@ -52,11 +52,6 @@ async function startServer(): Promise<void> {
 		async () => {
 			const statusResponse = await request("/api/status", {}, 500);
 			if (!statusResponse.ok) throw new Error("server status endpoint not ready");
-
-			const spaResponse = await request("/", {}, 500);
-			if (!spaResponse.ok || !(await spaResponse.text()).includes('<div id="root"></div>')) {
-				throw new Error("server SPA shell not ready");
-			}
 			return true;
 		},
 		10,
@@ -188,6 +183,14 @@ describe("BacklogServer task SPA fallback", () => {
 	});
 
 	it("serves task and board namespaces through the SPA for direct and refreshed navigation", async () => {
+		// Compile the HTML bundle once before exercising the bounded route requests.
+		// The test runner's existing timeout bounds this first-build readiness check;
+		// aborting it early can leave Bun's development bundler with a stale socket.
+		const shellResponse = await fetch(`http://127.0.0.1:${serverPort}/`);
+		expect(shellResponse.status).toBe(200);
+		expect(shellResponse.headers.get("content-type")).toContain("text/html");
+		expect(await shellResponse.text()).toContain('<div id="root"></div>');
+
 		const paths = [
 			"/tasks",
 			"/tasks/",
