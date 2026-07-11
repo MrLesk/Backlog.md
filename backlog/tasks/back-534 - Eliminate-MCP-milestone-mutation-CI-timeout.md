@@ -5,7 +5,7 @@ status: Done
 assignee:
   - '@back534-review-fix'
 created_date: '2026-07-11 00:41'
-updated_date: '2026-07-11 09:53'
+updated_date: '2026-07-11 09:59'
 labels:
   - ci
   - mcp
@@ -92,6 +92,8 @@ Post-0acbeb6 tri-state fail-first evidence: a valid doc-1 moved to `doc-1 - Move
 The correction uses one shared filename-filtered identity candidate enumerator for tasks, documents, and decisions. It verifies the root directory before and after enumeration and returns found, authoritatively absent, or incomplete. Only complete zero-candidate results delete; matching unreadable, invalid, or ambiguous candidates preserve the cache and schedule the existing bounded identity retry. Unrelated malformed files are never read. Task recovery retains the custom cross-branch loader fallback only after complete local absence. Deterministic controls prove valid moved identities recover with malformed siblings and no second event, incomplete moved identities recover after one deferred timer round without a second event, and subsequent real deletion still removes only the target while preserving cached siblings.
 
 Final tri-state verification: ContentStore 17/17 with 117 assertions; 10x ContentStore stress 170/170; MCP milestones 33/33 with 127 assertions; full bun test --isolate --timeout=10000 1,634 pass, 2 expected interactive skips, 0 fail, 6,715 assertions across 188 files in 180.74s. bunx tsc --noEmit, bun run check . (322 files), bun run build, and git diff --check passed.
+
+Final independent review of commit 1857580 approved the whole diff. Specification verification passed focused ContentStore/MCP 50/50, ContentStore stress 170/170, MCP blocking 5/5, TypeScript, Biome, and diff checks. Quality verification passed ContentStore stress 170/170 and MCP milestones 33/33 with no remaining findings. The three PR review concerns are covered by deterministic wildcard-isolation, fresh bounded-budget, identity-targeted rename/delete, malformed-sibling recovery, and true-deletion tests.
 <!-- SECTION:NOTES:END -->
 
 ## Final Summary
