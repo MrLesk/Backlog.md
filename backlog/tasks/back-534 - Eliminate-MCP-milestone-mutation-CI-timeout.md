@@ -1,11 +1,11 @@
 ---
 id: BACK-534
 title: Eliminate MCP milestone mutation CI timeout
-status: In Progress
+status: Done
 assignee:
   - '@mcp-milestone-ci'
 created_date: '2026-07-11 00:41'
-updated_date: '2026-07-11 09:09'
+updated_date: '2026-07-11 09:17'
 labels:
   - ci
   - mcp
@@ -74,6 +74,12 @@ Same-content wildcard verification: filename-only task, document, and decision r
 
 Final quality simplification: removed redundant deferred-job cancellation from generic collection replacement helpers. Cancellation now has one responsibility site: successful wildcard reconciliation cancels every present identity before collection-equality evaluation. Verification after cleanup: ContentStore 12/12 and 10x stress 120/120; MCP milestones 33/33 and blocking case 5/5; full isolated suite 1,649 pass, 2 expected skips, 0 fail, 6,748 assertions across 189 files; TypeScript, Biome (324 files), build, and diff-check passed.
 <!-- SECTION:NOTES:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+Removed the serialized watcher retry stalls that pushed MCP milestone mutations to the 10-second CI limit. ContentStore now uses bounded, coalesced deferred targeted rechecks outside the shared queue, validates expected identities, and safely cancels stale old-path jobs when wildcard snapshots confirm current task, document, or decision identities. Deterministic coverage includes delayed single-event visibility, wrong identities, deletions, identical-content filename renames, coalescing, root/disposal cancellation, queue liveness, and A-to-B-to-A lifecycle behavior. Final verification: 1,649 tests passed with 2 expected TUI skips and 0 failures; focused and stress suites, TypeScript, Biome, build, and diff checks passed.
+<!-- SECTION:FINAL_SUMMARY:END -->
 
 ## Definition of Done
 <!-- DOD:BEGIN -->
