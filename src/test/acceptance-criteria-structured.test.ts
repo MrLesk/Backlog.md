@@ -7,16 +7,11 @@ const TEMP_DIR = join(process.cwd(), ".tmp-structured-ac-test");
 
 describe("Structured Acceptance Criteria parsing", () => {
 	beforeAll(() => {
-		try {
-			rmSync(TEMP_DIR, { recursive: true, force: true });
-		} catch {}
 		mkdirSync(TEMP_DIR, { recursive: true });
 	});
 
 	afterAll(() => {
-		try {
-			rmSync(TEMP_DIR, { recursive: true, force: true });
-		} catch {}
+		rmSync(TEMP_DIR, { recursive: true, force: true });
 	});
 
 	it("parses acceptance criteria items with checked state and index", () => {

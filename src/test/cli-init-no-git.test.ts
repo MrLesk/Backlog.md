@@ -34,11 +34,7 @@ describe("CLI init without Git", () => {
 	});
 
 	afterEach(async () => {
-		try {
-			await safeCleanup(TEST_DIR);
-		} catch {
-			// Ignore cleanup errors - the unique directory names prevent conflicts
-		}
+		await safeCleanup(TEST_DIR);
 	});
 
 	test("initializes a filesystem-only project without creating a Git repository", async () => {

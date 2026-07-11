@@ -21,11 +21,7 @@ describe("Implementation Plan CLI", () => {
 	});
 
 	afterEach(async () => {
-		try {
-			await safeCleanup(TEST_DIR);
-		} catch {
-			// Ignore cleanup errors
-		}
+		await safeCleanup(TEST_DIR);
 	});
 
 	describe("task create with implementation plan", () => {

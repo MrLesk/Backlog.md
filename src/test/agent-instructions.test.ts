@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
-import { mkdir, rm } from "node:fs/promises";
+import { mkdir } from "node:fs/promises";
 import { join } from "node:path";
 import {
 	_loadAgentGuideline,
@@ -16,16 +16,11 @@ let TEST_DIR: string;
 describe("addAgentInstructions", () => {
 	beforeEach(async () => {
 		TEST_DIR = createUniqueTestDir("test-agent-instructions");
-		await rm(TEST_DIR, { recursive: true, force: true }).catch(() => {});
 		await mkdir(TEST_DIR, { recursive: true });
 	});
 
 	afterEach(async () => {
-		try {
-			await safeCleanup(TEST_DIR);
-		} catch {
-			// Ignore cleanup errors - the unique directory names prevent conflicts
-		}
+		await safeCleanup(TEST_DIR);
 	});
 
 	it("creates guideline files when none exist", async () => {

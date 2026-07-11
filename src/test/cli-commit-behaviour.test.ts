@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { mkdir, rm } from "node:fs/promises";
+import { mkdir } from "node:fs/promises";
 import { join } from "node:path";
 import { $ } from "bun";
 import { Core } from "../core/backlog.ts";
@@ -20,7 +20,6 @@ describe("CLI Auto-Commit Behavior with autoCommit: false", () => {
 
 	beforeEach(async () => {
 		TEST_DIR = createUniqueTestDir("test-cli-commit-false");
-		await rm(TEST_DIR, { recursive: true, force: true }).catch(() => {});
 		await mkdir(TEST_DIR, { recursive: true });
 
 		// Initialize git repository first to avoid interactive prompts and ensure consistency
@@ -49,11 +48,7 @@ describe("CLI Auto-Commit Behavior with autoCommit: false", () => {
 	});
 
 	afterEach(async () => {
-		try {
-			await safeCleanup(TEST_DIR);
-		} catch {
-			// Ignore cleanup errors - the unique directory names prevent conflicts
-		}
+		await safeCleanup(TEST_DIR);
 	});
 
 	test("should not commit when creating a task if autoCommit is false", async () => {
@@ -101,7 +96,6 @@ describe("CLI Auto-Commit Behavior with autoCommit: true", () => {
 
 	beforeEach(async () => {
 		TEST_DIR = createUniqueTestDir("test-cli-commit-true");
-		await rm(TEST_DIR, { recursive: true, force: true }).catch(() => {});
 		await mkdir(TEST_DIR, { recursive: true });
 
 		await $`git init -b main`.cwd(TEST_DIR).quiet();
@@ -128,11 +122,7 @@ describe("CLI Auto-Commit Behavior with autoCommit: true", () => {
 	});
 
 	afterEach(async () => {
-		try {
-			await safeCleanup(TEST_DIR);
-		} catch {
-			// Ignore cleanup errors - the unique directory names prevent conflicts
-		}
+		await safeCleanup(TEST_DIR);
 	});
 
 	test("should commit when creating a task if autoCommit is true", async () => {

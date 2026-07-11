@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
-import { mkdir, rm, stat } from "node:fs/promises";
+import { mkdir, stat } from "node:fs/promises";
 import { join } from "node:path";
 import { $ } from "bun";
 import { CLI_AGENT_NUDGE, Core, isGitRepository } from "../index.ts";
@@ -17,20 +17,11 @@ const normalizeCliOutput = (output: string) => output.replace(/\r\n/g, "\n").rep
 describe("CLI Integration", () => {
 	beforeEach(async () => {
 		TEST_DIR = createUniqueTestDir("test-cli");
-		try {
-			await rm(TEST_DIR, { recursive: true, force: true });
-		} catch {
-			// Ignore cleanup errors
-		}
 		await mkdir(TEST_DIR, { recursive: true });
 	});
 
 	afterEach(async () => {
-		try {
-			await safeCleanup(TEST_DIR);
-		} catch {
-			// Ignore cleanup errors - the unique directory names prevent conflicts
-		}
+		await safeCleanup(TEST_DIR);
 	});
 
 	describe("root command", () => {

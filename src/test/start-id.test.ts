@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
-import { mkdir, readdir, rm } from "node:fs/promises";
+import { mkdir, readdir } from "node:fs/promises";
 import { join } from "node:path";
 import { $ } from "bun";
 import { Core } from "../index.ts";
@@ -17,7 +17,6 @@ async function initGitRepo(dir: string) {
 describe("task id generation", () => {
 	beforeEach(async () => {
 		TEST_DIR = createUniqueTestDir("test-start-id");
-		await rm(TEST_DIR, { recursive: true, force: true }).catch(() => {});
 		await mkdir(TEST_DIR, { recursive: true });
 		await initGitRepo(TEST_DIR);
 		const core = new Core(TEST_DIR);
@@ -25,11 +24,7 @@ describe("task id generation", () => {
 	});
 
 	afterEach(async () => {
-		try {
-			await safeCleanup(TEST_DIR);
-		} catch {
-			// Ignore cleanup errors - the unique directory names prevent conflicts
-		}
+		await safeCleanup(TEST_DIR);
 	});
 
 	it("starts numbering tasks at 1", async () => {

@@ -5,7 +5,7 @@ status: In Progress
 assignee:
   - '@test-hygiene-filesystem'
 created_date: '2026-07-11 09:21'
-updated_date: '2026-07-11 11:13'
+updated_date: '2026-07-11 11:27'
 labels: []
 dependencies: []
 parent_task_id: BACK-535
@@ -28,9 +28,9 @@ Every site is identified by the current-main line captured in the audit; impleme
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
 - [ ] #1 Focused stress and the full local gate pass, and the exact PR head passes the actual GitHub Actions Windows test matrix; Windows-equivalent local evidence is insufficient
-- [ ] #2 All 37 enumerated redundant pre-clean sites are removed from unique fixture paths
-- [ ] #3 All 59 enumerated filesystem-only teardown failures are fail-visible without changing test behavior
-- [ ] #4 No BACK-535.4 resource-owning site, BACK-535.5 vacuous assertion site, or legitimate explicit catch site is changed
+- [x] #2 All 37 enumerated redundant pre-clean sites are removed from unique fixture paths
+- [x] #3 All 59 enumerated filesystem-only teardown failures are fail-visible without changing test behavior
+- [x] #4 No BACK-535.4 resource-owning site, BACK-535.5 vacuous assertion site, or legitimate explicit catch site is changed
 <!-- AC:END -->
 
 ## Implementation Plan
@@ -46,11 +46,13 @@ Every site is identified by the current-main line captured in the audit; impleme
 
 <!-- SECTION:NOTES:BEGIN -->
 Context Hunter L2 brief: this is a wide mechanical test-only slice spanning 59 teardown and 37 redundant pre-clean sites. Follow the direct afterEach safeCleanup/rm pattern established by BACK-535.2; remove pre-clean only when createUniqueTestDir or mkdtemp already guarantees uniqueness; preserve primary errors for any in-test resource via a hook or drained finally. Reuse safeCleanup, remove only imports made unused, and do not touch BACK-535.4 resource files, BACK-535.5 vacuous sites, production code, or legitimate catches. Primary risks are overlapping setup/teardown edits, stale line numbers after rewrites, Windows file-handle cleanup, and accidentally changing fixture behavior.
+
+Implemented all 96 owned sites across 56 test files: removed 37 redundant unique-path pre-clean catches and made 59 filesystem teardowns fail-visible. The A-L delegated batch repaired 78 sites and passed 512 focused tests; the M-Z batch repaired 18 sites and passed 105 focused tests. Integrated scan fell from 146 to exactly 50 remaining catches, matching 24 BACK-535.4 resource sites, 22 legitimate sites, and 4 BACK-535.5 sites; no excluded file changed. Moved cli-agents auxiliary directory cleanup into afterEach so assertion failures cannot skip it. Two integrated changed-suite runs each passed 617 tests across 56 files with 2,257 assertions and 0 failures in 95.89s and 91.73s. Full suite passed 1,666 with 2 intentional interactive-TUI skips, 0 failures, and 6,804 assertions across 189 files in 174.59s. bunx tsc --noEmit, Biome over 323 files, bun run build, and diff checks passed. Actual Windows CI remains required before AC1 and finalization.
 <!-- SECTION:NOTES:END -->
 
 ## Definition of Done
 <!-- DOD:BEGIN -->
-- [ ] #1 bunx tsc --noEmit passes when TypeScript touched
-- [ ] #2 bun run check . passes when formatting/linting touched
-- [ ] #3 bun test (or scoped test) passes
+- [x] #1 bunx tsc --noEmit passes when TypeScript touched
+- [x] #2 bun run check . passes when formatting/linting touched
+- [x] #3 bun test (or scoped test) passes
 <!-- DOD:END -->

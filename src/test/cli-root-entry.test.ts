@@ -16,7 +16,7 @@ describe("CLI root entry (bare run)", () => {
 	});
 
 	afterEach(async () => {
-		await rm(TEST_DIR, { recursive: true, force: true }).catch(() => {});
+		await rm(TEST_DIR, { recursive: true, force: true });
 	});
 
 	it("can colorize the plain root entry when color is enabled", () => {

@@ -13,11 +13,7 @@ describe("Enhanced init command", () => {
 	});
 
 	afterEach(async () => {
-		try {
-			await safeCleanup(tmpDir);
-		} catch {
-			// Ignore cleanup errors - the unique directory names prevent conflicts
-		}
+		await safeCleanup(tmpDir);
 	});
 
 	test("should detect existing project and preserve config during re-initialization", async () => {

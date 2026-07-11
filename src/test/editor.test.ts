@@ -124,11 +124,7 @@ describe("Editor utilities", () => {
 		});
 
 		afterEach(async () => {
-			try {
-				await safeCleanup(TEST_DIR);
-			} catch {
-				// Ignore cleanup errors
-			}
+			await safeCleanup(TEST_DIR);
 		});
 
 		it("should open file with echo command for testing", async () => {

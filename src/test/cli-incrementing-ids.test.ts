@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { mkdir, rm } from "node:fs/promises";
+import { mkdir } from "node:fs/promises";
 import { join } from "node:path";
 import { $ } from "bun";
 import { Core } from "../core/backlog.ts";
@@ -15,7 +15,6 @@ describe("CLI ID Incrementing Behavior", () => {
 
 	beforeEach(async () => {
 		TEST_DIR = createUniqueTestDir("test-cli-incrementing-ids");
-		await rm(TEST_DIR, { recursive: true, force: true }).catch(() => {});
 		await mkdir(TEST_DIR, { recursive: true });
 		core = new Core(TEST_DIR);
 		// Initialize git repository first to avoid interactive prompts and ensure consistency
@@ -27,11 +26,7 @@ describe("CLI ID Incrementing Behavior", () => {
 	});
 
 	afterEach(async () => {
-		try {
-			await safeCleanup(TEST_DIR);
-		} catch {
-			// Ignore cleanup errors - the unique directory names prevent conflicts
-		}
+		await safeCleanup(TEST_DIR);
 	});
 
 	test("should increment task IDs correctly", async () => {

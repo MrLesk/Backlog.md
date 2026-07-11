@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
-import { mkdir, rm } from "node:fs/promises";
+import { mkdir } from "node:fs/promises";
 import { $ } from "bun";
 import { Core } from "../core/backlog.ts";
 import { createUniqueTestDir, initializeTestProject, safeCleanup } from "./test-utils.ts";
@@ -11,7 +11,6 @@ describe("Task Documentation", () => {
 
 	beforeEach(async () => {
 		TEST_DIR = createUniqueTestDir("test-documentation");
-		await rm(TEST_DIR, { recursive: true, force: true }).catch(() => {});
 		await mkdir(TEST_DIR, { recursive: true });
 
 		await $`git init`.cwd(TEST_DIR).quiet();
@@ -23,11 +22,7 @@ describe("Task Documentation", () => {
 	});
 
 	afterEach(async () => {
-		try {
-			await safeCleanup(TEST_DIR);
-		} catch {
-			// Ignore cleanup errors
-		}
+		await safeCleanup(TEST_DIR);
 	});
 
 	describe("Create task with documentation", () => {
