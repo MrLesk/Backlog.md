@@ -5,7 +5,7 @@ status: In Progress
 assignee:
   - '@build-ci-cleanup'
 created_date: '2026-07-11 13:23'
-updated_date: '2026-07-11 13:54'
+updated_date: '2026-07-11 14:09'
 labels: []
 dependencies: []
 references:
@@ -52,4 +52,6 @@ Maintainer decision (Alex, 2026-07-11): CI must use one full test job per OS. Ub
 Exception audit: the project-pinned Bun 1.3.14 is also the latest stable release. oven-sh/bun#13513 remains open and documents `bun-windows-x64-baseline` failing on `windows-latest` while moving the downloaded target into the Windows Bun cache; proposed fix PR #13556 is unmerged, and related #11198 was still reproducible on Bun 1.3.10. Keep the Windows per-target C-drive cache primer with updated upstream rationale. Keep Linux-only interactive TUI as supplemental coverage because the harness explicitly requires a Unix-like PTY and `expect`; the complete unit-suite command remains identical on all OSes. Local shared CI command passed 1,665 tests, skipped 2 interactive-only tests, failed 0 across 188 files in 158.15s. Compiled isolated smoke passed 5/5 with zero residual temporary projects. Stage-1 specification review approved the unified topology and retained exceptions with no blockers.
 
 Final local verification: the exact shared CI command with `--timeout=10000 --max-concurrency=4` passed 1,665 tests, skipped 2 Linux-only interactive cases, failed 0 across 188 files in 168.28s. The compiled binary built successfully; isolated CLI/browser/MCP smoke passed 10/10 and left zero temporary projects. Typecheck, Biome over 324 files including TypeScript scripts, workflow YAML parse, and diff checks passed. Stage-1 specification review approved the final evidence wording and implementation with no blockers.
+
+First unified PR CI run 29155206350: Ubuntu full passed in 3m33s, macOS full passed in 3m29s, and all three compiled build/smoke jobs passed (23s/32s/1m15s), proving the isolated smoke repaired the post-merge macOS failure. Windows full preserved 1,654 passes and 12 platform skips but exposed one test-only timeout after 8m47s: `configureAdvancedSettings applies wizard selections` used `echo` as an editor fixture. `echo` is a Windows shell builtin, so `where echo` failed, the wizard requested an unmodeled confirmation, responses shifted, and the exhausted stub returned `{}` indefinitely. Repair uses the installed cross-platform `bun` command and makes prompt-sequence exhaustion fail immediately. No timeout, concurrency, or topology change. Focused config-command stress passed 10/10; typecheck, Biome, and diff checks passed.
 <!-- SECTION:NOTES:END -->
