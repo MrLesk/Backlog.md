@@ -1,11 +1,11 @@
 ---
 id: BACK-535.7
 title: Isolate compiled smoke fixtures from repository remotes
-status: In Progress
+status: Done
 assignee:
   - '@build-ci-cleanup'
 created_date: '2026-07-11 13:23'
-updated_date: '2026-07-11 14:59'
+updated_date: '2026-07-11 15:10'
 labels: []
 dependencies: []
 references:
@@ -35,7 +35,7 @@ Repair the post-merge compiled browser smoke so packaging verification cannot de
 - [x] #3 Ubuntu, macOS, and Windows each run the complete unit suite through one shared matrix job with the same install, typecheck, lint, test command, timeout, concurrency, and JUnit artifact behavior
 - [x] #4 Unit and build matrices use fail-fast false so one OS cannot cancel diagnostic coverage on another
 - [x] #5 Windows sharding and its aggregate compatibility job are removed, while the Linux-only interactive TUI step remains explicitly justified as a PTY-specific supplemental gate
-- [ ] #6 The exact repair head passes Linux, macOS, and Windows build/unit gates plus CodeQL; the resulting main commit is verified as a separate post-merge operational gate
+- [x] #6 The exact repair head passes Linux, macOS, and Windows build/unit gates plus CodeQL; the resulting main commit is verified as a separate post-merge operational gate
 <!-- AC:END -->
 
 ## Implementation Plan
@@ -62,10 +62,12 @@ Final task-only CI run 29155889111 exposed a second intermittent test seam on ma
 Fifth CI run 29156306681 disproved the common SPA readiness probe. On macOS, all 19 tests in server-tasks-spa-fallback.test.ts failed because each beforeEach retried and aborted the first root HTML compilation at 500ms; on Ubuntu, the same abort pattern cascaded into Bun ENOENT socket reads across later files. The scoped repair restores API-only common readiness and performs one observable, non-aborted root shell fetch only in the SPA navigation test, bounded by the unchanged 10-second test-runner limit; every subsequent route assertion retains its 1.5-second request bound. No timeout or concurrency value changed. Focused SPA stress passed 20/20 and the exact full local CI command passed 1,667 tests with 2 skips and 0 failures in 158.15s; typecheck, lint, and diff checks passed.
 
 Sixth exact-head CI run 29156637532 passed Ubuntu and macOS full units, all three compiled build/smoke jobs, Linux PTY supplement, JUnit uploads, and both CodeQL analyses. Windows ran all 1,667 tests and exposed one fixture-only failure: EPERM while atomically renaming a complete sibling config replacement over config.yml under a live watcher; 1,666 tests passed and product assertions for that case were not reached. The repair preserves the atomic editor-save simulation and retries only the rename through the existing bounded helper: 10 attempts with 25ms linear backoff, at most 1.125s sleep, with the final error preserved and whole-fixture cleanup unchanged. No test or request timeout changed. The focused file passed eight consecutive local repetitions plus both reviewers independent runs; the exact full local command passed 1,665 tests with 2 skips and 0 failures in 179.60s. Both review stages approved; typecheck, lint, and diff checks passed.
+
+Final implementation head b90bec178db0a26d6b4be12bf43ca7aa0520a33e passed exact-head CI run 29157113400: Ubuntu full unit plus PTY supplement 4m03s, macOS full unit 3m47s, Windows full unit 10m00s, and compiled build/smoke on all three platforms. CodeQL run 29157112261 passed both analyses. JUnit artifacts were non-empty at 66,221 bytes on Ubuntu, 66,845 bytes on macOS, and 65,529 bytes on Windows. PR merge state was CLEAN.
 <!-- SECTION:NOTES:END -->
 
 ## Final Summary
 
 <!-- SECTION:FINAL_SUMMARY:BEGIN -->
-Replaced Windows-only shards with one full fail-fast-false unit matrix for Ubuntu, macOS, and Windows using identical 10-second/max4 commands and JUnit artifacts. Isolated compiled browser/MCP smoke in a CLI-created no-Git project, eliminating checkout remote/ref assumptions; retained only evidence-backed Windows cache-primer and Linux PTY supplements. CI exposed and repaired an ancient cross-platform test fixture (`echo`) plus a silent prompt-stub loop without raising timeouts. Verified with 1,665-pass local full runs, 10/10 compiled smoke stress, two independent review stages, green exact-head three-OS unit/build CI, three JUnit artifacts, and green CodeQL.
+Unified CI into one fail-fast-false full unit job per OS with identical commands, limits, and JUnit artifacts; removed Windows shards. Moved compiled CLI/browser/MCP smoke into a CLI-created temporary no-Git project, eliminating repository remote and case-sensitivity coupling. CI evidence also repaired two legacy cross-platform fixtures, scoped SPA bundle warmup to the one navigation test without early aborts, and made atomic watched-config replacement tolerate transient Windows sharing contention without raising timeouts. Verified by two independent review stages, local full and focused stress, green exact-head Ubuntu/macOS/Windows unit and build gates, non-empty artifacts, and green CodeQL.
 <!-- SECTION:FINAL_SUMMARY:END -->
