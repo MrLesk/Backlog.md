@@ -86,6 +86,162 @@ describe("ContentStore", () => {
 		expect(tasks.map((task) => task.title)).toContain("Updated Task");
 	});
 
+	it("keeps already-published content observations from blocking queued work", async () => {
+		await Promise.all([
+			filesystem.saveTask(sampleTask),
+			filesystem.saveDocument(sampleDocument),
+			filesystem.saveDecision(sampleDecision),
+		]);
+		await store.ensureInitialized();
+
+		const published = store.getSnapshot();
+		const publishedTask = published.tasks[0];
+		const publishedDocument = published.documents[0];
+		const publishedDecision = published.decisions[0];
+		if (!publishedTask) {
+			throw new Error("Expected the published task");
+		}
+		if (!publishedDocument) {
+			throw new Error("Expected the published document");
+		}
+		if (!publishedDecision) {
+			throw new Error("Expected the published decision");
+		}
+
+		const delays: number[] = [];
+		const internals = store as unknown as {
+			delay: (ms: number) => Promise<void>;
+			enqueue: (fn: () => Promise<void>) => Promise<void>;
+			refreshDecisionsFromDisk: (expectedId?: string) => Promise<void>;
+			refreshDocumentsFromDisk: (expectedId?: string) => Promise<void>;
+			refreshTasksFromDisk: (expectedId?: string) => Promise<void>;
+			updateDecisionFromDisk: (decisionId: string) => Promise<void>;
+			updateTaskFromDisk: (taskId: string) => Promise<void>;
+		};
+		internals.delay = async (ms) => {
+			delays.push(ms);
+		};
+
+		const alreadyPublishedWork = internals.enqueue(async () => {
+			await internals.updateTaskFromDisk(publishedTask.id);
+			await internals.refreshTasksFromDisk(publishedTask.id);
+			await internals.refreshDocumentsFromDisk(publishedDocument.id);
+			await internals.updateDecisionFromDisk(publishedDecision.id);
+			await internals.refreshDecisionsFromDisk(publishedDecision.id);
+		});
+		let followUpRan = false;
+		const followUp = internals.enqueue(async () => {
+			followUpRan = true;
+		});
+		await Promise.all([alreadyPublishedWork, followUp]);
+
+		expect(delays).toEqual([]);
+		expect(followUpRan).toBe(true);
+		expect(store.getSnapshot()).toEqual(published);
+	});
+
+	it("retries incomplete content observations before publishing them", async () => {
+		await Promise.all([
+			filesystem.saveTask(sampleTask),
+			filesystem.saveDocument(sampleDocument),
+			filesystem.saveDecision(sampleDecision),
+		]);
+		await store.ensureInitialized();
+
+		const published = store.getSnapshot();
+		const publishedTask = published.tasks[0];
+		const publishedDocument = published.documents[0];
+		const publishedDecision = published.decisions[0];
+		if (!publishedTask) {
+			throw new Error("Expected the published task");
+		}
+		if (!publishedDocument) {
+			throw new Error("Expected the published document");
+		}
+		if (!publishedDecision) {
+			throw new Error("Expected the published decision");
+		}
+
+		const delays: number[] = [];
+		const internals = store as unknown as {
+			delay: (ms: number) => Promise<void>;
+			loadTasksWithLoader: () => Promise<Task[]>;
+			refreshDecisionsFromDisk: (expectedId?: string) => Promise<void>;
+			refreshDocumentsFromDisk: (expectedId?: string) => Promise<void>;
+			refreshTasksFromDisk: (expectedId?: string) => Promise<void>;
+			updateDecisionFromDisk: (decisionId: string) => Promise<void>;
+			updateTaskFromDisk: (taskId: string) => Promise<void>;
+		};
+		internals.delay = async (ms) => {
+			delays.push(ms);
+		};
+
+		const loadTask = filesystem.loadTask.bind(filesystem);
+		let targetedReads = 0;
+		filesystem.loadTask = async () => {
+			targetedReads += 1;
+			return targetedReads < 3 ? null : { ...publishedTask, title: "Targeted retry" };
+		};
+		try {
+			await internals.updateTaskFromDisk(publishedTask.id);
+		} finally {
+			filesystem.loadTask = loadTask;
+		}
+
+		let collectionReads = 0;
+		internals.loadTasksWithLoader = async () => {
+			collectionReads += 1;
+			return collectionReads < 3 ? [] : [{ ...publishedTask, title: "Collection retry" }];
+		};
+		await internals.refreshTasksFromDisk(publishedTask.id);
+
+		const listDocuments = filesystem.listDocuments.bind(filesystem);
+		let documentReads = 0;
+		filesystem.listDocuments = async () => {
+			documentReads += 1;
+			return documentReads < 3 ? [] : [{ ...publishedDocument, title: "Document retry" }];
+		};
+		try {
+			await internals.refreshDocumentsFromDisk(publishedDocument.id);
+		} finally {
+			filesystem.listDocuments = listDocuments;
+		}
+
+		const loadDecision = filesystem.loadDecision.bind(filesystem);
+		let targetedDecisionReads = 0;
+		filesystem.loadDecision = async () => {
+			targetedDecisionReads += 1;
+			return targetedDecisionReads < 3 ? null : { ...publishedDecision, title: "Targeted decision retry" };
+		};
+		try {
+			await internals.updateDecisionFromDisk(publishedDecision.id);
+		} finally {
+			filesystem.loadDecision = loadDecision;
+		}
+
+		const listDecisions = filesystem.listDecisions.bind(filesystem);
+		let decisionCollectionReads = 0;
+		filesystem.listDecisions = async () => {
+			decisionCollectionReads += 1;
+			return decisionCollectionReads < 3 ? [] : [{ ...publishedDecision, title: "Decision collection retry" }];
+		};
+		try {
+			await internals.refreshDecisionsFromDisk(publishedDecision.id);
+		} finally {
+			filesystem.listDecisions = listDecisions;
+		}
+
+		expect(targetedReads).toBe(3);
+		expect(collectionReads).toBe(3);
+		expect(documentReads).toBe(3);
+		expect(targetedDecisionReads).toBe(3);
+		expect(decisionCollectionReads).toBe(3);
+		expect(delays).toEqual([75, 150, 75, 150, 75, 150, 75, 150, 75, 150]);
+		expect(store.getTasks()[0]?.title).toBe("Collection retry");
+		expect(store.getDocuments()[0]?.title).toBe("Document retry");
+		expect(store.getDecisions()[0]?.title).toBe("Decision collection retry");
+	});
+
 	it("updates documents when new files are added", async () => {
 		await store.ensureInitialized();
 

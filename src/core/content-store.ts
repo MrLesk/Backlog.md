@@ -113,7 +113,7 @@ export class ContentStore {
 		}
 		const epoch = this.rootWatcherEpoch;
 		await this.enqueueRoot(epoch, async () => {
-			await this.refreshTasksFromDisk(undefined, undefined, epoch);
+			await this.refreshTasksFromDisk(undefined, epoch);
 		});
 	}
 
@@ -429,7 +429,7 @@ export class ContentStore {
 			// Accept any prefix pattern (task-, jira-, etc.) followed by ID and ending in .md
 			if (!file || !/^[a-zA-Z]+-/.test(file) || !file.endsWith(".md")) {
 				this.enqueueRoot(epoch, async () => {
-					await this.refreshTasksFromDisk(undefined, undefined, epoch);
+					await this.refreshTasksFromDisk(undefined, epoch);
 				});
 				return;
 			}
@@ -452,7 +452,7 @@ export class ContentStore {
 				}
 
 				if (eventType === "rename" && exists) {
-					await this.refreshTasksFromDisk(undefined, undefined, epoch);
+					await this.refreshTasksFromDisk(undefined, epoch);
 					return;
 				}
 
@@ -473,10 +473,7 @@ export class ContentStore {
 						if (!taskIdsEqual(result.id, normalizedTaskId)) {
 							return false;
 						}
-						if (!previous) {
-							return true;
-						}
-						return this.hasTaskChanged(previous, result);
+						return true;
 					},
 					12,
 					75,
@@ -484,7 +481,10 @@ export class ContentStore {
 				);
 				if (!this.isRootWatcherCurrent(epoch)) return;
 				if (!task) {
-					await this.refreshTasksFromDisk(normalizedTaskId, previous, epoch);
+					await this.refreshTasksFromDisk(normalizedTaskId, epoch);
+					return;
+				}
+				if (previous && !this.hasTaskChanged(previous, task)) {
 					return;
 				}
 
@@ -509,7 +509,7 @@ export class ContentStore {
 			const file = this.normalizeFilename(filename);
 			if (!file?.startsWith("decision-") || !file.endsWith(".md")) {
 				this.enqueueRoot(epoch, async () => {
-					await this.refreshDecisionsFromDisk(undefined, undefined, epoch);
+					await this.refreshDecisionsFromDisk(undefined, epoch);
 				});
 				return;
 			}
@@ -531,7 +531,7 @@ export class ContentStore {
 				}
 
 				if (eventType === "rename" && exists) {
-					await this.refreshDecisionsFromDisk(undefined, undefined, epoch);
+					await this.refreshDecisionsFromDisk(undefined, epoch);
 					return;
 				}
 
@@ -552,10 +552,7 @@ export class ContentStore {
 						if (result.id !== idPart) {
 							return false;
 						}
-						if (!previous) {
-							return true;
-						}
-						return this.hasDecisionChanged(previous, result);
+						return true;
 					},
 					12,
 					75,
@@ -563,7 +560,10 @@ export class ContentStore {
 				);
 				if (!this.isRootWatcherCurrent(epoch)) return;
 				if (!decision) {
-					await this.refreshDecisionsFromDisk(idPart, previous, epoch);
+					await this.refreshDecisionsFromDisk(idPart, epoch);
+					return;
+				}
+				if (previous && !this.hasDecisionChanged(previous, decision)) {
 					return;
 				}
 				if (!this.isRootWatcherCurrent(epoch)) return;
@@ -588,19 +588,19 @@ export class ContentStore {
 			const base = basename(absolutePath);
 			if (!base.endsWith(".md")) {
 				if (relativePath === null) {
-					await this.refreshDocumentsFromDisk(undefined, undefined, epoch);
+					await this.refreshDocumentsFromDisk(undefined, epoch);
 				}
 				return;
 			}
 
 			if (!base.startsWith("doc-")) {
-				await this.refreshDocumentsFromDisk(undefined, undefined, epoch);
+				await this.refreshDocumentsFromDisk(undefined, epoch);
 				return;
 			}
 
 			const [idPart] = base.split(" - ");
 			if (!idPart) {
-				await this.refreshDocumentsFromDisk(undefined, undefined, epoch);
+				await this.refreshDocumentsFromDisk(undefined, epoch);
 				return;
 			}
 
@@ -616,7 +616,7 @@ export class ContentStore {
 			}
 
 			if (eventType === "rename" && exists) {
-				await this.refreshDocumentsFromDisk(undefined, undefined, epoch);
+				await this.refreshDocumentsFromDisk(undefined, epoch);
 				return;
 			}
 
@@ -638,10 +638,7 @@ export class ContentStore {
 					if (result.id !== idPart) {
 						return false;
 					}
-					if (!previous) {
-						return true;
-					}
-					return this.hasDocumentChanged(previous, result);
+					return true;
 				},
 				12,
 				75,
@@ -649,7 +646,10 @@ export class ContentStore {
 			);
 			if (!this.isRootWatcherCurrent(epoch)) return;
 			if (!document) {
-				await this.refreshDocumentsFromDisk(idPart, previous, epoch);
+				await this.refreshDocumentsFromDisk(idPart, epoch);
+				return;
+			}
+			if (previous && !this.hasDocumentChanged(previous, document)) {
 				return;
 			}
 
@@ -788,7 +788,7 @@ export class ContentStore {
 			return;
 		}
 		await this.enqueueRoot(epoch, async () => {
-			await this.refreshDocumentsFromDisk(documentId, this.documents.get(documentId), epoch);
+			await this.refreshDocumentsFromDisk(documentId, epoch);
 		});
 	}
 
@@ -804,23 +804,42 @@ export class ContentStore {
 		return JSON.stringify(previous) !== JSON.stringify(next);
 	}
 
-	private hasTaskCollectionChanged(nextTasks: Task[]): boolean {
-		const nextCachedTasks = sortByTaskId(nextTasks);
-		if (this.cachedTasks.length !== nextCachedTasks.length) {
+	// Keep read validity separate from change detection: duplicate watcher events are valid no-ops.
+	private hasCollectionChanged<T>(
+		current: readonly T[],
+		next: readonly T[],
+		hasItemChanged: (previous: T, next: T) => boolean,
+	): boolean {
+		if (current.length !== next.length) {
 			return true;
 		}
 
-		return nextCachedTasks.some((task, index) => {
-			const previous = this.cachedTasks[index];
-			return !previous || this.hasTaskChanged(previous, task);
+		return next.some((item, index) => {
+			const previous = current[index];
+			return !previous || hasItemChanged(previous, item);
 		});
 	}
 
-	private async refreshTasksFromDisk(
-		expectedId?: string,
-		previous?: Task,
-		epoch = this.rootWatcherEpoch,
-	): Promise<void> {
+	private hasTaskCollectionChanged(nextTasks: Task[]): boolean {
+		return this.hasCollectionChanged(this.cachedTasks, sortByTaskId(nextTasks), (previous, next) =>
+			this.hasTaskChanged(previous, next),
+		);
+	}
+
+	private hasDocumentCollectionChanged(nextDocuments: Document[]): boolean {
+		const sortedDocuments = [...nextDocuments].sort((a, b) => a.title.localeCompare(b.title));
+		return this.hasCollectionChanged(this.cachedDocuments, sortedDocuments, (previous, next) =>
+			this.hasDocumentChanged(previous, next),
+		);
+	}
+
+	private hasDecisionCollectionChanged(nextDecisions: Decision[]): boolean {
+		return this.hasCollectionChanged(this.cachedDecisions, sortByTaskId(nextDecisions), (previous, next) =>
+			this.hasDecisionChanged(previous, next),
+		);
+	}
+
+	private async refreshTasksFromDisk(expectedId?: string, epoch = this.rootWatcherEpoch): Promise<void> {
 		const tasks = await this.retryRead(
 			async () => this.loadTasksWithLoader(),
 			(expected) => {
@@ -829,9 +848,6 @@ export class ContentStore {
 				}
 				const match = expected.find((task) => taskIdsEqual(task.id, expectedId));
 				if (!match) {
-					return false;
-				}
-				if (previous && !this.hasTaskChanged(previous, match)) {
 					return false;
 				}
 				return true;
@@ -850,11 +866,7 @@ export class ContentStore {
 		this.notify("tasks");
 	}
 
-	private async refreshDocumentsFromDisk(
-		expectedId?: string,
-		previous?: Document,
-		epoch = this.rootWatcherEpoch,
-	): Promise<void> {
+	private async refreshDocumentsFromDisk(expectedId?: string, epoch = this.rootWatcherEpoch): Promise<void> {
 		const documents = await this.retryRead(
 			async () => this.filesystem.listDocuments(),
 			(expected) => {
@@ -863,9 +875,6 @@ export class ContentStore {
 				}
 				const match = expected.find((doc) => doc.id === expectedId);
 				if (!match) {
-					return false;
-				}
-				if (previous && !this.hasDocumentChanged(previous, match)) {
 					return false;
 				}
 				return true;
@@ -877,15 +886,14 @@ export class ContentStore {
 		if (!documents || !this.isRootWatcherCurrent(epoch)) {
 			return;
 		}
+		if (!this.hasDocumentCollectionChanged(documents)) {
+			return;
+		}
 		this.replaceDocuments(documents);
 		this.notify("documents");
 	}
 
-	private async refreshDecisionsFromDisk(
-		expectedId?: string,
-		previous?: Decision,
-		epoch = this.rootWatcherEpoch,
-	): Promise<void> {
+	private async refreshDecisionsFromDisk(expectedId?: string, epoch = this.rootWatcherEpoch): Promise<void> {
 		const decisions = await this.retryRead(
 			async () => this.filesystem.listDecisions(),
 			(expected) => {
@@ -896,9 +904,6 @@ export class ContentStore {
 				if (!match) {
 					return false;
 				}
-				if (previous && !this.hasDecisionChanged(previous, match)) {
-					return false;
-				}
 				return true;
 			},
 			12,
@@ -906,6 +911,9 @@ export class ContentStore {
 			() => this.isRootWatcherCurrent(epoch),
 		);
 		if (!decisions || !this.isRootWatcherCurrent(epoch)) {
+			return;
+		}
+		if (!this.hasDecisionCollectionChanged(decisions)) {
 			return;
 		}
 		this.replaceDecisions(decisions);
@@ -926,12 +934,15 @@ export class ContentStore {
 		const previous = this.tasks.get(normalizedTaskId);
 		const task = await this.retryRead(
 			async () => this.filesystem.loadTask(taskId),
-			(result) => result !== null && (!previous || this.hasTaskChanged(previous, result)),
+			(result) => result !== null,
 			12,
 			75,
 			() => this.isRootWatcherCurrent(epoch),
 		);
 		if (!task || !this.isRootWatcherCurrent(epoch)) {
+			return;
+		}
+		if (previous && !this.hasTaskChanged(previous, task)) {
 			return;
 		}
 		this.tasks.set(task.id, task);
@@ -943,12 +954,15 @@ export class ContentStore {
 		const previous = this.decisions.get(decisionId);
 		const decision = await this.retryRead(
 			async () => this.filesystem.loadDecision(decisionId),
-			(result) => result !== null && (!previous || this.hasDecisionChanged(previous, result)),
+			(result) => result !== null,
 			12,
 			75,
 			() => this.isRootWatcherCurrent(epoch),
 		);
 		if (!decision || !this.isRootWatcherCurrent(epoch)) {
+			return;
+		}
+		if (previous && !this.hasDecisionChanged(previous, decision)) {
 			return;
 		}
 		this.decisions.set(decision.id, decision);
