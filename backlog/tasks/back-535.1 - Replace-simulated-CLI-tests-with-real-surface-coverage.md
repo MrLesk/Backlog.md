@@ -1,7 +1,7 @@
 ---
 id: BACK-535.1
 title: Replace simulated CLI tests with real surface coverage
-status: In Progress
+status: Done
 assignee:
   - '@test-hygiene-slice-a'
 created_date: '2026-07-11 08:52'
@@ -28,7 +28,7 @@ Remove false assurance from tests that synthesize CLI behavior through Core or h
 - [x] #3 Windows test paths execute the real CLI and never return hard-coded help or command output
 - [x] #4 The repository-dependent cli-priority-filtering suite is removed or rewritten; priority filtering, sorting, validation, casing, composition, and plain indicators remain covered by named isolated tests
 - [x] #5 No production source behavior changes
-- [ ] #6 Focused tests, repeated stress runs, full tests, typecheck, Biome, and build pass, with before/after runtime and test-count deltas recorded
+- [x] #6 Focused tests, repeated stress runs, full tests, typecheck, Biome, and build pass, with before/after runtime and test-count deltas recorded
 <!-- AC:END -->
 
 ## Implementation Plan
@@ -51,9 +51,15 @@ Verification: changed focused suites passed 5 consecutive runs (11/11 each, 0 fa
 Quality review requested restoration of CLI help discoverability coverage for --dod and --no-dod-defaults plus an explicit help exit-code assertion. Added all three assertions to the real subprocess test. Post-fix verification: parent shorthand/help passed 5 consecutive runs; Definition of Done CLI passed 5/5; TypeScript, focused Biome, and diff checks pass.
 <!-- SECTION:NOTES:END -->
 
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+Replaced the legacy simulated CLI test harness with real isolated CLI subprocess coverage, removed the repository-dependent priority suite against named retained coverage, and restored all reviewed help discoverability assertions. The final suite removes 20 misleading or redundant tests and one test file, cutting the measured full-run time from 184.87s to 160.66s (13.1%) without production changes. Five repeated focused runs, the full 1,625-test suite, typecheck, Biome, build, specification review, and final quality review passed.
+<!-- SECTION:FINAL_SUMMARY:END -->
+
 ## Definition of Done
 <!-- DOD:BEGIN -->
-- [ ] #1 bunx tsc --noEmit passes when TypeScript touched
-- [ ] #2 bun run check . passes when formatting/linting touched
-- [ ] #3 bun test (or scoped test) passes
+- [x] #1 bunx tsc --noEmit passes when TypeScript touched
+- [x] #2 bun run check . passes when formatting/linting touched
+- [x] #3 bun test (or scoped test) passes
 <!-- DOD:END -->
