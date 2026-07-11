@@ -97,7 +97,7 @@ describe("atomic task creation", () => {
 		expect([createdA.task.id, createdB.task.id].sort()).toEqual(["TASK-1", "TASK-2"]);
 	});
 
-	it("internally bypasses create-lock serialization when the legacy escape hatch is disabled", async () => {
+	it("internally bypasses create-lock serialization when the global lock is disabled by the legacy escape hatch", async () => {
 		process.env.USE_GLOBAL_TASK_ID_LOCK = "false";
 
 		const first = new Core(testDir);
