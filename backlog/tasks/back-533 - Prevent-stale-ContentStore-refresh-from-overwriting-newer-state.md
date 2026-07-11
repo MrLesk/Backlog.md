@@ -5,7 +5,7 @@ status: In Progress
 assignee:
   - '@pr755-f768-code'
 created_date: '2026-07-10 19:28'
-updated_date: '2026-07-11 00:52'
+updated_date: '2026-07-11 10:24'
 labels:
   - concurrency
   - release-blocker
@@ -31,9 +31,9 @@ Issue #753 reports a release-blocking read-after-write race: an older asynchrono
 - [x] #1 A deterministic held-older/newer-write regression proves stale refresh completion cannot overwrite the newer task state
 - [x] #2 Immediate task read, list, and search consumers observe the persisted edit rather than an older refresh snapshot
 - [x] #3 The shared publication-order guarantee applies consistently to tasks, documents, decisions, configuration, and root lifecycle without cross-root leakage
-- [ ] #4 Genuine external watcher changes still refresh state, including after shutdown and restart
+- [x] #4 Genuine external watcher changes still refresh state, including after shutdown and restart
 - [x] #5 Duplicate-repair serialization and existing watcher semantics remain intact
-- [ ] #6 Focused stress, typecheck, Biome, full tests, and compiled build pass
+- [x] #6 Focused stress, typecheck, Biome, full tests, and compiled build pass
 <!-- AC:END -->
 
 ## Implementation Plan
@@ -79,11 +79,13 @@ Final lifecycle correction and verification: publication ownership now uses phys
 Merge gate reopened after exact-head Windows CI reproduced the A→B→A watcher lifecycle test timeout twice at 30 seconds. Two outstanding event waits then rejected after the outer timeout and contaminated the following test. No merge; add phase-local diagnostics and correct the Windows-specific behavior/test before re-verification.
 
 Windows diagnostic head f2f5693 localized the repeated failure in CI run 29133276160, job 86492659570: `Timed out waiting for held root B config load` after 10.216 seconds. The queue never reached the config snapshot loader. Self-cleaning labeled waits prevented the prior rejection leak, and the following ContentStore test passed. Independent BACK-534 investigation on main measured duplicate unchanged watcher work occupying the same serialized queue for 4,986 ms in targeted retry plus 4,987 ms in fallback refresh (9,973 ms total). Keep PR #757 blocked and do not duplicate that shared production fix here; rebase onto corrected main after BACK-534 lands, then reassess the temporary diagnostic harness and rerun all gates.
+
+Integrated corrected main/BACK-534 without force. Preserved physical-root publication ownership and per-item generation/version reconciliation while adopting bounded coalesced deferred watcher rechecks outside the serialized queue. Removed superseded watcher/refresh/retry implementations after semantic merge. Kept the self-cleaning labeled lifecycle waits; replaced one flaky native fs.watch delivery assertion with deterministic bound-root and active-watcher invariants after reproducing the flake 1/4, then passed that transition pair 100/100. Final merged verification: focused ContentStore/Search/MCP 85/85; critical lifecycle/concurrency stress 40/40 plus transition recovery 100/100; TypeScript, Biome (322 files), diff check, build green; authoritative isolated suite 1,663 passed, 2 expected interactive skips, 0 failed, 6,796 assertions across 188 files in 171.37s. Full log: /tmp/back533-final-full.log.
 <!-- SECTION:NOTES:END -->
 
 ## Definition of Done
 <!-- DOD:BEGIN -->
 - [x] #1 bunx tsc --noEmit passes when TypeScript touched
 - [x] #2 bun run check . passes when formatting/linting touched
-- [ ] #3 bun test (or scoped test) passes
+- [x] #3 bun test (or scoped test) passes
 <!-- DOD:END -->
