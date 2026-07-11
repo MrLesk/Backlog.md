@@ -1,10 +1,11 @@
 ---
 id: BACK-535.3
 title: Make filesystem fixture cleanup fail visible
-status: To Do
-assignee: []
+status: In Progress
+assignee:
+  - '@test-hygiene-filesystem'
 created_date: '2026-07-11 09:21'
-updated_date: '2026-07-11 10:58'
+updated_date: '2026-07-11 11:13'
 labels: []
 dependencies: []
 parent_task_id: BACK-535
@@ -40,6 +41,12 @@ Every site is identified by the current-main line captured in the audit; impleme
 3. Confirm no BACK-535.4 resource-owning site and no justified/expected catch site changed.
 4. Run repeated focused batches locally, full static/build/test gates, then obtain successful GitHub Actions evidence from the actual Windows test matrix.
 <!-- SECTION:PLAN:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+Context Hunter L2 brief: this is a wide mechanical test-only slice spanning 59 teardown and 37 redundant pre-clean sites. Follow the direct afterEach safeCleanup/rm pattern established by BACK-535.2; remove pre-clean only when createUniqueTestDir or mkdtemp already guarantees uniqueness; preserve primary errors for any in-test resource via a hook or drained finally. Reuse safeCleanup, remove only imports made unused, and do not touch BACK-535.4 resource files, BACK-535.5 vacuous sites, production code, or legitimate catches. Primary risks are overlapping setup/teardown edits, stale line numbers after rewrites, Windows file-handle cleanup, and accidentally changing fixture behavior.
+<!-- SECTION:NOTES:END -->
 
 ## Definition of Done
 <!-- DOD:BEGIN -->
