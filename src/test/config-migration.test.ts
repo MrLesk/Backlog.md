@@ -5,7 +5,7 @@ import { Core } from "../core/backlog.ts";
 import { FileSystem } from "../file-system/operations.ts";
 import { createUniqueTestDir, safeCleanup, withTimeout } from "./test-utils.ts";
 
-describe("Config Loading & Migration", () => {
+describe("Config loading and legacy migration", () => {
 	let testRoot: string;
 	let backlogDir: string;
 	let configPath: string;
