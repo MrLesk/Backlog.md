@@ -5,7 +5,7 @@ status: In Progress
 assignee:
   - '@mcp-milestone-ci'
 created_date: '2026-07-11 00:41'
-updated_date: '2026-07-11 09:00'
+updated_date: '2026-07-11 09:09'
 labels:
   - ci
   - mcp
@@ -71,6 +71,8 @@ Stale-path correction verification: deterministic rename regression passed 50/50
 Final spec review found that replacement-level cancellation still depended on collection change detection. Decision snapshots do not expose filenames, so renaming a decision file without changing its bytes produced an equal wildcard snapshot, skipped replacement, and left the old-path identity job live. The exact fail-first moved task, document, and decision files to cosmetic filenames without changing content, published wildcard snapshots, then fired captured old timers with no later event. Task and document survived because their models carry paths; decision failed with expected Adopt shared cache, received undefined. The corrected wildcard rule cancels pending identity jobs for every identity successfully observed before content-equality early return. Empty or missing identities are not cancelled, preserving recovery, and wildcard no-op snapshots still do not poll.
 
 Same-content wildcard verification: filename-only task, document, and decision rename regression passed 50/50 with 600 assertions; complete ContentStore suite passed 10/10 runs with 120 tests and 800 assertions; watcher-enabled MCP milestone blocking regression passed 5/5. Focused ContentStore plus MCP suites passed 45/45 with 207 assertions. bunx tsc --noEmit, bun run check . (324 files), bun run build, and git diff --check passed. Authoritative bun test --isolate --timeout=10000 passed 1,649 tests with 2 intentional skips, 0 failures, and 6,748 assertions across 189 files in 173.53s.
+
+Final quality simplification: removed redundant deferred-job cancellation from generic collection replacement helpers. Cancellation now has one responsibility site: successful wildcard reconciliation cancels every present identity before collection-equality evaluation. Verification after cleanup: ContentStore 12/12 and 10x stress 120/120; MCP milestones 33/33 and blocking case 5/5; full isolated suite 1,649 pass, 2 expected skips, 0 fail, 6,748 assertions across 189 files; TypeScript, Biome (324 files), build, and diff-check passed.
 <!-- SECTION:NOTES:END -->
 
 ## Definition of Done

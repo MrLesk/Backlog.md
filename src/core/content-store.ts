@@ -670,7 +670,6 @@ export class ContentStore {
 	private replaceTasks(tasks: Task[]): void {
 		this.tasks.clear();
 		for (const task of tasks) {
-			this.cancelDeferredRecheck(`task:${normalizeTaskId(task.id)}`);
 			this.tasks.set(task.id, task);
 		}
 		this.cachedTasks = sortByTaskId(Array.from(this.tasks.values()));
@@ -679,7 +678,6 @@ export class ContentStore {
 	private replaceDocuments(documents: Document[]): void {
 		this.documents.clear();
 		for (const document of documents) {
-			this.cancelDeferredRecheck(`document:${document.id}`);
 			this.documents.set(document.id, document);
 		}
 		this.cachedDocuments = [...this.documents.values()].sort((a, b) => a.title.localeCompare(b.title));
@@ -688,7 +686,6 @@ export class ContentStore {
 	private replaceDecisions(decisions: Decision[]): void {
 		this.decisions.clear();
 		for (const decision of decisions) {
-			this.cancelDeferredRecheck(`decision:${decision.id}`);
 			this.decisions.set(decision.id, decision);
 		}
 		this.cachedDecisions = sortByTaskId(Array.from(this.decisions.values()));
