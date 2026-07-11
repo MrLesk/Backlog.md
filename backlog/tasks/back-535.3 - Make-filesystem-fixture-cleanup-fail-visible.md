@@ -5,7 +5,7 @@ status: In Progress
 assignee:
   - '@test-hygiene-filesystem'
 created_date: '2026-07-11 09:21'
-updated_date: '2026-07-11 11:36'
+updated_date: '2026-07-11 11:50'
 labels: []
 dependencies: []
 parent_task_id: BACK-535
@@ -52,6 +52,8 @@ Implemented all 96 owned sites across 56 test files: removed 37 redundant unique
 Specification review found acceptance-criteria-structured retained a fixed, unused repository temp directory after its catch removal. Removed the dead TEMP_DIR constant, beforeAll/afterAll hooks, and fs/path imports rather than replacing an unused fixture. Focused test passed 1/1; the integrated changed-suite rerun passed 617 tests across 56 files with 2,257 assertions and 0 failures in 89.18s. TypeScript, Biome over 323 files, build, diff checks, and the exact remaining-catch count of 50 passed.
 
 Independent specification review approved the corrected exact diff after removal of the unused fixed TEMP_DIR fixture. Fresh quality review approved with no actionable findings after independently reconciling 146 baseline catches minus 96 owned removals to 50 documented exclusions, running the changed suite 617/617, and verifying TypeScript/Biome. AC1 remains intentionally unchecked until the published exact head passes the real GitHub Actions Windows matrix.
+
+First exact-head Windows CI exposed two failures. Shard 2 produced an unhandled ViewSwitcher BackgroundLoader error after afterEach removed its Git working directory; two updateState tests started background loads without awaiting them. Attached to each existing load, drained it with Promise.allSettled in finally so assertion failures remain primary, and asserted successful completion afterward. No production change, sleep, or timeout increase. ViewSwitcher passed 50/50 stress. The first full rerun hit an unrelated unchanged server SPA 5-second timeout; that exact test passed 10/10 in isolation, and a captured full rerun then passed 1,666 tests with 2 intentional skips, 0 failures, and 6,806 assertions across 189 files in 169.45s. TypeScript, Biome over 323 files, build, diff checks, and catch count 50 pass. Windows shard 1 also timed out in excluded build.test at its existing 30-second limit; no change is justified without recurrence after the actionable fix.
 <!-- SECTION:NOTES:END -->
 
 ## Definition of Done

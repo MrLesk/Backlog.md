@@ -100,7 +100,7 @@ describe("View Switcher", () => {
 	});
 
 	describe("State updates", () => {
-		it("should update state correctly", () => {
+		it("should update state correctly", async () => {
 			const initialState: ViewState = {
 				type: "task-list",
 				tasks: [],
@@ -126,9 +126,15 @@ describe("View Switcher", () => {
 				selectedTask: newTask,
 				type: "task-detail",
 			});
+			const backgroundLoad = switcher.getKanbanData();
 
-			expect(updatedState.type).toBe("task-detail");
-			expect(updatedState.selectedTask).toEqual(newTask);
+			try {
+				expect(updatedState.type).toBe("task-detail");
+				expect(updatedState.selectedTask).toEqual(newTask);
+			} finally {
+				await Promise.allSettled([backgroundLoad]);
+			}
+			await expect(backgroundLoad).resolves.toBeDefined();
 		});
 	});
 
@@ -168,7 +174,7 @@ describe("View Switcher", () => {
 	});
 
 	describe("View change callback", () => {
-		it("should call onViewChange when state updates", () => {
+		it("should call onViewChange when state updates", async () => {
 			let callbackState: ViewState | null = null;
 
 			const initialState: ViewState = {
@@ -199,14 +205,20 @@ describe("View Switcher", () => {
 				selectedTask: newTask,
 				type: "task-detail",
 			});
+			const backgroundLoad = switcher.getKanbanData();
 
-			expect(callbackState).toBeTruthy();
-			if (!callbackState) {
-				throw new Error("callbackState should not be null");
+			try {
+				expect(callbackState).toBeTruthy();
+				if (!callbackState) {
+					throw new Error("callbackState should not be null");
+				}
+				const state = callbackState as unknown as ViewState;
+				expect(state.type).toBe("task-detail");
+				expect(state.selectedTask).toEqual(newTask);
+			} finally {
+				await Promise.allSettled([backgroundLoad]);
 			}
-			const state = callbackState as unknown as ViewState;
-			expect(state.type).toBe("task-detail");
-			expect(state.selectedTask).toEqual(newTask);
+			await expect(backgroundLoad).resolves.toBeDefined();
 		});
 	});
 });
