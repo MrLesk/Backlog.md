@@ -1,6 +1,7 @@
 [test]
 # Timeout for individual tests - increased for Windows compatibility
 timeout = "10s"
+preload = ["./src/test/react-dom-preload.ts"]
 
 # Reduce memory usage during test runs to prevent WSL2 crashes
 smol = true

@@ -540,17 +540,8 @@ const clickWithHistory = async (element: Element, expectations: FetchExpectation
 const setInputValue = async (input: HTMLInputElement, value: string, expectations: FetchExpectation[] = []) => {
 	await runOperation(`set input to ${JSON.stringify(value)}`, expectations, () => {
 		const valueSetter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, "value")?.set;
-		input.focus();
 		valueSetter?.call(input, value);
-		input.dispatchEvent(new window.InputEvent("input", { bubbles: true, inputType: "insertText", data: value }));
-		input.dispatchEvent(new window.Event("change", { bubbles: true }));
-		const reactPropsKey = Object.keys(input).find((key) => key.startsWith("__reactProps$"));
-		if (reactPropsKey) {
-			const reactProps = (input as unknown as Record<string, { onChange?: (event: { target: HTMLInputElement }) => void }>)[
-				reactPropsKey
-			];
-			reactProps?.onChange?.({ target: input });
-		}
+		input.dispatchEvent(new window.Event("input", { bubbles: true }));
 	});
 };
 
