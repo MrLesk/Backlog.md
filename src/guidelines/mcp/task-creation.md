@@ -93,6 +93,11 @@ Create all tasks in the same session to maintain consistency and context.
 
 **Ask for clarification** if requirements are ambiguous
 
+**Do not add implementation research, an implementation plan, or a speculative code approach during creation.** MCP task
+creation records only durable intent, context, scope, acceptance criteria, references, and dependencies. The future
+worker researches the then-current system and records the plan after taking the task into progress. CLI instructions
+remain the canonical workflow; this legacy MCP guide mirrors the same task lifecycle for adapter users.
+
 **Drafts (exceptional):** Default to creating regular tasks (e.g., To Do) for any work you are committing to track. Only create a Draft when the user explicitly requests a draft, or when there is clear uncertainty that makes a commitment inappropriate (e.g., missing requirements and the user wants a placeholder). Use `task_create` with status `Draft` to create a draft, `task_edit` to promote/demote by changing status, and pass status `Draft` to `task_list`/`task_search` to include drafts. Drafts are excluded unless explicitly filtered.
 
 ### Step 6: Report created tasks
@@ -116,8 +121,13 @@ Then create the tasks and report what was created.
 
 **Standalone task example (includes tests/docs):** "Add API endpoint for bulk updates" with acceptance criteria that include required tests and documentation updates in the same task.
 
-### Additional Context Gathering
+### Durable Context at Creation
 
-- Use `task_view` to read the description, acceptance criteria, dependencies, current plan, and notes before acting
-- Inspect relevant code/docs/tests in the repository to ground your understanding
-- When permitted, consult up-to-date external references (design docs, service manuals, API specs) so your plan reflects current reality
+- Use `task_view` on related work only to avoid duplicates and recover durable product decisions, scope, acceptance
+  criteria, dependencies, and references.
+- Gather the intended outcome, confirmed constraints, acceptance criteria, dependencies, and reference material needed to
+  understand the work order. Do not inspect implementation code or tests, or perform external implementation research,
+  to draft a plan for future work.
+- The execution worker performs current-system research after the task is active and records the plan then. The narrow
+  exception is already-started work created directly in an active status: it may preserve a current plan based on
+  research already completed, but task creation itself does not trigger that research.

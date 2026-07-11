@@ -130,11 +130,40 @@ describe("CLI Integration", () => {
 			expect(taskCreation).toContain(
 				"If you will continue from task creation into implementation in the same session, stop and read `backlog instructions task-execution` before viewing, assigning, planning, editing, or implementing a task.",
 			);
+			expect(taskCreation).toContain(
+				"For future work, do **not** add an implementation plan or speculative code approach",
+			);
+			expect(taskCreation).toContain(
+				"The narrow exception is already-started work being created directly in a configured active status",
+			);
 			expect(taskExecution).toContain(
 				'backlog task list --status "<active status>" --assignee @your-name --labels backend --search "auth" --limit 20 --plain',
 			);
 			expect(taskExecution).toContain('backlog task edit BACK-123 -s "<active status>" -a @your-name');
 			expect(taskExecution).not.toContain('backlog task edit BACK-123 -s "In Progress" -a @your-name');
+			expect(taskExecution).toContain(
+				"Research the current system, including relevant code, tests, conventions, and recent changes",
+			);
+			expect(taskExecution).toContain("Record the current plan in the task before implementation");
+			expect(taskExecution).toContain(
+				"If the plan contains a material product, architecture, or workflow decision, or the project or user requires plan",
+			);
+			const viewIndex = taskExecution.indexOf("backlog task view BACK-123 --plain");
+			const eligibilityIndex = taskExecution.indexOf("Review its current status");
+			const activateIndex = taskExecution.indexOf('backlog task edit BACK-123 -s "<active status>" -a @your-name');
+			const researchIndex = taskExecution.indexOf("Research the current system");
+			const planIndex = taskExecution.indexOf("Record the current plan in the task");
+			const conditionalReviewIndex = taskExecution.indexOf(
+				"If the plan contains a material product, architecture, or workflow decision",
+			);
+			const implementIndex = taskExecution.indexOf("### Execution Workflow");
+			expect(viewIndex).toBeGreaterThan(-1);
+			expect(eligibilityIndex).toBeGreaterThan(viewIndex);
+			expect(activateIndex).toBeGreaterThan(eligibilityIndex);
+			expect(researchIndex).toBeGreaterThan(activateIndex);
+			expect(planIndex).toBeGreaterThan(researchIndex);
+			expect(conditionalReviewIndex).toBeGreaterThan(planIndex);
+			expect(implementIndex).toBeGreaterThan(conditionalReviewIndex);
 			expect(taskExecution).toContain(
 				"Do not check acceptance criteria, write the final summary, or move the task to the terminal status from this guide alone.",
 			);
@@ -272,6 +301,7 @@ describe("CLI Integration", () => {
 			const createHelp = await $`bun ${CLI_PATH} task create --help`.cwd(TEST_DIR).text();
 			const listHelp = await $`bun ${CLI_PATH} task list --help`.cwd(TEST_DIR).text();
 			const editHelp = await $`bun ${CLI_PATH} task edit --help`.cwd(TEST_DIR).text();
+			const createHelpCompact = createHelp.replace(/\s+/g, " ");
 			const editHelpCompact = editHelp.replace(/\s+/g, " ");
 			const completeHelp = await $`bun ${CLI_PATH} task complete --help`.cwd(TEST_DIR).text();
 
@@ -280,6 +310,12 @@ describe("CLI Integration", () => {
 			expect(createHelp).toContain("status: one of configured statuses: Draft, To Do, In Progress, Done");
 			expect(createHelp).toContain("priority: one of configured priorities: High, Medium, Low");
 			expect(createHelp).toContain("ordinal: Integer");
+			expect(createHelpCompact).toContain(
+				"--plan <text> add a plan only for already-started work created directly in an active status (for example, In Progress)",
+			);
+			expect(createHelp).toContain(
+				"plan: Markdown - Only for already-started work created directly in a configured active status (for example, In Progress)",
+			);
 			expect(listHelp).toContain("status: one of configured statuses: To Do, In Progress, Done");
 			expect(listHelp).not.toContain("status: one of configured statuses: Draft, To Do, In Progress, Done");
 			expect(listHelp).toContain("priority: one of configured priorities: High, Medium, Low");
