@@ -5,7 +5,7 @@ status: In Progress
 assignee:
   - '@build-ci-cleanup'
 created_date: '2026-07-11 13:23'
-updated_date: '2026-07-11 14:29'
+updated_date: '2026-07-11 14:32'
 labels: []
 dependencies: []
 references:
@@ -35,8 +35,10 @@ Repair the post-merge compiled browser smoke so packaging verification cannot de
 - [x] #3 Ubuntu, macOS, and Windows each run the complete unit suite through one shared matrix job with the same install, typecheck, lint, test command, timeout, concurrency, and JUnit artifact behavior
 - [x] #4 Unit and build matrices use fail-fast false so one OS cannot cancel diagnostic coverage on another
 - [x] #5 Windows sharding and its aggregate compatibility job are removed, while the Linux-only interactive TUI step remains explicitly justified as a PTY-specific supplemental gate
-- [x] #6 The exact repair head passes Linux, macOS, and Windows build/unit gates plus CodeQL; the resulting main commit is verified as a separate post-merge operational gate
+- [ ] #6 The exact repair head passes Linux, macOS, and Windows build/unit gates plus CodeQL; the resulting main commit is verified as a separate post-merge operational gate
 <!-- AC:END -->
+
+
 
 ## Implementation Plan
 
