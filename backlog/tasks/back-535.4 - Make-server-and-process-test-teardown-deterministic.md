@@ -4,7 +4,7 @@ title: Make server and process test teardown deterministic
 status: To Do
 assignee: []
 created_date: '2026-07-11 09:21'
-updated_date: '2026-07-11 10:38'
+updated_date: '2026-07-11 10:51'
 labels: []
 dependencies: []
 parent_task_id: BACK-535
@@ -15,7 +15,7 @@ ordinal: 175000
 ## Description
 
 <!-- SECTION:DESCRIPTION:BEGIN -->
-Replace swallowed or incomplete shutdown in resource-owning tests after BACK-535.2. The complete catch scan assigns these 24 swallowed cleanup/pre-clean sites to this task: src/test/mcp-task-complete.test.ts:42, src/test/worktree-refresh.test.ts:28, src/test/mcp-drafts.test.ts:44, src/test/mcp-task-type-filtering.test.ts:49, src/test/mcp-milestones.test.ts:69, src/test/mcp-stdio-exit.test.ts:184, src/test/build.test.ts:81, :88, :177, and :207, src/test/mcp-final-summary.test.ts:42, src/test/cli-board-integration.test.ts:15 and :58, src/test/board-command.test.ts:15, :75, :107, and :108, src/test/search-service.test.ts:70, src/test/mcp-refs-docs.test.ts:42, src/test/mcp-tasks.test.ts:48 and :1195, src/test/mcp-definition-of-done-defaults.test.ts:44, src/test/mcp-documents.test.ts:44, and src/test/content-store.test.ts:58.
+Replace swallowed or incomplete shutdown in resource-owning tests after BACK-535.2. The complete 145-site test-infrastructure catch scan assigns these 24 swallowed cleanup/pre-clean sites to this task: src/test/mcp-task-complete.test.ts:42, src/test/worktree-refresh.test.ts:28, src/test/mcp-drafts.test.ts:44, src/test/mcp-task-type-filtering.test.ts:49, src/test/mcp-milestones.test.ts:69, src/test/mcp-stdio-exit.test.ts:184, src/test/build.test.ts:81, :88, :177, and :207, src/test/mcp-final-summary.test.ts:42, src/test/cli-board-integration.test.ts:15 and :58, src/test/board-command.test.ts:15, :75, :107, and :108, src/test/search-service.test.ts:70, src/test/mcp-refs-docs.test.ts:42, src/test/mcp-tasks.test.ts:48 and :1195, src/test/mcp-definition-of-done-defaults.test.ts:44, src/test/mcp-documents.test.ts:44, and src/test/content-store.test.ts:58.
 
 The owned files are src/test/board-command.test.ts, src/test/build.test.ts, src/test/cli-board-integration.test.ts, src/test/config-watcher.test.ts, src/test/content-store.test.ts, src/test/mcp-definition-of-done-defaults.test.ts, src/test/mcp-documents.test.ts, src/test/mcp-drafts.test.ts, src/test/mcp-final-summary.test.ts, src/test/mcp-milestones.test.ts, src/test/mcp-refs-docs.test.ts, src/test/mcp-stdio-exit.test.ts, src/test/mcp-task-complete.test.ts, src/test/mcp-task-type-filtering.test.ts, src/test/mcp-tasks.test.ts, src/test/search-service.test.ts, and src/test/worktree-refresh.test.ts. Config-watcher has no swallowed catch in the current scan but remains owned because watcher shutdown must be proven deterministic.
 
