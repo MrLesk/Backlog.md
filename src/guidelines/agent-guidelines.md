@@ -301,9 +301,16 @@ Bad Example (Implementation Step):
 
 ## 5. Implementing Tasks
 
-### 5.1. First step when implementing a task
+### 5.1. Inspect before pickup, then start eligible work
 
-The very first things you must do when you take over a task are:
+Before mutating a task, read its current record and confirm its status, scope, acceptance criteria, and dependencies make
+it eligible to start:
+
+```bash
+backlog task 42 --plain
+```
+
+Only then take over the task:
 
 * set the task in progress
 * assign it to yourself
@@ -320,6 +327,9 @@ Before planning, check if the task has any attached `references` or `documentati
 - **Documentation**: Design docs, API specs, or other materials for understanding context
 
 These are visible in the task view output. Review them to understand the full context before drafting your plan.
+
+After the task is In Progress and assigned to you, research the current system: inspect relevant code, tests, conventions,
+and recent changes. Do not rely on an implementation approach proposed when the task was created.
 
 ### 5.3. Create an Implementation Plan (The "how")
 
@@ -373,8 +383,10 @@ implementation.
 - Creation phase: provide Title, Description, Acceptance Criteria, and optionally labels/priority/assignee.
 - When you begin work, switch to edit, set the task in progress and assign to yourself
   `backlog task edit <id> -s "In Progress" -a "..."`.
-- Think about how you would solve the task and add the plan: `backlog task edit <id> --plan "..."`.
-- After updating the plan, share it with the user and ask for confirmation. Do not begin coding until the user approves the plan or explicitly tells you to skip the review.
+- Research the current code, tests, conventions, and recent changes, then add the current plan: `backlog task edit <id> --plan "..."`.
+- If the plan contains a material product, architecture, or workflow decision, or the project or user requires review,
+  share it and wait for explicit approval before implementation. Routine plans can proceed when no review was requested
+  and they stay within confirmed scope.
 - Append Implementation Notes during implementation using `--append-notes` as progress is made.
 - Add Final Summary only after completing the work: `backlog task edit <id> --final-summary "..."` (replace) or append using `--append-final-summary`.
 
@@ -397,30 +409,33 @@ implementation.
 # 1. Identify work
 backlog task list -s "To Do" --plain
 
-# 2. Read task details
+# 2. Read task details and confirm status, scope, acceptance criteria, and dependencies
 backlog task 42 --plain
 
-# 3. Start work: assign yourself & change status
+# 3. Start eligible work: assign yourself & change status
 backlog task edit 42 -s "In Progress" -a @myself
 
-# 4. Add implementation plan
+# 4. Research the current code, tests, conventions, and recent changes after activation
+
+# 5. Add the current implementation plan
 backlog task edit 42 --plan "1. Analyze\n2. Refactor\n3. Test"
 
-# 5. Share the plan with the user and wait for approval (do not write code yet)
+# 6. If the plan contains a material product, architecture, or workflow decision,
+#    or the project or user requires review, share it and wait for approval
 
-# 6. Work on the task (write code, test, etc.)
+# 7. Work on the task (write code, test, etc.)
 
-# 7. Mark acceptance criteria as complete (supports multiple in one command)
+# 8. Mark acceptance criteria as complete (supports multiple in one command)
 backlog task edit 42 --check-ac 1 --check-ac 2 --check-ac 3  # Check all at once
 # Or check them individually if preferred:
 # backlog task edit 42 --check-ac 1
 # backlog task edit 42 --check-ac 2
 # backlog task edit 42 --check-ac 3
 
-# 8. Add Final Summary (PR Description)
+# 9. Add Final Summary (PR Description)
 backlog task edit 42 --final-summary "Refactored using strategy pattern, updated tests"
 
-# 9. Mark task as done
+# 10. Mark task as done
 backlog task edit 42 -s Done
 ```
 

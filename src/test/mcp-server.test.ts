@@ -176,6 +176,59 @@ describe("McpServer bootstrap", () => {
 		);
 	});
 
+	it("legacy MCP guides preserve just-in-time planning parity with the canonical CLI lifecycle", () => {
+		TEST_DIR = createUniqueTestDir("mcp-server-guides");
+
+		expect(MCP_TASK_CREATION_GUIDE).toContain(
+			"Do not add implementation research, an implementation plan, or a speculative code approach during creation.",
+		);
+		expect(MCP_TASK_CREATION_GUIDE).toContain(
+			"creation records only durable intent, context, scope, acceptance criteria, references, and dependencies",
+		);
+		expect(MCP_TASK_CREATION_GUIDE).toContain("CLI instructions");
+		expect(MCP_TASK_CREATION_GUIDE).toContain("canonical workflow");
+		expect(MCP_TASK_CREATION_GUIDE).toContain("### Durable Context at Creation");
+		expect(MCP_TASK_CREATION_GUIDE).toContain(
+			"Do not inspect implementation code or tests, or perform external implementation research",
+		);
+		expect(MCP_TASK_CREATION_GUIDE).toContain(
+			"The execution worker performs current-system research after the task is active and records the plan then",
+		);
+		expect(MCP_TASK_CREATION_GUIDE).toContain("already-started work created directly in an active status");
+		expect(MCP_TASK_CREATION_GUIDE).not.toContain("Inspect relevant code/docs/tests in the repository");
+		expect(MCP_TASK_CREATION_GUIDE).not.toContain("so your plan reflects current reality");
+		expect(MCP_TASK_EXECUTION_GUIDE).toContain("_after_ taking the task into progress");
+		expect(MCP_TASK_EXECUTION_GUIDE).toContain("researching the current system, but before implementation");
+		expect(MCP_TASK_EXECUTION_GUIDE).toContain(
+			"If the plan contains a material product, architecture, or workflow decision",
+		);
+		expect(MCP_TASK_EXECUTION_GUIDE).toContain("Routine plans can proceed when no review was requested");
+		expect(MCP_TASK_EXECUTION_GUIDE).toContain(
+			"Update routine plan adjustments in the task and continue without mandatory human confirmation",
+		);
+		expect(MCP_TASK_EXECUTION_GUIDE).not.toContain(
+			"Do not touch the codebase until the implementation plan is approved _and_ recorded",
+		);
+		expect(MCP_TASK_EXECUTION_GUIDE).not.toContain("update it first and get confirmation before continuing");
+		expect(MCP_TASK_EXECUTION_GUIDE).not.toContain("then get user approval for the revised approach");
+		expect(MCP_TASK_EXECUTION_GUIDE).not.toContain("explain why and wait for confirmation");
+
+		const viewIndex = MCP_TASK_EXECUTION_GUIDE.indexOf("Use `task_view` to inspect");
+		const eligibilityIndex = MCP_TASK_EXECUTION_GUIDE.indexOf("Confirm eligibility and scope");
+		const activateIndex = MCP_TASK_EXECUTION_GUIDE.indexOf("Mark task as In Progress");
+		const researchIndex = MCP_TASK_EXECUTION_GUIDE.indexOf("Research the current system");
+		const planIndex = MCP_TASK_EXECUTION_GUIDE.indexOf("Draft and record the implementation plan");
+		const conditionalReviewIndex = MCP_TASK_EXECUTION_GUIDE.indexOf("Apply proportional review");
+		const implementIndex = MCP_TASK_EXECUTION_GUIDE.indexOf("### Execution Workflow");
+		expect(viewIndex).toBeGreaterThan(-1);
+		expect(eligibilityIndex).toBeGreaterThan(viewIndex);
+		expect(activateIndex).toBeGreaterThan(eligibilityIndex);
+		expect(researchIndex).toBeGreaterThan(activateIndex);
+		expect(planIndex).toBeGreaterThan(researchIndex);
+		expect(conditionalReviewIndex).toBeGreaterThan(planIndex);
+		expect(implementIndex).toBeGreaterThan(conditionalReviewIndex);
+	});
+
 	it("workflow tool returns overview by default and selected guide content when requested", async () => {
 		const server = await bootstrapServer();
 

@@ -65,6 +65,12 @@ Include:
 - References or documentation when they are needed for implementation.
 - Dependencies when work must happen in order.
 
+For future work, do **not** add an implementation plan or speculative code approach during task creation. Creation
+captures the durable intent, context, scope, acceptance criteria, references, and dependencies. The worker researches
+the current system and records the plan after picking up and activating the task, because the codebase or constraints may
+change before then. The narrow exception is already-started work being created directly in a configured active status
+(for example, In Progress); its current researched plan may be supplied at creation.
+
 Examples:
 
 ```bash

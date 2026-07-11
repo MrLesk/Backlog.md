@@ -1662,6 +1662,12 @@ addHelpSchema(taskCmd.command("create [title]"), {
 		{ name: "acceptanceCriteria", type: "Markdown list item text", description: "Repeat --ac for multiple criteria" },
 		{ name: "ordinal", type: "Integer", description: "Non-negative manual ordering value" },
 		{ name: "parent", type: "Task ID", description: "Existing parent task for subtasks; not a milestone ID" },
+		{
+			name: "plan",
+			type: "Markdown",
+			description:
+				"Only for already-started work created directly in a configured active status (for example, In Progress)",
+		},
 	],
 	writes: "Creates a task or draft markdown file through Backlog.md",
 	output: "Created task details; use --plain for text output",
@@ -1687,7 +1693,10 @@ addHelpSchema(taskCmd.command("create [title]"), {
 	)
 	.option("--dod <item>", "add Definition of Done item (can be used multiple times)", createMultiValueAccumulator())
 	.option("--no-dod-defaults", "disable Definition of Done defaults")
-	.option("--plan <text>", "add implementation plan")
+	.option(
+		"--plan <text>",
+		"add a plan only for already-started work created directly in an active status (for example, In Progress)",
+	)
 	.option("--notes <text>", "add implementation notes")
 	.option("--final-summary <text>", "add final summary")
 	.option("--ordinal <number>", "set task ordinal for custom ordering")

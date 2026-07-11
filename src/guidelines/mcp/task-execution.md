@@ -2,22 +2,24 @@
 
 ### Planning Workflow
 
-> **Non-negotiable:** Capture an implementation plan in the Backlog task _before_ writing any code or running commands. The plan must live in the task record prior to implementation and remain up to date when you close the task.
+> **Non-negotiable:** Capture an implementation plan in the Backlog task _after_ taking the task into progress and
+> researching the current system, but before implementation. The plan must live in the task record prior to implementation
+> and remain up to date when you close the task. CLI instructions are canonical; this legacy MCP guide preserves parity.
 
-1. **Mark task as In Progress** via `task_edit` with status "In Progress"
-2. **Assign to yourself** via `task_edit` with assignee field
-3. **Review task description, acceptance criteria, references, and documentation** - Check the description for outcome and any local code context, review acceptance criteria to confirm scope and success conditions, check `references` for external links/issues, and check `documentation` for design docs or API specs before planning
-4. **Draft the implementation plan** - Think through the approach, review code, identify key files
-5. **Present plan to user** - Show your proposed implementation approach
-6. **Wait for explicit approval** - Do not start coding until user confirms or asks you to skip review
-7. **Record approved plan** - Use `task_edit` with planSet or planAppend to capture the agreed approach in the task
-8. **Document the agreed breakdown** - In the parent task's plan, capture the final list of subtasks, owners, and sequencing so a replacement agent can resume with the approved structure
+1. **Read before mutating** - Use `task_view` to inspect the current status, description, acceptance criteria, dependencies, references, and documentation
+2. **Confirm eligibility and scope** - Verify the task is eligible to start, its dependencies permit work, and it remains within the requested scope
+3. **Mark task as In Progress** via `task_edit` with status "In Progress"
+4. **Assign to yourself** via `task_edit` with assignee field
+5. **Research the current system** - Inspect relevant code, tests, conventions, and recent changes rather than relying on an approach proposed when the task was created
+6. **Draft and record the implementation plan** - Use `task_edit` with planSet or planAppend to capture the current approach in the task
+7. **Apply proportional review** - If the plan contains a material product, architecture, or workflow decision, or the project or user requires plan review, present it and wait for explicit approval before implementation. Routine plans can proceed when no review was requested and they stay within confirmed scope
+8. **Document the agreed breakdown** - In the parent task's plan, capture any approved list of subtasks, owners, and sequencing so a replacement agent can resume with the current structure
 
 **IMPORTANT:** Use tasks as permanent storage for everything related to the work. You may be interrupted or replaced at any point, so the task record must contain everything needed for a clean handoff.
 
 ### Planning Guidelines
 
-- Keep the Backlog task as the single plan of record: capture the agreed approach with `task_edit` (planSet field) before writing code
+- Keep the Backlog task as the single plan of record: capture the current approach with `task_edit` (planSet field) before writing code
 - Use `task_edit` (planAppend field) to refine the plan when you learn more during implementation
 - Verify prerequisites before committing to a plan: confirm required tools, access, data, and environment support are in place
 - Keep plans structured and actionable: list concrete steps, highlight key files, call out risks, and note any checkpoints or validations
@@ -34,8 +36,8 @@
 
 ### Execution Workflow
 
-- **IMPORTANT**: Do not touch the codebase until the implementation plan is approved _and_ recorded in the task via `task_edit`
-- The recorded plan must stay accurate; if the approach shifts, update it first and get confirmation before continuing
+- **IMPORTANT**: Do not start implementation until the current implementation plan is recorded in the task via `task_edit` and any review required by the proportional-review rule above is complete
+- The recorded plan must stay accurate. Update routine plan adjustments in the task and continue without mandatory human confirmation when they stay within confirmed scope and introduce no material decision
 - If feedback requires changes, revise the plan first via `task_edit` (planSet or planAppend fields)
 - Work in short loops: implement, run the relevant tests, and record progress. Do not check acceptance criteria, write the final summary, or move the task to Done from this guide alone; first follow the Task Finalization Guide and verify each acceptance criterion with objective evidence.
 - Log progress with `task_edit` (notesAppend field) to document decisions, blockers, or learnings
@@ -60,8 +62,8 @@ If new work appears during implementation that wasn't in the original acceptance
 ### Staying on Track
 
 - Stay within the scope defined by the plan and acceptance criteria
-- Update the plan first if direction changes, then get user approval for the revised approach
-- If you need to deviate from the plan, explain why and wait for confirmation
+- Update the plan before following a changed approach
+- If a deviation introduces a material product, architecture, or workflow decision, or the project explicitly requires review, explain it and wait for approval. Otherwise record the routine adjustment and continue within confirmed scope
 
 ### Working with Subtasks (Execution)
 
