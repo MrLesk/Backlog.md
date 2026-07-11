@@ -161,6 +161,20 @@ describe("ContentStore", () => {
 		if (!publishedDecision) {
 			throw new Error("Expected the published decision");
 		}
+		const observedTaskIds: string[] = [];
+		const observedDocumentIds: string[] = [];
+		const observedDecisionIds: string[] = [];
+		const unsubscribe = store.subscribe((event) => {
+			if (event.type === "tasks") {
+				observedTaskIds.push(...event.tasks.map((task) => task.id));
+			}
+			if (event.type === "documents") {
+				observedDocumentIds.push(...event.documents.map((document) => document.id));
+			}
+			if (event.type === "decisions") {
+				observedDecisionIds.push(...event.decisions.map((decision) => decision.id));
+			}
+		});
 
 		const delays: number[] = [];
 		const internals = store as unknown as {
@@ -180,7 +194,10 @@ describe("ContentStore", () => {
 		let targetedReads = 0;
 		filesystem.loadTask = async () => {
 			targetedReads += 1;
-			return targetedReads < 3 ? null : { ...publishedTask, title: "Targeted retry" };
+			if (targetedReads === 1) {
+				return { ...publishedTask, id: "TASK-999", title: "Foreign task" };
+			}
+			return targetedReads === 2 ? null : { ...publishedTask, title: "Targeted retry" };
 		};
 		try {
 			await internals.updateTaskFromDisk(publishedTask.id);
@@ -191,7 +208,10 @@ describe("ContentStore", () => {
 		let collectionReads = 0;
 		internals.loadTasksWithLoader = async () => {
 			collectionReads += 1;
-			return collectionReads < 3 ? [] : [{ ...publishedTask, title: "Collection retry" }];
+			if (collectionReads === 1) {
+				return [{ ...publishedTask, id: "TASK-998", title: "Foreign task collection" }];
+			}
+			return collectionReads === 2 ? [] : [{ ...publishedTask, title: "Collection retry" }];
 		};
 		await internals.refreshTasksFromDisk(publishedTask.id);
 
@@ -199,7 +219,10 @@ describe("ContentStore", () => {
 		let documentReads = 0;
 		filesystem.listDocuments = async () => {
 			documentReads += 1;
-			return documentReads < 3 ? [] : [{ ...publishedDocument, title: "Document retry" }];
+			if (documentReads === 1) {
+				return [{ ...publishedDocument, id: "doc-999", title: "Foreign document" }];
+			}
+			return documentReads === 2 ? [] : [{ ...publishedDocument, title: "Document retry" }];
 		};
 		try {
 			await internals.refreshDocumentsFromDisk(publishedDocument.id);
@@ -211,7 +234,10 @@ describe("ContentStore", () => {
 		let targetedDecisionReads = 0;
 		filesystem.loadDecision = async () => {
 			targetedDecisionReads += 1;
-			return targetedDecisionReads < 3 ? null : { ...publishedDecision, title: "Targeted decision retry" };
+			if (targetedDecisionReads === 1) {
+				return { ...publishedDecision, id: "decision-999", title: "Foreign decision" };
+			}
+			return targetedDecisionReads === 2 ? null : { ...publishedDecision, title: "Targeted decision retry" };
 		};
 		try {
 			await internals.updateDecisionFromDisk(publishedDecision.id);
@@ -223,13 +249,17 @@ describe("ContentStore", () => {
 		let decisionCollectionReads = 0;
 		filesystem.listDecisions = async () => {
 			decisionCollectionReads += 1;
-			return decisionCollectionReads < 3 ? [] : [{ ...publishedDecision, title: "Decision collection retry" }];
+			if (decisionCollectionReads === 1) {
+				return [{ ...publishedDecision, id: "decision-998", title: "Foreign decision collection" }];
+			}
+			return decisionCollectionReads === 2 ? [] : [{ ...publishedDecision, title: "Decision collection retry" }];
 		};
 		try {
 			await internals.refreshDecisionsFromDisk(publishedDecision.id);
 		} finally {
 			filesystem.listDecisions = listDecisions;
 		}
+		unsubscribe();
 
 		expect(targetedReads).toBe(3);
 		expect(collectionReads).toBe(3);
@@ -237,6 +267,11 @@ describe("ContentStore", () => {
 		expect(targetedDecisionReads).toBe(3);
 		expect(decisionCollectionReads).toBe(3);
 		expect(delays).toEqual([75, 150, 75, 150, 75, 150, 75, 150, 75, 150]);
+		expect(observedTaskIds).not.toContain("TASK-999");
+		expect(observedTaskIds).not.toContain("TASK-998");
+		expect(observedDocumentIds).not.toContain("doc-999");
+		expect(observedDecisionIds).not.toContain("decision-999");
+		expect(observedDecisionIds).not.toContain("decision-998");
 		expect(store.getTasks()[0]?.title).toBe("Collection retry");
 		expect(store.getDocuments()[0]?.title).toBe("Document retry");
 		expect(store.getDecisions()[0]?.title).toBe("Decision collection retry");
@@ -298,11 +333,24 @@ describe("ContentStore", () => {
 		expect(loaderCalls).toBeGreaterThanOrEqual(2);
 	});
 
-	it("removes decisions when files are deleted", async () => {
+	it("removes tasks, documents, and decisions when files are deleted", async () => {
 		store.dispose();
 		store = new ContentStore(filesystem, undefined, true);
-		await filesystem.saveDecision(sampleDecision);
+		await Promise.all([
+			filesystem.saveTask(sampleTask),
+			filesystem.saveDocument(sampleDocument),
+			filesystem.saveDecision(sampleDecision),
+		]);
 		await store.ensureInitialized();
+
+		const task = store.getTasks()[0];
+		const document = store.getDocuments()[0];
+		if (!task?.filePath) {
+			throw new Error("Expected the task file path");
+		}
+		if (!document?.path) {
+			throw new Error("Expected the document path");
+		}
 
 		const decisionsDir = filesystem.decisionsDir;
 		const decisionFiles: string[] = [];
@@ -314,19 +362,33 @@ describe("ContentStore", () => {
 			throw new Error("Expected decision file was not created");
 		}
 
-		const waitForRemoval = waitForEventWithTimeout(
+		const waitForTaskRemoval = waitForEventWithTimeout(
 			store,
-			(event) => {
-				return event.type === "decisions" && event.decisions.every((decision) => decision.id !== "decision-1");
-			},
+			(event) => event.snapshot.tasks.every((item) => item.id !== task.id),
 			getPlatformTimeout(15000),
 		);
+		await unlink(task.filePath);
+		await waitForTaskRemoval;
 
+		const waitForDocumentRemoval = waitForEventWithTimeout(
+			store,
+			(event) => event.snapshot.documents.every((item) => item.id !== document.id),
+			getPlatformTimeout(15000),
+		);
+		await unlink(join(filesystem.docsDir, ...document.path.split("/")));
+		await waitForDocumentRemoval;
+
+		const waitForDecisionRemoval = waitForEventWithTimeout(
+			store,
+			(event) => event.snapshot.decisions.every((item) => item.id !== "decision-1"),
+			getPlatformTimeout(15000),
+		);
 		await unlink(join(decisionsDir, decisionFile));
-		await waitForRemoval;
+		await waitForDecisionRemoval;
 
-		const decisions = store.getDecisions();
-		expect(decisions.find((decision) => decision.id === "decision-1")).toBeUndefined();
+		expect(store.getTasks().some((item) => item.id === task.id)).toBe(false);
+		expect(store.getDocuments().some((item) => item.id === document.id)).toBe(false);
+		expect(store.getDecisions().some((item) => item.id === "decision-1")).toBe(false);
 	});
 
 	it("publishes coherent A to B to A snapshots and rebinds every root watcher", async () => {

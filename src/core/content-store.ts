@@ -934,7 +934,7 @@ export class ContentStore {
 		const previous = this.tasks.get(normalizedTaskId);
 		const task = await this.retryRead(
 			async () => this.filesystem.loadTask(taskId),
-			(result) => result !== null,
+			(result) => result !== null && taskIdsEqual(result.id, normalizedTaskId),
 			12,
 			75,
 			() => this.isRootWatcherCurrent(epoch),
@@ -954,7 +954,7 @@ export class ContentStore {
 		const previous = this.decisions.get(decisionId);
 		const decision = await this.retryRead(
 			async () => this.filesystem.loadDecision(decisionId),
-			(result) => result !== null,
+			(result) => result !== null && result.id === decisionId,
 			12,
 			75,
 			() => this.isRootWatcherCurrent(epoch),
