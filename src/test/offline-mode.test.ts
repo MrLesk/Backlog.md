@@ -68,13 +68,25 @@ describe("Offline Mode Configuration", () => {
 
 			gitOps.setConfig(config);
 
-			// This should attempt to run git fetch and likely fail since we're not in a git repo
-			// but it should not be skipped due to config
+			let capturedArgs: string[] = [];
+			const internals = gitOps as unknown as {
+				hasAnyRemote: () => Promise<boolean>;
+				execGit: (args: string[]) => Promise<{ stdout: string; stderr: string }>;
+			};
+			const originalHasAnyRemote = internals.hasAnyRemote;
+			const originalExecGit = internals.execGit;
+			internals.hasAnyRemote = async () => true;
+			internals.execGit = async (args: string[]) => {
+				capturedArgs = args;
+				return { stdout: "", stderr: "" };
+			};
+
 			try {
 				await gitOps.fetch();
-			} catch (error) {
-				// Expected to fail since we're not in a proper git repo with remote
-				expect(error).toBeDefined();
+				expect(capturedArgs).toEqual(["fetch", "origin", "--prune", "--quiet"]);
+			} finally {
+				internals.hasAnyRemote = originalHasAnyRemote;
+				internals.execGit = originalExecGit;
 			}
 		});
 
