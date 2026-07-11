@@ -8,7 +8,6 @@ import { serializeTask } from "../markdown/serializer.ts";
 import { extractStructuredSection } from "../markdown/structured-sections.ts";
 import type { Decision, Document, Task } from "../types/index.ts";
 import { BACKLOG_CWD_ENV } from "../utils/runtime-cwd.ts";
-import { listTasksPlatformAware, viewTaskPlatformAware } from "./test-helpers.ts";
 import { createUniqueTestDir, initializeTestProject, safeCleanup } from "./test-utils.ts";
 
 let TEST_DIR: string;
@@ -1050,8 +1049,8 @@ describe("CLI Integration", () => {
 			}
 
 			// Test with -s flag
-			const resultShort = await listTasksPlatformAware({ plain: true, status: "done" }, TEST_DIR);
-			const outShort = resultShort.stdout;
+			const resultShort = await $`bun ${CLI_PATH} task list --plain -s done`.cwd(TEST_DIR).quiet();
+			const outShort = resultShort.stdout.toString();
 			expect(outShort).toContain("Done:");
 			expect(outShort).toContain("TASK-2 - Second Task"); // IDs normalized to uppercase
 			expect(outShort).not.toContain("TASK-1");
@@ -1576,14 +1575,14 @@ describe("CLI Integration", () => {
 				false,
 			);
 
-			const resultShortcut = await viewTaskPlatformAware({ taskId: "1", plain: true }, TEST_DIR);
-			const resultView = await viewTaskPlatformAware({ taskId: "1", plain: true, useViewCommand: true }, TEST_DIR);
+			const resultShortcut = await $`bun ${CLI_PATH} task 1 --plain`.cwd(TEST_DIR).quiet();
+			const resultView = await $`bun ${CLI_PATH} task view 1 --plain`.cwd(TEST_DIR).quiet();
 
-			const outShortcut = resultShortcut.stdout;
-			const outView = resultView.stdout;
+			const outShortcut = resultShortcut.stdout.toString();
+			const outView = resultView.stdout.toString();
 
 			expect(outShortcut).toBe(outView);
-			expect(outShortcut).toContain("Task task-1 - Shortcut Task");
+			expect(outShortcut).toContain("Task TASK-1 - Shortcut Task");
 		});
 	});
 

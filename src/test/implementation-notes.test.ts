@@ -5,11 +5,21 @@ import { $ } from "bun";
 import { Core } from "../core/backlog.ts";
 import { extractStructuredSection } from "../markdown/structured-sections.ts";
 import type { Task } from "../types/index.ts";
-import { editTaskPlatformAware } from "./test-helpers.ts";
 import { createUniqueTestDir, initializeTestProject, safeCleanup } from "./test-utils.ts";
 
 let TEST_DIR: string;
 const CLI_PATH = join(process.cwd(), "src", "cli.ts");
+
+async function editTaskViaCli(
+	options: { taskId: string; notes: string; status?: string },
+	testDir: string,
+): Promise<{ exitCode: number }> {
+	const args = [CLI_PATH, "task", "edit", options.taskId, "--notes", options.notes];
+	if (options.status) {
+		args.push("--status", options.status);
+	}
+	return await $`bun ${args}`.cwd(testDir).quiet().nothrow();
+}
 
 describe("Implementation Notes CLI", () => {
 	beforeEach(async () => {
@@ -125,7 +135,7 @@ describe("Implementation Notes CLI", () => {
 			};
 			await core.createTask(task1, false);
 
-			let result = await editTaskPlatformAware(
+			let result = await editTaskViaCli(
 				{
 					taskId: "1",
 					notes: "Fixed the bug by updating the validation logic",
@@ -153,7 +163,7 @@ describe("Implementation Notes CLI", () => {
 			};
 			await core.createTask(task2, false);
 
-			result = await editTaskPlatformAware(
+			result = await editTaskViaCli(
 				{
 					taskId: "2",
 					notes: "Added error handling",
@@ -185,7 +195,7 @@ describe("Implementation Notes CLI", () => {
 			};
 			await core.createTask(task3, false);
 
-			result = await editTaskPlatformAware(
+			result = await editTaskViaCli(
 				{
 					taskId: "3",
 					status: "Done",
@@ -225,7 +235,7 @@ Technical decisions:
 - Used memoization for expensive calculations
 - Implemented lazy loading`;
 
-			result = await editTaskPlatformAware(
+			result = await editTaskViaCli(
 				{
 					taskId: "4",
 					notes: multiLineNotes,
@@ -254,7 +264,7 @@ Technical decisions:
 			};
 			await core.createTask(task5, false);
 
-			result = await editTaskPlatformAware(
+			result = await editTaskViaCli(
 				{
 					taskId: "5",
 					notes: "Followed the plan successfully",
@@ -286,7 +296,7 @@ Technical decisions:
 			};
 			await core.createTask(task6, false);
 
-			result = await editTaskPlatformAware(
+			result = await editTaskViaCli(
 				{
 					taskId: "6",
 					notes: "",
