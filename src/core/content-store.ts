@@ -35,8 +35,20 @@ interface WatchHandle {
 interface DeferredRecheck {
 	epoch: number;
 	attempt: number;
+	budgetRefreshed: boolean;
 	timer: ReturnType<typeof setTimeout> | null;
 	reconcile: () => Promise<boolean>;
+}
+
+interface RenameReconciliation<T> {
+	key: string;
+	epoch: number;
+	readEventPath: () => Promise<T | null>;
+	findIdentity: () => Promise<T | null>;
+	current: () => T | undefined;
+	hasChanged: (previous: T, next: T) => boolean;
+	publish: (item: T) => void;
+	remove: () => void;
 }
 
 const CONTENT_RETRY_ATTEMPTS = 12;
@@ -453,7 +465,35 @@ export class ContentStore {
 
 				const fullPath = join(tasksDir, file);
 				if (eventType === "rename") {
-					await this.refreshTasksFromDisk(undefined, epoch);
+					await this.reconcileRenamedItem({
+						key: `task:${normalizedTaskId}`,
+						epoch,
+						readEventPath: async () => {
+							if (!(await Bun.file(fullPath).exists())) return null;
+							const content = await Bun.file(fullPath).text();
+							const task = { ...normalizeTaskIdentity(parseTask(content)), filePath: fullPath };
+							if (!taskIdsEqual(task.id, normalizedTaskId)) {
+								throw new Error("Task identity does not match watcher filename");
+							}
+							return task;
+						},
+						findIdentity: async () => {
+							const tasks = await this.loadTasksWithLoader();
+							return tasks.find((task) => taskIdsEqual(task.id, normalizedTaskId)) ?? null;
+						},
+						current: () => this.tasks.get(normalizedTaskId),
+						hasChanged: (previous, next) => this.hasTaskChanged(previous, next),
+						publish: (task) => {
+							this.tasks.set(task.id, task);
+							this.cachedTasks = sortByTaskId(Array.from(this.tasks.values()));
+							this.notify("tasks");
+						},
+						remove: () => {
+							if (!this.tasks.delete(normalizedTaskId)) return;
+							this.cachedTasks = sortByTaskId(Array.from(this.tasks.values()));
+							this.notify("tasks");
+						},
+					});
 					return;
 				}
 
@@ -512,7 +552,35 @@ export class ContentStore {
 
 				const fullPath = join(decisionsDir, file);
 				if (eventType === "rename") {
-					await this.refreshDecisionsFromDisk(undefined, epoch);
+					await this.reconcileRenamedItem({
+						key: `decision:${idPart}`,
+						epoch,
+						readEventPath: async () => {
+							if (!(await Bun.file(fullPath).exists())) return null;
+							const content = await Bun.file(fullPath).text();
+							const decision = parseDecision(content);
+							if (decision.id !== idPart) {
+								throw new Error("Decision identity does not match watcher filename");
+							}
+							return decision;
+						},
+						findIdentity: async () => {
+							const decisions = await this.filesystem.listDecisions();
+							return decisions.find((decision) => decision.id === idPart) ?? null;
+						},
+						current: () => this.decisions.get(idPart),
+						hasChanged: (previous, next) => this.hasDecisionChanged(previous, next),
+						publish: (decision) => {
+							this.decisions.set(decision.id, decision);
+							this.cachedDecisions = sortByTaskId(Array.from(this.decisions.values()));
+							this.notify("decisions");
+						},
+						remove: () => {
+							if (!this.decisions.delete(idPart)) return;
+							this.cachedDecisions = sortByTaskId(Array.from(this.decisions.values()));
+							this.notify("decisions");
+						},
+					});
 					return;
 				}
 
@@ -578,7 +646,36 @@ export class ContentStore {
 			}
 
 			if (eventType === "rename") {
-				await this.refreshDocumentsFromDisk(undefined, epoch);
+				await this.reconcileRenamedItem({
+					key: `document:${idPart}`,
+					epoch,
+					readEventPath: async () => {
+						if (!(await Bun.file(absolutePath).exists())) return null;
+						const content = await Bun.file(absolutePath).text();
+						const documentPath = normalizeDocumentRelativePath(relativePath ?? relative(docsDir, absolutePath));
+						const document = { ...parseDocument(content), path: documentPath };
+						if (document.id !== idPart) {
+							throw new Error("Document identity does not match watcher filename");
+						}
+						return document;
+					},
+					findIdentity: async () => {
+						const documents = await this.filesystem.listDocuments();
+						return documents.find((document) => document.id === idPart) ?? null;
+					},
+					current: () => this.documents.get(idPart),
+					hasChanged: (previous, next) => this.hasDocumentChanged(previous, next),
+					publish: (document) => {
+						this.documents.set(document.id, document);
+						this.cachedDocuments = [...this.documents.values()].sort((a, b) => a.title.localeCompare(b.title));
+						this.notify("documents");
+					},
+					remove: () => {
+						if (!this.documents.delete(idPart)) return;
+						this.cachedDocuments = [...this.documents.values()].sort((a, b) => a.title.localeCompare(b.title));
+						this.notify("documents");
+					},
+				});
 				return;
 			}
 
@@ -814,9 +911,50 @@ export class ContentStore {
 		this.scheduleDeferredRecheck(key, epoch, reconcile);
 	}
 
+	private async reconcileRenamedItem<T>(options: RenameReconciliation<T>): Promise<void> {
+		await this.reconcileOrSchedule(options.key, options.epoch, async () => {
+			let item: T | null;
+			try {
+				item = await options.readEventPath();
+				if (!item) {
+					item = await options.findIdentity();
+				}
+			} catch {
+				return true;
+			}
+			if (!this.isRootWatcherCurrent(options.epoch)) {
+				return false;
+			}
+			if (item) {
+				const previous = options.current();
+				if (!previous || options.hasChanged(previous, item)) {
+					options.publish(item);
+				}
+				return false;
+			}
+			options.remove();
+			return false;
+		});
+	}
+
 	private scheduleDeferredRecheck(key: string, epoch: number, reconcile: () => Promise<boolean>): void {
 		const existing = this.deferredRechecks.get(key);
 		if (existing?.epoch === epoch) {
+			if (existing.attempt > 1 && !existing.budgetRefreshed) {
+				if (existing.timer) {
+					clearTimeout(existing.timer);
+				}
+				const refreshed: DeferredRecheck = {
+					epoch,
+					attempt: 1,
+					budgetRefreshed: true,
+					timer: null,
+					reconcile,
+				};
+				this.deferredRechecks.set(key, refreshed);
+				this.armDeferredRecheck(key, refreshed);
+				return;
+			}
 			existing.reconcile = reconcile;
 			return;
 		}
@@ -827,6 +965,7 @@ export class ContentStore {
 		const recheck: DeferredRecheck = {
 			epoch,
 			attempt: 1,
+			budgetRefreshed: false,
 			timer: null,
 			reconcile,
 		};
@@ -911,11 +1050,6 @@ export class ContentStore {
 			if (expectedId && !tasks.some((task) => taskIdsEqual(task.id, expectedId))) {
 				return true;
 			}
-			if (!expectedId) {
-				for (const task of tasks) {
-					this.cancelDeferredRecheck(`task:${normalizeTaskId(task.id)}`);
-				}
-			}
 			if (!this.hasTaskCollectionChanged(tasks)) {
 				return false;
 			}
@@ -936,11 +1070,6 @@ export class ContentStore {
 			if (expectedId && !documents.some((document) => document.id === expectedId)) {
 				return true;
 			}
-			if (!expectedId) {
-				for (const document of documents) {
-					this.cancelDeferredRecheck(`document:${document.id}`);
-				}
-			}
 			if (!this.hasDocumentCollectionChanged(documents)) {
 				return false;
 			}
@@ -960,11 +1089,6 @@ export class ContentStore {
 			}
 			if (expectedId && !decisions.some((decision) => decision.id === expectedId)) {
 				return true;
-			}
-			if (!expectedId) {
-				for (const decision of decisions) {
-					this.cancelDeferredRecheck(`decision:${decision.id}`);
-				}
 			}
 			if (!this.hasDecisionCollectionChanged(decisions)) {
 				return false;

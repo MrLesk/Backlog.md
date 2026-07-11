@@ -3,9 +3,9 @@ id: BACK-534
 title: Eliminate MCP milestone mutation CI timeout
 status: Done
 assignee:
-  - '@mcp-milestone-ci'
+  - '@back534-review-fix'
 created_date: '2026-07-11 00:41'
-updated_date: '2026-07-11 09:17'
+updated_date: '2026-07-11 09:40'
 labels:
   - ci
   - mcp
@@ -40,9 +40,11 @@ The Linux full-suite CI repeatedly times out the MCP milestone task_create/task_
 1. Add deterministic fake-watcher regressions for task, document, and decision events where the first same-identity read is the unchanged cache, changed bytes appear later, and no second watcher event fires.
 2. Replace in-queue retry sleeps with coalesced per-identity deferred rechecks scheduled outside chainTail; each timer enqueues one targeted reconciliation read and uses root epoch, disposal, and watcher-stop guards.
 3. Preserve fast duplicate no-ops, wrong-identity rejection, incomplete-read recovery, collection symmetry, and filename/existence-driven deletion; cover root-change and disposal cancellation.
-4. Treat every identity present in a successful wildcard snapshot as authoritative for stale-job cancellation before content equality checks, including same-content filename-only task, document, and decision renames.
-5. Preserve absent-identity recovery and wildcard no-polling, then stress queue timing, delayed/incomplete reads, identity, deletion, rename publication, root lifecycle, and MCP milestone mutation.
-6. Run TypeScript, Biome, build, diff review, and the full isolated suite; record fail-first and final verification fingerprints for sequential review without pushing.
+4. Treat only authoritative filename-derived rename reconciliation as evidence to cancel a pending identity job; unrelated, null, and equal wildcard snapshots must leave targeted delayed writes alive.
+5. Give a genuinely fresh same-key watcher event a fresh bounded retry window while retaining a single coalesced timer and a hard bound for duplicate storms.
+6. Reconcile rename/delete by identity: read the event path when present, otherwise scan only to recover that identity, then mutate only that map entry so transiently unreadable siblings remain cached.
+7. Preserve absent-identity recovery, wildcard no-polling, root/dispose guards, task/document/decision symmetry, then stress queue timing, rename/delete, lifecycle, and MCP milestone mutation.
+8. Run TypeScript, Biome, build, diff review, and the full isolated suite; record fail-first and final verification fingerprints without pushing or touching GitHub threads.
 <!-- SECTION:PLAN:END -->
 
 ## Implementation Notes
@@ -73,12 +75,20 @@ Final spec review found that replacement-level cancellation still depended on co
 Same-content wildcard verification: filename-only task, document, and decision rename regression passed 50/50 with 600 assertions; complete ContentStore suite passed 10/10 runs with 120 tests and 800 assertions; watcher-enabled MCP milestone blocking regression passed 5/5. Focused ContentStore plus MCP suites passed 45/45 with 207 assertions. bunx tsc --noEmit, bun run check . (324 files), bun run build, and git diff --check passed. Authoritative bun test --isolate --timeout=10000 passed 1,649 tests with 2 intentional skips, 0 failures, and 6,748 assertions across 189 files in 173.53s.
 
 Final quality simplification: removed redundant deferred-job cancellation from generic collection replacement helpers. Cancellation now has one responsibility site: successful wildcard reconciliation cancels every present identity before collection-equality evaluation. Verification after cleanup: ContentStore 12/12 and 10x stress 120/120; MCP milestones 33/33 and blocking case 5/5; full isolated suite 1,649 pass, 2 expected skips, 0 fail, 6,748 assertions across 189 files; TypeScript, Biome (324 files), build, and diff-check passed.
+
+PR #759 review follow-up started from exact head cc4de56. The three open review threads are being converted into deterministic fail-first regressions before implementation: wildcard no-op cancellation, fresh same-key retry budget, and sibling preservation during rename/delete.
+
+PR #759 review fail-first fingerprints on cc4de56: (1) null/unrelated wildcard no-op reconciliation reduced three pending targeted jobs to zero; (2) a fresh same-key event observed only three of four required reads before inheriting the old exhausted budget; (3) deleting doc-1 while doc-2 was transiently malformed replaced the document cache with [], and the analogous decision path was next.
+
+Review fixes use one shared identity-targeted rename reconciliation path. A rename event reads its event path when present, otherwise scans only to recover that filename-derived identity, then upserts or deletes only that map entry. Successful same-identity rename evidence cancels stale old-path work even when content is equal; unrelated/null wildcard snapshots no longer cancel targeted jobs. A fresh same-key event replaces a near-exhausted DeferredRecheck token once with a new bounded budget, while synchronous duplicate storms keep one timer/registry entry and remain hard-bounded across at most two budgets.
+
+Final verification after the review fixes: ContentStore 15/15 with 98 assertions; 10x ContentStore stress 150/150; MCP milestones 33/33 with 127 assertions; full bun test --isolate --timeout=10000 1,632 pass, 2 expected interactive skips, 0 fail, 6,696 assertions across 188 files in 166.24s. bunx tsc --noEmit, bun run check . (322 files), bun run build, and git diff --check passed.
 <!-- SECTION:NOTES:END -->
 
 ## Final Summary
 
 <!-- SECTION:FINAL_SUMMARY:BEGIN -->
-Removed the serialized watcher retry stalls that pushed MCP milestone mutations to the 10-second CI limit. ContentStore now uses bounded, coalesced deferred targeted rechecks outside the shared queue, validates expected identities, and safely cancels stale old-path jobs when wildcard snapshots confirm current task, document, or decision identities. Deterministic coverage includes delayed single-event visibility, wrong identities, deletions, identical-content filename renames, coalescing, root/disposal cancellation, queue liveness, and A-to-B-to-A lifecycle behavior. Final verification: 1,649 tests passed with 2 expected TUI skips and 0 failures; focused and stress suites, TypeScript, Biome, build, and diff checks passed.
+Eliminated the three remaining PR #759 watcher races: unrelated wildcard snapshots cannot cancel delayed targeted writes, fresh same-key events receive one new bounded retry budget without unbounded duplicate-storm resets, and filename-derived rename/delete reconciliation mutates only the affected identity so transiently unreadable siblings remain cached. Same-content renames still cancel stale old-path work through authoritative identity reconciliation. Final verification passed 1,632 tests with 2 expected skips and 0 failures, 10x ContentStore stress, MCP milestones, TypeScript, Biome, build, and diff checks.
 <!-- SECTION:FINAL_SUMMARY:END -->
 
 ## Definition of Done

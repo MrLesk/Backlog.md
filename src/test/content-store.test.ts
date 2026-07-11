@@ -313,6 +313,149 @@ describe("ContentStore", () => {
 		}
 	});
 
+	it("keeps targeted delayed writes alive across unrelated wildcard no-ops", async () => {
+		store.dispose();
+		await Promise.all([
+			filesystem.saveTask(sampleTask),
+			filesystem.saveDocument(sampleDocument),
+			filesystem.saveDecision(sampleDecision),
+		]);
+
+		const callbacks = new Map<string, CapturedWatchCallback>();
+		const watchSpy = spyOn(nodeFs, "watch").mockImplementation(((
+			path: Parameters<typeof nodeFs.watch>[0],
+			...args: unknown[]
+		) => {
+			const callback = args.findLast((argument) => typeof argument === "function");
+			if (typeof callback !== "function") {
+				throw new Error(`Expected a watcher callback for ${String(path)}`);
+			}
+			callbacks.set(resolve(String(path)), callback as CapturedWatchCallback);
+			const watcher = new EventEmitter() as EventEmitter & { close(): void };
+			watcher.close = () => {};
+			return watcher as unknown as nodeFs.FSWatcher;
+		}) as typeof nodeFs.watch);
+
+		try {
+			store = new ContentStore(filesystem, undefined, true);
+			const initial = await store.ensureInitialized();
+			const task = initial.tasks[0];
+			const document = initial.documents[0];
+			const decision = initial.decisions[0];
+			if (!task?.filePath || !document?.path || !decision) {
+				throw new Error("Expected initialized task, document, and decision paths");
+			}
+
+			const decisionFile = await findDecisionFile(filesystem.decisionsDir, decision.id);
+			const timerCallbacks: Array<() => void> = [];
+			const internals = store as unknown as {
+				chainTail: Promise<void>;
+				deferredRechecks: Map<string, unknown>;
+				enqueue: (fn: () => Promise<void>) => Promise<void>;
+				startDeferredTimer: (callback: () => void, delayMs: number) => ReturnType<typeof setTimeout>;
+			};
+			internals.startDeferredTimer = (callback) => {
+				timerCallbacks.push(callback);
+				const timer = setTimeout(() => {}, 60_000);
+				timer.unref();
+				return timer;
+			};
+
+			getCapturedWatcher(callbacks, filesystem.tasksDir)("change", basename(task.filePath));
+			getCapturedWatcher(callbacks, filesystem.docsDir)("change", document.path);
+			getCapturedWatcher(callbacks, filesystem.decisionsDir)("change", decisionFile);
+			await internals.enqueue(async () => {});
+			expect(internals.deferredRechecks.size).toBe(3);
+			expect(timerCallbacks).toHaveLength(3);
+
+			getCapturedWatcher(callbacks, filesystem.tasksDir)("change", null);
+			getCapturedWatcher(callbacks, filesystem.docsDir)("change", "notes.md");
+			getCapturedWatcher(callbacks, filesystem.decisionsDir)("change", null);
+			await internals.enqueue(async () => {});
+			expect(internals.deferredRechecks.size).toBe(3);
+
+			const writer = new FileSystem(TEST_DIR);
+			await Promise.all([
+				writer.saveTask({ ...sampleTask, status: "In Progress" }),
+				writer.saveDocument({ ...sampleDocument, type: "specification" }),
+				writer.saveDecision({ ...sampleDecision, status: "accepted" }),
+			]);
+
+			for (const callback of timerCallbacks) callback();
+			await internals.chainTail;
+			expect(store.getTasks()[0]?.status).toBe("In Progress");
+			expect(store.getDocuments()[0]?.type).toBe("specification");
+			expect(store.getDecisions()[0]?.status).toBe("accepted");
+		} finally {
+			watchSpy.mockRestore();
+		}
+	});
+
+	it("preserves unreadable siblings while reconciling filename-derived deletions", async () => {
+		store.dispose();
+		const targetDocumentFixture = { ...sampleDocument, path: undefined };
+		const siblingDocument = {
+			...sampleDocument,
+			id: "doc-2",
+			title: "Unreadable sibling document",
+			path: undefined,
+		};
+		const siblingDecision = { ...sampleDecision, id: "decision-2", title: "Unreadable sibling decision" };
+		await Promise.all([
+			filesystem.saveDocument(targetDocumentFixture),
+			filesystem.saveDocument(siblingDocument),
+			filesystem.saveDecision(sampleDecision),
+			filesystem.saveDecision(siblingDecision),
+		]);
+
+		const callbacks = new Map<string, CapturedWatchCallback>();
+		const watchSpy = spyOn(nodeFs, "watch").mockImplementation(((
+			path: Parameters<typeof nodeFs.watch>[0],
+			...args: unknown[]
+		) => {
+			const callback = args.findLast((argument) => typeof argument === "function");
+			if (typeof callback !== "function") {
+				throw new Error(`Expected a watcher callback for ${String(path)}`);
+			}
+			callbacks.set(resolve(String(path)), callback as CapturedWatchCallback);
+			const watcher = new EventEmitter() as EventEmitter & { close(): void };
+			watcher.close = () => {};
+			return watcher as unknown as nodeFs.FSWatcher;
+		}) as typeof nodeFs.watch);
+
+		try {
+			store = new ContentStore(filesystem, undefined, true);
+			const initial = await store.ensureInitialized();
+			const targetDocument = initial.documents.find((document) => document.id === targetDocumentFixture.id);
+			if (!targetDocument?.path) {
+				throw new Error("Expected the target document path");
+			}
+			const targetDecisionFile = await findDecisionFile(filesystem.decisionsDir, sampleDecision.id);
+			const siblingDocumentPath = initial.documents.find((document) => document.id === siblingDocument.id)?.path;
+			const siblingDecisionFile = await findDecisionFile(filesystem.decisionsDir, siblingDecision.id);
+			if (!siblingDocumentPath) {
+				throw new Error("Expected the sibling document path");
+			}
+
+			await Promise.all([
+				Bun.write(join(filesystem.docsDir, siblingDocumentPath), "---\nid: [\n---\n"),
+				Bun.write(join(filesystem.decisionsDir, siblingDecisionFile), "---\nid: [\n---\n"),
+				unlink(join(filesystem.docsDir, targetDocument.path)),
+				unlink(join(filesystem.decisionsDir, targetDecisionFile)),
+			]);
+
+			getCapturedWatcher(callbacks, filesystem.docsDir)("rename", targetDocument.path);
+			getCapturedWatcher(callbacks, filesystem.decisionsDir)("rename", targetDecisionFile);
+			const internals = store as unknown as { enqueue: (fn: () => Promise<void>) => Promise<void> };
+			await internals.enqueue(async () => {});
+
+			expect(store.getDocuments().map((document) => document.id)).toEqual([siblingDocument.id]);
+			expect(store.getDecisions().map((decision) => decision.id)).toEqual([siblingDecision.id]);
+		} finally {
+			watchSpy.mockRestore();
+		}
+	});
+
 	it("coalesces deferred rechecks and invalidates them across root changes and disposal", async () => {
 		await store.ensureInitialized();
 		const timerCallbacks: Array<() => void> = [];
@@ -375,6 +518,75 @@ describe("ContentStore", () => {
 		timerCallbacks[1]?.();
 		await Promise.resolve();
 		expect(newRootReads).toBe(1);
+	});
+
+	it("gives a fresh same-key event a fresh bounded retry budget without multiplying timers", async () => {
+		await store.ensureInitialized();
+		const timerCallbacks: Array<() => void> = [];
+		const internals = store as unknown as {
+			chainTail: Promise<void>;
+			deferredRechecks: Map<string, unknown>;
+			reconcileOrSchedule: (key: string, epoch: number, reconcile: () => Promise<boolean>) => Promise<void>;
+			rootWatcherEpoch: number;
+			startDeferredTimer: (callback: () => void, delayMs: number) => ReturnType<typeof setTimeout>;
+		};
+		internals.startDeferredTimer = (callback) => {
+			timerCallbacks.push(callback);
+			const timer = setTimeout(() => {}, 60_000);
+			timer.unref();
+			return timer;
+		};
+
+		let oldReads = 0;
+		await internals.reconcileOrSchedule("task:TASK-1", internals.rootWatcherEpoch, async () => {
+			oldReads += 1;
+			return true;
+		});
+		for (let attempt = 0; attempt < 9; attempt += 1) {
+			timerCallbacks[attempt]?.();
+			await internals.chainTail;
+		}
+		expect(oldReads).toBe(10);
+
+		let freshReads = 0;
+		const freshReconcile = async () => {
+			freshReads += 1;
+			return freshReads < 4;
+		};
+		await internals.reconcileOrSchedule("task:TASK-1", internals.rootWatcherEpoch, freshReconcile);
+		expect(timerCallbacks).toHaveLength(11);
+		timerCallbacks[9]?.();
+		await internals.chainTail;
+		expect(freshReads).toBe(1);
+		for (let attempt = 10; attempt < timerCallbacks.length && freshReads < 4; attempt += 1) {
+			timerCallbacks[attempt]?.();
+			await internals.chainTail;
+		}
+		expect(freshReads).toBeGreaterThanOrEqual(4);
+		expect(internals.deferredRechecks.size).toBe(0);
+
+		const stormTimerStart = timerCallbacks.length;
+		let stormReads = 0;
+		const stormReconcile = async () => {
+			stormReads += 1;
+			return true;
+		};
+		for (let duplicate = 0; duplicate < 100; duplicate += 1) {
+			await internals.reconcileOrSchedule("task:TASK-STORM", internals.rootWatcherEpoch, stormReconcile);
+		}
+		expect(internals.deferredRechecks.size).toBe(1);
+		expect(timerCallbacks).toHaveLength(stormTimerStart + 1);
+		for (
+			let attempt = stormTimerStart;
+			attempt < timerCallbacks.length && internals.deferredRechecks.size > 0;
+			attempt += 1
+		) {
+			timerCallbacks[attempt]?.();
+			await internals.chainTail;
+		}
+		expect(internals.deferredRechecks.size).toBe(0);
+		expect(stormReads).toBeLessThanOrEqual(111);
+		expect(timerCallbacks.length - stormTimerStart).toBeLessThanOrEqual(11);
 	});
 
 	it("retries incomplete content observations before publishing them", async () => {
