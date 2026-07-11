@@ -5,7 +5,7 @@ status: In Progress
 assignee:
   - '@mcp-milestone-ci'
 created_date: '2026-07-11 00:41'
-updated_date: '2026-07-11 08:53'
+updated_date: '2026-07-11 09:00'
 labels:
   - ci
   - mcp
@@ -40,9 +40,9 @@ The Linux full-suite CI repeatedly times out the MCP milestone task_create/task_
 1. Add deterministic fake-watcher regressions for task, document, and decision events where the first same-identity read is the unchanged cache, changed bytes appear later, and no second watcher event fires.
 2. Replace in-queue retry sleeps with coalesced per-identity deferred rechecks scheduled outside chainTail; each timer enqueues one targeted reconciliation read and uses root epoch, disposal, and watcher-stop guards.
 3. Preserve fast duplicate no-ops, wrong-identity rejection, incomplete-read recovery, collection symmetry, and filename/existence-driven deletion; cover root-change and disposal cancellation.
-4. Cancel stale identity-specific old-path jobs when wildcard rename reconciliation publishes the same identity from its current path, with deterministic task, document, and decision coverage.
-5. Stress queue timing, delayed/incomplete reads, identity, deletion, rename publication, and MCP milestone mutation, then run TypeScript, Biome, build, diff review, and the full isolated suite.
-6. Record fail-first and final verification fingerprints and hand the isolated commit to sequential review without pushing.
+4. Treat every identity present in a successful wildcard snapshot as authoritative for stale-job cancellation before content equality checks, including same-content filename-only task, document, and decision renames.
+5. Preserve absent-identity recovery and wildcard no-polling, then stress queue timing, delayed/incomplete reads, identity, deletion, rename publication, root lifecycle, and MCP milestone mutation.
+6. Run TypeScript, Biome, build, diff review, and the full isolated suite; record fail-first and final verification fingerprints for sequential review without pushing.
 <!-- SECTION:PLAN:END -->
 
 ## Implementation Notes
@@ -67,6 +67,10 @@ Final corrective verification: ContentStore 11/11 with 68 assertions; MCP milest
 Second quality review found a stale-path race: a direct watcher could schedule an unchanged old-path retry, then wildcard rename reconciliation could publish the same identity from its new path without cancelling the identity job. Firing the old timer afterward deleted the freshly published task, document, or decision. Deterministic fail-first on a0f670b published all three renamed entities, fired the captured old timers with no later event, and failed first at the task assertion: expected Renamed Task, received undefined. The smallest shared correction cancels each published entity identity key from the existing deferred registry inside collection replacement; absent identities keep their recovery jobs, and wildcard unchanged reads remain terminal.
 
 Stale-path correction verification: deterministic rename regression passed 50/50 with 600 assertions; the complete ContentStore suite passed 10/10 runs with 120 tests and 800 assertions; the watcher-enabled MCP milestone blocking regression passed 5/5. Focused ContentStore plus MCP suites passed 45/45 with 207 assertions. bunx tsc --noEmit, bun run check . (324 files), bun run build, and git diff --check passed. Authoritative bun test --isolate --timeout=10000 passed 1,649 tests with 2 intentional skips, 0 failures, and 6,748 assertions across 189 files in 187.13s.
+
+Final spec review found that replacement-level cancellation still depended on collection change detection. Decision snapshots do not expose filenames, so renaming a decision file without changing its bytes produced an equal wildcard snapshot, skipped replacement, and left the old-path identity job live. The exact fail-first moved task, document, and decision files to cosmetic filenames without changing content, published wildcard snapshots, then fired captured old timers with no later event. Task and document survived because their models carry paths; decision failed with expected Adopt shared cache, received undefined. The corrected wildcard rule cancels pending identity jobs for every identity successfully observed before content-equality early return. Empty or missing identities are not cancelled, preserving recovery, and wildcard no-op snapshots still do not poll.
+
+Same-content wildcard verification: filename-only task, document, and decision rename regression passed 50/50 with 600 assertions; complete ContentStore suite passed 10/10 runs with 120 tests and 800 assertions; watcher-enabled MCP milestone blocking regression passed 5/5. Focused ContentStore plus MCP suites passed 45/45 with 207 assertions. bunx tsc --noEmit, bun run check . (324 files), bun run build, and git diff --check passed. Authoritative bun test --isolate --timeout=10000 passed 1,649 tests with 2 intentional skips, 0 failures, and 6,748 assertions across 189 files in 173.53s.
 <!-- SECTION:NOTES:END -->
 
 ## Definition of Done

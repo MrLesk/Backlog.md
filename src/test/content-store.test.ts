@@ -223,7 +223,7 @@ describe("ContentStore", () => {
 		}
 	});
 
-	it("cancels stale path rechecks after rename reconciliation publishes the same identities", async () => {
+	it("cancels stale path rechecks after same-content filename-only rename reconciliation", async () => {
 		store.dispose();
 		await Promise.all([
 			filesystem.saveTask(sampleTask),
@@ -280,36 +280,34 @@ describe("ContentStore", () => {
 			expect(internals.deferredRechecks.size).toBe(3);
 			expect(timerCallbacks).toHaveLength(3);
 
-			const writer = new FileSystem(TEST_DIR);
-			const renamedTask = { ...sampleTask, title: "Renamed Task" };
-			const renamedDocument = { ...sampleDocument, title: "Renamed Architecture Guide" };
-			const renamedDecision = { ...sampleDecision, title: "Renamed shared cache decision" };
-			const [newTaskPath, newDocumentPath] = await Promise.all([
-				writer.saveTask(renamedTask),
-				writer.saveDocument(renamedDocument),
-				writer.saveDecision(renamedDecision),
+			const newTaskPath = join(filesystem.tasksDir, "task-1 - Cosmetic filename.md");
+			const newDocumentPath = "doc-1 - Cosmetic filename.md";
+			const newDecisionFile = "decision-1 - Cosmetic filename.md";
+			await Promise.all([
+				rename(task.filePath, newTaskPath),
+				rename(join(filesystem.docsDir, oldDocumentPath), join(filesystem.docsDir, newDocumentPath)),
+				rename(join(filesystem.decisionsDir, oldDecisionFile), join(filesystem.decisionsDir, newDecisionFile)),
 			]);
-			const newDecisionFile = await findDecisionFile(filesystem.decisionsDir, decision.id);
 
 			getCapturedWatcher(callbacks, filesystem.tasksDir)("rename", basename(newTaskPath));
 			getCapturedWatcher(callbacks, filesystem.docsDir)("rename", newDocumentPath);
 			getCapturedWatcher(callbacks, filesystem.decisionsDir)("rename", newDecisionFile);
 			await internals.enqueue(async () => {});
 
-			expect(store.getTasks()[0]?.title).toBe(renamedTask.title);
+			expect(store.getTasks()[0]?.title).toBe(sampleTask.title);
 			expect(store.getTasks()[0]?.filePath).toBe(newTaskPath);
-			expect(store.getDocuments()[0]?.title).toBe(renamedDocument.title);
+			expect(store.getDocuments()[0]?.title).toBe(sampleDocument.title);
 			expect(store.getDocuments()[0]?.path).toBe(newDocumentPath);
-			expect(store.getDecisions()[0]?.title).toBe(renamedDecision.title);
+			expect(store.getDecisions()[0]?.title).toBe(sampleDecision.title);
 
 			for (const callback of timerCallbacks) callback();
 			await internals.chainTail;
 
-			expect(store.getTasks()[0]?.title).toBe(renamedTask.title);
+			expect(store.getTasks()[0]?.title).toBe(sampleTask.title);
 			expect(store.getTasks()[0]?.filePath).toBe(newTaskPath);
-			expect(store.getDocuments()[0]?.title).toBe(renamedDocument.title);
+			expect(store.getDocuments()[0]?.title).toBe(sampleDocument.title);
 			expect(store.getDocuments()[0]?.path).toBe(newDocumentPath);
-			expect(store.getDecisions()[0]?.title).toBe(renamedDecision.title);
+			expect(store.getDecisions()[0]?.title).toBe(sampleDecision.title);
 		} finally {
 			watchSpy.mockRestore();
 		}

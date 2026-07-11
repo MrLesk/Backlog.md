@@ -914,6 +914,11 @@ export class ContentStore {
 			if (expectedId && !tasks.some((task) => taskIdsEqual(task.id, expectedId))) {
 				return true;
 			}
+			if (!expectedId) {
+				for (const task of tasks) {
+					this.cancelDeferredRecheck(`task:${normalizeTaskId(task.id)}`);
+				}
+			}
 			if (!this.hasTaskCollectionChanged(tasks)) {
 				return false;
 			}
@@ -934,6 +939,11 @@ export class ContentStore {
 			if (expectedId && !documents.some((document) => document.id === expectedId)) {
 				return true;
 			}
+			if (!expectedId) {
+				for (const document of documents) {
+					this.cancelDeferredRecheck(`document:${document.id}`);
+				}
+			}
 			if (!this.hasDocumentCollectionChanged(documents)) {
 				return false;
 			}
@@ -953,6 +963,11 @@ export class ContentStore {
 			}
 			if (expectedId && !decisions.some((decision) => decision.id === expectedId)) {
 				return true;
+			}
+			if (!expectedId) {
+				for (const decision of decisions) {
+					this.cancelDeferredRecheck(`decision:${decision.id}`);
+				}
 			}
 			if (!this.hasDecisionCollectionChanged(decisions)) {
 				return false;
