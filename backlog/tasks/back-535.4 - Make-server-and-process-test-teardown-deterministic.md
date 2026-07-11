@@ -1,10 +1,11 @@
 ---
 id: BACK-535.4
 title: Make server and process test teardown deterministic
-status: To Do
-assignee: []
+status: In Progress
+assignee:
+  - '@test-hygiene-resources'
 created_date: '2026-07-11 09:21'
-updated_date: '2026-07-11 10:58'
+updated_date: '2026-07-11 12:05'
 labels: []
 dependencies: []
 parent_task_id: BACK-535
@@ -29,6 +30,12 @@ Stop servers and watchers, close clients, streams, content stores, and search se
 - [ ] #3 No arbitrary sleeps or timeout increases are used as lifecycle fixes
 - [ ] #4 Focused repeated stress and full cross-platform CI pass
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+Context Hunter L2 brief: this is test-only lifecycle work across MCP servers/clients, stdio processes, browser processes, config watchers, ContentStore/SearchService, board background operations, and Git worktrees. Follow resource acquisition in each file and release in reverse order before filesystem cleanup. Reuse existing stop/close/dispose/kill/exited/cancel APIs; attach rejection handlers immediately, await terminal state, and preserve a primary test failure when shutdown also fails. Do not add sleeps/timeouts as fixes, change production code, touch BACK-535.5 vacuous sites, or broaden the 17 owned files. Risks: stop methods may not be idempotent, abort may not drain an in-flight promise, process kill without exited can leak, worktree removal can race Git, and a teardown failure can mask an assertion. No new identifiers should be introduced without following local resource names.
+<!-- SECTION:NOTES:END -->
 
 ## Definition of Done
 <!-- DOD:BEGIN -->
