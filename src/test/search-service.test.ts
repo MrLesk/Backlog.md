@@ -65,11 +65,7 @@ describe("SearchService", () => {
 	afterEach(async () => {
 		search?.dispose();
 		store?.dispose();
-		try {
-			await safeCleanup(TEST_DIR);
-		} catch {
-			// ignore cleanup errors between tests
-		}
+		await safeCleanup(TEST_DIR);
 	});
 
 	it("indexes tasks, documents, and decisions and returns combined results", async () => {

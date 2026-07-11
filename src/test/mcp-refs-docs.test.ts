@@ -37,12 +37,13 @@ describe("MCP task references and documentation", () => {
 	});
 
 	afterEach(async () => {
-		try {
-			await mcpServer.stop();
-		} catch {
-			// ignore
-		}
-		await safeCleanup(TEST_DIR);
+		const stopResult = await Promise.allSettled([mcpServer.stop()]);
+		const cleanupResult = await Promise.allSettled([safeCleanup(TEST_DIR)]);
+		const errors = [...stopResult, ...cleanupResult]
+			.filter((result): result is PromiseRejectedResult => result.status === "rejected")
+			.map((result) => result.reason);
+		if (errors.length === 1) throw errors[0];
+		if (errors.length > 1) throw new AggregateError(errors, "MCP server and fixture cleanup both failed");
 	});
 
 	describe("task_create with references", () => {

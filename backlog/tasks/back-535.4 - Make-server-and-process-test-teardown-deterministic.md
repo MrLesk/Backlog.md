@@ -5,7 +5,7 @@ status: In Progress
 assignee:
   - '@test-hygiene-resources'
 created_date: '2026-07-11 09:21'
-updated_date: '2026-07-11 12:05'
+updated_date: '2026-07-11 12:53'
 labels: []
 dependencies: []
 parent_task_id: BACK-535
@@ -25,21 +25,38 @@ Stop servers and watchers, close clients, streams, content stores, and search se
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 Every owned server, watcher, client, stream, subscription, and child process is deterministically released
-- [ ] #2 Shutdown failures remain visible and primary assertion failures remain diagnosable
-- [ ] #3 No arbitrary sleeps or timeout increases are used as lifecycle fixes
+- [x] #1 Every owned server, watcher, client, stream, subscription, and child process is deterministically released
+- [x] #2 Shutdown failures remain visible and primary assertion failures remain diagnosable
+- [x] #3 No arbitrary sleeps or timeout increases are used as lifecycle fixes
 - [ ] #4 Focused repeated stress and full cross-platform CI pass
 <!-- AC:END -->
+
+## Implementation Plan
+
+<!-- SECTION:PLAN:BEGIN -->
+1. Audit the 17 owned resource-bearing test files and classify the 24 assigned swallowed cleanup sites.
+2. Release resources in reverse acquisition order, await terminal process state, preserve primary failures, and remove arbitrary lifecycle sleeps without production changes.
+3. Run repeated focused stress, full static/build/test gates, and independent specification and quality reviews.
+4. Publish the bounded test-only PR and require exact-head Linux, macOS, and Windows CI before finalization.
+<!-- SECTION:PLAN:END -->
 
 ## Implementation Notes
 
 <!-- SECTION:NOTES:BEGIN -->
 Context Hunter L2 brief: this is test-only lifecycle work across MCP servers/clients, stdio processes, browser processes, config watchers, ContentStore/SearchService, board background operations, and Git worktrees. Follow resource acquisition in each file and release in reverse order before filesystem cleanup. Reuse existing stop/close/dispose/kill/exited/cancel APIs; attach rejection handlers immediately, await terminal state, and preserve a primary test failure when shutdown also fails. Do not add sleeps/timeouts as fixes, change production code, touch BACK-535.5 vacuous sites, or broaden the 17 owned files. Risks: stop methods may not be idempotent, abort may not drain an in-flight promise, process kill without exited can leak, worktree removal can race Git, and a teardown failure can mask an assertion. No new identifiers should be introduced without following local resource names.
+
+Integrated audit after implementation: all 24 owned swallowed cleanup/pre-clean sites were removed. The remaining test catch inventory is 39 sites: 22 previously classified legitimate catches, four vacuous assertions reserved for BACK-535.5, and 13 new fail-visible catches used only to preserve or aggregate primary and cleanup failures (build 3, mcp-stdio-exit 4, mcp-tasks 4, worktree-refresh 2). No production files changed.
+
+Independent spec review found and corrected two lifecycle gaps before freeze: board fixtures now guard Core disposal when setup fails before construction, and the compiled MCP smoke test captures and awaits the transport-owned child terminal event alongside client.close(). Corrected-head validation: two integrated runs passed 170/170 each; focused corrected paths passed 9/9; full suite passed 1666 with two intentional interactive-TUI skips; bunx tsc --noEmit, Biome over 323 files, bun run build, and git diff --check passed. Exact-head cross-platform CI remains required before AC4/finalization.
+
+Scope/evidence correction (supersedes the earlier 17-file/39-catch statement): the two process-close implementations converged, so src/test/test-utils.ts is an intentional 18th test-infrastructure file used to keep close/error/kill/listener semantics single-sourced. The current catch inventory is 40 sites: 26 baseline sites (22 legitimate plus four reserved for BACK-535.5) and 14 new fail-visible error-preservation sites, including the shared helper kill-error capture.
+
+Final local lifecycle candidate passed focused shared-helper/build/stdio coverage 6/6, integrated coverage 173/173 twice, typecheck, Biome over 323 files, build, and diff-check. The exact full suite then reported 1665 pass, two intentional interactive-TUI skips, and one failure: the unchanged monolithic CLI packaging test hit Bun’s 5000ms outer timeout under full-suite contention for the second time. Isolated packaging passed repeatedly around 2-3.3s. Per maintainer coordination, do not alter packaging/workflows or mark AC4 complete in BACK-535.4; BACK-535.6 owns that repeated build/CI duplication and timeout. Rebase this frozen lifecycle commit after BACK-535.6 merges, then rerun exact integrated/full/static and independent reviews before PR/finalization.
 <!-- SECTION:NOTES:END -->
 
 ## Definition of Done
 <!-- DOD:BEGIN -->
-- [ ] #1 bunx tsc --noEmit passes when TypeScript touched
-- [ ] #2 bun run check . passes when formatting/linting touched
-- [ ] #3 bun test (or scoped test) passes
+- [x] #1 bunx tsc --noEmit passes when TypeScript touched
+- [x] #2 bun run check . passes when formatting/linting touched
+- [x] #3 bun test (or scoped test) passes
 <!-- DOD:END -->

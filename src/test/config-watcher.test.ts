@@ -10,6 +10,7 @@ import { createUniqueTestDir, getPlatformTimeout, safeCleanup } from "./test-uti
 
 let testDir: string;
 let core: Core;
+let watcherChild: Bun.Subprocess<"ignore", "ignore", "pipe"> | undefined;
 
 const initialConfig: BacklogConfig = {
 	projectName: "Config watcher",
@@ -47,12 +48,18 @@ async function replaceConfigFile(content: string): Promise<void> {
 describe("config watcher", () => {
 	beforeEach(async () => {
 		testDir = createUniqueTestDir("config-watcher");
+		watcherChild = undefined;
 		core = new Core(testDir);
 		await core.filesystem.ensureBacklogStructure();
 		await core.filesystem.saveConfig(initialConfig);
 	});
 
 	afterEach(async () => {
+		if (watcherChild) {
+			watcherChild.kill();
+			await watcherChild.exited;
+			watcherChild = undefined;
+		}
 		core.disposeContentStore();
 		await safeCleanup(testDir);
 	});
@@ -560,22 +567,18 @@ describe("config watcher", () => {
 			import { watchConfigFile } from "./src/utils/config-watcher.ts";
 			watchConfigFile(new FileSystem(${JSON.stringify(missingProjectRoot)}), {});
 		`;
-		const child = Bun.spawn(["bun", "-e", script], {
+		watcherChild = Bun.spawn(["bun", "-e", script], {
 			cwd: process.cwd(),
 			stdin: "ignore",
 			stdout: "ignore",
 			stderr: "pipe",
 		});
 
-		try {
-			const exitCode = await withTimeout(child.exited, "unrefed config watcher child exit");
-			if (exitCode !== 0) {
-				const stderr = child.stderr ? await new Response(child.stderr).text() : "";
-				throw new Error(`Watcher child exited with ${exitCode}: ${stderr}`);
-			}
-			expect(exitCode).toBe(0);
-		} finally {
-			child.kill();
+		const exitCode = await withTimeout(watcherChild.exited, "unrefed config watcher child exit");
+		if (exitCode !== 0) {
+			const stderr = watcherChild.stderr ? await new Response(watcherChild.stderr).text() : "";
+			throw new Error(`Watcher child exited with ${exitCode}: ${stderr}`);
 		}
+		expect(exitCode).toBe(0);
 	});
 });
