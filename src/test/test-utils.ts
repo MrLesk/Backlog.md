@@ -56,20 +56,24 @@ export function withTimeout<T>(operation: Promise<T>, label: string, timeoutMs: 
 export type ChildCloseResult = { code: number | null; signal: NodeJS.Signals | null };
 
 /**
- * Waits for a child process to close so its stdio streams are drained. Process
- * errors are retained as diagnostics, while closure remains the terminal event.
+ * Observes a child process immediately so close/error events cannot be missed,
+ * while letting callers start the bounded shutdown timer only when cleanup begins.
  */
-export function waitForChildClose(child: ChildProcess, label: string, timeoutMs: number): Promise<ChildCloseResult> {
-	return new Promise((resolve, reject) => {
+export function observeChildClose(child: ChildProcess, label: string, timeoutMs: number) {
+	let startTimeout = () => {};
+	const result = new Promise<ChildCloseResult>((resolve, reject) => {
 		const gracefulTimeoutMs = Math.max(1, Math.floor(timeoutMs / 2));
 		const forcedTimeoutMs = Math.max(1, timeoutMs - gracefulTimeoutMs);
+		let settled = false;
+		let timeoutStarted = false;
 		let timeoutError: Error | undefined;
 		let processError: Error | undefined;
 		let terminalTimer: ReturnType<typeof setTimeout> | undefined;
-		let timeoutTimer: ReturnType<typeof setTimeout>;
+		let timeoutTimer: ReturnType<typeof setTimeout> | undefined;
 
 		const cleanup = () => {
-			clearTimeout(timeoutTimer);
+			settled = true;
+			if (timeoutTimer) clearTimeout(timeoutTimer);
 			if (terminalTimer) clearTimeout(terminalTimer);
 			child.off("error", onError);
 			child.off("close", onClose);
@@ -94,24 +98,29 @@ export function waitForChildClose(child: ChildProcess, label: string, timeoutMs:
 
 		child.once("error", onError);
 		child.once("close", onClose);
-		timeoutTimer = setTimeout(() => {
-			timeoutError = new Error(`Timed out waiting for ${label} to close`);
-			terminalTimer = setTimeout(
-				() =>
-					rejectErrors(
-						[timeoutError as Error, processError, new Error(`${label} did not close after SIGKILL`)].filter(
-							(error): error is Error => error !== undefined,
+		startTimeout = () => {
+			if (settled || timeoutStarted) return;
+			timeoutStarted = true;
+			timeoutTimer = setTimeout(() => {
+				timeoutError = new Error(`Timed out waiting for ${label} to close`);
+				terminalTimer = setTimeout(
+					() =>
+						rejectErrors(
+							[timeoutError as Error, processError, new Error(`${label} did not close after SIGKILL`)].filter(
+								(error): error is Error => error !== undefined,
+							),
 						),
-					),
-				forcedTimeoutMs,
-			);
-			try {
-				child.kill("SIGKILL");
-			} catch (error) {
-				onError(error as Error);
-			}
-		}, gracefulTimeoutMs);
+					forcedTimeoutMs,
+				);
+				try {
+					child.kill("SIGKILL");
+				} catch (error) {
+					onError(error as Error);
+				}
+			}, gracefulTimeoutMs);
+		};
 	});
+	return { result, startTimeout: () => startTimeout() };
 }
 
 /**

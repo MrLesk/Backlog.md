@@ -6,7 +6,7 @@ import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
 import { Core } from "../core/backlog.ts";
 import { initializeProject } from "../core/init.ts";
-import { createUniqueTestDir, getPlatformTimeout, isWindows, safeCleanup, waitForChildClose } from "./test-utils.ts";
+import { createUniqueTestDir, getPlatformTimeout, isWindows, observeChildClose, safeCleanup } from "./test-utils.ts";
 
 const CLI_PATH = join(process.cwd(), "src", "cli.ts");
 const START_MESSAGE = "Backlog.md MCP server started (stdio transport)";
@@ -103,7 +103,8 @@ describe("MCP stdio shutdown", () => {
 			cwd: TEST_DIR,
 			stdio: ["pipe", "pipe", "pipe"],
 		});
-		const childClose = waitForChildClose(child, "MCP process", Math.min(timeout, 2000)).then(
+		const childClose = observeChildClose(child, "MCP process", Math.min(timeout, 2000));
+		const closeOutcome = childClose.result.then(
 			(result) => ({ ok: true as const, result }),
 			(error: unknown) => ({ ok: false as const, error }),
 		);
@@ -116,27 +117,32 @@ describe("MCP stdio shutdown", () => {
 
 			await waitForSubstring(child.stderr, START_MESSAGE, timeout);
 			child.stdin.end();
+			childClose.startTimeout();
 
-			const closeOutcome = await childClose;
-			if (!closeOutcome.ok) throw closeOutcome.error;
-			expect(closeOutcome.result.code).toBe(0);
-			expect(closeOutcome.result.signal).toBeNull();
+			const primaryCloseOutcome = await closeOutcome;
+			if (!primaryCloseOutcome.ok) throw primaryCloseOutcome.error;
+			expect(primaryCloseOutcome.result.code).toBe(0);
+			expect(primaryCloseOutcome.result.signal).toBeNull();
 		} catch (error) {
 			primaryError = error;
 		}
 
+		childClose.startTimeout();
 		let cleanupError: unknown;
 		try {
 			if (child.exitCode === null && child.signalCode === null) child.kill("SIGKILL");
 		} catch (error) {
 			cleanupError = error;
 		}
-		const closeOutcome = await childClose;
-		if (!closeOutcome.ok && closeOutcome.error !== primaryError) {
+		const cleanupCloseOutcome = await closeOutcome;
+		if (!cleanupCloseOutcome.ok && cleanupCloseOutcome.error !== primaryError) {
 			cleanupError =
 				cleanupError === undefined
-					? closeOutcome.error
-					: new AggregateError([cleanupError, closeOutcome.error], "MCP process kill and close wait both failed");
+					? cleanupCloseOutcome.error
+					: new AggregateError(
+							[cleanupError, cleanupCloseOutcome.error],
+							"MCP process kill and close wait both failed",
+						);
 		}
 
 		if (primaryError !== undefined && cleanupError !== undefined) {
@@ -198,8 +204,10 @@ describe("MCP stdio shutdown", () => {
 		}
 
 		const child = (transport as unknown as { _process?: ReturnType<typeof spawn> })._process;
-		const exitOutcome = child
-			? waitForChildClose(child, "MCP transport process", Math.min(timeout, 2000)).then(
+		const childClose = child ? observeChildClose(child, "MCP transport process", Math.min(timeout, 2000)) : undefined;
+		childClose?.startTimeout();
+		const exitOutcome = childClose
+			? childClose.result.then(
 					() => ({ error: undefined }),
 					(error: unknown) => ({ error }),
 				)

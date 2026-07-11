@@ -5,7 +5,7 @@ status: In Progress
 assignee:
   - '@test-hygiene-resources'
 created_date: '2026-07-11 09:21'
-updated_date: '2026-07-11 15:28'
+updated_date: '2026-07-11 15:36'
 labels: []
 dependencies: []
 parent_task_id: BACK-535
@@ -56,6 +56,10 @@ Final local lifecycle candidate passed focused shared-helper/build/stdio coverag
 Post-BACK-535.6/BACK-535.7 reconciliation (supersedes earlier build-inclusive counts): BACK-535.6 removed src/test/build.test.ts and its four assigned cleanup sites as part of the accepted compiled-smoke consolidation. BACK-535.4 therefore owns the remaining 20 original resource-cleanup sites plus config-watcher lifecycle verification across 16 original test files, with src/test/test-utils.ts as the single shared close/error/kill helper file (17 changed test files total). Current catch inventory is 35: 24 baseline sites (20 legitimate explicit catches and four BACK-535.5 vacuous assertions) plus 11 new fail-visible error-preservation sites (mcp-stdio-exit 4, mcp-tasks 4, worktree-refresh 2, shared child-close helper 1). No production, CI, or BACK-535.5 files changed.
 
 Final rebase verification on unified-main 1f617b6: integrated lifecycle set passed 172/172 twice (30.72s and 30.01s); exact shared full command `bun test --isolate --timeout=10000 --max-concurrency=4` passed 1,665 with two intentional interactive-TUI skips across 188 files in 182.07s; bunx tsc --noEmit, Biome over 324 files, bun run build, and git diff --check passed. AC4 remains open pending this exact repair head in unified Linux/macOS/Windows CI.
+
+Final stage-1 review found and corrected one shutdown-observation race: the raw MCP stdio test had attached the shared close helper at spawn, which also started its one-second graceful timer before shutdown was requested. The shared helper now observes close/error immediately but exposes an idempotent startTimeout operation; the raw test activates it only after stdin closes or cleanup begins, while the transport test activates it immediately before client.close. This preserves the existing four-second startup allowance and keeps bounded shutdown diagnostics separate from tested process lifetime.
+
+Post-correction exact verification: focused stdio/helper tests passed 5/5; integrated lifecycle set passed 172/172 twice (27.44s and 27.16s); shared full command passed 1,665 with two intentional skips across 188 files in 170.39s; typecheck, Biome over 324 files, build, and diff checks passed. Unified-main operational baseline is green in CI run 29157797520 and CodeQL run 29157797240. AC4 remains open for this repair head.
 <!-- SECTION:NOTES:END -->
 
 ## Definition of Done
