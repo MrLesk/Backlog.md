@@ -10,25 +10,14 @@ import { apiClient } from "../web/lib/api.ts";
 
 let activeRoot: Root | null = null;
 
-type ControlledFormElement = HTMLInputElement | HTMLTextAreaElement;
-type MountedReactProps = {
-	onChange?: (event: { target: ControlledFormElement; currentTarget: ControlledFormElement }) => void;
-};
-
 const setFormValue = (element: HTMLInputElement | HTMLTextAreaElement, value: string) => {
 	const ownerWindow = element.ownerDocument.defaultView ?? window;
 	globalThis.HTMLElement = ownerWindow.HTMLElement;
 	globalThis.HTMLInputElement = ownerWindow.HTMLInputElement;
 	globalThis.HTMLTextAreaElement = ownerWindow.HTMLTextAreaElement;
 	const valueSetter = Object.getOwnPropertyDescriptor(Object.getPrototypeOf(element), "value")?.set;
-	element.focus();
 	valueSetter?.call(element, value);
-	element.dispatchEvent(new ownerWindow.InputEvent("input", { bubbles: true, inputType: "insertText", data: value }));
-	element.dispatchEvent(new ownerWindow.Event("change", { bubbles: true }));
-	const reactPropsKey = Object.keys(element).find((key) => key.startsWith("__reactProps$"));
-	if (!reactPropsKey) return;
-	const reactProps = (element as unknown as Record<string, MountedReactProps>)[reactPropsKey];
-	reactProps?.onChange?.({ target: element, currentTarget: element });
+	element.dispatchEvent(new ownerWindow.Event("input", { bubbles: true }));
 };
 
 const clickElement = (element: Element) => {

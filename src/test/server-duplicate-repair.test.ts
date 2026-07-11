@@ -5,7 +5,7 @@ import { Core } from "../core/backlog.ts";
 import type { DuplicateRepairPlan, DuplicateRepairResult } from "../core/duplicate-task-repair.ts";
 import { serializeTask } from "../markdown/serializer.ts";
 import { BacklogServer } from "../server/index.ts";
-import type { Task } from "../types/index.ts";
+import type { SearchResult, Task } from "../types/index.ts";
 import { createUniqueTestDir, retry, safeCleanup } from "./test-utils.ts";
 
 let testDir: string;
@@ -134,12 +134,6 @@ describe("duplicate repair server boundary", () => {
 	});
 
 	it("keeps custom-root content and search services live while repair, config, and reads overlap", async () => {
-		const internals = server as unknown as {
-			getContentStoreInstance: () => Promise<unknown>;
-			getSearchServiceInstance: () => Promise<unknown>;
-		};
-		const storeBefore = await internals.getContentStoreInstance();
-		const searchBefore = await internals.getSearchServiceInstance();
 		const preview = (await (await request("/api/tasks/duplicates")).json()) as DuplicateRepairPlan;
 		const config = await setupCore.filesystem.loadConfig();
 		if (!config) throw new Error("Missing custom-root config");
@@ -162,8 +156,15 @@ describe("duplicate repair server boundary", () => {
 			const latest = (await response.json()) as { projectName?: string };
 			if (latest.projectName !== "Server repair remained live") throw new Error("Config watcher has not published yet");
 		});
-		expect(await internals.getContentStoreInstance()).toBe(storeBefore);
-		expect(await internals.getSearchServiceInstance()).toBe(searchBefore);
+
+		const taskResponse = await request("/api/task/TASK-1");
+		expect(taskResponse.status).toBe(200);
+		expect(((await taskResponse.json()) as Task).title).toBe("Alpha");
+
+		const searchResponse = await request("/api/search?query=Alpha&type=task");
+		expect(searchResponse.status).toBe(200);
+		const searchResults = (await searchResponse.json()) as SearchResult[];
+		expect(searchResults.some((result) => result.type === "task" && result.task.title === "Alpha")).toBe(true);
 		expect(((await (await request("/api/tasks/duplicates")).json()) as DuplicateRepairPlan).groups).toEqual([]);
 	});
 });
