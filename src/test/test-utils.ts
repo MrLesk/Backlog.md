@@ -29,6 +29,30 @@ export function sleep(ms: number): Promise<void> {
 }
 
 /**
+ * Rejects if an operation does not settle in time and always clears its timer
+ * when the operation resolves or rejects first.
+ */
+export function withTimeout<T>(operation: Promise<T>, label: string, timeoutMs: number): Promise<T> {
+	return new Promise<T>((resolve, reject) => {
+		const timer = setTimeout(() => {
+			clearTimeout(timer);
+			reject(new Error(`Timed out waiting for ${label}`));
+		}, timeoutMs);
+
+		operation.then(
+			(value) => {
+				clearTimeout(timer);
+				resolve(value);
+			},
+			(error: unknown) => {
+				clearTimeout(timer);
+				reject(error);
+			},
+		);
+	});
+}
+
+/**
  * Retry utility for operations that might fail intermittently
  * Particularly useful for Windows file operations
  */
