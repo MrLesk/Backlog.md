@@ -1,19 +1,7 @@
-import { afterAll, beforeAll, describe, expect, it } from "bun:test";
-import { mkdirSync, rmSync } from "node:fs";
-import { join } from "node:path";
+import { describe, expect, it } from "bun:test";
 import { parseTask } from "../markdown/parser.ts";
 
-const TEMP_DIR = join(process.cwd(), ".tmp-structured-ac-test");
-
 describe("Structured Acceptance Criteria parsing", () => {
-	beforeAll(() => {
-		mkdirSync(TEMP_DIR, { recursive: true });
-	});
-
-	afterAll(() => {
-		rmSync(TEMP_DIR, { recursive: true, force: true });
-	});
-
 	it("parses acceptance criteria items with checked state and index", () => {
 		const content = `---
 id: task-999

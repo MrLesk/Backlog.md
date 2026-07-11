@@ -5,7 +5,7 @@ status: In Progress
 assignee:
   - '@test-hygiene-filesystem'
 created_date: '2026-07-11 09:21'
-updated_date: '2026-07-11 11:27'
+updated_date: '2026-07-11 11:32'
 labels: []
 dependencies: []
 parent_task_id: BACK-535
@@ -48,6 +48,8 @@ Every site is identified by the current-main line captured in the audit; impleme
 Context Hunter L2 brief: this is a wide mechanical test-only slice spanning 59 teardown and 37 redundant pre-clean sites. Follow the direct afterEach safeCleanup/rm pattern established by BACK-535.2; remove pre-clean only when createUniqueTestDir or mkdtemp already guarantees uniqueness; preserve primary errors for any in-test resource via a hook or drained finally. Reuse safeCleanup, remove only imports made unused, and do not touch BACK-535.4 resource files, BACK-535.5 vacuous sites, production code, or legitimate catches. Primary risks are overlapping setup/teardown edits, stale line numbers after rewrites, Windows file-handle cleanup, and accidentally changing fixture behavior.
 
 Implemented all 96 owned sites across 56 test files: removed 37 redundant unique-path pre-clean catches and made 59 filesystem teardowns fail-visible. The A-L delegated batch repaired 78 sites and passed 512 focused tests; the M-Z batch repaired 18 sites and passed 105 focused tests. Integrated scan fell from 146 to exactly 50 remaining catches, matching 24 BACK-535.4 resource sites, 22 legitimate sites, and 4 BACK-535.5 sites; no excluded file changed. Moved cli-agents auxiliary directory cleanup into afterEach so assertion failures cannot skip it. Two integrated changed-suite runs each passed 617 tests across 56 files with 2,257 assertions and 0 failures in 95.89s and 91.73s. Full suite passed 1,666 with 2 intentional interactive-TUI skips, 0 failures, and 6,804 assertions across 189 files in 174.59s. bunx tsc --noEmit, Biome over 323 files, bun run build, and diff checks passed. Actual Windows CI remains required before AC1 and finalization.
+
+Specification review found acceptance-criteria-structured retained a fixed, unused repository temp directory after its catch removal. Removed the dead TEMP_DIR constant, beforeAll/afterAll hooks, and fs/path imports rather than replacing an unused fixture. Focused test passed 1/1; the integrated changed-suite rerun passed 617 tests across 56 files with 2,257 assertions and 0 failures in 89.18s. TypeScript, Biome over 323 files, build, diff checks, and the exact remaining-catch count of 50 passed.
 <!-- SECTION:NOTES:END -->
 
 ## Definition of Done
