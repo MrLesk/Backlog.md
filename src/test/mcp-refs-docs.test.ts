@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import { $ } from "bun";
 import { McpServer } from "../mcp/server.ts";
 import { registerTaskTools } from "../mcp/tools/tasks/index.ts";
+import type { JsonSchema } from "../mcp/validation/validators.ts";
 import { createUniqueTestDir, initializeTestProject, safeCleanup } from "./test-utils.ts";
 
 const getText = (content: unknown[] | undefined, index = 0): string => {
@@ -46,259 +47,78 @@ describe("MCP task references and documentation", () => {
 		if (errors.length > 1) throw new AggregateError(errors, "MCP server and fixture cleanup both failed");
 	});
 
-	describe("task_create with references", () => {
-		it("creates task with references", async () => {
-			const result = await mcpServer.testInterface.callTool({
-				params: {
-					name: "task_create",
-					arguments: {
-						title: "Feature with refs",
-						references: ["https://github.com/issue/123", "src/api.ts"],
-					},
-				},
-			});
+	it("publishes references and documentation in task create and edit schemas", async () => {
+		const tools = await mcpServer.testInterface.listTools();
+		const toolByName = new Map(tools.tools.map((tool) => [tool.name, tool]));
+		const createSchema = toolByName.get("task_create")?.inputSchema as JsonSchema | undefined;
+		const editSchema = toolByName.get("task_edit")?.inputSchema as JsonSchema | undefined;
 
-			const text = getText(result.content);
-			expect(text).toContain("Task TASK-1 - Feature with refs");
-			expect(text).toContain("References: https://github.com/issue/123, src/api.ts");
-		});
-
-		it("creates task without references", async () => {
-			const result = await mcpServer.testInterface.callTool({
-				params: {
-					name: "task_create",
-					arguments: {
-						title: "Feature without refs",
-					},
-				},
-			});
-
-			const text = getText(result.content);
-			expect(text).toContain("Task TASK-1 - Feature without refs");
-			expect(text).not.toContain("References:");
-		});
+		expect(createSchema?.properties?.references?.items?.type).toBe("string");
+		expect(createSchema?.properties?.documentation?.items?.type).toBe("string");
+		for (const field of [
+			"references",
+			"addReferences",
+			"removeReferences",
+			"documentation",
+			"addDocumentation",
+			"removeDocumentation",
+		]) {
+			expect(editSchema?.properties?.[field]?.items?.type).toBe("string");
+		}
 	});
 
-	describe("task_create with documentation", () => {
-		it("creates task with documentation", async () => {
-			const result = await mcpServer.testInterface.callTool({
-				params: {
-					name: "task_create",
-					arguments: {
-						title: "Feature with docs",
-						documentation: ["https://design-docs.example.com", "docs/spec.md"],
-					},
+	it("creates and persists references and documentation through the MCP adapter", async () => {
+		const result = await mcpServer.testInterface.callTool({
+			params: {
+				name: "task_create",
+				arguments: {
+					title: "Feature with supporting material",
+					references: ["https://github.com/issue/123", "src/api.ts"],
+					documentation: ["https://design-docs.example.com", "docs/spec.md"],
 				},
-			});
-
-			const text = getText(result.content);
-			expect(text).toContain("Task TASK-1 - Feature with docs");
-			expect(text).toContain("Documentation: https://design-docs.example.com, docs/spec.md");
+			},
 		});
 
-		it("creates task without documentation", async () => {
-			const result = await mcpServer.testInterface.callTool({
-				params: {
-					name: "task_create",
-					arguments: {
-						title: "Feature without docs",
-					},
-				},
-			});
+		const text = getText(result.content);
+		expect(text).toContain("Task TASK-1 - Feature with supporting material");
+		expect(text).toContain("References: https://github.com/issue/123, src/api.ts");
+		expect(text).toContain("Documentation: https://design-docs.example.com, docs/spec.md");
 
-			const text = getText(result.content);
-			expect(text).toContain("Task TASK-1 - Feature without docs");
-			expect(text).not.toContain("Documentation:");
-		});
+		const task = await mcpServer.getTask("task-1");
+		expect(task?.references).toEqual(["https://github.com/issue/123", "src/api.ts"]);
+		expect(task?.documentation).toEqual(["https://design-docs.example.com", "docs/spec.md"]);
 	});
 
-	describe("task_create with both references and documentation", () => {
-		it("creates task with both fields", async () => {
-			const result = await mcpServer.testInterface.callTool({
-				params: {
-					name: "task_create",
-					arguments: {
-						title: "Feature with both",
-						references: ["https://github.com/issue/123"],
-						documentation: ["https://design-docs.example.com"],
-					},
-				},
-			});
-
-			const text = getText(result.content);
-			expect(text).toContain("Task TASK-1 - Feature with both");
-			expect(text).toContain("References: https://github.com/issue/123");
-			expect(text).toContain("Documentation: https://design-docs.example.com");
-		});
-	});
-
-	describe("task_edit with references", () => {
-		it("sets references on existing task", async () => {
-			await mcpServer.testInterface.callTool({
-				params: {
-					name: "task_create",
-					arguments: { title: "Task to edit" },
-				},
-			});
-
-			const result = await mcpServer.testInterface.callTool({
-				params: {
-					name: "task_edit",
-					arguments: {
-						id: "task-1",
-						references: ["https://example.com", "file.ts"],
-					},
-				},
-			});
-
-			const text = getText(result.content);
-			expect(text).toContain("References: https://example.com, file.ts");
+	it("routes reference and documentation set, add, and remove edits", async () => {
+		await mcpServer.testInterface.callTool({
+			params: { name: "task_create", arguments: { title: "Task to edit" } },
 		});
 
-		it("adds references to existing task", async () => {
-			await mcpServer.testInterface.callTool({
-				params: {
-					name: "task_create",
-					arguments: {
-						title: "Task with refs",
-						references: ["file1.ts"],
-					},
+		await mcpServer.testInterface.callTool({
+			params: {
+				name: "task_edit",
+				arguments: {
+					id: "task-1",
+					references: ["ref-1.ts", "ref-2.ts"],
+					documentation: ["doc-1.md", "doc-2.md"],
 				},
-			});
-
-			const result = await mcpServer.testInterface.callTool({
-				params: {
-					name: "task_edit",
-					arguments: {
-						id: "task-1",
-						addReferences: ["file2.ts", "file3.ts"],
-					},
+			},
+		});
+		await mcpServer.testInterface.callTool({
+			params: {
+				name: "task_edit",
+				arguments: {
+					id: "task-1",
+					addReferences: ["ref-3.ts"],
+					removeReferences: ["ref-2.ts"],
+					addDocumentation: ["doc-3.md"],
+					removeDocumentation: ["doc-2.md"],
 				},
-			});
-
-			const text = getText(result.content);
-			expect(text).toContain("References: file1.ts, file2.ts, file3.ts");
+			},
 		});
 
-		it("removes references from existing task", async () => {
-			await mcpServer.testInterface.callTool({
-				params: {
-					name: "task_create",
-					arguments: {
-						title: "Task with refs",
-						references: ["file1.ts", "file2.ts", "file3.ts"],
-					},
-				},
-			});
-
-			const result = await mcpServer.testInterface.callTool({
-				params: {
-					name: "task_edit",
-					arguments: {
-						id: "task-1",
-						removeReferences: ["file2.ts"],
-					},
-				},
-			});
-
-			const text = getText(result.content);
-			expect(text).toContain("References: file1.ts, file3.ts");
-			expect(text).not.toContain("file2.ts");
-		});
-	});
-
-	describe("task_edit with documentation", () => {
-		it("sets documentation on existing task", async () => {
-			await mcpServer.testInterface.callTool({
-				params: {
-					name: "task_create",
-					arguments: { title: "Task to edit" },
-				},
-			});
-
-			const result = await mcpServer.testInterface.callTool({
-				params: {
-					name: "task_edit",
-					arguments: {
-						id: "task-1",
-						documentation: ["https://docs.example.com", "README.md"],
-					},
-				},
-			});
-
-			const text = getText(result.content);
-			expect(text).toContain("Documentation: https://docs.example.com, README.md");
-		});
-
-		it("adds documentation to existing task", async () => {
-			await mcpServer.testInterface.callTool({
-				params: {
-					name: "task_create",
-					arguments: {
-						title: "Task with docs",
-						documentation: ["doc1.md"],
-					},
-				},
-			});
-
-			const result = await mcpServer.testInterface.callTool({
-				params: {
-					name: "task_edit",
-					arguments: {
-						id: "task-1",
-						addDocumentation: ["doc2.md", "doc3.md"],
-					},
-				},
-			});
-
-			const text = getText(result.content);
-			expect(text).toContain("Documentation: doc1.md, doc2.md, doc3.md");
-		});
-
-		it("removes documentation from existing task", async () => {
-			await mcpServer.testInterface.callTool({
-				params: {
-					name: "task_create",
-					arguments: {
-						title: "Task with docs",
-						documentation: ["doc1.md", "doc2.md", "doc3.md"],
-					},
-				},
-			});
-
-			const result = await mcpServer.testInterface.callTool({
-				params: {
-					name: "task_edit",
-					arguments: {
-						id: "task-1",
-						removeDocumentation: ["doc2.md"],
-					},
-				},
-			});
-
-			const text = getText(result.content);
-			expect(text).toContain("Documentation: doc1.md, doc3.md");
-			expect(text).not.toContain("doc2.md");
-		});
-	});
-
-	describe("persistence verification", () => {
-		it("persists references and documentation in task", async () => {
-			await mcpServer.testInterface.callTool({
-				params: {
-					name: "task_create",
-					arguments: {
-						title: "Persistent task",
-						references: ["ref1.ts", "ref2.ts"],
-						documentation: ["doc1.md", "doc2.md"],
-					},
-				},
-			});
-
-			// Reload task to verify persistence
-			const task = await mcpServer.getTask("task-1");
-			expect(task?.references).toEqual(["ref1.ts", "ref2.ts"]);
-			expect(task?.documentation).toEqual(["doc1.md", "doc2.md"]);
-		});
+		const task = await mcpServer.getTask("task-1");
+		expect(task?.references).toEqual(["ref-1.ts", "ref-3.ts"]);
+		expect(task?.documentation).toEqual(["doc-1.md", "doc-3.md"]);
 	});
 });
