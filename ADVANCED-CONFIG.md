@@ -30,6 +30,7 @@ Running `backlog config` with no arguments launches the interactive advanced wiz
 | `defaultEditor`   | Editor for 'E' key | Platform default (nano/notepad) |
 | `defaultPort`     | Web UI port        | `6420`                        |
 | `autoOpenBrowser` | Open browser automatically | `true`            |
+| `wrapNavigationToSearch` | Move focus into TUI search when navigating past the first/last row | `true` |
 | `remoteOperations`| Enable remote git operations | `true`           |
 | `autoCommit`      | Automatically commit task changes | `false`       |
 | `bypassGitHooks`  | Skip git hooks when committing (uses --no-verify) | `false`       |
@@ -41,6 +42,8 @@ Running `backlog config` with no arguments launches the interactive advanced wiz
 ## Detailed Notes
 
 > Editor setup guide: See [Configuring VIM and Neovim as Default Editor](backlog/docs/doc-002%20-%20Configuring-VIM-and-Neovim-as-Default-Editor.md) for configuration tips and troubleshooting interactive editors.
+
+> **TUI Navigation**: By default, navigating past the first/last row in the TUI task list or kanban board hands focus to the search input. Set `wrapNavigationToSearch: false` to disable that handoff — boundary navigation then falls back to the circular list behavior (pressing down on the last row wraps to the first row). `/` and `Ctrl+F` still focus the search input directly.
 
 > **Note**: Set `remoteOperations: false` to work offline. This disables git fetch operations and loads tasks from local branches only, useful when working without network connectivity.
 

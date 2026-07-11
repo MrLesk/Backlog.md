@@ -93,7 +93,11 @@ export function shouldMoveFromListBoundaryToSearch(
 	direction: TaskListBoundaryDirection,
 	selectedIndex: number,
 	totalTasks: number,
+	wrapNavigationToSearch = true,
 ): boolean {
+	if (!wrapNavigationToSearch) {
+		return false;
+	}
 	if (totalTasks <= 0) {
 		return false;
 	}
@@ -106,7 +110,11 @@ export function shouldMoveFromListBoundaryToSearch(
 export function shouldMoveFromDetailBoundaryToSearch(
 	direction: TaskListBoundaryDirection,
 	scrollOffset: number,
+	wrapNavigationToSearch = true,
 ): boolean {
+	if (!wrapNavigationToSearch) {
+		return false;
+	}
 	if (direction !== "up") {
 		return false;
 	}
@@ -242,6 +250,7 @@ export async function viewTaskEnhanced(
 	const { availableMilestoneTitles, resolveMilestoneLabel } = buildTaskViewerMilestoneFilterModel(milestoneEntities);
 
 	let dateFormat: string | undefined;
+	let wrapNavigationToSearch = true;
 
 	if (options.tasks) {
 		// Tasks already provided - use in-memory search (no ContentStore loading)
@@ -252,6 +261,7 @@ export async function viewTaskEnhanced(
 		priorityOptions = getPriorityOptions(config);
 		configuredTaskTypes = getTaskTypeValues(config);
 		dateFormat = config?.dateFormat;
+		wrapNavigationToSearch = config?.wrapNavigationToSearch ?? true;
 		taskSearchIndex = createTaskSearchIndex(allTasks);
 	} else {
 		// Need to load tasks - show loading screen
@@ -264,6 +274,7 @@ export async function viewTaskEnhanced(
 			priorityOptions = getPriorityOptions(config);
 			configuredTaskTypes = getTaskTypeValues(config);
 			dateFormat = config?.dateFormat;
+			wrapNavigationToSearch = config?.wrapNavigationToSearch ?? true;
 
 			loadingScreen?.update("Loading tasks from branches...");
 			contentStore = await core.getContentStore();
@@ -903,7 +914,7 @@ export async function viewTaskEnhanced(
 				void applySelection(selected);
 			},
 			onBoundaryNavigation: (direction, selectedIndex, total) => {
-				if (!shouldMoveFromListBoundaryToSearch(direction, selectedIndex, total)) {
+				if (!shouldMoveFromListBoundaryToSearch(direction, selectedIndex, total, wrapNavigationToSearch)) {
 					return false;
 				}
 				pendingSearchWrap = direction === "up" ? "to-last" : "to-first";
@@ -960,7 +971,7 @@ export async function viewTaskEnhanced(
 			};
 
 			boxInstance.key(["up", "k"], () => {
-				if (!shouldMoveFromDetailBoundaryToSearch("up", scrollable.getScroll?.() ?? 0)) {
+				if (!shouldMoveFromDetailBoundaryToSearch("up", scrollable.getScroll?.() ?? 0, wrapNavigationToSearch)) {
 					return true;
 				}
 				pendingSearchWrap = null;

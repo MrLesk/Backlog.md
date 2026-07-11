@@ -236,6 +236,24 @@ describe("Config commands", () => {
 		expect(setKeys).toEqual(getKeys);
 	});
 
+	it("round-trips wrapNavigationToSearch through config get/set/list", async () => {
+		const defaultGet = await $`bun ${CLI_PATH} config get wrapNavigationToSearch`.cwd(TEST_DIR).text();
+		expect(defaultGet.trim()).toBe("true");
+
+		await $`bun ${CLI_PATH} config set wrapNavigationToSearch false`.cwd(TEST_DIR).quiet();
+
+		const afterSet = await $`bun ${CLI_PATH} config get wrapNavigationToSearch`.cwd(TEST_DIR).text();
+		expect(afterSet.trim()).toBe("false");
+
+		const listOutput = await $`bun ${CLI_PATH} config list`.cwd(TEST_DIR).text();
+		expect(listOutput).toContain("wrapNavigationToSearch: false");
+
+		await $`bun ${CLI_PATH} config set wrapNavigationToSearch true`.cwd(TEST_DIR).quiet();
+
+		const afterReenable = await $`bun ${CLI_PATH} config get wrapNavigationToSearch`.cwd(TEST_DIR).text();
+		expect(afterReenable.trim()).toBe("true");
+	});
+
 	it("surfaces milestones in config get/list from milestone files", async () => {
 		await core.filesystem.createMilestone("Release 1");
 

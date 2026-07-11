@@ -30,6 +30,12 @@ describe("task viewer boundary navigation", () => {
 		expect(shouldMoveFromDetailBoundaryToSearch("down", 0)).toBe(false);
 	});
 
+	it("never moves to search when wrapNavigationToSearch is disabled", () => {
+		expect(shouldMoveFromListBoundaryToSearch("up", 0, 4, false)).toBe(false);
+		expect(shouldMoveFromListBoundaryToSearch("down", 3, 4, false)).toBe(false);
+		expect(shouldMoveFromDetailBoundaryToSearch("up", 0, false)).toBe(false);
+	});
+
 	it("resolves search exit target to last row after top-boundary handoff", () => {
 		const pending: PendingSearchWrap = "to-last";
 		expect(resolveSearchExitTargetIndex("up", pending, 5, 2)).toBe(4);

@@ -1,7 +1,7 @@
 import { describe, expect, it } from "bun:test";
 import type { Task } from "../types/index.ts";
 import type { ColumnData } from "../ui/board.ts";
-import { hasMoveBlockingBoardFilters, shouldRebuildColumns } from "../ui/board.ts";
+import { hasMoveBlockingBoardFilters, resolveBoardBoundaryToSearch, shouldRebuildColumns } from "../ui/board.ts";
 
 // Helper to create a minimal valid Task for testing
 const createTestTask = (id: string, title: string, status: string): Task => ({
@@ -75,6 +75,27 @@ describe("Board TUI Logic", () => {
 			expect(hasMoveBlockingBoardFilters({ ...baseFilters, searchQuery: "auth" })).toBe(true);
 			expect(hasMoveBlockingBoardFilters({ ...baseFilters, typeFilter: ["bug"] })).toBe(true);
 			expect(hasMoveBlockingBoardFilters({ ...baseFilters, labelFilter: ["bug"] })).toBe(true);
+		});
+	});
+
+	describe("resolveBoardBoundaryToSearch", () => {
+		it("jumps to search from an empty column when wrap navigation is enabled", () => {
+			expect(resolveBoardBoundaryToSearch("up", 0, 0, true)).toBe("jump-clear-pending");
+		});
+
+		it("stays put in an empty column when wrap navigation is disabled", () => {
+			expect(resolveBoardBoundaryToSearch("up", 0, 0, false)).toBe("none");
+		});
+
+		it("jumps to search at a boundary when wrap navigation is enabled", () => {
+			expect(resolveBoardBoundaryToSearch("up", 0, 4, true)).toBe("jump-with-wrap");
+			expect(resolveBoardBoundaryToSearch("down", 3, 4, true)).toBe("jump-with-wrap");
+			expect(resolveBoardBoundaryToSearch("up", 2, 4, true)).toBe("none");
+		});
+
+		it("never jumps to search when wrap navigation is disabled", () => {
+			expect(resolveBoardBoundaryToSearch("up", 0, 4, false)).toBe("none");
+			expect(resolveBoardBoundaryToSearch("down", 3, 4, false)).toBe("none");
 		});
 	});
 });

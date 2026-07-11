@@ -494,6 +494,7 @@ export async function runUnifiedView(options: UnifiedViewOptions): Promise<void>
 					milestoneEntities,
 					startupWarning,
 					dateFormat: config?.dateFormat,
+					wrapNavigationToSearch: config?.wrapNavigationToSearch,
 					priorities: config?.priorities,
 					types: config?.types,
 					createTask: async (input) => createTaskFromBoard(options.core, input, taskUpdateCallbacks.onTaskAdded),

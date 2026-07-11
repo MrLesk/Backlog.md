@@ -317,6 +317,8 @@ export interface BacklogConfig {
 	defaultPort?: number;
 	/** When true, hide board columns whose status has no tasks. Columns reappear while a task is being dragged so they remain valid drop targets. Defaults to false. */
 	hideEmptyColumns?: boolean;
+	/** When false, TUI list/board navigation stops wrapping focus into the search input at list boundaries. Defaults to true. */
+	wrapNavigationToSearch?: boolean;
 	remoteOperations?: boolean;
 	autoCommit?: boolean;
 	/** Disable all Git integration for filesystem-only projects. */
