@@ -3,7 +3,7 @@ id: doc-001
 title: Testing Style Guide
 type: guide
 created_date: '2025-07-21'
-updated_date: '2026-07-11 10:23'
+updated_date: '2026-07-11 18:35'
 ---
 # Testing Style Guide
 
@@ -29,6 +29,14 @@ afterEach(async () => {
   await safeCleanup(testDir);
 });
 ```
+
+## Tracked fixtures and diagnostics
+
+- `tmp/` is ignored runtime workspace. Do not force-add generated projects, logs, dumps, screenshots, benchmark output, or one-off reproduction output.
+- Retain a tracked fixture only when it is deterministic input for a named shipped, persistence, or test-harness contract. Keep it beside the owning test or in a contract-named fixture directory, and make the protected contract clear from the suite or fixture name.
+- Once an incident is understood, promote a useful repro into a contract-named automated test or a documented manual procedure. Remove the incident-style copy only after reference and history searches show it is orphaned and the behavior remains reproducible.
+- Before deleting a tracked diagnostic, record its provenance where recoverable, references, protected behavior, reproducibility, sensitivity, and size. Age is context, never deletion evidence.
+- Never retain secrets, credentials, personal data, or machine-specific paths in fixtures or diagnostics.
 
 ## Cleanup and resource ownership
 
