@@ -1692,10 +1692,6 @@ describe("ContentStore", () => {
 	it("updates documents when new files are added", async () => {
 		await store.ensureInitialized();
 
-		const waitForDocument = waitForEventWithTimeout(store, (event) => {
-			return event.type === "documents" && event.documents.some((doc) => doc.id === "doc-2");
-		});
-
 		await filesystem.saveDocument(
 			{
 				...sampleDocument,
@@ -1705,8 +1701,7 @@ describe("ContentStore", () => {
 			},
 			"guides",
 		);
-
-		await waitForDocument;
+		await waitForContentState(store, (content) => content.documents.some((doc) => doc.id === "doc-2"), "new document");
 
 		const documents = store.getDocuments();
 		expect(documents.some((doc) => doc.id === "doc-2")).toBe(true);
@@ -1774,29 +1769,29 @@ describe("ContentStore", () => {
 			throw new Error("Expected decision file was not created");
 		}
 
-		const waitForTaskRemoval = waitForEventWithTimeout(
-			store,
-			(event) => event.snapshot.tasks.every((item) => item.id !== task.id),
-			getPlatformTimeout(15000),
-		);
 		await unlink(task.filePath);
-		await waitForTaskRemoval;
-
-		const waitForDocumentRemoval = waitForEventWithTimeout(
+		await waitForContentState(
 			store,
-			(event) => event.snapshot.documents.every((item) => item.id !== document.id),
+			(content) => content.tasks.every((item) => item.id !== task.id),
+			"native task deletion",
 			getPlatformTimeout(15000),
 		);
+
 		await unlink(join(filesystem.docsDir, ...document.path.split("/")));
-		await waitForDocumentRemoval;
-
-		const waitForDecisionRemoval = waitForEventWithTimeout(
+		await waitForContentState(
 			store,
-			(event) => event.snapshot.decisions.every((item) => item.id !== "decision-1"),
+			(content) => content.documents.every((item) => item.id !== document.id),
+			"native document deletion",
 			getPlatformTimeout(15000),
 		);
+
 		await unlink(join(decisionsDir, decisionFile));
-		await waitForDecisionRemoval;
+		await waitForContentState(
+			store,
+			(content) => content.decisions.every((item) => item.id !== "decision-1"),
+			"native decision deletion",
+			getPlatformTimeout(15000),
+		);
 
 		expect(store.getTasks().some((item) => item.id === task.id)).toBe(false);
 		expect(store.getDocuments().some((item) => item.id === document.id)).toBe(false);
@@ -2344,19 +2339,18 @@ describe("ContentStore", () => {
 			await withTimeout(heldOldRefresh, "old-root refresh completion", lifecycleGateTimeout);
 			await withTimeout(heldBLoad.started, "root B snapshot load", lifecycleGateTimeout);
 
-			const rootBLaterWrites = waitForEventWithTimeout(
-				store,
-				(event) =>
-					event.snapshot.tasks.some((task) => task.id === "TASK-202") &&
-					event.snapshot.documents.some((document) => document.id === "doc-b-2") &&
-					event.snapshot.decisions.some((decision) => decision.id === "decision-b-2"),
-				lifecycleEventTimeout,
-				"root B watcher publications after rebinding",
-			);
 			await writeFixture(fixtureB, "202", "b-2");
 			heldBLoad.release();
-
-			const [rootBEvent] = await Promise.all([rootBPublished, rootBLaterWrites]);
+			const rootBEvent = await rootBPublished;
+			await waitForContentState(
+				store,
+				(content) =>
+					content.tasks.some((task) => task.id === "TASK-202") &&
+					content.documents.some((document) => document.id === "doc-b-2") &&
+					content.decisions.some((decision) => decision.id === "decision-b-2"),
+				"root B watcher state after rebinding",
+				lifecycleEventTimeout,
+			);
 			expect(rootBEvent.snapshot.tasks.every((task) => task.id.startsWith("TASK-2"))).toBe(true);
 			expect(rootBEvent.snapshot.documents.every((document) => document.id.startsWith("doc-b-"))).toBe(true);
 			expect(rootBEvent.snapshot.decisions.every((decision) => decision.id.startsWith("decision-b-"))).toBe(true);
@@ -2393,17 +2387,16 @@ describe("ContentStore", () => {
 				"decision-a-3",
 			]);
 
-			const rootALaterWrites = waitForEventWithTimeout(
-				store,
-				(event) =>
-					event.snapshot.tasks.some((task) => task.id === "TASK-104") &&
-					event.snapshot.documents.some((document) => document.id === "doc-a-4") &&
-					event.snapshot.decisions.some((decision) => decision.id === "decision-a-4"),
-				lifecycleEventTimeout,
-				"root A watcher publications after return",
-			);
 			await writeFixture(fixtureA, "104", "a-4");
-			await rootALaterWrites;
+			await waitForContentState(
+				store,
+				(content) =>
+					content.tasks.some((task) => task.id === "TASK-104") &&
+					content.documents.some((document) => document.id === "doc-a-4") &&
+					content.decisions.some((decision) => decision.id === "decision-a-4"),
+				"root A watcher state after return",
+				lifecycleEventTimeout,
+			);
 			await sleep(getPlatformTimeout(700));
 			expect(configEvents.map(({ name }) => name)).toEqual(["Root B", "Root B held", "Root A returned"]);
 
@@ -2419,17 +2412,29 @@ describe("ContentStore", () => {
 			expect(restarted.tasks.some((task) => task.id === "TASK-105")).toBe(true);
 			expect(restarted.documents.some((document) => document.id === "doc-a-5")).toBe(true);
 			expect(restarted.decisions.some((decision) => decision.id === "decision-a-5")).toBe(true);
-			const restartedWrite = waitForEventWithTimeout(
-				store,
-				(event) =>
-					event.snapshot.tasks.some((task) => task.id === "TASK-106") &&
-					event.snapshot.documents.some((document) => document.id === "doc-a-6") &&
-					event.snapshot.decisions.some((decision) => decision.id === "decision-a-6"),
-				lifecycleEventTimeout,
-				"restarted root A watcher publications",
-			);
 			await writeFixture(fixtureA, "106", "a-6");
-			await restartedWrite;
+			await waitForContentState(
+				store,
+				(content) =>
+					content.tasks.some((task) => task.id === "TASK-106") &&
+					content.documents.some((document) => document.id === "doc-a-6") &&
+					content.decisions.some((decision) => decision.id === "decision-a-6"),
+				"restarted root A watcher state",
+				lifecycleEventTimeout,
+			);
+			expect(store.getTasks().some((task) => task.id === "TASK-106")).toBe(true);
+			expect(store.getDocuments().some((document) => document.id === "doc-a-6")).toBe(true);
+			expect(store.getDecisions().some((decision) => decision.id === "decision-a-6")).toBe(true);
+			const restartedWatcherState = store as unknown as {
+				boundBacklogDir: string | null;
+				rootWatchers: unknown[];
+				rootWatchersInitialized: boolean;
+			};
+			expect(restartedWatcherState.rootWatchersInitialized).toBe(true);
+			expect(restartedWatcherState.boundBacklogDir && resolve(restartedWatcherState.boundBacklogDir)).toBe(
+				resolve(fixtureA.backlogDir),
+			);
+			expect(restartedWatcherState.rootWatchers).toHaveLength(3);
 		} finally {
 			for (const gate of gates) gate.release();
 			unsubscribe();
@@ -2480,18 +2485,42 @@ describe("ContentStore", () => {
 		expect(reboundEvent.snapshot.documents.map((document) => document.id)).toEqual(["doc-custom-1"]);
 		expect(reboundEvent.snapshot.decisions.map((decision) => decision.id)).toEqual(["decision-custom-1"]);
 
-		const laterWrite = waitForEventWithTimeout(
+		await writeFixture(fixture, "302", "custom-2");
+		await waitForContentState(
 			store,
-			(event) =>
-				event.snapshot.tasks.some((task) => task.id === "TASK-302") &&
-				event.snapshot.documents.some((document) => document.id === "doc-custom-2") &&
-				event.snapshot.decisions.some((decision) => decision.id === "decision-custom-2"),
+			(content) =>
+				content.tasks.some((task) => task.id === "TASK-302") &&
+				content.documents.some((document) => document.id === "doc-custom-2") &&
+				content.decisions.some((decision) => decision.id === "decision-custom-2"),
+			"custom-root watcher state",
 			getPlatformTimeout(15000),
 		);
-		await writeFixture(fixture, "302", "custom-2");
-		await laterWrite;
 	});
 });
+
+interface ObservedContentState {
+	tasks: Task[];
+	documents: Document[];
+	decisions: Decision[];
+}
+
+async function waitForContentState(
+	store: ContentStore,
+	predicate: (content: ObservedContentState) => boolean,
+	label: string,
+	timeout = getPlatformTimeout(),
+): Promise<void> {
+	await waitUntil(
+		() =>
+			predicate({
+				tasks: store.getTasks(),
+				documents: store.getDocuments(),
+				decisions: store.getDecisions(),
+			}),
+		label,
+		timeout,
+	);
+}
 
 function waitForEventWithTimeout(
 	store: ContentStore,

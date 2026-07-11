@@ -5,7 +5,7 @@ status: In Progress
 assignee:
   - '@pr755-f768-code'
 created_date: '2026-07-10 19:28'
-updated_date: '2026-07-11 10:24'
+updated_date: '2026-07-11 10:36'
 labels:
   - concurrency
   - release-blocker
@@ -81,6 +81,8 @@ Merge gate reopened after exact-head Windows CI reproduced the A→B→A watcher
 Windows diagnostic head f2f5693 localized the repeated failure in CI run 29133276160, job 86492659570: `Timed out waiting for held root B config load` after 10.216 seconds. The queue never reached the config snapshot loader. Self-cleaning labeled waits prevented the prior rejection leak, and the following ContentStore test passed. Independent BACK-534 investigation on main measured duplicate unchanged watcher work occupying the same serialized queue for 4,986 ms in targeted retry plus 4,987 ms in fallback refresh (9,973 ms total). Keep PR #757 blocked and do not duplicate that shared production fix here; rebase onto corrected main after BACK-534 lands, then reassess the temporary diagnostic harness and rerun all gates.
 
 Integrated corrected main/BACK-534 without force. Preserved physical-root publication ownership and per-item generation/version reconciliation while adopting bounded coalesced deferred watcher rechecks outside the serialized queue. Removed superseded watcher/refresh/retry implementations after semantic merge. Kept the self-cleaning labeled lifecycle waits; replaced one flaky native fs.watch delivery assertion with deterministic bound-root and active-watcher invariants after reproducing the flake 1/4, then passed that transition pair 100/100. Final merged verification: focused ContentStore/Search/MCP 85/85; critical lifecycle/concurrency stress 40/40 plus transition recovery 100/100; TypeScript, Biome (322 files), diff check, build green; authoritative isolated suite 1,663 passed, 2 expected interactive skips, 0 failed, 6,796 assertions across 188 files in 171.37s. Full log: /tmp/back533-final-full.log.
+
+Post-review synchronization correction: the reviewer reproduced the post-restart lifecycle test failing 45/1 in the full ContentStore file while isolated runs passed 10/10. The wait was coupled to one event sequence even though the requirement is eventual observable state after real external writes. A complete file audit found the same pattern in document add, task/document/decision deletion, root-transition writes, restart writes, and custom-root writes; one repeated run reproduced deletion timing out after two prior full-file passes. Consolidated these state-convergence checks on one bounded accessor-poll helper without calling refresh or ensure. Retained event subscriptions only where notification or config-publication ordering is the behavior under test. Final evidence: complete ContentStore file 920/920 across 20 consecutive runs; combined ContentStore/Search/MCP 85/85 (351 assertions); TypeScript, Biome 322 files, diff check and build pass; authoritative suite 1,663 pass, 2 expected skips, 0 fail, 6,802 assertions across 188 files in 169.38s. Log: /tmp/back533-final-full-sync.log.
 <!-- SECTION:NOTES:END -->
 
 ## Definition of Done
