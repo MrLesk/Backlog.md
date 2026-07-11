@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { mkdir, readdir, rm } from "node:fs/promises";
+import { mkdir, readdir } from "node:fs/promises";
 import { join } from "node:path";
 import { $ } from "bun";
 import { Core } from "../core/backlog.ts";
@@ -12,11 +12,6 @@ let TEST_DIR: string;
 describe("CLI Zero Padded IDs Feature", () => {
 	beforeEach(async () => {
 		TEST_DIR = createUniqueTestDir("test-zero-padded-ids");
-		try {
-			await rm(TEST_DIR, { recursive: true, force: true });
-		} catch {
-			// Ignore cleanup errors
-		}
 		await mkdir(TEST_DIR, { recursive: true });
 
 		// Initialize git and backlog project
@@ -37,11 +32,7 @@ describe("CLI Zero Padded IDs Feature", () => {
 	});
 
 	afterEach(async () => {
-		try {
-			await safeCleanup(TEST_DIR);
-		} catch {
-			// Ignore cleanup errors - the unique directory names prevent conflicts
-		}
+		await safeCleanup(TEST_DIR);
 	});
 
 	test("should create a task with a zero-padded ID", async () => {

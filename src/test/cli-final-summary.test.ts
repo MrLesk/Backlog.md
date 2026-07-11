@@ -23,7 +23,7 @@ describe("Final Summary CLI", () => {
 	});
 
 	afterEach(async () => {
-		await safeCleanup(TEST_DIR).catch(() => {});
+		await safeCleanup(TEST_DIR);
 	});
 
 	it("supports --final-summary on task create", async () => {

@@ -52,11 +52,7 @@ describe("next id across remote branches", () => {
 	});
 
 	afterAll(async () => {
-		try {
-			await safeCleanup(TEST_DIR);
-		} catch {
-			// Ignore cleanup errors
-		}
+		await safeCleanup(TEST_DIR);
 	});
 
 	it("uses id after highest remote task", async () => {

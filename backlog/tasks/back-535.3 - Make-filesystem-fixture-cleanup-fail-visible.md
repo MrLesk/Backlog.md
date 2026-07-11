@@ -1,10 +1,11 @@
 ---
 id: BACK-535.3
 title: Make filesystem fixture cleanup fail visible
-status: To Do
-assignee: []
+status: Done
+assignee:
+  - '@test-hygiene-filesystem'
 created_date: '2026-07-11 09:21'
-updated_date: '2026-07-11 10:58'
+updated_date: '2026-07-11 11:59'
 labels: []
 dependencies: []
 parent_task_id: BACK-535
@@ -26,10 +27,10 @@ Every site is identified by the current-main line captured in the audit; impleme
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 Focused stress and the full local gate pass, and the exact PR head passes the actual GitHub Actions Windows test matrix; Windows-equivalent local evidence is insufficient
-- [ ] #2 All 37 enumerated redundant pre-clean sites are removed from unique fixture paths
-- [ ] #3 All 59 enumerated filesystem-only teardown failures are fail-visible without changing test behavior
-- [ ] #4 No BACK-535.4 resource-owning site, BACK-535.5 vacuous assertion site, or legitimate explicit catch site is changed
+- [x] #1 Focused stress and the full local gate pass, and the exact PR head passes the actual GitHub Actions Windows test matrix; Windows-equivalent local evidence is insufficient
+- [x] #2 All 37 enumerated redundant pre-clean sites are removed from unique fixture paths
+- [x] #3 All 59 enumerated filesystem-only teardown failures are fail-visible without changing test behavior
+- [x] #4 No BACK-535.4 resource-owning site, BACK-535.5 vacuous assertion site, or legitimate explicit catch site is changed
 <!-- AC:END -->
 
 ## Implementation Plan
@@ -41,9 +42,31 @@ Every site is identified by the current-main line captured in the audit; impleme
 4. Run repeated focused batches locally, full static/build/test gates, then obtain successful GitHub Actions evidence from the actual Windows test matrix.
 <!-- SECTION:PLAN:END -->
 
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+Context Hunter L2 brief: this is a wide mechanical test-only slice spanning 59 teardown and 37 redundant pre-clean sites. Follow the direct afterEach safeCleanup/rm pattern established by BACK-535.2; remove pre-clean only when createUniqueTestDir or mkdtemp already guarantees uniqueness; preserve primary errors for any in-test resource via a hook or drained finally. Reuse safeCleanup, remove only imports made unused, and do not touch BACK-535.4 resource files, BACK-535.5 vacuous sites, production code, or legitimate catches. Primary risks are overlapping setup/teardown edits, stale line numbers after rewrites, Windows file-handle cleanup, and accidentally changing fixture behavior.
+
+Implemented all 96 owned sites across 56 test files: removed 37 redundant unique-path pre-clean catches and made 59 filesystem teardowns fail-visible. The A-L delegated batch repaired 78 sites and passed 512 focused tests; the M-Z batch repaired 18 sites and passed 105 focused tests. Integrated scan fell from 146 to exactly 50 remaining catches, matching 24 BACK-535.4 resource sites, 22 legitimate sites, and 4 BACK-535.5 sites; no excluded file changed. Moved cli-agents auxiliary directory cleanup into afterEach so assertion failures cannot skip it. Two integrated changed-suite runs each passed 617 tests across 56 files with 2,257 assertions and 0 failures in 95.89s and 91.73s. Full suite passed 1,666 with 2 intentional interactive-TUI skips, 0 failures, and 6,804 assertions across 189 files in 174.59s. bunx tsc --noEmit, Biome over 323 files, bun run build, and diff checks passed. Actual Windows CI remains required before AC1 and finalization.
+
+Specification review found acceptance-criteria-structured retained a fixed, unused repository temp directory after its catch removal. Removed the dead TEMP_DIR constant, beforeAll/afterAll hooks, and fs/path imports rather than replacing an unused fixture. Focused test passed 1/1; the integrated changed-suite rerun passed 617 tests across 56 files with 2,257 assertions and 0 failures in 89.18s. TypeScript, Biome over 323 files, build, diff checks, and the exact remaining-catch count of 50 passed.
+
+Independent specification review approved the corrected exact diff after removal of the unused fixed TEMP_DIR fixture. Fresh quality review approved with no actionable findings after independently reconciling 146 baseline catches minus 96 owned removals to 50 documented exclusions, running the changed suite 617/617, and verifying TypeScript/Biome. AC1 remains intentionally unchecked until the published exact head passes the real GitHub Actions Windows matrix.
+
+First exact-head Windows CI exposed two failures. Shard 2 produced an unhandled ViewSwitcher BackgroundLoader error after afterEach removed its Git working directory; two updateState tests started background loads without awaiting them. Attached to each existing load, drained it with Promise.allSettled in finally so assertion failures remain primary, and asserted successful completion afterward. No production change, sleep, or timeout increase. ViewSwitcher passed 50/50 stress. The first full rerun hit an unrelated unchanged server SPA 5-second timeout; that exact test passed 10/10 in isolation, and a captured full rerun then passed 1,666 tests with 2 intentional skips, 0 failures, and 6,806 assertions across 189 files in 169.45s. TypeScript, Biome over 323 files, build, diff checks, and catch count 50 pass. Windows shard 1 also timed out in excluded build.test at its existing 30-second limit; no change is justified without recurrence after the actionable fix.
+
+Published reviewed head 3fd31f3 passed all 12 GitHub checks: CodeQL, Ubuntu/macOS/Windows compile and smoke, Ubuntu/macOS full tests, and Windows shards 1/3, 2/3, and 3/3. The excluded build.test timeout did not recur; the actionable ViewSwitcher shard-2 error is resolved. Specification spot-check and fresh quality re-review approved the exact Windows fix with no findings.
+<!-- SECTION:NOTES:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+Removed 37 redundant pre-clean catches and made 59 filesystem teardown failures visible across 56 test files without production changes. Eliminated one dead fixed-path fixture and made ViewSwitcher tests drain background loading before deleting their Git fixture, preserving primary assertion errors. Reconciled the catch inventory from 146 to the expected 50 exclusions. Verified repeated 617-test changed-suite runs, a full 1,666-test local suite, 50/50 ViewSwitcher stress, TypeScript, Biome, build, sequential specification/quality approval, and all three GitHub Actions Windows shards.
+<!-- SECTION:FINAL_SUMMARY:END -->
+
 ## Definition of Done
 <!-- DOD:BEGIN -->
-- [ ] #1 bunx tsc --noEmit passes when TypeScript touched
-- [ ] #2 bun run check . passes when formatting/linting touched
-- [ ] #3 bun test (or scoped test) passes
+- [x] #1 bunx tsc --noEmit passes when TypeScript touched
+- [x] #2 bun run check . passes when formatting/linting touched
+- [x] #3 bun test (or scoped test) passes
 <!-- DOD:END -->

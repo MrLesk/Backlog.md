@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
-import { mkdir, rm } from "node:fs/promises";
+import { mkdir } from "node:fs/promises";
 import { join } from "node:path";
 import { $ } from "bun";
 import { Core } from "../core/backlog.ts";
@@ -12,7 +12,6 @@ let core: Core;
 describe("CLI task types", () => {
 	beforeEach(async () => {
 		TEST_DIR = createUniqueTestDir("test-cli-task-type");
-		await rm(TEST_DIR, { recursive: true, force: true }).catch(() => {});
 		await mkdir(TEST_DIR, { recursive: true });
 		await $`git init -b main`.cwd(TEST_DIR).quiet();
 		await $`git config user.name "Test User"`.cwd(TEST_DIR).quiet();
@@ -27,7 +26,7 @@ describe("CLI task types", () => {
 	});
 
 	afterEach(async () => {
-		await safeCleanup(TEST_DIR).catch(() => {});
+		await safeCleanup(TEST_DIR);
 	});
 
 	it("creates and edits typed tasks with configured canonical casing", async () => {

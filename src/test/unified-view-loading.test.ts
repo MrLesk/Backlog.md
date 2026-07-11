@@ -16,11 +16,7 @@ describe("loadTasksForUnifiedView", () => {
 	});
 
 	afterEach(async () => {
-		try {
-			await safeCleanup(testDir);
-		} catch {
-			// Ignore cleanup failures in tests
-		}
+		await safeCleanup(testDir);
 	});
 
 	it("uses provided loader progress and closes the loading screen", async () => {

@@ -23,7 +23,7 @@ describe("Implementation Notes - append", () => {
 	});
 
 	afterEach(async () => {
-		await safeCleanup(TEST_DIR).catch(() => {});
+		await safeCleanup(TEST_DIR);
 	});
 
 	it("appends to existing Implementation Notes with single blank line", async () => {

@@ -34,11 +34,7 @@ describe("Implementation Notes CLI", () => {
 	});
 
 	afterEach(async () => {
-		try {
-			await safeCleanup(TEST_DIR);
-		} catch {
-			// Ignore cleanup errors
-		}
+		await safeCleanup(TEST_DIR);
 	});
 
 	describe("task create with implementation notes", () => {

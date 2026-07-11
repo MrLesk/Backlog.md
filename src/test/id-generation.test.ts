@@ -19,11 +19,7 @@ describe("Task ID Generation with Archives", () => {
 	});
 
 	afterEach(async () => {
-		try {
-			await rm(testDir, { recursive: true, force: true });
-		} catch {
-			// Ignore cleanup errors
-		}
+		await rm(testDir, { recursive: true, force: true });
 	});
 
 	it("should reuse IDs from archived tasks (soft delete behavior)", async () => {

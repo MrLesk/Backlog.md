@@ -24,11 +24,7 @@ describe("Board Loading with checkActiveBranches", () => {
 	});
 
 	afterEach(async () => {
-		try {
-			await safeCleanup(TEST_DIR);
-		} catch {
-			// Ignore cleanup errors
-		}
+		await safeCleanup(TEST_DIR);
 	});
 
 	const createTestTask = (id: string, status = "To Do"): Task => ({

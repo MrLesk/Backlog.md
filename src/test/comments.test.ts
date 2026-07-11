@@ -24,7 +24,7 @@ describe("Task comments", () => {
 	});
 
 	afterEach(async () => {
-		await safeCleanup(TEST_DIR).catch(() => {});
+		await safeCleanup(TEST_DIR);
 	});
 
 	it("persists ordered comments and preserves markdown headings inside comment bodies", async () => {

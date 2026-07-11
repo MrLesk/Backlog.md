@@ -21,7 +21,7 @@ describe("Final Summary", () => {
 	});
 
 	afterEach(async () => {
-		await safeCleanup(TEST_DIR).catch(() => {});
+		await safeCleanup(TEST_DIR);
 	});
 
 	it("creates tasks with Final Summary and persists section markers", async () => {

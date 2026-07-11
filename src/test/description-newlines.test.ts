@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
-import { mkdir, rm } from "node:fs/promises";
+import { mkdir } from "node:fs/promises";
 import { join } from "node:path";
 import { $ } from "bun";
 import { Core } from "../index.ts";
@@ -12,9 +12,6 @@ describe("CLI description newline handling", () => {
 
 	beforeEach(async () => {
 		TEST_DIR = createUniqueTestDir("test-desc-newlines");
-		try {
-			await rm(TEST_DIR, { recursive: true, force: true });
-		} catch {}
 		await mkdir(TEST_DIR, { recursive: true });
 
 		await $`git init`.cwd(TEST_DIR).quiet();
@@ -26,9 +23,7 @@ describe("CLI description newline handling", () => {
 	});
 
 	afterEach(async () => {
-		try {
-			await safeCleanup(TEST_DIR);
-		} catch {}
+		await safeCleanup(TEST_DIR);
 	});
 
 	it("should preserve literal newlines when creating task", async () => {
