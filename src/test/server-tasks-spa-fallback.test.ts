@@ -38,7 +38,14 @@ async function request(path: string, init: RequestInit = {}, timeoutMs = 1500): 
 async function replaceWatchedConfigFile(configPath: string, content: string): Promise<void> {
 	const replacementPath = `${configPath}.replacement`;
 	await Bun.write(replacementPath, content);
-	await rename(replacementPath, configPath);
+	await retry(
+		async () => {
+			await rename(replacementPath, configPath);
+			return true;
+		},
+		10,
+		25,
+	);
 }
 
 async function startServer(): Promise<void> {
@@ -50,8 +57,8 @@ async function startServer(): Promise<void> {
 
 	await retry(
 		async () => {
-			const response = await request("/api/status", {}, 500);
-			if (!response.ok) throw new Error("server not ready");
+			const statusResponse = await request("/api/status", {}, 500);
+			if (!statusResponse.ok) throw new Error("server status endpoint not ready");
 			return true;
 		},
 		10,
@@ -183,6 +190,14 @@ describe("BacklogServer task SPA fallback", () => {
 	});
 
 	it("serves task and board namespaces through the SPA for direct and refreshed navigation", async () => {
+		// Compile the HTML bundle once before exercising the bounded route requests.
+		// The test runner's existing timeout bounds this first-build readiness check;
+		// aborting it early can leave Bun's development bundler with a stale socket.
+		const shellResponse = await fetch(`http://127.0.0.1:${serverPort}/`);
+		expect(shellResponse.status).toBe(200);
+		expect(shellResponse.headers.get("content-type")).toContain("text/html");
+		expect(await shellResponse.text()).toContain('<div id="root"></div>');
+
 		const paths = [
 			"/tasks",
 			"/tasks/",

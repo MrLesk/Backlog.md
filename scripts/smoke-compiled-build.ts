@@ -1,5 +1,7 @@
+import { mkdtemp, rm } from "node:fs/promises";
 import { createServer } from "node:net";
-import { resolve } from "node:path";
+import { tmpdir } from "node:os";
+import { join, resolve } from "node:path";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
 
@@ -43,10 +45,9 @@ function throwAfterCleanup(
 	cleanupFailures: Error[],
 	diagnostics = "",
 ): void {
-	const failures = [
-		...(operationFailure ? [operationFailure.error] : []),
-		...cleanupFailures,
-	].map((error) => (error instanceof Error ? error : new Error(String(error))));
+	const failures = [...(operationFailure ? [operationFailure.error] : []), ...cleanupFailures].map((error) =>
+		error instanceof Error ? error : new Error(String(error)),
+	);
 	if (failures.length === 0) {
 		return;
 	}
@@ -58,7 +59,11 @@ function throwAfterCleanup(
 	throw new AggregateError(failures, message);
 }
 
-async function captureCleanupFailure(cleanupFailures: Error[], label: string, cleanup: () => Promise<void>): Promise<void> {
+async function captureCleanupFailure(
+	cleanupFailures: Error[],
+	label: string,
+	cleanup: () => Promise<void>,
+): Promise<void> {
 	try {
 		await cleanup();
 	} catch (error) {
@@ -122,8 +127,9 @@ function findAvailablePort(): Promise<number> {
 	});
 }
 
-async function run(executableAndArgs: string[]): Promise<string> {
+async function run(executableAndArgs: string[], cwd = process.cwd()): Promise<string> {
 	const child = Bun.spawn(executableAndArgs, {
+		cwd,
 		stderr: "pipe",
 		stdout: "pipe",
 	});
@@ -149,9 +155,13 @@ async function run(executableAndArgs: string[]): Promise<string> {
 			child.kill("SIGKILL");
 		});
 	}
-	await captureCleanupFailure(cleanupFailures, `${executableAndArgs.join(" ")} did not reach terminal state.`, async () => {
-		await unwrapOutcome(exited, `${executableAndArgs.join(" ")} close`);
-	});
+	await captureCleanupFailure(
+		cleanupFailures,
+		`${executableAndArgs.join(" ")} did not reach terminal state.`,
+		async () => {
+			await unwrapOutcome(exited, `${executableAndArgs.join(" ")} close`);
+		},
+	);
 
 	let stdout = "";
 	let stderr = "";
@@ -206,131 +216,150 @@ assert(helpOutput.includes("Backlog.md - Project management CLI"), "Compiled CLI
 const versionOutput = (await run([executable, "--version"])).trim();
 assert(versionOutput === expectedVersion, `Expected compiled version ${expectedVersion}, received ${versionOutput}.`);
 
-const port = await findAvailablePort();
-const browserServer = Bun.spawn(
-	[executable, "browser", "--no-open", "--non-interactive", "--port", String(port)],
-	{
-		cwd: process.cwd(),
+const smokeRoot = await mkdtemp(join(tmpdir(), "backlog-compiled-smoke-"));
+let smokeFailure: CapturedFailure | undefined;
+try {
+	await run([executable, "init", "Compiled Smoke", "--defaults", "--no-git", "--integration-mode", "none"], smokeRoot);
+
+	const port = await findAvailablePort();
+	const browserServer = Bun.spawn([executable, "browser", "--no-open", "--non-interactive", "--port", String(port)], {
+		cwd: smokeRoot,
 		stderr: "pipe",
 		stdout: "ignore",
-	},
-);
-let browserServerExited = false;
-const browserStderr = settle(new Response(browserServer.stderr).text());
-const browserExited = settle(browserServer.exited).then((outcome) => {
-	browserServerExited = true;
-	return outcome;
-});
-
-let browserFailure: CapturedFailure | undefined;
-try {
-	const baseUrl = `http://127.0.0.1:${port}`;
-	const htmlResponse = await waitForHttp(`${baseUrl}/`, () => browserServerExited, operationTimeout);
-	assert(
-		htmlResponse.headers.get("cache-control") === "no-store, max-age=0, must-revalidate",
-		"Compiled browser HTML is missing its no-store cache policy.",
-	);
-
-	const html = await htmlResponse.text();
-	const stylesheetPath = html.match(/<link rel="stylesheet"[^>]*href="([^"]+)"/)?.[1];
-	const scriptPath = html.match(/<script type="module"[^>]*src="([^"]+)"/)?.[1];
-	const faviconPath = html.match(/<link rel="icon"[^>]*href="([^"]+)"/)?.[1];
-
-	assert(/^\/chunk-[a-z0-9]+\.css$/.test(stylesheetPath ?? ""), `Invalid stylesheet path: ${stylesheetPath}`);
-	assert(/^\/chunk-[a-z0-9]+\.js$/.test(scriptPath ?? ""), `Invalid script path: ${scriptPath}`);
-	assert(/^\/favicon-[a-z0-9]+\.png$/.test(faviconPath ?? ""), `Invalid favicon path: ${faviconPath}`);
-
-	const stylesheetResponse = await fetchWithTimeout(`${baseUrl}${stylesheetPath}`);
-	assert(stylesheetResponse.status === 200, `Stylesheet returned ${stylesheetResponse.status}.`);
-	assert(
-		stylesheetResponse.headers.get("content-type")?.includes("text/css"),
-		`Unexpected stylesheet content type: ${stylesheetResponse.headers.get("content-type")}`,
-	);
-	const stylesheet = await stylesheetResponse.text();
-	assert(stylesheet.includes(".flex{display:flex}"), "Compiled stylesheet is missing Tailwind utilities.");
-	assert(stylesheet.includes(".wmde-markdown"), "Compiled stylesheet is missing Markdown editor styles.");
-
-	const scriptResponse = await fetchWithTimeout(`${baseUrl}${scriptPath}`, { method: "HEAD" });
-	assert(scriptResponse.status === 200, `Browser script returned ${scriptResponse.status}.`);
-	assert(
-		scriptResponse.headers.get("content-type")?.includes("text/javascript"),
-		`Unexpected script content type: ${scriptResponse.headers.get("content-type")}`,
-	);
-
-	const faviconResponse = await fetchWithTimeout(`${baseUrl}${faviconPath}`, { method: "HEAD" });
-	assert(faviconResponse.status === 200, `Favicon returned ${faviconResponse.status}.`);
-	assert(
-		faviconResponse.headers.get("content-type")?.includes("image/png"),
-		`Unexpected favicon content type: ${faviconResponse.headers.get("content-type")}`,
-	);
-} catch (error) {
-	browserFailure = { error };
-}
-
-const browserCleanupFailures: Error[] = [];
-if (!browserServerExited) {
-	await captureCleanupFailure(browserCleanupFailures, "Failed to stop compiled browser server.", async () => {
-		browserServer.kill("SIGKILL");
 	});
-}
-await captureCleanupFailure(browserCleanupFailures, "Compiled browser server did not exit cleanly.", async () => {
-	await unwrapOutcome(browserExited, "compiled browser close");
-});
-let browserStderrOutput = "";
-await captureCleanupFailure(browserCleanupFailures, "Failed to read compiled browser stderr.", async () => {
-	browserStderrOutput = await unwrapOutcome(browserStderr, "compiled browser stderr");
-});
-throwAfterCleanup(
-	"Compiled browser smoke check",
-	browserFailure,
-	browserCleanupFailures,
-	browserStderrOutput ? `stderr:\n${browserStderrOutput}` : "",
-);
+	let browserServerExited = false;
+	const browserStderr = settle(new Response(browserServer.stderr).text());
+	const browserExited = settle(browserServer.exited).then((outcome) => {
+		browserServerExited = true;
+		return outcome;
+	});
 
-let mcpStderr = "";
-const transport = new StdioClientTransport({
-	command: executable,
-	args: ["mcp", "start", "--cwd", process.cwd(), "--debug"],
-	cwd: process.cwd(),
-	stderr: "pipe",
-});
-transport.stderr?.on("data", (chunk) => {
-	mcpStderr += chunk.toString();
-});
+	let browserFailure: CapturedFailure | undefined;
+	try {
+		const baseUrl = `http://127.0.0.1:${port}`;
+		const htmlResponse = await waitForHttp(`${baseUrl}/`, () => browserServerExited, operationTimeout);
+		assert(
+			htmlResponse.headers.get("cache-control") === "no-store, max-age=0, must-revalidate",
+			"Compiled browser HTML is missing its no-store cache policy.",
+		);
 
-const client = new Client({ name: "Compiled MCP Smoke Test", version: "1.0.0" }, { capabilities: {} });
-let mcpFailure: CapturedFailure | undefined;
-try {
-	await withTimeout(client.connect(transport), "MCP connect", operationTimeout, () => ` stderr:\n${mcpStderr}`);
-	const tools = await withTimeout(client.listTools(), "MCP listTools", operationTimeout, () => ` stderr:\n${mcpStderr}`);
-	assert(tools.tools.some((tool) => tool.name === "task_list"), "Compiled MCP server is missing task_list.");
-	const resources = await withTimeout(
-		client.listResources(),
-		"MCP listResources",
-		operationTimeout,
-		() => ` stderr:\n${mcpStderr}`,
+		const html = await htmlResponse.text();
+		const stylesheetPath = html.match(/<link rel="stylesheet"[^>]*href="([^"]+)"/)?.[1];
+		const scriptPath = html.match(/<script type="module"[^>]*src="([^"]+)"/)?.[1];
+		const faviconPath = html.match(/<link rel="icon"[^>]*href="([^"]+)"/)?.[1];
+
+		assert(/^\/chunk-[a-z0-9]+\.css$/.test(stylesheetPath ?? ""), `Invalid stylesheet path: ${stylesheetPath}`);
+		assert(/^\/chunk-[a-z0-9]+\.js$/.test(scriptPath ?? ""), `Invalid script path: ${scriptPath}`);
+		assert(/^\/favicon-[a-z0-9]+\.png$/.test(faviconPath ?? ""), `Invalid favicon path: ${faviconPath}`);
+
+		const stylesheetResponse = await fetchWithTimeout(`${baseUrl}${stylesheetPath}`);
+		assert(stylesheetResponse.status === 200, `Stylesheet returned ${stylesheetResponse.status}.`);
+		assert(
+			stylesheetResponse.headers.get("content-type")?.includes("text/css"),
+			`Unexpected stylesheet content type: ${stylesheetResponse.headers.get("content-type")}`,
+		);
+		const stylesheet = await stylesheetResponse.text();
+		assert(stylesheet.includes(".flex{display:flex}"), "Compiled stylesheet is missing Tailwind utilities.");
+		assert(stylesheet.includes(".wmde-markdown"), "Compiled stylesheet is missing Markdown editor styles.");
+
+		const scriptResponse = await fetchWithTimeout(`${baseUrl}${scriptPath}`, { method: "HEAD" });
+		assert(scriptResponse.status === 200, `Browser script returned ${scriptResponse.status}.`);
+		assert(
+			scriptResponse.headers.get("content-type")?.includes("text/javascript"),
+			`Unexpected script content type: ${scriptResponse.headers.get("content-type")}`,
+		);
+
+		const faviconResponse = await fetchWithTimeout(`${baseUrl}${faviconPath}`, { method: "HEAD" });
+		assert(faviconResponse.status === 200, `Favicon returned ${faviconResponse.status}.`);
+		assert(
+			faviconResponse.headers.get("content-type")?.includes("image/png"),
+			`Unexpected favicon content type: ${faviconResponse.headers.get("content-type")}`,
+		);
+	} catch (error) {
+		browserFailure = { error };
+	}
+
+	const browserCleanupFailures: Error[] = [];
+	if (!browserServerExited) {
+		await captureCleanupFailure(browserCleanupFailures, "Failed to stop compiled browser server.", async () => {
+			browserServer.kill("SIGKILL");
+		});
+	}
+	await captureCleanupFailure(browserCleanupFailures, "Compiled browser server did not exit cleanly.", async () => {
+		await unwrapOutcome(browserExited, "compiled browser close");
+	});
+	let browserStderrOutput = "";
+	await captureCleanupFailure(browserCleanupFailures, "Failed to read compiled browser stderr.", async () => {
+		browserStderrOutput = await unwrapOutcome(browserStderr, "compiled browser stderr");
+	});
+	throwAfterCleanup(
+		"Compiled browser smoke check",
+		browserFailure,
+		browserCleanupFailures,
+		browserStderrOutput ? `stderr:\n${browserStderrOutput}` : "",
 	);
-	assert(
-		resources.resources.some((resource) => resource.uri === "backlog://workflow/overview"),
-		"Compiled MCP server is missing its workflow overview resource.",
+
+	let mcpStderr = "";
+	const transport = new StdioClientTransport({
+		command: executable,
+		args: ["mcp", "start", "--cwd", smokeRoot, "--debug"],
+		cwd: smokeRoot,
+		stderr: "pipe",
+	});
+	transport.stderr?.on("data", (chunk) => {
+		mcpStderr += chunk.toString();
+	});
+
+	const client = new Client({ name: "Compiled MCP Smoke Test", version: "1.0.0" }, { capabilities: {} });
+	let mcpFailure: CapturedFailure | undefined;
+	try {
+		await withTimeout(client.connect(transport), "MCP connect", operationTimeout, () => ` stderr:\n${mcpStderr}`);
+		const tools = await withTimeout(
+			client.listTools(),
+			"MCP listTools",
+			operationTimeout,
+			() => ` stderr:\n${mcpStderr}`,
+		);
+		assert(
+			tools.tools.some((tool) => tool.name === "task_list"),
+			"Compiled MCP server is missing task_list.",
+		);
+		const resources = await withTimeout(
+			client.listResources(),
+			"MCP listResources",
+			operationTimeout,
+			() => ` stderr:\n${mcpStderr}`,
+		);
+		assert(
+			resources.resources.some((resource) => resource.uri === "backlog://workflow/overview"),
+			"Compiled MCP server is missing its workflow overview resource.",
+		);
+	} catch (error) {
+		mcpFailure = { error };
+	}
+
+	const transportClosed = settle(waitForTransportClose(transport));
+	const mcpCleanupFailures: Error[] = [];
+	await captureCleanupFailure(mcpCleanupFailures, "Failed to close compiled MCP client.", async () => {
+		await client.close();
+	});
+	await captureCleanupFailure(mcpCleanupFailures, "Compiled MCP child process did not close.", async () => {
+		await unwrapOutcome(transportClosed, "MCP child close");
+	});
+	throwAfterCleanup(
+		"Compiled MCP smoke check",
+		mcpFailure,
+		mcpCleanupFailures,
+		mcpStderr ? `stderr:\n${mcpStderr}` : "",
 	);
 } catch (error) {
-	mcpFailure = { error };
+	smokeFailure = { error };
 }
 
-const transportClosed = settle(waitForTransportClose(transport));
-const mcpCleanupFailures: Error[] = [];
-await captureCleanupFailure(mcpCleanupFailures, "Failed to close compiled MCP client.", async () => {
-	await client.close();
+const fixtureCleanupFailures: Error[] = [];
+await captureCleanupFailure(fixtureCleanupFailures, "Failed to remove compiled smoke project.", async () => {
+	await rm(smokeRoot, { recursive: true, force: true });
 });
-await captureCleanupFailure(mcpCleanupFailures, "Compiled MCP child process did not close.", async () => {
-	await unwrapOutcome(transportClosed, "MCP child close");
-});
-throwAfterCleanup(
-	"Compiled MCP smoke check",
-	mcpFailure,
-	mcpCleanupFailures,
-	mcpStderr ? `stderr:\n${mcpStderr}` : "",
-);
+throwAfterCleanup("Compiled build smoke checks", smokeFailure, fixtureCleanupFailures);
 
 console.log(`Compiled build smoke checks passed for ${executable}.`);

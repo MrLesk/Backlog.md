@@ -28,7 +28,11 @@ describe("Config commands", () => {
 
 	function createPromptStub(sequence: Array<Record<string, unknown>>): PromptRunner {
 		const stub: PromptRunner = async () => {
-			return sequence.shift() ?? {};
+			const response = sequence.shift();
+			if (!response) {
+				throw new Error("Advanced config wizard requested an unexpected prompt.");
+			}
+			return response;
 		};
 		return stub;
 	}
@@ -81,7 +85,7 @@ describe("Config commands", () => {
 			{ autoCommit: true },
 			{ enableZeroPadding: true },
 			{ paddingWidth: 4 },
-			{ editor: "echo" },
+			{ editor: "bun" },
 			{ definitionOfDoneAction: "add" },
 			{ definitionOfDoneItem: "Ship release notes" },
 			{ definitionOfDoneAction: "done" },
@@ -102,14 +106,14 @@ describe("Config commands", () => {
 		expect(mergedConfig.bypassGitHooks).toBe(true);
 		expect(mergedConfig.autoCommit).toBe(true);
 		expect(mergedConfig.zeroPaddedIds).toBe(4);
-		expect(mergedConfig.defaultEditor).toBe("echo");
+		expect(mergedConfig.defaultEditor).toBe("bun");
 		expect(mergedConfig.definitionOfDone).toEqual(["Ship release notes"]);
 		expect(mergedConfig.defaultPort).toBe(7007);
 		expect(mergedConfig.autoOpenBrowser).toBe(false);
 
 		const reloadedConfig = await core.filesystem.loadConfig();
 		expect(reloadedConfig?.zeroPaddedIds).toBe(4);
-		expect(reloadedConfig?.defaultEditor).toBe("echo");
+		expect(reloadedConfig?.defaultEditor).toBe("bun");
 		expect(reloadedConfig?.definitionOfDone).toEqual(["Ship release notes"]);
 		expect(reloadedConfig?.defaultPort).toBe(7007);
 		expect(reloadedConfig?.autoOpenBrowser).toBe(false);
