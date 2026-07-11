@@ -38,7 +38,14 @@ async function request(path: string, init: RequestInit = {}, timeoutMs = 1500): 
 async function replaceWatchedConfigFile(configPath: string, content: string): Promise<void> {
 	const replacementPath = `${configPath}.replacement`;
 	await Bun.write(replacementPath, content);
-	await rename(replacementPath, configPath);
+	await retry(
+		async () => {
+			await rename(replacementPath, configPath);
+			return true;
+		},
+		10,
+		25,
+	);
 }
 
 async function startServer(): Promise<void> {

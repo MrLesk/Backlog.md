@@ -5,7 +5,7 @@ status: In Progress
 assignee:
   - '@build-ci-cleanup'
 created_date: '2026-07-11 13:23'
-updated_date: '2026-07-11 14:43'
+updated_date: '2026-07-11 14:59'
 labels: []
 dependencies: []
 references:
@@ -60,6 +60,8 @@ Second exact-head CI run 29155601390 passed the unified matrix: Ubuntu full 4m10
 Final task-only CI run 29155889111 exposed a second intermittent test seam on macOS after the same code passed prior heads: the first SPA route request hit the test helper’s hardcoded 1.5s abort while the static shell was warming under full-suite load. Repair keeps all timeout values unchanged and extends server readiness to observe both `/api/status` and a valid `/` SPA shell before route assertions begin. Targeted route stress passed 20/20 sequential and 4/4 concurrent; typecheck, Biome, and diff checks passed.
 
 Fifth CI run 29156306681 disproved the common SPA readiness probe. On macOS, all 19 tests in server-tasks-spa-fallback.test.ts failed because each beforeEach retried and aborted the first root HTML compilation at 500ms; on Ubuntu, the same abort pattern cascaded into Bun ENOENT socket reads across later files. The scoped repair restores API-only common readiness and performs one observable, non-aborted root shell fetch only in the SPA navigation test, bounded by the unchanged 10-second test-runner limit; every subsequent route assertion retains its 1.5-second request bound. No timeout or concurrency value changed. Focused SPA stress passed 20/20 and the exact full local CI command passed 1,667 tests with 2 skips and 0 failures in 158.15s; typecheck, lint, and diff checks passed.
+
+Sixth exact-head CI run 29156637532 passed Ubuntu and macOS full units, all three compiled build/smoke jobs, Linux PTY supplement, JUnit uploads, and both CodeQL analyses. Windows ran all 1,667 tests and exposed one fixture-only failure: EPERM while atomically renaming a complete sibling config replacement over config.yml under a live watcher; 1,666 tests passed and product assertions for that case were not reached. The repair preserves the atomic editor-save simulation and retries only the rename through the existing bounded helper: 10 attempts with 25ms linear backoff, at most 1.125s sleep, with the final error preserved and whole-fixture cleanup unchanged. No test or request timeout changed. The focused file passed eight consecutive local repetitions plus both reviewers independent runs; the exact full local command passed 1,665 tests with 2 skips and 0 failures in 179.60s. Both review stages approved; typecheck, lint, and diff checks passed.
 <!-- SECTION:NOTES:END -->
 
 ## Final Summary
