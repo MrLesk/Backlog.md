@@ -40,6 +40,7 @@ const TASK_LIST_SHORTCUTS: Shortcut[] = [
 	{ key: "↑↓", desc: "Navigate tasks" },
 	{ key: "←→", desc: "Switch between list and details" },
 	{ key: "Enter", desc: "Focus task details" },
+	{ key: "J/K", desc: "Scroll task details" },
 	{ key: "E", desc: "Edit task" },
 	{ key: "C", desc: "Complete task" },
 	{ key: "A", desc: "Archive task" },
