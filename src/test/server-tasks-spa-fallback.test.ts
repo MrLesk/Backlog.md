@@ -50,8 +50,13 @@ async function startServer(): Promise<void> {
 
 	await retry(
 		async () => {
-			const response = await request("/api/status", {}, 500);
-			if (!response.ok) throw new Error("server not ready");
+			const statusResponse = await request("/api/status", {}, 500);
+			if (!statusResponse.ok) throw new Error("server status endpoint not ready");
+
+			const spaResponse = await request("/", {}, 500);
+			if (!spaResponse.ok || !(await spaResponse.text()).includes('<div id="root"></div>')) {
+				throw new Error("server SPA shell not ready");
+			}
 			return true;
 		},
 		10,

@@ -1,11 +1,11 @@
 ---
 id: BACK-535.7
 title: Isolate compiled smoke fixtures from repository remotes
-status: Done
+status: In Progress
 assignee:
   - '@build-ci-cleanup'
 created_date: '2026-07-11 13:23'
-updated_date: '2026-07-11 14:19'
+updated_date: '2026-07-11 14:29'
 labels: []
 dependencies: []
 references:
@@ -56,6 +56,8 @@ Final local verification: the exact shared CI command with `--timeout=10000 --ma
 First unified PR CI run 29155206350: Ubuntu full passed in 3m33s, macOS full passed in 3m29s, and all three compiled build/smoke jobs passed (23s/32s/1m15s), proving the isolated smoke repaired the post-merge macOS failure. Windows full preserved 1,654 passes and 12 platform skips but exposed one test-only timeout after 8m47s: `configureAdvancedSettings applies wizard selections` used `echo` as an editor fixture. `echo` is a Windows shell builtin, so `where echo` failed, the wizard requested an unmodeled confirmation, responses shifted, and the exhausted stub returned `{}` indefinitely. Repair uses the installed cross-platform `bun` command and makes prompt-sequence exhaustion fail immediately. No timeout, concurrency, or topology change. Focused config-command stress passed 10/10; typecheck, Biome, and diff checks passed.
 
 Second exact-head CI run 29155601390 passed the unified matrix: Ubuntu full 4m10s, macOS full 4m20s, Windows full 7m59s, with identical 10s/max4 commands and non-empty JUnit artifacts of 66,255/67,072/65,315 bytes. Compiled build/smoke passed on Ubuntu 18s, macOS 34s, and Windows 1m10s; CodeQL passed both analyses. The terminal acceptance criterion is worded around evidence available before merge; resulting-main CI remains a mandatory separate operational gate because checking it before the merge event would be fabricated.
+
+Final task-only CI run 29155889111 exposed a second intermittent test seam on macOS after the same code passed prior heads: the first SPA route request hit the test helper’s hardcoded 1.5s abort while the static shell was warming under full-suite load. Repair keeps all timeout values unchanged and extends server readiness to observe both `/api/status` and a valid `/` SPA shell before route assertions begin. Targeted route stress passed 20/20 sequential and 4/4 concurrent; typecheck, Biome, and diff checks passed.
 <!-- SECTION:NOTES:END -->
 
 ## Final Summary
