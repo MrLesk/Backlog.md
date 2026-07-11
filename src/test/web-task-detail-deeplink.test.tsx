@@ -433,6 +433,10 @@ describe("task detail routes", () => {
 		const firstConfigStarted = new Promise<void>((resolve) => {
 			markFirstConfigStarted = resolve;
 		});
+		let markNewerSearchBodyRead: (() => void) | undefined;
+		const newerSearchBodyRead = new Promise<void>((resolve) => {
+			markNewerSearchBodyRead = resolve;
+		});
 		const customerTask: Task = {
 			id: "BACK-202",
 			title: "Newest customer request",
@@ -454,7 +458,16 @@ describe("task detail routes", () => {
 		);
 		queuedSearchResponses.push(
 			() => json(searchResults),
-			() => json([{ type: "task", task: customerTask, score: 1 } satisfies SearchResult]),
+			() => {
+				const response = json([{ type: "task", task: customerTask, score: 1 } satisfies SearchResult]);
+				const readBody = response.json.bind(response);
+				response.json = async () => {
+					const body = await readBody();
+					markNewerSearchBodyRead?.();
+					return body;
+				};
+				return response;
+			},
 		);
 
 		await act(async () => {
@@ -464,13 +477,11 @@ describe("task detail routes", () => {
 		await firstConfigStarted;
 		await act(async () => {
 			activeWebSocket?.emit("tasks-updated");
+			await newerSearchBodyRead;
 			await Promise.resolve();
 		});
 
-		await waitFor(
-			() => container.textContent?.includes(customerTask.title) ?? false,
-			"newer refresh result",
-		);
+		expect(container.textContent).toContain(customerTask.title);
 		expect(new URLSearchParams(window.location.search).get("type")).toBe("Customer Request");
 
 		await act(async () => {
