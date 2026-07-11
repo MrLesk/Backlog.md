@@ -41,6 +41,13 @@ jobs:
           # Isolate test files because some suites intentionally mutate global process state.
           bun test --isolate --timeout=10000 --reporter=junit --reporter-outfile=test-results.xml
         shell: bash
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: test-results-${{ matrix.os }}
+          path: test-results.xml
+          if-no-files-found: error
       - name: Run interactive TUI regression tests
         if: matrix.os == 'ubuntu-latest'
         run: bash scripts/run-tui-interactive-tests.sh
@@ -94,6 +101,13 @@ jobs:
           echo "Running Windows test shard ${{ matrix.shard }}/${{ matrix.total_shards }} with ${#test_files[@]} files."
           # Windows runners hit Bun/file-system resource pressure under in-process concurrency, so shard by CI job instead.
           bun test --isolate --timeout=30000 --max-concurrency=4 --reporter=junit --reporter-outfile="test-results-${{ matrix.shard }}.xml" "${test_files[@]}"
+      - name: Upload Windows test results
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: test-results-windows-${{ matrix.shard }}
+          path: test-results-${{ matrix.shard }}.xml
+          if-no-files-found: error
 
   test-windows-complete:
     name: lint-and-unit-test (windows-latest)
@@ -160,14 +174,9 @@ jobs:
         shell: bash
         run: |
           FILE="backlog-test${{ contains(matrix.target,'windows') && '.exe' || '' }}"
+          VER="$(jq -r .version package.json)"
           chmod +x "$FILE"
-          if [[ "${{ matrix.os }}" == "windows-latest" ]]; then
-            powershell -command ".\\$FILE --version"
-            powershell -command ".\\$FILE --help"
-          else
-            "./$FILE" --version
-            "./$FILE" --help
-          fi
+          bun scripts/smoke-compiled-build.ts "$FILE" "$VER"
       - name: Run interactive TUI tests against compiled binary
         if: matrix.os == 'ubuntu-latest'
         shell: bash
