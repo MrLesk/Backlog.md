@@ -5,7 +5,7 @@ status: In Progress
 assignee:
   - '@test-hygiene-slice-b'
 created_date: '2026-07-11 09:20'
-updated_date: '2026-07-11 10:15'
+updated_date: '2026-07-11 10:27'
 labels: []
 dependencies: []
 parent_task_id: BACK-535
@@ -59,6 +59,8 @@ Verification before review: 10 repeated focused runs passed 15/15 each with 32 a
 Post-main fail-first evidence: after merging origin/main 75c2528, atomic-task-create failed 1 of 30 identical focused runs because both unlocked creates sometimes fulfilled. The barrier proves both calls reached saveTask concurrently, but filesystem scheduling may let one write replace the other before duplicate ambiguity is observable. Therefore the >=1 rejection assertion is probabilistic and overstates the documented USE_GLOBAL_TASK_ID_LOCK=false escape-hatch contract. The deterministic replacement will retain direct concurrent-entry evidence, await both operations, and require every rejection (if any) to be AmbiguousTaskIdError.
 
 Post-repair verification on merged main 75c2528: the direct escape-hatch contract passed 50/50 atomic stress runs and the combined timeout/config/atomic focus passed 10/10 (15 tests, 32 assertions per run). Full suite passed 1,636 with 2 intentional interactive-TUI skips, 0 failures, and 6,716 assertions across 189 files in 169.72s. bunx tsc --noEmit, Biome over 323 files, bun run build, and diff checks passed. The higher total relative to the earlier 1,625 baseline comes from main changes merged through #759 plus the two helper tests.
+
+Specification-review repairs: doc-001 now prefers framework teardown hooks and gives an AggregateError pattern that preserves both primary and cleanup failures for in-test resources. The undocumented USE_GLOBAL_TASK_ID_LOCK=false case is explicitly an internal test of FileSystem.withCreateLock; it now directly proves two operations enter and resolve without serialization, with no patched persistence or vacuous allSettled assertions. The adjacent persisted-state test, serializes create-time writes and assigns unique ids by default, remains the shipped default-behavior coverage and asserts TASK-1/TASK-2; duplicate-task-repair and task-path retain fail-closed duplicate coverage. BACK-535.3 now names exactly 13 setup and 53 filesystem teardown files, excludes 17 exact BACK-535.4 resource-owning files, and requires actual Windows GitHub Actions evidence. BACK-535.4 was reconciled to own those 17 files. Re-verification: 50/50 atomic internal stress, 10/10 combined focus (15 tests, 31 assertions), full suite 1,636 pass plus 2 intentional skips and 0 failures across 189 files in 165.77s, 6,715 assertions; tsc, Biome over 323 files, build, and diff checks pass.
 <!-- SECTION:NOTES:END -->
 
 ## Definition of Done

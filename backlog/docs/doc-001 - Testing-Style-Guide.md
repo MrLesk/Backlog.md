@@ -3,7 +3,7 @@ id: doc-001
 title: Testing Style Guide
 type: guide
 created_date: '2025-07-21'
-updated_date: '2026-07-11 09:22'
+updated_date: '2026-07-11 10:23'
 ---
 # Testing Style Guide
 
@@ -34,12 +34,32 @@ afterEach(async () => {
 
 Cleanup is part of the assertion, not optional housekeeping.
 
+- Prefer framework teardown hooks for suite-owned resources. Bun reports hook failures alongside test failures, so the primary assertion and cleanup failure remain visible.
 - Do not catch and ignore `safeCleanup()`, `rm()`, server shutdown, client close, watcher stop, unsubscribe, or child-process exit failures.
 - Stop watchers, servers, subscriptions, streams, clients, and child processes before removing their directories.
 - If a test owns a child process, kill it when needed and await its exit.
-- Use `try/finally` around resources acquired inside a test.
-- Let test hooks report teardown failures. Bun reports hook failures alongside the test failure, preserving both pieces of evidence.
+- For a resource acquired inside a test, use `try/finally`, but do not let a cleanup exception replace the primary test exception. Capture the primary error and throw an `AggregateError` containing both when cleanup also fails.
 - A best-effort catch is acceptable only when failure is the behavior being modeled, such as an existence probe returning `false`; make that fallback explicit.
+
+```typescript
+let primaryError: unknown;
+
+try {
+  await exercise(resource);
+} catch (error) {
+  primaryError = error;
+  throw error;
+} finally {
+  try {
+    await resource.close();
+  } catch (cleanupError) {
+    if (primaryError !== undefined) {
+      throw new AggregateError([primaryError, cleanupError], "Test and cleanup both failed");
+    }
+    throw cleanupError;
+  }
+}
+```
 
 ## Timers and asynchronous synchronization
 
@@ -64,6 +84,7 @@ Tests that change `process.env`, the working directory, console methods, clocks,
 - Assert subprocess exit codes as well as user-visible output and persisted state.
 - Do not assert private object identity or reproduce production formatting in a test helper when observable behavior is available.
 - Keep legacy compatibility tests only when the CLI, MCP, configuration, instruction, or file-format contract still promises that behavior.
+- Label tests of undocumented internal escape hatches as internal. Name the separate public or persisted-state test that protects the shipped contract; internal coverage is not a substitute for it.
 
 ## Platform coverage
 

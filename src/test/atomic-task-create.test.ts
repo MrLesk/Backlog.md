@@ -5,7 +5,6 @@ import { join } from "node:path";
 import { Core } from "../core/backlog.ts";
 import { CREATE_LOCK_ERROR_MESSAGE } from "../file-system/operations.ts";
 import type { Task } from "../types";
-import { AmbiguousTaskIdError } from "../utils/task-path.ts";
 import { initializeTestProject, withTimeout } from "./test-utils.ts";
 
 type Deferred<T> = {
@@ -98,39 +97,29 @@ describe("atomic task creation", () => {
 		expect([createdA.task.id, createdB.task.id].sort()).toEqual(["TASK-1", "TASK-2"]);
 	});
 
-	it("allows concurrent entry into the save path when USE_GLOBAL_TASK_ID_LOCK=false", async () => {
+	it("internally bypasses create-lock serialization when the legacy escape hatch is disabled", async () => {
 		process.env.USE_GLOBAL_TASK_ID_LOCK = "false";
 
 		const first = new Core(testDir);
 		const second = new Core(testDir);
-		const bothEnteredSave = createDeferred<void>();
-		let saveEntries = 0;
-
-		const patchSaveTask = (core: Core) => {
-			const original = core.fs.saveTask.bind(core.fs);
-			core.fs.saveTask = (async (task: Task): Promise<string> => {
-				saveEntries += 1;
-				if (saveEntries === 2) {
-					bothEnteredSave.resolve();
-				}
-				await bothEnteredSave.promise;
-				return await original(task);
-			}) as typeof core.fs.saveTask;
+		const bothEntered = createDeferred<void>();
+		const releaseBoth = createDeferred<void>();
+		let entries = 0;
+		const enter = async (value: string): Promise<string> => {
+			entries += 1;
+			if (entries === 2) bothEntered.resolve();
+			await releaseBoth.promise;
+			return value;
 		};
 
-		patchSaveTask(first);
-		patchSaveTask(second);
+		const firstOperation = first.fs.withCreateLock(() => enter("first"));
+		const secondOperation = second.fs.withCreateLock(() => enter("second"));
 
-		const firstCreate = first.createTaskFromInput({ title: "Alpha" }, false);
-		const secondCreate = second.createTaskFromInput({ title: "Beta" }, false);
+		await expectResolvesWithin(bothEntered.promise, 250, "both operations should enter without serialization");
+		expect(entries).toBe(2);
 
-		await expectResolvesWithin(bothEnteredSave.promise, 250, "both creates should reach saveTask without the lock");
-		expect(saveEntries).toBe(2);
-
-		const outcomes = await Promise.allSettled([firstCreate, secondCreate]);
-		const rejected = outcomes.filter((outcome): outcome is PromiseRejectedResult => outcome.status === "rejected");
-		expect(outcomes).toHaveLength(2);
-		expect(rejected.every((outcome) => outcome.reason instanceof AmbiguousTaskIdError)).toBe(true);
+		releaseBoth.resolve();
+		await expect(Promise.all([firstOperation, secondOperation])).resolves.toEqual(["first", "second"]);
 	});
 
 	it("assigns unique ids when two draft promotions race", async () => {
