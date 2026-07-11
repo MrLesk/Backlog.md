@@ -6,14 +6,12 @@ import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
 import { Core } from "../core/backlog.ts";
 import { initializeProject } from "../core/init.ts";
-import { createUniqueTestDir, getPlatformTimeout, isWindows, safeCleanup, sleep } from "./test-utils.ts";
+import { createUniqueTestDir, getPlatformTimeout, isWindows, observeChildClose, safeCleanup } from "./test-utils.ts";
 
 const CLI_PATH = join(process.cwd(), "src", "cli.ts");
 const START_MESSAGE = "Backlog.md MCP server started (stdio transport)";
 
 let TEST_DIR: string;
-
-type ExitResult = { code: number | null; signal: NodeJS.Signals | null };
 
 function waitForSubstring(stream: NodeJS.ReadableStream, substring: string, timeoutMs: number): Promise<void> {
 	return new Promise((resolve, reject) => {
@@ -51,20 +49,6 @@ function waitForSubstring(stream: NodeJS.ReadableStream, substring: string, time
 		stream.on("data", onData);
 		stream.on("error", onError);
 		stream.on("end", onEnd);
-	});
-}
-
-function waitForExit(child: ReturnType<typeof spawn>, timeoutMs: number): Promise<ExitResult> {
-	return new Promise((resolve, reject) => {
-		const timer = setTimeout(() => {
-			child.kill("SIGKILL");
-			reject(new Error("Timed out waiting for MCP process to exit"));
-		}, timeoutMs);
-
-		child.once("exit", (code, signal) => {
-			clearTimeout(timer);
-			resolve({ code, signal });
-		});
 	});
 }
 
@@ -119,19 +103,53 @@ describe("MCP stdio shutdown", () => {
 			cwd: TEST_DIR,
 			stdio: ["pipe", "pipe", "pipe"],
 		});
+		const childClose = observeChildClose(child, "MCP process", Math.min(timeout, 2000));
+		const closeOutcome = childClose.result.then(
+			(result) => ({ ok: true as const, result }),
+			(error: unknown) => ({ ok: false as const, error }),
+		);
 
-		if (!child.stderr || !child.stdin) {
-			child.kill("SIGKILL");
-			throw new Error("Failed to spawn MCP process with stdio pipes");
+		let primaryError: unknown;
+		try {
+			if (!child.stderr || !child.stdin) {
+				throw new Error("Failed to spawn MCP process with stdio pipes");
+			}
+
+			await waitForSubstring(child.stderr, START_MESSAGE, timeout);
+			child.stdin.end();
+			childClose.startTimeout();
+
+			const primaryCloseOutcome = await closeOutcome;
+			if (!primaryCloseOutcome.ok) throw primaryCloseOutcome.error;
+			expect(primaryCloseOutcome.result.code).toBe(0);
+			expect(primaryCloseOutcome.result.signal).toBeNull();
+		} catch (error) {
+			primaryError = error;
 		}
 
-		await waitForSubstring(child.stderr, START_MESSAGE, timeout);
-		await sleep(50);
-		child.stdin.end();
+		childClose.startTimeout();
+		let cleanupError: unknown;
+		try {
+			if (child.exitCode === null && child.signalCode === null) child.kill("SIGKILL");
+		} catch (error) {
+			cleanupError = error;
+		}
+		const cleanupCloseOutcome = await closeOutcome;
+		if (!cleanupCloseOutcome.ok && cleanupCloseOutcome.error !== primaryError) {
+			cleanupError =
+				cleanupError === undefined
+					? cleanupCloseOutcome.error
+					: new AggregateError(
+							[cleanupError, cleanupCloseOutcome.error],
+							"MCP process kill and close wait both failed",
+						);
+		}
 
-		const result = await waitForExit(child, timeout);
-		expect(result.code).toBe(0);
-		expect(result.signal).toBeNull();
+		if (primaryError !== undefined && cleanupError !== undefined) {
+			throw new AggregateError([primaryError, cleanupError], "Test and MCP process cleanup both failed");
+		}
+		if (primaryError !== undefined) throw primaryError;
+		if (cleanupError !== undefined) throw cleanupError;
 	});
 
 	it("keeps stdio sessions alive after listing tools so document calls can respond", async () => {
@@ -158,6 +176,7 @@ describe("MCP stdio shutdown", () => {
 
 		const client = new Client({ name: "MCP Stdio Document Test", version: "1.0.0" }, { capabilities: {} });
 
+		let primaryError: unknown;
 		try {
 			await withTimeout(client.connect(transport), "connect", timeout, () => ` stderr:\n${stderr}`);
 
@@ -180,8 +199,37 @@ describe("MCP stdio shutdown", () => {
 			const text = getText(result.content);
 			expect(text).toContain("Document created successfully.");
 			expect(text).toContain("Document doc-1 - Stdio Repro Doc");
-		} finally {
-			await client.close().catch(() => {});
+		} catch (error) {
+			primaryError = error;
 		}
+
+		const child = (transport as unknown as { _process?: ReturnType<typeof spawn> })._process;
+		const childClose = child ? observeChildClose(child, "MCP transport process", Math.min(timeout, 2000)) : undefined;
+		childClose?.startTimeout();
+		const exitOutcome = childClose
+			? childClose.result.then(
+					() => ({ error: undefined }),
+					(error: unknown) => ({ error }),
+				)
+			: Promise.resolve({ error: undefined });
+		let cleanupError: unknown;
+		try {
+			await client.close();
+		} catch (error) {
+			cleanupError = error;
+		}
+		const { error: exitError } = await exitOutcome;
+		if (exitError !== undefined) {
+			cleanupError =
+				cleanupError === undefined
+					? exitError
+					: new AggregateError([cleanupError, exitError], "MCP client and process cleanup both failed");
+		}
+
+		if (primaryError !== undefined && cleanupError !== undefined) {
+			throw new AggregateError([primaryError, cleanupError], "Test and MCP client cleanup both failed");
+		}
+		if (primaryError !== undefined) throw primaryError;
+		if (cleanupError !== undefined) throw cleanupError;
 	});
 });

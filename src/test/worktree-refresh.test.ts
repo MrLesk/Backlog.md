@@ -8,11 +8,14 @@ import { createUniqueTestDir, initializeTestProject, safeCleanup } from "./test-
 let TEST_DIR: string;
 let WORKTREE_DIR: string;
 let mainCore: Core | undefined;
+let featureCore: Core | undefined;
+let worktreeAdded = false;
 
 describe("worktree task refresh", () => {
 	beforeEach(async () => {
 		TEST_DIR = createUniqueTestDir("test-worktree-refresh");
 		WORKTREE_DIR = `${TEST_DIR}-feature`;
+		worktreeAdded = false;
 		await mkdir(TEST_DIR, { recursive: true });
 		await $`git init -b main`.cwd(TEST_DIR).quiet();
 		await $`git config user.name "Test User"`.cwd(TEST_DIR).quiet();
@@ -21,12 +24,31 @@ describe("worktree task refresh", () => {
 
 	afterEach(async () => {
 		mainCore?.disposeContentStore();
+		featureCore?.disposeContentStore();
 		mainCore = undefined;
-		try {
-			await safeCleanup(WORKTREE_DIR);
-			await safeCleanup(TEST_DIR);
-		} catch {
-			// Ignore cleanup errors - unique directory names prevent conflicts.
+		featureCore = undefined;
+
+		const cleanupErrors: unknown[] = [];
+		if (worktreeAdded) {
+			try {
+				await $`git worktree remove --force ${WORKTREE_DIR}`.cwd(TEST_DIR).quiet();
+			} catch (error) {
+				cleanupErrors.push(error);
+			}
+			worktreeAdded = false;
+		}
+		for (const directory of [WORKTREE_DIR, TEST_DIR]) {
+			try {
+				await safeCleanup(directory);
+			} catch (error) {
+				cleanupErrors.push(error);
+			}
+		}
+		if (cleanupErrors.length === 1) {
+			throw cleanupErrors[0];
+		}
+		if (cleanupErrors.length > 1) {
+			throw new AggregateError(cleanupErrors, "Worktree teardown failed");
 		}
 	});
 
@@ -50,7 +72,8 @@ describe("worktree task refresh", () => {
 		expect(await mainCore.queryTasks({ query: "Created elsewhere" })).toEqual([]);
 
 		await $`git worktree add ${WORKTREE_DIR} -b feature`.cwd(TEST_DIR).quiet();
-		const featureCore = new Core(WORKTREE_DIR);
+		worktreeAdded = true;
+		featureCore = new Core(WORKTREE_DIR);
 		const worktreeTask: Task = {
 			id: "task-1",
 			title: "Created elsewhere",

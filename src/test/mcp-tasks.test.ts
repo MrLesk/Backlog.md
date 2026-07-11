@@ -43,12 +43,13 @@ describe("MCP task tools (MVP)", () => {
 	});
 
 	afterEach(async () => {
-		try {
-			await mcpServer.stop();
-		} catch {
-			// ignore
-		}
-		await safeCleanup(TEST_DIR);
+		const stopResult = await Promise.allSettled([mcpServer.stop()]);
+		const cleanupResult = await Promise.allSettled([safeCleanup(TEST_DIR)]);
+		const errors = [...stopResult, ...cleanupResult]
+			.filter((result): result is PromiseRejectedResult => result.status === "rejected")
+			.map((result) => result.reason);
+		if (errors.length === 1) throw errors[0];
+		if (errors.length > 1) throw new AggregateError(errors, "MCP server and fixture cleanup both failed");
 	});
 
 	it("creates and lists tasks", async () => {
@@ -519,6 +520,7 @@ describe("MCP task tools (MVP)", () => {
 		await mcpServer.filesystem.saveConfig(config);
 
 		const customServer = new McpServer(TEST_DIR, "Test instructions");
+		let primaryError: unknown;
 		try {
 			registerTaskTools(customServer, config);
 			const tools = await customServer.testInterface.listTools();
@@ -551,9 +553,22 @@ describe("MCP task tools (MVP)", () => {
 			expect(createResult.isError).not.toBe(true);
 			const task = await customServer.getTask("task-1");
 			expect(task?.priority).toBe("very high");
-		} finally {
-			await customServer.stop();
+		} catch (error) {
+			primaryError = error;
 		}
+
+		let cleanupError: unknown;
+		try {
+			await customServer.stop();
+		} catch (error) {
+			cleanupError = error;
+		}
+
+		if (primaryError !== undefined && cleanupError !== undefined) {
+			throw new AggregateError([primaryError, cleanupError], "Test and MCP server cleanup both failed");
+		}
+		if (primaryError !== undefined) throw primaryError;
+		if (cleanupError !== undefined) throw cleanupError;
 	});
 
 	it("describes Definition of Done fields as task-level in schemas", async () => {
@@ -1160,6 +1175,7 @@ describe("MCP task tools (MVP)", () => {
 		await mcpServer.filesystem.saveConfig(config);
 
 		const customServer = new McpServer(TEST_DIR, "Test instructions");
+		let primaryError: unknown;
 		try {
 			registerTaskTools(customServer, await loadConfig(customServer));
 
@@ -1191,8 +1207,21 @@ describe("MCP task tools (MVP)", () => {
 			});
 			expect(invalidResult.isError).toBe(true);
 			expect(getText(invalidResult.content)).toContain("must be one of: Bug, Epic");
-		} finally {
-			await customServer.stop().catch(() => {});
+		} catch (error) {
+			primaryError = error;
 		}
+
+		let cleanupError: unknown;
+		try {
+			await customServer.stop();
+		} catch (error) {
+			cleanupError = error;
+		}
+
+		if (primaryError !== undefined && cleanupError !== undefined) {
+			throw new AggregateError([primaryError, cleanupError], "Test and MCP server cleanup both failed");
+		}
+		if (primaryError !== undefined) throw primaryError;
+		if (cleanupError !== undefined) throw cleanupError;
 	});
 });

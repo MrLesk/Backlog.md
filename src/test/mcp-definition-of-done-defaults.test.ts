@@ -39,12 +39,13 @@ describe("MCP Definition of Done default tools", () => {
 	});
 
 	afterEach(async () => {
-		try {
-			await server.stop();
-		} catch {
-			// ignore
-		}
-		await safeCleanup(testDir);
+		const stopResult = await Promise.allSettled([server.stop()]);
+		const cleanupResult = await Promise.allSettled([safeCleanup(testDir)]);
+		const errors = [...stopResult, ...cleanupResult]
+			.filter((result): result is PromiseRejectedResult => result.status === "rejected")
+			.map((result) => result.reason);
+		if (errors.length === 1) throw errors[0];
+		if (errors.length > 1) throw new AggregateError(errors, "MCP server and fixture cleanup both failed");
 	});
 
 	it("gets and upserts project Definition of Done defaults", async () => {

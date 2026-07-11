@@ -57,11 +57,7 @@ describe("ContentStore", () => {
 
 	afterEach(async () => {
 		store?.dispose();
-		try {
-			await safeCleanup(TEST_DIR);
-		} catch {
-			// Ignore cleanup errors
-		}
+		await safeCleanup(TEST_DIR);
 	});
 
 	it("loads tasks, documents, and decisions during initialization", async () => {

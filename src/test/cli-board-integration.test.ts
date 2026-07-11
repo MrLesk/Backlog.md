@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
-import { mkdir, rm, writeFile } from "node:fs/promises";
+import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { $ } from "bun";
 import { Core } from "../core/backlog.ts";
@@ -9,10 +9,11 @@ let TEST_DIR: string;
 
 describe("CLI Board Integration", () => {
 	let core: Core;
+	let coreInitialized = false;
 
 	beforeEach(async () => {
 		TEST_DIR = createUniqueTestDir("test-cli-board-integration");
-		await rm(TEST_DIR, { recursive: true, force: true }).catch(() => {});
+		coreInitialized = false;
 		await mkdir(TEST_DIR, { recursive: true });
 
 		// Configure git for tests - required for CI
@@ -21,6 +22,7 @@ describe("CLI Board Integration", () => {
 		await $`git config user.name "Test User"`.cwd(TEST_DIR).quiet();
 
 		core = new Core(TEST_DIR);
+		coreInitialized = true;
 		await initializeTestProject(core, "Test CLI Board Project");
 
 		// Disable remote operations for tests to prevent background git fetches
@@ -51,13 +53,8 @@ Test task for board CLI integration.`,
 	});
 
 	afterEach(async () => {
-		// Wait a bit to ensure any background operations from listTasksWithMetadata complete
-		await new Promise((resolve) => setTimeout(resolve, 100));
-		try {
-			await safeCleanup(TEST_DIR);
-		} catch {
-			// Ignore cleanup errors - the unique directory names prevent conflicts
-		}
+		if (coreInitialized) core.disposeContentStore();
+		await safeCleanup(TEST_DIR);
 	});
 
 	it("should handle board command logic without crashing", async () => {
