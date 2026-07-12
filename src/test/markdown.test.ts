@@ -6,6 +6,7 @@ import {
 	serializeTask,
 	updateTaskAcceptanceCriteria,
 } from "../markdown/serializer.ts";
+import { updateStructuredSections } from "../markdown/structured-sections.ts";
 import type { Decision, Document, Task } from "../types/index.ts";
 
 describe("Markdown Parser", () => {
@@ -481,6 +482,236 @@ describe("Markdown Serializer", () => {
 			expect(result).not.toContain("<!-- AC:BEGIN -->");
 			expect(result).toContain("## Description");
 			expect(result).toContain("Some details");
+		});
+
+		it("removes an empty marked acceptance criteria section without disturbing surrounding sections", () => {
+			const rawContent = [
+				"## Description",
+				"",
+				"<!-- SECTION:DESCRIPTION:BEGIN -->",
+				"Some details",
+				"<!-- SECTION:DESCRIPTION:END -->",
+				"",
+				"## Acceptance Criteria",
+				"<!-- AC:BEGIN -->",
+				"<!-- AC:END -->",
+				"",
+				"## Implementation Plan",
+				"",
+				"<!-- SECTION:PLAN:BEGIN -->",
+				"Implement carefully",
+				"<!-- SECTION:PLAN:END -->",
+				"",
+				"## Custom Details",
+				"",
+				"Keep this exactly.",
+			].join("\n");
+			const task: Task = {
+				id: "task-empty-ac",
+				title: "Empty Acceptance Criteria",
+				status: "To Do",
+				assignee: [],
+				createdDate: "2026-07-12",
+				labels: [],
+				dependencies: [],
+				description: "Some details",
+				acceptanceCriteriaItems: [],
+				implementationPlan: "Implement carefully",
+				rawContent,
+			};
+
+			const result = serializeTask(task);
+
+			expect(result).not.toContain("## Acceptance Criteria");
+			expect(result).not.toContain("<!-- AC:BEGIN -->");
+			expect(result).toContain("<!-- SECTION:DESCRIPTION:END -->\n\n## Implementation Plan");
+			expect(result).toContain("## Custom Details\n\nKeep this exactly.");
+			expect(result).not.toMatch(/\n{3,}/);
+		});
+
+		it("removes an empty marked definition of done section without disturbing surrounding sections", () => {
+			const rawContent = [
+				"## Description",
+				"",
+				"<!-- SECTION:DESCRIPTION:BEGIN -->",
+				"Some details",
+				"<!-- SECTION:DESCRIPTION:END -->",
+				"",
+				"## Acceptance Criteria",
+				"<!-- AC:BEGIN -->",
+				"- [ ] #1 Existing criterion",
+				"<!-- AC:END -->",
+				"",
+				"## Definition of Done",
+				"<!-- DOD:BEGIN -->",
+				"<!-- DOD:END -->",
+				"",
+				"## Implementation Plan",
+				"",
+				"<!-- SECTION:PLAN:BEGIN -->",
+				"Implement carefully",
+				"<!-- SECTION:PLAN:END -->",
+				"",
+				"## Custom Details",
+				"",
+				"Keep this exactly.",
+			].join("\n");
+			const task: Task = {
+				id: "task-empty-dod",
+				title: "Empty Definition of Done",
+				status: "To Do",
+				assignee: [],
+				createdDate: "2026-07-12",
+				labels: [],
+				dependencies: [],
+				description: "Some details",
+				acceptanceCriteriaItems: [{ index: 1, text: "Existing criterion", checked: false }],
+				definitionOfDoneItems: [],
+				implementationPlan: "Implement carefully",
+				rawContent,
+			};
+
+			const result = serializeTask(task);
+
+			expect(result).not.toContain("## Definition of Done");
+			expect(result).not.toContain("<!-- DOD:BEGIN -->");
+			expect(result).toContain("<!-- AC:END -->\n\n## Implementation Plan");
+			expect(result).toContain("## Custom Details\n\nKeep this exactly.");
+			expect(result).not.toMatch(/\n{3,}/);
+		});
+
+		it("keeps all structured sections in canonical order when the plan changes", () => {
+			const rawContent = [
+				"## Description",
+				"",
+				"<!-- SECTION:DESCRIPTION:BEGIN -->",
+				"Details",
+				"<!-- SECTION:DESCRIPTION:END -->",
+				"",
+				"## Acceptance Criteria",
+				"<!-- AC:BEGIN -->",
+				"- [ ] #1 Accepted",
+				"<!-- AC:END -->",
+				"",
+				"## Definition of Done",
+				"<!-- DOD:BEGIN -->",
+				"- [ ] #1 Verified",
+				"<!-- DOD:END -->",
+				"",
+				"## Implementation Plan",
+				"",
+				"<!-- SECTION:PLAN:BEGIN -->",
+				"Old plan",
+				"<!-- SECTION:PLAN:END -->",
+				"",
+				"## Implementation Notes",
+				"",
+				"<!-- SECTION:NOTES:BEGIN -->",
+				"Notes",
+				"<!-- SECTION:NOTES:END -->",
+				"",
+				"## Comments",
+				"",
+				"<!-- COMMENTS:BEGIN -->",
+				"created: 2026-07-12 12:00",
+				"---",
+				"Comment",
+				"---",
+				"<!-- COMMENTS:END -->",
+				"",
+				"## Final Summary",
+				"",
+				"<!-- SECTION:FINAL_SUMMARY:BEGIN -->",
+				"Summary",
+				"<!-- SECTION:FINAL_SUMMARY:END -->",
+			].join("\n");
+			const task: Task = {
+				id: "task-plan-order",
+				title: "Plan Order",
+				status: "In Progress",
+				assignee: [],
+				createdDate: "2026-07-12",
+				labels: [],
+				dependencies: [],
+				description: "Details",
+				acceptanceCriteriaItems: [{ index: 1, text: "Accepted", checked: false }],
+				definitionOfDoneItems: [{ index: 1, text: "Verified", checked: false }],
+				implementationPlan: "New plan",
+				implementationNotes: "Notes",
+				finalSummary: "Summary",
+				rawContent,
+			};
+
+			const result = serializeTask(task);
+			const headings = [
+				"## Description",
+				"## Acceptance Criteria",
+				"## Definition of Done",
+				"## Implementation Plan",
+				"## Implementation Notes",
+				"## Comments",
+				"## Final Summary",
+			].map((heading) => result.indexOf(heading));
+
+			expect(headings).toEqual([...headings].sort((left, right) => left - right));
+			expect(result).toContain("New plan");
+			expect(result).not.toContain("Old plan");
+			expect(result).not.toMatch(/\n{3,}/);
+		});
+
+		it("uses Definition of Done in structured-section fallback ordering without changing no-DoD ordering", () => {
+			const acceptanceCriteria = [
+				"## Acceptance Criteria",
+				"<!-- AC:BEGIN -->",
+				"- [ ] #1 Accepted",
+				"<!-- AC:END -->",
+			].join("\n");
+			const definitionOfDone = [
+				"## Definition of Done",
+				"<!-- DOD:BEGIN -->",
+				"- [ ] #1 Verified",
+				"<!-- DOD:END -->",
+			].join("\n");
+			const comments = [
+				"## Comments",
+				"",
+				"<!-- COMMENTS:BEGIN -->",
+				"created: 2026-07-12 12:00",
+				"---",
+				"Comment",
+				"---",
+				"<!-- COMMENTS:END -->",
+			].join("\n");
+			const withDod = updateStructuredSections(`${acceptanceCriteria}\n\n${definitionOfDone}\n\n${comments}`, {
+				implementationNotes: "Notes",
+				finalSummary: "Summary",
+			});
+			const withDodHeadings = [
+				"## Acceptance Criteria",
+				"## Definition of Done",
+				"## Implementation Notes",
+				"## Comments",
+				"## Final Summary",
+			].map((heading) => withDod.indexOf(heading));
+			expect(withDodHeadings).toEqual([...withDodHeadings].sort((left, right) => left - right));
+
+			const finalAfterDod = updateStructuredSections(`${acceptanceCriteria}\n\n${definitionOfDone}`, {
+				finalSummary: "Summary",
+			});
+			expect(finalAfterDod.indexOf("## Final Summary")).toBeGreaterThan(finalAfterDod.indexOf("## Definition of Done"));
+
+			const withoutDod = updateStructuredSections(`${acceptanceCriteria}\n\n${comments}`, {
+				implementationNotes: "Notes",
+				finalSummary: "Summary",
+			});
+			const withoutDodHeadings = [
+				"## Acceptance Criteria",
+				"## Implementation Notes",
+				"## Comments",
+				"## Final Summary",
+			].map((heading) => withoutDod.indexOf(heading));
+			expect(withoutDodHeadings).toEqual([...withoutDodHeadings].sort((left, right) => left - right));
+			expect(withoutDod).not.toContain("## Definition of Done");
 		});
 
 		it("serializes acceptance criteria when structured items exist", () => {

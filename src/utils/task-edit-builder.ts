@@ -17,11 +17,8 @@ function sanitizeAppend(values: string[] | undefined): string[] | undefined {
 }
 
 function toAcceptanceCriteriaEntries(values: string[] | undefined) {
-	if (!values) return undefined;
+	if (values === undefined) return undefined;
 	const trimmed = values.map((value) => String(value).trim()).filter((value) => value.length > 0);
-	if (trimmed.length === 0) {
-		return undefined;
-	}
 	return trimmed.map((text, index) => ({ text, checked: false, index: index + 1 }));
 }
 

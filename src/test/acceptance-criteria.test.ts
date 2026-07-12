@@ -136,6 +136,147 @@ describe("Acceptance Criteria CLI", () => {
 			expect(task?.rawContent).toContain("- [ ] #2 New criterion 2");
 		});
 
+		it("replaces all acceptance criteria with repeated --acceptance-criteria values", async () => {
+			await $`bun ${CLI_PATH} task edit 1 --ac "Old criterion 1" --ac "Old criterion 2" --ac "Old criterion 3"`
+				.cwd(TEST_DIR)
+				.quiet();
+
+			const result =
+				await $`bun ${CLI_PATH} task edit 1 --acceptance-criteria "Replacement A, with comma" --acceptance-criteria "Replacement B"`
+					.cwd(TEST_DIR)
+					.quiet();
+			expect(result.exitCode).toBe(0);
+
+			const core = new Core(TEST_DIR);
+			const task = await core.filesystem.loadTask("task-1");
+			const body = task?.rawContent ?? "";
+			expect(body).not.toContain("Old criterion");
+			expect(body).toContain("- [ ] #1 Replacement A, with comma");
+			expect(body).toContain("- [ ] #2 Replacement B");
+			expect(body).not.toContain("- [ ] #3");
+		});
+
+		it("clears all acceptance criteria atomically with --clear-ac", async () => {
+			await $`bun ${CLI_PATH} task edit 1 --ac "First" --ac "Second"`.cwd(TEST_DIR).quiet();
+
+			const result = await $`bun ${CLI_PATH} task edit 1 --clear-ac`.cwd(TEST_DIR).quiet();
+			expect(result.exitCode).toBe(0);
+
+			const core = new Core(TEST_DIR);
+			const task = await core.filesystem.loadTask("task-1");
+			const body = task?.rawContent ?? "";
+			expect(body).not.toContain("## Acceptance Criteria");
+			expect(body).not.toContain("<!-- AC:");
+			expect(body).not.toMatch(/\n{3,}/);
+		});
+
+		it("rejects replacement or clear combined with incremental acceptance criteria edits", async () => {
+			await $`bun ${CLI_PATH} task edit 1 --ac "Existing"`.cwd(TEST_DIR).quiet();
+			const core = new Core(TEST_DIR);
+			const before = await core.getTaskContent("task-1");
+
+			const replaceAndAdd = await $`bun ${CLI_PATH} task edit 1 --acceptance-criteria "Replacement" --ac "Addition"`
+				.cwd(TEST_DIR)
+				.nothrow()
+				.quiet();
+			expect(replaceAndAdd.exitCode).toBe(1);
+			expect(replaceAndAdd.stderr.toString()).toContain("Cannot combine --acceptance-criteria");
+
+			const clearAndCheck = await $`bun ${CLI_PATH} task edit 1 --clear-ac --check-ac 1`
+				.cwd(TEST_DIR)
+				.nothrow()
+				.quiet();
+			expect(clearAndCheck.exitCode).toBe(1);
+			expect(clearAndCheck.stderr.toString()).toContain("Cannot combine --clear-ac");
+			expect(await core.getTaskContent("task-1")).toBe(before);
+		});
+
+		it("rejects malformed Acceptance Criteria and Definition of Done markers without changing task bytes", async () => {
+			const core = new Core(TEST_DIR);
+			const task = await core.filesystem.loadTask("task-1");
+			if (!task?.filePath) throw new Error("Expected task file path");
+			const persisted = await Bun.file(task.filePath).text();
+			const cases = [
+				{
+					title: "Acceptance Criteria",
+					marker: "AC",
+					editArgs: ["--ac", "Replacement"],
+				},
+				{
+					title: "Definition of Done",
+					marker: "DOD",
+					editArgs: ["--dod", "Replacement"],
+				},
+			];
+			const malformed = [
+				{
+					body: (marker: string) => `<!-- ${marker}:END -->`,
+					detail: "without a preceding",
+				},
+				{
+					body: (marker: string) => `<!-- ${marker}:BEGIN -->\n- [ ] #1 Existing`,
+					detail: "without a following",
+				},
+				{
+					body: (marker: string) =>
+						`<!-- ${marker}:BEGIN -->\n<!-- ${marker}:BEGIN -->\n- [ ] #1 Existing\n<!-- ${marker}:END -->\n<!-- ${marker}:END -->`,
+					detail: "found a second",
+				},
+			];
+
+			for (const target of cases) {
+				for (const invalid of malformed) {
+					const before = `${persisted.trimEnd()}\n\n## ${target.title}\n${invalid.body(target.marker)}\n`;
+					await Bun.write(task.filePath, before);
+					const child = Bun.spawn(["bun", CLI_PATH, "task", "edit", "1", ...target.editArgs], {
+						cwd: TEST_DIR,
+						stdout: "pipe",
+						stderr: "pipe",
+					});
+					const [exitCode, stdout, stderr] = await Promise.all([
+						child.exited,
+						new Response(child.stdout).text(),
+						new Response(child.stderr).text(),
+					]);
+
+					expect(exitCode).not.toBe(0);
+					expect(stdout).not.toContain("Updated task");
+					expect(stderr).toContain(`Malformed ${target.title} markers:`);
+					expect(stderr).toContain(invalid.detail);
+					expect(stderr).toContain("The edit was not applied.");
+					expect(stderr).toContain("backlog task view TASK-1 --plain");
+					expect(stderr).toContain("repair or remove the malformed marker block");
+					expect(await Bun.file(task.filePath).text()).toBe(before);
+				}
+			}
+		});
+
+		it("ignores target-looking markers inside a balanced foreign block during CLI edits", async () => {
+			const core = new Core(TEST_DIR);
+			const task = await core.filesystem.loadTask("task-1");
+			if (!task?.filePath) throw new Error("Expected task file path");
+			const persisted = await Bun.file(task.filePath).text();
+			const body = `${persisted.trimEnd()}\n\n## Acceptance Criteria\n<!-- AC:BEGIN -->\n- [ ] #1 Existing\n<!-- AC:END -->\n\n## Comments\n<!-- COMMENTS:BEGIN -->\n<!-- AC:END -->\n<!-- DOD:BEGIN -->\n<!-- COMMENTS:END -->\n`;
+			await Bun.write(task.filePath, body);
+
+			const result = await $`bun ${CLI_PATH} task edit 1 --ac "Added" --dod "DoD added"`.cwd(TEST_DIR).quiet();
+			expect(result.exitCode).toBe(0);
+			const after = await Bun.file(task.filePath).text();
+			expect(after).toContain("- [ ] #1 Existing");
+			expect(after).toContain("- [ ] #2 Added");
+			expect(after).toContain("- [ ] #1 DoD added");
+			expect(after).toContain("<!-- COMMENTS:BEGIN -->\n<!-- AC:END -->\n<!-- DOD:BEGIN -->\n<!-- COMMENTS:END -->");
+		});
+
+		it("documents replacement as repeatable without comma splitting", async () => {
+			const result = await $`bun ${CLI_PATH} task edit --help`.cwd(TEST_DIR).quiet();
+			const output = result.stdout.toString();
+			expect(output).toContain("--acceptance-criteria <criteria>");
+			expect(output).toContain("replace all acceptance criteria (can be used");
+			expect(output).not.toContain("set acceptance criteria (comma-separated");
+			expect(output).toContain("--clear-ac");
+		});
+
 		it("consolidates duplicate Acceptance Criteria sections with markers into one", async () => {
 			const core = new Core(TEST_DIR);
 			await core.createTask(

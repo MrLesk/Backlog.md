@@ -81,9 +81,8 @@ export function serializeTask(task: Task): string {
 	}
 	if (Array.isArray(task.acceptanceCriteriaItems)) {
 		const existingCriteria = AcceptanceCriteriaManager.parseAllCriteria(task.rawContent ?? "");
-		const hasExistingStructuredCriteria = existingCriteria.length > 0;
 		if (
-			(task.acceptanceCriteriaItems.length > 0 || hasExistingStructuredCriteria) &&
+			task.acceptanceCriteriaItems.length === 0 ||
 			!checklistItemsEqual(existingCriteria, task.acceptanceCriteriaItems)
 		) {
 			contentBody = AcceptanceCriteriaManager.updateContent(contentBody, task.acceptanceCriteriaItems);
@@ -91,9 +90,8 @@ export function serializeTask(task: Task): string {
 	}
 	if (Array.isArray(task.definitionOfDoneItems)) {
 		const existingDefinitionOfDone = DefinitionOfDoneManager.parseAllCriteria(task.rawContent ?? "");
-		const hasExistingDefinitionOfDone = existingDefinitionOfDone.length > 0;
 		if (
-			(task.definitionOfDoneItems.length > 0 || hasExistingDefinitionOfDone) &&
+			task.definitionOfDoneItems.length === 0 ||
 			!checklistItemsEqual(existingDefinitionOfDone, task.definitionOfDoneItems)
 		) {
 			contentBody = DefinitionOfDoneManager.updateContent(contentBody, task.definitionOfDoneItems);

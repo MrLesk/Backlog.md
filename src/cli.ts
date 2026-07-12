@@ -245,6 +245,12 @@ function parsePositiveIntegerOption(value: unknown, optionName: string, helpComm
 
 function formatTaskEditError(error: unknown, taskId: string): string {
 	const message = error instanceof Error ? error.message : String(error);
+	if (
+		message.startsWith("Malformed Acceptance Criteria markers:") ||
+		message.startsWith("Malformed Definition of Done markers:")
+	) {
+		return `${message}\nThe edit was not applied. Run 'backlog task view ${taskId} --plain' to locate the task file, repair or remove the malformed marker block in that Markdown file, then rerun the edit.`;
+	}
 	if (message.startsWith("Invalid index:")) {
 		return `${message} Try 'backlog task edit ${taskId} --help' for index options.`;
 	}
@@ -446,6 +452,7 @@ function hasEditFieldFlags(options: Record<string, unknown>): boolean {
 			options.addLabel !== undefined ||
 			options.removeLabel !== undefined ||
 			options.ac !== undefined ||
+			options.clearAc ||
 			options.dod !== undefined ||
 			options.removeAc !== undefined ||
 			options.removeDod !== undefined ||
@@ -2700,7 +2707,12 @@ addHelpSchema(taskCmd.command("edit [taskId]"), {
 		"uncheck Definition of Done item by index (1-based, can be used multiple times)",
 		createMultiValueAccumulator(),
 	)
-	.option("--acceptance-criteria <criteria>", "set acceptance criteria (comma-separated or use multiple times)")
+	.option(
+		"--acceptance-criteria <criteria>",
+		"replace all acceptance criteria (can be used multiple times; commas are preserved)",
+		createMultiValueAccumulator(),
+	)
+	.option("--clear-ac", "remove all acceptance criteria (cannot combine with acceptance criteria mutation options)")
 	.option("--plan <text>", "set implementation plan")
 	.option("--notes <text>", "set implementation notes (replaces existing)")
 	.option(
@@ -2921,11 +2933,34 @@ addHelpSchema(taskCmd.command("edit [taskId]"), {
 			return;
 		}
 
+		const hasIncrementalAcceptanceCriteriaMutation =
+			options.ac !== undefined ||
+			options.removeAc !== undefined ||
+			options.checkAc !== undefined ||
+			options.uncheckAc !== undefined;
+		if (options.clearAc && (options.acceptanceCriteria !== undefined || hasIncrementalAcceptanceCriteriaMutation)) {
+			console.error(
+				"Cannot combine --clear-ac with --acceptance-criteria, --ac, --remove-ac, --check-ac, or --uncheck-ac. Use --clear-ac by itself.",
+			);
+			process.exitCode = 1;
+			return;
+		}
+		if (options.acceptanceCriteria !== undefined && hasIncrementalAcceptanceCriteriaMutation) {
+			console.error(
+				"Cannot combine --acceptance-criteria with --ac, --remove-ac, --check-ac, or --uncheck-ac. Use replacement by itself, or use only incremental operations.",
+			);
+			process.exitCode = 1;
+			return;
+		}
+
 		const labelValues = parseDelimitedStringList(options.label) ?? [];
 		const addLabelValues = parseDelimitedStringList(options.addLabel) ?? [];
 		const removeLabelValues = parseDelimitedStringList(options.removeLabel) ?? [];
 		const assigneeValues = parseDelimitedStringList(options.assignee) ?? [];
-		const acceptanceAdditions = processAcceptanceCriteriaOptions(options);
+		const acceptanceAdditions = processAcceptanceCriteriaOptions({ ac: options.ac });
+		const acceptanceReplacement = processAcceptanceCriteriaOptions({
+			acceptanceCriteria: options.acceptanceCriteria,
+		});
 		const definitionOfDoneAdditions = toStringArray(options.dod)
 			.map((value) => String(value).trim())
 			.filter((value) => value.length > 0);
@@ -3013,6 +3048,11 @@ addHelpSchema(taskCmd.command("edit [taskId]"), {
 		}
 		if (options.clearFinalSummary) {
 			editArgs.finalSummaryClear = true;
+		}
+		if (options.clearAc) {
+			editArgs.acceptanceCriteriaSet = [];
+		} else if (options.acceptanceCriteria !== undefined) {
+			editArgs.acceptanceCriteriaSet = acceptanceReplacement;
 		}
 		if (acceptanceAdditions.length > 0) {
 			editArgs.acceptanceCriteriaAdd = acceptanceAdditions;
