@@ -25,6 +25,20 @@ describe("isPortAvailable", () => {
 		const result = await isPortAvailable(0);
 		expect(result).toBe(false);
 	});
+
+	it("detects a port held by a production-style Bun.serve on its default interface", async () => {
+		// Regression for BACK-538: the probe used to bind 127.0.0.1 while Bun.serve
+		// binds the wildcard interface, so on macOS an occupied port looked free.
+		const server = Bun.serve({ port: 0, fetch: () => new Response("ok") });
+		const port = server.port;
+		if (port === undefined) throw new Error("Expected Bun.serve to expose its port");
+		try {
+			expect(await isPortAvailable(port)).toBe(false);
+		} finally {
+			await server.stop(true);
+		}
+		expect(await isPortAvailable(port)).toBe(true);
+	});
 });
 
 describe("findNextAvailablePort", () => {

@@ -160,7 +160,10 @@ export async function isPortAvailable(port: number): Promise<boolean> {
 	if (!Number.isInteger(port) || port < MIN_PORT || port > MAX_PORT) return false;
 	return new Promise((resolve) => {
 		const srv = net.createServer();
-		srv.listen(port, "127.0.0.1", () => srv.close(() => resolve(true)));
+		// Probe the wildcard interface that Bun.serve binds: on macOS a loopback-specific
+		// bind does not collide with a wildcard bind, so probing 127.0.0.1 would report
+		// a port as free while the browser server already holds it.
+		srv.listen(port, () => srv.close(() => resolve(true)));
 		srv.on("error", () => resolve(false));
 	});
 }

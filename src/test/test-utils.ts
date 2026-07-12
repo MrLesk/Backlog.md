@@ -185,7 +185,9 @@ export async function listenOnEphemeralPort(): Promise<{ server: net.Server; por
 	const server = net.createServer();
 	await new Promise<void>((resolve, reject) => {
 		server.once("error", reject);
-		server.listen(0, "127.0.0.1", () => {
+		// Bind the wildcard interface like the production Bun.serve does, so port
+		// fixtures collide with the same binds the real browser server would.
+		server.listen(0, () => {
 			server.off("error", reject);
 			resolve();
 		});
