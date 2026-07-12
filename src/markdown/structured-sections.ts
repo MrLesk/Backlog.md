@@ -53,6 +53,7 @@ const KNOWN_SECTION_TITLES = new Set<string>([
 interface ChecklistSectionDefinition {
 	sectionHeader: string;
 	title: string;
+	markerId: string;
 	beginMarker: string;
 	endMarker: string;
 }
@@ -60,6 +61,7 @@ interface ChecklistSectionDefinition {
 const ACCEPTANCE_CRITERIA_DEFINITION: ChecklistSectionDefinition = {
 	sectionHeader: ACCEPTANCE_CRITERIA_SECTION_HEADER,
 	title: ACCEPTANCE_CRITERIA_TITLE,
+	markerId: "AC",
 	beginMarker: ACCEPTANCE_CRITERIA_BEGIN_MARKER,
 	endMarker: ACCEPTANCE_CRITERIA_END_MARKER,
 };
@@ -67,6 +69,7 @@ const ACCEPTANCE_CRITERIA_DEFINITION: ChecklistSectionDefinition = {
 const DEFINITION_OF_DONE_DEFINITION: ChecklistSectionDefinition = {
 	sectionHeader: DEFINITION_OF_DONE_SECTION_HEADER,
 	title: DEFINITION_OF_DONE_TITLE,
+	markerId: "DOD",
 	beginMarker: DEFINITION_OF_DONE_BEGIN_MARKER,
 	endMarker: DEFINITION_OF_DONE_END_MARKER,
 };
@@ -119,20 +122,6 @@ function sectionHeaderRegex(key: StructuredSectionKey): RegExp {
 	return new RegExp(`## ${escapeForRegex(title)}\\s*\\n([\\s\\S]*?)${structuredSectionLookahead(title)}`, "i");
 }
 
-function checklistSentinelRegex(definition: ChecklistSectionDefinition, flags = "i"): RegExp {
-	const header = escapeForRegex(definition.sectionHeader);
-	const begin = escapeForRegex(definition.beginMarker);
-	const end = escapeForRegex(definition.endMarker);
-	return new RegExp(`(\\n|^)${header}\\s*\\n${begin}\\s*\\n([\\s\\S]*?)${end}`, flags);
-}
-
-function checklistLegacyRegex(definition: ChecklistSectionDefinition, flags: string): RegExp {
-	return new RegExp(
-		`(\\n|^)${escapeForRegex(definition.sectionHeader)}\\s*\\n([\\s\\S]*?)${structuredSectionLookahead(definition.title)}`,
-		flags,
-	);
-}
-
 function commentsSentinelRegex(flags = "i"): RegExp {
 	const header = escapeForRegex(COMMENTS_SECTION_HEADER);
 	const begin = escapeForRegex(COMMENTS_BEGIN_MARKER);
@@ -147,33 +136,164 @@ function commentsLegacyRegex(flags: string): RegExp {
 	);
 }
 
-function acceptanceCriteriaSentinelRegex(flags = "i"): RegExp {
-	return checklistSentinelRegex(ACCEPTANCE_CRITERIA_DEFINITION, flags);
-}
-
 function legacySectionRegex(title: string, flags: string): RegExp {
 	return new RegExp(`(\\n|^)## ${escapeForRegex(title)}\\s*\\n([\\s\\S]*?)${structuredSectionLookahead(title)}`, flags);
 }
 
+type SentinelKind = "BEGIN" | "END";
+
+interface SentinelToken {
+	family: string;
+	kind: SentinelKind;
+	start: number;
+	end: number;
+}
+
+interface TextRange {
+	start: number;
+	end: number;
+}
+
+interface ChecklistSentinelPair extends TextRange {
+	begin: SentinelToken;
+	endToken: SentinelToken;
+}
+
+interface ChecklistSentinelResolution {
+	foreignRanges: TextRange[];
+	targetPairs: ChecklistSentinelPair[];
+	targetState: "none" | "balanced" | "ambiguous";
+	targetIssue?: "unexpected-end" | "repeated-begin" | "unclosed-begin";
+}
+
+function tokenizeKnownSentinels(content: string): SentinelToken[] {
+	const markerRegex = /<!-- (SECTION:[A-Z][A-Z0-9_]*|COMMENTS|COMMENT|AC|DOD):(BEGIN|END) -->/g;
+	const tokens: SentinelToken[] = [];
+	for (const match of content.matchAll(markerRegex)) {
+		const start = match.index ?? 0;
+		tokens.push({
+			family: String(match[1]),
+			kind: match[2] as SentinelKind,
+			start,
+			end: start + match[0].length,
+		});
+	}
+	return tokens;
+}
+
+function mergeRanges(ranges: TextRange[]): TextRange[] {
+	const merged: TextRange[] = [];
+	for (const range of [...ranges].sort((left, right) => left.start - right.start || left.end - right.end)) {
+		const previous = merged[merged.length - 1];
+		if (previous && range.start <= previous.end) {
+			previous.end = Math.max(previous.end, range.end);
+		} else {
+			merged.push({ ...range });
+		}
+	}
+	return merged;
+}
+
+function pairForeignFamily(tokens: SentinelToken[]): TextRange[] {
+	const pending: SentinelToken[] = [];
+	const ranges: TextRange[] = [];
+	for (const token of tokens) {
+		if (token.kind === "BEGIN") {
+			pending.push(token);
+			continue;
+		}
+		const begin = pending.pop();
+		if (begin) ranges.push({ start: begin.start, end: token.end });
+	}
+	return ranges;
+}
+
+function resolveKnownSentinelRanges(tokens: SentinelToken[]): TextRange[] {
+	const families = new Set(tokens.map((token) => token.family));
+	const ranges: TextRange[] = [];
+	for (const family of families) {
+		ranges.push(...pairForeignFamily(tokens.filter((token) => token.family === family)));
+	}
+	return mergeRanges(ranges);
+}
+
+function resolveChecklistSentinels(
+	content: string,
+	definition: ChecklistSectionDefinition,
+): ChecklistSentinelResolution {
+	const tokens = tokenizeKnownSentinels(content);
+	const foreignRanges = resolveKnownSentinelRanges(tokens.filter((token) => token.family !== definition.markerId));
+	const targetTokens = tokens.filter(
+		(token) => token.family === definition.markerId && !isIndexWithinRanges(token.start, foreignRanges),
+	);
+	if (targetTokens.length === 0) {
+		return { foreignRanges, targetPairs: [], targetState: "none" };
+	}
+
+	const targetPairs: ChecklistSentinelPair[] = [];
+	let begin: SentinelToken | undefined;
+	for (const token of targetTokens) {
+		if (token.kind === "BEGIN") {
+			if (begin) {
+				return { foreignRanges, targetPairs: [], targetState: "ambiguous", targetIssue: "repeated-begin" };
+			}
+			begin = token;
+			continue;
+		}
+		if (!begin) {
+			return { foreignRanges, targetPairs: [], targetState: "ambiguous", targetIssue: "unexpected-end" };
+		}
+		targetPairs.push({ start: begin.start, end: token.end, begin, endToken: token });
+		begin = undefined;
+	}
+
+	return begin
+		? { foreignRanges, targetPairs: [], targetState: "ambiguous", targetIssue: "unclosed-begin" }
+		: { foreignRanges, targetPairs, targetState: "balanced" };
+}
+
+function assertUnambiguousChecklistSentinels(
+	resolution: ChecklistSentinelResolution,
+	definition: ChecklistSectionDefinition,
+): void {
+	if (resolution.targetState !== "ambiguous") return;
+
+	const detail =
+		resolution.targetIssue === "unexpected-end"
+			? `found ${definition.endMarker} without a preceding ${definition.beginMarker}`
+			: resolution.targetIssue === "repeated-begin"
+				? `found a second ${definition.beginMarker} before the matching ${definition.endMarker}`
+				: `found ${definition.beginMarker} without a following ${definition.endMarker}`;
+	throw new Error(`Malformed ${definition.title} markers: ${detail}.`);
+}
+
 function findSectionEndIndex(content: string, title: string): number | undefined {
 	const normalizedTitle = title.trim();
-	let sentinelMatch: RegExpExecArray | null = null;
 	if (normalizedTitle.toLowerCase() === ACCEPTANCE_CRITERIA_TITLE.toLowerCase()) {
-		sentinelMatch = acceptanceCriteriaSentinelRegex().exec(content);
-	} else if (normalizedTitle.toLowerCase() === DEFINITION_OF_DONE_TITLE.toLowerCase()) {
-		sentinelMatch = checklistSentinelRegex(DEFINITION_OF_DONE_DEFINITION).exec(content);
-	} else if (normalizedTitle.toLowerCase() === COMMENTS_TITLE.toLowerCase()) {
-		sentinelMatch = commentsSentinelRegex().exec(content);
+		return findChecklistSectionRanges(content, ACCEPTANCE_CRITERIA_DEFINITION)[0]?.end;
+	}
+	if (normalizedTitle.toLowerCase() === DEFINITION_OF_DONE_TITLE.toLowerCase()) {
+		return findChecklistSectionRanges(content, DEFINITION_OF_DONE_DEFINITION)[0]?.end;
+	}
+	const sentinelRanges = resolveKnownSentinelRanges(tokenizeKnownSentinels(content));
+	let sentinelMatch: RegExpExecArray | null = null;
+	if (normalizedTitle.toLowerCase() === COMMENTS_TITLE.toLowerCase()) {
+		sentinelMatch = findMatchOutsideRanges(commentsSentinelRegex(), content, sentinelRanges) ?? null;
 	} else {
 		const keyEntry = Object.entries(SECTION_CONFIG).find(
 			([, config]) => config.title.toLowerCase() === normalizedTitle.toLowerCase(),
 		);
 		if (keyEntry) {
 			const key = keyEntry[0] as StructuredSectionKey;
-			sentinelMatch = new RegExp(
-				`## ${escapeForRegex(getConfig(key).title)}\\s*\\n${escapeForRegex(getBeginMarker(key))}\\s*\\n([\\s\\S]*?)${escapeForRegex(getEndMarker(key))}`,
-				"i",
-			).exec(content);
+			sentinelMatch =
+				findMatchOutsideRanges(
+					new RegExp(
+						`## ${escapeForRegex(getConfig(key).title)}\\s*\\n${escapeForRegex(getBeginMarker(key))}\\s*\\n([\\s\\S]*?)${escapeForRegex(getEndMarker(key))}`,
+						"i",
+					),
+					content,
+					sentinelRanges,
+				) ?? null;
 		}
 	}
 
@@ -181,12 +301,11 @@ function findSectionEndIndex(content: string, title: string): number | undefined
 		return sentinelMatch.index + sentinelMatch[0].length;
 	}
 
-	const legacyMatch =
-		normalizedTitle.toLowerCase() === DEFINITION_OF_DONE_TITLE.toLowerCase()
-			? checklistLegacyRegex(DEFINITION_OF_DONE_DEFINITION, "i").exec(content)
-			: normalizedTitle.toLowerCase() === COMMENTS_TITLE.toLowerCase()
-				? commentsLegacyRegex("i").exec(content)
-				: legacySectionRegex(normalizedTitle, "i").exec(content);
+	const legacyRegex =
+		normalizedTitle.toLowerCase() === COMMENTS_TITLE.toLowerCase()
+			? commentsLegacyRegex("i")
+			: legacySectionRegex(normalizedTitle, "i");
+	const legacyMatch = findMatchOutsideRanges(legacyRegex, content, sentinelRanges);
 	if (legacyMatch) {
 		return legacyMatch.index + legacyMatch[0].length;
 	}
@@ -195,23 +314,31 @@ function findSectionEndIndex(content: string, title: string): number | undefined
 
 function findSectionStartIndex(content: string, title: string): number | undefined {
 	const normalizedTitle = title.trim();
-	let sentinelMatch: RegExpExecArray | null = null;
 	if (normalizedTitle.toLowerCase() === ACCEPTANCE_CRITERIA_TITLE.toLowerCase()) {
-		sentinelMatch = acceptanceCriteriaSentinelRegex().exec(content);
-	} else if (normalizedTitle.toLowerCase() === DEFINITION_OF_DONE_TITLE.toLowerCase()) {
-		sentinelMatch = checklistSentinelRegex(DEFINITION_OF_DONE_DEFINITION).exec(content);
-	} else if (normalizedTitle.toLowerCase() === COMMENTS_TITLE.toLowerCase()) {
-		sentinelMatch = commentsSentinelRegex().exec(content);
+		return findChecklistSectionRanges(content, ACCEPTANCE_CRITERIA_DEFINITION)[0]?.start;
+	}
+	if (normalizedTitle.toLowerCase() === DEFINITION_OF_DONE_TITLE.toLowerCase()) {
+		return findChecklistSectionRanges(content, DEFINITION_OF_DONE_DEFINITION)[0]?.start;
+	}
+	const sentinelRanges = resolveKnownSentinelRanges(tokenizeKnownSentinels(content));
+	let sentinelMatch: RegExpExecArray | null = null;
+	if (normalizedTitle.toLowerCase() === COMMENTS_TITLE.toLowerCase()) {
+		sentinelMatch = findMatchOutsideRanges(commentsSentinelRegex(), content, sentinelRanges) ?? null;
 	} else {
 		const keyEntry = Object.entries(SECTION_CONFIG).find(
 			([, config]) => config.title.toLowerCase() === normalizedTitle.toLowerCase(),
 		);
 		if (keyEntry) {
 			const key = keyEntry[0] as StructuredSectionKey;
-			sentinelMatch = new RegExp(
-				`(\\n|^)## ${escapeForRegex(getConfig(key).title)}\\s*\\n${escapeForRegex(getBeginMarker(key))}\\s*\\n([\\s\\S]*?)${escapeForRegex(getEndMarker(key))}`,
-				"i",
-			).exec(content);
+			sentinelMatch =
+				findMatchOutsideRanges(
+					new RegExp(
+						`(\\n|^)## ${escapeForRegex(getConfig(key).title)}\\s*\\n${escapeForRegex(getBeginMarker(key))}\\s*\\n([\\s\\S]*?)${escapeForRegex(getEndMarker(key))}`,
+						"i",
+					),
+					content,
+					sentinelRanges,
+				) ?? null;
 		}
 	}
 
@@ -219,12 +346,11 @@ function findSectionStartIndex(content: string, title: string): number | undefin
 		return sentinelMatch.index;
 	}
 
-	const legacyMatch =
-		normalizedTitle.toLowerCase() === DEFINITION_OF_DONE_TITLE.toLowerCase()
-			? checklistLegacyRegex(DEFINITION_OF_DONE_DEFINITION, "i").exec(content)
-			: normalizedTitle.toLowerCase() === COMMENTS_TITLE.toLowerCase()
-				? commentsLegacyRegex("i").exec(content)
-				: legacySectionRegex(normalizedTitle, "i").exec(content);
+	const legacyRegex =
+		normalizedTitle.toLowerCase() === COMMENTS_TITLE.toLowerCase()
+			? commentsLegacyRegex("i")
+			: legacySectionRegex(normalizedTitle, "i");
+	const legacyMatch = findMatchOutsideRanges(legacyRegex, content, sentinelRanges);
 	return legacyMatch?.index;
 }
 
@@ -242,15 +368,28 @@ interface SectionRange {
 	kind: "sentinel" | "legacy";
 }
 
+interface ChecklistSectionRange {
+	start: number;
+	end: number;
+	body: string;
+	maskedRanges: TextRange[];
+	marked: boolean;
+	hasChecklistItems: boolean;
+}
+
 function rangesOverlap(aStart: number, aEnd: number, bStart: number, bEnd: number): boolean {
 	return aStart < bEnd && bStart < aEnd;
 }
 
-function isIndexWithinRanges(index: number, ranges: SectionRange[]): boolean {
+function isIndexWithinRanges(index: number, ranges: Array<{ start: number; end: number }>): boolean {
 	return ranges.some((range) => index >= range.start && index < range.end);
 }
 
-function findMatchOutsideRanges(regex: RegExp, content: string, ranges: SectionRange[]): RegExpExecArray | undefined {
+function findMatchOutsideRanges(
+	regex: RegExp,
+	content: string,
+	ranges: Array<{ start: number; end: number }>,
+): RegExpExecArray | undefined {
 	const flags = regex.flags.includes("g") ? regex.flags : `${regex.flags}g`;
 	const globalRegex = new RegExp(regex.source, flags);
 	for (const match of content.matchAll(globalRegex)) {
@@ -278,6 +417,103 @@ function getStructuredSectionRanges(content: string): SectionRange[] {
 		}
 	}
 	return ranges;
+}
+
+function parseChecklistBody(body: string, marked: boolean, maskedRanges: TextRange[]): AcceptanceCriterion[] {
+	const lineRegex = marked ? /^- \[([ x])\] (?:#\d+ )?(.+)$/gm : /^- \[([ x])\] (.+)$/gm;
+	const items: AcceptanceCriterion[] = [];
+	for (const match of body.matchAll(lineRegex)) {
+		const start = match.index ?? 0;
+		if (isIndexWithinRanges(start, maskedRanges)) continue;
+		items.push({ checked: match[1] === "x", text: String(match[2] ?? ""), index: items.length + 1 });
+	}
+	return items;
+}
+
+function findChecklistHeaderStart(
+	content: string,
+	markerStart: number,
+	definition: ChecklistSectionDefinition,
+): number | undefined {
+	const prefix = content.slice(0, markerStart);
+	const headerRegex = new RegExp(
+		`(?:^|\\n)(${escapeForRegex(definition.sectionHeader)})[\\t ]*\\n(?:[\\t ]*\\n)*[\\t ]*$`,
+		"i",
+	);
+	const match = headerRegex.exec(prefix);
+	if (!match?.[1] || match.index === undefined) return undefined;
+	return match.index + match[0].indexOf(match[1]);
+}
+
+function findTopLevelHeadings(content: string, sentinelRanges: TextRange[]) {
+	const headings: Array<{ start: number; bodyStart: number; title: string }> = [];
+	for (const match of content.matchAll(/^##[\t ]+(.+?)[\t ]*$/gm)) {
+		const start = match.index ?? 0;
+		if (isIndexWithinRanges(start, sentinelRanges)) continue;
+		const lineEnd = start + match[0].length;
+		headings.push({
+			start,
+			bodyStart: content[lineEnd] === "\n" ? lineEnd + 1 : lineEnd,
+			title: String(match[1] ?? "").trim(),
+		});
+	}
+	return headings;
+}
+
+function rangesRelativeToBody(ranges: TextRange[], bodyStart: number, bodyEnd: number): TextRange[] {
+	return ranges
+		.filter((range) => rangesOverlap(range.start, range.end, bodyStart, bodyEnd))
+		.map((range) => ({
+			start: Math.max(range.start, bodyStart) - bodyStart,
+			end: Math.min(range.end, bodyEnd) - bodyStart,
+		}));
+}
+
+function findChecklistSectionRanges(
+	content: string,
+	definition: ChecklistSectionDefinition,
+	resolution = resolveChecklistSentinels(content, definition),
+	includeLegacyWithMarked = false,
+): ChecklistSectionRange[] {
+	if (resolution.targetState === "ambiguous") return [];
+	const ranges: ChecklistSectionRange[] = [];
+
+	for (const pair of resolution.targetPairs) {
+		const start = findChecklistHeaderStart(content, pair.begin.start, definition);
+		if (start === undefined || isIndexWithinRanges(start, resolution.foreignRanges)) continue;
+		const rawBody = content.slice(pair.begin.end, pair.endToken.start);
+		const leadingWhitespace = rawBody.match(/^[\t ]*\n/)?.[0].length ?? 0;
+		const bodyStart = pair.begin.end + leadingWhitespace;
+		const bodyEnd = pair.endToken.start;
+		const body = content.slice(bodyStart, bodyEnd);
+		const maskedRanges = rangesRelativeToBody(resolution.foreignRanges, bodyStart, bodyEnd);
+		ranges.push({
+			start,
+			end: pair.end,
+			body,
+			maskedRanges,
+			marked: true,
+			hasChecklistItems: parseChecklistBody(body, true, maskedRanges).length > 0,
+		});
+	}
+
+	if (resolution.targetState !== "none" && !includeLegacyWithMarked) {
+		return ranges.sort((left, right) => left.start - right.start);
+	}
+
+	const headings = findTopLevelHeadings(content, resolution.foreignRanges);
+	for (let index = 0; index < headings.length; index += 1) {
+		const heading = headings[index];
+		if (!heading || heading.title.toLowerCase() !== definition.title.toLowerCase()) continue;
+		const end = headings[index + 1]?.start ?? content.length;
+		if (ranges.some((range) => rangesOverlap(range.start, range.end, heading.start, end))) continue;
+		const body = content.slice(heading.bodyStart, end);
+		const maskedRanges = rangesRelativeToBody(resolution.foreignRanges, heading.bodyStart, end);
+		const hasChecklistItems = parseChecklistBody(body, false, maskedRanges).length > 0;
+		ranges.push({ start: heading.start, end, body, maskedRanges, marked: false, hasChecklistItems });
+	}
+
+	return ranges.sort((left, right) => left.start - right.start);
 }
 
 function stripSectionInstances(content: string, key: StructuredSectionKey): string {
@@ -372,7 +608,10 @@ export function updateStructuredSections(content: string, sections: SectionValue
 
 	if (plan) {
 		const planBlock = buildSectionBlock("implementationPlan", plan);
-		let res = insertAfterSection(tail, ACCEPTANCE_CRITERIA_TITLE, planBlock);
+		let res = insertAfterSection(tail, DEFINITION_OF_DONE_TITLE, planBlock);
+		if (!res.inserted) {
+			res = insertAfterSection(tail, ACCEPTANCE_CRITERIA_TITLE, planBlock);
+		}
 		if (!res.inserted) {
 			res = insertAfterSection(tail, getConfig("description").title, planBlock);
 		}
@@ -386,6 +625,9 @@ export function updateStructuredSections(content: string, sections: SectionValue
 	if (notes) {
 		const notesBlock = buildSectionBlock("implementationNotes", notes);
 		let res = insertAfterSection(tail, getConfig("implementationPlan").title, notesBlock);
+		if (!res.inserted) {
+			res = insertAfterSection(tail, DEFINITION_OF_DONE_TITLE, notesBlock);
+		}
 		if (!res.inserted) {
 			res = insertAfterSection(tail, ACCEPTANCE_CRITERIA_TITLE, notesBlock);
 		}
@@ -410,6 +652,9 @@ export function updateStructuredSections(content: string, sections: SectionValue
 		}
 		if (!res.inserted) {
 			res = insertAfterSection(tail, getConfig("implementationPlan").title, finalBlock);
+		}
+		if (!res.inserted) {
+			res = insertAfterSection(tail, DEFINITION_OF_DONE_TITLE, finalBlock);
 		}
 		if (!res.inserted) {
 			res = insertAfterSection(tail, ACCEPTANCE_CRITERIA_TITLE, finalBlock);
@@ -440,83 +685,48 @@ export function getStructuredSections(content: string): StructuredSectionValues 
 	};
 }
 
-function extractExistingChecklistBody(
-	content: string,
-	definition: ChecklistSectionDefinition,
-): { body: string; hasMarkers: boolean } | undefined {
-	const src = content.replace(/\r\n/g, "\n");
-	const sentinelMatch = checklistSentinelRegex(definition, "i").exec(src);
-	if (sentinelMatch?.[2] !== undefined) {
-		return { body: sentinelMatch[2], hasMarkers: true };
-	}
-	const legacyMatch = checklistLegacyRegex(definition, "i").exec(src);
-	if (legacyMatch?.[2] !== undefined) {
-		return { body: legacyMatch[2], hasMarkers: false };
-	}
-	return undefined;
-}
-
-function parseOldChecklistFormat(content: string, definition: ChecklistSectionDefinition): AcceptanceCriterion[] {
-	const src = content.replace(/\r\n/g, "\n");
-	const criteriaRegex = new RegExp(`${escapeForRegex(definition.sectionHeader)}\\s*\\n([\\s\\S]*?)(?=\\n## |$)`, "i");
-	const match = src.match(criteriaRegex);
-	if (!match?.[1]) {
-		return [];
-	}
-	const lines = match[1].split("\n").filter((line) => line.trim());
-	const criteria: AcceptanceCriterion[] = [];
-	let index = 1;
-	for (const line of lines) {
-		const checkboxMatch = line.match(/^- \[([ x])\] (.+)$/);
-		if (checkboxMatch?.[1] && checkboxMatch?.[2]) {
-			criteria.push({
-				checked: checkboxMatch[1] === "x",
-				text: checkboxMatch[2],
-				index: index++,
-			});
-		}
-	}
-	return criteria;
-}
-
 function parseChecklist(content: string, definition: ChecklistSectionDefinition): AcceptanceCriterion[] {
 	const src = content.replace(/\r\n/g, "\n");
-	const beginIndex = src.indexOf(definition.beginMarker);
-	const endIndex = src.indexOf(definition.endMarker);
-	if (beginIndex === -1 || endIndex === -1) {
-		return parseOldChecklistFormat(src, definition);
-	}
-	const checklistContent = src.substring(beginIndex + definition.beginMarker.length, endIndex);
-	const lines = checklistContent.split("\n").filter((line) => line.trim());
+	const resolution = resolveChecklistSentinels(src, definition);
+	if (resolution.targetState === "ambiguous") return [];
+	const ranges = findChecklistSectionRanges(src, definition, resolution);
+	const range = ranges.find((candidate) => candidate.marked) ?? ranges.find((candidate) => !candidate.marked);
+	if (!range) return [];
+	if (!range.marked) return parseChecklistBody(range.body, false, range.maskedRanges);
+
 	const criteria: AcceptanceCriterion[] = [];
-	for (const line of lines) {
-		const match = line.match(/^- \[([ x])\] #(\d+) (.+)$/);
-		if (match?.[1] && match?.[2] && match?.[3]) {
-			criteria.push({
-				checked: match[1] === "x",
-				text: match[3],
-				index: Number.parseInt(match[2], 10),
-			});
-		}
+	for (const match of range.body.matchAll(/^- \[([ x])\] #(\d+) (.+)$/gm)) {
+		const start = match.index ?? 0;
+		if (isIndexWithinRanges(start, range.maskedRanges)) continue;
+		criteria.push({
+			checked: match[1] === "x",
+			text: String(match[3] ?? ""),
+			index: Number.parseInt(String(match[2]), 10),
+		});
 	}
 	return criteria;
 }
 
-function composeChecklistBody(criteria: AcceptanceCriterion[], existingBody?: string): string {
+function composeChecklistBody(
+	criteria: AcceptanceCriterion[],
+	existingBody?: string,
+	maskedRanges: TextRange[] = [],
+): string {
 	const sorted = [...criteria].sort((a, b) => a.index - b.index);
-	if (sorted.length === 0) {
-		return "";
-	}
 	const queue = [...sorted];
 	const lines: string[] = [];
 	let nextNumber = 1;
-	// trimEnd() removes trailing newlines from regex capture that would create empty sourceLines entries
-	const sourceLines = existingBody ? existingBody.replace(/\r\n/g, "\n").trimEnd().split("\n") : [];
+	const sourceLines = existingBody ? existingBody.replace(/\r\n/g, "\n").split("\n") : [];
+	let sourceOffset = 0;
 
 	if (sourceLines.length > 0) {
 		for (const line of sourceLines) {
+			const lineStart = sourceOffset;
+			sourceOffset += line.length + 1;
 			const trimmed = line.trim();
-			const checkboxMatch = trimmed.match(/^- \[([ x])\] (?:#\d+ )?(.*)$/);
+			const checkboxMatch = isIndexWithinRanges(lineStart, maskedRanges)
+				? null
+				: trimmed.match(/^- \[([ x])\] (?:#\d+ )?(.*)$/);
 			if (checkboxMatch) {
 				const criterion = queue.shift();
 				if (!criterion) {
@@ -531,6 +741,13 @@ function composeChecklistBody(criteria: AcceptanceCriterion[], existingBody?: st
 		}
 	}
 
+	while (lines.length > 0 && lines[0]?.trim() === "") {
+		lines.shift();
+	}
+	while (lines.length > 0 && lines[lines.length - 1]?.trim() === "") {
+		lines.pop();
+	}
+
 	while (queue.length > 0) {
 		const criterion = queue.shift();
 		if (!criterion) continue;
@@ -541,15 +758,6 @@ function composeChecklistBody(criteria: AcceptanceCriterion[], existingBody?: st
 		lines.push(`- [${criterion.checked ? "x" : " "}] #${nextNumber++} ${criterion.text}`);
 	}
 
-	while (lines.length > 0) {
-		const tail = lines[lines.length - 1];
-		if (!tail || tail.trim() === "") {
-			lines.pop();
-		} else {
-			break;
-		}
-	}
-
 	return lines.join("\n");
 }
 
@@ -557,15 +765,16 @@ function formatChecklistSection(
 	criteria: AcceptanceCriterion[],
 	definition: ChecklistSectionDefinition,
 	existingBody?: string,
+	maskedRanges?: TextRange[],
 ): string {
-	if (criteria.length === 0) {
+	const effectiveMasks =
+		maskedRanges ?? (existingBody ? resolveChecklistSentinels(existingBody, definition).foreignRanges : []);
+	const body = composeChecklistBody(criteria, existingBody, effectiveMasks);
+	if (body.trim() === "") {
 		return "";
 	}
-	const body = composeChecklistBody(criteria, existingBody);
 	const lines = [definition.sectionHeader, definition.beginMarker];
-	if (body.trim() !== "") {
-		lines.push(...body.split("\n"));
-	}
+	lines.push(...body.split("\n"));
 	lines.push(definition.endMarker);
 	return lines.join("\n");
 }
@@ -575,89 +784,85 @@ function updateChecklistContent(
 	criteria: AcceptanceCriterion[],
 	definition: ChecklistSectionDefinition,
 ): string {
-	// Normalize to LF while computing, preserve original EOL at return
-	const useCRLF = /\r\n/.test(content);
-	const src = content.replace(/\r\n/g, "\n");
-	const existingBodyInfo = extractExistingChecklistBody(src, definition);
-	const newSection = formatChecklistSection(criteria, definition, existingBodyInfo?.body);
-
-	// Remove ALL existing checklist sections (legacy header blocks)
-	const legacyBlockRegex = checklistLegacyRegex(definition, "gi");
-	const matches = Array.from(src.matchAll(legacyBlockRegex));
-	let insertionIndex: number | null = null;
-	const firstMatch = matches[0];
-	if (firstMatch && firstMatch.index !== undefined) {
-		insertionIndex = firstMatch.index;
+	const { text: src, useCRLF } = normalizeToLF(content);
+	const resolution = resolveChecklistSentinels(src, definition);
+	assertUnambiguousChecklistSentinels(resolution, definition);
+	const existingRanges = findChecklistSectionRanges(src, definition, resolution, true);
+	const mutableRanges = existingRanges.filter((range) => range.marked || range.hasChecklistItems);
+	if (criteria.length === 0 && mutableRanges.length === 0) {
+		return content;
 	}
-
-	let stripped = src.replace(legacyBlockRegex, "").trimEnd();
-	// Also remove any stray marker-only blocks (defensive)
-	const markerBlockRegex = new RegExp(
-		`${escapeForRegex(definition.beginMarker)}[\\s\\S]*?${escapeForRegex(definition.endMarker)}`,
-		"gi",
-	);
-	stripped = stripped.replace(markerBlockRegex, "").trimEnd();
+	const existingRange = mutableRanges[0];
+	const newSection = formatChecklistSection(criteria, definition, existingRange?.body, existingRange?.maskedRanges);
+	let stripped = src;
+	for (const range of mutableRanges.sort((left, right) => right.start - left.start)) {
+		const before = stripped.slice(0, range.start).trimEnd();
+		const after = stripped.slice(range.end).replace(/^\s+/, "");
+		stripped = before && after ? `${before}\n\n${after}` : `${before}${after}`;
+	}
+	stripped = stripped.trim();
 
 	if (!newSection) {
-		// If criteria is empty, return stripped content (all checklist sections removed)
-		return stripped;
+		return restoreLineEndings(stripped, useCRLF);
 	}
 
-	// Insert the single consolidated section
-	if (insertionIndex !== null) {
-		const before = stripped.slice(0, insertionIndex).trimEnd();
-		const after = stripped.slice(insertionIndex);
-		const out = `${before}${before ? "\n\n" : ""}${newSection}${after ? `\n\n${after}` : ""}`;
-		return useCRLF ? out.replace(/\n/g, "\r\n") : out;
+	const precedingTitles =
+		definition === ACCEPTANCE_CRITERIA_DEFINITION
+			? [getConfig("description").title]
+			: [ACCEPTANCE_CRITERIA_TITLE, getConfig("description").title];
+	for (const title of precedingTitles) {
+		const result = insertAfterSection(stripped, title, newSection);
+		if (result.inserted) {
+			return restoreLineEndings(result.content.trim(), useCRLF);
+		}
 	}
 
-	// No existing section found: append at end
-	{
-		const out = `${stripped}${stripped ? "\n\n" : ""}${newSection}`;
-		return useCRLF ? out.replace(/\n/g, "\r\n") : out;
+	const followingTitles =
+		definition === ACCEPTANCE_CRITERIA_DEFINITION
+			? [
+					DEFINITION_OF_DONE_TITLE,
+					getConfig("implementationPlan").title,
+					getConfig("implementationNotes").title,
+					COMMENTS_TITLE,
+					getConfig("finalSummary").title,
+				]
+			: [
+					getConfig("implementationPlan").title,
+					getConfig("implementationNotes").title,
+					COMMENTS_TITLE,
+					getConfig("finalSummary").title,
+				];
+	for (const title of followingTitles) {
+		const result = insertBeforeSection(stripped, title, newSection);
+		if (result.inserted) {
+			return restoreLineEndings(result.content.trim(), useCRLF);
+		}
 	}
+
+	return restoreLineEndings(appendBlock(stripped, newSection).trim(), useCRLF);
 }
 
 function parseAllChecklistItems(content: string, definition: ChecklistSectionDefinition): AcceptanceCriterion[] {
 	const marked: AcceptanceCriterion[] = [];
 	const legacy: AcceptanceCriterion[] = [];
-	// Normalize to LF to make matching platform-agnostic
 	const src = content.replace(/\r\n/g, "\n");
-	// Find all checklist blocks (legacy header blocks)
-	const blockRegex = checklistLegacyRegex(definition, "gi");
-	let m: RegExpExecArray | null = blockRegex.exec(src);
-	while (m !== null) {
-		const block = m[2] || "";
-		if (block.includes(definition.beginMarker) && block.includes(definition.endMarker)) {
-			// Capture lines within each marked pair
-			const markedBlockRegex = new RegExp(
-				`${escapeForRegex(definition.beginMarker)}([\\s\\S]*?)${escapeForRegex(definition.endMarker)}`,
-				"gi",
-			);
-			let mm: RegExpExecArray | null = markedBlockRegex.exec(block);
-			while (mm !== null) {
-				const inside = mm[1] || "";
-				const lineRegex = /^- \[([ x])\] (?:#\d+ )?(.+)$/gm;
-				let lm: RegExpExecArray | null = lineRegex.exec(inside);
-				while (lm !== null) {
-					marked.push({ checked: lm[1] === "x", text: String(lm?.[2] ?? ""), index: marked.length + 1 });
-					lm = lineRegex.exec(inside);
-				}
-				mm = markedBlockRegex.exec(block);
-			}
-		} else {
-			// Legacy: parse checkbox lines without markers
-			const lineRegex = /^- \[([ x])\] (.+)$/gm;
-			let lm: RegExpExecArray | null = lineRegex.exec(block);
-			while (lm !== null) {
-				legacy.push({ checked: lm[1] === "x", text: String(lm?.[2] ?? ""), index: legacy.length + 1 });
-				lm = lineRegex.exec(block);
-			}
+	const resolution = resolveChecklistSentinels(src, definition);
+	if (resolution.targetState === "ambiguous") return [];
+	for (const range of findChecklistSectionRanges(src, definition, resolution)) {
+		const target = range.marked ? marked : legacy;
+		for (const item of parseChecklistBody(range.body, range.marked, range.maskedRanges)) {
+			target.push({ ...item, index: target.length + 1 });
 		}
-		m = blockRegex.exec(src);
 	}
-	// Prefer marked content when present; otherwise fall back to legacy
 	return marked.length > 0 ? marked : legacy;
+}
+
+function migrateChecklistToStableFormat(content: string, definition: ChecklistSectionDefinition): string {
+	const { text: src } = normalizeToLF(content);
+	const resolution = resolveChecklistSentinels(src, definition);
+	if (resolution.targetState !== "none") return content;
+	const criteria = parseAllChecklistItems(src, definition);
+	return criteria.length > 0 ? updateChecklistContent(content, criteria, definition) : content;
 }
 
 function normalizeCommentMetadata(value: string | undefined): string | undefined {
@@ -980,17 +1185,7 @@ export class AcceptanceCriteriaManager {
 	}
 
 	static migrateToStableFormat(content: string): string {
-		const criteria = AcceptanceCriteriaManager.parseAllCriteria(content);
-		if (criteria.length === 0) {
-			return content;
-		}
-		if (
-			content.includes(AcceptanceCriteriaManager.BEGIN_MARKER) &&
-			content.includes(AcceptanceCriteriaManager.END_MARKER)
-		) {
-			return content;
-		}
-		return AcceptanceCriteriaManager.updateContent(content, criteria);
+		return migrateChecklistToStableFormat(content, ACCEPTANCE_CRITERIA_DEFINITION);
 	}
 }
 
@@ -1047,16 +1242,6 @@ export class DefinitionOfDoneManager {
 	}
 
 	static migrateToStableFormat(content: string): string {
-		const criteria = DefinitionOfDoneManager.parseAllCriteria(content);
-		if (criteria.length === 0) {
-			return content;
-		}
-		if (
-			content.includes(DefinitionOfDoneManager.BEGIN_MARKER) &&
-			content.includes(DefinitionOfDoneManager.END_MARKER)
-		) {
-			return content;
-		}
-		return DefinitionOfDoneManager.updateContent(content, criteria);
+		return migrateChecklistToStableFormat(content, DEFINITION_OF_DONE_DEFINITION);
 	}
 }
