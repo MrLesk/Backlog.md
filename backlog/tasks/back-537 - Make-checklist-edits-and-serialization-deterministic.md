@@ -3,9 +3,9 @@ id: BACK-537
 title: Make checklist edits and serialization deterministic
 status: Done
 assignee:
-  - '@codex'
+  - '@claude'
 created_date: '2026-07-11 23:02'
-updated_date: '2026-07-12 12:16'
+updated_date: '2026-07-12 13:49'
 labels: []
 dependencies: []
 priority: high
@@ -45,6 +45,8 @@ Acceptance-criteria replacement currently appends only the final repeated value,
 Implemented strict shared AC/DoD marker resolution with actionable failures for malformed or ambiguous structures; wired repeatable atomic acceptance-criteria replacement and explicit clear-all while retaining additive --ac semantics; canonicalized checklist placement and boundary whitespace without altering custom content or line endings.
 
 Verification on the reviewed implementation: focused acceptance-criteria and Markdown serializer regressions, full Bun test suite, TypeScript, Biome, production build, and independent specification and quality reviews passed.
+
+Review fix: balanced AC/DoD marker pairs with no attached section header (e.g. a pair mentioned in description prose) made findChecklistSectionRanges skip the legacy-heading scan, so reads returned no criteria while edits still stripped the legacy section — an incremental --ac dropped existing legacy items. The early return now requires an actual header-attached marked range before skipping legacy scanning. Regression test added for both AC and DoD. Codex review claims about lowercase markers and equality-skip on replacement were verified as not actionable (lowercase markers were already unsupported on the read path before this change; the no-op equality skip is the intended byte-stability behavior and stale duplicates are consolidated on the next real mutation).
 <!-- SECTION:NOTES:END -->
 
 ## Final Summary

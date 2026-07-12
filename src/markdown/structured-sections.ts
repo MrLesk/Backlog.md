@@ -497,7 +497,9 @@ function findChecklistSectionRanges(
 		});
 	}
 
-	if (resolution.targetState !== "none" && !includeLegacyWithMarked) {
+	// Balanced markers with no attached section header (e.g. a stray pair in prose)
+	// must not hide legacy sections, or reads would miss criteria that writes still strip.
+	if (ranges.length > 0 && !includeLegacyWithMarked) {
 		return ranges.sort((left, right) => left.start - right.start);
 	}
 

@@ -456,6 +456,29 @@ Some description
 		}
 	});
 
+	it("still parses legacy checklists when a balanced marker pair sits in prose without a header", () => {
+		const cases = [
+			{ manager: AcceptanceCriteriaManager, header: "Acceptance Criteria", target: "AC", text: "Legacy criterion" },
+			{ manager: DefinitionOfDoneManager, header: "Definition of Done", target: "DOD", text: "Legacy DoD item" },
+		];
+
+		for (const { manager, header, target, text } of cases) {
+			const proseMention = `Wrap items between <!-- ${target}:BEGIN --> and <!-- ${target}:END --> markers.`;
+			const content = ["## Description", "", proseMention, "", `## ${header}`, "", `- [ ] ${text}`].join("\n");
+
+			expect(manager.parseAllCriteria(content)).toEqual([{ checked: false, text, index: 1 }]);
+
+			const added = manager.addCriteria(content, ["New item"]);
+			expect(added).toContain(proseMention);
+			expect(added).toContain(`- [ ] #1 ${text}`);
+			expect(added).toContain("- [ ] #2 New item");
+			expect(manager.parseAllCriteria(added)).toEqual([
+				{ checked: false, text, index: 1 },
+				{ checked: false, text: "New item", index: 2 },
+			]);
+		}
+	});
+
 	it("clears top-level legacy checklists but preserves prose-only namesake sections", () => {
 		const cases = [
 			{
