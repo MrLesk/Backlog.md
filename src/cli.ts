@@ -4163,6 +4163,9 @@ agentsCmd
 	});
 
 // Config command group
+const CONFIG_AVAILABLE_KEYS =
+	"Available keys: defaultEditor, projectName, defaultStatus, statuses, labels, priorities, types, milestones, definitionOfDone, dateFormat, maxColumnWidth, defaultPort, autoOpenBrowser, hideEmptyColumns, remoteOperations, autoCommit, filesystemOnly, bypassGitHooks, zeroPaddedIds, checkActiveBranches, activeBranchDays";
+
 const configCmd = addHelpSchema(program.command("config"), {
 	reads: "Project Backlog.md configuration",
 	required: [],
@@ -4350,9 +4353,7 @@ addHelpSchema(configCmd.command("get <key>"), {
 					break;
 				default:
 					console.error(`Unknown config key: ${key}`);
-					console.error(
-						"Available keys: defaultEditor, projectName, defaultStatus, statuses, labels, priorities, types, milestones, definitionOfDone, dateFormat, maxColumnWidth, defaultPort, autoOpenBrowser, hideEmptyColumns, remoteOperations, autoCommit, filesystemOnly, bypassGitHooks, zeroPaddedIds, checkActiveBranches, activeBranchDays",
-					);
+					console.error(CONFIG_AVAILABLE_KEYS);
 					process.exit(1);
 			}
 		} catch (err) {
@@ -4533,6 +4534,7 @@ addHelpSchema(configCmd.command("set <key> <value>"), {
 				}
 				case "statuses":
 				case "labels":
+				case "types":
 				case "priorities":
 				case "milestones":
 				case "definitionOfDone":
@@ -4547,8 +4549,10 @@ addHelpSchema(configCmd.command("set <key> <value>"), {
 							"Use `backlog config` for interactive editing, update the project config file (`backlog/config.yml`, `.backlog/config.yml`, or `backlog.config.yml`), or use Web UI Settings.",
 						);
 					} else {
-						console.error(`${key} cannot be set directly. Use 'backlog config list-${key}' to view current values.`);
-						console.error("Array values should be edited in the config file directly.");
+						console.error(`${key} cannot be set directly. View current values with 'backlog config get ${key}'.`);
+						console.error(
+							"Edit the list in the project config file (`backlog/config.yml`, `.backlog/config.yml`, or `backlog.config.yml`) directly.",
+						);
 					}
 					process.exit(1);
 					break;
@@ -4562,9 +4566,7 @@ addHelpSchema(configCmd.command("set <key> <value>"), {
 					break;
 				default:
 					console.error(`Unknown config key: ${key}`);
-					console.error(
-						"Available keys: defaultEditor, projectName, defaultStatus, dateFormat, maxColumnWidth, autoOpenBrowser, hideEmptyColumns, defaultPort, remoteOperations, autoCommit, filesystemOnly, bypassGitHooks, zeroPaddedIds, checkActiveBranches, activeBranchDays",
-					);
+					console.error(CONFIG_AVAILABLE_KEYS);
 					process.exit(1);
 			}
 
