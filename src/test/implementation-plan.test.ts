@@ -3,7 +3,6 @@ import { mkdir } from "node:fs/promises";
 import { join } from "node:path";
 import { $ } from "bun";
 import { Core } from "../core/backlog.ts";
-import { createTaskPlatformAware, editTaskPlatformAware } from "./test-helpers.ts";
 import { createUniqueTestDir, initializeTestProject, safeCleanup } from "./test-utils.ts";
 
 let TEST_DIR: string;
@@ -22,11 +21,7 @@ describe("Implementation Plan CLI", () => {
 	});
 
 	afterEach(async () => {
-		try {
-			await safeCleanup(TEST_DIR);
-		} catch {
-			// Ignore cleanup errors
-		}
+		await safeCleanup(TEST_DIR);
 	});
 
 	describe("task create with implementation plan", () => {
@@ -63,14 +58,11 @@ describe("Implementation Plan CLI", () => {
 			expect(task?.rawContent).toContain("2. Second step");
 
 			// Test 3: create task with acceptance criteria and implementation plan
-			const result = await createTaskPlatformAware(
-				{
-					title: "Test Task 3",
-					ac: "Must work correctly, Must be tested",
-					plan: "Phase 1: Setup\nPhase 2: Testing",
-				},
-				TEST_DIR,
-			);
+			const result =
+				await $`bun ${[CLI_PATH, "task", "create", "Test Task 3", "--ac", "Must work correctly, Must be tested", "--plan", "Phase 1: Setup\nPhase 2: Testing"]}`
+					.cwd(TEST_DIR)
+					.quiet()
+					.nothrow();
 
 			if (result.exitCode !== 0) {
 				console.error("CLI Error:", result.stderr || result.stdout);
@@ -78,7 +70,7 @@ describe("Implementation Plan CLI", () => {
 			}
 			expect(result.exitCode).toBe(0);
 
-			task = await core.filesystem.loadTask(result.taskId || "task-3");
+			task = await core.filesystem.loadTask("task-3");
 			expect(task).not.toBeNull();
 			expect(task?.rawContent).toContain("## Acceptance Criteria");
 			expect(task?.rawContent).toContain("- [ ] #1 Must work correctly, Must be tested");
@@ -108,7 +100,10 @@ describe("Implementation Plan CLI", () => {
 
 		it("should handle all task editing scenarios with implementation plans", async () => {
 			// Test 1: add implementation plan to existing task
-			const result1 = await editTaskPlatformAware({ taskId: "1", plan: "New plan:\n- Step A\n- Step B" }, TEST_DIR);
+			const result1 = await $`bun ${[CLI_PATH, "task", "edit", "1", "--plan", "New plan:\n- Step A\n- Step B"]}`
+				.cwd(TEST_DIR)
+				.quiet()
+				.nothrow();
 			expect(result1.exitCode).toBe(0);
 
 			const core = new Core(TEST_DIR);
@@ -130,10 +125,11 @@ describe("Implementation Plan CLI", () => {
 			);
 
 			// Now update with new plan
-			const result2 = await editTaskPlatformAware(
-				{ taskId: "1", plan: "Updated plan:\n1. New step 1\n2. New step 2" },
-				TEST_DIR,
-			);
+			const result2 =
+				await $`bun ${[CLI_PATH, "task", "edit", "1", "--plan", "Updated plan:\n1. New step 1\n2. New step 2"]}`
+					.cwd(TEST_DIR)
+					.quiet()
+					.nothrow();
 			expect(result2.exitCode).toBe(0);
 
 			task = await core.filesystem.loadTask("task-1");

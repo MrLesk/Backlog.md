@@ -3,14 +3,21 @@ import { useSearchParams } from "react-router-dom";
 import { apiClient } from "../lib/api";
 import type {
 	Milestone,
-	SearchPriorityFilter,
 	Task,
 	TaskSearchResult,
 } from "../../types";
+import { DEFAULT_STATUSES } from "../../constants/index.ts";
 import { collectAvailableLabels } from "../../utils/label-filter.ts";
+import { compareTaskIds, compareTaskIdsDescending } from "../../utils/task-sorting.ts";
 import { isTerminalStatus } from "../../utils/terminal-status.ts";
 import { collectArchivedMilestoneKeys, getMilestoneLabel, milestoneKey } from "../utils/milestones";
 import { formatStoredUtcDateForCompactDisplay, parseStoredUtcDate } from "../utils/date-display";
+import {
+	formatPriorityLabel,
+	getPriorityOptions,
+	getPriorityRank,
+	resolvePriorityValue,
+} from "../../utils/priority-config.ts";
 import CleanupModal from "./CleanupModal";
 import LabelFilterDropdown from "./LabelFilterDropdown";
 import { SuccessToast } from "./SuccessToast";
@@ -22,48 +29,23 @@ interface TaskListProps {
 	availableStatuses: string[];
 	availableLabels: string[];
 	availableMilestones: string[];
+	availablePriorities?: string[];
 	milestoneEntities: Milestone[];
 	archivedMilestones: Milestone[];
 	onRefreshData?: () => Promise<void>;
 	dateFormat?: string;
+	isLoading?: boolean;
 }
-
-const PRIORITY_OPTIONS: Array<{ label: string; value: "" | SearchPriorityFilter }> = [
-	{ label: "All priorities", value: "" },
-	{ label: "High", value: "high" },
-	{ label: "Medium", value: "medium" },
-	{ label: "Low", value: "low" },
-];
 
 type TaskSortColumn = "id" | "title" | "status" | "priority" | "ordinal" | "milestone" | "created";
 type SortDirection = "asc" | "desc";
 
-const PRIORITY_RANK: Record<string, number> = {
-	high: 3,
-	medium: 2,
-	low: 1,
-};
-
-function extractTaskNumericId(taskId: string): number | null {
-	const match = taskId.trim().match(/(\d+)$/);
-	if (!match?.[1]) return null;
-	return Number.parseInt(match[1], 10);
-}
-
 function compareTaskIdsAscending(a: Task, b: Task): number {
-	const idA = extractTaskNumericId(a.id);
-	const idB = extractTaskNumericId(b.id);
-
-	if (idA !== null && idB !== null) {
-		return idA - idB;
-	}
-	if (idA !== null) return -1;
-	if (idB !== null) return 1;
-	return a.id.localeCompare(b.id, undefined, { sensitivity: "base", numeric: true });
+	return compareTaskIds(a.id, b.id);
 }
 
 function sortTasksByIdDescending(list: Task[]): Task[] {
-	return [...list].sort((a, b) => compareTaskIdsAscending(b, a));
+	return [...list].sort((a, b) => compareTaskIdsDescending(a.id, b.id));
 }
 
 function getAssigneeInitials(value: string): string {
@@ -87,15 +69,24 @@ const TaskList: React.FC<TaskListProps> = ({
 	availableStatuses,
 	availableLabels,
 	availableMilestones,
+	availablePriorities,
 	milestoneEntities,
 	archivedMilestones,
 	onRefreshData,
 	dateFormat,
+	isLoading = false,
 }) => {
 	const [searchParams, setSearchParams] = useSearchParams();
 	const [statusFilter, setStatusFilter] = useState(() => searchParams.get("status") ?? "");
-	const [priorityFilter, setPriorityFilter] = useState<"" | SearchPriorityFilter>(
-		() => (searchParams.get("priority") as SearchPriorityFilter | null) ?? "",
+	const initialExcludeStatusParams = useMemo(() => {
+		const statuses = [...searchParams.getAll("excludeStatus")];
+		const statusesCsv = searchParams.get("excludeStatuses");
+		if (statusesCsv) statuses.push(...statusesCsv.split(","));
+		return statuses.map((status) => status.trim()).filter((status) => status.length > 0);
+	}, []);
+	const [excludedStatusFilter, setExcludedStatusFilter] = useState<string[]>(initialExcludeStatusParams);
+	const [priorityFilter, setPriorityFilter] = useState<string>(() =>
+		isLoading ? "" : (resolvePriorityValue(searchParams.get("priority"), availablePriorities) ?? ""),
 	);
 	const [milestoneFilter, setMilestoneFilter] = useState(() => searchParams.get("milestone") ?? "");
 	const initialLabelParams = useMemo(() => {
@@ -111,10 +102,15 @@ const TaskList: React.FC<TaskListProps> = ({
 	const [cleanupSuccessMessage, setCleanupSuccessMessage] = useState<string | null>(null);
 	const [sortColumn, setSortColumn] = useState<TaskSortColumn>("id");
 	const [sortDirection, setSortDirection] = useState<SortDirection>("desc");
+	const priorityOptions = useMemo(
+		() => [{ label: "All priorities", value: "" }, ...getPriorityOptions(availablePriorities)],
+		[availablePriorities],
+	);
 	const tableHeaderScrollRef = useRef<HTMLDivElement | null>(null);
 	const tableBodyScrollRef = useRef<HTMLDivElement | null>(null);
 	const isSyncingTableScrollRef = useRef(false);
-	const isFilteringTerminalStatus = isTerminalStatus(statusFilter, availableStatuses);
+	const statusOptions = availableStatuses.length > 0 ? availableStatuses : [...DEFAULT_STATUSES];
+	const isFilteringTerminalStatus = isTerminalStatus(statusFilter, statusOptions);
 	const milestoneAliasToCanonical = useMemo(() => {
 		const aliasMap = new Map<string, string>();
 		const collectIdAliasKeys = (value: string): string[] => {
@@ -258,13 +254,22 @@ const TaskList: React.FC<TaskListProps> = ({
 		return uniqueMilestones;
 	}, [availableMilestones]);
 	const hasActiveFilters = Boolean(
-		statusFilter || priorityFilter || labelFilter.length > 0 || milestoneFilter,
+		statusFilter || excludedStatusFilter.length > 0 || priorityFilter || labelFilter.length > 0 || milestoneFilter,
 	);
 	const totalTasks = sortedBaseTasks.length;
 
 	useEffect(() => {
 		const paramStatus = searchParams.get("status") ?? "";
-		const paramPriority = (searchParams.get("priority") as SearchPriorityFilter | null) ?? "";
+		const paramExcludedStatuses = [...searchParams.getAll("excludeStatus")];
+		const excludedStatusesCsv = searchParams.get("excludeStatuses");
+		if (excludedStatusesCsv) {
+			paramExcludedStatuses.push(...excludedStatusesCsv.split(","));
+		}
+		const normalizedExcludedStatuses = paramExcludedStatuses
+			.map((status) => status.trim())
+			.filter((status) => status.length > 0);
+		const rawParamPriority = searchParams.get("priority") ?? "";
+		const paramPriority = resolvePriorityValue(rawParamPriority, availablePriorities) ?? "";
 		const paramMilestone = searchParams.get("milestone") ?? "";
 		const paramLabels = [...searchParams.getAll("label"), ...searchParams.getAll("labels")];
 		const labelsCsv = searchParams.get("labels");
@@ -276,7 +281,23 @@ const TaskList: React.FC<TaskListProps> = ({
 		if (paramStatus !== statusFilter) {
 			setStatusFilter(paramStatus);
 		}
-		if (paramPriority !== priorityFilter) {
+		if (normalizedExcludedStatuses.join("|") !== excludedStatusFilter.join("|")) {
+			setExcludedStatusFilter(normalizedExcludedStatuses);
+		}
+		if (!isLoading && rawParamPriority !== paramPriority) {
+			setSearchParams(
+				(params) => {
+					if (paramPriority) {
+						params.set("priority", paramPriority);
+					} else {
+						params.delete("priority");
+					}
+					return params;
+				},
+				{ replace: true },
+			);
+		}
+		if (!isLoading && paramPriority !== priorityFilter) {
 			setPriorityFilter(paramPriority);
 		}
 		if (paramMilestone !== milestoneFilter) {
@@ -285,7 +306,7 @@ const TaskList: React.FC<TaskListProps> = ({
 		if (normalizedLabels.join("|") !== labelFilter.join("|")) {
 			setLabelFilter(normalizedLabels);
 		}
-	}, [searchParams]);
+	}, [availablePriorities, isLoading, searchParams, setSearchParams]);
 
 	useEffect(() => {
 		if (!hasActiveFilters) {
@@ -310,7 +331,7 @@ const TaskList: React.FC<TaskListProps> = ({
 		};
 
 		const shouldUseApi =
-			Boolean(statusFilter) || Boolean(priorityFilter) || labelFilter.length > 0;
+			Boolean(statusFilter) || excludedStatusFilter.length > 0 || Boolean(priorityFilter) || labelFilter.length > 0;
 
 		if (!hasActiveFilters) {
 			return;
@@ -329,7 +350,8 @@ const TaskList: React.FC<TaskListProps> = ({
 				const results = await apiClient.search({
 					types: ["task"],
 					status: statusFilter || undefined,
-					priority: (priorityFilter || undefined) as SearchPriorityFilter | undefined,
+					excludeStatus: excludedStatusFilter.length > 0 ? excludedStatusFilter : undefined,
+					priority: priorityFilter || undefined,
 					labels: labelFilter.length > 0 ? labelFilter : undefined,
 				});
 				if (cancelled) {
@@ -354,6 +376,7 @@ const TaskList: React.FC<TaskListProps> = ({
 		};
 	}, [
 		hasActiveFilters,
+		excludedStatusFilter,
 		priorityFilter,
 		statusFilter,
 		labelFilter,
@@ -366,13 +389,19 @@ const TaskList: React.FC<TaskListProps> = ({
 
 	const syncUrl = (
 		nextStatus: string,
-		nextPriority: "" | SearchPriorityFilter,
+		nextExcludedStatuses: string[],
+		nextPriority: string,
 		nextLabels: string[],
 		nextMilestone: string,
 	) => {
 		const params = new URLSearchParams();
 		if (nextStatus) {
 			params.set("status", nextStatus);
+		}
+		for (const status of nextExcludedStatuses) {
+			if (status.trim()) {
+				params.append("excludeStatus", status.trim());
+			}
 		}
 		if (nextPriority) {
 			params.set("priority", nextPriority);
@@ -390,31 +419,38 @@ const TaskList: React.FC<TaskListProps> = ({
 
 	const handleStatusChange = (value: string) => {
 		setStatusFilter(value);
-		syncUrl(value, priorityFilter, labelFilter, milestoneFilter);
+		syncUrl(value, excludedStatusFilter, priorityFilter, labelFilter, milestoneFilter);
 	};
 
-	const handlePriorityChange = (value: "" | SearchPriorityFilter) => {
+	const handleExcludeStatusChange = (next: string[]) => {
+		const normalized = next.map((status) => status.trim()).filter((status) => status.length > 0);
+		setExcludedStatusFilter(normalized);
+		syncUrl(statusFilter, normalized, priorityFilter, labelFilter, milestoneFilter);
+	};
+
+	const handlePriorityChange = (value: string) => {
 		setPriorityFilter(value);
-		syncUrl(statusFilter, value, labelFilter, milestoneFilter);
+		syncUrl(statusFilter, excludedStatusFilter, value, labelFilter, milestoneFilter);
 	};
 
 	const handleLabelChange = (next: string[]) => {
 		const normalized = next.map((label) => label.trim()).filter((label) => label.length > 0);
 		setLabelFilter(normalized);
-		syncUrl(statusFilter, priorityFilter, normalized, milestoneFilter);
+		syncUrl(statusFilter, excludedStatusFilter, priorityFilter, normalized, milestoneFilter);
 	};
 
 	const handleMilestoneChange = (value: string) => {
 		setMilestoneFilter(value);
-		syncUrl(statusFilter, priorityFilter, labelFilter, value);
+		syncUrl(statusFilter, excludedStatusFilter, priorityFilter, labelFilter, value);
 	};
 
 	const handleClearFilters = () => {
 		setStatusFilter("");
+		setExcludedStatusFilter([]);
 		setPriorityFilter("");
 		setLabelFilter([]);
 		setMilestoneFilter("");
-		syncUrl("", "", [], "");
+		syncUrl("", [], "", [], "");
 		setDisplayTasks(sortedBaseTasks);
 		setError(null);
 	};
@@ -527,7 +563,8 @@ const TaskList: React.FC<TaskListProps> = ({
 			let result = 0;
 			switch (sortColumn) {
 				case "id": {
-					result = withDirection(compareTaskIdsAscending(a, b));
+					result =
+						sortDirection === "asc" ? compareTaskIdsAscending(a, b) : compareTaskIdsDescending(a.id, b.id);
 					break;
 				}
 				case "title": {
@@ -539,8 +576,8 @@ const TaskList: React.FC<TaskListProps> = ({
 					break;
 				}
 				case "priority": {
-					const rankA = PRIORITY_RANK[(a.priority ?? "").toLowerCase()] ?? 0;
-					const rankB = PRIORITY_RANK[(b.priority ?? "").toLowerCase()] ?? 0;
+					const rankA = getPriorityRank(a.priority, availablePriorities);
+					const rankB = getPriorityRank(b.priority, availablePriorities);
 					result = withDirection(rankA - rankB);
 					break;
 				}
@@ -580,9 +617,9 @@ const TaskList: React.FC<TaskListProps> = ({
 
 			if (result !== 0) return result;
 			if (sortColumn === "ordinal") return compareTaskIdsAscending(a, b);
-			return compareTaskIdsAscending(b, a);
+			return compareTaskIdsDescending(a.id, b.id);
 		});
-	}, [displayTasks, milestoneEntities, sortColumn, sortDirection]);
+	}, [availablePriorities, displayTasks, milestoneEntities, sortColumn, sortDirection]);
 
 	const currentCount = sortedDisplayTasks.length;
 
@@ -625,26 +662,38 @@ const TaskList: React.FC<TaskListProps> = ({
 				</div>
 
 				<div className="flex flex-wrap items-center gap-3 justify-between">
-					<div className="flex flex-wrap items-center gap-3 flex-1 min-w-0">
-						<select
-							value={statusFilter}
-							onChange={(event) => handleStatusChange(event.target.value)}
-							className="min-w-[140px] h-10 py-2 px-3 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-stone-500 dark:focus:ring-stone-400 transition-colors duration-200"
-						>
-							<option value="">All statuses</option>
-							{availableStatuses.map((status) => (
-								<option key={status} value={status}>
-									{status}
-								</option>
-							))}
-						</select>
+						<div className="flex flex-wrap items-center gap-3 flex-1 min-w-0">
+							<select
+								value={statusFilter}
+								onChange={(event) => handleStatusChange(event.target.value)}
+								className="min-w-[140px] h-10 py-2 px-3 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-stone-500 dark:focus:ring-stone-400 transition-colors duration-200"
+							>
+								<option value="">All statuses</option>
+								{statusOptions.map((status) => (
+									<option key={status} value={status}>
+										{status}
+									</option>
+								))}
+							</select>
+
+							<LabelFilterDropdown
+								availableLabels={statusOptions}
+								selectedLabels={excludedStatusFilter}
+								onChange={handleExcludeStatusChange}
+								menuId="task-list-exclude-status-menu"
+								label="Exclude status"
+								emptyLabel="None"
+							noOptionsLabel="No statuses"
+							clearLabel="Clear excluded statuses"
+							className="min-w-[210px]"
+						/>
 
 						<select
 							value={priorityFilter}
-							onChange={(event) => handlePriorityChange(event.target.value as "" | SearchPriorityFilter)}
+							onChange={(event) => handlePriorityChange(event.target.value)}
 							className="min-w-[140px] h-10 py-2 px-3 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-stone-500 dark:focus:ring-stone-400 transition-colors duration-200"
 						>
-							{PRIORITY_OPTIONS.map((option) => (
+							{priorityOptions.map((option) => (
 								<option key={option.value || "all"} value={option.value}>
 									{option.label}
 								</option>
@@ -778,16 +827,22 @@ const TaskList: React.FC<TaskListProps> = ({
 											</td>
 											<td className="px-3 py-2.5">
 												<div className="flex items-center gap-2 min-w-0">
-													<span
-														className={`block truncate text-sm ${
-															isFromOtherBranch
-																? "text-gray-600 dark:text-gray-300"
-																: "text-gray-900 dark:text-gray-100"
-														}`}
-														title={task.title}
-													>
-														{task.title}
-													</span>
+											<button
+												type="button"
+												onClick={(event) => {
+													event.stopPropagation();
+													onEditTask(task);
+												}}
+												className={`block truncate text-sm ${
+													isFromOtherBranch
+														? "text-gray-600 dark:text-gray-300"
+														: "text-gray-900 dark:text-gray-100"
+												} rounded text-left focus:outline-none focus:ring-2 focus:ring-stone-500`}
+												title={task.title}
+												aria-label={`Open ${task.id}: ${task.title}`}
+											>
+												{task.title}
+											</button>
 													{isFromOtherBranch && task.branch && (
 														<span
 															className="inline-flex shrink-0 items-center rounded-circle bg-amber-100 px-2 py-0.5 text-[10px] font-medium text-amber-700 dark:bg-amber-900/40 dark:text-amber-300"
@@ -808,7 +863,7 @@ const TaskList: React.FC<TaskListProps> = ({
 													<span
 														className={`inline-flex rounded-circle px-2 py-0.5 text-[11px] font-medium ${getPriorityColor(task.priority)}`}
 													>
-														{task.priority}
+														{formatPriorityLabel(task.priority, availablePriorities)}
 													</span>
 												) : (
 													<span className="text-xs text-gray-300 dark:text-gray-600">—</span>

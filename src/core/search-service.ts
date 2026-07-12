@@ -11,6 +11,8 @@ import type {
 	Task,
 } from "../types/index.ts";
 import { matchesModifiedFileFilters, normalizeModifiedFileFilters } from "../utils/modified-files.ts";
+import { normalizePriorityValue } from "../utils/priority-config.ts";
+import { matchesTaskTypeFilter } from "../utils/task-type-config.ts";
 import type { ContentStore, ContentStoreEvent } from "./content-store.ts";
 
 interface BaseSearchEntity {
@@ -46,6 +48,8 @@ type SearchEntity = TaskSearchEntity | DocumentSearchEntity | DecisionSearchEnti
 
 type NormalizedFilters = {
 	statuses?: string[];
+	excludedStatuses?: string[];
+	taskTypes?: string[];
 	priorities?: SearchPriorityFilter[];
 	assignees?: string[];
 	labels?: string[];
@@ -226,7 +230,7 @@ export class SearchService {
 			bodyText: buildTaskBodyText(task),
 			task,
 			statusLower: task.status.toLowerCase(),
-			priorityLower: task.priority ? (task.priority.toLowerCase() as SearchPriorityFilter) : undefined,
+			priorityLower: normalizePriorityValue(task.priority),
 			assigneesLower: (task.assignee ?? []).map((assignee) => assignee.toLowerCase()),
 			labelsLower: (task.labels || []).map((label) => label.toLowerCase()),
 			idVariants: createTaskIdVariants(task.id),
@@ -321,6 +325,13 @@ export class SearchService {
 			const allowedStatuses = new Set(filters.statuses);
 			filtered = filtered.filter((task) => allowedStatuses.has(task.statusLower));
 		}
+		if (filters.excludedStatuses && filters.excludedStatuses.length > 0) {
+			const excludedStatuses = new Set(filters.excludedStatuses);
+			filtered = filtered.filter((task) => !excludedStatuses.has(task.statusLower));
+		}
+		if (filters.taskTypes && filters.taskTypes.length > 0) {
+			filtered = filtered.filter((task) => matchesTaskTypeFilter(task.task.type, filters.taskTypes));
+		}
 		if (filters.priorities && filters.priorities.length > 0) {
 			const allowedPriorities = new Set(filters.priorities);
 			filtered = filtered.filter((task) => {
@@ -359,6 +370,12 @@ export class SearchService {
 			if (!filters.statuses.includes(task.statusLower)) {
 				return false;
 			}
+		}
+		if (filters.excludedStatuses?.includes(task.statusLower)) {
+			return false;
+		}
+		if (filters.taskTypes && !matchesTaskTypeFilter(task.task.type, filters.taskTypes)) {
+			return false;
 		}
 
 		if (filters.priorities && filters.priorities.length > 0) {
@@ -402,6 +419,8 @@ export class SearchService {
 		}
 
 		const statuses = this.normalizeStringArray(filters.status);
+		const excludedStatuses = this.normalizeStringArray(filters.excludeStatus);
+		const taskTypes = this.normalizeStringArray(filters.type);
 		const priorities = this.normalizePriorityArray(filters.priority);
 		const assignees = this.normalizeStringArray(filters.assignee);
 		const labels = this.normalizeLabelsArray(filters.labels);
@@ -409,6 +428,8 @@ export class SearchService {
 
 		return {
 			statuses,
+			excludedStatuses,
+			taskTypes,
 			priorities,
 			assignees,
 			labels,
@@ -447,10 +468,8 @@ export class SearchService {
 
 		const values = Array.isArray(value) ? value : [value];
 		const normalized = values
-			.map((item) => item.trim().toLowerCase())
-			.filter((item): item is SearchPriorityFilter => {
-				return item === "high" || item === "medium" || item === "low";
-			});
+			.map((item) => normalizePriorityValue(item))
+			.filter((item): item is SearchPriorityFilter => Boolean(item));
 
 		return normalized.length > 0 ? normalized : undefined;
 	}

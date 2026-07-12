@@ -1,5 +1,6 @@
 import { basename, join } from "node:path";
 import { DEFAULT_STATUSES } from "../../../constants/index.ts";
+import { findLocalDuplicateTaskIds } from "../../../core/duplicate-task-repair.ts";
 import { isCreateLockError } from "../../../file-system/operations.ts";
 import {
 	isLocalEditableTask,
@@ -8,7 +9,7 @@ import {
 	type TaskListFilter,
 } from "../../../types/index.ts";
 import type { TaskEditArgs, TaskEditRequest } from "../../../types/task-edit-args.ts";
-import { buildDuplicateCleanupPrompt, detectDuplicateTaskIds } from "../../../utils/duplicate-detection.ts";
+import { formatDuplicateTaskIdWarning } from "../../../utils/duplicate-detection.ts";
 import {
 	createMilestoneFilterValueResolver,
 	normalizeMilestoneFilterValue,
@@ -29,7 +30,7 @@ export type TaskCreateArgs = {
 	description?: string;
 	labels?: string[];
 	assignee?: string[];
-	priority?: "high" | "medium" | "low";
+	priority?: string;
 	type?: string;
 	ordinal?: number;
 	status?: string;
@@ -47,6 +48,7 @@ export type TaskCreateArgs = {
 
 export type TaskListArgs = {
 	status?: string;
+	type?: string[];
 	assignee?: string;
 	unassigned?: boolean;
 	milestone?: string;
@@ -58,6 +60,7 @@ export type TaskListArgs = {
 export type TaskSearchArgs = {
 	query?: string;
 	status?: string;
+	type?: string[];
 	priority?: SearchPriorityFilter;
 	modifiedFiles?: string[];
 	limit?: number;
@@ -152,11 +155,13 @@ export class TaskHandlers {
 		if (args.assignee && args.unassigned) {
 			throw new BacklogToolError("unassigned cannot be combined with assignee.", "VALIDATION_ERROR");
 		}
+		const config = await this.core.filesystem.loadConfig();
+		const priorities = config?.priorities;
 		if (this.isDraftStatus(args.status)) {
 			let drafts = await this.core.filesystem.listDrafts();
-			if (args.search) {
+			if (args.search || args.type?.length) {
 				const draftSearch = createTaskSearchIndex(drafts);
-				drafts = draftSearch.search({ query: args.search, status: "Draft" });
+				drafts = draftSearch.search({ query: args.search, status: "Draft", type: args.type });
 			}
 
 			if (args.assignee) {
@@ -203,7 +208,7 @@ export class TaskHandlers {
 				};
 			}
 
-			let sortedDrafts = sortByOrdinalAndPriority(drafts);
+			let sortedDrafts = sortByOrdinalAndPriority(drafts, priorities);
 			if (typeof args.limit === "number" && args.limit >= 0) {
 				sortedDrafts = sortedDrafts.slice(0, args.limit);
 			}
@@ -225,6 +230,9 @@ export class TaskHandlers {
 		const filters: TaskListFilter = {};
 		if (args.status) {
 			filters.status = args.status;
+		}
+		if (args.type?.length) {
+			filters.type = args.type;
 		}
 		if (args.assignee) {
 			filters.assignee = args.assignee;
@@ -262,7 +270,6 @@ export class TaskHandlers {
 			};
 		}
 
-		const config = await this.core.filesystem.loadConfig();
 		const statuses = config?.statuses ?? [];
 
 		const canonicalByLower = new Map<string, string>();
@@ -289,7 +296,7 @@ export class TaskHandlers {
 		let remaining = typeof args.limit === "number" && args.limit >= 0 ? args.limit : undefined;
 		for (const status of orderedStatuses) {
 			const bucket = grouped.get(status) ?? [];
-			const sortedBucket = sortByOrdinalAndPriority(bucket);
+			const sortedBucket = sortByOrdinalAndPriority(bucket, priorities);
 			const limitedBucket = remaining !== undefined ? sortedBucket.slice(0, remaining) : sortedBucket;
 			if (remaining !== undefined) {
 				remaining -= limitedBucket.length;
@@ -315,16 +322,11 @@ export class TaskHandlers {
 		}
 
 		try {
-			const allLocalTasks = await this.core.filesystem.listTasks();
-			const duplicateGroups = detectDuplicateTaskIds(allLocalTasks);
+			const duplicateGroups = await findLocalDuplicateTaskIds(this.core);
 			if (duplicateGroups.length > 0) {
-				const warningLines = [
-					"⚠️  WARNING: Duplicate task IDs detected. One task per duplicate ID is hidden.",
-					buildDuplicateCleanupPrompt(duplicateGroups),
-				];
 				contentItems.unshift({
 					type: "text",
-					text: warningLines.join("\n\n"),
+					text: formatDuplicateTaskIdWarning(duplicateGroups),
 				});
 			}
 		} catch {
@@ -339,8 +341,8 @@ export class TaskHandlers {
 	async searchTasks(args: TaskSearchArgs): Promise<CallToolResult> {
 		const query = args.query?.trim() ?? "";
 		const modifiedFiles = args.modifiedFiles?.map((file) => file.trim()).filter((file) => file.length > 0);
-		if (!query && (!modifiedFiles || modifiedFiles.length === 0)) {
-			throw new BacklogToolError("Search query or modifiedFiles filter is required", "VALIDATION_ERROR");
+		if (!query && (!modifiedFiles || modifiedFiles.length === 0) && !args.type?.length) {
+			throw new BacklogToolError("Search query, modifiedFiles, or type filter is required", "VALIDATION_ERROR");
 		}
 
 		if (this.isDraftStatus(args.status)) {
@@ -349,6 +351,7 @@ export class TaskHandlers {
 			let draftMatches = searchIndex.search({
 				query,
 				status: "Draft",
+				type: args.type,
 				priority: args.priority,
 				modifiedFiles,
 			});
@@ -387,6 +390,7 @@ export class TaskHandlers {
 		let taskMatches = searchIndex.search({
 			query,
 			status: args.status,
+			type: args.type,
 			priority: args.priority,
 			modifiedFiles,
 		});

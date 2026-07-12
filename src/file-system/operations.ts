@@ -7,7 +7,11 @@ import { parseDecision, parseDocument, parseMilestone, parseTask } from "../mark
 import { serializeDecision, serializeDocument, serializeTask } from "../markdown/serializer.ts";
 import type { BacklogConfig, Decision, Document, Milestone, Task, TaskListFilter } from "../types/index.ts";
 import type { BacklogConfigSource } from "../utils/backlog-directory.ts";
-import { normalizeProjectBacklogDirectory, resolveBacklogDirectory } from "../utils/backlog-directory.ts";
+import {
+	normalizeProjectBacklogDirectory,
+	resolveBacklogDirectory,
+	resolveBacklogDirectoryFromRootConfig,
+} from "../utils/backlog-directory.ts";
 import { documentIdsEqual, normalizeDocumentId } from "../utils/document-id.ts";
 import { normalizeDocumentRelativePath, normalizeDocumentSubPath } from "../utils/document-path.ts";
 import {
@@ -17,13 +21,22 @@ import {
 	idForFilename,
 	normalizeId,
 } from "../utils/prefix-config.ts";
-import { getTaskFilename, getTaskPath, normalizeTaskIdentity, taskIdsEqual } from "../utils/task-path.ts";
+import {
+	AmbiguousTaskIdError,
+	getTaskFilename,
+	getTaskPath,
+	isAmbiguousTaskIdError,
+	normalizeTaskIdentity,
+	taskIdsEqual,
+} from "../utils/task-path.ts";
 import { sortByTaskId } from "../utils/task-sorting.ts";
+import { matchesTaskTypeFilter } from "../utils/task-type-config.ts";
 
 // Interface for task path resolution context
 interface TaskPathContext {
 	filesystem: {
 		tasksDir: string;
+		completedDir?: string;
 	};
 }
 
@@ -68,6 +81,7 @@ export class FileSystem {
 	private configSource: BacklogConfigSource;
 	private readonly projectRoot: string;
 	private cachedConfig: BacklogConfig | null = null;
+	private cachedConfigSnapshot: { path: string; content: string } | null = null;
 
 	constructor(projectRoot: string) {
 		this.projectRoot = projectRoot;
@@ -125,7 +139,38 @@ export class FileSystem {
 
 	invalidateConfigCache(): void {
 		this.cachedConfig = null;
-		const resolution = resolveBacklogDirectory(this.projectRoot);
+		this.cachedConfigSnapshot = null;
+		this.refreshConfigResolution();
+	}
+
+	getCachedConfigContent(sourceConfigPath: string): string | null {
+		return this.cachedConfigSnapshot && resolve(this.cachedConfigSnapshot.path) === resolve(sourceConfigPath)
+			? this.cachedConfigSnapshot.content
+			: null;
+	}
+
+	publishConfig(config: BacklogConfig, sourceConfigPath: string, content: string): boolean {
+		const rootConfigPath = join(this.projectRoot, DEFAULT_FILES.ROOT_CONFIG);
+		if (resolve(sourceConfigPath) === resolve(rootConfigPath)) {
+			if (config.backlogDirectory !== undefined && normalizeProjectBacklogDirectory(config.backlogDirectory) === null) {
+				return false;
+			}
+			const resolution = resolveBacklogDirectoryFromRootConfig(this.projectRoot, config.backlogDirectory);
+			if (!resolution.backlogDir || !resolution.backlogPath || resolution.configSource !== "root") {
+				return false;
+			}
+			this.applyConfigResolution(resolution);
+		}
+		this.cachedConfig = config;
+		this.cachedConfigSnapshot = { path: sourceConfigPath, content };
+		return true;
+	}
+
+	private refreshConfigResolution(): void {
+		this.applyConfigResolution(resolveBacklogDirectory(this.projectRoot));
+	}
+
+	private applyConfigResolution(resolution: ReturnType<typeof resolveBacklogDirectory>): void {
 		this.resolvedBacklogDirName = resolution.backlogDir ?? DEFAULT_DIRECTORIES.BACKLOG;
 		this.resolvedBacklogDir = resolution.backlogPath ?? join(this.projectRoot, DEFAULT_DIRECTORIES.BACKLOG);
 		this.resolvedConfigPath = resolution.configPath ?? join(this.resolvedBacklogDir, DEFAULT_FILES.CONFIG);
@@ -388,7 +433,8 @@ export class FileSystem {
 				if (existingPath && !existingPath.endsWith(filename)) {
 					await unlink(existingPath);
 				}
-			} catch {
+			} catch (error) {
+				if (isAmbiguousTaskIdError(error)) throw error;
 				// Ignore errors if no existing files found
 			}
 		}
@@ -401,7 +447,19 @@ export class FileSystem {
 	async loadTask(taskId: string): Promise<Task | null> {
 		try {
 			const tasksDir = await this.getTasksDir();
-			const core = { filesystem: { tasksDir } };
+			const [activeTasks, completedTasks] = await Promise.all([this.listTasks(), this.listCompletedTasks()]);
+			const identityMatches = [...activeTasks, ...completedTasks].filter((task) => taskIdsEqual(taskId, task.id));
+			if (identityMatches.length > 1) {
+				throw new AmbiguousTaskIdError(
+					taskId,
+					identityMatches.map((task) => task.filePath ?? task.id),
+				);
+			}
+			const activeMatch = activeTasks.find((task) => taskIdsEqual(taskId, task.id));
+			if (activeMatch?.filePath) return activeMatch;
+			if (identityMatches.length === 1) return null;
+
+			const core = { filesystem: { tasksDir, completedDir: this.completedDir } };
 			const filepath = await getTaskPath(taskId, core as TaskPathContext);
 
 			if (!filepath) return null;
@@ -409,7 +467,8 @@ export class FileSystem {
 			const content = await Bun.file(filepath).text();
 			const task = normalizeTaskIdentity(parseTask(content));
 			return { ...task, filePath: filepath };
-		} catch (_error) {
+		} catch (error) {
+			if (isAmbiguousTaskIdError(error)) throw error;
 			return null;
 		}
 	}
@@ -451,6 +510,18 @@ export class FileSystem {
 		if (filter?.status) {
 			const statusLower = filter.status.toLowerCase();
 			tasks = tasks.filter((t) => t.status.toLowerCase() === statusLower);
+		}
+		if (filter?.excludeStatus) {
+			const excludedStatuses = Array.isArray(filter.excludeStatus) ? filter.excludeStatus : [filter.excludeStatus];
+			const excluded = new Set(
+				excludedStatuses.map((status) => status.trim().toLowerCase()).filter((status) => status.length > 0),
+			);
+			if (excluded.size > 0) {
+				tasks = tasks.filter((t) => !excluded.has(t.status.toLowerCase()));
+			}
+		}
+		if (filter?.type) {
+			tasks = tasks.filter((task) => matchesTaskTypeFilter(task.type, filter.type));
 		}
 
 		if (filter?.assignee) {
@@ -539,7 +610,7 @@ export class FileSystem {
 		try {
 			const tasksDir = await this.getTasksDir();
 			const archiveTasksDir = await this.getArchiveTasksDir();
-			const core = { filesystem: { tasksDir } };
+			const core = { filesystem: { tasksDir, completedDir: this.completedDir } };
 			const sourcePath = await getTaskPath(taskId, core as TaskPathContext);
 			const taskFile = await getTaskFilename(taskId, core as TaskPathContext);
 
@@ -554,7 +625,8 @@ export class FileSystem {
 			await rename(sourcePath, targetPath);
 
 			return true;
-		} catch (_error) {
+		} catch (error) {
+			if (isAmbiguousTaskIdError(error)) throw error;
 			return false;
 		}
 	}
@@ -563,7 +635,7 @@ export class FileSystem {
 		try {
 			const tasksDir = await this.getTasksDir();
 			const completedDir = await this.getCompletedDir();
-			const core = { filesystem: { tasksDir } };
+			const core = { filesystem: { tasksDir, completedDir } };
 			const sourcePath = await getTaskPath(taskId, core as TaskPathContext);
 			const taskFile = await getTaskFilename(taskId, core as TaskPathContext);
 
@@ -578,7 +650,8 @@ export class FileSystem {
 			await rename(sourcePath, targetPath);
 
 			return true;
-		} catch (_error) {
+		} catch (error) {
+			if (isAmbiguousTaskIdError(error)) throw error;
 			return false;
 		}
 	}
@@ -654,7 +727,7 @@ export class FileSystem {
 				return true;
 			});
 		} catch (error) {
-			if (isCreateLockError(error)) {
+			if (isCreateLockError(error) || isAmbiguousTaskIdError(error)) {
 				throw error;
 			}
 			return false;
@@ -692,7 +765,7 @@ export class FileSystem {
 				return true;
 			});
 		} catch (error) {
-			if (isCreateLockError(error)) {
+			if (isCreateLockError(error) || isAmbiguousTaskIdError(error)) {
 				throw error;
 			}
 			return false;
@@ -1346,6 +1419,7 @@ ${description || `Milestone: ${title}`}`,
 
 			// Cache the loaded config
 			this.cachedConfig = config;
+			this.cachedConfigSnapshot = { path: configPath, content };
 			return config;
 		} catch (_error) {
 			return null;
@@ -1365,6 +1439,7 @@ ${description || `Milestone: ${title}`}`,
 		const content = this.serializeConfig(normalizedConfig);
 		await Bun.write(configPath, content);
 		this.cachedConfig = normalizedConfig;
+		this.cachedConfigSnapshot = { path: configPath, content };
 	}
 
 	// Utility methods
@@ -1389,7 +1464,7 @@ ${description || `Milestone: ${title}`}`,
 		}
 	}
 
-	private parseConfig(content: string): BacklogConfig {
+	parseConfig(content: string): BacklogConfig {
 		const config: Partial<BacklogConfig> = {};
 		const parsedDefinitionOfDone = this.parseDefinitionOfDone(content);
 		const lines = content.split("\n");
@@ -1420,6 +1495,7 @@ ${description || `Milestone: ${title}`}`,
 				case "statuses":
 				case "labels":
 				case "types":
+				case "priorities":
 					if (value.startsWith("[") && value.endsWith("]")) {
 						const arrayContent = value.slice(1, -1);
 						config[key] = arrayContent
@@ -1495,6 +1571,7 @@ ${description || `Milestone: ${title}`}`,
 			statuses: config.statuses || [...DEFAULT_STATUSES],
 			labels: config.labels || [],
 			types: config.types,
+			priorities: config.priorities,
 			definitionOfDone: config.definitionOfDone,
 			defaultStatus: config.defaultStatus,
 			dateFormat: config.dateFormat || "yyyy-mm-dd",
@@ -1526,6 +1603,9 @@ ${description || `Milestone: ${title}`}`,
 			`statuses: [${config.statuses.map((s) => `"${s}"`).join(", ")}]`,
 			`labels: [${config.labels.map((l) => `"${l}"`).join(", ")}]`,
 			...(config.types && config.types.length > 0 ? [`types: [${config.types.map((t) => `"${t}"`).join(", ")}]`] : []),
+			...(config.priorities && config.priorities.length > 0
+				? [`priorities: [${config.priorities.map((p) => `"${p}"`).join(", ")}]`]
+				: []),
 			...(Array.isArray(normalizedDefinitionOfDone)
 				? [`definition_of_done: [${normalizedDefinitionOfDone.map((item) => JSON.stringify(item)).join(", ")}]`]
 				: []),

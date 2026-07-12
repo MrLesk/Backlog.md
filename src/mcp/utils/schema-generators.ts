@@ -1,5 +1,7 @@
-import { DEFAULT_STATUSES, DEFAULT_TASK_TYPES } from "../../constants/index.ts";
+import { DEFAULT_STATUSES } from "../../constants/index.ts";
 import type { BacklogConfig } from "../../types/index.ts";
+import { getPriorityLabels } from "../../utils/priority-config.ts";
+import { getTaskTypeValues } from "../../utils/task-type-config.ts";
 import type { JsonSchema } from "../validation/validators.ts";
 
 /**
@@ -38,8 +40,8 @@ export function generateStatusFieldSchema(config: BacklogConfig): JsonSchema {
  * Generates a task type field schema with dynamic enum values sourced from config.
  * No default is set: tasks without a type stay untyped.
  */
-function generateTypeFieldSchema(config: BacklogConfig): JsonSchema {
-	const types = config.types?.length ? config.types.map((type) => type.trim()) : [...DEFAULT_TASK_TYPES];
+function generateTypeFieldSchema(config: Pick<BacklogConfig, "types">): JsonSchema {
+	const types = getTaskTypeValues(config);
 
 	return {
 		type: "string",
@@ -47,6 +49,70 @@ function generateTypeFieldSchema(config: BacklogConfig): JsonSchema {
 		enum: types,
 		enumCaseInsensitive: true,
 		description: `Optional task type (case-insensitive). Valid values: ${types.join(", ")}`,
+	};
+}
+
+function generateTypeFilterSchema(config: Pick<BacklogConfig, "types">): JsonSchema {
+	return {
+		type: "array",
+		items: generateTypeFieldSchema(config),
+		maxItems: 50,
+		description: "Filter tasks by one or more configured task types (OR semantics).",
+	};
+}
+
+export function generateTaskListSchema(config: Pick<BacklogConfig, "types">): JsonSchema {
+	return {
+		type: "object",
+		properties: {
+			status: {
+				type: "string",
+				maxLength: 100,
+			},
+			type: generateTypeFilterSchema(config),
+			assignee: {
+				type: "string",
+				maxLength: 100,
+			},
+			unassigned: {
+				type: "boolean",
+				description: "When true, only return tasks with no assignee. Cannot be combined with assignee.",
+			},
+			milestone: {
+				type: "string",
+				maxLength: 100,
+			},
+			labels: {
+				type: "array",
+				items: { type: "string", maxLength: 50 },
+			},
+			search: {
+				type: "string",
+				maxLength: 200,
+			},
+			limit: {
+				type: "number",
+				minimum: 1,
+				maximum: 1000,
+			},
+		},
+		required: [],
+		additionalProperties: false,
+	};
+}
+
+/**
+ * Generates a priority field schema with dynamic enum values sourced from config.
+ */
+function generatePriorityFieldSchema(config: Pick<BacklogConfig, "priorities">): JsonSchema {
+	const priorities = getPriorityLabels(config);
+
+	return {
+		type: "string",
+		maxLength: 50,
+		enum: priorities,
+		enumCaseInsensitive: true,
+		description: `Optional task priority (case-insensitive). Valid values: ${priorities.join(", ")}`,
 	};
 }
 
@@ -67,10 +133,7 @@ export function generateTaskCreateSchema(config: BacklogConfig): JsonSchema {
 				maxLength: 10000,
 			},
 			status: generateStatusFieldSchema(config),
-			priority: {
-				type: "string",
-				enum: ["high", "medium", "low"],
-			},
+			priority: generatePriorityFieldSchema(config),
 			type: generateTypeFieldSchema(config),
 			ordinal: {
 				type: "number",
@@ -187,10 +250,7 @@ export function generateTaskEditSchema(config: BacklogConfig): JsonSchema {
 				maxLength: 10000,
 			},
 			status: generateStatusFieldSchema(config),
-			priority: {
-				type: "string",
-				enum: ["high", "medium", "low"],
-			},
+			priority: generatePriorityFieldSchema(config),
 			type: generateTypeFieldSchema(config),
 			ordinal: {
 				type: "number",
@@ -425,6 +485,36 @@ export function generateTaskEditSchema(config: BacklogConfig): JsonSchema {
 			},
 		},
 		required: ["id"],
+		additionalProperties: false,
+	};
+}
+
+export function generateTaskSearchSchema(config: Pick<BacklogConfig, "priorities" | "types">): JsonSchema {
+	return {
+		type: "object",
+		properties: {
+			query: {
+				type: "string",
+				maxLength: 200,
+			},
+			status: {
+				type: "string",
+				maxLength: 100,
+			},
+			type: generateTypeFilterSchema(config),
+			priority: generatePriorityFieldSchema(config),
+			modifiedFiles: {
+				type: "array",
+				items: { type: "string", maxLength: 500 },
+				description: "Filter tasks by case-insensitive substring match against modified file paths",
+			},
+			limit: {
+				type: "number",
+				minimum: 1,
+				maximum: 100,
+			},
+		},
+		required: [],
 		additionalProperties: false,
 	};
 }

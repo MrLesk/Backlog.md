@@ -1,17 +1,24 @@
 import type { BacklogConfig } from "../../../types/index.ts";
 import type { McpServer } from "../../server.ts";
 import type { McpToolHandler } from "../../types.ts";
-import { generateTaskCreateSchema, generateTaskEditSchema } from "../../utils/schema-generators.ts";
+import {
+	generateTaskCreateSchema,
+	generateTaskEditSchema,
+	generateTaskListSchema,
+	generateTaskSearchSchema,
+} from "../../utils/schema-generators.ts";
 import { createSimpleValidatedTool } from "../../validation/tool-wrapper.ts";
 import type { TaskCreateArgs, TaskEditRequest, TaskListArgs, TaskSearchArgs } from "./handlers.ts";
 import { TaskHandlers } from "./handlers.ts";
-import { taskArchiveSchema, taskCompleteSchema, taskListSchema, taskSearchSchema, taskViewSchema } from "./schemas.ts";
+import { taskArchiveSchema, taskCompleteSchema, taskViewSchema } from "./schemas.ts";
 
 export function registerTaskTools(server: McpServer, config: BacklogConfig): void {
 	const handlers = new TaskHandlers(server);
 
 	const taskCreateSchema = generateTaskCreateSchema(config);
 	const taskEditSchema = generateTaskEditSchema(config);
+	const taskListSchema = generateTaskListSchema(config);
+	const taskSearchSchema = generateTaskSearchSchema(config);
 
 	const createTaskTool: McpToolHandler = createSimpleValidatedTool(
 		{
@@ -28,7 +35,7 @@ export function registerTaskTools(server: McpServer, config: BacklogConfig): voi
 		{
 			name: "task_list",
 			description:
-				"List Backlog.md tasks with optional filtering by status, assignee (or unassigned: true for tasks with no assignee), milestone, labels, and search",
+				"List Backlog.md tasks with optional filtering by status, type, assignee (or unassigned: true for tasks with no assignee), milestone, labels, and search",
 			inputSchema: taskListSchema,
 			annotations: { title: "List Tasks", readOnlyHint: true, destructiveHint: false },
 		},
@@ -39,7 +46,7 @@ export function registerTaskTools(server: McpServer, config: BacklogConfig): voi
 	const searchTaskTool: McpToolHandler = createSimpleValidatedTool(
 		{
 			name: "task_search",
-			description: "Search Backlog.md tasks by title, description, and modified file path filters",
+			description: "Search Backlog.md tasks by title, description, task type, and modified file path filters",
 			inputSchema: taskSearchSchema,
 			annotations: { title: "Search Tasks", readOnlyHint: true, destructiveHint: false },
 		},

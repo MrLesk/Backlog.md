@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
-import { mkdir, rm } from "node:fs/promises";
+import { mkdir } from "node:fs/promises";
 import { join } from "node:path";
 import { $ } from "bun";
 import { Core } from "../core/backlog.ts";
@@ -13,7 +13,6 @@ describe("Auto-commit configuration", () => {
 
 	beforeEach(async () => {
 		TEST_DIR = createUniqueTestDir("test-auto-commit");
-		await rm(TEST_DIR, { recursive: true, force: true }).catch(() => {});
 		await mkdir(TEST_DIR, { recursive: true });
 
 		// Configure git for tests
@@ -26,11 +25,7 @@ describe("Auto-commit configuration", () => {
 	});
 
 	afterEach(async () => {
-		try {
-			await safeCleanup(TEST_DIR);
-		} catch {
-			// Ignore cleanup errors - the unique directory names prevent conflicts
-		}
+		await safeCleanup(TEST_DIR);
 	});
 
 	describe("Config migration", () => {

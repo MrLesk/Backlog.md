@@ -122,6 +122,8 @@ export async function runSimpleUnifiedView(options: SimpleUnifiedViewOptions): P
 				await switchView();
 			},
 			dateFormat: config?.dateFormat,
+			priorities: config?.priorities,
+			types: config?.types,
 		});
 
 		isRunning = false;

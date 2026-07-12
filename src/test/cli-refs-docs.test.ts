@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
-import { mkdir, rm } from "node:fs/promises";
+import { mkdir } from "node:fs/promises";
 import { join } from "node:path";
 import { $ } from "bun";
 import { Core } from "../index.ts";
@@ -12,9 +12,6 @@ describe("CLI --ref and --doc flags", () => {
 
 	beforeEach(async () => {
 		TEST_DIR = createUniqueTestDir("test-cli-refs-docs");
-		try {
-			await rm(TEST_DIR, { recursive: true, force: true });
-		} catch {}
 		await mkdir(TEST_DIR, { recursive: true });
 
 		await $`git init -b main`.cwd(TEST_DIR).quiet();
@@ -26,9 +23,7 @@ describe("CLI --ref and --doc flags", () => {
 	});
 
 	afterEach(async () => {
-		try {
-			await safeCleanup(TEST_DIR);
-		} catch {}
+		await safeCleanup(TEST_DIR);
 	});
 
 	describe("task create with --ref flag", () => {

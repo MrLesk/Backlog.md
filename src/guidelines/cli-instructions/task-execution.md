@@ -6,17 +6,21 @@ Use this guide when you are working on an existing Backlog task.
 
 Before writing code for non-trivial work:
 
-1. Read the task:
+1. Read the task before mutating it:
    - `backlog task view {{TASK_ID:123}} --plain`
-2. Mark it in progress and assign yourself:
+2. Review its current status, description, acceptance criteria, dependencies, references, and documentation. Confirm the
+   task is eligible to start and remains within the requested scope.
+3. Mark it in progress and assign yourself:
    - Inspect accepted statuses if needed: `backlog task edit {{TASK_ID:123}} --help`
    - `backlog task edit {{TASK_ID:123}} -s "<active status>" -a @your-name`
-3. Review description, acceptance criteria, dependencies, references, and documentation.
-4. Inspect relevant code and tests.
+4. Research the current system, including relevant code, tests, conventions, and recent changes. Do not rely on an
+   implementation approach proposed when the task was created.
 5. Draft an implementation plan.
-6. Present the plan to the user when approval is expected.
-7. Record the approved plan:
+6. Record the current plan in the task before implementation:
    - `backlog task edit {{TASK_ID:123}} --plan "1. ..."`
+7. If the plan contains a material product, architecture, or workflow decision, or the project or user requires plan
+   review, present it and wait for explicit approval before implementation. Routine plans need not block when no review
+   was requested and they stay within confirmed scope.
 
 Keep the Backlog task as the plan of record. If the approach changes, update the plan through `backlog task edit` before continuing.
 

@@ -1,11 +1,11 @@
 ---
 id: BACK-509
 title: Fix CLI auto-commit for doc/decision/task create commands
-status: In Review
+status: Done
 assignee:
   - '@claude'
 created_date: '2026-05-07 12:16'
-updated_date: '2026-05-07 12:48'
+updated_date: '2026-07-10 19:33'
 labels: []
 dependencies: []
 ordinal: 108000

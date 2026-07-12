@@ -254,6 +254,7 @@ export async function openMultiSelectFilterPopup(options: {
 			title: "",
 			items: selectableItems,
 			multiSelect: true,
+			itemRenderer: (item) => item.title,
 			selectedIndices,
 			top: 0,
 			left: 0,

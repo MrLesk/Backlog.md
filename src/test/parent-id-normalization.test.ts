@@ -23,11 +23,7 @@ describe("CLI parent task id normalization", () => {
 	});
 
 	afterEach(async () => {
-		try {
-			await safeCleanup(TEST_DIR);
-		} catch {
-			// Ignore cleanup errors
-		}
+		await safeCleanup(TEST_DIR);
 	});
 
 	it("should normalize parent task id when creating subtasks", async () => {

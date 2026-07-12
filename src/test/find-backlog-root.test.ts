@@ -16,11 +16,7 @@ describe("findBacklogRoot", () => {
 
 	afterEach(async () => {
 		clearProjectRootCache();
-		try {
-			await rm(testDir, { recursive: true, force: true });
-		} catch {
-			// Ignore cleanup errors
-		}
+		await rm(testDir, { recursive: true, force: true });
 	});
 
 	it("should find root when backlog/ directory with config exists at start dir", async () => {

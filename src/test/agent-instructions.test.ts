@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
-import { mkdir, rm } from "node:fs/promises";
+import { mkdir } from "node:fs/promises";
 import { join } from "node:path";
 import {
 	_loadAgentGuideline,
@@ -16,16 +16,11 @@ let TEST_DIR: string;
 describe("addAgentInstructions", () => {
 	beforeEach(async () => {
 		TEST_DIR = createUniqueTestDir("test-agent-instructions");
-		await rm(TEST_DIR, { recursive: true, force: true }).catch(() => {});
 		await mkdir(TEST_DIR, { recursive: true });
 	});
 
 	afterEach(async () => {
-		try {
-			await safeCleanup(TEST_DIR);
-		} catch {
-			// Ignore cleanup errors - the unique directory names prevent conflicts
-		}
+		await safeCleanup(TEST_DIR);
 	});
 
 	it("creates guideline files when none exist", async () => {
@@ -146,6 +141,31 @@ describe("addAgentInstructions", () => {
 		const pathGuideline = join(__dirname, "../guidelines/agent-guidelines.md");
 		const content = await _loadAgentGuideline(pathGuideline);
 		expect(content).toContain("# Instructions for the usage of Backlog.md CLI Tool");
+	});
+
+	it("full agent workflow plans only after pickup and current-state research", async () => {
+		const guideline = await _loadAgentGuideline(AGENT_GUIDELINES);
+		const workflow = guideline.match(/## 6\. Typical Workflow[\s\S]*?(?=\n---)/)?.[0] ?? "";
+		const readIndex = workflow.indexOf(
+			"Read task details and confirm status, scope, acceptance criteria, and dependencies",
+		);
+		const pickupIndex = workflow.indexOf("Start eligible work: assign yourself & change status");
+		const researchIndex = workflow.indexOf(
+			"Research the current code, tests, conventions, and recent changes after activation",
+		);
+		const planIndex = workflow.indexOf("Add the current implementation plan");
+		const conditionalReviewIndex = workflow.indexOf(
+			"If the plan contains a material product, architecture, or workflow decision",
+		);
+		const implementationIndex = workflow.indexOf("Work on the task");
+
+		expect(readIndex).toBeGreaterThan(-1);
+		expect(pickupIndex).toBeGreaterThan(readIndex);
+		expect(researchIndex).toBeGreaterThan(pickupIndex);
+		expect(planIndex).toBeGreaterThan(researchIndex);
+		expect(conditionalReviewIndex).toBeGreaterThan(planIndex);
+		expect(implementationIndex).toBeGreaterThan(conditionalReviewIndex);
+		expect(workflow).not.toContain("Share the plan with the user and wait for approval");
 	});
 
 	it("does not duplicate content when run multiple times (idempotent)", async () => {

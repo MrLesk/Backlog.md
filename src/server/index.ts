@@ -18,9 +18,11 @@ import {
 	type Task,
 	type TaskUpdateInput,
 } from "../types/index.ts";
-import { watchConfig } from "../utils/config-watcher.ts";
-import { detectDuplicateTaskIds } from "../utils/duplicate-detection.ts";
 import { resolveMilestoneInputForStorage } from "../utils/milestone-storage.ts";
+import { formatValidPriorityValues, resolvePriorityValue } from "../utils/priority-config.ts";
+import { formatValidStatuses, getCanonicalStatuses, getValidStatuses } from "../utils/status.ts";
+import { resolveTaskById } from "../utils/task-id.ts";
+import { isAmbiguousTaskIdError } from "../utils/task-path.ts";
 import { getVersion } from "../utils/version.ts";
 
 // Regex pattern to match any prefix (letters followed by dash)
@@ -81,6 +83,14 @@ function parseUpdateDocumentPath(value: unknown): string | null | undefined {
 	throw new DocumentPayloadValidationError("Document path must be a string or null.");
 }
 
+function collectDelimitedSearchParams(url: URL, names: string[]): string[] {
+	const values = names.flatMap((name) => url.searchParams.getAll(name));
+	return values
+		.flatMap((value) => value.split(","))
+		.map((value) => value.trim())
+		.filter((value) => value.length > 0);
+}
+
 function isDocumentValidationError(error: Error): boolean {
 	return (
 		error instanceof DocumentPayloadValidationError ||
@@ -92,13 +102,6 @@ function isDocumentValidationError(error: Error): boolean {
 }
 
 /**
- * Strip any prefix from an ID (e.g., "task-123" -> "123", "JIRA-456" -> "456")
- */
-function stripPrefix(id: string): string {
-	return id.replace(PREFIX_PATTERN, "");
-}
-
-/**
  * Ensure an ID has a prefix. If it already has one, return as-is.
  * Otherwise, add the default "task-" prefix.
  */
@@ -107,42 +110,6 @@ function ensurePrefix(id: string): string {
 		return id;
 	}
 	return `${DEFAULT_PREFIX}${id}`;
-}
-
-function parseTaskIdSegments(value: string): number[] | null {
-	const withoutPrefix = stripPrefix(value);
-	if (!/^[0-9]+(?:\.[0-9]+)*$/.test(withoutPrefix)) {
-		return null;
-	}
-	return withoutPrefix.split(".").map((segment) => Number.parseInt(segment, 10));
-}
-
-function findTaskByLooseId(tasks: Task[], inputId: string): Task | undefined {
-	// First try exact match (case-insensitive)
-	const lowerInputId = inputId.toLowerCase();
-	const exact = tasks.find((task) => task.id.toLowerCase() === lowerInputId);
-	if (exact) {
-		return exact;
-	}
-
-	// Try matching by numeric segments only
-	const inputSegments = parseTaskIdSegments(inputId);
-	if (!inputSegments) {
-		return undefined;
-	}
-
-	return tasks.find((task) => {
-		const candidateSegments = parseTaskIdSegments(task.id);
-		if (!candidateSegments || candidateSegments.length !== inputSegments.length) {
-			return false;
-		}
-		for (let index = 0; index < candidateSegments.length; index += 1) {
-			if (candidateSegments[index] !== inputSegments[index]) {
-				return false;
-			}
-		}
-		return true;
-	});
 }
 
 function parseOptionalBoolean(value: unknown): boolean | undefined {
@@ -220,7 +187,6 @@ export class BacklogServer {
 	private searchService: SearchService | null = null;
 	private unsubscribeContentStore?: () => void;
 	private storeReadyBroadcasted = false;
-	private configWatcher: { stop: () => void } | null = null;
 
 	constructor(projectPath: string) {
 		this.core = new Core(projectPath, { enableWatchers: true });
@@ -240,6 +206,13 @@ export class BacklogServer {
 
 		if (!this.unsubscribeContentStore) {
 			this.unsubscribeContentStore = store.subscribe((event) => {
+				if (event.type === "config") {
+					this.storeReadyBroadcasted = true;
+					this.projectName = event.config.projectName;
+					this.broadcastConfigUpdated();
+					return;
+				}
+
 				if (event.type === "ready") {
 					if (!this.storeReadyBroadcasted) {
 						this.storeReadyBroadcasted = true;
@@ -301,6 +274,7 @@ export class BacklogServer {
 			console.log("Server already running");
 			return;
 		}
+		this._stopping = false;
 		// Load config (migration is handled globally by CLI)
 		const config = await this.core.filesystem.loadConfig();
 
@@ -312,13 +286,6 @@ export class BacklogServer {
 		// Default to true if autoOpenBrowser is not explicitly set to false
 		const shouldOpenBrowser = openBrowser && (config?.autoOpenBrowser ?? true);
 
-		// Set up config watcher to broadcast changes
-		this.configWatcher = watchConfig(this.core, {
-			onConfigChanged: () => {
-				this.broadcastConfigUpdated();
-			},
-		});
-
 		try {
 			await this.ensureServicesReady();
 			const serveOptions = {
@@ -327,6 +294,9 @@ export class BacklogServer {
 				routes: {
 					"/": spaIndexHtml,
 					"/tasks": spaIndexHtml,
+					"/tasks/*": spaIndexHtml,
+					"/board": spaIndexHtml,
+					"/board/*": spaIndexHtml,
 					"/milestones": spaIndexHtml,
 					"/drafts": spaIndexHtml,
 					"/documentation": spaIndexHtml,
@@ -413,6 +383,7 @@ export class BacklogServer {
 					},
 					"/api/tasks/duplicates": {
 						GET: async () => await this.handleGetDuplicateTasks(),
+						POST: async (req: Request) => await this.handleRepairDuplicateTasks(req),
 					},
 					"/api/tasks/cleanup/execute": {
 						POST: async (req: Request) => await this.handleCleanupExecute(req),
@@ -500,12 +471,6 @@ export class BacklogServer {
 		try {
 			this.unsubscribeContentStore?.();
 			this.unsubscribeContentStore = undefined;
-		} catch {}
-
-		// Stop config watcher
-		try {
-			this.configWatcher?.stop();
-			this.configWatcher = null;
 		} catch {}
 
 		this.core.disposeSearchService();
@@ -632,6 +597,12 @@ export class BacklogServer {
 		const parent = url.searchParams.get("parent") || undefined;
 		const priorityParam = url.searchParams.get("priority") || undefined;
 		const crossBranch = url.searchParams.get("crossBranch") === "true";
+		const excludeStatusParams = collectDelimitedSearchParams(url, [
+			"excludeStatus",
+			"exclude-status",
+			"excludeStatuses",
+			"exclude-statuses",
+		]);
 		const labelParams = [...url.searchParams.getAll("label"), ...url.searchParams.getAll("labels")];
 		const labelsCsv = url.searchParams.get("labels");
 		if (labelsCsv) {
@@ -639,29 +610,66 @@ export class BacklogServer {
 		}
 		const labels = labelParams.map((label) => label.trim()).filter((label) => label.length > 0);
 
-		let priority: "high" | "medium" | "low" | undefined;
+		const config = await this.core.filesystem.loadConfig();
+		let priority: string | undefined;
 		if (priorityParam) {
-			const normalizedPriority = priorityParam.toLowerCase();
-			const allowed = ["high", "medium", "low"];
-			if (!allowed.includes(normalizedPriority)) {
-				return Response.json({ error: "Invalid priority filter" }, { status: 400 });
+			const normalizedPriority = resolvePriorityValue(priorityParam, config);
+			if (!normalizedPriority) {
+				return Response.json(
+					{ error: `Invalid priority filter. Valid values are: ${formatValidPriorityValues(config)}` },
+					{ status: 400 },
+				);
 			}
-			priority = normalizedPriority as "high" | "medium" | "low";
+			priority = normalizedPriority;
+		}
+
+		let excludeStatus: string[] | undefined;
+		if (excludeStatusParams.length > 0) {
+			const { values, invalid, validStatuses } = await getCanonicalStatuses(excludeStatusParams, this.core);
+			if (invalid.length > 0) {
+				return Response.json(
+					{
+						error: `Invalid excludeStatus filter: ${invalid.join(", ")}. Valid statuses are: ${formatValidStatuses(validStatuses)}`,
+					},
+					{ status: 400 },
+				);
+			}
+			excludeStatus = values.length > 0 ? values : undefined;
 		}
 
 		// Resolve parent task ID if provided
 		let parentTaskId: string | undefined;
 		if (parent) {
 			const store = await this.getContentStoreInstance();
-			const allTasks = store.getTasks();
-			let parentTask = findTaskByLooseId(allTasks, parent);
-			if (!parentTask) {
-				const fallbackId = ensurePrefix(parent);
-				const fallback = await this.core.filesystem.loadTask(fallbackId);
-				if (fallback) {
-					store.upsertTask(fallback);
-					parentTask = fallback;
+			let parentTask: Task | undefined;
+			try {
+				const localTask = await this.core.filesystem.loadTask(parent);
+				if (localTask) {
+					store.upsertTask(localTask);
+					parentTask = localTask;
+				} else {
+					const parentResolution = resolveTaskById(store.getTasks(), parent);
+					if (parentResolution.status === "ambiguous") {
+						return Response.json(
+							{ error: `Parent task ${parent} is ambiguous. Repair duplicate task IDs before using it.` },
+							{ status: 409 },
+						);
+					}
+					parentTask = parentResolution.status === "found" ? parentResolution.task : undefined;
+					if (!parentTask) {
+						const fallbackId = ensurePrefix(parent);
+						const fallback = await this.core.filesystem.loadTask(fallbackId);
+						if (fallback) {
+							store.upsertTask(fallback);
+							parentTask = fallback;
+						}
+					}
 				}
+			} catch (error) {
+				if (isAmbiguousTaskIdError(error)) {
+					return Response.json({ error: error.message }, { status: 409 });
+				}
+				throw error;
 			}
 			if (!parentTask) {
 				const normalizedParent = ensurePrefix(parent);
@@ -672,7 +680,14 @@ export class BacklogServer {
 
 		// Use Core.queryTasks which handles all filtering and cross-branch logic
 		const tasks = await this.core.queryTasks({
-			filters: { status, assignee, priority, parentTaskId, labels: labels.length > 0 ? labels : undefined },
+			filters: {
+				status,
+				excludeStatus,
+				assignee,
+				priority,
+				parentTaskId,
+				labels: labels.length > 0 ? labels : undefined,
+			},
 			includeCrossBranch: crossBranch,
 		});
 
@@ -687,6 +702,12 @@ export class BacklogServer {
 			const limitParam = url.searchParams.get("limit");
 			const typeParams = [...url.searchParams.getAll("type"), ...url.searchParams.getAll("types")];
 			const statusParams = url.searchParams.getAll("status");
+			const excludeStatusParams = collectDelimitedSearchParams(url, [
+				"excludeStatus",
+				"exclude-status",
+				"excludeStatuses",
+				"exclude-statuses",
+			]);
 			const priorityParamsRaw = url.searchParams.getAll("priority");
 			const assigneeParamsRaw = [...url.searchParams.getAll("assignee"), ...url.searchParams.getAll("assignees")];
 			const labelParamsRaw = [...url.searchParams.getAll("label"), ...url.searchParams.getAll("labels")];
@@ -732,6 +753,7 @@ export class BacklogServer {
 
 			const filters: {
 				status?: string | string[];
+				excludeStatus?: string | string[];
 				priority?: SearchPriorityFilter | SearchPriorityFilter[];
 				assignee?: string | string[];
 				labels?: string | string[];
@@ -744,19 +766,32 @@ export class BacklogServer {
 				filters.status = statusParams;
 			}
 
-			if (priorityParamsRaw.length > 0) {
-				const allowedPriorities: SearchPriorityFilter[] = ["high", "medium", "low"];
-				const normalizedPriorities = priorityParamsRaw.map((value) => value.toLowerCase());
-				const invalidPriority = normalizedPriorities.find(
-					(value) => !allowedPriorities.includes(value as SearchPriorityFilter),
-				);
-				if (invalidPriority) {
+			if (excludeStatusParams.length > 0) {
+				const { values, invalid, validStatuses } = await getCanonicalStatuses(excludeStatusParams, this.core);
+				if (invalid.length > 0) {
 					return Response.json(
-						{ error: `Unsupported priority '${invalidPriority}'. Use high, medium, or low.` },
+						{
+							error: `Invalid excludeStatus filter: ${invalid.join(", ")}. Valid statuses are: ${formatValidStatuses(validStatuses)}`,
+						},
 						{ status: 400 },
 					);
 				}
-				const casted = normalizedPriorities as SearchPriorityFilter[];
+				filters.excludeStatus = values.length === 1 ? values[0] : values;
+			}
+
+			if (priorityParamsRaw.length > 0) {
+				const config = await this.core.filesystem.loadConfig();
+				const normalizedPriorities = priorityParamsRaw.map((value) => resolvePriorityValue(value, config));
+				const invalidPriority = priorityParamsRaw[normalizedPriorities.findIndex((value) => !value)];
+				if (invalidPriority) {
+					return Response.json(
+						{
+							error: `Unsupported priority '${invalidPriority}'. Use ${formatValidPriorityValues(config)}.`,
+						},
+						{ status: 400 },
+					);
+				}
+				const casted = normalizedPriorities.filter((value): value is SearchPriorityFilter => Boolean(value));
 				filters.priority = casted.length === 1 ? casted[0] : casted;
 			}
 
@@ -823,6 +858,7 @@ export class BacklogServer {
 				description: payload.description,
 				status: payload.status,
 				priority: payload.priority,
+				type: typeof payload.type === "string" ? payload.type : undefined,
 				milestone,
 				labels: payload.labels,
 				assignee: payload.assignee,
@@ -849,25 +885,72 @@ export class BacklogServer {
 	}
 
 	private async handleGetTask(taskId: string): Promise<Response> {
-		const store = await this.getContentStoreInstance();
+		const localTasks = await this.core.filesystem.listTasks();
+		const localResolution = resolveTaskById(localTasks, taskId);
+		if (localResolution.status === "invalid") {
+			return Response.json({ error: `Invalid task ID: ${taskId}` }, { status: 400 });
+		}
+		let localTask: Task | null;
+		try {
+			// loadTask checks active and completed task paths together, so a collision
+			// cannot be hidden by whichever directory happens to be read first.
+			localTask = await this.core.filesystem.loadTask(taskId);
+		} catch (error) {
+			if (isAmbiguousTaskIdError(error)) {
+				return Response.json({ error: error.message }, { status: 409 });
+			}
+			throw error;
+		}
 
-		const localTask = await this.core.filesystem.loadTask(taskId);
+		const store = await this.getContentStoreInstance();
+		await this.core.refreshTasksForTaskRead();
+		const config = await this.core.filesystem.loadConfig();
+		const checkActiveBranches = config?.checkActiveBranches !== false;
+		const storedResolution = resolveTaskById(store.getTasks(), taskId);
+		const activeBranchCollision = await this.core.hasActiveBranchTaskIdCollision(taskId, localTasks);
+		if (
+			localResolution.status === "ambiguous" ||
+			(checkActiveBranches && storedResolution.status === "ambiguous") ||
+			activeBranchCollision
+		) {
+			return Response.json(
+				{ error: `Task ID ${taskId} is ambiguous. Repair duplicate task IDs before opening it.` },
+				{ status: 409 },
+			);
+		}
+		if (
+			checkActiveBranches &&
+			localTask &&
+			storedResolution.status === "found" &&
+			localTask.id.toLowerCase() !== storedResolution.task.id.toLowerCase()
+		) {
+			return Response.json(
+				{ error: `Task ID ${taskId} is ambiguous. Repair duplicate task IDs before opening it.` },
+				{ status: 409 },
+			);
+		}
 		if (localTask) {
 			store.upsertTask(localTask);
 			return Response.json(localTask);
 		}
-
-		const task = findTaskByLooseId(store.getTasks(), taskId);
-		if (task) {
-			return Response.json(task);
+		if (storedResolution.status === "found") {
+			return Response.json(storedResolution.task);
 		}
 
-		return Response.json({ error: "Task not found" }, { status: 404 });
+		return Response.json({ error: `Task ${taskId} not found` }, { status: 404 });
 	}
 
 	private async handleUpdateTask(req: Request, taskId: string): Promise<Response> {
 		const updates = await req.json();
-		const existingTask = await this.core.filesystem.loadTask(taskId);
+		let existingTask: Task | null;
+		try {
+			existingTask = await this.core.filesystem.loadTask(taskId);
+		} catch (error) {
+			if (isAmbiguousTaskIdError(error)) {
+				return Response.json({ error: error.message }, { status: 409 });
+			}
+			throw error;
+		}
 		if (!existingTask) {
 			return Response.json({ error: "Task not found" }, { status: 404 });
 		}
@@ -888,6 +971,10 @@ export class BacklogServer {
 
 		if ("priority" in updates && typeof updates.priority === "string") {
 			updateInput.priority = updates.priority;
+		}
+
+		if ("type" in updates && typeof updates.type === "string") {
+			updateInput.type = updates.type;
 		}
 
 		if ("milestone" in updates && (typeof updates.milestone === "string" || updates.milestone === null)) {
@@ -986,11 +1073,18 @@ export class BacklogServer {
 	}
 
 	private async handleDeleteTask(taskId: string): Promise<Response> {
-		const success = await this.core.archiveTask(taskId);
-		if (!success) {
-			return Response.json({ error: "Task not found" }, { status: 404 });
+		try {
+			const success = await this.core.archiveTask(taskId);
+			if (!success) {
+				return Response.json({ error: "Task not found" }, { status: 404 });
+			}
+			return Response.json({ success: true });
+		} catch (error) {
+			if (isAmbiguousTaskIdError(error)) {
+				return Response.json({ error: error.message }, { status: 409 });
+			}
+			throw error;
 		}
-		return Response.json({ success: true });
 	}
 
 	private async handleCompleteTask(taskId: string): Promise<Response> {
@@ -1010,14 +1104,15 @@ export class BacklogServer {
 			return Response.json({ success: true });
 		} catch (error) {
 			const message = error instanceof Error ? error.message : "Failed to complete task";
-			console.error("Error completing task:", error);
-			return Response.json({ error: message }, { status: 500 });
+			if (!isAmbiguousTaskIdError(error)) {
+				console.error("Error completing task:", error);
+			}
+			return Response.json({ error: message }, { status: isAmbiguousTaskIdError(error) ? 409 : 500 });
 		}
 	}
 
 	private async handleGetStatuses(): Promise<Response> {
-		const config = await this.core.filesystem.loadConfig();
-		const statuses = config?.statuses || ["To Do", "In Progress", "Done"];
+		const statuses = await getValidStatuses(this.core);
 		return Response.json(statuses);
 	}
 
@@ -1236,9 +1331,6 @@ export class BacklogServer {
 			if (updatedConfig.projectName !== this.projectName) {
 				this.projectName = updatedConfig.projectName;
 			}
-
-			// Notify connected clients so that they refresh configuration-dependent data (e.g., statuses)
-			this.broadcastTasksUpdated();
 
 			return Response.json(updatedConfig);
 		} catch (error) {
@@ -1543,11 +1635,25 @@ export class BacklogServer {
 
 	private async handleGetDuplicateTasks(): Promise<Response> {
 		try {
-			const tasks = await this.core.filesystem.listTasks();
-			const groups = detectDuplicateTaskIds(tasks);
-			return Response.json(groups);
+			return Response.json(await this.core.previewDuplicateTaskIdRepair());
 		} catch (error) {
 			return Response.json({ error: String(error) }, { status: 500 });
+		}
+	}
+
+	private async handleRepairDuplicateTasks(req: Request): Promise<Response> {
+		try {
+			const body = (await req.json()) as { fingerprint?: unknown };
+			const fingerprint = typeof body.fingerprint === "string" ? body.fingerprint.trim() : "";
+			if (!fingerprint) {
+				return Response.json({ error: "A repair preview fingerprint is required." }, { status: 400 });
+			}
+			const result = await this.core.repairDuplicateTaskIds(fingerprint);
+			return Response.json(result);
+		} catch (error) {
+			const message = error instanceof Error ? error.message : String(error);
+			const status = message.includes("changed after the preview") ? 409 : 400;
+			return Response.json({ error: message }, { status });
 		}
 	}
 
@@ -1645,10 +1751,10 @@ export class BacklogServer {
 	private async handleGetStatistics(): Promise<Response> {
 		try {
 			// Load tasks using the same logic as CLI overview
-			const { tasks, drafts, statuses } = await this.core.loadAllTasksForStatistics();
+			const { tasks, drafts, statuses, priorities } = await this.core.loadAllTasksForStatistics();
 
 			// Calculate statistics using the exact same function as CLI
-			const statistics = getTaskStatistics(tasks, drafts, statuses);
+			const statistics = getTaskStatistics(tasks, drafts, statuses, priorities);
 
 			// Convert Maps to objects for JSON serialization
 			const response = {
@@ -1740,7 +1846,7 @@ export class BacklogServer {
 
 			// Ensure config watcher is set up now that config file exists
 			if (this.contentStore) {
-				this.contentStore.ensureConfigWatcher();
+				await this.contentStore.ensureConfigWatcher();
 			}
 
 			return Response.json({

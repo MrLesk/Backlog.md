@@ -3,15 +3,16 @@ import * as clack from "@clack/prompts";
 import picocolors from "picocolors";
 import { DEFAULT_STATUSES } from "../constants/index.ts";
 import type { AcceptanceCriterion, Task, TaskCreateInput, TaskUpdateInput } from "../types/index.ts";
+import { getPriorityOptions, normalizePriorityValue } from "../utils/priority-config.ts";
 import { normalizeDependencies, normalizeStringList } from "../utils/task-builders.ts";
-
-type WizardPriority = "high" | "medium" | "low";
+import { getTaskTypeValues, resolveTaskTypeValue } from "../utils/task-type-config.ts";
 
 interface TaskWizardValues {
 	title: string;
 	description: string;
 	status: string;
 	priority: string;
+	type: string;
 	assignee: string;
 	labels: string;
 	acceptanceCriteria: string;
@@ -63,6 +64,8 @@ interface ChecklistEntry {
 
 interface WizardOptions {
 	statuses: string[];
+	priorities?: string[];
+	types?: string[];
 	promptImpl?: TaskWizardPromptRunner;
 }
 
@@ -167,26 +170,54 @@ function buildStatusPromptValues(params: { statuses: string[]; mode: "create" | 
 	};
 }
 
-function buildPriorityPromptValues(initialPriority: string): {
+function buildPriorityPromptValues(
+	initialPriority: string,
+	priorities?: string[],
+): {
 	options: PromptChoice[];
 	initial: string;
 } {
-	const normalizedInitial = initialPriority.trim().toLowerCase();
+	const normalizedInitial = normalizePriorityValue(initialPriority) ?? "";
 	const options: PromptChoice[] = [
 		{ label: "None", value: "", hint: "No priority" },
-		{ label: "High", value: "high" },
-		{ label: "Medium", value: "medium" },
-		{ label: "Low", value: "low" },
+		...getPriorityOptions(priorities).map((priority) => ({
+			label: priority.label,
+			value: priority.value,
+		})),
 	];
 	if (!normalizedInitial) {
 		return { options, initial: "" };
 	}
-	if (normalizedInitial === "high" || normalizedInitial === "medium" || normalizedInitial === "low") {
+	if (options.some((option) => option.value === normalizedInitial)) {
 		return { options, initial: normalizedInitial };
 	}
 	return {
 		options: [{ label: `${initialPriority} (current)`, value: normalizedInitial }, ...options],
 		initial: normalizedInitial,
+	};
+}
+
+function buildTaskTypePromptValues(
+	initialType: string,
+	types?: string[],
+): {
+	options: PromptChoice[];
+	initial: string;
+} {
+	const canonicalInitial = resolveTaskTypeValue(initialType, types) ?? initialType.trim();
+	const options: PromptChoice[] = [
+		{ label: "None", value: "", hint: "No task type" },
+		...getTaskTypeValues(types).map((type) => ({ label: type, value: type })),
+	];
+	if (!canonicalInitial) {
+		return { options, initial: "" };
+	}
+	if (options.some((option) => option.value === canonicalInitial)) {
+		return { options, initial: canonicalInitial };
+	}
+	return {
+		options: [{ label: `${initialType} (current)`, value: initialType }, ...options],
+		initial: initialType,
 	};
 }
 
@@ -345,6 +376,8 @@ async function promptSelect(
 async function runTaskWizardValues(params: {
 	mode: "create" | "edit";
 	statuses: string[];
+	priorities?: string[];
+	types?: string[];
 	initialValues: TaskWizardValues;
 	promptImpl?: TaskWizardPromptRunner;
 }): Promise<TaskWizardValues | null> {
@@ -356,13 +389,15 @@ async function runTaskWizardValues(params: {
 		mode: params.mode,
 		initialStatus: initial.status,
 	});
-	const priorityPrompt = buildPriorityPromptValues(initial.priority);
+	const priorityPrompt = buildPriorityPromptValues(initial.priority, params.priorities);
+	const taskTypePrompt = buildTaskTypePromptValues(initial.type, params.types);
 
 	try {
 		const values: TaskWizardValues = {
 			...initial,
 			status: statusPrompt.initial,
 			priority: priorityPrompt.initial,
+			type: taskTypePrompt.initial,
 		};
 		const questions: TaskWizardValueQuestion[] = [
 			{
@@ -393,6 +428,12 @@ async function runTaskWizardValues(params: {
 				name: "priority",
 				message: "Priority",
 				options: priorityPrompt.options,
+			},
+			{
+				type: "select",
+				name: "type",
+				message: "Type",
+				options: taskTypePrompt.options,
 			},
 			{
 				type: "text",
@@ -499,7 +540,8 @@ async function runTaskWizardValues(params: {
 			title: values.title.trim(),
 			description: values.description,
 			status: canonicalStatus,
-			priority: values.priority.trim().toLowerCase(),
+			priority: normalizePriorityValue(values.priority) ?? "",
+			type: resolveTaskTypeValue(values.type, params.types) ?? values.type.trim(),
 			assignee: values.assignee,
 			labels: values.labels,
 			acceptanceCriteria: values.acceptanceCriteria,
@@ -554,6 +596,7 @@ function toInitialWizardValues(input: { title?: string } & Partial<Task>): TaskW
 		description: input.description ?? "",
 		status: input.status ?? "",
 		priority: input.priority ?? "",
+		type: input.type ?? "",
 		assignee: formatListInput(input.assignee),
 		labels: formatListInput(input.labels),
 		acceptanceCriteria: formatChecklistInput(input.acceptanceCriteriaItems),
@@ -575,6 +618,8 @@ export async function runTaskCreateWizard(
 	const values = await runTaskWizardValues({
 		mode: "create",
 		statuses: options.statuses,
+		priorities: options.priorities,
+		types: options.types,
 		initialValues,
 		promptImpl: options.promptImpl,
 	});
@@ -583,7 +628,9 @@ export async function runTaskCreateWizard(
 	}
 
 	const priority = values.priority.trim();
-	const parsedPriority = priority.length > 0 ? (priority as WizardPriority) : undefined;
+	const parsedPriority = priority.length > 0 ? priority : undefined;
+	const type = values.type.trim();
+	const parsedType = type.length > 0 ? type : undefined;
 	const assignee = parseListInput(values.assignee);
 	const labels = parseListInput(values.labels);
 	const references = parseListInput(values.references);
@@ -600,6 +647,7 @@ export async function runTaskCreateWizard(
 		...(values.description.trim().length > 0 && { description: values.description }),
 		...(values.status.trim().length > 0 && { status: values.status }),
 		...(parsedPriority && { priority: parsedPriority }),
+		...(parsedType && { type: parsedType }),
 		...(assignee.length > 0 && { assignee }),
 		...(labels.length > 0 && { labels }),
 		...(dependencies.length > 0 && { dependencies }),
@@ -622,6 +670,8 @@ export async function runTaskEditWizard(
 	const values = await runTaskWizardValues({
 		mode: "edit",
 		statuses: options.statuses,
+		priorities: options.priorities,
+		types: options.types,
 		initialValues: initial,
 		promptImpl: options.promptImpl,
 	});
@@ -640,7 +690,10 @@ export async function runTaskEditWizard(
 		updateInput.status = values.status;
 	}
 	if (values.priority !== initial.priority && values.priority.trim().length > 0) {
-		updateInput.priority = values.priority as WizardPriority;
+		updateInput.priority = values.priority;
+	}
+	if (values.type !== initial.type) {
+		updateInput.type = values.type;
 	}
 
 	const initialAssignee = parseListInput(initial.assignee);

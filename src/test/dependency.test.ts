@@ -23,11 +23,7 @@ describe("Task Dependencies", () => {
 	});
 
 	afterEach(() => {
-		try {
-			rmSync(tempDir, { recursive: true, force: true });
-		} catch (error) {
-			console.warn(`Failed to clean up temp directory: ${error}`);
-		}
+		rmSync(tempDir, { recursive: true, force: true });
 	});
 
 	test("should create task with dependencies", async () => {

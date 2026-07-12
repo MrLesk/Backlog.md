@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
-import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { $ } from "bun";
 import { Core } from "../core/backlog.ts";
@@ -20,7 +20,6 @@ const writeConfigFile = async (root: string, content: string): Promise<void> => 
 describe("Definition of Done", () => {
 	beforeEach(async () => {
 		TEST_DIR = createUniqueTestDir("test-definition-of-done");
-		await rm(TEST_DIR, { recursive: true, force: true }).catch(() => {});
 		await mkdir(TEST_DIR, { recursive: true });
 		await $`git init -b main`.cwd(TEST_DIR).quiet();
 		await $`git config user.name "Test User"`.cwd(TEST_DIR).quiet();
@@ -31,11 +30,7 @@ describe("Definition of Done", () => {
 	});
 
 	afterEach(async () => {
-		try {
-			await safeCleanup(TEST_DIR);
-		} catch {
-			// Ignore cleanup errors - the unique directory names prevent conflicts
-		}
+		await safeCleanup(TEST_DIR);
 	});
 
 	it("loads and saves definition_of_done in config", async () => {

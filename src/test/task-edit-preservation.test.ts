@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
-import { mkdir, readdir, rm } from "node:fs/promises";
+import { mkdir, readdir } from "node:fs/promises";
 import { join } from "node:path";
 import { $ } from "bun";
 import { Core } from "../index.ts";
@@ -12,7 +12,6 @@ describe("Task edit section preservation", () => {
 
 	beforeEach(async () => {
 		TEST_DIR = createUniqueTestDir("test-task-edit-preservation");
-		await rm(TEST_DIR, { recursive: true, force: true }).catch(() => {});
 		await mkdir(TEST_DIR, { recursive: true });
 
 		// Initialize git repo first
@@ -26,11 +25,7 @@ describe("Task edit section preservation", () => {
 	});
 
 	afterEach(async () => {
-		try {
-			await safeCleanup(TEST_DIR);
-		} catch {
-			// Ignore cleanup errors - the unique directory names prevent conflicts
-		}
+		await safeCleanup(TEST_DIR);
 	});
 
 	it("preserves legacy task file identity and body when editing only labels", async () => {

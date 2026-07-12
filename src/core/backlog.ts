@@ -1,10 +1,11 @@
 import { rename as moveFile, stat, unlink } from "node:fs/promises";
-import { isAbsolute, join, relative } from "node:path";
-import { DEFAULT_DIRECTORIES, DEFAULT_STATUSES, DEFAULT_TASK_TYPES, FALLBACK_STATUS } from "../constants/index.ts";
+import { basename, isAbsolute, join, relative } from "node:path";
+import { DEFAULT_DIRECTORIES, DEFAULT_STATUSES, FALLBACK_STATUS } from "../constants/index.ts";
 import { FileSystem, isCreateLockError } from "../file-system/operations.ts";
 import { GitOperations } from "../git/operations.ts";
 import {
 	type AcceptanceCriterion,
+	type BacklogConfig,
 	type Decision,
 	DOCUMENT_TYPE_VALUES,
 	type Document,
@@ -39,9 +40,12 @@ import {
 	buildGlobPattern,
 	buildIdRegex,
 	extractAnyPrefix,
+	generateNextId as generateNextPrefixedId,
+	generateNextSubtaskId,
 	getPrefixForType,
 	normalizeId,
 } from "../utils/prefix-config.ts";
+import { formatValidPriorityValues, normalizePriorityValue, resolvePriorityValue } from "../utils/priority-config.ts";
 import {
 	getCanonicalStatus as resolveCanonicalStatus,
 	getValidStatuses as resolveValidStatuses,
@@ -54,12 +58,26 @@ import {
 	stringArraysEqual,
 	validateDependencies,
 } from "../utils/task-builders.ts";
-import { getTaskFilename, getTaskPath, normalizeTaskId, taskIdsEqual } from "../utils/task-path.ts";
+import { resolveTaskById } from "../utils/task-id.ts";
+import {
+	AmbiguousTaskIdError,
+	getTaskFilename,
+	getTaskPath,
+	normalizeTaskId,
+	taskIdsEqual,
+} from "../utils/task-path.ts";
 import { attachSubtaskSummaries } from "../utils/task-subtasks.ts";
+import { formatValidTaskTypeValues, matchesTaskTypeFilter, resolveTaskTypeValue } from "../utils/task-type-config.ts";
 import { upsertTaskUpdatedDate } from "../utils/task-updated-date.ts";
 import { isTerminalStatus } from "../utils/terminal-status.ts";
 import { migrateConfig, needsMigration } from "./config-migration.ts";
 import { ContentStore } from "./content-store.ts";
+import {
+	applyDuplicateTaskIdRepair,
+	type DuplicateRepairPlan,
+	type DuplicateRepairResult,
+	previewDuplicateTaskIdRepair,
+} from "./duplicate-task-repair.ts";
 import { migrateDraftPrefixes, needsDraftPrefixMigration } from "./prefix-migration.ts";
 import { calculateNewOrdinal, DEFAULT_ORDINAL_STEP, resolveOrdinalConflicts } from "./reorder.ts";
 import { SearchService } from "./search-service.ts";
@@ -233,6 +251,10 @@ export class Core {
 	private contentStore?: ContentStore;
 	private searchService?: SearchService;
 	private readonly enableWatchers: boolean;
+	private activeBranchTaskEntries: BranchTaskStateEntry[] = [];
+	private activeBranchFingerprint: string | null = null;
+	private activeBranchFingerprintPromise: Promise<string> | null = null;
+	private activeBranchRefreshPromise: Promise<void> | null = null;
 
 	constructor(projectRoot: string, options?: { enableWatchers?: boolean }) {
 		this.fs = new FileSystem(projectRoot);
@@ -245,6 +267,18 @@ export class Core {
 
 	async withCreateLock<T>(fn: () => Promise<T>): Promise<T> {
 		return await this.fs.withCreateLock(fn);
+	}
+
+	async previewDuplicateTaskIdRepair(options: { includeBranches?: boolean } = {}): Promise<DuplicateRepairPlan> {
+		return await previewDuplicateTaskIdRepair(this, options);
+	}
+
+	async repairDuplicateTaskIds(expectedFingerprint: string): Promise<DuplicateRepairResult> {
+		const result = await applyDuplicateTaskIdRepair(this, expectedFingerprint);
+		if (this.contentStore) {
+			await this.contentStore.refreshTasks();
+		}
+		return result;
 	}
 
 	private async resolveCreateOrdinal(inputOrdinal: number | undefined, isDraft: boolean): Promise<number | undefined> {
@@ -290,12 +324,73 @@ export class Core {
 			return;
 		}
 
-		const config = await this.fs.loadConfig();
-		if (config?.checkActiveBranches === false) {
-			return;
+		await this.contentStore.refreshTasks();
+	}
+
+	private async computeActiveBranchFingerprint(config: BacklogConfig | null): Promise<string> {
+		const settings = {
+			checkActiveBranches: config?.checkActiveBranches !== false,
+			activeBranchDays: config?.activeBranchDays ?? 30,
+			remoteOperations: config?.remoteOperations !== false,
+			filesystemOnly: config?.filesystemOnly === true,
+			taskPrefix: config?.prefixes?.task ?? "task",
+			taskResolutionStrategy: config?.taskResolutionStrategy ?? "most_progressed",
+			statuses: config?.statuses ?? DEFAULT_STATUSES,
+			backlogDir: this.fs.backlogDirName,
+		};
+
+		this.git.setConfig(config);
+		if (!settings.checkActiveBranches || settings.filesystemOnly) {
+			return JSON.stringify(settings);
 		}
 
-		await this.contentStore.refreshTasks();
+		const branchTips = await this.git.listRecentBranchTips(settings.activeBranchDays);
+		return JSON.stringify({ ...settings, branchTips });
+	}
+
+	private async getActiveBranchFingerprint(config?: BacklogConfig | null): Promise<string> {
+		if (config !== undefined) {
+			return await this.computeActiveBranchFingerprint(config);
+		}
+		if (!this.activeBranchFingerprintPromise) {
+			const fingerprintPromise = this.fs
+				.loadConfig()
+				.then((loadedConfig) => this.computeActiveBranchFingerprint(loadedConfig));
+			this.activeBranchFingerprintPromise = fingerprintPromise;
+			const clearFingerprintPromise = () => {
+				if (this.activeBranchFingerprintPromise === fingerprintPromise) {
+					this.activeBranchFingerprintPromise = null;
+				}
+			};
+			void fingerprintPromise.then(clearFingerprintPromise, clearFingerprintPromise);
+		}
+		return await this.activeBranchFingerprintPromise;
+	}
+
+	/** Refresh the existing cross-branch store only when relevant config or refs changed. */
+	async refreshTasksForTaskRead(): Promise<void> {
+		while (true) {
+			const fingerprint = await this.getActiveBranchFingerprint();
+			if (fingerprint === this.activeBranchFingerprint) {
+				return;
+			}
+
+			if (!this.activeBranchRefreshPromise) {
+				const refreshPromise = (async () => {
+					const store = await this.getContentStore();
+					await store.refreshTasks();
+				})();
+				this.activeBranchRefreshPromise = refreshPromise;
+				const clearRefreshPromise = () => {
+					if (this.activeBranchRefreshPromise === refreshPromise) {
+						this.activeBranchRefreshPromise = null;
+					}
+				};
+				void refreshPromise.then(clearRefreshPromise, clearRefreshPromise);
+			}
+
+			await this.activeBranchRefreshPromise;
+		}
 	}
 
 	private applyTaskFilters(
@@ -311,6 +406,18 @@ export class Core {
 			const statusLower = filters.status.toLowerCase();
 			result = result.filter((task) => (task.status ?? "").toLowerCase() === statusLower);
 		}
+		if (filters.excludeStatus) {
+			const excludedStatuses = Array.isArray(filters.excludeStatus) ? filters.excludeStatus : [filters.excludeStatus];
+			const excluded = new Set(
+				excludedStatuses.map((status) => status.trim().toLowerCase()).filter((status) => status.length > 0),
+			);
+			if (excluded.size > 0) {
+				result = result.filter((task) => !excluded.has((task.status ?? "").toLowerCase()));
+			}
+		}
+		if (filters.type) {
+			result = result.filter((task) => matchesTaskTypeFilter(task.type, filters.type));
+		}
 		if (filters.assignee) {
 			const assigneeLower = filters.assignee.toLowerCase();
 			result = result.filter((task) => (task.assignee ?? []).some((value) => value.toLowerCase() === assigneeLower));
@@ -319,8 +426,8 @@ export class Core {
 			result = result.filter((task) => !(task.assignee ?? []).some((value) => value.trim().length > 0));
 		}
 		if (filters.priority) {
-			const priorityLower = String(filters.priority).toLowerCase();
-			result = result.filter((task) => (task.priority ?? "").toLowerCase() === priorityLower);
+			const priorityLower = normalizePriorityValue(String(filters.priority));
+			result = result.filter((task) => normalizePriorityValue(task.priority) === priorityLower);
 		}
 		if (filters.milestone) {
 			const milestoneFilter = resolveClosestMilestoneFilterValue(
@@ -364,16 +471,16 @@ export class Core {
 		throw new Error(`Invalid status: ${status}. Valid statuses are: ${validStatuses.join(", ")}`);
 	}
 
-	private normalizePriority(value: string | undefined): ("high" | "medium" | "low") | undefined {
-		if (value === undefined || value === "") {
+	private async normalizePriority(value: string | undefined): Promise<string | undefined> {
+		if (value === undefined || value.trim() === "") {
 			return undefined;
 		}
-		const normalized = value.toLowerCase();
-		const allowed = ["high", "medium", "low"] as const;
-		if (!allowed.includes(normalized as (typeof allowed)[number])) {
-			throw new Error(`Invalid priority: ${value}. Valid values are: high, medium, low`);
+		const config = await this.fs.loadConfig();
+		const normalized = resolvePriorityValue(value, config);
+		if (!normalized) {
+			throw new Error(`Invalid priority: ${value}. Valid values are: ${formatValidPriorityValues(config)}`);
 		}
-		return normalized as "high" | "medium" | "low";
+		return normalized;
 	}
 
 	private async normalizeTaskType(value: string | undefined): Promise<string | undefined> {
@@ -381,11 +488,9 @@ export class Core {
 			return undefined;
 		}
 		const config = await this.fs.loadConfig();
-		const allowed = config?.types?.length ? config.types : [...DEFAULT_TASK_TYPES];
-		const normalized = value.trim().toLowerCase();
-		const canonical = allowed.find((type) => type.toLowerCase() === normalized);
+		const canonical = resolveTaskTypeValue(value, config);
 		if (!canonical) {
-			throw new Error(`Invalid type: ${value}. Valid types are: ${allowed.join(", ")}`);
+			throw new Error(`Invalid type: ${value}. Valid types are: ${formatValidTaskTypeValues(config)}`);
 		}
 		return canonical;
 	}
@@ -471,6 +576,12 @@ export class Core {
 		if (filters?.status) {
 			searchFilters.status = filters.status;
 		}
+		if (filters?.excludeStatus) {
+			searchFilters.excludeStatus = filters.excludeStatus;
+		}
+		if (filters?.type) {
+			searchFilters.type = filters.type;
+		}
 		if (filters?.priority) {
 			searchFilters.priority = filters.priority;
 		}
@@ -502,15 +613,91 @@ export class Core {
 	}
 
 	async getTask(taskId: string): Promise<Task | null> {
-		const store = await this.getContentStore();
-		const tasks = store.getTasks();
-		const match = tasks.find((task) => taskIdsEqual(taskId, task.id));
-		if (match) {
-			return match;
+		const localResolution = resolveTaskById(await this.fs.listTasks(), taskId);
+		if (localResolution.status === "invalid") {
+			return null;
+		}
+		if (localResolution.status === "ambiguous") {
+			throw new AmbiguousTaskIdError(
+				taskId,
+				localResolution.tasks.map((task) => task.filePath ?? task.id),
+			);
 		}
 
-		// Pass raw ID to loadTask - it will handle prefix detection via getTaskPath
-		return await this.fs.loadTask(taskId);
+		// Also fail closed when an active task collides with a completed file.
+		await this.fs.loadTask(taskId);
+
+		const store = await this.getContentStore();
+		const tasks = store.getTasks();
+		const resolution = resolveTaskById(tasks, taskId);
+		if (resolution.status === "invalid") {
+			return null;
+		}
+		if (resolution.status === "ambiguous") {
+			throw new AmbiguousTaskIdError(
+				taskId,
+				resolution.tasks.map((task) => task.filePath ?? `${task.branch ?? "unknown branch"}:${task.id}`),
+			);
+		}
+		if (
+			localResolution.status === "found" &&
+			resolution.status === "found" &&
+			localResolution.task.id.toLowerCase() !== resolution.task.id.toLowerCase()
+		) {
+			throw new AmbiguousTaskIdError(taskId, [
+				localResolution.task.filePath ?? localResolution.task.id,
+				resolution.task.filePath ?? `${resolution.task.branch ?? "unknown branch"}:${resolution.task.id}`,
+			]);
+		}
+		if (resolution.status === "found") {
+			return resolution.task;
+		}
+		if (localResolution.status === "found") {
+			return localResolution.task;
+		}
+		return null;
+	}
+
+	async hasActiveBranchTaskIdCollision(taskId: string, localTasks: Task[]): Promise<boolean> {
+		const localMatches = localTasks.filter((task) => taskIdsEqual(taskId, task.id));
+		if (localMatches.length > 1) {
+			return true;
+		}
+
+		const config = await this.fs.loadConfig();
+		if (config?.checkActiveBranches === false) {
+			this.activeBranchTaskEntries = [];
+			return false;
+		}
+
+		const branchMatches = this.activeBranchTaskEntries.filter((entry) => taskIdsEqual(taskId, entry.id));
+		if (branchMatches.length === 0) {
+			return false;
+		}
+
+		const branchPaths = new Map<string, Set<string>>();
+		for (const entry of branchMatches) {
+			const tree = entry.tree ?? entry.branch;
+			const paths = branchPaths.get(tree) ?? new Set<string>();
+			paths.add(entry.path);
+			branchPaths.set(tree, paths);
+			if (paths.size > 1) {
+				return true;
+			}
+		}
+
+		const identities = new Set(
+			branchMatches.map((entry) =>
+				entry.objectId ? `blob:${entry.objectId}` : `location:${entry.branch}\0${entry.path}`,
+			),
+		);
+		const localTask = localMatches[0];
+		if (localTask) {
+			const objectId = localTask.filePath ? await this.git.hashFile(localTask.filePath) : null;
+			identities.add(objectId ? `blob:${objectId}` : `local:${localTask.id}\0${localTask.filePath ?? ""}`);
+		}
+
+		return identities.size > 1;
 	}
 
 	async getTaskWithSubtasks(taskId: string, localTasks?: Task[]): Promise<Task | null> {
@@ -562,7 +749,8 @@ export class Core {
 	}
 
 	async getTaskContent(taskId: string): Promise<string | null> {
-		const filePath = await getTaskPath(taskId, this);
+		const task = await this.fs.loadTask(taskId);
+		const filePath = task?.filePath ?? null;
 		if (!filePath) return null;
 		return await Bun.file(filePath).text();
 	}
@@ -609,6 +797,10 @@ export class Core {
 			this.contentStore.dispose();
 			this.contentStore = undefined;
 		}
+		this.activeBranchTaskEntries = [];
+		this.activeBranchFingerprint = null;
+		this.activeBranchFingerprintPromise = null;
+		this.activeBranchRefreshPromise = null;
 	}
 
 	// Backward compatibility aliases
@@ -879,47 +1071,10 @@ export class Core {
 		if (parent) {
 			// Subtask generation (only applicable for tasks)
 			const normalizedParent = allIds.find((id) => taskIdsEqual(parent, id)) ?? normalizeTaskId(parent);
-			const upperParent = normalizedParent.toUpperCase();
-			let max = 0;
-			for (const id of allIds) {
-				// Case-insensitive comparison to handle legacy lowercase IDs
-				if (id.toUpperCase().startsWith(`${upperParent}.`)) {
-					const rest = id.slice(normalizedParent.length + 1);
-					const num = Number.parseInt(rest.split(".")[0] || "0", 10);
-					if (num > max) max = num;
-				}
-			}
-			const nextSubIdNumber = max + 1;
-			const padding = config?.zeroPaddedIds;
-
-			if (padding && padding > 0) {
-				const paddedSubId = String(nextSubIdNumber).padStart(2, "0");
-				return `${normalizedParent}.${paddedSubId}`;
-			}
-
-			return `${normalizedParent}.${nextSubIdNumber}`;
+			return generateNextSubtaskId(allIds, normalizedParent, prefix, config?.zeroPaddedIds);
 		}
 
-		// Top-level ID generation using prefix-aware regex
-		const regex = buildIdRegex(prefix);
-		const upperPrefix = prefix.toUpperCase();
-		let max = 0;
-		for (const id of allIds) {
-			const match = id.match(regex);
-			if (match?.[1] && !match[1].includes(".")) {
-				const num = Number.parseInt(match[1], 10);
-				if (num > max) max = num;
-			}
-		}
-		const nextIdNumber = max + 1;
-		const padding = config?.zeroPaddedIds;
-
-		if (padding && padding > 0) {
-			const paddedId = String(nextIdNumber).padStart(padding, "0");
-			return `${upperPrefix}-${paddedId}`;
-		}
-
-		return `${upperPrefix}-${nextIdNumber}`;
+		return generateNextPrefixedId(allIds, prefix, config?.zeroPaddedIds);
 	}
 
 	/**
@@ -1156,7 +1311,7 @@ export class Core {
 			}
 		}
 
-		const priority = this.normalizePriority(input.priority);
+		const priority = await this.normalizePriority(input.priority);
 		const type = await this.normalizeTaskType(input.type);
 		const createdDate = new Date().toISOString().slice(0, 16).replace("T", " ");
 		if (
@@ -1332,7 +1487,7 @@ export class Core {
 		}
 
 		if (input.priority !== undefined) {
-			const normalizedPriority = this.normalizePriority(String(input.priority));
+			const normalizedPriority = await this.normalizePriority(String(input.priority));
 			if (task.priority !== normalizedPriority) {
 				task.priority = normalizedPriority;
 				mutated = true;
@@ -2324,10 +2479,12 @@ export class Core {
 	}
 
 	async completeTask(taskId: string, autoCommit?: boolean): Promise<boolean> {
+		const task = await this.fs.loadTask(taskId);
+		if (!task) return false;
 		// Get paths before moving the file
 		const completedDir = this.fs.completedDir;
-		const taskPath = await getTaskPath(taskId, this);
-		const taskFilename = await getTaskFilename(taskId, this);
+		const taskPath = task.filePath ?? (await getTaskPath(task.id, this));
+		const taskFilename = taskPath ? basename(taskPath) : null;
 
 		if (!taskPath || !taskFilename) return false;
 
@@ -2706,7 +2863,7 @@ export class Core {
 		const tasks = await this.fs.listTasks();
 		return await Promise.all(
 			tasks.map(async (task) => {
-				const filePath = await getTaskPath(task.id, this);
+				const filePath = task.filePath ?? (await getTaskPath(task.id, this));
 
 				if (filePath) {
 					const bunFile = Bun.file(filePath);
@@ -2850,9 +3007,10 @@ export class Core {
 	 */
 	async loadAllTasksForStatistics(
 		progressCallback?: (msg: string) => void,
-	): Promise<{ tasks: Task[]; drafts: Task[]; statuses: string[] }> {
+	): Promise<{ tasks: Task[]; drafts: Task[]; statuses: string[]; priorities: string[] }> {
 		const config = await this.fs.loadConfig();
 		const statuses = (config?.statuses || DEFAULT_STATUSES) as string[];
+		const priorities = config?.priorities ?? [];
 		const resolutionStrategy = config?.taskResolutionStrategy || "most_progressed";
 
 		// Load local and completed tasks first
@@ -2926,7 +3084,7 @@ export class Core {
 		progressCallback?.("Loading drafts...");
 		const drafts = await this.fs.listDrafts();
 
-		return { tasks: activeTasks, drafts, statuses: statuses as string[] };
+		return { tasks: activeTasks, drafts, statuses: statuses as string[], priorities };
 	}
 
 	/**
@@ -2938,7 +3096,18 @@ export class Core {
 		abortSignal?: AbortSignal,
 		options?: { includeCompleted?: boolean },
 	): Promise<Task[]> {
+		return await this.loadTasksWithStableBranchSnapshot(progressCallback, abortSignal, options, 0);
+	}
+
+	private async loadTasksWithStableBranchSnapshot(
+		progressCallback: ((msg: string) => void) | undefined,
+		abortSignal: AbortSignal | undefined,
+		options: { includeCompleted?: boolean } | undefined,
+		snapshotAttempt: number,
+	): Promise<Task[]> {
 		const config = await this.fs.loadConfig();
+		this.git.setConfig(config);
+		const snapshotBefore = await this.getActiveBranchFingerprint(config);
 		const statuses = config?.statuses || [...DEFAULT_STATUSES];
 		const resolutionStrategy = config?.taskResolutionStrategy || "most_progressed";
 		const includeCompleted = options?.includeCompleted ?? false;
@@ -2990,6 +3159,11 @@ export class Core {
 				),
 			]);
 		}
+
+		const currentBranch = config?.checkActiveBranches === false ? null : await this.git.getCurrentBranch();
+		const nextActiveBranchTaskEntries = (branchStateEntries ?? []).filter(
+			(entry) => entry.type === "task" && entry.branch !== currentBranch,
+		);
 
 		// Check for cancellation after loading
 		if (abortSignal?.aborted) {
@@ -3094,6 +3268,15 @@ export class Core {
 			}
 		}
 
+		const snapshotAfter = await this.getActiveBranchFingerprint();
+		if (snapshotBefore !== snapshotAfter) {
+			if (snapshotAttempt >= 2) {
+				throw new Error("Active branch refs or configuration kept changing while tasks were loading");
+			}
+			return await this.loadTasksWithStableBranchSnapshot(progressCallback, abortSignal, options, snapshotAttempt + 1);
+		}
+		this.activeBranchTaskEntries = nextActiveBranchTaskEntries;
+		this.activeBranchFingerprint = snapshotAfter;
 		return filteredTasks;
 	}
 }

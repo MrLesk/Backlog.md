@@ -264,6 +264,12 @@ describe("prefix-config", () => {
 		test("ignores IDs with wrong prefix", () => {
 			expect(generateNextId(["task-5", "draft-10", "task-3"], "task")).toBe("TASK-6");
 		});
+
+		test("increments arbitrarily large IDs without scientific notation", () => {
+			expect(generateNextId(["task-999999999999999999999999999999999999999"], "task")).toBe(
+				"TASK-1000000000000000000000000000000000000000",
+			);
+		});
 	});
 
 	describe("generateNextSubtaskId", () => {
@@ -289,6 +295,16 @@ describe("prefix-config", () => {
 
 		test("handles unnormalized parent ID", () => {
 			expect(generateNextSubtaskId(["task-5", "task-5.1"], "5", "task")).toBe("TASK-5.2");
+		});
+
+		test("increments huge subtasks and matches padded parent segments exactly", () => {
+			expect(
+				generateNextSubtaskId(
+					["task-09007199254740992.999999999999999999999999999999999999999"],
+					"TASK-9007199254740992",
+					"task",
+				),
+			).toBe("TASK-9007199254740992.1000000000000000000000000000000000000000");
 		});
 	});
 

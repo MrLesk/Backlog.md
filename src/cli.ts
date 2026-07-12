@@ -9,11 +9,19 @@ import { Command } from "commander";
 import { runAdvancedConfigWizard } from "./commands/advanced-config-wizard.ts";
 import { type CompletionInstallResult, installCompletion, registerCompletionCommand } from "./commands/completion.ts";
 import { configureAdvancedSettings } from "./commands/configure-advanced-settings.ts";
-import { addHelpSchema, choiceType, statusType } from "./commands/help-schema.ts";
+import {
+	addHelpSchema,
+	choiceType,
+	getCliTaskTypeValues,
+	priorityType,
+	statusType,
+	taskType,
+} from "./commands/help-schema.ts";
 import { registerInstructionsCommand } from "./commands/instructions.ts";
 import { registerMcpCommand } from "./commands/mcp.ts";
 import { pickTaskForEditWizard, runTaskCreateWizard, runTaskEditWizard } from "./commands/task-wizard.ts";
 import { DEFAULT_DIRECTORIES, DEFAULT_FILES, DEFAULT_STATUSES } from "./constants/index.ts";
+import { type DuplicateRepairPlan, findLocalDuplicateTaskIds } from "./core/duplicate-task-repair.ts";
 import { initializeProject } from "./core/init.ts";
 import { buildMilestoneBuckets, collectArchivedMilestoneKeys, milestoneKey } from "./core/milestones.ts";
 import { formatTaskPlainText } from "./formatters/task-plain-text.ts";
@@ -54,6 +62,7 @@ import { viewTaskEnhanced } from "./ui/task-viewer-with-search.ts";
 import { scrollableViewer } from "./ui/tui.ts";
 import { type AgentSelectionValue, processAgentSelection } from "./utils/agent-selection.ts";
 import { normalizeProjectBacklogDirectory } from "./utils/backlog-directory.ts";
+import { formatDuplicateTaskIdWarning } from "./utils/duplicate-detection.ts";
 import { findBacklogRoot } from "./utils/find-backlog-root.ts";
 import { labelsToLower } from "./utils/label-filter.ts";
 import {
@@ -66,8 +75,9 @@ import {
 import { createMilestoneFilterValueResolver, resolveClosestMilestoneFilterValue } from "./utils/milestone-filter.ts";
 import { resolveMilestoneInputForStorage } from "./utils/milestone-storage.ts";
 import { hasAnyPrefix } from "./utils/prefix-config.ts";
+import { formatValidPriorityValues, getPriorityOptions, resolvePriorityValue } from "./utils/priority-config.ts";
 import { type RuntimeCwdResolution, resolveRuntimeCwd } from "./utils/runtime-cwd.ts";
-import { formatValidStatuses, getCanonicalStatus, getValidStatuses } from "./utils/status.ts";
+import { formatValidStatuses, getCanonicalStatus, getCanonicalStatuses, getValidStatuses } from "./utils/status.ts";
 import {
 	normalizeDependencies,
 	parseDelimitedStringList,
@@ -78,6 +88,7 @@ import {
 import { buildTaskUpdateInput } from "./utils/task-edit-builder.ts";
 import { normalizeTaskId, taskIdsEqual } from "./utils/task-path.ts";
 import { sortTasks } from "./utils/task-sorting.ts";
+import { formatValidTaskTypeValues, getTaskTypeValues, resolveTaskTypeValues } from "./utils/task-type-config.ts";
 import { getTerminalStatus, isTerminalStatus } from "./utils/terminal-status.ts";
 import { formatUtcDateForDisplay } from "./utils/utc-date-display.ts";
 import { getVersion } from "./utils/version.ts";
@@ -90,6 +101,8 @@ const CONFIG_GET_KEYS = [
 	"defaultStatus",
 	"statuses",
 	"labels",
+	"priorities",
+	"types",
 	"milestones",
 	"definitionOfDone",
 	"dateFormat",
@@ -172,6 +185,7 @@ const DOCUMENT_SEARCH_QUERY_MAX_LENGTH = 200;
 const DOCUMENT_SEARCH_LIMIT_MAX = 100;
 const TASK_SORT_FIELDS = ["priority", "id", "ordinal"];
 const TASK_SORT_FIELD_LIST = TASK_SORT_FIELDS.join(", ");
+const TASK_TYPE_EXAMPLE = JSON.stringify(getCliTaskTypeValues()[0] ?? "<configured-type>");
 
 async function openUrlInBrowser(url: string): Promise<void> {
 	let cmd: string[];
@@ -252,6 +266,49 @@ function taskMatchesAllLabels(task: Task, labels: string[]): boolean {
 	return requiredLabels.every((label) => taskLabels.has(label));
 }
 
+function formatPlainTaskListRow(task: Task, options: { includeStatus?: boolean } = {}): string {
+	const priorityIndicator = task.priority ? `[${task.priority.toUpperCase()}] ` : "";
+	const typeIndicator = task.type ? `[${task.type}] ` : "";
+	const statusIndicator = options.includeStatus && task.status ? ` (${task.status})` : "";
+	return `  ${priorityIndicator}${typeIndicator}${task.id} - ${task.title}${statusIndicator}`;
+}
+
+async function normalizeCliStatusList(core: Core, values: string[], optionName: string): Promise<string[] | null> {
+	const { values: canonicalStatuses, invalid, validStatuses } = await getCanonicalStatuses(values, core);
+	if (invalid.length > 0) {
+		console.error(
+			`Invalid ${optionName}: ${invalid.join(", ")}. Valid statuses are: ${formatValidStatuses(validStatuses)}`,
+		);
+		process.exitCode = 1;
+		return null;
+	}
+	return canonicalStatuses;
+}
+
+async function normalizeCliPriority(core: Core, value: string): Promise<string | null> {
+	const config = await core.filesystem.loadConfig();
+	const normalized = resolvePriorityValue(value, config);
+	if (!normalized) {
+		console.error(`Invalid priority: ${value}. Valid values are: ${formatValidPriorityValues(config)}`);
+		process.exitCode = 1;
+		return null;
+	}
+	return normalized;
+}
+
+async function normalizeCliTaskTypes(core: Core, values: string[], optionName: string): Promise<string[] | null> {
+	const config = await core.filesystem.loadConfig();
+	const { values: canonicalTypes, invalid } = resolveTaskTypeValues(values, config);
+	if (invalid.length > 0) {
+		console.error(
+			`Invalid ${optionName}: ${invalid.join(", ")}. Valid types are: ${formatValidTaskTypeValues(config)}`,
+		);
+		process.exitCode = 1;
+		return null;
+	}
+	return canonicalTypes;
+}
+
 function formatToolResultText(result: CallToolResult): string {
 	return result.content
 		.map((item) => (item.type === "text" ? item.text : ""))
@@ -266,6 +323,55 @@ function printToolResult(result: CallToolResult): void {
 	}
 	if (result.isError) {
 		process.exitCode = 1;
+	}
+}
+
+async function printDuplicateIntegrityWarning(core: Core): Promise<boolean> {
+	const groups = await findLocalDuplicateTaskIds(core);
+	if (groups.length === 0) return false;
+	console.error(formatDuplicateTaskIdWarning(groups));
+	process.exitCode = 1;
+	return true;
+}
+
+function printDuplicateRepairPlan(plan: DuplicateRepairPlan): void {
+	if (plan.groups.length > 0) {
+		console.log(formatDuplicateTaskIdWarning(plan.groups));
+		console.log("\nRepair preview (no files changed):");
+		for (const change of plan.changes) {
+			console.log(`  ${change.sourcePath}`);
+			console.log(`    ${change.oldId} -> ${change.newId}`);
+			console.log(`    new path: ${change.targetPath}`);
+		}
+	}
+	if (plan.crossBranchFindings.length > 0) {
+		console.log("\nPossible cross-branch ID collisions (diagnostic only):");
+		for (const finding of plan.crossBranchFindings) {
+			console.log(`  ${finding.id}:`);
+			for (const location of finding.locations) {
+				console.log(`    - ${location.branch}:${location.path} (${location.state})`);
+			}
+		}
+		console.log("Switch to the affected branches and reconcile these paths; Backlog.md will not edit another branch.");
+	}
+	if (plan.groups.length > 0) {
+		if (plan.references.length > 0) {
+			console.log("\nReferences requiring human review after repair:");
+			for (const reference of plan.references) {
+				console.log(`  ${reference.path}:${reference.line} [${reference.ids.join(", ")}]`);
+				if (reference.text) console.log(`    ${reference.text}`);
+			}
+			console.log("These references are not changed automatically because the original ID is ambiguous.");
+		}
+		if (!plan.referenceScanComplete) {
+			console.log("\nReference scan incomplete; repair is blocked. See the failures below.");
+		} else if (plan.references.length === 0) {
+			console.log("\nNo textual references to the duplicate IDs were found in backlog Markdown files.");
+		}
+	}
+	if (plan.blockedReasons.length > 0) {
+		console.log("\nRepair is blocked:");
+		for (const reason of plan.blockedReasons) console.log(`  - ${reason}`);
 	}
 }
 
@@ -301,6 +407,7 @@ function hasCreateFieldFlags(options: Record<string, unknown>): boolean {
 			options.status !== undefined ||
 			options.labels !== undefined ||
 			options.priority !== undefined ||
+			options.type !== undefined ||
 			options.ordinal !== undefined ||
 			options.milestone !== undefined ||
 			options.plain ||
@@ -330,6 +437,7 @@ function hasEditFieldFlags(options: Record<string, unknown>): boolean {
 			options.status !== undefined ||
 			options.label !== undefined ||
 			options.priority !== undefined ||
+			options.type !== undefined ||
 			options.ordinal !== undefined ||
 			options.milestone !== undefined ||
 			options.clearMilestone ||
@@ -1549,15 +1657,23 @@ addHelpSchema(taskCmd.command("create [title]"), {
 		},
 		{ name: "assignee", type: "Assignee list", description: "One or more @names" },
 		{ name: "labels", type: "Comma-separated strings", description: "Task labels" },
-		{ name: "priority", type: choiceType(["high", "medium", "low"]), description: "Task priority" },
+		{ name: "priority", type: priorityType, description: "Task priority" },
+		{ name: "type", type: taskType, description: "Task type; case-insensitive" },
 		{ name: "acceptanceCriteria", type: "Markdown list item text", description: "Repeat --ac for multiple criteria" },
 		{ name: "ordinal", type: "Integer", description: "Non-negative manual ordering value" },
 		{ name: "parent", type: "Task ID", description: "Existing parent task for subtasks; not a milestone ID" },
+		{
+			name: "plan",
+			type: "Markdown",
+			description:
+				"Only for already-started work created directly in a configured active status (for example, In Progress)",
+		},
 	],
 	writes: "Creates a task or draft markdown file through Backlog.md",
 	output: "Created task details; use --plain for text output",
 	examples: [
 		'backlog task create "Add OAuth" --ac "Login succeeds"',
+		`backlog task create "Fix session expiry" --type ${TASK_TYPE_EXAMPLE}`,
 		'backlog task create -p {{TASK_ID:1}} "Add tests"',
 	],
 })
@@ -1566,7 +1682,8 @@ addHelpSchema(taskCmd.command("create [title]"), {
 	.option("-a, --assignee <assignee>")
 	.option("-s, --status <status>")
 	.option("-l, --labels <labels>")
-	.option("--priority <priority>", "set task priority (high, medium, low)")
+	.option("--priority <priority>", "set task priority (configured priorities)")
+	.option("--type <type>", "set task type (configured task types)")
 	.option("--plain", "use plain text output after creating")
 	.option("--ac <criteria>", "add acceptance criteria (can be used multiple times)", createMultiValueAccumulator())
 	.option(
@@ -1576,7 +1693,10 @@ addHelpSchema(taskCmd.command("create [title]"), {
 	)
 	.option("--dod <item>", "add Definition of Done item (can be used multiple times)", createMultiValueAccumulator())
 	.option("--no-dod-defaults", "disable Definition of Done defaults")
-	.option("--plan <text>", "add implementation plan")
+	.option(
+		"--plan <text>",
+		"add a plan only for already-started work created directly in an active status (for example, In Progress)",
+	)
 	.option("--notes <text>", "add implementation notes")
 	.option("--final-summary <text>", "add final summary")
 	.option("--ordinal <number>", "set task ordinal for custom ordering")
@@ -1628,7 +1748,12 @@ addHelpSchema(taskCmd.command("create [title]"), {
 
 		if (shouldUseWizard) {
 			const statuses = await getValidStatuses(core);
-			const wizardInput = await runTaskCreateWizard({ statuses });
+			const config = await core.filesystem.loadConfig();
+			const wizardInput = await runTaskCreateWizard({
+				statuses,
+				priorities: config?.priorities,
+				types: config?.types,
+			});
 			if (!wizardInput) {
 				clack.cancel("Task create cancelled.");
 				return;
@@ -1681,7 +1806,8 @@ addHelpSchema(taskCmd.command("create [title]"), {
 				documentation: parseDelimitedStringList(options.doc),
 				modifiedFiles: parseDelimitedStringList(options.modifiedFile),
 				parentTaskId: options.parent ? String(options.parent) : undefined,
-				priority: options.priority ? (String(options.priority).toLowerCase() as "high" | "medium" | "low") : undefined,
+				priority: options.priority ? String(options.priority) : undefined,
+				type: options.type !== undefined ? String(options.type) : undefined,
 				...(ordinalValue !== undefined ? { ordinal: ordinalValue } : {}),
 				milestone,
 				implementationPlan: options.plan ? String(options.plan) : undefined,
@@ -1721,8 +1847,18 @@ addHelpSchema(program.command("search [query]"), {
 			type: choiceType(["task", "document", "decision"], { multiple: true }),
 			description: "Result types",
 		},
+		{
+			name: "task-type",
+			type: () => taskType({ multiple: true }),
+			description: "Filter task results by one or more configured task types; repeat or comma-separate values",
+		},
 		{ name: "status", type: statusType, description: "Filter task results by status; case-insensitive" },
-		{ name: "priority", type: choiceType(["high", "medium", "low"]), description: "Filter task results by priority" },
+		{
+			name: "exclude-status",
+			type: statusType,
+			description: "Exclude task results with one or more statuses; repeat or comma-separate values",
+		},
+		{ name: "priority", type: priorityType, description: "Filter task results by priority" },
 		{
 			name: "modified-file",
 			type: "Project-root-relative path",
@@ -1731,12 +1867,26 @@ addHelpSchema(program.command("search [query]"), {
 		{ name: "limit", type: "Integer", description: "Maximum number of results" },
 	],
 	output: "Interactive search UI or plain text with --plain",
-	examples: ['backlog search "auth" --plain', 'backlog search "api" --type task --status "<active status>"'],
+	examples: [
+		'backlog search "auth" --plain',
+		'backlog search "api" --type task --status "<active status>"',
+		`backlog search "crash" --task-type ${TASK_TYPE_EXAMPLE} --plain`,
+	],
 })
 	.description("search tasks, documents, and decisions using the shared index")
 	.option("--type <type>", "limit results to type (task, document, decision)", createMultiValueAccumulator())
+	.option(
+		"--task-type <type>",
+		"filter task results by configured task type (repeatable or comma-separated)",
+		createMultiValueAccumulator(),
+	)
 	.option("--status <status>", "filter task results by status")
-	.option("--priority <priority>", "filter task results by priority (high, medium, low)")
+	.option(
+		"--exclude-status <status>",
+		"exclude task results by status (repeatable or comma-separated)",
+		createMultiValueAccumulator(),
+	)
+	.option("--priority <priority>", "filter task results by priority (configured priorities)")
 	.option(
 		"--modified-file <path>",
 		"filter task results by modified file path substring",
@@ -1747,6 +1897,7 @@ addHelpSchema(program.command("search [query]"), {
 	.action(async (query: string | undefined, options) => {
 		const cwd = await requireProjectRoot();
 		const core = new Core(cwd);
+		await printDuplicateIntegrityWarning(core);
 		const searchService = await core.getSearchService();
 		const contentStore = await core.getContentStore();
 		const cleanup = () => {
@@ -1755,6 +1906,7 @@ addHelpSchema(program.command("search [query]"), {
 		};
 
 		const modifiedFileFilters = parseDelimitedStringList(options.modifiedFile);
+		const rawTaskTypes = parseDelimitedStringList(options.taskType) ?? [];
 		const rawTypes = options.type ? (Array.isArray(options.type) ? options.type : [options.type]) : undefined;
 		const allowedTypes: SearchResultType[] = ["task", "document", "decision"];
 		const types = rawTypes
@@ -1767,24 +1919,50 @@ addHelpSchema(program.command("search [query]"), {
 						}
 						return true;
 					})
-			: modifiedFileFilters?.length
+			: modifiedFileFilters?.length || rawTaskTypes.length > 0
 				? ["task"]
 				: allowedTypes;
+		if (rawTaskTypes.length > 0 && rawTypes && !types.includes("task")) {
+			console.error("--task-type filters task results. Include --type task or omit --type.");
+			cleanup();
+			process.exitCode = 1;
+			return;
+		}
 
-		const filters: { status?: string; priority?: SearchPriorityFilter; modifiedFiles?: string[] } = {};
+		const filters: {
+			status?: string;
+			excludeStatus?: string[];
+			type?: string[];
+			priority?: SearchPriorityFilter;
+			modifiedFiles?: string[];
+		} = {};
 		if (options.status) {
 			filters.status = options.status;
 		}
-		if (options.priority) {
-			const priorityLower = String(options.priority).toLowerCase();
-			const validPriorities: SearchPriorityFilter[] = ["high", "medium", "low"];
-			if (!validPriorities.includes(priorityLower as SearchPriorityFilter)) {
-				console.error("Invalid priority. Valid values: high, medium, low");
+		const excludeStatuses = parseDelimitedStringList(options.excludeStatus) ?? [];
+		if (excludeStatuses.length > 0) {
+			const canonicalExcludeStatuses = await normalizeCliStatusList(core, excludeStatuses, "exclude-status");
+			if (!canonicalExcludeStatuses) {
 				cleanup();
-				process.exitCode = 1;
 				return;
 			}
-			filters.priority = priorityLower as SearchPriorityFilter;
+			filters.excludeStatus = canonicalExcludeStatuses;
+		}
+		if (rawTaskTypes.length > 0) {
+			const canonicalTaskTypes = await normalizeCliTaskTypes(core, rawTaskTypes, "task-type");
+			if (!canonicalTaskTypes) {
+				cleanup();
+				return;
+			}
+			filters.type = canonicalTaskTypes;
+		}
+		if (options.priority) {
+			const priority = await normalizeCliPriority(core, String(options.priority));
+			if (!priority) {
+				cleanup();
+				return;
+			}
+			filters.priority = priority;
 		}
 		if (modifiedFileFilters?.length) {
 			filters.modifiedFiles = modifiedFileFilters;
@@ -1828,8 +2006,8 @@ addHelpSchema(program.command("search [query]"), {
 			return;
 		}
 
-		const hasModifiedFileFilter = Boolean(modifiedFileFilters?.length);
-		const interactiveTasks = hasModifiedFileFilter ? searchResultTasks : allTasks;
+		const requiresPrefilteredTaskSet = Boolean(modifiedFileFilters?.length);
+		const interactiveTasks = requiresPrefilteredTaskSet ? searchResultTasks : allTasks;
 		if (interactiveTasks.length === 0) {
 			printSearchResults(searchResults);
 			cleanup();
@@ -1851,11 +2029,15 @@ addHelpSchema(program.command("search [query]"), {
 				title: query ? `Search: ${query}` : "Search",
 				filterDescription: buildSearchFilterDescription({
 					status: statusFilter,
+					excludeStatus: filters.excludeStatus,
+					type: filters.type,
 					priority: priorityFilter,
 					query: query ?? "",
 					modifiedFiles: modifiedFileFilters ?? [],
 				}),
 				status: statusFilter,
+				excludeStatus: filters.excludeStatus,
+				type: filters.type,
 				priority: priorityFilter,
 				searchQuery: query ?? "", // Pre-populate search with the query
 			},
@@ -1865,6 +2047,8 @@ addHelpSchema(program.command("search [query]"), {
 
 function buildSearchFilterDescription(filters: {
 	status?: string;
+	excludeStatus?: string[];
+	type?: string[];
 	priority?: SearchPriorityFilter;
 	query?: string;
 	modifiedFiles?: string[];
@@ -1875,6 +2059,12 @@ function buildSearchFilterDescription(filters: {
 	}
 	if (filters.status) {
 		parts.push(`Status: ${filters.status}`);
+	}
+	if (filters.excludeStatus?.length) {
+		parts.push(`Exclude status: ${filters.excludeStatus.join(", ")}`);
+	}
+	if (filters.type?.length) {
+		parts.push(`Type: ${filters.type.join(", ")}`);
 	}
 	if (filters.priority) {
 		parts.push(`Priority: ${filters.priority}`);
@@ -2015,6 +2205,11 @@ addHelpSchema(taskCmd.command("list"), {
 	required: [],
 	optional: [
 		{ name: "status", type: statusType, description: "Filter by task status; case-insensitive" },
+		{
+			name: "exclude-status",
+			type: statusType,
+			description: "Exclude tasks with one or more statuses; repeat or comma-separate values",
+		},
 		{ name: "assignee", type: "Assignee", description: "Filter by @name" },
 		{
 			name: "unassigned",
@@ -2023,7 +2218,12 @@ addHelpSchema(taskCmd.command("list"), {
 		},
 		{ name: "milestone", type: "Milestone ID or title", description: "Closest case-insensitive match" },
 		{ name: "parent", type: "Task ID", description: "Show subtasks of a parent task" },
-		{ name: "priority", type: choiceType(["high", "medium", "low"]), description: "Filter by task priority" },
+		{ name: "priority", type: priorityType, description: "Filter by task priority" },
+		{
+			name: "type",
+			type: () => taskType({ multiple: true }),
+			description: "Filter by one or more configured task types; repeat or comma-separate values",
+		},
 		{
 			name: "labels",
 			type: "Comma-separated strings",
@@ -2037,16 +2237,27 @@ addHelpSchema(taskCmd.command("list"), {
 	examples: [
 		'backlog task list --status "<todo status>" --plain',
 		"backlog task list --parent {{TASK_ID:1}}",
+		`backlog task list --type ${TASK_TYPE_EXAMPLE} --plain`,
 		'backlog task list --labels frontend,bug --search "login" --limit 10 --plain',
 	],
 })
 	.description("list tasks grouped by status")
 	.option("-s, --status <status>", "filter tasks by status (case-insensitive)")
+	.option(
+		"--exclude-status <status>",
+		"exclude tasks by status (repeatable or comma-separated)",
+		createMultiValueAccumulator(),
+	)
 	.option("-a, --assignee <assignee>", "filter tasks by assignee")
 	.option("--unassigned", "filter tasks without an assignee (cannot be combined with --assignee)")
 	.option("-m, --milestone <milestone>", "filter tasks by milestone (closest match, case-insensitive)")
 	.option("-p, --parent <taskId>", "filter tasks by parent task ID")
-	.option("--priority <priority>", "filter tasks by priority (high, medium, low)")
+	.option("--priority <priority>", "filter tasks by priority (configured priorities)")
+	.option(
+		"--type <type>",
+		"filter tasks by configured task type (repeatable or comma-separated)",
+		createMultiValueAccumulator(),
+	)
 	.option(
 		"-l, --labels <labels>",
 		"filter tasks by labels; require every comma-separated label (repeatable)",
@@ -2059,6 +2270,7 @@ addHelpSchema(taskCmd.command("list"), {
 	.action(async (options) => {
 		const cwd = await requireProjectRoot();
 		const core = new Core(cwd);
+		await printDuplicateIntegrityWarning(core);
 		const cleanup = () => {
 			core.disposeSearchService();
 			core.disposeContentStore();
@@ -2073,6 +2285,15 @@ addHelpSchema(taskCmd.command("list"), {
 		if (options.status) {
 			baseFilters.status = options.status;
 		}
+		const excludeStatuses = parseDelimitedStringList(options.excludeStatus) ?? [];
+		if (excludeStatuses.length > 0) {
+			const canonicalExcludeStatuses = await normalizeCliStatusList(core, excludeStatuses, "exclude-status");
+			if (!canonicalExcludeStatuses) {
+				cleanup();
+				return;
+			}
+			baseFilters.excludeStatus = canonicalExcludeStatuses;
+		}
 		if (options.assignee) {
 			baseFilters.assignee = options.assignee;
 		}
@@ -2083,15 +2304,21 @@ addHelpSchema(taskCmd.command("list"), {
 			baseFilters.milestone = options.milestone;
 		}
 		if (options.priority) {
-			const priorityLower = options.priority.toLowerCase();
-			const validPriorities = ["high", "medium", "low"] as const;
-			if (!validPriorities.includes(priorityLower as (typeof validPriorities)[number])) {
-				console.error(`Invalid priority: ${options.priority}. Valid values are: high, medium, low`);
-				process.exitCode = 1;
+			const priority = await normalizeCliPriority(core, String(options.priority));
+			if (!priority) {
 				cleanup();
 				return;
 			}
-			baseFilters.priority = priorityLower as (typeof validPriorities)[number];
+			baseFilters.priority = priority;
+		}
+		const rawTaskTypes = parseDelimitedStringList(options.type) ?? [];
+		if (rawTaskTypes.length > 0) {
+			const canonicalTaskTypes = await normalizeCliTaskTypes(core, rawTaskTypes, "type");
+			if (!canonicalTaskTypes) {
+				cleanup();
+				return;
+			}
+			baseFilters.type = canonicalTaskTypes;
 		}
 
 		const labelFilters = parseDelimitedStringList(options.labels) ?? [];
@@ -2153,9 +2380,9 @@ addHelpSchema(taskCmd.command("list"), {
 					cleanup();
 					return;
 				}
-				sortedTasks = sortTasks(tasks, sortField);
+				sortedTasks = sortTasks(tasks, sortField, config?.priorities);
 			} else {
-				sortedTasks = sortTasks(tasks, "priority");
+				sortedTasks = sortTasks(tasks, "priority", config?.priorities);
 			}
 
 			let filtered = sortedTasks;
@@ -2182,9 +2409,7 @@ addHelpSchema(taskCmd.command("list"), {
 			if (options.sort && options.sort.toLowerCase() === "priority") {
 				console.log("Tasks (sorted by priority):");
 				for (const t of displayTasks) {
-					const priorityIndicator = t.priority ? `[${t.priority.toUpperCase()}] ` : "";
-					const statusIndicator = t.status ? ` (${t.status})` : "";
-					console.log(`  ${priorityIndicator}${t.id} - ${t.title}${statusIndicator}`);
+					console.log(formatPlainTaskListRow(t, { includeStatus: true }));
 				}
 				cleanup();
 				return;
@@ -2215,8 +2440,7 @@ addHelpSchema(taskCmd.command("list"), {
 				if (!list) continue;
 				console.log(`${status || "No Status"}:`);
 				list.forEach((task) => {
-					const priorityIndicator = task.priority ? `[${task.priority.toUpperCase()}] ` : "";
-					console.log(`  ${priorityIndicator}${task.id} - ${task.title}`);
+					console.log(formatPlainTaskListRow(task));
 				});
 				console.log();
 			}
@@ -2228,13 +2452,23 @@ addHelpSchema(taskCmd.command("list"), {
 		let title = "Tasks";
 		const activeFilters: string[] = [];
 		if (options.status) activeFilters.push(`Status: ${options.status}`);
+		if (baseFilters.excludeStatus) {
+			const excluded = Array.isArray(baseFilters.excludeStatus)
+				? baseFilters.excludeStatus
+				: [baseFilters.excludeStatus];
+			activeFilters.push(`Exclude status: ${excluded.join(", ")}`);
+		}
 		if (options.assignee) activeFilters.push(`Assignee: ${options.assignee}`);
 		if (options.unassigned) activeFilters.push("Unassigned");
 		if (options.parent) {
 			activeFilters.push(`Parent: ${normalizeTaskId(String(options.parent))}`);
 		}
 		if (options.milestone) activeFilters.push(`Milestone: ${options.milestone}`);
-		if (options.priority) activeFilters.push(`Priority: ${options.priority}`);
+		if (baseFilters.priority) activeFilters.push(`Priority: ${baseFilters.priority}`);
+		if (baseFilters.type) {
+			const taskTypes = Array.isArray(baseFilters.type) ? baseFilters.type : [baseFilters.type];
+			activeFilters.push(`Type: ${taskTypes.join(", ")}`);
+		}
 		if (labelFilters.length > 0) activeFilters.push(`Labels: ${labelFilters.join(", ")}`);
 		if (searchQuery) activeFilters.push(`Search: ${searchQuery}`);
 		if (taskLimit !== undefined) activeFilters.push(`Limit: ${taskLimit}`);
@@ -2246,8 +2480,10 @@ addHelpSchema(taskCmd.command("list"), {
 		}
 		const initialUnifiedFilter: {
 			status?: string;
+			excludeStatus?: string[];
 			assignee?: string;
 			milestone?: string;
+			type?: string[];
 			priority?: string;
 			sort?: string;
 			labels?: string[];
@@ -2259,9 +2495,11 @@ addHelpSchema(taskCmd.command("list"), {
 			limit?: number;
 		} = {
 			status: options.status,
+			excludeStatus: Array.isArray(baseFilters.excludeStatus) ? baseFilters.excludeStatus : undefined,
 			assignee: options.assignee,
 			milestone: options.milestone,
-			priority: options.priority,
+			type: Array.isArray(baseFilters.type) ? baseFilters.type : baseFilters.type ? [baseFilters.type] : undefined,
+			priority: baseFilters.priority,
 			sort: options.sort,
 			labels: labelFilters,
 			labelMatch: labelFilters.length > 0 ? "all" : undefined,
@@ -2321,9 +2559,9 @@ addHelpSchema(taskCmd.command("list"), {
 					if (!TASK_SORT_FIELDS.includes(sortField)) {
 						throw new Error(`Invalid sort field: ${options.sort}. Valid values are: ${TASK_SORT_FIELD_LIST}`);
 					}
-					sortedTasks = sortTasks(tasks, sortField);
+					sortedTasks = sortTasks(tasks, sortField, config?.priorities);
 				} else {
-					sortedTasks = sortTasks(tasks, "priority");
+					sortedTasks = sortTasks(tasks, "priority", config?.priorities);
 				}
 
 				let filtered = sortedTasks;
@@ -2367,6 +2605,7 @@ addHelpSchema(taskCmd.command("edit [taskId]"), {
 		{ name: "title", type: "String", description: "Replacement task title" },
 		{ name: "description", type: "Markdown", description: "Replacement description" },
 		{ name: "status", type: statusType, description: "Project task status; case-insensitive" },
+		{ name: "type", type: taskType, description: "Replacement task type; case-insensitive" },
 		{
 			name: "label",
 			type: "Comma-separated strings",
@@ -2397,6 +2636,7 @@ addHelpSchema(taskCmd.command("edit [taskId]"), {
 	output: "Updated task details; use --plain for text output",
 	examples: [
 		'backlog task edit {{TASK_ID:1}} --status "<active status>" -a @sara',
+		`backlog task edit {{TASK_ID:1}} --type ${TASK_TYPE_EXAMPLE}`,
 		"backlog task edit {{TASK_ID:1}} --check-ac 1",
 	],
 })
@@ -2411,7 +2651,8 @@ addHelpSchema(taskCmd.command("edit [taskId]"), {
 		"replace all task labels (comma-separated or repeatable; cannot combine with --add-label/--remove-label)",
 		createMultiValueAccumulator(),
 	)
-	.option("--priority <priority>", "set task priority (high, medium, low)")
+	.option("--priority <priority>", "set task priority (configured priorities)")
+	.option("--type <type>", "set task type (configured task types; pass an empty value to clear)")
 	.option("--ordinal <number>", "set task ordinal for custom ordering")
 	.option("-m, --milestone <milestone>", "assign task to milestone by ID or title")
 	.option("--clear-milestone", "clear task milestone assignment")
@@ -2545,7 +2786,13 @@ addHelpSchema(taskCmd.command("edit [taskId]"), {
 			}
 
 			const statuses = await getValidStatuses(core);
-			const wizardInput = await runTaskEditWizard({ task: existingTaskForWizard, statuses });
+			const config = await core.filesystem.loadConfig();
+			const wizardInput = await runTaskEditWizard({
+				task: existingTaskForWizard,
+				statuses,
+				priorities: config?.priorities,
+				types: config?.types,
+			});
 			if (!wizardInput) {
 				clack.cancel("Task edit cancelled.");
 				return;
@@ -2584,16 +2831,13 @@ addHelpSchema(taskCmd.command("edit [taskId]"), {
 			canonicalStatus = canonical;
 		}
 
-		let normalizedPriority: "high" | "medium" | "low" | undefined;
+		let normalizedPriority: string | undefined;
 		if (options.priority) {
-			const priority = String(options.priority).toLowerCase();
-			const validPriorities = ["high", "medium", "low"] as const;
-			if (!validPriorities.includes(priority as (typeof validPriorities)[number])) {
-				console.error(`Invalid priority: ${priority}. Valid values are: high, medium, low`);
-				process.exitCode = 1;
+			const priority = await normalizeCliPriority(core, String(options.priority));
+			if (!priority) {
 				return;
 			}
-			normalizedPriority = priority as "high" | "medium" | "low";
+			normalizedPriority = priority;
 		}
 
 		let ordinalValue: number | undefined;
@@ -2710,6 +2954,9 @@ addHelpSchema(taskCmd.command("edit [taskId]"), {
 		}
 		if (normalizedPriority) {
 			editArgs.priority = normalizedPriority;
+		}
+		if (options.type !== undefined) {
+			editArgs.type = String(options.type);
 		}
 		if (ordinalValue !== undefined) {
 			editArgs.ordinal = ordinalValue;
@@ -3040,6 +3287,7 @@ draftCmd
 
 		// Apply sorting - default to priority sorting like the web UI
 		const { sortTasks } = await import("./utils/task-sorting.ts");
+		const config = await core.filesystem.loadConfig();
 		let sortedDrafts = drafts;
 
 		if (options.sort) {
@@ -3049,10 +3297,10 @@ draftCmd
 				process.exitCode = 1;
 				return;
 			}
-			sortedDrafts = sortTasks(drafts, sortField);
+			sortedDrafts = sortTasks(drafts, sortField, config?.priorities);
 		} else {
 			// Default to priority sorting to match web UI behavior
-			sortedDrafts = sortTasks(drafts, "priority");
+			sortedDrafts = sortTasks(drafts, "priority", config?.priorities);
 		}
 
 		const usePlainOutput = isPlainRequested(options) || shouldAutoPlain;
@@ -3519,6 +3767,7 @@ boardCmd
 		const core = new Core(cwd);
 		const config = await core.filesystem.loadConfig();
 		const statuses = config?.statuses || [];
+		if (await printDuplicateIntegrityWarning(core)) return;
 
 		// Load tasks with progress tracking
 		const loadingScreen = await createLoadingScreen("Loading tasks for export");
@@ -3969,7 +4218,7 @@ addHelpSchema(configCmd.command("get <key>"), {
 	required: [{ name: "key", type: choiceType(CONFIG_GET_KEYS), description: "Configuration value to print" }],
 	optional: [],
 	output: "The selected configuration value",
-	examples: ["backlog config get defaultEditor"],
+	examples: ["backlog config get defaultEditor", "backlog config get types"],
 })
 	.description("get a configuration value")
 	.action(async (key: string) => {
@@ -4004,6 +4253,16 @@ addHelpSchema(configCmd.command("get <key>"), {
 					break;
 				case "labels":
 					console.log(config.labels.join(", "));
+					break;
+				case "priorities":
+					console.log(
+						getPriorityOptions(config)
+							.map((priority) => priority.label)
+							.join(", "),
+					);
+					break;
+				case "types":
+					console.log(getTaskTypeValues(config).join(", "));
 					break;
 				case "milestones": {
 					const milestones = await core.filesystem.listMilestones();
@@ -4052,7 +4311,7 @@ addHelpSchema(configCmd.command("get <key>"), {
 				default:
 					console.error(`Unknown config key: ${key}`);
 					console.error(
-						"Available keys: defaultEditor, projectName, defaultStatus, statuses, labels, milestones, definitionOfDone, dateFormat, maxColumnWidth, defaultPort, autoOpenBrowser, hideEmptyColumns, remoteOperations, autoCommit, filesystemOnly, bypassGitHooks, zeroPaddedIds, checkActiveBranches, activeBranchDays",
+						"Available keys: defaultEditor, projectName, defaultStatus, statuses, labels, priorities, types, milestones, definitionOfDone, dateFormat, maxColumnWidth, defaultPort, autoOpenBrowser, hideEmptyColumns, remoteOperations, autoCommit, filesystemOnly, bypassGitHooks, zeroPaddedIds, checkActiveBranches, activeBranchDays",
 					);
 					process.exit(1);
 			}
@@ -4234,6 +4493,7 @@ addHelpSchema(configCmd.command("set <key> <value>"), {
 				}
 				case "statuses":
 				case "labels":
+				case "priorities":
 				case "milestones":
 				case "definitionOfDone":
 					if (key === "milestones") {
@@ -4301,6 +4561,12 @@ addHelpSchema(configCmd.command("list"), {
 			console.log(`  defaultStatus: ${config.defaultStatus || "(not set)"}`);
 			console.log(`  statuses: [${config.statuses.join(", ")}]`);
 			console.log(`  labels: [${config.labels.join(", ")}]`);
+			console.log(
+				`  priorities: [${getPriorityOptions(config)
+					.map((priority) => priority.label)
+					.join(", ")}]`,
+			);
+			console.log(`  types: [${getTaskTypeValues(config).join(", ")}]`);
 			const milestones = await core.filesystem.listMilestones();
 			console.log(`  milestones: [${milestones.map((milestone) => milestone.id).join(", ")}]`);
 			console.log(`  definitionOfDone: [${(config.definitionOfDone ?? []).join(", ")}]`);
@@ -4319,6 +4585,97 @@ addHelpSchema(configCmd.command("list"), {
 			console.log(`  activeBranchDays: ${config.activeBranchDays ?? "30"}`);
 		} catch (err) {
 			console.error("Failed to list config values", err);
+			process.exitCode = 1;
+		}
+	});
+addHelpSchema(program.command("doctor"), {
+	reads: "Active and completed task files plus Backlog Markdown references",
+	required: [],
+	optional: [
+		{ name: "fix", type: "Boolean", description: "Apply the displayed duplicate-ID repair" },
+		{ name: "yes", type: "Boolean", description: "Confirm --fix without an interactive prompt" },
+	],
+	writes:
+		"With --fix, atomically renames duplicate task files and updates only their frontmatter IDs; ambiguous references are reported for human review",
+	output: "Duplicate-ID diagnosis, deterministic repair preview, and reference-review report",
+	examples: ["backlog doctor", "backlog doctor --fix", "backlog doctor --fix --yes"],
+})
+	.description("diagnose and safely repair duplicate task IDs")
+	.option("--fix", "apply the displayed duplicate task ID repair")
+	.option("--yes", "confirm --fix without prompting")
+	.action(async (options: { fix?: boolean; yes?: boolean }) => {
+		if (options.yes && !options.fix) {
+			console.error("--yes can only be used together with --fix.");
+			process.exitCode = 1;
+			return;
+		}
+
+		const cwd = await requireProjectRoot();
+		const core = new Core(cwd);
+		try {
+			const plan = await core.previewDuplicateTaskIdRepair({ includeBranches: true });
+			if (plan.groups.length === 0 && plan.crossBranchFindings.length === 0) {
+				console.log("No duplicate task IDs found in active or completed tasks.");
+				return;
+			}
+
+			printDuplicateRepairPlan(plan);
+			if (!options.fix) {
+				if (plan.groups.length > 0 && plan.repairable) {
+					console.log("\nRun 'backlog doctor --fix' to apply this repair after reviewing the preview.");
+				} else if (plan.groups.length > 0) {
+					console.log("\nResolve the blocked reasons above, then run 'backlog doctor' again.");
+				}
+				process.exitCode = 1;
+				return;
+			}
+			if (plan.groups.length === 0) {
+				console.error("Cross-branch findings cannot be repaired from the current branch.");
+				process.exitCode = 1;
+				return;
+			}
+			if (!plan.repairable) {
+				process.exitCode = 1;
+				return;
+			}
+
+			let confirmed = Boolean(options.yes);
+			if (!confirmed) {
+				if (!hasInteractiveTTY) {
+					console.error("Interactive confirmation is unavailable. Review the preview, then use --fix --yes.");
+					process.exitCode = 1;
+					return;
+				}
+				const confirmation = await clack.confirm({
+					message: `Rename ${plan.changes.length} duplicate task ${plan.changes.length === 1 ? "file" : "files"}?`,
+					initialValue: false,
+				});
+				confirmed = !clack.isCancel(confirmation) && confirmation === true;
+			}
+			if (!confirmed) {
+				console.log("Repair cancelled. No files changed.");
+				return;
+			}
+
+			const result = await core.repairDuplicateTaskIds(plan.fingerprint);
+			console.log(
+				`\nRepaired ${result.repairedFiles} duplicate task ${result.repairedFiles === 1 ? "file" : "files"}.`,
+			);
+			for (const change of result.changes) {
+				console.log(`  ${change.sourcePath} -> ${change.targetPath} (${change.oldId} -> ${change.newId})`);
+			}
+			if (result.references.length > 0) {
+				console.log(
+					`Review the ${result.references.length} reported reference ${result.references.length === 1 ? "line" : "lines"}; they were intentionally not changed.`,
+				);
+			}
+			console.log("Verification passed: no duplicate active/completed task IDs remain.");
+			if (plan.crossBranchFindings.length > 0) {
+				console.log("Cross-branch findings remain diagnostic-only and still require branch-by-branch review.");
+				process.exitCode = 1;
+			}
+		} catch (error) {
+			console.error(error instanceof Error ? error.message : String(error));
 			process.exitCode = 1;
 		}
 	});
@@ -4580,9 +4937,15 @@ registerInstructionsCommand(program);
 // MCP command group
 registerMcpCommand(program);
 
-program.parseAsync(process.argv).finally(() => {
-	// Restore BUN_OPTIONS after CLI parsing completes so it's available for subsequent commands
-	if (originalBunOptions) {
-		process.env.BUN_OPTIONS = originalBunOptions;
-	}
-});
+program
+	.parseAsync(process.argv)
+	.catch((error) => {
+		console.error(error instanceof Error ? error.message : String(error));
+		process.exitCode = 1;
+	})
+	.finally(() => {
+		// Restore BUN_OPTIONS after CLI parsing completes so it's available for subsequent commands
+		if (originalBunOptions) {
+			process.env.BUN_OPTIONS = originalBunOptions;
+		}
+	});

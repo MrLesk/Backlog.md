@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
-import { mkdir, rm } from "node:fs/promises";
+import { mkdir } from "node:fs/promises";
 import { join } from "node:path";
 import { $ } from "bun";
 import { Core } from "../core/backlog.ts";
@@ -12,7 +12,6 @@ const CLI_PATH = join(process.cwd(), "src", "cli.ts");
 describe("Append Implementation Notes via task edit --append-notes", () => {
 	beforeEach(async () => {
 		TEST_DIR = createUniqueTestDir("test-append-notes");
-		await rm(TEST_DIR, { recursive: true, force: true }).catch(() => {});
 		await mkdir(TEST_DIR, { recursive: true });
 
 		await $`git init -b main`.cwd(TEST_DIR).quiet();
@@ -24,11 +23,7 @@ describe("Append Implementation Notes via task edit --append-notes", () => {
 	});
 
 	afterEach(async () => {
-		try {
-			await safeCleanup(TEST_DIR);
-		} catch {
-			// ignore
-		}
+		await safeCleanup(TEST_DIR);
 	});
 
 	it("appends to existing Implementation Notes with single blank line separation", async () => {

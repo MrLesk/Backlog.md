@@ -1,7 +1,8 @@
 import React from 'react';
 import { type Task } from '../../types';
-import { sortByPriority } from '../../utils/task-sorting';
+import { compareTaskIds, sortByPriority } from '../../utils/task-sorting';
 import type { ReorderTaskPayload } from '../lib/api';
+import { parseStoredUtcDate } from '../utils/date-display';
 import TaskCard from './TaskCard';
 
 interface TaskColumnProps {
@@ -17,7 +18,37 @@ interface TaskColumnProps {
   onCleanup?: () => void;
   laneId?: string;
   targetMilestone?: string | null;
+  priorityOrder?: string[];
+  availableTypes?: string[];
 }
+
+type CreatedDateSortDirection = 'asc' | 'desc';
+
+const getCreatedDateTime = (task: Task): number | null => {
+  const parsed = parseStoredUtcDate(task.createdDate ?? '');
+  return parsed ? parsed.getTime() : null;
+};
+
+const sortByCreatedDate = (tasks: Task[], direction: CreatedDateSortDirection): Task[] => {
+  return tasks.slice().sort((a, b) => {
+    const aTime = getCreatedDateTime(a);
+    const bTime = getCreatedDateTime(b);
+
+    if (aTime === null && bTime === null) {
+      return compareTaskIds(a.id, b.id);
+    }
+    if (aTime === null) {
+      return 1;
+    }
+    if (bTime === null) {
+      return -1;
+    }
+    if (aTime !== bTime) {
+      return direction === 'asc' ? aTime - bTime : bTime - aTime;
+    }
+    return compareTaskIds(a.id, b.id);
+  });
+};
 
 const TaskColumn: React.FC<TaskColumnProps> = ({
   title,
@@ -31,7 +62,9 @@ const TaskColumn: React.FC<TaskColumnProps> = ({
   onDragEnd,
   onCleanup,
   laneId,
-  targetMilestone
+  targetMilestone,
+  priorityOrder,
+  availableTypes,
 }) => {
   const [isDragOver, setIsDragOver] = React.useState(false);
   const [draggedTaskId, setDraggedTaskId] = React.useState<string | null>(null);
@@ -39,7 +72,7 @@ const TaskColumn: React.FC<TaskColumnProps> = ({
   const [showMenu, setShowMenu] = React.useState(false);
   const menuRef = React.useRef<HTMLDivElement>(null);
   const columnActionsId = React.useId();
-  const canSortByPriority = Boolean(onTaskReorder) && tasks.length > 1 && tasks.every(task => !task.branch);
+  const canReorderColumn = Boolean(onTaskReorder) && tasks.length > 1 && tasks.every(task => !task.branch);
 
   React.useEffect(() => {
     if (!showMenu) return;
@@ -53,14 +86,11 @@ const TaskColumn: React.FC<TaskColumnProps> = ({
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, [showMenu]);
 
-  const handleSortByPriority = () => {
-    if (!onTaskReorder || !canSortByPriority) {
+  const emitColumnReorder = (orderedTaskIds: string[]) => {
+    if (!onTaskReorder || !canReorderColumn) {
       setShowMenu(false);
       return;
     }
-
-    const sortedTasks = sortByPriority(tasks);
-    const orderedTaskIds = sortedTasks.map(t => t.id);
 
     const currentIds = tasks.map(t => t.id);
     const hasChanged = orderedTaskIds.some((id, index) => id !== currentIds[index]);
@@ -76,6 +106,14 @@ const TaskColumn: React.FC<TaskColumnProps> = ({
     }
 
     setShowMenu(false);
+  };
+
+  const handleSortByPriority = () => {
+    emitColumnReorder(sortByPriority(tasks, priorityOrder).map(t => t.id));
+  };
+
+  const handleSortByCreatedDate = (direction: CreatedDateSortDirection) => {
+    emitColumnReorder(sortByCreatedDate(tasks, direction).map(t => t.id));
   };
 
   const getStatusBadgeClass = (status: string) => {
@@ -192,7 +230,7 @@ const TaskColumn: React.FC<TaskColumnProps> = ({
           </span>
         </div>
         
-        {canSortByPriority && (
+        {canReorderColumn && (
           <div className="relative" ref={menuRef}>
             <button
               type="button"
@@ -225,6 +263,28 @@ const TaskColumn: React.FC<TaskColumnProps> = ({
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 4h13M3 8h9m-9 4h6m4 0l4-4m0 0l4 4m-4-4v12" />
                   </svg>
                   Sort by Priority
+                </button>
+                <button
+                  type="button"
+                  role="menuitem"
+                  onClick={() => handleSortByCreatedDate('asc')}
+                  className="w-full text-left px-4 py-2 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700 flex items-center gap-2 transition-colors duration-150"
+                >
+                  <svg className="w-4 h-4 text-gray-500 dark:text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3M5 11h14M7 21h10a2 2 0 002-2V7a2 2 0 00-2-2H7a2 2 0 00-2 2v12a2 2 0 002 2zm5-7v4m0 0l-2-2m2 2l2-2" />
+                  </svg>
+                  Sort by Creation Date (oldest first)
+                </button>
+                <button
+                  type="button"
+                  role="menuitem"
+                  onClick={() => handleSortByCreatedDate('desc')}
+                  className="w-full text-left px-4 py-2 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700 flex items-center gap-2 transition-colors duration-150"
+                >
+                  <svg className="w-4 h-4 text-gray-500 dark:text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3M5 11h14M7 21h10a2 2 0 002-2V7a2 2 0 00-2-2H7a2 2 0 00-2 2v12a2 2 0 002 2zm5 11v-4m0 0l-2 2m2-2l2 2" />
+                  </svg>
+                  Sort by Creation Date (newest first)
                 </button>
               </div>
             )}
@@ -273,6 +333,7 @@ const TaskColumn: React.FC<TaskColumnProps> = ({
               }}
               status={title}
               laneId={laneId}
+              availableTypes={availableTypes}
             />
             
             {/* Drop indicator for after this task */}

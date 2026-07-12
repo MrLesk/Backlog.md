@@ -3,7 +3,9 @@ import { dirname, resolve } from "node:path";
 import type { Command } from "commander";
 import { DEFAULT_STATUSES } from "../constants/index.ts";
 import { resolveBacklogDirectory } from "../utils/backlog-directory.ts";
+import { getPriorityLabels } from "../utils/priority-config.ts";
 import { BACKLOG_CWD_ENV } from "../utils/runtime-cwd.ts";
+import { getTaskTypeValues } from "../utils/task-type-config.ts";
 
 export interface HelpField {
 	name: string;
@@ -80,14 +82,14 @@ function parseFlowList(value: string): string[] | null {
 	return trimmed.slice(1, -1).split(",").map(stripYamlScalar).filter(Boolean);
 }
 
-function parseStatusesFromConfig(content: string): string[] | null {
+function parseArrayFromConfig(content: string, keyName: string): string[] | null {
 	const lines = content.split(/\r?\n/);
 	for (let index = 0; index < lines.length; index++) {
 		const line = lines[index]?.trim() ?? "";
 		if (!line || line.startsWith("#")) {
 			continue;
 		}
-		const match = line.match(/^statuses\s*:\s*(.*)$/);
+		const match = line.match(new RegExp(`^${keyName}\\s*:\\s*(.*)$`));
 		if (!match) {
 			continue;
 		}
@@ -117,6 +119,18 @@ function parseStatusesFromConfig(content: string): string[] | null {
 	}
 
 	return null;
+}
+
+function parseStatusesFromConfig(content: string): string[] | null {
+	return parseArrayFromConfig(content, "statuses");
+}
+
+function parsePrioritiesFromConfig(content: string): string[] | null {
+	return parseArrayFromConfig(content, "priorities");
+}
+
+function parseTaskTypesFromConfig(content: string): string[] | null {
+	return parseArrayFromConfig(content, "types");
 }
 
 function parseStringValueFromConfig(content: string, keys: string[]): string | null {
@@ -184,6 +198,34 @@ export function getCliStatusValues(options?: { includeDraft?: boolean }): string
 	return options?.includeDraft ? includeDraftStatus(normalizedStatuses) : normalizedStatuses;
 }
 
+export function getCliPriorityValues(): string[] {
+	const configPath = findBacklogConfigPathSync(getRuntimeConfigStartDir());
+	if (configPath) {
+		try {
+			const parsed = parsePrioritiesFromConfig(readFileSync(configPath, "utf8"));
+			if (parsed && parsed.length > 0) {
+				return getPriorityLabels(parsed);
+			}
+		} catch {
+			return getPriorityLabels();
+		}
+	}
+	return getPriorityLabels();
+}
+
+export function getCliTaskTypeValues(): string[] {
+	const configPath = findBacklogConfigPathSync(getRuntimeConfigStartDir());
+	if (configPath) {
+		try {
+			const parsed = parseTaskTypesFromConfig(readFileSync(configPath, "utf8"));
+			return getTaskTypeValues(parsed);
+		} catch {
+			return getTaskTypeValues();
+		}
+	}
+	return getTaskTypeValues();
+}
+
 export function getCliTaskPrefix(): string {
 	const configPath = findBacklogConfigPathSync(getRuntimeConfigStartDir());
 	if (configPath) {
@@ -201,7 +243,11 @@ export function taskIdExample(body: string): string {
 }
 
 export function renderConfiguredTaskIds(text: string): string {
+	const taskTypes = getCliTaskTypeValues();
 	return text
+		.replace(/\{\{TASK_TYPE:(\d+)\}\}/g, (_match, index: string) => {
+			return JSON.stringify(taskTypes[Number(index) - 1] ?? "<configured task type>");
+		})
 		.replace(/\{\{TASK_ID:(\d+(?:\.\d+)*)\}\}/g, (_match, body: string) => taskIdExample(body))
 		.replace(/\b(?:BACK|TASK)-(\d+(?:\.\d+)*)\b/g, (_match, body: string) => taskIdExample(body));
 }
@@ -212,4 +258,13 @@ export function choiceType(values: readonly string[], options?: { multiple?: boo
 
 export function statusType(options?: { includeDraft?: boolean }): string {
 	return `one of configured statuses: ${getCliStatusValues(options).join(", ")}`;
+}
+
+export function priorityType(): string {
+	return `one of configured priorities: ${getCliPriorityValues().join(", ")}`;
+}
+
+export function taskType(options?: { multiple?: boolean }): string {
+	const cardinality = options?.multiple ? "one or more of" : "one of";
+	return `${cardinality} configured task types: ${getCliTaskTypeValues().join(", ")}`;
 }

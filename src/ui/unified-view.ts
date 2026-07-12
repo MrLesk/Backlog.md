@@ -3,9 +3,10 @@
  */
 
 import type { Core } from "../core/backlog.ts";
+import { findLocalDuplicateTaskIds } from "../core/duplicate-task-repair.ts";
 import type { Milestone, Task } from "../types/index.ts";
 import { watchConfig } from "../utils/config-watcher.ts";
-import { detectDuplicateTaskIds } from "../utils/duplicate-detection.ts";
+import { formatDuplicateTaskIdSummary } from "../utils/duplicate-detection.ts";
 import { collectAvailableLabels } from "../utils/label-filter.ts";
 import { hasAnyPrefix } from "../utils/prefix-config.ts";
 import { applySharedTaskFilters, createTaskSearchIndex, type LabelMatchMode } from "../utils/task-search.ts";
@@ -26,6 +27,7 @@ export interface UnifiedViewOptions {
 	filter?: {
 		status?: string;
 		assignee?: string;
+		type?: string[];
 		priority?: string;
 		labels?: string[];
 		labelMatch?: LabelMatchMode;
@@ -34,6 +36,7 @@ export interface UnifiedViewOptions {
 		title?: string;
 		filterDescription?: string;
 		searchQuery?: string;
+		excludeStatus?: string[];
 		parentTaskId?: string;
 		limit?: number;
 	};
@@ -58,6 +61,8 @@ export interface UnifiedViewLoadResult {
 export interface UnifiedViewFilters {
 	searchQuery: string;
 	statusFilter: string;
+	excludeStatus: string[];
+	typeFilter: string[];
 	priorityFilter: string;
 	labelFilter: string[];
 	labelMatch?: LabelMatchMode;
@@ -65,8 +70,13 @@ export interface UnifiedViewFilters {
 	limit?: number;
 }
 
+type UnifiedViewFilterUpdate = Omit<UnifiedViewFilters, "excludeStatus" | "typeFilter"> &
+	Partial<Pick<UnifiedViewFilters, "excludeStatus" | "typeFilter">>;
+
 export interface KanbanSharedFilters {
 	searchQuery: string;
+	excludeStatus: string[];
+	typeFilter?: string[];
 	priorityFilter: string;
 	labelFilter: string[];
 	labelMatch?: LabelMatchMode;
@@ -77,6 +87,8 @@ export interface KanbanSharedFilters {
 export function createKanbanSharedFilters(filters: UnifiedViewFilters): KanbanSharedFilters {
 	return {
 		searchQuery: filters.searchQuery,
+		excludeStatus: [...filters.excludeStatus],
+		typeFilter: [...filters.typeFilter],
 		priorityFilter: filters.priorityFilter,
 		labelFilter: [...filters.labelFilter],
 		labelMatch: filters.labelMatch,
@@ -92,6 +104,8 @@ export function filterTasksForKanban(
 ): Task[] {
 	if (
 		!filters.searchQuery.trim() &&
+		filters.excludeStatus.length === 0 &&
+		(filters.typeFilter?.length ?? 0) === 0 &&
 		!filters.priorityFilter &&
 		filters.labelFilter.length === 0 &&
 		!filters.milestoneFilter
@@ -104,7 +118,9 @@ export function filterTasksForKanban(
 		tasks,
 		{
 			query: filters.searchQuery,
-			priority: filters.priorityFilter as "high" | "medium" | "low" | undefined,
+			excludeStatus: filters.excludeStatus,
+			type: filters.typeFilter,
+			priority: filters.priorityFilter || undefined,
 			labels: filters.labelFilter,
 			labelMatch: filters.labelMatch ?? "any",
 			milestone: filters.milestoneFilter || undefined,
@@ -119,6 +135,8 @@ export function createUnifiedViewFilters(filter: UnifiedViewOptions["filter"] | 
 	return {
 		searchQuery: filter?.searchQuery || "",
 		statusFilter: filter?.status || "",
+		excludeStatus: [...(filter?.excludeStatus || [])],
+		typeFilter: [...(filter?.type || [])],
 		priorityFilter: filter?.priority || "",
 		labelFilter: [...(filter?.labels || [])],
 		labelMatch: filter?.labelMatch ?? "any",
@@ -127,11 +145,16 @@ export function createUnifiedViewFilters(filter: UnifiedViewOptions["filter"] | 
 	};
 }
 
-export function mergeUnifiedViewFilters(current: UnifiedViewFilters, update: UnifiedViewFilters): UnifiedViewFilters {
+export function mergeUnifiedViewFilters(
+	current: UnifiedViewFilters,
+	update: UnifiedViewFilterUpdate,
+): UnifiedViewFilters {
 	return {
 		...current,
 		searchQuery: update.searchQuery,
 		statusFilter: update.statusFilter,
+		excludeStatus: [...(update.excludeStatus ?? current.excludeStatus)],
+		typeFilter: [...(update.typeFilter ?? current.typeFilter)],
 		priorityFilter: update.priorityFilter,
 		labelFilter: [...update.labelFilter],
 		labelMatch: update.labelMatch ?? current.labelMatch ?? "any",
@@ -180,6 +203,11 @@ export async function loadTasksForUnifiedView(
 	}
 }
 
+export async function getDuplicateTaskStartupWarning(core: Core): Promise<string | undefined> {
+	const groups = await findLocalDuplicateTaskIds(core);
+	return groups.length > 0 ? formatDuplicateTaskIdSummary(groups) : undefined;
+}
+
 type ViewResult = "switch" | "exit";
 
 /**
@@ -193,13 +221,7 @@ export async function runUnifiedView(options: UnifiedViewOptions): Promise<void>
 			loadingScreenFactory: options.loadingScreenFactory,
 		});
 
-		const rawLocalTasks = await options.core.filesystem.listTasks();
-		const duplicateGroups = detectDuplicateTaskIds(rawLocalTasks);
-		let startupWarning: string | undefined;
-		if (duplicateGroups.length > 0) {
-			const ids = duplicateGroups.map((g) => g.id).join(", ");
-			startupWarning = `⚠ Duplicate task IDs detected: ${ids} — open the web UI for repair instructions`;
-		}
+		const startupWarning = await getDuplicateTaskStartupWarning(options.core);
 
 		const baseTasks = (loadedTasks || []).filter((t) => t.id && t.id.trim() !== "" && hasAnyPrefix(t.id));
 		if (baseTasks.length === 0) {
@@ -348,6 +370,8 @@ export async function runUnifiedView(options: UnifiedViewOptions): Promise<void>
 					filterDescription: options.filter?.filterDescription,
 					searchQuery: currentFilters.searchQuery,
 					statusFilter: currentFilters.statusFilter,
+					excludeStatus: currentFilters.excludeStatus,
+					typeFilter: currentFilters.typeFilter,
 					priorityFilter: currentFilters.priorityFilter,
 					labelFilter: currentFilters.labelFilter,
 					labelMatch: currentFilters.labelMatch,
@@ -401,15 +425,17 @@ export async function runUnifiedView(options: UnifiedViewOptions): Promise<void>
 					availableLabels: getBoardAvailableLabels(),
 					availableMilestones: getBoardAvailableMilestones(),
 					onFilterChange: (filters) => {
-						currentFilters = {
-							...currentFilters,
+						currentFilters = mergeUnifiedViewFilters(currentFilters, {
 							searchQuery: filters.searchQuery,
+							statusFilter: currentFilters.statusFilter,
+							excludeStatus: filters.excludeStatus,
+							typeFilter: [...filters.typeFilter],
 							priorityFilter: filters.priorityFilter,
 							labelFilter: [...filters.labelFilter],
 							labelMatch: filters.labelMatch ?? currentFilters.labelMatch ?? "any",
 							milestoneFilter: filters.milestoneFilter,
-							limit: filters.limit ?? currentFilters.limit,
-						};
+							limit: filters.limit,
+						});
 					},
 					subscribeUpdates: (updater) => {
 						boardUpdater = updater;
@@ -419,6 +445,8 @@ export async function runUnifiedView(options: UnifiedViewOptions): Promise<void>
 					milestoneEntities,
 					startupWarning,
 					dateFormat: config?.dateFormat,
+					priorities: config?.priorities,
+					types: config?.types,
 				}).then(() => {
 					// If user wants to exit, do it immediately
 					if (result === "exit") {

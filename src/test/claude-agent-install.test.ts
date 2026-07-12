@@ -11,12 +11,11 @@ describe("installClaudeAgent", () => {
 
 	beforeEach(async () => {
 		TEST_PROJECT = createUniqueTestDir("test-claude-agent");
-		await rm(TEST_PROJECT, { recursive: true, force: true }).catch(() => {});
 		await mkdir(TEST_PROJECT, { recursive: true });
 	});
 
 	afterEach(async () => {
-		await rm(TEST_PROJECT, { recursive: true, force: true }).catch(() => {});
+		await rm(TEST_PROJECT, { recursive: true, force: true });
 	});
 
 	it("creates .claude/agents directory in project root if it doesn't exist", async () => {

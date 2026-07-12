@@ -63,7 +63,21 @@ describe("getTaskStatistics", () => {
 		expect(stats.priorityCounts.get("high")).toBe(2);
 		expect(stats.priorityCounts.get("medium")).toBe(1);
 		expect(stats.priorityCounts.get("low")).toBe(1);
+		expect(stats.noPriorityCount).toBe(1);
+	});
+
+	test("keeps configured None distinct from tasks without priority", () => {
+		const tasks: Task[] = [
+			createTask({ id: "task-1", priority: "None" }),
+			createTask({ id: "task-2", priority: "Very High" }),
+			createTask({ id: "task-3" }),
+		];
+
+		const stats = getTaskStatistics(tasks, [], statuses, ["None", "Very High"]);
+
 		expect(stats.priorityCounts.get("none")).toBe(1);
+		expect(stats.priorityCounts.get("very high")).toBe(1);
+		expect(stats.noPriorityCount).toBe(1);
 	});
 
 	test("counts drafts correctly", () => {

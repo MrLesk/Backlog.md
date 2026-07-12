@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { mkdir, rm } from "node:fs/promises";
+import { mkdir } from "node:fs/promises";
 import { join } from "node:path";
 import { $ } from "bun";
 import { Core } from "../core/backlog.ts";
@@ -14,7 +14,6 @@ let core: Core;
 describe("CLI auto-plain behavior in non-TTY runs", () => {
 	beforeEach(async () => {
 		TEST_DIR = createUniqueTestDir("test-cli-auto-plain-non-tty");
-		await rm(TEST_DIR, { recursive: true, force: true }).catch(() => {});
 		await mkdir(TEST_DIR, { recursive: true });
 
 		await $`git init -b main`.cwd(TEST_DIR).quiet();
@@ -38,11 +37,7 @@ describe("CLI auto-plain behavior in non-TTY runs", () => {
 	});
 
 	afterEach(async () => {
-		try {
-			await safeCleanup(TEST_DIR);
-		} catch {
-			// Ignore cleanup errors - the unique directory names prevent conflicts
-		}
+		await safeCleanup(TEST_DIR);
 	});
 
 	test("task list falls back to plain output without --plain", async () => {

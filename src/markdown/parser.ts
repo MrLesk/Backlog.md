@@ -1,5 +1,6 @@
 import matter from "gray-matter";
 import type { AcceptanceCriterion, Decision, Document, Milestone, ParsedMarkdown, Task } from "../types/index.ts";
+import { normalizePriorityValue } from "../utils/priority-config.ts";
 import {
 	AcceptanceCriteriaManager,
 	CommentsManager,
@@ -147,11 +148,7 @@ export function parseMarkdown(content: string): ParsedMarkdown {
 export function parseTask(content: string): Task {
 	const { frontmatter, content: rawContent } = parseMarkdown(content);
 
-	// Validate priority field
-	const priority = frontmatter.priority ? String(frontmatter.priority).toLowerCase() : undefined;
-	const validPriorities = ["high", "medium", "low"];
-	const validatedPriority =
-		priority && validPriorities.includes(priority) ? (priority as "high" | "medium" | "low") : undefined;
+	const priority = normalizePriorityValue(frontmatter.priority ? String(frontmatter.priority) : undefined);
 
 	// Parse structured acceptance criteria (checked/text/index) from all sections
 	const structuredCriteria: AcceptanceCriterion[] = AcceptanceCriteriaManager.parseAllCriteria(rawContent);
@@ -192,7 +189,7 @@ export function parseTask(content: string): Task {
 		finalSummary: finalSummarySection,
 		parentTaskId: frontmatter.parent_task_id ? String(frontmatter.parent_task_id) : undefined,
 		subtasks: Array.isArray(frontmatter.subtasks) ? frontmatter.subtasks.map(String) : undefined,
-		priority: validatedPriority,
+		priority,
 		type: frontmatter.type ? String(frontmatter.type) : undefined,
 		ordinal: frontmatter.ordinal !== undefined ? Number(frontmatter.ordinal) : undefined,
 		onStatusChange: frontmatter.onStatusChange ? String(frontmatter.onStatusChange) : undefined,

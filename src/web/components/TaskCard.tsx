@@ -1,5 +1,7 @@
 import React from 'react';
 import { type Task } from '../../types';
+import { formatPriorityLabel } from '../../utils/priority-config';
+import TaskTypeBadge from './TaskTypeBadge';
 
 interface TaskCardProps {
   task: Task;
@@ -9,9 +11,10 @@ interface TaskCardProps {
   onDragEnd?: () => void;
   status?: string;
   laneId?: string;
+  availableTypes?: string[];
 }
 
-const TaskCard: React.FC<TaskCardProps> = ({ task, onEdit, onDragStart, onDragEnd, status, laneId }) => {
+const TaskCard: React.FC<TaskCardProps> = ({ task, onEdit, onDragStart, onDragEnd, status, laneId, availableTypes }) => {
   const [isDragging, setIsDragging] = React.useState(false);
   const [showBranchTooltip, setShowBranchTooltip] = React.useState(false);
 
@@ -74,7 +77,14 @@ const TaskCard: React.FC<TaskCardProps> = ({ task, onEdit, onDragStart, onDragEn
       case 'high': return { bg: 'bg-red-100 dark:bg-red-900/40', text: 'text-red-700 dark:text-red-300', label: 'High' };
       case 'medium': return { bg: 'bg-yellow-100 dark:bg-yellow-900/40', text: 'text-yellow-700 dark:text-yellow-300', label: 'Med' };
       case 'low': return { bg: 'bg-green-100 dark:bg-green-900/40', text: 'text-green-700 dark:text-green-300', label: 'Low' };
-      default: return null;
+      default:
+        return priority
+          ? {
+              bg: 'bg-gray-100 dark:bg-gray-600',
+              text: 'text-gray-700 dark:text-gray-200',
+              label: formatPriorityLabel(priority),
+            }
+          : null;
     }
   };
 
@@ -102,9 +112,18 @@ const TaskCard: React.FC<TaskCardProps> = ({ task, onEdit, onDragStart, onDragEn
           isDragging ? 'opacity-50 transform rotate-2 scale-105' : ''
         }`}
         draggable={!isFromOtherBranch}
+		role="button"
+		tabIndex={0}
+		aria-label={`Open ${task.id}: ${task.title}`}
         onDragStart={handleDragStart}
         onDragEnd={handleDragEnd}
         onClick={() => onEdit(task)}
+		onKeyDown={(event) => {
+			if (event.key === 'Enter' || event.key === ' ') {
+				event.preventDefault();
+				onEdit(task);
+			}
+		}}
       >
         {/* Cross-branch indicator banner */}
         {isFromOtherBranch && (
@@ -118,9 +137,12 @@ const TaskCard: React.FC<TaskCardProps> = ({ task, onEdit, onDragStart, onDragEn
           </div>
         )}
 
-        {/* Header row with priority badge and task ID */}
+        {/* Header row with task metadata */}
         <div className="flex items-center justify-between gap-2 mb-1.5">
-          <span className="text-xs text-gray-400 dark:text-gray-500 font-mono transition-colors duration-200">{task.id}</span>
+          <div className="flex min-w-0 items-center gap-2">
+            <span className="shrink-0 text-xs text-gray-400 dark:text-gray-500 font-mono transition-colors duration-200">{task.id}</span>
+            <TaskTypeBadge type={task.type} availableTypes={availableTypes} className="min-w-0" />
+          </div>
           {(() => {
             const badge = getPriorityBadge(task.priority);
             return badge ? (

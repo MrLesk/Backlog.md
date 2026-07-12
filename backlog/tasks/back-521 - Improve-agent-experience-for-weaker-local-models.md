@@ -1,11 +1,11 @@
 ---
 id: BACK-521
 title: Improve agent experience for weaker local models
-status: In Progress
+status: Done
 assignee:
   - '@codex'
 created_date: '2026-07-06 13:40'
-updated_date: '2026-07-06 21:49'
+updated_date: '2026-07-10 19:33'
 labels: []
 dependencies: []
 ordinal: 116000
@@ -69,11 +69,19 @@ Post-nudge Gemma rerun evidence (model google/gemma-4-12b-qat, demo /tmp/backlog
 Post-handoff rerun evidence: Gemma 12B (model google/gemma-4-12b-qat, demo /tmp/backlog-ax-google-gemma-4-12b-qat-handoff.2sw8ke, Pi LM Studio with --thinking xhigh using current-checkout backlog shim) read overview, task-creation, task-execution, and task-finalization. It created milestone m-0 and three tasks assigned to @gemma, avoided direct backlog edits, completed TASK-2 lifecycle with all ACs checked and status Done, and produced index.html/style.css/script.js plus verify_game.js. Its own verification was still weaker than ideal: it eventually passed a standalone win/draw/no-win logic script and claimed manual UI verification. Independent jsdom audit by Codex passed turn alternation, win, draw, and reset behavior for the generated app. Post-handoff Qwen rerun evidence (model qwen/qwen3.6-27b, demo /tmp/backlog-ax-qwen-qwen3.6-27b-handoff.SqrHxq, Pi LM Studio with --thinking xhigh using current-checkout backlog shim) read overview, task-creation, task-execution, and task-finalization; created milestone m-0 and three tasks assigned to @qwen; avoided direct backlog edits; implemented index.html; and wrote a jsdom verifier. The verifier first failed under bun/jsdom, then under node with 19 pass / 2 fail due incorrect click sequences. Qwen correctly did not check ACs or mark Done after failed verification, but stalled while repairing verifier scenarios; I interrupted it (exit 130), leaving TASK-2 In Progress. Independent jsdom audit by Codex passed turn alternation, row/column/diagonal wins, draw, reset, and post-reset play for the generated app. Net result: the task-creation handoff fix caused both Gemma and Qwen to read task-execution after task creation; both later read task-finalization. Remaining weakness is model-side verification design/repair, especially producing clean UI behavior checks without long reasoning loops.
 
 Extra-model run evidence: qwen/qwen3.6-35b-a3b was run via Pi LM Studio with --thinking xhigh in disposable demo /tmp/backlog-ax-qwen-qwen3.6-35b-a3b-extra.FQ1ZgC using the current-checkout backlog shim. It read overview, task-creation, task-execution, and task-finalization; created exactly one milestone m-0; created five tasks assigned to @qwen35; avoided direct writes under backlog/; implemented index.html/styles.css/script.js; and left TASK-1 In Progress instead of checking ACs or marking Done while its own jsdom verifier failed. The model then entered a repetitive reasoning loop while trying to repair the verifier, so Pi was interrupted with Ctrl-C. Independent Codex jsdom audit passed rendered 9 cells, X/O alternation, row win, draw, and reset behavior. This reinforces the remaining model-side weakness: larger Qwen follows the workflow guidance, but can still stall on verifier design/repair and correctly leaves terminal Backlog status unfinished when verification fails. Current additional-model blocker: after the sandbox/session transition, previous temp dirs were no longer visible under /private/tmp, Pi reported 'No models available' for 'pi --provider lmstudio --list-models', and direct local API checks 'curl -sS http://localhost:1234/api/v1/models' and 'curl -sS http://localhost:1234/v1/models' both failed with curl (7), 'Could not connect to server'. The planned google/gemma-4-31b-qat extra run could not be restarted until the LM Studio server exposes models again.
+
+Exact-main finalization verification on e9dc9c5bf5124f217352e1bc9b271d07323f036c (2026-07-10): bunx tsc --noEmit passed; bun run check . passed across 324 files; bun test passed 1643 tests with 2 expected interactive skips and 0 failures. The unavailable extra model and deeper verifier-design research remain optional follow-up, not required for this task completion.
 <!-- SECTION:NOTES:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+Completed the evidence-backed public workflow hardening for weaker local models: phase-specific CLI/MCP guide handoffs, objective-evidence finalization guidance, generated instruction nudges, and rejection of non-task parent IDs, with focused coverage. Gemma and Qwen reruns documented the observed improvements and remaining verifier limitations. Exact shipped main e9dc9c5bf5124f217352e1bc9b271d07323f036c passes TypeScript, Biome across 324 files, and the full suite with 1643 passing, 2 expected interactive skips, and 0 failures. Additional model-family and verifier-design research remains optional follow-up and is not claimed here.
+<!-- SECTION:FINAL_SUMMARY:END -->
 
 ## Definition of Done
 <!-- DOD:BEGIN -->
-- [ ] #1 bunx tsc --noEmit passes when TypeScript touched
-- [ ] #2 bun run check . passes when formatting/linting touched
+- [x] #1 bunx tsc --noEmit passes when TypeScript touched
+- [x] #2 bun run check . passes when formatting/linting touched
 - [x] #3 bun test (or scoped test) passes
 <!-- DOD:END -->

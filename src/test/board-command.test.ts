@@ -9,10 +9,11 @@ let TEST_DIR: string;
 
 describe("Board command integration", () => {
 	let core: Core;
+	let coreInitialized = false;
 
 	beforeEach(async () => {
 		TEST_DIR = createUniqueTestDir("test-board-command");
-		await rm(TEST_DIR, { recursive: true, force: true }).catch(() => {});
+		coreInitialized = false;
 		await mkdir(TEST_DIR, { recursive: true });
 
 		// Configure git for tests - required for CI
@@ -21,6 +22,7 @@ describe("Board command integration", () => {
 		await $`git config user.name "Test User"`.cwd(TEST_DIR).quiet();
 
 		core = new Core(TEST_DIR);
+		coreInitialized = true;
 		await initializeTestProject(core, "Test Board Project");
 
 		// Disable remote operations for tests to prevent background git fetches
@@ -68,13 +70,8 @@ This is another test task for board testing.`,
 	});
 
 	afterEach(async () => {
-		// Wait a bit to ensure any background operations complete
-		await new Promise((resolve) => setTimeout(resolve, 100));
-		try {
-			await safeCleanup(TEST_DIR);
-		} catch {
-			// Ignore cleanup errors - the unique directory names prevent conflicts
-		}
+		if (coreInitialized) core.disposeContentStore();
+		await safeCleanup(TEST_DIR);
 	});
 
 	describe("Board loading", () => {
@@ -104,8 +101,8 @@ This is another test task for board testing.`,
 		it("should handle empty task list gracefully", async () => {
 			// Remove test tasks
 			const tasksDir = core.filesystem.tasksDir;
-			await rm(join(tasksDir, "task-1 - Test Task One.md")).catch(() => {});
-			await rm(join(tasksDir, "task-2 - Test Task Two.md")).catch(() => {});
+			await rm(join(tasksDir, "task-1 - Test Task One.md"));
+			await rm(join(tasksDir, "task-2 - Test Task Two.md"));
 
 			const tasks = await core.filesystem.listTasks();
 			expect(tasks.length).toBe(0);

@@ -19,11 +19,7 @@ describe("Draft Prefix Migration", () => {
 	});
 
 	afterEach(async () => {
-		try {
-			await safeCleanup(TEST_DIR);
-		} catch {
-			// Ignore cleanup errors
-		}
+		await safeCleanup(TEST_DIR);
 	});
 
 	describe("needsDraftPrefixMigration", () => {

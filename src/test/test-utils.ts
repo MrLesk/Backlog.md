@@ -3,6 +3,7 @@
  * Designed to handle Windows-specific file system quirks and prevent parallel test interference
  */
 
+import type { ChildProcess } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { rm } from "node:fs/promises";
 import net from "node:net";
@@ -26,6 +27,100 @@ export function createUniqueTestDir(prefix: string): string {
  */
 export function sleep(ms: number): Promise<void> {
 	return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/**
+ * Rejects if an operation does not settle in time and always clears its timer
+ * when the operation resolves or rejects first.
+ */
+export function withTimeout<T>(operation: Promise<T>, label: string, timeoutMs: number): Promise<T> {
+	return new Promise<T>((resolve, reject) => {
+		const timer = setTimeout(() => {
+			clearTimeout(timer);
+			reject(new Error(`Timed out waiting for ${label}`));
+		}, timeoutMs);
+
+		operation.then(
+			(value) => {
+				clearTimeout(timer);
+				resolve(value);
+			},
+			(error: unknown) => {
+				clearTimeout(timer);
+				reject(error);
+			},
+		);
+	});
+}
+
+export type ChildCloseResult = { code: number | null; signal: NodeJS.Signals | null };
+
+/**
+ * Observes a child process immediately so close/error events cannot be missed,
+ * while letting callers start the bounded shutdown timer only when cleanup begins.
+ */
+export function observeChildClose(child: ChildProcess, label: string, timeoutMs: number) {
+	let startTimeout = () => {};
+	const result = new Promise<ChildCloseResult>((resolve, reject) => {
+		const gracefulTimeoutMs = Math.max(1, Math.floor(timeoutMs / 2));
+		const forcedTimeoutMs = Math.max(1, timeoutMs - gracefulTimeoutMs);
+		let settled = false;
+		let timeoutStarted = false;
+		let timeoutError: Error | undefined;
+		let processError: Error | undefined;
+		let terminalTimer: ReturnType<typeof setTimeout> | undefined;
+		let timeoutTimer: ReturnType<typeof setTimeout> | undefined;
+
+		const cleanup = () => {
+			settled = true;
+			if (timeoutTimer) clearTimeout(timeoutTimer);
+			if (terminalTimer) clearTimeout(terminalTimer);
+			child.off("error", onError);
+			child.off("close", onClose);
+		};
+		const rejectErrors = (errors: Error[]) => {
+			cleanup();
+			reject(errors.length === 1 ? errors[0] : new AggregateError(errors, `${label} cleanup failed`));
+		};
+		const onError = (error: Error) => {
+			child.off("error", onError);
+			processError = error;
+		};
+		const onClose = (code: number | null, signal: NodeJS.Signals | null) => {
+			const errors = [timeoutError, processError].filter((error): error is Error => error !== undefined);
+			if (errors.length > 0) {
+				rejectErrors(errors);
+				return;
+			}
+			cleanup();
+			resolve({ code, signal });
+		};
+
+		child.once("error", onError);
+		child.once("close", onClose);
+		startTimeout = () => {
+			if (settled || timeoutStarted) return;
+			timeoutStarted = true;
+			timeoutTimer = setTimeout(() => {
+				timeoutError = new Error(`Timed out waiting for ${label} to close`);
+				terminalTimer = setTimeout(
+					() =>
+						rejectErrors(
+							[timeoutError as Error, processError, new Error(`${label} did not close after SIGKILL`)].filter(
+								(error): error is Error => error !== undefined,
+							),
+						),
+					forcedTimeoutMs,
+				);
+				try {
+					child.kill("SIGKILL");
+				} catch (error) {
+					onError(error as Error);
+				}
+			}, gracefulTimeoutMs);
+		};
+	});
+	return { result, startTimeout: () => startTimeout() };
 }
 
 /**

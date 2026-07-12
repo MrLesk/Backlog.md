@@ -64,15 +64,49 @@ describe("MCP milestone tools", () => {
 	});
 
 	afterEach(async () => {
-		try {
-			await server.stop();
-		} catch {
-			// ignore
-		}
-		await safeCleanup(TEST_DIR);
+		const stopResult = await Promise.allSettled([server.stop()]);
+		const cleanupResult = await Promise.allSettled([safeCleanup(TEST_DIR)]);
+		const errors = [...stopResult, ...cleanupResult]
+			.filter((result): result is PromiseRejectedResult => result.status === "rejected")
+			.map((result) => result.reason);
+		if (errors.length === 1) throw errors[0];
+		if (errors.length > 1) throw new AggregateError(errors, "MCP server and fixture cleanup both failed");
 	});
 
-	it("supports setting and clearing milestone via task_create/task_edit", async () => {
+	it("assigns and clears a milestone without blocking the content store", async () => {
+		await server.testInterface.callTool({
+			params: { name: "milestone_add", arguments: { name: "Release 1.0" } },
+		});
+		await server.getContentStore();
+
+		await server.testInterface.callTool({
+			params: {
+				name: "task_create",
+				arguments: {
+					title: "Milestone task",
+					milestone: "Release 1.0",
+				},
+			},
+		});
+
+		const created = await server.getTask("task-1");
+		expect(created?.milestone).toBe("m-0");
+
+		await server.testInterface.callTool({
+			params: {
+				name: "task_edit",
+				arguments: {
+					id: "task-1",
+					milestone: null,
+				},
+			},
+		});
+
+		const cleared = await server.getTask("task-1");
+		expect(cleared?.milestone).toBeUndefined();
+	});
+
+	it("supports title, ID, and unconfigured milestone values via task_create/task_edit", async () => {
 		await server.testInterface.callTool({
 			params: { name: "milestone_add", arguments: { name: "Release 1.0" } },
 		});
@@ -118,19 +152,6 @@ describe("MCP milestone tools", () => {
 
 		const updatedById = await server.getTask("task-1");
 		expect(updatedById?.milestone).toBe("m-0");
-
-		await server.testInterface.callTool({
-			params: {
-				name: "task_edit",
-				arguments: {
-					id: "task-1",
-					milestone: null,
-				},
-			},
-		});
-
-		const cleared = await server.getTask("task-1");
-		expect(cleared?.milestone).toBeUndefined();
 
 		await server.testInterface.callTool({
 			params: {

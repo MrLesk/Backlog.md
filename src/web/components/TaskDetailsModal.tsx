@@ -9,6 +9,8 @@ import MermaidMarkdown from './MermaidMarkdown';
 import ChipInput from "./ChipInput";
 import DependencyInput from "./DependencyInput";
 import { formatStoredUtcDateForDisplay } from "../utils/date-display";
+import { getPriorityOptions } from "../../utils/priority-config";
+import { getTaskTypeValues, resolveTaskTypeValue } from "../../utils/task-type-config";
 
 interface Props {
   task?: Task; // Optional for create mode
@@ -16,10 +18,12 @@ interface Props {
   onClose: () => void;
   onSaved?: () => Promise<void> | void; // refresh callback
   onSubmit?: (taskData: Partial<Task>) => Promise<void>; // For creating new tasks
-  onArchive?: () => void; // For archiving tasks
+  onArchive?: () => Promise<void> | void; // For archiving tasks
   availableStatuses?: string[]; // Available statuses for new tasks
   isDraftMode?: boolean; // Whether creating a draft
   availableMilestones?: string[];
+  availablePriorities?: string[];
+  availableTypes?: string[];
   milestoneEntities?: Milestone[];
   archivedMilestoneEntities?: Milestone[];
   definitionOfDoneDefaults?: string[];
@@ -55,6 +59,7 @@ type TaskDetailsFormState = {
   assignee: string[];
   labels: string[];
   priority: string;
+  taskType: string;
   dependencies: string[];
   references: string[];
   milestone: string;
@@ -96,6 +101,7 @@ const buildTaskDetailsFormState = ({
   assignee: task?.assignee || [],
   labels: task?.labels || [],
   priority: task?.priority || "",
+  taskType: task?.type || "",
   dependencies: task?.dependencies || [],
   references: task?.references || [],
   milestone: task?.milestone || "",
@@ -119,6 +125,8 @@ export const TaskDetailsModal: React.FC<Props> = ({
   onArchive,
   availableStatuses,
   availableMilestones: _availableMilestones,
+  availablePriorities,
+  availableTypes,
   milestoneEntities,
   archivedMilestoneEntities,
   isDraftMode,
@@ -157,6 +165,8 @@ export const TaskDetailsModal: React.FC<Props> = ({
   );
   const initialDefinitionOfDone = task?.definitionOfDoneItems ?? (isCreateMode ? defaultDefinitionOfDone : []);
   const [definitionOfDone, setDefinitionOfDone] = useState<AcceptanceCriterion[]>(initialDefinitionOfDone);
+  const priorityOptions = useMemo(() => getPriorityOptions(availablePriorities), [availablePriorities]);
+  const typeOptions = useMemo(() => getTaskTypeValues(availableTypes), [availableTypes]);
   const resolveMilestoneToId = useCallback((value?: string | null): string => {
     const normalized = (value ?? "").trim();
     if (!normalized) return "";
@@ -296,10 +306,17 @@ export const TaskDetailsModal: React.FC<Props> = ({
   const [assignee, setAssignee] = useState<string[]>(task?.assignee || []);
   const [labels, setLabels] = useState<string[]>(task?.labels || []);
   const [priority, setPriority] = useState<string>(task?.priority || "");
+  const [taskType, setTaskType] = useState<string>(task?.type || "");
+  const [typeUpdateError, setTypeUpdateError] = useState<string | null>(null);
+  const [isTypeUpdating, setIsTypeUpdating] = useState(false);
+  const typeUpdateInFlightRef = useRef(false);
+  const typeUpdateRequestRef = useRef(0);
   const [dependencies, setDependencies] = useState<string[]>(task?.dependencies || []);
   const [references, setReferences] = useState<string[]>(task?.references || []);
   const [milestone, setMilestone] = useState<string>(task?.milestone || "");
   const [availableTasks, setAvailableTasks] = useState<Task[]>([]);
+  const canonicalTypeSelection = resolveTaskTypeValue(taskType, typeOptions);
+  const typeSelectionValue = canonicalTypeSelection ?? taskType;
   const milestoneSelectionValue = resolveMilestoneToId(milestone);
   const hasMilestoneSelection = (milestoneEntities ?? []).some((milestoneEntity) => milestoneEntity.id === milestoneSelectionValue);
 
@@ -361,6 +378,13 @@ export const TaskDetailsModal: React.FC<Props> = ({
   // Reset local state when task changes or modal opens
   useEffect(() => {
     const nextTaskId = task?.id ?? "";
+    const modalIdentityChanged = previousTaskId.current !== nextTaskId || previousIsOpen.current !== isOpen;
+    if (modalIdentityChanged) {
+      typeUpdateRequestRef.current += 1;
+      typeUpdateInFlightRef.current = false;
+      setIsTypeUpdating(false);
+      setTypeUpdateError(null);
+    }
     const nextFormState = buildTaskDetailsFormState({
       task,
       isCreateMode,
@@ -408,6 +432,7 @@ export const TaskDetailsModal: React.FC<Props> = ({
         preserveDirtyRefreshValue(current, previousFormState.labels, nextFormState.labels, areJsonEqual),
       );
       setPriority((current) => preserveDirtyRefreshValue(current, previousFormState.priority, nextFormState.priority));
+      setTaskType((current) => preserveDirtyRefreshValue(current, previousFormState.taskType, nextFormState.taskType));
       setDependencies((current) =>
         preserveDirtyRefreshValue(current, previousFormState.dependencies, nextFormState.dependencies, areJsonEqual),
       );
@@ -443,6 +468,7 @@ export const TaskDetailsModal: React.FC<Props> = ({
     setAssignee(nextFormState.assignee);
     setLabels(nextFormState.labels);
     setPriority(nextFormState.priority);
+    setTaskType(nextFormState.taskType);
     setDependencies(nextFormState.dependencies);
     setReferences(nextFormState.references);
     setMilestone(nextFormState.milestone);
@@ -601,10 +627,14 @@ export const TaskDetailsModal: React.FC<Props> = ({
         status,
         assignee,
         labels,
-        priority: (priority === "" ? undefined : priority) as "high" | "medium" | "low" | undefined,
+        priority: priority === "" ? undefined : priority,
         dependencies,
         milestone: milestone.trim().length > 0 ? milestone.trim() : undefined,
       };
+
+      if (isCreateMode) {
+        taskData.type = taskType;
+      }
 
       if (isCreateMode && onSubmit) {
         Object.assign(taskData, buildDefinitionOfDoneCreatePayload());
@@ -675,11 +705,14 @@ export const TaskDetailsModal: React.FC<Props> = ({
     // Don't allow updates for cross-branch tasks
     if (isFromOtherBranch) return;
 
+    setError(null);
+
     // Optimistic UI
     if (updates.status !== undefined) setStatus(String(updates.status));
     if (updates.assignee !== undefined) setAssignee(updates.assignee as string[]);
     if (updates.labels !== undefined) setLabels(updates.labels as string[]);
     if (updates.priority !== undefined) setPriority(String(updates.priority));
+    if (updates.type !== undefined) setTaskType(String(updates.type));
     if (updates.dependencies !== undefined) setDependencies(updates.dependencies as string[]);
     if (updates.references !== undefined) setReferences(updates.references as string[]);
     if (updates.milestone !== undefined) setMilestone((updates.milestone ?? "") as string);
@@ -691,7 +724,47 @@ export const TaskDetailsModal: React.FC<Props> = ({
         if (onSaved) await onSaved();
       } catch (err) {
         console.error("Failed to update task metadata", err);
-        // No rollback for simplicity; caller can refresh
+        setError(err instanceof Error ? err.message : String(err));
+      }
+    }
+  };
+
+  const handleTaskTypeChange = async (nextType: string) => {
+    if (isFromOtherBranch) return;
+    if (!task) {
+      setTaskType(nextType);
+      setTypeUpdateError(null);
+      return;
+    }
+    if (typeUpdateInFlightRef.current) return;
+
+    const previousType = taskType;
+    const requestId = typeUpdateRequestRef.current + 1;
+    typeUpdateRequestRef.current = requestId;
+    typeUpdateInFlightRef.current = true;
+    setIsTypeUpdating(true);
+    setTypeUpdateError(null);
+    setTaskType(nextType);
+
+    try {
+      const updatedTask = await apiClient.updateTask(task.id, { type: nextType });
+      if (typeUpdateRequestRef.current !== requestId) return;
+      setTaskType(updatedTask.type ?? "");
+      if (onSaved) {
+        try {
+          await onSaved();
+        } catch (refreshError) {
+          console.error("Task type was saved, but refreshing task data failed", refreshError);
+        }
+      }
+    } catch (updateError) {
+      if (typeUpdateRequestRef.current !== requestId) return;
+      setTaskType(previousType);
+      setTypeUpdateError(updateError instanceof Error ? updateError.message : String(updateError));
+    } finally {
+      if (typeUpdateRequestRef.current === requestId) {
+        typeUpdateInFlightRef.current = false;
+        setIsTypeUpdating(false);
       }
     }
   };
@@ -746,8 +819,7 @@ export const TaskDetailsModal: React.FC<Props> = ({
   const handleArchive = async () => {
     if (!task || !onArchive) return;
     if (!window.confirm(`Are you sure you want to archive "${task.title}"? This will move the task to the archive folder.`)) return;
-    onArchive();
-    onClose();
+    await onArchive();
   };
 
   const checkedCount = (criteria || []).filter((c) => c.checked).length;
@@ -826,7 +898,7 @@ export const TaskDetailsModal: React.FC<Props> = ({
       }
     >
       {error && (
-        <div className="mb-3 text-sm text-red-600 dark:text-red-400">{error}</div>
+        <div role="alert" className="mb-3 text-sm text-red-600 dark:text-red-400">{error}</div>
       )}
 
       {/* Cross-branch task indicator */}
@@ -1225,6 +1297,35 @@ export const TaskDetailsModal: React.FC<Props> = ({
             <StatusSelect current={status} onChange={(val) => handleInlineMetaUpdate({ status: val })} disabled={isFromOtherBranch} />
           </div>
 
+          {/* Type */}
+          <div className="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-3">
+            <SectionHeader title="Type" />
+            <select
+              aria-label="Task type"
+              aria-invalid={typeUpdateError ? true : undefined}
+              aria-describedby={typeUpdateError ? "task-type-update-error" : undefined}
+              className={`w-full h-10 px-3 pr-10 py-2 border border-gray-300 dark:border-gray-600 rounded-md text-sm bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-stone-500 dark:focus:ring-stone-400 focus:border-transparent transition-colors duration-200 ${isFromOtherBranch || isTypeUpdating ? 'opacity-60 cursor-not-allowed' : ''}`}
+              value={typeSelectionValue}
+              onChange={(event) => void handleTaskTypeChange(event.target.value)}
+              disabled={isFromOtherBranch || isTypeUpdating}
+            >
+              <option value="">No type</option>
+              {!canonicalTypeSelection && taskType.trim() ? (
+                <option value={taskType}>{taskType} (not configured)</option>
+              ) : null}
+              {typeOptions.map((typeOption) => (
+                <option key={typeOption} value={typeOption}>
+                  {typeOption}
+                </option>
+              ))}
+            </select>
+            {typeUpdateError ? (
+              <p id="task-type-update-error" role="alert" className="mt-2 text-xs text-red-600 dark:text-red-400">
+                {typeUpdateError}
+              </p>
+            ) : null}
+          </div>
+
           {/* Assignee */}
           <div className="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-3">
             <SectionHeader title="Assignee" />
@@ -1261,9 +1362,11 @@ export const TaskDetailsModal: React.FC<Props> = ({
               disabled={isFromOtherBranch}
             >
               <option value="">No Priority</option>
-              <option value="low">Low</option>
-              <option value="medium">Medium</option>
-              <option value="high">High</option>
+              {priorityOptions.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
             </select>
           </div>
 

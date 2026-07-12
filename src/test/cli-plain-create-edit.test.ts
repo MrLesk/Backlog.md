@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
-import { mkdir, rm } from "node:fs/promises";
+import { mkdir } from "node:fs/promises";
 import { join } from "node:path";
 import { $ } from "bun";
 import { Core } from "../index.ts";
@@ -12,9 +12,6 @@ describe("CLI --plain for task create/edit", () => {
 
 	beforeEach(async () => {
 		TEST_DIR = createUniqueTestDir("test-plain-create-edit");
-		try {
-			await rm(TEST_DIR, { recursive: true, force: true });
-		} catch {}
 		await mkdir(TEST_DIR, { recursive: true });
 
 		// Initialize git repo first using shell API (same as other tests)
@@ -28,9 +25,7 @@ describe("CLI --plain for task create/edit", () => {
 	});
 
 	afterEach(async () => {
-		try {
-			await safeCleanup(TEST_DIR);
-		} catch {}
+		await safeCleanup(TEST_DIR);
 	});
 
 	it("prints plain details after task create --plain", async () => {

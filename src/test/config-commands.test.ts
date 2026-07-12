@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
-import { mkdir, rm } from "node:fs/promises";
+import { mkdir } from "node:fs/promises";
 import { join } from "node:path";
 import { $ } from "bun";
 import type { PromptRunner } from "../commands/advanced-config-wizard.ts";
@@ -15,7 +15,6 @@ describe("Config commands", () => {
 
 	beforeEach(async () => {
 		TEST_DIR = createUniqueTestDir("test-config-commands");
-		await rm(TEST_DIR, { recursive: true, force: true }).catch(() => {});
 		await mkdir(TEST_DIR, { recursive: true });
 
 		// Configure git for tests - required for CI
@@ -29,7 +28,11 @@ describe("Config commands", () => {
 
 	function createPromptStub(sequence: Array<Record<string, unknown>>): PromptRunner {
 		const stub: PromptRunner = async () => {
-			return sequence.shift() ?? {};
+			const response = sequence.shift();
+			if (!response) {
+				throw new Error("Advanced config wizard requested an unexpected prompt.");
+			}
+			return response;
 		};
 		return stub;
 	}
@@ -82,7 +85,7 @@ describe("Config commands", () => {
 			{ autoCommit: true },
 			{ enableZeroPadding: true },
 			{ paddingWidth: 4 },
-			{ editor: "echo" },
+			{ editor: "bun" },
 			{ definitionOfDoneAction: "add" },
 			{ definitionOfDoneItem: "Ship release notes" },
 			{ definitionOfDoneAction: "done" },
@@ -103,14 +106,14 @@ describe("Config commands", () => {
 		expect(mergedConfig.bypassGitHooks).toBe(true);
 		expect(mergedConfig.autoCommit).toBe(true);
 		expect(mergedConfig.zeroPaddedIds).toBe(4);
-		expect(mergedConfig.defaultEditor).toBe("echo");
+		expect(mergedConfig.defaultEditor).toBe("bun");
 		expect(mergedConfig.definitionOfDone).toEqual(["Ship release notes"]);
 		expect(mergedConfig.defaultPort).toBe(7007);
 		expect(mergedConfig.autoOpenBrowser).toBe(false);
 
 		const reloadedConfig = await core.filesystem.loadConfig();
 		expect(reloadedConfig?.zeroPaddedIds).toBe(4);
-		expect(reloadedConfig?.defaultEditor).toBe("echo");
+		expect(reloadedConfig?.defaultEditor).toBe("bun");
 		expect(reloadedConfig?.definitionOfDone).toEqual(["Ship release notes"]);
 		expect(reloadedConfig?.defaultPort).toBe(7007);
 		expect(reloadedConfig?.autoOpenBrowser).toBe(false);
@@ -188,11 +191,7 @@ describe("Config commands", () => {
 	});
 
 	afterEach(async () => {
-		try {
-			await safeCleanup(TEST_DIR);
-		} catch {
-			// Ignore cleanup errors - the unique directory names prevent conflicts
-		}
+		await safeCleanup(TEST_DIR);
 	});
 
 	it("should save and load defaultEditor config", async () => {

@@ -101,11 +101,7 @@ describe("Status Change Callbacks", () => {
 		});
 
 		afterEach(async () => {
-			try {
-				await rm(testDir, { recursive: true, force: true });
-			} catch {
-				// Ignore cleanup errors
-			}
+			await rm(testDir, { recursive: true, force: true });
 		});
 
 		test("triggers global callback on status change", async () => {

@@ -8,13 +8,17 @@ import type { Task } from "../types/index.ts";
 import { labelsToLower } from "./label-filter.ts";
 import { NO_MILESTONE_FILTER_VALUE } from "./milestone-filter.ts";
 import { matchesModifiedFileFilters, normalizeModifiedFileFilters } from "./modified-files.ts";
+import { normalizePriorityValue } from "./priority-config.ts";
+import { matchesTaskTypeFilter } from "./task-type-config.ts";
 
 export type LabelMatchMode = "any" | "all";
 
 export interface TaskSearchOptions {
 	query?: string;
 	status?: string;
-	priority?: "high" | "medium" | "low";
+	excludeStatus?: string | string[];
+	type?: string | string[];
+	priority?: string;
 	labels?: string[];
 	labelMatch?: LabelMatchMode;
 	modifiedFiles?: string[];
@@ -22,7 +26,9 @@ export interface TaskSearchOptions {
 
 export interface SharedTaskFilterOptions {
 	query?: string;
-	priority?: "high" | "medium" | "low";
+	excludeStatus?: string | string[];
+	type?: string | string[];
+	priority?: string;
 	labels?: string[];
 	labelMatch?: LabelMatchMode;
 	modifiedFiles?: string[];
@@ -32,6 +38,7 @@ export interface SharedTaskFilterOptions {
 
 export interface TaskFilterOptions extends SharedTaskFilterOptions {
 	status?: string;
+	excludeStatus?: string | string[];
 }
 
 export interface TaskSearchIndex {
@@ -130,7 +137,7 @@ function buildSearchableTask(task: Task): SearchableTask {
 		idVariants: createTaskIdVariants(task.id),
 		dependencyIds: (task.dependencies ?? []).flatMap((dependency) => createTaskIdVariants(dependency)),
 		statusLower: (task.status || "").toLowerCase(),
-		priorityLower: task.priority?.toLowerCase(),
+		priorityLower: normalizePriorityValue(task.priority),
 		labelsLower: (task.labels || []).map((label) => label.toLowerCase()),
 		modifiedFiles: task.modifiedFiles ?? [],
 	};
@@ -175,10 +182,22 @@ export function createTaskSearchIndex(tasks: Task[]): TaskSearchIndex {
 				const statusLower = options.status.toLowerCase();
 				results = results.filter((t) => t.statusLower === statusLower);
 			}
+			if (options.excludeStatus) {
+				const excludedStatuses = Array.isArray(options.excludeStatus) ? options.excludeStatus : [options.excludeStatus];
+				const excluded = new Set(
+					excludedStatuses.map((status) => status.trim().toLowerCase()).filter((status) => status.length > 0),
+				);
+				if (excluded.size > 0) {
+					results = results.filter((t) => !excluded.has(t.statusLower));
+				}
+			}
+			if (options.type) {
+				results = results.filter((task) => matchesTaskTypeFilter(task.task.type, options.type));
+			}
 
 			// Apply priority filter
 			if (options.priority) {
-				const priorityLower = options.priority.toLowerCase();
+				const priorityLower = normalizePriorityValue(options.priority);
 				results = results.filter((t) => t.priorityLower === priorityLower);
 			}
 
@@ -235,6 +254,8 @@ export function applyTaskFilters(tasks: Task[], options: TaskFilterOptions, inde
 	const hasBaseFilters = Boolean(
 		query ||
 			options.status ||
+			options.excludeStatus ||
+			options.type ||
 			options.priority ||
 			(options.labels && options.labels.length > 0) ||
 			(options.modifiedFiles && options.modifiedFiles.length > 0),
@@ -244,6 +265,8 @@ export function applyTaskFilters(tasks: Task[], options: TaskFilterOptions, inde
 		? (index ?? createTaskSearchIndex(tasks)).search({
 				query,
 				status: options.status,
+				excludeStatus: options.excludeStatus,
+				type: options.type,
 				priority: options.priority,
 				labels: options.labels,
 				labelMatch: options.labelMatch,
@@ -267,6 +290,8 @@ export function applySharedTaskFilters(
 		tasks,
 		{
 			query: options.query,
+			excludeStatus: options.excludeStatus,
+			type: options.type,
 			priority: options.priority,
 			labels: options.labels,
 			labelMatch: options.labelMatch,

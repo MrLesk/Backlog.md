@@ -11,9 +11,11 @@ Recommended CLI commands:
 - `backlog search "desktop app" --plain`
 - `backlog task list --status "<todo status>" --plain`
 - `backlog task list --status "<active status>" --plain`
+- `backlog task list --exclude-status "<terminal status>" --plain`
+- `backlog task list --type {{TASK_TYPE:1}} --plain`
 - `backlog task list --search "desktop app" --labels frontend,bug --limit 20 --plain`
 
-Avoid broad unfiltered listing when the project may have many tasks. Use `--status`, `--assignee`, `--unassigned`, `--parent`, `--priority`, `--labels`, `--search`, or `--limit` where applicable.
+Avoid broad unfiltered listing when the project may have many tasks. Use `--status`, `--exclude-status`, `--type`, `--assignee`, `--unassigned`, `--parent`, `--priority`, `--labels`, `--search`, or `--limit` where applicable. Repeat `--exclude-status` or pass comma-separated configured statuses to exclude multiple states. Repeat `--type` or pass comma-separated configured task types to include multiple types.
 
 Use `backlog task view {{TASK_ID:123}} --plain` to read full context for likely matches.
 
@@ -62,6 +64,12 @@ Include:
 - Acceptance criteria that are specific, testable, and independent.
 - References or documentation when they are needed for implementation.
 - Dependencies when work must happen in order.
+
+For future work, do **not** add an implementation plan or speculative code approach during task creation. Creation
+captures the durable intent, context, scope, acceptance criteria, references, and dependencies. The worker researches
+the current system and records the plan after picking up and activating the task, because the codebase or constraints may
+change before then. The narrow exception is already-started work being created directly in a configured active status
+(for example, In Progress); its current researched plan may be supplied at creation.
 
 Examples:
 

@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import { join } from "node:path";
+import { DEFAULT_STATUSES } from "../constants/index.ts";
 import { FileSystem } from "../file-system/operations.ts";
 import { BacklogServer } from "../server/index.ts";
 import type { Decision, Document, Milestone, Task } from "../types/index.ts";
@@ -60,6 +61,21 @@ const dependentTask: Task = {
 	modifiedFiles: ["src/ui/task-viewer-with-search.ts"],
 };
 
+const customPriorityTask: Task = {
+	id: "TASK-0009",
+	title: "Custom priority escalation",
+	status: "In Progress",
+	assignee: ["@codex"],
+	reporter: "@codex",
+	createdDate: "2025-09-20 11:00",
+	updatedDate: "2025-09-20 11:00",
+	labels: ["search"],
+	dependencies: [],
+	description: "Custom priority lookup target",
+	priority: "very high",
+	modifiedFiles: ["src/server/index.ts"],
+};
+
 describe("BacklogServer search endpoint", () => {
 	beforeEach(async () => {
 		TEST_DIR = createUniqueTestDir("server-search");
@@ -69,6 +85,8 @@ describe("BacklogServer search endpoint", () => {
 			projectName: "Server Search",
 			statuses: ["To Do", "In Progress", "Done"],
 			labels: [],
+			types: ["Bug", "Feature", "Customer Request"],
+			priorities: ["Very High", "High", "Medium", "Low", "Very Low"],
 			milestones: [],
 			dateFormat: "YYYY-MM-DD",
 			remoteOperations: false,
@@ -76,6 +94,7 @@ describe("BacklogServer search endpoint", () => {
 
 		await filesystem.saveTask(baseTask);
 		await filesystem.saveTask(dependentTask);
+		await filesystem.saveTask(customPriorityTask);
 		await filesystem.saveDocument(baseDoc);
 		await filesystem.saveDecision(baseDecision);
 
@@ -132,6 +151,27 @@ describe("BacklogServer search endpoint", () => {
 		expect(results[0]?.task?.id).toBe(baseTask.id);
 	});
 
+	it("excludes configured statuses from task listings and search results", async () => {
+		const tasks = await fetchJson<Task[]>("/api/tasks?excludeStatus=In%20Progress");
+		expect(tasks).toHaveLength(0);
+
+		const results = await fetchJson<Array<{ type: string; task?: Task }>>(
+			"/api/search?type=task&query=search&excludeStatus=In%20Progress",
+		);
+		expect(results).toHaveLength(0);
+	});
+
+	it("uses configured custom priorities for task and search filters", async () => {
+		const taskResults = await fetchJson<Task[]>("/api/tasks?priority=VERY%20HIGH");
+		expect(taskResults.map((task) => task.id)).toEqual([customPriorityTask.id]);
+
+		const searchResults = await fetchJson<Array<{ type: string; task?: Task }>>(
+			"/api/search?type=task&query=custom&priority=Very%20High",
+		);
+		expect(searchResults).toHaveLength(1);
+		expect(searchResults[0]?.task?.id).toBe(customPriorityTask.id);
+	});
+
 	it("filters search results by assignee and labels", async () => {
 		const url = "/api/search?type=task&query=Alpha&status=In%20Progress&priority=high&label=search&assignee=%40codex";
 		const results = await fetchJson<Array<{ type: string; task?: Task }>>(url);
@@ -148,6 +188,32 @@ describe("BacklogServer search endpoint", () => {
 
 	it("rejects unsupported priority filters with 400", async () => {
 		await expect(fetchJson<Task[]>("/api/tasks?priority=urgent")).rejects.toThrow();
+	});
+
+	it("rejects unsupported excluded statuses with 400", async () => {
+		await expect(fetchJson<Task[]>("/api/tasks?excludeStatus=Blocked")).rejects.toThrow();
+		await expect(fetchJson<Array<{ type: string }>>("/api/search?type=task&excludeStatus=Blocked")).rejects.toThrow();
+	});
+
+	it("returns default statuses from the statuses endpoint when configured statuses are empty", async () => {
+		if (server) {
+			await server.stop();
+			server = null;
+		}
+		const config = await filesystem.loadConfig();
+		if (!config) {
+			throw new Error("Config not loaded");
+		}
+		await filesystem.saveConfig({ ...config, statuses: [] });
+
+		server = new BacklogServer(TEST_DIR);
+		await server.start(0, false);
+		const port = server.getPort();
+		expect(port).not.toBeNull();
+		serverPort = port ?? 0;
+
+		const statuses = await fetchJson<string[]>("/api/statuses");
+		expect(statuses).toEqual(Array.from(DEFAULT_STATUSES));
 	});
 
 	it("supports zero-padded ids and dependency-aware search", async () => {
@@ -203,6 +269,63 @@ describe("BacklogServer search endpoint", () => {
 		const fetched = await fetchJson<Task>(`/api/task/${shortId}`);
 		expect(fetched.id).toBe(created.id);
 		expect(fetched.title).toBe("Immediate fetch");
+	});
+
+	it("persists configured task types through create, edit, and clear", async () => {
+		const created = await fetchJson<Task>("/api/tasks", {
+			method: "POST",
+			headers: { "Content-Type": "application/json" },
+			body: JSON.stringify({
+				title: "Typed Web task",
+				status: "To Do",
+				type: "customer request",
+			}),
+		});
+		expect(created.type).toBe("Customer Request");
+
+		const updated = await fetchJson<Task>(`/api/tasks/${created.id}`, {
+			method: "PUT",
+			headers: { "Content-Type": "application/json" },
+			body: JSON.stringify({ type: "BUG" }),
+		});
+		expect(updated.type).toBe("Bug");
+
+		const cleared = await fetchJson<Task>(`/api/tasks/${created.id}`, {
+			method: "PUT",
+			headers: { "Content-Type": "application/json" },
+			body: JSON.stringify({ type: "" }),
+		});
+		expect(cleared.type).toBeUndefined();
+	});
+
+	it("rejects unsupported task types from the Web task API", async () => {
+		const createResponse = await fetch(`http://127.0.0.1:${serverPort}/api/tasks`, {
+			method: "POST",
+			headers: { "Content-Type": "application/json" },
+			body: JSON.stringify({ title: "Invalid typed task", status: "To Do", type: "Epic" }),
+		});
+
+		expect(createResponse.status).toBe(400);
+		expect(await createResponse.json()).toEqual({
+			error: "Invalid type: Epic. Valid types are: Bug, Feature, Customer Request",
+		});
+
+		const created = await fetchJson<Task>("/api/tasks", {
+			method: "POST",
+			headers: { "Content-Type": "application/json" },
+			body: JSON.stringify({ title: "Keep valid type", status: "To Do", type: "Bug" }),
+		});
+		const updateResponse = await fetch(`http://127.0.0.1:${serverPort}/api/tasks/${created.id}`, {
+			method: "PUT",
+			headers: { "Content-Type": "application/json" },
+			body: JSON.stringify({ type: "Epic" }),
+		});
+
+		expect(updateResponse.status).toBe(400);
+		expect(await updateResponse.json()).toEqual({
+			error: "Invalid type: Epic. Valid types are: Bug, Feature, Customer Request",
+		});
+		expect((await fetchJson<Task>(`/api/task/${created.id}`)).type).toBe("Bug");
 	});
 
 	it("appends comments through the task update API and indexes comment text", async () => {

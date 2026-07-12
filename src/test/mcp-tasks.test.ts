@@ -1,9 +1,12 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
+import { join } from "node:path";
 import { $ } from "bun";
 import { DEFAULT_STATUSES, DEFAULT_TASK_TYPES } from "../constants/index.ts";
+import { serializeTask } from "../markdown/serializer.ts";
 import { McpServer } from "../mcp/server.ts";
 import { registerTaskTools } from "../mcp/tools/tasks/index.ts";
 import type { JsonSchema } from "../mcp/validation/validators.ts";
+import type { Task } from "../types/index.ts";
 import { createUniqueTestDir, initializeTestProject, safeCleanup } from "./test-utils.ts";
 
 // Helper to extract text from MCP content (handles union types)
@@ -40,12 +43,13 @@ describe("MCP task tools (MVP)", () => {
 	});
 
 	afterEach(async () => {
-		try {
-			await mcpServer.stop();
-		} catch {
-			// ignore
-		}
-		await safeCleanup(TEST_DIR);
+		const stopResult = await Promise.allSettled([mcpServer.stop()]);
+		const cleanupResult = await Promise.allSettled([safeCleanup(TEST_DIR)]);
+		const errors = [...stopResult, ...cleanupResult]
+			.filter((result): result is PromiseRejectedResult => result.status === "rejected")
+			.map((result) => result.reason);
+		if (errors.length === 1) throw errors[0];
+		if (errors.length > 1) throw new AggregateError(errors, "MCP server and fixture cleanup both failed");
 	});
 
 	it("creates and lists tasks", async () => {
@@ -83,6 +87,43 @@ describe("MCP task tools (MVP)", () => {
 		expect(searchText).toContain("TASK-1 - Agent onboarding checklist");
 		expect(searchText).toContain("(To Do)");
 		expect(searchText).not.toContain("Implementation Plan:");
+	});
+
+	it("adapts duplicate diagnosis to the canonical CLI without agent repair prompts", async () => {
+		const makeTask = (id: string, title: string): Task => ({
+			id,
+			title,
+			status: "To Do",
+			assignee: [],
+			createdDate: "2026-01-01",
+			labels: [],
+			dependencies: [],
+			rawContent: `## Description\n\n${title}`,
+		});
+		await Bun.write(
+			join(mcpServer.filesystem.tasksDir, "task-1 - Alpha.md"),
+			serializeTask(makeTask("TASK-1", "Alpha")),
+		);
+		await Bun.write(
+			join(mcpServer.filesystem.tasksDir, "task-01 - Beta.md"),
+			serializeTask(makeTask("TASK-01", "Beta")),
+		);
+
+		const listResult = await mcpServer.testInterface.callTool({
+			params: { name: "task_list", arguments: {} },
+		});
+		const text = (listResult.content ?? []).map((entry) => ("text" in entry ? entry.text : "")).join("\n\n");
+		expect(text).toContain("duplicate task ID");
+		expect(text).toContain("backlog doctor");
+		expect(text).toContain("task-1 - Alpha.md");
+		expect(text.toLowerCase()).not.toContain("prompt");
+		expect(text.toLowerCase()).not.toContain("agent");
+
+		const viewResult = await mcpServer.testInterface.callTool({
+			params: { name: "task_view", arguments: { id: "TASK-1" } },
+		});
+		expect(viewResult.isError).toBe(true);
+		expect(getText(viewResult.content)).toContain("is ambiguous");
 	});
 
 	it("assigns default tail ordinals for task_create and preserves explicit ordinals", async () => {
@@ -471,6 +512,63 @@ describe("MCP task tools (MVP)", () => {
 		expect(editStatusSchema?.default).toBe(normalizedStatuses[0] ?? DEFAULT_STATUSES[0]);
 		expect(editStatusSchema?.enumCaseInsensitive).toBe(true);
 		expect(editStatusSchema?.enumNormalizeWhitespace).toBe(true);
+	});
+
+	it("exposes configured priority enums and accepts custom priority values", async () => {
+		const config = await loadConfig(mcpServer);
+		config.priorities = ["Very High", "High", "Medium", "Low", "Very Low"];
+		await mcpServer.filesystem.saveConfig(config);
+
+		const customServer = new McpServer(TEST_DIR, "Test instructions");
+		let primaryError: unknown;
+		try {
+			registerTaskTools(customServer, config);
+			const tools = await customServer.testInterface.listTools();
+			const toolByName = new Map(tools.tools.map((tool) => [tool.name, tool]));
+
+			const createPrioritySchema = (toolByName.get("task_create")?.inputSchema as JsonSchema | undefined)?.properties
+				?.priority;
+			const editPrioritySchema = (toolByName.get("task_edit")?.inputSchema as JsonSchema | undefined)?.properties
+				?.priority;
+			const searchPrioritySchema = (toolByName.get("task_search")?.inputSchema as JsonSchema | undefined)?.properties
+				?.priority;
+
+			const expected = ["Very High", "High", "Medium", "Low", "Very Low"];
+			expect(createPrioritySchema?.enum).toEqual(expected);
+			expect(createPrioritySchema?.enumCaseInsensitive).toBe(true);
+			expect(editPrioritySchema?.enum).toEqual(expected);
+			expect(editPrioritySchema?.enumCaseInsensitive).toBe(true);
+			expect(searchPrioritySchema?.enum).toEqual(expected);
+			expect(searchPrioritySchema?.enumCaseInsensitive).toBe(true);
+
+			const createResult = await customServer.testInterface.callTool({
+				params: {
+					name: "task_create",
+					arguments: {
+						title: "Custom priority MCP task",
+						priority: "VERY HIGH",
+					},
+				},
+			});
+			expect(createResult.isError).not.toBe(true);
+			const task = await customServer.getTask("task-1");
+			expect(task?.priority).toBe("very high");
+		} catch (error) {
+			primaryError = error;
+		}
+
+		let cleanupError: unknown;
+		try {
+			await customServer.stop();
+		} catch (error) {
+			cleanupError = error;
+		}
+
+		if (primaryError !== undefined && cleanupError !== undefined) {
+			throw new AggregateError([primaryError, cleanupError], "Test and MCP server cleanup both failed");
+		}
+		if (primaryError !== undefined) throw primaryError;
+		if (cleanupError !== undefined) throw cleanupError;
 	});
 
 	it("describes Definition of Done fields as task-level in schemas", async () => {
@@ -1077,6 +1175,7 @@ describe("MCP task tools (MVP)", () => {
 		await mcpServer.filesystem.saveConfig(config);
 
 		const customServer = new McpServer(TEST_DIR, "Test instructions");
+		let primaryError: unknown;
 		try {
 			registerTaskTools(customServer, await loadConfig(customServer));
 
@@ -1108,8 +1207,21 @@ describe("MCP task tools (MVP)", () => {
 			});
 			expect(invalidResult.isError).toBe(true);
 			expect(getText(invalidResult.content)).toContain("must be one of: Bug, Epic");
-		} finally {
-			await customServer.stop().catch(() => {});
+		} catch (error) {
+			primaryError = error;
 		}
+
+		let cleanupError: unknown;
+		try {
+			await customServer.stop();
+		} catch (error) {
+			cleanupError = error;
+		}
+
+		if (primaryError !== undefined && cleanupError !== undefined) {
+			throw new AggregateError([primaryError, cleanupError], "Test and MCP server cleanup both failed");
+		}
+		if (primaryError !== undefined) throw primaryError;
+		if (cleanupError !== undefined) throw cleanupError;
 	});
 });

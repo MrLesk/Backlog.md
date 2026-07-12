@@ -1,3 +1,4 @@
+import type { DuplicateRepairPlan, DuplicateRepairResult } from "../../core/duplicate-task-repair.ts";
 import type { TaskStatistics } from "../../core/statistics.ts";
 import type {
 	BacklogConfig,
@@ -10,7 +11,6 @@ import type {
 	Task,
 	TaskStatus,
 } from "../../types/index.ts";
-import type { DuplicateGroup } from "../../utils/duplicate-detection.ts";
 
 const API_BASE = "/api";
 
@@ -149,6 +149,7 @@ export class ApiClient {
 	}
 	async fetchTasks(options?: {
 		status?: string;
+		excludeStatus?: string | string[];
 		assignee?: string;
 		parent?: string;
 		priority?: SearchPriorityFilter;
@@ -157,6 +158,14 @@ export class ApiClient {
 	}): Promise<Task[]> {
 		const params = new URLSearchParams();
 		if (options?.status) params.append("status", options.status);
+		if (options?.excludeStatus) {
+			const statuses = Array.isArray(options.excludeStatus) ? options.excludeStatus : [options.excludeStatus];
+			for (const status of statuses) {
+				if (status && status.trim().length > 0) {
+					params.append("excludeStatus", status.trim());
+				}
+			}
+		}
 		if (options?.assignee) params.append("assignee", options.assignee);
 		if (options?.parent) params.append("parent", options.parent);
 		if (options?.priority) params.append("priority", options.priority);
@@ -179,6 +188,7 @@ export class ApiClient {
 			query?: string;
 			types?: SearchResultType[];
 			status?: string | string[];
+			excludeStatus?: string | string[];
 			priority?: SearchPriorityFilter | SearchPriorityFilter[];
 			assignee?: string | string[];
 			labels?: string[];
@@ -199,6 +209,14 @@ export class ApiClient {
 			const statuses = Array.isArray(options.status) ? options.status : [options.status];
 			for (const status of statuses) {
 				params.append("status", status);
+			}
+		}
+		if (options.excludeStatus) {
+			const statuses = Array.isArray(options.excludeStatus) ? options.excludeStatus : [options.excludeStatus];
+			for (const status of statuses) {
+				if (status && status.trim().length > 0) {
+					params.append("excludeStatus", status.trim());
+				}
 			}
 		}
 		if (options.priority) {
@@ -238,7 +256,7 @@ export class ApiClient {
 	}
 
 	async fetchTask(id: string): Promise<Task> {
-		return this.fetchJson<Task>(`${API_BASE}/task/${id}`);
+		return this.fetchJson<Task>(`${API_BASE}/task/${encodeURIComponent(id)}`);
 	}
 
 	async createTask(task: Omit<Task, "id" | "createdDate">): Promise<Task> {
@@ -303,12 +321,15 @@ export class ApiClient {
 		return this.updateTask(id, { status });
 	}
 
-	async fetchDuplicateTasks(): Promise<DuplicateGroup[]> {
-		try {
-			return await this.fetchJson<DuplicateGroup[]>(`${API_BASE}/tasks/duplicates`);
-		} catch {
-			return [];
-		}
+	async fetchDuplicateTaskRepairPlan(): Promise<DuplicateRepairPlan> {
+		return await this.fetchJson<DuplicateRepairPlan>(`${API_BASE}/tasks/duplicates`);
+	}
+
+	async repairDuplicateTaskIds(fingerprint: string): Promise<DuplicateRepairResult> {
+		return await this.fetchJson<DuplicateRepairResult>(`${API_BASE}/tasks/duplicates`, {
+			method: "POST",
+			body: JSON.stringify({ fingerprint }),
+		});
 	}
 
 	async fetchStatuses(): Promise<string[]> {

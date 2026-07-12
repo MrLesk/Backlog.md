@@ -26,6 +26,7 @@ const tasks: Task[] = [
 		labels: ["bug"],
 		milestone: "m-1",
 		priority: "high",
+		type: "bug",
 	}),
 	createTask({
 		id: "task-102",
@@ -34,6 +35,7 @@ const tasks: Task[] = [
 		labels: ["docs"],
 		milestone: "m-2",
 		priority: "medium",
+		type: "docs",
 	}),
 	createTask({
 		id: "task-103",
@@ -43,6 +45,7 @@ const tasks: Task[] = [
 		labels: ["enhancement"],
 		milestone: "m-1",
 		priority: "low",
+		type: "enhancement",
 	}),
 	createTask({
 		id: "task-104",
@@ -90,7 +93,14 @@ const setupDom = (url = "http://localhost/board") => {
 
 const renderBoardPage = (
 	url?: string,
-	options: { tasks?: Task[]; statuses?: string[]; availableLabels?: string[]; dateFormat?: string } = {},
+	options: {
+		tasks?: Task[];
+		statuses?: string[];
+		availableLabels?: string[];
+		availablePriorities?: string[];
+		availableTypes?: string[];
+		dateFormat?: string;
+	} = {},
 ): HTMLElement => {
 	setupDom(url);
 	const container = document.getElementById("root");
@@ -106,6 +116,8 @@ const renderBoardPage = (
 					statuses={renderedStatuses}
 					milestones={[]}
 					availableLabels={options.availableLabels ?? ["bug", "docs", "enhancement"]}
+					availablePriorities={options.availablePriorities}
+					availableTypes={options.availableTypes}
 					milestoneEntities={[]}
 					archivedMilestones={[]}
 					isLoading={false}
@@ -177,11 +189,25 @@ const expectBoardFiltersInHeader = (container: HTMLElement) => {
 	expect(toolbar).toBeTruthy();
 	expect(toolbar?.textContent).toContain("All Tasks");
 	expect(toolbar?.textContent).toContain("Milestone");
+	const heading = Array.from(container.querySelectorAll("h2")).find(
+		(element) => element.textContent?.trim() === "Kanban Board",
+	);
+	const newTaskButton = Array.from(container.querySelectorAll("button")).find(
+		(button) => button.textContent?.trim() === "+ New Task",
+	);
+	const header = heading?.parentElement?.parentElement;
+	expect(heading).toBeTruthy();
+	expect(newTaskButton).toBeTruthy();
+	expect(heading?.parentElement?.contains(newTaskButton as HTMLButtonElement)).toBe(true);
+	expect(heading?.parentElement?.className).toContain("flex-wrap");
+	expect(header?.className).toContain("space-y-3");
+	expect(toolbar?.parentElement).toBe(header);
+	expect(heading?.parentElement?.contains(toolbar as HTMLElement)).toBe(false);
 
 	const boardFilters = toolbar?.querySelector("[aria-label='Board filters']");
 	expect(boardFilters).toBeTruthy();
 
-	for (const ariaLabel of ["Filter board by assignee", "Filter board by priority"]) {
+	for (const ariaLabel of ["Filter board by assignee", "Filter board by type", "Filter board by priority"]) {
 		const select = container.querySelector(`select[aria-label='${ariaLabel}']`) as HTMLSelectElement | null;
 		expect(select).toBeTruthy();
 		expect(toolbar?.contains(select)).toBe(true);
@@ -227,8 +253,10 @@ afterEach(() => {
 });
 
 describe("Web board filters", () => {
-	it("filters board cards by assignee, label, and priority while updating URL params", async () => {
-		const container = renderBoardPage();
+	it("filters board cards by assignee, label, type, and priority while updating URL params", async () => {
+		const container = renderBoardPage(undefined, {
+			availableTypes: ["Bug", "Docs", "Enhancement"],
+		});
 
 		expectBoardFiltersInHeader(container);
 		expectVisibleTasks(container, ["Fix login bug", "Write docs", "Improve board", "Triage unassigned issue"]);
@@ -247,9 +275,111 @@ describe("Web board filters", () => {
 		expect(getBoardLabelsButton(container).textContent).toContain("2 selected");
 		expectVisibleTasks(container, ["Fix login bug", "Improve board"]);
 
+		await setSelectValue(getSelectByFirstOption(container, "All types"), "Bug");
+		expect(new URLSearchParams(window.location.search).get("type")).toBe("Bug");
+		expectVisibleTasks(container, ["Fix login bug"]);
+
 		await setSelectValue(getSelectByFirstOption(container, "All priorities"), "high");
 		expect(new URLSearchParams(window.location.search).get("priority")).toBe("high");
 		expectVisibleTasks(container, ["Fix login bug"]);
+	});
+
+	it("renders and filters configured custom priorities", async () => {
+		const customTasks = [
+			...tasks,
+			createTask({
+				id: "task-105",
+				title: "Escalate production incident",
+				priority: "very high",
+			}),
+		];
+		const container = renderBoardPage(undefined, {
+			tasks: customTasks,
+			availablePriorities: ["Very High", "High", "Medium", "Low", "Very Low"],
+		});
+
+		const prioritySelect = getSelectByFirstOption(container, "All priorities");
+		expect(Array.from(prioritySelect.options).map((option) => option.textContent)).toEqual([
+			"All priorities",
+			"Very High",
+			"High",
+			"Medium",
+			"Low",
+			"Very Low",
+		]);
+
+		await setSelectValue(prioritySelect, "very high");
+		const text = container.textContent ?? "";
+		expect(new URLSearchParams(window.location.search).get("priority")).toBe("very high");
+		expect(text).toContain("Escalate production incident");
+		expect(text).toContain("Very High");
+		expect(text).not.toContain("Fix login bug");
+	});
+
+	it("renders configured task types and canonicalizes type filters from the URL", async () => {
+		const customTasks = [
+			createTask({ id: "task-201", title: "Fix checkout", type: "Bug" }),
+			createTask({ id: "task-202", title: "Interview customers", type: "Customer Request" }),
+			createTask({ id: "task-203", title: "Unclassified follow-up" }),
+		];
+		const container = renderBoardPage("http://localhost/board?type=customer%20request", {
+			tasks: customTasks,
+			availableTypes: ["Bug", "Customer Request"],
+		});
+
+		await waitFor(() => new URLSearchParams(window.location.search).get("type") === "Customer Request");
+
+		const typeSelect = getSelectByFirstOption(container, "All types");
+		expect(Array.from(typeSelect.options).map((option) => option.textContent)).toEqual([
+			"All types",
+			"Bug",
+			"Customer Request",
+		]);
+		expect(typeSelect.value).toBe("Customer Request");
+		expect(container.textContent).toContain("Interview customers");
+		expect(container.textContent).not.toContain("Fix checkout");
+		expect(container.textContent).not.toContain("Unclassified follow-up");
+	});
+
+	it("clears unsupported task type URL values", async () => {
+		const container = renderBoardPage("http://localhost/board?type=unsupported", {
+			availableTypes: ["Bug", "Feature"],
+		});
+
+		await waitFor(() => new URLSearchParams(window.location.search).get("type") === null);
+
+		expect(getSelectByFirstOption(container, "All types").value).toBe("");
+		expectVisibleTasks(container, ["Fix login bug", "Write docs", "Improve board", "Triage unassigned issue"]);
+	});
+
+	it("canonicalizes mixed-case configured priority URL values", async () => {
+		const customTasks = [
+			...tasks,
+			createTask({
+				id: "task-105",
+				title: "Escalate production incident",
+				priority: "very high",
+			}),
+		];
+		const container = renderBoardPage("http://localhost/board?priority=VeRy%20HiGh", {
+			tasks: customTasks,
+			availablePriorities: ["Very High", "High", "Medium", "Low"],
+		});
+
+		await waitFor(() => new URLSearchParams(window.location.search).get("priority") === "very high");
+
+		expect(getSelectByFirstOption(container, "All priorities").value).toBe("very high");
+		expect(container.textContent).toContain("Escalate production incident");
+		expect(container.textContent).not.toContain("Fix login bug");
+	});
+
+	it("clears unsupported priority URL values", async () => {
+		const container = renderBoardPage("http://localhost/board?priority=urgent");
+
+		await waitFor(() => new URLSearchParams(window.location.search).get("priority") === null);
+
+		expect(getSelectByFirstOption(container, "All priorities").value).toBe("");
+		expectVisibleTasks(container, ["Fix login bug", "Write docs", "Improve board", "Triage unassigned issue"]);
 	});
 
 	it("matches configured label casing against task labels", async () => {
@@ -265,12 +395,17 @@ describe("Web board filters", () => {
 		expectVisibleTasks(container, ["Fix login bug", "Triage unassigned issue"]);
 	});
 
-	it("reads filters from URL params and clears them", async () => {
-		const container = renderBoardPage("http://localhost/board?assignee=alice&label=bug&priority=high");
+	it("reads filters from URL params and clears them without removing unrelated params", async () => {
+		const container = renderBoardPage(
+			"http://localhost/board?assignee=alice&label=bug&priority=high&type=bug&view=compact",
+			{ availableTypes: ["Bug", "Feature"] },
+		);
+		await waitFor(() => new URLSearchParams(window.location.search).get("type") === "Bug");
 
 		expect(getSelectByFirstOption(container, "All assignees").value).toBe("alice");
 		expect(getBoardLabelsButton(container).textContent).toContain("bug");
 		expect(getSelectByFirstOption(container, "All priorities").value).toBe("high");
+		expect(getSelectByFirstOption(container, "All types").value).toBe("Bug");
 		expectVisibleTasks(container, ["Fix login bug"]);
 
 		const clearButton = Array.from(container.querySelectorAll("button")).find((button) =>
@@ -283,6 +418,8 @@ describe("Web board filters", () => {
 		expect(searchParams.get("assignee")).toBeNull();
 		expect(searchParams.getAll("label")).toEqual([]);
 		expect(searchParams.get("priority")).toBeNull();
+		expect(searchParams.get("type")).toBeNull();
+		expect(searchParams.get("view")).toBe("compact");
 		expectVisibleTasks(container, ["Fix login bug", "Write docs", "Improve board", "Triage unassigned issue"]);
 	});
 

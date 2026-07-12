@@ -10,6 +10,17 @@ type GitPathContext = {
 
 type GitConfigLoader = () => Promise<BacklogConfig | null>;
 
+export interface GitBranchTip {
+	name: string;
+	commit: string;
+	current: boolean;
+}
+
+export interface GitTreeEntry {
+	path: string;
+	objectId: string;
+}
+
 export class GitOperations {
 	private projectRoot: string;
 	private config: BacklogConfig | null = null;
@@ -440,14 +451,20 @@ export class GitOperations {
 	}
 
 	async listRecentBranches(daysAgo: number): Promise<string[]> {
-		if (!(await this.isRepository())) {
+		return (await this.listRecentBranchTips(daysAgo)).map((tip) => tip.name);
+	}
+
+	/**
+	 * List recent branch names and immutable tips in one Git process.
+	 * The result is sorted so callers can use it as a stable ref fingerprint.
+	 */
+	async listRecentBranchTips(daysAgo: number): Promise<GitBranchTip[]> {
+		await this.loadConfigIfNeeded();
+		if (this.config?.filesystemOnly) {
 			return [];
 		}
 		try {
-			// Get all branches with their last commit date
-			// Using for-each-ref which is more efficient than multiple branch commands
-			const since = new Date();
-			since.setDate(since.getDate() - daysAgo);
+			const since = Date.now() - daysAgo * 24 * 60 * 60 * 1000;
 
 			// Build refs to check based on remoteOperations config
 			const refs = ["refs/heads"];
@@ -457,31 +474,40 @@ export class GitOperations {
 
 			// Get local and remote branches with commit dates
 			const { stdout } = await this.execGit(
-				["for-each-ref", "--format=%(refname:short)|%(committerdate:iso8601)", ...refs],
+				["for-each-ref", "--format=%(HEAD)%00%(refname:short)%00%(objectname)%00%(committerdate:unix)", ...refs],
 				{ readOnly: true },
 			);
 
-			const recentBranches: string[] = [];
-			const lines = stdout.split("\n").filter(Boolean);
-
-			for (const line of lines) {
-				const [branch, dateStr] = line.split("|");
-				if (!branch || !dateStr) continue;
-
-				const commitDate = new Date(dateStr);
-				if (commitDate >= since) {
-					// Keep the full branch name including origin/ prefix
-					// This allows cross-branch checking to distinguish local vs remote
-					if (!recentBranches.includes(branch)) {
-						recentBranches.push(branch);
-					}
-				}
-			}
-
-			return recentBranches;
+			return stdout
+				.split("\n")
+				.map((line) => line.trim())
+				.filter(Boolean)
+				.map((line) => {
+					const [head, name, commit, timestamp] = line.split("\0");
+					return { name, commit, current: head === "*", timestamp: Number(timestamp) * 1000 };
+				})
+				.filter(
+					(entry): entry is GitBranchTip & { timestamp: number } =>
+						Boolean(entry.name && entry.commit) &&
+						entry.name !== "origin/HEAD" &&
+						Number.isFinite(entry.timestamp) &&
+						entry.timestamp >= since,
+				)
+				.map(({ name, commit, current }) => ({ name, commit, current }))
+				.sort((left, right) => left.name.localeCompare(right.name));
 		} catch {
 			// Fallback to all branches if the command fails
-			return this.listAllBranches();
+			const branches = await this.listAllBranches();
+			const currentBranch = await this.getCurrentBranch();
+			const tips = await Promise.all(
+				branches.map(async (name) => {
+					const commit = await this.resolveCommit(name);
+					return commit ? { name, commit, current: name === currentBranch } : null;
+				}),
+			);
+			return tips
+				.filter((tip): tip is GitBranchTip => tip !== null)
+				.sort((left, right) => left.name.localeCompare(right.name));
 		}
 	}
 
@@ -563,6 +589,43 @@ export class GitOperations {
 		}
 		const { stdout } = await this.execGit(["ls-tree", "-r", "--name-only", "-z", ref, "--", path], { readOnly: true });
 		return stdout.split("\0").filter(Boolean);
+	}
+
+	async listTreeEntries(ref: string, path: string): Promise<GitTreeEntry[]> {
+		if (!(await this.isRepository())) {
+			return [];
+		}
+		const { stdout } = await this.execGit(["ls-tree", "-r", "-z", ref, "--", path], { readOnly: true });
+		const entries: GitTreeEntry[] = [];
+		for (const record of stdout.split("\0")) {
+			if (!record) continue;
+			const separatorIndex = record.indexOf("\t");
+			if (separatorIndex < 0) continue;
+			const metadata = record.slice(0, separatorIndex).split(" ");
+			const objectId = metadata[2];
+			const entryPath = record.slice(separatorIndex + 1);
+			if (!objectId || !entryPath) continue;
+			entries.push({ path: entryPath, objectId });
+		}
+		return entries;
+	}
+
+	async hashFile(filePath: string): Promise<string | null> {
+		await this.loadConfigIfNeeded();
+		if (this.config?.filesystemOnly) {
+			return null;
+		}
+		try {
+			const context = await this.getPathContext(filePath);
+			if (!context) return null;
+			const { stdout } = await this.execGit(
+				["hash-object", `--path=${context.relativePath}`, "--", context.relativePath],
+				{ cwd: context.repoRoot, readOnly: true },
+			);
+			return stdout.trim() || null;
+		} catch {
+			return null;
+		}
 	}
 	async showFile(ref: string, filePath: string): Promise<string> {
 		if (!(await this.isRepository())) {
