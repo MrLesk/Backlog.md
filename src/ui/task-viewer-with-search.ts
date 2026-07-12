@@ -163,6 +163,24 @@ export function resolveTaskListSelection<T>(
 /**
  * Display task details with search/filter header UI
  */
+/**
+ * Persistent one-line warning bar rendered above the help bar. Used for
+ * data-integrity alerts (e.g. duplicate task IDs) that must stay visible
+ * instead of expiring like transient help messages.
+ */
+export function createStartupWarningBar(parent: BoxInterface, message: string): BoxInterface {
+	return box({
+		parent,
+		bottom: 1,
+		left: 0,
+		width: "100%",
+		height: 1,
+		tags: true,
+		wrap: false,
+		content: ` {yellow-fg}${message}{/}`,
+	});
+}
+
 export async function viewTaskEnhanced(
 	task: Task,
 	options: {
@@ -181,6 +199,7 @@ export async function viewTaskEnhanced(
 		limit?: number;
 		startWithDetailFocus?: boolean;
 		startWithSearchFocus?: boolean;
+		startupWarning?: string;
 		viewSwitcher?: import("./view-switcher.ts").ViewSwitcher;
 		onTaskChange?: (task: Task) => void;
 		onTabPress?: () => Promise<void>;
@@ -545,6 +564,7 @@ export async function viewTaskEnhanced(
 		wrap: true,
 		content: "",
 	});
+	const warningBar = options.startupWarning ? createStartupWarningBar(container, options.startupWarning) : null;
 	let transientHelpContent: string | null = null;
 	let helpRestoreTimer: ReturnType<typeof setTimeout> | null = null;
 
@@ -568,7 +588,12 @@ export async function viewTaskEnhanced(
 
 	function syncPaneLayout() {
 		const headerHeight = filterHeader.getHeight();
-		const footerHeight = typeof helpBar.height === "number" ? helpBar.height : 1;
+		const helpHeight = typeof helpBar.height === "number" ? helpBar.height : 1;
+		let footerHeight = helpHeight;
+		if (warningBar) {
+			warningBar.bottom = helpHeight;
+			footerHeight += 1;
+		}
 		taskListPane.top = headerHeight;
 		taskListPane.height = `100%-${headerHeight + footerHeight}`;
 		detailPane.top = headerHeight;

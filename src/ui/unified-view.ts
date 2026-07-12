@@ -379,6 +379,7 @@ export async function runUnifiedView(options: UnifiedViewOptions): Promise<void>
 					limit: currentFilters.limit,
 					startWithDetailFocus: currentView === "task-detail",
 					startWithSearchFocus: shouldFocusSearch,
+					startupWarning,
 					onTaskChange: (newTask) => {
 						selectedTask = newTask;
 						currentView = "task-detail";
