@@ -1,3 +1,15 @@
+# Read This First
+
+At the beginning of each conversation, read [MANIFESTO.md](MANIFESTO.md) in the
+repository root before doing anything else. It is the project's constitution: who
+Backlog.md serves, its core loop, source of truth, surface hierarchy, interface posture,
+design principles, boundaries, and risks. All architecture and product decisions must
+align with it.
+
+If a request appears to conflict with the manifesto, or would materially change a
+principle in it, surface the conflict and ask Alex rather than silently proceeding. Do
+not edit the manifesto as a side effect of implementation; changes to it require an
+explicit product decision.
 
 When you're working on a task, you should assign it yourself: -a @{your-name}
 
@@ -21,7 +33,6 @@ If you can simplify the code, do it.
 ### Development
 
 - `bun i` - Install dependencies
-- `bun test` - Run all tests
 - `bunx tsc --noEmit` - Type-check code
 - `bun run check .` - Run all Biome checks (format + lint)
 - `bun run build` - Build the CLI tool
@@ -49,7 +60,10 @@ If you can simplify the code, do it.
 
 - Treat Backlog.md as a shipped CLI/MCP binary that may be used from other repositories where agents cannot inspect this source tree.
 - Backlog.md is not a supported JavaScript or TypeScript library API for external consumers. Do not treat exported source symbols, classes, or methods in `/src` as stable public interfaces unless they are explicitly documented in shipped CLI/MCP/instruction surfaces.
-- When you decide what another agent can rely on, use only the public surface: MCP workflow resources, MCP tool descriptions/schemas, CLI help, and instruction files shipped with the project.
+- Use only the stable public surface—CLI behavior, MCP tools/resources and schemas,
+  configuration, CLI help, and shipped instruction files—when deciding what external
+  agents can rely on or evaluating compatibility. Internal TypeScript exports are
+  implementation details unless public docs explicitly promise them.
 - Do not assume external agents know internal implementation details, constants, or source-only conventions.
 - When reviewing changes, do not ask for compatibility shims just because a source-level method exists or was removed. Only preserve compatibility for behavior that is part of the documented CLI, MCP, config, or instruction contract.
 - If a convention matters for agent behavior, document it in the public MCP/instruction surface rather than relying on source-code discovery.
@@ -62,7 +76,6 @@ If you can simplify the code, do it.
 - Investigations should not create implementation PRs by default. Leave findings as comments, reports, or notes unless a narrow accepted fix is clear.
 - Use the documented `backlog task create` workflow for task creation. Do not manually edit task files, pick IDs, pre-reserve IDs, or create coordination-only IDs as a workaround; rely on the CLI allocator and lock to assign task IDs.
 - When acting publicly on Alex's behalf, use neutral maintainer language and identify yourself as `Alex's Agent:` if identification is needed. Do not reveal private strategy, roadmap, or status framing; keep scope decisions grounded in the project's public docs and shipped behavior.
-- When evaluating issue or PR compatibility, rely on the stable public surface only: CLI behavior, MCP tools/resources, configuration, and shipped instructions. Internal TypeScript exports are implementation details unless public docs explicitly promise them.
 
 ## Code Standards
 
