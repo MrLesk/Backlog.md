@@ -180,6 +180,62 @@ describe("Config commands", () => {
 		expect(listOutput).toContain("hideEmptyColumns: true");
 	});
 
+	it("parses block-style YAML sequences identically to inline arrays for list keys", () => {
+		const inline = core.filesystem.parseConfig(
+			'project_name: "P"\nstatuses: ["To Do", "Done"]\nlabels: ["a", "b"]\ntypes: ["bug", "epic"]\npriorities: ["Critical", "Low"]\n',
+		);
+		const block = core.filesystem.parseConfig(
+			'project_name: "P"\nstatuses:\n  - To Do\n  - Done\nlabels:\n  - a\n  - b\ntypes:\n  - bug\n  - epic\npriorities:\n  - Critical\n  - Low\n',
+		);
+
+		expect(block.statuses).toEqual(inline.statuses);
+		expect(block.labels).toEqual(inline.labels);
+		expect(block.types).toEqual(inline.types);
+		expect(block.priorities).toEqual(inline.priorities);
+		expect(block.priorities).toEqual(["Critical", "Low"]);
+	});
+
+	it("preserves commas inside quoted list values", () => {
+		const config = core.filesystem.parseConfig('project_name: "P"\npriorities: ["Very High, Almost", "Low"]\n');
+		expect(config.priorities).toEqual(["Very High, Almost", "Low"]);
+	});
+
+	it("honors block-style priorities end-to-end through config get and task create", async () => {
+		const configPath = core.filesystem.configFilePath;
+		const existing = await Bun.file(configPath).text();
+		await Bun.write(configPath, `${existing.trimEnd()}\npriorities:\n  - Critical\n  - Normal\n`);
+
+		const priorities = await $`bun ${CLI_PATH} config get priorities`.cwd(TEST_DIR).text();
+		expect(priorities.trim()).toBe("Critical, Normal");
+
+		const created = await $`bun ${CLI_PATH} task create "Block priority task" --priority Critical --plain`
+			.cwd(TEST_DIR)
+			.text();
+		expect(created).toContain("Priority: Critical");
+	});
+
+	it("gives accurate guidance when setting list keys and consistent unknown-key lists", async () => {
+		const priorities = await $`bun ${CLI_PATH} config set priorities High`.cwd(TEST_DIR).nothrow().quiet();
+		const prioritiesError = priorities.stderr.toString();
+		expect(priorities.exitCode).not.toBe(0);
+		expect(prioritiesError).toContain("priorities cannot be set directly");
+		expect(prioritiesError).toContain("backlog config get priorities");
+		expect(prioritiesError).not.toContain("list-priorities");
+
+		const types = await $`bun ${CLI_PATH} config set types bug`.cwd(TEST_DIR).nothrow().quiet();
+		const typesError = types.stderr.toString();
+		expect(types.exitCode).not.toBe(0);
+		expect(typesError).toContain("types cannot be set directly");
+		expect(typesError).not.toContain("Unknown config key");
+
+		const unknownGet = await $`bun ${CLI_PATH} config get nosuchkey`.cwd(TEST_DIR).nothrow().quiet();
+		const unknownSet = await $`bun ${CLI_PATH} config set nosuchkey value`.cwd(TEST_DIR).nothrow().quiet();
+		const getKeys = unknownGet.stderr.toString().match(/Available keys: .*/)?.[0];
+		const setKeys = unknownSet.stderr.toString().match(/Available keys: .*/)?.[0];
+		expect(getKeys).toBeDefined();
+		expect(setKeys).toEqual(getKeys);
+	});
+
 	it("surfaces milestones in config get/list from milestone files", async () => {
 		await core.filesystem.createMilestone("Release 1");
 
