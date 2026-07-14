@@ -10,7 +10,7 @@ import { formatDuplicateTaskIdSummary } from "../utils/duplicate-detection.ts";
 import { collectAvailableLabels } from "../utils/label-filter.ts";
 import { hasAnyPrefix } from "../utils/prefix-config.ts";
 import { applySharedTaskFilters, createTaskSearchIndex, type LabelMatchMode } from "../utils/task-search.ts";
-import { watchTasks } from "../utils/task-watcher.ts";
+import { type TaskWatcherCallbacks, watchTasks } from "../utils/task-watcher.ts";
 import { renderBoardTui } from "./board.ts";
 import { createLoadingScreen } from "./loading.ts";
 import { buildTaskViewerMilestoneFilterModel, viewTaskEnhanced } from "./task-viewer-with-search.ts";
@@ -56,6 +56,47 @@ type LoadingScreen = {
 export interface UnifiedViewLoadResult {
 	tasks: Task[];
 	statuses: string[];
+}
+
+export type UnifiedTaskUpdate = { type: "upsert"; task: Task } | { type: "remove"; taskId: string };
+
+export interface UnifiedTaskState {
+	tasks: Task[];
+	selectedTask?: Task;
+}
+
+export function applyUnifiedTaskUpdate(state: UnifiedTaskState, update: UnifiedTaskUpdate): UnifiedTaskState {
+	if (update.type === "upsert") {
+		const index = state.tasks.findIndex((task) => task.id === update.task.id);
+		const tasks = [...state.tasks];
+		if (index === -1) tasks.push(update.task);
+		else tasks[index] = update.task;
+		return {
+			tasks,
+			selectedTask: state.selectedTask?.id === update.task.id ? update.task : state.selectedTask,
+		};
+	}
+
+	const removedIndex = state.tasks.findIndex((task) => task.id === update.taskId);
+	if (removedIndex === -1) return state;
+	const tasks = state.tasks.filter((task) => task.id !== update.taskId);
+	const selectedTask =
+		state.selectedTask?.id === update.taskId
+			? tasks[Math.min(removedIndex, Math.max(tasks.length - 1, 0))]
+			: state.selectedTask;
+	return { tasks, selectedTask };
+}
+
+export function createUnifiedTaskUpdateCallbacks(
+	getState: () => UnifiedTaskState,
+	onStateChanged: (state: UnifiedTaskState) => void,
+): TaskWatcherCallbacks {
+	const publish = (update: UnifiedTaskUpdate) => onStateChanged(applyUnifiedTaskUpdate(getState(), update));
+	return {
+		onTaskAdded: (task) => publish({ type: "upsert", task }),
+		onTaskChanged: (task) => publish({ type: "upsert", task }),
+		onTaskRemoved: (taskId) => publish({ type: "remove", taskId }),
+	};
 }
 
 export interface UnifiedViewFilters {
@@ -260,6 +301,9 @@ export async function runUnifiedView(options: UnifiedViewOptions): Promise<void>
 		let tasks = baseTasks;
 		let kanbanStatuses = loadedStatuses ?? [];
 		let boardUpdater: ((nextTasks: Task[], nextStatuses: string[]) => void) | null = null;
+		let taskListUpdater:
+			| ((nextTasks: Task[], nextStatuses: string[], nextLabels: string[], nextSelectedTask?: Task) => void)
+			| null = null;
 
 		const getRenderableTasks = () => tasks.filter((task) => task.id && task.id.trim() !== "" && hasAnyPrefix(task.id));
 		const getBoardAvailableLabels = () => collectAvailableLabels(getRenderableTasks(), configuredLabels);
@@ -269,6 +313,25 @@ export async function runUnifiedView(options: UnifiedViewOptions): Promise<void>
 			if (!boardUpdater) return;
 			boardUpdater(getRenderableTasks(), kanbanStatuses);
 		};
+		const emitTaskListUpdate = () => {
+			if (!taskListUpdater) return;
+			taskListUpdater(getRenderableTasks(), kanbanStatuses, configuredLabels, selectedTask);
+		};
+		const taskUpdateCallbacks = createUnifiedTaskUpdateCallbacks(
+			() => ({ tasks, selectedTask }),
+			(next) => {
+				tasks = next.tasks;
+				selectedTask = next.selectedTask;
+				const state = viewSwitcher?.getState();
+				viewSwitcher?.updateState({
+					tasks,
+					selectedTask,
+					kanbanData: state?.kanbanData ? { ...state.kanbanData, tasks } : undefined,
+				});
+				emitBoardUpdate();
+				emitTaskListUpdate();
+			},
+		);
 		let isInitialLoad = true; // Track if this is the first view load
 
 		// Create view switcher (without problematic onViewChange callback)
@@ -276,43 +339,7 @@ export async function runUnifiedView(options: UnifiedViewOptions): Promise<void>
 			core: options.core,
 			initialState,
 		});
-		const watcher = watchTasks(options.core, {
-			onTaskAdded(task) {
-				tasks.push(task);
-				const state = viewSwitcher?.getState();
-				viewSwitcher?.updateState({
-					tasks,
-					kanbanData: state?.kanbanData ? { ...state.kanbanData, tasks } : undefined,
-				});
-				emitBoardUpdate();
-			},
-			onTaskChanged(task) {
-				const idx = tasks.findIndex((t) => t.id === task.id);
-				if (idx >= 0) {
-					tasks[idx] = task;
-				} else {
-					tasks.push(task);
-				}
-				const state = viewSwitcher?.getState();
-				viewSwitcher?.updateState({
-					tasks,
-					kanbanData: state?.kanbanData ? { ...state.kanbanData, tasks } : undefined,
-				});
-				emitBoardUpdate();
-			},
-			onTaskRemoved(taskId) {
-				tasks = tasks.filter((t) => t.id !== taskId);
-				if (selectedTask?.id === taskId) {
-					selectedTask = tasks[0];
-				}
-				const state = viewSwitcher?.getState();
-				viewSwitcher?.updateState({
-					tasks,
-					kanbanData: state?.kanbanData ? { ...state.kanbanData, tasks } : undefined,
-				});
-				emitBoardUpdate();
-			},
-		});
+		const watcher = watchTasks(options.core, taskUpdateCallbacks, baseTasks);
 		process.on("exit", () => watcher.stop());
 
 		const configWatcher = watchConfig(options.core, {
@@ -320,6 +347,7 @@ export async function runUnifiedView(options: UnifiedViewOptions): Promise<void>
 				kanbanStatuses = config?.statuses ?? [];
 				configuredLabels = config?.labels ?? [];
 				emitBoardUpdate();
+				emitTaskListUpdate();
 			},
 		});
 
@@ -380,6 +408,10 @@ export async function runUnifiedView(options: UnifiedViewOptions): Promise<void>
 					startWithDetailFocus: currentView === "task-detail",
 					startWithSearchFocus: shouldFocusSearch,
 					startupWarning,
+					subscribeUpdates: (updater) => {
+						taskListUpdater = updater;
+						emitTaskListUpdate();
+					},
 					onTaskChange: (newTask) => {
 						selectedTask = newTask;
 						currentView = "task-detail";
@@ -393,6 +425,7 @@ export async function runUnifiedView(options: UnifiedViewOptions): Promise<void>
 					if (result === "exit") {
 						process.exit(0);
 					}
+					taskListUpdater = null;
 					resolve(result);
 				});
 			});
