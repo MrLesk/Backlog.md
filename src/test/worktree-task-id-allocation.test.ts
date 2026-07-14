@@ -75,7 +75,8 @@ describe("task ID allocation across git worktrees", () => {
 
 		const mainCore = new Core(mainRepo);
 		await mainCore.createTaskFromInput({ title: "Draft to promote", status: "Draft" }, false);
-		const promoted = await mainCore.promoteDraft("draft-1", false);
+		// The draft comes from the shared pool, so it is already TASK-2 (sibling holds TASK-1).
+		const promoted = await mainCore.promoteDraft("task-2", false);
 
 		expect(promoted).toBe(true);
 		const promotedTask = await mainCore.fs.loadTask("task-2");

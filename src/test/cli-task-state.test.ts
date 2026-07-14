@@ -182,13 +182,13 @@ describe("CLI Integration", () => {
 			const task = await core.filesystem.loadTask("task-2");
 			expect(task).toBeNull();
 
-			// Verify demoted draft has new draft- ID
+			// Demotion keeps the task ID - the file stays task-2, now under drafts/.
 			const { readdir } = await import("node:fs/promises");
 			const draftsFiles = await readdir(join(TEST_DIR, "backlog", "drafts"));
-			expect(draftsFiles.some((f) => f.startsWith("draft-"))).toBe(true);
+			expect(draftsFiles).toContain("task-2 - Demote-Test-Task.md");
+			expect(draftsFiles.some((f) => f.startsWith("draft-"))).toBe(false);
 
-			// Verify draft can be loaded with draft- ID
-			const demotedDraft = await core.filesystem.loadDraft("draft-1");
+			const demotedDraft = await core.filesystem.loadDraft("task-2");
 			expect(demotedDraft?.title).toBe("Demote Test Task");
 		});
 

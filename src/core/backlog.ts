@@ -78,7 +78,6 @@ import {
 	type DuplicateRepairResult,
 	previewDuplicateTaskIdRepair,
 } from "./duplicate-task-repair.ts";
-import { migrateDraftPrefixes, needsDraftPrefixMigration } from "./prefix-migration.ts";
 import { calculateNewOrdinal, DEFAULT_ORDINAL_STEP, resolveOrdinalConflicts } from "./reorder.ts";
 import { SearchService } from "./search-service.ts";
 import {
@@ -1039,12 +1038,6 @@ export class Core {
 			// Rewrite config to apply schema defaults and strip legacy milestones key after successful migration.
 			await this.fs.saveConfig(config);
 		}
-
-		// Run draft prefix migration if needed (one-time migration)
-		// This renames task-*.md files in drafts/ to draft-*.md
-		if (needsDraftPrefixMigration(config)) {
-			await migrateDraftPrefixes(this.fs);
-		}
 	}
 
 	// ID generation
@@ -1210,19 +1203,27 @@ export class Core {
 	 * Gets all existing IDs for a given entity type.
 	 * Used internally by generateNextId to determine the next available ID.
 	 *
-	 * Note: Archived tasks are intentionally excluded - archived IDs can be reused.
-	 * This makes archive act as a soft delete for ID purposes.
+	 * Tasks and drafts share ONE monotonic ID pool, and archived IDs are counted.
+	 * An ID is therefore issued at most once for the life of a project: archiving
+	 * an item never returns its number to the pool, and promoting a draft never
+	 * renumbers it.
 	 */
 	private async getExistingIdsForType(type: EntityType): Promise<string[]> {
 		switch (type) {
-			case EntityType.Task: {
-				// Get active + completed task IDs from all branches (respects config)
-				// Archived IDs are excluded - they can be reused (soft delete behavior)
-				return this.getActiveAndCompletedTaskIds();
-			}
+			case EntityType.Task:
 			case EntityType.Draft: {
-				const drafts = await this.fs.listDrafts();
-				return drafts.map((d) => d.id);
+				const [activeAndCompleted, drafts, archivedTasks, archivedDrafts] = await Promise.all([
+					this.getActiveAndCompletedTaskIds(),
+					this.fs.listDrafts(),
+					this.fs.listArchivedTasks(),
+					this.fs.listArchivedDrafts(),
+				]);
+				return [
+					...activeAndCompleted,
+					...drafts.map((d) => d.id),
+					...archivedTasks.map((t) => t.id),
+					...archivedDrafts.map((t) => t.id),
+				];
 			}
 			case EntityType.Document: {
 				const documents = await this.fs.listDocuments();
@@ -2113,12 +2114,12 @@ export class Core {
 		const canonicalStatus = await this.requireCanonicalStatus(targetStatus);
 
 		const { promotedTask, savedPath } = await this.withCreateLock(async () => {
-			const newTaskId = await this.generateNextId(EntityType.Task, draft.parentTaskId);
 			const draftPath = draft.filePath;
 
 			const promotedTask: Task = {
 				...draft,
-				id: newTaskId,
+				// The draft already holds a task ID - promotion keeps it.
+				id: draft.id,
 				status: canonicalStatus,
 				filePath: undefined,
 				...(mutated || draft.status !== canonicalStatus
@@ -2144,7 +2145,7 @@ export class Core {
 		if (await this.shouldAutoCommit(autoCommit)) {
 			const backlogDir = await this.getBacklogDirectoryName();
 			const repoRoot = await this.git.stageBacklogDirectory(backlogDir);
-			await this.git.commitChanges(`backlog: Promote draft ${normalizeId(draft.id, "draft")}`, repoRoot);
+			await this.git.commitChanges(`backlog: Promote draft ${normalizeTaskId(draft.id)}`, repoRoot);
 		}
 
 		return savedTask ?? { ...promotedTask, filePath: savedPath };
@@ -2159,7 +2160,8 @@ export class Core {
 		});
 
 		const { demotedDraft, savedPath } = await this.withCreateLock(async () => {
-			const newDraftId = await this.generateNextId(EntityType.Draft);
+			// Demotion keeps the ID too - it is the same item in a different state.
+			const newDraftId = task.id;
 			const taskPath = task.filePath;
 
 			const demotedDraft: Task = {
@@ -2527,7 +2529,7 @@ export class Core {
 		if (success && (await this.shouldAutoCommit(autoCommit))) {
 			const backlogDir = await this.getBacklogDirectoryName();
 			const repoRoot = await this.git.stageBacklogDirectory(backlogDir);
-			await this.git.commitChanges(`backlog: Archive draft ${normalizeId(draftId, "draft")}`, repoRoot);
+			await this.git.commitChanges(`backlog: Archive draft ${normalizeTaskId(draftId)}`, repoRoot);
 		}
 
 		return success;
@@ -2541,7 +2543,8 @@ export class Core {
 				if (!draft?.filePath) return false;
 
 				const config = await this.fs.loadConfig();
-				const newTaskId = await this.generateNextId(EntityType.Task, draft.parentTaskId);
+				// The draft already holds a task ID - promotion keeps it.
+				const newTaskId = draft.id;
 				const promotedStatus =
 					!draft.status || draft.status.trim().toLowerCase() === "draft"
 						? config?.defaultStatus || FALLBACK_STATUS
@@ -2575,7 +2578,7 @@ export class Core {
 		if (success && (await this.shouldAutoCommit(autoCommit))) {
 			const backlogDir = await this.getBacklogDirectoryName();
 			const repoRoot = await this.git.stageBacklogDirectory(backlogDir);
-			await this.git.commitChanges(`backlog: Promote draft ${normalizeId(draftId, "draft")}`, repoRoot);
+			await this.git.commitChanges(`backlog: Promote draft ${normalizeTaskId(draftId)}`, repoRoot);
 		}
 
 		return success;

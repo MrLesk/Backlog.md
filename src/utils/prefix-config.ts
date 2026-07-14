@@ -8,9 +8,15 @@ export const DEFAULT_PREFIX_CONFIG: PrefixConfig = {
 };
 
 /**
- * Hardcoded draft prefix. Not configurable - always "draft".
+ * Drafts share the task ID space, so a draft file is stored under the task
+ * prefix (`task-N` by default) inside backlog/drafts/, not `draft-N`.
+ *
+ * A draft keeps this ID for life: promoting it moves the file between folders,
+ * it never renumbers it.
  */
-export const DRAFT_PREFIX = "draft";
+export function getDraftPrefix(config?: BacklogConfig): string {
+	return config?.prefixes?.task ?? DEFAULT_PREFIX_CONFIG.task;
+}
 
 /**
  * Returns the default prefix configuration.
@@ -388,7 +394,7 @@ export function escapeRegex(str: string): string {
  * @example
  * getPrefixForType(EntityType.Task) // => "task"
  * getPrefixForType(EntityType.Task, { prefixes: { task: "JIRA" } }) // => "JIRA"
- * getPrefixForType(EntityType.Draft) // => "draft"
+ * getPrefixForType(EntityType.Draft) // => "task" (drafts share the task ID space)
  * getPrefixForType(EntityType.Document) // => "doc"
  * getPrefixForType(EntityType.Decision) // => "decision"
  */
@@ -397,7 +403,8 @@ export function getPrefixForType(type: EntityType, config?: BacklogConfig): stri
 		case EntityType.Task:
 			return config?.prefixes?.task ?? DEFAULT_PREFIX_CONFIG.task;
 		case EntityType.Draft:
-			return DRAFT_PREFIX;
+			// Drafts are allocated out of the task ID pool.
+			return getDraftPrefix(config);
 		case EntityType.Document:
 			return "doc";
 		case EntityType.Decision:

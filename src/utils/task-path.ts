@@ -6,6 +6,7 @@ import {
 	buildGlobPattern,
 	escapeRegex,
 	extractAnyPrefix,
+	getDraftPrefix,
 	idForFilename,
 	normalizeId,
 } from "./prefix-config.ts";
@@ -119,56 +120,54 @@ async function findMatchingTaskPaths(directory: string, taskId: string): Promise
 		return [];
 	}
 }
-/** Default prefix for drafts */
-const DEFAULT_DRAFT_PREFIX = "draft";
-
 /**
  * Normalize a draft ID by ensuring the draft prefix is present (uppercase).
+ * Drafts share the task ID space, so the prefix is the configured task prefix.
  */
-function normalizeDraftId(draftId: string): string {
-	return normalizeId(draftId, DEFAULT_DRAFT_PREFIX);
+function normalizeDraftId(draftId: string, prefix: string): string {
+	return normalizeId(draftId, prefix);
 }
 
 /**
  * Checks if an input ID matches a filename loosely for drafts.
  */
-function draftIdsMatchLoosely(inputId: string, filename: string): boolean {
-	const candidate = extractDraftIdFromFilename(filename);
+function draftIdsMatchLoosely(inputId: string, filename: string, prefix: string): boolean {
+	const candidate = extractDraftIdFromFilename(filename, prefix);
 	if (!candidate) return false;
-	return draftIdsEqual(inputId, candidate);
+	return draftIdsEqual(inputId, candidate, prefix);
 }
 
 /**
  * Extracts the draft ID from a filename.
  */
-function extractDraftIdFromFilename(filename: string): string | null {
-	const regex = buildFilenameIdRegex(DEFAULT_DRAFT_PREFIX);
+function extractDraftIdFromFilename(filename: string, prefix: string): string | null {
+	const regex = buildFilenameIdRegex(prefix);
 	const match = filename.match(regex);
 	if (!match?.[1]) return null;
-	return normalizeDraftId(`${DEFAULT_DRAFT_PREFIX}-${match[1]}`);
+	return normalizeDraftId(`${prefix}-${match[1]}`, prefix);
 }
 
 /**
  * Compares two draft IDs for equality.
  */
-function draftIdsEqual(left: string, right: string): boolean {
-	const leftBody = extractDraftBody(left);
-	const rightBody = extractDraftBody(right);
+function draftIdsEqual(left: string, right: string, prefix: string): boolean {
+	const leftBody = extractDraftBody(left, prefix);
+	const rightBody = extractDraftBody(right, prefix);
 
 	if (leftBody && rightBody) {
 		return numericIdBodiesEqual(leftBody, rightBody);
 	}
 
-	return normalizeDraftId(left).toLowerCase() === normalizeDraftId(right).toLowerCase();
+	return normalizeDraftId(left, prefix).toLowerCase() === normalizeDraftId(right, prefix).toLowerCase();
 }
 
 /**
  * Extracts the body from a draft ID.
  */
-function extractDraftBody(value: string): string | null {
+function extractDraftBody(value: string, prefix: string): string | null {
 	const trimmed = value.trim();
 	if (trimmed === "") return "";
-	const prefixPattern = new RegExp(`^(?:${escapeRegex(DEFAULT_DRAFT_PREFIX)}-)?([0-9]+(?:\\.[0-9]+)*)$`, "i");
+	const prefixPattern = new RegExp(`^(?:${escapeRegex(prefix)}-)?([0-9]+(?:\\.[0-9]+)*)$`, "i");
 	const match = trimmed.match(prefixPattern);
 	return match?.[1] ?? null;
 }
@@ -179,17 +178,18 @@ function extractDraftBody(value: string): string | null {
 export async function getDraftPath(draftId: string, core: Core): Promise<string | null> {
 	try {
 		const draftsDir = await core.filesystem.getDraftsDir();
+		const draftPrefix = getDraftPrefix((await core.filesystem.loadConfig()) ?? undefined);
 		const files = await Array.fromAsync(
-			new Bun.Glob(buildGlobPattern("draft")).scan({ cwd: draftsDir, followSymlinks: true }),
+			new Bun.Glob(buildGlobPattern(draftPrefix.toLowerCase())).scan({ cwd: draftsDir, followSymlinks: true }),
 		);
-		const normalizedId = normalizeDraftId(draftId);
+		const normalizedId = normalizeDraftId(draftId, draftPrefix);
 		// Use lowercase ID for filename matching (filenames use lowercase prefix)
 		const filenameId = idForFilename(normalizedId);
 		// First exact match
 		let draftFile = files.find((f) => f.startsWith(`${filenameId} -`) || f.startsWith(`${filenameId}-`));
 		// Fallback to loose numeric match ignoring leading zeros
 		if (!draftFile) {
-			draftFile = files.find((f) => draftIdsMatchLoosely(draftId, f));
+			draftFile = files.find((f) => draftIdsMatchLoosely(draftId, f, draftPrefix));
 		}
 
 		if (draftFile) {

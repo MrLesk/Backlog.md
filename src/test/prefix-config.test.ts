@@ -323,14 +323,15 @@ describe("prefix-config", () => {
 			expect(getPrefixForType(EntityType.Task, config)).toBe("task");
 		});
 
-		test("returns hardcoded draft prefix (not configurable)", () => {
-			expect(getPrefixForType(EntityType.Draft)).toBe("draft");
+		test("returns the task prefix for drafts (they share the task ID space)", () => {
+			expect(getPrefixForType(EntityType.Draft)).toBe("task");
 		});
 
-		test("draft prefix is always hardcoded regardless of config", () => {
+		test("draft prefix follows the configured task prefix", () => {
 			const config = { prefixes: { task: "JIRA" } } as BacklogConfig;
-			// Draft prefix is hardcoded, not part of config
-			expect(getPrefixForType(EntityType.Draft, config)).toBe("draft");
+			// A draft is allocated out of the task ID pool, so it carries the task prefix.
+			expect(getPrefixForType(EntityType.Draft, config)).toBe("JIRA");
+			expect(getPrefixForType(EntityType.Draft, config)).toBe(getPrefixForType(EntityType.Task, config));
 		});
 
 		test("returns doc prefix for Document type", () => {

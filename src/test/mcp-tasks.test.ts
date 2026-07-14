@@ -364,8 +364,8 @@ describe("MCP task tools (MVP)", () => {
 			params: { name: "task_list", arguments: { status: "Draft", milestone: "draft-alph" } },
 		});
 		const draftText = getText(draftResult.content);
-		expect(draftText).toContain("DRAFT-1 - Draft Milestone One");
-		expect(draftText).not.toContain("DRAFT-2 - Draft Milestone Two");
+		expect(draftText).toContain("TASK-1 - Draft Milestone One");
+		expect(draftText).not.toContain("TASK-2 - Draft Milestone Two");
 	});
 
 	it("filters task_list to unassigned tasks and rejects combining with assignee", async () => {
@@ -426,8 +426,8 @@ describe("MCP task tools (MVP)", () => {
 			params: { name: "task_list", arguments: { status: "Draft", unassigned: true } },
 		});
 		const draftText = getText(draftResult.content);
-		expect(draftText).toContain("DRAFT-2 - Unassigned Draft");
-		expect(draftText).not.toContain("DRAFT-1 - Assigned Draft");
+		expect(draftText).toContain("TASK-2 - Unassigned Draft");
+		expect(draftText).not.toContain("TASK-1 - Assigned Draft");
 	});
 
 	it("includes completed tasks in task_search results and excludes archived tasks", async () => {
