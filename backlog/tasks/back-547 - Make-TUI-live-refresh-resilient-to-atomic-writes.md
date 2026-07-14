@@ -1,11 +1,11 @@
 ---
 id: BACK-547
 title: Make TUI live refresh resilient to atomic writes
-status: In Progress
+status: Done
 assignee:
   - '@back547-agent'
 created_date: '2026-07-14 19:59'
-updated_date: '2026-07-14 22:00'
+updated_date: '2026-07-14 22:03'
 labels: []
 dependencies: []
 references:
@@ -30,20 +30,20 @@ The v1.48.0 packaged TUI can miss the single filesystem event emitted during CLI
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 CLI and atomic external create, edit, status, archive, and delete operations refresh the open board and list reliably without restart.
-- [ ] #2 The watcher retries, debounces, or reconciles create and change events until the file parses stably or absence is confirmed, without infinite retries or duplicate updates.
-- [ ] #3 Selection remains valid when the selected task changes, moves status, archives, or deletes, and active filters reflect reconciled state.
-- [ ] #4 Configuration and status updates continue refreshing correctly.
-- [ ] #5 Cross-branch and separate-worktree changes are explicitly out of scope.
-- [ ] #6 Real filesystem tests cover single-event partial create, edit, archive or delete, and recovery and error bounds. Integration tests cover unified-view callback behavior.
-- [ ] #7 A compiled-binary PTY smoke test verifies that a packaged CLI mutation becomes visible in the open TUI within a bounded time on supported CI platforms.
+- [x] #1 CLI and atomic external create, edit, status, archive, and delete operations refresh the open board and list reliably without restart.
+- [x] #2 The watcher retries, debounces, or reconciles create and change events until the file parses stably or absence is confirmed, without infinite retries or duplicate updates.
+- [x] #3 Selection remains valid when the selected task changes, moves status, archives, or deletes, and active filters reflect reconciled state.
+- [x] #4 Configuration and status updates continue refreshing correctly.
+- [x] #5 Cross-branch and separate-worktree changes are explicitly out of scope.
+- [x] #6 Real filesystem tests cover single-event partial create, edit, archive or delete, and recovery and error bounds. Integration tests cover unified-view callback behavior.
+- [x] #7 A compiled-binary PTY smoke test verifies that a packaged CLI mutation becomes visible in the open TUI within a bounded time on supported CI platforms.
 <!-- AC:END -->
 
 ## Definition of Done
 <!-- DOD:BEGIN -->
-- [ ] #1 bunx tsc --noEmit passes when TypeScript touched
-- [ ] #2 bun run check . passes when formatting/linting touched
-- [ ] #3 bun test (or scoped test) passes
+- [x] #1 bunx tsc --noEmit passes when TypeScript touched
+- [x] #2 bun run check . passes when formatting/linting touched
+- [x] #3 bun test (or scoped test) passes
 <!-- DOD:END -->
 
 ## Implementation Plan
@@ -74,4 +74,12 @@ Validation:
 - full suite: 1701 passed, 3 interactive skips, 0 failed
 
 Review fixes: task-list live updates now carry the unified selected task, preserving the next neighbor after the selected task is removed. Task watcher removals now require an independent active-task filename snapshot, so malformed or persistently unreadable files are retained during direct and directory reconciliation while true absence is still published. Validation: 10 watcher tests passed; source PTY suite passed 4 of 4, including selected B removal choosing C in 549 ms; bunx tsc --noEmit passed; Biome checked 332 files; full bun test passed 1705 tests with 4 opt-in PTY skips and 0 failures.
+
+Independent specification and code-quality reviews approved the implementation and review fixes for publication.
 <!-- SECTION:NOTES:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+Made TUI live refresh resilient to single-event atomic task writes with bounded stable reconciliation, confirmed file absence, deduplicated updates, unified board and task-list state, and valid neighboring selection after removal. Verified by deterministic watcher and unified-state tests, source and compiled PTY smoke tests, TypeScript, Biome, and the full 1705-test suite with zero failures.
+<!-- SECTION:FINAL_SUMMARY:END -->
