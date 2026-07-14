@@ -301,7 +301,9 @@ export async function runUnifiedView(options: UnifiedViewOptions): Promise<void>
 		let tasks = baseTasks;
 		let kanbanStatuses = loadedStatuses ?? [];
 		let boardUpdater: ((nextTasks: Task[], nextStatuses: string[]) => void) | null = null;
-		let taskListUpdater: ((nextTasks: Task[], nextStatuses: string[], nextLabels: string[]) => void) | null = null;
+		let taskListUpdater:
+			| ((nextTasks: Task[], nextStatuses: string[], nextLabels: string[], nextSelectedTask?: Task) => void)
+			| null = null;
 
 		const getRenderableTasks = () => tasks.filter((task) => task.id && task.id.trim() !== "" && hasAnyPrefix(task.id));
 		const getBoardAvailableLabels = () => collectAvailableLabels(getRenderableTasks(), configuredLabels);
@@ -313,7 +315,7 @@ export async function runUnifiedView(options: UnifiedViewOptions): Promise<void>
 		};
 		const emitTaskListUpdate = () => {
 			if (!taskListUpdater) return;
-			taskListUpdater(getRenderableTasks(), kanbanStatuses, configuredLabels);
+			taskListUpdater(getRenderableTasks(), kanbanStatuses, configuredLabels, selectedTask);
 		};
 		const taskUpdateCallbacks = createUnifiedTaskUpdateCallbacks(
 			() => ({ tasks, selectedTask }),

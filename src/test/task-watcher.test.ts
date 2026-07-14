@@ -209,6 +209,94 @@ describe("task watcher reconciliation", () => {
 		expect(publications).toEqual([]);
 	});
 
+	it("does not remove an existing task when its content is malformed", async () => {
+		const task = sampleTask("task-9", "Malformed content");
+		const fileName = "task-9 - Malformed-content.md";
+		const filePath = join(core.filesystem.tasksDir, fileName);
+		await Bun.write(filePath, serializeTask(task));
+		const initial = await core.filesystem.loadTask(task.id);
+		if (!initial) throw new Error("Expected initial task");
+
+		const removed: string[] = [];
+		const handle = watchTasks(
+			core,
+			{
+				onTaskRemoved(taskId) {
+					removed.push(taskId);
+				},
+			},
+			[initial],
+		);
+		stopWatcher = handle.stop;
+
+		await Bun.write(filePath, "---\nid: task-9\ntitle: [unterminated\n---\n");
+		watcherCallback("change", fileName);
+		await sleep(500);
+
+		expect(removed).toEqual([]);
+	});
+
+	it("does not remove an existing task after persistent read failures", async () => {
+		const task = sampleTask("task-10", "Unreadable content");
+		const fileName = "task-10 - Unreadable-content.md";
+		await Bun.write(join(core.filesystem.tasksDir, fileName), serializeTask(task));
+		const initial = await core.filesystem.loadTask(task.id);
+		if (!initial) throw new Error("Expected initial task");
+		const loadTaskSpy = spyOn(core.filesystem, "loadTask").mockResolvedValue(null);
+		const removed: string[] = [];
+		const handle = watchTasks(
+			core,
+			{
+				onTaskRemoved(taskId) {
+					removed.push(taskId);
+				},
+			},
+			[initial],
+		);
+		stopWatcher = handle.stop;
+
+		watcherCallback("change", fileName);
+		await sleep(500);
+		loadTaskSpy.mockRestore();
+
+		expect(removed).toEqual([]);
+	});
+
+	it("preserves malformed files during directory reconciliation and removes true absence", async () => {
+		const task = sampleTask("task-11", "Directory reconciliation");
+		const fileName = "task-11 - Directory-reconciliation.md";
+		const filePath = join(core.filesystem.tasksDir, fileName);
+		await Bun.write(filePath, serializeTask(task));
+		const initial = await core.filesystem.loadTask(task.id);
+		if (!initial) throw new Error("Expected initial task");
+		const removed: string[] = [];
+		let resolveRemoved: (() => void) | undefined;
+		const published = new Promise<void>((resolve) => {
+			resolveRemoved = resolve;
+		});
+		const handle = watchTasks(
+			core,
+			{
+				onTaskRemoved(taskId) {
+					removed.push(taskId);
+					resolveRemoved?.();
+				},
+			},
+			[initial],
+		);
+		stopWatcher = handle.stop;
+
+		await Bun.write(filePath, "---\nid: task-11\ntitle: [unterminated\n---\n");
+		watcherCallback("rename", ".atomic-write");
+		await sleep(500);
+		expect(removed).toEqual([]);
+
+		await unlink(filePath);
+		watcherCallback("rename", ".atomic-write");
+		await withTimeout(published, "directory reconciliation removal", getPlatformTimeout(1500));
+		expect(removed).toEqual(["TASK-11"]);
+	});
+
 	it("does not reconcile branch-only tasks from the current checkout watcher", async () => {
 		const removed: string[] = [];
 		const branchTask = { ...sampleTask("task-8", "Other branch"), branch: "feature/other-worktree" };

@@ -5,7 +5,7 @@ status: In Progress
 assignee:
   - '@back547-agent'
 created_date: '2026-07-14 19:59'
-updated_date: '2026-07-14 21:36'
+updated_date: '2026-07-14 22:00'
 labels: []
 dependencies: []
 references:
@@ -72,4 +72,6 @@ Validation:
 - compiled build smoke: passed
 - compiled-binary PTY suite: 3 passed
 - full suite: 1701 passed, 3 interactive skips, 0 failed
+
+Review fixes: task-list live updates now carry the unified selected task, preserving the next neighbor after the selected task is removed. Task watcher removals now require an independent active-task filename snapshot, so malformed or persistently unreadable files are retained during direct and directory reconciliation while true absence is still published. Validation: 10 watcher tests passed; source PTY suite passed 4 of 4, including selected B removal choosing C in 549 ms; bunx tsc --noEmit passed; Biome checked 332 files; full bun test passed 1705 tests with 4 opt-in PTY skips and 0 failures.
 <!-- SECTION:NOTES:END -->

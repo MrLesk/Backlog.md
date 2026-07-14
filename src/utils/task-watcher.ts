@@ -1,8 +1,9 @@
 import { type FSWatcher, watch } from "node:fs";
+import { stat } from "node:fs/promises";
 import type { Core } from "../core/backlog.ts";
 import type { Task } from "../types/index.ts";
 import { hasAnyPrefix } from "./prefix-config.ts";
-import { normalizeTaskId, normalizeTaskIdentity, taskIdsEqual } from "./task-path.ts";
+import { extractTaskIdFromFilename, normalizeTaskId, normalizeTaskIdentity, taskIdsEqual } from "./task-path.ts";
 
 export interface TaskWatcherCallbacks {
 	/** Called when a new task file is created */
@@ -20,6 +21,8 @@ interface TaskReconciliation {
 	hasPublishedState: boolean;
 	lastPublishedSignature: string | null;
 }
+
+type TaskFileSnapshot = { state: "complete"; taskIds: Set<string> } | { state: "incomplete" };
 
 const TASK_SETTLE_DELAY_MS = 50;
 const TASK_RETRY_DELAY_MS = 35;
@@ -46,6 +49,23 @@ function createReconciliation(initialTask?: Task): TaskReconciliation {
 		hasPublishedState: initialTask !== undefined,
 		lastPublishedSignature: initialTask ? taskSignature(initialTask) : null,
 	};
+}
+
+async function readTaskFileSnapshot(tasksDir: string): Promise<TaskFileSnapshot> {
+	try {
+		const directory = await stat(tasksDir);
+		if (!directory.isDirectory()) return { state: "incomplete" };
+		const files = await Array.fromAsync(new Bun.Glob("*.md").scan({ cwd: tasksDir, followSymlinks: true }));
+		await stat(tasksDir);
+		const taskIds = new Set<string>();
+		for (const file of files) {
+			const taskId = extractTaskIdFromFilename(file);
+			if (taskId) taskIds.add(normalizeTaskId(taskId));
+		}
+		return { state: "complete", taskIds };
+	} catch {
+		return { state: "incomplete" };
+	}
 }
 
 /**
@@ -83,7 +103,10 @@ export function watchTasks(
 				previousCandidateSignature = task === null ? null : undefined;
 				if (attempt < TASK_READ_ATTEMPTS - 1) continue;
 
-				if (task === null && (!state.hasPublishedState || state.lastPublishedSignature !== null)) {
+				const fileSnapshot = await readTaskFileSnapshot(tasksDir);
+				const isConfirmedAbsent =
+					task === null && fileSnapshot.state === "complete" && !fileSnapshot.taskIds.has(normalizeTaskId(taskId));
+				if (isConfirmedAbsent && (!state.hasPublishedState || state.lastPublishedSignature !== null)) {
 					try {
 						await callbacks.onTaskRemoved?.(taskId);
 						state.hasPublishedState = true;
@@ -143,16 +166,20 @@ export function watchTasks(
 		const eventGeneration = ++directoryGeneration;
 		void (async () => {
 			const visibleTaskIds = new Set<string>();
+			let taskFileIds: Set<string> | null = null;
 			for (let attempt = 0; attempt < TASK_READ_ATTEMPTS; attempt++) {
 				await delay(attempt === 0 ? TASK_SETTLE_DELAY_MS : TASK_RETRY_DELAY_MS);
 				if (stopped || eventGeneration !== directoryGeneration) return;
 
+				const fileSnapshot = await readTaskFileSnapshot(tasksDir);
+				if (fileSnapshot.state === "incomplete") continue;
 				let tasks: Task[];
 				try {
 					tasks = await core.filesystem.listTasks();
 				} catch {
 					continue;
 				}
+				taskFileIds = fileSnapshot.taskIds;
 				visibleTaskIds.clear();
 				for (const task of tasks) {
 					if (!isUsableTask(task, task.id)) continue;
@@ -163,9 +190,9 @@ export function watchTasks(
 				}
 			}
 
-			if (stopped || eventGeneration !== directoryGeneration) return;
+			if (stopped || eventGeneration !== directoryGeneration || !taskFileIds) return;
 			for (const taskId of reconciliations.keys()) {
-				if (!visibleTaskIds.has(taskId)) schedule(taskId);
+				if (!visibleTaskIds.has(taskId) && !taskFileIds.has(taskId)) schedule(taskId);
 			}
 		})().catch(() => {});
 	};

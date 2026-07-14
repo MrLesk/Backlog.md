@@ -201,7 +201,9 @@ export async function viewTaskEnhanced(
 		startWithSearchFocus?: boolean;
 		startupWarning?: string;
 		viewSwitcher?: import("./view-switcher.ts").ViewSwitcher;
-		subscribeUpdates?: (update: (nextTasks: Task[], nextStatuses: string[], nextLabels: string[]) => void) => void;
+		subscribeUpdates?: (
+			update: (nextTasks: Task[], nextStatuses: string[], nextLabels: string[], nextSelectedTask?: Task) => void,
+		) => void;
 		onTaskChange?: (task: Task) => void;
 		onTabPress?: () => Promise<void>;
 		onFilterChange?: (filters: {
@@ -1415,7 +1417,7 @@ export async function viewTaskEnhanced(
 	} else {
 		taskList = createTaskList();
 	}
-	options.subscribeUpdates?.((nextTasks, nextStatuses, nextLabels) => {
+	options.subscribeUpdates?.((nextTasks, nextStatuses, nextLabels, nextSelectedTask) => {
 		allTasks = nextTasks;
 		statuses = nextStatuses;
 		labels = nextLabels;
@@ -1423,7 +1425,10 @@ export async function viewTaskEnhanced(
 		if (taskSearchIndex) taskSearchIndex = createTaskSearchIndex(allTasks);
 
 		const previousTaskId = currentSelectedTask.id;
-		const currentTask = allTasks.find((candidate) => candidate.id === currentSelectedTask.id) ?? allTasks[0];
+		const currentTask =
+			allTasks.find((candidate) => candidate.id === nextSelectedTask?.id) ??
+			allTasks.find((candidate) => candidate.id === currentSelectedTask.id) ??
+			allTasks[0];
 		if (currentTask) {
 			currentSelectedTask = enrichTask(currentTask) ?? currentTask;
 			if (currentSelectedTask.id !== previousTaskId) options.onTaskChange?.(currentSelectedTask);
