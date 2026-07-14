@@ -53,6 +53,11 @@ function buildSpawnCommand(cliArgs: string[]): string {
 	return `spawn {${CLI_RUNTIME}} {${CLI_PATH}} ${argsSegment}`;
 }
 
+function buildExecCommand(cliArgs: string[]): string {
+	const command = CLI_RUNTIME.length === 0 ? [CLI_PATH, ...cliArgs] : [CLI_RUNTIME, CLI_PATH, ...cliArgs];
+	return `exec ${command.map((part) => `{${part}}`).join(" ")}`;
+}
+
 async function runInteractiveEditScenario(options: InteractiveEditRunOptions): Promise<InteractiveEditRunResult> {
 	const testDir = createUniqueTestDir(`test-tui-interactive-${options.scenario}`);
 	await mkdir(testDir, { recursive: true });
@@ -213,7 +218,96 @@ exit $exit_code
 	};
 }
 
+async function runLiveRefreshScenario(): Promise<{ title: string; transcriptPath: string }> {
+	const scenario = "live-refresh";
+	const testDir = createUniqueTestDir(`test-tui-interactive-${scenario}`);
+	await mkdir(testDir, { recursive: true });
+	await mkdir(TRANSCRIPT_DIR, { recursive: true });
+	const transcriptPath = join(TRANSCRIPT_DIR, `${scenario}-${Date.now()}.log`);
+	const expectScriptPath = join(testDir, `${scenario}.expect`);
+
+	await $`git init -b main`.cwd(testDir).quiet();
+	await $`git config user.email test@example.com`.cwd(testDir).quiet();
+	await $`git config user.name "Test User"`.cwd(testDir).quiet();
+	const core = new Core(testDir);
+	await initializeTestProject(core, "Interactive live refresh");
+	const config = await core.filesystem.loadConfig();
+	if (!config) throw new Error("Failed to load live refresh config");
+	await core.filesystem.saveConfig({ ...config, remoteOperations: false, checkActiveBranches: false });
+	await core.createTask(
+		{
+			id: "task-1",
+			title: "before-refresh",
+			status: "To Do",
+			assignee: [],
+			createdDate: "2026-07-14 00:00",
+			labels: [],
+			dependencies: [],
+			description: "Compiled TUI live refresh test",
+		},
+		false,
+	);
+
+	await writeFile(
+		expectScriptPath,
+		`#!/usr/bin/expect -f
+set timeout 20
+log_user 0
+log_file -a {${transcriptPath}}
+set env(TERM) {xterm-256color}
+set env(COLUMNS) {120}
+set env(LINES) {40}
+set env(NO_COLOR) {1}
+set stty_init {rows 40 columns 120}
+${buildSpawnCommand(["board"])}
+expect {
+	-re {before-refresh} {}
+	timeout { exit 91 }
+}
+set mutation_code [catch {${buildExecCommand(["task", "edit", "task-1", "--title", "LIVE_REFRESHED", "--plain"])} } mutation_output]
+if {$mutation_code != 0} { exit 92 }
+expect {
+	-re {LIVE_REFRESHED} {}
+	timeout { exit 93 }
+}
+send -- "q"
+expect eof
+set wait_status [wait]
+set exit_code [lindex $wait_status 3]
+exit $exit_code
+`,
+	);
+
+	const child = Bun.spawn(["expect", "-f", expectScriptPath], {
+		cwd: testDir,
+		stdout: "pipe",
+		stderr: "pipe",
+	});
+	const stdoutPromise = child.stdout ? new Response(child.stdout).text() : Promise.resolve("");
+	const stderrPromise = child.stderr ? new Response(child.stderr).text() : Promise.resolve("");
+	const exitCode = await child.exited;
+	const [stdout, stderr] = await Promise.all([stdoutPromise, stderrPromise]);
+	const transcript = await Bun.file(transcriptPath)
+		.text()
+		.catch(() => "(no transcript captured)");
+	const finalTask = await core.filesystem.loadTask("task-1");
+	await safeCleanup(testDir);
+
+	if (![0, 130].includes(exitCode)) {
+		throw new Error(
+			`Interactive CLI live refresh failed.\nExit code: ${exitCode}\nSTDOUT:\n${stdout}\nSTDERR:\n${stderr}\nTranscript: ${transcriptPath}\nTranscript contents:\n${transcript}\n`,
+		);
+	}
+	return { title: finalTask?.title ?? "missing", transcriptPath };
+}
+
 describe("interactive TUI editor handoff", () => {
+	itInteractive("shows a CLI mutation in the open board within a bounded time", async () => {
+		const result = await runLiveRefreshScenario();
+		expect(result.title).toBe("LIVE_REFRESHED");
+		expect(result.transcriptPath).toContain("tui-interactive-transcripts");
+	});
+
 	itInteractive("launches terminal editor from board view and marks task updated", async () => {
 		const result = await runInteractiveEditScenario({
 			scenario: "board",

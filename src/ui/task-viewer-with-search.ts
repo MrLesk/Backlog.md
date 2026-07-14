@@ -201,6 +201,7 @@ export async function viewTaskEnhanced(
 		startWithSearchFocus?: boolean;
 		startupWarning?: string;
 		viewSwitcher?: import("./view-switcher.ts").ViewSwitcher;
+		subscribeUpdates?: (update: (nextTasks: Task[], nextStatuses: string[], nextLabels: string[]) => void) => void;
 		onTaskChange?: (task: Task) => void;
 		onTabPress?: () => Promise<void>;
 		onFilterChange?: (filters: {
@@ -1414,6 +1415,21 @@ export async function viewTaskEnhanced(
 	} else {
 		taskList = createTaskList();
 	}
+	options.subscribeUpdates?.((nextTasks, nextStatuses, nextLabels) => {
+		allTasks = nextTasks;
+		statuses = nextStatuses;
+		labels = nextLabels;
+		availableLabels = collectAvailableLabels(allTasks, labels);
+		if (taskSearchIndex) taskSearchIndex = createTaskSearchIndex(allTasks);
+
+		const previousTaskId = currentSelectedTask.id;
+		const currentTask = allTasks.find((candidate) => candidate.id === currentSelectedTask.id) ?? allTasks[0];
+		if (currentTask) {
+			currentSelectedTask = enrichTask(currentTask) ?? currentTask;
+			if (currentSelectedTask.id !== previousTaskId) options.onTaskChange?.(currentSelectedTask);
+		}
+		applyFilters();
+	});
 	refreshDetailPane();
 
 	if (options.startWithSearchFocus) {

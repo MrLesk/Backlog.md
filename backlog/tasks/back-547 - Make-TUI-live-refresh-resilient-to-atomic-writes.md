@@ -1,14 +1,22 @@
 ---
 id: BACK-547
 title: Make TUI live refresh resilient to atomic writes
-status: To Do
+status: In Progress
 assignee:
-  - '@alex-agent'
+  - '@back547-agent'
 created_date: '2026-07-14 19:59'
+updated_date: '2026-07-14 21:36'
 labels: []
 dependencies: []
 references:
   - 'https://github.com/MrLesk/Backlog.md/issues/786'
+modified_files:
+  - src/utils/task-watcher.ts
+  - src/ui/unified-view.ts
+  - src/ui/task-viewer-with-search.ts
+  - src/test/task-watcher.test.ts
+  - src/test/unified-view-loading.test.ts
+  - src/test/tui-interactive-editor-handoff.test.ts
 priority: high
 type: bug
 ordinal: 194000
@@ -37,3 +45,31 @@ The v1.48.0 packaged TUI can miss the single filesystem event emitted during CLI
 - [ ] #2 bun run check . passes when formatting/linting touched
 - [ ] #3 bun test (or scoped test) passes
 <!-- DOD:END -->
+
+## Implementation Plan
+
+<!-- SECTION:PLAN:BEGIN -->
+1. Add bounded per-task reconciliation to the task watcher so one create, change, rename, archive, or delete event is debounced, retried until usable stable content or confirmed absence, deduplicated, and cancelled cleanly on stop.
+2. Route watcher changes through one unified-view task-state updater, keep selected task identity current, and add a live-update subscription to the active task list so its filters and selection recompute from reconciled tasks while preserving existing board and config refresh behavior.
+3. Add deterministic watcher tests with real filesystem reads and controlled single events for partial create, edit, archive/delete, retry recovery, callback deduplication, and bounded failure, plus unified-view callback integration coverage.
+4. Extend the supported compiled-binary PTY suite with a bounded CLI-mutation live-refresh smoke scenario, then run focused tests, typecheck, Biome, the compiled binary PTY smoke, and self-review against BACK-547.
+<!-- SECTION:PLAN:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+Implemented bounded task watcher reconciliation for the current checkout. Task events now debounce by normalized ID, require two stable usable reads, retry transient partial or missing content within a finite budget, suppress duplicate publications, cancel stale generations, and reconcile the directory when atomic writes expose only a temporary-file event. Branch-only tasks are excluded from current-checkout reconciliation.
+
+Unified view now applies add, change, archive, and delete callbacks through one state transition, keeps selected task objects valid, and publishes refreshed task and configuration snapshots to both the board and active task list. The task list rebuilds its search index and filters from the reconciled state.
+
+Coverage added for controlled single-event partial create and edit, temporary-file atomic create, archive and delete absence, duplicate suppression, bounded incomplete content, branch-only scope, real fs.watch plus child CLI atomic edit, unified callback selection behavior, and a bounded source or compiled-binary PTY live-refresh smoke.
+
+Validation:
+- bunx tsc --noEmit
+- bun run check .
+- final focused watcher, unified, filter, and board tests: 34 passed
+- source PTY suite: 3 passed
+- compiled build smoke: passed
+- compiled-binary PTY suite: 3 passed
+- full suite: 1701 passed, 3 interactive skips, 0 failed
+<!-- SECTION:NOTES:END -->

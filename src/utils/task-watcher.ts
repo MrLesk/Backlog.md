@@ -1,8 +1,8 @@
 import { type FSWatcher, watch } from "node:fs";
-import { join } from "node:path";
 import type { Core } from "../core/backlog.ts";
 import type { Task } from "../types/index.ts";
 import { hasAnyPrefix } from "./prefix-config.ts";
+import { normalizeTaskId, normalizeTaskIdentity, taskIdsEqual } from "./task-path.ts";
 
 export interface TaskWatcherCallbacks {
 	/** Called when a new task file is created */
@@ -13,59 +13,189 @@ export interface TaskWatcherCallbacks {
 	onTaskRemoved?: (taskId: string) => void | Promise<void>;
 }
 
-/**
- * Watch the backlog/tasks directory for changes and emit incremental updates.
- * Uses node:fs.watch as implemented by Bun runtime.
- */
-export function watchTasks(core: Core, callbacks: TaskWatcherCallbacks): { stop: () => void } {
-	const tasksDir = core.filesystem.tasksDir;
+interface TaskReconciliation {
+	generation: number;
+	processing: boolean;
+	pending: boolean;
+	hasPublishedState: boolean;
+	lastPublishedSignature: string | null;
+}
 
-	const watcher: FSWatcher = watch(tasksDir, { recursive: false }, async (eventType, filename) => {
-		// Normalize filename to a string when available
-		let fileName: string | undefined;
-		if (typeof filename === "string") {
-			fileName = filename;
-		} else if (filename != null) {
-			fileName = String(filename);
+const TASK_SETTLE_DELAY_MS = 50;
+const TASK_RETRY_DELAY_MS = 35;
+const TASK_READ_ATTEMPTS = 8;
+
+function delay(ms: number): Promise<void> {
+	return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function isUsableTask(task: Task | null, taskId: string): task is Task {
+	return Boolean(task && taskIdsEqual(task.id, taskId) && task.title.trim() && task.status.trim());
+}
+
+function taskSignature(task: Task): string {
+	const { branch: _branch, filePath: _filePath, lastModified: _lastModified, source: _source, ...content } = task;
+	return JSON.stringify(content);
+}
+
+function createReconciliation(initialTask?: Task): TaskReconciliation {
+	return {
+		generation: 0,
+		processing: false,
+		pending: false,
+		hasPublishedState: initialTask !== undefined,
+		lastPublishedSignature: initialTask ? taskSignature(initialTask) : null,
+	};
+}
+
+/**
+ * Watch the current checkout's backlog/tasks directory and emit incremental updates.
+ * A single filesystem event is reconciled until task content is stable or absence is
+ * confirmed, because atomic writes can make the event visible before the file is.
+ */
+export function watchTasks(
+	core: Core,
+	callbacks: TaskWatcherCallbacks,
+	initialTasks: readonly Task[] = [],
+): { stop: () => void } {
+	const tasksDir = core.filesystem.tasksDir;
+	const reconciliations = new Map(
+		initialTasks.filter((task) => !task.branch).map((task) => [normalizeTaskId(task.id), createReconciliation(task)]),
+	);
+	let stopped = false;
+	let directoryGeneration = 0;
+
+	const reconcile = async (taskId: string, state: TaskReconciliation, eventGeneration: number): Promise<void> => {
+		let previousCandidateSignature: string | null | undefined;
+
+		for (let attempt = 0; attempt < TASK_READ_ATTEMPTS; attempt++) {
+			await delay(attempt === 0 ? TASK_SETTLE_DELAY_MS : TASK_RETRY_DELAY_MS);
+			if (stopped || eventGeneration !== state.generation) return;
+
+			let task: Task | null = null;
+			try {
+				task = await core.filesystem.loadTask(taskId);
+			} catch {
+				continue;
+			}
+
+			if (!isUsableTask(task, taskId)) {
+				previousCandidateSignature = task === null ? null : undefined;
+				if (attempt < TASK_READ_ATTEMPTS - 1) continue;
+
+				if (task === null && (!state.hasPublishedState || state.lastPublishedSignature !== null)) {
+					try {
+						await callbacks.onTaskRemoved?.(taskId);
+						state.hasPublishedState = true;
+						state.lastPublishedSignature = null;
+					} catch {
+						// Callback failures are bounded by the same finite reconciliation budget.
+					}
+				}
+				return;
+			}
+
+			const signature = taskSignature(task);
+			if (signature !== previousCandidateSignature) {
+				previousCandidateSignature = signature;
+				continue;
+			}
+			if (state.hasPublishedState && state.lastPublishedSignature === signature) return;
+
+			try {
+				if (!state.hasPublishedState || state.lastPublishedSignature === null) {
+					await callbacks.onTaskAdded?.(normalizeTaskIdentity(task));
+				} else {
+					await callbacks.onTaskChanged?.(normalizeTaskIdentity(task));
+				}
+				state.hasPublishedState = true;
+				state.lastPublishedSignature = signature;
+				return;
+			} catch {
+				// Retry callback delivery while this event remains current.
+			}
 		}
-		// Accept any prefix pattern (task-, draft-, JIRA-, etc.) for task files
+	};
+
+	const drain = async (taskId: string, state: TaskReconciliation): Promise<void> => {
+		if (state.processing) return;
+		state.processing = true;
+		try {
+			do {
+				state.pending = false;
+				await reconcile(taskId, state, state.generation);
+			} while (!stopped && state.pending);
+		} finally {
+			state.processing = false;
+			if (!stopped && state.pending) void drain(taskId, state).catch(() => {});
+		}
+	};
+
+	const schedule = (taskId: string) => {
+		const normalizedTaskId = normalizeTaskId(taskId);
+		const state = reconciliations.get(normalizedTaskId) ?? createReconciliation();
+		reconciliations.set(normalizedTaskId, state);
+		state.generation += 1;
+		state.pending = true;
+		void drain(normalizedTaskId, state).catch(() => {});
+	};
+	const scheduleDirectoryReconciliation = () => {
+		const eventGeneration = ++directoryGeneration;
+		void (async () => {
+			const visibleTaskIds = new Set<string>();
+			for (let attempt = 0; attempt < TASK_READ_ATTEMPTS; attempt++) {
+				await delay(attempt === 0 ? TASK_SETTLE_DELAY_MS : TASK_RETRY_DELAY_MS);
+				if (stopped || eventGeneration !== directoryGeneration) return;
+
+				let tasks: Task[];
+				try {
+					tasks = await core.filesystem.listTasks();
+				} catch {
+					continue;
+				}
+				visibleTaskIds.clear();
+				for (const task of tasks) {
+					if (!isUsableTask(task, task.id)) continue;
+					const taskId = normalizeTaskId(task.id);
+					visibleTaskIds.add(taskId);
+					const state = reconciliations.get(taskId);
+					if (!state?.hasPublishedState || state.lastPublishedSignature !== taskSignature(task)) schedule(taskId);
+				}
+			}
+
+			if (stopped || eventGeneration !== directoryGeneration) return;
+			for (const taskId of reconciliations.keys()) {
+				if (!visibleTaskIds.has(taskId)) schedule(taskId);
+			}
+		})().catch(() => {});
+	};
+
+	const watcher: FSWatcher = watch(tasksDir, { recursive: false }, (eventType, filename) => {
+		if (eventType !== "change" && eventType !== "rename") return;
+
+		const rawFilename: unknown = filename;
+		const fileName =
+			typeof rawFilename === "string" ? rawFilename : rawFilename != null ? String(rawFilename) : undefined;
 		const [taskId] = fileName?.split(" ") ?? [];
 		if (!fileName || !taskId || !hasAnyPrefix(taskId) || !fileName.endsWith(".md")) {
+			scheduleDirectoryReconciliation();
 			return;
 		}
 
-		if (eventType === "change") {
-			const task = await core.filesystem.loadTask(taskId);
-			if (task) {
-				await callbacks.onTaskChanged?.(task);
-			}
-			return;
-		}
-
-		if (eventType === "rename") {
-			// "rename" can be create, delete, or rename. Check if file exists.
-			try {
-				const fullPath = join(tasksDir, fileName);
-				const exists = await Bun.file(fullPath).exists();
-
-				if (!exists) {
-					await callbacks.onTaskRemoved?.(taskId);
-					return;
-				}
-
-				const task = await core.filesystem.loadTask(taskId);
-				if (task) {
-					// Treat as a change; handlers may add if not present
-					await callbacks.onTaskChanged?.(task);
-				}
-			} catch {
-				// Ignore transient errors
-			}
-		}
+		schedule(taskId);
+	});
+	watcher.on("error", (error) => {
+		if (process.env.DEBUG) console.warn("Task watcher error", error);
 	});
 
 	return {
 		stop() {
+			stopped = true;
+			directoryGeneration += 1;
+			for (const state of reconciliations.values()) {
+				state.generation += 1;
+				state.pending = false;
+			}
 			try {
 				watcher.close();
 			} catch {}
