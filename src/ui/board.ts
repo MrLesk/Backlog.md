@@ -1,4 +1,4 @@
-import type { BoxInterface, ListInterface } from "neo-neo-bblessed";
+import type { BoxInterface, ListInterface, ScreenInterface } from "neo-neo-bblessed";
 import { box, list } from "neo-neo-bblessed";
 import {
 	type BoardLayout,
@@ -19,7 +19,7 @@ import { openConfirmPopup } from "./components/confirm-popup.ts";
 import { createFilterHeader, type FilterHeader, type FilterState } from "./components/filter-header.ts";
 import { openMultiSelectFilterPopup, openSingleSelectFilterPopup } from "./components/filter-popup.ts";
 import { openHelpPopup } from "./components/help-popup.ts";
-import { openTaskComposer } from "./components/task-composer.ts";
+import { openTaskComposer, type TaskComposerOptions } from "./components/task-composer.ts";
 import { formatFooterContent } from "./footer-content.ts";
 import { getStatusIcon } from "./status-icon.ts";
 import { completeTaskFromTui, formatTaskCompletionBlockedMessage } from "./task-lifecycle.ts";
@@ -207,6 +207,11 @@ export function upsertBoardTask(tasks: readonly Task[], task: Task): Task[] {
 	return next;
 }
 
+function areBoardTaskCollectionsEqual(current: readonly Task[], next: readonly Task[]): boolean {
+	if (current.length !== next.length) return false;
+	return current.every((task, index) => JSON.stringify(task) === JSON.stringify(next[index]));
+}
+
 export function getCreatedTaskBoardOutcome(
 	task: Task,
 	visible: boolean,
@@ -270,6 +275,8 @@ export async function renderBoardTui(
 		startupWarning?: string;
 		dateFormat?: string;
 		createTask?: (input: TaskCreateInput) => Promise<Task>;
+		screen?: ScreenInterface;
+		taskComposer?: (options: TaskComposerOptions) => Promise<Task | null>;
 	},
 ): Promise<void> {
 	if (!process.stdout.isTTY) {
@@ -288,7 +295,7 @@ export async function renderBoardTui(
 	}
 
 	await new Promise<void>((resolve) => {
-		const screen = createScreen({ title: "Backlog Board" });
+		const screen = options?.screen ?? createScreen({ title: "Backlog Board" });
 		const container = box({
 			parent: screen,
 			width: "100%",
@@ -312,8 +319,11 @@ export async function renderBoardTui(
 		let currentFocus: "board" | "filters" = "board";
 		let filterPopupOpen = false;
 		let modalOpen = false;
+		let taskCreationOpen = false;
+		let taskCreationPendingUpdate = false;
 		let pendingSearchWrap: "to-first" | "to-last" | null = null;
 		let programmaticColumnSelection = false;
+		let renderingView = false;
 		const configuredTaskTypes = getTaskTypeValues(options?.types);
 		const sharedFilters = {
 			searchQuery: options?.filters?.searchQuery ?? "",
@@ -544,7 +554,7 @@ export async function renderBoardTui(
 				});
 
 				taskList.on("select item", (_item: unknown, selected: unknown) => {
-					if (programmaticColumnSelection || popupOpen || filterPopupOpen || modalOpen) return;
+					if (programmaticColumnSelection || renderingView || popupOpen || filterPopupOpen || modalOpen) return;
 					const column = columns[idx];
 					if (!column) return;
 					if (currentCol !== idx) {
@@ -556,7 +566,7 @@ export async function renderBoardTui(
 					setColumnActiveState(column, true);
 					filterHeader?.setBorderColor("cyan");
 					updateFooter();
-					screen.render();
+					if (!renderingView) screen.render();
 				});
 
 				taskList.on("focus", () => {
@@ -569,7 +579,7 @@ export async function renderBoardTui(
 					currentFocus = "board";
 					filterHeader?.setBorderColor("cyan");
 					updateFooter();
-					screen.render();
+					if (!renderingView) screen.render();
 				});
 			});
 		};
@@ -628,7 +638,7 @@ export async function renderBoardTui(
 			} else {
 				setColumnActiveState(current, false);
 			}
-			screen.render();
+			if (!renderingView) screen.render();
 		};
 
 		const restoreSelection = (taskId?: string) => {
@@ -896,11 +906,11 @@ export async function renderBoardTui(
 			syncBoardAreaLayout();
 		};
 
-		const showTransientFooter = (message: string, durationMs = 3000) => {
+		const showTransientFooter = (message: string, durationMs = 3000, renderImmediately = true) => {
 			transientFooterContent = message;
 			clearFooterTimer();
 			updateFooter();
-			screen.render();
+			if (renderImmediately) screen.render();
 			footerRestoreTimer = setTimeout(() => {
 				transientFooterContent = null;
 				footerRestoreTimer = null;
@@ -910,21 +920,26 @@ export async function renderBoardTui(
 		};
 
 		const renderView = (preferredTaskId?: string) => {
-			const projectedData = getProjectedColumns(getFilteredTasks(), moveOp);
+			renderingView = true;
+			try {
+				const projectedData = getProjectedColumns(getFilteredTasks(), moveOp);
 
-			// If we are moving, we want to select the moving task
-			const selectedId = preferredTaskId ?? (moveOp ? moveOp.taskId : getSelectedTaskId());
+				// If we are moving, we want to select the moving task
+				const selectedId = preferredTaskId ?? (moveOp ? moveOp.taskId : getSelectedTaskId());
 
-			if (projectedData.length === 0) {
-				const fallbackStatus = currentStatuses[0] ?? "No Status";
-				rebuildColumns([{ status: fallbackStatus, tasks: [] }], selectedId);
-			} else if (shouldRebuildColumns(currentColumnsData, projectedData)) {
-				rebuildColumns(projectedData, selectedId);
-			} else {
-				applyColumnData(projectedData, selectedId);
+				if (projectedData.length === 0) {
+					const fallbackStatus = currentStatuses[0] ?? "No Status";
+					rebuildColumns([{ status: fallbackStatus, tasks: [] }], selectedId);
+				} else if (shouldRebuildColumns(currentColumnsData, projectedData)) {
+					rebuildColumns(projectedData, selectedId);
+				} else {
+					applyColumnData(projectedData, selectedId);
+				}
+
+				updateFooter();
+			} finally {
+				renderingView = false;
 			}
-
-			updateFooter();
 			screen.render();
 		};
 
@@ -944,6 +959,13 @@ export async function renderBoardTui(
 		}
 
 		const updateBoard = (nextTasks: Task[], nextStatuses: string[]) => {
+			const tasksChanged = !areBoardTaskCollectionsEqual(currentTasks, nextTasks);
+			const statusesChanged =
+				nextStatuses.length > 0 &&
+				(nextStatuses.length !== currentStatuses.length ||
+					nextStatuses.some((status, index) => status !== currentStatuses[index]));
+			if (!tasksChanged && !statusesChanged) return;
+
 			// Update source of truth
 			currentTasks = nextTasks;
 			// Only update statuses if they changed (rare in TUI)
@@ -962,6 +984,10 @@ export async function renderBoardTui(
 				]),
 			).sort((a, b) => a.localeCompare(b));
 
+			if (taskCreationOpen) {
+				taskCreationPendingUpdate = true;
+				return;
+			}
 			renderView();
 		};
 
@@ -995,8 +1021,9 @@ export async function renderBoardTui(
 
 		screen.key(["n", "N", "S-n"], async () => {
 			if (popupOpen || filterPopupOpen || modalOpen || moveOp || currentFocus === "filters") return;
+			taskCreationOpen = true;
 			const task = await runWithModalGuard(() =>
-				openTaskComposer({
+				(options?.taskComposer ?? openTaskComposer)({
 					screen,
 					statuses: configuredWorkflowStatuses,
 					types: options?.types,
@@ -1009,8 +1036,11 @@ export async function renderBoardTui(
 					},
 				}),
 			);
+			taskCreationOpen = false;
 			if (!task) {
-				focusColumn(currentCol);
+				if (taskCreationPendingUpdate) renderView();
+				else focusColumn(currentCol);
+				taskCreationPendingUpdate = false;
 				return;
 			}
 
@@ -1018,8 +1048,9 @@ export async function renderBoardTui(
 			if (!draft) currentTasks = upsertBoardTask(currentTasks, task);
 			const visible = !draft && getFilteredTasks().some((candidate) => candidate.id === task.id);
 			const outcome = getCreatedTaskBoardOutcome(task, visible);
+			taskCreationPendingUpdate = false;
+			showTransientFooter(` {${outcome.tone}-fg}${outcome.message}{/}`, 6000, false);
 			renderView(outcome.focusTaskId);
-			showTransientFooter(` {${outcome.tone}-fg}${outcome.message}{/}`, 6000);
 		});
 
 		screen.key(["p", "P"], () => {

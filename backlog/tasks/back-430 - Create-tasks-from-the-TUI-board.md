@@ -5,7 +5,7 @@ status: In Progress
 assignee:
   - '@back430-agent'
 created_date: '2026-04-25 12:14'
-updated_date: '2026-07-15 06:41'
+updated_date: '2026-07-15 17:55'
 labels:
   - tui
   - enhancement
@@ -46,10 +46,10 @@ Deliver the production first slice of an intent-first Blessed task composer. The
 ## Implementation Plan
 
 <!-- SECTION:PLAN:BEGIN -->
-1. Add one Blessed task-composer component with a single preserved form model for Title, multiline Description, Status, Type, Priority, explicit Create, and Cancel. Build choices from configured values, keep the first workflow status at rest, and expose Draft only inside the opened Status picker without selecting it.
-2. Integrate the composer behind the established N shortcut, footer, and board help. Persist only through Core.createTaskFromInput, retain the modal and entered values on validation or persistence failure, then perform one explicit board refresh with created-task focus when visible and honest confirmation for drafts or filtered results.
-3. Add focused tests for choice/default semantics, payload shaping, retries/cancellation, board upsert/focus helpers, filter visibility, and help discovery. Exercise watcher reconciliation so the local optimistic update and later filesystem event cannot duplicate the task.
-4. Run rendered keyboard QA at normal and narrow terminal sizes, then focused tests, full tests, typecheck, Biome, and build. Simplify the interaction and update task notes without finalizing acceptance criteria.
+1. Keep one Blessed composer model for Title, multiline Description, Status, Type, Priority, explicit Create, and Cancel. Derive its full or compact geometry from actual terminal width and height so 100x30, 80x24, and 50x18 retain usable actions and help.
+2. Integrate the composer behind N and board help. Persist through Core.createTaskFromInput, and compensate the newly written task or draft plus its exact staged path when post-write auto-commit fails so retry cannot duplicate an ID.
+3. Reconcile creation with board subscriptions by queuing watcher updates while the composer is active, applying one success render with created-task focus, and ignoring equivalent delayed watcher snapshots. Keep draft and filtered confirmations honest.
+4. Add real-screen cancellation and board integration tests, including N dispatch, help discovery, post-write failure plus retry, and subscriber delivery before persistence resolves, before composer closure, and after board success. Then run rendered terminal QA, focused and full tests, typecheck, Biome, build, and diff review.
 <!-- SECTION:PLAN:END -->
 
 ## Implementation Notes
@@ -58,4 +58,8 @@ Deliver the production first slice of an intent-first Blessed task composer. The
 A disposable Blessed prototype proved the modal, keyboard, refresh, focus, filtered-result, validation, cancellation, and persistence-error mechanics at 100x30, 80x24, and 50x18. Its title/status-only scope and focused-column status default were research choices, not approved production behavior; the acceptance criteria above supersede them. The older 6038cd5 implementation remains research only. Future execution must research the current code and record a fresh plan after activation.
 
 Implemented a single Blessed composer model behind the N shortcut and documented it in the footer and board help. The composer captures Title, multiline Description, Status, Type, and Priority, uses configured choices with explicit unset values, keeps the first configured workflow status at rest, and exposes Draft only in the opened Status picker. Persistence stays on Core.createTaskFromInput for both tasks and drafts. Validation and persistence failures retain values for retry; cancel performs no write. Successful tasks are upserted once and focused when visible, while drafts and filtered tasks receive explicit explanations. Added focused coverage for defaults, Draft semantics, payloads, canonical task and draft persistence, retry state, watcher reconciliation, board focus outcomes, filtered outcomes, and help discovery. Rendered PTY QA passed at 100x30, 80x24, and 50x18 for discovery, multiline entry and scrolling, configured selectors, normal and Draft creation, validation recovery, visible focus, filtered confirmation, and cancellation. Full bun test passed. TypeScript, Biome, build, and diff checks passed.
+
+Specification corrections completed. Core creation now compensates the newly written task or draft and its exact staged Git path when post-write auto-commit fails; an actual failing pre-commit hook proves no task remains, form values survive, and retry reuses TASK-1 without creating TASK-2. Board subscription updates are queued while creation is active, equivalent delayed snapshots are ignored, and rendering is coalesced so real integration tests observe exactly one immediate screen render with TASK-2 focused for watcher delivery before persistence resolves, before composer closure, and after board success. The actual composer Cancel action was exercised and performed zero writes. Layout now uses the real terminal dimensions: the full 100x30 form receives enough height for Create, Cancel, help, and chrome, while 80x24 and 50x18 use compact controls and width-appropriate help. Fresh tmux captures verified all three dimensions and board help discovery for N. Focused composer and help coverage passes 17 tests with 64 assertions. The full bun test suite, bunx tsc --noEmit, bun run check ., bun run build, and git diff --check pass.
+
+The final focused run includes the created-task focus assertions and passes 17 tests with 67 assertions.
 <!-- SECTION:NOTES:END -->

@@ -15,6 +15,31 @@ export type TaskComposerValues = {
 	priority: string;
 };
 
+export type TaskComposerLayout = {
+	compact: boolean;
+	popupWidth: string | number;
+	popupHeight: number;
+};
+
+export function getTaskComposerLayout(screenWidth: number, screenHeight: number): TaskComposerLayout {
+	const compact = screenWidth < 70 || screenHeight < 30;
+	return {
+		compact,
+		popupWidth: screenWidth < 76 ? "96%" : 72,
+		popupHeight: compact ? Math.max(8, screenHeight - 2) : Math.min(30, screenHeight),
+	};
+}
+
+function getTaskComposerHelpText(screenWidth: number, compact: boolean): string {
+	if (!compact) {
+		return " {cyan-fg}[Tab/Shift+Tab]{/} Field | {cyan-fg}[Enter/Space]{/} Open/Create | {cyan-fg}[Esc]{/} Cancel";
+	}
+	if (screenWidth < 60) {
+		return " {cyan-fg}[Tab]{/} Next | {cyan-fg}[Enter]{/} Open | {cyan-fg}[Esc]{/} Cancel";
+	}
+	return " {cyan-fg}[Tab]{/} Next | {cyan-fg}[Enter]{/} Open/Create | {cyan-fg}[Esc]{/} Cancel";
+}
+
 type TaskComposerField = "title" | "description" | "status" | "type" | "priority" | "create" | "cancel";
 
 const FIELD_ORDER: TaskComposerField[] = ["title", "description", "status", "type", "priority", "create", "cancel"];
@@ -114,27 +139,28 @@ function displayChoice(value: string): string {
 	return value || "None";
 }
 
-export async function openTaskComposer(options: {
+export type TaskComposerOptions = {
 	screen: ScreenInterface;
 	statuses: readonly string[];
 	types?: readonly string[];
 	priorities?: readonly string[];
 	persist: (input: TaskCreateInput) => Promise<Task>;
-}): Promise<Task | null> {
+};
+
+export async function openTaskComposer(options: TaskComposerOptions): Promise<Task | null> {
 	return new Promise<Task | null>((resolve) => {
 		const controller = new TaskComposerController(options.statuses);
 		let settled = false;
 		let pickerOpen = false;
 		let activeField: TaskComposerField = "title";
-		const narrow = options.screen.width < 70 || options.screen.height < 24;
+		const layout = getTaskComposerLayout(options.screen.width, options.screen.height);
+		const narrow = layout.compact;
 		const { popup, close } = createPopupChrome({
 			screen: options.screen,
 			title: "Create Task",
-			helpText: narrow
-				? " {cyan-fg}[Tab]{/} Next | {cyan-fg}[Enter]{/} Open/Create | {cyan-fg}[Esc]{/} Cancel"
-				: " {cyan-fg}[Tab/Shift+Tab]{/} Field | {cyan-fg}[Enter/Space]{/} Open/Create | {cyan-fg}[Esc]{/} Cancel",
-			width: narrow ? "96%" : 72,
-			height: narrow ? Math.max(8, options.screen.height - 2) : 28,
+			helpText: getTaskComposerHelpText(options.screen.width, narrow),
+			width: layout.popupWidth,
+			height: layout.popupHeight,
 		});
 
 		const form = box({

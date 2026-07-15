@@ -1272,6 +1272,14 @@ export class Core {
 		return savedTask;
 	}
 
+	private async rollbackCreatedTask(filePath: string): Promise<void> {
+		await unlink(filePath);
+		await this.git.resetPaths([filePath]);
+		if (this.contentStore) {
+			await this.contentStore.refreshTasks();
+		}
+	}
+
 	async createTaskFromInput(input: TaskCreateInput, autoCommit?: boolean): Promise<{ task: Task; filePath?: string }> {
 		if (!input.title || input.title.trim().length === 0) {
 			throw new Error("Title is required to create a task.");
@@ -1376,8 +1384,18 @@ export class Core {
 			return { task, filePath };
 		});
 
-		const savedTask = await this.finalizeCreatedTask(task, filePath, isDraft, autoCommit);
-		return { task: savedTask ?? task, filePath };
+		try {
+			const savedTask = await this.finalizeCreatedTask(task, filePath, isDraft, autoCommit);
+			return { task: savedTask ?? task, filePath };
+		} catch (error) {
+			try {
+				await this.rollbackCreatedTask(filePath);
+			} catch (rollbackError) {
+				const message = rollbackError instanceof Error ? rollbackError.message : String(rollbackError);
+				throw new Error(`Task creation failed and cleanup also failed: ${message}`, { cause: error });
+			}
+			throw error;
+		}
 	}
 
 	private async resolveParentTaskIdForCreate(parentTaskId: string): Promise<string> {
