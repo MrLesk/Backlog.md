@@ -221,7 +221,7 @@ export class FileSystem {
 		return join(backlogDir, DEFAULT_DIRECTORIES.ARCHIVE_MILESTONES);
 	}
 
-	private async getArchiveDraftsDir(): Promise<string> {
+	async getArchiveDraftsDir(): Promise<string> {
 		const backlogDir = await this.getBacklogDir();
 		return join(backlogDir, DEFAULT_DIRECTORIES.ARCHIVE_DRAFTS);
 	}
