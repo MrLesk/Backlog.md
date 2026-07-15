@@ -6,6 +6,7 @@ import type { Task } from "../types/index.ts";
 import {
 	createUnifiedTaskUpdateCallbacks,
 	getDuplicateTaskStartupWarning,
+	getEmptyUnifiedViewMessage,
 	loadTasksForUnifiedView,
 	type UnifiedTaskState,
 } from "../ui/unified-view.ts";
@@ -46,6 +47,12 @@ describe("loadTasksForUnifiedView", () => {
 		expect(updates).toContain("step one");
 		expect(closed).toBe(true);
 		expect(result.statuses).toEqual(["To Do", "In Progress"]);
+	});
+
+	it("opens an unfiltered empty kanban but preserves other empty-result messages", () => {
+		expect(getEmptyUnifiedViewMessage("kanban")).toBeNull();
+		expect(getEmptyUnifiedViewMessage("task-list")).toBe("No tasks found.");
+		expect(getEmptyUnifiedViewMessage("kanban", "TASK-9")).toBe("No child tasks found for parent task TASK-9.");
 	});
 
 	it("builds a concise board warning from active and completed collisions", async () => {

@@ -21,6 +21,24 @@ export interface GitTreeEntry {
 	objectId: string;
 }
 
+export interface GitIndexEntry {
+	mode: string;
+	objectId: string;
+	stage: number;
+}
+
+function indexEntriesEqual(left: readonly GitIndexEntry[], right: readonly GitIndexEntry[]): boolean {
+	return (
+		left.length === right.length &&
+		left.every(
+			(entry, index) =>
+				entry.mode === right[index]?.mode &&
+				entry.objectId === right[index]?.objectId &&
+				entry.stage === right[index]?.stage,
+		)
+	);
+}
+
 export class GitOperations {
 	private projectRoot: string;
 	private config: BacklogConfig | null = null;
@@ -179,20 +197,53 @@ export class GitOperations {
 		await this.execGit(["reset", "HEAD", "--", ...uniqueRelativePaths], { cwd: resolvedRepoRoot });
 	}
 
-	async getStagedFileHash(filePath: string): Promise<string | null> {
+	async getIndexEntries(filePath: string): Promise<GitIndexEntry[]> {
 		const context = await this.getPathContext(filePath);
 		if (!context || !(await this.isRepository(context.repoRoot))) {
-			return null;
+			return [];
 		}
-		const { stdout } = await this.execGit(["ls-files", "-s", "--", context.relativePath], {
+		const { stdout } = await this.execGit(["ls-files", "-s", "-z", "--", context.relativePath], {
 			cwd: context.repoRoot,
 			readOnly: true,
 		});
-		const entry = stdout
-			.split("\n")
-			.map((line) => line.trim())
-			.find(Boolean);
-		return entry?.split(/\s+/)[1] ?? null;
+		return stdout
+			.split("\0")
+			.filter(Boolean)
+			.flatMap((record) => {
+				const tabIndex = record.indexOf("\t");
+				if (tabIndex < 0) return [];
+				const [mode, objectId, stageText] = record.slice(0, tabIndex).split(" ");
+				const stage = Number(stageText);
+				if (!mode || !objectId || !Number.isInteger(stage)) return [];
+				return [{ mode, objectId, stage }];
+			});
+	}
+
+	async restoreIndexEntriesIfMatches(
+		filePath: string,
+		expectedEntries: readonly GitIndexEntry[],
+		restoreEntries: readonly GitIndexEntry[],
+	): Promise<boolean> {
+		const context = await this.getPathContext(filePath);
+		if (!context || !(await this.isRepository(context.repoRoot))) {
+			return false;
+		}
+		const currentEntries = await this.getIndexEntries(filePath);
+		if (!indexEntriesEqual(currentEntries, expectedEntries)) {
+			return false;
+		}
+
+		const objectIdLength = expectedEntries[0]?.objectId.length ?? restoreEntries[0]?.objectId.length ?? 40;
+		const zeroObjectId = "0".repeat(objectIdLength);
+		const records = [`0 ${zeroObjectId}\t${context.relativePath}\0`];
+		for (const entry of restoreEntries) {
+			records.push(`${entry.mode} ${entry.objectId} ${entry.stage}\t${context.relativePath}\0`);
+		}
+		await this.execGit(["update-index", "-z", "--index-info"], {
+			cwd: context.repoRoot,
+			input: records.join(""),
+		});
+		return true;
 	}
 
 	async commitStagedChanges(message: string, repoRoot?: string | null): Promise<void> {
@@ -356,7 +407,12 @@ export class GitOperations {
 		const lowerMessage = message.toLowerCase();
 		return networkErrorPatterns.some((pattern) => lowerMessage.includes(pattern));
 	}
-	async addAndCommitTaskFile(taskId: string, filePath: string, action: "create" | "update" | "archive"): Promise<void> {
+	async addAndCommitTaskFile(
+		taskId: string,
+		filePath: string,
+		action: "create" | "update" | "archive",
+		onStaged?: (entries: GitIndexEntry[]) => void,
+	): Promise<void> {
 		const actionMessages = {
 			create: `Create task ${taskId}`,
 			update: `Update task ${taskId}`,
@@ -369,9 +425,32 @@ export class GitOperations {
 			return;
 		}
 		const pathForAdd = context?.relativePath ?? relative(this.projectRoot, filePath).replace(/\\/g, "/");
+		const expectedWorkingHash = await this.hashFile(filePath);
+		const initialIndexEntries = await this.getIndexEntries(filePath);
+		let expectedIndexEntries = initialIndexEntries;
+		let lastError: Error | undefined;
 
-		await this.execGit(["add", pathForAdd], { cwd: repoRoot });
-		await this.commitFiles(actionMessages[action], [filePath], repoRoot);
+		for (let attempt = 1; attempt <= 3; attempt += 1) {
+			if ((await this.hashFile(filePath)) !== expectedWorkingHash) {
+				throw lastError ?? new Error(`Task file changed before it could be committed: ${filePath}`);
+			}
+			try {
+				await this.execGit(["add", pathForAdd], { cwd: repoRoot });
+				expectedIndexEntries = await this.getIndexEntries(filePath);
+				onStaged?.(expectedIndexEntries);
+				await this.commitFiles(actionMessages[action], [filePath], repoRoot);
+				return;
+			} catch (error) {
+				lastError = error instanceof Error ? error : new Error(String(error));
+				if (attempt === 3) break;
+				const workingOwned = (await this.hashFile(filePath)) === expectedWorkingHash;
+				const indexOwned = indexEntriesEqual(await this.getIndexEntries(filePath), expectedIndexEntries);
+				if (!workingOwned || !indexOwned) throw lastError;
+				await new Promise((resolve) => setTimeout(resolve, 2 ** (attempt - 1) * 100));
+			}
+		}
+
+		throw new Error(`Git operation 'commit task file ${filePath}' failed after 3 attempts: ${lastError?.message}`);
 	}
 
 	async stageBacklogDirectory(backlogDir = "backlog"): Promise<string | null> {
@@ -778,7 +857,7 @@ export class GitOperations {
 
 	private async execGit(
 		args: string[],
-		options?: { readOnly?: boolean; cwd?: string },
+		options?: { readOnly?: boolean; cwd?: string; input?: string },
 	): Promise<{ stdout: string; stderr: string }> {
 		// Use Bun.spawn so we can explicitly control stdio behaviour on Windows. When running
 		// under the MCP stdio transport, delegating to git with inherited stdin can deadlock.
@@ -788,11 +867,15 @@ export class GitOperations {
 
 		const subprocess = Bun.spawn(["git", ...args], {
 			cwd: options?.cwd ?? this.projectRoot,
-			stdin: "ignore", // avoid inheriting MCP stdio pipes which can block on Windows
+			stdin: options?.input === undefined ? "ignore" : "pipe",
 			stdout: "pipe",
 			stderr: "pipe",
 			env,
 		});
+		if (options?.input !== undefined && subprocess.stdin) {
+			subprocess.stdin.write(options.input);
+			await subprocess.stdin.end();
+		}
 
 		const stdoutPromise = subprocess.stdout ? new Response(subprocess.stdout).text() : Promise.resolve("");
 		const stderrPromise = subprocess.stderr ? new Response(subprocess.stderr).text() : Promise.resolve("");

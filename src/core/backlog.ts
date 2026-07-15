@@ -2,7 +2,7 @@ import { rename as moveFile, readFile, stat, unlink, writeFile } from "node:fs/p
 import { basename, isAbsolute, join, relative } from "node:path";
 import { DEFAULT_DIRECTORIES, DEFAULT_STATUSES, FALLBACK_STATUS } from "../constants/index.ts";
 import { FileSystem, isCreateLockError } from "../file-system/operations.ts";
-import { GitOperations } from "../git/operations.ts";
+import { type GitIndexEntry, GitOperations } from "../git/operations.ts";
 import {
 	type AcceptanceCriterion,
 	type BacklogConfig,
@@ -118,9 +118,10 @@ interface BlessedScreen {
 interface CreatedTaskWrite {
 	filePath: string;
 	createdContent: Buffer;
-	createdBlobHash: string | null;
 	previousPath: string | null;
 	previousContent: Buffer | null;
+	previousIndexEntries: GitIndexEntry[];
+	generatedIndexEntries?: GitIndexEntry[];
 }
 
 interface TaskQueryOptions {
@@ -1262,6 +1263,7 @@ export class Core {
 		filepath: string,
 		isDraft: boolean,
 		autoCommit?: boolean,
+		write?: CreatedTaskWrite,
 	): Promise<Task | null> {
 		const savedTask = isDraft ? await this.fs.loadDraft(task.id) : await this.fs.loadTask(task.id);
 
@@ -1272,9 +1274,12 @@ export class Core {
 		if (await this.shouldAutoCommit(autoCommit)) {
 			if (isDraft) {
 				await this.git.addFile(filepath);
+				if (write) write.generatedIndexEntries = await this.git.getIndexEntries(filepath);
 				await this.git.commitTaskChange(task.id, `Create draft ${task.id}`, filepath);
 			} else {
-				await this.git.addAndCommitTaskFile(task.id, filepath, "create");
+				await this.git.addAndCommitTaskFile(task.id, filepath, "create", (entries) => {
+					if (write) write.generatedIndexEntries = entries;
+				});
 			}
 		}
 
@@ -1292,8 +1297,12 @@ export class Core {
 	}
 
 	private async rollbackCreatedTask(write: CreatedTaskWrite): Promise<void> {
-		if (write.createdBlobHash && (await this.git.getStagedFileHash(write.filePath)) === write.createdBlobHash) {
-			await this.git.resetPaths([write.filePath]);
+		if (write.generatedIndexEntries) {
+			await this.git.restoreIndexEntriesIfMatches(
+				write.filePath,
+				write.generatedIndexEntries,
+				write.previousIndexEntries,
+			);
 		}
 
 		const currentContent = await this.readFileIfPresent(write.filePath);
@@ -1422,15 +1431,15 @@ export class Core {
 			const previousContent = await this.readFileIfPresent(previousPath);
 			const filePath = await this.writePreparedTask(task, isDraft);
 			const createdContent = await readFile(filePath);
-			const createdBlobHash = await this.git.hashFile(filePath);
+			const previousIndexEntries = await this.git.getIndexEntries(filePath);
 			return {
 				task,
-				write: { filePath, createdContent, createdBlobHash, previousPath, previousContent },
+				write: { filePath, createdContent, previousPath, previousContent, previousIndexEntries },
 			};
 		});
 
 		try {
-			const savedTask = await this.finalizeCreatedTask(task, write.filePath, isDraft, autoCommit);
+			const savedTask = await this.finalizeCreatedTask(task, write.filePath, isDraft, autoCommit, write);
 			return { task: savedTask ?? task, filePath: write.filePath };
 		} catch (error) {
 			try {

@@ -369,6 +369,9 @@ export async function openTaskComposer(options: TaskComposerOptions): Promise<Ta
 			controller.values.title = titleInput.getValue();
 			controller.values.description = descriptionInput.getValue();
 		};
+		const cancelInputIfReading = (input: TextboxInterface) => {
+			if ((input as TextboxInterface & { _reading?: boolean })._reading) input.cancel();
+		};
 
 		const scrollFieldIntoView = (field: TaskComposerField) => {
 			const scrollable = form as BoxInterface & { scrollTo?: (index: number) => void };
@@ -381,8 +384,7 @@ export async function openTaskComposer(options: TaskComposerOptions): Promise<Ta
 		const focusField = (field: TaskComposerField) => {
 			if (activeField === "title" || activeField === "description") {
 				syncInputs();
-				(titleInput as TextboxInterface).cancel();
-				(descriptionInput as TextboxInterface).cancel();
+				cancelInputIfReading(widgets[activeField] as TextboxInterface);
 			}
 			activeField = field;
 			for (const [name, widget] of Object.entries(widgets) as Array<
@@ -423,8 +425,8 @@ export async function openTaskComposer(options: TaskComposerOptions): Promise<Ta
 			for (const widget of Object.values(widgets)) {
 				widget.unkey(["escape"], escapeHandler);
 			}
-			titleInput.cancel();
-			descriptionInput.cancel();
+			cancelInputIfReading(titleInput);
+			cancelInputIfReading(descriptionInput);
 			close();
 			resolve(task);
 		};

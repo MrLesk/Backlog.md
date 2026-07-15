@@ -251,6 +251,11 @@ export async function getDuplicateTaskStartupWarning(core: Core): Promise<string
 
 type ViewResult = "switch" | "exit";
 
+export function getEmptyUnifiedViewMessage(initialView: ViewType, parentTaskId?: string): string | null {
+	if (parentTaskId) return `No child tasks found for parent task ${parentTaskId}.`;
+	return initialView === "kanban" ? null : "No tasks found.";
+}
+
 /**
  * Main unified view controller that handles Tab switching between views
  */
@@ -266,12 +271,11 @@ export async function runUnifiedView(options: UnifiedViewOptions): Promise<void>
 
 		const baseTasks = (loadedTasks || []).filter((t) => t.id && t.id.trim() !== "" && hasAnyPrefix(t.id));
 		if (baseTasks.length === 0) {
-			if (options.filter?.parentTaskId) {
-				console.log(`No child tasks found for parent task ${options.filter.parentTaskId}.`);
-			} else {
-				console.log("No tasks found.");
+			const emptyMessage = getEmptyUnifiedViewMessage(options.initialView, options.filter?.parentTaskId);
+			if (emptyMessage) {
+				console.log(emptyMessage);
+				return;
 			}
-			return;
 		}
 		const initialConfig = await options.core.filesystem.loadConfig();
 		let configuredLabels = initialConfig?.labels ?? [];

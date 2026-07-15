@@ -220,7 +220,7 @@ describe("TUI task composer canonical persistence", () => {
 	it("never deletes or unstages a later edit while a failing hook is running", async () => {
 		await initializeGitRepository(testDir);
 		const markerPath = join(testDir, "hook-started");
-		await installFailingHook(testDir, `: > "${markerPath}"\nsleep 0.4\nexit 1`);
+		await installFailingHook(testDir, `echo attempt >> "${markerPath}"\nsleep 0.4\nexit 1`);
 
 		const creation = core.createTaskFromInput({ title: "Slow failing create" }, true);
 		for (let attempt = 0; attempt < 100 && !(await Bun.file(markerPath).exists()); attempt += 1) {
@@ -235,6 +235,7 @@ describe("TUI task composer canonical persistence", () => {
 		await expect(creation).rejects.toThrow();
 		expect(await readFile(created?.filePath as string, "utf8")).toBe(laterContent);
 		expect((await $`git diff --cached --name-only`.cwd(testDir).text()).trim()).toBe("");
+		expect((await readFile(markerPath, "utf8")).trim().split("\n")).toHaveLength(1);
 	});
 
 	it("restores pre-existing bytes when a failed create temporarily reuses their path", async () => {
@@ -251,6 +252,31 @@ describe("TUI task composer canonical persistence", () => {
 	});
 
 	for (const status of ["To Do", "Draft"] as const) {
+		it(`restores prior same-path index and worktree bytes after failed ${status === "Draft" ? "draft" : "task"} creation`, async () => {
+			await initializeGitRepository(testDir);
+			const title = status === "Draft" ? "Preexisting Draft" : "Preexisting Task";
+			const relativePath = `backlog/${status === "Draft" ? "drafts/draft" : "tasks/task"}-1 - ${title.replaceAll(" ", "-")}.md`;
+			const targetPath = join(testDir, relativePath);
+			const baselineContent = "HEAD baseline bytes.\n";
+			const stagedContent = "Prior staged user bytes.\n";
+			const worktreeContent = "Prior unstaged user bytes.\n";
+			await writeFile(targetPath, baselineContent);
+			await $`git add ${relativePath}`.cwd(testDir).quiet();
+			await $`git commit -m "add prior target"`.cwd(testDir).quiet();
+			await writeFile(targetPath, stagedContent);
+			await $`git add ${relativePath}`.cwd(testDir).quiet();
+			await writeFile(targetPath, worktreeContent);
+			await installFailingHook(testDir);
+
+			await expect(core.createTaskFromInput({ title, status }, true)).rejects.toThrow();
+
+			expect(await readFile(targetPath, "utf8")).toBe(worktreeContent);
+			expect(await $`git show :${relativePath}`.cwd(testDir).text()).toBe(stagedContent);
+			expect(await $`git show HEAD:${relativePath}`.cwd(testDir).text()).toBe(baselineContent);
+			expect((await $`git diff --cached --name-only`.cwd(testDir).text()).trim()).toBe(relativePath);
+			expect((await $`git diff --name-only`.cwd(testDir).text()).trim()).toBe(relativePath);
+		});
+
 		it(`auto-commits only the created ${status === "Draft" ? "draft" : "task"} and preserves unrelated staged work`, async () => {
 			await initializeGitRepository(testDir);
 			const unrelatedPath = join(testDir, "unrelated.txt");
@@ -288,6 +314,22 @@ describe("TUI task composer canonical persistence", () => {
 			expect(stagedNames.trim()).toBe("unrelated.txt");
 		});
 	}
+
+	it("retries a transient path-limited task commit without disturbing the index", async () => {
+		await initializeGitRepository(testDir);
+		const counterPath = join(testDir, ".git", "transient-hook-seen");
+		await installFailingHook(
+			testDir,
+			`if [ ! -f "${counterPath}" ]; then\n  : > "${counterPath}"\n  exit 1\nfi\nexit 0`,
+		);
+		const beforeCount = Number((await $`git rev-list --count HEAD`.cwd(testDir).text()).trim());
+
+		const result = await core.createTaskFromInput({ title: "Transient retry" }, true);
+
+		expect(result.task.id).toBe("TASK-1");
+		expect(Number((await $`git rev-list --count HEAD`.cwd(testDir).text()).trim())).toBe(beforeCount + 1);
+		expect((await core.gitOps.getStatus()).trim()).toBe("");
+	});
 
 	it("keeps watcher delivery idempotent with the board optimistic upsert", async () => {
 		let resolveAdded!: (created: Task) => void;
@@ -416,7 +458,7 @@ describe("TUI task composer interaction", () => {
 		}
 	});
 
-	it("renders and focuses exactly once after the actual composer persists successfully", async () => {
+	it("opens the actual composer on an empty board and renders and focuses once after first-task creation", async () => {
 		const ttyDescriptor = Object.getOwnPropertyDescriptor(process.stdout, "isTTY");
 		Object.defineProperty(process.stdout, "isTTY", { configurable: true, value: true });
 		const screen = createScreen({ smartCSR: false });
@@ -431,7 +473,7 @@ describe("TUI task composer interaction", () => {
 			resolveCreate = resolve;
 		});
 		try {
-			const boardPromise = renderBoardTui([task({ title: "Existing" })], ["To Do", "Done"], "horizontal", 20, {
+			const boardPromise = renderBoardTui([], ["To Do", "Done"], "horizontal", 20, {
 				screen,
 				createTask: async () => createResult,
 			});
@@ -447,9 +489,11 @@ describe("TUI task composer interaction", () => {
 			);
 			const focused = (screen as unknown as { focused?: TestWidget }).focused;
 			focused?.setValue?.("Actual composer task");
-			const create = collectWidgets(screen as unknown as { children?: unknown[] }).find(
-				(widget) => widget.content === "Create",
-			);
+			for (let step = 0; step < 5; step += 1) {
+				(screen as unknown as { focused?: TestWidget }).focused?.emit?.("key tab");
+			}
+			const create = (screen as unknown as { focused?: TestWidget }).focused;
+			expect(create?.content).toBe("Create");
 			create?.emit?.("key enter");
 			await new Promise<void>((resolve) => setImmediate(resolve));
 			const rendersBeforeResolution = renders;
