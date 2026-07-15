@@ -1,11 +1,11 @@
 ---
 id: BACK-430
 title: Create tasks with an intent-first TUI composer
-status: In Progress
+status: Done
 assignee:
   - '@back430-agent'
 created_date: '2026-04-25 12:14'
-updated_date: '2026-07-15 18:42'
+updated_date: '2026-07-15 18:46'
 labels:
   - tui
   - enhancement
@@ -24,23 +24,23 @@ Deliver the production first slice of an intent-first Blessed task composer. The
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 The board exposes a discoverable task-creation command and the TUI help identifies its shortcut and purpose.
-- [ ] #2 The first slice presents Title, multiline Description, Status, Type, and Priority, using configured choices and supporting the existing unset behavior where the corresponding public task field permits it.
-- [ ] #3 The resting Status value is the first configured workflow status; it never defaults to the focused column or to Draft.
-- [ ] #4 Draft appears as an extra first option only after the user actively opens or changes Status; merely opening the selector does not select Draft, and leaving the field unchanged preserves the first configured workflow status.
-- [ ] #5 Explicit Create is the only persistence point: a normal status uses the canonical task-creation path, while explicitly selecting Draft uses the canonical draft-creation path.
-- [ ] #6 Cancel exits without creating or modifying any task or draft.
-- [ ] #7 Validation and persistence errors are shown without partial writes and preserve all entered values for correction or retry.
-- [ ] #8 After success, the board refreshes once and focuses the created task when visible; draft or filtered-out results receive honest confirmation that explains why no task is focused.
-- [ ] #9 Rendered keyboard QA covers discovery, entry, selection, review, creation, cancellation, errors, focus, and scrolling at normal and narrow terminal sizes.
-- [ ] #10 Automated tests cover configured field choices, exact default/Draft semantics, canonical task-versus-draft payloads, cancellation, failures, board refresh/focus, filtered results, and watcher behavior.
+- [x] #1 The board exposes a discoverable task-creation command and the TUI help identifies its shortcut and purpose.
+- [x] #2 The first slice presents Title, multiline Description, Status, Type, and Priority, using configured choices and supporting the existing unset behavior where the corresponding public task field permits it.
+- [x] #3 The resting Status value is the first configured workflow status; it never defaults to the focused column or to Draft.
+- [x] #4 Draft appears as an extra first option only after the user actively opens or changes Status; merely opening the selector does not select Draft, and leaving the field unchanged preserves the first configured workflow status.
+- [x] #5 Explicit Create is the only persistence point: a normal status uses the canonical task-creation path, while explicitly selecting Draft uses the canonical draft-creation path.
+- [x] #6 Cancel exits without creating or modifying any task or draft.
+- [x] #7 Validation and persistence errors are shown without partial writes and preserve all entered values for correction or retry.
+- [x] #8 After success, the board refreshes once and focuses the created task when visible; draft or filtered-out results receive honest confirmation that explains why no task is focused.
+- [x] #9 Rendered keyboard QA covers discovery, entry, selection, review, creation, cancellation, errors, focus, and scrolling at normal and narrow terminal sizes.
+- [x] #10 Automated tests cover configured field choices, exact default/Draft semantics, canonical task-versus-draft payloads, cancellation, failures, board refresh/focus, filtered results, and watcher behavior.
 <!-- AC:END -->
 
 ## Definition of Done
 <!-- DOD:BEGIN -->
-- [ ] #1 bunx tsc --noEmit passes when TypeScript touched
-- [ ] #2 bun run check . passes when formatting/linting touched
-- [ ] #3 bun test (or scoped test) passes
+- [x] #1 bunx tsc --noEmit passes when TypeScript touched
+- [x] #2 bun run check . passes when formatting/linting touched
+- [x] #3 bun test (or scoped test) passes
 <!-- DOD:END -->
 
 ## Implementation Plan
@@ -71,4 +71,12 @@ Final quality validation: the full suite passes 1,730 tests with 4 intentional i
 Final re-review identified exact prior-index restoration, empty-project board startup, and safe bounded retry as remaining work. The required Claude loop-breaker was run with the full HEAD/index/worktree scenario and proposed index-info design. It remained silent beyond four minutes and returned only Execution error when stopped once, so no advisory was available and it was not retried. Implementation proceeds from direct Git-state evidence and ownership checks.
 
 Final re-review corrections are complete. Exact per-path index entries and working-tree bytes are snapshotted independently and restored only when the generated state is still owned. Task auto-commit retries remain bounded to three path-limited attempts and stop immediately when the file or index entry changes. Unfiltered empty kanban projects now enter the board and can create their first task, while task-list and parent-filter empty-result messages remain unchanged. Fresh rendered CLI QA created TASK-1 from an empty 80x24 board using N, title entry, five Tabs, and Enter; the created task stayed selected, opened in details, and the board remained usable at 50x18. This QA exposed and fixed an inactive Blessed textarea cancel crash, with the exact keyboard path now covered. Final focused coverage passes 32 tests with 142 assertions. The full suite passes 1,734 tests with 4 intentional interactive skips and 0 failures (7,317 assertions across 196 files in 183.01 seconds). TypeScript, Biome, build, and git diff --check pass.
+
+Final publication verification: 64 focused tests passed across the TUI composer, help, empty-board loading, auto-commit, CLI commit behavior, atomic creation, and Git operations. TypeScript, Biome, build, and git diff --check also passed. Earlier fresh rendered PTY QA verified discovery, data entry, selectors, creation, cancellation, retry, focus, scrolling, and live resize at 100x30, 80x24, and 50x18.
 <!-- SECTION:NOTES:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+Added an intent-first Blessed task composer on N with Title, multiline Description, Status, Type, and Priority. It preserves the first configured workflow status, exposes Draft only through explicit selection, persists through canonical task and draft creation, handles cancellation and failures safely, refreshes once, and focuses visible results. Verified with 64 focused automated tests, the full 1,734-test suite, TypeScript, Biome, build, diff checks, and rendered PTY QA at normal and narrow terminal sizes.
+<!-- SECTION:FINAL_SUMMARY:END -->
