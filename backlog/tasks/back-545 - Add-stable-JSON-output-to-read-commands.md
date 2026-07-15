@@ -5,7 +5,7 @@ status: In Progress
 assignee:
   - '@back545-agent'
 created_date: '2026-07-13 16:06'
-updated_date: '2026-07-15 15:02'
+updated_date: '2026-07-15 17:49'
 labels:
   - cli
   - enhancement
@@ -77,4 +77,6 @@ Implemented the approved version 1 CLI JSON contract for task list, task view, t
 Post-rebase validation on origin/main at 9c29c4c9: 12 focused JSON/output-mode tests passed; full suite passed with 1717 tests and 4 interactive TUI skips; bunx tsc --noEmit passed; bun run check . passed.
 
 Addressed specification review findings. Empty parsed descriptions now serialize as null while nonempty Markdown remains verbatim. Task-level --json is rejected before unsupported subcommand handlers, while list, view, and shorthand retain JSON support. Read output modes now use Commander-parsed options so tokens after -- remain literal search queries. Validation: 15 focused JSON/output-mode tests passed; 44 related CLI regression tests passed; full suite passed with 1720 tests and 4 interactive TUI skips; bunx tsc --noEmit passed; bun run check . passed; git diff --check passed.
+
+Corrected heterogeneous search document paths to include the configured project-relative docs directory. Added default and custom backlog directory coverage. Validation: 16 focused JSON and output-mode tests passed; 30 adjacent CLI tests passed; full suite passed with 1721 tests and 4 interactive TUI skips; bunx tsc --noEmit passed; bun run check . passed; git diff --check passed.
 <!-- SECTION:NOTES:END -->

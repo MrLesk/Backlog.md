@@ -9,8 +9,8 @@ const CLI_PATH = join(process.cwd(), "src", "cli.ts");
 
 let TEST_DIR: string;
 
-async function runCli(args: string[]) {
-	return await $`bun ${[CLI_PATH, ...args]}`.cwd(TEST_DIR).nothrow().quiet();
+async function runCli(args: string[], cwd = TEST_DIR) {
+	return await $`bun ${[CLI_PATH, ...args]}`.cwd(cwd).nothrow().quiet();
 }
 
 describe("CLI JSON output", () => {
@@ -181,7 +181,7 @@ describe("CLI JSON output", () => {
 			id: "doc-1",
 			title: "JSON guide",
 			type: "guide",
-			path: "doc-1 - JSON-guide.md",
+			path: "backlog/docs/doc-1 - JSON-guide.md",
 			tags: ["cli"],
 			createdAt: "2026-07-13",
 			updatedAt: "2026-07-14T08:00:00Z",
@@ -194,6 +194,35 @@ describe("CLI JSON output", () => {
 		});
 		for (const entry of output.results) {
 			expect(entry.score).toBeUndefined();
+		}
+	});
+
+	it("uses the configured project-relative docs directory in search paths", async () => {
+		const customTestDir = createUniqueTestDir("test-cli-json-output-custom-dir");
+		try {
+			await mkdir(customTestDir, { recursive: true });
+			await $`git init -b main`.cwd(customTestDir).quiet();
+			await $`git config user.name "Test User"`.cwd(customTestDir).quiet();
+			await $`git config user.email test@example.com`.cwd(customTestDir).quiet();
+
+			const core = new Core(customTestDir);
+			await initializeTestProject(core, "Custom JSON Output Test", false, "planning/backlog-data");
+			await core.filesystem.saveDocument({
+				id: "doc-1",
+				title: "Custom guide",
+				type: "guide",
+				createdDate: "2026-07-15",
+				rawContent: "Custom directory JSON documentation",
+			});
+
+			const result = await runCli(["search", "Custom directory JSON", "--json"], customTestDir);
+			expect(result.exitCode).toBe(0);
+			expect(result.stderr.toString()).toBe("");
+			const output = JSON.parse(result.stdout.toString());
+			expect(output.results).toHaveLength(1);
+			expect(output.results[0].data.path).toBe("planning/backlog-data/docs/doc-1 - Custom-guide.md");
+		} finally {
+			await safeCleanup(customTestDir);
 		}
 	});
 

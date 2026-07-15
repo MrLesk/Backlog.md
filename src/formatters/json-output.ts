@@ -1,4 +1,4 @@
-import { isAbsolute, relative } from "node:path";
+import { isAbsolute, join, relative } from "node:path";
 import type { Decision, Document, SearchResult, Task } from "../types/index.ts";
 import { isLocalEditableTask } from "../types/index.ts";
 import { sortByTaskId } from "../utils/task-sorting.ts";
@@ -150,12 +150,12 @@ function toTaskDetailsJson(task: Task, projectRoot: string): TaskDetailsJson {
 	};
 }
 
-function toDocumentSummaryJson(document: Document): DocumentSummaryJson {
+function toDocumentSummaryJson(document: Document, projectRoot: string, docsDir: string): DocumentSummaryJson {
 	return {
 		id: document.id,
 		title: document.title,
 		type: document.type,
-		path: nullable(document.path),
+		path: document.path ? toProjectRelativePath(projectRoot, join(docsDir, document.path)) : null,
 		tags: document.tags ?? [],
 		createdAt: normalizePublicDate(document.createdDate),
 		updatedAt: normalizePublicDate(document.updatedDate),
@@ -179,7 +179,7 @@ export function taskViewJson(task: Task, projectRoot: string) {
 	return { schemaVersion: 1, kind: "task-view" as const, task: toTaskDetailsJson(task, projectRoot) };
 }
 
-export function searchJson(results: SearchResult[]) {
+export function searchJson(results: SearchResult[], projectRoot: string, docsDir: string) {
 	const publicResults: SearchResultJson[] = [];
 	for (const result of results) {
 		if (result.type === "task") {
@@ -189,7 +189,7 @@ export function searchJson(results: SearchResult[]) {
 			continue;
 		}
 		if (result.type === "document") {
-			publicResults.push({ type: "document", data: toDocumentSummaryJson(result.document) });
+			publicResults.push({ type: "document", data: toDocumentSummaryJson(result.document, projectRoot, docsDir) });
 			continue;
 		}
 		publicResults.push({ type: "decision", data: toDecisionSummaryJson(result.decision) });

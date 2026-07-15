@@ -2029,7 +2029,7 @@ addHelpSchema(program.command("search [query]"), {
 		});
 
 		if (outputMode === "json") {
-			printJson(searchJson(searchResults));
+			printJson(searchJson(searchResults, cwd, core.filesystem.docsDir));
 			cleanup();
 			return;
 		}
