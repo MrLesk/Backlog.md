@@ -556,7 +556,8 @@ describe("MCP milestone tools", () => {
 		const lastCommit = await server.git.getLastCommitMessage();
 		expect(lastCommit).toContain("backlog: Rename milestone m-0");
 
-		const { stdout: committedFiles } = await $`git show --name-only --pretty=format:`.cwd(TEST_DIR).quiet();
+		const { stdout: committedFilesRaw } = await $`git show --name-only --pretty=format:`.cwd(TEST_DIR).quiet();
+		const committedFiles = committedFilesRaw.toString();
 		expect(committedFiles).not.toContain("UNRELATED.txt");
 		const status = await server.git.getStatus();
 		expect(status).toContain("A  UNRELATED.txt");
@@ -585,7 +586,8 @@ describe("MCP milestone tools", () => {
 		const lastCommit = await server.git.getLastCommitMessage();
 		expect(lastCommit).toContain("backlog: Archive milestone m-0");
 
-		const { stdout: committedFiles } = await $`git show --name-only --pretty=format:`.cwd(TEST_DIR).quiet();
+		const { stdout: committedFilesRaw } = await $`git show --name-only --pretty=format:`.cwd(TEST_DIR).quiet();
+		const committedFiles = committedFilesRaw.toString();
 		expect(committedFiles).not.toContain("UNRELATED.txt");
 		const status = await server.git.getStatus();
 		expect(status).toContain("A  UNRELATED.txt");

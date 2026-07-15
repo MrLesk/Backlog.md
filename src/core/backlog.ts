@@ -2240,9 +2240,15 @@ export class Core {
 
 		// Commit all changes at once if auto-commit is enabled
 		if (await this.shouldAutoCommit(autoCommit)) {
-			const backlogDir = await this.getBacklogDirectoryName();
-			const repoRoot = await this.git.stageBacklogDirectory(backlogDir);
-			await this.git.commitChanges(commitMessage || `Update ${tasks.length} tasks`, repoRoot);
+			const filePaths: string[] = [];
+			for (const task of tasks) {
+				const filePath = await getTaskPath(task.id, this);
+				if (filePath) filePaths.push(filePath);
+			}
+			if (filePaths.length > 0) {
+				await this.git.addFiles(filePaths);
+				await this.git.commitFiles(commitMessage || `Update ${tasks.length} tasks`, filePaths);
+			}
 		}
 	}
 
@@ -2399,12 +2405,14 @@ export class Core {
 		if (await this.shouldAutoCommit(autoCommit)) {
 			// Stage the file move for proper Git tracking
 			const repoRoot = await this.git.stageFileMove(fromPath, toPath);
+			const commitPaths = [fromPath, toPath];
 			for (const sanitizedTask of sanitizedTasks) {
 				if (sanitizedTask.filePath) {
 					await this.git.addFile(sanitizedTask.filePath);
+					commitPaths.push(sanitizedTask.filePath);
 				}
 			}
-			await this.git.commitChanges(`backlog: Archive task ${normalizedTaskId}`, repoRoot);
+			await this.git.commitFiles(`backlog: Archive task ${normalizedTaskId}`, commitPaths, repoRoot);
 		}
 
 		return true;
@@ -2496,7 +2504,7 @@ export class Core {
 		if (success && (await this.shouldAutoCommit(autoCommit))) {
 			// Stage the file move for proper Git tracking
 			const repoRoot = await this.git.stageFileMove(fromPath, toPath);
-			await this.git.commitChanges(`backlog: Complete task ${normalizeTaskId(taskId)}`, repoRoot);
+			await this.git.commitFiles(`backlog: Complete task ${normalizeTaskId(taskId)}`, [fromPath, toPath], repoRoot);
 		}
 
 		return success;
@@ -2710,13 +2718,28 @@ export class Core {
 		return task.acceptanceCriteriaItems || [];
 	}
 
+	/**
+	 * Stage and commit a single written file, scoped to exactly the paths this write touched
+	 * (the new file, plus any previous paths it replaced). Never sweeps in unrelated dirty state.
+	 */
+	private async commitWrittenFile(message: string, previousPaths: string[], newPath: string): Promise<void> {
+		if (previousPaths.length > 0) {
+			let repoRoot: string | null = null;
+			for (const previousPath of previousPaths) {
+				repoRoot = await this.git.stageFileMove(previousPath, newPath);
+			}
+			await this.git.commitFiles(message, [...previousPaths, newPath], repoRoot);
+		} else {
+			await this.git.addFile(newPath);
+			await this.git.commitFiles(message, [newPath]);
+		}
+	}
+
 	async createDecision(decision: Decision, autoCommit?: boolean): Promise<void> {
-		await this.fs.saveDecision(decision);
+		const { filepath, removedFilepaths } = await this.fs.saveDecision(decision);
 
 		if (await this.shouldAutoCommit(autoCommit)) {
-			const backlogDir = await this.getBacklogDirectoryName();
-			const repoRoot = await this.git.stageBacklogDirectory(backlogDir);
-			await this.git.commitChanges(`backlog: Add decision ${decision.id}`, repoRoot);
+			await this.commitWrittenFile(`backlog: Add decision ${decision.id}`, removedFilepaths, filepath);
 		}
 	}
 
@@ -2771,13 +2794,18 @@ export class Core {
 	}
 
 	async createDocument(doc: Document, autoCommit?: boolean, subPath = ""): Promise<void> {
+		const previousRelativePath = doc.path;
 		const relativePath = await this.fs.saveDocument(doc, normalizeDocumentSubPath(subPath));
 		doc.path = relativePath;
 
 		if (await this.shouldAutoCommit(autoCommit)) {
-			const backlogDir = await this.getBacklogDirectoryName();
-			const repoRoot = await this.git.stageBacklogDirectory(backlogDir);
-			await this.git.commitChanges(`backlog: Add document ${doc.id}`, repoRoot);
+			const docsDir = this.fs.docsDir;
+			const absolutePath = join(docsDir, ...relativePath.split("/"));
+			const previousPaths =
+				previousRelativePath && previousRelativePath !== relativePath
+					? [join(docsDir, ...previousRelativePath.split("/"))]
+					: [];
+			await this.commitWrittenFile(`backlog: Add document ${doc.id}`, previousPaths, absolutePath);
 		}
 	}
 

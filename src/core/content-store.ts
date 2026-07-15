@@ -1062,10 +1062,13 @@ export class ContentStore {
 			return result;
 		}) as FileSystem["saveDocument"];
 
-		this.filesystem.saveDecision = (async (decision: Decision): Promise<void> => {
+		this.filesystem.saveDecision = (async (
+			decision: Decision,
+		): Promise<{ filepath: string; removedFilepaths: string[] }> => {
 			const owner: PublicationOwner = { root: this.currentRoot() };
-			await originalSaveDecision.call(this.filesystem, decision);
+			const result = await originalSaveDecision.call(this.filesystem, decision);
 			await this.handleDecisionWrite(decision.id, owner);
+			return result;
 		}) as FileSystem["saveDecision"];
 
 		this.restoreFilesystemPatch = () => {

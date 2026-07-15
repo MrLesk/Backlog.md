@@ -124,14 +124,24 @@ export class GitOperations {
 			return;
 		}
 
+		// --no-renames: without it, a staged delete+add pair (e.g. an archive move) collapses
+		// into a single rename entry naming only the destination, silently dropping the source
+		// path from the result below even though it has its own staged change.
 		const { stdout: stagedForPaths } = await this.execGit(
-			["diff", "--name-only", "--cached", "--", ...uniqueRelativePaths],
+			["diff", "--no-renames", "--name-only", "--cached", "--", ...uniqueRelativePaths],
 			{
 				cwd: resolvedRepoRoot,
 				readOnly: true,
 			},
 		);
-		if (!stagedForPaths.trim()) {
+		// Only pathspec the paths that actually have a staged change. A requested path with no
+		// git history at all (e.g. a file created and archived in the same operation while
+		// autoCommit was off) is not a valid pathspec and would abort the whole commit.
+		const pathsWithStagedChanges = stagedForPaths
+			.split("\n")
+			.map((line) => line.trim())
+			.filter((line) => line.length > 0);
+		if (pathsWithStagedChanges.length === 0) {
 			return;
 		}
 
@@ -139,7 +149,7 @@ export class GitOperations {
 		if (this.config?.bypassGitHooks) {
 			args.push("--no-verify");
 		}
-		args.push("--", ...uniqueRelativePaths);
+		args.push("--", ...pathsWithStagedChanges);
 		await this.execGit(args, { cwd: resolvedRepoRoot });
 	}
 
