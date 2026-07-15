@@ -23,6 +23,7 @@ declare module "neo-neo-bblessed" {
 	export interface ScreenInterface {
 		program: ProgramInterface;
 		key(keys: string | string[], callback: (...args: unknown[]) => void): void;
+		unkey(keys: string | string[], callback: (...args: unknown[]) => void): void;
 		on(event: string, callback: (...args: unknown[]) => void): void;
 		append(el: ElementInterface): void;
 		render(): void;
@@ -40,6 +41,7 @@ declare module "neo-neo-bblessed" {
 		setContent(content: string): void;
 		focus(): void;
 		key(keys: string | string[], callback: (...args: unknown[]) => void): void;
+		unkey(keys: string | string[], callback: (...args: unknown[]) => void): void;
 		on(
 			event: string,
 			callback:

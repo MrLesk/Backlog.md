@@ -81,6 +81,10 @@ export class GitOperations {
 
 	async commitTaskChange(taskId: string, message: string, filePath?: string): Promise<void> {
 		const commitMessage = `${taskId} - ${message}`;
+		if (filePath) {
+			await this.commitFiles(commitMessage, [filePath]);
+			return;
+		}
 		const args = ["commit", "-m", commitMessage];
 		if (this.config?.bypassGitHooks) {
 			args.push("--no-verify");
@@ -173,6 +177,22 @@ export class GitOperations {
 		}
 
 		await this.execGit(["reset", "HEAD", "--", ...uniqueRelativePaths], { cwd: resolvedRepoRoot });
+	}
+
+	async getStagedFileHash(filePath: string): Promise<string | null> {
+		const context = await this.getPathContext(filePath);
+		if (!context || !(await this.isRepository(context.repoRoot))) {
+			return null;
+		}
+		const { stdout } = await this.execGit(["ls-files", "-s", "--", context.relativePath], {
+			cwd: context.repoRoot,
+			readOnly: true,
+		});
+		const entry = stdout
+			.split("\n")
+			.map((line) => line.trim())
+			.find(Boolean);
+		return entry?.split(/\s+/)[1] ?? null;
 	}
 
 	async commitStagedChanges(message: string, repoRoot?: string | null): Promise<void> {
@@ -350,17 +370,8 @@ export class GitOperations {
 		}
 		const pathForAdd = context?.relativePath ?? relative(this.projectRoot, filePath).replace(/\\/g, "/");
 
-		// Retry git operations to handle transient failures
-		await this.retryGitOperation(async () => {
-			// Reset index to ensure only the specific file is staged
-			await this.resetIndex(repoRoot);
-
-			// Stage only the specific task file
-			await this.execGit(["add", pathForAdd], { cwd: repoRoot });
-
-			// Commit only the staged file
-			await this.commitStagedChanges(actionMessages[action], repoRoot);
-		}, `commit task file ${filePath}`);
+		await this.execGit(["add", pathForAdd], { cwd: repoRoot });
+		await this.commitFiles(actionMessages[action], [filePath], repoRoot);
 	}
 
 	async stageBacklogDirectory(backlogDir = "backlog"): Promise<string | null> {

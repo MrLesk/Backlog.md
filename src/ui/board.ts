@@ -1022,25 +1022,42 @@ export async function renderBoardTui(
 		screen.key(["n", "N", "S-n"], async () => {
 			if (popupOpen || filterPopupOpen || modalOpen || moveOp || currentFocus === "filters") return;
 			taskCreationOpen = true;
-			const task = await runWithModalGuard(() =>
-				(options?.taskComposer ?? openTaskComposer)({
-					screen,
-					statuses: configuredWorkflowStatuses,
-					types: options?.types,
-					priorities: options?.priorities,
-					persist: async (input) => {
-						if (options?.createTask) return options.createTask(input);
-						const core = new Core(process.cwd(), { enableWatchers: true });
-						const config = await core.fs.loadConfig();
-						return (await core.createTaskFromInput(input, config?.autoCommit ?? false)).task;
-					},
-				}),
-			);
-			taskCreationOpen = false;
-			if (!task) {
-				if (taskCreationPendingUpdate) renderView();
-				else focusColumn(currentCol);
+			let task: Task | null = null;
+			let creationError: unknown;
+			let hadPendingUpdate = false;
+			try {
+				task = await runWithModalGuard(() =>
+					(options?.taskComposer ?? openTaskComposer)({
+						screen,
+						statuses: configuredWorkflowStatuses,
+						types: options?.types,
+						priorities: options?.priorities,
+						persist: async (input) => {
+							if (options?.createTask) return options.createTask(input);
+							const core = new Core(process.cwd(), { enableWatchers: true });
+							const config = await core.fs.loadConfig();
+							return (await core.createTaskFromInput(input, config?.autoCommit ?? false)).task;
+						},
+					}),
+				);
+			} catch (error) {
+				creationError = error;
+			} finally {
+				taskCreationOpen = false;
+				hadPendingUpdate = taskCreationPendingUpdate;
 				taskCreationPendingUpdate = false;
+			}
+
+			if (creationError) {
+				const message = creationError instanceof Error ? creationError.message : "Unknown error";
+				showTransientFooter(` {red-fg}Error opening task composer: ${message}{/}`, 3000, false);
+				if (hadPendingUpdate) renderView();
+				else screen.render();
+				return;
+			}
+			if (!task) {
+				if (hadPendingUpdate) renderView();
+				else focusColumn(currentCol);
 				return;
 			}
 
@@ -1048,7 +1065,6 @@ export async function renderBoardTui(
 			if (!draft) currentTasks = upsertBoardTask(currentTasks, task);
 			const visible = !draft && getFilteredTasks().some((candidate) => candidate.id === task.id);
 			const outcome = getCreatedTaskBoardOutcome(task, visible);
-			taskCreationPendingUpdate = false;
 			showTransientFooter(` {${outcome.tone}-fg}${outcome.message}{/}`, 6000, false);
 			renderView(outcome.focusTaskId);
 		});

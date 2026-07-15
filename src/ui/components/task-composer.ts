@@ -153,9 +153,9 @@ export async function openTaskComposer(options: TaskComposerOptions): Promise<Ta
 		let settled = false;
 		let pickerOpen = false;
 		let activeField: TaskComposerField = "title";
-		const layout = getTaskComposerLayout(options.screen.width, options.screen.height);
-		const narrow = layout.compact;
-		const { popup, close } = createPopupChrome({
+		let layout = getTaskComposerLayout(options.screen.width, options.screen.height);
+		let narrow = layout.compact;
+		const { popup, close, reflow } = createPopupChrome({
 			screen: options.screen,
 			title: "Create Task",
 			helpText: getTaskComposerHelpText(options.screen.width, narrow),
@@ -178,7 +178,7 @@ export async function openTaskComposer(options: TaskComposerOptions): Promise<Ta
 		const label = (top: number, content: string) =>
 			box({ parent: form, top, left: 1, height: 1, content, style: { fg: "cyan" } });
 
-		label(0, "Title");
+		const titleLabel = label(0, "Title");
 		const titleInput = textbox({
 			parent: form,
 			top: 1,
@@ -191,7 +191,7 @@ export async function openTaskComposer(options: TaskComposerOptions): Promise<Ta
 			inputOnFocus: false,
 		});
 
-		label(4, "Description");
+		const descriptionLabel = label(4, "Description");
 		const descriptionInput = textarea({
 			parent: form,
 			top: 5,
@@ -206,7 +206,6 @@ export async function openTaskComposer(options: TaskComposerOptions): Promise<Ta
 		});
 
 		const createSelectField = (top: number, fieldLabel: string, value: string, side?: "left" | "right") => {
-			if (!narrow) label(top, fieldLabel);
 			return box({
 				parent: form,
 				top: narrow ? top : top + 1,
@@ -220,6 +219,9 @@ export async function openTaskComposer(options: TaskComposerOptions): Promise<Ta
 			});
 		};
 
+		const statusLabel = label(10, "Status");
+		const typeLabel = label(14, "Type");
+		const priorityLabel = label(18, "Priority");
 		const statusField = createSelectField(narrow ? 8 : 10, "Status", controller.values.status);
 		const typeField = createSelectField(narrow ? 9 : 14, "Type", controller.values.type, narrow ? "left" : undefined);
 		const priorityField = createSelectField(
@@ -275,14 +277,82 @@ export async function openTaskComposer(options: TaskComposerOptions): Promise<Ta
 			create: createAction,
 			cancel: cancelAction,
 		};
-		const fieldTop: Record<TaskComposerField, number> = {
-			title: 0,
-			description: 4,
-			status: narrow ? 8 : 10,
-			type: narrow ? 9 : 14,
-			priority: narrow ? 9 : 18,
-			create: narrow ? 10 : 22,
-			cancel: narrow ? 10 : 22,
+		const getFieldTop = (field: TaskComposerField): number => {
+			const tops: Record<TaskComposerField, number> = {
+				title: 0,
+				description: 4,
+				status: narrow ? 8 : 10,
+				type: narrow ? 9 : 14,
+				priority: narrow ? 9 : 18,
+				create: narrow ? 10 : 22,
+				cancel: narrow ? 10 : 22,
+			};
+			return tops[field];
+		};
+		type MutableLayoutWidget = BoxInterface & {
+			border?: { type: "line" };
+			hide(): void;
+			show(): void;
+		};
+		const setFieldGeometry = (
+			widget: BoxInterface,
+			geometry: { top: number; left: string | number; width: string | number; height: number },
+			bordered: boolean,
+		) => {
+			widget.top = geometry.top;
+			widget.left = geometry.left;
+			widget.width = geometry.width;
+			widget.height = geometry.height;
+			(widget as MutableLayoutWidget).border = bordered ? { type: "line" } : undefined;
+		};
+		const applyLayout = () => {
+			layout = getTaskComposerLayout(options.screen.width, options.screen.height);
+			narrow = layout.compact;
+			reflow(layout.popupWidth, layout.popupHeight, getTaskComposerHelpText(options.screen.width, layout.compact));
+			titleLabel.top = 0;
+			descriptionLabel.top = 4;
+			descriptionInput.height = narrow ? 3 : 5;
+			for (const fieldLabel of [statusLabel, typeLabel, priorityLabel] as MutableLayoutWidget[]) {
+				if (narrow) fieldLabel.hide();
+				else fieldLabel.show();
+			}
+			statusLabel.top = 10;
+			typeLabel.top = 14;
+			priorityLabel.top = 18;
+			setFieldGeometry(
+				statusField,
+				{ top: narrow ? 8 : 11, left: 1, width: "100%-2", height: narrow ? 1 : 3 },
+				!narrow,
+			);
+			setFieldGeometry(
+				typeField,
+				{ top: narrow ? 9 : 15, left: 1, width: narrow ? "48%" : "100%-2", height: narrow ? 1 : 3 },
+				!narrow,
+			);
+			setFieldGeometry(
+				priorityField,
+				{
+					top: narrow ? 9 : 19,
+					left: narrow ? "50%" : 1,
+					width: narrow ? "48%" : "100%-2",
+					height: narrow ? 1 : 3,
+				},
+				!narrow,
+			);
+			setFieldGeometry(createAction, { top: narrow ? 10 : 22, left: 1, width: 14, height: narrow ? 1 : 3 }, !narrow);
+			setFieldGeometry(cancelAction, { top: narrow ? 10 : 22, left: 17, width: 14, height: narrow ? 1 : 3 }, !narrow);
+			statusField.setContent(
+				narrow ? `Status: ${displayChoice(controller.values.status)}` : ` ${displayChoice(controller.values.status)}`,
+			);
+			typeField.setContent(
+				narrow ? `Type: ${displayChoice(controller.values.type)}` : ` ${displayChoice(controller.values.type)}`,
+			);
+			priorityField.setContent(
+				narrow
+					? `Priority: ${displayChoice(controller.values.priority)}`
+					: ` ${displayChoice(controller.values.priority)}`,
+			);
+			scrollFieldIntoView(activeField);
 		};
 
 		const setBorder = (widget: BoxInterface | TextboxInterface, active: boolean) => {
@@ -303,7 +373,7 @@ export async function openTaskComposer(options: TaskComposerOptions): Promise<Ta
 		const scrollFieldIntoView = (field: TaskComposerField) => {
 			const scrollable = form as BoxInterface & { scrollTo?: (index: number) => void };
 			const visibleHeight = typeof form.height === "number" ? form.height : 14;
-			const top = fieldTop[field];
+			const top = getFieldTop(field);
 			const target = Math.max(0, top - Math.max(0, visibleHeight - 5));
 			scrollable.scrollTo?.(target);
 		};
@@ -334,14 +404,28 @@ export async function openTaskComposer(options: TaskComposerOptions): Promise<Ta
 			const nextIndex = (index + direction + FIELD_ORDER.length) % FIELD_ORDER.length;
 			focusField(FIELD_ORDER[nextIndex] ?? "title");
 		};
+		const onResize = () => {
+			syncInputs();
+			if (!pickerOpen) applyLayout();
+			options.screen.render();
+		};
+		let escapeHandler: () => false;
 
 		const finish = (task: Task | null) => {
 			if (settled) return;
 			settled = true;
+			(
+				options.screen as ScreenInterface & {
+					removeListener(event: string, listener: (...args: unknown[]) => void): void;
+				}
+			).removeListener("resize", onResize);
+			popup.unkey(["escape"], escapeHandler);
+			for (const widget of Object.values(widgets)) {
+				widget.unkey(["escape"], escapeHandler);
+			}
 			titleInput.cancel();
 			descriptionInput.cancel();
 			close();
-			options.screen.render();
 			resolve(task);
 		};
 
@@ -392,6 +476,7 @@ export async function openTaskComposer(options: TaskComposerOptions): Promise<Ta
 				}
 			} finally {
 				pickerOpen = false;
+				applyLayout();
 				focusField(field);
 			}
 		};
@@ -400,18 +485,14 @@ export async function openTaskComposer(options: TaskComposerOptions): Promise<Ta
 			if (!pickerOpen && !controller.submitting) finish(null);
 		};
 
-		popup.key(["escape"], () => {
+		escapeHandler = () => {
 			cancel();
 			return false;
-		});
-		titleInput.key(["escape"], () => {
-			cancel();
-			return false;
-		});
-		descriptionInput.key(["escape"], () => {
-			cancel();
-			return false;
-		});
+		};
+		popup.key(["escape"], escapeHandler);
+		for (const widget of Object.values(widgets)) {
+			widget.key(["escape"], escapeHandler);
+		}
 
 		for (const input of [titleInput, descriptionInput]) {
 			input.key(["tab"], () => {
@@ -461,6 +542,8 @@ export async function openTaskComposer(options: TaskComposerOptions): Promise<Ta
 		});
 		cancelAction.on("click", cancel);
 
+		options.screen.on("resize", onResize);
+		applyLayout();
 		setImmediate(() => focusField("title"));
 	});
 }

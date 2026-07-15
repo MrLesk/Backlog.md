@@ -1,4 +1,4 @@
-import { rename as moveFile, stat, unlink } from "node:fs/promises";
+import { rename as moveFile, readFile, stat, unlink, writeFile } from "node:fs/promises";
 import { basename, isAbsolute, join, relative } from "node:path";
 import { DEFAULT_DIRECTORIES, DEFAULT_STATUSES, FALLBACK_STATUS } from "../constants/index.ts";
 import { FileSystem, isCreateLockError } from "../file-system/operations.ts";
@@ -61,6 +61,7 @@ import {
 import { resolveTaskById } from "../utils/task-id.ts";
 import {
 	AmbiguousTaskIdError,
+	getDraftPath,
 	getTaskFilename,
 	getTaskPath,
 	normalizeTaskId,
@@ -112,6 +113,14 @@ interface BlessedScreen {
 	width: number;
 	height: number;
 	emit(event: string): void;
+}
+
+interface CreatedTaskWrite {
+	filePath: string;
+	createdContent: Buffer;
+	createdBlobHash: string | null;
+	previousPath: string | null;
+	previousContent: Buffer | null;
 }
 
 interface TaskQueryOptions {
@@ -1272,9 +1281,38 @@ export class Core {
 		return savedTask;
 	}
 
-	private async rollbackCreatedTask(filePath: string): Promise<void> {
-		await unlink(filePath);
-		await this.git.resetPaths([filePath]);
+	private async readFileIfPresent(filePath: string | null): Promise<Buffer | null> {
+		if (!filePath) return null;
+		try {
+			return await readFile(filePath);
+		} catch (error) {
+			if ((error as NodeJS.ErrnoException).code === "ENOENT") return null;
+			throw error;
+		}
+	}
+
+	private async rollbackCreatedTask(write: CreatedTaskWrite): Promise<void> {
+		if (write.createdBlobHash && (await this.git.getStagedFileHash(write.filePath)) === write.createdBlobHash) {
+			await this.git.resetPaths([write.filePath]);
+		}
+
+		const currentContent = await this.readFileIfPresent(write.filePath);
+		const stillOwnsCreatedPath = currentContent?.equals(write.createdContent) ?? false;
+		if (stillOwnsCreatedPath) {
+			if (write.previousPath === write.filePath && write.previousContent) {
+				await writeFile(write.filePath, write.previousContent);
+			} else {
+				await unlink(write.filePath);
+			}
+		}
+
+		if (write.previousPath && write.previousPath !== write.filePath && write.previousContent) {
+			const currentPreviousContent = await this.readFileIfPresent(write.previousPath);
+			if (currentPreviousContent === null) {
+				await writeFile(write.previousPath, write.previousContent);
+			}
+		}
+
 		if (this.contentStore) {
 			await this.contentStore.refreshTasks();
 		}
@@ -1346,7 +1384,7 @@ export class Core {
 		});
 		const resolvedStatus = isDraft ? "Draft" : status || config?.defaultStatus || FALLBACK_STATUS;
 
-		const { task, filePath } = await this.withCreateLock(async () => {
+		const { task, write } = await this.withCreateLock(async () => {
 			const parentTaskId = requestedParentTaskId
 				? await this.resolveParentTaskIdForCreate(requestedParentTaskId)
 				: undefined;
@@ -1380,16 +1418,23 @@ export class Core {
 				...(definitionOfDoneItems && definitionOfDoneItems.length > 0 && { definitionOfDoneItems }),
 			};
 
+			const previousPath = isDraft ? await getDraftPath(task.id, this) : await getTaskPath(task.id, this);
+			const previousContent = await this.readFileIfPresent(previousPath);
 			const filePath = await this.writePreparedTask(task, isDraft);
-			return { task, filePath };
+			const createdContent = await readFile(filePath);
+			const createdBlobHash = await this.git.hashFile(filePath);
+			return {
+				task,
+				write: { filePath, createdContent, createdBlobHash, previousPath, previousContent },
+			};
 		});
 
 		try {
-			const savedTask = await this.finalizeCreatedTask(task, filePath, isDraft, autoCommit);
-			return { task: savedTask ?? task, filePath };
+			const savedTask = await this.finalizeCreatedTask(task, write.filePath, isDraft, autoCommit);
+			return { task: savedTask ?? task, filePath: write.filePath };
 		} catch (error) {
 			try {
-				await this.rollbackCreatedTask(filePath);
+				await this.rollbackCreatedTask(write);
 			} catch (rollbackError) {
 				const message = rollbackError instanceof Error ? rollbackError.message : String(rollbackError);
 				throw new Error(`Task creation failed and cleanup also failed: ${message}`, { cause: error });
