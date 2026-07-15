@@ -1,16 +1,28 @@
 ---
 id: BACK-545
 title: Add stable JSON output to read commands
-status: To Do
+status: In Progress
 assignee:
-  - '@alex-agent'
+  - '@back545-agent'
 created_date: '2026-07-13 16:06'
+updated_date: '2026-07-15 06:05'
 labels:
   - cli
   - enhancement
 dependencies: []
 references:
   - 'https://github.com/MrLesk/Backlog.md/issues/784'
+modified_files:
+  - src/cli.ts
+  - src/formatters/json-output.ts
+  - src/utils/read-output-mode.ts
+  - src/utils/read-output-mode.test.ts
+  - src/test/cli-json-output.test.ts
+  - README.md
+  - CLI-INSTRUCTIONS.md
+  - src/guidelines/agent-guidelines.md
+  - src/guidelines/cli-instructions/overview.md
+  - src/guidelines/cli-instructions/task-execution.md
 type: enhancement
 ordinal: 192000
 ---
@@ -38,3 +50,29 @@ Provide a documented, curated public JSON surface for task list, task view, and 
 - [ ] #2 bun run check . passes when formatting/linting touched
 - [ ] #3 bun test (or scoped test) passes
 <!-- DOD:END -->
+
+## Implementation Plan
+
+<!-- SECTION:PLAN:BEGIN -->
+Approved public JSON contract:
+1. Add --json to task list, task view, the task <id> shorthand, and heterogeneous search. Successful output is one pretty-printed JSON document plus a trailing newline on stdout.
+2. Use schemaVersion 1 and command-specific envelopes with kind discriminators: task-list with tasks, task-view with task, and search with results. Backward-compatible fields may be added within version 1; breaking contract changes require a schemaVersion increment.
+3. Use a fixed compact task summary projection for list and task search data. Task view extends it with curated task content. Fixed absent scalars serialize as null and absent collections as []. Do not expose internal TypeScript objects or internal-only fields.
+4. Expose project-relative paths only. Normalize documented public dates, preserve Markdown body strings, and serialize checklist indexes, ordinals, and checked states with stable JSON types.
+5. Search results discriminate task, document, and decision data and preserve rank order. Do not expose search scores in version 1.
+6. Reject --json with --plain on stderr with exit code 1. Explicit --json is always noninteractive and bypasses TTY auto-plain behavior. Existing behavior remains unchanged when --json is absent.
+7. In JSON mode, successful output is JSON only on stdout. Any validation, lookup, ambiguity, or runtime error leaves stdout empty, emits a concise human-readable message on stderr, and exits nonzero. There is no JSON error envelope in version 1.
+8. Implement one minimal shared formatter and one shared output-mode resolver. Route existing list, view, shorthand, and search results through curated projections only in JSON mode. Do not add JSON to other commands or MCP.
+9. Add focused tests for empty, single, multiple, heterogeneous, error, conflicting flags, non-TTY, deterministic ordering, shell piping, stdout/stderr separation, stable null and array semantics, and absence of internal fields.
+10. Update CLI help and public user documentation with the contract, mode behavior, examples, and piping usage. Run focused tests, typecheck, Biome, full suite, and final diff simplification.
+<!-- SECTION:PLAN:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+Alex approved the version 1 JSON contract on 2026-07-15, including named envelopes, curated compact and full projections, fixed null and array semantics, project-relative paths, no public search score, strict output flag exclusivity, JSON-only stdout, and human-readable stderr errors.
+
+Implemented the approved version 1 CLI JSON contract for task list, task view, task shorthand, and search. Added curated compact and full projections, project-relative task paths, stable null and array semantics, RFC 3339 UTC date-time normalization, heterogeneous search discrimination without scores, one shared output-mode resolver, JSON-only stdout, and nonzero stderr errors. Updated CLI help, README, CLI reference, and canonical agent guidance. Validation: 12 focused JSON/output-mode tests passed; 79 related CLI and regression tests passed; full suite passed with 1706 tests and 2 interactive TUI skips; bunx tsc --noEmit passed; bun run check . passed; git diff --check passed.
+
+Post-rebase validation on origin/main at 9c29c4c9: 12 focused JSON/output-mode tests passed; full suite passed with 1717 tests and 4 interactive TUI skips; bunx tsc --noEmit passed; bun run check . passed.
+<!-- SECTION:NOTES:END -->
