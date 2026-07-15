@@ -147,6 +147,28 @@ describe("CLI JSON output", () => {
 		}
 	});
 
+	it("serializes an absent description as null and preserves Markdown verbatim", async () => {
+		const withoutDescription = await runCli(["task", "create", "No description", "--plain"]);
+		expect(withoutDescription.exitCode).toBe(0);
+		const withMarkdown = await runCli([
+			"task",
+			"create",
+			"Markdown description",
+			"--description",
+			"First line\n\n- item with `code`",
+			"--plain",
+		]);
+		expect(withMarkdown.exitCode).toBe(0);
+
+		const absent = await runCli(["task", "view", "2", "--json"]);
+		expect(absent.exitCode).toBe(0);
+		expect(JSON.parse(absent.stdout.toString()).task.description).toBeNull();
+
+		const markdown = await runCli(["task", "view", "3", "--json"]);
+		expect(markdown.exitCode).toBe(0);
+		expect(JSON.parse(markdown.stdout.toString()).task.description).toBe("First line\n\n- item with `code`");
+	});
+
 	it("preserves heterogeneous search rank and omits scores", async () => {
 		const result = await runCli(["search", "JSON task", "--json"]);
 		expect(result.exitCode).toBe(0);
@@ -194,6 +216,31 @@ describe("CLI JSON output", () => {
 			expect(result.exitCode).toBe(1);
 			expect(result.stdout.toString()).toBe("");
 			expect(result.stderr.toString()).toContain("--json cannot be combined with --plain");
+		}
+	});
+
+	it("treats output-looking search terms after -- as literal queries", async () => {
+		const json = await runCli(["search", "--json", "--", "--plain"]);
+		expect(json.exitCode).toBe(0);
+		expect(json.stderr.toString()).toBe("");
+		expect(JSON.parse(json.stdout.toString())).toEqual({ schemaVersion: 1, kind: "search", results: [] });
+
+		const plain = await runCli(["search", "--plain", "--", "--json"]);
+		expect(plain.exitCode).toBe(0);
+		expect(plain.stderr.toString()).toBe("");
+		expect(plain.stdout.toString()).toContain("TASK-1 - JSON task");
+	});
+
+	it("rejects --json on unsupported task subcommands", async () => {
+		for (const args of [
+			["task", "archive", "999", "--json"],
+			["task", "--json", "archive", "999"],
+		]) {
+			const result = await runCli(args);
+			expect(result.exitCode).toBe(1);
+			expect(result.stdout.toString()).toBe("");
+			expect(result.stderr.toString()).toContain("--json");
+			expect(result.stderr.toString()).not.toContain("Task 999 not found");
 		}
 	});
 

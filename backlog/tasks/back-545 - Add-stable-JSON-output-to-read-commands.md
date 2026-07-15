@@ -5,7 +5,7 @@ status: In Progress
 assignee:
   - '@back545-agent'
 created_date: '2026-07-13 16:06'
-updated_date: '2026-07-15 06:05'
+updated_date: '2026-07-15 15:02'
 labels:
   - cli
   - enhancement
@@ -75,4 +75,6 @@ Alex approved the version 1 JSON contract on 2026-07-15, including named envelop
 Implemented the approved version 1 CLI JSON contract for task list, task view, task shorthand, and search. Added curated compact and full projections, project-relative task paths, stable null and array semantics, RFC 3339 UTC date-time normalization, heterogeneous search discrimination without scores, one shared output-mode resolver, JSON-only stdout, and nonzero stderr errors. Updated CLI help, README, CLI reference, and canonical agent guidance. Validation: 12 focused JSON/output-mode tests passed; 79 related CLI and regression tests passed; full suite passed with 1706 tests and 2 interactive TUI skips; bunx tsc --noEmit passed; bun run check . passed; git diff --check passed.
 
 Post-rebase validation on origin/main at 9c29c4c9: 12 focused JSON/output-mode tests passed; full suite passed with 1717 tests and 4 interactive TUI skips; bunx tsc --noEmit passed; bun run check . passed.
+
+Addressed specification review findings. Empty parsed descriptions now serialize as null while nonempty Markdown remains verbatim. Task-level --json is rejected before unsupported subcommand handlers, while list, view, and shorthand retain JSON support. Read output modes now use Commander-parsed options so tokens after -- remain literal search queries. Validation: 15 focused JSON/output-mode tests passed; 44 related CLI regression tests passed; full suite passed with 1720 tests and 4 interactive TUI skips; bunx tsc --noEmit passed; bun run check . passed; git diff --check passed.
 <!-- SECTION:NOTES:END -->

@@ -543,7 +543,6 @@ if (process.platform === "win32") {
 const hasInteractiveTTY = Boolean(process.stdout.isTTY && process.stdin.isTTY);
 const shouldAutoPlain = !hasInteractiveTTY;
 const plainFlagInArgv = process.argv.includes("--plain");
-const jsonFlagInArgv = process.argv.includes("--json");
 
 function isPlainRequested(options?: { plain?: boolean }): boolean {
 	return Boolean(options?.plain || plainFlagInArgv);
@@ -551,11 +550,7 @@ function isPlainRequested(options?: { plain?: boolean }): boolean {
 
 function getReadOutputMode(options: { json?: boolean; plain?: boolean }): ReadOutputMode | null {
 	try {
-		return resolveReadOutputMode(
-			{ ...options, json: options.json || jsonFlagInArgv },
-			hasInteractiveTTY,
-			plainFlagInArgv,
-		);
+		return resolveReadOutputMode(options, hasInteractiveTTY);
 	} catch (error) {
 		console.error(error instanceof Error ? error.message : String(error));
 		process.exitCode = 1;
@@ -1670,6 +1665,20 @@ export async function generateNextDecisionId(core: Core): Promise<string> {
 
 const taskCmd = program.command("task").aliases(["tasks"]);
 
+function getTaskReadOutputMode(options: { json?: boolean; plain?: boolean }): ReadOutputMode | null {
+	const taskOptions = taskCmd.opts<{ json?: boolean; plain?: boolean }>();
+	return getReadOutputMode({
+		json: Boolean(options.json || taskOptions.json),
+		plain: Boolean(options.plain || taskOptions.plain),
+	});
+}
+
+taskCmd.hook("preSubcommand", (command, subcommand) => {
+	if (command.opts().json && !["list", "view"].includes(subcommand.name())) {
+		command.error("error: unknown option '--json'", { code: "commander.unknownOption", exitCode: 1 });
+	}
+});
+
 addHelpSchema(taskCmd.command("create [title]"), {
 	required: [{ name: "title", type: "String", description: "Task title; prompted when omitted in interactive mode" }],
 	optional: [
@@ -2311,7 +2320,7 @@ addHelpSchema(taskCmd.command("list"), {
 	.option("--plain", "use plain text output instead of interactive UI")
 	.option("--json", "print versioned machine-readable JSON output")
 	.action(async (options) => {
-		const outputMode = getReadOutputMode(options);
+		const outputMode = getTaskReadOutputMode(options);
 		if (!outputMode) return;
 		const cwd = await requireProjectRoot();
 		const core = new Core(cwd);
@@ -3161,7 +3170,7 @@ addHelpSchema(taskCmd.command("view <taskId>"), {
 	.option("--plain", "use plain text output instead of interactive UI")
 	.option("--json", "print versioned machine-readable JSON output")
 	.action(async (taskId: string, options) => {
-		const outputMode = getReadOutputMode(options);
+		const outputMode = getTaskReadOutputMode(options);
 		if (!outputMode) return;
 		const cwd = await requireProjectRoot();
 		const core = new Core(cwd);

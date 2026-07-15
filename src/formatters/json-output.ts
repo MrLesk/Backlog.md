@@ -74,6 +74,10 @@ function nullable(value: string | undefined): string | null {
 	return value ?? null;
 }
 
+function nullableDescription(value: string | undefined): string | null {
+	return value === undefined || value === "" ? null : value;
+}
+
 function normalizePublicDate(value: string | undefined): string | null {
 	if (!value) return null;
 	if (/^\d{4}-\d{2}-\d{2}$/.test(value)) return value;
@@ -123,7 +127,7 @@ function toTaskDetailsJson(task: Task, projectRoot: string): TaskDetailsJson {
 	return {
 		...toTaskSummaryJson(task),
 		path: toProjectRelativePath(projectRoot, task.filePath),
-		description: nullable(task.description),
+		description: nullableDescription(task.description),
 		dependencies: task.dependencies ?? [],
 		references: task.references ?? [],
 		documentation: task.documentation ?? [],

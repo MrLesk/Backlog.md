@@ -5,12 +5,8 @@ export type ReadOutputOptions = {
 	plain?: boolean;
 };
 
-export function resolveReadOutputMode(
-	options: ReadOutputOptions,
-	hasInteractiveTTY: boolean,
-	plainFlagInArgv = false,
-): ReadOutputMode {
-	const plain = Boolean(options.plain || plainFlagInArgv);
+export function resolveReadOutputMode(options: ReadOutputOptions, hasInteractiveTTY: boolean): ReadOutputMode {
+	const plain = Boolean(options.plain);
 	if (options.json && plain) {
 		throw new Error("--json cannot be combined with --plain.");
 	}
