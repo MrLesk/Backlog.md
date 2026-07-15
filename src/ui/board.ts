@@ -7,7 +7,7 @@ import {
 	generateMilestoneGroupedBoard,
 } from "../board.ts";
 import { Core } from "../core/backlog.ts";
-import type { Milestone, Task } from "../types/index.ts";
+import type { Milestone, Task, TaskCreateInput } from "../types/index.ts";
 import { copyToClipboard } from "../utils/clipboard.ts";
 import { areLabelSelectionsEqual, collectAvailableLabels } from "../utils/label-filter.ts";
 import { NO_MILESTONE_FILTER_LABEL, NO_MILESTONE_FILTER_VALUE } from "../utils/milestone-filter.ts";
@@ -19,6 +19,7 @@ import { openConfirmPopup } from "./components/confirm-popup.ts";
 import { createFilterHeader, type FilterHeader, type FilterState } from "./components/filter-header.ts";
 import { openMultiSelectFilterPopup, openSingleSelectFilterPopup } from "./components/filter-popup.ts";
 import { openHelpPopup } from "./components/help-popup.ts";
+import { openTaskComposer } from "./components/task-composer.ts";
 import { formatFooterContent } from "./footer-content.ts";
 import { getStatusIcon } from "./status-icon.ts";
 import { completeTaskFromTui, formatTaskCompletionBlockedMessage } from "./task-lifecycle.ts";
@@ -171,7 +172,7 @@ function formatColumnLabel(status: string, count: number): string {
 }
 
 const DEFAULT_FOOTER_CONTENT =
-	" {cyan-fg}[Tab]{/} View | {cyan-fg}[/]{/} Search | {cyan-fg}[T/P/F/I]{/} Filter | {cyan-fg}[←→/↑↓]{/} Nav | {cyan-fg}[Enter]{/} Details | {cyan-fg}[E/M/C/A]{/} Edit/Move/Comp/Arch | {cyan-fg}[Y]{/} Yank | {cyan-fg}[?]{/} Help | {cyan-fg}[q]{/} Quit";
+	" {cyan-fg}[Tab]{/} View | {cyan-fg}[N]{/} New | {cyan-fg}[/]{/} Search | {cyan-fg}[T/P/F/I]{/} Filter | {cyan-fg}[←→/↑↓]{/} Nav | {cyan-fg}[Enter]{/} Details | {cyan-fg}[E/M/C/A]{/} Edit/Move/Comp/Arch | {cyan-fg}[Y]{/} Yank | {cyan-fg}[?]{/} Help | {cyan-fg}[q]{/} Quit";
 
 export function shouldRebuildColumns(current: ColumnData[], next: ColumnData[]): boolean {
 	if (current.length !== next.length) {
@@ -196,6 +197,33 @@ export function shouldRebuildColumns(current: ColumnData[], next: ColumnData[]):
 		}
 	}
 	return false;
+}
+
+export function upsertBoardTask(tasks: readonly Task[], task: Task): Task[] {
+	const existingIndex = tasks.findIndex((candidate) => candidate.id === task.id);
+	if (existingIndex === -1) return [...tasks, task];
+	const next = [...tasks];
+	next[existingIndex] = task;
+	return next;
+}
+
+export function getCreatedTaskBoardOutcome(
+	task: Task,
+	visible: boolean,
+): { focusTaskId?: string; message: string; tone: "green" | "yellow" } {
+	if (task.status.trim().toLowerCase() === "draft") {
+		return {
+			message: `Created ${task.id} as a draft. Drafts are not shown on the task board.`,
+			tone: "yellow",
+		};
+	}
+	if (!visible) {
+		return {
+			message: `Created ${task.id}, but it is hidden by the current board filters.`,
+			tone: "yellow",
+		};
+	}
+	return { focusTaskId: task.id, message: `Created ${task.id}.`, tone: "green" };
 }
 
 /**
@@ -241,6 +269,7 @@ export async function renderBoardTui(
 		milestoneEntities?: Milestone[];
 		startupWarning?: string;
 		dateFormat?: string;
+		createTask?: (input: TaskCreateInput) => Promise<Task>;
 	},
 ): Promise<void> {
 	if (!process.stdout.isTTY) {
@@ -276,6 +305,7 @@ export async function renderBoardTui(
 		let currentTasks = initialTasks;
 		let columns: ColumnView[] = [];
 		let currentColumnsData: ColumnData[] = [];
+		let configuredWorkflowStatuses = [...statuses];
 		let currentStatuses = initialColumns.map((column) => column.status);
 		let currentCol = 0;
 		let popupOpen = false;
@@ -879,11 +909,11 @@ export async function renderBoardTui(
 			}, durationMs);
 		};
 
-		const renderView = () => {
+		const renderView = (preferredTaskId?: string) => {
 			const projectedData = getProjectedColumns(getFilteredTasks(), moveOp);
 
 			// If we are moving, we want to select the moving task
-			const selectedId = moveOp ? moveOp.taskId : getSelectedTaskId();
+			const selectedId = preferredTaskId ?? (moveOp ? moveOp.taskId : getSelectedTaskId());
 
 			if (projectedData.length === 0) {
 				const fallbackStatus = currentStatuses[0] ?? "No Status";
@@ -917,7 +947,10 @@ export async function renderBoardTui(
 			// Update source of truth
 			currentTasks = nextTasks;
 			// Only update statuses if they changed (rare in TUI)
-			if (nextStatuses.length > 0) currentStatuses = nextStatuses;
+			if (nextStatuses.length > 0) {
+				configuredWorkflowStatuses = [...nextStatuses];
+				currentStatuses = nextStatuses;
+			}
 			configuredLabels = collectAvailableLabels(currentTasks, options?.availableLabels ?? []);
 			availableMilestones = Array.from(
 				new Set([
@@ -958,6 +991,35 @@ export async function renderBoardTui(
 			pendingSearchWrap = null;
 			focusFilterControl("search");
 			updateFooter();
+		});
+
+		screen.key(["n", "N", "S-n"], async () => {
+			if (popupOpen || filterPopupOpen || modalOpen || moveOp || currentFocus === "filters") return;
+			const task = await runWithModalGuard(() =>
+				openTaskComposer({
+					screen,
+					statuses: configuredWorkflowStatuses,
+					types: options?.types,
+					priorities: options?.priorities,
+					persist: async (input) => {
+						if (options?.createTask) return options.createTask(input);
+						const core = new Core(process.cwd(), { enableWatchers: true });
+						const config = await core.fs.loadConfig();
+						return (await core.createTaskFromInput(input, config?.autoCommit ?? false)).task;
+					},
+				}),
+			);
+			if (!task) {
+				focusColumn(currentCol);
+				return;
+			}
+
+			const draft = task.status.trim().toLowerCase() === "draft";
+			if (!draft) currentTasks = upsertBoardTask(currentTasks, task);
+			const visible = !draft && getFilteredTasks().some((candidate) => candidate.id === task.id);
+			const outcome = getCreatedTaskBoardOutcome(task, visible);
+			renderView(outcome.focusTaskId);
+			showTransientFooter(` {${outcome.tone}-fg}${outcome.message}{/}`, 6000);
 		});
 
 		screen.key(["p", "P"], () => {

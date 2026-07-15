@@ -1,11 +1,11 @@
 ---
 id: BACK-430
 title: Create tasks with an intent-first TUI composer
-status: To Do
+status: In Progress
 assignee:
-  - '@alex-agent'
+  - '@back430-agent'
 created_date: '2026-04-25 12:14'
-updated_date: '2026-07-12 22:10'
+updated_date: '2026-07-15 06:41'
 labels:
   - tui
   - enhancement
@@ -43,8 +43,19 @@ Deliver the production first slice of an intent-first Blessed task composer. The
 - [ ] #3 bun test (or scoped test) passes
 <!-- DOD:END -->
 
+## Implementation Plan
+
+<!-- SECTION:PLAN:BEGIN -->
+1. Add one Blessed task-composer component with a single preserved form model for Title, multiline Description, Status, Type, Priority, explicit Create, and Cancel. Build choices from configured values, keep the first workflow status at rest, and expose Draft only inside the opened Status picker without selecting it.
+2. Integrate the composer behind the established N shortcut, footer, and board help. Persist only through Core.createTaskFromInput, retain the modal and entered values on validation or persistence failure, then perform one explicit board refresh with created-task focus when visible and honest confirmation for drafts or filtered results.
+3. Add focused tests for choice/default semantics, payload shaping, retries/cancellation, board upsert/focus helpers, filter visibility, and help discovery. Exercise watcher reconciliation so the local optimistic update and later filesystem event cannot duplicate the task.
+4. Run rendered keyboard QA at normal and narrow terminal sizes, then focused tests, full tests, typecheck, Biome, and build. Simplify the interaction and update task notes without finalizing acceptance criteria.
+<!-- SECTION:PLAN:END -->
+
 ## Implementation Notes
 
 <!-- SECTION:NOTES:BEGIN -->
 A disposable Blessed prototype proved the modal, keyboard, refresh, focus, filtered-result, validation, cancellation, and persistence-error mechanics at 100x30, 80x24, and 50x18. Its title/status-only scope and focused-column status default were research choices, not approved production behavior; the acceptance criteria above supersede them. The older 6038cd5 implementation remains research only. Future execution must research the current code and record a fresh plan after activation.
+
+Implemented a single Blessed composer model behind the N shortcut and documented it in the footer and board help. The composer captures Title, multiline Description, Status, Type, and Priority, uses configured choices with explicit unset values, keeps the first configured workflow status at rest, and exposes Draft only in the opened Status picker. Persistence stays on Core.createTaskFromInput for both tasks and drafts. Validation and persistence failures retain values for retry; cancel performs no write. Successful tasks are upserted once and focused when visible, while drafts and filtered tasks receive explicit explanations. Added focused coverage for defaults, Draft semantics, payloads, canonical task and draft persistence, retry state, watcher reconciliation, board focus outcomes, filtered outcomes, and help discovery. Rendered PTY QA passed at 100x30, 80x24, and 50x18 for discovery, multiline entry and scrolling, configured selectors, normal and Draft creation, validation recovery, visible focus, filtered confirmation, and cancellation. Full bun test passed. TypeScript, Biome, build, and diff checks passed.
 <!-- SECTION:NOTES:END -->

@@ -1,0 +1,440 @@
+import type { BoxInterface, ScreenInterface, TextboxInterface } from "neo-neo-bblessed";
+import { box, textarea, textbox } from "neo-neo-bblessed";
+import type { Task, TaskCreateInput } from "../../types/index.ts";
+import { getPriorityOptions } from "../../utils/priority-config.ts";
+import { getTaskTypeValues } from "../../utils/task-type-config.ts";
+import { createPopupChrome, type FilterPopupChoice, openSingleSelectFilterPopup } from "./filter-popup.ts";
+
+const DRAFT_STATUS = "Draft";
+
+export type TaskComposerValues = {
+	title: string;
+	description: string;
+	status: string;
+	type: string;
+	priority: string;
+};
+
+type TaskComposerField = "title" | "description" | "status" | "type" | "priority" | "create" | "cancel";
+
+const FIELD_ORDER: TaskComposerField[] = ["title", "description", "status", "type", "priority", "create", "cancel"];
+
+function uniqueChoices(values: readonly string[], excludedValue?: string): string[] {
+	const choices: string[] = [];
+	const seen = new Set<string>();
+	for (const value of values) {
+		const trimmed = String(value ?? "").trim();
+		const normalized = trimmed.toLowerCase();
+		if (!trimmed || normalized === excludedValue?.toLowerCase() || seen.has(normalized)) continue;
+		seen.add(normalized);
+		choices.push(trimmed);
+	}
+	return choices;
+}
+
+export function getTaskComposerWorkflowStatuses(statuses: readonly string[]): string[] {
+	const configured = uniqueChoices(statuses, DRAFT_STATUS);
+	return configured.length > 0 ? configured : ["To Do"];
+}
+
+export function getTaskComposerStatusChoices(statuses: readonly string[]): FilterPopupChoice[] {
+	return [
+		{ label: DRAFT_STATUS, value: DRAFT_STATUS },
+		...getTaskComposerWorkflowStatuses(statuses).map((status) => ({ label: status, value: status })),
+	];
+}
+
+export function getTaskComposerTypeChoices(types?: readonly string[]): FilterPopupChoice[] {
+	return [{ label: "None", value: "" }, ...getTaskTypeValues(types).map((type) => ({ label: type, value: type }))];
+}
+
+export function getTaskComposerPriorityChoices(priorities?: readonly string[]): FilterPopupChoice[] {
+	return [
+		{ label: "None", value: "" },
+		...getPriorityOptions(priorities).map((priority) => ({ label: priority.label, value: priority.value })),
+	];
+}
+
+export function createTaskComposerValues(statuses: readonly string[]): TaskComposerValues {
+	return {
+		title: "",
+		description: "",
+		status: getTaskComposerWorkflowStatuses(statuses)[0] ?? "To Do",
+		type: "",
+		priority: "",
+	};
+}
+
+export function toTaskCreateInput(values: TaskComposerValues): TaskCreateInput {
+	const title = values.title.trim();
+	if (!title) throw new Error("Title is required.");
+	const description = values.description.trim();
+	return {
+		title,
+		status: values.status,
+		...(description && { description }),
+		...(values.type && { type: values.type }),
+		...(values.priority && { priority: values.priority }),
+	};
+}
+
+export class TaskComposerController {
+	readonly values: TaskComposerValues;
+	error = "";
+	submitting = false;
+
+	constructor(statuses: readonly string[]) {
+		this.values = createTaskComposerValues(statuses);
+	}
+
+	async create(persist: (input: TaskCreateInput) => Promise<Task>): Promise<Task | null> {
+		if (this.submitting) return null;
+		this.error = "";
+		let input: TaskCreateInput;
+		try {
+			input = toTaskCreateInput(this.values);
+		} catch (error) {
+			this.error = error instanceof Error ? error.message : "Task creation failed.";
+			return null;
+		}
+
+		this.submitting = true;
+		try {
+			return await persist(input);
+		} catch (error) {
+			this.error = error instanceof Error ? error.message : "Task creation failed.";
+			return null;
+		} finally {
+			this.submitting = false;
+		}
+	}
+}
+
+function displayChoice(value: string): string {
+	return value || "None";
+}
+
+export async function openTaskComposer(options: {
+	screen: ScreenInterface;
+	statuses: readonly string[];
+	types?: readonly string[];
+	priorities?: readonly string[];
+	persist: (input: TaskCreateInput) => Promise<Task>;
+}): Promise<Task | null> {
+	return new Promise<Task | null>((resolve) => {
+		const controller = new TaskComposerController(options.statuses);
+		let settled = false;
+		let pickerOpen = false;
+		let activeField: TaskComposerField = "title";
+		const narrow = options.screen.width < 70 || options.screen.height < 24;
+		const { popup, close } = createPopupChrome({
+			screen: options.screen,
+			title: "Create Task",
+			helpText: narrow
+				? " {cyan-fg}[Tab]{/} Next | {cyan-fg}[Enter]{/} Open/Create | {cyan-fg}[Esc]{/} Cancel"
+				: " {cyan-fg}[Tab/Shift+Tab]{/} Field | {cyan-fg}[Enter/Space]{/} Open/Create | {cyan-fg}[Esc]{/} Cancel",
+			width: narrow ? "96%" : 72,
+			height: narrow ? Math.max(8, options.screen.height - 2) : 28,
+		});
+
+		const form = box({
+			parent: popup,
+			top: 1,
+			left: 1,
+			right: 1,
+			bottom: 2,
+			scrollable: true,
+			alwaysScroll: true,
+			keys: false,
+			mouse: true,
+		});
+
+		const label = (top: number, content: string) =>
+			box({ parent: form, top, left: 1, height: 1, content, style: { fg: "cyan" } });
+
+		label(0, "Title");
+		const titleInput = textbox({
+			parent: form,
+			top: 1,
+			left: 1,
+			right: 1,
+			height: 3,
+			border: { type: "line" },
+			keys: true,
+			mouse: true,
+			inputOnFocus: false,
+		});
+
+		label(4, "Description");
+		const descriptionInput = textarea({
+			parent: form,
+			top: 5,
+			left: 1,
+			right: 1,
+			height: narrow ? 3 : 5,
+			border: { type: "line" },
+			keys: true,
+			mouse: true,
+			inputOnFocus: false,
+			scrollable: true,
+		});
+
+		const createSelectField = (top: number, fieldLabel: string, value: string, side?: "left" | "right") => {
+			if (!narrow) label(top, fieldLabel);
+			return box({
+				parent: form,
+				top: narrow ? top : top + 1,
+				left: narrow && side === "right" ? "50%" : 1,
+				...(narrow && side ? { width: "48%" } : { right: 1 }),
+				height: narrow ? 1 : 3,
+				...(narrow ? {} : { border: { type: "line" } }),
+				content: narrow ? `${fieldLabel}: ${displayChoice(value)}` : ` ${displayChoice(value)}`,
+				keys: true,
+				mouse: true,
+			});
+		};
+
+		const statusField = createSelectField(narrow ? 8 : 10, "Status", controller.values.status);
+		const typeField = createSelectField(narrow ? 9 : 14, "Type", controller.values.type, narrow ? "left" : undefined);
+		const priorityField = createSelectField(
+			narrow ? 9 : 18,
+			"Priority",
+			controller.values.priority,
+			narrow ? "right" : undefined,
+		);
+
+		const createAction = box({
+			parent: form,
+			top: narrow ? 10 : 22,
+			left: 1,
+			width: 14,
+			height: narrow ? 1 : 3,
+			...(narrow ? {} : { border: { type: "line" } }),
+			align: "center",
+			valign: "middle",
+			content: "Create",
+			keys: true,
+			mouse: true,
+		});
+		const cancelAction = box({
+			parent: form,
+			top: narrow ? 10 : 22,
+			left: 17,
+			width: 14,
+			height: narrow ? 1 : 3,
+			...(narrow ? {} : { border: { type: "line" } }),
+			align: "center",
+			valign: "middle",
+			content: "Cancel",
+			keys: true,
+			mouse: true,
+		});
+
+		const errorBox = box({
+			parent: popup,
+			bottom: 1,
+			left: 2,
+			right: 2,
+			height: 1,
+			content: "",
+			style: { fg: "red" },
+		});
+
+		const widgets: Record<TaskComposerField, BoxInterface | TextboxInterface> = {
+			title: titleInput,
+			description: descriptionInput,
+			status: statusField,
+			type: typeField,
+			priority: priorityField,
+			create: createAction,
+			cancel: cancelAction,
+		};
+		const fieldTop: Record<TaskComposerField, number> = {
+			title: 0,
+			description: 4,
+			status: narrow ? 8 : 10,
+			type: narrow ? 9 : 14,
+			priority: narrow ? 9 : 18,
+			create: narrow ? 10 : 22,
+			cancel: narrow ? 10 : 22,
+		};
+
+		const setBorder = (widget: BoxInterface | TextboxInterface, active: boolean) => {
+			const style = (widget.style ?? {}) as { border?: { fg?: string }; inverse?: boolean; bold?: boolean };
+			style.border ??= {};
+			style.border.fg = active ? "yellow" : "gray";
+			const isTextInput = widget === titleInput || widget === descriptionInput;
+			style.inverse = active && (!isTextInput || widget === createAction || widget === cancelAction) && narrow;
+			style.bold = active && (widget === createAction || widget === cancelAction);
+			widget.style = style;
+		};
+
+		const syncInputs = () => {
+			controller.values.title = titleInput.getValue();
+			controller.values.description = descriptionInput.getValue();
+		};
+
+		const scrollFieldIntoView = (field: TaskComposerField) => {
+			const scrollable = form as BoxInterface & { scrollTo?: (index: number) => void };
+			const visibleHeight = typeof form.height === "number" ? form.height : 14;
+			const top = fieldTop[field];
+			const target = Math.max(0, top - Math.max(0, visibleHeight - 5));
+			scrollable.scrollTo?.(target);
+		};
+
+		const focusField = (field: TaskComposerField) => {
+			if (activeField === "title" || activeField === "description") {
+				syncInputs();
+				(titleInput as TextboxInterface).cancel();
+				(descriptionInput as TextboxInterface).cancel();
+			}
+			activeField = field;
+			for (const [name, widget] of Object.entries(widgets) as Array<
+				[TaskComposerField, BoxInterface | TextboxInterface]
+			>) {
+				setBorder(widget, name === field);
+			}
+			scrollFieldIntoView(field);
+			const widget = widgets[field];
+			widget.focus();
+			if (field === "title" || field === "description") {
+				(widget as TextboxInterface).readInput();
+			}
+			options.screen.render();
+		};
+
+		const moveFocus = (direction: -1 | 1) => {
+			const index = FIELD_ORDER.indexOf(activeField);
+			const nextIndex = (index + direction + FIELD_ORDER.length) % FIELD_ORDER.length;
+			focusField(FIELD_ORDER[nextIndex] ?? "title");
+		};
+
+		const finish = (task: Task | null) => {
+			if (settled) return;
+			settled = true;
+			titleInput.cancel();
+			descriptionInput.cancel();
+			close();
+			options.screen.render();
+			resolve(task);
+		};
+
+		const showError = () => {
+			errorBox.setContent(controller.error ? ` ${controller.error}` : "");
+			options.screen.render();
+		};
+
+		const submit = async () => {
+			if (pickerOpen || controller.submitting) return;
+			syncInputs();
+			errorBox.setContent(" Creating task...");
+			options.screen.render();
+			const task = await controller.create(options.persist);
+			if (task) {
+				finish(task);
+				return;
+			}
+			showError();
+			if (!controller.values.title.trim()) focusField("title");
+			else focusField("create");
+		};
+
+		const openPicker = async (field: "status" | "type" | "priority") => {
+			if (pickerOpen || controller.submitting) return;
+			syncInputs();
+			pickerOpen = true;
+			const currentValue = controller.values[field];
+			const choices =
+				field === "status"
+					? getTaskComposerStatusChoices(options.statuses)
+					: field === "type"
+						? getTaskComposerTypeChoices(options.types)
+						: getTaskComposerPriorityChoices(options.priorities);
+			try {
+				const selected = await openSingleSelectFilterPopup({
+					screen: options.screen,
+					title: field === "status" ? "Task Status" : field === "type" ? "Task Type" : "Task Priority",
+					choices,
+					selectedValue: currentValue,
+				});
+				if (selected !== null) {
+					controller.values[field] = selected;
+					const fieldLabel = field === "status" ? "Status" : field === "type" ? "Type" : "Priority";
+					widgets[field].setContent(
+						narrow ? `${fieldLabel}: ${displayChoice(selected)}` : ` ${displayChoice(selected)}`,
+					);
+				}
+			} finally {
+				pickerOpen = false;
+				focusField(field);
+			}
+		};
+
+		const cancel = () => {
+			if (!pickerOpen && !controller.submitting) finish(null);
+		};
+
+		popup.key(["escape"], () => {
+			cancel();
+			return false;
+		});
+		titleInput.key(["escape"], () => {
+			cancel();
+			return false;
+		});
+		descriptionInput.key(["escape"], () => {
+			cancel();
+			return false;
+		});
+
+		for (const input of [titleInput, descriptionInput]) {
+			input.key(["tab"], () => {
+				moveFocus(1);
+				return false;
+			});
+			input.key(["S-tab"], () => {
+				moveFocus(-1);
+				return false;
+			});
+			input.on("keypress", () => {
+				controller.error = "";
+				errorBox.setContent("");
+			});
+		}
+		titleInput.on("submit", () => focusField("description"));
+
+		for (const field of ["status", "type", "priority"] as const) {
+			const widget = widgets[field];
+			widget.key(["enter", "space"], () => {
+				void openPicker(field);
+				return false;
+			});
+			widget.on("click", () => void openPicker(field));
+		}
+
+		for (const field of ["status", "type", "priority", "create", "cancel"] as const) {
+			const widget = widgets[field];
+			widget.key(["tab"], () => {
+				moveFocus(1);
+				return false;
+			});
+			widget.key(["S-tab"], () => {
+				moveFocus(-1);
+				return false;
+			});
+		}
+
+		createAction.key(["enter", "space"], () => {
+			void submit();
+			return false;
+		});
+		createAction.on("click", () => void submit());
+		cancelAction.key(["enter", "space"], () => {
+			cancel();
+			return false;
+		});
+		cancelAction.on("click", cancel);
+
+		setImmediate(() => focusField("title"));
+	});
+}

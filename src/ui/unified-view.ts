@@ -481,6 +481,8 @@ export async function runUnifiedView(options: UnifiedViewOptions): Promise<void>
 					dateFormat: config?.dateFormat,
 					priorities: config?.priorities,
 					types: config?.types,
+					createTask: async (input) =>
+						(await options.core.createTaskFromInput(input, config?.autoCommit ?? false)).task,
 				}).then(() => {
 					// If user wants to exit, do it immediately
 					if (result === "exit") {
