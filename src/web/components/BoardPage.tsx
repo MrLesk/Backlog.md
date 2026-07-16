@@ -18,6 +18,7 @@ interface BoardPageProps {
 	archivedMilestones: Milestone[];
 	isLoading: boolean;
 	hideEmptyColumns?: boolean;
+	onToggleHideEmptyColumns?: () => void;
 	dateFormat?: string;
 	availablePriorities?: string[];
 	availableTypes?: string[];
@@ -35,6 +36,7 @@ export default function BoardPage({
 	archivedMilestones,
 	isLoading,
 	hideEmptyColumns,
+	onToggleHideEmptyColumns,
 	dateFormat,
 	availablePriorities,
 	availableTypes,
@@ -180,6 +182,7 @@ export default function BoardPage({
 				availableTypes={availableTypes}
 				onFiltersChange={handleFiltersChange}
 				hideEmptyColumns={hideEmptyColumns}
+				onToggleHideEmptyColumns={onToggleHideEmptyColumns}
 				dateFormat={dateFormat}
 			/>
 		</div>

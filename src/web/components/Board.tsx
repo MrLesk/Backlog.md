@@ -36,6 +36,7 @@ interface BoardProps {
   availableTypes?: string[];
   onFiltersChange?: (filters: { assignee: string; labels: string[]; priority: string; taskType: string }) => void;
   hideEmptyColumns?: boolean;
+  onToggleHideEmptyColumns?: () => void;
   dateFormat?: string;
 }
 
@@ -67,6 +68,7 @@ const Board: React.FC<BoardProps> = ({
   availableTypes,
   onFiltersChange,
   hideEmptyColumns = false,
+  onToggleHideEmptyColumns,
   dateFormat,
 }) => {
   const [updateError, setUpdateError] = useState<string | null>(null);
@@ -513,6 +515,21 @@ const Board: React.FC<BoardProps> = ({
                 Milestone
               </button>
             </div>
+            {onToggleHideEmptyColumns && (
+              <button
+                type="button"
+                onClick={onToggleHideEmptyColumns}
+                aria-pressed={hideEmptyColumns}
+                title={hideEmptyColumns ? 'Show empty columns' : 'Hide empty columns'}
+                className={`${BOARD_FILTER_BUTTON_CLASS} ${
+                  hideEmptyColumns
+                    ? 'bg-stone-700 dark:bg-stone-600 text-white border-stone-700 dark:border-stone-600 hover:bg-stone-800 dark:hover:bg-stone-500'
+                    : ''
+                }`}
+              >
+                {hideEmptyColumns ? 'Show empty columns' : 'Hide empty columns'}
+              </button>
+            )}
             {onFiltersChange && (
               <div className="flex flex-wrap items-center gap-3" aria-label="Board filters">
                 <select

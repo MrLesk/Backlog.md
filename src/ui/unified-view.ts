@@ -481,6 +481,7 @@ export async function runUnifiedView(options: UnifiedViewOptions): Promise<void>
 					dateFormat: config?.dateFormat,
 					priorities: config?.priorities,
 					types: config?.types,
+					hideEmptyColumns: config?.hideEmptyColumns ?? false,
 				}).then(() => {
 					// If user wants to exit, do it immediately
 					if (result === "exit") {

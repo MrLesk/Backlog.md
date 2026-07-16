@@ -179,6 +179,7 @@ backlog browser --no-open
 - Interactive Kanban board with drag-and-drop
 - Task creation and editing with forms
 - Interactive acceptance criteria editor with checklists
+- Toggle hiding of empty columns from the board toolbar, or with `H` on the terminal board
 - Real-time updates across all views
 - Responsive design for desktop and mobile
 - Task archiving with confirmation dialogs
