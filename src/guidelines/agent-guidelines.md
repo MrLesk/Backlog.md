@@ -18,7 +18,7 @@ remains fully synchronized and up-to-date.
 - ✅ **Dependencies**: Task relationships and subtask hierarchies
 - ✅ **Documentation & Decisions**: Structured docs and architectural decision records
 - ✅ **Export & Reporting**: Generate markdown reports and board snapshots
-- ✅ **AI-Optimized**: `--plain` flag provides clean text output for AI processing
+- ✅ **Machine-readable output**: `--json` provides a stable, versioned contract for scripts; `--plain` provides readable text
 
 ### Why This Matters to You (AI Agent)
 
@@ -32,7 +32,7 @@ remains fully synchronized and up-to-date.
 
 - **Tasks** live in `backlog/tasks/` as `task-<id> - <title>.md` files
 - **You interact via CLI only**: `backlog task create`, `backlog task edit`, etc.
-- **Use `--plain` flag** for AI-friendly output when viewing/listing
+- **Use `--plain`** for readable task context, or **use `--json`** when code needs structured fields
 - **Never bypass the CLI** - It handles Git, metadata, file naming, and relationships
 
 ---
@@ -65,7 +65,7 @@ remains fully synchronized and up-to-date.
 
 - **All task operations MUST use the Backlog.md CLI tool**
 - This ensures metadata is correctly updated and the project stays in sync
-- **Always use `--plain` flag** when listing or viewing tasks for AI-friendly text output
+- **Use `--plain`** when listing or viewing tasks for readable text. Use `--json` when consuming fields programmatically.
 - Create and update project docs through Backlog.md APIs so frontmatter and paths stay valid. For CLI users, run `backlog doc create "Title" -p guides/setup` or `backlog doc update doc-1 --content "Updated markdown"`; MCP users should use `document_create` / `document_update`.
 - Document paths are relative to `backlog/docs/`; absolute paths and `..` traversal are rejected.
 

@@ -57,9 +57,11 @@ Humans and agents can run `backlog instructions` for workflow guides and `backlo
 | Create (all options) | `backlog task create "Feature" -d "Description" -a @sara -s "To Do" -l auth --priority high --ac "Must work" --notes "Initial setup done" --dep task-1 --ref src/api.ts --doc docs/spec.md -p 14` |
 | List tasks  | `backlog task list [-s <status>] [-a <assignee>] [-p <parent>] [--labels <labels>] [--search <query>] [--limit <n>]` |
 | List filtered | `backlog task list --labels frontend,bug --search "login" --limit 10 --plain` |
+| List as JSON | `backlog task list --status "To Do" --json` |
 | List by parent | `backlog task list --parent 42` or `backlog task list -p task-42` |
 | View detail | `backlog task 7` (interactive UI, press 'E' to edit in editor) |
 | View (AI mode) | `backlog task 7 --plain`                           |
+| View as JSON | `backlog task 7 --json` |
 | Edit        | `backlog task edit 7 -a @sara -l auth,backend`       |
 | Add plan    | `backlog task edit 7 --plan "Implementation approach"`    |
 | Add AC      | `backlog task edit 7 --ac "New criterion" --ac "Another one"` |
@@ -83,6 +85,35 @@ Humans and agents can run `backlog instructions` for workflow guides and `backlo
 | Archive     | `backlog task archive 7`                             |
 
 Task comments are append-only discussion entries with optional author labels. Use comments for review questions and collaboration notes; use implementation notes for execution progress and final summary for PR-ready completion notes. Comment bodies may contain Markdown, but standalone `---` lines are reserved as comment delimiters.
+
+### Stable JSON output
+
+Use `--json` when a script or integration needs structured output:
+
+```bash
+backlog task list --status "To Do" --json | jq '.tasks[] | .id'
+backlog task view BACK-7 --json | jq '.task.acceptanceCriteria'
+backlog task BACK-7 --json
+backlog search "authentication" --json | jq '.results[] | [.type, .data.id]'
+```
+
+Each successful response is one pretty-printed JSON document followed by a newline. The top-level contract is versioned and identifies the command result:
+
+| Command | Envelope |
+|---------|----------|
+| `task list --json` | `{ "schemaVersion": 1, "kind": "task-list", "tasks": [...] }` |
+| `task view <id> --json` and `task <id> --json` | `{ "schemaVersion": 1, "kind": "task-view", "task": {...} }` |
+| `search [query] --json` | `{ "schemaVersion": 1, "kind": "search", "results": [...] }` |
+
+Task list and task search results use these compact fields: `id`, `title`, `status`, `type`, `priority`, `assignees`, `reporter`, `labels`, `milestone`, `parentTaskId`, `ordinal`, `createdAt`, and `updatedAt`.
+
+Task view adds `path`, `description`, `dependencies`, `references`, `documentation`, `modifiedFiles`, `subtasks`, `acceptanceCriteria`, `definitionOfDone`, `implementationPlan`, `implementationNotes`, `comments`, and `finalSummary`. `path` is relative to the project root. Checklist entries contain `index`, `text`, and `checked`. Comment entries contain `index`, `body`, `createdAt`, and `author`.
+
+Search keeps relevance order and discriminates every result with `type` and `data`. Task data uses the compact task fields. Document data contains `id`, `title`, `type`, `path`, `tags`, `createdAt`, and `updatedAt`. Decision data contains `id`, `title`, `status`, and `date`. Search scores are not part of the version 1 public contract.
+
+Absent scalar fields are `null`, and absent collections are `[]`. Date-only values remain `YYYY-MM-DD`; UTC date-times use RFC 3339. Internal fields, absolute paths, raw Markdown source objects, branch metadata, and search implementation details are not exposed.
+
+`--json` and `--plain` are mutually exclusive. Explicit JSON mode is always noninteractive, including in a terminal. Without `--json`, existing interactive, explicit plain, and automatic non-TTY plain behavior is unchanged. Errors leave stdout empty, write a concise message to stderr, and exit nonzero. Version 1 may gain backward-compatible fields, but removing, renaming, retyping, or changing documented field semantics requires a new `schemaVersion`.
 
 ### Multi-line input (description/plan/notes/comments/final summary)
 
@@ -170,6 +201,7 @@ Find tasks, documents, and decisions across your entire backlog with fuzzy searc
 | Filter by priority | `backlog search "bug" --priority high`        |
 | Combine filters    | `backlog search "web" --status "To Do" --priority medium` |
 | Plain text output  | `backlog search "feature" --plain` (for scripts/AI) |
+| JSON output        | `backlog search "feature" --json` (for structured integrations) |
 | Find by modified file | `backlog search --modified-file src/path.ts --plain` |
 
 **Search features:**
