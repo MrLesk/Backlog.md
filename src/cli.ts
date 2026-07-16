@@ -466,6 +466,7 @@ function hasEditFieldFlags(options: Record<string, unknown>): boolean {
 			options.comment !== undefined ||
 			options.commentAuthor !== undefined ||
 			options.finalSummary !== undefined ||
+			options.appendPlan !== undefined ||
 			options.appendNotes !== undefined ||
 			options.appendFinalSummary !== undefined ||
 			options.clearFinalSummary ||
@@ -2723,6 +2724,11 @@ addHelpSchema(taskCmd.command("edit [taskId]"), {
 	.option("--comment-author <author>", "author to record for appended comments")
 	.option("--final-summary <text>", "set final summary (replaces existing)")
 	.option(
+		"--append-plan <text>",
+		"append to implementation plan (can be used multiple times)",
+		createMultiValueAccumulator(),
+	)
+	.option(
 		"--append-notes <text>",
 		"append to implementation notes (can be used multiple times)",
 		createMultiValueAccumulator(),
@@ -2972,6 +2978,7 @@ addHelpSchema(taskCmd.command("edit [taskId]"), {
 		const normalizedDocumentation = parseDelimitedStringList(options.doc);
 		const normalizedModifiedFiles = parseDelimitedStringList(options.modifiedFile);
 
+		const planAppendValues = toStringArray(options.appendPlan);
 		const notesAppendValues = toStringArray(options.appendNotes);
 		const commentsAppendValues = toStringArray(options.comment);
 		const finalSummaryAppendValues = toStringArray(options.appendFinalSummary);
@@ -3030,6 +3037,9 @@ addHelpSchema(taskCmd.command("edit [taskId]"), {
 		}
 		if (typeof options.notes === "string") {
 			editArgs.notesSet = String(options.notes);
+		}
+		if (planAppendValues.length > 0) {
+			editArgs.planAppend = planAppendValues;
 		}
 		if (notesAppendValues.length > 0) {
 			editArgs.notesAppend = notesAppendValues;
