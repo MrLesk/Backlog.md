@@ -1,0 +1,19 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "mcp": {
+    "gitlab": {
+      "type": "local",
+      "command": ["npx", "-y", "@wanadev/mcp-gitlab"],
+      "environment": {
+        "GITLAB_TOKEN": "${GITLAB_OPENCODE_TOKEN}",
+        "GITLAB_BASE_URL": "https://gitlab.com",
+        "GITLAB_READ_ONLY": "false"
+      }
+    },
+    "backlog": {
+      "type": "local",
+      "command": ["backlog", "mcp", "start"],
+      "environment": {}
+    }
+  }
+}
