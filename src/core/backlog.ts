@@ -124,6 +124,11 @@ interface CreatedTaskWrite {
 	generatedIndexEntries?: GitIndexEntry[];
 }
 
+interface CreatedTaskRollbackResult {
+	indexRestored: boolean;
+	workingPathRestored: boolean;
+}
+
 interface TaskQueryOptions {
 	filters?: TaskListFilter;
 	query?: string;
@@ -1296,9 +1301,10 @@ export class Core {
 		}
 	}
 
-	private async rollbackCreatedTask(write: CreatedTaskWrite): Promise<void> {
+	private async rollbackCreatedTask(write: CreatedTaskWrite): Promise<CreatedTaskRollbackResult> {
+		let indexRestored = true;
 		if (write.generatedIndexEntries) {
-			await this.git.restoreIndexEntriesIfMatches(
+			indexRestored = await this.git.restoreIndexEntriesIfMatches(
 				write.filePath,
 				write.generatedIndexEntries,
 				write.previousIndexEntries,
@@ -1307,12 +1313,14 @@ export class Core {
 
 		const currentContent = await this.readFileIfPresent(write.filePath);
 		const stillOwnsCreatedPath = currentContent?.equals(write.createdContent) ?? false;
+		let workingPathRestored = currentContent === null;
 		if (stillOwnsCreatedPath) {
 			if (write.previousPath === write.filePath && write.previousContent) {
 				await writeFile(write.filePath, write.previousContent);
 			} else {
 				await unlink(write.filePath);
 			}
+			workingPathRestored = true;
 		}
 
 		if (write.previousPath && write.previousPath !== write.filePath && write.previousContent) {
@@ -1325,6 +1333,8 @@ export class Core {
 		if (this.contentStore) {
 			await this.contentStore.refreshTasks();
 		}
+
+		return { indexRestored, workingPathRestored };
 	}
 
 	async createTaskFromInput(input: TaskCreateInput, autoCommit?: boolean): Promise<{ task: Task; filePath?: string }> {
@@ -1442,11 +1452,24 @@ export class Core {
 			const savedTask = await this.finalizeCreatedTask(task, write.filePath, isDraft, autoCommit, write);
 			return { task: savedTask ?? task, filePath: write.filePath };
 		} catch (error) {
+			let rollback: CreatedTaskRollbackResult;
 			try {
-				await this.rollbackCreatedTask(write);
+				rollback = await this.rollbackCreatedTask(write);
 			} catch (rollbackError) {
 				const message = rollbackError instanceof Error ? rollbackError.message : String(rollbackError);
 				throw new Error(`Task creation failed and cleanup also failed: ${message}`, { cause: error });
+			}
+			if (!rollback.workingPathRestored || !rollback.indexRestored) {
+				const preserved = [
+					!rollback.workingPathRestored ? `the changed file at ${write.filePath}` : null,
+					!rollback.indexRestored ? "its changed staged state" : null,
+				]
+					.filter(Boolean)
+					.join(" and ");
+				throw new Error(
+					`Task creation failed, and cleanup could not safely remove ${preserved}. Your changes were preserved. ${!rollback.workingPathRestored ? `Review or remove the preserved file before retrying because ${task.id} remains in use.` : "Review the preserved staged state before retrying."}`,
+					{ cause: error },
+				);
 			}
 			throw error;
 		}

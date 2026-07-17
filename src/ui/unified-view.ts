@@ -4,7 +4,7 @@
 
 import type { Core } from "../core/backlog.ts";
 import { findLocalDuplicateTaskIds } from "../core/duplicate-task-repair.ts";
-import type { Milestone, Task } from "../types/index.ts";
+import type { Milestone, Task, TaskCreateInput } from "../types/index.ts";
 import { watchConfig } from "../utils/config-watcher.ts";
 import { formatDuplicateTaskIdSummary } from "../utils/duplicate-detection.ts";
 import { collectAvailableLabels } from "../utils/label-filter.ts";
@@ -256,6 +256,11 @@ export function getEmptyUnifiedViewMessage(initialView: ViewType, parentTaskId?:
 	return initialView === "kanban" ? null : "No tasks found.";
 }
 
+export async function createTaskFromBoard(core: Core, input: TaskCreateInput): Promise<Task> {
+	const config = await core.filesystem.loadConfig();
+	return (await core.createTaskFromInput(input, config?.autoCommit ?? false)).task;
+}
+
 /**
  * Main unified view controller that handles Tab switching between views
  */
@@ -485,8 +490,7 @@ export async function runUnifiedView(options: UnifiedViewOptions): Promise<void>
 					dateFormat: config?.dateFormat,
 					priorities: config?.priorities,
 					types: config?.types,
-					createTask: async (input) =>
-						(await options.core.createTaskFromInput(input, config?.autoCommit ?? false)).task,
+					createTask: async (input) => createTaskFromBoard(options.core, input),
 				}).then(() => {
 					// If user wants to exit, do it immediately
 					if (result === "exit") {

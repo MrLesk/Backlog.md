@@ -4,6 +4,7 @@ import { Core } from "../core/backlog.ts";
 import { serializeTask } from "../markdown/serializer.ts";
 import type { Task } from "../types/index.ts";
 import {
+	createTaskFromBoard,
 	createUnifiedTaskUpdateCallbacks,
 	getDuplicateTaskStartupWarning,
 	getEmptyUnifiedViewMessage,
@@ -53,6 +54,36 @@ describe("loadTasksForUnifiedView", () => {
 		expect(getEmptyUnifiedViewMessage("kanban")).toBeNull();
 		expect(getEmptyUnifiedViewMessage("task-list")).toBe("No tasks found.");
 		expect(getEmptyUnifiedViewMessage("kanban", "TASK-9")).toBe("No child tasks found for parent task TASK-9.");
+	});
+
+	it("loads autoCommit when each board task is submitted", async () => {
+		let currentAutoCommit = false;
+		const observedAutoCommit: boolean[] = [];
+		const boardCore = {
+			filesystem: {
+				loadConfig: async () => ({ autoCommit: currentAutoCommit }),
+			},
+			createTaskFromInput: async (_input: unknown, autoCommit: boolean) => {
+				observedAutoCommit.push(autoCommit);
+				return {
+					task: {
+						id: `TASK-${observedAutoCommit.length}`,
+						title: "Created",
+						status: "To Do",
+						assignee: [],
+						createdDate: "2026-07-17 00:00",
+						labels: [],
+						dependencies: [],
+					},
+				};
+			},
+		} as unknown as Core;
+
+		await createTaskFromBoard(boardCore, { title: "First" });
+		currentAutoCommit = true;
+		await createTaskFromBoard(boardCore, { title: "Second" });
+
+		expect(observedAutoCommit).toEqual([false, true]);
 	});
 
 	it("builds a concise board warning from active and completed collisions", async () => {

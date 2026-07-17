@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
-import { chmod, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { appendFile, chmod, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { $ } from "bun";
@@ -238,6 +238,47 @@ describe("TUI task composer canonical persistence", () => {
 		expect((await readFile(markerPath, "utf8")).trim().split("\n")).toHaveLength(1);
 	});
 
+	it("preserves hook-modified task bytes and explains the recovery state", async () => {
+		await initializeGitRepository(testDir);
+		await installFailingHook(
+			testDir,
+			'for file in backlog/tasks/*.md; do printf "\\nHook edit must survive.\\n" >> "$file"; done\nexit 1',
+		);
+
+		const creation = core.createTaskFromInput({ title: "Hook modified" }, true);
+		await expect(creation).rejects.toThrow("Your changes were preserved");
+
+		const created = await core.fs.loadTask("TASK-1");
+		expect(created?.filePath).toBeDefined();
+		expect(await readFile(created?.filePath as string, "utf8")).toContain("Hook edit must survive.");
+		expect((await $`git diff --cached --name-only`.cwd(testDir).text()).trim()).toBe("");
+
+		const next = await core.createTaskFromInput({ title: "Next task" }, false);
+		expect(next.task.id).toBe("TASK-2");
+	});
+
+	it("commits the owned staged blob when the worktree changes before commit", async () => {
+		await initializeGitRepository(testDir);
+		const originalCommitFiles = core.gitOps.commitFiles.bind(core.gitOps);
+		core.gitOps.commitFiles = async (message, paths, repoRoot) => {
+			await appendFile(paths[0] as string, "\nLater worktree edit must not be committed.\n");
+			await originalCommitFiles(message, paths, repoRoot);
+		};
+
+		try {
+			const result = await core.createTaskFromInput({ title: "Staged ownership" }, true);
+			const relativeCreatedPath = (result.filePath as string).slice(testDir.length + 1).replaceAll("\\", "/");
+			const committedContent = await $`git show HEAD:${relativeCreatedPath}`.cwd(testDir).text();
+			expect(committedContent).not.toContain("Later worktree edit must not be committed.");
+			expect(await readFile(result.filePath as string, "utf8")).toContain("Later worktree edit must not be committed.");
+			expect((await $`git diff --name-only`.cwd(testDir).text()).trim().replaceAll("\\", "/")).toBe(
+				relativeCreatedPath,
+			);
+		} finally {
+			core.gitOps.commitFiles = originalCommitFiles;
+		}
+	});
+
 	it("restores pre-existing bytes when a failed create temporarily reuses their path", async () => {
 		await initializeGitRepository(testDir);
 		const preExistingPath = join(testDir, "backlog", "tasks", "task-1 - Preexisting.md");
@@ -291,7 +332,7 @@ describe("TUI task composer canonical persistence", () => {
 			expect(await readFile(unrelatedPath, "utf8")).toBe("staged user work\n");
 			expect(await $`git show :unrelated.txt`.cwd(testDir).text()).toBe("staged user work\n");
 			expect(await $`git show HEAD:unrelated.txt`.cwd(testDir).text()).toBe("baseline\n");
-			const relativeCreatedPath = (result.filePath as string).slice(testDir.length + 1);
+			const relativeCreatedPath = (result.filePath as string).slice(testDir.length + 1).replaceAll("\\", "/");
 			expect((await $`git show HEAD:${relativeCreatedPath}`.cwd(testDir).text()).length).toBeGreaterThan(0);
 		});
 

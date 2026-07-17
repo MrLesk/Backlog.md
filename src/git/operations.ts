@@ -1,4 +1,5 @@
-import { realpath, stat } from "node:fs/promises";
+import { mkdtemp, realpath, rm, stat } from "node:fs/promises";
+import { tmpdir } from "node:os";
 import { basename, dirname, isAbsolute, join, relative } from "node:path";
 import { $ } from "bun";
 import type { BacklogConfig } from "../types/index.ts";
@@ -37,6 +38,20 @@ function indexEntriesEqual(left: readonly GitIndexEntry[], right: readonly GitIn
 				entry.stage === right[index]?.stage,
 		)
 	);
+}
+
+function parseIndexEntries(output: string): GitIndexEntry[] {
+	return output
+		.split("\0")
+		.filter(Boolean)
+		.flatMap((record) => {
+			const tabIndex = record.indexOf("\t");
+			if (tabIndex < 0) return [];
+			const [mode, objectId, stageText] = record.slice(0, tabIndex).split(" ");
+			const stage = Number(stageText);
+			if (!mode || !objectId || !Number.isInteger(stage)) return [];
+			return [{ mode, objectId, stage }];
+		});
 }
 
 export class GitOperations {
@@ -157,12 +172,63 @@ export class GitOperations {
 			return;
 		}
 
-		const args = ["commit", "-m", message];
-		if (this.config?.bypassGitHooks) {
-			args.push("--no-verify");
+		const temporaryIndexDirectory = await mkdtemp(join(tmpdir(), "backlog-git-index-"));
+		const temporaryIndexPath = join(temporaryIndexDirectory, "index");
+		const temporaryIndexEnv = { GIT_INDEX_FILE: temporaryIndexPath };
+		const ownedEntries = new Map<string, GitIndexEntry[]>();
+		try {
+			try {
+				await this.execGit(["read-tree", "HEAD"], {
+					cwd: resolvedRepoRoot,
+					env: temporaryIndexEnv,
+				});
+			} catch {
+				await this.execGit(["read-tree", "--empty"], {
+					cwd: resolvedRepoRoot,
+					env: temporaryIndexEnv,
+				});
+			}
+
+			for (const relativePath of uniqueRelativePaths) {
+				await this.execGit(["update-index", "--force-remove", "--", relativePath], {
+					cwd: resolvedRepoRoot,
+					env: temporaryIndexEnv,
+				});
+				const entries = await this.getIndexEntries(join(resolvedRepoRoot, relativePath));
+				ownedEntries.set(relativePath, entries);
+				if (entries.length > 0) {
+					const records = entries
+						.map((entry) => `${entry.mode} ${entry.objectId} ${entry.stage}\t${relativePath}\0`)
+						.join("");
+					await this.execGit(["update-index", "-z", "--index-info"], {
+						cwd: resolvedRepoRoot,
+						env: temporaryIndexEnv,
+						input: records,
+					});
+				}
+			}
+
+			const args = ["commit", "-m", message];
+			if (this.config?.bypassGitHooks) {
+				args.push("--no-verify");
+			}
+			await this.execGit(args, { cwd: resolvedRepoRoot, env: temporaryIndexEnv });
+
+			for (const relativePath of uniqueRelativePaths) {
+				const { stdout } = await this.execGit(["ls-files", "-s", "-z", "--", relativePath], {
+					cwd: resolvedRepoRoot,
+					readOnly: true,
+					env: temporaryIndexEnv,
+				});
+				await this.restoreIndexEntriesIfMatches(
+					join(resolvedRepoRoot, relativePath),
+					ownedEntries.get(relativePath) ?? [],
+					parseIndexEntries(stdout),
+				);
+			}
+		} finally {
+			await rm(temporaryIndexDirectory, { recursive: true, force: true });
 		}
-		args.push("--", ...uniqueRelativePaths);
-		await this.execGit(args, { cwd: resolvedRepoRoot });
 	}
 
 	async resetIndex(repoRoot?: string | null): Promise<void> {
@@ -206,17 +272,7 @@ export class GitOperations {
 			cwd: context.repoRoot,
 			readOnly: true,
 		});
-		return stdout
-			.split("\0")
-			.filter(Boolean)
-			.flatMap((record) => {
-				const tabIndex = record.indexOf("\t");
-				if (tabIndex < 0) return [];
-				const [mode, objectId, stageText] = record.slice(0, tabIndex).split(" ");
-				const stage = Number(stageText);
-				if (!mode || !objectId || !Number.isInteger(stage)) return [];
-				return [{ mode, objectId, stage }];
-			});
+		return parseIndexEntries(stdout);
 	}
 
 	async restoreIndexEntriesIfMatches(
@@ -857,13 +913,15 @@ export class GitOperations {
 
 	private async execGit(
 		args: string[],
-		options?: { readOnly?: boolean; cwd?: string; input?: string },
+		options?: { readOnly?: boolean; cwd?: string; input?: string; env?: Record<string, string> },
 	): Promise<{ stdout: string; stderr: string }> {
 		// Use Bun.spawn so we can explicitly control stdio behaviour on Windows. When running
 		// under the MCP stdio transport, delegating to git with inherited stdin can deadlock.
-		const env = options?.readOnly
-			? ({ ...process.env, GIT_OPTIONAL_LOCKS: "0" } as Record<string, string>)
-			: (process.env as Record<string, string>);
+		const env = {
+			...process.env,
+			...(options?.readOnly ? { GIT_OPTIONAL_LOCKS: "0" } : {}),
+			...options?.env,
+		} as Record<string, string>;
 
 		const subprocess = Bun.spawn(["git", ...args], {
 			cwd: options?.cwd ?? this.projectRoot,
