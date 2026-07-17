@@ -758,7 +758,12 @@ export class GitOperations {
 			? ({ ...process.env, GIT_OPTIONAL_LOCKS: "0" } as Record<string, string>)
 			: (process.env as Record<string, string>);
 
-		const subprocess = Bun.spawn(["git", ...args], {
+		// core.quotepath=false: git otherwise octal-escapes AND double-quotes any
+		// non-ASCII path in porcelain/diff output (e.g. an em dash in a task
+		// filename). commitFiles pathspecs that output, and a quoted path matches
+		// no file — the commit aborts and silently leaves the file staged. Forcing
+		// raw UTF-8 output keeps every parse-then-pathspec call site correct.
+		const subprocess = Bun.spawn(["git", "-c", "core.quotepath=false", ...args], {
 			cwd: options?.cwd ?? this.projectRoot,
 			stdin: "ignore", // avoid inheriting MCP stdio pipes which can block on Windows
 			stdout: "pipe",

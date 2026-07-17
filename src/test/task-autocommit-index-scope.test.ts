@@ -88,4 +88,25 @@ describe("task create/update auto-commit index scoping", () => {
 
 		expect(await stagedPaths()).toContain("PEER.txt");
 	});
+
+	// A title with a non-ASCII character (here an em dash) produces a task
+	// filename containing that character. With git's default core.quotepath,
+	// `diff --name-only` octal-escapes AND double-quotes such a path; this commit
+	// path pathspecs the diff output, so the quoted string matches no file, the
+	// commit aborts with "did not match any file(s)", and the file is left staged.
+	it("createTask with a non-ASCII (em-dash) title commits instead of leaving the file staged", async () => {
+		// Clean committed baseline so the new task file is the only staged change.
+		await $`git add .`.cwd(TEST_DIR).quiet();
+		await $`git commit -m baseline`.cwd(TEST_DIR).quiet();
+
+		const { task } = await core.createTaskFromInput({ title: "Em dash — in the title", status: "To Do" }, true);
+
+		expect(await (await core.getGitOps()).getLastCommitMessage()).toContain(`Create task ${task.id}`);
+
+		const committed = await committedFilesOfLastCommit();
+		expect(committed).toContain("/tasks/");
+
+		// Nothing left staged — the commit must have consumed the task file.
+		expect(await stagedPaths()).not.toContain("/tasks/");
+	});
 });
