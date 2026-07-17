@@ -5,7 +5,7 @@ status: Done
 assignee:
   - '@codex'
 created_date: '2026-01-01 23:37'
-updated_date: '2026-07-17 00:01'
+updated_date: '2026-07-17 06:33'
 labels:
   - enhancement
   - core
@@ -29,7 +29,7 @@ Add a mutually exclusive 'type' field to tasks that categorizes them semanticall
 - [x] #3 MCP task_create and task_edit tools include type parameter
 - [x] #4 TUI board displays task type with visual distinction (icon or badge)
 - [x] #5 Web UI displays task type in task cards and detail view
-- [x] #6 Task list and search support type-based filtering (--type flag)
+- [x] #6 task list --type and search --task-type support the same validated OR type-filter semantics
 - [x] #7 Type validation ensures value is one of the configured types
 - [x] #8 Type field persists in task markdown YAML frontmatter
 - [x] #9 Task domain model includes an optional 'type' field; default allowed set: bug, feature, enhancement, task, chore, docs, spike (project-overridable via the 'types' config key)
