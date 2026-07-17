@@ -153,14 +153,6 @@ export class GitOperations {
 		await this.execGit(args, { cwd: resolvedRepoRoot });
 	}
 
-	async resetIndex(repoRoot?: string | null): Promise<void> {
-		if (!(await this.isRepository(repoRoot ?? this.projectRoot))) {
-			return;
-		}
-		// Reset the staging area without affecting working directory
-		await this.execGit(["reset", "HEAD"], { cwd: repoRoot ?? undefined });
-	}
-
 	async resetPaths(filePaths: string[], repoRoot?: string | null): Promise<void> {
 		const uniqueFilePaths = Array.from(new Set(filePaths.map((path) => path.trim()).filter((path) => path.length > 0)));
 		if (uniqueFilePaths.length === 0) {
@@ -183,25 +175,6 @@ export class GitOperations {
 		}
 
 		await this.execGit(["reset", "HEAD", "--", ...uniqueRelativePaths], { cwd: resolvedRepoRoot });
-	}
-
-	async commitStagedChanges(message: string, repoRoot?: string | null): Promise<void> {
-		if (!(await this.isRepository(repoRoot ?? this.projectRoot))) {
-			return;
-		}
-		// Check if there are any staged changes before committing
-		const { stdout: status } = await this.execGit(["status", "--porcelain"], { cwd: repoRoot ?? undefined });
-		const hasStagedChanges = status.split("\n").some((line) => line.match(/^[AMDRC]/));
-
-		if (!hasStagedChanges) {
-			throw new Error("No staged changes to commit");
-		}
-
-		const args = ["commit", "-m", message];
-		if (this.config?.bypassGitHooks) {
-			args.push("--no-verify");
-		}
-		await this.execGit(args, { cwd: repoRoot ?? undefined });
 	}
 
 	async retryGitOperation<T>(operation: () => Promise<T>, operationName: string, maxRetries = 3): Promise<T> {
@@ -362,14 +335,14 @@ export class GitOperations {
 
 		// Retry git operations to handle transient failures
 		await this.retryGitOperation(async () => {
-			// Reset index to ensure only the specific file is staged
-			await this.resetIndex(repoRoot);
-
 			// Stage only the specific task file
 			await this.execGit(["add", pathForAdd], { cwd: repoRoot });
 
-			// Commit only the staged file
-			await this.commitStagedChanges(actionMessages[action], repoRoot);
+			// Commit only that file. Never reset the index first: a concurrent session
+			// may have staged work of its own here, and an unscoped reset would discard
+			// it silently. The pathspec is what keeps their staged files out of this
+			// commit, so their index survives untouched.
+			await this.commitFiles(actionMessages[action], [pathForAdd], repoRoot);
 		}, `commit task file ${filePath}`);
 	}
 
