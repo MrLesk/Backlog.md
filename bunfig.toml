@@ -1,4 +1,9 @@
 [test]
+# Disable the default onStatusChange dispatch hook during tests so init'd
+# projects don't spawn dispatcher subprocesses on every status transition.
+# status-callback.test.ts re-enables it for its own cases.
+preload = ["./src/test/preload.ts"]
+
 # Timeout for individual tests - increased for Windows compatibility
 timeout = "10s"
 

@@ -49,7 +49,7 @@ describe("CLI Integration", () => {
 			// Verify config content
 			const config = await core.filesystem.loadConfig();
 			expect(config?.projectName).toBe("CLI Test Project");
-			expect(config?.statuses).toEqual(["To Do", "In Progress", "Done"]);
+			expect(config?.statuses).toEqual(["To Do", "In Progress", "In Review", "Human Review", "Done"]);
 			expect(config?.defaultStatus).toBe("To Do");
 
 			// Verify git commit was created
@@ -556,7 +556,7 @@ describe("CLI Integration", () => {
 
 			// Load and verify default config status order
 			const config = await core.filesystem.loadConfig();
-			expect(config?.statuses).toEqual(["To Do", "In Progress", "Done"]);
+			expect(config?.statuses).toEqual(["To Do", "In Progress", "In Review", "Human Review", "Done"]);
 		});
 
 		it("should filter tasks by status", async () => {
@@ -1544,7 +1544,7 @@ describe("CLI Integration", () => {
 
 			const config = await core.filesystem.loadConfig();
 			const statuses = config?.statuses || [];
-			expect(statuses).toEqual(["To Do", "In Progress", "Done"]);
+			expect(statuses).toEqual(["To Do", "In Progress", "In Review", "Human Review", "Done"]);
 
 			// Test the kanban board generation
 			const { generateKanbanBoardWithMetadata } = await import("../board.ts");

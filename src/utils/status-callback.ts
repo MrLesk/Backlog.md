@@ -120,6 +120,14 @@ export async function executeStatusCallback(options: StatusCallbackOptions): Pro
 		return { success: false, error: "Empty command" };
 	}
 
+	// Global kill-switch: skip firing the hook entirely. Lets a user (or the
+	// test suite) suppress the dispatch loop without editing config — useful for
+	// bulk status edits and required so the default onStatusChange this fork
+	// ships doesn't spawn a dispatcher subprocess on every transition in tests.
+	if (process.env.BACKLOG_DISABLE_STATUS_HOOKS === "1") {
+		return { success: true, output: "skipped (BACKLOG_DISABLE_STATUS_HOOKS=1)" };
+	}
+
 	try {
 		const env = {
 			...process.env,

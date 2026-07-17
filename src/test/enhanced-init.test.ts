@@ -71,7 +71,7 @@ describe("Enhanced init command", () => {
 		expect(config).toBeTruthy();
 		expect(config?.projectName).toBe("New Project");
 		expect(config?.autoCommit).toBe(false); // Default value
-		expect(config?.statuses).toEqual(["To Do", "In Progress", "Done"]);
+		expect(config?.statuses).toEqual(["To Do", "In Progress", "In Review", "Human Review", "Done"]);
 		expect(config?.dateFormat).toBe("yyyy-mm-dd");
 	});
 

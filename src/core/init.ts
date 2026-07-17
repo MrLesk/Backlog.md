@@ -5,10 +5,49 @@ import {
 	ensureMcpGuidelines,
 	installClaudeAgent,
 } from "../agent-instructions.ts";
+import { existsSync } from "node:fs";
+import { chmod, mkdir, writeFile } from "node:fs/promises";
+import { dirname, join } from "node:path";
+import {
+	AGENT_LOOP_STATUSES,
+	agentLoopOnStatusChange,
+	agentLoopShell,
+	buildAgentLoopFiles,
+} from "../constants/agent-loop-templates.ts";
 import { DEFAULT_INIT_CONFIG } from "../constants/index.ts";
 import type { BacklogConfig } from "../types/index.ts";
 import { normalizeProjectBacklogDirectory } from "../utils/backlog-directory.ts";
 import type { Core } from "./backlog.ts";
+
+/**
+ * Write the agent-loop prompt/dispatch/MCP files into the project. Each file is
+ * written only when absent so re-init never clobbers customized prompts. Failures
+ * are non-fatal: a scaffolding hiccup must not abort project initialization.
+ */
+async function scaffoldAgentLoopFiles(projectRoot: string, backlogDir: string): Promise<void> {
+	for (const file of buildAgentLoopFiles(backlogDir)) {
+		const target = join(projectRoot, file.path);
+		if (existsSync(target)) continue;
+		try {
+			await mkdir(dirname(target), { recursive: true });
+			await writeFile(target, file.content, "utf-8");
+			if (file.executable && process.platform !== "win32") {
+				await chmod(target, 0o755);
+			}
+		} catch {
+			// Best-effort scaffolding — ignore and continue with the rest.
+		}
+	}
+}
+
+/**
+ * Ensure the config carries the dispatch-loop hook. Only fills fields the caller
+ * hasn't already set, so an existing project's custom hook/shell is preserved.
+ */
+function applyAgentLoopConfigDefaults(config: BacklogConfig, backlogDir: string): void {
+	if (!config.onStatusChange) config.onStatusChange = agentLoopOnStatusChange(backlogDir);
+	if (!config.shell) config.shell = agentLoopShell();
+}
 
 export const MCP_SERVER_NAME = "backlog";
 export const MCP_GUIDE_URL = "https://github.com/MrLesk/Backlog.md#-mcp-integration-model-context-protocol";
@@ -112,7 +151,9 @@ export async function initializeProject(
 	const d = DEFAULT_INIT_CONFIG;
 	const baseConfig: BacklogConfig = {
 		projectName,
-		statuses: ["To Do", "In Progress", "Done"],
+		// This fork provisions the multi-agent dispatch loop by default, so the
+		// board ships the full coder -> reviewer -> human-review pipeline.
+		statuses: [...AGENT_LOOP_STATUSES],
 		labels: [],
 		defaultStatus: "To Do",
 		dateFormat: "yyyy-mm-dd",
@@ -180,7 +221,10 @@ export async function initializeProject(
 
 	// Create structure and save config
 	if (isReInitialization) {
+		const backlogDir = core.filesystem.backlogDirName || "backlog";
+		applyAgentLoopConfigDefaults(config, backlogDir);
 		await core.filesystem.saveConfig(config);
+		await scaffoldAgentLoopFiles(projectRoot, backlogDir);
 	} else {
 		const normalizedBacklogDirectory = normalizeProjectBacklogDirectory(options.backlogDirectory);
 		const inferredBacklogDirectorySource = normalizedBacklogDirectory
@@ -215,9 +259,11 @@ export async function initializeProject(
 					: "backlog");
 		core.filesystem.setBacklogDirectory(selectedBacklogDirectory);
 		core.filesystem.setConfigLocation(effectiveConfigLocation);
+		applyAgentLoopConfigDefaults(config, selectedBacklogDirectory);
 		await core.filesystem.ensureBacklogStructure();
 		await core.filesystem.saveConfig(config);
 		await core.ensureConfigLoaded();
+		await scaffoldAgentLoopFiles(projectRoot, selectedBacklogDirectory);
 	}
 
 	const mcpResults: Record<string, string> = {};

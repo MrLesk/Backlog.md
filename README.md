@@ -55,6 +55,14 @@ backlog init "My Awesome Project"
 backlog init "Personal Planning" --no-git
 ```
 
+> **This fork ships the multi-agent dispatch loop by default.** `backlog init`
+> provisions the full `To Do → In Progress → In Review → Human Review → Done`
+> pipeline, sets the `onStatusChange` dispatch hook (PowerShell on Windows, `sh`
+> on POSIX), and scaffolds the prompt/dispatch/token-report/MR scripts under
+> `backlog/prompts/` plus the role-scoped MCP configs under `.claude/`. Want the
+> plain task-manager instead? Use [upstream Backlog.md](https://github.com/MrLesk/Backlog.md).
+> Set `BACKLOG_DISABLE_STATUS_HOOKS=1` to suppress the dispatcher without editing config.
+
 The init wizard will ask how you want to connect AI tools:
 - **MCP connector** (recommended) — auto-configures Claude Code, Codex, Gemini CLI, Kiro or Cursor and adds workflow instructions for your agents.
 - **CLI commands** — creates instruction files (CLAUDE.md, AGENTS.md, etc.) so agents use Backlog via CLI.

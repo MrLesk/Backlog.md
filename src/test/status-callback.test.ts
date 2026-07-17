@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, test } from "bun:test";
 import { mkdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -12,6 +12,17 @@ import { executeStatusCallback, probeShellAvailability, resolveShellInvocation }
 const HAS_POSIX_SH =
 	process.platform === "win32" ? which("sh") !== null || which("sh.exe") !== null : which("sh") !== null;
 const testSh = HAS_POSIX_SH ? test : test.skip;
+
+// This file specifically tests that the hook actually runs, so it opts out of
+// the suite-wide BACKLOG_DISABLE_STATUS_HOOKS kill-switch set in the preload.
+const prevHookFlag = process.env.BACKLOG_DISABLE_STATUS_HOOKS;
+beforeAll(() => {
+	delete process.env.BACKLOG_DISABLE_STATUS_HOOKS;
+});
+afterAll(() => {
+	if (prevHookFlag === undefined) delete process.env.BACKLOG_DISABLE_STATUS_HOOKS;
+	else process.env.BACKLOG_DISABLE_STATUS_HOOKS = prevHookFlag;
+});
 
 describe("Status Change Callbacks", () => {
 	describe("resolveShellInvocation", () => {
