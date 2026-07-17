@@ -3,9 +3,9 @@ id: BACK-535
 title: Audit and modernize test-suite reliability
 status: Done
 assignee:
-  - '@codex'
+  - '@triage-pr798-codex'
 created_date: '2026-07-11 08:47'
-updated_date: '2026-07-16 22:20'
+updated_date: '2026-07-17 22:46'
 labels: []
 dependencies: []
 references:
@@ -48,6 +48,8 @@ Establish a trustworthy, maintainable test suite by separating shipped public-co
 4. Consolidate duplicated suites and remove only evidence-backed obsolete fixtures or assertions.
 5. Refresh the Testing Style Guide and CI diagnostics/platform matrix using measured runtime data.
 6. Re-run repeated focused stress and full cross-platform verification, then document retained coverage and runtime change.
+7. Reclassify the internal board integration suite and remove redundant status-callback waits identified by Codex review.
+8. Run and record a bounded leaked-handle and unhandled-rejection audit, then repeat focused and standard verification.
 <!-- SECTION:PLAN:END -->
 
 ## Implementation Notes
@@ -66,10 +68,14 @@ Runtime hotspots by summed testcase time: cli.test.ts 20.66s, cli-priority-filte
 P3 candidates after reliability repairs: reduce duplicate MCP semantic permutations to thin adapter schema/parity/stdio coverage plus shared domain and canonical CLI tests; split/reclassify the 2,768-line cli.test.ts monolith; replace browser tests that call private React props and server tests that assert private object identity with observable user/HTTP behavior; define retention for old tmp fixtures. MCP remains a supported legacy adapter, so its public contract coverage must not be removed wholesale.
 
 Final reconciliation on main 22a091b: all 13 linked cleanup slices are Done with checked acceptance criteria and Definition of Done, and their final commits are present on main. The repository-level audit records baseline suite size and runtime, 40-run CI failure history, resource and global-state risk counts, leak-prone catch sites, duplicated and implementation-detail coverage, runtime hotspots, and prioritized remediation candidates. Current CI run 29538363579 passed full unit and compile/smoke jobs on Ubuntu, macOS, and Windows using the approved one-full-test-job-per-OS matrix. Final local verification passed: 1,721 tests passed, 4 intentional interactive TUI tests skipped, 0 failed across 197 files; bunx tsc --noEmit, bun run check ., and bun run build also passed.
+
+Codex review repair on PR #798: renamed src/test/cli-board-integration.test.ts to src/test/board-core-view-integration.test.ts and reworded the suite and comments to accurately identify its Core, cross-branch, and ViewSwitcher integration scope. Removed all four fixed 100/200 ms waits from status-callback.test.ts because updateTaskFromInput and reorderTask already await executeStatusChangeCallback; immediate behavior assertions passed 20 repeated focused runs (280 tests, 0 failures).
+
+Bounded leaked-handle and unhandled-rejection audit method: Bun 1.3.14 ran the complete 197-file suite inside a 600-second process watchdog. Bun test documents that it tracks unhandled promise rejections and inter-test async errors and returns a nonzero exit for them (https://bun.com/docs/test/runtime-behavior). The run exited normally after 218.59 seconds with code 0, 1,721 passing tests, 4 intentional interactive TUI skips, and 0 failures, so zero unhandled errors were observed and no retained handle prevented process exit. Bun 1.3.14 exposes no open-handle count in bun test --help, so this audit does not claim an unsupported zero-handle count. Typecheck, Biome across 336 files, build, diff check, the focused 14-test run, and the 20x focused stress run also passed.
 <!-- SECTION:NOTES:END -->
 
 ## Final Summary
 
 <!-- SECTION:FINAL_SUMMARY:BEGIN -->
-Completed the versioned repository-level reliability audit and 13 evidence-backed cleanup slices covering real surface tests, deterministic lifecycle and synchronization, fail-visible cleanup, retained contract mappings, suite consolidation, observable browser/server assertions, fixture retention, and cross-platform CI diagnostics. Updated the Testing Style Guide to document the approved one-full-test-job-per-OS matrix. Verified with 1,721 passing tests, 4 expected skips, clean typecheck, Biome, and build, plus successful Ubuntu, macOS, and Windows CI run 29538363579.
+Completed the repository-level reliability audit and 13 cleanup slices, then repaired the three Codex review gaps by accurately reclassifying internal board integration coverage, removing four redundant status-callback sleeps, and recording a bounded full-suite unhandled-error audit. Verified with 280 repeated focused passes, 1,721 full-suite passes with 4 intentional skips and zero failures or unhandled errors, normal exit within 218.59 seconds, plus clean typecheck, Biome, build, and diff checks.
 <!-- SECTION:FINAL_SUMMARY:END -->
