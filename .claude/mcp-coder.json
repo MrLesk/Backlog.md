@@ -1,0 +1,26 @@
+{
+  "mcpServers": {
+    "backlog": {
+      "type": "stdio",
+      "command": "backlog",
+      "args": [
+        "mcp",
+        "start"
+      ],
+      "env": {}
+    },
+    "playwright": {
+      "command": "npx.cmd",
+      "args": [
+        "-y",
+        "@playwright/mcp@latest",
+        "--browser",
+        "msedge",
+        "--headless",
+        "--isolated",
+        "--viewport-size",
+        "1440,1024"
+      ]
+    }
+  }
+}

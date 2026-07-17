@@ -1,0 +1,37 @@
+{
+  "mcpServers": {
+    "backlog": {
+      "type": "stdio",
+      "command": "backlog",
+      "args": [
+        "mcp",
+        "start"
+      ],
+      "env": {}
+    },
+    "gitlab": {
+      "command": "npx.cmd",
+      "args": [
+        "-y",
+        "@wanadev/mcp-gitlab"
+      ],
+      "env": {
+        "GITLAB_TOKEN": "${GITLAB_TOKEN}",
+        "GITLAB_URL": "https://gitlab.com"
+      }
+    },
+    "playwright": {
+      "command": "npx.cmd",
+      "args": [
+        "-y",
+        "@playwright/mcp@latest",
+        "--browser",
+        "msedge",
+        "--headless",
+        "--isolated",
+        "--viewport-size",
+        "1440,1024"
+      ]
+    }
+  }
+}

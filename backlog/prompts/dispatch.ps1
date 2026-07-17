@@ -10,6 +10,18 @@ $ErrorActionPreference = 'Stop'
 $scriptDir = $PSScriptRoot
 $promptsDir = $scriptDir
 
+# ── Force subscription auth for dispatched agents ────────────────────────────
+# The repo-root .env carries ANTHROPIC_API_KEY for the app (OCR / WhatsApp LLM),
+# and docker-compose / the watcher shell leak it into this process's environment.
+# The Claude CLI prefers an API key over the subscription OAuth token whenever the
+# var is present, so every dispatched coder/reviewer was silently billing to the
+# API account (cost spike + "Credit balance is too low" when it ran dry) instead
+# of the Pro subscription. The dispatcher never calls the Anthropic API itself,
+# and Codex/opencode don't use this var, so stripping it here forces every
+# dispatched Claude to fall back to the subscription token. The app's own key is
+# untouched — it's injected straight into the containers by docker-compose.
+Remove-Item Env:\ANTHROPIC_API_KEY -ErrorAction SilentlyContinue
+
 # ── Prompt file selection ────────────────────────────────────────────────────
 if ($env:NEW_STATUS -eq 'In Progress') {
     $promptStem = 'code'
@@ -153,6 +165,28 @@ if ($taskFile) {
     }
 }
 
+# ── Record token usage of the session that just finished ──────────────────────
+# OLD_STATUS tells us who was working: In Progress -> coder, In Review -> reviewer.
+# token-report.ps1 reads the count out-of-band from the agent's own transcript
+# (zero extra agent tokens). A reporting failure must never block dispatch.
+try {
+    $finishedRole = ''; $finishedSession = ''; $finishedAlias = ''
+    if ($env:OLD_STATUS -eq 'In Progress') {
+        $finishedRole = 'coder'; $finishedSession = $coderSessionId; $finishedAlias = $taskAgentName
+    } elseif ($env:OLD_STATUS -eq 'In Review') {
+        $finishedRole = 'reviewer'; $finishedSession = $reviewerSessionId
+        $finishedAlias = if ($taskReviewAgentName) { $taskReviewAgentName } else { $taskAgentName }
+    }
+    if ($finishedSession -ne '' -and $finishedAlias -ne '') {
+        $finishedBinary = if ($aliasMap.ContainsKey($finishedAlias)) { $aliasMap[$finishedAlias] } else { $finishedAlias.ToLower() }
+        & (Join-Path $scriptDir 'token-report.ps1') `
+            -TaskId $env:TASK_ID -SessionId $finishedSession -Role $finishedRole `
+            -AgentBinary $finishedBinary -ProjectRoot $projectRoot
+    }
+} catch {
+    Write-Host "dispatch.ps1: token-report skipped - $($_.Exception.Message)"
+}
+
 if ((-not $taskAgentName) -and ($env:NEW_STATUS -ne 'Human Review')) {
     exit 0
 }
@@ -169,6 +203,22 @@ if ($env:NEW_STATUS -eq 'In Review') {
 $agentBinary = if ($aliasMap.ContainsKey($agentName)) { $aliasMap[$agentName] } else { $agentName }
 Write-Host "dispatch.ps1: task=$env:TASK_ID status=$env:NEW_STATUS agent=$agentName binary=$agentBinary"
 
+# ── Deterministic MR creation on Human Review ─────────────────────────────────
+# The reviewer agent is supposed to open the MR (review.md Step 6) but does so
+# unreliably (esp. on the rework -> re-review resume path). Create it here too,
+# deterministically and idempotently, so an approved task always gets its MR.
+# create-mr.ps1 resolves the branch from the task notes, skips if an MR already
+# exists, and never throws fatally. A failure here must not block the notifier.
+if ($env:NEW_STATUS -eq 'Human Review') {
+    try {
+        $taskFilePath = if ($taskFile) { $taskFile.FullName } else { '' }
+        & (Join-Path $scriptDir 'create-mr.ps1') `
+            -TaskId $env:TASK_ID -ProjectRoot $projectRoot -TaskFile $taskFilePath
+    } catch {
+        Write-Host "dispatch.ps1: create-mr skipped - $($_.Exception.Message)"
+    }
+}
+
 # ── Model / effort resolution (claude only) ───────────────────────────────────
 # Per-agent model/effort from the config alias drive --model/--effort. Only
 # claude supports these flags; codex/opencode launches are left unchanged.
@@ -179,6 +229,42 @@ if ($agentBinary.ToLower() -eq 'claude') {
     }
     if ($effortMap.ContainsKey($agentName) -and $effortMap[$agentName] -ne '') {
         $claudeModelArgs += @('--effort', $effortMap[$agentName])
+    }
+}
+
+# ── Role-scoped MCP config (claude only) ──────────────────────────────────────
+# Every claude session was loading all 7 MCP servers from .mcp.json (gitlab's
+# ~100 tool schemas + 4 cloudflare servers + playwright + backlog), inflating
+# context before any work began. Scope the server set to what the role actually
+# needs and pass it with --strict-mcp-config so .mcp.json is ignored:
+#   coder (In Progress)   -> backlog + playwright
+#   reviewer (In Review)  -> backlog + gitlab + playwright (gitlab for the MR)
+#   notifier (Human Review) -> coder set (only needs backlog)
+$claudeMcpArgs = @()
+if ($agentBinary.ToLower() -eq 'claude') {
+    if ($env:NEW_STATUS -eq 'In Review') {
+        $mcpConfigFile = Join-Path $projectRoot '.claude\mcp-reviewer.json'
+    } else {
+        $mcpConfigFile = Join-Path $projectRoot '.claude\mcp-coder.json'
+    }
+    if (Test-Path $mcpConfigFile) {
+        $claudeMcpArgs += @('--strict-mcp-config', '--mcp-config', $mcpConfigFile)
+    } else {
+        Write-Host "dispatch.ps1: MCP config not found ($mcpConfigFile) - falling back to .mcp.json"
+    }
+}
+
+# ── Append resolved model/effort to the prompt context ────────────────────────
+# The prompt file was written above (before agent resolution), so the model/
+# effort the agent is launched with aren't in it yet. Append them now so the
+# agent can copy exact values into its Session block. claude only — codex/
+# opencode aren't launched with these flags and self-report. Not reached on the
+# dry-run / dedup early exits (no launch happens there anyway).
+if ($agentBinary.ToLower() -eq 'claude' -and (Test-Path $promptPath)) {
+    $resolvedModel  = if ($modelMap.ContainsKey($agentName))  { $modelMap[$agentName] }  else { '' }
+    $resolvedEffort = if ($effortMap.ContainsKey($agentName)) { $effortMap[$agentName] } else { '' }
+    if ($resolvedModel -ne '' -or $resolvedEffort -ne '') {
+        [System.IO.File]::AppendAllText($promptPath, "`nModel: $resolvedModel`nEffort: $resolvedEffort`n", (New-Object System.Text.UTF8Encoding $false))
     }
 }
 
@@ -226,21 +312,41 @@ if (-not $agentExec) {
 # to read the task and fix the reviewer's findings — everything else lives in
 # the session history and in the task body via MCP.
 #
-# Conditions for --resume:
+# Conditions for --resume (post-review rework):
 #   1. Agent is claude (Codex/opencode don't support --resume)
 #   2. Status is "In Progress" (rework trigger)
 #   3. A coder session ID exists in the task notes
 #   4. The task body contains at least one "CHANGES REQUESTED" review block
 #
+# A second, distinct case is a stranded-retry: the coder's first run died
+# (provider usage/rate limit) before ever reaching review, so there's no
+# "CHANGES REQUESTED" block to match on. The dispatcher's stranded-agent
+# recovery re-fires with OLD_STATUS=NEW_STATUS='In Progress' -- a signature
+# that never occurs on a normal fresh dispatch (which is always
+# To Do -> In Progress). When that signature is present and a coder session
+# ID was already captured, resume that session instead of paying to re-read
+# the whole repo from scratch.
+#
 $resumeCapableAgents = @('claude', 'codex', 'opencode')
 
-$isCoderRework = $false
+$isPostReviewRework = $false
 if ($resumeCapableAgents -contains $agentBinary.ToLower() -and
     $env:NEW_STATUS -eq 'In Progress' -and
     $coderSessionId -ne '' -and
     $taskContent -match 'CHANGES REQUESTED') {
-    $isCoderRework = $true
+    $isPostReviewRework = $true
 }
+
+$isStrandedRetry = $false
+if ($resumeCapableAgents -contains $agentBinary.ToLower() -and
+    $env:OLD_STATUS -eq 'In Progress' -and
+    $env:NEW_STATUS -eq 'In Progress' -and
+    $coderSessionId -ne '' -and
+    -not $isPostReviewRework) {
+    $isStrandedRetry = $true
+}
+
+$isCoderRework = $isPostReviewRework -or $isStrandedRetry
 
 $isReviewerResume = $false
 if ($resumeCapableAgents -contains $agentBinary.ToLower() -and
@@ -250,7 +356,11 @@ if ($resumeCapableAgents -contains $agentBinary.ToLower() -and
 }
 
 if ($isCoderRework) {
-    $reworkMessage = "The reviewer requested changes on task $env:TASK_ID. Read the task via the Backlog.md MCP (task_view), find the latest Review section with CHANGES REQUESTED, address every finding, run the tests, and move the task back to In Review when done."
+    if ($isStrandedRetry) {
+        $reworkMessage = "Your previous session on task $env:TASK_ID was interrupted before finishing (e.g. a provider usage/rate limit) and no implementation was committed. Read the task via the Backlog.md MCP (task_view) and resume from where you left off -- you may already have useful context on the codebase in this session. Finish the implementation, run the tests, commit, and move the task to In Review when done."
+    } else {
+        $reworkMessage = "The reviewer requested changes on task $env:TASK_ID. Read the task via the Backlog.md MCP (task_view), find the latest Review section with CHANGES REQUESTED, address every finding, run the tests, and move the task back to In Review when done."
+    }
     $reworkPath = "$logFile.rework"
     [System.IO.File]::WriteAllText($reworkPath, $reworkMessage, (New-Object System.Text.UTF8Encoding $false))
     Write-Host "dispatch.ps1: coder rework - resuming session $coderSessionId"
@@ -278,7 +388,7 @@ if ($isCoderRework) {
             -WindowStyle Hidden `
             -WorkingDirectory $projectRoot -PassThru | ForEach-Object { $script:agentProc = $_ }
     } else {
-        $agentArgs = @('--resume', $coderSessionId, '--dangerously-skip-permissions') + $claudeModelArgs
+        $agentArgs = @('--resume', $coderSessionId, '--dangerously-skip-permissions') + $claudeModelArgs + $claudeMcpArgs
         Start-Process `
             -FilePath $agentExec `
             -ArgumentList $agentArgs `
@@ -289,7 +399,7 @@ if ($isCoderRework) {
             -WorkingDirectory $projectRoot -PassThru | ForEach-Object { $script:agentProc = $_ }
     }
 } elseif ($isReviewerResume) {
-    $reviewResumeMessage = "The coder has addressed the findings on task $env:TASK_ID. Re-read the task via the Backlog.md MCP (task_view), verify every fix, run the tests, and move to Human Review if everything passes or request more changes if issues remain."
+    $reviewResumeMessage = "The coder has addressed the findings on task $env:TASK_ID. Re-read the task via the Backlog.md MCP (task_view), verify every fix, and run the tests. If anything still fails, request more changes (set status In Progress). If everything passes, you MUST complete the FULL approval routing from review.md Step 6 before finishing. Do NOT just move the status. In order: (1) check the satisfied acceptance criteria, (2) ensure the implementation branch is pushed to origin, (3) create the GitLab Merge Request into main via the gitlab MCP create_merge_request with dry_run set to false, using the implementation branch recorded in the task notes as source_branch and NOT the git current branch, then (4) set status to Human Review. If you cannot create the MR, append a clearly-flagged note that the MR was NOT created and still proceed. Never skip the MR step silently."
     $reviewResumePath = "$logFile.resume"
     [System.IO.File]::WriteAllText($reviewResumePath, $reviewResumeMessage, (New-Object System.Text.UTF8Encoding $false))
     Write-Host "dispatch.ps1: reviewer resume - resuming session $reviewerSessionId"
@@ -313,7 +423,7 @@ if ($isCoderRework) {
             -WindowStyle Hidden `
             -WorkingDirectory $projectRoot -PassThru | ForEach-Object { $script:agentProc = $_ }
     } else {
-        $agentArgs = @('--resume', $reviewerSessionId, '--dangerously-skip-permissions') + $claudeModelArgs
+        $agentArgs = @('--resume', $reviewerSessionId, '--dangerously-skip-permissions') + $claudeModelArgs + $claudeMcpArgs
         Start-Process `
             -FilePath $agentExec `
             -ArgumentList $agentArgs `
@@ -351,7 +461,7 @@ if ($isCoderRework) {
         -WorkingDirectory $projectRoot -PassThru | ForEach-Object { $script:agentProc = $_ }
 } else {
     # Claude: new session, prompt via stdin.
-    $agentArgs = @('-p', '--dangerously-skip-permissions') + $claudeModelArgs
+    $agentArgs = @('-p', '--dangerously-skip-permissions') + $claudeModelArgs + $claudeMcpArgs
     Start-Process `
         -FilePath $agentExec `
         -ArgumentList $agentArgs `
