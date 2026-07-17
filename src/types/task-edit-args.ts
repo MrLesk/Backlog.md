@@ -37,6 +37,10 @@ export interface TaskEditArgs {
 	definitionOfDoneRemove?: number[];
 	definitionOfDoneCheck?: number[];
 	definitionOfDoneUncheck?: number[];
+	/** Coder agent alias/binary. Pass an empty string to clear it. */
+	agent?: string;
+	/** Reviewer agent alias/binary. Pass an empty string to clear it. */
+	reviewAgent?: string;
 }
 
 export type TaskEditRequest = TaskEditArgs & { id: string };

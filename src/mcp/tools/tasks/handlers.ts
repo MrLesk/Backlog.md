@@ -39,6 +39,8 @@ export type TaskCreateArgs = {
 	documentation?: string[];
 	modifiedFiles?: string[];
 	finalSummary?: string;
+	agent?: string;
+	reviewAgent?: string;
 };
 
 export type TaskListArgs = {
@@ -127,6 +129,8 @@ export class TaskHandlers {
 				acceptanceCriteria,
 				definitionOfDoneAdd: args.definitionOfDoneAdd,
 				disableDefinitionOfDoneDefaults: args.disableDefinitionOfDoneDefaults,
+				agent: args.agent,
+				reviewAgent: args.reviewAgent,
 			});
 
 			return await formatTaskCallResult(createdTask);

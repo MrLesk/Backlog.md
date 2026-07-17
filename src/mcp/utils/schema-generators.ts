@@ -25,6 +25,37 @@ export function generateStatusFieldSchema(config: BacklogConfig): JsonSchema {
 }
 
 /**
+ * Generates an agent-field schema for the `agent` / `reviewAgent` task fields.
+ * When the project configures named agents, the field becomes a case-insensitive
+ * enum of their aliases so the orchestrator can't typo or invent an alias; the
+ * description spells out each alias -> binary mapping. With no configured agents
+ * it's a free-text string holding a raw CLI binary name.
+ */
+export function generateAgentFieldSchema(config: BacklogConfig, role: "agent" | "reviewAgent"): JsonSchema {
+	const roleText =
+		role === "agent"
+			? "Agent to run as the coder when this task enters In Progress"
+			: "Agent to run as the reviewer when this task enters In Review (falls back to `agent` when unset)";
+	const agents = (config.agents ?? []).filter((a) => a?.alias && a.alias.trim().length > 0);
+	if (agents.length > 0) {
+		const aliases = agents.map((a) => a.alias.trim());
+		const mapping = agents.map((a) => `${a.alias.trim()} (${a.binary})`).join(", ");
+		return {
+			type: "string",
+			maxLength: 100,
+			enum: aliases,
+			enumCaseInsensitive: true,
+			description: `${roleText}. Use one of the configured agent aliases: ${mapping}.`,
+		};
+	}
+	return {
+		type: "string",
+		maxLength: 100,
+		description: `${roleText}. No named agents are configured, so pass a raw CLI binary name (e.g. claude, codex, opencode).`,
+	};
+}
+
+/**
  * Generates the task_create input schema with dynamic status enum
  */
 export function generateTaskCreateSchema(config: BacklogConfig): JsonSchema {
@@ -132,6 +163,8 @@ export function generateTaskCreateSchema(config: BacklogConfig): JsonSchema {
 				type: "string",
 				maxLength: 50,
 			},
+			agent: generateAgentFieldSchema(config, "agent"),
+			reviewAgent: generateAgentFieldSchema(config, "reviewAgent"),
 		},
 		required: ["title"],
 		additionalProperties: false,
@@ -379,6 +412,8 @@ export function generateTaskEditSchema(config: BacklogConfig): JsonSchema {
 				maxItems: 50,
 				description: "Mark task-specific Definition of Done items as incomplete by 1-based index on this task.",
 			},
+			agent: generateAgentFieldSchema(config, "agent"),
+			reviewAgent: generateAgentFieldSchema(config, "reviewAgent"),
 		},
 		required: ["id"],
 		additionalProperties: false,
