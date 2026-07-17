@@ -8,6 +8,43 @@ import { createUniqueTestDir, initializeTestProject, safeCleanup } from "./test-
 
 let TEST_DIR: string;
 const CLI_PATH = join(process.cwd(), "src", "cli.ts");
+const SCRIPT_PATH = Bun.which("script");
+const itPty = process.platform === "win32" || !SCRIPT_PATH ? it.skip : it;
+
+function shellQuote(value: string): string {
+	return `'${value.replaceAll("'", `'\\''`)}'`;
+}
+
+async function runCliInPty(args: string[]): Promise<{ exitCode: number; output: string; timedOut: boolean }> {
+	if (!SCRIPT_PATH) {
+		throw new Error("script is required for PTY tests");
+	}
+
+	const bunPath = Bun.which("bun") ?? "bun";
+	const command = [bunPath, CLI_PATH, ...args];
+	const scriptArgs =
+		process.platform === "darwin"
+			? [SCRIPT_PATH, "-q", "/dev/null", ...command]
+			: [SCRIPT_PATH, "-q", "-e", "-c", command.map(shellQuote).join(" "), "/dev/null"];
+	const child = Bun.spawn(scriptArgs, {
+		cwd: TEST_DIR,
+		stdin: "ignore",
+		stdout: "pipe",
+		stderr: "pipe",
+	});
+	let timedOut = false;
+	const timeout = setTimeout(() => {
+		timedOut = true;
+		child.kill();
+	}, 5_000);
+	const [exitCode, stdout, stderr] = await Promise.all([
+		child.exited,
+		child.stdout ? new Response(child.stdout).text() : Promise.resolve(""),
+		child.stderr ? new Response(child.stderr).text() : Promise.resolve(""),
+	]);
+	clearTimeout(timeout);
+	return { exitCode, output: `${stdout}${stderr}`, timedOut };
+}
 
 describe("Append Implementation Plan via task edit --append-plan", () => {
 	beforeEach(async () => {
@@ -109,6 +146,44 @@ describe("Append Implementation Plan via task edit --append-plan", () => {
 		expect(extractStructuredSection(updatedBody ?? "", "implementationPlan") || "").toContain("Step1\nStep2\n\nPhase2");
 	});
 
+	it("ignores whitespace-only values while preserving append order", async () => {
+		const core = new Core(TEST_DIR);
+		await core.createTask(
+			{
+				id: "task-6",
+				title: "Whitespace append",
+				status: "To Do",
+				assignee: [],
+				createdDate: "2025-09-10 00:00",
+				labels: [],
+				dependencies: [],
+				description: "Description",
+				implementationPlan: "Original",
+			},
+			false,
+		);
+
+		const res = await $`bun ${[
+			CLI_PATH,
+			"task",
+			"edit",
+			"6",
+			"--append-plan",
+			"  ",
+			"--append-plan",
+			"First\nline",
+			"--append-plan",
+			"Second",
+		]}`
+			.cwd(TEST_DIR)
+			.quiet()
+			.nothrow();
+		expect(res.exitCode).toBe(0);
+		expect(extractStructuredSection((await core.getTaskContent("task-6")) ?? "", "implementationPlan")).toBe(
+			"Original\n\nFirst\nline\n\nSecond",
+		);
+	});
+
 	it("allows combining --plan (replace) with --append-plan (append)", async () => {
 		const core = new Core(TEST_DIR);
 		await core.createTask(
@@ -156,5 +231,37 @@ describe("Append Implementation Plan via task edit --append-plan", () => {
 		expect(extractStructuredSection((await core.getTaskContent("task-5")) ?? "", "implementationPlan") || "").toBe(
 			"Sole edit",
 		);
+	});
+
+	itPty("--append-plan bypasses the interactive edit wizard in a real PTY", async () => {
+		const core = new Core(TEST_DIR);
+		await core.createTask(
+			{
+				id: "task-7",
+				title: "PTY append",
+				status: "To Do",
+				assignee: [],
+				createdDate: "2025-09-10 00:00",
+				labels: [],
+				dependencies: [],
+				description: "Description",
+			},
+			false,
+		);
+
+		const result = await runCliInPty(["task", "edit", "7", "--append-plan", "PTY addition"]);
+		expect(result.timedOut).toBe(false);
+		expect(result.exitCode, result.output).toBe(0);
+		expect(extractStructuredSection((await core.getTaskContent("task-7")) ?? "", "implementationPlan")).toBe(
+			"PTY addition",
+		);
+	});
+
+	it("documents repeatability and replacement ordering in task edit help", async () => {
+		const output = await $`bun ${CLI_PATH} task edit --help`.cwd(TEST_DIR).text();
+		const normalizedOutput = output.replace(/\s+/g, " ");
+		expect(output).toContain("--append-plan <text>");
+		expect(normalizedOutput).toContain("append after --plan replacement (can be used multiple times)");
+		expect(output).toContain("append-plan: Markdown - Append after --plan replacement; repeatable");
 	});
 });

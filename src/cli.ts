@@ -2691,6 +2691,11 @@ addHelpSchema(taskCmd.command("edit [taskId]"), {
 			description: "Remove all labels; cannot combine with other label flags",
 		},
 		{ name: "plan", type: "Markdown", description: "Replacement implementation plan" },
+		{
+			name: "append-plan",
+			type: "Markdown",
+			description: "Append after --plan replacement; repeatable",
+		},
 		{ name: "notes", type: "Markdown", description: "Replacement implementation notes" },
 		{ name: "comment", type: "Markdown", description: "Append a discussion comment" },
 		{ name: "final-summary", type: "Markdown", description: "Completion summary" },
@@ -2781,7 +2786,7 @@ addHelpSchema(taskCmd.command("edit [taskId]"), {
 	.option("--final-summary <text>", "set final summary (replaces existing)")
 	.option(
 		"--append-plan <text>",
-		"append to implementation plan (can be used multiple times)",
+		"append after --plan replacement (can be used multiple times)",
 		createMultiValueAccumulator(),
 	)
 	.option(
