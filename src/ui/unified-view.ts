@@ -256,9 +256,15 @@ export function getEmptyUnifiedViewMessage(initialView: ViewType, parentTaskId?:
 	return initialView === "kanban" ? null : "No tasks found.";
 }
 
-export async function createTaskFromBoard(core: Core, input: TaskCreateInput): Promise<Task> {
+export async function createTaskFromBoard(
+	core: Core,
+	input: TaskCreateInput,
+	onCreated?: (task: Task) => Promise<void> | void,
+): Promise<Task> {
 	const config = await core.filesystem.loadConfig();
-	return (await core.createTaskFromInput(input, config?.autoCommit ?? false)).task;
+	const task = (await core.createTaskFromInput(input, config?.autoCommit ?? false)).task;
+	if (task.status.trim().toLowerCase() !== "draft") await onCreated?.(task);
+	return task;
 }
 
 /**
@@ -490,7 +496,7 @@ export async function runUnifiedView(options: UnifiedViewOptions): Promise<void>
 					dateFormat: config?.dateFormat,
 					priorities: config?.priorities,
 					types: config?.types,
-					createTask: async (input) => createTaskFromBoard(options.core, input),
+					createTask: async (input) => createTaskFromBoard(options.core, input, taskUpdateCallbacks.onTaskAdded),
 				}).then(() => {
 					// If user wants to exit, do it immediately
 					if (result === "exit") {

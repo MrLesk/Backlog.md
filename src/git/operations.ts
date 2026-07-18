@@ -1,4 +1,4 @@
-import { mkdtemp, realpath, rm, stat } from "node:fs/promises";
+import { mkdtemp, realpath, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { basename, dirname, isAbsolute, join, relative } from "node:path";
 import { $ } from "bun";
@@ -172,62 +172,148 @@ export class GitOperations {
 			return;
 		}
 
-		const temporaryIndexDirectory = await mkdtemp(join(tmpdir(), "backlog-git-index-"));
-		const temporaryIndexPath = join(temporaryIndexDirectory, "index");
-		const temporaryIndexEnv = { GIT_INDEX_FILE: temporaryIndexPath };
-		const ownedEntries = new Map<string, GitIndexEntry[]>();
+		let ownedEntries = new Map<string, GitIndexEntry[]>();
+		for (const relativePath of uniqueRelativePaths) {
+			ownedEntries.set(relativePath, await this.getIndexEntries(join(resolvedRepoRoot, relativePath)));
+		}
+		let selectedEntries = ownedEntries;
+
+		const temporaryDirectory = await mkdtemp(join(tmpdir(), "backlog-git-commit-"));
+		const temporaryIndexEnv = { GIT_INDEX_FILE: join(temporaryDirectory, "index") };
+		const messagePath = join(temporaryDirectory, "message");
 		try {
-			try {
-				await this.execGit(["read-tree", "HEAD"], {
-					cwd: resolvedRepoRoot,
-					env: temporaryIndexEnv,
-				});
-			} catch {
-				await this.execGit(["read-tree", "--empty"], {
-					cwd: resolvedRepoRoot,
-					env: temporaryIndexEnv,
-				});
+			let baseHead = await this.resolveHead(resolvedRepoRoot);
+			await this.populateTemporaryIndex(resolvedRepoRoot, temporaryIndexEnv, baseHead, selectedEntries);
+			await writeFile(messagePath, `${message}\n`);
+			if (!this.config?.bypassGitHooks) {
+				await this.runCommitHook("pre-commit", [], resolvedRepoRoot, temporaryIndexEnv);
+			}
+			await this.runCommitHook("prepare-commit-msg", [messagePath, "message"], resolvedRepoRoot, temporaryIndexEnv);
+			if (!this.config?.bypassGitHooks) {
+				await this.runCommitHook("commit-msg", [messagePath], resolvedRepoRoot, temporaryIndexEnv);
 			}
 
-			for (const relativePath of uniqueRelativePaths) {
-				await this.execGit(["update-index", "--force-remove", "--", relativePath], {
+			selectedEntries = await this.readSelectedIndexEntries(uniqueRelativePaths, resolvedRepoRoot, temporaryIndexEnv);
+			let lastHeadUpdateError: Error | undefined;
+
+			for (let attempt = 1; attempt <= 3; attempt += 1) {
+				baseHead = await this.resolveHead(resolvedRepoRoot);
+				await this.populateTemporaryIndex(resolvedRepoRoot, temporaryIndexEnv, baseHead, selectedEntries);
+				const { stdout: treeOutput } = await this.execGit(["write-tree"], {
 					cwd: resolvedRepoRoot,
 					env: temporaryIndexEnv,
 				});
-				const entries = await this.getIndexEntries(join(resolvedRepoRoot, relativePath));
-				ownedEntries.set(relativePath, entries);
-				if (entries.length > 0) {
-					const records = entries
-						.map((entry) => `${entry.mode} ${entry.objectId} ${entry.stage}\t${relativePath}\0`)
-						.join("");
-					await this.execGit(["update-index", "-z", "--index-info"], {
+				const treeId = treeOutput.trim();
+				if (baseHead) {
+					const { stdout: baseTreeOutput } = await this.execGit(["rev-parse", `${baseHead}^{tree}`], {
 						cwd: resolvedRepoRoot,
-						env: temporaryIndexEnv,
-						input: records,
+						readOnly: true,
 					});
+					if (treeId === baseTreeOutput.trim()) {
+						throw new Error("No staged changes to commit for the selected paths");
+					}
+				}
+
+				const commitArgs = ["commit-tree", treeId];
+				if (baseHead) commitArgs.push("-p", baseHead);
+				commitArgs.push("-F", messagePath);
+				const { stdout: commitOutput } = await this.execGit(commitArgs, {
+					cwd: resolvedRepoRoot,
+					env: temporaryIndexEnv,
+				});
+				const commitId = commitOutput.trim();
+
+				for (const relativePath of uniqueRelativePaths) {
+					const reconciled = await this.restoreIndexEntriesIfMatches(
+						join(resolvedRepoRoot, relativePath),
+						ownedEntries.get(relativePath) ?? [],
+						selectedEntries.get(relativePath) ?? [],
+					);
+					if (!reconciled) {
+						throw new Error(`Git index changed before the selected commit could be finalized: ${relativePath}`);
+					}
+				}
+				ownedEntries = selectedEntries;
+
+				try {
+					await this.execGit(
+						["update-ref", "-m", `commit: ${message.split("\n", 1)[0]}`, "HEAD", commitId, baseHead ?? ""],
+						{
+							cwd: resolvedRepoRoot,
+						},
+					);
+					await this.runCommitHook("post-commit", [], resolvedRepoRoot, temporaryIndexEnv).catch(() => undefined);
+					return;
+				} catch (error) {
+					lastHeadUpdateError = error instanceof Error ? error : new Error(String(error));
+					if ((await this.resolveHead(resolvedRepoRoot)) === baseHead) throw lastHeadUpdateError;
 				}
 			}
 
-			const args = ["commit", "-m", message];
-			if (this.config?.bypassGitHooks) {
-				args.push("--no-verify");
-			}
-			await this.execGit(args, { cwd: resolvedRepoRoot, env: temporaryIndexEnv });
-
-			for (const relativePath of uniqueRelativePaths) {
-				const { stdout } = await this.execGit(["ls-files", "-s", "-z", "--", relativePath], {
-					cwd: resolvedRepoRoot,
-					readOnly: true,
-					env: temporaryIndexEnv,
-				});
-				await this.restoreIndexEntriesIfMatches(
-					join(resolvedRepoRoot, relativePath),
-					ownedEntries.get(relativePath) ?? [],
-					parseIndexEntries(stdout),
-				);
-			}
+			throw new Error(`Git HEAD kept changing while committing selected paths: ${lastHeadUpdateError?.message}`);
 		} finally {
-			await rm(temporaryIndexDirectory, { recursive: true, force: true });
+			await rm(temporaryDirectory, { recursive: true, force: true }).catch(() => undefined);
+		}
+	}
+
+	private async resolveHead(repoRoot: string): Promise<string | null> {
+		try {
+			const { stdout } = await this.execGit(["rev-parse", "--verify", "HEAD"], { cwd: repoRoot, readOnly: true });
+			return stdout.trim() || null;
+		} catch {
+			return null;
+		}
+	}
+
+	private async readSelectedIndexEntries(
+		relativePaths: readonly string[],
+		repoRoot: string,
+		env: Record<string, string>,
+	): Promise<Map<string, GitIndexEntry[]>> {
+		const entries = new Map<string, GitIndexEntry[]>();
+		for (const relativePath of relativePaths) {
+			const { stdout } = await this.execGit(["ls-files", "-s", "-z", "--", relativePath], {
+				cwd: repoRoot,
+				readOnly: true,
+				env,
+			});
+			entries.set(relativePath, parseIndexEntries(stdout));
+		}
+		return entries;
+	}
+
+	private async populateTemporaryIndex(
+		repoRoot: string,
+		env: Record<string, string>,
+		baseHead: string | null,
+		selectedEntries: ReadonlyMap<string, readonly GitIndexEntry[]>,
+	): Promise<void> {
+		await this.execGit(baseHead ? ["read-tree", baseHead] : ["read-tree", "--empty"], { cwd: repoRoot, env });
+		for (const [relativePath, entries] of selectedEntries) {
+			await this.execGit(["update-index", "--force-remove", "--", relativePath], { cwd: repoRoot, env });
+			if (entries.length === 0) continue;
+			await this.execGit(["update-index", "-z", "--index-info"], {
+				cwd: repoRoot,
+				env,
+				input: entries.map((entry) => `${entry.mode} ${entry.objectId} ${entry.stage}\t${relativePath}\0`).join(""),
+			});
+		}
+	}
+
+	private async runCommitHook(
+		hook: string,
+		args: readonly string[],
+		repoRoot: string,
+		env: Record<string, string>,
+	): Promise<void> {
+		try {
+			await this.execGit(["hook", "run", hook, ...(args.length > 0 ? ["--", ...args] : [])], {
+				cwd: repoRoot,
+				env,
+			});
+		} catch (error) {
+			if (error instanceof Error && error.message.includes(`cannot find a hook named ${hook}`)) return;
+			throw error;
 		}
 	}
 
@@ -287,6 +373,9 @@ export class GitOperations {
 		const currentEntries = await this.getIndexEntries(filePath);
 		if (!indexEntriesEqual(currentEntries, expectedEntries)) {
 			return false;
+		}
+		if (indexEntriesEqual(currentEntries, restoreEntries)) {
+			return true;
 		}
 
 		const objectIdLength = expectedEntries[0]?.objectId.length ?? restoreEntries[0]?.objectId.length ?? 40;

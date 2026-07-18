@@ -86,6 +86,35 @@ describe("loadTasksForUnifiedView", () => {
 		expect(observedAutoCommit).toEqual([false, true]);
 	});
 
+	it("publishes a newly created board task to shared unified state before returning", async () => {
+		let state: UnifiedTaskState = { tasks: [] };
+		const callbacks = createUnifiedTaskUpdateCallbacks(
+			() => state,
+			(next) => {
+				state = next;
+			},
+		);
+		const created: Task = {
+			id: "TASK-1",
+			title: "First board task",
+			status: "To Do",
+			assignee: [],
+			createdDate: "2026-07-18 00:00",
+			labels: [],
+			dependencies: [],
+		};
+		const boardCore = {
+			filesystem: { loadConfig: async () => ({ autoCommit: false }) },
+			createTaskFromInput: async () => ({ task: created }),
+		} as unknown as Core;
+
+		const result = await createTaskFromBoard(boardCore, { title: created.title }, callbacks.onTaskAdded);
+
+		expect(result).toBe(created);
+		expect(state.tasks).toEqual([created]);
+		expect(state.selectedTask).toBeUndefined();
+	});
+
 	it("builds a concise board warning from active and completed collisions", async () => {
 		await core.filesystem.ensureBacklogStructure();
 		const makeTask = (id: string, title: string): Task => ({

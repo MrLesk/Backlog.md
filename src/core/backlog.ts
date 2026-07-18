@@ -120,7 +120,7 @@ interface CreatedTaskWrite {
 	createdContent: Buffer;
 	previousPath: string | null;
 	previousContent: Buffer | null;
-	previousIndexEntries: GitIndexEntry[];
+	previousIndexEntries?: GitIndexEntry[];
 	generatedIndexEntries?: GitIndexEntry[];
 }
 
@@ -1267,7 +1267,7 @@ export class Core {
 		task: Task,
 		filepath: string,
 		isDraft: boolean,
-		autoCommit?: boolean,
+		autoCommit: boolean,
 		write?: CreatedTaskWrite,
 	): Promise<Task | null> {
 		const savedTask = isDraft ? await this.fs.loadDraft(task.id) : await this.fs.loadTask(task.id);
@@ -1276,7 +1276,7 @@ export class Core {
 			this.contentStore.upsertTask(savedTask);
 		}
 
-		if (await this.shouldAutoCommit(autoCommit)) {
+		if (autoCommit) {
 			if (isDraft) {
 				await this.git.addFile(filepath);
 				if (write) write.generatedIndexEntries = await this.git.getIndexEntries(filepath);
@@ -1307,14 +1307,14 @@ export class Core {
 			indexRestored = await this.git.restoreIndexEntriesIfMatches(
 				write.filePath,
 				write.generatedIndexEntries,
-				write.previousIndexEntries,
+				write.previousIndexEntries ?? [],
 			);
 		}
 
 		const currentContent = await this.readFileIfPresent(write.filePath);
 		const stillOwnsCreatedPath = currentContent?.equals(write.createdContent) ?? false;
 		let workingPathRestored = currentContent === null;
-		if (stillOwnsCreatedPath) {
+		if (stillOwnsCreatedPath && indexRestored) {
 			if (write.previousPath === write.filePath && write.previousContent) {
 				await writeFile(write.filePath, write.previousContent);
 			} else {
@@ -1402,6 +1402,7 @@ export class Core {
 			disableDefaults: input.disableDefinitionOfDoneDefaults,
 		});
 		const resolvedStatus = isDraft ? "Draft" : status || config?.defaultStatus || FALLBACK_STATUS;
+		const autoCommitEnabled = await this.shouldAutoCommit(autoCommit);
 
 		const { task, write } = await this.withCreateLock(async () => {
 			const parentTaskId = requestedParentTaskId
@@ -1441,15 +1442,16 @@ export class Core {
 			const previousContent = await this.readFileIfPresent(previousPath);
 			const filePath = await this.writePreparedTask(task, isDraft);
 			const createdContent = await readFile(filePath);
-			const previousIndexEntries = await this.git.getIndexEntries(filePath);
+			const write: CreatedTaskWrite = { filePath, createdContent, previousPath, previousContent };
 			return {
 				task,
-				write: { filePath, createdContent, previousPath, previousContent, previousIndexEntries },
+				write,
 			};
 		});
 
 		try {
-			const savedTask = await this.finalizeCreatedTask(task, write.filePath, isDraft, autoCommit, write);
+			if (autoCommitEnabled) write.previousIndexEntries = await this.git.getIndexEntries(write.filePath);
+			const savedTask = await this.finalizeCreatedTask(task, write.filePath, isDraft, autoCommitEnabled, write);
 			return { task: savedTask ?? task, filePath: write.filePath };
 		} catch (error) {
 			let rollback: CreatedTaskRollbackResult;
@@ -1460,14 +1462,14 @@ export class Core {
 				throw new Error(`Task creation failed and cleanup also failed: ${message}`, { cause: error });
 			}
 			if (!rollback.workingPathRestored || !rollback.indexRestored) {
-				const preserved = [
-					!rollback.workingPathRestored ? `the changed file at ${write.filePath}` : null,
-					!rollback.indexRestored ? "its changed staged state" : null,
-				]
-					.filter(Boolean)
-					.join(" and ");
+				if (!rollback.indexRestored) {
+					throw new Error(
+						`Task creation failed, and Backlog no longer owned the staged entry for ${write.filePath}. The task file and staged Git state were preserved, ${task.id} remains in use, and manual Git review is required before retrying.`,
+						{ cause: error },
+					);
+				}
 				throw new Error(
-					`Task creation failed, and cleanup could not safely remove ${preserved}. Your changes were preserved. ${!rollback.workingPathRestored ? `Review or remove the preserved file before retrying because ${task.id} remains in use.` : "Review the preserved staged state before retrying."}`,
+					`Task creation failed, and cleanup could not safely remove the changed file at ${write.filePath}. Your changes were preserved. Review or remove the preserved file before retrying because ${task.id} remains in use.`,
 					{ cause: error },
 				);
 			}
@@ -1492,8 +1494,9 @@ export class Core {
 			task.status = config?.defaultStatus || FALLBACK_STATUS;
 		}
 
+		const autoCommitEnabled = await this.shouldAutoCommit(autoCommit);
 		const filepath = await this.writePreparedTask(task, false);
-		await this.finalizeCreatedTask(task, filepath, false, autoCommit);
+		await this.finalizeCreatedTask(task, filepath, false, autoCommitEnabled);
 
 		return filepath;
 	}

@@ -5,7 +5,7 @@ status: Done
 assignee:
   - '@codex-pr791'
 created_date: '2026-04-25 12:14'
-updated_date: '2026-07-17 22:34'
+updated_date: '2026-07-18 16:10'
 labels:
   - tui
   - enhancement
@@ -46,10 +46,11 @@ Deliver the production first slice of an intent-first Blessed task composer. The
 ## Implementation Plan
 
 <!-- SECTION:PLAN:BEGIN -->
-1. Preserve the exact owned staged blob during path-limited auto-commit and add race coverage.
-2. Preserve hook-modified task bytes when rollback ownership is lost, return an actionable recovery error, and test that the user data survives.
-3. Reload autoCommit at TUI composer submission and normalize repository-relative Git paths in cross-platform assertions.
-4. Run focused tests, TypeScript, Biome, build, broader verification, then record objective evidence.
+1. Make path-limited commits atomic against HEAD movement and constrain hook-staged paths to the owned path set.
+2. Separate commit outcome from real-index reconciliation so compensation never rolls back a successful commit, and establish rollback ownership before fallible post-write Git inspection.
+3. Synchronize unified-view state immediately after first-task creation so view switching sees the created task.
+4. Add adversarial regression tests for concurrent HEAD advance, unrelated hook staging, post-commit reconciliation failure, first-task Tab switching, post-write index inspection failure, and autoCommit=false.
+5. Simplify the resulting ownership/state model, run focused and full verification, then record evidence and finalize.
 <!-- SECTION:PLAN:END -->
 
 ## Implementation Notes
@@ -74,10 +75,14 @@ Final re-review corrections are complete. Exact per-path index entries and worki
 Final publication verification: 64 focused tests passed across the TUI composer, help, empty-board loading, auto-commit, CLI commit behavior, atomic creation, and Git operations. TypeScript, Biome, build, and git diff --check also passed. Earlier fresh rendered PTY QA verified discovery, data entry, selectors, creation, cancellation, retry, focus, scrolling, and live resize at 100x30, 80x24, and 50x18.
 
 Codex review repair: path-limited commits now build from the owned staged entries in an isolated temporary index, so later worktree bytes are not committed and unrelated staged work remains untouched. Failed hooks that modify the generated task preserve those bytes and return actionable recovery guidance instead of deleting user data. TUI submission reloads autoCommit at create time, and Git path assertions normalize Windows separators. Validation passed: 35 focused composer/unified-view tests, 63 broader Git/auto-commit/milestone tests, full suite 1,737 passed with 4 intentional interactive skips, bunx tsc --noEmit, bun run check ., bun run build, and git diff --check.
+
+Maintainer decision: if rollback discovers that Backlog no longer owns the same-path staged entry, preserve both the task file and staged Git state, report the exact path and task ID, and require manual Git review before retrying. The task ID remains occupied so later creation allocates the next ID. Added adversarial coverage where concurrent staged bytes differ while the worktree still matches Backlog's generated file, proving cleanup removes neither state.
+
+Approved rollback verification passed. The same-path ownership-loss regression preserves the original task file and independently changed staged blob, reports the exact path, TASK-1 identity, and required manual Git review, and proves the next task allocation is TASK-2. Focused adversarial verification passed 84 tests across composer, unified view, auto-commit, CLI commit behavior, atomic creation, Git operations, and milestone mutations. Final repository verification passed 1,746 tests with 4 intentional interactive skips and 0 failures (7,367 assertions across 196 files); bunx tsc --noEmit, bun run check ., bun run build, and git diff --check passed.
 <!-- SECTION:NOTES:END -->
 
 ## Final Summary
 
 <!-- SECTION:FINAL_SUMMARY:BEGIN -->
-Repaired the TUI task composer review findings by committing the owned staged blob, preserving and reporting hook-modified task files on failed rollback, reloading autoCommit at submission, and normalizing cross-platform Git paths. Verified with focused and broader Git tests, the full 1,737-test suite, TypeScript, Biome, build, and diff checks.
+Completed the intent-first TUI task composer and hardened its canonical persistence path against concurrent HEAD, index, hook, and worktree changes. Failed creation now preserves user-authored task bytes; when Backlog loses same-path staged ownership it preserves both file and staged state, identifies the occupied task ID and exact path, and requires manual Git review. Also reloads autoCommit on submission and synchronizes first-task board state immediately. Verified by rendered keyboard QA recorded in the implementation notes, 84 focused adversarial tests, the full 1,746-test suite with 0 failures, TypeScript, Biome, build, and diff checks.
 <!-- SECTION:FINAL_SUMMARY:END -->

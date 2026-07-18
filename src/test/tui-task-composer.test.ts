@@ -246,15 +246,58 @@ describe("TUI task composer canonical persistence", () => {
 		);
 
 		const creation = core.createTaskFromInput({ title: "Hook modified" }, true);
-		await expect(creation).rejects.toThrow("Your changes were preserved");
+		await expect(creation).rejects.toThrow("TASK-1 remains in use");
 
 		const created = await core.fs.loadTask("TASK-1");
 		expect(created?.filePath).toBeDefined();
 		expect(await readFile(created?.filePath as string, "utf8")).toContain("Hook edit must survive.");
 		expect((await $`git diff --cached --name-only`.cwd(testDir).text()).trim()).toBe("");
+		expect((await $`git status --short -- ${created?.filePath as string}`.cwd(testDir).text()).trim()).toStartWith(
+			"?? ",
+		);
 
 		const next = await core.createTaskFromInput({ title: "Next task" }, false);
 		expect(next.task.id).toBe("TASK-2");
+	});
+
+	it("preserves both file and staged state when same-path index ownership is lost", async () => {
+		await initializeGitRepository(testDir);
+		const originalCommitFiles = core.gitOps.commitFiles.bind(core.gitOps);
+		let createdContent = "";
+		core.gitOps.commitFiles = async (_message, paths) => {
+			const filePath = paths[0] as string;
+			createdContent = await readFile(filePath, "utf8");
+			await writeFile(filePath, `${createdContent}\nConcurrent staged edit must survive.\n`);
+			await $`git add ${filePath}`.cwd(testDir).quiet();
+			await writeFile(filePath, createdContent);
+			throw new Error("simulated commit failure after concurrent staging");
+		};
+
+		try {
+			let error: Error | undefined;
+			try {
+				await core.createTaskFromInput({ title: "Lost index ownership" }, true);
+			} catch (caught) {
+				error = caught instanceof Error ? caught : new Error(String(caught));
+			}
+			const created = await core.fs.loadTask("TASK-1");
+			if (!created?.filePath) throw new Error("Expected TASK-1 to remain on disk");
+
+			expect(error?.message).toContain(created.filePath);
+			expect(error?.message).toContain("TASK-1 remains in use");
+			expect(error?.message).toContain("manual Git review is required");
+			expect(await readFile(created.filePath, "utf8")).toBe(createdContent);
+			const relativeCreatedPath = created.filePath.slice(testDir.length + 1).replaceAll("\\", "/");
+			expect(await $`git show :${relativeCreatedPath}`.cwd(testDir).text()).toContain(
+				"Concurrent staged edit must survive.",
+			);
+			expect((await $`git status --short -- ${created.filePath}`.cwd(testDir).text()).trim()).toStartWith("AM ");
+
+			const next = await core.createTaskFromInput({ title: "Next task" }, false);
+			expect(next.task.id).toBe("TASK-2");
+		} finally {
+			core.gitOps.commitFiles = originalCommitFiles;
+		}
 	});
 
 	it("commits the owned staged blob when the worktree changes before commit", async () => {
@@ -276,6 +319,127 @@ describe("TUI task composer canonical persistence", () => {
 			);
 		} finally {
 			core.gitOps.commitFiles = originalCommitFiles;
+		}
+	});
+
+	it("rebuilds the selected commit on a concurrently advanced HEAD", async () => {
+		await initializeGitRepository(testDir);
+		const git = core.gitOps as unknown as {
+			execGit: (
+				args: string[],
+				options?: { readOnly?: boolean; cwd?: string; input?: string; env?: Record<string, string> },
+			) => Promise<{ stdout: string; stderr: string }>;
+		};
+		const originalExecGit = git.execGit.bind(core.gitOps);
+		let advanced = false;
+		git.execGit = async (args, options) => {
+			if (args[0] === "update-ref" && !advanced) {
+				advanced = true;
+				await writeFile(join(testDir, "concurrent.txt"), "Concurrent HEAD content.\n");
+				await $`git add concurrent.txt`.cwd(testDir).quiet();
+				await $`git commit --only -m "concurrent commit" -- concurrent.txt`.cwd(testDir).quiet();
+			}
+			return originalExecGit(args, options);
+		};
+
+		try {
+			const beforeCount = Number((await $`git rev-list --count HEAD`.cwd(testDir).text()).trim());
+			const result = await core.createTaskFromInput({ title: "Concurrent head" }, true);
+			const relativeCreatedPath = (result.filePath as string).slice(testDir.length + 1).replaceAll("\\", "/");
+
+			expect(advanced).toBe(true);
+			expect(await $`git show HEAD:concurrent.txt`.cwd(testDir).text()).toBe("Concurrent HEAD content.\n");
+			expect((await $`git show HEAD:${relativeCreatedPath}`.cwd(testDir).text()).length).toBeGreaterThan(0);
+			expect(Number((await $`git rev-list --count HEAD`.cwd(testDir).text()).trim())).toBe(beforeCount + 2);
+			expect((await core.gitOps.getStatus()).trim()).toBe("");
+		} finally {
+			git.execGit = originalExecGit;
+		}
+	});
+
+	it("keeps hook-staged unrelated paths out while committing hook-staged task changes", async () => {
+		await initializeGitRepository(testDir);
+		await installFailingHook(
+			testDir,
+			'for file in backlog/tasks/*.md; do printf "\\nHook-owned task edit.\\n" >> "$file"; git add "$file"; done\nprintf "Unrelated hook bytes.\\n" > hook-unrelated.txt\ngit add hook-unrelated.txt\nexit 0',
+		);
+
+		const result = await core.createTaskFromInput({ title: "Constrained hook" }, true);
+		const relativeCreatedPath = (result.filePath as string).slice(testDir.length + 1).replaceAll("\\", "/");
+		const committedTask = await $`git show HEAD:${relativeCreatedPath}`.cwd(testDir).text();
+		const unrelatedLookup = await $`git cat-file -e HEAD:hook-unrelated.txt`.cwd(testDir).nothrow().quiet();
+
+		expect(committedTask).toContain("Hook-owned task edit.");
+		expect(unrelatedLookup.exitCode).not.toBe(0);
+		expect(await readFile(join(testDir, "hook-unrelated.txt"), "utf8")).toBe("Unrelated hook bytes.\n");
+		expect((await $`git diff --cached --name-only`.cwd(testDir).text()).trim()).toBe("");
+		expect((await $`git status --short hook-unrelated.txt`.cwd(testDir).text()).trim()).toBe("?? hook-unrelated.txt");
+	});
+
+	for (const status of ["To Do", "Draft"] as const) {
+		it(`compensates a ${status === "Draft" ? "draft" : "task"} safely when index reconciliation prevents the commit`, async () => {
+			await initializeGitRepository(testDir);
+			const originalRestore = core.gitOps.restoreIndexEntriesIfMatches.bind(core.gitOps);
+			const commitAttempts = status === "Draft" ? 1 : 3;
+			let calls = 0;
+			core.gitOps.restoreIndexEntriesIfMatches = async (...args) => {
+				calls += 1;
+				if (calls <= commitAttempts) throw new Error("simulated index reconciliation failure");
+				return originalRestore(...args);
+			};
+			const beforeHead = (await $`git rev-parse HEAD`.cwd(testDir).text()).trim();
+
+			try {
+				await expect(core.createTaskFromInput({ title: "Reconcile safely", status }, true)).rejects.toThrow(
+					"index reconciliation failure",
+				);
+				expect((await $`git rev-parse HEAD`.cwd(testDir).text()).trim()).toBe(beforeHead);
+				expect(status === "Draft" ? await core.fs.loadDraft("DRAFT-1") : await core.fs.loadTask("TASK-1")).toBeNull();
+				expect((await core.gitOps.getStatus()).trim()).toBe("");
+			} finally {
+				core.gitOps.restoreIndexEntriesIfMatches = originalRestore;
+			}
+		});
+	}
+
+	for (const status of ["To Do", "Draft"] as const) {
+		it(`rolls back a created ${status === "Draft" ? "draft" : "task"} when post-write index inspection fails`, async () => {
+			await initializeGitRepository(testDir);
+			const originalGetIndexEntries = core.gitOps.getIndexEntries.bind(core.gitOps);
+			let calls = 0;
+			core.gitOps.getIndexEntries = async () => {
+				calls += 1;
+				throw new Error("simulated index inspection failure");
+			};
+
+			try {
+				await expect(core.createTaskFromInput({ title: "Index inspection", status }, true)).rejects.toThrow(
+					"index inspection failure",
+				);
+				expect(calls).toBe(1);
+				expect(status === "Draft" ? await core.fs.loadDraft("DRAFT-1") : await core.fs.loadTask("TASK-1")).toBeNull();
+				expect((await core.gitOps.getStatus()).trim()).toBe("");
+			} finally {
+				core.gitOps.getIndexEntries = originalGetIndexEntries;
+			}
+		});
+	}
+
+	it("does not inspect Git index ownership when auto-commit is disabled", async () => {
+		let calls = 0;
+		const originalGetIndexEntries = core.gitOps.getIndexEntries.bind(core.gitOps);
+		core.gitOps.getIndexEntries = async () => {
+			calls += 1;
+			throw new Error("index inspection must not run");
+		};
+
+		try {
+			const result = await core.createTaskFromInput({ title: "Filesystem-only create" }, false);
+			expect(result.task.id).toBe("TASK-1");
+			expect(calls).toBe(0);
+			expect(await core.fs.loadTask("TASK-1")).not.toBeNull();
+		} finally {
+			core.gitOps.getIndexEntries = originalGetIndexEntries;
 		}
 	});
 
