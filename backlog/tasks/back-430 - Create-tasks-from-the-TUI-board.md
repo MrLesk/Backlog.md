@@ -5,7 +5,7 @@ status: Done
 assignee:
   - '@alex-agent'
 created_date: '2026-04-25 12:14'
-updated_date: '2026-07-19 12:59'
+updated_date: '2026-07-19 13:12'
 labels:
   - tui
   - enhancement
@@ -88,6 +88,10 @@ Final current-head verification passed: 111 focused tests across composer, unifi
 Remote Ubuntu CI exposed a high-load race in the new deleted-path regression: the ID glob lookup could miss an exact pre-existing target before save, so rollback had no previousContent snapshot to restore even though save overwrote that deterministic target. The repair will derive and snapshot the exact write destination directly before persistence, while retaining ambiguity checks and different-title restoration.
 
 CI race repair complete. Core now snapshots the deterministic task or draft destination directly before persistence and falls back to ID resolution only for different-title prior files; FileSystem uses the same write-target resolver for path calculation and writes. The deleted-path task/draft regression passed 40 repeated isolated runs, the expanded focused suite passed 154 tests, and the full current-head suite passed 1,750 tests with 4 intentional skips and 0 failures (7,383 assertions). TypeScript, Biome, build, and diff checks passed.
+
+Remote Ubuntu CI still reproduces the same-path deletion rollback failure on GitHub's merge result, so the task is reopened while that integration-only failure is investigated.
+
+Linux diagnosis complete: the regression setup created a lower-case TASK-1 file before ID allocation, so the canonical allocator correctly reserved that ID and created TASK-2. The task assertions passed accidentally on macOS but the deletion hook removed the untouched TASK-1 fixture on Linux. The tests now create the competing same-path state immediately after allocation, which exercises the intended allocation-to-write race on every platform. Five focused rollback cases passed repeatedly in Bun 1.3.14's Debian image with the same isolation and concurrency flags as CI.
 <!-- SECTION:NOTES:END -->
 
 ## Final Summary

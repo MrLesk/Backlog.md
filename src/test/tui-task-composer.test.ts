@@ -181,6 +181,28 @@ describe("TUI task composer canonical persistence", () => {
 		await rm(testDir, { recursive: true, force: true });
 	});
 
+	async function afterNextIdGenerated<T>(
+		setup: (id: string) => Promise<void>,
+		operation: () => Promise<T>,
+	): Promise<T> {
+		const generateNextId = core.generateNextId.bind(core);
+		let didSetup = false;
+		core.generateNextId = async (type, parent) => {
+			const id = await generateNextId(type, parent);
+			if (!didSetup) {
+				didSetup = true;
+				await setup(id);
+			}
+			return id;
+		};
+
+		try {
+			return await operation();
+		} finally {
+			core.generateNextId = generateNextId;
+		}
+	}
+
 	it("routes normal and explicitly selected Draft values through canonical creation", async () => {
 		const normal = new TaskComposerController(["To Do", "Done"]);
 		normal.values.title = "Normal task";
@@ -512,10 +534,15 @@ describe("TUI task composer canonical persistence", () => {
 		await initializeGitRepository(testDir);
 		const preExistingPath = join(testDir, "backlog", "tasks", "task-1 - Preexisting.md");
 		const preExistingContent = "This is not a parseable task and must be restored.\n";
-		await writeFile(preExistingPath, preExistingContent);
-		await installFailingHook(testDir);
 
-		await expect(core.createTaskFromInput({ title: "Preexisting" }, true)).rejects.toThrow();
+		await afterNextIdGenerated(
+			async (id) => {
+				expect(id).toBe("TASK-1");
+				await writeFile(preExistingPath, preExistingContent);
+				await installFailingHook(testDir);
+			},
+			async () => await expect(core.createTaskFromInput({ title: "Preexisting" }, true)).rejects.toThrow(),
+		);
 
 		expect(await readFile(preExistingPath, "utf8")).toBe(preExistingContent);
 		expect((await $`git diff --cached --name-only`.cwd(testDir).text()).trim()).toBe("");
@@ -530,15 +557,19 @@ describe("TUI task composer canonical persistence", () => {
 			const baselineContent = "HEAD baseline bytes.\n";
 			const stagedContent = "Prior staged user bytes.\n";
 			const worktreeContent = "Prior unstaged user bytes.\n";
-			await writeFile(targetPath, baselineContent);
-			await $`git add ${relativePath}`.cwd(testDir).quiet();
-			await $`git commit -m "add prior target"`.cwd(testDir).quiet();
-			await writeFile(targetPath, stagedContent);
-			await $`git add ${relativePath}`.cwd(testDir).quiet();
-			await writeFile(targetPath, worktreeContent);
-			await installFailingHook(testDir);
-
-			await expect(core.createTaskFromInput({ title, status }, true)).rejects.toThrow();
+			await afterNextIdGenerated(
+				async (id) => {
+					expect(id).toBe(status === "Draft" ? "DRAFT-1" : "TASK-1");
+					await writeFile(targetPath, baselineContent);
+					await $`git add ${relativePath}`.cwd(testDir).quiet();
+					await $`git commit -m "add prior target"`.cwd(testDir).quiet();
+					await writeFile(targetPath, stagedContent);
+					await $`git add ${relativePath}`.cwd(testDir).quiet();
+					await writeFile(targetPath, worktreeContent);
+					await installFailingHook(testDir);
+				},
+				async () => await expect(core.createTaskFromInput({ title, status }, true)).rejects.toThrow(),
+			);
 
 			expect(await readFile(targetPath, "utf8")).toBe(worktreeContent);
 			expect(await $`git show :${relativePath}`.cwd(testDir).text()).toBe(stagedContent);
@@ -555,15 +586,19 @@ describe("TUI task composer canonical persistence", () => {
 			const baselineContent = "HEAD baseline bytes.\n";
 			const stagedContent = "Prior staged user bytes.\n";
 			const worktreeContent = "Prior unstaged user bytes.\n";
-			await writeFile(targetPath, baselineContent);
-			await $`git add ${relativePath}`.cwd(testDir).quiet();
-			await $`git commit -m "add prior target"`.cwd(testDir).quiet();
-			await writeFile(targetPath, stagedContent);
-			await $`git add ${relativePath}`.cwd(testDir).quiet();
-			await writeFile(targetPath, worktreeContent);
-			await installFailingHook(testDir, `rm "${targetPath}"\nexit 1`);
-
-			await expect(core.createTaskFromInput({ title, status }, true)).rejects.toThrow();
+			await afterNextIdGenerated(
+				async (id) => {
+					expect(id).toBe(status === "Draft" ? "DRAFT-1" : "TASK-1");
+					await writeFile(targetPath, baselineContent);
+					await $`git add ${relativePath}`.cwd(testDir).quiet();
+					await $`git commit -m "add prior target"`.cwd(testDir).quiet();
+					await writeFile(targetPath, stagedContent);
+					await $`git add ${relativePath}`.cwd(testDir).quiet();
+					await writeFile(targetPath, worktreeContent);
+					await installFailingHook(testDir, `rm "${targetPath}"\nexit 1`);
+				},
+				async () => await expect(core.createTaskFromInput({ title, status }, true)).rejects.toThrow(),
+			);
 
 			expect(await readFile(targetPath, "utf8")).toBe(worktreeContent);
 			expect(await $`git show :${relativePath}`.cwd(testDir).text()).toBe(stagedContent);
