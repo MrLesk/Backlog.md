@@ -5,7 +5,7 @@ status: Done
 assignee:
   - '@alex-agent'
 created_date: '2026-04-25 12:14'
-updated_date: '2026-07-19 12:43'
+updated_date: '2026-07-19 12:59'
 labels:
   - tui
   - enhancement
@@ -84,10 +84,14 @@ Current-head Codex review ae04e2d3 identified three P2 integrity/compatibility f
 Current-head review repairs implemented. Selected-path commits now honor commit.gpgSign with commit-tree -S while preserving configured signing format and key. Hook execution uses git hook run --ignore-missing on Git 2.36+ and a core.hooksPath-aware Git shell fallback on older versions, with the temporary index and noninteractive editor environment preserved. Rollback now exclusively recreates prior same-path bytes when a failing hook deletes the generated path, without overwriting a concurrent recreation. Focused adversarial verification passes 42 tests with 191 assertions, including a real SSH-signed auto-commit, simulated Git 2.35 hook execution, and task/draft restoration across distinct HEAD, index, and worktree bytes.
 
 Final current-head verification passed: 111 focused tests across composer, unified state, auto-commit, CLI commit behavior, atomic creation, Git operations, and milestone commits; full suite 1,750 passed with 4 intentional skips and 0 failures (7,383 assertions across 196 files); bunx tsc --noEmit, bun run check ., bun run build, and git diff --check passed.
+
+Remote Ubuntu CI exposed a high-load race in the new deleted-path regression: the ID glob lookup could miss an exact pre-existing target before save, so rollback had no previousContent snapshot to restore even though save overwrote that deterministic target. The repair will derive and snapshot the exact write destination directly before persistence, while retaining ambiguity checks and different-title restoration.
+
+CI race repair complete. Core now snapshots the deterministic task or draft destination directly before persistence and falls back to ID resolution only for different-title prior files; FileSystem uses the same write-target resolver for path calculation and writes. The deleted-path task/draft regression passed 40 repeated isolated runs, the expanded focused suite passed 154 tests, and the full current-head suite passed 1,750 tests with 4 intentional skips and 0 failures (7,383 assertions). TypeScript, Biome, build, and diff checks passed.
 <!-- SECTION:NOTES:END -->
 
 ## Final Summary
 
 <!-- SECTION:FINAL_SUMMARY:BEGIN -->
-Completed the intent-first TUI task composer and hardened canonical task and draft creation against concurrent HEAD, index, hook, and worktree changes. Selected-path auto-commits preserve unrelated staged work, configured commit signing, and hooks on both modern and pre-2.36 Git. Failed creation restores prior owned state, preserves user changes whenever ownership is lost, and reports the occupied task ID and exact recovery path. Also reloads autoCommit on submission and synchronizes first-task board state immediately. Verified through rendered keyboard QA recorded above, 111 focused integration tests, the full 1,750-test suite with 0 failures, TypeScript, Biome, build, and diff checks.
+Completed the intent-first TUI task composer and hardened canonical task and draft creation against concurrent HEAD, index, hook, and worktree changes. Selected-path auto-commits preserve unrelated staged work, configured commit signing, and hooks on both modern and pre-2.36 Git. Failed creation snapshots and restores exact prior owned state, preserves user changes whenever ownership is lost, and reports the occupied task ID and exact recovery path. Also reloads autoCommit on submission and synchronizes first-task board state immediately. Verified through rendered keyboard QA recorded above, 154 focused integration tests, 40 repeated deleted-path recovery runs, the full 1,750-test suite with 0 failures, TypeScript, Biome, build, and diff checks.
 <!-- SECTION:FINAL_SUMMARY:END -->

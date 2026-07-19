@@ -1449,8 +1449,11 @@ export class Core {
 				...(definitionOfDoneItems && definitionOfDoneItems.length > 0 && { definitionOfDoneItems }),
 			};
 
-			const previousPath = isDraft ? await getDraftPath(task.id, this) : await getTaskPath(task.id, this);
-			const previousContent = await this.readFileIfPresent(previousPath);
+			const resolvedPreviousPath = isDraft ? await getDraftPath(task.id, this) : await getTaskPath(task.id, this);
+			const targetPath = await this.fs.getTaskWritePath(task, isDraft);
+			const targetContent = await this.readFileIfPresent(targetPath);
+			const previousPath = targetContent ? targetPath : resolvedPreviousPath;
+			const previousContent = targetContent ?? (await this.readFileIfPresent(resolvedPreviousPath));
 			const filePath = await this.writePreparedTask(task, isDraft);
 			const createdContent = await readFile(filePath);
 			const write: CreatedTaskWrite = { filePath, createdContent, previousPath, previousContent };
