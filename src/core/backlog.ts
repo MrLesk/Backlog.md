@@ -1454,9 +1454,16 @@ export class Core {
 			const targetContent = await this.readFileIfPresent(targetPath);
 			const previousPath = targetContent ? targetPath : resolvedPreviousPath;
 			const previousContent = targetContent ?? (await this.readFileIfPresent(resolvedPreviousPath));
+			const previousIndexEntries = autoCommitEnabled ? await this.git.getIndexEntries(targetPath) : undefined;
 			const filePath = await this.writePreparedTask(task, isDraft);
 			const createdContent = await readFile(filePath);
-			const write: CreatedTaskWrite = { filePath, createdContent, previousPath, previousContent };
+			const write: CreatedTaskWrite = {
+				filePath,
+				createdContent,
+				previousPath,
+				previousContent,
+				previousIndexEntries,
+			};
 			return {
 				task,
 				write,
@@ -1464,7 +1471,6 @@ export class Core {
 		});
 
 		try {
-			if (autoCommitEnabled) write.previousIndexEntries = await this.git.getIndexEntries(write.filePath);
 			const savedTask = await this.finalizeCreatedTask(task, write.filePath, isDraft, autoCommitEnabled, write);
 			return { task: savedTask ?? task, filePath: write.filePath };
 		} catch (error) {

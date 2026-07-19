@@ -173,11 +173,13 @@ export class GitOperations {
 			return;
 		}
 
+		await this.assertNoCommitOperationInProgress(resolvedRepoRoot);
+
 		let ownedEntries = new Map<string, GitIndexEntry[]>();
 		for (const relativePath of uniqueRelativePaths) {
 			ownedEntries.set(relativePath, await this.getIndexEntries(join(resolvedRepoRoot, relativePath)));
 		}
-		let selectedEntries = ownedEntries;
+		let commitEntries = ownedEntries;
 
 		const temporaryDirectory = await mkdtemp(join(tmpdir(), "backlog-git-commit-"));
 		const temporaryIndexEnv = { GIT_INDEX_FILE: join(temporaryDirectory, "index") };
@@ -185,22 +187,22 @@ export class GitOperations {
 		try {
 			const signCommit = await this.shouldSignCommit(resolvedRepoRoot);
 			let baseHead = await this.resolveHead(resolvedRepoRoot);
-			await this.populateTemporaryIndex(resolvedRepoRoot, temporaryIndexEnv, baseHead, selectedEntries);
+			await this.populateTemporaryIndex(resolvedRepoRoot, temporaryIndexEnv, baseHead, commitEntries);
 			await writeFile(messagePath, `${message}\n`);
 			if (!this.config?.bypassGitHooks) {
 				await this.runCommitHook("pre-commit", [], resolvedRepoRoot, temporaryIndexEnv);
 			}
+			commitEntries = await this.readSelectedIndexEntries(uniqueRelativePaths, resolvedRepoRoot, temporaryIndexEnv);
 			await this.runCommitHook("prepare-commit-msg", [messagePath, "message"], resolvedRepoRoot, temporaryIndexEnv);
 			if (!this.config?.bypassGitHooks) {
 				await this.runCommitHook("commit-msg", [messagePath], resolvedRepoRoot, temporaryIndexEnv);
 			}
-
-			selectedEntries = await this.readSelectedIndexEntries(uniqueRelativePaths, resolvedRepoRoot, temporaryIndexEnv);
 			let lastHeadUpdateError: Error | undefined;
 
 			for (let attempt = 1; attempt <= 3; attempt += 1) {
+				await this.assertNoCommitOperationInProgress(resolvedRepoRoot);
 				baseHead = await this.resolveHead(resolvedRepoRoot);
-				await this.populateTemporaryIndex(resolvedRepoRoot, temporaryIndexEnv, baseHead, selectedEntries);
+				await this.populateTemporaryIndex(resolvedRepoRoot, temporaryIndexEnv, baseHead, commitEntries);
 				const { stdout: treeOutput } = await this.execGit(["write-tree"], {
 					cwd: resolvedRepoRoot,
 					env: temporaryIndexEnv,
@@ -229,13 +231,13 @@ export class GitOperations {
 					const reconciled = await this.restoreIndexEntriesIfMatches(
 						join(resolvedRepoRoot, relativePath),
 						ownedEntries.get(relativePath) ?? [],
-						selectedEntries.get(relativePath) ?? [],
+						commitEntries.get(relativePath) ?? [],
 					);
 					if (!reconciled) {
 						throw new Error(`Git index changed before the selected commit could be finalized: ${relativePath}`);
 					}
 				}
-				ownedEntries = selectedEntries;
+				ownedEntries = commitEntries;
 
 				try {
 					await this.execGit(
@@ -244,7 +246,7 @@ export class GitOperations {
 							cwd: resolvedRepoRoot,
 						},
 					);
-					await this.runCommitHook("post-commit", [], resolvedRepoRoot, temporaryIndexEnv).catch(() => undefined);
+					await this.runCommitHook("post-commit", [], resolvedRepoRoot, {}).catch(() => undefined);
 					return;
 				} catch (error) {
 					lastHeadUpdateError = error instanceof Error ? error : new Error(String(error));
@@ -255,6 +257,29 @@ export class GitOperations {
 			throw new Error(`Git HEAD kept changing while committing selected paths: ${lastHeadUpdateError?.message}`);
 		} finally {
 			await rm(temporaryDirectory, { recursive: true, force: true }).catch(() => undefined);
+		}
+	}
+
+	private async assertNoCommitOperationInProgress(repoRoot: string): Promise<void> {
+		const operationMarkers = [
+			{ path: "MERGE_HEAD", name: "merge" },
+			{ path: "rebase-merge", name: "rebase" },
+			{ path: "rebase-apply", name: "rebase" },
+			{ path: "CHERRY_PICK_HEAD", name: "cherry-pick" },
+			{ path: "REVERT_HEAD", name: "revert" },
+		] as const;
+
+		for (const marker of operationMarkers) {
+			const { stdout } = await this.execGit(["rev-parse", "--git-path", marker.path], {
+				cwd: repoRoot,
+				readOnly: true,
+			});
+			const configuredPath = stdout.trim();
+			if (!configuredPath) continue;
+			const markerPath = isAbsolute(configuredPath) ? configuredPath : join(repoRoot, configuredPath);
+			if (await stat(markerPath).catch(() => null)) {
+				throw new Error(`Cannot auto-commit selected files while a Git ${marker.name} is in progress`);
+			}
 		}
 	}
 

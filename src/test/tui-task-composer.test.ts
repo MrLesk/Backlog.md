@@ -350,7 +350,16 @@ describe("TUI task composer canonical persistence", () => {
 	it("preserves commit.gpgSign for selected-path auto-commits", async () => {
 		await initializeGitRepository(testDir);
 		const signingKeyPath = join(testDir, "test-signing-key");
-		await $`ssh-keygen -q -t ed25519 -N "" -f ${signingKeyPath}`.quiet();
+		const keygen = Bun.spawn(["ssh-keygen", "-q", "-t", "ed25519", "-N", "", "-f", signingKeyPath], {
+			cwd: testDir,
+			stdout: "ignore",
+			stderr: "pipe",
+		});
+		const stderrPromise = new Response(keygen.stderr).text();
+		const [exitCode, stderr] = await Promise.all([keygen.exited, stderrPromise]);
+		if (exitCode !== 0) {
+			throw new Error(`ssh-keygen failed with exit code ${exitCode}: ${stderr}`);
+		}
 		await $`git config gpg.format ssh`.cwd(testDir).quiet();
 		await $`git config user.signingKey ${signingKeyPath}`.cwd(testDir).quiet();
 		await $`git config commit.gpgSign true`.cwd(testDir).quiet();
@@ -444,6 +453,35 @@ describe("TUI task composer canonical persistence", () => {
 		}
 	});
 
+	it("refuses selected-path auto-commit without disturbing an in-progress merge", async () => {
+		await initializeGitRepository(testDir);
+		const mergeFile = join(testDir, "merge-state.txt");
+		await writeFile(mergeFile, "base\n");
+		await $`git add merge-state.txt`.cwd(testDir).quiet();
+		await $`git commit -m "merge base"`.cwd(testDir).quiet();
+		await $`git checkout -b merge-topic`.cwd(testDir).quiet();
+		await writeFile(mergeFile, "topic\n");
+		await $`git commit -am "topic change"`.cwd(testDir).quiet();
+		await $`git checkout main`.cwd(testDir).quiet();
+		await writeFile(mergeFile, "main\n");
+		await $`git commit -am "main change"`.cwd(testDir).quiet();
+		const merge = await $`git merge merge-topic`.cwd(testDir).nothrow().quiet();
+		expect(merge.exitCode).not.toBe(0);
+
+		const headBefore = (await $`git rev-parse HEAD`.cwd(testDir).text()).trim();
+		const mergeHeadBefore = (await $`git rev-parse MERGE_HEAD`.cwd(testDir).text()).trim();
+		const mergeIndexBefore = await $`git ls-files -u -- merge-state.txt`.cwd(testDir).text();
+
+		await expect(core.createTaskFromInput({ title: "Blocked by merge" }, true)).rejects.toThrow(
+			"Git merge is in progress",
+		);
+
+		expect((await $`git rev-parse HEAD`.cwd(testDir).text()).trim()).toBe(headBefore);
+		expect((await $`git rev-parse MERGE_HEAD`.cwd(testDir).text()).trim()).toBe(mergeHeadBefore);
+		expect(await $`git ls-files -u -- merge-state.txt`.cwd(testDir).text()).toBe(mergeIndexBefore);
+		expect(await core.fs.loadTask("TASK-1")).toBeNull();
+	});
+
 	it("keeps hook-staged unrelated paths out while committing hook-staged task changes", async () => {
 		await initializeGitRepository(testDir);
 		await installFailingHook(
@@ -461,6 +499,63 @@ describe("TUI task composer canonical persistence", () => {
 		expect(await readFile(join(testDir, "hook-unrelated.txt"), "utf8")).toBe("Unrelated hook bytes.\n");
 		expect((await $`git diff --cached --name-only`.cwd(testDir).text()).trim()).toBe("");
 		expect((await $`git status --short hook-unrelated.txt`.cwd(testDir).text()).trim()).toBe("?? hook-unrelated.txt");
+	});
+
+	it("freezes selected task bytes before message hooks", async () => {
+		await initializeGitRepository(testDir);
+		await installHook(
+			testDir,
+			"pre-commit",
+			'for file in backlog/tasks/*.md; do printf "\\nPre-commit bytes.\\n" >> "$file"; git add "$file"; done',
+		);
+		await installHook(
+			testDir,
+			"prepare-commit-msg",
+			'for file in backlog/tasks/*.md; do printf "\\nPrepare-message bytes.\\n" >> "$file"; git add "$file"; done',
+		);
+		await installHook(
+			testDir,
+			"commit-msg",
+			'for file in backlog/tasks/*.md; do printf "\\nCommit-message bytes.\\n" >> "$file"; git add "$file"; done',
+		);
+
+		const result = await core.createTaskFromInput({ title: "Hook phase boundary" }, true);
+		const relativeCreatedPath = (result.filePath as string).slice(testDir.length + 1).replaceAll("\\", "/");
+		const committedTask = await $`git show HEAD:${relativeCreatedPath}`.cwd(testDir).text();
+		const worktreeTask = await readFile(result.filePath as string, "utf8");
+
+		expect(committedTask).toContain("Pre-commit bytes.");
+		expect(committedTask).not.toContain("Prepare-message bytes.");
+		expect(committedTask).not.toContain("Commit-message bytes.");
+		expect(worktreeTask).toContain("Prepare-message bytes.");
+		expect(worktreeTask).toContain("Commit-message bytes.");
+		expect((await $`git diff --name-only -- ${relativeCreatedPath}`.cwd(testDir).text()).trim()).toBe(
+			relativeCreatedPath,
+		);
+	});
+
+	it("runs post-commit hooks against the real index", async () => {
+		await initializeGitRepository(testDir);
+		const unrelatedPath = join(testDir, "unrelated.txt");
+		const postCommitPath = join(testDir, "post-commit-index.txt");
+		await writeFile(unrelatedPath, "baseline\n");
+		await $`git add unrelated.txt`.cwd(testDir).quiet();
+		await $`git commit -m "unrelated baseline"`.cwd(testDir).quiet();
+		await writeFile(unrelatedPath, "staged user bytes\n");
+		await $`git add unrelated.txt`.cwd(testDir).quiet();
+		await installHook(
+			testDir,
+			"post-commit",
+			`if git diff --cached --quiet -- unrelated.txt; then printf "missing\\n" > "${postCommitPath}"; else printf "visible\\n" > "${postCommitPath}"; fi\ngit add "${postCommitPath}"`,
+		);
+
+		await core.createTaskFromInput({ title: "Real post-commit index" }, true);
+
+		expect(await readFile(postCommitPath, "utf8")).toBe("visible\n");
+		expect(await $`git show :unrelated.txt`.cwd(testDir).text()).toBe("staged user bytes\n");
+		expect(await $`git show :post-commit-index.txt`.cwd(testDir).text()).toBe("visible\n");
+		const committedPostFile = await $`git cat-file -e HEAD:post-commit-index.txt`.cwd(testDir).nothrow().quiet();
+		expect(committedPostFile.exitCode).not.toBe(0);
 	});
 
 	for (const status of ["To Do", "Draft"] as const) {
@@ -490,7 +585,7 @@ describe("TUI task composer canonical persistence", () => {
 	}
 
 	for (const status of ["To Do", "Draft"] as const) {
-		it(`rolls back a created ${status === "Draft" ? "draft" : "task"} when post-write index inspection fails`, async () => {
+		it(`does not publish a ${status === "Draft" ? "draft" : "task"} when pre-write index inspection fails`, async () => {
 			await initializeGitRepository(testDir);
 			const originalGetIndexEntries = core.gitOps.getIndexEntries.bind(core.gitOps);
 			let calls = 0;
@@ -508,6 +603,36 @@ describe("TUI task composer canonical persistence", () => {
 				expect((await core.gitOps.getStatus()).trim()).toBe("");
 			} finally {
 				core.gitOps.getIndexEntries = originalGetIndexEntries;
+			}
+		});
+	}
+
+	for (const status of ["To Do", "Draft"] as const) {
+		it(`does not retain a staged phantom when a ${status === "Draft" ? "draft" : "task"} is staged immediately after publication`, async () => {
+			await initializeGitRepository(testDir);
+			await installFailingHook(
+				testDir,
+				'for file in backlog/tasks/*.md backlog/drafts/*.md; do test -e "$file" && rm "$file"; done\nexit 1',
+			);
+			const save = status === "Draft" ? core.fs.saveDraft.bind(core.fs) : core.fs.saveTask.bind(core.fs);
+			const method = status === "Draft" ? "saveDraft" : "saveTask";
+			core.fs[method] = async (task) => {
+				const filePath = await save(task);
+				await core.gitOps.addFile(filePath);
+				return filePath;
+			};
+
+			try {
+				await expect(core.createTaskFromInput({ title: "Snapshot race", status }, true)).rejects.toThrow();
+				expect(status === "Draft" ? await core.fs.loadDraft("DRAFT-1") : await core.fs.loadTask("TASK-1")).toBeNull();
+				expect((await $`git diff --cached --name-only`.cwd(testDir).text()).trim()).toBe("");
+				expect((await core.gitOps.getStatus()).trim()).toBe("");
+
+				await rm(join(testDir, ".git", "hooks", "pre-commit"));
+				const retry = await core.createTaskFromInput({ title: "Snapshot retry", status }, false);
+				expect(retry.task.id).toBe(status === "Draft" ? "DRAFT-1" : "TASK-1");
+			} finally {
+				core.fs[method] = save;
 			}
 		});
 	}

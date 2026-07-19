@@ -5,7 +5,7 @@ status: Done
 assignee:
   - '@alex-agent'
 created_date: '2026-04-25 12:14'
-updated_date: '2026-07-19 13:12'
+updated_date: '2026-07-19 13:39'
 labels:
   - tui
   - enhancement
@@ -92,6 +92,10 @@ CI race repair complete. Core now snapshots the deterministic task or draft dest
 Remote Ubuntu CI still reproduces the same-path deletion rollback failure on GitHub's merge result, so the task is reopened while that integration-only failure is investigated.
 
 Linux diagnosis complete: the regression setup created a lower-case TASK-1 file before ID allocation, so the canonical allocator correctly reserved that ID and created TASK-2. The task assertions passed accidentally on macOS but the deletion hook removed the untouched TASK-1 fixture on Linux. The tests now create the competing same-path state immediately after allocation, which exercises the intended allocation-to-write race on every platform. Five focused rollback cases passed repeatedly in Bun 1.3.14's Debian image with the same isolation and concurrency flags as CI.
+
+Fresh Codex review on current head found five additional Git integrity concerns covering in-progress operations, hook index semantics, index snapshot timing, and signing-test argument transport. The task is reopened while those findings are validated and repaired.
+
+Fresh-review repairs complete. Selected-path commits now refuse active merge, rebase, cherry-pick, and revert states; freeze commit content after pre-commit but before message hooks; and run post-commit against the real index. Creation snapshots prior index ownership before publishing task bytes, preventing staged phantoms if another actor stages the new path immediately after publication. The SSH signing regression now passes an empty key passphrase through explicit argv. New merge-state, hook-phase, real-index post-commit, task/draft snapshot-race, and signing regressions pass on macOS and Bun 1.3.14 Debian. Focused integration coverage, TypeScript, Biome, build, and diff checks pass; full suite: 1,755 passed, 4 intentional skips, 0 failed, 7,414 assertions across 196 files.
 <!-- SECTION:NOTES:END -->
 
 ## Final Summary
