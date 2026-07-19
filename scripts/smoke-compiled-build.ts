@@ -247,12 +247,15 @@ try {
 		const stylesheetPath = html.match(/<link rel="stylesheet"[^>]*href="([^"]+)"/)?.[1];
 		const scriptPath = html.match(/<script type="module"[^>]*src="([^"]+)"/)?.[1];
 		const faviconPath = html.match(/<link rel="icon"[^>]*href="([^"]+)"/)?.[1];
+		const stylesheetUrl = new URL(stylesheetPath ?? "", `${baseUrl}/`);
+		const scriptUrl = new URL(scriptPath ?? "", `${baseUrl}/`);
+		const faviconUrl = new URL(faviconPath ?? "", `${baseUrl}/`);
 
-		assert(/^\/chunk-[a-z0-9]+\.css$/.test(stylesheetPath ?? ""), `Invalid stylesheet path: ${stylesheetPath}`);
-		assert(/^\/chunk-[a-z0-9]+\.js$/.test(scriptPath ?? ""), `Invalid script path: ${scriptPath}`);
-		assert(/^\/favicon-[a-z0-9]+\.png$/.test(faviconPath ?? ""), `Invalid favicon path: ${faviconPath}`);
+		assert(/^\/chunk-[a-z0-9]+\.css$/.test(stylesheetUrl.pathname), `Invalid stylesheet path: ${stylesheetPath}`);
+		assert(/^\/chunk-[a-z0-9]+\.js$/.test(scriptUrl.pathname), `Invalid script path: ${scriptPath}`);
+		assert(/^\/favicon-[a-z0-9]+\.png$/.test(faviconUrl.pathname), `Invalid favicon path: ${faviconPath}`);
 
-		const stylesheetResponse = await fetchWithTimeout(`${baseUrl}${stylesheetPath}`);
+		const stylesheetResponse = await fetchWithTimeout(stylesheetUrl.href);
 		assert(stylesheetResponse.status === 200, `Stylesheet returned ${stylesheetResponse.status}.`);
 		assert(
 			stylesheetResponse.headers.get("content-type")?.includes("text/css"),
@@ -262,14 +265,14 @@ try {
 		assert(stylesheet.includes(".flex{display:flex}"), "Compiled stylesheet is missing Tailwind utilities.");
 		assert(stylesheet.includes(".wmde-markdown"), "Compiled stylesheet is missing Markdown editor styles.");
 
-		const scriptResponse = await fetchWithTimeout(`${baseUrl}${scriptPath}`, { method: "HEAD" });
+		const scriptResponse = await fetchWithTimeout(scriptUrl.href, { method: "HEAD" });
 		assert(scriptResponse.status === 200, `Browser script returned ${scriptResponse.status}.`);
 		assert(
 			scriptResponse.headers.get("content-type")?.includes("text/javascript"),
 			`Unexpected script content type: ${scriptResponse.headers.get("content-type")}`,
 		);
 
-		const faviconResponse = await fetchWithTimeout(`${baseUrl}${faviconPath}`, { method: "HEAD" });
+		const faviconResponse = await fetchWithTimeout(faviconUrl.href, { method: "HEAD" });
 		assert(faviconResponse.status === 200, `Favicon returned ${faviconResponse.status}.`);
 		assert(
 			faviconResponse.headers.get("content-type")?.includes("image/png"),

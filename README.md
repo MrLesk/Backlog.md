@@ -94,6 +94,25 @@ backlog init "Personal Planning" --no-git
 > Without an install, `npx backlog` resolves to an unrelated third-party npm package — not this tool.
 > (With `backlog.md` installed as a project dependency, `npx backlog` runs the local binary as usual.)
 
+### Run with Nix
+
+Run Backlog.md directly from the repository flake:
+
+```bash
+nix run github:MrLesk/Backlog.md -- --version
+```
+
+Or install the named package into your Nix profile:
+
+```bash
+nix profile install github:MrLesk/Backlog.md#backlog-md
+```
+
+The Nix flake supports `x86_64-linux`, `aarch64-linux`, and
+`aarch64-darwin`. The x86_64 Linux package uses Bun's baseline runtime so it
+also works on pre-AVX2 processors with AVX support. Intel macOS users can use
+the npm, Bun, or Homebrew installation instead.
+
 The init wizard will ask how you want to connect AI tools:
 - **CLI instructions** (recommended): creates a short instruction file that tells agents to run `backlog instructions overview`.
 - **MCP connector**: optionally auto-configures Claude Code, Codex, Gemini CLI, Kiro or Cursor for teams that prefer MCP.
