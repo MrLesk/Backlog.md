@@ -5,143 +5,137 @@
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
     flake-utils.url = "github:numtide/flake-utils";
     bun2nix = {
-      url = "github:baileyluTCD/bun2nix";
+      url = "github:nix-community/bun2nix/2.1.1";
       inputs.nixpkgs.follows = "nixpkgs";
     };
   };
 
-  outputs = { self, nixpkgs, flake-utils, bun2nix }:
-    flake-utils.lib.eachDefaultSystem (system:
-      let
-        # Use baseline Bun for x86_64-linux to support older CPUs without AVX2
-        # This fixes issue #412 where users with older CPUs (i7-3770, i7-3612QE)
-        # get "Illegal instruction" errors during the build process.
-        #
-        # The baseline build targets Nehalem architecture (2008+) with SSE4.2
-        # instead of Haswell (2013+) with AVX2, allowing builds on older hardware.
-        #
-        # Using an overlay to replace the Bun package maintains full compatibility
-        # with the standard Bun package structure (thanks to @erdosxx for this solution).
-        pkgs = import nixpkgs {
-          inherit system;
-          overlays = if system == "x86_64-linux" then
-            let bunVersion = "1.3.14"; in [
-              (final: prev: {
-                bun = prev.bun.overrideAttrs (oldAttrs: {
-                  src = prev.fetchurl {
-                    url = "https://github.com/oven-sh/bun/releases/download/bun-v${bunVersion}/bun-linux-x64-baseline.zip";
-                    sha256 = "a063908ae08b7852ca10939bbdc6ceed3ddabce8fb9402dce83d65d73b36e6c7";
-                  };
-                });
-              })
-            ]
-          else
-            [];
-        };
-
-        # Read version from package.json
-        packageJson = builtins.fromJSON (builtins.readFile ./package.json);
-        version = packageJson.version;
-        
-        ldLibraryPath = ''
-          LD_LIBRARY_PATH=${pkgs.lib.makeLibraryPath [
-            pkgs.stdenv.cc.cc.lib
-          ]}''${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}
-        '';
-
-        backlog-md = bun2nix.lib.${system}.mkBunDerivation {
-          pname = "backlog";
-          inherit version;
-          src = ./.;
-          packageJson = ./package.json;
-          bunNix = ./bun.nix;
-
-          nativeBuildInputs = with pkgs; [ bun git rsync ];
-          
-          preBuild = ''
-            export HOME=$TMPDIR
-            export HUSKY=0
-            export ${ldLibraryPath}
-          '';
-          
-          buildPhase = ''
-            runHook preBuild
-
-            # Build the CLI tool with the browser UI bundled from source.
-            BACKLOG_BUILD_VERSION="${version}" BACKLOG_BUILD_OUTFILE=dist/backlog bun scripts/build.ts
-
-            runHook postBuild
-          '';
-          
-          installPhase = ''
-            runHook preInstall
-            
-            mkdir -p $out/bin
-            cp dist/backlog $out/bin/backlog
-            chmod +x $out/bin/backlog
-            
-            runHook postInstall
-          '';
-          
-          meta = with pkgs.lib; {
-            description = "A markdown-based task management CLI tool with Kanban board";
-            longDescription = ''
-              Backlog.md is a command-line tool for managing tasks and projects using markdown files.
-              It provides Kanban board visualization, task management, and integrates with Git workflows.
-            '';
-            homepage = "https://backlog.md";
-            changelog = "https://github.com/MrLesk/Backlog.md/releases";
-            license = licenses.mit;
-            maintainers = let
-              mrlesk = {
-                name = "MrLesk";
-                github = "MrLesk";
-                githubId = 181345848;
-              };
-            in
-              with maintainers; [ anpryl mrlesk ];
-            platforms = platforms.all;
-            mainProgram = "backlog";
+  outputs =
+    {
+      nixpkgs,
+      flake-utils,
+      bun2nix,
+      ...
+    }:
+    flake-utils.lib.eachSystem
+      [
+        "x86_64-linux"
+        "aarch64-linux"
+        "aarch64-darwin"
+      ]
+      (
+        system:
+        let
+          pkgs = import nixpkgs {
+            inherit system;
+            overlays = [ bun2nix.overlays.default ];
           };
-        };
-      in
-      {
-        packages = {
-          default = backlog-md;
-          "backlog-md" = backlog-md;
-        };
-        
-        apps = {
-          default = flake-utils.lib.mkApp {
+          packageJson = builtins.fromJSON (builtins.readFile ./package.json);
+          bunDeps = pkgs.bun2nix.fetchBunDeps {
+            bunNix = ./bun.nix;
+          };
+          bunRuntime =
+            if system == "x86_64-linux" then
+              pkgs.bun.overrideAttrs (previous: {
+                passthru = previous.passthru // {
+                  sources = previous.passthru.sources // {
+                    x86_64-linux = pkgs.fetchurl {
+                      # Keep this on Bun's baseline archive. The normal x64 build requires AVX2.
+                      url = "https://github.com/oven-sh/bun/releases/download/bun-v${previous.version}/bun-linux-x64-baseline.zip";
+                      hash = "sha256-nYokKSpwaAkCBdqsCloiP19pc29Sh+N7+I07QDHtx1A=";
+                    };
+                  };
+                };
+              })
+            else
+              pkgs.bun;
+          backlog-md = pkgs.bun2nix.mkDerivation {
+            pname = "backlog";
+            inherit (packageJson) version;
+            src = ./.;
+
+            inherit bunDeps;
+            nativeBuildInputs = [ pkgs.makeWrapper ];
+            bunInstallFlags = [
+              "--linker=isolated"
+              "--backend=copyfile"
+            ];
+            dontRunLifecycleScripts = true;
+            dontUseBunCheck = true;
+
+            buildPhase = ''
+              runHook preBuild
+
+              BACKLOG_BUILD_VERSION="$version" \
+                BACKLOG_BUILD_OUTDIR=dist/nix \
+                bun scripts/build.ts
+
+              runHook postBuild
+            '';
+
+            installPhase = ''
+              runHook preInstall
+
+              mkdir -p "$out/lib/backlog"
+              cp -R dist/nix/. "$out/lib/backlog/"
+              makeWrapper ${bunRuntime}/bin/bun "$out/bin/backlog" \
+                --add-flags "$out/lib/backlog/cli.js" \
+                --set BACKLOG_BUNDLE_ASSET_DIR "$out/lib/backlog"
+
+              runHook postInstall
+            '';
+
+            doInstallCheck = true;
+            nativeInstallCheckInputs = pkgs.lib.optionals (system == "x86_64-linux") [ pkgs.qemu-user ];
+            installCheckPhase = ''
+              runHook preInstallCheck
+
+              bun scripts/smoke-compiled-build.ts "$out/bin/backlog" "$version"
+
+              ${pkgs.lib.optionalString (system == "x86_64-linux") ''
+                if BUN_JSC_useJIT=false qemu-x86_64 -cpu IvyBridge \
+                  ${pkgs.bun}/bin/bun --version >/dev/null 2>&1; then
+                  echo "QEMU compatibility check did not reject the AVX2 Bun runtime" >&2
+                  exit 1
+                fi
+
+                test "$(BUN_JSC_useJIT=false qemu-x86_64 -cpu IvyBridge ${bunRuntime}/bin/bun "$out/lib/backlog/cli.js" --version)" = "$version"
+                BUN_JSC_useJIT=false qemu-x86_64 -cpu IvyBridge \
+                  ${bunRuntime}/bin/bun "$out/lib/backlog/cli.js" --help >/dev/null
+              ''}
+
+              runHook postInstallCheck
+            '';
+
+            meta = {
+              description = "A markdown-based task management CLI tool with Kanban board";
+              homepage = "https://backlog.md";
+              changelog = "https://github.com/MrLesk/Backlog.md/releases";
+              license = pkgs.lib.licenses.mit;
+              mainProgram = "backlog";
+            };
+          };
+        in
+        {
+          packages = {
+            default = backlog-md;
+            backlog-md = backlog-md;
+          };
+
+          apps.default = flake-utils.lib.mkApp {
             drv = backlog-md;
             name = "backlog";
           };
-        };
-        
-        devShells.default = pkgs.mkShell {
-          packages = with pkgs; [
-            bun
-            bun2nix.packages.${system}.default
-          ];
 
-          buildInputs = with pkgs; [
-            bun
-            nodejs_24
-            git
-            biome
-          ];
-          
-          shellHook = ''
-            export ${ldLibraryPath}
-
-            echo "Backlog.md development environment"
-            echo "Available commands:"
-            echo "  bun i          - Install dependencies"
-            echo "  bun test       - Run tests"
-            echo "  bun run cli    - Run CLI in development mode"
-            echo "  bun run build  - Build the CLI tool"
-            echo "  bun run check  - Run Biome checks"
-          '';
-        };
-      });
+          devShells.default = pkgs.mkShell {
+            packages = [
+              pkgs.bun
+              pkgs.bun2nix
+              pkgs.nodejs_24
+              pkgs.git
+              pkgs.biome
+            ];
+          };
+        }
+      );
 }

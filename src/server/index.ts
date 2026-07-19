@@ -153,6 +153,7 @@ export function markHtmlBundleNoStore(bundle: Bun.HTMLBundle): Bun.HTMLBundle {
 }
 
 const spaIndexHtml = markHtmlBundleNoStore(indexHtml);
+const BUNDLE_ASSET_DIR_ENV = "BACKLOG_BUNDLE_ASSET_DIR";
 const MIN_PORT = 1;
 const MAX_PORT = 65535;
 
@@ -184,6 +185,7 @@ export async function findNextAvailablePort(startPort: number, maxPort = MAX_POR
 export class BacklogServer {
 	private core: Core;
 	private server: Server<unknown> | null = null;
+	private runtimeWorkingDirectory: string | null = null;
 	private projectName = "Untitled Project";
 	private sockets = new Set<ServerWebSocket<unknown>>();
 	private contentStore: ContentStore | null = null;
@@ -435,7 +437,18 @@ export class BacklogServer {
 				},
 				/* biome-ignore format: keep cast on single line below for type narrowing */
 			};
-			this.server = Bun.serve(serveOptions as unknown as Parameters<typeof Bun.serve>[0]);
+			const bundleAssetDirectory = process.env[BUNDLE_ASSET_DIR_ENV]?.trim();
+			if (bundleAssetDirectory) {
+				this.runtimeWorkingDirectory = process.cwd();
+				process.chdir(bundleAssetDirectory);
+			}
+
+			try {
+				this.server = Bun.serve(serveOptions as unknown as Parameters<typeof Bun.serve>[0]) as Server<unknown>;
+			} catch (error) {
+				this.restoreRuntimeWorkingDirectory();
+				throw error;
+			}
 
 			const url = `http://localhost:${finalPort}`;
 			console.log(`🚀 Backlog.md browser interface running at ${url}`);
@@ -466,6 +479,12 @@ export class BacklogServer {
 
 	private _stopping = false;
 
+	private restoreRuntimeWorkingDirectory(): void {
+		if (!this.runtimeWorkingDirectory) return;
+		process.chdir(this.runtimeWorkingDirectory);
+		this.runtimeWorkingDirectory = null;
+	}
+
 	async stop(): Promise<void> {
 		if (this._stopping) return;
 		this._stopping = true;
@@ -478,6 +497,7 @@ export class BacklogServer {
 
 		this.core.disposeSearchService();
 		this.core.disposeContentStore();
+		this.restoreRuntimeWorkingDirectory();
 		this.searchService = null;
 		this.contentStore = null;
 		this.storeReadyBroadcasted = false;
