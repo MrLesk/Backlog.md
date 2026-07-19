@@ -31,6 +31,7 @@
             overlays = [ bun2nix.overlays.default ];
           };
           standardBun = pkgs.bun;
+          avx2BunArchive = standardBun.passthru.sources.x86_64-linux;
           packageJson = builtins.fromJSON (builtins.readFile ./package.json);
           bunDeps = pkgs.bun2nix.fetchBunDeps {
             bunNix = ./bun.nix;
@@ -95,16 +96,27 @@
             doInstallCheck = true;
             # The packaged browser smoke binds localhost inside the Darwin sandbox.
             __darwinAllowLocalNetworking = pkgs.stdenv.hostPlatform.isDarwin;
-            nativeInstallCheckInputs = pkgs.lib.optionals (system == "x86_64-linux") [ pkgs.qemu-user ];
+            nativeInstallCheckInputs = pkgs.lib.optionals (system == "x86_64-linux") [
+              pkgs.qemu-user
+              pkgs.unzip
+            ];
             installCheckPhase = ''
               runHook preInstallCheck
 
               ${bunRuntime}/bin/bun scripts/smoke-compiled-build.ts "$out/bin/backlog" "$version"
 
               ${pkgs.lib.optionalString (system == "x86_64-linux") ''
-                if BUN_JSC_useJIT=false qemu-x86_64 -cpu IvyBridge \
-                  ${standardBun}/bin/bun --version >/dev/null 2>&1; then
-                  echo "QEMU compatibility check did not reject the AVX2 Bun runtime" >&2
+                mkdir -p "$TMPDIR/avx2-bun"
+                unzip -q ${avx2BunArchive} -d "$TMPDIR/avx2-bun"
+                ln -s ${pkgs.stdenv.cc.libc}/lib "$TMPDIR/avx2-bun/lib64"
+
+                set +e
+                BUN_JSC_useJIT=false qemu-x86_64 -L "$TMPDIR/avx2-bun" -cpu IvyBridge \
+                  "$TMPDIR/avx2-bun/bun-linux-x64/bun" --version >/dev/null 2>&1
+                avx2_status=$?
+                set -e
+                if [ "$avx2_status" -ne 132 ]; then
+                  echo "QEMU compatibility check expected AVX2 Bun to exit 132, got $avx2_status" >&2
                   exit 1
                 fi
 

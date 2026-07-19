@@ -5,7 +5,7 @@ status: Done
 assignee:
   - '@codex'
 created_date: '2026-07-19 12:31'
-updated_date: '2026-07-19 14:48'
+updated_date: '2026-07-19 15:08'
 labels:
   - nix
   - packaging
@@ -85,6 +85,10 @@ Clarification: in the final repair, baseline Bun performs dependency installatio
 Fresh Codex review found that the aarch64-darwin install check binds localhost for the packaged browser smoke but had not enabled Darwin sandbox local networking. Reopened finalization to add the standard Nix Darwin allowance without weakening or skipping the smoke.
 
 Darwin sandbox repair validation: all-system flake evaluation passed for the package, app, and development shell on x86_64-linux, aarch64-linux, and aarch64-darwin. The evaluated aarch64-darwin package derivation records __darwinAllowLocalNetworking=1 while retaining doInstallCheck and the browser smoke. A fresh x86_64-linux Nix build completed its package, browser, CLI, and older-CPU install checks; Biome and git diff checks also passed.
+
+Fresh Codex review found that the older-CPU negative control references the complete Nixpkgs AVX2 Bun derivation. On a cache miss, that derivation can execute Bun during its own fixup and fail on a pre-AVX2 build host before Backlog's baseline runtime is tested. Reopened finalization to make the negative control consume only Nixpkgs' fetched AVX2 release archive.
+
+AVX2 negative-control repair validation: the x86_64 package derivation now depends on the normal Bun fetchurl archive but not the complete normal Bun derivation; its sole Bun derivation resolves from the baseline archive. The install check gives the unpatched AVX2 archive a temporary glibc loader root, asserts the expected QEMU Ivy Bridge SIGILL exit 132, then runs the packaged baseline CLI successfully. A fresh Nix build completed all install checks, all-system flake evaluation passed, and the Darwin derivation retained local networking without acquiring Linux-only inputs.
 <!-- SECTION:NOTES:END -->
 
 ## Final Summary
@@ -95,4 +99,6 @@ Rebuilt Nix packaging from the current bun2nix v2 workflow, producing a reproduc
 After Codex review, extended older-x86 support to source builds and the development shell by selecting baseline Bun before every bun2nix phase, then revalidated the package and shell under the Ivy Bridge gate.
 
 Enabled Darwin sandbox localhost networking for the retained packaged-browser install check, verified in the evaluated Darwin derivation and with a fresh Linux package build.
+
+Made the older-x86 negative control source-build-safe by testing the fetched AVX2 Bun archive directly and asserting its expected SIGILL, avoiding realization of the full AVX2 Bun derivation.
 <!-- SECTION:FINAL_SUMMARY:END -->
