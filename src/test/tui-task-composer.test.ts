@@ -41,13 +41,16 @@ async function initializeGitRepository(testDir: string): Promise<void> {
 	await $`git commit -m init`.cwd(testDir).quiet();
 }
 
-async function installFailingHook(testDir: string, body = "exit 1"): Promise<string> {
-	const hooksDir = join(testDir, ".git", "hooks");
+async function installHook(testDir: string, hook: string, body: string, hooksDir = join(testDir, ".git", "hooks")) {
 	await mkdir(hooksDir, { recursive: true });
-	const hookPath = join(hooksDir, "pre-commit");
+	const hookPath = join(hooksDir, hook);
 	await writeFile(hookPath, `#!/bin/sh\n${body}\n`);
 	await chmod(hookPath, 0o755);
 	return hookPath;
+}
+
+async function installFailingHook(testDir: string, body = "exit 1"): Promise<string> {
+	return installHook(testDir, "pre-commit", body);
 }
 
 type TestWidget = {
@@ -322,6 +325,68 @@ describe("TUI task composer canonical persistence", () => {
 		}
 	});
 
+	it("preserves commit.gpgSign for selected-path auto-commits", async () => {
+		await initializeGitRepository(testDir);
+		const signingKeyPath = join(testDir, "test-signing-key");
+		await $`ssh-keygen -q -t ed25519 -N "" -f ${signingKeyPath}`.quiet();
+		await $`git config gpg.format ssh`.cwd(testDir).quiet();
+		await $`git config user.signingKey ${signingKeyPath}`.cwd(testDir).quiet();
+		await $`git config commit.gpgSign true`.cwd(testDir).quiet();
+
+		const result = await core.createTaskFromInput({ title: "Signed task" }, true);
+		const relativeCreatedPath = (result.filePath as string).slice(testDir.length + 1).replaceAll("\\", "/");
+		const rawCommit = await $`git cat-file commit HEAD`.cwd(testDir).text();
+
+		expect(rawCommit).toContain("gpgsig -----BEGIN SSH SIGNATURE-----");
+		expect((await $`git show HEAD:${relativeCreatedPath}`.cwd(testDir).text()).length).toBeGreaterThan(0);
+	});
+
+	it("runs commit hooks once on Git versions before git hook run existed", async () => {
+		await initializeGitRepository(testDir);
+		const hooksDir = join(testDir, ".custom-hooks");
+		const markerPath = join(testDir, "legacy-hook-ran");
+		await $`git config core.hooksPath .custom-hooks`.cwd(testDir).quiet();
+		await installHook(
+			testDir,
+			"pre-commit",
+			`test -d backlog/tasks || exit 9\nprintf '%s\\n' "$GIT_INDEX_FILE" "$GIT_EDITOR" >> "${markerPath}"`,
+			hooksDir,
+		);
+
+		const git = core.gitOps as unknown as {
+			execGit: (
+				args: string[],
+				options?: {
+					readOnly?: boolean;
+					cwd?: string;
+					input?: string;
+					env?: Record<string, string>;
+					acceptedExitCodes?: readonly number[];
+				},
+			) => Promise<{ stdout: string; stderr: string }>;
+		};
+		const originalExecGit = git.execGit.bind(core.gitOps);
+		let hookRunCalls = 0;
+		git.execGit = async (args, options) => {
+			if (args[0] === "version") return { stdout: "git version 2.35.8\n", stderr: "" };
+			if (args[0] === "hook") {
+				hookRunCalls += 1;
+				throw new Error("git hook must not run on Git 2.35");
+			}
+			return originalExecGit(args, options);
+		};
+
+		try {
+			await core.createTaskFromInput({ title: "Legacy hook runner" }, true);
+			const marker = (await readFile(markerPath, "utf8")).trim().split("\n");
+			expect(hookRunCalls).toBe(0);
+			expect(marker[0]).toContain("backlog-git-commit-");
+			expect(marker[1]).toBe(":");
+		} finally {
+			git.execGit = originalExecGit;
+		}
+	});
+
 	it("rebuilds the selected commit on a concurrently advanced HEAD", async () => {
 		await initializeGitRepository(testDir);
 		const git = core.gitOps as unknown as {
@@ -472,6 +537,31 @@ describe("TUI task composer canonical persistence", () => {
 			await $`git add ${relativePath}`.cwd(testDir).quiet();
 			await writeFile(targetPath, worktreeContent);
 			await installFailingHook(testDir);
+
+			await expect(core.createTaskFromInput({ title, status }, true)).rejects.toThrow();
+
+			expect(await readFile(targetPath, "utf8")).toBe(worktreeContent);
+			expect(await $`git show :${relativePath}`.cwd(testDir).text()).toBe(stagedContent);
+			expect(await $`git show HEAD:${relativePath}`.cwd(testDir).text()).toBe(baselineContent);
+			expect((await $`git diff --cached --name-only`.cwd(testDir).text()).trim()).toBe(relativePath);
+			expect((await $`git diff --name-only`.cwd(testDir).text()).trim()).toBe(relativePath);
+		});
+
+		it(`restores prior same-path bytes when a failing hook deletes the generated ${status === "Draft" ? "draft" : "task"}`, async () => {
+			await initializeGitRepository(testDir);
+			const title = status === "Draft" ? "Deleted Draft" : "Deleted Task";
+			const relativePath = `backlog/${status === "Draft" ? "drafts/draft" : "tasks/task"}-1 - ${title.replaceAll(" ", "-")}.md`;
+			const targetPath = join(testDir, relativePath);
+			const baselineContent = "HEAD baseline bytes.\n";
+			const stagedContent = "Prior staged user bytes.\n";
+			const worktreeContent = "Prior unstaged user bytes.\n";
+			await writeFile(targetPath, baselineContent);
+			await $`git add ${relativePath}`.cwd(testDir).quiet();
+			await $`git commit -m "add prior target"`.cwd(testDir).quiet();
+			await writeFile(targetPath, stagedContent);
+			await $`git add ${relativePath}`.cwd(testDir).quiet();
+			await writeFile(targetPath, worktreeContent);
+			await installFailingHook(testDir, `rm "${targetPath}"\nexit 1`);
 
 			await expect(core.createTaskFromInput({ title, status }, true)).rejects.toThrow();
 

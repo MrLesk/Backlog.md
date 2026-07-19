@@ -58,6 +58,7 @@ export class GitOperations {
 	private projectRoot: string;
 	private config: BacklogConfig | null = null;
 	private readonly configLoader?: GitConfigLoader;
+	private hookRunSupported?: boolean;
 
 	constructor(projectRoot: string, config: BacklogConfig | null = null, configLoader?: GitConfigLoader) {
 		this.projectRoot = projectRoot;
@@ -182,6 +183,7 @@ export class GitOperations {
 		const temporaryIndexEnv = { GIT_INDEX_FILE: join(temporaryDirectory, "index") };
 		const messagePath = join(temporaryDirectory, "message");
 		try {
+			const signCommit = await this.shouldSignCommit(resolvedRepoRoot);
 			let baseHead = await this.resolveHead(resolvedRepoRoot);
 			await this.populateTemporaryIndex(resolvedRepoRoot, temporaryIndexEnv, baseHead, selectedEntries);
 			await writeFile(messagePath, `${message}\n`);
@@ -214,7 +216,7 @@ export class GitOperations {
 					}
 				}
 
-				const commitArgs = ["commit-tree", treeId];
+				const commitArgs = ["commit-tree", ...(signCommit ? ["-S"] : []), treeId];
 				if (baseHead) commitArgs.push("-p", baseHead);
 				commitArgs.push("-F", messagePath);
 				const { stdout: commitOutput } = await this.execGit(commitArgs, {
@@ -265,6 +267,15 @@ export class GitOperations {
 		}
 	}
 
+	private async shouldSignCommit(repoRoot: string): Promise<boolean> {
+		const { stdout } = await this.execGit(["config", "--bool", "--get", "commit.gpgSign"], {
+			cwd: repoRoot,
+			readOnly: true,
+			acceptedExitCodes: [1],
+		});
+		return stdout.trim() === "true";
+	}
+
 	private async readSelectedIndexEntries(
 		relativePaths: readonly string[],
 		repoRoot: string,
@@ -306,15 +317,55 @@ export class GitOperations {
 		repoRoot: string,
 		env: Record<string, string>,
 	): Promise<void> {
-		try {
-			await this.execGit(["hook", "run", hook, ...(args.length > 0 ? ["--", ...args] : [])], {
+		const hookEnv = { ...env, GIT_EDITOR: ":" };
+		if (await this.supportsHookRun(repoRoot)) {
+			await this.execGit(["hook", "run", "--ignore-missing", hook, ...(args.length > 0 ? ["--", ...args] : [])], {
 				cwd: repoRoot,
-				env,
+				env: hookEnv,
 			});
-		} catch (error) {
-			if (error instanceof Error && error.message.includes(`cannot find a hook named ${hook}`)) return;
-			throw error;
+			return;
 		}
+		await this.runLegacyCommitHook(hook, args, repoRoot, hookEnv);
+	}
+
+	private async supportsHookRun(repoRoot: string): Promise<boolean> {
+		if (this.hookRunSupported !== undefined) return this.hookRunSupported;
+		try {
+			const { stdout } = await this.execGit(["version"], { cwd: repoRoot, readOnly: true });
+			const match = stdout.match(/git version (\d+)\.(\d+)/);
+			const major = Number(match?.[1]);
+			const minor = Number(match?.[2]);
+			this.hookRunSupported =
+				Number.isInteger(major) && Number.isInteger(minor) && (major > 2 || (major === 2 && minor >= 36));
+		} catch {
+			this.hookRunSupported = false;
+		}
+		return this.hookRunSupported;
+	}
+
+	private async runLegacyCommitHook(
+		hook: string,
+		args: readonly string[],
+		repoRoot: string,
+		env: Record<string, string>,
+	): Promise<void> {
+		const { stdout } = await this.execGit(["rev-parse", "--git-path", `hooks/${hook}`], {
+			cwd: repoRoot,
+			readOnly: true,
+		});
+		const configuredPath = stdout.trim();
+		const hookPath = isAbsolute(configuredPath) ? configuredPath : join(repoRoot, configuredPath);
+		const hookStat = await stat(hookPath).catch((error) => {
+			if ((error as NodeJS.ErrnoException).code === "ENOENT") return;
+			throw error;
+		});
+		if (!hookStat) return;
+		if (!hookStat.isFile() || (process.platform !== "win32" && (hookStat.mode & 0o111) === 0)) return;
+
+		await this.execGit(["-c", 'alias.backlog-run-hook=!f() { "$@" 1>&2; }; f', "backlog-run-hook", hookPath, ...args], {
+			cwd: repoRoot,
+			env,
+		});
 	}
 
 	async resetIndex(repoRoot?: string | null): Promise<void> {
@@ -1002,7 +1053,13 @@ export class GitOperations {
 
 	private async execGit(
 		args: string[],
-		options?: { readOnly?: boolean; cwd?: string; input?: string; env?: Record<string, string> },
+		options?: {
+			readOnly?: boolean;
+			cwd?: string;
+			input?: string;
+			env?: Record<string, string>;
+			acceptedExitCodes?: readonly number[];
+		},
 	): Promise<{ stdout: string; stderr: string }> {
 		// Use Bun.spawn so we can explicitly control stdio behaviour on Windows. When running
 		// under the MCP stdio transport, delegating to git with inherited stdin can deadlock.
@@ -1028,7 +1085,7 @@ export class GitOperations {
 		const stderrPromise = subprocess.stderr ? new Response(subprocess.stderr).text() : Promise.resolve("");
 		const [exitCode, stdout, stderr] = await Promise.all([subprocess.exited, stdoutPromise, stderrPromise]);
 
-		if (exitCode !== 0) {
+		if (exitCode !== 0 && !options?.acceptedExitCodes?.includes(exitCode)) {
 			throw new Error(`Git command failed (exit code ${exitCode}): git ${args.join(" ")}\n${stderr}`);
 		}
 

@@ -1313,8 +1313,19 @@ export class Core {
 
 		const currentContent = await this.readFileIfPresent(write.filePath);
 		const stillOwnsCreatedPath = currentContent?.equals(write.createdContent) ?? false;
-		let workingPathRestored = currentContent === null;
-		if (stillOwnsCreatedPath && indexRestored) {
+		let workingPathRestored = false;
+		if (currentContent === null) {
+			if (write.previousPath === write.filePath && write.previousContent) {
+				try {
+					await writeFile(write.filePath, write.previousContent, { flag: "wx" });
+					workingPathRestored = true;
+				} catch (error) {
+					if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
+				}
+			} else {
+				workingPathRestored = true;
+			}
+		} else if (stillOwnsCreatedPath && indexRestored) {
 			if (write.previousPath === write.filePath && write.previousContent) {
 				await writeFile(write.filePath, write.previousContent);
 			} else {

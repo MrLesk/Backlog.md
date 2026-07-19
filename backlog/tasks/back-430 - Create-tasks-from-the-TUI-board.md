@@ -3,9 +3,9 @@ id: BACK-430
 title: Create tasks with an intent-first TUI composer
 status: Done
 assignee:
-  - '@codex-pr791'
+  - '@alex-agent'
 created_date: '2026-04-25 12:14'
-updated_date: '2026-07-18 16:10'
+updated_date: '2026-07-19 12:43'
 labels:
   - tui
   - enhancement
@@ -46,11 +46,10 @@ Deliver the production first slice of an intent-first Blessed task composer. The
 ## Implementation Plan
 
 <!-- SECTION:PLAN:BEGIN -->
-1. Make path-limited commits atomic against HEAD movement and constrain hook-staged paths to the owned path set.
-2. Separate commit outcome from real-index reconciliation so compensation never rolls back a successful commit, and establish rollback ownership before fallible post-write Git inspection.
-3. Synchronize unified-view state immediately after first-task creation so view switching sees the created task.
-4. Add adversarial regression tests for concurrent HEAD advance, unrelated hook staging, post-commit reconciliation failure, first-task Tab switching, post-write index inspection failure, and autoCommit=false.
-5. Simplify the resulting ownership/state model, run focused and full verification, then record evidence and finalize.
+1. Classify every current and historical Codex review thread against the current head and reproduce each current actionable finding.
+2. Preserve commit signing semantics when creating selected-path commits, execute hooks compatibly with supported Git versions, and restore overwritten prior bytes when a failing hook removes the generated path.
+3. Add adversarial regression tests for each integrity boundary and rerun focused tests after every slice.
+4. Simplify the final implementation, then run the full test suite, TypeScript, Biome, build, and diff review before finalizing the task and requesting a fresh Codex review.
 <!-- SECTION:PLAN:END -->
 
 ## Implementation Notes
@@ -79,10 +78,16 @@ Codex review repair: path-limited commits now build from the owned staged entrie
 Maintainer decision: if rollback discovers that Backlog no longer owns the same-path staged entry, preserve both the task file and staged Git state, report the exact path and task ID, and require manual Git review before retrying. The task ID remains occupied so later creation allocates the next ID. Added adversarial coverage where concurrent staged bytes differ while the worktree still matches Backlog's generated file, proving cleanup removes neither state.
 
 Approved rollback verification passed. The same-path ownership-loss regression preserves the original task file and independently changed staged blob, reports the exact path, TASK-1 identity, and required manual Git review, and proves the next task allocation is TASK-2. Focused adversarial verification passed 84 tests across composer, unified view, auto-commit, CLI commit behavior, atomic creation, Git operations, and milestone mutations. Final repository verification passed 1,746 tests with 4 intentional interactive skips and 0 failures (7,367 assertions across 196 files); bunx tsc --noEmit, bun run check ., bun run build, and git diff --check passed.
+
+Current-head Codex review ae04e2d3 identified three P2 integrity/compatibility findings: commit-tree bypasses commit.gpgSign, git hook run requires Git 2.36, and rollback does not restore overwritten prior bytes when the generated path was deleted. Alex has approved preserving worktree and staged state whenever ownership is lost; the current repair will address only clear review findings without changing that policy.
+
+Current-head review repairs implemented. Selected-path commits now honor commit.gpgSign with commit-tree -S while preserving configured signing format and key. Hook execution uses git hook run --ignore-missing on Git 2.36+ and a core.hooksPath-aware Git shell fallback on older versions, with the temporary index and noninteractive editor environment preserved. Rollback now exclusively recreates prior same-path bytes when a failing hook deletes the generated path, without overwriting a concurrent recreation. Focused adversarial verification passes 42 tests with 191 assertions, including a real SSH-signed auto-commit, simulated Git 2.35 hook execution, and task/draft restoration across distinct HEAD, index, and worktree bytes.
+
+Final current-head verification passed: 111 focused tests across composer, unified state, auto-commit, CLI commit behavior, atomic creation, Git operations, and milestone commits; full suite 1,750 passed with 4 intentional skips and 0 failures (7,383 assertions across 196 files); bunx tsc --noEmit, bun run check ., bun run build, and git diff --check passed.
 <!-- SECTION:NOTES:END -->
 
 ## Final Summary
 
 <!-- SECTION:FINAL_SUMMARY:BEGIN -->
-Completed the intent-first TUI task composer and hardened its canonical persistence path against concurrent HEAD, index, hook, and worktree changes. Failed creation now preserves user-authored task bytes; when Backlog loses same-path staged ownership it preserves both file and staged state, identifies the occupied task ID and exact path, and requires manual Git review. Also reloads autoCommit on submission and synchronizes first-task board state immediately. Verified by rendered keyboard QA recorded in the implementation notes, 84 focused adversarial tests, the full 1,746-test suite with 0 failures, TypeScript, Biome, build, and diff checks.
+Completed the intent-first TUI task composer and hardened canonical task and draft creation against concurrent HEAD, index, hook, and worktree changes. Selected-path auto-commits preserve unrelated staged work, configured commit signing, and hooks on both modern and pre-2.36 Git. Failed creation restores prior owned state, preserves user changes whenever ownership is lost, and reports the occupied task ID and exact recovery path. Also reloads autoCommit on submission and synchronizes first-task board state immediately. Verified through rendered keyboard QA recorded above, 111 focused integration tests, the full 1,750-test suite with 0 failures, TypeScript, Biome, build, and diff checks.
 <!-- SECTION:FINAL_SUMMARY:END -->
