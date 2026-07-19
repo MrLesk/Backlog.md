@@ -5,7 +5,7 @@ status: Done
 assignee:
   - '@codex'
 created_date: '2026-07-19 12:31'
-updated_date: '2026-07-19 14:31'
+updated_date: '2026-07-19 14:48'
 labels:
   - nix
   - packaging
@@ -81,6 +81,10 @@ Codex review found that bun2nix still selected Nixpkgs' normal AVX2 Bun for depe
 Review repair validation: a fresh Nix build and install check passed after selecting the baseline Bun before bun2nix patch and dependency-install phases. The evaluated package derivation puts the baseline Bun first in nativeBuildInputs, prepends it before hook phases, and invokes its absolute path for bundle generation and installed smoke. The x86_64 development shell was instantiated successfully and command -v bun resolved to the baseline store path; that Bun also ran under QEMU Ivy Bridge. Standard Bun remains isolated to the negative control, where it exits with SIGILL.
 
 Clarification: in the final repair, baseline Bun performs dependency installation and JavaScript bundle generation. The earlier statement that it is never used for compilation refers specifically to Bun --compile executable self-image creation, not ordinary JavaScript bundling.
+
+Fresh Codex review found that the aarch64-darwin install check binds localhost for the packaged browser smoke but had not enabled Darwin sandbox local networking. Reopened finalization to add the standard Nix Darwin allowance without weakening or skipping the smoke.
+
+Darwin sandbox repair validation: all-system flake evaluation passed for the package, app, and development shell on x86_64-linux, aarch64-linux, and aarch64-darwin. The evaluated aarch64-darwin package derivation records __darwinAllowLocalNetworking=1 while retaining doInstallCheck and the browser smoke. A fresh x86_64-linux Nix build completed its package, browser, CLI, and older-CPU install checks; Biome and git diff checks also passed.
 <!-- SECTION:NOTES:END -->
 
 ## Final Summary
@@ -89,4 +93,6 @@ Clarification: in the final repair, baseline Bun performs dependency installatio
 Rebuilt Nix packaging from the current bun2nix v2 workflow, producing a reproducible runtime-wrapped CLI with browser assets and a runnable flake across the approved systems. Removed the v1 and Docker-era machinery, added CI and deterministic lock validation, and documented installation and maintenance. Verified with repository-wide checks, compiled and packaged smoke tests, nix run, and a discriminating pre-AVX2 runtime gate.
 
 After Codex review, extended older-x86 support to source builds and the development shell by selecting baseline Bun before every bun2nix phase, then revalidated the package and shell under the Ivy Bridge gate.
+
+Enabled Darwin sandbox localhost networking for the retained packaged-browser install check, verified in the evaluated Darwin derivation and with a fresh Linux package build.
 <!-- SECTION:FINAL_SUMMARY:END -->
