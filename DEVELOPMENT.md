@@ -46,12 +46,14 @@ Nix files.
 The flake is intentionally limited to `x86_64-linux`, `aarch64-linux`, and
 `aarch64-darwin`, which are the systems supported by the current Nixpkgs Bun
 package. On x86_64 Linux, the application runs with the matching official Bun
-baseline runtime to support processors that have AVX but not AVX2. The Nix
-install check executes the packaged CLI natively and under QEMU's Ivy Bridge
-CPU model. JSC's JIT is disabled only for the emulated check because it is not
-reliable under QEMU user mode; normal packaged execution keeps JIT enabled. A
-negative control verifies that the same emulated CPU rejects Nixpkgs' normal
-AVX2 Bun runtime before accepting the baseline runtime.
+baseline runtime to support processors that have AVX but not AVX2. Dependency
+installation, the non-compile bundle build, the development shell, and the
+installed application all select that baseline runtime on x86_64 Linux. The
+Nix install check executes the packaged CLI natively and under QEMU's Ivy
+Bridge CPU model. JSC's JIT is disabled only for the emulated check because it
+is not reliable under QEMU user mode; normal packaged execution keeps JIT
+enabled. A negative control verifies that the same emulated CPU rejects
+Nixpkgs' normal AVX2 Bun runtime before accepting the baseline runtime.
 
 ## MCP Development Setup
 

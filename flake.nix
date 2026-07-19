@@ -30,45 +30,52 @@
             inherit system;
             overlays = [ bun2nix.overlays.default ];
           };
+          standardBun = pkgs.bun;
           packageJson = builtins.fromJSON (builtins.readFile ./package.json);
           bunDeps = pkgs.bun2nix.fetchBunDeps {
             bunNix = ./bun.nix;
           };
           bunRuntime =
             if system == "x86_64-linux" then
-              pkgs.bun.overrideAttrs (previous: {
-                passthru = previous.passthru // {
-                  sources = previous.passthru.sources // {
+              standardBun.overrideAttrs (bun: {
+                passthru = bun.passthru // {
+                  sources = bun.passthru.sources // {
                     x86_64-linux = pkgs.fetchurl {
                       # Keep this on Bun's baseline archive. The normal x64 build requires AVX2.
-                      url = "https://github.com/oven-sh/bun/releases/download/bun-v${previous.version}/bun-linux-x64-baseline.zip";
+                      url = "https://github.com/oven-sh/bun/releases/download/bun-v${bun.version}/bun-linux-x64-baseline.zip";
                       hash = "sha256-nYokKSpwaAkCBdqsCloiP19pc29Sh+N7+I07QDHtx1A=";
                     };
                   };
                 };
               })
             else
-              pkgs.bun;
+              standardBun;
           backlog-md = pkgs.bun2nix.mkDerivation {
             pname = "backlog";
             inherit (packageJson) version;
             src = ./.;
 
             inherit bunDeps;
-            nativeBuildInputs = [ pkgs.makeWrapper ];
+            nativeBuildInputs = [
+              bunRuntime
+              pkgs.makeWrapper
+            ];
             bunInstallFlags = [
               "--linker=isolated"
               "--backend=copyfile"
             ];
             dontRunLifecycleScripts = true;
             dontUseBunCheck = true;
+            postBunSetInstallCacheDirPhase = ''
+              export PATH=${bunRuntime}/bin:$PATH
+            '';
 
             buildPhase = ''
               runHook preBuild
 
               BACKLOG_BUILD_VERSION="$version" \
                 BACKLOG_BUILD_OUTDIR=dist/nix \
-                bun scripts/build.ts
+                ${bunRuntime}/bin/bun scripts/build.ts
 
               runHook postBuild
             '';
@@ -90,11 +97,11 @@
             installCheckPhase = ''
               runHook preInstallCheck
 
-              bun scripts/smoke-compiled-build.ts "$out/bin/backlog" "$version"
+              ${bunRuntime}/bin/bun scripts/smoke-compiled-build.ts "$out/bin/backlog" "$version"
 
               ${pkgs.lib.optionalString (system == "x86_64-linux") ''
                 if BUN_JSC_useJIT=false qemu-x86_64 -cpu IvyBridge \
-                  ${pkgs.bun}/bin/bun --version >/dev/null 2>&1; then
+                  ${standardBun}/bin/bun --version >/dev/null 2>&1; then
                   echo "QEMU compatibility check did not reject the AVX2 Bun runtime" >&2
                   exit 1
                 fi
@@ -129,7 +136,7 @@
 
           devShells.default = pkgs.mkShell {
             packages = [
-              pkgs.bun
+              bunRuntime
               pkgs.bun2nix
               pkgs.nodejs_24
               pkgs.git
