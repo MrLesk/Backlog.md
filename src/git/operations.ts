@@ -124,14 +124,24 @@ export class GitOperations {
 			return;
 		}
 
+		// --no-renames: without it, a staged delete+add pair (e.g. an archive move) collapses
+		// into a single rename entry naming only the destination, silently dropping the source
+		// path from the result below even though it has its own staged change.
 		const { stdout: stagedForPaths } = await this.execGit(
-			["diff", "--name-only", "--cached", "--", ...uniqueRelativePaths],
+			["diff", "--no-renames", "--name-only", "--cached", "--", ...uniqueRelativePaths],
 			{
 				cwd: resolvedRepoRoot,
 				readOnly: true,
 			},
 		);
-		if (!stagedForPaths.trim()) {
+		// Only pathspec the paths that actually have a staged change. A requested path with no
+		// git history at all (e.g. a file created and archived in the same operation while
+		// autoCommit was off) is not a valid pathspec and would abort the whole commit.
+		const pathsWithStagedChanges = stagedForPaths
+			.split("\n")
+			.map((line) => line.trim())
+			.filter((line) => line.length > 0);
+		if (pathsWithStagedChanges.length === 0) {
 			return;
 		}
 
@@ -139,16 +149,8 @@ export class GitOperations {
 		if (this.config?.bypassGitHooks) {
 			args.push("--no-verify");
 		}
-		args.push("--", ...uniqueRelativePaths);
+		args.push("--", ...pathsWithStagedChanges);
 		await this.execGit(args, { cwd: resolvedRepoRoot });
-	}
-
-	async resetIndex(repoRoot?: string | null): Promise<void> {
-		if (!(await this.isRepository(repoRoot ?? this.projectRoot))) {
-			return;
-		}
-		// Reset the staging area without affecting working directory
-		await this.execGit(["reset", "HEAD"], { cwd: repoRoot ?? undefined });
 	}
 
 	async resetPaths(filePaths: string[], repoRoot?: string | null): Promise<void> {
@@ -173,25 +175,6 @@ export class GitOperations {
 		}
 
 		await this.execGit(["reset", "HEAD", "--", ...uniqueRelativePaths], { cwd: resolvedRepoRoot });
-	}
-
-	async commitStagedChanges(message: string, repoRoot?: string | null): Promise<void> {
-		if (!(await this.isRepository(repoRoot ?? this.projectRoot))) {
-			return;
-		}
-		// Check if there are any staged changes before committing
-		const { stdout: status } = await this.execGit(["status", "--porcelain"], { cwd: repoRoot ?? undefined });
-		const hasStagedChanges = status.split("\n").some((line) => line.match(/^[AMDRC]/));
-
-		if (!hasStagedChanges) {
-			throw new Error("No staged changes to commit");
-		}
-
-		const args = ["commit", "-m", message];
-		if (this.config?.bypassGitHooks) {
-			args.push("--no-verify");
-		}
-		await this.execGit(args, { cwd: repoRoot ?? undefined });
 	}
 
 	async retryGitOperation<T>(operation: () => Promise<T>, operationName: string, maxRetries = 3): Promise<T> {
@@ -352,14 +335,14 @@ export class GitOperations {
 
 		// Retry git operations to handle transient failures
 		await this.retryGitOperation(async () => {
-			// Reset index to ensure only the specific file is staged
-			await this.resetIndex(repoRoot);
-
 			// Stage only the specific task file
 			await this.execGit(["add", pathForAdd], { cwd: repoRoot });
 
-			// Commit only the staged file
-			await this.commitStagedChanges(actionMessages[action], repoRoot);
+			// Commit only that file. Never reset the index first: a concurrent session
+			// may have staged work of its own here, and an unscoped reset would discard
+			// it silently. The pathspec is what keeps their staged files out of this
+			// commit, so their index survives untouched.
+			await this.commitFiles(actionMessages[action], [pathForAdd], repoRoot);
 		}, `commit task file ${filePath}`);
 	}
 
@@ -775,7 +758,12 @@ export class GitOperations {
 			? ({ ...process.env, GIT_OPTIONAL_LOCKS: "0" } as Record<string, string>)
 			: (process.env as Record<string, string>);
 
-		const subprocess = Bun.spawn(["git", ...args], {
+		// core.quotepath=false: git otherwise octal-escapes AND double-quotes any
+		// non-ASCII path in porcelain/diff output (e.g. an em dash in a task
+		// filename). commitFiles pathspecs that output, and a quoted path matches
+		// no file — the commit aborts and silently leaves the file staged. Forcing
+		// raw UTF-8 output keeps every parse-then-pathspec call site correct.
+		const subprocess = Bun.spawn(["git", "-c", "core.quotepath=false", ...args], {
 			cwd: options?.cwd ?? this.projectRoot,
 			stdin: "ignore", // avoid inheriting MCP stdio pipes which can block on Windows
 			stdout: "pipe",

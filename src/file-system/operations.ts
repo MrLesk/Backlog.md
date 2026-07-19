@@ -221,7 +221,7 @@ export class FileSystem {
 		return join(backlogDir, DEFAULT_DIRECTORIES.ARCHIVE_MILESTONES);
 	}
 
-	private async getArchiveDraftsDir(): Promise<string> {
+	async getArchiveDraftsDir(): Promise<string> {
 		const backlogDir = await this.getBacklogDir();
 		return join(backlogDir, DEFAULT_DIRECTORIES.ARCHIVE_DRAFTS);
 	}
@@ -846,7 +846,7 @@ export class FileSystem {
 	}
 
 	// Decision log operations
-	async saveDecision(decision: Decision): Promise<void> {
+	async saveDecision(decision: Decision): Promise<{ filepath: string; removedFilepaths: string[] }> {
 		// Normalize ID - remove "decision-" prefix if present
 		const normalizedId = decision.id.replace(/^decision-/, "");
 		const filename = `decision-${normalizedId} - ${this.sanitizeFilename(decision.title)}.md`;
@@ -857,11 +857,14 @@ export class FileSystem {
 		const matches = await Array.fromAsync(
 			new Bun.Glob("decision-*.md").scan({ cwd: decisionsDir, followSymlinks: true }),
 		);
+		const removedFilepaths: string[] = [];
 		for (const match of matches) {
 			if (match === filename) continue;
 			if (!match.startsWith(`decision-${normalizedId} -`)) continue;
 			try {
-				await unlink(join(decisionsDir, match));
+				const matchPath = join(decisionsDir, match);
+				await unlink(matchPath);
+				removedFilepaths.push(matchPath);
 			} catch {
 				// Ignore cleanup errors
 			}
@@ -869,6 +872,8 @@ export class FileSystem {
 
 		await this.ensureDirectoryExists(dirname(filepath));
 		await Bun.write(filepath, content);
+
+		return { filepath, removedFilepaths };
 	}
 
 	async loadDecision(decisionId: string): Promise<Decision | null> {
