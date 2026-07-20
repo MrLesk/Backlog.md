@@ -225,6 +225,55 @@ describe("CLI Integration", () => {
 			expect(agents).not.toContain("# Instructions for the usage of Backlog.md CLI Tool");
 		});
 
+		it("maps Cursor to AGENTS.md while preserving existing instructions and user Cursor rules", async () => {
+			await $`git init -b main`.cwd(TEST_DIR).quiet();
+			await $`git config user.name "Test User"`.cwd(TEST_DIR).quiet();
+			await $`git config user.email test@example.com`.cwd(TEST_DIR).quiet();
+			await Bun.write(join(TEST_DIR, "AGENTS.md"), "Existing team instructions\n");
+			await mkdir(join(TEST_DIR, ".cursor", "rules"), { recursive: true });
+			const userRulePath = join(TEST_DIR, ".cursor", "rules", "team-owned.mdc");
+			await Bun.write(userRulePath, "User-managed Cursor rule\n");
+
+			const firstOutput = await $`bun ${CLI_PATH} init CursorProj --defaults --agent-instructions cursor`
+				.cwd(TEST_DIR)
+				.text();
+			const secondOutput = await $`bun ${CLI_PATH} init CursorProj --defaults --agent-instructions cursor`
+				.cwd(TEST_DIR)
+				.text();
+
+			const agents = await Bun.file(join(TEST_DIR, "AGENTS.md")).text();
+			expect(firstOutput).toContain("Agent instructions: AGENTS.md");
+			expect(secondOutput).toContain("Unchanged: AGENTS.md");
+			expect(agents).toContain("Existing team instructions");
+			expect(agents).toContain(CLI_AGENT_NUDGE);
+			expect((agents.match(/<!-- BACKLOG\.MD GUIDELINES START -->/g) || []).length).toBe(1);
+			expect(await Bun.file(userRulePath).text()).toBe("User-managed Cursor rule\n");
+			expect(await Bun.file(join(TEST_DIR, ".cursorrules")).exists()).toBe(false);
+			expect(await Bun.file(join(TEST_DIR, ".cursor", "rules", "backlog.mdc")).exists()).toBe(false);
+		});
+
+		it("deduplicates Cursor and agents in combined instruction selections", async () => {
+			await $`git init -b main`.cwd(TEST_DIR).quiet();
+			await $`git config user.name "Test User"`.cwd(TEST_DIR).quiet();
+			await $`git config user.email test@example.com`.cwd(TEST_DIR).quiet();
+
+			const output = await $`bun ${CLI_PATH} init CombinedCursor --defaults --agent-instructions cursor,claude,agents`
+				.cwd(TEST_DIR)
+				.text();
+
+			expect(output).toContain("Agent instructions: AGENTS.md, CLAUDE.md");
+			expect(await Bun.file(join(TEST_DIR, "AGENTS.md")).exists()).toBe(true);
+			expect(await Bun.file(join(TEST_DIR, "CLAUDE.md")).exists()).toBe(true);
+			expect(await Bun.file(join(TEST_DIR, ".cursor", "rules", "backlog.mdc")).exists()).toBe(false);
+		});
+
+		it("documents the Cursor AGENTS.md target in init help", async () => {
+			const help = await $`bun ${CLI_PATH} init --help`.cwd(TEST_DIR).text();
+
+			expect(help).toContain("cursor (writes AGENTS.md)");
+			expect(help).toContain("cursor writes AGENTS.md");
+		});
+
 		it("should label created and updated agent instruction files separately", async () => {
 			await $`git init -b main`.cwd(TEST_DIR).quiet();
 			await $`git config user.name "Test User"`.cwd(TEST_DIR).quiet();

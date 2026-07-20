@@ -400,7 +400,7 @@ const InitializationScreen: React.FC<InitializationScreenProps> = ({ onInitializ
 					{
 						id: "AGENTS.md" as AgentFile,
 						label: "AGENTS.md",
-						description: "Codex, Cursor, Zed, Warp, Aider, RooCode, etc.",
+						description: "Codex, Cursor (uses AGENTS.md), Zed, Warp, Aider, RooCode, etc.",
 					},
 					{ id: "GEMINI.md" as AgentFile, label: "GEMINI.md", description: "Google Gemini Code Assist CLI" },
 					{

@@ -36,18 +36,10 @@ async function loadContent(textOrPath: string): Promise<string> {
 type GuidelineMarkerKind = "default" | "mcp";
 
 /**
- * Gets the appropriate markers for a given file type
+ * Gets the markers for an installed guideline block
  */
-function getMarkers(fileName: string, kind: GuidelineMarkerKind = "default"): { start: string; end: string } {
+function getMarkers(kind: GuidelineMarkerKind = "default"): { start: string; end: string } {
 	const label = kind === "mcp" ? "BACKLOG.MD MCP GUIDELINES" : "BACKLOG.MD GUIDELINES";
-	if (fileName === ".cursorrules") {
-		// .cursorrules doesn't support HTML comments, use markdown-style comments
-		return {
-			start: `# === ${label} START ===`,
-			end: `# === ${label} END ===`,
-		};
-	}
-	// All markdown files support HTML comments
 	return {
 		start: `<!-- ${label} START -->`,
 		end: `<!-- ${label} END -->`,
@@ -57,8 +49,8 @@ function getMarkers(fileName: string, kind: GuidelineMarkerKind = "default"): { 
 /**
  * Checks if the Backlog.md guidelines are already present in the content
  */
-function hasBacklogGuidelines(content: string, fileName: string): boolean {
-	const { start } = getMarkers(fileName);
+function hasBacklogGuidelines(content: string): boolean {
+	const { start } = getMarkers();
 	return content.includes(start);
 }
 
@@ -67,34 +59,24 @@ function hasBacklogGuidelines(content: string, fileName: string): boolean {
  * instruction block. Written at install/update time from the running binary's
  * version so local instructions can later be compared against the bundled ones.
  */
-function versionMarkerLine(fileName: string, version: string): string {
+function versionMarkerLine(version: string): string {
 	const marker = `backlog.md-instructions-version: ${version}`;
-	if (fileName === ".cursorrules") {
-		// .cursorrules doesn't support HTML comments, use markdown-style comments
-		return `# ${marker}`;
-	}
 	return `<!-- ${marker} -->`;
 }
 
 /**
  * Wraps the Backlog.md guidelines with appropriate markers
  */
-function wrapWithMarkers(
-	content: string,
-	fileName: string,
-	version: string,
-	kind: GuidelineMarkerKind = "default",
-): string {
-	const { start, end } = getMarkers(fileName, kind);
-	return `\n${start}\n${versionMarkerLine(fileName, version)}\n${content}\n${end}\n`;
+function wrapWithMarkers(content: string, version: string, kind: GuidelineMarkerKind = "default"): string {
+	const { start, end } = getMarkers(kind);
+	return `\n${start}\n${versionMarkerLine(version)}\n${content}\n${end}\n`;
 }
 
 function stripGuidelineSection(
 	content: string,
-	fileName: string,
 	kind: GuidelineMarkerKind,
 ): { content: string; removed: boolean; firstIndex?: number } {
-	const { start, end } = getMarkers(fileName, kind);
+	const { start, end } = getMarkers(kind);
 	let removed = false;
 	let result = content;
 	let firstIndex: number | undefined;
@@ -177,26 +159,26 @@ export async function addAgentInstructions(
 				}
 
 				const originalExisting = existing;
-				const mcpStripped = stripGuidelineSection(existing, name, "mcp");
+				const mcpStripped = stripGuidelineSection(existing, "mcp");
 				if (mcpStripped.removed) {
 					existing = mcpStripped.content;
 				}
 
-				const defaultStripped = stripGuidelineSection(existing, name, "default");
+				const defaultStripped = stripGuidelineSection(existing, "default");
 				if (defaultStripped.removed) {
 					const insertAt = defaultStripped.firstIndex ?? defaultStripped.content.length;
 					finalContent =
 						defaultStripped.content.slice(0, insertAt) +
-						wrapWithMarkers(content, name, version) +
+						wrapWithMarkers(content, version) +
 						defaultStripped.content.slice(insertAt);
-				} else if (hasBacklogGuidelines(existing, name)) {
+				} else if (hasBacklogGuidelines(existing)) {
 					// Guidelines already exist but could not be parsed, skip this file.
 					results.push({ action: "unchanged", fileName: name, filePath });
 					continue;
 				} else {
 					// Append Backlog.md guidelines with markers
 					if (!existing.endsWith("\n")) existing += "\n";
-					finalContent = existing + wrapWithMarkers(content, name, version);
+					finalContent = existing + wrapWithMarkers(content, version);
 				}
 
 				if (finalContent === originalExisting) {
@@ -206,11 +188,11 @@ export async function addAgentInstructions(
 			} catch (error) {
 				console.error(`Error reading existing file ${filePath}:`, error);
 				// If we can't read it, just use the new content with markers
-				finalContent = wrapWithMarkers(content, name, version);
+				finalContent = wrapWithMarkers(content, version);
 			}
 		} else {
 			// File doesn't exist, create with markers
-			finalContent = wrapWithMarkers(content, name, version);
+			finalContent = wrapWithMarkers(content, version);
 		}
 
 		await mkdir(dirname(filePath), { recursive: true });
@@ -257,12 +239,12 @@ export async function ensureMcpGuidelines(
 		try {
 			existing = await readExistingFile(filePath);
 			original = existing;
-			const cliStripped = stripGuidelineSection(existing, fileName, "default");
+			const cliStripped = stripGuidelineSection(existing, "default");
 			if (cliStripped.removed && cliStripped.firstIndex !== undefined) {
 				insertIndex = cliStripped.firstIndex;
 			}
 			existing = cliStripped.content;
-			const mcpStripped = stripGuidelineSection(existing, fileName, "mcp");
+			const mcpStripped = stripGuidelineSection(existing, "mcp");
 			if (mcpStripped.removed && mcpStripped.firstIndex !== undefined) {
 				insertIndex = mcpStripped.firstIndex;
 			}
@@ -273,7 +255,7 @@ export async function ensureMcpGuidelines(
 		}
 	}
 
-	const nudgeBlock = wrapWithMarkers(MCP_AGENT_NUDGE, fileName, await getVersion(), "mcp");
+	const nudgeBlock = wrapWithMarkers(MCP_AGENT_NUDGE, await getVersion(), "mcp");
 	let nextContent: string;
 	if (insertIndex !== null) {
 		const normalizedIndex = Math.max(0, Math.min(insertIndex, existing.length));
@@ -308,6 +290,6 @@ export async function installClaudeAgent(projectRoot: string): Promise<void> {
 	await mkdir(agentDir, { recursive: true });
 
 	// Write the agent content with the version marker appended
-	const versionLine = versionMarkerLine("project-manager-backlog.md", await getVersion());
+	const versionLine = versionMarkerLine(await getVersion());
 	await Bun.write(agentPath, `${CLAUDE_AGENT_CONTENT.trimEnd()}\n\n${versionLine}\n`);
 }
