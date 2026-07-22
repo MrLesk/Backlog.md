@@ -60,8 +60,9 @@ Write tasks so a future agent can act on them without prior conversation context
 Include:
 
 - A clear title.
-- A description explaining the outcome and why it matters.
-- Acceptance criteria that are specific, testable, and independent.
+- A description shaped by the work kind (see below).
+- Acceptance criteria only when they express legitimate success conditions (see Acceptance Criteria).
+- `--type` when the configured types fit (`bug`, `feature`, `enhancement`, `chore`, `docs`, `spike`, `task`, or project-configured values).
 - References or documentation when they are needed for implementation.
 - Dependencies when work must happen in order.
 
@@ -71,10 +72,24 @@ the current system and records the plan after picking up and activating the task
 change before then. The narrow exception is already-started work being created directly in a configured active status
 (for example, In Progress); its current researched plan may be supplied at creation.
 
+### Shape by Work Kind
+
+Not every task is a product feature. Match description and acceptance criteria to the kind of work:
+
+| Kind | Description | Acceptance criteria |
+| --- | --- | --- |
+| bug / friction | What failed or hurt, how it was hit, error or output when known; mark open questions and unverified fix ideas as such | Optional. Prefer 1–3 testable "done when" items if known. If the finish line is a decision, one decision/spike criterion is enough. Empty criteria beat invented ones. |
+| feature / enhancement | Outcome and why it matters to the user or product | Required: specific, testable, independent criteria for stakeholder-accepted success |
+| chore / docs / task | Outcome | Optional; add only when "done" would otherwise be ambiguous |
+| spike | Question to answer | What decision, note, or artifact must exist when the spike ends |
+
+Do not force a feature-shaped work order onto a bug report or friction capture.
+
 Examples:
 
 ```bash
 backlog task create "Add project search" \
+  --type feature \
   -d "Users can search tasks, docs, and decisions from one CLI command." \
   --ac "Search returns matching tasks by title and description" \
   --ac "Search supports --plain output" \
@@ -82,7 +97,15 @@ backlog task create "Add project search" \
 ```
 
 ```bash
+backlog task create "Session start digest shows stale task count" \
+  --type bug \
+  -d "Observation: after completing TASK-12, the next session start still reported 1 open task until board refresh. Hypothesis (untested): digest cache is not invalidated on status change." \
+  --ac "After a task moves to Done, a new session start digest reports the updated open count"
+```
+
+```bash
 backlog task create "Add settings docs" \
+  --type docs \
   --doc docs/settings.md \
   --ref https://example.com/spec
 ```
@@ -102,15 +125,21 @@ If single quotes are not practical in your shell, escape each literal backtick b
 
 ### Acceptance Criteria
 
-Acceptance criteria define the expected behavior, not implementation steps.
+Acceptance criteria define **observable success conditions a stakeholder would accept**, not implementation steps and not an agent's preferred build plan.
+
+**Legitimacy first.** Prefer fewer true criteria over a complete-looking list. Do not invent acceptance criteria for nice-to-haves, speculative edge cases, tests, docs, or follow-on work unless the user, product decision, or existing task scope requires them. If requirements are ambiguous, ask or record an open question — do not paper over uncertainty with confident criteria.
 
 Good criteria:
 
-- Are testable.
-- Include edge cases when relevant.
-- Include documentation and test expectations when required.
+- Are testable and independent.
+- Reflect user or product needs you could defend to the requester.
+- Include edge cases, tests, or documentation **only when those are part of the agreed deliverable**.
 
-Avoid criteria like "Implement helper function" unless the helper itself is the user-visible deliverable.
+Avoid:
+
+- Criteria like "Implement helper function" unless the helper itself is the user-visible deliverable.
+- Padding with invented scope ("also support dark mode", "add unit tests for unrelated helpers") to look thorough.
+- Turning an unverified implementation idea into a criterion labeled as a user need.
 
 ### Definition of Done
 

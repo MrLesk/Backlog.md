@@ -71,18 +71,30 @@ Create all tasks in the same session to maintain consistency and context.
 
 ### Step 5: Create task(s) with proper scope
 
-**Title and description**: Explain desired outcome and user value (the WHY). Keep the description focused on outcome and essential handoff context.
+**Title and description**: Shape the description by work kind (see below). For features, explain outcome and user value (the WHY). For bugs and friction, record observation, how it was hit, and mark open questions or unverified fix ideas as such. Keep handoff context inside the task; do not rely on "as we discussed."
 
-**Acceptance criteria**: `acceptanceCriteria` is an array of strings; each item should be specific, testable, and independent (the WHAT)
-- Keep each checklist item atomic (e.g., "Display saves when user presses Ctrl+S")
-- Include negative or edge scenarios when relevant
-- Capture testing expectations explicitly
-- Include documentation expectations in the same task (no deferring to follow-up tasks)
+**Shape by work kind** (set `type` when configured types fit: bug, feature, enhancement, chore, docs, spike, task):
+
+| Kind | Description | Acceptance criteria |
+| --- | --- | --- |
+| bug / friction | What failed or hurt, how found, error or output when known; mark hypotheses as untested | Optional. Prefer 1–3 testable "done when" items if known. One decision/spike criterion if the finish line is a decision. Empty criteria beat invented ones. |
+| feature / enhancement | Outcome and why it matters | Required: specific, testable, independent stakeholder success conditions |
+| chore / docs / task | Outcome | Optional; add only when "done" would otherwise be ambiguous |
+| spike | Question to answer | What decision, note, or artifact must exist when the spike ends |
+
+Do not force a feature-shaped work order onto a bug report or friction capture.
+
+**Acceptance criteria**: `acceptanceCriteria` is an array of strings. Each item must be a **legitimate, observable success condition a stakeholder would accept**, not an implementation step and not the agent's preferred build plan.
+- Prefer fewer true criteria over a complete-looking list. Do not invent nice-to-haves, speculative edges, tests, docs, or follow-on work unless the user, product decision, or existing task scope requires them.
+- Keep each checklist item atomic (e.g., "Display saves when user presses Ctrl+S").
+- Include negative or edge scenarios only when they are part of the agreed deliverable.
+- When tests or documentation **are** part of the agreed deliverable, put them in this task (do not defer required tests/docs to a vague follow-up). Do not invent test/docs criteria to look thorough.
+- If requirements are ambiguous, ask or record an open question — do not paper over uncertainty with confident criteria.
 
 **Definition of Done defaults (optional):**
 - Project-level defaults are managed with `definition_of_done_defaults_get` / `definition_of_done_defaults_upsert`
 - DoD is not acceptance criteria: AC defines product scope/behavior, DoD defines completion hygiene
-- Per-task DoD customization should be exceptional; default to project-level DoD plus strong acceptance criteria
+- Per-task DoD customization should be exceptional; default to project-level DoD plus appropriate acceptance criteria for the work kind
 - Use `definitionOfDoneAdd` only for task-specific DoD items that apply to this one task
 - Use `disableDefinitionOfDoneDefaults` to skip project defaults for this task when needed
 - Do **not** duplicate project defaults into `definitionOfDoneAdd` unless you are intentionally customizing this task
@@ -110,8 +122,10 @@ If you will continue from task creation into implementation in the same session,
 
 - Creating a single task called "Build desktop application" with 10+ acceptance criteria
 - Adding implementation steps to acceptance criteria
+- Inventing acceptance criteria the user or product did not need in order to look thorough
+- Forcing feature-shaped acceptance criteria onto a bug or friction capture
 - Creating a task before understanding if it needs to be split
-- Deferring tests or documentation to "later tasks" (e.g., "Add tests/docs in a follow-up")
+- Deferring tests or documentation that **are** part of the agreed deliverable to "later tasks"
 
 ### Correct Pattern
 
@@ -119,7 +133,7 @@ If you will continue from task creation into implementation in the same session,
 
 Then create the tasks and report what was created.
 
-**Standalone task example (includes tests/docs):** "Add API endpoint for bulk updates" with acceptance criteria that include required tests and documentation updates in the same task.
+**Standalone feature example (includes agreed tests/docs):** "Add API endpoint for bulk updates" with acceptance criteria that include only the tests and documentation that are part of the agreed deliverable for that endpoint.
 
 ### Durable Context at Creation
 

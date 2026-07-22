@@ -176,6 +176,23 @@ describe("McpServer bootstrap", () => {
 		);
 	});
 
+	it("task creation guide shapes work by kind and restrains invented acceptance criteria", () => {
+		TEST_DIR = createUniqueTestDir("mcp-server-guides");
+
+		expect(MCP_TASK_CREATION_GUIDE).toContain("**Shape by work kind**");
+		expect(MCP_TASK_CREATION_GUIDE).toContain(
+			"Do not force a feature-shaped work order onto a bug report or friction capture.",
+		);
+		expect(MCP_TASK_CREATION_GUIDE).toContain("legitimate, observable success condition a stakeholder would accept");
+		expect(MCP_TASK_CREATION_GUIDE).toContain(
+			"Do not invent nice-to-haves, speculative edges, tests, docs, or follow-on work unless the user, product decision, or existing task scope requires them.",
+		);
+		expect(MCP_TASK_CREATION_GUIDE).toContain(
+			"Inventing acceptance criteria the user or product did not need in order to look thorough",
+		);
+		expect(MCP_TASK_CREATION_GUIDE).toContain("Empty criteria beat invented ones.");
+	});
+
 	it("legacy MCP guides preserve just-in-time planning parity with the canonical CLI lifecycle", () => {
 		TEST_DIR = createUniqueTestDir("mcp-server-guides");
 

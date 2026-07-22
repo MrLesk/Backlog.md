@@ -190,6 +190,13 @@ describe("CLI Integration", () => {
 			expect(taskCreation).toContain(
 				"Backlog.md cannot recover the original text after the shell has already executed it",
 			);
+			expect(taskCreation).toContain("### Shape by Work Kind");
+			expect(taskCreation).toContain("Do not force a feature-shaped work order onto a bug report or friction capture.");
+			expect(taskCreation).toContain("**Legitimacy first.**");
+			expect(taskCreation).toContain(
+				"Do not invent acceptance criteria for nice-to-haves, speculative edge cases, tests, docs, or follow-on work",
+			);
+			expect(taskCreation).toContain('backlog task create "Session start digest shows stale task count"');
 			expect(initRequired).toContain("This directory does not have Backlog.md initialized.");
 			expect(initRequired).toContain("backlog init --defaults");
 		}, 15_000);
