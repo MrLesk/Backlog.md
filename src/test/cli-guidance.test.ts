@@ -190,6 +190,8 @@ describe("CLI Integration", () => {
 			expect(taskCreation).toContain(
 				"Backlog.md cannot recover the original text after the shell has already executed it",
 			);
+			expect(taskCreation).toContain("Reflect real needs only: prefer fewer true criteria over invented scope");
+			expect(taskCreation).toContain("Do not invent criteria to look thorough");
 			expect(initRequired).toContain("This directory does not have Backlog.md initialized.");
 			expect(initRequired).toContain("backlog init --defaults");
 		}, 15_000);
