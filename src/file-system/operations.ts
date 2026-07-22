@@ -1537,6 +1537,9 @@ ${description || `Milestone: ${title}`}`,
 				case "hide_empty_columns":
 					config.hideEmptyColumns = value.toLowerCase() === "true";
 					break;
+				case "wrap_navigation_to_search":
+					config.wrapNavigationToSearch = value.toLowerCase() === "true";
+					break;
 				case "default_port":
 					config.defaultPort = Number.parseInt(value, 10);
 					break;
@@ -1592,6 +1595,7 @@ ${description || `Milestone: ${title}`}`,
 			defaultEditor: config.defaultEditor,
 			autoOpenBrowser: config.autoOpenBrowser,
 			hideEmptyColumns: config.hideEmptyColumns,
+			wrapNavigationToSearch: config.wrapNavigationToSearch,
 			defaultPort: config.defaultPort,
 			remoteOperations: config.remoteOperations,
 			autoCommit: config.autoCommit,
@@ -1627,6 +1631,9 @@ ${description || `Milestone: ${title}`}`,
 			...(config.defaultEditor ? [`default_editor: "${config.defaultEditor}"`] : []),
 			...(typeof config.autoOpenBrowser === "boolean" ? [`auto_open_browser: ${config.autoOpenBrowser}`] : []),
 			...(typeof config.hideEmptyColumns === "boolean" ? [`hide_empty_columns: ${config.hideEmptyColumns}`] : []),
+			...(typeof config.wrapNavigationToSearch === "boolean"
+				? [`wrap_navigation_to_search: ${config.wrapNavigationToSearch}`]
+				: []),
 			...(config.defaultPort ? [`default_port: ${config.defaultPort}`] : []),
 			...(typeof config.remoteOperations === "boolean" ? [`remote_operations: ${config.remoteOperations}`] : []),
 			...(typeof config.autoCommit === "boolean" ? [`auto_commit: ${config.autoCommit}`] : []),

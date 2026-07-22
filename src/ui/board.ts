@@ -231,6 +231,22 @@ export function getCreatedTaskBoardOutcome(
 	return { focusTaskId: task.id, message: `Created ${task.id}.`, tone: "green" };
 }
 
+export type BoardBoundaryToSearchAction = "jump-clear-pending" | "jump-with-wrap" | "none";
+
+export function resolveBoardBoundaryToSearch(
+	direction: "up" | "down",
+	selected: number,
+	total: number,
+	wrapNavigationToSearch: boolean,
+): BoardBoundaryToSearchAction {
+	if (total === 0) {
+		return wrapNavigationToSearch ? "jump-clear-pending" : "none";
+	}
+	return shouldMoveFromListBoundaryToSearch(direction, selected, total, wrapNavigationToSearch)
+		? "jump-with-wrap"
+		: "none";
+}
+
 /**
  * Render tasks in an interactive TUI when stdout is a TTY.
  * Falls back to plain-text board when not in a terminal
@@ -277,6 +293,7 @@ export async function renderBoardTui(
 		createTask?: (input: TaskCreateInput) => Promise<Task>;
 		screen?: ScreenInterface;
 		taskComposer?: (options: TaskComposerOptions) => Promise<Task | null>;
+		wrapNavigationToSearch?: boolean;
 	},
 ): Promise<void> {
 	if (!process.stdout.isTTY) {
@@ -293,6 +310,7 @@ export async function renderBoardTui(
 		console.log("No tasks available for the Kanban board.");
 		return;
 	}
+	const wrapNavigationToSearch = options?.wrapNavigationToSearch ?? true;
 
 	await new Promise<void>((resolve) => {
 		const screen = options?.screen ?? createScreen({ title: "Backlog Board" });
@@ -1141,21 +1159,17 @@ export async function renderBoardTui(
 				const listWidget = column.list;
 				const selected = listWidget.selected ?? 0;
 				const total = column.tasks.length;
-				if (total === 0) {
-					pendingSearchWrap = null;
+				const boundaryAction = resolveBoardBoundaryToSearch("up", selected, total, wrapNavigationToSearch);
+				if (boundaryAction !== "none") {
+					pendingSearchWrap = boundaryAction === "jump-with-wrap" ? "to-last" : null;
 					focusFilterControl("search");
 					updateFooter();
 					screen.render();
 					return;
 				}
-				if (shouldMoveFromListBoundaryToSearch("up", selected, total)) {
-					pendingSearchWrap = "to-last";
-					focusFilterControl("search");
-					updateFooter();
-					screen.render();
-					return;
-				}
-				const nextIndex = selected - 1;
+				if (total === 0) return;
+				// With the search handoff disabled, boundary navigation falls back to the circular wrap.
+				const nextIndex = selected > 0 ? selected - 1 : total - 1;
 				selectColumnRow(column, nextIndex, true);
 				screen.render();
 			}
@@ -1178,21 +1192,17 @@ export async function renderBoardTui(
 				const listWidget = column.list;
 				const selected = listWidget.selected ?? 0;
 				const total = column.tasks.length;
-				if (total === 0) {
-					pendingSearchWrap = null;
+				const boundaryAction = resolveBoardBoundaryToSearch("down", selected, total, wrapNavigationToSearch);
+				if (boundaryAction !== "none") {
+					pendingSearchWrap = boundaryAction === "jump-with-wrap" ? "to-first" : null;
 					focusFilterControl("search");
 					updateFooter();
 					screen.render();
 					return;
 				}
-				if (shouldMoveFromListBoundaryToSearch("down", selected, total)) {
-					pendingSearchWrap = "to-first";
-					focusFilterControl("search");
-					updateFooter();
-					screen.render();
-					return;
-				}
-				const nextIndex = selected + 1;
+				if (total === 0) return;
+				// With the search handoff disabled, boundary navigation falls back to the circular wrap.
+				const nextIndex = selected < total - 1 ? selected + 1 : 0;
 				selectColumnRow(column, nextIndex, true);
 				screen.render();
 			}
