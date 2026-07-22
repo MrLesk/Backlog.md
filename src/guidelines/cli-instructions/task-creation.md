@@ -109,8 +109,9 @@ Good criteria:
 - Are testable.
 - Include edge cases when relevant.
 - Include documentation and test expectations when required.
+- Reflect real needs only: prefer fewer true criteria over invented scope. For an observable bug, the reported failure mode is usually enough.
 
-Avoid criteria like "Implement helper function" unless the helper itself is the user-visible deliverable.
+Avoid criteria like "Implement helper function" unless the helper itself is the user-visible deliverable. Do not invent criteria to look thorough.
 
 ### Definition of Done
 
