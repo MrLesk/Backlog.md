@@ -113,6 +113,18 @@ export function shouldMoveFromDetailBoundaryToSearch(
 	return scrollOffset <= 0;
 }
 
+export function shouldScrollDetailPaneFromShortcut(
+	currentFocus: "filters" | "list" | "detail",
+	modalOpen: boolean,
+	filterPopupOpen: boolean,
+	hasDetailPane: boolean,
+): boolean {
+	if (modalOpen || filterPopupOpen || currentFocus === "filters") {
+		return false;
+	}
+	return hasDetailPane;
+}
+
 export function resolveSearchExitTargetIndex(
 	direction: "up" | "down" | "escape",
 	pendingWrap: PendingSearchWrap,
@@ -1319,6 +1331,24 @@ export async function viewTaskEnhanced(
 	screen.key(["e", "E", "S-e"], () => {
 		if (modalOpen) return;
 		void openCurrentTaskInEditor();
+	});
+
+	// Scroll the detail pane without moving focus off the task list.
+	const scrollDetailPane = (delta: number) => {
+		if (!shouldScrollDetailPaneFromShortcut(currentFocus, modalOpen, filterPopupOpen, Boolean(descriptionBox))) {
+			return;
+		}
+		const scrollable = descriptionBox as unknown as { scroll?: (offset: number) => void };
+		scrollable.scroll?.(delta);
+		screen.render();
+	};
+
+	screen.key(["J", "S-j"], () => {
+		scrollDetailPane(1);
+	});
+
+	screen.key(["K", "S-k"], () => {
+		scrollDetailPane(-1);
 	});
 
 	screen.key(["y", "Y"], async () => {
