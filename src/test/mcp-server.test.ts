@@ -176,25 +176,14 @@ describe("McpServer bootstrap", () => {
 		);
 	});
 
-	it("task creation guide shapes work by kind and restrains invented acceptance criteria", () => {
+	it("task creation guide restrains invented acceptance criteria and empty observable bugs", () => {
 		TEST_DIR = createUniqueTestDir("mcp-server-guides");
 
-		expect(MCP_TASK_CREATION_GUIDE).toContain("**Shape by work kind**");
 		expect(MCP_TASK_CREATION_GUIDE).toContain(
-			"Do not force a feature-shaped work order onto a bug report or friction capture.",
+			"Prefer one honest criterion over none when success is observable; prefer none over invented scope",
 		);
-		expect(MCP_TASK_CREATION_GUIDE).toContain("Do not leave an observable bug without a success condition.");
-		expect(MCP_TASK_CREATION_GUIDE).toContain("legitimate, observable success condition a stakeholder would accept");
-		expect(MCP_TASK_CREATION_GUIDE).toContain(
-			"Prefer one honest criterion over none when a success condition is observable.",
-		);
-		expect(MCP_TASK_CREATION_GUIDE).toContain("Prefer none over invented criteria.");
-		expect(MCP_TASK_CREATION_GUIDE).toContain(
-			"Filing an observable bug or friction item with no acceptance criteria and no decision criterion",
-		);
-		expect(MCP_TASK_CREATION_GUIDE).toContain(
-			"Inventing acceptance criteria the user or product did not need in order to look thorough",
-		);
+		expect(MCP_TASK_CREATION_GUIDE).toContain("do not force a feature-shaped criteria list onto a bug");
+		expect(MCP_TASK_CREATION_GUIDE).toContain("Leaving an observable bug with no success condition");
 	});
 
 	it("legacy MCP guides preserve just-in-time planning parity with the canonical CLI lifecycle", () => {

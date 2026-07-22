@@ -71,31 +71,18 @@ Create all tasks in the same session to maintain consistency and context.
 
 ### Step 5: Create task(s) with proper scope
 
-**Title and description**: Shape the description by work kind (see below). For features, explain outcome and user value (the WHY). For bugs and friction, record observation, how it was hit, and mark open questions or unverified fix ideas as such. Keep handoff context inside the task; do not rely on "as we discussed."
+**Title and description**: Explain desired outcome and user value (the WHY). For bugs or friction, record what failed and how it was hit; mark open questions and unverified fix ideas as such. Keep the description focused on handoff context rather than "as we discussed."
 
-**Shape by work kind** (set `type` when configured types fit: bug, feature, enhancement, chore, docs, spike, task):
-
-| Kind | Description | Acceptance criteria |
-| --- | --- | --- |
-| bug / friction | What failed or hurt, how found, error or output when known; mark hypotheses as untested | When the failure is observable, name it as done-when (prefer 1–3 testable items). If the finish line is a choice, one decision/spike or WONTFIX criterion. Prefer one honest criterion over none; never invent scope to fill the list. |
-| feature / enhancement | Outcome and why it matters | Required: specific, testable, independent stakeholder success conditions |
-| chore / docs / task | Outcome | Add when success is not obvious from the title alone |
-| spike | Question to answer | What decision, note, or artifact must exist when the spike ends |
-
-Do not force a feature-shaped work order onto a bug report or friction capture. Do not leave an observable bug without a success condition.
-
-**Acceptance criteria**: `acceptanceCriteria` is an array of strings. Each item must be a **legitimate, observable success condition a stakeholder would accept**, not an implementation step and not the agent's preferred build plan.
-- Prefer fewer true criteria over a complete-looking list. Prefer one honest criterion over none when a success condition is observable. Prefer none over invented criteria.
-- Do not invent nice-to-haves, speculative edges, or follow-on work. Do not invent tests or docs criteria unless the user, product decision, or existing task scope requires them.
-- Keep each checklist item atomic (e.g., "Display saves when user presses Ctrl+S").
-- Include negative or edge scenarios that are part of the agreed deliverable.
-- When tests or documentation **are** part of the agreed deliverable, put them in this task (do not defer required tests/docs to a vague follow-up).
-- If requirements are ambiguous, ask, record an open question, or use a decision/spike criterion — do not paper over uncertainty with confident product criteria, and do not omit a finish line when the failure is already observable.
+**Acceptance criteria**: `acceptanceCriteria` is an array of strings; each item should be specific, testable, independent, and limited to agreed success conditions (the WHAT)
+- Keep each checklist item atomic (e.g., "Display saves when user presses Ctrl+S")
+- Prefer one honest criterion over none when success is observable; prefer none over invented scope
+- For an observable bug, the reported failure mode is usually enough; do not force a feature-shaped criteria list onto a bug
+- Include negative or edge scenarios, tests, and documentation that are part of the agreed deliverable (same task; not padding)
 
 **Definition of Done defaults (optional):**
 - Project-level defaults are managed with `definition_of_done_defaults_get` / `definition_of_done_defaults_upsert`
 - DoD is not acceptance criteria: AC defines product scope/behavior, DoD defines completion hygiene
-- Per-task DoD customization should be exceptional; default to project-level DoD plus appropriate acceptance criteria for the work kind
+- Per-task DoD customization should be exceptional; default to project-level DoD plus strong acceptance criteria
 - Use `definitionOfDoneAdd` only for task-specific DoD items that apply to this one task
 - Use `disableDefinitionOfDoneDefaults` to skip project defaults for this task when needed
 - Do **not** duplicate project defaults into `definitionOfDoneAdd` unless you are intentionally customizing this task
@@ -122,12 +109,10 @@ If you will continue from task creation into implementation in the same session,
 ### Common Anti-patterns to Avoid
 
 - Creating a single task called "Build desktop application" with 10+ acceptance criteria
-- Adding implementation steps to acceptance criteria
-- Inventing acceptance criteria the user or product did not need in order to look thorough
-- Filing an observable bug or friction item with no acceptance criteria and no decision criterion
-- Forcing feature-shaped acceptance criteria onto a bug or friction capture
+- Adding implementation steps to acceptance criteria, or inventing criteria to look thorough
+- Leaving an observable bug with no success condition
 - Creating a task before understanding if it needs to be split
-- Deferring tests or documentation that **are** part of the agreed deliverable to "later tasks"
+- Deferring tests or documentation that are part of the agreed deliverable to "later tasks"
 
 ### Correct Pattern
 
@@ -135,7 +120,7 @@ If you will continue from task creation into implementation in the same session,
 
 Then create the tasks and report what was created.
 
-**Standalone feature example (includes agreed tests/docs):** "Add API endpoint for bulk updates" with acceptance criteria that include only the tests and documentation that are part of the agreed deliverable for that endpoint.
+**Standalone task example (includes tests/docs):** "Add API endpoint for bulk updates" with acceptance criteria that include required tests and documentation updates in the same task.
 
 ### Durable Context at Creation
 

@@ -190,16 +190,8 @@ describe("CLI Integration", () => {
 			expect(taskCreation).toContain(
 				"Backlog.md cannot recover the original text after the shell has already executed it",
 			);
-			expect(taskCreation).toContain("### Shape by Work Kind");
-			expect(taskCreation).toContain("Do not force a feature-shaped work order onto a bug report or friction capture.");
-			expect(taskCreation).toContain("Do not leave an observable bug without a success condition.");
-			expect(taskCreation).toContain("**Legitimacy first.**");
-			expect(taskCreation).toContain("Prefer one honest criterion over none when a success condition is observable.");
-			expect(taskCreation).toContain("Prefer none over invented criteria.");
-			expect(taskCreation).toContain(
-				"Filing an observable bug or friction item with no acceptance criteria and no decision criterion",
-			);
-			expect(taskCreation).toContain('backlog task create "Session start digest shows stale task count"');
+			expect(taskCreation).toContain("prefer one honest criterion over none, and none over invented scope");
+			expect(taskCreation).toContain("leave an observable bug with no success condition");
 			expect(initRequired).toContain("This directory does not have Backlog.md initialized.");
 			expect(initRequired).toContain("backlog init --defaults");
 		}, 15_000);
