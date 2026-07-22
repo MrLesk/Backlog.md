@@ -77,19 +77,20 @@ Create all tasks in the same session to maintain consistency and context.
 
 | Kind | Description | Acceptance criteria |
 | --- | --- | --- |
-| bug / friction | What failed or hurt, how found, error or output when known; mark hypotheses as untested | Optional. Prefer 1–3 testable "done when" items if known. One decision/spike criterion if the finish line is a decision. Empty criteria beat invented ones. |
+| bug / friction | What failed or hurt, how found, error or output when known; mark hypotheses as untested | When the failure is observable, name it as done-when (prefer 1–3 testable items). If the finish line is a choice, one decision/spike or WONTFIX criterion. Prefer one honest criterion over none; never invent scope to fill the list. |
 | feature / enhancement | Outcome and why it matters | Required: specific, testable, independent stakeholder success conditions |
-| chore / docs / task | Outcome | Optional; add only when "done" would otherwise be ambiguous |
+| chore / docs / task | Outcome | Add when success is not obvious from the title alone |
 | spike | Question to answer | What decision, note, or artifact must exist when the spike ends |
 
-Do not force a feature-shaped work order onto a bug report or friction capture.
+Do not force a feature-shaped work order onto a bug report or friction capture. Do not leave an observable bug without a success condition.
 
 **Acceptance criteria**: `acceptanceCriteria` is an array of strings. Each item must be a **legitimate, observable success condition a stakeholder would accept**, not an implementation step and not the agent's preferred build plan.
-- Prefer fewer true criteria over a complete-looking list. Do not invent nice-to-haves, speculative edges, tests, docs, or follow-on work unless the user, product decision, or existing task scope requires them.
+- Prefer fewer true criteria over a complete-looking list. Prefer one honest criterion over none when a success condition is observable. Prefer none over invented criteria.
+- Do not invent nice-to-haves, speculative edges, or follow-on work. Do not invent tests or docs criteria unless the user, product decision, or existing task scope requires them.
 - Keep each checklist item atomic (e.g., "Display saves when user presses Ctrl+S").
 - Include negative or edge scenarios that are part of the agreed deliverable.
-- When tests or documentation **are** part of the agreed deliverable, put them in this task (do not defer required tests/docs to a vague follow-up). Do not invent test/docs criteria to look thorough.
-- If requirements are ambiguous, ask or record an open question — do not paper over uncertainty with confident criteria.
+- When tests or documentation **are** part of the agreed deliverable, put them in this task (do not defer required tests/docs to a vague follow-up).
+- If requirements are ambiguous, ask, record an open question, or use a decision/spike criterion — do not paper over uncertainty with confident product criteria, and do not omit a finish line when the failure is already observable.
 
 **Definition of Done defaults (optional):**
 - Project-level defaults are managed with `definition_of_done_defaults_get` / `definition_of_done_defaults_upsert`
@@ -123,6 +124,7 @@ If you will continue from task creation into implementation in the same session,
 - Creating a single task called "Build desktop application" with 10+ acceptance criteria
 - Adding implementation steps to acceptance criteria
 - Inventing acceptance criteria the user or product did not need in order to look thorough
+- Filing an observable bug or friction item with no acceptance criteria and no decision criterion
 - Forcing feature-shaped acceptance criteria onto a bug or friction capture
 - Creating a task before understanding if it needs to be split
 - Deferring tests or documentation that **are** part of the agreed deliverable to "later tasks"

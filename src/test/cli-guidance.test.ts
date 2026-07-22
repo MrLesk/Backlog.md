@@ -192,9 +192,12 @@ describe("CLI Integration", () => {
 			);
 			expect(taskCreation).toContain("### Shape by Work Kind");
 			expect(taskCreation).toContain("Do not force a feature-shaped work order onto a bug report or friction capture.");
+			expect(taskCreation).toContain("Do not leave an observable bug without a success condition.");
 			expect(taskCreation).toContain("**Legitimacy first.**");
+			expect(taskCreation).toContain("Prefer one honest criterion over none when a success condition is observable.");
+			expect(taskCreation).toContain("Prefer none over invented criteria.");
 			expect(taskCreation).toContain(
-				"Do not invent acceptance criteria for nice-to-haves, speculative edge cases, tests, docs, or follow-on work",
+				"Filing an observable bug or friction item with no acceptance criteria and no decision criterion",
 			);
 			expect(taskCreation).toContain('backlog task create "Session start digest shows stale task count"');
 			expect(initRequired).toContain("This directory does not have Backlog.md initialized.");

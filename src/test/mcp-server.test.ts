@@ -183,14 +183,18 @@ describe("McpServer bootstrap", () => {
 		expect(MCP_TASK_CREATION_GUIDE).toContain(
 			"Do not force a feature-shaped work order onto a bug report or friction capture.",
 		);
+		expect(MCP_TASK_CREATION_GUIDE).toContain("Do not leave an observable bug without a success condition.");
 		expect(MCP_TASK_CREATION_GUIDE).toContain("legitimate, observable success condition a stakeholder would accept");
 		expect(MCP_TASK_CREATION_GUIDE).toContain(
-			"Do not invent nice-to-haves, speculative edges, tests, docs, or follow-on work unless the user, product decision, or existing task scope requires them.",
+			"Prefer one honest criterion over none when a success condition is observable.",
+		);
+		expect(MCP_TASK_CREATION_GUIDE).toContain("Prefer none over invented criteria.");
+		expect(MCP_TASK_CREATION_GUIDE).toContain(
+			"Filing an observable bug or friction item with no acceptance criteria and no decision criterion",
 		);
 		expect(MCP_TASK_CREATION_GUIDE).toContain(
 			"Inventing acceptance criteria the user or product did not need in order to look thorough",
 		);
-		expect(MCP_TASK_CREATION_GUIDE).toContain("Empty criteria beat invented ones.");
 	});
 
 	it("legacy MCP guides preserve just-in-time planning parity with the canonical CLI lifecycle", () => {

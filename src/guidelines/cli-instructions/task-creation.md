@@ -78,12 +78,12 @@ Not every task is a product feature. Match description and acceptance criteria t
 
 | Kind | Description | Acceptance criteria |
 | --- | --- | --- |
-| bug / friction | What failed or hurt, how it was hit, error or output when known; mark open questions and unverified fix ideas as such | Optional. Prefer 1–3 testable "done when" items if known. If the finish line is a decision, one decision/spike criterion is enough. Empty criteria beat invented ones. |
+| bug / friction | What failed or hurt, how it was hit, error or output when known; mark open questions and unverified fix ideas as such | When the failure is observable, name it as done-when (prefer 1–3 testable items). If the finish line is a choice, one decision/spike or WONTFIX criterion. Prefer one honest criterion over none; never invent scope to fill the list. |
 | feature / enhancement | Outcome and why it matters to the user or product | Required: specific, testable, independent criteria for stakeholder-accepted success |
-| chore / docs / task | Outcome | Optional; add only when "done" would otherwise be ambiguous |
+| chore / docs / task | Outcome | Add when success is not obvious from the title alone |
 | spike | Question to answer | What decision, note, or artifact must exist when the spike ends |
 
-Do not force a feature-shaped work order onto a bug report or friction capture.
+Do not force a feature-shaped work order onto a bug report or friction capture. Do not leave an observable bug without a success condition.
 
 Examples:
 
@@ -127,12 +127,12 @@ If single quotes are not practical in your shell, escape each literal backtick b
 
 Acceptance criteria define **observable success conditions a stakeholder would accept**, not implementation steps and not an agent's preferred build plan.
 
-**Legitimacy first.** Prefer fewer true criteria over a complete-looking list. Do not invent acceptance criteria for nice-to-haves, speculative edge cases, tests, docs, or follow-on work unless the user, product decision, or existing task scope requires them. If requirements are ambiguous, ask or record an open question — do not paper over uncertainty with confident criteria.
+**Legitimacy first.** Prefer fewer true criteria over a complete-looking list. Prefer one honest criterion over none when a success condition is observable. Prefer none over invented criteria. Do not invent acceptance criteria for nice-to-haves, speculative edge cases, or follow-on work, and do not invent tests or docs criteria unless the user, product decision, or existing task scope requires them. If requirements are ambiguous, ask, record an open question, or use a decision/spike criterion — do not paper over uncertainty with confident product criteria, and do not omit a finish line when the failure is already observable.
 
 Good criteria:
 
 - Are testable and independent.
-- Reflect user or product needs you could defend to the requester.
+- Reflect user or product needs you could defend to the requester (for bugs: the reported failure mode is usually enough).
 - Include edge cases, tests, or documentation **that are part of the agreed deliverable**.
 
 Avoid:
@@ -140,6 +140,7 @@ Avoid:
 - Criteria like "Implement helper function" unless the helper itself is the user-visible deliverable.
 - Padding with invented scope ("also support dark mode", "add unit tests for unrelated helpers") to look thorough.
 - Turning an unverified implementation idea into a criterion labeled as a user need.
+- Filing an observable bug or friction item with no acceptance criteria and no decision criterion.
 
 ### Definition of Done
 
