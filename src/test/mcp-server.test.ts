@@ -176,14 +176,14 @@ describe("McpServer bootstrap", () => {
 		);
 	});
 
-	it("task creation guide restrains invented acceptance criteria and empty observable bugs", () => {
+	it("task creation guide restrains invented acceptance criteria", () => {
 		TEST_DIR = createUniqueTestDir("mcp-server-guides");
 
 		expect(MCP_TASK_CREATION_GUIDE).toContain(
-			"Prefer one honest criterion over none when success is observable; prefer none over invented scope",
+			"Reflect real needs only: prefer fewer true criteria over invented scope",
 		);
-		expect(MCP_TASK_CREATION_GUIDE).toContain("do not force a feature-shaped criteria list onto a bug");
-		expect(MCP_TASK_CREATION_GUIDE).toContain("Leaving an observable bug with no success condition");
+		expect(MCP_TASK_CREATION_GUIDE).toContain("For an observable bug, the reported failure mode is usually enough");
+		expect(MCP_TASK_CREATION_GUIDE).toContain("inventing criteria to look thorough");
 	});
 
 	it("legacy MCP guides preserve just-in-time planning parity with the canonical CLI lifecycle", () => {

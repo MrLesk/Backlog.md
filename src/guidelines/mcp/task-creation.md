@@ -71,13 +71,14 @@ Create all tasks in the same session to maintain consistency and context.
 
 ### Step 5: Create task(s) with proper scope
 
-**Title and description**: Explain desired outcome and user value (the WHY). For bugs or friction, record what failed and how it was hit; mark open questions and unverified fix ideas as such. Keep the description focused on handoff context rather than "as we discussed."
+**Title and description**: Explain desired outcome and user value (the WHY). Keep the description focused on outcome and essential handoff context.
 
-**Acceptance criteria**: `acceptanceCriteria` is an array of strings; each item should be specific, testable, independent, and limited to agreed success conditions (the WHAT)
+**Acceptance criteria**: `acceptanceCriteria` is an array of strings; each item should be specific, testable, and independent (the WHAT)
 - Keep each checklist item atomic (e.g., "Display saves when user presses Ctrl+S")
-- Prefer one honest criterion over none when success is observable; prefer none over invented scope
-- For an observable bug, the reported failure mode is usually enough; do not force a feature-shaped criteria list onto a bug
-- Include negative or edge scenarios, tests, and documentation that are part of the agreed deliverable (same task; not padding)
+- Include negative or edge scenarios when relevant
+- Capture testing expectations explicitly
+- Include documentation expectations in the same task (no deferring to follow-up tasks)
+- Reflect real needs only: prefer fewer true criteria over invented scope. For an observable bug, the reported failure mode is usually enough.
 
 **Definition of Done defaults (optional):**
 - Project-level defaults are managed with `definition_of_done_defaults_get` / `definition_of_done_defaults_upsert`
@@ -110,9 +111,8 @@ If you will continue from task creation into implementation in the same session,
 
 - Creating a single task called "Build desktop application" with 10+ acceptance criteria
 - Adding implementation steps to acceptance criteria, or inventing criteria to look thorough
-- Leaving an observable bug with no success condition
 - Creating a task before understanding if it needs to be split
-- Deferring tests or documentation that are part of the agreed deliverable to "later tasks"
+- Deferring tests or documentation to "later tasks" (e.g., "Add tests/docs in a follow-up")
 
 ### Correct Pattern
 

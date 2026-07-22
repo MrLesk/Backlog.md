@@ -60,8 +60,8 @@ Write tasks so a future agent can act on them without prior conversation context
 Include:
 
 - A clear title.
-- A description explaining the outcome and why it matters. For bugs or friction, record what failed and how it was hit; mark open questions and unverified fix ideas as such rather than as settled requirements.
-- Acceptance criteria that are specific, testable, independent, and limited to agreed success conditions (see Acceptance Criteria).
+- A description explaining the outcome and why it matters.
+- Acceptance criteria that are specific, testable, and independent.
 - References or documentation when they are needed for implementation.
 - Dependencies when work must happen in order.
 
@@ -102,15 +102,16 @@ If single quotes are not practical in your shell, escape each literal backtick b
 
 ### Acceptance Criteria
 
-Acceptance criteria define expected behavior a stakeholder would accept, not implementation steps and not an agent's preferred build plan.
+Acceptance criteria define the expected behavior, not implementation steps.
 
 Good criteria:
 
-- Are testable and independent.
-- Reflect agreed user or product needs. For an observable bug, the reported failure mode is usually enough; prefer one honest criterion over none, and none over invented scope.
-- Include edge cases, tests, or documentation when those are part of the agreed deliverable (not as padding).
+- Are testable.
+- Include edge cases when relevant.
+- Include documentation and test expectations when required.
+- Reflect real needs only: prefer fewer true criteria over invented scope. For an observable bug, the reported failure mode is usually enough.
 
-Avoid criteria like "Implement helper function" unless the helper itself is the user-visible deliverable. Do not invent nice-to-haves to look thorough, force a feature-shaped criteria list onto a bug, or leave an observable bug with no success condition.
+Avoid criteria like "Implement helper function" unless the helper itself is the user-visible deliverable. Do not invent criteria to look thorough.
 
 ### Definition of Done
 
