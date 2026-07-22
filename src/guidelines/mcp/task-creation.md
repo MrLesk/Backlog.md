@@ -87,7 +87,7 @@ Do not force a feature-shaped work order onto a bug report or friction capture.
 **Acceptance criteria**: `acceptanceCriteria` is an array of strings. Each item must be a **legitimate, observable success condition a stakeholder would accept**, not an implementation step and not the agent's preferred build plan.
 - Prefer fewer true criteria over a complete-looking list. Do not invent nice-to-haves, speculative edges, tests, docs, or follow-on work unless the user, product decision, or existing task scope requires them.
 - Keep each checklist item atomic (e.g., "Display saves when user presses Ctrl+S").
-- Include negative or edge scenarios only when they are part of the agreed deliverable.
+- Include negative or edge scenarios that are part of the agreed deliverable.
 - When tests or documentation **are** part of the agreed deliverable, put them in this task (do not defer required tests/docs to a vague follow-up). Do not invent test/docs criteria to look thorough.
 - If requirements are ambiguous, ask or record an open question — do not paper over uncertainty with confident criteria.
 

@@ -61,7 +61,7 @@ Include:
 
 - A clear title.
 - A description shaped by the work kind (see below).
-- Acceptance criteria only when they express legitimate success conditions (see Acceptance Criteria).
+- Acceptance criteria that express legitimate success conditions (see Acceptance Criteria).
 - `--type` when the configured types fit (`bug`, `feature`, `enhancement`, `chore`, `docs`, `spike`, `task`, or project-configured values).
 - References or documentation when they are needed for implementation.
 - Dependencies when work must happen in order.
@@ -133,7 +133,7 @@ Good criteria:
 
 - Are testable and independent.
 - Reflect user or product needs you could defend to the requester.
-- Include edge cases, tests, or documentation **only when those are part of the agreed deliverable**.
+- Include edge cases, tests, or documentation **that are part of the agreed deliverable**.
 
 Avoid:
 
