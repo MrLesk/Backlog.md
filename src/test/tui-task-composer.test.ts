@@ -908,6 +908,34 @@ describe("TUI task composer interaction", () => {
 		}
 	});
 
+	it("marks the focused control as inverted in the full layout so it is visible", async () => {
+		const screen = createScreen({ smartCSR: false });
+		Object.defineProperty(screen, "width", { configurable: true, value: 100, writable: true });
+		Object.defineProperty(screen, "height", { configurable: true, value: 30, writable: true });
+		type FocusWidget = { style?: { inverse?: boolean }; emit(event: string): void };
+		const focused = () => (screen as unknown as { focused?: FocusWidget }).focused;
+		try {
+			const resultPromise = openTaskComposer({
+				screen,
+				statuses: ["To Do", "Done"],
+				persist: async () => task(),
+			});
+			await new Promise<void>((resolve) => setImmediate(resolve));
+
+			// Title (a text input) is focused first: the field itself is not inverted.
+			expect(focused()?.style?.inverse).toBeFalsy();
+			// Tab to Description then Status; Status has no cursor, so it inverts.
+			focused()?.emit("key tab");
+			focused()?.emit("key tab");
+			expect(focused()?.style?.inverse).toBe(true);
+
+			focused()?.emit("key escape");
+			expect(await withTimeout(resultPromise, "focus visibility", 1000)).toBeNull();
+		} finally {
+			screen.destroy();
+		}
+	});
+
 	it("traverses every focusable control and Esc cancels with resize handlers cleaned up", async () => {
 		for (let fieldIndex = 0; fieldIndex < 7; fieldIndex += 1) {
 			const screen = createScreen({ smartCSR: false });

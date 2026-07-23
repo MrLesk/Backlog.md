@@ -377,9 +377,20 @@ export async function openTaskComposer(options: TaskComposerOptions): Promise<Ta
 			style.border ??= {};
 			style.border.fg = active ? "yellow" : "gray";
 			const isTextInput = widget === titleInput || widget === descriptionInput;
-			style.inverse = active && (!isTextInput || widget === createAction || widget === cancelAction) && narrow;
+			// Non-text controls have no cursor, so a gray/yellow border alone is too
+			// subtle: invert the whole control when active, in both layouts.
+			style.inverse = active && !isTextInput;
 			style.bold = active && (widget === createAction || widget === cancelAction);
 			widget.style = style;
+			// Text inputs stay readable while typing, so show focus on the label
+			// (the cursor already marks the field) instead of inverting the content.
+			if (isTextInput) {
+				const fieldLabel = widget === titleInput ? titleLabel : descriptionLabel;
+				const labelStyle = (fieldLabel.style ?? {}) as { inverse?: boolean; bold?: boolean };
+				labelStyle.inverse = active;
+				labelStyle.bold = active;
+				fieldLabel.style = labelStyle;
+			}
 		};
 
 		const syncInputs = () => {
