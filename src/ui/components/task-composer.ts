@@ -18,6 +18,15 @@ export function deleteLastWord(value: string): string {
 	return value.replace(/\s+$/, "").replace(/\S+$/, "");
 }
 
+/**
+ * Remove tab characters from a text value. The input widget's keypress handler
+ * treats Tab as printable and inserts "\t" before our navigation handler runs,
+ * so strip it whenever Tab moves focus.
+ */
+export function stripInjectedTabs(value: string): string {
+	return value.replace(/\t/g, "");
+}
+
 export type TaskComposerValues = {
 	title: string;
 	description: string;
@@ -534,12 +543,24 @@ export async function openTaskComposer(options: TaskComposerOptions): Promise<Ta
 				options.screen.render();
 			}
 		};
+		// The widget's keypress handler treats Tab as printable and appends "\t"
+		// straight to `value` without refreshing its cached `_value`, so a plain
+		// setValue with the stripped text no-ops. Clear the cache to force the repaint.
+		const stripTabsFromInput = (input: TextboxInterface) => {
+			const next = stripInjectedTabs(input.getValue());
+			if (next === input.getValue()) return;
+			(input as TextboxInterface & { _value?: string })._value = undefined;
+			input.setValue(next);
+			options.screen.render();
+		};
 		for (const input of [titleInput, descriptionInput]) {
 			input.key(["tab"], () => {
+				stripTabsFromInput(input);
 				moveFocus(1);
 				return false;
 			});
 			input.key(["S-tab"], () => {
+				stripTabsFromInput(input);
 				moveFocus(-1);
 				return false;
 			});

@@ -16,6 +16,7 @@ import {
 	getTaskComposerStatusChoices,
 	getTaskComposerTypeChoices,
 	openTaskComposer,
+	stripInjectedTabs,
 	TaskComposerController,
 	toTaskCreateInput,
 } from "../ui/components/task-composer.ts";
@@ -112,6 +113,13 @@ describe("TUI task composer model", () => {
 		expect(deleteLastWord("hello ")).toBe("");
 		expect(deleteLastWord("one")).toBe("");
 		expect(deleteLastWord("")).toBe("");
+	});
+
+	it("strips tab characters the widget injects during field navigation", () => {
+		expect(stripInjectedTabs("hello\t")).toBe("hello");
+		expect(stripInjectedTabs("a\tb\tc")).toBe("abc");
+		expect(stripInjectedTabs("no tabs")).toBe("no tabs");
+		expect(stripInjectedTabs("")).toBe("");
 	});
 
 	it("uses configured type and priority choices with explicit unset options", () => {
@@ -886,6 +894,43 @@ describe("TUI task composer interaction", () => {
 
 			focused()?.emit("key escape");
 			expect(await withTimeout(resultPromise, "edit inputs", 1000)).toBeNull();
+		} finally {
+			screen.destroy();
+		}
+	});
+
+	it("does not leak a tab character into a field when Tab navigates away", async () => {
+		const screen = createScreen({ smartCSR: false });
+		type EditableWidget = {
+			getValue(): string;
+			setValue(value: string): void;
+			emit(event: string, ...args: unknown[]): void;
+		};
+		const focused = () => (screen as unknown as { focused?: EditableWidget }).focused;
+		try {
+			const resultPromise = openTaskComposer({
+				screen,
+				statuses: ["To Do", "Done"],
+				persist: async () => task(),
+			});
+			// Let focusField -> readInput register the widget keypress listener.
+			await new Promise<void>((resolve) => setImmediate(resolve));
+			await new Promise<void>((resolve) => setImmediate(resolve));
+
+			const title = focused();
+			expect(title).toBeDefined();
+			title?.setValue("hello");
+			// The widget's own keypress listener runs before the composer's `key tab`
+			// handler and appends the raw tab character. Reproduce that ordering.
+			title?.emit("keypress", "\t", { name: "tab", full: "tab" });
+			title?.emit("key tab", "\t", { name: "tab", full: "tab" });
+
+			const description = focused();
+			expect(description).not.toBe(title);
+			expect(title?.getValue()).toBe("hello");
+
+			focused()?.emit("key escape");
+			expect(await withTimeout(resultPromise, "tab navigation", 1000)).toBeNull();
 		} finally {
 			screen.destroy();
 		}
