@@ -153,7 +153,7 @@ export async function openSingleSelectFilterPopup(options: {
 			screen: options.screen,
 			title: options.title,
 			helpText:
-				options.helpText ?? " {cyan-fg}[↑↓]{/} Navigate | {cyan-fg}[Enter]{/} Select | {cyan-fg}[Esc]{/} Cancel",
+				options.helpText ?? " {cyan-fg}[↑↓/jk]{/} Navigate | {cyan-fg}[Enter]{/} Select | {cyan-fg}[Esc]{/} Cancel",
 			width: "48%",
 			height: "60%",
 		});
@@ -180,6 +180,7 @@ export async function openSingleSelectFilterPopup(options: {
 			items: options.choices.map((choice) => choice.label),
 			selected: selectedIndex,
 			keys: true,
+			vi: true,
 			mouse: true,
 			tags: true,
 			scrollable: true,
@@ -189,6 +190,10 @@ export async function openSingleSelectFilterPopup(options: {
 				item: { bg: "default", hover: { inverse: true } },
 			},
 		});
+		// The list widget hardcodes its initial selection to index 0 and ignores the
+		// `selected` option, so preselect the current value explicitly (otherwise the
+		// status picker always opens on Draft).
+		picker.select(selectedIndex);
 
 		const finish = (value: string | null) => {
 			if (settled) return;
