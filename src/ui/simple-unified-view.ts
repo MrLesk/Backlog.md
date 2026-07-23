@@ -124,6 +124,7 @@ export async function runSimpleUnifiedView(options: SimpleUnifiedViewOptions): P
 			dateFormat: config?.dateFormat,
 			priorities: config?.priorities,
 			types: config?.types,
+			hideEmptyColumns: config?.hideEmptyColumns ?? false,
 		});
 
 		isRunning = false;

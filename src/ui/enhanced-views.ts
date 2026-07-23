@@ -188,6 +188,7 @@ async function renderBoardTuiWithSwitching(
 		dateFormat: config?.dateFormat,
 		priorities: config?.priorities,
 		types: config?.types,
+		hideEmptyColumns: config?.hideEmptyColumns ?? false,
 	});
 }
 

@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { type Milestone, type Task } from '../../types';
 import { apiClient, type ReorderTaskPayload } from '../lib/api';
 import { buildLanes, DEFAULT_LANE_KEY, groupTasksByLaneAndStatus, type LaneMode } from '../lib/lanes';
@@ -36,6 +36,7 @@ interface BoardProps {
   availableTypes?: string[];
   onFiltersChange?: (filters: { assignee: string; labels: string[]; priority: string; taskType: string }) => void;
   hideEmptyColumns?: boolean;
+  onToggleHideEmptyColumns?: () => void;
   dateFormat?: string;
 }
 
@@ -44,6 +45,10 @@ const BOARD_FILTER_SELECT_CLASS =
 
 const BOARD_FILTER_BUTTON_CLASS =
   'h-10 py-2 px-3 text-sm border border-gray-300 dark:border-gray-600 rounded-lg whitespace-nowrap transition-colors duration-200 text-gray-700 dark:text-gray-200 bg-white dark:bg-gray-800 hover:bg-gray-100 dark:hover:bg-gray-700';
+
+// Horizontal auto-scroll while dragging a card near the board edges.
+const EDGE_AUTO_SCROLL_ZONE = 64; // px from an edge that starts auto-scroll
+const EDGE_AUTO_SCROLL_SPEED = 20; // px moved per animation frame
 
 const Board: React.FC<BoardProps> = ({
   onEditTask,
@@ -67,11 +72,22 @@ const Board: React.FC<BoardProps> = ({
   availableTypes,
   onFiltersChange,
   hideEmptyColumns = false,
+  onToggleHideEmptyColumns,
   dateFormat,
 }) => {
   const [updateError, setUpdateError] = useState<string | null>(null);
   const [dragSourceStatus, setDragSourceStatus] = useState<string | null>(null);
   const [dragSourceLane, setDragSourceLane] = useState<string | null>(null);
+  // Deferred flag that re-shows hidden empty columns during a drag. It is set
+  // one task after dragstart (see handleColumnDragStart) so the board layout is
+  // not mutated synchronously with dragstart, which would cancel the native drag.
+  const [dragActive, setDragActive] = useState(false);
+  const dragExpandTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const scrollContainerRef = useRef<HTMLDivElement | null>(null);
+  // Where the dragged column sat in the viewport before hidden columns expanded.
+  const dragAnchor = useRef<{ status: string; viewportLeft: number } | null>(null);
+  const autoScrollFrame = useRef<number | null>(null);
+  const autoScrollDir = useRef<-1 | 0 | 1>(0);
   const [showCleanupModal, setShowCleanupModal] = useState(false);
   const [cleanupSuccessMessage, setCleanupSuccessMessage] = useState<string | null>(null);
   const [collapsedLanes, setCollapsedLanes] = useState<Record<string, boolean>>({});
@@ -410,16 +426,108 @@ const Board: React.FC<BoardProps> = ({
 
   // When hideEmptyColumns is on, filter out status columns with no tasks across all visible lanes.
   // While a task is being dragged we keep every column visible so empty statuses remain drop targets.
-  const isDragging = dragSourceStatus !== null;
   const visibleStatuses = useMemo(() => {
-    if (!hideEmptyColumns || isDragging) return statuses;
+    if (!hideEmptyColumns || dragActive) return statuses;
     return statuses.filter(status => {
       for (const statusMap of displayTasksByLane.values()) {
         if ((statusMap.get(status) ?? []).length > 0) return true;
       }
       return false;
     });
-  }, [hideEmptyColumns, isDragging, statuses, displayTasksByLane]);
+  }, [hideEmptyColumns, dragActive, statuses, displayTasksByLane]);
+
+  const findStatusColumn = (status: string): HTMLElement | null => {
+    const container = scrollContainerRef.current;
+    if (!container) return null;
+    for (const el of container.querySelectorAll<HTMLElement>('[data-status]')) {
+      if (el.dataset.status === status) return el;
+    }
+    return null;
+  };
+
+  const stopAutoScroll = () => {
+    if (autoScrollFrame.current !== null) {
+      cancelAnimationFrame(autoScrollFrame.current);
+      autoScrollFrame.current = null;
+    }
+    autoScrollDir.current = 0;
+  };
+
+  const stepAutoScroll = () => {
+    const container = scrollContainerRef.current;
+    if (!container || autoScrollDir.current === 0) {
+      autoScrollFrame.current = null;
+      return;
+    }
+    container.scrollLeft += autoScrollDir.current * EDGE_AUTO_SCROLL_SPEED;
+    autoScrollFrame.current = requestAnimationFrame(stepAutoScroll);
+  };
+
+  // While dragging, scroll the board horizontally when the cursor nears an edge
+  // so off-screen columns become reachable (native DnD does not auto-scroll).
+  const handleBoardDragOver = (e: React.DragEvent) => {
+    const container = scrollContainerRef.current;
+    if (!container) return;
+    const rect = container.getBoundingClientRect();
+    let dir: -1 | 0 | 1 = 0;
+    if (e.clientX <= rect.left + EDGE_AUTO_SCROLL_ZONE) dir = -1;
+    else if (e.clientX >= rect.right - EDGE_AUTO_SCROLL_ZONE) dir = 1;
+    autoScrollDir.current = dir;
+    if (dir !== 0) {
+      if (autoScrollFrame.current === null) autoScrollFrame.current = requestAnimationFrame(stepAutoScroll);
+    } else {
+      stopAutoScroll();
+    }
+  };
+
+  const handleColumnDragStart = ({ status, laneId }: { status: string; laneId?: string | null }) => {
+    setDragSourceStatus(status);
+    setDragSourceLane(laneId ?? null);
+    // Remember where the dragged column sits so we can keep it in place once the
+    // hidden columns expand (they are inserted to its left, shifting it away).
+    const container = scrollContainerRef.current;
+    const col = findStatusColumn(status);
+    dragAnchor.current =
+      container && col
+        ? { status, viewportLeft: col.getBoundingClientRect().left - container.getBoundingClientRect().left }
+        : null;
+    // Re-show hidden empty columns on the next task, not synchronously here:
+    // mutating the board layout during dragstart cancels the native drag.
+    if (dragExpandTimer.current !== null) clearTimeout(dragExpandTimer.current);
+    dragExpandTimer.current = setTimeout(() => {
+      dragExpandTimer.current = null;
+      setDragActive(true);
+    }, 0);
+  };
+
+  const handleColumnDragEnd = () => {
+    if (dragExpandTimer.current !== null) {
+      clearTimeout(dragExpandTimer.current);
+      dragExpandTimer.current = null;
+    }
+    stopAutoScroll();
+    dragAnchor.current = null;
+    setDragSourceStatus(null);
+    setDragSourceLane(null);
+    setDragActive(false);
+  };
+
+  // After hidden columns expand, restore scroll so the dragged column stays put.
+  useLayoutEffect(() => {
+    if (!dragActive) return;
+    const anchor = dragAnchor.current;
+    const container = scrollContainerRef.current;
+    if (!anchor || !container) return;
+    const col = findStatusColumn(anchor.status);
+    if (!col) return;
+    const newViewportLeft = col.getBoundingClientRect().left - container.getBoundingClientRect().left;
+    container.scrollLeft += newViewportLeft - anchor.viewportLeft;
+  }, [dragActive]);
+
+  useEffect(() => () => {
+    if (dragExpandTimer.current !== null) clearTimeout(dragExpandTimer.current);
+    if (autoScrollFrame.current !== null) cancelAnimationFrame(autoScrollFrame.current);
+  }, []);
 
   // Only show lane headers when multiple lanes exist
   const shouldShowLaneHeaders = useMemo(() => {
@@ -513,6 +621,21 @@ const Board: React.FC<BoardProps> = ({
                 Milestone
               </button>
             </div>
+            {onToggleHideEmptyColumns && (
+              <button
+                type="button"
+                onClick={onToggleHideEmptyColumns}
+                aria-pressed={hideEmptyColumns}
+                title={hideEmptyColumns ? 'Show empty columns' : 'Hide empty columns'}
+                className={`${BOARD_FILTER_BUTTON_CLASS} ${
+                  hideEmptyColumns
+                    ? 'bg-stone-700 dark:bg-stone-600 text-white border-stone-700 dark:border-stone-600 hover:bg-stone-800 dark:hover:bg-stone-500'
+                    : ''
+                }`}
+              >
+                {hideEmptyColumns ? 'Show empty columns' : 'Hide empty columns'}
+              </button>
+            )}
             {onFiltersChange && (
               <div className="flex flex-wrap items-center gap-3" aria-label="Board filters">
                 <select
@@ -639,14 +762,8 @@ const Board: React.FC<BoardProps> = ({
                             targetMilestone={lane.milestone ?? null}
                             priorityOrder={availablePriorities}
                             availableTypes={typeOptions}
-                            onDragStart={({ status: draggedStatus, laneId }) => {
-                              setDragSourceStatus(draggedStatus);
-                              setDragSourceLane(laneId ?? null);
-                            }}
-                            onDragEnd={() => {
-                              setDragSourceStatus(null);
-                              setDragSourceLane(null);
-                            }}
+                            onDragStart={handleColumnDragStart}
+                            onDragEnd={handleColumnDragEnd}
                             onCleanup={status === terminalStatus ? () => setShowCleanupModal(true) : undefined}
                           />
                         </div>
@@ -659,10 +776,10 @@ const Board: React.FC<BoardProps> = ({
           })}
         </div>
       ) : (
-        <div className="overflow-x-auto pb-2">
+        <div ref={scrollContainerRef} onDragOver={handleBoardDragOver} className="overflow-x-auto pb-2">
           <div className="flex flex-row flex-nowrap gap-4 w-full">
             {visibleStatuses.map((status) => (
-              <div key={status} className="flex-1 min-w-[16rem]">
+              <div key={status} data-status={status} className="flex-1 min-w-[16rem]">
                 <TaskColumn
                   title={status}
                   tasks={getTasksForLane(DEFAULT_LANE_KEY, status)}
@@ -674,14 +791,8 @@ const Board: React.FC<BoardProps> = ({
                   laneId={DEFAULT_LANE_KEY}
                   priorityOrder={availablePriorities}
                   availableTypes={typeOptions}
-                  onDragStart={({ status: draggedStatus, laneId }) => {
-                    setDragSourceStatus(draggedStatus);
-                    setDragSourceLane(laneId ?? null);
-                  }}
-                  onDragEnd={() => {
-                    setDragSourceStatus(null);
-                    setDragSourceLane(null);
-                  }}
+                  onDragStart={handleColumnDragStart}
+                  onDragEnd={handleColumnDragEnd}
                   onCleanup={status === terminalStatus ? () => setShowCleanupModal(true) : undefined}
                 />
               </div>
