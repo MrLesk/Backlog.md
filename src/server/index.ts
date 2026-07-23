@@ -273,7 +273,7 @@ export class BacklogServer {
 		}
 	}
 
-	async start(port?: number, openBrowser = true): Promise<void> {
+	async start(port?: number, openBrowser = true, hostname = "127.0.0.1"): Promise<void> {
 		// Prevent duplicate starts (e.g., accidental re-entry)
 		if (this.server) {
 			console.log("Server already running");
@@ -295,6 +295,7 @@ export class BacklogServer {
 			await this.ensureServicesReady();
 			const serveOptions = {
 				port: finalPort,
+				hostname,
 				development: process.env.NODE_ENV === "development",
 				routes: {
 					"/": spaIndexHtml,

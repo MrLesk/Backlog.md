@@ -4960,6 +4960,7 @@ program
 	.command("browser")
 	.description("open browser interface for task management (press Ctrl+C or Cmd+C to stop)")
 	.option("-p, --port <port>", "port to run server on")
+	.option("--host <address>", "host address to bind server to")
 	.option("--no-open", "don't automatically open browser")
 	.option("--non-interactive", "automatically use next free port without asking")
 	.action(async (options) => {
@@ -5010,7 +5011,7 @@ program
 				}
 			}
 
-			await server.start(port, options.open !== false);
+			await server.start(port, options.open !== false, options.host);
 
 			// Graceful shutdown on common termination signals (register once)
 			let shuttingDown = false;
