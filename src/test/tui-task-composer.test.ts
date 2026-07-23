@@ -6,13 +6,17 @@ import { $ } from "bun";
 import { Core } from "../core/backlog.ts";
 import type { Task, TaskCreateInput } from "../types/index.ts";
 import { getCreatedTaskBoardOutcome, renderBoardTui, upsertBoardTask } from "../ui/board.ts";
+import { openSingleSelectFilterPopup } from "../ui/components/filter-popup.ts";
 import {
 	createTaskComposerValues,
+	deleteLastChar,
+	deleteLastWord,
 	getTaskComposerLayout,
 	getTaskComposerPriorityChoices,
 	getTaskComposerStatusChoices,
 	getTaskComposerTypeChoices,
 	openTaskComposer,
+	stripInjectedTabs,
 	TaskComposerController,
 	toTaskCreateInput,
 } from "../ui/components/task-composer.ts";
@@ -96,6 +100,26 @@ describe("TUI task composer model", () => {
 
 		expect(choices.map((choice) => choice.value)).toEqual(["Draft", "Backlog", "Doing", "Done"]);
 		expect(values.status).toBe("Backlog");
+	});
+
+	it("rests on canonical To Do even when it is not first, matching the CLI wizard", () => {
+		expect(createTaskComposerValues(["Backlog", "To Do", "Done"]).status).toBe("To Do");
+	});
+
+	it("deletes the last character and last word from a value", () => {
+		expect(deleteLastChar("abc")).toBe("ab");
+		expect(deleteLastChar("")).toBe("");
+		expect(deleteLastWord("hello world")).toBe("hello ");
+		expect(deleteLastWord("hello ")).toBe("");
+		expect(deleteLastWord("one")).toBe("");
+		expect(deleteLastWord("")).toBe("");
+	});
+
+	it("strips tab characters the widget injects during field navigation", () => {
+		expect(stripInjectedTabs("hello\t")).toBe("hello");
+		expect(stripInjectedTabs("a\tb\tc")).toBe("abc");
+		expect(stripInjectedTabs("no tabs")).toBe("no tabs");
+		expect(stripInjectedTabs("")).toBe("");
 	});
 
 	it("uses configured type and priority choices with explicit unset options", () => {
@@ -834,6 +858,124 @@ describe("TUI task composer interaction", () => {
 
 			expect(await withTimeout(resultPromise, "composer cancel", 1000)).toBeNull();
 			expect(writes).toBe(0);
+		} finally {
+			screen.destroy();
+		}
+	});
+
+	it("edits Title and Description with Backspace and Ctrl+W", async () => {
+		const screen = createScreen({ smartCSR: false });
+		type EditableWidget = { getValue(): string; setValue(value: string): void; emit(event: string): void };
+		const focused = () => (screen as unknown as { focused?: EditableWidget }).focused;
+		try {
+			const resultPromise = openTaskComposer({
+				screen,
+				statuses: ["To Do", "Done"],
+				persist: async () => task(),
+			});
+			await new Promise<void>((resolve) => setImmediate(resolve));
+
+			const title = focused();
+			expect(title).toBeDefined();
+			title?.setValue("hello world");
+			title?.emit("key backspace");
+			expect(title?.getValue()).toBe("hello worl");
+			title?.emit("key C-w");
+			expect(title?.getValue()).toBe("hello ");
+
+			title?.emit("key tab");
+			const description = focused();
+			expect(description).not.toBe(title);
+			description?.setValue("alpha beta");
+			description?.emit("key backspace");
+			expect(description?.getValue()).toBe("alpha bet");
+			description?.emit("key C-w");
+			expect(description?.getValue()).toBe("alpha ");
+
+			focused()?.emit("key escape");
+			expect(await withTimeout(resultPromise, "edit inputs", 1000)).toBeNull();
+		} finally {
+			screen.destroy();
+		}
+	});
+
+	it("does not leak a tab character into a field when Tab navigates away", async () => {
+		const screen = createScreen({ smartCSR: false });
+		type EditableWidget = {
+			getValue(): string;
+			setValue(value: string): void;
+			emit(event: string, ...args: unknown[]): void;
+		};
+		const focused = () => (screen as unknown as { focused?: EditableWidget }).focused;
+		try {
+			const resultPromise = openTaskComposer({
+				screen,
+				statuses: ["To Do", "Done"],
+				persist: async () => task(),
+			});
+			// Let focusField -> readInput register the widget keypress listener.
+			await new Promise<void>((resolve) => setImmediate(resolve));
+			await new Promise<void>((resolve) => setImmediate(resolve));
+
+			const title = focused();
+			expect(title).toBeDefined();
+			title?.setValue("hello");
+			// The widget's own keypress listener runs before the composer's `key tab`
+			// handler and appends the raw tab character. Reproduce that ordering.
+			title?.emit("keypress", "\t", { name: "tab", full: "tab" });
+			title?.emit("key tab", "\t", { name: "tab", full: "tab" });
+
+			const description = focused();
+			expect(description).not.toBe(title);
+			expect(title?.getValue()).toBe("hello");
+
+			focused()?.emit("key escape");
+			expect(await withTimeout(resultPromise, "tab navigation", 1000)).toBeNull();
+		} finally {
+			screen.destroy();
+		}
+	});
+
+	it("preselects the current value so Enter keeps it instead of Draft", async () => {
+		const screen = createScreen({ smartCSR: false });
+		try {
+			const pickerPromise = openSingleSelectFilterPopup({
+				screen,
+				title: "Task Status",
+				choices: getTaskComposerStatusChoices(["To Do", "Done"]),
+				selectedValue: "To Do",
+			});
+			await new Promise<void>((resolve) => setImmediate(resolve));
+			(screen as unknown as { focused?: { emit(event: string): void } }).focused?.emit("key enter");
+			expect(await withTimeout(pickerPromise, "picker enter", 1000)).toBe("To Do");
+		} finally {
+			screen.destroy();
+		}
+	});
+
+	it("marks the focused control as inverted in the full layout so it is visible", async () => {
+		const screen = createScreen({ smartCSR: false });
+		Object.defineProperty(screen, "width", { configurable: true, value: 100, writable: true });
+		Object.defineProperty(screen, "height", { configurable: true, value: 30, writable: true });
+		type FocusWidget = { style?: { inverse?: boolean }; emit(event: string): void };
+		const focused = () => (screen as unknown as { focused?: FocusWidget }).focused;
+		try {
+			const resultPromise = openTaskComposer({
+				screen,
+				statuses: ["To Do", "Done"],
+				persist: async () => task(),
+			});
+			await new Promise<void>((resolve) => setImmediate(resolve));
+
+			// Title (a text input) is focused first: the field itself is not inverted.
+			expect(focused()?.style?.inverse).toBeFalsy();
+			// Tab to Description then Status; Status has no cursor, so it inverts.
+			focused()?.emit("key tab");
+			focused()?.emit("key tab");
+			expect(focused()?.style?.inverse).toBe(true);
+
+			focused()?.emit("key escape");
+			expect(await withTimeout(resultPromise, "focus visibility", 1000)).toBeNull();
 		} finally {
 			screen.destroy();
 		}
