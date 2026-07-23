@@ -4,8 +4,10 @@ import { Core } from "../core/backlog.ts";
 import { serializeTask } from "../markdown/serializer.ts";
 import type { Task } from "../types/index.ts";
 import {
+	createTaskFromBoard,
 	createUnifiedTaskUpdateCallbacks,
 	getDuplicateTaskStartupWarning,
+	getEmptyUnifiedViewMessage,
 	loadTasksForUnifiedView,
 	type UnifiedTaskState,
 } from "../ui/unified-view.ts";
@@ -46,6 +48,71 @@ describe("loadTasksForUnifiedView", () => {
 		expect(updates).toContain("step one");
 		expect(closed).toBe(true);
 		expect(result.statuses).toEqual(["To Do", "In Progress"]);
+	});
+
+	it("opens an unfiltered empty kanban but preserves other empty-result messages", () => {
+		expect(getEmptyUnifiedViewMessage("kanban")).toBeNull();
+		expect(getEmptyUnifiedViewMessage("task-list")).toBe("No tasks found.");
+		expect(getEmptyUnifiedViewMessage("kanban", "TASK-9")).toBe("No child tasks found for parent task TASK-9.");
+	});
+
+	it("loads autoCommit when each board task is submitted", async () => {
+		let currentAutoCommit = false;
+		const observedAutoCommit: boolean[] = [];
+		const boardCore = {
+			filesystem: {
+				loadConfig: async () => ({ autoCommit: currentAutoCommit }),
+			},
+			createTaskFromInput: async (_input: unknown, autoCommit: boolean) => {
+				observedAutoCommit.push(autoCommit);
+				return {
+					task: {
+						id: `TASK-${observedAutoCommit.length}`,
+						title: "Created",
+						status: "To Do",
+						assignee: [],
+						createdDate: "2026-07-17 00:00",
+						labels: [],
+						dependencies: [],
+					},
+				};
+			},
+		} as unknown as Core;
+
+		await createTaskFromBoard(boardCore, { title: "First" });
+		currentAutoCommit = true;
+		await createTaskFromBoard(boardCore, { title: "Second" });
+
+		expect(observedAutoCommit).toEqual([false, true]);
+	});
+
+	it("publishes a newly created board task to shared unified state before returning", async () => {
+		let state: UnifiedTaskState = { tasks: [] };
+		const callbacks = createUnifiedTaskUpdateCallbacks(
+			() => state,
+			(next) => {
+				state = next;
+			},
+		);
+		const created: Task = {
+			id: "TASK-1",
+			title: "First board task",
+			status: "To Do",
+			assignee: [],
+			createdDate: "2026-07-18 00:00",
+			labels: [],
+			dependencies: [],
+		};
+		const boardCore = {
+			filesystem: { loadConfig: async () => ({ autoCommit: false }) },
+			createTaskFromInput: async () => ({ task: created }),
+		} as unknown as Core;
+
+		const result = await createTaskFromBoard(boardCore, { title: created.title }, callbacks.onTaskAdded);
+
+		expect(result).toBe(created);
+		expect(state.tasks).toEqual([created]);
+		expect(state.selectedTask).toBeUndefined();
 	});
 
 	it("builds a concise board warning from active and completed collisions", async () => {

@@ -1,8 +1,8 @@
-import { rename as moveFile, stat, unlink } from "node:fs/promises";
+import { rename as moveFile, readFile, stat, unlink, writeFile } from "node:fs/promises";
 import { basename, isAbsolute, join, relative } from "node:path";
 import { DEFAULT_DIRECTORIES, DEFAULT_STATUSES, FALLBACK_STATUS } from "../constants/index.ts";
 import { FileSystem, isCreateLockError } from "../file-system/operations.ts";
-import { GitOperations } from "../git/operations.ts";
+import { type GitIndexEntry, GitOperations } from "../git/operations.ts";
 import {
 	type AcceptanceCriterion,
 	type BacklogConfig,
@@ -61,6 +61,7 @@ import {
 import { resolveTaskById } from "../utils/task-id.ts";
 import {
 	AmbiguousTaskIdError,
+	getDraftPath,
 	getTaskFilename,
 	getTaskPath,
 	normalizeTaskId,
@@ -112,6 +113,20 @@ interface BlessedScreen {
 	width: number;
 	height: number;
 	emit(event: string): void;
+}
+
+interface CreatedTaskWrite {
+	filePath: string;
+	createdContent: Buffer;
+	previousPath: string | null;
+	previousContent: Buffer | null;
+	previousIndexEntries?: GitIndexEntry[];
+	generatedIndexEntries?: GitIndexEntry[];
+}
+
+interface CreatedTaskRollbackResult {
+	indexRestored: boolean;
+	workingPathRestored: boolean;
 }
 
 interface TaskQueryOptions {
@@ -1252,7 +1267,8 @@ export class Core {
 		task: Task,
 		filepath: string,
 		isDraft: boolean,
-		autoCommit?: boolean,
+		autoCommit: boolean,
+		write?: CreatedTaskWrite,
 	): Promise<Task | null> {
 		const savedTask = isDraft ? await this.fs.loadDraft(task.id) : await this.fs.loadTask(task.id);
 
@@ -1260,16 +1276,76 @@ export class Core {
 			this.contentStore.upsertTask(savedTask);
 		}
 
-		if (await this.shouldAutoCommit(autoCommit)) {
+		if (autoCommit) {
 			if (isDraft) {
 				await this.git.addFile(filepath);
+				if (write) write.generatedIndexEntries = await this.git.getIndexEntries(filepath);
 				await this.git.commitTaskChange(task.id, `Create draft ${task.id}`, filepath);
 			} else {
-				await this.git.addAndCommitTaskFile(task.id, filepath, "create");
+				await this.git.addAndCommitTaskFile(task.id, filepath, "create", (entries) => {
+					if (write) write.generatedIndexEntries = entries;
+				});
 			}
 		}
 
 		return savedTask;
+	}
+
+	private async readFileIfPresent(filePath: string | null): Promise<Buffer | null> {
+		if (!filePath) return null;
+		try {
+			return await readFile(filePath);
+		} catch (error) {
+			if ((error as NodeJS.ErrnoException).code === "ENOENT") return null;
+			throw error;
+		}
+	}
+
+	private async rollbackCreatedTask(write: CreatedTaskWrite): Promise<CreatedTaskRollbackResult> {
+		let indexRestored = true;
+		if (write.generatedIndexEntries) {
+			indexRestored = await this.git.restoreIndexEntriesIfMatches(
+				write.filePath,
+				write.generatedIndexEntries,
+				write.previousIndexEntries ?? [],
+			);
+		}
+
+		const currentContent = await this.readFileIfPresent(write.filePath);
+		const stillOwnsCreatedPath = currentContent?.equals(write.createdContent) ?? false;
+		let workingPathRestored = false;
+		if (currentContent === null) {
+			if (write.previousPath === write.filePath && write.previousContent) {
+				try {
+					await writeFile(write.filePath, write.previousContent, { flag: "wx" });
+					workingPathRestored = true;
+				} catch (error) {
+					if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
+				}
+			} else {
+				workingPathRestored = true;
+			}
+		} else if (stillOwnsCreatedPath && indexRestored) {
+			if (write.previousPath === write.filePath && write.previousContent) {
+				await writeFile(write.filePath, write.previousContent);
+			} else {
+				await unlink(write.filePath);
+			}
+			workingPathRestored = true;
+		}
+
+		if (write.previousPath && write.previousPath !== write.filePath && write.previousContent) {
+			const currentPreviousContent = await this.readFileIfPresent(write.previousPath);
+			if (currentPreviousContent === null) {
+				await writeFile(write.previousPath, write.previousContent);
+			}
+		}
+
+		if (this.contentStore) {
+			await this.contentStore.refreshTasks();
+		}
+
+		return { indexRestored, workingPathRestored };
 	}
 
 	async createTaskFromInput(input: TaskCreateInput, autoCommit?: boolean): Promise<{ task: Task; filePath?: string }> {
@@ -1337,8 +1413,9 @@ export class Core {
 			disableDefaults: input.disableDefinitionOfDoneDefaults,
 		});
 		const resolvedStatus = isDraft ? "Draft" : status || config?.defaultStatus || FALLBACK_STATUS;
+		const autoCommitEnabled = await this.shouldAutoCommit(autoCommit);
 
-		const { task, filePath } = await this.withCreateLock(async () => {
+		const { task, write } = await this.withCreateLock(async () => {
 			const parentTaskId = requestedParentTaskId
 				? await this.resolveParentTaskIdForCreate(requestedParentTaskId)
 				: undefined;
@@ -1372,12 +1449,52 @@ export class Core {
 				...(definitionOfDoneItems && definitionOfDoneItems.length > 0 && { definitionOfDoneItems }),
 			};
 
+			const resolvedPreviousPath = isDraft ? await getDraftPath(task.id, this) : await getTaskPath(task.id, this);
+			const targetPath = await this.fs.getTaskWritePath(task, isDraft);
+			const targetContent = await this.readFileIfPresent(targetPath);
+			const previousPath = targetContent ? targetPath : resolvedPreviousPath;
+			const previousContent = targetContent ?? (await this.readFileIfPresent(resolvedPreviousPath));
+			const previousIndexEntries = autoCommitEnabled ? await this.git.getIndexEntries(targetPath) : undefined;
 			const filePath = await this.writePreparedTask(task, isDraft);
-			return { task, filePath };
+			const createdContent = await readFile(filePath);
+			const write: CreatedTaskWrite = {
+				filePath,
+				createdContent,
+				previousPath,
+				previousContent,
+				previousIndexEntries,
+			};
+			return {
+				task,
+				write,
+			};
 		});
 
-		const savedTask = await this.finalizeCreatedTask(task, filePath, isDraft, autoCommit);
-		return { task: savedTask ?? task, filePath };
+		try {
+			const savedTask = await this.finalizeCreatedTask(task, write.filePath, isDraft, autoCommitEnabled, write);
+			return { task: savedTask ?? task, filePath: write.filePath };
+		} catch (error) {
+			let rollback: CreatedTaskRollbackResult;
+			try {
+				rollback = await this.rollbackCreatedTask(write);
+			} catch (rollbackError) {
+				const message = rollbackError instanceof Error ? rollbackError.message : String(rollbackError);
+				throw new Error(`Task creation failed and cleanup also failed: ${message}`, { cause: error });
+			}
+			if (!rollback.workingPathRestored || !rollback.indexRestored) {
+				if (!rollback.indexRestored) {
+					throw new Error(
+						`Task creation failed, and Backlog no longer owned the staged entry for ${write.filePath}. The task file and staged Git state were preserved, ${task.id} remains in use, and manual Git review is required before retrying.`,
+						{ cause: error },
+					);
+				}
+				throw new Error(
+					`Task creation failed, and cleanup could not safely remove the changed file at ${write.filePath}. Your changes were preserved. Review or remove the preserved file before retrying because ${task.id} remains in use.`,
+					{ cause: error },
+				);
+			}
+			throw error;
+		}
 	}
 
 	private async resolveParentTaskIdForCreate(parentTaskId: string): Promise<string> {
@@ -1397,8 +1514,9 @@ export class Core {
 			task.status = config?.defaultStatus || FALLBACK_STATUS;
 		}
 
+		const autoCommitEnabled = await this.shouldAutoCommit(autoCommit);
 		const filepath = await this.writePreparedTask(task, false);
-		await this.finalizeCreatedTask(task, filepath, false, autoCommit);
+		await this.finalizeCreatedTask(task, filepath, false, autoCommitEnabled);
 
 		return filepath;
 	}

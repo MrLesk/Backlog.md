@@ -23,6 +23,7 @@ declare module "neo-neo-bblessed" {
 	export interface ScreenInterface {
 		program: ProgramInterface;
 		key(keys: string | string[], callback: (...args: unknown[]) => void): void;
+		unkey(keys: string | string[], callback: (...args: unknown[]) => void): void;
 		on(event: string, callback: (...args: unknown[]) => void): void;
 		append(el: ElementInterface): void;
 		render(): void;
@@ -40,6 +41,7 @@ declare module "neo-neo-bblessed" {
 		setContent(content: string): void;
 		focus(): void;
 		key(keys: string | string[], callback: (...args: unknown[]) => void): void;
+		unkey(keys: string | string[], callback: (...args: unknown[]) => void): void;
 		on(
 			event: string,
 			callback:
@@ -89,6 +91,7 @@ declare module "neo-neo-bblessed" {
 		cancel(): void;
 		readInput(callback?: (error?: Error, value?: string) => void): void;
 	}
+	export interface TextareaInterface extends TextboxInterface {}
 
 	export function screen(options?: ScreenOptions): ScreenInterface;
 	export function program(options?: Record<string, unknown>): ProgramInterface;
@@ -99,4 +102,5 @@ declare module "neo-neo-bblessed" {
 	export function scrollabletext(options?: Record<string, unknown>): ScrollableTextInterface;
 	export function log(options?: Record<string, unknown>): LogInterface;
 	export function textbox(options?: Record<string, unknown>): TextboxInterface;
+	export function textarea(options?: Record<string, unknown>): TextareaInterface;
 }

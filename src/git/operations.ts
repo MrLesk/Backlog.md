@@ -1,4 +1,5 @@
-import { realpath, stat } from "node:fs/promises";
+import { mkdtemp, realpath, rm, stat, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
 import { basename, dirname, isAbsolute, join, relative } from "node:path";
 import { $ } from "bun";
 import type { BacklogConfig } from "../types/index.ts";
@@ -21,10 +22,43 @@ export interface GitTreeEntry {
 	objectId: string;
 }
 
+export interface GitIndexEntry {
+	mode: string;
+	objectId: string;
+	stage: number;
+}
+
+function indexEntriesEqual(left: readonly GitIndexEntry[], right: readonly GitIndexEntry[]): boolean {
+	return (
+		left.length === right.length &&
+		left.every(
+			(entry, index) =>
+				entry.mode === right[index]?.mode &&
+				entry.objectId === right[index]?.objectId &&
+				entry.stage === right[index]?.stage,
+		)
+	);
+}
+
+function parseIndexEntries(output: string): GitIndexEntry[] {
+	return output
+		.split("\0")
+		.filter(Boolean)
+		.flatMap((record) => {
+			const tabIndex = record.indexOf("\t");
+			if (tabIndex < 0) return [];
+			const [mode, objectId, stageText] = record.slice(0, tabIndex).split(" ");
+			const stage = Number(stageText);
+			if (!mode || !objectId || !Number.isInteger(stage)) return [];
+			return [{ mode, objectId, stage }];
+		});
+}
+
 export class GitOperations {
 	private projectRoot: string;
 	private config: BacklogConfig | null = null;
 	private readonly configLoader?: GitConfigLoader;
+	private hookRunSupported?: boolean;
 
 	constructor(projectRoot: string, config: BacklogConfig | null = null, configLoader?: GitConfigLoader) {
 		this.projectRoot = projectRoot;
@@ -81,6 +115,10 @@ export class GitOperations {
 
 	async commitTaskChange(taskId: string, message: string, filePath?: string): Promise<void> {
 		const commitMessage = `${taskId} - ${message}`;
+		if (filePath) {
+			await this.commitFiles(commitMessage, [filePath]);
+			return;
+		}
 		const args = ["commit", "-m", commitMessage];
 		if (this.config?.bypassGitHooks) {
 			args.push("--no-verify");
@@ -135,12 +173,224 @@ export class GitOperations {
 			return;
 		}
 
-		const args = ["commit", "-m", message];
-		if (this.config?.bypassGitHooks) {
-			args.push("--no-verify");
+		await this.assertNoCommitOperationInProgress(resolvedRepoRoot);
+
+		let ownedEntries = new Map<string, GitIndexEntry[]>();
+		for (const relativePath of uniqueRelativePaths) {
+			ownedEntries.set(relativePath, await this.getIndexEntries(join(resolvedRepoRoot, relativePath)));
 		}
-		args.push("--", ...uniqueRelativePaths);
-		await this.execGit(args, { cwd: resolvedRepoRoot });
+		let commitEntries = ownedEntries;
+
+		const temporaryDirectory = await mkdtemp(join(tmpdir(), "backlog-git-commit-"));
+		const temporaryIndexEnv = { GIT_INDEX_FILE: join(temporaryDirectory, "index") };
+		const messagePath = join(temporaryDirectory, "message");
+		try {
+			const signCommit = await this.shouldSignCommit(resolvedRepoRoot);
+			let baseHead = await this.resolveHead(resolvedRepoRoot);
+			await this.populateTemporaryIndex(resolvedRepoRoot, temporaryIndexEnv, baseHead, commitEntries);
+			await writeFile(messagePath, `${message}\n`);
+			if (!this.config?.bypassGitHooks) {
+				await this.runCommitHook("pre-commit", [], resolvedRepoRoot, temporaryIndexEnv);
+			}
+			commitEntries = await this.readSelectedIndexEntries(uniqueRelativePaths, resolvedRepoRoot, temporaryIndexEnv);
+			await this.runCommitHook("prepare-commit-msg", [messagePath, "message"], resolvedRepoRoot, temporaryIndexEnv);
+			if (!this.config?.bypassGitHooks) {
+				await this.runCommitHook("commit-msg", [messagePath], resolvedRepoRoot, temporaryIndexEnv);
+			}
+			let lastHeadUpdateError: Error | undefined;
+
+			for (let attempt = 1; attempt <= 3; attempt += 1) {
+				await this.assertNoCommitOperationInProgress(resolvedRepoRoot);
+				baseHead = await this.resolveHead(resolvedRepoRoot);
+				await this.populateTemporaryIndex(resolvedRepoRoot, temporaryIndexEnv, baseHead, commitEntries);
+				const { stdout: treeOutput } = await this.execGit(["write-tree"], {
+					cwd: resolvedRepoRoot,
+					env: temporaryIndexEnv,
+				});
+				const treeId = treeOutput.trim();
+				if (baseHead) {
+					const { stdout: baseTreeOutput } = await this.execGit(["rev-parse", `${baseHead}^{tree}`], {
+						cwd: resolvedRepoRoot,
+						readOnly: true,
+					});
+					if (treeId === baseTreeOutput.trim()) {
+						throw new Error("No staged changes to commit for the selected paths");
+					}
+				}
+
+				const commitArgs = ["commit-tree", ...(signCommit ? ["-S"] : []), treeId];
+				if (baseHead) commitArgs.push("-p", baseHead);
+				commitArgs.push("-F", messagePath);
+				const { stdout: commitOutput } = await this.execGit(commitArgs, {
+					cwd: resolvedRepoRoot,
+					env: temporaryIndexEnv,
+				});
+				const commitId = commitOutput.trim();
+
+				for (const relativePath of uniqueRelativePaths) {
+					const reconciled = await this.restoreIndexEntriesIfMatches(
+						join(resolvedRepoRoot, relativePath),
+						ownedEntries.get(relativePath) ?? [],
+						commitEntries.get(relativePath) ?? [],
+					);
+					if (!reconciled) {
+						throw new Error(`Git index changed before the selected commit could be finalized: ${relativePath}`);
+					}
+				}
+				ownedEntries = commitEntries;
+
+				try {
+					await this.execGit(
+						["update-ref", "-m", `commit: ${message.split("\n", 1)[0]}`, "HEAD", commitId, baseHead ?? ""],
+						{
+							cwd: resolvedRepoRoot,
+						},
+					);
+					await this.runCommitHook("post-commit", [], resolvedRepoRoot, {}).catch(() => undefined);
+					return;
+				} catch (error) {
+					lastHeadUpdateError = error instanceof Error ? error : new Error(String(error));
+					if ((await this.resolveHead(resolvedRepoRoot)) === baseHead) throw lastHeadUpdateError;
+				}
+			}
+
+			throw new Error(`Git HEAD kept changing while committing selected paths: ${lastHeadUpdateError?.message}`);
+		} finally {
+			await rm(temporaryDirectory, { recursive: true, force: true }).catch(() => undefined);
+		}
+	}
+
+	private async assertNoCommitOperationInProgress(repoRoot: string): Promise<void> {
+		const operationMarkers = [
+			{ path: "MERGE_HEAD", name: "merge" },
+			{ path: "rebase-merge", name: "rebase" },
+			{ path: "rebase-apply", name: "rebase" },
+			{ path: "CHERRY_PICK_HEAD", name: "cherry-pick" },
+			{ path: "REVERT_HEAD", name: "revert" },
+		] as const;
+
+		for (const marker of operationMarkers) {
+			const { stdout } = await this.execGit(["rev-parse", "--git-path", marker.path], {
+				cwd: repoRoot,
+				readOnly: true,
+			});
+			const configuredPath = stdout.trim();
+			if (!configuredPath) continue;
+			const markerPath = isAbsolute(configuredPath) ? configuredPath : join(repoRoot, configuredPath);
+			if (await stat(markerPath).catch(() => null)) {
+				throw new Error(`Cannot auto-commit selected files while a Git ${marker.name} is in progress`);
+			}
+		}
+	}
+
+	private async resolveHead(repoRoot: string): Promise<string | null> {
+		try {
+			const { stdout } = await this.execGit(["rev-parse", "--verify", "HEAD"], { cwd: repoRoot, readOnly: true });
+			return stdout.trim() || null;
+		} catch {
+			return null;
+		}
+	}
+
+	private async shouldSignCommit(repoRoot: string): Promise<boolean> {
+		const { stdout } = await this.execGit(["config", "--bool", "--get", "commit.gpgSign"], {
+			cwd: repoRoot,
+			readOnly: true,
+			acceptedExitCodes: [1],
+		});
+		return stdout.trim() === "true";
+	}
+
+	private async readSelectedIndexEntries(
+		relativePaths: readonly string[],
+		repoRoot: string,
+		env: Record<string, string>,
+	): Promise<Map<string, GitIndexEntry[]>> {
+		const entries = new Map<string, GitIndexEntry[]>();
+		for (const relativePath of relativePaths) {
+			const { stdout } = await this.execGit(["ls-files", "-s", "-z", "--", relativePath], {
+				cwd: repoRoot,
+				readOnly: true,
+				env,
+			});
+			entries.set(relativePath, parseIndexEntries(stdout));
+		}
+		return entries;
+	}
+
+	private async populateTemporaryIndex(
+		repoRoot: string,
+		env: Record<string, string>,
+		baseHead: string | null,
+		selectedEntries: ReadonlyMap<string, readonly GitIndexEntry[]>,
+	): Promise<void> {
+		await this.execGit(baseHead ? ["read-tree", baseHead] : ["read-tree", "--empty"], { cwd: repoRoot, env });
+		for (const [relativePath, entries] of selectedEntries) {
+			await this.execGit(["update-index", "--force-remove", "--", relativePath], { cwd: repoRoot, env });
+			if (entries.length === 0) continue;
+			await this.execGit(["update-index", "-z", "--index-info"], {
+				cwd: repoRoot,
+				env,
+				input: entries.map((entry) => `${entry.mode} ${entry.objectId} ${entry.stage}\t${relativePath}\0`).join(""),
+			});
+		}
+	}
+
+	private async runCommitHook(
+		hook: string,
+		args: readonly string[],
+		repoRoot: string,
+		env: Record<string, string>,
+	): Promise<void> {
+		const hookEnv = { ...env, GIT_EDITOR: ":" };
+		if (await this.supportsHookRun(repoRoot)) {
+			await this.execGit(["hook", "run", "--ignore-missing", hook, ...(args.length > 0 ? ["--", ...args] : [])], {
+				cwd: repoRoot,
+				env: hookEnv,
+			});
+			return;
+		}
+		await this.runLegacyCommitHook(hook, args, repoRoot, hookEnv);
+	}
+
+	private async supportsHookRun(repoRoot: string): Promise<boolean> {
+		if (this.hookRunSupported !== undefined) return this.hookRunSupported;
+		try {
+			const { stdout } = await this.execGit(["version"], { cwd: repoRoot, readOnly: true });
+			const match = stdout.match(/git version (\d+)\.(\d+)/);
+			const major = Number(match?.[1]);
+			const minor = Number(match?.[2]);
+			this.hookRunSupported =
+				Number.isInteger(major) && Number.isInteger(minor) && (major > 2 || (major === 2 && minor >= 36));
+		} catch {
+			this.hookRunSupported = false;
+		}
+		return this.hookRunSupported;
+	}
+
+	private async runLegacyCommitHook(
+		hook: string,
+		args: readonly string[],
+		repoRoot: string,
+		env: Record<string, string>,
+	): Promise<void> {
+		const { stdout } = await this.execGit(["rev-parse", "--git-path", `hooks/${hook}`], {
+			cwd: repoRoot,
+			readOnly: true,
+		});
+		const configuredPath = stdout.trim();
+		const hookPath = isAbsolute(configuredPath) ? configuredPath : join(repoRoot, configuredPath);
+		const hookStat = await stat(hookPath).catch((error) => {
+			if ((error as NodeJS.ErrnoException).code === "ENOENT") return;
+			throw error;
+		});
+		if (!hookStat) return;
+		if (!hookStat.isFile() || (process.platform !== "win32" && (hookStat.mode & 0o111) === 0)) return;
+
+		await this.execGit(["-c", 'alias.backlog-run-hook=!f() { "$@" 1>&2; }; f', "backlog-run-hook", hookPath, ...args], {
+			cwd: repoRoot,
+			env,
+		});
 	}
 
 	async resetIndex(repoRoot?: string | null): Promise<void> {
@@ -173,6 +423,48 @@ export class GitOperations {
 		}
 
 		await this.execGit(["reset", "HEAD", "--", ...uniqueRelativePaths], { cwd: resolvedRepoRoot });
+	}
+
+	async getIndexEntries(filePath: string): Promise<GitIndexEntry[]> {
+		const context = await this.getPathContext(filePath);
+		if (!context || !(await this.isRepository(context.repoRoot))) {
+			return [];
+		}
+		const { stdout } = await this.execGit(["ls-files", "-s", "-z", "--", context.relativePath], {
+			cwd: context.repoRoot,
+			readOnly: true,
+		});
+		return parseIndexEntries(stdout);
+	}
+
+	async restoreIndexEntriesIfMatches(
+		filePath: string,
+		expectedEntries: readonly GitIndexEntry[],
+		restoreEntries: readonly GitIndexEntry[],
+	): Promise<boolean> {
+		const context = await this.getPathContext(filePath);
+		if (!context || !(await this.isRepository(context.repoRoot))) {
+			return false;
+		}
+		const currentEntries = await this.getIndexEntries(filePath);
+		if (!indexEntriesEqual(currentEntries, expectedEntries)) {
+			return false;
+		}
+		if (indexEntriesEqual(currentEntries, restoreEntries)) {
+			return true;
+		}
+
+		const objectIdLength = expectedEntries[0]?.objectId.length ?? restoreEntries[0]?.objectId.length ?? 40;
+		const zeroObjectId = "0".repeat(objectIdLength);
+		const records = [`0 ${zeroObjectId}\t${context.relativePath}\0`];
+		for (const entry of restoreEntries) {
+			records.push(`${entry.mode} ${entry.objectId} ${entry.stage}\t${context.relativePath}\0`);
+		}
+		await this.execGit(["update-index", "-z", "--index-info"], {
+			cwd: context.repoRoot,
+			input: records.join(""),
+		});
+		return true;
 	}
 
 	async commitStagedChanges(message: string, repoRoot?: string | null): Promise<void> {
@@ -336,7 +628,12 @@ export class GitOperations {
 		const lowerMessage = message.toLowerCase();
 		return networkErrorPatterns.some((pattern) => lowerMessage.includes(pattern));
 	}
-	async addAndCommitTaskFile(taskId: string, filePath: string, action: "create" | "update" | "archive"): Promise<void> {
+	async addAndCommitTaskFile(
+		taskId: string,
+		filePath: string,
+		action: "create" | "update" | "archive",
+		onStaged?: (entries: GitIndexEntry[]) => void,
+	): Promise<void> {
 		const actionMessages = {
 			create: `Create task ${taskId}`,
 			update: `Update task ${taskId}`,
@@ -349,18 +646,32 @@ export class GitOperations {
 			return;
 		}
 		const pathForAdd = context?.relativePath ?? relative(this.projectRoot, filePath).replace(/\\/g, "/");
+		const expectedWorkingHash = await this.hashFile(filePath);
+		const initialIndexEntries = await this.getIndexEntries(filePath);
+		let expectedIndexEntries = initialIndexEntries;
+		let lastError: Error | undefined;
 
-		// Retry git operations to handle transient failures
-		await this.retryGitOperation(async () => {
-			// Reset index to ensure only the specific file is staged
-			await this.resetIndex(repoRoot);
+		for (let attempt = 1; attempt <= 3; attempt += 1) {
+			if ((await this.hashFile(filePath)) !== expectedWorkingHash) {
+				throw lastError ?? new Error(`Task file changed before it could be committed: ${filePath}`);
+			}
+			try {
+				await this.execGit(["add", pathForAdd], { cwd: repoRoot });
+				expectedIndexEntries = await this.getIndexEntries(filePath);
+				onStaged?.(expectedIndexEntries);
+				await this.commitFiles(actionMessages[action], [filePath], repoRoot);
+				return;
+			} catch (error) {
+				lastError = error instanceof Error ? error : new Error(String(error));
+				if (attempt === 3) break;
+				const workingOwned = (await this.hashFile(filePath)) === expectedWorkingHash;
+				const indexOwned = indexEntriesEqual(await this.getIndexEntries(filePath), expectedIndexEntries);
+				if (!workingOwned || !indexOwned) throw lastError;
+				await new Promise((resolve) => setTimeout(resolve, 2 ** (attempt - 1) * 100));
+			}
+		}
 
-			// Stage only the specific task file
-			await this.execGit(["add", pathForAdd], { cwd: repoRoot });
-
-			// Commit only the staged file
-			await this.commitStagedChanges(actionMessages[action], repoRoot);
-		}, `commit task file ${filePath}`);
+		throw new Error(`Git operation 'commit task file ${filePath}' failed after 3 attempts: ${lastError?.message}`);
 	}
 
 	async stageBacklogDirectory(backlogDir = "backlog"): Promise<string | null> {
@@ -767,27 +1078,39 @@ export class GitOperations {
 
 	private async execGit(
 		args: string[],
-		options?: { readOnly?: boolean; cwd?: string },
+		options?: {
+			readOnly?: boolean;
+			cwd?: string;
+			input?: string;
+			env?: Record<string, string>;
+			acceptedExitCodes?: readonly number[];
+		},
 	): Promise<{ stdout: string; stderr: string }> {
 		// Use Bun.spawn so we can explicitly control stdio behaviour on Windows. When running
 		// under the MCP stdio transport, delegating to git with inherited stdin can deadlock.
-		const env = options?.readOnly
-			? ({ ...process.env, GIT_OPTIONAL_LOCKS: "0" } as Record<string, string>)
-			: (process.env as Record<string, string>);
+		const env = {
+			...process.env,
+			...(options?.readOnly ? { GIT_OPTIONAL_LOCKS: "0" } : {}),
+			...options?.env,
+		} as Record<string, string>;
 
 		const subprocess = Bun.spawn(["git", ...args], {
 			cwd: options?.cwd ?? this.projectRoot,
-			stdin: "ignore", // avoid inheriting MCP stdio pipes which can block on Windows
+			stdin: options?.input === undefined ? "ignore" : "pipe",
 			stdout: "pipe",
 			stderr: "pipe",
 			env,
 		});
+		if (options?.input !== undefined && subprocess.stdin) {
+			subprocess.stdin.write(options.input);
+			await subprocess.stdin.end();
+		}
 
 		const stdoutPromise = subprocess.stdout ? new Response(subprocess.stdout).text() : Promise.resolve("");
 		const stderrPromise = subprocess.stderr ? new Response(subprocess.stderr).text() : Promise.resolve("");
 		const [exitCode, stdout, stderr] = await Promise.all([subprocess.exited, stdoutPromise, stderrPromise]);
 
-		if (exitCode !== 0) {
+		if (exitCode !== 0 && !options?.acceptedExitCodes?.includes(exitCode)) {
 			throw new Error(`Git command failed (exit code ${exitCode}): git ${args.join(" ")}\n${stderr}`);
 		}
 

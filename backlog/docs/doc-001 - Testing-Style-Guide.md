@@ -3,7 +3,7 @@ id: doc-001
 title: Testing Style Guide
 type: guide
 created_date: '2025-07-21'
-updated_date: '2026-07-11 18:35'
+updated_date: '2026-07-16 22:20'
 ---
 # Testing Style Guide
 
@@ -96,7 +96,7 @@ Tests that change `process.env`, the working directory, console methods, clocks,
 
 ## Platform coverage
 
-Run portable behavior on every supported CI operating system. Use platform-specific skips only when the operating system cannot provide the underlying capability, and record the retained coverage on supported platforms. Windows resource pressure is handled by CI sharding; it is not a reason to replace CLI execution with Core simulations.
+Run portable behavior on every supported CI operating system. Use platform-specific skips only when the operating system cannot provide the underlying capability, and record the retained coverage on supported platforms. CI runs one full test job per supported operating system with the same test command and independent reporting; Windows resource pressure is not a reason to replace CLI execution with Core simulations.
 
 ## Verification
 
