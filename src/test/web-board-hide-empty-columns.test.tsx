@@ -108,4 +108,30 @@ describe("Board hideEmptyColumns", () => {
 		const container = renderBoard({ hideEmptyColumns: false });
 		expect(container.querySelector('button[aria-pressed]')).toBeFalsy();
 	});
+
+	it("does not re-show hidden columns synchronously on dragstart, only after the drag is committed", async () => {
+		const container = renderBoard({ hideEmptyColumns: true });
+		const card = container.querySelector('[draggable="true"]') as HTMLElement | null;
+		expect(card).toBeTruthy();
+
+		const dragStart = new window.Event("dragstart", { bubbles: true });
+		Object.defineProperty(dragStart, "dataTransfer", {
+			value: { setData: () => {}, effectAllowed: "" },
+		});
+
+		// Synchronously after dragstart the empty columns must stay hidden;
+		// mutating the board here would cancel the native drag in the browser.
+		act(() => {
+			card?.dispatchEvent(dragStart);
+		});
+		expect(container.textContent).not.toContain("In Progress");
+		expect(container.textContent).not.toContain("Done");
+
+		// Once the drag is committed (next task), empty columns reappear as drop targets.
+		await act(async () => {
+			await new Promise(resolve => setTimeout(resolve, 0));
+		});
+		expect(container.textContent).toContain("In Progress");
+		expect(container.textContent).toContain("Done");
+	});
 });
