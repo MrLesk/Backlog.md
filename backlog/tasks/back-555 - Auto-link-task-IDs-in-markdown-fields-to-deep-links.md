@@ -1,7 +1,7 @@
 ---
 id: BACK-555
 title: Auto-link task IDs in markdown fields to deep links
-status: In Progress
+status: Done
 assignee:
   - '@cottrell'
 created_date: '2026-07-24 07:21'
@@ -21,16 +21,16 @@ Automatically detect inline task ID references (e.g. TASK-123, TASK-358.8) in ma
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 Task IDs in markdown content (e.g., TASK-123, BACK-456, TASK-358.8) automatically render as clickable links to /tasks/<ID>
-- [ ] #2 Task ID links are not rendered inside code blocks or existing markdown links
-- [ ] #3 Tests cover auto-linking of task IDs in Web markdown rendering
+- [x] #1 Task IDs in markdown content (e.g., TASK-123, BACK-456, TASK-358.8) automatically render as clickable links to /tasks/<ID>
+- [x] #2 Task ID links are not rendered inside code blocks or existing markdown links
+- [x] #3 Tests cover auto-linking of task IDs in Web markdown rendering
 <!-- AC:END -->
 
 ## Definition of Done
 <!-- DOD:BEGIN -->
-- [ ] #1 bunx tsc --noEmit passes when TypeScript touched
-- [ ] #2 bun run check . passes when formatting/linting touched
-- [ ] #3 bun test (or scoped test) passes
+- [x] #1 bunx tsc --noEmit passes when TypeScript touched
+- [x] #2 bun run check . passes when formatting/linting touched
+- [x] #3 bun test (or scoped test) passes
 <!-- DOD:END -->
 
 ## Implementation Plan
@@ -41,3 +41,15 @@ Automatically detect inline task ID references (e.g. TASK-123, TASK-358.8) in ma
 3. Add web tests for MermaidMarkdown autolinking.
 4. Verify using bun test, bunx tsc --noEmit, and bun run check .
 <!-- SECTION:PLAN:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+Validated with bun test src/test/mermaid-markdown.test.tsx, bunx tsc --noEmit, and bun run check .
+<!-- SECTION:NOTES:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+Implemented automatic inline task ID autolinking to /tasks/:id in MermaidMarkdown. Verified via unit tests, TypeScript type checking, and Biome checks.
+<!-- SECTION:FINAL_SUMMARY:END -->
