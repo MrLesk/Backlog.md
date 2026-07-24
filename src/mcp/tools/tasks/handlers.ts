@@ -18,7 +18,7 @@ import {
 import { resolveMilestoneInputForStorage } from "../../../utils/milestone-storage.ts";
 import { getTaskReadiness } from "../../../utils/readiness.ts";
 import { buildTaskUpdateInput } from "../../../utils/task-edit-builder.ts";
-import { applyTaskFilters, createTaskSearchIndex } from "../../../utils/task-search.ts";
+import { createTaskSearchIndex } from "../../../utils/task-search.ts";
 import { sortByOrdinalAndPriority } from "../../../utils/task-sorting.ts";
 import { getTerminalStatus, isTerminalStatus } from "../../../utils/terminal-status.ts";
 import { BacklogToolError } from "../../errors/mcp-errors.ts";
@@ -255,13 +255,17 @@ export class TaskHandlers {
 			filters.ready = true;
 		}
 
-		const allTasks = await this.core.loadTasks(undefined, undefined, { includeCompleted: true });
-		const statuses: string[] = config?.statuses ?? [...DEFAULT_STATUSES];
-		const tasks = applyTaskFilters(allTasks, {
-			...filters,
+		let tasks = await this.core.queryTasks({
 			query: args.search,
-			statuses,
+			filters: Object.keys(filters).length > 0 ? filters : undefined,
+			includeCrossBranch: false,
 		});
+		const statuses: string[] = config?.statuses ?? [...DEFAULT_STATUSES];
+
+		if (args.ready) {
+			const fullTasks = await this.core.loadTasks(undefined, undefined, { includeCompleted: true });
+			tasks = tasks.filter((task) => getTaskReadiness(task, fullTasks, statuses).isReady);
+		}
 
 		let filteredByLabels = tasks.filter((task) => isLocalEditableTask(task));
 		const labelFilters = args.labels ?? [];

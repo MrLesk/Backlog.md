@@ -78,6 +78,7 @@ import { resolveMilestoneInputForStorage } from "./utils/milestone-storage.ts";
 import { hasAnyPrefix } from "./utils/prefix-config.ts";
 import { formatValidPriorityValues, getPriorityOptions, resolvePriorityValue } from "./utils/priority-config.ts";
 import { type ReadOutputMode, resolveReadOutputMode } from "./utils/read-output-mode.ts";
+import { getTaskReadiness } from "./utils/readiness.ts";
 import { type RuntimeCwdResolution, resolveRuntimeCwd } from "./utils/runtime-cwd.ts";
 import { formatValidStatuses, getCanonicalStatus, getCanonicalStatuses, getValidStatuses } from "./utils/status.ts";
 import {
@@ -89,7 +90,6 @@ import {
 } from "./utils/task-builders.ts";
 import { buildTaskUpdateInput } from "./utils/task-edit-builder.ts";
 import { normalizeTaskId, taskIdsEqual } from "./utils/task-path.ts";
-import { applyTaskFilters } from "./utils/task-search.ts";
 import { sortTasks } from "./utils/task-sorting.ts";
 import { formatValidTaskTypeValues, getTaskTypeValues, resolveTaskTypeValues } from "./utils/task-type-config.ts";
 import { getTerminalStatus, isTerminalStatus } from "./utils/terminal-status.ts";
@@ -2417,14 +2417,18 @@ addHelpSchema(taskCmd.command("list"), {
 		}
 
 		if (outputMode !== "interactive") {
-			const allTasks = await core.loadTasks(undefined, undefined, { includeCompleted: true });
+			let tasks = await core.queryTasks({
+				query: searchQuery || undefined,
+				filters: Object.keys(baseFilters).length > 0 ? baseFilters : undefined,
+				includeCrossBranch: false,
+			});
 			const config = await core.filesystem.loadConfig();
 			const statuses: string[] = config?.statuses ?? [...DEFAULT_STATUSES];
-			const tasks = applyTaskFilters(allTasks, {
-				...baseFilters,
-				query: searchQuery || undefined,
-				statuses,
-			});
+
+			if (options.ready) {
+				const fullTasks = await core.loadTasks(undefined, undefined, { includeCompleted: true });
+				tasks = tasks.filter((task) => getTaskReadiness(task, fullTasks, statuses).isReady);
+			}
 
 			if (parentId) {
 				const parentExists = (await core.queryTasks({ includeCrossBranch: false })).some((task) =>
@@ -2452,7 +2456,7 @@ addHelpSchema(taskCmd.command("list"), {
 				sortedTasks = sortTasks(tasks, "priority", config?.priorities);
 			}
 
-			let filtered = sortedTasks.filter((task) => isLocalEditableTask(task));
+			let filtered = sortedTasks;
 			if (parentId) {
 				filtered = filtered.filter((task) => task.parentTaskId && taskIdsEqual(parentId, task.parentTaskId));
 			}
