@@ -88,6 +88,7 @@ import {
 } from "./utils/task-builders.ts";
 import { buildTaskUpdateInput } from "./utils/task-edit-builder.ts";
 import { normalizeTaskId, taskIdsEqual } from "./utils/task-path.ts";
+import { applyTaskFilters } from "./utils/task-search.ts";
 import { sortTasks } from "./utils/task-sorting.ts";
 import { formatValidTaskTypeValues, getTaskTypeValues, resolveTaskTypeValues } from "./utils/task-type-config.ts";
 import { getTerminalStatus, isTerminalStatus } from "./utils/terminal-status.ts";
@@ -2353,6 +2354,9 @@ addHelpSchema(taskCmd.command("list"), {
 		if (options.unassigned) {
 			baseFilters.unassigned = true;
 		}
+		if (options.ready) {
+			baseFilters.ready = true;
+		}
 		if (options.milestone) {
 			baseFilters.milestone = options.milestone;
 		}
@@ -2404,12 +2408,14 @@ addHelpSchema(taskCmd.command("list"), {
 		}
 
 		if (outputMode !== "interactive") {
-			const tasks = await core.queryTasks({
-				query: searchQuery || undefined,
-				filters: Object.keys(baseFilters).length > 0 ? baseFilters : undefined,
-				includeCrossBranch: false,
-			});
+			const allTasks = await core.loadTasks(undefined, undefined, { includeCompleted: true });
 			const config = await core.filesystem.loadConfig();
+			const statuses: string[] = config?.statuses ?? [...DEFAULT_STATUSES];
+			const tasks = applyTaskFilters(allTasks, {
+				...baseFilters,
+				query: searchQuery || undefined,
+				statuses,
+			});
 
 			if (parentId) {
 				const parentExists = (await core.queryTasks({ includeCrossBranch: false })).some((task) =>
@@ -2474,7 +2480,6 @@ addHelpSchema(taskCmd.command("list"), {
 			}
 
 			const canonicalByLower = new Map<string, string>();
-			const statuses = config?.statuses || [];
 			for (const status of statuses) {
 				canonicalByLower.set(status.toLowerCase(), status);
 			}
