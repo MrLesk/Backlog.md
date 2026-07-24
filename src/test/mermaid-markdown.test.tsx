@@ -56,4 +56,21 @@ describe("MermaidMarkdown", () => {
 			"/tasks/BACK-426?view=detail#second-heading",
 		]);
 	});
+
+	it("automatically links task IDs to /tasks/:id", () => {
+		const source = "Related task: TASK-358.8 and BACK-123.";
+		const html = renderToString(<MermaidMarkdown source={source} />);
+
+		expect(html).toContain('href="/tasks/TASK-358.8"');
+		expect(html).toContain('href="/tasks/BACK-123"');
+	});
+
+	it("does not auto-link task IDs inside code backticks or existing links", () => {
+		const source = "Code `TASK-100` and link [TASK-200](/tasks/TASK-200)";
+		const html = renderToString(<MermaidMarkdown source={source} />);
+
+		expect(html).toContain("<code>TASK-100</code>");
+		expect(html).not.toContain('href="/tasks/TASK-100"');
+		expect(html).toContain('href="/tasks/TASK-200"');
+	});
 });
