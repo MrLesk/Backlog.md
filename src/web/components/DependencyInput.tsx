@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect, type KeyboardEvent } from 'react';
+import { Link } from 'react-router-dom';
 import { type Task } from '../../types';
 
 interface DependencyInputProps {
@@ -117,7 +118,13 @@ const DependencyInput: React.FC<DependencyInputProps> = ({ value, onChange, avai
                   key={index}
                   className="inline-flex items-center gap-1 px-2 py-0.5 text-sm bg-blue-100 dark:bg-blue-900/50 text-blue-800 dark:text-blue-200 rounded-md transition-colors duration-200 min-w-0 max-w-full"
                 >
-                  <span className="truncate max-w-[16rem] sm:max-w-[20rem] md:max-w-[24rem]">{getTaskDisplay(taskId)}</span>
+                  <Link
+                    to={`/tasks/${taskId}`}
+                    className="truncate max-w-[16rem] sm:max-w-[20rem] md:max-w-[24rem] hover:underline"
+                    title={getTaskDisplay(taskId)}
+                  >
+                    {getTaskDisplay(taskId)}
+                  </Link>
 	                  {!disabled && (
 	                    <button
 	                      type="button"
