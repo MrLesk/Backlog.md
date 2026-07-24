@@ -236,6 +236,9 @@ export async function viewTaskEnhanced(
 
 	let dateFormat: string | undefined;
 
+	// Load complete task graph for dependency readiness resolution across all surfaces
+	const fullGraphTasks = await core.loadTasks(undefined, undefined, { includeCompleted: true });
+
 	if (options.tasks) {
 		// Tasks already provided - use in-memory search (no ContentStore loading)
 		allTasks = options.tasks.filter((t) => t.id && t.id.trim() !== "" && hasAnyPrefix(t.id));
@@ -1059,7 +1062,7 @@ export async function viewTaskEnhanced(
 			currentSelectedTask,
 			resolveMilestoneLabel,
 			dateFormat,
-			allTasks,
+			fullGraphTasks,
 			statuses,
 		);
 
