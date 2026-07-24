@@ -2452,7 +2452,7 @@ addHelpSchema(taskCmd.command("list"), {
 				sortedTasks = sortTasks(tasks, "priority", config?.priorities);
 			}
 
-			let filtered = sortedTasks;
+			let filtered = sortedTasks.filter((task) => isLocalEditableTask(task));
 			if (parentId) {
 				filtered = filtered.filter((task) => task.parentTaskId && taskIdsEqual(parentId, task.parentTaskId));
 			}
@@ -2546,6 +2546,8 @@ addHelpSchema(taskCmd.command("list"), {
 		if (taskLimit !== undefined) activeFilters.push(`Limit: ${taskLimit}`);
 		if (options.sort) activeFilters.push(`Sort: ${options.sort}`);
 
+		if (options.ready) activeFilters.push("Ready");
+
 		if (activeFilters.length > 0) {
 			filterDescription = activeFilters.join(", ");
 			title = `Tasks (${activeFilters.join(" • ")})`;
@@ -2565,6 +2567,7 @@ addHelpSchema(taskCmd.command("list"), {
 			filterDescription?: string;
 			parentTaskId?: string;
 			limit?: number;
+			ready?: boolean;
 		} = {
 			status: options.status,
 			excludeStatus: Array.isArray(baseFilters.excludeStatus) ? baseFilters.excludeStatus : undefined,
@@ -2579,6 +2582,7 @@ addHelpSchema(taskCmd.command("list"), {
 			filterDescription,
 			parentTaskId: parentId,
 			limit: taskLimit,
+			ready: options.ready,
 		};
 		if (searchQuery) {
 			initialUnifiedFilter.searchQuery = searchQuery;
@@ -2594,6 +2598,9 @@ addHelpSchema(taskCmd.command("list"), {
 		}
 		if (parentId) {
 			interactiveLoaderFilters.parentTaskId = parentId;
+		}
+		if (options.ready) {
+			interactiveLoaderFilters.ready = true;
 		}
 		await runUnifiedView({
 			core,

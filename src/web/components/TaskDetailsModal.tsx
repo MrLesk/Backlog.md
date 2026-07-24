@@ -922,6 +922,17 @@ export const TaskDetailsModal: React.FC<Props> = ({
           availableStatuses ?? ["To Do", "In Progress", "Done"],
         );
 
+        if (!readiness.isReady && !readiness.isBlocked) {
+          return (
+            <div className="mb-4 flex items-center gap-2 px-4 py-2.5 bg-gray-50 dark:bg-gray-800/60 border border-gray-200 dark:border-gray-700 rounded-lg text-sm">
+              <span className="font-semibold text-gray-700 dark:text-gray-300">Readiness:</span>
+              <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-semibold bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300">
+                Task in terminal status ({task.status})
+              </span>
+            </div>
+          );
+        }
+
         return (
           <div className="mb-4 flex items-center gap-2 px-4 py-2.5 bg-gray-50 dark:bg-gray-800/60 border border-gray-200 dark:border-gray-700 rounded-lg text-sm">
             <span className="font-semibold text-gray-700 dark:text-gray-300">Readiness:</span>

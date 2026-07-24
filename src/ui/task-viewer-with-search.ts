@@ -197,6 +197,7 @@ export async function viewTaskEnhanced(
 		milestoneFilter?: string;
 		labelFilter?: string[];
 		labelMatch?: LabelMatchMode;
+		readyFilter?: boolean;
 		limit?: number;
 		startWithDetailFocus?: boolean;
 		startWithSearchFocus?: boolean;
@@ -673,7 +674,8 @@ export async function viewTaskEnhanced(
 				taskTypeFilter.length > 0 ||
 				priorityFilter ||
 				labelFilter.length > 0 ||
-				milestoneFilter,
+				milestoneFilter ||
+				options.readyFilter,
 		);
 		let nextFilteredTasks: Task[];
 		if (!hasActiveFilters) {
@@ -691,6 +693,8 @@ export async function viewTaskEnhanced(
 					labelMatch,
 					milestone: milestoneFilter || undefined,
 					resolveMilestoneLabel,
+					ready: options.readyFilter,
+					statuses,
 				},
 				taskSearchIndex,
 			);
@@ -1539,6 +1543,8 @@ function generateDetailContent(
 		metadata.push("{bold}Readiness:{/bold} {green-fg}✓ Ready to start{/}");
 	} else if (readiness.isBlocked) {
 		metadata.push(`{bold}Readiness:{/bold} {yellow-fg}⏳ Blocked by: ${readiness.blockingDependencies.join(", ")}{/}`);
+	} else {
+		metadata.push(`{bold}Readiness:{/bold} {gray-fg}Terminal status (${task.status}){/}`);
 	}
 	if (task.modifiedFiles?.length) {
 		metadata.push(`{bold}Modified files:{/bold} ${task.modifiedFiles.join(", ")}`);

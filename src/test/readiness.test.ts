@@ -1,6 +1,7 @@
 import { describe, expect, it } from "bun:test";
 import type { Task } from "../types/index.ts";
 import { getTaskReadiness } from "../utils/readiness.ts";
+import { applyTaskFilters } from "../utils/task-search.ts";
 
 const statuses = ["To Do", "In Progress", "Done"];
 
@@ -86,5 +87,24 @@ describe("getTaskReadiness", () => {
 		const readiness = getTaskReadiness(task, [dep, task], customStatuses);
 		expect(readiness.isReady).toBe(true);
 		expect(readiness.isBlocked).toBe(false);
+	});
+});
+
+describe("applyTaskFilters with readiness filter integration", () => {
+	it("filters candidates correctly when ready: true is requested", () => {
+		const doneDep = makeTask("BACK-1", "Done");
+		const blockedTask = makeTask("BACK-2", "To Do", ["BACK-3"]);
+		const inProgDep = makeTask("BACK-3", "In Progress");
+		const readyTask = makeTask("BACK-4", "To Do", ["BACK-1"]);
+
+		const allTasks = [doneDep, blockedTask, inProgDep, readyTask];
+
+		// Filter for ready tasks: BACK-3 (In Progress, no deps) and BACK-4 (To Do, BACK-1 dep is Done) are unblocked/ready
+		const readyFiltered = applyTaskFilters(allTasks, { ready: true, statuses });
+		expect(readyFiltered.map((t) => t.id)).toEqual(["BACK-3", "BACK-4"]);
+
+		// Combine ready filter with status filter
+		const readyToDoFiltered = applyTaskFilters(allTasks, { ready: true, status: "To Do", statuses });
+		expect(readyToDoFiltered.map((t) => t.id)).toEqual(["BACK-4"]);
 	});
 });
