@@ -16,6 +16,7 @@ import { areLabelSelectionsEqual, collectAvailableLabels, labelsToLower } from "
 import { NO_MILESTONE_FILTER_LABEL, NO_MILESTONE_FILTER_VALUE } from "../utils/milestone-filter.ts";
 import { hasAnyPrefix } from "../utils/prefix-config.ts";
 import { formatPriorityLabel, getPriorityOptions, normalizePriorityValue } from "../utils/priority-config.ts";
+import { getTaskReadiness } from "../utils/readiness.ts";
 import { applyTaskFilters, createTaskSearchIndex, type LabelMatchMode } from "../utils/task-search.ts";
 import { attachSubtaskSummaries } from "../utils/task-subtasks.ts";
 import { getTaskTypeValues, resolveTaskTypeValues } from "../utils/task-type-config.ts";
@@ -1059,7 +1060,13 @@ export async function viewTaskEnhanced(
 
 		screen.title = `Task ${currentSelectedTask.id} - ${currentSelectedTask.title}`;
 
-		const detailContent = generateDetailContent(currentSelectedTask, resolveMilestoneLabel, dateFormat);
+		const detailContent = generateDetailContent(
+			currentSelectedTask,
+			resolveMilestoneLabel,
+			dateFormat,
+			allTasks,
+			statuses,
+		);
 
 		// Calculate header height based on content and available width
 		const detailPaneWidth = typeof detailPane.width === "number" ? detailPane.width : 60;
@@ -1470,6 +1477,8 @@ function generateDetailContent(
 	task: Task,
 	resolveMilestoneLabel?: (milestone: string) => string,
 	dateFormat?: string,
+	allTasks: Task[] = [],
+	statuses: readonly string[] = ["To Do", "In Progress", "Done"],
 ): { headerContent: string[]; bodyContent: string[] } {
 	const headerContent = [
 		` ${wrapStatusColor(formatStatusWithIcon(task.status), getStatusColor(task.status))} {bold}{blue-fg}${task.id}{/blue-fg}{/bold} - ${task.title}`,
@@ -1524,6 +1533,12 @@ function generateDetailContent(
 	}
 	if (task.dependencies?.length) {
 		metadata.push(`{bold}Dependencies:{/bold} ${task.dependencies.join(", ")}`);
+	}
+	const readiness = getTaskReadiness(task, allTasks, statuses);
+	if (readiness.isReady) {
+		metadata.push("{bold}Readiness:{/bold} {green-fg}✓ Ready to start{/}");
+	} else if (readiness.isBlocked) {
+		metadata.push(`{bold}Readiness:{/bold} {yellow-fg}⏳ Blocked by: ${readiness.blockingDependencies.join(", ")}{/}`);
 	}
 	if (task.modifiedFiles?.length) {
 		metadata.push(`{bold}Modified files:{/bold} ${task.modifiedFiles.join(", ")}`);

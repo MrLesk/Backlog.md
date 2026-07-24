@@ -24,6 +24,9 @@ export interface TaskSearchOptions {
 	modifiedFiles?: string[];
 }
 
+import { DEFAULT_STATUSES } from "../constants/index.ts";
+import { getTaskReadiness } from "./readiness.ts";
+
 export interface SharedTaskFilterOptions {
 	query?: string;
 	excludeStatus?: string | string[];
@@ -34,6 +37,8 @@ export interface SharedTaskFilterOptions {
 	modifiedFiles?: string[];
 	milestone?: string;
 	resolveMilestoneLabel?: (milestone: string) => string;
+	ready?: boolean;
+	statuses?: readonly string[];
 }
 
 export interface TaskFilterOptions extends SharedTaskFilterOptions {
@@ -278,6 +283,11 @@ export function applyTaskFilters(tasks: Task[], options: TaskFilterOptions, inde
 		results = applyMilestoneFilter(results, options.milestone, options.resolveMilestoneLabel);
 	}
 
+	if (options.ready) {
+		const statuses = options.statuses ?? DEFAULT_STATUSES;
+		results = results.filter((task) => getTaskReadiness(task, tasks, statuses).isReady);
+	}
+
 	return results;
 }
 
@@ -298,6 +308,8 @@ export function applySharedTaskFilters(
 			modifiedFiles: options.modifiedFiles,
 			milestone: options.milestone,
 			resolveMilestoneLabel: options.resolveMilestoneLabel,
+			ready: options.ready,
+			statuses: options.statuses,
 		},
 		index,
 	);

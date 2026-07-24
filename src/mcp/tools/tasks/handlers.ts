@@ -17,7 +17,7 @@ import {
 } from "../../../utils/milestone-filter.ts";
 import { resolveMilestoneInputForStorage } from "../../../utils/milestone-storage.ts";
 import { buildTaskUpdateInput } from "../../../utils/task-edit-builder.ts";
-import { createTaskSearchIndex } from "../../../utils/task-search.ts";
+import { applyTaskFilters, createTaskSearchIndex } from "../../../utils/task-search.ts";
 import { sortByOrdinalAndPriority } from "../../../utils/task-sorting.ts";
 import { getTerminalStatus, isTerminalStatus } from "../../../utils/terminal-status.ts";
 import { BacklogToolError } from "../../errors/mcp-errors.ts";
@@ -54,6 +54,7 @@ export type TaskListArgs = {
 	milestone?: string;
 	labels?: string[];
 	search?: string;
+	ready?: boolean;
 	limit?: number;
 };
 
@@ -243,11 +244,16 @@ export class TaskHandlers {
 		if (args.milestone) {
 			filters.milestone = args.milestone;
 		}
+		if (args.ready) {
+			filters.ready = true;
+		}
 
-		const tasks = await this.core.queryTasks({
+		const allTasks = await this.core.loadTasks(undefined, undefined, { includeCompleted: true });
+		const statuses: string[] = config?.statuses ?? [...DEFAULT_STATUSES];
+		const tasks = applyTaskFilters(allTasks, {
+			...filters,
 			query: args.search,
-			filters: Object.keys(filters).length > 0 ? filters : undefined,
-			includeCrossBranch: false,
+			statuses,
 		});
 
 		let filteredByLabels = tasks.filter((task) => isLocalEditableTask(task));
@@ -269,8 +275,6 @@ export class TaskHandlers {
 				],
 			};
 		}
-
-		const statuses = config?.statuses ?? [];
 
 		const canonicalByLower = new Map<string, string>();
 		for (const status of statuses) {

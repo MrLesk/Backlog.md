@@ -11,6 +11,7 @@ import DependencyInput from "./DependencyInput";
 import { formatStoredUtcDateForDisplay } from "../utils/date-display";
 import { getPriorityOptions } from "../../utils/priority-config";
 import { getTaskTypeValues, resolveTaskTypeValue } from "../../utils/task-type-config";
+import { getTaskReadiness } from "../../utils/readiness";
 
 interface Props {
   task?: Task; // Optional for create mode
@@ -914,23 +915,23 @@ export const TaskDetailsModal: React.FC<Props> = ({
       )}
 
       {/* Task Readiness Guidance */}
-      {task && (dependencies.length > 0) && (() => {
-        const blockingDeps = dependencies.filter((depId) => {
-          const target = availableTasks.find((t) => t.id.toLowerCase() === depId.toLowerCase());
-          return !target || (target.status !== "Done" && target.status !== "Completed");
-        });
-        const isReady = blockingDeps.length === 0;
+      {task && (() => {
+        const readiness = getTaskReadiness(
+          { ...task, dependencies },
+          availableTasks,
+          availableStatuses ?? ["To Do", "In Progress", "Done"],
+        );
 
         return (
           <div className="mb-4 flex items-center gap-2 px-4 py-2.5 bg-gray-50 dark:bg-gray-800/60 border border-gray-200 dark:border-gray-700 rounded-lg text-sm">
             <span className="font-semibold text-gray-700 dark:text-gray-300">Readiness:</span>
-            {isReady ? (
+            {readiness.isReady ? (
               <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-semibold bg-emerald-100 dark:bg-emerald-900/40 text-emerald-800 dark:text-emerald-300">
-                ✓ Ready to start (all dependencies satisfied)
+                ✓ Ready to start ({dependencies.length === 0 ? "no dependencies" : "all dependencies satisfied"})
               </span>
             ) : (
               <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-semibold bg-amber-100 dark:bg-amber-900/40 text-amber-800 dark:text-amber-300">
-                ⏳ Blocked by: {blockingDeps.join(", ")}
+                ⏳ Blocked by: {readiness.blockingDependencies.join(", ")}
               </span>
             )}
           </div>
