@@ -78,6 +78,7 @@ import { resolveMilestoneInputForStorage } from "./utils/milestone-storage.ts";
 import { hasAnyPrefix } from "./utils/prefix-config.ts";
 import { formatValidPriorityValues, getPriorityOptions, resolvePriorityValue } from "./utils/priority-config.ts";
 import { type ReadOutputMode, resolveReadOutputMode } from "./utils/read-output-mode.ts";
+import { getTaskReadiness } from "./utils/readiness.ts";
 import { type RuntimeCwdResolution, resolveRuntimeCwd } from "./utils/runtime-cwd.ts";
 import { formatValidStatuses, getCanonicalStatus, getCanonicalStatuses, getValidStatuses } from "./utils/status.ts";
 import {
@@ -2279,6 +2280,7 @@ addHelpSchema(taskCmd.command("list"), {
 			description: "Require every listed label; repeat --labels or use label1,label2",
 		},
 		{ name: "search", type: "String", description: "Search task title, description, notes, comments, and metadata" },
+		{ name: "ready", type: "Boolean", description: "Only show unblocked tasks with all dependencies completed" },
 		{ name: "limit", type: "Positive integer", description: "Maximum tasks to display after sorting" },
 		{ name: "sort", type: choiceType(TASK_SORT_FIELDS), description: "Task ordering before applying limit" },
 		{ name: "plain", type: "Boolean", description: "Use text output instead of interactive UI" },
@@ -2287,6 +2289,7 @@ addHelpSchema(taskCmd.command("list"), {
 	output: "Interactive task list, plain text with --plain, or versioned JSON with --json",
 	examples: [
 		'backlog task list --status "<todo status>" --plain',
+		"backlog task list --ready --plain",
 		'backlog task list --status "<todo status>" --json',
 		"backlog task list --parent {{TASK_ID:1}}",
 		`backlog task list --type ${TASK_TYPE_EXAMPLE} --plain`,
@@ -2316,6 +2319,7 @@ addHelpSchema(taskCmd.command("list"), {
 		createMultiValueAccumulator(),
 	)
 	.option("--search <query>", "search task title, description, notes, comments, and metadata")
+	.option("--ready", "only show unblocked tasks with all dependencies completed")
 	.option("--limit <number>", "limit tasks displayed after sorting")
 	.option("--sort <field>", `sort tasks by field (${TASK_SORT_FIELD_LIST})`)
 	.option("--plain", "use plain text output instead of interactive UI")
@@ -2358,6 +2362,9 @@ addHelpSchema(taskCmd.command("list"), {
 		}
 		if (options.unassigned) {
 			baseFilters.unassigned = true;
+		}
+		if (options.ready) {
+			baseFilters.ready = true;
 		}
 		if (options.milestone) {
 			baseFilters.milestone = options.milestone;
@@ -2410,12 +2417,18 @@ addHelpSchema(taskCmd.command("list"), {
 		}
 
 		if (outputMode !== "interactive") {
-			const tasks = await core.queryTasks({
+			let tasks = await core.queryTasks({
 				query: searchQuery || undefined,
 				filters: Object.keys(baseFilters).length > 0 ? baseFilters : undefined,
 				includeCrossBranch: false,
 			});
 			const config = await core.filesystem.loadConfig();
+			const statuses: string[] = config?.statuses ?? [...DEFAULT_STATUSES];
+
+			if (options.ready) {
+				const fullTasks = await core.loadTasks(undefined, undefined, { includeCompleted: true });
+				tasks = tasks.filter((task) => getTaskReadiness(task, fullTasks, statuses).isReady);
+			}
 
 			if (parentId) {
 				const parentExists = (await core.queryTasks({ includeCrossBranch: false })).some((task) =>
@@ -2480,7 +2493,6 @@ addHelpSchema(taskCmd.command("list"), {
 			}
 
 			const canonicalByLower = new Map<string, string>();
-			const statuses = config?.statuses || [];
 			for (const status of statuses) {
 				canonicalByLower.set(status.toLowerCase(), status);
 			}
@@ -2538,6 +2550,8 @@ addHelpSchema(taskCmd.command("list"), {
 		if (taskLimit !== undefined) activeFilters.push(`Limit: ${taskLimit}`);
 		if (options.sort) activeFilters.push(`Sort: ${options.sort}`);
 
+		if (options.ready) activeFilters.push("Ready");
+
 		if (activeFilters.length > 0) {
 			filterDescription = activeFilters.join(", ");
 			title = `Tasks (${activeFilters.join(" • ")})`;
@@ -2557,6 +2571,7 @@ addHelpSchema(taskCmd.command("list"), {
 			filterDescription?: string;
 			parentTaskId?: string;
 			limit?: number;
+			ready?: boolean;
 		} = {
 			status: options.status,
 			excludeStatus: Array.isArray(baseFilters.excludeStatus) ? baseFilters.excludeStatus : undefined,
@@ -2571,6 +2586,7 @@ addHelpSchema(taskCmd.command("list"), {
 			filterDescription,
 			parentTaskId: parentId,
 			limit: taskLimit,
+			ready: options.ready,
 		};
 		if (searchQuery) {
 			initialUnifiedFilter.searchQuery = searchQuery;

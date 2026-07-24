@@ -11,6 +11,7 @@ import DependencyInput from "./DependencyInput";
 import { formatStoredUtcDateForDisplay } from "../utils/date-display";
 import { getPriorityOptions } from "../../utils/priority-config";
 import { getTaskTypeValues, resolveTaskTypeValue } from "../../utils/task-type-config";
+import { getTaskReadiness } from "../../utils/readiness";
 
 interface Props {
   task?: Task; // Optional for create mode
@@ -28,6 +29,7 @@ interface Props {
   archivedMilestoneEntities?: Milestone[];
   definitionOfDoneDefaults?: string[];
   dateFormat?: string;
+  availableTasks?: Task[];
 }
 
 type Mode = "preview" | "edit" | "create";
@@ -132,6 +134,7 @@ export const TaskDetailsModal: React.FC<Props> = ({
   isDraftMode,
   definitionOfDoneDefaults,
   dateFormat,
+  availableTasks: availableTasksProp,
 }) => {
   const { theme } = useTheme();
   const isCreateMode = !task;
@@ -314,7 +317,7 @@ export const TaskDetailsModal: React.FC<Props> = ({
   const [dependencies, setDependencies] = useState<string[]>(task?.dependencies || []);
   const [references, setReferences] = useState<string[]>(task?.references || []);
   const [milestone, setMilestone] = useState<string>(task?.milestone || "");
-  const [availableTasks, setAvailableTasks] = useState<Task[]>([]);
+  const [availableTasks, setAvailableTasks] = useState<Task[]>(availableTasksProp || []);
   const canonicalTypeSelection = resolveTaskTypeValue(taskType, typeOptions);
   const typeSelectionValue = canonicalTypeSelection ?? taskType;
   const milestoneSelectionValue = resolveMilestoneToId(milestone);
@@ -447,8 +450,11 @@ export const TaskDetailsModal: React.FC<Props> = ({
       previousTaskId.current = nextTaskId;
       previousIsOpen.current = isOpen;
       formBaselineRef.current = nextFormState;
-      setError(null);
-      apiClient.fetchTasks().then(setAvailableTasks).catch(() => setAvailableTasks([]));
+      if (availableTasksProp) {
+        setAvailableTasks(availableTasksProp);
+      } else {
+        apiClient.fetchTasks().then(setAvailableTasks).catch(() => setAvailableTasks([]));
+      }
       return;
     }
 
@@ -479,8 +485,12 @@ export const TaskDetailsModal: React.FC<Props> = ({
     formBaselineRef.current = nextFormState;
     setError(null);
     // Preload tasks for dependency picker
-    apiClient.fetchTasks().then(setAvailableTasks).catch(() => setAvailableTasks([]));
-  }, [task, isOpen, isCreateMode, isDraftMode, availableStatuses, defaultDefinitionOfDone]);
+    if (availableTasksProp) {
+      setAvailableTasks(availableTasksProp);
+    } else {
+      apiClient.fetchTasks().then(setAvailableTasks).catch(() => setAvailableTasks([]));
+    }
+  }, [task, isOpen, isCreateMode, isDraftMode, availableStatuses, defaultDefinitionOfDone, availableTasksProp]);
 
   const refreshAfterCommentChange = useCallback(() => {
     if (!commentsChanged) return;
@@ -912,6 +922,41 @@ export const TaskDetailsModal: React.FC<Props> = ({
           </div>
         </div>
       )}
+
+      {/* Task Readiness Guidance */}
+      {task && (() => {
+        const readiness = getTaskReadiness(
+          { ...task, dependencies },
+          availableTasks,
+          availableStatuses ?? ["To Do", "In Progress", "Done"],
+        );
+
+        if (!readiness.isReady && !readiness.isBlocked) {
+          return (
+            <div className="mb-4 flex items-center gap-2 px-4 py-2.5 bg-gray-50 dark:bg-gray-800/60 border border-gray-200 dark:border-gray-700 rounded-lg text-sm">
+              <span className="font-semibold text-gray-700 dark:text-gray-300">Readiness:</span>
+              <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-semibold bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300">
+                Task in terminal status ({task.status})
+              </span>
+            </div>
+          );
+        }
+
+        return (
+          <div className="mb-4 flex items-center gap-2 px-4 py-2.5 bg-gray-50 dark:bg-gray-800/60 border border-gray-200 dark:border-gray-700 rounded-lg text-sm">
+            <span className="font-semibold text-gray-700 dark:text-gray-300">Readiness:</span>
+            {readiness.isReady ? (
+              <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-semibold bg-emerald-100 dark:bg-emerald-900/40 text-emerald-800 dark:text-emerald-300">
+                ✓ Ready to start ({dependencies.length === 0 ? "no dependencies" : "all dependencies satisfied"})
+              </span>
+            ) : (
+              <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-semibold bg-amber-100 dark:bg-amber-900/40 text-amber-800 dark:text-amber-300">
+                ⏳ Blocked by: {readiness.blockingDependencies.join(", ")}
+              </span>
+            )}
+          </div>
+        );
+      })()}
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
         {/* Main content */}

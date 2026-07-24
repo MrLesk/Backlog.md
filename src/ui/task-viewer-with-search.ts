@@ -16,6 +16,7 @@ import { areLabelSelectionsEqual, collectAvailableLabels, labelsToLower } from "
 import { NO_MILESTONE_FILTER_LABEL, NO_MILESTONE_FILTER_VALUE } from "../utils/milestone-filter.ts";
 import { hasAnyPrefix } from "../utils/prefix-config.ts";
 import { formatPriorityLabel, getPriorityOptions, normalizePriorityValue } from "../utils/priority-config.ts";
+import { getTaskReadiness } from "../utils/readiness.ts";
 import { applyTaskFilters, createTaskSearchIndex, type LabelMatchMode } from "../utils/task-search.ts";
 import { attachSubtaskSummaries } from "../utils/task-subtasks.ts";
 import { getTaskTypeValues, resolveTaskTypeValues } from "../utils/task-type-config.ts";
@@ -185,6 +186,7 @@ export async function viewTaskEnhanced(
 	task: Task,
 	options: {
 		tasks?: Task[];
+		fullGraphTasks?: Task[];
 		core?: Core;
 		title?: string;
 		filterDescription?: string;
@@ -196,6 +198,7 @@ export async function viewTaskEnhanced(
 		milestoneFilter?: string;
 		labelFilter?: string[];
 		labelMatch?: LabelMatchMode;
+		readyFilter?: boolean;
 		limit?: number;
 		startWithDetailFocus?: boolean;
 		startWithSearchFocus?: boolean;
@@ -242,6 +245,10 @@ export async function viewTaskEnhanced(
 	const { availableMilestoneTitles, resolveMilestoneLabel } = buildTaskViewerMilestoneFilterModel(milestoneEntities);
 
 	let dateFormat: string | undefined;
+
+	// Load complete task graph for dependency readiness resolution across all surfaces
+	const fullGraphTasks =
+		options.fullGraphTasks ?? (await core.loadTasks(undefined, undefined, { includeCompleted: true }));
 
 	if (options.tasks) {
 		// Tasks already provided - use in-memory search (no ContentStore loading)
@@ -672,7 +679,8 @@ export async function viewTaskEnhanced(
 				taskTypeFilter.length > 0 ||
 				priorityFilter ||
 				labelFilter.length > 0 ||
-				milestoneFilter,
+				milestoneFilter ||
+				options.readyFilter,
 		);
 		let nextFilteredTasks: Task[];
 		if (!hasActiveFilters) {
@@ -690,6 +698,9 @@ export async function viewTaskEnhanced(
 					labelMatch,
 					milestone: milestoneFilter || undefined,
 					resolveMilestoneLabel,
+					ready: options.readyFilter,
+					statuses,
+					fullGraphTasks,
 				},
 				taskSearchIndex,
 			);
@@ -722,6 +733,11 @@ export async function viewTaskEnhanced(
 					const taskLabels = new Set(labelsToLower(task.labels ?? []));
 					return requiredLabels.every((label) => taskLabels.has(label));
 				});
+			}
+			if (options.readyFilter) {
+				nextFilteredTasks = nextFilteredTasks.filter(
+					(task) => getTaskReadiness(task, fullGraphTasks, statuses).isReady,
+				);
 			}
 		} else {
 			nextFilteredTasks = [...allTasks];
@@ -1059,7 +1075,13 @@ export async function viewTaskEnhanced(
 
 		screen.title = `Task ${currentSelectedTask.id} - ${currentSelectedTask.title}`;
 
-		const detailContent = generateDetailContent(currentSelectedTask, resolveMilestoneLabel, dateFormat);
+		const detailContent = generateDetailContent(
+			currentSelectedTask,
+			resolveMilestoneLabel,
+			dateFormat,
+			fullGraphTasks,
+			statuses,
+		);
 
 		// Calculate header height based on content and available width
 		const detailPaneWidth = typeof detailPane.width === "number" ? detailPane.width : 60;
@@ -1466,10 +1488,12 @@ export async function viewTaskEnhanced(
 	});
 }
 
-function generateDetailContent(
+export function generateDetailContent(
 	task: Task,
 	resolveMilestoneLabel?: (milestone: string) => string,
 	dateFormat?: string,
+	allTasks: Task[] = [],
+	statuses: readonly string[] = ["To Do", "In Progress", "Done"],
 ): { headerContent: string[]; bodyContent: string[] } {
 	const headerContent = [
 		` ${wrapStatusColor(formatStatusWithIcon(task.status), getStatusColor(task.status))} {bold}{blue-fg}${task.id}{/blue-fg}{/bold} - ${task.title}`,
@@ -1524,6 +1548,14 @@ function generateDetailContent(
 	}
 	if (task.dependencies?.length) {
 		metadata.push(`{bold}Dependencies:{/bold} ${task.dependencies.join(", ")}`);
+	}
+	const readiness = getTaskReadiness(task, allTasks, statuses);
+	if (readiness.isReady) {
+		metadata.push("{bold}Readiness:{/bold} {green-fg}✓ Ready to start{/}");
+	} else if (readiness.isBlocked) {
+		metadata.push(`{bold}Readiness:{/bold} {yellow-fg}⏳ Blocked by: ${readiness.blockingDependencies.join(", ")}{/}`);
+	} else {
+		metadata.push(`{bold}Readiness:{/bold} {gray-fg}Terminal status (${task.status}){/}`);
 	}
 	if (task.modifiedFiles?.length) {
 		metadata.push(`{bold}Modified files:{/bold} ${task.modifiedFiles.join(", ")}`);

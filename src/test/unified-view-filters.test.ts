@@ -502,4 +502,75 @@ describe("unified view filter state", () => {
 		expect(listResults).toEqual(["task-1", "task-2"]);
 		expect(literalMilestoneResults).toEqual(["task-4"]);
 	});
+
+	it("evaluates interactive TUI --ready filter against fullGraphTasks when active candidates omit completed tasks", () => {
+		const archivedDoneDep: Task = {
+			id: "task-1",
+			title: "Archived Completed Dep",
+			status: "Done",
+			assignee: [],
+			createdDate: "2026-07-01",
+			labels: [],
+			dependencies: [],
+		};
+		const activeTask: Task = {
+			id: "task-2",
+			title: "Active Dependent Task",
+			status: "To Do",
+			assignee: [],
+			createdDate: "2026-07-24",
+			labels: [],
+			dependencies: ["task-1"],
+		};
+
+		const displayCandidates = [activeTask];
+		const fullGraph = [archivedDoneDep, activeTask];
+
+		const readyFiltered = applyTaskFilters(displayCandidates, {
+			ready: true,
+			statuses: ["To Do", "In Progress", "Done"],
+			fullGraphTasks: fullGraph,
+		});
+
+		expect(readyFiltered.map((task) => task.id)).toEqual(["task-2"]);
+	});
+
+	it("filters the Kanban board to ready tasks using the full dependency graph", () => {
+		const completedDependency = {
+			id: "task-1",
+			title: "Completed dependency",
+			status: "Done",
+			assignee: [],
+			createdDate: "2026-07-01",
+			labels: [],
+			dependencies: [],
+		} satisfies Task;
+		const readyTask = {
+			id: "task-2",
+			title: "Ready task",
+			status: "To Do",
+			assignee: [],
+			createdDate: "2026-07-24",
+			labels: [],
+			dependencies: ["task-1"],
+		} satisfies Task;
+		const blockedTask = {
+			id: "task-3",
+			title: "Blocked task",
+			status: "To Do",
+			assignee: [],
+			createdDate: "2026-07-24",
+			labels: [],
+			dependencies: ["task-2"],
+		} satisfies Task;
+
+		const results = filterTasksForKanban(
+			[readyTask, blockedTask],
+			{ searchQuery: "", excludeStatus: [], priorityFilter: "", labelFilter: [], milestoneFilter: "", ready: true },
+			undefined,
+			[completedDependency, readyTask, blockedTask],
+		);
+
+		expect(results.map((task) => task.id)).toEqual(["task-2"]);
+	});
 });
