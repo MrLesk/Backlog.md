@@ -502,4 +502,36 @@ describe("unified view filter state", () => {
 		expect(listResults).toEqual(["task-1", "task-2"]);
 		expect(literalMilestoneResults).toEqual(["task-4"]);
 	});
+
+	it("evaluates interactive TUI --ready filter against fullGraphTasks when active candidates omit completed tasks", () => {
+		const archivedDoneDep: Task = {
+			id: "task-1",
+			title: "Archived Completed Dep",
+			status: "Done",
+			assignee: [],
+			createdDate: "2026-07-01",
+			labels: [],
+			dependencies: [],
+		};
+		const activeTask: Task = {
+			id: "task-2",
+			title: "Active Dependent Task",
+			status: "To Do",
+			assignee: [],
+			createdDate: "2026-07-24",
+			labels: [],
+			dependencies: ["task-1"],
+		};
+
+		const displayCandidates = [activeTask];
+		const fullGraph = [archivedDoneDep, activeTask];
+
+		const readyFiltered = applyTaskFilters(displayCandidates, {
+			ready: true,
+			statuses: ["To Do", "In Progress", "Done"],
+			fullGraphTasks: fullGraph,
+		});
+
+		expect(readyFiltered.map((task) => task.id)).toEqual(["task-2"]);
+	});
 });
