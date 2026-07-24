@@ -401,6 +401,28 @@ describe("MCP task tools (MVP)", () => {
 		expect(getText(conflictResult.content)).toContain("unassigned cannot be combined with assignee");
 	});
 
+	it("filters task_list by ready argument in MCP tool", async () => {
+		await mcpServer.testInterface.callTool({
+			params: { name: "task_create", arguments: { title: "Completed Dep", status: "Done" } },
+		});
+		await mcpServer.testInterface.callTool({
+			params: { name: "task_create", arguments: { title: "InProgress Dep", status: "In Progress" } },
+		});
+		await mcpServer.testInterface.callTool({
+			params: { name: "task_create", arguments: { title: "Blocked Task", status: "To Do", dependencies: ["TASK-2"] } },
+		});
+		await mcpServer.testInterface.callTool({
+			params: { name: "task_create", arguments: { title: "Ready Task", status: "To Do", dependencies: ["TASK-1"] } },
+		});
+
+		const readyResult = await mcpServer.testInterface.callTool({
+			params: { name: "task_list", arguments: { ready: true } },
+		});
+		const text = getText(readyResult.content);
+		expect(text).toContain("TASK-4 - Ready Task");
+		expect(text).not.toContain("TASK-3 - Blocked Task");
+	});
+
 	it("applies unassigned filtering in task_list draft status path", async () => {
 		await mcpServer.testInterface.callTool({
 			params: {

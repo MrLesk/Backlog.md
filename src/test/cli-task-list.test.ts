@@ -507,6 +507,77 @@ describe("CLI Integration", () => {
 			expect(out).not.toContain("TASK-2 - OAuth Callback Other Parent");
 		});
 
+		it("should filter tasks by readiness using --ready and --ready --json", async () => {
+			const core = new Core(TEST_DIR);
+
+			await core.createTask(
+				{
+					id: "task-1",
+					title: "Done Dep",
+					status: "Done",
+					assignee: [],
+					labels: [],
+					dependencies: [],
+					createdDate: "2026-07-24",
+					rawContent: "",
+				},
+				false,
+			);
+			await core.createTask(
+				{
+					id: "task-2",
+					title: "In Progress Dep",
+					status: "In Progress",
+					assignee: [],
+					labels: [],
+					dependencies: [],
+					createdDate: "2026-07-24",
+					rawContent: "",
+				},
+				false,
+			);
+			await core.createTask(
+				{
+					id: "task-3",
+					title: "Blocked Task",
+					status: "To Do",
+					assignee: [],
+					labels: [],
+					dependencies: ["task-2"],
+					createdDate: "2026-07-24",
+					rawContent: "",
+				},
+				false,
+			);
+			await core.createTask(
+				{
+					id: "task-4",
+					title: "Ready Task",
+					status: "To Do",
+					assignee: [],
+					labels: [],
+					dependencies: ["task-1"],
+					createdDate: "2026-07-24",
+					rawContent: "",
+				},
+				false,
+			);
+
+			const plainResult = await $`bun ${CLI_PATH} task list --plain --ready`.cwd(TEST_DIR).quiet();
+			const plainOut = plainResult.stdout.toString();
+			expect(plainOut).toContain("TASK-4 - Ready Task");
+			expect(plainOut).toContain("TASK-2 - In Progress Dep");
+			expect(plainOut).not.toContain("TASK-3 - Blocked Task");
+
+			const jsonResult = await $`bun ${CLI_PATH} task list --json --ready`.cwd(TEST_DIR).quiet();
+			const json = JSON.parse(jsonResult.stdout.toString());
+			const readyIds = json.tasks.map((t: { id: string }) => t.id);
+			expect(readyIds).toContain("TASK-4");
+			expect(readyIds).toContain("TASK-2");
+			expect(readyIds).not.toContain("TASK-3");
+			expect(readyIds).not.toContain("TASK-1");
+		});
+
 		it("should reject invalid task list limit", async () => {
 			const result = await $`bun ${CLI_PATH} task list --plain --limit 0`.cwd(TEST_DIR).nothrow().quiet();
 			const out = result.stdout.toString() + result.stderr.toString();
