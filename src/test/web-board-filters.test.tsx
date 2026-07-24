@@ -253,6 +253,24 @@ afterEach(() => {
 });
 
 describe("Web board filters", () => {
+	it("filters to ready tasks with the Ready only button and preserves the setting in the URL", async () => {
+		const readyTask = createTask({ id: "task-ready", title: "Ready task" });
+		const blockedTask = createTask({ id: "task-blocked", title: "Blocked task", dependencies: ["task-ready"] });
+		const container = renderBoardPage(undefined, { tasks: [readyTask, blockedTask] });
+		const readyButton = Array.from(container.querySelectorAll("button")).find(
+			(button) => button.textContent?.trim() === "Ready only",
+		);
+
+		expect(readyButton).toBeTruthy();
+		expect(readyButton?.getAttribute("aria-pressed")).toBe("false");
+		await clickElement(readyButton as HTMLButtonElement);
+
+		expect(new URLSearchParams(window.location.search).get("ready")).toBe("true");
+		expect(readyButton?.getAttribute("aria-pressed")).toBe("true");
+		expect(container.textContent).toContain("Ready task");
+		expect(container.textContent).not.toContain("Blocked task");
+	});
+
 	it("filters board cards by assignee, label, type, and priority while updating URL params", async () => {
 		const container = renderBoardPage(undefined, {
 			availableTypes: ["Bug", "Docs", "Enhancement"],

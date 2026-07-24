@@ -114,6 +114,7 @@ export interface UnifiedViewFilters {
 	labelMatch?: LabelMatchMode;
 	milestoneFilter: string;
 	limit?: number;
+	ready?: boolean;
 }
 
 type UnifiedViewFilterUpdate = Omit<UnifiedViewFilters, "excludeStatus" | "typeFilter"> &
@@ -128,6 +129,7 @@ export interface KanbanSharedFilters {
 	labelMatch?: LabelMatchMode;
 	milestoneFilter: string;
 	limit?: number;
+	ready?: boolean;
 }
 
 export function createKanbanSharedFilters(filters: UnifiedViewFilters): KanbanSharedFilters {
@@ -140,6 +142,7 @@ export function createKanbanSharedFilters(filters: UnifiedViewFilters): KanbanSh
 		labelMatch: filters.labelMatch,
 		milestoneFilter: filters.milestoneFilter,
 		limit: filters.limit,
+		ready: filters.ready ?? false,
 	};
 }
 
@@ -147,6 +150,7 @@ export function filterTasksForKanban(
 	tasks: Task[],
 	filters: KanbanSharedFilters,
 	resolveMilestoneLabel?: (milestone: string) => string,
+	fullGraphTasks?: Task[],
 ): Task[] {
 	if (
 		!filters.searchQuery.trim() &&
@@ -154,7 +158,8 @@ export function filterTasksForKanban(
 		(filters.typeFilter?.length ?? 0) === 0 &&
 		!filters.priorityFilter &&
 		filters.labelFilter.length === 0 &&
-		!filters.milestoneFilter
+		!filters.milestoneFilter &&
+		!filters.ready
 	) {
 		return filters.limit !== undefined ? tasks.slice(0, filters.limit) : [...tasks];
 	}
@@ -171,6 +176,8 @@ export function filterTasksForKanban(
 			labelMatch: filters.labelMatch ?? "any",
 			milestone: filters.milestoneFilter || undefined,
 			resolveMilestoneLabel,
+			ready: filters.ready,
+			fullGraphTasks,
 		},
 		searchIndex,
 	);
@@ -188,6 +195,7 @@ export function createUnifiedViewFilters(filter: UnifiedViewOptions["filter"] | 
 		labelMatch: filter?.labelMatch ?? "any",
 		milestoneFilter: filter?.milestone || "",
 		limit: filter?.limit,
+		ready: filter?.ready ?? false,
 	};
 }
 
@@ -206,6 +214,7 @@ export function mergeUnifiedViewFilters(
 		labelMatch: update.labelMatch ?? current.labelMatch ?? "any",
 		milestoneFilter: update.milestoneFilter,
 		limit: update.limit ?? current.limit,
+		ready: update.ready ?? current.ready,
 	};
 }
 
@@ -474,6 +483,8 @@ export async function runUnifiedView(options: UnifiedViewOptions): Promise<void>
 			milestoneFilterModel = buildTaskViewerMilestoneFilterModel(milestoneEntities);
 			const kanbanTasks = getRenderableTasks();
 			const statuses = kanbanStatuses;
+			const fullGraphTasks =
+				loadedFullGraphTasks ?? (await options.core.loadTasks(undefined, undefined, { includeCompleted: true }));
 
 			// Show kanban board with view switching support
 			return new Promise<ViewResult>((resolve) => {
@@ -489,6 +500,7 @@ export async function runUnifiedView(options: UnifiedViewOptions): Promise<void>
 					},
 					onTabPress,
 					filters: createKanbanSharedFilters(currentFilters),
+					fullGraphTasks,
 					availableLabels: getBoardAvailableLabels(),
 					availableMilestones: getBoardAvailableMilestones(),
 					onFilterChange: (filters) => {
@@ -502,6 +514,7 @@ export async function runUnifiedView(options: UnifiedViewOptions): Promise<void>
 							labelMatch: filters.labelMatch ?? currentFilters.labelMatch ?? "any",
 							milestoneFilter: filters.milestoneFilter,
 							limit: filters.limit,
+							ready: filters.ready ?? false,
 						});
 					},
 					subscribeUpdates: (updater) => {
