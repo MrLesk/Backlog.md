@@ -326,6 +326,7 @@ export function applySharedTaskFilters(
 			resolveMilestoneLabel: options.resolveMilestoneLabel,
 			ready: options.ready,
 			statuses: options.statuses,
+			fullGraphTasks: options.fullGraphTasks,
 		},
 		index,
 	);
