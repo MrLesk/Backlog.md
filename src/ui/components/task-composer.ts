@@ -1,11 +1,31 @@
 import type { BoxInterface, ScreenInterface, TextboxInterface } from "neo-neo-bblessed";
 import { box, textarea, textbox } from "neo-neo-bblessed";
+import { getDefaultCreateStatus } from "../../commands/task-wizard.ts";
 import type { Task, TaskCreateInput } from "../../types/index.ts";
 import { getPriorityOptions } from "../../utils/priority-config.ts";
 import { getTaskTypeValues } from "../../utils/task-type-config.ts";
 import { createPopupChrome, type FilterPopupChoice, openSingleSelectFilterPopup } from "./filter-popup.ts";
 
 const DRAFT_STATUS = "Draft";
+
+/** Remove the last character of a text value (backspace at end of input). */
+export function deleteLastChar(value: string): string {
+	return value.length > 0 ? value.slice(0, -1) : value;
+}
+
+/** Remove the last whitespace-delimited word of a text value (Ctrl+W at end of input). */
+export function deleteLastWord(value: string): string {
+	return value.replace(/\s+$/, "").replace(/\S+$/, "");
+}
+
+/**
+ * Remove tab characters from a text value. The input widget's keypress handler
+ * treats Tab as printable and inserts "\t" before our navigation handler runs,
+ * so strip it whenever Tab moves focus.
+ */
+export function stripInjectedTabs(value: string): string {
+	return value.replace(/\t/g, "");
+}
 
 export type TaskComposerValues = {
 	title: string;
@@ -84,7 +104,9 @@ export function createTaskComposerValues(statuses: readonly string[]): TaskCompo
 	return {
 		title: "",
 		description: "",
-		status: getTaskComposerWorkflowStatuses(statuses)[0] ?? "To Do",
+		// Match the CLI wizard's resting status (canonical "To Do" when configured,
+		// otherwise the first workflow status) so the surfaces cannot drift.
+		status: getDefaultCreateStatus(getTaskComposerWorkflowStatuses(statuses)),
 		type: "",
 		priority: "",
 	};
@@ -189,6 +211,10 @@ export async function openTaskComposer(options: TaskComposerOptions): Promise<Ta
 			keys: true,
 			mouse: true,
 			inputOnFocus: false,
+			// The textbox's own backspace/delete updates the value but returns before
+			// the trailing render, so the screen never repaints. Ignore them here and
+			// own deletion + render below (see bindDeletion).
+			ignoreKeys: ["backspace", "delete"],
 		});
 
 		const descriptionLabel = label(4, "Description");
@@ -360,9 +386,20 @@ export async function openTaskComposer(options: TaskComposerOptions): Promise<Ta
 			style.border ??= {};
 			style.border.fg = active ? "yellow" : "gray";
 			const isTextInput = widget === titleInput || widget === descriptionInput;
-			style.inverse = active && (!isTextInput || widget === createAction || widget === cancelAction) && narrow;
+			// Non-text controls have no cursor, so a gray/yellow border alone is too
+			// subtle: invert the whole control when active, in both layouts.
+			style.inverse = active && !isTextInput;
 			style.bold = active && (widget === createAction || widget === cancelAction);
 			widget.style = style;
+			// Text inputs stay readable while typing, so show focus on the label
+			// (the cursor already marks the field) instead of inverting the content.
+			if (isTextInput) {
+				const fieldLabel = widget === titleInput ? titleLabel : descriptionLabel;
+				const labelStyle = (fieldLabel.style ?? {}) as { inverse?: boolean; bold?: boolean };
+				labelStyle.inverse = active;
+				labelStyle.bold = active;
+				fieldLabel.style = labelStyle;
+			}
 		};
 
 		const syncInputs = () => {
@@ -496,13 +533,43 @@ export async function openTaskComposer(options: TaskComposerOptions): Promise<Ta
 			widget.key(["escape"], escapeHandler);
 		}
 
+		// The library's backspace is unreliable for both widgets (textbox repaints
+		// too late; textarea's backspace branch is empty under fullUnicode screens),
+		// so own deletion here. Ctrl+W deletes the previous word.
+		const applyDeletion = (input: TextboxInterface, transform: (value: string) => string) => {
+			const next = transform(input.getValue());
+			if (next !== input.getValue()) {
+				input.setValue(next);
+				options.screen.render();
+			}
+		};
+		// The widget's keypress handler treats Tab as printable and appends "\t"
+		// straight to `value` without refreshing its cached `_value`, so a plain
+		// setValue with the stripped text no-ops. Clear the cache to force the repaint.
+		const stripTabsFromInput = (input: TextboxInterface) => {
+			const next = stripInjectedTabs(input.getValue());
+			if (next === input.getValue()) return;
+			(input as TextboxInterface & { _value?: string })._value = undefined;
+			input.setValue(next);
+			options.screen.render();
+		};
 		for (const input of [titleInput, descriptionInput]) {
 			input.key(["tab"], () => {
+				stripTabsFromInput(input);
 				moveFocus(1);
 				return false;
 			});
 			input.key(["S-tab"], () => {
+				stripTabsFromInput(input);
 				moveFocus(-1);
+				return false;
+			});
+			input.key(["backspace", "delete"], () => {
+				applyDeletion(input, deleteLastChar);
+				return false;
+			});
+			input.key(["C-w"], () => {
+				applyDeletion(input, deleteLastWord);
 				return false;
 			});
 			input.on("keypress", () => {

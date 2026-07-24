@@ -582,6 +582,19 @@ function AppContent() {
     }
   };
 
+  const handleToggleHideEmptyColumns = async () => {
+    if (!config) return;
+    const previousConfig = config;
+    const nextConfig = { ...config, hideEmptyColumns: !config.hideEmptyColumns };
+    setConfig(nextConfig);
+    try {
+      await apiClient.updateConfig(nextConfig);
+    } catch (error) {
+      console.error('Failed to update hideEmptyColumns setting:', error);
+      setConfig(previousConfig);
+    }
+  };
+
   // Show loading state while checking initialization
   if (isInitialized === null) {
     return (
@@ -615,6 +628,7 @@ function AppContent() {
       archivedMilestones={archivedMilestones}
       isLoading={isLoading}
       hideEmptyColumns={config?.hideEmptyColumns ?? false}
+      onToggleHideEmptyColumns={handleToggleHideEmptyColumns}
       dateFormat={config?.dateFormat}
       availablePriorities={config?.priorities}
       availableTypes={availableTypes}
