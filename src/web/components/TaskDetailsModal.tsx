@@ -914,20 +914,28 @@ export const TaskDetailsModal: React.FC<Props> = ({
       )}
 
       {/* Task Readiness Guidance */}
-      {task && (dependencies.length > 0) && (
-        <div className="mb-4 flex items-center gap-2 px-4 py-2.5 bg-gray-50 dark:bg-gray-800/60 border border-gray-200 dark:border-gray-700 rounded-lg text-sm">
-          <span className="font-semibold text-gray-700 dark:text-gray-300">Readiness:</span>
-          {dependencies.every((depId) => availableTasks.some((t) => t.id.toLowerCase() === depId.toLowerCase() && (t.status === "Done" || t.status === "Completed"))) ? (
-            <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-semibold bg-emerald-100 dark:bg-emerald-900/40 text-emerald-800 dark:text-emerald-300">
-              ✓ Ready to start (all dependencies satisfied)
-            </span>
-          ) : (
-            <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-semibold bg-amber-100 dark:bg-amber-900/40 text-amber-800 dark:text-amber-300">
-              ⏳ Blocked by unresolved dependencies
-            </span>
-          )}
-        </div>
-      )}
+      {task && (dependencies.length > 0) && (() => {
+        const blockingDeps = dependencies.filter((depId) => {
+          const target = availableTasks.find((t) => t.id.toLowerCase() === depId.toLowerCase());
+          return !target || (target.status !== "Done" && target.status !== "Completed");
+        });
+        const isReady = blockingDeps.length === 0;
+
+        return (
+          <div className="mb-4 flex items-center gap-2 px-4 py-2.5 bg-gray-50 dark:bg-gray-800/60 border border-gray-200 dark:border-gray-700 rounded-lg text-sm">
+            <span className="font-semibold text-gray-700 dark:text-gray-300">Readiness:</span>
+            {isReady ? (
+              <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-semibold bg-emerald-100 dark:bg-emerald-900/40 text-emerald-800 dark:text-emerald-300">
+                ✓ Ready to start (all dependencies satisfied)
+              </span>
+            ) : (
+              <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-semibold bg-amber-100 dark:bg-amber-900/40 text-amber-800 dark:text-amber-300">
+                ⏳ Blocked by: {blockingDeps.join(", ")}
+              </span>
+            )}
+          </div>
+        );
+      })()}
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
         {/* Main content */}
