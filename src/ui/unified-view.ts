@@ -21,7 +21,10 @@ export interface UnifiedViewOptions {
 	initialView: ViewType;
 	selectedTask?: Task;
 	tasks?: Task[];
-	tasksLoader?: (updateProgress: (message: string) => void) => Promise<{ tasks: Task[]; statuses: string[] }>;
+	fullGraphTasks?: Task[];
+	tasksLoader?: (
+		updateProgress: (message: string) => void,
+	) => Promise<{ tasks: Task[]; statuses: string[]; fullGraphTasks?: Task[] }>;
 	loadingScreenFactory?: (initialMessage: string) => Promise<LoadingScreen | null>;
 	title?: string;
 	filter?: {
@@ -57,6 +60,7 @@ type LoadingScreen = {
 export interface UnifiedViewLoadResult {
 	tasks: Task[];
 	statuses: string[];
+	fullGraphTasks?: Task[];
 }
 
 export type UnifiedTaskUpdate = { type: "upsert"; task: Task } | { type: "remove"; taskId: string };
@@ -207,24 +211,29 @@ export function mergeUnifiedViewFilters(
 
 export async function loadTasksForUnifiedView(
 	core: Core,
-	options: Pick<UnifiedViewOptions, "tasks" | "tasksLoader" | "loadingScreenFactory">,
+	options: Pick<UnifiedViewOptions, "tasks" | "fullGraphTasks" | "tasksLoader" | "loadingScreenFactory">,
 ): Promise<UnifiedViewLoadResult> {
 	if (options.tasks && options.tasks.length > 0) {
 		const config = await core.filesystem.loadConfig();
 		return {
 			tasks: options.tasks,
 			statuses: config?.statuses || ["To Do", "In Progress", "Done"],
+			fullGraphTasks: options.fullGraphTasks,
 		};
 	}
 
 	const loader =
 		options.tasksLoader ||
-		(async (updateProgress: (message: string) => void): Promise<{ tasks: Task[]; statuses: string[] }> => {
+		(async (
+			updateProgress: (message: string) => void,
+		): Promise<{ tasks: Task[]; statuses: string[]; fullGraphTasks?: Task[] }> => {
 			const tasks = await core.loadTasks(updateProgress);
+			const fullGraphTasks = await core.loadTasks(undefined, undefined, { includeCompleted: true });
 			const config = await core.filesystem.loadConfig();
 			return {
 				tasks,
 				statuses: config?.statuses || ["To Do", "In Progress", "Done"],
+				fullGraphTasks,
 			};
 		});
 
@@ -239,6 +248,7 @@ export async function loadTasksForUnifiedView(
 		return {
 			tasks: result.tasks,
 			statuses: result.statuses,
+			fullGraphTasks: result.fullGraphTasks,
 		};
 	} finally {
 		await loadingScreen?.close();
@@ -273,8 +283,13 @@ export async function createTaskFromBoard(
  */
 export async function runUnifiedView(options: UnifiedViewOptions): Promise<void> {
 	try {
-		const { tasks: loadedTasks, statuses: loadedStatuses } = await loadTasksForUnifiedView(options.core, {
+		const {
+			tasks: loadedTasks,
+			statuses: loadedStatuses,
+			fullGraphTasks: loadedFullGraphTasks,
+		} = await loadTasksForUnifiedView(options.core, {
 			tasks: options.tasks,
+			fullGraphTasks: options.fullGraphTasks,
 			tasksLoader: options.tasksLoader,
 			loadingScreenFactory: options.loadingScreenFactory,
 		});
@@ -409,6 +424,7 @@ export async function runUnifiedView(options: UnifiedViewOptions): Promise<void>
 
 				viewTaskEnhanced(taskToView, {
 					tasks: availableTasks,
+					fullGraphTasks: loadedFullGraphTasks,
 					core: options.core,
 					title: options.filter?.title,
 					filterDescription: options.filter?.filterDescription,

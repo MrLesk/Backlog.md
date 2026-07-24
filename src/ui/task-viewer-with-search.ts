@@ -171,6 +171,7 @@ export async function viewTaskEnhanced(
 	task: Task,
 	options: {
 		tasks?: Task[];
+		fullGraphTasks?: Task[];
 		core?: Core;
 		title?: string;
 		filterDescription?: string;
@@ -237,7 +238,8 @@ export async function viewTaskEnhanced(
 	let dateFormat: string | undefined;
 
 	// Load complete task graph for dependency readiness resolution across all surfaces
-	const fullGraphTasks = await core.loadTasks(undefined, undefined, { includeCompleted: true });
+	const fullGraphTasks =
+		options.fullGraphTasks ?? (await core.loadTasks(undefined, undefined, { includeCompleted: true }));
 
 	if (options.tasks) {
 		// Tasks already provided - use in-memory search (no ContentStore loading)
