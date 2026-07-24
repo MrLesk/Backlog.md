@@ -1,10 +1,11 @@
 ---
 id: BACK-546
 title: Add dependency readiness guidance to TUI and browser
-status: To Do
+status: In Progress
 assignee:
-  - '@alex-agent'
+  - '@cottrell'
 created_date: '2026-07-13 16:06'
+updated_date: '2026-07-24 07:38'
 labels:
   - tui
   - web
