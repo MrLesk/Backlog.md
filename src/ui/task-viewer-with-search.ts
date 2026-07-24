@@ -1479,7 +1479,7 @@ export async function viewTaskEnhanced(
 	});
 }
 
-function generateDetailContent(
+export function generateDetailContent(
 	task: Task,
 	resolveMilestoneLabel?: (milestone: string) => string,
 	dateFormat?: string,

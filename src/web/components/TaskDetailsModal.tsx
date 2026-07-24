@@ -29,6 +29,7 @@ interface Props {
   archivedMilestoneEntities?: Milestone[];
   definitionOfDoneDefaults?: string[];
   dateFormat?: string;
+  availableTasks?: Task[];
 }
 
 type Mode = "preview" | "edit" | "create";
@@ -137,6 +138,7 @@ export const TaskDetailsModal: React.FC<Props> = ({
   isDraftMode,
   definitionOfDoneDefaults,
   dateFormat,
+  availableTasks: availableTasksProp,
 }) => {
   const { theme } = useTheme();
   const isCreateMode = !task;
@@ -319,7 +321,7 @@ export const TaskDetailsModal: React.FC<Props> = ({
   const [dependencies, setDependencies] = useState<string[]>(task?.dependencies || []);
   const [references, setReferences] = useState<string[]>(task?.references || []);
   const [milestone, setMilestone] = useState<string>(task?.milestone || "");
-  const [availableTasks, setAvailableTasks] = useState<Task[]>([]);
+  const [availableTasks, setAvailableTasks] = useState<Task[]>(availableTasksProp || []);
   const canonicalTypeSelection = resolveTaskTypeValue(taskType, typeOptions);
   const typeSelectionValue = canonicalTypeSelection ?? taskType;
   const milestoneSelectionValue = resolveMilestoneToId(milestone);
@@ -455,8 +457,11 @@ export const TaskDetailsModal: React.FC<Props> = ({
       previousTaskId.current = nextTaskId;
       previousIsOpen.current = isOpen;
       formBaselineRef.current = nextFormState;
-      setError(null);
-      apiClient.fetchTasks().then(setAvailableTasks).catch(() => setAvailableTasks([]));
+      if (availableTasksProp) {
+        setAvailableTasks(availableTasksProp);
+      } else {
+        apiClient.fetchTasks().then(setAvailableTasks).catch(() => setAvailableTasks([]));
+      }
       return;
     }
 
@@ -487,8 +492,12 @@ export const TaskDetailsModal: React.FC<Props> = ({
     formBaselineRef.current = nextFormState;
     setError(null);
     // Preload tasks for dependency picker
-    apiClient.fetchTasks().then(setAvailableTasks).catch(() => setAvailableTasks([]));
-  }, [task, isOpen, isCreateMode, isDraftMode, availableStatuses, defaultDefinitionOfDone]);
+    if (availableTasksProp) {
+      setAvailableTasks(availableTasksProp);
+    } else {
+      apiClient.fetchTasks().then(setAvailableTasks).catch(() => setAvailableTasks([]));
+    }
+  }, [task, isOpen, isCreateMode, isDraftMode, availableStatuses, defaultDefinitionOfDone, availableTasksProp]);
 
   const refreshAfterCommentChange = useCallback(() => {
     if (!commentsChanged) return;
