@@ -734,6 +734,11 @@ export async function viewTaskEnhanced(
 					return requiredLabels.every((label) => taskLabels.has(label));
 				});
 			}
+			if (options.readyFilter) {
+				nextFilteredTasks = nextFilteredTasks.filter(
+					(task) => getTaskReadiness(task, fullGraphTasks, statuses).isReady,
+				);
+			}
 		} else {
 			nextFilteredTasks = [...allTasks];
 		}
