@@ -32,3 +32,12 @@ Automatically detect inline task ID references (e.g. TASK-123, TASK-358.8) in ma
 - [ ] #2 bun run check . passes when formatting/linting touched
 - [ ] #3 bun test (or scoped test) passes
 <!-- DOD:END -->
+
+## Implementation Plan
+
+<!-- SECTION:PLAN:BEGIN -->
+1. Add TASK_ID_REGEX matching in sanitizeMarkdownSource inside src/web/components/MermaidMarkdown.tsx targeting /tasks/<ID>.
+2. Ensure task IDs are not linked if inside existing markdown links [text](url) or inline/block code formatting ().
+3. Add web tests for MermaidMarkdown autolinking.
+4. Verify using bun test, bunx tsc --noEmit, and bun run check .
+<!-- SECTION:PLAN:END -->
