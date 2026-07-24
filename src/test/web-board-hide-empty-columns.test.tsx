@@ -104,6 +104,20 @@ describe("Board hideEmptyColumns", () => {
 		expect(toggled).toBe(1);
 	});
 
+	it("does not keep the default light colors on the active toggle button", () => {
+		// Tailwind resolves conflicting utilities by stylesheet order, not class order,
+		// so the active button must not carry the default background/text classes at all.
+		const container = renderBoard({ hideEmptyColumns: true, onToggleHideEmptyColumns: () => {} });
+		const button = container.querySelector("button[aria-pressed]") as HTMLButtonElement | null;
+		expect(button).toBeTruthy();
+
+		const classes = (button?.className ?? "").split(/\s+/);
+		expect(classes).toContain("bg-stone-700");
+		expect(classes).toContain("text-white");
+		expect(classes).not.toContain("bg-white");
+		expect(classes).not.toContain("text-gray-700");
+	});
+
 	it("does not render the toggle button when onToggleHideEmptyColumns is not provided", () => {
 		const container = renderBoard({ hideEmptyColumns: false });
 		expect(container.querySelector('button[aria-pressed]')).toBeFalsy();

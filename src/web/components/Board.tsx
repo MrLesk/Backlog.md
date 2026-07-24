@@ -43,8 +43,17 @@ interface BoardProps {
 const BOARD_FILTER_SELECT_CLASS =
   'min-w-[140px] h-10 py-2 px-3 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-stone-500 dark:focus:ring-stone-400 transition-colors duration-200';
 
+// Colors are split out because Tailwind resolves conflicting utilities by stylesheet
+// order, not class order: appending an active color on top of a default one is a coin
+// flip. Pick one full set instead of layering them.
+const BOARD_FILTER_BUTTON_BASE_CLASS =
+  'h-10 py-2 px-3 text-sm border rounded-lg whitespace-nowrap transition-colors duration-200';
+
 const BOARD_FILTER_BUTTON_CLASS =
-  'h-10 py-2 px-3 text-sm border border-gray-300 dark:border-gray-600 rounded-lg whitespace-nowrap transition-colors duration-200 text-gray-700 dark:text-gray-200 bg-white dark:bg-gray-800 hover:bg-gray-100 dark:hover:bg-gray-700';
+  `${BOARD_FILTER_BUTTON_BASE_CLASS} border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-200 bg-white dark:bg-gray-800 hover:bg-gray-100 dark:hover:bg-gray-700`;
+
+const BOARD_FILTER_BUTTON_ACTIVE_CLASS =
+  `${BOARD_FILTER_BUTTON_BASE_CLASS} border-stone-700 dark:border-stone-600 text-white bg-stone-700 dark:bg-stone-600 hover:bg-stone-800 dark:hover:bg-stone-500`;
 
 // Horizontal auto-scroll while dragging a card near the board edges.
 const EDGE_AUTO_SCROLL_ZONE = 64; // px from an edge that starts auto-scroll
@@ -627,11 +636,7 @@ const Board: React.FC<BoardProps> = ({
                 onClick={onToggleHideEmptyColumns}
                 aria-pressed={hideEmptyColumns}
                 title={hideEmptyColumns ? 'Show empty columns' : 'Hide empty columns'}
-                className={`${BOARD_FILTER_BUTTON_CLASS} ${
-                  hideEmptyColumns
-                    ? 'bg-stone-700 dark:bg-stone-600 text-white border-stone-700 dark:border-stone-600 hover:bg-stone-800 dark:hover:bg-stone-500'
-                    : ''
-                }`}
+                className={hideEmptyColumns ? BOARD_FILTER_BUTTON_ACTIVE_CLASS : BOARD_FILTER_BUTTON_CLASS}
               >
                 {hideEmptyColumns ? 'Show empty columns' : 'Hide empty columns'}
               </button>
