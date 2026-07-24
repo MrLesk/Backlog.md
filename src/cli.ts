@@ -2603,9 +2603,6 @@ addHelpSchema(taskCmd.command("list"), {
 		if (parentId) {
 			interactiveLoaderFilters.parentTaskId = parentId;
 		}
-		if (options.ready) {
-			interactiveLoaderFilters.ready = true;
-		}
 		await runUnifiedView({
 			core,
 			initialView: "task-list",
