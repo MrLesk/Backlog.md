@@ -1,11 +1,11 @@
 ---
 id: BACK-546
 title: Add dependency readiness guidance to TUI and browser
-status: In Progress
+status: Done
 assignee:
   - '@cottrell'
 created_date: '2026-07-13 16:06'
-updated_date: '2026-07-24 08:03'
+updated_date: '2026-07-24 08:40'
 labels:
   - tui
   - web
@@ -50,10 +50,12 @@ Key architecture & verification details:
 2. Display Candidate Isolation: Preserves existing candidate filter semantics (assignee, status, milestone, type, search, unassigned) while ensuring candidate readiness filtering uses the full graph. Tasks depending on archived/completed tasks are properly identified as unblocked/ready.
 3. UI Readiness Guidance: Web UI (TaskDetailsModal) and TUI (generateDetailContent) render explicit readiness guidance badges ('✓ Ready to start', '⏳ Blocked by: ...', or 'Terminal status (...)').
 4. Comprehensive Integration & UI Rendering Tests: Added unit, CLI integration, MCP handler, and DOM/TUI rendered component tests in src/test/readiness.test.tsx, src/test/cli-task-list.test.ts, src/test/mcp-tasks.test.ts, and src/test/unified-view-filters.test.ts.
+
+Final release verification after Kanban ready-filter integration: bun test, bunx tsc --noEmit, bun run check ., and bun run build all pass.
 <!-- SECTION:NOTES:END -->
 
 ## Final Summary
 
 <!-- SECTION:FINAL_SUMMARY:BEGIN -->
-All acceptance criteria for BACK-546 have been met and fully verified across CLI, MCP, Web UI, and interactive TUI. 71/71 test suite assertions pass.
+Implemented canonical dependency readiness across CLI, MCP, Web UI, and interactive TUI, including ready-only Kanban controls. Verified with rendered UI and integration tests, full bun test, TypeScript checking, Biome, and production build.
 <!-- SECTION:FINAL_SUMMARY:END -->
