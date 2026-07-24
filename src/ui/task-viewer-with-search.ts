@@ -691,6 +691,7 @@ export async function viewTaskEnhanced(
 					resolveMilestoneLabel,
 					ready: options.readyFilter,
 					statuses,
+					fullGraphTasks,
 				},
 				taskSearchIndex,
 			);

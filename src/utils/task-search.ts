@@ -43,6 +43,7 @@ export interface SharedTaskFilterOptions {
 	resolveMilestoneLabel?: (milestone: string) => string;
 	ready?: boolean;
 	statuses?: readonly string[];
+	fullGraphTasks?: Task[];
 }
 
 export interface TaskFilterOptions extends SharedTaskFilterOptions {
@@ -299,7 +300,8 @@ export function applyTaskFilters(tasks: Task[], options: TaskFilterOptions, inde
 
 	if (options.ready) {
 		const statuses = options.statuses ?? DEFAULT_STATUSES;
-		results = results.filter((task) => getTaskReadiness(task, tasks, statuses).isReady);
+		const graph = options.fullGraphTasks ?? tasks;
+		results = results.filter((task) => getTaskReadiness(task, graph, statuses).isReady);
 	}
 
 	return results;

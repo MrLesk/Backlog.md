@@ -107,4 +107,16 @@ describe("applyTaskFilters with readiness filter integration", () => {
 		const readyToDoFiltered = applyTaskFilters(allTasks, { ready: true, status: "To Do", statuses });
 		expect(readyToDoFiltered.map((t) => t.id)).toEqual(["BACK-4"]);
 	});
+
+	it("evaluates readiness against fullGraphTasks when display candidates omit completed tasks", () => {
+		const archivedDoneDep = makeTask("BACK-1", "Done");
+		const activeTask = makeTask("BACK-2", "To Do", ["BACK-1"]);
+
+		const displayCandidates = [activeTask]; // BACK-1 excluded from active candidates
+		const fullGraph = [archivedDoneDep, activeTask];
+
+		// Filtering display candidates with fullGraphTasks supplied
+		const result = applyTaskFilters(displayCandidates, { ready: true, statuses, fullGraphTasks: fullGraph });
+		expect(result.map((t) => t.id)).toEqual(["BACK-2"]);
+	});
 });
