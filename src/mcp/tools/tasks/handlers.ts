@@ -12,6 +12,7 @@ import type { TaskEditArgs, TaskEditRequest } from "../../../types/task-edit-arg
 import { formatDuplicateTaskIdWarning } from "../../../utils/duplicate-detection.ts";
 import { createMilestoneFilterMatcher, createMilestoneFilterValueResolver } from "../../../utils/milestone-filter.ts";
 import { resolveMilestoneInputForStorage } from "../../../utils/milestone-storage.ts";
+import { getTaskReadiness } from "../../../utils/readiness.ts";
 import { buildTaskUpdateInput } from "../../../utils/task-edit-builder.ts";
 import { applyTaskFilters, createTaskSearchIndex } from "../../../utils/task-search.ts";
 import { sortByOrdinalAndPriority } from "../../../utils/task-sorting.ts";
@@ -192,6 +193,12 @@ export class TaskHandlers {
 					const draftLabels = draft.labels ?? [];
 					return labelFilters.every((label) => draftLabels.includes(label));
 				});
+			}
+
+			if (args.ready) {
+				const allTasksForDrafts = await this.core.loadTasks(undefined, undefined, { includeCompleted: true });
+				const statusesForDrafts: string[] = config?.statuses ?? [...DEFAULT_STATUSES];
+				drafts = drafts.filter((draft) => getTaskReadiness(draft, allTasksForDrafts, statusesForDrafts).isReady);
 			}
 
 			if (drafts.length === 0) {

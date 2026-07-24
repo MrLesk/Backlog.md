@@ -39,6 +39,7 @@ export interface UnifiedViewOptions {
 		excludeStatus?: string[];
 		parentTaskId?: string;
 		limit?: number;
+		ready?: boolean;
 	};
 	preloadedKanbanData?: {
 		tasks: Task[];
@@ -419,6 +420,7 @@ export async function runUnifiedView(options: UnifiedViewOptions): Promise<void>
 					labelFilter: currentFilters.labelFilter,
 					labelMatch: currentFilters.labelMatch,
 					milestoneFilter: currentFilters.milestoneFilter,
+					readyFilter: options.filter?.ready,
 					limit: currentFilters.limit,
 					startWithDetailFocus: currentView === "task-detail",
 					startWithSearchFocus: shouldFocusSearch,
