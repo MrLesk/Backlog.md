@@ -2279,6 +2279,7 @@ addHelpSchema(taskCmd.command("list"), {
 			description: "Require every listed label; repeat --labels or use label1,label2",
 		},
 		{ name: "search", type: "String", description: "Search task title, description, notes, comments, and metadata" },
+		{ name: "ready", type: "Boolean", description: "Only show unblocked tasks with all dependencies completed" },
 		{ name: "limit", type: "Positive integer", description: "Maximum tasks to display after sorting" },
 		{ name: "sort", type: choiceType(TASK_SORT_FIELDS), description: "Task ordering before applying limit" },
 		{ name: "plain", type: "Boolean", description: "Use text output instead of interactive UI" },
@@ -2287,6 +2288,7 @@ addHelpSchema(taskCmd.command("list"), {
 	output: "Interactive task list, plain text with --plain, or versioned JSON with --json",
 	examples: [
 		'backlog task list --status "<todo status>" --plain',
+		"backlog task list --ready --plain",
 		'backlog task list --status "<todo status>" --json',
 		"backlog task list --parent {{TASK_ID:1}}",
 		`backlog task list --type ${TASK_TYPE_EXAMPLE} --plain`,
@@ -2316,6 +2318,7 @@ addHelpSchema(taskCmd.command("list"), {
 		createMultiValueAccumulator(),
 	)
 	.option("--search <query>", "search task title, description, notes, comments, and metadata")
+	.option("--ready", "only show unblocked tasks with all dependencies completed")
 	.option("--limit <number>", "limit tasks displayed after sorting")
 	.option("--sort <field>", `sort tasks by field (${TASK_SORT_FIELD_LIST})`)
 	.option("--plain", "use plain text output instead of interactive UI")
