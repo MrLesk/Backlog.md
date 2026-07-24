@@ -1,5 +1,10 @@
 import { describe, expect, it } from "bun:test";
+import { JSDOM } from "jsdom";
+import { renderToString } from "react-dom/server";
 import type { Task } from "../types/index.ts";
+import { generateDetailContent } from "../ui/task-viewer-with-search.ts";
+import { TaskDetailsModal } from "../web/components/TaskDetailsModal.tsx";
+import { ThemeProvider } from "../web/contexts/ThemeContext.tsx";
 import { getTaskReadiness } from "../utils/readiness.ts";
 import { applyTaskFilters } from "../utils/task-search.ts";
 
@@ -118,5 +123,82 @@ describe("applyTaskFilters with readiness filter integration", () => {
 		// Filtering display candidates with fullGraphTasks supplied
 		const result = applyTaskFilters(displayCandidates, { ready: true, statuses, fullGraphTasks: fullGraph });
 		expect(result.map((t) => t.id)).toEqual(["BACK-2"]);
+	});
+});
+
+describe("Rendered TUI and Web UI readiness guidance assertions", () => {
+	it("renders TUI detail readiness guidance for ready, blocked, and terminal tasks", () => {
+		const doneDep = makeTask("BACK-1", "Done");
+		const inProgDep = makeTask("BACK-2", "In Progress");
+		const readyTask = makeTask("BACK-3", "To Do", ["BACK-1"]);
+		const blockedTask = makeTask("BACK-4", "To Do", ["BACK-2"]);
+		const fullGraph = [doneDep, inProgDep, readyTask, blockedTask];
+
+		const readyDetail = generateDetailContent(readyTask, undefined, undefined, fullGraph, statuses);
+		const readyText = readyDetail.bodyContent.join("\n");
+		expect(readyText).toContain("Readiness:");
+		expect(readyText).toContain("✓ Ready to start");
+
+		const blockedDetail = generateDetailContent(blockedTask, undefined, undefined, fullGraph, statuses);
+		const blockedText = blockedDetail.bodyContent.join("\n");
+		expect(blockedText).toContain("Readiness:");
+		expect(blockedText).toContain("⏳ Blocked by: BACK-2");
+
+		const terminalDetail = generateDetailContent(doneDep, undefined, undefined, fullGraph, statuses);
+		const terminalText = terminalDetail.bodyContent.join("\n");
+		expect(terminalText).toContain("Readiness:");
+		expect(terminalText).toContain("Terminal status (Done)");
+	});
+
+	it("renders Web TaskDetailsModal readiness badge accurately for ready, blocked, and terminal tasks", () => {
+		const dom = new JSDOM("<!doctype html><html><body></body></html>", { url: "http://localhost" });
+		globalThis.window = dom.window as unknown as Window & typeof globalThis;
+		globalThis.document = dom.window.document as Document;
+		globalThis.navigator = dom.window.navigator as Navigator;
+		globalThis.localStorage = dom.window.localStorage;
+
+		if (!window.matchMedia) {
+			window.matchMedia = () =>
+				({
+					matches: false,
+					media: "",
+					onchange: null,
+					addListener: () => {},
+					removeListener: () => {},
+					addEventListener: () => {},
+					removeEventListener: () => {},
+					dispatchEvent: () => false,
+				}) as MediaQueryList;
+		}
+
+		const doneDep = makeTask("BACK-1", "Done");
+		const inProgDep = makeTask("BACK-2", "In Progress");
+		const readyTask = makeTask("BACK-3", "To Do", ["BACK-1"]);
+		const blockedTask = makeTask("BACK-4", "To Do", ["BACK-2"]);
+		const availableTasks = [doneDep, inProgDep, readyTask, blockedTask];
+
+		const readyHtml = renderToString(
+			<ThemeProvider>
+				<TaskDetailsModal task={readyTask} availableTasks={availableTasks} isOpen={true} onClose={() => {}} />
+			</ThemeProvider>,
+		);
+		expect(readyHtml).toContain("Readiness:");
+		expect(readyHtml).toContain("✓ Ready to start");
+
+		const blockedHtml = renderToString(
+			<ThemeProvider>
+				<TaskDetailsModal task={blockedTask} availableTasks={availableTasks} isOpen={true} onClose={() => {}} />
+			</ThemeProvider>,
+		);
+		expect(blockedHtml).toContain("Readiness:");
+		expect(blockedHtml).toContain("BACK-2");
+
+		const terminalHtml = renderToString(
+			<ThemeProvider>
+				<TaskDetailsModal task={doneDep} availableTasks={availableTasks} isOpen={true} onClose={() => {}} />
+			</ThemeProvider>,
+		);
+		expect(terminalHtml).toContain("Readiness:");
+		expect(terminalHtml).toContain("Done");
 	});
 });
