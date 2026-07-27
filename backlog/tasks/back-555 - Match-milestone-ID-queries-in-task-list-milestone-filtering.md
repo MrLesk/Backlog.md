@@ -5,7 +5,7 @@ status: In Progress
 assignee:
   - '@therealkevinard'
 created_date: '2026-07-27 20:27'
-updated_date: '2026-07-27 20:51'
+updated_date: '2026-07-27 21:00'
 labels: []
 dependencies: []
 references:
@@ -32,20 +32,20 @@ The browser is not affected: it filters from a milestone picker rather than free
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 Listing tasks filtered by a numeric milestone ID (for example 0) returns the tasks assigned to that milestone
-- [ ] #2 Listing tasks filtered by the stored milestone ID form (for example m-0) returns the same tasks, case-insensitively
-- [ ] #3 Filtering by milestone title continues to work, including partial and typo inputs that rely on closest-match behavior
-- [ ] #4 A milestone query that matches no known milestone returns no tasks rather than unrelated ones
-- [ ] #5 The interactive TUI task list resolves milestone ID queries the same way as the plain and JSON output paths
-- [ ] #6 MCP task listing and draft listing resolve milestone ID queries the same way as the CLI
-- [ ] #7 Tests cover ID-form milestone queries at both the unit level and the CLI integration level
+- [x] #1 Listing tasks filtered by a numeric milestone ID (for example 0) returns the tasks assigned to that milestone
+- [x] #2 Listing tasks filtered by the stored milestone ID form (for example m-0) returns the same tasks, case-insensitively
+- [x] #3 Filtering by milestone title continues to work, including partial and typo inputs that rely on closest-match behavior
+- [x] #4 A milestone query that matches no known milestone returns no tasks rather than unrelated ones
+- [x] #5 The interactive TUI task list resolves milestone ID queries the same way as the plain and JSON output paths
+- [x] #6 MCP task listing and draft listing resolve milestone ID queries the same way as the CLI
+- [x] #7 Tests cover ID-form milestone queries at both the unit level and the CLI integration level
 <!-- AC:END -->
 
 ## Definition of Done
 <!-- DOD:BEGIN -->
-- [ ] #1 bunx tsc --noEmit passes when TypeScript touched
-- [ ] #2 bun run check . passes when formatting/linting touched
-- [ ] #3 bun test (or scoped test) passes
+- [x] #1 bunx tsc --noEmit passes when TypeScript touched
+- [x] #2 bun run check . passes when formatting/linting touched
+- [x] #3 bun test (or scoped test) passes
 <!-- DOD:END -->
 
 ## Implementation Plan
@@ -74,4 +74,20 @@ Added resolveMilestoneFilterTitle in utils/milestone-filter.ts, which resolves a
 Did not collapse the five duplicated milestone matchers; recorded in .local/triage/collateral-findings.md as follow-up along with the dangling-milestone-on-write observation.
 
 Verification: bunx tsc --noEmit clean, bun run check . clean, full bun test 1786 pass / 4 skip / 0 fail. Upstream repro from issue 819 confirmed fixed in a scratch project (-m 0, -m m-0, -m M-0 all list the task).
+
+Added regression coverage: CLI integration tests for numeric, m-N, and upper-case ID queries plus an unmatched-query case; an MCP test asserting task_list and draft_list both resolve ID forms; and a unit test that runs the value cli.ts seeds through the interactive view matcher (applyTaskFilters) to guard against reintroducing the normalized-value mismatch.
+
+Confirmed the new tests are non-vacuous: reverting only the two call sites while keeping helper and tests in place fails the CLI ID test and the MCP milestone test, and they pass again once restored.
+
+AC5 evidence note: verified through the interactive view matcher in the test runner rather than a live TUI session, since the matcher is the component the CLI value feeds.
 <!-- SECTION:NOTES:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+Milestone filters now accept milestone IDs, not just titles.
+
+The query was passed raw into closest-match while candidate values were resolved to titles, so the ID-to-title resolver only ever ran on one side of the comparison and an exact stored ID such as m-0 matched nothing. The query is now resolved before matching in the CLI/JSON path and the MCP draft list path. A new resolveMilestoneFilterTitle helper resolves a query to the stored milestone title and seeds the interactive view, which compares raw titles rather than the normalized form the CLI was previously handing it; that also fixes milestone titles containing punctuation, which could not be separated from the ID fix because both are the same value-vocabulary defect.
+
+Verified with bunx tsc --noEmit, bun run check ., and the full bun test suite (1788 pass, 4 skip, 0 fail), plus the upstream issue 819 repro confirmed fixed in a clean project. New tests fail against the unfixed call sites and pass with them.
+<!-- SECTION:FINAL_SUMMARY:END -->
