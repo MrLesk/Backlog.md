@@ -176,4 +176,36 @@ describe("MCP draft support via task tools", () => {
 		const archiveFiles = await readdir(archiveDir);
 		expect(archiveFiles.some((file) => file.startsWith("draft-1"))).toBe(true);
 	});
+
+	it("filters tasks and drafts by milestone ID as well as title", async () => {
+		const milestone = await mcpServer.filesystem.createMilestone("Alpha Release");
+		const numericId = milestone.id.replace(/^m-/i, "");
+
+		await mcpServer.testInterface.callTool({
+			params: { name: "task_create", arguments: { title: "Milestone task", milestone: milestone.id } },
+		});
+		await mcpServer.testInterface.callTool({
+			params: {
+				name: "task_create",
+				arguments: { title: "Milestone draft", status: "Draft", milestone: milestone.id },
+			},
+		});
+
+		for (const query of [numericId, milestone.id, milestone.id.toUpperCase(), "Alpha Release"]) {
+			const taskList = await mcpServer.testInterface.callTool({
+				params: { name: "task_list", arguments: { milestone: query } },
+			});
+			expect(getText(taskList.content)).toContain("Milestone task");
+
+			const draftList = await mcpServer.testInterface.callTool({
+				params: { name: "task_list", arguments: { status: "Draft", milestone: query } },
+			});
+			expect(getText(draftList.content)).toContain("Milestone draft");
+		}
+
+		const unmatched = await mcpServer.testInterface.callTool({
+			params: { name: "task_list", arguments: { milestone: "zzz-unrelated-milestone" } },
+		});
+		expect(getText(unmatched.content)).not.toContain("Milestone task");
+	});
 });

@@ -445,14 +445,13 @@ export class Core {
 			result = result.filter((task) => normalizePriorityValue(task.priority) === priorityLower);
 		}
 		if (filters.milestone) {
+			const resolveValue = resolveMilestoneFilterValue ?? ((value: string) => value);
 			const milestoneFilter = resolveClosestMilestoneFilterValue(
-				filters.milestone,
-				result.map((task) => resolveMilestoneFilterValue?.(task.milestone ?? "") ?? task.milestone ?? ""),
+				resolveValue(filters.milestone),
+				result.map((task) => resolveValue(task.milestone ?? "")),
 			);
 			result = result.filter(
-				(task) =>
-					normalizeMilestoneFilterValue(resolveMilestoneFilterValue?.(task.milestone ?? "") ?? task.milestone ?? "") ===
-					milestoneFilter,
+				(task) => normalizeMilestoneFilterValue(resolveValue(task.milestone ?? "")) === milestoneFilter,
 			);
 		}
 		if (filters.parentTaskId) {

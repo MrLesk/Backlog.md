@@ -180,7 +180,7 @@ export class TaskHandlers {
 					...archivedMilestones,
 				]);
 				const milestoneFilter = resolveClosestMilestoneFilterValue(
-					args.milestone,
+					resolveMilestoneFilterValue(args.milestone),
 					drafts.map((draft) => resolveMilestoneFilterValue(draft.milestone ?? "")),
 				);
 				drafts = drafts.filter(

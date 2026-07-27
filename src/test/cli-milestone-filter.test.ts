@@ -6,6 +6,7 @@ import { Core } from "../index.ts";
 import { createUniqueTestDir, initializeTestProject, safeCleanup } from "./test-utils.ts";
 
 let TEST_DIR: string;
+let ID_MILESTONE_ID: string;
 
 describe("CLI milestone filtering", () => {
 	const cliPath = join(process.cwd(), "src", "cli.ts");
@@ -21,6 +22,7 @@ describe("CLI milestone filtering", () => {
 		const core = new Core(TEST_DIR);
 		await initializeTestProject(core, "Milestone Filter Test Project");
 		const newMilestone = await core.filesystem.createMilestone("New Milestones UI");
+		ID_MILESTONE_ID = newMilestone.id;
 
 		await core.createTask(
 			{
@@ -178,6 +180,34 @@ describe("CLI milestone filtering", () => {
 		expect(output).not.toContain("TASK-3 - Other milestone task");
 		expect(output).not.toContain("TASK-4 - No milestone task");
 		expect(output).not.toContain("TASK-5 - Roadmap milestone task");
+	});
+
+	it("matches tasks by milestone ID when tasks store milestone IDs", async () => {
+		const numericId = ID_MILESTONE_ID.replace(/^m-/i, "");
+		const queries = [numericId, ID_MILESTONE_ID, ID_MILESTONE_ID.toUpperCase()];
+
+		for (const query of queries) {
+			const result = await $`bun ${cliPath} task list --milestone ${query} --plain`.cwd(TEST_DIR).quiet();
+			expect(result.exitCode).toBe(0);
+			const output = result.stdout.toString();
+
+			expect(output).toContain("TASK-6 - ID milestone task");
+			expect(output).not.toContain("TASK-1 - Milestone task one");
+			expect(output).not.toContain("TASK-2 - Milestone task two");
+			expect(output).not.toContain("TASK-3 - Other milestone task");
+			expect(output).not.toContain("TASK-4 - No milestone task");
+			expect(output).not.toContain("TASK-5 - Roadmap milestone task");
+		}
+	});
+
+	it("returns no tasks when the milestone query matches no milestone", async () => {
+		const result = await $`bun ${cliPath} task list --milestone zzz-unrelated-milestone --plain`.cwd(TEST_DIR).quiet();
+		expect(result.exitCode).toBe(0);
+		const output = result.stdout.toString();
+
+		expect(output).toContain("No tasks found");
+		expect(output).not.toContain("TASK-1 - Milestone task one");
+		expect(output).not.toContain("TASK-6 - ID milestone task");
 	});
 
 	it("preserves existing listing behavior when milestone filter is omitted", async () => {

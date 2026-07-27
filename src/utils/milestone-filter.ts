@@ -45,6 +45,33 @@ function compactMilestoneFilterValue(value: string): string {
 	return value.replace(/\s+/g, "");
 }
 
+/**
+ * Resolve a milestone query to the milestone title that title-based matchers compare against.
+ *
+ * ID aliases ("8", "m-8") resolve deterministically through the resolver before the closest-match
+ * step, so an exact ID behaves like an exact title. Falls back to the closest matching title, and
+ * to the resolved query itself when nothing matches.
+ */
+export function resolveMilestoneFilterTitle(
+	query: string,
+	milestoneValues: string[],
+	resolveValue: (milestoneValue: string) => string = (value) => value,
+): string {
+	const resolvedQuery = resolveValue(query);
+	const candidates = milestoneValues.map((value) => resolveValue(value)).filter((value) => value.trim().length > 0);
+	const closest = resolveClosestMilestoneFilterValue(resolvedQuery, candidates);
+
+	const titleByNormalized = new Map<string, string>();
+	for (const candidate of candidates) {
+		const normalized = normalizeMilestoneFilterValue(candidate);
+		if (normalized && !titleByNormalized.has(normalized)) {
+			titleByNormalized.set(normalized, candidate.trim());
+		}
+	}
+
+	return titleByNormalized.get(closest) ?? resolvedQuery;
+}
+
 export function resolveClosestMilestoneFilterValue(query: string, milestoneValues: string[]): string {
 	const normalizedQuery = normalizeMilestoneFilterValue(query);
 	if (!normalizedQuery) {
