@@ -10,6 +10,7 @@ import { registerTaskTools } from "../mcp/tools/tasks/index.ts";
 import { createUniqueTestDir, initializeTestProject, safeCleanup } from "./test-utils.ts";
 
 const CLI_PATH = join(process.cwd(), "src", "cli.ts");
+const CROSS_ENTITY_GIT_TIMEOUT_MS = 20_000;
 
 async function commitCount(directory: string): Promise<number> {
 	return Number.parseInt((await $`git rev-list --count HEAD`.cwd(directory).text()).trim(), 10);
@@ -68,40 +69,48 @@ describe("autoCommitMode", () => {
 	});
 
 	for (const mode of ["new", "amend-own"] as const) {
-		test(`${mode} is shared by task, draft, document, decision, milestone, and agent mutations`, async () => {
-			const config = await core.filesystem.loadConfig();
-			if (!config) throw new Error("Missing test config");
-			await core.filesystem.saveConfig({ ...config, autoCommit: true, autoCommitMode: mode });
-			await $`git add backlog/config.yml && git commit -m ${`Configure ${mode}`}`.cwd(testDir).quiet();
-			const baseline = await commitCount(testDir);
+		test(
+			`${mode} is shared by task, draft, document, decision, milestone, and agent mutations`,
+			async () => {
+				const config = await core.filesystem.loadConfig();
+				if (!config) throw new Error("Missing test config");
+				await core.filesystem.saveConfig({ ...config, autoCommit: true, autoCommitMode: mode });
+				await $`git add backlog/config.yml && git commit -m ${`Configure ${mode}`}`.cwd(testDir).quiet();
+				const baseline = await commitCount(testDir);
 
-			await core.createTaskFromInput({ title: "Task mutation" });
-			await core.createTaskFromInput({ title: "Draft mutation", status: "Draft" });
-			await core.createDocumentFromInput({ title: "Document mutation", content: "Document body" });
-			await core.createDecision({
-				id: "decision-1",
-				title: "Decision mutation",
-				date: "2026-07-28",
-				status: "proposed",
-				context: "",
-				decision: "",
-				consequences: "",
-				rawContent: "",
-			});
-			await new MilestoneHandlers(core).addMilestone({ name: "Milestone mutation" });
-			await addAgentInstructions(testDir, core.git, ["AGENTS.md"], true, {
-				amendOwned: mode === "amend-own",
-			});
+				await core.createTaskFromInput({ title: "Task mutation" });
+				await core.createTaskFromInput({ title: "Draft mutation", status: "Draft" });
+				await core.createDocumentFromInput({ title: "Document mutation", content: "Document body" });
+				await core.createDecision({
+					id: "decision-1",
+					title: "Decision mutation",
+					date: "2026-07-28",
+					status: "proposed",
+					context: "",
+					decision: "",
+					consequences: "",
+					rawContent: "",
+				});
+				await new MilestoneHandlers(core).addMilestone({ name: "Milestone mutation" });
+				await addAgentInstructions(testDir, core.git, ["AGENTS.md"], true, {
+					amendOwned: mode === "amend-own",
+				});
 
-			expect(await commitCount(testDir)).toBe(baseline + (mode === "new" ? 6 : 1));
-			expect(await Bun.file(join(testDir, "AGENTS.md")).exists()).toBe(true);
-			expect((await core.filesystem.listDrafts()).map((draft) => draft.title)).toContain("Draft mutation");
-			expect((await core.filesystem.listDocuments()).map((document) => document.title)).toContain("Document mutation");
-			expect((await core.filesystem.listDecisions()).map((decision) => decision.title)).toContain("Decision mutation");
-			expect((await core.filesystem.listMilestones()).map((milestone) => milestone.title)).toContain(
-				"Milestone mutation",
-			);
-		});
+				expect(await commitCount(testDir)).toBe(baseline + (mode === "new" ? 6 : 1));
+				expect(await Bun.file(join(testDir, "AGENTS.md")).exists()).toBe(true);
+				expect((await core.filesystem.listDrafts()).map((draft) => draft.title)).toContain("Draft mutation");
+				expect((await core.filesystem.listDocuments()).map((document) => document.title)).toContain(
+					"Document mutation",
+				);
+				expect((await core.filesystem.listDecisions()).map((decision) => decision.title)).toContain(
+					"Decision mutation",
+				);
+				expect((await core.filesystem.listMilestones()).map((milestone) => milestone.title)).toContain(
+					"Milestone mutation",
+				);
+			},
+			CROSS_ENTITY_GIT_TIMEOUT_MS,
+		);
 	}
 
 	test("MCP mutation output reports an owned replacement", async () => {
