@@ -14,6 +14,7 @@ interface AdvancedConfig {
 	activeBranchDays: number;
 	bypassGitHooks: boolean;
 	autoCommit: boolean;
+	autoCommitMode: "new" | "amend-own";
 	zeroPaddedIds: number | null;
 	taskPrefix: string;
 	defaultEditor: string;
@@ -48,6 +49,7 @@ const InitializationScreen: React.FC<InitializationScreenProps> = ({ onInitializ
 		activeBranchDays: DEFAULT_INIT_CONFIG.activeBranchDays,
 		bypassGitHooks: DEFAULT_INIT_CONFIG.bypassGitHooks,
 		autoCommit: DEFAULT_INIT_CONFIG.autoCommit,
+		autoCommitMode: DEFAULT_INIT_CONFIG.autoCommitMode,
 		zeroPaddedIds: DEFAULT_INIT_CONFIG.zeroPaddedIds ?? null,
 		taskPrefix: "",
 		defaultEditor: DEFAULT_INIT_CONFIG.defaultEditor ?? "",
@@ -667,6 +669,31 @@ const InitializationScreen: React.FC<InitializationScreenProps> = ({ onInitializ
 								</div>
 							</label>
 
+							{advancedConfig.autoCommit && (
+								<div className="ml-6">
+									<label htmlFor="init-auto-commit-mode" className="block text-sm text-gray-700 dark:text-gray-300 mb-1">
+										Auto-commit mode
+									</label>
+									<select
+										id="init-auto-commit-mode"
+										value={advancedConfig.autoCommitMode}
+										onChange={(e) =>
+											setAdvancedConfig((prev) => ({
+												...prev,
+												autoCommitMode: e.target.value as "new" | "amend-own",
+											}))
+										}
+										className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg text-gray-900 dark:text-gray-100 bg-white dark:bg-gray-700"
+									>
+										<option value="new">Create a new commit</option>
+										<option value="amend-own">Replace the last owned Backlog commit</option>
+									</select>
+									<p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+										May replace the exact current locally-owned Backlog tip only when every safety check passes; otherwise creates a new commit.
+									</p>
+								</div>
+							)}
+
 							<label className="flex items-center cursor-pointer">
 								<input
 									type="checkbox"
@@ -868,6 +895,14 @@ const InitializationScreen: React.FC<InitializationScreenProps> = ({ onInitializ
 						{showAdvancedConfig ? "Customized" : "Defaults"}
 					</span>
 				</div>
+				{showAdvancedConfig && advancedConfig.autoCommit && (
+					<div className="flex justify-between">
+						<span className="text-gray-600 dark:text-gray-400">Auto-commit Mode:</span>
+						<span className="font-medium text-gray-900 dark:text-gray-100">
+							{advancedConfig.autoCommitMode}
+						</span>
+					</div>
+				)}
 				{showAdvancedConfig && advancedConfig.taskPrefix && (
 					<div className="flex justify-between">
 						<span className="text-gray-600 dark:text-gray-400">Task Prefix:</span>

@@ -134,11 +134,15 @@ export class GitOperations {
 		await this.execGit(["add", ...relativePaths]);
 	}
 
-	async commitTaskChange(taskId: string, message: string, filePath?: string): Promise<void> {
+	async commitTaskChange(
+		taskId: string,
+		message: string,
+		filePath?: string,
+		options: GitCommitOptions = {},
+	): Promise<GitCommitResult | null> {
 		const commitMessage = `${taskId} - ${message}`;
 		if (filePath) {
-			await this.commitFiles(commitMessage, [filePath]);
-			return;
+			return await this.commitFiles(commitMessage, [filePath], undefined, options);
 		}
 		const args = ["commit", "-m", commitMessage];
 		if (this.config?.bypassGitHooks) {
@@ -146,9 +150,10 @@ export class GitOperations {
 		}
 		const repoRoot = filePath ? (await this.getPathContext(filePath))?.repoRoot : undefined;
 		if (!(await this.isRepository(repoRoot ?? this.projectRoot))) {
-			return;
+			return null;
 		}
 		await this.execGit(args, { cwd: repoRoot });
+		return null;
 	}
 
 	async commitChanges(message: string, repoRoot?: string | null): Promise<void> {
@@ -777,7 +782,8 @@ export class GitOperations {
 		filePath: string,
 		action: "create" | "update" | "archive",
 		onStaged?: (entries: GitIndexEntry[]) => void,
-	): Promise<void> {
+		options: GitCommitOptions = {},
+	): Promise<GitCommitResult | null> {
 		const actionMessages = {
 			create: `Create task ${taskId}`,
 			update: `Update task ${taskId}`,
@@ -787,7 +793,7 @@ export class GitOperations {
 		const context = await this.getPathContext(filePath);
 		const repoRoot = context?.repoRoot ?? this.projectRoot;
 		if (!(await this.isRepository(repoRoot))) {
-			return;
+			return null;
 		}
 		const pathForAdd = context?.relativePath ?? relative(this.projectRoot, filePath).replace(/\\/g, "/");
 		const expectedWorkingHash = await this.hashFile(filePath);
@@ -803,8 +809,7 @@ export class GitOperations {
 				await this.execGit(["add", pathForAdd], { cwd: repoRoot });
 				expectedIndexEntries = await this.getIndexEntries(filePath);
 				onStaged?.(expectedIndexEntries);
-				await this.commitFiles(actionMessages[action], [filePath], repoRoot);
-				return;
+				return await this.commitFiles(actionMessages[action], [filePath], repoRoot, options);
 			} catch (error) {
 				lastError = error instanceof Error ? error : new Error(String(error));
 				if (attempt === 3) break;

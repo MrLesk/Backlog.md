@@ -10,6 +10,7 @@ For getting started and the interactive wizard overview, see [README.md](README.
 | Get specific config | `backlog config get defaultEditor` |
 | Set config value | `backlog config set defaultEditor "code --wait"` |
 | Enable auto-commit | `backlog config set autoCommit true` |
+| Roll up owned auto-commits | `backlog config set autoCommitMode amend-own` |
 | Bypass git hooks | `backlog config set bypassGitHooks true` |
 | Enable cross-branch check | `backlog config set checkActiveBranches true` |
 | Set active branch days | `backlog config set activeBranchDays 30` |
@@ -32,6 +33,7 @@ Running `backlog config` with no arguments launches the interactive advanced wiz
 | `autoOpenBrowser` | Open browser automatically | `true`            |
 | `remoteOperations`| Enable remote git operations | `true`           |
 | `autoCommit`      | Automatically commit task changes | `false`       |
+| `autoCommitMode`  | Create `new` commits or replace an `amend-own` rolling commit | `new` |
 | `bypassGitHooks`  | Skip git hooks when committing (uses --no-verify) | `false`       |
 | `zeroPaddedIds`   | Pad all IDs (tasks, docs, etc.) with leading zeros | `(disabled)`  |
 | `checkActiveBranches` | Check task states across active branches for accuracy | `true` |
@@ -45,6 +47,16 @@ Running `backlog config` with no arguments launches the interactive advanced wiz
 > **Note**: Set `remoteOperations: false` to work offline. This disables git fetch operations and loads tasks from local branches only, useful when working without network connectivity.
 
 > **Git Control**: By default, `autoCommit` is set to `false`, giving you full control over your git history. Task operations will modify files but won't automatically commit changes. Set `autoCommit: true` if you prefer automatic commits for each task operation.
+
+### Rolling owned automatic commits
+
+`autoCommitMode` accepts `new` (the safe default) and `amend-own`. The YAML key is `auto_commit_mode`. A missing key behaves as `new`; an invalid value is rejected. `autoCommit` remains the independent enable switch, and filesystem-only projects keep automatic commits disabled.
+
+In `amend-own` mode, the first Backlog mutation after a boundary creates a normal commit. Later mutations replace that commit only while it remains the current tip of the same named local branch and Backlog can prove that it created the exact SHA. A manual commit, reset, clone, branch switch, tag, merge tip, remote-tracking publication, another named branch (including one checked out in a linked worktree), detached current `HEAD`, in-progress Git operation, stale or missing ownership evidence, or failure to record evidence ends or prevents the rolling sequence. Backlog then degrades safely to creating a new commit. Use `--no-amend` on an automatic-commit command to seal the current rolling commit and create a new one for that invocation; under `new` it is a no-op.
+
+When replacing a rolling commit, Backlog rebuilds the commit message from a delimited, JSON-safe list of operations. Exact duplicate operations collapse. Compatible operations use a factored subject such as `backlog: Update tasks BACK-1, BACK-2`; mixed operations use a count such as `backlog: 2 changes`. Existing message text outside Backlog's operation region is preserved. CLI output identifies the old and replacement commit IDs.
+
+Replacement rewrites local history. Inspect `git reflog` to find and recover an earlier tip (for example, `git reset --hard <old-sha>` after preserving any work). Publication detection is deliberately local-only: Backlog cannot detect a push that left no remote-tracking ref. It also cannot detect a linked worktree parked on the tip with a detached `HEAD`. Do not use `amend-own` with hooks that modify the commit message: a non-idempotent hook can append its output again on every replacement. Prefer `new` whenever history rewriting or these accepted limits are unsuitable.
 
 > **Git Hooks**: If you have pre-commit hooks (like conventional commits or linters) that interfere with backlog.md's automated commits, set `bypassGitHooks: true` to skip them using the `--no-verify` flag.
 

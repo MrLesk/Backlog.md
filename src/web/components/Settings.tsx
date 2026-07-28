@@ -73,6 +73,10 @@ const Settings: React.FC = () => {
 			errors.projectName = 'Project name is required';
 		}
 
+		if (config.autoCommitMode !== undefined && config.autoCommitMode !== 'new' && config.autoCommitMode !== 'amend-own') {
+			errors.autoCommitMode = 'Auto commit mode must be new or amend-own';
+		}
+
 		// Validate port number
 		if (config.defaultPort && (config.defaultPort < 1 || config.defaultPort > 65535)) {
 			errors.defaultPort = 'Port must be between 1 and 65535';
@@ -212,6 +216,29 @@ const Settings: React.FC = () => {
 									</div>
 								</label>
 							</div>
+
+							{config.autoCommit && (
+								<div>
+									<label htmlFor="autoCommitMode" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+										Auto Commit Mode
+									</label>
+									<select
+										id="autoCommitMode"
+										value={config.autoCommitMode ?? 'new'}
+										onChange={(e) => handleInputChange('autoCommitMode', e.target.value)}
+										className="w-full h-10 px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-stone-500 dark:focus:ring-stone-400 transition-colors duration-200"
+									>
+										<option value="new">Create a new commit</option>
+										<option value="amend-own">Replace the last owned Backlog commit</option>
+									</select>
+									<p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
+										May replace the exact current locally-owned Backlog tip only when every safety check passes; otherwise creates a new commit.
+									</p>
+									{validationErrors.autoCommitMode && (
+										<p className="mt-1 text-sm text-red-600 dark:text-red-400">{validationErrors.autoCommitMode}</p>
+									)}
+								</div>
+							)}
 
 							<div>
 								<label className="flex items-center justify-between">

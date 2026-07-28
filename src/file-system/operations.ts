@@ -55,6 +55,13 @@ const DEFAULT_CREATE_LOCK_TIMEOUT_MS = 30_000;
 const DEFAULT_CREATE_LOCK_RETRY_DELAY_MS = 100;
 const DEFAULT_CREATE_LOCK_STALE_MS = 10_000;
 
+export class InvalidBacklogConfigError extends Error {
+	constructor(message: string) {
+		super(message);
+		this.name = "InvalidBacklogConfigError";
+	}
+}
+
 export const CREATE_LOCK_ERROR_CODE = "ECREATELOCK";
 export const CREATE_LOCK_ERROR_MESSAGE =
 	"Another task create/promote/demote operation is already in progress. Please try again.";
@@ -1433,7 +1440,8 @@ ${description || `Milestone: ${title}`}`,
 			this.cachedConfig = config;
 			this.cachedConfigSnapshot = { path: configPath, content };
 			return config;
-		} catch (_error) {
+		} catch (error) {
+			if (error instanceof InvalidBacklogConfigError) throw error;
 			return null;
 		}
 	}
@@ -1550,6 +1558,14 @@ ${description || `Milestone: ${title}`}`,
 				case "auto_commit":
 					config.autoCommit = value.toLowerCase() === "true";
 					break;
+				case "auto_commit_mode": {
+					const mode = value.replace(/["']/g, "").toLowerCase();
+					if (mode !== "new" && mode !== "amend-own") {
+						throw new InvalidBacklogConfigError("auto_commit_mode must be new or amend-own");
+					}
+					config.autoCommitMode = mode;
+					break;
+				}
 				case "filesystem_only":
 				case "filesystemOnly":
 					config.filesystemOnly = value.toLowerCase() === "true";
@@ -1599,6 +1615,7 @@ ${description || `Milestone: ${title}`}`,
 			defaultPort: config.defaultPort,
 			remoteOperations: config.remoteOperations,
 			autoCommit: config.autoCommit,
+			autoCommitMode: config.autoCommitMode,
 			filesystemOnly: config.filesystemOnly,
 			zeroPaddedIds: config.zeroPaddedIds,
 			bypassGitHooks: config.bypassGitHooks,
@@ -1611,6 +1628,13 @@ ${description || `Milestone: ${title}`}`,
 	}
 
 	private serializeConfig(config: BacklogConfig): string {
+		if (
+			config.autoCommitMode !== undefined &&
+			config.autoCommitMode !== "new" &&
+			config.autoCommitMode !== "amend-own"
+		) {
+			throw new InvalidBacklogConfigError("auto_commit_mode must be new or amend-own");
+		}
 		const normalizedDefinitionOfDone = this.normalizeDefinitionOfDone(config.definitionOfDone);
 		const lines = [
 			`project_name: "${config.projectName}"`,
@@ -1634,6 +1658,7 @@ ${description || `Milestone: ${title}`}`,
 			...(config.defaultPort ? [`default_port: ${config.defaultPort}`] : []),
 			...(typeof config.remoteOperations === "boolean" ? [`remote_operations: ${config.remoteOperations}`] : []),
 			...(typeof config.autoCommit === "boolean" ? [`auto_commit: ${config.autoCommit}`] : []),
+			...(config.autoCommitMode ? [`auto_commit_mode: ${config.autoCommitMode}`] : []),
 			...(typeof config.filesystemOnly === "boolean" ? [`filesystem_only: ${config.filesystemOnly}`] : []),
 			...(typeof config.zeroPaddedIds === "number" ? [`zero_padded_ids: ${config.zeroPaddedIds}`] : []),
 			...(typeof config.bypassGitHooks === "boolean" ? [`bypass_git_hooks: ${config.bypassGitHooks}`] : []),

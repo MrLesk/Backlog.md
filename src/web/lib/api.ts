@@ -145,6 +145,10 @@ export class ApiClient {
 	// Helper method for JSON responses
 	private async fetchJson<T>(url: string, options: RequestInit = {}): Promise<T> {
 		const response = await this.fetchWithRetry(url, options);
+		const autoCommitNotice = (response as Response & { headers?: Headers }).headers?.get?.("X-Backlog-Auto-Commit");
+		if (autoCommitNotice && typeof window !== "undefined") {
+			window.dispatchEvent(new CustomEvent("backlog-auto-commit", { detail: autoCommitNotice }));
+		}
 		return response.json();
 	}
 	async fetchTasks(options?: {
@@ -587,6 +591,7 @@ export class ApiClient {
 			activeBranchDays?: number;
 			bypassGitHooks?: boolean;
 			autoCommit?: boolean;
+			autoCommitMode?: "new" | "amend-own";
 			zeroPaddedIds?: number;
 			taskPrefix?: string;
 			defaultEditor?: string;

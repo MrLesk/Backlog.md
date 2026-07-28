@@ -6,6 +6,7 @@ import {
 	installClaudeAgent,
 } from "../agent-instructions.ts";
 import { DEFAULT_INIT_CONFIG } from "../constants/index.ts";
+import type { GitCommitResult } from "../git/operations.ts";
 import type { BacklogConfig } from "../types/index.ts";
 import { normalizeProjectBacklogDirectory } from "../utils/backlog-directory.ts";
 import {
@@ -56,12 +57,15 @@ export interface InitializeProjectOptions {
 	agentInstructions?: AgentInstructionFile[];
 	installClaudeAgent?: boolean;
 	filesystemOnly?: boolean;
+	forceNewAutoCommit?: boolean;
+	onAutoCommitResult?: (result: GitCommitResult) => void;
 	advancedConfig?: {
 		checkActiveBranches?: boolean;
 		remoteOperations?: boolean;
 		activeBranchDays?: number;
 		bypassGitHooks?: boolean;
 		autoCommit?: boolean;
+		autoCommitMode?: "new" | "amend-own";
 		zeroPaddedIds?: number;
 		defaultEditor?: string;
 		definitionOfDone?: string[];
@@ -112,6 +116,8 @@ export async function initializeProject(
 		advancedConfig = {},
 		existingConfig,
 		filesystemOnly = false,
+		forceNewAutoCommit = false,
+		onAutoCommitResult,
 	} = options;
 
 	const isReInitialization = !!existingConfig;
@@ -142,6 +148,7 @@ export async function initializeProject(
 		maxColumnWidth: 20,
 		filesystemOnly: effectiveFilesystemOnly || d.filesystemOnly,
 		autoCommit: normalizedAdvancedConfig.autoCommit ?? existingConfig?.autoCommit ?? d.autoCommit,
+		autoCommitMode: normalizedAdvancedConfig.autoCommitMode ?? existingConfig?.autoCommitMode ?? d.autoCommitMode,
 		remoteOperations:
 			normalizedAdvancedConfig.remoteOperations ?? existingConfig?.remoteOperations ?? d.remoteOperations,
 		bypassGitHooks: normalizedAdvancedConfig.bypassGitHooks ?? existingConfig?.bypassGitHooks ?? d.bypassGitHooks,
@@ -163,6 +170,7 @@ export async function initializeProject(
 		projectName,
 		filesystemOnly: effectiveFilesystemOnly || d.filesystemOnly,
 		autoCommit: normalizedAdvancedConfig.autoCommit ?? existingConfig?.autoCommit ?? d.autoCommit,
+		autoCommitMode: normalizedAdvancedConfig.autoCommitMode ?? existingConfig?.autoCommitMode ?? d.autoCommitMode,
 		remoteOperations:
 			normalizedAdvancedConfig.remoteOperations ?? existingConfig?.remoteOperations ?? d.remoteOperations,
 		bypassGitHooks: normalizedAdvancedConfig.bypassGitHooks ?? existingConfig?.bypassGitHooks ?? d.bypassGitHooks,
@@ -274,6 +282,8 @@ export async function initializeProject(
 				core.gitOps,
 				agentInstructions,
 				config.autoCommit,
+				{ amendOwned: config.autoCommitMode === "amend-own" && !forceNewAutoCommit },
+				onAutoCommitResult,
 			);
 			mcpResults.agentFiles = formatAgentInstructionResults(agentInstructionResults);
 		} catch (error) {

@@ -4,7 +4,7 @@ import type { Task } from "../types/index.ts";
 import { getTerminalStatus, isTerminalStatus } from "../utils/terminal-status.ts";
 
 export type CompleteTaskFromTuiResult =
-	| { success: true }
+	| { success: true; notices: string[] }
 	| { success: false; reason: "not-terminal"; terminalStatus: string }
 	| { success: false; reason: "failed" };
 
@@ -22,5 +22,5 @@ export async function completeTaskFromTui(core: Core, task: Task): Promise<Compl
 	}
 
 	const success = await core.completeTask(task.id, config?.autoCommit ?? false);
-	return success ? { success: true } : { success: false, reason: "failed" };
+	return success ? { success: true, notices: core.consumeAutoCommitNotices() } : { success: false, reason: "failed" };
 }

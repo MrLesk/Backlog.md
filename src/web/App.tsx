@@ -189,6 +189,7 @@ function AppContent() {
   const [milestoneEntities, setMilestoneEntities] = useState<Milestone[]>([]);
   const [archivedMilestones, setArchivedMilestones] = useState<Milestone[]>([]);
   const [showSuccessToast, setShowSuccessToast] = useState(false);
+  const [autoCommitNotice, setAutoCommitNotice] = useState<string | null>(null);
   const [taskConfirmation, setTaskConfirmation] = useState<{task: Task, isDraft: boolean} | null>(null);
   
   // Initialization state
@@ -382,6 +383,14 @@ function AppContent() {
     // Update the ref for next time
     previousOnlineRef.current = isOnline;
   }, [isOnline]);
+
+  useEffect(() => {
+    const handleAutoCommitNotice = (event: Event) => {
+      setAutoCommitNotice((event as CustomEvent<string>).detail);
+    };
+    window.addEventListener('backlog-auto-commit', handleAutoCommitNotice);
+    return () => window.removeEventListener('backlog-auto-commit', handleAutoCommitNotice);
+  }, []);
 
   const handleNewTask = () => {
     setEditingTask(null);
@@ -747,6 +756,13 @@ function AppContent() {
         definitionOfDoneDefaults={config?.definitionOfDone ?? []}
         dateFormat={config?.dateFormat}
       />
+
+      {autoCommitNotice && (
+        <SuccessToast
+          message={autoCommitNotice}
+          onDismiss={() => setAutoCommitNotice(null)}
+        />
+      )}
 
       {/* Task Creation Confirmation Toast */}
       {taskConfirmation && (

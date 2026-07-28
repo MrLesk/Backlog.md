@@ -42,6 +42,27 @@ describe("BacklogServer init endpoint", () => {
 		expect(config?.checkActiveBranches).toBe(true);
 	});
 
+	it("round-trips autoCommitMode from browser initialization", async () => {
+		const server = new BacklogServer(TEST_DIR) as unknown as InitHandler;
+		const response = await server.handleInit(
+			initRequest({ advancedConfig: { autoCommit: true, autoCommitMode: "amend-own" } }),
+		);
+
+		expect(response.status).toBe(200);
+		const config = await new Core(TEST_DIR).filesystem.loadConfig();
+		expect(config?.autoCommit).toBe(true);
+		expect(config?.autoCommitMode).toBe("amend-own");
+	});
+
+	it("rejects an invalid browser initialization autoCommitMode without writing config", async () => {
+		const server = new BacklogServer(TEST_DIR) as unknown as InitHandler;
+		const response = await server.handleInit(initRequest({ advancedConfig: { autoCommitMode: "amend" } }));
+
+		expect(response.status).toBe(400);
+		expect(await response.json()).toEqual({ error: "Auto commit mode must be new or amend-own" });
+		expect(await new Core(TEST_DIR).filesystem.loadConfig()).toBeNull();
+	});
+
 	it("accepts string true filesystemOnly for loose init callers", async () => {
 		const server = new BacklogServer(TEST_DIR) as unknown as InitHandler;
 		const response = await server.handleInit(initRequest({ filesystemOnly: "true" }));

@@ -497,6 +497,7 @@ export async function runUnifiedView(options: UnifiedViewOptions): Promise<void>
 					priorities: config?.priorities,
 					types: config?.types,
 					createTask: async (input) => createTaskFromBoard(options.core, input, taskUpdateCallbacks.onTaskAdded),
+					consumeAutoCommitNotices: () => options.core.consumeAutoCommitNotices(),
 				}).then(() => {
 					// If user wants to exit, do it immediately
 					if (result === "exit") {

@@ -1,8 +1,9 @@
+import { AsyncLocalStorage } from "node:async_hooks";
 import { rename as moveFile, readFile, stat, unlink, writeFile } from "node:fs/promises";
 import { basename, isAbsolute, join, relative } from "node:path";
 import { DEFAULT_DIRECTORIES, DEFAULT_STATUSES, FALLBACK_STATUS } from "../constants/index.ts";
 import { FileSystem, isCreateLockError } from "../file-system/operations.ts";
-import { type GitIndexEntry, GitOperations } from "../git/operations.ts";
+import { type GitCommitOptions, type GitCommitResult, type GitIndexEntry, GitOperations } from "../git/operations.ts";
 import {
 	type AcceptanceCriterion,
 	type BacklogConfig,
@@ -71,6 +72,12 @@ import { attachSubtaskSummaries } from "../utils/task-subtasks.ts";
 import { formatValidTaskTypeValues, matchesTaskTypeFilter, resolveTaskTypeValue } from "../utils/task-type-config.ts";
 import { upsertTaskUpdatedDate } from "../utils/task-updated-date.ts";
 import { isTerminalStatus } from "../utils/terminal-status.ts";
+import {
+	type AutoCommitInput,
+	type AutoCommitOptions,
+	recordAutoCommitResult as appendAutoCommitResult,
+	formatAutoCommitNotices,
+} from "./auto-commit.ts";
 import { migrateConfig, needsMigration } from "./config-migration.ts";
 import { ContentStore } from "./content-store.ts";
 import {
@@ -266,17 +273,21 @@ export class Core {
 	private contentStore?: ContentStore;
 	private searchService?: SearchService;
 	private readonly enableWatchers: boolean;
+	private readonly defaultAutoCommitInput: AutoCommitInput;
+	private readonly automaticCommitResults: GitCommitResult[] = [];
+	private readonly automaticCommitContext = new AsyncLocalStorage<AutoCommitOptions>();
 	private activeBranchTaskEntries: BranchTaskStateEntry[] = [];
 	private activeBranchFingerprint: string | null = null;
 	private activeBranchFingerprintPromise: Promise<string> | null = null;
 	private activeBranchRefreshPromise: Promise<void> | null = null;
 
-	constructor(projectRoot: string, options?: { enableWatchers?: boolean }) {
+	constructor(projectRoot: string, options?: { enableWatchers?: boolean; autoCommit?: AutoCommitInput }) {
 		this.fs = new FileSystem(projectRoot);
 		this.git = new GitOperations(projectRoot, null, () => this.fs.loadConfig());
 		// Disable watchers by default for CLI commands (non-interactive)
 		// Interactive modes (TUI, browser, MCP) should explicitly pass enableWatchers: true
 		this.enableWatchers = options?.enableWatchers ?? false;
+		this.defaultAutoCommitInput = options?.autoCommit ?? { results: this.automaticCommitResults };
 		// Note: Config is loaded lazily when needed since constructor can't be async
 	}
 
@@ -843,18 +854,47 @@ export class Core {
 		return this.fs.backlogDirName;
 	}
 
-	async shouldAutoCommit(overrideValue?: boolean): Promise<boolean> {
+	private effectiveAutoCommitInput(input?: AutoCommitInput): AutoCommitInput {
+		return input === undefined ? (this.automaticCommitContext.getStore() ?? this.defaultAutoCommitInput) : input;
+	}
+
+	private recordAutoCommitResult(
+		input: AutoCommitInput | undefined,
+		result: Awaited<ReturnType<GitOperations["commitFiles"]>>,
+	): void {
+		const feedbackTarget =
+			typeof input === "object" ? input : (this.automaticCommitContext.getStore() ?? this.defaultAutoCommitInput);
+		appendAutoCommitResult(feedbackTarget, result);
+	}
+
+	consumeAutoCommitNotices(): string[] {
+		const notices = formatAutoCommitNotices({ results: this.automaticCommitResults });
+		this.automaticCommitResults.splice(0);
+		return notices;
+	}
+
+	async withAutoCommitFeedback<T>(action: () => Promise<T>): Promise<{ value: T; notices: string[] }> {
+		const context: AutoCommitOptions = { results: [] };
+		const value = await this.automaticCommitContext.run(context, action);
+		return { value, notices: formatAutoCommitNotices(context) };
+	}
+
+	private async resolveAutoCommit(input?: AutoCommitInput): Promise<{ enabled: boolean; amendOwned: boolean }> {
 		const config = await this.fs.loadConfig();
 		this.git.setConfig(config);
-		if (config?.filesystemOnly) {
-			return false;
-		}
-		// If override is explicitly provided, use it
-		if (overrideValue !== undefined) {
-			return overrideValue;
-		}
-		// Otherwise, check config (default to false for safety)
-		return config?.autoCommit ?? false;
+		if (config?.filesystemOnly) return { enabled: false, amendOwned: false };
+		const effectiveInput = this.effectiveAutoCommitInput(input);
+		const enabledOverride = typeof effectiveInput === "boolean" ? effectiveInput : effectiveInput?.enabled;
+		const enabled = enabledOverride ?? config?.autoCommit ?? false;
+		const forceNew = typeof effectiveInput === "boolean" ? false : (effectiveInput?.forceNew ?? false);
+		return {
+			enabled,
+			amendOwned: enabled && (config?.autoCommitMode ?? "new") === "amend-own" && !forceNew,
+		};
+	}
+
+	async shouldAutoCommit(input?: AutoCommitInput): Promise<boolean> {
+		return (await this.resolveAutoCommit(input)).enabled;
 	}
 
 	async getGitOps() {
@@ -862,13 +902,22 @@ export class Core {
 		return this.git;
 	}
 
-	private async commitOperationFiles(message: string, filePaths: string[]): Promise<void> {
+	private async gitCommitOptions(input?: AutoCommitInput): Promise<GitCommitOptions> {
+		return { amendOwned: (await this.resolveAutoCommit(input)).amendOwned };
+	}
+
+	private async commitOperationFiles(message: string, filePaths: string[], input?: AutoCommitInput): Promise<void> {
 		const uniquePaths = Array.from(new Set(filePaths.map((path) => path.trim()).filter((path) => path.length > 0)));
-		if (uniquePaths.length === 0) {
-			return;
-		}
+		if (uniquePaths.length === 0) return;
 		const repoRoot = await this.git.stageFiles(uniquePaths);
-		await this.git.commitFiles(message, uniquePaths, repoRoot);
+		const result = await this.git.commitFiles(message, uniquePaths, repoRoot, await this.gitCommitOptions(input));
+		this.recordAutoCommitResult(input, result);
+	}
+
+	async commitAutomaticFiles(message: string, filePaths: string[], input?: AutoCommitInput): Promise<void> {
+		if (await this.shouldAutoCommit(input)) {
+			await this.commitOperationFiles(message, filePaths, input);
+		}
 	}
 
 	// Config migration
@@ -1277,6 +1326,7 @@ export class Core {
 		filepath: string,
 		isDraft: boolean,
 		autoCommit: boolean,
+		input?: AutoCommitInput,
 		write?: CreatedTaskWrite,
 	): Promise<Task | null> {
 		const savedTask = isDraft ? await this.fs.loadDraft(task.id) : await this.fs.loadTask(task.id);
@@ -1286,14 +1336,23 @@ export class Core {
 		}
 
 		if (autoCommit) {
+			const options = await this.gitCommitOptions(input);
 			if (isDraft) {
 				await this.git.addFile(filepath);
 				if (write) write.generatedIndexEntries = await this.git.getIndexEntries(filepath);
-				await this.git.commitTaskChange(task.id, `Create draft ${task.id}`, filepath);
+				const result = await this.git.commitTaskChange(task.id, `Create draft ${task.id}`, filepath, options);
+				this.recordAutoCommitResult(input, result);
 			} else {
-				await this.git.addAndCommitTaskFile(task.id, filepath, "create", (entries) => {
-					if (write) write.generatedIndexEntries = entries;
-				});
+				const result = await this.git.addAndCommitTaskFile(
+					task.id,
+					filepath,
+					"create",
+					(entries) => {
+						if (write) write.generatedIndexEntries = entries;
+					},
+					options,
+				);
+				this.recordAutoCommitResult(input, result);
 			}
 		}
 
@@ -1357,7 +1416,10 @@ export class Core {
 		return { indexRestored, workingPathRestored };
 	}
 
-	async createTaskFromInput(input: TaskCreateInput, autoCommit?: boolean): Promise<{ task: Task; filePath?: string }> {
+	async createTaskFromInput(
+		input: TaskCreateInput,
+		autoCommit?: AutoCommitInput,
+	): Promise<{ task: Task; filePath?: string }> {
 		if (!input.title || input.title.trim().length === 0) {
 			throw new Error("Title is required to create a task.");
 		}
@@ -1480,7 +1542,14 @@ export class Core {
 		});
 
 		try {
-			const savedTask = await this.finalizeCreatedTask(task, write.filePath, isDraft, autoCommitEnabled, write);
+			const savedTask = await this.finalizeCreatedTask(
+				task,
+				write.filePath,
+				isDraft,
+				autoCommitEnabled,
+				autoCommit,
+				write,
+			);
 			return { task: savedTask ?? task, filePath: write.filePath };
 		} catch (error) {
 			let rollback: CreatedTaskRollbackResult;
@@ -1517,7 +1586,7 @@ export class Core {
 		return parentTask.id;
 	}
 
-	async createTask(task: Task, autoCommit?: boolean): Promise<string> {
+	async createTask(task: Task, autoCommit?: AutoCommitInput): Promise<string> {
 		if (!task.status) {
 			const config = await this.fs.loadConfig();
 			task.status = config?.defaultStatus || FALLBACK_STATUS;
@@ -1525,12 +1594,12 @@ export class Core {
 
 		const autoCommitEnabled = await this.shouldAutoCommit(autoCommit);
 		const filepath = await this.writePreparedTask(task, false);
-		await this.finalizeCreatedTask(task, filepath, false, autoCommitEnabled);
+		await this.finalizeCreatedTask(task, filepath, false, autoCommitEnabled, autoCommit);
 
 		return filepath;
 	}
 
-	async updateTask(task: Task, autoCommit?: boolean): Promise<void> {
+	async updateTask(task: Task, autoCommit?: AutoCommitInput): Promise<void> {
 		normalizeAssignee(task);
 
 		// Load original task to detect status changes for callbacks
@@ -1559,7 +1628,14 @@ export class Core {
 		if (await this.shouldAutoCommit(autoCommit)) {
 			const filePath = await getTaskPath(task.id, this);
 			if (filePath) {
-				await this.git.addAndCommitTaskFile(task.id, filePath, "update");
+				const result = await this.git.addAndCommitTaskFile(
+					task.id,
+					filePath,
+					"update",
+					undefined,
+					await this.gitCommitOptions(autoCommit),
+				);
+				this.recordAutoCommitResult(autoCommit, result);
 			}
 		}
 
@@ -2139,7 +2215,7 @@ export class Core {
 		return { task, mutated };
 	}
 
-	async updateTaskFromInput(taskId: string, input: TaskUpdateInput, autoCommit?: boolean): Promise<Task> {
+	async updateTaskFromInput(taskId: string, input: TaskUpdateInput, autoCommit?: AutoCommitInput): Promise<Task> {
 		const task = await this.fs.loadTask(taskId);
 		if (!task) {
 			throw new Error(`Task not found: ${taskId}`);
@@ -2163,7 +2239,7 @@ export class Core {
 		return refreshed ?? task;
 	}
 
-	async updateDraft(task: Task, autoCommit?: boolean): Promise<void> {
+	async updateDraft(task: Task, autoCommit?: AutoCommitInput): Promise<void> {
 		// Drafts always keep status Draft
 		task.status = "Draft";
 		normalizeAssignee(task);
@@ -2173,11 +2249,17 @@ export class Core {
 
 		if (await this.shouldAutoCommit(autoCommit)) {
 			await this.git.addFile(filepath);
-			await this.git.commitTaskChange(task.id, `Update draft ${task.id}`, filepath);
+			const result = await this.git.commitTaskChange(
+				task.id,
+				`Update draft ${task.id}`,
+				filepath,
+				await this.gitCommitOptions(autoCommit),
+			);
+			this.recordAutoCommitResult(autoCommit, result);
 		}
 	}
 
-	async updateDraftFromInput(draftId: string, input: TaskUpdateInput, autoCommit?: boolean): Promise<Task> {
+	async updateDraftFromInput(draftId: string, input: TaskUpdateInput, autoCommit?: AutoCommitInput): Promise<Task> {
 		const draft = await this.fs.loadDraft(draftId);
 		if (!draft) {
 			throw new Error(`Draft not found: ${draftId}`);
@@ -2199,7 +2281,7 @@ export class Core {
 		return refreshed ?? draft;
 	}
 
-	async editTaskOrDraft(taskId: string, input: TaskUpdateInput, autoCommit?: boolean): Promise<Task> {
+	async editTaskOrDraft(taskId: string, input: TaskUpdateInput, autoCommit?: AutoCommitInput): Promise<Task> {
 		const draft = await this.fs.loadDraft(taskId);
 		if (draft) {
 			const requestedStatus = input.status?.trim();
@@ -2224,7 +2306,11 @@ export class Core {
 		return await this.updateTaskFromInput(task.id, input, autoCommit);
 	}
 
-	private async promoteDraftWithUpdates(draft: Task, input: TaskUpdateInput, autoCommit?: boolean): Promise<Task> {
+	private async promoteDraftWithUpdates(
+		draft: Task,
+		input: TaskUpdateInput,
+		autoCommit?: AutoCommitInput,
+	): Promise<Task> {
 		const targetStatus = input.status?.trim();
 		if (!targetStatus || targetStatus.toLowerCase() === "draft") {
 			throw new Error("Promoting a draft requires a non-draft status.");
@@ -2272,13 +2358,14 @@ export class Core {
 			await this.commitOperationFiles(
 				`backlog: Promote draft ${normalizeId(draft.id, "draft")}`,
 				sourcePath ? [sourcePath, savedPath] : [savedPath],
+				autoCommit,
 			);
 		}
 
 		return savedTask ?? { ...promotedTask, filePath: savedPath };
 	}
 
-	private async demoteTaskWithUpdates(task: Task, input: TaskUpdateInput, autoCommit?: boolean): Promise<Task> {
+	private async demoteTaskWithUpdates(task: Task, input: TaskUpdateInput, autoCommit?: AutoCommitInput): Promise<Task> {
 		const { mutated } = await this.applyTaskUpdateInput(task, { ...input, status: undefined }, async (status) => {
 			if (status.trim().toLowerCase() === "draft") {
 				return "Draft";
@@ -2314,6 +2401,7 @@ export class Core {
 			await this.commitOperationFiles(
 				`backlog: Demote task ${normalizeTaskId(task.id)}`,
 				sourcePath ? [sourcePath, savedPath] : [savedPath],
+				autoCommit,
 			);
 		}
 
@@ -2357,11 +2445,11 @@ export class Core {
 		}
 	}
 
-	async editTask(taskId: string, input: TaskUpdateInput, autoCommit?: boolean): Promise<Task> {
+	async editTask(taskId: string, input: TaskUpdateInput, autoCommit?: AutoCommitInput): Promise<Task> {
 		return await this.updateTaskFromInput(taskId, input, autoCommit);
 	}
 
-	async updateTasksBulk(tasks: Task[], commitMessage?: string, autoCommit?: boolean): Promise<void> {
+	async updateTasksBulk(tasks: Task[], commitMessage?: string, autoCommit?: AutoCommitInput): Promise<void> {
 		const updatedPaths: string[] = [];
 		// Update all tasks without committing individually
 		for (const task of tasks) {
@@ -2372,7 +2460,7 @@ export class Core {
 
 		// Commit all changes at once if auto-commit is enabled
 		if (await this.shouldAutoCommit(autoCommit)) {
-			await this.commitOperationFiles(commitMessage || `Update ${tasks.length} tasks`, updatedPaths);
+			await this.commitOperationFiles(commitMessage || `Update ${tasks.length} tasks`, updatedPaths, autoCommit);
 		}
 	}
 
@@ -2382,7 +2470,7 @@ export class Core {
 		orderedTaskIds: string[];
 		targetMilestone?: string | null;
 		commitMessage?: string;
-		autoCommit?: boolean;
+		autoCommit?: AutoCommitInput;
 		defaultStep?: number;
 	}): Promise<{ updatedTask: Task; changedTasks: Task[] }> {
 		const taskId = normalizeTaskId(String(params.taskId || "").trim());
@@ -2499,7 +2587,7 @@ export class Core {
 		return { updatedTask, changedTasks };
 	}
 
-	async archiveTask(taskId: string, autoCommit?: boolean): Promise<boolean> {
+	async archiveTask(taskId: string, autoCommit?: AutoCommitInput): Promise<boolean> {
 		const taskToArchive = await this.fs.loadTask(taskId);
 		if (!taskToArchive) {
 			return false;
@@ -2527,11 +2615,15 @@ export class Core {
 		}
 
 		if (await this.shouldAutoCommit(autoCommit)) {
-			await this.commitOperationFiles(`backlog: Archive task ${normalizedTaskId}`, [
-				fromPath,
-				toPath,
-				...sanitizedTasks.flatMap((sanitizedTask) => (sanitizedTask.filePath ? [sanitizedTask.filePath] : [])),
-			]);
+			await this.commitOperationFiles(
+				`backlog: Archive task ${normalizedTaskId}`,
+				[
+					fromPath,
+					toPath,
+					...sanitizedTasks.flatMap((sanitizedTask) => (sanitizedTask.filePath ? [sanitizedTask.filePath] : [])),
+				],
+				autoCommit,
+			);
 		}
 
 		return true;
@@ -2539,7 +2631,7 @@ export class Core {
 
 	async archiveMilestone(
 		identifier: string,
-		autoCommit?: boolean,
+		autoCommit?: AutoCommitInput,
 	): Promise<{ success: boolean; sourcePath?: string; targetPath?: string; milestone?: Milestone }> {
 		const result = await this.fs.archiveMilestone(identifier);
 
@@ -2548,7 +2640,13 @@ export class Core {
 			const label = result.milestone?.id ? ` ${result.milestone.id}` : "";
 			const commitPaths = [result.sourcePath, result.targetPath];
 			try {
-				await this.git.commitFiles(`backlog: Archive milestone${label}`, commitPaths, repoRoot);
+				const commitResult = await this.git.commitFiles(
+					`backlog: Archive milestone${label}`,
+					commitPaths,
+					repoRoot,
+					await this.gitCommitOptions(autoCommit),
+				);
+				this.recordAutoCommitResult(autoCommit, commitResult);
 			} catch (error) {
 				await this.git.resetPaths(commitPaths, repoRoot);
 				try {
@@ -2571,7 +2669,7 @@ export class Core {
 	async renameMilestone(
 		identifier: string,
 		title: string,
-		autoCommit?: boolean,
+		autoCommit?: AutoCommitInput,
 	): Promise<{
 		success: boolean;
 		sourcePath?: string;
@@ -2589,7 +2687,13 @@ export class Core {
 			const label = result.milestone?.id ? ` ${result.milestone.id}` : "";
 			const commitPaths = [result.sourcePath, result.targetPath];
 			try {
-				await this.git.commitFiles(`backlog: Rename milestone${label}`, commitPaths, repoRoot);
+				const commitResult = await this.git.commitFiles(
+					`backlog: Rename milestone${label}`,
+					commitPaths,
+					repoRoot,
+					await this.gitCommitOptions(autoCommit),
+				);
+				this.recordAutoCommitResult(autoCommit, commitResult);
 			} catch (error) {
 				await this.git.resetPaths(commitPaths, repoRoot);
 				const rollbackTitle = result.previousTitle ?? title;
@@ -2605,7 +2709,7 @@ export class Core {
 		return result;
 	}
 
-	async completeTask(taskId: string, autoCommit?: boolean): Promise<boolean> {
+	async completeTask(taskId: string, autoCommit?: AutoCommitInput): Promise<boolean> {
 		const task = await this.fs.loadTask(taskId);
 		if (!task) return false;
 		// Get paths before moving the file
@@ -2621,7 +2725,11 @@ export class Core {
 		const success = await this.fs.completeTask(taskId);
 
 		if (success && (await this.shouldAutoCommit(autoCommit))) {
-			await this.commitOperationFiles(`backlog: Complete task ${normalizeTaskId(taskId)}`, [fromPath, toPath]);
+			await this.commitOperationFiles(
+				`backlog: Complete task ${normalizeTaskId(taskId)}`,
+				[fromPath, toPath],
+				autoCommit,
+			);
 		}
 
 		return success;
@@ -2646,7 +2754,7 @@ export class Core {
 		});
 	}
 
-	async archiveDraft(draftId: string, autoCommit?: boolean): Promise<boolean> {
+	async archiveDraft(draftId: string, autoCommit?: AutoCommitInput): Promise<boolean> {
 		const draft = await this.fs.loadDraft(draftId);
 		const sourcePath = draft?.filePath;
 		const targetPath = sourcePath
@@ -2655,16 +2763,17 @@ export class Core {
 		const success = await this.fs.archiveDraft(draftId);
 
 		if (success && sourcePath && targetPath && (await this.shouldAutoCommit(autoCommit))) {
-			await this.commitOperationFiles(`backlog: Archive draft ${normalizeId(draftId, "draft")}`, [
-				sourcePath,
-				targetPath,
-			]);
+			await this.commitOperationFiles(
+				`backlog: Archive draft ${normalizeId(draftId, "draft")}`,
+				[sourcePath, targetPath],
+				autoCommit,
+			);
 		}
 
 		return success;
 	}
 
-	async promoteDraft(draftId: string, autoCommit?: boolean): Promise<boolean> {
+	async promoteDraft(draftId: string, autoCommit?: AutoCommitInput): Promise<boolean> {
 		let movedPaths: { sourcePath: string; targetPath: string } | null = null;
 		try {
 			movedPaths = await this.withCreateLock(async () => {
@@ -2704,16 +2813,17 @@ export class Core {
 		}
 
 		if (movedPaths && (await this.shouldAutoCommit(autoCommit))) {
-			await this.commitOperationFiles(`backlog: Promote draft ${normalizeId(draftId, "draft")}`, [
-				movedPaths.sourcePath,
-				movedPaths.targetPath,
-			]);
+			await this.commitOperationFiles(
+				`backlog: Promote draft ${normalizeId(draftId, "draft")}`,
+				[movedPaths.sourcePath, movedPaths.targetPath],
+				autoCommit,
+			);
 		}
 
 		return movedPaths !== null;
 	}
 
-	async demoteTask(taskId: string, autoCommit?: boolean): Promise<boolean> {
+	async demoteTask(taskId: string, autoCommit?: AutoCommitInput): Promise<boolean> {
 		let movedPaths: { sourcePath: string; targetPath: string } | null = null;
 		try {
 			movedPaths = await this.withCreateLock(async () => {
@@ -2740,10 +2850,11 @@ export class Core {
 		}
 
 		if (movedPaths && (await this.shouldAutoCommit(autoCommit))) {
-			await this.commitOperationFiles(`backlog: Demote task ${normalizeTaskId(taskId)}`, [
-				movedPaths.sourcePath,
-				movedPaths.targetPath,
-			]);
+			await this.commitOperationFiles(
+				`backlog: Demote task ${normalizeTaskId(taskId)}`,
+				[movedPaths.sourcePath, movedPaths.targetPath],
+				autoCommit,
+			);
 		}
 
 		return movedPaths !== null;
@@ -2752,7 +2863,7 @@ export class Core {
 	/**
 	 * Add acceptance criteria to a task
 	 */
-	async addAcceptanceCriteria(taskId: string, criteria: string[], autoCommit?: boolean): Promise<void> {
+	async addAcceptanceCriteria(taskId: string, criteria: string[], autoCommit?: AutoCommitInput): Promise<void> {
 		const task = await this.fs.loadTask(taskId);
 		if (!task) {
 			throw new Error(`Task not found: ${taskId}`);
@@ -2776,7 +2887,7 @@ export class Core {
 	 * Remove acceptance criteria by indices (supports batch operations)
 	 * @returns Array of removed indices
 	 */
-	async removeAcceptanceCriteria(taskId: string, indices: number[], autoCommit?: boolean): Promise<number[]> {
+	async removeAcceptanceCriteria(taskId: string, indices: number[], autoCommit?: AutoCommitInput): Promise<number[]> {
 		const task = await this.fs.loadTask(taskId);
 		if (!task) {
 			throw new Error(`Task not found: ${taskId}`);
@@ -2819,7 +2930,7 @@ export class Core {
 		taskId: string,
 		indices: number[],
 		checked: boolean,
-		autoCommit?: boolean,
+		autoCommit?: AutoCommitInput,
 	): Promise<number[]> {
 		const task = await this.fs.loadTask(taskId);
 		if (!task) {
@@ -2866,15 +2977,15 @@ export class Core {
 		return task.acceptanceCriteriaItems || [];
 	}
 
-	async createDecision(decision: Decision, autoCommit?: boolean): Promise<void> {
+	async createDecision(decision: Decision, autoCommit?: AutoCommitInput): Promise<void> {
 		const touchedPaths = await this.fs.saveDecision(decision);
 
 		if (await this.shouldAutoCommit(autoCommit)) {
-			await this.commitOperationFiles(`backlog: Add decision ${decision.id}`, touchedPaths);
+			await this.commitOperationFiles(`backlog: Add decision ${decision.id}`, touchedPaths, autoCommit);
 		}
 	}
 
-	async updateDecisionFromContent(decisionId: string, content: string, autoCommit?: boolean): Promise<void> {
+	async updateDecisionFromContent(decisionId: string, content: string, autoCommit?: AutoCommitInput): Promise<void> {
 		const existingDecision = await this.fs.loadDecision(decisionId);
 		if (!existingDecision) {
 			throw new Error(`Decision ${decisionId} not found`);
@@ -2904,7 +3015,7 @@ export class Core {
 		await this.createDecision(updatedDecision, autoCommit);
 	}
 
-	async createDecisionWithTitle(title: string, autoCommit?: boolean): Promise<Decision> {
+	async createDecisionWithTitle(title: string, autoCommit?: AutoCommitInput): Promise<Decision> {
 		// Import the generateNextDecisionId function from CLI
 		const { generateNextDecisionId } = await import("../cli.js");
 		const id = await generateNextDecisionId(this);
@@ -2924,7 +3035,7 @@ export class Core {
 		return decision;
 	}
 
-	async createDocument(doc: Document, autoCommit?: boolean, subPath = ""): Promise<void> {
+	async createDocument(doc: Document, autoCommit?: AutoCommitInput, subPath = ""): Promise<void> {
 		const previousPaths = (await this.fs.listDocuments()).flatMap((existing) =>
 			documentIdsEqual(existing.id, doc.id) && existing.path
 				? [join(this.fs.docsDir, ...normalizeDocumentRelativePath(existing.path).split("/"))]
@@ -2935,11 +3046,11 @@ export class Core {
 
 		if (await this.shouldAutoCommit(autoCommit)) {
 			const savedPath = join(this.fs.docsDir, ...normalizeDocumentRelativePath(relativePath).split("/"));
-			await this.commitOperationFiles(`backlog: Add document ${doc.id}`, [...previousPaths, savedPath]);
+			await this.commitOperationFiles(`backlog: Add document ${doc.id}`, [...previousPaths, savedPath], autoCommit);
 		}
 	}
 
-	async updateDocument(existingDoc: Document, content: string, autoCommit?: boolean): Promise<void> {
+	async updateDocument(existingDoc: Document, content: string, autoCommit?: AutoCommitInput): Promise<void> {
 		await this.updateDocumentFromInput(
 			{
 				id: existingDoc.id,
@@ -2953,11 +3064,11 @@ export class Core {
 		);
 	}
 
-	async createDocumentWithId(title: string, content: string, autoCommit?: boolean): Promise<Document> {
+	async createDocumentWithId(title: string, content: string, autoCommit?: AutoCommitInput): Promise<Document> {
 		return await this.createDocumentFromInput({ title, content }, autoCommit);
 	}
 
-	async createDocumentFromInput(input: DocumentCreateInput, autoCommit?: boolean): Promise<Document> {
+	async createDocumentFromInput(input: DocumentCreateInput, autoCommit?: AutoCommitInput): Promise<Document> {
 		const title = input.title.trim();
 		if (!title) {
 			throw new Error("Title is required to create a document.");
@@ -2984,7 +3095,7 @@ export class Core {
 		return (await this.getDocument(document.id)) ?? document;
 	}
 
-	async updateDocumentFromInput(input: DocumentUpdateInput, autoCommit?: boolean): Promise<Document> {
+	async updateDocumentFromInput(input: DocumentUpdateInput, autoCommit?: AutoCommitInput): Promise<Document> {
 		const existingDoc = await this.getDocument(input.id);
 		if (!existingDoc) {
 			throw new Error(`Document not found: ${input.id}`);

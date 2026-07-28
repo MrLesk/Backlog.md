@@ -1254,12 +1254,15 @@ export async function viewTaskEnhanced(
 					: {
 							success: await core.archiveTask(task.id, config?.autoCommit ?? false),
 							reason: "failed" as const,
+							notices: core.consumeAutoCommitNotices(),
 						};
 
 			if (result.success) {
 				removeTaskFromCurrentView(task.id);
 				const label = action === "complete" ? "Completed" : "Archived";
-				showTransientHelp(` {green-fg}${label} ${task.id}{/}`);
+				showTransientHelp(
+					` {green-fg}${label} ${task.id}${result.notices.length > 0 ? ` — ${result.notices.join(" ")}` : ""}{/}`,
+				);
 			} else if (action === "complete" && result.reason === "not-terminal") {
 				showTransientHelp(` {red-fg}${formatTaskCompletionBlockedMessage(task.id, result.terminalStatus)}{/}`);
 			} else {

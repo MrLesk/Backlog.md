@@ -38,6 +38,7 @@ const RECOGNIZED_CONFIG_KEYS = new Set([
 	"date_format",
 	...INTEGER_CONFIG_KEYS,
 	"default_editor",
+	"auto_commit_mode",
 	...BOOLEAN_CONFIG_KEYS,
 	"onStatusChange",
 	"on_status_change",
@@ -64,6 +65,7 @@ function hasValidExplicitValues(content: string, config: BacklogConfig): boolean
 		if (key === "definition_of_done" && config.definitionOfDone === undefined) return false;
 		if ((key === "project_name" || key === "date_format") && !value.replace(/['"]/g, "").trim()) return false;
 		if (BOOLEAN_CONFIG_KEYS.has(key) && !/^(?:true|false)$/i.test(value)) return false;
+		if (key === "auto_commit_mode" && !/^(?:new|amend-own)$/i.test(value.replace(/["']/g, ""))) return false;
 		if (INTEGER_CONFIG_KEYS.has(key)) {
 			const number = Number(value);
 			if (!/^\d+$/.test(value) || !Number.isSafeInteger(number)) return false;

@@ -62,11 +62,42 @@ describe("TUI task lifecycle", () => {
 
 		const result = await completeTaskFromTui(core, task as Task);
 
-		expect(result).toEqual({ success: true });
+		expect(result).toEqual({ success: true, notices: [] });
 		expect(await core.filesystem.loadTask("task-1")).toBeNull();
 		const completedTasks = await core.filesystem.listCompletedTasks();
 		expect(completedTasks).toHaveLength(1);
 		expect(completedTasks[0]?.status).toBe("Done");
+	});
+
+	it("returns owned replacement feedback for the TUI surface", async () => {
+		const config = await core.filesystem.loadConfig();
+		if (!config) throw new Error("Expected test project config to exist");
+		await core.filesystem.saveConfig({ ...config, autoCommit: true, autoCommitMode: "amend-own" });
+		await $`git add backlog && git commit -m "Configure TUI automatic commits"`.cwd(TEST_DIR).quiet();
+		await core.createTask(
+			{
+				id: "task-1",
+				title: "Done task",
+				status: "Done",
+				assignee: [],
+				createdDate: "2026-07-01",
+				labels: [],
+				dependencies: [],
+				rawContent: "Test task",
+			},
+			true,
+		);
+		core.consumeAutoCommitNotices();
+		const task = await core.filesystem.loadTask("task-1");
+		if (!task) throw new Error("Expected test task");
+
+		const result = await completeTaskFromTui(core, task);
+
+		expect(result.success).toBe(true);
+		if (result.success) {
+			expect(result.notices).toHaveLength(1);
+			expect(result.notices[0]).toMatch(/^Amended Backlog commit [0-9a-f]{12} as [0-9a-f]{12}\.$/);
+		}
 	});
 
 	it("uses the configured terminal status", async () => {
@@ -92,7 +123,7 @@ describe("TUI task lifecycle", () => {
 		await createTask({ id: "task-2", title: "Closed task", status: "Closed" });
 		const closedTask = await core.filesystem.loadTask("task-2");
 		expect(closedTask).not.toBeNull();
-		expect(await completeTaskFromTui(core, closedTask as Task)).toEqual({ success: true });
+		expect(await completeTaskFromTui(core, closedTask as Task)).toEqual({ success: true, notices: [] });
 		expect((await core.filesystem.listCompletedTasks()).map((task) => task.id)).toEqual(["TASK-2"]);
 	});
 });

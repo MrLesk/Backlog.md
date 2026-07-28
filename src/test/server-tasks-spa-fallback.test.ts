@@ -522,6 +522,70 @@ describe("BacklogServer task SPA fallback", () => {
 		expect(changed.status).toBe(409);
 	});
 
+	it("round-trips autoCommitMode and rejects invalid settings updates without writing them", async () => {
+		const initial = await request("/api/config");
+		expect(initial.status).toBe(200);
+		const config = (await initial.json()) as Record<string, unknown>;
+		expect(config.autoCommitMode).toBe("new");
+
+		const updated = await request("/api/config", {
+			method: "PUT",
+			headers: { "Content-Type": "application/json" },
+			body: JSON.stringify({ ...config, autoCommit: true, autoCommitMode: "amend-own" }),
+		});
+		expect(updated.status).toBe(200);
+		expect((await updated.json()) as Record<string, unknown>).toMatchObject({
+			autoCommit: true,
+			autoCommitMode: "amend-own",
+		});
+
+		const invalid = await request("/api/config", {
+			method: "PUT",
+			headers: { "Content-Type": "application/json" },
+			body: JSON.stringify({ ...config, autoCommitMode: "amend" }),
+		});
+		expect(invalid.status).toBe(400);
+		expect(await invalid.json()).toEqual({ error: "Auto commit mode must be new or amend-own" });
+
+		const readback = await request("/api/config");
+		expect(readback.status).toBe(200);
+		expect((await readback.json()) as Record<string, unknown>).toMatchObject({
+			autoCommit: true,
+			autoCommitMode: "amend-own",
+		});
+	});
+
+	it("returns automatic replacement feedback to the browser surface", async () => {
+		await server?.stop();
+		server = null;
+		const config = await filesystem.loadConfig();
+		if (!config) throw new Error("Expected test config");
+		await filesystem.saveConfig({ ...config, autoCommit: true, autoCommitMode: "amend-own" });
+		await $`git init -b main`.cwd(TEST_DIR).quiet();
+		await $`git config user.name "Test User"`.cwd(TEST_DIR).quiet();
+		await $`git config user.email test@example.com`.cwd(TEST_DIR).quiet();
+		await $`git add backlog && git commit -m "Initialize browser feedback test"`.cwd(TEST_DIR).quiet();
+		await startServer();
+
+		const first = await request("/api/tasks", {
+			method: "POST",
+			headers: { "Content-Type": "application/json" },
+			body: JSON.stringify({ title: "First browser mutation" }),
+		});
+		expect(first.status).toBe(201);
+		expect(first.headers.get("X-Backlog-Auto-Commit")).toBeNull();
+
+		const second = await request("/api/tasks", {
+			method: "POST",
+			headers: { "Content-Type": "application/json" },
+			body: JSON.stringify({ title: "Second browser mutation" }),
+		});
+		expect(second.status).toBe(201);
+		expect(second.headers.get("X-Backlog-Auto-Commit")).toMatch(
+			/^Amended Backlog commit [0-9a-f]{12} as [0-9a-f]{12}\.$/,
+		);
+	});
+
 	it("uses the current config when active-branch collision checks are toggled", async () => {
 		await restartWithActiveBranchCollision("BACK-1", true);
 

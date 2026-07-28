@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import { mkdir } from "node:fs/promises";
 import { join } from "node:path";
 import { $ } from "bun";
+import { formatAdvancedConfigSummary } from "../commands/advanced-config-summary.ts";
 import type { PromptRunner } from "../commands/advanced-config-wizard.ts";
 import { configureAdvancedSettings } from "../commands/configure-advanced-settings.ts";
 import { Core } from "../core/backlog.ts";
@@ -83,6 +84,7 @@ describe("Config commands", () => {
 			{ activeBranchDays: 14 },
 			{ bypassGitHooks: true },
 			{ autoCommit: true },
+			{ autoCommitMode: "amend-own" },
 			{ enableZeroPadding: true },
 			{ paddingWidth: 4 },
 			{ editor: "bun" },
@@ -105,6 +107,7 @@ describe("Config commands", () => {
 		expect(mergedConfig.activeBranchDays).toBe(14);
 		expect(mergedConfig.bypassGitHooks).toBe(true);
 		expect(mergedConfig.autoCommit).toBe(true);
+		expect(mergedConfig.autoCommitMode).toBe("amend-own");
 		expect(mergedConfig.zeroPaddedIds).toBe(4);
 		expect(mergedConfig.defaultEditor).toBe("bun");
 		expect(mergedConfig.definitionOfDone).toEqual(["Ship release notes"]);
@@ -119,6 +122,47 @@ describe("Config commands", () => {
 		expect(reloadedConfig?.autoOpenBrowser).toBe(false);
 		expect(reloadedConfig?.bypassGitHooks).toBe(true);
 		expect(reloadedConfig?.autoCommit).toBe(true);
+		expect(reloadedConfig?.autoCommitMode).toBe("amend-own");
+	});
+
+	it("advanced wizard defaults autoCommitMode to new and then to the configured value", async () => {
+		const runWizardAndCaptureMode = async (): Promise<string | number | boolean | undefined> => {
+			const responses: Array<Record<string, unknown>> = [
+				{ installCompletions: false },
+				{ checkActiveBranches: true },
+				{ remoteOperations: true },
+				{ activeBranchDays: 30 },
+				{ bypassGitHooks: false },
+				{ autoCommit: true },
+				{ enableZeroPadding: false },
+				{ editor: "" },
+				{ definitionOfDoneAction: "done" },
+				{ configureWebUI: false },
+				{ installClaudeAgent: false },
+			];
+			let initialMode: string | number | boolean | undefined;
+			const prompt: PromptRunner = async (question) => {
+				if (!Array.isArray(question) && question.name === "autoCommitMode") {
+					initialMode = question.initial;
+					return { autoCommitMode: question.initial };
+				}
+				const response = responses.shift();
+				if (!response) throw new Error("Unexpected wizard prompt");
+				return response;
+			};
+			await configureAdvancedSettings(core, { promptImpl: prompt });
+			return initialMode;
+		};
+
+		const config = await core.filesystem.loadConfig();
+		if (!config) throw new Error("Missing test config");
+		await core.filesystem.saveConfig({ ...config, autoCommit: true, autoCommitMode: undefined });
+		expect(await runWizardAndCaptureMode()).toBe("new");
+
+		const current = await core.filesystem.loadConfig();
+		if (!current) throw new Error("Missing test config");
+		await core.filesystem.saveConfig({ ...current, autoCommitMode: "amend-own" });
+		expect(await runWizardAndCaptureMode()).toBe("amend-own");
 	});
 
 	it("configureAdvancedSettings supports add/remove/reorder/clear actions for Definition of Done defaults", async () => {
@@ -157,6 +201,21 @@ describe("Config commands", () => {
 		expect(reloadedConfig?.definitionOfDone).toEqual(["Final item"]);
 	});
 
+	it("renders the effective mode in summaries only when automatic commits are enabled", () => {
+		const base = {
+			projectName: "Summary",
+			statuses: ["To Do", "Done"],
+			labels: [],
+			defaultStatus: "To Do",
+			dateFormat: "yyyy-mm-dd",
+		};
+		expect(formatAdvancedConfigSummary({ ...base, autoCommit: true }).join("\n")).toContain("Auto commit mode: new");
+		expect(
+			formatAdvancedConfigSummary({ ...base, autoCommit: true, autoCommitMode: "amend-own" }).join("\n"),
+		).toContain("Auto commit mode: amend-own");
+		expect(formatAdvancedConfigSummary({ ...base, autoCommit: false }).join("\n")).not.toContain("Auto commit mode:");
+	});
+
 	it("exposes config list/get/set subcommands", async () => {
 		const listOutput = await $`bun ${CLI_PATH} config list`.cwd(TEST_DIR).text();
 		expect(listOutput).toContain("Configuration:");
@@ -165,6 +224,26 @@ describe("Config commands", () => {
 
 		const portOutput = await $`bun ${CLI_PATH} config get defaultPort`.cwd(TEST_DIR).text();
 		expect(portOutput.trim()).toBe("7001");
+	});
+
+	it("round-trips autoCommitMode through config get/set/list and rejects invalid modes", async () => {
+		const defaultGet = await $`bun ${CLI_PATH} config get autoCommitMode`.cwd(TEST_DIR).text();
+		expect(defaultGet.trim()).toBe("new");
+
+		await $`bun ${CLI_PATH} config set autoCommitMode amend-own`.cwd(TEST_DIR).quiet();
+		expect((await $`bun ${CLI_PATH} config get autoCommitMode`.cwd(TEST_DIR).text()).trim()).toBe("amend-own");
+		expect(await Bun.file(core.filesystem.configFilePath).text()).toContain("auto_commit_mode: amend-own");
+
+		const listOutput = await $`bun ${CLI_PATH} config list`.cwd(TEST_DIR).text();
+		expect(listOutput).toContain("autoCommitMode: amend-own");
+
+		const invalid = await $`bun ${CLI_PATH} config set autoCommitMode amend`.cwd(TEST_DIR).nothrow().quiet();
+		expect(invalid.exitCode).not.toBe(0);
+		expect(invalid.stderr.toString()).toContain("autoCommitMode must be new or amend-own");
+		expect((await new Core(TEST_DIR).filesystem.loadConfig())?.autoCommitMode).toBe("amend-own");
+		expect(() => core.filesystem.parseConfig('project_name: "P"\nauto_commit_mode: unsafe\n')).toThrow(
+			"auto_commit_mode must be new or amend-own",
+		);
 	});
 
 	it("round-trips hideEmptyColumns through config get/set/list", async () => {

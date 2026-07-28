@@ -408,7 +408,12 @@ export class McpServer extends Core {
 			throw new McpError(ErrorCode.InvalidParams, `Tool not found: ${name}`);
 		}
 
-		return await tool.handler(args);
+		const { value: result, notices } = await this.withAutoCommitFeedback(() => tool.handler(args));
+		if (notices.length === 0) return result;
+		return {
+			...result,
+			content: [...result.content, ...notices.map((text) => ({ type: "text" as const, text }))],
+		};
 	}
 
 	protected async listResources(extra?: ServerRequestExtra): Promise<ListResourcesResult> {

@@ -238,23 +238,14 @@ export class MilestoneHandlers {
 			taskFilePaths?: Iterable<string>;
 		},
 	): Promise<void> {
-		const shouldAutoCommit = await this.core.shouldAutoCommit();
-		if (!shouldAutoCommit) {
-			return;
-		}
-
-		let repoRoot: string | null = null;
-		const commitPaths: string[] = [];
-		if (options.sourcePath && options.targetPath) {
-			repoRoot = await this.core.git.stageFileMove(options.sourcePath, options.targetPath);
-			commitPaths.push(options.sourcePath, options.targetPath);
-		}
-		for (const filePath of options.taskFilePaths ?? []) {
-			await this.core.git.addFile(filePath);
-			commitPaths.push(filePath);
-		}
+		if (!(await this.core.shouldAutoCommit())) return;
+		const commitPaths = [
+			...(options.sourcePath && options.targetPath ? [options.sourcePath, options.targetPath] : []),
+			...(options.taskFilePaths ?? []),
+		];
+		const repoRoot = await this.core.git.stageFiles(commitPaths);
 		try {
-			await this.core.git.commitFiles(commitMessage, commitPaths, repoRoot);
+			await this.core.commitAutomaticFiles(commitMessage, commitPaths);
 		} catch (error) {
 			await this.core.git.resetPaths(commitPaths, repoRoot);
 			throw error;

@@ -3,7 +3,7 @@ import { mkdir } from "node:fs/promises";
 import { dirname, isAbsolute, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { CLAUDE_AGENT_CONTENT, CLI_AGENT_NUDGE, MCP_AGENT_NUDGE, README_GUIDELINES } from "./constants/index.ts";
-import type { GitOperations } from "./git/operations.ts";
+import type { GitCommitOptions, GitCommitResult, GitOperations } from "./git/operations.ts";
 import { getVersion } from "./utils/version.ts";
 
 export type AgentInstructionFile =
@@ -146,6 +146,8 @@ export async function addAgentInstructions(
 	git?: GitOperations,
 	files: AgentInstructionFile[] = ["AGENTS.md", "CLAUDE.md", "GEMINI.md", ".github/copilot-instructions.md"],
 	autoCommit = false,
+	commitOptions: GitCommitOptions = {},
+	onCommitResult?: (result: GitCommitResult) => void,
 ): Promise<AgentInstructionWriteResult[]> {
 	const mapping: Record<AgentInstructionFile, string> = {
 		"AGENTS.md": CLI_AGENT_NUDGE,
@@ -221,7 +223,8 @@ export async function addAgentInstructions(
 
 	if (git && paths.length > 0 && autoCommit) {
 		const repoRoot = await git.stageFiles(paths);
-		await git.commitFiles("Add AI agent instructions", paths, repoRoot);
+		const result = await git.commitFiles("Add AI agent instructions", paths, repoRoot, commitOptions);
+		if (result) onCommitResult?.(result);
 	}
 
 	return results;
