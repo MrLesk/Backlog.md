@@ -854,13 +854,14 @@ export class FileSystem {
 	}
 
 	// Decision log operations
-	async saveDecision(decision: Decision): Promise<void> {
+	async saveDecision(decision: Decision): Promise<string[]> {
 		// Normalize ID - remove "decision-" prefix if present
 		const normalizedId = decision.id.replace(/^decision-/, "");
 		const filename = `decision-${normalizedId} - ${this.sanitizeFilename(decision.title)}.md`;
 		const decisionsDir = await this.getDecisionsDir();
 		const filepath = join(decisionsDir, filename);
 		const content = serializeDecision(decision);
+		const touchedPaths = [filepath];
 
 		const matches = await Array.fromAsync(
 			new Bun.Glob("decision-*.md").scan({ cwd: decisionsDir, followSymlinks: true }),
@@ -868,8 +869,10 @@ export class FileSystem {
 		for (const match of matches) {
 			if (match === filename) continue;
 			if (!match.startsWith(`decision-${normalizedId} -`)) continue;
+			const previousPath = join(decisionsDir, match);
 			try {
-				await unlink(join(decisionsDir, match));
+				await unlink(previousPath);
+				touchedPaths.push(previousPath);
 			} catch {
 				// Ignore cleanup errors
 			}
@@ -877,6 +880,7 @@ export class FileSystem {
 
 		await this.ensureDirectoryExists(dirname(filepath));
 		await Bun.write(filepath, content);
+		return touchedPaths;
 	}
 
 	async loadDecision(decisionId: string): Promise<Decision | null> {

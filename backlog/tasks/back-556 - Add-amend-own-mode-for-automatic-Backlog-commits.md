@@ -1,10 +1,11 @@
 ---
 id: BACK-556
 title: Add amend-own mode for automatic Backlog commits
-status: To Do
-assignee: []
+status: In Progress
+assignee:
+  - '@andreas'
 created_date: '2026-07-28 14:27'
-updated_date: '2026-07-28 16:25'
+updated_date: '2026-07-28 17:01'
 labels:
   - enhancement
   - git

@@ -862,6 +862,15 @@ export class Core {
 		return this.git;
 	}
 
+	private async commitOperationFiles(message: string, filePaths: string[]): Promise<void> {
+		const uniquePaths = Array.from(new Set(filePaths.map((path) => path.trim()).filter((path) => path.length > 0)));
+		if (uniquePaths.length === 0) {
+			return;
+		}
+		const repoRoot = await this.git.stageFiles(uniquePaths);
+		await this.git.commitFiles(message, uniquePaths, repoRoot);
+	}
+
 	// Config migration
 	private parseLegacyInlineArray(value: string): string[] {
 		const items: string[] = [];
@@ -2230,7 +2239,7 @@ export class Core {
 
 		const canonicalStatus = await this.requireCanonicalStatus(targetStatus);
 
-		const { promotedTask, savedPath } = await this.withCreateLock(async () => {
+		const { promotedTask, savedPath, sourcePath } = await this.withCreateLock(async () => {
 			const newTaskId = await this.generateNextId(EntityType.Task, draft.parentTaskId);
 			const draftPath = draft.filePath;
 
@@ -2251,7 +2260,7 @@ export class Core {
 				await unlink(draftPath);
 			}
 
-			return { promotedTask, savedPath };
+			return { promotedTask, savedPath, sourcePath: draftPath };
 		});
 
 		const savedTask = await this.fs.loadTask(promotedTask.id);
@@ -2260,9 +2269,10 @@ export class Core {
 		}
 
 		if (await this.shouldAutoCommit(autoCommit)) {
-			const backlogDir = await this.getBacklogDirectoryName();
-			const repoRoot = await this.git.stageBacklogDirectory(backlogDir);
-			await this.git.commitChanges(`backlog: Promote draft ${normalizeId(draft.id, "draft")}`, repoRoot);
+			await this.commitOperationFiles(
+				`backlog: Promote draft ${normalizeId(draft.id, "draft")}`,
+				sourcePath ? [sourcePath, savedPath] : [savedPath],
+			);
 		}
 
 		return savedTask ?? { ...promotedTask, filePath: savedPath };
@@ -2276,7 +2286,7 @@ export class Core {
 			return this.requireCanonicalStatus(status);
 		});
 
-		const { demotedDraft, savedPath } = await this.withCreateLock(async () => {
+		const { demotedDraft, savedPath, sourcePath } = await this.withCreateLock(async () => {
 			const newDraftId = await this.generateNextId(EntityType.Draft);
 			const taskPath = task.filePath;
 
@@ -2297,13 +2307,14 @@ export class Core {
 				await unlink(taskPath);
 			}
 
-			return { demotedDraft, savedPath };
+			return { demotedDraft, savedPath, sourcePath: taskPath };
 		});
 
 		if (await this.shouldAutoCommit(autoCommit)) {
-			const backlogDir = await this.getBacklogDirectoryName();
-			const repoRoot = await this.git.stageBacklogDirectory(backlogDir);
-			await this.git.commitChanges(`backlog: Demote task ${normalizeTaskId(task.id)}`, repoRoot);
+			await this.commitOperationFiles(
+				`backlog: Demote task ${normalizeTaskId(task.id)}`,
+				sourcePath ? [sourcePath, savedPath] : [savedPath],
+			);
 		}
 
 		return (await this.fs.loadDraft(demotedDraft.id)) ?? { ...demotedDraft, filePath: savedPath };
@@ -2351,16 +2362,17 @@ export class Core {
 	}
 
 	async updateTasksBulk(tasks: Task[], commitMessage?: string, autoCommit?: boolean): Promise<void> {
+		const updatedPaths: string[] = [];
 		// Update all tasks without committing individually
 		for (const task of tasks) {
 			await this.updateTask(task, false); // Don't auto-commit each one
+			const filePath = task.filePath ?? (await getTaskPath(task.id, this));
+			if (filePath) updatedPaths.push(filePath);
 		}
 
 		// Commit all changes at once if auto-commit is enabled
 		if (await this.shouldAutoCommit(autoCommit)) {
-			const backlogDir = await this.getBacklogDirectoryName();
-			const repoRoot = await this.git.stageBacklogDirectory(backlogDir);
-			await this.git.commitChanges(commitMessage || `Update ${tasks.length} tasks`, repoRoot);
+			await this.commitOperationFiles(commitMessage || `Update ${tasks.length} tasks`, updatedPaths);
 		}
 	}
 
@@ -2515,14 +2527,11 @@ export class Core {
 		}
 
 		if (await this.shouldAutoCommit(autoCommit)) {
-			// Stage the file move for proper Git tracking
-			const repoRoot = await this.git.stageFileMove(fromPath, toPath);
-			for (const sanitizedTask of sanitizedTasks) {
-				if (sanitizedTask.filePath) {
-					await this.git.addFile(sanitizedTask.filePath);
-				}
-			}
-			await this.git.commitChanges(`backlog: Archive task ${normalizedTaskId}`, repoRoot);
+			await this.commitOperationFiles(`backlog: Archive task ${normalizedTaskId}`, [
+				fromPath,
+				toPath,
+				...sanitizedTasks.flatMap((sanitizedTask) => (sanitizedTask.filePath ? [sanitizedTask.filePath] : [])),
+			]);
 		}
 
 		return true;
@@ -2612,9 +2621,7 @@ export class Core {
 		const success = await this.fs.completeTask(taskId);
 
 		if (success && (await this.shouldAutoCommit(autoCommit))) {
-			// Stage the file move for proper Git tracking
-			const repoRoot = await this.git.stageFileMove(fromPath, toPath);
-			await this.git.commitChanges(`backlog: Complete task ${normalizeTaskId(taskId)}`, repoRoot);
+			await this.commitOperationFiles(`backlog: Complete task ${normalizeTaskId(taskId)}`, [fromPath, toPath]);
 		}
 
 		return success;
@@ -2640,23 +2647,29 @@ export class Core {
 	}
 
 	async archiveDraft(draftId: string, autoCommit?: boolean): Promise<boolean> {
+		const draft = await this.fs.loadDraft(draftId);
+		const sourcePath = draft?.filePath;
+		const targetPath = sourcePath
+			? join(this.fs.backlogDir, DEFAULT_DIRECTORIES.ARCHIVE_DRAFTS, basename(sourcePath))
+			: undefined;
 		const success = await this.fs.archiveDraft(draftId);
 
-		if (success && (await this.shouldAutoCommit(autoCommit))) {
-			const backlogDir = await this.getBacklogDirectoryName();
-			const repoRoot = await this.git.stageBacklogDirectory(backlogDir);
-			await this.git.commitChanges(`backlog: Archive draft ${normalizeId(draftId, "draft")}`, repoRoot);
+		if (success && sourcePath && targetPath && (await this.shouldAutoCommit(autoCommit))) {
+			await this.commitOperationFiles(`backlog: Archive draft ${normalizeId(draftId, "draft")}`, [
+				sourcePath,
+				targetPath,
+			]);
 		}
 
 		return success;
 	}
 
 	async promoteDraft(draftId: string, autoCommit?: boolean): Promise<boolean> {
-		let success = false;
+		let movedPaths: { sourcePath: string; targetPath: string } | null = null;
 		try {
-			success = await this.withCreateLock(async () => {
+			movedPaths = await this.withCreateLock(async () => {
 				const draft = await this.fs.loadDraft(draftId);
-				if (!draft?.filePath) return false;
+				if (!draft?.filePath) return null;
 
 				const config = await this.fs.loadConfig();
 				const newTaskId = await this.generateNextId(EntityType.Task, draft.parentTaskId);
@@ -2673,7 +2686,7 @@ export class Core {
 				};
 
 				normalizeAssignee(promotedTask);
-				await this.fs.saveTask(promotedTask);
+				const targetPath = await this.fs.saveTask(promotedTask);
 				await unlink(draft.filePath);
 
 				const savedTask = await this.fs.loadTask(promotedTask.id);
@@ -2681,7 +2694,7 @@ export class Core {
 					this.contentStore.upsertTask(savedTask);
 				}
 
-				return true;
+				return { sourcePath: draft.filePath, targetPath };
 			});
 		} catch (error) {
 			if (isCreateLockError(error)) {
@@ -2690,25 +2703,50 @@ export class Core {
 			return false;
 		}
 
-		if (success && (await this.shouldAutoCommit(autoCommit))) {
-			const backlogDir = await this.getBacklogDirectoryName();
-			const repoRoot = await this.git.stageBacklogDirectory(backlogDir);
-			await this.git.commitChanges(`backlog: Promote draft ${normalizeId(draftId, "draft")}`, repoRoot);
+		if (movedPaths && (await this.shouldAutoCommit(autoCommit))) {
+			await this.commitOperationFiles(`backlog: Promote draft ${normalizeId(draftId, "draft")}`, [
+				movedPaths.sourcePath,
+				movedPaths.targetPath,
+			]);
 		}
 
-		return success;
+		return movedPaths !== null;
 	}
 
 	async demoteTask(taskId: string, autoCommit?: boolean): Promise<boolean> {
-		const success = await this.fs.demoteTask(taskId);
+		let movedPaths: { sourcePath: string; targetPath: string } | null = null;
+		try {
+			movedPaths = await this.withCreateLock(async () => {
+				const task = await this.fs.loadTask(taskId);
+				if (!task?.filePath) return null;
 
-		if (success && (await this.shouldAutoCommit(autoCommit))) {
-			const backlogDir = await this.getBacklogDirectoryName();
-			const repoRoot = await this.git.stageBacklogDirectory(backlogDir);
-			await this.git.commitChanges(`backlog: Demote task ${normalizeTaskId(taskId)}`, repoRoot);
+				const newDraftId = await this.generateNextId(EntityType.Draft);
+				const demotedDraft: Task = {
+					...task,
+					id: newDraftId,
+					status: "Draft",
+					filePath: undefined,
+				};
+				normalizeAssignee(demotedDraft);
+				const targetPath = await this.fs.saveDraft(demotedDraft);
+				await unlink(task.filePath);
+				return { sourcePath: task.filePath, targetPath };
+			});
+		} catch (error) {
+			if (isCreateLockError(error)) {
+				throw error;
+			}
+			return false;
 		}
 
-		return success;
+		if (movedPaths && (await this.shouldAutoCommit(autoCommit))) {
+			await this.commitOperationFiles(`backlog: Demote task ${normalizeTaskId(taskId)}`, [
+				movedPaths.sourcePath,
+				movedPaths.targetPath,
+			]);
+		}
+
+		return movedPaths !== null;
 	}
 
 	/**
@@ -2829,12 +2867,10 @@ export class Core {
 	}
 
 	async createDecision(decision: Decision, autoCommit?: boolean): Promise<void> {
-		await this.fs.saveDecision(decision);
+		const touchedPaths = await this.fs.saveDecision(decision);
 
 		if (await this.shouldAutoCommit(autoCommit)) {
-			const backlogDir = await this.getBacklogDirectoryName();
-			const repoRoot = await this.git.stageBacklogDirectory(backlogDir);
-			await this.git.commitChanges(`backlog: Add decision ${decision.id}`, repoRoot);
+			await this.commitOperationFiles(`backlog: Add decision ${decision.id}`, touchedPaths);
 		}
 	}
 
@@ -2889,13 +2925,17 @@ export class Core {
 	}
 
 	async createDocument(doc: Document, autoCommit?: boolean, subPath = ""): Promise<void> {
+		const previousPaths = (await this.fs.listDocuments()).flatMap((existing) =>
+			documentIdsEqual(existing.id, doc.id) && existing.path
+				? [join(this.fs.docsDir, ...normalizeDocumentRelativePath(existing.path).split("/"))]
+				: [],
+		);
 		const relativePath = await this.fs.saveDocument(doc, normalizeDocumentSubPath(subPath));
 		doc.path = relativePath;
 
 		if (await this.shouldAutoCommit(autoCommit)) {
-			const backlogDir = await this.getBacklogDirectoryName();
-			const repoRoot = await this.git.stageBacklogDirectory(backlogDir);
-			await this.git.commitChanges(`backlog: Add document ${doc.id}`, repoRoot);
+			const savedPath = join(this.fs.docsDir, ...normalizeDocumentRelativePath(relativePath).split("/"));
+			await this.commitOperationFiles(`backlog: Add document ${doc.id}`, [...previousPaths, savedPath]);
 		}
 	}
 

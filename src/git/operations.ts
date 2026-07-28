@@ -688,27 +688,43 @@ export class GitOperations {
 		await this.execGit(["add", `${backlogDir}/`]);
 		return null;
 	}
-	async stageFileMove(fromPath: string, toPath: string): Promise<string | null> {
-		const toContext = await this.getPathContext(toPath);
-		const repoRoot = toContext?.repoRoot ?? this.projectRoot;
-		if (!(await this.isRepository(repoRoot))) {
+
+	async stageFiles(filePaths: string[], repoRoot?: string | null): Promise<string | null> {
+		const uniqueFilePaths = Array.from(new Set(filePaths.map((path) => path.trim()).filter((path) => path.length > 0)));
+		if (uniqueFilePaths.length === 0) {
 			return null;
 		}
-		const relativeFrom = await this.getRelativePathForRepo(fromPath, repoRoot);
-		const relativeTo = toContext?.relativePath ?? (await this.getRelativePathForRepo(toPath, repoRoot));
 
-		// Stage the deletion of the old file and addition of the new file
-		// Git will automatically detect this as a rename if the content is similar enough
-		try {
-			// First try to stage the removal of the old file (if it still exists)
-			await this.execGit(["add", "--all", relativeFrom ?? fromPath], { cwd: repoRoot });
-		} catch {
-			// If the old file doesn't exist, that's okay - it was already moved
+		const resolvedRepoRoot =
+			repoRoot ?? (await this.getPathContext(uniqueFilePaths[0] ?? ""))?.repoRoot ?? this.projectRoot;
+		if (!(await this.isRepository(resolvedRepoRoot))) {
+			return null;
 		}
 
-		// Always stage the new file location
-		await this.execGit(["add", relativeTo ?? toPath], { cwd: repoRoot });
-		return repoRoot === this.projectRoot ? null : repoRoot;
+		const relativePaths: string[] = [];
+		for (const filePath of uniqueFilePaths) {
+			const relativePath = await this.getRelativePathForRepo(filePath, resolvedRepoRoot);
+			if (!relativePath) {
+				throw new Error(`Cannot stage a path outside the Git repository: ${filePath}`);
+			}
+			const exists = await stat(join(resolvedRepoRoot, relativePath)).catch(() => null);
+			const { stdout: tracked } = exists
+				? { stdout: relativePath }
+				: await this.execGit(["ls-files", "--cached", "-z", "--", relativePath], {
+						cwd: resolvedRepoRoot,
+						readOnly: true,
+					});
+			if (exists || tracked) relativePaths.push(relativePath);
+		}
+		const uniqueRelativePaths = Array.from(new Set(relativePaths));
+		if (uniqueRelativePaths.length > 0) {
+			await this.execGit(["add", "--all", "--", ...uniqueRelativePaths], { cwd: resolvedRepoRoot });
+		}
+		return resolvedRepoRoot === this.projectRoot ? null : resolvedRepoRoot;
+	}
+
+	async stageFileMove(fromPath: string, toPath: string): Promise<string | null> {
+		return await this.stageFiles([fromPath, toPath]);
 	}
 
 	async listRemoteBranches(remote = "origin"): Promise<string[]> {
