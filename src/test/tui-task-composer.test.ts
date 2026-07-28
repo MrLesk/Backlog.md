@@ -328,9 +328,9 @@ describe("TUI task composer canonical persistence", () => {
 	it("commits the owned staged blob when the worktree changes before commit", async () => {
 		await initializeGitRepository(testDir);
 		const originalCommitFiles = core.gitOps.commitFiles.bind(core.gitOps);
-		core.gitOps.commitFiles = async (message, paths, repoRoot) => {
+		core.gitOps.commitFiles = async (message, paths, repoRoot, options) => {
 			await appendFile(paths[0] as string, "\nLater worktree edit must not be committed.\n");
-			await originalCommitFiles(message, paths, repoRoot);
+			return await originalCommitFiles(message, paths, repoRoot, options);
 		};
 
 		try {
