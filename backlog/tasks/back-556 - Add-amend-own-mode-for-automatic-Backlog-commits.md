@@ -4,7 +4,7 @@ title: Add amend-own mode for automatic Backlog commits
 status: To Do
 assignee: []
 created_date: '2026-07-28 14:27'
-updated_date: '2026-07-28 15:07'
+updated_date: '2026-07-28 15:35'
 labels:
   - enhancement
   - git
@@ -29,7 +29,7 @@ With `autoCommit: true`, every Backlog mutation currently creates a separate Git
 
 Add an opt-in `autoCommitMode` setting with values `new` and `amend-own`. The existing `autoCommit` boolean remains the enable/disable gate. Missing `autoCommitMode` must preserve current behavior by defaulting to `new`.
 
-In `amend-own` mode, the first automatic mutation after a non-owned boundary creates a normal Backlog commit. A later automatic mutation replaces that commit only when Backlog can prove that the exact current branch tip was its own locally-created automatic commit and local Git state provides no evidence that the commit is shared or published. Otherwise Backlog creates a new automatic commit and starts a new amendable sequence. `autoCommit: false` continues to create no commits regardless of mode.
+In `amend-own` mode, the first automatic mutation after a non-owned boundary creates a normal Backlog commit. A later automatic mutation replaces that commit only when Backlog can prove that the exact current branch tip was its own locally-created automatic commit and local Git state provides no evidence that the commit is shared or published. Otherwise Backlog creates a new automatic commit. That commit starts an amendable sequence only when it lands on a named branch and Backlog successfully records valid ownership evidence for its exact SHA. A commit created while `HEAD` is detached or ownership evidence is unavailable remains unowned, so every later mutation while that condition persists creates another new commit. `autoCommit: false` continues to create no commits regardless of mode.
 
 ## Ownership and safety contract
 
@@ -37,13 +37,13 @@ In `amend-own` mode, the first automatic mutation after a non-owned boundary cre
 
 Ownership evidence must be repository-local, exact-SHA based, and fail closed when missing, stale, malformed, or ambiguous. It must not create refs, notes, commits, trees, or blobs, and therefore must contribute no ownership-only object reachable through `git rev-list --all --objects`. The implementation must define in one place, and cover with tests, the exact evidence format, the rule that matches a candidate `HEAD` against it, and what makes evidence stale. Tests must distinguish the intended branch-tip commit and tree changes from the evidence itself and verify that the evidence adds no reachable object. The existing compare-and-swap `update-ref` protection remains the final authority, and amend eligibility must be recomputed after every concurrent `HEAD` movement.
 
-Do not amend when `HEAD` is detached, is a merge commit, is reachable from a remote-tracking ref, or is shared through another local branch or tag. These checks intentionally use local refs and must not introduce a network operation into automatic commits.
+Do not amend when `HEAD` is detached, is a merge commit, is reachable from a remote-tracking ref, or is reachable from any local branch other than the current branch or from any tag, including annotated tags. Local sharing includes a ref that points directly to the candidate tip and a ref that points to a descendant retaining the candidate in its history. These checks intentionally use local refs and must not introduce a network operation into automatic commits.
 
 Two limits of local-only detection are accepted rather than solved, and must be documented: stale remote-tracking refs cannot prove current remote state, and `git push <url> HEAD:branch` — or a push to a remote with no fetch refspec — publishes without updating any remote-tracking ref. Backlog can therefore amend a commit already published by those routes. Rewriting published history remains unsafe.
 
 A manual commit, manual amend, reset that updates the branch, loss of ownership metadata, clone, or another non-Backlog branch-tip update closes the amendable sequence. An in-progress merge, rebase, cherry-pick, or revert retains the current fail-closed behavior rather than being amended through.
 
-Where the selected evidence channel cannot record ownership — for example when automatic reflog creation is disabled and the current branch has no usable reflog — `amend-own` degrades to `new` for as long as ownership cannot be recorded. That conservative fallback is required and must be documented rather than becoming a silent surprise.
+Where the selected evidence channel cannot record ownership — for example when automatic reflog creation is disabled and the current branch has no usable reflog — `amend-own` degrades to `new` for as long as ownership cannot be recorded. Commits created during that period remain unowned, and repeated mutations continue creating new commits. That conservative fallback is required and must be documented rather than becoming a silent surprise.
 
 ## Commit contents and message
 
@@ -95,7 +95,7 @@ This task is delivered through subtasks, because the selected-path correctness f
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
 - [ ] #1 With autoCommit true and autoCommitMode amend-own, a run of consecutive Backlog mutations on an owned branch tip produces exactly one commit that contains every change and names every operation in its message.
-- [ ] #2 Every documented non-owned boundary makes Backlog create a new commit instead of amending: manual commit, manual amend, reset, detached HEAD, merge commit, reachability from a remote-tracking ref, sharing by another local branch or tag, and missing, stale, malformed, or ambiguous ownership evidence.
+- [ ] #2 Every documented non-owned boundary makes Backlog create a new commit instead of amending: manual commit, manual amend, reset, detached HEAD, merge commit, reachability from a remote-tracking ref, reachability from any other local branch or tag including direct and descendant refs, and missing, stale, malformed, or ambiguous ownership evidence. A commit created detached or while evidence cannot be recorded remains unowned, so repeated mutations in either persistent state continue creating new commits.
 - [ ] #3 autoCommitMode defaults to new when absent, rejects invalid values with an error, and has no effect while autoCommit is false or the project is filesystem-only.
 - [ ] #4 No automatic Backlog commit, in either mode, contains paths outside those selected for the operation. Pre-existing unrelated index and worktree state plus pre-commit and commit-message hook staging through the isolated index are preserved, while mutations made by post hooks against the real index and worktree persist according to normal Git semantics.
 - [ ] #5 A human can see when an amend happened, force a new commit for a single invocation without changing configuration, and follow documented reflog recovery for an unwanted amend.
