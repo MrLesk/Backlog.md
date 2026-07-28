@@ -4,6 +4,7 @@ title: 'Expose autoCommitMode in wizard, summaries, and browser settings'
 status: To Do
 assignee: []
 created_date: '2026-07-28 14:47'
+updated_date: '2026-07-28 15:08'
 labels:
   - web-ui
   - cli
@@ -19,7 +20,7 @@ ordinal: 205000
 <!-- SECTION:DESCRIPTION:BEGIN -->
 Expose `autoCommitMode` in the human-facing configuration surfaces once BACK-556.3 has established it in the shared model and canonical CLI.
 
-This covers the advanced CLI wizard, initialization and configuration summaries, and browser initialization and Settings. These surfaces must not weaken the validation established in BACK-556.3, and they must explain the choice in human-readable copy: `amend-own` rewrites the most recent Backlog commit rather than adding a new one.
+This covers the advanced CLI wizard, initialization and configuration summaries, and browser initialization and Settings. These surfaces must not weaken the validation established in BACK-556.3. Their human-readable copy must explain the conditional behavior accurately: `amend-own` may replace the exact current locally-owned Backlog tip when all safety checks pass, and otherwise creates a new commit.
 <!-- SECTION:DESCRIPTION:END -->
 
 ## Acceptance Criteria
@@ -27,7 +28,7 @@ This covers the advanced CLI wizard, initialization and configuration summaries,
 - [ ] #1 The advanced CLI wizard offers autoCommitMode, defaults to the current configured value, and presents it in a way that makes sense only when auto commit is enabled.
 - [ ] #2 Initialization and configuration summaries show the effective autoCommitMode.
 - [ ] #3 Browser initialization and Settings expose autoCommitMode, reject invalid values, and round-trip through the shared typed and serialized configuration paths.
-- [ ] #4 Human-readable copy on the CLI wizard and browser surfaces states that amend-own rewrites the most recent Backlog commit rather than adding a new one.
+- [ ] #4 Human-readable copy on the CLI wizard and browser surfaces states that amend-own may replace the exact current locally-owned Backlog tip only when all safety checks pass and otherwise creates a new commit.
 - [ ] #5 Tests cover wizard defaults and output, summary rendering, and browser initialization and Settings round-trips.
 <!-- AC:END -->
 

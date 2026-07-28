@@ -4,7 +4,7 @@ title: Add amend-own mode for automatic Backlog commits
 status: To Do
 assignee: []
 created_date: '2026-07-28 14:27'
-updated_date: '2026-07-28 14:47'
+updated_date: '2026-07-28 15:07'
 labels:
   - enhancement
   - git
@@ -35,7 +35,7 @@ In `amend-own` mode, the first automatic mutation after a non-owned boundary cre
 
 "Owned" means that Backlog itself successfully advanced the current branch to the exact `HEAD` through its automatic-commit pipeline. It does not mean merely that the subject resembles a Backlog message or that all changed paths are under the configured backlog directory. Existing commits, cloned commits, manually-created lookalike commits, and legacy automatic commits without ownership evidence are not owned.
 
-Ownership evidence must be repository-local, exact-SHA based, and fail closed when missing, stale, malformed, or ambiguous. It must not add notes or side refs that change `git rev-list --all` results. The implementation must define in one place, and cover with tests, the exact evidence format, the rule that matches a candidate `HEAD` against it, and what makes evidence stale; these cannot be left to inference. The existing compare-and-swap `update-ref` protection remains the final authority, and amend eligibility must be recomputed after every concurrent `HEAD` movement.
+Ownership evidence must be repository-local, exact-SHA based, and fail closed when missing, stale, malformed, or ambiguous. It must not create refs, notes, commits, trees, or blobs, and therefore must contribute no ownership-only object reachable through `git rev-list --all --objects`. The implementation must define in one place, and cover with tests, the exact evidence format, the rule that matches a candidate `HEAD` against it, and what makes evidence stale. Tests must distinguish the intended branch-tip commit and tree changes from the evidence itself and verify that the evidence adds no reachable object. The existing compare-and-swap `update-ref` protection remains the final authority, and amend eligibility must be recomputed after every concurrent `HEAD` movement.
 
 Do not amend when `HEAD` is detached, is a merge commit, is reachable from a remote-tracking ref, or is shared through another local branch or tag. These checks intentionally use local refs and must not introduce a network operation into automatic commits.
 
@@ -43,17 +43,17 @@ Two limits of local-only detection are accepted rather than solved, and must be 
 
 A manual commit, manual amend, reset that updates the branch, loss of ownership metadata, clone, or another non-Backlog branch-tip update closes the amendable sequence. An in-progress merge, rebase, cherry-pick, or revert retains the current fail-closed behavior rather than being amended through.
 
-Where ownership evidence cannot be recorded at all — for example a repository with `core.logAllRefUpdates` disabled — `amend-own` degrades permanently to `new`. That is a safe outcome, but it must be stated and documented behavior rather than a silent surprise.
+Where the selected evidence channel cannot record ownership — for example when automatic reflog creation is disabled and the current branch has no usable reflog — `amend-own` degrades to `new` for as long as ownership cannot be recorded. That conservative fallback is required and must be documented rather than becoming a silent surprise.
 
 ## Commit contents and message
 
-Every commit eligible to be marked Backlog-owned must contain only paths selected for that Backlog operation. Unrelated staged, unstaged, and hook-staged paths must remain outside the commit and retain their original index and worktree state. Known broad callers that currently commit more than the operation paths include promote/demote, bulk reorder/update, archive/complete, draft lifecycle, documents, decisions, and agent-instruction updates.
+Every commit eligible to be marked Backlog-owned must contain only paths selected for that Backlog operation. Pre-existing unrelated staged and unstaged paths, and unrelated paths staged by pre-commit or commit-message hooks through the isolated commit index, must remain outside the commit and retain their prior real-index and worktree state. Post-commit and post-rewrite hooks run against the real index and worktree; mutations they make there persist according to normal Git semantics. Known broad callers that currently commit more than the operation paths include promote/demote, bulk reorder/update, archive/complete, draft lifecycle, documents, decisions, and agent-instruction updates.
 
 An amended commit accumulates messages: the previous full message is retained and the new operation message is appended as an additional line, so the commit record names every operation it contains. Neither message may be silently discarded. Commit hooks may still modify the resulting message. This resolves an ambiguity in the original specification, which could also have been read as freezing the message at the first operation; a frozen message would leave a rolling commit labeled `Create task BACK-1` while containing archives, reorders, and edits, which contradicts the project goal of reviewable evidence.
 
-The amended commit keeps the owned commit original parent set, author identity, author date, and signing behavior; committer metadata and commit ID refresh as they would for a normal amend.
+The amended commit keeps the owned commit's original parent set, author identity, and author date. It uses the effective signing configuration and key available when the replacement operation runs, exactly as a new automatic commit does; it does not inherit the replaced commit's signed or unsigned state, and a signing failure must leave `HEAD` unchanged. Committer metadata and the commit ID refresh as they would for a normal amend.
 
-Existing robustness around selected-path commits remains required: temporary-index isolation, owned-index reconciliation, retries, Git-operation guards, signing, legacy and modern hook runners, and atomic expected-old-SHA branch updates. Amend behavior must additionally match the observable Git rewrite lifecycle, including `post-rewrite` with the old and new commit IDs and the `amend` argument, while preserving current `bypassGitHooks` semantics and running post hooks against the real index.
+Existing robustness around selected-path commits remains required: temporary-index isolation, owned-index reconciliation, retries, Git-operation guards, current-configuration signing and signing failures, legacy and modern hook runners, and atomic expected-old-SHA branch updates. Amend behavior must additionally match the observable Git rewrite lifecycle, including `post-rewrite` with the old and new commit IDs and the `amend` argument, while preserving current `bypassGitHooks` semantics and running post hooks against the real index.
 
 ## Human control and visibility
 
@@ -86,11 +86,20 @@ This task is delivered through subtasks, because the selected-path correctness f
 - `getLastCommitMessage()` only reads a subject, and automatic subjects are inconsistent (`Create task`, task-ID-prefixed draft messages, `backlog:` lifecycle messages, `Update N tasks`, and `Add AI agent instructions`), so subject matching cannot establish ownership.
 - Multiple core paths still stage a directory or a move and then use broad `commitChanges()`, which can consume unrelated entries already present in the real index.
 - `src/utils/config-watcher.ts` keeps an explicit recognized-config-key list that gates live reload; `auto_commit_mode` must be added there as well as to the CLI and browser surfaces.
-- Official Git amend semantics preserve the current commit parents and author, replace the commit object, warn against rewriting published history, and invoke `post-commit` plus `post-rewrite`; `post-rewrite` receives an old and new object-ID mapping.
+- Official Git amend semantics preserve the current commit parents and author, replace the commit object, use the current signing configuration, warn against rewriting published history, and invoke `post-commit` plus `post-rewrite`; `post-rewrite` receives an old and new object-ID mapping.
 - A local experiment with Git 2.50 confirmed `git commit --amend -m` runs `prepare-commit-msg`, `post-commit`, then `post-rewrite amend`, and records `commit (amend)` in the branch reflog. The existing `update-ref -m` location is one candidate for local ownership evidence that adds no side ref; the worker should confirm it during planning rather than treating it as decided.
-- BACK-509 documents why auxiliary refs and notes can make `git rev-list --all --count` nondeterministic, so ownership tracking must avoid recreating that class of problem.
+- BACK-509 documents why auxiliary refs and notes can make `git rev-list --all --count` nondeterministic, so ownership tracking must avoid graph-visible metadata.
 - BACK-430 is referenced for its follow-up work rather than its title: the robust selected-path `commitFiles()` pipeline landed under it in commit `1b6de48`.
 <!-- SECTION:DESCRIPTION:END -->
+
+## Acceptance Criteria
+<!-- AC:BEGIN -->
+- [ ] #1 With autoCommit true and autoCommitMode amend-own, a run of consecutive Backlog mutations on an owned branch tip produces exactly one commit that contains every change and names every operation in its message.
+- [ ] #2 Every documented non-owned boundary makes Backlog create a new commit instead of amending: manual commit, manual amend, reset, detached HEAD, merge commit, reachability from a remote-tracking ref, sharing by another local branch or tag, and missing, stale, malformed, or ambiguous ownership evidence.
+- [ ] #3 autoCommitMode defaults to new when absent, rejects invalid values with an error, and has no effect while autoCommit is false or the project is filesystem-only.
+- [ ] #4 No automatic Backlog commit, in either mode, contains paths outside those selected for the operation. Pre-existing unrelated index and worktree state plus pre-commit and commit-message hook staging through the isolated index are preserved, while mutations made by post hooks against the real index and worktree persist according to normal Git semantics.
+- [ ] #5 A human can see when an amend happened, force a new commit for a single invocation without changing configuration, and follow documented reflog recovery for an unwanted amend.
+<!-- AC:END -->
 
 ## Definition of Done
 <!-- DOD:BEGIN -->
@@ -98,12 +107,3 @@ This task is delivered through subtasks, because the selected-path correctness f
 - [ ] #2 bun run check . passes when formatting/linting touched
 - [ ] #3 bun test (or scoped test) passes
 <!-- DOD:END -->
-
-## Acceptance Criteria
-<!-- AC:BEGIN -->
-- [ ] #1 With autoCommit true and autoCommitMode amend-own, a run of consecutive Backlog mutations on an owned branch tip produces exactly one commit that contains every change and names every operation in its message.
-- [ ] #2 Every documented non-owned boundary makes Backlog create a new commit instead of amending: manual commit, manual amend, reset, detached HEAD, merge commit, reachability from a remote-tracking ref, sharing by another local branch or tag, and missing, stale, malformed, or ambiguous ownership evidence.
-- [ ] #3 autoCommitMode defaults to new when absent, rejects invalid values with an error, and has no effect while autoCommit is false or the project is filesystem-only.
-- [ ] #4 No automatic Backlog commit, in either mode, contains files outside the paths selected for that operation, and unrelated staged, unstaged, and hook-staged paths keep their prior index and worktree state.
-- [ ] #5 A human can see when an amend happened, force a new commit for a single invocation without changing configuration, and follow documented reflog recovery for an unwanted amend.
-<!-- AC:END -->
