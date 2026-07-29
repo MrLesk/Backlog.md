@@ -5,7 +5,7 @@ status: In Progress
 assignee:
   - '@andreas'
 created_date: '2026-07-28 14:47'
-updated_date: '2026-07-29 17:43'
+updated_date: '2026-07-29 22:23'
 labels:
   - web-ui
   - cli
@@ -28,18 +28,18 @@ This covers the advanced CLI wizard, initialization and configuration summaries,
 <!-- AC:BEGIN -->
 - [x] #1 The advanced CLI wizard offers autoCommitMode, defaults to the current configured value, and presents it in a way that makes sense only when auto commit is enabled.
 - [x] #2 Initialization and configuration summaries show the effective autoCommitMode.
-- [x] #3 Browser initialization and Settings expose autoCommitMode, reject invalid values, and round-trip through the shared typed and serialized configuration paths.
+- [ ] #3 Browser initialization and Settings expose autoCommitMode, reject invalid values, and round-trip through the shared typed and serialized configuration paths.
 - [x] #4 Human-readable copy on the CLI wizard and browser surfaces states that amend-own may replace the exact current locally-owned Backlog tip only when all safety checks pass and otherwise creates a new commit.
-- [x] #5 Tests cover wizard defaults and output, summary rendering, and browser initialization and Settings round-trips.
+- [ ] #5 Tests cover wizard defaults and output, summary rendering, and browser initialization and Settings round-trips.
 - [x] #6 Browser archive, complete, reorder, cleanup, and other mutation responses surface bounded replacement feedback consistently for JSON and no-content operations.
 - [x] #7 Browser automatic-commit notices are queued, combined, or visibly stacked so task/draft creation confirmation cannot cover consequential replacement feedback, with an amended-creation UI regression.
 <!-- AC:END -->
 
 ## Definition of Done
 <!-- DOD:BEGIN -->
-- [x] #1 bunx tsc --noEmit passes when TypeScript touched
-- [x] #2 bun run check . passes when formatting/linting touched
-- [x] #3 bun test (or scoped test) passes
+- [ ] #1 bunx tsc --noEmit passes when TypeScript touched
+- [ ] #2 bun run check . passes when formatting/linting touched
+- [ ] #3 bun test (or scoped test) passes
 <!-- DOD:END -->
 
 ## Implementation Plan
@@ -60,6 +60,8 @@ This covers the advanced CLI wizard, initialization and configuration summaries,
 8. Preserve centralized automatic-commit header dispatch while disabling automatic retries for non-idempotent browser mutation methods; cover response loss after a successful write.
 
 9. Make automatic-commit feedback and entity confirmations visibly coexist or queue without overwriting, and add amended task/draft creation coverage.
+
+8. Cover embedded-quote project/config values through browser initialization and Settings update/readback using the real serialized configuration path, not only mocked typed payloads.
 <!-- SECTION:PLAN:END -->
 
 ## Implementation Notes
@@ -114,5 +116,10 @@ Holistic pass 6 H2: browser feedback centralization accidentally inherited retry
 created: 2026-07-29 17:24
 ---
 Pass 8 M3/L4: browser overflow summaries lose the true total, and fixed-position task/draft confirmation toasts cover simultaneous amendment feedback.
+---
+
+created: 2026-07-29 22:23
+---
+Pass 12 M3 requires browser initialization and Settings round-trip evidence for YAML-escaped quoted values.
 ---
 <!-- COMMENTS:END -->

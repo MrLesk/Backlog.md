@@ -5,7 +5,7 @@ status: In Progress
 assignee:
   - '@andreas'
 created_date: '2026-07-28 14:27'
-updated_date: '2026-07-29 22:00'
+updated_date: '2026-07-29 22:23'
 labels:
   - enhancement
   - git
@@ -124,9 +124,9 @@ This task is delivered through subtasks, because the selected-path correctness f
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
 - [x] #1 With autoCommit true and autoCommitMode amend-own, a run of consecutive Backlog mutations on an owned branch tip produces exactly one commit that contains every change, lists every distinct operation once in its message region, and carries a subject that reflects the operations it holds rather than only the first one.
-- [x] #2 Every documented non-owned boundary makes Backlog create a new commit instead of amending: manual commit, manual amend, reset, detached HEAD, merge commit, reachability from a remote-tracking ref, reachability from any other local branch or tag including direct and descendant refs, and missing, stale, malformed, or ambiguous ownership evidence. A commit created detached or while evidence cannot be recorded remains unowned, so repeated mutations in either persistent state continue creating new commits.
-- [x] #3 autoCommitMode defaults to new when absent, rejects invalid values with an error, and has no effect while autoCommit is false or the project is filesystem-only. An explicit per-invocation autoCommit override decides only whether to commit and never changes the mode.
-- [x] #4 No automatic Backlog commit, in either mode, contains paths outside those selected for the operation. Pre-existing unrelated index and worktree state plus pre-commit and commit-message hook staging through the isolated index are preserved, while mutations made by post hooks against the real index and worktree persist according to normal Git semantics.
+- [ ] #2 Every documented non-owned boundary makes Backlog create a new commit instead of amending: manual commit, manual amend, reset, detached HEAD, merge commit, reachability from a remote-tracking ref, reachability from any other local branch or tag including direct and descendant refs, and missing, stale, malformed, or ambiguous ownership evidence. A commit created detached or while evidence cannot be recorded remains unowned, so repeated mutations in either persistent state continue creating new commits.
+- [ ] #3 autoCommitMode defaults to new when absent, rejects invalid values with an error, and has no effect while autoCommit is false or the project is filesystem-only. An explicit per-invocation autoCommit override decides only whether to commit and never changes the mode.
+- [ ] #4 No automatic Backlog commit, in either mode, contains paths outside those selected for the operation. Pre-existing unrelated index and worktree state plus pre-commit and commit-message hook staging through the isolated index are preserved, while mutations made by post hooks against the real index and worktree persist according to normal Git semantics.
 - [x] #5 A human can see when an amend happened, force a new commit for a single invocation with --no-amend on any command that can automatically commit, and follow documented reflog recovery for an unwanted amend.
 - [x] #6 The upstream cross-platform test/build/Nix workflow executes successfully for the final implementation SHA, or the task records that first-time-contributor workflow approval is externally blocked on an upstream maintainer before merge.
 - [x] #7 The final PR branch history follows CONTRIBUTING.md by including BACK-556 in every feature commit message, while preserving reviewable intent and the task evidence required for this delivery.
@@ -134,9 +134,9 @@ This task is delivered through subtasks, because the selected-path correctness f
 
 ## Definition of Done
 <!-- DOD:BEGIN -->
-- [x] #1 bunx tsc --noEmit passes when TypeScript touched
-- [x] #2 bun run check . passes when formatting/linting touched
-- [x] #3 bun test (or scoped test) passes
+- [ ] #1 bunx tsc --noEmit passes when TypeScript touched
+- [ ] #2 bun run check . passes when formatting/linting touched
+- [ ] #3 bun test (or scoped test) passes
 <!-- DOD:END -->
 
 ## Implementation Plan
@@ -174,6 +174,8 @@ Holistic correction pass: resolve the documented Git intent/state, invocation-co
 24. Resolve Pass 10 outer task-commit retries bypassing same-path conflict detection, quote-aware trailing YAML comments on every scalar, and missing draft/draft-view --no-amend help. Re-run focused/full gates and obtain another fresh review.
 
 25. Resolve Pass 11 same-SHA concurrent branch-identity races and malformed quoted recognized scalars. Atomically guard the expected symbolic HEAD target together with its branch OID, share balanced scalar parsing with strict validation, add branch-switch/watcher/current-byte mutation regressions, then run full gates and require another fresh holistic review.
+
+26. Resolve Pass 12 detached finalization, full protected-boundary revalidation, and serializer/parser quote round-trips. Lease both index and HEAD state in Git lock order for every finalization, revalidate ownership/operations/selected entries/refs under the lease, write detached HEAD safely, YAML-escape/decode emitted scalars, and cover Git plus init/config/Settings paths before another full gate/review.
 <!-- SECTION:PLAN:END -->
 
 ## Implementation Notes
@@ -288,5 +290,10 @@ Fresh holistic gpt-5.6-sol xhigh Pass 10 at c6a0497 requested changes with three
 created: 2026-07-29 21:15
 ---
 Fresh holistic gpt-5.6-sol xhigh Pass 11 at 7eadcb8 requested changes with two High findings: the final OID CAS can update a newly selected same-SHA sibling branch because symbolic HEAD identity is not atomically guarded; and unmatched/embedded quotes in recognized scalar YAML can let malformed auto_commit_mode parse as amend-own. Exact clean reviewed HEAD preserved. Report: /tmp/backlog-821-holistic-review-pass-11.md.
+---
+
+created: 2026-07-29 22:23
+---
+Fresh holistic gpt-5.6-sol xhigh Pass 12 at 4d297f8 requested changes with two High Git lease findings and one Medium config round-trip finding: detached attempts do not lease HEAD identity; named attempts do not lease/revalidate index, ownership, operations, or refs at finalization; and strict quotes reject serializer-produced embedded quotes. Exact clean reviewed HEAD preserved. Report: /tmp/backlog-821-holistic-review-pass-12.md.
 ---
 <!-- COMMENTS:END -->

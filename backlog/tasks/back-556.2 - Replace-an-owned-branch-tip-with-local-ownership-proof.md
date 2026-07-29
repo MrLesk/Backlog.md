@@ -5,7 +5,7 @@ status: In Progress
 assignee:
   - '@andreas'
 created_date: '2026-07-28 14:46'
-updated_date: '2026-07-29 22:00'
+updated_date: '2026-07-29 22:23'
 labels:
   - git
 dependencies:
@@ -47,20 +47,20 @@ See BACK-556 for the full ownership and safety contract, including the accepted 
 - [x] #4 A commit holding one operation keeps that operation subject unchanged. From the second distinct operation onward the subject is factored: operations sharing a verb and entity type list their IDs, the line elides past a 72 character budget with a plus N more suffix, and mixed verbs fall back to a count of distinct operations.
 - [x] #5 Ownership is decided from exact repository-local provenance for the current HEAD SHA, never from author, changed-path, or subject heuristics.
 - [x] #6 The evidence format, the rule that matches a candidate HEAD against it, and the definition of stale evidence are specified in one place and covered by tests.
-- [x] #7 Cloned, legacy, manually created, manually amended, and reset commits, and any tip whose ownership evidence is missing, stale, malformed, or ambiguous, are reported as not owned.
+- [ ] #7 Cloned, legacy, manually created, manually amended, and reset commits, and any tip whose ownership evidence is missing, stale, malformed, or ambiguous, are reported as not owned.
 - [x] #8 Ownership tracking creates no Git refs, notes, commits, trees, or blobs and contributes no ownership-only object to git rev-list --all --objects; tests separately account for the intended automatic commit and branch-tip graph changes.
-- [x] #9 A tip is reported as not owned when HEAD is detached, is a merge commit, is reachable from a remote-tracking ref, or is reachable from any local branch other than the current branch or any tag, including annotated tags and both refs that point directly to the candidate and refs that point to a descendant, using local refs only and performing no network operation.
+- [ ] #9 A tip is reported as not owned when HEAD is detached, is a merge commit, is reachable from a remote-tracking ref, or is reachable from any local branch other than the current branch or any tag, including annotated tags and both refs that point directly to the candidate and refs that point to a descendant, using local refs only and performing no network operation.
 - [x] #10 A new commit is reported as owned only when it lands on a named branch and valid evidence for its exact SHA is successfully recorded. Commits created with detached HEAD or while the selected ownership channel cannot record evidence, including a branch with no usable reflog while automatic reflog creation is disabled, remain unowned, and repeated operations in either state cannot enter the replacement path.
 - [x] #11 A replacement commit records valid ownership evidence for its own new SHA on the same terms as a newly created commit, so an amendable sequence survives repeated replacements. If that recording does not succeed, the sequence ends at that commit and the next operation creates a new commit.
-- [x] #12 After a failed expected-old-SHA update, ownership and eligibility are re-evaluated, and a concurrent non-Backlog commit is never overwritten.
-- [x] #13 Concurrent changes to the selected paths are either incorporated into the commit or reported as an error, and no selected change is lost silently.
+- [ ] #12 After a failed expected-old-SHA update, ownership and eligibility are re-evaluated, and a concurrent non-Backlog commit is never overwritten.
+- [ ] #13 Concurrent changes to the selected paths are either incorporated into the commit or reported as an error, and no selected change is lost silently.
 - [x] #14 The replacement path runs pre-commit, prepare-commit-msg with message as its source argument, commit-msg, and post-commit consistently with Git amend semantics, and invokes exactly one post-rewrite amend carrying the old and new commit IDs, while the new-commit path invokes no post-rewrite. Pre-commit and commit-message hook staging remains isolated; post-hook mutations against the real index and worktree persist.
 - [x] #15 post-commit and post-rewrite are notifications: a failing post hook does not fail the operation or move HEAD.
 - [x] #16 bypassGitHooks and the legacy hook-runner path behave the same for replacements as for new commits.
 - [x] #17 Merge, rebase, cherry-pick, and revert in-progress guards fail closed without moving HEAD or consuming unrelated index entries.
-- [x] #18 Git-level tests cover repeated replacement sequences with evidence re-recorded at each step; subject shapes for single, factored, elided, and mixed-verb cases; duplicate collapsing; region parsing when a hook has appended content outside the region; repeated detached and evidence-unavailable new commits; root commits; manual and publication boundaries; local branches, lightweight tags, and annotated tags pointing directly to candidates and to descendants; pre and message hook isolation, post-hook real-index mutations, and failing post hooks; signed-to-unsigned and unsigned-to-signed configuration transitions; required-signing failures; linked worktrees and branch switches; and concurrent branch movement.
+- [ ] #18 Git-level tests cover repeated replacement sequences with evidence re-recorded at each step; subject shapes for single, factored, elided, and mixed-verb cases; duplicate collapsing; region parsing when a hook has appended content outside the region; repeated detached and evidence-unavailable new commits; root commits; manual and publication boundaries; local branches, lightweight tags, and annotated tags pointing directly to candidates and to descendants; pre and message hook isolation, post-hook real-index mutations, and failing post hooks; signed-to-unsigned and unsigned-to-signed configuration transitions; required-signing failures; linked worktrees and branch switches; and concurrent branch movement.
 - [x] #19 Legacy new-mode commits contain no rolling-operation region or ownership evidence; only an amend-own sequence start or replacement records exact-SHA ownership, and switching from new to amend-own cannot rewrite the pre-opt-in tip.
-- [x] #20 After message hooks, replacement eligibility is revalidated against exact reflog state, Git-operation guards, and all containing refs; hook-created refs and same-SHA away-and-back changes fail closed.
+- [ ] #20 After message hooks, replacement eligibility is revalidated against exact reflog state, Git-operation guards, and all containing refs; hook-created refs and same-SHA away-and-back changes fail closed.
 - [x] #21 Ownership is branch-local: switching away and returning to an otherwise unchanged safe branch intentionally resumes its amendable sequence, and documentation plus tests state that behavior.
 - [x] #22 Rolling messages store structured operation descriptors so production task, draft, document, decision, milestone, and agent messages produce stable factored subjects without parsing incidental English display strings.
 - [x] #23 Document, decision, and agent-instruction upserts record the real create/add versus update action, so distinct operations never collapse under one inaccurate descriptor.
@@ -68,9 +68,9 @@ See BACK-556 for the full ownership and safety contract, including the accepted 
 
 ## Definition of Done
 <!-- DOD:BEGIN -->
-- [x] #1 bunx tsc --noEmit passes when TypeScript touched
-- [x] #2 bun run check . passes when formatting/linting touched
-- [x] #3 bun test (or scoped test) passes
+- [ ] #1 bunx tsc --noEmit passes when TypeScript touched
+- [ ] #2 bun run check . passes when formatting/linting touched
+- [ ] #3 bun test (or scoped test) passes
 <!-- DOD:END -->
 
 ## Implementation Plan
@@ -93,6 +93,8 @@ See BACK-556 for the full ownership and safety contract, including the accepted 
 26. Prove same-selected-path conflict rejection survives the production task commit wrapper and cannot be reset by its outer retry loop in either new or amend-own mode.
 
 27. Snapshot branch identity per CAS attempt and atomically verify symbolic HEAD still targets that exact branch while updating only its expected OID. Add a same-SHA sibling-branch switch regression proving neither branch is amended or marked owned after identity changes.
+
+28. Lease detached HEAD identity as well as named branches. Acquire index then HEAD locks, revalidate detached/named identity, selected index entries, operation markers, ownership reflog, and containing refs under that lease, then perform the expected-OID update. Add detached same-SHA switch plus reset/merge/tag race coverage.
 <!-- SECTION:PLAN:END -->
 
 ## Implementation Notes
@@ -150,5 +152,10 @@ Pass 10 H1 reopens the no-lost-selected-change contract at the production wrappe
 created: 2026-07-29 21:15
 ---
 Pass 11 H1: owned/ref eligibility is revalidated before finalization, but final update-ref dereferences whatever symbolic HEAD names at execution time and can amend a different same-SHA branch.
+---
+
+created: 2026-07-29 22:23
+---
+Pass 12 H1/H2: detached finalization can replace a newly symbolic same-SHA HEAD, while named finalization rechecks only branch name under HEAD.lock and can miss reset, merge, tag, ownership, and index changes.
 ---
 <!-- COMMENTS:END -->
