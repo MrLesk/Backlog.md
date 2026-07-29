@@ -143,6 +143,19 @@ describe("Core", () => {
 			expect(lastCommit).toContain("backlog: Demote task TASK-1");
 		});
 
+		it("preserves the ambiguity diagnostic when demoting duplicate task IDs", async () => {
+			await Bun.write(
+				join(core.filesystem.tasksDir, "task-1 - First duplicate.md"),
+				serializeTask({ ...sampleTask, title: "First duplicate" }),
+			);
+			await Bun.write(
+				join(core.filesystem.tasksDir, "task-1 - Second duplicate.md"),
+				serializeTask({ ...sampleTask, title: "Second duplicate" }),
+			);
+
+			await expect(core.demoteTask("TASK-1", false)).rejects.toBeInstanceOf(AmbiguousTaskIdError);
+		});
+
 		it("should resolve tasks using flexible ID formats", async () => {
 			const standardTask: Task = { ...sampleTask, id: "task-5", title: "Standard" };
 			const paddedTask: Task = { ...sampleTask, id: "task-007", title: "Padded" };

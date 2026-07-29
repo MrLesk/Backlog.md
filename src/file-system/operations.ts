@@ -51,6 +51,17 @@ interface CreateLockTarget {
 	locksDir: string;
 }
 
+export interface TaskLifecycleMoveResult {
+	sourcePath: string;
+	targetPath: string;
+	task: Task;
+}
+
+export interface TaskLifecycleMoveOptions {
+	generateId?: (source: Task) => Promise<string>;
+	buildTarget?: (source: Task, generatedId: string, defaultStatus: string) => Promise<Task>;
+}
+
 const DEFAULT_CREATE_LOCK_TIMEOUT_MS = 30_000;
 const DEFAULT_CREATE_LOCK_RETRY_DELAY_MS = 100;
 const DEFAULT_CREATE_LOCK_STALE_MS = 10_000;
@@ -703,90 +714,92 @@ export class FileSystem {
 		}
 	}
 
-	async promoteDraft(draftId: string): Promise<boolean> {
+	async promoteDraftWithResult(
+		draftId: string,
+		options: TaskLifecycleMoveOptions = {},
+	): Promise<TaskLifecycleMoveResult | null> {
 		try {
 			return await this.withCreateLock(async () => {
-				// Load the draft
 				const draft = await this.loadDraft(draftId);
-				if (!draft?.filePath) return false;
+				if (!draft?.filePath) return null;
 
-				// Get task prefix from config (default: "task")
 				const config = await this.loadConfig();
-				const taskPrefix = config?.prefixes?.task ?? "task";
-
-				// Get existing task IDs to generate next ID
-				// Include both active and completed tasks to prevent ID collisions
-				const existingTasks = await this.listTasks();
-				const completedTasks = await this.listCompletedTasks();
-				const existingIds = [...existingTasks, ...completedTasks].map((t) => t.id);
-
-				// Generate new task ID
-				const newTaskId = generateNextId(existingIds, taskPrefix, config?.zeroPaddedIds);
+				const defaultStatus = config?.defaultStatus || FALLBACK_STATUS;
+				let newTaskId: string;
+				if (options.generateId) {
+					newTaskId = await options.generateId(draft);
+				} else {
+					const taskPrefix = config?.prefixes?.task ?? "task";
+					const [existingTasks, completedTasks] = await Promise.all([this.listTasks(), this.listCompletedTasks()]);
+					newTaskId = generateNextId(
+						[...existingTasks, ...completedTasks].map((task) => task.id),
+						taskPrefix,
+						config?.zeroPaddedIds,
+					);
+				}
 
 				const promotedStatus =
-					!draft.status || draft.status.trim().toLowerCase() === "draft"
-						? config?.defaultStatus || FALLBACK_STATUS
-						: draft.status;
+					!draft.status || draft.status.trim().toLowerCase() === "draft" ? defaultStatus : draft.status;
+				const target = options.buildTarget
+					? await options.buildTarget(draft, newTaskId, promotedStatus)
+					: { ...draft, id: newTaskId, status: promotedStatus, filePath: undefined };
+				const promotedTask: Task = { ...target, id: newTaskId, filePath: undefined };
+				const sourcePath = draft.filePath;
+				const targetPath = await this.saveTask(promotedTask);
+				await unlink(sourcePath);
 
-				// Draft-only statuses should enter the normal task workflow.
-				const promotedTask: Task = {
-					...draft,
-					id: newTaskId,
-					status: promotedStatus,
-					filePath: undefined, // Will be set by saveTask
-				};
-
-				await this.saveTask(promotedTask);
-
-				// Delete old draft file
-				await unlink(draft.filePath);
-
-				return true;
+				return { sourcePath, targetPath, task: { ...promotedTask, filePath: targetPath } };
 			});
 		} catch (error) {
-			if (isCreateLockError(error) || isAmbiguousTaskIdError(error)) {
-				throw error;
-			}
-			return false;
+			if (isCreateLockError(error) || isAmbiguousTaskIdError(error)) throw error;
+			return null;
+		}
+	}
+
+	async promoteDraft(draftId: string): Promise<boolean> {
+		return (await this.promoteDraftWithResult(draftId)) !== null;
+	}
+
+	async demoteTaskWithResult(
+		taskId: string,
+		options: TaskLifecycleMoveOptions = {},
+	): Promise<TaskLifecycleMoveResult | null> {
+		try {
+			return await this.withCreateLock(async () => {
+				const task = await this.loadTask(taskId);
+				if (!task?.filePath) return null;
+
+				const config = await this.loadConfig();
+				let newDraftId: string;
+				if (options.generateId) {
+					newDraftId = await options.generateId(task);
+				} else {
+					const existingDrafts = await this.listDrafts();
+					newDraftId = generateNextId(
+						existingDrafts.map((draft) => draft.id),
+						"draft",
+						config?.zeroPaddedIds,
+					);
+				}
+
+				const target = options.buildTarget
+					? await options.buildTarget(task, newDraftId, "Draft")
+					: { ...task, id: newDraftId, filePath: undefined };
+				const demotedDraft: Task = { ...target, id: newDraftId, filePath: undefined };
+				const sourcePath = task.filePath;
+				const targetPath = await this.saveDraft(demotedDraft);
+				await unlink(sourcePath);
+
+				return { sourcePath, targetPath, task: { ...demotedDraft, filePath: targetPath } };
+			});
+		} catch (error) {
+			if (isCreateLockError(error) || isAmbiguousTaskIdError(error)) throw error;
+			return null;
 		}
 	}
 
 	async demoteTask(taskId: string): Promise<boolean> {
-		try {
-			return await this.withCreateLock(async () => {
-				// Load the task
-				const task = await this.loadTask(taskId);
-				if (!task?.filePath) return false;
-
-				// Get existing draft IDs to generate next ID
-				// Draft prefix is always "draft" (not configurable like task prefix)
-				const existingDrafts = await this.listDrafts();
-				const existingIds = existingDrafts.map((d) => d.id);
-
-				// Generate new draft ID
-				const config = await this.loadConfig();
-				const newDraftId = generateNextId(existingIds, "draft", config?.zeroPaddedIds);
-
-				// Update task with new draft ID and save as draft
-				const demotedDraft: Task = {
-					...task,
-					id: newDraftId,
-					filePath: undefined, // Will be set by saveDraft
-				};
-
-				await this.saveDraft(demotedDraft);
-
-				// Delete old task file
-				await unlink(task.filePath);
-
-				return true;
-			});
-		} catch (error) {
-			if (isCreateLockError(error) || isAmbiguousTaskIdError(error)) {
-				throw error;
-			}
-			return false;
-		}
+		return (await this.demoteTaskWithResult(taskId)) !== null;
 	}
 
 	// Draft operations

@@ -2,7 +2,7 @@ import { AsyncLocalStorage } from "node:async_hooks";
 import { rename as moveFile, readFile, stat, unlink, writeFile } from "node:fs/promises";
 import { basename, isAbsolute, join, relative } from "node:path";
 import { DEFAULT_DIRECTORIES, DEFAULT_STATUSES, FALLBACK_STATUS } from "../constants/index.ts";
-import { FileSystem, isCreateLockError } from "../file-system/operations.ts";
+import { FileSystem } from "../file-system/operations.ts";
 import { type GitCommitOptions, type GitCommitResult, type GitIndexEntry, GitOperations } from "../git/operations.ts";
 import {
 	type AcceptanceCriterion,
@@ -2315,97 +2315,77 @@ export class Core {
 		if (!targetStatus || targetStatus.toLowerCase() === "draft") {
 			throw new Error("Promoting a draft requires a non-draft status.");
 		}
-
-		const { mutated } = await this.applyTaskUpdateInput(draft, { ...input, status: undefined }, async (status) => {
-			if (status.trim().toLowerCase() !== "draft") {
-				throw new Error("Drafts must use status Draft.");
-			}
-			return "Draft";
-		});
-
 		const canonicalStatus = await this.requireCanonicalStatus(targetStatus);
-
-		const { promotedTask, savedPath, sourcePath } = await this.withCreateLock(async () => {
-			const newTaskId = await this.generateNextId(EntityType.Task, draft.parentTaskId);
-			const draftPath = draft.filePath;
-
-			const promotedTask: Task = {
-				...draft,
-				id: newTaskId,
-				status: canonicalStatus,
-				filePath: undefined,
-				...(mutated || draft.status !== canonicalStatus
-					? { updatedDate: new Date().toISOString().slice(0, 16).replace("T", " ") }
-					: {}),
-			};
-
-			normalizeAssignee(promotedTask);
-			const savedPath = await this.fs.saveTask(promotedTask);
-
-			if (draftPath) {
-				await unlink(draftPath);
-			}
-
-			return { promotedTask, savedPath, sourcePath: draftPath };
+		const moved = await this.fs.promoteDraftWithResult(draft.id, {
+			generateId: async (source) => this.generateNextId(EntityType.Task, source.parentTaskId),
+			buildTarget: async (source, newTaskId) => {
+				const { mutated } = await this.applyTaskUpdateInput(source, { ...input, status: undefined }, async (status) => {
+					if (status.trim().toLowerCase() !== "draft") {
+						throw new Error("Drafts must use status Draft.");
+					}
+					return "Draft";
+				});
+				const promotedTask: Task = {
+					...source,
+					id: newTaskId,
+					status: canonicalStatus,
+					filePath: undefined,
+					...(mutated || source.status !== canonicalStatus
+						? { updatedDate: new Date().toISOString().slice(0, 16).replace("T", " ") }
+						: {}),
+				};
+				normalizeAssignee(promotedTask);
+				return promotedTask;
+			},
 		});
+		if (!moved) throw new Error(`Draft not found: ${draft.id}`);
 
-		const savedTask = await this.fs.loadTask(promotedTask.id);
-		if (this.contentStore && savedTask) {
-			this.contentStore.upsertTask(savedTask);
-		}
+		const savedTask = (await this.fs.loadTask(moved.task.id)) ?? moved.task;
+		if (this.contentStore) this.contentStore.upsertTask(savedTask);
 
 		if (await this.shouldAutoCommit(autoCommit)) {
 			await this.commitOperationFiles(
 				`backlog: Promote draft ${normalizeId(draft.id, "draft")}`,
-				sourcePath ? [sourcePath, savedPath] : [savedPath],
+				[moved.sourcePath, moved.targetPath],
 				autoCommit,
 			);
 		}
 
-		return savedTask ?? { ...promotedTask, filePath: savedPath };
+		return savedTask;
 	}
 
 	private async demoteTaskWithUpdates(task: Task, input: TaskUpdateInput, autoCommit?: AutoCommitInput): Promise<Task> {
-		const { mutated } = await this.applyTaskUpdateInput(task, { ...input, status: undefined }, async (status) => {
-			if (status.trim().toLowerCase() === "draft") {
-				return "Draft";
-			}
-			return this.requireCanonicalStatus(status);
+		const moved = await this.fs.demoteTaskWithResult(task.id, {
+			generateId: async () => this.generateNextId(EntityType.Draft),
+			buildTarget: async (source, newDraftId) => {
+				const { mutated } = await this.applyTaskUpdateInput(source, { ...input, status: undefined }, async (status) => {
+					if (status.trim().toLowerCase() === "draft") return "Draft";
+					return this.requireCanonicalStatus(status);
+				});
+				const demotedDraft: Task = {
+					...source,
+					id: newDraftId,
+					status: "Draft",
+					filePath: undefined,
+					...(mutated || source.status !== "Draft"
+						? { updatedDate: new Date().toISOString().slice(0, 16).replace("T", " ") }
+						: {}),
+				};
+				normalizeAssignee(demotedDraft);
+				return demotedDraft;
+			},
 		});
-
-		const { demotedDraft, savedPath, sourcePath } = await this.withCreateLock(async () => {
-			const newDraftId = await this.generateNextId(EntityType.Draft);
-			const taskPath = task.filePath;
-
-			const demotedDraft: Task = {
-				...task,
-				id: newDraftId,
-				status: "Draft",
-				filePath: undefined,
-				...(mutated || task.status !== "Draft"
-					? { updatedDate: new Date().toISOString().slice(0, 16).replace("T", " ") }
-					: {}),
-			};
-
-			normalizeAssignee(demotedDraft);
-			const savedPath = await this.fs.saveDraft(demotedDraft);
-
-			if (taskPath) {
-				await unlink(taskPath);
-			}
-
-			return { demotedDraft, savedPath, sourcePath: taskPath };
-		});
+		if (!moved) throw new Error(`Task not found: ${task.id}`);
 
 		if (await this.shouldAutoCommit(autoCommit)) {
 			await this.commitOperationFiles(
 				`backlog: Demote task ${normalizeTaskId(task.id)}`,
-				sourcePath ? [sourcePath, savedPath] : [savedPath],
+				[moved.sourcePath, moved.targetPath],
 				autoCommit,
 			);
 		}
 
-		return (await this.fs.loadDraft(demotedDraft.id)) ?? { ...demotedDraft, filePath: savedPath };
+		return (await this.fs.loadDraft(moved.task.id)) ?? moved.task;
 	}
 
 	/**
@@ -2774,90 +2754,46 @@ export class Core {
 	}
 
 	async promoteDraft(draftId: string, autoCommit?: AutoCommitInput): Promise<boolean> {
-		let movedPaths: { sourcePath: string; targetPath: string } | null = null;
-		try {
-			movedPaths = await this.withCreateLock(async () => {
-				const draft = await this.fs.loadDraft(draftId);
-				if (!draft?.filePath) return null;
+		const moved = await this.fs.promoteDraftWithResult(draftId, {
+			generateId: async (draft) => this.generateNextId(EntityType.Task, draft.parentTaskId),
+		});
+		if (!moved) return false;
 
-				const config = await this.fs.loadConfig();
-				const newTaskId = await this.generateNextId(EntityType.Task, draft.parentTaskId);
-				const promotedStatus =
-					!draft.status || draft.status.trim().toLowerCase() === "draft"
-						? config?.defaultStatus || FALLBACK_STATUS
-						: draft.status;
+		const savedTask = (await this.fs.loadTask(moved.task.id)) ?? moved.task;
+		if (this.contentStore) this.contentStore.upsertTask(savedTask);
 
-				const promotedTask: Task = {
-					...draft,
-					id: newTaskId,
-					status: promotedStatus,
-					filePath: undefined,
-				};
-
-				normalizeAssignee(promotedTask);
-				const targetPath = await this.fs.saveTask(promotedTask);
-				await unlink(draft.filePath);
-
-				const savedTask = await this.fs.loadTask(promotedTask.id);
-				if (this.contentStore && savedTask) {
-					this.contentStore.upsertTask(savedTask);
-				}
-
-				return { sourcePath: draft.filePath, targetPath };
-			});
-		} catch (error) {
-			if (isCreateLockError(error)) {
-				throw error;
-			}
-			return false;
-		}
-
-		if (movedPaths && (await this.shouldAutoCommit(autoCommit))) {
+		if (await this.shouldAutoCommit(autoCommit)) {
 			await this.commitOperationFiles(
 				`backlog: Promote draft ${normalizeId(draftId, "draft")}`,
-				[movedPaths.sourcePath, movedPaths.targetPath],
+				[moved.sourcePath, moved.targetPath],
 				autoCommit,
 			);
 		}
 
-		return movedPaths !== null;
+		return true;
 	}
 
 	async demoteTask(taskId: string, autoCommit?: AutoCommitInput): Promise<boolean> {
-		let movedPaths: { sourcePath: string; targetPath: string } | null = null;
-		try {
-			movedPaths = await this.withCreateLock(async () => {
-				const task = await this.fs.loadTask(taskId);
-				if (!task?.filePath) return null;
+		const moved = await this.fs.demoteTaskWithResult(taskId, {
+			generateId: async () => this.generateNextId(EntityType.Draft),
+			buildTarget: async (task, newDraftId) => ({
+				...task,
+				id: newDraftId,
+				status: "Draft",
+				filePath: undefined,
+			}),
+		});
+		if (!moved) return false;
 
-				const newDraftId = await this.generateNextId(EntityType.Draft);
-				const demotedDraft: Task = {
-					...task,
-					id: newDraftId,
-					status: "Draft",
-					filePath: undefined,
-				};
-				normalizeAssignee(demotedDraft);
-				const targetPath = await this.fs.saveDraft(demotedDraft);
-				await unlink(task.filePath);
-				return { sourcePath: task.filePath, targetPath };
-			});
-		} catch (error) {
-			if (isCreateLockError(error)) {
-				throw error;
-			}
-			return false;
-		}
-
-		if (movedPaths && (await this.shouldAutoCommit(autoCommit))) {
+		if (await this.shouldAutoCommit(autoCommit)) {
 			await this.commitOperationFiles(
 				`backlog: Demote task ${normalizeTaskId(taskId)}`,
-				[movedPaths.sourcePath, movedPaths.targetPath],
+				[moved.sourcePath, moved.targetPath],
 				autoCommit,
 			);
 		}
 
-		return movedPaths !== null;
+		return true;
 	}
 
 	/**
