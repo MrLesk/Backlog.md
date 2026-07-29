@@ -64,6 +64,16 @@ function normalizeOperations(
 	return (Array.isArray(input) ? input : [input]).map(normalizeOperation);
 }
 
+function deduplicateOperations(operations: readonly AutomaticCommitOperation[]): AutomaticCommitOperation[] {
+	const seen = new Set<string>();
+	return operations.filter((operation) => {
+		const key = JSON.stringify(operation);
+		if (seen.has(key)) return false;
+		seen.add(key);
+		return true;
+	});
+}
+
 function isValidOperation(operation: AutomaticCommitOperation): boolean {
 	return Boolean(
 		operation.verb &&
@@ -171,7 +181,7 @@ export function buildAutomaticCommitMessage(
 	operationInput: AutomaticCommitOperation | string | readonly (AutomaticCommitOperation | string)[],
 	previousMessage?: string,
 ): AutomaticCommitMessage | null {
-	const inputOperations = normalizeOperations(operationInput);
+	const inputOperations = deduplicateOperations(normalizeOperations(operationInput));
 	if (inputOperations.length === 0 || !inputOperations.every(isValidOperation)) return null;
 
 	if (previousMessage === undefined) {
@@ -200,11 +210,7 @@ export function buildAutomaticCommitMessage(
 	const legacy = previousLines[start] === LEGACY_AUTOMATIC_COMMIT_MESSAGE_REGION_START;
 	const existingOperations = parseOperations(previousLines.slice(start + 1, end), legacy);
 	if (!existingOperations) return null;
-	const operations = [...existingOperations];
-	for (const operation of inputOperations) {
-		const operationKey = JSON.stringify(operation);
-		if (!operations.some((existing) => JSON.stringify(existing) === operationKey)) operations.push(operation);
-	}
+	const operations = deduplicateOperations([...existingOperations, ...inputOperations]);
 	const subject = formatAutomaticCommitSubject(operations);
 	const bodyBefore = previousLines.slice(1, start);
 	const bodyAfter = previousLines.slice(end + 1);

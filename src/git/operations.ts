@@ -434,7 +434,15 @@ export class GitOperations {
 		const indexLockPath = `${indexPath}.lock`;
 		const headLockPath = `${headPath}.lock`;
 		const refUpdateDirectory = await mkdtemp(join(tmpdir(), "backlog-git-ref-update-"));
+		const hooksDisabledEnv = {
+			GIT_CONFIG_COUNT: "1",
+			GIT_CONFIG_KEY_0: "core.hooksPath",
+			GIT_CONFIG_VALUE_0: join(refUpdateDirectory, "disabled-hooks"),
+		};
+		const referenceName = branchRef ?? "HEAD";
+		const referenceTransactionInput = `${expectedCommit ?? "0".repeat(newCommit.length)} ${newCommit} ${referenceName}\n`;
 		let updated = false;
+		let referenceTransactionSucceeded = false;
 		let replacedDetachedHead = false;
 		try {
 			const indexLock = await open(indexLockPath, "wx");
@@ -448,45 +456,74 @@ export class GitOperations {
 						throw new Error("Git HEAD changed before the selected commit could be finalized");
 					}
 					await validateLease();
-					if (branchRef) {
-						await Promise.all([
-							writeFile(join(refUpdateDirectory, "commondir"), `${commonDirectory}\n`),
-							writeFile(join(refUpdateDirectory, "HEAD"), "ref: refs/backlog/ref-update-context\n"),
-						]);
-						await this.execGit(["update-ref", "-m", reflogMessage, branchRef, newCommit, expectedCommit ?? ""], {
-							cwd: repoRoot,
-							env: { GIT_DIR: refUpdateDirectory },
-						});
-						if (validateNamedUpdate) {
-							try {
-								await validateNamedUpdate();
-							} catch (error) {
-								await this.execGit(
-									[
-										"update-ref",
-										"-m",
-										"reset: Backlog finalization lease invalidated",
-										branchRef,
-										expectedCommit ?? "",
-										newCommit,
-									],
-									{ cwd: repoRoot, env: { GIT_DIR: refUpdateDirectory } },
-								);
-								throw error;
+					let referenceTransactionPending = true;
+					try {
+						try {
+							await this.runCommitHook("reference-transaction", ["prepared"], repoRoot, {}, referenceTransactionInput);
+						} catch (error) {
+							await this.runCommitHook(
+								"reference-transaction",
+								["aborted"],
+								repoRoot,
+								{},
+								referenceTransactionInput,
+							).catch(() => undefined);
+							referenceTransactionPending = false;
+							throw error;
+						}
+						if (branchRef) {
+							await Promise.all([
+								writeFile(join(refUpdateDirectory, "commondir"), `${commonDirectory}\n`),
+								writeFile(join(refUpdateDirectory, "HEAD"), "ref: refs/backlog/ref-update-context\n"),
+							]);
+							await this.execGit(["update-ref", "-m", reflogMessage, branchRef, newCommit, expectedCommit ?? ""], {
+								cwd: repoRoot,
+								env: { ...hooksDisabledEnv, GIT_DIR: refUpdateDirectory },
+							});
+							if (validateNamedUpdate) {
+								try {
+									await validateNamedUpdate();
+								} catch (error) {
+									await this.execGit(
+										[
+											"update-ref",
+											"-m",
+											"reset: Backlog finalization lease invalidated",
+											branchRef,
+											expectedCommit ?? "",
+											newCommit,
+										],
+										{ cwd: repoRoot, env: { ...hooksDisabledEnv, GIT_DIR: refUpdateDirectory } },
+									);
+									throw error;
+								}
 							}
+						} else {
+							const currentHead = (await readFile(headPath, "utf8")).trim();
+							if (!expectedCommit || currentHead !== expectedCommit) {
+								throw new Error("Detached Git HEAD changed before the selected commit could be finalized");
+							}
+							await headLock.writeFile(`${newCommit}\n`);
+							await headLock.sync();
+							await headLock.close();
+							await rename(headLockPath, headPath);
+							replacedDetachedHead = true;
 						}
-					} else {
-						const currentHead = (await readFile(headPath, "utf8")).trim();
-						if (!expectedCommit || currentHead !== expectedCommit) {
-							throw new Error("Detached Git HEAD changed before the selected commit could be finalized");
+						updated = true;
+						referenceTransactionPending = false;
+						referenceTransactionSucceeded = true;
+					} catch (error) {
+						if (referenceTransactionPending) {
+							await this.runCommitHook(
+								"reference-transaction",
+								["aborted"],
+								repoRoot,
+								{},
+								referenceTransactionInput,
+							).catch(() => undefined);
 						}
-						await headLock.writeFile(`${newCommit}\n`);
-						await headLock.sync();
-						await headLock.close();
-						await rename(headLockPath, headPath);
-						replacedDetachedHead = true;
+						throw error;
 					}
-					updated = true;
 				} finally {
 					await headLock.close().catch(() => undefined);
 					if (!replacedDetachedHead) await unlink(headLockPath).catch(() => undefined);
@@ -501,7 +538,13 @@ export class GitOperations {
 		// The protected update writes a branch reflog (named) or HEAD itself
 		// (detached). Restore the normal worktree HEAD reflog with an OID no-op.
 		if (updated && (await this.resolveHead(repoRoot)) === newCommit) {
-			await this.execGit(["update-ref", "-m", reflogMessage, "HEAD", newCommit, newCommit], { cwd: repoRoot }).catch(
+			await this.execGit(["update-ref", "-m", reflogMessage, "HEAD", newCommit, newCommit], {
+				cwd: repoRoot,
+				env: hooksDisabledEnv,
+			}).catch(() => undefined);
+		}
+		if (referenceTransactionSucceeded) {
+			await this.runCommitHook("reference-transaction", ["committed"], repoRoot, {}, referenceTransactionInput).catch(
 				() => undefined,
 			);
 		}

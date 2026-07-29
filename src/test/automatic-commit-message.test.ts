@@ -52,6 +52,21 @@ describe("automatic commit messages", () => {
 		expect(duplicate?.message.startsWith("backlog: Update tasks BACK-1, BACK-2\n")).toBe(true);
 	});
 
+	it("deduplicates initial batches and repairs duplicates already present in a rolling region", () => {
+		const operation = "backlog: Update task BACK-1";
+		const initial = buildAutomaticCommitMessage([operation, operation]);
+		expect(initial?.operations.map((item) => item.message)).toEqual([operation]);
+		const operationLine = initial?.message.split("\n").find((line) => line.startsWith("- {"));
+		if (!initial || !operationLine) throw new Error("Expected structured operation line");
+		const withExistingDuplicate = initial.message.replace(operationLine, `${operationLine}\n${operationLine}`);
+		const replaced = buildAutomaticCommitMessage("backlog: Update task BACK-2", withExistingDuplicate);
+		expect(replaced?.operations.map((item) => item.message)).toEqual([
+			"backlog: Update task BACK-1",
+			"backlog: Update task BACK-2",
+		]);
+		expect((replaced?.message.split(operationLine).length ?? 1) - 1).toBe(1);
+	});
+
 	it("migrates version-one ID-prefixed draft operations into structured metadata", () => {
 		const previous = [
 			"DRAFT-1 - Create draft DRAFT-1",

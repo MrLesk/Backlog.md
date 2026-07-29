@@ -355,6 +355,59 @@ describe("owned automatic commit replacement", () => {
 		expect(await head(testDir)).toBe(replacement.commitId);
 	});
 
+	it("runs one real-context reference transaction lifecycle and honors named and detached vetoes", async () => {
+		for (const scenario of ["named-veto", "detached-veto", "named-success", "detached-success"] as const) {
+			const root = join(testDir, scenario);
+			const git = await initializeRepository(root);
+			const owned = await commitSelected(root, git, "backlog: Update task BACK-1", "owned\n");
+			const detached = scenario.startsWith("detached");
+			const veto = scenario.endsWith("veto");
+			if (detached) await $`git checkout --detach ${owned.commitId}`.cwd(root).quiet();
+			const markerPath = join(root, "reference-transaction.log");
+			const vetoPath = join(root, "reference-transaction.veto");
+			if (veto) await Bun.write(vetoPath, "veto\n");
+			await installHook(
+				root,
+				"reference-transaction",
+				`head="$(git symbolic-ref -q HEAD || printf detached)"; ` +
+					`printf 'state=%s head=%s\\n' "$1" "$head" >> "${markerPath}"; ` +
+					`while IFS= read -r line; do printf 'ref=%s\\n' "$line" >> "${markerPath}"; done; ` +
+					`if [ "$1" = prepared ] && [ -f "${vetoPath}" ]; then exit 1; fi`,
+			);
+			const selectedPath = join(root, "selected.txt");
+			await Bun.write(selectedPath, "ours\n");
+			await git.stageFiles([selectedPath]);
+
+			const commit = git.commitFiles("backlog: Update task BACK-2", [selectedPath], root, {
+				automaticCommitIntent: "amend-own",
+			});
+			if (veto) await expect(commit).rejects.toThrow("reference-transaction");
+			else expect(await commit).not.toBeNull();
+
+			const markerLines = (await Bun.file(markerPath).text()).trim().split("\n");
+			const expectedHead = detached ? "detached" : "refs/heads/main";
+			expect(markerLines.filter((line) => line.startsWith("state="))).toEqual(
+				(veto ? ["prepared", "aborted"] : ["prepared", "committed"]).map(
+					(state) => `state=${state} head=${expectedHead}`,
+				),
+			);
+			const referenceName = detached ? "HEAD" : "refs/heads/main";
+			expect(markerLines.filter((line) => line.startsWith("ref="))).toHaveLength(2);
+			expect(markerLines.filter((line) => line.startsWith("ref=")).every((line) => line.endsWith(referenceName))).toBe(
+				true,
+			);
+			if (veto) {
+				expect(await head(root)).toBe(owned.commitId);
+				expect(await $`git show HEAD:selected.txt`.cwd(root).text()).toBe("owned\n");
+				expect(await Bun.file(selectedPath).text()).toBe("ours\n");
+				expect(await $`git show :selected.txt`.cwd(root).text()).toBe("ours\n");
+			} else {
+				expect(await head(root)).not.toBe(owned.commitId);
+				expect(await $`git show HEAD:selected.txt`.cwd(root).text()).toBe("ours\n");
+			}
+		}
+	}, 40_000);
+
 	it("fails closed when message hooks create sharing refs or perform same-SHA ABA updates", async () => {
 		const tagRoot = join(testDir, "hook-tag");
 		const tagGit = await initializeRepository(tagRoot);
