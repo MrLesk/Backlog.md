@@ -5,7 +5,7 @@ status: In Progress
 assignee:
   - '@andreas'
 created_date: '2026-07-28 14:27'
-updated_date: '2026-07-29 17:02'
+updated_date: '2026-07-29 17:24'
 labels:
   - enhancement
   - git
@@ -125,17 +125,18 @@ This task is delivered through subtasks, because the selected-path correctness f
 <!-- AC:BEGIN -->
 - [x] #1 With autoCommit true and autoCommitMode amend-own, a run of consecutive Backlog mutations on an owned branch tip produces exactly one commit that contains every change, lists every distinct operation once in its message region, and carries a subject that reflects the operations it holds rather than only the first one.
 - [x] #2 Every documented non-owned boundary makes Backlog create a new commit instead of amending: manual commit, manual amend, reset, detached HEAD, merge commit, reachability from a remote-tracking ref, reachability from any other local branch or tag including direct and descendant refs, and missing, stale, malformed, or ambiguous ownership evidence. A commit created detached or while evidence cannot be recorded remains unowned, so repeated mutations in either persistent state continue creating new commits.
-- [x] #3 autoCommitMode defaults to new when absent, rejects invalid values with an error, and has no effect while autoCommit is false or the project is filesystem-only. An explicit per-invocation autoCommit override decides only whether to commit and never changes the mode.
+- [ ] #3 autoCommitMode defaults to new when absent, rejects invalid values with an error, and has no effect while autoCommit is false or the project is filesystem-only. An explicit per-invocation autoCommit override decides only whether to commit and never changes the mode.
 - [x] #4 No automatic Backlog commit, in either mode, contains paths outside those selected for the operation. Pre-existing unrelated index and worktree state plus pre-commit and commit-message hook staging through the isolated index are preserved, while mutations made by post hooks against the real index and worktree persist according to normal Git semantics.
-- [x] #5 A human can see when an amend happened, force a new commit for a single invocation with --no-amend on any command that can automatically commit, and follow documented reflog recovery for an unwanted amend.
+- [ ] #5 A human can see when an amend happened, force a new commit for a single invocation with --no-amend on any command that can automatically commit, and follow documented reflog recovery for an unwanted amend.
 - [x] #6 The upstream cross-platform test/build/Nix workflow executes successfully for the final implementation SHA, or the task records that first-time-contributor workflow approval is externally blocked on an upstream maintainer before merge.
+- [ ] #7 The final PR branch history follows CONTRIBUTING.md by including BACK-556 in every feature commit message, while preserving reviewable intent and the task evidence required for this delivery.
 <!-- AC:END -->
 
 ## Definition of Done
 <!-- DOD:BEGIN -->
-- [x] #1 bunx tsc --noEmit passes when TypeScript touched
-- [x] #2 bun run check . passes when formatting/linting touched
-- [x] #3 bun test (or scoped test) passes
+- [ ] #1 bunx tsc --noEmit passes when TypeScript touched
+- [ ] #2 bun run check . passes when formatting/linting touched
+- [ ] #3 bun test (or scoped test) passes
 <!-- DOD:END -->
 
 ## Implementation Plan
@@ -165,6 +166,8 @@ Holistic correction pass: resolve the documented Git intent/state, invocation-co
 20. Align the native ContentStore deletion integration test outer timeout with its three explicit 15-second bounded watcher waits so a loaded full suite can exercise those assertions instead of aborting at Bun’s 5-second default; do not change product watcher behavior.
 
 21. Give the multi-phase A-to-B-to-A ContentStore watcher lifecycle test an explicit bounded outer timeout consistent with its existing 5-second gate and 8-second event waits; keep product watcher behavior and unrelated test deadlines unchanged.
+
+22. Resolve Pass 8 stale-cache commit-enable overrides, commented YAML compatibility, truthful overflow totals, visible browser feedback stacking, and task-ID commit history. Re-run focused/full gates, rewrite history safely, refresh the PR/CLI, and obtain a fresh holistic review.
 <!-- SECTION:PLAN:END -->
 
 ## Implementation Notes
@@ -249,5 +252,10 @@ The first Pass 6 integrated gate reached 1,845 passes but the pre-existing multi
 created: 2026-07-29 16:26
 ---
 Fresh holistic gpt-5.6-sol xhigh pass 7 at cc0d6f9 returned four findings: MCP task_demote forces autoCommit false; malformed auto_commit_mode syntax without a colon is accepted by mutation preflight; concurrent Git-plan coverage stubs the obsolete loader; and bulk feedback storage is unbounded. Exact clean HEAD preserved. Report: /tmp/backlog-821-holistic-review-pass-7.md.
+---
+
+created: 2026-07-29 17:24
+---
+Fresh holistic gpt-5.6-sol xhigh Pass 8 at a17eef3 requested changes with five findings: stale cached TUI/agent booleans can override current auto_commit false; commented block-list YAML is rejected; browser overflow totals report 101 instead of 1,000; task-create confirmation covers the amendment toast; and the PR commit history omits BACK-556 despite CONTRIBUTING.md. Exact clean HEAD preserved. Report: /tmp/backlog-821-holistic-review-pass-8.md.
 ---
 <!-- COMMENTS:END -->
