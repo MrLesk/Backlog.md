@@ -5,7 +5,7 @@ status: In Progress
 assignee:
   - '@andreas'
 created_date: '2026-07-28 14:47'
-updated_date: '2026-07-29 14:57'
+updated_date: '2026-07-29 15:21'
 labels:
   - web-ui
   - cli
@@ -31,14 +31,14 @@ This covers the advanced CLI wizard, initialization and configuration summaries,
 - [x] #3 Browser initialization and Settings expose autoCommitMode, reject invalid values, and round-trip through the shared typed and serialized configuration paths.
 - [x] #4 Human-readable copy on the CLI wizard and browser surfaces states that amend-own may replace the exact current locally-owned Backlog tip only when all safety checks pass and otherwise creates a new commit.
 - [x] #5 Tests cover wizard defaults and output, summary rendering, and browser initialization and Settings round-trips.
-- [x] #6 Browser archive, complete, reorder, cleanup, and other mutation responses surface bounded replacement feedback consistently for JSON and no-content operations.
+- [ ] #6 Browser archive, complete, reorder, cleanup, and other mutation responses surface bounded replacement feedback consistently for JSON and no-content operations.
 <!-- AC:END -->
 
 ## Definition of Done
 <!-- DOD:BEGIN -->
-- [x] #1 bunx tsc --noEmit passes when TypeScript touched
-- [x] #2 bun run check . passes when formatting/linting touched
-- [x] #3 bun test (or scoped test) passes
+- [ ] #1 bunx tsc --noEmit passes when TypeScript touched
+- [ ] #2 bun run check . passes when formatting/linting touched
+- [ ] #3 bun test (or scoped test) passes
 <!-- DOD:END -->
 
 ## Implementation Plan
@@ -55,6 +55,8 @@ This covers the advanced CLI wizard, initialization and configuration summaries,
 6. Add ApiClient.promoteDraft through fetchWithRetry/fetchJson, remove DraftsList raw fetch, and assert its response header dispatches the centralized notice.
 
 7. Include browser initialization in the centralized automatic-commit response wrapper and cover owned-tip re-initialization feedback end to end.
+
+8. Preserve centralized automatic-commit header dispatch while disabling automatic retries for non-idempotent browser mutation methods; cover response loss after a successful write.
 <!-- SECTION:PLAN:END -->
 
 ## Implementation Notes
@@ -95,5 +97,10 @@ Holistic pass 4 finding H1: browser draft promotion is the remaining raw mutatin
 created: 2026-07-29 14:19
 ---
 Holistic pass 5 H1: initialization was the remaining browser mutation route that could replace an owned commit without dispatchable response feedback.
+---
+
+created: 2026-07-29 15:21
+---
+Holistic pass 6 H2: browser feedback centralization accidentally inherited retry semantics that can duplicate non-idempotent document/decision/milestone writes.
 ---
 <!-- COMMENTS:END -->
