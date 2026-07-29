@@ -5,7 +5,7 @@ status: In Progress
 assignee:
   - '@andreas'
 created_date: '2026-07-28 14:27'
-updated_date: '2026-07-29 11:33'
+updated_date: '2026-07-29 11:58'
 labels:
   - enhancement
   - git
@@ -125,16 +125,16 @@ This task is delivered through subtasks, because the selected-path correctness f
 <!-- AC:BEGIN -->
 - [x] #1 With autoCommit true and autoCommitMode amend-own, a run of consecutive Backlog mutations on an owned branch tip produces exactly one commit that contains every change, lists every distinct operation once in its message region, and carries a subject that reflects the operations it holds rather than only the first one.
 - [x] #2 Every documented non-owned boundary makes Backlog create a new commit instead of amending: manual commit, manual amend, reset, detached HEAD, merge commit, reachability from a remote-tracking ref, reachability from any other local branch or tag including direct and descendant refs, and missing, stale, malformed, or ambiguous ownership evidence. A commit created detached or while evidence cannot be recorded remains unowned, so repeated mutations in either persistent state continue creating new commits.
-- [x] #3 autoCommitMode defaults to new when absent, rejects invalid values with an error, and has no effect while autoCommit is false or the project is filesystem-only. An explicit per-invocation autoCommit override decides only whether to commit and never changes the mode.
+- [ ] #3 autoCommitMode defaults to new when absent, rejects invalid values with an error, and has no effect while autoCommit is false or the project is filesystem-only. An explicit per-invocation autoCommit override decides only whether to commit and never changes the mode.
 - [x] #4 No automatic Backlog commit, in either mode, contains paths outside those selected for the operation. Pre-existing unrelated index and worktree state plus pre-commit and commit-message hook staging through the isolated index are preserved, while mutations made by post hooks against the real index and worktree persist according to normal Git semantics.
-- [x] #5 A human can see when an amend happened, force a new commit for a single invocation with --no-amend on any command that can automatically commit, and follow documented reflog recovery for an unwanted amend.
+- [ ] #5 A human can see when an amend happened, force a new commit for a single invocation with --no-amend on any command that can automatically commit, and follow documented reflog recovery for an unwanted amend.
 <!-- AC:END -->
 
 ## Definition of Done
 <!-- DOD:BEGIN -->
-- [x] #1 bunx tsc --noEmit passes when TypeScript touched
-- [x] #2 bun run check . passes when formatting/linting touched
-- [x] #3 bun test (or scoped test) passes
+- [ ] #1 bunx tsc --noEmit passes when TypeScript touched
+- [ ] #2 bun run check . passes when formatting/linting touched
+- [ ] #3 bun test (or scoped test) passes
 <!-- DOD:END -->
 
 ## Implementation Plan
@@ -199,5 +199,10 @@ author: @andreas
 created: 2026-07-29 10:55
 ---
 Holistic pass 2 requested changes with six findings: draft rename path completeness, all interactive/MCP --no-amend entrypoints, CLI/TUI result-sink consistency, lifecycle validation propagation, accurate add/update descriptors, and stale draft-PR checklist/test evidence. Findings are recorded on BACK-556.1-.3; PR text will be refreshed after fixes and final task verification.
+---
+
+created: 2026-07-29 11:58
+---
+Fresh holistic gpt-5.6-sol xhigh pass 3 at 4d14a84 requested changes with four findings: browser entity feedback gaps, missing CLI agent-instruction feedback, browser milestone creation bypassing Core auto-commit, and post-write invalid-mode validation. The affected criteria and gates are reopened before implementation; report: /tmp/backlog-821-holistic-review-pass-3.md.
 ---
 <!-- COMMENTS:END -->

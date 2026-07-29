@@ -5,7 +5,7 @@ status: In Progress
 assignee:
   - '@andreas'
 created_date: '2026-07-28 14:46'
-updated_date: '2026-07-29 11:24'
+updated_date: '2026-07-29 11:58'
 labels:
   - git
 dependencies: []
@@ -28,7 +28,7 @@ This is a correctness fix that stands on its own under the current default autom
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [x] #1 Every production automatic-commit path commits only the files selected for that operation, covering tasks, drafts, bulk updates and reorders, lifecycle moves, milestones, documents, decisions, and agent-instruction updates.
+- [ ] #1 Every production automatic-commit path commits only the files selected for that operation, covering tasks, drafts, bulk updates and reorders, lifecycle moves, milestones, documents, decisions, and agent-instruction updates.
 - [x] #2 Pre-existing unrelated staged and unstaged paths, and unrelated paths staged by pre-commit or commit-message hooks through the isolated commit index, remain outside the commit and retain their prior real-index and worktree state; mutations made by post-commit hooks against the real index and worktree persist according to normal Git semantics.
 - [x] #3 Operations that move files, such as archive and milestone rename, commit the complete set of source and target paths the operation touched, with no stray additions.
 - [x] #4 Existing selected-path robustness is preserved: temporary-index isolation, owned-index reconciliation, retries, current-configuration signing and signing failures, legacy and modern hook runners, and atomic expected-old-SHA branch updates.
@@ -41,9 +41,9 @@ This is a correctness fix that stands on its own under the current default autom
 
 ## Definition of Done
 <!-- DOD:BEGIN -->
-- [x] #1 bunx tsc --noEmit passes when TypeScript touched
-- [x] #2 bun run check . passes when formatting/linting touched
-- [x] #3 bun test (or scoped test) passes
+- [ ] #1 bunx tsc --noEmit passes when TypeScript touched
+- [ ] #2 bun run check . passes when formatting/linting touched
+- [ ] #3 bun test (or scoped test) passes
 <!-- DOD:END -->
 
 ## Implementation Plan
@@ -58,6 +58,8 @@ This is a correctness fix that stands on its own under the current default autom
 6. Remove Core/FileSystem lifecycle duplication by returning source/target paths from the canonical filesystem mutation; preserve AmbiguousTaskIdError and cover it with a regression.
 
 7. Return all touched paths from draft upserts and distinguish absent-source results from validation/write failures in lifecycle result helpers; add new/amend rename and invalid-field regressions.
+
+8. Route browser milestone creation through the shared Core selected-path mutation and cover enabled/disabled and both commit modes.
 <!-- SECTION:PLAN:END -->
 
 ## Implementation Notes
@@ -85,5 +87,10 @@ author: @andreas
 created: 2026-07-29 10:55
 ---
 Holistic pass 2 findings H1/M2: draft title updates committed only the new filename, and lifecycle callback validation errors were swallowed as not-found results.
+---
+
+created: 2026-07-29 11:58
+---
+Holistic pass 3 finding H3: browser milestone creation writes through FileSystem directly, so configured automatic commits, selected-path behavior, force-new, and feedback are bypassed.
 ---
 <!-- COMMENTS:END -->
