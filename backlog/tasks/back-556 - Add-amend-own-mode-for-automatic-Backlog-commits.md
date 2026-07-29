@@ -5,7 +5,7 @@ status: In Progress
 assignee:
   - '@andreas'
 created_date: '2026-07-28 14:27'
-updated_date: '2026-07-29 10:19'
+updated_date: '2026-07-29 10:27'
 labels:
   - enhancement
   - git
@@ -168,6 +168,8 @@ Holistic correction pass: resolve the documented Git intent/state, invocation-co
 Delivered through BACK-556.1-.4: exact selected-path automatic commits, reflog-proven owned-tip replacement with fail-closed safety checks and Git-compatible hooks, typed/configurable new and amend-own modes with --no-amend, and consistent CLI/TUI/MCP/browser feedback and settings. Added rolling message reconstruction, documentation, and broad cross-entity, boundary, hook, custom-root, configuration, and UI/API tests.
 
 Holistic correction pass implemented findings B1/B2/H1/H2/M1/M2/M3 plus shared mode validation. First integrated full gate passed: TypeScript, Biome (348 files), and 1,830 tests passed with 4 skipped across 205 files.
+
+Second full-gate run after review-history cleanup also passed: TypeScript, Biome (348 files), and 1,830 tests passed with 4 skipped across 205 files. The two consecutive full suites completed in 460.13s and 447.68s without failures.
 <!-- SECTION:NOTES:END -->
 
 ## Comments
