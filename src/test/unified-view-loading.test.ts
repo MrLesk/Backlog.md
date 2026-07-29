@@ -56,14 +56,15 @@ describe("loadTasksForUnifiedView", () => {
 		expect(getEmptyUnifiedViewMessage("kanban", "TASK-9")).toBe("No child tasks found for parent task TASK-9.");
 	});
 
-	it("loads autoCommit when each board task is submitted", async () => {
-		let currentAutoCommit = false;
-		const observedAutoCommit: boolean[] = [];
+	it("delegates board task commit enablement to the current-byte mutation plan", async () => {
+		const observedAutoCommit: unknown[] = [];
 		const boardCore = {
 			filesystem: {
-				loadConfig: async () => ({ autoCommit: currentAutoCommit }),
+				loadConfig: async () => {
+					throw new Error("Board creation must not turn cached config into an invocation override");
+				},
 			},
-			createTaskFromInput: async (_input: unknown, autoCommit: boolean) => {
+			createTaskFromInput: async (_input: unknown, autoCommit?: unknown) => {
 				observedAutoCommit.push(autoCommit);
 				return {
 					task: {
@@ -80,10 +81,9 @@ describe("loadTasksForUnifiedView", () => {
 		} as unknown as Core;
 
 		await createTaskFromBoard(boardCore, { title: "First" });
-		currentAutoCommit = true;
 		await createTaskFromBoard(boardCore, { title: "Second" });
 
-		expect(observedAutoCommit).toEqual([false, true]);
+		expect(observedAutoCommit).toEqual([undefined, undefined]);
 	});
 
 	it("publishes a newly created board task to shared unified state before returning", async () => {

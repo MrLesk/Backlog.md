@@ -1046,8 +1046,7 @@ export async function renderBoardTui(
 								return created;
 							}
 							const core = mutationCore;
-							const config = await core.fs.loadConfig();
-							const created = (await core.createTaskFromInput(input, config?.autoCommit ?? false)).task;
+							const created = (await core.createTaskFromInput(input)).task;
 							creationNotices = core.consumeAutoCommitNotices();
 							return created;
 						},
@@ -1398,8 +1397,7 @@ export async function renderBoardTui(
 				if (confirmed) {
 					try {
 						const core = mutationCore;
-						const config = await core.fs.loadConfig();
-						const success = await core.archiveTask(task.id, config?.autoCommit ?? false);
+						const success = await core.archiveTask(task.id);
 
 						if (success) {
 							currentTasks = currentTasks.filter((t) => t.id !== task.id);
@@ -1447,7 +1445,6 @@ export async function renderBoardTui(
 
 			try {
 				const core = mutationCore;
-				const config = await core.fs.loadConfig();
 
 				// Get the final state from the projection
 				const projectedData = getProjectedColumns(currentTasks, moveOp);
@@ -1466,7 +1463,6 @@ export async function renderBoardTui(
 					taskId: moveOp.taskId,
 					targetStatus: moveOp.targetStatus,
 					orderedTaskIds,
-					autoCommit: config?.autoCommit ?? false,
 				});
 
 				// Update local state with all changed tasks (includes ordinal updates)
@@ -1650,8 +1646,7 @@ export async function renderBoardTui(
 			if (confirmed) {
 				try {
 					const core = mutationCore;
-					const config = await core.fs.loadConfig();
-					const success = await core.archiveTask(task.id, config?.autoCommit ?? false);
+					const success = await core.archiveTask(task.id);
 
 					if (success) {
 						currentTasks = currentTasks.filter((t) => t.id !== task.id);

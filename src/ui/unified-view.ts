@@ -261,8 +261,7 @@ export async function createTaskFromBoard(
 	input: TaskCreateInput,
 	onCreated?: (task: Task) => Promise<void> | void,
 ): Promise<Task> {
-	const config = await core.filesystem.loadConfig();
-	const task = (await core.createTaskFromInput(input, config?.autoCommit ?? false)).task;
+	const task = (await core.createTaskFromInput(input)).task;
 	if (task.status.trim().toLowerCase() !== "draft") await onCreated?.(task);
 	return task;
 }

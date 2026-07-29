@@ -21,6 +21,6 @@ export async function completeTaskFromTui(core: Core, task: Task): Promise<Compl
 		return { success: false, reason: "not-terminal", terminalStatus };
 	}
 
-	const success = await core.completeTask(task.id, config?.autoCommit ?? false);
+	const success = await core.completeTask(task.id);
 	return success ? { success: true, notices: core.consumeAutoCommitNotices() } : { success: false, reason: "failed" };
 }

@@ -10,6 +10,7 @@ import { McpServer } from "../mcp/server.ts";
 import { MilestoneHandlers } from "../mcp/tools/milestones/handlers.ts";
 import { registerTaskTools } from "../mcp/tools/tasks/index.ts";
 import { BacklogServer } from "../server/index.ts";
+import { createTaskFromBoard } from "../ui/unified-view.ts";
 import { createUniqueTestDir, initializeTestProject, safeCleanup } from "./test-utils.ts";
 
 const CLI_PATH = join(process.cwd(), "src", "cli.ts");
@@ -381,6 +382,26 @@ describe("autoCommitMode", () => {
 		expect(await createThroughServer("Disabled milestone commit")).toBeNull();
 		expect(await commitCount(testDir)).toBe(beforeDisabled);
 	}, 30_000);
+
+	test("current autoCommit false overrides stale enabled display config for TUI and agent-shaped mutations", async () => {
+		const config = await core.filesystem.loadConfig();
+		if (!config) throw new Error("Missing test config");
+		await core.filesystem.saveConfig({ ...config, autoCommit: true, autoCommitMode: "amend-own" });
+		await $`git add . && git commit -m "Enable automatic commits"`.cwd(testDir).quiet();
+		const cached = await core.filesystem.loadConfig();
+		expect(cached?.autoCommit).toBe(true);
+		const configPath = join(testDir, "backlog", "config.yml");
+		const currentBytes = await Bun.file(configPath).text();
+		await Bun.write(configPath, currentBytes.replace("auto_commit: true", "auto_commit: false"));
+		const beforeCount = await commitCount(testDir);
+
+		await createTaskFromBoard(core, { title: "Current bytes win" });
+		await core.updateAgentInstructions(["AGENTS.md"]);
+
+		expect(await commitCount(testDir)).toBe(beforeCount);
+		expect(await core.filesystem.loadTask("task-1")).not.toBeNull();
+		expect(await Bun.file(join(testDir, "AGENTS.md")).exists()).toBe(true);
+	});
 
 	test("autoCommit false remains the gate for every mutation type in amend-own mode", async () => {
 		const config = await core.filesystem.loadConfig();

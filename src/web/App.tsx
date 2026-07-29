@@ -11,7 +11,7 @@ import Statistics from './components/Statistics';
 import MilestonesPage from './components/MilestonesPage';
 import TaskDetailsModal from './components/TaskDetailsModal';
 import InitializationScreen from './components/InitializationScreen';
-import { SuccessToast } from './components/SuccessToast';
+import { AppSuccessToasts, type AppAutoCommitNotice } from './components/AppSuccessToasts';
 import { ThemeProvider } from './contexts/ThemeContext';
 import {
 	type Decision,
@@ -189,7 +189,8 @@ function AppContent() {
   const [milestoneEntities, setMilestoneEntities] = useState<Milestone[]>([]);
   const [archivedMilestones, setArchivedMilestones] = useState<Milestone[]>([]);
   const [showSuccessToast, setShowSuccessToast] = useState(false);
-  const [autoCommitNotice, setAutoCommitNotice] = useState<string | null>(null);
+  const [autoCommitNotices, setAutoCommitNotices] = useState<AppAutoCommitNotice[]>([]);
+  const autoCommitNoticeIdRef = useRef(0);
   const [taskConfirmation, setTaskConfirmation] = useState<{task: Task, isDraft: boolean} | null>(null);
   
   // Initialization state
@@ -386,7 +387,10 @@ function AppContent() {
 
   useEffect(() => {
     const handleAutoCommitNotice = (event: Event) => {
-      setAutoCommitNotice((event as CustomEvent<string>).detail);
+      const message = (event as CustomEvent<string>).detail;
+      autoCommitNoticeIdRef.current += 1;
+      const notice = { id: autoCommitNoticeIdRef.current, message };
+      setAutoCommitNotices((current) => [...current, notice].slice(-5));
     };
     window.addEventListener('backlog-auto-commit', handleAutoCommitNotice);
     return () => window.removeEventListener('backlog-auto-commit', handleAutoCommitNotice);
@@ -757,25 +761,12 @@ function AppContent() {
         dateFormat={config?.dateFormat}
       />
 
-      {autoCommitNotice && (
-        <SuccessToast
-          message={autoCommitNotice}
-          onDismiss={() => setAutoCommitNotice(null)}
-        />
-      )}
-
-      {/* Task Creation Confirmation Toast */}
-      {taskConfirmation && (
-        <SuccessToast
-          message={`${taskConfirmation.isDraft ? 'Draft' : 'Task'} "${taskConfirmation.task.title}" created successfully! (${taskConfirmation.task.id.replace('task-', '')})`}
-          onDismiss={() => setTaskConfirmation(null)}
-          icon={
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-            </svg>
-          }
-        />
-      )}
+      <AppSuccessToasts
+        autoCommitNotices={autoCommitNotices}
+        taskConfirmation={taskConfirmation}
+        onDismissAutoCommitNotice={(id) => setAutoCommitNotices((current) => current.filter((notice) => notice.id !== id))}
+        onDismissTaskConfirmation={() => setTaskConfirmation(null)}
+      />
     </ThemeProvider>
   );
 }

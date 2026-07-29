@@ -5,7 +5,7 @@ status: In Progress
 assignee:
   - '@andreas'
 created_date: '2026-07-28 14:27'
-updated_date: '2026-07-29 17:24'
+updated_date: '2026-07-29 17:43'
 labels:
   - enhancement
   - git
@@ -125,18 +125,18 @@ This task is delivered through subtasks, because the selected-path correctness f
 <!-- AC:BEGIN -->
 - [x] #1 With autoCommit true and autoCommitMode amend-own, a run of consecutive Backlog mutations on an owned branch tip produces exactly one commit that contains every change, lists every distinct operation once in its message region, and carries a subject that reflects the operations it holds rather than only the first one.
 - [x] #2 Every documented non-owned boundary makes Backlog create a new commit instead of amending: manual commit, manual amend, reset, detached HEAD, merge commit, reachability from a remote-tracking ref, reachability from any other local branch or tag including direct and descendant refs, and missing, stale, malformed, or ambiguous ownership evidence. A commit created detached or while evidence cannot be recorded remains unowned, so repeated mutations in either persistent state continue creating new commits.
-- [ ] #3 autoCommitMode defaults to new when absent, rejects invalid values with an error, and has no effect while autoCommit is false or the project is filesystem-only. An explicit per-invocation autoCommit override decides only whether to commit and never changes the mode.
+- [x] #3 autoCommitMode defaults to new when absent, rejects invalid values with an error, and has no effect while autoCommit is false or the project is filesystem-only. An explicit per-invocation autoCommit override decides only whether to commit and never changes the mode.
 - [x] #4 No automatic Backlog commit, in either mode, contains paths outside those selected for the operation. Pre-existing unrelated index and worktree state plus pre-commit and commit-message hook staging through the isolated index are preserved, while mutations made by post hooks against the real index and worktree persist according to normal Git semantics.
-- [ ] #5 A human can see when an amend happened, force a new commit for a single invocation with --no-amend on any command that can automatically commit, and follow documented reflog recovery for an unwanted amend.
+- [x] #5 A human can see when an amend happened, force a new commit for a single invocation with --no-amend on any command that can automatically commit, and follow documented reflog recovery for an unwanted amend.
 - [x] #6 The upstream cross-platform test/build/Nix workflow executes successfully for the final implementation SHA, or the task records that first-time-contributor workflow approval is externally blocked on an upstream maintainer before merge.
 - [ ] #7 The final PR branch history follows CONTRIBUTING.md by including BACK-556 in every feature commit message, while preserving reviewable intent and the task evidence required for this delivery.
 <!-- AC:END -->
 
 ## Definition of Done
 <!-- DOD:BEGIN -->
-- [ ] #1 bunx tsc --noEmit passes when TypeScript touched
-- [ ] #2 bun run check . passes when formatting/linting touched
-- [ ] #3 bun test (or scoped test) passes
+- [x] #1 bunx tsc --noEmit passes when TypeScript touched
+- [x] #2 bun run check . passes when formatting/linting touched
+- [x] #3 bun test (or scoped test) passes
 <!-- DOD:END -->
 
 ## Implementation Plan
@@ -196,6 +196,8 @@ Pass 5 finding fixed and fully verified: /api/init returns owned replacement fee
 All Pass 6 findings fixed and fully verified. Focused expanded gate passed 145 tests/1,557 assertions. After narrowly aligning one multi-phase watcher test outer bound with its internal 5/8-second waits, the integrated gate passed TypeScript, Biome over 349 files, and 1,846 tests with 4 skips/0 failures and 7,931 assertions across 205 files in 494.72 seconds.
 
 Pass 7 corrections complete: MCP demotion honors configured amend-own and force-new; mutation preflight and watcher acceptance share recognized-line validation while preserving supported block-list YAML; the concurrency regression now exercises loadConfigForMutation and proves the competing filesystem-only snapshot; automatic-commit result storage is capped at 100 with aggregate overflow reporting and complete callback delivery. Focused gate: 57 tests/691 assertions after block-list compatibility correction. Integrated gate: TypeScript clean, Biome checked 350 files, 1,848 passed/4 skipped/0 failed with 7,943 assertions across 205 files in 508.23 seconds; diff check clean.
+
+Pass 8 code findings fixed and fully verified: current-byte auto_commit owns TUI/agent enablement; commented block/inline YAML remains compatible; overflow summaries preserve the total; and automatic-commit plus task/draft confirmations render in one bounded visible stack without overwriting. Focused gate: 57 tests/685 assertions. Integrated gate: TypeScript clean, Biome checked 349 configured files, 1,852 passed/4 skipped/0 failed with 7,957 assertions across 206 files in 520.71 seconds. Commit-history criterion remains open for the planned safe rewrite.
 <!-- SECTION:NOTES:END -->
 
 ## Comments

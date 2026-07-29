@@ -185,6 +185,41 @@ describe("config watcher", () => {
 		}
 	});
 
+	it("accepts comments in block and inline lists for watcher publication and mutation preflight", async () => {
+		const commentedContent = [
+			'project_name: "Commented config"',
+			"statuses:",
+			"  # workflow order",
+			"  - To Do",
+			"  - Done",
+			'labels: ["web"] # presentation labels',
+			"date_format: YYYY-MM-DD",
+			"check_active_branches: true",
+			'task_prefix: "BACK"',
+			"",
+		].join("\n");
+		let resolvePublished: (config: BacklogConfig) => void = () => {};
+		const published = new Promise<BacklogConfig>((resolve) => {
+			resolvePublished = resolve;
+		});
+		const configWatcher = watchConfig(core, {
+			onConfigChanged: (config) => {
+				if (config) resolvePublished(config);
+			},
+		});
+
+		try {
+			await replaceConfigFile(commentedContent);
+			const config = await withTimeout(published, "commented block-list config callback");
+			expect(config.statuses).toEqual(["To Do", "Done"]);
+			expect(config.labels).toEqual(["web"]);
+			const { task } = await core.createTaskFromInput({ title: "Comment-compatible mutation" });
+			expect(task.id).toBe("BACK-1");
+		} finally {
+			configWatcher.stop();
+		}
+	});
+
 	it("publishes root config resolution from the same accepted content", async () => {
 		const rootDir = createUniqueTestDir("config-watcher-root");
 		const rootConfigPath = join(rootDir, "backlog.config.yml");

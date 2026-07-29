@@ -5,7 +5,7 @@ status: In Progress
 assignee:
   - '@andreas'
 created_date: '2026-07-28 14:47'
-updated_date: '2026-07-29 17:24'
+updated_date: '2026-07-29 17:43'
 labels:
   - web-ui
   - cli
@@ -31,15 +31,15 @@ This covers the advanced CLI wizard, initialization and configuration summaries,
 - [x] #3 Browser initialization and Settings expose autoCommitMode, reject invalid values, and round-trip through the shared typed and serialized configuration paths.
 - [x] #4 Human-readable copy on the CLI wizard and browser surfaces states that amend-own may replace the exact current locally-owned Backlog tip only when all safety checks pass and otherwise creates a new commit.
 - [x] #5 Tests cover wizard defaults and output, summary rendering, and browser initialization and Settings round-trips.
-- [ ] #6 Browser archive, complete, reorder, cleanup, and other mutation responses surface bounded replacement feedback consistently for JSON and no-content operations.
-- [ ] #7 Browser automatic-commit notices are queued, combined, or visibly stacked so task/draft creation confirmation cannot cover consequential replacement feedback, with an amended-creation UI regression.
+- [x] #6 Browser archive, complete, reorder, cleanup, and other mutation responses surface bounded replacement feedback consistently for JSON and no-content operations.
+- [x] #7 Browser automatic-commit notices are queued, combined, or visibly stacked so task/draft creation confirmation cannot cover consequential replacement feedback, with an amended-creation UI regression.
 <!-- AC:END -->
 
 ## Definition of Done
 <!-- DOD:BEGIN -->
-- [ ] #1 bunx tsc --noEmit passes when TypeScript touched
-- [ ] #2 bun run check . passes when formatting/linting touched
-- [ ] #3 bun test (or scoped test) passes
+- [x] #1 bunx tsc --noEmit passes when TypeScript touched
+- [x] #2 bun run check . passes when formatting/linting touched
+- [x] #3 bun test (or scoped test) passes
 <!-- DOD:END -->
 
 ## Implementation Plan
@@ -78,6 +78,8 @@ DraftsList promotion was the final raw browser mutation fetch. It now calls ApiC
 Browser initialization now shares the same bounded automatic-commit response wrapper as entity/lifecycle mutations. End-to-end owned-tip re-initialization feedback is covered through the live HTTP route.
 
 Feedback-aware browser methods continue to dispatch bounded headers and parse shared errors, but non-idempotent POST/PUT/DELETE/PATCH requests now execute once after ambiguous failure. Response-loss coverage proves no duplicate entity creation.
+
+Pass 8 browser feedback corrections complete: high-volume response headers report truthful totals, automatic-commit events queue up to five notices, and AppSuccessToasts visibly stacks replacement notices with task/draft creation confirmation. The amended-creation UI regression renders both notices in one fixed stack. Full gate: 1,852 passed, 4 skipped, 0 failed.
 <!-- SECTION:NOTES:END -->
 
 ## Comments

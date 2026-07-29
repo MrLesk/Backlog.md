@@ -8,6 +8,7 @@ import {
 	recordAutoCommitResult,
 	summarizeAutoCommitNotices,
 } from "../core/auto-commit.ts";
+import { BacklogServer } from "../server/index.ts";
 import { ApiClient } from "../web/lib/api.ts";
 
 const originalFetch = globalThis.fetch;
@@ -60,6 +61,37 @@ describe("Web API automatic commit feedback", () => {
 		clearAutoCommitResults(input);
 		expect(input.results).toEqual([]);
 		expect(formatAutoCommitNotices(input)).toEqual([]);
+	});
+
+	it("reports the total replacement count in the bounded server feedback header", async () => {
+		const input = createAutoCommitOptions();
+		for (let index = 0; index < 1_000; index += 1) {
+			recordAutoCommitResult(input, {
+				commitId: `${index.toString(16).padStart(40, "0")}`,
+				previousCommitId: `${(index + 1).toString(16).padStart(40, "0")}`,
+				amended: true,
+				ownershipRecorded: true,
+			});
+		}
+		const notices = formatAutoCommitNotices(input);
+		type FeedbackHarness = {
+			core: {
+				withAutoCommitFeedback<T>(action: () => Promise<T>): Promise<{ value: T; notices: string[] }>;
+			};
+			withAutoCommitFeedback(action: () => Promise<Response>): Promise<Response>;
+			stop(): Promise<void>;
+		};
+		const server = new BacklogServer(process.cwd()) as unknown as FeedbackHarness;
+		server.core.withAutoCommitFeedback = async <T>(action: () => Promise<T>) => ({ value: await action(), notices });
+
+		try {
+			const response = await server.withAutoCommitFeedback(async () => new Response(null, { status: 204 }));
+			expect(response.headers.get("X-Backlog-Auto-Commit")).toMatch(
+				/^1,000 Backlog automatic commit replacements\. Last: Amended Backlog commit /,
+			);
+		} finally {
+			await server.stop();
+		}
 	});
 
 	it("dispatches replacement notices for every draft, document, decision, and milestone mutation", async () => {

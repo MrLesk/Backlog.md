@@ -4260,10 +4260,7 @@ agentsCmd
 
 			const files: AgentInstructionFile[] = Array.isArray(selected) ? (selected as AgentInstructionFile[]) : [];
 			if (files.length > 0) {
-				// Get autoCommit setting from config
-				const config = await core.filesystem.loadConfig();
-				const shouldAutoCommit = config?.autoCommit ?? false;
-				await core.updateAgentInstructions(files, shouldAutoCommit);
+				await core.updateAgentInstructions(files);
 				console.log(`Updated ${files.length} agent instruction file(s): ${files.join(", ")}`);
 			} else {
 				console.log("No files selected for update.");

@@ -1247,12 +1247,11 @@ export async function viewTaskEnhanced(
 		}
 
 		try {
-			const config = action === "archive" ? await core.fs.loadConfig() : null;
 			const result =
 				action === "complete"
 					? await completeTaskFromTui(core, task)
 					: {
-							success: await core.archiveTask(task.id, config?.autoCommit ?? false),
+							success: await core.archiveTask(task.id),
 							reason: "failed" as const,
 							notices: core.consumeAutoCommitNotices(),
 						};

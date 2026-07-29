@@ -53,7 +53,13 @@ export function summarizeAutoCommitNotices(notices: readonly string[], maxLength
 	if (notices.length === 0) return null;
 	const joined = notices.join(" ");
 	if (joined.length <= maxLength) return joined;
+	const omittedCount = Number.parseInt(
+		notices[0]?.match(/^(\d+) earlier Backlog automatic commit replacements omitted\.$/)?.[1] ?? "0",
+		10,
+	);
+	const retainedCount = notices.slice(omittedCount > 0 ? 1 : 0).length;
+	const totalCount = omittedCount + retainedCount;
 	const lastNotice = notices.at(-1) ?? "";
-	const summary = `${notices.length} Backlog automatic commit replacements. Last: ${lastNotice}`;
+	const summary = `${totalCount.toLocaleString("en-US")} Backlog automatic commit replacements. Last: ${lastNotice}`;
 	return summary.length <= maxLength ? summary : `${summary.slice(0, Math.max(0, maxLength - 1))}…`;
 }
