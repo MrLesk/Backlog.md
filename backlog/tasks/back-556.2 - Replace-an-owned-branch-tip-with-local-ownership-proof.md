@@ -5,7 +5,7 @@ status: In Progress
 assignee:
   - '@andreas'
 created_date: '2026-07-28 14:46'
-updated_date: '2026-07-29 23:37'
+updated_date: '2026-07-29 23:54'
 labels:
   - git
 dependencies:
@@ -57,21 +57,21 @@ See BACK-556 for the full ownership and safety contract, including the accepted 
 - [x] #14 The replacement path runs pre-commit, prepare-commit-msg with message as its source argument, commit-msg, and post-commit consistently with Git amend semantics, and invokes exactly one post-rewrite amend carrying the old and new commit IDs, while the new-commit path invokes no post-rewrite. Pre-commit and commit-message hook staging remains isolated; post-hook mutations against the real index and worktree persist.
 - [x] #15 post-commit and post-rewrite are notifications: a failing post hook does not fail the operation or move HEAD.
 - [x] #16 bypassGitHooks and the legacy hook-runner path behave the same for replacements as for new commits.
-- [x] #17 Merge, rebase, cherry-pick, and revert in-progress guards fail closed without moving HEAD or consuming unrelated index entries.
-- [x] #18 Git-level tests cover repeated replacement sequences with evidence re-recorded at each step; subject shapes for single, factored, elided, and mixed-verb cases; duplicate collapsing; region parsing when a hook has appended content outside the region; repeated detached and evidence-unavailable new commits; root commits; manual and publication boundaries; local branches, lightweight tags, and annotated tags pointing directly to candidates and to descendants; pre and message hook isolation, post-hook real-index mutations, and failing post hooks; signed-to-unsigned and unsigned-to-signed configuration transitions; required-signing failures; linked worktrees and branch switches; and concurrent branch movement.
+- [ ] #17 Merge, rebase, cherry-pick, and revert in-progress guards fail closed without moving HEAD or consuming unrelated index entries.
+- [ ] #18 Git-level tests cover repeated replacement sequences with evidence re-recorded at each step; subject shapes for single, factored, elided, and mixed-verb cases; duplicate collapsing; region parsing when a hook has appended content outside the region; repeated detached and evidence-unavailable new commits; root commits; manual and publication boundaries; local branches, lightweight tags, and annotated tags pointing directly to candidates and to descendants; pre and message hook isolation, post-hook real-index mutations, and failing post hooks; signed-to-unsigned and unsigned-to-signed configuration transitions; required-signing failures; linked worktrees and branch switches; and concurrent branch movement.
 - [x] #19 Legacy new-mode commits contain no rolling-operation region or ownership evidence; only an amend-own sequence start or replacement records exact-SHA ownership, and switching from new to amend-own cannot rewrite the pre-opt-in tip.
 - [x] #20 After message hooks, replacement eligibility is revalidated against exact reflog state, Git-operation guards, and all containing refs; hook-created refs and same-SHA away-and-back changes fail closed.
 - [x] #21 Ownership is branch-local: switching away and returning to an otherwise unchanged safe branch intentionally resumes its amendable sequence, and documentation plus tests state that behavior.
 - [x] #22 Rolling messages store structured operation descriptors so production task, draft, document, decision, milestone, and agent messages produce stable factored subjects without parsing incidental English display strings.
 - [x] #23 Document, decision, and agent-instruction upserts record the real create/add versus update action, so distinct operations never collapse under one inaccurate descriptor.
-- [x] #24 Named and detached finalization exposes exactly one logical reference-transaction hook lifecycle in the real repository/HEAD context: prepared runs before movement and can veto it, committed follows success, aborted follows veto or failed movement, and internal ref/reflog plumbing does not duplicate the transaction.
+- [ ] #24 Named and detached finalization exposes exactly one logical reference-transaction hook lifecycle in the real repository/HEAD context: prepared runs before movement and can veto it, committed follows success, aborted follows veto or failed movement, and internal ref/reflog plumbing does not duplicate the transaction.
 <!-- AC:END -->
 
 ## Definition of Done
 <!-- DOD:BEGIN -->
-- [x] #1 bunx tsc --noEmit passes when TypeScript touched
-- [x] #2 bun run check . passes when formatting/linting touched
-- [x] #3 bun test (or scoped test) passes
+- [ ] #1 bunx tsc --noEmit passes when TypeScript touched
+- [ ] #2 bun run check . passes when formatting/linting touched
+- [ ] #3 bun test (or scoped test) passes
 <!-- DOD:END -->
 
 ## Implementation Plan
@@ -98,6 +98,8 @@ See BACK-556 for the full ownership and safety contract, including the accepted 
 28. Lease detached HEAD identity as well as named branches. Acquire index then HEAD locks, revalidate detached/named identity, selected index entries, operation markers, ownership reflog, and containing refs under that lease, then perform the expected-OID update. Add detached same-SHA switch plus reset/merge/tag race coverage.
 
 29. Drive reference-transaction prepared/committed/aborted manually through the real worktree hook runner while locks are held, suppress automatic hook execution on synthetic/internal plumbing, and cover named/detached veto plus success event counts/context. Deduplicate normalized initial, existing, and appended operation lists before subject/body rendering.
+
+30. Treat the reference-transaction prepared callback as a mutation boundary: after it succeeds, revalidate exact HEAD identity/OID plus the full lease callback before named/detached movement; on any change, invoke aborted and leave HEAD unchanged. Regress MERGE_HEAD creation for start-owned, amend-own replacement, and detached commits, including hook event order and preserved bytes.
 <!-- SECTION:PLAN:END -->
 
 ## Implementation Notes
@@ -169,5 +171,10 @@ Pass 12 H1/H2: detached finalization can replace a newly symbolic same-SHA HEAD,
 created: 2026-07-29 23:16
 ---
 Pass 13 H1/M2: reference-transaction veto/context semantics are not preserved by synthetic/manual ref movement, and duplicate operations can survive initial or pre-existing rolling regions.
+---
+
+created: 2026-07-29 23:54
+---
+Pass 14 H1: prepared reference-transaction hook mutations are not revalidated before movement; a hook-created MERGE_HEAD advanced and marked a start-owned commit. The same gap affects detached and transient named replacement movement.
 ---
 <!-- COMMENTS:END -->

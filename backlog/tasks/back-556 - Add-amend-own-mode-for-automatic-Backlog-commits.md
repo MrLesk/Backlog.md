@@ -5,7 +5,7 @@ status: In Progress
 assignee:
   - '@andreas'
 created_date: '2026-07-28 14:27'
-updated_date: '2026-07-29 23:36'
+updated_date: '2026-07-29 23:54'
 labels:
   - enhancement
   - git
@@ -124,7 +124,7 @@ This task is delivered through subtasks, because the selected-path correctness f
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
 - [x] #1 With autoCommit true and autoCommitMode amend-own, a run of consecutive Backlog mutations on an owned branch tip produces exactly one commit that contains every change, lists every distinct operation once in its message region, and carries a subject that reflects the operations it holds rather than only the first one.
-- [x] #2 Every documented non-owned boundary makes Backlog create a new commit instead of amending: manual commit, manual amend, reset, detached HEAD, merge commit, reachability from a remote-tracking ref, reachability from any other local branch or tag including direct and descendant refs, and missing, stale, malformed, or ambiguous ownership evidence. A commit created detached or while evidence cannot be recorded remains unowned, so repeated mutations in either persistent state continue creating new commits.
+- [ ] #2 Every documented non-owned boundary makes Backlog create a new commit instead of amending: manual commit, manual amend, reset, detached HEAD, merge commit, reachability from a remote-tracking ref, reachability from any other local branch or tag including direct and descendant refs, and missing, stale, malformed, or ambiguous ownership evidence. A commit created detached or while evidence cannot be recorded remains unowned, so repeated mutations in either persistent state continue creating new commits.
 - [x] #3 autoCommitMode defaults to new when absent, rejects invalid values with an error, and has no effect while autoCommit is false or the project is filesystem-only. An explicit per-invocation autoCommit override decides only whether to commit and never changes the mode.
 - [x] #4 No automatic Backlog commit, in either mode, contains paths outside those selected for the operation. Pre-existing unrelated index and worktree state plus pre-commit and commit-message hook staging through the isolated index are preserved, while mutations made by post hooks against the real index and worktree persist according to normal Git semantics.
 - [x] #5 A human can see when an amend happened, force a new commit for a single invocation with --no-amend on any command that can automatically commit, and follow documented reflog recovery for an unwanted amend.
@@ -134,9 +134,9 @@ This task is delivered through subtasks, because the selected-path correctness f
 
 ## Definition of Done
 <!-- DOD:BEGIN -->
-- [x] #1 bunx tsc --noEmit passes when TypeScript touched
-- [x] #2 bun run check . passes when formatting/linting touched
-- [x] #3 bun test (or scoped test) passes
+- [ ] #1 bunx tsc --noEmit passes when TypeScript touched
+- [ ] #2 bun run check . passes when formatting/linting touched
+- [ ] #3 bun test (or scoped test) passes
 <!-- DOD:END -->
 
 ## Implementation Plan
@@ -178,6 +178,8 @@ Holistic correction pass: resolve the documented Git intent/state, invocation-co
 26. Resolve Pass 12 detached finalization, full protected-boundary revalidation, and serializer/parser quote round-trips. Lease both index and HEAD state in Git lock order for every finalization, revalidate ownership/operations/selected entries/refs under the lease, write detached HEAD safely, YAML-escape/decode emitted scalars, and cover Git plus init/config/Settings paths before another full gate/review.
 
 27. Resolve Pass 13 reference-transaction hook context/veto semantics and whole-list operation deduplication. Run one logical prepared/committed-or-aborted hook transaction in the real worktree context before any named/detached movement while suppressing duplicate plumbing-hook invocations, and normalize distinct operations before every render.
+
+28. Resolve Pass 14 prepared-hook mutation races. After prepared succeeds but before any named or detached movement, rerun exact HEAD identity/OID and the complete final lease validation so operation markers, ownership, refs, selected index entries, and branch identity still fail closed; emit aborted on rejection and add start-owned, replacement, and detached regressions.
 <!-- SECTION:PLAN:END -->
 
 ## Implementation Notes
@@ -306,5 +308,10 @@ Fresh holistic gpt-5.6-sol xhigh Pass 12 at 4d297f8 requested changes with two H
 created: 2026-07-29 23:15
 ---
 Fresh holistic gpt-5.6-sol xhigh Pass 13 at 8b537dd requested changes: reference-transaction hooks can see synthetic context or only veto a post-movement no-op, and initial/existing batched rolling operations are not fully deduplicated. Exact clean reviewed HEAD preserved. Report: /tmp/backlog-821-holistic-review-pass-13.md.
+---
+
+created: 2026-07-29 23:54
+---
+Fresh holistic gpt-5.6-sol xhigh Pass 14 at 867c020 requested changes with one High finding: reference-transaction prepared hooks can mutate Git operation state after the final pre-hook validation, allowing start-owned/detached commits to move HEAD and named replacements to move transiently. Exact clean reviewed HEAD preserved. Report: /tmp/backlog-821-holistic-review-pass-14.md.
 ---
 <!-- COMMENTS:END -->
