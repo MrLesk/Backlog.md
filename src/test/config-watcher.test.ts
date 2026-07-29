@@ -185,14 +185,17 @@ describe("config watcher", () => {
 		}
 	});
 
-	it("accepts comments in block and inline lists for watcher publication and mutation preflight", async () => {
+	it("accepts quote-aware scalar and list comments for watcher publication and mutation preflight", async () => {
 		const commentedContent = [
-			'project_name: "Commented config"',
+			'project_name: "Commented # config" # project label',
 			"statuses:",
 			"  # workflow order",
 			"  - To Do",
 			"  - Done",
 			'labels: ["web"] # presentation labels',
+			"auto_commit: true # enable automatic commits",
+			"auto_commit_mode: amend-own # rolling mode",
+			"filesystem_only: true # keep this watcher fixture out of the parent repository",
 			"date_format: YYYY-MM-DD",
 			"check_active_branches: true",
 			'task_prefix: "BACK"',
@@ -211,8 +214,12 @@ describe("config watcher", () => {
 		try {
 			await replaceConfigFile(commentedContent);
 			const config = await withTimeout(published, "commented block-list config callback");
+			expect(config.projectName).toBe("Commented # config");
 			expect(config.statuses).toEqual(["To Do", "Done"]);
 			expect(config.labels).toEqual(["web"]);
+			expect(config.autoCommit).toBe(true);
+			expect(config.autoCommitMode).toBe("amend-own");
+			expect(config.filesystemOnly).toBe(true);
 			const { task } = await core.createTaskFromInput({ title: "Comment-compatible mutation" });
 			expect(task.id).toBe("BACK-1");
 		} finally {

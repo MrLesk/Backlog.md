@@ -538,6 +538,57 @@ describe("owned automatic commit replacement", () => {
 		}
 	}, 30_000);
 
+	it("keeps same-path conflicts non-retryable through the production task wrapper", async () => {
+		for (const intent of ["new", "amend-own"] as const) {
+			const root = join(testDir, `wrapper-${intent}`);
+			const git = await initializeRepository(root);
+			if (intent === "amend-own") {
+				await commitSelected(root, git, "backlog: Update task BACK-1", "owned\n");
+			}
+			const selectedPath = join(root, "selected.txt");
+			await Bun.write(selectedPath, "ours\n");
+			const beforeCount = await commitCount(root);
+			const privateGit = git as unknown as PrivateGit;
+			const originalExec = privateGit.execGit.bind(git);
+			let raceCount = 0;
+			privateGit.execGit = async (args, options) => {
+				if (args[0] === "update-ref" && raceCount === 0) {
+					raceCount += 1;
+					const currentHead = await head(root);
+					const concurrentIndex = join(root, "wrapper-concurrent-index");
+					const env = { GIT_INDEX_FILE: concurrentIndex };
+					await originalExec(["read-tree", currentHead], { cwd: root, env });
+					const { stdout: blobOutput } = await originalExec(["hash-object", "-w", "--stdin"], {
+						cwd: root,
+						input: "concurrent\n",
+					});
+					await originalExec(["update-index", "--add", "--cacheinfo", `100644,${blobOutput.trim()},selected.txt`], {
+						cwd: root,
+						env,
+					});
+					const { stdout: treeOutput } = await originalExec(["write-tree"], { cwd: root, env });
+					const { stdout: commitOutput } = await originalExec(["commit-tree", treeOutput.trim(), "-p", currentHead], {
+						cwd: root,
+						input: "concurrent selected path\n",
+					});
+					await originalExec(["update-ref", "HEAD", commitOutput.trim(), currentHead], { cwd: root });
+				}
+				return originalExec(args, options);
+			};
+
+			await expect(
+				git.addAndCommitTaskFile("BACK-2", selectedPath, "update", undefined, {
+					automaticCommitIntent: intent,
+				}),
+			).rejects.toThrow("Git selected paths changed concurrently");
+			expect(raceCount).toBe(1);
+			expect(await Bun.file(selectedPath).text()).toBe("ours\n");
+			expect(await $`git show :selected.txt`.cwd(root).text()).toBe("ours\n");
+			expect(await $`git show HEAD:selected.txt`.cwd(root).text()).toBe("concurrent\n");
+			expect(await commitCount(root)).toBe(beforeCount + 1);
+		}
+	}, 30_000);
+
 	it("resumes branch-local ownership after switching away and back", async () => {
 		const git = await initializeRepository(testDir);
 		await $`git branch sibling`.cwd(testDir).quiet();

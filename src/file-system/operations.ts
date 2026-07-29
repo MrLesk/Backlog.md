@@ -13,7 +13,7 @@ import {
 	resolveBacklogDirectory,
 	resolveBacklogDirectoryFromRootConfig,
 } from "../utils/backlog-directory.ts";
-import { validateExplicitConfigValues } from "../utils/config-validation.ts";
+import { stripTrailingYamlComment, validateExplicitConfigValues } from "../utils/config-validation.ts";
 import { documentIdsEqual, normalizeDocumentId } from "../utils/document-id.ts";
 import { normalizeDocumentRelativePath, normalizeDocumentSubPath } from "../utils/document-path.ts";
 import {
@@ -1550,7 +1550,7 @@ ${description || `Milestone: ${title}`}`,
 			if (colonIndex === -1) continue;
 
 			const key = trimmed.substring(0, colonIndex).trim();
-			const value = trimmed.substring(colonIndex + 1).trim();
+			const value = stripTrailingYamlComment(trimmed.substring(colonIndex + 1).trim());
 
 			switch (key) {
 				case "project_name":

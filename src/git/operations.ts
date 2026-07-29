@@ -63,6 +63,13 @@ type OwnedCommit = {
 
 const AUTOMATIC_COMMIT_REFLOG_MARKER = "backlog:auto-commit/v1";
 
+class SelectedPathConflictError extends Error {
+	constructor() {
+		super("Git selected paths changed concurrently before the commit could be finalized");
+		this.name = "SelectedPathConflictError";
+	}
+}
+
 function indexEntriesEqual(left: readonly GitIndexEntry[], right: readonly GitIndexEntry[]): boolean {
 	return (
 		left.length === right.length &&
@@ -247,7 +254,7 @@ export class GitOperations {
 					baseHead !== selectedPathBaseHead &&
 					!(await this.selectedTreeEntriesMatch(resolvedRepoRoot, selectedPathBaseHead, baseHead, uniqueRelativePaths))
 				) {
-					throw new Error("Git selected paths changed concurrently before the commit could be finalized");
+					throw new SelectedPathConflictError();
 				}
 				selectedPathBaseHead = baseHead;
 				let ownedCommit =
@@ -910,6 +917,7 @@ export class GitOperations {
 				return await this.commitFiles(message, [filePath], repoRoot, commitOptions);
 			} catch (error) {
 				lastError = error instanceof Error ? error : new Error(String(error));
+				if (error instanceof SelectedPathConflictError) throw error;
 				if (attempt === 3) break;
 				const workingOwned = (await this.hashFile(filePath)) === expectedWorkingHash;
 				const indexOwned = indexEntriesEqual(await this.getIndexEntries(filePath), expectedIndexEntries);

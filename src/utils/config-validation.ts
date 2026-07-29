@@ -34,7 +34,7 @@ const RECOGNIZED_CONFIG_KEYS = new Set([
 
 export const INVALID_EXPLICIT_CONFIG_ERROR = "Invalid backlog configuration syntax";
 
-function stripTrailingYamlComment(value: string): string {
+export function stripTrailingYamlComment(value: string): string {
 	let quote: "'" | '"' | undefined;
 	let escaped = false;
 	for (let index = 0; index < value.length; index += 1) {
@@ -71,14 +71,13 @@ export function validateExplicitConfigValues(content: string, config: BacklogCon
 			continue;
 		}
 		const key = line.slice(0, colonIndex).trim();
-		const value = line.slice(colonIndex + 1).trim();
+		const value = stripTrailingYamlComment(line.slice(colonIndex + 1).trim());
 		if (!RECOGNIZED_CONFIG_KEYS.has(key)) continue;
-		const listValue = ARRAY_CONFIG_KEYS.has(key) ? stripTrailingYamlComment(value) : value;
-		if (ARRAY_CONFIG_KEYS.has(key) && !(listValue.startsWith("[") && listValue.endsWith("]"))) {
+		if (ARRAY_CONFIG_KEYS.has(key) && !(value.startsWith("[") && value.endsWith("]"))) {
 			const nextContentLine = lines
 				.slice(index + 1)
 				.find((candidate) => candidate.trim().length > 0 && !candidate.trim().startsWith("#"));
-			const isBlockList = listValue === "" && /^\s+-\s+/.test(nextContentLine ?? "");
+			const isBlockList = value === "" && /^\s+-\s+/.test(nextContentLine ?? "");
 			if (!isBlockList) return INVALID_EXPLICIT_CONFIG_ERROR;
 		}
 		if (key === "definition_of_done" && value.startsWith("[") && !value.endsWith("]")) {
