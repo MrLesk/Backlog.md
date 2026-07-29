@@ -38,7 +38,7 @@ export type GitAutomaticCommitIntent = "new" | "start-owned" | "amend-own";
 
 export interface GitCommitOptions {
 	automaticCommitIntent?: GitAutomaticCommitIntent;
-	operation?: AutomaticCommitOperation;
+	operation?: AutomaticCommitOperation | readonly AutomaticCommitOperation[];
 }
 
 export type GitOperationConfig = Readonly<

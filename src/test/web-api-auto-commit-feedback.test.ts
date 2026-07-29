@@ -59,6 +59,22 @@ describe("Web API automatic commit feedback", () => {
 		expect(notices).toEqual(Array.from({ length: 9 }, (_, index) => `entity-replacement-${index + 1}`));
 	});
 
+	it("does not replay a non-idempotent mutation after its successful response is lost", async () => {
+		const persistedDocuments: string[] = [];
+		let requestCount = 0;
+		globalThis.fetch = (async () => {
+			requestCount += 1;
+			persistedDocuments.push(`doc-${requestCount}`);
+			throw new TypeError("Response stream was lost after the server write");
+		}) as unknown as typeof fetch;
+
+		const client = new ApiClient({ retries: 3 });
+		await expect(client.createDoc("Guide", "Body")).rejects.toThrow("Request failed after 1 attempts");
+
+		expect(requestCount).toBe(1);
+		expect(persistedDocuments).toEqual(["doc-1"]);
+	});
+
 	it("dispatches replacement notices for JSON and no-content mutation responses", async () => {
 		const notices: string[] = [];
 		window.addEventListener("backlog-auto-commit", (event) => {

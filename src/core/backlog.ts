@@ -933,7 +933,7 @@ export class Core {
 				typeof input === "boolean" ? input : input?.enabled === undefined ? resolved.enabled : input.enabled;
 			return { ...resolved, enabled };
 		}
-		const config = await this.fs.loadConfig();
+		const config = await this.fs.loadConfigForMutation();
 		const gitConfig = snapshotGitOperationConfig(config);
 		if (config?.filesystemOnly) return { enabled: false, intent: "new", gitConfig };
 		const controls = this.resolveAutoCommitControls(input);

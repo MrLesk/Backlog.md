@@ -5,7 +5,7 @@ status: In Progress
 assignee:
   - '@andreas'
 created_date: '2026-07-28 14:46'
-updated_date: '2026-07-29 15:21'
+updated_date: '2026-07-29 15:59'
 labels:
   - git
 dependencies:
@@ -62,15 +62,15 @@ See BACK-556 for the full ownership and safety contract, including the accepted 
 - [x] #19 Legacy new-mode commits contain no rolling-operation region or ownership evidence; only an amend-own sequence start or replacement records exact-SHA ownership, and switching from new to amend-own cannot rewrite the pre-opt-in tip.
 - [x] #20 After message hooks, replacement eligibility is revalidated against exact reflog state, Git-operation guards, and all containing refs; hook-created refs and same-SHA away-and-back changes fail closed.
 - [x] #21 Ownership is branch-local: switching away and returning to an otherwise unchanged safe branch intentionally resumes its amendable sequence, and documentation plus tests state that behavior.
-- [ ] #22 Rolling messages store structured operation descriptors so production task, draft, document, decision, milestone, and agent messages produce stable factored subjects without parsing incidental English display strings.
-- [ ] #23 Document, decision, and agent-instruction upserts record the real create/add versus update action, so distinct operations never collapse under one inaccurate descriptor.
+- [x] #22 Rolling messages store structured operation descriptors so production task, draft, document, decision, milestone, and agent messages produce stable factored subjects without parsing incidental English display strings.
+- [x] #23 Document, decision, and agent-instruction upserts record the real create/add versus update action, so distinct operations never collapse under one inaccurate descriptor.
 <!-- AC:END -->
 
 ## Definition of Done
 <!-- DOD:BEGIN -->
-- [ ] #1 bunx tsc --noEmit passes when TypeScript touched
-- [ ] #2 bun run check . passes when formatting/linting touched
-- [ ] #3 bun test (or scoped test) passes
+- [x] #1 bunx tsc --noEmit passes when TypeScript touched
+- [x] #2 bun run check . passes when formatting/linting touched
+- [x] #3 bun test (or scoped test) passes
 <!-- DOD:END -->
 
 ## Implementation Plan
@@ -101,6 +101,8 @@ Added one pure rolling-message implementation with a delimited JSON-safe operati
 Holistic correction implemented explicit new/start-owned/amend-own intent, v2 structured operation descriptors with v1 migration, post-hook operation/ref/reflog revalidation including same-SHA ABA, and intentional branch-local resume documentation/tests.
 
 Holistic pass 2 correction: document, decision, and agent-instruction upserts derive Add versus Update before commit metadata is built. Production regressions assert all six distinct descriptors remain in one owned rolling region. Verification: 144 focused tests passed, then TypeScript, full Biome, and the 1,835-pass full suite.
+
+Pass 6 correction emits a batch of per-file instruction operations, each with its real Add/Update action and filename identifier. Sequential same-action files and mixed-action single batches retain all distinct descriptors. Expanded gate: 145 tests/1,557 assertions; integrated gate: 1,846 passed/4 skipped.
 <!-- SECTION:NOTES:END -->
 
 ## Comments

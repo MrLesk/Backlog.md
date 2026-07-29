@@ -1458,6 +1458,21 @@ ${description || `Milestone: ${title}`}`,
 		}
 	}
 
+	/**
+	 * Read current config bytes for mutation preflight without consulting or
+	 * replacing the last-known-good watcher/display cache.
+	 */
+	async loadConfigForMutation(): Promise<BacklogConfig | null> {
+		try {
+			const file = Bun.file(this.resolvedConfigPath);
+			if (!(await file.exists())) return null;
+			return this.parseConfig(await file.text());
+		} catch (error) {
+			if (error instanceof InvalidBacklogConfigError) throw error;
+			return null;
+		}
+	}
+
 	async saveConfig(config: BacklogConfig): Promise<void> {
 		const normalizedConfig: BacklogConfig = {
 			...config,

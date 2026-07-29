@@ -188,6 +188,9 @@ describe("autoCommitMode", () => {
 		await addAgentInstructions(testDir, core.git, ["AGENTS.md"], true, {
 			automaticCommitIntent: "amend-own",
 		});
+		await addAgentInstructions(testDir, core.git, ["GEMINI.md"], true, {
+			automaticCommitIntent: "amend-own",
+		});
 		await Bun.write(join(testDir, "CLAUDE.md"), "Existing project instructions\n");
 		const agentResults = await addAgentInstructions(testDir, core.git, ["CLAUDE.md"], true, {
 			automaticCommitIntent: "amend-own",
@@ -205,6 +208,32 @@ describe("autoCommitMode", () => {
 		]) {
 			expect(message).toContain(`"verb":"${verb}","entity":"${entity}"`);
 		}
+		for (const fileName of ["AGENTS.md", "GEMINI.md", "CLAUDE.md"]) {
+			expect(message).toContain(`"identifiers":["${fileName}"]`);
+		}
+		expect(message.match(/"entity":"instruction"/g)).toHaveLength(3);
+	}, 20_000);
+
+	test("mixed agent-instruction batches retain each file and actual action", async () => {
+		const config = await core.filesystem.loadConfig();
+		if (!config) throw new Error("Missing test config");
+		await core.filesystem.saveConfig({ ...config, autoCommit: true, autoCommitMode: "amend-own" });
+		await Bun.write(join(testDir, "AGENTS.md"), "Existing project instructions\n");
+		await $`git add . && git commit -m "Enable mixed instruction batch"`.cwd(testDir).quiet();
+
+		const results = await addAgentInstructions(testDir, core.git, ["AGENTS.md", "CLAUDE.md"], true, {
+			automaticCommitIntent: "amend-own",
+		});
+
+		expect(results.map(({ action, fileName }) => ({ action, fileName }))).toEqual([
+			{ action: "updated", fileName: "AGENTS.md" },
+			{ action: "created", fileName: "CLAUDE.md" },
+		]);
+		const message = await $`git show -s --format=%B HEAD`.cwd(testDir).text();
+		expect(message).toContain('"verb":"Update","entity":"instruction","identifiers":["AGENTS.md"]');
+		expect(message).toContain('"verb":"Add","entity":"instruction","identifiers":["CLAUDE.md"]');
+		expect(message.match(/"entity":"instruction"/g)).toHaveLength(2);
+		expect((await $`git show -s --format=%s HEAD`.cwd(testDir).text()).trim()).toBe("backlog: 2 changes");
 	}, 20_000);
 
 	test("Core agent-instruction writes feed the CLI/TUI result sink", async () => {
@@ -497,6 +526,52 @@ describe("autoCommitMode", () => {
 		expect((await core.filesystem.loadMilestone(milestone.id))?.title).toBe("Original milestone");
 		await Bun.write(join(testDir, "backlog", "config.yml"), invalidConfig);
 		expect(await $`git status --short`.cwd(testDir).text()).toBe("");
+	}, 20_000);
+
+	test("long-lived Core, browser, and MCP mutations reject malformed current config bytes", async () => {
+		const config = await core.filesystem.loadConfig();
+		if (!config) throw new Error("Missing test config");
+		const configured = { ...config, autoCommit: true, autoCommitMode: "amend-own" as const };
+		await core.filesystem.saveConfig(configured);
+		await $`git add backlog/config.yml && git commit -m "Cache valid long-lived config"`.cwd(testDir).quiet();
+		const server = new BacklogServer(testDir);
+		const mcp = new McpServer(testDir, "Test instructions");
+		registerTaskTools(mcp, configured);
+		try {
+			await server.start(0, false);
+			await core.filesystem.loadConfig();
+			await (server as unknown as { core: Core }).core.filesystem.loadConfig();
+			await mcp.filesystem.loadConfig();
+			const configText = await Bun.file(join(testDir, "backlog", "config.yml")).text();
+			await Bun.write(
+				join(testDir, "backlog", "config.yml"),
+				configText.replace(/auto_commit_mode: .*/, "auto_commit_mode: unsafe"),
+			);
+			const headBeforeMutations = (await $`git rev-parse HEAD`.cwd(testDir).text()).trim();
+
+			await expect(core.createTaskFromInput({ title: "Core must not write" })).rejects.toThrow(
+				"auto_commit_mode must be new or amend-own",
+			);
+			const browserResponse = await fetch(`http://localhost:${server.getPort()}/api/tasks`, {
+				method: "POST",
+				headers: { "Content-Type": "application/json" },
+				body: JSON.stringify({ title: "Browser must not write" }),
+			});
+			expect(browserResponse.status).toBe(400);
+			expect(await browserResponse.text()).toContain("auto_commit_mode must be new or amend-own");
+			const mcpResult = await mcp.testInterface.callTool({
+				params: { name: "task_create", arguments: { title: "MCP must not write" } },
+			});
+			expect(mcpResult.isError).toBe(true);
+			expect(mcpResult.content.map((item) => ("text" in item ? item.text : "")).join("\n")).toContain(
+				"auto_commit_mode must be new or amend-own",
+			);
+
+			expect(await core.filesystem.listTasks()).toEqual([]);
+			expect((await $`git rev-parse HEAD`.cwd(testDir).text()).trim()).toBe(headBeforeMutations);
+		} finally {
+			await Promise.all([server.stop(), mcp.stop()]);
+		}
 	}, 20_000);
 
 	test("every automatic-commit CLI command advertises --no-amend", async () => {

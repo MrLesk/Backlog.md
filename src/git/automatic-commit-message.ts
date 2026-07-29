@@ -58,6 +58,12 @@ function normalizeOperation(operation: AutomaticCommitOperation | string): Autom
 	return createAutomaticCommitOperation(operation.message, operation.verb, operation.entity, operation.identifiers);
 }
 
+function normalizeOperations(
+	input: AutomaticCommitOperation | string | readonly (AutomaticCommitOperation | string)[],
+): AutomaticCommitOperation[] {
+	return (Array.isArray(input) ? input : [input]).map(normalizeOperation);
+}
+
 function isValidOperation(operation: AutomaticCommitOperation): boolean {
 	return Boolean(
 		operation.verb &&
@@ -162,18 +168,18 @@ function renderMessage(
  * closed by returning null. Version-one string regions are migrated on rewrite.
  */
 export function buildAutomaticCommitMessage(
-	operationInput: AutomaticCommitOperation | string,
+	operationInput: AutomaticCommitOperation | string | readonly (AutomaticCommitOperation | string)[],
 	previousMessage?: string,
 ): AutomaticCommitMessage | null {
-	const operation = normalizeOperation(operationInput);
-	if (!isValidOperation(operation)) return null;
+	const inputOperations = normalizeOperations(operationInput);
+	if (inputOperations.length === 0 || !inputOperations.every(isValidOperation)) return null;
 
 	if (previousMessage === undefined) {
-		const inputLines = operation.message.split("\n");
+		const inputLines = inputOperations[0]?.message.split("\n") ?? [];
 		const bodyBefore = inputLines.length > 1 ? ["", ...inputLines.slice(1), ""] : [""];
 		return {
-			message: renderMessage(operationSubject(operation), bodyBefore, [operation], []),
-			operations: [operation],
+			message: renderMessage(formatAutomaticCommitSubject(inputOperations), bodyBefore, inputOperations, []),
+			operations: inputOperations,
 		};
 	}
 
@@ -195,8 +201,10 @@ export function buildAutomaticCommitMessage(
 	const existingOperations = parseOperations(previousLines.slice(start + 1, end), legacy);
 	if (!existingOperations) return null;
 	const operations = [...existingOperations];
-	const operationKey = JSON.stringify(operation);
-	if (!operations.some((existing) => JSON.stringify(existing) === operationKey)) operations.push(operation);
+	for (const operation of inputOperations) {
+		const operationKey = JSON.stringify(operation);
+		if (!operations.some((existing) => JSON.stringify(existing) === operationKey)) operations.push(operation);
+	}
 	const subject = formatAutomaticCommitSubject(operations);
 	const bodyBefore = previousLines.slice(1, start);
 	const bodyAfter = previousLines.slice(end + 1);

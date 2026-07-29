@@ -5,7 +5,7 @@ status: In Progress
 assignee:
   - '@andreas'
 created_date: '2026-07-28 14:47'
-updated_date: '2026-07-29 15:21'
+updated_date: '2026-07-29 15:59'
 labels:
   - cli
 dependencies:
@@ -34,7 +34,7 @@ Documentation must cover rolling-commit boundaries, how the message is rebuilt a
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
 - [x] #1 Configuration accepts autoCommitMode with values new and amend-own, persists it as auto_commit_mode in YAML, and exposes it as autoCommitMode in typed configuration.
-- [ ] #2 A missing autoCommitMode behaves exactly as new, and an invalid value is rejected with an error instead of falling back to new.
+- [x] #2 A missing autoCommitMode behaves exactly as new, and an invalid value is rejected with an error instead of falling back to new.
 - [x] #3 With autoCommit false, every mutation surface modifies files without creating or replacing commits under either mode.
 - [x] #4 An explicit per-invocation autoCommit override decides only whether the mutation commits; the configured autoCommitMode still decides how it commits, so the two settings stay orthogonal however the mutation was invoked.
 - [x] #5 In amend-own mode the first automatic mutation after a non-owned boundary creates one new commit; it becomes Backlog-owned and starts an amendable sequence only when it lands on a named branch and valid ownership evidence for its exact SHA is successfully recorded.
@@ -43,24 +43,24 @@ Documentation must cover rolling-commit boundaries, how the message is rebuilt a
 - [x] #8 The amend decision lives in the shared core mutation path, so CLI, TUI, browser, and MCP-triggered mutations share it, with cross-surface regression coverage.
 - [x] #9 Each triggering surface reports when a mutation replaced an existing commit instead of creating one, and identifies the commit it replaced.
 - [x] #10 The --no-amend option forces a new commit for a single invocation without changing configuration, is accepted by every command that can automatically commit, appears in that command help, and is a documented no-op rather than an error under autoCommitMode new.
-- [ ] #11 autoCommitMode is readable and writable through backlog config get, set, and list with validation, appears in the available-keys help, and is recognized by live config reload.
+- [x] #11 autoCommitMode is readable and writable through backlog config get, set, and list with validation, appears in the available-keys help, and is recognized by live config reload.
 - [x] #12 Filesystem-only projects continue to force autoCommit false regardless of autoCommitMode.
 - [x] #13 Documentation explains rolling-commit boundaries, message rebuilding and duplicate collapsing, the factored subject, reflog recovery, the risk of rewriting published history, degradation to new when ownership evidence cannot be recorded, and the safe new default. It also states the accepted limits: publication detection is local-only and cannot see a push that leaves no remote-tracking ref, a linked worktree parked on the tip with a detached HEAD is not detected, and amend-own is unsupported alongside hooks that modify the commit message because a non-idempotent hook appends its output once per amend.
 - [x] #14 Tests cover both modes across task, draft, document, decision, milestone, and agent-instruction mutations, custom backlog roots, the --no-amend override, explicit per-call autoCommit overrides, and repeated mutations with detached HEAD or unavailable ownership evidence.
 - [x] #15 The invocation force-new decision remains orthogonal to boolean enabled overrides and reaches every interactive CLI/TUI/browser mutation path that can automatically commit.
-- [ ] #16 All browser mutation clients, including archive and complete no-content responses, surface bounded replacement feedback through one centralized response path.
+- [x] #16 All browser mutation clients, including archive and complete no-content responses, surface bounded replacement feedback through one centralized response path.
 - [x] #17 The CLI help contract advertises --no-amend on every invocation surface whose interactive flow can trigger automatic mutations, with behavior coverage rather than help-text-only assertions.
 - [x] #18 Every interactive command path that can reach a mutating unified view and MCP start advertises and honors --no-amend through one immutable invocation plan.
 - [x] #19 CLI-created Core instances use one bounded result sink that both callbacks and TUI notice consumption drain without raw console output inside alternate-screen sessions.
-- [ ] #20 Malformed automatic-commit configuration is validated through one immutable preflight plan before any task, lifecycle, document, decision, milestone, or instruction mutation writes files; validation failure leaves bytes and Git state unchanged.
-- [ ] #21 Centralized browser feedback transport does not automatically replay non-idempotent mutations after ambiguous response loss or 5xx responses; response-loss coverage proves one user action produces at most one entity.
+- [x] #20 Malformed automatic-commit configuration is validated through one immutable preflight plan before any task, lifecycle, document, decision, milestone, or instruction mutation writes files; validation failure leaves bytes and Git state unchanged.
+- [x] #21 Centralized browser feedback transport does not automatically replay non-idempotent mutations after ambiguous response loss or 5xx responses; response-loss coverage proves one user action produces at most one entity.
 <!-- AC:END -->
 
 ## Definition of Done
 <!-- DOD:BEGIN -->
-- [ ] #1 bunx tsc --noEmit passes when TypeScript touched
-- [ ] #2 bun run check . passes when formatting/linting touched
-- [ ] #3 bun test (or scoped test) passes
+- [x] #1 bunx tsc --noEmit passes when TypeScript touched
+- [x] #2 bun run check . passes when formatting/linting touched
+- [x] #3 bun test (or scoped test) passes
 <!-- DOD:END -->
 
 ## Implementation Plan
@@ -93,6 +93,8 @@ Pass 3 corrections: all web entity mutations use the centralized notice-aware tr
 Pass 4 corrections complete: draft promotion now uses ApiClient centralized notice dispatch. Resolved plans carry frozen Git-operation snapshots scoped by GitOperations AsyncLocalStorage, preventing concurrent filesystemOnly/hook/remote config replacement. Deterministic write-barrier regression passes. Expanded gate: 168 tests/1,232 assertions; integrated gate: TypeScript, 349-file Biome, 1,842 passed/4 skipped.
 
 Pass 5 correction wraps /api/init in BacklogServer.withAutoCommitFeedback. An actual HTTP re-initialization regression proves owned agent-instruction replacement returns the bounded old/new SHA header. Expanded gate: 147 tests/1,176 assertions; integrated gate: TypeScript, 349-file Biome, 1,843 passed/4 skipped.
+
+Pass 6 corrections separate direct mutation-preflight config reads from last-known-good watcher state and restrict centralized transport retries to safe GET/HEAD/OPTIONS requests. Long-lived Core/browser/MCP invalid-mode and non-idempotent response-loss regressions pass.
 <!-- SECTION:NOTES:END -->
 
 ## Comments

@@ -224,11 +224,21 @@ export async function addAgentInstructions(
 
 	if (git && paths.length > 0 && autoCommit) {
 		const repoRoot = await git.stageFiles(paths);
-		const action = results.some((result) => result.action === "updated") ? "Update" : "Add";
-		const message = `${action} AI agent instructions`;
+		const changedResults = results.filter((result) => result.action !== "unchanged");
+		const batchAction = changedResults.some((result) => result.action === "updated") ? "Update" : "Add";
+		const message = `${batchAction} AI agent instructions`;
+		const operations = changedResults.map((writeResult) => {
+			const action = writeResult.action === "updated" ? "Update" : "Add";
+			return createAutomaticCommitOperation(
+				`${action} AI agent instruction ${writeResult.fileName}`,
+				action,
+				"instruction",
+				[writeResult.fileName],
+			);
+		});
 		const result = await git.commitFiles(message, paths, repoRoot, {
 			...commitOptions,
-			operation: createAutomaticCommitOperation(message, action, "instruction", ["AI agent"]),
+			operation: operations,
 		});
 		if (result) onCommitResult?.(result);
 	}
