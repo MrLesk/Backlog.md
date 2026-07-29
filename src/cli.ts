@@ -101,9 +101,12 @@ import { getVersion } from "./utils/version.ts";
 type IntegrationMode = "mcp" | "cli" | "none";
 
 const cliAutoCommit = createAutoCommitOptions(undefined, process.argv.includes("--no-amend"));
-cliAutoCommit.onResult = (result) => {
-	for (const notice of formatAutoCommitNotices({ results: [result] })) console.log(notice);
-};
+
+function flushCliAutoCommitNotices(): void {
+	const notices = formatAutoCommitNotices(cliAutoCommit);
+	cliAutoCommit.results?.splice(0);
+	for (const notice of notices) console.log(notice);
+}
 
 function createCliCore(projectRoot: string): Core {
 	return new Core(projectRoot, { autoCommit: cliAutoCommit });
@@ -682,6 +685,7 @@ if (shouldRunMigration) {
 }
 
 const program = new Command();
+program.hook("postAction", flushCliAutoCommitNotices);
 program
 	.name("backlog")
 	.description("Backlog.md - Project management CLI")
@@ -5099,13 +5103,19 @@ registerCompletionCommand(program);
 registerInstructionsCommand(program);
 
 // MCP command group
-registerMcpCommand(program);
+registerMcpCommand(program, { autoCommit: cliAutoCommit });
 
 const automaticCommitCommandPaths = [
 	["init"],
+	["search"],
 	["board"],
+	["board", "view"],
 	["browser"],
+	["task"],
+	["task", "list"],
 	["task", "view"],
+	["draft", "list"],
+	["mcp", "start"],
 	["task", "create"],
 	["task", "edit"],
 	["task", "archive"],

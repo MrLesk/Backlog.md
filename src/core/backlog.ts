@@ -281,7 +281,7 @@ export class Core {
 	private searchService?: SearchService;
 	private readonly enableWatchers: boolean;
 	private readonly defaultAutoCommitInput: AutoCommitInput;
-	private readonly automaticCommitResults: GitCommitResult[] = [];
+	private readonly automaticCommitResults: GitCommitResult[];
 	private readonly automaticCommitContext = new AsyncLocalStorage<AutoCommitOptions>();
 	private activeBranchTaskEntries: BranchTaskStateEntry[] = [];
 	private activeBranchFingerprint: string | null = null;
@@ -294,7 +294,13 @@ export class Core {
 		// Disable watchers by default for CLI commands (non-interactive)
 		// Interactive modes (TUI, browser, MCP) should explicitly pass enableWatchers: true
 		this.enableWatchers = options?.enableWatchers ?? false;
-		this.defaultAutoCommitInput = options?.autoCommit ?? { results: this.automaticCommitResults };
+		const configuredAutoCommit = options?.autoCommit;
+		this.automaticCommitResults =
+			typeof configuredAutoCommit === "object" && configuredAutoCommit.results ? configuredAutoCommit.results : [];
+		this.defaultAutoCommitInput =
+			typeof configuredAutoCommit === "object"
+				? { ...configuredAutoCommit, results: this.automaticCommitResults }
+				: (configuredAutoCommit ?? { results: this.automaticCommitResults });
 		// Note: Config is loaded lazily when needed since constructor can't be async
 	}
 
@@ -2283,16 +2289,15 @@ export class Core {
 		normalizeAssignee(task);
 		task.updatedDate = new Date().toISOString().slice(0, 16).replace("T", " ");
 
-		const filepath = await this.fs.saveDraft(task);
+		const write = await this.fs.saveDraftWithResult(task);
 
 		if (await this.shouldAutoCommit(autoCommit)) {
-			await this.git.addFile(filepath);
 			const message = `${task.id} - Update draft ${task.id}`;
-			const result = await this.git.commitTaskChange(task.id, `Update draft ${task.id}`, filepath, {
-				...(await this.gitCommitOptions(autoCommit)),
-				operation: createAutomaticCommitOperation(message, "Update", "draft", [task.id]),
-			});
-			this.recordAutoCommitResult(autoCommit, result);
+			await this.commitOperationFiles(
+				createAutomaticCommitOperation(message, "Update", "draft", [task.id]),
+				write.touchedPaths,
+				autoCommit,
+			);
 		}
 	}
 
@@ -2985,11 +2990,12 @@ export class Core {
 	}
 
 	async createDecision(decision: Decision, autoCommit?: AutoCommitInput): Promise<void> {
+		const action = (await this.fs.loadDecision(decision.id)) ? "Update" : "Add";
 		const touchedPaths = await this.fs.saveDecision(decision);
 
 		if (await this.shouldAutoCommit(autoCommit)) {
 			await this.commitOperationFiles(
-				createAutomaticCommitOperation(`backlog: Add decision ${decision.id}`, "Add", "decision", [decision.id]),
+				createAutomaticCommitOperation(`backlog: ${action} decision ${decision.id}`, action, "decision", [decision.id]),
 				touchedPaths,
 				autoCommit,
 			);
@@ -3057,8 +3063,9 @@ export class Core {
 
 		if (await this.shouldAutoCommit(autoCommit)) {
 			const savedPath = join(this.fs.docsDir, ...normalizeDocumentRelativePath(relativePath).split("/"));
+			const action = previousPaths.length > 0 ? "Update" : "Add";
 			await this.commitOperationFiles(
-				createAutomaticCommitOperation(`backlog: Add document ${doc.id}`, "Add", "document", [doc.id]),
+				createAutomaticCommitOperation(`backlog: ${action} document ${doc.id}`, action, "document", [doc.id]),
 				[...previousPaths, savedPath],
 				autoCommit,
 			);

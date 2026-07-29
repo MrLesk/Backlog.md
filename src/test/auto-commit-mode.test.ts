@@ -89,7 +89,7 @@ describe("autoCommitMode", () => {
 		const forcedNew = await $`bun ${CLI_PATH} task create "Third" --plain --no-amend`.cwd(testDir).text();
 		expect(await commitCount(testDir)).toBe(afterFirst + 1);
 		expect(forcedNew).not.toContain("Amended Backlog commit");
-	});
+	}, 20_000);
 
 	for (const mode of ["new", "amend-own"] as const) {
 		test(
@@ -150,6 +150,60 @@ describe("autoCommitMode", () => {
 		);
 	});
 
+	test("structured production upserts distinguish add and update operations", async () => {
+		const config = await core.filesystem.loadConfig();
+		if (!config) throw new Error("Missing test config");
+		await core.filesystem.saveConfig({ ...config, autoCommit: true, autoCommitMode: "amend-own" });
+		await $`git add backlog/config.yml && git commit -m "Enable structured upsert replacement"`.cwd(testDir).quiet();
+
+		await core.createDocument({
+			id: "doc-1",
+			title: "First document",
+			type: "other",
+			createdDate: "2026-07-28",
+			rawContent: "First",
+		});
+		await core.createDocument({
+			id: "doc-1",
+			title: "Updated document",
+			type: "other",
+			createdDate: "2026-07-28",
+			rawContent: "Updated",
+		});
+		const decision = {
+			id: "decision-1",
+			title: "Decision",
+			date: "2026-07-28",
+			status: "proposed" as const,
+			context: "",
+			decision: "First",
+			consequences: "",
+			rawContent: "",
+		};
+		await core.createDecision(decision);
+		await core.createDecision({ ...decision, decision: "Updated" });
+		await addAgentInstructions(testDir, core.git, ["AGENTS.md"], true, {
+			automaticCommitIntent: "amend-own",
+		});
+		await Bun.write(join(testDir, "CLAUDE.md"), "Existing project instructions\n");
+		const agentResults = await addAgentInstructions(testDir, core.git, ["CLAUDE.md"], true, {
+			automaticCommitIntent: "amend-own",
+		});
+		expect(agentResults[0]?.action).toBe("updated");
+
+		const message = await $`git show -s --format=%B HEAD`.cwd(testDir).text();
+		for (const [verb, entity] of [
+			["Add", "document"],
+			["Update", "document"],
+			["Add", "decision"],
+			["Update", "decision"],
+			["Add", "instruction"],
+			["Update", "instruction"],
+		]) {
+			expect(message).toContain(`"verb":"${verb}","entity":"${entity}"`);
+		}
+	}, 20_000);
+
 	test("MCP mutation output reports an owned replacement", async () => {
 		const config = await core.filesystem.loadConfig();
 		if (!config) throw new Error("Missing test config");
@@ -171,6 +225,40 @@ describe("autoCommitMode", () => {
 		} finally {
 			await server.stop();
 		}
+	});
+
+	test("MCP invocation force-new starts a fresh owned sequence", async () => {
+		const config = await core.filesystem.loadConfig();
+		if (!config) throw new Error("Missing test config");
+		const configured = { ...config, autoCommit: true, autoCommitMode: "amend-own" as const };
+		await core.filesystem.saveConfig(configured);
+		await $`git add backlog/config.yml && git commit -m "Enable MCP force-new test"`.cwd(testDir).quiet();
+
+		const firstServer = new McpServer(testDir, "Test instructions");
+		registerTaskTools(firstServer, configured);
+		try {
+			await firstServer.testInterface.callTool({
+				params: { name: "task_create", arguments: { title: "Owned MCP sequence" } },
+			});
+		} finally {
+			await firstServer.stop();
+		}
+		const beforeForced = await commitCount(testDir);
+
+		const forcedServer = new McpServer(testDir, "Test instructions", "0.0.0", {
+			autoCommit: { forceNew: true },
+		});
+		registerTaskTools(forcedServer, configured);
+		try {
+			const result = await forcedServer.testInterface.callTool({
+				params: { name: "task_create", arguments: { title: "Forced MCP boundary" } },
+			});
+			const text = result.content.map((item) => ("text" in item ? item.text : "")).join("\n");
+			expect(text).not.toContain("Amended Backlog commit");
+		} finally {
+			await forcedServer.stop();
+		}
+		expect(await commitCount(testDir)).toBe(beforeForced + 1);
 	});
 
 	test("autoCommit false remains the gate for every mutation type in amend-own mode", async () => {
@@ -202,9 +290,15 @@ describe("autoCommitMode", () => {
 	test("every automatic-commit CLI command advertises --no-amend", async () => {
 		const commandPaths = [
 			["init"],
+			["search"],
 			["board"],
+			["board", "view"],
 			["browser"],
+			["task"],
+			["task", "list"],
 			["task", "view"],
+			["draft", "list"],
+			["mcp", "start"],
 			["task", "create"],
 			["task", "edit"],
 			["task", "archive"],
@@ -227,7 +321,7 @@ describe("autoCommitMode", () => {
 			const help = await $`bun ${CLI_PATH} ${commandPath} --help`.cwd(testDir).text();
 			expect(help, commandPath.join(" ")).toContain("--no-amend");
 		}
-	});
+	}, 30_000);
 
 	test("a boolean enable override does not discard an invocation force-new boundary", async () => {
 		const config = await core.filesystem.loadConfig();

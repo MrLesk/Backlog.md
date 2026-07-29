@@ -58,6 +58,11 @@ export interface TaskLifecycleMoveResult {
 	task: Task;
 }
 
+export interface DraftWriteResult {
+	filePath: string;
+	touchedPaths: string[];
+}
+
 export interface TaskLifecycleMoveOptions {
 	generateId?: (source: Task) => Promise<string>;
 	buildTarget?: (source: Task, generatedId: string, defaultStatus: string) => Promise<Task>;
@@ -719,42 +724,37 @@ export class FileSystem {
 		draftId: string,
 		options: TaskLifecycleMoveOptions = {},
 	): Promise<TaskLifecycleMoveResult | null> {
-		try {
-			return await this.withCreateLock(async () => {
-				const draft = await this.loadDraft(draftId);
-				if (!draft?.filePath) return null;
+		return await this.withCreateLock(async () => {
+			const draft = await this.loadDraft(draftId);
+			if (!draft?.filePath) return null;
 
-				const config = await this.loadConfig();
-				const defaultStatus = config?.defaultStatus || FALLBACK_STATUS;
-				let newTaskId: string;
-				if (options.generateId) {
-					newTaskId = await options.generateId(draft);
-				} else {
-					const taskPrefix = config?.prefixes?.task ?? "task";
-					const [existingTasks, completedTasks] = await Promise.all([this.listTasks(), this.listCompletedTasks()]);
-					newTaskId = generateNextId(
-						[...existingTasks, ...completedTasks].map((task) => task.id),
-						taskPrefix,
-						config?.zeroPaddedIds,
-					);
-				}
+			const config = await this.loadConfig();
+			const defaultStatus = config?.defaultStatus || FALLBACK_STATUS;
+			let newTaskId: string;
+			if (options.generateId) {
+				newTaskId = await options.generateId(draft);
+			} else {
+				const taskPrefix = config?.prefixes?.task ?? "task";
+				const [existingTasks, completedTasks] = await Promise.all([this.listTasks(), this.listCompletedTasks()]);
+				newTaskId = generateNextId(
+					[...existingTasks, ...completedTasks].map((task) => task.id),
+					taskPrefix,
+					config?.zeroPaddedIds,
+				);
+			}
 
-				const promotedStatus =
-					!draft.status || draft.status.trim().toLowerCase() === "draft" ? defaultStatus : draft.status;
-				const target = options.buildTarget
-					? await options.buildTarget(draft, newTaskId, promotedStatus)
-					: { ...draft, id: newTaskId, status: promotedStatus, filePath: undefined };
-				const promotedTask: Task = { ...target, id: newTaskId, filePath: undefined };
-				const sourcePath = draft.filePath;
-				const targetPath = await this.saveTask(promotedTask);
-				await unlink(sourcePath);
+			const promotedStatus =
+				!draft.status || draft.status.trim().toLowerCase() === "draft" ? defaultStatus : draft.status;
+			const target = options.buildTarget
+				? await options.buildTarget(draft, newTaskId, promotedStatus)
+				: { ...draft, id: newTaskId, status: promotedStatus, filePath: undefined };
+			const promotedTask: Task = { ...target, id: newTaskId, filePath: undefined };
+			const sourcePath = draft.filePath;
+			const targetPath = await this.saveTask(promotedTask);
+			await unlink(sourcePath);
 
-				return { sourcePath, targetPath, task: { ...promotedTask, filePath: targetPath } };
-			});
-		} catch (error) {
-			if (isCreateLockError(error) || isAmbiguousTaskIdError(error)) throw error;
-			return null;
-		}
+			return { sourcePath, targetPath, task: { ...promotedTask, filePath: targetPath } };
+		});
 	}
 
 	async promoteDraft(draftId: string): Promise<boolean> {
@@ -765,38 +765,33 @@ export class FileSystem {
 		taskId: string,
 		options: TaskLifecycleMoveOptions = {},
 	): Promise<TaskLifecycleMoveResult | null> {
-		try {
-			return await this.withCreateLock(async () => {
-				const task = await this.loadTask(taskId);
-				if (!task?.filePath) return null;
+		return await this.withCreateLock(async () => {
+			const task = await this.loadTask(taskId);
+			if (!task?.filePath) return null;
 
-				const config = await this.loadConfig();
-				let newDraftId: string;
-				if (options.generateId) {
-					newDraftId = await options.generateId(task);
-				} else {
-					const existingDrafts = await this.listDrafts();
-					newDraftId = generateNextId(
-						existingDrafts.map((draft) => draft.id),
-						"draft",
-						config?.zeroPaddedIds,
-					);
-				}
+			const config = await this.loadConfig();
+			let newDraftId: string;
+			if (options.generateId) {
+				newDraftId = await options.generateId(task);
+			} else {
+				const existingDrafts = await this.listDrafts();
+				newDraftId = generateNextId(
+					existingDrafts.map((draft) => draft.id),
+					"draft",
+					config?.zeroPaddedIds,
+				);
+			}
 
-				const target = options.buildTarget
-					? await options.buildTarget(task, newDraftId, "Draft")
-					: { ...task, id: newDraftId, filePath: undefined };
-				const demotedDraft: Task = { ...target, id: newDraftId, filePath: undefined };
-				const sourcePath = task.filePath;
-				const targetPath = await this.saveDraft(demotedDraft);
-				await unlink(sourcePath);
+			const target = options.buildTarget
+				? await options.buildTarget(task, newDraftId, "Draft")
+				: { ...task, id: newDraftId, filePath: undefined };
+			const demotedDraft: Task = { ...target, id: newDraftId, filePath: undefined };
+			const sourcePath = task.filePath;
+			const targetPath = await this.saveDraft(demotedDraft);
+			await unlink(sourcePath);
 
-				return { sourcePath, targetPath, task: { ...demotedDraft, filePath: targetPath } };
-			});
-		} catch (error) {
-			if (isCreateLockError(error) || isAmbiguousTaskIdError(error)) throw error;
-			return null;
-		}
+			return { sourcePath, targetPath, task: { ...demotedDraft, filePath: targetPath } };
+		});
 	}
 
 	async demoteTask(taskId: string): Promise<boolean> {
@@ -804,30 +799,33 @@ export class FileSystem {
 	}
 
 	// Draft operations
-	async saveDraft(task: Task): Promise<string> {
+	async saveDraftWithResult(task: Task): Promise<DraftWriteResult> {
 		const { id: draftId, filename, filePath: filepath } = await this.resolveTaskWriteTarget(task, true);
 		const draftsDir = await this.getDraftsDir();
-		// Normalize the draft ID to uppercase before serialization
 		const normalizedTask = { ...task, id: draftId };
 		const content = serializeTask(normalizedTask);
-
+		let existingFiles: string[] = [];
 		try {
-			// Find existing draft file with same ID but possibly different filename (e.g., title changed)
-			const filenameId = idForFilename(draftId);
-			const existingFiles = await Array.fromAsync(
+			existingFiles = await Array.fromAsync(
 				new Bun.Glob(buildGlobPattern("draft")).scan({ cwd: draftsDir, followSymlinks: true }),
 			);
-			const existingFile = existingFiles.find((f) => f.startsWith(`${filenameId} -`) || f.startsWith(`${filenameId}-`));
-			if (existingFile && existingFile !== filename) {
-				await unlink(join(draftsDir, existingFile));
-			}
-		} catch {
-			// Ignore errors if no existing files found
+		} catch (error) {
+			if (!(error && typeof error === "object" && "code" in error && error.code === "ENOENT")) throw error;
 		}
+		const filenameId = idForFilename(draftId);
+		const existingFile = existingFiles.find(
+			(file) => file.startsWith(`${filenameId} -`) || file.startsWith(`${filenameId}-`),
+		);
+		const previousPath = existingFile && existingFile !== filename ? join(draftsDir, existingFile) : undefined;
+		if (previousPath) await unlink(previousPath);
 
 		await this.ensureDirectoryExists(dirname(filepath));
 		await Bun.write(filepath, content);
-		return filepath;
+		return { filePath: filepath, touchedPaths: previousPath ? [previousPath, filepath] : [filepath] };
+	}
+
+	async saveDraft(task: Task): Promise<string> {
+		return (await this.saveDraftWithResult(task)).filePath;
 	}
 
 	async loadDraft(draftId: string): Promise<Task | null> {

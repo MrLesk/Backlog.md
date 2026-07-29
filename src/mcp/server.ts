@@ -19,6 +19,7 @@ import {
 	type ServerNotification,
 	type ServerRequest,
 } from "@modelcontextprotocol/sdk/types.js";
+import type { AutoCommitInput } from "../core/auto-commit.ts";
 import { Core } from "../core/backlog.ts";
 import { getPackageName } from "../utils/app-info.ts";
 import { resolveBacklogDirectory } from "../utils/backlog-directory.ts";
@@ -56,6 +57,7 @@ const INSTRUCTIONS =
 
 type ServerInitOptions = {
 	debug?: boolean;
+	autoCommit?: AutoCommitInput;
 	/** When true (from --cwd/BACKLOG_CWD), the root is fixed and client roots are never consulted. */
 	pinned?: boolean;
 };
@@ -89,8 +91,13 @@ export class McpServer extends Core {
 	private readonly resources = new Map<string, McpResourceHandler>();
 	private readonly prompts = new Map<string, McpPromptHandler>();
 
-	constructor(projectRoot: string, instructions: string, version = "0.0.0") {
-		super(projectRoot, { enableWatchers: true });
+	constructor(
+		projectRoot: string,
+		instructions: string,
+		version = "0.0.0",
+		options: { autoCommit?: AutoCommitInput } = {},
+	) {
+		super(projectRoot, { enableWatchers: true, autoCommit: options.autoCommit });
 		this.initialProjectRoot = projectRoot;
 
 		this.server = new Server(
@@ -516,7 +523,7 @@ export async function createMcpServer(projectRoot: string, options: ServerInitOp
 	await tempCore.ensureConfigLoaded();
 	const [config, version] = await Promise.all([tempCore.filesystem.loadConfig(), getVersion()]);
 
-	const server = new McpServer(projectRoot, INSTRUCTIONS, version);
+	const server = new McpServer(projectRoot, INSTRUCTIONS, version, { autoCommit: options.autoCommit });
 
 	// Graceful fallback: if config doesn't exist, provide init-required resource
 	// and enable roots discovery so the server can find the project via MCP roots

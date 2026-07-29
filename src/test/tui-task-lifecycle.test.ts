@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import { mkdir } from "node:fs/promises";
 import { $ } from "bun";
 import { Core } from "../core/backlog.ts";
+import type { GitCommitResult } from "../git/operations.ts";
 import type { Task } from "../types/index.ts";
 import { completeTaskFromTui, formatTaskCompletionBlockedMessage } from "../ui/task-lifecycle.ts";
 import { createUniqueTestDir, initializeTestProject, safeCleanup } from "./test-utils.ts";
@@ -69,11 +70,16 @@ describe("TUI task lifecycle", () => {
 		expect(completedTasks[0]?.status).toBe("Done");
 	});
 
-	it("returns owned replacement feedback for the TUI surface", async () => {
+	it("returns owned replacement feedback for the CLI-configured TUI result sink", async () => {
 		const config = await core.filesystem.loadConfig();
 		if (!config) throw new Error("Expected test project config to exist");
 		await core.filesystem.saveConfig({ ...config, autoCommit: true, autoCommitMode: "amend-own" });
 		await $`git add backlog && git commit -m "Configure TUI automatic commits"`.cwd(TEST_DIR).quiet();
+		const invocationResults: GitCommitResult[] = [];
+		let callbackCount = 0;
+		core = new Core(TEST_DIR, {
+			autoCommit: { results: invocationResults, onResult: () => callbackCount++ },
+		});
 		await core.createTask(
 			{
 				id: "task-1",
@@ -87,7 +93,8 @@ describe("TUI task lifecycle", () => {
 			},
 			true,
 		);
-		core.consumeAutoCommitNotices();
+		expect(core.consumeAutoCommitNotices()).toEqual([]);
+		expect(invocationResults).toEqual([]);
 		const task = await core.filesystem.loadTask("task-1");
 		if (!task) throw new Error("Expected test task");
 
@@ -98,6 +105,8 @@ describe("TUI task lifecycle", () => {
 			expect(result.notices).toHaveLength(1);
 			expect(result.notices[0]).toMatch(/^Amended Backlog commit [0-9a-f]{12} as [0-9a-f]{12}\.$/);
 		}
+		expect(callbackCount).toBe(2);
+		expect(invocationResults).toEqual([]);
 	});
 
 	it("preserves an invocation force-new boundary through the TUI boolean enable override", async () => {

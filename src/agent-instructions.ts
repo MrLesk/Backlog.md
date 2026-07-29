@@ -224,10 +224,11 @@ export async function addAgentInstructions(
 
 	if (git && paths.length > 0 && autoCommit) {
 		const repoRoot = await git.stageFiles(paths);
-		const message = "Add AI agent instructions";
+		const action = results.some((result) => result.action === "updated") ? "Update" : "Add";
+		const message = `${action} AI agent instructions`;
 		const result = await git.commitFiles(message, paths, repoRoot, {
 			...commitOptions,
-			operation: createAutomaticCommitOperation(message, "Add", "instruction", ["AI agent"]),
+			operation: createAutomaticCommitOperation(message, action, "instruction", ["AI agent"]),
 		});
 		if (result) onCommitResult?.(result);
 	}

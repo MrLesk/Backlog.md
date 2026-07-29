@@ -142,6 +142,33 @@ describe("selected-path automatic commits", () => {
 		await expectUnrelatedStatePreserved(testDir);
 	}, 30_000);
 
+	for (const mode of ["new", "amend-own"] as const) {
+		it(`commits both paths when renaming a draft in ${mode} mode`, async () => {
+			const config = await core.filesystem.loadConfig();
+			if (!config) throw new Error("Expected test config");
+			await core.filesystem.saveConfig({ ...config, autoCommitMode: mode });
+			await $`git add backlog/config.yml`.cwd(testDir).quiet();
+			if ((await $`git diff --cached --quiet`.cwd(testDir).nothrow().quiet()).exitCode !== 0) {
+				await $`git commit -m ${`Configure ${mode}`}`.cwd(testDir).quiet();
+			}
+
+			const { task: draft } = await core.createTaskFromInput({ title: "Old title", status: "Draft" }, true);
+			const previousPath = draft.filePath;
+			if (!previousPath) throw new Error("Expected draft path");
+			const updated = await core.updateDraftFromInput(draft.id, { title: "New title" }, true);
+			const replacementPath = updated.filePath;
+			if (!replacementPath) throw new Error("Expected renamed draft path");
+
+			if (mode === "new") {
+				await expectLatestCommitPaths(testDir, [repoPath(testDir, previousPath), repoPath(testDir, replacementPath)]);
+			}
+			const headPaths = (await $`git ls-tree -r --name-only HEAD`.cwd(testDir).text()).split("\n");
+			expect(headPaths).not.toContain(repoPath(testDir, previousPath));
+			expect(headPaths).toContain(repoPath(testDir, replacementPath));
+			expect(await $`git status --short`.cwd(testDir).text()).toBe("");
+		}, 20_000);
+	}
+
 	it("limits decision, document, and agent-instruction commits to their outputs", async () => {
 		await stageUnrelatedState(testDir);
 		const decision: Decision = {

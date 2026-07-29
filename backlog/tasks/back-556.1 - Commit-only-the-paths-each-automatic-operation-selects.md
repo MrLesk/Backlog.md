@@ -5,7 +5,7 @@ status: In Progress
 assignee:
   - '@andreas'
 created_date: '2026-07-28 14:46'
-updated_date: '2026-07-29 10:55'
+updated_date: '2026-07-29 11:24'
 labels:
   - git
 dependencies: []
@@ -34,16 +34,16 @@ This is a correctness fix that stands on its own under the current default autom
 - [x] #4 Existing selected-path robustness is preserved: temporary-index isolation, owned-index reconciliation, retries, current-configuration signing and signing failures, legacy and modern hook runners, and atomic expected-old-SHA branch updates.
 - [x] #5 Merge, rebase, cherry-pick, and revert in-progress guards continue to fail closed without moving HEAD, corrupting operation metadata, or consuming unrelated index entries.
 - [x] #6 Tests cover unrelated index and worktree state, pre-commit and commit-message hook staging isolation, post-commit real-index mutations, file-move operations, custom backlog roots, linked worktrees, and projects without Git.
-- [ ] #7 Promotion and demotion use one canonical lifecycle implementation that returns the complete touched-path result, while duplicate task IDs continue to raise the explicit ambiguity diagnostic.
-- [ ] #8 Title-changing draft updates return and commit both the previous and replacement paths in new and amend-own modes, leaving no duplicate in HEAD or unstaged deletion.
-- [ ] #9 Lifecycle target validation and unexpected write failures propagate their actionable original errors; null/false is reserved for a genuinely absent source.
+- [x] #7 Promotion and demotion use one canonical lifecycle implementation that returns the complete touched-path result, while duplicate task IDs continue to raise the explicit ambiguity diagnostic.
+- [x] #8 Title-changing draft updates return and commit both the previous and replacement paths in new and amend-own modes, leaving no duplicate in HEAD or unstaged deletion.
+- [x] #9 Lifecycle target validation and unexpected write failures propagate their actionable original errors; null/false is reserved for a genuinely absent source.
 <!-- AC:END -->
 
 ## Definition of Done
 <!-- DOD:BEGIN -->
-- [ ] #1 bunx tsc --noEmit passes when TypeScript touched
-- [ ] #2 bun run check . passes when formatting/linting touched
-- [ ] #3 bun test (or scoped test) passes
+- [x] #1 bunx tsc --noEmit passes when TypeScript touched
+- [x] #2 bun run check . passes when formatting/linting touched
+- [x] #3 bun test (or scoped test) passes
 <!-- DOD:END -->
 
 ## Implementation Plan
@@ -68,6 +68,8 @@ Implemented one exact-path staging/commit path and converted bulk task updates, 
 Verification: 217 tests passed across auto-commit, core, CLI lifecycle, TUI selected-path robustness, MCP milestones, agent instructions, ContentStore, and the new selected-path suite (881 assertions). The new suite directly verifies exact source/target commits, unrelated staged and unstaged preservation, pre/message-hook isolation, post-hook real-index mutations, custom roots, linked worktrees, and no-Git projects. bunx tsc --noEmit, focused Biome, and git diff --check passed.
 
 Holistic correction: consolidated Core promotion/demotion onto FileSystem result-returning mutations, retained selected source/target paths, and preserved AmbiguousTaskIdError. Verification: 123 focused tests and the full 1,820-test gate passed.
+
+Holistic pass 2 corrections: draft writes now return previous and replacement paths for exact-path commits in both modes; canonical lifecycle helpers reserve null for missing sources and propagate validation/write errors. Regressions cover renamed draft trees/status and invalid promotion/demotion priority diagnostics. Verification: 144 focused tests passed, then TypeScript, full Biome, and the full suite passed with 1,835 tests and 4 skips.
 <!-- SECTION:NOTES:END -->
 
 ## Comments

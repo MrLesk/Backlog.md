@@ -689,6 +689,24 @@ describe("Core", () => {
 			expect(lastCommit).toContain(`backlog: Archive draft ${draft.id.toUpperCase()}`);
 		});
 
+		it("preserves promotion and demotion validation errors", async () => {
+			const config = await core.filesystem.loadConfig();
+			if (!config) throw new Error("Expected config");
+			await core.filesystem.saveConfig({ ...config, priorities: ["High", "Low"] });
+			const { task: draft } = await core.createTaskFromInput({ title: "Draft", status: "Draft" }, false);
+
+			await expect(core.editTaskOrDraft(draft.id, { status: "To Do", priority: "Urgent" }, false)).rejects.toThrow(
+				"Invalid priority: Urgent",
+			);
+			expect(await core.filesystem.loadDraft(draft.id)).not.toBeNull();
+
+			const { task } = await core.createTaskFromInput({ title: "Task", status: "To Do" }, false);
+			await expect(core.editTaskOrDraft(task.id, { status: "Draft", priority: "Urgent" }, false)).rejects.toThrow(
+				"Invalid priority: Urgent",
+			);
+			expect(await core.filesystem.loadTask(task.id)).not.toBeNull();
+		});
+
 		it("should preserve draft metadata through the canonical create path", async () => {
 			const { task: draft } = await core.createTaskFromInput(
 				{

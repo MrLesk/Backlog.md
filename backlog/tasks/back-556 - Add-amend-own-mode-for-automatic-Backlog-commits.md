@@ -5,7 +5,7 @@ status: In Progress
 assignee:
   - '@andreas'
 created_date: '2026-07-28 14:27'
-updated_date: '2026-07-29 10:55'
+updated_date: '2026-07-29 11:32'
 labels:
   - enhancement
   - git
@@ -132,9 +132,9 @@ This task is delivered through subtasks, because the selected-path correctness f
 
 ## Definition of Done
 <!-- DOD:BEGIN -->
-- [ ] #1 bunx tsc --noEmit passes when TypeScript touched
-- [ ] #2 bun run check . passes when formatting/linting touched
-- [ ] #3 bun test (or scoped test) passes
+- [x] #1 bunx tsc --noEmit passes when TypeScript touched
+- [x] #2 bun run check . passes when formatting/linting touched
+- [x] #3 bun test (or scoped test) passes
 <!-- DOD:END -->
 
 ## Implementation Plan
@@ -172,6 +172,10 @@ Holistic correction pass implemented findings B1/B2/H1/H2/M1/M2/M3 plus shared m
 Second full-gate run after review-history cleanup also passed: TypeScript, Biome (348 files), and 1,830 tests passed with 4 skipped across 205 files. The two consecutive full suites completed in 460.13s and 447.68s without failures.
 
 Fresh holistic gpt-5.6-sol xhigh pass 2 at 10ea4b2: REQUEST_CHANGES, 2 high/3 medium/1 low. Reviewer independently confirmed the initial B1/H1/H2/M1/M3/L1 corrections and both full gates.
+
+Holistic pass 2 findings H1/H2/M1/M2/M3 are implemented. Focused gate: 144 tests, 673 assertions. Integrated gate: TypeScript and full Biome clean; 1,835 tests passed with 4 skipped across 205 files. Draft PR evidence will be refreshed after this stable fix commit.
+
+A second consecutive final-state integrated gate passed: TypeScript and full Biome clean; 1,835 tests passed with 4 skipped across 205 files. The two full suites completed without retries or failures.
 <!-- SECTION:NOTES:END -->
 
 ## Comments
