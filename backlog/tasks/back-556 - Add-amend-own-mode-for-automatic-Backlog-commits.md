@@ -5,7 +5,7 @@ status: In Progress
 assignee:
   - '@andreas'
 created_date: '2026-07-28 14:27'
-updated_date: '2026-07-29 15:59'
+updated_date: '2026-07-29 16:26'
 labels:
   - enhancement
   - git
@@ -123,19 +123,19 @@ This task is delivered through subtasks, because the selected-path correctness f
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [x] #1 With autoCommit true and autoCommitMode amend-own, a run of consecutive Backlog mutations on an owned branch tip produces exactly one commit that contains every change, lists every distinct operation once in its message region, and carries a subject that reflects the operations it holds rather than only the first one.
+- [ ] #1 With autoCommit true and autoCommitMode amend-own, a run of consecutive Backlog mutations on an owned branch tip produces exactly one commit that contains every change, lists every distinct operation once in its message region, and carries a subject that reflects the operations it holds rather than only the first one.
 - [x] #2 Every documented non-owned boundary makes Backlog create a new commit instead of amending: manual commit, manual amend, reset, detached HEAD, merge commit, reachability from a remote-tracking ref, reachability from any other local branch or tag including direct and descendant refs, and missing, stale, malformed, or ambiguous ownership evidence. A commit created detached or while evidence cannot be recorded remains unowned, so repeated mutations in either persistent state continue creating new commits.
-- [x] #3 autoCommitMode defaults to new when absent, rejects invalid values with an error, and has no effect while autoCommit is false or the project is filesystem-only. An explicit per-invocation autoCommit override decides only whether to commit and never changes the mode.
+- [ ] #3 autoCommitMode defaults to new when absent, rejects invalid values with an error, and has no effect while autoCommit is false or the project is filesystem-only. An explicit per-invocation autoCommit override decides only whether to commit and never changes the mode.
 - [x] #4 No automatic Backlog commit, in either mode, contains paths outside those selected for the operation. Pre-existing unrelated index and worktree state plus pre-commit and commit-message hook staging through the isolated index are preserved, while mutations made by post hooks against the real index and worktree persist according to normal Git semantics.
-- [x] #5 A human can see when an amend happened, force a new commit for a single invocation with --no-amend on any command that can automatically commit, and follow documented reflog recovery for an unwanted amend.
+- [ ] #5 A human can see when an amend happened, force a new commit for a single invocation with --no-amend on any command that can automatically commit, and follow documented reflog recovery for an unwanted amend.
 - [x] #6 The upstream cross-platform test/build/Nix workflow executes successfully for the final implementation SHA, or the task records that first-time-contributor workflow approval is externally blocked on an upstream maintainer before merge.
 <!-- AC:END -->
 
 ## Definition of Done
 <!-- DOD:BEGIN -->
-- [x] #1 bunx tsc --noEmit passes when TypeScript touched
-- [x] #2 bun run check . passes when formatting/linting touched
-- [x] #3 bun test (or scoped test) passes
+- [ ] #1 bunx tsc --noEmit passes when TypeScript touched
+- [ ] #2 bun run check . passes when formatting/linting touched
+- [ ] #3 bun test (or scoped test) passes
 <!-- DOD:END -->
 
 ## Implementation Plan
@@ -242,5 +242,10 @@ Fresh holistic gpt-5.6-sol xhigh pass 6 at 3055373 returned three findings: cach
 created: 2026-07-29 15:48
 ---
 The first Pass 6 integrated gate reached 1,845 passes but the pre-existing multi-phase A/B/A watcher lifecycle test hit Bun’s 5-second default despite containing many explicitly bounded 5-second and 8-second waits. Align this one outer test contract before rerunning the full gate.
+---
+
+created: 2026-07-29 16:26
+---
+Fresh holistic gpt-5.6-sol xhigh pass 7 at cc0d6f9 returned four findings: MCP task_demote forces autoCommit false; malformed auto_commit_mode syntax without a colon is accepted by mutation preflight; concurrent Git-plan coverage stubs the obsolete loader; and bulk feedback storage is unbounded. Exact clean HEAD preserved. Report: /tmp/backlog-821-holistic-review-pass-7.md.
 ---
 <!-- COMMENTS:END -->
