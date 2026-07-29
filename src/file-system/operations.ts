@@ -13,7 +13,12 @@ import {
 	resolveBacklogDirectory,
 	resolveBacklogDirectoryFromRootConfig,
 } from "../utils/backlog-directory.ts";
-import { stripTrailingYamlComment, validateExplicitConfigValues } from "../utils/config-validation.ts";
+import {
+	INVALID_EXPLICIT_CONFIG_ERROR,
+	parseExplicitConfigScalar,
+	stripTrailingYamlComment,
+	validateExplicitConfigValues,
+} from "../utils/config-validation.ts";
 import { documentIdsEqual, normalizeDocumentId } from "../utils/document-id.ts";
 import { normalizeDocumentRelativePath, normalizeDocumentSubPath } from "../utils/document-path.ts";
 import {
@@ -1550,20 +1555,27 @@ ${description || `Milestone: ${title}`}`,
 			if (colonIndex === -1) continue;
 
 			const key = trimmed.substring(0, colonIndex).trim();
-			const value = stripTrailingYamlComment(trimmed.substring(colonIndex + 1).trim());
+			const rawValue = trimmed.substring(colonIndex + 1).trim();
+			const parsedScalar = parseExplicitConfigScalar(key, rawValue);
+			if (parsedScalar === null) {
+				throw new InvalidBacklogConfigError(
+					key === "auto_commit_mode" ? AUTO_COMMIT_MODE_CONFIG_ERROR : INVALID_EXPLICIT_CONFIG_ERROR,
+				);
+			}
+			const value = parsedScalar?.value ?? stripTrailingYamlComment(rawValue);
 
 			switch (key) {
 				case "project_name":
-					config.projectName = value.replace(/['"]/g, "");
+					config.projectName = value;
 					break;
 				case "default_assignee":
-					config.defaultAssignee = value.replace(/['"]/g, "");
+					config.defaultAssignee = value;
 					break;
 				case "default_reporter":
-					config.defaultReporter = value.replace(/['"]/g, "");
+					config.defaultReporter = value;
 					break;
 				case "default_status":
-					config.defaultStatus = value.replace(/['"]/g, "");
+					config.defaultStatus = value;
 					break;
 				case "statuses":
 				case "labels":
@@ -1587,13 +1599,13 @@ ${description || `Milestone: ${title}`}`,
 					}
 					break;
 				case "date_format":
-					config.dateFormat = value.replace(/['"]/g, "");
+					config.dateFormat = value;
 					break;
 				case "max_column_width":
 					config.maxColumnWidth = Number.parseInt(value, 10);
 					break;
 				case "default_editor":
-					config.defaultEditor = value.replace(/["']/g, "");
+					config.defaultEditor = value;
 					break;
 				case "auto_open_browser":
 					config.autoOpenBrowser = value.toLowerCase() === "true";
@@ -1611,7 +1623,7 @@ ${description || `Milestone: ${title}`}`,
 					config.autoCommit = value.toLowerCase() === "true";
 					break;
 				case "auto_commit_mode": {
-					const mode = value.replace(/["']/g, "").toLowerCase();
+					const mode = value.toLowerCase();
 					if (!isAutoCommitMode(mode)) throw new InvalidBacklogConfigError(AUTO_COMMIT_MODE_CONFIG_ERROR);
 					config.autoCommitMode = mode;
 					break;
@@ -1634,15 +1646,14 @@ ${description || `Milestone: ${title}`}`,
 					break;
 				case "onStatusChange":
 				case "on_status_change":
-					// Remove surrounding quotes if present, but preserve inner content
-					config.onStatusChange = value.replace(/^['"]|['"]$/g, "");
+					config.onStatusChange = value;
 					break;
 				case "task_prefix":
-					config.prefixes = { task: value.replace(/['"]/g, "") };
+					config.prefixes = { task: value };
 					break;
 				case "backlog_directory":
 				case "backlogDirectory":
-					config.backlogDirectory = value.replace(/['"]/g, "");
+					config.backlogDirectory = value;
 					break;
 			}
 		}

@@ -429,13 +429,14 @@ describe("TUI task composer canonical persistence", () => {
 		const originalExecGit = git.execGit.bind(core.gitOps);
 		let advanced = false;
 		git.execGit = async (args, options) => {
-			if (args[0] === "update-ref" && !advanced) {
+			const result = await originalExecGit(args, options);
+			if (args[0] === "rev-parse" && args[1] === "--git-path" && args[2] === "HEAD" && !advanced) {
 				advanced = true;
 				await writeFile(join(testDir, "concurrent.txt"), "Concurrent HEAD content.\n");
 				await $`git add concurrent.txt`.cwd(testDir).quiet();
 				await $`git commit --only -m "concurrent commit" -- concurrent.txt`.cwd(testDir).quiet();
 			}
-			return originalExecGit(args, options);
+			return result;
 		};
 
 		try {

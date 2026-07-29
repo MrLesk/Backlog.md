@@ -108,6 +108,26 @@ describe("config watcher", () => {
 				"",
 			].join("\n"),
 			[
+				'project_name: "Malformed mode quote"',
+				'statuses: ["To Do", "Done"]',
+				'labels: ["web"]',
+				"date_format: YYYY-MM-DD",
+				"auto_commit: true",
+				'auto_commit_mode: "amend-own',
+				'task_prefix: "BACK"',
+				"",
+			].join("\n"),
+			[
+				'project_name: "Embedded mode quote"',
+				'statuses: ["To Do", "Done"]',
+				'labels: ["web"]',
+				"date_format: YYYY-MM-DD",
+				"auto_commit: true",
+				'auto_commit_mode: amend-"own',
+				'task_prefix: "BACK"',
+				"",
+			].join("\n"),
+			[
 				'project_name: "Malformed task prefix"',
 				'statuses: ["To Do", "Done"]',
 				'labels: ["web"]',
@@ -128,7 +148,6 @@ describe("config watcher", () => {
 			]),
 		);
 		core.filesystem.parseConfig = (content) => {
-			const parsed = originalParseConfig(content);
 			const attempts = unusableParseAttempts.get(content);
 			if (attempts !== undefined) {
 				const nextAttempts = attempts + 1;
@@ -137,7 +156,7 @@ describe("config watcher", () => {
 					unusableAttemptResolvers.get(content)?.();
 				}
 			}
-			return parsed;
+			return originalParseConfig(content);
 		};
 
 		const published: BacklogConfig[] = [];

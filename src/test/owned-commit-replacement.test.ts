@@ -485,12 +485,13 @@ describe("owned automatic commit replacement", () => {
 		const originalExec = privateGit.execGit.bind(git);
 		let advanced = false;
 		privateGit.execGit = async (args, options) => {
-			if (args[0] === "update-ref" && !advanced) {
+			const result = await originalExec(args, options);
+			if (args[0] === "rev-parse" && args[1] === "--git-path" && args[2] === "HEAD" && !advanced) {
 				advanced = true;
 				await Bun.write(join(testDir, "concurrent.txt"), "concurrent\n");
 				await $`git add concurrent.txt && git commit -q --only -m concurrent -- concurrent.txt`.cwd(testDir);
 			}
-			return originalExec(args, options);
+			return result;
 		};
 		const result = await commitSelected(testDir, git, "backlog: Update task BACK-2", "two\n", {
 			automaticCommitIntent: "amend-own",
@@ -501,6 +502,72 @@ describe("owned automatic commit replacement", () => {
 		expect(await $`git show HEAD:selected.txt`.cwd(testDir).text()).toBe("two\n");
 		expect(await commitCount(testDir)).toBe(beforeCount + 2);
 	}, 30_000);
+
+	it("rejects a same-SHA symbolic branch switch during final ref CAS", async () => {
+		const git = await initializeRepository(testDir);
+		const owned = await commitSelected(testDir, git, "backlog: Update task BACK-1", "owned\n");
+		const selectedPath = join(testDir, "selected.txt");
+		await Bun.write(selectedPath, "ours\n");
+		await git.stageFiles([selectedPath]);
+		const privateGit = git as unknown as PrivateGit;
+		const originalExec = privateGit.execGit.bind(git);
+		let switched = false;
+		privateGit.execGit = async (args, options) => {
+			const result = await originalExec(args, options);
+			if (args[0] === "rev-parse" && args[1] === "--git-path" && args[2] === "HEAD" && !switched) {
+				switched = true;
+				await originalExec(["update-ref", "refs/heads/sibling", owned.commitId], { cwd: testDir });
+				await originalExec(["symbolic-ref", "HEAD", "refs/heads/sibling"], { cwd: testDir });
+			}
+			return result;
+		};
+
+		await expect(
+			git.commitFiles("backlog: Update task BACK-2", [selectedPath], testDir, {
+				automaticCommitIntent: "amend-own",
+			}),
+		).rejects.toThrow();
+		expect(switched).toBe(true);
+		expect((await $`git symbolic-ref HEAD`.cwd(testDir).text()).trim()).toBe("refs/heads/sibling");
+		expect((await $`git rev-parse refs/heads/main`.cwd(testDir).text()).trim()).toBe(owned.commitId);
+		expect((await $`git rev-parse refs/heads/sibling`.cwd(testDir).text()).trim()).toBe(owned.commitId);
+		expect(await $`git show refs/heads/main:selected.txt`.cwd(testDir).text()).toBe("owned\n");
+		expect(await $`git show refs/heads/sibling:selected.txt`.cwd(testDir).text()).toBe("owned\n");
+		expect(await Bun.file(selectedPath).text()).toBe("ours\n");
+		expect(await $`git show :selected.txt`.cwd(testDir).text()).toBe("ours\n");
+	}, 20_000);
+
+	it("holds symbolic HEAD identity through the final branch update", async () => {
+		const git = await initializeRepository(testDir);
+		const owned = await commitSelected(testDir, git, "backlog: Update task BACK-1", "owned\n");
+		await $`git branch sibling ${owned.commitId}^`.cwd(testDir).quiet();
+		const selectedPath = join(testDir, "selected.txt");
+		await Bun.write(selectedPath, "ours\n");
+		await git.stageFiles([selectedPath]);
+		const privateGit = git as unknown as PrivateGit;
+		const originalExec = privateGit.execGit.bind(git);
+		let switchBlocked = false;
+		privateGit.execGit = async (args, options) => {
+			if (args[0] === "update-ref" && options?.env?.GIT_DIR && !switchBlocked) {
+				await expect(originalExec(["symbolic-ref", "HEAD", "refs/heads/sibling"], { cwd: testDir })).rejects.toThrow(
+					"HEAD.lock",
+				);
+				switchBlocked = true;
+			}
+			return originalExec(args, options);
+		};
+
+		const result = await git.commitFiles("backlog: Update task BACK-2", [selectedPath], testDir, {
+			automaticCommitIntent: "amend-own",
+		});
+		expect(result?.amended).toBe(true);
+		expect(switchBlocked).toBe(true);
+		expect((await $`git symbolic-ref HEAD`.cwd(testDir).text()).trim()).toBe("refs/heads/main");
+		expect(await $`git rev-parse refs/heads/main`.cwd(testDir).text()).toBe(`${result?.commitId}\n`);
+		expect((await $`git rev-parse refs/heads/sibling`.cwd(testDir).text()).trim()).toBe(
+			(await $`git rev-parse ${owned.commitId}^`.cwd(testDir).text()).trim(),
+		);
+	}, 20_000);
 
 	it("aborts CAS retries when an isolated concurrent commit changes the same selected path", async () => {
 		for (const intent of ["new", "amend-own"] as const) {
@@ -514,7 +581,8 @@ describe("owned automatic commit replacement", () => {
 			const originalExec = privateGit.execGit.bind(git);
 			let raced = false;
 			privateGit.execGit = async (args, options) => {
-				if (args[0] === "update-ref" && !raced) {
+				const result = await originalExec(args, options);
+				if (args[0] === "rev-parse" && args[1] === "--git-path" && args[2] === "HEAD" && !raced) {
 					raced = true;
 					const concurrentIndex = join(root, "concurrent-index");
 					const env = { GIT_INDEX_FILE: concurrentIndex };
@@ -523,7 +591,7 @@ describe("owned automatic commit replacement", () => {
 					await originalExec(["add", "--", "selected.txt"], { cwd: root, env });
 					await originalExec(["commit", "-q", "-m", "concurrent selected path"], { cwd: root, env });
 				}
-				return originalExec(args, options);
+				return result;
 			};
 
 			await expect(
@@ -552,7 +620,8 @@ describe("owned automatic commit replacement", () => {
 			const originalExec = privateGit.execGit.bind(git);
 			let raceCount = 0;
 			privateGit.execGit = async (args, options) => {
-				if (args[0] === "update-ref" && raceCount === 0) {
+				const result = await originalExec(args, options);
+				if (args[0] === "rev-parse" && args[1] === "--git-path" && args[2] === "HEAD" && raceCount === 0) {
 					raceCount += 1;
 					const currentHead = await head(root);
 					const concurrentIndex = join(root, "wrapper-concurrent-index");
@@ -573,7 +642,7 @@ describe("owned automatic commit replacement", () => {
 					});
 					await originalExec(["update-ref", "HEAD", commitOutput.trim(), currentHead], { cwd: root });
 				}
-				return originalExec(args, options);
+				return result;
 			};
 
 			await expect(

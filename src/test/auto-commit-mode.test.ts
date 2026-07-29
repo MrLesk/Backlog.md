@@ -523,8 +523,8 @@ describe("autoCommitMode", () => {
 		await $`git add . && git commit -m "Create invalid-mode fixtures"`.cwd(testDir).quiet();
 		const configText = await Bun.file(join(testDir, "backlog", "config.yml")).text();
 		const invalidConfig = /auto_commit_mode: .*/.test(configText)
-			? configText.replace(/auto_commit_mode: .*/, "auto_commit_mode: unsafe")
-			: `${configText.trimEnd()}\nauto_commit_mode: unsafe\n`;
+			? configText.replace(/auto_commit_mode: .*/, 'auto_commit_mode: "amend-own')
+			: `${configText.trimEnd()}\nauto_commit_mode: "amend-own\n`;
 		await Bun.write(join(testDir, "backlog", "config.yml"), invalidConfig);
 		await $`git add backlog/config.yml && git commit -m "Install invalid mode"`.cwd(testDir).quiet();
 		core = new Core(testDir);
