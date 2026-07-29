@@ -5,7 +5,7 @@ status: In Progress
 assignee:
   - '@andreas'
 created_date: '2026-07-28 14:47'
-updated_date: '2026-07-29 13:20'
+updated_date: '2026-07-29 13:53'
 labels:
   - web-ui
   - cli
@@ -31,14 +31,14 @@ This covers the advanced CLI wizard, initialization and configuration summaries,
 - [x] #3 Browser initialization and Settings expose autoCommitMode, reject invalid values, and round-trip through the shared typed and serialized configuration paths.
 - [x] #4 Human-readable copy on the CLI wizard and browser surfaces states that amend-own may replace the exact current locally-owned Backlog tip only when all safety checks pass and otherwise creates a new commit.
 - [x] #5 Tests cover wizard defaults and output, summary rendering, and browser initialization and Settings round-trips.
-- [ ] #6 Browser archive, complete, reorder, cleanup, and other mutation responses surface bounded replacement feedback consistently for JSON and no-content operations.
+- [x] #6 Browser archive, complete, reorder, cleanup, and other mutation responses surface bounded replacement feedback consistently for JSON and no-content operations.
 <!-- AC:END -->
 
 ## Definition of Done
 <!-- DOD:BEGIN -->
-- [ ] #1 bunx tsc --noEmit passes when TypeScript touched
-- [ ] #2 bun run check . passes when formatting/linting touched
-- [ ] #3 bun test (or scoped test) passes
+- [x] #1 bunx tsc --noEmit passes when TypeScript touched
+- [x] #2 bun run check . passes when formatting/linting touched
+- [x] #3 bun test (or scoped test) passes
 <!-- DOD:END -->
 
 ## Implementation Plan
@@ -65,6 +65,8 @@ Holistic correction centralizes browser response notice dispatch for JSON and no
 Verification reconfirmed centralized bounded browser feedback across JSON and no-content mutations in the full 1,835-pass suite.
 
 Pass 3 correction moves every document, decision, and milestone mutation client onto fetchWithRetry/fetchJson so JSON and no-content responses all dispatch the bounded automatic-commit header. Eight entity methods plus task reorder/archive/complete are covered.
+
+DraftsList promotion was the final raw browser mutation fetch. It now calls ApiClient.promoteDraft through fetchJson/fetchWithRetry, with automatic-commit notice dispatch covered alongside all entity mutation methods.
 <!-- SECTION:NOTES:END -->
 
 ## Comments

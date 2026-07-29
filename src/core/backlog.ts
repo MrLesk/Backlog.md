@@ -14,6 +14,7 @@ import {
 	type GitCommitOptions,
 	type GitCommitResult,
 	type GitIndexEntry,
+	type GitOperationConfig,
 	GitOperations,
 } from "../git/operations.ts";
 import {
@@ -114,6 +115,16 @@ import {
 interface ResolvedAutoCommitPlan {
 	enabled: boolean;
 	intent: GitAutomaticCommitIntent;
+	gitConfig: GitOperationConfig | null;
+}
+
+function snapshotGitOperationConfig(config: BacklogConfig | null): GitOperationConfig | null {
+	if (!config) return null;
+	return Object.freeze({
+		filesystemOnly: config.filesystemOnly,
+		bypassGitHooks: config.bypassGitHooks,
+		remoteOperations: config.remoteOperations,
+	});
 }
 
 interface BlessedScreen {
@@ -923,19 +934,19 @@ export class Core {
 			return { ...resolved, enabled };
 		}
 		const config = await this.fs.loadConfig();
-		this.git.setConfig(config);
-		if (config?.filesystemOnly) return { enabled: false, intent: "new" };
+		const gitConfig = snapshotGitOperationConfig(config);
+		if (config?.filesystemOnly) return { enabled: false, intent: "new", gitConfig };
 		const controls = this.resolveAutoCommitControls(input);
 		const enabled = controls.enabled ?? config?.autoCommit ?? false;
 		const intent: GitAutomaticCommitIntent =
 			(config?.autoCommitMode ?? "new") === "new" ? "new" : controls.forceNew ? "start-owned" : "amend-own";
-		return { enabled, intent };
+		return { enabled, intent, gitConfig };
 	}
 
 	async withAutoCommitPlan<T>(input: AutoCommitInput | undefined, action: () => Promise<T>): Promise<T> {
 		if (this.resolvedAutoCommitContext.getStore()) return await action();
 		const plan = await this.resolveAutoCommit(input);
-		return await this.resolvedAutoCommitContext.run(plan, action);
+		return await this.resolvedAutoCommitContext.run(plan, () => this.git.withConfig(plan.gitConfig, action));
 	}
 
 	async shouldAutoCommit(input?: AutoCommitInput): Promise<boolean> {

@@ -296,6 +296,12 @@ export class ApiClient {
 		});
 	}
 
+	async promoteDraft(id: string): Promise<{ success: boolean }> {
+		return await this.fetchJson<{ success: boolean }>(`${API_BASE}/drafts/${id}/promote`, {
+			method: "POST",
+		});
+	}
+
 	async getCleanupPreview(age: number): Promise<{
 		count: number;
 		tasks: Array<{ id: string; title: string; updatedDate?: string; createdDate: string }>;

@@ -1,3 +1,4 @@
+import { AsyncLocalStorage } from "node:async_hooks";
 import { mkdtemp, realpath, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { basename, dirname, isAbsolute, join, relative } from "node:path";
@@ -39,6 +40,10 @@ export interface GitCommitOptions {
 	automaticCommitIntent?: GitAutomaticCommitIntent;
 	operation?: AutomaticCommitOperation;
 }
+
+export type GitOperationConfig = Readonly<
+	Pick<BacklogConfig, "filesystemOnly" | "bypassGitHooks" | "remoteOperations">
+>;
 
 export interface GitCommitResult {
 	commitId: string;
@@ -88,6 +93,7 @@ export class GitOperations {
 	private projectRoot: string;
 	private config: BacklogConfig | null = null;
 	private readonly configLoader?: GitConfigLoader;
+	private readonly operationConfigContext = new AsyncLocalStorage<{ config: GitOperationConfig | null }>();
 	private hookRunSupported?: boolean;
 
 	constructor(projectRoot: string, config: BacklogConfig | null = null, configLoader?: GitConfigLoader) {
@@ -100,8 +106,17 @@ export class GitOperations {
 		this.config = config;
 	}
 
+	async withConfig<T>(config: GitOperationConfig | null, action: () => Promise<T>): Promise<T> {
+		return await this.operationConfigContext.run({ config }, action);
+	}
+
+	private operationConfig(): GitOperationConfig | BacklogConfig | null {
+		const context = this.operationConfigContext.getStore();
+		return context ? context.config : this.config;
+	}
+
 	private async loadConfigIfNeeded(): Promise<void> {
-		if (this.config || !this.configLoader) {
+		if (this.operationConfigContext.getStore() || this.config || !this.configLoader) {
 			return;
 		}
 		try {
@@ -113,7 +128,7 @@ export class GitOperations {
 
 	async isRepository(cwd = this.projectRoot): Promise<boolean> {
 		await this.loadConfigIfNeeded();
-		if (this.config?.filesystemOnly) {
+		if (this.operationConfig()?.filesystemOnly) {
 			return false;
 		}
 		return await isGitRepository(cwd);
@@ -154,7 +169,7 @@ export class GitOperations {
 			return await this.commitFiles(commitMessage, [filePath], undefined, options);
 		}
 		const args = ["commit", "-m", commitMessage];
-		if (this.config?.bypassGitHooks) {
+		if (this.operationConfig()?.bypassGitHooks) {
 			args.push("--no-verify");
 		}
 		const repoRoot = filePath ? (await this.getPathContext(filePath))?.repoRoot : undefined;
@@ -170,7 +185,7 @@ export class GitOperations {
 			return;
 		}
 		const args = ["commit", "-m", message];
-		if (this.config?.bypassGitHooks) {
+		if (this.operationConfig()?.bypassGitHooks) {
 			args.push("--no-verify");
 		}
 		await this.execGit(args, { cwd: repoRoot ?? undefined });
@@ -218,7 +233,7 @@ export class GitOperations {
 			const rollingOperation = options.operation ?? message;
 			const initialHead = await this.resolveHead(resolvedRepoRoot);
 			await this.populateTemporaryIndex(resolvedRepoRoot, temporaryIndexEnv, initialHead, commitEntries);
-			if (!this.config?.bypassGitHooks) {
+			if (!this.operationConfig()?.bypassGitHooks) {
 				await this.runCommitHook("pre-commit", [], resolvedRepoRoot, temporaryIndexEnv);
 			}
 			commitEntries = await this.readSelectedIndexEntries(uniqueRelativePaths, resolvedRepoRoot, temporaryIndexEnv);
@@ -247,7 +262,7 @@ export class GitOperations {
 
 				await writeFile(messagePath, commitMessage);
 				await this.runCommitHook("prepare-commit-msg", [messagePath, "message"], resolvedRepoRoot, temporaryIndexEnv);
-				if (!this.config?.bypassGitHooks) {
+				if (!this.operationConfig()?.bypassGitHooks) {
 					await this.runCommitHook("commit-msg", [messagePath], resolvedRepoRoot, temporaryIndexEnv);
 				}
 				await this.assertNoCommitOperationInProgress(resolvedRepoRoot);
@@ -680,7 +695,7 @@ export class GitOperations {
 		}
 
 		const args = ["commit", "-m", message];
-		if (this.config?.bypassGitHooks) {
+		if (this.operationConfig()?.bypassGitHooks) {
 			args.push("--no-verify");
 		}
 		await this.execGit(args, { cwd: repoRoot ?? undefined });
@@ -772,7 +787,7 @@ export class GitOperations {
 
 	async fetch(remote = "origin"): Promise<void> {
 		// Check if remote operations are disabled
-		if (this.config?.remoteOperations === false) {
+		if (this.operationConfig()?.remoteOperations === false) {
 			if (process.env.DEBUG) {
 				console.warn("Remote operations are disabled in config. Skipping fetch.");
 			}
@@ -993,7 +1008,7 @@ export class GitOperations {
 	 */
 	async listRecentBranchTips(daysAgo: number): Promise<GitBranchTip[]> {
 		await this.loadConfigIfNeeded();
-		if (this.config?.filesystemOnly) {
+		if (this.operationConfig()?.filesystemOnly) {
 			return [];
 		}
 		try {
@@ -1001,7 +1016,7 @@ export class GitOperations {
 
 			// Build refs to check based on remoteOperations config
 			const refs = ["refs/heads"];
-			if (this.config?.remoteOperations !== false) {
+			if (this.operationConfig()?.remoteOperations !== false) {
 				refs.push("refs/remotes/origin");
 			}
 
@@ -1066,7 +1081,7 @@ export class GitOperations {
 		try {
 			// Use -a flag only if remote operations are enabled
 			const branchArgs =
-				this.config?.remoteOperations === false
+				this.operationConfig()?.remoteOperations === false
 					? ["branch", "--format=%(refname:short)"]
 					: ["branch", "-a", "--format=%(refname:short)"];
 
@@ -1145,7 +1160,7 @@ export class GitOperations {
 
 	async hashFile(filePath: string): Promise<string | null> {
 		await this.loadConfigIfNeeded();
-		if (this.config?.filesystemOnly) {
+		if (this.operationConfig()?.filesystemOnly) {
 			return null;
 		}
 		try {
@@ -1365,7 +1380,7 @@ export class GitOperations {
 
 	private async resolveRepoRoot(startDir: string): Promise<string | null> {
 		await this.loadConfigIfNeeded();
-		if (this.config?.filesystemOnly) {
+		if (this.operationConfig()?.filesystemOnly) {
 			return null;
 		}
 		try {

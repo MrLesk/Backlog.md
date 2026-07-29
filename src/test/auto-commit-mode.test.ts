@@ -401,6 +401,47 @@ describe("autoCommitMode", () => {
 		expect(await $`git show -s --format=%B HEAD`.cwd(testDir).text()).toContain('"verb":"Update"');
 	}, 20_000);
 
+	test("concurrent plan resolution cannot replace an in-flight Git configuration snapshot", async () => {
+		const config = await core.filesystem.loadConfig();
+		if (!config) throw new Error("Missing test config");
+		const automaticConfig = { ...config, autoCommit: true, autoCommitMode: "amend-own" as const };
+		await core.filesystem.saveConfig(automaticConfig);
+		await $`git add backlog/config.yml && git commit -m "Enable concurrent plan test"`.cwd(testDir).quiet();
+		const { task } = await core.createTaskFromInput({ title: "Concurrent plan" });
+		const beforeUpdateHead = (await $`git rev-parse HEAD`.cwd(testDir).text()).trim();
+		const beforeUpdateCount = await commitCount(testDir);
+
+		let loadedConfig = automaticConfig;
+		core.filesystem.loadConfig = async () => loadedConfig;
+		const saveTask = core.filesystem.saveTask.bind(core.filesystem);
+		let releaseWrite!: () => void;
+		let reportWriteReached!: () => void;
+		const writeReached = new Promise<void>((resolve) => {
+			reportWriteReached = resolve;
+		});
+		const continueWrite = new Promise<void>((resolve) => {
+			releaseWrite = resolve;
+		});
+		core.filesystem.saveTask = async (nextTask) => {
+			const filePath = await saveTask(nextTask);
+			reportWriteReached();
+			await continueWrite;
+			return filePath;
+		};
+
+		const update = core.updateTaskFromInput(task.id, { title: "Concurrent plan updated" });
+		await writeReached;
+		loadedConfig = { ...automaticConfig, filesystemOnly: true };
+		await core.withAutoCommitPlan(undefined, async () => undefined);
+		releaseWrite();
+		await update;
+
+		const afterUpdateHead = (await $`git rev-parse HEAD`.cwd(testDir).text()).trim();
+		expect(afterUpdateHead).not.toBe(beforeUpdateHead);
+		expect(await commitCount(testDir)).toBe(beforeUpdateCount);
+		expect(await $`git status --short`.cwd(testDir).text()).toBe("");
+	}, 20_000);
+
 	test("invalid auto-commit mode is rejected before entity or lifecycle writes", async () => {
 		const { task } = await core.createTaskFromInput({ title: "Original task" }, false);
 		const { task: draft } = await core.createTaskFromInput({ title: "Original draft", status: "Draft" }, false);

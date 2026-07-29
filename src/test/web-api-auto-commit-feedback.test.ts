@@ -31,7 +31,7 @@ describe("Web API automatic commit feedback", () => {
 		expect(summary).toContain("100 Backlog automatic commit replacements");
 	});
 
-	it("dispatches replacement notices for every document, decision, and milestone mutation", async () => {
+	it("dispatches replacement notices for every draft, document, decision, and milestone mutation", async () => {
 		const notices: string[] = [];
 		window.addEventListener("backlog-auto-commit", (event) => {
 			notices.push((event as CustomEvent<string>).detail);
@@ -46,6 +46,7 @@ describe("Web API automatic commit feedback", () => {
 		}) as unknown as typeof fetch;
 
 		const client = new ApiClient({ retries: 0 });
+		await client.promoteDraft("draft-1");
 		await client.createDoc("Guide", "Body");
 		await client.updateDoc("Guide", "Updated body");
 		await client.createDecision("Choose");
@@ -55,7 +56,7 @@ describe("Web API automatic commit feedback", () => {
 		await client.removeMilestone("m-1");
 		await client.archiveMilestone("m-2");
 
-		expect(notices).toEqual(Array.from({ length: 8 }, (_, index) => `entity-replacement-${index + 1}`));
+		expect(notices).toEqual(Array.from({ length: 9 }, (_, index) => `entity-replacement-${index + 1}`));
 	});
 
 	it("dispatches replacement notices for JSON and no-content mutation responses", async () => {

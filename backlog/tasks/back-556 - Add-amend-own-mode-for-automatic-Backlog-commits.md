@@ -5,7 +5,7 @@ status: In Progress
 assignee:
   - '@andreas'
 created_date: '2026-07-28 14:27'
-updated_date: '2026-07-29 13:20'
+updated_date: '2026-07-29 13:53'
 labels:
   - enhancement
   - git
@@ -125,17 +125,17 @@ This task is delivered through subtasks, because the selected-path correctness f
 <!-- AC:BEGIN -->
 - [x] #1 With autoCommit true and autoCommitMode amend-own, a run of consecutive Backlog mutations on an owned branch tip produces exactly one commit that contains every change, lists every distinct operation once in its message region, and carries a subject that reflects the operations it holds rather than only the first one.
 - [x] #2 Every documented non-owned boundary makes Backlog create a new commit instead of amending: manual commit, manual amend, reset, detached HEAD, merge commit, reachability from a remote-tracking ref, reachability from any other local branch or tag including direct and descendant refs, and missing, stale, malformed, or ambiguous ownership evidence. A commit created detached or while evidence cannot be recorded remains unowned, so repeated mutations in either persistent state continue creating new commits.
-- [ ] #3 autoCommitMode defaults to new when absent, rejects invalid values with an error, and has no effect while autoCommit is false or the project is filesystem-only. An explicit per-invocation autoCommit override decides only whether to commit and never changes the mode.
+- [x] #3 autoCommitMode defaults to new when absent, rejects invalid values with an error, and has no effect while autoCommit is false or the project is filesystem-only. An explicit per-invocation autoCommit override decides only whether to commit and never changes the mode.
 - [x] #4 No automatic Backlog commit, in either mode, contains paths outside those selected for the operation. Pre-existing unrelated index and worktree state plus pre-commit and commit-message hook staging through the isolated index are preserved, while mutations made by post hooks against the real index and worktree persist according to normal Git semantics.
-- [ ] #5 A human can see when an amend happened, force a new commit for a single invocation with --no-amend on any command that can automatically commit, and follow documented reflog recovery for an unwanted amend.
-- [ ] #6 The upstream cross-platform test/build/Nix workflow executes successfully for the final implementation SHA, or the task records that first-time-contributor workflow approval is externally blocked on an upstream maintainer before merge.
+- [x] #5 A human can see when an amend happened, force a new commit for a single invocation with --no-amend on any command that can automatically commit, and follow documented reflog recovery for an unwanted amend.
+- [x] #6 The upstream cross-platform test/build/Nix workflow executes successfully for the final implementation SHA, or the task records that first-time-contributor workflow approval is externally blocked on an upstream maintainer before merge.
 <!-- AC:END -->
 
 ## Definition of Done
 <!-- DOD:BEGIN -->
-- [ ] #1 bunx tsc --noEmit passes when TypeScript touched
-- [ ] #2 bun run check . passes when formatting/linting touched
-- [ ] #3 bun test (or scoped test) passes
+- [x] #1 bunx tsc --noEmit passes when TypeScript touched
+- [x] #2 bun run check . passes when formatting/linting touched
+- [x] #3 bun test (or scoped test) passes
 <!-- DOD:END -->
 
 ## Implementation Plan
@@ -181,6 +181,8 @@ A second consecutive final-state integrated gate passed: TypeScript and full Bio
 All parent acceptance criteria are now supported by the implemented task-family evidence and two consecutive final-state gates. Status remains In Progress until the mandated fresh holistic reviewer returns exact ALL GOOD.
 
 All four holistic pass 3 findings are implemented. Focused verification passed 171 tests with 729 assertions. The integrated rerun passed TypeScript, Biome over 348 files, and 1,841 tests with 4 skips/0 failures across 205 files. The prior run's sole 1.5-second loaded Git-request abort was stabilized with a mutation-specific 10-second bound and passed on retry.
+
+Pass 4 code findings fixed and fully verified: 168 focused tests/1,232 assertions and an integrated 1,842 passed/4 skipped/0 failed across 205 files, with TypeScript and 349-file Biome clean. Upstream workflow run 30453460692 remains action_required with zero jobs; contributor apetersson attempted approval and GitHub returned HTTP 403 Must have admin rights to Repository, recording the explicit external maintainer gate.
 <!-- SECTION:NOTES:END -->
 
 ## Comments

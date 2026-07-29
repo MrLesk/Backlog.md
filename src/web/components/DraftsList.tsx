@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { type Task } from '../../types';
 import { formatStoredUtcDateForDisplay } from '../utils/date-display';
 import { formatPriorityLabel } from '../../utils/priority-config';
+import { apiClient } from '../lib/api';
 
 interface DraftsListProps {
   onEditTask: (task: Task) => void;
@@ -54,14 +55,8 @@ const DraftsList: React.FC<DraftsListProps> = ({ onEditTask, onNewDraft, dateFor
 
   const handlePromoteDraft = async (draftId: string) => {
     try {
-      const response = await fetch(`/api/drafts/${draftId}/promote`, {
-        method: 'POST',
-      });
-      
-      if (!response.ok) {
-        throw new Error(`Failed to promote draft: ${response.statusText}`);
-      }
-      
+      await apiClient.promoteDraft(draftId);
+
       // Reload drafts after successful promotion
       await loadDrafts();
     } catch (err) {
