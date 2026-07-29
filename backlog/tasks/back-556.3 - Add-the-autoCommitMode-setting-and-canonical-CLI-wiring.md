@@ -5,7 +5,7 @@ status: In Progress
 assignee:
   - '@andreas'
 created_date: '2026-07-28 14:47'
-updated_date: '2026-07-29 13:53'
+updated_date: '2026-07-29 14:19'
 labels:
   - cli
 dependencies:
@@ -41,14 +41,14 @@ Documentation must cover rolling-commit boundaries, how the message is rebuilt a
 - [x] #6 A later automatic mutation on an owned tip replaces it, so the commit count reachable from HEAD does not increase and the changes from both operations are present in the resulting tree.
 - [x] #7 A non-owned tip always produces a new commit. It starts a new amendable sequence only when the new tip is on a named branch and valid ownership evidence is successfully recorded; otherwise it remains unowned and the next mutation also creates a new commit.
 - [x] #8 The amend decision lives in the shared core mutation path, so CLI, TUI, browser, and MCP-triggered mutations share it, with cross-surface regression coverage.
-- [x] #9 Each triggering surface reports when a mutation replaced an existing commit instead of creating one, and identifies the commit it replaced.
+- [ ] #9 Each triggering surface reports when a mutation replaced an existing commit instead of creating one, and identifies the commit it replaced.
 - [x] #10 The --no-amend option forces a new commit for a single invocation without changing configuration, is accepted by every command that can automatically commit, appears in that command help, and is a documented no-op rather than an error under autoCommitMode new.
 - [x] #11 autoCommitMode is readable and writable through backlog config get, set, and list with validation, appears in the available-keys help, and is recognized by live config reload.
 - [x] #12 Filesystem-only projects continue to force autoCommit false regardless of autoCommitMode.
 - [x] #13 Documentation explains rolling-commit boundaries, message rebuilding and duplicate collapsing, the factored subject, reflog recovery, the risk of rewriting published history, degradation to new when ownership evidence cannot be recorded, and the safe new default. It also states the accepted limits: publication detection is local-only and cannot see a push that leaves no remote-tracking ref, a linked worktree parked on the tip with a detached HEAD is not detected, and amend-own is unsupported alongside hooks that modify the commit message because a non-idempotent hook appends its output once per amend.
 - [x] #14 Tests cover both modes across task, draft, document, decision, milestone, and agent-instruction mutations, custom backlog roots, the --no-amend override, explicit per-call autoCommit overrides, and repeated mutations with detached HEAD or unavailable ownership evidence.
 - [x] #15 The invocation force-new decision remains orthogonal to boolean enabled overrides and reaches every interactive CLI/TUI/browser mutation path that can automatically commit.
-- [x] #16 All browser mutation clients, including archive and complete no-content responses, surface bounded replacement feedback through one centralized response path.
+- [ ] #16 All browser mutation clients, including archive and complete no-content responses, surface bounded replacement feedback through one centralized response path.
 - [x] #17 The CLI help contract advertises --no-amend on every invocation surface whose interactive flow can trigger automatic mutations, with behavior coverage rather than help-text-only assertions.
 - [x] #18 Every interactive command path that can reach a mutating unified view and MCP start advertises and honors --no-amend through one immutable invocation plan.
 - [x] #19 CLI-created Core instances use one bounded result sink that both callbacks and TUI notice consumption drain without raw console output inside alternate-screen sessions.
@@ -57,9 +57,9 @@ Documentation must cover rolling-commit boundaries, how the message is rebuilt a
 
 ## Definition of Done
 <!-- DOD:BEGIN -->
-- [x] #1 bunx tsc --noEmit passes when TypeScript touched
-- [x] #2 bun run check . passes when formatting/linting touched
-- [x] #3 bun test (or scoped test) passes
+- [ ] #1 bunx tsc --noEmit passes when TypeScript touched
+- [ ] #2 bun run check . passes when formatting/linting touched
+- [ ] #3 bun test (or scoped test) passes
 <!-- DOD:END -->
 
 ## Implementation Plan
@@ -72,6 +72,8 @@ Documentation must cover rolling-commit boundaries, how the message is rebuilt a
 17. Route every mutating web API method through the centralized response/notice transport; connect direct agent-instruction commits to the shared bounded result recorder; expose one Core milestone-create mutation; and resolve/validate the invocation commit plan before filesystem writes.
 
 18. Move draft promotion onto the centralized ApiClient mutation transport. Extend the resolved commit plan with an immutable Git configuration snapshot and pass it into GitOperations so concurrent plan resolution cannot alter filesystem-only, hook, signing, or safety behavior.
+
+19. Route /api/init through BacklogServer.withAutoCommitFeedback and add an owned-tip browser initialization integration regression proving replacement feedback reaches the response header.
 <!-- SECTION:PLAN:END -->
 
 ## Implementation Notes
@@ -111,5 +113,10 @@ Holistic pass 3 found four gaps: raw-fetch document/decision/milestone clients s
 created: 2026-07-29 13:20
 ---
 Holistic pass 4 findings H1/M2: DraftsList still bypasses feedback for promotion, and the immutable plan snapshots intent but not GitOperations configuration, allowing concurrent plan resolution to replace filesystemOnly/hook/signing state during an in-flight mutation.
+---
+
+created: 2026-07-29 14:19
+---
+Holistic pass 5 H1: browser initialization can amend through agent-instruction writes, but /api/init bypasses the shared feedback wrapper and returns no X-Backlog-Auto-Commit header.
 ---
 <!-- COMMENTS:END -->
