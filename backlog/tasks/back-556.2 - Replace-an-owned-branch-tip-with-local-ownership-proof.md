@@ -5,7 +5,7 @@ status: In Progress
 assignee:
   - '@andreas'
 created_date: '2026-07-28 14:46'
-updated_date: '2026-07-29 10:18'
+updated_date: '2026-07-29 10:55'
 labels:
   - git
 dependencies:
@@ -63,6 +63,7 @@ See BACK-556 for the full ownership and safety contract, including the accepted 
 - [ ] #20 After message hooks, replacement eligibility is revalidated against exact reflog state, Git-operation guards, and all containing refs; hook-created refs and same-SHA away-and-back changes fail closed.
 - [ ] #21 Ownership is branch-local: switching away and returning to an otherwise unchanged safe branch intentionally resumes its amendable sequence, and documentation plus tests state that behavior.
 - [ ] #22 Rolling messages store structured operation descriptors so production task, draft, document, decision, milestone, and agent messages produce stable factored subjects without parsing incidental English display strings.
+- [ ] #23 Document, decision, and agent-instruction upserts record the real create/add versus update action, so distinct operations never collapse under one inaccurate descriptor.
 <!-- AC:END -->
 
 ## Definition of Done
@@ -82,6 +83,8 @@ See BACK-556 for the full ownership and safety contract, including the accepted 
 5. Add Git-level tests for evidence, repeated/root replacements, all safety boundaries, refs/reachability, hooks/bypass/legacy/signing, concurrency, selected-path races, linked worktrees, and graph visibility; run TypeScript, Biome, and focused suites before finalizing.
 
 6. Introduce explicit new/start-owned/replace-owned intent and structured operation descriptors. Revalidate branch/reflog/ref/operation state after hooks, including same-SHA ABA. Document and test intentional branch-local resume after switching away and back.
+
+7. Thread explicit create/update semantics through document, decision, and instruction upserts and verify production add-then-update rolling regions.
 <!-- SECTION:PLAN:END -->
 
 ## Implementation Notes
@@ -103,5 +106,11 @@ author: @andreas
 created: 2026-07-29 09:25
 ---
 Holistic findings B1, H1, M1, and M2: separate legacy new behavior from owned sequence starts; close the post-hook ref/reflog race; document the intentional branch-local resume behavior confirmed by the user; and replace English-subject parsing with structured rolling metadata.
+---
+
+author: @andreas
+created: 2026-07-29 10:55
+---
+Holistic pass 2 finding M3: structured metadata exists, but document/decision/instruction updates still emit Add descriptors and can collapse distinct operations.
 ---
 <!-- COMMENTS:END -->

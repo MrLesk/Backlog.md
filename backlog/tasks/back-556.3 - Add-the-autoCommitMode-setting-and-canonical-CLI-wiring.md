@@ -5,7 +5,7 @@ status: In Progress
 assignee:
   - '@andreas'
 created_date: '2026-07-28 14:47'
-updated_date: '2026-07-29 10:18'
+updated_date: '2026-07-29 10:55'
 labels:
   - cli
 dependencies:
@@ -50,6 +50,8 @@ Documentation must cover rolling-commit boundaries, how the message is rebuilt a
 - [ ] #15 The invocation force-new decision remains orthogonal to boolean enabled overrides and reaches every interactive CLI/TUI/browser mutation path that can automatically commit.
 - [ ] #16 All browser mutation clients, including archive and complete no-content responses, surface bounded replacement feedback through one centralized response path.
 - [ ] #17 The CLI help contract advertises --no-amend on every invocation surface whose interactive flow can trigger automatic mutations, with behavior coverage rather than help-text-only assertions.
+- [ ] #18 Every interactive command path that can reach a mutating unified view and MCP start advertises and honors --no-amend through one immutable invocation plan.
+- [ ] #19 CLI-created Core instances use one bounded result sink that both callbacks and TUI notice consumption drain without raw console output inside alternate-screen sessions.
 <!-- AC:END -->
 
 ## Definition of Done
@@ -63,6 +65,8 @@ Documentation must cover rolling-commit boundaries, how the message is rebuilt a
 
 <!-- SECTION:PLAN:BEGIN -->
 15. Resolve an immutable invocation commit plan once and preserve force-new independently of enabled overrides across direct and interactive Core callers. Centralize bounded browser feedback handling for JSON and no-content responses and add end-to-end help/behavior tests.
+
+16. Cover the actual interactive command graph and MCP startup with the invocation plan. Unify Core result recording/consumption so CLI TUI feedback uses the same bounded sink.
 <!-- SECTION:PLAN:END -->
 
 ## Implementation Notes
@@ -80,5 +84,11 @@ author: @andreas
 created: 2026-07-29 09:25
 ---
 Holistic findings B1, B2, and H2: new mode must remain behavior-preserving and unowned; --no-amend currently disappears through boolean and newly constructed Core paths; archive/complete browser responses currently drop amendment notices.
+---
+
+author: @andreas
+created: 2026-07-29 10:55
+---
+Holistic pass 2 findings H2/M1: several unified-view aliases and MCP start lacked --no-amend propagation; createCliCore stored results outside the array consumed by TUI footers.
 ---
 <!-- COMMENTS:END -->

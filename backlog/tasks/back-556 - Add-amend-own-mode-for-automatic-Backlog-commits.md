@@ -5,7 +5,7 @@ status: In Progress
 assignee:
   - '@andreas'
 created_date: '2026-07-28 14:27'
-updated_date: '2026-07-29 10:27'
+updated_date: '2026-07-29 10:55'
 labels:
   - enhancement
   - git
@@ -170,6 +170,8 @@ Delivered through BACK-556.1-.4: exact selected-path automatic commits, reflog-p
 Holistic correction pass implemented findings B1/B2/H1/H2/M1/M2/M3 plus shared mode validation. First integrated full gate passed: TypeScript, Biome (348 files), and 1,830 tests passed with 4 skipped across 205 files.
 
 Second full-gate run after review-history cleanup also passed: TypeScript, Biome (348 files), and 1,830 tests passed with 4 skipped across 205 files. The two consecutive full suites completed in 460.13s and 447.68s without failures.
+
+Fresh holistic gpt-5.6-sol xhigh pass 2 at 10ea4b2: REQUEST_CHANGES, 2 high/3 medium/1 low. Reviewer independently confirmed the initial B1/H1/H2/M1/M3/L1 corrections and both full gates.
 <!-- SECTION:NOTES:END -->
 
 ## Comments
@@ -185,5 +187,11 @@ author: @andreas
 created: 2026-07-29 10:19
 ---
 PR hygiene disposition for L1: remove the four model-specific CReview transcript commits from branch history before the next holistic review while retaining canonical task plans, notes, criteria, and the new reviewer findings documented through Backlog CLI.
+---
+
+author: @andreas
+created: 2026-07-29 10:55
+---
+Holistic pass 2 requested changes with six findings: draft rename path completeness, all interactive/MCP --no-amend entrypoints, CLI/TUI result-sink consistency, lifecycle validation propagation, accurate add/update descriptors, and stale draft-PR checklist/test evidence. Findings are recorded on BACK-556.1-.3; PR text will be refreshed after fixes and final task verification.
 ---
 <!-- COMMENTS:END -->

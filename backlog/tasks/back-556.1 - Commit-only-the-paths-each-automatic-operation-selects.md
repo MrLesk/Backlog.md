@@ -5,7 +5,7 @@ status: In Progress
 assignee:
   - '@andreas'
 created_date: '2026-07-28 14:46'
-updated_date: '2026-07-29 10:18'
+updated_date: '2026-07-29 10:55'
 labels:
   - git
 dependencies: []
@@ -35,6 +35,8 @@ This is a correctness fix that stands on its own under the current default autom
 - [x] #5 Merge, rebase, cherry-pick, and revert in-progress guards continue to fail closed without moving HEAD, corrupting operation metadata, or consuming unrelated index entries.
 - [x] #6 Tests cover unrelated index and worktree state, pre-commit and commit-message hook staging isolation, post-commit real-index mutations, file-move operations, custom backlog roots, linked worktrees, and projects without Git.
 - [ ] #7 Promotion and demotion use one canonical lifecycle implementation that returns the complete touched-path result, while duplicate task IDs continue to raise the explicit ambiguity diagnostic.
+- [ ] #8 Title-changing draft updates return and commit both the previous and replacement paths in new and amend-own modes, leaving no duplicate in HEAD or unstaged deletion.
+- [ ] #9 Lifecycle target validation and unexpected write failures propagate their actionable original errors; null/false is reserved for a genuinely absent source.
 <!-- AC:END -->
 
 ## Definition of Done
@@ -54,6 +56,8 @@ This is a correctness fix that stands on its own under the current default autom
 5. Run scoped tests, TypeScript, Biome, then record evidence and finalize BACK-556.1 before activating BACK-556.2.
 
 6. Remove Core/FileSystem lifecycle duplication by returning source/target paths from the canonical filesystem mutation; preserve AmbiguousTaskIdError and cover it with a regression.
+
+7. Return all touched paths from draft upserts and distinguish absent-source results from validation/write failures in lifecycle result helpers; add new/amend rename and invalid-field regressions.
 <!-- SECTION:PLAN:END -->
 
 ## Implementation Notes
@@ -73,5 +77,11 @@ author: @andreas
 created: 2026-07-29 09:25
 ---
 Holistic finding M3: Core duplicated promote/demote to recover selected paths and its demotion catch-all converted AmbiguousTaskIdError into false. Consolidate the mutation and preserve the fail-closed identity diagnostic.
+---
+
+author: @andreas
+created: 2026-07-29 10:55
+---
+Holistic pass 2 findings H1/M2: draft title updates committed only the new filename, and lifecycle callback validation errors were swallowed as not-found results.
 ---
 <!-- COMMENTS:END -->
