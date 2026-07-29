@@ -5,7 +5,7 @@ status: In Progress
 assignee:
   - '@andreas'
 created_date: '2026-07-28 14:27'
-updated_date: '2026-07-29 11:58'
+updated_date: '2026-07-29 12:51'
 labels:
   - enhancement
   - git
@@ -125,16 +125,16 @@ This task is delivered through subtasks, because the selected-path correctness f
 <!-- AC:BEGIN -->
 - [x] #1 With autoCommit true and autoCommitMode amend-own, a run of consecutive Backlog mutations on an owned branch tip produces exactly one commit that contains every change, lists every distinct operation once in its message region, and carries a subject that reflects the operations it holds rather than only the first one.
 - [x] #2 Every documented non-owned boundary makes Backlog create a new commit instead of amending: manual commit, manual amend, reset, detached HEAD, merge commit, reachability from a remote-tracking ref, reachability from any other local branch or tag including direct and descendant refs, and missing, stale, malformed, or ambiguous ownership evidence. A commit created detached or while evidence cannot be recorded remains unowned, so repeated mutations in either persistent state continue creating new commits.
-- [ ] #3 autoCommitMode defaults to new when absent, rejects invalid values with an error, and has no effect while autoCommit is false or the project is filesystem-only. An explicit per-invocation autoCommit override decides only whether to commit and never changes the mode.
+- [x] #3 autoCommitMode defaults to new when absent, rejects invalid values with an error, and has no effect while autoCommit is false or the project is filesystem-only. An explicit per-invocation autoCommit override decides only whether to commit and never changes the mode.
 - [x] #4 No automatic Backlog commit, in either mode, contains paths outside those selected for the operation. Pre-existing unrelated index and worktree state plus pre-commit and commit-message hook staging through the isolated index are preserved, while mutations made by post hooks against the real index and worktree persist according to normal Git semantics.
-- [ ] #5 A human can see when an amend happened, force a new commit for a single invocation with --no-amend on any command that can automatically commit, and follow documented reflog recovery for an unwanted amend.
+- [x] #5 A human can see when an amend happened, force a new commit for a single invocation with --no-amend on any command that can automatically commit, and follow documented reflog recovery for an unwanted amend.
 <!-- AC:END -->
 
 ## Definition of Done
 <!-- DOD:BEGIN -->
-- [ ] #1 bunx tsc --noEmit passes when TypeScript touched
-- [ ] #2 bun run check . passes when formatting/linting touched
-- [ ] #3 bun test (or scoped test) passes
+- [x] #1 bunx tsc --noEmit passes when TypeScript touched
+- [x] #2 bun run check . passes when formatting/linting touched
+- [x] #3 bun test (or scoped test) passes
 <!-- DOD:END -->
 
 ## Implementation Plan
@@ -178,6 +178,8 @@ Holistic pass 2 findings H1/H2/M1/M2/M3 are implemented. Focused gate: 144 tests
 A second consecutive final-state integrated gate passed: TypeScript and full Biome clean; 1,835 tests passed with 4 skipped across 205 files. The two full suites completed without retries or failures.
 
 All parent acceptance criteria are now supported by the implemented task-family evidence and two consecutive final-state gates. Status remains In Progress until the mandated fresh holistic reviewer returns exact ALL GOOD.
+
+All four holistic pass 3 findings are implemented. Focused verification passed 171 tests with 729 assertions. The integrated rerun passed TypeScript, Biome over 348 files, and 1,841 tests with 4 skips/0 failures across 205 files. The prior run's sole 1.5-second loaded Git-request abort was stabilized with a mutation-specific 10-second bound and passed on retry.
 <!-- SECTION:NOTES:END -->
 
 ## Comments

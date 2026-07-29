@@ -1,12 +1,10 @@
 import {
 	type AgentInstructionFile,
 	type AgentInstructionWriteResult,
-	addAgentInstructions,
 	ensureMcpGuidelines,
 	installClaudeAgent,
 } from "../agent-instructions.ts";
 import { DEFAULT_INIT_CONFIG } from "../constants/index.ts";
-import type { GitCommitResult } from "../git/operations.ts";
 import type { BacklogConfig } from "../types/index.ts";
 import { normalizeProjectBacklogDirectory } from "../utils/backlog-directory.ts";
 import {
@@ -57,8 +55,6 @@ export interface InitializeProjectOptions {
 	agentInstructions?: AgentInstructionFile[];
 	installClaudeAgent?: boolean;
 	filesystemOnly?: boolean;
-	forceNewAutoCommit?: boolean;
-	onAutoCommitResult?: (result: GitCommitResult) => void;
 	advancedConfig?: {
 		checkActiveBranches?: boolean;
 		remoteOperations?: boolean;
@@ -116,8 +112,6 @@ export async function initializeProject(
 		advancedConfig = {},
 		existingConfig,
 		filesystemOnly = false,
-		forceNewAutoCommit = false,
-		onAutoCommitResult,
 	} = options;
 
 	const isReInitialization = !!existingConfig;
@@ -277,17 +271,7 @@ export async function initializeProject(
 	// Handle CLI integration - agent instruction files
 	if (integrationMode === "cli" && agentInstructions.length > 0) {
 		try {
-			const agentInstructionResults = await addAgentInstructions(
-				projectRoot,
-				core.gitOps,
-				agentInstructions,
-				config.autoCommit,
-				{
-					automaticCommitIntent:
-						config.autoCommitMode !== "amend-own" ? "new" : forceNewAutoCommit ? "start-owned" : "amend-own",
-				},
-				onAutoCommitResult,
-			);
+			const agentInstructionResults = await core.updateAgentInstructions(agentInstructions, config.autoCommit);
 			mcpResults.agentFiles = formatAgentInstructionResults(agentInstructionResults);
 		} catch (error) {
 			const message = error instanceof Error ? error.message : String(error);

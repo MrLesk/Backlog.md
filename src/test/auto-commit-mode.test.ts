@@ -4,9 +4,12 @@ import { join } from "node:path";
 import { $ } from "bun";
 import { addAgentInstructions } from "../agent-instructions.ts";
 import { Core } from "../core/backlog.ts";
+import { initializeProject } from "../core/init.ts";
+import type { GitCommitResult } from "../git/operations.ts";
 import { McpServer } from "../mcp/server.ts";
 import { MilestoneHandlers } from "../mcp/tools/milestones/handlers.ts";
 import { registerTaskTools } from "../mcp/tools/tasks/index.ts";
+import { BacklogServer } from "../server/index.ts";
 import { createUniqueTestDir, initializeTestProject, safeCleanup } from "./test-utils.ts";
 
 const CLI_PATH = join(process.cwd(), "src", "cli.ts");
@@ -204,6 +207,52 @@ describe("autoCommitMode", () => {
 		}
 	}, 20_000);
 
+	test("Core agent-instruction writes feed the CLI/TUI result sink", async () => {
+		const config = await core.filesystem.loadConfig();
+		if (!config) throw new Error("Missing test config");
+		await core.filesystem.saveConfig({ ...config, autoCommit: true, autoCommitMode: "amend-own" });
+		await $`git add backlog/config.yml && git commit -m "Enable agent feedback"`.cwd(testDir).quiet();
+		const results: GitCommitResult[] = [];
+		let callbackCount = 0;
+		const invocationCore = new Core(testDir, {
+			autoCommit: { results, onResult: () => callbackCount++ },
+		});
+
+		await invocationCore.updateAgentInstructions(["AGENTS.md"]);
+		expect(invocationCore.consumeAutoCommitNotices()).toEqual([]);
+		await Bun.write(join(testDir, "CLAUDE.md"), "Existing instructions\n");
+		await invocationCore.updateAgentInstructions(["CLAUDE.md"]);
+
+		expect(invocationCore.consumeAutoCommitNotices()).toEqual([
+			expect.stringMatching(/^Amended Backlog commit [0-9a-f]{12} as [0-9a-f]{12}\.$/),
+		]);
+		expect(callbackCount).toBe(2);
+		expect(results).toEqual([]);
+	}, 20_000);
+
+	test("CLI-shaped re-initialization records agent-instruction replacement feedback", async () => {
+		const config = await core.filesystem.loadConfig();
+		if (!config) throw new Error("Missing test config");
+		const configured = { ...config, autoCommit: true, autoCommitMode: "amend-own" as const };
+		await core.filesystem.saveConfig(configured);
+		await $`git add backlog/config.yml && git commit -m "Enable re-init feedback"`.cwd(testDir).quiet();
+		await core.createTaskFromInput({ title: "Owned before re-init" });
+		const results: GitCommitResult[] = [];
+		const invocationCore = new Core(testDir, { autoCommit: { results } });
+
+		await initializeProject(invocationCore, {
+			projectName: configured.projectName,
+			integrationMode: "cli",
+			agentInstructions: ["AGENTS.md"],
+			existingConfig: configured,
+		});
+
+		expect(invocationCore.consumeAutoCommitNotices()).toEqual([
+			expect.stringMatching(/^Amended Backlog commit [0-9a-f]{12} as [0-9a-f]{12}\.$/),
+		]);
+		expect(results).toEqual([]);
+	}, 20_000);
+
 	test("MCP mutation output reports an owned replacement", async () => {
 		const config = await core.filesystem.loadConfig();
 		if (!config) throw new Error("Missing test config");
@@ -261,6 +310,49 @@ describe("autoCommitMode", () => {
 		expect(await commitCount(testDir)).toBe(beforeForced + 1);
 	});
 
+	test("browser milestone creation shares new, amend-own, force-new, and disabled behavior", async () => {
+		const setConfig = async (autoCommit: boolean, autoCommitMode: "new" | "amend-own", message: string) => {
+			const config = await core.filesystem.loadConfig();
+			if (!config) throw new Error("Missing test config");
+			await core.filesystem.saveConfig({ ...config, autoCommit, autoCommitMode });
+			await $`git add backlog/config.yml && git commit -m ${message}`.cwd(testDir).quiet();
+		};
+		const createThroughServer = async (title: string, autoCommit?: { forceNew: boolean }) => {
+			const server = new BacklogServer(testDir, { autoCommit });
+			try {
+				await server.start(0, false);
+				const response = await fetch(`http://localhost:${server.getPort()}/api/milestones`, {
+					method: "POST",
+					headers: { "Content-Type": "application/json" },
+					body: JSON.stringify({ title }),
+				});
+				expect(response.status).toBe(201);
+				return response.headers.get("X-Backlog-Auto-Commit");
+			} finally {
+				await server.stop();
+			}
+		};
+
+		await setConfig(true, "new", "Enable new milestone commits");
+		const beforeNew = await commitCount(testDir);
+		expect(await createThroughServer("New mode milestone")).toBeNull();
+		expect(await commitCount(testDir)).toBe(beforeNew + 1);
+
+		await setConfig(true, "amend-own", "Enable owned milestone commits");
+		await createThroughServer("Owned milestone start");
+		const afterOwnedStart = await commitCount(testDir);
+		expect(await createThroughServer("Owned milestone replacement")).toMatch(/^Amended Backlog commit /);
+		expect(await commitCount(testDir)).toBe(afterOwnedStart);
+
+		expect(await createThroughServer("Forced milestone boundary", { forceNew: true })).toBeNull();
+		expect(await commitCount(testDir)).toBe(afterOwnedStart + 1);
+
+		await setConfig(false, "amend-own", "Disable milestone commits");
+		const beforeDisabled = await commitCount(testDir);
+		expect(await createThroughServer("Disabled milestone commit")).toBeNull();
+		expect(await commitCount(testDir)).toBe(beforeDisabled);
+	}, 30_000);
+
 	test("autoCommit false remains the gate for every mutation type in amend-own mode", async () => {
 		const config = await core.filesystem.loadConfig();
 		if (!config) throw new Error("Missing test config");
@@ -286,6 +378,85 @@ describe("autoCommitMode", () => {
 
 		expect(await commitCount(testDir)).toBe(baseline);
 	});
+
+	test("a mutation keeps its pre-write automatic-commit plan when config changes during the write", async () => {
+		const config = await core.filesystem.loadConfig();
+		if (!config) throw new Error("Missing test config");
+		await core.filesystem.saveConfig({ ...config, autoCommit: true, autoCommitMode: "amend-own" });
+		await $`git add backlog/config.yml && git commit -m "Enable immutable plan test"`.cwd(testDir).quiet();
+		const { task } = await core.createTaskFromInput({ title: "Owned plan" });
+		const beforeUpdate = await commitCount(testDir);
+		const saveTask = core.filesystem.saveTask.bind(core.filesystem);
+		core.filesystem.saveTask = async (nextTask) => {
+			const filePath = await saveTask(nextTask);
+			const current = await core.filesystem.loadConfig();
+			if (!current) throw new Error("Missing config during test write");
+			await core.filesystem.saveConfig({ ...current, autoCommitMode: "new" });
+			return filePath;
+		};
+
+		await core.updateTaskFromInput(task.id, { title: "Owned plan updated" });
+
+		expect(await commitCount(testDir)).toBe(beforeUpdate);
+		expect(await $`git show -s --format=%B HEAD`.cwd(testDir).text()).toContain('"verb":"Update"');
+	}, 20_000);
+
+	test("invalid auto-commit mode is rejected before entity or lifecycle writes", async () => {
+		const { task } = await core.createTaskFromInput({ title: "Original task" }, false);
+		const { task: draft } = await core.createTaskFromInput({ title: "Original draft", status: "Draft" }, false);
+		const document = {
+			id: "doc-atomic",
+			title: "Original document",
+			type: "other" as const,
+			createdDate: "2026-07-29",
+			rawContent: "Original document",
+		};
+		await core.createDocument(document, false);
+		const decision = {
+			id: "decision-atomic",
+			title: "Original decision",
+			date: "2026-07-29",
+			status: "proposed" as const,
+			context: "Original",
+			decision: "Original",
+			consequences: "Original",
+			rawContent: "",
+		};
+		await core.createDecision(decision, false);
+		const milestone = await core.createMilestone("Original milestone", undefined, false);
+		await core.updateAgentInstructions(["AGENTS.md"], false);
+		await $`git add . && git commit -m "Create invalid-mode fixtures"`.cwd(testDir).quiet();
+		const configText = await Bun.file(join(testDir, "backlog", "config.yml")).text();
+		const invalidConfig = /auto_commit_mode: .*/.test(configText)
+			? configText.replace(/auto_commit_mode: .*/, "auto_commit_mode: unsafe")
+			: `${configText.trimEnd()}\nauto_commit_mode: unsafe\n`;
+		await Bun.write(join(testDir, "backlog", "config.yml"), invalidConfig);
+		await $`git add backlog/config.yml && git commit -m "Install invalid mode"`.cwd(testDir).quiet();
+		core = new Core(testDir);
+
+		const expectAtomicRejection = async (action: () => Promise<unknown>) => {
+			await expect(action()).rejects.toThrow("auto_commit_mode must be new or amend-own");
+			expect(await $`git status --short`.cwd(testDir).text()).toBe("");
+		};
+		await expectAtomicRejection(() => core.updateTaskFromInput(task.id, { title: "Changed task" }));
+		await expectAtomicRejection(() => core.editTaskOrDraft(draft.id, { status: "To Do", title: "Promoted draft" }));
+		await expectAtomicRejection(() => core.createDocument({ ...document, title: "Changed document" }));
+		await expectAtomicRejection(() => core.createDecision({ ...decision, title: "Changed decision" }));
+		await expectAtomicRejection(() =>
+			new MilestoneHandlers(core).renameMilestone({ from: milestone.id, to: "Changed milestone" }),
+		);
+		await expectAtomicRejection(() => core.updateAgentInstructions(["AGENTS.md"]));
+
+		await Bun.write(join(testDir, "backlog", "config.yml"), configText);
+		core = new Core(testDir);
+		expect((await core.filesystem.loadTask(task.id))?.title).toBe("Original task");
+		expect((await core.filesystem.loadDraft(draft.id))?.title).toBe("Original draft");
+		expect((await core.filesystem.loadDocument(document.id))?.title).toBe("Original document");
+		expect((await core.filesystem.loadDecision(decision.id))?.title).toBe("Original decision");
+		expect((await core.filesystem.loadMilestone(milestone.id))?.title).toBe("Original milestone");
+		await Bun.write(join(testDir, "backlog", "config.yml"), invalidConfig);
+		expect(await $`git status --short`.cwd(testDir).text()).toBe("");
+	}, 20_000);
 
 	test("every automatic-commit CLI command advertises --no-amend", async () => {
 		const commandPaths = [

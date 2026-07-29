@@ -5,7 +5,7 @@ status: In Progress
 assignee:
   - '@andreas'
 created_date: '2026-07-28 14:46'
-updated_date: '2026-07-29 11:58'
+updated_date: '2026-07-29 12:51'
 labels:
   - git
 dependencies: []
@@ -28,7 +28,7 @@ This is a correctness fix that stands on its own under the current default autom
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 Every production automatic-commit path commits only the files selected for that operation, covering tasks, drafts, bulk updates and reorders, lifecycle moves, milestones, documents, decisions, and agent-instruction updates.
+- [x] #1 Every production automatic-commit path commits only the files selected for that operation, covering tasks, drafts, bulk updates and reorders, lifecycle moves, milestones, documents, decisions, and agent-instruction updates.
 - [x] #2 Pre-existing unrelated staged and unstaged paths, and unrelated paths staged by pre-commit or commit-message hooks through the isolated commit index, remain outside the commit and retain their prior real-index and worktree state; mutations made by post-commit hooks against the real index and worktree persist according to normal Git semantics.
 - [x] #3 Operations that move files, such as archive and milestone rename, commit the complete set of source and target paths the operation touched, with no stray additions.
 - [x] #4 Existing selected-path robustness is preserved: temporary-index isolation, owned-index reconciliation, retries, current-configuration signing and signing failures, legacy and modern hook runners, and atomic expected-old-SHA branch updates.
@@ -41,9 +41,9 @@ This is a correctness fix that stands on its own under the current default autom
 
 ## Definition of Done
 <!-- DOD:BEGIN -->
-- [ ] #1 bunx tsc --noEmit passes when TypeScript touched
-- [ ] #2 bun run check . passes when formatting/linting touched
-- [ ] #3 bun test (or scoped test) passes
+- [x] #1 bunx tsc --noEmit passes when TypeScript touched
+- [x] #2 bun run check . passes when formatting/linting touched
+- [x] #3 bun test (or scoped test) passes
 <!-- DOD:END -->
 
 ## Implementation Plan
@@ -72,6 +72,8 @@ Verification: 217 tests passed across auto-commit, core, CLI lifecycle, TUI sele
 Holistic correction: consolidated Core promotion/demotion onto FileSystem result-returning mutations, retained selected source/target paths, and preserved AmbiguousTaskIdError. Verification: 123 focused tests and the full 1,820-test gate passed.
 
 Holistic pass 2 corrections: draft writes now return previous and replacement paths for exact-path commits in both modes; canonical lifecycle helpers reserve null for missing sources and propagate validation/write errors. Regressions cover renamed draft trees/status and invalid promotion/demotion priority diagnostics. Verification: 144 focused tests passed, then TypeScript, full Biome, and the full suite passed with 1,835 tests and 4 skips.
+
+Pass 3 correction routes browser milestone creation through Core.createMilestone and the selected-path commit pipeline. Integration coverage verifies new, amend-own replacement, forced-new, and disabled behavior. Final focused gate: 171 tests/729 assertions; integrated gate: TypeScript and 348-file Biome clean, 1,841 passed/4 skipped across 205 files.
 <!-- SECTION:NOTES:END -->
 
 ## Comments

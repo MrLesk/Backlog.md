@@ -338,6 +338,10 @@ export class MilestoneHandlers {
 	}
 
 	async addMilestone(args: MilestoneAddArgs): Promise<CallToolResult> {
+		return await this.core.withAutoCommitPlan(undefined, () => this.addMilestoneWithPlan(args));
+	}
+
+	private async addMilestoneWithPlan(args: MilestoneAddArgs): Promise<CallToolResult> {
 		const name = normalizeMilestoneName(args.name);
 		if (!name) {
 			throw new BacklogToolError("Milestone name cannot be empty.", "VALIDATION_ERROR");
@@ -357,12 +361,7 @@ export class MilestoneHandlers {
 			);
 		}
 
-		// Create milestone file
-		const milestone = await this.core.filesystem.createMilestone(name, args.description);
-		const milestonePath = await this.core.filesystem.getMilestoneFilePath(milestone.id);
-		await this.commitMilestoneMutation(`backlog: Add milestone ${milestone.id}`, "Add", milestone.id, {
-			taskFilePaths: milestonePath ? [milestonePath] : [],
-		});
+		const milestone = await this.core.createMilestone(name, args.description);
 
 		return {
 			content: [
@@ -375,6 +374,10 @@ export class MilestoneHandlers {
 	}
 
 	async renameMilestone(args: MilestoneRenameArgs): Promise<CallToolResult> {
+		return await this.core.withAutoCommitPlan(undefined, () => this.renameMilestoneWithPlan(args));
+	}
+
+	private async renameMilestoneWithPlan(args: MilestoneRenameArgs): Promise<CallToolResult> {
 		const fromName = normalizeMilestoneName(args.from);
 		const toName = normalizeMilestoneName(args.to);
 		if (!fromName || !toName) {
@@ -514,6 +517,10 @@ export class MilestoneHandlers {
 	}
 
 	async removeMilestone(args: MilestoneRemoveArgs): Promise<CallToolResult> {
+		return await this.core.withAutoCommitPlan(undefined, () => this.removeMilestoneWithPlan(args));
+	}
+
+	private async removeMilestoneWithPlan(args: MilestoneRemoveArgs): Promise<CallToolResult> {
 		const name = normalizeMilestoneName(args.name);
 		if (!name) {
 			throw new BacklogToolError("Milestone name cannot be empty.", "VALIDATION_ERROR");
@@ -652,6 +659,10 @@ export class MilestoneHandlers {
 	}
 
 	async archiveMilestone(args: MilestoneArchiveArgs): Promise<CallToolResult> {
+		return await this.core.withAutoCommitPlan(undefined, () => this.archiveMilestoneWithPlan(args));
+	}
+
+	private async archiveMilestoneWithPlan(args: MilestoneArchiveArgs): Promise<CallToolResult> {
 		const name = normalizeMilestoneName(args.name);
 		if (!name) {
 			throw new BacklogToolError("Milestone name cannot be empty.", "VALIDATION_ERROR");

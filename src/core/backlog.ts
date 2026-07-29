@@ -1,6 +1,11 @@
 import { AsyncLocalStorage } from "node:async_hooks";
 import { rename as moveFile, readFile, stat, unlink, writeFile } from "node:fs/promises";
 import { basename, isAbsolute, join, relative } from "node:path";
+import {
+	type AgentInstructionFile,
+	type AgentInstructionWriteResult,
+	addAgentInstructions as writeAgentInstructions,
+} from "../agent-instructions.ts";
 import { DEFAULT_DIRECTORIES, DEFAULT_STATUSES, FALLBACK_STATUS } from "../constants/index.ts";
 import { FileSystem } from "../file-system/operations.ts";
 import { type AutomaticCommitOperation, createAutomaticCommitOperation } from "../git/automatic-commit-message.ts";
@@ -105,6 +110,11 @@ import {
 	loadRemoteTasks,
 	resolveTaskConflict,
 } from "./task-loader.ts";
+
+interface ResolvedAutoCommitPlan {
+	enabled: boolean;
+	intent: GitAutomaticCommitIntent;
+}
 
 interface BlessedScreen {
 	program: {
@@ -283,6 +293,7 @@ export class Core {
 	private readonly defaultAutoCommitInput: AutoCommitInput;
 	private readonly automaticCommitResults: GitCommitResult[];
 	private readonly automaticCommitContext = new AsyncLocalStorage<AutoCommitOptions>();
+	private readonly resolvedAutoCommitContext = new AsyncLocalStorage<ResolvedAutoCommitPlan>();
 	private activeBranchTaskEntries: BranchTaskStateEntry[] = [];
 	private activeBranchFingerprint: string | null = null;
 	private activeBranchFingerprintPromise: Promise<string> | null = null;
@@ -904,9 +915,13 @@ export class Core {
 		return { value, notices: formatAutoCommitNotices(context) };
 	}
 
-	private async resolveAutoCommit(
-		input?: AutoCommitInput,
-	): Promise<{ enabled: boolean; intent: GitAutomaticCommitIntent }> {
+	private async resolveAutoCommit(input?: AutoCommitInput): Promise<ResolvedAutoCommitPlan> {
+		const resolved = this.resolvedAutoCommitContext.getStore();
+		if (resolved) {
+			const enabled =
+				typeof input === "boolean" ? input : input?.enabled === undefined ? resolved.enabled : input.enabled;
+			return { ...resolved, enabled };
+		}
 		const config = await this.fs.loadConfig();
 		this.git.setConfig(config);
 		if (config?.filesystemOnly) return { enabled: false, intent: "new" };
@@ -915,6 +930,12 @@ export class Core {
 		const intent: GitAutomaticCommitIntent =
 			(config?.autoCommitMode ?? "new") === "new" ? "new" : controls.forceNew ? "start-owned" : "amend-own";
 		return { enabled, intent };
+	}
+
+	async withAutoCommitPlan<T>(input: AutoCommitInput | undefined, action: () => Promise<T>): Promise<T> {
+		if (this.resolvedAutoCommitContext.getStore()) return await action();
+		const plan = await this.resolveAutoCommit(input);
+		return await this.resolvedAutoCommitContext.run(plan, action);
 	}
 
 	async shouldAutoCommit(input?: AutoCommitInput): Promise<boolean> {
@@ -958,6 +979,52 @@ export class Core {
 		if (await this.shouldAutoCommit(input)) {
 			await this.commitOperationFiles(operation, filePaths, input);
 		}
+	}
+
+	async updateAgentInstructions(
+		files: AgentInstructionFile[],
+		input?: AutoCommitInput,
+	): Promise<AgentInstructionWriteResult[]> {
+		return await this.withAutoCommitPlan(input, () => this.updateAgentInstructionsWithPlan(files, input));
+	}
+
+	private async updateAgentInstructionsWithPlan(
+		files: AgentInstructionFile[],
+		input?: AutoCommitInput,
+	): Promise<AgentInstructionWriteResult[]> {
+		const plan = await this.resolveAutoCommit(input);
+		return await writeAgentInstructions(
+			this.fs.rootDir,
+			this.git,
+			files,
+			plan.enabled,
+			{ automaticCommitIntent: plan.intent },
+			(result) => this.recordAutoCommitResult(input, result),
+		);
+	}
+
+	async createMilestone(title: string, description?: string, input?: AutoCommitInput): Promise<Milestone> {
+		return await this.withAutoCommitPlan(input, () => this.createMilestoneWithPlan(title, description, input));
+	}
+
+	private async createMilestoneWithPlan(
+		title: string,
+		description?: string,
+		input?: AutoCommitInput,
+	): Promise<Milestone> {
+		const plan = await this.resolveAutoCommit(input);
+		const milestone = await this.fs.createMilestone(title, description);
+		if (plan.enabled) {
+			const milestonePath = await this.fs.getMilestoneFilePath(milestone.id);
+			if (milestonePath) {
+				await this.commitOperationFiles(
+					createAutomaticCommitOperation(`backlog: Add milestone ${milestone.id}`, "Add", "milestone", [milestone.id]),
+					[milestonePath],
+					input,
+				);
+			}
+		}
+		return milestone;
 	}
 
 	// Config migration
@@ -1464,6 +1531,13 @@ export class Core {
 		input: TaskCreateInput,
 		autoCommit?: AutoCommitInput,
 	): Promise<{ task: Task; filePath?: string }> {
+		return await this.withAutoCommitPlan(autoCommit, () => this.createTaskFromInputWithPlan(input, autoCommit));
+	}
+
+	private async createTaskFromInputWithPlan(
+		input: TaskCreateInput,
+		autoCommit?: AutoCommitInput,
+	): Promise<{ task: Task; filePath?: string }> {
 		if (!input.title || input.title.trim().length === 0) {
 			throw new Error("Title is required to create a task.");
 		}
@@ -1631,6 +1705,10 @@ export class Core {
 	}
 
 	async createTask(task: Task, autoCommit?: AutoCommitInput): Promise<string> {
+		return await this.withAutoCommitPlan(autoCommit, () => this.createTaskWithPlan(task, autoCommit));
+	}
+
+	private async createTaskWithPlan(task: Task, autoCommit?: AutoCommitInput): Promise<string> {
 		if (!task.status) {
 			const config = await this.fs.loadConfig();
 			task.status = config?.defaultStatus || FALLBACK_STATUS;
@@ -1644,6 +1722,10 @@ export class Core {
 	}
 
 	async updateTask(task: Task, autoCommit?: AutoCommitInput): Promise<void> {
+		await this.withAutoCommitPlan(autoCommit, () => this.updateTaskWithPlan(task, autoCommit));
+	}
+
+	private async updateTaskWithPlan(task: Task, autoCommit?: AutoCommitInput): Promise<void> {
 		normalizeAssignee(task);
 
 		// Load original task to detect status changes for callbacks
@@ -2260,6 +2342,14 @@ export class Core {
 	}
 
 	async updateTaskFromInput(taskId: string, input: TaskUpdateInput, autoCommit?: AutoCommitInput): Promise<Task> {
+		return await this.withAutoCommitPlan(autoCommit, () => this.updateTaskFromInputWithPlan(taskId, input, autoCommit));
+	}
+
+	private async updateTaskFromInputWithPlan(
+		taskId: string,
+		input: TaskUpdateInput,
+		autoCommit?: AutoCommitInput,
+	): Promise<Task> {
 		const task = await this.fs.loadTask(taskId);
 		if (!task) {
 			throw new Error(`Task not found: ${taskId}`);
@@ -2284,6 +2374,10 @@ export class Core {
 	}
 
 	async updateDraft(task: Task, autoCommit?: AutoCommitInput): Promise<void> {
+		await this.withAutoCommitPlan(autoCommit, () => this.updateDraftWithPlan(task, autoCommit));
+	}
+
+	private async updateDraftWithPlan(task: Task, autoCommit?: AutoCommitInput): Promise<void> {
 		// Drafts always keep status Draft
 		task.status = "Draft";
 		normalizeAssignee(task);
@@ -2324,6 +2418,14 @@ export class Core {
 	}
 
 	async editTaskOrDraft(taskId: string, input: TaskUpdateInput, autoCommit?: AutoCommitInput): Promise<Task> {
+		return await this.withAutoCommitPlan(autoCommit, () => this.editTaskOrDraftWithPlan(taskId, input, autoCommit));
+	}
+
+	private async editTaskOrDraftWithPlan(
+		taskId: string,
+		input: TaskUpdateInput,
+		autoCommit?: AutoCommitInput,
+	): Promise<Task> {
 		const draft = await this.fs.loadDraft(taskId);
 		if (draft) {
 			const requestedStatus = input.status?.trim();
@@ -2474,6 +2576,14 @@ export class Core {
 	}
 
 	async updateTasksBulk(tasks: Task[], commitMessage?: string, autoCommit?: AutoCommitInput): Promise<void> {
+		await this.withAutoCommitPlan(autoCommit, () => this.updateTasksBulkWithPlan(tasks, commitMessage, autoCommit));
+	}
+
+	private async updateTasksBulkWithPlan(
+		tasks: Task[],
+		commitMessage?: string,
+		autoCommit?: AutoCommitInput,
+	): Promise<void> {
 		const updatedPaths: string[] = [];
 		// Update all tasks without committing individually
 		for (const task of tasks) {
@@ -2622,6 +2732,10 @@ export class Core {
 	}
 
 	async archiveTask(taskId: string, autoCommit?: AutoCommitInput): Promise<boolean> {
+		return await this.withAutoCommitPlan(autoCommit, () => this.archiveTaskWithPlan(taskId, autoCommit));
+	}
+
+	private async archiveTaskWithPlan(taskId: string, autoCommit?: AutoCommitInput): Promise<boolean> {
 		const taskToArchive = await this.fs.loadTask(taskId);
 		if (!taskToArchive) {
 			return false;
@@ -2666,6 +2780,13 @@ export class Core {
 	}
 
 	async archiveMilestone(
+		identifier: string,
+		autoCommit?: AutoCommitInput,
+	): Promise<{ success: boolean; sourcePath?: string; targetPath?: string; milestone?: Milestone }> {
+		return await this.withAutoCommitPlan(autoCommit, () => this.archiveMilestoneWithPlan(identifier, autoCommit));
+	}
+
+	private async archiveMilestoneWithPlan(
 		identifier: string,
 		autoCommit?: AutoCommitInput,
 	): Promise<{ success: boolean; sourcePath?: string; targetPath?: string; milestone?: Milestone }> {
@@ -2717,6 +2838,20 @@ export class Core {
 		milestone?: Milestone;
 		previousTitle?: string;
 	}> {
+		return await this.withAutoCommitPlan(autoCommit, () => this.renameMilestoneWithPlan(identifier, title, autoCommit));
+	}
+
+	private async renameMilestoneWithPlan(
+		identifier: string,
+		title: string,
+		autoCommit?: AutoCommitInput,
+	): Promise<{
+		success: boolean;
+		sourcePath?: string;
+		targetPath?: string;
+		milestone?: Milestone;
+		previousTitle?: string;
+	}> {
 		const result = await this.fs.renameMilestone(identifier, title);
 		if (!result.success) {
 			return result;
@@ -2754,6 +2889,10 @@ export class Core {
 	}
 
 	async completeTask(taskId: string, autoCommit?: AutoCommitInput): Promise<boolean> {
+		return await this.withAutoCommitPlan(autoCommit, () => this.completeTaskWithPlan(taskId, autoCommit));
+	}
+
+	private async completeTaskWithPlan(taskId: string, autoCommit?: AutoCommitInput): Promise<boolean> {
 		const task = await this.fs.loadTask(taskId);
 		if (!task) return false;
 		// Get paths before moving the file
@@ -2802,6 +2941,10 @@ export class Core {
 	}
 
 	async archiveDraft(draftId: string, autoCommit?: AutoCommitInput): Promise<boolean> {
+		return await this.withAutoCommitPlan(autoCommit, () => this.archiveDraftWithPlan(draftId, autoCommit));
+	}
+
+	private async archiveDraftWithPlan(draftId: string, autoCommit?: AutoCommitInput): Promise<boolean> {
 		const draft = await this.fs.loadDraft(draftId);
 		const sourcePath = draft?.filePath;
 		const targetPath = sourcePath
@@ -2824,6 +2967,10 @@ export class Core {
 	}
 
 	async promoteDraft(draftId: string, autoCommit?: AutoCommitInput): Promise<boolean> {
+		return await this.withAutoCommitPlan(autoCommit, () => this.promoteDraftWithPlan(draftId, autoCommit));
+	}
+
+	private async promoteDraftWithPlan(draftId: string, autoCommit?: AutoCommitInput): Promise<boolean> {
 		const moved = await this.fs.promoteDraftWithResult(draftId, {
 			generateId: async (draft) => this.generateNextId(EntityType.Task, draft.parentTaskId),
 		});
@@ -2847,6 +2994,10 @@ export class Core {
 	}
 
 	async demoteTask(taskId: string, autoCommit?: AutoCommitInput): Promise<boolean> {
+		return await this.withAutoCommitPlan(autoCommit, () => this.demoteTaskWithPlan(taskId, autoCommit));
+	}
+
+	private async demoteTaskWithPlan(taskId: string, autoCommit?: AutoCommitInput): Promise<boolean> {
 		const moved = await this.fs.demoteTaskWithResult(taskId, {
 			generateId: async () => this.generateNextId(EntityType.Draft),
 			buildTarget: async (task, newDraftId) => ({
@@ -2990,6 +3141,10 @@ export class Core {
 	}
 
 	async createDecision(decision: Decision, autoCommit?: AutoCommitInput): Promise<void> {
+		await this.withAutoCommitPlan(autoCommit, () => this.createDecisionWithPlan(decision, autoCommit));
+	}
+
+	private async createDecisionWithPlan(decision: Decision, autoCommit?: AutoCommitInput): Promise<void> {
 		const action = (await this.fs.loadDecision(decision.id)) ? "Update" : "Add";
 		const touchedPaths = await this.fs.saveDecision(decision);
 
@@ -3053,6 +3208,10 @@ export class Core {
 	}
 
 	async createDocument(doc: Document, autoCommit?: AutoCommitInput, subPath = ""): Promise<void> {
+		await this.withAutoCommitPlan(autoCommit, () => this.createDocumentWithPlan(doc, autoCommit, subPath));
+	}
+
+	private async createDocumentWithPlan(doc: Document, autoCommit?: AutoCommitInput, subPath = ""): Promise<void> {
 		const previousPaths = (await this.fs.listDocuments()).flatMap((existing) =>
 			documentIdsEqual(existing.id, doc.id) && existing.path
 				? [join(this.fs.docsDir, ...normalizeDocumentRelativePath(existing.path).split("/"))]

@@ -353,17 +353,10 @@ export class ApiClient {
 	}
 
 	async updateConfig(config: BacklogConfig): Promise<BacklogConfig> {
-		const response = await fetch(`${API_BASE}/config`, {
+		return this.fetchJson<BacklogConfig>(`${API_BASE}/config`, {
 			method: "PUT",
-			headers: {
-				"Content-Type": "application/json",
-			},
 			body: JSON.stringify(config),
 		});
-		if (!response.ok) {
-			throw new Error("Failed to update config");
-		}
-		return response.json();
 	}
 
 	async fetchDocs(): Promise<Document[]> {
@@ -399,31 +392,17 @@ export class ApiClient {
 			payload.path = path;
 		}
 
-		const response = await fetch(`${API_BASE}/docs/${encodeURIComponent(filename)}`, {
+		return this.fetchJson<Document>(`${API_BASE}/docs/${encodeURIComponent(filename)}`, {
 			method: "PUT",
-			headers: {
-				"Content-Type": "application/json",
-			},
 			body: JSON.stringify(payload),
 		});
-		if (!response.ok) {
-			throw new Error("Failed to update document");
-		}
-		return response.json();
 	}
 
 	async createDoc(filename: string, content: string, path?: string): Promise<Document & { success?: boolean }> {
-		const response = await fetch(`${API_BASE}/docs`, {
+		return this.fetchJson<Document & { success?: boolean }>(`${API_BASE}/docs`, {
 			method: "POST",
-			headers: {
-				"Content-Type": "application/json",
-			},
 			body: JSON.stringify({ filename, content, path }),
 		});
-		if (!response.ok) {
-			throw new Error("Failed to create document");
-		}
-		return response.json();
 	}
 
 	async fetchDecisions(): Promise<Decision[]> {
@@ -451,30 +430,18 @@ export class ApiClient {
 	}
 
 	async updateDecision(id: string, content: string): Promise<void> {
-		const response = await fetch(`${API_BASE}/decisions/${encodeURIComponent(id)}`, {
+		await this.fetchWithRetry(`${API_BASE}/decisions/${encodeURIComponent(id)}`, {
 			method: "PUT",
-			headers: {
-				"Content-Type": "text/plain",
-			},
+			headers: { "Content-Type": "text/plain" },
 			body: content,
 		});
-		if (!response.ok) {
-			throw new Error("Failed to update decision");
-		}
 	}
 
 	async createDecision(title: string): Promise<Decision> {
-		const response = await fetch(`${API_BASE}/decisions`, {
+		return this.fetchJson<Decision>(`${API_BASE}/decisions`, {
 			method: "POST",
-			headers: {
-				"Content-Type": "application/json",
-			},
 			body: JSON.stringify({ title }),
 		});
-		if (!response.ok) {
-			throw new Error("Failed to create decision");
-		}
-		return response.json();
 	}
 
 	async fetchMilestones(): Promise<Milestone[]> {
@@ -502,65 +469,40 @@ export class ApiClient {
 	}
 
 	async createMilestone(title: string, description?: string): Promise<Milestone> {
-		const response = await fetch(`${API_BASE}/milestones`, {
+		return this.fetchJson<Milestone>(`${API_BASE}/milestones`, {
 			method: "POST",
-			headers: {
-				"Content-Type": "application/json",
-			},
 			body: JSON.stringify({ title, description }),
 		});
-		if (!response.ok) {
-			const data = await response.json().catch(() => ({}));
-			throw new Error(data.error || "Failed to create milestone");
-		}
-		return response.json();
 	}
 
 	async updateMilestone(
 		id: string,
 		title: string,
 	): Promise<{ success: boolean; milestone?: Milestone | null; message?: string }> {
-		const response = await fetch(`${API_BASE}/milestones/${encodeURIComponent(id)}`, {
-			method: "PUT",
-			headers: {
-				"Content-Type": "application/json",
+		return this.fetchJson<{ success: boolean; milestone?: Milestone | null; message?: string }>(
+			`${API_BASE}/milestones/${encodeURIComponent(id)}`,
+			{
+				method: "PUT",
+				body: JSON.stringify({ title }),
 			},
-			body: JSON.stringify({ title }),
-		});
-		if (!response.ok) {
-			const data = await response.json().catch(() => ({}));
-			throw new Error(data.error || "Failed to update milestone");
-		}
-		return response.json();
+		);
 	}
 
 	async removeMilestone(
 		id: string,
 		options: { taskHandling?: "clear" | "keep" | "reassign"; reassignTo?: string } = {},
 	): Promise<{ success: boolean; message?: string }> {
-		const response = await fetch(`${API_BASE}/milestones/${encodeURIComponent(id)}`, {
+		return this.fetchJson<{ success: boolean; message?: string }>(`${API_BASE}/milestones/${encodeURIComponent(id)}`, {
 			method: "DELETE",
-			headers: {
-				"Content-Type": "application/json",
-			},
 			body: JSON.stringify(options),
 		});
-		if (!response.ok) {
-			const data = await response.json().catch(() => ({}));
-			throw new Error(data.error || "Failed to remove milestone");
-		}
-		return response.json();
 	}
 
 	async archiveMilestone(id: string): Promise<{ success: boolean; milestone?: Milestone | null }> {
-		const response = await fetch(`${API_BASE}/milestones/${encodeURIComponent(id)}/archive`, {
-			method: "POST",
-		});
-		if (!response.ok) {
-			const data = await response.json().catch(() => ({}));
-			throw new Error(data.error || "Failed to archive milestone");
-		}
-		return response.json();
+		return this.fetchJson<{ success: boolean; milestone?: Milestone | null }>(
+			`${API_BASE}/milestones/${encodeURIComponent(id)}/archive`,
+			{ method: "POST" },
+		);
 	}
 
 	async fetchStatistics(): Promise<

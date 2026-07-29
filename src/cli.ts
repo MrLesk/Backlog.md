@@ -30,7 +30,6 @@ import { printJson, searchJson, taskListJson, taskViewJson } from "./formatters/
 import { formatTaskPlainText } from "./formatters/task-plain-text.ts";
 import {
 	type AgentInstructionFile,
-	addAgentInstructions,
 	Core,
 	type EnsureMcpGuidelinesResult,
 	ensureMcpGuidelines,
@@ -1383,8 +1382,6 @@ addHelpSchema(program.command("init [projectName]"), {
 					},
 					existingConfig,
 					filesystemOnly,
-					forceNewAutoCommit: cliAutoCommit.forceNew,
-					onAutoCommitResult: cliAutoCommit.onResult,
 				});
 
 				const config = initResult.config;
@@ -4266,17 +4263,7 @@ agentsCmd
 				// Get autoCommit setting from config
 				const config = await core.filesystem.loadConfig();
 				const shouldAutoCommit = config?.autoCommit ?? false;
-				await addAgentInstructions(
-					cwd,
-					core.gitOps,
-					files,
-					shouldAutoCommit,
-					{
-						automaticCommitIntent:
-							config?.autoCommitMode !== "amend-own" ? "new" : cliAutoCommit.forceNew ? "start-owned" : "amend-own",
-					},
-					cliAutoCommit.onResult,
-				);
+				await core.updateAgentInstructions(files, shouldAutoCommit);
 				console.log(`Updated ${files.length} agent instruction file(s): ${files.join(", ")}`);
 			} else {
 				console.log("No files selected for update.");

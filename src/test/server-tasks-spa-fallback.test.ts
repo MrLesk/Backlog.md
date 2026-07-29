@@ -16,6 +16,8 @@ let server: BacklogServer | null = null;
 let serverPort = 0;
 let auxiliaryWorktreeDir: string | null = null;
 
+const GIT_MUTATION_TIMEOUT_MS = 10_000;
+
 const routedTask: Task = {
 	id: "BACK-001.02",
 	title: "Fix labels and docs",
@@ -568,19 +570,27 @@ describe("BacklogServer task SPA fallback", () => {
 		await $`git add backlog && git commit -m "Initialize browser feedback test"`.cwd(TEST_DIR).quiet();
 		await startServer();
 
-		const first = await request("/api/tasks", {
-			method: "POST",
-			headers: { "Content-Type": "application/json" },
-			body: JSON.stringify({ title: "First browser mutation" }),
-		});
+		const first = await request(
+			"/api/tasks",
+			{
+				method: "POST",
+				headers: { "Content-Type": "application/json" },
+				body: JSON.stringify({ title: "First browser mutation" }),
+			},
+			GIT_MUTATION_TIMEOUT_MS,
+		);
 		expect(first.status).toBe(201);
 		expect(first.headers.get("X-Backlog-Auto-Commit")).toBeNull();
 
-		const second = await request("/api/tasks", {
-			method: "POST",
-			headers: { "Content-Type": "application/json" },
-			body: JSON.stringify({ title: "Second browser mutation" }),
-		});
+		const second = await request(
+			"/api/tasks",
+			{
+				method: "POST",
+				headers: { "Content-Type": "application/json" },
+				body: JSON.stringify({ title: "Second browser mutation" }),
+			},
+			GIT_MUTATION_TIMEOUT_MS,
+		);
 		expect(second.status).toBe(201);
 		expect(second.headers.get("X-Backlog-Auto-Commit")).toMatch(
 			/^Amended Backlog commit [0-9a-f]{12} as [0-9a-f]{12}\.$/,
@@ -598,22 +608,30 @@ describe("BacklogServer task SPA fallback", () => {
 		await $`git config user.email test@example.com`.cwd(TEST_DIR).quiet();
 		await $`git add backlog && git commit -m "Initialize browser force-new test"`.cwd(TEST_DIR).quiet();
 		await startServer();
-		const first = await request("/api/tasks", {
-			method: "POST",
-			headers: { "Content-Type": "application/json" },
-			body: JSON.stringify({ title: "Owned browser mutation" }),
-		});
+		const first = await request(
+			"/api/tasks",
+			{
+				method: "POST",
+				headers: { "Content-Type": "application/json" },
+				body: JSON.stringify({ title: "Owned browser mutation" }),
+			},
+			GIT_MUTATION_TIMEOUT_MS,
+		);
 		expect(first.status).toBe(201);
 		const beforeForced = Number((await $`git rev-list --count HEAD`.cwd(TEST_DIR).text()).trim());
 
 		await (server as BacklogServer | null)?.stop();
 		server = null;
 		await startServer({ forceNew: true });
-		const forced = await request("/api/tasks", {
-			method: "POST",
-			headers: { "Content-Type": "application/json" },
-			body: JSON.stringify({ title: "Forced browser boundary" }),
-		});
+		const forced = await request(
+			"/api/tasks",
+			{
+				method: "POST",
+				headers: { "Content-Type": "application/json" },
+				body: JSON.stringify({ title: "Forced browser boundary" }),
+			},
+			GIT_MUTATION_TIMEOUT_MS,
+		);
 
 		expect(forced.status).toBe(201);
 		expect(forced.headers.get("X-Backlog-Auto-Commit")).toBeNull();
