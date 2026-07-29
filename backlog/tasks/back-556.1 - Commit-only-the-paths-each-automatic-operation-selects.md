@@ -1,11 +1,11 @@
 ---
 id: BACK-556.1
 title: Commit only the paths each automatic operation selects
-status: Done
+status: In Progress
 assignee:
   - '@andreas'
 created_date: '2026-07-28 14:46'
-updated_date: '2026-07-28 17:15'
+updated_date: '2026-07-29 09:25'
 labels:
   - git
 dependencies: []
@@ -34,13 +34,14 @@ This is a correctness fix that stands on its own under the current default autom
 - [x] #4 Existing selected-path robustness is preserved: temporary-index isolation, owned-index reconciliation, retries, current-configuration signing and signing failures, legacy and modern hook runners, and atomic expected-old-SHA branch updates.
 - [x] #5 Merge, rebase, cherry-pick, and revert in-progress guards continue to fail closed without moving HEAD, corrupting operation metadata, or consuming unrelated index entries.
 - [x] #6 Tests cover unrelated index and worktree state, pre-commit and commit-message hook staging isolation, post-commit real-index mutations, file-move operations, custom backlog roots, linked worktrees, and projects without Git.
+- [ ] #7 Promotion and demotion use one canonical lifecycle implementation that returns the complete touched-path result, while duplicate task IDs continue to raise the explicit ambiguity diagnostic.
 <!-- AC:END -->
 
 ## Definition of Done
 <!-- DOD:BEGIN -->
-- [x] #1 bunx tsc --noEmit passes when TypeScript touched
-- [x] #2 bun run check . passes when formatting/linting touched
-- [x] #3 bun test (or scoped test) passes
+- [ ] #1 bunx tsc --noEmit passes when TypeScript touched
+- [ ] #2 bun run check . passes when formatting/linting touched
+- [ ] #3 bun test (or scoped test) passes
 <!-- DOD:END -->
 
 ## Implementation Plan
@@ -51,6 +52,8 @@ This is a correctness fix that stands on its own under the current default autom
 3. Adjust internal filesystem/core return values only where an operation must report every touched source and target path, without adding external public API surface.
 4. Add focused regression coverage for unrelated index/worktree state, lifecycle moves, pre/message-hook isolation, post-hook mutations, custom roots, linked worktrees, and filesystem-only projects.
 5. Run scoped tests, TypeScript, Biome, then record evidence and finalize BACK-556.1 before activating BACK-556.2.
+
+6. Remove Core/FileSystem lifecycle duplication by returning source/target paths from the canonical filesystem mutation; preserve AmbiguousTaskIdError and cover it with a regression.
 <!-- SECTION:PLAN:END -->
 
 ## Implementation Notes
@@ -61,8 +64,12 @@ Implemented one exact-path staging/commit path and converted bulk task updates, 
 Verification: 217 tests passed across auto-commit, core, CLI lifecycle, TUI selected-path robustness, MCP milestones, agent instructions, ContentStore, and the new selected-path suite (881 assertions). The new suite directly verifies exact source/target commits, unrelated staged and unstaged preservation, pre/message-hook isolation, post-hook real-index mutations, custom roots, linked worktrees, and no-Git projects. bunx tsc --noEmit, focused Biome, and git diff --check passed.
 <!-- SECTION:NOTES:END -->
 
-## Final Summary
+## Comments
 
-<!-- SECTION:FINAL_SUMMARY:BEGIN -->
-Converted all production automatic mutation callers from broad repository commits to exact operation path sets, including lifecycle source/target files and renamed decisions/documents. Verified with 217 focused tests (881 assertions), TypeScript, Biome, and git diff --check.
-<!-- SECTION:FINAL_SUMMARY:END -->
+<!-- COMMENTS:BEGIN -->
+author: @andreas
+created: 2026-07-29 09:25
+---
+Holistic finding M3: Core duplicated promote/demote to recover selected paths and its demotion catch-all converted AmbiguousTaskIdError into false. Consolidate the mutation and preserve the fail-closed identity diagnostic.
+---
+<!-- COMMENTS:END -->

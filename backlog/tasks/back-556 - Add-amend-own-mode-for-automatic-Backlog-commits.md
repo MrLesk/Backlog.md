@@ -1,11 +1,11 @@
 ---
 id: BACK-556
 title: Add amend-own mode for automatic Backlog commits
-status: Done
+status: In Progress
 assignee:
   - '@andreas'
 created_date: '2026-07-28 14:27'
-updated_date: '2026-07-28 18:39'
+updated_date: '2026-07-29 10:19'
 labels:
   - enhancement
   - git
@@ -123,18 +123,18 @@ This task is delivered through subtasks, because the selected-path correctness f
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [x] #1 With autoCommit true and autoCommitMode amend-own, a run of consecutive Backlog mutations on an owned branch tip produces exactly one commit that contains every change, lists every distinct operation once in its message region, and carries a subject that reflects the operations it holds rather than only the first one.
-- [x] #2 Every documented non-owned boundary makes Backlog create a new commit instead of amending: manual commit, manual amend, reset, detached HEAD, merge commit, reachability from a remote-tracking ref, reachability from any other local branch or tag including direct and descendant refs, and missing, stale, malformed, or ambiguous ownership evidence. A commit created detached or while evidence cannot be recorded remains unowned, so repeated mutations in either persistent state continue creating new commits.
-- [x] #3 autoCommitMode defaults to new when absent, rejects invalid values with an error, and has no effect while autoCommit is false or the project is filesystem-only. An explicit per-invocation autoCommit override decides only whether to commit and never changes the mode.
+- [ ] #1 With autoCommit true and autoCommitMode amend-own, a run of consecutive Backlog mutations on an owned branch tip produces exactly one commit that contains every change, lists every distinct operation once in its message region, and carries a subject that reflects the operations it holds rather than only the first one.
+- [ ] #2 Every documented non-owned boundary makes Backlog create a new commit instead of amending: manual commit, manual amend, reset, detached HEAD, merge commit, reachability from a remote-tracking ref, reachability from any other local branch or tag including direct and descendant refs, and missing, stale, malformed, or ambiguous ownership evidence. A commit created detached or while evidence cannot be recorded remains unowned, so repeated mutations in either persistent state continue creating new commits.
+- [ ] #3 autoCommitMode defaults to new when absent, rejects invalid values with an error, and has no effect while autoCommit is false or the project is filesystem-only. An explicit per-invocation autoCommit override decides only whether to commit and never changes the mode.
 - [x] #4 No automatic Backlog commit, in either mode, contains paths outside those selected for the operation. Pre-existing unrelated index and worktree state plus pre-commit and commit-message hook staging through the isolated index are preserved, while mutations made by post hooks against the real index and worktree persist according to normal Git semantics.
-- [x] #5 A human can see when an amend happened, force a new commit for a single invocation with --no-amend on any command that can automatically commit, and follow documented reflog recovery for an unwanted amend.
+- [ ] #5 A human can see when an amend happened, force a new commit for a single invocation with --no-amend on any command that can automatically commit, and follow documented reflog recovery for an unwanted amend.
 <!-- AC:END -->
 
 ## Definition of Done
 <!-- DOD:BEGIN -->
-- [x] #1 bunx tsc --noEmit passes when TypeScript touched
-- [x] #2 bun run check . passes when formatting/linting touched
-- [x] #3 bun test (or scoped test) passes
+- [ ] #1 bunx tsc --noEmit passes when TypeScript touched
+- [ ] #2 bun run check . passes when formatting/linting touched
+- [ ] #3 bun test (or scoped test) passes
 <!-- DOD:END -->
 
 ## Implementation Plan
@@ -158,6 +158,8 @@ Scope and safety, decided in the same pass:
 Three wording gaps closed at the same time: a replacement commit must record ownership evidence for its own new SHA or the sequence ends there; post-commit and post-rewrite are notifications whose failure must not fail the operation; prepare-commit-msg receives message as its source argument on the replacement path.
 
 Delivery order is 556.1, then 556.2, then 556.3, then 556.4. 556.1 is a correctness fix that ships on its own under the default new mode. 556.2 and 556.3 are separable to review but must land together to be honest, because 556.2 alone changes nothing a user can see.
+
+Holistic correction pass: resolve the documented Git intent/state, invocation-control, cross-surface feedback, structured-message, lifecycle, test-reliability, and PR-scope findings; then repeat fresh full-scope gpt-5.6-sol xhigh reviews until exact ALL GOOD.
 <!-- SECTION:PLAN:END -->
 
 ## Implementation Notes
@@ -166,8 +168,12 @@ Delivery order is 556.1, then 556.2, then 556.3, then 556.4. 556.1 is a correctn
 Delivered through BACK-556.1-.4: exact selected-path automatic commits, reflog-proven owned-tip replacement with fail-closed safety checks and Git-compatible hooks, typed/configurable new and amend-own modes with --no-amend, and consistent CLI/TUI/MCP/browser feedback and settings. Added rolling message reconstruction, documentation, and broad cross-entity, boundary, hook, custom-root, configuration, and UI/API tests.
 <!-- SECTION:NOTES:END -->
 
-## Final Summary
+## Comments
 
-<!-- SECTION:FINAL_SUMMARY:BEGIN -->
-Backlog automatic commits can now safely roll consecutive local operations into a single proven-owned branch-tip commit. The default remains new; amend-own rewrites only after exact local ownership proof, preserves unrelated Git state, exposes clear controls and replacement notices on every surface, and falls back conservatively at every unsafe boundary.
-<!-- SECTION:FINAL_SUMMARY:END -->
+<!-- COMMENTS:BEGIN -->
+author: @andreas
+created: 2026-07-29 10:19
+---
+Fresh holistic review at 459e44ba requested changes with nine findings: default new commits were incorrectly marked as owned; --no-amend was lost in interactive/boolean paths; hook-created refs could stale eligibility; archive/complete browser notices were dropped; branch-local resume behavior was documented incorrectly; production draft messages did not factor; lifecycle logic duplicated and masked ambiguity; the full suite was load-sensitive/expensive; and model-specific review transcripts added PR noise. Existing criteria affected by those findings are reopened.
+---
+<!-- COMMENTS:END -->

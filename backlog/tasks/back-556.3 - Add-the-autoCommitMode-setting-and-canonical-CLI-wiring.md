@@ -1,11 +1,11 @@
 ---
 id: BACK-556.3
 title: Add the autoCommitMode setting and canonical CLI wiring
-status: Done
+status: To Do
 assignee:
   - '@andreas'
 created_date: '2026-07-28 14:47'
-updated_date: '2026-07-28 18:19'
+updated_date: '2026-07-29 09:25'
 labels:
   - cli
 dependencies:
@@ -34,27 +34,36 @@ Documentation must cover rolling-commit boundaries, how the message is rebuilt a
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
 - [x] #1 Configuration accepts autoCommitMode with values new and amend-own, persists it as auto_commit_mode in YAML, and exposes it as autoCommitMode in typed configuration.
-- [x] #2 A missing autoCommitMode behaves exactly as new, and an invalid value is rejected with an error instead of falling back to new.
+- [ ] #2 A missing autoCommitMode behaves exactly as new, and an invalid value is rejected with an error instead of falling back to new.
 - [x] #3 With autoCommit false, every mutation surface modifies files without creating or replacing commits under either mode.
-- [x] #4 An explicit per-invocation autoCommit override decides only whether the mutation commits; the configured autoCommitMode still decides how it commits, so the two settings stay orthogonal however the mutation was invoked.
-- [x] #5 In amend-own mode the first automatic mutation after a non-owned boundary creates one new commit; it becomes Backlog-owned and starts an amendable sequence only when it lands on a named branch and valid ownership evidence for its exact SHA is successfully recorded.
+- [ ] #4 An explicit per-invocation autoCommit override decides only whether the mutation commits; the configured autoCommitMode still decides how it commits, so the two settings stay orthogonal however the mutation was invoked.
+- [ ] #5 In amend-own mode the first automatic mutation after a non-owned boundary creates one new commit; it becomes Backlog-owned and starts an amendable sequence only when it lands on a named branch and valid ownership evidence for its exact SHA is successfully recorded.
 - [x] #6 A later automatic mutation on an owned tip replaces it, so the commit count reachable from HEAD does not increase and the changes from both operations are present in the resulting tree.
 - [x] #7 A non-owned tip always produces a new commit. It starts a new amendable sequence only when the new tip is on a named branch and valid ownership evidence is successfully recorded; otherwise it remains unowned and the next mutation also creates a new commit.
-- [x] #8 The amend decision lives in the shared core mutation path, so CLI, TUI, browser, and MCP-triggered mutations share it, with cross-surface regression coverage.
-- [x] #9 Each triggering surface reports when a mutation replaced an existing commit instead of creating one, and identifies the commit it replaced.
-- [x] #10 The --no-amend option forces a new commit for a single invocation without changing configuration, is accepted by every command that can automatically commit, appears in that command help, and is a documented no-op rather than an error under autoCommitMode new.
+- [ ] #8 The amend decision lives in the shared core mutation path, so CLI, TUI, browser, and MCP-triggered mutations share it, with cross-surface regression coverage.
+- [ ] #9 Each triggering surface reports when a mutation replaced an existing commit instead of creating one, and identifies the commit it replaced.
+- [ ] #10 The --no-amend option forces a new commit for a single invocation without changing configuration, is accepted by every command that can automatically commit, appears in that command help, and is a documented no-op rather than an error under autoCommitMode new.
 - [x] #11 autoCommitMode is readable and writable through backlog config get, set, and list with validation, appears in the available-keys help, and is recognized by live config reload.
 - [x] #12 Filesystem-only projects continue to force autoCommit false regardless of autoCommitMode.
-- [x] #13 Documentation explains rolling-commit boundaries, message rebuilding and duplicate collapsing, the factored subject, reflog recovery, the risk of rewriting published history, degradation to new when ownership evidence cannot be recorded, and the safe new default. It also states the accepted limits: publication detection is local-only and cannot see a push that leaves no remote-tracking ref, a linked worktree parked on the tip with a detached HEAD is not detected, and amend-own is unsupported alongside hooks that modify the commit message because a non-idempotent hook appends its output once per amend.
-- [x] #14 Tests cover both modes across task, draft, document, decision, milestone, and agent-instruction mutations, custom backlog roots, the --no-amend override, explicit per-call autoCommit overrides, and repeated mutations with detached HEAD or unavailable ownership evidence.
+- [ ] #13 Documentation explains rolling-commit boundaries, message rebuilding and duplicate collapsing, the factored subject, reflog recovery, the risk of rewriting published history, degradation to new when ownership evidence cannot be recorded, and the safe new default. It also states the accepted limits: publication detection is local-only and cannot see a push that leaves no remote-tracking ref, a linked worktree parked on the tip with a detached HEAD is not detected, and amend-own is unsupported alongside hooks that modify the commit message because a non-idempotent hook appends its output once per amend.
+- [ ] #14 Tests cover both modes across task, draft, document, decision, milestone, and agent-instruction mutations, custom backlog roots, the --no-amend override, explicit per-call autoCommit overrides, and repeated mutations with detached HEAD or unavailable ownership evidence.
+- [ ] #15 The invocation force-new decision remains orthogonal to boolean enabled overrides and reaches every interactive CLI/TUI/browser mutation path that can automatically commit.
+- [ ] #16 All browser mutation clients, including archive and complete no-content responses, surface bounded replacement feedback through one centralized response path.
+- [ ] #17 The CLI help contract advertises --no-amend on every invocation surface whose interactive flow can trigger automatic mutations, with behavior coverage rather than help-text-only assertions.
 <!-- AC:END -->
 
 ## Definition of Done
 <!-- DOD:BEGIN -->
-- [x] #1 bunx tsc --noEmit passes when TypeScript touched
-- [x] #2 bun run check . passes when formatting/linting touched
-- [x] #3 bun test (or scoped test) passes
+- [ ] #1 bunx tsc --noEmit passes when TypeScript touched
+- [ ] #2 bun run check . passes when formatting/linting touched
+- [ ] #3 bun test (or scoped test) passes
 <!-- DOD:END -->
+
+## Implementation Plan
+
+<!-- SECTION:PLAN:BEGIN -->
+15. Resolve an immutable invocation commit plan once and preserve force-new independently of enabled overrides across direct and interactive Core callers. Centralize bounded browser feedback handling for JSON and no-content responses and add end-to-end help/behavior tests.
+<!-- SECTION:PLAN:END -->
 
 ## Implementation Notes
 
@@ -62,8 +71,12 @@ Documentation must cover rolling-commit boundaries, how the message is rebuilt a
 Implemented typed/YAML autoCommitMode configuration with strict validation and safe new defaults. Routed configured amend-own decisions through Core for CLI, TUI, browser, MCP, milestones, and agent instructions while preserving boolean commit overrides. Added --no-amend to every automatic-commit CLI command, replacement notices for CLI/TUI/browser/MCP, comprehensive cross-entity tests, and rolling-commit safety/recovery documentation.
 <!-- SECTION:NOTES:END -->
 
-## Final Summary
+## Comments
 
-<!-- SECTION:FINAL_SUMMARY:BEGIN -->
-autoCommitMode now supports new and amend-own end to end. Shared mutations use the owned-tip replacement layer, every automatic-commit command exposes --no-amend, all user surfaces report replacements, invalid settings fail closed, and documentation/tests cover boundaries and accepted limitations.
-<!-- SECTION:FINAL_SUMMARY:END -->
+<!-- COMMENTS:BEGIN -->
+author: @andreas
+created: 2026-07-29 09:25
+---
+Holistic findings B1, B2, and H2: new mode must remain behavior-preserving and unowned; --no-amend currently disappears through boolean and newly constructed Core paths; archive/complete browser responses currently drop amendment notices.
+---
+<!-- COMMENTS:END -->
