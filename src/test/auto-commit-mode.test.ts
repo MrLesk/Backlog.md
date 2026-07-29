@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { mkdir } from "node:fs/promises";
+import { mkdir, rename, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { $ } from "bun";
 import { addAgentInstructions } from "../agent-instructions.ts";
@@ -595,6 +595,53 @@ describe("autoCommitMode", () => {
 			expect(await core.filesystem.listTasks()).toEqual([]);
 			expect((await $`git rev-parse HEAD`.cwd(testDir).text()).trim()).toBe(headBeforeMutations);
 		} finally {
+			await Promise.all([server.stop(), mcp.stop()]);
+		}
+	}, 20_000);
+
+	test("long-lived Core, browser, and MCP mutations reject unavailable current config", async () => {
+		const config = await core.filesystem.loadConfig();
+		if (!config) throw new Error("Missing test config");
+		const configured = { ...config, autoCommit: true, autoCommitMode: "amend-own" as const };
+		await core.filesystem.saveConfig(configured);
+		await $`git add backlog/config.yml && git commit -m "Cache available long-lived config"`.cwd(testDir).quiet();
+		const server = new BacklogServer(testDir);
+		const mcp = new McpServer(testDir, "Test instructions");
+		registerTaskTools(mcp, configured);
+		const configPath = join(testDir, "backlog", "config.yml");
+		const backupPath = `${configPath}.unavailable`;
+		try {
+			await server.start(0, false);
+			await core.filesystem.loadConfig();
+			await (server as unknown as { core: Core }).core.filesystem.loadConfig();
+			await mcp.filesystem.loadConfig();
+			await rename(configPath, backupPath);
+			const headBeforeMutations = (await $`git rev-parse HEAD`.cwd(testDir).text()).trim();
+
+			await expect(core.createTaskFromInput({ title: "Core must not write" })).rejects.toThrow(
+				"Unable to read current backlog configuration",
+			);
+			await mkdir(configPath);
+			const browserResponse = await fetch(`http://localhost:${server.getPort()}/api/tasks`, {
+				method: "POST",
+				headers: { "Content-Type": "application/json" },
+				body: JSON.stringify({ title: "Browser must not write" }),
+			});
+			expect(browserResponse.status).toBe(400);
+			expect(await browserResponse.text()).toContain("Unable to read current backlog configuration");
+			await rm(configPath, { recursive: true, force: true });
+			const mcpResult = await mcp.testInterface.callTool({
+				params: { name: "task_create", arguments: { title: "MCP must not write" } },
+			});
+			expect(mcpResult.isError).toBe(true);
+			expect(mcpResult.content.map((item) => ("text" in item ? item.text : "")).join("\n")).toContain(
+				"Unable to read current backlog configuration",
+			);
+			expect(await core.filesystem.listTasks()).toEqual([]);
+			expect((await $`git rev-parse HEAD`.cwd(testDir).text()).trim()).toBe(headBeforeMutations);
+		} finally {
+			await rm(configPath, { recursive: true, force: true });
+			if (await Bun.file(backupPath).exists()) await rename(backupPath, configPath);
 			await Promise.all([server.stop(), mcp.stop()]);
 		}
 	}, 20_000);

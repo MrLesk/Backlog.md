@@ -232,6 +232,7 @@ export class GitOperations {
 			const intent = options.automaticCommitIntent ?? "new";
 			const rollingOperation = options.operation ?? message;
 			const initialHead = await this.resolveHead(resolvedRepoRoot);
+			let selectedPathBaseHead = initialHead;
 			await this.populateTemporaryIndex(resolvedRepoRoot, temporaryIndexEnv, initialHead, commitEntries);
 			if (!this.operationConfig()?.bypassGitHooks) {
 				await this.runCommitHook("pre-commit", [], resolvedRepoRoot, temporaryIndexEnv);
@@ -242,6 +243,13 @@ export class GitOperations {
 			for (let attempt = 1; attempt <= 3; attempt += 1) {
 				await this.assertNoCommitOperationInProgress(resolvedRepoRoot);
 				const baseHead = await this.resolveHead(resolvedRepoRoot);
+				if (
+					baseHead !== selectedPathBaseHead &&
+					!(await this.selectedTreeEntriesMatch(resolvedRepoRoot, selectedPathBaseHead, baseHead, uniqueRelativePaths))
+				) {
+					throw new Error("Git selected paths changed concurrently before the commit could be finalized");
+				}
+				selectedPathBaseHead = baseHead;
 				let ownedCommit =
 					intent === "amend-own" && baseHead ? await this.getOwnedCommit(resolvedRepoRoot, baseHead) : null;
 				let commitMessage: string;
@@ -347,6 +355,24 @@ export class GitOperations {
 		} finally {
 			await rm(temporaryDirectory, { recursive: true, force: true }).catch(() => undefined);
 		}
+	}
+
+	private async selectedTreeEntriesMatch(
+		repoRoot: string,
+		beforeCommit: string | null,
+		afterCommit: string | null,
+		relativePaths: string[],
+	): Promise<boolean> {
+		const readEntries = async (commit: string | null): Promise<string> => {
+			if (!commit) return "";
+			const { stdout } = await this.execGit(["ls-tree", "-r", "-z", "--full-tree", commit, "--", ...relativePaths], {
+				cwd: repoRoot,
+				readOnly: true,
+			});
+			return stdout;
+		};
+		const [beforeEntries, afterEntries] = await Promise.all([readEntries(beforeCommit), readEntries(afterCommit)]);
+		return beforeEntries === afterEntries;
 	}
 
 	private async getCurrentBranchRef(repoRoot: string): Promise<string | null> {

@@ -8,6 +8,7 @@ import { $ } from "bun";
 import { Command } from "commander";
 import { formatAdvancedConfigSummary } from "./commands/advanced-config-summary.ts";
 import { runAdvancedConfigWizard } from "./commands/advanced-config-wizard.ts";
+import { completeTasksForCleanup } from "./commands/cleanup.ts";
 import { type CompletionInstallResult, installCompletion, registerCompletionCommand } from "./commands/completion.ts";
 import { configureAdvancedSettings } from "./commands/configure-advanced-settings.ts";
 import {
@@ -4925,48 +4926,15 @@ addHelpSchema(program.command("cleanup"), {
 				return;
 			}
 
-			// Move tasks to completed folder
-			let successCount = 0;
-			const shouldAutoCommit = config.autoCommit ?? false;
-
 			console.log("Moving tasks...");
-			const movedTasks: Array<{ fromPath: string; toPath: string; taskId: string }> = [];
-
-			for (const task of tasksToMove) {
-				const fromPath = task.filePath ?? (await core.getTask(task.id))?.filePath ?? null;
-
-				if (!fromPath) {
-					console.error(`Failed to locate file for task ${task.id}`);
-					continue;
-				}
-
-				const taskFilename = basename(fromPath);
-				const toPath = join(core.filesystem.completedDir, taskFilename);
-
-				const success = await core.completeTask(task.id);
-				if (success) {
-					successCount++;
-					movedTasks.push({ fromPath, toPath, taskId: task.id });
-				} else {
-					console.error(`Failed to move task ${task.id}`);
-				}
+			const cleanup = await completeTasksForCleanup(core, tasksToMove);
+			for (const failure of cleanup.failures) console.error(failure.message);
+			for (const warning of cleanup.stageWarnings) {
+				console.warn(`Warning: Could not stage move for Git (${warning.taskId}): ${warning.error}`);
 			}
 
-			// If autoCommit is disabled, stage the moves so Git recognizes them
-			const hasGitRepository = await core.gitOps.isRepository();
-			if (successCount > 0 && !shouldAutoCommit && hasGitRepository) {
-				console.log("Staging file moves for Git...");
-				for (const { fromPath, toPath } of movedTasks) {
-					try {
-						await core.gitOps.stageFileMove(fromPath, toPath);
-					} catch (error) {
-						console.warn(`Warning: Could not stage move for Git: ${error}`);
-					}
-				}
-			}
-
-			console.log(`Successfully moved ${successCount} of ${tasksToMove.length} tasks to completed folder.`);
-			if (successCount > 0 && !shouldAutoCommit && hasGitRepository) {
+			console.log(`Successfully moved ${cleanup.successCount} of ${tasksToMove.length} tasks to completed folder.`);
+			if (cleanup.stagedMoves) {
 				console.log("Files have been staged. To commit: git commit -m 'cleanup: Move completed tasks'");
 			}
 		} catch (err) {

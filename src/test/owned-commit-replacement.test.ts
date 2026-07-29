@@ -502,6 +502,42 @@ describe("owned automatic commit replacement", () => {
 		expect(await commitCount(testDir)).toBe(beforeCount + 2);
 	}, 30_000);
 
+	it("aborts CAS retries when an isolated concurrent commit changes the same selected path", async () => {
+		for (const intent of ["new", "amend-own"] as const) {
+			const root = join(testDir, intent);
+			const git = await initializeRepository(root);
+			if (intent === "amend-own") {
+				await commitSelected(root, git, "backlog: Update task BACK-1", "owned\n");
+			}
+			const beforeCount = await commitCount(root);
+			const privateGit = git as unknown as PrivateGit;
+			const originalExec = privateGit.execGit.bind(git);
+			let raced = false;
+			privateGit.execGit = async (args, options) => {
+				if (args[0] === "update-ref" && !raced) {
+					raced = true;
+					const concurrentIndex = join(root, "concurrent-index");
+					const env = { GIT_INDEX_FILE: concurrentIndex };
+					await originalExec(["read-tree", "HEAD"], { cwd: root, env });
+					await Bun.write(join(root, "selected.txt"), "concurrent\n");
+					await originalExec(["add", "--", "selected.txt"], { cwd: root, env });
+					await originalExec(["commit", "-q", "-m", "concurrent selected path"], { cwd: root, env });
+				}
+				return originalExec(args, options);
+			};
+
+			await expect(
+				commitSelected(root, git, "backlog: Update task BACK-2", "ours\n", {
+					automaticCommitIntent: intent,
+				}),
+			).rejects.toThrow("Git selected paths changed concurrently");
+			expect(raced).toBe(true);
+			expect(await $`git show HEAD:selected.txt`.cwd(root).text()).toBe("concurrent\n");
+			expect(await $`git show :selected.txt`.cwd(root).text()).toBe("ours\n");
+			expect(await commitCount(root)).toBe(beforeCount + 1);
+		}
+	}, 30_000);
+
 	it("resumes branch-local ownership after switching away and back", async () => {
 		const git = await initializeRepository(testDir);
 		await $`git branch sibling`.cwd(testDir).quiet();

@@ -72,6 +72,9 @@ export interface TaskLifecycleMoveOptions {
 const DEFAULT_CREATE_LOCK_TIMEOUT_MS = 30_000;
 const DEFAULT_CREATE_LOCK_RETRY_DELAY_MS = 100;
 const DEFAULT_CREATE_LOCK_STALE_MS = 10_000;
+const MUTATION_CONFIG_READ_ATTEMPTS = 3;
+const MUTATION_CONFIG_RETRY_DELAY_MS = 10;
+const UNAVAILABLE_CONFIG_ERROR = "Unable to read current backlog configuration";
 
 export class InvalidBacklogConfigError extends Error {
 	constructor(message: string) {
@@ -105,6 +108,7 @@ export class FileSystem {
 	private resolvedConfigPath: string;
 	private configSource: BacklogConfigSource;
 	private readonly projectRoot: string;
+	private mutationConfigExpected: boolean;
 	private cachedConfig: BacklogConfig | null = null;
 	private cachedConfigSnapshot: { path: string; content: string } | null = null;
 
@@ -115,6 +119,7 @@ export class FileSystem {
 		this.resolvedBacklogDir = resolution.backlogPath ?? join(projectRoot, DEFAULT_DIRECTORIES.BACKLOG);
 		this.resolvedConfigPath = resolution.configPath ?? join(this.resolvedBacklogDir, DEFAULT_FILES.CONFIG);
 		this.configSource = resolution.configSource ?? "folder";
+		this.mutationConfigExpected = resolution.configPath !== null || resolution.rootConfigExists;
 	}
 
 	private async getBacklogDir(): Promise<string> {
@@ -188,6 +193,7 @@ export class FileSystem {
 		}
 		this.cachedConfig = config;
 		this.cachedConfigSnapshot = { path: sourceConfigPath, content };
+		this.mutationConfigExpected = true;
 		return true;
 	}
 
@@ -200,6 +206,7 @@ export class FileSystem {
 		this.resolvedBacklogDir = resolution.backlogPath ?? join(this.projectRoot, DEFAULT_DIRECTORIES.BACKLOG);
 		this.resolvedConfigPath = resolution.configPath ?? join(this.resolvedBacklogDir, DEFAULT_FILES.CONFIG);
 		this.configSource = resolution.configSource ?? "folder";
+		this.mutationConfigExpected ||= resolution.configPath !== null || resolution.rootConfigExists;
 	}
 
 	setBacklogDirectory(backlogDir: string): void {
@@ -1452,6 +1459,7 @@ ${description || `Milestone: ${title}`}`,
 			// Cache the loaded config
 			this.cachedConfig = config;
 			this.cachedConfigSnapshot = { path: configPath, content };
+			this.mutationConfigExpected = true;
 			return config;
 		} catch (error) {
 			if (error instanceof InvalidBacklogConfigError) throw error;
@@ -1464,18 +1472,29 @@ ${description || `Milestone: ${title}`}`,
 	 * replacing the last-known-good watcher/display cache.
 	 */
 	async loadConfigForMutation(): Promise<BacklogConfig | null> {
-		try {
-			const file = Bun.file(this.resolvedConfigPath);
-			if (!(await file.exists())) return null;
-			const content = await file.text();
-			const config = this.parseConfig(content);
-			const validationError = validateExplicitConfigValues(content, config);
-			if (validationError) throw new InvalidBacklogConfigError(validationError);
-			return config;
-		} catch (error) {
-			if (error instanceof InvalidBacklogConfigError) throw error;
-			return null;
+		for (let attempt = 1; attempt <= MUTATION_CONFIG_READ_ATTEMPTS; attempt += 1) {
+			try {
+				const file = Bun.file(this.resolvedConfigPath);
+				if (await file.exists()) {
+					const content = await file.text();
+					const config = this.parseConfig(content);
+					const validationError = validateExplicitConfigValues(content, config);
+					if (validationError) throw new InvalidBacklogConfigError(validationError);
+					return config;
+				}
+				if (!(await this.mutationRequiresConfig())) {
+					return null;
+				}
+			} catch (error) {
+				if (error instanceof InvalidBacklogConfigError) throw error;
+			}
+			if (attempt < MUTATION_CONFIG_READ_ATTEMPTS) await Bun.sleep(MUTATION_CONFIG_RETRY_DELAY_MS);
 		}
+		throw new InvalidBacklogConfigError(UNAVAILABLE_CONFIG_ERROR);
+	}
+
+	private async mutationRequiresConfig(): Promise<boolean> {
+		return this.mutationConfigExpected || this.cachedConfigSnapshot !== null;
 	}
 
 	async saveConfig(config: BacklogConfig): Promise<void> {
@@ -1492,6 +1511,7 @@ ${description || `Milestone: ${title}`}`,
 		await Bun.write(configPath, content);
 		this.cachedConfig = normalizedConfig;
 		this.cachedConfigSnapshot = { path: configPath, content };
+		this.mutationConfigExpected = true;
 	}
 
 	// Utility methods
