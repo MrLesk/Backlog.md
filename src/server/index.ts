@@ -418,7 +418,7 @@ export class BacklogServer {
 						GET: async () => await this.handleGetStatus(),
 					},
 					"/api/init": {
-						POST: async (req: Request) => await this.handleInit(req),
+						POST: async (req: Request) => await this.withAutoCommitFeedback(() => this.handleInit(req)),
 					},
 					"/api/search": {
 						GET: async (req: Request) => await this.handleSearch(req),

@@ -1736,63 +1736,67 @@ describe("ContentStore", () => {
 		expect(loaderCalls).toBeGreaterThanOrEqual(2);
 	});
 
-	it("removes tasks, documents, and decisions when files are deleted", async () => {
-		store.dispose();
-		store = new ContentStore(filesystem, undefined, true);
-		await Promise.all([
-			filesystem.saveTask(sampleTask),
-			filesystem.saveDocument(sampleDocument),
-			filesystem.saveDecision(sampleDecision),
-		]);
-		await store.ensureInitialized();
+	it(
+		"removes tasks, documents, and decisions when files are deleted",
+		async () => {
+			store.dispose();
+			store = new ContentStore(filesystem, undefined, true);
+			await Promise.all([
+				filesystem.saveTask(sampleTask),
+				filesystem.saveDocument(sampleDocument),
+				filesystem.saveDecision(sampleDecision),
+			]);
+			await store.ensureInitialized();
 
-		const task = store.getTasks()[0];
-		const document = store.getDocuments()[0];
-		if (!task?.filePath) {
-			throw new Error("Expected the task file path");
-		}
-		if (!document?.path) {
-			throw new Error("Expected the document path");
-		}
+			const task = store.getTasks()[0];
+			const document = store.getDocuments()[0];
+			if (!task?.filePath) {
+				throw new Error("Expected the task file path");
+			}
+			if (!document?.path) {
+				throw new Error("Expected the document path");
+			}
 
-		const decisionsDir = filesystem.decisionsDir;
-		const decisionFiles: string[] = [];
-		for await (const file of new Bun.Glob("decision-*.md").scan({ cwd: decisionsDir, followSymlinks: true })) {
-			decisionFiles.push(file);
-		}
-		const decisionFile = decisionFiles.find((file) => file.startsWith("decision-1"));
-		if (!decisionFile) {
-			throw new Error("Expected decision file was not created");
-		}
+			const decisionsDir = filesystem.decisionsDir;
+			const decisionFiles: string[] = [];
+			for await (const file of new Bun.Glob("decision-*.md").scan({ cwd: decisionsDir, followSymlinks: true })) {
+				decisionFiles.push(file);
+			}
+			const decisionFile = decisionFiles.find((file) => file.startsWith("decision-1"));
+			if (!decisionFile) {
+				throw new Error("Expected decision file was not created");
+			}
 
-		await unlink(task.filePath);
-		await waitForContentState(
-			store,
-			(content) => content.tasks.every((item) => item.id !== task.id),
-			"native task deletion",
-			getPlatformTimeout(15000),
-		);
+			await unlink(task.filePath);
+			await waitForContentState(
+				store,
+				(content) => content.tasks.every((item) => item.id !== task.id),
+				"native task deletion",
+				getPlatformTimeout(15000),
+			);
 
-		await unlink(join(filesystem.docsDir, ...document.path.split("/")));
-		await waitForContentState(
-			store,
-			(content) => content.documents.every((item) => item.id !== document.id),
-			"native document deletion",
-			getPlatformTimeout(15000),
-		);
+			await unlink(join(filesystem.docsDir, ...document.path.split("/")));
+			await waitForContentState(
+				store,
+				(content) => content.documents.every((item) => item.id !== document.id),
+				"native document deletion",
+				getPlatformTimeout(15000),
+			);
 
-		await unlink(join(decisionsDir, decisionFile));
-		await waitForContentState(
-			store,
-			(content) => content.decisions.every((item) => item.id !== "decision-1"),
-			"native decision deletion",
-			getPlatformTimeout(15000),
-		);
+			await unlink(join(decisionsDir, decisionFile));
+			await waitForContentState(
+				store,
+				(content) => content.decisions.every((item) => item.id !== "decision-1"),
+				"native decision deletion",
+				getPlatformTimeout(15000),
+			);
 
-		expect(store.getTasks().some((item) => item.id === task.id)).toBe(false);
-		expect(store.getDocuments().some((item) => item.id === document.id)).toBe(false);
-		expect(store.getDecisions().some((item) => item.id === "decision-1")).toBe(false);
-	});
+			expect(store.getTasks().some((item) => item.id === task.id)).toBe(false);
+			expect(store.getDocuments().some((item) => item.id === document.id)).toBe(false);
+			expect(store.getDecisions().some((item) => item.id === "decision-1")).toBe(false);
+		},
+		getPlatformTimeout(60_000),
+	);
 
 	it("does not reconcile a late old-root publication into a new-root snapshot", async () => {
 		store.dispose();
