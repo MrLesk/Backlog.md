@@ -1,11 +1,11 @@
 ---
 id: BACK-556.3
 title: Add the autoCommitMode setting and canonical CLI wiring
-status: To Do
+status: In Progress
 assignee:
   - '@andreas'
 created_date: '2026-07-28 14:47'
-updated_date: '2026-07-29 09:25'
+updated_date: '2026-07-29 10:18'
 labels:
   - cli
 dependencies:
@@ -69,6 +69,8 @@ Documentation must cover rolling-commit boundaries, how the message is rebuilt a
 
 <!-- SECTION:NOTES:BEGIN -->
 Implemented typed/YAML autoCommitMode configuration with strict validation and safe new defaults. Routed configured amend-own decisions through Core for CLI, TUI, browser, MCP, milestones, and agent instructions while preserving boolean commit overrides. Added --no-amend to every automatic-commit CLI command, replacement notices for CLI/TUI/browser/MCP, comprehensive cross-entity tests, and rolling-commit safety/recovery documentation.
+
+Holistic correction preserves force-new independently of boolean enable overrides and request feedback contexts; board/view/browser reuse the invocation Core; browser feedback is centralized and bounded; board, browser, and task view now advertise --no-amend.
 <!-- SECTION:NOTES:END -->
 
 ## Comments

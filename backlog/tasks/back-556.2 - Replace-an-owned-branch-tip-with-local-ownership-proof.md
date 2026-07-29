@@ -1,11 +1,11 @@
 ---
 id: BACK-556.2
 title: Replace an owned branch tip with local ownership proof
-status: To Do
+status: In Progress
 assignee:
   - '@andreas'
 created_date: '2026-07-28 14:46'
-updated_date: '2026-07-29 09:25'
+updated_date: '2026-07-29 10:18'
 labels:
   - git
 dependencies:
@@ -92,6 +92,8 @@ Implemented versioned branch-reflog ownership evidence (`backlog:auto-commit/v1`
 Extended commitFiles with optional amend-owned replacement. Each CAS retry recomputes eligibility; replacements preserve original parents and author metadata, use current signing configuration, re-record ownership for the new SHA, and invoke prepare-commit-msg/commit-msg/post-commit plus best-effort post-rewrite amend semantics against the correct index.
 
 Added one pure rolling-message implementation with a delimited JSON-safe operation region, duplicate collapse, preserved outside content, and single/factored/elided/mixed subject behavior. Verification: 123 focused tests passed (501 assertions) before the final message-preservation refinement; focused follow-up tests and bunx tsc --noEmit also passed. Coverage includes repeated/root replacement, evidence loss, manual/clone/reset boundaries, direct/descendant remote/branch/lightweight/annotated refs, operation guards, hooks/bypass/legacy, signing transitions/failures, concurrent HEAD movement, linked worktrees, selected-index races, and graph visibility. Biome and git diff --check passed.
+
+Holistic correction implemented explicit new/start-owned/amend-own intent, v2 structured operation descriptors with v1 migration, post-hook operation/ref/reflog revalidation including same-SHA ABA, and intentional branch-local resume documentation/tests.
 <!-- SECTION:NOTES:END -->
 
 ## Comments

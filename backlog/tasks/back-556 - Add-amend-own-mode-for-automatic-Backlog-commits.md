@@ -166,6 +166,8 @@ Holistic correction pass: resolve the documented Git intent/state, invocation-co
 
 <!-- SECTION:NOTES:BEGIN -->
 Delivered through BACK-556.1-.4: exact selected-path automatic commits, reflog-proven owned-tip replacement with fail-closed safety checks and Git-compatible hooks, typed/configurable new and amend-own modes with --no-amend, and consistent CLI/TUI/MCP/browser feedback and settings. Added rolling message reconstruction, documentation, and broad cross-entity, boundary, hook, custom-root, configuration, and UI/API tests.
+
+Holistic correction pass implemented findings B1/B2/H1/H2/M1/M2/M3 plus shared mode validation. First integrated full gate passed: TypeScript, Biome (348 files), and 1,830 tests passed with 4 skipped across 205 files.
 <!-- SECTION:NOTES:END -->
 
 ## Comments
@@ -175,5 +177,11 @@ author: @andreas
 created: 2026-07-29 10:19
 ---
 Fresh holistic review at 459e44ba requested changes with nine findings: default new commits were incorrectly marked as owned; --no-amend was lost in interactive/boolean paths; hook-created refs could stale eligibility; archive/complete browser notices were dropped; branch-local resume behavior was documented incorrectly; production draft messages did not factor; lifecycle logic duplicated and masked ambiguity; the full suite was load-sensitive/expensive; and model-specific review transcripts added PR noise. Existing criteria affected by those findings are reopened.
+---
+
+author: @andreas
+created: 2026-07-29 10:19
+---
+PR hygiene disposition for L1: remove the four model-specific CReview transcript commits from branch history before the next holistic review while retaining canonical task plans, notes, criteria, and the new reviewer findings documented through Backlog CLI.
 ---
 <!-- COMMENTS:END -->

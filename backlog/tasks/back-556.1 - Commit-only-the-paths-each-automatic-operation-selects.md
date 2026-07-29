@@ -5,7 +5,7 @@ status: In Progress
 assignee:
   - '@andreas'
 created_date: '2026-07-28 14:46'
-updated_date: '2026-07-29 09:25'
+updated_date: '2026-07-29 10:18'
 labels:
   - git
 dependencies: []
@@ -62,6 +62,8 @@ This is a correctness fix that stands on its own under the current default autom
 Implemented one exact-path staging/commit path and converted bulk task updates, task/draft lifecycle moves, decisions, documents, and agent-instruction writes; existing milestone mutations remain on commitFiles. FileSystem decision writes now report every removed/created path, and ContentStore preserves that result.
 
 Verification: 217 tests passed across auto-commit, core, CLI lifecycle, TUI selected-path robustness, MCP milestones, agent instructions, ContentStore, and the new selected-path suite (881 assertions). The new suite directly verifies exact source/target commits, unrelated staged and unstaged preservation, pre/message-hook isolation, post-hook real-index mutations, custom roots, linked worktrees, and no-Git projects. bunx tsc --noEmit, focused Biome, and git diff --check passed.
+
+Holistic correction: consolidated Core promotion/demotion onto FileSystem result-returning mutations, retained selected source/target paths, and preserved AmbiguousTaskIdError. Verification: 123 focused tests and the full 1,820-test gate passed.
 <!-- SECTION:NOTES:END -->
 
 ## Comments

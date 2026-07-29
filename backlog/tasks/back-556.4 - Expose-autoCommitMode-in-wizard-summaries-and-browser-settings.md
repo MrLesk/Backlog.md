@@ -1,11 +1,11 @@
 ---
 id: BACK-556.4
 title: 'Expose autoCommitMode in wizard, summaries, and browser settings'
-status: To Do
+status: In Progress
 assignee:
   - '@andreas'
 created_date: '2026-07-28 14:47'
-updated_date: '2026-07-29 09:25'
+updated_date: '2026-07-29 10:18'
 labels:
   - web-ui
   - cli
@@ -55,6 +55,8 @@ This covers the advanced CLI wizard, initialization and configuration summaries,
 
 <!-- SECTION:NOTES:BEGIN -->
 Added conditional new/amend-own selectors to the advanced CLI wizard, browser initialization, and Settings with explicit safety/fallback copy. Persisted the mode through init and Settings APIs, added strict browser endpoint validation, displayed effective modes in CLI and browser summaries, and covered wizard defaults, summaries, browser initialization, Settings, and API round trips.
+
+Holistic correction centralizes browser response notice dispatch for JSON and no-content operations and covers reorder, archive, and complete feedback plus bounded multi-operation summaries.
 <!-- SECTION:NOTES:END -->
 
 ## Comments
