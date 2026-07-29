@@ -13,6 +13,7 @@ import {
 	resolveBacklogDirectory,
 	resolveBacklogDirectoryFromRootConfig,
 } from "../utils/backlog-directory.ts";
+import { validateExplicitConfigValues } from "../utils/config-validation.ts";
 import { documentIdsEqual, normalizeDocumentId } from "../utils/document-id.ts";
 import { normalizeDocumentRelativePath, normalizeDocumentSubPath } from "../utils/document-path.ts";
 import {
@@ -1466,7 +1467,11 @@ ${description || `Milestone: ${title}`}`,
 		try {
 			const file = Bun.file(this.resolvedConfigPath);
 			if (!(await file.exists())) return null;
-			return this.parseConfig(await file.text());
+			const content = await file.text();
+			const config = this.parseConfig(content);
+			const validationError = validateExplicitConfigValues(content, config);
+			if (validationError) throw new InvalidBacklogConfigError(validationError);
+			return config;
 		} catch (error) {
 			if (error instanceof InvalidBacklogConfigError) throw error;
 			return null;

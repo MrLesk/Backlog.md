@@ -89,6 +89,7 @@ import {
 	type AutoCommitInput,
 	type AutoCommitOptions,
 	recordAutoCommitResult as appendAutoCommitResult,
+	clearAutoCommitResults,
 	formatAutoCommitNotices,
 } from "./auto-commit.ts";
 import { migrateConfig, needsMigration } from "./config-migration.ts";
@@ -915,8 +916,9 @@ export class Core {
 	}
 
 	consumeAutoCommitNotices(): string[] {
-		const notices = formatAutoCommitNotices({ results: this.automaticCommitResults });
-		this.automaticCommitResults.splice(0);
+		const resultInput = { results: this.automaticCommitResults };
+		const notices = formatAutoCommitNotices(resultInput);
+		clearAutoCommitResults(resultInput);
 		return notices;
 	}
 

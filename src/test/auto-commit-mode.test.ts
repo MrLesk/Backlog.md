@@ -441,7 +441,7 @@ describe("autoCommitMode", () => {
 		const beforeUpdateCount = await commitCount(testDir);
 
 		let loadedConfig = automaticConfig;
-		core.filesystem.loadConfig = async () => loadedConfig;
+		core.filesystem.loadConfigForMutation = async () => loadedConfig;
 		const saveTask = core.filesystem.saveTask.bind(core.filesystem);
 		let releaseWrite!: () => void;
 		let reportWriteReached!: () => void;
@@ -461,7 +461,11 @@ describe("autoCommitMode", () => {
 		const update = core.updateTaskFromInput(task.id, { title: "Concurrent plan updated" });
 		await writeReached;
 		loadedConfig = { ...automaticConfig, filesystemOnly: true };
-		await core.withAutoCommitPlan(undefined, async () => undefined);
+		let competingPlanSawRepository: boolean | undefined;
+		await core.withAutoCommitPlan(undefined, async () => {
+			competingPlanSawRepository = await core.git.isRepository();
+		});
+		expect(competingPlanSawRepository).toBe(false);
 		releaseWrite();
 		await update;
 
@@ -545,7 +549,7 @@ describe("autoCommitMode", () => {
 			const configText = await Bun.file(join(testDir, "backlog", "config.yml")).text();
 			await Bun.write(
 				join(testDir, "backlog", "config.yml"),
-				configText.replace(/auto_commit_mode: .*/, "auto_commit_mode: unsafe"),
+				configText.replace(/auto_commit_mode: .*/, "auto_commit_mode unsafe"),
 			);
 			const headBeforeMutations = (await $`git rev-parse HEAD`.cwd(testDir).text()).trim();
 

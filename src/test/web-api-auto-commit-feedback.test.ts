@@ -1,6 +1,13 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import { JSDOM } from "jsdom";
-import { summarizeAutoCommitNotices } from "../core/auto-commit.ts";
+import {
+	clearAutoCommitResults,
+	createAutoCommitOptions,
+	formatAutoCommitNotices,
+	MAX_AUTO_COMMIT_RESULTS,
+	recordAutoCommitResult,
+	summarizeAutoCommitNotices,
+} from "../core/auto-commit.ts";
 import { ApiClient } from "../web/lib/api.ts";
 
 const originalFetch = globalThis.fetch;
@@ -29,6 +36,30 @@ describe("Web API automatic commit feedback", () => {
 
 		expect(summary?.length).toBeLessThanOrEqual(120);
 		expect(summary).toContain("100 Backlog automatic commit replacements");
+	});
+
+	it("bounds stored bulk replacement results while retaining aggregate and latest feedback", () => {
+		const input = createAutoCommitOptions();
+		let callbackCount = 0;
+		input.onResult = () => callbackCount++;
+		for (let index = 0; index < 1_000; index += 1) {
+			recordAutoCommitResult(input, {
+				commitId: `${index.toString(16).padStart(12, "0")}${"0".repeat(28)}`,
+				previousCommitId: `${(index + 1).toString(16).padStart(12, "0")}${"0".repeat(28)}`,
+				amended: true,
+				ownershipRecorded: true,
+			});
+		}
+
+		expect(input.results).toHaveLength(MAX_AUTO_COMMIT_RESULTS);
+		expect(callbackCount).toBe(1_000);
+		const notices = formatAutoCommitNotices(input);
+		expect(notices).toHaveLength(MAX_AUTO_COMMIT_RESULTS + 1);
+		expect(notices[0]).toBe("900 earlier Backlog automatic commit replacements omitted.");
+		expect(notices.at(-1)).toContain("0000000003e8 as 0000000003e7");
+		clearAutoCommitResults(input);
+		expect(input.results).toEqual([]);
+		expect(formatAutoCommitNotices(input)).toEqual([]);
 	});
 
 	it("dispatches replacement notices for every draft, document, decision, and milestone mutation", async () => {

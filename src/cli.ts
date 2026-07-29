@@ -22,7 +22,7 @@ import { registerInstructionsCommand } from "./commands/instructions.ts";
 import { registerMcpCommand } from "./commands/mcp.ts";
 import { pickTaskForEditWizard, runTaskCreateWizard, runTaskEditWizard } from "./commands/task-wizard.ts";
 import { DEFAULT_DIRECTORIES, DEFAULT_FILES, DEFAULT_STATUSES } from "./constants/index.ts";
-import { createAutoCommitOptions, formatAutoCommitNotices } from "./core/auto-commit.ts";
+import { clearAutoCommitResults, createAutoCommitOptions, formatAutoCommitNotices } from "./core/auto-commit.ts";
 import { type DuplicateRepairPlan, findLocalDuplicateTaskIds } from "./core/duplicate-task-repair.ts";
 import { initializeProject } from "./core/init.ts";
 import { buildMilestoneBuckets, collectArchivedMilestoneKeys, milestoneKey } from "./core/milestones.ts";
@@ -103,7 +103,7 @@ const cliAutoCommit = createAutoCommitOptions(undefined, process.argv.includes("
 
 function flushCliAutoCommitNotices(): void {
 	const notices = formatAutoCommitNotices(cliAutoCommit);
-	cliAutoCommit.results?.splice(0);
+	clearAutoCommitResults(cliAutoCommit);
 	for (const notice of notices) console.log(notice);
 }
 

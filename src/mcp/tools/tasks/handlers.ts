@@ -506,7 +506,7 @@ export class TaskHandlers {
 		const task = await this.loadTaskOrThrow(args.id);
 		let success: boolean;
 		try {
-			success = await this.core.demoteTask(task.id, false);
+			success = await this.core.demoteTask(task.id);
 		} catch (error) {
 			if (isCreateLockError(error)) {
 				throw new BacklogToolError(error.message, "OPERATION_FAILED");
