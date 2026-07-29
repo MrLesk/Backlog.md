@@ -72,24 +72,27 @@ export function parseExplicitConfigScalar(key: string, rawValue: string): Parsed
 		return value.includes("'") || value.includes('"') ? null : { value, quoted: false };
 	}
 	if (value.length < 2 || value.at(-1) !== first) return null;
+	if (first === '"') {
+		try {
+			const decoded = JSON.parse(value);
+			return typeof decoded === "string" ? { value: decoded, quoted: true } : null;
+		} catch {
+			return null;
+		}
+	}
 
 	const inner = value.slice(1, -1);
+	let decoded = "";
 	for (let index = 0; index < inner.length; index += 1) {
-		if (inner[index] !== first) continue;
-		if (first === "'" && inner[index + 1] === "'") {
-			index += 1;
+		if (inner[index] !== "'") {
+			decoded += inner[index];
 			continue;
 		}
-		if (first === '"') {
-			let precedingBackslashes = 0;
-			for (let cursor = index - 1; cursor >= 0 && inner[cursor] === "\\"; cursor -= 1) {
-				precedingBackslashes += 1;
-			}
-			if (precedingBackslashes % 2 === 1) continue;
-		}
-		return null;
+		if (inner[index + 1] !== "'") return null;
+		decoded += "'";
+		index += 1;
 	}
-	return { value: inner, quoted: true };
+	return { value: decoded, quoted: true };
 }
 
 /**

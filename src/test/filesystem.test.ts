@@ -508,6 +508,27 @@ Invalid content`,
 			expect(loadedConfig).toEqual(sampleConfig);
 		});
 
+		it("round-trips YAML-sensitive quoted scalar and list values", async () => {
+			const quotedConfig: BacklogConfig = {
+				projectName: 'Alex "Q" Project',
+				defaultAssignee: '@"owner"',
+				defaultReporter: "O'Brien",
+				defaultStatus: 'Ready "Now"',
+				statuses: ['Ready "Now"', "Owner's Review"],
+				labels: ['say "hello"', "owner's"],
+				types: ['Feature "Plus"'],
+				priorities: ["Owner's Priority"],
+				dateFormat: 'yyyy-"Q"',
+				defaultEditor: 'code --profile "Backlog"',
+				onStatusChange: "printf \"done\" && echo 'ready'",
+			};
+
+			await filesystem.saveConfig(quotedConfig);
+			const serialized = await Bun.file(filesystem.configFilePath).text();
+			expect(serialized).toContain('project_name: "Alex \\"Q\\" Project"');
+			expect(await filesystem.loadConfig()).toMatchObject(quotedConfig);
+		});
+
 		it("should return null for missing config", async () => {
 			// Create a fresh filesystem without any config
 			const freshFilesystem = new FileSystem(join(TEST_DIR, "fresh"));

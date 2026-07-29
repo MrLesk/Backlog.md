@@ -1693,23 +1693,24 @@ ${description || `Milestone: ${title}`}`,
 			throw new InvalidBacklogConfigError(AUTO_COMMIT_MODE_CONFIG_ERROR);
 		}
 		const normalizedDefinitionOfDone = this.normalizeDefinitionOfDone(config.definitionOfDone);
+		const quote = (value: string): string => JSON.stringify(value);
 		const lines = [
-			`project_name: "${config.projectName}"`,
-			...(config.defaultAssignee ? [`default_assignee: "${config.defaultAssignee}"`] : []),
-			...(config.defaultReporter ? [`default_reporter: "${config.defaultReporter}"`] : []),
-			...(config.defaultStatus ? [`default_status: "${config.defaultStatus}"`] : []),
-			`statuses: [${config.statuses.map((s) => `"${s}"`).join(", ")}]`,
-			`labels: [${config.labels.map((l) => `"${l}"`).join(", ")}]`,
-			...(config.types && config.types.length > 0 ? [`types: [${config.types.map((t) => `"${t}"`).join(", ")}]`] : []),
+			`project_name: ${quote(config.projectName)}`,
+			...(config.defaultAssignee ? [`default_assignee: ${quote(config.defaultAssignee)}`] : []),
+			...(config.defaultReporter ? [`default_reporter: ${quote(config.defaultReporter)}`] : []),
+			...(config.defaultStatus ? [`default_status: ${quote(config.defaultStatus)}`] : []),
+			`statuses: [${config.statuses.map(quote).join(", ")}]`,
+			`labels: [${config.labels.map(quote).join(", ")}]`,
+			...(config.types && config.types.length > 0 ? [`types: [${config.types.map(quote).join(", ")}]`] : []),
 			...(config.priorities && config.priorities.length > 0
-				? [`priorities: [${config.priorities.map((p) => `"${p}"`).join(", ")}]`]
+				? [`priorities: [${config.priorities.map(quote).join(", ")}]`]
 				: []),
 			...(Array.isArray(normalizedDefinitionOfDone)
 				? [`definition_of_done: [${normalizedDefinitionOfDone.map((item) => JSON.stringify(item)).join(", ")}]`]
 				: []),
-			`date_format: ${config.dateFormat}`,
+			`date_format: ${quote(config.dateFormat)}`,
 			...(config.maxColumnWidth ? [`max_column_width: ${config.maxColumnWidth}`] : []),
-			...(config.defaultEditor ? [`default_editor: "${config.defaultEditor}"`] : []),
+			...(config.defaultEditor ? [`default_editor: ${quote(config.defaultEditor)}`] : []),
 			...(typeof config.autoOpenBrowser === "boolean" ? [`auto_open_browser: ${config.autoOpenBrowser}`] : []),
 			...(typeof config.hideEmptyColumns === "boolean" ? [`hide_empty_columns: ${config.hideEmptyColumns}`] : []),
 			...(config.defaultPort ? [`default_port: ${config.defaultPort}`] : []),
@@ -1723,9 +1724,9 @@ ${description || `Milestone: ${title}`}`,
 				? [`check_active_branches: ${config.checkActiveBranches}`]
 				: []),
 			...(typeof config.activeBranchDays === "number" ? [`active_branch_days: ${config.activeBranchDays}`] : []),
-			...(config.onStatusChange ? [`onStatusChange: '${config.onStatusChange}'`] : []),
-			...(config.prefixes?.task ? [`task_prefix: "${config.prefixes.task}"`] : []),
-			...(config.backlogDirectory ? [`backlog_directory: "${config.backlogDirectory}"`] : []),
+			...(config.onStatusChange ? [`onStatusChange: ${quote(config.onStatusChange)}`] : []),
+			...(config.prefixes?.task ? [`task_prefix: ${quote(config.prefixes.task)}`] : []),
+			...(config.backlogDirectory ? [`backlog_directory: ${quote(config.backlogDirectory)}`] : []),
 		];
 
 		return `${lines.join("\n")}\n`;

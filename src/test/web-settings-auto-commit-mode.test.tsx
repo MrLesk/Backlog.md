@@ -120,7 +120,7 @@ describe("Settings auto commit mode", () => {
 
 	it("shows the selector when enabled and persists the selected mode", async () => {
 		const config: BacklogConfig = {
-			projectName: "Web settings",
+			projectName: 'Web "quoted" settings',
 			statuses: ["To Do", "Done"],
 			labels: [],
 			defaultStatus: "To Do",
@@ -159,6 +159,7 @@ describe("Settings auto commit mode", () => {
 		});
 		await waitFor(() => saved !== undefined);
 
+		expect(saved?.projectName).toBe('Web "quoted" settings');
 		expect(saved?.autoCommitMode).toBe("amend-own");
 		expect(container.textContent).toContain(
 			"May replace the exact current locally-owned Backlog tip only when every safety check passes; otherwise creates a new commit.",

@@ -1,5 +1,5 @@
 import { AsyncLocalStorage } from "node:async_hooks";
-import { mkdtemp, open, realpath, rm, stat, unlink, writeFile } from "node:fs/promises";
+import { mkdtemp, open, readFile, realpath, rename, rm, stat, unlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { basename, dirname, isAbsolute, join, relative } from "node:path";
 import { $ } from "bun";
@@ -331,7 +331,34 @@ export class GitOperations {
 					const subject = finalMessage.split("\n", 1)[0]?.trim() || "automatic commit";
 					const reflogMessage =
 						intent === "new" ? `commit: ${subject}` : `${AUTOMATIC_COMMIT_REFLOG_MARKER} ${subject}`;
-					await this.updateHeadRef(resolvedRepoRoot, baseBranchRef, baseHead, commitId, reflogMessage);
+					const validateMutationState = async (): Promise<void> => {
+						await this.assertNoCommitOperationInProgress(resolvedRepoRoot);
+						for (const relativePath of uniqueRelativePaths) {
+							const currentEntries = await this.getIndexEntries(join(resolvedRepoRoot, relativePath));
+							if (!indexEntriesEqual(currentEntries, commitEntries.get(relativePath) ?? [])) {
+								throw new Error(`Git index changed before the selected commit could be finalized: ${relativePath}`);
+							}
+						}
+					};
+					await this.updateHeadRef(
+						resolvedRepoRoot,
+						baseBranchRef,
+						baseHead,
+						commitId,
+						reflogMessage,
+						async () => {
+							await validateMutationState();
+							if (ownedCommit) await this.assertOwnedCommitUnchanged(resolvedRepoRoot, ownedCommit);
+						},
+						ownedCommit && baseBranchRef
+							? async () => {
+									await validateMutationState();
+									if (await this.isCommitShared(resolvedRepoRoot, ownedCommit.commitId, baseBranchRef)) {
+										throw new Error("Owned Backlog commit became shared during finalization");
+									}
+								}
+							: undefined,
+					);
 					await this.runCommitHook("post-commit", [], resolvedRepoRoot, {}).catch(() => undefined);
 					if (ownedCommit) {
 						await this.runCommitHook(
@@ -365,11 +392,12 @@ export class GitOperations {
 	}
 
 	/**
-	 * Advance the exact branch observed by the CAS attempt without allowing a
-	 * same-OID symbolic HEAD switch to redirect the update. Holding HEAD.lock
-	 * makes branch identity stable while the expected-OID branch update runs.
-	 * The synthetic per-worktree context shares the repository's common refs but
-	 * has an unrelated HEAD, so update-ref does not try to reacquire our lock.
+	 * Advance the exact HEAD identity observed by the CAS attempt without allowing
+	 * a same-OID detached/branch switch to redirect the update. The real index and
+	 * HEAD locks are acquired in Git order before the caller revalidates every
+	 * mutation-sensitive invariant. A synthetic per-worktree context shares the
+	 * repository's common refs but has an unrelated HEAD, allowing named-branch
+	 * update-ref to run without trying to reacquire the leased worktree HEAD.
 	 */
 	private async updateHeadRef(
 		repoRoot: string,
@@ -377,14 +405,9 @@ export class GitOperations {
 		expectedCommit: string | null,
 		newCommit: string,
 		reflogMessage: string,
+		validateLease: () => Promise<void>,
+		validateNamedUpdate?: () => Promise<void>,
 	): Promise<void> {
-		if (!branchRef) {
-			await this.execGit(["update-ref", "--no-deref", "-m", reflogMessage, "HEAD", newCommit, expectedCommit ?? ""], {
-				cwd: repoRoot,
-			});
-			return;
-		}
-
 		const { stdout: headPathOutput } = await this.execGit(["rev-parse", "--git-path", "HEAD"], {
 			cwd: repoRoot,
 			readOnly: true,
@@ -392,6 +415,13 @@ export class GitOperations {
 		const configuredHeadPath = headPathOutput.trim();
 		if (!configuredHeadPath) throw new Error("Git did not report a HEAD path");
 		const headPath = isAbsolute(configuredHeadPath) ? configuredHeadPath : join(repoRoot, configuredHeadPath);
+		const { stdout: indexPathOutput } = await this.execGit(["rev-parse", "--git-path", "index"], {
+			cwd: repoRoot,
+			readOnly: true,
+		});
+		const configuredIndexPath = indexPathOutput.trim();
+		if (!configuredIndexPath) throw new Error("Git did not report an index path");
+		const indexPath = isAbsolute(configuredIndexPath) ? configuredIndexPath : join(repoRoot, configuredIndexPath);
 		const { stdout: commonDirectoryOutput } = await this.execGit(["rev-parse", "--git-common-dir"], {
 			cwd: repoRoot,
 			readOnly: true,
@@ -401,32 +431,76 @@ export class GitOperations {
 		const commonDirectory = isAbsolute(configuredCommonDirectory)
 			? configuredCommonDirectory
 			: join(repoRoot, configuredCommonDirectory);
+		const indexLockPath = `${indexPath}.lock`;
 		const headLockPath = `${headPath}.lock`;
 		const refUpdateDirectory = await mkdtemp(join(tmpdir(), "backlog-git-ref-update-"));
+		let updated = false;
+		let replacedDetachedHead = false;
 		try {
-			const headLock = await open(headLockPath, "wx");
+			const indexLock = await open(indexLockPath, "wx");
 			try {
-				if ((await this.getCurrentBranchRef(repoRoot)) !== branchRef) {
-					throw new Error("Git branch changed before the selected commit could be finalized");
+				const headLock = await open(headLockPath, "wx");
+				try {
+					if ((await this.getCurrentBranchRef(repoRoot)) !== branchRef) {
+						throw new Error("Git HEAD identity changed before the selected commit could be finalized");
+					}
+					if ((await this.resolveHead(repoRoot)) !== expectedCommit) {
+						throw new Error("Git HEAD changed before the selected commit could be finalized");
+					}
+					await validateLease();
+					if (branchRef) {
+						await Promise.all([
+							writeFile(join(refUpdateDirectory, "commondir"), `${commonDirectory}\n`),
+							writeFile(join(refUpdateDirectory, "HEAD"), "ref: refs/backlog/ref-update-context\n"),
+						]);
+						await this.execGit(["update-ref", "-m", reflogMessage, branchRef, newCommit, expectedCommit ?? ""], {
+							cwd: repoRoot,
+							env: { GIT_DIR: refUpdateDirectory },
+						});
+						if (validateNamedUpdate) {
+							try {
+								await validateNamedUpdate();
+							} catch (error) {
+								await this.execGit(
+									[
+										"update-ref",
+										"-m",
+										"reset: Backlog finalization lease invalidated",
+										branchRef,
+										expectedCommit ?? "",
+										newCommit,
+									],
+									{ cwd: repoRoot, env: { GIT_DIR: refUpdateDirectory } },
+								);
+								throw error;
+							}
+						}
+					} else {
+						const currentHead = (await readFile(headPath, "utf8")).trim();
+						if (!expectedCommit || currentHead !== expectedCommit) {
+							throw new Error("Detached Git HEAD changed before the selected commit could be finalized");
+						}
+						await headLock.writeFile(`${newCommit}\n`);
+						await headLock.sync();
+						await headLock.close();
+						await rename(headLockPath, headPath);
+						replacedDetachedHead = true;
+					}
+					updated = true;
+				} finally {
+					await headLock.close().catch(() => undefined);
+					if (!replacedDetachedHead) await unlink(headLockPath).catch(() => undefined);
 				}
-				await Promise.all([
-					writeFile(join(refUpdateDirectory, "commondir"), `${commonDirectory}\n`),
-					writeFile(join(refUpdateDirectory, "HEAD"), "ref: refs/backlog/ref-update-context\n"),
-				]);
-				await this.execGit(["update-ref", "-m", reflogMessage, branchRef, newCommit, expectedCommit ?? ""], {
-					cwd: repoRoot,
-					env: { GIT_DIR: refUpdateDirectory },
-				});
 			} finally {
-				await headLock.close().catch(() => undefined);
-				await unlink(headLockPath).catch(() => undefined);
+				await indexLock.close().catch(() => undefined);
+				await unlink(indexLockPath).catch(() => undefined);
 			}
 		} finally {
 			await rm(refUpdateDirectory, { recursive: true, force: true }).catch(() => undefined);
 		}
-		// A direct branch update writes the branch reflog. Restore the normal HEAD
-		// reflog entry with an OID no-op only if this worktree still names that tip.
-		if ((await this.getCurrentBranchRef(repoRoot)) === branchRef && (await this.resolveHead(repoRoot)) === newCommit) {
+		// The protected update writes a branch reflog (named) or HEAD itself
+		// (detached). Restore the normal worktree HEAD reflog with an OID no-op.
+		if (updated && (await this.resolveHead(repoRoot)) === newCommit) {
 			await this.execGit(["update-ref", "-m", reflogMessage, "HEAD", newCommit, newCommit], { cwd: repoRoot }).catch(
 				() => undefined,
 			);
@@ -506,6 +580,14 @@ export class GitOperations {
 			.filter(Boolean);
 	}
 
+	private async isCommitShared(repoRoot: string, candidate: string, currentBranchRef: string): Promise<boolean> {
+		if ((await this.refsContaining(repoRoot, candidate, "refs/remotes")).length > 0) return true;
+		const otherBranches = (await this.refsContaining(repoRoot, candidate, "refs/heads")).filter(
+			(ref) => ref !== currentBranchRef,
+		);
+		return otherBranches.length > 0 || (await this.refsContaining(repoRoot, candidate, "refs/tags")).length > 0;
+	}
+
 	private async getOwnedCommit(
 		repoRoot: string,
 		candidate: string,
@@ -522,13 +604,7 @@ export class GitOperations {
 		});
 		const [, ...parents] = parentOutput.trim().split(/\s+/);
 		if (parents.length > 1) return null;
-		if ((await this.refsContaining(repoRoot, candidate, "refs/remotes")).length > 0) return null;
-		const otherBranches = (await this.refsContaining(repoRoot, candidate, "refs/heads")).filter(
-			(ref) => ref !== branchRef,
-		);
-		if (otherBranches.length > 0 || (await this.refsContaining(repoRoot, candidate, "refs/tags")).length > 0) {
-			return null;
-		}
+		if (await this.isCommitShared(repoRoot, candidate, branchRef)) return null;
 
 		const { stdout: authorOutput } = await this.execGit(["show", "-s", "--format=%an%x00%ae%x00%aI", candidate], {
 			cwd: repoRoot,

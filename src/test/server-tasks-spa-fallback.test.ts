@@ -531,14 +531,21 @@ describe("BacklogServer task SPA fallback", () => {
 		const config = (await initial.json()) as Record<string, unknown>;
 		expect(config.autoCommitMode).toBe("new");
 
+		const quotedProjectName = 'Settings "Quoted" Project';
 		const updated = await request("/api/config", {
 			method: "PUT",
 			headers: { "Content-Type": "application/json" },
-			body: JSON.stringify({ ...config, autoCommit: true, autoCommitMode: "amend-own" }),
+			body: JSON.stringify({
+				...config,
+				projectName: quotedProjectName,
+				autoCommit: false,
+				autoCommitMode: "amend-own",
+			}),
 		});
 		expect(updated.status).toBe(200);
 		expect((await updated.json()) as Record<string, unknown>).toMatchObject({
-			autoCommit: true,
+			projectName: quotedProjectName,
+			autoCommit: false,
 			autoCommitMode: "amend-own",
 		});
 
@@ -553,9 +560,16 @@ describe("BacklogServer task SPA fallback", () => {
 		const readback = await request("/api/config");
 		expect(readback.status).toBe(200);
 		expect((await readback.json()) as Record<string, unknown>).toMatchObject({
-			autoCommit: true,
+			projectName: quotedProjectName,
+			autoCommit: false,
 			autoCommitMode: "amend-own",
 		});
+		const mutation = await request("/api/tasks", {
+			method: "POST",
+			headers: { "Content-Type": "application/json" },
+			body: JSON.stringify({ title: "Mutation after quoted Settings save" }),
+		});
+		expect(mutation.status).toBe(201);
 	});
 
 	it("returns automatic replacement feedback to the browser surface", async () => {

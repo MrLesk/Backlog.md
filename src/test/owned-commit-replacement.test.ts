@@ -537,6 +537,77 @@ describe("owned automatic commit replacement", () => {
 		expect(await $`git show :selected.txt`.cwd(testDir).text()).toBe("ours\n");
 	}, 20_000);
 
+	it("rejects a same-SHA branch attachment during detached finalization", async () => {
+		const git = await initializeRepository(testDir);
+		const detached = await commitSelected(testDir, git, "backlog: Update task BACK-1", "detached base\n");
+		await $`git checkout --detach ${detached.commitId}`.cwd(testDir).quiet();
+		const selectedPath = join(testDir, "selected.txt");
+		await Bun.write(selectedPath, "ours\n");
+		await git.stageFiles([selectedPath]);
+		const privateGit = git as unknown as PrivateGit;
+		const originalExec = privateGit.execGit.bind(git);
+		let attached = false;
+		privateGit.execGit = async (args, options) => {
+			const result = await originalExec(args, options);
+			if (args[0] === "rev-parse" && args[1] === "--git-path" && args[2] === "HEAD" && !attached) {
+				attached = true;
+				await originalExec(["update-ref", "refs/heads/sibling", detached.commitId], { cwd: testDir });
+				await originalExec(["symbolic-ref", "HEAD", "refs/heads/sibling"], { cwd: testDir });
+			}
+			return result;
+		};
+
+		await expect(
+			git.commitFiles("backlog: Update task BACK-2", [selectedPath], testDir, {
+				automaticCommitIntent: "amend-own",
+			}),
+		).rejects.toThrow("Git HEAD identity changed");
+		expect(attached).toBe(true);
+		expect((await $`git symbolic-ref HEAD`.cwd(testDir).text()).trim()).toBe("refs/heads/sibling");
+		expect((await $`git rev-parse HEAD`.cwd(testDir).text()).trim()).toBe(detached.commitId);
+		expect(await $`git show HEAD:selected.txt`.cwd(testDir).text()).toBe("detached base\n");
+		expect(await Bun.file(selectedPath).text()).toBe("ours\n");
+		expect(await $`git show :selected.txt`.cwd(testDir).text()).toBe("ours\n");
+	}, 20_000);
+
+	it("revalidates reset, sharing, operation, and index state under the final leases", async () => {
+		for (const scenario of ["reset", "tag", "operation", "index"] as const) {
+			const root = join(testDir, `final-lease-${scenario}`);
+			const git = await initializeRepository(root);
+			const owned = await commitSelected(root, git, "backlog: Update task BACK-1", "owned\n");
+			const selectedPath = join(root, "selected.txt");
+			await Bun.write(selectedPath, "ours\n");
+			await git.stageFiles([selectedPath]);
+			const mergeHeadPathOutput = (await $`git rev-parse --git-path MERGE_HEAD`.cwd(root).text()).trim();
+			const mergeHeadPath = isAbsolute(mergeHeadPathOutput) ? mergeHeadPathOutput : join(root, mergeHeadPathOutput);
+			const privateGit = git as unknown as PrivateGit;
+			const originalExec = privateGit.execGit.bind(git);
+			let raced = false;
+			privateGit.execGit = async (args, options) => {
+				const result = await originalExec(args, options);
+				if (args[0] === "rev-parse" && args[1] === "--git-common-dir" && !raced) {
+					raced = true;
+					if (scenario === "reset") await originalExec(["reset", "--hard", "HEAD"], { cwd: root });
+					if (scenario === "tag") await originalExec(["tag", "shared", owned.commitId], { cwd: root });
+					if (scenario === "operation") await Bun.write(mergeHeadPath, `${owned.commitId}\n`);
+					if (scenario === "index") await originalExec(["reset", "HEAD", "--", "selected.txt"], { cwd: root });
+				}
+				return result;
+			};
+
+			await expect(
+				git.commitFiles("backlog: Update task BACK-2", [selectedPath], root, {
+					automaticCommitIntent: "amend-own",
+				}),
+			).rejects.toThrow();
+			expect(raced).toBe(true);
+			expect((await $`git rev-parse HEAD`.cwd(root).text()).trim()).toBe(owned.commitId);
+			expect(await $`git show HEAD:selected.txt`.cwd(root).text()).toBe("owned\n");
+			if (scenario === "reset") expect(await Bun.file(selectedPath).text()).toBe("owned\n");
+			if (scenario !== "reset") expect(await Bun.file(selectedPath).text()).toBe("ours\n");
+		}
+	}, 30_000);
+
 	it("holds symbolic HEAD identity through the final branch update", async () => {
 		const git = await initializeRepository(testDir);
 		const owned = await commitSelected(testDir, git, "backlog: Update task BACK-1", "owned\n");
@@ -566,6 +637,39 @@ describe("owned automatic commit replacement", () => {
 		expect(await $`git rev-parse refs/heads/main`.cwd(testDir).text()).toBe(`${result?.commitId}\n`);
 		expect((await $`git rev-parse refs/heads/sibling`.cwd(testDir).text()).trim()).toBe(
 			(await $`git rev-parse ${owned.commitId}^`.cwd(testDir).text()).trim(),
+		);
+	}, 20_000);
+
+	it("restores the old tip if it becomes shared while the protected branch update runs", async () => {
+		const git = await initializeRepository(testDir);
+		const owned = await commitSelected(testDir, git, "backlog: Update task BACK-1", "owned\n");
+		const selectedPath = join(testDir, "selected.txt");
+		await Bun.write(selectedPath, "ours\n");
+		await git.stageFiles([selectedPath]);
+		const privateGit = git as unknown as PrivateGit;
+		const originalExec = privateGit.execGit.bind(git);
+		let shared = false;
+		privateGit.execGit = async (args, options) => {
+			if (args[0] === "update-ref" && options?.env?.GIT_DIR && !shared) {
+				shared = true;
+				await originalExec(["tag", "shared-during-update", owned.commitId], { cwd: testDir });
+			}
+			return originalExec(args, options);
+		};
+
+		await expect(
+			git.commitFiles("backlog: Update task BACK-2", [selectedPath], testDir, {
+				automaticCommitIntent: "amend-own",
+			}),
+		).rejects.toThrow("became shared during finalization");
+		expect(shared).toBe(true);
+		expect((await $`git rev-parse HEAD`.cwd(testDir).text()).trim()).toBe(owned.commitId);
+		expect((await $`git rev-parse shared-during-update`.cwd(testDir).text()).trim()).toBe(owned.commitId);
+		expect(await $`git show HEAD:selected.txt`.cwd(testDir).text()).toBe("owned\n");
+		expect(await Bun.file(selectedPath).text()).toBe("ours\n");
+		expect(await $`git show :selected.txt`.cwd(testDir).text()).toBe("ours\n");
+		expect(await $`git reflog show -1 --format=%gs refs/heads/main`.cwd(testDir).text()).toBe(
+			"reset: Backlog finalization lease invalidated\n",
 		);
 	}, 20_000);
 

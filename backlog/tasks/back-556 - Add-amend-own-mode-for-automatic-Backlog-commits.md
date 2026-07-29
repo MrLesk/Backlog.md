@@ -5,7 +5,7 @@ status: In Progress
 assignee:
   - '@andreas'
 created_date: '2026-07-28 14:27'
-updated_date: '2026-07-29 22:23'
+updated_date: '2026-07-29 22:53'
 labels:
   - enhancement
   - git
@@ -124,9 +124,9 @@ This task is delivered through subtasks, because the selected-path correctness f
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
 - [x] #1 With autoCommit true and autoCommitMode amend-own, a run of consecutive Backlog mutations on an owned branch tip produces exactly one commit that contains every change, lists every distinct operation once in its message region, and carries a subject that reflects the operations it holds rather than only the first one.
-- [ ] #2 Every documented non-owned boundary makes Backlog create a new commit instead of amending: manual commit, manual amend, reset, detached HEAD, merge commit, reachability from a remote-tracking ref, reachability from any other local branch or tag including direct and descendant refs, and missing, stale, malformed, or ambiguous ownership evidence. A commit created detached or while evidence cannot be recorded remains unowned, so repeated mutations in either persistent state continue creating new commits.
-- [ ] #3 autoCommitMode defaults to new when absent, rejects invalid values with an error, and has no effect while autoCommit is false or the project is filesystem-only. An explicit per-invocation autoCommit override decides only whether to commit and never changes the mode.
-- [ ] #4 No automatic Backlog commit, in either mode, contains paths outside those selected for the operation. Pre-existing unrelated index and worktree state plus pre-commit and commit-message hook staging through the isolated index are preserved, while mutations made by post hooks against the real index and worktree persist according to normal Git semantics.
+- [x] #2 Every documented non-owned boundary makes Backlog create a new commit instead of amending: manual commit, manual amend, reset, detached HEAD, merge commit, reachability from a remote-tracking ref, reachability from any other local branch or tag including direct and descendant refs, and missing, stale, malformed, or ambiguous ownership evidence. A commit created detached or while evidence cannot be recorded remains unowned, so repeated mutations in either persistent state continue creating new commits.
+- [x] #3 autoCommitMode defaults to new when absent, rejects invalid values with an error, and has no effect while autoCommit is false or the project is filesystem-only. An explicit per-invocation autoCommit override decides only whether to commit and never changes the mode.
+- [x] #4 No automatic Backlog commit, in either mode, contains paths outside those selected for the operation. Pre-existing unrelated index and worktree state plus pre-commit and commit-message hook staging through the isolated index are preserved, while mutations made by post hooks against the real index and worktree persist according to normal Git semantics.
 - [x] #5 A human can see when an amend happened, force a new commit for a single invocation with --no-amend on any command that can automatically commit, and follow documented reflog recovery for an unwanted amend.
 - [x] #6 The upstream cross-platform test/build/Nix workflow executes successfully for the final implementation SHA, or the task records that first-time-contributor workflow approval is externally blocked on an upstream maintainer before merge.
 - [x] #7 The final PR branch history follows CONTRIBUTING.md by including BACK-556 in every feature commit message, while preserving reviewable intent and the task evidence required for this delivery.
@@ -134,9 +134,9 @@ This task is delivered through subtasks, because the selected-path correctness f
 
 ## Definition of Done
 <!-- DOD:BEGIN -->
-- [ ] #1 bunx tsc --noEmit passes when TypeScript touched
-- [ ] #2 bun run check . passes when formatting/linting touched
-- [ ] #3 bun test (or scoped test) passes
+- [x] #1 bunx tsc --noEmit passes when TypeScript touched
+- [x] #2 bun run check . passes when formatting/linting touched
+- [x] #3 bun test (or scoped test) passes
 <!-- DOD:END -->
 
 ## Implementation Plan
@@ -214,6 +214,8 @@ All Pass 9 findings are implemented and fully verified. Selected-path CAS retrie
 Pass 10 corrections complete and fully verified. Selected-path conflicts now use a typed non-retryable error that the production task wrapper cannot resnapshot around; isolated plumbing races cover new and amend-own while preserving caller worktree/index bytes. Scalar parsing and strict validation share quote-aware YAML comment stripping, including current-byte watcher/mutation coverage for auto_commit and auto_commit_mode. Draft and draft view now participate in the canonical --no-amend help contract. Focused gate: 73 tests/881 assertions. Integrated gate: TypeScript clean, Biome checked 351 files, 1,857 passed/4 skipped/0 failed with 8,003 assertions across 207 files in 532.13 seconds; diff check clean.
 
 Pass 11 corrections complete and fully verified. Finalization snapshots branch identity per CAS attempt, owns the worktree HEAD lock while verifying that identity, and advances the exact expected branch/OID through a temporary Git context sharing only common refs; same-SHA switches before the lock reject and switches during the ref update are blocked, while normal HEAD reflog visibility is preserved. Recognized scalar parsing now shares quote-aware comments plus balanced surrounding-quote validation, rejecting unmatched/embedded quote placement before watcher publication or mutation writes. Focused gate: 75 tests/1,060 assertions. Integrated gate: TypeScript clean, Biome checked 351 files, 1,859 passed/4 skipped/0 failed with 8,182 assertions across 207 files in 554.14 seconds; diff check clean.
+
+Pass 12 corrections complete and fully verified. Every finalization acquires the real index lease before the exact worktree HEAD lease, revalidates identity/OID, operations, ownership, selected entries, and refs inside the boundary, and writes detached HEAD through the held lock. Named updates post-check old-tip sharing and CAS-restore the prior tip with ownership closed if a ref appears during update. Configuration emits every string/list item with JSON/YAML-safe quoting and decodes quoted scalars symmetrically; filesystem, browser init, actual Settings API, UI, and post-save mutation round-trips cover embedded quotes. Expanded focused gate passed 194 tests/1,913 assertions; final owned follow-up passed 22/169. Integrated gate: TypeScript clean, Biome checked 351 files, 1,863 passed/4 skipped/0 failed with 8,223 assertions across 207 files in 599.08 seconds; diff check clean.
 <!-- SECTION:NOTES:END -->
 
 ## Comments

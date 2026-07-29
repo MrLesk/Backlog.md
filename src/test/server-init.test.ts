@@ -44,16 +44,23 @@ describe("BacklogServer init endpoint", () => {
 		expect(config?.checkActiveBranches).toBe(true);
 	});
 
-	it("round-trips autoCommitMode from browser initialization", async () => {
+	it("round-trips autoCommitMode and quoted project names from browser initialization", async () => {
 		const server = new BacklogServer(TEST_DIR) as unknown as InitHandler;
 		const response = await server.handleInit(
-			initRequest({ advancedConfig: { autoCommit: true, autoCommitMode: "amend-own" } }),
+			initRequest({
+				projectName: 'Browser "Quoted" Init',
+				advancedConfig: { autoCommit: true, autoCommitMode: "amend-own" },
+			}),
 		);
 
 		expect(response.status).toBe(200);
-		const config = await new Core(TEST_DIR).filesystem.loadConfig();
+		const core = new Core(TEST_DIR);
+		const config = await core.filesystem.loadConfig();
+		expect(config?.projectName).toBe('Browser "Quoted" Init');
 		expect(config?.autoCommit).toBe(true);
 		expect(config?.autoCommitMode).toBe("amend-own");
+		const { task } = await core.createTaskFromInput({ title: "Mutation after quoted initialization" }, false);
+		expect((await core.filesystem.loadTask(task.id))?.title).toBe("Mutation after quoted initialization");
 	});
 
 	it("rejects an invalid browser initialization autoCommitMode without writing config", async () => {

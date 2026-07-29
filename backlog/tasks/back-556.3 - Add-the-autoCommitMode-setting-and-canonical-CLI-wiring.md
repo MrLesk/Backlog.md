@@ -5,7 +5,7 @@ status: In Progress
 assignee:
   - '@andreas'
 created_date: '2026-07-28 14:47'
-updated_date: '2026-07-29 22:23'
+updated_date: '2026-07-29 22:54'
 labels:
   - cli
 dependencies:
@@ -33,8 +33,8 @@ Documentation must cover rolling-commit boundaries, how the message is rebuilt a
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 Configuration accepts autoCommitMode with values new and amend-own, persists it as auto_commit_mode in YAML, and exposes it as autoCommitMode in typed configuration.
-- [ ] #2 A missing autoCommitMode behaves exactly as new, and an invalid value is rejected with an error instead of falling back to new.
+- [x] #1 Configuration accepts autoCommitMode with values new and amend-own, persists it as auto_commit_mode in YAML, and exposes it as autoCommitMode in typed configuration.
+- [x] #2 A missing autoCommitMode behaves exactly as new, and an invalid value is rejected with an error instead of falling back to new.
 - [x] #3 With autoCommit false, every mutation surface modifies files without creating or replacing commits under either mode.
 - [x] #4 An explicit per-invocation autoCommit override decides only whether the mutation commits; the configured autoCommitMode still decides how it commits, so the two settings stay orthogonal however the mutation was invoked.
 - [x] #5 In amend-own mode the first automatic mutation after a non-owned boundary creates one new commit; it becomes Backlog-owned and starts an amendable sequence only when it lands on a named branch and valid ownership evidence for its exact SHA is successfully recorded.
@@ -43,7 +43,7 @@ Documentation must cover rolling-commit boundaries, how the message is rebuilt a
 - [x] #8 The amend decision lives in the shared core mutation path, so CLI, TUI, browser, and MCP-triggered mutations share it, with cross-surface regression coverage.
 - [x] #9 Each triggering surface reports when a mutation replaced an existing commit instead of creating one, and identifies the commit it replaced.
 - [x] #10 The --no-amend option forces a new commit for a single invocation without changing configuration, is accepted by every command that can automatically commit, appears in that command help, and is a documented no-op rather than an error under autoCommitMode new.
-- [ ] #11 autoCommitMode is readable and writable through backlog config get, set, and list with validation, appears in the available-keys help, and is recognized by live config reload.
+- [x] #11 autoCommitMode is readable and writable through backlog config get, set, and list with validation, appears in the available-keys help, and is recognized by live config reload.
 - [x] #12 Filesystem-only projects continue to force autoCommit false regardless of autoCommitMode.
 - [x] #13 Documentation explains rolling-commit boundaries, message rebuilding and duplicate collapsing, the factored subject, reflog recovery, the risk of rewriting published history, degradation to new when ownership evidence cannot be recorded, and the safe new default. It also states the accepted limits: publication detection is local-only and cannot see a push that leaves no remote-tracking ref, a linked worktree parked on the tip with a detached HEAD is not detected, and amend-own is unsupported alongside hooks that modify the commit message because a non-idempotent hook appends its output once per amend.
 - [x] #14 Tests cover both modes across task, draft, document, decision, milestone, and agent-instruction mutations, custom backlog roots, the --no-amend override, explicit per-call autoCommit overrides, and repeated mutations with detached HEAD or unavailable ownership evidence.
@@ -52,16 +52,16 @@ Documentation must cover rolling-commit boundaries, how the message is rebuilt a
 - [x] #17 The CLI help contract advertises --no-amend on every invocation surface whose interactive flow can trigger automatic mutations, with behavior coverage rather than help-text-only assertions.
 - [x] #18 Every interactive command path that can reach a mutating unified view and MCP start advertises and honors --no-amend through one immutable invocation plan.
 - [x] #19 CLI-created Core instances use one bounded result sink that both callbacks and TUI notice consumption drain without raw console output inside alternate-screen sessions.
-- [ ] #20 Malformed automatic-commit configuration is validated through one immutable preflight plan before any task, lifecycle, document, decision, milestone, or instruction mutation writes files; validation failure leaves bytes and Git state unchanged.
+- [x] #20 Malformed automatic-commit configuration is validated through one immutable preflight plan before any task, lifecycle, document, decision, milestone, or instruction mutation writes files; validation failure leaves bytes and Git state unchanged.
 - [x] #21 Centralized browser feedback transport does not automatically replay non-idempotent mutations after ambiguous response loss or 5xx responses; response-loss coverage proves one user action produces at most one entity.
 - [x] #22 After CLI cleanup confirmation, one current-byte automatic-commit plan controls every completion plus staging and user-facing reporting, so stale true-to-false and false-to-true transitions cannot leave moves uncommitted or report false staging.
 <!-- AC:END -->
 
 ## Definition of Done
 <!-- DOD:BEGIN -->
-- [ ] #1 bunx tsc --noEmit passes when TypeScript touched
-- [ ] #2 bun run check . passes when formatting/linting touched
-- [ ] #3 bun test (or scoped test) passes
+- [x] #1 bunx tsc --noEmit passes when TypeScript touched
+- [x] #2 bun run check . passes when formatting/linting touched
+- [x] #3 bun test (or scoped test) passes
 <!-- DOD:END -->
 
 ## Implementation Plan
@@ -118,6 +118,8 @@ Pass 9 preflight/cleanup/docs corrections complete. FileSystem tracks whether co
 Pass 10 configuration/help corrections complete. Quote-aware trailing YAML comments are stripped identically for parsing and strict current-byte validation, with scalar auto_commit/auto_commit_mode watcher-to-mutation coverage and an embedded quoted hash regression. The canonical CLI help matrix now includes both draft and draft view, so every mutating interactive draft entrypoint advertises --no-amend. Full integrated gate passes.
 
 Pass 11 malformed-scalar correction complete. FileSystem parsing and strict current-byte validation use one recognized-scalar parser: trailing comments remain quote-aware; valid values are either unquoted or enclosed by balanced outer quotes; unmatched and embedded quote placement fails closed with the canonical mode error. Watcher last-known-good coverage rejects both malformed forms, and broad mutation atomicity uses an unmatched quoted amend-own value.
+
+Pass 12 configuration round-trip is symmetric. Serializer uses JSON quoting (a YAML-safe subset) for every user string/list value; strict scalar parsing JSON-decodes double-quoted values and YAML-decodes doubled single quotes while retaining fail-closed unmatched/embedded syntax. Browser init and actual config API saves with embedded quotes survive fresh current-byte mutations.
 <!-- SECTION:NOTES:END -->
 
 ## Comments
