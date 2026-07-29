@@ -5,7 +5,7 @@ status: In Progress
 assignee:
   - '@andreas'
 created_date: '2026-07-28 14:27'
-updated_date: '2026-07-29 17:43'
+updated_date: '2026-07-29 17:45'
 labels:
   - enhancement
   - git
@@ -129,7 +129,7 @@ This task is delivered through subtasks, because the selected-path correctness f
 - [x] #4 No automatic Backlog commit, in either mode, contains paths outside those selected for the operation. Pre-existing unrelated index and worktree state plus pre-commit and commit-message hook staging through the isolated index are preserved, while mutations made by post hooks against the real index and worktree persist according to normal Git semantics.
 - [x] #5 A human can see when an amend happened, force a new commit for a single invocation with --no-amend on any command that can automatically commit, and follow documented reflog recovery for an unwanted amend.
 - [x] #6 The upstream cross-platform test/build/Nix workflow executes successfully for the final implementation SHA, or the task records that first-time-contributor workflow approval is externally blocked on an upstream maintainer before merge.
-- [ ] #7 The final PR branch history follows CONTRIBUTING.md by including BACK-556 in every feature commit message, while preserving reviewable intent and the task evidence required for this delivery.
+- [x] #7 The final PR branch history follows CONTRIBUTING.md by including BACK-556 in every feature commit message, while preserving reviewable intent and the task evidence required for this delivery.
 <!-- AC:END -->
 
 ## Definition of Done
@@ -198,6 +198,8 @@ All Pass 6 findings fixed and fully verified. Focused expanded gate passed 145 t
 Pass 7 corrections complete: MCP demotion honors configured amend-own and force-new; mutation preflight and watcher acceptance share recognized-line validation while preserving supported block-list YAML; the concurrency regression now exercises loadConfigForMutation and proves the competing filesystem-only snapshot; automatic-commit result storage is capped at 100 with aggregate overflow reporting and complete callback delivery. Focused gate: 57 tests/691 assertions after block-list compatibility correction. Integrated gate: TypeScript clean, Biome checked 350 files, 1,848 passed/4 skipped/0 failed with 7,943 assertions across 205 files in 508.23 seconds; diff check clean.
 
 Pass 8 code findings fixed and fully verified: current-byte auto_commit owns TUI/agent enablement; commented block/inline YAML remains compatible; overflow summaries preserve the total; and automatic-commit plus task/draft confirmations render in one bounded visible stack without overwriting. Focused gate: 57 tests/685 assertions. Integrated gate: TypeScript clean, Biome checked 349 configured files, 1,852 passed/4 skipped/0 failed with 7,957 assertions across 206 files in 520.71 seconds. Commit-history criterion remains open for the planned safe rewrite.
+
+Pass 8 history finding resolved with a message-only interactive rebase: all 29 upstream/main feature commits now include exact BACK-556 while retaining conventional-commit structure. Old d3f976c and rewritten 4b797de trees are byte-identical, the commit count remains 29, and every rewritten subject passes the task-ID audit.
 <!-- SECTION:NOTES:END -->
 
 ## Comments
