@@ -5,7 +5,7 @@ status: In Progress
 assignee:
   - '@andreas'
 created_date: '2026-07-28 14:47'
-updated_date: '2026-07-29 12:51'
+updated_date: '2026-07-29 13:20'
 labels:
   - cli
 dependencies:
@@ -48,18 +48,18 @@ Documentation must cover rolling-commit boundaries, how the message is rebuilt a
 - [x] #13 Documentation explains rolling-commit boundaries, message rebuilding and duplicate collapsing, the factored subject, reflog recovery, the risk of rewriting published history, degradation to new when ownership evidence cannot be recorded, and the safe new default. It also states the accepted limits: publication detection is local-only and cannot see a push that leaves no remote-tracking ref, a linked worktree parked on the tip with a detached HEAD is not detected, and amend-own is unsupported alongside hooks that modify the commit message because a non-idempotent hook appends its output once per amend.
 - [x] #14 Tests cover both modes across task, draft, document, decision, milestone, and agent-instruction mutations, custom backlog roots, the --no-amend override, explicit per-call autoCommit overrides, and repeated mutations with detached HEAD or unavailable ownership evidence.
 - [x] #15 The invocation force-new decision remains orthogonal to boolean enabled overrides and reaches every interactive CLI/TUI/browser mutation path that can automatically commit.
-- [x] #16 All browser mutation clients, including archive and complete no-content responses, surface bounded replacement feedback through one centralized response path.
+- [ ] #16 All browser mutation clients, including archive and complete no-content responses, surface bounded replacement feedback through one centralized response path.
 - [x] #17 The CLI help contract advertises --no-amend on every invocation surface whose interactive flow can trigger automatic mutations, with behavior coverage rather than help-text-only assertions.
 - [x] #18 Every interactive command path that can reach a mutating unified view and MCP start advertises and honors --no-amend through one immutable invocation plan.
 - [x] #19 CLI-created Core instances use one bounded result sink that both callbacks and TUI notice consumption drain without raw console output inside alternate-screen sessions.
-- [x] #20 Malformed automatic-commit configuration is validated through one immutable preflight plan before any task, lifecycle, document, decision, milestone, or instruction mutation writes files; validation failure leaves bytes and Git state unchanged.
+- [ ] #20 Malformed automatic-commit configuration is validated through one immutable preflight plan before any task, lifecycle, document, decision, milestone, or instruction mutation writes files; validation failure leaves bytes and Git state unchanged.
 <!-- AC:END -->
 
 ## Definition of Done
 <!-- DOD:BEGIN -->
-- [x] #1 bunx tsc --noEmit passes when TypeScript touched
-- [x] #2 bun run check . passes when formatting/linting touched
-- [x] #3 bun test (or scoped test) passes
+- [ ] #1 bunx tsc --noEmit passes when TypeScript touched
+- [ ] #2 bun run check . passes when formatting/linting touched
+- [ ] #3 bun test (or scoped test) passes
 <!-- DOD:END -->
 
 ## Implementation Plan
@@ -70,6 +70,8 @@ Documentation must cover rolling-commit boundaries, how the message is rebuilt a
 16. Cover the actual interactive command graph and MCP startup with the invocation plan. Unify Core result recording/consumption so CLI TUI feedback uses the same bounded sink.
 
 17. Route every mutating web API method through the centralized response/notice transport; connect direct agent-instruction commits to the shared bounded result recorder; expose one Core milestone-create mutation; and resolve/validate the invocation commit plan before filesystem writes.
+
+18. Move draft promotion onto the centralized ApiClient mutation transport. Extend the resolved commit plan with an immutable Git configuration snapshot and pass it into GitOperations so concurrent plan resolution cannot alter filesystem-only, hook, signing, or safety behavior.
 <!-- SECTION:PLAN:END -->
 
 ## Implementation Notes
@@ -102,5 +104,10 @@ Holistic pass 2 findings H2/M1: several unified-view aliases and MCP start lacke
 created: 2026-07-29 11:58
 ---
 Holistic pass 3 found four gaps: raw-fetch document/decision/milestone clients suppress amendment headers; CLI init/agents pass an undefined result callback; browser milestone creation bypasses Core automatic commits; and invalid auto_commit_mode can be detected only after files have already changed.
+---
+
+created: 2026-07-29 13:20
+---
+Holistic pass 4 findings H1/M2: DraftsList still bypasses feedback for promotion, and the immutable plan snapshots intent but not GitOperations configuration, allowing concurrent plan resolution to replace filesystemOnly/hook/signing state during an in-flight mutation.
 ---
 <!-- COMMENTS:END -->
