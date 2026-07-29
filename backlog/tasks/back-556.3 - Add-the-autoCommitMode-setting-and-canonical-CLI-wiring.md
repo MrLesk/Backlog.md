@@ -5,7 +5,7 @@ status: In Progress
 assignee:
   - '@andreas'
 created_date: '2026-07-28 14:47'
-updated_date: '2026-07-29 17:43'
+updated_date: '2026-07-29 18:11'
 labels:
   - cli
 dependencies:
@@ -35,32 +35,33 @@ Documentation must cover rolling-commit boundaries, how the message is rebuilt a
 <!-- AC:BEGIN -->
 - [x] #1 Configuration accepts autoCommitMode with values new and amend-own, persists it as auto_commit_mode in YAML, and exposes it as autoCommitMode in typed configuration.
 - [x] #2 A missing autoCommitMode behaves exactly as new, and an invalid value is rejected with an error instead of falling back to new.
-- [x] #3 With autoCommit false, every mutation surface modifies files without creating or replacing commits under either mode.
+- [ ] #3 With autoCommit false, every mutation surface modifies files without creating or replacing commits under either mode.
 - [x] #4 An explicit per-invocation autoCommit override decides only whether the mutation commits; the configured autoCommitMode still decides how it commits, so the two settings stay orthogonal however the mutation was invoked.
 - [x] #5 In amend-own mode the first automatic mutation after a non-owned boundary creates one new commit; it becomes Backlog-owned and starts an amendable sequence only when it lands on a named branch and valid ownership evidence for its exact SHA is successfully recorded.
 - [x] #6 A later automatic mutation on an owned tip replaces it, so the commit count reachable from HEAD does not increase and the changes from both operations are present in the resulting tree.
 - [x] #7 A non-owned tip always produces a new commit. It starts a new amendable sequence only when the new tip is on a named branch and valid ownership evidence is successfully recorded; otherwise it remains unowned and the next mutation also creates a new commit.
-- [x] #8 The amend decision lives in the shared core mutation path, so CLI, TUI, browser, and MCP-triggered mutations share it, with cross-surface regression coverage.
+- [ ] #8 The amend decision lives in the shared core mutation path, so CLI, TUI, browser, and MCP-triggered mutations share it, with cross-surface regression coverage.
 - [x] #9 Each triggering surface reports when a mutation replaced an existing commit instead of creating one, and identifies the commit it replaced.
 - [x] #10 The --no-amend option forces a new commit for a single invocation without changing configuration, is accepted by every command that can automatically commit, appears in that command help, and is a documented no-op rather than an error under autoCommitMode new.
 - [x] #11 autoCommitMode is readable and writable through backlog config get, set, and list with validation, appears in the available-keys help, and is recognized by live config reload.
 - [x] #12 Filesystem-only projects continue to force autoCommit false regardless of autoCommitMode.
-- [x] #13 Documentation explains rolling-commit boundaries, message rebuilding and duplicate collapsing, the factored subject, reflog recovery, the risk of rewriting published history, degradation to new when ownership evidence cannot be recorded, and the safe new default. It also states the accepted limits: publication detection is local-only and cannot see a push that leaves no remote-tracking ref, a linked worktree parked on the tip with a detached HEAD is not detected, and amend-own is unsupported alongside hooks that modify the commit message because a non-idempotent hook appends its output once per amend.
+- [ ] #13 Documentation explains rolling-commit boundaries, message rebuilding and duplicate collapsing, the factored subject, reflog recovery, the risk of rewriting published history, degradation to new when ownership evidence cannot be recorded, and the safe new default. It also states the accepted limits: publication detection is local-only and cannot see a push that leaves no remote-tracking ref, a linked worktree parked on the tip with a detached HEAD is not detected, and amend-own is unsupported alongside hooks that modify the commit message because a non-idempotent hook appends its output once per amend.
 - [x] #14 Tests cover both modes across task, draft, document, decision, milestone, and agent-instruction mutations, custom backlog roots, the --no-amend override, explicit per-call autoCommit overrides, and repeated mutations with detached HEAD or unavailable ownership evidence.
 - [x] #15 The invocation force-new decision remains orthogonal to boolean enabled overrides and reaches every interactive CLI/TUI/browser mutation path that can automatically commit.
 - [x] #16 All browser mutation clients, including archive and complete no-content responses, surface bounded replacement feedback through one centralized response path.
 - [x] #17 The CLI help contract advertises --no-amend on every invocation surface whose interactive flow can trigger automatic mutations, with behavior coverage rather than help-text-only assertions.
 - [x] #18 Every interactive command path that can reach a mutating unified view and MCP start advertises and honors --no-amend through one immutable invocation plan.
 - [x] #19 CLI-created Core instances use one bounded result sink that both callbacks and TUI notice consumption drain without raw console output inside alternate-screen sessions.
-- [x] #20 Malformed automatic-commit configuration is validated through one immutable preflight plan before any task, lifecycle, document, decision, milestone, or instruction mutation writes files; validation failure leaves bytes and Git state unchanged.
+- [ ] #20 Malformed automatic-commit configuration is validated through one immutable preflight plan before any task, lifecycle, document, decision, milestone, or instruction mutation writes files; validation failure leaves bytes and Git state unchanged.
 - [x] #21 Centralized browser feedback transport does not automatically replay non-idempotent mutations after ambiguous response loss or 5xx responses; response-loss coverage proves one user action produces at most one entity.
+- [ ] #22 After CLI cleanup confirmation, one current-byte automatic-commit plan controls every completion plus staging and user-facing reporting, so stale true-to-false and false-to-true transitions cannot leave moves uncommitted or report false staging.
 <!-- AC:END -->
 
 ## Definition of Done
 <!-- DOD:BEGIN -->
-- [x] #1 bunx tsc --noEmit passes when TypeScript touched
-- [x] #2 bun run check . passes when formatting/linting touched
-- [x] #3 bun test (or scoped test) passes
+- [ ] #1 bunx tsc --noEmit passes when TypeScript touched
+- [ ] #2 bun run check . passes when formatting/linting touched
+- [ ] #3 bun test (or scoped test) passes
 <!-- DOD:END -->
 
 ## Implementation Plan
@@ -81,6 +82,8 @@ Documentation must cover rolling-commit boundaries, how the message is rebuilt a
 21. Remove MCP task_demote’s false auto-commit override and cover amend-own plus force-new feedback. Share strict recognized-line syntax validation with mutation preflight. Repair the concurrent-plan regression to drive loadConfigForMutation and assert the competing filesystem-only snapshot. Bound the CLI/TUI result sink with aggregated overflow reporting and high-volume coverage.
 
 22. Remove configuration-derived boolean overrides from TUI and CLI agent mutation paths so current-byte preflight owns enablement. Accept comments in supported block-list YAML. Carry aggregate amendment totals through browser header summarization and cover high-volume output end to end.
+
+23. Fail mutation preflight when an initialized project current config is transiently missing or unreadable, with bounded stable-read retries across Core/browser/MCP. Resolve one cleanup plan after confirmation and use it for both moves and staging/reporting. Add the stale remote-tracking-ref warning.
 <!-- SECTION:PLAN:END -->
 
 ## Implementation Notes
@@ -148,5 +151,10 @@ Holistic pass 7 H1/H2/M3/M4: MCP demote disables commits; malformed recognized m
 created: 2026-07-29 17:24
 ---
 Pass 8 H1/M2/M3: cached surface booleans can override current auto_commit false; commented block-list YAML fails shared validation; and bounded browser overflow feedback reports the retained array length rather than the total replacements.
+---
+
+created: 2026-07-29 18:11
+---
+Pass 9 M2/M3/L4: config-read failures fall through as config-less writes; cleanup stages/reports from pre-confirmation cache while completions use current bytes; and one accepted publication limit is absent from user docs.
 ---
 <!-- COMMENTS:END -->
