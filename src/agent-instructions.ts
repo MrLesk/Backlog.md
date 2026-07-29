@@ -3,6 +3,7 @@ import { mkdir } from "node:fs/promises";
 import { dirname, isAbsolute, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { CLAUDE_AGENT_CONTENT, CLI_AGENT_NUDGE, MCP_AGENT_NUDGE, README_GUIDELINES } from "./constants/index.ts";
+import { createAutomaticCommitOperation } from "./git/automatic-commit-message.ts";
 import type { GitCommitOptions, GitCommitResult, GitOperations } from "./git/operations.ts";
 import { getVersion } from "./utils/version.ts";
 
@@ -223,7 +224,11 @@ export async function addAgentInstructions(
 
 	if (git && paths.length > 0 && autoCommit) {
 		const repoRoot = await git.stageFiles(paths);
-		const result = await git.commitFiles("Add AI agent instructions", paths, repoRoot, commitOptions);
+		const message = "Add AI agent instructions";
+		const result = await git.commitFiles(message, paths, repoRoot, {
+			...commitOptions,
+			operation: createAutomaticCommitOperation(message, "Add", "instruction", ["AI agent"]),
+		});
 		if (result) onCommitResult?.(result);
 	}
 

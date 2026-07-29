@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import { rename } from "node:fs/promises";
 import { join, relative } from "node:path";
 import { $ } from "bun";
+import type { AutoCommitInput } from "../core/auto-commit.ts";
 import type { ContentStore } from "../core/content-store.ts";
 import { FileSystem } from "../file-system/operations.ts";
 import { serializeTask } from "../markdown/serializer.ts";
@@ -48,8 +49,8 @@ async function replaceWatchedConfigFile(configPath: string, content: string): Pr
 	);
 }
 
-async function startServer(): Promise<void> {
-	server = new BacklogServer(TEST_DIR);
+async function startServer(autoCommit?: AutoCommitInput): Promise<void> {
+	server = new BacklogServer(TEST_DIR, { autoCommit });
 	await server.start(0, false);
 	const port = server.getPort();
 	expect(port).not.toBeNull();
@@ -584,6 +585,39 @@ describe("BacklogServer task SPA fallback", () => {
 		expect(second.headers.get("X-Backlog-Auto-Commit")).toMatch(
 			/^Amended Backlog commit [0-9a-f]{12} as [0-9a-f]{12}\.$/,
 		);
+	});
+
+	it("preserves a browser invocation force-new boundary through request feedback contexts", async () => {
+		await server?.stop();
+		server = null;
+		const config = await filesystem.loadConfig();
+		if (!config) throw new Error("Expected test config");
+		await filesystem.saveConfig({ ...config, autoCommit: true, autoCommitMode: "amend-own" });
+		await $`git init -b main`.cwd(TEST_DIR).quiet();
+		await $`git config user.name "Test User"`.cwd(TEST_DIR).quiet();
+		await $`git config user.email test@example.com`.cwd(TEST_DIR).quiet();
+		await $`git add backlog && git commit -m "Initialize browser force-new test"`.cwd(TEST_DIR).quiet();
+		await startServer();
+		const first = await request("/api/tasks", {
+			method: "POST",
+			headers: { "Content-Type": "application/json" },
+			body: JSON.stringify({ title: "Owned browser mutation" }),
+		});
+		expect(first.status).toBe(201);
+		const beforeForced = Number((await $`git rev-list --count HEAD`.cwd(TEST_DIR).text()).trim());
+
+		await (server as BacklogServer | null)?.stop();
+		server = null;
+		await startServer({ forceNew: true });
+		const forced = await request("/api/tasks", {
+			method: "POST",
+			headers: { "Content-Type": "application/json" },
+			body: JSON.stringify({ title: "Forced browser boundary" }),
+		});
+
+		expect(forced.status).toBe(201);
+		expect(forced.headers.get("X-Backlog-Auto-Commit")).toBeNull();
+		expect(Number((await $`git rev-list --count HEAD`.cwd(TEST_DIR).text()).trim())).toBe(beforeForced + 1);
 	});
 
 	it("uses the current config when active-branch collision checks are toggled", async () => {

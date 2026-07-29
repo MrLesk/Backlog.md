@@ -6,6 +6,7 @@ import { DEFAULT_DIRECTORIES, DEFAULT_FILES, DEFAULT_STATUSES, FALLBACK_STATUS }
 import { parseDecision, parseDocument, parseMilestone, parseTask } from "../markdown/parser.ts";
 import { serializeDecision, serializeDocument, serializeTask } from "../markdown/serializer.ts";
 import type { BacklogConfig, Decision, Document, Milestone, Task, TaskListFilter } from "../types/index.ts";
+import { AUTO_COMMIT_MODE_CONFIG_ERROR, isAutoCommitMode } from "../utils/auto-commit-mode.ts";
 import type { BacklogConfigSource } from "../utils/backlog-directory.ts";
 import {
 	normalizeProjectBacklogDirectory,
@@ -1573,9 +1574,7 @@ ${description || `Milestone: ${title}`}`,
 					break;
 				case "auto_commit_mode": {
 					const mode = value.replace(/["']/g, "").toLowerCase();
-					if (mode !== "new" && mode !== "amend-own") {
-						throw new InvalidBacklogConfigError("auto_commit_mode must be new or amend-own");
-					}
+					if (!isAutoCommitMode(mode)) throw new InvalidBacklogConfigError(AUTO_COMMIT_MODE_CONFIG_ERROR);
 					config.autoCommitMode = mode;
 					break;
 				}
@@ -1641,12 +1640,8 @@ ${description || `Milestone: ${title}`}`,
 	}
 
 	private serializeConfig(config: BacklogConfig): string {
-		if (
-			config.autoCommitMode !== undefined &&
-			config.autoCommitMode !== "new" &&
-			config.autoCommitMode !== "amend-own"
-		) {
-			throw new InvalidBacklogConfigError("auto_commit_mode must be new or amend-own");
+		if (config.autoCommitMode !== undefined && !isAutoCommitMode(config.autoCommitMode)) {
+			throw new InvalidBacklogConfigError(AUTO_COMMIT_MODE_CONFIG_ERROR);
 		}
 		const normalizedDefinitionOfDone = this.normalizeDefinitionOfDone(config.definitionOfDone);
 		const lines = [

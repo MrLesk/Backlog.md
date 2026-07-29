@@ -2,6 +2,7 @@ import net from "node:net";
 import { dirname, join } from "node:path";
 import type { Server, ServerWebSocket } from "bun";
 import { $ } from "bun";
+import { type AutoCommitInput, summarizeAutoCommitNotices } from "../core/auto-commit.ts";
 import { Core } from "../core/backlog.ts";
 import type { ContentStore } from "../core/content-store.ts";
 import { initializeProject } from "../core/init.ts";
@@ -18,6 +19,7 @@ import {
 	type Task,
 	type TaskUpdateInput,
 } from "../types/index.ts";
+import { AUTO_COMMIT_MODE_ERROR, isAutoCommitMode } from "../utils/auto-commit-mode.ts";
 import { resolveMilestoneInputForStorage } from "../utils/milestone-storage.ts";
 import { formatValidPriorityValues, resolvePriorityValue } from "../utils/priority-config.ts";
 import { formatValidStatuses, getCanonicalStatuses, getValidStatuses } from "../utils/status.ts";
@@ -193,13 +195,14 @@ export class BacklogServer {
 	private unsubscribeContentStore?: () => void;
 	private storeReadyBroadcasted = false;
 
-	constructor(projectPath: string) {
-		this.core = new Core(projectPath, { enableWatchers: true });
+	constructor(projectPath: string, options: { autoCommit?: AutoCommitInput } = {}) {
+		this.core = new Core(projectPath, { enableWatchers: true, autoCommit: options.autoCommit });
 	}
 
 	private async withAutoCommitFeedback(action: () => Promise<Response>): Promise<Response> {
 		const { value: response, notices } = await this.core.withAutoCommitFeedback(action);
-		if (notices.length > 0) response.headers.set("X-Backlog-Auto-Commit", notices.join(" "));
+		const notice = summarizeAutoCommitNotices(notices);
+		if (notice) response.headers.set("X-Backlog-Auto-Commit", notice);
 		return response;
 	}
 
@@ -1359,12 +1362,8 @@ export class BacklogServer {
 				return Response.json({ error: "Port must be between 1 and 65535" }, { status: 400 });
 			}
 
-			if (
-				updatedConfig.autoCommitMode !== undefined &&
-				updatedConfig.autoCommitMode !== "new" &&
-				updatedConfig.autoCommitMode !== "amend-own"
-			) {
-				return Response.json({ error: "Auto commit mode must be new or amend-own" }, { status: 400 });
+			if (updatedConfig.autoCommitMode !== undefined && !isAutoCommitMode(updatedConfig.autoCommitMode)) {
+				return Response.json({ error: AUTO_COMMIT_MODE_ERROR }, { status: 400 });
 			}
 
 			// Save configuration
@@ -1862,12 +1861,8 @@ export class BacklogServer {
 			if (!projectName) {
 				return Response.json({ error: "Project name is required" }, { status: 400 });
 			}
-			if (
-				advancedConfig.autoCommitMode !== undefined &&
-				advancedConfig.autoCommitMode !== "new" &&
-				advancedConfig.autoCommitMode !== "amend-own"
-			) {
-				return Response.json({ error: "Auto commit mode must be new or amend-own" }, { status: 400 });
+			if (advancedConfig.autoCommitMode !== undefined && !isAutoCommitMode(advancedConfig.autoCommitMode)) {
+				return Response.json({ error: AUTO_COMMIT_MODE_ERROR }, { status: 400 });
 			}
 
 			// Check if already initialized (for browser, we don't allow re-init)

@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { apiClient } from '../lib/api';
 import { SuccessToast } from './SuccessToast';
 import type { BacklogConfig } from '../../types';
+import { isAutoCommitMode } from '../../utils/auto-commit-mode';
 
 const Settings: React.FC = () => {
 	const [config, setConfig] = useState<BacklogConfig | null>(null);
@@ -73,7 +74,7 @@ const Settings: React.FC = () => {
 			errors.projectName = 'Project name is required';
 		}
 
-		if (config.autoCommitMode !== undefined && config.autoCommitMode !== 'new' && config.autoCommitMode !== 'amend-own') {
+		if (config.autoCommitMode !== undefined && !isAutoCommitMode(config.autoCommitMode)) {
 			errors.autoCommitMode = 'Auto commit mode must be new or amend-own';
 		}
 

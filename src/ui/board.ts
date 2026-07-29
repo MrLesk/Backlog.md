@@ -274,6 +274,7 @@ export async function renderBoardTui(
 		milestoneEntities?: Milestone[];
 		startupWarning?: string;
 		dateFormat?: string;
+		core?: Core;
 		createTask?: (input: TaskCreateInput) => Promise<Task>;
 		consumeAutoCommitNotices?: () => string[];
 		screen?: ScreenInterface;
@@ -289,6 +290,7 @@ export async function renderBoardTui(
 		return;
 	}
 
+	const mutationCore = options?.core ?? new Core(process.cwd(), { enableWatchers: true });
 	const initialColumns = prepareBoardColumns(initialTasks, statuses);
 	if (initialColumns.length === 0) {
 		console.log("No tasks available for the Kanban board.");
@@ -1043,7 +1045,7 @@ export async function renderBoardTui(
 								creationNotices = options.consumeAutoCommitNotices?.() ?? [];
 								return created;
 							}
-							const core = new Core(process.cwd(), { enableWatchers: true });
+							const core = mutationCore;
 							const config = await core.fs.loadConfig();
 							const created = (await core.createTaskFromInput(input, config?.autoCommit ?? false)).task;
 							creationNotices = core.consumeAutoCommitNotices();
@@ -1263,7 +1265,7 @@ export async function renderBoardTui(
 
 		const openTaskEditor = async (task: Task) => {
 			try {
-				const core = new Core(process.cwd(), { enableWatchers: true });
+				const core = mutationCore;
 				const result = await core.editTaskInTui(task.id, screen, task);
 				if (result.reason === "read_only") {
 					const branchInfo = result.task?.branch ? ` from branch "${result.task.branch}"` : "";
@@ -1357,7 +1359,7 @@ export async function renderBoardTui(
 
 				if (confirmed) {
 					try {
-						const core = new Core(process.cwd(), { enableWatchers: true });
+						const core = mutationCore;
 						const result = await completeTaskFromTui(core, task);
 
 						if (result.success) {
@@ -1395,7 +1397,7 @@ export async function renderBoardTui(
 
 				if (confirmed) {
 					try {
-						const core = new Core(process.cwd(), { enableWatchers: true });
+						const core = mutationCore;
 						const config = await core.fs.loadConfig();
 						const success = await core.archiveTask(task.id, config?.autoCommit ?? false);
 
@@ -1444,7 +1446,7 @@ export async function renderBoardTui(
 			}
 
 			try {
-				const core = new Core(process.cwd(), { enableWatchers: true });
+				const core = mutationCore;
 				const config = await core.fs.loadConfig();
 
 				// Get the final state from the projection
@@ -1604,7 +1606,7 @@ export async function renderBoardTui(
 
 			if (confirmed) {
 				try {
-					const core = new Core(process.cwd(), { enableWatchers: true });
+					const core = mutationCore;
 					const result = await completeTaskFromTui(core, task);
 
 					if (result.success) {
@@ -1647,7 +1649,7 @@ export async function renderBoardTui(
 
 			if (confirmed) {
 				try {
-					const core = new Core(process.cwd(), { enableWatchers: true });
+					const core = mutationCore;
 					const config = await core.fs.loadConfig();
 					const success = await core.archiveTask(task.id, config?.autoCommit ?? false);
 

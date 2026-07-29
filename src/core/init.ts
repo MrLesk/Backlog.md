@@ -282,7 +282,10 @@ export async function initializeProject(
 				core.gitOps,
 				agentInstructions,
 				config.autoCommit,
-				{ amendOwned: config.autoCommitMode === "amend-own" && !forceNewAutoCommit },
+				{
+					automaticCommitIntent:
+						config.autoCommitMode !== "amend-own" ? "new" : forceNewAutoCommit ? "start-owned" : "amend-own",
+				},
 				onAutoCommitResult,
 			);
 			mcpResults.agentFiles = formatAgentInstructionResults(agentInstructionResults);

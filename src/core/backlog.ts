@@ -3,7 +3,14 @@ import { rename as moveFile, readFile, stat, unlink, writeFile } from "node:fs/p
 import { basename, isAbsolute, join, relative } from "node:path";
 import { DEFAULT_DIRECTORIES, DEFAULT_STATUSES, FALLBACK_STATUS } from "../constants/index.ts";
 import { FileSystem } from "../file-system/operations.ts";
-import { type GitCommitOptions, type GitCommitResult, type GitIndexEntry, GitOperations } from "../git/operations.ts";
+import { type AutomaticCommitOperation, createAutomaticCommitOperation } from "../git/automatic-commit-message.ts";
+import {
+	type GitAutomaticCommitIntent,
+	type GitCommitOptions,
+	type GitCommitResult,
+	type GitIndexEntry,
+	GitOperations,
+} from "../git/operations.ts";
 import {
 	type AcceptanceCriterion,
 	type BacklogConfig,
@@ -854,8 +861,20 @@ export class Core {
 		return this.fs.backlogDirName;
 	}
 
-	private effectiveAutoCommitInput(input?: AutoCommitInput): AutoCommitInput {
-		return input === undefined ? (this.automaticCommitContext.getStore() ?? this.defaultAutoCommitInput) : input;
+	private resolveAutoCommitControls(input?: AutoCommitInput): { enabled?: boolean; forceNew: boolean } {
+		const context = this.automaticCommitContext.getStore();
+		const layers = [this.defaultAutoCommitInput, context, input];
+		let enabled: boolean | undefined;
+		let forceNew = false;
+		for (const layer of layers) {
+			if (typeof layer === "boolean") {
+				enabled = layer;
+			} else if (layer) {
+				if (layer.enabled !== undefined) enabled = layer.enabled;
+				if (layer.forceNew !== undefined) forceNew = layer.forceNew;
+			}
+		}
+		return { enabled, forceNew };
 	}
 
 	private recordAutoCommitResult(
@@ -879,18 +898,17 @@ export class Core {
 		return { value, notices: formatAutoCommitNotices(context) };
 	}
 
-	private async resolveAutoCommit(input?: AutoCommitInput): Promise<{ enabled: boolean; amendOwned: boolean }> {
+	private async resolveAutoCommit(
+		input?: AutoCommitInput,
+	): Promise<{ enabled: boolean; intent: GitAutomaticCommitIntent }> {
 		const config = await this.fs.loadConfig();
 		this.git.setConfig(config);
-		if (config?.filesystemOnly) return { enabled: false, amendOwned: false };
-		const effectiveInput = this.effectiveAutoCommitInput(input);
-		const enabledOverride = typeof effectiveInput === "boolean" ? effectiveInput : effectiveInput?.enabled;
-		const enabled = enabledOverride ?? config?.autoCommit ?? false;
-		const forceNew = typeof effectiveInput === "boolean" ? false : (effectiveInput?.forceNew ?? false);
-		return {
-			enabled,
-			amendOwned: enabled && (config?.autoCommitMode ?? "new") === "amend-own" && !forceNew,
-		};
+		if (config?.filesystemOnly) return { enabled: false, intent: "new" };
+		const controls = this.resolveAutoCommitControls(input);
+		const enabled = controls.enabled ?? config?.autoCommit ?? false;
+		const intent: GitAutomaticCommitIntent =
+			(config?.autoCommitMode ?? "new") === "new" ? "new" : controls.forceNew ? "start-owned" : "amend-own";
+		return { enabled, intent };
 	}
 
 	async shouldAutoCommit(input?: AutoCommitInput): Promise<boolean> {
@@ -902,21 +920,37 @@ export class Core {
 		return this.git;
 	}
 
-	private async gitCommitOptions(input?: AutoCommitInput): Promise<GitCommitOptions> {
-		return { amendOwned: (await this.resolveAutoCommit(input)).amendOwned };
+	private async gitCommitOptions(
+		input?: AutoCommitInput,
+		operation?: AutomaticCommitOperation,
+	): Promise<GitCommitOptions> {
+		return { automaticCommitIntent: (await this.resolveAutoCommit(input)).intent, operation };
 	}
 
-	private async commitOperationFiles(message: string, filePaths: string[], input?: AutoCommitInput): Promise<void> {
+	private async commitOperationFiles(
+		operation: AutomaticCommitOperation,
+		filePaths: string[],
+		input?: AutoCommitInput,
+	): Promise<void> {
 		const uniquePaths = Array.from(new Set(filePaths.map((path) => path.trim()).filter((path) => path.length > 0)));
 		if (uniquePaths.length === 0) return;
 		const repoRoot = await this.git.stageFiles(uniquePaths);
-		const result = await this.git.commitFiles(message, uniquePaths, repoRoot, await this.gitCommitOptions(input));
+		const result = await this.git.commitFiles(
+			operation.message,
+			uniquePaths,
+			repoRoot,
+			await this.gitCommitOptions(input, operation),
+		);
 		this.recordAutoCommitResult(input, result);
 	}
 
-	async commitAutomaticFiles(message: string, filePaths: string[], input?: AutoCommitInput): Promise<void> {
+	async commitAutomaticFiles(
+		operation: AutomaticCommitOperation,
+		filePaths: string[],
+		input?: AutoCommitInput,
+	): Promise<void> {
 		if (await this.shouldAutoCommit(input)) {
-			await this.commitOperationFiles(message, filePaths, input);
+			await this.commitOperationFiles(operation, filePaths, input);
 		}
 	}
 
@@ -1340,7 +1374,11 @@ export class Core {
 			if (isDraft) {
 				await this.git.addFile(filepath);
 				if (write) write.generatedIndexEntries = await this.git.getIndexEntries(filepath);
-				const result = await this.git.commitTaskChange(task.id, `Create draft ${task.id}`, filepath, options);
+				const message = `${task.id} - Create draft ${task.id}`;
+				const result = await this.git.commitTaskChange(task.id, `Create draft ${task.id}`, filepath, {
+					...options,
+					operation: createAutomaticCommitOperation(message, "Create", "draft", [task.id]),
+				});
 				this.recordAutoCommitResult(input, result);
 			} else {
 				const result = await this.git.addAndCommitTaskFile(
@@ -2249,12 +2287,11 @@ export class Core {
 
 		if (await this.shouldAutoCommit(autoCommit)) {
 			await this.git.addFile(filepath);
-			const result = await this.git.commitTaskChange(
-				task.id,
-				`Update draft ${task.id}`,
-				filepath,
-				await this.gitCommitOptions(autoCommit),
-			);
+			const message = `${task.id} - Update draft ${task.id}`;
+			const result = await this.git.commitTaskChange(task.id, `Update draft ${task.id}`, filepath, {
+				...(await this.gitCommitOptions(autoCommit)),
+				operation: createAutomaticCommitOperation(message, "Update", "draft", [task.id]),
+			});
 			this.recordAutoCommitResult(autoCommit, result);
 		}
 	}
@@ -2344,8 +2381,9 @@ export class Core {
 		if (this.contentStore) this.contentStore.upsertTask(savedTask);
 
 		if (await this.shouldAutoCommit(autoCommit)) {
+			const draftId = normalizeId(draft.id, "draft");
 			await this.commitOperationFiles(
-				`backlog: Promote draft ${normalizeId(draft.id, "draft")}`,
+				createAutomaticCommitOperation(`backlog: Promote draft ${draftId}`, "Promote", "draft", [draftId]),
 				[moved.sourcePath, moved.targetPath],
 				autoCommit,
 			);
@@ -2378,8 +2416,9 @@ export class Core {
 		if (!moved) throw new Error(`Task not found: ${task.id}`);
 
 		if (await this.shouldAutoCommit(autoCommit)) {
+			const taskId = normalizeTaskId(task.id);
 			await this.commitOperationFiles(
-				`backlog: Demote task ${normalizeTaskId(task.id)}`,
+				createAutomaticCommitOperation(`backlog: Demote task ${taskId}`, "Demote", "task", [taskId]),
 				[moved.sourcePath, moved.targetPath],
 				autoCommit,
 			);
@@ -2440,7 +2479,17 @@ export class Core {
 
 		// Commit all changes at once if auto-commit is enabled
 		if (await this.shouldAutoCommit(autoCommit)) {
-			await this.commitOperationFiles(commitMessage || `Update ${tasks.length} tasks`, updatedPaths, autoCommit);
+			const message = commitMessage || `Update ${tasks.length} tasks`;
+			await this.commitOperationFiles(
+				createAutomaticCommitOperation(
+					message,
+					"Update",
+					"task",
+					tasks.map((task) => normalizeTaskId(task.id)),
+				),
+				updatedPaths,
+				autoCommit,
+			);
 		}
 	}
 
@@ -2596,7 +2645,9 @@ export class Core {
 
 		if (await this.shouldAutoCommit(autoCommit)) {
 			await this.commitOperationFiles(
-				`backlog: Archive task ${normalizedTaskId}`,
+				createAutomaticCommitOperation(`backlog: Archive task ${normalizedTaskId}`, "Archive", "task", [
+					normalizedTaskId,
+				]),
 				[
 					fromPath,
 					toPath,
@@ -2620,11 +2671,15 @@ export class Core {
 			const label = result.milestone?.id ? ` ${result.milestone.id}` : "";
 			const commitPaths = [result.sourcePath, result.targetPath];
 			try {
+				const message = `backlog: Archive milestone${label}`;
+				const operation = createAutomaticCommitOperation(message, "Archive", "milestone", [
+					result.milestone?.id ?? identifier,
+				]);
 				const commitResult = await this.git.commitFiles(
-					`backlog: Archive milestone${label}`,
+					message,
 					commitPaths,
 					repoRoot,
-					await this.gitCommitOptions(autoCommit),
+					await this.gitCommitOptions(autoCommit, operation),
 				);
 				this.recordAutoCommitResult(autoCommit, commitResult);
 			} catch (error) {
@@ -2667,11 +2722,15 @@ export class Core {
 			const label = result.milestone?.id ? ` ${result.milestone.id}` : "";
 			const commitPaths = [result.sourcePath, result.targetPath];
 			try {
+				const message = `backlog: Rename milestone${label}`;
+				const operation = createAutomaticCommitOperation(message, "Rename", "milestone", [
+					result.milestone?.id ?? identifier,
+				]);
 				const commitResult = await this.git.commitFiles(
-					`backlog: Rename milestone${label}`,
+					message,
 					commitPaths,
 					repoRoot,
-					await this.gitCommitOptions(autoCommit),
+					await this.gitCommitOptions(autoCommit, operation),
 				);
 				this.recordAutoCommitResult(autoCommit, commitResult);
 			} catch (error) {
@@ -2705,8 +2764,11 @@ export class Core {
 		const success = await this.fs.completeTask(taskId);
 
 		if (success && (await this.shouldAutoCommit(autoCommit))) {
+			const normalizedTaskId = normalizeTaskId(taskId);
 			await this.commitOperationFiles(
-				`backlog: Complete task ${normalizeTaskId(taskId)}`,
+				createAutomaticCommitOperation(`backlog: Complete task ${normalizedTaskId}`, "Complete", "task", [
+					normalizedTaskId,
+				]),
 				[fromPath, toPath],
 				autoCommit,
 			);
@@ -2743,8 +2805,11 @@ export class Core {
 		const success = await this.fs.archiveDraft(draftId);
 
 		if (success && sourcePath && targetPath && (await this.shouldAutoCommit(autoCommit))) {
+			const normalizedDraftId = normalizeId(draftId, "draft");
 			await this.commitOperationFiles(
-				`backlog: Archive draft ${normalizeId(draftId, "draft")}`,
+				createAutomaticCommitOperation(`backlog: Archive draft ${normalizedDraftId}`, "Archive", "draft", [
+					normalizedDraftId,
+				]),
 				[sourcePath, targetPath],
 				autoCommit,
 			);
@@ -2763,8 +2828,11 @@ export class Core {
 		if (this.contentStore) this.contentStore.upsertTask(savedTask);
 
 		if (await this.shouldAutoCommit(autoCommit)) {
+			const normalizedDraftId = normalizeId(draftId, "draft");
 			await this.commitOperationFiles(
-				`backlog: Promote draft ${normalizeId(draftId, "draft")}`,
+				createAutomaticCommitOperation(`backlog: Promote draft ${normalizedDraftId}`, "Promote", "draft", [
+					normalizedDraftId,
+				]),
 				[moved.sourcePath, moved.targetPath],
 				autoCommit,
 			);
@@ -2786,8 +2854,11 @@ export class Core {
 		if (!moved) return false;
 
 		if (await this.shouldAutoCommit(autoCommit)) {
+			const normalizedTaskId = normalizeTaskId(taskId);
 			await this.commitOperationFiles(
-				`backlog: Demote task ${normalizeTaskId(taskId)}`,
+				createAutomaticCommitOperation(`backlog: Demote task ${normalizedTaskId}`, "Demote", "task", [
+					normalizedTaskId,
+				]),
 				[moved.sourcePath, moved.targetPath],
 				autoCommit,
 			);
@@ -2917,7 +2988,11 @@ export class Core {
 		const touchedPaths = await this.fs.saveDecision(decision);
 
 		if (await this.shouldAutoCommit(autoCommit)) {
-			await this.commitOperationFiles(`backlog: Add decision ${decision.id}`, touchedPaths, autoCommit);
+			await this.commitOperationFiles(
+				createAutomaticCommitOperation(`backlog: Add decision ${decision.id}`, "Add", "decision", [decision.id]),
+				touchedPaths,
+				autoCommit,
+			);
 		}
 	}
 
@@ -2982,7 +3057,11 @@ export class Core {
 
 		if (await this.shouldAutoCommit(autoCommit)) {
 			const savedPath = join(this.fs.docsDir, ...normalizeDocumentRelativePath(relativePath).split("/"));
-			await this.commitOperationFiles(`backlog: Add document ${doc.id}`, [...previousPaths, savedPath], autoCommit);
+			await this.commitOperationFiles(
+				createAutomaticCommitOperation(`backlog: Add document ${doc.id}`, "Add", "document", [doc.id]),
+				[...previousPaths, savedPath],
+				autoCommit,
+			);
 		}
 	}
 

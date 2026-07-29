@@ -316,7 +316,7 @@ Run `backlog config` with no arguments to launch the interactive wizard (the sam
 
 For filesystem-only projects (`backlog init --no-git`), the saved config forces `checkActiveBranches=false`, `remoteOperations=false`, and `autoCommit=false` so CLI, Web, and MCP local-file workflows do not depend on a Git repository.
 
-When automatic commits are enabled, `autoCommitMode: new` keeps the safe one-operation-per-commit behavior. `amend-own` can roll later operations into a branch-tip commit that Backlog proves it created locally; use `--no-amend` to start a new rolling commit for one invocation. See [Advanced Configuration](ADVANCED-CONFIG.md#rolling-owned-automatic-commits) for boundaries, recovery, and limitations.
+When automatic commits are enabled, `autoCommitMode: new` keeps the safe one-operation-per-commit behavior without recording rolling ownership metadata. `amend-own` starts a new owned sequence after opt-in and can roll later operations into that branch-tip commit; use `--no-amend` to start a new rolling commit for one invocation. Ownership is branch-local, so switching away pauses a sequence and returning to the otherwise unchanged safe branch resumes it. See [Advanced Configuration](ADVANCED-CONFIG.md#rolling-owned-automatic-commits) for boundaries, recovery, and limitations.
 
 ### Definition of Done defaults
 

@@ -27,3 +27,12 @@ export function formatAutoCommitNotices(input: AutoCommitInput | undefined): str
 			: [],
 	);
 }
+
+export function summarizeAutoCommitNotices(notices: readonly string[], maxLength = 1024): string | null {
+	if (notices.length === 0) return null;
+	const joined = notices.join(" ");
+	if (joined.length <= maxLength) return joined;
+	const lastNotice = notices.at(-1) ?? "";
+	const summary = `${notices.length} Backlog automatic commit replacements. Last: ${lastNotice}`;
+	return summary.length <= maxLength ? summary : `${summary.slice(0, Math.max(0, maxLength - 1))}…`;
+}

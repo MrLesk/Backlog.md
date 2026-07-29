@@ -1,5 +1,6 @@
 import { rename as moveFile } from "node:fs/promises";
 import type { Core } from "../../../core/backlog.ts";
+import { createAutomaticCommitOperation } from "../../../git/automatic-commit-message.ts";
 import type { Milestone, Task } from "../../../types/index.ts";
 import { BacklogToolError } from "../../errors/mcp-errors.ts";
 import type { CallToolResult } from "../../types.ts";
@@ -232,6 +233,8 @@ export class MilestoneHandlers {
 
 	private async commitMilestoneMutation(
 		commitMessage: string,
+		verb: string,
+		milestoneId: string,
 		options: {
 			sourcePath?: string;
 			targetPath?: string;
@@ -245,7 +248,10 @@ export class MilestoneHandlers {
 		];
 		const repoRoot = await this.core.git.stageFiles(commitPaths);
 		try {
-			await this.core.commitAutomaticFiles(commitMessage, commitPaths);
+			await this.core.commitAutomaticFiles(
+				createAutomaticCommitOperation(commitMessage, verb, "milestone", [milestoneId]),
+				commitPaths,
+			);
 		} catch (error) {
 			await this.core.git.resetPaths(commitPaths, repoRoot);
 			throw error;
@@ -354,7 +360,7 @@ export class MilestoneHandlers {
 		// Create milestone file
 		const milestone = await this.core.filesystem.createMilestone(name, args.description);
 		const milestonePath = await this.core.filesystem.getMilestoneFilePath(milestone.id);
-		await this.commitMilestoneMutation(`backlog: Add milestone ${milestone.id}`, {
+		await this.commitMilestoneMutation(`backlog: Add milestone ${milestone.id}`, "Add", milestone.id, {
 			taskFilePaths: milestonePath ? [milestonePath] : [],
 		});
 
@@ -456,11 +462,16 @@ export class MilestoneHandlers {
 			}
 		}
 		try {
-			await this.commitMilestoneMutation(`backlog: Rename milestone ${sourceMilestone.id}`, {
-				sourcePath: renameResult.sourcePath,
-				targetPath: renameResult.targetPath,
-				taskFilePaths: updatedTaskFilePaths,
-			});
+			await this.commitMilestoneMutation(
+				`backlog: Rename milestone ${sourceMilestone.id}`,
+				"Rename",
+				sourceMilestone.id,
+				{
+					sourcePath: renameResult.sourcePath,
+					targetPath: renameResult.targetPath,
+					taskFilePaths: updatedTaskFilePaths,
+				},
+			);
 		} catch {
 			const rollbackTaskFailures = await this.rollbackTaskMilestones(previousMilestones);
 			const rollbackRenameResult = await this.core.renameMilestone(sourceMilestone.id, sourceMilestone.title, false);
@@ -585,11 +596,16 @@ export class MilestoneHandlers {
 			);
 		}
 		try {
-			await this.commitMilestoneMutation(`backlog: Remove milestone ${sourceMilestone.id}`, {
-				sourcePath: archiveResult.sourcePath,
-				targetPath: archiveResult.targetPath,
-				taskFilePaths: updatedTaskFilePaths,
-			});
+			await this.commitMilestoneMutation(
+				`backlog: Remove milestone ${sourceMilestone.id}`,
+				"Remove",
+				sourceMilestone.id,
+				{
+					sourcePath: archiveResult.sourcePath,
+					targetPath: archiveResult.targetPath,
+					taskFilePaths: updatedTaskFilePaths,
+				},
+			);
 		} catch {
 			const rollbackDetails: string[] = [];
 			if (archiveResult.sourcePath && archiveResult.targetPath) {

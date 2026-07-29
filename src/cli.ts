@@ -64,6 +64,7 @@ import { createLoadingScreen } from "./ui/loading.ts";
 import { viewTaskEnhanced } from "./ui/task-viewer-with-search.ts";
 import { scrollableViewer } from "./ui/tui.ts";
 import { type AgentSelectionValue, processAgentSelection } from "./utils/agent-selection.ts";
+import { normalizeAutoCommitMode } from "./utils/auto-commit-mode.ts";
 import { normalizeProjectBacklogDirectory } from "./utils/backlog-directory.ts";
 import { formatDuplicateTaskIdWarning } from "./utils/duplicate-detection.ts";
 import { findBacklogRoot } from "./utils/find-backlog-root.ts";
@@ -4266,7 +4267,10 @@ agentsCmd
 					core.gitOps,
 					files,
 					shouldAutoCommit,
-					{ amendOwned: config?.autoCommitMode === "amend-own" && !cliAutoCommit.forceNew },
+					{
+						automaticCommitIntent:
+							config?.autoCommitMode !== "amend-own" ? "new" : cliAutoCommit.forceNew ? "start-owned" : "amend-own",
+					},
 					cliAutoCommit.onResult,
 				);
 				console.log(`Updated ${files.length} agent instruction file(s): ${files.join(", ")}`);
@@ -4582,8 +4586,8 @@ addHelpSchema(configCmd.command("set <key> <value>"), {
 					break;
 				}
 				case "autoCommitMode": {
-					const mode = value.toLowerCase();
-					if (mode !== "new" && mode !== "amend-own") {
+					const mode = normalizeAutoCommitMode(value);
+					if (!mode) {
 						console.error("autoCommitMode must be new or amend-own");
 						process.exit(1);
 					}
@@ -4994,7 +4998,7 @@ program
 		try {
 			const cwd = await requireProjectRoot();
 			const { BacklogServer, findNextAvailablePort, isPortAvailable } = await import("./server/index.ts");
-			const server = new BacklogServer(cwd);
+			const server = new BacklogServer(cwd, { autoCommit: cliAutoCommit });
 
 			// Load config to get default port
 			const core = createCliCore(cwd);
@@ -5099,6 +5103,9 @@ registerMcpCommand(program);
 
 const automaticCommitCommandPaths = [
 	["init"],
+	["board"],
+	["browser"],
+	["task", "view"],
 	["task", "create"],
 	["task", "edit"],
 	["task", "archive"],

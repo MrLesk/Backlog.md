@@ -9,7 +9,9 @@ import {
 describe("automatic commit messages", () => {
 	it("keeps a single operation subject and stores its full message in one region", () => {
 		const result = buildAutomaticCommitMessage("backlog: Update task BACK-1\nOperation detail");
-		expect(result?.operations).toEqual(["backlog: Update task BACK-1\nOperation detail"]);
+		expect(result?.operations.map((operation) => operation.message)).toEqual([
+			"backlog: Update task BACK-1\nOperation detail",
+		]);
 		expect(result?.message.startsWith("backlog: Update task BACK-1\n")).toBe(true);
 		expect(result?.message).toContain(AUTOMATIC_COMMIT_MESSAGE_REGION_START);
 		expect(result?.message).toContain(JSON.stringify("backlog: Update task BACK-1\nOperation detail"));
@@ -41,10 +43,29 @@ describe("automatic commit messages", () => {
 		);
 		const second = buildAutomaticCommitMessage("backlog: Update task BACK-2", withHookText);
 		const duplicate = second && buildAutomaticCommitMessage("backlog: Update task BACK-1", second.message);
-		expect(duplicate?.operations).toEqual(["backlog: Update task BACK-1", "backlog: Update task BACK-2"]);
+		expect(duplicate?.operations.map((operation) => operation.message)).toEqual([
+			"backlog: Update task BACK-1",
+			"backlog: Update task BACK-2",
+		]);
 		expect(duplicate?.message.match(/Hook-Trailer: retained/g)).toHaveLength(1);
 		expect(duplicate?.message.endsWith("Hook-Trailer: retained\n\n")).toBe(true);
 		expect(duplicate?.message.startsWith("backlog: Update tasks BACK-1, BACK-2\n")).toBe(true);
+	});
+
+	it("migrates version-one ID-prefixed draft operations into structured metadata", () => {
+		const previous = [
+			"DRAFT-1 - Create draft DRAFT-1",
+			"",
+			"Backlog-Operations-v1:",
+			`- ${JSON.stringify("DRAFT-1 - Create draft DRAFT-1")}`,
+			AUTOMATIC_COMMIT_MESSAGE_REGION_END,
+			"",
+		].join("\n");
+		const result = buildAutomaticCommitMessage("DRAFT-2 - Create draft DRAFT-2", previous);
+
+		expect(result?.message.startsWith("backlog: Create drafts DRAFT-1, DRAFT-2\n")).toBe(true);
+		expect(result?.message).toContain("Backlog-Operations-v2:");
+		expect(result?.message).not.toContain("Backlog-Operations-v1:");
 	});
 
 	it("fails closed for missing, duplicated, reversed, or malformed regions", () => {

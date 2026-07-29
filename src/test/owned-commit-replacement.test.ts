@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import { chmod, mkdir, rm } from "node:fs/promises";
 import { isAbsolute, join } from "node:path";
 import { $ } from "bun";
-import { type GitCommitResult, GitOperations } from "../git/operations.ts";
+import { type GitCommitOptions, type GitCommitResult, GitOperations } from "../git/operations.ts";
 import type { BacklogConfig } from "../types/index.ts";
 import { createUniqueTestDir, safeCleanup } from "./test-utils.ts";
 
@@ -38,7 +38,7 @@ async function commitSelected(
 	git: GitOperations,
 	operation: string,
 	content: string,
-	options: { amendOwned?: boolean } = {},
+	options: GitCommitOptions = { automaticCommitIntent: "start-owned" },
 ): Promise<GitCommitResult> {
 	const path = join(root, "selected.txt");
 	await Bun.write(path, content);
@@ -84,7 +84,7 @@ describe("owned automatic commit replacement", () => {
 		expect(first.ownershipRecorded).toBe(true);
 
 		const second = await commitSelected(testDir, git, "backlog: Update task BACK-2", "two\n", {
-			amendOwned: true,
+			automaticCommitIntent: "amend-own",
 		});
 		expect(second.amended).toBe(true);
 		expect(second.previousCommitId).toBe(first.commitId);
@@ -96,7 +96,7 @@ describe("owned automatic commit replacement", () => {
 		expect(await $`git show -s --format=%s HEAD`.cwd(testDir).text()).toBe("backlog: Update tasks BACK-1, BACK-2\n");
 
 		const third = await commitSelected(testDir, git, "backlog: Archive task BACK-3", "three\n", {
-			amendOwned: true,
+			automaticCommitIntent: "amend-own",
 		});
 		expect(third.amended).toBe(true);
 		expect(third.ownershipRecorded).toBe(true);
@@ -108,7 +108,7 @@ describe("owned automatic commit replacement", () => {
 		const git = await initializeRepository(testDir, { baseline: false });
 		await commitSelected(testDir, git, "backlog: Add task BACK-1", "one\n");
 		const replacement = await commitSelected(testDir, git, "backlog: Add task BACK-2", "two\n", {
-			amendOwned: true,
+			automaticCommitIntent: "amend-own",
 		});
 		expect(replacement.amended).toBe(true);
 		expect(await commitCount(testDir)).toBe(1);
@@ -121,10 +121,10 @@ describe("owned automatic commit replacement", () => {
 		await commitSelected(detachedRoot, detachedGit, "backlog: Update task BACK-1", "one\n");
 		await $`git checkout -q --detach`.cwd(detachedRoot);
 		const detachedSecond = await commitSelected(detachedRoot, detachedGit, "backlog: Update task BACK-2", "two\n", {
-			amendOwned: true,
+			automaticCommitIntent: "amend-own",
 		});
 		const detachedThird = await commitSelected(detachedRoot, detachedGit, "backlog: Update task BACK-3", "three\n", {
-			amendOwned: true,
+			automaticCommitIntent: "amend-own",
 		});
 		expect([detachedSecond.amended, detachedThird.amended]).toEqual([false, false]);
 		expect([detachedSecond.ownershipRecorded, detachedThird.ownershipRecorded]).toEqual([false, false]);
@@ -134,10 +134,10 @@ describe("owned automatic commit replacement", () => {
 		const noReflogGit = await initializeRepository(noReflogRoot, { reflogs: false });
 		const first = await commitSelected(noReflogRoot, noReflogGit, "backlog: Update task BACK-1", "one\n");
 		const second = await commitSelected(noReflogRoot, noReflogGit, "backlog: Update task BACK-2", "two\n", {
-			amendOwned: true,
+			automaticCommitIntent: "amend-own",
 		});
 		const third = await commitSelected(noReflogRoot, noReflogGit, "backlog: Update task BACK-3", "three\n", {
-			amendOwned: true,
+			automaticCommitIntent: "amend-own",
 		});
 		expect([first.ownershipRecorded, second.ownershipRecorded, third.ownershipRecorded]).toEqual([false, false, false]);
 		expect([second.amended, third.amended]).toEqual([false, false]);
@@ -169,7 +169,7 @@ describe("owned automatic commit replacement", () => {
 				await $`git update-ref -m "backlog:auto-commit/v2 lookalike" HEAD ${first.commitId} ${temporary}`.cwd(root);
 			}
 			const result = await commitSelected(root, git, "backlog: Update task BACK-2", "two\n", {
-				amendOwned: true,
+				automaticCommitIntent: "amend-own",
 			});
 			expect(result.amended).toBe(false);
 		}
@@ -182,7 +182,7 @@ describe("owned automatic commit replacement", () => {
 		await $`git config user.name clone && git config user.email clone@example.com`.cwd(cloneRoot);
 		const cloneGit = new GitOperations(cloneRoot, {} as BacklogConfig);
 		const cloneResult = await commitSelected(cloneRoot, cloneGit, "backlog: Update task BACK-2", "two\n", {
-			amendOwned: true,
+			automaticCommitIntent: "amend-own",
 		});
 		expect(cloneResult.amended).toBe(false);
 	}, 30_000);
@@ -244,7 +244,7 @@ describe("owned automatic commit replacement", () => {
 			const first = await commitSelected(root, git, "backlog: Update task BACK-1", "one\n");
 			await scenario.setup(root, first.commitId);
 			const result = await commitSelected(root, git, "backlog: Update task BACK-2", "two\n", {
-				amendOwned: true,
+				automaticCommitIntent: "amend-own",
 			});
 			expect(result.amended).toBe(false);
 		}
@@ -260,7 +260,7 @@ describe("owned automatic commit replacement", () => {
 		).trim();
 		await $`git update-ref -m "backlog:auto-commit/v1 owned merge" HEAD ${merge} ${first.commitId}`.cwd(mergeRoot);
 		const result = await commitSelected(mergeRoot, mergeGit, "backlog: Update task BACK-2", "two\n", {
-			amendOwned: true,
+			automaticCommitIntent: "amend-own",
 		});
 		expect(result.amended).toBe(false);
 	}, 30_000);
@@ -282,7 +282,7 @@ describe("owned automatic commit replacement", () => {
 			const before = await head(root);
 			await expect(
 				git.commitFiles("backlog: Update task BACK-1", [join(root, "selected.txt")], undefined, {
-					amendOwned: true,
+					automaticCommitIntent: "amend-own",
 				}),
 			).rejects.toThrow("in progress");
 			expect(await head(root)).toBe(before);
@@ -337,7 +337,7 @@ describe("owned automatic commit replacement", () => {
 			"printf 'rewrite:%s:' \"$1\" >> hook-order.txt; cat >> post-rewrite-map.txt; exit 1",
 		);
 		const replacement = await commitSelected(testDir, git, "backlog: Update task BACK-2", "two\n", {
-			amendOwned: true,
+			automaticCommitIntent: "amend-own",
 		});
 		expect(replacement.amended).toBe(true);
 		expect(await Bun.file(join(testDir, "hook-order.txt")).text()).toBe(
@@ -355,6 +355,37 @@ describe("owned automatic commit replacement", () => {
 		expect(await head(testDir)).toBe(replacement.commitId);
 	});
 
+	it("fails closed when message hooks create sharing refs or perform same-SHA ABA updates", async () => {
+		const tagRoot = join(testDir, "hook-tag");
+		const tagGit = await initializeRepository(tagRoot);
+		const tagOwned = await commitSelected(tagRoot, tagGit, "backlog: Update task BACK-1", "one\n");
+		await installHook(tagRoot, "prepare-commit-msg", "git tag hook-shared HEAD");
+		await expect(
+			commitSelected(tagRoot, tagGit, "backlog: Update task BACK-2", "two\n", {
+				automaticCommitIntent: "amend-own",
+			}),
+		).rejects.toThrow("eligibility changed during Git hooks");
+		expect(await head(tagRoot)).toBe(tagOwned.commitId);
+		expect((await $`git rev-parse hook-shared`.cwd(tagRoot).text()).trim()).toBe(tagOwned.commitId);
+
+		const abaRoot = join(testDir, "hook-aba");
+		const abaGit = await initializeRepository(abaRoot);
+		const abaOwned = await commitSelected(abaRoot, abaGit, "backlog: Update task BACK-1", "one\n");
+		await installHook(
+			abaRoot,
+			"prepare-commit-msg",
+			"current=$(git rev-parse HEAD); parent=$(git rev-parse HEAD^); " +
+				'git update-ref -m hook-away HEAD "$parent" "$current"; ' +
+				'git update-ref -m "backlog:auto-commit/v1 hook-return" HEAD "$current" "$parent"',
+		);
+		await expect(
+			commitSelected(abaRoot, abaGit, "backlog: Update task BACK-2", "two\n", {
+				automaticCommitIntent: "amend-own",
+			}),
+		).rejects.toThrow("eligibility changed during Git hooks");
+		expect(await head(abaRoot)).toBe(abaOwned.commitId);
+	}, 30_000);
+
 	it("preserves bypass semantics and supports replacement through the legacy hook runner", async () => {
 		const bypassRoot = join(testDir, "bypass");
 		const bypassGit = await initializeRepository(bypassRoot);
@@ -366,7 +397,7 @@ describe("owned automatic commit replacement", () => {
 		await installHook(bypassRoot, "post-commit", "printf post >> bypass-hooks.txt");
 		await installHook(bypassRoot, "post-rewrite", "printf rewrite >> bypass-hooks.txt");
 		const bypass = await commitSelected(bypassRoot, bypassGit, "backlog: Update task BACK-2", "two\n", {
-			amendOwned: true,
+			automaticCommitIntent: "amend-own",
 		});
 		expect(bypass.amended).toBe(true);
 		expect(await Bun.file(join(bypassRoot, "bypass-hooks.txt")).text()).toBe("preparepostrewrite");
@@ -382,7 +413,7 @@ describe("owned automatic commit replacement", () => {
 		privateGit.execGit = async (args, options) =>
 			args[0] === "version" ? { stdout: "git version 2.35.8\n", stderr: "" } : originalExec(args, options);
 		const legacy = await commitSelected(legacyRoot, legacyGit, "backlog: Update task BACK-2", "two\n", {
-			amendOwned: true,
+			automaticCommitIntent: "amend-own",
 		});
 		expect(legacy.amended).toBe(true);
 		expect(await Bun.file(join(legacyRoot, "legacy-hooks.txt")).text()).toBe("prerewrite");
@@ -400,20 +431,20 @@ describe("owned automatic commit replacement", () => {
 
 		await $`git config commit.gpgSign false`.cwd(testDir);
 		const unsigned = await commitSelected(testDir, git, "backlog: Update task BACK-2", "two\n", {
-			amendOwned: true,
+			automaticCommitIntent: "amend-own",
 		});
 		expect(await $`git cat-file commit ${unsigned.commitId}`.cwd(testDir).text()).not.toContain("gpgsig ");
 
 		await $`git config commit.gpgSign true`.cwd(testDir);
 		const resigned = await commitSelected(testDir, git, "backlog: Update task BACK-3", "three\n", {
-			amendOwned: true,
+			automaticCommitIntent: "amend-own",
 		});
 		expect(await $`git cat-file commit ${resigned.commitId}`.cwd(testDir).text()).toContain("gpgsig ");
 
 		await $`git config user.signingkey ${join(testDir, "missing-key")}`.cwd(testDir);
 		const before = await head(testDir);
 		await expect(
-			commitSelected(testDir, git, "backlog: Update task BACK-4", "four\n", { amendOwned: true }),
+			commitSelected(testDir, git, "backlog: Update task BACK-4", "four\n", { automaticCommitIntent: "amend-own" }),
 		).rejects.toThrow("Git command failed");
 		expect(await head(testDir)).toBe(before);
 	}, 30_000);
@@ -435,13 +466,13 @@ describe("owned automatic commit replacement", () => {
 			return originalExec(args, options);
 		};
 		const replacement = await commitSelected(testDir, git, "backlog: Update task BACK-2", "two\n", {
-			amendOwned: true,
+			automaticCommitIntent: "amend-own",
 		});
 		expect(replacement.amended).toBe(true);
 		expect(replacement.ownershipRecorded).toBe(false);
 		privateGit.execGit = originalExec;
 		const next = await commitSelected(testDir, git, "backlog: Update task BACK-3", "three\n", {
-			amendOwned: true,
+			automaticCommitIntent: "amend-own",
 		});
 		expect(next.amended).toBe(false);
 	}, 30_000);
@@ -462,7 +493,7 @@ describe("owned automatic commit replacement", () => {
 			return originalExec(args, options);
 		};
 		const result = await commitSelected(testDir, git, "backlog: Update task BACK-2", "two\n", {
-			amendOwned: true,
+			automaticCommitIntent: "amend-own",
 		});
 		expect(advanced).toBe(true);
 		expect(result.amended).toBe(false);
@@ -470,6 +501,22 @@ describe("owned automatic commit replacement", () => {
 		expect(await $`git show HEAD:selected.txt`.cwd(testDir).text()).toBe("two\n");
 		expect(await commitCount(testDir)).toBe(beforeCount + 2);
 	}, 30_000);
+
+	it("resumes branch-local ownership after switching away and back", async () => {
+		const git = await initializeRepository(testDir);
+		await $`git branch sibling`.cwd(testDir).quiet();
+		const first = await commitSelected(testDir, git, "backlog: Update task BACK-1", "one\n");
+
+		await $`git switch sibling`.cwd(testDir).quiet();
+		await $`git switch main`.cwd(testDir).quiet();
+		const second = await commitSelected(testDir, git, "backlog: Update task BACK-2", "two\n", {
+			automaticCommitIntent: "amend-own",
+		});
+
+		expect(second.amended).toBe(true);
+		expect(second.previousCommitId).toBe(first.commitId);
+		expect(await commitCount(testDir)).toBe(2);
+	});
 
 	it("records and consumes branch-local evidence from a linked worktree", async () => {
 		const git = await initializeRepository(testDir);
@@ -479,7 +526,7 @@ describe("owned automatic commit replacement", () => {
 		const linkedGit = new GitOperations(linkedRoot, {} as BacklogConfig);
 		const first = await commitSelected(linkedRoot, linkedGit, "backlog: Update task BACK-2", "linked-one\n");
 		const second = await commitSelected(linkedRoot, linkedGit, "backlog: Update task BACK-3", "linked-two\n", {
-			amendOwned: true,
+			automaticCommitIntent: "amend-own",
 		});
 		expect(first.ownershipRecorded).toBe(true);
 		expect(second.amended).toBe(true);

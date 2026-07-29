@@ -466,6 +466,7 @@ export async function runUnifiedView(options: UnifiedViewOptions): Promise<void>
 				};
 
 				renderBoardTui(kanbanTasks, statuses, layout, maxColumnWidth, {
+					core: options.core,
 					onTaskSelect: (task) => {
 						selectedTask = task;
 					},

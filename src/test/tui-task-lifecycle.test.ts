@@ -100,6 +100,35 @@ describe("TUI task lifecycle", () => {
 		}
 	});
 
+	it("preserves an invocation force-new boundary through the TUI boolean enable override", async () => {
+		const config = await core.filesystem.loadConfig();
+		if (!config) throw new Error("Expected test project config to exist");
+		await core.filesystem.saveConfig({ ...config, autoCommit: true, autoCommitMode: "amend-own" });
+		await $`git add backlog && git commit -m "Configure TUI automatic commits"`.cwd(TEST_DIR).quiet();
+		await core.createTask(
+			{
+				id: "task-1",
+				title: "Done task",
+				status: "Done",
+				assignee: [],
+				createdDate: "2026-07-01",
+				labels: [],
+				dependencies: [],
+				rawContent: "Test task",
+			},
+			true,
+		);
+		const before = Number((await $`git rev-list --count HEAD`.cwd(TEST_DIR).text()).trim());
+		const invocationCore = new Core(TEST_DIR, { autoCommit: { forceNew: true } });
+		const task = await invocationCore.filesystem.loadTask("task-1");
+		if (!task) throw new Error("Expected test task");
+
+		const result = await completeTaskFromTui(invocationCore, task);
+
+		expect(result).toEqual({ success: true, notices: [] });
+		expect(Number((await $`git rev-list --count HEAD`.cwd(TEST_DIR).text()).trim())).toBe(before + 1);
+	});
+
 	it("uses the configured terminal status", async () => {
 		const config = await core.filesystem.loadConfig();
 		if (!config) {

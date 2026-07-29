@@ -118,6 +118,10 @@ export class ApiClient {
 					throw ApiError.fromResponse(response, errorData);
 				}
 
+				const autoCommitNotice = (response as Response & { headers?: Headers }).headers?.get?.("X-Backlog-Auto-Commit");
+				if (autoCommitNotice && typeof window !== "undefined") {
+					window.dispatchEvent(new CustomEvent("backlog-auto-commit", { detail: autoCommitNotice }));
+				}
 				return response;
 			} catch (error) {
 				lastError = error as Error;
@@ -145,10 +149,6 @@ export class ApiClient {
 	// Helper method for JSON responses
 	private async fetchJson<T>(url: string, options: RequestInit = {}): Promise<T> {
 		const response = await this.fetchWithRetry(url, options);
-		const autoCommitNotice = (response as Response & { headers?: Headers }).headers?.get?.("X-Backlog-Auto-Commit");
-		if (autoCommitNotice && typeof window !== "undefined") {
-			window.dispatchEvent(new CustomEvent("backlog-auto-commit", { detail: autoCommitNotice }));
-		}
 		return response.json();
 	}
 	async fetchTasks(options?: {

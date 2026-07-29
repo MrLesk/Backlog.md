@@ -50,6 +50,29 @@ describe("autoCommitMode", () => {
 		expect(await commitCount(testDir)).toBe(afterFirst + 2);
 	});
 
+	test("enabling amend-own starts after the last new-mode commit instead of rewriting it", async () => {
+		const config = await core.filesystem.loadConfig();
+		if (!config) throw new Error("Missing test config");
+		await core.filesystem.saveConfig({ ...config, autoCommit: true, autoCommitMode: "new" });
+		await $`git add backlog/config.yml && git commit -m "Enable new automatic commits"`.cwd(testDir).quiet();
+
+		await core.createTaskFromInput({ title: "Before opt in" });
+		const beforeOptIn = (await $`git rev-parse HEAD`.cwd(testDir).text()).trim();
+		expect(await $`git show -s --format=%B HEAD`.cwd(testDir).text()).not.toContain("Backlog-Operations-");
+		expect(await $`git reflog show -1 --format=%gs HEAD`.cwd(testDir).text()).toStartWith("commit: Create task");
+		const beforeCount = await commitCount(testDir);
+
+		await core.filesystem.saveConfig({ ...config, autoCommit: true, autoCommitMode: "amend-own" });
+		await core.createTaskFromInput({ title: "First owned operation" });
+		expect(await commitCount(testDir)).toBe(beforeCount + 1);
+		expect((await $`git merge-base --is-ancestor ${beforeOptIn} HEAD`.cwd(testDir).nothrow()).exitCode).toBe(0);
+		expect(await $`git show -s --format=%B HEAD`.cwd(testDir).text()).toContain("Backlog-Operations-v2:");
+
+		const afterSequenceStart = await commitCount(testDir);
+		await core.createTaskFromInput({ title: "Second owned operation" });
+		expect(await commitCount(testDir)).toBe(afterSequenceStart);
+	}, 15_000);
+
 	test("amend-own replaces an owned tip and --no-amend creates a new commit", async () => {
 		const config = await core.filesystem.loadConfig();
 		if (!config) throw new Error("Missing test config");
@@ -93,7 +116,7 @@ describe("autoCommitMode", () => {
 				});
 				await new MilestoneHandlers(core).addMilestone({ name: "Milestone mutation" });
 				await addAgentInstructions(testDir, core.git, ["AGENTS.md"], true, {
-					amendOwned: mode === "amend-own",
+					automaticCommitIntent: mode === "amend-own" ? "amend-own" : "new",
 				});
 
 				expect(await commitCount(testDir)).toBe(baseline + (mode === "new" ? 6 : 1));
@@ -112,6 +135,20 @@ describe("autoCommitMode", () => {
 			CROSS_ENTITY_GIT_TIMEOUT_MS,
 		);
 	}
+
+	test("structured production draft operations produce a factored rolling subject", async () => {
+		const config = await core.filesystem.loadConfig();
+		if (!config) throw new Error("Missing test config");
+		await core.filesystem.saveConfig({ ...config, autoCommit: true, autoCommitMode: "amend-own" });
+		await $`git add backlog/config.yml && git commit -m "Enable owned draft replacement"`.cwd(testDir).quiet();
+
+		await core.createTaskFromInput({ title: "First draft", status: "Draft" });
+		await core.createTaskFromInput({ title: "Second draft", status: "Draft" });
+
+		expect((await $`git show -s --format=%s HEAD`.cwd(testDir).text()).trim()).toBe(
+			"backlog: Create drafts DRAFT-1, DRAFT-2",
+		);
+	});
 
 	test("MCP mutation output reports an owned replacement", async () => {
 		const config = await core.filesystem.loadConfig();
@@ -157,7 +194,7 @@ describe("autoCommitMode", () => {
 			rawContent: "",
 		});
 		await new MilestoneHandlers(core).addMilestone({ name: "Milestone mutation" });
-		await addAgentInstructions(testDir, core.git, ["AGENTS.md"], false, { amendOwned: true });
+		await addAgentInstructions(testDir, core.git, ["AGENTS.md"], false, { automaticCommitIntent: "amend-own" });
 
 		expect(await commitCount(testDir)).toBe(baseline);
 	});
@@ -165,6 +202,9 @@ describe("autoCommitMode", () => {
 	test("every automatic-commit CLI command advertises --no-amend", async () => {
 		const commandPaths = [
 			["init"],
+			["board"],
+			["browser"],
+			["task", "view"],
 			["task", "create"],
 			["task", "edit"],
 			["task", "archive"],
@@ -187,6 +227,22 @@ describe("autoCommitMode", () => {
 			const help = await $`bun ${CLI_PATH} ${commandPath} --help`.cwd(testDir).text();
 			expect(help, commandPath.join(" ")).toContain("--no-amend");
 		}
+	});
+
+	test("a boolean enable override does not discard an invocation force-new boundary", async () => {
+		const config = await core.filesystem.loadConfig();
+		if (!config) throw new Error("Missing test config");
+		await core.filesystem.saveConfig({ ...config, autoCommit: true, autoCommitMode: "amend-own" });
+		await $`git add backlog/config.yml && git commit -m "Enable owned replacement"`.cwd(testDir).quiet();
+
+		await core.createTaskFromInput({ title: "Owned sequence" });
+		const beforeForced = await commitCount(testDir);
+		const invocationCore = new Core(testDir, { autoCommit: { forceNew: true } });
+		await invocationCore.withAutoCommitFeedback(async () => {
+			await invocationCore.createTaskFromInput({ title: "Forced boundary" }, true);
+		});
+
+		expect(await commitCount(testDir)).toBe(beforeForced + 1);
 	});
 
 	test("an explicit commit enable override still uses the configured mode", async () => {

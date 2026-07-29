@@ -3,7 +3,11 @@ import { tmpdir } from "node:os";
 import { basename, dirname, isAbsolute, join, relative } from "node:path";
 import { $ } from "bun";
 import type { BacklogConfig } from "../types/index.ts";
-import { buildAutomaticCommitMessage } from "./automatic-commit-message.ts";
+import {
+	type AutomaticCommitOperation,
+	buildAutomaticCommitMessage,
+	createAutomaticCommitOperation,
+} from "./automatic-commit-message.ts";
 
 type GitPathContext = {
 	repoRoot: string;
@@ -29,8 +33,11 @@ export interface GitIndexEntry {
 	stage: number;
 }
 
+export type GitAutomaticCommitIntent = "new" | "start-owned" | "amend-own";
+
 export interface GitCommitOptions {
-	amendOwned?: boolean;
+	automaticCommitIntent?: GitAutomaticCommitIntent;
+	operation?: AutomaticCommitOperation;
 }
 
 export interface GitCommitResult {
@@ -42,6 +49,8 @@ export interface GitCommitResult {
 
 type OwnedCommit = {
 	commitId: string;
+	branchRef: string;
+	reflogSnapshot: string;
 	parents: string[];
 	authorEnv: Record<string, string>;
 	message: string;
@@ -205,6 +214,8 @@ export class GitOperations {
 		const messagePath = join(temporaryDirectory, "message");
 		try {
 			const signCommit = await this.shouldSignCommit(resolvedRepoRoot);
+			const intent = options.automaticCommitIntent ?? "new";
+			const rollingOperation = options.operation ?? message;
 			const initialHead = await this.resolveHead(resolvedRepoRoot);
 			await this.populateTemporaryIndex(resolvedRepoRoot, temporaryIndexEnv, initialHead, commitEntries);
 			if (!this.config?.bypassGitHooks) {
@@ -216,19 +227,32 @@ export class GitOperations {
 			for (let attempt = 1; attempt <= 3; attempt += 1) {
 				await this.assertNoCommitOperationInProgress(resolvedRepoRoot);
 				const baseHead = await this.resolveHead(resolvedRepoRoot);
-				let ownedCommit = options.amendOwned && baseHead ? await this.getOwnedCommit(resolvedRepoRoot, baseHead) : null;
-				let automaticMessage = buildAutomaticCommitMessage(message, ownedCommit?.message);
-				if (!automaticMessage && ownedCommit) {
-					ownedCommit = null;
-					automaticMessage = buildAutomaticCommitMessage(message);
+				let ownedCommit =
+					intent === "amend-own" && baseHead ? await this.getOwnedCommit(resolvedRepoRoot, baseHead) : null;
+				let commitMessage: string;
+				if (intent === "new") {
+					commitMessage = `${message.replace(/\n+$/, "")}\n`;
+				} else {
+					let automaticMessage = buildAutomaticCommitMessage(rollingOperation, ownedCommit?.message);
+					if (!automaticMessage && ownedCommit) {
+						ownedCommit = null;
+						automaticMessage = buildAutomaticCommitMessage(rollingOperation);
+					}
+					if (!automaticMessage) throw new Error("Automatic commit message must have a non-empty subject");
+					commitMessage = automaticMessage.message;
 				}
-				if (!automaticMessage) throw new Error("Automatic commit message must have a non-empty subject");
+				if (!commitMessage.split("\n", 1)[0]?.trim()) {
+					throw new Error("Automatic commit message must have a non-empty subject");
+				}
 
-				await writeFile(messagePath, automaticMessage.message);
+				await writeFile(messagePath, commitMessage);
 				await this.runCommitHook("prepare-commit-msg", [messagePath, "message"], resolvedRepoRoot, temporaryIndexEnv);
 				if (!this.config?.bypassGitHooks) {
 					await this.runCommitHook("commit-msg", [messagePath], resolvedRepoRoot, temporaryIndexEnv);
 				}
+				await this.assertNoCommitOperationInProgress(resolvedRepoRoot);
+				if (ownedCommit) await this.assertOwnedCommitUnchanged(resolvedRepoRoot, ownedCommit);
+
 				await this.populateTemporaryIndex(resolvedRepoRoot, temporaryIndexEnv, baseHead, commitEntries);
 				const { stdout: treeOutput } = await this.execGit(["write-tree"], {
 					cwd: resolvedRepoRoot,
@@ -268,12 +292,15 @@ export class GitOperations {
 				ownedEntries = commitEntries;
 
 				try {
+					await this.assertNoCommitOperationInProgress(resolvedRepoRoot);
+					if (ownedCommit) await this.assertOwnedCommitUnchanged(resolvedRepoRoot, ownedCommit);
 					const finalMessage = await Bun.file(messagePath).text();
 					const subject = finalMessage.split("\n", 1)[0]?.trim() || "automatic commit";
-					await this.execGit(
-						["update-ref", "-m", `${AUTOMATIC_COMMIT_REFLOG_MARKER} ${subject}`, "HEAD", commitId, baseHead ?? ""],
-						{ cwd: resolvedRepoRoot },
-					);
+					const reflogMessage =
+						intent === "new" ? `commit: ${subject}` : `${AUTOMATIC_COMMIT_REFLOG_MARKER} ${subject}`;
+					await this.execGit(["update-ref", "-m", reflogMessage, "HEAD", commitId, baseHead ?? ""], {
+						cwd: resolvedRepoRoot,
+					});
 					await this.runCommitHook("post-commit", [], resolvedRepoRoot, {}).catch(() => undefined);
 					if (ownedCommit) {
 						await this.runCommitHook(
@@ -285,9 +312,10 @@ export class GitOperations {
 						).catch(() => undefined);
 					}
 					const branchRef = await this.getCurrentBranchRef(resolvedRepoRoot);
-					const ownershipRecorded = branchRef
-						? await this.hasOwnershipEvidence(resolvedRepoRoot, branchRef, commitId)
-						: false;
+					const ownershipRecorded =
+						intent !== "new" && branchRef
+							? await this.hasOwnershipEvidence(resolvedRepoRoot, branchRef, commitId)
+							: false;
 					return {
 						commitId,
 						previousCommitId: baseHead,
@@ -319,23 +347,35 @@ export class GitOperations {
 	/**
 	 * Ownership evidence format: the newest branch reflog entry must point to the
 	 * candidate SHA and its subject must start with AUTOMATIC_COMMIT_REFLOG_MARKER.
-	 * Evidence is stale if it is not the newest entry for that exact SHA; missing,
-	 * malformed, duplicate-line, reset, or manually-written entries fail closed.
+	 * The two newest entries are snapshotted while planning a replacement so an
+	 * away-and-back update cannot preserve eligibility through the same SHA.
 	 */
-	private async hasOwnershipEvidence(repoRoot: string, branchRef: string, candidate: string): Promise<boolean> {
-		const { stdout } = await this.execGit(["reflog", "show", "-1", "--format=%H%x00%gs", branchRef], {
+	private async readOwnershipEvidence(
+		repoRoot: string,
+		branchRef: string,
+		candidate: string,
+	): Promise<{ reflogSnapshot: string } | null> {
+		const { stdout } = await this.execGit(["reflog", "show", "-2", "--format=%H%x00%gs", branchRef], {
 			cwd: repoRoot,
 			readOnly: true,
 			acceptedExitCodes: [1, 128],
 		});
-		const evidence = stdout.replace(/\n$/, "");
-		if (!evidence || evidence.includes("\n")) return false;
-		const fields = evidence.split("\0");
-		return Boolean(
-			fields.length === 2 &&
-				fields[0] === candidate &&
-				(fields[1] === AUTOMATIC_COMMIT_REFLOG_MARKER || fields[1]?.startsWith(`${AUTOMATIC_COMMIT_REFLOG_MARKER} `)),
-		);
+		const reflogSnapshot = stdout.replace(/\n$/, "");
+		const firstLine = reflogSnapshot.split("\n", 1)[0];
+		if (!firstLine) return null;
+		const fields = firstLine.split("\0");
+		if (
+			fields.length !== 2 ||
+			fields[0] !== candidate ||
+			!(fields[1] === AUTOMATIC_COMMIT_REFLOG_MARKER || fields[1]?.startsWith(`${AUTOMATIC_COMMIT_REFLOG_MARKER} `))
+		) {
+			return null;
+		}
+		return { reflogSnapshot };
+	}
+
+	private async hasOwnershipEvidence(repoRoot: string, branchRef: string, candidate: string): Promise<boolean> {
+		return (await this.readOwnershipEvidence(repoRoot, branchRef, candidate)) !== null;
 	}
 
 	private async refsContaining(repoRoot: string, candidate: string, prefix: string): Promise<string[]> {
@@ -351,7 +391,9 @@ export class GitOperations {
 
 	private async getOwnedCommit(repoRoot: string, candidate: string): Promise<OwnedCommit | null> {
 		const branchRef = await this.getCurrentBranchRef(repoRoot);
-		if (!branchRef || !(await this.hasOwnershipEvidence(repoRoot, branchRef, candidate))) return null;
+		if (!branchRef) return null;
+		const evidence = await this.readOwnershipEvidence(repoRoot, branchRef, candidate);
+		if (!evidence) return null;
 
 		const { stdout: parentOutput } = await this.execGit(["rev-list", "--parents", "-n", "1", candidate], {
 			cwd: repoRoot,
@@ -382,6 +424,8 @@ export class GitOperations {
 		const commitMessage = commitObject.slice(messageOffset + 2);
 		return {
 			commitId: candidate,
+			branchRef,
+			reflogSnapshot: evidence.reflogSnapshot,
 			parents,
 			authorEnv: {
 				GIT_AUTHOR_NAME: authorName,
@@ -390,6 +434,13 @@ export class GitOperations {
 			},
 			message: commitMessage,
 		};
+	}
+
+	private async assertOwnedCommitUnchanged(repoRoot: string, expected: OwnedCommit): Promise<void> {
+		const current = await this.getOwnedCommit(repoRoot, expected.commitId);
+		if (!current || current.branchRef !== expected.branchRef || current.reflogSnapshot !== expected.reflogSnapshot) {
+			throw new Error("Owned Backlog commit eligibility changed during Git hooks; refusing to rewrite it");
+		}
 	}
 
 	private async assertNoCommitOperationInProgress(repoRoot: string): Promise<void> {
@@ -789,6 +840,12 @@ export class GitOperations {
 			update: `Update task ${taskId}`,
 			archive: `Archive task ${taskId}`,
 		};
+		const actionVerbs = { create: "Create", update: "Update", archive: "Archive" } as const;
+		const message = actionMessages[action];
+		const commitOptions: GitCommitOptions = {
+			...options,
+			operation: options.operation ?? createAutomaticCommitOperation(message, actionVerbs[action], "task", [taskId]),
+		};
 
 		const context = await this.getPathContext(filePath);
 		const repoRoot = context?.repoRoot ?? this.projectRoot;
@@ -809,7 +866,7 @@ export class GitOperations {
 				await this.execGit(["add", pathForAdd], { cwd: repoRoot });
 				expectedIndexEntries = await this.getIndexEntries(filePath);
 				onStaged?.(expectedIndexEntries);
-				return await this.commitFiles(actionMessages[action], [filePath], repoRoot, options);
+				return await this.commitFiles(message, [filePath], repoRoot, commitOptions);
 			} catch (error) {
 				lastError = error instanceof Error ? error : new Error(String(error));
 				if (attempt === 3) break;

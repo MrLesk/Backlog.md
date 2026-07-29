@@ -3,6 +3,7 @@ import { basename, dirname } from "node:path";
 import type { Core } from "../core/backlog.ts";
 import type { FileSystem } from "../file-system/operations.ts";
 import type { BacklogConfig } from "../types/index.ts";
+import { normalizeAutoCommitMode } from "./auto-commit-mode.ts";
 
 export interface ConfigWatcherCallbacks {
 	onConfigChanged?: (config: BacklogConfig | null) => void | Promise<void>;
@@ -65,7 +66,7 @@ function hasValidExplicitValues(content: string, config: BacklogConfig): boolean
 		if (key === "definition_of_done" && config.definitionOfDone === undefined) return false;
 		if ((key === "project_name" || key === "date_format") && !value.replace(/['"]/g, "").trim()) return false;
 		if (BOOLEAN_CONFIG_KEYS.has(key) && !/^(?:true|false)$/i.test(value)) return false;
-		if (key === "auto_commit_mode" && !/^(?:new|amend-own)$/i.test(value.replace(/["']/g, ""))) return false;
+		if (key === "auto_commit_mode" && !normalizeAutoCommitMode(value.replace(/["']/g, ""))) return false;
 		if (INTEGER_CONFIG_KEYS.has(key)) {
 			const number = Number(value);
 			if (!/^\d+$/.test(value) || !Number.isSafeInteger(number)) return false;

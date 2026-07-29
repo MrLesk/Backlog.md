@@ -1,5 +1,6 @@
 import * as clack from "@clack/prompts";
 import type { BacklogConfig } from "../types/index.ts";
+import { normalizeAutoCommitMode } from "../utils/auto-commit-mode.ts";
 import { isEditorAvailable, resolveEditor } from "../utils/editor.ts";
 
 interface PromptChoice {
@@ -320,8 +321,8 @@ export async function runAdvancedConfigWizard({
 			},
 			{ onCancel },
 		);
-		const selectedMode = autoCommitModePrompt.autoCommitMode;
-		if (selectedMode === "new" || selectedMode === "amend-own") autoCommitMode = selectedMode;
+		const selectedMode = normalizeAutoCommitMode(String(autoCommitModePrompt.autoCommitMode ?? ""));
+		if (selectedMode) autoCommitMode = selectedMode;
 	}
 
 	while (true) {
