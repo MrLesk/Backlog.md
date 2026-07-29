@@ -5,7 +5,7 @@ status: In Progress
 assignee:
   - '@andreas'
 created_date: '2026-07-28 14:46'
-updated_date: '2026-07-29 22:53'
+updated_date: '2026-07-29 23:16'
 labels:
   - git
 dependencies: []
@@ -31,9 +31,9 @@ This is a correctness fix that stands on its own under the current default autom
 - [x] #1 Every production automatic-commit path commits only the files selected for that operation, covering tasks, drafts, bulk updates and reorders, lifecycle moves, milestones, documents, decisions, and agent-instruction updates.
 - [x] #2 Pre-existing unrelated staged and unstaged paths, and unrelated paths staged by pre-commit or commit-message hooks through the isolated commit index, remain outside the commit and retain their prior real-index and worktree state; mutations made by post-commit hooks against the real index and worktree persist according to normal Git semantics.
 - [x] #3 Operations that move files, such as archive and milestone rename, commit the complete set of source and target paths the operation touched, with no stray additions.
-- [x] #4 Existing selected-path robustness is preserved: temporary-index isolation, owned-index reconciliation, retries, current-configuration signing and signing failures, legacy and modern hook runners, and atomic expected-old-SHA branch updates.
+- [ ] #4 Existing selected-path robustness is preserved: temporary-index isolation, owned-index reconciliation, retries, current-configuration signing and signing failures, legacy and modern hook runners, and atomic expected-old-SHA branch updates.
 - [x] #5 Merge, rebase, cherry-pick, and revert in-progress guards continue to fail closed without moving HEAD, corrupting operation metadata, or consuming unrelated index entries.
-- [x] #6 Tests cover unrelated index and worktree state, pre-commit and commit-message hook staging isolation, post-commit real-index mutations, file-move operations, custom backlog roots, linked worktrees, and projects without Git.
+- [ ] #6 Tests cover unrelated index and worktree state, pre-commit and commit-message hook staging isolation, post-commit real-index mutations, file-move operations, custom backlog roots, linked worktrees, and projects without Git.
 - [x] #7 Promotion and demotion use one canonical lifecycle implementation that returns the complete touched-path result, while duplicate task IDs continue to raise the explicit ambiguity diagnostic.
 - [x] #8 Title-changing draft updates return and commit both the previous and replacement paths in new and amend-own modes, leaving no duplicate in HEAD or unstaged deletion.
 - [x] #9 Lifecycle target validation and unexpected write failures propagate their actionable original errors; null/false is reserved for a genuinely absent source.
@@ -41,9 +41,9 @@ This is a correctness fix that stands on its own under the current default autom
 
 ## Definition of Done
 <!-- DOD:BEGIN -->
-- [x] #1 bunx tsc --noEmit passes when TypeScript touched
-- [x] #2 bun run check . passes when formatting/linting touched
-- [x] #3 bun test (or scoped test) passes
+- [ ] #1 bunx tsc --noEmit passes when TypeScript touched
+- [ ] #2 bun run check . passes when formatting/linting touched
+- [ ] #3 bun test (or scoped test) passes
 <!-- DOD:END -->
 
 ## Implementation Plan
@@ -68,6 +68,8 @@ This is a correctness fix that stands on its own under the current default autom
 11. Guard the expected symbolic HEAD target and the intended branch OID in one atomic ref transaction so a same-SHA branch switch cannot redirect the selected-path commit; cover the production commit path without changing caller worktree/index bytes.
 
 12. Acquire the real index lease before HEAD in Git lock order, then re-read selected entries and operation state inside the protected finalization boundary. Extend race regressions to same-SHA hard reset and merge/autostash windows without losing caller or concurrent bytes.
+
+13. Preserve reference-transaction hook semantics around the leased selected-path ref movement: real context, one logical transaction, prepared veto before movement, committed/aborted completion, and no duplicate no-op transaction.
 <!-- SECTION:PLAN:END -->
 
 ## Implementation Notes
@@ -130,5 +132,10 @@ Pass 11 H1: update-ref HEAD checks only the expected OID, so a concurrent same-S
 created: 2026-07-29 22:23
 ---
 Pass 12 H2: selected index reconciliation currently precedes HEAD lease acquisition, allowing reset/merge mutations in the remaining window before final ref movement.
+---
+
+created: 2026-07-29 23:15
+---
+Pass 13 H1: synthetic named updates and manual detached writes bypass real-context reference-transaction vetoes; the later HEAD reflog no-op is too late and its failure is ignored.
 ---
 <!-- COMMENTS:END -->
