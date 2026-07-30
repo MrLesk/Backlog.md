@@ -5,7 +5,7 @@ status: In Progress
 assignee:
   - '@andreas'
 created_date: '2026-07-28 14:27'
-updated_date: '2026-07-30 00:11'
+updated_date: '2026-07-30 00:29'
 labels:
   - enhancement
   - git
@@ -130,13 +130,14 @@ This task is delivered through subtasks, because the selected-path correctness f
 - [x] #5 A human can see when an amend happened, force a new commit for a single invocation with --no-amend on any command that can automatically commit, and follow documented reflog recovery for an unwanted amend.
 - [x] #6 The upstream cross-platform test/build/Nix workflow executes successfully for the final implementation SHA, or the task records that first-time-contributor workflow approval is externally blocked on an upstream maintainer before merge.
 - [x] #7 The final PR branch history follows CONTRIBUTING.md by including BACK-556 in every feature commit message, while preserving reviewable intent and the task evidence required for this delivery.
+- [ ] #8 A prepared reference-transaction veto is authoritative across every production wrapper: the invocation emits exactly one prepared then aborted lifecycle, never retries into committed, and leaves HEAD and caller bytes unchanged whether the veto is one-shot or persistent.
 <!-- AC:END -->
 
 ## Definition of Done
 <!-- DOD:BEGIN -->
-- [x] #1 bunx tsc --noEmit passes when TypeScript touched
-- [x] #2 bun run check . passes when formatting/linting touched
-- [x] #3 bun test (or scoped test) passes
+- [ ] #1 bunx tsc --noEmit passes when TypeScript touched
+- [ ] #2 bun run check . passes when formatting/linting touched
+- [ ] #3 bun test (or scoped test) passes
 <!-- DOD:END -->
 
 ## Implementation Plan
@@ -180,6 +181,8 @@ Holistic correction pass: resolve the documented Git intent/state, invocation-co
 27. Resolve Pass 13 reference-transaction hook context/veto semantics and whole-list operation deduplication. Run one logical prepared/committed-or-aborted hook transaction in the real worktree context before any named/detached movement while suppressing duplicate plumbing-hook invocations, and normalize distinct operations before every render.
 
 28. Resolve Pass 14 prepared-hook mutation races. After prepared succeeds but before any named or detached movement, rerun exact HEAD identity/OID and the complete final lease validation so operation markers, ownership, refs, selected index entries, and branch identity still fail closed; emit aborted on rejection and add start-owned, replacement, and detached regressions.
+
+29. Resolve Pass 15 wrapper retries around prepared vetoes. Preserve intentional transient pre-commit retry behavior, but type reference-transaction prepared rejection as non-retryable through addAndCommitTaskFile; cover one-shot and persistent production task vetoes with exact lifecycle counts and unchanged HEAD/index/worktree bytes.
 <!-- SECTION:PLAN:END -->
 
 ## Implementation Notes
@@ -315,5 +318,10 @@ Fresh holistic gpt-5.6-sol xhigh Pass 13 at 8b537dd requested changes: reference
 created: 2026-07-29 23:54
 ---
 Fresh holistic gpt-5.6-sol xhigh Pass 14 at 867c020 requested changes with one High finding: reference-transaction prepared hooks can mutate Git operation state after the final pre-hook validation, allowing start-owned/detached commits to move HEAD and named replacements to move transiently. Exact clean reviewed HEAD preserved. Report: /tmp/backlog-821-holistic-review-pass-14.md.
+---
+
+created: 2026-07-30 00:29
+---
+Fresh holistic gpt-5.6-sol xhigh Pass 15 at 7575462 requested changes with one High finding: addAndCommitTaskFile retries generic prepared-hook rejection, so a one-shot reference-transaction veto can become prepared/aborted then prepared/committed and still amend HEAD. Exact clean reviewed HEAD preserved. Report: /tmp/backlog-821-holistic-review-pass-15.md.
 ---
 <!-- COMMENTS:END -->
