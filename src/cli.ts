@@ -4958,7 +4958,7 @@ addHelpSchema(program.command("cleanup"), {
 // Browser command for web UI
 program
 	.command("browser")
-	.description("open browser interface for task management (press Ctrl+C or Cmd+C to stop)")
+	.description("open browser interface on this machine only at 127.0.0.1 (press Ctrl+C or Cmd+C to stop)")
 	.option("-p, --port <port>", "port to run server on")
 	.option("--no-open", "don't automatically open browser")
 	.option("--non-interactive", "automatically use next free port without asking")

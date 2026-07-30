@@ -154,6 +154,7 @@ export function markHtmlBundleNoStore(bundle: Bun.HTMLBundle): Bun.HTMLBundle {
 
 const spaIndexHtml = markHtmlBundleNoStore(indexHtml);
 const BUNDLE_ASSET_DIR_ENV = "BACKLOG_BUNDLE_ASSET_DIR";
+const BROWSER_HOST = "127.0.0.1";
 const MIN_PORT = 1;
 const MAX_PORT = 65535;
 
@@ -161,10 +162,7 @@ export async function isPortAvailable(port: number): Promise<boolean> {
 	if (!Number.isInteger(port) || port < MIN_PORT || port > MAX_PORT) return false;
 	return new Promise((resolve) => {
 		const srv = net.createServer();
-		// Probe the wildcard interface that Bun.serve binds: on macOS a loopback-specific
-		// bind does not collide with a wildcard bind, so probing 127.0.0.1 would report
-		// a port as free while the browser server already holds it.
-		srv.listen(port, () => srv.close(() => resolve(true)));
+		srv.listen(port, BROWSER_HOST, () => srv.close(() => resolve(true)));
 		srv.on("error", () => resolve(false));
 	});
 }
@@ -295,6 +293,7 @@ export class BacklogServer {
 			await this.ensureServicesReady();
 			const serveOptions = {
 				port: finalPort,
+				hostname: BROWSER_HOST,
 				development: process.env.NODE_ENV === "development",
 				routes: {
 					"/": spaIndexHtml,
@@ -450,7 +449,7 @@ export class BacklogServer {
 				throw error;
 			}
 
-			const url = `http://localhost:${finalPort}`;
+			const url = `http://${BROWSER_HOST}:${finalPort}`;
 			console.log(`🚀 Backlog.md browser interface running at ${url}`);
 			console.log(`📊 Project: ${this.projectName}`);
 			const stopKey = process.platform === "darwin" ? "Cmd+C" : "Ctrl+C";
