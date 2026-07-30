@@ -389,6 +389,7 @@ export class GitOperations {
 					};
 				} catch (error) {
 					lastHeadUpdateError = error instanceof Error ? error : new Error(String(error));
+					if (error instanceof ReferenceTransactionVetoError) throw error;
 					if ((await this.resolveHead(resolvedRepoRoot)) === baseHead) throw lastHeadUpdateError;
 				}
 			}

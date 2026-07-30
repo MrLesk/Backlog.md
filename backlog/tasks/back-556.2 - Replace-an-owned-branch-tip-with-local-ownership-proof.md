@@ -5,7 +5,7 @@ status: In Progress
 assignee:
   - '@andreas'
 created_date: '2026-07-28 14:46'
-updated_date: '2026-07-30 01:08'
+updated_date: '2026-07-30 01:28'
 labels:
   - git
 dependencies:
@@ -52,26 +52,26 @@ See BACK-556 for the full ownership and safety contract, including the accepted 
 - [x] #9 A tip is reported as not owned when HEAD is detached, is a merge commit, is reachable from a remote-tracking ref, or is reachable from any local branch other than the current branch or any tag, including annotated tags and both refs that point directly to the candidate and refs that point to a descendant, using local refs only and performing no network operation.
 - [x] #10 A new commit is reported as owned only when it lands on a named branch and valid evidence for its exact SHA is successfully recorded. Commits created with detached HEAD or while the selected ownership channel cannot record evidence, including a branch with no usable reflog while automatic reflog creation is disabled, remain unowned, and repeated operations in either state cannot enter the replacement path.
 - [x] #11 A replacement commit records valid ownership evidence for its own new SHA on the same terms as a newly created commit, so an amendable sequence survives repeated replacements. If that recording does not succeed, the sequence ends at that commit and the next operation creates a new commit.
-- [ ] #12 After a failed expected-old-SHA update, ownership and eligibility are re-evaluated, and a concurrent non-Backlog commit is never overwritten.
+- [x] #12 After a failed expected-old-SHA update, ownership and eligibility are re-evaluated, and a concurrent non-Backlog commit is never overwritten.
 - [x] #13 Concurrent changes to the selected paths are either incorporated into the commit or reported as an error, and no selected change is lost silently.
 - [x] #14 The replacement path runs pre-commit, prepare-commit-msg with message as its source argument, commit-msg, and post-commit consistently with Git amend semantics, and invokes exactly one post-rewrite amend carrying the old and new commit IDs, while the new-commit path invokes no post-rewrite. Pre-commit and commit-message hook staging remains isolated; post-hook mutations against the real index and worktree persist.
 - [x] #15 post-commit and post-rewrite are notifications: a failing post hook does not fail the operation or move HEAD.
 - [x] #16 bypassGitHooks and the legacy hook-runner path behave the same for replacements as for new commits.
 - [x] #17 Merge, rebase, cherry-pick, and revert in-progress guards fail closed without moving HEAD or consuming unrelated index entries.
-- [ ] #18 Git-level tests cover repeated replacement sequences with evidence re-recorded at each step; subject shapes for single, factored, elided, and mixed-verb cases; duplicate collapsing; region parsing when a hook has appended content outside the region; repeated detached and evidence-unavailable new commits; root commits; manual and publication boundaries; local branches, lightweight tags, and annotated tags pointing directly to candidates and to descendants; pre and message hook isolation, post-hook real-index mutations, and failing post hooks; signed-to-unsigned and unsigned-to-signed configuration transitions; required-signing failures; linked worktrees and branch switches; and concurrent branch movement.
+- [x] #18 Git-level tests cover repeated replacement sequences with evidence re-recorded at each step; subject shapes for single, factored, elided, and mixed-verb cases; duplicate collapsing; region parsing when a hook has appended content outside the region; repeated detached and evidence-unavailable new commits; root commits; manual and publication boundaries; local branches, lightweight tags, and annotated tags pointing directly to candidates and to descendants; pre and message hook isolation, post-hook real-index mutations, and failing post hooks; signed-to-unsigned and unsigned-to-signed configuration transitions; required-signing failures; linked worktrees and branch switches; and concurrent branch movement.
 - [x] #19 Legacy new-mode commits contain no rolling-operation region or ownership evidence; only an amend-own sequence start or replacement records exact-SHA ownership, and switching from new to amend-own cannot rewrite the pre-opt-in tip.
 - [x] #20 After message hooks, replacement eligibility is revalidated against exact reflog state, Git-operation guards, and all containing refs; hook-created refs and same-SHA away-and-back changes fail closed.
 - [x] #21 Ownership is branch-local: switching away and returning to an otherwise unchanged safe branch intentionally resumes its amendable sequence, and documentation plus tests state that behavior.
 - [x] #22 Rolling messages store structured operation descriptors so production task, draft, document, decision, milestone, and agent messages produce stable factored subjects without parsing incidental English display strings.
 - [x] #23 Document, decision, and agent-instruction upserts record the real create/add versus update action, so distinct operations never collapse under one inaccurate descriptor.
-- [ ] #24 Named and detached finalization exposes exactly one logical reference-transaction hook lifecycle in the real repository/HEAD context: prepared runs before movement and can veto it, committed follows success, aborted follows veto or failed movement, and internal ref/reflog plumbing does not duplicate the transaction.
+- [x] #24 Named and detached finalization exposes exactly one logical reference-transaction hook lifecycle in the real repository/HEAD context: prepared runs before movement and can veto it, committed follows success, aborted follows veto or failed movement, and internal ref/reflog plumbing does not duplicate the transaction.
 <!-- AC:END -->
 
 ## Definition of Done
 <!-- DOD:BEGIN -->
-- [ ] #1 bunx tsc --noEmit passes when TypeScript touched
-- [ ] #2 bun run check . passes when formatting/linting touched
-- [ ] #3 bun test (or scoped test) passes
+- [x] #1 bunx tsc --noEmit passes when TypeScript touched
+- [x] #2 bun run check . passes when formatting/linting touched
+- [x] #3 bun test (or scoped test) passes
 <!-- DOD:END -->
 
 ## Implementation Plan
@@ -134,6 +134,8 @@ Pass 13 hook/message correction complete. The final lease invokes prepared with 
 Pass 14 hook-boundary correction complete. A shared validateHeadAndLease callback verifies exact identity/OID and all caller invariants immediately after prepared and before named CAS or detached HEAD replacement. Prepared-created MERGE_HEAD rejects start-owned, amend-own replacement, and detached finalization with exactly prepared then aborted, no movement, and no ownership recording. Focused gate: 60 tests/446 assertions; integrated gate: 1,866 passed/4 skipped/0 failed with 8,275 assertions.
 
 Pass 15 veto finality complete. Prepared rejection is wrapped after aborted notification and propagated without production-wrapper retry. One-shot and persistent hooks both prove exact prepared/aborted-only events, no committed event, no ref movement, and preserved staged/worktree selected content. Expanded focused gate: 62 tests/461 assertions; integrated gate: 1,867 passed/4 skipped/0 failed with 8,287 assertions.
+
+Pass 16 veto CAS finality complete. commitFiles now throws ReferenceTransactionVetoError before changed-HEAD retry. A one-shot prepared hook advances main through an isolated hook-disabled ref context and rejects; coverage proves prepared/aborted only, no second transaction, wrapper failure, hook-owned branch movement retained, and staged/worktree selected bytes preserved. Focused gate: 62/465; full owned suite: 26/237; integrated gate: 1,868 passed/4 skipped/0 failed with 8,294 assertions.
 <!-- SECTION:NOTES:END -->
 
 ## Comments

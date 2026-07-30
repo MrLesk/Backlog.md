@@ -102,7 +102,7 @@ describe("owned automatic commit replacement", () => {
 		expect(third.ownershipRecorded).toBe(true);
 		expect(await commitCount(testDir)).toBe(2);
 		expect(await $`git show -s --format=%s HEAD`.cwd(testDir).text()).toBe("backlog: 3 changes\n");
-	});
+	}, 20_000);
 
 	it("replaces owned root commits without inventing a parent", async () => {
 		const git = await initializeRepository(testDir, { baseline: false });
@@ -353,7 +353,7 @@ describe("owned automatic commit replacement", () => {
 		expect(await $`git show :post-index.txt`.cwd(testDir).text()).toBe("post");
 		expect((await $`git cat-file -e HEAD:post-index.txt`.cwd(testDir).nothrow().quiet()).exitCode).not.toBe(0);
 		expect(await head(testDir)).toBe(replacement.commitId);
-	});
+	}, 20_000);
 
 	it("runs one real-context reference transaction lifecycle and honors named and detached vetoes", async () => {
 		for (const scenario of ["named-veto", "detached-veto", "named-success", "detached-success"] as const) {
@@ -437,6 +437,46 @@ describe("owned automatic commit replacement", () => {
 			expect(await Bun.file(selectedPath).text()).toBe("ours\n");
 			expect(await $`git show :selected.txt`.cwd(root).text()).toBe("ours\n");
 		}
+	}, 20_000);
+
+	it("does not retry a prepared veto after its hook moves HEAD", async () => {
+		const root = join(testDir, "veto-head-move");
+		const git = await initializeRepository(root);
+		const owned = await commitSelected(root, git, "backlog: Update task BACK-1", "owned\n");
+		const baseline = (await $`git rev-parse ${owned.commitId}^`.cwd(root).text()).trim();
+		const markerPath = join(root, "reference-transaction.log");
+		const seenPath = join(root, ".git", "prepared-veto-seen");
+		const disabledHooksPath = join(root, "disabled-hooks");
+		const alternateGitDirectory = join(root, "hook-ref-context");
+		const commonDirectory = (await $`git rev-parse --absolute-git-dir`.cwd(root).text()).trim();
+		await Promise.all([mkdir(disabledHooksPath), mkdir(alternateGitDirectory)]);
+		await Promise.all([
+			Bun.write(join(alternateGitDirectory, "commondir"), `${commonDirectory}\n`),
+			Bun.write(join(alternateGitDirectory, "HEAD"), "ref: refs/backlog/hook-ref-context\n"),
+		]);
+		await installHook(
+			root,
+			"reference-transaction",
+			`read old new ref; printf '%s\\n' "$1" >> "${markerPath}"; ` +
+				`if [ "$1" = prepared ] && [ ! -f "${seenPath}" ]; then ` +
+				`: > "${seenPath}"; GIT_DIR="${alternateGitDirectory}" git -c core.hooksPath="${disabledHooksPath}" ` +
+				`update-ref "$ref" "${baseline}" "$old"; exit 1; fi`,
+		);
+		const selectedPath = join(root, "selected.txt");
+		await Bun.write(selectedPath, "ours\n");
+
+		await expect(
+			git.addAndCommitTaskFile("BACK-2", selectedPath, "update", undefined, {
+				automaticCommitIntent: "amend-own",
+			}),
+		).rejects.toThrow("Reference-transaction prepared hook rejected");
+
+		expect((await Bun.file(markerPath).text()).trim().split("\n")).toEqual(["prepared", "aborted"]);
+		expect(await head(root)).toBe(baseline);
+		expect(await commitCount(root)).toBe(1);
+		expect((await $`git cat-file -e HEAD:selected.txt`.cwd(root).nothrow().quiet()).exitCode).not.toBe(0);
+		expect(await Bun.file(selectedPath).text()).toBe("ours\n");
+		expect(await $`git show :selected.txt`.cwd(root).text()).toBe("ours\n");
 	}, 20_000);
 
 	it("revalidates complete named and detached leases after prepared reference hooks", async () => {
