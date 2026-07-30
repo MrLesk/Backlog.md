@@ -173,7 +173,7 @@ export async function buildRemoteTaskIndex(
 						stateCollector.push({
 							id,
 							type,
-							branch: br,
+							branch: ref,
 							path: f,
 							lastModified,
 						});

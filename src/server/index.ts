@@ -22,7 +22,7 @@ import { resolveMilestoneInputForStorage } from "../utils/milestone-storage.ts";
 import { formatValidPriorityValues, resolvePriorityValue } from "../utils/priority-config.ts";
 import { formatValidStatuses, getCanonicalStatuses, getValidStatuses } from "../utils/status.ts";
 import { resolveTaskById } from "../utils/task-id.ts";
-import { isAmbiguousTaskIdError } from "../utils/task-path.ts";
+import { isAmbiguousTaskIdError, taskIdsEqual } from "../utils/task-path.ts";
 import { getVersion } from "../utils/version.ts";
 
 // Regex pattern to match any prefix (letters followed by dash)
@@ -944,7 +944,7 @@ export class BacklogServer {
 			checkActiveBranches &&
 			localTask &&
 			storedResolution.status === "found" &&
-			localTask.id.toLowerCase() !== storedResolution.task.id.toLowerCase()
+			!taskIdsEqual(localTask.id, storedResolution.task.id)
 		) {
 			return Response.json(
 				{ error: `Task ID ${taskId} is ambiguous. Repair duplicate task IDs before opening it.` },

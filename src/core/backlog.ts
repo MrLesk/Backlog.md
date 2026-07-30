@@ -61,6 +61,7 @@ import {
 import { resolveTaskById } from "../utils/task-id.ts";
 import {
 	AmbiguousTaskIdError,
+	canonicalTaskId,
 	getDraftPath,
 	getTaskFilename,
 	getTaskPath,
@@ -223,6 +224,17 @@ function filterTasksByStateSnapshots(tasks: Task[], latestState: Map<string, Bra
 		if (!latest) return true;
 		return latest.type === "task";
 	});
+}
+
+function mergeTaskByCanonicalId(
+	tasksById: Map<string, Task>,
+	task: Task,
+	statuses: string[],
+	resolutionStrategy: "most_recent" | "most_progressed",
+): void {
+	const taskId = canonicalTaskId(task.id);
+	const existing = tasksById.get(taskId);
+	tasksById.set(taskId, existing ? resolveTaskConflict(existing, task, statuses, resolutionStrategy) : task);
 }
 
 function normalizeDocumentTypeInput(type: unknown): DocumentType | undefined {
@@ -3143,36 +3155,27 @@ export class Core {
 		progressCallback?.("Loaded tasks");
 
 		// Create map with local tasks
-		const tasksById = new Map<string, Task>(localTasks.map((t) => [t.id, { ...t, source: "local" }]));
+		const tasksById = new Map<string, Task>(
+			localTasks.map((task) => [canonicalTaskId(task.id), { ...task, source: "local" }]),
+		);
 
 		// Add completed tasks to the map
 		for (const completedTask of completedTasks) {
-			if (!tasksById.has(completedTask.id)) {
-				tasksById.set(completedTask.id, { ...completedTask, source: "completed" });
+			const taskId = canonicalTaskId(completedTask.id);
+			if (!tasksById.has(taskId)) {
+				tasksById.set(taskId, { ...completedTask, source: "completed" });
 			}
 		}
 
 		// Merge tasks from other local branches
 		progressCallback?.("Merging tasks...");
 		for (const branchTask of localBranchTasks) {
-			const existing = tasksById.get(branchTask.id);
-			if (!existing) {
-				tasksById.set(branchTask.id, branchTask);
-			} else {
-				const resolved = resolveTaskConflict(existing, branchTask, statuses, resolutionStrategy);
-				tasksById.set(branchTask.id, resolved);
-			}
+			mergeTaskByCanonicalId(tasksById, branchTask, statuses, resolutionStrategy);
 		}
 
 		// Merge remote tasks with local tasks
 		for (const remoteTask of remoteTasks) {
-			const existing = tasksById.get(remoteTask.id);
-			if (!existing) {
-				tasksById.set(remoteTask.id, remoteTask);
-			} else {
-				const resolved = resolveTaskConflict(existing, remoteTask, statuses, resolutionStrategy);
-				tasksById.set(remoteTask.id, resolved);
-			}
+			mergeTaskByCanonicalId(tasksById, remoteTask, statuses, resolutionStrategy);
 		}
 
 		// Get all tasks as array
@@ -3277,12 +3280,14 @@ export class Core {
 		}
 
 		// Create map with local tasks (current branch filesystem)
-		const tasksById = new Map<string, Task>(localTasks.map((t) => [t.id, { ...t, source: "local" }]));
+		const tasksById = new Map<string, Task>(
+			localTasks.map((task) => [canonicalTaskId(task.id), { ...task, source: "local" }]),
+		);
 
 		// Add local completed tasks when requested
 		if (includeCompleted) {
 			for (const completedTask of completedTasks) {
-				tasksById.set(completedTask.id, { ...completedTask, source: "completed" });
+				tasksById.set(canonicalTaskId(completedTask.id), { ...completedTask, source: "completed" });
 			}
 		}
 
@@ -3292,13 +3297,7 @@ export class Core {
 				throw new Error("Loading cancelled");
 			}
 
-			const existing = tasksById.get(branchTask.id);
-			if (!existing) {
-				tasksById.set(branchTask.id, branchTask);
-			} else {
-				const resolved = resolveTaskConflict(existing, branchTask, statuses, resolutionStrategy);
-				tasksById.set(branchTask.id, resolved);
-			}
+			mergeTaskByCanonicalId(tasksById, branchTask, statuses, resolutionStrategy);
 		}
 
 		// Merge remote tasks with local tasks
@@ -3308,13 +3307,7 @@ export class Core {
 				throw new Error("Loading cancelled");
 			}
 
-			const existing = tasksById.get(remoteTask.id);
-			if (!existing) {
-				tasksById.set(remoteTask.id, remoteTask);
-			} else {
-				const resolved = resolveTaskConflict(existing, remoteTask, statuses, resolutionStrategy);
-				tasksById.set(remoteTask.id, resolved);
-			}
+			mergeTaskByCanonicalId(tasksById, remoteTask, statuses, resolutionStrategy);
 		}
 
 		// Check for cancellation before cross-branch checking

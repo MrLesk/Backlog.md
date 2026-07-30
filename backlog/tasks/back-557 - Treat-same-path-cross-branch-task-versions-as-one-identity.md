@@ -5,7 +5,7 @@ status: In Progress
 assignee:
   - '@codex'
 created_date: '2026-07-30 17:11'
-updated_date: '2026-07-30 17:28'
+updated_date: '2026-07-30 18:00'
 labels:
   - browser
   - git
@@ -44,6 +44,8 @@ Browser single-task reads currently return 409 when one canonical task ID exists
 1. Update server regressions first: same-ID same-path numeric and legacy variants must reopen the current working copy, and a browser save on a task inherited by an active branch must remain readable; keep padded/different-path collisions and branch-only visibility coverage fail-closed.
 2. Replace blob-content comparison in active-branch collision detection with normalized project-relative active-task path comparison, preserving multiple-local-file guards and the server’s current-worktree-authoritative response.
 3. Run focused server tests plus duplicate-repair, ID-generation, remote-conflict, and worktree-allocation coverage; run type-check, Biome, diff checks, and the full test suite, then simplify only if it reduces now-unused collision machinery without widening behavior.
+
+4. Review correction cycle 1: add endpoint regressions for a same-path padded ID variant and a distinct-path origin/main version; canonicalize cross-branch merge keys before store resolution, preserve full remote ref identity in branch state, and verify focused plus full coverage.
 <!-- SECTION:PLAN:END -->
 
 ## Implementation Notes
@@ -56,4 +58,11 @@ Removed blob/tree metadata collection and the now-unused Git tree-entry API; bra
 Regression proof: the new server expectations failed with 409 before the implementation for divergent numeric same-path, divergent legacy same-path, and browser save then reopen on an inherited branch task. After the change, same-path reads return 200 with local content while the padded different-path fixture remains 409.
 
 Verification: bunx tsc --noEmit; bun run check .; focused 44-test loader/server/Git suite; adjacent 38-test duplicate/ID/archive/worktree/remote suite; full bun test (1778 pass, 4 skip, 0 fail across 199 files).
+
+Review correction cycle 1:
+- Reproduced both reviewer findings against commit 8bb86f71 through the real task endpoint: a local BACK-1 plus active-branch BACK-001 at the same normalized project-relative path returned 409, while a local main task plus active origin/main task with the same ID at a distinct path returned the local task.
+- Canonicalized task IDs before cross-branch store merging and used normalized ID comparison when matching the local task to the store result, so same-path normalized-ID variants resolve to the local task.
+- Preserved full active remote ref identity (for example origin/main) in branch state while leaving hydrated task display branches unchanged, so a distinct-path origin/main collision remains fail-closed with 409.
+- Added endpoint regressions first and observed both fail before implementation; both pass after the fixes.
+- Verification: manual endpoint reproduction returned 200/local for the same-path variant and 409 for the distinct-path origin/main collision; focused branch/server suite 40 pass, 0 fail; broader duplicate/core/statistics suite 151 pass, 0 fail; full suite 1780 pass, 4 skip, 0 fail; bunx tsc --noEmit passed; bun run check . passed.
 <!-- SECTION:NOTES:END -->

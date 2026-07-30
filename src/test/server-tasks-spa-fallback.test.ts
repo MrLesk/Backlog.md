@@ -14,6 +14,7 @@ let filesystem: FileSystem;
 let server: BacklogServer | null = null;
 let serverPort = 0;
 let auxiliaryWorktreeDir: string | null = null;
+let remoteRepoDir: string | null = null;
 
 const routedTask: Task = {
 	id: "BACK-001.02",
@@ -69,6 +70,7 @@ async function startServer(): Promise<void> {
 async function restartWithActiveBranchCollision(
 	branchTaskId: "BACK-1" | "BACK-001",
 	includeBranchOnlyTask = false,
+	useSamePath = branchTaskId === "BACK-1",
 ): Promise<void> {
 	await server?.stop();
 	server = null;
@@ -89,8 +91,9 @@ async function restartWithActiveBranchCollision(
 	await $`git commit -m "Add main task"`.cwd(TEST_DIR).quiet();
 	await $`git switch -c collision-shadow`.cwd(TEST_DIR).quiet();
 
-	if (branchTaskId === "BACK-1") {
-		await Bun.write(mainTaskPath, serializeTask({ ...mainTask, title: "Exact branch collision" }));
+	if (useSamePath) {
+		const title = branchTaskId === "BACK-1" ? "Exact branch collision" : "Padded same-path version";
+		await Bun.write(mainTaskPath, serializeTask({ ...mainTask, id: branchTaskId, title }));
 	} else {
 		await $`git rm -- ${relative(TEST_DIR, mainTaskPath)}`.cwd(TEST_DIR).quiet();
 		await Bun.write(
@@ -108,6 +111,43 @@ async function restartWithActiveBranchCollision(
 	await $`git add backlog`.cwd(TEST_DIR).quiet();
 	await $`git commit -m "Add branch collision"`.cwd(TEST_DIR).quiet();
 	await $`git switch main`.cwd(TEST_DIR).quiet();
+	await startServer();
+}
+
+async function restartWithActiveRemoteCollision(): Promise<void> {
+	await server?.stop();
+	server = null;
+
+	const config = await filesystem.loadConfig();
+	if (!config) {
+		throw new Error("Expected test config");
+	}
+	await filesystem.saveConfig({ ...config, checkActiveBranches: true, remoteOperations: true });
+	const mainTask = { ...routedTask, id: "BACK-1", title: "Main collision task" };
+	const mainTaskPath = await filesystem.saveTask(mainTask);
+
+	await $`git init -b main`.cwd(TEST_DIR).quiet();
+	await $`git config user.name "Test User"`.cwd(TEST_DIR).quiet();
+	await $`git config user.email test@example.com`.cwd(TEST_DIR).quiet();
+	await $`git add backlog`.cwd(TEST_DIR).quiet();
+	await $`git commit -m "Add main task"`.cwd(TEST_DIR).quiet();
+
+	remoteRepoDir = createUniqueTestDir("server-task-collision-remote");
+	await $`git init --bare -b main ${remoteRepoDir}`.cwd(TEST_DIR).quiet();
+	await $`git remote add origin ${remoteRepoDir}`.cwd(TEST_DIR).quiet();
+	await $`git push -u origin main`.cwd(TEST_DIR).quiet();
+
+	await $`git switch -c remote-update`.cwd(TEST_DIR).quiet();
+	await $`git rm -- ${relative(TEST_DIR, mainTaskPath)}`.cwd(TEST_DIR).quiet();
+	await Bun.write(
+		join(filesystem.tasksDir, "back-1 - Remote-path-collision.md"),
+		serializeTask({ ...mainTask, title: "Remote path collision" }),
+	);
+	await $`git add backlog`.cwd(TEST_DIR).quiet();
+	await $`git commit -m "Move task on remote main"`.cwd(TEST_DIR).quiet();
+	await $`git push origin HEAD:main`.cwd(TEST_DIR).quiet();
+	await $`git switch main`.cwd(TEST_DIR).quiet();
+	await $`git branch -D remote-update`.cwd(TEST_DIR).quiet();
 	await startServer();
 }
 
@@ -185,6 +225,10 @@ describe("BacklogServer task SPA fallback", () => {
 			await $`git worktree remove --force ${auxiliaryWorktreeDir}`.cwd(TEST_DIR).quiet().nothrow();
 			await safeCleanup(auxiliaryWorktreeDir);
 			auxiliaryWorktreeDir = null;
+		}
+		if (remoteRepoDir) {
+			await safeCleanup(remoteRepoDir);
+			remoteRepoDir = null;
 		}
 		await safeCleanup(TEST_DIR);
 	});
@@ -478,8 +522,26 @@ describe("BacklogServer task SPA fallback", () => {
 		expect(((await response.json()) as Task).title).toBe("Main collision task");
 	});
 
+	it("returns the local task when an active branch uses a padded ID at the same task path", async () => {
+		await restartWithActiveBranchCollision("BACK-001", false, true);
+
+		const response = await request("/api/task/BACK-1");
+		expect(response.status).toBe(200);
+		expect(((await response.json()) as Task).title).toBe("Main collision task");
+	});
+
 	it("fails closed when an active branch uses the same normalized ID at a different task path", async () => {
 		await restartWithActiveBranchCollision("BACK-001");
+
+		const response = await request("/api/task/BACK-1");
+		expect(response.status).toBe(409);
+		expect((await response.json()) as { error: string }).toEqual({
+			error: "Task ID BACK-1 is ambiguous. Repair duplicate task IDs before opening it.",
+		});
+	});
+
+	it("fails closed when active origin/main uses the same ID at a different task path", async () => {
+		await restartWithActiveRemoteCollision();
 
 		const response = await request("/api/task/BACK-1");
 		expect(response.status).toBe(409);

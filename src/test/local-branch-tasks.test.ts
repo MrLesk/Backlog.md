@@ -118,7 +118,7 @@ describe("Local branch task discovery", () => {
 			expect(remoteState).toEqual([
 				expect.objectContaining({
 					id: "BACK-PREFIXED",
-					branch: "feature",
+					branch: "origin/feature",
 					path: legacyPath,
 				}),
 			]);
