@@ -249,7 +249,10 @@ function AppContent() {
     checkInitStatus();
   }, []);
 
-  const handleInitialized = useCallback(() => {
+  const handleInitialized = useCallback((effectiveConfig: BacklogConfig) => {
+    setProjectName(effectiveConfig.projectName);
+    setAvailableLabels(effectiveConfig.labels || []);
+    setConfig(effectiveConfig);
     setIsInitialized(true);
   }, []);
 

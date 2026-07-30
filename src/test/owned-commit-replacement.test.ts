@@ -734,21 +734,19 @@ describe("owned automatic commit replacement", () => {
 		const configuredLogPath = (await $`git rev-parse --git-path logs/refs/heads/main`.cwd(testDir).text()).trim();
 		const logPath = isAbsolute(configuredLogPath) ? configuredLogPath : join(testDir, configuredLogPath);
 		const privateGit = git as unknown as PrivateGit;
-		const originalExec = privateGit.execGit.bind(git);
-		let removedEvidence = false;
-		privateGit.execGit = async (args, options) => {
-			if (args.includes("update-ref") && !removedEvidence) {
-				removedEvidence = true;
-				await rm(logPath, { force: true });
-			}
-			return originalExec(args, options);
+		const originalTransaction = privateGit.updateBranchRefTransaction.bind(git);
+		let transactionCalls = 0;
+		privateGit.updateBranchRefTransaction = async (...args) => {
+			transactionCalls += 1;
+			if (transactionCalls === 2) await rm(logPath, { force: true });
+			return originalTransaction(...args);
 		};
 		const replacement = await commitSelected(testDir, git, "backlog: Update task BACK-2", "two\n", {
 			automaticCommitIntent: "amend-own",
 		});
 		expect(replacement.amended).toBe(true);
 		expect(replacement.ownershipRecorded).toBe(false);
-		privateGit.execGit = originalExec;
+		privateGit.updateBranchRefTransaction = originalTransaction;
 		const next = await commitSelected(testDir, git, "backlog: Update task BACK-3", "three\n", {
 			automaticCommitIntent: "amend-own",
 		});
@@ -898,10 +896,12 @@ describe("owned automatic commit replacement", () => {
 		const originalTransaction = privateGit.updateBranchRefTransaction.bind(git);
 		let switchBlocked = false;
 		privateGit.updateBranchRefTransaction = async (...args) => {
-			await expect(originalExec(["symbolic-ref", "HEAD", "refs/heads/sibling"], { cwd: testDir })).rejects.toThrow(
-				"HEAD.lock",
-			);
-			switchBlocked = true;
+			if (!switchBlocked) {
+				await expect(originalExec(["symbolic-ref", "HEAD", "refs/heads/sibling"], { cwd: testDir })).rejects.toThrow(
+					"HEAD.lock",
+				);
+				switchBlocked = true;
+			}
 			return originalTransaction(...args);
 		};
 
@@ -915,6 +915,57 @@ describe("owned automatic commit replacement", () => {
 		expect((await $`git rev-parse refs/heads/sibling`.cwd(testDir).text()).trim()).toBe(
 			(await $`git rev-parse ${owned.commitId}^`.cwd(testDir).text()).trim(),
 		);
+	}, 20_000);
+
+	it("does not synchronize ownership onto a concurrently selected same-SHA sibling", async () => {
+		const git = await initializeRepository(testDir);
+		const owned = await commitSelected(testDir, git, "backlog: Update task BACK-1", "owned\n");
+		const selectedPath = join(testDir, "selected.txt");
+		await Bun.write(selectedPath, "ours\n");
+		await git.stageFiles([selectedPath]);
+		const privateGit = git as unknown as PrivateGit;
+		const originalExec = privateGit.execGit.bind(git);
+		const originalTransaction = privateGit.updateBranchRefTransaction.bind(git);
+		let transactionCalls = 0;
+		privateGit.updateBranchRefTransaction = async (...args) => {
+			transactionCalls += 1;
+			if (transactionCalls === 2) {
+				const replacementCommit = args[4];
+				await originalExec(["update-ref", "refs/heads/sibling", replacementCommit], { cwd: testDir });
+				await originalExec(["symbolic-ref", "HEAD", "refs/heads/sibling"], { cwd: testDir });
+				await originalExec(
+					["update-ref", "-m", "manual main boundary", "refs/heads/main", owned.commitId, replacementCommit],
+					{ cwd: testDir },
+				);
+			}
+			return originalTransaction(...args);
+		};
+
+		const replacement = await git.commitFiles("backlog: Update task BACK-2", [selectedPath], testDir, {
+			automaticCommitIntent: "amend-own",
+		});
+		if (!replacement) throw new Error("Expected replacement result");
+
+		expect(replacement.amended).toBe(true);
+		expect(replacement.ownershipRecorded).toBe(false);
+		expect((await $`git symbolic-ref HEAD`.cwd(testDir).text()).trim()).toBe("refs/heads/sibling");
+		expect((await $`git rev-parse refs/heads/main`.cwd(testDir).text()).trim()).toBe(owned.commitId);
+		expect((await $`git rev-parse refs/heads/sibling`.cwd(testDir).text()).trim()).toBe(replacement.commitId);
+		expect(await $`git reflog show -1 --format=%gs refs/heads/main`.cwd(testDir).text()).toBe("manual main boundary\n");
+		expect(await $`git reflog show -1 --format=%gs refs/heads/sibling`.cwd(testDir).text()).not.toContain(
+			"backlog:auto-commit/v1",
+		);
+
+		await Bun.write(selectedPath, "next\n");
+		await git.stageFiles([selectedPath]);
+		const next = await git.commitFiles("backlog: Update task BACK-3", [selectedPath], testDir, {
+			automaticCommitIntent: "amend-own",
+		});
+		if (!next) throw new Error("Expected next result");
+		expect(next.amended).toBe(false);
+		expect(next.previousCommitId).toBe(replacement.commitId);
+		expect((await $`git rev-parse HEAD^`.cwd(testDir).text()).trim()).toBe(replacement.commitId);
+		expect(await $`git show HEAD:selected.txt`.cwd(testDir).text()).toBe("next\n");
 	}, 20_000);
 
 	it("rejects a final-window target-branch reflog ABA while preserving caller bytes", async () => {

@@ -290,7 +290,7 @@ export async function initializeProject(
 		}
 	}
 
-	const persistedConfig = await core.filesystem.loadConfigForMutation();
+	const persistedConfig = await core.filesystem.loadConfigForMutation({ publish: true, preserve: config });
 	if (!persistedConfig) {
 		throw new Error("Unable to reload the saved Backlog configuration");
 	}

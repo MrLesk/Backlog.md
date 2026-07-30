@@ -48,18 +48,31 @@ afterEach(() => {
 });
 
 describe("Settings auto commit mode", () => {
-	it("browser initialization selects, summarizes, and submits the mode", async () => {
+	it("browser initialization selects, summarizes, submits, and consumes the effective mode", async () => {
 		let submitted: Parameters<typeof apiClient.initializeProject>[0] | undefined;
+		let initializedConfig: BacklogConfig | undefined;
 		apiClient.checkStatus = async () => ({ initialized: false, projectPath: "/tmp/project" });
 		apiClient.initializeProject = async (options) => {
 			submitted = options;
-			return { success: true, projectName: options.projectName };
+			return {
+				success: true,
+				projectName: options.projectName,
+				config: {
+					projectName: options.projectName,
+					statuses: ["To Do", "Done"],
+					labels: [],
+					defaultStatus: "To Do",
+					dateFormat: "yyyy-mm-dd",
+					autoCommit: true,
+					autoCommitMode: "new",
+				},
+			};
 		};
 
 		const container = setupDom();
 		root = createRoot(container);
 		await act(async () => {
-			root?.render(<InitializationScreen onInitialized={() => {}} />);
+			root?.render(<InitializationScreen onInitialized={(config) => (initializedConfig = config)} />);
 		});
 		await waitFor(() => container.querySelector<HTMLInputElement>('input[placeholder="My Awesome Project"]') !== null);
 
@@ -113,9 +126,11 @@ describe("Settings auto commit mode", () => {
 		expect(container.textContent).toContain("amend-own");
 
 		await clickButton("Initialize Project");
-		await waitFor(() => submitted !== undefined);
+		await waitFor(() => submitted !== undefined && initializedConfig !== undefined);
 		expect(submitted?.advancedConfig?.autoCommit).toBe(true);
 		expect(submitted?.advancedConfig?.autoCommitMode).toBe("amend-own");
+		expect(initializedConfig?.autoCommit).toBe(true);
+		expect(initializedConfig?.autoCommitMode).toBe("new");
 	});
 
 	it("shows the selector when enabled and persists the selected mode", async () => {

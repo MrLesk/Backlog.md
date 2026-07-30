@@ -5,7 +5,7 @@ status: In Progress
 assignee:
   - '@andreas'
 created_date: '2026-07-28 14:47'
-updated_date: '2026-07-30 05:26'
+updated_date: '2026-07-30 06:30'
 labels:
   - web-ui
   - cli
@@ -27,22 +27,22 @@ This covers the advanced CLI wizard, initialization and configuration summaries,
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
 - [x] #1 The advanced CLI wizard offers autoCommitMode, defaults to the current configured value, and presents it in a way that makes sense only when auto commit is enabled.
-- [ ] #2 Initialization and configuration summaries show the effective autoCommitMode.
-- [ ] #3 Browser initialization and Settings expose autoCommitMode, reject invalid values, and round-trip through the shared typed and serialized configuration paths.
+- [x] #2 Initialization and configuration summaries show the effective autoCommitMode.
+- [x] #3 Browser initialization and Settings expose autoCommitMode, reject invalid values, and round-trip through the shared typed and serialized configuration paths.
 - [x] #4 Human-readable copy on the CLI wizard and browser surfaces states that amend-own may replace the exact current locally-owned Backlog tip only when all safety checks pass and otherwise creates a new commit.
-- [ ] #5 Tests cover wizard defaults and output, summary rendering, and browser initialization and Settings round-trips.
+- [x] #5 Tests cover wizard defaults and output, summary rendering, and browser initialization and Settings round-trips.
 - [x] #6 Browser archive, complete, reorder, cleanup, and other mutation responses surface bounded replacement feedback consistently for JSON and no-content operations.
 - [x] #7 Browser automatic-commit notices are queued, combined, or visibly stacked so task/draft creation confirmation cannot cover consequential replacement feedback, with an amended-creation UI regression.
 - [x] #8 Initialization surfaces save configuration before integration writes, and those writes honor the resulting current bytes rather than the stale wizard/request boolean under either enablement transition.
-- [ ] #9 CLI and browser initialization responses/summaries display the fail-closed reloaded persisted autoCommit and autoCommitMode values after setup, including post-save races.
-- [ ] #10 The browser /api/init response includes effective persisted BacklogConfig, the typed client exposes it, InitializationScreen passes it to App, and App seeds config state before follow-up loads; HTTP and component regressions cover post-save mode races.
+- [x] #9 CLI and browser initialization responses/summaries display the fail-closed reloaded persisted autoCommit and autoCommitMode values after setup, including post-save races.
+- [x] #10 The browser /api/init response includes effective persisted BacklogConfig, the typed client exposes it, InitializationScreen passes it to App, and App seeds config state before follow-up loads; HTTP and component regressions cover post-save mode races.
 <!-- AC:END -->
 
 ## Definition of Done
 <!-- DOD:BEGIN -->
-- [ ] #1 bunx tsc --noEmit passes when TypeScript touched
-- [ ] #2 bun run check . passes when formatting/linting touched
-- [ ] #3 bun test (or scoped test) passes
+- [x] #1 bunx tsc --noEmit passes when TypeScript touched
+- [x] #2 bun run check . passes when formatting/linting touched
+- [x] #3 bun test (or scoped test) passes
 <!-- DOD:END -->
 
 ## Implementation Plan
@@ -103,6 +103,8 @@ Pass 21 M3 reopens initialization summaries: requested amend-own can be persiste
 Pass 21 initialization response/summary source is now the reloaded persisted current configuration. Regression covers both autoCommit directions and amend-own→new after save, so CLI/browser consumers receive effective values. Focused 67/521 and integrated 1,878/8,381 gates pass.
 
 Pass 22 M1: Core returns current config, but the server drops it, API types omit it, and InitializationScreen ignores the result; App then reloads /api/config from saveConfig stale cache.
+
+Pass 22 browser effective result complete. /api/init includes validated published BacklogConfig, ApiClient types it, InitializationScreen passes it, and App seeds effective state. HTTP regression mutates saved true/amend-own to false/new and proves both response and immediate /api/config cache; component regression proves callback consumes returned new despite submitting amend-own. Focused and integrated gates pass.
 <!-- SECTION:NOTES:END -->
 
 ## Comments

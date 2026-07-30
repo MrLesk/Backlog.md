@@ -8,7 +8,9 @@ import { createUniqueTestDir, initializeTestProject, safeCleanup } from "./test-
 let TEST_DIR: string;
 
 type InitHandler = {
+	core: Core;
 	handleInit(req: Request): Promise<Response>;
+	handleGetConfig(): Promise<Response>;
 };
 
 function initRequest(body: Record<string, unknown>): Request {
@@ -61,6 +63,33 @@ describe("BacklogServer init endpoint", () => {
 		expect(config?.autoCommitMode).toBe("amend-own");
 		const { task } = await core.createTaskFromInput({ title: "Mutation after quoted initialization" }, false);
 		expect((await core.filesystem.loadTask(task.id))?.title).toBe("Mutation after quoted initialization");
+	});
+
+	it("returns and publishes persisted current config after a post-save browser init race", async () => {
+		const server = new BacklogServer(TEST_DIR) as unknown as InitHandler;
+		const originalSaveConfig = server.core.filesystem.saveConfig.bind(server.core.filesystem);
+		server.core.filesystem.saveConfig = async (config) => {
+			await originalSaveConfig(config);
+			const configPath = server.core.filesystem.configFilePath;
+			const savedBytes = await Bun.file(configPath).text();
+			await Bun.write(
+				configPath,
+				savedBytes
+					.replace("auto_commit: true", "auto_commit: false")
+					.replace("auto_commit_mode: amend-own", "auto_commit_mode: new"),
+			);
+		};
+
+		const response = await server.handleInit(
+			initRequest({ advancedConfig: { autoCommit: true, autoCommitMode: "amend-own" } }),
+		);
+		const body = (await response.json()) as { config: { autoCommit: boolean; autoCommitMode: string } };
+		const cachedResponse = await server.handleGetConfig();
+
+		expect(response.status).toBe(200);
+		expect(body.config.autoCommit).toBe(false);
+		expect(body.config.autoCommitMode).toBe("new");
+		expect(await cachedResponse.json()).toEqual(expect.objectContaining({ autoCommit: false, autoCommitMode: "new" }));
 	});
 
 	it("rejects an invalid browser initialization autoCommitMode without writing config", async () => {

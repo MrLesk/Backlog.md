@@ -1897,6 +1897,7 @@ export class BacklogServer {
 			return Response.json({
 				success: result.success,
 				projectName: result.projectName,
+				config: result.config,
 				mcpResults: result.mcpResults,
 			});
 		} catch (error) {

@@ -1476,7 +1476,9 @@ ${description || `Milestone: ${title}`}`,
 	 * Read current config bytes for mutation preflight without consulting or
 	 * replacing the last-known-good watcher/display cache.
 	 */
-	async loadConfigForMutation(): Promise<BacklogConfig | null> {
+	async loadConfigForMutation(
+		options: { publish?: boolean; preserve?: BacklogConfig } = {},
+	): Promise<BacklogConfig | null> {
 		for (let attempt = 1; attempt <= MUTATION_CONFIG_READ_ATTEMPTS; attempt += 1) {
 			try {
 				const file = Bun.file(this.resolvedConfigPath);
@@ -1485,7 +1487,11 @@ ${description || `Milestone: ${title}`}`,
 					const config = this.parseConfig(content);
 					const validationError = validateExplicitConfigValues(content, config);
 					if (validationError) throw new InvalidBacklogConfigError(validationError);
-					return config;
+					const effectiveConfig = options.preserve ? { ...options.preserve, ...config } : config;
+					if (options.publish && !this.publishConfig(effectiveConfig, this.resolvedConfigPath, content)) {
+						throw new InvalidBacklogConfigError(UNAVAILABLE_CONFIG_ERROR);
+					}
+					return effectiveConfig;
 				}
 				if (!(await this.mutationRequiresConfig())) {
 					return null;

@@ -5,7 +5,7 @@ status: In Progress
 assignee:
   - '@andreas'
 created_date: '2026-07-28 14:46'
-updated_date: '2026-07-30 05:26'
+updated_date: '2026-07-30 06:30'
 labels:
   - git
 dependencies:
@@ -45,9 +45,9 @@ See BACK-556 for the full ownership and safety contract, including the accepted 
 - [x] #2 The replacement commit contains the tree of the commit it replaces plus only the newly selected paths.
 - [x] #3 The replacement message is rebuilt rather than appended to: Backlog parses its operation lines out of the delimited region of the previous commit, merges in the new operation, collapses duplicates so each distinct operation appears once regardless of position, and regenerates the region and the subject from that list. Content outside the region is preserved verbatim and Backlog never re-renders on top of its own previous output.
 - [x] #4 A commit holding one operation keeps that operation subject unchanged. From the second distinct operation onward the subject is factored: operations sharing a verb and entity type list their IDs, the line elides past a 72 character budget with a plus N more suffix, and mixed verbs fall back to a count of distinct operations.
-- [ ] #5 Ownership is decided from exact repository-local provenance for the current HEAD SHA, never from author, changed-path, or subject heuristics.
+- [x] #5 Ownership is decided from exact repository-local provenance for the current HEAD SHA, never from author, changed-path, or subject heuristics.
 - [x] #6 The evidence format, the rule that matches a candidate HEAD against it, and the definition of stale evidence are specified in one place and covered by tests.
-- [ ] #7 Cloned, legacy, manually created, manually amended, and reset commits, and any tip whose ownership evidence is missing, stale, malformed, or ambiguous, are reported as not owned.
+- [x] #7 Cloned, legacy, manually created, manually amended, and reset commits, and any tip whose ownership evidence is missing, stale, malformed, or ambiguous, are reported as not owned.
 - [x] #8 Ownership tracking creates no Git refs, notes, commits, trees, or blobs and contributes no ownership-only object to git rev-list --all --objects; tests separately account for the intended automatic commit and branch-tip graph changes.
 - [x] #9 A tip is reported as not owned when HEAD is detached, is a merge commit, is reachable from a remote-tracking ref, or is reachable from any local branch other than the current branch or any tag, including annotated tags and both refs that point directly to the candidate and refs that point to a descendant, using local refs only and performing no network operation.
 - [x] #10 A new commit is reported as owned only when it lands on a named branch and valid evidence for its exact SHA is successfully recorded. Commits created with detached HEAD or while the selected ownership channel cannot record evidence, including a branch with no usable reflog while automatic reflog creation is disabled, remain unowned, and repeated operations in either state cannot enter the replacement path.
@@ -60,22 +60,22 @@ See BACK-556 for the full ownership and safety contract, including the accepted 
 - [x] #17 Merge, rebase, cherry-pick, and revert in-progress guards fail closed without moving HEAD or consuming unrelated index entries.
 - [x] #18 Git-level tests cover repeated replacement sequences with evidence re-recorded at each step; subject shapes for single, factored, elided, and mixed-verb cases; duplicate collapsing; region parsing when a hook has appended content outside the region; repeated detached and evidence-unavailable new commits; root commits; manual and publication boundaries; local branches, lightweight tags, and annotated tags pointing directly to candidates and to descendants; pre and message hook isolation, post-hook real-index mutations, and failing post hooks; signed-to-unsigned and unsigned-to-signed configuration transitions; required-signing failures; linked worktrees and branch switches; and concurrent branch movement.
 - [x] #19 Legacy new-mode commits contain no rolling-operation region or ownership evidence; only an amend-own sequence start or replacement records exact-SHA ownership, and switching from new to amend-own cannot rewrite the pre-opt-in tip.
-- [ ] #20 After message hooks, replacement eligibility is revalidated against exact reflog state, Git-operation guards, and all containing refs; hook-created refs and same-SHA away-and-back changes fail closed.
-- [ ] #21 Ownership is branch-local: switching away and returning to an otherwise unchanged safe branch intentionally resumes its amendable sequence, and documentation plus tests state that behavior.
+- [x] #20 After message hooks, replacement eligibility is revalidated against exact reflog state, Git-operation guards, and all containing refs; hook-created refs and same-SHA away-and-back changes fail closed.
+- [x] #21 Ownership is branch-local: switching away and returning to an otherwise unchanged safe branch intentionally resumes its amendable sequence, and documentation plus tests state that behavior.
 - [x] #22 Rolling messages store structured operation descriptors so production task, draft, document, decision, milestone, and agent messages produce stable factored subjects without parsing incidental English display strings.
 - [x] #23 Document, decision, and agent-instruction upserts record the real create/add versus update action, so distinct operations never collapse under one inaccurate descriptor.
 - [x] #24 Named and detached finalization exposes exactly one logical reference-transaction hook lifecycle in the real repository/HEAD context: prepared runs before movement and can veto it, committed follows success, aborted follows veto or failed movement, and internal ref/reflog plumbing does not duplicate the transaction.
 - [x] #25 Final named-branch movement preserves exact ownership-reflog continuity: any target-branch reflog transition after the last validation, including same-OID ABA, prevents a replacement from being reported owned and cannot be overwritten by the automatic CAS/rollback path.
 - [x] #26 When target-ref transactions are unsupported, amend-own conservatively treats an otherwise owned tip as non-owned before parent/message construction, creates a normal new owned-sequence start through expected-OID CAS, and never performs an unlocked replacement.
 - [x] #27 Reference-transaction and post-rewrite stdin reach hooks through a capability-correct runner on Git 2.36–2.39 and 2.40+, while Git 2.27 participates in atomic target-ref transaction replacement rather than unnecessary degradation.
-- [ ] #28 Worktree HEAD reflog visibility is restored only through a hook-suppressed prepared HEAD transaction that validates the original branch identity while HEAD and its target ref are locked; no other branch can receive forged ownership evidence during synchronization.
+- [x] #28 Worktree HEAD reflog visibility is restored only through a hook-suppressed prepared HEAD transaction that validates the original branch identity while HEAD and its target ref are locked; no other branch can receive forged ownership evidence during synchronization.
 <!-- AC:END -->
 
 ## Definition of Done
 <!-- DOD:BEGIN -->
-- [ ] #1 bunx tsc --noEmit passes when TypeScript touched
-- [ ] #2 bun run check . passes when formatting/linting touched
-- [ ] #3 bun test (or scoped test) passes
+- [x] #1 bunx tsc --noEmit passes when TypeScript touched
+- [x] #2 bun run check . passes when formatting/linting touched
+- [x] #3 bun test (or scoped test) passes
 <!-- DOD:END -->
 
 ## Implementation Plan
@@ -162,6 +162,8 @@ Pass 21 H1/M2 corrects two independent capabilities: the current legacy-hook tes
 Pass 21 capability boundaries complete. Independent cached checks gate update-ref transactions at 2.27, hook run at 2.36, and hook run stdin at 2.40. A 2.36/2.39/2.40 matrix proves two real prepared/committed lifecycles plus one post-rewrite amendment, exact input delivery, replacement, and no unavailable --to-stdin invocation. A 2.27 regression proves atomic replacement while 2.26 remains conservative. Focused 67/521; integrated 1,878 passed, 8,381 assertions.
 
 Pass 22 probe exposed a post-success ownership-evidence injection boundary: target branch movement is protected, but later loose update-ref HEAD dereferences whichever branch is current and reuses the automatic marker.
+
+Pass 22 ownership synchronization boundary complete. The target branch marker remains authoritative, while worktree HEAD visibility is added in a second hook-suppressed prepared transaction that aborts if identity changed. A deterministic same-SHA sibling/manual-main race proves no forged sibling ownership and no later sibling replacement. Evidence-unavailable coverage was moved to the precise second-transaction seam and still proves a replacement can end its sequence. Focused 76/571; final integrated 1,880 passed, 8,398 assertions.
 <!-- SECTION:NOTES:END -->
 
 ## Comments

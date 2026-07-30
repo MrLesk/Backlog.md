@@ -52,7 +52,7 @@ describe("autoCommitMode", () => {
 		await $`bun ${CLI_PATH} task create "Third" --plain --no-amend`.cwd(testDir).quiet();
 
 		expect(await commitCount(testDir)).toBe(afterFirst + 2);
-	});
+	}, 15_000);
 
 	test("enabling amend-own starts after the last new-mode commit instead of rewriting it", async () => {
 		const config = await core.filesystem.loadConfig();

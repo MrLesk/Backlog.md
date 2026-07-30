@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { DEFAULT_INIT_CONFIG } from "../../constants/index.ts";
+import type { BacklogConfig } from "../../types/index.ts";
 import { apiClient } from "../lib/api";
 
 type IntegrationMode = "mcp" | "cli" | "none";
@@ -23,7 +24,7 @@ interface AdvancedConfig {
 }
 
 interface InitializationScreenProps {
-	onInitialized: () => void;
+	onInitialized: (config: BacklogConfig) => void;
 }
 
 type WizardStep = "projectName" | "integrationMode" | "mcpClients" | "agentFiles" | "advancedConfig" | "summary";
@@ -165,7 +166,7 @@ const InitializationScreen: React.FC<InitializationScreenProps> = ({ onInitializ
 				backlogDirectorySource === "custom"
 					? normalizeRelativeBacklogDirectory(backlogDirectory) ?? backlogDirectory
 					: backlogDirectory;
-			await apiClient.initializeProject({
+			const result = await apiClient.initializeProject({
 				projectName: projectName.trim(),
 				backlogDirectory: normalizedBacklogDirectory,
 				backlogDirectorySource,
@@ -183,7 +184,7 @@ const InitializationScreen: React.FC<InitializationScreenProps> = ({ onInitializ
 						}
 					: undefined,
 			});
-			onInitialized();
+			onInitialized(result.config);
 		} catch (err) {
 			setError(err instanceof Error ? err.message : "Failed to initialize project");
 			setIsInitializing(false);

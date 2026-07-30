@@ -5,7 +5,7 @@ status: In Progress
 assignee:
   - '@andreas'
 created_date: '2026-07-28 14:27'
-updated_date: '2026-07-30 05:26'
+updated_date: '2026-07-30 06:30'
 labels:
   - enhancement
   - git
@@ -136,16 +136,16 @@ This task is delivered through subtasks, because the selected-path correctness f
 - [x] #11 Re-initialization and integration setup never convert a configuration-derived autoCommit value into an invocation override: agent-instruction writes resolve the current persisted config after save, so true→false disables committing and false→true enables the configured mode.
 - [x] #12 Named automatic commits remain safe on Git versions without transactional update-ref commands: default/new behavior retains expected-OID movement, while amend-own fails closed to a new commit rather than attempting an unlocked owned replacement.
 - [x] #13 Git hook capabilities are versioned independently: Git 2.36–2.39 uses hook run only for hooks without stdin and the legacy runner for reference-transaction/post-rewrite input; Git 2.40+ may use --to-stdin, so every automatic commit remains functional across the supported version matrix.
-- [ ] #14 Initialization results and user-facing summaries reload persisted current configuration after setup, so concurrent post-save changes to autoCommit or autoCommitMode are returned and displayed truthfully rather than echoing the stale request.
-- [ ] #15 Browser initialization forwards and immediately consumes the exact persisted current configuration returned by Core, and publishes that validated snapshot for subsequent config reads; post-save autoCommit/autoCommitMode races cannot leave response, UI, or server cache stale.
-- [ ] #16 HEAD reflog restoration cannot write an ownership marker onto a concurrently selected same-SHA sibling branch: synchronization acquires and validates an exact HEAD/target transaction or aborts, so the sibling remains non-owned and later amend-own creates a new commit.
+- [x] #14 Initialization results and user-facing summaries reload persisted current configuration after setup, so concurrent post-save changes to autoCommit or autoCommitMode are returned and displayed truthfully rather than echoing the stale request.
+- [x] #15 Browser initialization forwards and immediately consumes the exact persisted current configuration returned by Core, and publishes that validated snapshot for subsequent config reads; post-save autoCommit/autoCommitMode races cannot leave response, UI, or server cache stale.
+- [x] #16 HEAD reflog restoration cannot write an ownership marker onto a concurrently selected same-SHA sibling branch: synchronization acquires and validates an exact HEAD/target transaction or aborts, so the sibling remains non-owned and later amend-own creates a new commit.
 <!-- AC:END -->
 
 ## Definition of Done
 <!-- DOD:BEGIN -->
-- [ ] #1 bunx tsc --noEmit passes when TypeScript touched
-- [ ] #2 bun run check . passes when formatting/linting touched
-- [ ] #3 bun test (or scoped test) passes
+- [x] #1 bunx tsc --noEmit passes when TypeScript touched
+- [x] #2 bun run check . passes when formatting/linting touched
+- [x] #3 bun test (or scoped test) passes
 <!-- DOD:END -->
 
 ## Implementation Plan
@@ -271,6 +271,8 @@ Fresh holistic gpt-5.6-sol xhigh Pass 21 at d374069 requested changes with one H
 Pass 21 Git capability and effective initialization result corrections complete and fully verified. Hook-run base support (2.36) and stdin transport (2.40) are independent; reference-transaction/post-rewrite input uses legacy execution through 2.39 and --to-stdin from 2.40. Target-ref transactions correctly begin at 2.27, with conservative degradation only through 2.26. initializeProject reloads current persisted config at completion and returns it; true→false, false→true, and amend-own→new seams assert commit behavior plus returned values. Focused gate: 67 tests/521 assertions. Integrated gate: TypeScript clean, Biome 351 files, 1,878 passed/4 skipped/0 failed with 8,381 assertions across 207 files in 700.59 seconds; diff check clean.
 
 Fresh holistic gpt-5.6-sol xhigh Pass 22 at 54ce54c requested changes with one Medium and one Low finding: browser init drops/ignores Core effective config and leaves saveConfig display cache stale, and one fallback comment still says 2.28. The review also produced a deterministic same-SHA branch-switch probe at loose HEAD reflog restoration: the automatic marker can land on a sibling and make a later sibling mutation amend a tip Backlog did not advance. Exact clean reviewed HEAD preserved; reviewer targeted 61 tests/462 assertions. Report: /tmp/backlog-821-holistic-review-pass-22.md.
+
+Pass 22 browser effective-config and exact HEAD-reflog synchronization complete. Current-byte reload can explicitly publish a validated snapshot while preserving non-serialized re-init fields; Core returns it, server/API types forward it, InitializationScreen consumes it, and App seeds state. HTTP/cache and component races prove persisted new overrides requested amend-own. On Git 2.27+, worktree HEAD reflog restoration now prepares a hook-disabled real-worktree HEAD transaction and validates original identity/new SHA while HEAD+target are locked; same-SHA sibling switching aborts without ownership injection, and its next amend-own creates a new child. Comment corrected to 2.27. Focused: 76 tests/571 assertions. Final clean integrated gate: TypeScript, Biome 351 files, 1,880 passed/4 skipped/0 failed with 8,398 assertions across 207 files in 777.98 seconds; diff clean. Earlier full attempts exposed and corrected preservation of non-serialized re-init fields, then hit the known unrelated native deletion watcher once; exact test passed targeted in 160.95ms and the clean full rerun passed. The default-mode three-CLI regression has a narrow 15-second outer bound after measured 5.1-5.4s under expanded Git load.
 <!-- SECTION:NOTES:END -->
 
 ## Comments

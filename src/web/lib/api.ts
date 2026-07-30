@@ -548,14 +548,16 @@ export class ApiClient {
 			defaultPort?: number;
 			autoOpenBrowser?: boolean;
 		};
-	}): Promise<{ success: boolean; projectName: string; mcpResults?: Record<string, string> }> {
-		return this.fetchJson<{ success: boolean; projectName: string; mcpResults?: Record<string, string> }>(
-			`${API_BASE}/init`,
-			{
-				method: "POST",
-				body: JSON.stringify(options),
-			},
-		);
+	}): Promise<{ success: boolean; projectName: string; config: BacklogConfig; mcpResults?: Record<string, string> }> {
+		return this.fetchJson<{
+			success: boolean;
+			projectName: string;
+			config: BacklogConfig;
+			mcpResults?: Record<string, string>;
+		}>(`${API_BASE}/init`, {
+			method: "POST",
+			body: JSON.stringify(options),
+		});
 	}
 }
 

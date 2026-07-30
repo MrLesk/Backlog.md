@@ -507,7 +507,7 @@ export class GitOperations {
 									},
 								);
 							} else {
-								// Git before 2.28 has no prepared update-ref transaction. Owned
+								// Git before 2.27 has no prepared update-ref transaction. Owned
 								// replacement was deoptimized before commit construction, so this
 								// legacy expected-OID update only advances a new/start-owned commit.
 								await this.execGit(
@@ -584,9 +584,29 @@ export class GitOperations {
 		} finally {
 			await rm(refUpdateDirectory, { recursive: true, force: true }).catch(() => undefined);
 		}
-		// The protected update writes a branch reflog (named) or HEAD itself
-		// (detached). Restore the normal worktree HEAD reflog with an OID no-op.
-		if (updated && (await this.resolveHead(repoRoot)) === newCommit) {
+		// The protected named update writes only its branch reflog, while a
+		// detached write moves HEAD without a reflog entry. Restore the worktree
+		// HEAD reflog as best effort, but prepare an exact HEAD transaction on
+		// capable Git so a same-SHA branch switch cannot receive ownership evidence.
+		if (updated && (await this.supportsUpdateRefTransactions(repoRoot))) {
+			await this.updateBranchRefTransaction(
+				repoRoot,
+				dirname(headPath),
+				"HEAD",
+				newCommit,
+				newCommit,
+				reflogMessage,
+				disabledHooksPath,
+				async () => {
+					if ((await this.getCurrentBranchRef(repoRoot)) !== branchRef) {
+						throw new Error("Git HEAD identity changed before its reflog could be synchronized");
+					}
+					if ((await this.resolveHead(repoRoot)) !== newCommit) {
+						throw new Error("Git HEAD changed before its reflog could be synchronized");
+					}
+				},
+			).catch(() => undefined);
+		} else if (updated && (await this.resolveHead(repoRoot)) === newCommit) {
 			await this.execGit(
 				["-c", `core.hooksPath=${disabledHooksPath}`, "update-ref", "-m", reflogMessage, "HEAD", newCommit, newCommit],
 				{ cwd: repoRoot },
