@@ -6,12 +6,19 @@ import { DEFAULT_DIRECTORIES, DEFAULT_FILES, DEFAULT_STATUSES, FALLBACK_STATUS }
 import { parseDecision, parseDocument, parseMilestone, parseTask } from "../markdown/parser.ts";
 import { serializeDecision, serializeDocument, serializeTask } from "../markdown/serializer.ts";
 import type { BacklogConfig, Decision, Document, Milestone, Task, TaskListFilter } from "../types/index.ts";
+import { AUTO_COMMIT_MODE_CONFIG_ERROR, isAutoCommitMode } from "../utils/auto-commit-mode.ts";
 import type { BacklogConfigSource } from "../utils/backlog-directory.ts";
 import {
 	normalizeProjectBacklogDirectory,
 	resolveBacklogDirectory,
 	resolveBacklogDirectoryFromRootConfig,
 } from "../utils/backlog-directory.ts";
+import {
+	INVALID_EXPLICIT_CONFIG_ERROR,
+	parseExplicitConfigScalar,
+	stripTrailingYamlComment,
+	validateExplicitConfigValues,
+} from "../utils/config-validation.ts";
 import { documentIdsEqual, normalizeDocumentId } from "../utils/document-id.ts";
 import { normalizeDocumentRelativePath, normalizeDocumentSubPath } from "../utils/document-path.ts";
 import {
@@ -51,9 +58,35 @@ interface CreateLockTarget {
 	locksDir: string;
 }
 
+export interface TaskLifecycleMoveResult {
+	sourcePath: string;
+	targetPath: string;
+	task: Task;
+}
+
+export interface DraftWriteResult {
+	filePath: string;
+	touchedPaths: string[];
+}
+
+export interface TaskLifecycleMoveOptions {
+	generateId?: (source: Task) => Promise<string>;
+	buildTarget?: (source: Task, generatedId: string, defaultStatus: string) => Promise<Task>;
+}
+
 const DEFAULT_CREATE_LOCK_TIMEOUT_MS = 30_000;
 const DEFAULT_CREATE_LOCK_RETRY_DELAY_MS = 100;
 const DEFAULT_CREATE_LOCK_STALE_MS = 10_000;
+const MUTATION_CONFIG_READ_ATTEMPTS = 3;
+const MUTATION_CONFIG_RETRY_DELAY_MS = 10;
+const UNAVAILABLE_CONFIG_ERROR = "Unable to read current backlog configuration";
+
+export class InvalidBacklogConfigError extends Error {
+	constructor(message: string) {
+		super(message);
+		this.name = "InvalidBacklogConfigError";
+	}
+}
 
 export const CREATE_LOCK_ERROR_CODE = "ECREATELOCK";
 export const CREATE_LOCK_ERROR_MESSAGE =
@@ -80,6 +113,7 @@ export class FileSystem {
 	private resolvedConfigPath: string;
 	private configSource: BacklogConfigSource;
 	private readonly projectRoot: string;
+	private mutationConfigExpected: boolean;
 	private cachedConfig: BacklogConfig | null = null;
 	private cachedConfigSnapshot: { path: string; content: string } | null = null;
 
@@ -90,6 +124,7 @@ export class FileSystem {
 		this.resolvedBacklogDir = resolution.backlogPath ?? join(projectRoot, DEFAULT_DIRECTORIES.BACKLOG);
 		this.resolvedConfigPath = resolution.configPath ?? join(this.resolvedBacklogDir, DEFAULT_FILES.CONFIG);
 		this.configSource = resolution.configSource ?? "folder";
+		this.mutationConfigExpected = resolution.configPath !== null || resolution.rootConfigExists;
 	}
 
 	private async getBacklogDir(): Promise<string> {
@@ -163,6 +198,7 @@ export class FileSystem {
 		}
 		this.cachedConfig = config;
 		this.cachedConfigSnapshot = { path: sourceConfigPath, content };
+		this.mutationConfigExpected = true;
 		return true;
 	}
 
@@ -175,6 +211,7 @@ export class FileSystem {
 		this.resolvedBacklogDir = resolution.backlogPath ?? join(this.projectRoot, DEFAULT_DIRECTORIES.BACKLOG);
 		this.resolvedConfigPath = resolution.configPath ?? join(this.resolvedBacklogDir, DEFAULT_FILES.CONFIG);
 		this.configSource = resolution.configSource ?? "folder";
+		this.mutationConfigExpected ||= resolution.configPath !== null || resolution.rootConfigExists;
 	}
 
 	setBacklogDirectory(backlogDir: string): void {
@@ -696,117 +733,112 @@ export class FileSystem {
 		}
 	}
 
-	async promoteDraft(draftId: string): Promise<boolean> {
-		try {
-			return await this.withCreateLock(async () => {
-				// Load the draft
-				const draft = await this.loadDraft(draftId);
-				if (!draft?.filePath) return false;
+	async promoteDraftWithResult(
+		draftId: string,
+		options: TaskLifecycleMoveOptions = {},
+	): Promise<TaskLifecycleMoveResult | null> {
+		return await this.withCreateLock(async () => {
+			const draft = await this.loadDraft(draftId);
+			if (!draft?.filePath) return null;
 
-				// Get task prefix from config (default: "task")
-				const config = await this.loadConfig();
+			const config = await this.loadConfig();
+			const defaultStatus = config?.defaultStatus || FALLBACK_STATUS;
+			let newTaskId: string;
+			if (options.generateId) {
+				newTaskId = await options.generateId(draft);
+			} else {
 				const taskPrefix = config?.prefixes?.task ?? "task";
-
-				// Get existing task IDs to generate next ID
-				// Include both active and completed tasks to prevent ID collisions
-				const existingTasks = await this.listTasks();
-				const completedTasks = await this.listCompletedTasks();
-				const existingIds = [...existingTasks, ...completedTasks].map((t) => t.id);
-
-				// Generate new task ID
-				const newTaskId = generateNextId(existingIds, taskPrefix, config?.zeroPaddedIds);
-
-				const promotedStatus =
-					!draft.status || draft.status.trim().toLowerCase() === "draft"
-						? config?.defaultStatus || FALLBACK_STATUS
-						: draft.status;
-
-				// Draft-only statuses should enter the normal task workflow.
-				const promotedTask: Task = {
-					...draft,
-					id: newTaskId,
-					status: promotedStatus,
-					filePath: undefined, // Will be set by saveTask
-				};
-
-				await this.saveTask(promotedTask);
-
-				// Delete old draft file
-				await unlink(draft.filePath);
-
-				return true;
-			});
-		} catch (error) {
-			if (isCreateLockError(error) || isAmbiguousTaskIdError(error)) {
-				throw error;
+				const [existingTasks, completedTasks] = await Promise.all([this.listTasks(), this.listCompletedTasks()]);
+				newTaskId = generateNextId(
+					[...existingTasks, ...completedTasks].map((task) => task.id),
+					taskPrefix,
+					config?.zeroPaddedIds,
+				);
 			}
-			return false;
-		}
+
+			const promotedStatus =
+				!draft.status || draft.status.trim().toLowerCase() === "draft" ? defaultStatus : draft.status;
+			const target = options.buildTarget
+				? await options.buildTarget(draft, newTaskId, promotedStatus)
+				: { ...draft, id: newTaskId, status: promotedStatus, filePath: undefined };
+			const promotedTask: Task = { ...target, id: newTaskId, filePath: undefined };
+			const sourcePath = draft.filePath;
+			const targetPath = await this.saveTask(promotedTask);
+			await unlink(sourcePath);
+
+			return { sourcePath, targetPath, task: { ...promotedTask, filePath: targetPath } };
+		});
+	}
+
+	async promoteDraft(draftId: string): Promise<boolean> {
+		return (await this.promoteDraftWithResult(draftId)) !== null;
+	}
+
+	async demoteTaskWithResult(
+		taskId: string,
+		options: TaskLifecycleMoveOptions = {},
+	): Promise<TaskLifecycleMoveResult | null> {
+		return await this.withCreateLock(async () => {
+			const task = await this.loadTask(taskId);
+			if (!task?.filePath) return null;
+
+			const config = await this.loadConfig();
+			let newDraftId: string;
+			if (options.generateId) {
+				newDraftId = await options.generateId(task);
+			} else {
+				const existingDrafts = await this.listDrafts();
+				newDraftId = generateNextId(
+					existingDrafts.map((draft) => draft.id),
+					"draft",
+					config?.zeroPaddedIds,
+				);
+			}
+
+			const target = options.buildTarget
+				? await options.buildTarget(task, newDraftId, "Draft")
+				: { ...task, id: newDraftId, filePath: undefined };
+			const demotedDraft: Task = { ...target, id: newDraftId, filePath: undefined };
+			const sourcePath = task.filePath;
+			const targetPath = await this.saveDraft(demotedDraft);
+			await unlink(sourcePath);
+
+			return { sourcePath, targetPath, task: { ...demotedDraft, filePath: targetPath } };
+		});
 	}
 
 	async demoteTask(taskId: string): Promise<boolean> {
-		try {
-			return await this.withCreateLock(async () => {
-				// Load the task
-				const task = await this.loadTask(taskId);
-				if (!task?.filePath) return false;
-
-				// Get existing draft IDs to generate next ID
-				// Draft prefix is always "draft" (not configurable like task prefix)
-				const existingDrafts = await this.listDrafts();
-				const existingIds = existingDrafts.map((d) => d.id);
-
-				// Generate new draft ID
-				const config = await this.loadConfig();
-				const newDraftId = generateNextId(existingIds, "draft", config?.zeroPaddedIds);
-
-				// Update task with new draft ID and save as draft
-				const demotedDraft: Task = {
-					...task,
-					id: newDraftId,
-					filePath: undefined, // Will be set by saveDraft
-				};
-
-				await this.saveDraft(demotedDraft);
-
-				// Delete old task file
-				await unlink(task.filePath);
-
-				return true;
-			});
-		} catch (error) {
-			if (isCreateLockError(error) || isAmbiguousTaskIdError(error)) {
-				throw error;
-			}
-			return false;
-		}
+		return (await this.demoteTaskWithResult(taskId)) !== null;
 	}
 
 	// Draft operations
-	async saveDraft(task: Task): Promise<string> {
+	async saveDraftWithResult(task: Task): Promise<DraftWriteResult> {
 		const { id: draftId, filename, filePath: filepath } = await this.resolveTaskWriteTarget(task, true);
 		const draftsDir = await this.getDraftsDir();
-		// Normalize the draft ID to uppercase before serialization
 		const normalizedTask = { ...task, id: draftId };
 		const content = serializeTask(normalizedTask);
-
+		let existingFiles: string[] = [];
 		try {
-			// Find existing draft file with same ID but possibly different filename (e.g., title changed)
-			const filenameId = idForFilename(draftId);
-			const existingFiles = await Array.fromAsync(
+			existingFiles = await Array.fromAsync(
 				new Bun.Glob(buildGlobPattern("draft")).scan({ cwd: draftsDir, followSymlinks: true }),
 			);
-			const existingFile = existingFiles.find((f) => f.startsWith(`${filenameId} -`) || f.startsWith(`${filenameId}-`));
-			if (existingFile && existingFile !== filename) {
-				await unlink(join(draftsDir, existingFile));
-			}
-		} catch {
-			// Ignore errors if no existing files found
+		} catch (error) {
+			if (!(error && typeof error === "object" && "code" in error && error.code === "ENOENT")) throw error;
 		}
+		const filenameId = idForFilename(draftId);
+		const existingFile = existingFiles.find(
+			(file) => file.startsWith(`${filenameId} -`) || file.startsWith(`${filenameId}-`),
+		);
+		const previousPath = existingFile && existingFile !== filename ? join(draftsDir, existingFile) : undefined;
+		if (previousPath) await unlink(previousPath);
 
 		await this.ensureDirectoryExists(dirname(filepath));
 		await Bun.write(filepath, content);
-		return filepath;
+		return { filePath: filepath, touchedPaths: previousPath ? [previousPath, filepath] : [filepath] };
+	}
+
+	async saveDraft(task: Task): Promise<string> {
+		return (await this.saveDraftWithResult(task)).filePath;
 	}
 
 	async loadDraft(draftId: string): Promise<Task | null> {
@@ -854,13 +886,14 @@ export class FileSystem {
 	}
 
 	// Decision log operations
-	async saveDecision(decision: Decision): Promise<void> {
+	async saveDecision(decision: Decision): Promise<string[]> {
 		// Normalize ID - remove "decision-" prefix if present
 		const normalizedId = decision.id.replace(/^decision-/, "");
 		const filename = `decision-${normalizedId} - ${this.sanitizeFilename(decision.title)}.md`;
 		const decisionsDir = await this.getDecisionsDir();
 		const filepath = join(decisionsDir, filename);
 		const content = serializeDecision(decision);
+		const touchedPaths = [filepath];
 
 		const matches = await Array.fromAsync(
 			new Bun.Glob("decision-*.md").scan({ cwd: decisionsDir, followSymlinks: true }),
@@ -868,8 +901,10 @@ export class FileSystem {
 		for (const match of matches) {
 			if (match === filename) continue;
 			if (!match.startsWith(`decision-${normalizedId} -`)) continue;
+			const previousPath = join(decisionsDir, match);
 			try {
-				await unlink(join(decisionsDir, match));
+				await unlink(previousPath);
+				touchedPaths.push(previousPath);
 			} catch {
 				// Ignore cleanup errors
 			}
@@ -877,6 +912,7 @@ export class FileSystem {
 
 		await this.ensureDirectoryExists(dirname(filepath));
 		await Bun.write(filepath, content);
+		return touchedPaths;
 	}
 
 	async loadDecision(decisionId: string): Promise<Decision | null> {
@@ -1428,10 +1464,48 @@ ${description || `Milestone: ${title}`}`,
 			// Cache the loaded config
 			this.cachedConfig = config;
 			this.cachedConfigSnapshot = { path: configPath, content };
+			this.mutationConfigExpected = true;
 			return config;
-		} catch (_error) {
+		} catch (error) {
+			if (error instanceof InvalidBacklogConfigError) throw error;
 			return null;
 		}
+	}
+
+	/**
+	 * Read current config bytes for mutation preflight without consulting or
+	 * replacing the last-known-good watcher/display cache.
+	 */
+	async loadConfigForMutation(
+		options: { publish?: boolean; preserve?: BacklogConfig } = {},
+	): Promise<BacklogConfig | null> {
+		for (let attempt = 1; attempt <= MUTATION_CONFIG_READ_ATTEMPTS; attempt += 1) {
+			try {
+				const file = Bun.file(this.resolvedConfigPath);
+				if (await file.exists()) {
+					const content = await file.text();
+					const config = this.parseConfig(content);
+					const validationError = validateExplicitConfigValues(content, config);
+					if (validationError) throw new InvalidBacklogConfigError(validationError);
+					const effectiveConfig = options.preserve ? { ...options.preserve, ...config } : config;
+					if (options.publish && !this.publishConfig(effectiveConfig, this.resolvedConfigPath, content)) {
+						throw new InvalidBacklogConfigError(UNAVAILABLE_CONFIG_ERROR);
+					}
+					return effectiveConfig;
+				}
+				if (!(await this.mutationRequiresConfig())) {
+					return null;
+				}
+			} catch (error) {
+				if (error instanceof InvalidBacklogConfigError) throw error;
+			}
+			if (attempt < MUTATION_CONFIG_READ_ATTEMPTS) await Bun.sleep(MUTATION_CONFIG_RETRY_DELAY_MS);
+		}
+		throw new InvalidBacklogConfigError(UNAVAILABLE_CONFIG_ERROR);
+	}
+
+	private async mutationRequiresConfig(): Promise<boolean> {
+		return this.mutationConfigExpected || this.cachedConfigSnapshot !== null;
 	}
 
 	async saveConfig(config: BacklogConfig): Promise<void> {
@@ -1448,6 +1522,7 @@ ${description || `Milestone: ${title}`}`,
 		await Bun.write(configPath, content);
 		this.cachedConfig = normalizedConfig;
 		this.cachedConfigSnapshot = { path: configPath, content };
+		this.mutationConfigExpected = true;
 	}
 
 	// Utility methods
@@ -1486,20 +1561,27 @@ ${description || `Milestone: ${title}`}`,
 			if (colonIndex === -1) continue;
 
 			const key = trimmed.substring(0, colonIndex).trim();
-			const value = trimmed.substring(colonIndex + 1).trim();
+			const rawValue = trimmed.substring(colonIndex + 1).trim();
+			const parsedScalar = parseExplicitConfigScalar(key, rawValue);
+			if (parsedScalar === null) {
+				throw new InvalidBacklogConfigError(
+					key === "auto_commit_mode" ? AUTO_COMMIT_MODE_CONFIG_ERROR : INVALID_EXPLICIT_CONFIG_ERROR,
+				);
+			}
+			const value = parsedScalar?.value ?? stripTrailingYamlComment(rawValue);
 
 			switch (key) {
 				case "project_name":
-					config.projectName = value.replace(/['"]/g, "");
+					config.projectName = value;
 					break;
 				case "default_assignee":
-					config.defaultAssignee = value.replace(/['"]/g, "");
+					config.defaultAssignee = value;
 					break;
 				case "default_reporter":
-					config.defaultReporter = value.replace(/['"]/g, "");
+					config.defaultReporter = value;
 					break;
 				case "default_status":
-					config.defaultStatus = value.replace(/['"]/g, "");
+					config.defaultStatus = value;
 					break;
 				case "statuses":
 				case "labels":
@@ -1523,13 +1605,13 @@ ${description || `Milestone: ${title}`}`,
 					}
 					break;
 				case "date_format":
-					config.dateFormat = value.replace(/['"]/g, "");
+					config.dateFormat = value;
 					break;
 				case "max_column_width":
 					config.maxColumnWidth = Number.parseInt(value, 10);
 					break;
 				case "default_editor":
-					config.defaultEditor = value.replace(/["']/g, "");
+					config.defaultEditor = value;
 					break;
 				case "auto_open_browser":
 					config.autoOpenBrowser = value.toLowerCase() === "true";
@@ -1546,6 +1628,12 @@ ${description || `Milestone: ${title}`}`,
 				case "auto_commit":
 					config.autoCommit = value.toLowerCase() === "true";
 					break;
+				case "auto_commit_mode": {
+					const mode = value.toLowerCase();
+					if (!isAutoCommitMode(mode)) throw new InvalidBacklogConfigError(AUTO_COMMIT_MODE_CONFIG_ERROR);
+					config.autoCommitMode = mode;
+					break;
+				}
 				case "filesystem_only":
 				case "filesystemOnly":
 					config.filesystemOnly = value.toLowerCase() === "true";
@@ -1564,15 +1652,14 @@ ${description || `Milestone: ${title}`}`,
 					break;
 				case "onStatusChange":
 				case "on_status_change":
-					// Remove surrounding quotes if present, but preserve inner content
-					config.onStatusChange = value.replace(/^['"]|['"]$/g, "");
+					config.onStatusChange = value;
 					break;
 				case "task_prefix":
-					config.prefixes = { task: value.replace(/['"]/g, "") };
+					config.prefixes = { task: value };
 					break;
 				case "backlog_directory":
 				case "backlogDirectory":
-					config.backlogDirectory = value.replace(/['"]/g, "");
+					config.backlogDirectory = value;
 					break;
 			}
 		}
@@ -1595,6 +1682,7 @@ ${description || `Milestone: ${title}`}`,
 			defaultPort: config.defaultPort,
 			remoteOperations: config.remoteOperations,
 			autoCommit: config.autoCommit,
+			autoCommitMode: config.autoCommitMode,
 			filesystemOnly: config.filesystemOnly,
 			zeroPaddedIds: config.zeroPaddedIds,
 			bypassGitHooks: config.bypassGitHooks,
@@ -1607,29 +1695,34 @@ ${description || `Milestone: ${title}`}`,
 	}
 
 	private serializeConfig(config: BacklogConfig): string {
+		if (config.autoCommitMode !== undefined && !isAutoCommitMode(config.autoCommitMode)) {
+			throw new InvalidBacklogConfigError(AUTO_COMMIT_MODE_CONFIG_ERROR);
+		}
 		const normalizedDefinitionOfDone = this.normalizeDefinitionOfDone(config.definitionOfDone);
+		const quote = (value: string): string => JSON.stringify(value);
 		const lines = [
-			`project_name: "${config.projectName}"`,
-			...(config.defaultAssignee ? [`default_assignee: "${config.defaultAssignee}"`] : []),
-			...(config.defaultReporter ? [`default_reporter: "${config.defaultReporter}"`] : []),
-			...(config.defaultStatus ? [`default_status: "${config.defaultStatus}"`] : []),
-			`statuses: [${config.statuses.map((s) => `"${s}"`).join(", ")}]`,
-			`labels: [${config.labels.map((l) => `"${l}"`).join(", ")}]`,
-			...(config.types && config.types.length > 0 ? [`types: [${config.types.map((t) => `"${t}"`).join(", ")}]`] : []),
+			`project_name: ${quote(config.projectName)}`,
+			...(config.defaultAssignee ? [`default_assignee: ${quote(config.defaultAssignee)}`] : []),
+			...(config.defaultReporter ? [`default_reporter: ${quote(config.defaultReporter)}`] : []),
+			...(config.defaultStatus ? [`default_status: ${quote(config.defaultStatus)}`] : []),
+			`statuses: [${config.statuses.map(quote).join(", ")}]`,
+			`labels: [${config.labels.map(quote).join(", ")}]`,
+			...(config.types && config.types.length > 0 ? [`types: [${config.types.map(quote).join(", ")}]`] : []),
 			...(config.priorities && config.priorities.length > 0
-				? [`priorities: [${config.priorities.map((p) => `"${p}"`).join(", ")}]`]
+				? [`priorities: [${config.priorities.map(quote).join(", ")}]`]
 				: []),
 			...(Array.isArray(normalizedDefinitionOfDone)
 				? [`definition_of_done: [${normalizedDefinitionOfDone.map((item) => JSON.stringify(item)).join(", ")}]`]
 				: []),
-			`date_format: ${config.dateFormat}`,
+			`date_format: ${quote(config.dateFormat)}`,
 			...(config.maxColumnWidth ? [`max_column_width: ${config.maxColumnWidth}`] : []),
-			...(config.defaultEditor ? [`default_editor: "${config.defaultEditor}"`] : []),
+			...(config.defaultEditor ? [`default_editor: ${quote(config.defaultEditor)}`] : []),
 			...(typeof config.autoOpenBrowser === "boolean" ? [`auto_open_browser: ${config.autoOpenBrowser}`] : []),
 			...(typeof config.hideEmptyColumns === "boolean" ? [`hide_empty_columns: ${config.hideEmptyColumns}`] : []),
 			...(config.defaultPort ? [`default_port: ${config.defaultPort}`] : []),
 			...(typeof config.remoteOperations === "boolean" ? [`remote_operations: ${config.remoteOperations}`] : []),
 			...(typeof config.autoCommit === "boolean" ? [`auto_commit: ${config.autoCommit}`] : []),
+			...(config.autoCommitMode ? [`auto_commit_mode: ${config.autoCommitMode}`] : []),
 			...(typeof config.filesystemOnly === "boolean" ? [`filesystem_only: ${config.filesystemOnly}`] : []),
 			...(typeof config.zeroPaddedIds === "number" ? [`zero_padded_ids: ${config.zeroPaddedIds}`] : []),
 			...(typeof config.bypassGitHooks === "boolean" ? [`bypass_git_hooks: ${config.bypassGitHooks}`] : []),
@@ -1637,9 +1730,9 @@ ${description || `Milestone: ${title}`}`,
 				? [`check_active_branches: ${config.checkActiveBranches}`]
 				: []),
 			...(typeof config.activeBranchDays === "number" ? [`active_branch_days: ${config.activeBranchDays}`] : []),
-			...(config.onStatusChange ? [`onStatusChange: '${config.onStatusChange}'`] : []),
-			...(config.prefixes?.task ? [`task_prefix: "${config.prefixes.task}"`] : []),
-			...(config.backlogDirectory ? [`backlog_directory: "${config.backlogDirectory}"`] : []),
+			...(config.onStatusChange ? [`onStatusChange: ${quote(config.onStatusChange)}`] : []),
+			...(config.prefixes?.task ? [`task_prefix: ${quote(config.prefixes.task)}`] : []),
+			...(config.backlogDirectory ? [`backlog_directory: ${quote(config.backlogDirectory)}`] : []),
 		];
 
 		return `${lines.join("\n")}\n`;

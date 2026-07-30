@@ -1,5 +1,6 @@
 import * as clack from "@clack/prompts";
 import type { BacklogConfig } from "../types/index.ts";
+import { normalizeAutoCommitMode } from "../utils/auto-commit-mode.ts";
 import { isEditorAvailable, resolveEditor } from "../utils/editor.ts";
 
 interface PromptChoice {
@@ -207,6 +208,7 @@ export async function runAdvancedConfigWizard({
 	let activeBranchDays = config?.activeBranchDays ?? 30;
 	let bypassGitHooks = config?.bypassGitHooks ?? false;
 	let autoCommit = config?.autoCommit ?? false;
+	let autoCommitMode = config?.autoCommitMode ?? "new";
 	let zeroPaddedIds = config?.zeroPaddedIds;
 	let defaultEditor: string | undefined =
 		config?.defaultEditor ?? process.env.EDITOR ?? process.env.VISUAL ?? resolveEditor(null);
@@ -295,6 +297,33 @@ export async function runAdvancedConfigWizard({
 		{ onCancel },
 	);
 	autoCommit = Boolean(autoCommitPrompt.autoCommit ?? autoCommit);
+
+	if (autoCommit) {
+		const autoCommitModePrompt = await promptImpl(
+			{
+				type: "select",
+				name: "autoCommitMode",
+				message: "How should automatic Backlog commits be created?",
+				hint: "May replace the exact current locally-owned Backlog tip only when every safety check passes; otherwise creates a new commit",
+				initial: autoCommitMode,
+				choices: [
+					{
+						title: "Create a new commit",
+						value: "new",
+						description: "Always add a separate commit",
+					},
+					{
+						title: "Replace the last owned Backlog commit",
+						value: "amend-own",
+						description: "Replace only a branch-tip commit proven to be locally created by Backlog",
+					},
+				],
+			},
+			{ onCancel },
+		);
+		const selectedMode = normalizeAutoCommitMode(String(autoCommitModePrompt.autoCommitMode ?? ""));
+		if (selectedMode) autoCommitMode = selectedMode;
+	}
 
 	while (true) {
 		const zeroPaddingPrompt = await promptImpl(
@@ -634,6 +663,7 @@ export async function runAdvancedConfigWizard({
 			activeBranchDays,
 			bypassGitHooks,
 			autoCommit,
+			autoCommitMode,
 			zeroPaddedIds,
 			defaultEditor,
 			definitionOfDone,

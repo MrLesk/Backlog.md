@@ -1,8 +1,16 @@
-import { mkdtemp, realpath, rm, stat, writeFile } from "node:fs/promises";
+import { AsyncLocalStorage } from "node:async_hooks";
+import { spawn } from "node:child_process";
+import { mkdtemp, open, readFile, realpath, rename, rm, stat, unlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { basename, dirname, isAbsolute, join, relative } from "node:path";
+import { createInterface } from "node:readline";
 import { $ } from "bun";
 import type { BacklogConfig } from "../types/index.ts";
+import {
+	type AutomaticCommitOperation,
+	buildAutomaticCommitMessage,
+	createAutomaticCommitOperation,
+} from "./automatic-commit-message.ts";
 
 type GitPathContext = {
 	repoRoot: string;
@@ -26,6 +34,50 @@ export interface GitIndexEntry {
 	mode: string;
 	objectId: string;
 	stage: number;
+}
+
+export type GitAutomaticCommitIntent = "new" | "start-owned" | "amend-own";
+
+export interface GitCommitOptions {
+	automaticCommitIntent?: GitAutomaticCommitIntent;
+	operation?: AutomaticCommitOperation | readonly AutomaticCommitOperation[];
+}
+
+export type GitOperationConfig = Readonly<
+	Pick<BacklogConfig, "filesystemOnly" | "bypassGitHooks" | "remoteOperations">
+>;
+
+export interface GitCommitResult {
+	commitId: string;
+	previousCommitId: string | null;
+	amended: boolean;
+	ownershipRecorded: boolean;
+}
+
+type OwnedCommit = {
+	commitId: string;
+	branchRef: string;
+	reflogSnapshot: string;
+	parents: string[];
+	authorEnv: Record<string, string>;
+	message: string;
+};
+
+const AUTOMATIC_COMMIT_REFLOG_MARKER = "backlog:auto-commit/v1";
+
+class SelectedPathConflictError extends Error {
+	constructor() {
+		super("Git selected paths changed concurrently before the commit could be finalized");
+		this.name = "SelectedPathConflictError";
+	}
+}
+
+class ReferenceTransactionVetoError extends Error {
+	constructor(error: unknown) {
+		const message = error instanceof Error ? error.message : String(error);
+		super(`Reference-transaction prepared hook rejected the ref update: ${message}`);
+		this.name = "ReferenceTransactionVetoError";
+	}
 }
 
 function indexEntriesEqual(left: readonly GitIndexEntry[], right: readonly GitIndexEntry[]): boolean {
@@ -58,7 +110,10 @@ export class GitOperations {
 	private projectRoot: string;
 	private config: BacklogConfig | null = null;
 	private readonly configLoader?: GitConfigLoader;
+	private readonly operationConfigContext = new AsyncLocalStorage<{ config: GitOperationConfig | null }>();
 	private hookRunSupported?: boolean;
+	private hookRunStdinSupported?: boolean;
+	private updateRefTransactionsSupported?: boolean;
 
 	constructor(projectRoot: string, config: BacklogConfig | null = null, configLoader?: GitConfigLoader) {
 		this.projectRoot = projectRoot;
@@ -70,8 +125,17 @@ export class GitOperations {
 		this.config = config;
 	}
 
+	async withConfig<T>(config: GitOperationConfig | null, action: () => Promise<T>): Promise<T> {
+		return await this.operationConfigContext.run({ config }, action);
+	}
+
+	private operationConfig(): GitOperationConfig | BacklogConfig | null {
+		const context = this.operationConfigContext.getStore();
+		return context ? context.config : this.config;
+	}
+
 	private async loadConfigIfNeeded(): Promise<void> {
-		if (this.config || !this.configLoader) {
+		if (this.operationConfigContext.getStore() || this.config || !this.configLoader) {
 			return;
 		}
 		try {
@@ -83,7 +147,7 @@ export class GitOperations {
 
 	async isRepository(cwd = this.projectRoot): Promise<boolean> {
 		await this.loadConfigIfNeeded();
-		if (this.config?.filesystemOnly) {
+		if (this.operationConfig()?.filesystemOnly) {
 			return false;
 		}
 		return await isGitRepository(cwd);
@@ -113,21 +177,26 @@ export class GitOperations {
 		await this.execGit(["add", ...relativePaths]);
 	}
 
-	async commitTaskChange(taskId: string, message: string, filePath?: string): Promise<void> {
+	async commitTaskChange(
+		taskId: string,
+		message: string,
+		filePath?: string,
+		options: GitCommitOptions = {},
+	): Promise<GitCommitResult | null> {
 		const commitMessage = `${taskId} - ${message}`;
 		if (filePath) {
-			await this.commitFiles(commitMessage, [filePath]);
-			return;
+			return await this.commitFiles(commitMessage, [filePath], undefined, options);
 		}
 		const args = ["commit", "-m", commitMessage];
-		if (this.config?.bypassGitHooks) {
+		if (this.operationConfig()?.bypassGitHooks) {
 			args.push("--no-verify");
 		}
 		const repoRoot = filePath ? (await this.getPathContext(filePath))?.repoRoot : undefined;
 		if (!(await this.isRepository(repoRoot ?? this.projectRoot))) {
-			return;
+			return null;
 		}
 		await this.execGit(args, { cwd: repoRoot });
+		return null;
 	}
 
 	async commitChanges(message: string, repoRoot?: string | null): Promise<void> {
@@ -135,46 +204,39 @@ export class GitOperations {
 			return;
 		}
 		const args = ["commit", "-m", message];
-		if (this.config?.bypassGitHooks) {
+		if (this.operationConfig()?.bypassGitHooks) {
 			args.push("--no-verify");
 		}
 		await this.execGit(args, { cwd: repoRoot ?? undefined });
 	}
 
-	async commitFiles(message: string, filePaths: string[], repoRoot?: string | null): Promise<void> {
+	async commitFiles(
+		message: string,
+		filePaths: string[],
+		repoRoot?: string | null,
+		options: GitCommitOptions = {},
+	): Promise<GitCommitResult | null> {
 		const uniqueFilePaths = Array.from(new Set(filePaths.map((path) => path.trim()).filter((path) => path.length > 0)));
-		if (uniqueFilePaths.length === 0) {
-			return;
-		}
+		if (uniqueFilePaths.length === 0) return null;
 
 		const resolvedRepoRoot =
 			repoRoot ?? (await this.getPathContext(uniqueFilePaths[0] ?? ""))?.repoRoot ?? this.projectRoot;
-		if (!(await this.isRepository(resolvedRepoRoot))) {
-			return;
-		}
+		if (!(await this.isRepository(resolvedRepoRoot))) return null;
 		const relativePaths: string[] = [];
 		for (const filePath of uniqueFilePaths) {
 			const relativePath = await this.getRelativePathForRepo(filePath, resolvedRepoRoot);
 			relativePaths.push(relativePath ?? filePath);
 		}
 		const uniqueRelativePaths = Array.from(new Set(relativePaths.filter((path) => path.length > 0)));
-		if (uniqueRelativePaths.length === 0) {
-			return;
-		}
+		if (uniqueRelativePaths.length === 0) return null;
 
 		const { stdout: stagedForPaths } = await this.execGit(
 			["diff", "--name-only", "--cached", "--", ...uniqueRelativePaths],
-			{
-				cwd: resolvedRepoRoot,
-				readOnly: true,
-			},
+			{ cwd: resolvedRepoRoot, readOnly: true },
 		);
-		if (!stagedForPaths.trim()) {
-			return;
-		}
+		if (!stagedForPaths.trim()) return null;
 
 		await this.assertNoCommitOperationInProgress(resolvedRepoRoot);
-
 		let ownedEntries = new Map<string, GitIndexEntry[]>();
 		for (const relativePath of uniqueRelativePaths) {
 			ownedEntries.set(relativePath, await this.getIndexEntries(join(resolvedRepoRoot, relativePath)));
@@ -186,22 +248,56 @@ export class GitOperations {
 		const messagePath = join(temporaryDirectory, "message");
 		try {
 			const signCommit = await this.shouldSignCommit(resolvedRepoRoot);
-			let baseHead = await this.resolveHead(resolvedRepoRoot);
-			await this.populateTemporaryIndex(resolvedRepoRoot, temporaryIndexEnv, baseHead, commitEntries);
-			await writeFile(messagePath, `${message}\n`);
-			if (!this.config?.bypassGitHooks) {
+			const intent = options.automaticCommitIntent ?? "new";
+			const rollingOperation = options.operation ?? message;
+			const initialHead = await this.resolveHead(resolvedRepoRoot);
+			let selectedPathBaseHead = initialHead;
+			await this.populateTemporaryIndex(resolvedRepoRoot, temporaryIndexEnv, initialHead, commitEntries);
+			if (!this.operationConfig()?.bypassGitHooks) {
 				await this.runCommitHook("pre-commit", [], resolvedRepoRoot, temporaryIndexEnv);
 			}
 			commitEntries = await this.readSelectedIndexEntries(uniqueRelativePaths, resolvedRepoRoot, temporaryIndexEnv);
-			await this.runCommitHook("prepare-commit-msg", [messagePath, "message"], resolvedRepoRoot, temporaryIndexEnv);
-			if (!this.config?.bypassGitHooks) {
-				await this.runCommitHook("commit-msg", [messagePath], resolvedRepoRoot, temporaryIndexEnv);
-			}
 			let lastHeadUpdateError: Error | undefined;
 
 			for (let attempt = 1; attempt <= 3; attempt += 1) {
 				await this.assertNoCommitOperationInProgress(resolvedRepoRoot);
-				baseHead = await this.resolveHead(resolvedRepoRoot);
+				const baseHead = await this.resolveHead(resolvedRepoRoot);
+				const baseBranchRef = await this.getCurrentBranchRef(resolvedRepoRoot);
+				if (
+					baseHead !== selectedPathBaseHead &&
+					!(await this.selectedTreeEntriesMatch(resolvedRepoRoot, selectedPathBaseHead, baseHead, uniqueRelativePaths))
+				) {
+					throw new SelectedPathConflictError();
+				}
+				selectedPathBaseHead = baseHead;
+				let ownedCommit =
+					intent === "amend-own" && baseHead && (await this.supportsUpdateRefTransactions(resolvedRepoRoot))
+						? await this.getOwnedCommit(resolvedRepoRoot, baseHead, baseBranchRef)
+						: null;
+				let commitMessage: string;
+				if (intent === "new") {
+					commitMessage = `${message.replace(/\n+$/, "")}\n`;
+				} else {
+					let automaticMessage = buildAutomaticCommitMessage(rollingOperation, ownedCommit?.message);
+					if (!automaticMessage && ownedCommit) {
+						ownedCommit = null;
+						automaticMessage = buildAutomaticCommitMessage(rollingOperation);
+					}
+					if (!automaticMessage) throw new Error("Automatic commit message must have a non-empty subject");
+					commitMessage = automaticMessage.message;
+				}
+				if (!commitMessage.split("\n", 1)[0]?.trim()) {
+					throw new Error("Automatic commit message must have a non-empty subject");
+				}
+
+				await writeFile(messagePath, commitMessage);
+				await this.runCommitHook("prepare-commit-msg", [messagePath, "message"], resolvedRepoRoot, temporaryIndexEnv);
+				if (!this.operationConfig()?.bypassGitHooks) {
+					await this.runCommitHook("commit-msg", [messagePath], resolvedRepoRoot, temporaryIndexEnv);
+				}
+				await this.assertNoCommitOperationInProgress(resolvedRepoRoot);
+				if (ownedCommit) await this.assertOwnedCommitUnchanged(resolvedRepoRoot, ownedCommit);
+
 				await this.populateTemporaryIndex(resolvedRepoRoot, temporaryIndexEnv, baseHead, commitEntries);
 				const { stdout: treeOutput } = await this.execGit(["write-tree"], {
 					cwd: resolvedRepoRoot,
@@ -218,12 +314,13 @@ export class GitOperations {
 					}
 				}
 
+				const parents = ownedCommit?.parents ?? (baseHead ? [baseHead] : []);
 				const commitArgs = ["commit-tree", ...(signCommit ? ["-S"] : []), treeId];
-				if (baseHead) commitArgs.push("-p", baseHead);
+				for (const parent of parents) commitArgs.push("-p", parent);
 				commitArgs.push("-F", messagePath);
 				const { stdout: commitOutput } = await this.execGit(commitArgs, {
 					cwd: resolvedRepoRoot,
-					env: temporaryIndexEnv,
+					env: { ...temporaryIndexEnv, ...ownedCommit?.authorEnv },
 				});
 				const commitId = commitOutput.trim();
 
@@ -240,16 +337,63 @@ export class GitOperations {
 				ownedEntries = commitEntries;
 
 				try {
-					await this.execGit(
-						["update-ref", "-m", `commit: ${message.split("\n", 1)[0]}`, "HEAD", commitId, baseHead ?? ""],
-						{
-							cwd: resolvedRepoRoot,
+					await this.assertNoCommitOperationInProgress(resolvedRepoRoot);
+					if (ownedCommit) await this.assertOwnedCommitUnchanged(resolvedRepoRoot, ownedCommit);
+					const finalMessage = await Bun.file(messagePath).text();
+					const subject = finalMessage.split("\n", 1)[0]?.trim() || "automatic commit";
+					const reflogMessage =
+						intent === "new" ? `commit: ${subject}` : `${AUTOMATIC_COMMIT_REFLOG_MARKER} ${subject}`;
+					const validateMutationState = async (): Promise<void> => {
+						await this.assertNoCommitOperationInProgress(resolvedRepoRoot);
+						for (const relativePath of uniqueRelativePaths) {
+							const currentEntries = await this.getIndexEntries(join(resolvedRepoRoot, relativePath));
+							if (!indexEntriesEqual(currentEntries, commitEntries.get(relativePath) ?? [])) {
+								throw new Error(`Git index changed before the selected commit could be finalized: ${relativePath}`);
+							}
+						}
+					};
+					await this.updateHeadRef(
+						resolvedRepoRoot,
+						baseBranchRef,
+						baseHead,
+						commitId,
+						reflogMessage,
+						async () => {
+							await validateMutationState();
+							if (ownedCommit) await this.assertOwnedCommitUnchanged(resolvedRepoRoot, ownedCommit);
 						},
+						ownedCommit && baseBranchRef
+							? async () => {
+									await validateMutationState();
+									if (await this.isCommitShared(resolvedRepoRoot, ownedCommit.commitId, baseBranchRef)) {
+										throw new Error("Owned Backlog commit became shared during finalization");
+									}
+								}
+							: undefined,
 					);
 					await this.runCommitHook("post-commit", [], resolvedRepoRoot, {}).catch(() => undefined);
-					return;
+					if (ownedCommit) {
+						await this.runCommitHook(
+							"post-rewrite",
+							["amend"],
+							resolvedRepoRoot,
+							{},
+							`${ownedCommit.commitId} ${commitId}\n`,
+						).catch(() => undefined);
+					}
+					const ownershipRecorded =
+						intent !== "new" && baseBranchRef
+							? await this.hasOwnershipEvidence(resolvedRepoRoot, baseBranchRef, commitId)
+							: false;
+					return {
+						commitId,
+						previousCommitId: baseHead,
+						amended: ownedCommit !== null,
+						ownershipRecorded,
+					};
 				} catch (error) {
 					lastHeadUpdateError = error instanceof Error ? error : new Error(String(error));
+					if (error instanceof ReferenceTransactionVetoError) throw error;
 					if ((await this.resolveHead(resolvedRepoRoot)) === baseHead) throw lastHeadUpdateError;
 				}
 			}
@@ -257,6 +401,437 @@ export class GitOperations {
 			throw new Error(`Git HEAD kept changing while committing selected paths: ${lastHeadUpdateError?.message}`);
 		} finally {
 			await rm(temporaryDirectory, { recursive: true, force: true }).catch(() => undefined);
+		}
+	}
+
+	/**
+	 * Advance the exact HEAD identity observed by the CAS attempt without allowing
+	 * a same-OID detached/branch switch to redirect the update. The real index and
+	 * HEAD locks are acquired in Git order before the caller revalidates every
+	 * mutation-sensitive invariant. A synthetic per-worktree context shares the
+	 * repository's common refs but has an unrelated HEAD, allowing named-branch
+	 * update-ref to run without trying to reacquire the leased worktree HEAD.
+	 */
+	private async updateHeadRef(
+		repoRoot: string,
+		branchRef: string | null,
+		expectedCommit: string | null,
+		newCommit: string,
+		reflogMessage: string,
+		validateLease: () => Promise<void>,
+		validateNamedUpdate?: () => Promise<void>,
+	): Promise<void> {
+		const { stdout: headPathOutput } = await this.execGit(["rev-parse", "--git-path", "HEAD"], {
+			cwd: repoRoot,
+			readOnly: true,
+		});
+		const configuredHeadPath = headPathOutput.trim();
+		if (!configuredHeadPath) throw new Error("Git did not report a HEAD path");
+		const headPath = isAbsolute(configuredHeadPath) ? configuredHeadPath : join(repoRoot, configuredHeadPath);
+		const { stdout: indexPathOutput } = await this.execGit(["rev-parse", "--git-path", "index"], {
+			cwd: repoRoot,
+			readOnly: true,
+		});
+		const configuredIndexPath = indexPathOutput.trim();
+		if (!configuredIndexPath) throw new Error("Git did not report an index path");
+		const indexPath = isAbsolute(configuredIndexPath) ? configuredIndexPath : join(repoRoot, configuredIndexPath);
+		const { stdout: commonDirectoryOutput } = await this.execGit(["rev-parse", "--git-common-dir"], {
+			cwd: repoRoot,
+			readOnly: true,
+		});
+		const configuredCommonDirectory = commonDirectoryOutput.trim();
+		if (!configuredCommonDirectory) throw new Error("Git did not report a common directory");
+		const commonDirectory = isAbsolute(configuredCommonDirectory)
+			? configuredCommonDirectory
+			: join(repoRoot, configuredCommonDirectory);
+		const indexLockPath = `${indexPath}.lock`;
+		const headLockPath = `${headPath}.lock`;
+		const refUpdateDirectory = await mkdtemp(join(tmpdir(), "backlog-git-ref-update-"));
+		const disabledHooksPath = join(refUpdateDirectory, "disabled-hooks");
+		const referenceName = branchRef ?? "HEAD";
+		const referenceTransactionInput = `${expectedCommit ?? "0".repeat(newCommit.length)} ${newCommit} ${referenceName}\n`;
+		let updated = false;
+		let referenceTransactionSucceeded = false;
+		let replacedDetachedHead = false;
+		try {
+			const indexLock = await open(indexLockPath, "wx");
+			try {
+				const headLock = await open(headLockPath, "wx");
+				try {
+					const validateHeadAndLease = async (): Promise<void> => {
+						if ((await this.getCurrentBranchRef(repoRoot)) !== branchRef) {
+							throw new Error("Git HEAD identity changed before the selected commit could be finalized");
+						}
+						if ((await this.resolveHead(repoRoot)) !== expectedCommit) {
+							throw new Error("Git HEAD changed before the selected commit could be finalized");
+						}
+						await validateLease();
+					};
+					await validateHeadAndLease();
+					let referenceTransactionPending = true;
+					try {
+						try {
+							await this.runCommitHook("reference-transaction", ["prepared"], repoRoot, {}, referenceTransactionInput);
+						} catch (error) {
+							await this.runCommitHook(
+								"reference-transaction",
+								["aborted"],
+								repoRoot,
+								{},
+								referenceTransactionInput,
+							).catch(() => undefined);
+							referenceTransactionPending = false;
+							throw new ReferenceTransactionVetoError(error);
+						}
+						await validateHeadAndLease();
+						if (branchRef) {
+							await Promise.all([
+								writeFile(join(refUpdateDirectory, "commondir"), `${commonDirectory}\n`),
+								writeFile(join(refUpdateDirectory, "HEAD"), "ref: refs/backlog/ref-update-context\n"),
+							]);
+							if (await this.supportsUpdateRefTransactions(repoRoot)) {
+								await this.updateBranchRefTransaction(
+									repoRoot,
+									refUpdateDirectory,
+									branchRef,
+									expectedCommit,
+									newCommit,
+									reflogMessage,
+									disabledHooksPath,
+									async () => {
+										// `prepare` owns the target ref lock. Rechecking the complete
+										// lease here closes same-OID reflog ABA between the real hook
+										// validation and the final branch movement.
+										await validateHeadAndLease();
+										if (validateNamedUpdate) await validateNamedUpdate();
+									},
+								);
+							} else {
+								// Git before 2.27 has no prepared update-ref transaction. Owned
+								// replacement was deoptimized before commit construction, so this
+								// legacy expected-OID update only advances a new/start-owned commit.
+								await this.execGit(
+									[
+										"-c",
+										`core.hooksPath=${disabledHooksPath}`,
+										"update-ref",
+										"-m",
+										reflogMessage,
+										branchRef,
+										newCommit,
+										expectedCommit ?? "",
+									],
+									{ cwd: repoRoot, env: { GIT_DIR: refUpdateDirectory } },
+								);
+							}
+							if (validateNamedUpdate) {
+								try {
+									await validateNamedUpdate();
+								} catch (error) {
+									await this.execGit(
+										[
+											"-c",
+											`core.hooksPath=${disabledHooksPath}`,
+											"update-ref",
+											"-m",
+											"reset: Backlog finalization lease invalidated",
+											branchRef,
+											expectedCommit ?? "",
+											newCommit,
+										],
+										{
+											cwd: repoRoot,
+											env: { GIT_DIR: refUpdateDirectory },
+										},
+									);
+									throw error;
+								}
+							}
+						} else {
+							const currentHead = (await readFile(headPath, "utf8")).trim();
+							if (!expectedCommit || currentHead !== expectedCommit) {
+								throw new Error("Detached Git HEAD changed before the selected commit could be finalized");
+							}
+							await headLock.writeFile(`${newCommit}\n`);
+							await headLock.sync();
+							await headLock.close();
+							await rename(headLockPath, headPath);
+							replacedDetachedHead = true;
+						}
+						updated = true;
+						referenceTransactionPending = false;
+						referenceTransactionSucceeded = true;
+					} catch (error) {
+						if (referenceTransactionPending) {
+							await this.runCommitHook(
+								"reference-transaction",
+								["aborted"],
+								repoRoot,
+								{},
+								referenceTransactionInput,
+							).catch(() => undefined);
+						}
+						throw error;
+					}
+				} finally {
+					await headLock.close().catch(() => undefined);
+					if (!replacedDetachedHead) await unlink(headLockPath).catch(() => undefined);
+				}
+			} finally {
+				await indexLock.close().catch(() => undefined);
+				await unlink(indexLockPath).catch(() => undefined);
+			}
+		} finally {
+			await rm(refUpdateDirectory, { recursive: true, force: true }).catch(() => undefined);
+		}
+		// The protected named update writes only its branch reflog, while a
+		// detached write moves HEAD without a reflog entry. Restore the worktree
+		// HEAD reflog as best effort, but prepare an exact HEAD transaction on
+		// capable Git so a same-SHA branch switch cannot receive ownership evidence.
+		if (updated && (await this.supportsUpdateRefTransactions(repoRoot))) {
+			await this.updateBranchRefTransaction(
+				repoRoot,
+				dirname(headPath),
+				"HEAD",
+				newCommit,
+				newCommit,
+				reflogMessage,
+				disabledHooksPath,
+				async () => {
+					if ((await this.getCurrentBranchRef(repoRoot)) !== branchRef) {
+						throw new Error("Git HEAD identity changed before its reflog could be synchronized");
+					}
+					if ((await this.resolveHead(repoRoot)) !== newCommit) {
+						throw new Error("Git HEAD changed before its reflog could be synchronized");
+					}
+				},
+			).catch(() => undefined);
+		} else if (updated && (await this.resolveHead(repoRoot)) === newCommit) {
+			await this.execGit(
+				["-c", `core.hooksPath=${disabledHooksPath}`, "update-ref", "-m", reflogMessage, "HEAD", newCommit, newCommit],
+				{ cwd: repoRoot },
+			).catch(() => undefined);
+		}
+		if (referenceTransactionSucceeded) {
+			await this.runCommitHook("reference-transaction", ["committed"], repoRoot, {}, referenceTransactionInput).catch(
+				() => undefined,
+			);
+		}
+	}
+
+	/**
+	 * Prepare a hook-suppressed update-ref transaction and keep its target-ref
+	 * lock held while the caller revalidates branch ownership and mutation state.
+	 * This is the only boundary that can distinguish an expected-OID CAS from an
+	 * old→other→old reflog ABA in the last window before branch movement.
+	 */
+	private async updateBranchRefTransaction(
+		repoRoot: string,
+		gitDirectory: string,
+		branchRef: string,
+		expectedCommit: string | null,
+		newCommit: string,
+		reflogMessage: string,
+		disabledHooksPath: string,
+		validatePreparedUpdate: () => Promise<void>,
+	): Promise<void> {
+		const subprocess = spawn(
+			"git",
+			["-c", `core.hooksPath=${disabledHooksPath}`, "update-ref", "--stdin", "-m", reflogMessage],
+			{
+				cwd: repoRoot,
+				env: { ...process.env, GIT_DIR: gitDirectory },
+				stdio: ["pipe", "pipe", "pipe"],
+			},
+		);
+		let stderr = "";
+		subprocess.stderr.setEncoding("utf8");
+		subprocess.stderr.on("data", (chunk: string) => {
+			stderr += chunk;
+		});
+		const responses = createInterface({ input: subprocess.stdout, crlfDelay: Number.POSITIVE_INFINITY })[
+			Symbol.asyncIterator
+		]();
+		const closed = new Promise<{ code: number | null; signal: NodeJS.Signals | null }>((resolve, reject) => {
+			subprocess.once("error", reject);
+			subprocess.once("close", (code, signal) => resolve({ code, signal }));
+		});
+		let transactionPrepared = false;
+		let transactionFinished = false;
+		let failure: unknown;
+
+		const sendAndExpect = async (command: string, expectedResponse: string): Promise<void> => {
+			if (!subprocess.stdin.write(`${command}\n`)) {
+				await new Promise<void>((resolve) => subprocess.stdin.once("drain", resolve));
+			}
+			const response = await responses.next();
+			if (response.done || response.value !== expectedResponse) {
+				throw new Error(
+					`Git update-ref transaction rejected ${command}: ${response.done ? "no response" : response.value}`,
+				);
+			}
+		};
+
+		try {
+			await sendAndExpect("start", "start: ok");
+			if (
+				!subprocess.stdin.write(`update ${branchRef} ${newCommit} ${expectedCommit ?? "0".repeat(newCommit.length)}\n`)
+			) {
+				await new Promise<void>((resolve) => subprocess.stdin.once("drain", resolve));
+			}
+			await sendAndExpect("prepare", "prepare: ok");
+			transactionPrepared = true;
+			await validatePreparedUpdate();
+			await sendAndExpect("commit", "commit: ok");
+			transactionFinished = true;
+		} catch (error) {
+			failure = error;
+			if (transactionPrepared && !transactionFinished) {
+				await sendAndExpect("abort", "abort: ok").catch(() => undefined);
+				transactionFinished = true;
+			}
+		} finally {
+			subprocess.stdin.end();
+		}
+
+		const result = await closed;
+		if (failure) throw failure;
+		if (result.code !== 0) {
+			const termination = result.signal ? `signal ${result.signal}` : `exit code ${result.code}`;
+			throw new Error(`Git update-ref transaction failed (${termination}): ${stderr.trim()}`);
+		}
+	}
+
+	private async selectedTreeEntriesMatch(
+		repoRoot: string,
+		beforeCommit: string | null,
+		afterCommit: string | null,
+		relativePaths: string[],
+	): Promise<boolean> {
+		const readEntries = async (commit: string | null): Promise<string> => {
+			if (!commit) return "";
+			const { stdout } = await this.execGit(["ls-tree", "-r", "-z", "--full-tree", commit, "--", ...relativePaths], {
+				cwd: repoRoot,
+				readOnly: true,
+			});
+			return stdout;
+		};
+		const [beforeEntries, afterEntries] = await Promise.all([readEntries(beforeCommit), readEntries(afterCommit)]);
+		return beforeEntries === afterEntries;
+	}
+
+	private async getCurrentBranchRef(repoRoot: string): Promise<string | null> {
+		const { stdout } = await this.execGit(["symbolic-ref", "--quiet", "HEAD"], {
+			cwd: repoRoot,
+			readOnly: true,
+			acceptedExitCodes: [1],
+		});
+		const branchRef = stdout.trim();
+		return branchRef.startsWith("refs/heads/") ? branchRef : null;
+	}
+
+	/**
+	 * Ownership evidence format: the newest branch reflog entry must point to the
+	 * candidate SHA and its subject must start with AUTOMATIC_COMMIT_REFLOG_MARKER.
+	 * The two newest entries are snapshotted while planning a replacement so an
+	 * away-and-back update cannot preserve eligibility through the same SHA.
+	 */
+	private async readOwnershipEvidence(
+		repoRoot: string,
+		branchRef: string,
+		candidate: string,
+	): Promise<{ reflogSnapshot: string } | null> {
+		const { stdout } = await this.execGit(["reflog", "show", "-2", "--format=%H%x00%gs", branchRef], {
+			cwd: repoRoot,
+			readOnly: true,
+			acceptedExitCodes: [1, 128],
+		});
+		const reflogSnapshot = stdout.replace(/\n$/, "");
+		const firstLine = reflogSnapshot.split("\n", 1)[0];
+		if (!firstLine) return null;
+		const fields = firstLine.split("\0");
+		if (
+			fields.length !== 2 ||
+			fields[0] !== candidate ||
+			!(fields[1] === AUTOMATIC_COMMIT_REFLOG_MARKER || fields[1]?.startsWith(`${AUTOMATIC_COMMIT_REFLOG_MARKER} `))
+		) {
+			return null;
+		}
+		return { reflogSnapshot };
+	}
+
+	private async hasOwnershipEvidence(repoRoot: string, branchRef: string, candidate: string): Promise<boolean> {
+		return (await this.readOwnershipEvidence(repoRoot, branchRef, candidate)) !== null;
+	}
+
+	private async refsContaining(repoRoot: string, candidate: string, prefix: string): Promise<string[]> {
+		const { stdout } = await this.execGit(["for-each-ref", `--contains=${candidate}`, "--format=%(refname)", prefix], {
+			cwd: repoRoot,
+			readOnly: true,
+		});
+		return stdout
+			.split("\n")
+			.map((ref) => ref.trim())
+			.filter(Boolean);
+	}
+
+	private async isCommitShared(repoRoot: string, candidate: string, currentBranchRef: string): Promise<boolean> {
+		if ((await this.refsContaining(repoRoot, candidate, "refs/remotes")).length > 0) return true;
+		const otherBranches = (await this.refsContaining(repoRoot, candidate, "refs/heads")).filter(
+			(ref) => ref !== currentBranchRef,
+		);
+		return otherBranches.length > 0 || (await this.refsContaining(repoRoot, candidate, "refs/tags")).length > 0;
+	}
+
+	private async getOwnedCommit(
+		repoRoot: string,
+		candidate: string,
+		expectedBranchRef?: string | null,
+	): Promise<OwnedCommit | null> {
+		const branchRef = expectedBranchRef === undefined ? await this.getCurrentBranchRef(repoRoot) : expectedBranchRef;
+		if (!branchRef) return null;
+		const evidence = await this.readOwnershipEvidence(repoRoot, branchRef, candidate);
+		if (!evidence) return null;
+
+		const { stdout: parentOutput } = await this.execGit(["rev-list", "--parents", "-n", "1", candidate], {
+			cwd: repoRoot,
+			readOnly: true,
+		});
+		const [, ...parents] = parentOutput.trim().split(/\s+/);
+		if (parents.length > 1) return null;
+		if (await this.isCommitShared(repoRoot, candidate, branchRef)) return null;
+
+		const { stdout: authorOutput } = await this.execGit(["show", "-s", "--format=%an%x00%ae%x00%aI", candidate], {
+			cwd: repoRoot,
+			readOnly: true,
+		});
+		const [authorName, authorEmail, authorDate] = authorOutput.replace(/\n$/, "").split("\0");
+		if (!authorName || !authorEmail || !authorDate) return null;
+		const { stdout: commitObject } = await this.execGit(["cat-file", "commit", candidate], {
+			cwd: repoRoot,
+			readOnly: true,
+		});
+		const messageOffset = commitObject.indexOf("\n\n");
+		if (messageOffset < 0) return null;
+		const commitMessage = commitObject.slice(messageOffset + 2);
+		return {
+			commitId: candidate,
+			branchRef,
+			reflogSnapshot: evidence.reflogSnapshot,
+			parents,
+			authorEnv: {
+				GIT_AUTHOR_NAME: authorName,
+				GIT_AUTHOR_EMAIL: authorEmail,
+				GIT_AUTHOR_DATE: authorDate,
+			},
+			message: commitMessage,
+		};
+	}
+
+	private async assertOwnedCommitUnchanged(repoRoot: string, expected: OwnedCommit): Promise<void> {
+		const current = await this.getOwnedCommit(repoRoot, expected.commitId);
+		if (!current || current.branchRef !== expected.branchRef || current.reflogSnapshot !== expected.reflogSnapshot) {
+			throw new Error("Owned Backlog commit eligibility changed during Git hooks; refusing to rewrite it");
 		}
 	}
 
@@ -341,16 +916,64 @@ export class GitOperations {
 		args: readonly string[],
 		repoRoot: string,
 		env: Record<string, string>,
+		input?: string,
 	): Promise<void> {
 		const hookEnv = { ...env, GIT_EDITOR: ":" };
-		if (await this.supportsHookRun(repoRoot)) {
-			await this.execGit(["hook", "run", "--ignore-missing", hook, ...(args.length > 0 ? ["--", ...args] : [])], {
-				cwd: repoRoot,
-				env: hookEnv,
-			});
+		if (
+			(await this.supportsHookRun(repoRoot)) &&
+			(input === undefined || (await this.supportsHookRunStdin(repoRoot)))
+		) {
+			const stdinDirectory = input === undefined ? null : await mkdtemp(join(tmpdir(), "backlog-git-hook-stdin-"));
+			try {
+				const stdinPath = stdinDirectory ? join(stdinDirectory, "stdin") : null;
+				if (stdinPath) await writeFile(stdinPath, input ?? "");
+				await this.execGit(
+					[
+						"hook",
+						"run",
+						"--ignore-missing",
+						...(stdinPath ? [`--to-stdin=${stdinPath}`] : []),
+						hook,
+						...(args.length > 0 ? ["--", ...args] : []),
+					],
+					{ cwd: repoRoot, env: hookEnv },
+				);
+			} finally {
+				if (stdinDirectory) await rm(stdinDirectory, { recursive: true, force: true }).catch(() => undefined);
+			}
 			return;
 		}
-		await this.runLegacyCommitHook(hook, args, repoRoot, hookEnv);
+		await this.runLegacyCommitHook(hook, args, repoRoot, hookEnv, input);
+	}
+
+	private async supportsUpdateRefTransactions(repoRoot: string): Promise<boolean> {
+		if (this.updateRefTransactionsSupported !== undefined) return this.updateRefTransactionsSupported;
+		try {
+			const { stdout } = await this.execGit(["version"], { cwd: repoRoot, readOnly: true });
+			const match = stdout.match(/git version (\d+)\.(\d+)/);
+			const major = Number(match?.[1]);
+			const minor = Number(match?.[2]);
+			this.updateRefTransactionsSupported =
+				Number.isInteger(major) && Number.isInteger(minor) && (major > 2 || (major === 2 && minor >= 27));
+		} catch {
+			this.updateRefTransactionsSupported = false;
+		}
+		return this.updateRefTransactionsSupported;
+	}
+
+	private async supportsHookRunStdin(repoRoot: string): Promise<boolean> {
+		if (this.hookRunStdinSupported !== undefined) return this.hookRunStdinSupported;
+		try {
+			const { stdout } = await this.execGit(["version"], { cwd: repoRoot, readOnly: true });
+			const match = stdout.match(/git version (\d+)\.(\d+)/);
+			const major = Number(match?.[1]);
+			const minor = Number(match?.[2]);
+			this.hookRunStdinSupported =
+				Number.isInteger(major) && Number.isInteger(minor) && (major > 2 || (major === 2 && minor >= 40));
+		} catch {
+			this.hookRunStdinSupported = false;
+		}
+		return this.hookRunStdinSupported;
 	}
 
 	private async supportsHookRun(repoRoot: string): Promise<boolean> {
@@ -373,6 +996,7 @@ export class GitOperations {
 		args: readonly string[],
 		repoRoot: string,
 		env: Record<string, string>,
+		input?: string,
 	): Promise<void> {
 		const { stdout } = await this.execGit(["rev-parse", "--git-path", `hooks/${hook}`], {
 			cwd: repoRoot,
@@ -390,6 +1014,7 @@ export class GitOperations {
 		await this.execGit(["-c", 'alias.backlog-run-hook=!f() { "$@" 1>&2; }; f', "backlog-run-hook", hookPath, ...args], {
 			cwd: repoRoot,
 			env,
+			input,
 		});
 	}
 
@@ -480,7 +1105,7 @@ export class GitOperations {
 		}
 
 		const args = ["commit", "-m", message];
-		if (this.config?.bypassGitHooks) {
+		if (this.operationConfig()?.bypassGitHooks) {
 			args.push("--no-verify");
 		}
 		await this.execGit(args, { cwd: repoRoot ?? undefined });
@@ -572,7 +1197,7 @@ export class GitOperations {
 
 	async fetch(remote = "origin"): Promise<void> {
 		// Check if remote operations are disabled
-		if (this.config?.remoteOperations === false) {
+		if (this.operationConfig()?.remoteOperations === false) {
 			if (process.env.DEBUG) {
 				console.warn("Remote operations are disabled in config. Skipping fetch.");
 			}
@@ -633,17 +1258,24 @@ export class GitOperations {
 		filePath: string,
 		action: "create" | "update" | "archive",
 		onStaged?: (entries: GitIndexEntry[]) => void,
-	): Promise<void> {
+		options: GitCommitOptions = {},
+	): Promise<GitCommitResult | null> {
 		const actionMessages = {
 			create: `Create task ${taskId}`,
 			update: `Update task ${taskId}`,
 			archive: `Archive task ${taskId}`,
 		};
+		const actionVerbs = { create: "Create", update: "Update", archive: "Archive" } as const;
+		const message = actionMessages[action];
+		const commitOptions: GitCommitOptions = {
+			...options,
+			operation: options.operation ?? createAutomaticCommitOperation(message, actionVerbs[action], "task", [taskId]),
+		};
 
 		const context = await this.getPathContext(filePath);
 		const repoRoot = context?.repoRoot ?? this.projectRoot;
 		if (!(await this.isRepository(repoRoot))) {
-			return;
+			return null;
 		}
 		const pathForAdd = context?.relativePath ?? relative(this.projectRoot, filePath).replace(/\\/g, "/");
 		const expectedWorkingHash = await this.hashFile(filePath);
@@ -659,10 +1291,10 @@ export class GitOperations {
 				await this.execGit(["add", pathForAdd], { cwd: repoRoot });
 				expectedIndexEntries = await this.getIndexEntries(filePath);
 				onStaged?.(expectedIndexEntries);
-				await this.commitFiles(actionMessages[action], [filePath], repoRoot);
-				return;
+				return await this.commitFiles(message, [filePath], repoRoot, commitOptions);
 			} catch (error) {
 				lastError = error instanceof Error ? error : new Error(String(error));
+				if (error instanceof SelectedPathConflictError || error instanceof ReferenceTransactionVetoError) throw error;
 				if (attempt === 3) break;
 				const workingOwned = (await this.hashFile(filePath)) === expectedWorkingHash;
 				const indexOwned = indexEntriesEqual(await this.getIndexEntries(filePath), expectedIndexEntries);
@@ -688,27 +1320,43 @@ export class GitOperations {
 		await this.execGit(["add", `${backlogDir}/`]);
 		return null;
 	}
-	async stageFileMove(fromPath: string, toPath: string): Promise<string | null> {
-		const toContext = await this.getPathContext(toPath);
-		const repoRoot = toContext?.repoRoot ?? this.projectRoot;
-		if (!(await this.isRepository(repoRoot))) {
+
+	async stageFiles(filePaths: string[], repoRoot?: string | null): Promise<string | null> {
+		const uniqueFilePaths = Array.from(new Set(filePaths.map((path) => path.trim()).filter((path) => path.length > 0)));
+		if (uniqueFilePaths.length === 0) {
 			return null;
 		}
-		const relativeFrom = await this.getRelativePathForRepo(fromPath, repoRoot);
-		const relativeTo = toContext?.relativePath ?? (await this.getRelativePathForRepo(toPath, repoRoot));
 
-		// Stage the deletion of the old file and addition of the new file
-		// Git will automatically detect this as a rename if the content is similar enough
-		try {
-			// First try to stage the removal of the old file (if it still exists)
-			await this.execGit(["add", "--all", relativeFrom ?? fromPath], { cwd: repoRoot });
-		} catch {
-			// If the old file doesn't exist, that's okay - it was already moved
+		const resolvedRepoRoot =
+			repoRoot ?? (await this.getPathContext(uniqueFilePaths[0] ?? ""))?.repoRoot ?? this.projectRoot;
+		if (!(await this.isRepository(resolvedRepoRoot))) {
+			return null;
 		}
 
-		// Always stage the new file location
-		await this.execGit(["add", relativeTo ?? toPath], { cwd: repoRoot });
-		return repoRoot === this.projectRoot ? null : repoRoot;
+		const relativePaths: string[] = [];
+		for (const filePath of uniqueFilePaths) {
+			const relativePath = await this.getRelativePathForRepo(filePath, resolvedRepoRoot);
+			if (!relativePath) {
+				throw new Error(`Cannot stage a path outside the Git repository: ${filePath}`);
+			}
+			const exists = await stat(join(resolvedRepoRoot, relativePath)).catch(() => null);
+			const { stdout: tracked } = exists
+				? { stdout: relativePath }
+				: await this.execGit(["ls-files", "--cached", "-z", "--", relativePath], {
+						cwd: resolvedRepoRoot,
+						readOnly: true,
+					});
+			if (exists || tracked) relativePaths.push(relativePath);
+		}
+		const uniqueRelativePaths = Array.from(new Set(relativePaths));
+		if (uniqueRelativePaths.length > 0) {
+			await this.execGit(["add", "--all", "--", ...uniqueRelativePaths], { cwd: resolvedRepoRoot });
+		}
+		return resolvedRepoRoot === this.projectRoot ? null : resolvedRepoRoot;
+	}
+
+	async stageFileMove(fromPath: string, toPath: string): Promise<string | null> {
+		return await this.stageFiles([fromPath, toPath]);
 	}
 
 	async listRemoteBranches(remote = "origin"): Promise<string[]> {
@@ -771,7 +1419,7 @@ export class GitOperations {
 	 */
 	async listRecentBranchTips(daysAgo: number): Promise<GitBranchTip[]> {
 		await this.loadConfigIfNeeded();
-		if (this.config?.filesystemOnly) {
+		if (this.operationConfig()?.filesystemOnly) {
 			return [];
 		}
 		try {
@@ -779,7 +1427,7 @@ export class GitOperations {
 
 			// Build refs to check based on remoteOperations config
 			const refs = ["refs/heads"];
-			if (this.config?.remoteOperations !== false) {
+			if (this.operationConfig()?.remoteOperations !== false) {
 				refs.push("refs/remotes/origin");
 			}
 
@@ -844,7 +1492,7 @@ export class GitOperations {
 		try {
 			// Use -a flag only if remote operations are enabled
 			const branchArgs =
-				this.config?.remoteOperations === false
+				this.operationConfig()?.remoteOperations === false
 					? ["branch", "--format=%(refname:short)"]
 					: ["branch", "-a", "--format=%(refname:short)"];
 
@@ -923,7 +1571,7 @@ export class GitOperations {
 
 	async hashFile(filePath: string): Promise<string | null> {
 		await this.loadConfigIfNeeded();
-		if (this.config?.filesystemOnly) {
+		if (this.operationConfig()?.filesystemOnly) {
 			return null;
 		}
 		try {
@@ -1143,7 +1791,7 @@ export class GitOperations {
 
 	private async resolveRepoRoot(startDir: string): Promise<string | null> {
 		await this.loadConfigIfNeeded();
-		if (this.config?.filesystemOnly) {
+		if (this.operationConfig()?.filesystemOnly) {
 			return null;
 		}
 		try {

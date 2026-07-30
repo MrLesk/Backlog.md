@@ -22,7 +22,7 @@ import { openHelpPopup } from "./components/help-popup.ts";
 import { openTaskComposer, type TaskComposerOptions } from "./components/task-composer.ts";
 import { formatFooterContent } from "./footer-content.ts";
 import { getStatusIcon } from "./status-icon.ts";
-import { completeTaskFromTui, formatTaskCompletionBlockedMessage } from "./task-lifecycle.ts";
+import { completeTaskFromTui, editTaskFromTui, formatTaskCompletionBlockedMessage } from "./task-lifecycle.ts";
 import { formatTaskTypeBadge } from "./task-type.ts";
 import {
 	createTaskPopup,
@@ -274,7 +274,9 @@ export async function renderBoardTui(
 		milestoneEntities?: Milestone[];
 		startupWarning?: string;
 		dateFormat?: string;
+		core?: Core;
 		createTask?: (input: TaskCreateInput) => Promise<Task>;
+		consumeAutoCommitNotices?: () => string[];
 		screen?: ScreenInterface;
 		taskComposer?: (options: TaskComposerOptions) => Promise<Task | null>;
 	},
@@ -288,6 +290,7 @@ export async function renderBoardTui(
 		return;
 	}
 
+	const mutationCore = options?.core ?? new Core(process.cwd(), { enableWatchers: true });
 	const initialColumns = prepareBoardColumns(initialTasks, statuses);
 	if (initialColumns.length === 0) {
 		console.log("No tasks available for the Kanban board.");
@@ -919,6 +922,9 @@ export async function renderBoardTui(
 			}, durationMs);
 		};
 
+		const successFooter = (message: string, notices: string[] = []): string =>
+			` {green-fg}${message}${notices.length > 0 ? ` — ${notices.join(" ")}` : ""}{/}`;
+
 		const renderView = (preferredTaskId?: string) => {
 			renderingView = true;
 			try {
@@ -1024,6 +1030,7 @@ export async function renderBoardTui(
 			taskCreationOpen = true;
 			let task: Task | null = null;
 			let creationError: unknown;
+			let creationNotices: string[] = [];
 			let hadPendingUpdate = false;
 			try {
 				task = await runWithModalGuard(() =>
@@ -1033,10 +1040,15 @@ export async function renderBoardTui(
 						types: options?.types,
 						priorities: options?.priorities,
 						persist: async (input) => {
-							if (options?.createTask) return options.createTask(input);
-							const core = new Core(process.cwd(), { enableWatchers: true });
-							const config = await core.fs.loadConfig();
-							return (await core.createTaskFromInput(input, config?.autoCommit ?? false)).task;
+							if (options?.createTask) {
+								const created = await options.createTask(input);
+								creationNotices = options.consumeAutoCommitNotices?.() ?? [];
+								return created;
+							}
+							const core = mutationCore;
+							const created = (await core.createTaskFromInput(input)).task;
+							creationNotices = core.consumeAutoCommitNotices();
+							return created;
 						},
 					}),
 				);
@@ -1065,7 +1077,11 @@ export async function renderBoardTui(
 			if (!draft) currentTasks = upsertBoardTask(currentTasks, task);
 			const visible = !draft && getFilteredTasks().some((candidate) => candidate.id === task.id);
 			const outcome = getCreatedTaskBoardOutcome(task, visible);
-			showTransientFooter(` {${outcome.tone}-fg}${outcome.message}{/}`, 6000, false);
+			showTransientFooter(
+				` {${outcome.tone}-fg}${outcome.message}${creationNotices.length > 0 ? ` — ${creationNotices.join(" ")}` : ""}{/}`,
+				6000,
+				false,
+			);
 			renderView(outcome.focusTaskId);
 		});
 
@@ -1248,8 +1264,8 @@ export async function renderBoardTui(
 
 		const openTaskEditor = async (task: Task) => {
 			try {
-				const core = new Core(process.cwd(), { enableWatchers: true });
-				const result = await core.editTaskInTui(task.id, screen, task);
+				const core = mutationCore;
+				const result = await editTaskFromTui(core, task, screen);
 				if (result.reason === "read_only") {
 					const branchInfo = result.task?.branch ? ` from branch "${result.task.branch}"` : "";
 					showTransientFooter(` {red-fg}Cannot edit task${branchInfo}.{/}`);
@@ -1272,14 +1288,16 @@ export async function renderBoardTui(
 
 				if (result.changed) {
 					renderView();
-					showTransientFooter(` {green-fg}Task ${result.task?.id ?? task.id} marked modified.{/}`);
+					const warning = result.warning ? " (editor exited with an error after saving)" : "";
+					showTransientFooter(successFooter(`Updated ${result.task?.id ?? task.id}${warning}`, result.notices), 6000);
 					return;
 				}
 
 				renderView();
 				showTransientFooter(` {gray-fg}No changes detected for ${result.task?.id ?? task.id}.{/}`);
-			} catch (_error) {
-				showTransientFooter(" {red-fg}Failed to open editor.{/}");
+			} catch (error) {
+				const message = error instanceof Error ? error.message : String(error);
+				showTransientFooter(` {red-fg}Failed to edit task: ${message}{/}`);
 			}
 		};
 
@@ -1342,12 +1360,12 @@ export async function renderBoardTui(
 
 				if (confirmed) {
 					try {
-						const core = new Core(process.cwd(), { enableWatchers: true });
+						const core = mutationCore;
 						const result = await completeTaskFromTui(core, task);
 
 						if (result.success) {
 							currentTasks = currentTasks.filter((t) => t.id !== task.id);
-							showTransientFooter(` {green-fg}Completed ${task.id}{/}`);
+							showTransientFooter(successFooter(`Completed ${task.id}`, result.notices));
 							close();
 							popupOpen = false;
 							renderView();
@@ -1380,13 +1398,12 @@ export async function renderBoardTui(
 
 				if (confirmed) {
 					try {
-						const core = new Core(process.cwd(), { enableWatchers: true });
-						const config = await core.fs.loadConfig();
-						const success = await core.archiveTask(task.id, config?.autoCommit ?? false);
+						const core = mutationCore;
+						const success = await core.archiveTask(task.id);
 
 						if (success) {
 							currentTasks = currentTasks.filter((t) => t.id !== task.id);
-							showTransientFooter(` {green-fg}Archived ${task.id}{/}`);
+							showTransientFooter(successFooter(`Archived ${task.id}`, core.consumeAutoCommitNotices()));
 							close();
 							popupOpen = false;
 							renderView();
@@ -1429,8 +1446,7 @@ export async function renderBoardTui(
 			}
 
 			try {
-				const core = new Core(process.cwd(), { enableWatchers: true });
-				const config = await core.fs.loadConfig();
+				const core = mutationCore;
 
 				// Get the final state from the projection
 				const projectedData = getProjectedColumns(currentTasks, moveOp);
@@ -1449,7 +1465,6 @@ export async function renderBoardTui(
 					taskId: moveOp.taskId,
 					targetStatus: moveOp.targetStatus,
 					orderedTaskIds,
-					autoCommit: config?.autoCommit ?? false,
 				});
 
 				// Update local state with all changed tasks (includes ordinal updates)
@@ -1462,6 +1477,8 @@ export async function renderBoardTui(
 
 				// Render with updated local state
 				renderView();
+				const notices = core.consumeAutoCommitNotices();
+				if (notices.length > 0) showTransientFooter(successFooter(`Moved ${updatedTask.id}`, notices));
 			} catch (error) {
 				// On error, cancel the move and restore original position
 				if (process.env.DEBUG) {
@@ -1587,12 +1604,12 @@ export async function renderBoardTui(
 
 			if (confirmed) {
 				try {
-					const core = new Core(process.cwd(), { enableWatchers: true });
+					const core = mutationCore;
 					const result = await completeTaskFromTui(core, task);
 
 					if (result.success) {
 						currentTasks = currentTasks.filter((t) => t.id !== task.id);
-						showTransientFooter(` {green-fg}Completed ${task.id}{/}`);
+						showTransientFooter(successFooter(`Completed ${task.id}`, result.notices));
 						renderView();
 					} else if (result.reason === "not-terminal") {
 						showTransientFooter(` {red-fg}${formatTaskCompletionBlockedMessage(task.id, result.terminalStatus)}{/}`);
@@ -1630,13 +1647,12 @@ export async function renderBoardTui(
 
 			if (confirmed) {
 				try {
-					const core = new Core(process.cwd(), { enableWatchers: true });
-					const config = await core.fs.loadConfig();
-					const success = await core.archiveTask(task.id, config?.autoCommit ?? false);
+					const core = mutationCore;
+					const success = await core.archiveTask(task.id);
 
 					if (success) {
 						currentTasks = currentTasks.filter((t) => t.id !== task.id);
-						showTransientFooter(` {green-fg}Archived ${task.id}{/}`);
+						showTransientFooter(successFooter(`Archived ${task.id}`, core.consumeAutoCommitNotices()));
 						renderView();
 					} else {
 						showTransientFooter(` {red-fg}Failed to archive ${task.id}{/}`);

@@ -312,9 +312,11 @@ Full help: `backlog --help`
 
 Backlog.md works with zero configuration. Settings merge from CLI flags, then the project config file (`backlog.config.yml` when present, otherwise `backlog/config.yml` or `.backlog/config.yml`), then built‑in defaults.
 
-Run `backlog config` with no arguments to launch the interactive wizard (the same experience triggered from `backlog init` advanced setup). It walks through cross-branch accuracy (`checkActiveBranches`, `remoteOperations`, `activeBranchDays`), Git workflow (`autoCommit`, `bypassGitHooks`), ID formatting (`zeroPaddedIds`), editor integration (`defaultEditor`), Definition of Done defaults, and Web UI defaults (`defaultPort`, `autoOpenBrowser`). Skipping the wizard applies the safe built-in defaults, and rerunning `backlog init` or `backlog config` pre-populates prompts with your current values.
+Run `backlog config` with no arguments to launch the interactive wizard (the same experience triggered from `backlog init` advanced setup). It walks through cross-branch accuracy (`checkActiveBranches`, `remoteOperations`, `activeBranchDays`), Git workflow (`autoCommit`, `autoCommitMode`, `bypassGitHooks`), ID formatting (`zeroPaddedIds`), editor integration (`defaultEditor`), Definition of Done defaults, and Web UI defaults (`defaultPort`, `autoOpenBrowser`). Skipping the wizard applies the safe built-in defaults, and rerunning `backlog init` or `backlog config` pre-populates prompts with your current values.
 
 For filesystem-only projects (`backlog init --no-git`), the saved config forces `checkActiveBranches=false`, `remoteOperations=false`, and `autoCommit=false` so CLI, Web, and MCP local-file workflows do not depend on a Git repository.
+
+When automatic commits are enabled, `autoCommitMode: new` keeps the safe one-operation-per-commit behavior without recording rolling ownership metadata. `amend-own` starts a new owned sequence after opt-in and can roll later operations into that branch-tip commit; use `--no-amend` to start a new rolling commit for one invocation. Ownership is branch-local, so switching away pauses a sequence and returning to the otherwise unchanged safe branch resumes it. See [Advanced Configuration](ADVANCED-CONFIG.md#rolling-owned-automatic-commits) for boundaries, recovery, and limitations.
 
 ### Definition of Done defaults
 

@@ -6,6 +6,7 @@
  */
 
 import type { Command } from "commander";
+import type { AutoCommitInput } from "../core/auto-commit.ts";
 import { createMcpServer } from "../mcp/server.ts";
 import { findBacklogRoot } from "../utils/find-backlog-root.ts";
 import { resolveRuntimeCwd } from "../utils/runtime-cwd.ts";
@@ -20,15 +21,15 @@ type StartOptions = {
  *
  * @param program - Commander program instance
  */
-export function registerMcpCommand(program: Command): void {
+export function registerMcpCommand(program: Command, options: { autoCommit?: AutoCommitInput } = {}): void {
 	const mcpCmd = program.command("mcp");
-	registerStartCommand(mcpCmd);
+	registerStartCommand(mcpCmd, options);
 }
 
 /**
  * Register 'mcp start' command for stdio transport.
  */
-function registerStartCommand(mcpCmd: Command): void {
+function registerStartCommand(mcpCmd: Command, commandOptions: { autoCommit?: AutoCommitInput }): void {
 	mcpCmd
 		.command("start")
 		.description("Start the MCP server using stdio transport")
@@ -41,7 +42,11 @@ function registerStartCommand(mcpCmd: Command): void {
 				// An explicit --cwd/BACKLOG_CWD pins the root; an inferred process.cwd()
 				// lets the server follow the client's workspace roots instead.
 				const pinned = runtimeCwd.source !== "process";
-				const server = await createMcpServer(projectRoot, { debug: options.debug, pinned });
+				const server = await createMcpServer(projectRoot, {
+					debug: options.debug,
+					pinned,
+					autoCommit: commandOptions.autoCommit,
+				});
 
 				await server.connect();
 				await server.start();

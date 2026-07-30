@@ -6,7 +6,9 @@ import { createInterface } from "node:readline/promises";
 import * as clack from "@clack/prompts";
 import { $ } from "bun";
 import { Command } from "commander";
+import { formatAdvancedConfigSummary } from "./commands/advanced-config-summary.ts";
 import { runAdvancedConfigWizard } from "./commands/advanced-config-wizard.ts";
+import { completeTasksForCleanup } from "./commands/cleanup.ts";
 import { type CompletionInstallResult, installCompletion, registerCompletionCommand } from "./commands/completion.ts";
 import { configureAdvancedSettings } from "./commands/configure-advanced-settings.ts";
 import {
@@ -21,6 +23,7 @@ import { registerInstructionsCommand } from "./commands/instructions.ts";
 import { registerMcpCommand } from "./commands/mcp.ts";
 import { pickTaskForEditWizard, runTaskCreateWizard, runTaskEditWizard } from "./commands/task-wizard.ts";
 import { DEFAULT_DIRECTORIES, DEFAULT_FILES, DEFAULT_STATUSES } from "./constants/index.ts";
+import { clearAutoCommitResults, createAutoCommitOptions, formatAutoCommitNotices } from "./core/auto-commit.ts";
 import { type DuplicateRepairPlan, findLocalDuplicateTaskIds } from "./core/duplicate-task-repair.ts";
 import { initializeProject } from "./core/init.ts";
 import { buildMilestoneBuckets, collectArchivedMilestoneKeys, milestoneKey } from "./core/milestones.ts";
@@ -28,7 +31,6 @@ import { printJson, searchJson, taskListJson, taskViewJson } from "./formatters/
 import { formatTaskPlainText } from "./formatters/task-plain-text.ts";
 import {
 	type AgentInstructionFile,
-	addAgentInstructions,
 	Core,
 	type EnsureMcpGuidelinesResult,
 	ensureMcpGuidelines,
@@ -62,6 +64,7 @@ import { createLoadingScreen } from "./ui/loading.ts";
 import { viewTaskEnhanced } from "./ui/task-viewer-with-search.ts";
 import { scrollableViewer } from "./ui/tui.ts";
 import { type AgentSelectionValue, processAgentSelection } from "./utils/agent-selection.ts";
+import { normalizeAutoCommitMode } from "./utils/auto-commit-mode.ts";
 import { normalizeProjectBacklogDirectory } from "./utils/backlog-directory.ts";
 import { formatDuplicateTaskIdWarning } from "./utils/duplicate-detection.ts";
 import { findBacklogRoot } from "./utils/find-backlog-root.ts";
@@ -97,6 +100,18 @@ import { getVersion } from "./utils/version.ts";
 
 type IntegrationMode = "mcp" | "cli" | "none";
 
+const cliAutoCommit = createAutoCommitOptions(undefined, process.argv.includes("--no-amend"));
+
+function flushCliAutoCommitNotices(): void {
+	const notices = formatAutoCommitNotices(cliAutoCommit);
+	clearAutoCommitResults(cliAutoCommit);
+	for (const notice of notices) console.log(notice);
+}
+
+function createCliCore(projectRoot: string): Core {
+	return new Core(projectRoot, { autoCommit: cliAutoCommit });
+}
+
 const CONFIG_GET_KEYS = [
 	"defaultEditor",
 	"projectName",
@@ -113,6 +128,7 @@ const CONFIG_GET_KEYS = [
 	"autoOpenBrowser",
 	"remoteOperations",
 	"autoCommit",
+	"autoCommitMode",
 	"filesystemOnly",
 	"bypassGitHooks",
 	"zeroPaddedIds",
@@ -130,6 +146,7 @@ const CONFIG_SET_KEYS = [
 	"defaultPort",
 	"remoteOperations",
 	"autoCommit",
+	"autoCommitMode",
 	"filesystemOnly",
 	"bypassGitHooks",
 	"zeroPaddedIds",
@@ -385,7 +402,7 @@ function printDuplicateRepairPlan(plan: DuplicateRepairPlan): void {
 
 async function runMilestoneMutation(action: (handlers: MilestoneHandlers) => Promise<CallToolResult>): Promise<void> {
 	const cwd = await requireProjectRoot();
-	const core = new Core(cwd);
+	const core = createCliCore(cwd);
 	const handlers = new MilestoneHandlers(core);
 
 	try {
@@ -593,7 +610,7 @@ try {
 			const runtimeCwd = await resolveRuntimeCwd();
 			const projectRoot = await findBacklogRoot(runtimeCwd.cwd);
 			if (projectRoot) {
-				const core = new Core(projectRoot);
+				const core = createCliCore(projectRoot);
 				const cfg = await core.filesystem.loadConfig();
 				initialized = !!cfg;
 			}
@@ -654,7 +671,7 @@ if (shouldRunMigration) {
 		const runtimeCwd = await resolveRuntimeCwd({ cwd: getMcpStartCwdOverrideFromArgv() });
 		const projectRoot = await findBacklogRoot(runtimeCwd.cwd);
 		if (projectRoot) {
-			const core = new Core(projectRoot);
+			const core = createCliCore(projectRoot);
 
 			// Only migrate if config already exists (project is already initialized)
 			const config = await core.filesystem.loadConfig();
@@ -668,10 +685,12 @@ if (shouldRunMigration) {
 }
 
 const program = new Command();
+program.hook("postAction", flushCliAutoCommitNotices);
 program
 	.name("backlog")
 	.description("Backlog.md - Project management CLI")
 	.version(version, "-v, --version", "display version number")
+	.option("--no-amend", "create a new automatic commit instead of replacing an owned Backlog commit")
 	.showSuggestionAfterError()
 	.showHelpAfterError("Run with --help to see accepted fields and examples.");
 
@@ -780,7 +799,7 @@ addHelpSchema(program.command("init [projectName]"), {
 					}
 				}
 
-				const core = new Core(cwd);
+				const core = createCliCore(cwd);
 
 				// Check if project is already initialized and load existing config
 				const existingConfig = await core.filesystem.loadConfig();
@@ -1354,6 +1373,7 @@ addHelpSchema(program.command("init [projectName]"), {
 						activeBranchDays: advancedConfig.activeBranchDays,
 						bypassGitHooks: advancedConfig.bypassGitHooks,
 						autoCommit: advancedConfig.autoCommit,
+						autoCommitMode: advancedConfig.autoCommitMode,
 						zeroPaddedIds: advancedConfig.zeroPaddedIds,
 						defaultEditor: advancedConfig.defaultEditor,
 						definitionOfDone: advancedConfig.definitionOfDone,
@@ -1443,6 +1463,9 @@ addHelpSchema(program.command("init [projectName]"), {
 					summaryLines.push(`  ${label("Active branch days:")} ${String(config.activeBranchDays)}`);
 					summaryLines.push(`  ${label("Bypass git hooks:")} ${boolValue(Boolean(config.bypassGitHooks))}`);
 					summaryLines.push(`  ${label("Auto commit:")} ${boolValue(Boolean(config.autoCommit))}`);
+					if (config.autoCommit) {
+						summaryLines.push(`  ${label("Auto commit mode:")} ${config.autoCommitMode ?? "new"}`);
+					}
 					summaryLines.push(
 						`  ${label("Zero-padded IDs:")} ${
 							config.zeroPaddedIds ? `${String(config.zeroPaddedIds)} digits` : muted("disabled")
@@ -1777,7 +1800,7 @@ addHelpSchema(taskCmd.command("create [title]"), {
 		}
 
 		const cwd = await requireProjectRoot();
-		const core = new Core(cwd);
+		const core = createCliCore(cwd);
 		await core.ensureConfigLoaded();
 
 		if (shouldUseWizard) {
@@ -1936,7 +1959,7 @@ addHelpSchema(program.command("search [query]"), {
 		const outputMode = getReadOutputMode(options);
 		if (!outputMode) return;
 		const cwd = await requireProjectRoot();
-		const core = new Core(cwd);
+		const core = createCliCore(cwd);
 		const hasDuplicateIds = await printDuplicateIntegrityWarning(core);
 		const searchService = await core.getSearchService();
 		const contentStore = await core.getContentStore();
@@ -2324,7 +2347,7 @@ addHelpSchema(taskCmd.command("list"), {
 		const outputMode = getTaskReadOutputMode(options);
 		if (!outputMode) return;
 		const cwd = await requireProjectRoot();
-		const core = new Core(cwd);
+		const core = createCliCore(cwd);
 		const hasDuplicateIds = await printDuplicateIntegrityWarning(core);
 		const cleanup = () => {
 			core.disposeSearchService();
@@ -2836,7 +2859,7 @@ addHelpSchema(taskCmd.command("edit [taskId]"), {
 		}
 
 		const cwd = await requireProjectRoot();
-		const core = new Core(cwd);
+		const core = createCliCore(cwd);
 
 		if (shouldUseWizard) {
 			let selectedTaskId = taskId ? normalizeTaskId(taskId) : undefined;
@@ -3188,7 +3211,7 @@ addHelpSchema(taskCmd.command("view <taskId>"), {
 		const outputMode = getTaskReadOutputMode(options);
 		if (!outputMode) return;
 		const cwd = await requireProjectRoot();
-		const core = new Core(cwd);
+		const core = createCliCore(cwd);
 		const localTasks = await core.fs.listTasks();
 		const task = await core.getTaskWithSubtasks(taskId, localTasks);
 		if (!task) {
@@ -3226,7 +3249,7 @@ addHelpSchema(taskCmd.command("archive <taskId>"), {
 	.description("archive a task")
 	.action(async (taskId: string) => {
 		const cwd = await requireProjectRoot();
-		const core = new Core(cwd);
+		const core = createCliCore(cwd);
 		const task = await core.loadTaskById(taskId);
 		if (!task) {
 			console.error(`Task ${taskId} not found.`);
@@ -3281,7 +3304,7 @@ addHelpSchema(taskCmd.command("complete <taskId>"), {
 	)
 	.action(async (taskId: string) => {
 		const cwd = await requireProjectRoot();
-		const core = new Core(cwd);
+		const core = createCliCore(cwd);
 		const task = await core.loadTaskById(taskId);
 
 		if (!task) {
@@ -3326,7 +3349,7 @@ taskCmd
 	.description("move task back to drafts")
 	.action(async (taskId: string) => {
 		const cwd = await requireProjectRoot();
-		const core = new Core(cwd);
+		const core = createCliCore(cwd);
 		try {
 			const success = await core.demoteTask(taskId);
 			if (success) {
@@ -3348,7 +3371,7 @@ taskCmd
 		const outputMode = getReadOutputMode(options);
 		if (!outputMode) return;
 		const cwd = await requireProjectRoot();
-		const core = new Core(cwd);
+		const core = createCliCore(cwd);
 
 		// Don't handle commands that should be handled by specific command handlers
 		const reservedCommands = ["create", "list", "edit", "view", "archive", "complete", "demote"];
@@ -3406,7 +3429,7 @@ draftCmd
 	.option("--plain", "use plain text output")
 	.action(async (options: { plain?: boolean; sort?: string }) => {
 		const cwd = await requireProjectRoot();
-		const core = new Core(cwd);
+		const core = createCliCore(cwd);
 		await core.ensureConfigLoaded();
 		const drafts = await core.filesystem.listDrafts();
 
@@ -3469,7 +3492,7 @@ draftCmd
 	.option("-l, --labels <labels>")
 	.action(async (title: string, options) => {
 		const cwd = await requireProjectRoot();
-		const core = new Core(cwd);
+		const core = createCliCore(cwd);
 		await core.ensureConfigLoaded();
 		try {
 			const { task, filePath } = await core.createTaskFromInput({
@@ -3497,7 +3520,7 @@ draftCmd
 	.description("archive a draft")
 	.action(async (taskId: string) => {
 		const cwd = await requireProjectRoot();
-		const core = new Core(cwd);
+		const core = createCliCore(cwd);
 		const success = await core.archiveDraft(taskId);
 		if (success) {
 			console.log(`Archived draft ${taskId}`);
@@ -3511,7 +3534,7 @@ draftCmd
 	.description("promote draft to task")
 	.action(async (taskId: string) => {
 		const cwd = await requireProjectRoot();
-		const core = new Core(cwd);
+		const core = createCliCore(cwd);
 		try {
 			const success = await core.promoteDraft(taskId);
 			if (success) {
@@ -3531,7 +3554,7 @@ draftCmd
 	.option("--plain", "use plain text output instead of interactive UI")
 	.action(async (taskId: string, options) => {
 		const cwd = await requireProjectRoot();
-		const core = new Core(cwd);
+		const core = createCliCore(cwd);
 		const { getDraftPath } = await import("./utils/task-path.ts");
 		const filePath = await getDraftPath(taskId, core);
 
@@ -3567,7 +3590,7 @@ draftCmd
 		}
 
 		const cwd = await requireProjectRoot();
-		const core = new Core(cwd);
+		const core = createCliCore(cwd);
 		const { getDraftPath } = await import("./utils/task-path.ts");
 		const filePath = await getDraftPath(taskId, core);
 
@@ -3610,7 +3633,7 @@ addHelpSchema(milestoneCmd.command("list"), {
 	.option("--plain", "use plain text output")
 	.action(async (options: { showCompleted?: boolean; plain?: boolean }) => {
 		const cwd = await requireProjectRoot();
-		const core = new Core(cwd);
+		const core = createCliCore(cwd);
 		await core.ensureConfigLoaded();
 
 		const [tasks, milestones, archivedMilestones, config] = await Promise.all([
@@ -3762,7 +3785,7 @@ function addBoardOptions(cmd: Command) {
 
 async function handleBoardView(options: { layout?: string; vertical?: boolean; milestones?: boolean }) {
 	const cwd = await requireProjectRoot();
-	const core = new Core(cwd);
+	const core = createCliCore(cwd);
 	const config = await core.filesystem.loadConfig();
 
 	const statuses = config?.statuses || [];
@@ -3894,7 +3917,7 @@ boardCmd
 	.option("--export-version <version>", "version to include in the export")
 	.action(async (filename, options) => {
 		const cwd = await requireProjectRoot();
-		const core = new Core(cwd);
+		const core = createCliCore(cwd);
 		const config = await core.filesystem.loadConfig();
 		const statuses = config?.statuses || [];
 		if (await printDuplicateIntegrityWarning(core)) return;
@@ -3972,7 +3995,7 @@ addHelpSchema(docCmd.command("create <title>"), {
 	.option("-t, --type <type>", `document type (${DOCUMENT_TYPE_VALUES.join(", ")})`)
 	.action(async (title: string, options) => {
 		const cwd = await requireProjectRoot();
-		const core = new Core(cwd);
+		const core = createCliCore(cwd);
 		const document = await core.createDocumentFromInput({
 			title: title as string,
 			type: (options.type || "other") as DocType["type"],
@@ -4006,7 +4029,7 @@ addHelpSchema(docCmd.command("update <docId>"), {
 	.option("--tags <tags>", "set tags (comma-separated or use multiple times)", createMultiValueAccumulator())
 	.action(async (docId: string, options) => {
 		const cwd = await requireProjectRoot();
-		const core = new Core(cwd);
+		const core = createCliCore(cwd);
 		const existingDocument = await core.getDocument(docId);
 		if (!existingDocument) {
 			throw new Error(`Document not found: ${docId}`);
@@ -4037,7 +4060,7 @@ addHelpSchema(docCmd.command("list"), {
 	.option("--plain", "use plain text output instead of interactive UI")
 	.action(async (options) => {
 		const cwd = await requireProjectRoot();
-		const core = new Core(cwd);
+		const core = createCliCore(cwd);
 		const docs = await core.filesystem.listDocuments();
 		if (docs.length === 0) {
 			console.log("No docs found.");
@@ -4106,7 +4129,7 @@ addHelpSchema(docCmd.command("search <query>"), {
 		}
 
 		const cwd = await requireProjectRoot();
-		const core = new Core(cwd);
+		const core = createCliCore(cwd);
 		const searchService = await core.getSearchService();
 		const contentStore = await core.getContentStore();
 		const cleanup = () => {
@@ -4138,7 +4161,7 @@ addHelpSchema(docCmd.command("view <docId>"), {
 	.option("--plain", "use plain text output instead of interactive UI")
 	.action(async (docId: string, options) => {
 		const cwd = await requireProjectRoot();
-		const core = new Core(cwd);
+		const core = createCliCore(cwd);
 		try {
 			const content = await core.getDocumentContent(docId);
 			if (content === null) {
@@ -4163,7 +4186,7 @@ decisionCmd
 	.option("-s, --status <status>")
 	.action(async (title: string, options) => {
 		const cwd = await requireProjectRoot();
-		const core = new Core(cwd);
+		const core = createCliCore(cwd);
 		const id = await generateNextDecisionId(core);
 		const decision: Decision = {
 			id,
@@ -4209,7 +4232,7 @@ agentsCmd
 		}
 		try {
 			const cwd = await requireProjectRoot();
-			const core = new Core(cwd);
+			const core = createCliCore(cwd);
 
 			// Check if backlog project is initialized
 			const config = await core.filesystem.loadConfig();
@@ -4238,10 +4261,7 @@ agentsCmd
 
 			const files: AgentInstructionFile[] = Array.isArray(selected) ? (selected as AgentInstructionFile[]) : [];
 			if (files.length > 0) {
-				// Get autoCommit setting from config
-				const config = await core.filesystem.loadConfig();
-				const shouldAutoCommit = config?.autoCommit ?? false;
-				await addAgentInstructions(cwd, core.gitOps, files, shouldAutoCommit);
+				await core.updateAgentInstructions(files);
 				console.log(`Updated ${files.length} agent instruction file(s): ${files.join(", ")}`);
 			} else {
 				console.log("No files selected for update.");
@@ -4254,7 +4274,7 @@ agentsCmd
 
 // Config command group
 const CONFIG_AVAILABLE_KEYS =
-	"Available keys: defaultEditor, projectName, defaultStatus, statuses, labels, priorities, types, milestones, definitionOfDone, dateFormat, maxColumnWidth, defaultPort, autoOpenBrowser, hideEmptyColumns, remoteOperations, autoCommit, filesystemOnly, bypassGitHooks, zeroPaddedIds, checkActiveBranches, activeBranchDays";
+	"Available keys: defaultEditor, projectName, defaultStatus, statuses, labels, priorities, types, milestones, definitionOfDone, dateFormat, maxColumnWidth, defaultPort, autoOpenBrowser, hideEmptyColumns, remoteOperations, autoCommit, autoCommitMode, filesystemOnly, bypassGitHooks, zeroPaddedIds, checkActiveBranches, activeBranchDays";
 
 const configCmd = addHelpSchema(program.command("config"), {
 	reads: "Project Backlog.md configuration",
@@ -4268,7 +4288,7 @@ const configCmd = addHelpSchema(program.command("config"), {
 	.action(async () => {
 		try {
 			const cwd = await requireProjectRoot();
-			const core = new Core(cwd);
+			const core = createCliCore(cwd);
 			const existingConfig = await core.filesystem.loadConfig();
 
 			if (!existingConfig) {
@@ -4292,19 +4312,7 @@ const configCmd = addHelpSchema(program.command("config"), {
 				}
 			}
 
-			console.log("\nAdvanced configuration updated.");
-			console.log(`  Check active branches: ${mergedConfig.checkActiveBranches ?? true}`);
-			console.log(`  Remote operations: ${mergedConfig.remoteOperations ?? true}`);
-			console.log(
-				`  Zero-padded IDs: ${
-					typeof mergedConfig.zeroPaddedIds === "number" ? `${mergedConfig.zeroPaddedIds} digits` : "disabled"
-				}`,
-			);
-			console.log(`  Web UI port: ${mergedConfig.defaultPort ?? 6420}`);
-			console.log(`  Auto open browser: ${mergedConfig.autoOpenBrowser ?? true}`);
-			console.log(`  Bypass git hooks: ${mergedConfig.bypassGitHooks ?? false}`);
-			console.log(`  Auto commit: ${mergedConfig.autoCommit ?? false}`);
-			console.log(`  Definition of Done defaults: ${(mergedConfig.definitionOfDone ?? []).join(" | ") || "(none)"}`);
+			console.log(`\n${formatAdvancedConfigSummary(mergedConfig).join("\n")}`);
 			if (completionResult) {
 				console.log(`  Shell completions: installed to ${completionResult.installPath}`);
 			} else if (completionError) {
@@ -4357,7 +4365,7 @@ addHelpSchema(configCmd.command("get <key>"), {
 	.action(async (key: string) => {
 		try {
 			const cwd = await requireProjectRoot();
-			const core = new Core(cwd);
+			const core = createCliCore(cwd);
 			const config = await core.filesystem.loadConfig();
 
 			if (!config) {
@@ -4426,6 +4434,9 @@ addHelpSchema(configCmd.command("get <key>"), {
 				case "autoCommit":
 					console.log(config.autoCommit?.toString() || "");
 					break;
+				case "autoCommitMode":
+					console.log(config.autoCommitMode ?? "new");
+					break;
 				case "filesystemOnly":
 					console.log(config.filesystemOnly?.toString() || "false");
 					break;
@@ -4466,7 +4477,7 @@ addHelpSchema(configCmd.command("set <key> <value>"), {
 	.action(async (key: string, value: string) => {
 		try {
 			const cwd = await requireProjectRoot();
-			const core = new Core(cwd);
+			const core = createCliCore(cwd);
 			const config = await core.filesystem.loadConfig();
 
 			if (!config) {
@@ -4561,6 +4572,15 @@ addHelpSchema(configCmd.command("set <key> <value>"), {
 						console.error("autoCommit must be true or false");
 						process.exit(1);
 					}
+					break;
+				}
+				case "autoCommitMode": {
+					const mode = normalizeAutoCommitMode(value);
+					if (!mode) {
+						console.error("autoCommitMode must be new or amend-own");
+						process.exit(1);
+					}
+					config.autoCommitMode = mode;
 					break;
 				}
 				case "filesystemOnly": {
@@ -4679,7 +4699,7 @@ addHelpSchema(configCmd.command("list"), {
 	.action(async () => {
 		try {
 			const cwd = await requireProjectRoot();
-			const core = new Core(cwd);
+			const core = createCliCore(cwd);
 			const config = await core.filesystem.loadConfig();
 
 			if (!config) {
@@ -4709,6 +4729,7 @@ addHelpSchema(configCmd.command("list"), {
 			console.log(`  defaultPort: ${config.defaultPort ?? "(not set)"}`);
 			console.log(`  remoteOperations: ${config.remoteOperations ?? "(not set)"}`);
 			console.log(`  autoCommit: ${config.autoCommit ?? "(not set)"}`);
+			console.log(`  autoCommitMode: ${config.autoCommitMode ?? "new"}`);
 			console.log(`  filesystemOnly: ${config.filesystemOnly ?? "false"}`);
 			console.log(`  bypassGitHooks: ${config.bypassGitHooks ?? "(not set)"}`);
 			console.log(`  zeroPaddedIds: ${config.zeroPaddedIds ?? "(disabled)"}`);
@@ -4743,7 +4764,7 @@ addHelpSchema(program.command("doctor"), {
 		}
 
 		const cwd = await requireProjectRoot();
-		const core = new Core(cwd);
+		const core = createCliCore(cwd);
 		try {
 			const plan = await core.previewDuplicateTaskIdRepair({ includeBranches: true });
 			if (plan.groups.length === 0 && plan.crossBranchFindings.length === 0) {
@@ -4825,7 +4846,7 @@ addHelpSchema(program.command("cleanup"), {
 	.action(async () => {
 		try {
 			const cwd = await requireProjectRoot();
-			const core = new Core(cwd);
+			const core = createCliCore(cwd);
 
 			// Check if backlog project is initialized
 			const config = await core.filesystem.loadConfig();
@@ -4905,48 +4926,15 @@ addHelpSchema(program.command("cleanup"), {
 				return;
 			}
 
-			// Move tasks to completed folder
-			let successCount = 0;
-			const shouldAutoCommit = config.autoCommit ?? false;
-
 			console.log("Moving tasks...");
-			const movedTasks: Array<{ fromPath: string; toPath: string; taskId: string }> = [];
-
-			for (const task of tasksToMove) {
-				const fromPath = task.filePath ?? (await core.getTask(task.id))?.filePath ?? null;
-
-				if (!fromPath) {
-					console.error(`Failed to locate file for task ${task.id}`);
-					continue;
-				}
-
-				const taskFilename = basename(fromPath);
-				const toPath = join(core.filesystem.completedDir, taskFilename);
-
-				const success = await core.completeTask(task.id);
-				if (success) {
-					successCount++;
-					movedTasks.push({ fromPath, toPath, taskId: task.id });
-				} else {
-					console.error(`Failed to move task ${task.id}`);
-				}
+			const cleanup = await completeTasksForCleanup(core, tasksToMove);
+			for (const failure of cleanup.failures) console.error(failure.message);
+			for (const warning of cleanup.stageWarnings) {
+				console.warn(`Warning: Could not stage move for Git (${warning.taskId}): ${warning.error}`);
 			}
 
-			// If autoCommit is disabled, stage the moves so Git recognizes them
-			const hasGitRepository = await core.gitOps.isRepository();
-			if (successCount > 0 && !shouldAutoCommit && hasGitRepository) {
-				console.log("Staging file moves for Git...");
-				for (const { fromPath, toPath } of movedTasks) {
-					try {
-						await core.gitOps.stageFileMove(fromPath, toPath);
-					} catch (error) {
-						console.warn(`Warning: Could not stage move for Git: ${error}`);
-					}
-				}
-			}
-
-			console.log(`Successfully moved ${successCount} of ${tasksToMove.length} tasks to completed folder.`);
-			if (successCount > 0 && !shouldAutoCommit && hasGitRepository) {
+			console.log(`Successfully moved ${cleanup.successCount} of ${tasksToMove.length} tasks to completed folder.`);
+			if (cleanup.stagedMoves) {
 				console.log("Files have been staged. To commit: git commit -m 'cleanup: Move completed tasks'");
 			}
 		} catch (err) {
@@ -4966,10 +4954,10 @@ program
 		try {
 			const cwd = await requireProjectRoot();
 			const { BacklogServer, findNextAvailablePort, isPortAvailable } = await import("./server/index.ts");
-			const server = new BacklogServer(cwd);
+			const server = new BacklogServer(cwd, { autoCommit: cliAutoCommit });
 
 			// Load config to get default port
-			const core = new Core(cwd);
+			const core = createCliCore(cwd);
 			const config = await core.filesystem.loadConfig();
 			const defaultPort = config?.defaultPort ?? 6420;
 
@@ -5043,7 +5031,7 @@ program
 	.action(async () => {
 		try {
 			const cwd = await requireProjectRoot();
-			const core = new Core(cwd);
+			const core = createCliCore(cwd);
 			const config = await core.filesystem.loadConfig();
 
 			if (!config) {
@@ -5067,7 +5055,45 @@ registerCompletionCommand(program);
 registerInstructionsCommand(program);
 
 // MCP command group
-registerMcpCommand(program);
+registerMcpCommand(program, { autoCommit: cliAutoCommit });
+
+const automaticCommitCommandPaths = [
+	["init"],
+	["search"],
+	["board"],
+	["board", "view"],
+	["browser"],
+	["task"],
+	["task", "list"],
+	["task", "view"],
+	["draft"],
+	["draft", "list"],
+	["draft", "view"],
+	["mcp", "start"],
+	["task", "create"],
+	["task", "edit"],
+	["task", "archive"],
+	["task", "complete"],
+	["task", "demote"],
+	["draft", "create"],
+	["draft", "archive"],
+	["draft", "promote"],
+	["milestone", "add"],
+	["milestone", "rename"],
+	["milestone", "remove"],
+	["milestone", "archive"],
+	["doc", "create"],
+	["doc", "update"],
+	["decision", "create"],
+	["agents"],
+	["cleanup"],
+] as const;
+
+for (const path of automaticCommitCommandPaths) {
+	let command: Command | undefined = program;
+	for (const name of path) command = command?.commands.find((candidate) => candidate.name() === name);
+	command?.option("--no-amend", "create a new automatic commit instead of replacing an owned Backlog commit");
+}
 
 program
 	.parseAsync(process.argv)

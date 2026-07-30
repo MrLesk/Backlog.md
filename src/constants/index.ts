@@ -55,6 +55,8 @@ export const FALLBACK_STATUS = "To Do";
  */
 export const DEFAULT_TASK_TYPES = ["bug", "feature", "enhancement", "task", "chore", "docs", "spike"] as const;
 
+export const AUTO_COMMIT_MODES = ["new", "amend-own"] as const;
+
 /**
  * Maximum width for wrapped text lines in UI components
  */
@@ -70,6 +72,7 @@ export const DEFAULT_INIT_CONFIG = {
 	activeBranchDays: 30,
 	bypassGitHooks: false,
 	autoCommit: false,
+	autoCommitMode: "new" as const,
 	filesystemOnly: false,
 	zeroPaddedIds: undefined as number | undefined,
 	defaultEditor: undefined as string | undefined,

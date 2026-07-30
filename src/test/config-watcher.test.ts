@@ -108,6 +108,26 @@ describe("config watcher", () => {
 				"",
 			].join("\n"),
 			[
+				'project_name: "Malformed mode quote"',
+				'statuses: ["To Do", "Done"]',
+				'labels: ["web"]',
+				"date_format: YYYY-MM-DD",
+				"auto_commit: true",
+				'auto_commit_mode: "amend-own',
+				'task_prefix: "BACK"',
+				"",
+			].join("\n"),
+			[
+				'project_name: "Embedded mode quote"',
+				'statuses: ["To Do", "Done"]',
+				'labels: ["web"]',
+				"date_format: YYYY-MM-DD",
+				"auto_commit: true",
+				'auto_commit_mode: amend-"own',
+				'task_prefix: "BACK"',
+				"",
+			].join("\n"),
+			[
 				'project_name: "Malformed task prefix"',
 				'statuses: ["To Do", "Done"]',
 				'labels: ["web"]',
@@ -128,7 +148,6 @@ describe("config watcher", () => {
 			]),
 		);
 		core.filesystem.parseConfig = (content) => {
-			const parsed = originalParseConfig(content);
 			const attempts = unusableParseAttempts.get(content);
 			if (attempts !== undefined) {
 				const nextAttempts = attempts + 1;
@@ -137,7 +156,7 @@ describe("config watcher", () => {
 					unusableAttemptResolvers.get(content)?.();
 				}
 			}
-			return parsed;
+			return originalParseConfig(content);
 		};
 
 		const published: BacklogConfig[] = [];
@@ -182,6 +201,48 @@ describe("config watcher", () => {
 		} finally {
 			configWatcher.stop();
 			core.filesystem.parseConfig = originalParseConfig;
+		}
+	});
+
+	it("accepts quote-aware scalar and list comments for watcher publication and mutation preflight", async () => {
+		const commentedContent = [
+			'project_name: "Commented # config" # project label',
+			"statuses:",
+			"  # workflow order",
+			"  - To Do",
+			"  - Done",
+			'labels: ["web"] # presentation labels',
+			"auto_commit: true # enable automatic commits",
+			"auto_commit_mode: amend-own # rolling mode",
+			"filesystem_only: true # keep this watcher fixture out of the parent repository",
+			"date_format: YYYY-MM-DD",
+			"check_active_branches: true",
+			'task_prefix: "BACK"',
+			"",
+		].join("\n");
+		let resolvePublished: (config: BacklogConfig) => void = () => {};
+		const published = new Promise<BacklogConfig>((resolve) => {
+			resolvePublished = resolve;
+		});
+		const configWatcher = watchConfig(core, {
+			onConfigChanged: (config) => {
+				if (config) resolvePublished(config);
+			},
+		});
+
+		try {
+			await replaceConfigFile(commentedContent);
+			const config = await withTimeout(published, "commented block-list config callback");
+			expect(config.projectName).toBe("Commented # config");
+			expect(config.statuses).toEqual(["To Do", "Done"]);
+			expect(config.labels).toEqual(["web"]);
+			expect(config.autoCommit).toBe(true);
+			expect(config.autoCommitMode).toBe("amend-own");
+			expect(config.filesystemOnly).toBe(true);
+			const { task } = await core.createTaskFromInput({ title: "Comment-compatible mutation" });
+			expect(task.id).toBe("BACK-1");
+		} finally {
+			configWatcher.stop();
 		}
 	});
 

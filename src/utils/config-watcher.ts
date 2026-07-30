@@ -3,6 +3,7 @@ import { basename, dirname } from "node:path";
 import type { Core } from "../core/backlog.ts";
 import type { FileSystem } from "../file-system/operations.ts";
 import type { BacklogConfig } from "../types/index.ts";
+import { validateExplicitConfigValues } from "./config-validation.ts";
 
 export interface ConfigWatcherCallbacks {
 	onConfigChanged?: (config: BacklogConfig | null) => void | Promise<void>;
@@ -16,64 +17,6 @@ const CONFIG_SETTLE_DELAY_MS = 50;
 const CONFIG_STABILITY_DELAY_MS = 25;
 const CONFIG_READ_ATTEMPTS = 8;
 const CONFIG_POLL_INTERVAL_MS = 500;
-const BOOLEAN_CONFIG_KEYS = new Set([
-	"auto_open_browser",
-	"hide_empty_columns",
-	"remote_operations",
-	"auto_commit",
-	"filesystem_only",
-	"filesystemOnly",
-	"bypass_git_hooks",
-	"check_active_branches",
-]);
-const ARRAY_CONFIG_KEYS = new Set(["statuses", "labels", "types", "priorities"]);
-const INTEGER_CONFIG_KEYS = new Set(["max_column_width", "default_port", "zero_padded_ids", "active_branch_days"]);
-const RECOGNIZED_CONFIG_KEYS = new Set([
-	"project_name",
-	"default_assignee",
-	"default_reporter",
-	"default_status",
-	...ARRAY_CONFIG_KEYS,
-	"definition_of_done",
-	"date_format",
-	...INTEGER_CONFIG_KEYS,
-	"default_editor",
-	...BOOLEAN_CONFIG_KEYS,
-	"onStatusChange",
-	"on_status_change",
-	"task_prefix",
-	"backlog_directory",
-	"backlogDirectory",
-]);
-
-function hasValidExplicitValues(content: string, config: BacklogConfig): boolean {
-	for (const rawLine of content.split(/\r?\n/)) {
-		const line = rawLine.trim();
-		if (!line || line.startsWith("#")) continue;
-		const colonIndex = line.indexOf(":");
-		if (colonIndex === -1) {
-			const key = line.match(/^([A-Za-z_][A-Za-z0-9_]*)\b/)?.[1];
-			if (key && RECOGNIZED_CONFIG_KEYS.has(key)) return false;
-			continue;
-		}
-		const key = line.slice(0, colonIndex).trim();
-		const value = line.slice(colonIndex + 1).trim();
-		if (!RECOGNIZED_CONFIG_KEYS.has(key)) continue;
-		if (ARRAY_CONFIG_KEYS.has(key) && !(value.startsWith("[") && value.endsWith("]"))) return false;
-		if (key === "definition_of_done" && value.startsWith("[") && !value.endsWith("]")) return false;
-		if (key === "definition_of_done" && config.definitionOfDone === undefined) return false;
-		if ((key === "project_name" || key === "date_format") && !value.replace(/['"]/g, "").trim()) return false;
-		if (BOOLEAN_CONFIG_KEYS.has(key) && !/^(?:true|false)$/i.test(value)) return false;
-		if (INTEGER_CONFIG_KEYS.has(key)) {
-			const number = Number(value);
-			if (!/^\d+$/.test(value) || !Number.isSafeInteger(number)) return false;
-			if (key === "max_column_width" && number < 1) return false;
-			if (key === "default_port" && (number < 1 || number > 65_535)) return false;
-		}
-		if (key === "task_prefix" && !/^[a-zA-Z]+$/.test(value.replace(/['"]/g, ""))) return false;
-	}
-	return true;
-}
 
 function isUsableConfig(config: BacklogConfig | null, content: string): config is BacklogConfig {
 	return Boolean(
@@ -81,7 +24,7 @@ function isUsableConfig(config: BacklogConfig | null, content: string): config i
 			Array.isArray(config.statuses) &&
 			Array.isArray(config.labels) &&
 			config.dateFormat.trim() &&
-			hasValidExplicitValues(content, config),
+			validateExplicitConfigValues(content, config) === null,
 	);
 }
 

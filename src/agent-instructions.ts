@@ -3,7 +3,8 @@ import { mkdir } from "node:fs/promises";
 import { dirname, isAbsolute, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { CLAUDE_AGENT_CONTENT, CLI_AGENT_NUDGE, MCP_AGENT_NUDGE, README_GUIDELINES } from "./constants/index.ts";
-import type { GitOperations } from "./git/operations.ts";
+import { createAutomaticCommitOperation } from "./git/automatic-commit-message.ts";
+import type { GitCommitOptions, GitCommitResult, GitOperations } from "./git/operations.ts";
 import { getVersion } from "./utils/version.ts";
 
 export type AgentInstructionFile =
@@ -146,6 +147,8 @@ export async function addAgentInstructions(
 	git?: GitOperations,
 	files: AgentInstructionFile[] = ["AGENTS.md", "CLAUDE.md", "GEMINI.md", ".github/copilot-instructions.md"],
 	autoCommit = false,
+	commitOptions: GitCommitOptions = {},
+	onCommitResult?: (result: GitCommitResult) => void,
 ): Promise<AgentInstructionWriteResult[]> {
 	const mapping: Record<AgentInstructionFile, string> = {
 		"AGENTS.md": CLI_AGENT_NUDGE,
@@ -220,8 +223,24 @@ export async function addAgentInstructions(
 	}
 
 	if (git && paths.length > 0 && autoCommit) {
-		await git.addFiles(paths);
-		await git.commitChanges("Add AI agent instructions");
+		const repoRoot = await git.stageFiles(paths);
+		const changedResults = results.filter((result) => result.action !== "unchanged");
+		const batchAction = changedResults.some((result) => result.action === "updated") ? "Update" : "Add";
+		const message = `${batchAction} AI agent instructions`;
+		const operations = changedResults.map((writeResult) => {
+			const action = writeResult.action === "updated" ? "Update" : "Add";
+			return createAutomaticCommitOperation(
+				`${action} AI agent instruction ${writeResult.fileName}`,
+				action,
+				"instruction",
+				[writeResult.fileName],
+			);
+		});
+		const result = await git.commitFiles(message, paths, repoRoot, {
+			...commitOptions,
+			operation: operations,
+		});
+		if (result) onCommitResult?.(result);
 	}
 
 	return results;

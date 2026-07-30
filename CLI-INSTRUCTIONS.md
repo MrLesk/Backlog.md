@@ -22,6 +22,8 @@ All examples use the `backlog` command, available after installing the `backlog.
 
 The advanced wizard includes interactive Definition of Done defaults editing (add/remove/reorder/clear), so project checklist defaults can be managed without manual YAML edits.
 
+When `autoCommitMode` is `amend-own`, commands that can automatically commit accept `--no-amend` to create a new commit for that invocation without changing configuration. The flag is a no-op under the safe default `new` mode. See [Advanced Configuration](ADVANCED-CONFIG.md#rolling-owned-automatic-commits) for rolling boundaries and recovery.
+
 You can rerun the wizard anytime with `backlog config`. All existing CLI flags (for example `--defaults`, `--agent-instructions`) continue to provide fully non-interactive setups, and init also supports `--backlog-dir <path>` plus `--config-location <folder|root>` for scripted configuration.
 
 Humans and agents can run `backlog instructions` for workflow guides and `backlog instructions overview` for the overview.

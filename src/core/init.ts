@@ -1,7 +1,6 @@
 import {
 	type AgentInstructionFile,
 	type AgentInstructionWriteResult,
-	addAgentInstructions,
 	ensureMcpGuidelines,
 	installClaudeAgent,
 } from "../agent-instructions.ts";
@@ -62,6 +61,7 @@ export interface InitializeProjectOptions {
 		activeBranchDays?: number;
 		bypassGitHooks?: boolean;
 		autoCommit?: boolean;
+		autoCommitMode?: "new" | "amend-own";
 		zeroPaddedIds?: number;
 		defaultEditor?: string;
 		definitionOfDone?: string[];
@@ -142,6 +142,7 @@ export async function initializeProject(
 		maxColumnWidth: 20,
 		filesystemOnly: effectiveFilesystemOnly || d.filesystemOnly,
 		autoCommit: normalizedAdvancedConfig.autoCommit ?? existingConfig?.autoCommit ?? d.autoCommit,
+		autoCommitMode: normalizedAdvancedConfig.autoCommitMode ?? existingConfig?.autoCommitMode ?? d.autoCommitMode,
 		remoteOperations:
 			normalizedAdvancedConfig.remoteOperations ?? existingConfig?.remoteOperations ?? d.remoteOperations,
 		bypassGitHooks: normalizedAdvancedConfig.bypassGitHooks ?? existingConfig?.bypassGitHooks ?? d.bypassGitHooks,
@@ -163,6 +164,7 @@ export async function initializeProject(
 		projectName,
 		filesystemOnly: effectiveFilesystemOnly || d.filesystemOnly,
 		autoCommit: normalizedAdvancedConfig.autoCommit ?? existingConfig?.autoCommit ?? d.autoCommit,
+		autoCommitMode: normalizedAdvancedConfig.autoCommitMode ?? existingConfig?.autoCommitMode ?? d.autoCommitMode,
 		remoteOperations:
 			normalizedAdvancedConfig.remoteOperations ?? existingConfig?.remoteOperations ?? d.remoteOperations,
 		bypassGitHooks: normalizedAdvancedConfig.bypassGitHooks ?? existingConfig?.bypassGitHooks ?? d.bypassGitHooks,
@@ -269,12 +271,7 @@ export async function initializeProject(
 	// Handle CLI integration - agent instruction files
 	if (integrationMode === "cli" && agentInstructions.length > 0) {
 		try {
-			const agentInstructionResults = await addAgentInstructions(
-				projectRoot,
-				core.gitOps,
-				agentInstructions,
-				config.autoCommit,
-			);
+			const agentInstructionResults = await core.updateAgentInstructions(agentInstructions);
 			mcpResults.agentFiles = formatAgentInstructionResults(agentInstructionResults);
 		} catch (error) {
 			const message = error instanceof Error ? error.message : String(error);
@@ -293,11 +290,15 @@ export async function initializeProject(
 		}
 	}
 
+	const persistedConfig = await core.filesystem.loadConfigForMutation({ publish: true, preserve: config });
+	if (!persistedConfig) {
+		throw new Error("Unable to reload the saved Backlog configuration");
+	}
 	return {
 		success: true,
 		projectName,
 		isReInitialization,
-		config,
+		config: persistedConfig,
 		mcpResults: Object.keys(mcpResults).length > 0 ? mcpResults : undefined,
 	};
 }

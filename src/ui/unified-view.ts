@@ -261,8 +261,7 @@ export async function createTaskFromBoard(
 	input: TaskCreateInput,
 	onCreated?: (task: Task) => Promise<void> | void,
 ): Promise<Task> {
-	const config = await core.filesystem.loadConfig();
-	const task = (await core.createTaskFromInput(input, config?.autoCommit ?? false)).task;
+	const task = (await core.createTaskFromInput(input)).task;
 	if (task.status.trim().toLowerCase() !== "draft") await onCreated?.(task);
 	return task;
 }
@@ -466,6 +465,7 @@ export async function runUnifiedView(options: UnifiedViewOptions): Promise<void>
 				};
 
 				renderBoardTui(kanbanTasks, statuses, layout, maxColumnWidth, {
+					core: options.core,
 					onTaskSelect: (task) => {
 						selectedTask = task;
 					},
@@ -497,6 +497,7 @@ export async function runUnifiedView(options: UnifiedViewOptions): Promise<void>
 					priorities: config?.priorities,
 					types: config?.types,
 					createTask: async (input) => createTaskFromBoard(options.core, input, taskUpdateCallbacks.onTaskAdded),
+					consumeAutoCommitNotices: () => options.core.consumeAutoCommitNotices(),
 				}).then(() => {
 					// If user wants to exit, do it immediately
 					if (result === "exit") {

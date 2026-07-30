@@ -2,6 +2,7 @@ import net from "node:net";
 import { dirname, join } from "node:path";
 import type { Server, ServerWebSocket } from "bun";
 import { $ } from "bun";
+import { type AutoCommitInput, summarizeAutoCommitNotices } from "../core/auto-commit.ts";
 import { Core } from "../core/backlog.ts";
 import type { ContentStore } from "../core/content-store.ts";
 import { initializeProject } from "../core/init.ts";
@@ -18,6 +19,7 @@ import {
 	type Task,
 	type TaskUpdateInput,
 } from "../types/index.ts";
+import { AUTO_COMMIT_MODE_ERROR, isAutoCommitMode } from "../utils/auto-commit-mode.ts";
 import { resolveMilestoneInputForStorage } from "../utils/milestone-storage.ts";
 import { formatValidPriorityValues, resolvePriorityValue } from "../utils/priority-config.ts";
 import { formatValidStatuses, getCanonicalStatuses, getValidStatuses } from "../utils/status.ts";
@@ -193,8 +195,15 @@ export class BacklogServer {
 	private unsubscribeContentStore?: () => void;
 	private storeReadyBroadcasted = false;
 
-	constructor(projectPath: string) {
-		this.core = new Core(projectPath, { enableWatchers: true });
+	constructor(projectPath: string, options: { autoCommit?: AutoCommitInput } = {}) {
+		this.core = new Core(projectPath, { enableWatchers: true, autoCommit: options.autoCommit });
+	}
+
+	private async withAutoCommitFeedback(action: () => Promise<Response>): Promise<Response> {
+		const { value: response, notices } = await this.core.withAutoCommitFeedback(action);
+		const notice = summarizeAutoCommitNotices(notices);
+		if (notice) response.headers.set("X-Backlog-Auto-Commit", notice);
+		return response;
 	}
 
 	private async resolveMilestoneInput(milestone: string): Promise<string> {
@@ -314,18 +323,21 @@ export class BacklogServer {
 					// API Routes using Bun's native route syntax
 					"/api/tasks": {
 						GET: async (req: Request) => await this.handleListTasks(req),
-						POST: async (req: Request) => await this.handleCreateTask(req),
+						POST: async (req: Request) => await this.withAutoCommitFeedback(() => this.handleCreateTask(req)),
 					},
 					"/api/task/:id": {
 						GET: async (req: Request & { params: { id: string } }) => await this.handleGetTask(req.params.id),
 					},
 					"/api/tasks/:id": {
 						GET: async (req: Request & { params: { id: string } }) => await this.handleGetTask(req.params.id),
-						PUT: async (req: Request & { params: { id: string } }) => await this.handleUpdateTask(req, req.params.id),
-						DELETE: async (req: Request & { params: { id: string } }) => await this.handleDeleteTask(req.params.id),
+						PUT: async (req: Request & { params: { id: string } }) =>
+							await this.withAutoCommitFeedback(() => this.handleUpdateTask(req, req.params.id)),
+						DELETE: async (req: Request & { params: { id: string } }) =>
+							await this.withAutoCommitFeedback(() => this.handleDeleteTask(req.params.id)),
 					},
 					"/api/tasks/:id/complete": {
-						POST: async (req: Request & { params: { id: string } }) => await this.handleCompleteTask(req.params.id),
+						POST: async (req: Request & { params: { id: string } }) =>
+							await this.withAutoCommitFeedback(() => this.handleCompleteTask(req.params.id)),
 					},
 					"/api/statuses": {
 						GET: async () => await this.handleGetStatuses(),
@@ -336,18 +348,19 @@ export class BacklogServer {
 					},
 					"/api/docs": {
 						GET: async () => await this.handleListDocs(),
-						POST: async (req: Request) => await this.handleCreateDoc(req),
+						POST: async (req: Request) => await this.withAutoCommitFeedback(() => this.handleCreateDoc(req)),
 					},
 					"/api/doc/:id": {
 						GET: async (req: Request & { params: { id: string } }) => await this.handleGetDoc(req.params.id),
 					},
 					"/api/docs/:id": {
 						GET: async (req: Request & { params: { id: string } }) => await this.handleGetDoc(req.params.id),
-						PUT: async (req: Request & { params: { id: string } }) => await this.handleUpdateDoc(req, req.params.id),
+						PUT: async (req: Request & { params: { id: string } }) =>
+							await this.withAutoCommitFeedback(() => this.handleUpdateDoc(req, req.params.id)),
 					},
 					"/api/decisions": {
 						GET: async () => await this.handleListDecisions(),
-						POST: async (req: Request) => await this.handleCreateDecision(req),
+						POST: async (req: Request) => await this.withAutoCommitFeedback(() => this.handleCreateDecision(req)),
 					},
 					"/api/decision/:id": {
 						GET: async (req: Request & { params: { id: string } }) => await this.handleGetDecision(req.params.id),
@@ -355,17 +368,18 @@ export class BacklogServer {
 					"/api/decisions/:id": {
 						GET: async (req: Request & { params: { id: string } }) => await this.handleGetDecision(req.params.id),
 						PUT: async (req: Request & { params: { id: string } }) =>
-							await this.handleUpdateDecision(req, req.params.id),
+							await this.withAutoCommitFeedback(() => this.handleUpdateDecision(req, req.params.id)),
 					},
 					"/api/drafts": {
 						GET: async () => await this.handleListDrafts(),
 					},
 					"/api/drafts/:id/promote": {
-						POST: async (req: Request & { params: { id: string } }) => await this.handlePromoteDraft(req.params.id),
+						POST: async (req: Request & { params: { id: string } }) =>
+							await this.withAutoCommitFeedback(() => this.handlePromoteDraft(req.params.id)),
 					},
 					"/api/milestones": {
 						GET: async () => await this.handleListMilestones(),
-						POST: async (req: Request) => await this.handleCreateMilestone(req),
+						POST: async (req: Request) => await this.withAutoCommitFeedback(() => this.handleCreateMilestone(req)),
 					},
 					"/api/milestones/archived": {
 						GET: async () => await this.handleListArchivedMilestones(),
@@ -373,15 +387,16 @@ export class BacklogServer {
 					"/api/milestones/:id": {
 						GET: async (req: Request & { params: { id: string } }) => await this.handleGetMilestone(req.params.id),
 						PUT: async (req: Request & { params: { id: string } }) =>
-							await this.handleUpdateMilestone(req, req.params.id),
+							await this.withAutoCommitFeedback(() => this.handleUpdateMilestone(req, req.params.id)),
 						DELETE: async (req: Request & { params: { id: string } }) =>
-							await this.handleRemoveMilestone(req, req.params.id),
+							await this.withAutoCommitFeedback(() => this.handleRemoveMilestone(req, req.params.id)),
 					},
 					"/api/milestones/:id/archive": {
-						POST: async (req: Request & { params: { id: string } }) => await this.handleArchiveMilestone(req.params.id),
+						POST: async (req: Request & { params: { id: string } }) =>
+							await this.withAutoCommitFeedback(() => this.handleArchiveMilestone(req.params.id)),
 					},
 					"/api/tasks/reorder": {
-						POST: async (req: Request) => await this.handleReorderTask(req),
+						POST: async (req: Request) => await this.withAutoCommitFeedback(() => this.handleReorderTask(req)),
 					},
 					"/api/tasks/cleanup": {
 						GET: async (req: Request) => await this.handleCleanupPreview(req),
@@ -391,7 +406,7 @@ export class BacklogServer {
 						POST: async (req: Request) => await this.handleRepairDuplicateTasks(req),
 					},
 					"/api/tasks/cleanup/execute": {
-						POST: async (req: Request) => await this.handleCleanupExecute(req),
+						POST: async (req: Request) => await this.withAutoCommitFeedback(() => this.handleCleanupExecute(req)),
 					},
 					"/api/version": {
 						GET: async () => await this.handleGetVersion(),
@@ -403,7 +418,7 @@ export class BacklogServer {
 						GET: async () => await this.handleGetStatus(),
 					},
 					"/api/init": {
-						POST: async (req: Request) => await this.handleInit(req),
+						POST: async (req: Request) => await this.withAutoCommitFeedback(() => this.handleInit(req)),
 					},
 					"/api/search": {
 						GET: async (req: Request) => await this.handleSearch(req),
@@ -1327,7 +1342,7 @@ export class BacklogServer {
 			if (!config) {
 				return Response.json({ error: "Configuration not found" }, { status: 404 });
 			}
-			return Response.json(config);
+			return Response.json({ ...config, autoCommitMode: config.autoCommitMode ?? "new" });
 		} catch (error) {
 			console.error("Error loading config:", error);
 			return Response.json({ error: "Failed to load configuration" }, { status: 500 });
@@ -1345,6 +1360,10 @@ export class BacklogServer {
 
 			if (updatedConfig.defaultPort && (updatedConfig.defaultPort < 1 || updatedConfig.defaultPort > 65535)) {
 				return Response.json({ error: "Port must be between 1 and 65535" }, { status: 400 });
+			}
+
+			if (updatedConfig.autoCommitMode !== undefined && !isAutoCommitMode(updatedConfig.autoCommitMode)) {
+				return Response.json({ error: AUTO_COMMIT_MODE_ERROR }, { status: 400 });
 			}
 
 			// Save configuration
@@ -1520,7 +1539,7 @@ export class BacklogServer {
 				return Response.json({ error: "A milestone with this title or ID already exists" }, { status: 400 });
 			}
 
-			const milestone = await this.core.filesystem.createMilestone(title, body.description);
+			const milestone = await this.core.createMilestone(title, body.description);
 			return Response.json(milestone, { status: 201 });
 		} catch (error) {
 			console.error("Error creating milestone:", error);
@@ -1842,6 +1861,9 @@ export class BacklogServer {
 			if (!projectName) {
 				return Response.json({ error: "Project name is required" }, { status: 400 });
 			}
+			if (advancedConfig.autoCommitMode !== undefined && !isAutoCommitMode(advancedConfig.autoCommitMode)) {
+				return Response.json({ error: AUTO_COMMIT_MODE_ERROR }, { status: 400 });
+			}
 
 			// Check if already initialized (for browser, we don't allow re-init)
 			const existingConfig = await this.core.filesystem.loadConfig();
@@ -1875,6 +1897,7 @@ export class BacklogServer {
 			return Response.json({
 				success: result.success,
 				projectName: result.projectName,
+				config: result.config,
 				mcpResults: result.mcpResults,
 			});
 		} catch (error) {

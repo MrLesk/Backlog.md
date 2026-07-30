@@ -3,6 +3,7 @@ import { readdir } from "node:fs/promises";
 import { join } from "node:path";
 import { $ } from "bun";
 import { McpServer } from "../mcp/server.ts";
+import { TaskHandlers } from "../mcp/tools/tasks/handlers.ts";
 import { registerTaskTools } from "../mcp/tools/tasks/index.ts";
 import { createUniqueTestDir, initializeTestProject, safeCleanup } from "./test-utils.ts";
 
@@ -140,6 +141,37 @@ describe("MCP draft support via task tools", () => {
 		const taskFile = await mcpServer.filesystem.loadTask("task-1");
 		expect(taskFile).toBeNull();
 	});
+
+	it("demote handler honors amend-own and an invocation force-new boundary", async () => {
+		const config = await loadConfig(mcpServer);
+		const configured = { ...config, autoCommit: true, autoCommitMode: "amend-own" as const };
+		await mcpServer.filesystem.saveConfig(configured);
+		await $`git add . && git commit -m "Enable MCP demotion commits"`.cwd(TEST_DIR).quiet();
+		const { task } = await mcpServer.createTaskFromInput({ title: "Demotion candidate" });
+		const ownedCount = Number((await $`git rev-list --count HEAD`.cwd(TEST_DIR).text()).trim());
+
+		await new TaskHandlers(mcpServer).demoteTask({ id: task.id });
+		expect(mcpServer.consumeAutoCommitNotices()).toEqual([
+			expect.stringMatching(/^Amended Backlog commit [0-9a-f]{12} as [0-9a-f]{12}\.$/),
+		]);
+		expect(Number((await $`git rev-list --count HEAD`.cwd(TEST_DIR).text()).trim())).toBe(ownedCount);
+
+		const [draft] = await mcpServer.filesystem.listDrafts();
+		if (!draft) throw new Error("Expected demoted draft");
+		const promoted = await mcpServer.editTaskOrDraft(draft.id, { status: "To Do" });
+		mcpServer.consumeAutoCommitNotices();
+		const beforeForced = Number((await $`git rev-list --count HEAD`.cwd(TEST_DIR).text()).trim());
+		const forcedServer = new McpServer(TEST_DIR, "Test instructions", "0.0.0", {
+			autoCommit: { forceNew: true },
+		});
+		try {
+			await new TaskHandlers(forcedServer).demoteTask({ id: promoted.id });
+			expect(forcedServer.consumeAutoCommitNotices()).toEqual([]);
+			expect(Number((await $`git rev-list --count HEAD`.cwd(TEST_DIR).text()).trim())).toBe(beforeForced + 1);
+		} finally {
+			await forcedServer.stop();
+		}
+	}, 20_000);
 
 	it("searches and archives drafts when requested", async () => {
 		await mcpServer.testInterface.callTool({

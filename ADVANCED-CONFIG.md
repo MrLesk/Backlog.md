@@ -10,6 +10,7 @@ For getting started and the interactive wizard overview, see [README.md](README.
 | Get specific config | `backlog config get defaultEditor` |
 | Set config value | `backlog config set defaultEditor "code --wait"` |
 | Enable auto-commit | `backlog config set autoCommit true` |
+| Roll up owned auto-commits | `backlog config set autoCommitMode amend-own` |
 | Bypass git hooks | `backlog config set bypassGitHooks true` |
 | Enable cross-branch check | `backlog config set checkActiveBranches true` |
 | Set active branch days | `backlog config set activeBranchDays 30` |
@@ -32,6 +33,7 @@ Running `backlog config` with no arguments launches the interactive advanced wiz
 | `autoOpenBrowser` | Open browser automatically | `true`            |
 | `remoteOperations`| Enable remote git operations | `true`           |
 | `autoCommit`      | Automatically commit task changes | `false`       |
+| `autoCommitMode`  | Create `new` commits or replace an `amend-own` rolling commit | `new` |
 | `bypassGitHooks`  | Skip git hooks when committing (uses --no-verify) | `false`       |
 | `zeroPaddedIds`   | Pad all IDs (tasks, docs, etc.) with leading zeros | `(disabled)`  |
 | `checkActiveBranches` | Check task states across active branches for accuracy | `true` |
@@ -45,6 +47,16 @@ Running `backlog config` with no arguments launches the interactive advanced wiz
 > **Note**: Set `remoteOperations: false` to work offline. This disables git fetch operations and loads tasks from local branches only, useful when working without network connectivity.
 
 > **Git Control**: By default, `autoCommit` is set to `false`, giving you full control over your git history. Task operations will modify files but won't automatically commit changes. Set `autoCommit: true` if you prefer automatic commits for each task operation.
+
+### Rolling owned automatic commits
+
+`autoCommitMode` accepts `new` (the safe default) and `amend-own`. The YAML key is `auto_commit_mode`. A missing key behaves as `new`; an invalid value is rejected. `autoCommit` remains the independent enable switch, and filesystem-only projects keep automatic commits disabled. Commits created in `new` mode carry neither rolling-operation metadata nor Backlog ownership evidence, so enabling `amend-own` cannot rewrite the last pre-opt-in commit.
+
+In `amend-own` mode, the first Backlog mutation after a boundary creates a normal owned-sequence commit. Later mutations replace that commit only while it remains the current tip of the same named local branch and Backlog can prove that it created the exact SHA. A manual commit, reset, clone, tag, merge tip, remote-tracking publication, another named branch containing the tip (including one checked out in a linked worktree), detached current `HEAD`, in-progress Git operation, stale or missing ownership evidence, or failure to record evidence ends or prevents the rolling sequence. Backlog then degrades safely to creating a new commit. Git versions before 2.27 lack the target-ref transaction needed to lock ownership evidence through replacement, so `amend-own` conservatively creates new commits on those versions while the default `new` mode continues normally. Ownership is intentionally branch-local: switching away pauses a sequence, and returning to the otherwise unchanged safe branch resumes it. Use `--no-amend` on an automatic-commit command to seal the current rolling commit and create a new owned-sequence commit for that invocation; under `new` it is a no-op.
+
+When replacing a rolling commit, Backlog rebuilds the commit message from a delimited, versioned JSON list of structured operation descriptors. Exact duplicate operations collapse. Compatible operations use a factored subject such as `backlog: Update tasks BACK-1, BACK-2`; mixed operations use a count such as `backlog: 2 changes`. Existing message text outside Backlog's operation region is preserved. CLI output identifies the old and replacement commit IDs.
+
+Replacement rewrites local history. Inspect `git reflog` to find and recover an earlier tip (for example, `git reset --hard <old-sha>` after preserving any work). Publication detection is deliberately local-only: stale remote-tracking refs cannot prove the current remote state, and Backlog cannot detect a push that left no remote-tracking ref. It also cannot detect a linked worktree parked on the tip with a detached `HEAD`. Do not use `amend-own` with hooks that modify the commit message: a non-idempotent hook can append its output again on every replacement. Prefer `new` whenever history rewriting or these accepted limits are unsuitable.
 
 > **Git Hooks**: If you have pre-commit hooks (like conventional commits or linters) that interfere with backlog.md's automated commits, set `bypassGitHooks: true` to skip them using the `--no-verify` flag.
 

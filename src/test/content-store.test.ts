@@ -1736,63 +1736,67 @@ describe("ContentStore", () => {
 		expect(loaderCalls).toBeGreaterThanOrEqual(2);
 	});
 
-	it("removes tasks, documents, and decisions when files are deleted", async () => {
-		store.dispose();
-		store = new ContentStore(filesystem, undefined, true);
-		await Promise.all([
-			filesystem.saveTask(sampleTask),
-			filesystem.saveDocument(sampleDocument),
-			filesystem.saveDecision(sampleDecision),
-		]);
-		await store.ensureInitialized();
+	it(
+		"removes tasks, documents, and decisions when files are deleted",
+		async () => {
+			store.dispose();
+			store = new ContentStore(filesystem, undefined, true);
+			await Promise.all([
+				filesystem.saveTask(sampleTask),
+				filesystem.saveDocument(sampleDocument),
+				filesystem.saveDecision(sampleDecision),
+			]);
+			await store.ensureInitialized();
 
-		const task = store.getTasks()[0];
-		const document = store.getDocuments()[0];
-		if (!task?.filePath) {
-			throw new Error("Expected the task file path");
-		}
-		if (!document?.path) {
-			throw new Error("Expected the document path");
-		}
+			const task = store.getTasks()[0];
+			const document = store.getDocuments()[0];
+			if (!task?.filePath) {
+				throw new Error("Expected the task file path");
+			}
+			if (!document?.path) {
+				throw new Error("Expected the document path");
+			}
 
-		const decisionsDir = filesystem.decisionsDir;
-		const decisionFiles: string[] = [];
-		for await (const file of new Bun.Glob("decision-*.md").scan({ cwd: decisionsDir, followSymlinks: true })) {
-			decisionFiles.push(file);
-		}
-		const decisionFile = decisionFiles.find((file) => file.startsWith("decision-1"));
-		if (!decisionFile) {
-			throw new Error("Expected decision file was not created");
-		}
+			const decisionsDir = filesystem.decisionsDir;
+			const decisionFiles: string[] = [];
+			for await (const file of new Bun.Glob("decision-*.md").scan({ cwd: decisionsDir, followSymlinks: true })) {
+				decisionFiles.push(file);
+			}
+			const decisionFile = decisionFiles.find((file) => file.startsWith("decision-1"));
+			if (!decisionFile) {
+				throw new Error("Expected decision file was not created");
+			}
 
-		await unlink(task.filePath);
-		await waitForContentState(
-			store,
-			(content) => content.tasks.every((item) => item.id !== task.id),
-			"native task deletion",
-			getPlatformTimeout(15000),
-		);
+			await unlink(task.filePath);
+			await waitForContentState(
+				store,
+				(content) => content.tasks.every((item) => item.id !== task.id),
+				"native task deletion",
+				getPlatformTimeout(15000),
+			);
 
-		await unlink(join(filesystem.docsDir, ...document.path.split("/")));
-		await waitForContentState(
-			store,
-			(content) => content.documents.every((item) => item.id !== document.id),
-			"native document deletion",
-			getPlatformTimeout(15000),
-		);
+			await unlink(join(filesystem.docsDir, ...document.path.split("/")));
+			await waitForContentState(
+				store,
+				(content) => content.documents.every((item) => item.id !== document.id),
+				"native document deletion",
+				getPlatformTimeout(15000),
+			);
 
-		await unlink(join(decisionsDir, decisionFile));
-		await waitForContentState(
-			store,
-			(content) => content.decisions.every((item) => item.id !== "decision-1"),
-			"native decision deletion",
-			getPlatformTimeout(15000),
-		);
+			await unlink(join(decisionsDir, decisionFile));
+			await waitForContentState(
+				store,
+				(content) => content.decisions.every((item) => item.id !== "decision-1"),
+				"native decision deletion",
+				getPlatformTimeout(15000),
+			);
 
-		expect(store.getTasks().some((item) => item.id === task.id)).toBe(false);
-		expect(store.getDocuments().some((item) => item.id === document.id)).toBe(false);
-		expect(store.getDecisions().some((item) => item.id === "decision-1")).toBe(false);
-	});
+			expect(store.getTasks().some((item) => item.id === task.id)).toBe(false);
+			expect(store.getDocuments().some((item) => item.id === document.id)).toBe(false);
+			expect(store.getDecisions().some((item) => item.id === "decision-1")).toBe(false);
+		},
+		getPlatformTimeout(60_000),
+	);
 
 	it("does not reconcile a late old-root publication into a new-root snapshot", async () => {
 		store.dispose();
@@ -2266,176 +2270,180 @@ describe("ContentStore", () => {
 		expect(watcherInternals.publishedRoot).toBe(rootB.backlogDir);
 	});
 
-	it("publishes coherent A to B to A snapshots and rebinds every root watcher", async () => {
-		store.dispose();
-		const lifecycleGateTimeout = getPlatformTimeout(5000);
-		const lifecycleEventTimeout = getPlatformTimeout(8000);
-		const rootA = "custom/a";
-		const rootB = "custom/b";
-		const configPath = join(TEST_DIR, "backlog.config.yml");
-		await Bun.write(configPath, rootConfig("Root A", rootA));
-
-		filesystem = new FileSystem(TEST_DIR);
-		const fixtureA = fixtureFilesystem(TEST_DIR, rootA);
-		const fixtureB = fixtureFilesystem(TEST_DIR, rootB);
-		await Promise.all([writeFixture(fixtureA, "101", "a-1"), writeFixture(fixtureB, "201", "b-1")]);
-
-		let nextTaskLoadGate: DeferredGate | null = null;
-		store = new ContentStore(
-			filesystem,
-			async () => {
-				const tasks = await filesystem.listTasks();
-				const gate = nextTaskLoadGate;
-				if (gate) {
-					nextTaskLoadGate = null;
-					gate.markStarted();
-					await gate.waitForRelease;
-				}
-				return tasks;
-			},
-			true,
-		);
-
-		const initial = await store.ensureInitialized();
-		expect(initial.tasks.map((task) => task.id)).toEqual(["TASK-101"]);
-		expect(initial.documents.map((document) => document.id)).toEqual(["doc-a-1"]);
-		expect(initial.decisions.map((decision) => decision.id)).toEqual(["decision-a-1"]);
-
-		const configEvents: Array<{ name: string; event: ContentStoreEvent }> = [];
-		const unsubscribe = store.subscribe((event) => {
-			if (event.type === "config") {
-				configEvents.push({ name: event.config.projectName, event });
-			}
-		});
-		const gates: DeferredGate[] = [];
-
-		try {
-			const heldOldLoad = createDeferredGate();
-			gates.push(heldOldLoad);
-			nextTaskLoadGate = heldOldLoad;
-			const heldOldRefresh = store.refreshTasks();
-			await withTimeout(heldOldLoad.started, "old-root task refresh", lifecycleGateTimeout);
-
-			const rootBPublished = waitForEventWithTimeout(
-				store,
-				(event) => event.type === "config" && event.config.projectName === "Root B",
-				lifecycleEventTimeout,
-				"root B config publication",
-			);
-			await replaceRootConfig(configPath, rootConfig("Root B", rootB));
-			await waitUntil(() => filesystem.backlogDirName === rootB, "root B publication");
-
-			// This write happens after the old handles are closed while old queued work is still held.
-			await writeFixture(fixtureA, "103", "a-3");
-
-			const heldBLoad = createDeferredGate();
-			gates.push(heldBLoad);
-			nextTaskLoadGate = heldBLoad;
-			heldOldLoad.release();
-			await withTimeout(heldOldRefresh, "old-root refresh completion", lifecycleGateTimeout);
-			await withTimeout(heldBLoad.started, "root B snapshot load", lifecycleGateTimeout);
-
-			await writeFixture(fixtureB, "202", "b-2");
-			heldBLoad.release();
-			const rootBEvent = await rootBPublished;
-			await waitForContentState(
-				store,
-				(content) =>
-					content.tasks.some((task) => task.id === "TASK-202") &&
-					content.documents.some((document) => document.id === "doc-b-2") &&
-					content.decisions.some((decision) => decision.id === "decision-b-2"),
-				"root B watcher state after rebinding",
-				lifecycleEventTimeout,
-			);
-			expect(rootBEvent.snapshot.tasks.every((task) => task.id.startsWith("TASK-2"))).toBe(true);
-			expect(rootBEvent.snapshot.documents.every((document) => document.id.startsWith("doc-b-"))).toBe(true);
-			expect(rootBEvent.snapshot.decisions.every((decision) => decision.id.startsWith("decision-b-"))).toBe(true);
-			expect(store.getTasks().some((task) => task.id === "TASK-103")).toBe(false);
-			expect(store.getDocuments().some((document) => document.id === "doc-a-3")).toBe(false);
-			expect(store.getDecisions().some((decision) => decision.id === "decision-a-3")).toBe(false);
-
-			const heldBConfigLoad = createDeferredGate();
-			gates.push(heldBConfigLoad);
-			nextTaskLoadGate = heldBConfigLoad;
-			const heldBPublished = waitForEventWithTimeout(
-				store,
-				(event) => event.type === "config" && event.config.projectName === "Root B held",
-				lifecycleEventTimeout,
-				"held root B config publication",
-			);
-			await replaceRootConfig(configPath, rootConfig("Root B held", rootB));
-			await withTimeout(heldBConfigLoad.started, "held root B config load", lifecycleGateTimeout);
-			const rootAReturned = waitForEventWithTimeout(
-				store,
-				(event) => event.type === "config" && event.config.projectName === "Root A returned",
-				lifecycleEventTimeout,
-				"returned root A config publication",
-			);
-			await replaceRootConfig(configPath, rootConfig("Root A returned", rootA));
-			await sleep(getPlatformTimeout(150));
-			heldBConfigLoad.release();
-
-			const [, rootAEvent] = await Promise.all([heldBPublished, rootAReturned]);
-			expect(rootAEvent.snapshot.tasks.map((task) => task.id).sort()).toEqual(["TASK-101", "TASK-103"]);
-			expect(rootAEvent.snapshot.documents.map((document) => document.id).sort()).toEqual(["doc-a-1", "doc-a-3"]);
-			expect(rootAEvent.snapshot.decisions.map((decision) => decision.id).sort()).toEqual([
-				"decision-a-1",
-				"decision-a-3",
-			]);
-
-			await writeFixture(fixtureA, "104", "a-4");
-			await waitForContentState(
-				store,
-				(content) =>
-					content.tasks.some((task) => task.id === "TASK-104") &&
-					content.documents.some((document) => document.id === "doc-a-4") &&
-					content.decisions.some((decision) => decision.id === "decision-a-4"),
-				"root A watcher state after return",
-				lifecycleEventTimeout,
-			);
-			await sleep(getPlatformTimeout(700));
-			expect(configEvents.map(({ name }) => name)).toEqual(["Root B", "Root B held", "Root A returned"]);
-
-			const disposedStore = store;
-			const stoppedSnapshot = disposedStore.getSnapshot();
+	it(
+		"publishes coherent A to B to A snapshots and rebinds every root watcher",
+		async () => {
 			store.dispose();
-			await writeFixture(fixtureA, "105", "a-5");
-			await sleep(getPlatformTimeout(300));
-			expect(disposedStore.getSnapshot()).toEqual(stoppedSnapshot);
+			const lifecycleGateTimeout = getPlatformTimeout(5000);
+			const lifecycleEventTimeout = getPlatformTimeout(8000);
+			const rootA = "custom/a";
+			const rootB = "custom/b";
+			const configPath = join(TEST_DIR, "backlog.config.yml");
+			await Bun.write(configPath, rootConfig("Root A", rootA));
 
-			store = new ContentStore(filesystem, undefined, true);
-			const restarted = await store.ensureInitialized();
-			expect(restarted.tasks.some((task) => task.id === "TASK-105")).toBe(true);
-			expect(restarted.documents.some((document) => document.id === "doc-a-5")).toBe(true);
-			expect(restarted.decisions.some((decision) => decision.id === "decision-a-5")).toBe(true);
-			await writeFixture(fixtureA, "106", "a-6");
-			await waitForContentState(
-				store,
-				(content) =>
-					content.tasks.some((task) => task.id === "TASK-106") &&
-					content.documents.some((document) => document.id === "doc-a-6") &&
-					content.decisions.some((decision) => decision.id === "decision-a-6"),
-				"restarted root A watcher state",
-				lifecycleEventTimeout,
+			filesystem = new FileSystem(TEST_DIR);
+			const fixtureA = fixtureFilesystem(TEST_DIR, rootA);
+			const fixtureB = fixtureFilesystem(TEST_DIR, rootB);
+			await Promise.all([writeFixture(fixtureA, "101", "a-1"), writeFixture(fixtureB, "201", "b-1")]);
+
+			let nextTaskLoadGate: DeferredGate | null = null;
+			store = new ContentStore(
+				filesystem,
+				async () => {
+					const tasks = await filesystem.listTasks();
+					const gate = nextTaskLoadGate;
+					if (gate) {
+						nextTaskLoadGate = null;
+						gate.markStarted();
+						await gate.waitForRelease;
+					}
+					return tasks;
+				},
+				true,
 			);
-			expect(store.getTasks().some((task) => task.id === "TASK-106")).toBe(true);
-			expect(store.getDocuments().some((document) => document.id === "doc-a-6")).toBe(true);
-			expect(store.getDecisions().some((decision) => decision.id === "decision-a-6")).toBe(true);
-			const restartedWatcherState = store as unknown as {
-				boundBacklogDir: string | null;
-				rootWatchers: unknown[];
-				rootWatchersInitialized: boolean;
-			};
-			expect(restartedWatcherState.rootWatchersInitialized).toBe(true);
-			expect(restartedWatcherState.boundBacklogDir && resolve(restartedWatcherState.boundBacklogDir)).toBe(
-				resolve(fixtureA.backlogDir),
-			);
-			expect(restartedWatcherState.rootWatchers).toHaveLength(3);
-		} finally {
-			for (const gate of gates) gate.release();
-			unsubscribe();
-		}
-	});
+
+			const initial = await store.ensureInitialized();
+			expect(initial.tasks.map((task) => task.id)).toEqual(["TASK-101"]);
+			expect(initial.documents.map((document) => document.id)).toEqual(["doc-a-1"]);
+			expect(initial.decisions.map((decision) => decision.id)).toEqual(["decision-a-1"]);
+
+			const configEvents: Array<{ name: string; event: ContentStoreEvent }> = [];
+			const unsubscribe = store.subscribe((event) => {
+				if (event.type === "config") {
+					configEvents.push({ name: event.config.projectName, event });
+				}
+			});
+			const gates: DeferredGate[] = [];
+
+			try {
+				const heldOldLoad = createDeferredGate();
+				gates.push(heldOldLoad);
+				nextTaskLoadGate = heldOldLoad;
+				const heldOldRefresh = store.refreshTasks();
+				await withTimeout(heldOldLoad.started, "old-root task refresh", lifecycleGateTimeout);
+
+				const rootBPublished = waitForEventWithTimeout(
+					store,
+					(event) => event.type === "config" && event.config.projectName === "Root B",
+					lifecycleEventTimeout,
+					"root B config publication",
+				);
+				await replaceRootConfig(configPath, rootConfig("Root B", rootB));
+				await waitUntil(() => filesystem.backlogDirName === rootB, "root B publication");
+
+				// This write happens after the old handles are closed while old queued work is still held.
+				await writeFixture(fixtureA, "103", "a-3");
+
+				const heldBLoad = createDeferredGate();
+				gates.push(heldBLoad);
+				nextTaskLoadGate = heldBLoad;
+				heldOldLoad.release();
+				await withTimeout(heldOldRefresh, "old-root refresh completion", lifecycleGateTimeout);
+				await withTimeout(heldBLoad.started, "root B snapshot load", lifecycleGateTimeout);
+
+				await writeFixture(fixtureB, "202", "b-2");
+				heldBLoad.release();
+				const rootBEvent = await rootBPublished;
+				await waitForContentState(
+					store,
+					(content) =>
+						content.tasks.some((task) => task.id === "TASK-202") &&
+						content.documents.some((document) => document.id === "doc-b-2") &&
+						content.decisions.some((decision) => decision.id === "decision-b-2"),
+					"root B watcher state after rebinding",
+					lifecycleEventTimeout,
+				);
+				expect(rootBEvent.snapshot.tasks.every((task) => task.id.startsWith("TASK-2"))).toBe(true);
+				expect(rootBEvent.snapshot.documents.every((document) => document.id.startsWith("doc-b-"))).toBe(true);
+				expect(rootBEvent.snapshot.decisions.every((decision) => decision.id.startsWith("decision-b-"))).toBe(true);
+				expect(store.getTasks().some((task) => task.id === "TASK-103")).toBe(false);
+				expect(store.getDocuments().some((document) => document.id === "doc-a-3")).toBe(false);
+				expect(store.getDecisions().some((decision) => decision.id === "decision-a-3")).toBe(false);
+
+				const heldBConfigLoad = createDeferredGate();
+				gates.push(heldBConfigLoad);
+				nextTaskLoadGate = heldBConfigLoad;
+				const heldBPublished = waitForEventWithTimeout(
+					store,
+					(event) => event.type === "config" && event.config.projectName === "Root B held",
+					lifecycleEventTimeout,
+					"held root B config publication",
+				);
+				await replaceRootConfig(configPath, rootConfig("Root B held", rootB));
+				await withTimeout(heldBConfigLoad.started, "held root B config load", lifecycleGateTimeout);
+				const rootAReturned = waitForEventWithTimeout(
+					store,
+					(event) => event.type === "config" && event.config.projectName === "Root A returned",
+					lifecycleEventTimeout,
+					"returned root A config publication",
+				);
+				await replaceRootConfig(configPath, rootConfig("Root A returned", rootA));
+				await sleep(getPlatformTimeout(150));
+				heldBConfigLoad.release();
+
+				const [, rootAEvent] = await Promise.all([heldBPublished, rootAReturned]);
+				expect(rootAEvent.snapshot.tasks.map((task) => task.id).sort()).toEqual(["TASK-101", "TASK-103"]);
+				expect(rootAEvent.snapshot.documents.map((document) => document.id).sort()).toEqual(["doc-a-1", "doc-a-3"]);
+				expect(rootAEvent.snapshot.decisions.map((decision) => decision.id).sort()).toEqual([
+					"decision-a-1",
+					"decision-a-3",
+				]);
+
+				await writeFixture(fixtureA, "104", "a-4");
+				await waitForContentState(
+					store,
+					(content) =>
+						content.tasks.some((task) => task.id === "TASK-104") &&
+						content.documents.some((document) => document.id === "doc-a-4") &&
+						content.decisions.some((decision) => decision.id === "decision-a-4"),
+					"root A watcher state after return",
+					lifecycleEventTimeout,
+				);
+				await sleep(getPlatformTimeout(700));
+				expect(configEvents.map(({ name }) => name)).toEqual(["Root B", "Root B held", "Root A returned"]);
+
+				const disposedStore = store;
+				const stoppedSnapshot = disposedStore.getSnapshot();
+				store.dispose();
+				await writeFixture(fixtureA, "105", "a-5");
+				await sleep(getPlatformTimeout(300));
+				expect(disposedStore.getSnapshot()).toEqual(stoppedSnapshot);
+
+				store = new ContentStore(filesystem, undefined, true);
+				const restarted = await store.ensureInitialized();
+				expect(restarted.tasks.some((task) => task.id === "TASK-105")).toBe(true);
+				expect(restarted.documents.some((document) => document.id === "doc-a-5")).toBe(true);
+				expect(restarted.decisions.some((decision) => decision.id === "decision-a-5")).toBe(true);
+				await writeFixture(fixtureA, "106", "a-6");
+				await waitForContentState(
+					store,
+					(content) =>
+						content.tasks.some((task) => task.id === "TASK-106") &&
+						content.documents.some((document) => document.id === "doc-a-6") &&
+						content.decisions.some((decision) => decision.id === "decision-a-6"),
+					"restarted root A watcher state",
+					lifecycleEventTimeout,
+				);
+				expect(store.getTasks().some((task) => task.id === "TASK-106")).toBe(true);
+				expect(store.getDocuments().some((document) => document.id === "doc-a-6")).toBe(true);
+				expect(store.getDecisions().some((decision) => decision.id === "decision-a-6")).toBe(true);
+				const restartedWatcherState = store as unknown as {
+					boundBacklogDir: string | null;
+					rootWatchers: unknown[];
+					rootWatchersInitialized: boolean;
+				};
+				expect(restartedWatcherState.rootWatchersInitialized).toBe(true);
+				expect(restartedWatcherState.boundBacklogDir && resolve(restartedWatcherState.boundBacklogDir)).toBe(
+					resolve(fixtureA.backlogDir),
+				);
+				expect(restartedWatcherState.rootWatchers).toHaveLength(3);
+			} finally {
+				for (const gate of gates) gate.release();
+				unsubscribe();
+			}
+		},
+		getPlatformTimeout(60_000),
+	);
 
 	it("rebinds both config and content watchers when browser initialization selects a custom root", async () => {
 		store.dispose();

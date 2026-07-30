@@ -295,6 +295,8 @@ export interface PrefixConfig {
 	task: string;
 }
 
+export type AutoCommitMode = "new" | "amend-own";
+
 export interface BacklogConfig {
 	projectName: string;
 	defaultAssignee?: string;
@@ -319,6 +321,7 @@ export interface BacklogConfig {
 	hideEmptyColumns?: boolean;
 	remoteOperations?: boolean;
 	autoCommit?: boolean;
+	autoCommitMode?: AutoCommitMode;
 	/** Disable all Git integration for filesystem-only projects. */
 	filesystemOnly?: boolean;
 	zeroPaddedIds?: number;

@@ -35,7 +35,7 @@ import { formatFooterContent } from "./footer-content.ts";
 import { formatHeading } from "./heading.ts";
 import { createLoadingScreen } from "./loading.ts";
 import { formatStatusWithIcon, getStatusColor, wrapStatusColor } from "./status-icon.ts";
-import { completeTaskFromTui, formatTaskCompletionBlockedMessage } from "./task-lifecycle.ts";
+import { completeTaskFromTui, editTaskFromTui, formatTaskCompletionBlockedMessage } from "./task-lifecycle.ts";
 import { formatTaskTypeBadge } from "./task-type.ts";
 import { addScrollKeys, createScreen } from "./tui.ts";
 
@@ -1152,7 +1152,7 @@ export async function viewTaskEnhanced(
 		const selectedTask = currentSelectedTask;
 
 		try {
-			const result = await core.editTaskInTui(selectedTask.id, screen, selectedTask);
+			const result = await editTaskFromTui(core, selectedTask, screen);
 			if (result.reason === "read_only") {
 				const branchInfo = result.task?.branch ? ` in branch ${result.task.branch}` : "";
 				showTransientHelp(` {red-fg}Task is read-only${branchInfo}.{/}`);
@@ -1182,12 +1182,16 @@ export async function viewTaskEnhanced(
 
 			applyFilters();
 			if (result.changed) {
-				showTransientHelp(` {green-fg}Task ${result.task?.id ?? selectedTask.id} marked modified.{/}`);
+				const warning = result.warning ? " (editor exited with an error after saving)" : "";
+				showTransientHelp(
+					` {green-fg}Updated ${result.task?.id ?? selectedTask.id}${warning}${result.notices.length > 0 ? ` — ${result.notices.join(" ")}` : ""}{/}`,
+				);
 				return;
 			}
 			showTransientHelp(` {gray-fg}No changes detected for ${result.task?.id ?? selectedTask.id}.{/}`);
-		} catch (_error) {
-			showTransientHelp(" {red-fg}Failed to open editor.{/}");
+		} catch (error) {
+			const message = error instanceof Error ? error.message : String(error);
+			showTransientHelp(` {red-fg}Failed to edit task: ${message}{/}`);
 		}
 	};
 
@@ -1247,19 +1251,21 @@ export async function viewTaskEnhanced(
 		}
 
 		try {
-			const config = action === "archive" ? await core.fs.loadConfig() : null;
 			const result =
 				action === "complete"
 					? await completeTaskFromTui(core, task)
 					: {
-							success: await core.archiveTask(task.id, config?.autoCommit ?? false),
+							success: await core.archiveTask(task.id),
 							reason: "failed" as const,
+							notices: core.consumeAutoCommitNotices(),
 						};
 
 			if (result.success) {
 				removeTaskFromCurrentView(task.id);
 				const label = action === "complete" ? "Completed" : "Archived";
-				showTransientHelp(` {green-fg}${label} ${task.id}{/}`);
+				showTransientHelp(
+					` {green-fg}${label} ${task.id}${result.notices.length > 0 ? ` — ${result.notices.join(" ")}` : ""}{/}`,
+				);
 			} else if (action === "complete" && result.reason === "not-terminal") {
 				showTransientHelp(` {red-fg}${formatTaskCompletionBlockedMessage(task.id, result.terminalStatus)}{/}`);
 			} else {

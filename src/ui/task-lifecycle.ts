@@ -1,15 +1,24 @@
 import { DEFAULT_STATUSES } from "../constants/index.ts";
-import type { Core } from "../core/backlog.ts";
+import type { Core, TuiTaskEditResult } from "../core/backlog.ts";
 import type { Task } from "../types/index.ts";
 import { getTerminalStatus, isTerminalStatus } from "../utils/terminal-status.ts";
 
 export type CompleteTaskFromTuiResult =
-	| { success: true }
+	| { success: true; notices: string[] }
 	| { success: false; reason: "not-terminal"; terminalStatus: string }
 	| { success: false; reason: "failed" };
 
 export function formatTaskCompletionBlockedMessage(taskId: string, terminalStatus: string): string {
 	return `Task ${taskId} is not ${terminalStatus}. Set status to "${terminalStatus}" before completing it.`;
+}
+
+export async function editTaskFromTui(
+	core: Core,
+	task: Task,
+	screen: Parameters<Core["editTaskInTui"]>[1],
+): Promise<TuiTaskEditResult & { notices: string[] }> {
+	const result = await core.editTaskInTui(task.id, screen, task);
+	return { ...result, notices: result.changed ? core.consumeAutoCommitNotices() : [] };
 }
 
 export async function completeTaskFromTui(core: Core, task: Task): Promise<CompleteTaskFromTuiResult> {
@@ -21,6 +30,6 @@ export async function completeTaskFromTui(core: Core, task: Task): Promise<Compl
 		return { success: false, reason: "not-terminal", terminalStatus };
 	}
 
-	const success = await core.completeTask(task.id, config?.autoCommit ?? false);
-	return success ? { success: true } : { success: false, reason: "failed" };
+	const success = await core.completeTask(task.id);
+	return success ? { success: true, notices: core.consumeAutoCommitNotices() } : { success: false, reason: "failed" };
 }
