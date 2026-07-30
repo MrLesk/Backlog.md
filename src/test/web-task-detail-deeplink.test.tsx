@@ -560,6 +560,30 @@ const pressWithHistory = async (element: Element, key: string, init: KeyboardEve
 	await act(async () => navigated);
 };
 
+const dropTaskIntoStatus = async (
+	container: HTMLElement,
+	taskId: string,
+	sourceStatus: string,
+	targetStatus: string,
+	requestStarted: Promise<void> | undefined,
+) => {
+	const targetHeading = Array.from(container.querySelectorAll("h3")).find(
+		(heading) => heading.textContent === targetStatus,
+	);
+	const targetColumn = targetHeading?.closest(".rounded-lg");
+	expect(targetColumn).toBeTruthy();
+	const dropEvent = new window.Event("drop", { bubbles: true, cancelable: true });
+	Object.defineProperty(dropEvent, "dataTransfer", {
+		value: {
+			getData: (type: string) => (type === "text/plain" ? taskId : type === "text/status" ? sourceStatus : ""),
+		},
+	});
+	await act(async () => {
+		targetColumn?.dispatchEvent(dropEvent);
+		await requestStarted;
+	});
+};
+
 const pushRoute = async (path: string, expectations: FetchExpectation[] = []) => {
 	await runOperation(`push route ${path}`, expectations, () => {
 		window.history.pushState({}, "", path);
@@ -758,6 +782,96 @@ describe("task detail routes", () => {
 		expect(new URLSearchParams(window.location.search).get("type")).toBe("Customer Request");
 		const typeSelect = container.querySelector("select[aria-label='Filter board by type']") as HTMLSelectElement;
 		expect(Array.from(typeSelect.options).map((option) => option.value)).toContain("Customer Request");
+	});
+
+	it("keeps a newer WebSocket-reconciled task when an earlier reorder response arrives late", async () => {
+		const container = await renderApp("/board?lane=none", { advanceHealthSocket: true });
+		const dataSocket = assertHealthSocketDoesNotShadowDataSocket();
+		const sourceTask = tasks[0];
+		if (!sourceTask) throw new Error("Expected a source task");
+		const staleResponseTask: Task = {
+			...sourceTask,
+			title: "Stale reorder response",
+			status: "In Progress",
+			ordinal: 2000,
+		};
+		const externallyEditedTask: Task = {
+			...sourceTask,
+			title: "Newer external edit",
+			status: "In Progress",
+			ordinal: 2500,
+		};
+
+		const reorder = new FetchOperation("delayed reorder response", [
+			expectFetch("reorder response", "/api/tasks/reorder", { manual: true }),
+		]);
+		await dropTaskIntoStatus(
+			container,
+			sourceTask.id,
+			"To Do",
+			"In Progress",
+			reorder.startedSignals.get("reorder response")?.promise,
+		);
+		reorder.finish();
+
+		const reconciliation = new FetchOperation("newer WebSocket reconciliation", [
+			expectFetch("newer search", "/api/search", { manual: true }),
+			expectFetch("newer duplicate plan", "/api/tasks/duplicates"),
+		]);
+		await act(async () => {
+			dataSocket.deliver("tasks-updated");
+			await Promise.resolve();
+		});
+		await act(async () => {
+			reconciliation.respond(
+				"newer search",
+				json([
+					...searchResults.filter(
+						(result) => result.type !== "task" || result.task.id !== externallyEditedTask.id,
+					),
+					{ type: "task", task: externallyEditedTask, score: 1 } satisfies SearchResult,
+				]),
+			);
+			await reconciliation.settle("newer search", "newer duplicate plan");
+		});
+		reconciliation.finish();
+		expect(container.textContent).toContain(externallyEditedTask.title);
+
+		await act(async () => {
+			reorder.respond("reorder response", json({ success: true, task: staleResponseTask }));
+			await reorder.settle("reorder response");
+		});
+
+		expect(container.textContent).toContain(externallyEditedTask.title);
+		expect(container.textContent).not.toContain(staleResponseTask.title);
+	});
+
+	it("applies a reorder response immediately when no reconciliation has replaced its request task", async () => {
+		const container = await renderApp("/board?lane=none");
+		const sourceTask = tasks[0];
+		if (!sourceTask) throw new Error("Expected a source task");
+		const updatedTask: Task = {
+			...sourceTask,
+			status: "In Progress",
+			ordinal: 2000,
+		};
+
+		const reorder = new FetchOperation("immediate reorder response", [
+			expectFetch("reorder response", "/api/tasks/reorder", { manual: true }),
+		]);
+		const requestStarted = reorder.startedSignals.get("reorder response")?.promise;
+		await dropTaskIntoStatus(container, sourceTask.id, "To Do", "In Progress", requestStarted);
+		await act(async () => {
+			reorder.respond("reorder response", json({ success: true, task: updatedTask }));
+			await reorder.settle("reorder response");
+		});
+		reorder.finish();
+
+		const updatedTargetHeading = Array.from(container.querySelectorAll("h3")).find(
+			(heading) => heading.textContent === "In Progress",
+		);
+		const updatedTargetColumn = updatedTargetHeading?.closest(".rounded-lg");
+		expect(updatedTargetColumn?.textContent).toContain(sourceTask.title);
 	});
 
 	it("keeps a filtered board query when a sidebar search result opens and closes", async () => {

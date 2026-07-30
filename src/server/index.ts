@@ -192,6 +192,8 @@ export class BacklogServer {
 	private searchService: SearchService | null = null;
 	private unsubscribeContentStore?: () => void;
 	private storeReadyBroadcasted = false;
+	private tasksUpdatedBatchDepth = 0;
+	private tasksUpdatedBatchPending = false;
 
 	constructor(projectPath: string) {
 		this.core = new Core(projectPath, { enableWatchers: true });
@@ -223,13 +225,13 @@ export class BacklogServer {
 						this.storeReadyBroadcasted = true;
 						return;
 					}
-					this.broadcastTasksUpdated();
+					this.publishTasksUpdated();
 					return;
 				}
 
 				// Broadcast for tasks/documents/decisions so clients refresh caches/search
 				this.storeReadyBroadcasted = true;
-				this.broadcastTasksUpdated();
+				this.publishTasksUpdated();
 			});
 		}
 
@@ -262,6 +264,27 @@ export class BacklogServer {
 			try {
 				ws.send("tasks-updated");
 			} catch {}
+		}
+	}
+
+	private publishTasksUpdated() {
+		if (this.tasksUpdatedBatchDepth > 0) {
+			this.tasksUpdatedBatchPending = true;
+			return;
+		}
+		this.broadcastTasksUpdated();
+	}
+
+	private async batchTasksUpdated<T>(operation: () => Promise<T>): Promise<T> {
+		this.tasksUpdatedBatchDepth += 1;
+		try {
+			return await operation();
+		} finally {
+			this.tasksUpdatedBatchDepth -= 1;
+			if (this.tasksUpdatedBatchDepth === 0 && this.tasksUpdatedBatchPending) {
+				this.tasksUpdatedBatchPending = false;
+				this.broadcastTasksUpdated();
+			}
 		}
 	}
 
@@ -1622,12 +1645,14 @@ export class BacklogServer {
 				);
 			}
 
-			const { updatedTask } = await this.core.reorderTask({
-				taskId,
-				targetStatus,
-				orderedTaskIds,
-				targetMilestone,
-				commitMessage: `Reorder tasks in ${targetStatus}`,
+			const { updatedTask } = await this.batchTasksUpdated(async () => {
+				return await this.core.reorderTask({
+					taskId,
+					targetStatus,
+					orderedTaskIds,
+					targetMilestone,
+					commitMessage: `Reorder tasks in ${targetStatus}`,
+				});
 			});
 
 			return Response.json({ success: true, task: updatedTask });

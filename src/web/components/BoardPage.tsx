@@ -11,7 +11,7 @@ interface BoardPageProps {
 	onNewTask: () => void;
 	tasks: Task[];
 	onRefreshData?: () => Promise<void>;
-	onTaskUpdated?: (task: Task) => void;
+	onTaskUpdated?: (task: Task, requestTask: Task) => void;
 	statuses: string[];
 	milestones: string[];
 	availableLabels: string[];

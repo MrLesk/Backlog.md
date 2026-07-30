@@ -5,7 +5,7 @@ status: In Progress
 assignee:
   - '@codex'
 created_date: '2026-07-30 17:12'
-updated_date: '2026-07-30 17:36'
+updated_date: '2026-07-30 18:03'
 labels:
   - web-ui
   - performance
@@ -24,7 +24,9 @@ modified_files:
   - src/test/duplicate-task-repair.test.ts
   - src/test/reorder-utils.test.ts
   - src/test/server-duplicate-repair.test.ts
+  - src/test/server-reorder-publication.test.ts
   - src/test/web-board-filters.test.tsx
+  - src/test/web-task-detail-deeplink.test.tsx
 type: bug
 ordinal: 204000
 ---
@@ -58,6 +60,8 @@ Browser task mutations repeatedly parse the complete active and completed task c
 1. Add focused regression tests first: count active/completed corpus loads for one HTTP task mutation and one duplicate preview; assert ambiguous active/active, active/completed, zero-padded, cross-prefix, and filename/frontmatter mutations remain fail-closed without file changes; assert a board reorder applies the returned task without invoking a foreground refresh. Baseline on the 20-active/430-completed fixture: status PUT median 607.8 ms, duplicate preview 201.7 ms, full refresh 202.5 ms on current main.
 2. Collapse task persistence around the already-resolved original task: remove the server pre-read, preserve the one FileSystem identity scan, pass the original into a private persistence path, use the save result for ContentStore/Git, and return the updated task without reloading the corpus. Reuse one active/completed snapshot throughout duplicate detection and local repair-ID allocation.
 3. Apply the reorder response to App task state immediately and leave the existing WebSocket refresh as reconciliation. Run focused server/collision/Web tests, type-check, Biome, broader relevant tests, an ephemeral same-machine 20/430 before/after measurement, rendered-browser validation where available, simplification review, and final scoped diff inspection.
+
+4. Review-and-fix cycle one: reproduce the live multi-task reorder WebSocket fan-out and delayed-response race with real-path regressions. Batch only reorder-triggered server publications into one reconciliation, and publish mutation responses only while the task still has the object identity captured when the request began. Preserve immediate response application when no reconciliation won, then rerun collision/server/WebSocket/Board coverage and the end-to-end fixture including the surviving reconciliation.
 <!-- SECTION:PLAN:END -->
 
 ## Implementation Notes
@@ -70,4 +74,12 @@ TDD evidence: new scan-count, ambiguity/no-mutation, duplicate-preview, reorder,
 Ephemeral same-machine fixture (macOS arm64, 20 active + 430 completed, 12-sample medians): status PUT 751.365 -> 123.848 ms (83.5%); duplicate preview 244.863 -> 127.052 ms (48.1%); full App refresh 232.057 -> 116.739 ms (49.7%); reorder endpoint 507.279 -> 125.493 ms (75.3%). Combined board drag + foreground refresh fell from 739.336 ms to 125.493 ms (83.0%) because the redundant foreground refresh was removed. No durable benchmark framework or fixture was added.
 
 Simplification review removed redundant Core ContentStore upsert ownership and retained one persistence helper plus the existing snapshot-aware ID allocator.
+
+Review cycle one red probes on commit 79103a01: a live server/WebSocket test observed two tasks-updated messages for a two-task ordinal rebalance (expected one), and a rendered App test showed a delayed reorder response replacing a newer WebSocket-reconciled external edit. Root causes are per-task ContentStore events forwarded during reorder and mutation responses applied without guarding the request-start task identity.
+
+Review cycle one disposition: fixed both Important findings without changing persistence, ContentStore publication, collision checks, callbacks, or WebSocket external reconciliation. BacklogServer now defers ContentStore task broadcasts only while a reorder request is active and flushes exactly one tasks-updated message, including on partial-failure exit. Board captures the task object at request start; App applies the response only if reconciliation has not replaced that object. A separate full-App regression confirms uninterrupted responses still update the board immediately.
+
+Verification for the correction: the two new real-path tests were observed failing on 79103a01 (two WebSocket publications; stale response overwrote the external edit) and pass after the fix. Focused server/WebSocket/Board/collision/ContentStore/watcher suite: 179 pass, 0 fail. Post-simplification Web tests: 36 pass, 0 fail. Full suite: 1788 pass, 4 skip, 0 fail across 200 files. bunx tsc --noEmit, bun run check . (340 files), and git diff --check pass.
+
+Revised ephemeral benchmark uses fresh same-machine macOS arm64 Git fixture copies with 20 active and 430 completed tasks, forces a two-task ordinal rebalance for every sample, and defines completion as both the mutation response and all surviving App refresh requests (statuses, config, search, milestones, archived milestones, and duplicate preview). Across 12-sample medians, current main actual sequential mutation + foreground refresh is 1308.412 ms (p95 1701.177); corrected branch with one WebSocket reconciliation is 230.886 ms (p95 269.255), an 82.4% reduction. Versus pre-review 79103a01 specifically, two WebSocket reconciliations took 319.125 ms (p95 410.763), so coalescing to one reduces this corrected-path median another 27.6%. No benchmark artifact was added.
 <!-- SECTION:NOTES:END -->

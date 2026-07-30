@@ -518,10 +518,10 @@ function AppContent() {
     await loadAllData();
   }, [loadAllData]);
 
-  const handleBoardTaskUpdated = useCallback((updatedTask: Task) => {
+  const handleBoardTaskUpdated = useCallback((updatedTask: Task, requestTask: Task) => {
     setTasks((currentTasks) => {
       const resolution = resolveTaskById(currentTasks, updatedTask.id);
-      if (resolution.status !== 'found') {
+      if (resolution.status !== 'found' || resolution.task !== requestTask) {
         return currentTasks;
       }
       return currentTasks.map((task) => (task === resolution.task ? updatedTask : task));
