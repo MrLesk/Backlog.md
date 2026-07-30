@@ -290,11 +290,15 @@ export async function initializeProject(
 		}
 	}
 
+	const persistedConfig = await core.filesystem.loadConfigForMutation();
+	if (!persistedConfig) {
+		throw new Error("Unable to reload the saved Backlog configuration");
+	}
 	return {
 		success: true,
 		projectName,
 		isReInitialization,
-		config,
+		config: persistedConfig,
 		mcpResults: Object.keys(mcpResults).length > 0 ? mcpResults : undefined,
 	};
 }

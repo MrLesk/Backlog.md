@@ -283,12 +283,13 @@ describe("autoCommitMode", () => {
 		expect(results).toEqual([]);
 	}, 20_000);
 
-	test("re-initialization agent writes honor post-save current autoCommit bytes in both directions", async () => {
+	test("re-initialization writes and results honor post-save current automatic-commit bytes", async () => {
 		for (const scenario of [
-			{ requested: true, current: false },
-			{ requested: false, current: true },
+			{ name: "true-to-false", requested: true, current: false, requestedMode: "amend-own", currentMode: "amend-own" },
+			{ name: "false-to-true", requested: false, current: true, requestedMode: "amend-own", currentMode: "amend-own" },
+			{ name: "amend-to-new", requested: true, current: true, requestedMode: "amend-own", currentMode: "new" },
 		] as const) {
-			const root = join(testDir, `${scenario.requested}-to-${scenario.current}`);
+			const root = join(testDir, scenario.name);
 			await mkdir(root, { recursive: true });
 			await $`git init -q -b main`.cwd(root);
 			await $`git config user.email test@example.com`.cwd(root);
@@ -305,19 +306,23 @@ describe("autoCommitMode", () => {
 				const savedBytes = await Bun.file(configPath).text();
 				await Bun.write(
 					configPath,
-					savedBytes.replace(`auto_commit: ${scenario.requested}`, `auto_commit: ${scenario.current}`),
+					savedBytes
+						.replace(`auto_commit: ${scenario.requested}`, `auto_commit: ${scenario.current}`)
+						.replace(`auto_commit_mode: ${scenario.requestedMode}`, `auto_commit_mode: ${scenario.currentMode}`),
 				);
 			};
 			const beforeCount = await commitCount(root);
 
-			await initializeProject(scenarioCore, {
+			const result = await initializeProject(scenarioCore, {
 				projectName: existingConfig.projectName,
 				integrationMode: "cli",
 				agentInstructions: ["AGENTS.md"],
 				existingConfig,
-				advancedConfig: { autoCommit: scenario.requested, autoCommitMode: "amend-own" },
+				advancedConfig: { autoCommit: scenario.requested, autoCommitMode: scenario.requestedMode },
 			});
 
+			expect(result.config.autoCommit).toBe(scenario.current);
+			expect(result.config.autoCommitMode).toBe(scenario.currentMode);
 			expect(await Bun.file(join(root, "AGENTS.md")).exists()).toBe(true);
 			expect(await commitCount(root)).toBe(beforeCount + (scenario.current ? 1 : 0));
 			if (scenario.current) {

@@ -112,6 +112,7 @@ export class GitOperations {
 	private readonly configLoader?: GitConfigLoader;
 	private readonly operationConfigContext = new AsyncLocalStorage<{ config: GitOperationConfig | null }>();
 	private hookRunSupported?: boolean;
+	private hookRunStdinSupported?: boolean;
 	private updateRefTransactionsSupported?: boolean;
 
 	constructor(projectRoot: string, config: BacklogConfig | null = null, configLoader?: GitConfigLoader) {
@@ -898,7 +899,10 @@ export class GitOperations {
 		input?: string,
 	): Promise<void> {
 		const hookEnv = { ...env, GIT_EDITOR: ":" };
-		if (await this.supportsHookRun(repoRoot)) {
+		if (
+			(await this.supportsHookRun(repoRoot)) &&
+			(input === undefined || (await this.supportsHookRunStdin(repoRoot)))
+		) {
 			const stdinDirectory = input === undefined ? null : await mkdtemp(join(tmpdir(), "backlog-git-hook-stdin-"));
 			try {
 				const stdinPath = stdinDirectory ? join(stdinDirectory, "stdin") : null;
@@ -930,11 +934,26 @@ export class GitOperations {
 			const major = Number(match?.[1]);
 			const minor = Number(match?.[2]);
 			this.updateRefTransactionsSupported =
-				Number.isInteger(major) && Number.isInteger(minor) && (major > 2 || (major === 2 && minor >= 28));
+				Number.isInteger(major) && Number.isInteger(minor) && (major > 2 || (major === 2 && minor >= 27));
 		} catch {
 			this.updateRefTransactionsSupported = false;
 		}
 		return this.updateRefTransactionsSupported;
+	}
+
+	private async supportsHookRunStdin(repoRoot: string): Promise<boolean> {
+		if (this.hookRunStdinSupported !== undefined) return this.hookRunStdinSupported;
+		try {
+			const { stdout } = await this.execGit(["version"], { cwd: repoRoot, readOnly: true });
+			const match = stdout.match(/git version (\d+)\.(\d+)/);
+			const major = Number(match?.[1]);
+			const minor = Number(match?.[2]);
+			this.hookRunStdinSupported =
+				Number.isInteger(major) && Number.isInteger(minor) && (major > 2 || (major === 2 && minor >= 40));
+		} catch {
+			this.hookRunStdinSupported = false;
+		}
+		return this.hookRunStdinSupported;
 	}
 
 	private async supportsHookRun(repoRoot: string): Promise<boolean> {

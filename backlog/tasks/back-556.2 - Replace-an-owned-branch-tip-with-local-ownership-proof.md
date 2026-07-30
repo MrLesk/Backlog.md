@@ -5,7 +5,7 @@ status: In Progress
 assignee:
   - '@andreas'
 created_date: '2026-07-28 14:46'
-updated_date: '2026-07-30 04:37'
+updated_date: '2026-07-30 04:59'
 labels:
   - git
 dependencies:
@@ -54,9 +54,9 @@ See BACK-556 for the full ownership and safety contract, including the accepted 
 - [x] #11 A replacement commit records valid ownership evidence for its own new SHA on the same terms as a newly created commit, so an amendable sequence survives repeated replacements. If that recording does not succeed, the sequence ends at that commit and the next operation creates a new commit.
 - [x] #12 After a failed expected-old-SHA update, ownership and eligibility are re-evaluated, and a concurrent non-Backlog commit is never overwritten.
 - [x] #13 Concurrent changes to the selected paths are either incorporated into the commit or reported as an error, and no selected change is lost silently.
-- [ ] #14 The replacement path runs pre-commit, prepare-commit-msg with message as its source argument, commit-msg, and post-commit consistently with Git amend semantics, and invokes exactly one post-rewrite amend carrying the old and new commit IDs, while the new-commit path invokes no post-rewrite. Pre-commit and commit-message hook staging remains isolated; post-hook mutations against the real index and worktree persist.
+- [x] #14 The replacement path runs pre-commit, prepare-commit-msg with message as its source argument, commit-msg, and post-commit consistently with Git amend semantics, and invokes exactly one post-rewrite amend carrying the old and new commit IDs, while the new-commit path invokes no post-rewrite. Pre-commit and commit-message hook staging remains isolated; post-hook mutations against the real index and worktree persist.
 - [x] #15 post-commit and post-rewrite are notifications: a failing post hook does not fail the operation or move HEAD.
-- [ ] #16 bypassGitHooks and the legacy hook-runner path behave the same for replacements as for new commits.
+- [x] #16 bypassGitHooks and the legacy hook-runner path behave the same for replacements as for new commits.
 - [x] #17 Merge, rebase, cherry-pick, and revert in-progress guards fail closed without moving HEAD or consuming unrelated index entries.
 - [x] #18 Git-level tests cover repeated replacement sequences with evidence re-recorded at each step; subject shapes for single, factored, elided, and mixed-verb cases; duplicate collapsing; region parsing when a hook has appended content outside the region; repeated detached and evidence-unavailable new commits; root commits; manual and publication boundaries; local branches, lightweight tags, and annotated tags pointing directly to candidates and to descendants; pre and message hook isolation, post-hook real-index mutations, and failing post hooks; signed-to-unsigned and unsigned-to-signed configuration transitions; required-signing failures; linked worktrees and branch switches; and concurrent branch movement.
 - [x] #19 Legacy new-mode commits contain no rolling-operation region or ownership evidence; only an amend-own sequence start or replacement records exact-SHA ownership, and switching from new to amend-own cannot rewrite the pre-opt-in tip.
@@ -64,17 +64,17 @@ See BACK-556 for the full ownership and safety contract, including the accepted 
 - [x] #21 Ownership is branch-local: switching away and returning to an otherwise unchanged safe branch intentionally resumes its amendable sequence, and documentation plus tests state that behavior.
 - [x] #22 Rolling messages store structured operation descriptors so production task, draft, document, decision, milestone, and agent messages produce stable factored subjects without parsing incidental English display strings.
 - [x] #23 Document, decision, and agent-instruction upserts record the real create/add versus update action, so distinct operations never collapse under one inaccurate descriptor.
-- [ ] #24 Named and detached finalization exposes exactly one logical reference-transaction hook lifecycle in the real repository/HEAD context: prepared runs before movement and can veto it, committed follows success, aborted follows veto or failed movement, and internal ref/reflog plumbing does not duplicate the transaction.
+- [x] #24 Named and detached finalization exposes exactly one logical reference-transaction hook lifecycle in the real repository/HEAD context: prepared runs before movement and can veto it, committed follows success, aborted follows veto or failed movement, and internal ref/reflog plumbing does not duplicate the transaction.
 - [x] #25 Final named-branch movement preserves exact ownership-reflog continuity: any target-branch reflog transition after the last validation, including same-OID ABA, prevents a replacement from being reported owned and cannot be overwritten by the automatic CAS/rollback path.
-- [ ] #26 When target-ref transactions are unsupported, amend-own conservatively treats an otherwise owned tip as non-owned before parent/message construction, creates a normal new owned-sequence start through expected-OID CAS, and never performs an unlocked replacement.
-- [ ] #27 Reference-transaction and post-rewrite stdin reach hooks through a capability-correct runner on Git 2.36–2.39 and 2.40+, while Git 2.27 participates in atomic target-ref transaction replacement rather than unnecessary degradation.
+- [x] #26 When target-ref transactions are unsupported, amend-own conservatively treats an otherwise owned tip as non-owned before parent/message construction, creates a normal new owned-sequence start through expected-OID CAS, and never performs an unlocked replacement.
+- [x] #27 Reference-transaction and post-rewrite stdin reach hooks through a capability-correct runner on Git 2.36–2.39 and 2.40+, while Git 2.27 participates in atomic target-ref transaction replacement rather than unnecessary degradation.
 <!-- AC:END -->
 
 ## Definition of Done
 <!-- DOD:BEGIN -->
-- [ ] #1 bunx tsc --noEmit passes when TypeScript touched
-- [ ] #2 bun run check . passes when formatting/linting touched
-- [ ] #3 bun test (or scoped test) passes
+- [x] #1 bunx tsc --noEmit passes when TypeScript touched
+- [x] #2 bun run check . passes when formatting/linting touched
+- [x] #3 bun test (or scoped test) passes
 <!-- DOD:END -->
 
 ## Implementation Plan
@@ -155,6 +155,8 @@ Pass 20 M2: modern final target locking is correct but unconditional. Git 2.27 r
 Pass 20 legacy ownership fallback complete. Cached Git capability detection enables atomic target-ref transactions at 2.28+; older Git never constructs an owned replacement, but normal expected-OID new/start commits and reflog evidence continue. Simulated 2.27 coverage proves default new success, sequence start ownership, and repeated amend-own degradation to new commits with correct parents/trees. Modern final-window ABA/hook coverage remains green. Focused 65/492; integrated 1,876 passed, 8,352 assertions.
 
 Pass 21 H1/M2 corrects two independent capabilities: the current legacy-hook test does not exercise --to-stdin rejection on 2.36-2.39, and the 2.27 transaction degradation test asserts a historically incorrect boundary.
+
+Pass 21 capability boundaries complete. Independent cached checks gate update-ref transactions at 2.27, hook run at 2.36, and hook run stdin at 2.40. A 2.36/2.39/2.40 matrix proves two real prepared/committed lifecycles plus one post-rewrite amendment, exact input delivery, replacement, and no unavailable --to-stdin invocation. A 2.27 regression proves atomic replacement while 2.26 remains conservative. Focused 67/521; integrated 1,878 passed, 8,381 assertions.
 <!-- SECTION:NOTES:END -->
 
 ## Comments

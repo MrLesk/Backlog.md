@@ -601,7 +601,7 @@ describe("owned automatic commit replacement", () => {
 		const privateGit = git as unknown as PrivateGit;
 		const originalExec = privateGit.execGit.bind(git);
 		privateGit.execGit = async (args, options) =>
-			args[0] === "version" ? { stdout: "git version 2.27.1\n", stderr: "" } : originalExec(args, options);
+			args[0] === "version" ? { stdout: "git version 2.26.3\n", stderr: "" } : originalExec(args, options);
 		const baselineCount = await commitCount(testDir);
 
 		const defaultNew = await commitSelected(testDir, git, "backlog: Update task BACK-1", "new\n", {
@@ -633,6 +633,69 @@ describe("owned automatic commit replacement", () => {
 		expect(next.amended).toBe(false);
 		expect(await commitCount(testDir)).toBe(baselineCount + 4);
 	}, 20_000);
+
+	it("uses prepared target-ref transactions starting with Git 2.27", async () => {
+		const git = await initializeRepository(testDir);
+		const privateGit = git as unknown as PrivateGit;
+		const originalExec = privateGit.execGit.bind(git);
+		privateGit.execGit = async (args, options) =>
+			args[0] === "version" ? { stdout: "git version 2.27.0\n", stderr: "" } : originalExec(args, options);
+		const first = await commitSelected(testDir, git, "backlog: Update task BACK-1", "one\n");
+		const beforeReplacement = await commitCount(testDir);
+
+		const replacement = await commitSelected(testDir, git, "backlog: Update task BACK-2", "two\n", {
+			automaticCommitIntent: "amend-own",
+		});
+
+		expect(replacement.amended).toBe(true);
+		expect(replacement.previousCommitId).toBe(first.commitId);
+		expect(replacement.ownershipRecorded).toBe(true);
+		expect(await commitCount(testDir)).toBe(beforeReplacement);
+		expect(await $`git show HEAD:selected.txt`.cwd(testDir).text()).toBe("two\n");
+	}, 20_000);
+
+	it("routes stdin hooks by their independent Git 2.40 capability", async () => {
+		for (const version of ["2.36.0", "2.39.5", "2.40.0"] as const) {
+			const root = join(testDir, `hook-stdin-${version}`);
+			const git = await initializeRepository(root);
+			const transactionEvents = join(root, "reference-events");
+			const transactionInput = join(root, "reference-input");
+			const rewriteEvents = join(root, "rewrite-events");
+			await installHook(
+				root,
+				"reference-transaction",
+				`printf '%s\\n' "$1" >> "${transactionEvents}"; cat >> "${transactionInput}"`,
+			);
+			await installHook(root, "post-rewrite", `printf '%s\\n' "$1" >> "${rewriteEvents}"; cat >/dev/null`);
+			const privateGit = git as unknown as PrivateGit;
+			const originalExec = privateGit.execGit.bind(git);
+			let stdinHookRunCalls = 0;
+			privateGit.execGit = async (args, options) => {
+				if (args[0] === "version") return { stdout: `git version ${version}\n`, stderr: "" };
+				if (args[0] === "hook" && args.some((arg) => arg.startsWith("--to-stdin="))) {
+					stdinHookRunCalls += 1;
+					if (version !== "2.40.0") throw new Error("git hook run: unknown option --to-stdin");
+				}
+				return originalExec(args, options);
+			};
+
+			await commitSelected(root, git, "backlog: Update task BACK-1", "one\n");
+			const replacement = await commitSelected(root, git, "backlog: Update task BACK-2", "two\n", {
+				automaticCommitIntent: "amend-own",
+			});
+
+			expect(replacement.amended).toBe(true);
+			expect((await Bun.file(transactionEvents).text()).trim().split("\n")).toEqual([
+				"prepared",
+				"committed",
+				"prepared",
+				"committed",
+			]);
+			expect((await Bun.file(transactionInput).text()).trim().split("\n")).toHaveLength(4);
+			expect((await Bun.file(rewriteEvents).text()).trim()).toBe("amend");
+			expect(stdinHookRunCalls > 0).toBe(version === "2.40.0");
+		}
+	}, 45_000);
 
 	it("uses current signing configuration and leaves HEAD unchanged on signing failure", async () => {
 		const git = await initializeRepository(testDir);

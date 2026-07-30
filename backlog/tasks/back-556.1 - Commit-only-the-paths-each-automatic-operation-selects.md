@@ -5,7 +5,7 @@ status: In Progress
 assignee:
   - '@andreas'
 created_date: '2026-07-28 14:46'
-updated_date: '2026-07-30 04:37'
+updated_date: '2026-07-30 04:59'
 labels:
   - git
 dependencies: []
@@ -31,22 +31,22 @@ This is a correctness fix that stands on its own under the current default autom
 - [x] #1 Every production automatic-commit path commits only the files selected for that operation, covering tasks, drafts, bulk updates and reorders, lifecycle moves, milestones, documents, decisions, and agent-instruction updates.
 - [x] #2 Pre-existing unrelated staged and unstaged paths, and unrelated paths staged by pre-commit or commit-message hooks through the isolated commit index, remain outside the commit and retain their prior real-index and worktree state; mutations made by post-commit hooks against the real index and worktree persist according to normal Git semantics.
 - [x] #3 Operations that move files, such as archive and milestone rename, commit the complete set of source and target paths the operation touched, with no stray additions.
-- [ ] #4 Existing selected-path robustness is preserved: temporary-index isolation, owned-index reconciliation, retries, current-configuration signing and signing failures, legacy and modern hook runners, and atomic expected-old-SHA branch updates.
+- [x] #4 Existing selected-path robustness is preserved: temporary-index isolation, owned-index reconciliation, retries, current-configuration signing and signing failures, legacy and modern hook runners, and atomic expected-old-SHA branch updates.
 - [x] #5 Merge, rebase, cherry-pick, and revert in-progress guards continue to fail closed without moving HEAD, corrupting operation metadata, or consuming unrelated index entries.
 - [x] #6 Tests cover unrelated index and worktree state, pre-commit and commit-message hook staging isolation, post-commit real-index mutations, file-move operations, custom backlog roots, linked worktrees, and projects without Git.
 - [x] #7 Promotion and demotion use one canonical lifecycle implementation that returns the complete touched-path result, while duplicate task IDs continue to raise the explicit ambiguity diagnostic.
 - [x] #8 Title-changing draft updates return and commit both the previous and replacement paths in new and amend-own modes, leaving no duplicate in HEAD or unstaged deletion.
 - [x] #9 Lifecycle target validation and unexpected write failures propagate their actionable original errors; null/false is reserved for a genuinely absent source.
 - [x] #10 Named finalization detects an exact-branch reflog ABA in the remaining post-validation/pre-CAS window and rejects or safely rolls back without consuming the caller selected index/worktree state.
-- [ ] #11 On Git without update-ref transaction commands, selected-path named new/start-owned commits retain expected-old-OID CAS and caller byte preservation; amend-own never performs an unlocked replacement and instead builds a new commit.
-- [ ] #12 Selected-path commits run reference-transaction input hooks successfully on Git 2.36–2.39 through the legacy executable path and on Git 2.40+ through hook run --to-stdin, with no duplicate lifecycle or lost caller bytes.
+- [x] #11 On Git without update-ref transaction commands, selected-path named new/start-owned commits retain expected-old-OID CAS and caller byte preservation; amend-own never performs an unlocked replacement and instead builds a new commit.
+- [x] #12 Selected-path commits run reference-transaction input hooks successfully on Git 2.36–2.39 through the legacy executable path and on Git 2.40+ through hook run --to-stdin, with no duplicate lifecycle or lost caller bytes.
 <!-- AC:END -->
 
 ## Definition of Done
 <!-- DOD:BEGIN -->
-- [ ] #1 bunx tsc --noEmit passes when TypeScript touched
-- [ ] #2 bun run check . passes when formatting/linting touched
-- [ ] #3 bun test (or scoped test) passes
+- [x] #1 bunx tsc --noEmit passes when TypeScript touched
+- [x] #2 bun run check . passes when formatting/linting touched
+- [x] #3 bun test (or scoped test) passes
 <!-- DOD:END -->
 
 ## Implementation Plan
@@ -133,6 +133,8 @@ Pass 20 M2 reopens compatibility: update-ref start/prepare/commit arrived in Git
 Pass 20 legacy selected-path finalization complete. Simulated Git 2.27 preserves default new and start-owned named expected-OID commits; amend-own deopts before parent/message construction and creates a new child rather than an unlocked replacement. Selected trees, commit ancestry, ownership reporting, and repeated commit counts are asserted. Focused 65/492 and integrated 1,876/8,352 gates pass.
 
 Pass 21 H1/M2: reference-transaction always carries stdin, so the 2.36 hook-run threshold invokes an unavailable --to-stdin option through Git 2.39; meanwhile update-ref transactions already exist in 2.27.
+
+Pass 21 selected-path version matrix complete. Git 2.36/2.39 reference-transaction and post-rewrite stdin runs through legacy executable hooks; 2.40 uses hook run --to-stdin. All commit/replace successfully with exact prepared/committed bytes/counts. Git 2.27 takes prepared target-ref replacement; 2.26 retains safe new-commit fallback. Focused 67/521 and integrated 1,878/8,381 gates pass.
 <!-- SECTION:NOTES:END -->
 
 ## Comments
