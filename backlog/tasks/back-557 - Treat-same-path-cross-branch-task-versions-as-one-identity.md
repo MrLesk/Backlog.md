@@ -1,11 +1,11 @@
 ---
 id: BACK-557
 title: Treat same-path cross-branch task versions as one identity
-status: In Progress
+status: Done
 assignee:
   - '@codex'
 created_date: '2026-07-30 17:11'
-updated_date: '2026-07-30 18:21'
+updated_date: '2026-07-30 18:28'
 labels:
   - browser
   - git
@@ -25,17 +25,17 @@ Browser single-task reads currently return 409 when one canonical task ID exists
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 With checkActiveBranches enabled, saving a task through the browser and immediately reopening it succeeds when active refs contain the same ID at the same project-relative task path; the local working-copy content is returned.
-- [ ] #2 Divergent versions of the same canonical ID at the same task path across active local or remote refs resolve as one task, while branch-only cross-branch visibility remains intact.
-- [ ] #3 The same normalized ID at distinct active task paths, or multiple matching local active or completed files, still fails closed with 409.
-- [ ] #4 Incremental task allocation and archive-as-soft-delete semantics remain unchanged; archived IDs remain reusable.
+- [x] #1 With checkActiveBranches enabled, saving a task through the browser and immediately reopening it succeeds when active refs contain the same ID at the same project-relative task path; the local working-copy content is returned.
+- [x] #2 Divergent versions of the same canonical ID at the same task path across active local or remote refs resolve as one task, while branch-only cross-branch visibility remains intact.
+- [x] #3 The same normalized ID at distinct active task paths, or multiple matching local active or completed files, still fails closed with 409.
+- [x] #4 Incremental task allocation and archive-as-soft-delete semantics remain unchanged; archived IDs remain reusable.
 <!-- AC:END -->
 
 ## Definition of Done
 <!-- DOD:BEGIN -->
-- [ ] #1 bunx tsc --noEmit passes when TypeScript touched
-- [ ] #2 bun run check . passes when formatting/linting touched
-- [ ] #3 bun test (or scoped test) passes
+- [x] #1 bunx tsc --noEmit passes when TypeScript touched
+- [x] #2 bun run check . passes when formatting/linting touched
+- [x] #3 bun test (or scoped test) passes
 <!-- DOD:END -->
 
 ## Implementation Plan
@@ -78,4 +78,12 @@ Origin integration before final re-review:
 - Fetched and rebased the three unpushed BACK-557 commits onto origin/main fef6e763 (BACK-560 loopback binding). The rebase completed without conflicts or manual executable-code resolution.
 - Confirmed BACK-560 remains intact: the server binds/displays 127.0.0.1 and BACK-557 changes only the task identity comparison in the overlapping server file.
 - Rebased verification: new Core/MCP regressions 3 pass; server identity suite 21 pass; Core/MCP/identity/remote suite 99 pass; BACK-560 hostname/port suite 12 pass; TypeScript, Biome, and diff checks passed. The full suite was not rerun because the rebase had no conflict resolution or manual executable changes.
+
+Finalization validation on rebased origin/main tree bec40718: bun test completed with 1786 pass, 4 skip, 0 fail across 200 files; bunx tsc --noEmit passed; bun run check . passed. Focused evidence also covered browser save/reopen, same-path local and remote variants, distinct-path and duplicate ambiguity, Core and MCP mutation behavior, ID allocation, and archive soft-delete behavior.
 <!-- SECTION:NOTES:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+Changed active-branch task identity to use the canonical task ID together with the normalized project-relative task path. Same-path versions now reopen and mutate the current working-copy task, while genuinely different paths and duplicate local files still fail closed. Verified with focused browser, Core, MCP, branch, remote, allocation, and archive tests plus the full suite (1786 pass, 4 skip, 0 fail), TypeScript, and Biome.
+<!-- SECTION:FINAL_SUMMARY:END -->
