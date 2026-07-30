@@ -5,7 +5,7 @@ status: In Progress
 assignee:
   - '@andreas'
 created_date: '2026-07-28 14:46'
-updated_date: '2026-07-30 03:34'
+updated_date: '2026-07-30 03:57'
 labels:
   - git
 dependencies: []
@@ -31,20 +31,21 @@ This is a correctness fix that stands on its own under the current default autom
 - [x] #1 Every production automatic-commit path commits only the files selected for that operation, covering tasks, drafts, bulk updates and reorders, lifecycle moves, milestones, documents, decisions, and agent-instruction updates.
 - [x] #2 Pre-existing unrelated staged and unstaged paths, and unrelated paths staged by pre-commit or commit-message hooks through the isolated commit index, remain outside the commit and retain their prior real-index and worktree state; mutations made by post-commit hooks against the real index and worktree persist according to normal Git semantics.
 - [x] #3 Operations that move files, such as archive and milestone rename, commit the complete set of source and target paths the operation touched, with no stray additions.
-- [x] #4 Existing selected-path robustness is preserved: temporary-index isolation, owned-index reconciliation, retries, current-configuration signing and signing failures, legacy and modern hook runners, and atomic expected-old-SHA branch updates.
+- [ ] #4 Existing selected-path robustness is preserved: temporary-index isolation, owned-index reconciliation, retries, current-configuration signing and signing failures, legacy and modern hook runners, and atomic expected-old-SHA branch updates.
 - [x] #5 Merge, rebase, cherry-pick, and revert in-progress guards continue to fail closed without moving HEAD, corrupting operation metadata, or consuming unrelated index entries.
 - [x] #6 Tests cover unrelated index and worktree state, pre-commit and commit-message hook staging isolation, post-commit real-index mutations, file-move operations, custom backlog roots, linked worktrees, and projects without Git.
 - [x] #7 Promotion and demotion use one canonical lifecycle implementation that returns the complete touched-path result, while duplicate task IDs continue to raise the explicit ambiguity diagnostic.
 - [x] #8 Title-changing draft updates return and commit both the previous and replacement paths in new and amend-own modes, leaving no duplicate in HEAD or unstaged deletion.
 - [x] #9 Lifecycle target validation and unexpected write failures propagate their actionable original errors; null/false is reserved for a genuinely absent source.
 - [x] #10 Named finalization detects an exact-branch reflog ABA in the remaining post-validation/pre-CAS window and rejects or safely rolls back without consuming the caller selected index/worktree state.
+- [ ] #11 On Git without update-ref transaction commands, selected-path named new/start-owned commits retain expected-old-OID CAS and caller byte preservation; amend-own never performs an unlocked replacement and instead builds a new commit.
 <!-- AC:END -->
 
 ## Definition of Done
 <!-- DOD:BEGIN -->
-- [x] #1 bunx tsc --noEmit passes when TypeScript touched
-- [x] #2 bun run check . passes when formatting/linting touched
-- [x] #3 bun test (or scoped test) passes
+- [ ] #1 bunx tsc --noEmit passes when TypeScript touched
+- [ ] #2 bun run check . passes when formatting/linting touched
+- [ ] #3 bun test (or scoped test) passes
 <!-- DOD:END -->
 
 ## Implementation Plan
@@ -83,6 +84,8 @@ This is a correctness fix that stands on its own under the current default autom
 18. Reconcile actual post-editor path/content before selected-path staging: valid modify-then-fail bytes follow the normal task commit, while missing/moved or invalid-identity content fails with explicit uncommitted recovery guidance. Add direct Git/state regressions.
 
 19. Extend the selected-path final lease with exact branch-reflog continuity across the final ref update. Add a deterministic alternate-Git-context ABA immediately before the synthetic CAS, then prove caller staged/worktree bytes and manual branch history survive without a successful amendment.
+
+20. Add capability-gated named finalization. Use the prepared target-ref transaction where supported; on legacy Git, deopt ownership before tree/parent construction and use the existing expected-OID update only for new/start-owned commits. Simulate Git 2.27 while proving default new and amend-own degradation preserve selected index/worktree state and commit correct trees.
 <!-- SECTION:PLAN:END -->
 
 ## Implementation Notes
@@ -121,6 +124,8 @@ Pass 18 external-editor reconciliation complete. Valid modify-then-fail bytes us
 Pass 19 H1 reopens final selected-path robustness: expected-OID CAS cannot distinguish an ownership-closing target-branch old→parent→old reflog transition after validation.
 
 Pass 19 selected-path final lease complete. The target branch transaction is prepared and locked before complete lease revalidation, so an expected-OID CAS cannot overlook same-OID reflog ABA. Regression preserves selected caller index/worktree bytes and the original reachable tree while retaining concurrent manual reflog history. Focused 63/473 and integrated 1,874/8,333 gates pass.
+
+Pass 20 M2 reopens compatibility: update-ref start/prepare/commit arrived in Git 2.28, but all named automatic commits currently invoke it without a capability gate or fallback.
 <!-- SECTION:NOTES:END -->
 
 ## Comments

@@ -5,7 +5,7 @@ status: In Progress
 assignee:
   - '@andreas'
 created_date: '2026-07-28 14:46'
-updated_date: '2026-07-30 03:34'
+updated_date: '2026-07-30 03:57'
 labels:
   - git
 dependencies:
@@ -47,12 +47,12 @@ See BACK-556 for the full ownership and safety contract, including the accepted 
 - [x] #4 A commit holding one operation keeps that operation subject unchanged. From the second distinct operation onward the subject is factored: operations sharing a verb and entity type list their IDs, the line elides past a 72 character budget with a plus N more suffix, and mixed verbs fall back to a count of distinct operations.
 - [x] #5 Ownership is decided from exact repository-local provenance for the current HEAD SHA, never from author, changed-path, or subject heuristics.
 - [x] #6 The evidence format, the rule that matches a candidate HEAD against it, and the definition of stale evidence are specified in one place and covered by tests.
-- [x] #7 Cloned, legacy, manually created, manually amended, and reset commits, and any tip whose ownership evidence is missing, stale, malformed, or ambiguous, are reported as not owned.
+- [ ] #7 Cloned, legacy, manually created, manually amended, and reset commits, and any tip whose ownership evidence is missing, stale, malformed, or ambiguous, are reported as not owned.
 - [x] #8 Ownership tracking creates no Git refs, notes, commits, trees, or blobs and contributes no ownership-only object to git rev-list --all --objects; tests separately account for the intended automatic commit and branch-tip graph changes.
 - [x] #9 A tip is reported as not owned when HEAD is detached, is a merge commit, is reachable from a remote-tracking ref, or is reachable from any local branch other than the current branch or any tag, including annotated tags and both refs that point directly to the candidate and refs that point to a descendant, using local refs only and performing no network operation.
-- [x] #10 A new commit is reported as owned only when it lands on a named branch and valid evidence for its exact SHA is successfully recorded. Commits created with detached HEAD or while the selected ownership channel cannot record evidence, including a branch with no usable reflog while automatic reflog creation is disabled, remain unowned, and repeated operations in either state cannot enter the replacement path.
-- [x] #11 A replacement commit records valid ownership evidence for its own new SHA on the same terms as a newly created commit, so an amendable sequence survives repeated replacements. If that recording does not succeed, the sequence ends at that commit and the next operation creates a new commit.
-- [x] #12 After a failed expected-old-SHA update, ownership and eligibility are re-evaluated, and a concurrent non-Backlog commit is never overwritten.
+- [ ] #10 A new commit is reported as owned only when it lands on a named branch and valid evidence for its exact SHA is successfully recorded. Commits created with detached HEAD or while the selected ownership channel cannot record evidence, including a branch with no usable reflog while automatic reflog creation is disabled, remain unowned, and repeated operations in either state cannot enter the replacement path.
+- [ ] #11 A replacement commit records valid ownership evidence for its own new SHA on the same terms as a newly created commit, so an amendable sequence survives repeated replacements. If that recording does not succeed, the sequence ends at that commit and the next operation creates a new commit.
+- [ ] #12 After a failed expected-old-SHA update, ownership and eligibility are re-evaluated, and a concurrent non-Backlog commit is never overwritten.
 - [x] #13 Concurrent changes to the selected paths are either incorporated into the commit or reported as an error, and no selected change is lost silently.
 - [x] #14 The replacement path runs pre-commit, prepare-commit-msg with message as its source argument, commit-msg, and post-commit consistently with Git amend semantics, and invokes exactly one post-rewrite amend carrying the old and new commit IDs, while the new-commit path invokes no post-rewrite. Pre-commit and commit-message hook staging remains isolated; post-hook mutations against the real index and worktree persist.
 - [x] #15 post-commit and post-rewrite are notifications: a failing post hook does not fail the operation or move HEAD.
@@ -66,13 +66,14 @@ See BACK-556 for the full ownership and safety contract, including the accepted 
 - [x] #23 Document, decision, and agent-instruction upserts record the real create/add versus update action, so distinct operations never collapse under one inaccurate descriptor.
 - [x] #24 Named and detached finalization exposes exactly one logical reference-transaction hook lifecycle in the real repository/HEAD context: prepared runs before movement and can veto it, committed follows success, aborted follows veto or failed movement, and internal ref/reflog plumbing does not duplicate the transaction.
 - [x] #25 Final named-branch movement preserves exact ownership-reflog continuity: any target-branch reflog transition after the last validation, including same-OID ABA, prevents a replacement from being reported owned and cannot be overwritten by the automatic CAS/rollback path.
+- [ ] #26 When target-ref transactions are unsupported, amend-own conservatively treats an otherwise owned tip as non-owned before parent/message construction, creates a normal new owned-sequence start through expected-OID CAS, and never performs an unlocked replacement.
 <!-- AC:END -->
 
 ## Definition of Done
 <!-- DOD:BEGIN -->
-- [x] #1 bunx tsc --noEmit passes when TypeScript touched
-- [x] #2 bun run check . passes when formatting/linting touched
-- [x] #3 bun test (or scoped test) passes
+- [ ] #1 bunx tsc --noEmit passes when TypeScript touched
+- [ ] #2 bun run check . passes when formatting/linting touched
+- [ ] #3 bun test (or scoped test) passes
 <!-- DOD:END -->
 
 ## Implementation Plan
@@ -107,6 +108,8 @@ See BACK-556 for the full ownership and safety contract, including the accepted 
 32. Throw ReferenceTransactionVetoError before commitFiles evaluates changed HEAD for CAS retry. Regress a one-shot prepared hook that uses hook-disabled update-ref to move main and reject: one prepared/aborted lifecycle, no second prepared/committed transaction, wrapper rejection, and preserved caller bytes. Bound the identified repeated-replacement and amend-hook lifecycle tests.
 
 33. Close final-window ownership ABA by snapshotting the exact newest target-branch reflog record under final validation and enforcing continuity through ref movement. Prefer atomic target-ref protection where compatible with real-context reference-transaction semantics; otherwise verify the new automatic marker directly follows the captured record and expected-OID rollback only when safe, leaving a non-owned/manual boundary. Cover successful replacement, same-SHA no-op reflog mutation, and old→parent→old ABA through an alternate hook-disabled Git context.
+
+34. Cache transaction capability from Git version/capability detection. Before replacement construction, discard owned eligibility when target-ref preparation is unavailable; finalize the resulting new/start commit through legacy expected-OID CAS with synthetic hooks suppressed and preserve retries. Cover Git 2.27 default new success and repeated amend-own new commits, and retain modern atomic ABA coverage.
 <!-- SECTION:PLAN:END -->
 
 ## Implementation Notes
@@ -143,6 +146,8 @@ Pass 16 veto CAS finality complete. commitFiles now throws ReferenceTransactionV
 Pass 19 H1: target-branch ownership/reflog can change after final validation because only index.lock and worktree HEAD.lock are held. A deterministic alternate-context old→parent→old ABA immediately before internal update-ref still returned amended=true and placed a new ownership marker after manual reflog entries. This violates reset boundaries and exact ownership continuity.
 
 Pass 19 exact reflog continuity complete. A hook-suppressed update-ref --stdin prepare owns refs/heads/* before the final exact ownership snapshot check; commit occurs without releasing that lock, while the real-context hook lifecycle remains externally singular. Alternate-context old→parent→old movement in the former final gap is observed after lock acquisition and aborts without a replacement/rollback or loss of manual history. Existing repeated/root/evidence/hook/symbolic-HEAD/late-sharing scenarios remain green. Focused 63 tests/473 assertions; integrated 1,874 passed/4 skipped/0 failed, 8,333 assertions.
+
+Pass 20 M2: modern final target locking is correct but unconditional. Git 2.27 rejects update-ref stdin start, so even default mode can leave filesystem/index mutation with commit failure; legacy amend-own must degrade rather than replace without the atomic ownership lease.
 <!-- SECTION:NOTES:END -->
 
 ## Comments
