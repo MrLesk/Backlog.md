@@ -5,7 +5,7 @@ status: Done
 assignee:
   - '@codex'
 created_date: '2026-07-30 17:11'
-updated_date: '2026-07-30 18:03'
+updated_date: '2026-07-30 18:46'
 labels:
   - web-ui
   - keyboard
@@ -15,6 +15,9 @@ references:
 modified_files:
   - src/web/components/TaskDetailsModal.tsx
   - src/test/web-task-details-modal-keyboard-shortcuts.test.tsx
+  - src/commands/advanced-config-wizard.ts
+  - src/commands/configure-advanced-settings.ts
+  - src/test/config-commands.test.ts
 type: bug
 ordinal: 203000
 ---
@@ -49,6 +52,8 @@ Global task-detail shortcuts currently intercept ordinary text entry in inline-e
 2. Run the focused test before production changes and confirm it fails specifically because the capture-phase preview shortcuts prevent editable-target key events.
 3. Add one local editable-target predicate in TaskDetailsModal and use it only to gate the preview e/E and c shortcut branches, leaving edit-mode Escape and Cmd/Ctrl+S unchanged.
 4. Run the focused and related Web task-detail tests, typecheck, Biome, broader tests, git diff checks, and interactive desktop-browser QA; simplify if the implementation can be reduced without weakening coverage.
+
+5. Characterize the Windows config-wizard timeout, replace only the slow test fixture boundary with a deterministic real filesystem fixture, and repeat focused plus full verification before returning a new reviewed head.
 <!-- SECTION:PLAN:END -->
 
 ## Implementation Notes
@@ -63,10 +68,12 @@ Rendered QA: Chrome on the Default profile connected through the enabled extensi
 Browser-control tooling timed out while dismissing that final native confirmation. Recovery rediscovered the tab, but subsequent dialog inspection, Escape dismissal, and DOM snapshot timed out, so no screenshot or final tab-cleanup verification was captured. The fresh reviewer accepted this as tooling cleanup after the required behavior had already been observed, not an unmet product gate.
 
 Final verification on the unchanged implementation head: bun test passed 1,785 tests with 4 skipped and 0 failures (7,596 assertions); bunx tsc --noEmit passed; bun run check . checked 339 files with no fixes.
+
+Windows CI reliability follow-up: the only slow config-wizard case submitted a non-empty editor, so it spawned the real PATH lookup (where bun on Windows) even though the test contract is applying and persisting wizard selections. The original Windows run timed out at 10,063.60ms and the single rerun at 10,120.40ms; all BACK-558 shortcut tests passed there. TDD RED replaced the host editor with a fixture editor and requested an injected availability checker; before the seam, the test followed the missing-editor branch and failed (expected installClaudeAgent true, received false). The minimal optional seam defaults to the existing production checker and changes no production behavior. GREEN kept the full wizard, real config save/reload, and all 19 assertions. Local characterization before was 20/20 at 30.89-48.18ms (median 33.11ms); after was 30/30 at 30.69-47.74ms (median 32.88ms), now independent of PATH subprocess latency. Adjacent config/editor tests passed 25/25; shortcut tests passed 6/6; TypeScript, Biome (339 files), and diff checks passed; full suite passed 1,785 with 4 skipped, 0 failed, and 7,596 assertions.
 <!-- SECTION:NOTES:END -->
 
 ## Final Summary
 
 <!-- SECTION:FINAL_SUMMARY:BEGIN -->
-Prevented task-detail preview shortcuts from intercepting editable fields with one shared ancestor-aware target guard, while preserving e/E and c outside editors plus edit-mode Escape and Cmd/Ctrl+S. Added focused regression and mutation coverage. Verified with 1,785 passing tests, TypeScript, Biome, and accepted real Chrome interaction QA.
+Prevented task-detail preview shortcuts from intercepting editable fields while preserving existing shortcuts, and made the Windows-blocking config wizard test deterministic by injecting only its external editor-availability boundary. Verified TDD RED/GREEN, 30 repeated focused runs, adjacent config/editor tests, shortcut tests, TypeScript, Biome, and the full 1,785-test suite.
 <!-- SECTION:FINAL_SUMMARY:END -->
