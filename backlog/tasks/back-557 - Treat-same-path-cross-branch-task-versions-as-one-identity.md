@@ -5,7 +5,7 @@ status: In Progress
 assignee:
   - '@codex'
 created_date: '2026-07-30 17:11'
-updated_date: '2026-07-30 18:00'
+updated_date: '2026-07-30 18:21'
 labels:
   - browser
   - git
@@ -46,6 +46,8 @@ Browser single-task reads currently return 409 when one canonical task ID exists
 3. Run focused server tests plus duplicate-repair, ID-generation, remote-conflict, and worktree-allocation coverage; run type-check, Biome, diff checks, and the full test suite, then simplify only if it reduces now-unused collision machinery without widening behavior.
 
 4. Review correction cycle 1: add endpoint regressions for a same-path padded ID variant and a distinct-path origin/main version; canonicalize cross-branch merge keys before store resolution, preserve full remote ref identity in branch state, and verify focused plus full coverage.
+
+5. Review correction cycle 2: reproduce the Core/MCP failure when most-progressed selects a same-path padded ID variant, add Core.getTask and task_archive regressions, then make the local/store identity comparison canonical and keep the current working copy authoritative before running focused and full verification.
 <!-- SECTION:PLAN:END -->
 
 ## Implementation Notes
@@ -65,4 +67,15 @@ Review correction cycle 1:
 - Preserved full active remote ref identity (for example origin/main) in branch state while leaving hydrated task display branches unchanged, so a distinct-path origin/main collision remains fail-closed with 409.
 - Added endpoint regressions first and observed both fail before implementation; both pass after the fixes.
 - Verification: manual endpoint reproduction returned 200/local for the same-path variant and 409 for the distinct-path origin/main collision; focused branch/server suite 40 pass, 0 fail; broader duplicate/core/statistics suite 151 pass, 0 fail; full suite 1780 pass, 4 skip, 0 fail; bunx tsc --noEmit passed; bun run check . passed.
+
+Review correction cycle 2:
+- Reproduced against 73b442d1: with local BACK-1 in To Do and same-path active-branch BACK-001 in Done under most_progressed resolution, the merged store selected BACK-001 and Core.getTask("BACK-1") threw AmbiguousTaskIdError.
+- Added Core and MCP archive regressions first; both failed before production changes. Core now compares local/store identities with taskIdsEqual, reuses the existing active-branch path collision check, and returns the authoritative local task only when the canonical identity and normalized path agree.
+- Added a protective Core regression proving that the same padded identity at a distinct active path still throws; it failed before the path guard and passes afterward. MCP task_archive now mutates the local To Do task in the same-path case without weakening distinct-path or duplicate ambiguity handling.
+- Verification: standalone reproduction resolves BACK-1 to the local version; new Core/MCP regressions pass; server identity suite 21 pass, 0 fail; Core/MCP/identity/remote suite 99 pass, 0 fail; full suite 1783 pass, 4 skip, 0 fail across 199 files; bunx tsc --noEmit passed; bun run check . passed; git diff --check passed.
+
+Origin integration before final re-review:
+- Fetched and rebased the three unpushed BACK-557 commits onto origin/main fef6e763 (BACK-560 loopback binding). The rebase completed without conflicts or manual executable-code resolution.
+- Confirmed BACK-560 remains intact: the server binds/displays 127.0.0.1 and BACK-557 changes only the task identity comparison in the overlapping server file.
+- Rebased verification: new Core/MCP regressions 3 pass; server identity suite 21 pass; Core/MCP/identity/remote suite 99 pass; BACK-560 hostname/port suite 12 pass; TypeScript, Biome, and diff checks passed. The full suite was not rerun because the rebase had no conflict resolution or manual executable changes.
 <!-- SECTION:NOTES:END -->

@@ -7,7 +7,12 @@ import { McpServer } from "../mcp/server.ts";
 import { registerTaskTools } from "../mcp/tools/tasks/index.ts";
 import type { JsonSchema } from "../mcp/validation/validators.ts";
 import type { Task } from "../types/index.ts";
-import { createUniqueTestDir, initializeTestProject, safeCleanup } from "./test-utils.ts";
+import {
+	commitSamePathBranchTaskVariant,
+	createUniqueTestDir,
+	initializeTestProject,
+	safeCleanup,
+} from "./test-utils.ts";
 
 // Helper to extract text from MCP content (handles union types)
 const getText = (content: unknown[] | undefined, index = 0): string => {
@@ -124,6 +129,43 @@ describe("MCP task tools (MVP)", () => {
 		});
 		expect(viewResult.isError).toBe(true);
 		expect(getText(viewResult.content)).toContain("is ambiguous");
+	});
+
+	it("archives the local task when merge policy selects a same-path padded ID variant", async () => {
+		const config = await loadConfig(mcpServer);
+		await mcpServer.filesystem.saveConfig({
+			...config,
+			checkActiveBranches: true,
+			remoteOperations: false,
+			taskResolutionStrategy: "most_progressed",
+			prefixes: { ...config.prefixes, task: "back" },
+		});
+
+		const localTask: Task = {
+			id: "BACK-1",
+			title: "Local task version",
+			status: "To Do",
+			assignee: [],
+			createdDate: "2026-07-30",
+			labels: [],
+			dependencies: [],
+			description: "Local task version",
+		};
+		await commitSamePathBranchTaskVariant(mcpServer, localTask, {
+			...localTask,
+			id: "BACK-001",
+			title: "Progressed branch version",
+			status: "Done",
+		});
+
+		const archiveResult = await mcpServer.testInterface.callTool({
+			params: { name: "task_archive", arguments: { id: "BACK-1" } },
+		});
+
+		expect(archiveResult.isError).not.toBe(true);
+		expect(await mcpServer.filesystem.loadTask("BACK-1")).toBeNull();
+		const archivedTasks = await mcpServer.filesystem.listArchivedTasks();
+		expect(archivedTasks.map((task) => task.id)).toContain("BACK-1");
 	});
 
 	it("assigns default tail ordinals for task_create and preserves explicit ordinals", async () => {

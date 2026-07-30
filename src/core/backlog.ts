@@ -640,7 +640,8 @@ export class Core {
 	}
 
 	async getTask(taskId: string): Promise<Task | null> {
-		const localResolution = resolveTaskById(await this.fs.listTasks(), taskId);
+		const localTasks = await this.fs.listTasks();
+		const localResolution = resolveTaskById(localTasks, taskId);
 		if (localResolution.status === "invalid") {
 			return null;
 		}
@@ -666,15 +667,17 @@ export class Core {
 				resolution.tasks.map((task) => task.filePath ?? `${task.branch ?? "unknown branch"}:${task.id}`),
 			);
 		}
-		if (
-			localResolution.status === "found" &&
-			resolution.status === "found" &&
-			localResolution.task.id.toLowerCase() !== resolution.task.id.toLowerCase()
-		) {
-			throw new AmbiguousTaskIdError(taskId, [
-				localResolution.task.filePath ?? localResolution.task.id,
-				resolution.task.filePath ?? `${resolution.task.branch ?? "unknown branch"}:${resolution.task.id}`,
-			]);
+		if (localResolution.status === "found" && resolution.status === "found") {
+			if (
+				!taskIdsEqual(localResolution.task.id, resolution.task.id) ||
+				(await this.hasActiveBranchTaskIdCollision(taskId, localTasks))
+			) {
+				throw new AmbiguousTaskIdError(taskId, [
+					localResolution.task.filePath ?? localResolution.task.id,
+					resolution.task.filePath ?? `${resolution.task.branch ?? "unknown branch"}:${resolution.task.id}`,
+				]);
+			}
+			return localResolution.task;
 		}
 		if (resolution.status === "found") {
 			return resolution.task;

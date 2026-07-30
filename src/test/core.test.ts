@@ -5,7 +5,12 @@ import { Core } from "../core/backlog.ts";
 import { serializeTask } from "../markdown/serializer.ts";
 import type { Document, Task } from "../types/index.ts";
 import { AmbiguousTaskIdError } from "../utils/task-path.ts";
-import { createUniqueTestDir, initializeTestProject, safeCleanup } from "./test-utils.ts";
+import {
+	commitSamePathBranchTaskVariant,
+	createUniqueTestDir,
+	initializeTestProject,
+	safeCleanup,
+} from "./test-utils.ts";
 
 let TEST_DIR: string;
 
@@ -160,6 +165,72 @@ describe("Core", () => {
 
 			const mixedCase = await core.getTask("Task-007");
 			expect(mixedCase?.id).toBe("TASK-007");
+		});
+
+		it("returns the local task when merge policy selects a same-path padded ID variant", async () => {
+			const config = await core.filesystem.loadConfig();
+			if (!config) {
+				throw new Error("Expected config to be loaded");
+			}
+			await core.filesystem.saveConfig({
+				...config,
+				checkActiveBranches: true,
+				remoteOperations: false,
+				taskResolutionStrategy: "most_progressed",
+				prefixes: { ...config.prefixes, task: "back" },
+			});
+
+			const localTask: Task = {
+				...sampleTask,
+				id: "BACK-1",
+				title: "Local task version",
+				status: "To Do",
+			};
+			await commitSamePathBranchTaskVariant(core, localTask, {
+				...localTask,
+				id: "BACK-001",
+				title: "Progressed branch version",
+				status: "Done",
+			});
+
+			const loaded = await core.getTask("BACK-1");
+			expect(loaded?.id).toBe("BACK-1");
+			expect(loaded?.title).toBe("Local task version");
+			expect(loaded?.status).toBe("To Do");
+		});
+
+		it("fails closed when merge policy selects a padded ID variant at a different path", async () => {
+			const config = await core.filesystem.loadConfig();
+			if (!config) {
+				throw new Error("Expected config to be loaded");
+			}
+			await core.filesystem.saveConfig({
+				...config,
+				checkActiveBranches: true,
+				remoteOperations: false,
+				taskResolutionStrategy: "most_progressed",
+				prefixes: { ...config.prefixes, task: "back" },
+			});
+
+			const localTask: Task = {
+				...sampleTask,
+				id: "BACK-1",
+				title: "Local task version",
+				status: "To Do",
+			};
+			await commitSamePathBranchTaskVariant(
+				core,
+				localTask,
+				{
+					...localTask,
+					id: "BACK-001",
+					title: "Progressed branch version",
+					status: "Done",
+				},
+				join(core.filesystem.tasksDir, "back-001 - Progressed-branch-version.md"),
+			);
+
+			await expect(core.getTask("BACK-1")).rejects.toBeInstanceOf(AmbiguousTaskIdError);
 		});
 
 		it("should resolve an exact legacy task ID without guessing", async () => {
