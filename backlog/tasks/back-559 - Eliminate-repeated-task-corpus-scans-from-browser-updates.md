@@ -1,11 +1,11 @@
 ---
 id: BACK-559
 title: Eliminate repeated task-corpus scans from browser updates
-status: In Progress
+status: Done
 assignee:
   - '@codex'
 created_date: '2026-07-30 17:12'
-updated_date: '2026-07-30 18:03'
+updated_date: '2026-07-30 18:07'
 labels:
   - web-ui
   - performance
@@ -39,19 +39,19 @@ Browser task mutations repeatedly parse the complete active and completed task c
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 One ordinary browser task status update performs at most one active/completed identity scan, persists the change, and returns the updated task.
-- [ ] #2 Duplicate repair preview loads active and completed tasks once and reuses that snapshot for duplicate detection, existing-ID allocation input, and fingerprint preparation.
-- [ ] #3 One board drag applies the returned task immediately and does not cause two duplicate-plan builds; the existing WebSocket refresh still reconciles external changes.
-- [ ] #4 Fail-closed behavior remains for active/active, active/completed, zero-padded, cross-prefix, and filename/frontmatter ID collisions, and ambiguous mutations alter no file.
-- [ ] #5 Completed tasks remain excluded from the active board, and current auto-commit, Git staging and commit, updated-date, and status callback behavior remains unchanged.
-- [ ] #6 An ephemeral same-machine fixture with 20 active and 430 completed tasks records before and after status-update, duplicate-preview, and drag-path measurements with at least a 70 percent reduction in the combined mutation and refresh median; no durable benchmark framework is added.
+- [x] #1 One ordinary browser task status update performs at most one active/completed identity scan, persists the change, and returns the updated task.
+- [x] #2 Duplicate repair preview loads active and completed tasks once and reuses that snapshot for duplicate detection, existing-ID allocation input, and fingerprint preparation.
+- [x] #3 One board drag applies the returned task immediately and does not cause two duplicate-plan builds; the existing WebSocket refresh still reconciles external changes.
+- [x] #4 Fail-closed behavior remains for active/active, active/completed, zero-padded, cross-prefix, and filename/frontmatter ID collisions, and ambiguous mutations alter no file.
+- [x] #5 Completed tasks remain excluded from the active board, and current auto-commit, Git staging and commit, updated-date, and status callback behavior remains unchanged.
+- [x] #6 An ephemeral same-machine fixture with 20 active and 430 completed tasks records before and after status-update, duplicate-preview, and drag-path measurements with at least a 70 percent reduction in the combined mutation and refresh median; no durable benchmark framework is added.
 <!-- AC:END -->
 
 ## Definition of Done
 <!-- DOD:BEGIN -->
-- [ ] #1 bunx tsc --noEmit passes when TypeScript touched
-- [ ] #2 bun run check . passes when formatting/linting touched
-- [ ] #3 bun test (or scoped test) passes
+- [x] #1 bunx tsc --noEmit passes when TypeScript touched
+- [x] #2 bun run check . passes when formatting/linting touched
+- [x] #3 bun test (or scoped test) passes
 <!-- DOD:END -->
 
 ## Implementation Plan
@@ -82,4 +82,12 @@ Review cycle one disposition: fixed both Important findings without changing per
 Verification for the correction: the two new real-path tests were observed failing on 79103a01 (two WebSocket publications; stale response overwrote the external edit) and pass after the fix. Focused server/WebSocket/Board/collision/ContentStore/watcher suite: 179 pass, 0 fail. Post-simplification Web tests: 36 pass, 0 fail. Full suite: 1788 pass, 4 skip, 0 fail across 200 files. bunx tsc --noEmit, bun run check . (340 files), and git diff --check pass.
 
 Revised ephemeral benchmark uses fresh same-machine macOS arm64 Git fixture copies with 20 active and 430 completed tasks, forces a two-task ordinal rebalance for every sample, and defines completion as both the mutation response and all surviving App refresh requests (statuses, config, search, milestones, archived milestones, and duplicate preview). Across 12-sample medians, current main actual sequential mutation + foreground refresh is 1308.412 ms (p95 1701.177); corrected branch with one WebSocket reconciliation is 230.886 ms (p95 269.255), an 82.4% reduction. Versus pre-review 79103a01 specifically, two WebSocket reconciliations took 319.125 ms (p95 410.763), so coalescing to one reduces this corrected-path median another 27.6%. No benchmark artifact was added.
+
+Independent final review at e6e56ee9544d4c1de71dc016b88f0418f25356f1 declared READY with no Critical or Important findings.
 <!-- SECTION:NOTES:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+Eliminated repeated task-corpus scans from browser updates by persisting resolved identities, reusing task snapshots, coalescing reorder reconciliation, and rejecting stale mutation responses. Preserved fail-closed collision handling, ContentStore and Git semantics, callbacks, completed-task filtering, and WebSocket external reconciliation. Verified by 1,788 passing tests with 4 interactive skips, 179 focused server, collision, and watcher passes, rendered full-App race and immediate-response regressions, TypeScript and Biome checks, and an ephemeral 20-active and 430-completed benchmark. For a forced two-task rebalance, end-to-end completion including the mutation response plus surviving refreshes improved from 1,308.412 ms to 230.886 ms median, an 82.4% reduction.
+<!-- SECTION:FINAL_SUMMARY:END -->
