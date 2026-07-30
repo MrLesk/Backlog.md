@@ -92,23 +92,37 @@ describe("Editor utilities", () => {
 	});
 
 	describe("isEditorAvailable", () => {
-		it("should detect available editors", async () => {
-			// Test with a command that should exist on the current platform
-			const testEditor = process.platform === "win32" ? "notepad" : "ls";
-			const available = await isEditorAvailable(testEditor);
-			// We can't guarantee any specific editor exists, so just verify the function works
-			expect(typeof available).toBe("boolean");
+		it("should detect a guaranteed platform command", async () => {
+			const editor = process.platform === "win32" ? "cmd" : "sh";
+			expect(await isEditorAvailable(editor)).toBe(true);
+		});
+
+		it("should detect available editors through the lookup boundary", async () => {
+			const available = await isEditorAvailable("fixture-editor", async (command) => command === "fixture-editor");
+			expect(available).toBe(true);
 		});
 
 		it("should return false for non-existent editors", async () => {
-			const available = await isEditorAvailable("definitely-not-a-real-editor-command");
+			const available = await isEditorAvailable(
+				"definitely-not-a-real-editor-command",
+				async (command) => command === "fixture-editor",
+			);
 			expect(available).toBe(false);
 		});
 
 		it("should handle editor commands with arguments", async () => {
-			const editor = process.platform === "win32" ? "notepad.exe" : "echo test";
-			const available = await isEditorAvailable(editor);
+			const available = await isEditorAvailable(
+				"fixture-editor --wait",
+				async (command) => command === "fixture-editor",
+			);
 			expect(available).toBe(true);
+		});
+
+		it("should return false when editor discovery fails", async () => {
+			const available = await isEditorAvailable("fixture-editor", async () => {
+				throw new Error("simulated editor discovery failure");
+			});
+			expect(available).toBe(false);
 		});
 	});
 

@@ -5,7 +5,7 @@ status: Done
 assignee:
   - '@codex'
 created_date: '2026-07-30 17:11'
-updated_date: '2026-07-30 19:14'
+updated_date: '2026-07-30 19:45'
 labels:
   - web-ui
   - keyboard
@@ -19,6 +19,8 @@ modified_files:
   - src/commands/configure-advanced-settings.ts
   - src/test/config-commands.test.ts
   - src/test/tui-task-composer.test.ts
+  - src/utils/editor.ts
+  - src/test/editor.test.ts
 type: bug
 ordinal: 203000
 ---
@@ -57,6 +59,8 @@ Global task-detail shortcuts currently intercept ordinary text entry in inline-e
 5. Characterize the Windows config-wizard timeout, replace only the slow test fixture boundary with a deterministic real filesystem fixture, and repeat focused plus full verification before returning a new reviewed head.
 
 6. Characterize the Windows TUI rollback/retry timeout, isolate only non-contract Git/process/filesystem setup through TDD, preserve every rollback, ID-reuse, and unrelated-state assertion, then repeat focused and full verification before review.
+
+7. Characterize the Windows editor-availability timeout, replace only uncontrolled host command discovery with a deterministic injectable process boundary through TDD, preserve all editor detection contracts, and repeat focused plus full verification before fresh review.
 <!-- SECTION:PLAN:END -->
 
 ## Implementation Notes
@@ -75,10 +79,12 @@ Final verification on the unchanged implementation head: bun test passed 1,785 t
 Windows CI reliability follow-up: the only slow config-wizard case submitted a non-empty editor, so it spawned the real PATH lookup (where bun on Windows) even though the test contract is applying and persisting wizard selections. The original Windows run timed out at 10,063.60ms and the single rerun at 10,120.40ms; all BACK-558 shortcut tests passed there. TDD RED replaced the host editor with a fixture editor and requested an injected availability checker; before the seam, the test followed the missing-editor branch and failed (expected installClaudeAgent true, received false). The minimal optional seam defaults to the existing production checker and changes no production behavior. GREEN kept the full wizard, real config save/reload, and all 19 assertions. Local characterization before was 20/20 at 30.89-48.18ms (median 33.11ms); after was 30/30 at 30.69-47.74ms (median 32.88ms), now independent of PATH subprocess latency. Adjacent config/editor tests passed 25/25; shortcut tests passed 6/6; TypeScript, Biome (339 files), and diff checks passed; full suite passed 1,785 with 4 skipped, 0 failed, and 7,596 assertions.
 
 Windows TUI reliability follow-up: profiling isolated the rollback/retry timeout to the fixture's real failing Git hook. The failure path invoked three selected-file commit attempts plus 100ms and 200ms backoffs before exercising Core rollback; Windows Git and process startup expanded that non-contract setup to 10,064.28ms. The test now injects one deterministic auto-commit failure after real staging and index capture, then restores the real commit path for retry. Production code is unchanged, and all 8 rollback, clean-state, input-preservation, same-ID, and no-duplicate assertions remain. The 1.2s characterization changed from RED at 1,205.49ms to GREEN at 695.91ms. Thirty repeated runs passed with 627.84ms minimum, 640.31ms median, and 883.84ms maximum, compared with the prior observed local 1,526.70ms minimum, about 1,552ms median, and 1,736.25ms maximum. The full TUI file passed 47 tests and 222 assertions; adjacent shortcut, config, Core, Git, and auto-commit tests passed 86 tests and 264 assertions; TypeScript and Biome passed; the full suite passed 1,785 tests with 4 skipped, 0 failed, and 7,596 assertions.
+
+Windows editor-availability reliability follow-up: the fresh Windows full-unit run exposed a 10,007.23ms timeout in should detect available editors. The test delegated all cases to uncontrolled host PATH discovery through where or which, and its positive case asserted only that the result was a boolean. TDD introduced one internal injectable command-lookup boundary while retaining the same production where and which behavior and failure-to-false contract. The final tests keep one real cmd or sh positive smoke and deterministically prove found, absent, first-token argument handling, and lookup failure behavior without a real negative PATH scan. Thirty focused repetitions passed 150 tests and 150 assertions; the real smoke ranged from 0.05ms to 3.37ms locally. Final verification passed 33 adjacent editor, config, and shortcut tests with 140 assertions; 8 rollback, config, and shortcut regressions with 80 assertions; TypeScript; Biome across 339 files; diff checks; and the full suite with 1,787 passed, 4 skipped, 0 failed, and 7,598 assertions across 200 files in 200.77 seconds.
 <!-- SECTION:NOTES:END -->
 
 ## Final Summary
 
 <!-- SECTION:FINAL_SUMMARY:BEGIN -->
-Prevented task-detail preview shortcuts from intercepting editable fields, made the config wizard test independent of Windows PATH subprocess latency, and made the TUI rollback/retry test deterministic at the auto-commit boundary while preserving real staging, rollback, and retry behavior. Verified focused repetition, adjacent suites, TypeScript, Biome, and the full 1,785-test suite with 0 failures.
+Prevented task-detail preview shortcuts from intercepting editable fields, removed Windows PATH subprocess latency from the config wizard test, made the TUI rollback and retry test deterministic at the auto-commit boundary, and made editor-availability contracts deterministic while retaining one real platform smoke test. Verified focused repetition, adjacent regression suites, TypeScript, Biome, diff checks, and the full 1,787-test suite with 0 failures.
 <!-- SECTION:FINAL_SUMMARY:END -->
