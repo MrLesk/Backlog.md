@@ -69,6 +69,10 @@ const containsCommentDelimiterLine = (value: string): boolean => /^\s*---\s*$/m.
 
 const areJsonEqual = (first: unknown, second: unknown): boolean => JSON.stringify(first) === JSON.stringify(second);
 
+const isEditableKeyboardTarget = (target: EventTarget | null): boolean =>
+  target instanceof Element &&
+  target.closest('input, textarea, select, [contenteditable]:not([contenteditable="false"])') !== null;
+
 const preserveDirtyRefreshValue = <T,>(
   current: T,
   previous: T,
@@ -360,12 +364,15 @@ export const TaskDetailsModal: React.FC<Props> = ({
         e.stopPropagation();
         void handleSave();
       }
-      if (mode === "preview" && (e.key.toLowerCase() === "e") && !e.metaKey && !e.ctrlKey && !e.altKey) {
+      if (mode !== "preview" || isEditableKeyboardTarget(e.target)) {
+        return;
+      }
+      if (e.key.toLowerCase() === "e" && !e.metaKey && !e.ctrlKey && !e.altKey) {
         e.preventDefault();
         e.stopPropagation();
         setMode("edit");
       }
-      if (mode === "preview" && isDoneStatus && (e.key.toLowerCase() === "c") && !e.metaKey && !e.ctrlKey && !e.altKey) {
+      if (isDoneStatus && (e.key.toLowerCase() === "c") && !e.metaKey && !e.ctrlKey && !e.altKey) {
         e.preventDefault();
         e.stopPropagation();
         void handleComplete();
