@@ -5,7 +5,7 @@ status: In Progress
 assignee:
   - '@andreas'
 created_date: '2026-07-28 14:47'
-updated_date: '2026-07-30 04:22'
+updated_date: '2026-07-30 04:37'
 labels:
   - cli
 dependencies:
@@ -55,14 +55,15 @@ Documentation must cover rolling-commit boundaries, how the message is rebuilt a
 - [x] #20 Malformed automatic-commit configuration is validated through one immutable preflight plan before any task, lifecycle, document, decision, milestone, or instruction mutation writes files; validation failure leaves bytes and Git state unchanged.
 - [x] #21 Centralized browser feedback transport does not automatically replay non-idempotent mutations after ambiguous response loss or 5xx responses; response-loss coverage proves one user action produces at most one entity.
 - [x] #22 After CLI cleanup confirmation, one current-byte automatic-commit plan controls every completion plus staging and user-facing reporting, so stale true-to-false and false-to-true transitions cannot leave moves uncommitted or report false staging.
-- [x] #23 Initialization and re-initialization integration writes resolve one post-save current-byte plan; config-derived booleans are never passed as invocation overrides, and deterministic true→false/false→true transitions select disabled/enabled behavior truthfully.
+- [ ] #23 Initialization and re-initialization integration writes resolve one post-save current-byte plan; config-derived booleans are never passed as invocation overrides, and deterministic true→false/false→true transitions select disabled/enabled behavior truthfully.
+- [ ] #24 initializeProject returns the fail-closed reloaded persisted configuration after integration setup, so callers and summaries reflect current autoCommit and autoCommitMode bytes rather than request-time values.
 <!-- AC:END -->
 
 ## Definition of Done
 <!-- DOD:BEGIN -->
-- [x] #1 bunx tsc --noEmit passes when TypeScript touched
-- [x] #2 bun run check . passes when formatting/linting touched
-- [x] #3 bun test (or scoped test) passes
+- [ ] #1 bunx tsc --noEmit passes when TypeScript touched
+- [ ] #2 bun run check . passes when formatting/linting touched
+- [ ] #3 bun test (or scoped test) passes
 <!-- DOD:END -->
 
 ## Implementation Plan
@@ -97,6 +98,8 @@ Documentation must cover rolling-commit boundaries, how the message is rebuilt a
 24. Parse and verify semantic task identity before editor metadata/cache/Git effects; continue reconciling valid changed bytes after nonzero editor status with explicit warning feedback; throw recovery-aware errors for malformed identity and disappeared/moved paths. Ensure board/list helper surfaces warnings/errors and add malformed/identity/failure/deletion/rename tests.
 
 20. Remove config.autoCommit from initializeProject agent instruction calls. At the post-save seam, mutate actual config bytes in both directions and prove updateAgentInstructions independently preflights the current file: disabled leaves HEAD unchanged while enabled commits in the persisted mode.
+
+21. Reload mutation-safe current configuration after setup and return it as initializeProject.config. Extend post-save true→false, false→true, and amend-own→new seams to assert both commit behavior and returned values.
 <!-- SECTION:PLAN:END -->
 
 ## Implementation Notes
@@ -135,6 +138,8 @@ Pass 18 TUI post-editor safety complete. The immutable plan now reconciles actua
 Pass 20 H1: initializeProject still turns the computed/saved config boolean into an explicit override. A post-save true→false probe created AGENTS.md and replaced the owned tip despite current auto_commit: false.
 
 Pass 20 post-save initialization preflight complete. initializeProject no longer supplies config.autoCommit as an explicit invocation override. Actual current bytes are mutated at the save/integration seam in true→false and false→true directions; agent output is written in both cases, while only current true commits it. TypeScript/Biome, focused 65/492, and integrated 1,876/8,352 gates pass.
+
+Pass 21 M3: integration writes correctly use current config, but initializeProject returns its stale pre-save object and CLI summary consumes it.
 <!-- SECTION:NOTES:END -->
 
 ## Comments

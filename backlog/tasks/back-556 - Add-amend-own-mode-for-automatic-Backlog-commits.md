@@ -5,7 +5,7 @@ status: In Progress
 assignee:
   - '@andreas'
 created_date: '2026-07-28 14:27'
-updated_date: '2026-07-30 04:22'
+updated_date: '2026-07-30 04:37'
 labels:
   - enhancement
   - git
@@ -133,15 +133,17 @@ This task is delivered through subtasks, because the selected-path correctness f
 - [x] #8 A prepared reference-transaction veto is authoritative across every production wrapper: the invocation emits exactly one prepared then aborted lifecycle, never retries into committed, and leaves HEAD and caller bytes unchanged whether the veto is one-shot or persistent.
 - [x] #9 TUI external-editor reconciliation validates parser-readable semantic task identity before metadata, cache, or Git updates; identity mismatch or malformed content remains uncommitted with actionable recovery feedback, valid bytes saved before a nonzero exit are reconciled truthfully, and path disappearance is detected explicitly rather than reported unchanged.
 - [x] #10 The final named-branch replacement window fails closed if the exact target branch reflog changes after lease validation, including an old→other→old ABA that preserves the expected OID; it never overwrites that manual boundary and preserves caller index/worktree bytes.
-- [x] #11 Re-initialization and integration setup never convert a configuration-derived autoCommit value into an invocation override: agent-instruction writes resolve the current persisted config after save, so true→false disables committing and false→true enables the configured mode.
-- [x] #12 Named automatic commits remain safe on Git versions without transactional update-ref commands: default/new behavior retains expected-OID movement, while amend-own fails closed to a new commit rather than attempting an unlocked owned replacement.
+- [ ] #11 Re-initialization and integration setup never convert a configuration-derived autoCommit value into an invocation override: agent-instruction writes resolve the current persisted config after save, so true→false disables committing and false→true enables the configured mode.
+- [ ] #12 Named automatic commits remain safe on Git versions without transactional update-ref commands: default/new behavior retains expected-OID movement, while amend-own fails closed to a new commit rather than attempting an unlocked owned replacement.
+- [ ] #13 Git hook capabilities are versioned independently: Git 2.36–2.39 uses hook run only for hooks without stdin and the legacy runner for reference-transaction/post-rewrite input; Git 2.40+ may use --to-stdin, so every automatic commit remains functional across the supported version matrix.
+- [ ] #14 Initialization results and user-facing summaries reload persisted current configuration after setup, so concurrent post-save changes to autoCommit or autoCommitMode are returned and displayed truthfully rather than echoing the stale request.
 <!-- AC:END -->
 
 ## Definition of Done
 <!-- DOD:BEGIN -->
-- [x] #1 bunx tsc --noEmit passes when TypeScript touched
-- [x] #2 bun run check . passes when formatting/linting touched
-- [x] #3 bun test (or scoped test) passes
+- [ ] #1 bunx tsc --noEmit passes when TypeScript touched
+- [ ] #2 bun run check . passes when formatting/linting touched
+- [ ] #3 bun test (or scoped test) passes
 <!-- DOD:END -->
 
 ## Implementation Plan
@@ -197,6 +199,8 @@ Holistic correction pass: resolve the documented Git intent/state, invocation-co
 33. Resolve Pass 19 final-window branch ABA. Capture exact target-branch ownership/reflog state inside the final lease, detect any reflog transition between post-prepared validation and movement or verify the new marker has exactly the captured predecessor, restore/close ownership on conflict without overwriting manual history, and regress deterministic alternate-context old→parent→old movement with preserved caller bytes.
 
 34. Resolve Pass 20 re-initialization current-byte and legacy Git compatibility. Remove the saved config boolean from updateAgentInstructions invocation so post-save current bytes own enablement; cover true→false and false→true. Detect update-ref transaction support, deopt owned replacement before commit construction when absent, retain safe expected-OID named new/start movement with one real hook lifecycle, and simulate Git 2.27 for default/new plus amend-own degradation.
+
+35. Resolve Pass 21 capability boundaries and effective initialization results. Split git hook run base support (2.36) from --to-stdin support (2.40), route stdin hooks through the legacy runner on 2.36-2.39, correct update-ref transactions to 2.27, update fallback docs/tests, and simulate 2.36/2.39/2.40 reference transaction commits. At initializeProject completion, fail-closed reload current config bytes for the returned result; extend both enablement directions and mode transition assertions through summary consumers.
 <!-- SECTION:PLAN:END -->
 
 ## Implementation Notes
@@ -257,6 +261,8 @@ Pass 19 final-window ABA correction complete and fully verified. Named movement 
 Fresh holistic gpt-5.6-sol xhigh Pass 20 at 47e52b0 requested changes with one High and one Medium finding: initializeProject passes config.autoCommit as an explicit override after saving, so a concurrent/current true→false config can still amend; and named commits unconditionally require update-ref --stdin transaction commands introduced in Git 2.28, causing default new commits to fail on older Git. Exact clean reviewed HEAD preserved; reviewer targeted 33 tests/266 assertions. Report: /tmp/backlog-821-holistic-review-pass-20.md.
 
 Pass 20 current-byte initialization and legacy Git compatibility complete and fully verified. Agent-instruction integration now resolves post-save current config without a boolean override; deterministic true→false/false→true tests prove disabled leaves HEAD unchanged and enabled commits the selected instruction. Transaction support is detected at Git 2.28; older versions deopt owned eligibility before commit construction, preserve new/start-owned expected-OID updates, and make every amend-own mutation a new sequence commit. Internal synthetic hook suppression now uses Git -c core.hooksPath for compatibility. ADVANCED-CONFIG documents the fallback. Focused gate: 65 tests/492 assertions. Integrated gate: TypeScript clean, Biome 351 files, 1,876 passed/4 skipped/0 failed with 8,352 assertions across 207 files in 681.20 seconds; diff check clean.
+
+Fresh holistic gpt-5.6-sol xhigh Pass 21 at d374069 requested changes with one High and two Medium findings: git hook run --to-stdin is incorrectly assumed from 2.36 though introduced in 2.40, Git 2.27 actually supports update-ref transactions, and initializeProject returns/summarizes the stale requested config despite post-save integration using current bytes. Exact clean reviewed HEAD preserved. Report: /tmp/backlog-821-holistic-review-pass-21.md.
 <!-- SECTION:NOTES:END -->
 
 ## Comments
