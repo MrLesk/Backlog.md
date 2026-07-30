@@ -17,6 +17,7 @@ import {
 	type GitOperationConfig,
 	GitOperations,
 } from "../git/operations.ts";
+import { parseTask } from "../markdown/parser.ts";
 import {
 	type AcceptanceCriterion,
 	type BacklogConfig,
@@ -79,6 +80,7 @@ import {
 	getTaskFilename,
 	getTaskPath,
 	normalizeTaskId,
+	normalizeTaskIdentity,
 	taskIdsEqual,
 } from "../utils/task-path.ts";
 import { attachSubtaskSummaries } from "../utils/task-subtasks.ts";
@@ -173,11 +175,13 @@ interface TaskQueryOptions {
 }
 
 export type TuiTaskEditFailureReason = "not_found" | "read_only" | "editor_failed";
+export type TuiTaskEditWarning = "editor_failed_after_changes";
 
 export interface TuiTaskEditResult {
 	changed: boolean;
 	task?: Task;
 	reason?: TuiTaskEditFailureReason;
+	warning?: TuiTaskEditWarning;
 }
 
 function buildUpdatedDateComparableTask(task: Task): Record<string, unknown> {
@@ -3381,35 +3385,66 @@ export class Core {
 		}
 
 		return await this.withAutoCommitPlan(undefined, async () => {
-			const opened = await this.openEditor(filePath, screen);
-			if (!opened) {
-				return { changed: false, task: editableTask, reason: "editor_failed" };
+			let editorSucceeded = false;
+			try {
+				editorSucceeded = await this.openEditor(filePath, screen);
+			} catch {
+				editorSucceeded = false;
 			}
 
 			let afterContent: string;
 			try {
 				afterContent = await Bun.file(filePath).text();
 			} catch {
-				return { changed: false, task: editableTask, reason: "not_found" };
+				throw new Error(
+					`Editor removed or moved the task file ${filePath}. Backlog did not commit this change. Use Git status to locate or restore the task before continuing.`,
+				);
 			}
 
 			if (afterContent === beforeContent) {
+				if (!editorSucceeded) {
+					return { changed: false, task: editableTask, reason: "editor_failed" };
+				}
 				const refreshedTask = await this.fs.loadTask(editableTask.id);
 				return { changed: false, task: refreshedTask ?? editableTask };
 			}
 
+			let parsedTask: Task;
+			try {
+				parsedTask = normalizeTaskIdentity(parseTask(afterContent));
+			} catch (error) {
+				const message = error instanceof Error ? error.message : String(error);
+				throw new Error(
+					`Editor left invalid task content in ${filePath}. The edited bytes were preserved without metadata or an automatic commit: ${message}`,
+				);
+			}
+			const expectedTaskId = normalizeTaskId(editableTask.id);
+			if (parsedTask.id !== expectedTaskId) {
+				throw new Error(
+					`Editor changed task identity from ${expectedTaskId} to ${parsedTask.id || "an empty ID"}. The edited bytes were preserved without metadata or an automatic commit; restore the original ID or create a separate task.`,
+				);
+			}
+			if (!parsedTask.title.trim() || !parsedTask.status.trim()) {
+				throw new Error(
+					`Editor removed the task title or status in ${filePath}. The edited bytes were preserved without metadata or an automatic commit; restore the required fields before continuing.`,
+				);
+			}
+
 			const now = new Date().toISOString().slice(0, 16).replace("T", " ");
 			const withUpdatedDate = upsertTaskUpdatedDate(afterContent, now);
+			const refreshedTask = {
+				...normalizeTaskIdentity(parseTask(withUpdatedDate)),
+				filePath,
+			};
 			await Bun.write(filePath, withUpdatedDate);
 
-			const refreshedTask = await this.fs.loadTask(editableTask.id);
-			if (refreshedTask && this.contentStore) {
+			if (this.contentStore) {
 				this.contentStore.upsertTask(refreshedTask);
 			}
 
 			if (await this.shouldAutoCommit()) {
 				const result = await this.git.addAndCommitTaskFile(
-					editableTask.id,
+					expectedTaskId,
 					filePath,
 					"update",
 					undefined,
@@ -3420,7 +3455,8 @@ export class Core {
 
 			return {
 				changed: true,
-				task: refreshedTask ?? { ...editableTask, updatedDate: now },
+				task: refreshedTask,
+				...(!editorSucceeded && { warning: "editor_failed_after_changes" as const }),
 			};
 		});
 	}

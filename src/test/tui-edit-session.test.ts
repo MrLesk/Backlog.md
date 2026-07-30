@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
-import { mkdir, writeFile } from "node:fs/promises";
+import { mkdir, rename, unlink, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { $ } from "bun";
 import { Core } from "../core/backlog.ts";
@@ -150,7 +150,7 @@ process.exit(0);
 		await writeFile(unstagedPath, "unstaged user work\n");
 		core.openEditor = async (filePath) => {
 			await writeFile(filePath, `${await Bun.file(filePath).text()}\nFirst editor update\n`);
-			return true;
+			return false;
 		};
 
 		const ownedTask = await core.filesystem.loadTask(taskId);
@@ -158,6 +158,7 @@ process.exit(0);
 		const amended = await editTaskFromTui(core, ownedTask, screen);
 		const amendedHead = (await $`git rev-parse HEAD`.cwd(testDir).text()).trim();
 		expect(amended.changed).toBe(true);
+		expect(amended.warning).toBe("editor_failed_after_changes");
 		expect(amendedHead).not.toBe(ownedHead);
 		expect(Number((await $`git rev-list --count HEAD`.cwd(testDir).text()).trim())).toBe(ownedCount);
 		expect(amended.notices).toEqual([
@@ -199,6 +200,95 @@ process.exit(0);
 		);
 		expect(editorCalls).toBe(0);
 		expect(await core.getTaskContent(taskId)).toBe(beforeContent);
+	});
+
+	it("rejects identity collisions and malformed edited content before metadata or cache updates", async () => {
+		await core.createTask(
+			{
+				id: "task-2",
+				title: "Collision target",
+				status: "To Do",
+				assignee: [],
+				createdDate: "2026-02-11 20:00",
+				labels: [],
+				dependencies: [],
+				rawContent: "Collision body",
+			},
+			false,
+		);
+		const store = await core.getContentStore();
+		const selectedTask = await core.filesystem.loadTask(taskId);
+		if (!selectedTask?.filePath) throw new Error("Expected selected task path");
+		const originalContent = await Bun.file(selectedTask.filePath).text();
+		const scenarios = [
+			{
+				content: originalContent.replace(/^id:.*$/m, "id: TASK-2"),
+				error: "changed task identity from TASK-1 to TASK-2",
+			},
+			{
+				content: originalContent.replace(/^id:.*$/m, 'id: ["unterminated"'),
+				error: "left invalid task content",
+			},
+		] as const;
+
+		for (const scenario of scenarios) {
+			await writeFile(selectedTask.filePath, originalContent);
+			core.openEditor = async (filePath) => {
+				await writeFile(filePath, scenario.content);
+				return true;
+			};
+			await expect(editTaskFromTui(core, selectedTask, screen)).rejects.toThrow(scenario.error);
+			expect(await Bun.file(selectedTask.filePath).text()).toBe(scenario.content);
+			expect(scenario.content.includes("updated_date:")).toBe(false);
+			expect(
+				store
+					.getTasks()
+					.map((task) => task.id)
+					.sort(),
+			).toEqual(["TASK-1", "TASK-2"]);
+		}
+	});
+
+	it("reports an editor-deleted task as an uncommitted recovery state", async () => {
+		const config = await core.filesystem.loadConfig();
+		if (!config) throw new Error("Expected config to be initialized");
+		await core.filesystem.saveConfig({ ...config, autoCommit: true, autoCommitMode: "new" });
+		await initializeGitRepository(testDir);
+		const selectedTask = await core.filesystem.loadTask(taskId);
+		if (!selectedTask?.filePath) throw new Error("Expected selected task path");
+		const beforeHead = (await $`git rev-parse HEAD`.cwd(testDir).text()).trim();
+		core.openEditor = async (filePath) => {
+			await unlink(filePath);
+			return true;
+		};
+
+		await expect(editTaskFromTui(core, selectedTask, screen)).rejects.toThrow("Editor removed or moved the task file");
+		expect((await $`git rev-parse HEAD`.cwd(testDir).text()).trim()).toBe(beforeHead);
+		expect(await $`git status --short`.cwd(testDir).text()).toContain(
+			` D "backlog/tasks/task-1 - Editor-Flow-Task.md"`,
+		);
+	});
+
+	it("reports an editor-renamed task with the new path preserved for recovery", async () => {
+		const config = await core.filesystem.loadConfig();
+		if (!config) throw new Error("Expected config to be initialized");
+		await core.filesystem.saveConfig({ ...config, autoCommit: true, autoCommitMode: "new" });
+		await initializeGitRepository(testDir);
+		const selectedTask = await core.filesystem.loadTask(taskId);
+		if (!selectedTask?.filePath) throw new Error("Expected selected task path");
+		const renamedPath = join(testDir, "backlog", "tasks", "task-1 - Renamed-by-editor.md");
+		const beforeHead = (await $`git rev-parse HEAD`.cwd(testDir).text()).trim();
+		core.openEditor = async (filePath) => {
+			await rename(filePath, renamedPath);
+			return true;
+		};
+
+		await expect(editTaskFromTui(core, selectedTask, screen)).rejects.toThrow("Editor removed or moved the task file");
+		expect((await $`git rev-parse HEAD`.cwd(testDir).text()).trim()).toBe(beforeHead);
+		expect(await Bun.file(renamedPath).exists()).toBe(true);
+		const status = await $`git status --short`.cwd(testDir).text();
+		expect(status).toContain(` D "backlog/tasks/task-1 - Editor-Flow-Task.md"`);
+		expect(status).toContain(`?? "backlog/tasks/task-1 - Renamed-by-editor.md"`);
 	});
 
 	it("returns editor_failed without mutating metadata when editor exits non-zero", async () => {

@@ -1288,7 +1288,8 @@ export async function renderBoardTui(
 
 				if (result.changed) {
 					renderView();
-					showTransientFooter(successFooter(`Updated ${result.task?.id ?? task.id}`, result.notices), 6000);
+					const warning = result.warning ? " (editor exited with an error after saving)" : "";
+					showTransientFooter(successFooter(`Updated ${result.task?.id ?? task.id}${warning}`, result.notices), 6000);
 					return;
 				}
 

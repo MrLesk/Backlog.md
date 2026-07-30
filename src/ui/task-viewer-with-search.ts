@@ -1182,8 +1182,9 @@ export async function viewTaskEnhanced(
 
 			applyFilters();
 			if (result.changed) {
+				const warning = result.warning ? " (editor exited with an error after saving)" : "";
 				showTransientHelp(
-					` {green-fg}Updated ${result.task?.id ?? selectedTask.id}${result.notices.length > 0 ? ` — ${result.notices.join(" ")}` : ""}{/}`,
+					` {green-fg}Updated ${result.task?.id ?? selectedTask.id}${warning}${result.notices.length > 0 ? ` — ${result.notices.join(" ")}` : ""}{/}`,
 				);
 				return;
 			}
