@@ -5,7 +5,7 @@ status: In Progress
 assignee:
   - '@andreas'
 created_date: '2026-07-28 14:46'
-updated_date: '2026-07-29 23:54'
+updated_date: '2026-07-30 00:11'
 labels:
   - git
 dependencies:
@@ -57,21 +57,21 @@ See BACK-556 for the full ownership and safety contract, including the accepted 
 - [x] #14 The replacement path runs pre-commit, prepare-commit-msg with message as its source argument, commit-msg, and post-commit consistently with Git amend semantics, and invokes exactly one post-rewrite amend carrying the old and new commit IDs, while the new-commit path invokes no post-rewrite. Pre-commit and commit-message hook staging remains isolated; post-hook mutations against the real index and worktree persist.
 - [x] #15 post-commit and post-rewrite are notifications: a failing post hook does not fail the operation or move HEAD.
 - [x] #16 bypassGitHooks and the legacy hook-runner path behave the same for replacements as for new commits.
-- [ ] #17 Merge, rebase, cherry-pick, and revert in-progress guards fail closed without moving HEAD or consuming unrelated index entries.
-- [ ] #18 Git-level tests cover repeated replacement sequences with evidence re-recorded at each step; subject shapes for single, factored, elided, and mixed-verb cases; duplicate collapsing; region parsing when a hook has appended content outside the region; repeated detached and evidence-unavailable new commits; root commits; manual and publication boundaries; local branches, lightweight tags, and annotated tags pointing directly to candidates and to descendants; pre and message hook isolation, post-hook real-index mutations, and failing post hooks; signed-to-unsigned and unsigned-to-signed configuration transitions; required-signing failures; linked worktrees and branch switches; and concurrent branch movement.
+- [x] #17 Merge, rebase, cherry-pick, and revert in-progress guards fail closed without moving HEAD or consuming unrelated index entries.
+- [x] #18 Git-level tests cover repeated replacement sequences with evidence re-recorded at each step; subject shapes for single, factored, elided, and mixed-verb cases; duplicate collapsing; region parsing when a hook has appended content outside the region; repeated detached and evidence-unavailable new commits; root commits; manual and publication boundaries; local branches, lightweight tags, and annotated tags pointing directly to candidates and to descendants; pre and message hook isolation, post-hook real-index mutations, and failing post hooks; signed-to-unsigned and unsigned-to-signed configuration transitions; required-signing failures; linked worktrees and branch switches; and concurrent branch movement.
 - [x] #19 Legacy new-mode commits contain no rolling-operation region or ownership evidence; only an amend-own sequence start or replacement records exact-SHA ownership, and switching from new to amend-own cannot rewrite the pre-opt-in tip.
 - [x] #20 After message hooks, replacement eligibility is revalidated against exact reflog state, Git-operation guards, and all containing refs; hook-created refs and same-SHA away-and-back changes fail closed.
 - [x] #21 Ownership is branch-local: switching away and returning to an otherwise unchanged safe branch intentionally resumes its amendable sequence, and documentation plus tests state that behavior.
 - [x] #22 Rolling messages store structured operation descriptors so production task, draft, document, decision, milestone, and agent messages produce stable factored subjects without parsing incidental English display strings.
 - [x] #23 Document, decision, and agent-instruction upserts record the real create/add versus update action, so distinct operations never collapse under one inaccurate descriptor.
-- [ ] #24 Named and detached finalization exposes exactly one logical reference-transaction hook lifecycle in the real repository/HEAD context: prepared runs before movement and can veto it, committed follows success, aborted follows veto or failed movement, and internal ref/reflog plumbing does not duplicate the transaction.
+- [x] #24 Named and detached finalization exposes exactly one logical reference-transaction hook lifecycle in the real repository/HEAD context: prepared runs before movement and can veto it, committed follows success, aborted follows veto or failed movement, and internal ref/reflog plumbing does not duplicate the transaction.
 <!-- AC:END -->
 
 ## Definition of Done
 <!-- DOD:BEGIN -->
-- [ ] #1 bunx tsc --noEmit passes when TypeScript touched
-- [ ] #2 bun run check . passes when formatting/linting touched
-- [ ] #3 bun test (or scoped test) passes
+- [x] #1 bunx tsc --noEmit passes when TypeScript touched
+- [x] #2 bun run check . passes when formatting/linting touched
+- [x] #3 bun test (or scoped test) passes
 <!-- DOD:END -->
 
 ## Implementation Plan
@@ -126,6 +126,8 @@ Pass 11 branch-identity race is closed. Per-attempt branch snapshots feed owned 
 Pass 12 Git safety lease is complete. Detached HEAD is verified and atomically replaced through its held lock; named branches use the exact expected branch/OID under index+HEAD leases. Ownership/reflog, operation markers, selected index entries, and containing refs are revalidated before update. Sharing created during branch update triggers expected-OID rollback and a non-ownership reflog boundary. Regressions cover detached attachment, same-SHA reset, tag, operation, index, switch-during-update, and sharing-during-update.
 
 Pass 13 hook/message correction complete. The final lease invokes prepared with the exact old/new/ref tuple through the real worktree hook runner before movement; vetoes abort without moving named or detached HEAD; success emits one committed event; failed movement emits aborted; synthetic branch CAS, rollback, and HEAD-reflog restoration suppress automatic duplicate hook events. Whole-list deduplication now repairs duplicate initial and pre-existing v1/v2 operations before rendering. Focused gate: 59 tests/425 assertions; integrated gate: 1,865 passed/4 skipped/0 failed with 8,254 assertions.
+
+Pass 14 hook-boundary correction complete. A shared validateHeadAndLease callback verifies exact identity/OID and all caller invariants immediately after prepared and before named CAS or detached HEAD replacement. Prepared-created MERGE_HEAD rejects start-owned, amend-own replacement, and detached finalization with exactly prepared then aborted, no movement, and no ownership recording. Focused gate: 60 tests/446 assertions; integrated gate: 1,866 passed/4 skipped/0 failed with 8,275 assertions.
 <!-- SECTION:NOTES:END -->
 
 ## Comments

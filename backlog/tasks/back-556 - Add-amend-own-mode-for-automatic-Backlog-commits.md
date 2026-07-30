@@ -5,7 +5,7 @@ status: In Progress
 assignee:
   - '@andreas'
 created_date: '2026-07-28 14:27'
-updated_date: '2026-07-29 23:54'
+updated_date: '2026-07-30 00:11'
 labels:
   - enhancement
   - git
@@ -124,7 +124,7 @@ This task is delivered through subtasks, because the selected-path correctness f
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
 - [x] #1 With autoCommit true and autoCommitMode amend-own, a run of consecutive Backlog mutations on an owned branch tip produces exactly one commit that contains every change, lists every distinct operation once in its message region, and carries a subject that reflects the operations it holds rather than only the first one.
-- [ ] #2 Every documented non-owned boundary makes Backlog create a new commit instead of amending: manual commit, manual amend, reset, detached HEAD, merge commit, reachability from a remote-tracking ref, reachability from any other local branch or tag including direct and descendant refs, and missing, stale, malformed, or ambiguous ownership evidence. A commit created detached or while evidence cannot be recorded remains unowned, so repeated mutations in either persistent state continue creating new commits.
+- [x] #2 Every documented non-owned boundary makes Backlog create a new commit instead of amending: manual commit, manual amend, reset, detached HEAD, merge commit, reachability from a remote-tracking ref, reachability from any other local branch or tag including direct and descendant refs, and missing, stale, malformed, or ambiguous ownership evidence. A commit created detached or while evidence cannot be recorded remains unowned, so repeated mutations in either persistent state continue creating new commits.
 - [x] #3 autoCommitMode defaults to new when absent, rejects invalid values with an error, and has no effect while autoCommit is false or the project is filesystem-only. An explicit per-invocation autoCommit override decides only whether to commit and never changes the mode.
 - [x] #4 No automatic Backlog commit, in either mode, contains paths outside those selected for the operation. Pre-existing unrelated index and worktree state plus pre-commit and commit-message hook staging through the isolated index are preserved, while mutations made by post hooks against the real index and worktree persist according to normal Git semantics.
 - [x] #5 A human can see when an amend happened, force a new commit for a single invocation with --no-amend on any command that can automatically commit, and follow documented reflog recovery for an unwanted amend.
@@ -134,9 +134,9 @@ This task is delivered through subtasks, because the selected-path correctness f
 
 ## Definition of Done
 <!-- DOD:BEGIN -->
-- [ ] #1 bunx tsc --noEmit passes when TypeScript touched
-- [ ] #2 bun run check . passes when formatting/linting touched
-- [ ] #3 bun test (or scoped test) passes
+- [x] #1 bunx tsc --noEmit passes when TypeScript touched
+- [x] #2 bun run check . passes when formatting/linting touched
+- [x] #3 bun test (or scoped test) passes
 <!-- DOD:END -->
 
 ## Implementation Plan
@@ -222,6 +222,8 @@ Pass 11 corrections complete and fully verified. Finalization snapshots branch i
 Pass 12 corrections complete and fully verified. Every finalization acquires the real index lease before the exact worktree HEAD lease, revalidates identity/OID, operations, ownership, selected entries, and refs inside the boundary, and writes detached HEAD through the held lock. Named updates post-check old-tip sharing and CAS-restore the prior tip with ownership closed if a ref appears during update. Configuration emits every string/list item with JSON/YAML-safe quoting and decodes quoted scalars symmetrically; filesystem, browser init, actual Settings API, UI, and post-save mutation round-trips cover embedded quotes. Expanded focused gate passed 194 tests/1,913 assertions; final owned follow-up passed 22/169. Integrated gate: TypeScript clean, Biome checked 351 files, 1,863 passed/4 skipped/0 failed with 8,223 assertions across 207 files in 599.08 seconds; diff check clean.
 
 Pass 13 corrections complete and fully verified. Named and detached finalization now emits one real-worktree reference-transaction lifecycle: prepared runs under the final leases before movement and can veto, internal ref/reflog plumbing has hooks disabled, and committed or aborted reports the same ref update in real HEAD context. Rolling operation rendering deduplicates the entire normalized initial/existing/appended list. Focused gate: 59 tests/425 assertions. Integrated gate: TypeScript clean, Biome checked 351 files, 1,865 passed/4 skipped/0 failed with 8,254 assertions across 207 files in 584.99 seconds; diff check clean.
+
+Pass 14 correction complete and fully verified. Finalization now treats prepared reference-transaction hooks as a mutation boundary: after prepared returns, exact symbolic/detached HEAD identity and OID plus the complete operation/ownership/ref/selected-index lease callback are rerun before any movement; validation failure emits aborted and leaves HEAD unchanged. Focused gate: 60 tests/446 assertions. Integrated gate: TypeScript clean, Biome checked 351 files, 1,866 passed/4 skipped/0 failed with 8,275 assertions across 207 files in 610.83 seconds; diff check clean.
 <!-- SECTION:NOTES:END -->
 
 ## Comments

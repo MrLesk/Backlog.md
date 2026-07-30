@@ -449,13 +449,16 @@ export class GitOperations {
 			try {
 				const headLock = await open(headLockPath, "wx");
 				try {
-					if ((await this.getCurrentBranchRef(repoRoot)) !== branchRef) {
-						throw new Error("Git HEAD identity changed before the selected commit could be finalized");
-					}
-					if ((await this.resolveHead(repoRoot)) !== expectedCommit) {
-						throw new Error("Git HEAD changed before the selected commit could be finalized");
-					}
-					await validateLease();
+					const validateHeadAndLease = async (): Promise<void> => {
+						if ((await this.getCurrentBranchRef(repoRoot)) !== branchRef) {
+							throw new Error("Git HEAD identity changed before the selected commit could be finalized");
+						}
+						if ((await this.resolveHead(repoRoot)) !== expectedCommit) {
+							throw new Error("Git HEAD changed before the selected commit could be finalized");
+						}
+						await validateLease();
+					};
+					await validateHeadAndLease();
 					let referenceTransactionPending = true;
 					try {
 						try {
@@ -471,6 +474,7 @@ export class GitOperations {
 							referenceTransactionPending = false;
 							throw error;
 						}
+						await validateHeadAndLease();
 						if (branchRef) {
 							await Promise.all([
 								writeFile(join(refUpdateDirectory, "commondir"), `${commonDirectory}\n`),

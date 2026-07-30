@@ -408,6 +408,47 @@ describe("owned automatic commit replacement", () => {
 		}
 	}, 40_000);
 
+	it("revalidates complete named and detached leases after prepared reference hooks", async () => {
+		for (const scenario of ["start-owned", "replacement", "detached"] as const) {
+			const root = join(testDir, scenario);
+			const git = await initializeRepository(root);
+			let previousSelectedContent: string | null = null;
+			if (scenario === "replacement") {
+				await commitSelected(root, git, "backlog: Update task BACK-1", "owned\n");
+				previousSelectedContent = "owned\n";
+			}
+			if (scenario === "detached") await $`git checkout --detach`.cwd(root).quiet();
+			const originalHead = await head(root);
+			const markerPath = join(root, "reference-transaction.log");
+			await installHook(
+				root,
+				"reference-transaction",
+				`printf '%s\\n' "$1" >> "${markerPath}"; cat >/dev/null; ` +
+					`if [ "$1" = prepared ]; then git rev-parse HEAD > "$(git rev-parse --git-path MERGE_HEAD)"; fi`,
+			);
+			const selectedPath = join(root, "selected.txt");
+			await Bun.write(selectedPath, "ours\n");
+			await git.stageFiles([selectedPath]);
+
+			await expect(
+				git.commitFiles("backlog: Update task BACK-2", [selectedPath], root, {
+					automaticCommitIntent: scenario === "replacement" ? "amend-own" : "start-owned",
+				}),
+			).rejects.toThrow(/merge/i);
+
+			expect(await head(root)).toBe(originalHead);
+			expect((await Bun.file(markerPath).text()).trim().split("\n")).toEqual(["prepared", "aborted"]);
+			expect((await $`test -f "$(git rev-parse --git-path MERGE_HEAD)"`.cwd(root).nothrow().quiet()).exitCode).toBe(0);
+			if (previousSelectedContent) {
+				expect(await $`git show HEAD:selected.txt`.cwd(root).text()).toBe(previousSelectedContent);
+			} else {
+				expect((await $`git cat-file -e HEAD:selected.txt`.cwd(root).nothrow().quiet()).exitCode).not.toBe(0);
+			}
+			expect(await Bun.file(selectedPath).text()).toBe("ours\n");
+			expect(await $`git show :selected.txt`.cwd(root).text()).toBe("ours\n");
+		}
+	}, 30_000);
+
 	it("fails closed when message hooks create sharing refs or perform same-SHA ABA updates", async () => {
 		const tagRoot = join(testDir, "hook-tag");
 		const tagGit = await initializeRepository(tagRoot);
