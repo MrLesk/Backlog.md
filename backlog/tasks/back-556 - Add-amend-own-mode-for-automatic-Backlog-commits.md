@@ -5,7 +5,7 @@ status: In Progress
 assignee:
   - '@andreas'
 created_date: '2026-07-28 14:27'
-updated_date: '2026-07-30 01:49'
+updated_date: '2026-07-30 02:10'
 labels:
   - enhancement
   - git
@@ -123,11 +123,11 @@ This task is delivered through subtasks, because the selected-path correctness f
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 With autoCommit true and autoCommitMode amend-own, a run of consecutive Backlog mutations on an owned branch tip produces exactly one commit that contains every change, lists every distinct operation once in its message region, and carries a subject that reflects the operations it holds rather than only the first one.
+- [x] #1 With autoCommit true and autoCommitMode amend-own, a run of consecutive Backlog mutations on an owned branch tip produces exactly one commit that contains every change, lists every distinct operation once in its message region, and carries a subject that reflects the operations it holds rather than only the first one.
 - [x] #2 Every documented non-owned boundary makes Backlog create a new commit instead of amending: manual commit, manual amend, reset, detached HEAD, merge commit, reachability from a remote-tracking ref, reachability from any other local branch or tag including direct and descendant refs, and missing, stale, malformed, or ambiguous ownership evidence. A commit created detached or while evidence cannot be recorded remains unowned, so repeated mutations in either persistent state continue creating new commits.
 - [x] #3 autoCommitMode defaults to new when absent, rejects invalid values with an error, and has no effect while autoCommit is false or the project is filesystem-only. An explicit per-invocation autoCommit override decides only whether to commit and never changes the mode.
-- [ ] #4 No automatic Backlog commit, in either mode, contains paths outside those selected for the operation. Pre-existing unrelated index and worktree state plus pre-commit and commit-message hook staging through the isolated index are preserved, while mutations made by post hooks against the real index and worktree persist according to normal Git semantics.
-- [ ] #5 A human can see when an amend happened, force a new commit for a single invocation with --no-amend on any command that can automatically commit, and follow documented reflog recovery for an unwanted amend.
+- [x] #4 No automatic Backlog commit, in either mode, contains paths outside those selected for the operation. Pre-existing unrelated index and worktree state plus pre-commit and commit-message hook staging through the isolated index are preserved, while mutations made by post hooks against the real index and worktree persist according to normal Git semantics.
+- [x] #5 A human can see when an amend happened, force a new commit for a single invocation with --no-amend on any command that can automatically commit, and follow documented reflog recovery for an unwanted amend.
 - [x] #6 The upstream cross-platform test/build/Nix workflow executes successfully for the final implementation SHA, or the task records that first-time-contributor workflow approval is externally blocked on an upstream maintainer before merge.
 - [x] #7 The final PR branch history follows CONTRIBUTING.md by including BACK-556 in every feature commit message, while preserving reviewable intent and the task evidence required for this delivery.
 - [x] #8 A prepared reference-transaction veto is authoritative across every production wrapper: the invocation emits exactly one prepared then aborted lifecycle, never retries into committed, and leaves HEAD and caller bytes unchanged whether the veto is one-shot or persistent.
@@ -135,9 +135,9 @@ This task is delivered through subtasks, because the selected-path correctness f
 
 ## Definition of Done
 <!-- DOD:BEGIN -->
-- [ ] #1 bunx tsc --noEmit passes when TypeScript touched
-- [ ] #2 bun run check . passes when formatting/linting touched
-- [ ] #3 bun test (or scoped test) passes
+- [x] #1 bunx tsc --noEmit passes when TypeScript touched
+- [x] #2 bun run check . passes when formatting/linting touched
+- [x] #3 bun test (or scoped test) passes
 <!-- DOD:END -->
 
 ## Implementation Plan
@@ -235,6 +235,8 @@ Pass 14 correction complete and fully verified. Finalization now treats prepared
 Pass 15 correction complete and fully verified. Reference-transaction prepared rejection now becomes a typed non-retryable error that commitFiles preserves and addAndCommitTaskFile propagates immediately, so one-shot and persistent production task vetoes each emit exactly prepared then aborted with no retry or ref movement. Intentional transient pre-commit retries remain supported and pass their existing regression. Expanded focused gate: 62 tests/461 assertions. Integrated gate: TypeScript clean, Biome checked 351 files, 1,867 passed/4 skipped/0 failed with 8,287 assertions across 207 files in 621.57 seconds; diff check clean.
 
 Pass 16 corrections complete and fully verified. ReferenceTransactionVetoError now escapes commitFiles before changed-HEAD CAS retry logic, so even a prepared hook that moves main through a hook-disabled alternate Git context and then vetoes yields one prepared/aborted lifecycle and wrapper rejection rather than a second committed transaction. The two reviewer-observed multi-commit/hook tests have explicit 20-second local bounds and pass under full-file/full-suite load. Focused gate: 62 tests/465 assertions; owned file: 26/237; integrated gate: TypeScript clean, Biome 351 files, 1,868 passed/4 skipped/0 failed with 8,294 assertions across 207 files in 680.88 seconds; diff check clean.
+
+Pass 17 TUI external-editor correction complete and fully verified. The editor opens only inside a current-byte immutable auto-commit plan; changed task bytes plus updated_date are committed through addAndCommitTaskFile for that exact path, with configured amend-own or invocation force-new semantics. A shared TUI edit helper drains replacement results and both board/list surfaces include them in success feedback; validation errors show actionable text. Regressions prove amend replacement/constant commit count, notice delivery, --no-amend new commit, malformed-current-config no editor/no write, and unrelated staged/unstaged preservation. Focused gate: 132 tests/582 assertions. Integrated gate: TypeScript clean, Biome 351 files, 1,870 passed/4 skipped/0 failed with 8,308 assertions across 207 files in 628.38 seconds; diff check clean.
 <!-- SECTION:NOTES:END -->
 
 ## Comments

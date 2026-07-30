@@ -3380,36 +3380,49 @@ export class Core {
 			return { changed: false, task: editableTask, reason: "not_found" };
 		}
 
-		const opened = await this.openEditor(filePath, screen);
-		if (!opened) {
-			return { changed: false, task: editableTask, reason: "editor_failed" };
-		}
+		return await this.withAutoCommitPlan(undefined, async () => {
+			const opened = await this.openEditor(filePath, screen);
+			if (!opened) {
+				return { changed: false, task: editableTask, reason: "editor_failed" };
+			}
 
-		let afterContent: string;
-		try {
-			afterContent = await Bun.file(filePath).text();
-		} catch {
-			return { changed: false, task: editableTask, reason: "not_found" };
-		}
+			let afterContent: string;
+			try {
+				afterContent = await Bun.file(filePath).text();
+			} catch {
+				return { changed: false, task: editableTask, reason: "not_found" };
+			}
 
-		if (afterContent === beforeContent) {
+			if (afterContent === beforeContent) {
+				const refreshedTask = await this.fs.loadTask(editableTask.id);
+				return { changed: false, task: refreshedTask ?? editableTask };
+			}
+
+			const now = new Date().toISOString().slice(0, 16).replace("T", " ");
+			const withUpdatedDate = upsertTaskUpdatedDate(afterContent, now);
+			await Bun.write(filePath, withUpdatedDate);
+
 			const refreshedTask = await this.fs.loadTask(editableTask.id);
-			return { changed: false, task: refreshedTask ?? editableTask };
-		}
+			if (refreshedTask && this.contentStore) {
+				this.contentStore.upsertTask(refreshedTask);
+			}
 
-		const now = new Date().toISOString().slice(0, 16).replace("T", " ");
-		const withUpdatedDate = upsertTaskUpdatedDate(afterContent, now);
-		await Bun.write(filePath, withUpdatedDate);
+			if (await this.shouldAutoCommit()) {
+				const result = await this.git.addAndCommitTaskFile(
+					editableTask.id,
+					filePath,
+					"update",
+					undefined,
+					await this.gitCommitOptions(),
+				);
+				this.recordAutoCommitResult(undefined, result);
+			}
 
-		const refreshedTask = await this.fs.loadTask(editableTask.id);
-		if (refreshedTask && this.contentStore) {
-			this.contentStore.upsertTask(refreshedTask);
-		}
-
-		return {
-			changed: true,
-			task: refreshedTask ?? { ...editableTask, updatedDate: now },
-		};
+			return {
+				changed: true,
+				task: refreshedTask ?? { ...editableTask, updatedDate: now },
+			};
+		});
 	}
 
 	async openEditor(filePath: string, screen?: BlessedScreen): Promise<boolean> {

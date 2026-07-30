@@ -1,5 +1,5 @@
 import { DEFAULT_STATUSES } from "../constants/index.ts";
-import type { Core } from "../core/backlog.ts";
+import type { Core, TuiTaskEditResult } from "../core/backlog.ts";
 import type { Task } from "../types/index.ts";
 import { getTerminalStatus, isTerminalStatus } from "../utils/terminal-status.ts";
 
@@ -10,6 +10,15 @@ export type CompleteTaskFromTuiResult =
 
 export function formatTaskCompletionBlockedMessage(taskId: string, terminalStatus: string): string {
 	return `Task ${taskId} is not ${terminalStatus}. Set status to "${terminalStatus}" before completing it.`;
+}
+
+export async function editTaskFromTui(
+	core: Core,
+	task: Task,
+	screen: Parameters<Core["editTaskInTui"]>[1],
+): Promise<TuiTaskEditResult & { notices: string[] }> {
+	const result = await core.editTaskInTui(task.id, screen, task);
+	return { ...result, notices: result.changed ? core.consumeAutoCommitNotices() : [] };
 }
 
 export async function completeTaskFromTui(core: Core, task: Task): Promise<CompleteTaskFromTuiResult> {

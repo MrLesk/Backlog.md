@@ -22,7 +22,7 @@ import { openHelpPopup } from "./components/help-popup.ts";
 import { openTaskComposer, type TaskComposerOptions } from "./components/task-composer.ts";
 import { formatFooterContent } from "./footer-content.ts";
 import { getStatusIcon } from "./status-icon.ts";
-import { completeTaskFromTui, formatTaskCompletionBlockedMessage } from "./task-lifecycle.ts";
+import { completeTaskFromTui, editTaskFromTui, formatTaskCompletionBlockedMessage } from "./task-lifecycle.ts";
 import { formatTaskTypeBadge } from "./task-type.ts";
 import {
 	createTaskPopup,
@@ -1265,7 +1265,7 @@ export async function renderBoardTui(
 		const openTaskEditor = async (task: Task) => {
 			try {
 				const core = mutationCore;
-				const result = await core.editTaskInTui(task.id, screen, task);
+				const result = await editTaskFromTui(core, task, screen);
 				if (result.reason === "read_only") {
 					const branchInfo = result.task?.branch ? ` from branch "${result.task.branch}"` : "";
 					showTransientFooter(` {red-fg}Cannot edit task${branchInfo}.{/}`);
@@ -1288,14 +1288,15 @@ export async function renderBoardTui(
 
 				if (result.changed) {
 					renderView();
-					showTransientFooter(` {green-fg}Task ${result.task?.id ?? task.id} marked modified.{/}`);
+					showTransientFooter(successFooter(`Updated ${result.task?.id ?? task.id}`, result.notices), 6000);
 					return;
 				}
 
 				renderView();
 				showTransientFooter(` {gray-fg}No changes detected for ${result.task?.id ?? task.id}.{/}`);
-			} catch (_error) {
-				showTransientFooter(" {red-fg}Failed to open editor.{/}");
+			} catch (error) {
+				const message = error instanceof Error ? error.message : String(error);
+				showTransientFooter(` {red-fg}Failed to edit task: ${message}{/}`);
 			}
 		};
 
