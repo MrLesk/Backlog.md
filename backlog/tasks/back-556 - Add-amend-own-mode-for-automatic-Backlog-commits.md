@@ -5,7 +5,7 @@ status: In Progress
 assignee:
   - '@andreas'
 created_date: '2026-07-28 14:27'
-updated_date: '2026-07-30 00:45'
+updated_date: '2026-07-30 01:08'
 labels:
   - enhancement
   - git
@@ -130,14 +130,14 @@ This task is delivered through subtasks, because the selected-path correctness f
 - [x] #5 A human can see when an amend happened, force a new commit for a single invocation with --no-amend on any command that can automatically commit, and follow documented reflog recovery for an unwanted amend.
 - [x] #6 The upstream cross-platform test/build/Nix workflow executes successfully for the final implementation SHA, or the task records that first-time-contributor workflow approval is externally blocked on an upstream maintainer before merge.
 - [x] #7 The final PR branch history follows CONTRIBUTING.md by including BACK-556 in every feature commit message, while preserving reviewable intent and the task evidence required for this delivery.
-- [x] #8 A prepared reference-transaction veto is authoritative across every production wrapper: the invocation emits exactly one prepared then aborted lifecycle, never retries into committed, and leaves HEAD and caller bytes unchanged whether the veto is one-shot or persistent.
+- [ ] #8 A prepared reference-transaction veto is authoritative across every production wrapper: the invocation emits exactly one prepared then aborted lifecycle, never retries into committed, and leaves HEAD and caller bytes unchanged whether the veto is one-shot or persistent.
 <!-- AC:END -->
 
 ## Definition of Done
 <!-- DOD:BEGIN -->
-- [x] #1 bunx tsc --noEmit passes when TypeScript touched
-- [x] #2 bun run check . passes when formatting/linting touched
-- [x] #3 bun test (or scoped test) passes
+- [ ] #1 bunx tsc --noEmit passes when TypeScript touched
+- [ ] #2 bun run check . passes when formatting/linting touched
+- [ ] #3 bun test (or scoped test) passes
 <!-- DOD:END -->
 
 ## Implementation Plan
@@ -183,6 +183,8 @@ Holistic correction pass: resolve the documented Git intent/state, invocation-co
 28. Resolve Pass 14 prepared-hook mutation races. After prepared succeeds but before any named or detached movement, rerun exact HEAD identity/OID and the complete final lease validation so operation markers, ownership, refs, selected index entries, and branch identity still fail closed; emit aborted on rejection and add start-owned, replacement, and detached regressions.
 
 29. Resolve Pass 15 wrapper retries around prepared vetoes. Preserve intentional transient pre-commit retry behavior, but type reference-transaction prepared rejection as non-retryable through addAndCommitTaskFile; cover one-shot and persistent production task vetoes with exact lifecycle counts and unchanged HEAD/index/worktree bytes.
+
+30. Resolve Pass 16 inner-CAS veto retries and focused test bounds. Propagate ReferenceTransactionVetoError before commitFiles checks whether a hook moved HEAD, cover a one-shot prepared hook that advances the branch through a hook-disabled alternate context and vetoes, and give the two identified multi-Git integration tests explicit local bounds without changing product behavior.
 <!-- SECTION:PLAN:END -->
 
 ## Implementation Notes
@@ -325,5 +327,10 @@ Fresh holistic gpt-5.6-sol xhigh Pass 14 at 867c020 requested changes with one H
 created: 2026-07-30 00:29
 ---
 Fresh holistic gpt-5.6-sol xhigh Pass 15 at 7575462 requested changes with one High finding: addAndCommitTaskFile retries generic prepared-hook rejection, so a one-shot reference-transaction veto can become prepared/aborted then prepared/committed and still amend HEAD. Exact clean reviewed HEAD preserved. Report: /tmp/backlog-821-holistic-review-pass-15.md.
+---
+
+created: 2026-07-30 01:08
+---
+Fresh holistic gpt-5.6-sol xhigh Pass 16 at fe44ef8 requested changes with one High and one Medium finding: commitFiles can swallow the typed prepared veto when the hook itself moves HEAD and retry into committed; two multi-Git owned-replacement tests retain Bun’s load-sensitive 5-second default. Exact clean reviewed HEAD preserved. Report: /tmp/backlog-821-holistic-review-pass-16.md.
 ---
 <!-- COMMENTS:END -->
