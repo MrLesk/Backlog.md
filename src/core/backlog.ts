@@ -690,29 +690,17 @@ export class Core {
 			return false;
 		}
 
-		const branchPaths = new Map<string, Set<string>>();
+		const paths = new Set<string>();
 		for (const entry of branchMatches) {
-			const tree = entry.tree ?? entry.branch;
-			const paths = branchPaths.get(tree) ?? new Set<string>();
-			paths.add(entry.path);
-			branchPaths.set(tree, paths);
-			if (paths.size > 1) {
-				return true;
-			}
+			paths.add(entry.path.replaceAll("\\", "/"));
 		}
 
-		const identities = new Set(
-			branchMatches.map((entry) =>
-				entry.objectId ? `blob:${entry.objectId}` : `location:${entry.branch}\0${entry.path}`,
-			),
-		);
 		const localTask = localMatches[0];
-		if (localTask) {
-			const objectId = localTask.filePath ? await this.git.hashFile(localTask.filePath) : null;
-			identities.add(objectId ? `blob:${objectId}` : `local:${localTask.id}\0${localTask.filePath ?? ""}`);
+		if (localTask?.filePath) {
+			paths.add(relative(this.fs.rootDir, localTask.filePath).replaceAll("\\", "/"));
 		}
 
-		return identities.size > 1;
+		return paths.size > 1;
 	}
 
 	async getTaskWithSubtasks(taskId: string, localTasks?: Task[]): Promise<Task | null> {

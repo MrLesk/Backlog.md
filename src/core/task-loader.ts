@@ -25,25 +25,6 @@ export interface BranchTaskStateEntry {
 	lastModified: Date;
 	branch: string;
 	path: string;
-	objectId?: string;
-	tree?: string;
-}
-
-interface BranchTreeFile {
-	path: string;
-	objectId?: string;
-}
-
-async function listBranchTreeFiles(
-	git: GitOperations,
-	ref: string,
-	path: string,
-	includeObjectIds: boolean,
-): Promise<BranchTreeFile[]> {
-	if (includeObjectIds && typeof git.listTreeEntries === "function") {
-		return await git.listTreeEntries(ref, path);
-	}
-	return (await git.listFilesInTree(ref, path)).map((filePath) => ({ path: filePath }));
 }
 
 function extractConfiguredTaskId(filePath: string, prefix: string): string | null {
@@ -171,9 +152,7 @@ export async function buildRemoteTaskIndex(
 				const indexRef = commit ?? ref;
 
 				// Get backlog files for this branch
-				const treeFiles = await listBranchTreeFiles(git, indexRef, listPath, Boolean(stateCollector));
-				const files = treeFiles.map((entry) => entry.path);
-				const objectIds = new Map(treeFiles.map((entry) => [entry.path, entry.objectId]));
+				const files = await git.listFilesInTree(indexRef, listPath);
 				if (files.length === 0) continue;
 
 				// Get last modified times for all files in one pass
@@ -197,8 +176,6 @@ export async function buildRemoteTaskIndex(
 							branch: br,
 							path: f,
 							lastModified,
-							objectId: objectIds.get(f),
-							tree: commit ?? ref,
 						});
 					}
 
@@ -307,9 +284,7 @@ export async function buildLocalBranchTaskIndex(
 				const indexRef = commit ?? br;
 
 				// Get backlog files in this branch
-				const treeFiles = await listBranchTreeFiles(git, indexRef, listPath, Boolean(stateCollector));
-				const files = treeFiles.map((entry) => entry.path);
-				const objectIds = new Map(treeFiles.map((entry) => [entry.path, entry.objectId]));
+				const files = await git.listFilesInTree(indexRef, listPath);
 				if (files.length === 0) continue;
 
 				// Get last modified times for all files in one pass
@@ -333,8 +308,6 @@ export async function buildLocalBranchTaskIndex(
 							branch: br,
 							path: f,
 							lastModified,
-							objectId: objectIds.get(f),
-							tree: commit ?? br,
 						});
 					}
 

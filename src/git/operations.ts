@@ -17,11 +17,6 @@ export interface GitBranchTip {
 	current: boolean;
 }
 
-export interface GitTreeEntry {
-	path: string;
-	objectId: string;
-}
-
 export interface GitIndexEntry {
 	mode: string;
 	objectId: string;
@@ -900,25 +895,6 @@ export class GitOperations {
 		}
 		const { stdout } = await this.execGit(["ls-tree", "-r", "--name-only", "-z", ref, "--", path], { readOnly: true });
 		return stdout.split("\0").filter(Boolean);
-	}
-
-	async listTreeEntries(ref: string, path: string): Promise<GitTreeEntry[]> {
-		if (!(await this.isRepository())) {
-			return [];
-		}
-		const { stdout } = await this.execGit(["ls-tree", "-r", "-z", ref, "--", path], { readOnly: true });
-		const entries: GitTreeEntry[] = [];
-		for (const record of stdout.split("\0")) {
-			if (!record) continue;
-			const separatorIndex = record.indexOf("\t");
-			if (separatorIndex < 0) continue;
-			const metadata = record.slice(0, separatorIndex).split(" ");
-			const objectId = metadata[2];
-			const entryPath = record.slice(separatorIndex + 1);
-			if (!objectId || !entryPath) continue;
-			entries.push({ path: entryPath, objectId });
-		}
-		return entries;
 	}
 
 	async hashFile(filePath: string): Promise<string | null> {
