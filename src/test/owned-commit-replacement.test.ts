@@ -408,6 +408,37 @@ describe("owned automatic commit replacement", () => {
 		}
 	}, 40_000);
 
+	it("keeps prepared vetoes authoritative through production task retries", async () => {
+		for (const veto of ["one-shot", "persistent"] as const) {
+			const root = join(testDir, veto);
+			const git = await initializeRepository(root);
+			const owned = await commitSelected(root, git, "backlog: Update task BACK-1", "owned\n");
+			const markerPath = join(root, "reference-transaction.log");
+			const seenPath = join(root, ".git", "prepared-veto-seen");
+			const vetoCommand =
+				veto === "persistent" ? "exit 1" : `if [ ! -f "${seenPath}" ]; then : > "${seenPath}"; exit 1; fi`;
+			await installHook(
+				root,
+				"reference-transaction",
+				`printf '%s\\n' "$1" >> "${markerPath}"; cat >/dev/null; ` + `if [ "$1" = prepared ]; then ${vetoCommand}; fi`,
+			);
+			const selectedPath = join(root, "selected.txt");
+			await Bun.write(selectedPath, "ours\n");
+
+			await expect(
+				git.addAndCommitTaskFile("BACK-2", selectedPath, "update", undefined, {
+					automaticCommitIntent: "amend-own",
+				}),
+			).rejects.toThrow("Reference-transaction prepared hook rejected");
+
+			expect((await Bun.file(markerPath).text()).trim().split("\n")).toEqual(["prepared", "aborted"]);
+			expect(await head(root)).toBe(owned.commitId);
+			expect(await $`git show HEAD:selected.txt`.cwd(root).text()).toBe("owned\n");
+			expect(await Bun.file(selectedPath).text()).toBe("ours\n");
+			expect(await $`git show :selected.txt`.cwd(root).text()).toBe("ours\n");
+		}
+	}, 20_000);
+
 	it("revalidates complete named and detached leases after prepared reference hooks", async () => {
 		for (const scenario of ["start-owned", "replacement", "detached"] as const) {
 			const root = join(testDir, scenario);

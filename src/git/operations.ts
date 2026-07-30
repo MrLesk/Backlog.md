@@ -70,6 +70,14 @@ class SelectedPathConflictError extends Error {
 	}
 }
 
+class ReferenceTransactionVetoError extends Error {
+	constructor(error: unknown) {
+		const message = error instanceof Error ? error.message : String(error);
+		super(`Reference-transaction prepared hook rejected the ref update: ${message}`);
+		this.name = "ReferenceTransactionVetoError";
+	}
+}
+
 function indexEntriesEqual(left: readonly GitIndexEntry[], right: readonly GitIndexEntry[]): boolean {
 	return (
 		left.length === right.length &&
@@ -472,7 +480,7 @@ export class GitOperations {
 								referenceTransactionInput,
 							).catch(() => undefined);
 							referenceTransactionPending = false;
-							throw error;
+							throw new ReferenceTransactionVetoError(error);
 						}
 						await validateHeadAndLease();
 						if (branchRef) {
@@ -1113,7 +1121,7 @@ export class GitOperations {
 				return await this.commitFiles(message, [filePath], repoRoot, commitOptions);
 			} catch (error) {
 				lastError = error instanceof Error ? error : new Error(String(error));
-				if (error instanceof SelectedPathConflictError) throw error;
+				if (error instanceof SelectedPathConflictError || error instanceof ReferenceTransactionVetoError) throw error;
 				if (attempt === 3) break;
 				const workingOwned = (await this.hashFile(filePath)) === expectedWorkingHash;
 				const indexOwned = indexEntriesEqual(await this.getIndexEntries(filePath), expectedIndexEntries);

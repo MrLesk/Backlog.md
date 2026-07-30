@@ -5,7 +5,7 @@ status: In Progress
 assignee:
   - '@andreas'
 created_date: '2026-07-28 14:27'
-updated_date: '2026-07-30 00:29'
+updated_date: '2026-07-30 00:45'
 labels:
   - enhancement
   - git
@@ -130,14 +130,14 @@ This task is delivered through subtasks, because the selected-path correctness f
 - [x] #5 A human can see when an amend happened, force a new commit for a single invocation with --no-amend on any command that can automatically commit, and follow documented reflog recovery for an unwanted amend.
 - [x] #6 The upstream cross-platform test/build/Nix workflow executes successfully for the final implementation SHA, or the task records that first-time-contributor workflow approval is externally blocked on an upstream maintainer before merge.
 - [x] #7 The final PR branch history follows CONTRIBUTING.md by including BACK-556 in every feature commit message, while preserving reviewable intent and the task evidence required for this delivery.
-- [ ] #8 A prepared reference-transaction veto is authoritative across every production wrapper: the invocation emits exactly one prepared then aborted lifecycle, never retries into committed, and leaves HEAD and caller bytes unchanged whether the veto is one-shot or persistent.
+- [x] #8 A prepared reference-transaction veto is authoritative across every production wrapper: the invocation emits exactly one prepared then aborted lifecycle, never retries into committed, and leaves HEAD and caller bytes unchanged whether the veto is one-shot or persistent.
 <!-- AC:END -->
 
 ## Definition of Done
 <!-- DOD:BEGIN -->
-- [ ] #1 bunx tsc --noEmit passes when TypeScript touched
-- [ ] #2 bun run check . passes when formatting/linting touched
-- [ ] #3 bun test (or scoped test) passes
+- [x] #1 bunx tsc --noEmit passes when TypeScript touched
+- [x] #2 bun run check . passes when formatting/linting touched
+- [x] #3 bun test (or scoped test) passes
 <!-- DOD:END -->
 
 ## Implementation Plan
@@ -227,6 +227,8 @@ Pass 12 corrections complete and fully verified. Every finalization acquires the
 Pass 13 corrections complete and fully verified. Named and detached finalization now emits one real-worktree reference-transaction lifecycle: prepared runs under the final leases before movement and can veto, internal ref/reflog plumbing has hooks disabled, and committed or aborted reports the same ref update in real HEAD context. Rolling operation rendering deduplicates the entire normalized initial/existing/appended list. Focused gate: 59 tests/425 assertions. Integrated gate: TypeScript clean, Biome checked 351 files, 1,865 passed/4 skipped/0 failed with 8,254 assertions across 207 files in 584.99 seconds; diff check clean.
 
 Pass 14 correction complete and fully verified. Finalization now treats prepared reference-transaction hooks as a mutation boundary: after prepared returns, exact symbolic/detached HEAD identity and OID plus the complete operation/ownership/ref/selected-index lease callback are rerun before any movement; validation failure emits aborted and leaves HEAD unchanged. Focused gate: 60 tests/446 assertions. Integrated gate: TypeScript clean, Biome checked 351 files, 1,866 passed/4 skipped/0 failed with 8,275 assertions across 207 files in 610.83 seconds; diff check clean.
+
+Pass 15 correction complete and fully verified. Reference-transaction prepared rejection now becomes a typed non-retryable error that commitFiles preserves and addAndCommitTaskFile propagates immediately, so one-shot and persistent production task vetoes each emit exactly prepared then aborted with no retry or ref movement. Intentional transient pre-commit retries remain supported and pass their existing regression. Expanded focused gate: 62 tests/461 assertions. Integrated gate: TypeScript clean, Biome checked 351 files, 1,867 passed/4 skipped/0 failed with 8,287 assertions across 207 files in 621.57 seconds; diff check clean.
 <!-- SECTION:NOTES:END -->
 
 ## Comments
