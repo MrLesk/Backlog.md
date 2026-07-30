@@ -222,20 +222,29 @@ describe("TUI task composer canonical persistence", () => {
 
 	it("rolls back a task when auto-commit fails and retries with the same ID", async () => {
 		await initializeGitRepository(testDir);
-		const hookPath = await installFailingHook(testDir);
+		const addAndCommitTaskFile = core.gitOps.addAndCommitTaskFile.bind(core.gitOps);
+		core.gitOps.addAndCommitTaskFile = async (_taskId, filePath, _action, onStaged) => {
+			await core.gitOps.addFile(filePath);
+			const stagedEntries = await core.gitOps.getIndexEntries(filePath);
+			onStaged?.(stagedEntries);
+			throw new Error("simulated auto-commit failed");
+		};
 
 		const controller = new TaskComposerController(["To Do", "Done"]);
 		controller.values.title = "Retry without a duplicate";
 		controller.values.description = "Preserve this value";
 		const persist = async (input: TaskCreateInput) => (await core.createTaskFromInput(input, true)).task;
 
-		expect(await controller.create(persist)).toBeNull();
-		expect(controller.error).toContain("failed");
-		expect(await core.fs.loadTask("TASK-1")).toBeNull();
-		expect((await core.gitOps.getStatus()).trim()).toBe("");
-		expect(controller.values.description).toBe("Preserve this value");
+		try {
+			expect(await controller.create(persist)).toBeNull();
+			expect(controller.error).toContain("failed");
+			expect(await core.fs.loadTask("TASK-1")).toBeNull();
+			expect((await core.gitOps.getStatus()).trim()).toBe("");
+			expect(controller.values.description).toBe("Preserve this value");
+		} finally {
+			core.gitOps.addAndCommitTaskFile = addAndCommitTaskFile;
+		}
 
-		await rm(hookPath);
 		const retried = await controller.create(persist);
 		expect(retried?.id).toBe("TASK-1");
 		expect(await core.fs.loadTask("TASK-2")).toBeNull();

@@ -5,7 +5,7 @@ status: Done
 assignee:
   - '@codex'
 created_date: '2026-07-30 17:11'
-updated_date: '2026-07-30 18:46'
+updated_date: '2026-07-30 19:14'
 labels:
   - web-ui
   - keyboard
@@ -18,6 +18,7 @@ modified_files:
   - src/commands/advanced-config-wizard.ts
   - src/commands/configure-advanced-settings.ts
   - src/test/config-commands.test.ts
+  - src/test/tui-task-composer.test.ts
 type: bug
 ordinal: 203000
 ---
@@ -54,6 +55,8 @@ Global task-detail shortcuts currently intercept ordinary text entry in inline-e
 4. Run the focused and related Web task-detail tests, typecheck, Biome, broader tests, git diff checks, and interactive desktop-browser QA; simplify if the implementation can be reduced without weakening coverage.
 
 5. Characterize the Windows config-wizard timeout, replace only the slow test fixture boundary with a deterministic real filesystem fixture, and repeat focused plus full verification before returning a new reviewed head.
+
+6. Characterize the Windows TUI rollback/retry timeout, isolate only non-contract Git/process/filesystem setup through TDD, preserve every rollback, ID-reuse, and unrelated-state assertion, then repeat focused and full verification before review.
 <!-- SECTION:PLAN:END -->
 
 ## Implementation Notes
@@ -70,10 +73,12 @@ Browser-control tooling timed out while dismissing that final native confirmatio
 Final verification on the unchanged implementation head: bun test passed 1,785 tests with 4 skipped and 0 failures (7,596 assertions); bunx tsc --noEmit passed; bun run check . checked 339 files with no fixes.
 
 Windows CI reliability follow-up: the only slow config-wizard case submitted a non-empty editor, so it spawned the real PATH lookup (where bun on Windows) even though the test contract is applying and persisting wizard selections. The original Windows run timed out at 10,063.60ms and the single rerun at 10,120.40ms; all BACK-558 shortcut tests passed there. TDD RED replaced the host editor with a fixture editor and requested an injected availability checker; before the seam, the test followed the missing-editor branch and failed (expected installClaudeAgent true, received false). The minimal optional seam defaults to the existing production checker and changes no production behavior. GREEN kept the full wizard, real config save/reload, and all 19 assertions. Local characterization before was 20/20 at 30.89-48.18ms (median 33.11ms); after was 30/30 at 30.69-47.74ms (median 32.88ms), now independent of PATH subprocess latency. Adjacent config/editor tests passed 25/25; shortcut tests passed 6/6; TypeScript, Biome (339 files), and diff checks passed; full suite passed 1,785 with 4 skipped, 0 failed, and 7,596 assertions.
+
+Windows TUI reliability follow-up: profiling isolated the rollback/retry timeout to the fixture's real failing Git hook. The failure path invoked three selected-file commit attempts plus 100ms and 200ms backoffs before exercising Core rollback; Windows Git and process startup expanded that non-contract setup to 10,064.28ms. The test now injects one deterministic auto-commit failure after real staging and index capture, then restores the real commit path for retry. Production code is unchanged, and all 8 rollback, clean-state, input-preservation, same-ID, and no-duplicate assertions remain. The 1.2s characterization changed from RED at 1,205.49ms to GREEN at 695.91ms. Thirty repeated runs passed with 627.84ms minimum, 640.31ms median, and 883.84ms maximum, compared with the prior observed local 1,526.70ms minimum, about 1,552ms median, and 1,736.25ms maximum. The full TUI file passed 47 tests and 222 assertions; adjacent shortcut, config, Core, Git, and auto-commit tests passed 86 tests and 264 assertions; TypeScript and Biome passed; the full suite passed 1,785 tests with 4 skipped, 0 failed, and 7,596 assertions.
 <!-- SECTION:NOTES:END -->
 
 ## Final Summary
 
 <!-- SECTION:FINAL_SUMMARY:BEGIN -->
-Prevented task-detail preview shortcuts from intercepting editable fields while preserving existing shortcuts, and made the Windows-blocking config wizard test deterministic by injecting only its external editor-availability boundary. Verified TDD RED/GREEN, 30 repeated focused runs, adjacent config/editor tests, shortcut tests, TypeScript, Biome, and the full 1,785-test suite.
+Prevented task-detail preview shortcuts from intercepting editable fields, made the config wizard test independent of Windows PATH subprocess latency, and made the TUI rollback/retry test deterministic at the auto-commit boundary while preserving real staging, rollback, and retry behavior. Verified focused repetition, adjacent suites, TypeScript, Biome, and the full 1,785-test suite with 0 failures.
 <!-- SECTION:FINAL_SUMMARY:END -->
