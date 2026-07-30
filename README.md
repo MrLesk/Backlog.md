@@ -184,7 +184,8 @@ Read commands support stable, versioned JSON for scripts and integrations. Use `
 
 ## <img src="./.github/web-interface-256.png" alt="Web Interface" width="28" height="28" align="center"> Web Interface
 
-Launch a local web interface for visual task management:
+Launch a web interface for visual task management on the local machine. The server listens on `127.0.0.1` and is not
+reachable from other devices on the LAN or VPN:
 
 ```bash
 # Start the web server (opens browser automatically)
