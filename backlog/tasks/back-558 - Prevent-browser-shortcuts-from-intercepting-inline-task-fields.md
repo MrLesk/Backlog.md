@@ -1,15 +1,20 @@
 ---
 id: BACK-558
 title: Prevent browser shortcuts from intercepting inline task fields
-status: To Do
-assignee: []
+status: In Progress
+assignee:
+  - '@codex'
 created_date: '2026-07-30 17:11'
+updated_date: '2026-07-30 17:22'
 labels:
   - web-ui
   - keyboard
 dependencies: []
 references:
   - 'https://github.com/MrLesk/Backlog.md/issues/816'
+modified_files:
+  - src/web/components/TaskDetailsModal.tsx
+  - src/test/web-task-details-modal-keyboard-shortcuts.test.tsx
 type: bug
 ordinal: 203000
 ---
@@ -36,3 +41,18 @@ Global task-detail shortcuts currently intercept ordinary text entry in inline-e
 - [ ] #2 bun run check . passes when formatting/linting touched
 - [ ] #3 bun test (or scoped test) passes
 <!-- DOD:END -->
+
+## Implementation Plan
+
+<!-- SECTION:PLAN:BEGIN -->
+1. Add a focused TaskDetailsModal keyboard interaction test that mounts the real component, reproduces e/E interception across representative input, textarea, select, and content-editable targets, and proves c is protected while non-editable e/E, edit-mode Escape, and Cmd/Ctrl+S remain active.
+2. Run the focused test before production changes and confirm it fails specifically because the capture-phase preview shortcuts prevent editable-target key events.
+3. Add one local editable-target predicate in TaskDetailsModal and use it only to gate the preview e/E and c shortcut branches, leaving edit-mode Escape and Cmd/Ctrl+S unchanged.
+4. Run the focused and related Web task-detail tests, typecheck, Biome, broader tests, git diff checks, and interactive desktop-browser QA; simplify if the implementation can be reduced without weakening coverage.
+<!-- SECTION:PLAN:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+Implemented the preview shortcut guard with one local editable-target rule covering input, textarea, select, and content-editable elements. Added focused mounted-component coverage for all named inline fields, c protection, non-editable e/E, edit-mode Escape, and Cmd/Ctrl+S. RED proof: the new test initially failed because reference e and Done-task c were default-prevented. GREEN proof: all five focused cases pass after the guard. Rendered QA remains pending because the browser-control runtime exposed no available desktop browser in this session.
+<!-- SECTION:NOTES:END -->
