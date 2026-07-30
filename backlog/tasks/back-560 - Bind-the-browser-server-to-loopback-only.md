@@ -1,11 +1,11 @@
 ---
 id: BACK-560
 title: Bind the browser server to loopback only
-status: In Progress
+status: Done
 assignee:
   - '@codex'
 created_date: '2026-07-30 17:39'
-updated_date: '2026-07-30 17:54'
+updated_date: '2026-07-30 17:59'
 labels:
   - browser
   - security
@@ -36,19 +36,19 @@ The local browser server currently omits Bun hostname configuration, which binds
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 backlog browser binds explicitly to 127.0.0.1 by default and does not accept a public host override.
-- [ ] #2 Port availability probing checks the same 127.0.0.1 interface used by the production server, including advancing when a loopback port is occupied.
-- [ ] #3 Startup output and automatic browser opening use the actual loopback URL.
-- [ ] #4 The browser API is not reachable through a machine LAN or VPN address under the supported default behavior.
-- [ ] #5 CLI help and browser documentation describe the interface as local-machine only and do not advertise unauthenticated external hosting.
-- [ ] #6 Tests cover explicit loopback binding, occupied-loopback-port selection, displayed and opened URL behavior, and unchanged --no-open behavior.
+- [x] #1 backlog browser binds explicitly to 127.0.0.1 by default and does not accept a public host override.
+- [x] #2 Port availability probing checks the same 127.0.0.1 interface used by the production server, including advancing when a loopback port is occupied.
+- [x] #3 Startup output and automatic browser opening use the actual loopback URL.
+- [x] #4 The browser API is not reachable through a machine LAN or VPN address under the supported default behavior.
+- [x] #5 CLI help and browser documentation describe the interface as local-machine only and do not advertise unauthenticated external hosting.
+- [x] #6 Tests cover explicit loopback binding, occupied-loopback-port selection, displayed and opened URL behavior, and unchanged --no-open behavior.
 <!-- AC:END -->
 
 ## Definition of Done
 <!-- DOD:BEGIN -->
-- [ ] #1 bunx tsc --noEmit passes when TypeScript touched
-- [ ] #2 bun run check . passes when formatting/linting touched
-- [ ] #3 bun test (or scoped test) passes
+- [x] #1 bunx tsc --noEmit passes when TypeScript touched
+- [x] #2 bun run check . passes when formatting/linting touched
+- [x] #3 bun test (or scoped test) passes
 <!-- DOD:END -->
 
 ## Implementation Plan
@@ -73,4 +73,12 @@ Verification:
 - bun run check . passed for 340 files.
 - git diff --check passed.
 - Live network proof returned HTTP 200 on 127.0.0.1 while the available Wi-Fi and VPN IPv4 addresses were unreachable.
+
+Final review: an independent security reviewer approved implementation head d4d963adadfcf82089dc431fe4361f911ae28821. The live reachability check was limited to the available Wi-Fi address 192.168.0.194 and VPN address 100.109.216.122; both were unreachable while 127.0.0.1 returned HTTP 200.
 <!-- SECTION:NOTES:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+Bound the browser server and its port probe explicitly to 127.0.0.1, aligned displayed and opened URLs, documented the local-machine-only boundary, and added regression coverage without introducing a public host override. Verified on reviewed head d4d963ad with 12 focused and 74 broader server tests, the full 1,782-test suite, TypeScript, Biome, diff hygiene, and a live check showing loopback HTTP 200 while the tested Wi-Fi and VPN addresses were unreachable.
+<!-- SECTION:FINAL_SUMMARY:END -->
