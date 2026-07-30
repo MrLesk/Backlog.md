@@ -1,11 +1,11 @@
 ---
 id: BACK-558
 title: Prevent browser shortcuts from intercepting inline task fields
-status: In Progress
+status: Done
 assignee:
   - '@codex'
 created_date: '2026-07-30 17:11'
-updated_date: '2026-07-30 17:42'
+updated_date: '2026-07-30 18:03'
 labels:
   - web-ui
   - keyboard
@@ -27,19 +27,19 @@ Global task-detail shortcuts currently intercept ordinary text entry in inline-e
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 In task preview, typing e or E in assignee, labels, references, title, or dependencies does not prevent the keystroke or enter full edit mode.
-- [ ] #2 Preview shortcuts do not intercept keystrokes originating from input, textarea, select, or content-editable targets.
-- [ ] #3 The c completion shortcut follows the same editable-target rule.
-- [ ] #4 Plain e or E outside editable controls still opens edit mode.
-- [ ] #5 Existing edit-mode Escape and Cmd/Ctrl+S behavior remains unchanged.
-- [ ] #6 Automated tests and rendered browser QA cover inline text entry and preserved shortcut behavior.
+- [x] #1 In task preview, typing e or E in assignee, labels, references, title, or dependencies does not prevent the keystroke or enter full edit mode.
+- [x] #2 Preview shortcuts do not intercept keystrokes originating from input, textarea, select, or content-editable targets.
+- [x] #3 The c completion shortcut follows the same editable-target rule.
+- [x] #4 Plain e or E outside editable controls still opens edit mode.
+- [x] #5 Existing edit-mode Escape and Cmd/Ctrl+S behavior remains unchanged.
+- [x] #6 Automated tests and rendered browser QA cover inline text entry and preserved shortcut behavior.
 <!-- AC:END -->
 
 ## Definition of Done
 <!-- DOD:BEGIN -->
-- [ ] #1 bunx tsc --noEmit passes when TypeScript touched
-- [ ] #2 bun run check . passes when formatting/linting touched
-- [ ] #3 bun test (or scoped test) passes
+- [x] #1 bunx tsc --noEmit passes when TypeScript touched
+- [x] #2 bun run check . passes when formatting/linting touched
+- [x] #3 bun test (or scoped test) passes
 <!-- DOD:END -->
 
 ## Implementation Plan
@@ -54,7 +54,19 @@ Global task-detail shortcuts currently intercept ordinary text entry in inline-e
 ## Implementation Notes
 
 <!-- SECTION:NOTES:BEGIN -->
-Implemented the preview shortcut guard with one local editable-target rule covering input, textarea, select, and content-editable elements. Added focused mounted-component coverage for all named inline fields, c protection, non-editable e/E, edit-mode Escape, and Cmd/Ctrl+S. RED proof: the new test initially failed because reference e and Done-task c were default-prevented. GREEN proof: all five focused cases pass after the guard. Rendered QA remains pending because the browser-control runtime exposed no available desktop browser in this session.
+Implemented one ancestor-aware editable-target rule for input, textarea, select, and content-editable elements. Preview e/E and c shortcuts now return before interception when the event originates in an editable target, while edit-mode Escape and Cmd/Ctrl+S remain unchanged.
 
-Fresh reviewer proof gaps addressed without changing production code. The content-editable case now dispatches e from a nested span inside the editable ancestor; mutating the guard from closest() to matches() made that test fail with defaultPrevented=true. A new non-editable Done-task c test verifies apiClient.completeTask receives BACK-558; temporarily removing handleComplete() made it fail with a null completed task ID. Restored the original production implementation after both mutation checks. Rendered browser QA remains pending.
+Test-first proof: the focused suite initially failed because reference e and Done-task c were default-prevented, then passed after the guard. Reviewer follow-up added non-editable c completion coverage and dispatch from a nested content-editable descendant. Mutating closest() to matches() failed the descendant case; removing handleComplete() failed the completion case. Production code was restored after both mutation checks.
+
+Rendered QA: Chrome on the Default profile connected through the enabled extension at http://localhost:6421 on head 0931b6465c257ea0033217cf5a219386a0d77079. Native e/E text was preserved in assignee, labels, references, title, and dependencies while the modal stayed in preview. Non-editable E opened edit mode. Escape returned to preview. Cmd+S entered Saving and resolved without error, and the timestamp-only fixture write was restored. On Done BACK-522, editable c remained literal text; non-editable C opened the native completion confirmation, and completion was not accepted.
+
+Browser-control tooling timed out while dismissing that final native confirmation. Recovery rediscovered the tab, but subsequent dialog inspection, Escape dismissal, and DOM snapshot timed out, so no screenshot or final tab-cleanup verification was captured. The fresh reviewer accepted this as tooling cleanup after the required behavior had already been observed, not an unmet product gate.
+
+Final verification on the unchanged implementation head: bun test passed 1,785 tests with 4 skipped and 0 failures (7,596 assertions); bunx tsc --noEmit passed; bun run check . checked 339 files with no fixes.
 <!-- SECTION:NOTES:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+Prevented task-detail preview shortcuts from intercepting editable fields with one shared ancestor-aware target guard, while preserving e/E and c outside editors plus edit-mode Escape and Cmd/Ctrl+S. Added focused regression and mutation coverage. Verified with 1,785 passing tests, TypeScript, Biome, and accepted real Chrome interaction QA.
+<!-- SECTION:FINAL_SUMMARY:END -->
