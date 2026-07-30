@@ -125,6 +125,8 @@ describe("Web task popup keyboard shortcuts", () => {
 		expect(dialog).toBeTruthy();
 		const contentEditable = document.createElement("div");
 		contentEditable.setAttribute("contenteditable", "true");
+		const contentEditableChild = document.createElement("span");
+		contentEditable.append(contentEditableChild);
 		(dialog as HTMLElement).append(contentEditable);
 
 		const targets: Array<[string, Element | undefined | null, string]> = [
@@ -138,7 +140,7 @@ describe("Web task popup keyboard shortcuts", () => {
 			],
 			["dependency", container.querySelector("#dependency-input"), "e"],
 			["select", container.querySelector("select"), "e"],
-			["content editable", contentEditable, "e"],
+			["content editable descendant", contentEditableChild, "e"],
 		];
 
 		for (const [name, target, key] of targets) {
@@ -159,6 +161,28 @@ describe("Web task popup keyboard shortcuts", () => {
 
 		expect(event.defaultPrevented).toBe(false);
 		expect(findButton(container, "Edit")).toBeTruthy();
+	});
+
+	it("keeps c completion active outside editable controls", async () => {
+		const originalCompleteTask = apiClient.completeTask.bind(apiClient);
+		const completedTaskIds: string[] = [];
+		apiClient.completeTask = async (taskId) => {
+			completedTaskIds.push(taskId);
+		};
+		try {
+			const container = await mountModal({ ...task, status: "Done" });
+			window.confirm = () => true;
+			const dialog = container.querySelector("[role='dialog']");
+			expect(dialog).toBeTruthy();
+
+			const event = await press(dialog as Element, "c");
+			await waitFor(() => completedTaskIds.length > 0);
+
+			expect(event.defaultPrevented).toBe(true);
+			expect(completedTaskIds).toEqual(["BACK-558"]);
+		} finally {
+			apiClient.completeTask = originalCompleteTask;
+		}
 	});
 
 	it("keeps e and E shortcuts active outside editable controls", async () => {

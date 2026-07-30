@@ -5,7 +5,7 @@ status: In Progress
 assignee:
   - '@codex'
 created_date: '2026-07-30 17:11'
-updated_date: '2026-07-30 17:22'
+updated_date: '2026-07-30 17:42'
 labels:
   - web-ui
   - keyboard
@@ -55,4 +55,6 @@ Global task-detail shortcuts currently intercept ordinary text entry in inline-e
 
 <!-- SECTION:NOTES:BEGIN -->
 Implemented the preview shortcut guard with one local editable-target rule covering input, textarea, select, and content-editable elements. Added focused mounted-component coverage for all named inline fields, c protection, non-editable e/E, edit-mode Escape, and Cmd/Ctrl+S. RED proof: the new test initially failed because reference e and Done-task c were default-prevented. GREEN proof: all five focused cases pass after the guard. Rendered QA remains pending because the browser-control runtime exposed no available desktop browser in this session.
+
+Fresh reviewer proof gaps addressed without changing production code. The content-editable case now dispatches e from a nested span inside the editable ancestor; mutating the guard from closest() to matches() made that test fail with defaultPrevented=true. A new non-editable Done-task c test verifies apiClient.completeTask receives BACK-558; temporarily removing handleComplete() made it fail with a null completed task ID. Restored the original production implementation after both mutation checks. Rendered browser QA remains pending.
 <!-- SECTION:NOTES:END -->
