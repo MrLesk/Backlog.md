@@ -269,7 +269,7 @@ describe("Web board filters", () => {
 				taskId: movedTask.id,
 				targetStatus: "In Progress",
 			});
-			return { success: true, task: movedTask };
+			return { success: true, task: movedTask, changedTasks: [movedTask] };
 		};
 
 		try {

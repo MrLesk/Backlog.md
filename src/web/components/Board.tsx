@@ -296,10 +296,14 @@ const Board: React.FC<BoardProps> = ({
 
   const handleTaskReorder = async (payload: ReorderTaskPayload) => {
     try {
-      const requestTask = resolveTaskById(tasks, payload.taskId);
-      const { task } = await apiClient.reorderTask(payload);
-      if (requestTask.status === 'found') {
-        onTaskUpdated?.(task, requestTask.task);
+      const { task, changedTasks } = await apiClient.reorderTask(payload);
+      const responseTasks = new Map(changedTasks.map(updatedTask => [updatedTask.id, updatedTask]));
+      responseTasks.set(task.id, task);
+      for (const updatedTask of responseTasks.values()) {
+        const requestTask = resolveTaskById(tasks, updatedTask.id);
+        if (requestTask.status === 'found') {
+          onTaskUpdated?.(updatedTask, requestTask.task);
+        }
       }
       setUpdateError(null);
     } catch (err) {

@@ -1645,7 +1645,7 @@ export class BacklogServer {
 				);
 			}
 
-			const { updatedTask } = await this.batchTasksUpdated(async () => {
+			const { updatedTask, changedTasks } = await this.batchTasksUpdated(async () => {
 				return await this.core.reorderTask({
 					taskId,
 					targetStatus,
@@ -1655,7 +1655,7 @@ export class BacklogServer {
 				});
 			});
 
-			return Response.json({ success: true, task: updatedTask });
+			return Response.json({ success: true, task: updatedTask, changedTasks });
 		} catch (error) {
 			const message = error instanceof Error ? error.message : "Failed to reorder task";
 			// Cross-branch and validation errors are client errors (400), not server errors (500)

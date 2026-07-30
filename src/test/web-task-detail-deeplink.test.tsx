@@ -838,7 +838,10 @@ describe("task detail routes", () => {
 		expect(container.textContent).toContain(externallyEditedTask.title);
 
 		await act(async () => {
-			reorder.respond("reorder response", json({ success: true, task: staleResponseTask }));
+			reorder.respond(
+				"reorder response",
+				json({ success: true, task: staleResponseTask, changedTasks: [staleResponseTask] }),
+			);
 			await reorder.settle("reorder response");
 		});
 
@@ -862,7 +865,7 @@ describe("task detail routes", () => {
 		const requestStarted = reorder.startedSignals.get("reorder response")?.promise;
 		await dropTaskIntoStatus(container, sourceTask.id, "To Do", "In Progress", requestStarted);
 		await act(async () => {
-			reorder.respond("reorder response", json({ success: true, task: updatedTask }));
+			reorder.respond("reorder response", json({ success: true, task: updatedTask, changedTasks: [updatedTask] }));
 			await reorder.settle("reorder response");
 		});
 		reorder.finish();
@@ -872,6 +875,44 @@ describe("task detail routes", () => {
 		);
 		const updatedTargetColumn = updatedTargetHeading?.closest(".rounded-lg");
 		expect(updatedTargetColumn?.textContent).toContain(sourceTask.title);
+	});
+
+	it("applies every rebalanced task when the data WebSocket is disconnected", async () => {
+		const container = await renderApp("/board?lane=none", { advanceHealthSocket: true });
+		const dataSocket = assertHealthSocketDoesNotShadowDataSocket();
+		dataSocket.close();
+		const sourceTask = tasks[0];
+		const siblingTask = tasks[1];
+		if (!sourceTask || !siblingTask) throw new Error("Expected source and sibling tasks");
+		const updatedSourceTask: Task = { ...sourceTask, ordinal: 2000 };
+		const updatedSiblingTask: Task = { ...siblingTask, ordinal: 1000 };
+
+		const reorder = new FetchOperation("disconnected WebSocket reorder response", [
+			expectFetch("reorder response", "/api/tasks/reorder", { manual: true }),
+		]);
+		const requestStarted = reorder.startedSignals.get("reorder response")?.promise;
+		await dropTaskIntoStatus(container, sourceTask.id, "To Do", "To Do", requestStarted);
+		await act(async () => {
+			reorder.respond(
+				"reorder response",
+				json({
+					success: true,
+					task: updatedSourceTask,
+					changedTasks: [updatedSiblingTask, updatedSourceTask],
+				}),
+			);
+			await reorder.settle("reorder response");
+		});
+		reorder.finish();
+
+		const targetHeading = Array.from(container.querySelectorAll("h3")).find(
+			(heading) => heading.textContent === "To Do",
+		);
+		const targetColumn = targetHeading?.closest(".rounded-lg");
+		const visibleTaskTitles = Array.from(targetColumn?.querySelectorAll("[draggable='true'] h4") ?? []).map(
+			(element) => element.textContent,
+		);
+		expect(visibleTaskTitles.slice(0, 2)).toEqual([siblingTask.title, sourceTask.title]);
 	});
 
 	it("keeps a filtered board query when a sidebar search result opens and closes", async () => {

@@ -58,7 +58,7 @@ afterEach(async () => {
 });
 
 describe("reorder WebSocket publication", () => {
-	it("publishes one reconciliation after a multi-task ordinal rebalance", async () => {
+	it("returns every changed task and publishes one reconciliation after a multi-task ordinal rebalance", async () => {
 		const messages: string[] = [];
 		socket = new WebSocket(`ws://127.0.0.1:${serverPort}`);
 		await withTimeout(
@@ -83,8 +83,16 @@ describe("reorder WebSocket publication", () => {
 		});
 
 		expect(response.status).toBe(200);
-		const result = (await response.json()) as { success: boolean; task: Task };
+		const result = (await response.json()) as { success: boolean; task: Task; changedTasks: Task[] };
 		expect(result.task.ordinal).toBe(2000);
+		expect(
+			result.changedTasks
+				.map((task) => ({ id: task.id, ordinal: task.ordinal }))
+				.sort((a, b) => a.id.localeCompare(b.id)),
+		).toEqual([
+			{ id: "TASK-2", ordinal: 3000 },
+			{ id: "TASK-3", ordinal: 2000 },
+		]);
 		await retry(async () => {
 			if (!messages.includes("tasks-updated")) throw new Error("Reconciliation was not published");
 		});
