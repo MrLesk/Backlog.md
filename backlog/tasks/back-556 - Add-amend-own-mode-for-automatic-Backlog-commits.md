@@ -5,7 +5,7 @@ status: In Progress
 assignee:
   - '@andreas'
 created_date: '2026-07-28 14:27'
-updated_date: '2026-07-30 04:59'
+updated_date: '2026-07-30 05:26'
 labels:
   - enhancement
   - git
@@ -136,14 +136,16 @@ This task is delivered through subtasks, because the selected-path correctness f
 - [x] #11 Re-initialization and integration setup never convert a configuration-derived autoCommit value into an invocation override: agent-instruction writes resolve the current persisted config after save, so true→false disables committing and false→true enables the configured mode.
 - [x] #12 Named automatic commits remain safe on Git versions without transactional update-ref commands: default/new behavior retains expected-OID movement, while amend-own fails closed to a new commit rather than attempting an unlocked owned replacement.
 - [x] #13 Git hook capabilities are versioned independently: Git 2.36–2.39 uses hook run only for hooks without stdin and the legacy runner for reference-transaction/post-rewrite input; Git 2.40+ may use --to-stdin, so every automatic commit remains functional across the supported version matrix.
-- [x] #14 Initialization results and user-facing summaries reload persisted current configuration after setup, so concurrent post-save changes to autoCommit or autoCommitMode are returned and displayed truthfully rather than echoing the stale request.
+- [ ] #14 Initialization results and user-facing summaries reload persisted current configuration after setup, so concurrent post-save changes to autoCommit or autoCommitMode are returned and displayed truthfully rather than echoing the stale request.
+- [ ] #15 Browser initialization forwards and immediately consumes the exact persisted current configuration returned by Core, and publishes that validated snapshot for subsequent config reads; post-save autoCommit/autoCommitMode races cannot leave response, UI, or server cache stale.
+- [ ] #16 HEAD reflog restoration cannot write an ownership marker onto a concurrently selected same-SHA sibling branch: synchronization acquires and validates an exact HEAD/target transaction or aborts, so the sibling remains non-owned and later amend-own creates a new commit.
 <!-- AC:END -->
 
 ## Definition of Done
 <!-- DOD:BEGIN -->
-- [x] #1 bunx tsc --noEmit passes when TypeScript touched
-- [x] #2 bun run check . passes when formatting/linting touched
-- [x] #3 bun test (or scoped test) passes
+- [ ] #1 bunx tsc --noEmit passes when TypeScript touched
+- [ ] #2 bun run check . passes when formatting/linting touched
+- [ ] #3 bun test (or scoped test) passes
 <!-- DOD:END -->
 
 ## Implementation Plan
@@ -201,6 +203,8 @@ Holistic correction pass: resolve the documented Git intent/state, invocation-co
 34. Resolve Pass 20 re-initialization current-byte and legacy Git compatibility. Remove the saved config boolean from updateAgentInstructions invocation so post-save current bytes own enablement; cover true→false and false→true. Detect update-ref transaction support, deopt owned replacement before commit construction when absent, retain safe expected-OID named new/start movement with one real hook lifecycle, and simulate Git 2.27 for default/new plus amend-own degradation.
 
 35. Resolve Pass 21 capability boundaries and effective initialization results. Split git hook run base support (2.36) from --to-stdin support (2.40), route stdin hooks through the legacy runner on 2.36-2.39, correct update-ref transactions to 2.27, update fallback docs/tests, and simulate 2.36/2.39/2.40 reference transaction commits. At initializeProject completion, fail-closed reload current config bytes for the returned result; extend both enablement directions and mode transition assertions through summary consumers.
+
+36. Resolve Pass 22 browser result/cache and documentation findings, plus close the deterministic HEAD-reflog synchronization race exposed by its review probe. Add an opt-in validated publish path to current-byte config loading; return config over /api/init, type and pass it through InitializationScreen to App state, and test HTTP/UI post-save mode changes. Correct the 2.27 comment. Replace loose named HEAD reflog no-op on transactional Git with a second hook-suppressed prepared HEAD transaction that locks the currently selected branch, validates original symbolic identity/SHA while locked, and aborts best-effort on branch switch; regress sibling-marker forgery and later non-amend behavior.
 <!-- SECTION:PLAN:END -->
 
 ## Implementation Notes
@@ -265,6 +269,8 @@ Pass 20 current-byte initialization and legacy Git compatibility complete and fu
 Fresh holistic gpt-5.6-sol xhigh Pass 21 at d374069 requested changes with one High and two Medium findings: git hook run --to-stdin is incorrectly assumed from 2.36 though introduced in 2.40, Git 2.27 actually supports update-ref transactions, and initializeProject returns/summarizes the stale requested config despite post-save integration using current bytes. Exact clean reviewed HEAD preserved. Report: /tmp/backlog-821-holistic-review-pass-21.md.
 
 Pass 21 Git capability and effective initialization result corrections complete and fully verified. Hook-run base support (2.36) and stdin transport (2.40) are independent; reference-transaction/post-rewrite input uses legacy execution through 2.39 and --to-stdin from 2.40. Target-ref transactions correctly begin at 2.27, with conservative degradation only through 2.26. initializeProject reloads current persisted config at completion and returns it; true→false, false→true, and amend-own→new seams assert commit behavior plus returned values. Focused gate: 67 tests/521 assertions. Integrated gate: TypeScript clean, Biome 351 files, 1,878 passed/4 skipped/0 failed with 8,381 assertions across 207 files in 700.59 seconds; diff check clean.
+
+Fresh holistic gpt-5.6-sol xhigh Pass 22 at 54ce54c requested changes with one Medium and one Low finding: browser init drops/ignores Core effective config and leaves saveConfig display cache stale, and one fallback comment still says 2.28. The review also produced a deterministic same-SHA branch-switch probe at loose HEAD reflog restoration: the automatic marker can land on a sibling and make a later sibling mutation amend a tip Backlog did not advance. Exact clean reviewed HEAD preserved; reviewer targeted 61 tests/462 assertions. Report: /tmp/backlog-821-holistic-review-pass-22.md.
 <!-- SECTION:NOTES:END -->
 
 ## Comments
