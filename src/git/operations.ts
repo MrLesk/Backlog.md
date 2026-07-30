@@ -112,6 +112,7 @@ export class GitOperations {
 	private readonly configLoader?: GitConfigLoader;
 	private readonly operationConfigContext = new AsyncLocalStorage<{ config: GitOperationConfig | null }>();
 	private hookRunSupported?: boolean;
+	private updateRefTransactionsSupported?: boolean;
 
 	constructor(projectRoot: string, config: BacklogConfig | null = null, configLoader?: GitConfigLoader) {
 		this.projectRoot = projectRoot;
@@ -269,7 +270,7 @@ export class GitOperations {
 				}
 				selectedPathBaseHead = baseHead;
 				let ownedCommit =
-					intent === "amend-own" && baseHead
+					intent === "amend-own" && baseHead && (await this.supportsUpdateRefTransactions(resolvedRepoRoot))
 						? await this.getOwnedCommit(resolvedRepoRoot, baseHead, baseBranchRef)
 						: null;
 				let commitMessage: string;
@@ -445,11 +446,7 @@ export class GitOperations {
 		const indexLockPath = `${indexPath}.lock`;
 		const headLockPath = `${headPath}.lock`;
 		const refUpdateDirectory = await mkdtemp(join(tmpdir(), "backlog-git-ref-update-"));
-		const hooksDisabledEnv = {
-			GIT_CONFIG_COUNT: "1",
-			GIT_CONFIG_KEY_0: "core.hooksPath",
-			GIT_CONFIG_VALUE_0: join(refUpdateDirectory, "disabled-hooks"),
-		};
+		const disabledHooksPath = join(refUpdateDirectory, "disabled-hooks");
 		const referenceName = branchRef ?? "HEAD";
 		const referenceTransactionInput = `${expectedCommit ?? "0".repeat(newCommit.length)} ${newCommit} ${referenceName}\n`;
 		let updated = false;
@@ -491,28 +488,49 @@ export class GitOperations {
 								writeFile(join(refUpdateDirectory, "commondir"), `${commonDirectory}\n`),
 								writeFile(join(refUpdateDirectory, "HEAD"), "ref: refs/backlog/ref-update-context\n"),
 							]);
-							await this.updateBranchRefTransaction(
-								repoRoot,
-								refUpdateDirectory,
-								branchRef,
-								expectedCommit,
-								newCommit,
-								reflogMessage,
-								hooksDisabledEnv,
-								async () => {
-									// `prepare` owns the target ref lock. Rechecking the complete
-									// lease here closes same-OID reflog ABA between the real hook
-									// validation and the final branch movement.
-									await validateHeadAndLease();
-									if (validateNamedUpdate) await validateNamedUpdate();
-								},
-							);
+							if (await this.supportsUpdateRefTransactions(repoRoot)) {
+								await this.updateBranchRefTransaction(
+									repoRoot,
+									refUpdateDirectory,
+									branchRef,
+									expectedCommit,
+									newCommit,
+									reflogMessage,
+									disabledHooksPath,
+									async () => {
+										// `prepare` owns the target ref lock. Rechecking the complete
+										// lease here closes same-OID reflog ABA between the real hook
+										// validation and the final branch movement.
+										await validateHeadAndLease();
+										if (validateNamedUpdate) await validateNamedUpdate();
+									},
+								);
+							} else {
+								// Git before 2.28 has no prepared update-ref transaction. Owned
+								// replacement was deoptimized before commit construction, so this
+								// legacy expected-OID update only advances a new/start-owned commit.
+								await this.execGit(
+									[
+										"-c",
+										`core.hooksPath=${disabledHooksPath}`,
+										"update-ref",
+										"-m",
+										reflogMessage,
+										branchRef,
+										newCommit,
+										expectedCommit ?? "",
+									],
+									{ cwd: repoRoot, env: { GIT_DIR: refUpdateDirectory } },
+								);
+							}
 							if (validateNamedUpdate) {
 								try {
 									await validateNamedUpdate();
 								} catch (error) {
 									await this.execGit(
 										[
+											"-c",
+											`core.hooksPath=${disabledHooksPath}`,
 											"update-ref",
 											"-m",
 											"reset: Backlog finalization lease invalidated",
@@ -520,7 +538,10 @@ export class GitOperations {
 											expectedCommit ?? "",
 											newCommit,
 										],
-										{ cwd: repoRoot, env: { ...hooksDisabledEnv, GIT_DIR: refUpdateDirectory } },
+										{
+											cwd: repoRoot,
+											env: { GIT_DIR: refUpdateDirectory },
+										},
 									);
 									throw error;
 								}
@@ -565,10 +586,10 @@ export class GitOperations {
 		// The protected update writes a branch reflog (named) or HEAD itself
 		// (detached). Restore the normal worktree HEAD reflog with an OID no-op.
 		if (updated && (await this.resolveHead(repoRoot)) === newCommit) {
-			await this.execGit(["update-ref", "-m", reflogMessage, "HEAD", newCommit, newCommit], {
-				cwd: repoRoot,
-				env: hooksDisabledEnv,
-			}).catch(() => undefined);
+			await this.execGit(
+				["-c", `core.hooksPath=${disabledHooksPath}`, "update-ref", "-m", reflogMessage, "HEAD", newCommit, newCommit],
+				{ cwd: repoRoot },
+			).catch(() => undefined);
 		}
 		if (referenceTransactionSucceeded) {
 			await this.runCommitHook("reference-transaction", ["committed"], repoRoot, {}, referenceTransactionInput).catch(
@@ -590,14 +611,18 @@ export class GitOperations {
 		expectedCommit: string | null,
 		newCommit: string,
 		reflogMessage: string,
-		hooksDisabledEnv: Record<string, string>,
+		disabledHooksPath: string,
 		validatePreparedUpdate: () => Promise<void>,
 	): Promise<void> {
-		const subprocess = spawn("git", ["update-ref", "--stdin", "-m", reflogMessage], {
-			cwd: repoRoot,
-			env: { ...process.env, ...hooksDisabledEnv, GIT_DIR: gitDirectory },
-			stdio: ["pipe", "pipe", "pipe"],
-		});
+		const subprocess = spawn(
+			"git",
+			["-c", `core.hooksPath=${disabledHooksPath}`, "update-ref", "--stdin", "-m", reflogMessage],
+			{
+				cwd: repoRoot,
+				env: { ...process.env, GIT_DIR: gitDirectory },
+				stdio: ["pipe", "pipe", "pipe"],
+			},
+		);
 		let stderr = "";
 		subprocess.stderr.setEncoding("utf8");
 		subprocess.stderr.on("data", (chunk: string) => {
@@ -895,6 +920,21 @@ export class GitOperations {
 			return;
 		}
 		await this.runLegacyCommitHook(hook, args, repoRoot, hookEnv, input);
+	}
+
+	private async supportsUpdateRefTransactions(repoRoot: string): Promise<boolean> {
+		if (this.updateRefTransactionsSupported !== undefined) return this.updateRefTransactionsSupported;
+		try {
+			const { stdout } = await this.execGit(["version"], { cwd: repoRoot, readOnly: true });
+			const match = stdout.match(/git version (\d+)\.(\d+)/);
+			const major = Number(match?.[1]);
+			const minor = Number(match?.[2]);
+			this.updateRefTransactionsSupported =
+				Number.isInteger(major) && Number.isInteger(minor) && (major > 2 || (major === 2 && minor >= 28));
+		} catch {
+			this.updateRefTransactionsSupported = false;
+		}
+		return this.updateRefTransactionsSupported;
 	}
 
 	private async supportsHookRun(repoRoot: string): Promise<boolean> {

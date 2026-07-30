@@ -596,6 +596,44 @@ describe("owned automatic commit replacement", () => {
 		expect(await Bun.file(join(legacyRoot, "legacy-hooks.txt")).text()).toBe("prerewrite");
 	}, 30_000);
 
+	it("keeps named new commits safe and degrades replacement on Git before update-ref transactions", async () => {
+		const git = await initializeRepository(testDir);
+		const privateGit = git as unknown as PrivateGit;
+		const originalExec = privateGit.execGit.bind(git);
+		privateGit.execGit = async (args, options) =>
+			args[0] === "version" ? { stdout: "git version 2.27.1\n", stderr: "" } : originalExec(args, options);
+		const baselineCount = await commitCount(testDir);
+
+		const defaultNew = await commitSelected(testDir, git, "backlog: Update task BACK-1", "new\n", {
+			automaticCommitIntent: "new",
+		});
+		expect(defaultNew.amended).toBe(false);
+		expect(defaultNew.ownershipRecorded).toBe(false);
+		expect(await commitCount(testDir)).toBe(baselineCount + 1);
+
+		const sequenceStart = await commitSelected(testDir, git, "backlog: Update task BACK-2", "start\n", {
+			automaticCommitIntent: "start-owned",
+		});
+		expect(sequenceStart.amended).toBe(false);
+		expect(sequenceStart.ownershipRecorded).toBe(true);
+
+		const degraded = await commitSelected(testDir, git, "backlog: Update task BACK-3", "degraded\n", {
+			automaticCommitIntent: "amend-own",
+		});
+		expect(degraded.amended).toBe(false);
+		expect(degraded.previousCommitId).toBe(sequenceStart.commitId);
+		expect(degraded.ownershipRecorded).toBe(true);
+		expect((await $`git rev-parse HEAD^`.cwd(testDir).text()).trim()).toBe(sequenceStart.commitId);
+		expect(await commitCount(testDir)).toBe(baselineCount + 3);
+		expect(await $`git show HEAD:selected.txt`.cwd(testDir).text()).toBe("degraded\n");
+
+		const next = await commitSelected(testDir, git, "backlog: Update task BACK-4", "next\n", {
+			automaticCommitIntent: "amend-own",
+		});
+		expect(next.amended).toBe(false);
+		expect(await commitCount(testDir)).toBe(baselineCount + 4);
+	}, 20_000);
+
 	it("uses current signing configuration and leaves HEAD unchanged on signing failure", async () => {
 		const git = await initializeRepository(testDir);
 		const keyPath = join(testDir, "signing-key");
@@ -636,7 +674,7 @@ describe("owned automatic commit replacement", () => {
 		const originalExec = privateGit.execGit.bind(git);
 		let removedEvidence = false;
 		privateGit.execGit = async (args, options) => {
-			if (args[0] === "update-ref" && !removedEvidence) {
+			if (args.includes("update-ref") && !removedEvidence) {
 				removedEvidence = true;
 				await rm(logPath, { force: true });
 			}

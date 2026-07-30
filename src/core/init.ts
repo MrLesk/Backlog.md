@@ -271,7 +271,7 @@ export async function initializeProject(
 	// Handle CLI integration - agent instruction files
 	if (integrationMode === "cli" && agentInstructions.length > 0) {
 		try {
-			const agentInstructionResults = await core.updateAgentInstructions(agentInstructions, config.autoCommit);
+			const agentInstructionResults = await core.updateAgentInstructions(agentInstructions);
 			mcpResults.agentFiles = formatAgentInstructionResults(agentInstructionResults);
 		} catch (error) {
 			const message = error instanceof Error ? error.message : String(error);

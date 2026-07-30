@@ -283,6 +283,51 @@ describe("autoCommitMode", () => {
 		expect(results).toEqual([]);
 	}, 20_000);
 
+	test("re-initialization agent writes honor post-save current autoCommit bytes in both directions", async () => {
+		for (const scenario of [
+			{ requested: true, current: false },
+			{ requested: false, current: true },
+		] as const) {
+			const root = join(testDir, `${scenario.requested}-to-${scenario.current}`);
+			await mkdir(root, { recursive: true });
+			await $`git init -q -b main`.cwd(root);
+			await $`git config user.email test@example.com`.cwd(root);
+			await $`git config user.name "Test User"`.cwd(root);
+			const scenarioCore = new Core(root);
+			await initializeTestProject(scenarioCore, "Re-init current bytes");
+			await $`git add . && git commit -q -m baseline`.cwd(root);
+			const existingConfig = await scenarioCore.filesystem.loadConfig();
+			if (!existingConfig) throw new Error("Missing test config");
+			const originalSaveConfig = scenarioCore.filesystem.saveConfig.bind(scenarioCore.filesystem);
+			scenarioCore.filesystem.saveConfig = async (config) => {
+				await originalSaveConfig(config);
+				const configPath = scenarioCore.filesystem.configFilePath;
+				const savedBytes = await Bun.file(configPath).text();
+				await Bun.write(
+					configPath,
+					savedBytes.replace(`auto_commit: ${scenario.requested}`, `auto_commit: ${scenario.current}`),
+				);
+			};
+			const beforeCount = await commitCount(root);
+
+			await initializeProject(scenarioCore, {
+				projectName: existingConfig.projectName,
+				integrationMode: "cli",
+				agentInstructions: ["AGENTS.md"],
+				existingConfig,
+				advancedConfig: { autoCommit: scenario.requested, autoCommitMode: "amend-own" },
+			});
+
+			expect(await Bun.file(join(root, "AGENTS.md")).exists()).toBe(true);
+			expect(await commitCount(root)).toBe(beforeCount + (scenario.current ? 1 : 0));
+			if (scenario.current) {
+				expect(await $`git show HEAD:AGENTS.md`.cwd(root).text()).toContain("Backlog.md");
+			} else {
+				expect((await $`git cat-file -e HEAD:AGENTS.md`.cwd(root).nothrow().quiet()).exitCode).not.toBe(0);
+			}
+		}
+	}, 20_000);
+
 	test("MCP mutation output reports an owned replacement", async () => {
 		const config = await core.filesystem.loadConfig();
 		if (!config) throw new Error("Missing test config");
