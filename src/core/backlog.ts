@@ -3,6 +3,7 @@ import { basename, isAbsolute, join, relative } from "node:path";
 import { DEFAULT_DIRECTORIES, DEFAULT_STATUSES, FALLBACK_STATUS } from "../constants/index.ts";
 import { FileSystem, isCreateLockError } from "../file-system/operations.ts";
 import { type GitIndexEntry, GitOperations } from "../git/operations.ts";
+import { parseTask } from "../markdown/parser.ts";
 import {
 	type AcceptanceCriterion,
 	type BacklogConfig,
@@ -65,6 +66,7 @@ import {
 	getTaskFilename,
 	getTaskPath,
 	normalizeTaskId,
+	normalizeTaskIdentity,
 	taskIdsEqual,
 } from "../utils/task-path.ts";
 import { attachSubtaskSummaries } from "../utils/task-subtasks.ts";
@@ -1076,12 +1078,16 @@ export class Core {
 	 * - Document: /documents only
 	 * - Decision: /decisions only
 	 */
-	async generateNextId(type: EntityType = EntityType.Task, parent?: string): Promise<string> {
+	async generateNextId(
+		type: EntityType = EntityType.Task,
+		parent?: string,
+		taskSnapshot?: { activeTasks: Task[]; completedTasks: Task[] },
+	): Promise<string> {
 		const config = await this.fs.loadConfig();
 		const prefix = getPrefixForType(type, config ?? undefined);
 
 		// Collect existing IDs based on entity type
-		const allIds = await this.getExistingIdsForType(type);
+		const allIds = await this.getExistingIdsForType(type, taskSnapshot);
 
 		if (parent) {
 			// Subtask generation (only applicable for tasks)
@@ -1160,13 +1166,16 @@ export class Core {
 		return entries;
 	}
 
-	private async getActiveAndCompletedTaskIds(): Promise<string[]> {
+	private async getActiveAndCompletedTaskIds(taskSnapshot?: {
+		activeTasks: Task[];
+		completedTasks: Task[];
+	}): Promise<string[]> {
 		const config = await this.fs.loadConfig();
 		const taskPrefix = config?.prefixes?.task ?? "task";
 
 		// Load local active and completed tasks
-		const localTasks = await this.listTasksWithMetadata();
-		const localCompletedTasks = await this.fs.listCompletedTasks();
+		const localTasks = taskSnapshot?.activeTasks ?? (await this.listTasksWithMetadata());
+		const localCompletedTasks = taskSnapshot?.completedTasks ?? (await this.fs.listCompletedTasks());
 
 		// Build initial state entries from local tasks
 		const stateEntries: BranchTaskStateEntry[] = [];
@@ -1228,12 +1237,15 @@ export class Core {
 	 * Note: Archived tasks are intentionally excluded - archived IDs can be reused.
 	 * This makes archive act as a soft delete for ID purposes.
 	 */
-	private async getExistingIdsForType(type: EntityType): Promise<string[]> {
+	private async getExistingIdsForType(
+		type: EntityType,
+		taskSnapshot?: { activeTasks: Task[]; completedTasks: Task[] },
+	): Promise<string[]> {
 		switch (type) {
 			case EntityType.Task: {
 				// Get active + completed task IDs from all branches (respects config)
 				// Archived IDs are excluded - they can be reused (soft delete behavior)
-				return this.getActiveAndCompletedTaskIds();
+				return this.getActiveAndCompletedTaskIds(taskSnapshot);
 			}
 			case EntityType.Draft: {
 				const drafts = await this.fs.listDrafts();
@@ -1522,42 +1534,41 @@ export class Core {
 	}
 
 	async updateTask(task: Task, autoCommit?: boolean): Promise<void> {
+		const originalTask = await this.fs.loadTask(task.id);
+		if (!originalTask) {
+			throw new Error(`Task not found: ${task.id}`);
+		}
+		await this.persistResolvedTask(originalTask, task, autoCommit);
+	}
+
+	private async persistResolvedTask(originalTask: Task, task: Task, autoCommit?: boolean): Promise<Task> {
 		normalizeAssignee(task);
 
-		// Load original task to detect status changes for callbacks
-		const originalTask = await this.fs.loadTask(task.id);
-		const oldStatus = originalTask?.status ?? "";
+		const oldStatus = originalTask.status ?? "";
 		const newStatus = task.status ?? "";
 		const statusChanged = oldStatus !== newStatus;
 
 		if (hasUpdatedDateRelevantChanges(originalTask, task)) {
 			task.updatedDate = new Date().toISOString().slice(0, 16).replace("T", " ");
-		} else if (originalTask?.updatedDate) {
+		} else if (originalTask.updatedDate) {
 			task.updatedDate = originalTask.updatedDate;
 		} else {
 			delete task.updatedDate;
 		}
 
-		await this.fs.saveTask(task);
-		// Keep any in-process ContentStore in sync for immediate UI/search freshness.
-		if (this.contentStore) {
-			const savedTask = await this.fs.loadTask(task.id);
-			if (savedTask) {
-				this.contentStore.upsertTask(savedTask);
-			}
-		}
-
+		task.filePath ??= originalTask.filePath;
+		const filePath = await this.fs.saveTask(task);
+		const savedTask = { ...normalizeTaskIdentity(parseTask(await Bun.file(filePath).text())), filePath };
 		if (await this.shouldAutoCommit(autoCommit)) {
-			const filePath = await getTaskPath(task.id, this);
-			if (filePath) {
-				await this.git.addAndCommitTaskFile(task.id, filePath, "update");
-			}
+			await this.git.addAndCommitTaskFile(savedTask.id, filePath, "update");
 		}
 
 		// Fire status change callback if status changed
 		if (statusChanged) {
-			await this.executeStatusChangeCallback(task, oldStatus, newStatus);
+			await this.executeStatusChangeCallback(savedTask, oldStatus, newStatus);
 		}
+
+		return savedTask;
 	}
 
 	private async applyTaskUpdateInput(
@@ -2135,6 +2146,7 @@ export class Core {
 		if (!task) {
 			throw new Error(`Task not found: ${taskId}`);
 		}
+		const originalTask = structuredClone(task);
 
 		const requestedStatus = input.status?.trim().toLowerCase();
 		if (requestedStatus === "draft") {
@@ -2149,9 +2161,7 @@ export class Core {
 			return task;
 		}
 
-		await this.updateTask(task, autoCommit);
-		const refreshed = await this.fs.loadTask(taskId);
-		return refreshed ?? task;
+		return await this.persistResolvedTask(originalTask, task, autoCommit);
 	}
 
 	async updateDraft(task: Task, autoCommit?: boolean): Promise<void> {
@@ -2393,13 +2403,42 @@ export class Core {
 			seen.add(id);
 		}
 
-		// Load all tasks from the ordered list - use getTask to include cross-branch tasks from the store
-		const loadedTasks = await Promise.all(
-			orderedTaskIds.map(async (id) => {
-				const task = await this.getTask(id);
-				return task;
-			}),
-		);
+		const [localTasks, completedTasks, store] = await Promise.all([
+			this.fs.listTasks(),
+			this.fs.listCompletedTasks(),
+			this.getContentStore(),
+		]);
+		const storedTasks = store.getTasks();
+		const loadedTasks = orderedTaskIds.map((id) => {
+			const localMatches = [...localTasks, ...completedTasks].filter((task) => taskIdsEqual(id, task.id));
+			if (localMatches.length > 1) {
+				throw new AmbiguousTaskIdError(
+					id,
+					localMatches.map((task) => task.filePath ?? task.id),
+				);
+			}
+			const localTask = localTasks.find((task) => taskIdsEqual(id, task.id));
+			const storedResolution = resolveTaskById(storedTasks, id);
+			if (storedResolution.status === "ambiguous") {
+				throw new AmbiguousTaskIdError(
+					id,
+					storedResolution.tasks.map((task) => task.filePath ?? `${task.branch ?? "unknown branch"}:${task.id}`),
+				);
+			}
+			if (
+				localTask &&
+				storedResolution.status === "found" &&
+				localTask.id.toLowerCase() !== storedResolution.task.id.toLowerCase()
+			) {
+				throw new AmbiguousTaskIdError(id, [
+					localTask.filePath ?? localTask.id,
+					storedResolution.task.filePath ??
+						`${storedResolution.task.branch ?? "unknown branch"}:${storedResolution.task.id}`,
+				]);
+			}
+			if (storedResolution.status === "found") return storedResolution.task;
+			return localTask ?? null;
+		});
 
 		// Filter out any tasks that couldn't be loaded (may have been moved/deleted)
 		const validTasks = loadedTasks.filter((t): t is Task => t !== null);
@@ -2476,11 +2515,18 @@ export class Core {
 		});
 
 		if (changedTasks.length > 0) {
-			await this.updateTasksBulk(
-				changedTasks,
-				params.commitMessage ?? `Reorder tasks in ${targetStatus}`,
-				params.autoCommit,
-			);
+			for (const changedTask of changedTasks) {
+				const originalTask = originalMap.get(changedTask.id);
+				if (!originalTask) {
+					throw new Error(`Task ${changedTask.id} not found while persisting reorder`);
+				}
+				await this.persistResolvedTask(originalTask, changedTask, false);
+			}
+			if (await this.shouldAutoCommit(params.autoCommit)) {
+				const backlogDir = await this.getBacklogDirectoryName();
+				const repoRoot = await this.git.stageBacklogDirectory(backlogDir);
+				await this.git.commitChanges(params.commitMessage ?? `Reorder tasks in ${targetStatus}`, repoRoot);
+			}
 		}
 
 		const updatedTask = updatesMap.get(taskId) ?? updatedMoved;

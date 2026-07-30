@@ -100,6 +100,8 @@ const renderBoardPage = (
 		availablePriorities?: string[];
 		availableTypes?: string[];
 		dateFormat?: string;
+		onRefreshData?: () => Promise<void>;
+		onTaskUpdated?: (task: Task) => void;
 	} = {},
 ): HTMLElement => {
 	setupDom(url);
@@ -123,6 +125,8 @@ const renderBoardPage = (
 					isLoading={false}
 					onEditTask={() => {}}
 					onNewTask={() => {}}
+					onRefreshData={options.onRefreshData}
+					onTaskUpdated={options.onTaskUpdated}
 					dateFormat={options.dateFormat}
 				/>
 			</BrowserRouter>,
@@ -253,6 +257,55 @@ afterEach(() => {
 });
 
 describe("Web board filters", () => {
+	it("publishes the returned task after a board drop without a foreground refresh", async () => {
+		const originalReorderTask = apiClient.reorderTask.bind(apiClient);
+		const sourceTask = tasks[0];
+		if (!sourceTask) throw new Error("Expected a source task");
+		const movedTask: Task = { ...sourceTask, status: "In Progress", ordinal: 2000 };
+		let refreshes = 0;
+		const publishedTasks: Task[] = [];
+		apiClient.reorderTask = async (payload) => {
+			expect(payload).toMatchObject({
+				taskId: movedTask.id,
+				targetStatus: "In Progress",
+			});
+			return { success: true, task: movedTask };
+		};
+
+		try {
+			const container = renderBoardPage(undefined, {
+				onRefreshData: async () => {
+					refreshes += 1;
+				},
+				onTaskUpdated: (task) => {
+					publishedTasks.push(task);
+				},
+			});
+			const targetHeading = Array.from(container.querySelectorAll("h3")).find(
+				(heading) => heading.textContent === "In Progress",
+			);
+			const targetColumn = targetHeading?.closest(".rounded-lg");
+			expect(targetColumn).toBeTruthy();
+			const dropEvent = new window.Event("drop", { bubbles: true, cancelable: true });
+			Object.defineProperty(dropEvent, "dataTransfer", {
+				value: {
+					getData: (type: string) => (type === "text/plain" ? movedTask.id : type === "text/status" ? "To Do" : ""),
+				},
+			});
+
+			await act(async () => {
+				targetColumn?.dispatchEvent(dropEvent);
+				await Promise.resolve();
+			});
+			await waitFor(() => publishedTasks.length === 1);
+
+			expect(publishedTasks).toEqual([movedTask]);
+			expect(refreshes).toBe(0);
+		} finally {
+			apiClient.reorderTask = originalReorderTask;
+		}
+	});
+
 	it("filters board cards by assignee, label, type, and priority while updating URL params", async () => {
 		const container = renderBoardPage(undefined, {
 			availableTypes: ["Bug", "Docs", "Enhancement"],

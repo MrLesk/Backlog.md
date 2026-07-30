@@ -1,15 +1,30 @@
 ---
 id: BACK-559
 title: Eliminate repeated task-corpus scans from browser updates
-status: To Do
-assignee: []
+status: In Progress
+assignee:
+  - '@codex'
 created_date: '2026-07-30 17:12'
+updated_date: '2026-07-30 17:36'
 labels:
   - web-ui
   - performance
 dependencies: []
 references:
   - 'https://github.com/MrLesk/Backlog.md/issues/807'
+modified_files:
+  - src/core/backlog.ts
+  - src/core/content-store.ts
+  - src/core/duplicate-task-repair.ts
+  - src/server/index.ts
+  - src/web/App.tsx
+  - src/web/components/Board.tsx
+  - src/web/components/BoardPage.tsx
+  - src/test/core.test.ts
+  - src/test/duplicate-task-repair.test.ts
+  - src/test/reorder-utils.test.ts
+  - src/test/server-duplicate-repair.test.ts
+  - src/test/web-board-filters.test.tsx
 type: bug
 ordinal: 204000
 ---
@@ -36,3 +51,23 @@ Browser task mutations repeatedly parse the complete active and completed task c
 - [ ] #2 bun run check . passes when formatting/linting touched
 - [ ] #3 bun test (or scoped test) passes
 <!-- DOD:END -->
+
+## Implementation Plan
+
+<!-- SECTION:PLAN:BEGIN -->
+1. Add focused regression tests first: count active/completed corpus loads for one HTTP task mutation and one duplicate preview; assert ambiguous active/active, active/completed, zero-padded, cross-prefix, and filename/frontmatter mutations remain fail-closed without file changes; assert a board reorder applies the returned task without invoking a foreground refresh. Baseline on the 20-active/430-completed fixture: status PUT median 607.8 ms, duplicate preview 201.7 ms, full refresh 202.5 ms on current main.
+2. Collapse task persistence around the already-resolved original task: remove the server pre-read, preserve the one FileSystem identity scan, pass the original into a private persistence path, use the save result for ContentStore/Git, and return the updated task without reloading the corpus. Reuse one active/completed snapshot throughout duplicate detection and local repair-ID allocation.
+3. Apply the reorder response to App task state immediately and leave the existing WebSocket refresh as reconciliation. Run focused server/collision/Web tests, type-check, Biome, broader relevant tests, an ephemeral same-machine 20/430 before/after measurement, rendered-browser validation where available, simplification review, and final scoped diff inspection.
+<!-- SECTION:PLAN:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+Implemented the browser mutation fast path around one resolved task identity and one reusable active/completed snapshot. Core task updates now persist the resolved task directly, exact-parse only the saved file for normalized response data, and reuse the saved path for ContentStore publication and Git auto-commit. HTTP update no longer preloads the task; duplicate repair and reorder reuse their local snapshots; cross-worktree/branch ID collision checks remain intact. Board reorder/status responses replace the local task immediately, while the existing WebSocket refresh remains the external-change reconciliation path.
+
+TDD evidence: new scan-count, ambiguity/no-mutation, duplicate-preview, reorder, and rendered React board tests failed on the previous behavior and pass after the change. Focused suites: 157 pass, 0 fail. Full suite: 1785 pass, 4 skip, 0 fail across 199 files. bunx tsc --noEmit, bun run check ., and git diff --check pass. The in-app browser connector was unavailable, so foreground-refresh behavior was verified with the rendered JSDOM/React interaction test.
+
+Ephemeral same-machine fixture (macOS arm64, 20 active + 430 completed, 12-sample medians): status PUT 751.365 -> 123.848 ms (83.5%); duplicate preview 244.863 -> 127.052 ms (48.1%); full App refresh 232.057 -> 116.739 ms (49.7%); reorder endpoint 507.279 -> 125.493 ms (75.3%). Combined board drag + foreground refresh fell from 739.336 ms to 125.493 ms (83.0%) because the redundant foreground refresh was removed. No durable benchmark framework or fixture was added.
+
+Simplification review removed redundant Core ContentStore upsert ownership and retained one persistence helper plus the existing snapshot-aware ID allocator.
+<!-- SECTION:NOTES:END -->

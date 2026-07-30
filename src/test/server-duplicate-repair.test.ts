@@ -73,6 +73,29 @@ afterEach(async () => {
 });
 
 describe("duplicate repair server boundary", () => {
+	it("updates a task with one fail-closed task identity resolution", async () => {
+		const uniquePath = join(setupCore.filesystem.tasksDir, "task-2 - Unique.md");
+		await Bun.write(uniquePath, serializeTask(makeTask("TASK-2", "Unique")));
+		const serverCore = (server as unknown as { core: Core }).core;
+		const originalLoadTask = serverCore.filesystem.loadTask.bind(serverCore.filesystem);
+		let taskLoads = 0;
+		serverCore.filesystem.loadTask = async (...args) => {
+			taskLoads += 1;
+			return await originalLoadTask(...args);
+		};
+
+		const response = await request("/api/tasks/TASK-2", {
+			method: "PUT",
+			headers: { "Content-Type": "application/json" },
+			body: JSON.stringify({ status: "In Progress" }),
+		});
+
+		expect(response.status).toBe(200);
+		expect(((await response.json()) as Task).status).toBe("In Progress");
+		expect(taskLoads).toBe(1);
+		expect((await setupCore.filesystem.loadTask("TASK-2"))?.status).toBe("In Progress");
+	});
+
 	it("returns the shared preview and applies it with the preview fingerprint", async () => {
 		const previewResponse = await request("/api/tasks/duplicates");
 		expect(previewResponse.status).toBe(200);

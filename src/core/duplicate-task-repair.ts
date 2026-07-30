@@ -1,6 +1,6 @@
 import { link, lstat, mkdtemp, rename, rmdir, unlink } from "node:fs/promises";
 import { basename, dirname, join, relative, resolve, sep } from "node:path";
-import { EntityType, type Task } from "../types/index.ts";
+import { type BacklogConfig, EntityType, type Task } from "../types/index.ts";
 import { type DuplicateGroup, detectDuplicateTaskIds } from "../utils/duplicate-detection.ts";
 import { escapeRegex, generateNextId, generateNextSubtaskId, idForFilename } from "../utils/prefix-config.ts";
 import { canonicalTaskId, isNumericTaskId } from "../utils/task-id.ts";
@@ -8,6 +8,11 @@ import type { Core } from "./backlog.ts";
 import { type BranchTaskStateEntry, loadLocalBranchTasks, loadRemoteTasks } from "./task-loader.ts";
 
 export type DuplicateTaskLocation = "active" | "completed";
+
+interface LocalTaskSnapshot {
+	activeTasks: Task[];
+	completedTasks: Task[];
+}
 
 export interface DuplicateRepairChange {
 	sourcePath: string;
@@ -90,15 +95,23 @@ function withLocation(task: Task, location: DuplicateTaskLocation, rootDir: stri
 	};
 }
 
-export async function findLocalDuplicateTaskIds(core: Core): Promise<DuplicateGroup[]> {
+async function loadLocalTaskSnapshot(core: Core): Promise<LocalTaskSnapshot> {
 	const [activeTasks, completedTasks] = await Promise.all([
 		core.filesystem.listTasks(),
 		core.filesystem.listCompletedTasks(),
 	]);
+	return { activeTasks, completedTasks };
+}
+
+function findLocalDuplicateTaskIdsInSnapshot(core: Core, snapshot: LocalTaskSnapshot): DuplicateGroup[] {
 	return detectDuplicateTaskIds([
-		...activeTasks.map((task) => withLocation(task, "active", core.filesystem.rootDir)),
-		...completedTasks.map((task) => withLocation(task, "completed", core.filesystem.rootDir)),
+		...snapshot.activeTasks.map((task) => withLocation(task, "active", core.filesystem.rootDir)),
+		...snapshot.completedTasks.map((task) => withLocation(task, "completed", core.filesystem.rootDir)),
 	]);
+}
+
+export async function findLocalDuplicateTaskIds(core: Core): Promise<DuplicateGroup[]> {
+	return findLocalDuplicateTaskIdsInSnapshot(core, await loadLocalTaskSnapshot(core));
 }
 
 function logicalBranchTaskPath(path: string, id: string): string {
@@ -108,14 +121,14 @@ function logicalBranchTaskPath(path: string, id: string): string {
 	return `${canonicalTaskId(id).toLowerCase()}${filename.slice(separatorIndex)}`;
 }
 
-export async function findCrossBranchDuplicateTaskIds(core: Core): Promise<CrossBranchDuplicateFinding[]> {
-	const config = await core.filesystem.loadConfig();
+async function findCrossBranchDuplicateTaskIdsInSnapshot(
+	core: Core,
+	snapshot: LocalTaskSnapshot,
+	config: BacklogConfig | null,
+): Promise<CrossBranchDuplicateFinding[]> {
 	if (config?.checkActiveBranches === false) return [];
-	const [activeTasks, completedTasks, currentBranch] = await Promise.all([
-		core.filesystem.listTasks(),
-		core.filesystem.listCompletedTasks(),
-		core.gitOps.getCurrentBranch(),
-	]);
+	const { activeTasks, completedTasks } = snapshot;
+	const currentBranch = await core.gitOps.getCurrentBranch();
 	const stateEntries: BranchTaskStateEntry[] = [];
 	await Promise.all([
 		loadLocalBranchTasks(
@@ -178,6 +191,11 @@ export async function findCrossBranchDuplicateTaskIds(core: Core): Promise<Cross
 	return findings.sort((left, right) => left.id.localeCompare(right.id, undefined, { numeric: true }));
 }
 
+export async function findCrossBranchDuplicateTaskIds(core: Core): Promise<CrossBranchDuplicateFinding[]> {
+	const [snapshot, config] = await Promise.all([loadLocalTaskSnapshot(core), core.filesystem.loadConfig()]);
+	return await findCrossBranchDuplicateTaskIdsInSnapshot(core, snapshot, config);
+}
+
 function getTaskLocation(task: Task): DuplicateTaskLocation {
 	return task.source === "completed" ? "completed" : "active";
 }
@@ -230,13 +248,14 @@ function validateGroupParent(group: DuplicateGroup): { parentId?: string; blocke
 
 async function allocateRepairId(
 	core: Core,
+	snapshot: LocalTaskSnapshot,
 	parentId: string | undefined,
 	existingIds: string[],
 	plannedIds: string[],
 	taskPrefix: string,
 	zeroPaddedIds?: number,
 ): Promise<string> {
-	const generatedId = await core.generateNextId(EntityType.Task, parentId);
+	const generatedId = await core.generateNextId(EntityType.Task, parentId, snapshot);
 	const occupiedIds = [...existingIds, ...plannedIds];
 	if (!occupiedIds.some((occupiedId) => canonicalTaskId(occupiedId) === canonicalTaskId(generatedId))) {
 		return generatedId;
@@ -246,8 +265,9 @@ async function allocateRepairId(
 	if (!parentId) {
 		nextId = generateNextId(occupiedIds, taskPrefix, zeroPaddedIds);
 	} else {
-		const generatedParent = generatedId.slice(0, generatedId.lastIndexOf("."));
-		nextId = generateNextSubtaskId(occupiedIds, generatedParent, taskPrefix, zeroPaddedIds);
+		const allocatedParent =
+			existingIds.find((existingId) => canonicalTaskId(existingId) === canonicalTaskId(parentId)) ?? parentId;
+		nextId = generateNextSubtaskId(occupiedIds, allocatedParent, taskPrefix, zeroPaddedIds);
 	}
 	if (occupiedIds.some((occupiedId) => canonicalTaskId(occupiedId) === canonicalTaskId(nextId))) {
 		throw new Error(`Could not allocate an unused repair ID after ${generatedId}.`);
@@ -393,15 +413,14 @@ export async function previewDuplicateTaskIdRepair(
 	core: Core,
 	options: { includeBranches?: boolean } = {},
 ): Promise<DuplicateRepairPlan> {
-	const groups = await findLocalDuplicateTaskIds(core);
-	const crossBranchFindings = options.includeBranches ? await findCrossBranchDuplicateTaskIds(core) : [];
+	const [snapshot, config] = await Promise.all([loadLocalTaskSnapshot(core), core.filesystem.loadConfig()]);
+	const groups = findLocalDuplicateTaskIdsInSnapshot(core, snapshot);
+	const crossBranchFindings = options.includeBranches
+		? await findCrossBranchDuplicateTaskIdsInSnapshot(core, snapshot, config)
+		: [];
 	const blockedReasons: string[] = [];
 	const changes: DuplicateRepairChange[] = [];
-	const [activeTasks, completedTasks, config] = await Promise.all([
-		core.filesystem.listTasks(),
-		core.filesystem.listCompletedTasks(),
-		core.filesystem.loadConfig(),
-	]);
+	const { activeTasks, completedTasks } = snapshot;
 	const existingIds = [...activeTasks, ...completedTasks].map((task) => task.id);
 	const plannedIds: string[] = [];
 
@@ -419,6 +438,7 @@ export async function previewDuplicateTaskIdRepair(
 			}
 			const nextId = await allocateRepairId(
 				core,
+				snapshot,
 				parentValidation.parentId,
 				existingIds,
 				plannedIds,

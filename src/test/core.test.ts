@@ -114,6 +114,28 @@ describe("Core", () => {
 			expect(lastCommit.length).toBeGreaterThan(0);
 		});
 
+		it("updates from input with one active/completed identity scan", async () => {
+			await core.createTask(sampleTask, false);
+			const originalListTasks = core.filesystem.listTasks.bind(core.filesystem);
+			const originalListCompletedTasks = core.filesystem.listCompletedTasks.bind(core.filesystem);
+			let activeLoads = 0;
+			let completedLoads = 0;
+			core.filesystem.listTasks = async (...args) => {
+				activeLoads += 1;
+				return await originalListTasks(...args);
+			};
+			core.filesystem.listCompletedTasks = async (...args) => {
+				completedLoads += 1;
+				return await originalListCompletedTasks(...args);
+			};
+
+			const updatedTask = await core.updateTaskFromInput("task-1", { status: "In Progress" }, false);
+
+			expect(updatedTask.status).toBe("In Progress");
+			expect(activeLoads).toBe(1);
+			expect(completedLoads).toBe(1);
+		});
+
 		it("does not update a longer legacy sibling for a shorter numeric ID", async () => {
 			await core.createTask({ ...sampleTask, id: "BACK-1-EXTRA", title: "Longer sibling" }, false);
 

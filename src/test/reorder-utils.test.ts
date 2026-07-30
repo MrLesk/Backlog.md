@@ -269,6 +269,34 @@ describe("Core.reorderTask", () => {
 		expect(task3?.ordinal).toBe(2000);
 	});
 
+	it("uses one active/completed identity snapshot for a board move", async () => {
+		await createTasks([["task-1", "To Do", 1000]]);
+		await core.getContentStore();
+		const originalListTasks = core.filesystem.listTasks.bind(core.filesystem);
+		const originalListCompletedTasks = core.filesystem.listCompletedTasks.bind(core.filesystem);
+		let activeLoads = 0;
+		let completedLoads = 0;
+		core.filesystem.listTasks = async (...args) => {
+			activeLoads += 1;
+			return await originalListTasks(...args);
+		};
+		core.filesystem.listCompletedTasks = async (...args) => {
+			completedLoads += 1;
+			return await originalListCompletedTasks(...args);
+		};
+
+		const result = await core.reorderTask({
+			taskId: "task-1",
+			targetStatus: "In Progress",
+			orderedTaskIds: ["task-1"],
+			autoCommit: false,
+		});
+
+		expect(result.updatedTask.status).toBe("In Progress");
+		expect(activeLoads).toBe(1);
+		expect(completedLoads).toBe(1);
+	});
+
 	it("reorders tasks with legacy lowercase IDs", async () => {
 		await createTasks([
 			["task-1", "To Do", 1000],

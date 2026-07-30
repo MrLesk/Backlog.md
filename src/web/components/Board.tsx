@@ -19,6 +19,7 @@ interface BoardProps {
   highlightTaskId?: string | null;
   tasks: Task[];
   onRefreshData?: () => Promise<void>;
+  onTaskUpdated?: (task: Task) => void;
   statuses: string[];
   isLoading: boolean;
   milestones: string[];
@@ -51,6 +52,7 @@ const Board: React.FC<BoardProps> = ({
   highlightTaskId,
   tasks,
   onRefreshData,
+  onTaskUpdated,
   statuses,
   isLoading,
   availableLabels,
@@ -281,11 +283,8 @@ const Board: React.FC<BoardProps> = ({
 
   const handleTaskUpdate = async (taskId: string, updates: Partial<Task>) => {
     try {
-      await apiClient.updateTask(taskId, updates);
-      // Refresh data to reflect the changes
-      if (onRefreshData) {
-        await onRefreshData();
-      }
+      const updatedTask = await apiClient.updateTask(taskId, updates);
+      onTaskUpdated?.(updatedTask);
       setUpdateError(null);
     } catch (err) {
       setUpdateError(err instanceof Error ? err.message : 'Failed to update task');
@@ -294,11 +293,8 @@ const Board: React.FC<BoardProps> = ({
 
   const handleTaskReorder = async (payload: ReorderTaskPayload) => {
     try {
-      await apiClient.reorderTask(payload);
-      // Refresh data to reflect the changes
-      if (onRefreshData) {
-        await onRefreshData();
-      }
+      const { task } = await apiClient.reorderTask(payload);
+      onTaskUpdated?.(task);
       setUpdateError(null);
     } catch (err) {
       setUpdateError(err instanceof Error ? err.message : 'Failed to reorder task');

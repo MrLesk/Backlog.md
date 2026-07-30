@@ -26,7 +26,7 @@ import {
 } from '../types';
 import { ApiError, apiClient } from './lib/api';
 import type { DuplicateRepairPlan } from '../core/duplicate-task-repair';
-import { isValidTaskId } from '../utils/task-id';
+import { isValidTaskId, resolveTaskById } from '../utils/task-id';
 import { useHealthCheckContext } from './contexts/HealthCheckContext';
 import { getWebVersion } from './utils/version';
 import { collectArchivedMilestoneKeys, collectMilestoneIds, milestoneKey } from './utils/milestones';
@@ -518,6 +518,16 @@ function AppContent() {
     await loadAllData();
   }, [loadAllData]);
 
+  const handleBoardTaskUpdated = useCallback((updatedTask: Task) => {
+    setTasks((currentTasks) => {
+      const resolution = resolveTaskById(currentTasks, updatedTask.id);
+      if (resolution.status !== 'found') {
+        return currentTasks;
+      }
+      return currentTasks.map((task) => (task === resolution.task ? updatedTask : task));
+    });
+  }, []);
+
   // Sync editingTask with refreshed tasks data to prevent stale state
   // This fixes the bug where acceptance criteria disappears after save (GitHub #467)
   useEffect(() => {
@@ -608,6 +618,7 @@ function AppContent() {
       onNewTask={handleNewTask}
       tasks={tasks}
       onRefreshData={refreshData}
+      onTaskUpdated={handleBoardTaskUpdated}
       statuses={statuses}
       milestones={milestones}
       availableLabels={availableLabels}

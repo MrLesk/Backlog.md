@@ -1051,7 +1051,7 @@ export class ContentStore {
 		this.filesystem.saveTask = (async (task: Task): Promise<string> => {
 			const owner: PublicationOwner = { root: this.currentRoot() };
 			const result = await originalSaveTask.call(this.filesystem, task);
-			await this.handleTaskWrite(task.id, owner);
+			await this.handleTaskWrite(task.id, owner, result);
 			return result;
 		}) as FileSystem["saveTask"];
 
@@ -1075,12 +1075,12 @@ export class ContentStore {
 		};
 	}
 
-	private async handleTaskWrite(taskId: string, owner: PublicationOwner): Promise<void> {
+	private async handleTaskWrite(taskId: string, owner: PublicationOwner, filePath: string): Promise<void> {
 		if (!this.canPublishContent() || !this.isPublicationOwnerCurrent(owner)) {
 			return;
 		}
 		await this.enqueuePublication(owner, async () => {
-			await this.updateTaskFromDisk(taskId, owner);
+			await this.updateTaskFromDisk(taskId, owner, filePath);
 		});
 	}
 
@@ -1434,6 +1434,7 @@ export class ContentStore {
 	private async updateTaskFromDisk(
 		taskId: string,
 		owner: PublicationOwner = { root: this.currentRoot() },
+		filePath?: string,
 	): Promise<void> {
 		const normalizedTaskId = normalizeTaskId(taskId);
 		const generation = this.nextContentItemGeneration("tasks", normalizedTaskId);
@@ -1446,7 +1447,9 @@ export class ContentStore {
 				return false;
 			let task: Task | null;
 			try {
-				task = await this.filesystem.loadTask(taskId);
+				task = filePath
+					? { ...normalizeTaskIdentity(parseTask(await Bun.file(filePath).text())), filePath }
+					: await this.filesystem.loadTask(taskId);
 			} catch {
 				return true;
 			}

@@ -965,19 +965,6 @@ export class BacklogServer {
 
 	private async handleUpdateTask(req: Request, taskId: string): Promise<Response> {
 		const updates = await req.json();
-		let existingTask: Task | null;
-		try {
-			existingTask = await this.core.filesystem.loadTask(taskId);
-		} catch (error) {
-			if (isAmbiguousTaskIdError(error)) {
-				return Response.json({ error: error.message }, { status: 409 });
-			}
-			throw error;
-		}
-		if (!existingTask) {
-			return Response.json({ error: "Task not found" }, { status: 404 });
-		}
-
 		const updateInput: TaskUpdateInput = {};
 
 		if ("title" in updates && typeof updates.title === "string") {
@@ -1091,7 +1078,8 @@ export class BacklogServer {
 			return Response.json(updatedTask);
 		} catch (error) {
 			const message = error instanceof Error ? error.message : "Failed to update task";
-			return Response.json({ error: message }, { status: 400 });
+			const status = isAmbiguousTaskIdError(error) ? 409 : message.startsWith("Task not found:") ? 404 : 400;
+			return Response.json({ error: message }, { status });
 		}
 	}
 

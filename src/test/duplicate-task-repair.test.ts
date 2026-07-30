@@ -61,9 +61,11 @@ afterEach(async () => {
 
 describe("duplicate task diagnosis", () => {
 	it("detects three-way, active/completed, and zero-padded collisions while ignoring archive reuse", async () => {
-		await writeTask(core.filesystem.tasksDir, "task-1 - Alpha.md", makeTask("TASK-1", "Alpha"));
-		await writeTask(core.filesystem.tasksDir, "task-01 - Beta.md", makeTask("TASK-01", "Beta"));
-		await writeTask(core.filesystem.completedDir, "task-001 - Gamma.md", makeTask("TASK-001", "Gamma"));
+		const ambiguousPaths = [
+			await writeTask(core.filesystem.tasksDir, "task-1 - Alpha.md", makeTask("TASK-1", "Alpha")),
+			await writeTask(core.filesystem.tasksDir, "task-01 - Beta.md", makeTask("TASK-01", "Beta")),
+			await writeTask(core.filesystem.completedDir, "task-001 - Gamma.md", makeTask("TASK-001", "Gamma")),
+		];
 		await writeTask(core.filesystem.archiveTasksDir, "task-2 - Archived.md", makeTask("TASK-2", "Archived"));
 		await writeTask(core.filesystem.tasksDir, "task-2 - Reused.md", makeTask("TASK-2", "Reused"));
 
@@ -76,13 +78,51 @@ describe("duplicate task diagnosis", () => {
 			"backlog/tasks/task-01 - Beta.md",
 			"backlog/tasks/task-1 - Alpha.md",
 		]);
+
+		const before = await Promise.all(ambiguousPaths.map(async (path) => await Bun.file(path).text()));
+		await expect(core.updateTaskFromInput("TASK-1", { status: "In Progress" }, false)).rejects.toBeInstanceOf(
+			AmbiguousTaskIdError,
+		);
+		expect(await Promise.all(ambiguousPaths.map(async (path) => await Bun.file(path).text()))).toEqual(before);
+	});
+
+	it("loads one local task snapshot for duplicate preview and repair ID allocation", async () => {
+		await writeTask(core.filesystem.tasksDir, "task-1 - Alpha.md", makeTask("TASK-1", "Alpha"));
+		await writeTask(core.filesystem.tasksDir, "task-01 - Beta.md", makeTask("TASK-01", "Beta"));
+		await writeTask(core.filesystem.completedDir, "task-9 - Completed.md", makeTask("TASK-9", "Completed"));
+
+		const originalListTasks = core.filesystem.listTasks.bind(core.filesystem);
+		const originalListCompletedTasks = core.filesystem.listCompletedTasks.bind(core.filesystem);
+		let activeLoads = 0;
+		let completedLoads = 0;
+		core.filesystem.listTasks = async (...args) => {
+			activeLoads += 1;
+			return await originalListTasks(...args);
+		};
+		core.filesystem.listCompletedTasks = async (...args) => {
+			completedLoads += 1;
+			return await originalListCompletedTasks(...args);
+		};
+
+		const plan = await core.previewDuplicateTaskIdRepair();
+
+		expect(plan.changes).toHaveLength(1);
+		expect(activeLoads).toBe(1);
+		expect(completedLoads).toBe(1);
 	});
 
 	it("fails closed when an exact ID lookup matches active and completed files", async () => {
-		await writeTask(core.filesystem.tasksDir, "task-1 - Active.md", makeTask("TASK-1", "Active"));
-		await writeTask(core.filesystem.completedDir, "task-01 - Completed.md", makeTask("TASK-01", "Completed"));
+		const paths = [
+			await writeTask(core.filesystem.tasksDir, "task-1 - Active.md", makeTask("TASK-1", "Active")),
+			await writeTask(core.filesystem.completedDir, "task-01 - Completed.md", makeTask("TASK-01", "Completed")),
+		];
+		const before = await Promise.all(paths.map(async (path) => await Bun.file(path).text()));
 
 		await expect(core.filesystem.loadTask("TASK-1")).rejects.toBeInstanceOf(AmbiguousTaskIdError);
+		await expect(core.updateTaskFromInput("TASK-1", { title: "Changed" }, false)).rejects.toBeInstanceOf(
+			AmbiguousTaskIdError,
+		);
+		expect(await Promise.all(paths.map(async (path) => await Bun.file(path).text()))).toEqual(before);
 		try {
 			await core.filesystem.loadTask("TASK-1");
 		} catch (error) {
@@ -94,10 +134,30 @@ describe("duplicate task diagnosis", () => {
 	});
 
 	it("fails closed when frontmatter IDs collide even if one filename differs", async () => {
-		await writeTask(core.filesystem.tasksDir, "task-1 - Alpha.md", makeTask("TASK-1", "Alpha"));
-		await writeTask(core.filesystem.tasksDir, "task-2 - Misnamed.md", makeTask("TASK-1", "Misnamed"));
+		const paths = [
+			await writeTask(core.filesystem.tasksDir, "task-1 - Alpha.md", makeTask("TASK-1", "Alpha")),
+			await writeTask(core.filesystem.tasksDir, "task-2 - Misnamed.md", makeTask("TASK-1", "Misnamed")),
+		];
+		const before = await Promise.all(paths.map(async (path) => await Bun.file(path).text()));
 
 		await expect(core.filesystem.loadTask("TASK-1")).rejects.toBeInstanceOf(AmbiguousTaskIdError);
+		await expect(core.updateTaskFromInput("TASK-1", { title: "Changed" }, false)).rejects.toBeInstanceOf(
+			AmbiguousTaskIdError,
+		);
+		expect(await Promise.all(paths.map(async (path) => await Bun.file(path).text()))).toEqual(before);
+	});
+
+	it("fails closed for a numeric mutation that collides across prefixes", async () => {
+		const paths = [
+			await writeTask(core.filesystem.tasksDir, "task-10 - Default.md", makeTask("TASK-10", "Default")),
+			await writeTask(core.filesystem.tasksDir, "task-010 - Custom.md", makeTask("BACK-10", "Custom")),
+		];
+		const before = await Promise.all(paths.map(async (path) => await Bun.file(path).text()));
+
+		await expect(core.updateTaskFromInput("10", { title: "Changed" }, false)).rejects.toBeInstanceOf(
+			AmbiguousTaskIdError,
+		);
+		expect(await Promise.all(paths.map(async (path) => await Bun.file(path).text()))).toEqual(before);
 	});
 
 	it("does not overwrite either file through the low-level save path when lookup is ambiguous", async () => {
