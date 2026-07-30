@@ -192,9 +192,10 @@ function buildLatestStateMap(
 ): Map<string, BranchTaskStateEntry> {
 	const latest = new Map<string, BranchTaskStateEntry>();
 	const update = (entry: BranchTaskStateEntry) => {
-		const existing = latest.get(entry.id);
+		const taskId = canonicalTaskId(entry.id);
+		const existing = latest.get(taskId);
 		if (!existing || entry.lastModified > existing.lastModified) {
-			latest.set(entry.id, entry);
+			latest.set(taskId, entry);
 		}
 	};
 
@@ -220,7 +221,7 @@ function buildLatestStateMap(
 
 function filterTasksByStateSnapshots(tasks: Task[], latestState: Map<string, BranchTaskStateEntry>): Task[] {
 	return tasks.filter((task) => {
-		const latest = latestState.get(task.id);
+		const latest = latestState.get(canonicalTaskId(task.id));
 		if (!latest) return true;
 		return latest.type === "task";
 	});
@@ -253,9 +254,9 @@ function normalizeDocumentTypeInput(type: unknown): DocumentType | undefined {
  */
 function getActiveAndCompletedIdsFromStateMap(latestState: Map<string, BranchTaskStateEntry>): string[] {
 	const ids: string[] = [];
-	for (const [id, entry] of latestState) {
+	for (const entry of latestState.values()) {
 		if (entry.type === "task" || entry.type === "completed") {
-			ids.push(id);
+			ids.push(entry.id);
 		}
 	}
 	return ids;
@@ -667,11 +668,17 @@ export class Core {
 				resolution.tasks.map((task) => task.filePath ?? `${task.branch ?? "unknown branch"}:${task.id}`),
 			);
 		}
+		if (resolution.status === "found" && (await this.hasActiveBranchTaskIdCollision(taskId, localTasks))) {
+			const candidates = this.activeBranchTaskEntries
+				.filter((entry) => taskIdsEqual(taskId, entry.id))
+				.map((entry) => entry.path);
+			if (localResolution.status === "found") {
+				candidates.push(localResolution.task.filePath ?? localResolution.task.id);
+			}
+			throw new AmbiguousTaskIdError(taskId, candidates);
+		}
 		if (localResolution.status === "found" && resolution.status === "found") {
-			if (
-				!taskIdsEqual(localResolution.task.id, resolution.task.id) ||
-				(await this.hasActiveBranchTaskIdCollision(taskId, localTasks))
-			) {
+			if (!taskIdsEqual(localResolution.task.id, resolution.task.id)) {
 				throw new AmbiguousTaskIdError(taskId, [
 					localResolution.task.filePath ?? localResolution.task.id,
 					resolution.task.filePath ?? `${resolution.task.branch ?? "unknown branch"}:${resolution.task.id}`,
@@ -3357,12 +3364,12 @@ export class Core {
 
 				filteredTasks = tasks
 					.filter((task) => {
-						const latest = latestState.get(task.id);
+						const latest = latestState.get(canonicalTaskId(task.id));
 						if (!latest) return true;
 						return latest.type === "task" || latest.type === "completed";
 					})
 					.map((task) => {
-						if (!completedIds.has(task.id)) {
+						if (!completedIds.has(canonicalTaskId(task.id))) {
 							return task;
 						}
 						return { ...task, source: "completed" };

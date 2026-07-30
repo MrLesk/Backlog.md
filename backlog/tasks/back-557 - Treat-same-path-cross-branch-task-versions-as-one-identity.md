@@ -5,7 +5,7 @@ status: Done
 assignee:
   - '@codex'
 created_date: '2026-07-30 17:11'
-updated_date: '2026-07-30 18:28'
+updated_date: '2026-07-30 18:56'
 labels:
   - browser
   - git
@@ -48,6 +48,8 @@ Browser single-task reads currently return 409 when one canonical task ID exists
 4. Review correction cycle 1: add endpoint regressions for a same-path padded ID variant and a distinct-path origin/main version; canonicalize cross-branch merge keys before store resolution, preserve full remote ref identity in branch state, and verify focused plus full coverage.
 
 5. Review correction cycle 2: reproduce the Core/MCP failure when most-progressed selects a same-path padded ID variant, add Core.getTask and task_archive regressions, then make the local/store identity comparison canonical and keep the current working copy authoritative before running focused and full verification.
+
+6. Reproduce automatic review findings for branch-only distinct-path canonical collisions and padded same-path lifecycle snapshots; fix each with failing regressions, rerun focused and full validation, and publish a corrected head.
 <!-- SECTION:PLAN:END -->
 
 ## Implementation Notes
@@ -80,10 +82,14 @@ Origin integration before final re-review:
 - Rebased verification: new Core/MCP regressions 3 pass; server identity suite 21 pass; Core/MCP/identity/remote suite 99 pass; BACK-560 hostname/port suite 12 pass; TypeScript, Biome, and diff checks passed. The full suite was not rerun because the rebase had no conflict resolution or manual executable changes.
 
 Finalization validation on rebased origin/main tree bec40718: bun test completed with 1786 pass, 4 skip, 0 fail across 200 files; bunx tsc --noEmit passed; bun run check . passed. Focused evidence also covered browser save/reopen, same-path local and remote variants, distinct-path and duplicate ambiguity, Core and MCP mutation behavior, ID allocation, and archive soft-delete behavior.
+
+Automatic Codex review on 77df29dc identified two unresolved identity edge cases: branch-only canonical variants at distinct paths can be collapsed before ambiguity checking, and lifecycle state lookups can miss padded same-path variants. Reopened for test-first correction before merge.
+
+Approved correction cycle 3: branch-only canonical variants at distinct active paths now run through the existing path collision guard and fail closed. Lifecycle state maps and direct lookups use canonical IDs, so newer archive and completed snapshots apply to padded same-path variants; ID allocation still consumes the selected entry's original spelling to preserve zero padding. TDD evidence: the branch-only and archive regressions failed on 77df29dc, and the completed-source regression failed before its direct lookups were canonicalized. Validation: 5 identity/lifecycle cases passed; focused Core, MCP, server, branch, statistics, board, allocation, and remote suite 135 pass; zero-padding and identity follow-up 9 pass; full suite 1789 pass, 4 skip, 0 fail across 200 files; bunx tsc --noEmit, bun run check ., and git diff --check passed.
 <!-- SECTION:NOTES:END -->
 
 ## Final Summary
 
 <!-- SECTION:FINAL_SUMMARY:BEGIN -->
-Changed active-branch task identity to use the canonical task ID together with the normalized project-relative task path. Same-path versions now reopen and mutate the current working-copy task, while genuinely different paths and duplicate local files still fail closed. Verified with focused browser, Core, MCP, branch, remote, allocation, and archive tests plus the full suite (1786 pass, 4 skip, 0 fail), TypeScript, and Biome.
+Applied canonical task identity consistently to branch-only collision checks and lifecycle snapshots. Branch-only distinct paths now fail closed, while newer archived or completed states apply to padded same-path variants without changing zero-padded ID allocation. Verified with focused Core, MCP, browser, branch, lifecycle, allocation, and remote tests plus the full suite (1789 pass, 4 skip, 0 fail), TypeScript, Biome, and diff checks.
 <!-- SECTION:FINAL_SUMMARY:END -->
