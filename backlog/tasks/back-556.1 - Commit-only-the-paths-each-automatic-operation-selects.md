@@ -5,7 +5,7 @@ status: In Progress
 assignee:
   - '@andreas'
 created_date: '2026-07-28 14:46'
-updated_date: '2026-07-30 06:30'
+updated_date: '2026-07-30 07:04'
 labels:
   - git
 dependencies: []
@@ -37,10 +37,12 @@ This is a correctness fix that stands on its own under the current default autom
 - [x] #7 Promotion and demotion use one canonical lifecycle implementation that returns the complete touched-path result, while duplicate task IDs continue to raise the explicit ambiguity diagnostic.
 - [x] #8 Title-changing draft updates return and commit both the previous and replacement paths in new and amend-own modes, leaving no duplicate in HEAD or unstaged deletion.
 - [x] #9 Lifecycle target validation and unexpected write failures propagate their actionable original errors; null/false is reserved for a genuinely absent source.
-- [x] #10 Named finalization detects an exact-branch reflog ABA in the remaining post-validation/pre-CAS window and rejects or safely rolls back without consuming the caller selected index/worktree state.
+- [ ] #10 Named finalization detects an exact-branch reflog ABA in the remaining post-validation/pre-CAS window and rejects or safely rolls back without consuming the caller selected index/worktree state.
 - [x] #11 On Git without update-ref transaction commands, selected-path named new/start-owned commits retain expected-old-OID CAS and caller byte preservation; amend-own never performs an unlocked replacement and instead builds a new commit.
 - [x] #12 Selected-path commits run reference-transaction input hooks successfully on Git 2.36–2.39 through the legacy executable path and on Git 2.40+ through hook run --to-stdin, with no duplicate lifecycle or lost caller bytes.
-- [x] #13 Named HEAD reflog synchronization uses an exact prepared HEAD transaction on capable Git; a concurrent same-SHA symbolic switch aborts synchronization without marking the sibling owned, moving either ref, or consuming caller bytes.
+- [ ] #13 Named HEAD reflog synchronization uses an exact prepared HEAD transaction on capable Git; a concurrent same-SHA symbolic switch aborts synchronization without marking the sibling owned, moving either ref, or consuming caller bytes.
+- [ ] #14 Cleanup exact-path staging records success only after stageFileMove succeeds, preserves individual failure warnings, and never emits an all-staged instruction when no move entered the index.
+- [ ] #15 Late finalization rollback uses protected exact-ref/reflog continuity and cannot consume or overwrite concurrent manual branch history or caller selected index/worktree bytes.
 <!-- AC:END -->
 
 ## Definition of Done
@@ -92,6 +94,8 @@ This is a correctness fix that stands on its own under the current default autom
 21. Separate stdin hook transport capability from base git hook run. Simulate 2.36, 2.39, and 2.40 command surfaces around a named selected-path commit, proving prepared/committed once and successful HEAD/tree/index preservation. Correct legacy ref transaction boundary to 2.27.
 
 22. Route post-branch-update HEAD reflog synchronization through the interactive prepared transaction in the real worktree Git directory, with hooks disabled and exact original branch/new-SHA validation under HEAD plus target-ref locks. Inject a same-SHA sibling switch at the synchronization seam and prove no sibling ownership marker or later replacement.
+
+Pass 23: return exact staging success counts from cleanup and protect any post-update restoration with a prepared target-ref transaction whose callback compares the post-forward reflog snapshot before rollback.
 <!-- SECTION:PLAN:END -->
 
 ## Implementation Notes
@@ -212,5 +216,10 @@ Pass 17 H1 reopens production path completeness: board/list external-editor task
 created: 2026-07-30 02:29
 ---
 Pass 18 H1/M2 reopens external-editor selected-path completeness: invalid identity can be committed under the wrong descriptor, while failure/deletion/rename can persist outside the automatic commit path.
+---
+
+created: 2026-07-30 07:04
+---
+Pass 23 reopens selected-path finalization/reporting: loose late-sharing rollback can erase manual same-OID ABA history, and cleanup marks stagedMoves true even when every exact move staging call rejects.
 ---
 <!-- COMMENTS:END -->

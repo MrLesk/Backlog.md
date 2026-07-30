@@ -5,7 +5,7 @@ status: In Progress
 assignee:
   - '@andreas'
 created_date: '2026-07-28 14:47'
-updated_date: '2026-07-30 06:30'
+updated_date: '2026-07-30 07:04'
 labels:
   - web-ui
   - cli
@@ -35,7 +35,8 @@ This covers the advanced CLI wizard, initialization and configuration summaries,
 - [x] #7 Browser automatic-commit notices are queued, combined, or visibly stacked so task/draft creation confirmation cannot cover consequential replacement feedback, with an amended-creation UI regression.
 - [x] #8 Initialization surfaces save configuration before integration writes, and those writes honor the resulting current bytes rather than the stale wizard/request boolean under either enablement transition.
 - [x] #9 CLI and browser initialization responses/summaries display the fail-closed reloaded persisted autoCommit and autoCommitMode values after setup, including post-save races.
-- [x] #10 The browser /api/init response includes effective persisted BacklogConfig, the typed client exposes it, InitializationScreen passes it to App, and App seeds config state before follow-up loads; HTTP and component regressions cover post-save mode races.
+- [ ] #10 The browser /api/init response includes effective persisted BacklogConfig, the typed client exposes it, InitializationScreen passes it to App, and App seeds config state before follow-up loads; HTTP and component regressions cover post-save mode races.
+- [ ] #11 Published browser/initialization configuration is both stable and complete before it replaces display cache or preserved request fields; truncated current bytes cannot surface empty required identity or enable amend-own.
 <!-- AC:END -->
 
 ## Definition of Done
@@ -71,6 +72,8 @@ This covers the advanced CLI wizard, initialization and configuration summaries,
 9. Assert initialization result/summary configuration against current post-save bytes for enablement and mode changes rather than only commit behavior.
 
 10. Publish the validated current-byte config snapshot at initializeProject completion, include it in server/client init response types, consume it through onInitialized(config), and assert both direct HTTP response/cache and InitializationScreen callback receive post-save new instead of requested amend-own.
+
+Pass 23: cover direct initialization publication when the post-save file is incomplete/changes across reads, proving the request/preserved display snapshot is not published and no integration mutation occurs.
 <!-- SECTION:PLAN:END -->
 
 ## Implementation Notes
@@ -144,5 +147,10 @@ Pass 8 M3/L4: browser overflow summaries lose the true total, and fixed-position
 created: 2026-07-29 22:23
 ---
 Pass 12 M3 requires browser initialization and Settings round-trip evidence for YAML-escaped quoted values.
+---
+
+created: 2026-07-30 07:04
+---
+Pass 23 H1 also affects initialization publication: parsed empty required fields currently override preserved valid request/display fields. Reopen browser effective-config publication until stable complete bytes are enforced.
 ---
 <!-- COMMENTS:END -->

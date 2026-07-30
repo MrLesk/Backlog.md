@@ -5,7 +5,7 @@ status: In Progress
 assignee:
   - '@andreas'
 created_date: '2026-07-28 14:46'
-updated_date: '2026-07-30 06:30'
+updated_date: '2026-07-30 07:04'
 labels:
   - git
 dependencies:
@@ -65,10 +65,12 @@ See BACK-556 for the full ownership and safety contract, including the accepted 
 - [x] #22 Rolling messages store structured operation descriptors so production task, draft, document, decision, milestone, and agent messages produce stable factored subjects without parsing incidental English display strings.
 - [x] #23 Document, decision, and agent-instruction upserts record the real create/add versus update action, so distinct operations never collapse under one inaccurate descriptor.
 - [x] #24 Named and detached finalization exposes exactly one logical reference-transaction hook lifecycle in the real repository/HEAD context: prepared runs before movement and can veto it, committed follows success, aborted follows veto or failed movement, and internal ref/reflog plumbing does not duplicate the transaction.
-- [x] #25 Final named-branch movement preserves exact ownership-reflog continuity: any target-branch reflog transition after the last validation, including same-OID ABA, prevents a replacement from being reported owned and cannot be overwritten by the automatic CAS/rollback path.
+- [ ] #25 Final named-branch movement preserves exact ownership-reflog continuity: any target-branch reflog transition after the last validation, including same-OID ABA, prevents a replacement from being reported owned and cannot be overwritten by the automatic CAS/rollback path.
 - [x] #26 When target-ref transactions are unsupported, amend-own conservatively treats an otherwise owned tip as non-owned before parent/message construction, creates a normal new owned-sequence start through expected-OID CAS, and never performs an unlocked replacement.
 - [x] #27 Reference-transaction and post-rewrite stdin reach hooks through a capability-correct runner on Git 2.36–2.39 and 2.40+, while Git 2.27 participates in atomic target-ref transaction replacement rather than unnecessary degradation.
-- [x] #28 Worktree HEAD reflog visibility is restored only through a hook-suppressed prepared HEAD transaction that validates the original branch identity while HEAD and its target ref are locked; no other branch can receive forged ownership evidence during synchronization.
+- [ ] #28 Worktree HEAD reflog visibility is restored only through a hook-suppressed prepared HEAD transaction that validates the original branch identity while HEAD and its target ref are locked; no other branch can receive forged ownership evidence during synchronization.
+- [ ] #29 After a successful forward target-ref transaction, any required rollback prepares and locks that same target, proves the exact forward reflog state is still contiguous, and aborts rather than overwriting an intervening same-OID/manual reflog boundary.
+- [ ] #30 HEAD ownership-synchronization coverage changes identity after the second transaction is prepared (or otherwise directly distinguishes the loose runner), asserts worktree HEAD plus sibling branch logs contain no forged marker, and covers conservative pre-2.27 behavior.
 <!-- AC:END -->
 
 ## Definition of Done
@@ -116,6 +118,8 @@ See BACK-556 for the full ownership and safety contract, including the accepted 
 35. Correct Git capability thresholds: target-ref start/prepare/commit at 2.27, hook run at 2.36, and hook run --to-stdin at 2.40. Use legacy hook execution whenever input is required below 2.40, keep bypass and best-effort post semantics, and cover event bytes/counts plus actual replacement/degradation boundaries.
 
 36. Reuse prepared update-ref transaction plumbing for real-worktree HEAD no-op synchronization on Git 2.27+. Validate exact original branch/new SHA in the prepared callback, tolerate abort as display/recovery best effort, and retain the target branch ownership marker. Test a switch plus manual original-branch boundary before synchronization, then verify sibling reflog is non-owned and the next sibling amend-own creates a new child.
+
+Pass 23: capture the exact target-branch reflog immediately after protected forward movement. If late sharing invalidates the lease, run expected new→old restoration through the prepared transaction helper and compare the captured reflog while its lock is held; on mismatch, leave the concurrent tip/history and close ownership. Move HEAD synchronization race injection inside the prepared callback and explicitly inspect the real worktree HEAD log; add a simulated legacy fallback race and remove its loose synchronization if it cannot be protected.
 <!-- SECTION:PLAN:END -->
 
 ## Implementation Notes
@@ -224,5 +228,10 @@ Pass 15 H1: a prepared hook veto is not authoritative through the production tas
 created: 2026-07-30 01:08
 ---
 Pass 16 H1: the production wrapper propagation fix is insufficient when commitFiles first converts a veto plus hook-driven HEAD movement into an internal CAS retry.
+---
+
+created: 2026-07-30 07:04
+---
+Pass 23 Git findings: a post-forward loose rollback remains vulnerable to same-OID reflog ABA, and the current sibling test injects before prepare/checks the wrong log for the former loose update-ref behavior. Both exact rollback continuity and discriminating modern/legacy HEAD-log coverage are reopened.
 ---
 <!-- COMMENTS:END -->

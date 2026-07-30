@@ -5,7 +5,7 @@ status: In Progress
 assignee:
   - '@andreas'
 created_date: '2026-07-28 14:27'
-updated_date: '2026-07-30 06:30'
+updated_date: '2026-07-30 07:04'
 labels:
   - enhancement
   - git
@@ -125,20 +125,24 @@ This task is delivered through subtasks, because the selected-path correctness f
 <!-- AC:BEGIN -->
 - [x] #1 With autoCommit true and autoCommitMode amend-own, a run of consecutive Backlog mutations on an owned branch tip produces exactly one commit that contains every change, lists every distinct operation once in its message region, and carries a subject that reflects the operations it holds rather than only the first one.
 - [x] #2 Every documented non-owned boundary makes Backlog create a new commit instead of amending: manual commit, manual amend, reset, detached HEAD, merge commit, reachability from a remote-tracking ref, reachability from any other local branch or tag including direct and descendant refs, and missing, stale, malformed, or ambiguous ownership evidence. A commit created detached or while evidence cannot be recorded remains unowned, so repeated mutations in either persistent state continue creating new commits.
-- [x] #3 autoCommitMode defaults to new when absent, rejects invalid values with an error, and has no effect while autoCommit is false or the project is filesystem-only. An explicit per-invocation autoCommit override decides only whether to commit and never changes the mode.
+- [ ] #3 autoCommitMode defaults to new when absent, rejects invalid values with an error, and has no effect while autoCommit is false or the project is filesystem-only. An explicit per-invocation autoCommit override decides only whether to commit and never changes the mode.
 - [x] #4 No automatic Backlog commit, in either mode, contains paths outside those selected for the operation. Pre-existing unrelated index and worktree state plus pre-commit and commit-message hook staging through the isolated index are preserved, while mutations made by post hooks against the real index and worktree persist according to normal Git semantics.
 - [x] #5 A human can see when an amend happened, force a new commit for a single invocation with --no-amend on any command that can automatically commit, and follow documented reflog recovery for an unwanted amend.
 - [x] #6 The upstream cross-platform test/build/Nix workflow executes successfully for the final implementation SHA, or the task records that first-time-contributor workflow approval is externally blocked on an upstream maintainer before merge.
 - [x] #7 The final PR branch history follows CONTRIBUTING.md by including BACK-556 in every feature commit message, while preserving reviewable intent and the task evidence required for this delivery.
 - [x] #8 A prepared reference-transaction veto is authoritative across every production wrapper: the invocation emits exactly one prepared then aborted lifecycle, never retries into committed, and leaves HEAD and caller bytes unchanged whether the veto is one-shot or persistent.
 - [x] #9 TUI external-editor reconciliation validates parser-readable semantic task identity before metadata, cache, or Git updates; identity mismatch or malformed content remains uncommitted with actionable recovery feedback, valid bytes saved before a nonzero exit are reconciled truthfully, and path disappearance is detected explicitly rather than reported unchanged.
-- [x] #10 The final named-branch replacement window fails closed if the exact target branch reflog changes after lease validation, including an old→other→old ABA that preserves the expected OID; it never overwrites that manual boundary and preserves caller index/worktree bytes.
+- [ ] #10 The final named-branch replacement window fails closed if the exact target branch reflog changes after lease validation, including an old→other→old ABA that preserves the expected OID; it never overwrites that manual boundary and preserves caller index/worktree bytes.
 - [x] #11 Re-initialization and integration setup never convert a configuration-derived autoCommit value into an invocation override: agent-instruction writes resolve the current persisted config after save, so true→false disables committing and false→true enables the configured mode.
 - [x] #12 Named automatic commits remain safe on Git versions without transactional update-ref commands: default/new behavior retains expected-OID movement, while amend-own fails closed to a new commit rather than attempting an unlocked owned replacement.
 - [x] #13 Git hook capabilities are versioned independently: Git 2.36–2.39 uses hook run only for hooks without stdin and the legacy runner for reference-transaction/post-rewrite input; Git 2.40+ may use --to-stdin, so every automatic commit remains functional across the supported version matrix.
 - [x] #14 Initialization results and user-facing summaries reload persisted current configuration after setup, so concurrent post-save changes to autoCommit or autoCommitMode are returned and displayed truthfully rather than echoing the stale request.
 - [x] #15 Browser initialization forwards and immediately consumes the exact persisted current configuration returned by Core, and publishes that validated snapshot for subsequent config reads; post-save autoCommit/autoCommitMode races cannot leave response, UI, or server cache stale.
-- [x] #16 HEAD reflog restoration cannot write an ownership marker onto a concurrently selected same-SHA sibling branch: synchronization acquires and validates an exact HEAD/target transaction or aborts, so the sibling remains non-owned and later amend-own creates a new commit.
+- [ ] #16 HEAD reflog restoration cannot write an ownership marker onto a concurrently selected same-SHA sibling branch: synchronization acquires and validates an exact HEAD/target transaction or aborts, so the sibling remains non-owned and later amend-own creates a new commit.
+- [ ] #17 Mutation preflight accepts only a stable, complete, usable current configuration: transient or truncated initialized-project bytes (including auto_commit/amend-own without required project identity) fail closed before filesystem or Git mutation, and publication cannot replace preserved required fields with parsed empty defaults.
+- [ ] #18 Any post-update rollback is protected by an exact prepared target-ref lease plus reflog-continuity validation; a concurrent new→other→new ABA is never overwritten, and unsafe rollback leaves the concurrent boundary intact while ownership fails closed.
+- [ ] #19 Cleanup staging results reflect actual successful stageFileMove calls: complete failure never prints that files were staged, while partial success reports both the successful staging state and per-move warnings accurately.
+- [ ] #20 HEAD synchronization regressions discriminate the protected implementation from the former loose no-op by injecting identity change after transaction prepare and asserting no automatic marker reaches the worktree HEAD or sibling ownership evidence.
 <!-- AC:END -->
 
 ## Definition of Done
@@ -205,6 +209,8 @@ Holistic correction pass: resolve the documented Git intent/state, invocation-co
 35. Resolve Pass 21 capability boundaries and effective initialization results. Split git hook run base support (2.36) from --to-stdin support (2.40), route stdin hooks through the legacy runner on 2.36-2.39, correct update-ref transactions to 2.27, update fallback docs/tests, and simulate 2.36/2.39/2.40 reference transaction commits. At initializeProject completion, fail-closed reload current config bytes for the returned result; extend both enablement directions and mode transition assertions through summary consumers.
 
 36. Resolve Pass 22 browser result/cache and documentation findings, plus close the deterministic HEAD-reflog synchronization race exposed by its review probe. Add an opt-in validated publish path to current-byte config loading; return config over /api/init, type and pass it through InitializationScreen to App state, and test HTTP/UI post-save mode changes. Correct the 2.27 comment. Replace loose named HEAD reflog no-op on transactional Git with a second hook-suppressed prepared HEAD transaction that locks the currently selected branch, validates original symbolic identity/SHA while locked, and aborts best-effort on branch switch; regress sibling-marker forgery and later non-amend behavior.
+
+Pass 23: share watcher-grade complete/usable and stable-byte validation with mutation preflight and preserve overlays only after current required fields validate. Protect late-sharing rollback with prepared target-ref movement plus exact reflog snapshot validation, leaving any intervening ABA untouched. Track cleanup stage successes separately from attempted moves. Replace the pre-prepare sibling test seam with a post-prepare identity race and direct worktree-HEAD reflog assertions, including legacy loose-path discrimination.
 <!-- SECTION:PLAN:END -->
 
 ## Implementation Notes
@@ -384,5 +390,10 @@ Fresh holistic gpt-5.6-sol xhigh Pass 17 at 2603768 requested one High change: e
 created: 2026-07-30 02:29
 ---
 Fresh holistic gpt-5.6-sol xhigh Pass 18 at 917defc requested one High and one Medium change: TUI editor commits semantic ID changes under stale metadata/cache keys, and early editor-failure/missing-path returns can hide persisted modifications or deletions without commit/recovery feedback. Exact clean reviewed HEAD preserved. Report: /tmp/backlog-821-holistic-review-pass-18.md.
+---
+
+created: 2026-07-30 07:04
+---
+Fresh holistic gpt-5.6-sol xhigh Pass 23 at 2a683e4 requested changes with two High and two Medium findings: incomplete/truncated current config can still enable amend-own and publish empty required fields; late-sharing rollback can overwrite a concurrent new→other→new manual reflog ABA; cleanup can claim all moves were staged when staging failed; and the Pass 22 sibling regression does not fail the former loose HEAD no-op on current Git. Exact clean reviewed HEAD preserved; reviewer targeted owned/init/cleanup suites. Report: /tmp/backlog-821-holistic-review-pass-23.md.
 ---
 <!-- COMMENTS:END -->
