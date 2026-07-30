@@ -1,7 +1,9 @@
 import { AsyncLocalStorage } from "node:async_hooks";
+import { spawn } from "node:child_process";
 import { mkdtemp, open, readFile, realpath, rename, rm, stat, unlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { basename, dirname, isAbsolute, join, relative } from "node:path";
+import { createInterface } from "node:readline";
 import { $ } from "bun";
 import type { BacklogConfig } from "../types/index.ts";
 import {
@@ -489,10 +491,22 @@ export class GitOperations {
 								writeFile(join(refUpdateDirectory, "commondir"), `${commonDirectory}\n`),
 								writeFile(join(refUpdateDirectory, "HEAD"), "ref: refs/backlog/ref-update-context\n"),
 							]);
-							await this.execGit(["update-ref", "-m", reflogMessage, branchRef, newCommit, expectedCommit ?? ""], {
-								cwd: repoRoot,
-								env: { ...hooksDisabledEnv, GIT_DIR: refUpdateDirectory },
-							});
+							await this.updateBranchRefTransaction(
+								repoRoot,
+								refUpdateDirectory,
+								branchRef,
+								expectedCommit,
+								newCommit,
+								reflogMessage,
+								hooksDisabledEnv,
+								async () => {
+									// `prepare` owns the target ref lock. Rechecking the complete
+									// lease here closes same-OID reflog ABA between the real hook
+									// validation and the final branch movement.
+									await validateHeadAndLease();
+									if (validateNamedUpdate) await validateNamedUpdate();
+								},
+							);
 							if (validateNamedUpdate) {
 								try {
 									await validateNamedUpdate();
@@ -560,6 +574,85 @@ export class GitOperations {
 			await this.runCommitHook("reference-transaction", ["committed"], repoRoot, {}, referenceTransactionInput).catch(
 				() => undefined,
 			);
+		}
+	}
+
+	/**
+	 * Prepare a hook-suppressed update-ref transaction and keep its target-ref
+	 * lock held while the caller revalidates branch ownership and mutation state.
+	 * This is the only boundary that can distinguish an expected-OID CAS from an
+	 * old→other→old reflog ABA in the last window before branch movement.
+	 */
+	private async updateBranchRefTransaction(
+		repoRoot: string,
+		gitDirectory: string,
+		branchRef: string,
+		expectedCommit: string | null,
+		newCommit: string,
+		reflogMessage: string,
+		hooksDisabledEnv: Record<string, string>,
+		validatePreparedUpdate: () => Promise<void>,
+	): Promise<void> {
+		const subprocess = spawn("git", ["update-ref", "--stdin", "-m", reflogMessage], {
+			cwd: repoRoot,
+			env: { ...process.env, ...hooksDisabledEnv, GIT_DIR: gitDirectory },
+			stdio: ["pipe", "pipe", "pipe"],
+		});
+		let stderr = "";
+		subprocess.stderr.setEncoding("utf8");
+		subprocess.stderr.on("data", (chunk: string) => {
+			stderr += chunk;
+		});
+		const responses = createInterface({ input: subprocess.stdout, crlfDelay: Number.POSITIVE_INFINITY })[
+			Symbol.asyncIterator
+		]();
+		const closed = new Promise<{ code: number | null; signal: NodeJS.Signals | null }>((resolve, reject) => {
+			subprocess.once("error", reject);
+			subprocess.once("close", (code, signal) => resolve({ code, signal }));
+		});
+		let transactionPrepared = false;
+		let transactionFinished = false;
+		let failure: unknown;
+
+		const sendAndExpect = async (command: string, expectedResponse: string): Promise<void> => {
+			if (!subprocess.stdin.write(`${command}\n`)) {
+				await new Promise<void>((resolve) => subprocess.stdin.once("drain", resolve));
+			}
+			const response = await responses.next();
+			if (response.done || response.value !== expectedResponse) {
+				throw new Error(
+					`Git update-ref transaction rejected ${command}: ${response.done ? "no response" : response.value}`,
+				);
+			}
+		};
+
+		try {
+			await sendAndExpect("start", "start: ok");
+			if (
+				!subprocess.stdin.write(`update ${branchRef} ${newCommit} ${expectedCommit ?? "0".repeat(newCommit.length)}\n`)
+			) {
+				await new Promise<void>((resolve) => subprocess.stdin.once("drain", resolve));
+			}
+			await sendAndExpect("prepare", "prepare: ok");
+			transactionPrepared = true;
+			await validatePreparedUpdate();
+			await sendAndExpect("commit", "commit: ok");
+			transactionFinished = true;
+		} catch (error) {
+			failure = error;
+			if (transactionPrepared && !transactionFinished) {
+				await sendAndExpect("abort", "abort: ok").catch(() => undefined);
+				transactionFinished = true;
+			}
+		} finally {
+			subprocess.stdin.end();
+		}
+
+		const result = await closed;
+		if (failure) throw failure;
+		if (result.code !== 0) {
+			const termination = result.signal ? `signal ${result.signal}` : `exit code ${result.code}`;
+			throw new Error(`Git update-ref transaction failed (${termination}): ${stderr.trim()}`);
 		}
 	}
 

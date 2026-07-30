@@ -5,7 +5,7 @@ status: In Progress
 assignee:
   - '@andreas'
 created_date: '2026-07-28 14:27'
-updated_date: '2026-07-30 03:11'
+updated_date: '2026-07-30 03:34'
 labels:
   - enhancement
   - git
@@ -124,7 +124,7 @@ This task is delivered through subtasks, because the selected-path correctness f
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
 - [x] #1 With autoCommit true and autoCommitMode amend-own, a run of consecutive Backlog mutations on an owned branch tip produces exactly one commit that contains every change, lists every distinct operation once in its message region, and carries a subject that reflects the operations it holds rather than only the first one.
-- [ ] #2 Every documented non-owned boundary makes Backlog create a new commit instead of amending: manual commit, manual amend, reset, detached HEAD, merge commit, reachability from a remote-tracking ref, reachability from any other local branch or tag including direct and descendant refs, and missing, stale, malformed, or ambiguous ownership evidence. A commit created detached or while evidence cannot be recorded remains unowned, so repeated mutations in either persistent state continue creating new commits.
+- [x] #2 Every documented non-owned boundary makes Backlog create a new commit instead of amending: manual commit, manual amend, reset, detached HEAD, merge commit, reachability from a remote-tracking ref, reachability from any other local branch or tag including direct and descendant refs, and missing, stale, malformed, or ambiguous ownership evidence. A commit created detached or while evidence cannot be recorded remains unowned, so repeated mutations in either persistent state continue creating new commits.
 - [x] #3 autoCommitMode defaults to new when absent, rejects invalid values with an error, and has no effect while autoCommit is false or the project is filesystem-only. An explicit per-invocation autoCommit override decides only whether to commit and never changes the mode.
 - [x] #4 No automatic Backlog commit, in either mode, contains paths outside those selected for the operation. Pre-existing unrelated index and worktree state plus pre-commit and commit-message hook staging through the isolated index are preserved, while mutations made by post hooks against the real index and worktree persist according to normal Git semantics.
 - [x] #5 A human can see when an amend happened, force a new commit for a single invocation with --no-amend on any command that can automatically commit, and follow documented reflog recovery for an unwanted amend.
@@ -132,14 +132,14 @@ This task is delivered through subtasks, because the selected-path correctness f
 - [x] #7 The final PR branch history follows CONTRIBUTING.md by including BACK-556 in every feature commit message, while preserving reviewable intent and the task evidence required for this delivery.
 - [x] #8 A prepared reference-transaction veto is authoritative across every production wrapper: the invocation emits exactly one prepared then aborted lifecycle, never retries into committed, and leaves HEAD and caller bytes unchanged whether the veto is one-shot or persistent.
 - [x] #9 TUI external-editor reconciliation validates parser-readable semantic task identity before metadata, cache, or Git updates; identity mismatch or malformed content remains uncommitted with actionable recovery feedback, valid bytes saved before a nonzero exit are reconciled truthfully, and path disappearance is detected explicitly rather than reported unchanged.
-- [ ] #10 The final named-branch replacement window fails closed if the exact target branch reflog changes after lease validation, including an old→other→old ABA that preserves the expected OID; it never overwrites that manual boundary and preserves caller index/worktree bytes.
+- [x] #10 The final named-branch replacement window fails closed if the exact target branch reflog changes after lease validation, including an old→other→old ABA that preserves the expected OID; it never overwrites that manual boundary and preserves caller index/worktree bytes.
 <!-- AC:END -->
 
 ## Definition of Done
 <!-- DOD:BEGIN -->
-- [ ] #1 bunx tsc --noEmit passes when TypeScript touched
-- [ ] #2 bun run check . passes when formatting/linting touched
-- [ ] #3 bun test (or scoped test) passes
+- [x] #1 bunx tsc --noEmit passes when TypeScript touched
+- [x] #2 bun run check . passes when formatting/linting touched
+- [x] #3 bun test (or scoped test) passes
 <!-- DOD:END -->
 
 ## Implementation Plan
@@ -247,6 +247,8 @@ Pass 17 TUI external-editor correction complete and fully verified. The editor o
 Pass 18 editor validation/reconciliation complete and fully verified. Post-editor bytes are inspected even after nonzero exit; valid changes continue through identity/required-field validation, updated_date, selected-path commit, and a visible warning. Parser errors, empty/changed normalized IDs (including collisions), or missing required fields preserve user bytes without metadata/cache/Git effects and throw actionable recovery errors. Removed/moved paths are detected explicitly, left uncommitted, and direct board/list error handling surfaces restore/Git-status guidance. Deletion and rename regressions prove unchanged HEAD and preserved recovery state. Focused gate: 135 tests/599 assertions. Integrated gate: TypeScript clean, Biome 351 files, 1,873 passed/4 skipped/0 failed with 8,325 assertions across 207 files in 632.41 seconds; diff check clean.
 
 Fresh holistic gpt-5.6-sol xhigh Pass 19 at 5457f3b requested changes with one High finding: final named-branch CAS leases index and worktree HEAD identity but not the target refs/heads/* reflog, so an alternate Git context can move old→parent→old after validation and before internal update-ref; OID CAS succeeds and records a new ownership marker across a manual-reset boundary. Exact clean reviewed HEAD preserved. Report: /tmp/backlog-821-holistic-review-pass-19.md.
+
+Pass 19 final-window ABA correction complete and fully verified. Named movement now runs as a hook-disabled interactive update-ref transaction: Git prepare holds the exact target-ref lock while Backlog reruns complete HEAD/OID, operation, selected-index, ownership-reflog, and sharing validation, then commits or aborts atomically. The real worktree reference-transaction lifecycle remains one prepared plus committed/aborted. The deterministic alternate-context old→parent→old regression lands after real prepared validation and before the protected transaction, then proves rejection, prepared/aborted only, unchanged branch/tree, preserved caller index/worktree bytes, and both manual reflog entries retained. Focused gate: 63 tests/473 assertions. Integrated gate: TypeScript clean, Biome 351 files, 1,874 passed/4 skipped/0 failed with 8,333 assertions across 207 files in 669.22 seconds; diff check clean.
 <!-- SECTION:NOTES:END -->
 
 ## Comments

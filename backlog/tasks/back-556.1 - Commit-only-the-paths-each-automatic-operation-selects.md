@@ -5,7 +5,7 @@ status: In Progress
 assignee:
   - '@andreas'
 created_date: '2026-07-28 14:46'
-updated_date: '2026-07-30 03:11'
+updated_date: '2026-07-30 03:34'
 labels:
   - git
 dependencies: []
@@ -31,20 +31,20 @@ This is a correctness fix that stands on its own under the current default autom
 - [x] #1 Every production automatic-commit path commits only the files selected for that operation, covering tasks, drafts, bulk updates and reorders, lifecycle moves, milestones, documents, decisions, and agent-instruction updates.
 - [x] #2 Pre-existing unrelated staged and unstaged paths, and unrelated paths staged by pre-commit or commit-message hooks through the isolated commit index, remain outside the commit and retain their prior real-index and worktree state; mutations made by post-commit hooks against the real index and worktree persist according to normal Git semantics.
 - [x] #3 Operations that move files, such as archive and milestone rename, commit the complete set of source and target paths the operation touched, with no stray additions.
-- [ ] #4 Existing selected-path robustness is preserved: temporary-index isolation, owned-index reconciliation, retries, current-configuration signing and signing failures, legacy and modern hook runners, and atomic expected-old-SHA branch updates.
+- [x] #4 Existing selected-path robustness is preserved: temporary-index isolation, owned-index reconciliation, retries, current-configuration signing and signing failures, legacy and modern hook runners, and atomic expected-old-SHA branch updates.
 - [x] #5 Merge, rebase, cherry-pick, and revert in-progress guards continue to fail closed without moving HEAD, corrupting operation metadata, or consuming unrelated index entries.
 - [x] #6 Tests cover unrelated index and worktree state, pre-commit and commit-message hook staging isolation, post-commit real-index mutations, file-move operations, custom backlog roots, linked worktrees, and projects without Git.
 - [x] #7 Promotion and demotion use one canonical lifecycle implementation that returns the complete touched-path result, while duplicate task IDs continue to raise the explicit ambiguity diagnostic.
 - [x] #8 Title-changing draft updates return and commit both the previous and replacement paths in new and amend-own modes, leaving no duplicate in HEAD or unstaged deletion.
 - [x] #9 Lifecycle target validation and unexpected write failures propagate their actionable original errors; null/false is reserved for a genuinely absent source.
-- [ ] #10 Named finalization detects an exact-branch reflog ABA in the remaining post-validation/pre-CAS window and rejects or safely rolls back without consuming the caller selected index/worktree state.
+- [x] #10 Named finalization detects an exact-branch reflog ABA in the remaining post-validation/pre-CAS window and rejects or safely rolls back without consuming the caller selected index/worktree state.
 <!-- AC:END -->
 
 ## Definition of Done
 <!-- DOD:BEGIN -->
-- [ ] #1 bunx tsc --noEmit passes when TypeScript touched
-- [ ] #2 bun run check . passes when formatting/linting touched
-- [ ] #3 bun test (or scoped test) passes
+- [x] #1 bunx tsc --noEmit passes when TypeScript touched
+- [x] #2 bun run check . passes when formatting/linting touched
+- [x] #3 bun test (or scoped test) passes
 <!-- DOD:END -->
 
 ## Implementation Plan
@@ -119,6 +119,8 @@ Pass 17 production-path coverage complete. TUI external-editor task changes now 
 Pass 18 external-editor reconciliation complete. Valid modify-then-fail bytes use the same selected-path commit and warning feedback. Identity collision/malformed content never reaches metadata, ContentStore, staging, or commit. Deleted/renamed paths produce explicit uncommitted recovery errors with HEAD unchanged and filesystem/Git state preserved for manual repair. Focused and integrated gates pass.
 
 Pass 19 H1 reopens final selected-path robustness: expected-OID CAS cannot distinguish an ownership-closing target-branch old→parent→old reflog transition after validation.
+
+Pass 19 selected-path final lease complete. The target branch transaction is prepared and locked before complete lease revalidation, so an expected-OID CAS cannot overlook same-OID reflog ABA. Regression preserves selected caller index/worktree bytes and the original reachable tree while retaining concurrent manual reflog history. Focused 63/473 and integrated 1,874/8,333 gates pass.
 <!-- SECTION:NOTES:END -->
 
 ## Comments

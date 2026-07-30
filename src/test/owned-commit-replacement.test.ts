@@ -6,6 +6,17 @@ import { type GitCommitOptions, type GitCommitResult, GitOperations } from "../g
 import type { BacklogConfig } from "../types/index.ts";
 import { createUniqueTestDir, safeCleanup } from "./test-utils.ts";
 
+type UpdateBranchRefTransaction = (
+	repoRoot: string,
+	gitDirectory: string,
+	branchRef: string,
+	expectedCommit: string | null,
+	newCommit: string,
+	reflogMessage: string,
+	hooksDisabledEnv: Record<string, string>,
+	validatePreparedUpdate: () => Promise<void>,
+) => Promise<void>;
+
 type PrivateGit = {
 	execGit: (
 		args: string[],
@@ -17,6 +28,7 @@ type PrivateGit = {
 			acceptedExitCodes?: readonly number[];
 		},
 	) => Promise<{ stdout: string; stderr: string }>;
+	updateBranchRefTransaction: UpdateBranchRefTransaction;
 };
 
 async function initializeRepository(root: string, options: { baseline?: boolean; reflogs?: boolean } = {}) {
@@ -782,15 +794,14 @@ describe("owned automatic commit replacement", () => {
 		await git.stageFiles([selectedPath]);
 		const privateGit = git as unknown as PrivateGit;
 		const originalExec = privateGit.execGit.bind(git);
+		const originalTransaction = privateGit.updateBranchRefTransaction.bind(git);
 		let switchBlocked = false;
-		privateGit.execGit = async (args, options) => {
-			if (args[0] === "update-ref" && options?.env?.GIT_DIR && !switchBlocked) {
-				await expect(originalExec(["symbolic-ref", "HEAD", "refs/heads/sibling"], { cwd: testDir })).rejects.toThrow(
-					"HEAD.lock",
-				);
-				switchBlocked = true;
-			}
-			return originalExec(args, options);
+		privateGit.updateBranchRefTransaction = async (...args) => {
+			await expect(originalExec(["symbolic-ref", "HEAD", "refs/heads/sibling"], { cwd: testDir })).rejects.toThrow(
+				"HEAD.lock",
+			);
+			switchBlocked = true;
+			return originalTransaction(...args);
 		};
 
 		const result = await git.commitFiles("backlog: Update task BACK-2", [selectedPath], testDir, {
@@ -805,6 +816,80 @@ describe("owned automatic commit replacement", () => {
 		);
 	}, 20_000);
 
+	it("rejects a final-window target-branch reflog ABA while preserving caller bytes", async () => {
+		const git = await initializeRepository(testDir);
+		const owned = await commitSelected(testDir, git, "backlog: Update task BACK-1", "owned\n");
+		const parent = (await $`git rev-parse ${owned.commitId}^`.cwd(testDir).text()).trim();
+		const selectedPath = join(testDir, "selected.txt");
+		await Bun.write(selectedPath, "ours\n");
+		await git.stageFiles([selectedPath]);
+		const commonDirectoryOutput = (await $`git rev-parse --git-common-dir`.cwd(testDir).text()).trim();
+		const commonDirectory = isAbsolute(commonDirectoryOutput)
+			? commonDirectoryOutput
+			: join(testDir, commonDirectoryOutput);
+		const alternateGitDirectory = join(testDir, "alternate-git");
+		await mkdir(alternateGitDirectory);
+		await Promise.all([
+			Bun.write(join(alternateGitDirectory, "commondir"), `${commonDirectory}\n`),
+			Bun.write(join(alternateGitDirectory, "HEAD"), "ref: refs/backlog/alternate\n"),
+		]);
+		const hookEvents = join(testDir, "reference-events");
+		await installHook(testDir, "reference-transaction", `printf '%s\\n' "$1" >> "${hookEvents}"`);
+		const privateGit = git as unknown as PrivateGit;
+		const originalExec = privateGit.execGit.bind(git);
+		const originalTransaction = privateGit.updateBranchRefTransaction.bind(git);
+		let raced = false;
+		privateGit.updateBranchRefTransaction = async (...args) => {
+			if (!raced) {
+				raced = true;
+				const env = { GIT_DIR: alternateGitDirectory };
+				await originalExec(
+					[
+						"-c",
+						"core.hooksPath=/dev/null",
+						"update-ref",
+						"-m",
+						"manual away",
+						"refs/heads/main",
+						parent,
+						owned.commitId,
+					],
+					{ cwd: testDir, env },
+				);
+				await originalExec(
+					[
+						"-c",
+						"core.hooksPath=/dev/null",
+						"update-ref",
+						"-m",
+						"manual return",
+						"refs/heads/main",
+						owned.commitId,
+						parent,
+					],
+					{ cwd: testDir, env },
+				);
+			}
+			return originalTransaction(...args);
+		};
+
+		await expect(
+			git.commitFiles("backlog: Update task BACK-2", [selectedPath], testDir, {
+				automaticCommitIntent: "amend-own",
+			}),
+		).rejects.toThrow("eligibility changed");
+		expect(raced).toBe(true);
+		expect(await head(testDir)).toBe(owned.commitId);
+		expect(await $`git show HEAD:selected.txt`.cwd(testDir).text()).toBe("owned\n");
+		expect(await Bun.file(selectedPath).text()).toBe("ours\n");
+		expect(await $`git show :selected.txt`.cwd(testDir).text()).toBe("ours\n");
+		expect((await $`git reflog show -2 --format=%gs refs/heads/main`.cwd(testDir).text()).trim().split("\n")).toEqual([
+			"manual return",
+			"manual away",
+		]);
+		expect((await Bun.file(hookEvents).text()).trim().split("\n")).toEqual(["prepared", "aborted"]);
+	}, 20_000);
+
 	it("restores the old tip if it becomes shared while the protected branch update runs", async () => {
 		const git = await initializeRepository(testDir);
 		const owned = await commitSelected(testDir, git, "backlog: Update task BACK-1", "owned\n");
@@ -813,13 +898,12 @@ describe("owned automatic commit replacement", () => {
 		await git.stageFiles([selectedPath]);
 		const privateGit = git as unknown as PrivateGit;
 		const originalExec = privateGit.execGit.bind(git);
+		const originalTransaction = privateGit.updateBranchRefTransaction.bind(git);
 		let shared = false;
-		privateGit.execGit = async (args, options) => {
-			if (args[0] === "update-ref" && options?.env?.GIT_DIR && !shared) {
-				shared = true;
-				await originalExec(["tag", "shared-during-update", owned.commitId], { cwd: testDir });
-			}
-			return originalExec(args, options);
+		privateGit.updateBranchRefTransaction = async (...args) => {
+			await originalTransaction(...args);
+			shared = true;
+			await originalExec(["tag", "shared-during-update", owned.commitId], { cwd: testDir });
 		};
 
 		await expect(
