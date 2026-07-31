@@ -5,7 +5,7 @@ status: Done
 assignee:
   - '@andreas'
 created_date: '2026-07-28 14:47'
-updated_date: '2026-07-31 03:54'
+updated_date: '2026-07-31 04:10'
 labels:
   - cli
 dependencies:
@@ -155,6 +155,8 @@ Pass 23 current-byte and cleanup reporting complete. Mutation preflight double-r
 Pass 25 shared MCP guideline mutation complete. Current persisted enablement/mode/force-new is resolved after save, exact changed instruction paths are committed in one batch, descriptors retain file/action, and commit results flow through the bounded sink. Shared and interactive setup no longer directly call ensureMcpGuidelines. Full auto-mode and integrated gates pass.
 
 Strict core-only Pass 26 returned standalone ALL GOOD on exact clean local a4f8c35, including post-save MCP/CLI initialization parity.
+
+MCP client setup spawning now explicitly receives current process.env so deferred initialization tests and runtime client lookup honor the active PATH deterministically; this does not change commit planning semantics.
 <!-- SECTION:NOTES:END -->
 
 ## Comments

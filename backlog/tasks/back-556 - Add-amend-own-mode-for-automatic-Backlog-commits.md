@@ -5,7 +5,7 @@ status: Done
 assignee:
   - '@andreas'
 created_date: '2026-07-28 14:27'
-updated_date: '2026-07-31 03:54'
+updated_date: '2026-07-31 04:10'
 labels:
   - enhancement
   - git
@@ -298,6 +298,8 @@ Core-only rolling-message byte preservation follow-up complete. Replacement now 
 Pass 25 MCP initialization parity complete. Core.updateMcpGuidelines resolves one immutable current-byte plan, renders deduplicated MCP reminder files, commits only changed paths with per-file Add/Update instruction descriptors and normal result recording. Shared initializeProject batches successful client guideline files after config save; interactive CLI records selections then defers Core mutation until initializeProject returns persisted config. Fake Codex tests prove current true commits AGENTS.md and post-save true→false writes without a commit. Focused auto-mode 27/173, init/agent/CLI 49/227. Clean integrated gate: TypeScript, Biome 351 files, 1,888 passed/4 skipped/0 failed with 8,453 assertions across 207 files in 741.47 seconds; diff clean.
 
 Fresh strict core-requirements-only gpt-5.6-sol xhigh Pass 26 reviewed exact clean local SHA a4f8c35a41c0f8e689cb11a88fe498a7ca907198 and returned exact standalone ALL GOOD. Reviewer reran auto-mode 27/173, automatic-message 7/24, server-init 7/29, and owned 33/306; HEAD/status remained exact and clean. User requires the final branch remain local-only: origin intentionally stays at 7b5cf20 and no PR refresh/push is performed.
+
+Final fresh-shell verification initially omitted the NVM node directory, so three editor tests could not find node; its MCP fake-client test also exposed Bun command resolution using the process-start PATH unless spawn receives current process.env. MCP setup now explicitly passes current env, making the fake setup and runtime PATH deterministic. Exact MCP matrix passes under env -i; mcp-client tests 2/3, TypeScript/Biome/diff clean. The final monitor command includes the required NVM node artifact path.
 <!-- SECTION:NOTES:END -->
 
 ## Comments

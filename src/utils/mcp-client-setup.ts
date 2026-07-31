@@ -56,6 +56,7 @@ export async function runMcpClientSetupCommand(
 	const stderr = options.stderr ?? "pipe";
 	const child = spawn({
 		cmd: [command, ...args],
+		env: process.env,
 		stdout,
 		stderr,
 	});
