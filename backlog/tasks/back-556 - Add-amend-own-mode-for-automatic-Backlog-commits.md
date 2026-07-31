@@ -5,7 +5,7 @@ status: In Progress
 assignee:
   - '@andreas'
 created_date: '2026-07-28 14:27'
-updated_date: '2026-07-31 02:54'
+updated_date: '2026-07-31 03:29'
 labels:
   - enhancement
   - git
@@ -145,6 +145,7 @@ This task is delivered through subtasks, because the selected-path correctness f
 - [x] #20 HEAD synchronization regressions discriminate the protected implementation from the former loose no-op by injecting identity change after transaction prepare and asserting no automatic marker reaches the worktree HEAD or sibling ownership evidence.
 - [x] #21 When a protected rollback is skipped because forward ref movement remains intact behind a concurrent manual boundary, every production mutation wrapper preserves the selected worktree/index bytes already represented by that retained commit and propagates the non-retryable diagnostic without destructive outer cleanup.
 - [x] #22 Rolling-message replacement preserves every byte outside Backlog-owned subject/operation-region content, including CRLF or mixed line endings, trailing body bytes, and final-newline presence; only the owned subject and delimited region are regenerated.
+- [x] #23 MCP client reminder/instruction writes run only after initialization saves configuration and through the same current-byte immutable automatic-commit plan as CLI agent instructions; enabled new/amend-own, disabled, force-new, exact-path commits, and triggering-surface feedback cannot drift.
 <!-- AC:END -->
 
 ## Definition of Done
@@ -217,6 +218,8 @@ Pass 23: share watcher-grade complete/usable and stable-byte validation with mut
 Pass 24: expose the typed forward-movement-retained finalization error to production callers. Any Core/MCP catch that normally undoes filesystem/index mutations must bypass cleanup for this error while still propagating it; ordinary pre-movement and safely rolled-back failures retain existing cleanup. Add an end-to-end createTaskFromInput ABA/late-sharing regression asserting HEAD, worktree, index, and task identity remain aligned.
 
 Core-only follow-up found during Pass 24 inspection: replace line-normalizing rolling-message reconstruction with offset-based marker parsing. Preserve raw bytes from the original subject terminator to region start and from end-marker terminator onward, while parsing only logical region lines and rendering replacement lines with the marker newline convention. Add CRLF/mixed-ending exact-byte regression.
+
+Pass 25: move both shared initializeProject and interactive CLI MCP reminder writes behind config save. Add a Core batch mutation that resolves one current-byte plan, invokes MCP-specific guideline rendering, commits only changed instruction paths with per-file Add/Update descriptors, and records normal feedback. Defer interactive client reminder selection until after initializeProject. Cover true and post-save true→false behavior with a fake successful Codex setup.
 <!-- SECTION:PLAN:END -->
 
 ## Implementation Notes
@@ -291,6 +294,8 @@ Pass 23 corrections complete locally. Direct mutation reads now require two equa
 Pass 24 production retained-forward correction complete. FinalizationRollbackError now has a narrow exported type guard. Task creation, Core milestone archive/rename, and MCP milestone commit/finalization catches bypass destructive file/index rollback only for this error while ordinary failures retain cleanup. End-to-end createTaskFromInput coverage injects real forward replacement, manual same-OID ABA, and late sharing; the surfaced non-retryable error leaves retained HEAD, worktree, index, and both task identities aligned and clean. Focused: production regression 1/7, rollback pair 2/15, MCP milestones 33/127. Clean integrated gate: TypeScript, Biome 351 files, 1,886 passed/4 skipped/0 failed with 8,442 assertions across 207 files in 743.31 seconds; diff clean.
 
 Core-only rolling-message byte preservation follow-up complete. Replacement now parses logical line records with raw offsets and reconstructs only the owned subject/region, retaining exact bytes around it and the original marker separator. CRLF/mixed line endings, body suffix, and no-final-newline state are covered. TypeScript/Biome/diff clean; automatic-message plus full owned suite passes 40 tests/330 assertions; prior clean integrated gate remains 1,886/8,442.
+
+Pass 25 MCP initialization parity complete. Core.updateMcpGuidelines resolves one immutable current-byte plan, renders deduplicated MCP reminder files, commits only changed paths with per-file Add/Update instruction descriptors and normal result recording. Shared initializeProject batches successful client guideline files after config save; interactive CLI records selections then defers Core mutation until initializeProject returns persisted config. Fake Codex tests prove current true commits AGENTS.md and post-save true→false writes without a commit. Focused auto-mode 27/173, init/agent/CLI 49/227. Clean integrated gate: TypeScript, Biome 351 files, 1,888 passed/4 skipped/0 failed with 8,453 assertions across 207 files in 741.47 seconds; diff clean.
 <!-- SECTION:NOTES:END -->
 
 ## Comments
@@ -417,5 +422,10 @@ Strict core-only Pass 24 at local 9fee961 requested one High change: when protec
 created: 2026-07-31 02:49
 ---
 Core-only self-review after Pass 24 observed buildAutomaticCommitMessage normalizes every CRLF to LF even though BACK-556 explicitly requires content outside the owned region to be preserved verbatim. Record and fix before the next reviewer; this is limited to the written rolling-message contract.
+---
+
+created: 2026-07-31 03:15
+---
+Strict core-only Pass 25 at local 9d8b9f9 requested one High change: MCP initialization calls ensureMcpGuidelines directly (and interactive CLI does so before advanced config save), leaving AGENTS.md uncommitted under persisted autoCommit true and bypassing mode/current-byte/feedback semantics. This violates BACK-556.3 #23 and BACK-556.4 #8. Report: /tmp/backlog-821-holistic-review-pass-25.md.
 ---
 <!-- COMMENTS:END -->

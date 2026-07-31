@@ -4,7 +4,9 @@ import { basename, isAbsolute, join, relative } from "node:path";
 import {
 	type AgentInstructionFile,
 	type AgentInstructionWriteResult,
+	type EnsureMcpGuidelinesResult,
 	addAgentInstructions as writeAgentInstructions,
+	ensureMcpGuidelines as writeMcpGuidelines,
 } from "../agent-instructions.ts";
 import { DEFAULT_DIRECTORIES, DEFAULT_STATUSES, FALLBACK_STATUS } from "../constants/index.ts";
 import { FileSystem } from "../file-system/operations.ts";
@@ -1019,6 +1021,39 @@ export class Core {
 			{ automaticCommitIntent: plan.intent },
 			(result) => this.recordAutoCommitResult(input, result),
 		);
+	}
+
+	async updateMcpGuidelines(
+		files: AgentInstructionFile[],
+		input?: AutoCommitInput,
+	): Promise<EnsureMcpGuidelinesResult[]> {
+		return await this.withAutoCommitPlan(input, async () => {
+			const plan = await this.resolveAutoCommit(input);
+			const uniqueFiles = Array.from(new Set(files));
+			const writes = await Promise.all(
+				uniqueFiles.map(async (file) => await writeMcpGuidelines(this.fs.rootDir, file)),
+			);
+			const changed = writes.filter((write) => write.changed);
+			if (plan.enabled && changed.length > 0) {
+				const paths = changed.map((write) => write.filePath);
+				const repoRoot = await this.git.stageFiles(paths);
+				const operations = changed.map((write) => {
+					const action = write.created ? "Add" : "Update";
+					return createAutomaticCommitOperation(
+						`${action} MCP agent instruction ${write.fileName}`,
+						action,
+						"instruction",
+						[write.fileName],
+					);
+				});
+				const result = await this.git.commitFiles("Update MCP agent instructions", paths, repoRoot, {
+					automaticCommitIntent: plan.intent,
+					operation: operations,
+				});
+				this.recordAutoCommitResult(input, result);
+			}
+			return writes;
+		});
 	}
 
 	async createMilestone(title: string, description?: string, input?: AutoCommitInput): Promise<Milestone> {

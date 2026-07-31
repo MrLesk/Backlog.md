@@ -1,7 +1,6 @@
 import {
 	type AgentInstructionFile,
 	type AgentInstructionWriteResult,
-	ensureMcpGuidelines,
 	installClaudeAgent,
 } from "../agent-instructions.ts";
 import { DEFAULT_INIT_CONFIG } from "../constants/index.ts";
@@ -249,6 +248,7 @@ export async function initializeProject(
 
 	// Handle MCP integration
 	if (integrationMode === "mcp" && mcpClients.length > 0) {
+		const guidelineFiles = new Set<AgentInstructionFile>();
 		for (const client of mcpClients) {
 			try {
 				if (client === "guide") {
@@ -260,10 +260,21 @@ export async function initializeProject(
 				}
 
 				mcpResults[client] = await runMcpClientCommand(client);
-				await ensureMcpGuidelines(projectRoot, MCP_CLIENT_INSTRUCTION_MAP[client]);
+				guidelineFiles.add(MCP_CLIENT_INSTRUCTION_MAP[client]);
 			} catch (error) {
 				const message = error instanceof Error ? error.message : String(error);
 				mcpResults[client] = `Failed: ${message}`;
+			}
+		}
+		if (guidelineFiles.size > 0) {
+			try {
+				const writes = await core.updateMcpGuidelines(Array.from(guidelineFiles));
+				mcpResults.guidelines = writes
+					.map((write) => `${write.created ? "Created" : write.changed ? "Updated" : "Unchanged"}: ${write.fileName}`)
+					.join("\n");
+			} catch (error) {
+				const message = error instanceof Error ? error.message : String(error);
+				mcpResults.guidelines = `Failed: ${message}`;
 			}
 		}
 	}

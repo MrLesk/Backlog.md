@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { mkdir, rename, rm } from "node:fs/promises";
+import { chmod, mkdir, rename, rm } from "node:fs/promises";
 import { isAbsolute, join } from "node:path";
 import { $ } from "bun";
 import { addAgentInstructions } from "../agent-instructions.ts";
@@ -402,6 +402,53 @@ describe("autoCommitMode", () => {
 			} else {
 				expect((await $`git cat-file -e HEAD:AGENTS.md`.cwd(root).nothrow().quiet()).exitCode).not.toBe(0);
 			}
+		}
+	}, 20_000);
+
+	test("MCP initialization guidelines honor post-save current auto-commit bytes", async () => {
+		const fakeBin = join(testDir, "fake-mcp-bin");
+		await mkdir(fakeBin);
+		const fakeCodex = join(fakeBin, "codex");
+		await Bun.write(fakeCodex, "#!/bin/sh\nexit 0\n");
+		await chmod(fakeCodex, 0o755);
+		const previousPath = process.env.PATH;
+		process.env.PATH = `${fakeBin}:${previousPath ?? ""}`;
+		try {
+			for (const currentAutoCommit of [true, false]) {
+				const root = join(testDir, `mcp-init-${currentAutoCommit}`);
+				await mkdir(root);
+				await $`git init -q -b main`.cwd(root);
+				await $`git config user.email test@example.com`.cwd(root);
+				await $`git config user.name "Test User"`.cwd(root);
+				const scenarioCore = new Core(root);
+				const originalSaveConfig = scenarioCore.filesystem.saveConfig.bind(scenarioCore.filesystem);
+				scenarioCore.filesystem.saveConfig = async (config) => {
+					await originalSaveConfig(config);
+					if (!currentAutoCommit) {
+						const path = scenarioCore.filesystem.configFilePath;
+						const bytes = await Bun.file(path).text();
+						await Bun.write(path, bytes.replace("auto_commit: true", "auto_commit: false"));
+					}
+				};
+
+				const result = await initializeProject(scenarioCore, {
+					projectName: `MCP init ${currentAutoCommit}`,
+					integrationMode: "mcp",
+					mcpClients: ["codex"],
+					advancedConfig: { autoCommit: true, autoCommitMode: "new" },
+				});
+
+				expect(result.config.autoCommit).toBe(currentAutoCommit);
+				expect(await Bun.file(join(root, "AGENTS.md")).exists()).toBe(true);
+				const agentsInHead = (await $`git cat-file -e HEAD:AGENTS.md`.cwd(root).nothrow().quiet()).exitCode === 0;
+				expect(agentsInHead).toBe(currentAutoCommit);
+				expect((await $`git status --short -- AGENTS.md`.cwd(root).text()).trim()).toBe(
+					currentAutoCommit ? "" : "?? AGENTS.md",
+				);
+			}
+		} finally {
+			if (previousPath === undefined) delete process.env.PATH;
+			else process.env.PATH = previousPath;
 		}
 	}, 20_000);
 

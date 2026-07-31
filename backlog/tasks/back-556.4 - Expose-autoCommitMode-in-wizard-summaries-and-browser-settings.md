@@ -5,7 +5,7 @@ status: In Progress
 assignee:
   - '@andreas'
 created_date: '2026-07-28 14:47'
-updated_date: '2026-07-31 02:13'
+updated_date: '2026-07-31 03:29'
 labels:
   - web-ui
   - cli
@@ -37,6 +37,7 @@ This covers the advanced CLI wizard, initialization and configuration summaries,
 - [x] #9 CLI and browser initialization responses/summaries display the fail-closed reloaded persisted autoCommit and autoCommitMode values after setup, including post-save races.
 - [x] #10 The browser /api/init response includes effective persisted BacklogConfig, the typed client exposes it, InitializationScreen passes it to App, and App seeds config state before follow-up loads; HTTP and component regressions cover post-save mode races.
 - [x] #11 Published browser/initialization configuration is both stable and complete before it replaces display cache or preserved request fields; truncated current bytes cannot surface empty required identity or enable amend-own.
+- [x] #12 Interactive CLI and browser/shared MCP initialization defer reminder-file mutation until configuration is persisted, then expose the same effective mode, commit behavior, and replacement feedback as other initialization instruction writes.
 <!-- AC:END -->
 
 ## Definition of Done
@@ -74,6 +75,8 @@ This covers the advanced CLI wizard, initialization and configuration summaries,
 10. Publish the validated current-byte config snapshot at initializeProject completion, include it in server/client init response types, consume it through onInitialized(config), and assert both direct HTTP response/cache and InitializationScreen callback receive post-save new instead of requested amend-own.
 
 Pass 23: cover direct initialization publication when the post-save file is incomplete/changes across reads, proving the request/preserved display snapshot is not published and no integration mutation occurs.
+
+Pass 25: retain interactive MCP client setup selection/results but defer reminder rendering/summary until after shared initialization config save; route shared browser MCP clients through Core and preserve current effective result publication.
 <!-- SECTION:PLAN:END -->
 
 ## Implementation Notes
@@ -110,6 +113,8 @@ Pass 22 M1: Core returns current config, but the server drops it, API types omit
 Pass 22 browser effective result complete. /api/init includes validated published BacklogConfig, ApiClient types it, InitializationScreen passes it, and App seeds effective state. HTTP regression mutates saved true/amend-own to false/new and proves both response and immediate /api/config cache; component regression proves callback consumes returned new despite submitting amend-own. Focused and integrated gates pass.
 
 Pass 23 publication safety complete. Browser initialization rejects incomplete post-save current bytes, performs no integration write, and does not publish parsed empty project identity over the valid requested/display snapshot. Existing effective-config response/cache behavior remains covered. Integrated gate passes.
+
+Pass 25 initialization-surface parity complete. Interactive client setup preserves selection/setup summaries but defers reminder file writes until post-save Core planning; shared/browser initializeProject does the same for successful MCP clients. Current true/false post-save behavior is covered and effective config publication remains unchanged. Integrated 1,888/8,453 passes.
 <!-- SECTION:NOTES:END -->
 
 ## Comments
@@ -154,5 +159,10 @@ Pass 12 M3 requires browser initialization and Settings round-trip evidence for 
 created: 2026-07-30 07:04
 ---
 Pass 23 H1 also affects initialization publication: parsed empty required fields currently override preserved valid request/display fields. Reopen browser effective-config publication until stable complete bytes are enforced.
+---
+
+created: 2026-07-31 03:15
+---
+Pass 25 H1 affects initialization surfaces: interactive MCP writes occur before advanced settings, and shared MCP writes occur outside post-save Core plan.
 ---
 <!-- COMMENTS:END -->

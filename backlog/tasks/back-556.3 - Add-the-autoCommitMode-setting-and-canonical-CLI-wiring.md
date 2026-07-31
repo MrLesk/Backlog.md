@@ -5,7 +5,7 @@ status: In Progress
 assignee:
   - '@andreas'
 created_date: '2026-07-28 14:47'
-updated_date: '2026-07-31 02:13'
+updated_date: '2026-07-31 03:29'
 labels:
   - cli
 dependencies:
@@ -59,6 +59,7 @@ Documentation must cover rolling-commit boundaries, how the message is rebuilt a
 - [x] #24 initializeProject returns the fail-closed reloaded persisted configuration after integration setup, so callers and summaries reflect current autoCommit and autoCommitMode bytes rather than request-time values.
 - [x] #25 Current-byte mutation plans require a stable complete usable config, not merely syntactically valid recognized keys; partial initialized-project files cannot enable amend-own, and preservation overlays cannot resurrect missing/empty required current fields.
 - [x] #26 Cleanup reports staging from successful exact-path index mutations rather than attempts, with truthful all-success, partial-success, and all-failed output under the one immutable current-byte plan.
+- [x] #27 MCP initialization guideline files are a shared Core mutation: one post-save current-byte plan controls changed exact paths, configured mode and invocation force-new, structured per-file operations, and bounded result feedback for shared/browser and interactive CLI setup.
 <!-- AC:END -->
 
 ## Definition of Done
@@ -104,6 +105,8 @@ Documentation must cover rolling-commit boundaries, how the message is rebuilt a
 21. Reload mutation-safe current configuration after setup and return it as initializeProject.config. Extend post-save true→false, false→true, and amend-own→new seams to assert both commit behavior and returned values.
 
 Pass 23: factor watcher stable/usable-config checks into direct mutation loading, including repeated byte equality and required project identity before preserve/publish. Extend cleanup plan results with successful/attempted staging counts and test all-failed plus partial cases without changing commit decisions.
+
+Pass 25: expose Core.updateMcpGuidelines as a batched immutable-plan mutation. Shared initialization queues guideline files after successful client setup; interactive CLI queues selected files and invokes Core only after initializeProject saves/reloads config. Test enabled commit and post-save disabled no-commit.
 <!-- SECTION:PLAN:END -->
 
 ## Implementation Notes
@@ -148,6 +151,8 @@ Pass 21 M3: integration writes correctly use current config, but initializeProje
 Pass 21 effective initialization result complete. After setup/integration, initializeProject uses fail-closed loadConfigForMutation and returns persisted current bytes. Post-save enable/mode transitions assert returned autoCommit/autoCommitMode alongside exact commit behavior, ensuring summary callers consume truth rather than the request object. Focused and integrated gates pass.
 
 Pass 23 current-byte and cleanup reporting complete. Mutation preflight double-reads current bytes, retries instability/unusable snapshots, and shares watcher-grade required identity/list/date/explicit-value validation before plan resolution or publication. Long-lived Core/browser/MCP and post-save init tests reject incomplete auto_commit/amend-own files before writes while retaining valid display cache. Cleanup all-failed/partial staging results are exact. Canonical callback fixtures now use persisted snake_case required keys. Integrated 1,885 passed/4 skipped, 8,435 assertions.
+
+Pass 25 shared MCP guideline mutation complete. Current persisted enablement/mode/force-new is resolved after save, exact changed instruction paths are committed in one batch, descriptors retain file/action, and commit results flow through the bounded sink. Shared and interactive setup no longer directly call ensureMcpGuidelines. Full auto-mode and integrated gates pass.
 <!-- SECTION:NOTES:END -->
 
 ## Comments
@@ -228,5 +233,10 @@ Pass 18 H1/M2: immutable plan wiring exists, but post-editor validation and fail
 created: 2026-07-30 07:04
 ---
 Pass 23 config/CLI findings reopen fail-closed mutation validation for incomplete current files and truthful cleanup staging output after per-move errors.
+---
+
+created: 2026-07-31 03:15
+---
+Pass 25 reopens post-save initialization parity because MCP reminder writes bypass Core automatic-commit planning while equivalent CLI instruction writes comply.
 ---
 <!-- COMMENTS:END -->

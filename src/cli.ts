@@ -32,8 +32,6 @@ import { formatTaskPlainText } from "./formatters/task-plain-text.ts";
 import {
 	type AgentInstructionFile,
 	Core,
-	type EnsureMcpGuidelinesResult,
-	ensureMcpGuidelines,
 	exportKanbanBoardToFile,
 	initializeGitRepository,
 	installClaudeAgent,
@@ -1081,6 +1079,7 @@ addHelpSchema(program.command("init [projectName]"), {
 				let agentFiles: AgentInstructionFile[] = [];
 				let agentInstructionsSkipped = false;
 				let mcpClientSetupSummary: string | undefined;
+				const mcpGuidelineFiles: AgentInstructionFile[] = [];
 				const mcpGuideUrl = "https://github.com/MrLesk/Backlog.md#-mcp-integration-model-context-protocol";
 
 				if (
@@ -1251,46 +1250,25 @@ addHelpSchema(program.command("init [projectName]"), {
 							}
 
 							const results: string[] = [];
-							const mcpGuidelineUpdates: EnsureMcpGuidelinesResult[] = [];
-							const recordGuidelinesForClient = async (clientKey: string) => {
+							const recordGuidelinesForClient = (clientKey: string) => {
 								const instructionFile = MCP_CLIENT_INSTRUCTION_MAP[clientKey];
-								if (!instructionFile) {
-									return;
-								}
-								const nudgeResult = await ensureMcpGuidelines(cwd, instructionFile);
-								if (nudgeResult.changed) {
-									mcpGuidelineUpdates.push(nudgeResult);
+								if (instructionFile && !mcpGuidelineFiles.includes(instructionFile)) {
+									mcpGuidelineFiles.push(instructionFile);
 								}
 							};
-							const uniq = (values: string[]) => [...new Set(values)];
 
 							for (const client of selectedClients) {
 								if (isMcpClientSetupKey(client)) {
 									const result = await runMcpClientCommand(client, mcpServerName);
 									results.push(result);
-									await recordGuidelinesForClient(client);
+									recordGuidelinesForClient(client);
 									continue;
 								}
 								if (client === "guide") {
 									console.log("    Opening MCP setup guide in your browser...");
 									await openUrlInBrowser(mcpGuideUrl);
 									results.push("Setup guide opened");
-									await recordGuidelinesForClient(client);
-								}
-							}
-
-							if (mcpGuidelineUpdates.length > 0) {
-								const createdFiles = uniq(
-									mcpGuidelineUpdates.filter((entry) => entry.created).map((entry) => entry.fileName),
-								);
-								const updatedFiles = uniq(
-									mcpGuidelineUpdates.filter((entry) => !entry.created).map((entry) => entry.fileName),
-								);
-								if (createdFiles.length > 0) {
-									console.log(`    Created MCP reminder file(s): ${createdFiles.join(", ")}`);
-								}
-								if (updatedFiles.length > 0) {
-									console.log(`    Added MCP reminder to ${updatedFiles.join(", ")}`);
+									recordGuidelinesForClient(client);
 								}
 							}
 
@@ -1384,6 +1362,27 @@ addHelpSchema(program.command("init [projectName]"), {
 					existingConfig,
 					filesystemOnly,
 				});
+
+				if (integrationMode === "mcp" && mcpGuidelineFiles.length > 0) {
+					try {
+						const guidelineUpdates = await core.updateMcpGuidelines(mcpGuidelineFiles);
+						const createdFiles = guidelineUpdates
+							.filter((entry) => entry.changed && entry.created)
+							.map((entry) => entry.fileName);
+						const updatedFiles = guidelineUpdates
+							.filter((entry) => entry.changed && !entry.created)
+							.map((entry) => entry.fileName);
+						if (createdFiles.length > 0) {
+							console.log(`    Created MCP reminder file(s): ${createdFiles.join(", ")}`);
+						}
+						if (updatedFiles.length > 0) {
+							console.log(`    Added MCP reminder to ${updatedFiles.join(", ")}`);
+						}
+					} catch (error) {
+						const message = error instanceof Error ? error.message : String(error);
+						mcpClientSetupSummary = `${mcpClientSetupSummary ?? ""}${mcpClientSetupSummary ? ", " : ""}Guidelines failed: ${message}`;
+					}
+				}
 
 				const config = initResult.config;
 				const gitIntegrationDisabled = Boolean(config.filesystemOnly);
