@@ -1,11 +1,11 @@
 ---
 id: BACK-556
 title: Add amend-own mode for automatic Backlog commits
-status: In Progress
+status: Done
 assignee:
   - '@andreas'
 created_date: '2026-07-28 14:27'
-updated_date: '2026-07-31 03:29'
+updated_date: '2026-07-31 03:54'
 labels:
   - enhancement
   - git
@@ -296,6 +296,8 @@ Pass 24 production retained-forward correction complete. FinalizationRollbackErr
 Core-only rolling-message byte preservation follow-up complete. Replacement now parses logical line records with raw offsets and reconstructs only the owned subject/region, retaining exact bytes around it and the original marker separator. CRLF/mixed line endings, body suffix, and no-final-newline state are covered. TypeScript/Biome/diff clean; automatic-message plus full owned suite passes 40 tests/330 assertions; prior clean integrated gate remains 1,886/8,442.
 
 Pass 25 MCP initialization parity complete. Core.updateMcpGuidelines resolves one immutable current-byte plan, renders deduplicated MCP reminder files, commits only changed paths with per-file Add/Update instruction descriptors and normal result recording. Shared initializeProject batches successful client guideline files after config save; interactive CLI records selections then defers Core mutation until initializeProject returns persisted config. Fake Codex tests prove current true commits AGENTS.md and post-save true→false writes without a commit. Focused auto-mode 27/173, init/agent/CLI 49/227. Clean integrated gate: TypeScript, Biome 351 files, 1,888 passed/4 skipped/0 failed with 8,453 assertions across 207 files in 741.47 seconds; diff clean.
+
+Fresh strict core-requirements-only gpt-5.6-sol xhigh Pass 26 reviewed exact clean local SHA a4f8c35a41c0f8e689cb11a88fe498a7ca907198 and returned exact standalone ALL GOOD. Reviewer reran auto-mode 27/173, automatic-message 7/24, server-init 7/29, and owned 33/306; HEAD/status remained exact and clean. User requires the final branch remain local-only: origin intentionally stays at 7b5cf20 and no PR refresh/push is performed.
 <!-- SECTION:NOTES:END -->
 
 ## Comments
@@ -429,3 +431,9 @@ created: 2026-07-31 03:15
 Strict core-only Pass 25 at local 9d8b9f9 requested one High change: MCP initialization calls ensureMcpGuidelines directly (and interactive CLI does so before advanced config save), leaving AGENTS.md uncommitted under persisted autoCommit true and bypassing mode/current-byte/feedback semantics. This violates BACK-556.3 #23 and BACK-556.4 #8. Report: /tmp/backlog-821-holistic-review-pass-25.md.
 ---
 <!-- COMMENTS:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+Implemented safe opt-in amend-own automatic commits end to end. The feature defaults to new, requires current valid config and exact repository-local branch ownership, commits only selected paths, atomically protects Git/ref/reflog/hook boundaries, preserves rolling message body bytes, supports force-new, and reports behavior across CLI/TUI/browser/MCP. Twenty-six review passes culminated in exact ALL GOOD; local integrated verification passes 1,888 tests with 4 skips and 8,453 assertions.
+<!-- SECTION:FINAL_SUMMARY:END -->

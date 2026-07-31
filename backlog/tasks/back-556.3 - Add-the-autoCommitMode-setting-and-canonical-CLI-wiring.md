@@ -1,11 +1,11 @@
 ---
 id: BACK-556.3
 title: Add the autoCommitMode setting and canonical CLI wiring
-status: In Progress
+status: Done
 assignee:
   - '@andreas'
 created_date: '2026-07-28 14:47'
-updated_date: '2026-07-31 03:29'
+updated_date: '2026-07-31 03:54'
 labels:
   - cli
 dependencies:
@@ -153,6 +153,8 @@ Pass 21 effective initialization result complete. After setup/integration, initi
 Pass 23 current-byte and cleanup reporting complete. Mutation preflight double-reads current bytes, retries instability/unusable snapshots, and shares watcher-grade required identity/list/date/explicit-value validation before plan resolution or publication. Long-lived Core/browser/MCP and post-save init tests reject incomplete auto_commit/amend-own files before writes while retaining valid display cache. Cleanup all-failed/partial staging results are exact. Canonical callback fixtures now use persisted snake_case required keys. Integrated 1,885 passed/4 skipped, 8,435 assertions.
 
 Pass 25 shared MCP guideline mutation complete. Current persisted enablement/mode/force-new is resolved after save, exact changed instruction paths are committed in one batch, descriptors retain file/action, and commit results flow through the bounded sink. Shared and interactive setup no longer directly call ensureMcpGuidelines. Full auto-mode and integrated gates pass.
+
+Strict core-only Pass 26 returned standalone ALL GOOD on exact clean local a4f8c35, including post-save MCP/CLI initialization parity.
 <!-- SECTION:NOTES:END -->
 
 ## Comments
@@ -240,3 +242,9 @@ created: 2026-07-31 03:15
 Pass 25 reopens post-save initialization parity because MCP reminder writes bypass Core automatic-commit planning while equivalent CLI instruction writes comply.
 ---
 <!-- COMMENTS:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+Delivered validated autoCommitMode configuration, shared immutable Core planning, --no-amend/force-new, current-byte fail-closed mutation behavior, bounded cross-surface feedback, and post-save CLI/MCP/browser integration semantics. All criteria pass.
+<!-- SECTION:FINAL_SUMMARY:END -->

@@ -1,11 +1,11 @@
 ---
 id: BACK-556.2
 title: Replace an owned branch tip with local ownership proof
-status: In Progress
+status: Done
 assignee:
   - '@andreas'
 created_date: '2026-07-28 14:46'
-updated_date: '2026-07-31 02:54'
+updated_date: '2026-07-31 03:54'
 labels:
   - git
 dependencies:
@@ -180,6 +180,8 @@ Pass 23 Git safety complete. The forward transaction captures its exact expected
 Pass 24 unsafe-rollback signaling complete. isFinalizationRollbackError identifies the non-retryable retained-forward outcome for outer consumers without exposing generic failures. Git inner/outer retries remain disabled, concurrent reflog history remains authoritative, and production wrappers preserve bytes. Focused rollback and full integrated gates pass.
 
 Exact outside-region bytes now survive rolling replacement. Marker identification/parsing uses logical records, while raw subject-to-region and end-marker-to-EOF slices are preserved; generated operation lines adopt the existing marker line ending. Mixed CRLF/LF regression passes with full owned suite (40/330).
+
+Strict core-only Pass 26 returned standalone ALL GOOD on exact clean local a4f8c35 after full ownership/message/rollback review.
 <!-- SECTION:NOTES:END -->
 
 ## Comments
@@ -257,3 +259,9 @@ created: 2026-07-31 02:49
 Self-review reopens exact outside-region message preservation for line-ending bytes; current replace(/\\r\\n/g, "\\n") violates the explicit verbatim contract.
 ---
 <!-- COMMENTS:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+Implemented exact branch-local ownership evidence and safe owned-tip replacement with structured rolling messages, hook/signing/version parity, atomic ref/reflog leases, conservative legacy fallback, and retained-forward byte safety. All criteria pass.
+<!-- SECTION:FINAL_SUMMARY:END -->

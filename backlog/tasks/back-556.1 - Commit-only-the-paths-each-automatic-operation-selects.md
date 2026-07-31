@@ -1,11 +1,11 @@
 ---
 id: BACK-556.1
 title: Commit only the paths each automatic operation selects
-status: In Progress
+status: Done
 assignee:
   - '@andreas'
 created_date: '2026-07-28 14:46'
-updated_date: '2026-07-31 02:48'
+updated_date: '2026-07-31 03:54'
 labels:
   - git
 dependencies: []
@@ -153,6 +153,8 @@ Pass 22 selected-path/HEAD synchronization complete. Transaction-capable Git res
 Pass 23 exact-path/finalization follow-up complete. Cleanup increments stagedMoveCount only after stageFileMove resolves and preserves per-task warnings; all-failed returns stagedMoves=false and partial success reports exact counts. Late-sharing rollback prepares refs/heads/* and validates the exact forward reflog under lock; manual same-OID ABA remains untouched with caller worktree/index bytes preserved. Integrated gate passes 1,885 tests/8,435 assertions.
 
 Pass 24 selected-byte preservation complete. Retained-forward finalization errors bypass rollbackCreatedTask, milestone reset/move-back, and MCP outer milestone rollback, so no caller-selected file/index bytes represented by retained HEAD are consumed. Real production task-create ABA coverage proves clean index/worktree with both tasks in disk and HEAD after the diagnostic. Integrated 1,886/8,442 passes.
+
+Strict core-only Pass 26 reviewed exact local a4f8c35 and returned standalone ALL GOOD with clean HEAD/status. Report: /tmp/backlog-821-holistic-review-pass-26.md.
 <!-- SECTION:NOTES:END -->
 
 ## Comments
@@ -235,3 +237,9 @@ created: 2026-07-31 02:32
 Pass 24 reopens selected-byte preservation at the outer production wrapper: Git correctly retains the forward commit/manual boundary, but task creation currently unlinks the selected file and resets its index entry afterward.
 ---
 <!-- COMMENTS:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+Converted every automatic operation to exact selected-path commits and preserved unrelated caller/index/hook bytes. Final leases protect index, HEAD, target ref, ownership/reflog continuity, rollback, and production wrappers across supported Git versions. All criteria and integrated gates pass.
+<!-- SECTION:FINAL_SUMMARY:END -->

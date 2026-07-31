@@ -1,11 +1,11 @@
 ---
 id: BACK-556.4
 title: 'Expose autoCommitMode in wizard, summaries, and browser settings'
-status: In Progress
+status: Done
 assignee:
   - '@andreas'
 created_date: '2026-07-28 14:47'
-updated_date: '2026-07-31 03:29'
+updated_date: '2026-07-31 03:54'
 labels:
   - web-ui
   - cli
@@ -115,6 +115,8 @@ Pass 22 browser effective result complete. /api/init includes validated publishe
 Pass 23 publication safety complete. Browser initialization rejects incomplete post-save current bytes, performs no integration write, and does not publish parsed empty project identity over the valid requested/display snapshot. Existing effective-config response/cache behavior remains covered. Integrated gate passes.
 
 Pass 25 initialization-surface parity complete. Interactive client setup preserves selection/setup summaries but defers reminder file writes until post-save Core planning; shared/browser initializeProject does the same for successful MCP clients. Current true/false post-save behavior is covered and effective config publication remains unchanged. Integrated 1,888/8,453 passes.
+
+Strict core-only Pass 26 returned standalone ALL GOOD on exact clean local a4f8c35 for required wizard/summary/browser/init surfaces.
 <!-- SECTION:NOTES:END -->
 
 ## Comments
@@ -166,3 +168,9 @@ created: 2026-07-31 03:15
 Pass 25 H1 affects initialization surfaces: interactive MCP writes occur before advanced settings, and shared MCP writes occur outside post-save Core plan.
 ---
 <!-- COMMENTS:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+Exposed effective autoCommitMode across wizard, summaries, browser initialization, Settings, and feedback surfaces, with persisted current configuration and initialization integration parity. All criteria pass.
+<!-- SECTION:FINAL_SUMMARY:END -->
