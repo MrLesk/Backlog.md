@@ -1,6 +1,7 @@
 import { rename as moveFile } from "node:fs/promises";
 import type { Core } from "../../../core/backlog.ts";
 import { createAutomaticCommitOperation } from "../../../git/automatic-commit-message.ts";
+import { isFinalizationRollbackError } from "../../../git/operations.ts";
 import type { Milestone, Task } from "../../../types/index.ts";
 import { BacklogToolError } from "../../errors/mcp-errors.ts";
 import type { CallToolResult } from "../../types.ts";
@@ -253,6 +254,7 @@ export class MilestoneHandlers {
 				commitPaths,
 			);
 		} catch (error) {
+			if (isFinalizationRollbackError(error)) throw error;
 			await this.core.git.resetPaths(commitPaths, repoRoot);
 			throw error;
 		}
@@ -475,7 +477,8 @@ export class MilestoneHandlers {
 					taskFilePaths: updatedTaskFilePaths,
 				},
 			);
-		} catch {
+		} catch (error) {
+			if (isFinalizationRollbackError(error)) throw error;
 			const rollbackTaskFailures = await this.rollbackTaskMilestones(previousMilestones);
 			const rollbackRenameResult = await this.core.renameMilestone(sourceMilestone.id, sourceMilestone.title, false);
 			const rollbackDetails: string[] = [];
@@ -613,7 +616,8 @@ export class MilestoneHandlers {
 					taskFilePaths: updatedTaskFilePaths,
 				},
 			);
-		} catch {
+		} catch (error) {
+			if (isFinalizationRollbackError(error)) throw error;
 			const rollbackDetails: string[] = [];
 			if (archiveResult.sourcePath && archiveResult.targetPath) {
 				try {

@@ -16,6 +16,7 @@ import {
 	type GitIndexEntry,
 	type GitOperationConfig,
 	GitOperations,
+	isFinalizationRollbackError,
 } from "../git/operations.ts";
 import { parseTask } from "../markdown/parser.ts";
 import {
@@ -1687,6 +1688,7 @@ export class Core {
 			);
 			return { task: savedTask ?? task, filePath: write.filePath };
 		} catch (error) {
+			if (isFinalizationRollbackError(error)) throw error;
 			let rollback: CreatedTaskRollbackResult;
 			try {
 				rollback = await this.rollbackCreatedTask(write);
@@ -2826,6 +2828,7 @@ export class Core {
 				);
 				this.recordAutoCommitResult(autoCommit, commitResult);
 			} catch (error) {
+				if (isFinalizationRollbackError(error)) throw error;
 				await this.git.resetPaths(commitPaths, repoRoot);
 				try {
 					await moveFile(result.targetPath, result.sourcePath);
@@ -2891,6 +2894,7 @@ export class Core {
 				);
 				this.recordAutoCommitResult(autoCommit, commitResult);
 			} catch (error) {
+				if (isFinalizationRollbackError(error)) throw error;
 				await this.git.resetPaths(commitPaths, repoRoot);
 				const rollbackTitle = result.previousTitle ?? title;
 				try {

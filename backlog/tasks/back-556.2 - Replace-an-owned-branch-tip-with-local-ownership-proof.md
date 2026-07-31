@@ -5,7 +5,7 @@ status: In Progress
 assignee:
   - '@andreas'
 created_date: '2026-07-28 14:46'
-updated_date: '2026-07-31 02:13'
+updated_date: '2026-07-31 02:48'
 labels:
   - git
 dependencies:
@@ -71,6 +71,7 @@ See BACK-556 for the full ownership and safety contract, including the accepted 
 - [x] #28 Worktree HEAD reflog visibility is restored only through a hook-suppressed prepared HEAD transaction that validates the original branch identity while HEAD and its target ref are locked; no other branch can receive forged ownership evidence during synchronization.
 - [x] #29 After a successful forward target-ref transaction, any required rollback prepares and locks that same target, proves the exact forward reflog state is still contiguous, and aborts rather than overwriting an intervening same-OID/manual reflog boundary.
 - [x] #30 HEAD ownership-synchronization coverage changes identity after the second transaction is prepared (or otherwise directly distinguishes the loose runner), asserts worktree HEAD plus sibling branch logs contain no forged marker, and covers conservative pre-2.27 behavior.
+- [x] #31 The typed unsafe-rollback outcome communicates that forward movement remains retained so all outer wrappers can avoid destructive rollback; it remains non-retryable and preserves the concurrent reflog boundary and selected caller bytes end to end.
 <!-- AC:END -->
 
 ## Definition of Done
@@ -120,6 +121,8 @@ See BACK-556 for the full ownership and safety contract, including the accepted 
 36. Reuse prepared update-ref transaction plumbing for real-worktree HEAD no-op synchronization on Git 2.27+. Validate exact original branch/new SHA in the prepared callback, tolerate abort as display/recovery best effort, and retain the target branch ownership marker. Test a switch plus manual original-branch boundary before synchronization, then verify sibling reflog is non-owned and the next sibling amend-own creates a new child.
 
 Pass 23: capture the exact target-branch reflog immediately after protected forward movement. If late sharing invalidates the lease, run expected new→old restoration through the prepared transaction helper and compare the captured reflog while its lock is held; on mismatch, leave the concurrent tip/history and close ownership. Move HEAD synchronization race injection inside the prepared callback and explicitly inspect the real worktree HEAD log; add a simulated legacy fallback race and remove its loose synchronization if it cannot be protected.
+
+Pass 24: export a narrow type guard for retained-forward finalization errors and cover propagation through the production task wrapper without converting it to retry or generic pre-movement cleanup.
 <!-- SECTION:PLAN:END -->
 
 ## Implementation Notes
@@ -170,6 +173,8 @@ Pass 22 probe exposed a post-success ownership-evidence injection boundary: targ
 Pass 22 ownership synchronization boundary complete. The target branch marker remains authoritative, while worktree HEAD visibility is added in a second hook-suppressed prepared transaction that aborts if identity changed. A deterministic same-SHA sibling/manual-main race proves no forged sibling ownership and no later sibling replacement. Evidence-unavailable coverage was moved to the precise second-transaction seam and still proves a replacement can end its sequence. Focused 76/571; final integrated 1,880 passed, 8,398 assertions.
 
 Pass 23 Git safety complete. The forward transaction captures its exact expected two-record reflog state while the target lock is prepared. A late-sharing rollback is another hook-suppressed prepared transaction; mismatch aborts, produces a non-retryable finalization error, and preserves manual away/return history. Safe late sharing still restores the owned tip. Pre-2.27 no longer executes loose update-ref HEAD. Tests directly discriminate modern behavior with two transaction calls, raw HEAD-log assertions, and a blocked symbolic switch after synchronization prepare. Owned suite: 33 tests/306 assertions; integrated 1,885/8,435.
+
+Pass 24 unsafe-rollback signaling complete. isFinalizationRollbackError identifies the non-retryable retained-forward outcome for outer consumers without exposing generic failures. Git inner/outer retries remain disabled, concurrent reflog history remains authoritative, and production wrappers preserve bytes. Focused rollback and full integrated gates pass.
 <!-- SECTION:NOTES:END -->
 
 ## Comments
@@ -235,5 +240,10 @@ Pass 16 H1: the production wrapper propagation fix is insufficient when commitFi
 created: 2026-07-30 07:04
 ---
 Pass 23 Git findings: a post-forward loose rollback remains vulnerable to same-OID reflog ABA, and the current sibling test injects before prepare/checks the wrong log for the former loose update-ref behavior. Both exact rollback continuity and discriminating modern/legacy HEAD-log coverage are reopened.
+---
+
+created: 2026-07-31 02:32
+---
+Pass 24 found the Git-layer unsafe rollback signal is correct but incomplete for production consumers: the typed error must explicitly prevent outer selected-byte cleanup.
 ---
 <!-- COMMENTS:END -->

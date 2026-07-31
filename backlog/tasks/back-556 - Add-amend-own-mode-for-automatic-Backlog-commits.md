@@ -5,7 +5,7 @@ status: In Progress
 assignee:
   - '@andreas'
 created_date: '2026-07-28 14:27'
-updated_date: '2026-07-31 02:13'
+updated_date: '2026-07-31 02:48'
 labels:
   - enhancement
   - git
@@ -143,6 +143,7 @@ This task is delivered through subtasks, because the selected-path correctness f
 - [x] #18 Any post-update rollback is protected by an exact prepared target-ref lease plus reflog-continuity validation; a concurrent new→other→new ABA is never overwritten, and unsafe rollback leaves the concurrent boundary intact while ownership fails closed.
 - [x] #19 Cleanup staging results reflect actual successful stageFileMove calls: complete failure never prints that files were staged, while partial success reports both the successful staging state and per-move warnings accurately.
 - [x] #20 HEAD synchronization regressions discriminate the protected implementation from the former loose no-op by injecting identity change after transaction prepare and asserting no automatic marker reaches the worktree HEAD or sibling ownership evidence.
+- [x] #21 When a protected rollback is skipped because forward ref movement remains intact behind a concurrent manual boundary, every production mutation wrapper preserves the selected worktree/index bytes already represented by that retained commit and propagates the non-retryable diagnostic without destructive outer cleanup.
 <!-- AC:END -->
 
 ## Definition of Done
@@ -211,6 +212,8 @@ Holistic correction pass: resolve the documented Git intent/state, invocation-co
 36. Resolve Pass 22 browser result/cache and documentation findings, plus close the deterministic HEAD-reflog synchronization race exposed by its review probe. Add an opt-in validated publish path to current-byte config loading; return config over /api/init, type and pass it through InitializationScreen to App state, and test HTTP/UI post-save mode changes. Correct the 2.27 comment. Replace loose named HEAD reflog no-op on transactional Git with a second hook-suppressed prepared HEAD transaction that locks the currently selected branch, validates original symbolic identity/SHA while locked, and aborts best-effort on branch switch; regress sibling-marker forgery and later non-amend behavior.
 
 Pass 23: share watcher-grade complete/usable and stable-byte validation with mutation preflight and preserve overlays only after current required fields validate. Protect late-sharing rollback with prepared target-ref movement plus exact reflog snapshot validation, leaving any intervening ABA untouched. Track cleanup stage successes separately from attempted moves. Replace the pre-prepare sibling test seam with a post-prepare identity race and direct worktree-HEAD reflog assertions, including legacy loose-path discrimination.
+
+Pass 24: expose the typed forward-movement-retained finalization error to production callers. Any Core/MCP catch that normally undoes filesystem/index mutations must bypass cleanup for this error while still propagating it; ordinary pre-movement and safely rolled-back failures retain existing cleanup. Add an end-to-end createTaskFromInput ABA/late-sharing regression asserting HEAD, worktree, index, and task identity remain aligned.
 <!-- SECTION:PLAN:END -->
 
 ## Implementation Notes
@@ -281,6 +284,8 @@ Fresh holistic gpt-5.6-sol xhigh Pass 22 at 54ce54c requested changes with one M
 Pass 22 browser effective-config and exact HEAD-reflog synchronization complete. Current-byte reload can explicitly publish a validated snapshot while preserving non-serialized re-init fields; Core returns it, server/API types forward it, InitializationScreen consumes it, and App seeds state. HTTP/cache and component races prove persisted new overrides requested amend-own. On Git 2.27+, worktree HEAD reflog restoration now prepares a hook-disabled real-worktree HEAD transaction and validates original identity/new SHA while HEAD+target are locked; same-SHA sibling switching aborts without ownership injection, and its next amend-own creates a new child. Comment corrected to 2.27. Focused: 76 tests/571 assertions. Final clean integrated gate: TypeScript, Biome 351 files, 1,880 passed/4 skipped/0 failed with 8,398 assertions across 207 files in 777.98 seconds; diff clean. Earlier full attempts exposed and corrected preservation of non-serialized re-init fields, then hit the known unrelated native deletion watcher once; exact test passed targeted in 160.95ms and the clean full rerun passed. The default-mode three-CLI regression has a narrow 15-second outer bound after measured 5.1-5.4s under expanded Git load.
 
 Pass 23 corrections complete locally. Direct mutation reads now require two equal snapshots plus the same complete usable-config predicate as watcher publication, so incomplete initialized bytes never enable amend-own or replace preserved required state. Post-forward late-sharing rollback uses a prepared exact target-ref transaction and expected post-forward reflog snapshot; unsafe rollback is typed non-retryable and leaves concurrent ABA history intact. Legacy Git performs no loose HEAD synchronization. Modern synchronization tests assert the second transaction, post-prepare lock behavior, and raw worktree HEAD-log marker absence. Cleanup counts actual successful exact-path staging and reports all-failed/partial output truthfully. Focused gates: owned 33/306; config/init/cleanup/watcher/filesystem/mode 101/976; canonical callback compatibility 11/20. Clean integrated gate: TypeScript, Biome 351 files, 1,885 passed/4 skipped/0 failed with 8,435 assertions across 207 files in 734.81 seconds; diff clean.
+
+Pass 24 production retained-forward correction complete. FinalizationRollbackError now has a narrow exported type guard. Task creation, Core milestone archive/rename, and MCP milestone commit/finalization catches bypass destructive file/index rollback only for this error while ordinary failures retain cleanup. End-to-end createTaskFromInput coverage injects real forward replacement, manual same-OID ABA, and late sharing; the surfaced non-retryable error leaves retained HEAD, worktree, index, and both task identities aligned and clean. Focused: production regression 1/7, rollback pair 2/15, MCP milestones 33/127. Clean integrated gate: TypeScript, Biome 351 files, 1,886 passed/4 skipped/0 failed with 8,442 assertions across 207 files in 743.31 seconds; diff clean.
 <!-- SECTION:NOTES:END -->
 
 ## Comments
@@ -397,5 +402,10 @@ Fresh holistic gpt-5.6-sol xhigh Pass 18 at 917defc requested one High and one M
 created: 2026-07-30 07:04
 ---
 Fresh holistic gpt-5.6-sol xhigh Pass 23 at 2a683e4 requested changes with two High and two Medium findings: incomplete/truncated current config can still enable amend-own and publish empty required fields; late-sharing rollback can overwrite a concurrent new→other→new manual reflog ABA; cleanup can claim all moves were staged when staging failed; and the Pass 22 sibling regression does not fail the former loose HEAD no-op on current Git. Exact clean reviewed HEAD preserved; reviewer targeted owned/init/cleanup suites. Report: /tmp/backlog-821-holistic-review-pass-23.md.
+---
+
+created: 2026-07-31 02:32
+---
+Strict core-only Pass 24 at local 9fee961 requested one High change: when protected Git rollback is safely skipped after same-OID manual ABA, createTaskFromInput treats the non-retryable error as pre-movement failure and deletes/reset selected task bytes even though retained HEAD contains them. This violates BACK-556.1 #15. Exact clean local HEAD preserved; report: /tmp/backlog-821-holistic-review-pass-24.md.
 ---
 <!-- COMMENTS:END -->

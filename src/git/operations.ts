@@ -88,6 +88,11 @@ class FinalizationRollbackError extends Error {
 	}
 }
 
+/** Forward ref movement remains retained; outer callers must not undo selected bytes. */
+export function isFinalizationRollbackError(error: unknown): error is Error {
+	return error instanceof FinalizationRollbackError;
+}
+
 function indexEntriesEqual(left: readonly GitIndexEntry[], right: readonly GitIndexEntry[]): boolean {
 	return (
 		left.length === right.length &&

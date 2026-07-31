@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { mkdir, rename, rm } from "node:fs/promises";
-import { join } from "node:path";
+import { isAbsolute, join } from "node:path";
 import { $ } from "bun";
 import { addAgentInstructions } from "../agent-instructions.ts";
 import { Core } from "../core/backlog.ts";
@@ -15,6 +15,23 @@ import { createUniqueTestDir, initializeTestProject, safeCleanup } from "./test-
 
 const CLI_PATH = join(process.cwd(), "src", "cli.ts");
 const CROSS_ENTITY_GIT_TIMEOUT_MS = 20_000;
+
+type PrivateGit = {
+	execGit(
+		args: string[],
+		options?: { cwd?: string; env?: Record<string, string>; readOnly?: boolean; acceptedExitCodes?: readonly number[] },
+	): Promise<{ stdout: string; stderr: string }>;
+	updateBranchRefTransaction(
+		repoRoot: string,
+		gitDirectory: string,
+		branchRef: string,
+		expectedCommit: string | null,
+		newCommit: string,
+		reflogMessage: string,
+		disabledHooksPath: string,
+		validatePreparedUpdate: () => Promise<void>,
+	): Promise<void>;
+};
 
 async function commitCount(directory: string): Promise<number> {
 	return Number.parseInt((await $`git rev-list --count HEAD`.cwd(directory).text()).trim(), 10);
@@ -93,6 +110,61 @@ describe("autoCommitMode", () => {
 		const forcedNew = await $`bun ${CLI_PATH} task create "Third" --plain --no-amend`.cwd(testDir).text();
 		expect(await commitCount(testDir)).toBe(afterFirst + 1);
 		expect(forcedNew).not.toContain("Amended Backlog commit");
+	}, 20_000);
+
+	test("retains production task bytes when protected rollback cannot cross manual reflog ABA", async () => {
+		const config = await core.filesystem.loadConfig();
+		if (!config) throw new Error("Missing test config");
+		await core.filesystem.saveConfig({ ...config, autoCommit: true, autoCommitMode: "amend-own" });
+		await $`git add backlog/config.yml && git commit -m "Enable protected rollback regression"`.cwd(testDir).quiet();
+		await core.createTaskFromInput({ title: "First" });
+		const ownedCommit = (await $`git rev-parse HEAD`.cwd(testDir).text()).trim();
+		const parent = (await $`git rev-parse HEAD^`.cwd(testDir).text()).trim();
+		const branchRef = (await $`git symbolic-ref HEAD`.cwd(testDir).text()).trim();
+		const commonDirectoryOutput = (await $`git rev-parse --git-common-dir`.cwd(testDir).text()).trim();
+		const commonDirectory = isAbsolute(commonDirectoryOutput)
+			? commonDirectoryOutput
+			: join(testDir, commonDirectoryOutput);
+		const alternateGitDirectory = join(commonDirectory, "backlog-rollback-alternate");
+		await mkdir(alternateGitDirectory);
+		await Promise.all([
+			Bun.write(join(alternateGitDirectory, "commondir"), `${commonDirectory}\n`),
+			Bun.write(join(alternateGitDirectory, "HEAD"), "ref: refs/backlog/rollback-alternate\n"),
+		]);
+		const privateGit = core.git as unknown as PrivateGit;
+		const originalExec = privateGit.execGit.bind(core.git);
+		const originalTransaction = privateGit.updateBranchRefTransaction.bind(core.git);
+		let transactionCalls = 0;
+		let retainedCommit = "";
+		privateGit.updateBranchRefTransaction = async (...args) => {
+			transactionCalls += 1;
+			await originalTransaction(...args);
+			if (transactionCalls === 1) {
+				retainedCommit = args[4];
+				const env = { GIT_DIR: alternateGitDirectory };
+				await originalExec(["update-ref", "-m", "manual create away", branchRef, parent, retainedCommit], {
+					cwd: testDir,
+					env,
+				});
+				await originalExec(["update-ref", "-m", "manual create return", branchRef, retainedCommit, parent], {
+					cwd: testDir,
+					env,
+				});
+				await originalExec(["tag", "shared-create-boundary", ownedCommit], { cwd: testDir });
+			}
+		};
+
+		await expect(core.createTaskFromInput({ title: "Second" })).rejects.toThrow(
+			"protected rollback was skipped because branch history changed",
+		);
+
+		expect(transactionCalls).toBe(2);
+		expect((await $`git rev-parse HEAD`.cwd(testDir).text()).trim()).toBe(retainedCommit);
+		expect((await $`git diff --cached --name-status`.cwd(testDir).text()).trim()).toBe("");
+		expect((await $`git status --short`.cwd(testDir).text()).trim()).toBe("");
+		const tasks = await core.filesystem.listTasks();
+		expect(tasks.map((task) => task.title).sort()).toEqual(["First", "Second"]);
+		expect(await $`git ls-tree -r --name-only HEAD -- backlog/tasks`.cwd(testDir).text()).toContain("Second.md");
 	}, 20_000);
 
 	for (const mode of ["new", "amend-own"] as const) {

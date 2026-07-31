@@ -5,7 +5,7 @@ status: In Progress
 assignee:
   - '@andreas'
 created_date: '2026-07-28 14:46'
-updated_date: '2026-07-31 02:13'
+updated_date: '2026-07-31 02:48'
 labels:
   - git
 dependencies: []
@@ -43,6 +43,7 @@ This is a correctness fix that stands on its own under the current default autom
 - [x] #13 Named HEAD reflog synchronization uses an exact prepared HEAD transaction on capable Git; a concurrent same-SHA symbolic switch aborts synchronization without marking the sibling owned, moving either ref, or consuming caller bytes.
 - [x] #14 Cleanup exact-path staging records success only after stageFileMove succeeds, preserves individual failure warnings, and never emits an all-staged instruction when no move entered the index.
 - [x] #15 Late finalization rollback uses protected exact-ref/reflog continuity and cannot consume or overwrite concurrent manual branch history or caller selected index/worktree bytes.
+- [x] #16 Production create/update/move wrappers distinguish a retained-forward-movement finalization error from a pre-movement failure: they never unlink, rename back, reset, or otherwise consume selected caller bytes already present in retained HEAD, while normal failed commits still clean up safely.
 <!-- AC:END -->
 
 ## Definition of Done
@@ -96,6 +97,8 @@ This is a correctness fix that stands on its own under the current default autom
 22. Route post-branch-update HEAD reflog synchronization through the interactive prepared transaction in the real worktree Git directory, with hooks disabled and exact original branch/new-SHA validation under HEAD plus target-ref locks. Inject a same-SHA sibling switch at the synchronization seam and prove no sibling ownership marker or later replacement.
 
 Pass 23: return exact staging success counts from cleanup and protect any post-update restoration with a prepared target-ref transaction whose callback compares the post-forward reflog snapshot before rollback.
+
+Pass 24: make FinalizationRollbackError identifiable across Git/Core/MCP boundaries and guard task-create plus milestone rollback/reset catches before destructive cleanup. Reproduce the real protected rollback ABA through createTaskFromInput and verify HEAD/worktree/index all retain the created task despite the surfaced error.
 <!-- SECTION:PLAN:END -->
 
 ## Implementation Notes
@@ -148,6 +151,8 @@ Pass 22 L2 requires only 2.28→2.27 comment correction. Its deterministic revie
 Pass 22 selected-path/HEAD synchronization complete. Transaction-capable Git restores HEAD reflog only through a prepared HEAD no-op that atomically locks the current dereferenced target and validates exact original symbolic/detached identity/new SHA. Regression switches to a same-SHA sibling and manually closes main before synchronization; sibling receives no marker, main stays at its manual boundary, selected bytes survive, and next sibling operation is a new child. Focused 76/571; integrated 1,880/8,398 pass.
 
 Pass 23 exact-path/finalization follow-up complete. Cleanup increments stagedMoveCount only after stageFileMove resolves and preserves per-task warnings; all-failed returns stagedMoves=false and partial success reports exact counts. Late-sharing rollback prepares refs/heads/* and validates the exact forward reflog under lock; manual same-OID ABA remains untouched with caller worktree/index bytes preserved. Integrated gate passes 1,885 tests/8,435 assertions.
+
+Pass 24 selected-byte preservation complete. Retained-forward finalization errors bypass rollbackCreatedTask, milestone reset/move-back, and MCP outer milestone rollback, so no caller-selected file/index bytes represented by retained HEAD are consumed. Real production task-create ABA coverage proves clean index/worktree with both tasks in disk and HEAD after the diagnostic. Integrated 1,886/8,442 passes.
 <!-- SECTION:NOTES:END -->
 
 ## Comments
@@ -223,5 +228,10 @@ Pass 18 H1/M2 reopens external-editor selected-path completeness: invalid identi
 created: 2026-07-30 07:04
 ---
 Pass 23 reopens selected-path finalization/reporting: loose late-sharing rollback can erase manual same-OID ABA history, and cleanup marks stagedMoves true even when every exact move staging call rejects.
+---
+
+created: 2026-07-31 02:32
+---
+Pass 24 reopens selected-byte preservation at the outer production wrapper: Git correctly retains the forward commit/manual boundary, but task creation currently unlinks the selected file and resets its index entry afterward.
 ---
 <!-- COMMENTS:END -->
