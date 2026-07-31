@@ -52,6 +52,30 @@ describe("automatic commit messages", () => {
 		expect(duplicate?.message.startsWith("backlog: Update tasks BACK-1, BACK-2\n")).toBe(true);
 	});
 
+	it("preserves exact body bytes outside the owned region across mixed line endings", () => {
+		const initial = buildAutomaticCommitMessage("backlog: Update task BACK-1");
+		if (!initial) throw new Error("Expected initial message");
+		const previous = initial.message
+			.replace(/\n/g, "\r\n")
+			.replace("\r\n\r\n", "\r\n\r\nBefore region\r\n")
+			.replace(
+				`${AUTOMATIC_COMMIT_MESSAGE_REGION_END}\r\n`,
+				`${AUTOMATIC_COMMIT_MESSAGE_REGION_END}\nAfter\r\nNo final newline`,
+			);
+
+		const replaced = buildAutomaticCommitMessage("backlog: Update task BACK-2", previous);
+		if (!replaced) throw new Error("Expected replacement message");
+		const start = replaced.message.indexOf(AUTOMATIC_COMMIT_MESSAGE_REGION_START);
+		const end =
+			replaced.message.indexOf(AUTOMATIC_COMMIT_MESSAGE_REGION_END) + AUTOMATIC_COMMIT_MESSAGE_REGION_END.length;
+
+		expect(replaced.message.slice("backlog: Update tasks BACK-1, BACK-2".length, start)).toBe(
+			"\r\n\r\nBefore region\r\n",
+		);
+		expect(replaced.message.slice(start, end).replace(/\r\n/g, "")).not.toContain("\n");
+		expect(replaced.message.slice(end)).toBe("\nAfter\r\nNo final newline");
+	});
+
 	it("deduplicates initial batches and repairs duplicates already present in a rolling region", () => {
 		const operation = "backlog: Update task BACK-1";
 		const initial = buildAutomaticCommitMessage([operation, operation]);

@@ -154,6 +154,35 @@ function parseOperations(lines: readonly string[], legacy: boolean): AutomaticCo
 	return operations.length > 0 ? operations : null;
 }
 
+type MessageLineRecord = {
+	content: string;
+	start: number;
+	contentEnd: number;
+	lineEnding: string;
+};
+
+function readMessageLineRecords(message: string): MessageLineRecord[] {
+	const records: MessageLineRecord[] = [];
+	let start = 0;
+	while (start < message.length) {
+		let contentEnd = start;
+		while (contentEnd < message.length && message[contentEnd] !== "\r" && message[contentEnd] !== "\n") {
+			contentEnd += 1;
+		}
+		let lineEnd = contentEnd;
+		if (message[lineEnd] === "\r" && message[lineEnd + 1] === "\n") lineEnd += 2;
+		else if (message[lineEnd] === "\r" || message[lineEnd] === "\n") lineEnd += 1;
+		records.push({
+			content: message.slice(start, contentEnd),
+			start,
+			contentEnd,
+			lineEnding: message.slice(contentEnd, lineEnd),
+		});
+		start = lineEnd;
+	}
+	return records;
+}
+
 function renderMessage(
 	subject: string,
 	bodyBefore: readonly string[],
@@ -193,26 +222,40 @@ export function buildAutomaticCommitMessage(
 		};
 	}
 
-	const previousLines = previousMessage.replace(/\r\n/g, "\n").split("\n");
+	const previousLines = readMessageLineRecords(previousMessage);
 	const startIndexes = previousLines.flatMap((line, index) =>
-		line === AUTOMATIC_COMMIT_MESSAGE_REGION_START || line === LEGACY_AUTOMATIC_COMMIT_MESSAGE_REGION_START
+		line.content === AUTOMATIC_COMMIT_MESSAGE_REGION_START ||
+		line.content === LEGACY_AUTOMATIC_COMMIT_MESSAGE_REGION_START
 			? [index]
 			: [],
 	);
 	const endIndexes = previousLines.flatMap((line, index) =>
-		line === AUTOMATIC_COMMIT_MESSAGE_REGION_END ? [index] : [],
+		line.content === AUTOMATIC_COMMIT_MESSAGE_REGION_END ? [index] : [],
 	);
 	if (startIndexes.length !== 1 || endIndexes.length !== 1) return null;
 	const start = startIndexes[0] ?? -1;
 	const end = endIndexes[0] ?? -1;
 	if (start <= 0 || end <= start + 1) return null;
 
-	const legacy = previousLines[start] === LEGACY_AUTOMATIC_COMMIT_MESSAGE_REGION_START;
-	const existingOperations = parseOperations(previousLines.slice(start + 1, end), legacy);
+	const startRecord = previousLines[start];
+	const endRecord = previousLines[end];
+	const subjectRecord = previousLines[0];
+	if (!startRecord || !endRecord || !subjectRecord) return null;
+	const legacy = startRecord.content === LEGACY_AUTOMATIC_COMMIT_MESSAGE_REGION_START;
+	const existingOperations = parseOperations(
+		previousLines.slice(start + 1, end).map((line) => line.content),
+		legacy,
+	);
 	if (!existingOperations) return null;
 	const operations = deduplicateOperations([...existingOperations, ...inputOperations]);
 	const subject = formatAutomaticCommitSubject(operations);
-	const bodyBefore = previousLines.slice(1, start);
-	const bodyAfter = previousLines.slice(end + 1);
-	return { message: renderMessage(subject, bodyBefore, operations, bodyAfter), operations };
+	const regionLineEnding = startRecord.lineEnding || subjectRecord.lineEnding || "\n";
+	const region = [
+		AUTOMATIC_COMMIT_MESSAGE_REGION_START,
+		...operations.map((operation) => `- ${JSON.stringify(operation)}`),
+		AUTOMATIC_COMMIT_MESSAGE_REGION_END,
+	].join(regionLineEnding);
+	const bodyBefore = previousMessage.slice(subjectRecord.contentEnd, startRecord.start);
+	const bodyAfter = previousMessage.slice(endRecord.contentEnd);
+	return { message: `${subject}${bodyBefore}${region}${bodyAfter}`, operations };
 }

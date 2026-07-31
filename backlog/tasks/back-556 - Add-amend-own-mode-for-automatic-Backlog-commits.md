@@ -5,7 +5,7 @@ status: In Progress
 assignee:
   - '@andreas'
 created_date: '2026-07-28 14:27'
-updated_date: '2026-07-31 02:48'
+updated_date: '2026-07-31 02:54'
 labels:
   - enhancement
   - git
@@ -144,6 +144,7 @@ This task is delivered through subtasks, because the selected-path correctness f
 - [x] #19 Cleanup staging results reflect actual successful stageFileMove calls: complete failure never prints that files were staged, while partial success reports both the successful staging state and per-move warnings accurately.
 - [x] #20 HEAD synchronization regressions discriminate the protected implementation from the former loose no-op by injecting identity change after transaction prepare and asserting no automatic marker reaches the worktree HEAD or sibling ownership evidence.
 - [x] #21 When a protected rollback is skipped because forward ref movement remains intact behind a concurrent manual boundary, every production mutation wrapper preserves the selected worktree/index bytes already represented by that retained commit and propagates the non-retryable diagnostic without destructive outer cleanup.
+- [x] #22 Rolling-message replacement preserves every byte outside Backlog-owned subject/operation-region content, including CRLF or mixed line endings, trailing body bytes, and final-newline presence; only the owned subject and delimited region are regenerated.
 <!-- AC:END -->
 
 ## Definition of Done
@@ -214,6 +215,8 @@ Holistic correction pass: resolve the documented Git intent/state, invocation-co
 Pass 23: share watcher-grade complete/usable and stable-byte validation with mutation preflight and preserve overlays only after current required fields validate. Protect late-sharing rollback with prepared target-ref movement plus exact reflog snapshot validation, leaving any intervening ABA untouched. Track cleanup stage successes separately from attempted moves. Replace the pre-prepare sibling test seam with a post-prepare identity race and direct worktree-HEAD reflog assertions, including legacy loose-path discrimination.
 
 Pass 24: expose the typed forward-movement-retained finalization error to production callers. Any Core/MCP catch that normally undoes filesystem/index mutations must bypass cleanup for this error while still propagating it; ordinary pre-movement and safely rolled-back failures retain existing cleanup. Add an end-to-end createTaskFromInput ABA/late-sharing regression asserting HEAD, worktree, index, and task identity remain aligned.
+
+Core-only follow-up found during Pass 24 inspection: replace line-normalizing rolling-message reconstruction with offset-based marker parsing. Preserve raw bytes from the original subject terminator to region start and from end-marker terminator onward, while parsing only logical region lines and rendering replacement lines with the marker newline convention. Add CRLF/mixed-ending exact-byte regression.
 <!-- SECTION:PLAN:END -->
 
 ## Implementation Notes
@@ -286,6 +289,8 @@ Pass 22 browser effective-config and exact HEAD-reflog synchronization complete.
 Pass 23 corrections complete locally. Direct mutation reads now require two equal snapshots plus the same complete usable-config predicate as watcher publication, so incomplete initialized bytes never enable amend-own or replace preserved required state. Post-forward late-sharing rollback uses a prepared exact target-ref transaction and expected post-forward reflog snapshot; unsafe rollback is typed non-retryable and leaves concurrent ABA history intact. Legacy Git performs no loose HEAD synchronization. Modern synchronization tests assert the second transaction, post-prepare lock behavior, and raw worktree HEAD-log marker absence. Cleanup counts actual successful exact-path staging and reports all-failed/partial output truthfully. Focused gates: owned 33/306; config/init/cleanup/watcher/filesystem/mode 101/976; canonical callback compatibility 11/20. Clean integrated gate: TypeScript, Biome 351 files, 1,885 passed/4 skipped/0 failed with 8,435 assertions across 207 files in 734.81 seconds; diff clean.
 
 Pass 24 production retained-forward correction complete. FinalizationRollbackError now has a narrow exported type guard. Task creation, Core milestone archive/rename, and MCP milestone commit/finalization catches bypass destructive file/index rollback only for this error while ordinary failures retain cleanup. End-to-end createTaskFromInput coverage injects real forward replacement, manual same-OID ABA, and late sharing; the surfaced non-retryable error leaves retained HEAD, worktree, index, and both task identities aligned and clean. Focused: production regression 1/7, rollback pair 2/15, MCP milestones 33/127. Clean integrated gate: TypeScript, Biome 351 files, 1,886 passed/4 skipped/0 failed with 8,442 assertions across 207 files in 743.31 seconds; diff clean.
+
+Core-only rolling-message byte preservation follow-up complete. Replacement now parses logical line records with raw offsets and reconstructs only the owned subject/region, retaining exact bytes around it and the original marker separator. CRLF/mixed line endings, body suffix, and no-final-newline state are covered. TypeScript/Biome/diff clean; automatic-message plus full owned suite passes 40 tests/330 assertions; prior clean integrated gate remains 1,886/8,442.
 <!-- SECTION:NOTES:END -->
 
 ## Comments
@@ -407,5 +412,10 @@ Fresh holistic gpt-5.6-sol xhigh Pass 23 at 2a683e4 requested changes with two H
 created: 2026-07-31 02:32
 ---
 Strict core-only Pass 24 at local 9fee961 requested one High change: when protected Git rollback is safely skipped after same-OID manual ABA, createTaskFromInput treats the non-retryable error as pre-movement failure and deletes/reset selected task bytes even though retained HEAD contains them. This violates BACK-556.1 #15. Exact clean local HEAD preserved; report: /tmp/backlog-821-holistic-review-pass-24.md.
+---
+
+created: 2026-07-31 02:49
+---
+Core-only self-review after Pass 24 observed buildAutomaticCommitMessage normalizes every CRLF to LF even though BACK-556 explicitly requires content outside the owned region to be preserved verbatim. Record and fix before the next reviewer; this is limited to the written rolling-message contract.
 ---
 <!-- COMMENTS:END -->

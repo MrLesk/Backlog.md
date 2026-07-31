@@ -5,7 +5,7 @@ status: In Progress
 assignee:
   - '@andreas'
 created_date: '2026-07-28 14:46'
-updated_date: '2026-07-31 02:48'
+updated_date: '2026-07-31 02:54'
 labels:
   - git
 dependencies:
@@ -72,6 +72,7 @@ See BACK-556 for the full ownership and safety contract, including the accepted 
 - [x] #29 After a successful forward target-ref transaction, any required rollback prepares and locks that same target, proves the exact forward reflog state is still contiguous, and aborts rather than overwriting an intervening same-OID/manual reflog boundary.
 - [x] #30 HEAD ownership-synchronization coverage changes identity after the second transaction is prepared (or otherwise directly distinguishes the loose runner), asserts worktree HEAD plus sibling branch logs contain no forged marker, and covers conservative pre-2.27 behavior.
 - [x] #31 The typed unsafe-rollback outcome communicates that forward movement remains retained so all outer wrappers can avoid destructive rollback; it remains non-retryable and preserves the concurrent reflog boundary and selected caller bytes end to end.
+- [x] #32 Rolling replacement parses markers by logical lines but reconstructs with raw offsets so body bytes before/after the owned region remain exact across CRLF, mixed endings, and missing/present final newlines.
 <!-- AC:END -->
 
 ## Definition of Done
@@ -123,6 +124,8 @@ See BACK-556 for the full ownership and safety contract, including the accepted 
 Pass 23: capture the exact target-branch reflog immediately after protected forward movement. If late sharing invalidates the lease, run expected new→old restoration through the prepared transaction helper and compare the captured reflog while its lock is held; on mismatch, leave the concurrent tip/history and close ownership. Move HEAD synchronization race injection inside the prepared callback and explicitly inspect the real worktree HEAD log; add a simulated legacy fallback race and remove its loose synchronization if it cannot be protected.
 
 Pass 24: export a narrow type guard for retained-forward finalization errors and cover propagation through the production task wrapper without converting it to retry or generic pre-movement cleanup.
+
+Preserve exact previous-message body slices around the region rather than splitting/normalizing the whole message. Use line records only to identify/parse markers and choose the existing marker separator for new owned operation lines.
 <!-- SECTION:PLAN:END -->
 
 ## Implementation Notes
@@ -175,6 +178,8 @@ Pass 22 ownership synchronization boundary complete. The target branch marker re
 Pass 23 Git safety complete. The forward transaction captures its exact expected two-record reflog state while the target lock is prepared. A late-sharing rollback is another hook-suppressed prepared transaction; mismatch aborts, produces a non-retryable finalization error, and preserves manual away/return history. Safe late sharing still restores the owned tip. Pre-2.27 no longer executes loose update-ref HEAD. Tests directly discriminate modern behavior with two transaction calls, raw HEAD-log assertions, and a blocked symbolic switch after synchronization prepare. Owned suite: 33 tests/306 assertions; integrated 1,885/8,435.
 
 Pass 24 unsafe-rollback signaling complete. isFinalizationRollbackError identifies the non-retryable retained-forward outcome for outer consumers without exposing generic failures. Git inner/outer retries remain disabled, concurrent reflog history remains authoritative, and production wrappers preserve bytes. Focused rollback and full integrated gates pass.
+
+Exact outside-region bytes now survive rolling replacement. Marker identification/parsing uses logical records, while raw subject-to-region and end-marker-to-EOF slices are preserved; generated operation lines adopt the existing marker line ending. Mixed CRLF/LF regression passes with full owned suite (40/330).
 <!-- SECTION:NOTES:END -->
 
 ## Comments
@@ -245,5 +250,10 @@ Pass 23 Git findings: a post-forward loose rollback remains vulnerable to same-O
 created: 2026-07-31 02:32
 ---
 Pass 24 found the Git-layer unsafe rollback signal is correct but incomplete for production consumers: the typed error must explicitly prevent outer selected-byte cleanup.
+---
+
+created: 2026-07-31 02:49
+---
+Self-review reopens exact outside-region message preservation for line-ending bytes; current replace(/\\r\\n/g, "\\n") violates the explicit verbatim contract.
 ---
 <!-- COMMENTS:END -->
