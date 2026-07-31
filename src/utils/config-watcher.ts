@@ -3,7 +3,7 @@ import { basename, dirname } from "node:path";
 import type { Core } from "../core/backlog.ts";
 import type { FileSystem } from "../file-system/operations.ts";
 import type { BacklogConfig } from "../types/index.ts";
-import { validateExplicitConfigValues } from "./config-validation.ts";
+import { isUsableBacklogConfig } from "./config-validation.ts";
 
 export interface ConfigWatcherCallbacks {
 	onConfigChanged?: (config: BacklogConfig | null) => void | Promise<void>;
@@ -17,16 +17,6 @@ const CONFIG_SETTLE_DELAY_MS = 50;
 const CONFIG_STABILITY_DELAY_MS = 25;
 const CONFIG_READ_ATTEMPTS = 8;
 const CONFIG_POLL_INTERVAL_MS = 500;
-
-function isUsableConfig(config: BacklogConfig | null, content: string): config is BacklogConfig {
-	return Boolean(
-		config?.projectName.trim() &&
-			Array.isArray(config.statuses) &&
-			Array.isArray(config.labels) &&
-			config.dateFormat.trim() &&
-			validateExplicitConfigValues(content, config) === null,
-	);
-}
 
 async function delay(ms: number): Promise<void> {
 	await new Promise((resolve) => setTimeout(resolve, ms));
@@ -65,7 +55,7 @@ export function watchConfigFile(filesystem: FileSystem, callbacks: ConfigWatcher
 				}
 
 				const config = filesystem.parseConfig(secondContent);
-				if (!isUsableConfig(config, secondContent)) {
+				if (!isUsableBacklogConfig(config, secondContent)) {
 					continue;
 				}
 				if (stopped || eventGeneration !== generation) {

@@ -106,15 +106,15 @@ describe("Status Change Callbacks", () => {
 
 		test("triggers global callback on status change", async () => {
 			// Create config with onStatusChange
-			const configContent = `projectName: Test
+			const configContent = `project_name: Test
 statuses:
   - To Do
   - In Progress
   - Done
 labels: []
 milestones: []
-dateFormat: yyyy-mm-dd
-checkActiveBranches: false
+date_format: yyyy-mm-dd
+check_active_branches: false
 onStatusChange: 'echo "$TASK_ID:$OLD_STATUS->$NEW_STATUS" > "${callbackOutputPath}"'
 `;
 			await writeFile(join(testDir, "backlog", "config.yml"), configContent);
@@ -142,15 +142,15 @@ onStatusChange: 'echo "$TASK_ID:$OLD_STATUS->$NEW_STATUS" > "${callbackOutputPat
 
 		test("per-task callback overrides global callback", async () => {
 			// Create config with global onStatusChange
-			const configContent = `projectName: Test
+			const configContent = `project_name: Test
 statuses:
   - To Do
   - In Progress
   - Done
 labels: []
 milestones: []
-dateFormat: yyyy-mm-dd
-checkActiveBranches: false
+date_format: yyyy-mm-dd
+check_active_branches: false
 onStatusChange: 'echo "global" > "${callbackOutputPath}"'
 `;
 			await writeFile(join(testDir, "backlog", "config.yml"), configContent);
@@ -179,15 +179,15 @@ onStatusChange: 'echo "per-task:$NEW_STATUS" > "${callbackOutputPath}"'
 
 		test("no callback when status unchanged", async () => {
 			// Create config with onStatusChange
-			const configContent = `projectName: Test
+			const configContent = `project_name: Test
 statuses:
   - To Do
   - In Progress
   - Done
 labels: []
 milestones: []
-dateFormat: yyyy-mm-dd
-checkActiveBranches: false
+date_format: yyyy-mm-dd
+check_active_branches: false
 onStatusChange: 'echo "callback-ran" > "${callbackOutputPath}"'
 `;
 			await writeFile(join(testDir, "backlog", "config.yml"), configContent);
@@ -208,15 +208,15 @@ onStatusChange: 'echo "callback-ran" > "${callbackOutputPath}"'
 
 		test("no callback when no callback configured", async () => {
 			// Create config without onStatusChange
-			const configContent = `projectName: Test
+			const configContent = `project_name: Test
 statuses:
   - To Do
   - In Progress
   - Done
 labels: []
 milestones: []
-dateFormat: yyyy-mm-dd
-checkActiveBranches: false
+date_format: yyyy-mm-dd
+check_active_branches: false
 `;
 			await writeFile(join(testDir, "backlog", "config.yml"), configContent);
 
@@ -233,15 +233,15 @@ checkActiveBranches: false
 
 		test("callback failure does not block status change", async () => {
 			// Create config with failing callback
-			const configContent = `projectName: Test
+			const configContent = `project_name: Test
 statuses:
   - To Do
   - In Progress
   - Done
 labels: []
 milestones: []
-dateFormat: yyyy-mm-dd
-checkActiveBranches: false
+date_format: yyyy-mm-dd
+check_active_branches: false
 onStatusChange: 'exit 1'
 `;
 			await writeFile(join(testDir, "backlog", "config.yml"), configContent);
@@ -259,15 +259,15 @@ onStatusChange: 'exit 1'
 
 		test("triggers callback when reorderTask changes status", async () => {
 			// Create config with onStatusChange
-			const configContent = `projectName: Test
+			const configContent = `project_name: Test
 statuses:
   - To Do
   - In Progress
   - Done
 labels: []
 milestones: []
-dateFormat: yyyy-mm-dd
-checkActiveBranches: false
+date_format: yyyy-mm-dd
+check_active_branches: false
 onStatusChange: 'echo "$TASK_ID:$OLD_STATUS->$NEW_STATUS" >> "${callbackOutputPath}"'
 `;
 			await writeFile(join(testDir, "backlog", "config.yml"), configContent);

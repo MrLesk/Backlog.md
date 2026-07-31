@@ -5,7 +5,7 @@ status: In Progress
 assignee:
   - '@andreas'
 created_date: '2026-07-28 14:47'
-updated_date: '2026-07-30 07:04'
+updated_date: '2026-07-31 02:13'
 labels:
   - cli
 dependencies:
@@ -34,7 +34,7 @@ Documentation must cover rolling-commit boundaries, how the message is rebuilt a
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
 - [x] #1 Configuration accepts autoCommitMode with values new and amend-own, persists it as auto_commit_mode in YAML, and exposes it as autoCommitMode in typed configuration.
-- [ ] #2 A missing autoCommitMode behaves exactly as new, and an invalid value is rejected with an error instead of falling back to new.
+- [x] #2 A missing autoCommitMode behaves exactly as new, and an invalid value is rejected with an error instead of falling back to new.
 - [x] #3 With autoCommit false, every mutation surface modifies files without creating or replacing commits under either mode.
 - [x] #4 An explicit per-invocation autoCommit override decides only whether the mutation commits; the configured autoCommitMode still decides how it commits, so the two settings stay orthogonal however the mutation was invoked.
 - [x] #5 In amend-own mode the first automatic mutation after a non-owned boundary creates one new commit; it becomes Backlog-owned and starts an amendable sequence only when it lands on a named branch and valid ownership evidence for its exact SHA is successfully recorded.
@@ -52,13 +52,13 @@ Documentation must cover rolling-commit boundaries, how the message is rebuilt a
 - [x] #17 The CLI help contract advertises --no-amend on every invocation surface whose interactive flow can trigger automatic mutations, with behavior coverage rather than help-text-only assertions.
 - [x] #18 Every interactive command path that can reach a mutating unified view and MCP start advertises and honors --no-amend through one immutable invocation plan.
 - [x] #19 CLI-created Core instances use one bounded result sink that both callbacks and TUI notice consumption drain without raw console output inside alternate-screen sessions.
-- [ ] #20 Malformed automatic-commit configuration is validated through one immutable preflight plan before any task, lifecycle, document, decision, milestone, or instruction mutation writes files; validation failure leaves bytes and Git state unchanged.
+- [x] #20 Malformed automatic-commit configuration is validated through one immutable preflight plan before any task, lifecycle, document, decision, milestone, or instruction mutation writes files; validation failure leaves bytes and Git state unchanged.
 - [x] #21 Centralized browser feedback transport does not automatically replay non-idempotent mutations after ambiguous response loss or 5xx responses; response-loss coverage proves one user action produces at most one entity.
-- [ ] #22 After CLI cleanup confirmation, one current-byte automatic-commit plan controls every completion plus staging and user-facing reporting, so stale true-to-false and false-to-true transitions cannot leave moves uncommitted or report false staging.
+- [x] #22 After CLI cleanup confirmation, one current-byte automatic-commit plan controls every completion plus staging and user-facing reporting, so stale true-to-false and false-to-true transitions cannot leave moves uncommitted or report false staging.
 - [x] #23 Initialization and re-initialization integration writes resolve one post-save current-byte plan; config-derived booleans are never passed as invocation overrides, and deterministic true→false/false→true transitions select disabled/enabled behavior truthfully.
 - [x] #24 initializeProject returns the fail-closed reloaded persisted configuration after integration setup, so callers and summaries reflect current autoCommit and autoCommitMode bytes rather than request-time values.
-- [ ] #25 Current-byte mutation plans require a stable complete usable config, not merely syntactically valid recognized keys; partial initialized-project files cannot enable amend-own, and preservation overlays cannot resurrect missing/empty required current fields.
-- [ ] #26 Cleanup reports staging from successful exact-path index mutations rather than attempts, with truthful all-success, partial-success, and all-failed output under the one immutable current-byte plan.
+- [x] #25 Current-byte mutation plans require a stable complete usable config, not merely syntactically valid recognized keys; partial initialized-project files cannot enable amend-own, and preservation overlays cannot resurrect missing/empty required current fields.
+- [x] #26 Cleanup reports staging from successful exact-path index mutations rather than attempts, with truthful all-success, partial-success, and all-failed output under the one immutable current-byte plan.
 <!-- AC:END -->
 
 ## Definition of Done
@@ -146,6 +146,8 @@ Pass 20 post-save initialization preflight complete. initializeProject no longer
 Pass 21 M3: integration writes correctly use current config, but initializeProject returns its stale pre-save object and CLI summary consumes it.
 
 Pass 21 effective initialization result complete. After setup/integration, initializeProject uses fail-closed loadConfigForMutation and returns persisted current bytes. Post-save enable/mode transitions assert returned autoCommit/autoCommitMode alongside exact commit behavior, ensuring summary callers consume truth rather than the request object. Focused and integrated gates pass.
+
+Pass 23 current-byte and cleanup reporting complete. Mutation preflight double-reads current bytes, retries instability/unusable snapshots, and shares watcher-grade required identity/list/date/explicit-value validation before plan resolution or publication. Long-lived Core/browser/MCP and post-save init tests reject incomplete auto_commit/amend-own files before writes while retaining valid display cache. Cleanup all-failed/partial staging results are exact. Canonical callback fixtures now use persisted snake_case required keys. Integrated 1,885 passed/4 skipped, 8,435 assertions.
 <!-- SECTION:NOTES:END -->
 
 ## Comments

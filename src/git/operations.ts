@@ -80,6 +80,14 @@ class ReferenceTransactionVetoError extends Error {
 	}
 }
 
+class FinalizationRollbackError extends Error {
+	constructor(error: unknown) {
+		const message = error instanceof Error ? error.message : String(error);
+		super(`${message}; protected rollback was skipped because branch history changed`);
+		this.name = "FinalizationRollbackError";
+	}
+}
+
 function indexEntriesEqual(left: readonly GitIndexEntry[], right: readonly GitIndexEntry[]): boolean {
 	return (
 		left.length === right.length &&
@@ -393,7 +401,7 @@ export class GitOperations {
 					};
 				} catch (error) {
 					lastHeadUpdateError = error instanceof Error ? error : new Error(String(error));
-					if (error instanceof ReferenceTransactionVetoError) throw error;
+					if (error instanceof ReferenceTransactionVetoError || error instanceof FinalizationRollbackError) throw error;
 					if ((await this.resolveHead(resolvedRepoRoot)) === baseHead) throw lastHeadUpdateError;
 				}
 			}
@@ -489,7 +497,9 @@ export class GitOperations {
 								writeFile(join(refUpdateDirectory, "commondir"), `${commonDirectory}\n`),
 								writeFile(join(refUpdateDirectory, "HEAD"), "ref: refs/backlog/ref-update-context\n"),
 							]);
-							if (await this.supportsUpdateRefTransactions(repoRoot)) {
+							const transactionsSupported = await this.supportsUpdateRefTransactions(repoRoot);
+							let expectedPostUpdateReflogSnapshot: string | null = null;
+							if (transactionsSupported) {
 								await this.updateBranchRefTransaction(
 									repoRoot,
 									refUpdateDirectory,
@@ -503,7 +513,11 @@ export class GitOperations {
 										// lease here closes same-OID reflog ABA between the real hook
 										// validation and the final branch movement.
 										await validateHeadAndLease();
-										if (validateNamedUpdate) await validateNamedUpdate();
+										if (validateNamedUpdate) {
+											await validateNamedUpdate();
+											const previousRecord = (await this.readReflogSnapshot(repoRoot, branchRef, 1)).split("\n", 1)[0];
+											expectedPostUpdateReflogSnapshot = `${newCommit}\0${reflogMessage}${previousRecord ? `\n${previousRecord}` : ""}`;
+										}
 									},
 								);
 							} else {
@@ -528,22 +542,37 @@ export class GitOperations {
 								try {
 									await validateNamedUpdate();
 								} catch (error) {
-									await this.execGit(
-										[
-											"-c",
-											`core.hooksPath=${disabledHooksPath}`,
-											"update-ref",
-											"-m",
-											"reset: Backlog finalization lease invalidated",
-											branchRef,
-											expectedCommit ?? "",
-											newCommit,
-										],
-										{
-											cwd: repoRoot,
-											env: { GIT_DIR: refUpdateDirectory },
-										},
-									);
+									let rollbackCompleted = false;
+									if (transactionsSupported && expectedPostUpdateReflogSnapshot && expectedCommit) {
+										try {
+											await this.updateBranchRefTransaction(
+												repoRoot,
+												refUpdateDirectory,
+												branchRef,
+												newCommit,
+												expectedCommit,
+												"reset: Backlog finalization lease invalidated",
+												disabledHooksPath,
+												async () => {
+													if ((await this.getCurrentBranchRef(repoRoot)) !== branchRef) {
+														throw new Error("Git HEAD identity changed before protected rollback");
+													}
+													if ((await this.resolveHead(repoRoot)) !== newCommit) {
+														throw new Error("Git HEAD changed before protected rollback");
+													}
+													if (
+														(await this.readReflogSnapshot(repoRoot, branchRef, 2)) !== expectedPostUpdateReflogSnapshot
+													) {
+														throw new Error("Git branch reflog changed before protected rollback");
+													}
+												},
+											);
+											rollbackCompleted = true;
+										} catch {
+											// An intervening ref/reflog change owns the boundary; never overwrite it.
+										}
+									}
+									if (!rollbackCompleted) throw new FinalizationRollbackError(error);
 									throw error;
 								}
 							}
@@ -586,8 +615,8 @@ export class GitOperations {
 		}
 		// The protected named update writes only its branch reflog, while a
 		// detached write moves HEAD without a reflog entry. Restore the worktree
-		// HEAD reflog as best effort, but prepare an exact HEAD transaction on
-		// capable Git so a same-SHA branch switch cannot receive ownership evidence.
+		// HEAD reflog as best effort only when an exact prepared HEAD transaction
+		// can prevent a same-SHA branch switch from receiving ownership evidence.
 		if (updated && (await this.supportsUpdateRefTransactions(repoRoot))) {
 			await this.updateBranchRefTransaction(
 				repoRoot,
@@ -605,11 +634,6 @@ export class GitOperations {
 						throw new Error("Git HEAD changed before its reflog could be synchronized");
 					}
 				},
-			).catch(() => undefined);
-		} else if (updated && (await this.resolveHead(repoRoot)) === newCommit) {
-			await this.execGit(
-				["-c", `core.hooksPath=${disabledHooksPath}`, "update-ref", "-m", reflogMessage, "HEAD", newCommit, newCommit],
-				{ cwd: repoRoot },
 			).catch(() => undefined);
 		}
 		if (referenceTransactionSucceeded) {
@@ -730,6 +754,15 @@ export class GitOperations {
 		return branchRef.startsWith("refs/heads/") ? branchRef : null;
 	}
 
+	private async readReflogSnapshot(repoRoot: string, referenceName: string, limit = 2): Promise<string> {
+		const { stdout } = await this.execGit(["reflog", "show", `-${limit}`, "--format=%H%x00%gs", referenceName], {
+			cwd: repoRoot,
+			readOnly: true,
+			acceptedExitCodes: [1, 128],
+		});
+		return stdout.replace(/\n$/, "");
+	}
+
 	/**
 	 * Ownership evidence format: the newest branch reflog entry must point to the
 	 * candidate SHA and its subject must start with AUTOMATIC_COMMIT_REFLOG_MARKER.
@@ -741,12 +774,7 @@ export class GitOperations {
 		branchRef: string,
 		candidate: string,
 	): Promise<{ reflogSnapshot: string } | null> {
-		const { stdout } = await this.execGit(["reflog", "show", "-2", "--format=%H%x00%gs", branchRef], {
-			cwd: repoRoot,
-			readOnly: true,
-			acceptedExitCodes: [1, 128],
-		});
-		const reflogSnapshot = stdout.replace(/\n$/, "");
+		const reflogSnapshot = await this.readReflogSnapshot(repoRoot, branchRef);
 		const firstLine = reflogSnapshot.split("\n", 1)[0];
 		if (!firstLine) return null;
 		const fields = firstLine.split("\0");
@@ -1294,7 +1322,13 @@ export class GitOperations {
 				return await this.commitFiles(message, [filePath], repoRoot, commitOptions);
 			} catch (error) {
 				lastError = error instanceof Error ? error : new Error(String(error));
-				if (error instanceof SelectedPathConflictError || error instanceof ReferenceTransactionVetoError) throw error;
+				if (
+					error instanceof SelectedPathConflictError ||
+					error instanceof ReferenceTransactionVetoError ||
+					error instanceof FinalizationRollbackError
+				) {
+					throw error;
+				}
 				if (attempt === 3) break;
 				const workingOwned = (await this.hashFile(filePath)) === expectedWorkingHash;
 				const indexOwned = indexEntriesEqual(await this.getIndexEntries(filePath), expectedIndexEntries);

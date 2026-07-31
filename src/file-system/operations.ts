@@ -15,6 +15,7 @@ import {
 } from "../utils/backlog-directory.ts";
 import {
 	INVALID_EXPLICIT_CONFIG_ERROR,
+	isUsableBacklogConfig,
 	parseExplicitConfigScalar,
 	stripTrailingYamlComment,
 	validateExplicitConfigValues,
@@ -1481,14 +1482,21 @@ ${description || `Milestone: ${title}`}`,
 	): Promise<BacklogConfig | null> {
 		for (let attempt = 1; attempt <= MUTATION_CONFIG_READ_ATTEMPTS; attempt += 1) {
 			try {
-				const file = Bun.file(this.resolvedConfigPath);
+				const configPath = this.resolvedConfigPath;
+				const file = Bun.file(configPath);
 				if (await file.exists()) {
-					const content = await file.text();
-					const config = this.parseConfig(content);
-					const validationError = validateExplicitConfigValues(content, config);
+					const firstContent = await file.text();
+					await Bun.sleep(MUTATION_CONFIG_RETRY_DELAY_MS);
+					const secondContent = await Bun.file(configPath).text();
+					if (firstContent !== secondContent) continue;
+
+					const config = this.parseConfig(secondContent);
+					const validationError = validateExplicitConfigValues(secondContent, config);
 					if (validationError) throw new InvalidBacklogConfigError(validationError);
+					if (!isUsableBacklogConfig(config, secondContent)) continue;
+
 					const effectiveConfig = options.preserve ? { ...options.preserve, ...config } : config;
-					if (options.publish && !this.publishConfig(effectiveConfig, this.resolvedConfigPath, content)) {
+					if (options.publish && !this.publishConfig(effectiveConfig, configPath, secondContent)) {
 						throw new InvalidBacklogConfigError(UNAVAILABLE_CONFIG_ERROR);
 					}
 					return effectiveConfig;

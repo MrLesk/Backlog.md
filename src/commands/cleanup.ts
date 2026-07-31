@@ -7,6 +7,7 @@ export interface CleanupExecutionResult {
 	autoCommitEnabled: boolean;
 	hasGitRepository: boolean;
 	stagedMoves: boolean;
+	stagedMoveCount: number;
 	failures: Array<{ taskId: string; message: string }>;
 	stageWarnings: Array<{ taskId: string; error: unknown }>;
 }
@@ -36,10 +37,12 @@ export async function completeTasksForCleanup(core: Core, tasks: readonly Task[]
 
 		const hasGitRepository = await core.gitOps.isRepository();
 		const stageWarnings: CleanupExecutionResult["stageWarnings"] = [];
+		let stagedMoveCount = 0;
 		if (successCount > 0 && !autoCommitEnabled && hasGitRepository) {
 			for (const move of movedTasks) {
 				try {
 					await core.gitOps.stageFileMove(move.fromPath, move.toPath);
+					stagedMoveCount += 1;
 				} catch (error) {
 					stageWarnings.push({ taskId: move.taskId, error });
 				}
@@ -50,7 +53,8 @@ export async function completeTasksForCleanup(core: Core, tasks: readonly Task[]
 			successCount,
 			autoCommitEnabled,
 			hasGitRepository,
-			stagedMoves: successCount > 0 && !autoCommitEnabled && hasGitRepository,
+			stagedMoves: stagedMoveCount > 0,
+			stagedMoveCount,
 			failures,
 			stageWarnings,
 		};

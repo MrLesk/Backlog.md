@@ -5,7 +5,7 @@ status: In Progress
 assignee:
   - '@andreas'
 created_date: '2026-07-28 14:47'
-updated_date: '2026-07-30 07:04'
+updated_date: '2026-07-31 02:13'
 labels:
   - web-ui
   - cli
@@ -35,8 +35,8 @@ This covers the advanced CLI wizard, initialization and configuration summaries,
 - [x] #7 Browser automatic-commit notices are queued, combined, or visibly stacked so task/draft creation confirmation cannot cover consequential replacement feedback, with an amended-creation UI regression.
 - [x] #8 Initialization surfaces save configuration before integration writes, and those writes honor the resulting current bytes rather than the stale wizard/request boolean under either enablement transition.
 - [x] #9 CLI and browser initialization responses/summaries display the fail-closed reloaded persisted autoCommit and autoCommitMode values after setup, including post-save races.
-- [ ] #10 The browser /api/init response includes effective persisted BacklogConfig, the typed client exposes it, InitializationScreen passes it to App, and App seeds config state before follow-up loads; HTTP and component regressions cover post-save mode races.
-- [ ] #11 Published browser/initialization configuration is both stable and complete before it replaces display cache or preserved request fields; truncated current bytes cannot surface empty required identity or enable amend-own.
+- [x] #10 The browser /api/init response includes effective persisted BacklogConfig, the typed client exposes it, InitializationScreen passes it to App, and App seeds config state before follow-up loads; HTTP and component regressions cover post-save mode races.
+- [x] #11 Published browser/initialization configuration is both stable and complete before it replaces display cache or preserved request fields; truncated current bytes cannot surface empty required identity or enable amend-own.
 <!-- AC:END -->
 
 ## Definition of Done
@@ -108,6 +108,8 @@ Pass 21 initialization response/summary source is now the reloaded persisted cur
 Pass 22 M1: Core returns current config, but the server drops it, API types omit it, and InitializationScreen ignores the result; App then reloads /api/config from saveConfig stale cache.
 
 Pass 22 browser effective result complete. /api/init includes validated published BacklogConfig, ApiClient types it, InitializationScreen passes it, and App seeds effective state. HTTP regression mutates saved true/amend-own to false/new and proves both response and immediate /api/config cache; component regression proves callback consumes returned new despite submitting amend-own. Focused and integrated gates pass.
+
+Pass 23 publication safety complete. Browser initialization rejects incomplete post-save current bytes, performs no integration write, and does not publish parsed empty project identity over the valid requested/display snapshot. Existing effective-config response/cache behavior remains covered. Integrated gate passes.
 <!-- SECTION:NOTES:END -->
 
 ## Comments

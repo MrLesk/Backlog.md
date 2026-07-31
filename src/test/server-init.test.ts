@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import { mkdir, rm } from "node:fs/promises";
+import { join } from "node:path";
 import { $ } from "bun";
 import { Core } from "../core/backlog.ts";
 import { BacklogServer } from "../server/index.ts";
@@ -90,6 +91,32 @@ describe("BacklogServer init endpoint", () => {
 		expect(body.config.autoCommit).toBe(false);
 		expect(body.config.autoCommitMode).toBe("new");
 		expect(await cachedResponse.json()).toEqual(expect.objectContaining({ autoCommit: false, autoCommitMode: "new" }));
+	});
+
+	it("rejects incomplete post-save config without publishing empty required fields", async () => {
+		const server = new BacklogServer(TEST_DIR) as unknown as InitHandler;
+		const originalSaveConfig = server.core.filesystem.saveConfig.bind(server.core.filesystem);
+		server.core.filesystem.saveConfig = async (config) => {
+			await originalSaveConfig(config);
+			await Bun.write(server.core.filesystem.configFilePath, "auto_commit: true\nauto_commit_mode: amend-own\n");
+		};
+
+		const response = await server.handleInit(
+			initRequest({
+				integrationMode: "cli",
+				agentInstructions: ["AGENTS.md"],
+				advancedConfig: { autoCommit: true, autoCommitMode: "amend-own" },
+			}),
+		);
+		const body = (await response.json()) as { error: string };
+		const cachedResponse = await server.handleGetConfig();
+		const cached = (await cachedResponse.json()) as { projectName: string; autoCommitMode: string };
+
+		expect(response.status).toBe(500);
+		expect(body.error).toBe("Unable to read current backlog configuration");
+		expect(cached.projectName).toBe("Server Init");
+		expect(cached.autoCommitMode).toBe("amend-own");
+		expect(await Bun.file(join(TEST_DIR, "AGENTS.md")).exists()).toBe(false);
 	});
 
 	it("rejects an invalid browser initialization autoCommitMode without writing config", async () => {

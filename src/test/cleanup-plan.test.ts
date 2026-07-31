@@ -68,6 +68,38 @@ describe("cleanup automatic-commit plan", () => {
 		expect((await $`git diff --cached --name-status`.cwd(root).text()).trim()).toContain("task-1");
 	});
 
+	it("reports all-failed and partial exact-path staging truthfully", async () => {
+		const tasks = [
+			{ id: "task-1", title: "First", filePath: "/tasks/task-1.md" },
+			{ id: "task-2", title: "Second", filePath: "/tasks/task-2.md" },
+		] as Task[];
+		for (const failedTaskIds of [["task-1", "task-2"], ["task-2"]]) {
+			const stagedTaskIds: string[] = [];
+			const fakeCore = {
+				withAutoCommitPlan: async (_enabled: boolean | undefined, action: () => Promise<unknown>) => await action(),
+				shouldAutoCommit: async () => false,
+				getTask: async () => null,
+				completeTask: async () => true,
+				filesystem: { completedDir: "/completed" },
+				gitOps: {
+					isRepository: async () => true,
+					stageFileMove: async (fromPath: string) => {
+						const taskId = fromPath.includes("task-1") ? "task-1" : "task-2";
+						if (failedTaskIds.includes(taskId)) throw new Error(`cannot stage ${taskId}`);
+						stagedTaskIds.push(taskId);
+					},
+				},
+			} as unknown as Core;
+
+			const result = await completeTasksForCleanup(fakeCore, tasks);
+
+			expect(result.successCount).toBe(2);
+			expect(result.stageWarnings.map((warning) => warning.taskId)).toEqual(failedTaskIds);
+			expect(result.stagedMoveCount).toBe(stagedTaskIds.length);
+			expect(result.stagedMoves).toBe(stagedTaskIds.length > 0);
+		}
+	});
+
 	it("commits moves without false staging output when current bytes enable a stale cached disabled setting", async () => {
 		const { root, core, task, beforeCount } = await createScenario(false);
 		await changeCurrentAutoCommit(root, true);

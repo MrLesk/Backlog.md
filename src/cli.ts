@@ -4935,7 +4935,11 @@ addHelpSchema(program.command("cleanup"), {
 
 			console.log(`Successfully moved ${cleanup.successCount} of ${tasksToMove.length} tasks to completed folder.`);
 			if (cleanup.stagedMoves) {
-				console.log("Files have been staged. To commit: git commit -m 'cleanup: Move completed tasks'");
+				const stagedDescription =
+					cleanup.stageWarnings.length > 0
+						? `${cleanup.stagedMoveCount} of ${cleanup.successCount} moves have been staged.`
+						: "Files have been staged.";
+				console.log(`${stagedDescription} To commit: git commit -m 'cleanup: Move completed tasks'`);
 			}
 		} catch (err) {
 			console.error("Failed to run cleanup", err);

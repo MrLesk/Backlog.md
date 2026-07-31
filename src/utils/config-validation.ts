@@ -33,6 +33,22 @@ const RECOGNIZED_CONFIG_KEYS = new Set([...SCALAR_CONFIG_KEYS, ...ARRAY_CONFIG_K
 
 export const INVALID_EXPLICIT_CONFIG_ERROR = "Invalid backlog configuration syntax";
 
+/**
+ * A parsed config is safe to publish or use for mutation only when the
+ * required project identity and collection/date defaults are present. This is
+ * shared by watcher publication and direct current-byte mutation preflight so
+ * a truncated but syntactically valid file cannot enable writes.
+ */
+export function isUsableBacklogConfig(config: BacklogConfig | null, content: string): config is BacklogConfig {
+	return Boolean(
+		config?.projectName.trim() &&
+			Array.isArray(config.statuses) &&
+			Array.isArray(config.labels) &&
+			config.dateFormat.trim() &&
+			validateExplicitConfigValues(content, config) === null,
+	);
+}
+
 export function stripTrailingYamlComment(value: string): string {
 	let quote: "'" | '"' | undefined;
 	let escaped = false;
