@@ -1,11 +1,11 @@
 ---
 id: BACK-469
 title: 'TUI theme-adaptive rendering: remove hardcoded colors, add scroll improvements'
-status: In Progress
+status: Done
 assignee:
   - '@codex'
 created_date: '2026-02-21 08:42'
-updated_date: '2026-06-07 19:42'
+updated_date: '2026-08-01 22:01'
 labels:
   - ui
   - board
@@ -61,20 +61,27 @@ Comprehensive TUI improvement for terminal theme compatibility and quality of li
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 All highlight/selection styling uses inverse video instead of hardcoded ANSI colors
-- [ ] #2 Board active: inverse+bold; move mode: inverse+cyan; inactive: cleared
-- [ ] #3 Filter header focus uses inverse+bold; blur clears inverse+bold
-- [ ] #4 No hardcoded fg: "white" or bg: "black" in TUI text/container styles (backdrop overlays excluded)
-- [ ] #5 Semantic colors use "gray" instead of "white" for neutral/muted elements
-- [ ] #6 Code paths styled with cyan instead of gray for cross-theme visibility
+- [x] #1 All highlight/selection styling uses inverse video instead of hardcoded ANSI colors
+- [x] #2 Board active: inverse+bold; move mode: inverse+cyan; inactive: cleared
+- [x] #3 Filter header focus uses inverse+bold; blur clears inverse+bold
+- [x] #4 No hardcoded fg: "white" or bg: "black" in TUI text/container styles (backdrop overlays excluded)
+- [x] #5 Semantic colors use "gray" instead of "white" for neutral/muted elements
+- [x] #6 Code paths styled with cyan instead of gray for cross-theme visibility
 - [ ] #7 PGUP/PGDN/Home/End work in standalone viewer, popup viewer, board lanes, and generic list
 - [ ] #8 Ctrl+D/Ctrl+U work in board lanes and generic list
 - [ ] #9 Scrollbar indicators on scrollable content areas (except task list pane)
 - [ ] #10 Status/priority filter selectors allow full down-arrow navigation before exiting
-- [ ] #11 All tests pass
+- [x] #11 All tests pass
 - [ ] #12 Screenshot tool auto-captures board, tasklist, detail, and filters views in Terminal and Ghostty
 - [ ] #13 Screenshot compare command generates static PNG, animated APNG, and GIF comparisons
 <!-- AC:END -->
+
+## Definition of Done
+<!-- DOD:BEGIN -->
+- [x] #1 bunx tsc --noEmit passes when TypeScript touched
+- [x] #2 bun run check . passes when formatting/linting touched
+- [x] #3 bun test (or scoped test) passes
+<!-- DOD:END -->
 
 ## Implementation Plan
 
@@ -94,11 +101,12 @@ Review fixes applied for PR #670:
 - GenericList page/home/end navigation now uses setHighlightedIndex so grouped display-index mappings remain correct.
 - Screenshot comparison helper dependency checks are now subcommand-specific, so usage/help is not blocked by missing Ghostty.
 Verification: bun test src/test/generic-list-selection.test.ts src/test/tui-screenshot-compare-script.test.ts; bunx tsc --noEmit; bun run check .; ./tools/tui-screenshot-compare.sh; bun test.
+
+Final verification (2026-08-01): PR #670 merged as 5b7850f679ae2ed6c95cee3b0b25460c14155208 with all six Ubuntu/macOS/Windows CI jobs successful. Four-theme comparison screenshots support the theme-adaptive rendering criteria. Current-main focused regressions passed: 16 tests across generic-list selection, status icons, and screenshot-script usage. Keyboard/scrollbar end-to-end behavior and Terminal/Ghostty/APNG/GIF tooling outputs were not independently exercised during finalization, so those criteria remain unchecked.
 <!-- SECTION:NOTES:END -->
 
-## Definition of Done
-<!-- DOD:BEGIN -->
-- [x] #1 bunx tsc --noEmit passes when TypeScript touched
-- [x] #2 bun run check . passes when formatting/linting touched
-- [x] #3 bun test (or scoped test) passes
-<!-- DOD:END -->
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+Merged PR #670 delivered theme-adaptive TUI rendering and scroll/navigation tooling. Verified by the successful six-job CI matrix, attached multi-theme comparisons, and 16 passing focused regressions on current main; criteria without retained end-to-end execution evidence remain unchecked.
+<!-- SECTION:FINAL_SUMMARY:END -->
