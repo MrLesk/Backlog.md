@@ -291,6 +291,99 @@ describe("BacklogServer task SPA fallback", () => {
 		expect(createResponse.headers.get("content-type")).toContain("application/json");
 	});
 
+	it("routes browser task reads and mutations through Core without direct task-corpus filesystem calls", async () => {
+		const serverInternals = server as unknown as { core: { filesystem: FileSystem } };
+		const taskFilesystem = serverInternals.core.filesystem;
+		const directCalls: string[] = [];
+		const originals = {
+			listTasks: taskFilesystem.listTasks.bind(taskFilesystem),
+			listCompletedTasks: taskFilesystem.listCompletedTasks.bind(taskFilesystem),
+			loadTask: taskFilesystem.loadTask.bind(taskFilesystem),
+			saveTask: taskFilesystem.saveTask.bind(taskFilesystem),
+		};
+		const recordDirectServerCall = (operation: string) => {
+			const caller = (new Error().stack ?? "")
+				.split("\n")
+				.find((line) => line.includes("/src/") && !line.includes("server-tasks-spa-fallback.test.ts"));
+			if (caller?.includes("/src/server/index.ts")) directCalls.push(operation);
+		};
+		taskFilesystem.listTasks = async (...args) => {
+			recordDirectServerCall("listTasks");
+			return await originals.listTasks(...args);
+		};
+		taskFilesystem.listCompletedTasks = async (...args) => {
+			recordDirectServerCall("listCompletedTasks");
+			return await originals.listCompletedTasks(...args);
+		};
+		taskFilesystem.loadTask = async (...args) => {
+			recordDirectServerCall("loadTask");
+			return await originals.loadTask(...args);
+		};
+		taskFilesystem.saveTask = async (...args) => {
+			recordDirectServerCall("saveTask");
+			return await originals.saveTask(...args);
+		};
+
+		try {
+			expect((await request(`/api/tasks?parent=${routedTask.id}`)).status).toBe(200);
+			expect((await request(`/api/task/${routedTask.id}`)).status).toBe(200);
+			expect(
+				(
+					await request(`/api/tasks/${routedTask.id}`, {
+						method: "PUT",
+						headers: { "Content-Type": "application/json" },
+						body: JSON.stringify({ status: "In Progress" }),
+					})
+				).status,
+			).toBe(200);
+			expect((await request("/api/tasks/duplicates")).status).toBe(200);
+			expect(
+				(
+					await request("/api/tasks/reorder", {
+						method: "POST",
+						headers: { "Content-Type": "application/json" },
+						body: JSON.stringify({
+							taskId: routedTask.id,
+							targetStatus: "In Progress",
+							orderedTaskIds: [routedTask.id],
+						}),
+					})
+				).status,
+			).toBe(200);
+			expect((await request(`/api/tasks/${routedTask.id}/complete`, { method: "POST" })).status).toBe(200);
+		} finally {
+			taskFilesystem.listTasks = originals.listTasks;
+			taskFilesystem.listCompletedTasks = originals.listCompletedTasks;
+			taskFilesystem.loadTask = originals.loadTask;
+			taskFilesystem.saveTask = originals.saveTask;
+		}
+
+		expect(directCalls).toEqual([]);
+	});
+
+	it("serves completed-only task details through Core", async () => {
+		expect(await filesystem.completeTask(routedTask.id)).toBe(true);
+
+		const response = await request(`/api/task/${routedTask.id}`);
+
+		expect(response.status).toBe(200);
+		const task = (await response.json()) as Task;
+		expect(task.id).toBe(routedTask.id);
+		expect(task.source).toBe("completed");
+	});
+
+	it("returns conflict after a frontmatter ID collision appears under an unchanged filename", async () => {
+		const siblingPath = await filesystem.saveTask({ ...routedTask, id: "BACK-002", title: "Sibling task" });
+		const warm = await request("/api/task/BACK-002");
+		expect(warm.status).toBe(200);
+
+		await Bun.write(siblingPath, serializeTask({ ...routedTask, title: "Changed frontmatter identity" }));
+		const response = await request(`/api/task/${routedTask.id}`);
+
+		expect(response.status).toBe(409);
+		expect(await response.text()).toContain("ambiguous");
+	});
+
 	it("prefers the freshly read current-worktree task over stale store content", async () => {
 		const contentStore = await (
 			server as unknown as { getContentStoreInstance: () => Promise<ContentStore> }

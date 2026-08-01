@@ -4,10 +4,12 @@ import * as nodeFs from "node:fs";
 import { rename, stat, unlink } from "node:fs/promises";
 import { basename, join, resolve } from "node:path";
 import { Core } from "../core/backlog.ts";
-import { ContentStore, type ContentStoreEvent } from "../core/content-store.ts";
+import { ContentStore, type ContentStoreEvent, type TaskCorpusSnapshot } from "../core/content-store.ts";
 import { SearchService } from "../core/search-service.ts";
+import { TaskIdentityIndex, type TaskIdentityRecord } from "../core/task-identity-index.ts";
 import { FileSystem } from "../file-system/operations.ts";
 import { parseTask } from "../markdown/parser.ts";
+import { serializeTask } from "../markdown/serializer.ts";
 import type { BacklogConfig, Decision, Document, Task } from "../types/index.ts";
 import { normalizeTaskIdentity } from "../utils/task-path.ts";
 import { createUniqueTestDir, getPlatformTimeout, safeCleanup, sleep } from "./test-utils.ts";
@@ -46,6 +48,61 @@ describe("ContentStore", () => {
 		type: "guide",
 		createdDate: "2025-09-19",
 		rawContent: "# Architecture Guide",
+	};
+
+	const branchSnapshotLoader = (branchPaths: string | string[]): (() => Promise<TaskCorpusSnapshot>) => {
+		return async () => {
+			const activeTasks = await filesystem.listTasks();
+			const completedTasks = await filesystem.listCompletedTasks();
+			const paths = Array.isArray(branchPaths) ? branchPaths : [branchPaths];
+			const branchTasks = paths.map((branchPath, index) => ({
+				...sampleTask,
+				id: "TASK-1",
+				title: `Branch-only task ${index + 1}`,
+				branch: `feature/watched-collision-${index + 1}`,
+				filePath: branchPath,
+			}));
+			const records: TaskIdentityRecord[] = [
+				...branchTasks.map((branchTask) => ({
+					id: branchTask.id,
+					type: "task" as const,
+					branch: branchTask.branch,
+					path: branchTask.filePath,
+					lastModified: new Date("2026-08-01T10:00:00Z"),
+					task: branchTask,
+				})),
+				...activeTasks.map((task) => ({
+					id: task.id,
+					type: "task" as const,
+					branch: "local",
+					path: task.filePath ?? join(filesystem.tasksDir, task.id),
+					lastModified: new Date("2026-08-01T11:00:00Z"),
+					task,
+					workingCopy: true,
+				})),
+				...completedTasks.map((task) => ({
+					id: task.id,
+					type: "completed" as const,
+					branch: "local",
+					path: task.filePath ?? join(filesystem.completedDir, task.id),
+					lastModified: new Date("2026-08-01T11:00:00Z"),
+					task,
+					workingCopy: true,
+				})),
+			];
+			const identityIndex = new TaskIdentityIndex(
+				records,
+				{ repositoryRoot: null, projectRoot: TEST_DIR, backlogDirectory: "backlog" },
+				["To Do", "In Progress", "Done"],
+				"most_progressed",
+			);
+			return {
+				tasks: identityIndex.getTasks(false),
+				activeTasks,
+				completedTasks,
+				identityIndex,
+			};
+		};
 	};
 
 	beforeEach(async () => {
@@ -383,6 +440,146 @@ describe("ContentStore", () => {
 
 		expect((await core.fs.loadTask(sampleTask.id))?.type).toBe("feature");
 		expect(store.getTasks()[0]?.type).toBe("feature");
+	});
+
+	it("refreshes completed identity state when the completed corpus changes", async () => {
+		store.dispose();
+		const core = new Core(TEST_DIR, { enableWatchers: true });
+		await core.fs.ensureBacklogStructure();
+		await core.fs.saveTask(sampleTask);
+		store = await core.getContentStore();
+
+		expect(store.resolveTaskForMutation(sampleTask.id).status).toBe("found");
+		await Bun.write(
+			join(core.fs.completedDir, "task-01 - Completed collision.md"),
+			serializeTask({ ...sampleTask, id: "TASK-01", title: "Completed collision" }),
+		);
+
+		await waitUntil(
+			() => store.resolveTaskForMutation(sampleTask.id).status === "ambiguous",
+			"completed task identity watcher",
+			getPlatformTimeout(3000),
+		);
+	});
+
+	it("reparses unchanged filenames before publishing frontmatter identity changes", async () => {
+		store.dispose();
+		const firstPath = await filesystem.saveTask(sampleTask);
+		const secondPath = await filesystem.saveTask({ ...sampleTask, id: "TASK-2", title: "Second task" });
+		store = new ContentStore(filesystem, branchSnapshotLoader([]), true);
+		await store.ensureInitialized();
+		expect(store.resolveTaskForRead("TASK-1").status).toBe("found");
+
+		const replacementPath = `${secondPath}.replacement`;
+		await Bun.write(replacementPath, serializeTask({ ...sampleTask, id: "TASK-1", title: "Changed identity" }));
+		await rename(replacementPath, secondPath);
+		const changedTask = {
+			...normalizeTaskIdentity(parseTask(await Bun.file(secondPath).text())),
+			filePath: secondPath,
+		};
+		(store as unknown as { publishWatchedTask: (task: Task) => void }).publishWatchedTask(changedTask);
+
+		await waitUntil(
+			() => store.resolveTaskForRead("TASK-1").status === "ambiguous",
+			"unchanged-filename frontmatter collision",
+			getPlatformTimeout(3000),
+		);
+		expect(await Bun.file(firstPath).exists()).toBe(true);
+	});
+
+	it("publishes watched distinct-path local creation with the refreshed branch collision identity", async () => {
+		store.dispose();
+		store = new ContentStore(filesystem, branchSnapshotLoader("backlog/tasks/task-1 - Branch-only.md"), true);
+		await store.ensureInitialized();
+		expect(store.resolveTaskForRead("TASK-1").status).toBe("found");
+
+		const observedResolutions: string[] = [];
+		const unsubscribe = store.subscribe((event) => {
+			if (event.type === "tasks") observedResolutions.push(store.resolveTaskForRead("TASK-1").status);
+		});
+		await Bun.write(
+			join(filesystem.tasksDir, "task-1 - Current-worktree.md"),
+			serializeTask({ ...sampleTask, id: "TASK-1", title: "Current worktree" }),
+		);
+
+		await waitUntil(() => observedResolutions.length > 0, "watched distinct-path collision", getPlatformTimeout(3000));
+		unsubscribe();
+		expect(observedResolutions[0]).toBe("ambiguous");
+		expect(store.resolveTaskForMutation("TASK-1").status).toBe("ambiguous");
+	});
+
+	it("publishes watched same-path local creation as one branch-version identity", async () => {
+		store.dispose();
+		const filename = "task-1 - Same-path.md";
+		store = new ContentStore(filesystem, branchSnapshotLoader(`backlog/tasks/${filename}`), true);
+		await store.ensureInitialized();
+
+		const observedResolutions: string[] = [];
+		const unsubscribe = store.subscribe((event) => {
+			if (event.type === "tasks") observedResolutions.push(store.resolveTaskForMutation("TASK-1").status);
+		});
+		await Bun.write(
+			join(filesystem.tasksDir, filename),
+			serializeTask({ ...sampleTask, id: "TASK-1", title: "Current same-path version" }),
+		);
+
+		await waitUntil(() => observedResolutions.length > 0, "watched same-path version", getPlatformTimeout(3000));
+		unsubscribe();
+		expect(observedResolutions[0]).toBe("found");
+		const resolution = store.resolveTaskForMutation("TASK-1");
+		expect(resolution.status).toBe("found");
+		if (resolution.status === "found") expect(resolution.task.title).toBe("Current same-path version");
+	});
+
+	it("promotes the surviving same-path branch version before watched deletion publication", async () => {
+		store.dispose();
+		const filename = "task-1 - Same-path.md";
+		const localPath = join(filesystem.tasksDir, filename);
+		await Bun.write(localPath, serializeTask({ ...sampleTask, id: "TASK-1", title: "Current worktree" }));
+		store = new ContentStore(filesystem, branchSnapshotLoader(`backlog/tasks/${filename}`), true);
+		await store.ensureInitialized();
+
+		const observedTitles: string[] = [];
+		const unsubscribe = store.subscribe((event) => {
+			if (event.type !== "tasks") return;
+			const resolution = store.resolveTaskForRead("TASK-1");
+			if (resolution.status === "found") observedTitles.push(resolution.task.title);
+		});
+		await unlink(localPath);
+
+		await waitUntil(() => observedTitles.length > 0, "watched same-path branch fallback", getPlatformTimeout(3000));
+		unsubscribe();
+		expect(observedTitles[0]).toBe("Branch-only task 1");
+		expect(store.getTasks().map((task) => task.title)).toEqual(["Branch-only task 1"]);
+	});
+
+	it("keeps surviving distinct-path branch identities ambiguous before watched deletion publication", async () => {
+		store.dispose();
+		const filename = "task-1 - Current-path.md";
+		const localPath = join(filesystem.tasksDir, filename);
+		await Bun.write(localPath, serializeTask({ ...sampleTask, id: "TASK-1", title: "Current worktree" }));
+		store = new ContentStore(
+			filesystem,
+			branchSnapshotLoader([`backlog/tasks/${filename}`, "backlog/tasks/task-1 - Distinct-branch-path.md"]),
+			true,
+		);
+		await store.ensureInitialized();
+		expect(store.resolveTaskForRead("TASK-1").status).toBe("ambiguous");
+
+		const observedResolutions: string[] = [];
+		const unsubscribe = store.subscribe((event) => {
+			if (event.type === "tasks") observedResolutions.push(store.resolveTaskForRead("TASK-1").status);
+		});
+		await unlink(localPath);
+
+		await waitUntil(
+			() => observedResolutions.length > 0,
+			"watched distinct-path branch identities",
+			getPlatformTimeout(3000),
+		);
+		unsubscribe();
+		expect(observedResolutions[0]).toBe("ambiguous");
+		expect(store.resolveTaskForRead("TASK-1").status).toBe("ambiguous");
 	});
 
 	it("keeps persisted task, document, and decision writes that complete during initialization", async () => {

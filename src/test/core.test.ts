@@ -174,6 +174,107 @@ describe("Core", () => {
 			expect(lastCommit.length).toBeGreaterThan(0);
 		});
 
+		it("reads a completed-only task while keeping it unavailable to mutations", async () => {
+			await core.createTask(sampleTask, false);
+			expect(await core.filesystem.completeTask(sampleTask.id)).toBe(true);
+
+			const completed = await core.getTask(sampleTask.id);
+
+			expect(completed?.id).toBe("TASK-1");
+			expect(completed?.source).toBe("completed");
+			await expect(core.updateTaskFromInput(sampleTask.id, { title: "Must not change" }, false)).rejects.toThrow(
+				"Task not found",
+			);
+		});
+
+		it("refreshes one coherent active and completed identity snapshot before mutation", async () => {
+			await core.createTask(sampleTask, false);
+			await core.getContentStore();
+
+			const activePath = (await core.filesystem.loadTask(sampleTask.id))?.filePath;
+			if (!activePath) throw new Error("Expected active task path");
+			const completedPath = join(core.filesystem.completedDir, "task-01 - Completed collision.md");
+			await Bun.write(completedPath, serializeTask({ ...sampleTask, id: "TASK-01", title: "Completed collision" }));
+
+			const originalListTasks = core.filesystem.listTasks.bind(core.filesystem);
+			const originalListCompletedTasks = core.filesystem.listCompletedTasks.bind(core.filesystem);
+			let activeLoads = 0;
+			let completedLoads = 0;
+			core.filesystem.listTasks = async (...args) => {
+				activeLoads += 1;
+				return await originalListTasks(...args);
+			};
+			core.filesystem.listCompletedTasks = async (...args) => {
+				completedLoads += 1;
+				return await originalListCompletedTasks(...args);
+			};
+
+			try {
+				await expect(
+					core.updateTaskFromInput(sampleTask.id, { title: "Must not change" }, false),
+				).rejects.toBeInstanceOf(AmbiguousTaskIdError);
+			} finally {
+				core.filesystem.listTasks = originalListTasks;
+				core.filesystem.listCompletedTasks = originalListCompletedTasks;
+			}
+
+			expect(activeLoads).toBe(1);
+			expect(completedLoads).toBe(1);
+			expect(await Bun.file(activePath).text()).not.toContain("Must not change");
+		});
+
+		it("publishes completed lifecycle identity state atomically", async () => {
+			await core.createTask(sampleTask, false);
+			const store = await core.getContentStore();
+			const observed: Array<{
+				read: string;
+				mutation: string;
+				active: string[];
+				completed: string[];
+			}> = [];
+			const unsubscribe = store.subscribe((event) => {
+				if (event.type !== "tasks") return;
+				const snapshot = store.getTaskCorpusSnapshot();
+				observed.push({
+					read: store.resolveTaskForRead(sampleTask.id).status,
+					mutation: store.resolveTaskForMutation(sampleTask.id).status,
+					active: snapshot.activeTasks.map((task) => task.id),
+					completed: snapshot.completedTasks.map((task) => task.id),
+				});
+			});
+
+			expect(await core.completeTask(sampleTask.id, false)).toBe(true);
+			unsubscribe();
+
+			expect(observed[0]).toEqual({
+				read: "found",
+				mutation: "not-found",
+				active: [],
+				completed: ["TASK-1"],
+			});
+		});
+
+		it("publishes archived lifecycle identity state atomically", async () => {
+			await core.createTask(sampleTask, false);
+			const store = await core.getContentStore();
+			const observed: Array<{ read: string; mutation: string; active: string[]; completed: string[] }> = [];
+			const unsubscribe = store.subscribe((event) => {
+				if (event.type !== "tasks") return;
+				const snapshot = store.getTaskCorpusSnapshot();
+				observed.push({
+					read: store.resolveTaskForRead(sampleTask.id).status,
+					mutation: store.resolveTaskForMutation(sampleTask.id).status,
+					active: snapshot.activeTasks.map((task) => task.id),
+					completed: snapshot.completedTasks.map((task) => task.id),
+				});
+			});
+
+			expect(await core.archiveTask(sampleTask.id, false)).toBe(true);
+			unsubscribe();
+
+			expect(observed[0]).toEqual({ read: "not-found", mutation: "not-found", active: [], completed: [] });
+		});
+
 		it("does not update a longer legacy sibling for a shorter numeric ID", async () => {
 			await core.createTask({ ...sampleTask, id: "BACK-1-EXTRA", title: "Longer sibling" }, false);
 

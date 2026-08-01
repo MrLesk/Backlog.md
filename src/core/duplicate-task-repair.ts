@@ -1,10 +1,11 @@
 import { link, lstat, mkdtemp, rename, rmdir, unlink } from "node:fs/promises";
 import { basename, dirname, join, relative, resolve, sep } from "node:path";
-import { EntityType, type Task } from "../types/index.ts";
+import type { Task } from "../types/index.ts";
 import { type DuplicateGroup, detectDuplicateTaskIds } from "../utils/duplicate-detection.ts";
 import { escapeRegex, generateNextId, generateNextSubtaskId, idForFilename } from "../utils/prefix-config.ts";
 import { canonicalTaskId, isNumericTaskId } from "../utils/task-id.ts";
 import type { Core } from "./backlog.ts";
+import type { TaskCorpusSnapshot } from "./content-store.ts";
 import { type BranchTaskStateEntry, loadLocalBranchTasks, loadRemoteTasks } from "./task-loader.ts";
 
 export type DuplicateTaskLocation = "active" | "completed";
@@ -90,11 +91,10 @@ function withLocation(task: Task, location: DuplicateTaskLocation, rootDir: stri
 	};
 }
 
-export async function findLocalDuplicateTaskIds(core: Core): Promise<DuplicateGroup[]> {
-	const [activeTasks, completedTasks] = await Promise.all([
-		core.filesystem.listTasks(),
-		core.filesystem.listCompletedTasks(),
-	]);
+export async function findLocalDuplicateTaskIds(core: Core, snapshot?: TaskCorpusSnapshot): Promise<DuplicateGroup[]> {
+	const [activeTasks, completedTasks] = snapshot
+		? [snapshot.activeTasks, snapshot.completedTasks]
+		: await Promise.all([core.filesystem.listTasks(), core.filesystem.listCompletedTasks()]);
 	return detectDuplicateTaskIds([
 		...activeTasks.map((task) => withLocation(task, "active", core.filesystem.rootDir)),
 		...completedTasks.map((task) => withLocation(task, "completed", core.filesystem.rootDir)),
@@ -229,28 +229,19 @@ function validateGroupParent(group: DuplicateGroup): { parentId?: string; blocke
 }
 
 async function allocateRepairId(
-	core: Core,
+	_core: Core,
 	parentId: string | undefined,
 	existingIds: string[],
 	plannedIds: string[],
 	taskPrefix: string,
 	zeroPaddedIds?: number,
 ): Promise<string> {
-	const generatedId = await core.generateNextId(EntityType.Task, parentId);
 	const occupiedIds = [...existingIds, ...plannedIds];
-	if (!occupiedIds.some((occupiedId) => canonicalTaskId(occupiedId) === canonicalTaskId(generatedId))) {
-		return generatedId;
-	}
-
-	let nextId: string;
-	if (!parentId) {
-		nextId = generateNextId(occupiedIds, taskPrefix, zeroPaddedIds);
-	} else {
-		const generatedParent = generatedId.slice(0, generatedId.lastIndexOf("."));
-		nextId = generateNextSubtaskId(occupiedIds, generatedParent, taskPrefix, zeroPaddedIds);
-	}
+	const nextId = parentId
+		? generateNextSubtaskId(occupiedIds, canonicalTaskId(parentId), taskPrefix, zeroPaddedIds)
+		: generateNextId(occupiedIds, taskPrefix, zeroPaddedIds);
 	if (occupiedIds.some((occupiedId) => canonicalTaskId(occupiedId) === canonicalTaskId(nextId))) {
-		throw new Error(`Could not allocate an unused repair ID after ${generatedId}.`);
+		throw new Error(`Could not allocate an unused repair ID after ${nextId}.`);
 	}
 	return nextId;
 }
@@ -392,14 +383,15 @@ async function findReferenceReviews(core: Core, groupIds: string[]): Promise<Dup
 export async function previewDuplicateTaskIdRepair(
 	core: Core,
 	options: { includeBranches?: boolean } = {},
+	snapshot?: TaskCorpusSnapshot,
 ): Promise<DuplicateRepairPlan> {
-	const groups = await findLocalDuplicateTaskIds(core);
+	const groups = await findLocalDuplicateTaskIds(core, snapshot);
 	const crossBranchFindings = options.includeBranches ? await findCrossBranchDuplicateTaskIds(core) : [];
 	const blockedReasons: string[] = [];
 	const changes: DuplicateRepairChange[] = [];
 	const [activeTasks, completedTasks, config] = await Promise.all([
-		core.filesystem.listTasks(),
-		core.filesystem.listCompletedTasks(),
+		snapshot ? Promise.resolve(snapshot.activeTasks) : core.filesystem.listTasks(),
+		snapshot ? Promise.resolve(snapshot.completedTasks) : core.filesystem.listCompletedTasks(),
 		core.filesystem.loadConfig(),
 	]);
 	const existingIds = [...activeTasks, ...completedTasks].map((task) => task.id);
