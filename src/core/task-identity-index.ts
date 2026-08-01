@@ -147,14 +147,16 @@ function liveRecords(identity: TaskIdentity): TaskIdentityRecord[] {
 
 export class TaskIdentityIndex {
 	private readonly groups = new Map<string, TaskIdentityGroup>();
+	private readonly records: TaskIdentityRecord[];
 
 	constructor(
 		records: TaskIdentityRecord[],
-		context: TaskIdentityPathContext,
+		private readonly context: TaskIdentityPathContext,
 		private readonly statuses: string[],
 		private readonly resolutionStrategy: "most_recent" | "most_progressed",
 	) {
-		for (const record of records) {
+		this.records = records.slice();
+		for (const record of this.records) {
 			const canonicalId = canonicalTaskId(record.id);
 			const path = normalizeRecordPath(record, context);
 			const group = this.groups.get(canonicalId) ?? { id: canonicalId, identities: new Map() };
@@ -165,8 +167,49 @@ export class TaskIdentityIndex {
 		}
 	}
 
-	private getGroup(taskId: string): TaskIdentityGroup | undefined {
-		return [...this.groups.values()].find((group) => taskIdsEqual(group.id, taskId));
+	withWorkingCopyCorpus(activeTasks: Task[], completedTasks: Task[]): TaskIdentityIndex {
+		const records = this.records.filter((record) => !record.workingCopy);
+		for (const task of activeTasks) {
+			records.push({
+				id: task.id,
+				type: "task",
+				branch: "local",
+				path: task.filePath ?? task.id,
+				lastModified: task.lastModified ?? (task.updatedDate ? new Date(task.updatedDate) : new Date(0)),
+				task: { ...task, source: "local" },
+				workingCopy: true,
+			});
+		}
+		for (const task of completedTasks) {
+			records.push({
+				id: task.id,
+				type: "completed",
+				branch: "local",
+				path: task.filePath ?? task.id,
+				lastModified: task.lastModified ?? (task.updatedDate ? new Date(task.updatedDate) : new Date(0)),
+				task: { ...task, source: "completed" },
+				workingCopy: true,
+			});
+		}
+		return new TaskIdentityIndex(records, this.context, this.statuses, this.resolutionStrategy);
+	}
+
+	withRecord(record: TaskIdentityRecord): TaskIdentityIndex {
+		return new TaskIdentityIndex([...this.records, record], this.context, this.statuses, this.resolutionStrategy);
+	}
+
+	private getGroups(taskId: string): TaskIdentityGroup[] {
+		return [...this.groups.values()].filter((group) => taskIdsEqual(group.id, taskId));
+	}
+
+	private candidatesAcrossGroups(groups: TaskIdentityGroup[]): string[] {
+		const candidates = new Set<string>();
+		for (const group of groups) {
+			for (const identity of group.identities.values()) {
+				for (const record of liveRecords(identity)) candidates.add(record.path);
+			}
+		}
+		return [...candidates].sort((left, right) => left.localeCompare(right));
 	}
 
 	private ambiguousCandidates(group: TaskIdentityGroup): string[] {
@@ -211,13 +254,41 @@ export class TaskIdentityIndex {
 		return tasks;
 	}
 
-	resolve(taskId: string): TaskIdentityResolution {
-		const group = this.getGroup(taskId);
-		if (!group) return { status: "not-found" };
+	resolveForRead(taskId: string): TaskIdentityResolution {
+		const groups = this.getGroups(taskId);
+		if (groups.length === 0) return { status: "not-found" };
+		if (groups.length > 1) return { status: "ambiguous", candidates: this.candidatesAcrossGroups(groups) };
+		const group = groups[0] as TaskIdentityGroup;
 		const candidates = this.ambiguousCandidates(group);
 		if (candidates.length > 0) return { status: "ambiguous", candidates };
-		const tasks = this.getTasks(false).filter((task) => taskIdsEqual(task.id, taskId));
+		const tasks = this.getTasks(true).filter((task) => taskIdsEqual(task.id, taskId));
 		return tasks[0] ? { status: "found", task: tasks[0] } : { status: "not-found" };
+	}
+
+	resolveForMutation(taskId: string): TaskIdentityResolution {
+		const groups = this.getGroups(taskId);
+		if (groups.length === 0) return { status: "not-found" };
+		if (groups.length > 1) return { status: "ambiguous", candidates: this.candidatesAcrossGroups(groups) };
+		const group = groups[0] as TaskIdentityGroup;
+		const candidates = this.ambiguousCandidates(group);
+		if (candidates.length > 0) return { status: "ambiguous", candidates };
+		const workingTasks = [...group.identities.values()]
+			.flatMap((identity) => identity.records)
+			.filter((record) => record.workingCopy && record.type === "task" && record.task)
+			.sort((left, right) => recordKey(left).localeCompare(recordKey(right)));
+		const selected = workingTasks[0]?.task;
+		return selected ? { status: "found", task: { ...selected, source: "local" } } : { status: "not-found" };
+	}
+
+	resolve(taskId: string): TaskIdentityResolution {
+		return this.resolveForMutation(taskId);
+	}
+
+	getFingerprint(): string {
+		return this.records
+			.map((record) => `${recordKey(record)}\0${record.type}\0${record.workingCopy ? "1" : "0"}`)
+			.sort((left, right) => left.localeCompare(right))
+			.join("\n");
 	}
 
 	getOccupiedIds(): string[] {

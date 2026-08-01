@@ -58,21 +58,13 @@ import {
 	stringArraysEqual,
 	validateDependencies,
 } from "../utils/task-builders.ts";
-import { resolveTaskById } from "../utils/task-id.ts";
-import {
-	AmbiguousTaskIdError,
-	getDraftPath,
-	getTaskFilename,
-	getTaskPath,
-	normalizeTaskId,
-	taskIdsEqual,
-} from "../utils/task-path.ts";
+import { AmbiguousTaskIdError, getDraftPath, getTaskPath, normalizeTaskId, taskIdsEqual } from "../utils/task-path.ts";
 import { attachSubtaskSummaries } from "../utils/task-subtasks.ts";
 import { formatValidTaskTypeValues, matchesTaskTypeFilter, resolveTaskTypeValue } from "../utils/task-type-config.ts";
 import { upsertTaskUpdatedDate } from "../utils/task-updated-date.ts";
 import { isTerminalStatus } from "../utils/terminal-status.ts";
 import { migrateConfig, needsMigration } from "./config-migration.ts";
-import { ContentStore } from "./content-store.ts";
+import { ContentStore, type TaskCorpusSnapshot } from "./content-store.ts";
 import {
 	applyDuplicateTaskIdRepair,
 	type DuplicateRepairPlan,
@@ -210,7 +202,6 @@ export class Core {
 	private contentStore?: ContentStore;
 	private searchService?: SearchService;
 	private readonly enableWatchers: boolean;
-	private taskIdentityIndex?: TaskIdentityIndex;
 	private activeBranchFingerprint: string | null = null;
 	private activeBranchFingerprintPromise: Promise<string> | null = null;
 	private activeBranchRefreshPromise: Promise<void> | null = null;
@@ -273,7 +264,10 @@ export class Core {
 	}
 
 	async previewDuplicateTaskIdRepair(options: { includeBranches?: boolean } = {}): Promise<DuplicateRepairPlan> {
-		return await previewDuplicateTaskIdRepair(this, options);
+		const hadStore = this.contentStore !== undefined;
+		const store = await this.getContentStore();
+		if (hadStore) await store.refreshLocalTaskCorpus();
+		return await previewDuplicateTaskIdRepair(this, options, store.getTaskCorpusSnapshot());
 	}
 
 	async repairDuplicateTaskIds(expectedFingerprint: string): Promise<DuplicateRepairResult> {
@@ -307,7 +301,7 @@ export class Core {
 	async getContentStore(): Promise<ContentStore> {
 		if (!this.contentStore) {
 			// Use loadTasks as the task loader to include cross-branch tasks
-			this.contentStore = new ContentStore(this.fs, () => this.loadTasks(), this.enableWatchers);
+			this.contentStore = new ContentStore(this.fs, () => this.loadContentStoreCorpus(), this.enableWatchers);
 		}
 		await this.contentStore.ensureInitialized();
 		return this.contentStore;
@@ -371,11 +365,11 @@ export class Core {
 	}
 
 	/** Refresh the existing cross-branch store only when relevant config or refs changed. */
-	async refreshTasksForTaskRead(): Promise<void> {
+	async refreshTasksForTaskRead(): Promise<boolean> {
 		while (true) {
 			const fingerprint = await this.getActiveBranchFingerprint();
 			if (fingerprint === this.activeBranchFingerprint) {
-				return;
+				return false;
 			}
 
 			if (!this.activeBranchRefreshPromise) {
@@ -394,6 +388,7 @@ export class Core {
 			}
 
 			await this.activeBranchRefreshPromise;
+			return true;
 		}
 	}
 
@@ -617,43 +612,14 @@ export class Core {
 	}
 
 	async getTask(taskId: string): Promise<Task | null> {
-		const localTasks = await this.fs.listTasks();
-		const localResolution = resolveTaskById(localTasks, taskId);
-		if (localResolution.status === "invalid") {
-			return null;
-		}
-		if (localResolution.status === "ambiguous") {
-			throw new AmbiguousTaskIdError(
-				taskId,
-				localResolution.tasks.map((task) => task.filePath ?? task.id),
-			);
-		}
-
-		// Also fail closed when an active task collides with a completed file.
-		await this.fs.loadTask(taskId);
-
-		await this.refreshTasksForTaskRead();
 		const store = await this.getContentStore();
-		const identityResolution = this.taskIdentityIndex?.resolve(taskId);
-		if (identityResolution?.status === "ambiguous") {
+		const branchRefreshed = await this.refreshTasksForTaskRead();
+		if (!branchRefreshed) await store.refreshLocalTaskCorpus();
+		const identityResolution = store.resolveTaskForRead(taskId);
+		if (identityResolution.status === "ambiguous") {
 			throw new AmbiguousTaskIdError(taskId, identityResolution.candidates);
 		}
-		const storeResolution = resolveTaskById(store.getTasks(), taskId);
-		if (storeResolution.status === "ambiguous") {
-			throw new AmbiguousTaskIdError(
-				taskId,
-				storeResolution.tasks.map((task) => task.filePath ?? `${task.branch ?? "unknown branch"}:${task.id}`),
-			);
-		}
-		if (localResolution.status === "found") {
-			return localResolution.task;
-		}
-		if (identityResolution?.status === "found") {
-			return identityResolution.task;
-		}
-
-		if (storeResolution.status === "found") return storeResolution.task;
-		return null;
+		return identityResolution.status === "found" ? identityResolution.task : null;
 	}
 
 	async getTaskWithSubtasks(taskId: string, localTasks?: Task[]): Promise<Task | null> {
@@ -671,9 +637,11 @@ export class Core {
 	}
 
 	private async loadLocalTaskForMutation(taskId: string): Promise<Task | null> {
-		const resolvedTask = await this.getTask(taskId);
-		if (!resolvedTask || !isLocalEditableTask(resolvedTask) || resolvedTask.branch) return null;
-		return await this.fs.loadTask(resolvedTask.id);
+		const store = await this.getContentStore();
+		await store.refreshTasks();
+		const resolution = store.resolveTaskForMutation(taskId);
+		if (resolution.status === "ambiguous") throw new AmbiguousTaskIdError(taskId, resolution.candidates);
+		return resolution.status === "found" ? { ...resolution.task } : null;
 	}
 
 	async getTaskContent(taskId: string): Promise<string | null> {
@@ -725,7 +693,6 @@ export class Core {
 			this.contentStore.dispose();
 			this.contentStore = undefined;
 		}
-		this.taskIdentityIndex = undefined;
 		this.activeBranchFingerprint = null;
 		this.activeBranchFingerprintPromise = null;
 		this.activeBranchRefreshPromise = null;
@@ -1416,7 +1383,10 @@ export class Core {
 		normalizeAssignee(task);
 
 		// Load original task to detect status changes for callbacks
-		const originalTask = await this.fs.loadTask(task.id);
+		const cachedResolution = this.contentStore?.isInitialized()
+			? this.contentStore.resolveTaskForMutation(task.id)
+			: undefined;
+		const originalTask = cachedResolution?.status === "found" ? cachedResolution.task : await this.fs.loadTask(task.id);
 		const oldStatus = originalTask?.status ?? "";
 		const newStatus = task.status ?? "";
 		const statusChanged = oldStatus !== newStatus;
@@ -1429,20 +1399,11 @@ export class Core {
 			delete task.updatedDate;
 		}
 
-		await this.fs.saveTask(task);
+		const filePath = await this.fs.saveTask(task);
 		// Keep any in-process ContentStore in sync for immediate UI/search freshness.
-		if (this.contentStore) {
-			const savedTask = await this.fs.loadTask(task.id);
-			if (savedTask) {
-				this.contentStore.upsertTask(savedTask);
-			}
-		}
 
 		if (await this.shouldAutoCommit(autoCommit)) {
-			const filePath = await getTaskPath(task.id, this);
-			if (filePath) {
-				await this.git.addAndCommitTaskFile(task.id, filePath, "update");
-			}
+			await this.git.addAndCommitTaskFile(task.id, filePath, "update");
 		}
 
 		// Fire status change callback if status changed
@@ -2041,8 +2002,7 @@ export class Core {
 		}
 
 		await this.updateTask(task, autoCommit);
-		const refreshed = await this.fs.loadTask(taskId);
-		return refreshed ?? task;
+		return task;
 	}
 
 	async updateDraft(task: Task, autoCommit?: boolean): Promise<void> {
@@ -2242,10 +2202,11 @@ export class Core {
 	}
 
 	async updateTasksBulk(tasks: Task[], commitMessage?: string, autoCommit?: boolean): Promise<void> {
-		// Update all tasks without committing individually
-		for (const task of tasks) {
-			await this.updateTask(task, false); // Don't auto-commit each one
-		}
+		const updateAll = async () => {
+			for (const task of tasks) await this.updateTask(task, false);
+		};
+		if (this.contentStore) await this.contentStore.batchTaskUpdates(updateAll);
+		else await updateAll();
 
 		// Commit all changes at once if auto-commit is enabled
 		if (await this.shouldAutoCommit(autoCommit)) {
@@ -2284,13 +2245,13 @@ export class Core {
 			seen.add(id);
 		}
 
-		// Load all tasks from the ordered list - use getTask to include cross-branch tasks from the store
-		const loadedTasks = await Promise.all(
-			orderedTaskIds.map(async (id) => {
-				const task = await this.getTask(id);
-				return task;
-			}),
-		);
+		const store = await this.getContentStore();
+		await store.refreshTasks();
+		const loadedTasks = orderedTaskIds.map((id) => {
+			const resolution = store.resolveTaskForMutation(id);
+			if (resolution.status === "ambiguous") throw new AmbiguousTaskIdError(id, resolution.candidates);
+			return resolution.status === "found" ? resolution.task : null;
+		});
 
 		// Filter out any tasks that couldn't be loaded (may have been moved/deleted)
 		const validTasks = loadedTasks.filter((t): t is Task => t !== null);
@@ -2387,17 +2348,19 @@ export class Core {
 
 		// Get paths before moving the file
 		const taskPath = taskToArchive.filePath ?? (await getTaskPath(normalizedTaskId, this));
-		const taskFilename = await getTaskFilename(normalizedTaskId, this);
+		const taskFilename = taskPath ? basename(taskPath) : null;
 
 		if (!taskPath || !taskFilename) return false;
 
 		const fromPath = taskPath;
 		const toPath = join(await this.fs.getArchiveTasksDir(), taskFilename);
 
-		const success = await this.fs.archiveTask(normalizedTaskId);
-		if (!success) {
+		try {
+			await moveFile(fromPath, toPath);
+		} catch {
 			return false;
 		}
+		this.contentStore?.transitionTask(normalizedTaskId);
 
 		const activeTasks = await this.fs.listTasks();
 		const sanitizedTasks = this.sanitizeArchivedTaskLinks(activeTasks, normalizedTaskId);
@@ -2500,15 +2463,20 @@ export class Core {
 		const fromPath = taskPath;
 		const toPath = join(completedDir, taskFilename);
 
-		const success = await this.fs.completeTask(taskId);
+		try {
+			await moveFile(fromPath, toPath);
+		} catch {
+			return false;
+		}
+		this.contentStore?.transitionTask(task.id, { ...task, filePath: toPath, source: "completed" });
 
-		if (success && (await this.shouldAutoCommit(autoCommit))) {
+		if (await this.shouldAutoCommit(autoCommit)) {
 			// Stage the file move for proper Git tracking
 			const repoRoot = await this.git.stageFileMove(fromPath, toPath);
 			await this.git.commitChanges(`backlog: Complete task ${normalizeTaskId(taskId)}`, repoRoot);
 		}
 
-		return success;
+		return true;
 	}
 
 	async getTerminalStatusTasksByAge(olderThanDays: number): Promise<Task[]> {
@@ -3072,15 +3040,43 @@ export class Core {
 		abortSignal?: AbortSignal,
 		options?: { includeCompleted?: boolean },
 	): Promise<Task[]> {
-		return await this.loadTasksWithStableBranchSnapshot(progressCallback, abortSignal, options, 0);
+		return (await this.loadTasksWithStableBranchSnapshot(progressCallback, abortSignal, options, 0)).tasks;
+	}
+
+	private async loadTaskCorpusSnapshot(): Promise<TaskCorpusSnapshot> {
+		return await this.loadTasksWithStableBranchSnapshot(
+			undefined,
+			undefined,
+			{ includeCompleted: true, visibleCompleted: false },
+			0,
+		);
+	}
+
+	private async loadContentStoreCorpus(): Promise<TaskCorpusSnapshot> {
+		if (Object.hasOwn(this, "loadTasks")) {
+			const [activeTasks, completedTasks, config] = await Promise.all([
+				this.loadTasks(),
+				this.fs.listCompletedTasks(),
+				this.fs.loadConfig(),
+			]);
+			const identityIndex = await this.buildTaskIdentityIndex(
+				activeTasks,
+				completedTasks,
+				[],
+				config?.statuses ?? [...DEFAULT_STATUSES],
+				config?.taskResolutionStrategy ?? "most_progressed",
+			);
+			return { tasks: identityIndex.getTasks(false), activeTasks, completedTasks, identityIndex };
+		}
+		return await this.loadTaskCorpusSnapshot();
 	}
 
 	private async loadTasksWithStableBranchSnapshot(
 		progressCallback: ((msg: string) => void) | undefined,
 		abortSignal: AbortSignal | undefined,
-		options: { includeCompleted?: boolean } | undefined,
+		options: { includeCompleted?: boolean; visibleCompleted?: boolean } | undefined,
 		snapshotAttempt: number,
-	): Promise<Task[]> {
+	): Promise<TaskCorpusSnapshot> {
 		const config = await this.fs.loadConfig();
 		this.git.setConfig(config);
 		const snapshotBefore = await this.getActiveBranchFingerprint(config);
@@ -3153,7 +3149,7 @@ export class Core {
 			statuses,
 			resolutionStrategy,
 		);
-		const filteredTasks = identityIndex.getTasks(includeCompleted);
+		const filteredTasks = identityIndex.getTasks(options?.visibleCompleted ?? includeCompleted);
 
 		const snapshotAfter = await this.getActiveBranchFingerprint();
 		if (snapshotBefore !== snapshotAfter) {
@@ -3162,8 +3158,12 @@ export class Core {
 			}
 			return await this.loadTasksWithStableBranchSnapshot(progressCallback, abortSignal, options, snapshotAttempt + 1);
 		}
-		this.taskIdentityIndex = identityIndex;
 		this.activeBranchFingerprint = snapshotAfter;
-		return filteredTasks;
+		return {
+			tasks: filteredTasks,
+			activeTasks: localTasks,
+			completedTasks,
+			identityIndex,
+		};
 	}
 }

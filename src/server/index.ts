@@ -1,5 +1,5 @@
 import net from "node:net";
-import { dirname, join } from "node:path";
+import { dirname, isAbsolute, join } from "node:path";
 import type { Server, ServerWebSocket } from "bun";
 import { $ } from "bun";
 import { Core } from "../core/backlog.ts";
@@ -21,7 +21,7 @@ import {
 import { resolveMilestoneInputForStorage } from "../utils/milestone-storage.ts";
 import { formatValidPriorityValues, resolvePriorityValue } from "../utils/priority-config.ts";
 import { formatValidStatuses, getCanonicalStatuses, getValidStatuses } from "../utils/status.ts";
-import { resolveTaskById } from "../utils/task-id.ts";
+import { isValidTaskId } from "../utils/task-id.ts";
 import { isAmbiguousTaskIdError } from "../utils/task-path.ts";
 import { getVersion } from "../utils/version.ts";
 
@@ -189,6 +189,7 @@ export class BacklogServer {
 	private contentStore: ContentStore | null = null;
 	private searchService: SearchService | null = null;
 	private unsubscribeContentStore?: () => void;
+	private taskBroadcastTimer?: ReturnType<typeof setTimeout>;
 	private storeReadyBroadcasted = false;
 
 	constructor(projectPath: string) {
@@ -256,11 +257,15 @@ export class BacklogServer {
 	}
 
 	private broadcastTasksUpdated() {
-		for (const ws of this.sockets) {
-			try {
-				ws.send("tasks-updated");
-			} catch {}
-		}
+		if (this.taskBroadcastTimer) clearTimeout(this.taskBroadcastTimer);
+		this.taskBroadcastTimer = setTimeout(() => {
+			this.taskBroadcastTimer = undefined;
+			for (const ws of this.sockets) {
+				try {
+					ws.send("tasks-updated");
+				} catch {}
+			}
+		}, 75);
 	}
 
 	private broadcastConfigUpdated() {
@@ -485,6 +490,7 @@ export class BacklogServer {
 	}
 
 	async stop(): Promise<void> {
+		if (this.taskBroadcastTimer) clearTimeout(this.taskBroadcastTimer);
 		if (this._stopping) return;
 		this._stopping = true;
 
@@ -662,31 +668,10 @@ export class BacklogServer {
 		// Resolve parent task ID if provided
 		let parentTaskId: string | undefined;
 		if (parent) {
-			const store = await this.getContentStoreInstance();
-			let parentTask: Task | undefined;
+			let parentTask: Task | null;
 			try {
-				const localTask = await this.core.filesystem.loadTask(parent);
-				if (localTask) {
-					store.upsertTask(localTask);
-					parentTask = localTask;
-				} else {
-					const parentResolution = resolveTaskById(store.getTasks(), parent);
-					if (parentResolution.status === "ambiguous") {
-						return Response.json(
-							{ error: `Parent task ${parent} is ambiguous. Repair duplicate task IDs before using it.` },
-							{ status: 409 },
-						);
-					}
-					parentTask = parentResolution.status === "found" ? parentResolution.task : undefined;
-					if (!parentTask) {
-						const fallbackId = ensurePrefix(parent);
-						const fallback = await this.core.filesystem.loadTask(fallbackId);
-						if (fallback) {
-							store.upsertTask(fallback);
-							parentTask = fallback;
-						}
-					}
-				}
+				parentTask = await this.core.getTask(parent);
+				if (!parentTask) parentTask = await this.core.getTask(ensurePrefix(parent));
 			} catch (error) {
 				if (isAmbiguousTaskIdError(error)) {
 					return Response.json({ error: error.message }, { status: 409 });
@@ -907,37 +892,16 @@ export class BacklogServer {
 	}
 
 	private async handleGetTask(taskId: string): Promise<Response> {
-		const localTasks = await this.core.filesystem.listTasks();
-		const localResolution = resolveTaskById(localTasks, taskId);
-		if (localResolution.status === "invalid") {
-			return Response.json({ error: `Invalid task ID: ${taskId}` }, { status: 400 });
-		}
-		let localTask: Task | null;
-		try {
-			// loadTask checks active and completed task paths together, so a collision
-			// cannot be hidden by whichever directory happens to be read first.
-			localTask = await this.core.filesystem.loadTask(taskId);
-		} catch (error) {
-			if (isAmbiguousTaskIdError(error)) {
-				return Response.json({ error: error.message }, { status: 409 });
-			}
-			throw error;
-		}
-
-		const store = await this.getContentStoreInstance();
+		if (!isValidTaskId(taskId)) return Response.json({ error: `Invalid task ID: ${taskId}` }, { status: 400 });
 		let resolvedTask: Task | null;
 		try {
 			resolvedTask = await this.core.getTask(taskId);
 		} catch (error) {
 			if (!isAmbiguousTaskIdError(error)) throw error;
-			return Response.json(
-				{ error: `Task ID ${taskId} is ambiguous. Repair duplicate task IDs before opening it.` },
-				{ status: 409 },
-			);
-		}
-		if (localTask) {
-			store.upsertTask(localTask);
-			return Response.json(localTask);
+			const message = error.candidates.some((candidate) => !isAbsolute(candidate))
+				? `Task ID ${taskId} is ambiguous. Repair duplicate task IDs before opening it.`
+				: error.message;
+			return Response.json({ error: message }, { status: 409 });
 		}
 		if (resolvedTask) {
 			return Response.json(resolvedTask);
@@ -948,18 +912,6 @@ export class BacklogServer {
 
 	private async handleUpdateTask(req: Request, taskId: string): Promise<Response> {
 		const updates = await req.json();
-		let existingTask: Task | null;
-		try {
-			existingTask = await this.core.filesystem.loadTask(taskId);
-		} catch (error) {
-			if (isAmbiguousTaskIdError(error)) {
-				return Response.json({ error: error.message }, { status: 409 });
-			}
-			throw error;
-		}
-		if (!existingTask) {
-			return Response.json({ error: "Task not found" }, { status: 404 });
-		}
 
 		const updateInput: TaskUpdateInput = {};
 
@@ -1074,7 +1026,7 @@ export class BacklogServer {
 			return Response.json(updatedTask);
 		} catch (error) {
 			const message = error instanceof Error ? error.message : "Failed to update task";
-			return Response.json({ error: message }, { status: 400 });
+			return Response.json({ error: message }, { status: isAmbiguousTaskIdError(error) ? 409 : 400 });
 		}
 	}
 
@@ -1095,14 +1047,9 @@ export class BacklogServer {
 
 	private async handleCompleteTask(taskId: string): Promise<Response> {
 		try {
-			const task = await this.core.filesystem.loadTask(taskId);
-			if (!task) {
-				return Response.json({ error: "Task not found" }, { status: 404 });
-			}
-
 			const success = await this.core.completeTask(taskId);
 			if (!success) {
-				return Response.json({ error: "Failed to complete task" }, { status: 500 });
+				return Response.json({ error: "Task not found" }, { status: 404 });
 			}
 
 			// Notify listeners to refresh
@@ -1617,7 +1564,7 @@ export class BacklogServer {
 				);
 			}
 
-			const { updatedTask } = await this.core.reorderTask({
+			const { updatedTask, changedTasks } = await this.core.reorderTask({
 				taskId,
 				targetStatus,
 				orderedTaskIds,
@@ -1625,9 +1572,12 @@ export class BacklogServer {
 				commitMessage: `Reorder tasks in ${targetStatus}`,
 			});
 
-			return Response.json({ success: true, task: updatedTask });
+			return Response.json({ success: true, task: updatedTask, changedTasks });
 		} catch (error) {
 			const message = error instanceof Error ? error.message : "Failed to reorder task";
+			if (isAmbiguousTaskIdError(error)) {
+				return Response.json({ error: message }, { status: 409 });
+			}
 			// Cross-branch and validation errors are client errors (400), not server errors (500)
 			const isCrossBranchError = message.includes("exists in branch");
 			const isValidationError = message.includes("not found") || message.includes("Missing required");

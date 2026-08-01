@@ -560,6 +560,30 @@ const pressWithHistory = async (element: Element, key: string, init: KeyboardEve
 	await act(async () => navigated);
 };
 
+const dropTaskIntoStatus = async (
+	container: HTMLElement,
+	taskId: string,
+	sourceStatus: string,
+	targetStatus: string,
+	requestStarted: Promise<void> | undefined,
+) => {
+	const targetHeading = Array.from(container.querySelectorAll("h3")).find(
+		(heading) => heading.textContent === targetStatus,
+	);
+	const targetColumn = targetHeading?.closest(".rounded-lg");
+	expect(targetColumn).toBeTruthy();
+	const dropEvent = new window.Event("drop", { bubbles: true, cancelable: true });
+	Object.defineProperty(dropEvent, "dataTransfer", {
+		value: {
+			getData: (type: string) => (type === "text/plain" ? taskId : type === "text/status" ? sourceStatus : ""),
+		},
+	});
+	await act(async () => {
+		targetColumn?.dispatchEvent(dropEvent);
+		await requestStarted;
+	});
+};
+
 const pushRoute = async (path: string, expectations: FetchExpectation[] = []) => {
 	await runOperation(`push route ${path}`, expectations, () => {
 		window.history.pushState({}, "", path);
@@ -615,6 +639,109 @@ afterEach(async () => {
 });
 
 describe("task detail routes", () => {
+	it("keeps a newer WebSocket-reconciled task when an earlier reorder response arrives late", async () => {
+		const container = await renderApp("/board?lane=none", { advanceHealthSocket: true });
+		const dataSocket = assertHealthSocketDoesNotShadowDataSocket();
+		const sourceTask = tasks[0];
+		if (!sourceTask) throw new Error("Expected a source task");
+		const staleResponseTask: Task = {
+			...sourceTask,
+			title: "Stale reorder response",
+			status: "In Progress",
+			ordinal: 2000,
+		};
+		const externallyEditedTask: Task = {
+			...sourceTask,
+			title: "Newer external edit",
+			status: "In Progress",
+			ordinal: 2500,
+		};
+
+		const reorder = new FetchOperation("delayed reorder response", [
+			expectFetch("reorder response", "/api/tasks/reorder", { manual: true }),
+		]);
+		await dropTaskIntoStatus(
+			container,
+			sourceTask.id,
+			"To Do",
+			"In Progress",
+			reorder.startedSignals.get("reorder response")?.promise,
+		);
+		reorder.finish();
+
+		const reconciliation = new FetchOperation("newer WebSocket reconciliation", [
+			expectFetch("newer search", "/api/search", { manual: true }),
+			expectFetch("newer duplicate plan", "/api/tasks/duplicates"),
+		]);
+		await act(async () => {
+			dataSocket.deliver("tasks-updated");
+			await Promise.resolve();
+		});
+		await act(async () => {
+			reconciliation.respond(
+				"newer search",
+				json([
+					...searchResults.filter(
+						(result) => result.type !== "task" || result.task.id !== externallyEditedTask.id,
+					),
+					{ type: "task", task: externallyEditedTask, score: 1 } satisfies SearchResult,
+				]),
+			);
+			await reconciliation.settle("newer search", "newer duplicate plan");
+		});
+		reconciliation.finish();
+		expect(container.textContent).toContain(externallyEditedTask.title);
+
+		await act(async () => {
+			reorder.respond(
+				"reorder response",
+				json({ success: true, task: staleResponseTask, changedTasks: [staleResponseTask] }),
+			);
+			await reorder.settle("reorder response");
+		});
+
+		expect(container.textContent).toContain(externallyEditedTask.title);
+		expect(container.textContent).not.toContain(staleResponseTask.title);
+	});
+
+	it("applies every rebalanced task when the data WebSocket is disconnected", async () => {
+		const container = await renderApp("/board?lane=none", { advanceHealthSocket: true });
+		const dataSocket = assertHealthSocketDoesNotShadowDataSocket();
+		dataSocket.close();
+		const sourceTask = tasks[0];
+		const siblingTask = tasks[1];
+		if (!sourceTask || !siblingTask) throw new Error("Expected source and sibling tasks");
+		const updatedSourceTask: Task = { ...sourceTask, ordinal: 2000 };
+		const updatedSiblingTask: Task = { ...siblingTask, ordinal: 1000 };
+
+		const reorder = new FetchOperation("disconnected WebSocket reorder response", [
+			expectFetch("reorder response", "/api/tasks/reorder", { manual: true }),
+		]);
+		const requestStarted = reorder.startedSignals.get("reorder response")?.promise;
+		await dropTaskIntoStatus(container, sourceTask.id, "To Do", "To Do", requestStarted);
+		await act(async () => {
+			reorder.respond(
+				"reorder response",
+				json({
+					success: true,
+					task: updatedSourceTask,
+					changedTasks: [updatedSourceTask, updatedSiblingTask],
+				}),
+			);
+			await reorder.settle("reorder response");
+		});
+		reorder.finish();
+
+		const targetHeading = Array.from(container.querySelectorAll("h3")).find(
+			(heading) => heading.textContent === "To Do",
+		);
+		const targetColumn = targetHeading?.closest(".rounded-lg");
+		const visibleTaskTitles = Array.from(targetColumn?.querySelectorAll("[draggable='true'] h4") ?? []).map(
+			(element) => element.textContent,
+		);
+		expect(visibleTaskTitles.slice(0, 2)).toEqual([siblingTask.title, sourceTask.title]);
+	});
+
 	it("uses the canonical board route for task clicks and browser Back", async () => {
 		const container = await renderApp("/");
 		assertState(() => container.textContent?.includes(tasks[0]?.title ?? "") ?? false, "board task");
