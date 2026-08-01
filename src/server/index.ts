@@ -925,27 +925,11 @@ export class BacklogServer {
 		}
 
 		const store = await this.getContentStoreInstance();
-		await this.core.refreshTasksForTaskRead();
-		const config = await this.core.filesystem.loadConfig();
-		const checkActiveBranches = config?.checkActiveBranches !== false;
-		const storedResolution = resolveTaskById(store.getTasks(), taskId);
-		const activeBranchCollision = await this.core.hasActiveBranchTaskIdCollision(taskId, localTasks);
-		if (
-			localResolution.status === "ambiguous" ||
-			(checkActiveBranches && storedResolution.status === "ambiguous") ||
-			activeBranchCollision
-		) {
-			return Response.json(
-				{ error: `Task ID ${taskId} is ambiguous. Repair duplicate task IDs before opening it.` },
-				{ status: 409 },
-			);
-		}
-		if (
-			checkActiveBranches &&
-			localTask &&
-			storedResolution.status === "found" &&
-			localTask.id.toLowerCase() !== storedResolution.task.id.toLowerCase()
-		) {
+		let resolvedTask: Task | null;
+		try {
+			resolvedTask = await this.core.getTask(taskId);
+		} catch (error) {
+			if (!isAmbiguousTaskIdError(error)) throw error;
 			return Response.json(
 				{ error: `Task ID ${taskId} is ambiguous. Repair duplicate task IDs before opening it.` },
 				{ status: 409 },
@@ -955,8 +939,8 @@ export class BacklogServer {
 			store.upsertTask(localTask);
 			return Response.json(localTask);
 		}
-		if (storedResolution.status === "found") {
-			return Response.json(storedResolution.task);
+		if (resolvedTask) {
+			return Response.json(resolvedTask);
 		}
 
 		return Response.json({ error: `Task ${taskId} not found` }, { status: 404 });
