@@ -5,7 +5,7 @@ status: In Progress
 assignee:
   - '@codex'
 created_date: '2026-03-25 18:13'
-updated_date: '2026-08-01 22:03'
+updated_date: '2026-08-01 22:05'
 labels:
   - cli
   - init
@@ -16,6 +16,16 @@ references:
   - >-
     https://cursor.com/docs (verify current rules/skills paths when
     implementing)
+modified_files:
+  - CLI-INSTRUCTIONS.md
+  - README.md
+  - src/agent-instructions.ts
+  - src/cli.ts
+  - src/guidelines/index.ts
+  - src/test/cli-init-create.test.ts
+  - src/test/cli-init-cursor-pty.test.ts
+  - src/test/web-initialization-cursor.test.tsx
+  - src/web/components/InitializationScreen.tsx
 ---
 
 ## Description
