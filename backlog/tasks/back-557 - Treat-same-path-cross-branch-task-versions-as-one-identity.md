@@ -1,11 +1,11 @@
 ---
 id: BACK-557
 title: Treat same-path cross-branch task versions as one identity
-status: In Progress
+status: Done
 assignee:
   - '@codex'
 created_date: '2026-07-30 17:11'
-updated_date: '2026-08-01 10:26'
+updated_date: '2026-08-01 10:39'
 labels:
   - browser
   - git
@@ -13,6 +13,18 @@ dependencies: []
 references:
   - 'https://github.com/MrLesk/Backlog.md/issues/818'
   - 'https://github.com/MrLesk/Backlog.md/issues/783'
+modified_files:
+  - src/core/backlog.ts
+  - src/core/task-identity-index.ts
+  - src/core/task-loader.ts
+  - src/git/operations.ts
+  - src/server/index.ts
+  - src/test/core.test.ts
+  - src/test/local-branch-tasks.test.ts
+  - src/test/mcp-tasks.test.ts
+  - src/test/server-tasks-spa-fallback.test.ts
+  - src/test/task-identity-index.test.ts
+  - src/test/test-utils.ts
 type: bug
 ordinal: 202000
 ---
@@ -25,25 +37,25 @@ Cross-branch task loading currently folds display selection, lifecycle state, co
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 Same canonical ID at the same normalized path across local and branch versions resolves as one identity, with the working copy authoritative.
-- [ ] #2 The same canonical ID at distinct local paths fails closed.
-- [ ] #3 Branch-only variants of the same canonical ID at distinct paths fail closed.
-- [ ] #4 An active local identity plus a completed identity at a distinct path fails closed.
-- [ ] #5 An active working-copy record plus an archived version at the same logical path remains active and keeps the ID occupied.
-- [ ] #6 An identity whose variants are all archived is hidden and its ID is reusable.
-- [ ] #7 Equal timestamps for active and archived records resolve deterministically, remain scan-order independent, and cannot free an ID while a live record exists.
-- [ ] #8 includeCompleted preserves active canonical state and agrees with All Tasks and task detail resolution.
-- [ ] #9 Padded IDs at distinct paths fail closed consistently across supported surfaces.
-- [ ] #10 Allocation compares IDs without padding while preserving the configured or existing output spelling.
-- [ ] #11 Core getTask applies collision safety without requiring a stale prior load.
-- [ ] #12 Nested project and backlog directories normalize local and Git paths into one repository-relative logical path.
+- [x] #1 Same canonical ID at the same normalized path across local and branch versions resolves as one identity, with the working copy authoritative.
+- [x] #2 The same canonical ID at distinct local paths fails closed.
+- [x] #3 Branch-only variants of the same canonical ID at distinct paths fail closed.
+- [x] #4 An active local identity plus a completed identity at a distinct path fails closed.
+- [x] #5 An active working-copy record plus an archived version at the same logical path remains active and keeps the ID occupied.
+- [x] #6 An identity whose variants are all archived is hidden and its ID is reusable.
+- [x] #7 Equal timestamps for active and archived records resolve deterministically, remain scan-order independent, and cannot free an ID while a live record exists.
+- [x] #8 includeCompleted preserves active canonical state and agrees with All Tasks and task detail resolution.
+- [x] #9 Padded IDs at distinct paths fail closed consistently across supported surfaces.
+- [x] #10 Allocation compares IDs without padding while preserving the configured or existing output spelling.
+- [x] #11 Core getTask applies collision safety without requiring a stale prior load.
+- [x] #12 Nested project and backlog directories normalize local and Git paths into one repository-relative logical path.
 <!-- AC:END -->
 
 ## Definition of Done
 <!-- DOD:BEGIN -->
-- [ ] #1 bunx tsc --noEmit passes when TypeScript touched
-- [ ] #2 bun run check . passes when formatting/linting touched
-- [ ] #3 bun test (or scoped test) passes
+- [x] #1 bunx tsc --noEmit passes when TypeScript touched
+- [x] #2 bun run check . passes when formatting/linting touched
+- [x] #3 bun test (or scoped test) passes
 <!-- DOD:END -->
 
 ## Implementation Plan
@@ -65,4 +77,12 @@ Reopened after automatic review on 5026e3bb found three root-cause symptoms: lif
 RED evidence on exact PR head 5026e3bb: focused Core run executed three new public-API regressions and all failed for the intended reasons. Lifecycle-hidden collision resolved the local task instead of throwing AmbiguousTaskIdError; equal-time active/archive branch records generated BACK-1 instead of BACK-2; includeCompleted returned no distinct active/completed identities instead of preserving both paths.
 
 GREEN evidence before integration: 197 focused tests pass across the shared index, Core identity/lifecycle/allocation cases, MCP/statistics/board/unified views, and browser/server/Web/search routes. bunx tsc --noEmit, bun run check ., and git diff --check are clean. The simplification pass removed the former per-surface canonical maps, lifecycle filters, and duplicate branch-collision helper in favor of TaskIdentityIndex projections.
+
+Final exact-head verification on 27c1cc5d after rebasing onto origin/main deedb4e0: bun test passed 1,805 tests with 4 documented interactive TUI skips and 0 failures across 202 files (7,647 assertions); bunx tsc --noEmit passed; bun run check . checked 342 files with no fixes; git diff --check passed. A first full run exposed only two established progress-callback compatibility expectations; preserving the branch-scan message under the original checkActiveBranches gate made the isolated board-loading file 10/10 green before the clean full rerun.
 <!-- SECTION:NOTES:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+Introduced one shared task identity index keyed by padding-insensitive canonical ID plus normalized repository-relative logical path. Local, branch, worktree, completed, and archive records now share deterministic working-copy/lifecycle/display rules; distinct live paths fail closed; allocation remains occupied by any live variant and frees all-archived identities. Core, MCP, browser, statistics, and task-loading paths use the shared result, with regression coverage for branch-only and padded collisions, lifecycle shadows, equal timestamps, includeCompleted, direct fresh reads, and nested custom backlog paths.
+<!-- SECTION:FINAL_SUMMARY:END -->
