@@ -61,7 +61,6 @@ import {
 import { resolveTaskById } from "../utils/task-id.ts";
 import {
 	AmbiguousTaskIdError,
-	canonicalTaskId,
 	getDraftPath,
 	getTaskFilename,
 	getTaskPath,
@@ -83,6 +82,7 @@ import {
 import { migrateDraftPrefixes, needsDraftPrefixMigration } from "./prefix-migration.ts";
 import { calculateNewOrdinal, DEFAULT_ORDINAL_STEP, resolveOrdinalConflicts } from "./reorder.ts";
 import { SearchService } from "./search-service.ts";
+import { TaskIdentityIndex, type TaskIdentityRecord } from "./task-identity-index.ts";
 import {
 	type BranchTaskStateEntry,
 	findTaskInLocalBranches,
@@ -90,7 +90,6 @@ import {
 	getTaskLoadingMessage,
 	loadLocalBranchTasks,
 	loadRemoteTasks,
-	resolveTaskConflict,
 } from "./task-loader.ts";
 
 interface BlessedScreen {
@@ -186,58 +185,6 @@ function hasUpdatedDateRelevantChanges(originalTask: Task | null, nextTask: Task
 	);
 }
 
-function buildLatestStateMap(
-	stateEntries: BranchTaskStateEntry[] = [],
-	localTasks: Array<Task & { lastModified?: Date; updatedDate?: string }> = [],
-): Map<string, BranchTaskStateEntry> {
-	const latest = new Map<string, BranchTaskStateEntry>();
-	const update = (entry: BranchTaskStateEntry) => {
-		const taskId = canonicalTaskId(entry.id);
-		const existing = latest.get(taskId);
-		if (!existing || entry.lastModified > existing.lastModified) {
-			latest.set(taskId, entry);
-		}
-	};
-
-	for (const entry of stateEntries) {
-		update(entry);
-	}
-
-	for (const task of localTasks) {
-		if (!task.id) continue;
-		const lastModified = task.lastModified ?? (task.updatedDate ? new Date(task.updatedDate) : new Date(0));
-
-		update({
-			id: task.id,
-			type: "task",
-			branch: "local",
-			path: "",
-			lastModified,
-		});
-	}
-
-	return latest;
-}
-
-function filterTasksByStateSnapshots(tasks: Task[], latestState: Map<string, BranchTaskStateEntry>): Task[] {
-	return tasks.filter((task) => {
-		const latest = latestState.get(canonicalTaskId(task.id));
-		if (!latest) return true;
-		return latest.type === "task";
-	});
-}
-
-function mergeTaskByCanonicalId(
-	tasksById: Map<string, Task>,
-	task: Task,
-	statuses: string[],
-	resolutionStrategy: "most_recent" | "most_progressed",
-): void {
-	const taskId = canonicalTaskId(task.id);
-	const existing = tasksById.get(taskId);
-	tasksById.set(taskId, existing ? resolveTaskConflict(existing, task, statuses, resolutionStrategy) : task);
-}
-
 function normalizeDocumentTypeInput(type: unknown): DocumentType | undefined {
 	if (type === undefined) {
 		return undefined;
@@ -246,20 +193,6 @@ function normalizeDocumentTypeInput(type: unknown): DocumentType | undefined {
 		return type as DocumentType;
 	}
 	throw new Error(`Document type must be one of: ${DOCUMENT_TYPE_VALUES.join(", ")}.`);
-}
-
-/**
- * Extract IDs from state map where latest state is "task" or "completed" (not "archived" or "draft")
- * Used for ID generation to determine which IDs are in use.
- */
-function getActiveAndCompletedIdsFromStateMap(latestState: Map<string, BranchTaskStateEntry>): string[] {
-	const ids: string[] = [];
-	for (const entry of latestState.values()) {
-		if (entry.type === "task" || entry.type === "completed") {
-			ids.push(entry.id);
-		}
-	}
-	return ids;
 }
 
 function formatAvailableIndexHint(items: AcceptanceCriterion[], emptyMessage: string): string {
@@ -279,7 +212,7 @@ export class Core {
 	private contentStore?: ContentStore;
 	private searchService?: SearchService;
 	private readonly enableWatchers: boolean;
-	private activeBranchTaskEntries: BranchTaskStateEntry[] = [];
+	private taskIdentityIndex?: TaskIdentityIndex;
 	private activeBranchFingerprint: string | null = null;
 	private activeBranchFingerprintPromise: Promise<string> | null = null;
 	private activeBranchRefreshPromise: Promise<void> | null = null;
@@ -291,6 +224,50 @@ export class Core {
 		// Interactive modes (TUI, browser, MCP) should explicitly pass enableWatchers: true
 		this.enableWatchers = options?.enableWatchers ?? false;
 		// Note: Config is loaded lazily when needed since constructor can't be async
+	}
+
+	private async buildTaskIdentityIndex(
+		localTasks: Array<Task & { lastModified?: Date }>,
+		completedTasks: Task[],
+		branchRecords: BranchTaskStateEntry[],
+		statuses: string[],
+		resolutionStrategy: "most_recent" | "most_progressed",
+	): Promise<TaskIdentityIndex> {
+		const records: TaskIdentityRecord[] = [];
+		for (const task of localTasks) {
+			records.push({
+				id: task.id,
+				type: "task",
+				branch: "local",
+				path: task.filePath ?? join(this.fs.tasksDir, task.id),
+				lastModified: task.lastModified ?? (task.updatedDate ? new Date(task.updatedDate) : new Date(0)),
+				task: { ...task, source: "local" },
+				workingCopy: true,
+			});
+		}
+		for (const task of completedTasks) {
+			records.push({
+				id: task.id,
+				type: "completed",
+				branch: "local",
+				path: task.filePath ?? join(this.fs.completedDir, task.id),
+				lastModified: task.lastModified ?? (task.updatedDate ? new Date(task.updatedDate) : new Date(0)),
+				task: { ...task, source: "completed" },
+				workingCopy: true,
+			});
+		}
+		records.push(...branchRecords);
+
+		return new TaskIdentityIndex(
+			records,
+			{
+				repositoryRoot: await this.git.getRepositoryRoot(),
+				projectRoot: this.fs.rootDir,
+				backlogDirectory: this.fs.backlogDirName,
+			},
+			statuses,
+			resolutionStrategy,
+		);
 	}
 
 	async withCreateLock<T>(fn: () => Promise<T>): Promise<T> {
@@ -657,72 +634,26 @@ export class Core {
 		await this.fs.loadTask(taskId);
 
 		const store = await this.getContentStore();
-		const tasks = store.getTasks();
-		const resolution = resolveTaskById(tasks, taskId);
-		if (resolution.status === "invalid") {
-			return null;
+		const identityResolution = this.taskIdentityIndex?.resolve(taskId);
+		if (identityResolution?.status === "ambiguous") {
+			throw new AmbiguousTaskIdError(taskId, identityResolution.candidates);
 		}
-		if (resolution.status === "ambiguous") {
+		const storeResolution = resolveTaskById(store.getTasks(), taskId);
+		if (storeResolution.status === "ambiguous") {
 			throw new AmbiguousTaskIdError(
 				taskId,
-				resolution.tasks.map((task) => task.filePath ?? `${task.branch ?? "unknown branch"}:${task.id}`),
+				storeResolution.tasks.map((task) => task.filePath ?? `${task.branch ?? "unknown branch"}:${task.id}`),
 			);
-		}
-		if (resolution.status === "found" && (await this.hasActiveBranchTaskIdCollision(taskId, localTasks))) {
-			const candidates = this.activeBranchTaskEntries
-				.filter((entry) => taskIdsEqual(taskId, entry.id))
-				.map((entry) => entry.path);
-			if (localResolution.status === "found") {
-				candidates.push(localResolution.task.filePath ?? localResolution.task.id);
-			}
-			throw new AmbiguousTaskIdError(taskId, candidates);
-		}
-		if (localResolution.status === "found" && resolution.status === "found") {
-			if (!taskIdsEqual(localResolution.task.id, resolution.task.id)) {
-				throw new AmbiguousTaskIdError(taskId, [
-					localResolution.task.filePath ?? localResolution.task.id,
-					resolution.task.filePath ?? `${resolution.task.branch ?? "unknown branch"}:${resolution.task.id}`,
-				]);
-			}
-			return localResolution.task;
-		}
-		if (resolution.status === "found") {
-			return resolution.task;
 		}
 		if (localResolution.status === "found") {
 			return localResolution.task;
 		}
+		if (identityResolution?.status === "found") {
+			return identityResolution.task;
+		}
+
+		if (storeResolution.status === "found") return storeResolution.task;
 		return null;
-	}
-
-	async hasActiveBranchTaskIdCollision(taskId: string, localTasks: Task[]): Promise<boolean> {
-		const localMatches = localTasks.filter((task) => taskIdsEqual(taskId, task.id));
-		if (localMatches.length > 1) {
-			return true;
-		}
-
-		const config = await this.fs.loadConfig();
-		if (config?.checkActiveBranches === false) {
-			this.activeBranchTaskEntries = [];
-			return false;
-		}
-
-		const branchMatches = this.activeBranchTaskEntries.filter((entry) => taskIdsEqual(taskId, entry.id));
-		if (branchMatches.length === 0) {
-			return false;
-		}
-
-		const paths = new Set<string>();
-		for (const entry of branchMatches) {
-			paths.add(entry.path.replaceAll("\\", "/"));
-		}
-
-		const localTask = localMatches[0];
-		if (localTask?.filePath) {
-			paths.add(relative(this.fs.rootDir, localTask.filePath).replaceAll("\\", "/"));
-		}
-
-		return paths.size > 1;
 	}
 
 	async getTaskWithSubtasks(taskId: string, localTasks?: Task[]): Promise<Task | null> {
@@ -822,7 +753,7 @@ export class Core {
 			this.contentStore.dispose();
 			this.contentStore = undefined;
 		}
-		this.activeBranchTaskEntries = [];
+		this.taskIdentityIndex = undefined;
 		this.activeBranchFingerprint = null;
 		this.activeBranchFingerprintPromise = null;
 		this.activeBranchRefreshPromise = null;
@@ -1173,43 +1104,16 @@ export class Core {
 	private async getActiveAndCompletedTaskIds(): Promise<string[]> {
 		const config = await this.fs.loadConfig();
 		const taskPrefix = config?.prefixes?.task ?? "task";
+		const statuses = config?.statuses || [...DEFAULT_STATUSES];
+		const resolutionStrategy = config?.taskResolutionStrategy || "most_progressed";
 
 		// Load local active and completed tasks
 		const localTasks = await this.listTasksWithMetadata();
 		const localCompletedTasks = await this.fs.listCompletedTasks();
 
-		// Build initial state entries from local tasks
-		const stateEntries: BranchTaskStateEntry[] = [];
-
-		// Add local active tasks to state
-		for (const task of localTasks) {
-			if (!task.id) continue;
-			const lastModified = task.lastModified ?? (task.updatedDate ? new Date(task.updatedDate) : new Date(0));
-			stateEntries.push({
-				id: task.id,
-				type: "task",
-				branch: "local",
-				path: "",
-				lastModified,
-			});
-		}
-
-		// Add local completed tasks to state
-		for (const task of localCompletedTasks) {
-			if (!task.id) continue;
-			const lastModified = task.updatedDate ? new Date(task.updatedDate) : new Date(0);
-			stateEntries.push({
-				id: task.id,
-				type: "completed",
-				branch: "local",
-				path: "",
-				lastModified,
-			});
-		}
-
 		// Same-repository worktrees share the task ID namespace even before their
 		// task files are committed, so include their filesystem state for allocation.
-		stateEntries.push(...(await this.loadWorktreeTaskStateEntries(taskPrefix)));
+		const stateEntries = await this.loadWorktreeTaskStateEntries(taskPrefix);
 
 		// If cross-branch checking is enabled, scan other branches for task states
 		if (config?.checkActiveBranches !== false) {
@@ -1226,9 +1130,14 @@ export class Core {
 			stateEntries.push(...branchStateEntries);
 		}
 
-		// Build the latest state map and extract active + completed IDs
-		const latestState = buildLatestStateMap(stateEntries, []);
-		return getActiveAndCompletedIdsFromStateMap(latestState);
+		const index = await this.buildTaskIdentityIndex(
+			localTasks,
+			localCompletedTasks,
+			stateEntries,
+			statuses,
+			resolutionStrategy,
+		);
+		return index.getOccupiedIds();
 	}
 
 	/**
@@ -3150,54 +3059,26 @@ export class Core {
 
 		// Load remote tasks and local branch tasks in parallel
 		// Skip entirely when cross-branch scanning is disabled
-		let remoteTasks: Task[] = [];
-		let localBranchTasks: Task[] = [];
-		let branchStateEntries: BranchTaskStateEntry[] | undefined;
+		const branchStateEntries: BranchTaskStateEntry[] = [];
 
 		if (config?.checkActiveBranches !== false) {
 			const backlogDir = await this.getBacklogDirectoryName();
-			branchStateEntries = [];
-			[remoteTasks, localBranchTasks] = await Promise.all([
-				loadRemoteTasks(this.git, config, progressCallback, localTasks, branchStateEntries, false, backlogDir),
-				loadLocalBranchTasks(this.git, config, progressCallback, localTasks, branchStateEntries, false, backlogDir),
+			await Promise.all([
+				loadRemoteTasks(this.git, config, progressCallback, localTasks, branchStateEntries, true, backlogDir),
+				loadLocalBranchTasks(this.git, config, progressCallback, localTasks, branchStateEntries, true, backlogDir),
 			]);
 		}
 		progressCallback?.("Loaded tasks");
 
-		// Create map with local tasks
-		const tasksById = new Map<string, Task>(
-			localTasks.map((task) => [canonicalTaskId(task.id), { ...task, source: "local" }]),
+		progressCallback?.("Resolving task identities...");
+		const index = await this.buildTaskIdentityIndex(
+			localTasks,
+			completedTasks,
+			branchStateEntries,
+			statuses,
+			resolutionStrategy,
 		);
-
-		// Add completed tasks to the map
-		for (const completedTask of completedTasks) {
-			const taskId = canonicalTaskId(completedTask.id);
-			if (!tasksById.has(taskId)) {
-				tasksById.set(taskId, { ...completedTask, source: "completed" });
-			}
-		}
-
-		// Merge tasks from other local branches
-		progressCallback?.("Merging tasks...");
-		for (const branchTask of localBranchTasks) {
-			mergeTaskByCanonicalId(tasksById, branchTask, statuses, resolutionStrategy);
-		}
-
-		// Merge remote tasks with local tasks
-		for (const remoteTask of remoteTasks) {
-			mergeTaskByCanonicalId(tasksById, remoteTask, statuses, resolutionStrategy);
-		}
-
-		// Get all tasks as array
-		const tasks = Array.from(tasksById.values());
-		let activeTasks: Task[];
-
-		if (config?.checkActiveBranches === false) {
-			activeTasks = tasks;
-		} else {
-			progressCallback?.("Applying latest task states from branch scans...");
-			activeTasks = filterTasksByStateSnapshots(tasks, buildLatestStateMap(branchStateEntries || [], localTasks));
-		}
+		const activeTasks = index.getTasks(true);
 
 		// Load drafts
 		progressCallback?.("Loading drafts...");
@@ -3249,15 +3130,12 @@ export class Core {
 
 		// Load tasks from remote branches and other local branches in parallel
 		// Skip entirely when cross-branch scanning is disabled
-		let remoteTasks: Task[] = [];
-		let localBranchTasks: Task[] = [];
-		let branchStateEntries: BranchTaskStateEntry[] | undefined;
+		const branchStateEntries: BranchTaskStateEntry[] = [];
 
 		if (config?.checkActiveBranches !== false) {
 			progressCallback?.(getTaskLoadingMessage(config));
-			branchStateEntries = [];
 			const backlogDir = await this.getBacklogDirectoryName();
-			[remoteTasks, localBranchTasks] = await Promise.all([
+			await Promise.all([
 				loadRemoteTasks(
 					this.git,
 					config,
@@ -3279,103 +3157,25 @@ export class Core {
 			]);
 		}
 
-		const currentBranch = config?.checkActiveBranches === false ? null : await this.git.getCurrentBranch();
-		const nextActiveBranchTaskEntries = (branchStateEntries ?? []).filter(
-			(entry) => entry.type === "task" && entry.branch !== currentBranch,
-		);
-
 		// Check for cancellation after loading
 		if (abortSignal?.aborted) {
 			throw new Error("Loading cancelled");
 		}
 
-		// Create map with local tasks (current branch filesystem)
-		const tasksById = new Map<string, Task>(
-			localTasks.map((task) => [canonicalTaskId(task.id), { ...task, source: "local" }]),
+		// Check for cancellation before identity resolution
+		if (abortSignal?.aborted) {
+			throw new Error("Loading cancelled");
+		}
+
+		progressCallback?.("Resolving task identities...");
+		const identityIndex = await this.buildTaskIdentityIndex(
+			localTasks,
+			completedTasks,
+			branchStateEntries,
+			statuses,
+			resolutionStrategy,
 		);
-
-		// Add local completed tasks when requested
-		if (includeCompleted) {
-			for (const completedTask of completedTasks) {
-				tasksById.set(canonicalTaskId(completedTask.id), { ...completedTask, source: "completed" });
-			}
-		}
-
-		// Merge tasks from other local branches
-		for (const branchTask of localBranchTasks) {
-			if (abortSignal?.aborted) {
-				throw new Error("Loading cancelled");
-			}
-
-			mergeTaskByCanonicalId(tasksById, branchTask, statuses, resolutionStrategy);
-		}
-
-		// Merge remote tasks with local tasks
-		for (const remoteTask of remoteTasks) {
-			// Check for cancellation during merge
-			if (abortSignal?.aborted) {
-				throw new Error("Loading cancelled");
-			}
-
-			mergeTaskByCanonicalId(tasksById, remoteTask, statuses, resolutionStrategy);
-		}
-
-		// Check for cancellation before cross-branch checking
-		if (abortSignal?.aborted) {
-			throw new Error("Loading cancelled");
-		}
-
-		// Get the latest directory location of each task across all branches
-		const tasks = Array.from(tasksById.values());
-
-		if (abortSignal?.aborted) {
-			throw new Error("Loading cancelled");
-		}
-
-		let filteredTasks: Task[];
-
-		if (config?.checkActiveBranches === false) {
-			filteredTasks = tasks;
-		} else {
-			progressCallback?.("Applying latest task states from branch scans...");
-			if (!includeCompleted) {
-				filteredTasks = filterTasksByStateSnapshots(tasks, buildLatestStateMap(branchStateEntries || [], localTasks));
-			} else {
-				const stateEntries = branchStateEntries || [];
-				for (const completedTask of completedTasks) {
-					if (!completedTask.id) continue;
-					const lastModified = completedTask.updatedDate ? new Date(completedTask.updatedDate) : new Date(0);
-					stateEntries.push({
-						id: completedTask.id,
-						type: "completed",
-						branch: "local",
-						path: "",
-						lastModified,
-					});
-				}
-
-				const latestState = buildLatestStateMap(stateEntries, localTasks);
-				const completedIds = new Set<string>();
-				for (const [id, entry] of latestState) {
-					if (entry.type === "completed") {
-						completedIds.add(id);
-					}
-				}
-
-				filteredTasks = tasks
-					.filter((task) => {
-						const latest = latestState.get(canonicalTaskId(task.id));
-						if (!latest) return true;
-						return latest.type === "task" || latest.type === "completed";
-					})
-					.map((task) => {
-						if (!completedIds.has(canonicalTaskId(task.id))) {
-							return task;
-						}
-						return { ...task, source: "completed" };
-					});
-			}
-		}
+		const filteredTasks = identityIndex.getTasks(includeCompleted);
 
 		const snapshotAfter = await this.getActiveBranchFingerprint();
 		if (snapshotBefore !== snapshotAfter) {
@@ -3384,7 +3184,7 @@ export class Core {
 			}
 			return await this.loadTasksWithStableBranchSnapshot(progressCallback, abortSignal, options, snapshotAttempt + 1);
 		}
-		this.activeBranchTaskEntries = nextActiveBranchTaskEntries;
+		this.taskIdentityIndex = identityIndex;
 		this.activeBranchFingerprint = snapshotAfter;
 		return filteredTasks;
 	}

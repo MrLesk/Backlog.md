@@ -114,7 +114,7 @@ async function restartWithActiveBranchCollision(
 	await startServer();
 }
 
-async function restartWithActiveRemoteCollision(): Promise<void> {
+async function restartWithActiveRemoteCollision(useSamePath = false): Promise<void> {
 	await server?.stop();
 	server = null;
 
@@ -138,11 +138,18 @@ async function restartWithActiveRemoteCollision(): Promise<void> {
 	await $`git push -u origin main`.cwd(TEST_DIR).quiet();
 
 	await $`git switch -c remote-update`.cwd(TEST_DIR).quiet();
-	await $`git rm -- ${relative(TEST_DIR, mainTaskPath)}`.cwd(TEST_DIR).quiet();
-	await Bun.write(
-		join(filesystem.tasksDir, "back-1 - Remote-path-collision.md"),
-		serializeTask({ ...mainTask, title: "Remote path collision" }),
-	);
+	if (useSamePath) {
+		await Bun.write(
+			mainTaskPath,
+			serializeTask({ ...mainTask, id: "BACK-001", title: "Remote same-path version", status: "Done" }),
+		);
+	} else {
+		await $`git rm -- ${relative(TEST_DIR, mainTaskPath)}`.cwd(TEST_DIR).quiet();
+		await Bun.write(
+			join(filesystem.tasksDir, "back-1 - Remote-path-collision.md"),
+			serializeTask({ ...mainTask, title: "Remote path collision" }),
+		);
+	}
 	await $`git add backlog`.cwd(TEST_DIR).quiet();
 	await $`git commit -m "Move task on remote main"`.cwd(TEST_DIR).quiet();
 	await $`git push origin HEAD:main`.cwd(TEST_DIR).quiet();
@@ -548,6 +555,14 @@ describe("BacklogServer task SPA fallback", () => {
 		expect((await response.json()) as { error: string }).toEqual({
 			error: "Task ID BACK-1 is ambiguous. Repair duplicate task IDs before opening it.",
 		});
+	});
+
+	it("returns the local task when active origin/main has a padded version at the same path", async () => {
+		await restartWithActiveRemoteCollision(true);
+
+		const response = await request("/api/task/BACK-1");
+		expect(response.status).toBe(200);
+		expect(((await response.json()) as Task).title).toBe("Main collision task");
 	});
 
 	it("returns the local legacy task when an active branch changes the same task path", async () => {

@@ -324,19 +324,175 @@ describe("Core", () => {
 			await expect(core.getTask("BACK-1")).rejects.toBeInstanceOf(AmbiguousTaskIdError);
 		});
 
-		it("hides a padded same-path variant when a newer branch archives it", async () => {
+		it("fails closed when an archive snapshot would otherwise hide distinct active paths", async () => {
+			const config = await core.filesystem.loadConfig();
+			if (!config) {
+				throw new Error("Expected config to be loaded");
+			}
+			await core.filesystem.saveConfig({
+				...config,
+				checkActiveBranches: true,
+				remoteOperations: false,
+				prefixes: { ...config.prefixes, task: "back" },
+			});
+
+			const localTaskPath = await core.filesystem.saveTask({
+				...sampleTask,
+				id: "BACK-1",
+				title: "Local active path",
+			});
+			await $`git add .`.cwd(TEST_DIR).quiet();
+			await $`git commit -m "Add local active task"`.cwd(TEST_DIR).quiet();
+
+			await $`git switch -c distinct-active-path`.cwd(TEST_DIR).quiet();
+			await $`git rm -- ${localTaskPath}`.cwd(TEST_DIR).quiet();
+			await Bun.write(
+				join(core.filesystem.tasksDir, "back-001 - Distinct-branch-path.md"),
+				serializeTask({
+					...sampleTask,
+					id: "BACK-001",
+					title: "Distinct branch path",
+				}),
+			);
+			const activeDate = "2026-07-30T18:01:00Z";
+			await $`git add .`.cwd(TEST_DIR).quiet();
+			await $`GIT_AUTHOR_DATE="${activeDate}" GIT_COMMITTER_DATE="${activeDate}" git commit -m "Move task to a distinct active path"`
+				.cwd(TEST_DIR)
+				.quiet();
+
+			await $`git switch -c archive-shadow`.cwd(TEST_DIR).quiet();
+			await Bun.write(
+				join(core.filesystem.archiveTasksDir, "back-1 - Local-active-path.md"),
+				serializeTask({ ...sampleTask, id: "BACK-1", title: "Archived local path" }),
+			);
+			const archiveDate = "2026-07-30T18:02:00Z";
+			await $`git add .`.cwd(TEST_DIR).quiet();
+			await $`GIT_AUTHOR_DATE="${archiveDate}" GIT_COMMITTER_DATE="${archiveDate}" git commit -m "Archive the original path"`
+				.cwd(TEST_DIR)
+				.quiet();
+			await $`git switch main`.cwd(TEST_DIR).quiet();
+			await utimes(localTaskPath, new Date("2026-07-30T18:00:00Z"), new Date("2026-07-30T18:00:00Z"));
+
+			await expect(core.getTask("BACK-1")).rejects.toBeInstanceOf(AmbiguousTaskIdError);
+		});
+
+		it("keeps an ID occupied when equal-time branch records are active and archived", async () => {
+			const config = await core.filesystem.loadConfig();
+			if (!config) {
+				throw new Error("Expected config to be loaded");
+			}
+			await core.filesystem.saveConfig({
+				...config,
+				checkActiveBranches: true,
+				remoteOperations: false,
+				prefixes: { ...config.prefixes, task: "back" },
+			});
+			await $`git add .`.cwd(TEST_DIR).quiet();
+			await $`git commit -m "Configure identity loading"`.cwd(TEST_DIR).quiet();
+
+			await $`git switch -c equal-time-states`.cwd(TEST_DIR).quiet();
+			await Bun.write(
+				join(core.filesystem.archiveTasksDir, "back-1 - Archived-version.md"),
+				serializeTask({ ...sampleTask, id: "BACK-1", title: "Archived version" }),
+			);
+			await Bun.write(
+				join(core.filesystem.tasksDir, "back-001 - Active-version.md"),
+				serializeTask({ ...sampleTask, id: "BACK-001", title: "Active version" }),
+			);
+			const commitDate = "2026-07-30T18:00:00Z";
+			await $`git add .`.cwd(TEST_DIR).quiet();
+			await $`GIT_AUTHOR_DATE="${commitDate}" GIT_COMMITTER_DATE="${commitDate}" git commit -m "Add equal-time states"`
+				.cwd(TEST_DIR)
+				.quiet();
+			await $`git switch main`.cwd(TEST_DIR).quiet();
+
+			expect(await core.generateNextId()).toBe("BACK-2");
+		});
+
+		it("keeps active and completed identities at distinct paths when completed tasks are included", async () => {
+			const activePath = await core.filesystem.saveTask({
+				...sampleTask,
+				id: "TASK-1",
+				title: "Active identity",
+			});
+			const completedPath = join(core.filesystem.completedDir, "task-001 - Completed-identity.md");
+			await Bun.write(
+				completedPath,
+				serializeTask({
+					...sampleTask,
+					id: "TASK-001",
+					title: "Completed identity",
+					status: "Done",
+				}),
+			);
+
+			const tasks = await core.loadTasks(undefined, undefined, { includeCompleted: true });
+			expect(tasks.map((task) => task.title).sort()).toEqual(["Active identity", "Completed identity"]);
+			expect((await core.loadTasks()).map((task) => task.title)).toEqual(["Active identity"]);
+			const statisticsTasks = (await core.loadAllTasksForStatistics()).tasks;
+			expect(statisticsTasks.map((task) => task.title).sort()).toEqual(["Active identity", "Completed identity"]);
+			expect(activePath).not.toBe(completedPath);
+			await expect(core.getTask("TASK-1")).rejects.toBeInstanceOf(AmbiguousTaskIdError);
+		});
+
+		it("normalizes local and Git paths for a nested project with a custom backlog directory", async () => {
+			const nestedRoot = join(TEST_DIR, "packages", "app");
+			const nestedCore = new Core(nestedRoot);
+			await initializeTestProject(nestedCore, "Nested Project", false, "planning/backlog-data");
+			const config = await nestedCore.filesystem.loadConfig();
+			if (!config) {
+				throw new Error("Expected nested config to be loaded");
+			}
+			await nestedCore.filesystem.saveConfig({
+				...config,
+				checkActiveBranches: true,
+				remoteOperations: false,
+				prefixes: { ...config.prefixes, task: "back" },
+			});
+
+			const taskPath = await nestedCore.filesystem.saveTask({
+				...sampleTask,
+				id: "BACK-1",
+				title: "Nested local version",
+			});
+			await $`git add .`.cwd(TEST_DIR).quiet();
+			await $`git commit -m "Add nested local task"`.cwd(TEST_DIR).quiet();
+			await $`git switch -c nested-task-version`.cwd(TEST_DIR).quiet();
+			await Bun.write(
+				taskPath,
+				serializeTask({
+					...sampleTask,
+					id: "BACK-001",
+					title: "Nested branch version",
+					status: "Done",
+				}),
+			);
+			await $`git add .`.cwd(TEST_DIR).quiet();
+			await $`git commit -m "Progress nested task"`.cwd(TEST_DIR).quiet();
+			await $`git switch main`.cwd(TEST_DIR).quiet();
+
+			const loaded = await new Core(nestedRoot).getTask("BACK-1");
+			expect(loaded?.id).toBe("BACK-1");
+			expect(loaded?.title).toBe("Nested local version");
+		});
+
+		it("keeps the working-copy task active when a branch archives the same padded identity path", async () => {
 			await commitPaddedTaskLifecycleVariant("archived");
 
 			const tasks = await core.loadTasks();
-			expect(tasks.some((task) => task.id === "BACK-1" || task.id === "BACK-001")).toBe(false);
+			const task = tasks.find((candidate) => candidate.id === "BACK-1" || candidate.id === "BACK-001");
+			expect(task?.id).toBe("BACK-1");
+			expect(task?.source).toBe("local");
+			expect(await core.generateNextId()).toBe("BACK-2");
 		});
 
-		it("marks a padded same-path variant completed from a newer branch", async () => {
+		it("keeps the working-copy task active when a branch completes the same padded identity path", async () => {
 			await commitPaddedTaskLifecycleVariant("completed");
 
 			const tasks = await core.loadTasks(undefined, undefined, { includeCompleted: true });
 			const task = tasks.find((candidate) => candidate.id === "BACK-1" || candidate.id === "BACK-001");
-			expect(task?.source).toBe("completed");
+			expect(task?.id).toBe("BACK-1");
+			expect(task?.source).toBe("local");
 		});
 
 		it("should resolve an exact legacy task ID without guessing", async () => {
