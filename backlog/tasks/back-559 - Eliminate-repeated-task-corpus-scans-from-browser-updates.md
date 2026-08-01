@@ -1,11 +1,11 @@
 ---
 id: BACK-559
 title: Make Core the sole browser task boundary
-status: In Progress
+status: Done
 assignee:
   - '@codex'
 created_date: '2026-07-30 17:12'
-updated_date: '2026-08-01 20:44'
+updated_date: '2026-08-01 21:02'
 labels:
   - web-ui
   - performance
@@ -26,21 +26,21 @@ Make Core the sole browser task read and mutation boundary for list, detail, upd
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 Browser task list, detail, update, complete, reorder, and duplicate-repair handlers make zero direct task-corpus list/load/save calls through core.filesystem; Core is their sole task boundary.
-- [ ] #2 Core exposes separate read and mutation resolution paths over one coherent active/completed/branch identity snapshot: detail reads include completed-only tasks, while mutations accept only unambiguous local active targets and fail before writes otherwise.
-- [ ] #3 Active/active, active/completed, distinct-path cross-branch, zero-padded, cross-prefix, and filename/frontmatter collisions fail closed with browser 409 responses and no file mutation, while BACK-557 same-path branch versions remain one identity.
-- [ ] #4 ContentStore and watchers atomically install coherent visible-task and identity state before publishing creation, deletion, completion, archive, malformed-sibling recovery, and branch-promotion events.
-- [ ] #5 Duplicate-repair preview reuses one Core-owned active/completed snapshot for duplicate detection, occupied-ID allocation, and fingerprint preparation.
-- [ ] #6 Browser updates preserve updated-date, status callbacks, auto-commit, Git staging and commit behavior; completed tasks remain excluded from the active board.
-- [ ] #7 A board reorder returns and applies every changed task, performs no redundant foreground board refresh, emits one WebSocket reconciliation, and preserves mutation callback and auto-commit behavior.
-- [ ] #8 An ephemeral same-machine fixture with 20 active and 430 completed tasks records objective before and after evidence meeting the issue #807 performance objective without adding durable benchmark infrastructure.
+- [x] #1 Browser task list, detail, update, complete, reorder, and duplicate-repair handlers make zero direct task-corpus list/load/save calls through core.filesystem; Core is their sole task boundary.
+- [x] #2 Core exposes separate read and mutation resolution paths over one coherent active/completed/branch identity snapshot: detail reads include completed-only tasks, while mutations accept only unambiguous local active targets and fail before writes otherwise.
+- [x] #3 Active/active, active/completed, distinct-path cross-branch, zero-padded, cross-prefix, and filename/frontmatter collisions fail closed with browser 409 responses and no file mutation, while BACK-557 same-path branch versions remain one identity.
+- [x] #4 ContentStore and watchers atomically install coherent visible-task and identity state before publishing creation, deletion, completion, archive, malformed-sibling recovery, and branch-promotion events.
+- [x] #5 Duplicate-repair preview reuses one Core-owned active/completed snapshot for duplicate detection, occupied-ID allocation, and fingerprint preparation.
+- [x] #6 Browser updates preserve updated-date, status callbacks, auto-commit, Git staging and commit behavior; completed tasks remain excluded from the active board.
+- [x] #7 A board reorder returns and applies every changed task, performs no redundant foreground board refresh, emits one WebSocket reconciliation, and preserves mutation callback and auto-commit behavior.
+- [x] #8 An ephemeral same-machine fixture with 20 active and 430 completed tasks records objective before and after evidence meeting the issue #807 performance objective without adding durable benchmark infrastructure.
 <!-- AC:END -->
 
 ## Definition of Done
 <!-- DOD:BEGIN -->
-- [ ] #1 bunx tsc --noEmit passes when TypeScript touched
-- [ ] #2 bun run check . passes when formatting/linting touched
-- [ ] #3 bun test (or scoped test) passes
+- [x] #1 bunx tsc --noEmit passes when TypeScript touched
+- [x] #2 bun run check . passes when formatting/linting touched
+- [x] #3 bun test (or scoped test) passes
 <!-- DOD:END -->
 
 ## Implementation Plan
@@ -73,4 +73,12 @@ Fresh review of 278316d7 identified four blockers: lifecycle/update auto-commit 
 Fresh-review corrections implemented with RED-to-GREEN coverage. Core complete/archive now rename the already-resolved exact source path and stage that exact move; update auto-commit uses the path returned by saveTask instead of re-resolving by ID. Task watcher rename/deletion reconciliation replaces and removes by exact watched path, including frontmatter identity changes, while preserving existing moved-file recovery. Reorder response tasks are applied as one batch after one stale-request check. Ambiguous reorder targets return HTTP 409 before writes. Focused correction assertions: 11 pass, 0 fail; broader boundary run exposed one existing rename-recovery regression, which was corrected and reverified with 5 focused watcher tests plus TypeScript. Ephemeral 20-active/430-completed rerun against origin/main 928d85c1: detail x10 636.7ms -> 612.5ms; update x5 1612.1ms -> 348.6ms (~78.4% reduction). Full final gates pending.
 
 Fresh post-correction final verification: bun test passed 1831, skipped 4, failed 0 across 203 files (298.21s); bunx tsc --noEmit passed; bun run check . passed across 343 files; bun run build passed. The correction remains intentionally In Progress with acceptance criteria and Definition of Done unchecked pending fresh independent review.
+
+Exact approved implementation head ef9c48d37d8e547b2bd443b7c9cb5e2f5b5e6ae3 finalization verification: the single exact-head full-suite rerun passed 1831, skipped 4, failed 0 across 203 files (344.71s). A previously observed minute-boundary updated-date assertion failure did not reproduce in this exact-head rerun; its isolated assertion also passed, so it is classified as a non-reproduced timing flake outside BACK-559 feature scope. Exact-head bunx tsc --noEmit, bun run check . (343 files), bun run build, and git diff-tree --check all passed. Independent review approved the corrected implementation.
 <!-- SECTION:NOTES:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+Made Core the sole browser task boundary over one ContentStore-owned active/completed/branch identity snapshot, with explicit read versus mutation resolution, exact-path lifecycle persistence, atomic watcher identity publication, single-snapshot duplicate repair, and complete batched reorder reconciliation. Verified collision fail-closed/no-write behavior, callbacks and auto-commit, completed-only reads, lifecycle/watchers, and browser boundary behavior. The ephemeral 20-active/430-completed fixture improved detail x10 from 636.7ms to 612.5ms and update x5 from 1612.1ms to 348.6ms (~78.4%). Final exact-head verification passed 1831 tests with 4 skips and 0 failures, plus TypeScript, Biome, build, and diff checks.
+<!-- SECTION:FINAL_SUMMARY:END -->
