@@ -13,8 +13,14 @@ import type { GitOperations } from "../git/operations.ts";
 import { parseTask } from "../markdown/parser.ts";
 import type { BacklogConfig, Task } from "../types/index.ts";
 import { extractAnyPrefix, normalizeId } from "../utils/prefix-config.ts";
-import { extractTaskIdFromFilename, normalizeTaskId, normalizeTaskIdentity } from "../utils/task-path.ts";
+import {
+	canonicalTaskId,
+	extractTaskIdFromFilename,
+	normalizeTaskId,
+	normalizeTaskIdentity,
+} from "../utils/task-path.ts";
 import type { TaskDirectoryType } from "./cross-branch-tasks.ts";
+import { normalizeTaskLifecyclePath } from "./task-identity-index.ts";
 
 /** Default prefix for tasks */
 const DEFAULT_TASK_PREFIX = "task";
@@ -84,6 +90,73 @@ interface HydrationCandidate {
 	path: string;
 	commit?: string;
 	stateEntry?: BranchTaskStateEntry;
+}
+
+function logicalTaskPath(path: string, backlogDir: string): string {
+	const normalizedPath = path.replaceAll("\\", "/");
+	const normalizedBacklogDir = backlogDir
+		.replaceAll("\\", "/")
+		.replace(/^\.\//, "")
+		.replace(/^\/+|\/+$/g, "");
+	const backlogMarker = `/${normalizedBacklogDir}/`;
+	const markerIndex = normalizedPath.indexOf(backlogMarker);
+	const logicalPath = markerIndex >= 0 ? normalizedPath.slice(markerIndex + 1) : normalizedPath.replace(/^\.\//, "");
+	return normalizeTaskLifecyclePath(logicalPath, normalizedBacklogDir);
+}
+
+function lifecycleRank(type: TaskDirectoryType | undefined): number {
+	if (type === "task") return 2;
+	if (type === "completed") return 1;
+	return 0;
+}
+
+function isPreferredIdentityEntry(candidate: RemoteIndexEntry, current: RemoteIndexEntry): boolean {
+	const timeDifference = candidate.lastModified.getTime() - current.lastModified.getTime();
+	if (timeDifference !== 0) return timeDifference > 0;
+	const rankDifference = lifecycleRank(candidate.stateEntry?.type) - lifecycleRank(current.stateEntry?.type);
+	if (rankDifference !== 0) return rankDifference > 0;
+	return `${candidate.branch}\0${candidate.path}`.localeCompare(`${current.branch}\0${current.path}`) < 0;
+}
+
+function chooseIdentityHydrationCandidates(
+	index: Map<string, RemoteIndexEntry[]>,
+	localTasks: Task[] | undefined,
+	backlogDir: string,
+	toRef: (entry: RemoteIndexEntry) => string,
+): HydrationCandidate[] {
+	const localIdentities = new Set(
+		(localTasks ?? [])
+			.filter((task) => task.filePath)
+			.map((task) => `${canonicalTaskId(task.id)}\0${logicalTaskPath(task.filePath ?? "", backlogDir)}`),
+	);
+	const winners = new Map<string, RemoteIndexEntry>();
+	for (const entries of index.values()) {
+		for (const entry of entries) {
+			const identity = `${canonicalTaskId(entry.id)}\0${logicalTaskPath(entry.path, backlogDir)}`;
+			if (localIdentities.has(identity)) continue;
+			const current = winners.get(identity);
+			if (!current || isPreferredIdentityEntry(entry, current)) winners.set(identity, entry);
+		}
+	}
+
+	return [...winners.values()].map((entry) => ({
+		id: entry.id,
+		ref: toRef(entry),
+		path: entry.path,
+		commit: entry.commit,
+		stateEntry: entry.stateEntry,
+	}));
+}
+
+function mergeHydrationCandidates(
+	primary: HydrationCandidate[],
+	supplemental: HydrationCandidate[],
+): HydrationCandidate[] {
+	const candidates = new Map<string, HydrationCandidate>();
+	for (const candidate of [...primary, ...supplemental]) {
+		candidates.set(`${candidate.ref}\0${candidate.path}\0${candidate.commit ?? ""}`, candidate);
+	}
+	return [...candidates.values()];
 }
 
 /**
@@ -596,6 +669,13 @@ export async function loadRemoteTasks(
 			onProgress?.(`Hydrating ${winners.length} remote tasks...`);
 		}
 
+		if (stateCollector) {
+			winners = mergeHydrationCandidates(
+				winners,
+				chooseIdentityHydrationCandidates(remoteIndex, localTasks, backlogDir, (entry) => `origin/${entry.branch}`),
+			);
+		}
+
 		// Only fetch content for the tasks we actually need
 		const hydratedTasks = await hydrateTasks(gitOps, winners);
 
@@ -776,6 +856,13 @@ export async function loadLocalBranchTasks(
 					stateEntry: best.stateEntry,
 				});
 			}
+		}
+
+		if (stateCollector) {
+			winners = mergeHydrationCandidates(
+				winners,
+				chooseIdentityHydrationCandidates(localBranchIndex, localTasks, backlogDir, (entry) => entry.branch),
+			);
 		}
 
 		if (winners.length === 0) {

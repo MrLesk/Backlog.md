@@ -324,6 +324,81 @@ describe("Core", () => {
 			await expect(core.getTask("BACK-1")).rejects.toBeInstanceOf(AmbiguousTaskIdError);
 		});
 
+		it("refreshes branch identities before resolving a long-lived Core read", async () => {
+			const config = await core.filesystem.loadConfig();
+			if (!config) throw new Error("Expected config to be loaded");
+			await core.filesystem.saveConfig({
+				...config,
+				checkActiveBranches: true,
+				remoteOperations: false,
+				prefixes: { ...config.prefixes, task: "back" },
+			});
+
+			await core.filesystem.saveTask({ ...sampleTask, id: "BACK-1", title: "Local identity" });
+			await $`git add .`.cwd(TEST_DIR).quiet();
+			await $`git commit -m "Add local identity"`.cwd(TEST_DIR).quiet();
+
+			expect((await core.getTask("BACK-1"))?.title).toBe("Local identity");
+
+			await $`git switch -c late-distinct-identity`.cwd(TEST_DIR).quiet();
+			await Bun.write(
+				join(core.filesystem.tasksDir, "back-1 - Late-distinct-identity.md"),
+				serializeTask({ ...sampleTask, id: "BACK-1", title: "Late distinct identity" }),
+			);
+			await $`git add .`.cwd(TEST_DIR).quiet();
+			await $`git commit -m "Add late distinct identity"`.cwd(TEST_DIR).quiet();
+			await $`git switch main`.cwd(TEST_DIR).quiet();
+
+			await expect(core.getTask("BACK-1")).rejects.toBeInstanceOf(AmbiguousTaskIdError);
+		});
+
+		it("hydrates every branch-only logical identity that shares one exact ID spelling", async () => {
+			const config = await core.filesystem.loadConfig();
+			if (!config) throw new Error("Expected config to be loaded");
+			await core.filesystem.saveConfig({
+				...config,
+				checkActiveBranches: true,
+				remoteOperations: false,
+				prefixes: { ...config.prefixes, task: "back" },
+			});
+			await $`git add .`.cwd(TEST_DIR).quiet();
+			await $`git commit -m "Configure branch identity loading"`.cwd(TEST_DIR).quiet();
+
+			await $`git switch -c exact-id-active`.cwd(TEST_DIR).quiet();
+			await Bun.write(
+				join(core.filesystem.tasksDir, "back-1 - Active-branch-identity.md"),
+				serializeTask({ ...sampleTask, id: "BACK-1", title: "Active branch identity" }),
+			);
+			await $`git add .`.cwd(TEST_DIR).quiet();
+			await $`git commit -m "Add active branch identity"`.cwd(TEST_DIR).quiet();
+
+			await $`git switch main`.cwd(TEST_DIR).quiet();
+			await $`git switch -c exact-id-completed`.cwd(TEST_DIR).quiet();
+			await Bun.write(
+				join(core.filesystem.completedDir, "back-1 - Completed-branch-identity.md"),
+				serializeTask({
+					...sampleTask,
+					id: "BACK-1",
+					title: "Completed branch identity",
+					status: "Done",
+				}),
+			);
+			await $`git add .`.cwd(TEST_DIR).quiet();
+			await $`git commit -m "Add completed branch identity"`.cwd(TEST_DIR).quiet();
+			await $`git switch main`.cwd(TEST_DIR).quiet();
+
+			const included = await core.loadTasks(undefined, undefined, { includeCompleted: true });
+			expect(included.map((task) => task.title).sort()).toEqual([
+				"Active branch identity",
+				"Completed branch identity",
+			]);
+			const statistics = (await core.loadAllTasksForStatistics()).tasks;
+			expect(statistics.map((task) => task.title).sort()).toEqual([
+				"Active branch identity",
+				"Completed branch identity",
+			]);
+		});
+
 		it("fails closed when an archive snapshot would otherwise hide distinct active paths", async () => {
 			const config = await core.filesystem.loadConfig();
 			if (!config) {

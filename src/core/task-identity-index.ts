@@ -45,6 +45,16 @@ function joinPosix(...parts: string[]): string {
 		.join("/");
 }
 
+export function normalizeTaskLifecyclePath(path: string, backlogDirectory: string): string {
+	for (const lifecycleDirectory of ["archive/tasks", "completed"]) {
+		const lifecyclePrefix = `${backlogDirectory}/${lifecycleDirectory}/`;
+		if (path.startsWith(lifecyclePrefix)) {
+			return `${backlogDirectory}/tasks/${path.slice(lifecyclePrefix.length)}`;
+		}
+	}
+	return path;
+}
+
 function normalizeRecordPath(record: TaskIdentityRecord, context: TaskIdentityPathContext): string {
 	const repositoryRoot = context.repositoryRoot ?? context.projectRoot;
 	const projectPrefix = context.repositoryRoot
@@ -71,14 +81,7 @@ function normalizeRecordPath(record: TaskIdentityRecord, context: TaskIdentityPa
 		path = joinPosix(projectPrefix, path);
 	}
 
-	for (const lifecycleDirectory of ["archive/tasks", "completed"]) {
-		const lifecyclePrefix = `${repositoryBacklogDirectory}/${lifecycleDirectory}/`;
-		if (path.startsWith(lifecyclePrefix)) {
-			return `${repositoryBacklogDirectory}/tasks/${path.slice(lifecyclePrefix.length)}`;
-		}
-	}
-
-	return path;
+	return normalizeTaskLifecyclePath(path, repositoryBacklogDirectory);
 }
 
 function recordKey(record: TaskIdentityRecord): string {

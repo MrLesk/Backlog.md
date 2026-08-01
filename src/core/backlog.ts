@@ -85,8 +85,6 @@ import { SearchService } from "./search-service.ts";
 import { TaskIdentityIndex, type TaskIdentityRecord } from "./task-identity-index.ts";
 import {
 	type BranchTaskStateEntry,
-	findTaskInLocalBranches,
-	findTaskInRemoteBranches,
 	getTaskLoadingMessage,
 	loadLocalBranchTasks,
 	loadRemoteTasks,
@@ -381,9 +379,10 @@ export class Core {
 			}
 
 			if (!this.activeBranchRefreshPromise) {
+				const refreshExistingStore = this.contentStore !== undefined;
 				const refreshPromise = (async () => {
 					const store = await this.getContentStore();
-					await store.refreshTasks();
+					if (refreshExistingStore) await store.refreshTasks();
 				})();
 				this.activeBranchRefreshPromise = refreshPromise;
 				const clearRefreshPromise = () => {
@@ -633,6 +632,7 @@ export class Core {
 		// Also fail closed when an active task collides with a completed file.
 		await this.fs.loadTask(taskId);
 
+		await this.refreshTasksForTaskRead();
 		const store = await this.getContentStore();
 		const identityResolution = this.taskIdentityIndex?.resolve(taskId);
 		if (identityResolution?.status === "ambiguous") {
@@ -657,7 +657,7 @@ export class Core {
 	}
 
 	async getTaskWithSubtasks(taskId: string, localTasks?: Task[]): Promise<Task | null> {
-		const task = await this.loadTaskById(taskId);
+		const task = await this.getTask(taskId);
 		if (!task) {
 			return null;
 		}
@@ -667,41 +667,13 @@ export class Core {
 	}
 
 	async loadTaskById(taskId: string): Promise<Task | null> {
-		// Pass raw ID to loadTask - it will handle prefix detection via getTaskPath
-		const localTask = await this.fs.loadTask(taskId);
-		if (localTask) return localTask;
+		return await this.getTask(taskId);
+	}
 
-		// Check config for remote operations
-		const config = await this.fs.loadConfig();
-		if (config?.checkActiveBranches === false) return null;
-
-		const sinceDays = config?.activeBranchDays ?? 30;
-		const taskPrefix = config?.prefixes?.task ?? "task";
-
-		// For cross-branch search, normalize with configured prefix
-		const canonicalId = normalizeTaskId(taskId, taskPrefix);
-
-		// Try other local branches first (faster than remote)
-		const localBranchTask = await findTaskInLocalBranches(
-			this.git,
-			canonicalId,
-			await this.getBacklogDirectoryName(),
-			sinceDays,
-			taskPrefix,
-		);
-		if (localBranchTask) return localBranchTask;
-
-		// Skip remote if disabled
-		if (config?.remoteOperations === false) return null;
-
-		// Try remote branches
-		return await findTaskInRemoteBranches(
-			this.git,
-			canonicalId,
-			await this.getBacklogDirectoryName(),
-			sinceDays,
-			taskPrefix,
-		);
+	private async loadLocalTaskForMutation(taskId: string): Promise<Task | null> {
+		const resolvedTask = await this.getTask(taskId);
+		if (!resolvedTask || !isLocalEditableTask(resolvedTask) || resolvedTask.branch) return null;
+		return await this.fs.loadTask(resolvedTask.id);
 	}
 
 	async getTaskContent(taskId: string): Promise<string | null> {
@@ -2050,7 +2022,7 @@ export class Core {
 	}
 
 	async updateTaskFromInput(taskId: string, input: TaskUpdateInput, autoCommit?: boolean): Promise<Task> {
-		const task = await this.fs.loadTask(taskId);
+		const task = await this.loadLocalTaskForMutation(taskId);
 		if (!task) {
 			throw new Error(`Task not found: ${taskId}`);
 		}
@@ -2407,7 +2379,7 @@ export class Core {
 	}
 
 	async archiveTask(taskId: string, autoCommit?: boolean): Promise<boolean> {
-		const taskToArchive = await this.fs.loadTask(taskId);
+		const taskToArchive = await this.loadLocalTaskForMutation(taskId);
 		if (!taskToArchive) {
 			return false;
 		}
@@ -2516,7 +2488,7 @@ export class Core {
 	}
 
 	async completeTask(taskId: string, autoCommit?: boolean): Promise<boolean> {
-		const task = await this.fs.loadTask(taskId);
+		const task = await this.loadLocalTaskForMutation(taskId);
 		if (!task) return false;
 		// Get paths before moving the file
 		const completedDir = this.fs.completedDir;
@@ -2619,7 +2591,9 @@ export class Core {
 	}
 
 	async demoteTask(taskId: string, autoCommit?: boolean): Promise<boolean> {
-		const success = await this.fs.demoteTask(taskId);
+		const task = await this.loadLocalTaskForMutation(taskId);
+		if (!task) return false;
+		const success = await this.fs.demoteTask(task.id);
 
 		if (success && (await this.shouldAutoCommit(autoCommit))) {
 			const backlogDir = await this.getBacklogDirectoryName();

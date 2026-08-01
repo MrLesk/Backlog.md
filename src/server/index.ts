@@ -925,7 +925,6 @@ export class BacklogServer {
 		}
 
 		const store = await this.getContentStoreInstance();
-		await this.core.refreshTasksForTaskRead();
 		let resolvedTask: Task | null;
 		try {
 			resolvedTask = await this.core.getTask(taskId);
