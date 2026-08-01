@@ -253,8 +253,10 @@ Manage task dependencies to express execution order:
 
 | Action      | Example                                              |
 |-------------|------------------------------------------------------|
-| Web interface | `backlog browser` (launches web UI on port 6420) |
+| Web interface | `backlog browser` (launches the local-machine-only web UI on `127.0.0.1:6420`) |
 | Web custom port | `backlog browser --port 8080 --no-open` |
+
+The Web UI listens only on `127.0.0.1`; it is not reachable from other devices on the LAN or VPN.
 
 To keep the Web UI running in the background with auto-start on boot, see [Running Backlog.md as a Service](backlog/docs/doc-003%20-%20Running-Backlog-Browser-as-a-Service.md).
 

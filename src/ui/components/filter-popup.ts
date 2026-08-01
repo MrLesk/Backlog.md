@@ -49,6 +49,7 @@ function resolvePosition(value: string | number, total: number, size: number): n
 export function createPopupChrome(options: PopupChromeOptions): {
 	popup: BoxInterface;
 	close: () => void;
+	reflow: (width: string | number, height: string | number, helpText?: string) => void;
 } {
 	const width = options.width ?? "50%";
 	const height = options.height ?? "70%";
@@ -106,6 +107,25 @@ export function createPopupChrome(options: PopupChromeOptions): {
 		content: options.helpText,
 	});
 
+	const reflow = (nextWidth: string | number, nextHeight: string | number, helpText?: string) => {
+		popup.width = nextWidth;
+		popup.height = nextHeight;
+		popup.top = "center";
+		popup.left = "center";
+		const nextScreenWidth = typeof options.screen.width === "number" ? options.screen.width : 120;
+		const nextScreenHeight = typeof options.screen.height === "number" ? options.screen.height : 40;
+		const nextPopupWidth = resolveDimension(nextWidth, nextScreenWidth);
+		const nextPopupHeight = resolveDimension(nextHeight, nextScreenHeight);
+		const nextPopupTop = resolvePosition("center", nextScreenHeight, nextPopupHeight);
+		const nextPopupLeft = resolvePosition("center", nextScreenWidth, nextPopupWidth);
+		backdrop.top = Math.max(0, nextPopupTop - 1);
+		backdrop.left = Math.max(0, nextPopupLeft - 2);
+		backdrop.width = Math.min(nextScreenWidth, nextPopupWidth + 4);
+		backdrop.height = Math.min(nextScreenHeight, nextPopupHeight + 2);
+		if (helpText !== undefined) helpBox.setContent(helpText);
+		(popup as BoxInterface & { setFront?: () => void }).setFront?.();
+	};
+
 	const close = () => {
 		escBadge.destroy();
 		helpBox.destroy();
@@ -113,7 +133,7 @@ export function createPopupChrome(options: PopupChromeOptions): {
 		backdrop.destroy();
 	};
 
-	return { popup, close };
+	return { popup, close, reflow };
 }
 
 export async function openSingleSelectFilterPopup(options: {

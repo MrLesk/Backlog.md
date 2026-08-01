@@ -135,9 +135,6 @@ onStatusChange: 'echo "$TASK_ID:$OLD_STATUS->$NEW_STATUS" > "${callbackOutputPat
 			// Update status
 			await core.updateTaskFromInput(task.id, { status: "In Progress" });
 
-			// Wait a bit for async callback
-			await new Promise((resolve) => setTimeout(resolve, 200));
-
 			// Check callback was executed
 			const output = await Bun.file(callbackOutputFile).text();
 			expect(output.trim()).toBe(`${task.id}:To Do->In Progress`);
@@ -175,9 +172,6 @@ onStatusChange: 'echo "per-task:$NEW_STATUS" > "${callbackOutputPath}"'
 			// Update status
 			await core.updateTaskFromInput("task-1", { status: "Done" });
 
-			// Wait a bit for async callback
-			await new Promise((resolve) => setTimeout(resolve, 100));
-
 			// Check per-task callback was executed (not global)
 			const output = await Bun.file(callbackOutputFile).text();
 			expect(output.trim()).toBe("per-task:Done");
@@ -206,9 +200,6 @@ onStatusChange: 'echo "callback-ran" > "${callbackOutputPath}"'
 
 			// Update something other than status
 			await core.updateTaskFromInput(task.id, { title: "Updated Title" });
-
-			// Wait a bit
-			await new Promise((resolve) => setTimeout(resolve, 100));
 
 			// Check callback was NOT executed
 			const exists = await Bun.file(callbackOutputFile).exists();
@@ -296,9 +287,6 @@ onStatusChange: 'echo "$TASK_ID:$OLD_STATUS->$NEW_STATUS" >> "${callbackOutputPa
 				targetStatus: "In Progress",
 				orderedTaskIds: [task.id],
 			});
-
-			// Wait for callback
-			await new Promise((resolve) => setTimeout(resolve, 200));
 
 			// Check callback was executed
 			const output = await Bun.file(callbackOutputFile).text();

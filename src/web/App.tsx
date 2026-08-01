@@ -518,6 +518,15 @@ function AppContent() {
     await loadAllData();
   }, [loadAllData]);
 
+	const applyReorderedTasks = useCallback((updatedTasks: Task[], requestTask: Task) => {
+		setTasks((current) => {
+			const currentRequest = current.find((task) => task.id === requestTask.id);
+			if (currentRequest !== requestTask) return current;
+			const updatesById = new Map(updatedTasks.map((task) => [task.id, task]));
+			return current.map((task) => updatesById.get(task.id) ?? task);
+		});
+	}, []);
+
   // Sync editingTask with refreshed tasks data to prevent stale state
   // This fixes the bug where acceptance criteria disappears after save (GitHub #467)
   useEffect(() => {
@@ -608,6 +617,7 @@ function AppContent() {
       onNewTask={handleNewTask}
       tasks={tasks}
       onRefreshData={refreshData}
+	  onTasksUpdated={applyReorderedTasks}
       statuses={statuses}
       milestones={milestones}
       availableLabels={availableLabels}

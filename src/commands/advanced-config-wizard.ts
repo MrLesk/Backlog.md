@@ -1,6 +1,6 @@
 import * as clack from "@clack/prompts";
 import type { BacklogConfig } from "../types/index.ts";
-import { isEditorAvailable, resolveEditor } from "../utils/editor.ts";
+import { isEditorAvailable as checkEditorAvailability, resolveEditor } from "../utils/editor.ts";
 
 interface PromptChoice {
 	title: string;
@@ -29,11 +29,14 @@ export type PromptRunner = (
 	options?: PromptOptions,
 ) => Promise<Record<string, unknown>>;
 
+export type EditorAvailabilityChecker = (editor: string) => Promise<boolean>;
+
 interface WizardOptions {
 	existingConfig?: BacklogConfig | null;
 	cancelMessage: string;
 	includeClaudePrompt?: boolean;
 	promptImpl?: PromptRunner;
+	isEditorAvailable?: EditorAvailabilityChecker;
 }
 
 export interface AdvancedConfigWizardResult {
@@ -198,6 +201,7 @@ export async function runAdvancedConfigWizard({
 	cancelMessage,
 	includeClaudePrompt = false,
 	promptImpl = clackPromptRunner,
+	isEditorAvailable = checkEditorAvailability,
 }: WizardOptions): Promise<AdvancedConfigWizardResult> {
 	const onCancel = () => handlePromptCancel(cancelMessage);
 	const config = existingConfig ?? null;

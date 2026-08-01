@@ -7,12 +7,12 @@ import { createUniqueTestDir, initializeTestProject, safeCleanup } from "./test-
 
 let TEST_DIR: string;
 
-describe("CLI Board Integration", () => {
+describe("Board core and view integration", () => {
 	let core: Core;
 	let coreInitialized = false;
 
 	beforeEach(async () => {
-		TEST_DIR = createUniqueTestDir("test-cli-board-integration");
+		TEST_DIR = createUniqueTestDir("test-board-core-view-integration");
 		coreInitialized = false;
 		await mkdir(TEST_DIR, { recursive: true });
 
@@ -23,7 +23,7 @@ describe("CLI Board Integration", () => {
 
 		core = new Core(TEST_DIR);
 		coreInitialized = true;
-		await initializeTestProject(core, "Test CLI Board Project");
+		await initializeTestProject(core, "Test Board Integration Project");
 
 		// Disable remote operations for tests to prevent background git fetches
 		const config = await core.filesystem.loadConfig();
@@ -48,7 +48,7 @@ dependencies: []
 
 ## Description
 
-Test task for board CLI integration.`,
+Test task for board integration.`,
 		);
 	});
 
@@ -57,15 +57,14 @@ Test task for board CLI integration.`,
 		await safeCleanup(TEST_DIR);
 	});
 
-	it("should handle board command logic without crashing", async () => {
-		// Test the main board loading logic that was failing
+	it("loads board task data without crashing", async () => {
 		const config = await core.filesystem.loadConfig();
 		const statuses = config?.statuses || [];
 
-		// Load tasks like the CLI does
+		// Load the local task state used to assemble board data.
 		const [localTasks, _remoteTasks] = await Promise.all([
 			core.listTasksWithMetadata(),
-			// Remote tasks would normally be loaded but will fail in test env - that's OK
+			// Remote task loading is intentionally outside this internal integration fixture.
 			Promise.resolve([]),
 		]);
 
