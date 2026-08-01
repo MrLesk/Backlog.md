@@ -1,11 +1,11 @@
 ---
 id: BACK-557
 title: Treat same-path cross-branch task versions as one identity
-status: In Progress
+status: Done
 assignee:
   - '@codex'
 created_date: '2026-07-30 17:11'
-updated_date: '2026-08-01 10:51'
+updated_date: '2026-08-01 10:57'
 labels:
   - browser
   - git
@@ -39,15 +39,15 @@ Cross-branch task loading currently folds display selection, lifecycle state, co
 <!-- AC:BEGIN -->
 - [x] #1 Same canonical ID at the same normalized path across local and branch versions resolves as one identity, with the working copy authoritative.
 - [x] #2 The same canonical ID at distinct local paths fails closed.
-- [ ] #3 Branch-only variants of the same canonical ID at distinct paths fail closed.
-- [ ] #4 An active local identity plus a completed identity at a distinct path fails closed.
+- [x] #3 Branch-only variants of the same canonical ID at distinct paths fail closed.
+- [x] #4 An active local identity plus a completed identity at a distinct path fails closed.
 - [x] #5 An active working-copy record plus an archived version at the same logical path remains active and keeps the ID occupied.
 - [x] #6 An identity whose variants are all archived is hidden and its ID is reusable.
 - [x] #7 Equal timestamps for active and archived records resolve deterministically, remain scan-order independent, and cannot free an ID while a live record exists.
-- [ ] #8 includeCompleted preserves active canonical state and agrees with All Tasks and task detail resolution.
+- [x] #8 includeCompleted preserves active canonical state and agrees with All Tasks and task detail resolution.
 - [x] #9 Padded IDs at distinct paths fail closed consistently across supported surfaces.
 - [x] #10 Allocation compares IDs without padding while preserving the configured or existing output spelling.
-- [ ] #11 Core getTask applies collision safety without requiring a stale prior load.
+- [x] #11 Core getTask applies collision safety without requiring a stale prior load.
 - [x] #12 Nested project and backlog directories normalize local and Git paths into one repository-relative logical path.
 <!-- AC:END -->
 
@@ -55,7 +55,7 @@ Cross-branch task loading currently folds display selection, lifecycle state, co
 <!-- DOD:BEGIN -->
 - [x] #1 bunx tsc --noEmit passes when TypeScript touched
 - [x] #2 bun run check . passes when formatting/linting touched
-- [ ] #3 bun test (or scoped test) passes
+- [x] #3 bun test (or scoped test) passes
 <!-- DOD:END -->
 
 ## Implementation Plan
@@ -83,4 +83,12 @@ Final exact-head verification on 27c1cc5d after rebasing onto origin/main deedb4
 Fresh exact-head independent review cycle 1 requested changes before push. P1: Core.getTask/MCP detail and mutation reads can reuse a stale task identity index after branch refs change, unlike the browser path that explicitly refreshes. P2: branch hydration still chooses one record per raw ID spelling, so includeCompleted/statistics can omit other branch-only logical-path identities with the same spelling. Reopened to add RED coverage and fix freshness plus per-logical-path hydration centrally.
 
 Review cycle 1 RED/GREEN: on 0e284a8e, three focused regressions all failed—long-lived Core getTask resolved after a late branch collision, MCP task_edit mutated the local task after the same late collision, and same-spelling branch-only active/completed identities returned only the completed task. Core freshness is now centralized in getTask with coalesced fingerprint refresh; loadTaskById, detail views, updates, archive, complete, and demote validate through that result. Branch hydration supplements the prior display winner with one deterministic candidate per canonical ID plus logical path, using shared lifecycle-path normalization. The three regressions pass, the broader Core/MCP/server/board/branch/allocation/index suite passes 135/135, the demote/freshness subset passes 4/4, and tsc, Biome (342 files), and diff-check are clean.
+
+Final review-cycle-1 verification on 571fc63f: bun test passed 1,808 tests with 4 documented interactive TUI skips and 0 failures across 202 files (7,657 assertions); bunx tsc --noEmit passed; bun run check . checked 342 files with no fixes; git diff --check passed. origin/main remains deedb4e0, the integration base used by this branch.
 <!-- SECTION:NOTES:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+Introduced one shared task identity index keyed by padding-insensitive canonical ID plus normalized repository-relative logical path. Local, branch, worktree, completed, and archive records share deterministic working-copy/lifecycle/display rules; distinct live paths fail closed; any live variant occupies the ID and all-archived identities are reusable. Core freshness is checked at the central resolver for long-lived CLI, MCP, and browser reads/mutations, while branch hydration preserves one candidate per logical identity so includeCompleted and statistics cannot omit same-spelling distinct paths. Regression coverage spans late ref changes, branch-only and padded collisions, lifecycle shadows, equal timestamps, direct reads, mutation safety, allocation, and nested custom backlog paths.
+<!-- SECTION:FINAL_SUMMARY:END -->
