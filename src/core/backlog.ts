@@ -3070,7 +3070,9 @@ export class Core {
 		}
 		progressCallback?.("Loaded tasks");
 
-		progressCallback?.("Resolving task identities...");
+		if (config?.checkActiveBranches !== false) {
+			progressCallback?.("Applying latest task states from branch scans...");
+		}
 		const index = await this.buildTaskIdentityIndex(
 			localTasks,
 			completedTasks,
@@ -3167,7 +3169,9 @@ export class Core {
 			throw new Error("Loading cancelled");
 		}
 
-		progressCallback?.("Resolving task identities...");
+		if (config?.checkActiveBranches !== false) {
+			progressCallback?.("Applying latest task states from branch scans...");
+		}
 		const identityIndex = await this.buildTaskIdentityIndex(
 			localTasks,
 			completedTasks,
