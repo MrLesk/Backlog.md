@@ -275,6 +275,40 @@ describe("Core", () => {
 			expect(observed[0]).toEqual({ read: "not-found", mutation: "not-found", active: [], completed: [] });
 		});
 
+		it("completes the exact resolved path when the frontmatter ID differs from the filename", async () => {
+			const taskPath = join(core.filesystem.tasksDir, "task-999 - Exact-path.md");
+			await Bun.write(taskPath, serializeTask({ ...sampleTask, id: "TASK-1", status: "Done" }));
+			await core.getContentStore();
+
+			expect(await core.completeTask("TASK-1", false)).toBe(true);
+			expect(await Bun.file(taskPath).exists()).toBe(false);
+			expect(await Bun.file(join(core.filesystem.completedDir, "task-999 - Exact-path.md")).exists()).toBe(true);
+		});
+
+		it("archives the exact resolved path when the frontmatter ID differs from the filename", async () => {
+			const taskPath = join(core.filesystem.tasksDir, "task-999 - Exact-path.md");
+			await Bun.write(taskPath, serializeTask({ ...sampleTask, id: "TASK-1" }));
+			await core.getContentStore();
+
+			expect(await core.archiveTask("TASK-1", false)).toBe(true);
+			expect(await Bun.file(taskPath).exists()).toBe(false);
+			expect(await Bun.file(join(core.filesystem.archiveTasksDir, "task-999 - Exact-path.md")).exists()).toBe(true);
+		});
+
+		it("auto-commits an update through the exact resolved path instead of re-resolving its filename", async () => {
+			const taskPath = join(core.filesystem.tasksDir, "task-999 - Exact-path.md");
+			await Bun.write(taskPath, serializeTask({ ...sampleTask, id: "TASK-1" }));
+			await $`git add .`.cwd(TEST_DIR).quiet();
+			await $`git commit -m "Add mismatched task identity"`.cwd(TEST_DIR).quiet();
+			await core.getContentStore();
+
+			await core.updateTaskFromInput("TASK-1", { title: "Updated exact path" }, true);
+
+			expect(await Bun.file(taskPath).text()).toContain("title: Updated exact path");
+			expect(await core.gitOps.getLastCommitMessage()).toContain("Update task TASK-1");
+			expect((await $`git status --short`.cwd(TEST_DIR).text()).trim()).toBe("");
+		});
+
 		it("does not update a longer legacy sibling for a shorter numeric ID", async () => {
 			await core.createTask({ ...sampleTask, id: "BACK-1-EXTRA", title: "Longer sibling" }, false);
 

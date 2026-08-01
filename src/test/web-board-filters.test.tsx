@@ -101,7 +101,7 @@ const renderBoardPage = (
 		availableTypes?: string[];
 		dateFormat?: string;
 		onRefreshData?: () => Promise<void>;
-		onTaskUpdated?: (task: Task, requestTask: Task) => void;
+		onTasksUpdated?: (tasks: Task[], requestTask: Task) => void;
 	} = {},
 ): HTMLElement => {
 	setupDom(url);
@@ -127,7 +127,7 @@ const renderBoardPage = (
 					onNewTask={() => {}}
 					dateFormat={options.dateFormat}
 					onRefreshData={options.onRefreshData}
-					onTaskUpdated={options.onTaskUpdated}
+					onTasksUpdated={options.onTasksUpdated}
 				/>
 			</BrowserRouter>,
 		);
@@ -277,7 +277,7 @@ describe("Web board filters", () => {
 				onRefreshData: async () => {
 					refreshes += 1;
 				},
-				onTaskUpdated: (task) => publishedTasks.push(task),
+				onTasksUpdated: (changedTasks) => publishedTasks.push(...changedTasks),
 			});
 			const targetHeading = Array.from(container.querySelectorAll("h3")).find(
 				(heading) => heading.textContent === "In Progress",

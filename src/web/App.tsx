@@ -518,11 +518,12 @@ function AppContent() {
     await loadAllData();
   }, [loadAllData]);
 
-	const applyReorderedTask = useCallback((updatedTask: Task, requestTask: Task) => {
+	const applyReorderedTasks = useCallback((updatedTasks: Task[], requestTask: Task) => {
 		setTasks((current) => {
 			const currentRequest = current.find((task) => task.id === requestTask.id);
 			if (currentRequest !== requestTask) return current;
-			return current.map((task) => (task.id === updatedTask.id ? updatedTask : task));
+			const updatesById = new Map(updatedTasks.map((task) => [task.id, task]));
+			return current.map((task) => updatesById.get(task.id) ?? task);
 		});
 	}, []);
 
@@ -616,7 +617,7 @@ function AppContent() {
       onNewTask={handleNewTask}
       tasks={tasks}
       onRefreshData={refreshData}
-	  onTaskUpdated={applyReorderedTask}
+	  onTasksUpdated={applyReorderedTasks}
       statuses={statuses}
       milestones={milestones}
       availableLabels={availableLabels}

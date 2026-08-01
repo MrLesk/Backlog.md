@@ -725,7 +725,7 @@ describe("task detail routes", () => {
 				json({
 					success: true,
 					task: updatedSourceTask,
-					changedTasks: [updatedSiblingTask, updatedSourceTask],
+					changedTasks: [updatedSourceTask, updatedSiblingTask],
 				}),
 			);
 			await reorder.settle("reorder response");

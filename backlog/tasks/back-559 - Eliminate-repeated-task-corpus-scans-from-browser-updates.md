@@ -5,7 +5,7 @@ status: In Progress
 assignee:
   - '@codex'
 created_date: '2026-07-30 17:12'
-updated_date: '2026-08-01 20:26'
+updated_date: '2026-08-01 20:44'
 labels:
   - web-ui
   - performance
@@ -51,6 +51,8 @@ Make Core the sole browser task read and mutation boundary for list, detail, upd
 3. Route Core task list/detail/update/complete/archive/reorder and duplicate preview through the ContentStore snapshot. Persist already-resolved exact local paths, update the coherent post-write/post-transition snapshot before publication, and preserve updated-date, status callback, auto-commit, Git staging/commit, BACK-557 same-path identity, and fail-closed collision behavior.
 4. Remove direct browser task-corpus filesystem access from list/detail/update/complete/reorder/duplicate handlers. Return all changed reorder tasks, batch persistence publication into one WebSocket reconciliation, apply response tasks optimistically without a redundant foreground refresh, and reject stale responses after newer reconciliation.
 5. Verify focused Core, ContentStore, task-loader, server/browser, watcher, lifecycle, duplicate-repair, reorder, and identity suites. Run an ephemeral 20-active/430-completed before/after fixture, simplify the design, commit an immutable head, run full bun test, bunx tsc --noEmit, bun run check ., bun run build, and git diff --check, then prepare the exact-head handoff for the coordinator’s fresh independent reviewer. Keep BACK-559 In Progress until that reviewer approves.
+
+6. Fresh-review correction: add RED regressions for exact-path complete/archive/update auto-commit, exact-path watcher deletion after frontmatter-ID change, moved-first atomic reorder reconciliation, and ambiguous reorder 409/no-write. Trace each failure to its current boundary, apply only the four narrow fixes, rerun focused/full/performance gates, and return a new immutable head for another fresh review.
 <!-- SECTION:PLAN:END -->
 
 ## Implementation Notes
@@ -65,4 +67,10 @@ Implementation complete in isolated worktree. ContentStore now owns TaskCorpusSn
 Ephemeral issue #807 fixture (same machine, 20 active + 430 completed, origin/main 928d85c1 versus this worktree): repeated detail x10 improved 722.5ms -> 658.1ms; repeated update x5 improved 1736.7ms -> 371.2ms (~78.6% reduction). No durable benchmark files were added. Focused post-fix verification: 122 pass, 0 fail across reorder, callbacks, Core, server boundary, auto-commit, and publication suites. Full repository rerun pending.
 
 Final implementation verification: bun test passed 1826, skipped 4, failed 0 across 203 files (327.35s); bunx tsc --noEmit passed; bun run check . passed; bun run build passed; git diff --check passed. BACK-559 intentionally remains In Progress with acceptance criteria unchecked pending the coordinator’s fresh independent reviewer.
+
+Fresh review of 278316d7 identified four blockers: lifecycle/update auto-commit still re-resolve by ID after an exact mutation target exists; watcher deletion keys only by the filename-derived ID after frontmatter identity changes; web reorder applies changedTasks one-by-one so a moved-first result invalidates the request object before sibling updates; ambiguous reorder errors fall through to HTTP 500. Correction started with task remaining In Progress.
+
+Fresh-review corrections implemented with RED-to-GREEN coverage. Core complete/archive now rename the already-resolved exact source path and stage that exact move; update auto-commit uses the path returned by saveTask instead of re-resolving by ID. Task watcher rename/deletion reconciliation replaces and removes by exact watched path, including frontmatter identity changes, while preserving existing moved-file recovery. Reorder response tasks are applied as one batch after one stale-request check. Ambiguous reorder targets return HTTP 409 before writes. Focused correction assertions: 11 pass, 0 fail; broader boundary run exposed one existing rename-recovery regression, which was corrected and reverified with 5 focused watcher tests plus TypeScript. Ephemeral 20-active/430-completed rerun against origin/main 928d85c1: detail x10 636.7ms -> 612.5ms; update x5 1612.1ms -> 348.6ms (~78.4% reduction). Full final gates pending.
+
+Fresh post-correction final verification: bun test passed 1831, skipped 4, failed 0 across 203 files (298.21s); bunx tsc --noEmit passed; bun run check . passed across 343 files; bun run build passed. The correction remains intentionally In Progress with acceptance criteria and Definition of Done unchecked pending fresh independent review.
 <!-- SECTION:NOTES:END -->

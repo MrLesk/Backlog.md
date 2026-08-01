@@ -827,13 +827,14 @@ export class ContentStore {
 		return true;
 	}
 
-	private publishWatchedTask(task: Task): void {
+	private publishWatchedTask(task: Task, replacedPath?: string): void {
 		const id = normalizeTaskId(task.id);
 		this.nextContentItemGeneration("tasks", id);
 		this.nextContentItemVersion("tasks", id, this.currentRoot());
 		this.activeTasks = this.activeTasks.filter(
 			(candidate) =>
 				candidate.filePath !== task.filePath &&
+				candidate.filePath !== replacedPath &&
 				(candidate.filePath !== undefined || task.filePath !== undefined || !taskIdsEqual(candidate.id, task.id)),
 		);
 		this.activeTasks.push(task);
@@ -844,13 +845,19 @@ export class ContentStore {
 		this.notify("tasks");
 	}
 
-	private removeWatchedTask(id: string): void {
+	private removeWatchedTask(id: string, watchedPath?: string): void {
 		const normalizedId = normalizeTaskId(id);
-		const before = this.activeTasks.length;
-		this.activeTasks = this.activeTasks.filter((task) => !taskIdsEqual(task.id, normalizedId));
-		if (before === this.activeTasks.length) return;
-		this.nextContentItemGeneration("tasks", normalizedId);
-		this.nextContentItemVersion("tasks", normalizedId, this.currentRoot());
+		const removedTasks = this.activeTasks.filter((task) =>
+			watchedPath ? task.filePath === watchedPath : taskIdsEqual(task.id, normalizedId),
+		);
+		if (removedTasks.length === 0) return;
+		this.activeTasks = this.activeTasks.filter((task) =>
+			watchedPath ? task.filePath !== watchedPath : !taskIdsEqual(task.id, normalizedId),
+		);
+		for (const removedId of new Set([normalizedId, ...removedTasks.map((task) => normalizeTaskId(task.id))])) {
+			this.nextContentItemGeneration("tasks", removedId);
+			this.nextContentItemVersion("tasks", removedId, this.currentRoot());
+		}
 		if (this.taskIdentityIndex) {
 			this.taskIdentityIndex = this.taskIdentityIndex.withWorkingCopyCorpus(this.activeTasks, this.completedTasks);
 			this.replaceVisibleTasks(this.taskIdentityIndex.getTasks(false));
@@ -942,17 +949,17 @@ export class ContentStore {
 								return { state: "incomplete" };
 							}
 						},
-						current: () => this.tasks.get(normalizedTaskId),
+						current: () => this.activeTasks.find((task) => task.filePath === fullPath),
 						hasChanged: (previous, next) => this.hasTaskChanged(previous, next),
-						publish: (task) => this.publishWatchedTask(task),
-						remove: () => this.removeWatchedTask(normalizedTaskId),
+						publish: (task) => this.publishWatchedTask(task, fullPath),
+						remove: () => this.removeWatchedTask(normalizedTaskId, fullPath),
 					});
 					return;
 				}
 
 				await this.reconcileOrSchedule(`task:${normalizedTaskId}`, epoch, async () => {
 					if (!(await Bun.file(fullPath).exists())) {
-						this.removeWatchedTask(normalizedTaskId);
+						this.removeWatchedTask(normalizedTaskId, fullPath);
 						return false;
 					}
 					try {

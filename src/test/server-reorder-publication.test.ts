@@ -1,6 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import { mkdir } from "node:fs/promises";
+import { join } from "node:path";
 import { Core } from "../core/backlog.ts";
+import { serializeTask } from "../markdown/serializer.ts";
 import { BacklogServer } from "../server/index.ts";
 import type { Task } from "../types/index.ts";
 import { createUniqueTestDir, retry, safeCleanup, sleep, withTimeout } from "./test-utils.ts";
@@ -96,5 +98,29 @@ describe("reorder WebSocket publication", () => {
 		});
 		await sleep(50);
 		expect(messages.filter((message) => message === "tasks-updated")).toHaveLength(1);
+	});
+
+	it("returns 409 and writes nothing when the reorder target is ambiguous", async () => {
+		const serverCore = (server as unknown as { core: Core }).core;
+		const firstPath = join(serverCore.filesystem.tasksDir, "task-1 - Task-TASK-1.md");
+		const duplicatePath = join(serverCore.filesystem.tasksDir, "task-01 - Duplicate.md");
+		await Bun.write(duplicatePath, serializeTask({ ...task("TASK-01"), title: "Duplicate" }));
+		const before = [await Bun.file(firstPath).text(), await Bun.file(duplicatePath).text()];
+
+		const response = await fetch(`http://127.0.0.1:${serverPort}/api/tasks/reorder`, {
+			method: "POST",
+			headers: { "Content-Type": "application/json" },
+			body: JSON.stringify({
+				taskId: "TASK-1",
+				targetStatus: "To Do",
+				orderedTaskIds: ["TASK-1", "TASK-2", "TASK-3"],
+			}),
+		});
+
+		expect(response.status).toBe(409);
+		expect(await response.json()).toEqual({
+			error: expect.stringContaining("ambiguous"),
+		});
+		expect([await Bun.file(firstPath).text(), await Bun.file(duplicatePath).text()]).toEqual(before);
 	});
 });

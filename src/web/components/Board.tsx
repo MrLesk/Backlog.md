@@ -19,7 +19,7 @@ interface BoardProps {
   highlightTaskId?: string | null;
   tasks: Task[];
   onRefreshData?: () => Promise<void>;
-  onTaskUpdated?: (task: Task, requestTask: Task) => void;
+  onTasksUpdated?: (tasks: Task[], requestTask: Task) => void;
   statuses: string[];
   isLoading: boolean;
   milestones: string[];
@@ -52,7 +52,7 @@ const Board: React.FC<BoardProps> = ({
   highlightTaskId,
   tasks,
   onRefreshData,
-  onTaskUpdated,
+  onTasksUpdated,
   statuses,
   isLoading,
   availableLabels,
@@ -299,8 +299,8 @@ const Board: React.FC<BoardProps> = ({
       const requestResolution = resolveTaskById(tasks, payload.taskId);
       const requestTask = requestResolution.status === 'found' ? requestResolution.task : undefined;
       const result = await apiClient.reorderTask(payload);
-      if (requestTask && onTaskUpdated) {
-        for (const changedTask of result.changedTasks ?? [result.task]) onTaskUpdated(changedTask, requestTask);
+      if (requestTask && onTasksUpdated) {
+        onTasksUpdated(result.changedTasks ?? [result.task], requestTask);
       } else if (onRefreshData) await onRefreshData();
       setUpdateError(null);
     } catch (err) {

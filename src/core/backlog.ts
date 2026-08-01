@@ -58,14 +58,7 @@ import {
 	stringArraysEqual,
 	validateDependencies,
 } from "../utils/task-builders.ts";
-import {
-	AmbiguousTaskIdError,
-	getDraftPath,
-	getTaskFilename,
-	getTaskPath,
-	normalizeTaskId,
-	taskIdsEqual,
-} from "../utils/task-path.ts";
+import { AmbiguousTaskIdError, getDraftPath, getTaskPath, normalizeTaskId, taskIdsEqual } from "../utils/task-path.ts";
 import { attachSubtaskSummaries } from "../utils/task-subtasks.ts";
 import { formatValidTaskTypeValues, matchesTaskTypeFilter, resolveTaskTypeValue } from "../utils/task-type-config.ts";
 import { upsertTaskUpdatedDate } from "../utils/task-updated-date.ts";
@@ -1406,14 +1399,11 @@ export class Core {
 			delete task.updatedDate;
 		}
 
-		await this.fs.saveTask(task);
+		const filePath = await this.fs.saveTask(task);
 		// Keep any in-process ContentStore in sync for immediate UI/search freshness.
 
 		if (await this.shouldAutoCommit(autoCommit)) {
-			const filePath = await getTaskPath(task.id, this);
-			if (filePath) {
-				await this.git.addAndCommitTaskFile(task.id, filePath, "update");
-			}
+			await this.git.addAndCommitTaskFile(task.id, filePath, "update");
 		}
 
 		// Fire status change callback if status changed
@@ -2358,15 +2348,16 @@ export class Core {
 
 		// Get paths before moving the file
 		const taskPath = taskToArchive.filePath ?? (await getTaskPath(normalizedTaskId, this));
-		const taskFilename = await getTaskFilename(normalizedTaskId, this);
+		const taskFilename = taskPath ? basename(taskPath) : null;
 
 		if (!taskPath || !taskFilename) return false;
 
 		const fromPath = taskPath;
 		const toPath = join(await this.fs.getArchiveTasksDir(), taskFilename);
 
-		const success = await this.fs.archiveTask(normalizedTaskId);
-		if (!success) {
+		try {
+			await moveFile(fromPath, toPath);
+		} catch {
 			return false;
 		}
 		this.contentStore?.transitionTask(normalizedTaskId);
@@ -2472,18 +2463,20 @@ export class Core {
 		const fromPath = taskPath;
 		const toPath = join(completedDir, taskFilename);
 
-		const success = await this.fs.completeTask(taskId);
-		if (success) {
-			this.contentStore?.transitionTask(task.id, { ...task, filePath: toPath, source: "completed" });
+		try {
+			await moveFile(fromPath, toPath);
+		} catch {
+			return false;
 		}
+		this.contentStore?.transitionTask(task.id, { ...task, filePath: toPath, source: "completed" });
 
-		if (success && (await this.shouldAutoCommit(autoCommit))) {
+		if (await this.shouldAutoCommit(autoCommit)) {
 			// Stage the file move for proper Git tracking
 			const repoRoot = await this.git.stageFileMove(fromPath, toPath);
 			await this.git.commitChanges(`backlog: Complete task ${normalizeTaskId(taskId)}`, repoRoot);
 		}
 
-		return success;
+		return true;
 	}
 
 	async getTerminalStatusTasksByAge(olderThanDays: number): Promise<Task[]> {

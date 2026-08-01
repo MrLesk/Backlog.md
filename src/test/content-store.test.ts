@@ -487,6 +487,26 @@ describe("ContentStore", () => {
 		expect(await Bun.file(firstPath).exists()).toBe(true);
 	});
 
+	it("removes a watched task by exact path after its frontmatter identity changes", async () => {
+		store.dispose();
+		const taskPath = await filesystem.saveTask(sampleTask);
+		store = new ContentStore(filesystem, branchSnapshotLoader([]), false);
+		await store.ensureInitialized();
+		const changedTask = { ...sampleTask, id: "TASK-2", title: "Changed identity", filePath: taskPath };
+		const internals = store as unknown as {
+			publishWatchedTask: (task: Task) => void;
+			removeWatchedTask: (filenameId: string, watchedPath: string) => void;
+		};
+
+		internals.publishWatchedTask(changedTask);
+		expect(store.resolveTaskForRead("TASK-2").status).toBe("found");
+		internals.removeWatchedTask("TASK-1", taskPath);
+
+		expect(store.resolveTaskForRead("TASK-1").status).toBe("not-found");
+		expect(store.resolveTaskForRead("TASK-2").status).toBe("not-found");
+		expect(store.getTaskCorpusSnapshot().activeTasks).toEqual([]);
+	});
+
 	it("publishes watched distinct-path local creation with the refreshed branch collision identity", async () => {
 		store.dispose();
 		store = new ContentStore(filesystem, branchSnapshotLoader("backlog/tasks/task-1 - Branch-only.md"), true);

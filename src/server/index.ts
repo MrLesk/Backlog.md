@@ -1575,6 +1575,9 @@ export class BacklogServer {
 			return Response.json({ success: true, task: updatedTask, changedTasks });
 		} catch (error) {
 			const message = error instanceof Error ? error.message : "Failed to reorder task";
+			if (isAmbiguousTaskIdError(error)) {
+				return Response.json({ error: message }, { status: 409 });
+			}
 			// Cross-branch and validation errors are client errors (400), not server errors (500)
 			const isCrossBranchError = message.includes("exists in branch");
 			const isValidationError = message.includes("not found") || message.includes("Missing required");
