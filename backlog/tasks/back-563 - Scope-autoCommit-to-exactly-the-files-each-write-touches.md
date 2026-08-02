@@ -1,11 +1,11 @@
 ---
 id: BACK-563
 title: Scope autoCommit to exactly the files each write touches
-status: In Progress
+status: Done
 assignee:
   - '@alexs-agent'
 created_date: '2026-08-02 16:16'
-updated_date: '2026-08-02 17:28'
+updated_date: '2026-08-02 17:48'
 labels: []
 dependencies: []
 references:
@@ -39,19 +39,19 @@ Ensure every Backlog.md autoCommit stages and commits only the paths its own wri
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 Document, decision, task, bulk-update, archive, completion, promotion, demotion, and agent-instruction auto-commits include only the paths written by that operation
-- [ ] #2 Unrelated staged, unstaged, and untracked files remain unchanged and excluded from auto-commits
-- [ ] #3 Moved and deleted paths are committed completely, including both sides of rename-like operations
-- [ ] #4 Requested paths with no Git history do not abort an otherwise valid scoped auto-commit
-- [ ] #5 Concurrent writes to HEAD, the working tree, or the index are preserved or fail closed without stealing index ownership
-- [ ] #6 Focused regression tests cover scoped ownership across task, document, decision, bulk, lifecycle, and agent-instruction paths
+- [x] #1 Document, decision, task, bulk-update, archive, completion, promotion, demotion, and agent-instruction auto-commits include only the paths written by that operation
+- [x] #2 Unrelated staged, unstaged, and untracked files remain unchanged and excluded from auto-commits
+- [x] #3 Moved and deleted paths are committed completely, including both sides of rename-like operations
+- [x] #4 Requested paths with no Git history do not abort an otherwise valid scoped auto-commit
+- [x] #5 Concurrent writes to HEAD, the working tree, or the index are preserved or fail closed without stealing index ownership
+- [x] #6 Focused regression tests cover scoped ownership across task, document, decision, bulk, lifecycle, and agent-instruction paths
 <!-- AC:END -->
 
 ## Definition of Done
 <!-- DOD:BEGIN -->
-- [ ] #1 bunx tsc --noEmit passes when TypeScript touched
-- [ ] #2 bun run check . passes when formatting/linting touched
-- [ ] #3 bun test (or scoped test) passes
+- [x] #1 bunx tsc --noEmit passes when TypeScript touched
+- [x] #2 bun run check . passes when formatting/linting touched
+- [x] #3 bun test (or scoped test) passes
 <!-- DOD:END -->
 
 ## Implementation Plan
@@ -76,3 +76,9 @@ Addressed all three Codex review findings: GitOperations.addFiles now delegates 
 
 Addressed the exact-head Codex follow-up review: commitFiles now partitions selected paths by their symlink-resolved Git repository before applying the existing scoped commit algorithm, and bulk task updates aggregate the exact paths returned by each save instead of re-resolving semantic IDs. Added regressions for agent instructions spanning two repositories and a legacy task whose filename differs from its frontmatter ID. Verification: both red reproductions now pass, the broader scoped/concurrency set passed 110/110, Biome/TypeScript/build passed, and the full suite passed with 1855 tests, 5 skipped, and 0 failures.
 <!-- SECTION:NOTES:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+Merged PR #796 from exact head 9142cb86 after all seven CI jobs passed, including Windows lint/unit and compile/smoke, and the automatic Codex review completed with no blockers. Auto-commit now scopes task, document, decision, lifecycle, bulk, and agent-instruction commits to their exact written paths, preserves unrelated and concurrent Git state, handles symlink-resolved repositories and legacy task paths, and retains no-history move behavior. Local verification passed Biome, TypeScript, build, 110 focused tests, and the full suite with 1,855 passing, 5 skipped, and 0 failures.
+<!-- SECTION:FINAL_SUMMARY:END -->
