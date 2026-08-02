@@ -5,7 +5,7 @@ status: Done
 assignee:
   - '@alexs-agent'
 created_date: '2026-08-02 18:01'
-updated_date: '2026-08-02 18:27'
+updated_date: '2026-08-02 18:36'
 labels: []
 dependencies: []
 references:
@@ -68,6 +68,8 @@ Implemented one shared resolve-to-title path and reused it for Core queries, the
 Verification evidence: issue #819 round trip passed in a clean scratch project for 0, m-0, M-0, punctuated title, title typo, JSON output, and an unmatched query. The focused milestone/CLI/MCP suite passed 22 tests with 122 assertions. A controlled mutation that skipped query resolution produced four expected regression failures across unit, CLI, interactive, and MCP paths; restoring the resolver returned the suite to green. bunx tsc --noEmit, bun run check ., and bun run build passed. The full bun test suite passed 1,869 tests with 5 documented opt-in interactive skips and 0 failures.
 
 Automatic Codex review edge cases addressed with regression coverage: milestone IDs take precedence over colliding titles; recognized IDs short-circuit fuzzy matching when no task is assigned; archived milestone IDs resolve in the interactive viewer without appearing as active picker options; and the subprocess-heavy CLI ID matrix has an explicit 10-second timeout. Focused tests, typecheck, Biome, build, and the full 209-file suite are green.
+
+Second Codex review identified that ASCII-only normalization collapsed non-ASCII-only milestone titles. Added a red/green regression covering distinct CJK milestones and unassigned tasks, then changed the shared normalizer to preserve Unicode letters and numbers across Core and MCP filtering.
 <!-- SECTION:NOTES:END -->
 
 ## Final Summary
@@ -76,4 +78,6 @@ Automatic Codex review edge cases addressed with regression coverage: milestone 
 Resolved milestone filter queries and stored values through one shared title vocabulary, so numeric/canonical IDs and punctuated titles behave consistently in plain/JSON CLI output, the interactive task list, and MCP active/Draft listing. Verified with the issue #819 CLI round trip, mutation-backed focused regressions, typecheck, Biome, build, and 1,869 passing full-suite tests.
 
 Follow-up review fixes preserve deterministic ID semantics, cover archived interactive filtering, and keep the CLI regression reliable on slower runners. Final local verification: 1872 passed, 5 opt-in interactive tests skipped, 0 failed.
+
+Unicode milestone identities are now preserved during filtering, preventing CJK-only titles from collapsing into the same empty comparison key.
 <!-- SECTION:FINAL_SUMMARY:END -->

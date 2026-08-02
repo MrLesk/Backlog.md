@@ -13,6 +13,26 @@ describe("milestone filter matching", () => {
 		expect(normalizeMilestoneFilterValue("  Release-1 / Alpha ")).toBe("release 1 alpha");
 	});
 
+	it("preserves non-ASCII milestone identity", () => {
+		const resolveMilestone = createMilestoneFilterValueResolver([
+			{ id: "m-1", title: "发布", description: "", rawContent: "" },
+			{ id: "m-2", title: "测试", description: "", rawContent: "" },
+		]);
+		const tasks = [{ id: "task-1", milestone: "m-1" }, { id: "task-2", milestone: "m-2" }, { id: "task-3" }];
+		const milestoneFilter = normalizeMilestoneFilterValue(
+			resolveMilestoneFilterTitle(
+				"m-1",
+				tasks.map((task) => task.milestone ?? ""),
+				resolveMilestone,
+			),
+		);
+		const matchingTaskIds = tasks
+			.filter((task) => normalizeMilestoneFilterValue(resolveMilestone(task.milestone ?? "")) === milestoneFilter)
+			.map((task) => task.id);
+
+		expect(matchingTaskIds).toEqual(["task-1"]);
+	});
+
 	it("returns exact normalized milestone when available", () => {
 		const resolved = resolveClosestMilestoneFilterValue("RELEASE-1", ["Release-1", "Roadmap Alpha"]);
 		expect(resolved).toBe("release 1");
