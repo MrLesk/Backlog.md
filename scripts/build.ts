@@ -8,9 +8,10 @@ type PackageJson = {
 
 const packageJson = (await Bun.file("package.json").json()) as PackageJson;
 const outfile = process.env.BACKLOG_BUILD_OUTFILE ?? "dist/backlog";
+const outdir = process.env.BACKLOG_BUILD_OUTDIR;
 const version = process.env.BACKLOG_BUILD_VERSION ?? packageJson.version;
 const target = process.env.BACKLOG_BUILD_TARGET;
-const outputDirectory = dirname(outfile);
+const outputDirectory = outdir ?? dirname(outfile);
 
 if (outputDirectory !== ".") {
 	await mkdir(outputDirectory, { recursive: true });
@@ -25,10 +26,14 @@ const result = await Bun.build({
 		"process.env.NODE_ENV": JSON.stringify("production"),
 	},
 	plugins: [tailwind],
-	compile: {
-		outfile,
-		...(target ? { target: target as Bun.Build.CompileTarget } : {}),
-	},
+	...(outdir
+		? { outdir }
+		: {
+				compile: {
+					outfile,
+					...(target ? { target: target as Bun.Build.CompileTarget } : {}),
+				},
+			}),
 	throw: false,
 });
 

@@ -94,10 +94,31 @@ backlog init "Personal Planning" --no-git
 > Without an install, `npx backlog` resolves to an unrelated third-party npm package — not this tool.
 > (With `backlog.md` installed as a project dependency, `npx backlog` runs the local binary as usual.)
 
+### Run with Nix
+
+Run Backlog.md directly from the repository flake:
+
+```bash
+nix run github:MrLesk/Backlog.md -- --version
+```
+
+Or install the named package into your Nix profile:
+
+```bash
+nix profile install github:MrLesk/Backlog.md#backlog-md
+```
+
+The Nix flake supports `x86_64-linux`, `aarch64-linux`, and
+`aarch64-darwin`. The x86_64 Linux package uses Bun's baseline runtime so it
+also works on pre-AVX2 processors with AVX support. Intel macOS users can use
+the npm, Bun, or Homebrew installation instead.
+
 The init wizard will ask how you want to connect AI tools:
 - **CLI instructions** (recommended): creates a short instruction file that tells agents to run `backlog instructions overview`.
 - **MCP connector**: optionally auto-configures Claude Code, Codex, Gemini CLI, Kiro or Cursor for teams that prefer MCP.
 - **Skip**: no AI setup; use Backlog.md purely as a task manager.
+
+For Cursor with CLI instructions, select AGENTS.md or pass `--agent-instructions cursor`; both use the same AGENTS.md target. Backlog.md preserves existing AGENTS.md content and does not migrate or remove unrelated user-managed `.cursor/rules` files.
 
 Everything is stored as human-readable Markdown in a project-local backlog folder such as `backlog/`, `.backlog/`, or a custom project-relative path configured through `backlog.config.yml` (e.g. `task-10 - Add core search functionality.md`). Task IDs use a configurable prefix (`backlog init --task-prefix`): the default produces `TASK-1`-style IDs, while this repository uses `back`, so examples below show `BACK-1`-style IDs. Git is optional: `backlog init --no-git` creates a filesystem-only project.
 
@@ -146,6 +167,7 @@ backlog task edit BACK-1 -d "Detailed context" --ac "Clear acceptance criteria"
 
 # Track work
 backlog task list -s "To Do"
+backlog task list --json | jq '.tasks[] | .id'
 backlog task edit BACK-1 --comment "Can we split the UI work into a separate PR?" --comment-author @sara
 backlog search "kanban"
 backlog board
@@ -156,13 +178,16 @@ backlog browser
 
 You can switch between AI-assisted and manual workflows at any time; both operate on the same Markdown task files. Just prefer Backlog.md commands (CLI/MCP/Web) over hand-editing task files, so field types and metadata stay consistent.
 
+Read commands support stable, versioned JSON for scripts and integrations. Use `--json` with `task list`, `task view`, the `task <id>` shorthand, and `search`. JSON mode is noninteractive and keeps successful stdout machine-readable.
+
 **Learn more:** [CLI reference](CLI-INSTRUCTIONS.md) | [Advanced configuration](ADVANCED-CONFIG.md)
 
 ---
 
 ## <img src="./.github/web-interface-256.png" alt="Web Interface" width="28" height="28" align="center"> Web Interface
 
-Launch a local web interface for visual task management:
+Launch a web interface for visual task management on the local machine. The server listens on `127.0.0.1` and is not
+reachable from other devices on the LAN or VPN:
 
 ```bash
 # Start the web server (opens browser automatically)

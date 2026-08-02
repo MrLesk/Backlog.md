@@ -386,18 +386,28 @@ export class FileSystem {
 	}
 
 	// Task operations
+	private async resolveTaskWriteTarget(
+		task: Task,
+		isDraft = false,
+	): Promise<{ id: string; filename: string; filePath: string }> {
+		let prefix = isDraft ? "draft" : extractAnyPrefix(task.id);
+		if (!prefix) prefix = (await this.loadConfig())?.prefixes?.task ?? "task";
+		const id = normalizeId(task.id, prefix);
+		const filename = `${idForFilename(id)} - ${this.sanitizeFilename(task.title)}.md`;
+		const directory = isDraft ? await this.getDraftsDir() : await this.getTasksDir();
+		const preservesPath = !isDraft && typeof task.filePath === "string" && task.filePath.trim().length > 0;
+		return { id, filename, filePath: preservesPath ? (task.filePath as string) : join(directory, filename) };
+	}
+
+	async getTaskWritePath(task: Task, isDraft = false): Promise<string> {
+		return (await this.resolveTaskWriteTarget(task, isDraft)).filePath;
+	}
+
 	async saveTask(task: Task): Promise<string> {
-		// Extract prefix from task ID, or use configured prefix, or fall back to default "task"
-		let prefix = extractAnyPrefix(task.id);
-		if (!prefix) {
-			const config = await this.loadConfig();
-			prefix = config?.prefixes?.task ?? "task";
-		}
-		const taskId = normalizeId(task.id, prefix);
-		const filename = `${idForFilename(taskId)} - ${this.sanitizeFilename(task.title)}.md`;
+		const { id: taskId, filename, filePath: filepath } = await this.resolveTaskWriteTarget(task);
+		const prefix = extractAnyPrefix(taskId) ?? "task";
 		const tasksDir = await this.getTasksDir();
 		const shouldPreservePath = typeof task.filePath === "string" && task.filePath.trim().length > 0;
-		const filepath = shouldPreservePath ? (task.filePath as string) : join(tasksDir, filename);
 		let existingTask: Task | null = null;
 
 		if (shouldPreservePath) {
@@ -734,7 +744,7 @@ export class FileSystem {
 		}
 	}
 
-	async demoteTask(taskId: string): Promise<boolean> {
+	async demoteTask(taskId: string, onMoved?: (fromPath: string, toPath: string) => void): Promise<boolean> {
 		try {
 			return await this.withCreateLock(async () => {
 				// Load the task
@@ -757,10 +767,11 @@ export class FileSystem {
 					filePath: undefined, // Will be set by saveDraft
 				};
 
-				await this.saveDraft(demotedDraft);
+				const savedPath = await this.saveDraft(demotedDraft);
 
 				// Delete old task file
 				await unlink(task.filePath);
+				onMoved?.(task.filePath, savedPath);
 
 				return true;
 			});
@@ -774,10 +785,8 @@ export class FileSystem {
 
 	// Draft operations
 	async saveDraft(task: Task): Promise<string> {
-		const draftId = normalizeId(task.id, "draft");
-		const filename = `${idForFilename(draftId)} - ${this.sanitizeFilename(task.title)}.md`;
+		const { id: draftId, filename, filePath: filepath } = await this.resolveTaskWriteTarget(task, true);
 		const draftsDir = await this.getDraftsDir();
-		const filepath = join(draftsDir, filename);
 		// Normalize the draft ID to uppercase before serialization
 		const normalizedTask = { ...task, id: draftId };
 		const content = serializeTask(normalizedTask);

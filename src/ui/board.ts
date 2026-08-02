@@ -1,4 +1,4 @@
-import type { BoxInterface, ListInterface } from "neo-neo-bblessed";
+import type { BoxInterface, ListInterface, ScreenInterface } from "neo-neo-bblessed";
 import { box, list } from "neo-neo-bblessed";
 import {
 	type BoardLayout,
@@ -7,7 +7,7 @@ import {
 	generateMilestoneGroupedBoard,
 } from "../board.ts";
 import { Core } from "../core/backlog.ts";
-import type { Milestone, Task } from "../types/index.ts";
+import type { Milestone, Task, TaskCreateInput } from "../types/index.ts";
 import { copyToClipboard } from "../utils/clipboard.ts";
 import { areLabelSelectionsEqual, collectAvailableLabels } from "../utils/label-filter.ts";
 import { NO_MILESTONE_FILTER_LABEL, NO_MILESTONE_FILTER_VALUE } from "../utils/milestone-filter.ts";
@@ -19,6 +19,7 @@ import { openConfirmPopup } from "./components/confirm-popup.ts";
 import { createFilterHeader, type FilterHeader, type FilterState } from "./components/filter-header.ts";
 import { openMultiSelectFilterPopup, openSingleSelectFilterPopup } from "./components/filter-popup.ts";
 import { openHelpPopup } from "./components/help-popup.ts";
+import { openTaskComposer, type TaskComposerOptions } from "./components/task-composer.ts";
 import { formatFooterContent } from "./footer-content.ts";
 import { getStatusIcon } from "./status-icon.ts";
 import { completeTaskFromTui, formatTaskCompletionBlockedMessage } from "./task-lifecycle.ts";
@@ -171,7 +172,7 @@ function formatColumnLabel(status: string, count: number): string {
 }
 
 const DEFAULT_FOOTER_CONTENT =
-	" {cyan-fg}[Tab]{/} View | {cyan-fg}[/]{/} Search | {cyan-fg}[T/P/F/I]{/} Filter | {cyan-fg}[←→/↑↓]{/} Nav | {cyan-fg}[Enter]{/} Details | {cyan-fg}[E/M/C/A]{/} Edit/Move/Comp/Arch | {cyan-fg}[Y]{/} Yank | {cyan-fg}[?]{/} Help | {cyan-fg}[q]{/} Quit";
+	" {cyan-fg}[Tab]{/} View | {cyan-fg}[N]{/} New | {cyan-fg}[/]{/} Search | {cyan-fg}[T/P/F/I]{/} Filter | {cyan-fg}[←→/↑↓]{/} Nav | {cyan-fg}[Enter]{/} Details | {cyan-fg}[E/M/C/A]{/} Edit/Move/Comp/Arch | {cyan-fg}[Y]{/} Yank | {cyan-fg}[?]{/} Help | {cyan-fg}[q]{/} Quit";
 
 export function shouldRebuildColumns(current: ColumnData[], next: ColumnData[]): boolean {
 	if (current.length !== next.length) {
@@ -196,6 +197,38 @@ export function shouldRebuildColumns(current: ColumnData[], next: ColumnData[]):
 		}
 	}
 	return false;
+}
+
+export function upsertBoardTask(tasks: readonly Task[], task: Task): Task[] {
+	const existingIndex = tasks.findIndex((candidate) => candidate.id === task.id);
+	if (existingIndex === -1) return [...tasks, task];
+	const next = [...tasks];
+	next[existingIndex] = task;
+	return next;
+}
+
+function areBoardTaskCollectionsEqual(current: readonly Task[], next: readonly Task[]): boolean {
+	if (current.length !== next.length) return false;
+	return current.every((task, index) => JSON.stringify(task) === JSON.stringify(next[index]));
+}
+
+export function getCreatedTaskBoardOutcome(
+	task: Task,
+	visible: boolean,
+): { focusTaskId?: string; message: string; tone: "green" | "yellow" } {
+	if (task.status.trim().toLowerCase() === "draft") {
+		return {
+			message: `Created ${task.id} as a draft. Drafts are not shown on the task board.`,
+			tone: "yellow",
+		};
+	}
+	if (!visible) {
+		return {
+			message: `Created ${task.id}, but it is hidden by the current board filters.`,
+			tone: "yellow",
+		};
+	}
+	return { focusTaskId: task.id, message: `Created ${task.id}.`, tone: "green" };
 }
 
 /**
@@ -241,6 +274,9 @@ export async function renderBoardTui(
 		milestoneEntities?: Milestone[];
 		startupWarning?: string;
 		dateFormat?: string;
+		createTask?: (input: TaskCreateInput) => Promise<Task>;
+		screen?: ScreenInterface;
+		taskComposer?: (options: TaskComposerOptions) => Promise<Task | null>;
 	},
 ): Promise<void> {
 	if (!process.stdout.isTTY) {
@@ -259,7 +295,7 @@ export async function renderBoardTui(
 	}
 
 	await new Promise<void>((resolve) => {
-		const screen = createScreen({ title: "Backlog Board" });
+		const screen = options?.screen ?? createScreen({ title: "Backlog Board" });
 		const container = box({
 			parent: screen,
 			width: "100%",
@@ -276,14 +312,18 @@ export async function renderBoardTui(
 		let currentTasks = initialTasks;
 		let columns: ColumnView[] = [];
 		let currentColumnsData: ColumnData[] = [];
+		let configuredWorkflowStatuses = [...statuses];
 		let currentStatuses = initialColumns.map((column) => column.status);
 		let currentCol = 0;
 		let popupOpen = false;
 		let currentFocus: "board" | "filters" = "board";
 		let filterPopupOpen = false;
 		let modalOpen = false;
+		let taskCreationOpen = false;
+		let taskCreationPendingUpdate = false;
 		let pendingSearchWrap: "to-first" | "to-last" | null = null;
 		let programmaticColumnSelection = false;
+		let renderingView = false;
 		const configuredTaskTypes = getTaskTypeValues(options?.types);
 		const sharedFilters = {
 			searchQuery: options?.filters?.searchQuery ?? "",
@@ -514,7 +554,7 @@ export async function renderBoardTui(
 				});
 
 				taskList.on("select item", (_item: unknown, selected: unknown) => {
-					if (programmaticColumnSelection || popupOpen || filterPopupOpen || modalOpen) return;
+					if (programmaticColumnSelection || renderingView || popupOpen || filterPopupOpen || modalOpen) return;
 					const column = columns[idx];
 					if (!column) return;
 					if (currentCol !== idx) {
@@ -526,7 +566,7 @@ export async function renderBoardTui(
 					setColumnActiveState(column, true);
 					filterHeader?.setBorderColor("cyan");
 					updateFooter();
-					screen.render();
+					if (!renderingView) screen.render();
 				});
 
 				taskList.on("focus", () => {
@@ -539,7 +579,7 @@ export async function renderBoardTui(
 					currentFocus = "board";
 					filterHeader?.setBorderColor("cyan");
 					updateFooter();
-					screen.render();
+					if (!renderingView) screen.render();
 				});
 			});
 		};
@@ -598,7 +638,7 @@ export async function renderBoardTui(
 			} else {
 				setColumnActiveState(current, false);
 			}
-			screen.render();
+			if (!renderingView) screen.render();
 		};
 
 		const restoreSelection = (taskId?: string) => {
@@ -866,11 +906,11 @@ export async function renderBoardTui(
 			syncBoardAreaLayout();
 		};
 
-		const showTransientFooter = (message: string, durationMs = 3000) => {
+		const showTransientFooter = (message: string, durationMs = 3000, renderImmediately = true) => {
 			transientFooterContent = message;
 			clearFooterTimer();
 			updateFooter();
-			screen.render();
+			if (renderImmediately) screen.render();
 			footerRestoreTimer = setTimeout(() => {
 				transientFooterContent = null;
 				footerRestoreTimer = null;
@@ -879,22 +919,27 @@ export async function renderBoardTui(
 			}, durationMs);
 		};
 
-		const renderView = () => {
-			const projectedData = getProjectedColumns(getFilteredTasks(), moveOp);
+		const renderView = (preferredTaskId?: string) => {
+			renderingView = true;
+			try {
+				const projectedData = getProjectedColumns(getFilteredTasks(), moveOp);
 
-			// If we are moving, we want to select the moving task
-			const selectedId = moveOp ? moveOp.taskId : getSelectedTaskId();
+				// If we are moving, we want to select the moving task
+				const selectedId = preferredTaskId ?? (moveOp ? moveOp.taskId : getSelectedTaskId());
 
-			if (projectedData.length === 0) {
-				const fallbackStatus = currentStatuses[0] ?? "No Status";
-				rebuildColumns([{ status: fallbackStatus, tasks: [] }], selectedId);
-			} else if (shouldRebuildColumns(currentColumnsData, projectedData)) {
-				rebuildColumns(projectedData, selectedId);
-			} else {
-				applyColumnData(projectedData, selectedId);
+				if (projectedData.length === 0) {
+					const fallbackStatus = currentStatuses[0] ?? "No Status";
+					rebuildColumns([{ status: fallbackStatus, tasks: [] }], selectedId);
+				} else if (shouldRebuildColumns(currentColumnsData, projectedData)) {
+					rebuildColumns(projectedData, selectedId);
+				} else {
+					applyColumnData(projectedData, selectedId);
+				}
+
+				updateFooter();
+			} finally {
+				renderingView = false;
 			}
-
-			updateFooter();
 			screen.render();
 		};
 
@@ -914,10 +959,20 @@ export async function renderBoardTui(
 		}
 
 		const updateBoard = (nextTasks: Task[], nextStatuses: string[]) => {
+			const tasksChanged = !areBoardTaskCollectionsEqual(currentTasks, nextTasks);
+			const statusesChanged =
+				nextStatuses.length > 0 &&
+				(nextStatuses.length !== currentStatuses.length ||
+					nextStatuses.some((status, index) => status !== currentStatuses[index]));
+			if (!tasksChanged && !statusesChanged) return;
+
 			// Update source of truth
 			currentTasks = nextTasks;
 			// Only update statuses if they changed (rare in TUI)
-			if (nextStatuses.length > 0) currentStatuses = nextStatuses;
+			if (nextStatuses.length > 0) {
+				configuredWorkflowStatuses = [...nextStatuses];
+				currentStatuses = nextStatuses;
+			}
 			configuredLabels = collectAvailableLabels(currentTasks, options?.availableLabels ?? []);
 			availableMilestones = Array.from(
 				new Set([
@@ -929,6 +984,10 @@ export async function renderBoardTui(
 				]),
 			).sort((a, b) => a.localeCompare(b));
 
+			if (taskCreationOpen) {
+				taskCreationPendingUpdate = true;
+				return;
+			}
 			renderView();
 		};
 
@@ -958,6 +1017,56 @@ export async function renderBoardTui(
 			pendingSearchWrap = null;
 			focusFilterControl("search");
 			updateFooter();
+		});
+
+		screen.key(["n", "N", "S-n"], async () => {
+			if (popupOpen || filterPopupOpen || modalOpen || moveOp || currentFocus === "filters") return;
+			taskCreationOpen = true;
+			let task: Task | null = null;
+			let creationError: unknown;
+			let hadPendingUpdate = false;
+			try {
+				task = await runWithModalGuard(() =>
+					(options?.taskComposer ?? openTaskComposer)({
+						screen,
+						statuses: configuredWorkflowStatuses,
+						types: options?.types,
+						priorities: options?.priorities,
+						persist: async (input) => {
+							if (options?.createTask) return options.createTask(input);
+							const core = new Core(process.cwd(), { enableWatchers: true });
+							const config = await core.fs.loadConfig();
+							return (await core.createTaskFromInput(input, config?.autoCommit ?? false)).task;
+						},
+					}),
+				);
+			} catch (error) {
+				creationError = error;
+			} finally {
+				taskCreationOpen = false;
+				hadPendingUpdate = taskCreationPendingUpdate;
+				taskCreationPendingUpdate = false;
+			}
+
+			if (creationError) {
+				const message = creationError instanceof Error ? creationError.message : "Unknown error";
+				showTransientFooter(` {red-fg}Error opening task composer: ${message}{/}`, 3000, false);
+				if (hadPendingUpdate) renderView();
+				else screen.render();
+				return;
+			}
+			if (!task) {
+				if (hadPendingUpdate) renderView();
+				else focusColumn(currentCol);
+				return;
+			}
+
+			const draft = task.status.trim().toLowerCase() === "draft";
+			if (!draft) currentTasks = upsertBoardTask(currentTasks, task);
+			const visible = !draft && getFilteredTasks().some((candidate) => candidate.id === task.id);
+			const outcome = getCreatedTaskBoardOutcome(task, visible);
+			showTransientFooter(` {${outcome.tone}-fg}${outcome.message}{/}`, 6000, false);
+			renderView(outcome.focusTaskId);
 		});
 
 		screen.key(["p", "P"], () => {

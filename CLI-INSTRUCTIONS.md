@@ -17,7 +17,7 @@ All examples use the `backlog` command, available after installing the `backlog.
 - **Backlog folder** – choose `backlog/`, `.backlog/`, or a custom project-relative path.
 - **Config location** – for built-in folders, choose folder-local `config.yml` or root `backlog.config.yml`; custom paths use root `backlog.config.yml`.
 - **Integration choice** – decide whether your AI tools use **CLI instructions** (recommended), the optional **MCP connector**, or no AI setup.
-- **Instruction files (CLI path)** – the CLI setup writes a short nudge to AGENTS.md by default in non-interactive setup. Interactive setup lets you choose CLAUDE.md, AGENTS.md, GEMINI.md, Copilot instructions, or skip.
+- **Instruction files (CLI path)** – the CLI setup writes a short nudge to AGENTS.md by default in non-interactive setup. `--agent-instructions cursor` also selects AGENTS.md, and the interactive CLI and Web setup identify Cursor under that shared target. Existing user-managed `.cursor/rules` files may coexist; Backlog.md does not migrate or remove them, and repeated initialization preserves non-Backlog content in AGENTS.md.
 - **Advanced settings prompt** – default answer "No" finishes init immediately; choosing "Yes" jumps straight into the advanced wizard documented in [ADVANCED-CONFIG.md](ADVANCED-CONFIG.md).
 
 The advanced wizard includes interactive Definition of Done defaults editing (add/remove/reorder/clear), so project checklist defaults can be managed without manual YAML edits.
@@ -57,9 +57,11 @@ Humans and agents can run `backlog instructions` for workflow guides and `backlo
 | Create (all options) | `backlog task create "Feature" -d "Description" -a @sara -s "To Do" -l auth --priority high --ac "Must work" --notes "Initial setup done" --dep task-1 --ref src/api.ts --doc docs/spec.md -p 14` |
 | List tasks  | `backlog task list [-s <status>] [-a <assignee>] [-p <parent>] [--labels <labels>] [--search <query>] [--limit <n>]` |
 | List filtered | `backlog task list --labels frontend,bug --search "login" --limit 10 --plain` |
+| List as JSON | `backlog task list --status "To Do" --json` |
 | List by parent | `backlog task list --parent 42` or `backlog task list -p task-42` |
 | View detail | `backlog task 7` (interactive UI, press 'E' to edit in editor) |
 | View (AI mode) | `backlog task 7 --plain`                           |
+| View as JSON | `backlog task 7 --json` |
 | Edit        | `backlog task edit 7 -a @sara -l auth,backend`       |
 | Add plan    | `backlog task edit 7 --plan "Implementation approach"`    |
 | Add AC      | `backlog task edit 7 --ac "New criterion" --ac "Another one"` |
@@ -83,6 +85,35 @@ Humans and agents can run `backlog instructions` for workflow guides and `backlo
 | Archive     | `backlog task archive 7`                             |
 
 Task comments are append-only discussion entries with optional author labels. Use comments for review questions and collaboration notes; use implementation notes for execution progress and final summary for PR-ready completion notes. Comment bodies may contain Markdown, but standalone `---` lines are reserved as comment delimiters.
+
+### Stable JSON output
+
+Use `--json` when a script or integration needs structured output:
+
+```bash
+backlog task list --status "To Do" --json | jq '.tasks[] | .id'
+backlog task view BACK-7 --json | jq '.task.acceptanceCriteria'
+backlog task BACK-7 --json
+backlog search "authentication" --json | jq '.results[] | [.type, .data.id]'
+```
+
+Each successful response is one pretty-printed JSON document followed by a newline. The top-level contract is versioned and identifies the command result:
+
+| Command | Envelope |
+|---------|----------|
+| `task list --json` | `{ "schemaVersion": 1, "kind": "task-list", "tasks": [...] }` |
+| `task view <id> --json` and `task <id> --json` | `{ "schemaVersion": 1, "kind": "task-view", "task": {...} }` |
+| `search [query] --json` | `{ "schemaVersion": 1, "kind": "search", "results": [...] }` |
+
+Task list and task search results use these compact fields: `id`, `title`, `status`, `type`, `priority`, `assignees`, `reporter`, `labels`, `milestone`, `parentTaskId`, `ordinal`, `createdAt`, and `updatedAt`.
+
+Task view adds `path`, `description`, `dependencies`, `references`, `documentation`, `modifiedFiles`, `subtasks`, `acceptanceCriteria`, `definitionOfDone`, `implementationPlan`, `implementationNotes`, `comments`, and `finalSummary`. `path` is relative to the project root. Checklist entries contain `index`, `text`, and `checked`. Comment entries contain `index`, `body`, `createdAt`, and `author`.
+
+Search keeps relevance order and discriminates every result with `type` and `data`. Task data uses the compact task fields. Document data contains `id`, `title`, `type`, `path`, `tags`, `createdAt`, and `updatedAt`. Decision data contains `id`, `title`, `status`, and `date`. Search scores are not part of the version 1 public contract.
+
+Absent scalar fields are `null`, and absent collections are `[]`. Date-only values remain `YYYY-MM-DD`; UTC date-times use RFC 3339. Internal fields, absolute paths, raw Markdown source objects, branch metadata, and search implementation details are not exposed.
+
+`--json` and `--plain` are mutually exclusive. Explicit JSON mode is always noninteractive, including in a terminal. Without `--json`, existing interactive, explicit plain, and automatic non-TTY plain behavior is unchanged. Errors leave stdout empty, write a concise message to stderr, and exit nonzero. Version 1 may gain backward-compatible fields, but removing, renaming, retyping, or changing documented field semantics requires a new `schemaVersion`.
 
 ### Multi-line input (description/plan/notes/comments/final summary)
 
@@ -170,6 +201,7 @@ Find tasks, documents, and decisions across your entire backlog with fuzzy searc
 | Filter by priority | `backlog search "bug" --priority high`        |
 | Combine filters    | `backlog search "web" --status "To Do" --priority medium` |
 | Plain text output  | `backlog search "feature" --plain` (for scripts/AI) |
+| JSON output        | `backlog search "feature" --json` (for structured integrations) |
 | Find by modified file | `backlog search --modified-file src/path.ts --plain` |
 
 **Search features:**
@@ -221,8 +253,10 @@ Manage task dependencies to express execution order:
 
 | Action      | Example                                              |
 |-------------|------------------------------------------------------|
-| Web interface | `backlog browser` (launches web UI on port 6420) |
+| Web interface | `backlog browser` (launches the local-machine-only web UI on `127.0.0.1:6420`) |
 | Web custom port | `backlog browser --port 8080 --no-open` |
+
+The Web UI listens only on `127.0.0.1`; it is not reachable from other devices on the LAN or VPN.
 
 To keep the Web UI running in the background with auto-start on boot, see [Running Backlog.md as a Service](backlog/docs/doc-003%20-%20Running-Backlog-Browser-as-a-Service.md).
 

@@ -145,6 +145,10 @@ describe("CLI Integration", () => {
 				"Research the current system, including relevant code, tests, conventions, and recent changes",
 			);
 			expect(taskExecution).toContain("Record the current plan in the task before implementation");
+			expect(taskExecution).toContain("or more repeatable `--append-plan` values");
+			expect(taskExecution).toContain(
+				'backlog task edit BACK-123 --plan "1. Revised approach" --append-plan "2. Verify it"',
+			);
 			expect(taskExecution).toContain(
 				"If the plan contains a material product, architecture, or workflow decision, or the project or user requires plan",
 			);

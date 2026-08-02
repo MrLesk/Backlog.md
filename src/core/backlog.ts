@@ -1,8 +1,8 @@
-import { rename as moveFile, stat, unlink } from "node:fs/promises";
+import { rename as moveFile, readFile, stat, unlink, writeFile } from "node:fs/promises";
 import { basename, isAbsolute, join, relative } from "node:path";
 import { DEFAULT_DIRECTORIES, DEFAULT_STATUSES, FALLBACK_STATUS } from "../constants/index.ts";
 import { FileSystem, isCreateLockError } from "../file-system/operations.ts";
-import { GitOperations } from "../git/operations.ts";
+import { type GitIndexEntry, GitOperations } from "../git/operations.ts";
 import {
 	type AcceptanceCriterion,
 	type BacklogConfig,
@@ -58,21 +58,13 @@ import {
 	stringArraysEqual,
 	validateDependencies,
 } from "../utils/task-builders.ts";
-import { resolveTaskById } from "../utils/task-id.ts";
-import {
-	AmbiguousTaskIdError,
-	getDraftPath,
-	getTaskFilename,
-	getTaskPath,
-	normalizeTaskId,
-	taskIdsEqual,
-} from "../utils/task-path.ts";
+import { AmbiguousTaskIdError, getDraftPath, getTaskPath, normalizeTaskId, taskIdsEqual } from "../utils/task-path.ts";
 import { attachSubtaskSummaries } from "../utils/task-subtasks.ts";
 import { formatValidTaskTypeValues, matchesTaskTypeFilter, resolveTaskTypeValue } from "../utils/task-type-config.ts";
 import { upsertTaskUpdatedDate } from "../utils/task-updated-date.ts";
 import { isTerminalStatus } from "../utils/terminal-status.ts";
 import { migrateConfig, needsMigration } from "./config-migration.ts";
-import { ContentStore } from "./content-store.ts";
+import { ContentStore, type TaskCorpusSnapshot } from "./content-store.ts";
 import {
 	applyDuplicateTaskIdRepair,
 	type DuplicateRepairPlan,
@@ -82,14 +74,12 @@ import {
 import { migrateDraftPrefixes, needsDraftPrefixMigration } from "./prefix-migration.ts";
 import { calculateNewOrdinal, DEFAULT_ORDINAL_STEP, resolveOrdinalConflicts } from "./reorder.ts";
 import { SearchService } from "./search-service.ts";
+import { TaskIdentityIndex, type TaskIdentityRecord } from "./task-identity-index.ts";
 import {
 	type BranchTaskStateEntry,
-	findTaskInLocalBranches,
-	findTaskInRemoteBranches,
 	getTaskLoadingMessage,
 	loadLocalBranchTasks,
 	loadRemoteTasks,
-	resolveTaskConflict,
 } from "./task-loader.ts";
 
 interface BlessedScreen {
@@ -113,6 +103,20 @@ interface BlessedScreen {
 	width: number;
 	height: number;
 	emit(event: string): void;
+}
+
+interface CreatedTaskWrite {
+	filePath: string;
+	createdContent: Buffer;
+	previousPath: string | null;
+	previousContent: Buffer | null;
+	previousIndexEntries?: GitIndexEntry[];
+	generatedIndexEntries?: GitIndexEntry[];
+}
+
+interface CreatedTaskRollbackResult {
+	indexRestored: boolean;
+	workingPathRestored: boolean;
 }
 
 interface TaskQueryOptions {
@@ -171,46 +175,6 @@ function hasUpdatedDateRelevantChanges(originalTask: Task | null, nextTask: Task
 	);
 }
 
-function buildLatestStateMap(
-	stateEntries: BranchTaskStateEntry[] = [],
-	localTasks: Array<Task & { lastModified?: Date; updatedDate?: string }> = [],
-): Map<string, BranchTaskStateEntry> {
-	const latest = new Map<string, BranchTaskStateEntry>();
-	const update = (entry: BranchTaskStateEntry) => {
-		const existing = latest.get(entry.id);
-		if (!existing || entry.lastModified > existing.lastModified) {
-			latest.set(entry.id, entry);
-		}
-	};
-
-	for (const entry of stateEntries) {
-		update(entry);
-	}
-
-	for (const task of localTasks) {
-		if (!task.id) continue;
-		const lastModified = task.lastModified ?? (task.updatedDate ? new Date(task.updatedDate) : new Date(0));
-
-		update({
-			id: task.id,
-			type: "task",
-			branch: "local",
-			path: "",
-			lastModified,
-		});
-	}
-
-	return latest;
-}
-
-function filterTasksByStateSnapshots(tasks: Task[], latestState: Map<string, BranchTaskStateEntry>): Task[] {
-	return tasks.filter((task) => {
-		const latest = latestState.get(task.id);
-		if (!latest) return true;
-		return latest.type === "task";
-	});
-}
-
 function normalizeDocumentTypeInput(type: unknown): DocumentType | undefined {
 	if (type === undefined) {
 		return undefined;
@@ -219,20 +183,6 @@ function normalizeDocumentTypeInput(type: unknown): DocumentType | undefined {
 		return type as DocumentType;
 	}
 	throw new Error(`Document type must be one of: ${DOCUMENT_TYPE_VALUES.join(", ")}.`);
-}
-
-/**
- * Extract IDs from state map where latest state is "task" or "completed" (not "archived" or "draft")
- * Used for ID generation to determine which IDs are in use.
- */
-function getActiveAndCompletedIdsFromStateMap(latestState: Map<string, BranchTaskStateEntry>): string[] {
-	const ids: string[] = [];
-	for (const [id, entry] of latestState) {
-		if (entry.type === "task" || entry.type === "completed") {
-			ids.push(id);
-		}
-	}
-	return ids;
 }
 
 function formatAvailableIndexHint(items: AcceptanceCriterion[], emptyMessage: string): string {
@@ -252,7 +202,6 @@ export class Core {
 	private contentStore?: ContentStore;
 	private searchService?: SearchService;
 	private readonly enableWatchers: boolean;
-	private activeBranchTaskEntries: BranchTaskStateEntry[] = [];
 	private activeBranchFingerprint: string | null = null;
 	private activeBranchFingerprintPromise: Promise<string> | null = null;
 	private activeBranchRefreshPromise: Promise<void> | null = null;
@@ -266,12 +215,59 @@ export class Core {
 		// Note: Config is loaded lazily when needed since constructor can't be async
 	}
 
+	private async buildTaskIdentityIndex(
+		localTasks: Array<Task & { lastModified?: Date }>,
+		completedTasks: Task[],
+		branchRecords: BranchTaskStateEntry[],
+		statuses: string[],
+		resolutionStrategy: "most_recent" | "most_progressed",
+	): Promise<TaskIdentityIndex> {
+		const records: TaskIdentityRecord[] = [];
+		for (const task of localTasks) {
+			records.push({
+				id: task.id,
+				type: "task",
+				branch: "local",
+				path: task.filePath ?? join(this.fs.tasksDir, task.id),
+				lastModified: task.lastModified ?? (task.updatedDate ? new Date(task.updatedDate) : new Date(0)),
+				task: { ...task, source: "local" },
+				workingCopy: true,
+			});
+		}
+		for (const task of completedTasks) {
+			records.push({
+				id: task.id,
+				type: "completed",
+				branch: "local",
+				path: task.filePath ?? join(this.fs.completedDir, task.id),
+				lastModified: task.lastModified ?? (task.updatedDate ? new Date(task.updatedDate) : new Date(0)),
+				task: { ...task, source: "completed" },
+				workingCopy: true,
+			});
+		}
+		records.push(...branchRecords);
+
+		return new TaskIdentityIndex(
+			records,
+			{
+				repositoryRoot: await this.git.getRepositoryRoot(),
+				projectRoot: this.fs.rootDir,
+				backlogDirectory: this.fs.backlogDirName,
+			},
+			statuses,
+			resolutionStrategy,
+		);
+	}
+
 	async withCreateLock<T>(fn: () => Promise<T>): Promise<T> {
 		return await this.fs.withCreateLock(fn);
 	}
 
 	async previewDuplicateTaskIdRepair(options: { includeBranches?: boolean } = {}): Promise<DuplicateRepairPlan> {
-		return await previewDuplicateTaskIdRepair(this, options);
+		const hadStore = this.contentStore !== undefined;
+		const store = await this.getContentStore();
+		if (hadStore) await store.refreshLocalTaskCorpus();
+		return await previewDuplicateTaskIdRepair(this, options, store.getTaskCorpusSnapshot());
 	}
 
 	async repairDuplicateTaskIds(expectedFingerprint: string): Promise<DuplicateRepairResult> {
@@ -305,7 +301,7 @@ export class Core {
 	async getContentStore(): Promise<ContentStore> {
 		if (!this.contentStore) {
 			// Use loadTasks as the task loader to include cross-branch tasks
-			this.contentStore = new ContentStore(this.fs, () => this.loadTasks(), this.enableWatchers);
+			this.contentStore = new ContentStore(this.fs, () => this.loadContentStoreCorpus(), this.enableWatchers);
 		}
 		await this.contentStore.ensureInitialized();
 		return this.contentStore;
@@ -369,17 +365,18 @@ export class Core {
 	}
 
 	/** Refresh the existing cross-branch store only when relevant config or refs changed. */
-	async refreshTasksForTaskRead(): Promise<void> {
+	async refreshTasksForTaskRead(): Promise<boolean> {
 		while (true) {
 			const fingerprint = await this.getActiveBranchFingerprint();
 			if (fingerprint === this.activeBranchFingerprint) {
-				return;
+				return false;
 			}
 
 			if (!this.activeBranchRefreshPromise) {
+				const refreshExistingStore = this.contentStore !== undefined;
 				const refreshPromise = (async () => {
 					const store = await this.getContentStore();
-					await store.refreshTasks();
+					if (refreshExistingStore) await store.refreshTasks();
 				})();
 				this.activeBranchRefreshPromise = refreshPromise;
 				const clearRefreshPromise = () => {
@@ -391,6 +388,7 @@ export class Core {
 			}
 
 			await this.activeBranchRefreshPromise;
+			return true;
 		}
 	}
 
@@ -614,95 +612,18 @@ export class Core {
 	}
 
 	async getTask(taskId: string): Promise<Task | null> {
-		const localResolution = resolveTaskById(await this.fs.listTasks(), taskId);
-		if (localResolution.status === "invalid") {
-			return null;
-		}
-		if (localResolution.status === "ambiguous") {
-			throw new AmbiguousTaskIdError(
-				taskId,
-				localResolution.tasks.map((task) => task.filePath ?? task.id),
-			);
-		}
-
-		// Also fail closed when an active task collides with a completed file.
-		await this.fs.loadTask(taskId);
-
 		const store = await this.getContentStore();
-		const tasks = store.getTasks();
-		const resolution = resolveTaskById(tasks, taskId);
-		if (resolution.status === "invalid") {
-			return null;
+		const branchRefreshed = await this.refreshTasksForTaskRead();
+		if (!branchRefreshed) await store.refreshLocalTaskCorpus();
+		const identityResolution = store.resolveTaskForRead(taskId);
+		if (identityResolution.status === "ambiguous") {
+			throw new AmbiguousTaskIdError(taskId, identityResolution.candidates);
 		}
-		if (resolution.status === "ambiguous") {
-			throw new AmbiguousTaskIdError(
-				taskId,
-				resolution.tasks.map((task) => task.filePath ?? `${task.branch ?? "unknown branch"}:${task.id}`),
-			);
-		}
-		if (
-			localResolution.status === "found" &&
-			resolution.status === "found" &&
-			localResolution.task.id.toLowerCase() !== resolution.task.id.toLowerCase()
-		) {
-			throw new AmbiguousTaskIdError(taskId, [
-				localResolution.task.filePath ?? localResolution.task.id,
-				resolution.task.filePath ?? `${resolution.task.branch ?? "unknown branch"}:${resolution.task.id}`,
-			]);
-		}
-		if (resolution.status === "found") {
-			return resolution.task;
-		}
-		if (localResolution.status === "found") {
-			return localResolution.task;
-		}
-		return null;
-	}
-
-	async hasActiveBranchTaskIdCollision(taskId: string, localTasks: Task[]): Promise<boolean> {
-		const localMatches = localTasks.filter((task) => taskIdsEqual(taskId, task.id));
-		if (localMatches.length > 1) {
-			return true;
-		}
-
-		const config = await this.fs.loadConfig();
-		if (config?.checkActiveBranches === false) {
-			this.activeBranchTaskEntries = [];
-			return false;
-		}
-
-		const branchMatches = this.activeBranchTaskEntries.filter((entry) => taskIdsEqual(taskId, entry.id));
-		if (branchMatches.length === 0) {
-			return false;
-		}
-
-		const branchPaths = new Map<string, Set<string>>();
-		for (const entry of branchMatches) {
-			const tree = entry.tree ?? entry.branch;
-			const paths = branchPaths.get(tree) ?? new Set<string>();
-			paths.add(entry.path);
-			branchPaths.set(tree, paths);
-			if (paths.size > 1) {
-				return true;
-			}
-		}
-
-		const identities = new Set(
-			branchMatches.map((entry) =>
-				entry.objectId ? `blob:${entry.objectId}` : `location:${entry.branch}\0${entry.path}`,
-			),
-		);
-		const localTask = localMatches[0];
-		if (localTask) {
-			const objectId = localTask.filePath ? await this.git.hashFile(localTask.filePath) : null;
-			identities.add(objectId ? `blob:${objectId}` : `local:${localTask.id}\0${localTask.filePath ?? ""}`);
-		}
-
-		return identities.size > 1;
+		return identityResolution.status === "found" ? identityResolution.task : null;
 	}
 
 	async getTaskWithSubtasks(taskId: string, localTasks?: Task[]): Promise<Task | null> {
-		const task = await this.loadTaskById(taskId);
+		const task = await this.getTask(taskId);
 		if (!task) {
 			return null;
 		}
@@ -712,41 +633,15 @@ export class Core {
 	}
 
 	async loadTaskById(taskId: string): Promise<Task | null> {
-		// Pass raw ID to loadTask - it will handle prefix detection via getTaskPath
-		const localTask = await this.fs.loadTask(taskId);
-		if (localTask) return localTask;
+		return await this.getTask(taskId);
+	}
 
-		// Check config for remote operations
-		const config = await this.fs.loadConfig();
-		if (config?.checkActiveBranches === false) return null;
-
-		const sinceDays = config?.activeBranchDays ?? 30;
-		const taskPrefix = config?.prefixes?.task ?? "task";
-
-		// For cross-branch search, normalize with configured prefix
-		const canonicalId = normalizeTaskId(taskId, taskPrefix);
-
-		// Try other local branches first (faster than remote)
-		const localBranchTask = await findTaskInLocalBranches(
-			this.git,
-			canonicalId,
-			await this.getBacklogDirectoryName(),
-			sinceDays,
-			taskPrefix,
-		);
-		if (localBranchTask) return localBranchTask;
-
-		// Skip remote if disabled
-		if (config?.remoteOperations === false) return null;
-
-		// Try remote branches
-		return await findTaskInRemoteBranches(
-			this.git,
-			canonicalId,
-			await this.getBacklogDirectoryName(),
-			sinceDays,
-			taskPrefix,
-		);
+	private async loadLocalTaskForMutation(taskId: string): Promise<Task | null> {
+		const store = await this.getContentStore();
+		await store.refreshTasks();
+		const resolution = store.resolveTaskForMutation(taskId);
+		if (resolution.status === "ambiguous") throw new AmbiguousTaskIdError(taskId, resolution.candidates);
+		return resolution.status === "found" ? { ...resolution.task } : null;
 	}
 
 	async getTaskContent(taskId: string): Promise<string | null> {
@@ -798,7 +693,6 @@ export class Core {
 			this.contentStore.dispose();
 			this.contentStore = undefined;
 		}
-		this.activeBranchTaskEntries = [];
 		this.activeBranchFingerprint = null;
 		this.activeBranchFingerprintPromise = null;
 		this.activeBranchRefreshPromise = null;
@@ -1149,43 +1043,16 @@ export class Core {
 	private async getActiveAndCompletedTaskIds(): Promise<string[]> {
 		const config = await this.fs.loadConfig();
 		const taskPrefix = config?.prefixes?.task ?? "task";
+		const statuses = config?.statuses || [...DEFAULT_STATUSES];
+		const resolutionStrategy = config?.taskResolutionStrategy || "most_progressed";
 
 		// Load local active and completed tasks
 		const localTasks = await this.listTasksWithMetadata();
 		const localCompletedTasks = await this.fs.listCompletedTasks();
 
-		// Build initial state entries from local tasks
-		const stateEntries: BranchTaskStateEntry[] = [];
-
-		// Add local active tasks to state
-		for (const task of localTasks) {
-			if (!task.id) continue;
-			const lastModified = task.lastModified ?? (task.updatedDate ? new Date(task.updatedDate) : new Date(0));
-			stateEntries.push({
-				id: task.id,
-				type: "task",
-				branch: "local",
-				path: "",
-				lastModified,
-			});
-		}
-
-		// Add local completed tasks to state
-		for (const task of localCompletedTasks) {
-			if (!task.id) continue;
-			const lastModified = task.updatedDate ? new Date(task.updatedDate) : new Date(0);
-			stateEntries.push({
-				id: task.id,
-				type: "completed",
-				branch: "local",
-				path: "",
-				lastModified,
-			});
-		}
-
 		// Same-repository worktrees share the task ID namespace even before their
 		// task files are committed, so include their filesystem state for allocation.
-		stateEntries.push(...(await this.loadWorktreeTaskStateEntries(taskPrefix)));
+		const stateEntries = await this.loadWorktreeTaskStateEntries(taskPrefix);
 
 		// If cross-branch checking is enabled, scan other branches for task states
 		if (config?.checkActiveBranches !== false) {
@@ -1202,9 +1069,14 @@ export class Core {
 			stateEntries.push(...branchStateEntries);
 		}
 
-		// Build the latest state map and extract active + completed IDs
-		const latestState = buildLatestStateMap(stateEntries, []);
-		return getActiveAndCompletedIdsFromStateMap(latestState);
+		const index = await this.buildTaskIdentityIndex(
+			localTasks,
+			localCompletedTasks,
+			stateEntries,
+			statuses,
+			resolutionStrategy,
+		);
+		return index.getOccupiedIds();
 	}
 
 	/**
@@ -1253,7 +1125,8 @@ export class Core {
 		task: Task,
 		filepath: string,
 		isDraft: boolean,
-		autoCommit?: boolean,
+		autoCommit: boolean,
+		write?: CreatedTaskWrite,
 	): Promise<Task | null> {
 		const savedTask = isDraft ? await this.fs.loadDraft(task.id) : await this.fs.loadTask(task.id);
 
@@ -1261,16 +1134,76 @@ export class Core {
 			this.contentStore.upsertTask(savedTask);
 		}
 
-		if (await this.shouldAutoCommit(autoCommit)) {
+		if (autoCommit) {
 			if (isDraft) {
 				await this.git.addFile(filepath);
+				if (write) write.generatedIndexEntries = await this.git.getIndexEntries(filepath);
 				await this.git.commitTaskChange(task.id, `Create draft ${task.id}`, filepath);
 			} else {
-				await this.git.addAndCommitTaskFile(task.id, filepath, "create");
+				await this.git.addAndCommitTaskFile(task.id, filepath, "create", (entries) => {
+					if (write) write.generatedIndexEntries = entries;
+				});
 			}
 		}
 
 		return savedTask;
+	}
+
+	private async readFileIfPresent(filePath: string | null): Promise<Buffer | null> {
+		if (!filePath) return null;
+		try {
+			return await readFile(filePath);
+		} catch (error) {
+			if ((error as NodeJS.ErrnoException).code === "ENOENT") return null;
+			throw error;
+		}
+	}
+
+	private async rollbackCreatedTask(write: CreatedTaskWrite): Promise<CreatedTaskRollbackResult> {
+		let indexRestored = true;
+		if (write.generatedIndexEntries) {
+			indexRestored = await this.git.restoreIndexEntriesIfMatches(
+				write.filePath,
+				write.generatedIndexEntries,
+				write.previousIndexEntries ?? [],
+			);
+		}
+
+		const currentContent = await this.readFileIfPresent(write.filePath);
+		const stillOwnsCreatedPath = currentContent?.equals(write.createdContent) ?? false;
+		let workingPathRestored = false;
+		if (currentContent === null) {
+			if (write.previousPath === write.filePath && write.previousContent) {
+				try {
+					await writeFile(write.filePath, write.previousContent, { flag: "wx" });
+					workingPathRestored = true;
+				} catch (error) {
+					if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
+				}
+			} else {
+				workingPathRestored = true;
+			}
+		} else if (stillOwnsCreatedPath && indexRestored) {
+			if (write.previousPath === write.filePath && write.previousContent) {
+				await writeFile(write.filePath, write.previousContent);
+			} else {
+				await unlink(write.filePath);
+			}
+			workingPathRestored = true;
+		}
+
+		if (write.previousPath && write.previousPath !== write.filePath && write.previousContent) {
+			const currentPreviousContent = await this.readFileIfPresent(write.previousPath);
+			if (currentPreviousContent === null) {
+				await writeFile(write.previousPath, write.previousContent);
+			}
+		}
+
+		if (this.contentStore) {
+			await this.contentStore.refreshTasks();
+		}
+
+		return { indexRestored, workingPathRestored };
 	}
 
 	async createTaskFromInput(input: TaskCreateInput, autoCommit?: boolean): Promise<{ task: Task; filePath?: string }> {
@@ -1338,8 +1271,9 @@ export class Core {
 			disableDefaults: input.disableDefinitionOfDoneDefaults,
 		});
 		const resolvedStatus = isDraft ? "Draft" : status || config?.defaultStatus || FALLBACK_STATUS;
+		const autoCommitEnabled = await this.shouldAutoCommit(autoCommit);
 
-		const { task, filePath } = await this.withCreateLock(async () => {
+		const { task, write } = await this.withCreateLock(async () => {
 			const parentTaskId = requestedParentTaskId
 				? await this.resolveParentTaskIdForCreate(requestedParentTaskId)
 				: undefined;
@@ -1373,12 +1307,52 @@ export class Core {
 				...(definitionOfDoneItems && definitionOfDoneItems.length > 0 && { definitionOfDoneItems }),
 			};
 
+			const resolvedPreviousPath = isDraft ? await getDraftPath(task.id, this) : await getTaskPath(task.id, this);
+			const targetPath = await this.fs.getTaskWritePath(task, isDraft);
+			const targetContent = await this.readFileIfPresent(targetPath);
+			const previousPath = targetContent ? targetPath : resolvedPreviousPath;
+			const previousContent = targetContent ?? (await this.readFileIfPresent(resolvedPreviousPath));
+			const previousIndexEntries = autoCommitEnabled ? await this.git.getIndexEntries(targetPath) : undefined;
 			const filePath = await this.writePreparedTask(task, isDraft);
-			return { task, filePath };
+			const createdContent = await readFile(filePath);
+			const write: CreatedTaskWrite = {
+				filePath,
+				createdContent,
+				previousPath,
+				previousContent,
+				previousIndexEntries,
+			};
+			return {
+				task,
+				write,
+			};
 		});
 
-		const savedTask = await this.finalizeCreatedTask(task, filePath, isDraft, autoCommit);
-		return { task: savedTask ?? task, filePath };
+		try {
+			const savedTask = await this.finalizeCreatedTask(task, write.filePath, isDraft, autoCommitEnabled, write);
+			return { task: savedTask ?? task, filePath: write.filePath };
+		} catch (error) {
+			let rollback: CreatedTaskRollbackResult;
+			try {
+				rollback = await this.rollbackCreatedTask(write);
+			} catch (rollbackError) {
+				const message = rollbackError instanceof Error ? rollbackError.message : String(rollbackError);
+				throw new Error(`Task creation failed and cleanup also failed: ${message}`, { cause: error });
+			}
+			if (!rollback.workingPathRestored || !rollback.indexRestored) {
+				if (!rollback.indexRestored) {
+					throw new Error(
+						`Task creation failed, and Backlog no longer owned the staged entry for ${write.filePath}. The task file and staged Git state were preserved, ${task.id} remains in use, and manual Git review is required before retrying.`,
+						{ cause: error },
+					);
+				}
+				throw new Error(
+					`Task creation failed, and cleanup could not safely remove the changed file at ${write.filePath}. Your changes were preserved. Review or remove the preserved file before retrying because ${task.id} remains in use.`,
+					{ cause: error },
+				);
+			}
+			throw error;
+		}
 	}
 
 	private async resolveParentTaskIdForCreate(parentTaskId: string): Promise<string> {
@@ -1398,8 +1372,9 @@ export class Core {
 			task.status = config?.defaultStatus || FALLBACK_STATUS;
 		}
 
+		const autoCommitEnabled = await this.shouldAutoCommit(autoCommit);
 		const filepath = await this.writePreparedTask(task, false);
-		await this.finalizeCreatedTask(task, filepath, false, autoCommit);
+		await this.finalizeCreatedTask(task, filepath, false, autoCommitEnabled);
 
 		return filepath;
 	}
@@ -1408,7 +1383,10 @@ export class Core {
 		normalizeAssignee(task);
 
 		// Load original task to detect status changes for callbacks
-		const originalTask = await this.fs.loadTask(task.id);
+		const cachedResolution = this.contentStore?.isInitialized()
+			? this.contentStore.resolveTaskForMutation(task.id)
+			: undefined;
+		const originalTask = cachedResolution?.status === "found" ? cachedResolution.task : await this.fs.loadTask(task.id);
 		const oldStatus = originalTask?.status ?? "";
 		const newStatus = task.status ?? "";
 		const statusChanged = oldStatus !== newStatus;
@@ -1421,20 +1399,11 @@ export class Core {
 			delete task.updatedDate;
 		}
 
-		await this.fs.saveTask(task);
+		const filePath = await this.fs.saveTask(task);
 		// Keep any in-process ContentStore in sync for immediate UI/search freshness.
-		if (this.contentStore) {
-			const savedTask = await this.fs.loadTask(task.id);
-			if (savedTask) {
-				this.contentStore.upsertTask(savedTask);
-			}
-		}
 
 		if (await this.shouldAutoCommit(autoCommit)) {
-			const filePath = await getTaskPath(task.id, this);
-			if (filePath) {
-				await this.git.addAndCommitTaskFile(task.id, filePath, "update");
-			}
+			await this.git.addAndCommitTaskFile(task.id, filePath, "update");
 		}
 
 		// Fire status change callback if status changed
@@ -2014,7 +1983,7 @@ export class Core {
 	}
 
 	async updateTaskFromInput(taskId: string, input: TaskUpdateInput, autoCommit?: boolean): Promise<Task> {
-		const task = await this.fs.loadTask(taskId);
+		const task = await this.loadLocalTaskForMutation(taskId);
 		if (!task) {
 			throw new Error(`Task not found: ${taskId}`);
 		}
@@ -2033,8 +2002,7 @@ export class Core {
 		}
 
 		await this.updateTask(task, autoCommit);
-		const refreshed = await this.fs.loadTask(taskId);
-		return refreshed ?? task;
+		return task;
 	}
 
 	async updateDraft(task: Task, autoCommit?: boolean): Promise<void> {
@@ -2236,10 +2204,11 @@ export class Core {
 	}
 
 	async updateTasksBulk(tasks: Task[], commitMessage?: string, autoCommit?: boolean): Promise<void> {
-		// Update all tasks without committing individually
-		for (const task of tasks) {
-			await this.updateTask(task, false); // Don't auto-commit each one
-		}
+		const updateAll = async () => {
+			for (const task of tasks) await this.updateTask(task, false);
+		};
+		if (this.contentStore) await this.contentStore.batchTaskUpdates(updateAll);
+		else await updateAll();
 
 		// Commit all changes at once if auto-commit is enabled
 		if (await this.shouldAutoCommit(autoCommit)) {
@@ -2284,13 +2253,13 @@ export class Core {
 			seen.add(id);
 		}
 
-		// Load all tasks from the ordered list - use getTask to include cross-branch tasks from the store
-		const loadedTasks = await Promise.all(
-			orderedTaskIds.map(async (id) => {
-				const task = await this.getTask(id);
-				return task;
-			}),
-		);
+		const store = await this.getContentStore();
+		await store.refreshTasks();
+		const loadedTasks = orderedTaskIds.map((id) => {
+			const resolution = store.resolveTaskForMutation(id);
+			if (resolution.status === "ambiguous") throw new AmbiguousTaskIdError(id, resolution.candidates);
+			return resolution.status === "found" ? resolution.task : null;
+		});
 
 		// Filter out any tasks that couldn't be loaded (may have been moved/deleted)
 		const validTasks = loadedTasks.filter((t): t is Task => t !== null);
@@ -2379,7 +2348,7 @@ export class Core {
 	}
 
 	async archiveTask(taskId: string, autoCommit?: boolean): Promise<boolean> {
-		const taskToArchive = await this.fs.loadTask(taskId);
+		const taskToArchive = await this.loadLocalTaskForMutation(taskId);
 		if (!taskToArchive) {
 			return false;
 		}
@@ -2387,17 +2356,19 @@ export class Core {
 
 		// Get paths before moving the file
 		const taskPath = taskToArchive.filePath ?? (await getTaskPath(normalizedTaskId, this));
-		const taskFilename = await getTaskFilename(normalizedTaskId, this);
+		const taskFilename = taskPath ? basename(taskPath) : null;
 
 		if (!taskPath || !taskFilename) return false;
 
 		const fromPath = taskPath;
 		const toPath = join(await this.fs.getArchiveTasksDir(), taskFilename);
 
-		const success = await this.fs.archiveTask(normalizedTaskId);
-		if (!success) {
+		try {
+			await moveFile(fromPath, toPath);
+		} catch {
 			return false;
 		}
+		this.contentStore?.transitionTask(normalizedTaskId);
 
 		const activeTasks = await this.fs.listTasks();
 		const sanitizedTasks = this.sanitizeArchivedTaskLinks(activeTasks, normalizedTaskId);
@@ -2490,7 +2461,7 @@ export class Core {
 	}
 
 	async completeTask(taskId: string, autoCommit?: boolean): Promise<boolean> {
-		const task = await this.fs.loadTask(taskId);
+		const task = await this.loadLocalTaskForMutation(taskId);
 		if (!task) return false;
 		// Get paths before moving the file
 		const completedDir = this.fs.completedDir;
@@ -2502,15 +2473,20 @@ export class Core {
 		const fromPath = taskPath;
 		const toPath = join(completedDir, taskFilename);
 
-		const success = await this.fs.completeTask(taskId);
+		try {
+			await moveFile(fromPath, toPath);
+		} catch {
+			return false;
+		}
+		this.contentStore?.transitionTask(task.id, { ...task, filePath: toPath, source: "completed" });
 
-		if (success && (await this.shouldAutoCommit(autoCommit))) {
+		if (await this.shouldAutoCommit(autoCommit)) {
 			// Stage the file move for proper Git tracking
 			const repoRoot = await this.git.stageFileMove(fromPath, toPath);
 			await this.git.commitFiles(`backlog: Complete task ${normalizeTaskId(taskId)}`, [fromPath, toPath], repoRoot);
 		}
 
-		return success;
+		return true;
 	}
 
 	async getTerminalStatusTasksByAge(olderThanDays: number): Promise<Task[]> {
@@ -2598,38 +2574,15 @@ export class Core {
 	}
 
 	async demoteTask(taskId: string, autoCommit?: boolean): Promise<boolean> {
-		// Reimplemented inline (rather than delegating to fs.demoteTask, which returns only a
-		// boolean) so the moved paths are in scope and the auto-commit can be scoped to exactly
-		// them instead of staging the whole backlog directory. Mirrors promoteDraft above.
-		let moved: { previousPath: string; savedPath: string } | null = null;
-		try {
-			moved = await this.withCreateLock(async () => {
-				const task = await this.fs.loadTask(taskId);
-				if (!task?.filePath) return null;
+		const task = await this.loadLocalTaskForMutation(taskId);
+		if (!task) return false;
+		const movedPaths: Array<{ previousPath: string; savedPath: string }> = [];
+		const success = await this.fs.demoteTask(task.id, (previousPath, savedPath) => {
+			movedPaths.push({ previousPath, savedPath });
+		});
+		const moved = movedPaths[0];
 
-				const newDraftId = await this.generateNextId(EntityType.Draft);
-				const demotedDraft: Task = {
-					...task,
-					id: newDraftId,
-					status: "Draft",
-					filePath: undefined,
-				};
-
-				normalizeAssignee(demotedDraft);
-				const savedPath = await this.fs.saveDraft(demotedDraft);
-				const previousPath = task.filePath;
-				await unlink(previousPath);
-
-				return { previousPath, savedPath };
-			});
-		} catch (error) {
-			if (isCreateLockError(error)) {
-				throw error;
-			}
-			return false;
-		}
-
-		if (moved && (await this.shouldAutoCommit(autoCommit))) {
+		if (success && moved && (await this.shouldAutoCommit(autoCommit))) {
 			await this.commitWrittenFile(
 				`backlog: Demote task ${normalizeTaskId(taskId)}`,
 				[moved.previousPath],
@@ -2637,7 +2590,7 @@ export class Core {
 			);
 		}
 
-		return moved !== null;
+		return success;
 	}
 
 	/**
@@ -3089,63 +3042,28 @@ export class Core {
 
 		// Load remote tasks and local branch tasks in parallel
 		// Skip entirely when cross-branch scanning is disabled
-		let remoteTasks: Task[] = [];
-		let localBranchTasks: Task[] = [];
-		let branchStateEntries: BranchTaskStateEntry[] | undefined;
+		const branchStateEntries: BranchTaskStateEntry[] = [];
 
 		if (config?.checkActiveBranches !== false) {
 			const backlogDir = await this.getBacklogDirectoryName();
-			branchStateEntries = [];
-			[remoteTasks, localBranchTasks] = await Promise.all([
-				loadRemoteTasks(this.git, config, progressCallback, localTasks, branchStateEntries, false, backlogDir),
-				loadLocalBranchTasks(this.git, config, progressCallback, localTasks, branchStateEntries, false, backlogDir),
+			await Promise.all([
+				loadRemoteTasks(this.git, config, progressCallback, localTasks, branchStateEntries, true, backlogDir),
+				loadLocalBranchTasks(this.git, config, progressCallback, localTasks, branchStateEntries, true, backlogDir),
 			]);
 		}
 		progressCallback?.("Loaded tasks");
 
-		// Create map with local tasks
-		const tasksById = new Map<string, Task>(localTasks.map((t) => [t.id, { ...t, source: "local" }]));
-
-		// Add completed tasks to the map
-		for (const completedTask of completedTasks) {
-			if (!tasksById.has(completedTask.id)) {
-				tasksById.set(completedTask.id, { ...completedTask, source: "completed" });
-			}
-		}
-
-		// Merge tasks from other local branches
-		progressCallback?.("Merging tasks...");
-		for (const branchTask of localBranchTasks) {
-			const existing = tasksById.get(branchTask.id);
-			if (!existing) {
-				tasksById.set(branchTask.id, branchTask);
-			} else {
-				const resolved = resolveTaskConflict(existing, branchTask, statuses, resolutionStrategy);
-				tasksById.set(branchTask.id, resolved);
-			}
-		}
-
-		// Merge remote tasks with local tasks
-		for (const remoteTask of remoteTasks) {
-			const existing = tasksById.get(remoteTask.id);
-			if (!existing) {
-				tasksById.set(remoteTask.id, remoteTask);
-			} else {
-				const resolved = resolveTaskConflict(existing, remoteTask, statuses, resolutionStrategy);
-				tasksById.set(remoteTask.id, resolved);
-			}
-		}
-
-		// Get all tasks as array
-		const tasks = Array.from(tasksById.values());
-		let activeTasks: Task[];
-
-		if (config?.checkActiveBranches === false) {
-			activeTasks = tasks;
-		} else {
+		if (config?.checkActiveBranches !== false) {
 			progressCallback?.("Applying latest task states from branch scans...");
-			activeTasks = filterTasksByStateSnapshots(tasks, buildLatestStateMap(branchStateEntries || [], localTasks));
 		}
+		const index = await this.buildTaskIdentityIndex(
+			localTasks,
+			completedTasks,
+			branchStateEntries,
+			statuses,
+			resolutionStrategy,
+		);
+		const activeTasks = index.getTasks(true);
 
 		// Load drafts
 		progressCallback?.("Loading drafts...");
@@ -3163,15 +3081,43 @@ export class Core {
 		abortSignal?: AbortSignal,
 		options?: { includeCompleted?: boolean },
 	): Promise<Task[]> {
-		return await this.loadTasksWithStableBranchSnapshot(progressCallback, abortSignal, options, 0);
+		return (await this.loadTasksWithStableBranchSnapshot(progressCallback, abortSignal, options, 0)).tasks;
+	}
+
+	private async loadTaskCorpusSnapshot(): Promise<TaskCorpusSnapshot> {
+		return await this.loadTasksWithStableBranchSnapshot(
+			undefined,
+			undefined,
+			{ includeCompleted: true, visibleCompleted: false },
+			0,
+		);
+	}
+
+	private async loadContentStoreCorpus(): Promise<TaskCorpusSnapshot> {
+		if (Object.hasOwn(this, "loadTasks")) {
+			const [activeTasks, completedTasks, config] = await Promise.all([
+				this.loadTasks(),
+				this.fs.listCompletedTasks(),
+				this.fs.loadConfig(),
+			]);
+			const identityIndex = await this.buildTaskIdentityIndex(
+				activeTasks,
+				completedTasks,
+				[],
+				config?.statuses ?? [...DEFAULT_STATUSES],
+				config?.taskResolutionStrategy ?? "most_progressed",
+			);
+			return { tasks: identityIndex.getTasks(false), activeTasks, completedTasks, identityIndex };
+		}
+		return await this.loadTaskCorpusSnapshot();
 	}
 
 	private async loadTasksWithStableBranchSnapshot(
 		progressCallback: ((msg: string) => void) | undefined,
 		abortSignal: AbortSignal | undefined,
-		options: { includeCompleted?: boolean } | undefined,
+		options: { includeCompleted?: boolean; visibleCompleted?: boolean } | undefined,
 		snapshotAttempt: number,
-	): Promise<Task[]> {
+	): Promise<TaskCorpusSnapshot> {
 		const config = await this.fs.loadConfig();
 		this.git.setConfig(config);
 		const snapshotBefore = await this.getActiveBranchFingerprint(config);
@@ -3197,15 +3143,12 @@ export class Core {
 
 		// Load tasks from remote branches and other local branches in parallel
 		// Skip entirely when cross-branch scanning is disabled
-		let remoteTasks: Task[] = [];
-		let localBranchTasks: Task[] = [];
-		let branchStateEntries: BranchTaskStateEntry[] | undefined;
+		const branchStateEntries: BranchTaskStateEntry[] = [];
 
 		if (config?.checkActiveBranches !== false) {
 			progressCallback?.(getTaskLoadingMessage(config));
-			branchStateEntries = [];
 			const backlogDir = await this.getBacklogDirectoryName();
-			[remoteTasks, localBranchTasks] = await Promise.all([
+			await Promise.all([
 				loadRemoteTasks(
 					this.git,
 					config,
@@ -3227,113 +3170,27 @@ export class Core {
 			]);
 		}
 
-		const currentBranch = config?.checkActiveBranches === false ? null : await this.git.getCurrentBranch();
-		const nextActiveBranchTaskEntries = (branchStateEntries ?? []).filter(
-			(entry) => entry.type === "task" && entry.branch !== currentBranch,
-		);
-
 		// Check for cancellation after loading
 		if (abortSignal?.aborted) {
 			throw new Error("Loading cancelled");
 		}
 
-		// Create map with local tasks (current branch filesystem)
-		const tasksById = new Map<string, Task>(localTasks.map((t) => [t.id, { ...t, source: "local" }]));
-
-		// Add local completed tasks when requested
-		if (includeCompleted) {
-			for (const completedTask of completedTasks) {
-				tasksById.set(completedTask.id, { ...completedTask, source: "completed" });
-			}
-		}
-
-		// Merge tasks from other local branches
-		for (const branchTask of localBranchTasks) {
-			if (abortSignal?.aborted) {
-				throw new Error("Loading cancelled");
-			}
-
-			const existing = tasksById.get(branchTask.id);
-			if (!existing) {
-				tasksById.set(branchTask.id, branchTask);
-			} else {
-				const resolved = resolveTaskConflict(existing, branchTask, statuses, resolutionStrategy);
-				tasksById.set(branchTask.id, resolved);
-			}
-		}
-
-		// Merge remote tasks with local tasks
-		for (const remoteTask of remoteTasks) {
-			// Check for cancellation during merge
-			if (abortSignal?.aborted) {
-				throw new Error("Loading cancelled");
-			}
-
-			const existing = tasksById.get(remoteTask.id);
-			if (!existing) {
-				tasksById.set(remoteTask.id, remoteTask);
-			} else {
-				const resolved = resolveTaskConflict(existing, remoteTask, statuses, resolutionStrategy);
-				tasksById.set(remoteTask.id, resolved);
-			}
-		}
-
-		// Check for cancellation before cross-branch checking
+		// Check for cancellation before identity resolution
 		if (abortSignal?.aborted) {
 			throw new Error("Loading cancelled");
 		}
 
-		// Get the latest directory location of each task across all branches
-		const tasks = Array.from(tasksById.values());
-
-		if (abortSignal?.aborted) {
-			throw new Error("Loading cancelled");
-		}
-
-		let filteredTasks: Task[];
-
-		if (config?.checkActiveBranches === false) {
-			filteredTasks = tasks;
-		} else {
+		if (config?.checkActiveBranches !== false) {
 			progressCallback?.("Applying latest task states from branch scans...");
-			if (!includeCompleted) {
-				filteredTasks = filterTasksByStateSnapshots(tasks, buildLatestStateMap(branchStateEntries || [], localTasks));
-			} else {
-				const stateEntries = branchStateEntries || [];
-				for (const completedTask of completedTasks) {
-					if (!completedTask.id) continue;
-					const lastModified = completedTask.updatedDate ? new Date(completedTask.updatedDate) : new Date(0);
-					stateEntries.push({
-						id: completedTask.id,
-						type: "completed",
-						branch: "local",
-						path: "",
-						lastModified,
-					});
-				}
-
-				const latestState = buildLatestStateMap(stateEntries, localTasks);
-				const completedIds = new Set<string>();
-				for (const [id, entry] of latestState) {
-					if (entry.type === "completed") {
-						completedIds.add(id);
-					}
-				}
-
-				filteredTasks = tasks
-					.filter((task) => {
-						const latest = latestState.get(task.id);
-						if (!latest) return true;
-						return latest.type === "task" || latest.type === "completed";
-					})
-					.map((task) => {
-						if (!completedIds.has(task.id)) {
-							return task;
-						}
-						return { ...task, source: "completed" };
-					});
-			}
 		}
+		const identityIndex = await this.buildTaskIdentityIndex(
+			localTasks,
+			completedTasks,
+			branchStateEntries,
+			statuses,
+			resolutionStrategy,
+		);
+		const filteredTasks = identityIndex.getTasks(options?.visibleCompleted ?? includeCompleted);
 
 		const snapshotAfter = await this.getActiveBranchFingerprint();
 		if (snapshotBefore !== snapshotAfter) {
@@ -3342,8 +3199,12 @@ export class Core {
 			}
 			return await this.loadTasksWithStableBranchSnapshot(progressCallback, abortSignal, options, snapshotAttempt + 1);
 		}
-		this.activeBranchTaskEntries = nextActiveBranchTaskEntries;
 		this.activeBranchFingerprint = snapshotAfter;
-		return filteredTasks;
+		return {
+			tasks: filteredTasks,
+			activeTasks: localTasks,
+			completedTasks,
+			identityIndex,
+		};
 	}
 }

@@ -73,6 +73,34 @@ afterEach(async () => {
 });
 
 describe("duplicate repair server boundary", () => {
+	it("builds one preview from one Core-owned active and completed snapshot", async () => {
+		const serverCore = (server as unknown as { core: Core }).core;
+		const originalListTasks = serverCore.filesystem.listTasks.bind(serverCore.filesystem);
+		const originalListCompletedTasks = serverCore.filesystem.listCompletedTasks.bind(serverCore.filesystem);
+		let activeLoads = 0;
+		let completedLoads = 0;
+		serverCore.filesystem.listTasks = async (...args) => {
+			activeLoads += 1;
+			return await originalListTasks(...args);
+		};
+		serverCore.filesystem.listCompletedTasks = async (...args) => {
+			completedLoads += 1;
+			return await originalListCompletedTasks(...args);
+		};
+
+		try {
+			const response = await request("/api/tasks/duplicates");
+			expect(response.status).toBe(200);
+			expect(((await response.json()) as DuplicateRepairPlan).groups).toHaveLength(1);
+		} finally {
+			serverCore.filesystem.listTasks = originalListTasks;
+			serverCore.filesystem.listCompletedTasks = originalListCompletedTasks;
+		}
+
+		expect(activeLoads).toBe(1);
+		expect(completedLoads).toBe(1);
+	});
+
 	it("returns the shared preview and applies it with the preview fingerprint", async () => {
 		const previewResponse = await request("/api/tasks/duplicates");
 		expect(previewResponse.status).toBe(200);

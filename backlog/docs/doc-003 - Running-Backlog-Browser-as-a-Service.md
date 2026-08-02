@@ -3,11 +3,13 @@ id: doc-003
 title: Running Backlog Browser as a Service
 type: guide
 created_date: '2026-04-25'
+updated_date: '2026-07-30 17:48'
 ---
-
 # Running Backlog.md as a Service
 
 `backlog browser --no-open` keeps the Web UI running without opening a browser tab. This is useful when you want a long-lived local dashboard that starts on boot and restarts on failure.
+
+The service listens only on `127.0.0.1`, so it is available on the same machine and is not exposed to other devices on the LAN or VPN.
 
 Pick the recipe that matches your OS.
 

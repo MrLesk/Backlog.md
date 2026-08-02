@@ -25,6 +25,8 @@ Search and read before changing anything:
 - `backlog task list --search "login" --labels frontend,bug --limit 20 --plain`
 - `backlog task view {{TASK_ID:123}} --plain`
 
+Use `--json` instead of `--plain` on `task list`, `task view`, `task <id>`, or `search` when a script needs stable versioned fields. Do not combine the two flags.
+
 ### Detailed Guides
 
 **Required: read the matching guide below before creating, executing, or finalizing tasks. Do not rely on this overview alone for these actions.** The overview only tells you when to act; the guides define the required procedure, and skipping them produces inconsistent tasks and metadata.

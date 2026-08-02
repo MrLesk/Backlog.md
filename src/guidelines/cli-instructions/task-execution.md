@@ -22,7 +22,12 @@ Before writing code for non-trivial work:
    review, present it and wait for explicit approval before implementation. Routine plans need not block when no review
    was requested and they stay within confirmed scope.
 
-Keep the Backlog task as the plan of record. If the approach changes, update the plan through `backlog task edit` before continuing.
+Keep the Backlog task as the plan of record. If the approach changes, replace it with `--plan` or extend it with one
+or more repeatable `--append-plan` values. When both options are provided, `--plan` replaces the existing plan first,
+then each `--append-plan` value is appended in CLI order:
+
+- `backlog task edit {{TASK_ID:123}} --append-plan "5. Verify the revised approach"`
+- `backlog task edit {{TASK_ID:123}} --plan "1. Revised approach" --append-plan "2. Verify it"`
 
 ### Execution Workflow
 
@@ -59,6 +64,8 @@ Use CLI commands for Backlog changes:
 - Update: `backlog task edit {{TASK_ID:123}} ...`
 - Create docs: `backlog doc create "Title"`
 - Update docs: `backlog doc update doc-1 --content "Markdown"`
+
+For programmatic reads, `task list`, `task view`, `task <id>`, and `search` accept `--json`. JSON mode is noninteractive, versioned, and cannot be combined with `--plain`.
 
 Do not edit Backlog markdown files directly. The CLI preserves metadata, IDs, filenames, relationships, and structured sections.
 
