@@ -73,7 +73,6 @@ import {
 	type McpClientSetupKey,
 	runMcpClientSetupCommand,
 } from "./utils/mcp-client-setup.ts";
-import { createMilestoneFilterValueResolver, resolveMilestoneFilterTitle } from "./utils/milestone-filter.ts";
 import { resolveMilestoneInputForStorage } from "./utils/milestone-storage.ts";
 import { hasAnyPrefix } from "./utils/prefix-config.ts";
 import { formatValidPriorityValues, getPriorityOptions, resolvePriorityValue } from "./utils/priority-config.ts";
@@ -2623,27 +2622,6 @@ addHelpSchema(taskCmd.command("list"), {
 				let filtered = sortedTasks;
 				if (parentId) {
 					filtered = filtered.filter((task) => task.parentTaskId && taskIdsEqual(parentId, task.parentTaskId));
-				}
-
-				if (options.milestone && filtered.length > 0) {
-					const [activeMilestones, archivedMilestones] = await Promise.all([
-						core.filesystem.listMilestones(),
-						core.filesystem.listArchivedMilestones(),
-					]);
-					const resolveMilestoneFilterValue = createMilestoneFilterValueResolver([
-						...activeMilestones,
-						...archivedMilestones,
-					]);
-					// The interactive view compares raw milestone titles, so hand it a title rather than
-					// the normalized form the plain and JSON paths compare against.
-					const resolvedMilestone = resolveMilestoneFilterTitle(
-						options.milestone,
-						filtered.map((task) => task.milestone ?? ""),
-						resolveMilestoneFilterValue,
-					);
-					if (resolvedMilestone) {
-						initialUnifiedFilter.milestone = resolvedMilestone;
-					}
 				}
 
 				return {

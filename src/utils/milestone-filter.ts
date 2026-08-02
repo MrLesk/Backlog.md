@@ -9,42 +9,71 @@ interface MilestoneCandidate {
 	compact: string;
 }
 
-export function createMilestoneFilterValueResolver(milestones: Milestone[]): (milestoneValue: string) => string {
-	const milestoneLabelsByKey = new Map<string, string>();
-	for (const milestone of milestones) {
-		const normalizedTitle = milestone.title.trim();
-		if (normalizedTitle) {
-			milestoneLabelsByKey.set(normalizedTitle.toLowerCase(), normalizedTitle);
-		}
-	}
+export interface MilestoneFilterValueResolver {
+	(milestoneValue: string): string;
+	resolveExactId(milestoneValue: string): string | undefined;
+	resolveId(milestoneValue: string): string | undefined;
+}
 
+export function createMilestoneFilterValueResolver(milestones: Milestone[]): MilestoneFilterValueResolver {
+	const milestonesById = new Map<string, { id: string; title: string }>();
+	const milestonesByTitle = new Map<string, Array<{ id: string; title: string }>>();
 	for (const milestone of milestones) {
 		const normalizedId = milestone.id.trim();
 		const normalizedTitle = milestone.title.trim();
 		if (!normalizedId || !normalizedTitle) continue;
-		milestoneLabelsByKey.set(normalizedId.toLowerCase(), normalizedTitle);
-		const idMatch = normalizedId.match(/^m-(\d+)$/i);
-		if (idMatch?.[1]) {
-			const numericAlias = String(Number.parseInt(idMatch[1], 10));
-			milestoneLabelsByKey.set(`m-${numericAlias}`, normalizedTitle);
-			milestoneLabelsByKey.set(numericAlias, normalizedTitle);
+		const record = { id: normalizedId, title: normalizedTitle };
+		if (!milestonesById.has(normalizedId.toLowerCase())) {
+			milestonesById.set(normalizedId.toLowerCase(), record);
 		}
+		const titleKey = normalizedTitle.toLowerCase();
+		milestonesByTitle.set(titleKey, [...(milestonesByTitle.get(titleKey) ?? []), record]);
 	}
 
-	return (milestoneValue: string) => {
+	const resolveExactId = (milestoneValue: string): string | undefined => {
+		const normalized = milestoneValue.trim().toLowerCase();
+		if (!normalized) return undefined;
+		const direct = milestonesById.get(normalized);
+		if (direct) return direct.id;
+		const idMatch = normalized.match(/^(?:m-)?(\d+)$/i);
+		if (!idMatch?.[1]) return undefined;
+		const numericAlias = idMatch[1].replace(/^0+(?=\d)/, "");
+		const canonical = milestonesById.get(`m-${numericAlias}`);
+		if (canonical) return canonical.id;
+		return Array.from(milestonesById.values()).find((milestone) => {
+			const candidateMatch = milestone.id.match(/^m-(\d+)$/i);
+			return candidateMatch?.[1]?.replace(/^0+(?=\d)/, "") === numericAlias;
+		})?.id;
+	};
+
+	const resolveId = (milestoneValue: string): string | undefined => {
+		const exactId = resolveExactId(milestoneValue);
+		if (exactId) return exactId;
+		const titleMatches = milestonesByTitle.get(milestoneValue.trim().toLowerCase()) ?? [];
+		const titleIds = new Set(titleMatches.map((milestone) => milestone.id.toLowerCase()));
+		return titleIds.size === 1 ? titleMatches[0]?.id : undefined;
+	};
+
+	const resolver = (milestoneValue: string) => {
 		const normalized = milestoneValue.trim();
 		if (!normalized) return milestoneValue;
-		return milestoneLabelsByKey.get(normalized.toLowerCase()) ?? milestoneValue;
+		const exactId = resolveExactId(normalized);
+		if (exactId) {
+			return milestonesById.get(exactId.toLowerCase())?.title ?? milestoneValue;
+		}
+		return milestonesByTitle.get(normalized.toLowerCase())?.[0]?.title ?? milestoneValue;
 	};
+	return Object.assign(resolver, { resolveExactId, resolveId });
 }
 
 export function normalizeMilestoneFilterValue(value: string): string {
-	return value
-		.trim()
-		.toLowerCase()
+	const normalizedValue = value.trim().toLowerCase();
+	if (!normalizedValue) return normalizedValue;
+	const searchableValue = normalizedValue
 		.replace(/[^\p{L}\p{N}]+/gu, " ")
 		.trim()
 		.replace(/\s+/g, " ");
+	return searchableValue || normalizedValue;
 }
 
 function compactMilestoneFilterValue(value: string): string {
@@ -61,16 +90,34 @@ function compactMilestoneFilterValue(value: string): string {
 export function resolveMilestoneFilterTitle(
 	query: string,
 	milestoneValues: string[],
-	resolveValue: (milestoneValue: string) => string = (value) => value,
+	resolveValue: ((milestoneValue: string) => string) | MilestoneFilterValueResolver = (value) => value,
 ): string {
 	const normalizedQuery = query.trim();
 	const resolvedQuery = resolveValue(query);
-	if (/^(?:m-)?\d+$/i.test(normalizedQuery) || resolvedQuery.trim().toLowerCase() !== normalizedQuery.toLowerCase()) {
+	const exactId = "resolveExactId" in resolveValue ? resolveValue.resolveExactId(query) : undefined;
+	if (exactId || resolvedQuery.trim().toLowerCase() !== normalizedQuery.toLowerCase()) {
 		return resolvedQuery;
 	}
 	const candidates = milestoneValues.map((value) => resolveValue(value)).filter((value) => value.trim().length > 0);
 	const closest = resolveClosestMilestoneFilterValue(resolvedQuery, candidates);
 	return candidates.find((candidate) => normalizeMilestoneFilterValue(candidate) === closest)?.trim() ?? resolvedQuery;
+}
+
+export function createMilestoneFilterMatcher(
+	query: string,
+	milestoneValues: string[],
+	resolveValue: MilestoneFilterValueResolver,
+): (milestoneValue: string) => boolean {
+	const exactId = resolveValue.resolveExactId(query);
+	if (exactId) {
+		const targetId = exactId.toLowerCase();
+		return (milestoneValue) => resolveValue.resolveId(milestoneValue)?.toLowerCase() === targetId;
+	}
+
+	const milestoneFilter = normalizeMilestoneFilterValue(
+		resolveMilestoneFilterTitle(query, milestoneValues, resolveValue),
+	);
+	return (milestoneValue) => normalizeMilestoneFilterValue(resolveValue(milestoneValue)) === milestoneFilter;
 }
 
 export function resolveClosestMilestoneFilterValue(query: string, milestoneValues: string[]): string {

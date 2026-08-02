@@ -5,7 +5,7 @@ status: Done
 assignee:
   - '@alexs-agent'
 created_date: '2026-08-02 18:01'
-updated_date: '2026-08-02 18:36'
+updated_date: '2026-08-02 18:56'
 labels: []
 dependencies: []
 references:
@@ -49,13 +49,13 @@ Issue #819 reports that task list milestone filtering accepts milestone titles b
 ## Implementation Plan
 
 <!-- SECTION:PLAN:BEGIN -->
-1. Use the shared milestone filter resolver to resolve the query and stored candidate values into the same title vocabulary before closest matching; reuse that one path in Core task queries and MCP draft listing.
+1. Build one shared milestone filter resolver that preserves exact configured ID identity and canonical alias precedence, while using punctuation-tolerant fuzzy matching only for unresolved title queries.
 
-2. Seed the interactive task list with the matched raw milestone title, because its in-memory matcher compares lowercased titles without punctuation normalization. Keep the plain/JSON Core path and the MCP active/draft paths behaviorally aligned.
+2. Reuse the shared identity-aware matcher in Core task queries, MCP Draft filtering, the interactive task viewer, and the board; keep active picker options separate from archived alias resolution.
 
-3. Extend regression coverage for numeric, canonical, and case-varied milestone IDs; punctuated exact/partial titles; unmatched queries; CLI plain and JSON output; interactive filtering; and MCP active and Draft status paths.
+3. Cover numeric/canonical/case-varied IDs, padded aliases, colliding/reused titles, punctuated/partial/typo/numeric titles, Unicode and symbol-only titles, unmatched queries, plain/JSON CLI output, interactive filtering, and MCP active/Draft paths.
 
-4. Inspect the current-main diff for scope and simplicity, exercise the issue #819 CLI round trip and MCP adapter explicitly, then run typecheck, Biome, build, and the full test suite.
+4. Exercise the issue #819 CLI round trip and MCP adapter explicitly, then run typecheck, Biome, build, the full test suite, and exact-head CI/Codex review.
 <!-- SECTION:PLAN:END -->
 
 ## Implementation Notes
@@ -70,6 +70,8 @@ Verification evidence: issue #819 round trip passed in a clean scratch project f
 Automatic Codex review edge cases addressed with regression coverage: milestone IDs take precedence over colliding titles; recognized IDs short-circuit fuzzy matching when no task is assigned; archived milestone IDs resolve in the interactive viewer without appearing as active picker options; and the subprocess-heavy CLI ID matrix has an explicit 10-second timeout. Focused tests, typecheck, Biome, build, and the full 209-file suite are green.
 
 Second Codex review identified that ASCII-only normalization collapsed non-ASCII-only milestone titles. Added a red/green regression covering distinct CJK milestones and unassigned tasks, then changed the shared normalizer to preserve Unicode letters and numbers across Core and MCP filtering.
+
+Consolidated final review fixes around a shared identity-aware matcher: exact configured ID queries compare canonical milestone identities (including canonical-over-padded alias precedence and reused active/archived titles), while only unresolved queries use fuzzy title matching. Symbol-only titles retain a non-empty fallback key. Core, MCP active/Draft, task-viewer, board, plain/JSON CLI, and interactive matching now reuse the shared resolver/matcher path.
 <!-- SECTION:NOTES:END -->
 
 ## Final Summary
@@ -80,4 +82,6 @@ Resolved milestone filter queries and stored values through one shared title voc
 Follow-up review fixes preserve deterministic ID semantics, cover archived interactive filtering, and keep the CLI regression reliable on slower runners. Final local verification: 1872 passed, 5 opt-in interactive tests skipped, 0 failed.
 
 Unicode milestone identities are now preserved during filtering, preventing CJK-only titles from collapsing into the same empty comparison key.
+
+Final consolidated verification: 57 focused integration tests passed; bunx tsc --noEmit, Biome, and build passed; the exact-working-tree full suite passed 1,878 tests with 5 documented opt-in interactive skips and 0 failures.
 <!-- SECTION:FINAL_SUMMARY:END -->

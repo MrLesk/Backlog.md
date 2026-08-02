@@ -10,11 +10,7 @@ import {
 } from "../../../types/index.ts";
 import type { TaskEditArgs, TaskEditRequest } from "../../../types/task-edit-args.ts";
 import { formatDuplicateTaskIdWarning } from "../../../utils/duplicate-detection.ts";
-import {
-	createMilestoneFilterValueResolver,
-	normalizeMilestoneFilterValue,
-	resolveMilestoneFilterTitle,
-} from "../../../utils/milestone-filter.ts";
+import { createMilestoneFilterMatcher, createMilestoneFilterValueResolver } from "../../../utils/milestone-filter.ts";
 import { resolveMilestoneInputForStorage } from "../../../utils/milestone-storage.ts";
 import { buildTaskUpdateInput } from "../../../utils/task-edit-builder.ts";
 import { createTaskSearchIndex } from "../../../utils/task-search.ts";
@@ -179,17 +175,13 @@ export class TaskHandlers {
 					...activeMilestones,
 					...archivedMilestones,
 				]);
-				const milestoneFilter = normalizeMilestoneFilterValue(
-					resolveMilestoneFilterTitle(
-						args.milestone,
-						drafts.map((draft) => resolveMilestoneFilterValue(draft.milestone ?? "")),
-						resolveMilestoneFilterValue,
-					),
+				const milestoneValues = drafts.map((draft) => draft.milestone ?? "");
+				const matchesMilestone = createMilestoneFilterMatcher(
+					args.milestone,
+					milestoneValues,
+					resolveMilestoneFilterValue,
 				);
-				drafts = drafts.filter(
-					(draft) =>
-						normalizeMilestoneFilterValue(resolveMilestoneFilterValue(draft.milestone ?? "")) === milestoneFilter,
-				);
+				drafts = drafts.filter((draft) => matchesMilestone(draft.milestone ?? ""));
 			}
 
 			const labelFilters = args.labels ?? [];

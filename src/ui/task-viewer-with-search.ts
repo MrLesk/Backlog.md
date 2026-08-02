@@ -15,6 +15,7 @@ import { copyToClipboard } from "../utils/clipboard.ts";
 import { areLabelSelectionsEqual, collectAvailableLabels, labelsToLower } from "../utils/label-filter.ts";
 import {
 	createMilestoneFilterValueResolver,
+	type MilestoneFilterValueResolver,
 	NO_MILESTONE_FILTER_LABEL,
 	NO_MILESTONE_FILTER_VALUE,
 } from "../utils/milestone-filter.ts";
@@ -61,7 +62,7 @@ export function buildTaskViewerMilestoneFilterModel(
 	archivedMilestones: Milestone[] = [],
 ): {
 	availableMilestoneTitles: string[];
-	resolveMilestoneLabel: (milestone: string) => string;
+	resolveMilestoneLabel: MilestoneFilterValueResolver;
 } {
 	return {
 		availableMilestoneTitles: activeMilestones.map((milestone) => milestone.title),

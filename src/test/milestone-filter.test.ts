@@ -1,6 +1,7 @@
 import { describe, expect, it } from "bun:test";
 import type { Task } from "../types/index.ts";
 import {
+	createMilestoneFilterMatcher,
 	createMilestoneFilterValueResolver,
 	normalizeMilestoneFilterValue,
 	resolveClosestMilestoneFilterValue,
@@ -13,24 +14,17 @@ describe("milestone filter matching", () => {
 		expect(normalizeMilestoneFilterValue("  Release-1 / Alpha ")).toBe("release 1 alpha");
 	});
 
-	it("preserves non-ASCII milestone identity", () => {
+	it("preserves non-ASCII and symbol-only milestone identity", () => {
 		const resolveMilestone = createMilestoneFilterValueResolver([
 			{ id: "m-1", title: "发布", description: "", rawContent: "" },
 			{ id: "m-2", title: "测试", description: "", rawContent: "" },
+			{ id: "m-3", title: "🚀", description: "", rawContent: "" },
+			{ id: "m-4", title: "✨", description: "", rawContent: "" },
 		]);
-		const tasks = [{ id: "task-1", milestone: "m-1" }, { id: "task-2", milestone: "m-2" }, { id: "task-3" }];
-		const milestoneFilter = normalizeMilestoneFilterValue(
-			resolveMilestoneFilterTitle(
-				"m-1",
-				tasks.map((task) => task.milestone ?? ""),
-				resolveMilestone,
-			),
-		);
-		const matchingTaskIds = tasks
-			.filter((task) => normalizeMilestoneFilterValue(resolveMilestone(task.milestone ?? "")) === milestoneFilter)
-			.map((task) => task.id);
+		const values = ["m-1", "m-2", "m-3", "m-4", ""];
 
-		expect(matchingTaskIds).toEqual(["task-1"]);
+		expect(values.filter(createMilestoneFilterMatcher("m-1", values, resolveMilestone))).toEqual(["m-1"]);
+		expect(values.filter(createMilestoneFilterMatcher("m-3", values, resolveMilestone))).toEqual(["m-3"]);
 	});
 
 	it("returns exact normalized milestone when available", () => {
@@ -74,6 +68,30 @@ describe("milestone filter matching", () => {
 		expect(resolveMilestone("m-0")).toBe("Alpha");
 		expect(resolveMilestone("m-1")).toBe("m-0");
 	});
+
+	it("prefers canonical IDs over zero-padded aliases", () => {
+		const resolveMilestone = createMilestoneFilterValueResolver([
+			{ id: "m-1", title: "Canonical", description: "", rawContent: "" },
+			{ id: "m-01", title: "Legacy", description: "", rawContent: "" },
+		]);
+		const values = ["m-1", "m-01"];
+
+		expect(values.filter(createMilestoneFilterMatcher("1", values, resolveMilestone))).toEqual(["m-1"]);
+		expect(values.filter(createMilestoneFilterMatcher("m-1", values, resolveMilestone))).toEqual(["m-1"]);
+		expect(values.filter(createMilestoneFilterMatcher("m-01", values, resolveMilestone))).toEqual(["m-01"]);
+	});
+
+	it("keeps exact ID filters distinct when milestone titles are reused", () => {
+		const resolveMilestone = createMilestoneFilterValueResolver([
+			{ id: "m-1", title: "Release", description: "", rawContent: "" },
+			{ id: "m-2", title: "Release", description: "", rawContent: "" },
+		]);
+		const values = ["m-1", "m-2"];
+
+		expect(values.filter(createMilestoneFilterMatcher("m-1", values, resolveMilestone))).toEqual(["m-1"]);
+		expect(values.filter(createMilestoneFilterMatcher("m-2", values, resolveMilestone))).toEqual(["m-2"]);
+		expect(values.filter(createMilestoneFilterMatcher("Release", values, resolveMilestone))).toEqual(values);
+	});
 });
 
 describe("milestone filter title resolution", () => {
@@ -97,14 +115,22 @@ describe("milestone filter title resolution", () => {
 			{ id: "m-2", title: "Release 2", description: "", rawContent: "" },
 		]);
 
-		expect(resolveMilestoneFilterTitle("1", ["m-2"], resolveSimilarMilestones)).toBe("Release 1");
-		expect(resolveMilestoneFilterTitle("m-1", ["m-2"], resolveSimilarMilestones)).toBe("Release 1");
+		expect(["m-2"].filter(createMilestoneFilterMatcher("1", ["m-2"], resolveSimilarMilestones))).toEqual([]);
+		expect(["m-2"].filter(createMilestoneFilterMatcher("m-1", ["m-2"], resolveSimilarMilestones))).toEqual([]);
 
 		const resolveIdShapedTitles = createMilestoneFilterValueResolver([
 			{ id: "m-1", title: "m-1", description: "", rawContent: "" },
 			{ id: "m-2", title: "m-2", description: "", rawContent: "" },
 		]);
 		expect(resolveMilestoneFilterTitle("m-1", ["m-2"], resolveIdShapedTitles)).toBe("m-1");
+	});
+
+	it("fuzzy-matches an unrecognized numeric query as a partial title", () => {
+		const resolveMilestone = createMilestoneFilterValueResolver([
+			{ id: "m-0", title: "2026 Roadmap", description: "", rawContent: "" },
+		]);
+
+		expect(resolveMilestoneFilterTitle("2026", ["m-0"], resolveMilestone)).toBe("2026 Roadmap");
 	});
 
 	it("returns the stored title for punctuated titles rather than a normalized value", () => {
@@ -150,5 +176,20 @@ describe("milestone filter title resolution", () => {
 		}
 		expect(listed("roadmp")).toEqual(["task-2"]);
 		expect(listed("zzz-unrelated-milestone")).toEqual([]);
+	});
+
+	it("keeps exact IDs distinct in the interactive matcher when titles are reused", () => {
+		const resolveReusedTitle = createMilestoneFilterValueResolver([
+			{ id: "m-1", title: "Release", description: "", rawContent: "" },
+			{ id: "m-2", title: "Release", description: "", rawContent: "" },
+		]);
+		const tasks = [
+			{ id: "task-1", title: "One", status: "To Do", milestone: "m-1" },
+			{ id: "task-2", title: "Two", status: "To Do", milestone: "m-2" },
+		] as unknown as Task[];
+
+		expect(
+			applyTaskFilters(tasks, { milestone: "m-1", resolveMilestoneLabel: resolveReusedTitle }).map((task) => task.id),
+		).toEqual(["task-1"]);
 	});
 });
