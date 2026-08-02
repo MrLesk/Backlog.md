@@ -187,9 +187,9 @@ describe("CLI milestone filtering", () => {
 		const queries = [numericId, ID_MILESTONE_ID, ID_MILESTONE_ID.toUpperCase()];
 
 		for (const query of queries) {
-			const result = await $`bun ${cliPath} task list --milestone ${query} --plain`.cwd(TEST_DIR).quiet();
-			expect(result.exitCode).toBe(0);
-			const output = result.stdout.toString();
+			const plainResult = await $`bun ${cliPath} task list --milestone ${query} --plain`.cwd(TEST_DIR).quiet();
+			expect(plainResult.exitCode).toBe(0);
+			const output = plainResult.stdout.toString();
 
 			expect(output).toContain("TASK-6 - ID milestone task");
 			expect(output).not.toContain("TASK-1 - Milestone task one");
@@ -197,6 +197,11 @@ describe("CLI milestone filtering", () => {
 			expect(output).not.toContain("TASK-3 - Other milestone task");
 			expect(output).not.toContain("TASK-4 - No milestone task");
 			expect(output).not.toContain("TASK-5 - Roadmap milestone task");
+
+			const jsonResult = await $`bun ${cliPath} task list --milestone ${query} --json`.cwd(TEST_DIR).quiet();
+			expect(jsonResult.exitCode).toBe(0);
+			const parsed = JSON.parse(jsonResult.stdout.toString()) as { tasks: Array<{ id: string }> };
+			expect(parsed.tasks.map((task) => task.id)).toEqual(["TASK-6"]);
 		}
 	});
 

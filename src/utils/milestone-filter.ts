@@ -60,16 +60,7 @@ export function resolveMilestoneFilterTitle(
 	const resolvedQuery = resolveValue(query);
 	const candidates = milestoneValues.map((value) => resolveValue(value)).filter((value) => value.trim().length > 0);
 	const closest = resolveClosestMilestoneFilterValue(resolvedQuery, candidates);
-
-	const titleByNormalized = new Map<string, string>();
-	for (const candidate of candidates) {
-		const normalized = normalizeMilestoneFilterValue(candidate);
-		if (normalized && !titleByNormalized.has(normalized)) {
-			titleByNormalized.set(normalized, candidate.trim());
-		}
-	}
-
-	return titleByNormalized.get(closest) ?? resolvedQuery;
+	return candidates.find((candidate) => normalizeMilestoneFilterValue(candidate) === closest)?.trim() ?? resolvedQuery;
 }
 
 export function resolveClosestMilestoneFilterValue(query: string, milestoneValues: string[]): string {

@@ -13,7 +13,7 @@ import { formatDuplicateTaskIdWarning } from "../../../utils/duplicate-detection
 import {
 	createMilestoneFilterValueResolver,
 	normalizeMilestoneFilterValue,
-	resolveClosestMilestoneFilterValue,
+	resolveMilestoneFilterTitle,
 } from "../../../utils/milestone-filter.ts";
 import { resolveMilestoneInputForStorage } from "../../../utils/milestone-storage.ts";
 import { buildTaskUpdateInput } from "../../../utils/task-edit-builder.ts";
@@ -179,9 +179,12 @@ export class TaskHandlers {
 					...activeMilestones,
 					...archivedMilestones,
 				]);
-				const milestoneFilter = resolveClosestMilestoneFilterValue(
-					resolveMilestoneFilterValue(args.milestone),
-					drafts.map((draft) => resolveMilestoneFilterValue(draft.milestone ?? "")),
+				const milestoneFilter = normalizeMilestoneFilterValue(
+					resolveMilestoneFilterTitle(
+						args.milestone,
+						drafts.map((draft) => resolveMilestoneFilterValue(draft.milestone ?? "")),
+						resolveMilestoneFilterValue,
+					),
 				);
 				drafts = drafts.filter(
 					(draft) =>

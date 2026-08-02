@@ -34,7 +34,7 @@ import { generateNextDocId } from "../utils/id-generators.ts";
 import {
 	createMilestoneFilterValueResolver,
 	normalizeMilestoneFilterValue,
-	resolveClosestMilestoneFilterValue,
+	resolveMilestoneFilterTitle,
 } from "../utils/milestone-filter.ts";
 import {
 	buildGlobPattern,
@@ -430,9 +430,12 @@ export class Core {
 		}
 		if (filters.milestone) {
 			const resolveValue = resolveMilestoneFilterValue ?? ((value: string) => value);
-			const milestoneFilter = resolveClosestMilestoneFilterValue(
-				resolveValue(filters.milestone),
-				result.map((task) => resolveValue(task.milestone ?? "")),
+			const milestoneFilter = normalizeMilestoneFilterValue(
+				resolveMilestoneFilterTitle(
+					filters.milestone,
+					result.map((task) => resolveValue(task.milestone ?? "")),
+					resolveValue,
+				),
 			);
 			result = result.filter(
 				(task) => normalizeMilestoneFilterValue(resolveValue(task.milestone ?? "")) === milestoneFilter,
