@@ -5,7 +5,7 @@ status: In Progress
 assignee:
   - '@alexs-agent'
 created_date: '2026-08-02 16:16'
-updated_date: '2026-08-02 16:29'
+updated_date: '2026-08-02 16:56'
 labels: []
 dependencies: []
 references:
@@ -59,4 +59,6 @@ Ensure every Backlog.md autoCommit stages and commits only the paths its own wri
 Issue #795 and PR #796 supplied the original reproduction and focused regression coverage. Current main already contains temporary-index and compare-and-swap HEAD ownership safeguards; the integration preserves that architecture and layers the PR scope fix onto it.
 
 Integration verification: focused scoped-ownership and concurrency matrix passed; typecheck, Biome, and build passed; full suite passed with 1851 tests, 5 skipped, and 0 failures. Mutation checks confirmed the new agent-instruction and core operation regressions fail under broad pathless commits.
+
+Windows CI exposed a timeout-only smoke test that performed two real selected-path commits. The test now captures the demote commit dispatch event and both moved paths directly; production behavior is unchanged. It passed 20 consecutive focused runs at about 0.24 seconds, the 71-test core/lifecycle matrix, and the full 1,851-test local suite.
 <!-- SECTION:NOTES:END -->

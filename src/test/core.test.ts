@@ -328,14 +328,28 @@ describe("Core", () => {
 			expect(lastCommit).toContain("backlog: Archive task TASK-1");
 		});
 
-		it("should demote task with auto-commit", async () => {
-			await core.createTask(sampleTask, true);
+		it("dispatches demote auto-commit with both moved paths", async () => {
+			await core.createTask(sampleTask, false);
+			const originalCommitFiles = core.gitOps.commitFiles.bind(core.gitOps);
+			let resolveCommit: (commit: { message: string; paths: string[] }) => void = () => undefined;
+			const commitCalled = new Promise<{ message: string; paths: string[] }>((resolve) => {
+				resolveCommit = resolve;
+			});
+			core.gitOps.commitFiles = async (message, paths) => {
+				resolveCommit({ message, paths });
+			};
 
-			const demoted = await core.demoteTask("task-1", true);
-			expect(demoted).toBe(true);
+			try {
+				const demoted = await core.demoteTask("task-1", true);
+				expect(demoted).toBe(true);
 
-			const lastCommit = await core.gitOps.getLastCommitMessage();
-			expect(lastCommit).toContain("backlog: Demote task TASK-1");
+				const commit = await commitCalled;
+				expect(commit.message).toContain("backlog: Demote task TASK-1");
+				expect(commit.paths.map(toPosixPath).some((path) => path.includes("/tasks/"))).toBe(true);
+				expect(commit.paths.map(toPosixPath).some((path) => path.includes("/drafts/"))).toBe(true);
+			} finally {
+				core.gitOps.commitFiles = originalCommitFiles;
+			}
 		});
 
 		it("should resolve tasks using flexible ID formats", async () => {
