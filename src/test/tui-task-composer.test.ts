@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { $ } from "bun";
 import { Core } from "../core/backlog.ts";
 import type { Task, TaskCreateInput } from "../types/index.ts";
-import { getCreatedTaskBoardOutcome, renderBoardTui, upsertBoardTask } from "../ui/board.ts";
+import { getCreatedTaskBoardOutcome, upsertBoardTask } from "../ui/board.ts";
 import {
 	createTaskComposerValues,
 	getTaskComposerLayout,
@@ -72,14 +72,6 @@ function collectWidgets(root: { children?: unknown[] }): TestWidget[] {
 	};
 	visit(root as TestWidget);
 	return widgets;
-}
-
-async function waitUntil(predicate: () => boolean, message: string): Promise<void> {
-	for (let attempt = 0; attempt < 100; attempt += 1) {
-		if (predicate()) return;
-		await Bun.sleep(10);
-	}
-	throw new Error(`Timed out waiting for ${message}`);
 }
 
 describe("TUI task composer model", () => {
@@ -922,60 +914,8 @@ describe("TUI task composer interaction", () => {
 		}
 	});
 
-	it("opens the actual composer on an empty board and renders and focuses once after first-task creation", async () => {
-		const ttyDescriptor = Object.getOwnPropertyDescriptor(process.stdout, "isTTY");
-		Object.defineProperty(process.stdout, "isTTY", { configurable: true, value: true });
-		const screen = createScreen({ smartCSR: false });
-		const originalRender = screen.render.bind(screen);
-		let renders = 0;
-		screen.render = () => {
-			renders += 1;
-			originalRender();
-		};
-		let resolveCreate!: (created: Task) => void;
-		const createResult = new Promise<Task>((resolve) => {
-			resolveCreate = resolve;
-		});
-		try {
-			const boardPromise = renderBoardTui([], ["To Do", "Done"], "horizontal", 20, {
-				screen,
-				createTask: async () => createResult,
-			});
-			(screen as unknown as { emit(event: string): void }).emit("key n");
-			await waitUntil(
-				() =>
-					collectWidgets(screen as unknown as { children?: unknown[] }).some((widget) => widget.content === "Create"),
-				"the real task composer",
-			);
-			await waitUntil(
-				() => typeof (screen as unknown as { focused?: TestWidget }).focused?.setValue === "function",
-				"the title field to receive focus",
-			);
-			const focused = (screen as unknown as { focused?: TestWidget }).focused;
-			focused?.setValue?.("Actual composer task");
-			for (let step = 0; step < 5; step += 1) {
-				(screen as unknown as { focused?: TestWidget }).focused?.emit?.("key tab");
-			}
-			const create = (screen as unknown as { focused?: TestWidget }).focused;
-			expect(create?.content).toBe("Create");
-			create?.emit?.("key enter");
-			await new Promise<void>((resolve) => setImmediate(resolve));
-			const rendersBeforeResolution = renders;
-			resolveCreate(task({ id: "TASK-2", title: "Actual composer task" }));
-			await waitUntil(() => {
-				const boardFocus = (screen as unknown as { focused?: { items?: TestWidget[]; selected?: number } }).focused;
-				return Boolean(boardFocus?.items?.[boardFocus.selected ?? 0]?.content?.includes("TASK-2"));
-			}, "the created task to receive focus");
-			expect(renders - rendersBeforeResolution).toBe(1);
-			(screen as unknown as { emit(event: string): void }).emit("key q");
-			await withTimeout(boardPromise, "board close after actual composer success", 1000);
-		} finally {
-			screen.destroy();
-			if (ttyDescriptor) Object.defineProperty(process.stdout, "isTTY", ttyDescriptor);
-			else Reflect.deleteProperty(process.stdout, "isTTY");
-		}
-	});
-
+	/* Board creation behavior is covered by tui-task-creation-entrypoint.test.ts. */
+	/*
 	it("unwinds a rejected composer and applies future watcher updates", async () => {
 		const ttyDescriptor = Object.getOwnPropertyDescriptor(process.stdout, "isTTY");
 		Object.defineProperty(process.stdout, "isTTY", { configurable: true, value: true });
@@ -1088,6 +1028,7 @@ describe("TUI task composer interaction", () => {
 			}
 		});
 	}
+*/
 });
 
 describe("TUI task creation board outcome", () => {

@@ -23,7 +23,7 @@ import { openConfirmPopup } from "./components/confirm-popup.ts";
 import { createFilterHeader, type FilterHeader, type FilterState } from "./components/filter-header.ts";
 import { openMultiSelectFilterPopup, openSingleSelectFilterPopup } from "./components/filter-popup.ts";
 import { openHelpPopup } from "./components/help-popup.ts";
-import { openTaskComposer, type TaskComposerOptions } from "./components/task-composer.ts";
+import type { TaskComposerOptions } from "./components/task-composer.ts";
 import { formatFooterContent } from "./footer-content.ts";
 import { getStatusIcon } from "./status-icon.ts";
 import { completeTaskFromTui, formatTaskCompletionBlockedMessage } from "./task-lifecycle.ts";
@@ -278,8 +278,10 @@ export async function renderBoardTui(
 		milestoneEntities?: Milestone[];
 		startupWarning?: string;
 		dateFormat?: string;
+		/** @internal Retained while the disabled entrypoint is reverted after BACK-565. */
 		createTask?: (input: TaskCreateInput) => Promise<Task>;
 		screen?: ScreenInterface;
+		/** @internal Retained while the disabled entrypoint is reverted after BACK-565. */
 		taskComposer?: (options: TaskComposerOptions) => Promise<Task | null>;
 	},
 ): Promise<void> {
@@ -316,15 +318,12 @@ export async function renderBoardTui(
 		let currentTasks = initialTasks;
 		let columns: ColumnView[] = [];
 		let currentColumnsData: ColumnData[] = [];
-		let configuredWorkflowStatuses = [...statuses];
 		let currentStatuses = initialColumns.map((column) => column.status);
 		let currentCol = 0;
 		let popupOpen = false;
 		let currentFocus: "board" | "filters" = "board";
 		let filterPopupOpen = false;
 		let modalOpen = false;
-		let taskCreationOpen = false;
-		let taskCreationPendingUpdate = false;
 		let pendingSearchWrap: "to-first" | "to-last" | null = null;
 		let programmaticColumnSelection = false;
 		let renderingView = false;
@@ -956,7 +955,6 @@ export async function renderBoardTui(
 			currentTasks = nextTasks;
 			// Only update statuses if they changed (rare in TUI)
 			if (nextStatuses.length > 0) {
-				configuredWorkflowStatuses = [...nextStatuses];
 				currentStatuses = nextStatuses;
 			}
 			configuredLabels = collectAvailableLabels(currentTasks, options?.availableLabels ?? []);
@@ -970,10 +968,6 @@ export async function renderBoardTui(
 				]),
 			).sort((a, b) => a.localeCompare(b));
 
-			if (taskCreationOpen) {
-				taskCreationPendingUpdate = true;
-				return;
-			}
 			renderView();
 		};
 
@@ -1003,56 +997,6 @@ export async function renderBoardTui(
 			pendingSearchWrap = null;
 			focusFilterControl("search");
 			updateFooter();
-		});
-
-		screen.key(["n", "N", "S-n"], async () => {
-			if (popupOpen || filterPopupOpen || modalOpen || moveOp || currentFocus === "filters") return;
-			taskCreationOpen = true;
-			let task: Task | null = null;
-			let creationError: unknown;
-			let hadPendingUpdate = false;
-			try {
-				task = await runWithModalGuard(() =>
-					(options?.taskComposer ?? openTaskComposer)({
-						screen,
-						statuses: configuredWorkflowStatuses,
-						types: options?.types,
-						priorities: options?.priorities,
-						persist: async (input) => {
-							if (options?.createTask) return options.createTask(input);
-							const core = new Core(process.cwd(), { enableWatchers: true });
-							const config = await core.fs.loadConfig();
-							return (await core.createTaskFromInput(input, config?.autoCommit ?? false)).task;
-						},
-					}),
-				);
-			} catch (error) {
-				creationError = error;
-			} finally {
-				taskCreationOpen = false;
-				hadPendingUpdate = taskCreationPendingUpdate;
-				taskCreationPendingUpdate = false;
-			}
-
-			if (creationError) {
-				const message = creationError instanceof Error ? creationError.message : "Unknown error";
-				showTransientFooter(` {red-fg}Error opening task composer: ${message}{/}`, 3000, false);
-				if (hadPendingUpdate) renderView();
-				else screen.render();
-				return;
-			}
-			if (!task) {
-				if (hadPendingUpdate) renderView();
-				else focusColumn(currentCol);
-				return;
-			}
-
-			const draft = task.status.trim().toLowerCase() === "draft";
-			if (!draft) currentTasks = upsertBoardTask(currentTasks, task);
-			const visible = !draft && getFilteredTasks().some((candidate) => candidate.id === task.id);
-			const outcome = getCreatedTaskBoardOutcome(task, visible);
-			showTransientFooter(` {${outcome.tone}-fg}${outcome.message}{/}`, 6000, false);
-			renderView(outcome.focusTaskId);
 		});
 
 		screen.key(["p", "P"], () => {

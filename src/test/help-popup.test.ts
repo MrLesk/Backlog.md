@@ -10,7 +10,7 @@ describe("help popup shortcuts", () => {
 		expect(keys).toContain("F");
 		expect(keys).toContain("T");
 		expect(keys).toContain("M");
-		expect(keys).toContain("N");
+		expect(keys).not.toContain("N");
 		expect(keys).toContain("←→");
 	});
 
