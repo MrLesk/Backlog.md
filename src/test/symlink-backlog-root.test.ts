@@ -73,4 +73,36 @@ auto_commit: true
 		const { stdout } = await $`git log -1 --pretty=format:%s`.cwd(backlogDir).quiet();
 		expect(stdout.toString()).toContain("Create task");
 	});
+
+	itIfSymlinks("bulk auto-commit stages through an in-repository backlog symlink", async () => {
+		const appDir = join(repoDir, "app");
+		const sharedBacklogDir = join(repoDir, "shared", "backlog");
+		await mkdir(join(appDir), { recursive: true });
+		await mkdir(join(sharedBacklogDir, "tasks"), { recursive: true });
+		await mkdir(join(sharedBacklogDir, "drafts"), { recursive: true });
+		await writeFile(
+			join(sharedBacklogDir, "config.yml"),
+			`project_name: "In-repository Symlink"
+statuses: ["To Do", "In Progress", "Done"]
+auto_commit: false
+`,
+		);
+		await symlink(join("..", "shared", "backlog"), join(appDir, "backlog"));
+
+		await $`git init -b main`.cwd(repoDir).quiet();
+		await $`git config user.email test@example.com`.cwd(repoDir).quiet();
+		await $`git config user.name "Test User"`.cwd(repoDir).quiet();
+
+		const core = new Core(appDir);
+		const { task } = await core.createTaskFromInput({ title: "Bulk symlink task" }, false);
+		await $`git add .`.cwd(repoDir).quiet();
+		await $`git commit -m baseline`.cwd(repoDir).quiet();
+		const current = await core.filesystem.loadTask(task.id);
+		if (!current) throw new Error("Expected the task to exist");
+
+		await core.updateTasksBulk([{ ...current, ordinal: 2000 }], "Bulk symlink update", true);
+
+		expect(await core.gitOps.getLastCommitMessage()).toContain("Bulk symlink update");
+		expect((await $`git status --short`.cwd(repoDir).text()).trim()).toBe("");
+	});
 });

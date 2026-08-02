@@ -14,6 +14,7 @@ let filesystem: FileSystem;
 let server: BacklogServer | null = null;
 let serverPort = 0;
 let auxiliaryWorktreeDir: string | null = null;
+let remoteRepoDir: string | null = null;
 
 const routedTask: Task = {
 	id: "BACK-001.02",
@@ -69,6 +70,7 @@ async function startServer(): Promise<void> {
 async function restartWithActiveBranchCollision(
 	branchTaskId: "BACK-1" | "BACK-001",
 	includeBranchOnlyTask = false,
+	useSamePath = branchTaskId === "BACK-1",
 ): Promise<void> {
 	await server?.stop();
 	server = null;
@@ -89,8 +91,9 @@ async function restartWithActiveBranchCollision(
 	await $`git commit -m "Add main task"`.cwd(TEST_DIR).quiet();
 	await $`git switch -c collision-shadow`.cwd(TEST_DIR).quiet();
 
-	if (branchTaskId === "BACK-1") {
-		await Bun.write(mainTaskPath, serializeTask({ ...mainTask, title: "Exact branch collision" }));
+	if (useSamePath) {
+		const title = branchTaskId === "BACK-1" ? "Exact branch collision" : "Padded same-path version";
+		await Bun.write(mainTaskPath, serializeTask({ ...mainTask, id: branchTaskId, title }));
 	} else {
 		await $`git rm -- ${relative(TEST_DIR, mainTaskPath)}`.cwd(TEST_DIR).quiet();
 		await Bun.write(
@@ -108,6 +111,50 @@ async function restartWithActiveBranchCollision(
 	await $`git add backlog`.cwd(TEST_DIR).quiet();
 	await $`git commit -m "Add branch collision"`.cwd(TEST_DIR).quiet();
 	await $`git switch main`.cwd(TEST_DIR).quiet();
+	await startServer();
+}
+
+async function restartWithActiveRemoteCollision(useSamePath = false): Promise<void> {
+	await server?.stop();
+	server = null;
+
+	const config = await filesystem.loadConfig();
+	if (!config) {
+		throw new Error("Expected test config");
+	}
+	await filesystem.saveConfig({ ...config, checkActiveBranches: true, remoteOperations: true });
+	const mainTask = { ...routedTask, id: "BACK-1", title: "Main collision task" };
+	const mainTaskPath = await filesystem.saveTask(mainTask);
+
+	await $`git init -b main`.cwd(TEST_DIR).quiet();
+	await $`git config user.name "Test User"`.cwd(TEST_DIR).quiet();
+	await $`git config user.email test@example.com`.cwd(TEST_DIR).quiet();
+	await $`git add backlog`.cwd(TEST_DIR).quiet();
+	await $`git commit -m "Add main task"`.cwd(TEST_DIR).quiet();
+
+	remoteRepoDir = createUniqueTestDir("server-task-collision-remote");
+	await $`git init --bare -b main ${remoteRepoDir}`.cwd(TEST_DIR).quiet();
+	await $`git remote add origin ${remoteRepoDir}`.cwd(TEST_DIR).quiet();
+	await $`git push -u origin main`.cwd(TEST_DIR).quiet();
+
+	await $`git switch -c remote-update`.cwd(TEST_DIR).quiet();
+	if (useSamePath) {
+		await Bun.write(
+			mainTaskPath,
+			serializeTask({ ...mainTask, id: "BACK-001", title: "Remote same-path version", status: "Done" }),
+		);
+	} else {
+		await $`git rm -- ${relative(TEST_DIR, mainTaskPath)}`.cwd(TEST_DIR).quiet();
+		await Bun.write(
+			join(filesystem.tasksDir, "back-1 - Remote-path-collision.md"),
+			serializeTask({ ...mainTask, title: "Remote path collision" }),
+		);
+	}
+	await $`git add backlog`.cwd(TEST_DIR).quiet();
+	await $`git commit -m "Move task on remote main"`.cwd(TEST_DIR).quiet();
+	await $`git push origin HEAD:main`.cwd(TEST_DIR).quiet();
+	await $`git switch main`.cwd(TEST_DIR).quiet();
+	await $`git branch -D remote-update`.cwd(TEST_DIR).quiet();
 	await startServer();
 }
 
@@ -186,6 +233,10 @@ describe("BacklogServer task SPA fallback", () => {
 			await safeCleanup(auxiliaryWorktreeDir);
 			auxiliaryWorktreeDir = null;
 		}
+		if (remoteRepoDir) {
+			await safeCleanup(remoteRepoDir);
+			remoteRepoDir = null;
+		}
 		await safeCleanup(TEST_DIR);
 	});
 
@@ -238,6 +289,99 @@ describe("BacklogServer task SPA fallback", () => {
 		});
 		expect(createResponse.status).toBe(400);
 		expect(createResponse.headers.get("content-type")).toContain("application/json");
+	});
+
+	it("routes browser task reads and mutations through Core without direct task-corpus filesystem calls", async () => {
+		const serverInternals = server as unknown as { core: { filesystem: FileSystem } };
+		const taskFilesystem = serverInternals.core.filesystem;
+		const directCalls: string[] = [];
+		const originals = {
+			listTasks: taskFilesystem.listTasks.bind(taskFilesystem),
+			listCompletedTasks: taskFilesystem.listCompletedTasks.bind(taskFilesystem),
+			loadTask: taskFilesystem.loadTask.bind(taskFilesystem),
+			saveTask: taskFilesystem.saveTask.bind(taskFilesystem),
+		};
+		const recordDirectServerCall = (operation: string) => {
+			const caller = (new Error().stack ?? "")
+				.split("\n")
+				.find((line) => line.includes("/src/") && !line.includes("server-tasks-spa-fallback.test.ts"));
+			if (caller?.includes("/src/server/index.ts")) directCalls.push(operation);
+		};
+		taskFilesystem.listTasks = async (...args) => {
+			recordDirectServerCall("listTasks");
+			return await originals.listTasks(...args);
+		};
+		taskFilesystem.listCompletedTasks = async (...args) => {
+			recordDirectServerCall("listCompletedTasks");
+			return await originals.listCompletedTasks(...args);
+		};
+		taskFilesystem.loadTask = async (...args) => {
+			recordDirectServerCall("loadTask");
+			return await originals.loadTask(...args);
+		};
+		taskFilesystem.saveTask = async (...args) => {
+			recordDirectServerCall("saveTask");
+			return await originals.saveTask(...args);
+		};
+
+		try {
+			expect((await request(`/api/tasks?parent=${routedTask.id}`)).status).toBe(200);
+			expect((await request(`/api/task/${routedTask.id}`)).status).toBe(200);
+			expect(
+				(
+					await request(`/api/tasks/${routedTask.id}`, {
+						method: "PUT",
+						headers: { "Content-Type": "application/json" },
+						body: JSON.stringify({ status: "In Progress" }),
+					})
+				).status,
+			).toBe(200);
+			expect((await request("/api/tasks/duplicates")).status).toBe(200);
+			expect(
+				(
+					await request("/api/tasks/reorder", {
+						method: "POST",
+						headers: { "Content-Type": "application/json" },
+						body: JSON.stringify({
+							taskId: routedTask.id,
+							targetStatus: "In Progress",
+							orderedTaskIds: [routedTask.id],
+						}),
+					})
+				).status,
+			).toBe(200);
+			expect((await request(`/api/tasks/${routedTask.id}/complete`, { method: "POST" })).status).toBe(200);
+		} finally {
+			taskFilesystem.listTasks = originals.listTasks;
+			taskFilesystem.listCompletedTasks = originals.listCompletedTasks;
+			taskFilesystem.loadTask = originals.loadTask;
+			taskFilesystem.saveTask = originals.saveTask;
+		}
+
+		expect(directCalls).toEqual([]);
+	});
+
+	it("serves completed-only task details through Core", async () => {
+		expect(await filesystem.completeTask(routedTask.id)).toBe(true);
+
+		const response = await request(`/api/task/${routedTask.id}`);
+
+		expect(response.status).toBe(200);
+		const task = (await response.json()) as Task;
+		expect(task.id).toBe(routedTask.id);
+		expect(task.source).toBe("completed");
+	});
+
+	it("returns conflict after a frontmatter ID collision appears under an unchanged filename", async () => {
+		const siblingPath = await filesystem.saveTask({ ...routedTask, id: "BACK-002", title: "Sibling task" });
+		const warm = await request("/api/task/BACK-002");
+		expect(warm.status).toBe(200);
+
+		await Bun.write(siblingPath, serializeTask({ ...routedTask, title: "Changed frontmatter identity" }));
+		const response = await request(`/api/task/${routedTask.id}`);
+
+		expect(response.status).toBe(409);
+		expect(await response.text()).toContain("ambiguous");
 	});
 
 	it("prefers the freshly read current-worktree task over stale store content", async () => {
@@ -433,7 +577,7 @@ describe("BacklogServer task SPA fallback", () => {
 	});
 
 	it("coalesces one full reload when concurrent reads observe a changed ref snapshot", async () => {
-		await restartWithActiveBranchCollision("BACK-1");
+		await restartWithActiveBranchCollision("BACK-001");
 		const contentStore = await (
 			server as unknown as { getContentStoreInstance: () => Promise<ContentStore> }
 		).getContentStoreInstance();
@@ -470,60 +614,75 @@ describe("BacklogServer task SPA fallback", () => {
 		}
 	});
 
-	for (const branchTaskId of ["BACK-1", "BACK-001"] as const) {
-		it(`fails closed when active branch collision-shadow contains ${branchTaskId}`, async () => {
-			await restartWithActiveBranchCollision(branchTaskId);
+	it("returns the local task when an active branch changes the same task path", async () => {
+		await restartWithActiveBranchCollision("BACK-1");
 
-			const response = await request("/api/task/BACK-1");
-			expect(response.status).toBe(409);
-			expect((await response.json()) as { error: string }).toEqual({
-				error: "Task ID BACK-1 is ambiguous. Repair duplicate task IDs before opening it.",
-			});
+		const response = await request("/api/task/BACK-1");
+		expect(response.status).toBe(200);
+		expect(((await response.json()) as Task).title).toBe("Main collision task");
+	});
+
+	it("returns the local task when an active branch uses a padded ID at the same task path", async () => {
+		await restartWithActiveBranchCollision("BACK-001", false, true);
+
+		const response = await request("/api/task/BACK-1");
+		expect(response.status).toBe(200);
+		expect(((await response.json()) as Task).title).toBe("Main collision task");
+	});
+
+	it("fails closed when an active branch uses the same normalized ID at a different task path", async () => {
+		await restartWithActiveBranchCollision("BACK-001");
+
+		const response = await request("/api/task/BACK-1");
+		expect(response.status).toBe(409);
+		expect((await response.json()) as { error: string }).toEqual({
+			error: "Task ID BACK-1 is ambiguous. Repair duplicate task IDs before opening it.",
 		});
-	}
+	});
 
-	it("fails closed when an active branch changes an exact legacy task ID", async () => {
+	it("fails closed when active origin/main uses the same ID at a different task path", async () => {
+		await restartWithActiveRemoteCollision();
+
+		const response = await request("/api/task/BACK-1");
+		expect(response.status).toBe(409);
+		expect((await response.json()) as { error: string }).toEqual({
+			error: "Task ID BACK-1 is ambiguous. Repair duplicate task IDs before opening it.",
+		});
+	});
+
+	it("returns the local task when active origin/main has a padded version at the same path", async () => {
+		await restartWithActiveRemoteCollision(true);
+
+		const response = await request("/api/task/BACK-1");
+		expect(response.status).toBe(200);
+		expect(((await response.json()) as Task).title).toBe("Main collision task");
+	});
+
+	it("returns the local legacy task when an active branch changes the same task path", async () => {
 		await restartWithActiveLegacyCollision();
 
 		const response = await request("/api/task/BACK-PREFIXED");
-		expect(response.status).toBe(409);
-		expect((await response.json()) as { error: string }).toEqual({
-			error: "Task ID BACK-PREFIXED is ambiguous. Repair duplicate task IDs before opening it.",
-		});
-	});
-
-	it("opens an unchanged task inherited by an active branch", async () => {
-		await restartWithActiveBranchCollision("BACK-1");
-
-		const response = await request("/api/task/BACK-2");
 		expect(response.status).toBe(200);
-		expect(((await response.json()) as Task).title).toBe("Inherited unchanged task");
+		expect(((await response.json()) as Task).title).toBe("Local legacy task");
 	});
 
-	it("uses live current-worktree content when comparing an active branch", async () => {
+	it("reopens the local task after a browser save with an inherited active branch", async () => {
 		await restartWithActiveBranchCollision("BACK-1");
-		expect((await request("/api/task/BACK-1")).status).toBe(409);
 
-		const mainTask = await filesystem.loadTask("BACK-1");
-		expect(mainTask?.filePath).toBeDefined();
-		if (!mainTask?.filePath) {
-			throw new Error("Expected current-branch task path");
-		}
-		const branchContent = await (
-			server as unknown as { core: { git: { showFile: (ref: string, path: string) => Promise<string> } } }
-		).core.git.showFile("collision-shadow", relative(TEST_DIR, mainTask.filePath).replaceAll("\\", "/"));
-		await Bun.write(mainTask.filePath, branchContent);
+		const saved = await request("/api/tasks/BACK-2", {
+			method: "PUT",
+			headers: { "Content-Type": "application/json" },
+			body: JSON.stringify({ title: "Saved through browser API" }),
+		});
+		expect(saved.status).toBe(200);
 
-		const identical = await request("/api/task/BACK-1", {}, 5000);
-		expect(identical.status).toBe(200);
-
-		await Bun.write(mainTask.filePath, serializeTask({ ...mainTask, title: "Different current-worktree content" }));
-		const changed = await request("/api/task/BACK-1", {}, 5000);
-		expect(changed.status).toBe(409);
+		const reopened = await request("/api/task/BACK-2", {}, 5000);
+		expect(reopened.status).toBe(200);
+		expect(((await reopened.json()) as Task).title).toBe("Saved through browser API");
 	});
 
 	it("uses the current config when active-branch collision checks are toggled", async () => {
-		await restartWithActiveBranchCollision("BACK-1", true);
+		await restartWithActiveBranchCollision("BACK-001", true);
 
 		const initialCollision = await request("/api/task/BACK-1");
 		expect(initialCollision.status).toBe(409);
@@ -600,7 +759,7 @@ describe("BacklogServer task SPA fallback", () => {
 		if (!cachedConfig) throw new Error("Expected cached test config");
 		const customStatuses = ["Queued", "Working", "Complete"];
 		await filesystem.saveConfig({ ...cachedConfig, statuses: customStatuses });
-		await restartWithActiveBranchCollision("BACK-1");
+		await restartWithActiveBranchCollision("BACK-001");
 		expect((await request("/api/task/BACK-1")).status).toBe(409);
 
 		const activeServer = server as unknown as {
@@ -749,7 +908,7 @@ describe("BacklogServer task SPA fallback", () => {
 	});
 
 	it("drops a cached collision after the active branch is removed", async () => {
-		await restartWithActiveBranchCollision("BACK-1");
+		await restartWithActiveBranchCollision("BACK-001");
 		expect((await request("/api/task/BACK-1")).status).toBe(409);
 
 		await $`git branch -D collision-shadow`.cwd(TEST_DIR).quiet();
@@ -760,7 +919,7 @@ describe("BacklogServer task SPA fallback", () => {
 	});
 
 	it("rebuilds cached collision entries after an active branch task changes", async () => {
-		await restartWithActiveBranchCollision("BACK-1");
+		await restartWithActiveBranchCollision("BACK-001");
 		expect((await request("/api/task/BACK-1")).status).toBe(409);
 
 		await replaceCollisionBranchTask("BACK-100", "Branch replacement");
@@ -774,7 +933,7 @@ describe("BacklogServer task SPA fallback", () => {
 	});
 
 	it("retries a branch scan when a ref moves after its tree was indexed", async () => {
-		await restartWithActiveBranchCollision("BACK-1");
+		await restartWithActiveBranchCollision("BACK-001");
 		expect((await request("/api/task/BACK-1")).status).toBe(409);
 
 		const collisionCommit = (await $`git rev-parse collision-shadow`.cwd(TEST_DIR).quiet()).text().trim();
@@ -782,20 +941,20 @@ describe("BacklogServer task SPA fallback", () => {
 			server as unknown as {
 				core: {
 					git: {
-						listTreeEntries: (ref: string, path: string) => Promise<Array<{ path: string; objectId: string }>>;
+						listFilesInTree: (ref: string, path: string) => Promise<string[]>;
 					};
 				};
 			}
 		).core.git;
-		const originalListTreeEntries = coreGit.listTreeEntries.bind(coreGit);
+		const originalListFilesInTree = coreGit.listFilesInTree.bind(coreGit);
 		let movedDuringScan = false;
-		coreGit.listTreeEntries = async (ref, path) => {
-			const entries = await originalListTreeEntries(ref, path);
+		coreGit.listFilesInTree = async (ref, path) => {
+			const files = await originalListFilesInTree(ref, path);
 			if (!movedDuringScan && ref === collisionCommit) {
 				movedDuringScan = true;
 				await replaceCollisionBranchTask("BACK-100", "Moved during scan");
 			}
-			return entries;
+			return files;
 		};
 
 		try {
@@ -808,7 +967,7 @@ describe("BacklogServer task SPA fallback", () => {
 			expect(replacement.status).toBe(200);
 			expect(((await replacement.json()) as Task).title).toBe("Moved during scan");
 		} finally {
-			coreGit.listTreeEntries = originalListTreeEntries;
+			coreGit.listFilesInTree = originalListFilesInTree;
 		}
 	});
 });

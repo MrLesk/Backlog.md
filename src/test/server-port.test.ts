@@ -26,10 +26,10 @@ describe("isPortAvailable", () => {
 		expect(result).toBe(false);
 	});
 
-	it("detects a port held by a production-style Bun.serve on its default interface", async () => {
-		// Regression for BACK-538: the probe used to bind 127.0.0.1 while Bun.serve
-		// binds the wildcard interface, so on macOS an occupied port looked free.
-		const server = Bun.serve({ port: 0, fetch: () => new Response("ok") });
+	it("detects a port held by a production-style Bun.serve on the loopback interface", async () => {
+		// The availability probe must use the same interface as the browser server.
+		// On macOS, wildcard and loopback-specific listeners can otherwise share a port.
+		const server = Bun.serve({ hostname: "127.0.0.1", port: 0, fetch: () => new Response("ok") });
 		const port = server.port;
 		if (port === undefined) throw new Error("Expected Bun.serve to expose its port");
 		try {

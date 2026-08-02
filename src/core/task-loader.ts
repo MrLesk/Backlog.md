@@ -13,8 +13,14 @@ import type { GitOperations } from "../git/operations.ts";
 import { parseTask } from "../markdown/parser.ts";
 import type { BacklogConfig, Task } from "../types/index.ts";
 import { extractAnyPrefix, normalizeId } from "../utils/prefix-config.ts";
-import { extractTaskIdFromFilename, normalizeTaskId, normalizeTaskIdentity } from "../utils/task-path.ts";
+import {
+	canonicalTaskId,
+	extractTaskIdFromFilename,
+	normalizeTaskId,
+	normalizeTaskIdentity,
+} from "../utils/task-path.ts";
 import type { TaskDirectoryType } from "./cross-branch-tasks.ts";
+import { normalizeTaskLifecyclePath } from "./task-identity-index.ts";
 
 /** Default prefix for tasks */
 const DEFAULT_TASK_PREFIX = "task";
@@ -25,25 +31,7 @@ export interface BranchTaskStateEntry {
 	lastModified: Date;
 	branch: string;
 	path: string;
-	objectId?: string;
-	tree?: string;
-}
-
-interface BranchTreeFile {
-	path: string;
-	objectId?: string;
-}
-
-async function listBranchTreeFiles(
-	git: GitOperations,
-	ref: string,
-	path: string,
-	includeObjectIds: boolean,
-): Promise<BranchTreeFile[]> {
-	if (includeObjectIds && typeof git.listTreeEntries === "function") {
-		return await git.listTreeEntries(ref, path);
-	}
-	return (await git.listFilesInTree(ref, path)).map((filePath) => ({ path: filePath }));
+	task?: Task;
 }
 
 function extractConfiguredTaskId(filePath: string, prefix: string): string | null {
@@ -93,6 +81,82 @@ interface RemoteIndexEntry {
 	 * `git show`. Undefined when the SHA could not be resolved (best effort).
 	 */
 	commit?: string;
+	stateEntry?: BranchTaskStateEntry;
+}
+
+interface HydrationCandidate {
+	id: string;
+	ref: string;
+	path: string;
+	commit?: string;
+	stateEntry?: BranchTaskStateEntry;
+}
+
+function logicalTaskPath(path: string, backlogDir: string): string {
+	const normalizedPath = path.replaceAll("\\", "/");
+	const normalizedBacklogDir = backlogDir
+		.replaceAll("\\", "/")
+		.replace(/^\.\//, "")
+		.replace(/^\/+|\/+$/g, "");
+	const backlogMarker = `/${normalizedBacklogDir}/`;
+	const markerIndex = normalizedPath.indexOf(backlogMarker);
+	const logicalPath = markerIndex >= 0 ? normalizedPath.slice(markerIndex + 1) : normalizedPath.replace(/^\.\//, "");
+	return normalizeTaskLifecyclePath(logicalPath, normalizedBacklogDir);
+}
+
+function lifecycleRank(type: TaskDirectoryType | undefined): number {
+	if (type === "task") return 2;
+	if (type === "completed") return 1;
+	return 0;
+}
+
+function isPreferredIdentityEntry(candidate: RemoteIndexEntry, current: RemoteIndexEntry): boolean {
+	const timeDifference = candidate.lastModified.getTime() - current.lastModified.getTime();
+	if (timeDifference !== 0) return timeDifference > 0;
+	const rankDifference = lifecycleRank(candidate.stateEntry?.type) - lifecycleRank(current.stateEntry?.type);
+	if (rankDifference !== 0) return rankDifference > 0;
+	return `${candidate.branch}\0${candidate.path}`.localeCompare(`${current.branch}\0${current.path}`) < 0;
+}
+
+function chooseIdentityHydrationCandidates(
+	index: Map<string, RemoteIndexEntry[]>,
+	localTasks: Task[] | undefined,
+	backlogDir: string,
+	toRef: (entry: RemoteIndexEntry) => string,
+): HydrationCandidate[] {
+	const localIdentities = new Set(
+		(localTasks ?? [])
+			.filter((task) => task.filePath)
+			.map((task) => `${canonicalTaskId(task.id)}\0${logicalTaskPath(task.filePath ?? "", backlogDir)}`),
+	);
+	const winners = new Map<string, RemoteIndexEntry>();
+	for (const entries of index.values()) {
+		for (const entry of entries) {
+			const identity = `${canonicalTaskId(entry.id)}\0${logicalTaskPath(entry.path, backlogDir)}`;
+			if (localIdentities.has(identity)) continue;
+			const current = winners.get(identity);
+			if (!current || isPreferredIdentityEntry(entry, current)) winners.set(identity, entry);
+		}
+	}
+
+	return [...winners.values()].map((entry) => ({
+		id: entry.id,
+		ref: toRef(entry),
+		path: entry.path,
+		commit: entry.commit,
+		stateEntry: entry.stateEntry,
+	}));
+}
+
+function mergeHydrationCandidates(
+	primary: HydrationCandidate[],
+	supplemental: HydrationCandidate[],
+): HydrationCandidate[] {
+	const candidates = new Map<string, HydrationCandidate>();
+	for (const candidate of [...primary, ...supplemental]) {
+		candidates.set(`${candidate.ref}\0${candidate.path}\0${candidate.commit ?? ""}`, candidate);
+	}
+	return [...candidates.values()];
 }
 
 /**
@@ -171,9 +235,7 @@ export async function buildRemoteTaskIndex(
 				const indexRef = commit ?? ref;
 
 				// Get backlog files for this branch
-				const treeFiles = await listBranchTreeFiles(git, indexRef, listPath, Boolean(stateCollector));
-				const files = treeFiles.map((entry) => entry.path);
-				const objectIds = new Map(treeFiles.map((entry) => [entry.path, entry.objectId]));
+				const files = await git.listFilesInTree(indexRef, listPath);
 				if (files.length === 0) continue;
 
 				// Get last modified times for all files in one pass
@@ -191,15 +253,14 @@ export async function buildRemoteTaskIndex(
 						continue;
 					}
 					if (type && stateCollector) {
-						stateCollector.push({
+						entry.stateEntry = {
 							id,
 							type,
-							branch: br,
+							branch: ref,
 							path: f,
 							lastModified,
-							objectId: objectIds.get(f),
-							tree: commit ?? ref,
-						});
+						};
+						stateCollector.push(entry.stateEntry);
 					}
 
 					// Only index active tasks for hydration selection (optionally include completed)
@@ -227,10 +288,7 @@ export async function buildRemoteTaskIndex(
  * Hydrate tasks by fetching their content
  * Only call this for the "winner" tasks that we actually need
  */
-async function hydrateTasks(
-	git: GitOperations,
-	winners: Array<{ id: string; ref: string; path: string; commit?: string }>,
-): Promise<Task[]> {
+async function hydrateTasks(git: GitOperations, winners: HydrationCandidate[]): Promise<Task[]> {
 	const CONCURRENCY = 8;
 	const result: Task[] = [];
 	let i = 0;
@@ -255,6 +313,7 @@ async function hydrateTasks(
 					task.source = "remote";
 					// Extract branch name from ref (e.g., "origin/main" -> "main")
 					task.branch = w.ref.replace("origin/", "");
+					if (w.stateEntry) w.stateEntry.task = task;
 					result.push(task);
 				}
 			} catch (error) {
@@ -307,9 +366,7 @@ export async function buildLocalBranchTaskIndex(
 				const indexRef = commit ?? br;
 
 				// Get backlog files in this branch
-				const treeFiles = await listBranchTreeFiles(git, indexRef, listPath, Boolean(stateCollector));
-				const files = treeFiles.map((entry) => entry.path);
-				const objectIds = new Map(treeFiles.map((entry) => [entry.path, entry.objectId]));
+				const files = await git.listFilesInTree(indexRef, listPath);
 				if (files.length === 0) continue;
 
 				// Get last modified times for all files in one pass
@@ -327,15 +384,14 @@ export async function buildLocalBranchTaskIndex(
 						continue;
 					}
 					if (type && stateCollector) {
-						stateCollector.push({
+						entry.stateEntry = {
 							id,
 							type,
 							branch: br,
 							path: f,
 							lastModified,
-							objectId: objectIds.get(f),
-							tree: commit ?? br,
-						});
+						};
+						stateCollector.push(entry.stateEntry);
 					}
 
 					// Only index active tasks for hydration selection (optionally include completed)
@@ -369,8 +425,8 @@ function chooseWinners(
 	localById: Map<string, Task>,
 	remoteIndex: Map<string, RemoteIndexEntry[]>,
 	strategy: "most_recent" | "most_progressed" = "most_progressed",
-): Array<{ id: string; ref: string; path: string; commit?: string }> {
-	const winners: Array<{ id: string; ref: string; path: string; commit?: string }> = [];
+): HydrationCandidate[] {
+	const winners: HydrationCandidate[] = [];
 
 	for (const [id, entries] of remoteIndex) {
 		const local = localById.get(id);
@@ -378,7 +434,13 @@ function chooseWinners(
 		if (!local) {
 			// No local version - take the newest remote
 			const best = entries.reduce((a, b) => (a.lastModified >= b.lastModified ? a : b));
-			winners.push({ id, ref: `origin/${best.branch}`, path: best.path, commit: best.commit });
+			winners.push({
+				id,
+				ref: `origin/${best.branch}`,
+				path: best.path,
+				commit: best.commit,
+				stateEntry: best.stateEntry,
+			});
 			continue;
 		}
 
@@ -393,6 +455,7 @@ function chooseWinners(
 					ref: `origin/${newestRemote.branch}`,
 					path: newestRemote.path,
 					commit: newestRemote.commit,
+					stateEntry: newestRemote.stateEntry,
 				});
 			}
 			continue;
@@ -411,6 +474,7 @@ function chooseWinners(
 				ref: `origin/${newestRemote.branch}`,
 				path: newestRemote.path,
 				commit: newestRemote.commit,
+				stateEntry: newestRemote.stateEntry,
 			});
 		}
 	}
@@ -580,7 +644,7 @@ export async function loadRemoteTasks(
 		onProgress?.(`Found ${remoteIndex.size} unique tasks across remote branches`);
 
 		// If we have local tasks, use them to determine which remote tasks to hydrate
-		let winners: Array<{ id: string; ref: string; path: string; commit?: string }>;
+		let winners: HydrationCandidate[];
 
 		if (localTasks && localTasks.length > 0) {
 			const localById = new Map(localTasks.map((t) => [normalizeTaskId(t.id), t]));
@@ -594,9 +658,22 @@ export async function loadRemoteTasks(
 			winners = [];
 			for (const [id, entries] of remoteIndex) {
 				const best = entries.reduce((a, b) => (a.lastModified >= b.lastModified ? a : b));
-				winners.push({ id, ref: `origin/${best.branch}`, path: best.path, commit: best.commit });
+				winners.push({
+					id,
+					ref: `origin/${best.branch}`,
+					path: best.path,
+					commit: best.commit,
+					stateEntry: best.stateEntry,
+				});
 			}
 			onProgress?.(`Hydrating ${winners.length} remote tasks...`);
+		}
+
+		if (stateCollector) {
+			winners = mergeHydrationCandidates(
+				winners,
+				chooseIdentityHydrationCandidates(remoteIndex, localTasks, backlogDir, (entry) => `origin/${entry.branch}`),
+			);
 		}
 
 		// Only fetch content for the tasks we actually need
@@ -711,7 +788,7 @@ export async function loadLocalBranchTasks(
 		onProgress?.(`Found ${localBranchIndex.size} unique tasks in other local branches`);
 
 		// Determine which tasks to hydrate
-		let winners: Array<{ id: string; ref: string; path: string; commit?: string }>;
+		let winners: HydrationCandidate[];
 
 		if (localTasks && localTasks.length > 0) {
 			const localById = new Map(localTasks.map((t) => [normalizeTaskId(t.id), t]));
@@ -725,7 +802,13 @@ export async function loadLocalBranchTasks(
 				if (!local) {
 					// Task doesn't exist locally - take the newest from other branches
 					const best = entries.reduce((a, b) => (a.lastModified >= b.lastModified ? a : b));
-					winners.push({ id, ref: best.branch, path: best.path, commit: best.commit });
+					winners.push({
+						id,
+						ref: best.branch,
+						path: best.path,
+						commit: best.commit,
+						stateEntry: best.stateEntry,
+					});
 					continue;
 				}
 
@@ -735,7 +818,13 @@ export async function loadLocalBranchTasks(
 					const newestOther = entries.reduce((a, b) => (a.lastModified >= b.lastModified ? a : b));
 
 					if (newestOther.lastModified.getTime() > localTs) {
-						winners.push({ id, ref: newestOther.branch, path: newestOther.path, commit: newestOther.commit });
+						winners.push({
+							id,
+							ref: newestOther.branch,
+							path: newestOther.path,
+							commit: newestOther.commit,
+							stateEntry: newestOther.stateEntry,
+						});
 					}
 				} else {
 					// For most_progressed, we need to hydrate to check status
@@ -744,7 +833,13 @@ export async function loadLocalBranchTasks(
 
 					if (maybeNewer) {
 						const newestOther = entries.reduce((a, b) => (a.lastModified >= b.lastModified ? a : b));
-						winners.push({ id, ref: newestOther.branch, path: newestOther.path, commit: newestOther.commit });
+						winners.push({
+							id,
+							ref: newestOther.branch,
+							path: newestOther.path,
+							commit: newestOther.commit,
+							stateEntry: newestOther.stateEntry,
+						});
 					}
 				}
 			}
@@ -753,8 +848,21 @@ export async function loadLocalBranchTasks(
 			winners = [];
 			for (const [id, entries] of localBranchIndex) {
 				const best = entries.reduce((a, b) => (a.lastModified >= b.lastModified ? a : b));
-				winners.push({ id, ref: best.branch, path: best.path, commit: best.commit });
+				winners.push({
+					id,
+					ref: best.branch,
+					path: best.path,
+					commit: best.commit,
+					stateEntry: best.stateEntry,
+				});
 			}
+		}
+
+		if (stateCollector) {
+			winners = mergeHydrationCandidates(
+				winners,
+				chooseIdentityHydrationCandidates(localBranchIndex, localTasks, backlogDir, (entry) => entry.branch),
+			);
 		}
 
 		if (winners.length === 0) {

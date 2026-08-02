@@ -4,7 +4,6 @@ import { basename, join } from "node:path";
 import { stdin as input } from "node:process";
 import { createInterface } from "node:readline/promises";
 import * as clack from "@clack/prompts";
-import { $ } from "bun";
 import { Command } from "commander";
 import { runAdvancedConfigWizard } from "./commands/advanced-config-wizard.ts";
 import { type CompletionInstallResult, installCompletion, registerCompletionCommand } from "./commands/completion.ts";
@@ -63,6 +62,7 @@ import { viewTaskEnhanced } from "./ui/task-viewer-with-search.ts";
 import { scrollableViewer } from "./ui/tui.ts";
 import { type AgentSelectionValue, processAgentSelection } from "./utils/agent-selection.ts";
 import { normalizeProjectBacklogDirectory } from "./utils/backlog-directory.ts";
+import { launchBrowser } from "./utils/browser-launch.ts";
 import { formatDuplicateTaskIdWarning } from "./utils/duplicate-detection.ts";
 import { findBacklogRoot } from "./utils/find-backlog-root.ts";
 import { labelsToLower } from "./utils/label-filter.ts";
@@ -190,16 +190,8 @@ const TASK_SORT_FIELD_LIST = TASK_SORT_FIELDS.join(", ");
 const TASK_TYPE_EXAMPLE = JSON.stringify(getCliTaskTypeValues()[0] ?? "<configured-type>");
 
 async function openUrlInBrowser(url: string): Promise<void> {
-	let cmd: string[];
-	if (process.platform === "darwin") {
-		cmd = ["open", url];
-	} else if (process.platform === "win32") {
-		cmd = ["cmd", "/c", "start", "", url];
-	} else {
-		cmd = ["xdg-open", url];
-	}
 	try {
-		await $`${cmd}`.quiet();
+		await launchBrowser(url);
 	} catch (error) {
 		const message = error instanceof Error ? error.message : String(error);
 		console.warn(`  ⚠️  Unable to open browser automatically (${message}). Please visit ${url}`);
@@ -687,7 +679,7 @@ addHelpSchema(program.command("init [projectName]"), {
 		{
 			name: "--agent-instructions",
 			type: choiceType(["claude", "agents", "gemini", "copilot", "cursor", "none"], { multiple: true }),
-			description: "Instruction files to create; comma-separated",
+			description: "Instruction files to create; cursor writes AGENTS.md; comma-separated",
 		},
 		{ name: "--backlog-dir", type: "Project-relative path", description: "backlog, .backlog, or custom path" },
 		{ name: "--no-git", type: "Boolean", description: "Initialize without Git integration" },
@@ -703,7 +695,7 @@ addHelpSchema(program.command("init [projectName]"), {
 	.description("initialize backlog project in the current directory")
 	.option(
 		"--agent-instructions <instructions>",
-		"comma-separated agent instructions to create. Valid: claude, agents, gemini, copilot, cursor (alias of agents), none. Use 'none' to skip; when combined with others, 'none' is ignored.",
+		"comma-separated agent instructions to create. Valid: claude, agents, gemini, copilot, cursor (writes AGENTS.md), none. Use 'none' to skip; when combined with others, 'none' is ignored.",
 	)
 	.option("--check-branches <boolean>", "check task states across active branches (default: true)")
 	.option("--include-remote <boolean>", "include remote branches when checking (default: true)")
@@ -4961,7 +4953,7 @@ addHelpSchema(program.command("cleanup"), {
 // Browser command for web UI
 program
 	.command("browser")
-	.description("open browser interface for task management (press Ctrl+C or Cmd+C to stop)")
+	.description("open browser interface on this machine only at 127.0.0.1 (press Ctrl+C or Cmd+C to stop)")
 	.option("-p, --port <port>", "port to run server on")
 	.option("--no-open", "don't automatically open browser")
 	.option("--non-interactive", "automatically use next free port without asking")

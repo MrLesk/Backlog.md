@@ -91,11 +91,21 @@ describe("browser command port selection", () => {
 		});
 
 		try {
-			const output = await waitForOutput(child, `Port ${port} is already in use. Using port`);
+			const output = await waitForOutput(child, "browser interface running");
+			expect(output).toContain(`Port ${port} is already in use. Using port`);
 			expect(output).not.toContain("Start on port");
+			expect(output).toContain("http://127.0.0.1:");
+			expect(output).not.toContain("Opening browser");
 		} finally {
 			await stopChild(child);
 			await closeServer(server);
 		}
+	});
+
+	it("documents the local-machine-only bind without offering a public host override", async () => {
+		const output = await $`bun ${CLI_PATH} browser --help`.cwd(TEST_DIR).text();
+
+		expect(output).toContain("this machine only at 127.0.0.1");
+		expect(output).not.toContain("--host");
 	});
 });
