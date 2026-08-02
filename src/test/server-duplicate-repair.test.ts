@@ -6,7 +6,7 @@ import type { DuplicateRepairPlan, DuplicateRepairResult } from "../core/duplica
 import { serializeTask } from "../markdown/serializer.ts";
 import { BacklogServer } from "../server/index.ts";
 import type { SearchResult, Task } from "../types/index.ts";
-import { createUniqueTestDir, retry, safeCleanup } from "./test-utils.ts";
+import { createUniqueTestDir, retry, safeCleanup, sleep, withTimeout } from "./test-utils.ts";
 
 let testDir: string;
 let server: BacklogServer | null = null;
@@ -73,6 +73,48 @@ afterEach(async () => {
 });
 
 describe("duplicate repair server boundary", () => {
+	it("publishes a real preview refresh once before queued watcher reconciliation", async () => {
+		const messages: string[] = [];
+		const socket = new WebSocket(`ws://127.0.0.1:${serverPort}`);
+		await withTimeout(
+			new Promise<void>((resolve, reject) => {
+				socket.onopen = () => resolve();
+				socket.onerror = () => reject(new Error("WebSocket failed to open"));
+			}),
+			"duplicate preview WebSocket",
+			2000,
+		);
+		socket.onmessage = (event) => messages.push(String(event.data));
+
+		try {
+			const serverCore = (server as unknown as { core: Core }).core;
+			const store = await serverCore.getContentStore();
+			(store as unknown as { stopRootWatchers: () => void }).stopRootWatchers();
+			await Bun.write(
+				join(serverCore.filesystem.tasksDir, "task-1 - Alpha.md"),
+				serializeTask(makeTask("TASK-1", "Alpha refreshed")),
+			);
+
+			const previewResponse = await request("/api/tasks/duplicates");
+			expect(previewResponse.status).toBe(200);
+			await retry(async () => {
+				if (!messages.includes("tasks-updated")) throw new Error("Preview refresh was not published");
+			});
+
+			const searchResponse = await request("/api/search?query=refreshed&type=task");
+			const searchResults = (await searchResponse.json()) as SearchResult[];
+			expect(searchResults.some((result) => result.type === "task" && result.task.title === "Alpha refreshed")).toBe(
+				true,
+			);
+
+			await (store as unknown as { refreshTasksFromDisk: () => Promise<void> }).refreshTasksFromDisk();
+			await sleep(100);
+			expect(messages.filter((message) => message === "tasks-updated")).toHaveLength(1);
+		} finally {
+			socket.close();
+		}
+	});
+
 	it("builds one preview from one Core-owned active and completed snapshot", async () => {
 		const serverCore = (server as unknown as { core: Core }).core;
 		const originalListTasks = serverCore.filesystem.listTasks.bind(serverCore.filesystem);

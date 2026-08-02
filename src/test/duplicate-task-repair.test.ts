@@ -60,7 +60,7 @@ afterEach(async () => {
 });
 
 describe("duplicate task diagnosis", () => {
-	it("does not publish task changes while refreshing an unchanged duplicate preview", async () => {
+	it("publishes a genuine duplicate change once while unchanged previews stay silent", async () => {
 		await writeTask(core.filesystem.tasksDir, "task-1 - Alpha.md", makeTask("TASK-1", "Alpha"));
 		const store = await core.getContentStore();
 		const events: string[] = [];
@@ -75,6 +75,12 @@ describe("duplicate task diagnosis", () => {
 		const changedPlan = await core.previewDuplicateTaskIdRepair();
 		expect(changedPlan.groups).toHaveLength(1);
 		expect(changedPlan.groups[0]?.tasks).toHaveLength(2);
+		expect(events).toEqual(["tasks"]);
+		events.length = 0;
+
+		const stablePlan = await core.previewDuplicateTaskIdRepair();
+		expect(stablePlan.fingerprint).toBe(changedPlan.fingerprint);
+		expect(events).toEqual([]);
 
 		unsubscribe();
 	});
