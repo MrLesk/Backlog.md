@@ -1,6 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
+import { mkdir } from "node:fs/promises";
 import { join } from "node:path";
 import { $ } from "bun";
+import { serializeDocument } from "../markdown/serializer.ts";
 import { McpServer } from "../mcp/server.ts";
 import { registerDocumentTools } from "../mcp/tools/documents/index.ts";
 import type { JsonSchema } from "../mcp/validation/validators.ts";
@@ -376,5 +378,53 @@ describe("MCP document tools", () => {
 		const status = await mcpServer.git.getStatus();
 		expect(status).toContain("D  UNRELATED.txt");
 		expect(status).toContain("?? backlog/plans/");
+	});
+
+	it("commits every duplicate document path removed by an update", async () => {
+		await mcpServer.testInterface.callTool({
+			params: {
+				name: "document_create",
+				arguments: { title: "Primary document", content: "Initial content" },
+			},
+		});
+
+		const duplicatePath = join(mcpServer.filesystem.docsDir, "duplicates", "doc-01 - ZZZ-Duplicate.md");
+		await mkdir(join(mcpServer.filesystem.docsDir, "duplicates"), { recursive: true });
+		await Bun.write(
+			duplicatePath,
+			serializeDocument({
+				id: "doc-01",
+				title: "ZZZ Duplicate",
+				type: "other",
+				createdDate: "2026-08-02 00:00",
+				rawContent: "Duplicate content",
+			}),
+		);
+		await $`git add .`.cwd(TEST_DIR).quiet();
+		await $`git commit -m "Add duplicate documents"`.cwd(TEST_DIR).quiet();
+
+		const config = await loadConfig(mcpServer);
+		config.autoCommit = true;
+		await mcpServer.filesystem.saveConfig(config);
+		await mcpServer.ensureConfigLoaded();
+
+		const updateResult = await mcpServer.testInterface.callTool({
+			params: {
+				name: "document_update",
+				arguments: {
+					id: "doc-1",
+					title: "Renamed document",
+					content: "Updated content",
+					path: "runbooks",
+				},
+			},
+		});
+		expect(getText(updateResult.content)).toContain("Document updated successfully.");
+
+		const committed = await $`git show --no-renames --name-only --pretty=format:`.cwd(TEST_DIR).text();
+		expect(committed).toContain("backlog/docs/doc-1 - Primary-document.md");
+		expect(committed).toContain("backlog/docs/duplicates/doc-01 - ZZZ-Duplicate.md");
+		expect(committed).toContain("backlog/docs/runbooks/doc-1 - Renamed-document.md");
+		expect(await $`git status --short`.cwd(TEST_DIR).text()).not.toContain("backlog/docs/");
 	});
 });

@@ -1238,7 +1238,7 @@ export class ContentStore {
 			return result;
 		}) as FileSystem["saveTask"];
 
-		this.filesystem.saveDocument = (async (document: Document, subPath = ""): Promise<string> => {
+		this.filesystem.saveDocument = (async (document: Document, subPath = "") => {
 			const owner: PublicationOwner = { root: this.currentRoot() };
 			const result = await originalSaveDocument.call(this.filesystem, document, subPath);
 			await this.handleDocumentWrite(document.id, owner);

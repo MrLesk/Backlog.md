@@ -5,7 +5,7 @@ status: In Progress
 assignee:
   - '@alexs-agent'
 created_date: '2026-08-02 16:16'
-updated_date: '2026-08-02 16:56'
+updated_date: '2026-08-02 17:07'
 labels: []
 dependencies: []
 references:
@@ -17,6 +17,17 @@ modified_files:
   - src/core/content-store.ts
   - src/file-system/operations.ts
   - src/git/operations.ts
+  - src/test/agent-instructions.test.ts
+  - src/test/auto-commit.test.ts
+  - src/test/content-store.test.ts
+  - src/test/core-autocommit-scope.test.ts
+  - src/test/core.test.ts
+  - src/test/decision-autocommit.test.ts
+  - src/test/draft-lifecycle-autocommit-scope.test.ts
+  - src/test/filesystem.test.ts
+  - src/test/mcp-documents.test.ts
+  - src/test/scoped-agent-instructions-commit.test.ts
+  - src/test/symlink-backlog-root.test.ts
 type: bug
 ordinal: 206000
 ---
@@ -61,4 +72,6 @@ Issue #795 and PR #796 supplied the original reproduction and focused regression
 Integration verification: focused scoped-ownership and concurrency matrix passed; typecheck, Biome, and build passed; full suite passed with 1851 tests, 5 skipped, and 0 failures. Mutation checks confirmed the new agent-instruction and core operation regressions fail under broad pathless commits.
 
 Windows CI exposed a timeout-only smoke test that performed two real selected-path commits. The test now captures the demote commit dispatch event and both moved paths directly; production behavior is unchanged. It passed 20 consecutive focused runs at about 0.24 seconds, the 71-test core/lifecycle matrix, and the full 1,851-test local suite.
+
+Addressed all three Codex review findings: GitOperations.addFiles now delegates each path to the symlink-aware addFile implementation; document saves report every removed duplicate path so auto-commit includes all deletions plus the destination; draft archival reports the actual source and destination paths while keeping archive path discovery private. Added regressions for an in-repository symlinked backlog root and duplicate normalized document IDs. Verification: Biome, TypeScript, build, 152 focused tests, and the full suite (1853 pass, 5 skip, 0 fail).
 <!-- SECTION:NOTES:END -->

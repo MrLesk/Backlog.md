@@ -100,12 +100,7 @@ export class GitOperations {
 	}
 
 	async addFiles(filePaths: string[]): Promise<void> {
-		if (filePaths.length === 0 || !(await this.isRepository())) {
-			return;
-		}
-		// Convert absolute paths to relative paths from project root to avoid Windows encoding issues
-		const relativePaths = filePaths.map((filePath) => relative(this.projectRoot, filePath).replace(/\\/g, "/"));
-		await this.execGit(["add", ...relativePaths]);
+		for (const filePath of filePaths) await this.addFile(filePath);
 	}
 
 	async commitTaskChange(taskId: string, message: string, filePath: string): Promise<void> {

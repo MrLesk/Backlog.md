@@ -2509,17 +2509,17 @@ export class Core {
 	}
 
 	async archiveDraft(draftId: string, autoCommit?: boolean): Promise<boolean> {
-		// Resolve the source path before archiving unlinks it, so the auto-commit can be
-		// scoped to exactly the moved paths instead of staging the whole backlog directory.
-		const fromPath = await getDraftPath(draftId, this);
-		const success = await this.fs.archiveDraft(draftId);
+		const moved = await this.fs.archiveDraft(draftId);
 
-		if (success && fromPath && (await this.shouldAutoCommit(autoCommit))) {
-			const toPath = join(await this.fs.getArchiveDraftsDir(), basename(fromPath));
-			await this.commitWrittenFile(`backlog: Archive draft ${normalizeId(draftId, "draft")}`, [fromPath], toPath);
+		if (moved && (await this.shouldAutoCommit(autoCommit))) {
+			await this.commitWrittenFile(
+				`backlog: Archive draft ${normalizeId(draftId, "draft")}`,
+				[moved.sourcePath],
+				moved.targetPath,
+			);
 		}
 
-		return success;
+		return moved !== null;
 	}
 
 	async promoteDraft(draftId: string, autoCommit?: boolean): Promise<boolean> {
@@ -2786,18 +2786,13 @@ export class Core {
 	}
 
 	async createDocument(doc: Document, autoCommit?: boolean, subPath = ""): Promise<void> {
-		const previousRelativePath = doc.path;
-		const relativePath = await this.fs.saveDocument(doc, normalizeDocumentSubPath(subPath));
+		const { relativePath, removedFilepaths } = await this.fs.saveDocument(doc, normalizeDocumentSubPath(subPath));
 		doc.path = relativePath;
 
 		if (await this.shouldAutoCommit(autoCommit)) {
 			const docsDir = this.fs.docsDir;
 			const absolutePath = join(docsDir, ...relativePath.split("/"));
-			const previousPaths =
-				previousRelativePath && previousRelativePath !== relativePath
-					? [join(docsDir, ...previousRelativePath.split("/"))]
-					: [];
-			await this.commitWrittenFile(`backlog: Add document ${doc.id}`, previousPaths, absolutePath);
+			await this.commitWrittenFile(`backlog: Add document ${doc.id}`, removedFilepaths, absolutePath);
 		}
 	}
 

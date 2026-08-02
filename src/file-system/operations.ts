@@ -221,7 +221,7 @@ export class FileSystem {
 		return join(backlogDir, DEFAULT_DIRECTORIES.ARCHIVE_MILESTONES);
 	}
 
-	async getArchiveDraftsDir(): Promise<string> {
+	private async getArchiveDraftsDir(): Promise<string> {
 		const backlogDir = await this.getBacklogDir();
 		return join(backlogDir, DEFAULT_DIRECTORIES.ARCHIVE_DRAFTS);
 	}
@@ -666,7 +666,7 @@ export class FileSystem {
 		}
 	}
 
-	async archiveDraft(draftId: string): Promise<boolean> {
+	async archiveDraft(draftId: string): Promise<{ sourcePath: string; targetPath: string } | null> {
 		try {
 			const draftsDir = await this.getDraftsDir();
 			const archiveDraftsDir = await this.getArchiveDraftsDir();
@@ -679,7 +679,7 @@ export class FileSystem {
 			const filenameId = idForFilename(normalizedId);
 			const draftFile = files.find((f) => f.startsWith(`${filenameId} -`) || f.startsWith(`${filenameId}-`));
 
-			if (!draftFile) return false;
+			if (!draftFile) return null;
 
 			const sourcePath = join(draftsDir, draftFile);
 			const targetPath = join(archiveDraftsDir, draftFile);
@@ -690,9 +690,9 @@ export class FileSystem {
 
 			await unlink(sourcePath);
 
-			return true;
+			return { sourcePath, targetPath };
 		} catch {
-			return false;
+			return null;
 		}
 	}
 
@@ -907,7 +907,7 @@ export class FileSystem {
 	}
 
 	// Document operations
-	async saveDocument(document: Document, subPath = ""): Promise<string> {
+	async saveDocument(document: Document, subPath = ""): Promise<{ relativePath: string; removedFilepaths: string[] }> {
 		const docsDir = await this.getDocsDir();
 		const canonicalId = normalizeDocumentId(document.id);
 		document.id = canonicalId;
@@ -935,11 +935,13 @@ export class FileSystem {
 			sourceRelativePath = normalizeDocumentRelativePath(matchesForId[0] ?? "");
 		}
 
+		const removedFilepaths: string[] = [];
 		if (sourceRelativePath && sourceRelativePath !== relativePath) {
 			const sourcePath = join(docsDir, ...sourceRelativePath.split("/"));
 			try {
 				await this.ensureDirectoryExists(dirname(filepath));
 				await rename(sourcePath, filepath);
+				removedFilepaths.push(sourcePath);
 			} catch (error) {
 				const code = (error as NodeJS.ErrnoException | undefined)?.code;
 				if (code !== "ENOENT") {
@@ -955,6 +957,7 @@ export class FileSystem {
 			}
 			try {
 				await unlink(matchPath);
+				removedFilepaths.push(matchPath);
 			} catch {
 				// Ignore cleanup errors - file may have been removed already
 			}
@@ -963,7 +966,7 @@ export class FileSystem {
 		await Bun.write(filepath, content);
 
 		document.path = relativePath;
-		return relativePath;
+		return { relativePath, removedFilepaths };
 	}
 
 	async listDecisions(): Promise<Decision[]> {
