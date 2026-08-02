@@ -1,10 +1,11 @@
 ---
 id: BACK-566
 title: Temporarily hide TUI task creation entrypoint
-status: To Do
-assignee: []
+status: Done
+assignee:
+  - '@alex'
 created_date: '2026-08-02 21:20'
-updated_date: '2026-08-02 21:29'
+updated_date: '2026-08-02 21:32'
 labels:
   - tui
   - release-mitigation
@@ -24,17 +25,37 @@ Temporarily hide the released TUI task-creation entrypoint while BACK-565 repair
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 The TUI board renders no task-creation button, action, shortcut, or help entry while this mitigation is active.
-- [ ] #2 The former TUI task-creation shortcut cannot open the composer and produces no task, draft, modal, or unintended navigation side effect.
-- [ ] #3 Existing TUI list, board, search, filter, view-switching, and task-editing interactions remain unchanged.
-- [ ] #4 CLI, Web UI, and MCP task creation remain available and unchanged.
-- [ ] #5 Automated regression coverage proves the TUI creation entrypoint is hidden and preserves neighboring navigation behavior.
-- [ ] #6 The task records that re-enabling the hidden entrypoint is gated on BACK-565 completion and fresh rendered PTY verification.
+- [x] #1 The TUI board no longer advertises the task-creation shortcut or action while this mitigation is active.
+- [x] #2 The TUI task-creation shortcut cannot open the broken composer and produces no task, draft, modal, or unintended navigation side effect.
+- [x] #3 Existing TUI list, board, search, filter, view-switching, and task-editing interactions remain unchanged.
+- [x] #4 CLI, Web UI, and MCP task creation remain available and unchanged.
+- [x] #5 Automated regression coverage proves the disabled TUI entrypoint and preserves neighboring navigation behavior.
+- [x] #6 The task records that re-enabling the entrypoint is gated on BACK-565 completion and fresh rendered PTY verification.
 <!-- AC:END -->
 
 ## Definition of Done
 <!-- DOD:BEGIN -->
-- [ ] #1 bunx tsc --noEmit passes when TypeScript touched
-- [ ] #2 bun run check . passes when formatting/linting touched
-- [ ] #3 bun test (or scoped test) passes
+- [x] #1 bunx tsc --noEmit passes when TypeScript touched
+- [x] #2 bun run check . passes when formatting/linting touched
+- [x] #3 bun test (or scoped test) passes
 <!-- DOD:END -->
+
+## Implementation Plan
+
+<!-- SECTION:PLAN:BEGIN -->
+1. Remove the board-only N shortcut handler and its Create a task help entry, without changing the composer or shared task creation APIs.
+2. Remove the now-unreachable board creation callback plumbing and add a focused regression that N opens no composer while adjacent board navigation still works.
+3. Verify TUI and help behavior, type-check and lint, then record that re-enabling requires BACK-565 completion and fresh rendered PTY verification.
+<!-- SECTION:PLAN:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+Removed the board creation action, N shortcut, and help copy. Re-enablement remains gated on BACK-565 completion plus fresh rendered PTY verification. Verified with focused TUI/help and board tests, MCP task-creation tests, TypeScript, and Biome.
+<!-- SECTION:NOTES:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+Temporarily removed the TUI board task-creation entrypoint. Verified N opens no composer while column navigation remains available; CLI/MCP creation coverage remains green. Re-enable only after BACK-565 and fresh rendered PTY verification.
+<!-- SECTION:FINAL_SUMMARY:END -->
