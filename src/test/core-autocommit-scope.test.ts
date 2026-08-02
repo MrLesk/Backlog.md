@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
-import { mkdir } from "node:fs/promises";
+import { mkdir, rename } from "node:fs/promises";
 import { join } from "node:path";
 import { $ } from "bun";
 import { Core } from "../core/backlog.ts";
@@ -77,6 +77,25 @@ describe("core auto-commit scoping", () => {
 		await core.updateTasksBulk([{ ...current, ordinal: 2000 }], "Scoped bulk update", true);
 
 		await expectOwnedCommit("backlog/tasks/");
+	});
+
+	it("bulk task updates commit through the exact saved legacy path", async () => {
+		const { task } = await core.createTaskFromInput({ title: "Legacy bulk update", status: "To Do" }, false);
+		if (!task.filePath) throw new Error("Expected the created task path");
+		const legacyPath = join(core.filesystem.tasksDir, "task-999 - Legacy.md");
+		await rename(task.filePath, legacyPath);
+		await $`git add .`.cwd(TEST_DIR).quiet();
+		await $`git commit -m baseline`.cwd(TEST_DIR).quiet();
+		const current = (await core.filesystem.listTasks()).find((candidate) => candidate.id === task.id);
+		if (!current) throw new Error("Expected the legacy task to exist");
+
+		await core.updateTasksBulk([{ ...current, ordinal: 2000 }], "Legacy bulk update", true);
+
+		expect(await core.gitOps.getLastCommitMessage()).toContain("Legacy bulk update");
+		expect(await $`git show --name-only --pretty=format:`.cwd(TEST_DIR).text()).toContain(
+			"backlog/tasks/task-999 - Legacy.md",
+		);
+		expect((await $`git status --short`.cwd(TEST_DIR).text()).trim()).toBe("");
 	});
 
 	it("task archive commits both sides of its move and nothing else", async () => {

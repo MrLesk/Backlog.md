@@ -1379,7 +1379,7 @@ export class Core {
 		return filepath;
 	}
 
-	async updateTask(task: Task, autoCommit?: boolean): Promise<void> {
+	async updateTask(task: Task, autoCommit?: boolean): Promise<string> {
 		normalizeAssignee(task);
 
 		// Load original task to detect status changes for callbacks
@@ -1410,6 +1410,8 @@ export class Core {
 		if (statusChanged) {
 			await this.executeStatusChangeCallback(task, oldStatus, newStatus);
 		}
+
+		return filePath;
 	}
 
 	private async applyTaskUpdateInput(
@@ -2204,19 +2206,15 @@ export class Core {
 	}
 
 	async updateTasksBulk(tasks: Task[], commitMessage?: string, autoCommit?: boolean): Promise<void> {
+		const filePaths: string[] = [];
 		const updateAll = async () => {
-			for (const task of tasks) await this.updateTask(task, false);
+			for (const task of tasks) filePaths.push(await this.updateTask(task, false));
 		};
 		if (this.contentStore) await this.contentStore.batchTaskUpdates(updateAll);
 		else await updateAll();
 
 		// Commit all changes at once if auto-commit is enabled
 		if (await this.shouldAutoCommit(autoCommit)) {
-			const filePaths: string[] = [];
-			for (const task of tasks) {
-				const filePath = await getTaskPath(task.id, this);
-				if (filePath) filePaths.push(filePath);
-			}
 			if (filePaths.length > 0) {
 				await this.git.addFiles(filePaths);
 				await this.git.commitFiles(commitMessage || `Update ${tasks.length} tasks`, filePaths);

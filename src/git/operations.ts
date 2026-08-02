@@ -124,9 +124,26 @@ export class GitOperations {
 		if (uniqueFilePaths.length === 0) {
 			return;
 		}
+		let requestedRepoRoot = repoRoot;
+		if (requestedRepoRoot == null) {
+			const pathsByRepo = new Map<string, string[]>();
+			for (const filePath of uniqueFilePaths) {
+				const pathRepoRoot = (await this.getPathContext(filePath))?.repoRoot ?? this.projectRoot;
+				const repoPaths = pathsByRepo.get(pathRepoRoot) ?? [];
+				repoPaths.push(filePath);
+				pathsByRepo.set(pathRepoRoot, repoPaths);
+			}
+			if (pathsByRepo.size > 1) {
+				for (const [pathRepoRoot, repoPaths] of pathsByRepo) {
+					await this.commitFiles(message, repoPaths, pathRepoRoot);
+				}
+				return;
+			}
+			requestedRepoRoot = pathsByRepo.keys().next().value;
+		}
 
 		const resolvedRepoRoot =
-			repoRoot ?? (await this.getPathContext(uniqueFilePaths[0] ?? ""))?.repoRoot ?? this.projectRoot;
+			requestedRepoRoot ?? (await this.getPathContext(uniqueFilePaths[0] ?? ""))?.repoRoot ?? this.projectRoot;
 		if (!(await this.isRepository(resolvedRepoRoot))) {
 			return;
 		}

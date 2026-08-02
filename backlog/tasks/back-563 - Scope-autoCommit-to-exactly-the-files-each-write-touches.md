@@ -5,7 +5,7 @@ status: In Progress
 assignee:
   - '@alexs-agent'
 created_date: '2026-08-02 16:16'
-updated_date: '2026-08-02 17:07'
+updated_date: '2026-08-02 17:28'
 labels: []
 dependencies: []
 references:
@@ -26,7 +26,6 @@ modified_files:
   - src/test/draft-lifecycle-autocommit-scope.test.ts
   - src/test/filesystem.test.ts
   - src/test/mcp-documents.test.ts
-  - src/test/scoped-agent-instructions-commit.test.ts
   - src/test/symlink-backlog-root.test.ts
 type: bug
 ordinal: 206000
@@ -74,4 +73,6 @@ Integration verification: focused scoped-ownership and concurrency matrix passed
 Windows CI exposed a timeout-only smoke test that performed two real selected-path commits. The test now captures the demote commit dispatch event and both moved paths directly; production behavior is unchanged. It passed 20 consecutive focused runs at about 0.24 seconds, the 71-test core/lifecycle matrix, and the full 1,851-test local suite.
 
 Addressed all three Codex review findings: GitOperations.addFiles now delegates each path to the symlink-aware addFile implementation; document saves report every removed duplicate path so auto-commit includes all deletions plus the destination; draft archival reports the actual source and destination paths while keeping archive path discovery private. Added regressions for an in-repository symlinked backlog root and duplicate normalized document IDs. Verification: Biome, TypeScript, build, 152 focused tests, and the full suite (1853 pass, 5 skip, 0 fail).
+
+Addressed the exact-head Codex follow-up review: commitFiles now partitions selected paths by their symlink-resolved Git repository before applying the existing scoped commit algorithm, and bulk task updates aggregate the exact paths returned by each save instead of re-resolving semantic IDs. Added regressions for agent instructions spanning two repositories and a legacy task whose filename differs from its frontmatter ID. Verification: both red reproductions now pass, the broader scoped/concurrency set passed 110/110, Biome/TypeScript/build passed, and the full suite passed with 1855 tests, 5 skipped, and 0 failures.
 <!-- SECTION:NOTES:END -->
