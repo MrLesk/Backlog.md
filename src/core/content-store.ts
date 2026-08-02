@@ -191,7 +191,7 @@ export class ContentStore {
 		});
 	}
 
-	async refreshLocalTaskCorpus(): Promise<void> {
+	async refreshLocalTaskCorpus(publishChanges = true): Promise<void> {
 		if (!this.initialized) {
 			await this.ensureInitialized();
 			return;
@@ -211,11 +211,11 @@ export class ContentStore {
 					const changed = this.hasTaskCollectionChanged(tasks);
 					const identityChanged = previousFingerprint !== this.taskIdentityIndex.getFingerprint();
 					this.replaceVisibleTasks(tasks);
-					if (changed || identityChanged) this.publishTaskChange();
+					if (publishChanges && (changed || identityChanged)) this.publishTaskChange();
 				} else {
 					const changed = this.hasTaskCollectionChanged(activeTasks);
 					this.replaceVisibleTasks(activeTasks);
-					if (changed) this.publishTaskChange();
+					if (publishChanges && changed) this.publishTaskChange();
 				}
 			})();
 			this.localTaskRefreshPromise = refresh;

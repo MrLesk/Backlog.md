@@ -266,7 +266,7 @@ export class Core {
 	async previewDuplicateTaskIdRepair(options: { includeBranches?: boolean } = {}): Promise<DuplicateRepairPlan> {
 		const hadStore = this.contentStore !== undefined;
 		const store = await this.getContentStore();
-		if (hadStore) await store.refreshLocalTaskCorpus();
+		if (hadStore) await store.refreshLocalTaskCorpus(false);
 		return await previewDuplicateTaskIdRepair(this, options, store.getTaskCorpusSnapshot());
 	}
 
