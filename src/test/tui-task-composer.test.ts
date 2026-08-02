@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { $ } from "bun";
 import { Core } from "../core/backlog.ts";
 import type { Task, TaskCreateInput } from "../types/index.ts";
-import { getCreatedTaskBoardOutcome, upsertBoardTask } from "../ui/board.ts";
+import { getCreatedTaskBoardOutcome, renderBoardTui, upsertBoardTask } from "../ui/board.ts";
 import {
 	createTaskComposerValues,
 	getTaskComposerLayout,
@@ -54,13 +54,23 @@ async function installFailingHook(testDir: string, body = "exit 1"): Promise<str
 }
 
 type TestWidget = {
+	_clines?: { length: number };
 	content?: string;
 	children?: unknown[];
+	getCursor?: () => { x: number; y: number };
+	getValue?: () => string;
 	height?: number;
+	hidden?: boolean;
 	items?: TestWidget[];
 	label?: string;
+	left?: number | string;
+	options?: { label?: string };
+	position?: { top?: number | string; left?: number | string; width?: number | string; height?: number | string };
+	selected?: number;
+	style?: { inverse?: boolean; bold?: boolean; border?: { fg?: string } };
 	top?: number;
-	emit?: (event: string) => void;
+	width?: number | string;
+	emit?: (event: string, ...args: unknown[]) => void;
 	setValue?: (value: string) => void;
 };
 
@@ -72,6 +82,33 @@ function collectWidgets(root: { children?: unknown[] }): TestWidget[] {
 	};
 	visit(root as TestWidget);
 	return widgets;
+}
+
+async function waitUntil(predicate: () => boolean, message: string): Promise<void> {
+	for (let attempt = 0; attempt < 100; attempt += 1) {
+		if (predicate()) return;
+		await Bun.sleep(10);
+	}
+	throw new Error(`Timed out waiting for ${message}`);
+}
+
+function pressKey(widget: TestWidget | undefined, name: string, ch = ""): void {
+	const shift = name.startsWith("S-");
+	const keyName = shift ? name.slice(2) : name;
+	const key = { name: keyName, full: name, shift };
+	widget?.emit?.("keypress", ch, key);
+	widget?.emit?.(`key ${name}`, ch, key);
+}
+
+function typeText(widget: TestWidget | undefined, value: string): void {
+	for (const character of value) {
+		pressKey(widget, character, character);
+	}
+}
+
+async function settleComposerFocus(): Promise<void> {
+	await new Promise<void>((resolve) => setImmediate(resolve));
+	await new Promise<void>((resolve) => setImmediate(resolve));
 }
 
 describe("TUI task composer model", () => {
@@ -126,10 +163,24 @@ describe("TUI task composer model", () => {
 		});
 	});
 
-	it("uses a compact layout at 80x24 and 50x18 but the full layout at 100x30", () => {
-		expect(getTaskComposerLayout(100, 30)).toMatchObject({ compact: false, popupHeight: 30 });
-		expect(getTaskComposerLayout(80, 24)).toMatchObject({ compact: true, popupHeight: 22 });
-		expect(getTaskComposerLayout(50, 18)).toMatchObject({ compact: true, popupHeight: 16 });
+	it("keeps the composer compact at 100x30 and 80x24, then stacks details at 50x18", () => {
+		expect(getTaskComposerLayout(100, 30)).toMatchObject({
+			compact: false,
+			popupHeight: 20,
+			descriptionHeight: 6,
+			detailsTop: 9,
+			detailsHeight: 3,
+			actionsTop: 12,
+		});
+		expect(getTaskComposerLayout(80, 24)).toMatchObject({ compact: false, popupHeight: 20, actionsTop: 12 });
+		expect(getTaskComposerLayout(50, 18)).toMatchObject({
+			compact: true,
+			popupHeight: 16,
+			descriptionHeight: 3,
+			detailsTop: 6,
+			detailsHeight: 4,
+			actionsTop: 10,
+		});
 	});
 
 	it("does not persist invalid input and preserves values after a failed attempt", async () => {
@@ -840,38 +891,217 @@ describe("TUI task composer interaction", () => {
 		}
 	});
 
-	it("traverses every focusable control and Esc cancels with resize handlers cleaned up", async () => {
-		for (let fieldIndex = 0; fieldIndex < 7; fieldIndex += 1) {
-			const screen = createScreen({ smartCSR: false });
-			const originalRender = screen.render.bind(screen);
-			let renders = 0;
-			screen.render = () => {
-				renders += 1;
-				originalRender();
-			};
-			const eventScreen = screen as unknown as {
-				focused?: TestWidget;
-				emit(event: string): void;
-			};
-			try {
-				const resultPromise = openTaskComposer({
-					screen,
-					statuses: ["To Do", "Done"],
-					persist: async () => task(),
-				});
-				await new Promise<void>((resolve) => setImmediate(resolve));
-				for (let step = 0; step < fieldIndex; step += 1) {
-					eventScreen.focused?.emit?.("key tab");
-				}
-				expect(eventScreen.focused).toBeDefined();
-				eventScreen.focused?.emit?.("key escape");
-				expect(await withTimeout(resultPromise, `Esc from composer field ${fieldIndex}`, 1000)).toBeNull();
-				renders = 0;
-				eventScreen.emit("resize");
-				expect(renders).toBe(0);
-			} finally {
-				screen.destroy();
-			}
+	it("uses spatial arrows across every control while Tab remains inert", async () => {
+		const screen = createScreen({ smartCSR: false });
+		Object.defineProperty(screen, "width", { configurable: true, value: 100, writable: true });
+		Object.defineProperty(screen, "height", { configurable: true, value: 30, writable: true });
+		const originalRender = screen.render.bind(screen);
+		let renders = 0;
+		screen.render = () => {
+			renders += 1;
+			originalRender();
+		};
+		const eventScreen = screen as unknown as { focused?: TestWidget; emit(event: string): void };
+		try {
+			const resultPromise = openTaskComposer({
+				screen,
+				statuses: ["To Do", "Done"],
+				persist: async () => task(),
+			});
+			await settleComposerFocus();
+
+			expect(eventScreen.focused?.options?.label).toBe(" Title ");
+			pressKey(eventScreen.focused, "tab", "\t");
+			expect(eventScreen.focused?.options?.label).toBe(" Title ");
+			expect(eventScreen.focused?.getValue?.()).toBe("");
+			pressKey(eventScreen.focused, "S-tab", "\t");
+			expect(eventScreen.focused?.options?.label).toBe(" Title ");
+			expect(eventScreen.focused?.getValue?.()).toBe("");
+
+			pressKey(eventScreen.focused, "down");
+			expect(eventScreen.focused?.options?.label).toBe(" Description ");
+			pressKey(eventScreen.focused, "down");
+			expect(eventScreen.focused?.content).toBe("Status: To Do ▼");
+			expect(eventScreen.focused?.style).toMatchObject({ inverse: true, bold: true });
+			pressKey(eventScreen.focused, "right");
+			expect(eventScreen.focused?.content).toBe("Type: None ▼");
+			pressKey(eventScreen.focused, "right");
+			expect(eventScreen.focused?.content).toBe("Priority: None ▼");
+			pressKey(eventScreen.focused, "down");
+			expect(eventScreen.focused?.content).toBe("Cancel");
+			pressKey(eventScreen.focused, "left");
+			expect(eventScreen.focused?.content).toBe("Create task");
+			pressKey(eventScreen.focused, "tab", "\t");
+			expect(eventScreen.focused?.content).toBe("Create task");
+
+			pressKey(eventScreen.focused, "escape", "\x1b");
+			expect(await withTimeout(resultPromise, "Esc from composer action", 1000)).toBeNull();
+			renders = 0;
+			eventScreen.emit("resize");
+			expect(renders).toBe(0);
+		} finally {
+			screen.destroy();
+		}
+	});
+
+	it("adapts the spatial focus graph to the narrow two-row selector layout", async () => {
+		const screen = createScreen({ smartCSR: false });
+		Object.defineProperty(screen, "width", { configurable: true, value: 50, writable: true });
+		Object.defineProperty(screen, "height", { configurable: true, value: 18, writable: true });
+		const eventScreen = screen as unknown as { focused?: TestWidget };
+		try {
+			const resultPromise = openTaskComposer({
+				screen,
+				statuses: ["To Do", "Done"],
+				persist: async () => task(),
+			});
+			await settleComposerFocus();
+			pressKey(eventScreen.focused, "down");
+			pressKey(eventScreen.focused, "down");
+			expect(eventScreen.focused?.content).toBe("Status: To Do ▼");
+			pressKey(eventScreen.focused, "down");
+			expect(eventScreen.focused?.content).toBe("Type: None ▼");
+			pressKey(eventScreen.focused, "right");
+			expect(eventScreen.focused?.content).toBe("Priority: None ▼");
+			pressKey(eventScreen.focused, "down");
+			expect(eventScreen.focused?.content).toBe("Cancel");
+			pressKey(eventScreen.focused, "left");
+			expect(eventScreen.focused?.content).toBe("Create task");
+			pressKey(eventScreen.focused, "escape", "\x1b");
+			expect(await withTimeout(resultPromise, "narrow composer cancellation", 1000)).toBeNull();
+		} finally {
+			screen.destroy();
+		}
+	});
+
+	it("preserves title caret editing and multiline description arrows", async () => {
+		const screen = createScreen({ smartCSR: false });
+		Object.defineProperty(screen, "width", { configurable: true, value: 100, writable: true });
+		Object.defineProperty(screen, "height", { configurable: true, value: 30, writable: true });
+		const eventScreen = screen as unknown as { focused?: TestWidget };
+		try {
+			const resultPromise = openTaskComposer({
+				screen,
+				statuses: ["To Do", "Done"],
+				persist: async () => task(),
+			});
+			await settleComposerFocus();
+
+			typeText(eventScreen.focused, "abc");
+			pressKey(eventScreen.focused, "left");
+			typeText(eventScreen.focused, "X");
+			expect(eventScreen.focused?.getValue?.()).toBe("abXc");
+			expect(eventScreen.focused?.options?.label).toBe(" Title ");
+
+			pressKey(eventScreen.focused, "down");
+			await settleComposerFocus();
+			typeText(eventScreen.focused, "first");
+			pressKey(eventScreen.focused, "enter", "\r");
+			typeText(eventScreen.focused, "second");
+			pressKey(eventScreen.focused, "up");
+			expect(eventScreen.focused?.options?.label).toBe(" Description ");
+			expect(eventScreen.focused?.getCursor?.().y).toBe(-1);
+			pressKey(eventScreen.focused, "up");
+			expect(eventScreen.focused?.options?.label).toBe(" Title ");
+
+			pressKey(eventScreen.focused, "down");
+			await settleComposerFocus();
+			expect(eventScreen.focused?.getCursor?.().y).toBe(-1);
+			pressKey(eventScreen.focused, "down");
+			expect(eventScreen.focused?.options?.label).toBe(" Description ");
+			expect(eventScreen.focused?.getCursor?.().y).toBe(0);
+			pressKey(eventScreen.focused, "down");
+			expect(eventScreen.focused?.content).toBe("Status: To Do ▼");
+
+			pressKey(eventScreen.focused, "escape", "\x1b");
+			expect(await withTimeout(resultPromise, "composer text navigation cancellation", 1000)).toBeNull();
+		} finally {
+			screen.destroy();
+		}
+	});
+
+	it("opens selectors with Enter and restores focus after selection", async () => {
+		const screen = createScreen({ smartCSR: false });
+		Object.defineProperty(screen, "width", { configurable: true, value: 100, writable: true });
+		Object.defineProperty(screen, "height", { configurable: true, value: 30, writable: true });
+		const eventScreen = screen as unknown as { focused?: TestWidget };
+		try {
+			const resultPromise = openTaskComposer({
+				screen,
+				statuses: ["To Do", "Done"],
+				types: ["Bug", "Feature"],
+				priorities: ["High", "Low"],
+				persist: async () => task(),
+			});
+			await settleComposerFocus();
+			pressKey(eventScreen.focused, "down");
+			pressKey(eventScreen.focused, "down");
+			expect(eventScreen.focused?.content).toBe("Status: To Do ▼");
+
+			pressKey(eventScreen.focused, "enter", "\r");
+			await settleComposerFocus();
+			expect(eventScreen.focused?.items?.map((item) => item.content)).toEqual(["Draft", "To Do", "Done"]);
+			pressKey(eventScreen.focused, "up");
+			pressKey(eventScreen.focused, "enter", "\r");
+			await settleComposerFocus();
+			expect(eventScreen.focused?.content).toBe("Status: Draft ▼");
+			expect(eventScreen.focused?.style).toMatchObject({ inverse: true, bold: true });
+
+			pressKey(eventScreen.focused, "escape", "\x1b");
+			expect(await withTimeout(resultPromise, "composer selector cancellation", 1000)).toBeNull();
+		} finally {
+			screen.destroy();
+		}
+	});
+
+	it("keeps invalid values for correction and creates explicitly", async () => {
+		const screen = createScreen({ smartCSR: false });
+		Object.defineProperty(screen, "width", { configurable: true, value: 100, writable: true });
+		Object.defineProperty(screen, "height", { configurable: true, value: 30, writable: true });
+		const eventScreen = screen as unknown as { focused?: TestWidget };
+		const persisted: TaskCreateInput[] = [];
+		try {
+			const resultPromise = openTaskComposer({
+				screen,
+				statuses: ["To Do", "Done"],
+				persist: async (input) => {
+					persisted.push(input);
+					return task({ title: input.title });
+				},
+			});
+			await settleComposerFocus();
+			pressKey(eventScreen.focused, "down");
+			pressKey(eventScreen.focused, "down");
+			pressKey(eventScreen.focused, "down");
+			expect(eventScreen.focused?.content).toBe("Create task");
+			pressKey(eventScreen.focused, "enter", "\r");
+			await waitUntil(() => eventScreen.focused?.options?.label === " Title ", "invalid title focus");
+			expect(persisted).toHaveLength(0);
+			expect(
+				collectWidgets(screen as unknown as { children?: unknown[] }).some((widget) =>
+					widget.content?.includes("Title is required."),
+				),
+			).toBe(true);
+
+			eventScreen.focused?.setValue?.("Corrected task");
+			pressKey(eventScreen.focused, "down");
+			await settleComposerFocus();
+			eventScreen.focused?.setValue?.("Kept description");
+			pressKey(eventScreen.focused, "down");
+			pressKey(eventScreen.focused, "down");
+			pressKey(eventScreen.focused, "enter", "\r");
+
+			const created = await withTimeout(resultPromise, "explicit task creation", 1000);
+			expect(created?.title).toBe("Corrected task");
+			expect(persisted).toEqual([
+				{
+					title: "Corrected task",
+					description: "Kept description",
+					status: "To Do",
+				},
+			]);
+		} finally {
+			screen.destroy();
 		}
 	});
 
@@ -886,36 +1116,111 @@ describe("TUI task composer interaction", () => {
 				statuses: ["To Do", "Done"],
 				persist: async () => task(),
 			});
-			await new Promise<void>((resolve) => setImmediate(resolve));
+			await settleComposerFocus();
 			let widgets = collectWidgets(screen as unknown as { children?: unknown[] });
-			let create = widgets.find((widget) => widget.content === "Create");
-			expect(create).toMatchObject({ top: 22, height: 3 });
-			expect(widgets.some((widget) => widget.content?.includes("[Tab/Shift+Tab]"))).toBe(true);
+			let description = widgets.find((widget) => widget.options?.label === " Description ");
+			let details = widgets.find((widget) => widget.options?.label === " Details ");
+			let actions = widgets.find((widget) => widget.content === "Actions");
+			let status = widgets.find((widget) => widget.content === "Status: To Do ▼");
+			let type = widgets.find((widget) => widget.content === "Type: None ▼");
+			expect(description?.position).toMatchObject({ top: 3, height: 6 });
+			expect(details?.position).toMatchObject({ top: 9, height: 3 });
+			expect(actions?.position).toMatchObject({ top: 12, height: 1 });
+			expect(actions?.hidden).toBe(false);
+			expect(status?.position).toMatchObject({ top: 0, left: 1 });
+			expect(type?.position).toMatchObject({ top: 0, left: "34%" });
+			expect(widgets.some((widget) => widget.content?.includes("[↑↓/←→]"))).toBe(true);
 
 			mutableScreen.width = 50;
 			mutableScreen.height = 18;
 			mutableScreen.emit("resize");
 			widgets = collectWidgets(screen as unknown as { children?: unknown[] });
-			create = widgets.find((widget) => widget.content === "Create");
-			expect(create).toMatchObject({ top: 10, height: 1 });
-			expect(widgets.some((widget) => widget.content?.includes("[Tab]"))).toBe(true);
-			expect(widgets.some((widget) => widget.content?.startsWith("Status: To Do"))).toBe(true);
+			description = widgets.find((widget) => widget.options?.label === " Description ");
+			details = widgets.find((widget) => widget.options?.label === " Details ");
+			actions = widgets.find((widget) => widget.content === "Actions");
+			status = widgets.find((widget) => widget.content === "Status: To Do ▼");
+			type = widgets.find((widget) => widget.content === "Type: None ▼");
+			expect(description?.position).toMatchObject({ top: 3, height: 3 });
+			expect(details?.position).toMatchObject({ top: 6, height: 4 });
+			expect(actions?.position).toMatchObject({ top: 10, height: 1 });
+			expect(actions?.hidden).toBe(true);
+			expect(status?.position).toMatchObject({ top: 0, left: 1 });
+			expect(type?.position).toMatchObject({ top: 1, left: 1, width: "48%" });
+			expect(widgets.some((widget) => widget.content?.includes("[↑↓←→]"))).toBe(true);
 
-			mutableScreen.width = 100;
-			mutableScreen.height = 30;
+			mutableScreen.width = 80;
+			mutableScreen.height = 24;
 			mutableScreen.emit("resize");
 			widgets = collectWidgets(screen as unknown as { children?: unknown[] });
-			create = widgets.find((widget) => widget.content === "Create");
-			expect(create).toMatchObject({ top: 22, height: 3 });
-			(screen as unknown as { focused?: TestWidget }).focused?.emit?.("key escape");
+			details = widgets.find((widget) => widget.options?.label === " Details ");
+			type = widgets.find((widget) => widget.content === "Type: None ▼");
+			expect(details?.position).toMatchObject({ top: 9, height: 3 });
+			expect(type?.position).toMatchObject({ top: 0, left: "34%" });
+			pressKey((screen as unknown as { focused?: TestWidget }).focused, "escape", "\x1b");
 			expect(await withTimeout(resultPromise, "resized composer cancellation", 1000)).toBeNull();
 		} finally {
 			screen.destroy();
 		}
 	});
 
-	/* Board creation behavior is covered by tui-task-creation-entrypoint.test.ts. */
-	/*
+	it("opens the actual composer on an empty board and renders and focuses once after first-task creation", async () => {
+		const ttyDescriptor = Object.getOwnPropertyDescriptor(process.stdout, "isTTY");
+		Object.defineProperty(process.stdout, "isTTY", { configurable: true, value: true });
+		const screen = createScreen({ smartCSR: false });
+		Object.defineProperty(screen, "width", { configurable: true, value: 100, writable: true });
+		Object.defineProperty(screen, "height", { configurable: true, value: 30, writable: true });
+		const originalRender = screen.render.bind(screen);
+		let renders = 0;
+		screen.render = () => {
+			renders += 1;
+			originalRender();
+		};
+		let resolveCreate!: (created: Task) => void;
+		const createResult = new Promise<Task>((resolve) => {
+			resolveCreate = resolve;
+		});
+		try {
+			const boardPromise = renderBoardTui([], ["To Do", "Done"], "horizontal", 20, {
+				screen,
+				createTask: async () => createResult,
+			});
+			(screen as unknown as { emit(event: string): void }).emit("key n");
+			await waitUntil(
+				() =>
+					collectWidgets(screen as unknown as { children?: unknown[] }).some(
+						(widget) => widget.content === "Create task",
+					),
+				"the real task composer",
+			);
+			await waitUntil(
+				() => typeof (screen as unknown as { focused?: TestWidget }).focused?.setValue === "function",
+				"the title field to receive focus",
+			);
+			const focused = (screen as unknown as { focused?: TestWidget }).focused;
+			focused?.setValue?.("Actual composer task");
+			pressKey((screen as unknown as { focused?: TestWidget }).focused, "down");
+			pressKey((screen as unknown as { focused?: TestWidget }).focused, "down");
+			pressKey((screen as unknown as { focused?: TestWidget }).focused, "down");
+			const create = (screen as unknown as { focused?: TestWidget }).focused;
+			expect(create?.content).toBe("Create task");
+			pressKey(create, "enter", "\r");
+			await new Promise<void>((resolve) => setImmediate(resolve));
+			const rendersBeforeResolution = renders;
+			resolveCreate(task({ id: "TASK-2", title: "Actual composer task" }));
+			await waitUntil(() => {
+				const boardFocus = (screen as unknown as { focused?: { items?: TestWidget[]; selected?: number } }).focused;
+				return Boolean(boardFocus?.items?.[boardFocus.selected ?? 0]?.content?.includes("TASK-2"));
+			}, "the created task to receive focus");
+			expect(renders - rendersBeforeResolution).toBe(1);
+			(screen as unknown as { emit(event: string): void }).emit("key q");
+			await withTimeout(boardPromise, "board close after actual composer success", 1000);
+		} finally {
+			screen.destroy();
+			if (ttyDescriptor) Object.defineProperty(process.stdout, "isTTY", ttyDescriptor);
+			else Reflect.deleteProperty(process.stdout, "isTTY");
+		}
+	});
+
 	it("unwinds a rejected composer and applies future watcher updates", async () => {
 		const ttyDescriptor = Object.getOwnPropertyDescriptor(process.stdout, "isTTY");
 		Object.defineProperty(process.stdout, "isTTY", { configurable: true, value: true });
@@ -1028,7 +1333,6 @@ describe("TUI task composer interaction", () => {
 			}
 		});
 	}
-*/
 });
 
 describe("TUI task creation board outcome", () => {
