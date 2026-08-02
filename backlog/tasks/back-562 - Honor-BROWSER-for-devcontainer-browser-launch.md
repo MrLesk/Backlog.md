@@ -5,11 +5,12 @@ status: In Progress
 assignee:
   - '@codex'
 created_date: '2026-08-02 16:09'
-updated_date: '2026-08-02 16:12'
+updated_date: '2026-08-02 16:13'
 labels: []
 dependencies: []
 references:
   - 'https://github.com/MrLesk/Backlog.md/issues/815'
+  - 'https://github.com/MrLesk/Backlog.md/pull/817'
 modified_files:
   - src/utils/browser-launch.ts
   - src/cli.ts
@@ -50,4 +51,6 @@ Make backlog browser honor a non-empty BROWSER executable when opening the web U
 
 <!-- SECTION:NOTES:BEGIN -->
 Merged current origin/main, replaced the duplicate BACK-555 task record with this CLI-allocated task, and verified focused browser tests, typecheck, Biome, build, plus CI-equivalent isolated full suites on origin/main and this branch.
+
+Updated PR #817 to BACK-562 and pushed the current-main merge plus identity repair. GitHub accepted the fast-forward branch update but rejected fork branch renaming because maintainer permissions do not grant that operation.
 <!-- SECTION:NOTES:END -->
