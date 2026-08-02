@@ -1,6 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import { mkdir } from "node:fs/promises";
 import { join } from "node:path";
+import { $ } from "bun";
+import { Core } from "../core/backlog.ts";
 import {
 	_loadAgentGuideline,
 	AGENT_GUIDELINES,
@@ -9,7 +11,7 @@ import {
 	ensureMcpGuidelines,
 	README_GUIDELINES,
 } from "../index.ts";
-import { createUniqueTestDir, safeCleanup } from "./test-utils.ts";
+import { createUniqueTestDir, initializeTestProject, safeCleanup } from "./test-utils.ts";
 
 let TEST_DIR: string;
 
@@ -47,6 +49,27 @@ describe("addAgentInstructions", () => {
 		expect(copilot).toContain("<!-- BACKLOG.MD GUIDELINES START -->");
 		expect(copilot).toContain("<!-- BACKLOG.MD GUIDELINES END -->");
 		expect(copilot).toContain(CLI_AGENT_NUDGE);
+	});
+
+	it("auto-commit preserves unrelated staged work (BACK-563)", async () => {
+		await $`git init`.cwd(TEST_DIR).quiet();
+		await $`git config user.email test@example.com`.cwd(TEST_DIR).quiet();
+		await $`git config user.name "Test User"`.cwd(TEST_DIR).quiet();
+
+		const core = new Core(TEST_DIR);
+		await initializeTestProject(core, "Agent Instructions Scope", true);
+		await Bun.write(join(TEST_DIR, "UNRELATED.txt"), "baseline\n");
+		await $`git add UNRELATED.txt`.cwd(TEST_DIR).quiet();
+		await $`git commit -m "Add unrelated file"`.cwd(TEST_DIR).quiet();
+		await Bun.write(join(TEST_DIR, "UNRELATED.txt"), "peer edit\n");
+		await $`git add UNRELATED.txt`.cwd(TEST_DIR).quiet();
+
+		await addAgentInstructions(TEST_DIR, core.gitOps, ["AGENTS.md"], true);
+
+		const committed = await $`git show --name-only --pretty=format:`.cwd(TEST_DIR).text();
+		expect(committed).toContain("AGENTS.md");
+		expect(committed).not.toContain("UNRELATED.txt");
+		expect(await $`git diff --cached --name-only`.cwd(TEST_DIR).text()).toContain("UNRELATED.txt");
 	});
 
 	it("generated CLI nudge requires phase-specific workflow guides", async () => {

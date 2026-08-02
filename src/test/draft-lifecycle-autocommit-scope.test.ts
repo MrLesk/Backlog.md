@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import { mkdir } from "node:fs/promises";
-import { join } from "node:path";
+import { basename, join } from "node:path";
 import { $ } from "bun";
 import { Core } from "../core/backlog.ts";
 import { createUniqueTestDir, initializeTestProject, safeCleanup } from "./test-utils.ts";
@@ -8,7 +8,7 @@ import { createUniqueTestDir, initializeTestProject, safeCleanup } from "./test-
 let TEST_DIR: string;
 
 /**
- * Regression coverage for TASK-62: the draft/task lifecycle auto-commits
+ * Regression coverage for BACK-563: the draft/task lifecycle auto-commits
  * (promote, demote, archive-draft — both single-shot and edit-with-updates
  * variants) must scope their commit to exactly the files they moved, never
  * sweeping in an unrelated staged deletion or a peer's untracked file that
@@ -120,6 +120,24 @@ describe("draft/task lifecycle auto-commit scoping", () => {
 		expect(committed).toContain("/drafts/");
 		expect(committed).toContain("/archive/");
 		await expectUnrelatedStateUntouched(committed);
+	});
+
+	it("archiveDraft commits a destination when the removed source has no Git history", async () => {
+		const { task: draft } = await core.createTaskFromInput(
+			{ title: "Uncommitted Archive", status: "Draft", description: "d" },
+			false,
+		);
+		if (!draft.filePath) throw new Error("Expected the draft path");
+		const sourcePath = draft.filePath;
+		const sourceHistory = await $`git log --format=%H -- ${sourcePath}`.cwd(TEST_DIR).text();
+		expect(sourceHistory.trim()).toBe("");
+
+		const ok = await core.archiveDraft(draft.id, true);
+		expect(ok).toBe(true);
+
+		const committed = await committedFilesOfLastCommit();
+		expect(committed).toContain(`backlog/archive/drafts/${basename(sourcePath)}`);
+		expect((await $`git diff --cached --name-only`.cwd(TEST_DIR).text()).trim()).toBe("");
 	});
 
 	it("promote via editTaskOrDraft (with updates) does not sweep unrelated files", async () => {

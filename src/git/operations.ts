@@ -108,21 +108,9 @@ export class GitOperations {
 		await this.execGit(["add", ...relativePaths]);
 	}
 
-	async commitTaskChange(taskId: string, message: string, filePath?: string): Promise<void> {
+	async commitTaskChange(taskId: string, message: string, filePath: string): Promise<void> {
 		const commitMessage = `${taskId} - ${message}`;
-		if (filePath) {
-			await this.commitFiles(commitMessage, [filePath]);
-			return;
-		}
-		const args = ["commit", "-m", commitMessage];
-		if (this.config?.bypassGitHooks) {
-			args.push("--no-verify");
-		}
-		const repoRoot = filePath ? (await this.getPathContext(filePath))?.repoRoot : undefined;
-		if (!(await this.isRepository(repoRoot ?? this.projectRoot))) {
-			return;
-		}
-		await this.execGit(args, { cwd: repoRoot });
+		await this.commitFiles(commitMessage, [filePath]);
 	}
 
 	async commitChanges(message: string, repoRoot?: string | null): Promise<void> {
@@ -1043,12 +1031,7 @@ export class GitOperations {
 			...options?.env,
 		} as Record<string, string>;
 
-		// core.quotepath=false: git otherwise octal-escapes AND double-quotes any
-		// non-ASCII path in porcelain/diff output (e.g. an em dash in a task
-		// filename). commitFiles pathspecs that output, and a quoted path matches
-		// no file — the commit aborts and silently leaves the file staged. Forcing
-		// raw UTF-8 output keeps every parse-then-pathspec call site correct.
-		const subprocess = Bun.spawn(["git", "-c", "core.quotepath=false", ...args], {
+		const subprocess = Bun.spawn(["git", ...args], {
 			cwd: options?.cwd ?? this.projectRoot,
 			stdin: options?.input === undefined ? "ignore" : "pipe",
 			stdout: "pipe",

@@ -8,7 +8,7 @@ import { createUniqueTestDir, initializeTestProject, safeCleanup } from "./test-
 let TEST_DIR: string;
 
 /**
- * Regression coverage for TASK-91: the task create/update auto-commit must not
+ * Regression coverage for BACK-563: the task create/update auto-commit must not
  * touch an index it did not stage. It previously ran an unscoped `git reset HEAD`
  * before staging its own file, which silently discarded a concurrent session's
  * staged work, and then committed the whole index rather than just the task file.
@@ -90,10 +90,8 @@ describe("task create/update auto-commit index scoping", () => {
 	});
 
 	// A title with a non-ASCII character (here an em dash) produces a task
-	// filename containing that character. With git's default core.quotepath,
-	// `diff --name-only` octal-escapes AND double-quotes such a path; this commit
-	// path pathspecs the diff output, so the quoted string matches no file, the
-	// commit aborts with "did not match any file(s)", and the file is left staged.
+	// filename containing that character. The selected-path commit pipeline must
+	// keep using the caller-owned path instead of a quoted porcelain rendering.
 	it("createTask with a non-ASCII (em-dash) title commits instead of leaving the file staged", async () => {
 		// Clean committed baseline so the new task file is the only staged change.
 		await $`git add .`.cwd(TEST_DIR).quiet();

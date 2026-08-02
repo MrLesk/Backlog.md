@@ -5,12 +5,14 @@ status: In Progress
 assignee:
   - '@alexs-agent'
 created_date: '2026-08-02 16:16'
+updated_date: '2026-08-02 16:29'
 labels: []
 dependencies: []
 references:
   - 'https://github.com/MrLesk/Backlog.md/issues/795'
   - 'https://github.com/MrLesk/Backlog.md/pull/796'
 modified_files:
+  - src/agent-instructions.ts
   - src/core/backlog.ts
   - src/core/content-store.ts
   - src/file-system/operations.ts
@@ -27,12 +29,12 @@ Ensure every Backlog.md autoCommit stages and commits only the paths its own wri
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 Document, decision, task, bulk-update, archive, completion, promotion, and demotion auto-commits include only the paths written by that operation
+- [ ] #1 Document, decision, task, bulk-update, archive, completion, promotion, demotion, and agent-instruction auto-commits include only the paths written by that operation
 - [ ] #2 Unrelated staged, unstaged, and untracked files remain unchanged and excluded from auto-commits
 - [ ] #3 Moved and deleted paths are committed completely, including both sides of rename-like operations
 - [ ] #4 Requested paths with no Git history do not abort an otherwise valid scoped auto-commit
 - [ ] #5 Concurrent writes to HEAD, the working tree, or the index are preserved or fail closed without stealing index ownership
-- [ ] #6 Focused regression tests cover scoped ownership across task, document, decision, bulk, and lifecycle paths
+- [ ] #6 Focused regression tests cover scoped ownership across task, document, decision, bulk, lifecycle, and agent-instruction paths
 <!-- AC:END -->
 
 ## Definition of Done
@@ -55,4 +57,6 @@ Ensure every Backlog.md autoCommit stages and commits only the paths its own wri
 
 <!-- SECTION:NOTES:BEGIN -->
 Issue #795 and PR #796 supplied the original reproduction and focused regression coverage. Current main already contains temporary-index and compare-and-swap HEAD ownership safeguards; the integration preserves that architecture and layers the PR scope fix onto it.
+
+Integration verification: focused scoped-ownership and concurrency matrix passed; typecheck, Biome, and build passed; full suite passed with 1851 tests, 5 skipped, and 0 failures. Mutation checks confirmed the new agent-instruction and core operation regressions fail under broad pathless commits.
 <!-- SECTION:NOTES:END -->
