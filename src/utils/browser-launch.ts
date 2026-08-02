@@ -5,7 +5,7 @@ export function resolveBrowserLaunchCommand(
 	environment: Readonly<Record<string, string | undefined>> = process.env,
 	platform = process.platform,
 ): string[] {
-	const browserExecutable = environment.BROWSER?.trim();
+	const browserExecutable = environment.BROWSER?.trim().replace(/^(['"])(.*)\1$/, "$2");
 	if (browserExecutable) {
 		// BROWSER is treated as one executable path. Do not split or evaluate it as
 		// shell input: that would break paths with spaces and permit shell injection.

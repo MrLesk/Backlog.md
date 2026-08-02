@@ -60,6 +60,7 @@ describe("BacklogServer browser launch", () => {
 
 		expect(resolveBrowserLaunchCommand(url, {}, "linux")).toEqual(["xdg-open", url]);
 		expect(resolveBrowserLaunchCommand(url, { BROWSER: " \t\n " }, "linux")).toEqual(["xdg-open", url]);
+		expect(resolveBrowserLaunchCommand(url, { BROWSER: '""' }, "linux")).toEqual(["xdg-open", url]);
 		expect(resolveBrowserLaunchCommand(url, {}, "darwin")).toEqual(["open", url]);
 		expect(resolveBrowserLaunchCommand(url, {}, "win32")).toEqual(["cmd", "/c", "start", "", url]);
 	});
@@ -69,6 +70,15 @@ describe("BacklogServer browser launch", () => {
 
 		expect(resolveBrowserLaunchCommand(url, { BROWSER: "  browser --new-window  " }, "linux")).toEqual([
 			"browser --new-window",
+			url,
+		]);
+	});
+
+	it("accepts a BROWSER executable path wrapped in matching quotes", () => {
+		const url = "http://localhost:6420";
+
+		expect(resolveBrowserLaunchCommand(url, { BROWSER: '"/opt/Browser App/browser"' }, "linux")).toEqual([
+			"/opt/Browser App/browser",
 			url,
 		]);
 	});
