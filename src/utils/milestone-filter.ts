@@ -12,6 +12,13 @@ interface MilestoneCandidate {
 export function createMilestoneFilterValueResolver(milestones: Milestone[]): (milestoneValue: string) => string {
 	const milestoneLabelsByKey = new Map<string, string>();
 	for (const milestone of milestones) {
+		const normalizedTitle = milestone.title.trim();
+		if (normalizedTitle) {
+			milestoneLabelsByKey.set(normalizedTitle.toLowerCase(), normalizedTitle);
+		}
+	}
+
+	for (const milestone of milestones) {
 		const normalizedId = milestone.id.trim();
 		const normalizedTitle = milestone.title.trim();
 		if (!normalizedId || !normalizedTitle) continue;
@@ -22,7 +29,6 @@ export function createMilestoneFilterValueResolver(milestones: Milestone[]): (mi
 			milestoneLabelsByKey.set(`m-${numericAlias}`, normalizedTitle);
 			milestoneLabelsByKey.set(numericAlias, normalizedTitle);
 		}
-		milestoneLabelsByKey.set(normalizedTitle.toLowerCase(), normalizedTitle);
 	}
 
 	return (milestoneValue: string) => {
@@ -57,7 +63,11 @@ export function resolveMilestoneFilterTitle(
 	milestoneValues: string[],
 	resolveValue: (milestoneValue: string) => string = (value) => value,
 ): string {
+	const normalizedQuery = query.trim();
 	const resolvedQuery = resolveValue(query);
+	if (/^(?:m-)?\d+$/i.test(normalizedQuery) || resolvedQuery.trim().toLowerCase() !== normalizedQuery.toLowerCase()) {
+		return resolvedQuery;
+	}
 	const candidates = milestoneValues.map((value) => resolveValue(value)).filter((value) => value.trim().length > 0);
 	const closest = resolveClosestMilestoneFilterValue(resolvedQuery, candidates);
 	return candidates.find((candidate) => normalizeMilestoneFilterValue(candidate) === closest)?.trim() ?? resolvedQuery;

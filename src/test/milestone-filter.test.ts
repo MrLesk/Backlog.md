@@ -43,6 +43,17 @@ describe("milestone filter matching", () => {
 		expect(resolveMilestone("New Milestones UI")).toBe("New Milestones UI");
 		expect(resolveMilestone("m-99")).toBe("m-99");
 	});
+
+	it("gives milestone IDs precedence over colliding milestone titles", () => {
+		const resolveMilestone = createMilestoneFilterValueResolver([
+			{ id: "m-0", title: "Alpha", description: "", rawContent: "" },
+			{ id: "m-1", title: "m-0", description: "", rawContent: "" },
+		]);
+
+		expect(resolveMilestone("0")).toBe("Alpha");
+		expect(resolveMilestone("m-0")).toBe("Alpha");
+		expect(resolveMilestone("m-1")).toBe("m-0");
+	});
 });
 
 describe("milestone filter title resolution", () => {
@@ -58,6 +69,22 @@ describe("milestone filter title resolution", () => {
 		expect(resolveTitle("m-1")).toBe("Release-1");
 		expect(resolveTitle("M-1")).toBe("Release-1");
 		expect(resolveTitle("2")).toBe("Roadmap Alpha");
+	});
+
+	it("does not fuzzy-match a recognized ID to a different assigned milestone", () => {
+		const resolveSimilarMilestones = createMilestoneFilterValueResolver([
+			{ id: "m-1", title: "Release 1", description: "", rawContent: "" },
+			{ id: "m-2", title: "Release 2", description: "", rawContent: "" },
+		]);
+
+		expect(resolveMilestoneFilterTitle("1", ["m-2"], resolveSimilarMilestones)).toBe("Release 1");
+		expect(resolveMilestoneFilterTitle("m-1", ["m-2"], resolveSimilarMilestones)).toBe("Release 1");
+
+		const resolveIdShapedTitles = createMilestoneFilterValueResolver([
+			{ id: "m-1", title: "m-1", description: "", rawContent: "" },
+			{ id: "m-2", title: "m-2", description: "", rawContent: "" },
+		]);
+		expect(resolveMilestoneFilterTitle("m-1", ["m-2"], resolveIdShapedTitles)).toBe("m-1");
 	});
 
 	it("returns the stored title for punctuated titles rather than a normalized value", () => {

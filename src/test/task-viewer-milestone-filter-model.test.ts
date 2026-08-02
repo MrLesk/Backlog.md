@@ -21,4 +21,14 @@ describe("task viewer milestone filter model", () => {
 		expect(model.resolveMilestoneLabel("3")).toBe("Sprint 3");
 		expect(model.resolveMilestoneLabel("m-99")).toBe("m-99");
 	});
+
+	it("resolves archived milestone aliases without adding them to the filter picker", () => {
+		const activeMilestones: Milestone[] = [{ id: "m-1", title: "Active", description: "", rawContent: "" }];
+		const archivedMilestones: Milestone[] = [{ id: "m-2", title: "Archived", description: "", rawContent: "" }];
+
+		const model = buildTaskViewerMilestoneFilterModel(activeMilestones, archivedMilestones);
+
+		expect(model.availableMilestoneTitles).toEqual(["Active"]);
+		expect(model.resolveMilestoneLabel("m-2")).toBe("Archived");
+	});
 });

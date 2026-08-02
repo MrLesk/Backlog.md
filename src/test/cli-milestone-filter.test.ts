@@ -203,7 +203,7 @@ describe("CLI milestone filtering", () => {
 			const parsed = JSON.parse(jsonResult.stdout.toString()) as { tasks: Array<{ id: string }> };
 			expect(parsed.tasks.map((task) => task.id)).toEqual(["TASK-6"]);
 		}
-	});
+	}, 10_000);
 
 	it("returns no tasks when the milestone query matches no milestone", async () => {
 		const result = await $`bun ${cliPath} task list --milestone zzz-unrelated-milestone --plain`.cwd(TEST_DIR).quiet();

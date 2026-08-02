@@ -13,7 +13,11 @@ import {
 import type { Milestone, Task, TaskSearchResult } from "../types/index.ts";
 import { copyToClipboard } from "../utils/clipboard.ts";
 import { areLabelSelectionsEqual, collectAvailableLabels, labelsToLower } from "../utils/label-filter.ts";
-import { NO_MILESTONE_FILTER_LABEL, NO_MILESTONE_FILTER_VALUE } from "../utils/milestone-filter.ts";
+import {
+	createMilestoneFilterValueResolver,
+	NO_MILESTONE_FILTER_LABEL,
+	NO_MILESTONE_FILTER_VALUE,
+} from "../utils/milestone-filter.ts";
 import { hasAnyPrefix } from "../utils/prefix-config.ts";
 import { formatPriorityLabel, getPriorityOptions, normalizePriorityValue } from "../utils/priority-config.ts";
 import { applyTaskFilters, createTaskSearchIndex, type LabelMatchMode } from "../utils/task-search.ts";
@@ -52,36 +56,16 @@ function getPriorityDisplay(priority?: string): string {
 	}
 }
 
-function createMilestoneLabelResolver(milestones: Milestone[]): (milestone: string) => string {
-	const milestoneLabelsByKey = new Map<string, string>();
-	for (const milestone of milestones) {
-		const normalizedId = milestone.id.trim();
-		const normalizedTitle = milestone.title.trim();
-		if (!normalizedId || !normalizedTitle) continue;
-		milestoneLabelsByKey.set(normalizedId.toLowerCase(), normalizedTitle);
-		const idMatch = normalizedId.match(/^m-(\d+)$/i);
-		if (idMatch?.[1]) {
-			const numericAlias = String(Number.parseInt(idMatch[1], 10));
-			milestoneLabelsByKey.set(`m-${numericAlias}`, normalizedTitle);
-			milestoneLabelsByKey.set(numericAlias, normalizedTitle);
-		}
-		milestoneLabelsByKey.set(normalizedTitle.toLowerCase(), normalizedTitle);
-	}
-
-	return (milestone: string) => {
-		const normalized = milestone.trim();
-		if (!normalized) return milestone;
-		return milestoneLabelsByKey.get(normalized.toLowerCase()) ?? milestone;
-	};
-}
-
-export function buildTaskViewerMilestoneFilterModel(activeMilestones: Milestone[]): {
+export function buildTaskViewerMilestoneFilterModel(
+	activeMilestones: Milestone[],
+	archivedMilestones: Milestone[] = [],
+): {
 	availableMilestoneTitles: string[];
 	resolveMilestoneLabel: (milestone: string) => string;
 } {
 	return {
 		availableMilestoneTitles: activeMilestones.map((milestone) => milestone.title),
-		resolveMilestoneLabel: createMilestoneLabelResolver(activeMilestones),
+		resolveMilestoneLabel: createMilestoneFilterValueResolver([...activeMilestones, ...archivedMilestones]),
 	};
 }
 
@@ -238,8 +222,14 @@ export async function viewTaskEnhanced(
 	let taskSearchIndex: ReturnType<typeof createTaskSearchIndex> | null = null;
 	let searchService: Awaited<ReturnType<typeof core.getSearchService>> | null = null;
 	let contentStore: Awaited<ReturnType<typeof core.getContentStore>> | null = null;
-	const milestoneEntities = await core.filesystem.listMilestones();
-	const { availableMilestoneTitles, resolveMilestoneLabel } = buildTaskViewerMilestoneFilterModel(milestoneEntities);
+	const [milestoneEntities, archivedMilestones] = await Promise.all([
+		core.filesystem.listMilestones(),
+		core.filesystem.listArchivedMilestones(),
+	]);
+	const { availableMilestoneTitles, resolveMilestoneLabel } = buildTaskViewerMilestoneFilterModel(
+		milestoneEntities,
+		archivedMilestones,
+	);
 
 	let dateFormat: string | undefined;
 
