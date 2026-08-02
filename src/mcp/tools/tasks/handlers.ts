@@ -155,6 +155,7 @@ export class TaskHandlers {
 		const priorities = config?.priorities;
 		if (this.isDraftStatus(args.status)) {
 			let drafts = await this.core.filesystem.listDrafts();
+			const milestoneCandidates = drafts;
 			if (args.search || args.type?.length) {
 				const draftSearch = createTaskSearchIndex(drafts);
 				drafts = draftSearch.search({ query: args.search, status: "Draft", type: args.type });
@@ -175,7 +176,7 @@ export class TaskHandlers {
 					...activeMilestones,
 					...archivedMilestones,
 				]);
-				const milestoneValues = drafts.map((draft) => draft.milestone ?? "");
+				const milestoneValues = milestoneCandidates.map((draft) => draft.milestone ?? "");
 				const matchesMilestone = createMilestoneFilterMatcher(
 					args.milestone,
 					milestoneValues,

@@ -430,7 +430,7 @@ export class Core {
 		}
 		if (filters.milestone) {
 			const resolveValue = resolveMilestoneFilterValue ?? createMilestoneFilterValueResolver([]);
-			const milestoneValues = result.map((task) => task.milestone ?? "");
+			const milestoneValues = tasks.map((task) => task.milestone ?? "");
 			const matchesMilestone = createMilestoneFilterMatcher(filters.milestone, milestoneValues, resolveValue);
 			result = result.filter((task) => matchesMilestone(task.milestone ?? ""));
 		}

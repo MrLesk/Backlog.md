@@ -235,6 +235,7 @@ function applyMilestoneFilter(
 	tasks: Task[],
 	milestone: string,
 	resolveMilestoneLabel?: (milestone: string) => string,
+	milestoneCandidates: Task[] = tasks,
 ): Task[] {
 	const normalizedMilestone = milestone.trim().toLowerCase();
 	if (!normalizedMilestone) {
@@ -244,7 +245,7 @@ function applyMilestoneFilter(
 		return tasks.filter((task) => !task.milestone?.trim());
 	}
 	if (resolveMilestoneLabel && "resolveExactId" in resolveMilestoneLabel) {
-		const milestoneValues = tasks.map((task) => task.milestone ?? "");
+		const milestoneValues = milestoneCandidates.map((task) => task.milestone ?? "");
 		const matchesMilestone = createMilestoneFilterMatcher(
 			milestone,
 			milestoneValues,
@@ -288,7 +289,7 @@ export function applyTaskFilters(tasks: Task[], options: TaskFilterOptions, inde
 		: [...tasks];
 
 	if (options.milestone) {
-		results = applyMilestoneFilter(results, options.milestone, options.resolveMilestoneLabel);
+		results = applyMilestoneFilter(results, options.milestone, options.resolveMilestoneLabel, tasks);
 	}
 
 	return results;

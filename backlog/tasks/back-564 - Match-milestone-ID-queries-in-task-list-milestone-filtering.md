@@ -5,7 +5,7 @@ status: Done
 assignee:
   - '@alexs-agent'
 created_date: '2026-08-02 18:01'
-updated_date: '2026-08-02 18:56'
+updated_date: '2026-08-02 19:13'
 labels: []
 dependencies: []
 references:
@@ -72,6 +72,8 @@ Automatic Codex review edge cases addressed with regression coverage: milestone 
 Second Codex review identified that ASCII-only normalization collapsed non-ASCII-only milestone titles. Added a red/green regression covering distinct CJK milestones and unassigned tasks, then changed the shared normalizer to preserve Unicode letters and numbers across Core and MCP filtering.
 
 Consolidated final review fixes around a shared identity-aware matcher: exact configured ID queries compare canonical milestone identities (including canonical-over-padded alias precedence and reused active/archived titles), while only unresolved queries use fuzzy title matching. Symbol-only titles retain a non-empty fallback key. Core, MCP active/Draft, task-viewer, board, plain/JSON CLI, and interactive matching now reuse the shared resolver/matcher path.
+
+Final Codex follow-up: exact configured titles now take literal punctuation-preserving precedence before normalized fuzzy matching, and milestone resolution uses the full task or draft candidate set before intersecting status/search/type/assignee/label filters across Core, MCP, task viewer, and board.
 <!-- SECTION:NOTES:END -->
 
 ## Final Summary
@@ -84,4 +86,6 @@ Follow-up review fixes preserve deterministic ID semantics, cover archived inter
 Unicode milestone identities are now preserved during filtering, preventing CJK-only titles from collapsing into the same empty comparison key.
 
 Final consolidated verification: 57 focused integration tests passed; bunx tsc --noEmit, Biome, and build passed; the exact-working-tree full suite passed 1,878 tests with 5 documented opt-in interactive skips and 0 failures.
+
+Final exact-tree verification after the last matcher-order fixes: 1,880 tests passed, 5 documented opt-in interactive tests skipped, and 0 failed across 209 files.
 <!-- SECTION:FINAL_SUMMARY:END -->

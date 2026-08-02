@@ -92,6 +92,17 @@ describe("milestone filter matching", () => {
 		expect(values.filter(createMilestoneFilterMatcher("m-2", values, resolveMilestone))).toEqual(["m-2"]);
 		expect(values.filter(createMilestoneFilterMatcher("Release", values, resolveMilestone))).toEqual(values);
 	});
+
+	it("keeps exact punctuation-distinct title filters separate", () => {
+		const resolveMilestone = createMilestoneFilterValueResolver([
+			{ id: "m-1", title: "Release-1", description: "", rawContent: "" },
+			{ id: "m-2", title: "Release 1", description: "", rawContent: "" },
+		]);
+		const values = ["m-1", "m-2"];
+
+		expect(values.filter(createMilestoneFilterMatcher("Release-1", values, resolveMilestone))).toEqual(["m-1"]);
+		expect(values.filter(createMilestoneFilterMatcher("Release 1", values, resolveMilestone))).toEqual(["m-2"]);
+	});
 });
 
 describe("milestone filter title resolution", () => {
@@ -191,5 +202,24 @@ describe("milestone filter title resolution", () => {
 		expect(
 			applyTaskFilters(tasks, { milestone: "m-1", resolveMilestoneLabel: resolveReusedTitle }).map((task) => task.id),
 		).toEqual(["task-1"]);
+	});
+
+	it("resolves the milestone before intersecting other interactive filters", () => {
+		const resolveSimilarTitles = createMilestoneFilterValueResolver([
+			{ id: "m-1", title: "Alpha Release", description: "", rawContent: "" },
+			{ id: "m-2", title: "Alfa Relish", description: "", rawContent: "" },
+		]);
+		const tasks = [
+			{ id: "task-1", title: "One", status: "Done", milestone: "m-1" },
+			{ id: "task-2", title: "Two", status: "To Do", milestone: "m-2" },
+		] as unknown as Task[];
+
+		expect(
+			applyTaskFilters(tasks, {
+				status: "To Do",
+				milestone: "Alpha Release",
+				resolveMilestoneLabel: resolveSimilarTitles,
+			}).map((task) => task.id),
+		).toEqual([]);
 	});
 });

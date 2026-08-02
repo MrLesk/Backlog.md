@@ -12,6 +12,7 @@ interface MilestoneCandidate {
 export interface MilestoneFilterValueResolver {
 	(milestoneValue: string): string;
 	resolveExactId(milestoneValue: string): string | undefined;
+	resolveExactTitle(milestoneValue: string): string | undefined;
 	resolveId(milestoneValue: string): string | undefined;
 }
 
@@ -53,6 +54,8 @@ export function createMilestoneFilterValueResolver(milestones: Milestone[]): Mil
 		const titleIds = new Set(titleMatches.map((milestone) => milestone.id.toLowerCase()));
 		return titleIds.size === 1 ? titleMatches[0]?.id : undefined;
 	};
+	const resolveExactTitle = (milestoneValue: string): string | undefined =>
+		milestonesByTitle.get(milestoneValue.trim().toLowerCase())?.[0]?.title;
 
 	const resolver = (milestoneValue: string) => {
 		const normalized = milestoneValue.trim();
@@ -63,7 +66,7 @@ export function createMilestoneFilterValueResolver(milestones: Milestone[]): Mil
 		}
 		return milestonesByTitle.get(normalized.toLowerCase())?.[0]?.title ?? milestoneValue;
 	};
-	return Object.assign(resolver, { resolveExactId, resolveId });
+	return Object.assign(resolver, { resolveExactId, resolveExactTitle, resolveId });
 }
 
 export function normalizeMilestoneFilterValue(value: string): string {
@@ -95,7 +98,8 @@ export function resolveMilestoneFilterTitle(
 	const normalizedQuery = query.trim();
 	const resolvedQuery = resolveValue(query);
 	const exactId = "resolveExactId" in resolveValue ? resolveValue.resolveExactId(query) : undefined;
-	if (exactId || resolvedQuery.trim().toLowerCase() !== normalizedQuery.toLowerCase()) {
+	const exactTitle = "resolveExactTitle" in resolveValue ? resolveValue.resolveExactTitle(query) : undefined;
+	if (exactId || exactTitle || resolvedQuery.trim().toLowerCase() !== normalizedQuery.toLowerCase()) {
 		return resolvedQuery;
 	}
 	const candidates = milestoneValues.map((value) => resolveValue(value)).filter((value) => value.trim().length > 0);
@@ -112,6 +116,11 @@ export function createMilestoneFilterMatcher(
 	if (exactId) {
 		const targetId = exactId.toLowerCase();
 		return (milestoneValue) => resolveValue.resolveId(milestoneValue)?.toLowerCase() === targetId;
+	}
+	const exactTitle = resolveValue.resolveExactTitle(query);
+	if (exactTitle) {
+		const targetTitle = exactTitle.toLowerCase();
+		return (milestoneValue) => resolveValue(milestoneValue).trim().toLowerCase() === targetTitle;
 	}
 
 	const milestoneFilter = normalizeMilestoneFilterValue(
