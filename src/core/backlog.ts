@@ -32,9 +32,9 @@ import {
 import { openInEditor } from "../utils/editor.ts";
 import { generateNextDocId } from "../utils/id-generators.ts";
 import {
+	createMilestoneFilterMatcher,
 	createMilestoneFilterValueResolver,
-	normalizeMilestoneFilterValue,
-	resolveClosestMilestoneFilterValue,
+	type MilestoneFilterValueResolver,
 } from "../utils/milestone-filter.ts";
 import {
 	buildGlobPattern,
@@ -395,7 +395,7 @@ export class Core {
 	private applyTaskFilters(
 		tasks: Task[],
 		filters?: TaskListFilter,
-		resolveMilestoneFilterValue?: (milestoneValue: string) => string,
+		resolveMilestoneFilterValue?: MilestoneFilterValueResolver,
 	): Task[] {
 		if (!filters) {
 			return tasks;
@@ -429,15 +429,10 @@ export class Core {
 			result = result.filter((task) => normalizePriorityValue(task.priority) === priorityLower);
 		}
 		if (filters.milestone) {
-			const milestoneFilter = resolveClosestMilestoneFilterValue(
-				filters.milestone,
-				result.map((task) => resolveMilestoneFilterValue?.(task.milestone ?? "") ?? task.milestone ?? ""),
-			);
-			result = result.filter(
-				(task) =>
-					normalizeMilestoneFilterValue(resolveMilestoneFilterValue?.(task.milestone ?? "") ?? task.milestone ?? "") ===
-					milestoneFilter,
-			);
+			const resolveValue = resolveMilestoneFilterValue ?? createMilestoneFilterValueResolver([]);
+			const milestoneValues = tasks.map((task) => task.milestone ?? "");
+			const matchesMilestone = createMilestoneFilterMatcher(filters.milestone, milestoneValues, resolveValue);
+			result = result.filter((task) => matchesMilestone(task.milestone ?? ""));
 		}
 		if (filters.parentTaskId) {
 			const parentFilter = filters.parentTaskId;
