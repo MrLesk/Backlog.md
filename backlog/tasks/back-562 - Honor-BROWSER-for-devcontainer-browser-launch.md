@@ -1,11 +1,11 @@
 ---
 id: BACK-562
 title: Honor BROWSER for devcontainer browser launch
-status: In Progress
+status: Done
 assignee:
   - '@codex'
 created_date: '2026-08-02 16:09'
-updated_date: '2026-08-02 16:13'
+updated_date: '2026-08-02 16:52'
 labels: []
 dependencies: []
 references:
@@ -28,17 +28,17 @@ Make backlog browser honor a non-empty BROWSER executable when opening the web U
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 When BROWSER is non-empty, backlog browser launches that executable with the web UI URL as a separate argument.
-- [ ] #2 When BROWSER is unset or empty, macOS, Windows, and Linux use their existing platform browser-launch fallbacks.
-- [ ] #3 If automatic opening fails, browser output still gives users a URL and clear manual-open guidance.
-- [ ] #4 Focused browser-launch tests cover the override and fallback behavior.
+- [x] #1 When BROWSER is non-empty, backlog browser launches that executable with the web UI URL as a separate argument.
+- [x] #2 When BROWSER is unset or empty, macOS, Windows, and Linux use their existing platform browser-launch fallbacks.
+- [x] #3 If automatic opening fails, browser output still gives users a URL and clear manual-open guidance.
+- [x] #4 Focused browser-launch tests cover the override and fallback behavior.
 <!-- AC:END -->
 
 ## Definition of Done
 <!-- DOD:BEGIN -->
-- [ ] #1 bunx tsc --noEmit passes when TypeScript touched
-- [ ] #2 bun run check . passes when formatting/linting touched
-- [ ] #3 bun test (or scoped test) passes
+- [x] #1 bunx tsc --noEmit passes when TypeScript touched
+- [x] #2 bun run check . passes when formatting/linting touched
+- [x] #3 bun test (or scoped test) passes
 <!-- DOD:END -->
 
 ## Implementation Plan
@@ -53,4 +53,12 @@ Make backlog browser honor a non-empty BROWSER executable when opening the web U
 Merged current origin/main, replaced the duplicate BACK-555 task record with this CLI-allocated task, and verified focused browser tests, typecheck, Biome, build, plus CI-equivalent isolated full suites on origin/main and this branch.
 
 Updated PR #817 to BACK-562 and pushed the current-main merge plus identity repair. GitHub accepted the fast-forward branch update but rejected fork branch renaming because maintainer permissions do not grant that operation.
+
+Merged PR #817 after the current head passed GitHub CI on Ubuntu, macOS, Windows, Nix, and binary-smoke targets. The Windows unit retry passed after the earlier unrelated timeout.
 <!-- SECTION:NOTES:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+Honored non-empty BROWSER as a single executable with the UI URL passed separately, preserved platform fallbacks and manual-open guidance, and verified focused tests, type checks, Biome, build, full CI-equivalent suites, and green GitHub CI.
+<!-- SECTION:FINAL_SUMMARY:END -->
