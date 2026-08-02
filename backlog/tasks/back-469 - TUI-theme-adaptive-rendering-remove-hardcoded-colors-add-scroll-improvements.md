@@ -5,7 +5,7 @@ status: Done
 assignee:
   - '@codex'
 created_date: '2026-02-21 08:42'
-updated_date: '2026-08-01 22:01'
+updated_date: '2026-08-02 07:28'
 labels:
   - ui
   - board
@@ -67,13 +67,13 @@ Comprehensive TUI improvement for terminal theme compatibility and quality of li
 - [x] #4 No hardcoded fg: "white" or bg: "black" in TUI text/container styles (backdrop overlays excluded)
 - [x] #5 Semantic colors use "gray" instead of "white" for neutral/muted elements
 - [x] #6 Code paths styled with cyan instead of gray for cross-theme visibility
-- [ ] #7 PGUP/PGDN/Home/End work in standalone viewer, popup viewer, board lanes, and generic list
-- [ ] #8 Ctrl+D/Ctrl+U work in board lanes and generic list
-- [ ] #9 Scrollbar indicators on scrollable content areas (except task list pane)
-- [ ] #10 Status/priority filter selectors allow full down-arrow navigation before exiting
+- [x] #7 PGUP/PGDN/Home/End work in standalone viewer, popup viewer, board lanes, and generic list
+- [x] #8 Ctrl+D/Ctrl+U work in board lanes and generic list
+- [x] #9 Scrollbar indicators on scrollable content areas (except task list pane)
+- [x] #10 Status/priority filter selectors allow full down-arrow navigation before exiting
 - [x] #11 All tests pass
-- [ ] #12 Screenshot tool auto-captures board, tasklist, detail, and filters views in Terminal and Ghostty
-- [ ] #13 Screenshot compare command generates static PNG, animated APNG, and GIF comparisons
+- [x] #12 Screenshot tool auto-captures board, tasklist, detail, and filters views in Terminal and Ghostty
+- [x] #13 Screenshot compare command generates static PNG, animated APNG, and GIF comparisons
 <!-- AC:END -->
 
 ## Definition of Done
