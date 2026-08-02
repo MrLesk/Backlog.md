@@ -197,7 +197,8 @@ export class ContentStore {
 			return;
 		}
 		if (!this.localTaskRefreshPromise) {
-			const refresh = (async () => {
+			const epoch = this.rootWatcherEpoch;
+			const refresh = this.enqueueRoot(epoch, async () => {
 				const [activeTasks, completedTasks] = await Promise.all([
 					this.filesystem.listTasks(),
 					this.filesystem.listCompletedTasks(),
@@ -217,7 +218,7 @@ export class ContentStore {
 					this.replaceVisibleTasks(activeTasks);
 					if (changed) this.publishTaskChange();
 				}
-			})();
+			});
 			this.localTaskRefreshPromise = refresh;
 			void refresh.finally(() => {
 				if (this.localTaskRefreshPromise === refresh) this.localTaskRefreshPromise = null;

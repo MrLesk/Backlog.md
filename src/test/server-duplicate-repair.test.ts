@@ -76,6 +76,8 @@ describe("duplicate repair server boundary", () => {
 	it("publishes a real preview refresh once before queued watcher reconciliation", async () => {
 		const messages: string[] = [];
 		const socket = new WebSocket(`ws://127.0.0.1:${serverPort}`);
+		const serverCore = (server as unknown as { core: Core }).core;
+		const originalLoadTasks = serverCore.loadTasks;
 		await withTimeout(
 			new Promise<void>((resolve, reject) => {
 				socket.onopen = () => resolve();
@@ -87,15 +89,39 @@ describe("duplicate repair server boundary", () => {
 		socket.onmessage = (event) => messages.push(String(event.data));
 
 		try {
-			const serverCore = (server as unknown as { core: Core }).core;
 			const store = await serverCore.getContentStore();
 			(store as unknown as { stopRootWatchers: () => void }).stopRootWatchers();
+			let markHeldLoadStarted: () => void = () => {};
+			let releaseHeldLoad: () => void = () => {};
+			const heldLoadStarted = new Promise<void>((resolve) => {
+				markHeldLoadStarted = resolve;
+			});
+			const heldLoadRelease = new Promise<void>((resolve) => {
+				releaseHeldLoad = resolve;
+			});
+			let holdNextLoad = true;
+			serverCore.loadTasks = async () => {
+				const tasks = await originalLoadTasks.call(serverCore);
+				if (holdNextLoad) {
+					holdNextLoad = false;
+					markHeldLoadStarted();
+					await heldLoadRelease;
+				}
+				return tasks;
+			};
+
+			const staleRefresh = store.refreshTasks();
+			await withTimeout(heldLoadStarted, "held stale task refresh", 2000);
 			await Bun.write(
 				join(serverCore.filesystem.tasksDir, "task-1 - Alpha.md"),
 				serializeTask(makeTask("TASK-1", "Alpha refreshed")),
 			);
 
-			const previewResponse = await request("/api/tasks/duplicates");
+			const previewRequest = request("/api/tasks/duplicates");
+			await sleep(25);
+			releaseHeldLoad();
+			await staleRefresh;
+			const previewResponse = await previewRequest;
 			expect(previewResponse.status).toBe(200);
 			await retry(async () => {
 				if (!messages.includes("tasks-updated")) throw new Error("Preview refresh was not published");
@@ -107,10 +133,10 @@ describe("duplicate repair server boundary", () => {
 				true,
 			);
 
-			await (store as unknown as { refreshTasksFromDisk: () => Promise<void> }).refreshTasksFromDisk();
 			await sleep(100);
 			expect(messages.filter((message) => message === "tasks-updated")).toHaveLength(1);
 		} finally {
+			serverCore.loadTasks = originalLoadTasks;
 			socket.close();
 		}
 	});
