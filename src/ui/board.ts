@@ -172,7 +172,15 @@ function formatColumnLabel(status: string, count: number): string {
 }
 
 const DEFAULT_FOOTER_CONTENT =
-	" {cyan-fg}[Tab]{/} View | {cyan-fg}[N]{/} New | {cyan-fg}[/]{/} Search | {cyan-fg}[T/P/F/I]{/} Filter | {cyan-fg}[←→/↑↓]{/} Nav | {cyan-fg}[Enter]{/} Details | {cyan-fg}[E/M/C/A]{/} Edit/Move/Comp/Arch | {cyan-fg}[Y]{/} Yank | {cyan-fg}[?]{/} Help | {cyan-fg}[q]{/} Quit";
+	" {cyan-fg}[Tab]{/} View | {cyan-fg}[N]{/} New | {cyan-fg}[/]{/} Search | {cyan-fg}[T/P/F/I]{/} Filter | {cyan-fg}[←→/↑↓]{/} Nav | {cyan-fg}[Enter]{/} Details | {cyan-fg}[E/M/C/A]{/} Edit/Move/Comp/Arch | {cyan-fg}[H]{/} Hide Empty | {cyan-fg}[Y]{/} Yank | {cyan-fg}[?]{/} Help | {cyan-fg}[q]{/} Quit";
+
+export function filterVisibleColumns(data: ColumnData[], hideEmptyColumns: boolean, isMoving: boolean): ColumnData[] {
+	if (!hideEmptyColumns || isMoving) {
+		return data;
+	}
+	const nonEmpty = data.filter((column) => column.tasks.length > 0);
+	return nonEmpty.length > 0 ? nonEmpty : data;
+}
 
 export function shouldRebuildColumns(current: ColumnData[], next: ColumnData[]): boolean {
 	if (current.length !== next.length) {
@@ -274,6 +282,7 @@ export async function renderBoardTui(
 		milestoneEntities?: Milestone[];
 		startupWarning?: string;
 		dateFormat?: string;
+		hideEmptyColumns?: boolean;
 		createTask?: (input: TaskCreateInput) => Promise<Task>;
 		screen?: ScreenInterface;
 		taskComposer?: (options: TaskComposerOptions) => Promise<Task | null>;
@@ -314,6 +323,8 @@ export async function renderBoardTui(
 		let currentColumnsData: ColumnData[] = [];
 		let configuredWorkflowStatuses = [...statuses];
 		let currentStatuses = initialColumns.map((column) => column.status);
+		let hideEmptyColumns = options?.hideEmptyColumns ?? false;
+		let hideEmptyColumnsSaving = false;
 		let currentCol = 0;
 		let popupOpen = false;
 		let currentFocus: "board" | "filters" = "board";
@@ -678,7 +689,6 @@ export async function renderBoardTui(
 
 		const rebuildColumns = (data: ColumnData[], selectedTaskId?: string) => {
 			currentColumnsData = data;
-			currentStatuses = data.map((column) => column.status);
 			createColumnViews(data);
 			restoreSelection(selectedTaskId);
 		};
@@ -923,17 +933,18 @@ export async function renderBoardTui(
 			renderingView = true;
 			try {
 				const projectedData = getProjectedColumns(getFilteredTasks(), moveOp);
+				const dataForColumns = filterVisibleColumns(projectedData, hideEmptyColumns, Boolean(moveOp));
 
 				// If we are moving, we want to select the moving task
 				const selectedId = preferredTaskId ?? (moveOp ? moveOp.taskId : getSelectedTaskId());
 
-				if (projectedData.length === 0) {
+				if (dataForColumns.length === 0) {
 					const fallbackStatus = currentStatuses[0] ?? "No Status";
 					rebuildColumns([{ status: fallbackStatus, tasks: [] }], selectedId);
-				} else if (shouldRebuildColumns(currentColumnsData, projectedData)) {
-					rebuildColumns(projectedData, selectedId);
+				} else if (shouldRebuildColumns(currentColumnsData, dataForColumns)) {
+					rebuildColumns(dataForColumns, selectedId);
 				} else {
-					applyColumnData(projectedData, selectedId);
+					applyColumnData(dataForColumns, selectedId);
 				}
 
 				updateFooter();
@@ -1646,6 +1657,38 @@ export async function renderBoardTui(
 						` {red-fg}Error archiving task: ${error instanceof Error ? error.message : "Unknown error"}{/}`,
 					);
 				}
+			}
+		});
+
+		screen.key(["S-h", "H"], async () => {
+			if (popupOpen || filterPopupOpen || modalOpen || currentFocus === "filters" || moveOp) return;
+			// Ignore toggles while a save is in flight: overlapping load/save
+			// cycles would write back stale config snapshots (lost updates).
+			if (hideEmptyColumnsSaving) return;
+			hideEmptyColumnsSaving = true;
+
+			const previous = hideEmptyColumns;
+			hideEmptyColumns = !hideEmptyColumns;
+			renderView();
+
+			try {
+				const core = new Core(process.cwd(), { enableWatchers: true });
+				const config = await core.fs.loadConfig();
+				if (!config) {
+					throw new Error("No config found");
+				}
+				await core.fs.saveConfig({ ...config, hideEmptyColumns });
+				showTransientFooter(
+					hideEmptyColumns ? " {green-fg}Hiding empty columns{/}" : " {green-fg}Showing empty columns{/}",
+				);
+			} catch (error) {
+				hideEmptyColumns = previous;
+				renderView();
+				showTransientFooter(
+					` {red-fg}Error saving hide empty columns setting: ${error instanceof Error ? error.message : "Unknown error"}{/}`,
+				);
+			} finally {
+				hideEmptyColumnsSaving = false;
 			}
 		});
 

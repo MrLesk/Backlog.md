@@ -118,7 +118,7 @@ function parseChecklistInput(value: string): ChecklistEntry[] {
 	return parsed;
 }
 
-function getDefaultCreateStatus(statuses: string[]): string {
+export function getDefaultCreateStatus(statuses: string[]): string {
 	const canonicalTodo = findCanonicalStatus("To Do", statuses);
 	if (canonicalTodo) {
 		return canonicalTodo;
