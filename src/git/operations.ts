@@ -100,29 +100,12 @@ export class GitOperations {
 	}
 
 	async addFiles(filePaths: string[]): Promise<void> {
-		if (filePaths.length === 0 || !(await this.isRepository())) {
-			return;
-		}
-		// Convert absolute paths to relative paths from project root to avoid Windows encoding issues
-		const relativePaths = filePaths.map((filePath) => relative(this.projectRoot, filePath).replace(/\\/g, "/"));
-		await this.execGit(["add", ...relativePaths]);
+		for (const filePath of filePaths) await this.addFile(filePath);
 	}
 
-	async commitTaskChange(taskId: string, message: string, filePath?: string): Promise<void> {
+	async commitTaskChange(taskId: string, message: string, filePath: string): Promise<void> {
 		const commitMessage = `${taskId} - ${message}`;
-		if (filePath) {
-			await this.commitFiles(commitMessage, [filePath]);
-			return;
-		}
-		const args = ["commit", "-m", commitMessage];
-		if (this.config?.bypassGitHooks) {
-			args.push("--no-verify");
-		}
-		const repoRoot = filePath ? (await this.getPathContext(filePath))?.repoRoot : undefined;
-		if (!(await this.isRepository(repoRoot ?? this.projectRoot))) {
-			return;
-		}
-		await this.execGit(args, { cwd: repoRoot });
+		await this.commitFiles(commitMessage, [filePath]);
 	}
 
 	async commitChanges(message: string, repoRoot?: string | null): Promise<void> {
@@ -141,9 +124,26 @@ export class GitOperations {
 		if (uniqueFilePaths.length === 0) {
 			return;
 		}
+		let requestedRepoRoot = repoRoot;
+		if (requestedRepoRoot == null) {
+			const pathsByRepo = new Map<string, string[]>();
+			for (const filePath of uniqueFilePaths) {
+				const pathRepoRoot = (await this.getPathContext(filePath))?.repoRoot ?? this.projectRoot;
+				const repoPaths = pathsByRepo.get(pathRepoRoot) ?? [];
+				repoPaths.push(filePath);
+				pathsByRepo.set(pathRepoRoot, repoPaths);
+			}
+			if (pathsByRepo.size > 1) {
+				for (const [pathRepoRoot, repoPaths] of pathsByRepo) {
+					await this.commitFiles(message, repoPaths, pathRepoRoot);
+				}
+				return;
+			}
+			requestedRepoRoot = pathsByRepo.keys().next().value;
+		}
 
 		const resolvedRepoRoot =
-			repoRoot ?? (await this.getPathContext(uniqueFilePaths[0] ?? ""))?.repoRoot ?? this.projectRoot;
+			requestedRepoRoot ?? (await this.getPathContext(uniqueFilePaths[0] ?? ""))?.repoRoot ?? this.projectRoot;
 		if (!(await this.isRepository(resolvedRepoRoot))) {
 			return;
 		}
@@ -388,14 +388,6 @@ export class GitOperations {
 		});
 	}
 
-	async resetIndex(repoRoot?: string | null): Promise<void> {
-		if (!(await this.isRepository(repoRoot ?? this.projectRoot))) {
-			return;
-		}
-		// Reset the staging area without affecting working directory
-		await this.execGit(["reset", "HEAD"], { cwd: repoRoot ?? undefined });
-	}
-
 	async resetPaths(filePaths: string[], repoRoot?: string | null): Promise<void> {
 		const uniqueFilePaths = Array.from(new Set(filePaths.map((path) => path.trim()).filter((path) => path.length > 0)));
 		if (uniqueFilePaths.length === 0) {
@@ -460,25 +452,6 @@ export class GitOperations {
 			input: records.join(""),
 		});
 		return true;
-	}
-
-	async commitStagedChanges(message: string, repoRoot?: string | null): Promise<void> {
-		if (!(await this.isRepository(repoRoot ?? this.projectRoot))) {
-			return;
-		}
-		// Check if there are any staged changes before committing
-		const { stdout: status } = await this.execGit(["status", "--porcelain"], { cwd: repoRoot ?? undefined });
-		const hasStagedChanges = status.split("\n").some((line) => line.match(/^[AMDRC]/));
-
-		if (!hasStagedChanges) {
-			throw new Error("No staged changes to commit");
-		}
-
-		const args = ["commit", "-m", message];
-		if (this.config?.bypassGitHooks) {
-			args.push("--no-verify");
-		}
-		await this.execGit(args, { cwd: repoRoot ?? undefined });
 	}
 
 	async retryGitOperation<T>(operation: () => Promise<T>, operationName: string, maxRetries = 3): Promise<T> {

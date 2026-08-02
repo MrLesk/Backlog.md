@@ -203,7 +203,7 @@ export async function addAgentInstructions(
 
 	if (git && paths.length > 0 && autoCommit) {
 		await git.addFiles(paths);
-		await git.commitChanges("Add AI agent instructions");
+		await git.commitFiles("Add AI agent instructions", paths);
 	}
 
 	return results;

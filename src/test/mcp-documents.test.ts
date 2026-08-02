@@ -1,5 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
+import { mkdir } from "node:fs/promises";
+import { join } from "node:path";
 import { $ } from "bun";
+import { serializeDocument } from "../markdown/serializer.ts";
 import { McpServer } from "../mcp/server.ts";
 import { registerDocumentTools } from "../mcp/tools/documents/index.ts";
 import type { JsonSchema } from "../mcp/validation/validators.ts";
@@ -282,5 +285,146 @@ describe("MCP document tools", () => {
 		expect(searchText).toMatch(/Architecture Overview/);
 		expect(searchText).toContain("doc-1 - Architecture Overview (doc-1 - Architecture-Overview.md)");
 		expect(searchText).toMatch(/\[score [0-1]\.\d{3}]/);
+	});
+
+	it("does not sweep unrelated staged or dirty files into document create auto-commits", async () => {
+		const config = await loadConfig(mcpServer);
+		config.autoCommit = true;
+		await mcpServer.filesystem.saveConfig(config);
+		await mcpServer.ensureConfigLoaded();
+
+		await $`git add .`.cwd(TEST_DIR).quiet();
+		await $`git commit -m "baseline"`.cwd(TEST_DIR).quiet();
+
+		// A deletion staged moments earlier by an unrelated operation, outside the backlog dir.
+		await Bun.write(join(TEST_DIR, "UNRELATED.txt"), "keep me\n");
+		await $`git add UNRELATED.txt`.cwd(TEST_DIR).quiet();
+		await $`git commit -m "add unrelated file"`.cwd(TEST_DIR).quiet();
+		await $`git rm --quiet UNRELATED.txt`.cwd(TEST_DIR).quiet();
+
+		// A peer's untracked, unreviewed file sitting inside the backlog directory.
+		const peerPlanPath = join(mcpServer.filesystem.backlogDir, "plans", "peer-plan.md");
+		await Bun.write(peerPlanPath, "# Peer's in-progress plan\n");
+
+		const createResult = await mcpServer.testInterface.callTool({
+			params: {
+				name: "document_create",
+				arguments: { title: "Architecture Overview", content: "Contains service topology details." },
+			},
+		});
+		expect(getText(createResult.content)).toContain("Document created successfully.");
+
+		const lastCommit = await mcpServer.git.getLastCommitMessage();
+		expect(lastCommit).toContain("backlog: Add document doc-1");
+
+		const { stdout: committedFilesRaw } = await $`git show --name-only --pretty=format:`.cwd(TEST_DIR).quiet();
+		const committedFiles = committedFilesRaw.toString();
+		expect(committedFiles).not.toContain("UNRELATED.txt");
+		expect(committedFiles).not.toContain("peer-plan.md");
+
+		const status = await mcpServer.git.getStatus();
+		expect(status).toContain("D  UNRELATED.txt");
+		expect(status).toContain("?? backlog/plans/");
+	});
+
+	it("does not sweep unrelated staged or dirty files into document update auto-commits", async () => {
+		await mcpServer.testInterface.callTool({
+			params: {
+				name: "document_create",
+				arguments: { title: "Incident Response", content: "Initial content" },
+			},
+		});
+
+		const config = await loadConfig(mcpServer);
+		config.autoCommit = true;
+		await mcpServer.filesystem.saveConfig(config);
+		await mcpServer.ensureConfigLoaded();
+
+		await $`git add .`.cwd(TEST_DIR).quiet();
+		await $`git commit -m "baseline"`.cwd(TEST_DIR).quiet();
+
+		await Bun.write(join(TEST_DIR, "UNRELATED.txt"), "keep me\n");
+		await $`git add UNRELATED.txt`.cwd(TEST_DIR).quiet();
+		await $`git commit -m "add unrelated file"`.cwd(TEST_DIR).quiet();
+		await $`git rm --quiet UNRELATED.txt`.cwd(TEST_DIR).quiet();
+
+		const peerPlanPath = join(mcpServer.filesystem.backlogDir, "plans", "peer-plan.md");
+		await Bun.write(peerPlanPath, "# Peer's in-progress plan\n");
+
+		const updateResult = await mcpServer.testInterface.callTool({
+			params: {
+				name: "document_update",
+				arguments: {
+					id: "DOC-0001",
+					title: "Incident Response Handbook",
+					content: "Updated procedures",
+					path: "runbooks",
+				},
+			},
+		});
+		expect(getText(updateResult.content)).toContain("Document updated successfully.");
+
+		const lastCommit = await mcpServer.git.getLastCommitMessage();
+		expect(lastCommit).toContain("backlog: Add document doc-1");
+
+		const { stdout: committedFilesRaw } = await $`git show --name-only --pretty=format:`.cwd(TEST_DIR).quiet();
+		const committedFiles = committedFilesRaw.toString();
+		expect(committedFiles).not.toContain("UNRELATED.txt");
+		expect(committedFiles).not.toContain("peer-plan.md");
+		// The old (pre-rename) path and the new path should both be part of this commit.
+		expect(committedFiles).toContain("backlog/docs/doc-1 - Incident-Response.md");
+		expect(committedFiles).toContain("backlog/docs/runbooks/doc-1 - Incident-Response-Handbook.md");
+
+		const status = await mcpServer.git.getStatus();
+		expect(status).toContain("D  UNRELATED.txt");
+		expect(status).toContain("?? backlog/plans/");
+	});
+
+	it("commits every duplicate document path removed by an update", async () => {
+		await mcpServer.testInterface.callTool({
+			params: {
+				name: "document_create",
+				arguments: { title: "Primary document", content: "Initial content" },
+			},
+		});
+
+		const duplicatePath = join(mcpServer.filesystem.docsDir, "duplicates", "doc-01 - ZZZ-Duplicate.md");
+		await mkdir(join(mcpServer.filesystem.docsDir, "duplicates"), { recursive: true });
+		await Bun.write(
+			duplicatePath,
+			serializeDocument({
+				id: "doc-01",
+				title: "ZZZ Duplicate",
+				type: "other",
+				createdDate: "2026-08-02 00:00",
+				rawContent: "Duplicate content",
+			}),
+		);
+		await $`git add .`.cwd(TEST_DIR).quiet();
+		await $`git commit -m "Add duplicate documents"`.cwd(TEST_DIR).quiet();
+
+		const config = await loadConfig(mcpServer);
+		config.autoCommit = true;
+		await mcpServer.filesystem.saveConfig(config);
+		await mcpServer.ensureConfigLoaded();
+
+		const updateResult = await mcpServer.testInterface.callTool({
+			params: {
+				name: "document_update",
+				arguments: {
+					id: "doc-1",
+					title: "Renamed document",
+					content: "Updated content",
+					path: "runbooks",
+				},
+			},
+		});
+		expect(getText(updateResult.content)).toContain("Document updated successfully.");
+
+		const committed = await $`git show --no-renames --name-only --pretty=format:`.cwd(TEST_DIR).text();
+		expect(committed).toContain("backlog/docs/doc-1 - Primary-document.md");
+		expect(committed).toContain("backlog/docs/duplicates/doc-01 - ZZZ-Duplicate.md");
+		expect(committed).toContain("backlog/docs/runbooks/doc-1 - Renamed-document.md");
+		expect(await $`git status --short`.cwd(TEST_DIR).text()).not.toContain("backlog/docs/");
 	});
 });

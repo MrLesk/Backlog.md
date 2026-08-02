@@ -480,7 +480,8 @@ Invalid content`,
 			await filesystem.saveDraft(sampleDraft);
 
 			const archived = await filesystem.archiveDraft("draft-1");
-			expect(archived).toBe(true);
+			expect(archived?.sourcePath).toContain(join("backlog", "drafts"));
+			expect(archived?.targetPath).toContain(join("backlog", "archive", "drafts"));
 
 			const draft = await filesystem.loadDraft("draft-1");
 			expect(draft).toBeNull();
