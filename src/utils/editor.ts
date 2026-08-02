@@ -44,30 +44,27 @@ export function resolveEditor(config?: BacklogConfig | null): string {
 /**
  * Check if an editor command is available on the system
  */
-export async function isEditorAvailable(editor: string): Promise<boolean> {
+type EditorCommandLookup = (command: string) => Promise<boolean>;
+
+async function lookupEditorCommand(command: string): Promise<boolean> {
+	if (platform() === "win32") {
+		await $`where ${command}`.quiet();
+		return true;
+	}
+
+	await $`which ${command}`.quiet();
+	return true;
+}
+
+export async function isEditorAvailable(
+	editor: string,
+	lookupCommand: EditorCommandLookup = lookupEditorCommand,
+): Promise<boolean> {
 	try {
-		// Try to run the editor with --version or --help to check if it exists
 		// Split the editor command in case it has arguments
 		const parts = editor.split(" ");
 		const command = parts[0] ?? editor;
-
-		// For Windows, just check if the command exists
-		if (platform() === "win32") {
-			try {
-				await $`where ${command}`.quiet();
-				return true;
-			} catch {
-				return false;
-			}
-		}
-
-		// For Unix-like systems, use which
-		try {
-			await $`which ${command}`.quiet();
-			return true;
-		} catch {
-			return false;
-		}
+		return await lookupCommand(command);
 	} catch {
 		return false;
 	}

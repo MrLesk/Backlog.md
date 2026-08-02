@@ -10,11 +10,22 @@ import { normalizePriorityValue } from "../utils/priority-config.ts";
 import { normalizeTaskId, normalizeTaskIdentity, taskIdsEqual } from "../utils/task-path.ts";
 import { sortByTaskId } from "../utils/task-sorting.ts";
 import { matchesTaskTypeFilter } from "../utils/task-type-config.ts";
+import type { TaskIdentityIndex, TaskIdentityResolution } from "./task-identity-index.ts";
+
+export interface TaskCorpusSnapshot {
+	tasks: Task[];
+	activeTasks: Task[];
+	completedTasks: Task[];
+	identityIndex?: TaskIdentityIndex;
+}
+
+type TaskLoaderResult = Task[] | TaskCorpusSnapshot;
 
 interface ContentSnapshot {
 	tasks: Task[];
 	documents: Document[];
 	decisions: Decision[];
+	taskCorpus?: TaskCorpusSnapshot;
 }
 
 type ContentStoreEventType = "ready" | "tasks" | "documents" | "decisions";
@@ -71,6 +82,9 @@ export class ContentStore {
 	private readonly decisions = new Map<string, Decision>();
 
 	private cachedTasks: Task[] = [];
+	private activeTasks: Task[] = [];
+	private completedTasks: Task[] = [];
+	private taskIdentityIndex?: TaskIdentityIndex;
 	private cachedDocuments: Document[] = [];
 	private cachedDecisions: Decision[] = [];
 
@@ -108,6 +122,9 @@ export class ContentStore {
 	private boundBacklogDir: string | null = null;
 	private closed = false;
 	private readonly deferredRechecks = new Map<string, DeferredRecheck>();
+	private taskBatchDepth = 0;
+	private pendingTaskNotification = false;
+	private localTaskRefreshPromise: Promise<void> | null = null;
 
 	private attachWatcherErrorHandler(watcher: FSWatcher, context: string): void {
 		watcher.on("error", (error) => {
@@ -119,7 +136,7 @@ export class ContentStore {
 
 	constructor(
 		private readonly filesystem: FileSystem,
-		private readonly taskLoader?: () => Promise<Task[]>,
+		private readonly taskLoader?: () => Promise<TaskLoaderResult>,
 		private readonly enableWatchers = false,
 	) {
 		this.publishedRoot = this.currentRoot();
@@ -158,6 +175,10 @@ export class ContentStore {
 		return this.getSnapshot();
 	}
 
+	isInitialized(): boolean {
+		return this.initialized;
+	}
+
 	async refreshTasks(): Promise<void> {
 		this.assertOpen();
 		if (!this.initialized) {
@@ -168,6 +189,41 @@ export class ContentStore {
 		await this.enqueueRoot(epoch, async () => {
 			await this.refreshTasksFromDisk(undefined, epoch);
 		});
+	}
+
+	async refreshLocalTaskCorpus(): Promise<void> {
+		if (!this.initialized) {
+			await this.ensureInitialized();
+			return;
+		}
+		if (!this.localTaskRefreshPromise) {
+			const refresh = (async () => {
+				const [activeTasks, completedTasks] = await Promise.all([
+					this.filesystem.listTasks(),
+					this.filesystem.listCompletedTasks(),
+				]);
+				const previousFingerprint = this.taskIdentityIndex?.getFingerprint();
+				this.activeTasks = activeTasks;
+				this.completedTasks = completedTasks;
+				if (this.taskIdentityIndex) {
+					this.taskIdentityIndex = this.taskIdentityIndex.withWorkingCopyCorpus(activeTasks, completedTasks);
+					const tasks = this.taskIdentityIndex.getTasks(false);
+					const changed = this.hasTaskCollectionChanged(tasks);
+					const identityChanged = previousFingerprint !== this.taskIdentityIndex.getFingerprint();
+					this.replaceVisibleTasks(tasks);
+					if (changed || identityChanged) this.publishTaskChange();
+				} else {
+					const changed = this.hasTaskCollectionChanged(activeTasks);
+					this.replaceVisibleTasks(activeTasks);
+					if (changed) this.publishTaskChange();
+				}
+			})();
+			this.localTaskRefreshPromise = refresh;
+			void refresh.finally(() => {
+				if (this.localTaskRefreshPromise === refresh) this.localTaskRefreshPromise = null;
+			});
+		}
+		await this.localTaskRefreshPromise;
 	}
 
 	getTasks(filter?: TaskListFilter): Task[] {
@@ -208,6 +264,30 @@ export class ContentStore {
 		return tasks.slice();
 	}
 
+	getTaskCorpusSnapshot(): TaskCorpusSnapshot {
+		if (!this.initialized) throw new Error("ContentStore not initialized. Call ensureInitialized() first.");
+		return {
+			tasks: this.cachedTasks.slice(),
+			activeTasks: this.activeTasks.slice(),
+			completedTasks: this.completedTasks.slice(),
+			identityIndex: this.taskIdentityIndex,
+		};
+	}
+
+	resolveTaskForRead(taskId: string): TaskIdentityResolution {
+		if (!this.initialized) throw new Error("ContentStore not initialized. Call ensureInitialized() first.");
+		if (this.taskIdentityIndex) return this.taskIdentityIndex.resolveForRead(taskId);
+		const task = this.cachedTasks.find((candidate) => taskIdsEqual(candidate.id, taskId));
+		return task ? { status: "found", task } : { status: "not-found" };
+	}
+
+	resolveTaskForMutation(taskId: string): TaskIdentityResolution {
+		if (!this.initialized) throw new Error("ContentStore not initialized. Call ensureInitialized() first.");
+		if (this.taskIdentityIndex) return this.taskIdentityIndex.resolveForMutation(taskId);
+		const task = this.cachedTasks.find((candidate) => taskIdsEqual(candidate.id, taskId));
+		return task ? { status: "found", task } : { status: "not-found" };
+	}
+
 	upsertTask(task: Task, owner?: PublicationOwner): void {
 		if (!this.canPublishContent()) {
 			return;
@@ -237,11 +317,67 @@ export class ContentStore {
 			this.pendingTaskPublications.set(normalizedId, { root: publicationRoot, task });
 			return;
 		}
-		this.tasks.set(task.id, task);
-		this.cachedTasks = sortByTaskId(Array.from(this.tasks.values()));
-		if (this.initialized) {
-			this.notify("tasks");
+		if (task.branch && this.taskIdentityIndex) {
+			this.taskIdentityIndex = this.taskIdentityIndex.withRecord({
+				id: task.id,
+				type: "task",
+				branch: task.branch,
+				path: task.filePath ?? `${task.branch}:${task.id}`,
+				lastModified: task.lastModified ?? (task.updatedDate ? new Date(task.updatedDate) : new Date(0)),
+				task,
+			});
+			this.replaceVisibleTasks(this.taskIdentityIndex.getTasks(false));
+			this.publishTaskChange();
+			return;
 		}
+		this.activeTasks = this.activeTasks.filter(
+			(candidate) =>
+				candidate.filePath !== task.filePath &&
+				(candidate.filePath !== undefined || task.filePath !== undefined || !taskIdsEqual(candidate.id, task.id)),
+		);
+		this.activeTasks.push(task);
+		if (this.taskIdentityIndex) {
+			this.taskIdentityIndex = this.taskIdentityIndex.withWorkingCopyCorpus(this.activeTasks, this.completedTasks);
+			this.replaceVisibleTasks(this.taskIdentityIndex.getTasks(false));
+		} else {
+			this.tasks.set(task.id, task);
+			this.cachedTasks = sortByTaskId(Array.from(this.tasks.values()));
+		}
+		this.publishTaskChange();
+	}
+
+	async batchTaskUpdates<T>(operation: () => Promise<T>): Promise<T> {
+		this.taskBatchDepth += 1;
+		try {
+			return await operation();
+		} finally {
+			this.taskBatchDepth -= 1;
+			if (this.taskBatchDepth === 0 && this.pendingTaskNotification) {
+				this.pendingTaskNotification = false;
+				if (this.initialized) this.notify("tasks");
+			}
+		}
+	}
+
+	private publishTaskChange(): void {
+		if (!this.initialized) return;
+		if (this.taskBatchDepth > 0) this.pendingTaskNotification = true;
+		else this.notify("tasks");
+	}
+
+	transitionTask(taskId: string, completedTask?: Task): void {
+		const previousActiveCount = this.activeTasks.length;
+		this.activeTasks = this.activeTasks.filter((task) => !taskIdsEqual(task.id, taskId));
+		this.completedTasks = this.completedTasks.filter((task) => !taskIdsEqual(task.id, taskId));
+		if (completedTask) this.completedTasks.push({ ...completedTask, source: "completed" });
+		if (previousActiveCount === this.activeTasks.length && !completedTask) return;
+		if (this.taskIdentityIndex) {
+			this.taskIdentityIndex = this.taskIdentityIndex.withWorkingCopyCorpus(this.activeTasks, this.completedTasks);
+			this.replaceVisibleTasks(this.taskIdentityIndex.getTasks(false));
+		} else {
+			this.replaceVisibleTasks(this.activeTasks);
+		}
+		this.publishTaskChange();
 	}
 
 	getDocuments(): Document[] {
@@ -368,7 +504,7 @@ export class ContentStore {
 			// Otherwise fall back to filesystem-only loading
 			const epoch = this.rootWatcherEpoch;
 			const attemptLoaded = await this.loadCurrentContent(epoch, (snapshot) => {
-				this.replaceTasks(snapshot.tasks);
+				this.installTaskCorpus(snapshot.taskCorpus ?? this.asTaskCorpus(snapshot.tasks));
 				this.replaceDocuments(snapshot.documents);
 				this.replaceDecisions(snapshot.decisions);
 			});
@@ -511,7 +647,7 @@ export class ContentStore {
 			if (!this.isPublicationOwnerCurrent(transitionOwner)) return;
 
 			const loaded = await this.loadCurrentContent(transitionEpoch, (snapshot) => {
-				this.replaceTasks(snapshot.tasks);
+				this.installTaskCorpus(snapshot.taskCorpus ?? this.asTaskCorpus(snapshot.tasks));
 				this.replaceDocuments(snapshot.documents);
 				this.replaceDecisions(snapshot.decisions);
 			});
@@ -633,7 +769,7 @@ export class ContentStore {
 			documents: new Map(this.contentItemVersions.documents),
 			decisions: new Map(this.contentItemVersions.decisions),
 		};
-		const [tasks, documents, decisions] = await Promise.all([
+		const [taskCorpus, documents, decisions] = await Promise.all([
 			this.loadTasksWithLoader(),
 			this.filesystem.listDocuments(),
 			this.filesystem.listDecisions(),
@@ -648,17 +784,23 @@ export class ContentStore {
 			return false;
 		}
 
+		const mergedTasks = this.mergeConcurrentChanges(
+			taskCorpus.tasks,
+			before.tasks,
+			this.tasksForPublicationRoot(targetRoot),
+			(task) => normalizeTaskId(task.id),
+			itemVersions.tasks,
+			this.contentItemVersions.tasks,
+			this.contentItemPublicationRoots.tasks,
+			targetRoot,
+		);
 		publish({
-			tasks: this.mergeConcurrentChanges(
-				tasks,
-				before.tasks,
-				this.tasksForPublicationRoot(targetRoot),
-				(task) => normalizeTaskId(task.id),
-				itemVersions.tasks,
-				this.contentItemVersions.tasks,
-				this.contentItemPublicationRoots.tasks,
-				targetRoot,
-			),
+			tasks: mergedTasks,
+			taskCorpus: {
+				...taskCorpus,
+				tasks: mergedTasks,
+				activeTasks: taskCorpus.identityIndex ? taskCorpus.activeTasks : mergedTasks,
+			},
 			documents: this.mergeConcurrentChanges(
 				documents,
 				before.documents,
@@ -685,21 +827,41 @@ export class ContentStore {
 		return true;
 	}
 
-	private publishWatchedTask(task: Task): void {
+	private publishWatchedTask(task: Task, replacedPath?: string): void {
 		const id = normalizeTaskId(task.id);
 		this.nextContentItemGeneration("tasks", id);
 		this.nextContentItemVersion("tasks", id, this.currentRoot());
-		this.tasks.set(id, task);
-		this.cachedTasks = sortByTaskId(Array.from(this.tasks.values()));
+		this.activeTasks = this.activeTasks.filter(
+			(candidate) =>
+				candidate.filePath !== task.filePath &&
+				candidate.filePath !== replacedPath &&
+				(candidate.filePath !== undefined || task.filePath !== undefined || !taskIdsEqual(candidate.id, task.id)),
+		);
+		this.activeTasks.push(task);
+		if (this.taskIdentityIndex) {
+			this.taskIdentityIndex = this.taskIdentityIndex.withWorkingCopyCorpus(this.activeTasks, this.completedTasks);
+			this.replaceVisibleTasks(this.taskIdentityIndex.getTasks(false));
+		} else this.replaceVisibleTasks(this.activeTasks);
 		this.notify("tasks");
 	}
 
-	private removeWatchedTask(id: string): void {
+	private removeWatchedTask(id: string, watchedPath?: string): void {
 		const normalizedId = normalizeTaskId(id);
-		if (!this.tasks.delete(normalizedId)) return;
-		this.nextContentItemGeneration("tasks", normalizedId);
-		this.nextContentItemVersion("tasks", normalizedId, this.currentRoot());
-		this.cachedTasks = sortByTaskId(Array.from(this.tasks.values()));
+		const removedTasks = this.activeTasks.filter((task) =>
+			watchedPath ? task.filePath === watchedPath : taskIdsEqual(task.id, normalizedId),
+		);
+		if (removedTasks.length === 0) return;
+		this.activeTasks = this.activeTasks.filter((task) =>
+			watchedPath ? task.filePath !== watchedPath : !taskIdsEqual(task.id, normalizedId),
+		);
+		for (const removedId of new Set([normalizedId, ...removedTasks.map((task) => normalizeTaskId(task.id))])) {
+			this.nextContentItemGeneration("tasks", removedId);
+			this.nextContentItemVersion("tasks", removedId, this.currentRoot());
+		}
+		if (this.taskIdentityIndex) {
+			this.taskIdentityIndex = this.taskIdentityIndex.withWorkingCopyCorpus(this.activeTasks, this.completedTasks);
+			this.replaceVisibleTasks(this.taskIdentityIndex.getTasks(false));
+		} else this.replaceVisibleTasks(this.activeTasks);
 		this.notify("tasks");
 	}
 
@@ -756,7 +918,6 @@ export class ContentStore {
 						readEventPath: async () => {
 							if (!(await Bun.file(fullPath).exists())) return null;
 							const task = { ...normalizeTaskIdentity(parseTask(await Bun.file(fullPath).text())), filePath: fullPath };
-							if (!taskIdsEqual(task.id, normalizedTaskId)) throw new Error("Task identity mismatch");
 							return task;
 						},
 						findIdentity: async () => {
@@ -778,7 +939,7 @@ export class ContentStore {
 							);
 							if (local.state !== "absent" || !this.taskLoader) return local;
 							try {
-								const matches = (await this.loadTasksWithLoader()).filter((task) =>
+								const matches = (await this.loadTasksWithLoader()).activeTasks.filter((task) =>
 									taskIdsEqual(task.id, normalizedTaskId),
 								);
 								if (matches.length === 0) return { state: "absent" };
@@ -788,22 +949,25 @@ export class ContentStore {
 								return { state: "incomplete" };
 							}
 						},
-						current: () => this.tasks.get(normalizedTaskId),
+						current: () => this.activeTasks.find((task) => task.filePath === fullPath),
 						hasChanged: (previous, next) => this.hasTaskChanged(previous, next),
-						publish: (task) => this.publishWatchedTask(task),
-						remove: () => this.removeWatchedTask(normalizedTaskId),
+						publish: (task) => this.publishWatchedTask(task, fullPath),
+						remove: () => this.removeWatchedTask(normalizedTaskId, fullPath),
 					});
 					return;
 				}
 
 				await this.reconcileOrSchedule(`task:${normalizedTaskId}`, epoch, async () => {
 					if (!(await Bun.file(fullPath).exists())) {
-						this.removeWatchedTask(normalizedTaskId);
+						this.removeWatchedTask(normalizedTaskId, fullPath);
 						return false;
 					}
 					try {
 						const task = { ...normalizeTaskIdentity(parseTask(await Bun.file(fullPath).text())), filePath: fullPath };
-						if (!taskIdsEqual(task.id, normalizedTaskId)) return true;
+						if (!taskIdsEqual(task.id, normalizedTaskId)) {
+							this.publishWatchedTask(task);
+							return false;
+						}
 						const previous = this.tasks.get(normalizedTaskId);
 						if (previous && !this.hasTaskChanged(previous, task)) return true;
 						this.publishWatchedTask(task);
@@ -815,7 +979,16 @@ export class ContentStore {
 			});
 		});
 		this.attachWatcherErrorHandler(watcher, "tasks");
-		return { stop: () => watcher.close() };
+		const completedWatcher = watch(this.filesystem.completedDir, { recursive: false }, () => {
+			void this.enqueueRoot(epoch, async () => this.refreshTasksFromDisk(undefined, epoch));
+		});
+		this.attachWatcherErrorHandler(completedWatcher, "completed tasks");
+		return {
+			stop: () => {
+				watcher.close();
+				completedWatcher.close();
+			},
+		};
 	}
 
 	private createDecisionWatcher(epoch: number): WatchHandle {
@@ -1012,13 +1185,22 @@ export class ContentStore {
 		);
 	}
 
-	private replaceTasks(tasks: Task[]): void {
-		this.invalidateContentItemGenerations("tasks");
+	private replaceVisibleTasks(tasks: Task[]): void {
 		this.tasks.clear();
-		for (const task of tasks) {
-			this.tasks.set(task.id, task);
-		}
+		for (const task of tasks) this.tasks.set(task.id, task);
 		this.cachedTasks = sortByTaskId(Array.from(this.tasks.values()));
+	}
+
+	private asTaskCorpus(tasks: Task[]): TaskCorpusSnapshot {
+		return { tasks, activeTasks: tasks, completedTasks: [] };
+	}
+
+	private installTaskCorpus(corpus: TaskCorpusSnapshot, visibleTasks = corpus.tasks): void {
+		this.invalidateContentItemGenerations("tasks");
+		this.activeTasks = corpus.activeTasks.slice();
+		this.completedTasks = corpus.completedTasks.slice();
+		this.taskIdentityIndex = corpus.identityIndex;
+		this.replaceVisibleTasks(visibleTasks);
 	}
 
 	private replaceDocuments(documents: Document[]): void {
@@ -1051,7 +1233,8 @@ export class ContentStore {
 		this.filesystem.saveTask = (async (task: Task): Promise<string> => {
 			const owner: PublicationOwner = { root: this.currentRoot() };
 			const result = await originalSaveTask.call(this.filesystem, task);
-			await this.handleTaskWrite(task.id, owner);
+			const savedTask = { ...normalizeTaskIdentity(parseTask(await Bun.file(result).text())), filePath: result };
+			await this.updateTaskFromDisk(task.id, owner, savedTask);
 			return result;
 		}) as FileSystem["saveTask"];
 
@@ -1073,15 +1256,6 @@ export class ContentStore {
 			this.filesystem.saveDocument = originalSaveDocument;
 			this.filesystem.saveDecision = originalSaveDecision;
 		};
-	}
-
-	private async handleTaskWrite(taskId: string, owner: PublicationOwner): Promise<void> {
-		if (!this.canPublishContent() || !this.isPublicationOwnerCurrent(owner)) {
-			return;
-		}
-		await this.enqueuePublication(owner, async () => {
-			await this.updateTaskFromDisk(taskId, owner);
-		});
 	}
 
 	private async handleDocumentWrite(documentId: string, owner: PublicationOwner): Promise<void> {
@@ -1265,13 +1439,14 @@ export class ContentStore {
 			const targetRoot = this.currentRoot();
 			const generation = this.nextContentRefreshGeneration("tasks");
 			const before = { items: this.cachedTasks.slice(), versions: new Map(this.contentItemVersions.tasks) };
-			let tasks: Task[];
+			let corpus: TaskCorpusSnapshot;
 			try {
-				tasks = await this.loadTasksWithLoader();
+				const loaded = await this.loadTasksWithLoader();
+				corpus = Array.isArray(loaded) ? this.asTaskCorpus(loaded) : loaded;
 			} catch {
 				return true;
 			}
-			if (expectedId && !tasks.some((task) => taskIdsEqual(task.id, expectedId))) return true;
+			if (expectedId && !corpus.activeTasks.some((task) => taskIdsEqual(task.id, expectedId))) return true;
 			if (
 				!this.isRootWatcherCurrent(epoch) ||
 				targetRoot !== this.currentRoot() ||
@@ -1279,7 +1454,7 @@ export class ContentStore {
 			)
 				return false;
 			const merged = this.mergeConcurrentChanges(
-				tasks,
+				corpus.tasks,
 				before.items,
 				this.cachedTasks,
 				(task) => normalizeTaskId(task.id),
@@ -1288,8 +1463,9 @@ export class ContentStore {
 				this.contentItemPublicationRoots.tasks,
 				targetRoot,
 			);
-			if (!this.hasTaskCollectionChanged(merged)) return false;
-			this.replaceTasks(merged);
+			const identityChanged = this.taskIdentityIndex?.getFingerprint() !== corpus.identityIndex?.getFingerprint();
+			if (!this.hasTaskCollectionChanged(merged) && !identityChanged) return false;
+			this.installTaskCorpus(corpus, merged);
 			this.notify("tasks");
 			return false;
 		});
@@ -1434,34 +1610,22 @@ export class ContentStore {
 	private async updateTaskFromDisk(
 		taskId: string,
 		owner: PublicationOwner = { root: this.currentRoot() },
+		exactTask?: Task,
 	): Promise<void> {
+		if (!this.canPublishContent() || !this.isPublicationOwnerCurrent(owner)) return;
 		const normalizedTaskId = normalizeTaskId(taskId);
-		const generation = this.nextContentItemGeneration("tasks", normalizedTaskId);
 		const epoch = this.rootWatcherEpoch;
 		await this.reconcileOrSchedule(`task:${normalizedTaskId}`, epoch, async () => {
-			if (
-				!this.isPublicationOwnerCurrent(owner) ||
-				!this.isContentItemGenerationCurrent("tasks", normalizedTaskId, generation)
-			)
-				return false;
-			let task: Task | null;
-			try {
-				task = await this.filesystem.loadTask(taskId);
-			} catch {
-				return true;
+			let task: Task | null | undefined = exactTask;
+			if (!task) {
+				try {
+					task = await this.filesystem.loadTask(taskId);
+				} catch {
+					return true;
+				}
 			}
 			if (!task || !taskIdsEqual(task.id, normalizedTaskId)) return true;
-			const previous = this.tasks.get(normalizedTaskId);
-			if (previous && !this.hasTaskChanged(previous, task)) return false;
-			if (
-				!this.isPublicationOwnerCurrent(owner) ||
-				!this.isContentItemGenerationCurrent("tasks", normalizedTaskId, generation)
-			)
-				return false;
-			this.nextContentItemVersion("tasks", normalizedTaskId, owner.root);
-			this.tasks.set(normalizedTaskId, task);
-			this.cachedTasks = sortByTaskId(Array.from(this.tasks.values()));
-			if (this.initialized) this.notify("tasks");
+			this.upsertTask(task, owner);
 			return false;
 		});
 	}
@@ -1652,11 +1816,12 @@ export class ContentStore {
 		});
 	}
 
-	private async loadTasksWithLoader(): Promise<Task[]> {
+	private async loadTasksWithLoader(): Promise<TaskCorpusSnapshot> {
 		if (this.taskLoader) {
-			return await this.taskLoader();
+			const loaded = await this.taskLoader();
+			return Array.isArray(loaded) ? this.asTaskCorpus(loaded) : loaded;
 		}
-		return await this.filesystem.listTasks();
+		return this.asTaskCorpus(await this.filesystem.listTasks());
 	}
 }
 

@@ -85,7 +85,7 @@ describe("Config commands", () => {
 			{ autoCommit: true },
 			{ enableZeroPadding: true },
 			{ paddingWidth: 4 },
-			{ editor: "bun" },
+			{ editor: "backlog-test-editor" },
 			{ definitionOfDoneAction: "add" },
 			{ definitionOfDoneItem: "Ship release notes" },
 			{ definitionOfDoneAction: "done" },
@@ -96,6 +96,7 @@ describe("Config commands", () => {
 
 		const { mergedConfig, installClaudeAgent, installShellCompletions } = await configureAdvancedSettings(core, {
 			promptImpl: promptStub,
+			isEditorAvailable: async (editor) => editor === "backlog-test-editor",
 		});
 
 		expect(installClaudeAgent).toBe(true);
@@ -106,14 +107,14 @@ describe("Config commands", () => {
 		expect(mergedConfig.bypassGitHooks).toBe(true);
 		expect(mergedConfig.autoCommit).toBe(true);
 		expect(mergedConfig.zeroPaddedIds).toBe(4);
-		expect(mergedConfig.defaultEditor).toBe("bun");
+		expect(mergedConfig.defaultEditor).toBe("backlog-test-editor");
 		expect(mergedConfig.definitionOfDone).toEqual(["Ship release notes"]);
 		expect(mergedConfig.defaultPort).toBe(7007);
 		expect(mergedConfig.autoOpenBrowser).toBe(false);
 
 		const reloadedConfig = await core.filesystem.loadConfig();
 		expect(reloadedConfig?.zeroPaddedIds).toBe(4);
-		expect(reloadedConfig?.defaultEditor).toBe("bun");
+		expect(reloadedConfig?.defaultEditor).toBe("backlog-test-editor");
 		expect(reloadedConfig?.definitionOfDone).toEqual(["Ship release notes"]);
 		expect(reloadedConfig?.defaultPort).toBe(7007);
 		expect(reloadedConfig?.autoOpenBrowser).toBe(false);

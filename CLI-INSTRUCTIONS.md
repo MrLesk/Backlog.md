@@ -17,7 +17,7 @@ All examples use the `backlog` command, available after installing the `backlog.
 - **Backlog folder** – choose `backlog/`, `.backlog/`, or a custom project-relative path.
 - **Config location** – for built-in folders, choose folder-local `config.yml` or root `backlog.config.yml`; custom paths use root `backlog.config.yml`.
 - **Integration choice** – decide whether your AI tools use **CLI instructions** (recommended), the optional **MCP connector**, or no AI setup.
-- **Instruction files (CLI path)** – the CLI setup writes a short nudge to AGENTS.md by default in non-interactive setup. Interactive setup lets you choose CLAUDE.md, AGENTS.md, GEMINI.md, Copilot instructions, or skip.
+- **Instruction files (CLI path)** – the CLI setup writes a short nudge to AGENTS.md by default in non-interactive setup. `--agent-instructions cursor` also selects AGENTS.md, and the interactive CLI and Web setup identify Cursor under that shared target. Existing user-managed `.cursor/rules` files may coexist; Backlog.md does not migrate or remove them, and repeated initialization preserves non-Backlog content in AGENTS.md.
 - **Advanced settings prompt** – default answer "No" finishes init immediately; choosing "Yes" jumps straight into the advanced wizard documented in [ADVANCED-CONFIG.md](ADVANCED-CONFIG.md).
 
 The advanced wizard includes interactive Definition of Done defaults editing (add/remove/reorder/clear), so project checklist defaults can be managed without manual YAML edits.
@@ -253,8 +253,10 @@ Manage task dependencies to express execution order:
 
 | Action      | Example                                              |
 |-------------|------------------------------------------------------|
-| Web interface | `backlog browser` (launches web UI on port 6420) |
+| Web interface | `backlog browser` (launches the local-machine-only web UI on `127.0.0.1:6420`) |
 | Web custom port | `backlog browser --port 8080 --no-open` |
+
+The Web UI listens only on `127.0.0.1`; it is not reachable from other devices on the LAN or VPN.
 
 To keep the Web UI running in the background with auto-start on boot, see [Running Backlog.md as a Service](backlog/docs/doc-003%20-%20Running-Backlog-Browser-as-a-Service.md).
 

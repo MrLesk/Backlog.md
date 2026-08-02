@@ -679,7 +679,7 @@ addHelpSchema(program.command("init [projectName]"), {
 		{
 			name: "--agent-instructions",
 			type: choiceType(["claude", "agents", "gemini", "copilot", "cursor", "none"], { multiple: true }),
-			description: "Instruction files to create; comma-separated",
+			description: "Instruction files to create; cursor writes AGENTS.md; comma-separated",
 		},
 		{ name: "--backlog-dir", type: "Project-relative path", description: "backlog, .backlog, or custom path" },
 		{ name: "--no-git", type: "Boolean", description: "Initialize without Git integration" },
@@ -695,7 +695,7 @@ addHelpSchema(program.command("init [projectName]"), {
 	.description("initialize backlog project in the current directory")
 	.option(
 		"--agent-instructions <instructions>",
-		"comma-separated agent instructions to create. Valid: claude, agents, gemini, copilot, cursor (alias of agents), none. Use 'none' to skip; when combined with others, 'none' is ignored.",
+		"comma-separated agent instructions to create. Valid: claude, agents, gemini, copilot, cursor (writes AGENTS.md), none. Use 'none' to skip; when combined with others, 'none' is ignored.",
 	)
 	.option("--check-branches <boolean>", "check task states across active branches (default: true)")
 	.option("--include-remote <boolean>", "include remote branches when checking (default: true)")
@@ -4950,7 +4950,7 @@ addHelpSchema(program.command("cleanup"), {
 // Browser command for web UI
 program
 	.command("browser")
-	.description("open browser interface for task management (press Ctrl+C or Cmd+C to stop)")
+	.description("open browser interface on this machine only at 127.0.0.1 (press Ctrl+C or Cmd+C to stop)")
 	.option("-p, --port <port>", "port to run server on")
 	.option("--no-open", "don't automatically open browser")
 	.option("--non-interactive", "automatically use next free port without asking")

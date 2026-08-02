@@ -93,7 +93,6 @@ describe("Local branch task discovery", () => {
 			const legacyPath = "backlog/tasks/back-prefixed - Legacy.md";
 			const mockGit = {
 				resolveCommit: async (ref: string) => `commit:${ref}`,
-				listTreeEntries: async () => [{ path: legacyPath, objectId: "legacy-blob" }],
 				listFilesInTree: async () => [legacyPath],
 				getBranchLastModifiedMap: async () => new Map([[legacyPath, new Date("2026-07-10")]]),
 			} as unknown as GitOperations;
@@ -114,13 +113,13 @@ describe("Local branch task discovery", () => {
 			expect(localIndex.has("BACK-PREFIXED")).toBe(true);
 			expect(remoteIndex.has("BACK-PREFIXED")).toBe(true);
 			expect(localState).toEqual([
-				expect.objectContaining({ id: "BACK-PREFIXED", objectId: "legacy-blob", tree: "commit:feature" }),
+				expect.objectContaining({ id: "BACK-PREFIXED", branch: "feature", path: legacyPath }),
 			]);
 			expect(remoteState).toEqual([
 				expect.objectContaining({
 					id: "BACK-PREFIXED",
-					objectId: "legacy-blob",
-					tree: "commit:origin/feature",
+					branch: "origin/feature",
+					path: legacyPath,
 				}),
 			]);
 		});

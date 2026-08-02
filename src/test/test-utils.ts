@@ -8,8 +8,11 @@ import { randomUUID } from "node:crypto";
 import { rm } from "node:fs/promises";
 import net from "node:net";
 import { join } from "node:path";
+import { $ } from "bun";
 import type { Core } from "../core/backlog.ts";
 import { initializeProject as initializeProjectShared } from "../core/init.ts";
+import { serializeTask } from "../markdown/serializer.ts";
+import type { Task } from "../types/index.ts";
 
 /**
  * Creates a unique test directory name to avoid conflicts in parallel execution
@@ -20,6 +23,27 @@ export function createUniqueTestDir(prefix: string): string {
 	const timestamp = Date.now().toString(36); // Base36 timestamp
 	const pid = process.pid.toString(36); // Process ID for additional uniqueness
 	return join(process.cwd(), "tmp", `${prefix}-${timestamp}-${pid}-${uuid}`);
+}
+
+export async function commitSamePathBranchTaskVariant(
+	core: Core,
+	localTask: Task,
+	branchTask: Task,
+	distinctBranchPath?: string,
+): Promise<void> {
+	const taskPath = await core.filesystem.saveTask(localTask);
+	await $`git add .`.cwd(core.filesystem.rootDir).quiet();
+	await $`git commit -m "Add local task"`.cwd(core.filesystem.rootDir).quiet();
+
+	await $`git switch -c progressed-task-variant`.cwd(core.filesystem.rootDir).quiet();
+	if (distinctBranchPath) {
+		await $`git rm -- ${taskPath}`.cwd(core.filesystem.rootDir).quiet();
+	}
+	const branchTaskPath = distinctBranchPath ?? taskPath;
+	await Bun.write(branchTaskPath, serializeTask(branchTask));
+	await $`git add -- ${branchTaskPath}`.cwd(core.filesystem.rootDir).quiet();
+	await $`git commit -m "Progress padded task variant"`.cwd(core.filesystem.rootDir).quiet();
+	await $`git switch main`.cwd(core.filesystem.rootDir).quiet();
 }
 
 /**
@@ -185,9 +209,9 @@ export async function listenOnEphemeralPort(): Promise<{ server: net.Server; por
 	const server = net.createServer();
 	await new Promise<void>((resolve, reject) => {
 		server.once("error", reject);
-		// Bind the wildcard interface like the production Bun.serve does, so port
+		// Bind the loopback interface like the production Bun.serve does, so port
 		// fixtures collide with the same binds the real browser server would.
-		server.listen(0, () => {
+		server.listen(0, "127.0.0.1", () => {
 			server.off("error", reject);
 			resolve();
 		});

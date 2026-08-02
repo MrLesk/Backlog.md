@@ -1,15 +1,20 @@
 import type { Core } from "../core/backlog.ts";
 import type { BacklogConfig } from "../types/index.ts";
-import { type PromptRunner, runAdvancedConfigWizard } from "./advanced-config-wizard.ts";
+import {
+	type EditorAvailabilityChecker,
+	type PromptRunner,
+	runAdvancedConfigWizard,
+} from "./advanced-config-wizard.ts";
 
 interface ConfigureAdvancedOptions {
 	promptImpl?: PromptRunner;
+	isEditorAvailable?: EditorAvailabilityChecker;
 	cancelMessage?: string;
 }
 
 export async function configureAdvancedSettings(
 	core: Core,
-	{ promptImpl, cancelMessage = "Aborting configuration." }: ConfigureAdvancedOptions = {},
+	{ promptImpl, isEditorAvailable, cancelMessage = "Aborting configuration." }: ConfigureAdvancedOptions = {},
 ): Promise<{ mergedConfig: BacklogConfig; installClaudeAgent: boolean; installShellCompletions: boolean }> {
 	const existingConfig = await core.filesystem.loadConfig();
 	if (!existingConfig) {
@@ -21,6 +26,7 @@ export async function configureAdvancedSettings(
 		cancelMessage,
 		includeClaudePrompt: true,
 		promptImpl,
+		isEditorAvailable,
 	});
 
 	const mergedConfig: BacklogConfig = { ...existingConfig, ...wizardResult.config };
