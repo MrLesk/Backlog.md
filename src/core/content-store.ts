@@ -191,13 +191,14 @@ export class ContentStore {
 		});
 	}
 
-	async refreshLocalTaskCorpus(publishChanges = true): Promise<void> {
+	async refreshLocalTaskCorpus(): Promise<void> {
 		if (!this.initialized) {
 			await this.ensureInitialized();
 			return;
 		}
 		if (!this.localTaskRefreshPromise) {
-			const refresh = (async () => {
+			const epoch = this.rootWatcherEpoch;
+			const refresh = this.enqueueRoot(epoch, async () => {
 				const [activeTasks, completedTasks] = await Promise.all([
 					this.filesystem.listTasks(),
 					this.filesystem.listCompletedTasks(),
@@ -211,13 +212,13 @@ export class ContentStore {
 					const changed = this.hasTaskCollectionChanged(tasks);
 					const identityChanged = previousFingerprint !== this.taskIdentityIndex.getFingerprint();
 					this.replaceVisibleTasks(tasks);
-					if (publishChanges && (changed || identityChanged)) this.publishTaskChange();
+					if (changed || identityChanged) this.publishTaskChange();
 				} else {
 					const changed = this.hasTaskCollectionChanged(activeTasks);
 					this.replaceVisibleTasks(activeTasks);
-					if (publishChanges && changed) this.publishTaskChange();
+					if (changed) this.publishTaskChange();
 				}
-			})();
+			});
 			this.localTaskRefreshPromise = refresh;
 			void refresh.finally(() => {
 				if (this.localTaskRefreshPromise === refresh) this.localTaskRefreshPromise = null;
@@ -1271,7 +1272,9 @@ export class ContentStore {
 	}
 
 	private hasTaskChanged(previous: Task, next: Task): boolean {
-		return JSON.stringify(previous) !== JSON.stringify(next);
+		const { lastModified: _previousLastModified, source: _previousSource, ...previousState } = previous;
+		const { lastModified: _nextLastModified, source: _nextSource, ...nextState } = next;
+		return JSON.stringify(previousState) !== JSON.stringify(nextState);
 	}
 
 	private hasDocumentChanged(previous: Document, next: Document): boolean {
