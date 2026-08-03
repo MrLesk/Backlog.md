@@ -32,6 +32,7 @@ import { getWebVersion } from './utils/version';
 import { collectArchivedMilestoneKeys, collectMilestoneIds, milestoneKey } from './utils/milestones';
 import { getTaskTypeValues } from '../utils/task-type-config';
 import { createUrlPath } from './utils/urlHelpers';
+import { filterKanbanTasks } from './utils/kanban-tasks';
 
 type TaskRouteNavigationState = {
   taskModalFrom?: string;
@@ -196,9 +197,11 @@ function AppContent() {
   
   // Centralized data state
   const [tasks, setTasks] = useState<Task[]>([]);
+  const kanbanTasks = React.useMemo(() => filterKanbanTasks(tasks), [tasks]);
   const [docs, setDocs] = useState<Document[]>([]);
   const [decisions, setDecisions] = useState<Decision[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [loadError, setLoadError] = useState<Error | null>(null);
   const [duplicateRepairPlan, setDuplicateRepairPlan] = useState<DuplicateRepairPlan | null>(null);
   
   const { isOnline } = useHealthCheckContext();
@@ -294,16 +297,33 @@ function AppContent() {
   const loadAllData = useCallback(async () => {
     const requestId = loadAllDataRequestRef.current + 1;
     loadAllDataRequestRef.current = requestId;
+    let completed = false;
     try {
       setIsLoading(true);
-      const [statusesData, configData, searchResults, milestonesData, archivedMilestonesData, duplicatePlan] = await Promise.all([
+      setLoadError(null);
+      const shellDataPromise = Promise.all([
         apiClient.fetchStatuses(),
         apiClient.fetchConfig(),
-        apiClient.search(),
         apiClient.fetchMilestones(),
         apiClient.fetchArchivedMilestones(),
-        apiClient.fetchDuplicateTaskRepairPlan().catch(() => null),
       ]);
+      const searchResultsPromise = apiClient.search();
+      void searchResultsPromise.catch(() => {});
+
+      const [statusesData, configData, milestonesData, archivedMilestonesData] = await shellDataPromise;
+
+      if (loadAllDataRequestRef.current !== requestId) {
+        return;
+      }
+
+      setStatuses(statusesData);
+      setProjectName(configData.projectName);
+      setAvailableLabels(configData.labels || []);
+      setConfig(configData);
+      setMilestoneEntities(milestonesData);
+      setArchivedMilestones(archivedMilestonesData);
+
+      const searchResults = await searchResultsPromise;
 
       if (loadAllDataRequestRef.current !== requestId) {
         return;
@@ -313,24 +333,24 @@ function AppContent() {
       const milestoneAliases = buildMilestoneAliasMap(milestonesData, archivedMilestonesData);
       const { tasks: tasksList } = applySearchResults(searchResults, archivedKeys, milestoneAliases);
 
-      setDuplicateRepairPlan(duplicatePlan);
-      setStatuses(statusesData);
-      setProjectName(configData.projectName);
-      setAvailableLabels(configData.labels || []);
-      setConfig(configData);
-      setMilestoneEntities(milestonesData);
-      setArchivedMilestones(archivedMilestonesData);
       setMilestones(
         collectMilestoneIds(tasksList, milestonesData, archivedMilestonesData).filter(
           (milestone) => !archivedKeys.has(milestoneKey(milestone)),
         ),
       );
+      void apiClient.fetchDuplicateTaskRepairPlan().then((duplicatePlan) => {
+        if (loadAllDataRequestRef.current === requestId) setDuplicateRepairPlan(duplicatePlan);
+      }).catch(() => {
+        if (loadAllDataRequestRef.current === requestId) setDuplicateRepairPlan(null);
+      });
+      completed = true;
     } catch (error) {
       if (loadAllDataRequestRef.current === requestId) {
         console.error('Failed to load data:', error);
+        setLoadError(error instanceof Error ? error : new Error('Failed to load data'));
       }
     } finally {
-      if (loadAllDataRequestRef.current === requestId) {
+      if (loadAllDataRequestRef.current === requestId && completed) {
         setIsLoading(false);
       }
     }
@@ -615,7 +635,7 @@ function AppContent() {
     <BoardPage
       onEditTask={handleEditTask}
       onNewTask={handleNewTask}
-      tasks={tasks}
+      tasks={kanbanTasks}
       onRefreshData={refreshData}
 	  onTasksUpdated={applyReorderedTasks}
       statuses={statuses}
@@ -662,6 +682,7 @@ function AppContent() {
                 docs={docs}
                 decisions={decisions}
                 isLoading={isLoading}
+                error={loadError}
                 onRefreshData={refreshData}
                 duplicateRepairPlan={duplicateRepairPlan}
               />
@@ -748,6 +769,7 @@ function AppContent() {
         onSubmit={handleSubmitTask}
         onArchive={editingTask ? () => handleArchiveTask(editingTask.id) : undefined}
         availableStatuses={isDraftMode ? ['Draft', ...statuses] : statuses}
+        availableTasks={tasks}
         availableMilestones={milestones}
         availablePriorities={config?.priorities}
         availableTypes={availableTypes}

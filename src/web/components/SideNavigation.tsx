@@ -8,11 +8,9 @@ import {
 	type DocumentSearchResult,
 	type SearchResult,
 	type SearchResultType,
-	type Task,
 	type TaskSearchResult,
 } from '../../types';
 import ErrorBoundary from './ErrorBoundary';
-import { SidebarSkeleton } from './LoadingSpinner';
 import { createUrlPath, sanitizeUrlTitle } from '../utils/urlHelpers';
 import { getWebVersion } from '../utils/version';
 import { apiClient } from '../lib/api';
@@ -225,7 +223,7 @@ const FolderNode = memo(function FolderNode({ node, depth, folderExpanded, onTog
 });
 
 interface SideNavigationProps {
-	tasks: Task[];
+	taskCount: number;
 	docs: Document[];
 	decisions: Decision[];
 	isLoading: boolean;
@@ -235,7 +233,7 @@ interface SideNavigationProps {
 }
 
 const SideNavigation = memo(function SideNavigation({ 
-	tasks, 
+	taskCount,
 	docs, 
 	decisions, 
 	isLoading, 
@@ -564,13 +562,8 @@ const SideNavigation = memo(function SideNavigation({
 
 
 			<nav className="flex-1 overflow-y-auto">
-				{/* Loading Indicator - only show when expanded since collapsed nav is static */}
-				{isLoading && !isCollapsed && (
-					<SidebarSkeleton isCollapsed={false} />
-				)}
-
 				{/* Error State */}
-				{error && !isLoading && !isCollapsed && (
+				{error && !isCollapsed && (
 					<div className="px-4 py-4">
 						<div className="text-center p-4 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg">
 							<p className="text-sm text-red-700 dark:text-red-400 mb-2">Failed to load navigation</p>
@@ -586,18 +579,19 @@ const SideNavigation = memo(function SideNavigation({
 					</div>
 				)}
 				
-				{/* Tasks Section - Hidden in collapsed state and when loading */}
-				{!isCollapsed && !isLoading && (
+				{/* Task loading only changes the count; navigation remains stable. */}
+				{!isCollapsed && (
 					<div className="px-4 py-4">
 						<div className="flex items-center space-x-3 text-gray-700 dark:text-gray-300">
 							<span className="text-gray-500 dark:text-gray-400"><Icons.Tasks /></span>
-							<span className="text-sm font-semibold uppercase tracking-wider text-gray-600 dark:text-gray-400 whitespace-nowrap">Tasks ({tasks.length})</span>
+							<span className="text-sm font-semibold uppercase tracking-wider text-gray-600 dark:text-gray-400 whitespace-nowrap">
+								Tasks ({isLoading ? <span className="inline-block h-3 w-5 animate-pulse rounded bg-gray-300 align-middle dark:bg-gray-700" aria-label="Loading task count" /> : taskCount})
+							</span>
 						</div>
 					</div>
 				)}
 
-				{/* Navigation items only show when expanded and not loading */}
-				{!isCollapsed && !isLoading && (
+				{!isCollapsed && (
 					<div className="px-4 space-y-1">
 						{/* Board Navigation */}
 						<NavLink
@@ -676,7 +670,7 @@ const SideNavigation = memo(function SideNavigation({
 					</div>
 				)}
 
-				{!isCollapsed && !isLoading && (
+				{!isCollapsed && (
 					<>
 						{/* Divider between Tasks and Documents */}
 						<div className="mx-4 my-2 border-t border-gray-200 dark:border-gray-700"></div>
@@ -693,7 +687,9 @@ const SideNavigation = memo(function SideNavigation({
 											{isDocsCollapsed ? <Icons.ChevronRight /> : <Icons.ChevronDown />}
 									</button>
 									<span className="text-gray-500 dark:text-gray-400"><Icons.Document /></span>
-									<span className="text-sm font-semibold uppercase tracking-wider text-gray-600 dark:text-gray-400 whitespace-nowrap">Documents ({docs.length})</span>
+									<span className="text-sm font-semibold uppercase tracking-wider text-gray-600 dark:text-gray-400 whitespace-nowrap">
+										Documents ({isLoading ? <span className="inline-block h-3 w-5 animate-pulse rounded bg-gray-300 align-middle dark:bg-gray-700" aria-label="Loading document count" /> : docs.length})
+									</span>
 								</div>
 									<button
 										onClick={handleCreateDocument}
@@ -710,7 +706,9 @@ const SideNavigation = memo(function SideNavigation({
 							{/* Document List */}
 							{!isDocsCollapsed && (
 								<div className="space-y-1">
-									{filteredDocs.length === 0 ? (
+									{isLoading ? (
+										<p className="px-3 py-2 text-sm text-gray-500 dark:text-gray-400">Loading documents…</p>
+									) : filteredDocs.length === 0 ? (
 										<p className="px-3 py-2 text-sm text-gray-500 dark:text-gray-400">No documents</p>
 									) : searchQuery.trim() ? (
 										// Search results stay flat, bypassing folder grouping
@@ -752,7 +750,9 @@ const SideNavigation = memo(function SideNavigation({
 											{isDecisionsCollapsed ? <Icons.ChevronRight /> : <Icons.ChevronDown />}
 									</button>
 									<span className="text-gray-500 dark:text-gray-400"><Icons.Decision /></span>
-									<span className="text-sm font-semibold uppercase tracking-wider text-gray-600 dark:text-gray-400 whitespace-nowrap">Decisions ({decisions.length})</span>
+									<span className="text-sm font-semibold uppercase tracking-wider text-gray-600 dark:text-gray-400 whitespace-nowrap">
+										Decisions ({isLoading ? <span className="inline-block h-3 w-5 animate-pulse rounded bg-gray-300 align-middle dark:bg-gray-700" aria-label="Loading decision count" /> : decisions.length})
+									</span>
 								</div>
 								{/* Temporarily hidden - decisions editing not ready */}
 								{/*{false && (*/}
@@ -772,7 +772,9 @@ const SideNavigation = memo(function SideNavigation({
 							{/* Decision List */}
 							{!isDecisionsCollapsed && (
 								<div className="space-y-1">
-									{filteredDecisions.length === 0 ? (
+									{isLoading ? (
+										<p className="px-3 py-2 text-sm text-gray-500 dark:text-gray-400">Loading decisions…</p>
+									) : filteredDecisions.length === 0 ? (
 										<p className="px-3 py-2 text-sm text-gray-500 dark:text-gray-400">No decisions</p>
 									) : (
 										filteredDecisions.map((decision) => (

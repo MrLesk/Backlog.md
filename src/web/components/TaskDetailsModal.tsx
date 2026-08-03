@@ -20,6 +20,7 @@ interface Props {
   onSubmit?: (taskData: Partial<Task>) => Promise<void>; // For creating new tasks
   onArchive?: () => Promise<void> | void; // For archiving tasks
   availableStatuses?: string[]; // Available statuses for new tasks
+  availableTasks?: Task[]; // Shared task corpus for dependency selection
   isDraftMode?: boolean; // Whether creating a draft
   availableMilestones?: string[];
   availablePriorities?: string[];
@@ -128,6 +129,7 @@ export const TaskDetailsModal: React.FC<Props> = ({
   onSubmit,
   onArchive,
   availableStatuses,
+  availableTasks = [],
   availableMilestones: _availableMilestones,
   availablePriorities,
   availableTypes,
@@ -318,7 +320,6 @@ export const TaskDetailsModal: React.FC<Props> = ({
   const [dependencies, setDependencies] = useState<string[]>(task?.dependencies || []);
   const [references, setReferences] = useState<string[]>(task?.references || []);
   const [milestone, setMilestone] = useState<string>(task?.milestone || "");
-  const [availableTasks, setAvailableTasks] = useState<Task[]>([]);
   const canonicalTypeSelection = resolveTaskTypeValue(taskType, typeOptions);
   const typeSelectionValue = canonicalTypeSelection ?? taskType;
   const milestoneSelectionValue = resolveMilestoneToId(milestone);
@@ -455,7 +456,6 @@ export const TaskDetailsModal: React.FC<Props> = ({
       previousIsOpen.current = isOpen;
       formBaselineRef.current = nextFormState;
       setError(null);
-      apiClient.fetchTasks().then(setAvailableTasks).catch(() => setAvailableTasks([]));
       return;
     }
 
@@ -485,8 +485,6 @@ export const TaskDetailsModal: React.FC<Props> = ({
     previousIsOpen.current = isOpen;
     formBaselineRef.current = nextFormState;
     setError(null);
-    // Preload tasks for dependency picker
-    apiClient.fetchTasks().then(setAvailableTasks).catch(() => setAvailableTasks([]));
   }, [task, isOpen, isCreateMode, isDraftMode, availableStatuses, defaultDefinitionOfDone]);
 
   const refreshAfterCommentChange = useCallback(() => {

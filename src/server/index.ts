@@ -188,6 +188,7 @@ export class BacklogServer {
 	private sockets = new Set<ServerWebSocket<unknown>>();
 	private contentStore: ContentStore | null = null;
 	private searchService: SearchService | null = null;
+	private servicesReadyPromise: Promise<void> | null = null;
 	private unsubscribeContentStore?: () => void;
 	private taskBroadcastTimer?: ReturnType<typeof setTimeout>;
 	private storeReadyBroadcasted = false;
@@ -205,6 +206,17 @@ export class BacklogServer {
 	}
 
 	private async ensureServicesReady(): Promise<void> {
+		if (!this.servicesReadyPromise) {
+			const readyPromise = this.initializeServices().catch((error) => {
+				if (this.servicesReadyPromise === readyPromise) this.servicesReadyPromise = null;
+				throw error;
+			});
+			this.servicesReadyPromise = readyPromise;
+		}
+		await this.servicesReadyPromise;
+	}
+
+	private async initializeServices(): Promise<void> {
 		const store = await this.core.getContentStore();
 		this.contentStore = store;
 
@@ -295,7 +307,6 @@ export class BacklogServer {
 		const shouldOpenBrowser = openBrowser && (config?.autoOpenBrowser ?? true);
 
 		try {
-			await this.ensureServicesReady();
 			const serveOptions = {
 				port: finalPort,
 				hostname: BROWSER_HOST,
@@ -453,7 +464,6 @@ export class BacklogServer {
 				this.restoreRuntimeWorkingDirectory();
 				throw error;
 			}
-
 			const url = `http://${BROWSER_HOST}:${finalPort}`;
 			console.log(`🚀 Backlog.md browser interface running at ${url}`);
 			console.log(`📊 Project: ${this.projectName}`);
@@ -505,6 +515,7 @@ export class BacklogServer {
 		this.restoreRuntimeWorkingDirectory();
 		this.searchService = null;
 		this.contentStore = null;
+		this.servicesReadyPromise = null;
 		this.storeReadyBroadcasted = false;
 
 		// Proactively close WebSocket connections
@@ -591,6 +602,7 @@ export class BacklogServer {
 	private async handleRequest(req: Request, server: Server<unknown>): Promise<Response> {
 		// Handle WebSocket upgrade
 		if (req.headers.get("upgrade") === "websocket") {
+			await this.ensureServicesReady();
 			const success = server.upgrade(req, { data: undefined });
 			if (success) {
 				return new Response(null, { status: 101 }); // WebSocket upgrade response
@@ -604,6 +616,7 @@ export class BacklogServer {
 
 	// Task handlers
 	private async handleListTasks(req: Request): Promise<Response> {
+		await this.ensureServicesReady();
 		const url = new URL(req.url);
 		const status = url.searchParams.get("status") || undefined;
 		const assignee = url.searchParams.get("assignee") || undefined;
@@ -1576,6 +1589,7 @@ export class BacklogServer {
 
 	private async handleGetDuplicateTasks(): Promise<Response> {
 		try {
+			await this.ensureServicesReady();
 			return Response.json(await this.core.previewDuplicateTaskIdRepair());
 		} catch (error) {
 			return Response.json({ error: String(error) }, { status: 500 });
@@ -1691,6 +1705,7 @@ export class BacklogServer {
 
 	private async handleGetStatistics(): Promise<Response> {
 		try {
+			await this.ensureServicesReady();
 			// Load tasks using the same logic as CLI overview
 			const { tasks, drafts, statuses, priorities } = await this.core.loadAllTasksForStatistics();
 

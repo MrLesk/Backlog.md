@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it } from "bun:test";
+import { afterEach, beforeEach, describe, expect, it, spyOn } from "bun:test";
 import { mkdir } from "node:fs/promises";
 import { $ } from "bun";
 import { Core } from "../core/backlog.ts";
@@ -89,5 +89,85 @@ describe("worktree task refresh", () => {
 
 		const listedTasks = await mainCore.queryTasks();
 		expect(listedTasks.map((task) => task.id)).toContain("TASK-1");
+	});
+
+	it("serves repeated cross-branch reads from an unchanged watcher-backed corpus", async () => {
+		mainCore = new Core(TEST_DIR, { enableWatchers: true });
+		await initializeTestProject(mainCore, "Stable Browser Reads", true);
+		const config = await mainCore.filesystem.loadConfig();
+		if (!config) {
+			throw new Error("Expected initialized config");
+		}
+		await mainCore.filesystem.saveConfig({
+			...config,
+			checkActiveBranches: false,
+			remoteOperations: false,
+		});
+
+		await mainCore.queryTasks({ includeCrossBranch: true });
+		const store = await mainCore.getContentStore();
+		const refreshSpy = spyOn(store, "refreshTasks");
+		const taskEvents: string[] = [];
+		const unsubscribe = store.subscribe((event) => {
+			if (event.type === "tasks") taskEvents.push(event.type);
+		});
+
+		await mainCore.queryTasks({ includeCrossBranch: true });
+		await mainCore.queryTasks({ query: "missing", includeCrossBranch: true });
+		await mainCore.previewDuplicateTaskIdRepair();
+
+		expect(refreshSpy).toHaveBeenCalledTimes(0);
+		expect(taskEvents).toEqual([]);
+		unsubscribe();
+	});
+
+	it("refreshes remote refs once when the browser read lease expires", async () => {
+		mainCore = new Core(TEST_DIR, { enableWatchers: true });
+		await initializeTestProject(mainCore, "Remote Ref Refresh", true);
+		const config = await mainCore.filesystem.loadConfig();
+		if (!config) {
+			throw new Error("Expected initialized config");
+		}
+		await mainCore.filesystem.saveConfig({
+			...config,
+			checkActiveBranches: true,
+			remoteOperations: true,
+		});
+
+		await mainCore.queryTasks({ includeCrossBranch: true });
+		const fetchSpy = spyOn(mainCore.gitOps, "fetch");
+		const refreshSpy = spyOn(await mainCore.getContentStore(), "refreshTasks");
+		(mainCore as unknown as { lastRemoteRefRefreshAt: number }).lastRemoteRefRefreshAt = 0;
+
+		await mainCore.queryTasks({ includeCrossBranch: true });
+		await mainCore.queryTasks({ includeCrossBranch: true });
+
+		expect(fetchSpy).toHaveBeenCalledTimes(1);
+		expect(refreshSpy).toHaveBeenCalledTimes(0);
+	});
+
+	it("keeps browser reads available when a leased remote refresh fails", async () => {
+		mainCore = new Core(TEST_DIR, { enableWatchers: true });
+		await initializeTestProject(mainCore, "Remote Ref Failure", true);
+		const config = await mainCore.filesystem.loadConfig();
+		if (!config) {
+			throw new Error("Expected initialized config");
+		}
+		await mainCore.filesystem.saveConfig({
+			...config,
+			checkActiveBranches: true,
+			remoteOperations: true,
+		});
+
+		await mainCore.queryTasks({ includeCrossBranch: true });
+		const fetchSpy = spyOn(mainCore.gitOps, "fetch").mockRejectedValue(new Error("remote unavailable"));
+		const errorSpy = spyOn(console, "error").mockImplementation(() => {});
+		(mainCore as unknown as { lastRemoteRefRefreshAt: number }).lastRemoteRefRefreshAt = 0;
+
+		await expect(mainCore.queryTasks({ includeCrossBranch: true })).resolves.toBeArray();
+		await expect(mainCore.queryTasks({ includeCrossBranch: true })).resolves.toBeArray();
+
+		expect(fetchSpy).toHaveBeenCalledTimes(1);
+		expect(errorSpy).toHaveBeenCalledWith("Failed to refresh remote refs:", expect.any(Error));
 	});
 });

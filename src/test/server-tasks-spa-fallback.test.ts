@@ -26,7 +26,7 @@ const routedTask: Task = {
 	createdDate: "2026-07-10",
 };
 
-async function request(path: string, init: RequestInit = {}, timeoutMs = 1500): Promise<Response> {
+async function request(path: string, init: RequestInit = {}, timeoutMs = 5000): Promise<Response> {
 	const controller = new AbortController();
 	const timeout = setTimeout(() => controller.abort(), timeoutMs);
 	try {
@@ -755,6 +755,7 @@ describe("BacklogServer task SPA fallback", () => {
 		await filesystem.saveConfig({ ...cachedConfig, statuses: customStatuses });
 		await restartWithActiveBranchCollision("BACK-001");
 		expect((await request("/api/task/BACK-1")).status).toBe(409);
+		expect((await request("/api/tasks?crossBranch=true")).status).toBe(200);
 
 		const activeServer = server as unknown as {
 			core: { filesystem: FileSystem };

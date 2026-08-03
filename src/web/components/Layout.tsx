@@ -14,6 +14,7 @@ interface LayoutProps {
 	docs: Document[];
 	decisions: Decision[];
 	isLoading: boolean;
+	error?: Error | null;
 	onRefreshData: () => Promise<void>;
 	duplicateRepairPlan?: DuplicateRepairPlan | null;
 }
@@ -26,6 +27,7 @@ export default function Layout({
 	docs,
 	decisions,
 	isLoading,
+	error,
 	onRefreshData,
 	duplicateRepairPlan = null,
 }: LayoutProps) {
@@ -33,10 +35,12 @@ export default function Layout({
 		<div className="h-screen bg-gray-50 dark:bg-gray-900 flex overflow-hidden transition-colors duration-200">
 			<HealthIndicator />
 			<SideNavigation 
-				tasks={tasks}
+				taskCount={tasks.length}
 				docs={docs}
 				decisions={decisions}
 				isLoading={isLoading}
+				error={error}
+				onRetry={onRefreshData}
 				onRefreshData={onRefreshData}
 			/>
 			<div className="flex-1 flex flex-col min-h-0 min-w-0">
