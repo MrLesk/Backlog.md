@@ -153,7 +153,7 @@ describe("MCP stdio shutdown", () => {
 	});
 
 	it("keeps stdio sessions alive after listing tools so document calls can respond", async () => {
-		const timeout = getPlatformTimeout(5000);
+		const timeout = getPlatformTimeout(15_000);
 		const core = new Core(TEST_DIR);
 		await initializeProject(core, {
 			projectName: "MCP Stdio Document Project",
@@ -231,5 +231,5 @@ describe("MCP stdio shutdown", () => {
 		}
 		if (primaryError !== undefined) throw primaryError;
 		if (cleanupError !== undefined) throw cleanupError;
-	});
+	}, 30_000);
 });

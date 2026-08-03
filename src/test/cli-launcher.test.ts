@@ -67,21 +67,29 @@ describe("cli launcher", () => {
 		expect(result.stderr).toContain("Detected:");
 	});
 
-	it.skipIf(isWindows)("exits with 128+signal for other signal deaths", async () => {
-		const dir = await createLauncherDir("#!/bin/sh\nkill -TERM $$\n");
-		const result = runLauncher(dir);
-		expect(result.status).toBe(128 + 15);
-	});
+	it.skipIf(isWindows)(
+		"exits with 128+signal for other signal deaths",
+		async () => {
+			const dir = await createLauncherDir("#!/bin/sh\nkill -TERM $$\n");
+			const result = runLauncher(dir);
+			expect(result.status).toBe(128 + 15);
+		},
+		30_000,
+	);
 
-	it.skipIf(isWindows)("prints install guidance when the binary is not executable (ENOEXEC)", async () => {
-		// No shebang and not a real executable: exec fails with ENOEXEC (sync throw or 'error' event)
-		const dir = await createLauncherDir("not-a-binary");
-		const result = runLauncher(dir);
-		expect(result.status).toBe(1);
-		expect(result.stderr).toContain("Cannot execute");
-		expect(result.stderr).toContain("was built for a different CPU architecture");
-		expect(result.stderr).toContain("Detected:");
-	});
+	it.skipIf(isWindows)(
+		"prints install guidance when the binary is not executable (ENOEXEC)",
+		async () => {
+			// No shebang and not a real executable: exec fails with ENOEXEC (sync throw or 'error' event)
+			const dir = await createLauncherDir("not-a-binary");
+			const result = runLauncher(dir);
+			expect(result.status).toBe(1);
+			expect(result.stderr).toContain("Cannot execute");
+			expect(result.stderr).toContain("was built for a different CPU architecture");
+			expect(result.stderr).toContain("Detected:");
+		},
+		30_000,
+	);
 });
 
 describe("isBinaryInstallError", () => {

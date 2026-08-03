@@ -15,11 +15,17 @@ env:
 
 jobs:
   test:
-    name: lint-and-unit-test
+    name: lint-and-unit-test (${{ matrix.os }})
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, macos-latest, windows-latest]
+        include:
+          - os: ubuntu-latest
+            test_profile: full
+          - os: macos-latest
+            test_profile: platform
+          - os: windows-latest
+            test_profile: platform
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v7
@@ -49,8 +55,8 @@ jobs:
         env:
           BACKLOG_TEST_CLI_BUNDLE: ${{ runner.temp }}/backlog-test-cli/cli.js
         run: |
-          # Isolate test files because some suites intentionally mutate global process state.
-          bun test --parallel=4 --isolate --timeout=10000 --max-concurrency=4 --reporter=junit --reporter-outfile=test-results.xml
+          # Ubuntu owns complete behavioral coverage. macOS and Windows focus on OS-sensitive contracts.
+          bun scripts/run-ci-tests.ts --profile=${{ matrix.test_profile }} --parallel=4 --isolate --timeout=10000 --max-concurrency=4 --reporter=junit --reporter-outfile=test-results.xml
         shell: bash
       - name: Upload test results
         if: always()
@@ -61,7 +67,7 @@ jobs:
           if-no-files-found: error
       - name: Run interactive TUI regression tests
         if: matrix.os == 'ubuntu-latest'
-        # Supplemental PTY coverage requires a Unix-like environment and `expect`; the full unit command above is identical on every OS.
+        # Supplemental PTY coverage requires a Unix-like environment and `expect`.
         run: bash scripts/run-tui-interactive-tests.sh
       - name: Upload interactive TUI transcripts on failure
         if: failure() && matrix.os == 'ubuntu-latest'
