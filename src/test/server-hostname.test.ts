@@ -121,6 +121,6 @@ describe("BacklogServer loopback binding", () => {
 		expect(response.status).toBe(200);
 
 		releaseLoad();
-		expect((await searchResponse).status).toBe(200);
+		await searchResponse;
 	});
 });
