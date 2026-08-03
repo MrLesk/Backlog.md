@@ -36,6 +36,15 @@ function isBinaryInstallError(error) {
 	return error?.errno === -86 || error?.code === "EBADARCH" || error?.code === "ENOEXEC" || error?.code === "ENOENT";
 }
 
+function isArchitectureSignal(signal) {
+	return signal === "SIGILL" || signal === "SIGTRAP";
+}
+
+function getSignalExitCode(signal) {
+	const signalNumber = osConstants.signals[signal];
+	return signalNumber ? 128 + signalNumber : 1;
+}
+
 function handleSpawnError(binaryPath, error) {
 	if (isBinaryInstallError(error)) {
 		console.error(`Cannot execute ${binaryPath} (${error.code ?? error.errno}).`);
@@ -84,7 +93,7 @@ function main() {
 	}
 
 	child.on("exit", (code, signal) => {
-		if (signal === "SIGILL" || signal === "SIGTRAP") {
+		if (isArchitectureSignal(signal)) {
 			// Typical symptom of running a binary built for the other CPU architecture
 			console.error(`\nbacklog crashed with ${signal} (illegal instruction): ${binaryPath}`);
 			console.error("The installed binary was likely built for a different CPU architecture.");
@@ -92,8 +101,7 @@ function main() {
 			process.exit(1);
 		}
 		if (signal) {
-			const signalNumber = osConstants.signals[signal];
-			process.exit(signalNumber ? 128 + signalNumber : 1);
+			process.exit(getSignalExitCode(signal));
 		}
 		process.exit(code ?? 1);
 	});
@@ -103,4 +111,4 @@ function main() {
 
 if (require.main === module) main();
 
-module.exports = { isBinaryInstallError };
+module.exports = { getSignalExitCode, isArchitectureSignal, isBinaryInstallError };

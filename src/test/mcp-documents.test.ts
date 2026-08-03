@@ -7,7 +7,7 @@ import { McpServer } from "../mcp/server.ts";
 import { registerDocumentTools } from "../mcp/tools/documents/index.ts";
 import type { JsonSchema } from "../mcp/validation/validators.ts";
 import { DOCUMENT_TYPE_VALUES } from "../types/index.ts";
-import { createUniqueTestDir, initializeTestProject, safeCleanup } from "./test-utils.ts";
+import { createUniqueTestDir, initializeFilesystemTestProject, safeCleanup } from "./test-utils.ts";
 
 // Helper to extract text from MCP content (handles union types)
 const getText = (content: unknown[] | undefined, index = 0): string => {
@@ -26,17 +26,22 @@ async function loadConfig(server: McpServer) {
 	return config;
 }
 
+async function enableGitTestProject(): Promise<void> {
+	await $`git init -b main`.cwd(TEST_DIR).quiet();
+
+	const config = await loadConfig(mcpServer);
+	config.filesystemOnly = false;
+	await mcpServer.filesystem.saveConfig(config);
+	await mcpServer.ensureConfigLoaded();
+}
+
 describe("MCP document tools", () => {
 	beforeEach(async () => {
 		TEST_DIR = createUniqueTestDir("mcp-documents");
 		mcpServer = new McpServer(TEST_DIR, "Test instructions");
 		await mcpServer.filesystem.ensureBacklogStructure();
 
-		await $`git init -b main`.cwd(TEST_DIR).quiet();
-		await $`git config user.name "Test User"`.cwd(TEST_DIR).quiet();
-		await $`git config user.email test@example.com`.cwd(TEST_DIR).quiet();
-
-		await initializeTestProject(mcpServer, "Docs Project");
+		await initializeFilesystemTestProject(mcpServer, "Docs Project");
 		const config = await loadConfig(mcpServer);
 		registerDocumentTools(mcpServer, config);
 	});
@@ -288,6 +293,7 @@ describe("MCP document tools", () => {
 	});
 
 	it("does not sweep unrelated staged or dirty files into document create auto-commits", async () => {
+		await enableGitTestProject();
 		const config = await loadConfig(mcpServer);
 		config.autoCommit = true;
 		await mcpServer.filesystem.saveConfig(config);
@@ -328,6 +334,7 @@ describe("MCP document tools", () => {
 	});
 
 	it("does not sweep unrelated staged or dirty files into document update auto-commits", async () => {
+		await enableGitTestProject();
 		await mcpServer.testInterface.callTool({
 			params: {
 				name: "document_create",
@@ -381,6 +388,7 @@ describe("MCP document tools", () => {
 	});
 
 	it("commits every duplicate document path removed by an update", async () => {
+		await enableGitTestProject();
 		await mcpServer.testInterface.callTool({
 			params: {
 				name: "document_create",

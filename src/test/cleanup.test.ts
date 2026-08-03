@@ -29,8 +29,6 @@ describe("Cleanup functionality", () => {
 
 		// Initialize git repo
 		await $`git init -b main`.cwd(TEST_DIR).quiet();
-		await $`git config user.name "Test User"`.cwd(TEST_DIR).quiet();
-		await $`git config user.email test@example.com`.cwd(TEST_DIR).quiet();
 
 		// Initialize backlog project
 		core = new Core(TEST_DIR);

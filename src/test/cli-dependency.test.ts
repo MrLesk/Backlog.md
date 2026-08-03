@@ -1,11 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import { mkdir } from "node:fs/promises";
-import { join } from "node:path";
 import { $ } from "bun";
 import { Core } from "../core/backlog.ts";
-import { createUniqueTestDir, initializeTestProject, safeCleanup } from "./test-utils.ts";
+import { getTestCliPath } from "./test-cli.ts";
+import { createUniqueTestDir, initializeFilesystemTestProject, safeCleanup } from "./test-utils.ts";
 
-const CLI_PATH = join(process.cwd(), "src", "cli.ts");
+const CLI_PATH = getTestCliPath();
 
 describe("CLI dependency options", () => {
 	let testDir: string;
@@ -14,11 +14,8 @@ describe("CLI dependency options", () => {
 	beforeEach(async () => {
 		testDir = createUniqueTestDir("test-cli-dependency");
 		await mkdir(testDir, { recursive: true });
-		await $`git init -b main`.cwd(testDir).quiet();
-		await $`git config user.name "Test User"`.cwd(testDir).quiet();
-		await $`git config user.email test@example.com`.cwd(testDir).quiet();
 		core = new Core(testDir);
-		await initializeTestProject(core, "CLI dependency options");
+		await initializeFilesystemTestProject(core, "CLI dependency options");
 	});
 
 	afterEach(async () => {

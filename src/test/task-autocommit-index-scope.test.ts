@@ -21,8 +21,6 @@ describe("task create/update auto-commit index scoping", () => {
 		await mkdir(TEST_DIR, { recursive: true });
 
 		await $`git init`.cwd(TEST_DIR).quiet();
-		await $`git config user.email test@example.com`.cwd(TEST_DIR).quiet();
-		await $`git config user.name "Test User"`.cwd(TEST_DIR).quiet();
 
 		core = new Core(TEST_DIR);
 		await initializeTestProject(core, "Test Task Autocommit Project", true);

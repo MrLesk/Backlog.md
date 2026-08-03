@@ -8,11 +8,12 @@ import { Core } from "../core/backlog.ts";
 import {
 	closeServer,
 	createUniqueTestDir,
-	initializeTestProject,
+	initializeFilesystemTestProject,
 	listenOnEphemeralPort,
 	safeCleanup,
 } from "./test-utils.ts";
 
+// This suite exercises browser assets that are embedded only in the compiled release binary.
 const CLI_PATH = join(process.cwd(), "src", "cli.ts");
 type BrowserProcess = ChildProcessByStdio<null, Readable, Readable>;
 
@@ -70,12 +71,9 @@ describe("browser command port selection", () => {
 	beforeEach(async () => {
 		TEST_DIR = createUniqueTestDir("test-cli-browser-port");
 		await mkdir(TEST_DIR, { recursive: true });
-		await $`git init -b main`.cwd(TEST_DIR).quiet();
-		await $`git config user.name "Test User"`.cwd(TEST_DIR).quiet();
-		await $`git config user.email test@example.com`.cwd(TEST_DIR).quiet();
 
 		const core = new Core(TEST_DIR);
-		await initializeTestProject(core, "Browser Port Test");
+		await initializeFilesystemTestProject(core, "Browser Port Test");
 	});
 
 	afterEach(async () => {

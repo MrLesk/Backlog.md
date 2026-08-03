@@ -15,8 +15,6 @@ describe("Offline Integration Tests", () => {
 
 		// Initialize a git repo without remote
 		await $`git init`.cwd(tempDir).quiet();
-		await $`git config user.email test@example.com`.cwd(tempDir).quiet();
-		await $`git config user.name "Test User"`.cwd(tempDir).quiet();
 
 		// Create initial commit
 		await writeFile(join(tempDir, "README.md"), "# Test Project");

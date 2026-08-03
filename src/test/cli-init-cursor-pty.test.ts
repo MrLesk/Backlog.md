@@ -2,9 +2,10 @@ import { describe, expect, it } from "bun:test";
 import { chmod, mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { $ } from "bun";
+import { getTestCliPath } from "./test-cli.ts";
 import { createUniqueTestDir, safeCleanup } from "./test-utils.ts";
 
-const CLI_PATH = join(process.cwd(), "src", "cli.ts");
+const CLI_PATH = getTestCliPath();
 const EXPECT_PATH = Bun.which("expect");
 const RUN_INTERACTIVE_TUI_TESTS = process.env.RUN_INTERACTIVE_TUI_TESTS === "1";
 
@@ -32,8 +33,6 @@ describe("Cursor init PTY behavior", () => {
 
 		try {
 			await $`git init -b main`.cwd(testDir).quiet();
-			await $`git config user.name "Test User"`.cwd(testDir).quiet();
-			await $`git config user.email test@example.com`.cwd(testDir).quiet();
 			await writeFile(editorScriptPath, `#!/bin/sh\nprintf 'opened\\n' > '${editorMarkerPath}'\nexit 97\n`);
 			await chmod(editorScriptPath, 0o755);
 			await writeFile(

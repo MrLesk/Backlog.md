@@ -10,7 +10,7 @@ import type { Task } from "../types/index.ts";
 import {
 	commitSamePathBranchTaskVariant,
 	createUniqueTestDir,
-	initializeTestProject,
+	initializeFilesystemTestProject,
 	safeCleanup,
 } from "./test-utils.ts";
 
@@ -31,17 +31,22 @@ async function loadConfig(server: McpServer) {
 	return config;
 }
 
+async function enableGitTestProject(): Promise<void> {
+	await $`git init -b main`.cwd(TEST_DIR).quiet();
+
+	const config = await loadConfig(mcpServer);
+	config.filesystemOnly = false;
+	await mcpServer.filesystem.saveConfig(config);
+	await mcpServer.ensureConfigLoaded();
+}
+
 describe("MCP task tools (MVP)", () => {
 	beforeEach(async () => {
 		TEST_DIR = createUniqueTestDir("mcp-tasks");
 		mcpServer = new McpServer(TEST_DIR, "Test instructions");
 		await mcpServer.filesystem.ensureBacklogStructure();
 
-		await $`git init -b main`.cwd(TEST_DIR).quiet();
-		await $`git config user.name "Test User"`.cwd(TEST_DIR).quiet();
-		await $`git config user.email test@example.com`.cwd(TEST_DIR).quiet();
-
-		await initializeTestProject(mcpServer, "Test Project");
+		await initializeFilesystemTestProject(mcpServer, "Test Project");
 
 		const config = await loadConfig(mcpServer);
 		registerTaskTools(mcpServer, config);
@@ -132,6 +137,7 @@ describe("MCP task tools (MVP)", () => {
 	});
 
 	it("archives the local task when merge policy selects a same-path padded ID variant", async () => {
+		await enableGitTestProject();
 		const config = await loadConfig(mcpServer);
 		await mcpServer.filesystem.saveConfig({
 			...config,
@@ -169,6 +175,7 @@ describe("MCP task tools (MVP)", () => {
 	});
 
 	it("refreshes branch identities before a long-lived MCP mutation", async () => {
+		await enableGitTestProject();
 		const config = await loadConfig(mcpServer);
 		await mcpServer.filesystem.saveConfig({
 			...config,

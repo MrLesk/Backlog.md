@@ -85,8 +85,6 @@ async function restartWithActiveBranchCollision(
 	await filesystem.saveTask({ ...mainTask, id: "BACK-002", title: "Inherited unchanged task" });
 
 	await $`git init -b main`.cwd(TEST_DIR).quiet();
-	await $`git config user.name "Test User"`.cwd(TEST_DIR).quiet();
-	await $`git config user.email test@example.com`.cwd(TEST_DIR).quiet();
 	await $`git add backlog`.cwd(TEST_DIR).quiet();
 	await $`git commit -m "Add main task"`.cwd(TEST_DIR).quiet();
 	await $`git switch -c collision-shadow`.cwd(TEST_DIR).quiet();
@@ -127,8 +125,6 @@ async function restartWithActiveRemoteCollision(useSamePath = false): Promise<vo
 	const mainTaskPath = await filesystem.saveTask(mainTask);
 
 	await $`git init -b main`.cwd(TEST_DIR).quiet();
-	await $`git config user.name "Test User"`.cwd(TEST_DIR).quiet();
-	await $`git config user.email test@example.com`.cwd(TEST_DIR).quiet();
 	await $`git add backlog`.cwd(TEST_DIR).quiet();
 	await $`git commit -m "Add main task"`.cwd(TEST_DIR).quiet();
 
@@ -171,8 +167,6 @@ async function restartWithActiveLegacyCollision(): Promise<void> {
 	const localTaskPath = await filesystem.saveTask(localTask);
 
 	await $`git init -b main`.cwd(TEST_DIR).quiet();
-	await $`git config user.name "Test User"`.cwd(TEST_DIR).quiet();
-	await $`git config user.email test@example.com`.cwd(TEST_DIR).quiet();
 	await $`git add backlog`.cwd(TEST_DIR).quiet();
 	await $`git commit -m "Add local legacy task"`.cwd(TEST_DIR).quiet();
 	await $`git switch -c legacy-collision-shadow`.cwd(TEST_DIR).quiet();

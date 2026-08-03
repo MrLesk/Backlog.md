@@ -1,12 +1,12 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import { mkdir } from "node:fs/promises";
-import { join } from "node:path";
 import { $ } from "bun";
 import { Core } from "../index.ts";
+import { getTestCliPath } from "./test-cli.ts";
 import { createUniqueTestDir, initializeTestProject, safeCleanup } from "./test-utils.ts";
 
 let TEST_DIR: string;
-const CLI_PATH = join(process.cwd(), "src", "cli.ts");
+const CLI_PATH = getTestCliPath();
 
 describe("CLI Integration", () => {
 	beforeEach(async () => {
@@ -22,8 +22,6 @@ describe("CLI Integration", () => {
 		beforeEach(async () => {
 			// Set up a git repository and initialize backlog
 			await $`git init -b main`.cwd(TEST_DIR).quiet();
-			await $`git config user.name "Test User"`.cwd(TEST_DIR).quiet();
-			await $`git config user.email test@example.com`.cwd(TEST_DIR).quiet();
 
 			const core = new Core(TEST_DIR);
 			await initializeTestProject(core, "List Test Project", true);

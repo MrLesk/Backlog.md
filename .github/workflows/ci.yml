@@ -15,11 +15,20 @@ env:
 
 jobs:
   test:
-    name: lint-and-unit-test
+    name: lint-and-unit-test (${{ matrix.os }})
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, macos-latest, windows-latest]
+        include:
+          - os: ubuntu-latest
+            test_profile: full
+            test_workers: 2
+          - os: macos-latest
+            test_profile: platform
+            test_workers: 4
+          - os: windows-latest
+            test_profile: platform
+            test_workers: 4
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v7
@@ -28,6 +37,7 @@ jobs:
           # Bun >=1.3 includes stdin pause/subprocess handoff fixes used by TUI editor launch.
           bun-version: ${{ env.BUN_VERSION }}
       - uses: actions/cache@v6
+        if: matrix.test_profile == 'full'
         id: cache
         with:
           path: ~/.bun/install/cache
@@ -41,11 +51,18 @@ jobs:
           bun run update-nix
           git diff --exit-code -- bun.nix
       - run: bun run check:types
+        if: matrix.test_profile == 'full'
       - run: bun run lint
+        if: matrix.test_profile == 'full'
+      - name: Bundle CLI for integration tests
+        run: BACKLOG_BUILD_OUTDIR="$RUNNER_TEMP/backlog-test-cli" bun scripts/build.ts
+        shell: bash
       - name: Run tests
+        env:
+          BACKLOG_TEST_CLI_BUNDLE: ${{ runner.temp }}/backlog-test-cli/cli.js
         run: |
-          # Isolate test files because some suites intentionally mutate global process state.
-          bun test --isolate --timeout=10000 --max-concurrency=4 --reporter=junit --reporter-outfile=test-results.xml
+          # Ubuntu owns complete behavioral coverage. macOS and Windows focus on OS-sensitive contracts.
+          bun scripts/run-ci-tests.ts --profile=${{ matrix.test_profile }} --parallel=${{ matrix.test_workers }} --isolate --timeout=10000 --max-concurrency=${{ matrix.test_workers }} --reporter=junit --reporter-outfile=test-results.xml
         shell: bash
       - name: Upload test results
         if: always()
@@ -56,7 +73,7 @@ jobs:
           if-no-files-found: error
       - name: Run interactive TUI regression tests
         if: matrix.os == 'ubuntu-latest'
-        # Supplemental PTY coverage requires a Unix-like environment and `expect`; the full unit command above is identical on every OS.
+        # Supplemental PTY coverage requires a Unix-like environment and `expect`.
         run: bash scripts/run-tui-interactive-tests.sh
       - name: Upload interactive TUI transcripts on failure
         if: failure() && matrix.os == 'ubuntu-latest'

@@ -5,9 +5,10 @@ import { join } from "node:path";
 import { $ } from "bun";
 import { Core } from "../index.ts";
 import { formatRootEntry, printRootEntry } from "../ui/root-entry.ts";
+import { getTestCliPath } from "./test-cli.ts";
 
 let TEST_DIR: string;
-const CLI_PATH = join(process.cwd(), "src", "cli.ts");
+const CLI_PATH = getTestCliPath();
 
 describe("CLI root entry (bare run)", () => {
 	beforeEach(async () => {
@@ -81,11 +82,8 @@ describe("CLI root entry (bare run)", () => {
 
 	it("prints a plain local entry point in initialized repo", async () => {
 		// Initialize Git + project via Core
-		await $`git init -b main`.cwd(TEST_DIR).quiet();
-		await $`git config user.name Test`.cwd(TEST_DIR).quiet();
-		await $`git config user.email test@example.com`.cwd(TEST_DIR).quiet();
 		const core = new Core(TEST_DIR);
-		await initializeTestProject(core, "Splash Test");
+		await initializeFilesystemTestProject(core, "Splash Test");
 
 		const result = await $`bun ${CLI_PATH}`.cwd(TEST_DIR).quiet();
 		const out = result.stdout.toString();
@@ -115,4 +113,4 @@ describe("CLI root entry (bare run)", () => {
 	});
 });
 
-import { initializeTestProject } from "./test-utils.ts";
+import { initializeFilesystemTestProject } from "./test-utils.ts";

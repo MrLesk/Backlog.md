@@ -8,6 +8,7 @@ import { Core } from "../core/backlog.ts";
 import { serializeTask } from "../markdown/serializer.ts";
 import type { Task } from "../types/index.ts";
 import { watchTasks } from "../utils/task-watcher.ts";
+import { getTestCliPath } from "./test-cli.ts";
 import {
 	createUniqueTestDir,
 	getPlatformTimeout,
@@ -340,7 +341,7 @@ describe("task watcher reconciliation", () => {
 		);
 		stopWatcher = handle.stop;
 
-		const cliPath = join(process.cwd(), "src", "cli.ts");
+		const cliPath = getTestCliPath();
 		await $`bun ${cliPath} task edit task-6 --status ${"In Progress"} --plain`.cwd(testDir).quiet();
 		const task = await withTimeout(changed, "real atomic CLI edit", getPlatformTimeout(2000));
 		expect(task.status).toBe("In Progress");

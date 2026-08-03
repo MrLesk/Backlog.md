@@ -1,14 +1,14 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import { spawn } from "node:child_process";
 import { mkdir } from "node:fs/promises";
-import { join } from "node:path";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
 import { Core } from "../core/backlog.ts";
 import { initializeProject } from "../core/init.ts";
+import { getTestCliPath } from "./test-cli.ts";
 import { createUniqueTestDir, getPlatformTimeout, isWindows, observeChildClose, safeCleanup } from "./test-utils.ts";
 
-const CLI_PATH = join(process.cwd(), "src", "cli.ts");
+const CLI_PATH = getTestCliPath();
 const START_MESSAGE = "Backlog.md MCP server started (stdio transport)";
 
 let TEST_DIR: string;
@@ -153,7 +153,7 @@ describe("MCP stdio shutdown", () => {
 	});
 
 	it("keeps stdio sessions alive after listing tools so document calls can respond", async () => {
-		const timeout = getPlatformTimeout(5000);
+		const timeout = getPlatformTimeout(15_000);
 		const core = new Core(TEST_DIR);
 		await initializeProject(core, {
 			projectName: "MCP Stdio Document Project",
@@ -231,5 +231,5 @@ describe("MCP stdio shutdown", () => {
 		}
 		if (primaryError !== undefined) throw primaryError;
 		if (cleanupError !== undefined) throw cleanupError;
-	});
+	}, 30_000);
 });

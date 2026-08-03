@@ -16,8 +16,6 @@ describe("core auto-commit scoping", () => {
 		TEST_DIR = createUniqueTestDir("test-core-autocommit-scope");
 		await mkdir(TEST_DIR, { recursive: true });
 		await $`git init`.cwd(TEST_DIR).quiet();
-		await $`git config user.email test@example.com`.cwd(TEST_DIR).quiet();
-		await $`git config user.name "Test User"`.cwd(TEST_DIR).quiet();
 		core = new Core(TEST_DIR);
 		await initializeTestProject(core, "Core Auto-commit Scope", true);
 	});

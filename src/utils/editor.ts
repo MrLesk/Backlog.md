@@ -1,5 +1,4 @@
 import { platform } from "node:os";
-import { $ } from "bun";
 import type { BacklogConfig } from "../types/index.ts";
 
 /**
@@ -47,13 +46,7 @@ export function resolveEditor(config?: BacklogConfig | null): string {
 type EditorCommandLookup = (command: string) => Promise<boolean>;
 
 async function lookupEditorCommand(command: string): Promise<boolean> {
-	if (platform() === "win32") {
-		await $`where ${command}`.quiet();
-		return true;
-	}
-
-	await $`which ${command}`.quiet();
-	return true;
+	return Bun.which(command) !== null;
 }
 
 export async function isEditorAvailable(

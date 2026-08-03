@@ -1,9 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
-import { $ } from "bun";
 import { McpServer } from "../mcp/server.ts";
 import { registerDefinitionOfDoneTools } from "../mcp/tools/definition-of-done/index.ts";
 import { registerTaskTools } from "../mcp/tools/tasks/index.ts";
-import { createUniqueTestDir, initializeTestProject, safeCleanup } from "./test-utils.ts";
+import { createUniqueTestDir, initializeFilesystemTestProject, safeCleanup } from "./test-utils.ts";
 
 const getText = (content: unknown[] | undefined, index = 0): string => {
 	const item = content?.[index] as { text?: string } | undefined;
@@ -27,11 +26,7 @@ describe("MCP Definition of Done default tools", () => {
 		server = new McpServer(testDir, "Test instructions");
 		await server.filesystem.ensureBacklogStructure();
 
-		await $`git init -b main`.cwd(testDir).quiet();
-		await $`git config user.name "Test User"`.cwd(testDir).quiet();
-		await $`git config user.email test@example.com`.cwd(testDir).quiet();
-
-		await initializeTestProject(server, "Test Project");
+		await initializeFilesystemTestProject(server, "Test Project");
 
 		const config = await loadConfigOrThrow(server);
 		registerTaskTools(server, config);

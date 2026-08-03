@@ -4,9 +4,10 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { $ } from "bun";
 import { Core } from "../index.ts";
-import { initializeTestProject } from "./test-utils.ts";
+import { getTestCliPath } from "./test-cli.ts";
+import { initializeFilesystemTestProject } from "./test-utils.ts";
 
-const CLI_PATH = join(process.cwd(), "src", "cli.ts");
+const CLI_PATH = getTestCliPath();
 
 describe("CLI parent shorthand option", () => {
 	let testDir: string;
@@ -15,13 +16,10 @@ describe("CLI parent shorthand option", () => {
 		testDir = await mkdtemp(join(tmpdir(), "backlog-test-"));
 
 		// Initialize git repository first to avoid interactive prompts
-		await $`git init -b main`.cwd(testDir).quiet();
-		await $`git config user.name "Test User"`.cwd(testDir).quiet();
-		await $`git config user.email test@example.com`.cwd(testDir).quiet();
 
 		// Initialize backlog project using Core (simulating CLI)
 		const core = new Core(testDir);
-		await initializeTestProject(core, "Test Project");
+		await initializeFilesystemTestProject(core, "Test Project");
 	});
 
 	afterAll(async () => {

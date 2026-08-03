@@ -26,8 +26,6 @@ async function createRepository(testDir: string, projectName: string): Promise<s
 	const mainRepo = join(testDir, "repo");
 	await mkdir(mainRepo, { recursive: true });
 	await $`git init -b main`.cwd(mainRepo).quiet();
-	await $`git config user.name "Test User"`.cwd(mainRepo).quiet();
-	await $`git config user.email test@example.com`.cwd(mainRepo).quiet();
 
 	const core = new Core(mainRepo);
 	await initializeTestProject(core, projectName, true);

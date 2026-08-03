@@ -18,8 +18,6 @@ describe("Board core and view integration", () => {
 
 		// Configure git for tests - required for CI
 		await $`git init`.cwd(TEST_DIR).quiet();
-		await $`git config user.email test@example.com`.cwd(TEST_DIR).quiet();
-		await $`git config user.name "Test User"`.cwd(TEST_DIR).quiet();
 
 		core = new Core(TEST_DIR);
 		coreInitialized = true;

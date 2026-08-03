@@ -13,8 +13,6 @@ describe("Missing git remote preflight", () => {
 	beforeEach(async () => {
 		tempDir = await mkdtemp(join(tmpdir(), "backlog-noremote-"));
 		await $`git init`.cwd(tempDir).quiet();
-		await $`git config user.email test@example.com`.cwd(tempDir).quiet();
-		await $`git config user.name "Test User"`.cwd(tempDir).quiet();
 		await writeFile(join(tempDir, "README.md"), "# Test");
 		await $`git add README.md`.cwd(tempDir).quiet();
 		await $`git commit -m "init"`.cwd(tempDir).quiet();

@@ -246,6 +246,23 @@ export async function initializeTestProject(
 	autoCommit = false,
 	backlogDirectory?: string,
 ): Promise<void> {
+	await initializeTestProjectWithOptions(core, projectName, { autoCommit, backlogDirectory });
+}
+
+export async function initializeFilesystemTestProject(
+	core: Core,
+	projectName: string,
+	backlogDirectory?: string,
+): Promise<void> {
+	await initializeTestProjectWithOptions(core, projectName, { backlogDirectory, filesystemOnly: true });
+}
+
+async function initializeTestProjectWithOptions(
+	core: Core,
+	projectName: string,
+	options: { autoCommit?: boolean; backlogDirectory?: string; filesystemOnly?: boolean },
+): Promise<void> {
+	const { autoCommit = false, backlogDirectory, filesystemOnly = false } = options;
 	const backlogDirectorySource = backlogDirectory
 		? backlogDirectory === "backlog" || backlogDirectory === ".backlog"
 			? (backlogDirectory as "backlog" | ".backlog")
@@ -259,6 +276,7 @@ export async function initializeTestProject(
 		backlogDirectorySource,
 		configLocation,
 		integrationMode: "none",
+		filesystemOnly,
 		advancedConfig: {
 			autoCommit: false,
 		},

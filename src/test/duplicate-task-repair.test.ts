@@ -138,8 +138,6 @@ describe("duplicate task diagnosis", () => {
 
 	it("reports path-distinct cross-branch collisions without preparing a repair", async () => {
 		await $`git init -b main`.cwd(testDir).quiet();
-		await $`git config user.name "Test User"`.cwd(testDir).quiet();
-		await $`git config user.email test@example.com`.cwd(testDir).quiet();
 		const config = await core.filesystem.loadConfig();
 		if (!config) throw new Error("Missing test config");
 		config.checkActiveBranches = true;
