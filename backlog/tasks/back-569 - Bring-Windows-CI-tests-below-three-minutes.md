@@ -5,7 +5,7 @@ status: In Progress
 assignee:
   - '@codex'
 created_date: '2026-08-03 16:30'
-updated_date: '2026-08-03 18:20'
+updated_date: '2026-08-03 18:27'
 labels: []
 dependencies: []
 priority: high
@@ -61,4 +61,6 @@ Architecture v3: converted seven additional MCP suites to filesystem-only setup,
 Live CI correction: skipping actions/cache on Windows was rejected after the first PR run showed the uncached bun install still running after 60s, already slower than the previous 48s combined cache restore/save cost. Restored the cache; this experiment is not part of the final strategy.
 
 First PR evidence: the full Windows test step dropped from 889s to 221s and the uncached complete job from 982s to 330s. JUnit contained 766 aggregate test-seconds, giving a theoretical four-worker floor of 191.55s before setup, so repeating the entire platform-neutral suite on Windows cannot meet the 180s complete-job target. Reworked CI responsibilities: Ubuntu owns the full behavioral suite; Windows and macOS run an explicit 37-file/373-test platform-contract profile covering filesystem/path/locking, real Git/worktrees, shipped CLI/process/editor boundaries, MCP stdio, network lifecycle, and Unicode. The profile completes locally in 47.96s; known local failures require Unix shell commands absent from this host. Also raised only the three repeatable Unix process-lifecycle test timeouts exposed by four-worker CI contention.
+
+Platform-profile CI evidence: Windows executed all 373 contract tests successfully in 41s. The complete job was 207s only because actions/cache took 74s and bun install then took another 62s; together dependency setup consumed 136s. Corrected the earlier cache comparison and limited dependency caching plus duplicate type/lint checks to the Ubuntu full-profile job. The measured uncached Windows install was 76s, projecting about 142s for the complete platform job with the already-measured 41s test step.
 <!-- SECTION:NOTES:END -->
