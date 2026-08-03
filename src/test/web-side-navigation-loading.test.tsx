@@ -86,6 +86,18 @@ describe("SideNavigation task loading", () => {
 		expect(failed).not.toContain("No decisions");
 	});
 
+	it("keeps a retryable load failure visible when the sidebar is collapsed", () => {
+		storage.set("sideNavCollapsed", "true");
+		try {
+			const failed = renderNavigation(false, 0, new Error("corpus failed"));
+			expect(failed).toContain('role="alert"');
+			expect(failed).toContain('aria-label="Failed to load navigation. Retry"');
+			expect(failed).toContain("Retry");
+		} finally {
+			storage.delete("sideNavCollapsed");
+		}
+	});
+
 	it("keeps Kanban loading, loaded-empty, and error states distinct", () => {
 		const phase = "Applying latest task states from branch scans...";
 		const loading = renderBoard(true, undefined, phase);

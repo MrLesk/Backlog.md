@@ -327,6 +327,11 @@ class FakeWebSocket {
 		this.onmessage({ data });
 	}
 
+	disconnect() {
+		this.readyState = FakeWebSocket.CLOSED;
+		this.onclose?.();
+	}
+
 	close() {
 		this.readyState = FakeWebSocket.CLOSED;
 	}
@@ -662,6 +667,35 @@ describe("task detail routes", () => {
 		expect(observedWhileSearchPending).toBe(true);
 	});
 
+	it("does not duplicate a completed HTTP refresh when the loaded frame arrives later", async () => {
+		await renderApp("/board");
+		const dataSocket = getAppDataWebSocket();
+		await act(async () => {
+			dataSocket.deliver(JSON.stringify({ type: "loading", message: "Loading local tasks..." }));
+			await Promise.resolve();
+		});
+
+		const overlappingRefresh = new FetchOperation("HTTP refresh overlapping shared loading", [
+			expectFetch("overlapping config", "/api/config"),
+			expectFetch("overlapping search", "/api/search"),
+		]);
+		await act(async () => {
+			dataSocket.deliver("config-updated");
+			await Promise.resolve();
+		});
+		await act(async () => overlappingRefresh.settle("overlapping config", "overlapping search"));
+		overlappingRefresh.finish();
+
+		const duplicate = new FetchOperation("late loaded frame after initial reconciliation", []);
+		await act(async () => {
+			getAppDataWebSocket().deliver(JSON.stringify({ type: "loaded" }));
+			await Promise.resolve();
+		});
+		await Promise.all(duplicate.calls.map((call) => call.settledSignal));
+		expect(duplicate.calls.filter((call) => call.url === "/api/search")).toHaveLength(0);
+		duplicate.finish();
+	});
+
 	it("reconciles a passive client when another browser retry completes", async () => {
 		const container = await renderApp("/board?lane=none");
 		const dataSocket = getAppDataWebSocket();
@@ -714,6 +748,28 @@ describe("task detail routes", () => {
 			await activeRefresh.settle("active config", "active search");
 		});
 		activeRefresh.finish();
+	});
+
+	it("reconciles protocol-only loading when the data socket closes", async () => {
+		const container = await renderApp("/board?lane=none");
+		const dataSocket = getAppDataWebSocket();
+		const phase = "Loading tasks from local branches...";
+		await act(async () => {
+			dataSocket.deliver(JSON.stringify({ type: "loading", message: phase }));
+			await Promise.resolve();
+		});
+		expect(container.textContent).toContain(phase);
+
+		const recovery = new FetchOperation("protocol-only socket close recovery", []);
+		await act(async () => {
+			dataSocket.disconnect();
+			await Promise.resolve();
+		});
+		await Promise.all(recovery.calls.map((call) => call.settledSignal));
+		expect(recovery.calls.filter((call) => call.url === "/api/search")).toHaveLength(1);
+		expect(container.querySelector("[aria-label='Loading tasks']")).toBeNull();
+		expect(container.textContent).toContain(tasks[0]?.title ?? "");
+		recovery.finish();
 	});
 
 	it("keeps a newer WebSocket-reconciled task when an earlier reorder response arrives late", async () => {

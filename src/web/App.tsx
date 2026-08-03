@@ -301,6 +301,7 @@ function AppContent() {
   const loadAllData = useCallback(async () => {
     const requestId = loadAllDataRequestRef.current + 1;
     loadAllDataRequestRef.current = requestId;
+	protocolOnlyLoadingRef.current = false;
 		pendingDataRequestRef.current = requestId;
 		try {
 			setIsLoading(true);
@@ -566,6 +567,7 @@ function AppContent() {
   useEffect(() => {
     const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
     const ws = new WebSocket(`${protocol}//${window.location.host}`);
+	let disposed = false;
     ws.onmessage = (event) => {
 	  const loadingState = parseBrowserLoadingState(event.data);
 	  if (loadingState?.type === 'loading') {
@@ -589,7 +591,15 @@ function AppContent() {
         loadAllData();
       }
     };
-    return () => ws.close();
+	ws.onclose = () => {
+		if (disposed || !protocolOnlyLoadingRef.current || pendingDataRequestRef.current !== null) return;
+		protocolOnlyLoadingRef.current = false;
+		void refreshData();
+	};
+	return () => {
+		disposed = true;
+		ws.close();
+	};
   }, [refreshData, loadAllData]);
 
   const handleSubmitTask = async (taskData: Partial<Task>) => {

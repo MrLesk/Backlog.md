@@ -598,6 +598,20 @@ const SideNavigation = memo(function SideNavigation({
 
 			<nav className="flex-1 overflow-y-auto">
 				{/* Error State */}
+				{error && isCollapsed && onRetry && (
+					<div className="px-2 py-3" role="alert">
+						<button
+							type="button"
+							onClick={onRetry}
+							className="flex w-full items-center justify-center rounded-md bg-red-50 p-3 font-bold text-red-600 hover:bg-red-100 dark:bg-red-900/20 dark:text-red-400 dark:hover:bg-red-900/30"
+							aria-label="Failed to load navigation. Retry"
+							title="Failed to load navigation. Retry"
+						>
+							<span aria-hidden="true">!</span>
+							<span className="sr-only">Retry</span>
+						</button>
+					</div>
+				)}
 				{error && !isCollapsed && (
 					<div className="px-4 py-4">
 						<div className="text-center p-4 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg">
