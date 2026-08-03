@@ -302,10 +302,14 @@ export class Core {
 		return Math.max(...ordinals) + DEFAULT_ORDINAL_STEP;
 	}
 
-	async getContentStore(): Promise<ContentStore> {
+	async getContentStore(progressCallback?: (message: string) => void): Promise<ContentStore> {
 		if (!this.contentStore) {
 			// Use loadTasks as the task loader to include cross-branch tasks
-			this.contentStore = new ContentStore(this.fs, () => this.loadContentStoreCorpus(), this.enableWatchers);
+			this.contentStore = new ContentStore(
+				this.fs,
+				() => this.loadContentStoreCorpus(progressCallback),
+				this.enableWatchers,
+			);
 		}
 		await this.contentStore.ensureInitialized();
 		return this.contentStore;
@@ -3111,19 +3115,19 @@ export class Core {
 		return (await this.loadTasksWithStableBranchSnapshot(progressCallback, abortSignal, options, 0)).tasks;
 	}
 
-	private async loadTaskCorpusSnapshot(): Promise<TaskCorpusSnapshot> {
+	private async loadTaskCorpusSnapshot(progressCallback?: (message: string) => void): Promise<TaskCorpusSnapshot> {
 		return await this.loadTasksWithStableBranchSnapshot(
-			undefined,
+			progressCallback,
 			undefined,
 			{ includeCompleted: true, visibleCompleted: false },
 			0,
 		);
 	}
 
-	private async loadContentStoreCorpus(): Promise<TaskCorpusSnapshot> {
+	private async loadContentStoreCorpus(progressCallback?: (message: string) => void): Promise<TaskCorpusSnapshot> {
 		if (Object.hasOwn(this, "loadTasks")) {
 			const [activeTasks, completedTasks, config] = await Promise.all([
-				this.loadTasks(),
+				this.loadTasks(progressCallback),
 				this.fs.listCompletedTasks(),
 				this.fs.loadConfig(),
 			]);
@@ -3136,7 +3140,7 @@ export class Core {
 			);
 			return { tasks: identityIndex.getTasks(false), activeTasks, completedTasks, identityIndex };
 		}
-		return await this.loadTaskCorpusSnapshot();
+		return await this.loadTaskCorpusSnapshot(progressCallback);
 	}
 
 	private async loadTasksWithStableBranchSnapshot(

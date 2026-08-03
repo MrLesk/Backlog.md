@@ -463,6 +463,8 @@ const renderApp = async (
 	path: string,
 	options: {
 		advanceHealthSocket?: boolean;
+		afterInitialStatus?: (container: HTMLElement) => void | Promise<void>;
+		beforeInitialStatus?: (container: HTMLElement) => void | Promise<void>;
 		manualDuplicatePlan?: boolean;
 		operationRef?: { current?: FetchOperation };
 	} = {},
@@ -500,7 +502,13 @@ const renderApp = async (
 		);
 		await Promise.resolve();
 	});
+	if (options.beforeInitialStatus) {
+		await act(async () => options.beforeInitialStatus?.(container as HTMLElement));
+	}
 	await act(async () => operation.settle("initial status"));
+	if (options.afterInitialStatus) {
+		await act(async () => options.afterInitialStatus?.(container as HTMLElement));
+	}
 	await act(async () => operation.settle("initial search"));
 	if (controlledTimer) {
 		await act(async () => controlledTimer.advance());
@@ -639,6 +647,21 @@ afterEach(async () => {
 });
 
 describe("task detail routes", () => {
+	it("preserves a retained Core phase when initial data loading starts after the socket connects", async () => {
+		const phase = "Loading tasks from local and remote branches...";
+		let observedWhileSearchPending = false;
+		await renderApp("/board", {
+			beforeInitialStatus: async () => {
+				getAppDataWebSocket().deliver(JSON.stringify({ type: "loading", message: phase }));
+				await Promise.resolve();
+			},
+			afterInitialStatus: (rendered) => {
+				observedWhileSearchPending = rendered.textContent?.includes(phase) ?? false;
+			},
+		});
+		expect(observedWhileSearchPending).toBe(true);
+	});
+
 	it("keeps a newer WebSocket-reconciled task when an earlier reorder response arrives late", async () => {
 		const container = await renderApp("/board?lane=none", { advanceHealthSocket: true });
 		const dataSocket = assertHealthSocketDoesNotShadowDataSocket();

@@ -18,6 +18,7 @@ import {
 	type TaskUpdateInput,
 } from "../types/index.ts";
 import { launchBrowser } from "../utils/browser-launch.ts";
+import type { BrowserLoadingState } from "../utils/browser-loading-state.ts";
 import { resolveMilestoneInputForStorage } from "../utils/milestone-storage.ts";
 import { formatValidPriorityValues, resolvePriorityValue } from "../utils/priority-config.ts";
 import { formatValidStatuses, getCanonicalStatuses, getValidStatuses } from "../utils/status.ts";
@@ -189,6 +190,7 @@ export class BacklogServer {
 	private contentStore: ContentStore | null = null;
 	private searchService: SearchService | null = null;
 	private servicesReadyPromise: Promise<void> | null = null;
+	private browserLoadingState: BrowserLoadingState = { type: "loading", message: null };
 	private unsubscribeContentStore?: () => void;
 	private taskBroadcastTimer?: ReturnType<typeof setTimeout>;
 	private storeReadyBroadcasted = false;
@@ -207,17 +209,26 @@ export class BacklogServer {
 
 	private async ensureServicesReady(): Promise<void> {
 		if (!this.servicesReadyPromise) {
-			const readyPromise = this.initializeServices().catch((error) => {
-				if (this.servicesReadyPromise === readyPromise) this.servicesReadyPromise = null;
-				throw error;
-			});
+			this.publishBrowserLoadingState({ type: "loading", message: null });
+			const readyPromise = this.initializeServices()
+				.then(() => this.publishBrowserLoadingState({ type: "loaded" }))
+				.catch((error) => {
+					if (this.servicesReadyPromise === readyPromise) this.servicesReadyPromise = null;
+					this.publishBrowserLoadingState({
+						type: "error",
+						message: error instanceof Error ? error.message : String(error),
+					});
+					throw error;
+				});
 			this.servicesReadyPromise = readyPromise;
 		}
 		await this.servicesReadyPromise;
 	}
 
 	private async initializeServices(): Promise<void> {
-		const store = await this.core.getContentStore();
+		const store = await this.core.getContentStore((message) => {
+			this.publishBrowserLoadingState({ type: "loading", message });
+		});
 		this.contentStore = store;
 
 		if (!this.unsubscribeContentStore) {
@@ -284,6 +295,16 @@ export class BacklogServer {
 		for (const ws of this.sockets) {
 			try {
 				ws.send("config-updated");
+			} catch {}
+		}
+	}
+
+	private publishBrowserLoadingState(state: BrowserLoadingState) {
+		this.browserLoadingState = state;
+		const message = JSON.stringify(state);
+		for (const ws of this.sockets) {
+			try {
+				ws.send(message);
 			} catch {}
 		}
 	}
@@ -442,6 +463,10 @@ export class BacklogServer {
 				websocket: {
 					open: (ws: ServerWebSocket) => {
 						this.sockets.add(ws);
+						ws.send(JSON.stringify(this.browserLoadingState));
+						if (this.browserLoadingState.type === "loading") {
+							void this.ensureServicesReady().catch(() => {});
+						}
 					},
 					message(ws: ServerWebSocket) {
 						ws.send("pong");
@@ -516,6 +541,7 @@ export class BacklogServer {
 		this.searchService = null;
 		this.contentStore = null;
 		this.servicesReadyPromise = null;
+		this.browserLoadingState = { type: "loading", message: null };
 		this.storeReadyBroadcasted = false;
 
 		// Proactively close WebSocket connections
@@ -602,7 +628,6 @@ export class BacklogServer {
 	private async handleRequest(req: Request, server: Server<unknown>): Promise<Response> {
 		// Handle WebSocket upgrade
 		if (req.headers.get("upgrade") === "websocket") {
-			await this.ensureServicesReady();
 			const success = server.upgrade(req, { data: undefined });
 			if (success) {
 				return new Response(null, { status: 101 }); // WebSocket upgrade response

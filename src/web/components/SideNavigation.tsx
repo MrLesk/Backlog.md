@@ -33,6 +33,39 @@ const hasTaskSearchFilters = (parsedQuery: ReturnType<typeof parseSearchCommandQ
 	);
 };
 
+const LoadingPhase = ({ message, className }: { message?: string | null; className: string }) => (
+	<p className={className} role="status">
+		{message ?? (
+			<span
+				className="inline-block h-3 w-32 animate-pulse rounded bg-gray-300 dark:bg-gray-700"
+				aria-label="Loading content"
+			/>
+		)}
+	</p>
+);
+
+const NavigationCount = ({
+	count,
+	isLoading,
+	error,
+	label,
+}: {
+	count: number;
+	isLoading: boolean;
+	error?: Error | null;
+	label: string;
+}) => {
+	if (isLoading) {
+		return (
+			<span
+				className="inline-block h-3 w-5 animate-pulse rounded bg-gray-300 align-middle dark:bg-gray-700"
+				aria-label={`Loading ${label} count`}
+			/>
+		);
+	}
+	return error ? <span aria-label={`${label} count unavailable`}>—</span> : count;
+};
+
 // Icon components for better semantics and performance
 const Icons = {
 	Tasks: () => (
@@ -227,6 +260,7 @@ interface SideNavigationProps {
 	docs: Document[];
 	decisions: Decision[];
 	isLoading: boolean;
+	loadingMessage?: string | null;
 	error?: Error | null;
 	onRetry?: () => void;
 	onRefreshData: () => Promise<void>;
@@ -237,6 +271,7 @@ const SideNavigation = memo(function SideNavigation({
 	docs, 
 	decisions, 
 	isLoading, 
+	loadingMessage,
 	error, 
 	onRetry
 }: SideNavigationProps) {
@@ -585,9 +620,12 @@ const SideNavigation = memo(function SideNavigation({
 						<div className="flex items-center space-x-3 text-gray-700 dark:text-gray-300">
 							<span className="text-gray-500 dark:text-gray-400"><Icons.Tasks /></span>
 							<span className="text-sm font-semibold uppercase tracking-wider text-gray-600 dark:text-gray-400 whitespace-nowrap">
-								Tasks ({isLoading ? <span className="inline-block h-3 w-5 animate-pulse rounded bg-gray-300 align-middle dark:bg-gray-700" aria-label="Loading task count" /> : taskCount})
+								Tasks (<NavigationCount count={taskCount} isLoading={isLoading} error={error} label="task" />)
 							</span>
 						</div>
+						{isLoading && (
+							<LoadingPhase message={loadingMessage} className="mt-2 text-xs text-gray-500 dark:text-gray-400" />
+						)}
 					</div>
 				)}
 
@@ -688,7 +726,7 @@ const SideNavigation = memo(function SideNavigation({
 									</button>
 									<span className="text-gray-500 dark:text-gray-400"><Icons.Document /></span>
 									<span className="text-sm font-semibold uppercase tracking-wider text-gray-600 dark:text-gray-400 whitespace-nowrap">
-										Documents ({isLoading ? <span className="inline-block h-3 w-5 animate-pulse rounded bg-gray-300 align-middle dark:bg-gray-700" aria-label="Loading document count" /> : docs.length})
+										Documents (<NavigationCount count={docs.length} isLoading={isLoading} error={error} label="document" />)
 									</span>
 								</div>
 									<button
@@ -707,7 +745,9 @@ const SideNavigation = memo(function SideNavigation({
 							{!isDocsCollapsed && (
 								<div className="space-y-1">
 									{isLoading ? (
-										<p className="px-3 py-2 text-sm text-gray-500 dark:text-gray-400">Loading documents…</p>
+										<LoadingPhase message={loadingMessage} className="px-3 py-2 text-sm text-gray-500 dark:text-gray-400" />
+									) : error ? (
+										<p className="px-3 py-2 text-sm text-gray-500 dark:text-gray-400">Documents unavailable</p>
 									) : filteredDocs.length === 0 ? (
 										<p className="px-3 py-2 text-sm text-gray-500 dark:text-gray-400">No documents</p>
 									) : searchQuery.trim() ? (
@@ -751,7 +791,7 @@ const SideNavigation = memo(function SideNavigation({
 									</button>
 									<span className="text-gray-500 dark:text-gray-400"><Icons.Decision /></span>
 									<span className="text-sm font-semibold uppercase tracking-wider text-gray-600 dark:text-gray-400 whitespace-nowrap">
-										Decisions ({isLoading ? <span className="inline-block h-3 w-5 animate-pulse rounded bg-gray-300 align-middle dark:bg-gray-700" aria-label="Loading decision count" /> : decisions.length})
+										Decisions (<NavigationCount count={decisions.length} isLoading={isLoading} error={error} label="decision" />)
 									</span>
 								</div>
 								{/* Temporarily hidden - decisions editing not ready */}
@@ -773,7 +813,9 @@ const SideNavigation = memo(function SideNavigation({
 							{!isDecisionsCollapsed && (
 								<div className="space-y-1">
 									{isLoading ? (
-										<p className="px-3 py-2 text-sm text-gray-500 dark:text-gray-400">Loading decisions…</p>
+										<LoadingPhase message={loadingMessage} className="px-3 py-2 text-sm text-gray-500 dark:text-gray-400" />
+									) : error ? (
+										<p className="px-3 py-2 text-sm text-gray-500 dark:text-gray-400">Decisions unavailable</p>
 									) : filteredDecisions.length === 0 ? (
 										<p className="px-3 py-2 text-sm text-gray-500 dark:text-gray-400">No decisions</p>
 									) : (

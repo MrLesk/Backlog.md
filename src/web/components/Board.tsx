@@ -22,6 +22,8 @@ interface BoardProps {
   onTasksUpdated?: (tasks: Task[], requestTask: Task) => void;
   statuses: string[];
   isLoading: boolean;
+  loadingMessage?: string | null;
+  loadError?: Error | null;
   milestones: string[];
   availableLabels: string[];
   milestoneEntities: Milestone[];
@@ -55,6 +57,8 @@ const Board: React.FC<BoardProps> = ({
   onTasksUpdated,
   statuses,
   isLoading,
+  loadingMessage,
+  loadError,
   availableLabels,
   milestoneEntities,
   archivedMilestones,
@@ -457,14 +461,6 @@ const Board: React.FC<BoardProps> = ({
     }));
   };
 
-  if (isLoading && statuses.length === 0) {
-    return (
-      <div className="flex items-center justify-center py-8">
-        <div className="text-lg text-gray-600 dark:text-gray-300 transition-colors duration-200">Loading tasks...</div>
-      </div>
-    );
-  }
-
   // Dynamic layout using flexbox:
   // - Columns are flex items with equal growth (flex-1) to divide space evenly
   // - A minimum width keeps columns readable; beyond available space, container scrolls horizontally
@@ -576,7 +572,33 @@ const Board: React.FC<BoardProps> = ({
         </div>
       </div>
 
-      {laneMode === 'milestone' ? (
+      {loadError ? (
+        <div className="rounded-lg border border-red-200 bg-red-50 px-6 py-10 text-center dark:border-red-800 dark:bg-red-900/20" role="alert">
+          <p className="font-medium text-red-700 dark:text-red-300">Failed to load tasks</p>
+          <p className="mt-1 text-sm text-red-600 dark:text-red-400">{loadError.message}</p>
+          {onRefreshData && (
+            <button
+              type="button"
+              onClick={() => void onRefreshData()}
+              className="mt-4 rounded-md bg-red-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-red-700 dark:bg-red-700 dark:hover:bg-red-600"
+            >
+              Retry
+            </button>
+          )}
+        </div>
+      ) : isLoading ? (
+        <div className="rounded-lg border border-gray-200 bg-gray-50 px-6 py-10 dark:border-gray-700 dark:bg-gray-800/30" role="status" aria-label="Loading tasks">
+          <div className="mx-auto flex max-w-xl items-center justify-center gap-3 text-gray-600 dark:text-gray-300">
+            <span className="h-5 w-5 animate-spin rounded-full border-2 border-gray-300 border-t-blue-500 dark:border-gray-600 dark:border-t-blue-400" aria-hidden="true" />
+            {loadingMessage && <p>{loadingMessage}</p>}
+          </div>
+          <div className="mx-auto mt-6 grid max-w-3xl grid-cols-3 gap-4" aria-hidden="true">
+            {[0, 1, 2].map((column) => (
+              <div key={column} className="h-24 animate-pulse rounded-lg bg-gray-200/70 dark:bg-gray-700/60" />
+            ))}
+          </div>
+        </div>
+      ) : laneMode === 'milestone' ? (
         <div className="space-y-6">
           {visibleLanes.map((lane) => {
             const taskCount = laneTaskCount(lane.key);
