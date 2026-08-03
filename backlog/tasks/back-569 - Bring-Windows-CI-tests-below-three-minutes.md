@@ -5,7 +5,7 @@ status: In Progress
 assignee:
   - '@codex'
 created_date: '2026-08-03 16:30'
-updated_date: '2026-08-03 18:36'
+updated_date: '2026-08-03 18:38'
 labels: []
 dependencies: []
 priority: high
@@ -67,4 +67,6 @@ Platform-profile CI evidence: Windows executed all 373 contract tests successful
 Final full-suite flake diagnosis: cli-launcher signal fixtures consistently hung at the global timeout under four-worker Ubuntu runs, including after raising the timeout to 30s, proving a runtime deadlock rather than slow execution. The published cli.cjs launcher has a Node shebang, but the test invoked it through Bun's process.execPath. Changed the harness to launch cli.cjs with Node, matching production and avoiding Bun's nested signalled-child deadlock; restored the normal 10s bound.
 
 Repeat Windows platform run found editor discovery timing out while spawning where cmd under process load. Replaced the OS-specific where/which subprocess with Bun.which, preserving command resolution semantics in-process. The focused editor discovery tests now pass in about 3ms total instead of depending on another process.
+
+Launcher harness simplification: invoking cli.cjs with Node did not make the three nested signal/ENOEXEC process fixtures deterministic under the four-worker Ubuntu suite. Replaced them with pure tests for architecture-signal classification, install-error classification (including ENOEXEC), and conventional 128+signal exit mapping. Retained the real installed-binary launcher integration test, so public process forwarding remains covered without redundant nested-process failure fixtures.
 <!-- SECTION:NOTES:END -->
