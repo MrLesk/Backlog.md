@@ -383,6 +383,8 @@ export class Core {
 				this.git.setConfig(config);
 				try {
 					await this.git.fetch();
+				} catch (error) {
+					console.error("Failed to refresh remote refs:", error);
 				} finally {
 					this.lastRemoteRefRefreshAt = Date.now();
 				}

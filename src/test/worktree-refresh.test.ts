@@ -145,4 +145,29 @@ describe("worktree task refresh", () => {
 		expect(fetchSpy).toHaveBeenCalledTimes(1);
 		expect(refreshSpy).toHaveBeenCalledTimes(0);
 	});
+
+	it("keeps browser reads available when a leased remote refresh fails", async () => {
+		mainCore = new Core(TEST_DIR, { enableWatchers: true });
+		await initializeTestProject(mainCore, "Remote Ref Failure", true);
+		const config = await mainCore.filesystem.loadConfig();
+		if (!config) {
+			throw new Error("Expected initialized config");
+		}
+		await mainCore.filesystem.saveConfig({
+			...config,
+			checkActiveBranches: true,
+			remoteOperations: true,
+		});
+
+		await mainCore.queryTasks({ includeCrossBranch: true });
+		const fetchSpy = spyOn(mainCore.gitOps, "fetch").mockRejectedValue(new Error("remote unavailable"));
+		const errorSpy = spyOn(console, "error").mockImplementation(() => {});
+		(mainCore as unknown as { lastRemoteRefRefreshAt: number }).lastRemoteRefRefreshAt = 0;
+
+		await expect(mainCore.queryTasks({ includeCrossBranch: true })).resolves.toBeArray();
+		await expect(mainCore.queryTasks({ includeCrossBranch: true })).resolves.toBeArray();
+
+		expect(fetchSpy).toHaveBeenCalledTimes(1);
+		expect(errorSpy).toHaveBeenCalledWith("Failed to refresh remote refs:", expect.any(Error));
+	});
 });

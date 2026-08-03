@@ -34,11 +34,21 @@ describe("SideNavigation task loading", () => {
 		expect(loading).toContain("Kanban Board");
 		expect(loading).toContain("All Tasks");
 		expect(loading).toContain('aria-label="Loading task count"');
+		expect(loading).toContain('aria-label="Loading document count"');
+		expect(loading).toContain('aria-label="Loading decision count"');
+		expect(loading).toContain("Loading documents…");
+		expect(loading).toContain("Loading decisions…");
+		expect(loading).not.toContain("No documents");
+		expect(loading).not.toContain("No decisions");
 
 		const loaded = renderNavigation(false, 3).replaceAll("<!-- -->", "");
 		expect(loaded).toContain("Kanban Board");
 		expect(loaded).toContain("All Tasks");
 		expect(loaded).toContain("Tasks (3)");
+		expect(loaded).toContain("Documents (0)");
+		expect(loaded).toContain("Decisions (0)");
+		expect(loaded).toContain("No documents");
+		expect(loaded).toContain("No decisions");
 		expect(loaded).not.toContain('aria-label="Loading task count"');
 	});
 });

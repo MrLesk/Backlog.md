@@ -687,7 +687,9 @@ const SideNavigation = memo(function SideNavigation({
 											{isDocsCollapsed ? <Icons.ChevronRight /> : <Icons.ChevronDown />}
 									</button>
 									<span className="text-gray-500 dark:text-gray-400"><Icons.Document /></span>
-									<span className="text-sm font-semibold uppercase tracking-wider text-gray-600 dark:text-gray-400 whitespace-nowrap">Documents ({docs.length})</span>
+									<span className="text-sm font-semibold uppercase tracking-wider text-gray-600 dark:text-gray-400 whitespace-nowrap">
+										Documents ({isLoading ? <span className="inline-block h-3 w-5 animate-pulse rounded bg-gray-300 align-middle dark:bg-gray-700" aria-label="Loading document count" /> : docs.length})
+									</span>
 								</div>
 									<button
 										onClick={handleCreateDocument}
@@ -704,7 +706,9 @@ const SideNavigation = memo(function SideNavigation({
 							{/* Document List */}
 							{!isDocsCollapsed && (
 								<div className="space-y-1">
-									{filteredDocs.length === 0 ? (
+									{isLoading ? (
+										<p className="px-3 py-2 text-sm text-gray-500 dark:text-gray-400">Loading documents…</p>
+									) : filteredDocs.length === 0 ? (
 										<p className="px-3 py-2 text-sm text-gray-500 dark:text-gray-400">No documents</p>
 									) : searchQuery.trim() ? (
 										// Search results stay flat, bypassing folder grouping
@@ -746,7 +750,9 @@ const SideNavigation = memo(function SideNavigation({
 											{isDecisionsCollapsed ? <Icons.ChevronRight /> : <Icons.ChevronDown />}
 									</button>
 									<span className="text-gray-500 dark:text-gray-400"><Icons.Decision /></span>
-									<span className="text-sm font-semibold uppercase tracking-wider text-gray-600 dark:text-gray-400 whitespace-nowrap">Decisions ({decisions.length})</span>
+									<span className="text-sm font-semibold uppercase tracking-wider text-gray-600 dark:text-gray-400 whitespace-nowrap">
+										Decisions ({isLoading ? <span className="inline-block h-3 w-5 animate-pulse rounded bg-gray-300 align-middle dark:bg-gray-700" aria-label="Loading decision count" /> : decisions.length})
+									</span>
 								</div>
 								{/* Temporarily hidden - decisions editing not ready */}
 								{/*{false && (*/}
@@ -766,7 +772,9 @@ const SideNavigation = memo(function SideNavigation({
 							{/* Decision List */}
 							{!isDecisionsCollapsed && (
 								<div className="space-y-1">
-									{filteredDecisions.length === 0 ? (
+									{isLoading ? (
+										<p className="px-3 py-2 text-sm text-gray-500 dark:text-gray-400">Loading decisions…</p>
+									) : filteredDecisions.length === 0 ? (
 										<p className="px-3 py-2 text-sm text-gray-500 dark:text-gray-400">No decisions</p>
 									) : (
 										filteredDecisions.map((decision) => (
