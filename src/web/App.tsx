@@ -33,6 +33,7 @@ import { collectArchivedMilestoneKeys, collectMilestoneIds, milestoneKey } from 
 import { getTaskTypeValues } from '../utils/task-type-config';
 import { createUrlPath } from './utils/urlHelpers';
 import { filterKanbanTasks } from './utils/kanban-tasks';
+import { parseBrowserLoadingState } from '../utils/browser-loading-state';
 
 type TaskRouteNavigationState = {
   taskModalFrom?: string;
@@ -201,6 +202,7 @@ function AppContent() {
   const [docs, setDocs] = useState<Document[]>([]);
   const [decisions, setDecisions] = useState<Decision[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [loadingMessage, setLoadingMessage] = useState<string | null>(null);
   const [loadError, setLoadError] = useState<Error | null>(null);
   const [duplicateRepairPlan, setDuplicateRepairPlan] = useState<DuplicateRepairPlan | null>(null);
   
@@ -208,6 +210,8 @@ function AppContent() {
   const previousOnlineRef = useRef<boolean | null>(null);
   const hasBeenRunningRef = useRef(false);
   const loadAllDataRequestRef = useRef(0);
+  const pendingDataRequestRef = useRef<number | null>(null);
+  const protocolOnlyLoadingRef = useRef(false);
   const location = useLocation();
   const navigate = useNavigate();
   const tasksRouteWithTitle = useMatch('/tasks/:id/:title');
@@ -297,10 +301,11 @@ function AppContent() {
   const loadAllData = useCallback(async () => {
     const requestId = loadAllDataRequestRef.current + 1;
     loadAllDataRequestRef.current = requestId;
-    let completed = false;
-    try {
-      setIsLoading(true);
-      setLoadError(null);
+	protocolOnlyLoadingRef.current = false;
+		pendingDataRequestRef.current = requestId;
+		try {
+			setIsLoading(true);
+			setLoadError(null);
       const shellDataPromise = Promise.all([
         apiClient.fetchStatuses(),
         apiClient.fetchConfig(),
@@ -343,15 +348,16 @@ function AppContent() {
       }).catch(() => {
         if (loadAllDataRequestRef.current === requestId) setDuplicateRepairPlan(null);
       });
-      completed = true;
     } catch (error) {
       if (loadAllDataRequestRef.current === requestId) {
         console.error('Failed to load data:', error);
         setLoadError(error instanceof Error ? error : new Error('Failed to load data'));
       }
     } finally {
-      if (loadAllDataRequestRef.current === requestId && completed) {
+      if (loadAllDataRequestRef.current === requestId) {
+				pendingDataRequestRef.current = null;
         setIsLoading(false);
+        setLoadingMessage(null);
       }
     }
   }, [applySearchResults]);
@@ -561,15 +567,39 @@ function AppContent() {
   useEffect(() => {
     const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
     const ws = new WebSocket(`${protocol}//${window.location.host}`);
+	let disposed = false;
     ws.onmessage = (event) => {
-      if (event.data === "tasks-updated") {
+	  const loadingState = parseBrowserLoadingState(event.data);
+	  if (loadingState?.type === 'loading') {
+		if (pendingDataRequestRef.current === null) protocolOnlyLoadingRef.current = true;
+		setIsLoading(true);
+		setLoadError(null);
+		setLoadingMessage(loadingState.message);
+	  } else if (loadingState?.type === 'loaded') {
+		const shouldRefresh = protocolOnlyLoadingRef.current && pendingDataRequestRef.current === null;
+		protocolOnlyLoadingRef.current = false;
+		setLoadingMessage(null);
+		if (shouldRefresh) void refreshData();
+	  } else if (loadingState?.type === 'error') {
+		setIsLoading(false);
+		setLoadingMessage(null);
+		setLoadError(new Error(loadingState.message));
+      } else if (event.data === "tasks-updated") {
         refreshData();
       } else if (event.data === "config-updated") {
         // Reload statuses when config changes
         loadAllData();
       }
     };
-    return () => ws.close();
+	ws.onclose = () => {
+		if (disposed || !protocolOnlyLoadingRef.current || pendingDataRequestRef.current !== null) return;
+		protocolOnlyLoadingRef.current = false;
+		void refreshData();
+	};
+	return () => {
+		disposed = true;
+		ws.close();
+	};
   }, [refreshData, loadAllData]);
 
   const handleSubmitTask = async (taskData: Partial<Task>) => {
@@ -644,6 +674,8 @@ function AppContent() {
       milestoneEntities={milestoneEntities}
       archivedMilestones={archivedMilestones}
       isLoading={isLoading}
+      loadingMessage={loadingMessage}
+      loadError={loadError}
       hideEmptyColumns={config?.hideEmptyColumns ?? false}
       dateFormat={config?.dateFormat}
       availablePriorities={config?.priorities}
@@ -682,6 +714,7 @@ function AppContent() {
                 docs={docs}
                 decisions={decisions}
                 isLoading={isLoading}
+                loadingMessage={loadingMessage}
                 error={loadError}
                 onRefreshData={refreshData}
                 duplicateRepairPlan={duplicateRepairPlan}

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "bun:test";
 import { renderToString } from "react-dom/server";
 import { MemoryRouter } from "react-router-dom";
+import BoardPage from "../web/components/BoardPage";
 import SideNavigation from "../web/components/SideNavigation";
 
 const storage = new Map<string, string>();
@@ -15,7 +16,7 @@ globalThis.localStorage = {
 	},
 } as Storage;
 
-const renderNavigation = (isLoading: boolean, taskCount: number, error?: Error): string =>
+const renderNavigation = (isLoading: boolean, taskCount: number, error?: Error, loadingMessage?: string): string =>
 	renderToString(
 		<MemoryRouter>
 			<SideNavigation
@@ -23,6 +24,7 @@ const renderNavigation = (isLoading: boolean, taskCount: number, error?: Error):
 				docs={[]}
 				decisions={[]}
 				isLoading={isLoading}
+				loadingMessage={loadingMessage}
 				error={error}
 				onRetry={async () => {}}
 				onRefreshData={async () => {}}
@@ -30,16 +32,36 @@ const renderNavigation = (isLoading: boolean, taskCount: number, error?: Error):
 		</MemoryRouter>,
 	);
 
+const renderBoard = (isLoading: boolean, error?: Error, loadingMessage?: string): string =>
+	renderToString(
+		<MemoryRouter>
+			<BoardPage
+				onEditTask={() => {}}
+				onNewTask={() => {}}
+				tasks={[]}
+				statuses={["To Do", "Done"]}
+				milestones={[]}
+				availableLabels={[]}
+				milestoneEntities={[]}
+				archivedMilestones={[]}
+				isLoading={isLoading}
+				loadingMessage={loadingMessage}
+				loadError={error}
+				onRefreshData={async () => {}}
+			/>
+		</MemoryRouter>,
+	);
+
 describe("SideNavigation task loading", () => {
 	it("keeps navigation mounted while only the task count is loading", () => {
-		const loading = renderNavigation(true, 0);
+		const phase = "Loading tasks from 7 local branches...";
+		const loading = renderNavigation(true, 0, undefined, phase);
 		expect(loading).toContain("Kanban Board");
 		expect(loading).toContain("All Tasks");
 		expect(loading).toContain('aria-label="Loading task count"');
 		expect(loading).toContain('aria-label="Loading document count"');
 		expect(loading).toContain('aria-label="Loading decision count"');
-		expect(loading).toContain("Loading documents…");
-		expect(loading).toContain("Loading decisions…");
+		expect(loading).toContain(phase);
 		expect(loading).not.toContain("No documents");
 		expect(loading).not.toContain("No decisions");
 
@@ -54,12 +76,44 @@ describe("SideNavigation task loading", () => {
 		expect(loaded).not.toContain('aria-label="Loading task count"');
 	});
 
-	it("keeps the deferred loading presentation and exposes retry after a corpus failure", () => {
-		const failed = renderNavigation(true, 0, new Error("corpus failed"));
+	it("shows a distinct unavailable presentation and exposes retry after a corpus failure", () => {
+		const failed = renderNavigation(false, 0, new Error("corpus failed"));
 		expect(failed).toContain("Failed to load navigation");
 		expect(failed).toContain("Retry");
-		expect(failed).toContain('aria-label="Loading task count"');
+		expect(failed).toContain('aria-label="task count unavailable"');
+		expect(failed).not.toContain('aria-label="Loading task count"');
 		expect(failed).not.toContain("No documents");
 		expect(failed).not.toContain("No decisions");
+	});
+
+	it("keeps a retryable load failure visible when the sidebar is collapsed", () => {
+		storage.set("sideNavCollapsed", "true");
+		try {
+			const failed = renderNavigation(false, 0, new Error("corpus failed"));
+			expect(failed).toContain('role="alert"');
+			expect(failed).toContain('aria-label="Failed to load navigation. Retry"');
+			expect(failed).toContain("Retry");
+		} finally {
+			storage.delete("sideNavCollapsed");
+		}
+	});
+
+	it("keeps Kanban loading, loaded-empty, and error states distinct", () => {
+		const phase = "Applying latest task states from branch scans...";
+		const loading = renderBoard(true, undefined, phase);
+		expect(loading).toContain("Kanban Board");
+		expect(loading).toContain(phase);
+		expect(loading).toContain('role="status"');
+		expect(loading).not.toContain("Empty");
+
+		const loadedEmpty = renderBoard(false);
+		expect(loadedEmpty).toContain("Empty");
+		expect(loadedEmpty).not.toContain(phase);
+
+		const failed = renderBoard(false, new Error("corpus failed"));
+		expect(failed).toContain("Failed to load tasks");
+		expect(failed).toContain("corpus failed");
+		expect(failed).toContain("Retry");
+		expect(failed).not.toContain("Empty");
 	});
 });

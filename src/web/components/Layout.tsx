@@ -14,6 +14,7 @@ interface LayoutProps {
 	docs: Document[];
 	decisions: Decision[];
 	isLoading: boolean;
+	loadingMessage?: string | null;
 	error?: Error | null;
 	onRefreshData: () => Promise<void>;
 	duplicateRepairPlan?: DuplicateRepairPlan | null;
@@ -27,6 +28,7 @@ export default function Layout({
 	docs,
 	decisions,
 	isLoading,
+	loadingMessage,
 	error,
 	onRefreshData,
 	duplicateRepairPlan = null,
@@ -39,6 +41,7 @@ export default function Layout({
 				docs={docs}
 				decisions={decisions}
 				isLoading={isLoading}
+				loadingMessage={loadingMessage}
 				error={error}
 				onRetry={onRefreshData}
 				onRefreshData={onRefreshData}

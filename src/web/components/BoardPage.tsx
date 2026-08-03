@@ -18,6 +18,8 @@ interface BoardPageProps {
 	milestoneEntities: Milestone[];
 	archivedMilestones: Milestone[];
 	isLoading: boolean;
+	loadingMessage?: string | null;
+	loadError?: Error | null;
 	hideEmptyColumns?: boolean;
 	dateFormat?: string;
 	availablePriorities?: string[];
@@ -36,6 +38,8 @@ export default function BoardPage({
 	milestoneEntities,
 	archivedMilestones,
 	isLoading,
+	loadingMessage,
+	loadError,
 	hideEmptyColumns,
 	dateFormat,
 	availablePriorities,
@@ -171,6 +175,8 @@ export default function BoardPage({
 				milestoneEntities={milestoneEntities}
 				archivedMilestones={archivedMilestones}
 				isLoading={isLoading}
+				loadingMessage={loadingMessage}
+				loadError={loadError}
 				availableLabels={availableLabels}
 				laneMode={laneMode}
 				onLaneChange={handleLaneChange}
