@@ -120,4 +120,29 @@ describe("worktree task refresh", () => {
 		expect(taskEvents).toEqual([]);
 		unsubscribe();
 	});
+
+	it("refreshes remote refs once when the browser read lease expires", async () => {
+		mainCore = new Core(TEST_DIR, { enableWatchers: true });
+		await initializeTestProject(mainCore, "Remote Ref Refresh", true);
+		const config = await mainCore.filesystem.loadConfig();
+		if (!config) {
+			throw new Error("Expected initialized config");
+		}
+		await mainCore.filesystem.saveConfig({
+			...config,
+			checkActiveBranches: true,
+			remoteOperations: true,
+		});
+
+		await mainCore.queryTasks({ includeCrossBranch: true });
+		const fetchSpy = spyOn(mainCore.gitOps, "fetch");
+		const refreshSpy = spyOn(await mainCore.getContentStore(), "refreshTasks");
+		(mainCore as unknown as { lastRemoteRefRefreshAt: number }).lastRemoteRefRefreshAt = 0;
+
+		await mainCore.queryTasks({ includeCrossBranch: true });
+		await mainCore.queryTasks({ includeCrossBranch: true });
+
+		expect(fetchSpy).toHaveBeenCalledTimes(1);
+		expect(refreshSpy).toHaveBeenCalledTimes(0);
+	});
 });

@@ -5,7 +5,7 @@ status: Done
 assignee:
   - '@Hubble'
 created_date: '2026-08-03 18:03'
-updated_date: '2026-08-03 18:04'
+updated_date: '2026-08-03 18:22'
 labels: []
 dependencies: []
 type: bug
@@ -33,9 +33,6 @@ Render the browser shell immediately while the shared watcher-backed Core corpus
 - [x] #1 bunx tsc --noEmit passes when TypeScript touched
 - [x] #2 bun run check . passes when formatting/linting touched
 - [x] #3 bun test (or scoped test) passes
-- [ ] #4 bunx tsc --noEmit passes when TypeScript touched
-- [ ] #5 bun run check . passes when formatting/linting touched
-- [ ] #6 bun test (or scoped test) passes
 <!-- DOD:END -->
 
 ## Implementation Plan
@@ -56,6 +53,8 @@ Replaces the branch-local BACK-569 coordination task after a concurrently publis
 Implemented a deferred, coalesced browser service boundary: the HTTP shell and lightweight metadata routes respond before the shared watcher-backed Core corpus is ready, while task/search/duplicate and WebSocket consumers reuse the same initialization. Repeated cross-branch reads now refresh only when the active-branch/config fingerprint changes. Task identity fingerprints use lifecycle identity fields instead of hydrated payload placement. The app applies lightweight shell data first, reuses loaded tasks in the modal, keeps sidebar navigation mounted with a count-only loading placeholder, and filters completed lifecycle entries only at the Kanban presentation boundary; archived identities remain excluded by the identity index.
 
 Validation: focused browser/cache/publication suites passed (including 18/18 primary regressions and 13/13 server boundary/publication tests); bunx tsc --noEmit, bun run check ., and bun run build passed. Full bun test completed in 486.33s with 1883 pass, 5 skipped, and one deferred-initialization expectation failure; that test was updated to initialize through the task-list boundary and then passed in isolation. The affected server suites passed afterward.
+
+PR review follow-up: added a bounded remote-ref refresh before cached cross-branch fingerprints so long-lived browser sessions discover upstream changes without resuming unconditional full corpus scans. Removed duplicate Definition of Done defaults and made the async browser regression fixtures platform-independent.
 <!-- SECTION:NOTES:END -->
 
 ## Final Summary

@@ -119,6 +119,8 @@ interface CreatedTaskRollbackResult {
 	workingPathRestored: boolean;
 }
 
+const REMOTE_REF_REFRESH_INTERVAL_MS = 60_000;
+
 interface TaskQueryOptions {
 	filters?: TaskListFilter;
 	query?: string;
@@ -205,6 +207,8 @@ export class Core {
 	private activeBranchFingerprint: string | null = null;
 	private activeBranchFingerprintPromise: Promise<string> | null = null;
 	private activeBranchRefreshPromise: Promise<void> | null = null;
+	private remoteRefRefreshPromise: Promise<void> | null = null;
+	private lastRemoteRefRefreshAt = 0;
 
 	constructor(projectRoot: string, options?: { enableWatchers?: boolean }) {
 		this.fs = new FileSystem(projectRoot);
@@ -364,9 +368,40 @@ export class Core {
 		return await this.activeBranchFingerprintPromise;
 	}
 
+	private async refreshRemoteRefsForTaskRead(config: BacklogConfig | null): Promise<void> {
+		if (
+			config?.checkActiveBranches === false ||
+			config?.remoteOperations === false ||
+			config?.filesystemOnly === true ||
+			Date.now() - this.lastRemoteRefRefreshAt < REMOTE_REF_REFRESH_INTERVAL_MS
+		) {
+			return;
+		}
+
+		if (!this.remoteRefRefreshPromise) {
+			const refreshPromise = (async () => {
+				this.git.setConfig(config);
+				try {
+					await this.git.fetch();
+				} finally {
+					this.lastRemoteRefRefreshAt = Date.now();
+				}
+			})();
+			this.remoteRefRefreshPromise = refreshPromise;
+			const clearRefreshPromise = () => {
+				if (this.remoteRefRefreshPromise === refreshPromise) this.remoteRefRefreshPromise = null;
+			};
+			void refreshPromise.then(clearRefreshPromise, clearRefreshPromise);
+		}
+
+		await this.remoteRefRefreshPromise;
+	}
+
 	/** Refresh the existing cross-branch store only when relevant config or refs changed. */
 	async refreshTasksForTaskRead(): Promise<boolean> {
 		while (true) {
+			const config = await this.fs.loadConfig();
+			await this.refreshRemoteRefsForTaskRead(config);
 			const fingerprint = await this.getActiveBranchFingerprint();
 			if (fingerprint === this.activeBranchFingerprint) {
 				return false;
@@ -691,6 +726,8 @@ export class Core {
 		this.activeBranchFingerprint = null;
 		this.activeBranchFingerprintPromise = null;
 		this.activeBranchRefreshPromise = null;
+		this.remoteRefRefreshPromise = null;
+		this.lastRemoteRefRefreshAt = 0;
 	}
 
 	// Backward compatibility aliases
@@ -3188,6 +3225,7 @@ export class Core {
 			return await this.loadTasksWithStableBranchSnapshot(progressCallback, abortSignal, options, snapshotAttempt + 1);
 		}
 		this.activeBranchFingerprint = snapshotAfter;
+		this.lastRemoteRefRefreshAt = Date.now();
 		return {
 			tasks: filteredTasks,
 			activeTasks: localTasks,
