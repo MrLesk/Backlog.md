@@ -637,7 +637,7 @@ describe("BacklogServer task SPA fallback", () => {
 	it("fails closed when active origin/main uses the same ID at a different task path", async () => {
 		await restartWithActiveRemoteCollision();
 
-		const response = await request("/api/task/BACK-1");
+		const response = await request("/api/task/BACK-1", {}, 5000);
 		expect(response.status).toBe(409);
 		expect((await response.json()) as { error: string }).toEqual({
 			error: "Task ID BACK-1 is ambiguous. Repair duplicate task IDs before opening it.",
@@ -647,7 +647,7 @@ describe("BacklogServer task SPA fallback", () => {
 	it("returns the local task when active origin/main has a padded version at the same path", async () => {
 		await restartWithActiveRemoteCollision(true);
 
-		const response = await request("/api/task/BACK-1");
+		const response = await request("/api/task/BACK-1", {}, 5000);
 		expect(response.status).toBe(200);
 		expect(((await response.json()) as Task).title).toBe("Main collision task");
 	});
