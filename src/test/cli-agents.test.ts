@@ -3,13 +3,14 @@ import { mkdir, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { $ } from "bun";
 import { Core } from "../index.ts";
-import { createUniqueTestDir, initializeTestProject, safeCleanup } from "./test-utils.ts";
+import { getTestCliPath } from "./test-cli.ts";
+import { createUniqueTestDir, initializeFilesystemTestProject, safeCleanup } from "./test-utils.ts";
 
 let TEST_DIR: string;
 let NON_BACKLOG_DIR: string | undefined;
 
 describe("CLI agents command", () => {
-	const cliPath = join(process.cwd(), "src", "cli.ts");
+	const cliPath = getTestCliPath();
 
 	beforeEach(async () => {
 		TEST_DIR = createUniqueTestDir("test-agents-cli");
@@ -18,12 +19,10 @@ describe("CLI agents command", () => {
 
 		// Initialize git repo first
 		await $`git init`.cwd(TEST_DIR).quiet();
-		await $`git config user.name "Test User"`.cwd(TEST_DIR).quiet();
-		await $`git config user.email test@example.com`.cwd(TEST_DIR).quiet();
 
 		// Initialize backlog project using Core
 		const core = new Core(TEST_DIR);
-		await initializeTestProject(core, "Agents Test Project");
+		await initializeFilesystemTestProject(core, "Agents Test Project");
 	});
 
 	afterEach(async () => {
@@ -100,8 +99,6 @@ describe("CLI agents command", () => {
 
 		// Initialize git repo
 		await $`git init`.cwd(NON_BACKLOG_DIR).quiet();
-		await $`git config user.name "Test User"`.cwd(NON_BACKLOG_DIR).quiet();
-		await $`git config user.email test@example.com`.cwd(NON_BACKLOG_DIR).quiet();
 
 		const result = await $`bun ${cliPath} agents --update-instructions`.cwd(NON_BACKLOG_DIR).nothrow().quiet();
 

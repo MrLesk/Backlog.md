@@ -27,8 +27,6 @@ async function createProject(projectRoot: string, projectName: string): Promise<
 	const bootstrap = new McpServer(projectRoot, "Bootstrap");
 	await bootstrap.filesystem.ensureBacklogStructure();
 	await $`git init -b main`.cwd(projectRoot).quiet();
-	await $`git config user.name "Test User"`.cwd(projectRoot).quiet();
-	await $`git config user.email test@example.com`.cwd(projectRoot).quiet();
 	await initializeTestProject(bootstrap, projectName);
 	await bootstrap.stop();
 }

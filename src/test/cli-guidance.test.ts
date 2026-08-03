@@ -4,12 +4,13 @@ import { join } from "node:path";
 import { $ } from "bun";
 import { CLI_AGENT_NUDGE } from "../index.ts";
 import { BACKLOG_CWD_ENV } from "../utils/runtime-cwd.ts";
+import { getTestCliPath } from "./test-cli.ts";
 import { createUniqueTestDir, safeCleanup } from "./test-utils.ts";
 
 const normalizeCliOutput = (output: string) => output.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
 
 let TEST_DIR: string;
-const CLI_PATH = join(process.cwd(), "src", "cli.ts");
+const CLI_PATH = getTestCliPath();
 
 describe("CLI Integration", () => {
 	beforeEach(async () => {
@@ -426,9 +427,6 @@ describe("CLI Integration", () => {
 		});
 
 		it("keeps validation errors concise and actionable", async () => {
-			await $`git init -b main`.cwd(TEST_DIR).quiet();
-			await $`git config user.name "Test User"`.cwd(TEST_DIR).quiet();
-			await $`git config user.email test@example.com`.cwd(TEST_DIR).quiet();
 			await $`bun ${CLI_PATH} init ErrorProj --defaults --integration-mode none`.cwd(TEST_DIR).quiet();
 
 			const priority = await $`bun ${CLI_PATH} task list --priority urgent`.cwd(TEST_DIR).nothrow().quiet();

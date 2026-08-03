@@ -1,12 +1,12 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { mkdir } from "node:fs/promises";
-import { join } from "node:path";
 import { $ } from "bun";
 import { Core } from "../core/backlog.ts";
 import type { Task } from "../types";
-import { createUniqueTestDir, initializeTestProject, safeCleanup } from "./test-utils.ts";
+import { getTestCliPath } from "./test-cli.ts";
+import { createUniqueTestDir, initializeFilesystemTestProject, safeCleanup } from "./test-utils.ts";
 
-const CLI_PATH = join(process.cwd(), "src", "cli.ts");
+const CLI_PATH = getTestCliPath();
 
 let TEST_DIR: string;
 let core: Core;
@@ -16,12 +16,8 @@ describe("CLI auto-plain behavior in non-TTY runs", () => {
 		TEST_DIR = createUniqueTestDir("test-cli-auto-plain-non-tty");
 		await mkdir(TEST_DIR, { recursive: true });
 
-		await $`git init -b main`.cwd(TEST_DIR).quiet();
-		await $`git config user.name "Test User"`.cwd(TEST_DIR).quiet();
-		await $`git config user.email test@example.com`.cwd(TEST_DIR).quiet();
-
 		core = new Core(TEST_DIR);
-		await initializeTestProject(core, "Auto Plain Non-TTY Test");
+		await initializeFilesystemTestProject(core, "Auto Plain Non-TTY Test");
 
 		const seedTask: Task = {
 			id: "task-1",

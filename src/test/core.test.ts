@@ -27,8 +27,6 @@ describe("Core", () => {
 
 		// Initialize git repository for testing
 		await $`git init -b main`.cwd(TEST_DIR).quiet();
-		await $`git config user.name "Test User"`.cwd(TEST_DIR).quiet();
-		await $`git config user.email test@example.com`.cwd(TEST_DIR).quiet();
 	});
 
 	afterEach(async () => {
@@ -76,7 +74,7 @@ describe("Core", () => {
 		};
 
 		beforeEach(async () => {
-			await initializeTestProject(core, "Test Project", true);
+			await initializeTestProject(core, "Test Project");
 		});
 
 		async function commitPaddedTaskLifecycleVariant(type: "archived" | "completed"): Promise<void> {
@@ -1164,7 +1162,7 @@ describe("Core", () => {
 
 	describe("draft operations", () => {
 		beforeEach(async () => {
-			await initializeTestProject(core, "Draft Project", true);
+			await initializeTestProject(core, "Draft Project");
 		});
 
 		it("should create draft without auto-commit", async () => {

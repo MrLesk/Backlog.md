@@ -4,9 +4,10 @@ import { join } from "node:path";
 import { $ } from "bun";
 import { Core } from "../core/backlog.ts";
 import type { BacklogConfig, Task } from "../types/index.ts";
+import { getTestCliPath } from "./test-cli.ts";
 import { createUniqueTestDir, initializeTestProject, safeCleanup } from "./test-utils.ts";
 
-const CLI_PATH = process.env.TUI_TEST_CLI_PATH?.trim() || join(process.cwd(), "src", "cli.ts");
+const CLI_PATH = process.env.TUI_TEST_CLI_PATH?.trim() || getTestCliPath();
 const CLI_RUNTIME = process.env.TUI_TEST_CLI_RUNTIME?.trim() ?? "bun";
 const TRANSCRIPT_DIR = join(process.cwd(), "tmp", "tui-interactive-transcripts");
 const EXPECT_PATH = Bun.which("expect");
@@ -110,8 +111,6 @@ setTimeout(() => {
 	);
 
 	await $`git init -b main`.cwd(testDir).quiet();
-	await $`git config user.email test@example.com`.cwd(testDir).quiet();
-	await $`git config user.name "Test User"`.cwd(testDir).quiet();
 
 	const core = new Core(testDir);
 	await initializeTestProject(core, `Interactive ${options.scenario}`);
@@ -227,8 +226,6 @@ async function runLiveRefreshScenario(): Promise<{ title: string; transcriptPath
 	const expectScriptPath = join(testDir, `${scenario}.expect`);
 
 	await $`git init -b main`.cwd(testDir).quiet();
-	await $`git config user.email test@example.com`.cwd(testDir).quiet();
-	await $`git config user.name "Test User"`.cwd(testDir).quiet();
 	const core = new Core(testDir);
 	await initializeTestProject(core, "Interactive live refresh");
 	const config = await core.filesystem.loadConfig();
@@ -310,8 +307,6 @@ async function runSelectedTaskRemovalScenario(): Promise<{ transcriptPath: strin
 	const expectScriptPath = join(testDir, `${scenario}.expect`);
 
 	await $`git init -b main`.cwd(testDir).quiet();
-	await $`git config user.email test@example.com`.cwd(testDir).quiet();
-	await $`git config user.name "Test User"`.cwd(testDir).quiet();
 	const core = new Core(testDir);
 	await initializeTestProject(core, "Interactive selected task removal");
 	const config = await core.filesystem.loadConfig();

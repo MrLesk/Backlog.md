@@ -17,8 +17,6 @@ describe("task type field", () => {
 		core = new Core(TEST_DIR);
 		await core.filesystem.ensureBacklogStructure();
 		await $`git init -b main`.cwd(TEST_DIR).quiet();
-		await $`git config user.name "Test User"`.cwd(TEST_DIR).quiet();
-		await $`git config user.email test@example.com`.cwd(TEST_DIR).quiet();
 		await initializeTestProject(core, "Type Test Project");
 	});
 

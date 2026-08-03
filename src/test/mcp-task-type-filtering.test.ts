@@ -21,8 +21,6 @@ describe("MCP task type filtering adapter", () => {
 		server = new McpServer(testDir, "Test instructions");
 		await server.filesystem.ensureBacklogStructure();
 		await $`git init -b main`.cwd(testDir).quiet();
-		await $`git config user.name "Test User"`.cwd(testDir).quiet();
-		await $`git config user.email test@example.com`.cwd(testDir).quiet();
 		await initializeTestProject(server, "MCP Type Filter Project");
 
 		const config = await server.filesystem.loadConfig();

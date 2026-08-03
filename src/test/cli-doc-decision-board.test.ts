@@ -5,10 +5,11 @@ import { $ } from "bun";
 import { Core } from "../index.ts";
 import { parseTask } from "../markdown/parser.ts";
 import type { Decision, Document, Task } from "../types/index.ts";
+import { getTestCliPath } from "./test-cli.ts";
 import { createUniqueTestDir, initializeTestProject, safeCleanup } from "./test-utils.ts";
 
 let TEST_DIR: string;
-const CLI_PATH = join(process.cwd(), "src", "cli.ts");
+const CLI_PATH = getTestCliPath();
 
 describe("CLI Integration", () => {
 	beforeEach(async () => {
@@ -23,8 +24,6 @@ describe("CLI Integration", () => {
 	describe("doc and decision commands", () => {
 		beforeEach(async () => {
 			await $`git init -b main`.cwd(TEST_DIR).quiet();
-			await $`git config user.name "Test User"`.cwd(TEST_DIR).quiet();
-			await $`git config user.email test@example.com`.cwd(TEST_DIR).quiet();
 
 			const core = new Core(TEST_DIR);
 			await initializeTestProject(core, "Doc Test Project");
@@ -179,8 +178,6 @@ describe("CLI Integration", () => {
 	describe("board view command", () => {
 		beforeEach(async () => {
 			await $`git init -b main`.cwd(TEST_DIR).quiet();
-			await $`git config user.name "Test User"`.cwd(TEST_DIR).quiet();
-			await $`git config user.email test@example.com`.cwd(TEST_DIR).quiet();
 
 			const core = new Core(TEST_DIR);
 			await initializeTestProject(core, "Board Test Project", true);

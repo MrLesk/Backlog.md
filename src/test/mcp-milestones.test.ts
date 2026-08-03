@@ -4,7 +4,7 @@ import { $ } from "bun";
 import { McpServer } from "../mcp/server.ts";
 import { registerMilestoneTools } from "../mcp/tools/milestones/index.ts";
 import { registerTaskTools } from "../mcp/tools/tasks/index.ts";
-import { createUniqueTestDir, initializeTestProject, safeCleanup } from "./test-utils.ts";
+import { createUniqueTestDir, initializeFilesystemTestProject, safeCleanup } from "./test-utils.ts";
 
 const getText = (content: unknown[] | undefined, index = 0): string => {
 	const item = content?.[index] as { text?: string } | undefined;
@@ -46,17 +46,22 @@ ${description}
 	await Bun.write(join(mcpServer.filesystem.milestonesDir, filename), content);
 }
 
+async function enableGitTestProject(): Promise<void> {
+	await $`git init -b main`.cwd(TEST_DIR).quiet();
+
+	const config = await loadConfigOrThrow(server);
+	config.filesystemOnly = false;
+	await server.filesystem.saveConfig(config);
+	await server.ensureConfigLoaded();
+}
+
 describe("MCP milestone tools", () => {
 	beforeEach(async () => {
 		TEST_DIR = createUniqueTestDir("mcp-milestones");
 		server = new McpServer(TEST_DIR, "Test instructions");
 		await server.filesystem.ensureBacklogStructure();
 
-		await $`git init -b main`.cwd(TEST_DIR).quiet();
-		await $`git config user.name "Test User"`.cwd(TEST_DIR).quiet();
-		await $`git config user.email test@example.com`.cwd(TEST_DIR).quiet();
-
-		await initializeTestProject(server, "Test Project");
+		await initializeFilesystemTestProject(server, "Test Project");
 
 		const config = await loadConfigOrThrow(server);
 		registerTaskTools(server, config);
@@ -408,6 +413,7 @@ describe("MCP milestone tools", () => {
 	});
 
 	it("keeps git clean when renaming milestones with autoCommit enabled", async () => {
+		await enableGitTestProject();
 		await server.testInterface.callTool({
 			params: { name: "milestone_add", arguments: { name: "Release 1.0" } },
 		});
@@ -434,6 +440,7 @@ describe("MCP milestone tools", () => {
 	});
 
 	it("preserves the original commit error when milestone rename rollback fails", async () => {
+		await enableGitTestProject();
 		await server.testInterface.callTool({
 			params: { name: "milestone_add", arguments: { name: "Release 1.0" } },
 		});
@@ -505,6 +512,7 @@ describe("MCP milestone tools", () => {
 	});
 
 	it("treats no-op milestone renames as successful without creating commits", async () => {
+		await enableGitTestProject();
 		await server.testInterface.callTool({
 			params: { name: "milestone_add", arguments: { name: "Release 1.0" } },
 		});
@@ -531,6 +539,7 @@ describe("MCP milestone tools", () => {
 	});
 
 	it("does not include unrelated staged files in milestone auto-commits", async () => {
+		await enableGitTestProject();
 		await server.testInterface.callTool({
 			params: { name: "milestone_add", arguments: { name: "Release 1.0" } },
 		});
@@ -564,6 +573,7 @@ describe("MCP milestone tools", () => {
 	});
 
 	it("does not include unrelated staged files in milestone archive auto-commits", async () => {
+		await enableGitTestProject();
 		await server.testInterface.callTool({
 			params: { name: "milestone_add", arguments: { name: "Release 1.0" } },
 		});

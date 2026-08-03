@@ -17,8 +17,6 @@ describe("Auto-commit configuration", () => {
 
 		// Configure git for tests
 		await $`git init`.cwd(TEST_DIR).quiet();
-		await $`git config user.email test@example.com`.cwd(TEST_DIR).quiet();
-		await $`git config user.name "Test User"`.cwd(TEST_DIR).quiet();
 
 		core = new Core(TEST_DIR);
 		await initializeTestProject(core, "Test Auto-commit Project", true);

@@ -5,9 +5,10 @@ import { $ } from "bun";
 import { Core } from "../core/backlog.ts";
 import { serializeTask } from "../markdown/serializer.ts";
 import type { Task } from "../types/index.ts";
+import { getTestCliPath } from "./test-cli.ts";
 import { createUniqueTestDir, safeCleanup } from "./test-utils.ts";
 
-const cliPath = join(process.cwd(), "src/cli.ts");
+const cliPath = getTestCliPath();
 let testDir: string;
 let core: Core;
 
@@ -94,8 +95,6 @@ describe("backlog doctor", () => {
 		config.remoteOperations = false;
 		await core.filesystem.saveConfig(config);
 		await $`git init -b main`.cwd(testDir).quiet();
-		await $`git config user.name "Test User"`.cwd(testDir).quiet();
-		await $`git config user.email test@example.com`.cwd(testDir).quiet();
 		const alphaPath = join(core.filesystem.tasksDir, "task-20 - Branch Alpha.md");
 		await Bun.write(alphaPath, serializeTask(makeTask("TASK-20", "Branch Alpha")));
 		await $`git add .`.cwd(testDir).quiet();

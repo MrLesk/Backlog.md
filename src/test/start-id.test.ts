@@ -3,24 +3,18 @@ import { mkdir, readdir } from "node:fs/promises";
 import { join } from "node:path";
 import { $ } from "bun";
 import { Core } from "../index.ts";
-import { createUniqueTestDir, initializeTestProject, safeCleanup } from "./test-utils.ts";
+import { getTestCliPath } from "./test-cli.ts";
+import { createUniqueTestDir, initializeFilesystemTestProject, safeCleanup } from "./test-utils.ts";
 
 let TEST_DIR: string;
-const CLI_PATH = join(process.cwd(), "src", "cli.ts");
-
-async function initGitRepo(dir: string) {
-	await $`git init -b main`.cwd(dir).quiet();
-	await $`git config user.name "Test User"`.cwd(dir).quiet();
-	await $`git config user.email test@example.com`.cwd(dir).quiet();
-}
+const CLI_PATH = getTestCliPath();
 
 describe("task id generation", () => {
 	beforeEach(async () => {
 		TEST_DIR = createUniqueTestDir("test-start-id");
 		await mkdir(TEST_DIR, { recursive: true });
-		await initGitRepo(TEST_DIR);
 		const core = new Core(TEST_DIR);
-		await initializeTestProject(core, "ID Test");
+		await initializeFilesystemTestProject(core, "ID Test");
 	});
 
 	afterEach(async () => {

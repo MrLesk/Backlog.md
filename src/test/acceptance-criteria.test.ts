@@ -1,24 +1,21 @@
 import { afterEach, beforeEach, describe, expect, it, test } from "bun:test";
 import { mkdir } from "node:fs/promises";
-import { join } from "node:path";
 import { $ } from "bun";
 import { Core } from "../core/backlog.ts";
 import { AcceptanceCriteriaManager } from "../markdown/structured-sections.ts";
-import { createUniqueTestDir, initializeTestProject, safeCleanup } from "./test-utils.ts";
+import { getTestCliPath } from "./test-cli.ts";
+import { createUniqueTestDir, initializeFilesystemTestProject, safeCleanup } from "./test-utils.ts";
 
 let TEST_DIR: string;
-const CLI_PATH = join(process.cwd(), "src", "cli.ts");
+const CLI_PATH = getTestCliPath();
 
 describe("Acceptance Criteria CLI", () => {
 	beforeEach(async () => {
 		TEST_DIR = createUniqueTestDir("test-acceptance-criteria");
 		await mkdir(TEST_DIR, { recursive: true });
-		await $`git init -b main`.cwd(TEST_DIR).quiet();
-		await $`git config user.name "Test User"`.cwd(TEST_DIR).quiet();
-		await $`git config user.email test@example.com`.cwd(TEST_DIR).quiet();
 
 		const core = new Core(TEST_DIR);
-		await initializeTestProject(core, "AC Test Project");
+		await initializeFilesystemTestProject(core, "AC Test Project");
 	});
 
 	afterEach(async () => {
@@ -501,7 +498,7 @@ Test task with acceptance criteria
 		});
 
 		it("should handle multiple operations in one command", async () => {
-			const result = await $`bun ${CLI_PATH} task edit 1 --check-ac 1 --remove-ac 2 --ac "New criterion"`
+			const result = await $`bun ${CLI_PATH} task edit 1 --check-ac 1 --check-ac 3 --remove-ac 2 --ac "New criterion"`
 				.cwd(TEST_DIR)
 				.quiet();
 			expect(result.exitCode).toBe(0);
@@ -511,7 +508,7 @@ Test task with acceptance criteria
 			expect(task?.rawContent).toContain("- [x] #1 First criterion");
 			expect(task?.rawContent).not.toContain("Second criterion");
 			expect(task?.rawContent).toContain("- [ ] #2 Third criterion"); // Renumbered
-			expect(task?.rawContent).toContain("- [ ] #3 New criterion");
+			expect(task?.rawContent).toContain("- [x] #3 New criterion"); // Added, then checked by the repeated flag
 		});
 
 		it("should error on invalid index for --remove-ac", async () => {
@@ -599,24 +596,6 @@ Test task with acceptance criteria
 });
 
 describe("AcceptanceCriteriaManager unit tests", () => {
-	let TEST_DIR_UNIT: string;
-	const CLI_PATH_UNIT = join(process.cwd(), "src", "cli.ts");
-
-	beforeEach(async () => {
-		TEST_DIR_UNIT = createUniqueTestDir("test-acceptance-criteria-unit");
-		await mkdir(TEST_DIR_UNIT, { recursive: true });
-		await $`git init -b main`.cwd(TEST_DIR_UNIT).quiet();
-		await $`git config user.name "Test User"`.cwd(TEST_DIR_UNIT).quiet();
-		await $`git config user.email test@example.com`.cwd(TEST_DIR_UNIT).quiet();
-
-		const core = new Core(TEST_DIR_UNIT);
-		await initializeTestProject(core, "AC Unit Test Project");
-	});
-
-	afterEach(async () => {
-		await safeCleanup(TEST_DIR_UNIT);
-	});
-
 	test("should parse criteria with stable markers", () => {
 		const content = `## Acceptance Criteria
 <!-- AC:BEGIN -->
@@ -681,113 +660,5 @@ describe("AcceptanceCriteriaManager unit tests", () => {
 		expect(reducedBody).toContain("### Optional");
 		expect(reducedBody).toContain("- [ ] #1 Must pass authentication");
 		expect(reducedBody).not.toContain("Show detailed logs");
-	});
-
-	describe("Multi-value CLI operations", () => {
-		it("should support multiple --ac flags in task create", async () => {
-			const result =
-				await $`bun run ${CLI_PATH_UNIT} task create "Multi AC Test" --ac "First" --ac "Second" --ac "Third"`.cwd(
-					TEST_DIR_UNIT,
-				);
-			expect(result.exitCode).toBe(0);
-
-			// Parse task ID from output
-			const taskId = result.stdout.toString().match(/Created task (TASK-\d+)/)?.[1];
-			expect(taskId).toBeTruthy();
-
-			// Verify ACs were created
-			const taskResult = await $`bun run ${CLI_PATH_UNIT} task ${taskId} --plain`.cwd(TEST_DIR_UNIT);
-			expect(taskResult.stdout.toString()).toContain("- [ ] #1 First");
-			expect(taskResult.stdout.toString()).toContain("- [ ] #2 Second");
-			expect(taskResult.stdout.toString()).toContain("- [ ] #3 Third");
-		});
-
-		it("should support multiple --check-ac flags in single command", async () => {
-			// Create task with multiple ACs
-			const createResult =
-				await $`bun run ${CLI_PATH_UNIT} task create "Check Test" --ac "First" --ac "Second" --ac "Third" --ac "Fourth"`.cwd(
-					TEST_DIR_UNIT,
-				);
-			const taskId = createResult.stdout.toString().match(/Created task (TASK-\d+)/)?.[1];
-
-			// Check multiple ACs at once
-			const checkResult = await $`bun run ${CLI_PATH_UNIT} task edit ${taskId} --check-ac 1 --check-ac 3`.cwd(
-				TEST_DIR_UNIT,
-			);
-			expect(checkResult.exitCode).toBe(0);
-
-			// Verify correct ACs were checked
-			const taskResult = await $`bun run ${CLI_PATH_UNIT} task ${taskId} --plain`.cwd(TEST_DIR_UNIT);
-			expect(taskResult.stdout.toString()).toContain("- [x] #1 First");
-			expect(taskResult.stdout.toString()).toContain("- [ ] #2 Second");
-			expect(taskResult.stdout.toString()).toContain("- [x] #3 Third");
-			expect(taskResult.stdout.toString()).toContain("- [ ] #4 Fourth");
-		});
-
-		it("should support mixed AC operations in single command", async () => {
-			// Create task with multiple ACs
-			const createResult =
-				await $`bun run ${CLI_PATH_UNIT} task create "Mixed Test" --ac "First" --ac "Second" --ac "Third" --ac "Fourth"`.cwd(
-					TEST_DIR_UNIT,
-				);
-			const taskId = createResult.stdout.toString().match(/Created task (TASK-\d+)/)?.[1];
-
-			// Check some ACs first
-			await $`bun run ${CLI_PATH_UNIT} task edit ${taskId} --check-ac 1 --check-ac 2 --check-ac 3`.cwd(TEST_DIR_UNIT);
-
-			// Now do mixed operations: uncheck 1, keep 2 checked, check 4
-			const mixedResult = await $`bun run ${CLI_PATH_UNIT} task edit ${taskId} --uncheck-ac 1 --check-ac 4`.cwd(
-				TEST_DIR_UNIT,
-			);
-			expect(mixedResult.exitCode).toBe(0);
-
-			// Verify final state
-			const taskResult = await $`bun run ${CLI_PATH_UNIT} task ${taskId} --plain`.cwd(TEST_DIR_UNIT);
-			expect(taskResult.stdout.toString()).toContain("- [ ] #1 First"); // unchecked
-			expect(taskResult.stdout.toString()).toContain("- [x] #2 Second"); // remained checked
-			expect(taskResult.stdout.toString()).toContain("- [x] #3 Third"); // remained checked
-			expect(taskResult.stdout.toString()).toContain("- [x] #4 Fourth"); // newly checked
-		});
-
-		it("should support multiple --remove-ac flags with proper renumbering", async () => {
-			// Create task with 5 ACs
-			const createResult =
-				await $`bun run ${CLI_PATH_UNIT} task create "Remove Test" --ac "First" --ac "Second" --ac "Third" --ac "Fourth" --ac "Fifth"`.cwd(
-					TEST_DIR_UNIT,
-				);
-			const taskId = createResult.stdout.toString().match(/Created task (TASK-\d+)/)?.[1];
-
-			// Remove ACs 2 and 4 (should be processed in descending order to avoid index shifting)
-			const removeResult = await $`bun run ${CLI_PATH_UNIT} task edit ${taskId} --remove-ac 2 --remove-ac 4`.cwd(
-				TEST_DIR_UNIT,
-			);
-			expect(removeResult.exitCode).toBe(0);
-
-			// Verify remaining ACs are properly renumbered
-			const taskResult = await $`bun run ${CLI_PATH_UNIT} task ${taskId} --plain`.cwd(TEST_DIR_UNIT);
-			expect(taskResult.stdout.toString()).toContain("- [ ] #1 First"); // original #1
-			expect(taskResult.stdout.toString()).toContain("- [ ] #2 Third"); // original #3 -> #2
-			expect(taskResult.stdout.toString()).toContain("- [ ] #3 Fifth"); // original #5 -> #3
-			expect(taskResult.stdout.toString()).not.toContain("Second"); // removed
-			expect(taskResult.stdout.toString()).not.toContain("Fourth"); // removed
-		});
-
-		it("should handle invalid indices gracefully in multi-value operations", async () => {
-			// Create task with 2 ACs
-			const createResult = await $`bun run ${CLI_PATH_UNIT} task create "Invalid Test" --ac "First" --ac "Second"`.cwd(
-				TEST_DIR_UNIT,
-			);
-			const taskId = createResult.stdout.toString().match(/Created task (TASK-\d+)/)?.[1];
-
-			// Try to check valid and invalid indices
-			const checkResult = await $`bun run ${CLI_PATH_UNIT} task edit ${taskId} --check-ac 1 --check-ac 5`
-				.cwd(TEST_DIR_UNIT)
-				.nothrow();
-			expect(checkResult.exitCode).toBe(1);
-			expect(checkResult.stderr.toString()).toContain("Acceptance criterion #5 not found");
-			expect(checkResult.stderr.toString()).toContain("Available indexes: #1-#2.");
-			expect(checkResult.stderr.toString()).toContain(`backlog task view ${taskId} --plain`);
-			expect(checkResult.stderr.toString()).toContain(`backlog task edit ${taskId} --help`);
-		});
 	});
 });

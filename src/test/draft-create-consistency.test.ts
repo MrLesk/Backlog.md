@@ -3,22 +3,19 @@ import { mkdir, readdir } from "node:fs/promises";
 import { join } from "node:path";
 import { $ } from "bun";
 import { Core } from "../index.ts";
-import { createUniqueTestDir, initializeTestProject, safeCleanup } from "./test-utils.ts";
+import { getTestCliPath } from "./test-cli.ts";
+import { createUniqueTestDir, initializeFilesystemTestProject, safeCleanup } from "./test-utils.ts";
 
 let TEST_DIR: string;
-const CLI_PATH = join(process.cwd(), "src", "cli.ts");
+const CLI_PATH = getTestCliPath();
 
 describe("Draft creation consistency", () => {
 	beforeEach(async () => {
 		TEST_DIR = createUniqueTestDir("test-draft-create-consistency");
 		await mkdir(TEST_DIR, { recursive: true });
 
-		await $`git init -b main`.cwd(TEST_DIR).quiet();
-		await $`git config user.name "Test User"`.cwd(TEST_DIR).quiet();
-		await $`git config user.email "test@example.com"`.cwd(TEST_DIR).quiet();
-
 		const core = new Core(TEST_DIR);
-		await initializeTestProject(core, "Draft Consistency Test Project");
+		await initializeFilesystemTestProject(core, "Draft Consistency Test Project");
 	});
 
 	afterEach(async () => {

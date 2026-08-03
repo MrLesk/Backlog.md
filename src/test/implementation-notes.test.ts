@@ -1,14 +1,14 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import { mkdir } from "node:fs/promises";
-import { join } from "node:path";
 import { $ } from "bun";
 import { Core } from "../core/backlog.ts";
 import { extractStructuredSection } from "../markdown/structured-sections.ts";
 import type { Task } from "../types/index.ts";
-import { createUniqueTestDir, initializeTestProject, safeCleanup } from "./test-utils.ts";
+import { getTestCliPath } from "./test-cli.ts";
+import { createUniqueTestDir, initializeFilesystemTestProject, safeCleanup } from "./test-utils.ts";
 
 let TEST_DIR: string;
-const CLI_PATH = join(process.cwd(), "src", "cli.ts");
+const CLI_PATH = getTestCliPath();
 
 async function editTaskViaCli(
 	options: { taskId: string; notes: string; status?: string },
@@ -25,12 +25,9 @@ describe("Implementation Notes CLI", () => {
 	beforeEach(async () => {
 		TEST_DIR = createUniqueTestDir("test-notes");
 		await mkdir(TEST_DIR, { recursive: true });
-		await $`git init -b main`.cwd(TEST_DIR).quiet();
-		await $`git config user.name "Test User"`.cwd(TEST_DIR).quiet();
-		await $`git config user.email test@example.com`.cwd(TEST_DIR).quiet();
 
 		const core = new Core(TEST_DIR);
-		await initializeTestProject(core, "Implementation Notes Test Project");
+		await initializeFilesystemTestProject(core, "Implementation Notes Test Project");
 	});
 
 	afterEach(async () => {

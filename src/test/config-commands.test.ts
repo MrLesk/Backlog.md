@@ -1,14 +1,14 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import { mkdir } from "node:fs/promises";
-import { join } from "node:path";
 import { $ } from "bun";
 import type { PromptRunner } from "../commands/advanced-config-wizard.ts";
 import { configureAdvancedSettings } from "../commands/configure-advanced-settings.ts";
 import { Core } from "../core/backlog.ts";
-import { createUniqueTestDir, initializeTestProject, safeCleanup } from "./test-utils.ts";
+import { getTestCliPath } from "./test-cli.ts";
+import { createUniqueTestDir, initializeFilesystemTestProject, safeCleanup } from "./test-utils.ts";
 
 let TEST_DIR: string;
-const CLI_PATH = join(process.cwd(), "src", "cli.ts");
+const CLI_PATH = getTestCliPath();
 
 describe("Config commands", () => {
 	let core: Core;
@@ -19,11 +19,9 @@ describe("Config commands", () => {
 
 		// Configure git for tests - required for CI
 		await $`git init`.cwd(TEST_DIR).quiet();
-		await $`git config user.email test@example.com`.cwd(TEST_DIR).quiet();
-		await $`git config user.name "Test User"`.cwd(TEST_DIR).quiet();
 
 		core = new Core(TEST_DIR);
-		await initializeTestProject(core, "Test Config Project");
+		await initializeFilesystemTestProject(core, "Test Config Project");
 	});
 
 	function createPromptStub(sequence: Array<Record<string, unknown>>): PromptRunner {

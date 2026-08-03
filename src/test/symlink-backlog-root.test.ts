@@ -49,8 +49,6 @@ auto_commit: false
 
 	itIfSymlinks("auto-commit writes to the symlinked backlog repo when enabled", async () => {
 		await $`git init`.cwd(backlogDir).quiet();
-		await $`git config user.email test@example.com`.cwd(backlogDir).quiet();
-		await $`git config user.name "Test User"`.cwd(backlogDir).quiet();
 		await writeFile(join(backlogDir, "README.md"), "# Backlog Repo");
 		await $`git add README.md`.cwd(backlogDir).quiet();
 		await $`git commit -m "Initial commit"`.cwd(backlogDir).quiet();
@@ -90,8 +88,6 @@ auto_commit: false
 		await symlink(join("..", "shared", "backlog"), join(appDir, "backlog"));
 
 		await $`git init -b main`.cwd(repoDir).quiet();
-		await $`git config user.email test@example.com`.cwd(repoDir).quiet();
-		await $`git config user.name "Test User"`.cwd(repoDir).quiet();
 
 		const core = new Core(appDir);
 		const { task } = await core.createTaskFromInput({ title: "Bulk symlink task" }, false);

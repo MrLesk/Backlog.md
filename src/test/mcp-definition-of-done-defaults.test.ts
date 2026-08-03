@@ -28,8 +28,6 @@ describe("MCP Definition of Done default tools", () => {
 		await server.filesystem.ensureBacklogStructure();
 
 		await $`git init -b main`.cwd(testDir).quiet();
-		await $`git config user.name "Test User"`.cwd(testDir).quiet();
-		await $`git config user.email test@example.com`.cwd(testDir).quiet();
 
 		await initializeTestProject(server, "Test Project");
 

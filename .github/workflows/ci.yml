@@ -42,10 +42,15 @@ jobs:
           git diff --exit-code -- bun.nix
       - run: bun run check:types
       - run: bun run lint
+      - name: Bundle CLI for integration tests
+        run: BACKLOG_BUILD_OUTDIR="$RUNNER_TEMP/backlog-test-cli" bun scripts/build.ts
+        shell: bash
       - name: Run tests
+        env:
+          BACKLOG_TEST_CLI_BUNDLE: ${{ runner.temp }}/backlog-test-cli/cli.js
         run: |
           # Isolate test files because some suites intentionally mutate global process state.
-          bun test --isolate --timeout=10000 --max-concurrency=4 --reporter=junit --reporter-outfile=test-results.xml
+          bun test --parallel=4 --isolate --timeout=10000 --max-concurrency=4 --reporter=junit --reporter-outfile=test-results.xml
         shell: bash
       - name: Upload test results
         if: always()

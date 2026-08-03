@@ -54,8 +54,6 @@ describe("addAgentInstructions", () => {
 
 	it("auto-commit preserves unrelated staged work (BACK-563)", async () => {
 		await $`git init`.cwd(TEST_DIR).quiet();
-		await $`git config user.email test@example.com`.cwd(TEST_DIR).quiet();
-		await $`git config user.name "Test User"`.cwd(TEST_DIR).quiet();
 
 		const core = new Core(TEST_DIR);
 		await initializeTestProject(core, "Agent Instructions Scope", true);
@@ -79,8 +77,6 @@ describe("addAgentInstructions", () => {
 			await mkdir(externalRepo, { recursive: true });
 			for (const repo of [TEST_DIR, externalRepo]) {
 				await $`git init -b main`.cwd(repo).quiet();
-				await $`git config user.email test@example.com`.cwd(repo).quiet();
-				await $`git config user.name "Test User"`.cwd(repo).quiet();
 				await Bun.write(join(repo, "README.md"), "baseline\n");
 				await $`git add README.md`.cwd(repo).quiet();
 				await $`git commit -m baseline`.cwd(repo).quiet();

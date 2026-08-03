@@ -18,8 +18,6 @@ describe("worktree task refresh", () => {
 		worktreeAdded = false;
 		await mkdir(TEST_DIR, { recursive: true });
 		await $`git init -b main`.cwd(TEST_DIR).quiet();
-		await $`git config user.name "Test User"`.cwd(TEST_DIR).quiet();
-		await $`git config user.email test@example.com`.cwd(TEST_DIR).quiet();
 	});
 
 	afterEach(async () => {

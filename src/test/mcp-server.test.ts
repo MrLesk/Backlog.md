@@ -33,8 +33,6 @@ async function bootstrapServer(): Promise<McpServer> {
 
 	await server.filesystem.ensureBacklogStructure();
 	await $`git init -b main`.cwd(TEST_DIR).quiet();
-	await $`git config user.name "Test User"`.cwd(TEST_DIR).quiet();
-	await $`git config user.email test@example.com`.cwd(TEST_DIR).quiet();
 
 	await initializeTestProject(server, "Test Project");
 
@@ -291,8 +289,6 @@ describe("McpServer bootstrap", () => {
 		const bootstrap = new McpServer(TEST_DIR, "Bootstrap instructions");
 		await bootstrap.filesystem.ensureBacklogStructure();
 		await $`git init -b main`.cwd(TEST_DIR).quiet();
-		await $`git config user.name "Test User"`.cwd(TEST_DIR).quiet();
-		await $`git config user.email test@example.com`.cwd(TEST_DIR).quiet();
 		await initializeTestProject(bootstrap, "Factory Project");
 		await bootstrap.stop();
 

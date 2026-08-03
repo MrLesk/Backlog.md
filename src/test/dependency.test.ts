@@ -15,8 +15,6 @@ describe("Task Dependencies", () => {
 
 		// Initialize git repository first using the same pattern as other tests
 		await $`git init -b main`.cwd(tempDir).quiet();
-		await $`git config user.name "Test User"`.cwd(tempDir).quiet();
-		await $`git config user.email test@example.com`.cwd(tempDir).quiet();
 
 		core = new Core(tempDir);
 		await initializeTestProject(core, "test-project");

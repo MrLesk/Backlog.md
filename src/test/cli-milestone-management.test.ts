@@ -1,13 +1,13 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import { mkdir, rm } from "node:fs/promises";
-import { join } from "node:path";
 import { $ } from "bun";
 import { Core } from "../index.ts";
 import { MilestoneHandlers } from "../mcp/tools/milestones/handlers.ts";
 import type { CallToolResult } from "../mcp/types.ts";
+import { getTestCliPath } from "./test-cli.ts";
 import { createUniqueTestDir, initializeTestProject, safeCleanup } from "./test-utils.ts";
 
-const cliPath = join(process.cwd(), "src", "cli.ts");
+const cliPath = getTestCliPath();
 
 let TEST_DIR: string;
 let cleanupDirs: string[];
@@ -29,8 +29,6 @@ async function setupProject(dir: string, projectName: string): Promise<Core> {
 	await rm(dir, { recursive: true, force: true });
 	await mkdir(dir, { recursive: true });
 	await $`git init -b main`.cwd(dir).quiet();
-	await $`git config user.name "Test User"`.cwd(dir).quiet();
-	await $`git config user.email test@example.com`.cwd(dir).quiet();
 
 	const core = new Core(dir);
 	await initializeTestProject(core, projectName);

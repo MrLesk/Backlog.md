@@ -4,9 +4,10 @@ import { join } from "node:path";
 import { $ } from "bun";
 import { Core } from "../core/backlog.ts";
 import { GitOperations } from "../git/operations.ts";
+import { getTestCliPath } from "./test-cli.ts";
 import { createUniqueTestDir, initializeTestProject, safeCleanup } from "./test-utils.ts";
 
-const CLI_PATH = join(process.cwd(), "src/cli.ts");
+const CLI_PATH = getTestCliPath();
 
 async function getCommitCountInTest(dir: string): Promise<number> {
 	const result = await $`git rev-list --count HEAD`.cwd(dir).quiet();
@@ -24,8 +25,6 @@ describe("CLI Auto-Commit Behavior with autoCommit: false", () => {
 
 		// Initialize git repository first to avoid interactive prompts and ensure consistency
 		await $`git init -b main`.cwd(TEST_DIR).quiet();
-		await $`git config user.name "Test User"`.cwd(TEST_DIR).quiet();
-		await $`git config user.email test@example.com`.cwd(TEST_DIR).quiet();
 
 		const core = new Core(TEST_DIR);
 		git = new GitOperations(TEST_DIR);
@@ -99,8 +98,6 @@ describe("CLI Auto-Commit Behavior with autoCommit: true", () => {
 		await mkdir(TEST_DIR, { recursive: true });
 
 		await $`git init -b main`.cwd(TEST_DIR).quiet();
-		await $`git config user.name "Test User"`.cwd(TEST_DIR).quiet();
-		await $`git config user.email test@example.com`.cwd(TEST_DIR).quiet();
 
 		const core = new Core(TEST_DIR);
 		git = new GitOperations(TEST_DIR);

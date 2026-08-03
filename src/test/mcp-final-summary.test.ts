@@ -27,8 +27,6 @@ describe("MCP final summary", () => {
 		await mcpServer.filesystem.ensureBacklogStructure();
 
 		await $`git init -b main`.cwd(TEST_DIR).quiet();
-		await $`git config user.name "Test User"`.cwd(TEST_DIR).quiet();
-		await $`git config user.email test@example.com`.cwd(TEST_DIR).quiet();
 
 		await initializeTestProject(mcpServer, "MCP Final Summary Project");
 

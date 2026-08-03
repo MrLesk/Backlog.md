@@ -1,27 +1,24 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import { mkdir } from "node:fs/promises";
-import { join } from "node:path";
 import { $ } from "bun";
 import { Core } from "../index.ts";
-import { createUniqueTestDir, initializeTestProject, safeCleanup } from "./test-utils.ts";
+import { getTestCliPath } from "./test-cli.ts";
+import { createUniqueTestDir, initializeFilesystemTestProject, safeCleanup } from "./test-utils.ts";
 
 let TEST_DIR: string;
 
 describe("CLI parent task filtering", () => {
-	const cliPath = join(process.cwd(), "src", "cli.ts");
+	const cliPath = getTestCliPath();
 
 	beforeEach(async () => {
 		TEST_DIR = createUniqueTestDir("test-parent-filter");
 		await mkdir(TEST_DIR, { recursive: true });
 
 		// Initialize git repo first using shell API (same pattern as other tests)
-		await $`git init -b main`.cwd(TEST_DIR).quiet();
-		await $`git config user.name "Test User"`.cwd(TEST_DIR).quiet();
-		await $`git config user.email test@example.com`.cwd(TEST_DIR).quiet();
 
 		// Initialize backlog project using Core (same pattern as other tests)
 		const core = new Core(TEST_DIR);
-		await initializeTestProject(core, "Parent Filter Test Project");
+		await initializeFilesystemTestProject(core, "Parent Filter Test Project");
 
 		// Create a parent task
 		await core.createTask(

@@ -1,14 +1,14 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import { spawn } from "node:child_process";
 import { mkdir } from "node:fs/promises";
-import { join } from "node:path";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
 import { Core } from "../core/backlog.ts";
 import { initializeProject } from "../core/init.ts";
+import { getTestCliPath } from "./test-cli.ts";
 import { createUniqueTestDir, getPlatformTimeout, isWindows, observeChildClose, safeCleanup } from "./test-utils.ts";
 
-const CLI_PATH = join(process.cwd(), "src", "cli.ts");
+const CLI_PATH = getTestCliPath();
 const START_MESSAGE = "Backlog.md MCP server started (stdio transport)";
 
 let TEST_DIR: string;

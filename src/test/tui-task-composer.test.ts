@@ -18,7 +18,7 @@ import {
 } from "../ui/components/task-composer.ts";
 import { createScreen } from "../ui/tui.ts";
 import { watchTasks } from "../utils/task-watcher.ts";
-import { initializeTestProject, withTimeout } from "./test-utils.ts";
+import { initializeTestProject, retry, withTimeout } from "./test-utils.ts";
 
 function task(overrides: Partial<Task> = {}): Task {
 	return {
@@ -35,8 +35,6 @@ function task(overrides: Partial<Task> = {}): Task {
 
 async function initializeGitRepository(testDir: string): Promise<void> {
 	await $`git init -b main`.cwd(testDir).quiet();
-	await $`git config user.email test@example.com`.cwd(testDir).quiet();
-	await $`git config user.name "Test User"`.cwd(testDir).quiet();
 	await $`git add backlog`.cwd(testDir).quiet();
 	await $`git commit -m init`.cwd(testDir).quiet();
 }
@@ -249,19 +247,28 @@ describe("TUI task composer canonical persistence", () => {
 		await installFailingHook(testDir, `echo attempt >> "${markerPath}"\nsleep 0.4\nexit 1`);
 
 		const creation = core.createTaskFromInput({ title: "Slow failing create" }, true);
-		for (let attempt = 0; attempt < 100 && !(await Bun.file(markerPath).exists()); attempt += 1) {
-			await Bun.sleep(10);
-		}
-		expect(await Bun.file(markerPath).exists()).toBe(true);
-		const created = await core.fs.loadTask("TASK-1");
-		expect(created?.filePath).toBeDefined();
-		const laterContent = "Later user edit must survive.\n";
-		await writeFile(created?.filePath as string, laterContent);
+		void creation.catch(() => undefined);
+		try {
+			await retry(
+				async () => {
+					if (!(await Bun.file(markerPath).exists())) throw new Error("Commit hook has not started");
+					return true;
+				},
+				200,
+				25,
+			);
+			const created = await core.fs.loadTask("TASK-1");
+			expect(created?.filePath).toBeDefined();
+			const laterContent = "Later user edit must survive.\n";
+			await writeFile(created?.filePath as string, laterContent);
 
-		await expect(creation).rejects.toThrow();
-		expect(await readFile(created?.filePath as string, "utf8")).toBe(laterContent);
-		expect((await $`git diff --cached --name-only`.cwd(testDir).text()).trim()).toBe("");
-		expect((await readFile(markerPath, "utf8")).trim().split("\n")).toHaveLength(1);
+			await expect(creation).rejects.toThrow();
+			expect(await readFile(created?.filePath as string, "utf8")).toBe(laterContent);
+			expect((await $`git diff --cached --name-only`.cwd(testDir).text()).trim()).toBe("");
+			expect((await readFile(markerPath, "utf8")).trim().split("\n")).toHaveLength(1);
+		} finally {
+			await Promise.allSettled([creation]);
+		}
 	});
 
 	it("preserves hook-modified task bytes and explains the recovery state", async () => {

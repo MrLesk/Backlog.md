@@ -16,8 +16,6 @@ describe("Board Loading with checkActiveBranches", () => {
 
 		// Initialize git repository for testing
 		await $`git init -b main`.cwd(TEST_DIR).quiet();
-		await $`git config user.name "Test User"`.cwd(TEST_DIR).quiet();
-		await $`git config user.email test@example.com`.cwd(TEST_DIR).quiet();
 
 		// Initialize project with default config
 		await initializeTestProject(core, "Test Project", false);

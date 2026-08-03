@@ -2,8 +2,9 @@ import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import { mkdir, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { $ } from "bun";
+import { getTestCliPath } from "./test-cli.ts";
 
-const CLI_PATH = join(process.cwd(), "src", "cli.ts");
+const CLI_PATH = getTestCliPath();
 
 let TEST_DIR: string;
 
@@ -13,8 +14,6 @@ describe("init Claude agent default", () => {
 		await rm(TEST_DIR, { recursive: true, force: true });
 		await mkdir(TEST_DIR, { recursive: true });
 		await $`git init -b main`.cwd(TEST_DIR).quiet();
-		await $`git config user.name "Test User"`.cwd(TEST_DIR).quiet();
-		await $`git config user.email test@example.com`.cwd(TEST_DIR).quiet();
 	});
 
 	afterEach(async () => {

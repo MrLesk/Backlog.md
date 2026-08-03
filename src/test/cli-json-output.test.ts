@@ -1,11 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import { mkdir } from "node:fs/promises";
-import { join } from "node:path";
 import { $ } from "bun";
 import { Core } from "../index.ts";
-import { createUniqueTestDir, initializeTestProject, safeCleanup } from "./test-utils.ts";
+import { getTestCliPath } from "./test-cli.ts";
+import { createUniqueTestDir, initializeFilesystemTestProject, safeCleanup } from "./test-utils.ts";
 
-const CLI_PATH = join(process.cwd(), "src", "cli.ts");
+const CLI_PATH = getTestCliPath();
 
 let TEST_DIR: string;
 
@@ -17,12 +17,9 @@ describe("CLI JSON output", () => {
 	beforeEach(async () => {
 		TEST_DIR = createUniqueTestDir("test-cli-json-output");
 		await mkdir(TEST_DIR, { recursive: true });
-		await $`git init -b main`.cwd(TEST_DIR).quiet();
-		await $`git config user.name "Test User"`.cwd(TEST_DIR).quiet();
-		await $`git config user.email test@example.com`.cwd(TEST_DIR).quiet();
 
 		const core = new Core(TEST_DIR);
-		await initializeTestProject(core, "JSON Output Test");
+		await initializeFilesystemTestProject(core, "JSON Output Test");
 		await core.createTask(
 			{
 				id: "task-1",
@@ -201,12 +198,9 @@ describe("CLI JSON output", () => {
 		const customTestDir = createUniqueTestDir("test-cli-json-output-custom-dir");
 		try {
 			await mkdir(customTestDir, { recursive: true });
-			await $`git init -b main`.cwd(customTestDir).quiet();
-			await $`git config user.name "Test User"`.cwd(customTestDir).quiet();
-			await $`git config user.email test@example.com`.cwd(customTestDir).quiet();
 
 			const core = new Core(customTestDir);
-			await initializeTestProject(core, "Custom JSON Output Test", false, "planning/backlog-data");
+			await initializeFilesystemTestProject(core, "Custom JSON Output Test", "planning/backlog-data");
 			await core.filesystem.saveDocument({
 				id: "doc-1",
 				title: "Custom guide",
