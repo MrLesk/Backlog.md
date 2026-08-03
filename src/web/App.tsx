@@ -201,6 +201,7 @@ function AppContent() {
   const [docs, setDocs] = useState<Document[]>([]);
   const [decisions, setDecisions] = useState<Decision[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [loadError, setLoadError] = useState<Error | null>(null);
   const [duplicateRepairPlan, setDuplicateRepairPlan] = useState<DuplicateRepairPlan | null>(null);
   
   const { isOnline } = useHealthCheckContext();
@@ -296,8 +297,10 @@ function AppContent() {
   const loadAllData = useCallback(async () => {
     const requestId = loadAllDataRequestRef.current + 1;
     loadAllDataRequestRef.current = requestId;
+    let completed = false;
     try {
       setIsLoading(true);
+      setLoadError(null);
       const shellDataPromise = Promise.all([
         apiClient.fetchStatuses(),
         apiClient.fetchConfig(),
@@ -337,13 +340,17 @@ function AppContent() {
       );
       void apiClient.fetchDuplicateTaskRepairPlan().then((duplicatePlan) => {
         if (loadAllDataRequestRef.current === requestId) setDuplicateRepairPlan(duplicatePlan);
-      }).catch(() => {});
+      }).catch(() => {
+        if (loadAllDataRequestRef.current === requestId) setDuplicateRepairPlan(null);
+      });
+      completed = true;
     } catch (error) {
       if (loadAllDataRequestRef.current === requestId) {
         console.error('Failed to load data:', error);
+        setLoadError(error instanceof Error ? error : new Error('Failed to load data'));
       }
     } finally {
-      if (loadAllDataRequestRef.current === requestId) {
+      if (loadAllDataRequestRef.current === requestId && completed) {
         setIsLoading(false);
       }
     }
@@ -675,6 +682,7 @@ function AppContent() {
                 docs={docs}
                 decisions={decisions}
                 isLoading={isLoading}
+                error={loadError}
                 onRefreshData={refreshData}
                 duplicateRepairPlan={duplicateRepairPlan}
               />

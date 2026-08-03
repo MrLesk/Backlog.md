@@ -117,10 +117,18 @@ describe("BacklogServer loopback binding", () => {
 		await server.start(port, false);
 		const searchResponse = fetch(`http://127.0.0.1:${port}/api/search`);
 		await loadStarted;
+		let statisticsResolved = false;
+		const statisticsResponse = fetch(`http://127.0.0.1:${port}/api/statistics`).then((result) => {
+			statisticsResolved = true;
+			return result;
+		});
 		const response = await fetch(`http://127.0.0.1:${port}/api/status`);
 		expect(response.status).toBe(200);
+		await Bun.sleep(20);
+		expect(statisticsResolved).toBe(false);
 
 		releaseLoad();
 		await searchResponse;
+		expect((await statisticsResponse).status).toBe(200);
 	});
 });

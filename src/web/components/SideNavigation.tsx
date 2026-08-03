@@ -563,7 +563,7 @@ const SideNavigation = memo(function SideNavigation({
 
 			<nav className="flex-1 overflow-y-auto">
 				{/* Error State */}
-				{error && !isLoading && !isCollapsed && (
+				{error && !isCollapsed && (
 					<div className="px-4 py-4">
 						<div className="text-center p-4 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg">
 							<p className="text-sm text-red-700 dark:text-red-400 mb-2">Failed to load navigation</p>

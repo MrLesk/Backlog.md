@@ -15,7 +15,7 @@ globalThis.localStorage = {
 	},
 } as Storage;
 
-const renderNavigation = (isLoading: boolean, taskCount: number): string =>
+const renderNavigation = (isLoading: boolean, taskCount: number, error?: Error): string =>
 	renderToString(
 		<MemoryRouter>
 			<SideNavigation
@@ -23,6 +23,8 @@ const renderNavigation = (isLoading: boolean, taskCount: number): string =>
 				docs={[]}
 				decisions={[]}
 				isLoading={isLoading}
+				error={error}
+				onRetry={async () => {}}
 				onRefreshData={async () => {}}
 			/>
 		</MemoryRouter>,
@@ -50,5 +52,14 @@ describe("SideNavigation task loading", () => {
 		expect(loaded).toContain("No documents");
 		expect(loaded).toContain("No decisions");
 		expect(loaded).not.toContain('aria-label="Loading task count"');
+	});
+
+	it("keeps the deferred loading presentation and exposes retry after a corpus failure", () => {
+		const failed = renderNavigation(true, 0, new Error("corpus failed"));
+		expect(failed).toContain("Failed to load navigation");
+		expect(failed).toContain("Retry");
+		expect(failed).toContain('aria-label="Loading task count"');
+		expect(failed).not.toContain("No documents");
+		expect(failed).not.toContain("No decisions");
 	});
 });

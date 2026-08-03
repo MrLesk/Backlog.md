@@ -1705,6 +1705,7 @@ export class BacklogServer {
 
 	private async handleGetStatistics(): Promise<Response> {
 		try {
+			await this.ensureServicesReady();
 			// Load tasks using the same logic as CLI overview
 			const { tasks, drafts, statuses, priorities } = await this.core.loadAllTasksForStatistics();
 
