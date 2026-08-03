@@ -1,9 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
-import { $ } from "bun";
 import { McpServer } from "../mcp/server.ts";
 import { registerTaskTools } from "../mcp/tools/tasks/index.ts";
 import type { JsonSchema } from "../mcp/validation/validators.ts";
-import { createUniqueTestDir, initializeTestProject, safeCleanup } from "./test-utils.ts";
+import { createUniqueTestDir, initializeFilesystemTestProject, safeCleanup } from "./test-utils.ts";
 
 let testDir: string;
 let server: McpServer;
@@ -20,8 +19,7 @@ describe("MCP task type filtering adapter", () => {
 		testDir = createUniqueTestDir("mcp-task-type-filtering");
 		server = new McpServer(testDir, "Test instructions");
 		await server.filesystem.ensureBacklogStructure();
-		await $`git init -b main`.cwd(testDir).quiet();
-		await initializeTestProject(server, "MCP Type Filter Project");
+		await initializeFilesystemTestProject(server, "MCP Type Filter Project");
 
 		const config = await server.filesystem.loadConfig();
 		if (!config) throw new Error("Expected test config");

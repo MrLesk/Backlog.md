@@ -5,7 +5,7 @@ status: In Progress
 assignee:
   - '@codex'
 created_date: '2026-08-03 16:30'
-updated_date: '2026-08-03 17:54'
+updated_date: '2026-08-03 18:07'
 labels: []
 dependencies: []
 priority: high
@@ -53,4 +53,8 @@ Initial GitHub evidence: 12 recent successful Windows test steps took 766-1050 s
 Direction correction: file sharding is rejected as the primary solution because it multiplies setup and masks repeated full-CLI and Git initialization costs. No sharding implementation was started. The investigation will use the existing JUnit baseline to redesign the test execution architecture before touching CI parallelism.
 
 Architecture findings: 91% of sequential runtime was in CLI subprocess, Git, MCP, TUI, and HTTP boundaries; 516 pure unit tests totaled under one second, so test count was not the bottleneck. Local full suite improved from 1,413.81s sequential to 398.15s with four file workers. After removing duplicate coverage, using a prebuilt CLI for subprocess tests, defaulting non-Git fixtures to filesystem-only, and configuring Git identity once per runner, the same 1,874-test suite completed in 247.94s locally with four workers. Representative reductions: acceptance criteria 61.84s to 11.49s; MCP tasks 50.71s to 6.84s; MCP milestones 43.92s to 11.95s; TUI composer about 129.66s under contention to 78.00s standalone. The previous sharding direction remains rejected; every OS still runs the identical full suite.
+
+Architecture v3: converted seven additional MCP suites to filesystem-only setup, retaining explicit Git initialization only for three document auto-commit/index-boundary tests. The 33 affected tests pass in 9.19s. A full local four-worker run completed in 269.99s (1842 pass, 19 platform skips, 13 known local environment failures), versus 247.94s in v2; the variance is concentrated in unrelated long-running CLI/Git/TUI suites, so use GitHub Windows timing as the acceptance measurement. Windows test CI now skips actions/cache because the latest cache restore/save cost about 48s while bun install cost 24s.
+
+Architecture v3: converted seven additional MCP suites to filesystem-only setup, retaining explicit Git initialization only for three document auto-commit/index-boundary tests. The 33 affected tests pass in 9.19s. A full local four-worker run completed in 269.99s (1842 pass, 19 platform skips, 13 known local environment failures), versus 247.94s in v2; the variance is concentrated in unrelated long-running CLI/Git/TUI suites, so use GitHub Windows timing as the acceptance measurement. Windows test CI now skips actions/cache because the latest cache restore/save cost about 48s while bun install cost 24s.
 <!-- SECTION:NOTES:END -->
