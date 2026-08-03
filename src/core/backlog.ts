@@ -307,11 +307,11 @@ export class Core {
 			// Use loadTasks as the task loader to include cross-branch tasks
 			this.contentStore = new ContentStore(
 				this.fs,
-				() => this.loadContentStoreCorpus(progressCallback),
+				(callback) => this.loadContentStoreCorpus(callback),
 				this.enableWatchers,
 			);
 		}
-		await this.contentStore.ensureInitialized();
+		await this.contentStore.ensureInitialized(progressCallback);
 		return this.contentStore;
 	}
 

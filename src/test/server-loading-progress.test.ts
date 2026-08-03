@@ -10,6 +10,7 @@ const sockets: WebSocket[] = [];
 
 type ServerInternals = {
 	core: {
+		getContentStore: () => Promise<{ refreshTasks: () => Promise<void> }>;
 		loadTasks: (
 			progressCallback?: (message: string) => void,
 			abortSignal?: AbortSignal,
@@ -116,6 +117,10 @@ describe("browser corpus loading progress", () => {
 		await waitForState(first.states, { type: "loaded" });
 		await waitForState(late.states, { type: "loaded" });
 		expect(loadCalls).toBe(1);
+
+		await (await internals(server).core.getContentStore()).refreshTasks();
+		expect(first.states.filter((state) => state.type === "loading" && state.message === phase)).toHaveLength(1);
+		expect(loadCalls).toBe(2);
 	});
 
 	it("publishes a distinct failure and retries the same shared initialization", async () => {

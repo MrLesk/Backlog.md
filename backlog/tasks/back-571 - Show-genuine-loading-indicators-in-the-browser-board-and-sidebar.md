@@ -5,11 +5,12 @@ status: Done
 assignee:
   - '@codex'
 created_date: '2026-08-03 20:02'
-updated_date: '2026-08-03 20:40'
+updated_date: '2026-08-03 20:58'
 labels: []
 dependencies: []
 modified_files:
   - src/core/backlog.ts
+  - src/core/content-store.ts
   - src/server/index.ts
   - src/utils/browser-loading-state.ts
   - src/web/App.tsx
@@ -62,10 +63,12 @@ Follow up on BACK-570 without undoing its asynchronous, idle-stable browser star
 
 <!-- SECTION:NOTES:BEGIN -->
 Implemented one retained browser loading-state channel on BacklogServer around the existing deduplicated servicesReadyPromise and Core-backed ContentStore initialization. Core's existing progress callback is forwarded verbatim; WebSocket connections receive the retained phase immediately, the first socket still starts the same shared initialization, failures remain retained without auto-retrying, and an HTTP retry reuses the same store initialization path. React keeps the shell mounted and distinguishes pending skeleton/progress, loaded-empty, loaded data, and retryable error states. Validation: focused loading/reorder/UI tests 33 pass; full bun test 1,883 pass, 5 expected skips, 0 fail; bunx tsc --noEmit, bun run check ., and bun run build pass. Rendered browser QA verified the exact Core phase in sidebar and Kanban, no premature empty presentation, late-connection retention, loaded cards/counts, and sidebar collapse/expand.
+
+Codex review follow-up: scoped the Core progress callback to ContentStore initialization only, preventing later watcher/manual refreshes from emitting unterminated browser loading phases. Added passive-client reconciliation on shared retry completion while tracking active data-request ownership so a tab with an in-flight request does not start a duplicate. Added focused regressions for both findings. Final validation: focused suite 88 pass, full bun test 1,885 pass with 5 expected skips and 0 failures; typecheck, Biome, and build pass.
 <!-- SECTION:NOTES:END -->
 
 ## Final Summary
 
 <!-- SECTION:FINAL_SUMMARY:BEGIN -->
-Bridged the existing Core corpus progress callback through a retained WebSocket loading state and updated the mounted browser sidebar and Kanban to show genuine phase/skeleton, loaded-empty, loaded-data, and retryable error presentations. Verified by focused protocol/server/React coverage, rendered browser interaction, 1,883 passing repository tests, typecheck, Biome, and production build.
+Bridged the existing Core corpus progress callback through a retained WebSocket loading state scoped strictly to shared initialization, and updated the mounted browser sidebar and Kanban to show genuine phase/skeleton, loaded-empty, loaded-data, and retryable error presentations. Passive tabs now reconcile once after another tab's successful retry without duplicating an active request. Verified by focused protocol/Core/server/React coverage, rendered browser interaction, 1,885 passing repository tests, typecheck, Biome, and production build.
 <!-- SECTION:FINAL_SUMMARY:END -->

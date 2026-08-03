@@ -210,6 +210,8 @@ function AppContent() {
   const previousOnlineRef = useRef<boolean | null>(null);
   const hasBeenRunningRef = useRef(false);
   const loadAllDataRequestRef = useRef(0);
+  const pendingDataRequestRef = useRef<number | null>(null);
+  const protocolOnlyLoadingRef = useRef(false);
   const location = useLocation();
   const navigate = useNavigate();
   const tasksRouteWithTitle = useMatch('/tasks/:id/:title');
@@ -299,6 +301,7 @@ function AppContent() {
   const loadAllData = useCallback(async () => {
     const requestId = loadAllDataRequestRef.current + 1;
     loadAllDataRequestRef.current = requestId;
+		pendingDataRequestRef.current = requestId;
 		try {
 			setIsLoading(true);
 			setLoadError(null);
@@ -351,6 +354,7 @@ function AppContent() {
       }
     } finally {
       if (loadAllDataRequestRef.current === requestId) {
+				pendingDataRequestRef.current = null;
         setIsLoading(false);
         setLoadingMessage(null);
       }
@@ -565,11 +569,15 @@ function AppContent() {
     ws.onmessage = (event) => {
 	  const loadingState = parseBrowserLoadingState(event.data);
 	  if (loadingState?.type === 'loading') {
+		if (pendingDataRequestRef.current === null) protocolOnlyLoadingRef.current = true;
 		setIsLoading(true);
 		setLoadError(null);
 		setLoadingMessage(loadingState.message);
 	  } else if (loadingState?.type === 'loaded') {
+		const shouldRefresh = protocolOnlyLoadingRef.current && pendingDataRequestRef.current === null;
+		protocolOnlyLoadingRef.current = false;
 		setLoadingMessage(null);
+		if (shouldRefresh) void refreshData();
 	  } else if (loadingState?.type === 'error') {
 		setIsLoading(false);
 		setLoadingMessage(null);

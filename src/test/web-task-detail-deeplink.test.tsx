@@ -662,6 +662,60 @@ describe("task detail routes", () => {
 		expect(observedWhileSearchPending).toBe(true);
 	});
 
+	it("reconciles a passive client when another browser retry completes", async () => {
+		const container = await renderApp("/board?lane=none");
+		const dataSocket = getAppDataWebSocket();
+		const phase = "Loading tasks from local branches...";
+
+		await act(async () => {
+			dataSocket.deliver(JSON.stringify({ type: "loading", message: phase }));
+			await Promise.resolve();
+		});
+		expect(container.textContent).toContain(phase);
+
+		const reconciliation = new FetchOperation("passive shared retry completion", [
+			expectFetch("passive config", "/api/config"),
+			expectFetch("passive search", "/api/search"),
+		]);
+		await act(async () => {
+			dataSocket.deliver(JSON.stringify({ type: "loaded" }));
+			await Promise.resolve();
+		});
+		await act(async () => reconciliation.settle("passive config", "passive search"));
+		reconciliation.finish();
+
+		expect(container.textContent).not.toContain(phase);
+		expect(container.querySelector("[aria-label='Loading tasks']")).toBeNull();
+		expect(container.textContent).toContain(tasks[0]?.title ?? "");
+	});
+
+	it("does not duplicate an active data request when shared loading completes", async () => {
+		await renderApp("/board?lane=none");
+		const dataSocket = getAppDataWebSocket();
+		const activeRefresh = new FetchOperation("active refresh during shared completion", [
+			expectFetch("active config", "/api/config"),
+			expectFetch("active search", "/api/search", { manual: true }),
+		]);
+
+		await act(async () => {
+			dataSocket.deliver("tasks-updated");
+			await Promise.resolve();
+		});
+		await activeRefresh.startedSignals.get("active search")?.promise;
+		await act(async () => {
+			dataSocket.deliver(JSON.stringify({ type: "loading", message: "Loading local tasks..." }));
+			dataSocket.deliver(JSON.stringify({ type: "loaded" }));
+			await Promise.resolve();
+		});
+		expect(activeRefresh.calls.filter((call) => call.url === "/api/search")).toHaveLength(1);
+
+		await act(async () => {
+			activeRefresh.respond("active search", json(searchResults));
+			await activeRefresh.settle("active config", "active search");
+		});
+		activeRefresh.finish();
+	});
+
 	it("keeps a newer WebSocket-reconciled task when an earlier reorder response arrives late", async () => {
 		const container = await renderApp("/board?lane=none", { advanceHealthSocket: true });
 		const dataSocket = assertHealthSocketDoesNotShadowDataSocket();

@@ -20,6 +20,7 @@ export interface TaskCorpusSnapshot {
 }
 
 type TaskLoaderResult = Task[] | TaskCorpusSnapshot;
+type ProgressCallback = (message: string) => void;
 
 interface ContentSnapshot {
 	tasks: Task[];
@@ -136,7 +137,7 @@ export class ContentStore {
 
 	constructor(
 		private readonly filesystem: FileSystem,
-		private readonly taskLoader?: () => Promise<TaskLoaderResult>,
+		private readonly taskLoader?: (progressCallback?: ProgressCallback) => Promise<TaskLoaderResult>,
 		private readonly enableWatchers = false,
 	) {
 		this.publishedRoot = this.currentRoot();
@@ -158,14 +159,14 @@ export class ContentStore {
 		};
 	}
 
-	async ensureInitialized(): Promise<ContentSnapshot> {
+	async ensureInitialized(progressCallback?: ProgressCallback): Promise<ContentSnapshot> {
 		this.assertOpen();
 		if (this.initialized) {
 			return this.getSnapshot();
 		}
 
 		if (!this.initializing) {
-			this.initializing = this.loadInitialData().catch((error) => {
+			this.initializing = this.loadInitialData(progressCallback).catch((error) => {
 				this.initializing = null;
 				throw error;
 			});
@@ -489,7 +490,7 @@ export class ContentStore {
 		return [...tasks.values()];
 	}
 
-	private async loadInitialData(): Promise<void> {
+	private async loadInitialData(progressCallback?: ProgressCallback): Promise<void> {
 		let ready = false;
 		for (let attempt = 0; attempt < 12 && !ready; attempt += 1) {
 			if (this.closed) {
@@ -504,11 +505,15 @@ export class ContentStore {
 			// Use custom task loader if provided (e.g., loadTasks for cross-branch support)
 			// Otherwise fall back to filesystem-only loading
 			const epoch = this.rootWatcherEpoch;
-			const attemptLoaded = await this.loadCurrentContent(epoch, (snapshot) => {
-				this.installTaskCorpus(snapshot.taskCorpus ?? this.asTaskCorpus(snapshot.tasks));
-				this.replaceDocuments(snapshot.documents);
-				this.replaceDecisions(snapshot.decisions);
-			});
+			const attemptLoaded = await this.loadCurrentContent(
+				epoch,
+				(snapshot) => {
+					this.installTaskCorpus(snapshot.taskCorpus ?? this.asTaskCorpus(snapshot.tasks));
+					this.replaceDocuments(snapshot.documents);
+					this.replaceDecisions(snapshot.decisions);
+				},
+				progressCallback,
+			);
 			if (!attemptLoaded || !this.isPublicationOwnerCurrent(owner)) {
 				continue;
 			}
@@ -757,7 +762,11 @@ export class ContentStore {
 		}
 	}
 
-	private async loadCurrentContent(epoch: number, publish: (snapshot: ContentSnapshot) => void): Promise<boolean> {
+	private async loadCurrentContent(
+		epoch: number,
+		publish: (snapshot: ContentSnapshot) => void,
+		progressCallback?: ProgressCallback,
+	): Promise<boolean> {
 		const targetRoot = this.currentRoot();
 		const generations: Record<ContentCollection, number> = {
 			tasks: this.nextContentRefreshGeneration("tasks"),
@@ -771,7 +780,7 @@ export class ContentStore {
 			decisions: new Map(this.contentItemVersions.decisions),
 		};
 		const [taskCorpus, documents, decisions] = await Promise.all([
-			this.loadTasksWithLoader(),
+			this.loadTasksWithLoader(progressCallback),
 			this.filesystem.listDocuments(),
 			this.filesystem.listDecisions(),
 		]);
@@ -1822,9 +1831,9 @@ export class ContentStore {
 		});
 	}
 
-	private async loadTasksWithLoader(): Promise<TaskCorpusSnapshot> {
+	private async loadTasksWithLoader(progressCallback?: ProgressCallback): Promise<TaskCorpusSnapshot> {
 		if (this.taskLoader) {
-			const loaded = await this.taskLoader();
+			const loaded = await this.taskLoader(progressCallback);
 			return Array.isArray(loaded) ? this.asTaskCorpus(loaded) : loaded;
 		}
 		return this.asTaskCorpus(await this.filesystem.listTasks());
