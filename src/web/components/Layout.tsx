@@ -33,7 +33,7 @@ export default function Layout({
 		<div className="h-screen bg-gray-50 dark:bg-gray-900 flex overflow-hidden transition-colors duration-200">
 			<HealthIndicator />
 			<SideNavigation 
-				tasks={tasks}
+				taskCount={tasks.length}
 				docs={docs}
 				decisions={decisions}
 				isLoading={isLoading}

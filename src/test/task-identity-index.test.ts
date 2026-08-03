@@ -25,6 +25,29 @@ function index(records: TaskIdentityRecord[]): TaskIdentityIndex {
 }
 
 describe("TaskIdentityIndex", () => {
+	it("keeps the identity fingerprint stable when hydration moves between same-path branch records", () => {
+		const branchA: TaskIdentityRecord = {
+			id: "BACK-1",
+			type: "task",
+			branch: "origin/main",
+			path: "backlog/tasks/back-1 - Shared.md",
+			lastModified: new Date("2026-08-01T10:00:00Z"),
+			task: task("Hydrated title"),
+		};
+		const branchB: TaskIdentityRecord = {
+			...branchA,
+			branch: "origin/feature",
+			task: undefined,
+		};
+
+		expect(index([branchA, branchB]).getFingerprint()).toBe(
+			index([
+				{ ...branchA, task: undefined },
+				{ ...branchB, task: task("Hydrated title") },
+			]).getFingerprint(),
+		);
+	});
+
 	it("prefers a live record over an equal-time archive independent of scan order", () => {
 		const active: TaskIdentityRecord = {
 			id: "BACK-001",

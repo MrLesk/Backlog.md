@@ -321,7 +321,7 @@ export class Core {
 			return;
 		}
 
-		await this.contentStore.refreshTasks();
+		await this.refreshTasksForTaskRead();
 	}
 
 	private async computeActiveBranchFingerprint(config: BacklogConfig | null): Promise<string> {

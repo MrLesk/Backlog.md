@@ -286,7 +286,10 @@ export class TaskIdentityIndex {
 
 	getFingerprint(): string {
 		return this.records
-			.map((record) => `${recordKey(record)}\0${record.type}\0${record.workingCopy ? "1" : "0"}`)
+			.map(
+				(record) =>
+					`${record.branch}\0${normalizeRecordPath(record, this.context)}\0${record.id}\0${record.type}\0${record.workingCopy ? "1" : "0"}`,
+			)
 			.sort((left, right) => left.localeCompare(right))
 			.join("\n");
 	}

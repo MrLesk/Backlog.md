@@ -755,6 +755,7 @@ describe("BacklogServer task SPA fallback", () => {
 		await filesystem.saveConfig({ ...cachedConfig, statuses: customStatuses });
 		await restartWithActiveBranchCollision("BACK-001");
 		expect((await request("/api/task/BACK-1")).status).toBe(409);
+		expect((await request("/api/tasks?crossBranch=true")).status).toBe(200);
 
 		const activeServer = server as unknown as {
 			core: { filesystem: FileSystem };

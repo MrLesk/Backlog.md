@@ -32,6 +32,7 @@ import { getWebVersion } from './utils/version';
 import { collectArchivedMilestoneKeys, collectMilestoneIds, milestoneKey } from './utils/milestones';
 import { getTaskTypeValues } from '../utils/task-type-config';
 import { createUrlPath } from './utils/urlHelpers';
+import { filterKanbanTasks } from './utils/kanban-tasks';
 
 type TaskRouteNavigationState = {
   taskModalFrom?: string;
@@ -196,6 +197,7 @@ function AppContent() {
   
   // Centralized data state
   const [tasks, setTasks] = useState<Task[]>([]);
+  const kanbanTasks = React.useMemo(() => filterKanbanTasks(tasks), [tasks]);
   const [docs, setDocs] = useState<Document[]>([]);
   const [decisions, setDecisions] = useState<Decision[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -296,14 +298,29 @@ function AppContent() {
     loadAllDataRequestRef.current = requestId;
     try {
       setIsLoading(true);
-      const [statusesData, configData, searchResults, milestonesData, archivedMilestonesData, duplicatePlan] = await Promise.all([
+      const shellDataPromise = Promise.all([
         apiClient.fetchStatuses(),
         apiClient.fetchConfig(),
-        apiClient.search(),
         apiClient.fetchMilestones(),
         apiClient.fetchArchivedMilestones(),
-        apiClient.fetchDuplicateTaskRepairPlan().catch(() => null),
       ]);
+      const searchResultsPromise = apiClient.search();
+      void searchResultsPromise.catch(() => {});
+
+      const [statusesData, configData, milestonesData, archivedMilestonesData] = await shellDataPromise;
+
+      if (loadAllDataRequestRef.current !== requestId) {
+        return;
+      }
+
+      setStatuses(statusesData);
+      setProjectName(configData.projectName);
+      setAvailableLabels(configData.labels || []);
+      setConfig(configData);
+      setMilestoneEntities(milestonesData);
+      setArchivedMilestones(archivedMilestonesData);
+
+      const searchResults = await searchResultsPromise;
 
       if (loadAllDataRequestRef.current !== requestId) {
         return;
@@ -313,18 +330,14 @@ function AppContent() {
       const milestoneAliases = buildMilestoneAliasMap(milestonesData, archivedMilestonesData);
       const { tasks: tasksList } = applySearchResults(searchResults, archivedKeys, milestoneAliases);
 
-      setDuplicateRepairPlan(duplicatePlan);
-      setStatuses(statusesData);
-      setProjectName(configData.projectName);
-      setAvailableLabels(configData.labels || []);
-      setConfig(configData);
-      setMilestoneEntities(milestonesData);
-      setArchivedMilestones(archivedMilestonesData);
       setMilestones(
         collectMilestoneIds(tasksList, milestonesData, archivedMilestonesData).filter(
           (milestone) => !archivedKeys.has(milestoneKey(milestone)),
         ),
       );
+      void apiClient.fetchDuplicateTaskRepairPlan().then((duplicatePlan) => {
+        if (loadAllDataRequestRef.current === requestId) setDuplicateRepairPlan(duplicatePlan);
+      }).catch(() => {});
     } catch (error) {
       if (loadAllDataRequestRef.current === requestId) {
         console.error('Failed to load data:', error);
@@ -615,7 +628,7 @@ function AppContent() {
     <BoardPage
       onEditTask={handleEditTask}
       onNewTask={handleNewTask}
-      tasks={tasks}
+      tasks={kanbanTasks}
       onRefreshData={refreshData}
 	  onTasksUpdated={applyReorderedTasks}
       statuses={statuses}
@@ -748,6 +761,7 @@ function AppContent() {
         onSubmit={handleSubmitTask}
         onArchive={editingTask ? () => handleArchiveTask(editingTask.id) : undefined}
         availableStatuses={isDraftMode ? ['Draft', ...statuses] : statuses}
+        availableTasks={tasks}
         availableMilestones={milestones}
         availablePriorities={config?.priorities}
         availableTypes={availableTypes}

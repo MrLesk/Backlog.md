@@ -57,7 +57,7 @@ const setupDom = () => {
 	htmlElementPrototype.detachEvent = () => {};
 };
 
-const mountModal = async (modalTask: Task = task): Promise<HTMLElement> => {
+const mountModal = async (modalTask: Task = task, isOpen = true): Promise<HTMLElement> => {
 	setupDom();
 	const container = document.getElementById("root");
 	expect(container).toBeTruthy();
@@ -65,7 +65,7 @@ const mountModal = async (modalTask: Task = task): Promise<HTMLElement> => {
 	await act(async () => {
 		activeRoot?.render(
 			<ThemeProvider>
-				<TaskDetailsModal task={modalTask} isOpen={true} onClose={() => {}} />
+				<TaskDetailsModal task={modalTask} isOpen={isOpen} onClose={() => {}} />
 			</ThemeProvider>,
 		);
 		await Promise.resolve();
@@ -119,6 +119,21 @@ afterEach(() => {
 });
 
 describe("Web task popup keyboard shortcuts", () => {
+	it("does not fetch dependency tasks while the modal is closed", async () => {
+		const originalFetchTasks = apiClient.fetchTasks.bind(apiClient);
+		let fetchCount = 0;
+		apiClient.fetchTasks = async () => {
+			fetchCount += 1;
+			return [];
+		};
+		try {
+			await mountModal(task, false);
+			expect(fetchCount).toBe(0);
+		} finally {
+			apiClient.fetchTasks = originalFetchTasks;
+		}
+	});
+
 	it("leaves e and E available to every preview editor", async () => {
 		const container = await mountModal();
 		const dialog = container.querySelector("[role='dialog']");

@@ -9,6 +9,9 @@ let server: BacklogServer | null = null;
 type ServerInternals = {
 	server: { hostname?: string } | null;
 	openBrowser: (url: string) => Promise<void>;
+	core: {
+		getContentStore: () => Promise<unknown>;
+	};
 };
 
 function internals(instance: BacklogServer): ServerInternals {
@@ -89,5 +92,34 @@ describe("BacklogServer loopback binding", () => {
 		} finally {
 			logSpy.mockRestore();
 		}
+	});
+
+	it("serves the browser shell before the shared content corpus finishes loading", async () => {
+		const port = await unusedLoopbackPort();
+		let releaseLoad: () => void = () => {};
+		let markLoadStarted: () => void = () => {};
+		const heldLoad = new Promise<void>((resolve) => {
+			releaseLoad = resolve;
+		});
+		const loadStarted = new Promise<void>((resolve) => {
+			markLoadStarted = resolve;
+		});
+
+		server = new BacklogServer(TEST_DIR);
+		const originalGetContentStore = internals(server).core.getContentStore.bind(internals(server).core);
+		internals(server).core.getContentStore = async () => {
+			markLoadStarted();
+			await heldLoad;
+			return await originalGetContentStore();
+		};
+
+		await server.start(port, false);
+		const searchResponse = fetch(`http://127.0.0.1:${port}/api/search`);
+		await loadStarted;
+		const response = await fetch(`http://127.0.0.1:${port}/`);
+		expect(response.status).toBe(200);
+
+		releaseLoad();
+		expect((await searchResponse).status).toBe(200);
 	});
 });
