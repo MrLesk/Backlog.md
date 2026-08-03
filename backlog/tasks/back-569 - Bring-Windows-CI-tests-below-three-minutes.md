@@ -5,7 +5,7 @@ status: In Progress
 assignee:
   - '@codex'
 created_date: '2026-08-03 16:30'
-updated_date: '2026-08-03 18:07'
+updated_date: '2026-08-03 18:11'
 labels: []
 dependencies: []
 priority: high
@@ -57,4 +57,6 @@ Architecture findings: 91% of sequential runtime was in CLI subprocess, Git, MCP
 Architecture v3: converted seven additional MCP suites to filesystem-only setup, retaining explicit Git initialization only for three document auto-commit/index-boundary tests. The 33 affected tests pass in 9.19s. A full local four-worker run completed in 269.99s (1842 pass, 19 platform skips, 13 known local environment failures), versus 247.94s in v2; the variance is concentrated in unrelated long-running CLI/Git/TUI suites, so use GitHub Windows timing as the acceptance measurement. Windows test CI now skips actions/cache because the latest cache restore/save cost about 48s while bun install cost 24s.
 
 Architecture v3: converted seven additional MCP suites to filesystem-only setup, retaining explicit Git initialization only for three document auto-commit/index-boundary tests. The 33 affected tests pass in 9.19s. A full local four-worker run completed in 269.99s (1842 pass, 19 platform skips, 13 known local environment failures), versus 247.94s in v2; the variance is concentrated in unrelated long-running CLI/Git/TUI suites, so use GitHub Windows timing as the acceptance measurement. Windows test CI now skips actions/cache because the latest cache restore/save cost about 48s while bun install cost 24s.
+
+Live CI correction: skipping actions/cache on Windows was rejected after the first PR run showed the uncached bun install still running after 60s, already slower than the previous 48s combined cache restore/save cost. Restored the cache; this experiment is not part of the final strategy.
 <!-- SECTION:NOTES:END -->

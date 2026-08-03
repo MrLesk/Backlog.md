@@ -28,8 +28,7 @@ jobs:
           # Bun >=1.3 includes stdin pause/subprocess handoff fixes used by TUI editor launch.
           bun-version: ${{ env.BUN_VERSION }}
       - uses: actions/cache@v6
-        # Restoring and saving this cache costs more than a clean Bun install on Windows.
-        if: matrix.os != 'windows-latest'
+        id: cache
         with:
           path: ~/.bun/install/cache
           key: ${{ runner.os }}-${{ matrix.os }}-bun-${{ env.BUN_VERSION }}-${{ hashFiles('**/bun.lock') }}
