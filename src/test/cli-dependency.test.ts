@@ -47,6 +47,44 @@ describe("CLI dependency options", () => {
 		expect((await core.filesystem.loadTask("TASK-3"))?.dependencies).toEqual(["TASK-1", "TASK-2"]);
 	});
 
+	it("clears dependencies with --clear-deps", async () => {
+		await $`bun ${CLI_PATH} task create "Base task"`.cwd(testDir).quiet();
+		await $`bun ${CLI_PATH} task create "Dependent task" --depends-on TASK-1`.cwd(testDir).quiet();
+
+		const result = await $`bun ${CLI_PATH} task edit 2 --clear-deps --plain`.cwd(testDir).quiet();
+
+		expect(result.exitCode).toBe(0);
+		expect((await core.filesystem.loadTask("TASK-2"))?.dependencies).toEqual([]);
+	});
+
+	it("rejects empty and conflicting dependency edits without changing dependencies", async () => {
+		await $`bun ${CLI_PATH} task create "Base task"`.cwd(testDir).quiet();
+		await $`bun ${CLI_PATH} task create "Dependent task" --depends-on TASK-1`.cwd(testDir).quiet();
+
+		const emptyDependsOn = await $`bun ${CLI_PATH} task edit 2 --depends-on ""`.cwd(testDir).quiet().nothrow();
+		expect(emptyDependsOn.exitCode).toBe(1);
+		expect(emptyDependsOn.stderr.toString()).toContain("Cannot use an empty value with --depends-on or --dep");
+
+		const emptyDep = await $`bun ${CLI_PATH} task edit 2 --dep ""`.cwd(testDir).quiet().nothrow();
+		expect(emptyDep.exitCode).toBe(1);
+		expect(emptyDep.stderr.toString()).toContain("Cannot use an empty value with --depends-on or --dep");
+
+		const conflicting = await $`bun ${CLI_PATH} task edit 2 --clear-deps --depends-on TASK-1`
+			.cwd(testDir)
+			.quiet()
+			.nothrow();
+		expect(conflicting.exitCode).toBe(1);
+		expect(conflicting.stderr.toString()).toContain("Cannot combine --clear-deps with --depends-on or --dep");
+
+		expect((await core.filesystem.loadTask("TASK-2"))?.dependencies).toEqual(["TASK-1"]);
+	});
+
+	it("documents --clear-deps in task edit help", async () => {
+		const result = await $`bun ${CLI_PATH} task edit --help`.cwd(testDir).quiet();
+
+		expect(result.stdout.toString()).toContain("--clear-deps");
+	});
+
 	it("rejects a dependency that does not exist", async () => {
 		const result = await $`bun ${CLI_PATH} task create "Dependent task" --dep TASK-999`.cwd(testDir).quiet().nothrow();
 
