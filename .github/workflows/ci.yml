@@ -22,10 +22,13 @@ jobs:
         include:
           - os: ubuntu-latest
             test_profile: full
+            test_workers: 2
           - os: macos-latest
             test_profile: platform
+            test_workers: 4
           - os: windows-latest
             test_profile: platform
+            test_workers: 4
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v7
@@ -59,7 +62,7 @@ jobs:
           BACKLOG_TEST_CLI_BUNDLE: ${{ runner.temp }}/backlog-test-cli/cli.js
         run: |
           # Ubuntu owns complete behavioral coverage. macOS and Windows focus on OS-sensitive contracts.
-          bun scripts/run-ci-tests.ts --profile=${{ matrix.test_profile }} --parallel=4 --isolate --timeout=10000 --max-concurrency=4 --reporter=junit --reporter-outfile=test-results.xml
+          bun scripts/run-ci-tests.ts --profile=${{ matrix.test_profile }} --parallel=${{ matrix.test_workers }} --isolate --timeout=10000 --max-concurrency=${{ matrix.test_workers }} --reporter=junit --reporter-outfile=test-results.xml
         shell: bash
       - name: Upload test results
         if: always()
