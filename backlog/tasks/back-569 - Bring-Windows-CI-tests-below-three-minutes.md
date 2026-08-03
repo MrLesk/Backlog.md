@@ -5,7 +5,7 @@ status: In Progress
 assignee:
   - '@codex'
 created_date: '2026-08-03 16:30'
-updated_date: '2026-08-03 18:32'
+updated_date: '2026-08-03 18:36'
 labels: []
 dependencies: []
 priority: high
@@ -65,4 +65,6 @@ First PR evidence: the full Windows test step dropped from 889s to 221s and the 
 Platform-profile CI evidence: Windows executed all 373 contract tests successfully in 41s. The complete job was 207s only because actions/cache took 74s and bun install then took another 62s; together dependency setup consumed 136s. Corrected the earlier cache comparison and limited dependency caching plus duplicate type/lint checks to the Ubuntu full-profile job. The measured uncached Windows install was 76s, projecting about 142s for the complete platform job with the already-measured 41s test step.
 
 Final full-suite flake diagnosis: cli-launcher signal fixtures consistently hung at the global timeout under four-worker Ubuntu runs, including after raising the timeout to 30s, proving a runtime deadlock rather than slow execution. The published cli.cjs launcher has a Node shebang, but the test invoked it through Bun's process.execPath. Changed the harness to launch cli.cjs with Node, matching production and avoiding Bun's nested signalled-child deadlock; restored the normal 10s bound.
+
+Repeat Windows platform run found editor discovery timing out while spawning where cmd under process load. Replaced the OS-specific where/which subprocess with Bun.which, preserving command resolution semantics in-process. The focused editor discovery tests now pass in about 3ms total instead of depending on another process.
 <!-- SECTION:NOTES:END -->
