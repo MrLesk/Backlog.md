@@ -36,6 +36,7 @@ describe("BacklogServer loopback binding", () => {
 			milestones: [],
 			dateFormat: "YYYY-MM-DD",
 			remoteOperations: false,
+			checkActiveBranches: false,
 		});
 	});
 
