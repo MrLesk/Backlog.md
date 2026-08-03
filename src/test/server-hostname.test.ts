@@ -95,7 +95,7 @@ describe("BacklogServer loopback binding", () => {
 		}
 	});
 
-	it("serves the browser shell before the shared content corpus finishes loading", async () => {
+	it("serves lightweight browser bootstrap before the shared content corpus finishes loading", async () => {
 		const port = await unusedLoopbackPort();
 		let releaseLoad: () => void = () => {};
 		let markLoadStarted: () => void = () => {};
@@ -117,7 +117,7 @@ describe("BacklogServer loopback binding", () => {
 		await server.start(port, false);
 		const searchResponse = fetch(`http://127.0.0.1:${port}/api/search`);
 		await loadStarted;
-		const response = await fetch(`http://127.0.0.1:${port}/`);
+		const response = await fetch(`http://127.0.0.1:${port}/api/status`);
 		expect(response.status).toBe(200);
 
 		releaseLoad();
