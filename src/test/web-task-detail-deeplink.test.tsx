@@ -772,6 +772,31 @@ describe("task detail routes", () => {
 		recovery.finish();
 	});
 
+	it("preserves a terminal shared error when the data socket closes", async () => {
+		const container = await renderApp("/board?lane=none");
+		const dataSocket = getAppDataWebSocket();
+		const error = "corpus failed";
+		await act(async () => {
+			dataSocket.deliver(JSON.stringify({ type: "loading", message: "Loading local tasks..." }));
+			dataSocket.deliver(JSON.stringify({ type: "error", message: error }));
+			await Promise.resolve();
+		});
+		expect(container.textContent).toContain("Failed to load tasks");
+		expect(container.textContent).toContain(error);
+		expect(container.textContent).toContain("Retry");
+
+		const duplicate = new FetchOperation("terminal shared error socket close", []);
+		await act(async () => {
+			dataSocket.disconnect();
+			await Promise.resolve();
+		});
+		expect(duplicate.calls).toHaveLength(0);
+		expect(container.textContent).toContain("Failed to load tasks");
+		expect(container.textContent).toContain(error);
+		expect(container.textContent).toContain("Retry");
+		duplicate.finish();
+	});
+
 	it("keeps a newer WebSocket-reconciled task when an earlier reorder response arrives late", async () => {
 		const container = await renderApp("/board?lane=none", { advanceHealthSocket: true });
 		const dataSocket = assertHealthSocketDoesNotShadowDataSocket();

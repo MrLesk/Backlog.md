@@ -581,6 +581,7 @@ function AppContent() {
 		setLoadingMessage(null);
 		if (shouldRefresh) void refreshData();
 	  } else if (loadingState?.type === 'error') {
+		protocolOnlyLoadingRef.current = false;
 		setIsLoading(false);
 		setLoadingMessage(null);
 		setLoadError(new Error(loadingState.message));
