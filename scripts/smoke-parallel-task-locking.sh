@@ -23,6 +23,7 @@ Runs real parallel smoke tests against the local Backlog.md CLI:
   1. concurrent task creation
   2. concurrent draft promotion
   3. concurrent task demotion
+  4. concurrent task editing (lost-write regression)
 
 Environment overrides:
   BUN_BIN            Bun executable to use (default: bun)
@@ -231,6 +232,42 @@ scenario_parallel_demote() {
 	info "Scenario 3 passed"
 }
 
+scenario_parallel_edit() {
+	local repo_dir="${TMP_ROOT}/edit"
+	local i
+
+	info "Scenario 4: concurrent task editing (${JOB_COUNT} jobs)"
+	init_repo "${repo_dir}"
+
+	pushd "${repo_dir}" >/dev/null
+	run_cli task create "Shared Task" >/dev/null
+	popd >/dev/null
+
+	# All racers exit 0 and print "Updated task" either way — only the final file
+	# content can reveal a lost write, so that is what this scenario asserts on.
+	for i in $(seq 1 "${JOB_COUNT}"); do
+		start_job "${repo_dir}" "edit-${i}" task edit task-1 --add-label "smoke-${i}"
+	done
+	wait_for_jobs
+
+	local task_files=("${repo_dir}"/backlog/tasks/task-1\ -\ *.md)
+	if [[ ${#task_files[@]} -ne 1 ]]; then
+		ls -la "${repo_dir}/backlog/tasks" >&2 || true
+		fail "Expected exactly one task-1 file after parallel edits"
+	fi
+
+	local content
+	content="$(cat "${task_files[0]}")"
+	for i in $(seq 1 "${JOB_COUNT}"); do
+		if ! printf '%s' "${content}" | grep -Eq "smoke-${i}([^0-9]|$)"; then
+			printf '[smoke] Final task file after parallel edits:\n%s\n' "${content}" >&2
+			fail "Label smoke-${i} missing after parallel edits — a concurrent edit was lost"
+		fi
+	done
+
+	info "Scenario 4 passed"
+}
+
 main() {
 	while [[ $# -gt 0 ]]; do
 		case "$1" in
@@ -277,6 +314,7 @@ main() {
 	scenario_parallel_create
 	scenario_parallel_promote
 	scenario_parallel_demote
+	scenario_parallel_edit
 
 	info "All parallel locking smoke tests passed"
 }
