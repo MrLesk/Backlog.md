@@ -74,6 +74,24 @@ export function isCreateLockError(error: unknown): error is Error {
 	);
 }
 
+export const TASK_LOCK_ERROR_CODE = "ETASKLOCK";
+export const TASK_LOCK_ERROR_MESSAGE = "Another edit of this task is already in progress. Please try again.";
+
+function taskLockError(message: string, cause?: unknown): Error {
+	const error = new Error(message, cause === undefined ? undefined : { cause }) as Error & { code?: string };
+	error.name = "TaskLockError";
+	error.code = TASK_LOCK_ERROR_CODE;
+	return error;
+}
+
+export function isTaskLockError(error: unknown): error is Error {
+	return (
+		error instanceof Error &&
+		(error as Error & { code?: string }).code === TASK_LOCK_ERROR_CODE &&
+		error.name === "TaskLockError"
+	);
+}
+
 export class FileSystem {
 	private resolvedBacklogDir: string;
 	private resolvedBacklogDirName: string;
@@ -286,6 +304,21 @@ export class FileSystem {
 		return error instanceof Error ? error : new Error(String(error));
 	}
 
+	private toTaskLockError(error: unknown): Error {
+		if (isTaskLockError(error)) {
+			return error;
+		}
+
+		const code = (error as NodeJS.ErrnoException | undefined)?.code;
+		if (code === "ELOCKED") {
+			return taskLockError(TASK_LOCK_ERROR_MESSAGE, error);
+		}
+		if (code === "ECOMPROMISED") {
+			return taskLockError("The task edit lock was interrupted. Please try again.", error);
+		}
+		return error instanceof Error ? error : new Error(String(error));
+	}
+
 	private async getGitCommonDir(): Promise<string | null> {
 		try {
 			const config = await this.loadConfig();
@@ -338,14 +371,69 @@ export class FileSystem {
 
 		const backlogDir = await this.getBacklogDir();
 		const lockTarget = await this.getCreateLockTarget(backlogDir);
-		const locksDir = lockTarget.locksDir;
-		const lockDir = join(locksDir, "create");
+		return await this.withLockTarget(
+			lockTarget,
+			join(lockTarget.locksDir, "create"),
+			options,
+			(error) => this.toCreateLockError(error),
+			fn,
+		);
+	}
+
+	// Per-task variant of the create lock: serialises read-modify-write cycles for a single
+	// task so concurrent edits cannot silently overwrite each other. The lock target is the
+	// task file itself — proper-lockfile tracks one lock per target file in-process, so a
+	// shared target would clobber concurrent per-task locks within one process. The lock
+	// directory still lives beside the create lock's (git common dir or backlog dir), and
+	// the same escape hatch applies (USE_GLOBAL_TASK_ID_LOCK=false).
+	async withTaskLock<T>(
+		task: Pick<Task, "id" | "filePath">,
+		fn: () => Promise<T>,
+		options: CreateLockOptions = {},
+	): Promise<T> {
+		if (process.env.USE_GLOBAL_TASK_ID_LOCK?.toLowerCase() === "false") {
+			return await fn();
+		}
+
+		const filePath = typeof task.filePath === "string" && task.filePath.trim().length > 0 ? task.filePath : undefined;
+		if (!filePath) {
+			throw new Error(`Cannot lock task ${task.id} for editing without its file path.`);
+		}
+
+		const backlogDir = await this.getBacklogDir();
+		const lockTarget = await this.getCreateLockTarget(backlogDir);
+		const taskLockTarget: CreateLockTarget = { targetPath: filePath, locksDir: lockTarget.locksDir };
+		return await this.withLockTarget(
+			taskLockTarget,
+			join(lockTarget.locksDir, this.getTaskLockDirName(task.id)),
+			options,
+			(error) => this.toTaskLockError(error),
+			fn,
+		);
+	}
+
+	private getTaskLockDirName(taskId: string): string {
+		const key = taskId
+			.trim()
+			.toLowerCase()
+			.replace(/[^a-z0-9._-]+/g, "-")
+			.replace(/^\.+/, "");
+		return `task-${key.length > 0 ? key : "unknown"}`;
+	}
+
+	private async withLockTarget<T>(
+		lockTarget: CreateLockTarget,
+		lockDir: string,
+		options: CreateLockOptions,
+		toError: (error: unknown) => Error,
+		fn: () => Promise<T>,
+	): Promise<T> {
 		const timeoutMs = options.timeoutMs ?? DEFAULT_CREATE_LOCK_TIMEOUT_MS;
 		const retryDelayMs = options.retryDelayMs ?? DEFAULT_CREATE_LOCK_RETRY_DELAY_MS;
 		const staleMs = Math.max(options.staleMs ?? DEFAULT_CREATE_LOCK_STALE_MS, 2_000);
 		const retries = Math.max(Math.ceil(timeoutMs / retryDelayMs) - 1, 0);
 
-		await mkdir(locksDir, { recursive: true });
+		await mkdir(lockTarget.locksDir, { recursive: true });
 
 		let release: (() => Promise<void>) | undefined;
 		try {
@@ -362,7 +450,7 @@ export class FileSystem {
 				},
 			});
 		} catch (error) {
-			throw this.toCreateLockError(error);
+			throw toError(error);
 		}
 
 		try {
@@ -370,7 +458,7 @@ export class FileSystem {
 			try {
 				await release?.();
 			} catch (error) {
-				throw this.toCreateLockError(error);
+				throw toError(error);
 			}
 			return result;
 		} catch (error) {
