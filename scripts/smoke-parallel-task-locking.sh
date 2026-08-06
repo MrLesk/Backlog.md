@@ -234,26 +234,36 @@ scenario_parallel_demote() {
 
 scenario_parallel_edit() {
 	local repo_dir="${TMP_ROOT}/edit"
+	local filler_count=100
+	local shared_id="task-$((filler_count + 1))"
 	local i
 
 	info "Scenario 4: concurrent task editing (${JOB_COUNT} jobs)"
 	init_repo "${repo_dir}"
 
+	# The race window of one edit is its ~25ms read-modify-write, which bun startup
+	# variance otherwise hides: one racer has usually finished before the next starts
+	# parsing. A board full of filler tasks stretches every edit's read phase so the
+	# windows genuinely overlap. Without the fillers this scenario passes even on the
+	# broken build (verified: 8/8 labels survive pre-fix with 1 task, 1-2/8 with 100).
 	pushd "${repo_dir}" >/dev/null
+	for i in $(seq 1 "${filler_count}"); do
+		run_cli task create "Filler ${i}" >/dev/null
+	done
 	run_cli task create "Shared Task" >/dev/null
 	popd >/dev/null
 
 	# All racers exit 0 and print "Updated task" either way — only the final file
 	# content can reveal a lost write, so that is what this scenario asserts on.
 	for i in $(seq 1 "${JOB_COUNT}"); do
-		start_job "${repo_dir}" "edit-${i}" task edit task-1 --add-label "smoke-${i}"
+		start_job "${repo_dir}" "edit-${i}" task edit "${shared_id}" --add-label "smoke-${i}"
 	done
 	wait_for_jobs
 
-	local task_files=("${repo_dir}"/backlog/tasks/task-1\ -\ *.md)
+	local task_files=("${repo_dir}"/backlog/tasks/${shared_id}\ -\ *.md)
 	if [[ ${#task_files[@]} -ne 1 ]]; then
 		ls -la "${repo_dir}/backlog/tasks" >&2 || true
-		fail "Expected exactly one task-1 file after parallel edits"
+		fail "Expected exactly one ${shared_id} file after parallel edits"
 	fi
 
 	local content
