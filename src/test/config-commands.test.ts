@@ -308,4 +308,73 @@ describe("Config commands", () => {
 		expect(config?.projectName).toBe(originalProjectName ?? "");
 		expect(config?.statuses).toEqual(originalStatuses);
 	});
+
+	it("clears defaultEditor via config set with an explicitly empty value", async () => {
+		// An empty value means "no editor": it must be stored, not rejected as an invalid executable
+		const config = await core.filesystem.loadConfig();
+		if (!config) throw new Error("Config not loaded");
+		config.defaultEditor = "code --wait";
+		await core.filesystem.saveConfig(config);
+		expect((await core.filesystem.loadConfig())?.defaultEditor).toBe("code --wait");
+
+		const cleared = await $`bun ${CLI_PATH} config set defaultEditor ${""}`.cwd(TEST_DIR).nothrow().quiet();
+		expect(cleared.exitCode).toBe(0);
+
+		core.filesystem.invalidateConfigCache();
+		const reloaded = await core.filesystem.loadConfig();
+		expect(reloaded?.defaultEditor).toBeUndefined();
+	});
+
+	it("honors an explicitly empty --default-editor flag during init instead of discarding it", async () => {
+		// With EDITOR set as a sentinel, a discarded empty flag would fall back to the environment value
+		const initDir = createUniqueTestDir("test-config-commands-init");
+		await mkdir(initDir, { recursive: true });
+		await $`git init`.cwd(initDir).quiet();
+
+		const env = { ...process.env, EDITOR: "backlog-sentinel-editor", VISUAL: "backlog-sentinel-editor" };
+		const result =
+			await $`bun ${CLI_PATH} init "Editorless Project" --defaults --default-editor ${""} --integration-mode none`
+				.cwd(initDir)
+				.env(env)
+				.nothrow()
+				.quiet();
+		expect(result.exitCode).toBe(0);
+
+		const initCore = new Core(initDir);
+		const config = await initCore.filesystem.loadConfig();
+		expect(config?.defaultEditor).toBeUndefined();
+
+		await safeCleanup(initDir);
+	});
+
+	it("clears a configured editor when re-initializing with an explicitly empty --default-editor", async () => {
+		const initDir = createUniqueTestDir("test-config-commands-reinit");
+		await mkdir(initDir, { recursive: true });
+		await $`git init`.cwd(initDir).quiet();
+
+		// First init without the flag: the EDITOR env fallback must still apply
+		const env = { ...process.env, EDITOR: "backlog-sentinel-editor", VISUAL: "backlog-sentinel-editor" };
+		const initial = await $`bun ${CLI_PATH} init "Editor Project" --defaults --integration-mode none`
+			.cwd(initDir)
+			.env(env)
+			.nothrow()
+			.quiet();
+		expect(initial.exitCode).toBe(0);
+
+		const initCore = new Core(initDir);
+		expect((await initCore.filesystem.loadConfig())?.defaultEditor).toBe("backlog-sentinel-editor");
+
+		// Re-init with an explicitly empty flag: clears the editor instead of keeping the existing value
+		const reinit =
+			await $`bun ${CLI_PATH} init "Editor Project" --defaults --default-editor ${""} --integration-mode none`
+				.cwd(initDir)
+				.env(env)
+				.nothrow()
+				.quiet();
+		expect(reinit.exitCode).toBe(0);
+		initCore.filesystem.invalidateConfigCache();
+		expect((await initCore.filesystem.loadConfig())?.defaultEditor).toBeUndefined();
+
+		await safeCleanup(initDir);
+	});
 });
