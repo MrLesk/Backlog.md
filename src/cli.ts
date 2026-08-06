@@ -824,7 +824,7 @@ addHelpSchema(program.command("init [projectName]"), {
 					options.branchDays ||
 					options.bypassGitHooks ||
 					options.zeroPaddedIds ||
-					options.defaultEditor ||
+					options.defaultEditor !== undefined ||
 					options.webPort ||
 					options.autoOpenBrowser ||
 					options.installClaudeAgent ||
@@ -1029,11 +1029,8 @@ addHelpSchema(program.command("init [projectName]"), {
 					const paddingValue = parseNumber(options.zeroPaddedIds, result.zeroPaddedIds ?? 0);
 					result.zeroPaddedIds = paddingValue > 0 ? paddingValue : undefined;
 					result.defaultEditor =
-						options.defaultEditor ||
-						existingConfig?.defaultEditor ||
-						process.env.EDITOR ||
-						process.env.VISUAL ||
-						undefined;
+						options.defaultEditor ??
+						(existingConfig?.defaultEditor || process.env.EDITOR || process.env.VISUAL || undefined);
 					result.defaultPort = parseNumber(options.webPort, result.defaultPort ?? 6420);
 					result.autoOpenBrowser = parseBoolean(options.autoOpenBrowser, result.autoOpenBrowser ?? true);
 					return result;
@@ -4450,13 +4447,16 @@ addHelpSchema(configCmd.command("set <key> <value>"), {
 			// Handle specific config keys
 			switch (key) {
 				case "defaultEditor": {
-					// Validate that the editor command exists
-					const { isEditorAvailable } = await import("./utils/editor.ts");
-					const isAvailable = await isEditorAvailable(value);
-					if (!isAvailable) {
-						console.error(`Editor command not found: ${value}`);
-						console.error("Please ensure the editor is installed and available in your PATH");
-						process.exit(1);
+					// An explicitly empty value means "no editor" and skips executable validation
+					if (value) {
+						// Validate that the editor command exists
+						const { isEditorAvailable } = await import("./utils/editor.ts");
+						const isAvailable = await isEditorAvailable(value);
+						if (!isAvailable) {
+							console.error(`Editor command not found: ${value}`);
+							console.error("Please ensure the editor is installed and available in your PATH");
+							process.exit(1);
+						}
 					}
 					config.defaultEditor = value;
 					break;
