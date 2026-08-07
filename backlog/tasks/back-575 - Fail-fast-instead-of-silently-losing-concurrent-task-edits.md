@@ -1,11 +1,11 @@
 ---
 id: BACK-575
 title: Fail fast instead of silently losing concurrent task edits
-status: In Progress
+status: Done
 assignee:
   - '@claude'
 created_date: '2026-08-07 17:25'
-updated_date: '2026-08-07 18:39'
+updated_date: '2026-08-07 18:50'
 labels:
   - bug
 dependencies: []
@@ -28,20 +28,20 @@ Reference material: withdrawn PR #852 from iRonin (fork branch fix/task-edit-loc
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 Concurrent edits of the same task never silently lose data: one edit succeeds and the other fails
-- [ ] #2 The locking protects across separate backlog processes, not only within a single process
-- [ ] #3 A losing CLI edit exits non-zero with a clear message naming the task and the contention
-- [ ] #4 The web update endpoint returns HTTP 409 on contention
-- [ ] #5 The MCP update_task tool returns an appropriate operation error on contention
-- [ ] #6 No waiting, merging, or automatic retry happens on contention
-- [ ] #7 A concurrency test proves lost-update protection
+- [x] #1 Concurrent edits of the same task never silently lose data: one edit succeeds and the other fails
+- [x] #2 The locking protects across separate backlog processes, not only within a single process
+- [x] #3 A losing CLI edit exits non-zero with a clear message naming the task and the contention
+- [x] #4 The web update endpoint returns HTTP 409 on contention
+- [x] #5 The MCP update_task tool returns an appropriate operation error on contention
+- [x] #6 No waiting, merging, or automatic retry happens on contention
+- [x] #7 A concurrency test proves lost-update protection
 <!-- AC:END -->
 
 ## Definition of Done
 <!-- DOD:BEGIN -->
-- [ ] #1 bunx tsc --noEmit passes when TypeScript touched
-- [ ] #2 bun run check . passes when formatting/linting touched
-- [ ] #3 bun test (or scoped test) passes
+- [x] #1 bunx tsc --noEmit passes when TypeScript touched
+- [x] #2 bun run check . passes when formatting/linting touched
+- [x] #3 bun test (or scoped test) passes
 <!-- DOD:END -->
 
 ## Implementation Plan
@@ -125,4 +125,30 @@ Re-verified after the fix: `bunx tsc --noEmit` clean, Biome clean, `bun test` 18
 Still out of scope and unchanged as declared follow-ups: draft edits (`updateDraftFromInput`), board reorder / `updateTasksBulk`, and the TUI external-editor write path. Plain `backlog task demote` (`Core.demoteTask`) is a separate path and remains unprotected.
 
 **F3, recorded as a known behavioral consequence:** the lock is held across auto-commit and the `onStatusChange` callback, so a callback that itself edits the same task will always fail with the contention message, and any slow callback makes concurrent edits of that task fail fast for its duration.
+
+## Acceptance criteria evidence
+
+All checks below were re-run on the rebased branch (onto origin/main @ 3b3bddc9).
+
+- **AC #1 (no silent data loss)** - two tests, because there are two read-modify-write shapes in the funnel. `src/test/atomic-task-edit.test.ts` 'never silently loses a concurrent edit: winners land, losers fail loudly' asserts the file's labels equal **exactly** the writers that were told they succeeded across six concurrent edits; 'never silently loses an edit that races a demotion to Draft' covers the Draft branch found in review, asserting the racing edit either fails loudly and leaves no trace in the draft, or succeeded and survives in it. Both were confirmed to fail on the unfixed code (six-writer: content mismatch; demote race: edit resolved successfully while the draft came back empty).
+- **AC #2 (across separate processes)** - 'blocks a second process while the first holds the lock' holds the lock in-process and runs a real `bun src/cli.ts task edit` subprocess; plus smoke scenario 4 with 8 independent CLI processes.
+- **AC #3 (CLI exits non-zero, clear message)** - same test asserts a non-zero exit and the exact message on stderr, then a successful retry once released. Observed run: 5 losers each printed 'Edit failed: TASK-41 is being modified by another process; retry if appropriate.'
+- **AC #4 (web 409)** - 'returns HTTP 409 from the web update endpoint on contention' starts a real BacklogServer and asserts status 409 plus the message body.
+- **AC #5 (MCP operation error)** - 'reports an MCP operation error on contention' asserts `OPERATION_FAILED` with the message; 'blocks a demotion to Draft that reaches the funnel through editTaskOrDraft' covers the second MCP entry point.
+- **AC #6 (no waiting, merging, or retry)** - proper-lockfile is configured with `retries: 0`; the contended CLI subprocess returns immediately rather than after a timeout, and every loser in the six-writer race fails rather than merging. The in-lock re-read is not a merge: it makes the critical section cover the read, and 'keeps concurrent edits of different tasks independent' shows unrelated tasks never serialize.
+- **AC #7 (concurrency test)** - the 9-test suite plus smoke scenario 4, both demonstrated to fail on the unfixed code.
+
+Definition of Done: `bunx tsc --noEmit` clean; `bun run check .` clean (358 files - this now works inside agent worktrees thanks to 1034279f on main, which anchors the biome `.claude` exclusion to the project root, so the caveat recorded earlier no longer applies); `bun test` 1906 pass / 5 skip / 0 fail; smoke script all four scenarios pass.
 <!-- SECTION:NOTES:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+Closed the silent-lost-update hole in the task edit funnel by adding a fail-fast, filesystem-level per-task lock.
+
+`FileSystem.withTaskLock` sits beside the existing `withCreateLock` and shares its proper-lockfile mechanics, but is configured with `retries: 0`: on contention the loser gets 'Edit failed: <id> is being modified by another process; retry if appropriate' immediately. Nothing waits, merges, or retries - the caller decides. `Core.updateTaskFromInput` and `demoteTaskWithUpdates` now run their read-modify-write inside that lock, re-reading the task inside it so the critical section covers the read; a lock around the write alone would still lose an update whenever one writer released before the next acquired. Locking the demote itself (rather than the Draft branch of updateTaskFromInput) is what closes the funnel, because MCP's editTaskOrDraft calls it directly. The lockfile lives under the project's backlog directory rather than the shared git common dir, so sibling worktrees editing their own copy of a task cannot fail each other. CLI exits non-zero with the message, the web PUT returns 409, MCP reports OPERATION_FAILED.
+
+Verified with a 9-test concurrency suite (src/test/atomic-task-edit.test.ts) and a new smoke scenario: six concurrent edits leave the file matching exactly the writers told they succeeded; a real CLI subprocess is blocked by a lock held in another process and succeeds on retry; the Draft demotion race and both MCP entry points are covered. Regression value proved by reverting each fix - the six-writer test fails on content mismatch, the demote-race test reproduces the reported symptom (edit resolves successfully, draft comes back empty), and smoke scenario 4 shows 8/8 jobs exiting 0 with 7 writes silently lost. bunx tsc --noEmit clean, bun run check . clean, bun test 1906 pass / 5 skip / 0 fail, smoke script all four scenarios pass.
+
+Defect report, lost-write measurement, and concurrency-harness shape credited to iRonin (issue #843, withdrawn PR #852). Declared follow-ups, deliberately out of scope: draft edits (updateDraftFromInput), reorderTask/updateTasksBulk, the TUI external-editor write path, and plain `backlog task demote`.
+<!-- SECTION:FINAL_SUMMARY:END -->
