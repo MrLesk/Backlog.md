@@ -113,6 +113,28 @@ describe("CLI JSON output", () => {
 		expect(result.stdout.toString()).not.toContain("onStatusChange");
 	});
 
+	it("returns a compact versioned decision-list envelope", async () => {
+		const result = await runCli(["decision", "list", "--json"]);
+		expect(result.exitCode).toBe(0);
+		expect(result.stderr.toString()).toBe("");
+		expect(result.stdout.toString().endsWith("\n")).toBe(true);
+
+		expect(JSON.parse(result.stdout.toString())).toEqual({
+			schemaVersion: 1,
+			kind: "decision-list",
+			decisions: [
+				{
+					id: "decision-1",
+					title: "Use stable JSON",
+					status: "accepted",
+					date: "2026-07-12",
+				},
+			],
+		});
+		expect(result.stdout.toString()).not.toContain("rawContent");
+		expect(result.stdout.toString()).not.toContain("Publish curated fields");
+	});
+
 	it("returns curated task details for view and shorthand", async () => {
 		for (const args of [
 			["task", "view", "1", "--json"],
@@ -234,6 +256,7 @@ describe("CLI JSON output", () => {
 			["task", "view", "1", "--json", "--plain"],
 			["task", "1", "--json", "--plain"],
 			["search", "JSON", "--json", "--plain"],
+			["decision", "list", "--json", "--plain"],
 		]) {
 			const result = await runCli(args);
 			expect(result.exitCode).toBe(1);
@@ -296,6 +319,7 @@ describe("CLI JSON output", () => {
 			["task", "view", "--help"],
 			["task", "--help"],
 			["search", "--help"],
+			["decision", "list", "--help"],
 		]) {
 			const result = await runCli(args);
 			expect(result.exitCode).toBe(0);

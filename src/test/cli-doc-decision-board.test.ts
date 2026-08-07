@@ -173,6 +173,41 @@ describe("CLI Integration", () => {
 			expect(decisions).toHaveLength(1);
 			expect(decisions[0]?.title).toBe("Choose Stack");
 		});
+
+		it("should list decisions with id, title, and status as plain text", async () => {
+			await $`bun ${CLI_PATH} decision create "Choose Stack" -s accepted`.cwd(TEST_DIR).quiet();
+			await $`bun ${CLI_PATH} decision create "Adopt Free Form Status" -s "Under Review"`.cwd(TEST_DIR).quiet();
+
+			const result = await $`bun ${CLI_PATH} decision list --plain`.cwd(TEST_DIR).quiet();
+			expect(result.exitCode).toBe(0);
+			const lines = result.stdout.toString().trim().split("\n");
+			expect(lines).toEqual([
+				"decision-1 - Choose Stack (accepted)",
+				"decision-2 - Adopt Free Form Status (Under Review)",
+			]);
+		});
+
+		it("should default to text output when stdout is not a TTY", async () => {
+			await $`bun ${CLI_PATH} decision create "Choose Stack"`.cwd(TEST_DIR).quiet();
+
+			const result = await $`bun ${CLI_PATH} decision list`.cwd(TEST_DIR).quiet();
+			expect(result.exitCode).toBe(0);
+			expect(result.stdout.toString().trim()).toBe("decision-1 - Choose Stack (proposed)");
+		});
+
+		it("should report an empty decision log in both output modes", async () => {
+			const plain = await $`bun ${CLI_PATH} decision list --plain`.cwd(TEST_DIR).quiet();
+			expect(plain.exitCode).toBe(0);
+			expect(plain.stdout.toString().trim()).toBe("No decisions found.");
+
+			const json = await $`bun ${CLI_PATH} decision list --json`.cwd(TEST_DIR).quiet();
+			expect(json.exitCode).toBe(0);
+			expect(JSON.parse(json.stdout.toString())).toEqual({
+				schemaVersion: 1,
+				kind: "decision-list",
+				decisions: [],
+			});
+		});
 	});
 
 	describe("board view command", () => {
