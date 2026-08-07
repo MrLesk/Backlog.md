@@ -183,6 +183,14 @@ describe("TUI task composer model", () => {
 		});
 	});
 
+	it("keeps the composer inside short terminals so no row is pushed off-screen", () => {
+		for (const screenHeight of [6, 8, 10, 12, 14, 16, 20, 24, 40]) {
+			const { popupHeight } = getTaskComposerLayout(80, screenHeight);
+			expect(popupHeight).toBeLessThanOrEqual(screenHeight);
+		}
+		expect(getTaskComposerLayout(80, 10).popupHeight).toBe(8);
+	});
+
 	it("does not persist invalid input and preserves values after a failed attempt", async () => {
 		const controller = new TaskComposerController(["Review", "Done"]);
 		let calls = 0;
@@ -1127,8 +1135,9 @@ describe("TUI task composer interaction", () => {
 			expect(details?.position).toMatchObject({ top: 9, height: 3 });
 			expect(actions?.position).toMatchObject({ top: 12, height: 1 });
 			expect(actions?.hidden).toBe(false);
-			expect(status?.position).toMatchObject({ top: 0, left: 1 });
-			expect(type?.position).toMatchObject({ top: 0, left: "34%" });
+			// Selectors sit inside the details frame but are positioned in viewport coordinates.
+			expect(status?.position).toMatchObject({ top: 10, left: 3 });
+			expect(type?.position).toMatchObject({ top: 10, left: "35%" });
 			expect(widgets.some((widget) => widget.content?.includes("[↑↓/←→]"))).toBe(true);
 
 			mutableScreen.width = 50;
@@ -1144,8 +1153,8 @@ describe("TUI task composer interaction", () => {
 			expect(details?.position).toMatchObject({ top: 6, height: 4 });
 			expect(actions?.position).toMatchObject({ top: 10, height: 1 });
 			expect(actions?.hidden).toBe(true);
-			expect(status?.position).toMatchObject({ top: 0, left: 1 });
-			expect(type?.position).toMatchObject({ top: 1, left: 1, width: "48%" });
+			expect(status?.position).toMatchObject({ top: 7, left: 3 });
+			expect(type?.position).toMatchObject({ top: 8, left: 3, width: "44%" });
 			expect(widgets.some((widget) => widget.content?.includes("[↑↓←→]"))).toBe(true);
 
 			mutableScreen.width = 80;
@@ -1155,7 +1164,7 @@ describe("TUI task composer interaction", () => {
 			details = widgets.find((widget) => widget.options?.label === " Details ");
 			type = widgets.find((widget) => widget.content === "Type: None ▼");
 			expect(details?.position).toMatchObject({ top: 9, height: 3 });
-			expect(type?.position).toMatchObject({ top: 0, left: "34%" });
+			expect(type?.position).toMatchObject({ top: 10, left: "35%" });
 			pressKey((screen as unknown as { focused?: TestWidget }).focused, "escape", "\x1b");
 			expect(await withTimeout(resultPromise, "resized composer cancellation", 1000)).toBeNull();
 		} finally {

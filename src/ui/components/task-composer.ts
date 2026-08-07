@@ -3,7 +3,12 @@ import { box, textarea, textbox } from "neo-neo-bblessed";
 import type { Task, TaskCreateInput } from "../../types/index.ts";
 import { getPriorityOptions } from "../../utils/priority-config.ts";
 import { getTaskTypeValues } from "../../utils/task-type-config.ts";
-import { createPopupChrome, type FilterPopupChoice, openSingleSelectFilterPopup } from "./filter-popup.ts";
+import {
+	createPopupChrome,
+	createScrollableViewport,
+	type FilterPopupChoice,
+	openSingleSelectFilterPopup,
+} from "./filter-popup.ts";
 
 const DRAFT_STATUS = "Draft";
 
@@ -23,6 +28,7 @@ export type TaskComposerLayout = {
 	detailsTop: number;
 	detailsHeight: number;
 	actionsTop: number;
+	contentHeight: number;
 };
 
 export function getTaskComposerLayout(screenWidth: number, screenHeight: number): TaskComposerLayout {
@@ -30,14 +36,20 @@ export function getTaskComposerLayout(screenWidth: number, screenHeight: number)
 	const descriptionHeight = compact ? 3 : 6;
 	const detailsTop = 3 + descriptionHeight;
 	const detailsHeight = compact ? 4 : 3;
+	const actionsTop = detailsTop + detailsHeight;
 	return {
 		compact,
 		popupWidth: screenWidth < 76 ? "96%" : 72,
-		popupHeight: Math.min(20, Math.max(14, screenHeight - 2)),
+		// The popup must never be taller than the screen: blessed centers it by subtracting
+		// half its height, so an oversized popup starts at a negative row and its actions,
+		// error and help rows fall outside the terminal.
+		popupHeight: Math.min(20, Math.max(3, screenHeight - 2)),
 		descriptionHeight,
 		detailsTop,
 		detailsHeight,
-		actionsTop: detailsTop + detailsHeight,
+		actionsTop,
+		// Compact hides the "Actions" caption, so the buttons are the last row instead of the second-last.
+		contentHeight: actionsTop + (compact ? 1 : 2),
 	};
 }
 
@@ -168,14 +180,14 @@ export async function openTaskComposer(options: TaskComposerOptions): Promise<Ta
 			height: layout.popupHeight,
 		});
 
-		const form = box({
+		// Short terminals cannot show every field at once, so the fields live in a viewport
+		// that clips them to the popup and scrolls the focused one into view.
+		const form = createScrollableViewport({
 			parent: popup,
 			top: 1,
 			left: 1,
 			right: 1,
 			bottom: 2,
-			scrollable: true,
-			alwaysScroll: true,
 			keys: false,
 			mouse: true,
 		});
@@ -220,12 +232,15 @@ export async function openTaskComposer(options: TaskComposerOptions): Promise<Ta
 			label: " Details ",
 			style: { border: { fg: "cyan" } },
 		});
+		// The selectors and buttons sit inside the details frame visually, but stay direct
+		// children of the viewport: blessed drops grandchildren of a scrolled viewport, which
+		// would make them invisible on short terminals.
 		const selectorContent = (label: string, value: string) => `${label}: ${displayChoice(value)} ▼`;
 		const createSelector = (label: string, value: string) =>
 			box({
-				parent: detailsGroup,
+				parent: form,
 				top: 0,
-				left: 1,
+				left: 3,
 				height: 1,
 				content: selectorContent(label, value),
 				keys: true,
@@ -243,17 +258,10 @@ export async function openTaskComposer(options: TaskComposerOptions): Promise<Ta
 			content: "Actions",
 			style: { fg: "cyan", bold: true },
 		});
-		const actionsGroup = box({
+		const createAction = box({
 			parent: form,
 			top: layout.actionsTop + 1,
-			left: 1,
-			right: 1,
-			height: 1,
-		});
-		const createAction = box({
-			parent: actionsGroup,
-			top: 0,
-			left: 1,
+			left: 2,
 			width: 18,
 			height: 1,
 			align: "center",
@@ -263,9 +271,9 @@ export async function openTaskComposer(options: TaskComposerOptions): Promise<Ta
 			style: { fg: "green" },
 		});
 		const cancelAction = box({
-			parent: actionsGroup,
-			top: 0,
-			left: 21,
+			parent: form,
+			top: layout.actionsTop + 1,
+			left: 22,
 			width: 14,
 			height: 1,
 			align: "center",
@@ -294,18 +302,21 @@ export async function openTaskComposer(options: TaskComposerOptions): Promise<Ta
 			create: createAction,
 			cancel: cancelAction,
 		};
-		const getFieldTop = (field: TaskComposerField): number => {
-			const tops: Record<TaskComposerField, number> = {
+		/** Row of each field inside the scrollable viewport; selectors sit inside the details frame. */
+		const getFieldTops = (): Record<TaskComposerField, number> => {
+			const secondSelectorRow = layout.detailsTop + (layout.compact ? 2 : 1);
+			const actionsRow = layout.actionsTop + (layout.compact ? 0 : 1);
+			return {
 				title: 0,
 				description: 3,
-				status: layout.detailsTop,
-				type: layout.detailsTop + (layout.compact ? 1 : 0),
-				priority: layout.detailsTop + (layout.compact ? 1 : 0),
-				create: layout.actionsTop + (layout.compact ? 0 : 1),
-				cancel: layout.actionsTop + (layout.compact ? 0 : 1),
+				status: layout.detailsTop + 1,
+				type: secondSelectorRow,
+				priority: secondSelectorRow,
+				create: actionsRow,
+				cancel: actionsRow,
 			};
-			return tops[field];
 		};
+		const getFieldTop = (field: TaskComposerField): number => getFieldTops()[field];
 		const setFieldGeometry = (
 			widget: BoxInterface,
 			geometry: { top: number; left: string | number; width: string | number; height?: number },
@@ -337,11 +348,9 @@ export async function openTaskComposer(options: TaskComposerOptions): Promise<Ta
 		};
 
 		const scrollFieldIntoView = (field: TaskComposerField) => {
-			const scrollable = form as BoxInterface & { scrollTo?: (index: number) => void };
 			const visibleHeight = typeof form.height === "number" ? form.height : 12;
-			const top = getFieldTop(field);
-			const target = Math.max(0, top - Math.max(0, visibleHeight - 3));
-			scrollable.scrollTo?.(target);
+			const target = Math.max(0, getFieldTop(field) - Math.max(0, visibleHeight - 3));
+			form.childBase = Math.min(Math.max(0, layout.contentHeight - visibleHeight), target);
 		};
 
 		const applyLayout = () => {
@@ -351,25 +360,22 @@ export async function openTaskComposer(options: TaskComposerOptions): Promise<Ta
 			detailsGroup.top = layout.detailsTop;
 			detailsGroup.height = layout.detailsHeight;
 			actionsLabel.top = layout.actionsTop;
-			actionsGroup.top = layout.actionsTop + (layout.compact ? 0 : 1);
 			const mutableActionsLabel = actionsLabel as BoxInterface & { hide(): void; show(): void };
 			if (layout.compact) mutableActionsLabel.hide();
 			else mutableActionsLabel.show();
+			const tops = getFieldTops();
 			if (layout.compact) {
-				setFieldGeometry(statusField, { top: 0, left: 1, width: "100%-2" });
-				setFieldGeometry(typeField, { top: 1, left: 1, width: "48%" });
-				setFieldGeometry(priorityField, { top: 1, left: "51%", width: "47%-1" });
+				setFieldGeometry(statusField, { top: tops.status, left: 3, width: "100%-6" });
+				setFieldGeometry(typeField, { top: tops.type, left: 3, width: "44%" });
+				setFieldGeometry(priorityField, { top: tops.priority, left: "50%", width: "44%" });
+				setFieldGeometry(createAction, { top: tops.create, left: 3, width: "44%" });
+				setFieldGeometry(cancelAction, { top: tops.cancel, left: "50%", width: "44%" });
 			} else {
-				setFieldGeometry(statusField, { top: 0, left: 1, width: "32%" });
-				setFieldGeometry(typeField, { top: 0, left: "34%", width: "31%" });
-				setFieldGeometry(priorityField, { top: 0, left: "66%", width: "33%-1" });
-			}
-			if (layout.compact) {
-				setFieldGeometry(createAction, { top: 0, left: 1, width: "48%" });
-				setFieldGeometry(cancelAction, { top: 0, left: "51%", width: "47%-1" });
-			} else {
-				setFieldGeometry(createAction, { top: 0, left: 1, width: 18 });
-				setFieldGeometry(cancelAction, { top: 0, left: 21, width: 14 });
+				setFieldGeometry(statusField, { top: tops.status, left: 3, width: "30%" });
+				setFieldGeometry(typeField, { top: tops.type, left: "35%", width: "30%" });
+				setFieldGeometry(priorityField, { top: tops.priority, left: "67%", width: "30%" });
+				setFieldGeometry(createAction, { top: tops.create, left: 2, width: 18 });
+				setFieldGeometry(cancelAction, { top: tops.cancel, left: 22, width: 14 });
 			}
 			statusField.setContent(selectorContent("Status", controller.values.status));
 			typeField.setContent(selectorContent("Type", controller.values.type));
@@ -388,12 +394,14 @@ export async function openTaskComposer(options: TaskComposerOptions): Promise<Ta
 			>) {
 				setBorder(widget, name === field);
 			}
-			scrollFieldIntoView(field);
 			const widget = widgets[field];
 			widget.focus();
 			if (field === "title" || field === "description") {
 				(widget as TextboxInterface).readInput();
 			}
+			// blessed scrolls a focused widget into view using its offset within its immediate
+			// parent, which is wrong for the grouped selectors and buttons, so correct it after.
+			scrollFieldIntoView(field);
 			options.screen.render();
 		};
 

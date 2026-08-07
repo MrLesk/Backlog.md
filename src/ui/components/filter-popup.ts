@@ -1,5 +1,5 @@
 import type { BoxInterface, ScreenInterface } from "neo-neo-bblessed";
-import { box, list } from "neo-neo-bblessed";
+import { box, list, scrollablebox } from "neo-neo-bblessed";
 import { createGenericList } from "./generic-list.ts";
 
 export interface FilterPopupChoice {
@@ -29,6 +29,25 @@ function resolveDimension(value: string | number, total: number): number {
 	return Number.isNaN(parsed) ? total : parsed;
 }
 
+/** A viewport that clips its content, with `childBase` as the first visible row. */
+export type ScrollableViewport = BoxInterface & { childBase: number };
+
+/**
+ * `box({ scrollable: true })` is a no-op in neo-neo-bblessed: the option is ignored, so the
+ * box neither clips nor scrolls and overflowing content draws over the surrounding chrome.
+ */
+export function createScrollableViewport(options: Parameters<typeof box>[0]): ScrollableViewport {
+	return scrollablebox(options) as unknown as ScrollableViewport;
+}
+
+/**
+ * A popup larger than the screen centers at a negative offset, pushing its bottom rows
+ * (actions, errors, help) out of the viewport, so every popup dimension is capped here.
+ */
+function fitToScreen(value: string | number, total: number): string | number {
+	return resolveDimension(value, total) > total ? total : value;
+}
+
 function resolvePosition(value: string | number, total: number, size: number): number {
 	if (typeof value === "number") {
 		return value;
@@ -51,8 +70,10 @@ export function createPopupChrome(options: PopupChromeOptions): {
 	close: () => void;
 	reflow: (width: string | number, height: string | number, helpText?: string) => void;
 } {
-	const width = options.width ?? "50%";
-	const height = options.height ?? "70%";
+	const screenWidth = typeof options.screen.width === "number" ? options.screen.width : 120;
+	const screenHeight = typeof options.screen.height === "number" ? options.screen.height : 40;
+	const width = fitToScreen(options.width ?? "50%", screenWidth);
+	const height = fitToScreen(options.height ?? "70%", screenHeight);
 	const popup = box({
 		parent: options.screen,
 		top: "center",
@@ -67,12 +88,10 @@ export function createPopupChrome(options: PopupChromeOptions): {
 		label: ` ${options.title} `,
 	});
 
-	const screenWidth = typeof options.screen.width === "number" ? options.screen.width : 120;
-	const screenHeight = typeof options.screen.height === "number" ? options.screen.height : 40;
-	const popupWidth = resolveDimension(popup.width ?? width, screenWidth);
-	const popupHeight = resolveDimension(popup.height ?? height, screenHeight);
-	const popupTop = resolvePosition(popup.top ?? "center", screenHeight, popupHeight);
-	const popupLeft = resolvePosition(popup.left ?? "center", screenWidth, popupWidth);
+	const popupWidth = resolveDimension(width, screenWidth);
+	const popupHeight = resolveDimension(height, screenHeight);
+	const popupTop = resolvePosition("center", screenHeight, popupHeight);
+	const popupLeft = resolvePosition("center", screenWidth, popupWidth);
 
 	const backdrop = box({
 		parent: options.screen,
@@ -108,14 +127,16 @@ export function createPopupChrome(options: PopupChromeOptions): {
 	});
 
 	const reflow = (nextWidth: string | number, nextHeight: string | number, helpText?: string) => {
-		popup.width = nextWidth;
-		popup.height = nextHeight;
-		popup.top = "center";
-		popup.left = "center";
 		const nextScreenWidth = typeof options.screen.width === "number" ? options.screen.width : 120;
 		const nextScreenHeight = typeof options.screen.height === "number" ? options.screen.height : 40;
-		const nextPopupWidth = resolveDimension(nextWidth, nextScreenWidth);
-		const nextPopupHeight = resolveDimension(nextHeight, nextScreenHeight);
+		const fittedWidth = fitToScreen(nextWidth, nextScreenWidth);
+		const fittedHeight = fitToScreen(nextHeight, nextScreenHeight);
+		popup.width = fittedWidth;
+		popup.height = fittedHeight;
+		popup.top = "center";
+		popup.left = "center";
+		const nextPopupWidth = resolveDimension(fittedWidth, nextScreenWidth);
+		const nextPopupHeight = resolveDimension(fittedHeight, nextScreenHeight);
 		const nextPopupTop = resolvePosition("center", nextScreenHeight, nextPopupHeight);
 		const nextPopupLeft = resolvePosition("center", nextScreenWidth, nextPopupWidth);
 		backdrop.top = Math.max(0, nextPopupTop - 1);

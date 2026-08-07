@@ -4,8 +4,9 @@ title: Repair TUI task composer UX and navigation
 status: Done
 assignee:
   - '@codex'
+  - '@claude'
 created_date: '2026-08-02 21:12'
-updated_date: '2026-08-02 22:25'
+updated_date: '2026-08-07 18:06'
 labels:
   - tui
   - bug
@@ -75,6 +76,18 @@ Recomposed the modal around bordered Title/Description fields, a compact respons
 Verification: bun test src/test/tui-task-composer.test.ts (51 pass); full bun test (1884 pass, 5 skipped, 0 fail); bunx tsc --noEmit; bun run check .; bun run build. Rendered PTY QA exercised discovery, title caret editing, multiline description editing, inert Tab, arrow navigation, status/type/priority pickers, task and Draft creation, Esc/Cancel no-write behavior, and live resize at 100x30, 80x24, and 50x18.
 
 PR #833 follow-up: rebased onto origin/main at eed14499 (merged BACK-566), then reversed only the temporary entrypoint-hiding runtime/help/test changes. The restored board, help, unified-view, and help-test files are byte-identical to their pre-mitigation f321ec76 versions; the BACK-566 task record remains unchanged and the disabled-entrypoint test is removed. Rebase verification passed: 20 focused composer model/interaction/board-outcome tests, 8 help/unified-view tests, bunx tsc --noEmit, Biome on all touched source/tests, bun run build, git diff --check, and the explicit mitigation audit. A concurrent machine-wide Git process storm made the unchanged long-running canonical persistence group exceed its timing assumptions during this follow-up; persistence code was not changed, and the prior isolated full run remains recorded above (1884 pass, 5 skipped, 0 fail).
+
+PR #833 review follow-up (two P2 findings, both reproduced first in tmux before fixing).
+
+Finding 1 - composer unusable below ~14 rows. getTaskComposerLayout floored popupHeight at 14, and blessed centers a popup by subtracting half its height, so an 80x10 terminal produced a 14-row popup starting at row -2: the Create/Cancel, error and help rows rendered off-screen and the fields drew over the board. Fixed by flooring on the screen instead (popupHeight = min(20, max(3, screenHeight - 2))) and by capping every popup dimension to the screen inside createPopupChrome, which also covers confirm-popup's fixed height 10.
+
+Two blessed defects surfaced while verifying the small-size layout. (a) box({ scrollable: true }) is a disabled no-op in neo-neo-bblessed, so the composer's form never clipped or scrolled and scrollFieldIntoView's scrollTo?.() call was dead: the viewport now uses a real scrollablebox via a shared createScrollableViewport helper, and the offset is set through childBase. (b) A scrolled viewport does not render its grandchildren, so the selectors and buttons vanished once the form scrolled; the Details frame is now decoration only and the selectors and buttons are direct children of the viewport positioned in viewport coordinates (the actionsGroup wrapper is gone). Screen._focus also auto-scrolls using an offset relative to the widget's immediate parent, so scrollFieldIntoView now runs after focus() rather than before.
+
+Finding 2 - help popup clipped its last row. The fixed 20-row popup gives content 16 rows while BOARD_SHORTCUTS now renders 17 lines, so 'q/Esc - Quit / Close' was cut. The popup is sized to its content within screen bounds (getHelpPopupHeight = clamp(shortcuts + 4, 5, screenHeight - 2)) and the content is scrollable with up/down, with a scroll hint added to the footer only when the list does not fit.
+
+Verification. Real interactive runs in detached tmux sessions at 80x10, 80x24 and 120x30 against a disposable fixture project, capturing tmux capture-pane after every step. At all three sizes: board renders; N opens a fully visible composer (title/description/details/actions plus the error and help rows); arrow keys move spatially between fields; the status/type/priority pickers open, apply and restore focus; a typed title submits once with the 'Created TASK-n.' footer outcome; Esc cancels without writing; and the help popup shows its final q/Esc row (directly at 80x24 and 120x30, by scrolling at 80x10). At 80x10 specifically, submitting an empty title shows 'Title is required.' in the visible error row. Checks: bunx tsc --noEmit; Biome clean on all 341 src files (run with --vcs-enabled=false because this worktree lives under a gitignored .claude path, which makes 'bun run check' match zero files); focused composer/help tests 55 pass; full bun test 1886 pass, 5 skip, 0 fail.
+
+Observed but not fixed (pre-existing, outside these findings): openSingleSelectFilterPopup passes 'selected: selectedIndex' to blessed's list(), which ignores the option, so every single-select picker opens highlighting the first row instead of the current value - visible when opening the composer's Status picker with 'To Do' already selected. Also src/ui/tui.ts, src/ui/overview-tui.ts and src/ui/board.ts still pass scrollable: true to box(), which is the same no-op.
 <!-- SECTION:NOTES:END -->
 
 ## Final Summary
