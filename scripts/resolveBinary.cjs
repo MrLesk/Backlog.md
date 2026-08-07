@@ -22,11 +22,20 @@ function getCandidatePackageNames(
 	return [getPackageName(platform, primary), getPackageName(platform, primary === "arm64" ? "x64" : "arm64")];
 }
 
-/** True when the current process runs under Rosetta 2 translation on macOS. */
-function isRosettaTranslated(platform = process.platform) {
+/**
+ * True when the current process runs under Rosetta 2 translation on macOS.
+ * stdio ignores the child's stdin and stderr so restricted shells, where sysctl
+ * is not permitted, cannot leak "Operation not permitted" into our own stderr.
+ */
+function isRosettaTranslated(platform = process.platform, exec = execFileSync) {
 	if (platform !== "darwin") return false;
 	try {
-		return execFileSync("/usr/sbin/sysctl", ["-in", "sysctl.proc_translated"], { encoding: "utf8" }).trim() === "1";
+		return (
+			exec("/usr/sbin/sysctl", ["-in", "sysctl.proc_translated"], {
+				encoding: "utf8",
+				stdio: ["ignore", "pipe", "ignore"],
+			}).trim() === "1"
+		);
 	} catch {
 		return false;
 	}
