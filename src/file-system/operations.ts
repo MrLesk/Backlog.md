@@ -12,7 +12,8 @@ import {
 	resolveBacklogDirectory,
 	resolveBacklogDirectoryFromRootConfig,
 } from "../utils/backlog-directory.ts";
-import { documentIdsEqual, normalizeDocumentId } from "../utils/document-id.ts";
+import { findDecisionById } from "../utils/decision-id.ts";
+import { documentIdsEqual, findDocumentById, normalizeDocumentId } from "../utils/document-id.ts";
 import { normalizeDocumentRelativePath, normalizeDocumentSubPath } from "../utils/document-path.ts";
 import {
 	buildGlobPattern,
@@ -1021,24 +1022,7 @@ export class FileSystem {
 	}
 
 	async loadDecision(decisionId: string): Promise<Decision | null> {
-		try {
-			const decisionsDir = await this.getDecisionsDir();
-			const files = await Array.fromAsync(
-				new Bun.Glob("decision-*.md").scan({ cwd: decisionsDir, followSymlinks: true }),
-			);
-
-			// Normalize ID - remove "decision-" prefix if present
-			const normalizedId = decisionId.replace(/^decision-/, "");
-			const decisionFile = files.find((file) => file.startsWith(`decision-${normalizedId} -`));
-
-			if (!decisionFile) return null;
-
-			const filepath = join(decisionsDir, decisionFile);
-			const content = await Bun.file(filepath).text();
-			return parseDecision(content);
-		} catch (_error) {
-			return null;
-		}
+		return findDecisionById(await this.listDecisions(), decisionId);
 	}
 
 	// Document operations
@@ -1118,7 +1102,7 @@ export class FileSystem {
 				}
 				const filepath = join(decisionsDir, file);
 				const content = await Bun.file(filepath).text();
-				decisions.push(parseDecision(content));
+				decisions.push({ ...parseDecision(content), path: file });
 			}
 			return sortByTaskId(decisions);
 		} catch {
@@ -1154,8 +1138,7 @@ export class FileSystem {
 	}
 
 	async loadDocument(id: string): Promise<Document> {
-		const documents = await this.listDocuments();
-		const document = documents.find((doc) => documentIdsEqual(id, doc.id));
+		const document = findDocumentById(await this.listDocuments(), id);
 		if (!document) {
 			throw new Error(`Document not found: ${id}`);
 		}

@@ -1,5 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
+import { join } from "node:path";
 import { FileSystem } from "../file-system/operations.ts";
+import { serializeDecision, serializeDocument } from "../markdown/serializer.ts";
 import { BacklogServer } from "../server/index.ts";
 import type { Document } from "../types/index.ts";
 import { createUniqueTestDir, retry, safeCleanup } from "./test-utils.ts";
@@ -217,5 +219,71 @@ describe("BacklogServer document endpoints", () => {
 		});
 		expect(updateResponse.status).toBe(500);
 		expect(await updateResponse.text()).toContain("Failed to update document");
+	});
+});
+
+describe("BacklogServer ambiguous content identity", () => {
+	beforeEach(async () => {
+		TEST_DIR = createUniqueTestDir("server-content-identity");
+		const filesystem = new FileSystem(TEST_DIR);
+		await filesystem.ensureBacklogStructure();
+		await filesystem.saveConfig({
+			projectName: "Server Content Identity",
+			statuses: ["To Do", "In Progress", "Done"],
+			labels: [],
+			milestones: [],
+			dateFormat: "YYYY-MM-DD",
+			remoteOperations: false,
+		});
+
+		const document = (id: string, title: string): string =>
+			serializeDocument({ id, title, type: "other", createdDate: "2026-01-01 00:00", rawContent: title });
+		const decision = (id: string, title: string): string =>
+			serializeDecision({
+				id,
+				title,
+				date: "2026-01-01 00:00",
+				status: "proposed",
+				context: "",
+				decision: "",
+				consequences: "",
+				rawContent: "",
+			});
+		await Bun.write(join(filesystem.docsDir, "doc-1 - Alpha.md"), document("doc-1", "Alpha"));
+		await Bun.write(join(filesystem.docsDir, "nested", "doc-01 - Beta.md"), document("doc-01", "Beta"));
+		await Bun.write(join(filesystem.decisionsDir, "decision-1 - Alpha.md"), decision("decision-1", "Alpha"));
+		await Bun.write(join(filesystem.decisionsDir, "decision-01 - Beta.md"), decision("decision-01", "Beta"));
+
+		server = new BacklogServer(TEST_DIR);
+		await server.start(0, false);
+		const port = server.getPort();
+		expect(port).not.toBeNull();
+		serverPort = port ?? 0;
+
+		await retry(async () => {
+			await fetchJson<Document[]>("/api/docs");
+		});
+	});
+
+	afterEach(async () => {
+		if (server) {
+			await server.stop();
+			server = null;
+		}
+		await safeCleanup(TEST_DIR);
+	});
+
+	it("answers 409 instead of picking a winner", async () => {
+		const documentResponse = await fetch(`http://127.0.0.1:${serverPort}/api/docs/doc-1`);
+		expect(documentResponse.status).toBe(409);
+		const documentBody = await documentResponse.text();
+		expect(documentBody).toContain("Document ID doc-1 is ambiguous");
+		expect(documentBody).toContain("nested/doc-01 - Beta.md");
+
+		const decisionResponse = await fetch(`http://127.0.0.1:${serverPort}/api/decisions/decision-1`);
+		expect(decisionResponse.status).toBe(409);
+		const decisionBody = await decisionResponse.text();
+		expect(decisionBody).toContain("Decision ID decision-1 is ambiguous");
+		expect(decisionBody).toContain("decision-01 - Beta.md");
 	});
 });

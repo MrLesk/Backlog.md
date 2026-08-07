@@ -192,6 +192,7 @@ export interface Decision {
 	consequences: string;
 	alternatives?: string;
 	readonly rawContent: string; // Raw markdown content without frontmatter
+	path?: string; // Decisions-relative file path, set when listed from disk
 }
 
 export interface Milestone {

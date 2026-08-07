@@ -23,12 +23,14 @@ import {
 	type TaskUpdateInput,
 } from "../types/index.ts";
 import { normalizeAssignee } from "../utils/assignee.ts";
-import { documentIdsEqual, normalizeDocumentId } from "../utils/document-id.ts";
+import { decisionIdKey } from "../utils/decision-id.ts";
+import { documentIdKey, findDocumentById, normalizeDocumentId } from "../utils/document-id.ts";
 import {
 	getDocumentSubPathFromRelativePath,
 	normalizeDocumentRelativePath,
 	normalizeDocumentSubPath,
 } from "../utils/document-path.ts";
+import { type ContentIdentityReport, detectContentIdentityIssues } from "../utils/duplicate-detection.ts";
 import { openInEditor } from "../utils/editor.ts";
 import { generateNextDocId } from "../utils/id-generators.ts";
 import {
@@ -280,6 +282,23 @@ export class Core {
 			await this.contentStore.refreshTasks();
 		}
 		return result;
+	}
+
+	/** Reports document and decision files whose IDs collide or are missing, so lookups can fail closed. */
+	async diagnoseContentIdentity(): Promise<ContentIdentityReport> {
+		const [documents, decisions] = await Promise.all([this.fs.listDocuments(), this.fs.listDecisions()]);
+		const locate = (directory: string, item: { path?: string; title: string }) =>
+			item.path ? `${this.fs.backlogDirName}/${directory}/${item.path}` : item.title;
+		return {
+			documents: detectContentIdentityIssues(
+				documents.map((document) => ({ id: document.id, path: locate(DEFAULT_DIRECTORIES.DOCS, document) })),
+				documentIdKey,
+			),
+			decisions: detectContentIdentityIssues(
+				decisions.map((decision) => ({ id: decision.id, path: locate(DEFAULT_DIRECTORIES.DECISIONS, decision) })),
+				decisionIdKey,
+			),
+		};
 	}
 
 	private async resolveCreateOrdinal(inputOrdinal: number | undefined, isDraft: boolean): Promise<number | undefined> {
@@ -688,9 +707,7 @@ export class Core {
 	}
 
 	async getDocument(documentId: string): Promise<Document | null> {
-		const documents = await this.fs.listDocuments();
-		const match = documents.find((doc) => documentIdsEqual(documentId, doc.id));
-		return match ?? null;
+		return findDocumentById(await this.fs.listDocuments(), documentId);
 	}
 
 	async getDocumentContent(documentId: string): Promise<string | null> {

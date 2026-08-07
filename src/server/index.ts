@@ -19,6 +19,8 @@ import {
 } from "../types/index.ts";
 import { launchBrowser } from "../utils/browser-launch.ts";
 import type { BrowserLoadingState } from "../utils/browser-loading-state.ts";
+import { findDecisionById } from "../utils/decision-id.ts";
+import { isAmbiguousIdError } from "../utils/entity-id.ts";
 import { resolveMilestoneInputForStorage } from "../utils/milestone-storage.ts";
 import { formatValidPriorityValues, resolvePriorityValue } from "../utils/priority-config.ts";
 import { formatValidStatuses, getCanonicalStatuses, getValidStatuses } from "../utils/status.ts";
@@ -1124,6 +1126,9 @@ export class BacklogServer {
 			}
 			return Response.json(doc);
 		} catch (error) {
+			if (isAmbiguousIdError(error)) {
+				return Response.json({ error: error.message }, { status: 409 });
+			}
 			console.error("Error loading document:", error);
 			return Response.json({ error: "Document not found" }, { status: 404 });
 		}
@@ -1234,8 +1239,7 @@ export class BacklogServer {
 	private async handleGetDecision(decisionId: string): Promise<Response> {
 		try {
 			const store = await this.getContentStoreInstance();
-			const normalizedId = decisionId.startsWith("decision-") ? decisionId : `decision-${decisionId}`;
-			const decision = store.getDecisions().find((item) => item.id === normalizedId || item.id === decisionId);
+			const decision = findDecisionById(store.getDecisions(), decisionId);
 
 			if (!decision) {
 				return Response.json({ error: "Decision not found" }, { status: 404 });
@@ -1243,6 +1247,9 @@ export class BacklogServer {
 
 			return Response.json(decision);
 		} catch (error) {
+			if (isAmbiguousIdError(error)) {
+				return Response.json({ error: error.message }, { status: 409 });
+			}
 			console.error("Error loading decision:", error);
 			return Response.json({ error: "Decision not found" }, { status: 404 });
 		}

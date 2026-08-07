@@ -1,6 +1,7 @@
 import { basename, join } from "node:path";
 import { Core } from "../core/backlog.ts";
 import type { Task } from "../types/index.ts";
+import { AmbiguousIdError } from "./entity-id.ts";
 import {
 	buildFilenameIdRegex,
 	buildGlobPattern,
@@ -38,22 +39,13 @@ export function normalizeTaskIdentity(task: Task): Task {
 	};
 }
 
-export class AmbiguousTaskIdError extends Error {
+export class AmbiguousTaskIdError extends AmbiguousIdError {
 	readonly taskId: string;
-	readonly candidates: string[];
 
 	constructor(taskId: string, candidates: string[]) {
-		const sortedCandidates = [...candidates].sort((left, right) => left.localeCompare(right));
-		super(
-			[
-				`Task ID ${canonicalTaskId(taskId)} is ambiguous; ${sortedCandidates.length} files match:`,
-				...sortedCandidates.map((candidate) => `  - ${candidate}`),
-				"Run 'backlog doctor' to preview a safe repair.",
-			].join("\n"),
-		);
+		super("Task", canonicalTaskId(taskId), candidates, "Run 'backlog doctor' to preview a safe repair.");
 		this.name = "AmbiguousTaskIdError";
 		this.taskId = taskId;
-		this.candidates = sortedCandidates;
 	}
 }
 
