@@ -2,6 +2,8 @@ import React, { useState, useRef, useEffect, type KeyboardEvent } from 'react';
 import { Link } from 'react-router-dom';
 import { type Task } from '../../types';
 
+const CHIP_LABEL_CLASS = 'truncate max-w-[16rem] sm:max-w-[20rem] md:max-w-[24rem]';
+
 interface DependencyInputProps {
   value: string[];
   onChange: (values: string[]) => void;
@@ -23,6 +25,9 @@ const DependencyInput: React.FC<DependencyInputProps> = ({ value, onChange, avai
     const task = availableTasks.find(t => t.id === taskId);
     return task ? `${task.id} - ${task.title}` : taskId;
   };
+
+  // Only link dependencies that resolve to a loaded task
+  const isKnownTask = (taskId: string) => availableTasks.some(t => t.id === taskId);
 
   // Filter tasks based on input
   useEffect(() => {
@@ -118,13 +123,17 @@ const DependencyInput: React.FC<DependencyInputProps> = ({ value, onChange, avai
                   key={index}
                   className="inline-flex items-center gap-1 px-2 py-0.5 text-sm bg-blue-100 dark:bg-blue-900/50 text-blue-800 dark:text-blue-200 rounded-md transition-colors duration-200 min-w-0 max-w-full"
                 >
-                  <Link
-                    to={`/tasks/${taskId}`}
-                    className="truncate max-w-[16rem] sm:max-w-[20rem] md:max-w-[24rem] hover:underline"
-                    title={getTaskDisplay(taskId)}
-                  >
-                    {getTaskDisplay(taskId)}
-                  </Link>
+                  {isKnownTask(taskId) ? (
+                    <Link
+                      to={`/tasks/${taskId}`}
+                      className={`${CHIP_LABEL_CLASS} hover:underline`}
+                      title={getTaskDisplay(taskId)}
+                    >
+                      {getTaskDisplay(taskId)}
+                    </Link>
+                  ) : (
+                    <span className={CHIP_LABEL_CLASS} title={getTaskDisplay(taskId)}>{getTaskDisplay(taskId)}</span>
+                  )}
 	                  {!disabled && (
 	                    <button
 	                      type="button"

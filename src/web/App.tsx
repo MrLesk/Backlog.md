@@ -13,6 +13,7 @@ import TaskDetailsModal from './components/TaskDetailsModal';
 import InitializationScreen from './components/InitializationScreen';
 import { SuccessToast } from './components/SuccessToast';
 import { ThemeProvider } from './contexts/ThemeContext';
+import { TaskIdIndexProvider } from './contexts/TaskIdIndexContext';
 import {
 	type Decision,
 	type DecisionSearchResult,
@@ -703,6 +704,7 @@ function AppContent() {
 
   return (
     <ThemeProvider>
+      <TaskIdIndexProvider tasks={tasks}>
       <Routes>
             <Route
             path="/"
@@ -826,6 +828,7 @@ function AppContent() {
           }
         />
       )}
+      </TaskIdIndexProvider>
     </ThemeProvider>
   );
 }
