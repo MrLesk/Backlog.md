@@ -61,6 +61,20 @@ interface LockAttemptSettings {
 const CONFIG_LIST_KEYS = ["statuses", "labels", "types", "priorities", "default_assignee"] as const;
 type ConfigListKey = (typeof CONFIG_LIST_KEYS)[number];
 
+/**
+ * Parse an inline YAML array line (`["a", "b"]`). Returns nothing for any other shape,
+ * including a truncated array, so callers can reject malformed values instead of
+ * reinterpreting them. Shared with the config watcher so both apply the same rule.
+ */
+export function parseInlineConfigList(value: string): string[] | undefined {
+	if (!value.startsWith("[") || !value.endsWith("]")) return undefined;
+	return value
+		.slice(1, -1)
+		.split(",")
+		.map((item) => item.trim().replace(/['"]/g, ""))
+		.filter(Boolean);
+}
+
 const DEFAULT_CREATE_LOCK_TIMEOUT_MS = 30_000;
 const DEFAULT_CREATE_LOCK_RETRY_DELAY_MS = 100;
 const DEFAULT_CREATE_LOCK_STALE_MS = 10_000;
@@ -1603,7 +1617,7 @@ ${description || `Milestone: ${title}`}`,
 					break;
 				case "default_assignee": {
 					// A YAML list, an inline array, or the legacy scalar form (`default_assignee: "@alex"`).
-					const parsedList = parsedListValues.default_assignee ?? this.parseInlineConfigList(value);
+					const parsedList = parsedListValues.default_assignee ?? parseInlineConfigList(value);
 					if (parsedList) {
 						config.defaultAssignee = parsedList;
 					} else if (!value.startsWith("[")) {
@@ -1623,7 +1637,7 @@ ${description || `Milestone: ${title}`}`,
 				case "labels":
 				case "types":
 				case "priorities": {
-					const parsedList = parsedListValues[key] ?? this.parseInlineConfigList(value);
+					const parsedList = parsedListValues[key] ?? parseInlineConfigList(value);
 					if (parsedList) {
 						config[key] = parsedList;
 					}
@@ -1779,16 +1793,6 @@ ${description || `Milestone: ${title}`}`,
 			// Not valid YAML; the caller falls back to the line-based parse.
 		}
 		return result;
-	}
-
-	/** Parse an inline YAML array line (`["a", "b"]`). Returns nothing for any other shape. */
-	private parseInlineConfigList(value: string): string[] | undefined {
-		if (!value.startsWith("[") || !value.endsWith("]")) return undefined;
-		return value
-			.slice(1, -1)
-			.split(",")
-			.map((item) => item.trim().replace(/['"]/g, ""))
-			.filter(Boolean);
 	}
 
 	private parseDefinitionOfDone(content: string): string[] | undefined {

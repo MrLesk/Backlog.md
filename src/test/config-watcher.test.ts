@@ -185,6 +185,69 @@ describe("config watcher", () => {
 		}
 	});
 
+	it("retains the cached defaultAssignee while an inline edit is truncated", async () => {
+		await core.filesystem.saveConfig({ ...initialConfig, defaultAssignee: ["@alice"] });
+		const baseLines = [
+			'project_name: "Config watcher"',
+			'statuses: ["To Do", "Done"]',
+			'labels: ["web"]',
+			"date_format: YYYY-MM-DD",
+			"check_active_branches: true",
+			'task_prefix: "BACK"',
+		];
+		const withAssignee = (line: string) => [baseLines[0], line, ...baseLines.slice(1), ""].join("\n");
+		const truncatedContent = withAssignee('default_assignee: ["@alice');
+		const legacyScalarContent = withAssignee('default_assignee: "@legacy"');
+		const inlineArrayContent = withAssignee('default_assignee: ["@alice", "@bob"]');
+
+		const originalParseConfig = core.filesystem.parseConfig.bind(core.filesystem);
+		let truncatedAttempts = 0;
+		let resolveTruncatedAttempts: () => void = () => {};
+		const truncatedAttemptsExhausted = new Promise<void>((resolve) => {
+			resolveTruncatedAttempts = resolve;
+		});
+		core.filesystem.parseConfig = (content) => {
+			if (content === truncatedContent) {
+				truncatedAttempts += 1;
+				if (truncatedAttempts >= 8) resolveTruncatedAttempts();
+			}
+			return originalParseConfig(content);
+		};
+
+		const published: BacklogConfig[] = [];
+		let resolveNextPublished: (config: BacklogConfig) => void = () => {};
+		const nextPublished = () =>
+			new Promise<BacklogConfig>((resolve) => {
+				resolveNextPublished = resolve;
+			});
+		const configWatcher = watchConfigFile(core.filesystem, {
+			onConfigChanged: (config) => {
+				if (!config) return;
+				published.push(config);
+				resolveNextPublished(config);
+			},
+		});
+
+		try {
+			// A truncated inline array must not publish an undefined default over the cached one.
+			await replaceConfigFile(truncatedContent);
+			await withTimeout(truncatedAttemptsExhausted, "truncated default_assignee read attempts");
+			expect(published).toHaveLength(0);
+			expect((await core.filesystem.loadConfig())?.defaultAssignee).toEqual(["@alice"]);
+
+			const legacyPublished = nextPublished();
+			await replaceConfigFile(legacyScalarContent);
+			expect((await withTimeout(legacyPublished, "legacy scalar callback")).defaultAssignee).toEqual(["@legacy"]);
+
+			const inlinePublished = nextPublished();
+			await replaceConfigFile(inlineArrayContent);
+			expect((await withTimeout(inlinePublished, "inline array callback")).defaultAssignee).toEqual(["@alice", "@bob"]);
+		} finally {
+			configWatcher.stop();
+			core.filesystem.parseConfig = originalParseConfig;
+		}
+	});
+
 	it("publishes root config resolution from the same accepted content", async () => {
 		const rootDir = createUniqueTestDir("config-watcher-root");
 		const rootConfigPath = join(rootDir, "backlog.config.yml");

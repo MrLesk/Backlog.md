@@ -5,7 +5,7 @@ status: Done
 assignee:
   - '@claude'
 created_date: '2026-08-07 17:25'
-updated_date: '2026-08-07 22:25'
+updated_date: '2026-08-07 23:16'
 labels:
   - bug
 dependencies: []
@@ -79,6 +79,14 @@ PR #867 review (Codex), three accepted findings fixed:
 Tests added in src/test/config-commands.test.ts (escaped-assignee round trip through set/parse/create; malformed array yields undefined config and an unassigned task) and src/test/cli-guidance.test.ts (task-creation guide clause; the create help-schema assertion moved to the whitespace-normalized text so the longer description survives help wrapping).
 
 Re-verified: bunx tsc --noEmit, bun run check ., config-commands + cli-guidance + mcp-server scoped runs, full bun run test (1955 pass, 5 skip, 0 fail).
+
+PR #867 review round 2 (Codex), one accepted P2 fixed: the config watcher published a truncated inline `default_assignee` edit instead of retaining the last valid config, so a live half-written edit replaced a cached default with undefined. `default_assignee` stays out of ARRAY_CONFIG_KEYS (that check requires brackets unconditionally and would break legacy scalars and block sequences); instead `hasValidExplicitValues` now rejects only values that look like an inline array but do not parse as one.
+
+The rule is shared, not duplicated: `parseInlineConfigList` moved from a private FileSystem method to a module-level export in src/file-system/operations.ts, and src/utils/config-watcher.ts imports it, so the watcher and the parser apply the identical 'starts with [ but malformed -> invalid' test. No import cycle: operations.ts imports neither config-watcher nor content-store.
+
+Test added in src/test/config-watcher.test.ts covering all three paths through watchConfigFile: a truncated inline edit publishes nothing and leaves the cached defaultAssignee intact (proven by waiting for the read attempts to be exhausted, the same instrumentation the existing last-good-config test uses), then a legacy scalar edit reloads, then a valid inline array edit reloads. Confirmed the test fails on the unfixed watcher (the truncated content is published immediately and the attempt wait times out).
+
+Re-verified: bunx tsc --noEmit, bun run check ., config-watcher + config-commands + filesystem scoped runs, full bun run test (1956 pass, 5 skip, 0 fail).
 <!-- SECTION:NOTES:END -->
 
 ## Final Summary
