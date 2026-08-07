@@ -17,6 +17,7 @@ export interface McpToolHandler {
 	description: string;
 	inputSchema: object;
 	annotations?: ToolAnnotations;
+	_meta?: Record<string, unknown>;
 	handler: (args: Record<string, unknown>) => Promise<CallToolResult>;
 }
 

@@ -24,6 +24,7 @@ import type { BacklogConfig } from "../types/index.ts";
 import { getPackageName } from "../utils/app-info.ts";
 import { resolveBacklogDirectory } from "../utils/backlog-directory.ts";
 import { getVersion } from "../utils/version.ts";
+import { registerTasksApp } from "./apps/tasks/index.ts";
 import { registerInitRequiredResource } from "./resources/init-required/index.ts";
 import { registerWorkflowResources } from "./resources/workflow/index.ts";
 import { registerDefinitionOfDoneTools } from "./tools/definition-of-done/index.ts";
@@ -266,6 +267,7 @@ export class McpServer extends Core {
 		registerWorkflowResources(this);
 		registerWorkflowTools(this);
 		registerTaskTools(this, config);
+		registerTasksApp(this, config);
 		registerMilestoneTools(this);
 		registerDefinitionOfDoneTools(this);
 		registerDocumentTools(this, config);
@@ -400,6 +402,7 @@ export class McpServer extends Core {
 					...tool.inputSchema,
 				},
 				...(tool.annotations ? { annotations: tool.annotations } : {}),
+				...(tool._meta ? { _meta: tool._meta } : {}),
 			})),
 		};
 	}
@@ -545,6 +548,7 @@ export async function createMcpServer(projectRoot: string, options: ServerInitOp
 	registerWorkflowResources(server);
 	registerWorkflowTools(server);
 	registerTaskTools(server, config);
+	registerTasksApp(server, config);
 	registerMilestoneTools(server);
 	registerDefinitionOfDoneTools(server);
 	registerDocumentTools(server, config);

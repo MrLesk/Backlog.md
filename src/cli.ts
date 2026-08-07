@@ -3751,6 +3751,7 @@ addHelpSchema(taskCmd.command("view <taskId>"), {
 	optional: [
 		{ name: "plain", type: "Boolean", description: "Use text output instead of interactive UI" },
 		{ name: "json", type: "Boolean", description: "Use versioned machine-readable JSON output" },
+		{ name: "local-only", type: "Boolean", description: "Read only tasks in the current working tree" },
 	],
 	output: "Interactive task detail view, plain text with --plain, or versioned JSON with --json",
 	examples: ["backlog task view {{TASK_ID:1}} --plain", "backlog task view {{TASK_ID:1}} --json"],
@@ -3758,6 +3759,7 @@ addHelpSchema(taskCmd.command("view <taskId>"), {
 	.description("display task details")
 	.option("--plain", "use plain text output instead of interactive UI")
 	.option("--json", "print versioned machine-readable JSON output")
+	.option("--local-only", "skip task discovery in other branches")
 	.action(async (taskId: string, options) => {
 		const outputMode = getTaskReadOutputMode(options);
 		if (!outputMode) return;
