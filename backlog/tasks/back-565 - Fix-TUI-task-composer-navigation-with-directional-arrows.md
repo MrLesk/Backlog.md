@@ -6,7 +6,7 @@ assignee:
   - '@codex'
   - '@claude'
 created_date: '2026-08-02 21:12'
-updated_date: '2026-08-07 18:06'
+updated_date: '2026-08-07 18:44'
 labels:
   - tui
   - bug
@@ -88,6 +88,16 @@ Finding 2 - help popup clipped its last row. The fixed 20-row popup gives conten
 Verification. Real interactive runs in detached tmux sessions at 80x10, 80x24 and 120x30 against a disposable fixture project, capturing tmux capture-pane after every step. At all three sizes: board renders; N opens a fully visible composer (title/description/details/actions plus the error and help rows); arrow keys move spatially between fields; the status/type/priority pickers open, apply and restore focus; a typed title submits once with the 'Created TASK-n.' footer outcome; Esc cancels without writing; and the help popup shows its final q/Esc row (directly at 80x24 and 120x30, by scrolling at 80x10). At 80x10 specifically, submitting an empty title shows 'Title is required.' in the visible error row. Checks: bunx tsc --noEmit; Biome clean on all 341 src files (run with --vcs-enabled=false because this worktree lives under a gitignored .claude path, which makes 'bun run check' match zero files); focused composer/help tests 55 pass; full bun test 1886 pass, 5 skip, 0 fail.
 
 Observed but not fixed (pre-existing, outside these findings): openSingleSelectFilterPopup passes 'selected: selectedIndex' to blessed's list(), which ignores the option, so every single-select picker opens highlighting the first row instead of the current value - visible when opening the composer's Status picker with 'To Do' already selected. Also src/ui/tui.ts, src/ui/overview-tui.ts and src/ui/board.ts still pass scrollable: true to box(), which is the same no-op.
+
+Review advisory follow-up (a664c869, on top of 81f361bb). Added two regression tests and clarified one misleading option; no behaviour change.
+
+Regression coverage for the scrolling path. The earlier tests pinned the layout clamps but never exercised the viewport actually scrolling, because at 100x30 and 50x18 the whole form fits and form.childBase stays 0 - so a regression in scrollFieldIntoView or createScrollableViewport would have passed the suite while leaving Status/Type/Priority and the buttons unreachable at 80x10. src/test/tui-task-composer.test.ts now opens the composer on an 80x10 screen, asserts childBase is 0 at rest, arrows down to Create task and asserts childBase > 0, then submits with an empty title (which routes focus back to Title through the validation path) and asserts childBase returns to 0. New src/test/popup-chrome.test.ts covers the shared createPopupChrome clamp behaviourally through openConfirmPopup, whose fixed 40x10 does not fit the 30x8 screen it is opened on: the resolved popup width and height must stay within the screen and its atop/aleft must be non-negative.
+
+Both tests were checked against deliberately broken builds before being kept: neutering scrollFieldIntoView to childBase = 0 fails the composer test, and removing the fitToScreen calls from createPopupChrome fails the popup-chrome test. Both sources were then restored and confirmed byte-identical to the pushed versions.
+
+ignoreKeys correction. src/ui/components/task-composer.ts passed ignoreKeys: ["tab"] to the title textbox, which reads as if it suppressed Tab. The fork types the option as boolean (element.ts, scrollablebox.ts) and its only consumer is scrollablebox.ts's 'if (options.keys && !options.ignoreKeys)', so the array was merely truthy: it suppressed the inherited scroll key bindings, and Tab inertness has always come from makeTabInert. Changed to true with a comment naming what it does - behaviour-identical. Re-verified interactively at 80x24 because the line touches title-input key handling: typing abc, pressing Tab, then typing def yields 'abcdef' with no tab character and focus unmoved; two Lefts then X yields 'abcdXef' so caret movement is intact; Down still moves focus to Description.
+
+Checks for this delta: bunx tsc --noEmit; Biome clean on 342 src files; composer/help/popup-chrome tests 57 pass; full bun test 1888 pass, 5 skip, 0 fail.
 <!-- SECTION:NOTES:END -->
 
 ## Final Summary
