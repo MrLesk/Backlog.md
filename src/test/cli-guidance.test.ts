@@ -315,6 +315,10 @@ describe("CLI Integration", () => {
 			expect(createHelp).toContain("status: one of configured statuses: Draft, To Do, In Progress, Done");
 			expect(createHelp).toContain("priority: one of configured priorities: High, Medium, Low");
 			expect(createHelp).toContain("ordinal: Integer");
+			expect(createHelp).toContain(
+				"assignee: Comma-separated strings - Assign one or more @names; repeat -a or use @name1,@name2",
+			);
+			expect(createHelpCompact).toContain("assign task to one or more @names (comma-separated or repeatable)");
 			expect(createHelpCompact).toContain(
 				"--plan <text> add a plan only for already-started work created directly in an active status (for example, In Progress)",
 			);
@@ -332,6 +336,12 @@ describe("CLI Integration", () => {
 			expect(editHelp).toContain("taskId: Task ID");
 			expect(editHelp).toContain("status: one of configured statuses: To Do, In Progress, Done");
 			expect(editHelp).not.toContain("status: one of configured statuses: Draft, To Do, In Progress, Done");
+			expect(editHelp).toContain(
+				"assignee: Comma-separated strings - Replace all assignees; repeat -a or use @name1,@name2",
+			);
+			expect(editHelpCompact).toContain(
+				"replace all task assignees with one or more @names (comma-separated or repeatable)",
+			);
 			expect(editHelp).toContain(
 				"label: Comma-separated strings - Replace all labels; repeat --label or use label1,label2",
 			);

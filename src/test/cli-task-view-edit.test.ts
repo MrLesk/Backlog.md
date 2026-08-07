@@ -509,6 +509,52 @@ describe("CLI Integration", () => {
 			expect(updatedTask?.labels).toEqual(["old"]);
 		});
 
+		it("should replace assignees from repeated CLI assignee flags", async () => {
+			const core = new Core(TEST_DIR);
+
+			await core.createTask(
+				{
+					id: "task-11",
+					title: "Repeated Assignee Replace Test",
+					status: "To Do",
+					assignee: ["@old"],
+					createdDate: "2025-06-08",
+					labels: [],
+					dependencies: [],
+					rawContent: "Testing repeated assignee replacement",
+				},
+				false,
+			);
+
+			await $`bun ${CLI_PATH} task edit task-11 -a @alice -a @bob,@carol --plain`.cwd(TEST_DIR).quiet();
+
+			const updatedTask = await core.filesystem.loadTask("task-11");
+			expect(updatedTask?.assignee).toEqual(["@alice", "@bob", "@carol"]);
+		});
+
+		it("should split comma-separated assignees on task edit", async () => {
+			const core = new Core(TEST_DIR);
+
+			await core.createTask(
+				{
+					id: "task-12",
+					title: "Comma Assignee Edit Test",
+					status: "To Do",
+					assignee: [],
+					createdDate: "2025-06-08",
+					labels: [],
+					dependencies: [],
+					rawContent: "Testing comma-separated assignee editing",
+				},
+				false,
+			);
+
+			await $`bun ${CLI_PATH} task edit task-12 -a "@alice,@bob" --plain`.cwd(TEST_DIR).quiet();
+
+			const updatedTask = await core.filesystem.loadTask("task-12");
+			expect(updatedTask?.assignee).toEqual(["@alice", "@bob"]);
+		});
+
 		it("should handle non-existent task gracefully", async () => {
 			const core = new Core(TEST_DIR);
 

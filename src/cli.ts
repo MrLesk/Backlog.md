@@ -1678,7 +1678,11 @@ addHelpSchema(taskCmd.command("create [title]"), {
 			type: () => statusType({ includeDraft: true }),
 			description: "Project task status; case-insensitive",
 		},
-		{ name: "assignee", type: "Assignee list", description: "One or more @names" },
+		{
+			name: "assignee",
+			type: "Comma-separated strings",
+			description: "Assign one or more @names; repeat -a or use @name1,@name2",
+		},
 		{ name: "labels", type: "Comma-separated strings", description: "Task labels" },
 		{ name: "priority", type: priorityType, description: "Task priority" },
 		{ name: "type", type: taskType, description: "Task type; case-insensitive" },
@@ -1702,7 +1706,11 @@ addHelpSchema(taskCmd.command("create [title]"), {
 })
 	.option("-d, --description <text>", "task description (multi-line: include real newlines inside the quoted string)")
 	.option("--desc <text>", "alias for --description")
-	.option("-a, --assignee <assignee>")
+	.option(
+		"-a, --assignee <assignees>",
+		"assign task to one or more @names (comma-separated or repeatable)",
+		createMultiValueAccumulator(),
+	)
 	.option("-s, --status <status>")
 	.option("-l, --labels <labels>")
 	.option("--priority <priority>", "set task priority (configured priorities)")
@@ -1816,13 +1824,8 @@ addHelpSchema(taskCmd.command("create [title]"), {
 				title: title ?? "",
 				description: options.description || options.desc ? String(options.description || options.desc) : undefined,
 				status: createAsDraft ? "Draft" : options.status ? String(options.status) : undefined,
-				assignee: options.assignee ? [String(options.assignee)] : undefined,
-				labels: options.labels
-					? String(options.labels)
-							.split(",")
-							.map((label: string) => label.trim())
-							.filter(Boolean)
-					: undefined,
+				assignee: parseDelimitedStringList(options.assignee),
+				labels: parseDelimitedStringList(options.labels),
 				dependencies:
 					options.dependsOn || options.dep ? normalizeDependencies(options.dependsOn || options.dep) : undefined,
 				references: parseDelimitedStringList(options.ref),
@@ -2642,6 +2645,11 @@ addHelpSchema(taskCmd.command("edit [taskId]"), {
 		{ name: "status", type: statusType, description: "Project task status; case-insensitive" },
 		{ name: "type", type: taskType, description: "Replacement task type; case-insensitive" },
 		{
+			name: "assignee",
+			type: "Comma-separated strings",
+			description: "Replace all assignees; repeat -a or use @name1,@name2",
+		},
+		{
 			name: "label",
 			type: "Comma-separated strings",
 			description: "Replace all labels; repeat --label or use label1,label2",
@@ -2689,7 +2697,11 @@ addHelpSchema(taskCmd.command("edit [taskId]"), {
 	.option("-t, --title <title>")
 	.option("-d, --description <text>", "task description (multi-line: include real newlines inside the quoted string)")
 	.option("--desc <text>", "alias for --description")
-	.option("-a, --assignee <assignee>")
+	.option(
+		"-a, --assignee <assignees>",
+		"replace all task assignees with one or more @names (comma-separated or repeatable)",
+		createMultiValueAccumulator(),
+	)
 	.option("-s, --status <status>")
 	.option(
 		"-l, --label <labels>",
@@ -3455,7 +3467,11 @@ draftCmd
 	.command("create <title>")
 	.option("-d, --description <text>", "task description (multi-line: include real newlines inside the quoted string)")
 	.option("--desc <text>", "alias for --description")
-	.option("-a, --assignee <assignee>")
+	.option(
+		"-a, --assignee <assignees>",
+		"assign draft to one or more @names (comma-separated or repeatable)",
+		createMultiValueAccumulator(),
+	)
 	.option("-s, --status <status>")
 	.option("-l, --labels <labels>")
 	.action(async (title: string, options) => {
@@ -3467,13 +3483,8 @@ draftCmd
 				title,
 				description: options.description || options.desc ? String(options.description || options.desc) : undefined,
 				status: "Draft",
-				assignee: options.assignee ? [String(options.assignee)] : undefined,
-				labels: options.labels
-					? String(options.labels)
-							.split(",")
-							.map((label: string) => label.trim())
-							.filter(Boolean)
-					: undefined,
+				assignee: parseDelimitedStringList(options.assignee),
+				labels: parseDelimitedStringList(options.labels),
 			});
 			console.log(`Created draft ${task.id}`);
 			console.log(`File: ${filePath}`);
