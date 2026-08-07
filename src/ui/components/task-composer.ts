@@ -203,7 +203,8 @@ export async function openTaskComposer(options: TaskComposerOptions): Promise<Ta
 			keys: true,
 			mouse: true,
 			inputOnFocus: false,
-			ignoreKeys: ["tab"],
+			// Suppresses the inherited scroll key bindings; Tab inertness comes from makeTabInert.
+			ignoreKeys: true,
 			style: { border: { fg: "gray" } },
 		});
 

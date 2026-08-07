@@ -55,7 +55,9 @@ async function installFailingHook(testDir: string, body = "exit 1"): Promise<str
 
 type TestWidget = {
 	_clines?: { length: number };
+	childBase?: number;
 	content?: string;
+	type?: string;
 	children?: unknown[];
 	getCursor?: () => { x: number; y: number };
 	getValue?: () => string;
@@ -1167,6 +1169,42 @@ describe("TUI task composer interaction", () => {
 			expect(type?.position).toMatchObject({ top: 10, left: "35%" });
 			pressKey((screen as unknown as { focused?: TestWidget }).focused, "escape", "\x1b");
 			expect(await withTimeout(resultPromise, "resized composer cancellation", 1000)).toBeNull();
+		} finally {
+			screen.destroy();
+		}
+	});
+
+	it("scrolls the composer viewport so the actions stay reachable on a short terminal", async () => {
+		const screen = createScreen({ smartCSR: false });
+		Object.defineProperty(screen, "width", { configurable: true, value: 80, writable: true });
+		Object.defineProperty(screen, "height", { configurable: true, value: 10, writable: true });
+		const focused = () => (screen as unknown as { focused?: TestWidget }).focused;
+		try {
+			const resultPromise = openTaskComposer({
+				screen,
+				statuses: ["To Do", "Done"],
+				persist: async () => task(),
+			});
+			await settleComposerFocus();
+			const form = collectWidgets(screen as unknown as { children?: unknown[] }).find(
+				(widget) => widget.type === "scrollable-box",
+			);
+			expect(form).toBeDefined();
+			expect(form?.childBase).toBe(0);
+
+			for (let step = 0; step < 8 && focused()?.content !== "Create task"; step += 1) {
+				pressKey(focused(), "down");
+			}
+			expect(focused()?.content).toBe("Create task");
+			// Ten rows cannot show every field, so reaching the buttons must scroll the viewport.
+			expect(form?.childBase).toBeGreaterThan(0);
+
+			pressKey(focused(), "enter", "\r");
+			await waitUntil(() => focused()?.options?.label === " Title ", "focus to return to the title field");
+			expect(form?.childBase).toBe(0);
+
+			pressKey(focused(), "escape", "\x1b");
+			expect(await withTimeout(resultPromise, "short terminal composer cancellation", 1000)).toBeNull();
 		} finally {
 			screen.destroy();
 		}
