@@ -1,11 +1,11 @@
 ---
 id: BACK-574
 title: Allow clearing defaultEditor
-status: In Progress
+status: Done
 assignee:
   - '@claude'
 created_date: '2026-08-07 17:25'
-updated_date: '2026-08-07 17:38'
+updated_date: '2026-08-07 17:50'
 labels:
   - bug
 dependencies: []
@@ -74,6 +74,8 @@ Verification evidence:
 - DoD3: full 'bun run test' green: 1892 pass, 5 skip, 0 fail, 8023 expect() calls across 213 files.
 
 Observation left for review, not changed: 'config set defaultEditor ""' prints 'Set defaultEditor = ' with a trailing blank. That message is shared by every config key, so making it clearer for empty values would be a generic change outside this task's scope.
+
+Post-review finalization: rebased onto origin/main at b79fa3a3 (picked up 1034279f biome .claude anchor fix, 5088d9ee docs, and BACK-585). Rebase was clean with no conflicts and no task-file collisions; iRonin's authorship is preserved on the cherry-picked commit. Re-verified after the rebase: bunx tsc --noEmit clean; 'bun run check' now works natively in agent worktrees thanks to 1034279f and reports 357 files checked with no fixes; src/test/config-commands.test.ts 16/16 pass; full 'bun run test' green at 1892 pass, 5 skip, 0 fail across 213 files. Review returned approve with zero blocking findings.
 <!-- SECTION:NOTES:END -->
 
 ## Final Summary
