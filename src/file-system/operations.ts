@@ -61,18 +61,39 @@ interface LockAttemptSettings {
 const CONFIG_LIST_KEYS = ["statuses", "labels", "types", "priorities", "default_assignee"] as const;
 type ConfigListKey = (typeof CONFIG_LIST_KEYS)[number];
 
-/**
- * Parse an inline YAML array line (`["a", "b"]`). Returns nothing for any other shape,
- * including a truncated array, so callers can reject malformed values instead of
- * reinterpreting them. Shared with the config watcher so both apply the same rule.
- */
-export function parseInlineConfigList(value: string): string[] | undefined {
+/** Parse an inline YAML array line (`["a", "b"]`). Returns nothing for any other shape. */
+function parseInlineConfigList(value: string): string[] | undefined {
 	if (!value.startsWith("[") || !value.endsWith("]")) return undefined;
 	return value
 		.slice(1, -1)
 		.split(",")
 		.map((item) => item.trim().replace(/['"]/g, ""))
 		.filter(Boolean);
+}
+
+/**
+ * Parse a `default_assignee` config line value as YAML, so quoting, escapes, and trailing
+ * comments are handled by the parser instead of by hand. Returns nothing when the value is
+ * not valid YAML or is not a string or list, so callers fail closed rather than guess at
+ * malformed input. Shared with the config watcher so both apply the same rule.
+ */
+export function parseAssigneeConfigValue(value: string): string[] | undefined {
+	let parsed: unknown;
+	try {
+		parsed = Bun.YAML.parse(value);
+	} catch {
+		return undefined;
+	}
+	// `default_assignee:` with no value, including the first line of a block sequence.
+	if (parsed === null) return [];
+	if (typeof parsed === "string") {
+		const assignee = parsed.trim();
+		return assignee ? [assignee] : [];
+	}
+	if (Array.isArray(parsed)) {
+		return parsed.map((item) => String(item).trim()).filter((item) => item.length > 0);
+	}
+	return undefined;
 }
 
 const DEFAULT_CREATE_LOCK_TIMEOUT_MS = 30_000;
@@ -1615,18 +1636,11 @@ ${description || `Milestone: ${title}`}`,
 				case "project_name":
 					config.projectName = value.replace(/['"]/g, "");
 					break;
-				case "default_assignee": {
-					// A YAML list, an inline array, or the legacy scalar form (`default_assignee: "@alex"`).
-					const parsedList = parsedListValues.default_assignee ?? parseInlineConfigList(value);
-					if (parsedList) {
-						config.defaultAssignee = parsedList;
-					} else if (!value.startsWith("[")) {
-						const scalar = value.replace(/['"]/g, "").trim();
-						config.defaultAssignee = scalar ? [scalar] : [];
-					}
-					// A malformed array (`["@a`) is left unset rather than read as a bracket-shaped assignee.
+				case "default_assignee":
+					// Block sequences come from the whole-document parse; everything else is parsed as
+					// YAML per line. A value YAML rejects leaves the key unset rather than being guessed at.
+					config.defaultAssignee = parsedListValues.default_assignee ?? parseAssigneeConfigValue(value);
 					break;
-				}
 				case "default_reporter":
 					config.defaultReporter = value.replace(/['"]/g, "");
 					break;

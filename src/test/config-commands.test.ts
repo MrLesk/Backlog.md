@@ -333,17 +333,20 @@ describe("Config commands", () => {
 		expect((await core.filesystem.loadConfig())?.defaultAssignee).toBeUndefined();
 	});
 
-	it("reads defaultAssignee written as a legacy scalar or a block sequence", async () => {
+	it("reads defaultAssignee written as a scalar, a block sequence, or with a trailing comment", async () => {
 		const configPath = core.filesystem.configFilePath;
 		const baseConfig = await Bun.file(configPath).text();
+		const loadAssignee = async (line: string) => {
+			await Bun.write(configPath, `${baseConfig}${line}\n`);
+			core.filesystem.invalidateConfigCache();
+			return (await core.filesystem.loadConfig())?.defaultAssignee;
+		};
 
-		await Bun.write(configPath, `${baseConfig}default_assignee: "@legacy"\n`);
-		core.filesystem.invalidateConfigCache();
-		expect((await core.filesystem.loadConfig())?.defaultAssignee).toEqual(["@legacy"]);
-
-		await Bun.write(configPath, `${baseConfig}default_assignee:\n  - "@alice"\n  - "@bob"\n`);
-		core.filesystem.invalidateConfigCache();
-		expect((await core.filesystem.loadConfig())?.defaultAssignee).toEqual(["@alice", "@bob"]);
+		expect(await loadAssignee('default_assignee: "@legacy"')).toEqual(["@legacy"]);
+		expect(await loadAssignee('default_assignee:\n  - "@alice"\n  - "@bob"')).toEqual(["@alice", "@bob"]);
+		// YAML comments belong to the file, not to the assignee.
+		expect(await loadAssignee('default_assignee: "@alice" # owner')).toEqual(["@alice"]);
+		expect(await loadAssignee('default_assignee: ["@alice", "@bob"] # owners')).toEqual(["@alice", "@bob"]);
 	});
 
 	it("round-trips a defaultAssignee containing characters that need YAML escaping", async () => {
@@ -360,13 +363,18 @@ describe("Config commands", () => {
 		expect(created.task.assignee).toEqual([quoted]);
 	});
 
-	it("ignores a malformed defaultAssignee array instead of reading it as a scalar", async () => {
+	it("leaves defaultAssignee unset when the value is not valid YAML", async () => {
 		const configPath = core.filesystem.configFilePath;
 		const baseConfig = await Bun.file(configPath).text();
+		const loadAssignee = async (line: string) => {
+			await Bun.write(configPath, `${baseConfig}${line}\n`);
+			core.filesystem.invalidateConfigCache();
+			return (await core.filesystem.loadConfig())?.defaultAssignee;
+		};
 
-		await Bun.write(configPath, `${baseConfig}default_assignee: ["@alice\n`);
-		core.filesystem.invalidateConfigCache();
-		expect((await core.filesystem.loadConfig())?.defaultAssignee).toBeUndefined();
+		// Truncated array, and an unbalanced quote that still opens and closes with brackets.
+		expect(await loadAssignee('default_assignee: ["@alice')).toBeUndefined();
+		expect(await loadAssignee('default_assignee: ["@alice]')).toBeUndefined();
 
 		const created = await core.createTaskFromInput({ title: "Malformed default assignee" }, false);
 		expect(created.task.assignee).toEqual([]);

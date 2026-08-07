@@ -5,7 +5,7 @@ status: Done
 assignee:
   - '@claude'
 created_date: '2026-08-07 17:25'
-updated_date: '2026-08-07 23:16'
+updated_date: '2026-08-07 23:57'
 labels:
   - bug
 dependencies: []
@@ -87,6 +87,20 @@ The rule is shared, not duplicated: `parseInlineConfigList` moved from a private
 Test added in src/test/config-watcher.test.ts covering all three paths through watchConfigFile: a truncated inline edit publishes nothing and leaves the cached defaultAssignee intact (proven by waiting for the read attempts to be exhausted, the same instrumentation the existing last-good-config test uses), then a legacy scalar edit reloads, then a valid inline array edit reloads. Confirmed the test fails on the unfixed watcher (the truncated content is published immediately and the attempt wait times out).
 
 Re-verified: bunx tsc --noEmit, bun run check ., config-watcher + config-commands + filesystem scoped runs, full bun run test (1956 pass, 5 skip, 0 fail).
+
+PR #867 review round 3 (Codex), two accepted P2s fixed by removing their shared root cause rather than patching each case. Both symptoms came from hand-rolled quoting: an unbalanced quote (`["@alice]`) satisfied the start/end bracket test and the naive splitter returned ["@alice"], and a scalar with a trailing YAML comment kept the comment in the value (`@alice # owner`).
+
+Simplification: the defaultAssignee value path no longer does textual parsing at all. One shared `parseAssigneeConfigValue` parses the line's value as YAML and returns nothing when YAML rejects it or it is not a string or list; `parseConfig` and the watcher's `hasValidExplicitValues` both call it, so a value the parser refuses is exactly the value the watcher treats as invalid (retain last-good). Quoting, escapes and comments are the parser's job now. The bespoke `parseInlineConfigList` is no longer used for this key and is private again; the other list keys keep using it untouched.
+
+The textual legacy-scalar fallback was deleted entirely rather than narrowed. Testing what the old code accepted showed the only non-YAML form it could take is an unquoted `@name` (`@` is a reserved YAML indicator), and no such file can exist in practice: the serializer has always written the quoted form, init and the Web UI never wrote the key, and the setting was inert before this PR, so there is no legacy behavior to preserve. ADVANCED-CONFIG.md now tells hand-editors to quote the names.
+
+Parser choice: `Bun.YAML.parse` (Bun is pinned to 1.3.14 in CI) rather than the gray-matter frontmatter parser. gray-matter needs a synthetic `---` document wrapper around the value, and it caches by input string while inserting the cache entry before parsing, so after a throw the second call with the same string returns an empty result instead of throwing. That is not theoretical: it made the first draft of this fix accept malformed values in the watcher, because parseConfig had already poisoned the cache for that exact string. Reproduced, then avoided by using a parser with no wrapper and no cache.
+
+Tests: both repro cases in src/test/config-commands.test.ts (trailing comment on scalar and inline forms yields a clean @alice; truncated and unbalanced-quote values leave the key unset and create unassigned tasks) and in src/test/config-watcher.test.ts (both malformed edits publish nothing and retain the cached default, then a scalar edit and a valid inline array each reload). Confirmed the two config tests fail against the previous textual parser. The watcher test's readiness signal was lowered from 8 parse attempts to 3 because a torn read consumes an attempt without a parse, while accepted content is parsed exactly once, so 3 still separates rejected from accepted.
+
+Follow-up observed but deliberately not changed here: statuses/labels/types/priorities still use the textual fallback, so `statuses: ["To Do]` silently parses to ["To Do"] and the watcher accepts it - the same defect class, now fixed only for default_assignee.
+
+Re-verified: bunx tsc --noEmit, bun run check ., config-commands + config-watcher scoped runs, full bun run test (1956 pass, 5 skip, 0 fail).
 <!-- SECTION:NOTES:END -->
 
 ## Final Summary

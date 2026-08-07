@@ -185,7 +185,7 @@ describe("config watcher", () => {
 		}
 	});
 
-	it("retains the cached defaultAssignee while an inline edit is truncated", async () => {
+	it("retains the cached defaultAssignee while an inline edit is not valid YAML", async () => {
 		await core.filesystem.saveConfig({ ...initialConfig, defaultAssignee: ["@alice"] });
 		const baseLines = [
 			'project_name: "Config watcher"',
@@ -196,20 +196,27 @@ describe("config watcher", () => {
 			'task_prefix: "BACK"',
 		];
 		const withAssignee = (line: string) => [baseLines[0], line, ...baseLines.slice(1), ""].join("\n");
-		const truncatedContent = withAssignee('default_assignee: ["@alice');
-		const legacyScalarContent = withAssignee('default_assignee: "@legacy"');
+		// Truncated mid-edit, and an unbalanced quote that still opens and closes with brackets.
+		const invalidContents = [withAssignee('default_assignee: ["@alice'), withAssignee('default_assignee: ["@alice]')];
+		const scalarContent = withAssignee('default_assignee: "@carol"');
 		const inlineArrayContent = withAssignee('default_assignee: ["@alice", "@bob"]');
 
 		const originalParseConfig = core.filesystem.parseConfig.bind(core.filesystem);
-		let truncatedAttempts = 0;
-		let resolveTruncatedAttempts: () => void = () => {};
-		const truncatedAttemptsExhausted = new Promise<void>((resolve) => {
-			resolveTruncatedAttempts = resolve;
-		});
+		const invalidAttempts = new Map(invalidContents.map((content) => [content, 0]));
+		const invalidResolvers = new Map<string, () => void>();
+		const invalidExhausted = new Map(
+			invalidContents.map((content) => [
+				content,
+				new Promise<void>((resolve) => invalidResolvers.set(content, resolve)),
+			]),
+		);
 		core.filesystem.parseConfig = (content) => {
-			if (content === truncatedContent) {
-				truncatedAttempts += 1;
-				if (truncatedAttempts >= 8) resolveTruncatedAttempts();
+			const attempts = invalidAttempts.get(content);
+			if (attempts !== undefined) {
+				const nextAttempts = attempts + 1;
+				invalidAttempts.set(content, nextAttempts);
+				// Accepted content is parsed once and published; a re-read means the watcher rejected it.
+				if (nextAttempts >= 3) invalidResolvers.get(content)?.();
 			}
 			return originalParseConfig(content);
 		};
@@ -229,15 +236,19 @@ describe("config watcher", () => {
 		});
 
 		try {
-			// A truncated inline array must not publish an undefined default over the cached one.
-			await replaceConfigFile(truncatedContent);
-			await withTimeout(truncatedAttemptsExhausted, "truncated default_assignee read attempts");
-			expect(published).toHaveLength(0);
-			expect((await core.filesystem.loadConfig())?.defaultAssignee).toEqual(["@alice"]);
+			// Neither malformed edit may publish an undefined default over the cached one.
+			for (const invalidContent of invalidContents) {
+				await replaceConfigFile(invalidContent);
+				const exhausted = invalidExhausted.get(invalidContent);
+				if (!exhausted) throw new Error("Missing invalid config attempt signal");
+				await withTimeout(exhausted, "invalid default_assignee read attempts");
+				expect(published).toHaveLength(0);
+				expect((await core.filesystem.loadConfig())?.defaultAssignee).toEqual(["@alice"]);
+			}
 
-			const legacyPublished = nextPublished();
-			await replaceConfigFile(legacyScalarContent);
-			expect((await withTimeout(legacyPublished, "legacy scalar callback")).defaultAssignee).toEqual(["@legacy"]);
+			const scalarPublished = nextPublished();
+			await replaceConfigFile(scalarContent);
+			expect((await withTimeout(scalarPublished, "scalar callback")).defaultAssignee).toEqual(["@carol"]);
 
 			const inlinePublished = nextPublished();
 			await replaceConfigFile(inlineArrayContent);
