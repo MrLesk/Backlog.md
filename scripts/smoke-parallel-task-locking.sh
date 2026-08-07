@@ -23,6 +23,7 @@ Runs real parallel smoke tests against the local Backlog.md CLI:
   1. concurrent task creation
   2. concurrent draft promotion
   3. concurrent task demotion
+  4. concurrent task editing (lost-write regression)
 
 Environment overrides:
   BUN_BIN            Bun executable to use (default: bun)
@@ -231,6 +232,76 @@ scenario_parallel_demote() {
 	info "Scenario 3 passed"
 }
 
+scenario_parallel_edit() {
+	local repo_dir="${TMP_ROOT}/edit"
+	local filler_count=100
+	local shared_id="task-$((filler_count + 1))"
+	local i
+
+	info "Scenario 4: concurrent task editing (${JOB_COUNT} jobs)"
+	init_repo "${repo_dir}"
+
+	# One edit's read-modify-write is short enough that process startup variance usually
+	# serialises the racers by accident. A board full of filler tasks stretches every edit's
+	# read phase so the windows genuinely overlap.
+	pushd "${repo_dir}" >/dev/null
+	for i in $(seq 1 "${filler_count}"); do
+		run_cli task create "Filler ${i}" >/dev/null
+	done
+	run_cli task create "Shared Task" >/dev/null
+	popd >/dev/null
+
+	for i in $(seq 1 "${JOB_COUNT}"); do
+		start_job "${repo_dir}" "edit-${i}" task edit "${shared_id}" --add-label "smoke-${i}"
+	done
+
+	# Contention is expected here, so jobs are classified instead of required to succeed:
+	# a losing edit must fail loudly rather than silently overwrite the winner.
+	local winners=""
+	local status
+	for ((i = 0; i < ${#PIDS[@]}; i += 1)); do
+		status=0
+		wait "${PIDS[$i]}" || status=$?
+		if [[ ${status} -eq 0 ]]; then
+			winners+="${LABELS[$i]#edit-}"$'\n'
+		elif ! grep -q "is being modified by another process" "${OUTFILES[$i]}"; then
+			printf '[smoke] Job %s failed without the contention message (exit %s)\n' "${LABELS[$i]}" "${status}" >&2
+			printf '----- %s -----\n' "${OUTFILES[$i]}" >&2
+			cat "${OUTFILES[$i]}" >&2 || true
+			fail "A losing parallel edit must fail with a clear contention message"
+		fi
+	done
+	reset_jobs
+
+	if [[ -z "${winners}" ]]; then
+		fail "Every parallel edit failed; at least one must succeed"
+	fi
+
+	local task_files=("${repo_dir}"/backlog/tasks/${shared_id}\ -\ *.md)
+	if [[ ${#task_files[@]} -ne 1 ]]; then
+		ls -la "${repo_dir}/backlog/tasks" >&2 || true
+		fail "Expected exactly one ${shared_id} file after parallel edits"
+	fi
+
+	# Only the final file can reveal a lost write, and it must name exactly the jobs that
+	# reported success: no winner missing, no loser silently applied.
+	local content
+	content="$(cat "${task_files[0]}")"
+	for i in $(seq 1 "${JOB_COUNT}"); do
+		if printf '%s' "${winners}" | grep -qx "${i}"; then
+			if ! printf '%s' "${content}" | grep -Eq "smoke-${i}([^0-9]|$)"; then
+				printf '[smoke] Final task file after parallel edits:\n%s\n' "${content}" >&2
+				fail "Label smoke-${i} missing after parallel edits - a successful edit was lost"
+			fi
+		elif printf '%s' "${content}" | grep -Eq "smoke-${i}([^0-9]|$)"; then
+			printf '[smoke] Final task file after parallel edits:\n%s\n' "${content}" >&2
+			fail "Label smoke-${i} present after parallel edits - a failed edit was applied anyway"
+		fi
+	done
+
+	info "Scenario 4 passed (${JOB_COUNT} jobs, $(printf '%s' "${winners}" | grep -c .) succeeded)"
+}
+
 main() {
 	while [[ $# -gt 0 ]]; do
 		case "$1" in
@@ -277,6 +348,7 @@ main() {
 	scenario_parallel_create
 	scenario_parallel_promote
 	scenario_parallel_demote
+	scenario_parallel_edit
 
 	info "All parallel locking smoke tests passed"
 }
