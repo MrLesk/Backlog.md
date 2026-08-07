@@ -493,6 +493,25 @@ export const TaskDetailsModal: React.FC<Props> = ({
     if (onSaved) void onSaved();
   }, [commentsChanged, onSaved]);
 
+  const hasUnsavedEdits = (mode === "edit" || mode === "create") && isDirty;
+
+  // Links inside the modal (dependency chips, auto-linked task IDs in markdown) leave this
+  // task behind, so they ask the same question closing does before the navigation happens.
+  const confirmNavigationAwayFromEdits = (event: React.MouseEvent<HTMLDivElement>) => {
+    if (!hasUnsavedEdits || event.defaultPrevented || event.button !== 0) return;
+    if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+    const link = (event.target as Element | null)?.closest?.("a[href]") as HTMLAnchorElement | null;
+    if (!link) return;
+    if (link.target && link.target !== "_self") return;
+    const destination = new URL(link.href, window.location.href);
+    if (destination.protocol !== "http:" && destination.protocol !== "https:") return;
+    // Same-page anchors (markdown heading links) do not unload the form.
+    if (destination.pathname === window.location.pathname && destination.search === window.location.search) return;
+    if (window.confirm("Discard unsaved changes and leave this task?")) return;
+    event.preventDefault();
+    event.stopPropagation();
+  };
+
   const handleCancelEdit = () => {
     if (isDirty) {
       const confirmDiscard = window.confirm("Discard unsaved changes?");
@@ -918,7 +937,7 @@ export const TaskDetailsModal: React.FC<Props> = ({
         </div>
       )}
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6" onClickCapture={confirmNavigationAwayFromEdits}>
         {/* Main content */}
         <div className="md:col-span-2 space-y-6">
           {/* Title field for create mode */}

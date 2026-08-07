@@ -1,15 +1,32 @@
 import type { Task } from "../../types/index.ts";
 import { canonicalTaskId } from "../../utils/task-id.ts";
 
-/** Canonical task ID -> the ID used in `/tasks/:id` routes. */
-export type TaskIdIndex = Map<string, string>;
+/** Canonical task ID -> the task it identifies. */
+export type TaskIdIndex = Map<string, Task>;
 
+/**
+ * Index tasks by canonical ID. Canonical collisions (BACK-1 and BACK-01 both loaded) are
+ * dropped rather than resolved to the last writer, matching how route resolution refuses
+ * to guess between ambiguous IDs.
+ */
 export function buildTaskIdIndex(tasks: Task[]): TaskIdIndex {
 	const index: TaskIdIndex = new Map();
+	const seen = new Set<string>();
 	for (const task of tasks) {
-		index.set(canonicalTaskId(task.id), task.id);
+		const canonical = canonicalTaskId(task.id);
+		if (seen.has(canonical)) {
+			index.delete(canonical);
+			continue;
+		}
+		seen.add(canonical);
+		index.set(canonical, task);
 	}
 	return index;
+}
+
+/** Resolve a task reference through the same canonical identity the markdown links use. */
+export function resolveTaskReference(index: TaskIdIndex, reference: string): Task | undefined {
+	return index.get(canonicalTaskId(reference));
 }
 
 /** Minimal mdast shape: only the fields this transform reads or writes. */
@@ -20,11 +37,12 @@ type MarkdownNode = {
 	children?: MarkdownNode[];
 };
 
-const TASK_ID_CANDIDATE = /[A-Za-z]+-\d+(?:\.\d+)*/g;
+/** Covers every ID shape `isValidTaskId` accepts, including legacy non-numeric bodies. */
+const TASK_ID_CANDIDATE = /[A-Za-z]+-[A-Za-z0-9]+(?:[._-][A-Za-z0-9]+)*/g;
 /** A candidate preceded by one of these is part of a longer identifier or path. */
-const PRECEDING_REJECT = /[A-Za-z0-9_\-/.]/;
+const PRECEDING_REJECT = /[\p{L}\p{N}\p{M}_\-/.]$/u;
 /** A candidate followed by an identifier character or a file extension is not an ID reference. */
-const FOLLOWING_REJECT = /^[A-Za-z0-9_-]|^\.[A-Za-z0-9]/;
+const FOLLOWING_REJECT = /^[\p{L}\p{N}\p{M}_-]|^\.[\p{L}\p{N}\p{M}]/u;
 /** Text inside these nodes already points somewhere; never rewrite it. */
 const SKIPPED_NODES = new Set(["link", "linkReference", "definition"]);
 
@@ -38,15 +56,17 @@ function splitTaskIds(value: string, index: TaskIdIndex): MarkdownNode[] | null 
 		const candidate = match[0];
 		const start = match.index;
 		const end = start + candidate.length;
-		const preceding = start === 0 ? "" : value.charAt(start - 1);
-		const taskId = index.get(canonicalTaskId(candidate));
+		// Slices, not single characters, so boundary tests see whole code points.
+		const preceding = value.slice(Math.max(0, start - 2), start);
+		const following = value.slice(end, end + 3);
+		const task = resolveTaskReference(index, candidate);
 
-		if (taskId && !PRECEDING_REJECT.test(preceding) && !FOLLOWING_REJECT.test(value.slice(end, end + 2))) {
+		if (task && !PRECEDING_REJECT.test(preceding) && !FOLLOWING_REJECT.test(following)) {
 			parts ??= [];
 			if (start > cursor) {
 				parts.push({ type: "text", value: value.slice(cursor, start) });
 			}
-			parts.push({ type: "link", url: `/tasks/${taskId}`, children: [{ type: "text", value: candidate }] });
+			parts.push({ type: "link", url: `/tasks/${task.id}`, children: [{ type: "text", value: candidate }] });
 			cursor = end;
 		}
 

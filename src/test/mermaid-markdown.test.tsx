@@ -11,19 +11,22 @@ afterEach(() => {
 	delete (globalThis as { navigator?: Navigator }).navigator;
 });
 
-const knownTasks: Task[] = ["TASK-358.8", "BACK-123", "TASK-100", "TASK-200", "TASK-123", "BACK-1"].map((id) => ({
-	id,
-	title: `Task ${id}`,
-	status: "To Do",
-	assignee: [],
-	createdDate: "2026-07-24",
-	labels: [],
-	dependencies: [],
-}));
+const taskFixtures = (...ids: string[]): Task[] =>
+	ids.map((id) => ({
+		id,
+		title: `Task ${id}`,
+		status: "To Do",
+		assignee: [],
+		createdDate: "2026-07-24",
+		labels: [],
+		dependencies: [],
+	}));
 
-function renderMarkdown(source: string): string {
+const knownTasks = taskFixtures("TASK-358.8", "BACK-123", "TASK-100", "TASK-200", "TASK-123", "BACK-1", "TASK-PREFIXED");
+
+function renderMarkdown(source: string, tasks: Task[] = knownTasks): string {
 	return renderToString(
-		<TaskIdIndexProvider tasks={knownTasks}>
+		<TaskIdIndexProvider tasks={tasks}>
 			<MermaidMarkdown source={source} />
 		</TaskIdIndexProvider>,
 	);
@@ -129,5 +132,30 @@ describe("MermaidMarkdown", () => {
 		const html = renderMarkdown("## Blocked by BACK-123\n\n- depends on TASK-100\n");
 
 		expect(taskLinks(html)).toEqual(["/tasks/BACK-123", "/tasks/TASK-100"]);
+	});
+
+	it("links zero-padded references to the canonical task", () => {
+		const html = renderMarkdown("Padded reference BACK-0123 resolves.");
+
+		expect(taskLinks(html)).toEqual(["/tasks/BACK-123"]);
+	});
+
+	it("links legacy non-numeric task IDs", () => {
+		const html = renderMarkdown("Legacy reference TASK-PREFIXED resolves.");
+
+		expect(taskLinks(html)).toEqual(["/tasks/TASK-PREFIXED"]);
+	});
+
+	it("leaves references plain when two loaded tasks share a canonical ID", () => {
+		const ambiguousTasks = taskFixtures("BACK-1", "BACK-01", "BACK-2");
+		const html = renderMarkdown("Ambiguous BACK-1 and unambiguous BACK-2.", ambiguousTasks);
+
+		expect(taskLinks(html)).toEqual(["/tasks/BACK-2"]);
+	});
+
+	it("does not auto-link IDs embedded in non-ASCII identifiers", () => {
+		const html = renderMarkdown("Tokens caféBACK-123 and BACK-123ä stay plain.");
+
+		expect(taskLinks(html)).toEqual([]);
 	});
 });
