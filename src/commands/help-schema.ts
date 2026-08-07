@@ -40,11 +40,24 @@ function formatFields(title: string, fields: HelpField[] | undefined): string[] 
 	return [title, ...fields.map(formatField)];
 }
 
+function firstMarkdownField(schema: HelpSchema): string | undefined {
+	const fields = [...(schema.required ?? []), ...(schema.optional ?? [])];
+	return fields.find((field) => resolveText(field.type) === "Markdown")?.name;
+}
+
 function renderHelpSchema(schema: HelpSchema): string {
 	const lines = ["", "Input schema:", ...formatFields("Required fields:", schema.required)];
 
 	if (schema.optional) {
 		lines.push(...formatFields("Optional fields:", schema.optional));
+	}
+	const markdownField = firstMarkdownField(schema);
+	if (markdownField) {
+		lines.push(
+			"Markdown fields:",
+			"  - Multi-line values need real newlines; a literal \\n is stored as text",
+			`  - Example (bash/zsh): --${markdownField} $'First line\\nSecond line'`,
+		);
 	}
 	if (schema.reads) {
 		lines.push("Reads:", `  - ${schema.reads}`);

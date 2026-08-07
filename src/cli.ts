@@ -1724,6 +1724,8 @@ addHelpSchema(taskCmd.command("create [title]"), {
 			description:
 				"Only for already-started work created directly in a configured active status (for example, In Progress)",
 		},
+		{ name: "notes", type: "Markdown", description: "Same restriction as plan" },
+		{ name: "final-summary", type: "Markdown", description: "Same restriction as plan" },
 	],
 	writes: "Creates a task or draft markdown file through Backlog.md",
 	output: "Created task details; use --plain for text output",
@@ -1733,7 +1735,7 @@ addHelpSchema(taskCmd.command("create [title]"), {
 		'backlog task create -p {{TASK_ID:1}} "Add tests"',
 	],
 })
-	.option("-d, --description <text>", "task description (multi-line: include real newlines inside the quoted string)")
+	.option("-d, --description <text>", "task description")
 	.option("--desc <text>", "alias for --description")
 	.option(
 		"-a, --assignee <assignees>",
@@ -2734,7 +2736,7 @@ addHelpSchema(taskCmd.command("edit [taskId]"), {
 })
 	.description("edit an existing task")
 	.option("-t, --title <title>")
-	.option("-d, --description <text>", "task description (multi-line: include real newlines inside the quoted string)")
+	.option("-d, --description <text>", "task description")
 	.option("--desc <text>", "alias for --description")
 	.option(
 		"-a, --assignee <assignees>",
