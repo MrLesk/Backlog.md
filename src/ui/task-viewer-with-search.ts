@@ -42,7 +42,7 @@ import { createLoadingScreen } from "./loading.ts";
 import { formatStatusWithIcon, getStatusColor, wrapStatusColor } from "./status-icon.ts";
 import { completeTaskFromTui, formatTaskCompletionBlockedMessage } from "./task-lifecycle.ts";
 import { formatTaskTypeBadge } from "./task-type.ts";
-import { addScrollKeys, createScreen } from "./tui.ts";
+import { addScrollKeys, createScreen, formatTuiTitle } from "./tui.ts";
 
 function getPriorityDisplay(priority?: string): string {
 	switch (normalizePriorityValue(priority)) {
@@ -233,6 +233,7 @@ export async function viewTaskEnhanced(
 	);
 
 	let dateFormat: string | undefined;
+	let projectName: string | undefined;
 
 	if (options.tasks) {
 		// Tasks already provided - use in-memory search (no ContentStore loading)
@@ -243,6 +244,7 @@ export async function viewTaskEnhanced(
 		priorityOptions = getPriorityOptions(config);
 		configuredTaskTypes = getTaskTypeValues(config);
 		dateFormat = config?.dateFormat;
+		projectName = config?.projectName;
 		taskSearchIndex = createTaskSearchIndex(allTasks);
 	} else {
 		// Need to load tasks - show loading screen
@@ -255,6 +257,7 @@ export async function viewTaskEnhanced(
 			priorityOptions = getPriorityOptions(config);
 			configuredTaskTypes = getTaskTypeValues(config);
 			dateFormat = config?.dateFormat;
+			projectName = config?.projectName;
 
 			loadingScreen?.update("Loading tasks from branches...");
 			contentStore = await core.getContentStore();
@@ -318,7 +321,8 @@ export async function viewTaskEnhanced(
 	let selectionRequestId = 0;
 	let noResultsMessage: string | null = null;
 
-	const screen = createScreen({ title: options.title || "Backlog Tasks" });
+	const screenTitle = formatTuiTitle(options.title || "Tasks", projectName);
+	const screen = createScreen({ title: screenTitle });
 
 	// Main container
 	const container = box({
@@ -1011,7 +1015,7 @@ export async function viewTaskEnhanced(
 		};
 
 		if (noResultsMessage) {
-			screen.title = options.title || "Backlog Tasks";
+			screen.title = screenTitle;
 
 			headerDetailBox = box({
 				parent: detailPane,
@@ -1048,7 +1052,7 @@ export async function viewTaskEnhanced(
 			return;
 		}
 
-		screen.title = `Task ${currentSelectedTask.id} - ${currentSelectedTask.title}`;
+		screen.title = formatTuiTitle(`Task ${currentSelectedTask.id} - ${currentSelectedTask.title}`, projectName);
 
 		const detailContent = generateDetailContent(currentSelectedTask, resolveMilestoneLabel, dateFormat);
 

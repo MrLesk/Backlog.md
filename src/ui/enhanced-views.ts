@@ -186,6 +186,7 @@ async function renderBoardTuiWithSwitching(
 	// This is a placeholder - we'll need to modify the actual board.ts
 	return renderBoardTui(tasks, statuses, layout, maxColumnWidth, {
 		dateFormat: config?.dateFormat,
+		projectName: config?.projectName,
 		priorities: config?.priorities,
 		types: config?.types,
 	});

@@ -122,6 +122,7 @@ export async function runSimpleUnifiedView(options: SimpleUnifiedViewOptions): P
 				await switchView();
 			},
 			dateFormat: config?.dateFormat,
+			projectName: config?.projectName,
 			priorities: config?.priorities,
 			types: config?.types,
 		});

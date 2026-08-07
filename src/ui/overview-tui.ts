@@ -2,7 +2,7 @@ import { box } from "neo-neo-bblessed";
 import type { TaskStatistics } from "../core/statistics.ts";
 import { formatPriorityLabel } from "../utils/priority-config.ts";
 import { getStatusIcon } from "./status-icon.ts";
-import { createScreen } from "./tui.ts";
+import { createScreen, formatTuiTitle } from "./tui.ts";
 
 const priorityColors: Record<string, string> = {
 	high: "red",
@@ -36,7 +36,7 @@ export async function renderOverviewTui(statistics: TaskStatistics, projectName:
 	}
 
 	return new Promise<void>((resolve) => {
-		const screen = createScreen({ title: `${projectName} - Overview` });
+		const screen = createScreen({ title: formatTuiTitle("Overview", projectName) });
 
 		// Main container
 		const container = box({

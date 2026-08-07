@@ -85,6 +85,19 @@ export function addScrollKeys(
 	});
 }
 
+/**
+ * Terminal/window title for a TUI surface, so parallel terminals can be told apart.
+ * Uses the configured project name when it identifies the project, and falls back to a
+ * generic "Backlog <view>" title for a blank name or the "Untitled Project" placeholder.
+ */
+export function formatTuiTitle(view: string, projectName?: string): string {
+	const name = projectName?.trim() ?? "";
+	if (!name || name.toLowerCase() === "untitled project") {
+		return `Backlog ${view}`;
+	}
+	return `${name} - ${view}`;
+}
+
 export function createScreen(options: Partial<ScreenOptions> = {}): ScreenInterface {
 	const program: ProgramInterface = createProgram({ tput: false });
 	const screen = blessedScreen({ smartCSR: true, program, fullUnicode: true, ...options });
