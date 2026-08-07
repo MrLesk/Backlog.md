@@ -1724,6 +1724,12 @@ addHelpSchema(taskCmd.command("create [title]"), {
 			description:
 				"Only for already-started work created directly in a configured active status (for example, In Progress)",
 		},
+		{ name: "notes", type: "Markdown", description: "Same restriction as plan" },
+		{
+			name: "final-summary",
+			type: "Markdown",
+			description: "Only for finished, verified work created directly in a configured terminal status",
+		},
 	],
 	writes: "Creates a task or draft markdown file through Backlog.md",
 	output: "Created task details; use --plain for text output",
@@ -1733,7 +1739,7 @@ addHelpSchema(taskCmd.command("create [title]"), {
 		'backlog task create -p {{TASK_ID:1}} "Add tests"',
 	],
 })
-	.option("-d, --description <text>", "task description (multi-line: include real newlines inside the quoted string)")
+	.option("-d, --description <text>", "task description")
 	.option("--desc <text>", "alias for --description")
 	.option(
 		"-a, --assignee <assignees>",
@@ -2720,8 +2726,10 @@ addHelpSchema(taskCmd.command("edit [taskId]"), {
 			description: "Append after --plan replacement; repeatable",
 		},
 		{ name: "notes", type: "Markdown", description: "Replacement implementation notes" },
+		{ name: "append-notes", type: "Markdown", description: "Append to implementation notes; repeatable" },
 		{ name: "comment", type: "Markdown", description: "Append a discussion comment" },
 		{ name: "final-summary", type: "Markdown", description: "Completion summary" },
+		{ name: "append-final-summary", type: "Markdown", description: "Append to final summary; repeatable" },
 		{ name: "check-ac", type: "Integer", description: "1-based acceptance criterion index" },
 	],
 	writes: "Updates task metadata and structured task sections through Backlog.md",
@@ -2734,7 +2742,7 @@ addHelpSchema(taskCmd.command("edit [taskId]"), {
 })
 	.description("edit an existing task")
 	.option("-t, --title <title>")
-	.option("-d, --description <text>", "task description (multi-line: include real newlines inside the quoted string)")
+	.option("-d, --description <text>", "task description")
 	.option("--desc <text>", "alias for --description")
 	.option(
 		"-a, --assignee <assignees>",
