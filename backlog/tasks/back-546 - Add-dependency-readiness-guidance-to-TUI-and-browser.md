@@ -1,11 +1,11 @@
 ---
 id: BACK-546
 title: Add dependency readiness guidance to TUI and browser
-status: In Progress
+status: Done
 assignee:
   - '@alex-agent'
 created_date: '2026-07-13 16:06'
-updated_date: '2026-08-07 23:20'
+updated_date: '2026-08-07 23:33'
 labels:
   - tui
   - web
@@ -25,19 +25,19 @@ Address the reported need to see what can be worked next without silently restor
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 Plan review defines ready and blocked semantics for partial graphs, cycles, missing dependencies, and dependencies in other statuses
-- [ ] #2 The TUI and browser present consistent, non-mutating readiness and blocked guidance
-- [ ] #3 Existing ordinal order remains authoritative unless Alex explicitly approves an ordering change
-- [ ] #4 Cycles and ambiguous dependency data are represented honestly and fail safely
-- [ ] #5 Users can identify which dependencies block a task
-- [ ] #6 Automated tests and rendered QA cover ready, blocked, cross-status, missing, and cyclic examples
+- [x] #1 Plan review defines ready and blocked semantics for partial graphs, cycles, missing dependencies, and dependencies in other statuses
+- [x] #2 The TUI and browser present consistent, non-mutating readiness and blocked guidance
+- [x] #3 Existing ordinal order remains authoritative unless Alex explicitly approves an ordering change
+- [x] #4 Cycles and ambiguous dependency data are represented honestly and fail safely
+- [x] #5 Users can identify which dependencies block a task
+- [x] #6 Automated tests and rendered QA cover ready, blocked, cross-status, missing, and cyclic examples
 <!-- AC:END -->
 
 ## Definition of Done
 <!-- DOD:BEGIN -->
-- [ ] #1 bunx tsc --noEmit passes when TypeScript touched
-- [ ] #2 bun run check . passes when formatting/linting touched
-- [ ] #3 bun test (or scoped test) passes
+- [x] #1 bunx tsc --noEmit passes when TypeScript touched
+- [x] #2 bun run check . passes when formatting/linting touched
+- [x] #3 bun test (or scoped test) passes
 <!-- DOD:END -->
 
 ## Implementation Plan
@@ -78,4 +78,23 @@ Adapted during the takeover:
 Verification: bunx tsc --noEmit, bun run check ., bun run build, and the readiness/cli-task-list/mcp-tasks/unified-view-filters suites all pass. Rendered QA on a disposable project with met, unmet, and completed-and-filed dependencies: TUI detail pane shows 'Readiness: ● Blocked by TASK-2', 'Readiness: ✓ Ready to start', and nothing at all for a task without dependencies; task list --ready returns the same three ready tasks in plain, json and interactive modes; the browser modal shows the matching amber and green badges in the Dependencies card in both light and dark themes.
 
 Known follow-up, deliberately out of scope per the split of PR #814: the interactive view gives no on-screen indication that --ready is active, the same as the existing --limit flag. That belongs with the deferred Web 'Ready only' toggle and TUI shortcut work.
+
+Final verification on the built binary (dist/backlog) against a disposable project with a met dependency, an unmet dependency, and a dependency completed into backlog/completed:
+- Full suite: bun run test -> 1985 pass, 0 fail, 1990 tests across 217 files, exit 0. bunx tsc --noEmit, bun run check ., and bun run build all clean.
+- The full suite caught two regressions that the scoped tests missed, both now fixed and re-verified: an infinite React render loop in the task-details modal (the readiness effect depended on arrays recreated every render and reset state with a fresh empty array), and the shipped MCP workflow overview, which mcp-server.test.ts requires to document every task_list schema filter.
+- Also fixed during review: the board quick-look popup calls generateDetailContent without a task graph and would have reported every dependency as unknown. Readiness inputs are now an explicit optional context, so that popup makes no readiness claim at all. Verified by rendered board QA.
+- CLI: task list --ready returns TASK-2, TASK-4, TASK-6 and excludes blocked TASK-3, in plain, json and interactive modes, including with --status 'To Do'. TASK-4 depends on a task living in backlog/completed and is still correctly reported ready.
+- MCP: driven over stdio against the shipped binary, task_list with ready true returns the same three tasks and without it returns all four. No new MCP tools; the existing tool and schema carry the filter.
+- TUI: detail pane shows 'Readiness: ● Blocked by TASK-2' and 'Readiness: ✓ Ready to start', nothing for a task without dependencies, and no stale render cells when navigating between them.
+- Browser: the Dependencies card shows the matching amber and green badges in light and dark themes with no console errors.
 <!-- SECTION:NOTES:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+Took over contributor PR #814 (cottrell) and landed dependency readiness guidance across the CLI, TUI, browser, and MCP. A shared getTaskReadiness(task, allTasks, statuses) helper derives readiness per task from its dependencies at read time, with no ordering or state semantics and no revival of the removed sequences model: resolved-but-unfinished dependencies are reported as blocking, dependency IDs that cannot be resolved are reported as unknown, and both fail closed. Surfaced through backlog task list --ready, the TUI detail pane, the browser task-details modal, and the existing MCP task_list tool.
+
+David Cottrell's implementation is preserved as the first commit with his authorship. The adaptation replaced his full-graph loading strategy, which called core.loadTasks({includeCompleted:true}) unconditionally in the TUI (measured at 6.6s per call on this repo versus 1.7s for the normal load), fixed dependency resolution to use canonical task identity instead of raw string equality, separated unknown dependencies from blocked ones, removed a dead TaskListFilter.ready field, and reverted the fullGraphTasks plumbing through unified-view.
+
+Verified with bunx tsc --noEmit, bun run check ., bun run build, and the full bun run test suite (1985 pass, 0 fail). Rendered QA on the built binary against a disposable project covering met, unmet, and completed-and-filed dependencies: TUI detail pane in tmux, task list --ready in plain, json and interactive modes, the browser modal in light and dark themes, and an MCP task_list stdio round-trip. Rendered QA also caught three defects the unit tests missed: a blessed wide-glyph rendering artifact in the TUI, a browser/CLI disagreement about completed dependencies, and an infinite render loop in the modal.
+<!-- SECTION:FINAL_SUMMARY:END -->
