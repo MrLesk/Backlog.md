@@ -452,6 +452,22 @@ describe("CLI Integration", () => {
 			expect(draft?.title).toBe("CLI Auto Commit Draft");
 		});
 
+		it("should split comma-separated assignees on task create", async () => {
+			await $`bun ${CLI_PATH} task create "Comma assignee task" -a "@alice,@bob"`.cwd(TEST_DIR).quiet();
+
+			const core = new Core(TEST_DIR);
+			const task = await core.filesystem.loadTask("task-1");
+			expect(task?.assignee).toEqual(["@alice", "@bob"]);
+		});
+
+		it("should collect repeated assignee flags on task create", async () => {
+			await $`bun ${CLI_PATH} task create "Repeated assignee task" -a @alice -a @bob,@carol`.cwd(TEST_DIR).quiet();
+
+			const core = new Core(TEST_DIR);
+			const task = await core.filesystem.loadTask("task-1");
+			expect(task?.assignee).toEqual(["@alice", "@bob", "@carol"]);
+		});
+
 		it("should accept dependencies from other active branches", async () => {
 			const core = new Core(TEST_DIR);
 
