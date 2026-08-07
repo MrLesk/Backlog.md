@@ -406,7 +406,7 @@ describe("interactive TUI editor handoff", () => {
 			scenario: "board",
 			cliArgs: ["board"],
 			taskTitle: "Board interactive editor task",
-			readyPattern: "Backlog Board",
+			readyPattern: "Interactive board - Board",
 		});
 
 		expect(result.editorMarker).toContain("started");
@@ -420,7 +420,7 @@ describe("interactive TUI editor handoff", () => {
 			scenario: "task-list",
 			cliArgs: ["task", "list"],
 			taskTitle: "Task list interactive editor task",
-			readyPattern: "Tasks",
+			readyPattern: "Interactive task-list - Tasks",
 		});
 
 		expect(result.editorMarker).toContain("started");

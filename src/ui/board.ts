@@ -33,7 +33,7 @@ import {
 	resolveSearchExitTargetIndex,
 	shouldMoveFromListBoundaryToSearch,
 } from "./task-viewer-with-search.ts";
-import { createScreen } from "./tui.ts";
+import { createScreen, formatTuiTitle } from "./tui.ts";
 import { stripBlessedFgTags } from "./utils/strip-tags.ts";
 
 export type ColumnData = {
@@ -278,6 +278,7 @@ export async function renderBoardTui(
 		milestoneEntities?: Milestone[];
 		startupWarning?: string;
 		dateFormat?: string;
+		projectName?: string;
 		createTask?: (input: TaskCreateInput) => Promise<Task>;
 		screen?: ScreenInterface;
 		taskComposer?: (options: TaskComposerOptions) => Promise<Task | null>;
@@ -299,7 +300,7 @@ export async function renderBoardTui(
 	}
 
 	await new Promise<void>((resolve) => {
-		const screen = options?.screen ?? createScreen({ title: "Backlog Board" });
+		const screen = options?.screen ?? createScreen({ title: formatTuiTitle("Board", options?.projectName) });
 		const container = box({
 			parent: screen,
 			width: "100%",
