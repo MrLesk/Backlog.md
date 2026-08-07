@@ -12,6 +12,41 @@ import {
 
 const DRAFT_STATUS = "Draft";
 
+/** Tab order, matching the top-to-bottom reading order of the composer. */
+const FIELD_ORDER = ["title", "description", "status", "type", "priority", "create", "cancel"] as const;
+
+/** The widget's wrapped lines (`real`), the logical lines they belong to, and how many there are. */
+export type CaretLines = {
+	real: readonly string[];
+	rtof: readonly number[];
+	fakeCount: number;
+};
+
+/**
+ * The input widgets report the caret as a negative offset from the end of its wrapped line
+ * rather than as an index, so count everything that follows the caret to place it in the value.
+ */
+export function caretIndexFromCursor(value: string, cursor: { x: number; y: number }, lines: CaretLines): number {
+	if (lines.real.length === 0) return value.length;
+	const lastLine = lines.real.length - 1;
+	const currentLine = Math.min(lastLine, Math.max(0, lastLine + cursor.y));
+	let after = -Math.min(0, cursor.x);
+	for (let line = currentLine + 1; line <= lastLine; line += 1) after += (lines.real[line] ?? "").length;
+	// Wrapped lines share a logical line; only logical breaks add a newline character.
+	after += Math.max(0, lines.fakeCount - 1 - (lines.rtof[currentLine] ?? 0));
+	return Math.min(value.length, Math.max(0, value.length - after));
+}
+
+/** First index Backspace (one character) or Ctrl+W (one word) should remove, counting back from the caret. */
+export function deletionStart(value: string, caretIndex: number, unit: "char" | "word"): number {
+	if (caretIndex <= 0) return caretIndex;
+	if (unit === "char") return caretIndex - 1;
+	let start = caretIndex;
+	while (start > 0 && /\s/.test(value[start - 1] ?? "")) start -= 1;
+	while (start > 0 && !/\s/.test(value[start - 1] ?? "")) start -= 1;
+	return start;
+}
+
 export type TaskComposerValues = {
 	title: string;
 	description: string;
@@ -54,10 +89,14 @@ export function getTaskComposerLayout(screenWidth: number, screenHeight: number)
 }
 
 function getTaskComposerHelpText(screenWidth: number, compact: boolean): string {
-	if (compact || screenWidth < 60) {
-		return " {cyan-fg}[↑↓←→]{/} Nav | {cyan-fg}[Enter]{/} Choose | {cyan-fg}[Esc]{/} Cancel";
+	// Each variant has to fit the popup width it is shown at, so drop hints as the screen narrows.
+	if (screenWidth < 60) {
+		return " {cyan-fg}[↑↓←→/Tab]{/} Nav | {cyan-fg}[Enter]{/} Choose";
 	}
-	return " {cyan-fg}[↑↓/←→]{/} Navigate | {cyan-fg}[Enter/Space]{/} Choose | {cyan-fg}[Esc]{/} Cancel";
+	if (compact) {
+		return " {cyan-fg}[↑↓←→/Tab]{/} Nav | {cyan-fg}[Enter]{/} Choose | {cyan-fg}[Esc]{/} Cancel";
+	}
+	return " {cyan-fg}[↑↓/←→/Tab]{/} Navigate | {cyan-fg}[Enter/Space]{/} Choose | {cyan-fg}[Esc]{/} Cancel";
 }
 
 type TaskComposerField = "title" | "description" | "status" | "type" | "priority" | "create" | "cancel";
@@ -203,7 +242,7 @@ export async function openTaskComposer(options: TaskComposerOptions): Promise<Ta
 			keys: true,
 			mouse: true,
 			inputOnFocus: false,
-			// Suppresses the inherited scroll key bindings; Tab inertness comes from makeTabInert.
+			// Suppresses the scroll key bindings this widget inherits from its scrollable base.
 			ignoreKeys: true,
 			style: { border: { fg: "gray" } },
 		});
@@ -436,6 +475,13 @@ export async function openTaskComposer(options: TaskComposerOptions): Promise<Ta
 			if (activeField === "cancel" && direction === "left") next = "create";
 			if (next !== activeField) focusField(next);
 		};
+
+		/** Tab traversal: reading order, wrapping at both ends. */
+		const moveFocus = (step: number) => {
+			const index = FIELD_ORDER.indexOf(activeField);
+			const next = FIELD_ORDER[(index + step + FIELD_ORDER.length) % FIELD_ORDER.length];
+			if (next) focusField(next);
+		};
 		const onResize = () => {
 			syncInputs();
 			if (!pickerOpen) applyLayout();
@@ -522,23 +568,59 @@ export async function openTaskComposer(options: TaskComposerOptions): Promise<Ta
 		popup.key(["escape"], escapeHandler);
 		for (const widget of Object.values(widgets)) {
 			widget.key(["escape"], escapeHandler);
+			widget.key(["tab"], () => {
+				moveFocus(1);
+				return false;
+			});
+			widget.key(["S-tab"], () => {
+				moveFocus(-1);
+				return false;
+			});
 		}
 
 		type ComposerInput = TextboxInterface & {
 			_listener?: (ch: string, key: { name?: string }) => void;
-			_clines?: { length: number };
+			_clines?: { length: number; real?: string[]; rtof?: number[]; fake?: string[] };
 			getCursor?: () => { x: number; y: number };
+			moveCursor?: (x: number, y: number) => void;
 		};
-		const makeTabInert = (input: ComposerInput) => {
+		/**
+		 * Keys the composer implements itself. Tab moves between fields instead of typing a tab,
+		 * and deletion is owned here because the widgets cannot do it: the textbox deletes from the
+		 * end and returns before repainting, and the textarea's backspace branch is empty on the
+		 * unicode-capable screens this TUI creates.
+		 */
+		const ownedInputKeys = new Set(["tab", "backspace", "delete"]);
+		const ownInputKeys = (input: ComposerInput) => {
 			const listener = input._listener?.bind(input);
 			if (!listener) return;
 			input._listener = (ch, key) => {
-				if (key.name === "tab" || ch === "\t") return;
+				if ((key.name && ownedInputKeys.has(key.name)) || ch === "\t") return;
 				listener(ch, key);
 			};
 		};
-		makeTabInert(titleInput as ComposerInput);
-		makeTabInert(descriptionInput as ComposerInput);
+		ownInputKeys(titleInput as ComposerInput);
+		ownInputKeys(descriptionInput as ComposerInput);
+
+		const deleteText = (input: ComposerInput, unit: "char" | "word" | "forward") => {
+			const value = input.getValue();
+			const cursor = input.getCursor?.() ?? { x: 0, y: 0 };
+			const clines = input._clines;
+			const caret = caretIndexFromCursor(value, cursor, {
+				real: clines?.real ?? [value],
+				rtof: clines?.rtof ?? [0],
+				fakeCount: clines?.fake?.length ?? 1,
+			});
+			const start = unit === "forward" ? caret : deletionStart(value, caret, unit);
+			const end = unit === "forward" ? caret + 1 : caret;
+			if (start >= Math.min(end, value.length)) return;
+			input.setValue(value.slice(0, start) + value.slice(end));
+			syncInputs();
+			// Only text on one side of the caret changed, so the end-relative offsets still hold;
+			// re-apply them so the widget clamps them against the new lines and repaints.
+			input.moveCursor?.(unit === "forward" ? cursor.x + 1 : cursor.x, cursor.y);
+			options.screen.render();
+		};
 
 		let cursorBeforeKey: { y: number; lines: number } | null = null;
 		for (const input of [titleInput, descriptionInput] as ComposerInput[]) {
@@ -549,6 +631,18 @@ export async function openTaskComposer(options: TaskComposerOptions): Promise<Ta
 				};
 				controller.error = "";
 				errorBox.setContent("");
+			});
+			input.key(["backspace"], () => {
+				deleteText(input, "char");
+				return false;
+			});
+			input.key(["delete"], () => {
+				deleteText(input, "forward");
+				return false;
+			});
+			input.key(["C-w"], () => {
+				deleteText(input, "word");
+				return false;
 			});
 		}
 		titleInput.key(["down"], () => {

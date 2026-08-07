@@ -7,7 +7,9 @@ import { Core } from "../core/backlog.ts";
 import type { Task, TaskCreateInput } from "../types/index.ts";
 import { getCreatedTaskBoardOutcome, renderBoardTui, upsertBoardTask } from "../ui/board.ts";
 import {
+	caretIndexFromCursor,
 	createTaskComposerValues,
+	deletionStart,
 	getTaskComposerLayout,
 	getTaskComposerPriorityChoices,
 	getTaskComposerStatusChoices,
@@ -114,6 +116,30 @@ async function settleComposerFocus(): Promise<void> {
 }
 
 describe("TUI task composer model", () => {
+	it("places the caret from the widget's end-relative cursor", () => {
+		const singleLine = { real: ["abcdef"], rtof: [0], fakeCount: 1 };
+		expect(caretIndexFromCursor("abcdef", { x: 0, y: 0 }, singleLine)).toBe(6);
+		expect(caretIndexFromCursor("abcdef", { x: -2, y: 0 }, singleLine)).toBe(4);
+
+		// Two logical lines: the newline between them counts as a character.
+		const twoLines = { real: ["alpha beta", "second line"], rtof: [0, 1], fakeCount: 2 };
+		expect(caretIndexFromCursor("alpha beta\nsecond line", { x: -3, y: 0 }, twoLines)).toBe(19);
+		expect(caretIndexFromCursor("alpha beta\nsecond line", { x: -2, y: -1 }, twoLines)).toBe(8);
+
+		// One logical line wrapped across two rows: no newline to account for.
+		const wrapped = { real: ["wwww xxxx ", "yyyy zzzz"], rtof: [0, 0], fakeCount: 1 };
+		expect(caretIndexFromCursor("wwww xxxx yyyy zzzz", { x: -2, y: -1 }, wrapped)).toBe(8);
+	});
+
+	it("deletes one character or one word back from the caret", () => {
+		expect(deletionStart("abcdef", 4, "char")).toBe(3);
+		expect(deletionStart("abcdef", 0, "char")).toBe(0);
+		expect(deletionStart("hello world", 11, "word")).toBe(6);
+		expect(deletionStart("hello world  ", 13, "word")).toBe(6);
+		expect(deletionStart("hello", 5, "word")).toBe(0);
+		expect(deletionStart("", 0, "word")).toBe(0);
+	});
+
 	it("rests on the first configured workflow status and never Draft", () => {
 		const values = createTaskComposerValues(["Review", "Ready", "Done"]);
 		expect(values.status).toBe("Review");
@@ -901,7 +927,70 @@ describe("TUI task composer interaction", () => {
 		}
 	});
 
-	it("uses spatial arrows across every control while Tab remains inert", async () => {
+	it("deletes back from the caret in both text fields and repaints", async () => {
+		const screen = createScreen({ smartCSR: false });
+		Object.defineProperty(screen, "width", { configurable: true, value: 100, writable: true });
+		Object.defineProperty(screen, "height", { configurable: true, value: 30, writable: true });
+		// Real terminals report unicode support, which is exactly when the textarea's own
+		// backspace does nothing and the textbox deletes from the end without repainting.
+		Object.defineProperty(screen, "fullUnicode", { configurable: true, value: true, writable: true });
+		const originalRender = screen.render.bind(screen);
+		let renders = 0;
+		screen.render = () => {
+			renders += 1;
+			originalRender();
+		};
+		const eventScreen = screen as unknown as { focused?: TestWidget };
+		try {
+			const resultPromise = openTaskComposer({
+				screen,
+				statuses: ["To Do", "Done"],
+				persist: async () => task(),
+			});
+			await settleComposerFocus();
+
+			const title = eventScreen.focused;
+			typeText(title, "abcdef");
+			expect(title?.getValue?.()).toBe("abcdef");
+			renders = 0;
+			pressKey(title, "backspace", "\x7f");
+			expect(title?.getValue?.()).toBe("abcde");
+			// The library deletes without rendering, so the field looks frozen until the next key.
+			expect(renders).toBeGreaterThan(0);
+
+			// Mid-field: the library always removes the last character instead of the caret's.
+			pressKey(title, "left");
+			pressKey(title, "left");
+			pressKey(title, "backspace", "\x7f");
+			expect(title?.getValue?.()).toBe("abde");
+
+			// Ctrl+W removes the word before the caret, not the trailing one.
+			pressKey(title, "C-w", "\x17");
+			expect(title?.getValue?.()).toBe("de");
+
+			pressKey(title, "tab", "\t");
+			// The widget only starts listening for keys on the next tick.
+			await settleComposerFocus();
+			const description = eventScreen.focused;
+			expect(description).not.toBe(title);
+			typeText(description, "hello world");
+			pressKey(description, "backspace", "\x7f");
+			expect(description?.getValue?.()).toBe("hello worl");
+			pressKey(description, "left");
+			pressKey(description, "left");
+			pressKey(description, "backspace", "\x7f");
+			expect(description?.getValue?.()).toBe("hello wrl");
+			pressKey(description, "C-w", "\x17");
+			expect(description?.getValue?.()).toBe("hello rl");
+
+			pressKey(eventScreen.focused, "escape", "\x1b");
+			expect(await withTimeout(resultPromise, "composer deletion cancellation", 1000)).toBeNull();
+		} finally {
+			screen.destroy();
+		}
+	});
+
+	it("uses spatial arrows across every control and Tab traverses them in order", async () => {
 		const screen = createScreen({ smartCSR: false });
 		Object.defineProperty(screen, "width", { configurable: true, value: 100, writable: true });
 		Object.defineProperty(screen, "height", { configurable: true, value: 30, writable: true });
@@ -921,9 +1010,22 @@ describe("TUI task composer interaction", () => {
 			await settleComposerFocus();
 
 			expect(eventScreen.focused?.options?.label).toBe(" Title ");
-			pressKey(eventScreen.focused, "tab", "\t");
-			expect(eventScreen.focused?.options?.label).toBe(" Title ");
+			// Tab walks the whole order forward and wraps back to the title.
+			for (const expected of [" Description ", undefined, undefined, undefined, undefined, undefined, " Title "]) {
+				pressKey(eventScreen.focused, "tab", "\t");
+				if (expected) expect(eventScreen.focused?.options?.label).toBe(expected);
+			}
+			// Tab must not type a tab character into either text field.
 			expect(eventScreen.focused?.getValue?.()).toBe("");
+			// Shift+Tab wraps backwards to the last control and walks back to the title.
+			pressKey(eventScreen.focused, "S-tab", "\t");
+			expect(eventScreen.focused?.content).toBe("Cancel");
+			for (const expected of ["Create task", "Priority: None ▼", "Type: None ▼", "Status: To Do ▼"]) {
+				pressKey(eventScreen.focused, "S-tab", "\t");
+				expect(eventScreen.focused?.content).toBe(expected);
+			}
+			pressKey(eventScreen.focused, "S-tab", "\t");
+			expect(eventScreen.focused?.options?.label).toBe(" Description ");
 			pressKey(eventScreen.focused, "S-tab", "\t");
 			expect(eventScreen.focused?.options?.label).toBe(" Title ");
 			expect(eventScreen.focused?.getValue?.()).toBe("");
@@ -942,7 +1044,7 @@ describe("TUI task composer interaction", () => {
 			pressKey(eventScreen.focused, "left");
 			expect(eventScreen.focused?.content).toBe("Create task");
 			pressKey(eventScreen.focused, "tab", "\t");
-			expect(eventScreen.focused?.content).toBe("Create task");
+			expect(eventScreen.focused?.content).toBe("Cancel");
 
 			pressKey(eventScreen.focused, "escape", "\x1b");
 			expect(await withTimeout(resultPromise, "Esc from composer action", 1000)).toBeNull();
@@ -1140,7 +1242,7 @@ describe("TUI task composer interaction", () => {
 			// Selectors sit inside the details frame but are positioned in viewport coordinates.
 			expect(status?.position).toMatchObject({ top: 10, left: 3 });
 			expect(type?.position).toMatchObject({ top: 10, left: "35%" });
-			expect(widgets.some((widget) => widget.content?.includes("[↑↓/←→]"))).toBe(true);
+			expect(widgets.some((widget) => widget.content?.includes("[↑↓/←→/Tab]"))).toBe(true);
 
 			mutableScreen.width = 50;
 			mutableScreen.height = 18;
@@ -1157,7 +1259,7 @@ describe("TUI task composer interaction", () => {
 			expect(actions?.hidden).toBe(true);
 			expect(status?.position).toMatchObject({ top: 7, left: 3 });
 			expect(type?.position).toMatchObject({ top: 8, left: 3, width: "44%" });
-			expect(widgets.some((widget) => widget.content?.includes("[↑↓←→]"))).toBe(true);
+			expect(widgets.some((widget) => widget.content?.includes("[↑↓←→/Tab]"))).toBe(true);
 
 			mutableScreen.width = 80;
 			mutableScreen.height = 24;

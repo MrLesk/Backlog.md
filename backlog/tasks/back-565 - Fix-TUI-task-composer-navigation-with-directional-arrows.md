@@ -6,7 +6,7 @@ assignee:
   - '@codex'
   - '@claude'
 created_date: '2026-08-02 21:12'
-updated_date: '2026-08-07 18:44'
+updated_date: '2026-08-07 20:03'
 labels:
   - tui
   - bug
@@ -98,6 +98,22 @@ Both tests were checked against deliberately broken builds before being kept: ne
 ignoreKeys correction. src/ui/components/task-composer.ts passed ignoreKeys: ["tab"] to the title textbox, which reads as if it suppressed Tab. The fork types the option as boolean (element.ts, scrollablebox.ts) and its only consumer is scrollablebox.ts's 'if (options.keys && !options.ignoreKeys)', so the array was merely truthy: it suppressed the inherited scroll key bindings, and Tab inertness has always come from makeTabInert. Changed to true with a comment naming what it does - behaviour-identical. Re-verified interactively at 80x24 because the line touches title-input key handling: typing abc, pressing Tab, then typing def yields 'abcdef' with no tab character and focus unmoved; two Lefts then X yields 'abcdXef' so caret movement is intact; Down still moves focus to Description.
 
 Checks for this delta: bunx tsc --noEmit; Biome clean on 342 src files; composer/help/popup-chrome tests 57 pass; full bun test 1888 pass, 5 skip, 0 fail.
+
+Maintainer hands-on findings: two deletion bugs and Tab navigation (product change).
+
+Reproduced both bugs in tmux at 80x24 before touching code. Title: typing 'abc' then Backspace still displayed 'abc'; typing 'X' then displayed 'abX', proving the character had been removed but never repainted. Description: typing 'hello' then Backspace then 'Z' gave 'helloZ', so nothing was deleted at all.
+
+Root causes, confirmed in the installed neo-neo-bblessed and matching janosmiko's diagnosis in PR #809. (1) textbox.ts's _listener handles Backspace by slicing the value and returning before the trailing screen.render(), so the field only repaints on the next keystroke - and it always slices the END of the value, ignoring the caret. (2) textarea.ts's Backspace branch is 'if (this.screen.fullUnicode) { }' - empty - so Backspace is a complete no-op whenever the terminal reports unicode support. screen.fullUnicode is 'options.fullUnicode && this._unicode', which is why the bug appears in a real terminal but not in the test harness, whose program is built with tput disabled.
+
+Approach adapted from janosmiko's PR #809 (credit to janosmiko for the root-cause diagnosis and the composer-owns-deletion approach). His deleteLastChar/deleteLastWord only operate on the end of the value; this version is caret-aware because the maintainer asked for mid-field deletion. The widgets report the caret as a negative offset from the end of the current wrapped line, so caretIndexFromCursor converts that to an index by counting what follows it (rest of the current line, following wrapped lines, and one character per logical line break), and deletionStart resolves how far back Backspace or Ctrl+W should reach. Deleting only changes text on one side of the caret, so the end-relative offsets survive and are re-applied to make the widget clamp and repaint. stripInjectedTabs is not needed here because the widget never sees Tab.
+
+The single mechanism is ownInputKeys, which replaces makeTabInert: it shadows the widget's _listener so tab, backspace and delete never reach it, leaving the composer as the only implementation. This is why removing makeTabInert for Tab navigation also had to move deletion - the same shim governs both. Delete was also owned and implemented as forward-delete: it shares the textbox's broken end-slicing path, and suppressing it without a replacement would have left the reported bug's sibling silently dead. Ctrl+W fell out of the same helper as requested.
+
+Tab/Shift+Tab now traverse Title, Description, Status, Type, Priority, Create, Cancel and wrap at both ends, bound on every control alongside the existing arrows and Enter. Tab leaves the Description instead of typing a tab. The composer help line gained the Tab hint in three width-aware variants so it still fits at 50 columns.
+
+Verification. tmux at 80x24 and 80x10: Backspace at end and mid-field in Title and Description, including a two-line description where the deletion happened on the second line; caret confirmed to stay put by typing after each deletion; Ctrl+W word delete; Delete forward-delete; Tab forward through all seven controls with wrap to Title, Shift+Tab backward with wrap to Cancel, focus highlight verified from the captured attributes at each step; Tab into and out of the Description leaves the field text untouched; task created from a Tab-reached Create button. Tests: caretIndexFromCursor and deletionStart unit cases (single line, two logical lines, one wrapped logical line), a rendered-harness deletion test that forces screen.fullUnicode true to reproduce the real terminal condition and asserts both a repaint and mid-field/Ctrl+W results in both fields, and the former Tab-inertness test rewritten to pin full Tab and Shift+Tab traversal with wrapping. The deletion test was confirmed to fail with the deletion binding removed. Gate: bunx tsc --noEmit, Biome clean on 342 files, composer/help/popup-chrome suites, full bun test 1891 pass, 5 skip, 0 fail.
+
+Note: the harness only exposes these bugs when screen.fullUnicode is forced on, so any future editing test must set it or it will pass against broken code.
 <!-- SECTION:NOTES:END -->
 
 ## Final Summary
