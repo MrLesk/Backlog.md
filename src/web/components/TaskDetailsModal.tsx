@@ -493,7 +493,20 @@ export const TaskDetailsModal: React.FC<Props> = ({
     if (onSaved) void onSaved();
   }, [commentsChanged, onSaved]);
 
-  const hasUnsavedEdits = (mode === "edit" || mode === "create") && isDirty;
+  const hasCommentDraft = commentBody.trim() !== "" || commentAuthor.trim() !== "";
+  // Nothing is persisted while creating, so any entered field is unsaved work.
+  const hasCreateModeEntries =
+    isCreateMode &&
+    (title.trim() !== "" ||
+      taskType.trim() !== "" ||
+      priority.trim() !== "" ||
+      milestone.trim() !== "" ||
+      assignee.length > 0 ||
+      labels.length > 0 ||
+      dependencies.length > 0 ||
+      references.length > 0);
+  const hasUnsavedEdits =
+    (mode === "edit" || mode === "create") && (isDirty || hasCommentDraft || hasCreateModeEntries);
 
   // Links inside the modal (dependency chips, auto-linked task IDs in markdown) leave this
   // task behind, so they ask the same question closing does before the navigation happens.

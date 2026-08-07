@@ -75,7 +75,7 @@ function LocationProbe() {
 	return null;
 }
 
-const mountModal = async (): Promise<HTMLElement> => {
+const renderModal = async (modalTask: Task | undefined): Promise<HTMLElement> => {
 	setupDom();
 	currentPath = "";
 	const container = document.getElementById("root");
@@ -87,7 +87,7 @@ const mountModal = async (): Promise<HTMLElement> => {
 					<TaskIdIndexProvider tasks={[task, dependency]}>
 						<LocationProbe />
 						<TaskDetailsModal
-							task={task}
+							task={modalTask}
 							isOpen={true}
 							onClose={() => {}}
 							availableTasks={[task, dependency]}
@@ -101,6 +101,11 @@ const mountModal = async (): Promise<HTMLElement> => {
 	return container as HTMLElement;
 };
 
+/** Existing task, opens in preview mode. */
+const mountModal = () => renderModal(task);
+/** No task, opens in create mode. */
+const mountCreateModal = () => renderModal(undefined);
+
 const click = async (element: Element): Promise<MouseEvent> => {
 	const event = new window.MouseEvent("click", { bubbles: true, cancelable: true });
 	await act(async () => {
@@ -110,8 +115,10 @@ const click = async (element: Element): Promise<MouseEvent> => {
 	return event;
 };
 
-const typeInto = async (element: HTMLInputElement, value: string) => {
-	const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, "value")?.set;
+const typeInto = async (element: HTMLInputElement | HTMLTextAreaElement, value: string) => {
+	const prototype =
+		element.tagName === "TEXTAREA" ? window.HTMLTextAreaElement.prototype : window.HTMLInputElement.prototype;
+	const setter = Object.getOwnPropertyDescriptor(prototype, "value")?.set;
 	await act(async () => {
 		setter?.call(element, value);
 		element.dispatchEvent(new window.Event("input", { bubbles: true }));
@@ -119,12 +126,32 @@ const typeInto = async (element: HTMLInputElement, value: string) => {
 	});
 };
 
-const startEditingWithUnsavedChanges = async (container: HTMLElement) => {
+const pressEnter = async (element: Element) => {
+	await act(async () => {
+		element.dispatchEvent(new window.KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true }));
+		await Promise.resolve();
+	});
+};
+
+const startEditing = async (container: HTMLElement) => {
 	const editButton = Array.from(container.querySelectorAll("button")).find(
 		(button) => button.textContent?.trim() === "Edit",
 	);
 	expect(editButton).toBeTruthy();
 	await click(editButton as Element);
+};
+
+const declineOnConfirm = () => {
+	const prompts: string[] = [];
+	window.confirm = (message?: string) => {
+		prompts.push(message ?? "");
+		return false;
+	};
+	return prompts;
+};
+
+const startEditingWithUnsavedChanges = async (container: HTMLElement) => {
+	await startEditing(container);
 
 	const titleInput = Array.from(container.querySelectorAll("input")).find((input) => input.value === task.title);
 	expect(titleInput).toBeTruthy();
@@ -182,6 +209,38 @@ describe("Task details modal navigation with unsaved edits", () => {
 		await click(findChipLink(container));
 
 		expect(currentPath).toBe("/tasks/BACK-2");
+	});
+
+	it("protects a comment draft that is the only unsaved work", async () => {
+		const container = await mountModal();
+		await startEditing(container);
+
+		const commentBox = container.querySelector('textarea[placeholder="Add a comment..."]');
+		expect(commentBox).toBeTruthy();
+		await typeInto(commentBox as HTMLTextAreaElement, "Draft comment nobody has submitted yet");
+
+		const prompts = declineOnConfirm();
+		const event = await click(findChipLink(container));
+
+		expect(prompts.length).toBe(1);
+		expect(event.defaultPrevented).toBe(true);
+		expect(currentPath).toBe("/tasks/BACK-1");
+	});
+
+	it("protects create-mode metadata entered before any title", async () => {
+		const container = await mountCreateModal();
+
+		const dependencyInput = container.querySelector("#dependency-input");
+		expect(dependencyInput).toBeTruthy();
+		await typeInto(dependencyInput as HTMLTextAreaElement, dependency.id);
+		await pressEnter(dependencyInput as Element);
+
+		const prompts = declineOnConfirm();
+		const event = await click(findChipLink(container));
+
+		expect(prompts.length).toBe(1);
+		expect(event.defaultPrevented).toBe(true);
+		expect(currentPath).toBe("/tasks/BACK-1");
 	});
 
 	it("blocks an auto-linked task ID in a comment when the discard prompt is declined", async () => {

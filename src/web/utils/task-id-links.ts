@@ -40,7 +40,7 @@ type MarkdownNode = {
 /** Covers every ID shape `isValidTaskId` accepts, including legacy non-numeric bodies. */
 const TASK_ID_CANDIDATE = /[A-Za-z]+-[A-Za-z0-9]+(?:[._-][A-Za-z0-9]+)*/g;
 /** A candidate preceded by one of these is part of a longer identifier or path. */
-const PRECEDING_REJECT = /[\p{L}\p{N}\p{M}_\-/.]$/u;
+const PRECEDING_REJECT = /[\p{L}\p{N}\p{M}_\-/\\.]$/u;
 /** A candidate followed by an identifier character or a file extension is not an ID reference. */
 const FOLLOWING_REJECT = /^[\p{L}\p{N}\p{M}_-]|^\.[\p{L}\p{N}\p{M}]/u;
 /** Text inside these nodes already points somewhere; never rewrite it. */

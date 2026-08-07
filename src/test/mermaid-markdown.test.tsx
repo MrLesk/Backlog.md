@@ -122,6 +122,12 @@ describe("MermaidMarkdown", () => {
 		expect(taskLinks(html)).toEqual([]);
 	});
 
+	it("does not auto-link IDs inside Windows-style paths", () => {
+		const html = renderMarkdown("File backlog\\tasks\\BACK-123 - Title.md stays plain.");
+
+		expect(taskLinks(html)).toEqual([]);
+	});
+
 	it("does not auto-link IDs that match no known task", () => {
 		const html = renderMarkdown("Unknown reference BACK-9999 stays plain.");
 
