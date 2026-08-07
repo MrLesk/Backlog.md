@@ -467,9 +467,32 @@ function hasEditFieldFlags(options: Record<string, unknown>): boolean {
 			options.dep !== undefined ||
 			options.clearDeps ||
 			options.ref !== undefined ||
+			options.clearRefs ||
 			options.doc !== undefined ||
+			options.clearDocs ||
 			options.modifiedFile !== undefined,
 	);
+}
+
+/**
+ * Validate a clearable list option pair such as --ref/--clear-refs.
+ * Returns an error message when the clear flag conflicts with a setter or a setter value is blank.
+ */
+function validateClearableListInput(input: {
+	rawValues: string[];
+	cleared: boolean;
+	isBlank: (value: string) => boolean;
+	setterFlags: string;
+	clearFlag: string;
+	subject: string;
+}): string | undefined {
+	if (input.cleared && input.rawValues.length > 0) {
+		return `Cannot combine ${input.clearFlag} with ${input.setterFlags}. Use ${input.clearFlag} by itself.`;
+	}
+	if (input.rawValues.some(input.isBlank)) {
+		return `Cannot use an empty value with ${input.setterFlags}. Use ${input.clearFlag} to remove all ${input.subject}.`;
+	}
+	return undefined;
 }
 
 async function resolveCliMilestoneInput(core: Core, milestone: string): Promise<string> {
@@ -2674,6 +2697,16 @@ addHelpSchema(taskCmd.command("edit [taskId]"), {
 			type: "Boolean",
 			description: "Remove all task dependencies; cannot combine with dependency flags",
 		},
+		{
+			name: "clear-refs",
+			type: "Boolean",
+			description: "Remove all references; cannot combine with --ref",
+		},
+		{
+			name: "clear-docs",
+			type: "Boolean",
+			description: "Remove all documentation; cannot combine with --doc",
+		},
 		{ name: "plan", type: "Markdown", description: "Replacement implementation plan" },
 		{
 			name: "append-plan",
@@ -2805,6 +2838,7 @@ addHelpSchema(taskCmd.command("edit [taskId]"), {
 		const soFar = Array.isArray(previous) ? previous : previous ? [previous] : [];
 		return [...soFar, value];
 	})
+	.option("--clear-refs", "remove all references (cannot combine with --ref)")
 	.option(
 		"--modified-file <path>",
 		"set modified file paths from project root (can be used multiple times)",
@@ -2817,6 +2851,7 @@ addHelpSchema(taskCmd.command("edit [taskId]"), {
 		const soFar = Array.isArray(previous) ? previous : previous ? [previous] : [];
 		return [...soFar, value];
 	})
+	.option("--clear-docs", "remove all documentation (cannot combine with --doc)")
 	.action(async (taskId: string | undefined, options) => {
 		const shouldUseWizard = hasInteractiveTTY && !hasEditFieldFlags(options);
 		if (!shouldUseWizard && !taskId) {
@@ -3022,15 +3057,36 @@ addHelpSchema(taskCmd.command("edit [taskId]"), {
 			.filter((value) => value.length > 0);
 
 		const combinedDependencies = [...toStringArray(options.dependsOn), ...toStringArray(options.dep)];
-		if (options.clearDeps && combinedDependencies.length > 0) {
-			console.error("Cannot combine --clear-deps with --depends-on or --dep. Use --clear-deps by itself.");
-			process.exitCode = 1;
-			return;
-		}
-		if (combinedDependencies.some((value) => normalizeDependencies([value]).length === 0)) {
-			console.error(
-				"Cannot use an empty value with --depends-on or --dep. Use --clear-deps to remove all task dependencies.",
-			);
+		const rawReferences = toStringArray(options.ref);
+		const rawDocumentation = toStringArray(options.doc);
+		const isBlankListValue = (value: string) => parseDelimitedStringList(value) === undefined;
+		const clearableListError =
+			validateClearableListInput({
+				rawValues: combinedDependencies,
+				cleared: Boolean(options.clearDeps),
+				isBlank: (value) => normalizeDependencies([value]).length === 0,
+				setterFlags: "--depends-on or --dep",
+				clearFlag: "--clear-deps",
+				subject: "task dependencies",
+			}) ??
+			validateClearableListInput({
+				rawValues: rawReferences,
+				cleared: Boolean(options.clearRefs),
+				isBlank: isBlankListValue,
+				setterFlags: "--ref",
+				clearFlag: "--clear-refs",
+				subject: "references",
+			}) ??
+			validateClearableListInput({
+				rawValues: rawDocumentation,
+				cleared: Boolean(options.clearDocs),
+				isBlank: isBlankListValue,
+				setterFlags: "--doc",
+				clearFlag: "--clear-docs",
+				subject: "documentation",
+			});
+		if (clearableListError) {
+			console.error(clearableListError);
 			process.exitCode = 1;
 			return;
 		}
@@ -3087,11 +3143,15 @@ addHelpSchema(taskCmd.command("edit [taskId]"), {
 		} else if (options.clearDeps) {
 			editArgs.dependencies = [];
 		}
-		if (normalizedReferences && normalizedReferences.length > 0) {
+		if (normalizedReferences) {
 			editArgs.references = normalizedReferences;
+		} else if (options.clearRefs) {
+			editArgs.references = [];
 		}
-		if (normalizedDocumentation && normalizedDocumentation.length > 0) {
+		if (normalizedDocumentation) {
 			editArgs.documentation = normalizedDocumentation;
+		} else if (options.clearDocs) {
+			editArgs.documentation = [];
 		}
 		if (normalizedModifiedFiles && normalizedModifiedFiles.length > 0) {
 			editArgs.modifiedFiles = normalizedModifiedFiles;

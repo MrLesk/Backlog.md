@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
-import { mkdir } from "node:fs/promises";
+import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
+import { pathToFileURL } from "node:url";
 import { $ } from "bun";
 import { Core } from "../index.ts";
 import { getTestCliPath } from "./test-cli.ts";
@@ -10,6 +11,19 @@ let TEST_DIR: string;
 
 describe("CLI --ref and --doc flags", () => {
 	const cliPath = getTestCliPath();
+
+	// Runs the CLI with stdio reported as a TTY so interactive-only behavior (the edit wizard) applies.
+	async function runCliWithInteractiveTty(cwd: string, args: string[]) {
+		const entryPath = join(cwd, "interactive-cli-entry.ts");
+		await writeFile(
+			entryPath,
+			`Object.defineProperty(process.stdout, "isTTY", { configurable: true, value: true });
+Object.defineProperty(process.stdin, "isTTY", { configurable: true, value: true });
+await import(${JSON.stringify(pathToFileURL(cliPath).href)});
+`,
+		);
+		return await $`bun ${entryPath} ${args}`.cwd(cwd).quiet().nothrow();
+	}
 
 	beforeEach(async () => {
 		TEST_DIR = createUniqueTestDir("test-cli-refs-docs");
@@ -175,6 +189,102 @@ describe("CLI --ref and --doc flags", () => {
 			expect(result.exitCode).toBe(0);
 			const out = result.stdout.toString();
 			expect(out).toContain("Modified files: src/api.ts, src/ui.ts");
+		});
+	});
+
+	describe("task edit with --clear-refs and --clear-docs", () => {
+		async function createTaskWithRefsAndDocs() {
+			await $`bun ${cliPath} task create "Feature" --ref a --ref b --doc doc-a --doc doc-b`.cwd(TEST_DIR).quiet();
+		}
+
+		it("clears references with --clear-refs", async () => {
+			await createTaskWithRefsAndDocs();
+
+			const result = await $`bun ${cliPath} task edit 1 --clear-refs --plain`.cwd(TEST_DIR).quiet();
+
+			expect(result.exitCode).toBe(0);
+			const task = await new Core(TEST_DIR).filesystem.loadTask("TASK-1");
+			expect(task?.references).toEqual([]);
+			expect(task?.documentation).toEqual(["doc-a", "doc-b"]);
+		});
+
+		it("clears documentation with --clear-docs", async () => {
+			await createTaskWithRefsAndDocs();
+
+			const result = await $`bun ${cliPath} task edit 1 --clear-docs --plain`.cwd(TEST_DIR).quiet();
+
+			expect(result.exitCode).toBe(0);
+			const task = await new Core(TEST_DIR).filesystem.loadTask("TASK-1");
+			expect(task?.documentation).toEqual([]);
+			expect(task?.references).toEqual(["a", "b"]);
+		});
+
+		it("clears references with --clear-refs in an interactive terminal", async () => {
+			await createTaskWithRefsAndDocs();
+
+			const result = await runCliWithInteractiveTty(TEST_DIR, ["task", "edit", "1", "--clear-refs"]);
+
+			expect(result.exitCode).toBe(0);
+			expect(result.stdout.toString()).toContain("Updated task TASK-1");
+			expect((await new Core(TEST_DIR).filesystem.loadTask("TASK-1"))?.references).toEqual([]);
+		});
+
+		it("clears documentation with --clear-docs in an interactive terminal", async () => {
+			await createTaskWithRefsAndDocs();
+
+			const result = await runCliWithInteractiveTty(TEST_DIR, ["task", "edit", "1", "--clear-docs"]);
+
+			expect(result.exitCode).toBe(0);
+			expect(result.stdout.toString()).toContain("Updated task TASK-1");
+			expect((await new Core(TEST_DIR).filesystem.loadTask("TASK-1"))?.documentation).toEqual([]);
+		});
+
+		it("rejects empty and conflicting reference edits without changing references", async () => {
+			await createTaskWithRefsAndDocs();
+
+			const empty = await $`bun ${cliPath} task edit 1 --ref ""`.cwd(TEST_DIR).quiet().nothrow();
+			expect(empty.exitCode).toBe(1);
+			expect(empty.stderr.toString()).toContain("Cannot use an empty value with --ref");
+			expect(empty.stdout.toString()).not.toContain("Updated task");
+
+			const emptyAlongsideValue = await $`bun ${cliPath} task edit 1 --ref "" --ref c`.cwd(TEST_DIR).quiet().nothrow();
+			expect(emptyAlongsideValue.exitCode).toBe(1);
+			expect(emptyAlongsideValue.stderr.toString()).toContain("Cannot use an empty value with --ref");
+
+			const conflicting = await $`bun ${cliPath} task edit 1 --clear-refs --ref c`.cwd(TEST_DIR).quiet().nothrow();
+			expect(conflicting.exitCode).toBe(1);
+			expect(conflicting.stderr.toString()).toContain("Cannot combine --clear-refs with --ref");
+
+			expect((await new Core(TEST_DIR).filesystem.loadTask("TASK-1"))?.references).toEqual(["a", "b"]);
+		});
+
+		it("rejects empty and conflicting documentation edits without changing documentation", async () => {
+			await createTaskWithRefsAndDocs();
+
+			const empty = await $`bun ${cliPath} task edit 1 --doc ""`.cwd(TEST_DIR).quiet().nothrow();
+			expect(empty.exitCode).toBe(1);
+			expect(empty.stderr.toString()).toContain("Cannot use an empty value with --doc");
+			expect(empty.stdout.toString()).not.toContain("Updated task");
+
+			const emptyAlongsideValue = await $`bun ${cliPath} task edit 1 --doc "" --doc doc-c`
+				.cwd(TEST_DIR)
+				.quiet()
+				.nothrow();
+			expect(emptyAlongsideValue.exitCode).toBe(1);
+			expect(emptyAlongsideValue.stderr.toString()).toContain("Cannot use an empty value with --doc");
+
+			const conflicting = await $`bun ${cliPath} task edit 1 --clear-docs --doc doc-c`.cwd(TEST_DIR).quiet().nothrow();
+			expect(conflicting.exitCode).toBe(1);
+			expect(conflicting.stderr.toString()).toContain("Cannot combine --clear-docs with --doc");
+
+			expect((await new Core(TEST_DIR).filesystem.loadTask("TASK-1"))?.documentation).toEqual(["doc-a", "doc-b"]);
+		});
+
+		it("documents --clear-refs and --clear-docs in task edit help", async () => {
+			const result = await $`bun ${cliPath} task edit --help`.cwd(TEST_DIR).quiet();
+
+			expect(result.stdout.toString()).toContain("--clear-refs");
+			expect(result.stdout.toString()).toContain("--clear-docs");
 		});
 	});
 
