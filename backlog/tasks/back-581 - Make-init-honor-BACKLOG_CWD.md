@@ -5,7 +5,7 @@ status: Done
 assignee:
   - '@claude'
 created_date: '2026-08-07 17:25'
-updated_date: '2026-08-07 18:48'
+updated_date: '2026-08-07 18:54'
 labels:
   - bug
 dependencies: []
@@ -81,6 +81,8 @@ P1 - test isolation from an inherited BACKLOG_CWD (src/test/cli-init-create.test
 P2 - init help description (src/cli.ts): now reads 'initialize backlog project in the current directory (or BACKLOG_CWD when set)'. One line, no added help prose; this string had no other copies in the tree.
 
 Verification: cli-init-create passes with no override (29 pass) and again with BACKLOG_CWD exported to a decoy git repo (29 pass, decoy left containing only .git and a clean git status). Demonstrated the guard is load-bearing: with it stashed and the same decoy exported, 12 tests fail and the decoy is written with backlog/config.yml, AGENTS.md and CLAUDE.md. Also green: the init/runtime-cwd/guidance suites together (81 pass across 7 files), bunx tsc --noEmit, and bun run check . (357 files).
+
+Rebased onto origin/main (d8f394f5, BACK-576) after pushing the review fixes; main had touched both src/cli.ts and src/test/cli-init-create.test.ts. Rebase was conflict-free and the suite-level BACKLOG_CWD guard automatically covers the two init tests BACK-576 added to that file. Re-verified post-rebase: cli-init-create 31 pass with no override and 31 pass with BACKLOG_CWD exported to a decoy git repo (decoy left with only .git and a clean status); init/runtime-cwd/guidance suites 83 pass 1 skip 0 fail across 8 files; bunx tsc --noEmit and bun run check . clean; full bun run test 1905 pass, 5 skip, 0 fail across 213 files.
 <!-- SECTION:NOTES:END -->
 
 ## Final Summary
