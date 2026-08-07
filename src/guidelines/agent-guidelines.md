@@ -570,7 +570,7 @@ backlog search --modified-file src/server/api.ts --plain
 | Replace references | `backlog task edit 42 --ref src/api.ts --ref https://github.com/issue/123` |
 | Add references   | `backlog task edit 42 --add-ref src/api.ts --add-ref https://github.com/issue/123` |
 | Remove references | `backlog task edit 42 --remove-ref src/api.ts` |
-| Add documentation | `backlog task edit 42 --doc https://design-docs.example.com --doc docs/spec.md` |
+| Replace documentation | `backlog task edit 42 --doc https://design-docs.example.com --doc docs/spec.md` |
 | Set modified files | `backlog task edit 42 --modified-file src/api.ts --modified-file src/ui.ts` |
 
 ### Multi‑line Input (Description/Plan/Notes/Comments/Final Summary)
