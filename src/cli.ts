@@ -465,6 +465,7 @@ function hasEditFieldFlags(options: Record<string, unknown>): boolean {
 			options.clearFinalSummary ||
 			options.dependsOn !== undefined ||
 			options.dep !== undefined ||
+			options.clearDeps ||
 			options.ref !== undefined ||
 			options.doc !== undefined ||
 			options.modifiedFile !== undefined,
@@ -3017,14 +3018,14 @@ addHelpSchema(taskCmd.command("edit [taskId]"), {
 			process.exitCode = 1;
 			return;
 		}
-		const dependencyValues = combinedDependencies.length > 0 ? normalizeDependencies(combinedDependencies) : undefined;
-		if (combinedDependencies.length > 0 && dependencyValues?.length === 0) {
+		if (combinedDependencies.some((value) => normalizeDependencies([value]).length === 0)) {
 			console.error(
 				"Cannot use an empty value with --depends-on or --dep. Use --clear-deps to remove all task dependencies.",
 			);
 			process.exitCode = 1;
 			return;
 		}
+		const dependencyValues = combinedDependencies.length > 0 ? normalizeDependencies(combinedDependencies) : undefined;
 
 		const normalizedReferences = parseDelimitedStringList(options.ref);
 		const normalizedDocumentation = parseDelimitedStringList(options.doc);

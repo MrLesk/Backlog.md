@@ -4,8 +4,9 @@ title: Clear task dependencies through the CLI
 status: Done
 assignee:
   - '@codex'
+  - '@claude'
 created_date: '2026-08-03 20:16'
-updated_date: '2026-08-03 20:27'
+updated_date: '2026-08-07 17:29'
 labels: []
 dependencies: []
 references:
@@ -48,6 +49,12 @@ Fix GitHub issue #839: task edit currently ignores an empty dependency value, re
 
 <!-- SECTION:NOTES:BEGIN -->
 Implemented --clear-deps with matching conflict and empty-value validation. Verified with bun test src/test/cli-dependency.test.ts, bunx tsc --noEmit, bun run check ., and bun test (1880 passed, 5 skipped).
+
+Review follow-up (PR #840): fixed three defects in the --clear-deps change.
+1. hasEditFieldFlags() in src/cli.ts did not list --clear-deps, so in an interactive TTY 'task edit X --clear-deps' (without --plain) opened the edit wizard and never cleared dependencies; the flag is now part of the predicate.
+2. Empty dependency values were only rejected when the combined normalized list was empty, so '--depends-on "" --dep TASK-1' silently accepted the empty occurrence; each raw --depends-on/--dep occurrence is now validated individually.
+3. MCP task_edit treated a blank-only dependency array such as ["   "] as a full clear; buildTaskUpdateInput now mirrors the labels convention (blank-only is a no-op, explicit [] still clears).
+Coverage: CLI regression test runs the edit through a faked-TTY entry point without --plain, a CLI case for an empty value alongside a valid one, and an MCP test mirroring the existing blank-only labels test.
 <!-- SECTION:NOTES:END -->
 
 ## Final Summary

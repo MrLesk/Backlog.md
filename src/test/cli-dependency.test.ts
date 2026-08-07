@@ -1,11 +1,26 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
-import { mkdir } from "node:fs/promises";
+import { mkdir, writeFile } from "node:fs/promises";
+import { join } from "node:path";
+import { pathToFileURL } from "node:url";
 import { $ } from "bun";
 import { Core } from "../core/backlog.ts";
 import { getTestCliPath } from "./test-cli.ts";
 import { createUniqueTestDir, initializeFilesystemTestProject, safeCleanup } from "./test-utils.ts";
 
 const CLI_PATH = getTestCliPath();
+
+// Runs the CLI with stdio reported as a TTY so interactive-only behavior (the edit wizard) applies.
+async function runCliWithInteractiveTty(cwd: string, args: string[]) {
+	const entryPath = join(cwd, "interactive-cli-entry.ts");
+	await writeFile(
+		entryPath,
+		`Object.defineProperty(process.stdout, "isTTY", { configurable: true, value: true });
+Object.defineProperty(process.stdin, "isTTY", { configurable: true, value: true });
+await import(${JSON.stringify(pathToFileURL(CLI_PATH).href)});
+`,
+	);
+	return await $`bun ${entryPath} ${args}`.cwd(cwd).quiet().nothrow();
+}
 
 describe("CLI dependency options", () => {
 	let testDir: string;
@@ -57,6 +72,17 @@ describe("CLI dependency options", () => {
 		expect((await core.filesystem.loadTask("TASK-2"))?.dependencies).toEqual([]);
 	});
 
+	it("clears dependencies with --clear-deps in an interactive terminal", async () => {
+		await $`bun ${CLI_PATH} task create "Base task"`.cwd(testDir).quiet();
+		await $`bun ${CLI_PATH} task create "Dependent task" --depends-on TASK-1`.cwd(testDir).quiet();
+
+		const result = await runCliWithInteractiveTty(testDir, ["task", "edit", "2", "--clear-deps"]);
+
+		expect(result.exitCode).toBe(0);
+		expect(result.stdout.toString()).toContain("Updated task TASK-2");
+		expect((await core.filesystem.loadTask("TASK-2"))?.dependencies).toEqual([]);
+	});
+
 	it("rejects empty and conflicting dependency edits without changing dependencies", async () => {
 		await $`bun ${CLI_PATH} task create "Base task"`.cwd(testDir).quiet();
 		await $`bun ${CLI_PATH} task create "Dependent task" --depends-on TASK-1`.cwd(testDir).quiet();
@@ -68,6 +94,13 @@ describe("CLI dependency options", () => {
 		const emptyDep = await $`bun ${CLI_PATH} task edit 2 --dep ""`.cwd(testDir).quiet().nothrow();
 		expect(emptyDep.exitCode).toBe(1);
 		expect(emptyDep.stderr.toString()).toContain("Cannot use an empty value with --depends-on or --dep");
+
+		const emptyAlongsideValue = await $`bun ${CLI_PATH} task edit 2 --depends-on "" --dep TASK-1`
+			.cwd(testDir)
+			.quiet()
+			.nothrow();
+		expect(emptyAlongsideValue.exitCode).toBe(1);
+		expect(emptyAlongsideValue.stderr.toString()).toContain("Cannot use an empty value with --depends-on or --dep");
 
 		const conflicting = await $`bun ${CLI_PATH} task edit 2 --clear-deps --depends-on TASK-1`
 			.cwd(testDir)
