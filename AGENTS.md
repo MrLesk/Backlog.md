@@ -27,6 +27,12 @@ If you can simplify the code, do it.
 - Keep behavior consistent across similar stores (defaults, parse errors, locking). Divergence requires a clear reason.
 - Don't add new exported helpers just to compute a path; derive from existing paths or add one shared helper only when reused.
 
+## UI descriptions
+
+Do not add subtitles, helper text, or descriptive copy beneath headings, labels, cards, or settings by default. Prefer
+one concise, self-explanatory heading or label. Only add supporting copy when the user explicitly asks for it or when it
+is necessary to prevent misunderstanding or error, and never use it to restate the heading.
+
 
 ## Commands
 
