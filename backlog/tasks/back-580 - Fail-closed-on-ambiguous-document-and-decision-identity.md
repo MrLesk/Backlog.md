@@ -5,7 +5,7 @@ status: Done
 assignee:
   - '@claude'
 created_date: '2026-08-07 17:25'
-updated_date: '2026-08-07 23:29'
+updated_date: '2026-08-07 23:59'
 labels:
   - bug
 dependencies: []
@@ -74,10 +74,20 @@ Other surfaces kept consistent: doc view prints the ambiguity error instead of "
 Two supporting changes: Decision gained an optional path (set by listDecisions and by the decision watcher) so diagnostics can name files, and the existing MCP test that asserted an update silently collapsing duplicate doc-1/doc-01 files now asserts the fail-closed behavior instead, because that silent collapse is what this task removes.
 
 Documents and decisions missing an id are still listed by doc list and search rather than hidden; hiding them would trade one silent failure for another. They are surfaced by doctor as malformed and are unaddressable by ID.
+
+Review outcome: approved with no blocking findings.
+
+Accepted ride-along (A2): the server document and decision PUT endpoints previously fell through to generic 500s on ambiguity while the GETs already answered 409 with the full message. Both catches now branch on isAmbiguousIdError first, so mutation callers get the same legible 409. Covered by a new case in src/test/server-documents-endpoint.test.ts asserting 409 on PUT for both endpoints and that every candidate file is byte-identical afterward.
+
+Recorded as observations, not fixed here:
+
+A1 (split out as BACK-600): reads now key on frontmatter identity but save-side duplicate cleanup still keys on the filename prefix. Pre-existing on main and unchanged by this task, a file such as nested/doc-2 - Shadow.md carrying frontmatter id: doc-99 is silently deleted by doc update doc-2 because the removal loop matches by filename prefix. Newly reachable but fail-safe, updating a decision whose filename prefix disagrees with its frontmatter ID writes a new file, leaves the old one, and manufactures a duplicate that doctor then reports. Fix direction recorded in BACK-600: locate source files by frontmatter identity using Document.path/Decision.path, and have doctor flag filename-prefix-vs-frontmatter-ID mismatches.
+
+A3-A5 advisories: doc list and search still show documents and decisions with no id (deliberate, they stay visible and are reported by doctor rather than hidden); the web surfaces turn the 409 into a generic fetch failure message rather than showing the ambiguity detail; and doctor reports doc/decision findings as diagnostic-only with no automatic repair, matching how cross-branch task findings are handled.
 <!-- SECTION:NOTES:END -->
 
 ## Final Summary
 
 <!-- SECTION:FINAL_SUMMARY:BEGIN -->
-Document and decision identity now fails closed instead of resolving by title sort order. A single shared helper (src/utils/entity-id.ts) defines the canonical key, blank-ID rejection, and AmbiguousIdError that tasks, documents, and decisions all use; FileSystem.loadDocument, FileSystem.loadDecision, and Core.getDocument raise that error rather than picking a winner, and the empty-string ID no longer matches anything. backlog doctor now reports duplicate document and decision IDs plus files with no id in frontmatter as diagnostic-only findings and exits 1, reusing the existing tasks-side detection module. doc view, the server document and decision endpoints (409), and MCP surface the ambiguity error clearly. Verified with bunx tsc --noEmit, bun run check ., new src/test/content-identity.test.ts (9 tests), new backlog doctor cases in src/test/cli-doctor.test.ts, a server 409 case in src/test/server-documents-endpoint.test.ts, and full bun run test (1982 pass, 0 fail).
+Document and decision identity now fails closed instead of resolving by title sort order. A single shared helper (src/utils/entity-id.ts) defines the canonical key, blank-ID rejection, and AmbiguousIdError that tasks, documents, and decisions all use; FileSystem.loadDocument, FileSystem.loadDecision, and Core.getDocument raise that error rather than picking a winner, and the empty-string ID no longer matches anything. backlog doctor now reports duplicate document and decision IDs plus files with no id in frontmatter as diagnostic-only findings and exits 1, reusing the existing tasks-side detection module. doc view, the server document and decision GET and PUT endpoints (409), and MCP surface the ambiguity error clearly. Verified with bunx tsc --noEmit, bun run check ., new src/test/content-identity.test.ts (9 tests), new backlog doctor cases in src/test/cli-doctor.test.ts, GET and PUT 409 cases in src/test/server-documents-endpoint.test.ts, the server test suite (46 pass), and full bun run test (2005 pass, 0 fail). Reviewed and approved with no blocking findings; the save-side identity gap found during review is tracked as BACK-600.
 <!-- SECTION:FINAL_SUMMARY:END -->
