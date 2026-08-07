@@ -467,6 +467,8 @@ function hasEditFieldFlags(options: Record<string, unknown>): boolean {
 			options.dep !== undefined ||
 			options.clearDeps ||
 			options.ref !== undefined ||
+			options.addRef !== undefined ||
+			options.removeRef !== undefined ||
 			options.clearRefs ||
 			options.doc !== undefined ||
 			options.clearDocs ||
@@ -2704,9 +2706,19 @@ addHelpSchema(taskCmd.command("edit [taskId]"), {
 			description: "Remove all task dependencies; cannot combine with dependency flags",
 		},
 		{
+			name: "add-ref",
+			type: "Comma-separated strings",
+			description: "Add references; repeat --add-ref or use ref1,ref2",
+		},
+		{
+			name: "remove-ref",
+			type: "Comma-separated strings",
+			description: "Remove references; repeat --remove-ref or use ref1,ref2",
+		},
+		{
 			name: "clear-refs",
 			type: "Boolean",
-			description: "Remove all references; cannot combine with --ref",
+			description: "Remove all references; cannot combine with --ref, --add-ref, or --remove-ref",
 		},
 		{
 			name: "clear-docs",
@@ -2840,11 +2852,22 @@ addHelpSchema(taskCmd.command("edit [taskId]"), {
 		const soFar = Array.isArray(previous) ? previous : previous ? [previous] : [];
 		return [...soFar, value];
 	})
-	.option("--ref <reference>", "set references (can be used multiple times)", (value, previous) => {
-		const soFar = Array.isArray(previous) ? previous : previous ? [previous] : [];
-		return [...soFar, value];
-	})
-	.option("--clear-refs", "remove all references (cannot combine with --ref)")
+	.option(
+		"--ref <reference>",
+		"replace all references (comma-separated or repeatable; cannot combine with --add-ref/--remove-ref)",
+		createMultiValueAccumulator(),
+	)
+	.option(
+		"--add-ref <reference>",
+		"add references without replacing existing references (comma-separated or repeatable)",
+		createMultiValueAccumulator(),
+	)
+	.option(
+		"--remove-ref <reference>",
+		"remove references without replacing others (comma-separated or repeatable)",
+		createMultiValueAccumulator(),
+	)
+	.option("--clear-refs", "remove all references (cannot combine with --ref/--add-ref/--remove-ref)")
 	.option(
 		"--modified-file <path>",
 		"set modified file paths from project root (can be used multiple times)",
@@ -3064,6 +3087,8 @@ addHelpSchema(taskCmd.command("edit [taskId]"), {
 
 		const combinedDependencies = [...toStringArray(options.dependsOn), ...toStringArray(options.dep)];
 		const rawReferences = toStringArray(options.ref);
+		const rawAddReferences = toStringArray(options.addRef);
+		const rawRemoveReferences = toStringArray(options.removeRef);
 		const rawDocumentation = toStringArray(options.doc);
 		const isBlankListValue = (value: string) => parseDelimitedStringList(value) === undefined;
 		const clearableListError =
@@ -3084,6 +3109,22 @@ addHelpSchema(taskCmd.command("edit [taskId]"), {
 				subject: "references",
 			}) ??
 			validateClearableListInput({
+				rawValues: rawAddReferences,
+				cleared: Boolean(options.clearRefs),
+				isBlank: isBlankListValue,
+				setterFlags: "--add-ref",
+				clearFlag: "--clear-refs",
+				subject: "references",
+			}) ??
+			validateClearableListInput({
+				rawValues: rawRemoveReferences,
+				cleared: Boolean(options.clearRefs),
+				isBlank: isBlankListValue,
+				setterFlags: "--remove-ref",
+				clearFlag: "--clear-refs",
+				subject: "references",
+			}) ??
+			validateClearableListInput({
 				rawValues: rawDocumentation,
 				cleared: Boolean(options.clearDocs),
 				isBlank: isBlankListValue,
@@ -3096,9 +3137,19 @@ addHelpSchema(taskCmd.command("edit [taskId]"), {
 			process.exitCode = 1;
 			return;
 		}
+
+		if (options.ref !== undefined && (options.addRef !== undefined || options.removeRef !== undefined)) {
+			console.error(
+				"Cannot combine --ref with --add-ref or --remove-ref. Use --ref a,b for the final full reference set, or use add/remove flags without --ref.",
+			);
+			process.exitCode = 1;
+			return;
+		}
 		const dependencyValues = combinedDependencies.length > 0 ? normalizeDependencies(combinedDependencies) : undefined;
 
 		const normalizedReferences = parseDelimitedStringList(options.ref);
+		const addReferenceValues = parseDelimitedStringList(options.addRef) ?? [];
+		const removeReferenceValues = parseDelimitedStringList(options.removeRef) ?? [];
 		const normalizedDocumentation = parseDelimitedStringList(options.doc);
 		const normalizedModifiedFiles = parseDelimitedStringList(options.modifiedFile);
 
@@ -3153,6 +3204,12 @@ addHelpSchema(taskCmd.command("edit [taskId]"), {
 			editArgs.references = normalizedReferences;
 		} else if (options.clearRefs) {
 			editArgs.references = [];
+		}
+		if (addReferenceValues.length > 0) {
+			editArgs.addReferences = addReferenceValues;
+		}
+		if (removeReferenceValues.length > 0) {
+			editArgs.removeReferences = removeReferenceValues;
 		}
 		if (normalizedDocumentation) {
 			editArgs.documentation = normalizedDocumentation;

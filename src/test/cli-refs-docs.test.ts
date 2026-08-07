@@ -288,6 +288,133 @@ await import(${JSON.stringify(pathToFileURL(cliPath).href)});
 		});
 	});
 
+	describe("task edit with --add-ref and --remove-ref", () => {
+		async function createTaskWithReferences() {
+			await $`bun ${cliPath} task create "Feature" --ref seed:a --ref seed:b --doc doc-a`.cwd(TEST_DIR).quiet();
+		}
+
+		async function loadReferences() {
+			return (await new Core(TEST_DIR).filesystem.loadTask("TASK-1"))?.references;
+		}
+
+		it("adds references without replacing existing ones and skips duplicates", async () => {
+			await createTaskWithReferences();
+
+			const result = await $`bun ${cliPath} task edit 1 --add-ref added:c --add-ref seed:a --plain`
+				.cwd(TEST_DIR)
+				.quiet();
+
+			expect(result.exitCode).toBe(0);
+			expect(result.stdout.toString()).toContain("References: seed:a, seed:b, added:c");
+			expect(await loadReferences()).toEqual(["seed:a", "seed:b", "added:c"]);
+		});
+
+		it("removes references by value and leaves unrelated references unchanged", async () => {
+			await createTaskWithReferences();
+
+			const result = await $`bun ${cliPath} task edit 1 --remove-ref seed:a --remove-ref missing:x --plain`
+				.cwd(TEST_DIR)
+				.quiet();
+
+			expect(result.exitCode).toBe(0);
+			expect(await loadReferences()).toEqual(["seed:b"]);
+			const task = await new Core(TEST_DIR).filesystem.loadTask("TASK-1");
+			expect(task?.documentation).toEqual(["doc-a"]);
+		});
+
+		it("accepts comma-separated values for both flags", async () => {
+			await createTaskWithReferences();
+
+			const added = await $`bun ${cliPath} task edit 1 --add-ref "added:c,added:d" --plain`.cwd(TEST_DIR).quiet();
+			expect(added.exitCode).toBe(0);
+			expect(await loadReferences()).toEqual(["seed:a", "seed:b", "added:c", "added:d"]);
+
+			const removed = await $`bun ${cliPath} task edit 1 --remove-ref "seed:a,added:d"`.cwd(TEST_DIR).quiet();
+			expect(removed.exitCode).toBe(0);
+			expect(await loadReferences()).toEqual(["seed:b", "added:c"]);
+		});
+
+		it("removes a reference that is added in the same command", async () => {
+			// Pins the shared model order used by MCP task_edit: additions apply first, then removals.
+			await createTaskWithReferences();
+
+			const result = await $`bun ${cliPath} task edit 1 --add-ref same:x --remove-ref same:x --plain`
+				.cwd(TEST_DIR)
+				.quiet();
+
+			expect(result.exitCode).toBe(0);
+			expect(await loadReferences()).toEqual(["seed:a", "seed:b"]);
+		});
+
+		it("adds a reference in an interactive terminal", async () => {
+			await createTaskWithReferences();
+
+			const result = await runCliWithInteractiveTty(TEST_DIR, ["task", "edit", "1", "--add-ref", "added:c"]);
+
+			expect(result.exitCode).toBe(0);
+			expect(result.stdout.toString()).toContain("Updated task TASK-1");
+			expect(await loadReferences()).toEqual(["seed:a", "seed:b", "added:c"]);
+		});
+
+		it("rejects empty values and conflicting flags without changing references", async () => {
+			await createTaskWithReferences();
+
+			const emptyAdd = await $`bun ${cliPath} task edit 1 --add-ref ""`.cwd(TEST_DIR).quiet().nothrow();
+			expect(emptyAdd.exitCode).toBe(1);
+			expect(emptyAdd.stderr.toString()).toContain(
+				"Cannot use an empty value with --add-ref. Use --clear-refs to remove all references.",
+			);
+			expect(emptyAdd.stdout.toString()).not.toContain("Updated task");
+
+			const emptyRemove = await $`bun ${cliPath} task edit 1 --remove-ref seed:a --remove-ref ""`
+				.cwd(TEST_DIR)
+				.quiet()
+				.nothrow();
+			expect(emptyRemove.exitCode).toBe(1);
+			expect(emptyRemove.stderr.toString()).toContain("Cannot use an empty value with --remove-ref");
+
+			const clearConflict = await $`bun ${cliPath} task edit 1 --clear-refs --add-ref added:c`
+				.cwd(TEST_DIR)
+				.quiet()
+				.nothrow();
+			expect(clearConflict.exitCode).toBe(1);
+			expect(clearConflict.stderr.toString()).toContain("Cannot combine --clear-refs with --add-ref");
+
+			const clearRemoveConflict = await $`bun ${cliPath} task edit 1 --clear-refs --remove-ref seed:a`
+				.cwd(TEST_DIR)
+				.quiet()
+				.nothrow();
+			expect(clearRemoveConflict.exitCode).toBe(1);
+			expect(clearRemoveConflict.stderr.toString()).toContain("Cannot combine --clear-refs with --remove-ref");
+
+			const replacementConflict = await $`bun ${cliPath} task edit 1 --ref only:c --add-ref added:c`
+				.cwd(TEST_DIR)
+				.quiet()
+				.nothrow();
+			expect(replacementConflict.exitCode).toBe(1);
+			expect(replacementConflict.stderr.toString()).toContain("Cannot combine --ref with --add-ref or --remove-ref");
+
+			expect(await loadReferences()).toEqual(["seed:a", "seed:b"]);
+		});
+
+		it("keeps --ref as the replace-all operation", async () => {
+			await createTaskWithReferences();
+
+			const result = await $`bun ${cliPath} task edit 1 --ref only:c --plain`.cwd(TEST_DIR).quiet();
+
+			expect(result.exitCode).toBe(0);
+			expect(await loadReferences()).toEqual(["only:c"]);
+		});
+
+		it("documents --add-ref and --remove-ref in task edit help", async () => {
+			const result = await $`bun ${cliPath} task edit --help`.cwd(TEST_DIR).quiet();
+
+			const out = result.stdout.toString();
+			expect(out).toContain("--add-ref");
+			expect(out).toContain("--remove-ref");
+		});
+	});
+
 	describe("persistence in markdown files", () => {
 		it("persists references in task markdown file", async () => {
 			await $`bun ${cliPath} task create "Feature" --ref https://example.com --ref src/index.ts`.cwd(TEST_DIR).quiet();

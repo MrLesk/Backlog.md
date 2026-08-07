@@ -567,7 +567,9 @@ backlog search --modified-file src/server/api.ts --plain
 | Append final summary | `backlog task edit 42 --append-final-summary "More details"` |
 | Clear final summary | `backlog task edit 42 --clear-final-summary` |
 | Add dependencies | `backlog task edit 42 --dep task-1 --dep task-2`         |
-| Add references   | `backlog task edit 42 --ref src/api.ts --ref https://github.com/issue/123` |
+| Replace references | `backlog task edit 42 --ref src/api.ts --ref https://github.com/issue/123` |
+| Add references   | `backlog task edit 42 --add-ref src/api.ts --add-ref https://github.com/issue/123` |
+| Remove references | `backlog task edit 42 --remove-ref src/api.ts` |
 | Add documentation | `backlog task edit 42 --doc https://design-docs.example.com --doc docs/spec.md` |
 | Set modified files | `backlog task edit 42 --modified-file src/api.ts --modified-file src/ui.ts` |
 
