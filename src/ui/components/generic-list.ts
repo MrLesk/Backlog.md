@@ -14,6 +14,12 @@ export interface GenericListItem {
 	id: string;
 }
 
+/**
+ * Key family that drove vertical navigation. Arrow keys may hand focus off at a list
+ * boundary; vim keys stay inside the list.
+ */
+export type BoundaryNavigationKey = "arrow" | "vim";
+
 export interface GenericListOptions<T extends GenericListItem> {
 	parent?: ElementInterface | ScreenInterface;
 	title?: string;
@@ -28,7 +34,12 @@ export interface GenericListOptions<T extends GenericListItem> {
 	// Called whenever the highlighted item changes (live navigation)
 	onHighlight?: (selected: T | null, index: number) => void;
 	// Called before wrapping at list boundaries. Return true to consume navigation.
-	onBoundaryNavigation?: (direction: "up" | "down", selectedIndex: number, total: number) => boolean;
+	onBoundaryNavigation?: (
+		direction: "up" | "down",
+		selectedIndex: number,
+		total: number,
+		key: BoundaryNavigationKey,
+	) => boolean;
 	width?: string | number;
 	height?: string | number;
 	top?: string | number;
@@ -291,22 +302,22 @@ export class GenericList<T extends GenericListItem> implements GenericListContro
 		// Custom key bindings
 		const keys = this.options.keys || {};
 
-		// Circular navigation for up/down (including vim-style keys)
-		const moveUp = () => {
+		// Circular navigation for up/down (including vim-style keys), unless a boundary handler consumes it
+		const moveUp = (key: BoundaryNavigationKey) => {
 			const total = this.filteredItems.length;
 			if (total === 0) return;
 			const sel = typeof this.selectedIndex === "number" ? this.selectedIndex : 0;
-			if (sel <= 0 && this.options.onBoundaryNavigation?.("up", sel, total)) {
+			if (sel <= 0 && this.options.onBoundaryNavigation?.("up", sel, total, key)) {
 				return;
 			}
 			this.setHighlightedIndex(sel > 0 ? sel - 1 : total - 1, { render: true });
 		};
 
-		const moveDown = () => {
+		const moveDown = (key: BoundaryNavigationKey) => {
 			const total = this.filteredItems.length;
 			if (total === 0) return;
 			const sel = typeof this.selectedIndex === "number" ? this.selectedIndex : 0;
-			if (sel >= total - 1 && this.options.onBoundaryNavigation?.("down", sel, total)) {
+			if (sel >= total - 1 && this.options.onBoundaryNavigation?.("down", sel, total, key)) {
 				return;
 			}
 			this.setHighlightedIndex(sel < total - 1 ? sel + 1 : 0, { render: true });
@@ -324,8 +335,10 @@ export class GenericList<T extends GenericListItem> implements GenericListContro
 			return height > 0 ? Math.max(1, height - 3) : 5;
 		};
 
-		this.listBox.key(["up", "k"], moveUp);
-		this.listBox.key(["down", "j"], moveDown);
+		this.listBox.key(["up"], () => moveUp("arrow"));
+		this.listBox.key(["k"], () => moveUp("vim"));
+		this.listBox.key(["down"], () => moveDown("arrow"));
+		this.listBox.key(["j"], () => moveDown("vim"));
 		this.listBox.key(["pageup", "C-u"], () => {
 			const sel = typeof this.selectedIndex === "number" ? this.selectedIndex : 0;
 			moveTo(sel - pageAmount());
