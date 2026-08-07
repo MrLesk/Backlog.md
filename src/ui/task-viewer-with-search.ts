@@ -1081,13 +1081,10 @@ export async function viewTaskEnhanced(
 
 		screen.title = formatTuiTitle(`Task ${currentSelectedTask.id} - ${currentSelectedTask.title}`, projectName);
 
-		const detailContent = generateDetailContent(
-			currentSelectedTask,
-			resolveMilestoneLabel,
-			dateFormat,
-			readinessTasks(),
+		const detailContent = generateDetailContent(currentSelectedTask, resolveMilestoneLabel, dateFormat, {
+			tasks: readinessTasks(),
 			statuses,
-		);
+		});
 
 		// Calculate header height based on content and available width
 		const detailPaneWidth = typeof detailPane.width === "number" ? detailPane.width : 60;
@@ -1498,8 +1495,10 @@ export function generateDetailContent(
 	task: Task,
 	resolveMilestoneLabel?: (milestone: string) => string,
 	dateFormat?: string,
-	allTasks: Task[] = [],
-	statuses: readonly string[] = ["To Do", "In Progress", "Done"],
+	// Readiness is rendered only when the caller can supply the task graph to resolve dependencies
+	// against. Callers without one (the board quick-look popup) get no readiness line rather than a
+	// wrong one derived from an empty graph.
+	readinessContext?: { tasks: Task[]; statuses: readonly string[] },
 ): { headerContent: string[]; bodyContent: string[] } {
 	const headerContent = [
 		` ${wrapStatusColor(formatStatusWithIcon(task.status), getStatusColor(task.status))} {bold}{blue-fg}${task.id}{/blue-fg}{/bold} - ${task.title}`,
@@ -1555,13 +1554,15 @@ export function generateDetailContent(
 	if (task.dependencies?.length) {
 		metadata.push(`{bold}Dependencies:{/bold} ${task.dependencies.join(", ")}`);
 		// Readiness only earns a line when dependencies exist; otherwise the status already says it.
-		const readiness = getTaskReadiness(task, allTasks, statuses);
-		if (readiness.isReady) {
-			metadata.push("{bold}Readiness:{/bold} {green-fg}✓ Ready to start{/}");
-		} else if (readiness.isBlocked) {
-			// Single-width glyphs only: blessed miscounts East Asian Wide characters and leaves
-			// stale cells behind when the detail pane re-renders a shorter line.
-			metadata.push(`{bold}Readiness:{/bold} {yellow-fg}● ${formatReadinessBlockers(readiness)}{/}`);
+		if (readinessContext) {
+			const readiness = getTaskReadiness(task, readinessContext.tasks, readinessContext.statuses);
+			if (readiness.isReady) {
+				metadata.push("{bold}Readiness:{/bold} {green-fg}✓ Ready to start{/}");
+			} else if (readiness.isBlocked) {
+				// Single-width glyphs only: blessed miscounts East Asian Wide characters and leaves
+				// stale cells behind when the detail pane re-renders a shorter line.
+				metadata.push(`{bold}Readiness:{/bold} {yellow-fg}● ${formatReadinessBlockers(readiness)}{/}`);
+			}
 		}
 	}
 	if (task.modifiedFiles?.length) {

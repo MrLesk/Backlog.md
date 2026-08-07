@@ -171,7 +171,7 @@ describe("rendered readiness guidance", () => {
 		const graph = [doneDep, inProgDep, readyTask, blockedTask, unknownDepTask, noDepsTask];
 
 		const detailBody = (task: Task) =>
-			generateDetailContent(task, undefined, undefined, graph, statuses).bodyContent.join("\n");
+			generateDetailContent(task, undefined, undefined, { tasks: graph, statuses }).bodyContent.join("\n");
 
 		expect(detailBody(readyTask)).toContain("Readiness:");
 		expect(detailBody(readyTask)).toContain("✓ Ready to start");
@@ -183,6 +183,10 @@ describe("rendered readiness guidance", () => {
 		// Readiness stays out of the way when it would only restate the status.
 		expect(detailBody(noDepsTask)).not.toContain("Readiness:");
 		expect(detailBody(doneDep)).not.toContain("Readiness:");
+
+		// Callers without a task graph (the board quick-look popup) get no readiness claim at all
+		// rather than one derived from an empty graph.
+		expect(generateDetailContent(blockedTask).bodyContent.join("\n")).not.toContain("Readiness:");
 	});
 
 	it("renders the web task details modal readiness badge for ready, blocked, and unresolved dependencies", () => {

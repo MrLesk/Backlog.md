@@ -330,22 +330,29 @@ export const TaskDetailsModal: React.FC<Props> = ({
 
   // Dependencies that already left the board corpus (completed tasks) are fetched by ID so the
   // browser resolves the same task graph the CLI does instead of calling them unknown.
+  // Keyed on a string because availableTasks and dependencies are new arrays on every render.
+  const unresolvedDependencyKey = useMemo(() => {
+    const known = new Set(availableTasks.map((candidate) => canonicalTaskId(candidate.id)));
+    return dependencies
+      .filter((id) => !known.has(canonicalTaskId(id)))
+      .join(",");
+  }, [availableTasks, dependencies]);
   const [offBoardDependencies, setOffBoardDependencies] = useState<Task[]>([]);
   useEffect(() => {
-    const known = new Set(availableTasks.map((candidate) => canonicalTaskId(candidate.id)));
-    const unresolved = dependencies.filter((id) => !known.has(canonicalTaskId(id)));
-    if (!isOpen || unresolved.length === 0) {
-      setOffBoardDependencies([]);
+    if (!isOpen || unresolvedDependencyKey === "") {
+      setOffBoardDependencies((current) => (current.length === 0 ? current : []));
       return;
     }
     let cancelled = false;
-    Promise.all(unresolved.map((id) => apiClient.fetchTask(id).catch(() => null))).then((results) => {
-      if (!cancelled) setOffBoardDependencies(results.filter((result): result is Task => Boolean(result)));
-    });
+    Promise.all(unresolvedDependencyKey.split(",").map((id) => apiClient.fetchTask(id).catch(() => null))).then(
+      (results) => {
+        if (!cancelled) setOffBoardDependencies(results.filter((result): result is Task => Boolean(result)));
+      },
+    );
     return () => {
       cancelled = true;
     };
-  }, [isOpen, dependencies, availableTasks]);
+  }, [isOpen, unresolvedDependencyKey]);
 
   // Dependency readiness, derived at render time from the dependencies currently shown.
   // Only meaningful while dependencies exist and the task has not reached the terminal status.
