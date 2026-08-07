@@ -5,7 +5,7 @@ status: Done
 assignee:
   - '@claude'
 created_date: '2026-08-07 21:10'
-updated_date: '2026-08-07 22:16'
+updated_date: '2026-08-07 22:36'
 labels:
   - web
 dependencies: []
@@ -95,6 +95,15 @@ Review follow-up (PR #865, five accepted Codex findings):
 
 Review-fix verification: 16 tests in src/test/mermaid-markdown.test.tsx, 4 in src/test/web-dependency-input-links.test.tsx, and a new src/test/web-task-details-modal-unsaved-navigation.test.tsx (4 tests, real DOM + react-router, covering decline-blocks-chip, accept-navigates, decline-blocks-comment-autolink, and no prompt when nothing is unsaved). Full suite 1965 pass, 5 skip, 0 fail across 216 files; bunx tsc --noEmit and bun run check . clean.
 Live browser pass of the P1 flow against this repo: on BACK-544 in edit mode with an unsaved title, clicking the BACK-543 dependency chip prompted once and stayed put with the edit intact; accepting the prompt navigated to BACK-543; a plain anchor to another task was blocked the same way while a same-page hash anchor was allowed without prompting. Re-rendered BACK-593 afterwards to confirm the wider candidate pattern still links only real IDs.
+
+Review round 2 (PR #865, two accepted, two deferred):
+
+Accepted 1 (P1). The navigation guard predicate leaned on isDirty, which tracks only the long-form fields, so a comment draft or create-mode metadata could be lost silently. Unsaved work now also counts the comment draft fields, and in create mode any entered field at all (title, type, priority, milestone, assignees, labels, dependencies, references), since nothing is persisted while creating. Two new tests cover a comment-only draft and create-mode metadata entered before any title.
+Accepted 2 (P2). Backslash joined the preceding path-boundary characters, so backlog\tasks\BACK-123 - Title.md no longer linkifies the embedded ID, matching the forward-slash rejection. One test covers the Windows-style path.
+
+Deferred to BACK-599 (bug, web, low, depends on BACK-260): (a) the identity index covers only the active tasks from /api/search while route resolution covers active plus completed, so completed-task references stay unlinked and an active BACK-1 can link while a completed BACK-01 makes the route ambiguous; the real fix needs the parked BACK-260 decision about completed tasks in the web corpus first. (b) generated task links drop search params and taskModalFrom state, so closing a task opened from a filtered board or list returns to an unfiltered view; App.handleEditTask is the precedent to reuse.
+
+Round 2 verification: 17 tests in src/test/mermaid-markdown.test.tsx, 4 in src/test/web-dependency-input-links.test.tsx, 6 in src/test/web-task-details-modal-unsaved-navigation.test.tsx (adding the comment-only draft and create-mode metadata-only scenarios). Full suite 1968 pass, 5 skip, 0 fail across 216 files; bunx tsc --noEmit and bun run check . clean.
 <!-- SECTION:NOTES:END -->
 
 ## Final Summary
