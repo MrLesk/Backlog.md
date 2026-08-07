@@ -1201,6 +1201,9 @@ export class BacklogServer {
 			if (error instanceof SyntaxError) {
 				return Response.json({ error: "Invalid request payload" }, { status: 400 });
 			}
+			if (isAmbiguousIdError(error)) {
+				return Response.json({ error: error.message }, { status: 409 });
+			}
 			if (error instanceof Error) {
 				if (error.message.startsWith("Document not found")) {
 					return Response.json({ error: error.message }, { status: 404 });
@@ -1274,6 +1277,9 @@ export class BacklogServer {
 			await this.core.updateDecisionFromContent(decisionId, content);
 			return Response.json({ success: true });
 		} catch (error) {
+			if (isAmbiguousIdError(error)) {
+				return Response.json({ error: error.message }, { status: 409 });
+			}
 			if (error instanceof Error && error.message.includes("not found")) {
 				return Response.json({ error: "Decision not found" }, { status: 404 });
 			}

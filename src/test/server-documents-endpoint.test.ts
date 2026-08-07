@@ -286,4 +286,31 @@ describe("BacklogServer ambiguous content identity", () => {
 		expect(decisionBody).toContain("Decision ID decision-1 is ambiguous");
 		expect(decisionBody).toContain("decision-01 - Beta.md");
 	});
+
+	it("answers 409 on writes and leaves every candidate file untouched", async () => {
+		const filesystem = new FileSystem(TEST_DIR);
+		const documentPath = join(filesystem.docsDir, "doc-1 - Alpha.md");
+		const decisionPath = join(filesystem.decisionsDir, "decision-1 - Alpha.md");
+		const documentBefore = await Bun.file(documentPath).text();
+		const decisionBefore = await Bun.file(decisionPath).text();
+
+		const documentResponse = await fetch(`http://127.0.0.1:${serverPort}/api/docs/doc-1`, {
+			method: "PUT",
+			headers: { "Content-Type": "application/json" },
+			body: JSON.stringify({ title: "Changed", content: "Changed body" }),
+		});
+		expect(documentResponse.status).toBe(409);
+		expect(await documentResponse.text()).toContain("Document ID doc-1 is ambiguous");
+
+		const decisionResponse = await fetch(`http://127.0.0.1:${serverPort}/api/decisions/decision-1`, {
+			method: "PUT",
+			headers: { "Content-Type": "text/plain" },
+			body: "## Context\n\nChanged\n",
+		});
+		expect(decisionResponse.status).toBe(409);
+		expect(await decisionResponse.text()).toContain("Decision ID decision-1 is ambiguous");
+
+		expect(await Bun.file(documentPath).text()).toBe(documentBefore);
+		expect(await Bun.file(decisionPath).text()).toBe(decisionBefore);
+	});
 });
