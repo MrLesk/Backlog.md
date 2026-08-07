@@ -12,6 +12,7 @@ import type { TaskEditArgs, TaskEditRequest } from "../../../types/task-edit-arg
 import { formatDuplicateTaskIdWarning } from "../../../utils/duplicate-detection.ts";
 import { createMilestoneFilterMatcher, createMilestoneFilterValueResolver } from "../../../utils/milestone-filter.ts";
 import { resolveMilestoneInputForStorage } from "../../../utils/milestone-storage.ts";
+import { getTaskReadiness } from "../../../utils/readiness.ts";
 import { buildTaskUpdateInput } from "../../../utils/task-edit-builder.ts";
 import { createTaskSearchIndex } from "../../../utils/task-search.ts";
 import { sortByOrdinalAndPriority } from "../../../utils/task-sorting.ts";
@@ -50,6 +51,7 @@ export type TaskListArgs = {
 	milestone?: string;
 	labels?: string[];
 	search?: string;
+	ready?: boolean;
 	limit?: number;
 };
 
@@ -193,6 +195,12 @@ export class TaskHandlers {
 				});
 			}
 
+			if (args.ready) {
+				const allTasksForDrafts = await this.core.loadTasks(undefined, undefined, { includeCompleted: true });
+				const statusesForDrafts: string[] = config?.statuses ?? [...DEFAULT_STATUSES];
+				drafts = drafts.filter((draft) => getTaskReadiness(draft, allTasksForDrafts, statusesForDrafts).isReady);
+			}
+
 			if (drafts.length === 0) {
 				return {
 					content: [
@@ -239,12 +247,21 @@ export class TaskHandlers {
 		if (args.milestone) {
 			filters.milestone = args.milestone;
 		}
+		if (args.ready) {
+			filters.ready = true;
+		}
 
-		const tasks = await this.core.queryTasks({
+		let tasks = await this.core.queryTasks({
 			query: args.search,
 			filters: Object.keys(filters).length > 0 ? filters : undefined,
 			includeCrossBranch: false,
 		});
+		const statuses: string[] = config?.statuses ?? [...DEFAULT_STATUSES];
+
+		if (args.ready) {
+			const fullTasks = await this.core.loadTasks(undefined, undefined, { includeCompleted: true });
+			tasks = tasks.filter((task) => getTaskReadiness(task, fullTasks, statuses).isReady);
+		}
 
 		let filteredByLabels = tasks.filter((task) => isLocalEditableTask(task));
 		const labelFilters = args.labels ?? [];
@@ -265,8 +282,6 @@ export class TaskHandlers {
 				],
 			};
 		}
-
-		const statuses = config?.statuses ?? [];
 
 		const canonicalByLower = new Map<string, string>();
 		for (const status of statuses) {
