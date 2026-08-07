@@ -21,7 +21,7 @@ import {
 } from "../utils/milestone-filter.ts";
 import { hasAnyPrefix } from "../utils/prefix-config.ts";
 import { formatPriorityLabel, getPriorityOptions, normalizePriorityValue } from "../utils/priority-config.ts";
-import { getTaskReadiness } from "../utils/readiness.ts";
+import { formatReadinessBlockers, getTaskReadiness } from "../utils/readiness.ts";
 import { applyTaskFilters, createTaskSearchIndex, type LabelMatchMode } from "../utils/task-search.ts";
 import { attachSubtaskSummaries } from "../utils/task-subtasks.ts";
 import { getTaskTypeValues, resolveTaskTypeValues } from "../utils/task-type-config.ts";
@@ -173,7 +173,6 @@ export async function viewTaskEnhanced(
 	task: Task,
 	options: {
 		tasks?: Task[];
-		fullGraphTasks?: Task[];
 		core?: Core;
 		title?: string;
 		filterDescription?: string;
@@ -228,9 +227,12 @@ export async function viewTaskEnhanced(
 	let taskSearchIndex: ReturnType<typeof createTaskSearchIndex> | null = null;
 	let searchService: Awaited<ReturnType<typeof core.getSearchService>> | null = null;
 	let contentStore: Awaited<ReturnType<typeof core.getContentStore>> | null = null;
-	const [milestoneEntities, archivedMilestones] = await Promise.all([
+	// Completed tasks are loaded alongside the milestone metadata so dependency readiness can
+	// resolve dependencies that already left the active corpus, without a second full task load.
+	const [milestoneEntities, archivedMilestones, completedTasks] = await Promise.all([
 		core.filesystem.listMilestones(),
 		core.filesystem.listArchivedMilestones(),
+		core.filesystem.listCompletedTasks(),
 	]);
 	const { availableMilestoneTitles, resolveMilestoneLabel } = buildTaskViewerMilestoneFilterModel(
 		milestoneEntities,
@@ -239,10 +241,6 @@ export async function viewTaskEnhanced(
 
 	let dateFormat: string | undefined;
 	let projectName: string | undefined;
-
-	// Load complete task graph for dependency readiness resolution across all surfaces
-	const fullGraphTasks =
-		options.fullGraphTasks ?? (await core.loadTasks(undefined, undefined, { includeCompleted: true }));
 
 	if (options.tasks) {
 		// Tasks already provided - use in-memory search (no ContentStore loading)
@@ -282,6 +280,10 @@ export async function viewTaskEnhanced(
 
 	// Collect available labels from config, tasks, and CLI-provided filters.
 	availableLabels = collectAvailableLabels(allTasks, [...labels, ...(options.labelFilter ?? [])]);
+
+	// Dependency readiness resolves against the loaded tasks plus completed ones. Live tasks come
+	// first so they win over a stale completed copy of the same ID.
+	const readinessTasks = () => (completedTasks.length > 0 ? [...allTasks, ...completedTasks] : allTasks);
 
 	// State for filtering - normalize filters to match configured values
 	let searchQuery = options.searchQuery || "";
@@ -697,7 +699,7 @@ export async function viewTaskEnhanced(
 					resolveMilestoneLabel,
 					ready: options.readyFilter,
 					statuses,
-					fullGraphTasks,
+					readinessTasks: readinessTasks(),
 				},
 				taskSearchIndex,
 			);
@@ -732,9 +734,8 @@ export async function viewTaskEnhanced(
 				});
 			}
 			if (options.readyFilter) {
-				nextFilteredTasks = nextFilteredTasks.filter(
-					(task) => getTaskReadiness(task, fullGraphTasks, statuses).isReady,
-				);
+				const graph = readinessTasks();
+				nextFilteredTasks = nextFilteredTasks.filter((task) => getTaskReadiness(task, graph, statuses).isReady);
 			}
 		} else {
 			nextFilteredTasks = [...allTasks];
@@ -1084,7 +1085,7 @@ export async function viewTaskEnhanced(
 			currentSelectedTask,
 			resolveMilestoneLabel,
 			dateFormat,
-			fullGraphTasks,
+			readinessTasks(),
 			statuses,
 		);
 
@@ -1553,14 +1554,15 @@ export function generateDetailContent(
 	}
 	if (task.dependencies?.length) {
 		metadata.push(`{bold}Dependencies:{/bold} ${task.dependencies.join(", ")}`);
-	}
-	const readiness = getTaskReadiness(task, allTasks, statuses);
-	if (readiness.isReady) {
-		metadata.push("{bold}Readiness:{/bold} {green-fg}✓ Ready to start{/}");
-	} else if (readiness.isBlocked) {
-		metadata.push(`{bold}Readiness:{/bold} {yellow-fg}⏳ Blocked by: ${readiness.blockingDependencies.join(", ")}{/}`);
-	} else {
-		metadata.push(`{bold}Readiness:{/bold} {gray-fg}Terminal status (${task.status}){/}`);
+		// Readiness only earns a line when dependencies exist; otherwise the status already says it.
+		const readiness = getTaskReadiness(task, allTasks, statuses);
+		if (readiness.isReady) {
+			metadata.push("{bold}Readiness:{/bold} {green-fg}✓ Ready to start{/}");
+		} else if (readiness.isBlocked) {
+			// Single-width glyphs only: blessed miscounts East Asian Wide characters and leaves
+			// stale cells behind when the detail pane re-renders a shorter line.
+			metadata.push(`{bold}Readiness:{/bold} {yellow-fg}● ${formatReadinessBlockers(readiness)}{/}`);
+		}
 	}
 	if (task.modifiedFiles?.length) {
 		metadata.push(`{bold}Modified files:{/bold} ${task.modifiedFiles.join(", ")}`);

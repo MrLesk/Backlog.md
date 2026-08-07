@@ -11,7 +11,9 @@ import DependencyInput from "./DependencyInput";
 import { formatStoredUtcDateForDisplay } from "../utils/date-display";
 import { getPriorityOptions } from "../../utils/priority-config";
 import { getTaskTypeValues, resolveTaskTypeValue } from "../../utils/task-type-config";
-import { getTaskReadiness } from "../../utils/readiness";
+import { DEFAULT_STATUSES } from "../../constants/index.ts";
+import { formatReadinessBlockers, getTaskReadiness } from "../../utils/readiness";
+import { canonicalTaskId } from "../../utils/task-id.ts";
 
 interface Props {
   task?: Task; // Optional for create mode
@@ -325,6 +327,34 @@ export const TaskDetailsModal: React.FC<Props> = ({
   const typeSelectionValue = canonicalTypeSelection ?? taskType;
   const milestoneSelectionValue = resolveMilestoneToId(milestone);
   const hasMilestoneSelection = (milestoneEntities ?? []).some((milestoneEntity) => milestoneEntity.id === milestoneSelectionValue);
+
+  // Dependencies that already left the board corpus (completed tasks) are fetched by ID so the
+  // browser resolves the same task graph the CLI does instead of calling them unknown.
+  const [offBoardDependencies, setOffBoardDependencies] = useState<Task[]>([]);
+  useEffect(() => {
+    const known = new Set(availableTasks.map((candidate) => canonicalTaskId(candidate.id)));
+    const unresolved = dependencies.filter((id) => !known.has(canonicalTaskId(id)));
+    if (!isOpen || unresolved.length === 0) {
+      setOffBoardDependencies([]);
+      return;
+    }
+    let cancelled = false;
+    Promise.all(unresolved.map((id) => apiClient.fetchTask(id).catch(() => null))).then((results) => {
+      if (!cancelled) setOffBoardDependencies(results.filter((result): result is Task => Boolean(result)));
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [isOpen, dependencies, availableTasks]);
+
+  // Dependency readiness, derived at render time from the dependencies currently shown.
+  // Only meaningful while dependencies exist and the task has not reached the terminal status.
+  const readiness = useMemo(() => {
+    if (!task || dependencies.length === 0) return null;
+    const graph = [...availableTasks, ...offBoardDependencies];
+    const result = getTaskReadiness({ ...task, dependencies }, graph, availableStatuses ?? DEFAULT_STATUSES);
+    return result.isReady || result.isBlocked ? result : null;
+  }, [task, dependencies, availableTasks, offBoardDependencies, availableStatuses]);
 
   // Keep a baseline for dirty-check
   const baseline = useMemo(() => ({
@@ -919,41 +949,6 @@ export const TaskDetailsModal: React.FC<Props> = ({
         </div>
       )}
 
-      {/* Task Readiness Guidance */}
-      {task && (() => {
-        const readiness = getTaskReadiness(
-          { ...task, dependencies },
-          availableTasks,
-          availableStatuses ?? ["To Do", "In Progress", "Done"],
-        );
-
-        if (!readiness.isReady && !readiness.isBlocked) {
-          return (
-            <div className="mb-4 flex items-center gap-2 px-4 py-2.5 bg-gray-50 dark:bg-gray-800/60 border border-gray-200 dark:border-gray-700 rounded-lg text-sm">
-              <span className="font-semibold text-gray-700 dark:text-gray-300">Readiness:</span>
-              <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-semibold bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300">
-                Task in terminal status ({task.status})
-              </span>
-            </div>
-          );
-        }
-
-        return (
-          <div className="mb-4 flex items-center gap-2 px-4 py-2.5 bg-gray-50 dark:bg-gray-800/60 border border-gray-200 dark:border-gray-700 rounded-lg text-sm">
-            <span className="font-semibold text-gray-700 dark:text-gray-300">Readiness:</span>
-            {readiness.isReady ? (
-              <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-semibold bg-emerald-100 dark:bg-emerald-900/40 text-emerald-800 dark:text-emerald-300">
-                ✓ Ready to start ({dependencies.length === 0 ? "no dependencies" : "all dependencies satisfied"})
-              </span>
-            ) : (
-              <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-semibold bg-amber-100 dark:bg-amber-900/40 text-amber-800 dark:text-amber-300">
-                ⏳ Blocked by: {readiness.blockingDependencies.join(", ")}
-              </span>
-            )}
-          </div>
-        );
-      })()}
-
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
         {/* Main content */}
         <div className="md:col-span-2 space-y-6">
@@ -1447,6 +1442,18 @@ export const TaskDetailsModal: React.FC<Props> = ({
               label=""
               disabled={isFromOtherBranch}
             />
+            {readiness && (
+              <div
+                className={`mt-2 flex items-start gap-1.5 rounded-md px-2 py-1.5 text-xs font-medium ${
+                  readiness.isReady
+                    ? 'bg-emerald-50 dark:bg-emerald-900/30 text-emerald-800 dark:text-emerald-300'
+                    : 'bg-amber-50 dark:bg-amber-900/30 text-amber-800 dark:text-amber-300'
+                }`}
+              >
+                <span aria-hidden="true">{readiness.isReady ? '✓' : '⏳'}</span>
+                <span>{readiness.isReady ? 'Ready to start' : formatReadinessBlockers(readiness)}</span>
+              </div>
+            )}
           </div>
 
           {/* Archive button at bottom of sidebar */}

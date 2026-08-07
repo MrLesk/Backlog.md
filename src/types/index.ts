@@ -180,7 +180,6 @@ export interface TaskListFilter {
 	milestone?: string;
 	parentTaskId?: string;
 	labels?: string[];
-	ready?: boolean;
 }
 
 export interface Decision {

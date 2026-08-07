@@ -503,7 +503,7 @@ describe("unified view filter state", () => {
 		expect(literalMilestoneResults).toEqual(["task-4"]);
 	});
 
-	it("evaluates interactive TUI --ready filter against fullGraphTasks when active candidates omit completed tasks", () => {
+	it("evaluates interactive TUI --ready filter against readinessTasks when active candidates omit completed tasks", () => {
 		const archivedDoneDep: Task = {
 			id: "task-1",
 			title: "Archived Completed Dep",
@@ -529,7 +529,7 @@ describe("unified view filter state", () => {
 		const readyFiltered = applyTaskFilters(displayCandidates, {
 			ready: true,
 			statuses: ["To Do", "In Progress", "Done"],
-			fullGraphTasks: fullGraph,
+			readinessTasks: fullGraph,
 		});
 
 		expect(readyFiltered.map((task) => task.id)).toEqual(["task-2"]);

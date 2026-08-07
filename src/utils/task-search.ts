@@ -4,6 +4,7 @@
  */
 
 import Fuse from "fuse.js";
+import { DEFAULT_STATUSES } from "../constants/index.ts";
 import type { Task } from "../types/index.ts";
 import { labelsToLower } from "./label-filter.ts";
 import {
@@ -13,6 +14,7 @@ import {
 } from "./milestone-filter.ts";
 import { matchesModifiedFileFilters, normalizeModifiedFileFilters } from "./modified-files.ts";
 import { normalizePriorityValue } from "./priority-config.ts";
+import { getTaskReadiness } from "./readiness.ts";
 import { matchesTaskTypeFilter } from "./task-type-config.ts";
 
 export type LabelMatchMode = "any" | "all";
@@ -28,9 +30,6 @@ export interface TaskSearchOptions {
 	modifiedFiles?: string[];
 }
 
-import { DEFAULT_STATUSES } from "../constants/index.ts";
-import { getTaskReadiness } from "./readiness.ts";
-
 export interface SharedTaskFilterOptions {
 	query?: string;
 	excludeStatus?: string | string[];
@@ -41,14 +40,16 @@ export interface SharedTaskFilterOptions {
 	modifiedFiles?: string[];
 	milestone?: string;
 	resolveMilestoneLabel?: (milestone: string) => string;
-	ready?: boolean;
-	statuses?: readonly string[];
-	fullGraphTasks?: Task[];
 }
 
 export interface TaskFilterOptions extends SharedTaskFilterOptions {
 	status?: string;
 	excludeStatus?: string | string[];
+	ready?: boolean;
+	/** Configured statuses, used to decide which status counts as completed. */
+	statuses?: readonly string[];
+	/** Task graph readiness resolves against; defaults to the tasks being filtered. */
+	readinessTasks?: Task[];
 }
 
 export interface TaskSearchIndex {
@@ -300,7 +301,7 @@ export function applyTaskFilters(tasks: Task[], options: TaskFilterOptions, inde
 
 	if (options.ready) {
 		const statuses = options.statuses ?? DEFAULT_STATUSES;
-		const graph = options.fullGraphTasks ?? tasks;
+		const graph = options.readinessTasks ?? tasks;
 		results = results.filter((task) => getTaskReadiness(task, graph, statuses).isReady);
 	}
 
@@ -324,9 +325,6 @@ export function applySharedTaskFilters(
 			modifiedFiles: options.modifiedFiles,
 			milestone: options.milestone,
 			resolveMilestoneLabel: options.resolveMilestoneLabel,
-			ready: options.ready,
-			statuses: options.statuses,
-			fullGraphTasks: options.fullGraphTasks,
 		},
 		index,
 	);

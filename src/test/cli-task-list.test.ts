@@ -574,6 +574,63 @@ describe("CLI Integration", () => {
 			expect(readyIds).toContain("TASK-2");
 			expect(readyIds).not.toContain("TASK-3");
 			expect(readyIds).not.toContain("TASK-1");
+
+			// Readiness must resolve against the whole graph, not the tasks left after --status.
+			const scopedResult = await $`bun ${CLI_PATH} task list --plain --ready --status "To Do"`.cwd(TEST_DIR).quiet();
+			const scopedOut = scopedResult.stdout.toString();
+			expect(scopedOut).toContain("TASK-4 - Ready Task");
+			expect(scopedOut).not.toContain("TASK-3 - Blocked Task");
+		});
+
+		it("should resolve --ready dependencies that were completed and moved out of the active corpus", async () => {
+			const core = new Core(TEST_DIR);
+
+			await core.createTask(
+				{
+					id: "task-1",
+					title: "Completed Dep",
+					status: "Done",
+					assignee: [],
+					labels: [],
+					dependencies: [],
+					createdDate: "2026-07-24",
+					rawContent: "",
+				},
+				false,
+			);
+			await core.createTask(
+				{
+					id: "task-2",
+					title: "Depends On Completed",
+					status: "To Do",
+					assignee: [],
+					labels: [],
+					dependencies: ["task-1"],
+					createdDate: "2026-07-24",
+					rawContent: "",
+				},
+				false,
+			);
+			await core.createTask(
+				{
+					id: "task-3",
+					title: "Depends On Nothing Known",
+					status: "To Do",
+					assignee: [],
+					labels: [],
+					dependencies: ["task-404"],
+					createdDate: "2026-07-24",
+					rawContent: "",
+				},
+				false,
+			);
+			expect(await core.completeTask("task-1", false)).toBe(true);
+
+			const result = await $`bun ${CLI_PATH} task list --plain --ready`.cwd(TEST_DIR).quiet();
+			const out = result.stdout.toString();
+			expect(out).toContain("TASK-2 - Depends On Completed");
+			// An unresolvable dependency fails closed instead of being treated as satisfied.
+			expect(out).not.toContain("TASK-3 - Depends On Nothing Known");
 		});
 
 		it("should reject invalid task list limit", async () => {

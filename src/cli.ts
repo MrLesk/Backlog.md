@@ -77,7 +77,7 @@ import { resolveMilestoneInputForStorage } from "./utils/milestone-storage.ts";
 import { hasAnyPrefix } from "./utils/prefix-config.ts";
 import { formatValidPriorityValues, getPriorityOptions, resolvePriorityValue } from "./utils/priority-config.ts";
 import { type ReadOutputMode, resolveReadOutputMode } from "./utils/read-output-mode.ts";
-import { getTaskReadiness } from "./utils/readiness.ts";
+import { getTaskReadiness, loadReadinessGraph } from "./utils/readiness.ts";
 import { resolveRuntimeCwd } from "./utils/runtime-cwd.ts";
 import { formatValidStatuses, getCanonicalStatus, getCanonicalStatuses, getValidStatuses } from "./utils/status.ts";
 import {
@@ -2392,9 +2392,6 @@ addHelpSchema(taskCmd.command("list"), {
 		if (options.unassigned) {
 			baseFilters.unassigned = true;
 		}
-		if (options.ready) {
-			baseFilters.ready = true;
-		}
 		if (options.milestone) {
 			baseFilters.milestone = options.milestone;
 		}
@@ -2452,11 +2449,11 @@ addHelpSchema(taskCmd.command("list"), {
 				includeCrossBranch: false,
 			});
 			const config = await core.filesystem.loadConfig();
-			const statuses: string[] = config?.statuses ?? [...DEFAULT_STATUSES];
 
 			if (options.ready) {
-				const fullTasks = await core.loadTasks(undefined, undefined, { includeCompleted: true });
-				tasks = tasks.filter((task) => getTaskReadiness(task, fullTasks, statuses).isReady);
+				const readinessTasks = await loadReadinessGraph(core);
+				const readinessStatuses = config?.statuses?.length ? config.statuses : [...DEFAULT_STATUSES];
+				tasks = tasks.filter((task) => getTaskReadiness(task, readinessTasks, readinessStatuses).isReady);
 			}
 
 			if (parentId) {
@@ -2522,6 +2519,7 @@ addHelpSchema(taskCmd.command("list"), {
 			}
 
 			const canonicalByLower = new Map<string, string>();
+			const statuses = config?.statuses || [];
 			for (const status of statuses) {
 				canonicalByLower.set(status.toLowerCase(), status);
 			}
@@ -2565,6 +2563,7 @@ addHelpSchema(taskCmd.command("list"), {
 		}
 		if (options.assignee) activeFilters.push(`Assignee: ${options.assignee}`);
 		if (options.unassigned) activeFilters.push("Unassigned");
+		if (options.ready) activeFilters.push("Ready");
 		if (options.parent) {
 			activeFilters.push(`Parent: ${normalizeTaskId(String(options.parent))}`);
 		}
@@ -2578,8 +2577,6 @@ addHelpSchema(taskCmd.command("list"), {
 		if (searchQuery) activeFilters.push(`Search: ${searchQuery}`);
 		if (taskLimit !== undefined) activeFilters.push(`Limit: ${taskLimit}`);
 		if (options.sort) activeFilters.push(`Sort: ${options.sort}`);
-
-		if (options.ready) activeFilters.push("Ready");
 
 		if (activeFilters.length > 0) {
 			filterDescription = activeFilters.join(", ");
