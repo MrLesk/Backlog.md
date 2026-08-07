@@ -1,11 +1,13 @@
 import { describe, expect, it } from "bun:test";
 import { JSDOM } from "jsdom";
 import { renderToString } from "react-dom/server";
+import { MemoryRouter } from "react-router-dom";
 import type { Task } from "../types/index.ts";
 import { generateDetailContent } from "../ui/task-viewer-with-search.ts";
 import { formatReadinessBlockers, getTaskReadiness } from "../utils/readiness.ts";
 import { applyTaskFilters } from "../utils/task-search.ts";
 import { TaskDetailsModal } from "../web/components/TaskDetailsModal.tsx";
+import { TaskIdIndexProvider } from "../web/contexts/TaskIdIndexContext.tsx";
 import { ThemeProvider } from "../web/contexts/ThemeContext.tsx";
 
 const statuses = ["To Do", "In Progress", "Done"];
@@ -220,15 +222,19 @@ describe("rendered readiness guidance", () => {
 
 		const renderModal = (task: Task) =>
 			renderToString(
-				<ThemeProvider>
-					<TaskDetailsModal
-						task={task}
-						availableTasks={availableTasks}
-						availableStatuses={statuses}
-						isOpen={true}
-						onClose={() => {}}
-					/>
-				</ThemeProvider>,
+				<MemoryRouter initialEntries={[`/tasks/${task.id}`]}>
+					<ThemeProvider>
+						<TaskIdIndexProvider tasks={availableTasks}>
+							<TaskDetailsModal
+								task={task}
+								availableTasks={availableTasks}
+								availableStatuses={statuses}
+								isOpen={true}
+								onClose={() => {}}
+							/>
+						</TaskIdIndexProvider>
+					</ThemeProvider>
+				</MemoryRouter>,
 			);
 
 		expect(renderModal(readyTask)).toContain("Ready to start");
