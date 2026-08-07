@@ -5,7 +5,7 @@ status: In Progress
 assignee:
   - '@claude'
 created_date: '2026-08-07 17:44'
-updated_date: '2026-08-07 21:36'
+updated_date: '2026-08-07 22:15'
 labels:
   - bug
   - ci
@@ -101,4 +101,6 @@ Evidence sample and validation status:
 - Post-fix evidence: 4/4 consecutive green full-suite container runs (exact CI command; only known root-user chmod noise), full local bun run test 1909 pass / 0 fail, bunx tsc --noEmit clean, bun run check clean. Runs are also ~15% faster than pre-fix in the same container because ~198 realms no longer import jsdom+react-dom.
 - CI-level confirmation (AC #1) still requires observation: pushes to a PR-less branch do not trigger this workflow. Validate on the next PRs to main: (1) job lint-and-unit-test (ubuntu-latest) must show two 'bun test' passes in the Run tests step and stay green; (2) grep the logs of the next ~6 ubuntu runs for 'epoll_ctl' and 'Cannot call describe' - both must be absent; (3) test-results-ubuntu-latest artifact now contains test-results.xml and test-results-dom.xml. Task left In Progress pending that observation.
 - Upstream: no existing Bun issue matches this signature; recommend filing one (uncatchable epoll_ctl EEXIST from process.stderr lazy construction in --parallel worker realms on Linux). Filing needs a maintainer decision since it is a public action; probe scripts and findings are preserved in this task's notes.
+
+Review outcome and maintainer decisions (2026-08-08): independent review approved the branch with no blocking findings; the two-pass full profile and the BACKLOG_TEST_SKIP_DOM_PRELOAD env gate were verified empirically, including the exact-union property (198 parallel + 15 DOM files, no overlap, no loss). Maintainer decisions recorded: (1) the two-pass CI shape is APPROVED (no longer a pending proposal); (2) NO upstream Bun issue will be filed while the Bun 1.4 test-runner rewrite is pending. One accepted simplification was applied: the hardcoded DOM_TEST_FILES list and its missing-file guard were replaced by content-derivation - the full profile scans the collected test files for a jsdom reference (/["']jsdom["']/) and adds react-dom-preload.test.ts explicitly (its jsdom load comes through react-dom-preload.ts). Re-verified after the change: full profile end-to-end with CI's exact args exits 0 and the JUnit file attributes reproduce the identical partition (198/15, disjoint, union = all 213 test files, DOM list byte-identical to the previous hardcoded 15); platform profile 389 pass / 0 fail; bunx tsc --noEmit clean; bun run check clean; full local bun run test 1909 pass / 0 fail. Task stays In Progress pending the CI-observation acceptance criterion (next PRs to main).
 <!-- SECTION:NOTES:END -->
