@@ -380,6 +380,10 @@ describe("CLI Integration", () => {
 			for (const field of ["description", "plan", "notes", "final-summary"]) {
 				expect(createHelp).toContain(`${field}: Markdown`);
 			}
+			// final-summary states its own lifecycle rule; it does not borrow plan's "already-started" restriction.
+			expect(createHelp).toContain(
+				"final-summary: Markdown - Only for finished, verified work created directly in a configured terminal status",
+			);
 			for (const field of [
 				"description",
 				"plan",

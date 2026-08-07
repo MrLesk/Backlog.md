@@ -1725,7 +1725,11 @@ addHelpSchema(taskCmd.command("create [title]"), {
 				"Only for already-started work created directly in a configured active status (for example, In Progress)",
 		},
 		{ name: "notes", type: "Markdown", description: "Same restriction as plan" },
-		{ name: "final-summary", type: "Markdown", description: "Same restriction as plan" },
+		{
+			name: "final-summary",
+			type: "Markdown",
+			description: "Only for finished, verified work created directly in a configured terminal status",
+		},
 	],
 	writes: "Creates a task or draft markdown file through Backlog.md",
 	output: "Created task details; use --plain for text output",

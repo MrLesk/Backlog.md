@@ -5,7 +5,7 @@ status: Done
 assignee:
   - '@claude'
 created_date: '2026-08-07 17:25'
-updated_date: '2026-08-07 20:32'
+updated_date: '2026-08-07 20:56'
 labels:
   - bug
 dependencies: []
@@ -71,6 +71,13 @@ Review follow-up (approved advisories):
 - Extended the help test with a milestone add positive assertion (block renders, example resolves to --description) and a doc create negative (no Markdown field, so no block).
 
 Re-verified: bunx tsc --noEmit clean; bun run check . clean (358 files); cli-guidance + agent-instructions 37 pass / 0 fail; bun run test 1919 pass / 5 skip / 0 fail across 214 files. Task stays Done; the $'...' example wording is unchanged pending the maintainer's separate call.
+
+Review follow-up (PR #864 Codex P2, accepted):
+- task create's final-summary schema entry no longer borrows plan's restriction. It now states its own lifecycle rule: 'Only for finished, verified work created directly in a configured terminal status'. Plan's restriction is about recording an approach before implementing, so reusing it could have read as license to write a final summary up front. The new copy mirrors plan's shape and uses the finalization guide's vocabulary (objective verification, configured terminal status).
+- Checked the create-side notes entry as asked. Its 'Same restriction as plan' cross-reference is accurate and does not mislead: implementation notes at creation time genuinely carry plan's constraint (already-started work in a configured active status), and the referenced line sits directly above it. Left unchanged rather than duplicating plan's sentence.
+- Pinned the new final-summary copy in the cli-guidance help test so the distinction cannot silently regress.
+
+Re-verified: bunx tsc --noEmit clean; bun run check . clean (358 files); cli-guidance 16 pass / 0 fail; bun run test 1927 pass / 5 skip / 0 fail across 214 files.
 <!-- SECTION:NOTES:END -->
 
 ## Final Summary
