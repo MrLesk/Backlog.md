@@ -3,6 +3,7 @@ import { mkdir, stat } from "node:fs/promises";
 import { join } from "node:path";
 import { $ } from "bun";
 import { CLI_AGENT_NUDGE, Core, isGitRepository } from "../index.ts";
+import { BACKLOG_CWD_ENV } from "../utils/runtime-cwd.ts";
 import { getTestCliPath } from "./test-cli.ts";
 import { createUniqueTestDir, initializeTestProject, safeCleanup } from "./test-utils.ts";
 
@@ -360,6 +361,61 @@ describe("CLI Integration", () => {
 
 			const agentsFile = await Bun.file(join(TEST_DIR, "AGENTS.md")).exists();
 			expect(agentsFile).toBe(true);
+		});
+
+		describe("BACKLOG_CWD", () => {
+			async function createSiblingRepos(): Promise<{ pinnedDir: string; processDir: string }> {
+				const pinnedDir = join(TEST_DIR, "pinned");
+				const processDir = join(TEST_DIR, "process-dir");
+				await mkdir(pinnedDir, { recursive: true });
+				await mkdir(processDir, { recursive: true });
+				await $`git init -b main`.cwd(pinnedDir).quiet();
+				await $`git init -b main`.cwd(processDir).quiet();
+				return { pinnedDir, processDir };
+			}
+
+			it("initializes the pinned directory and leaves the process directory untouched", async () => {
+				const { pinnedDir, processDir } = await createSiblingRepos();
+
+				const output = await $`bun ${CLI_PATH} init PinnedProj --defaults --agent-instructions agents`
+					.cwd(processDir)
+					.env({ ...process.env, [BACKLOG_CWD_ENV]: pinnedDir })
+					.text();
+
+				expect(output).toContain("Initialized backlog project: PinnedProj");
+				expect(await Bun.file(join(pinnedDir, "backlog", "config.yml")).exists()).toBe(true);
+				expect(await Bun.file(join(pinnedDir, "AGENTS.md")).exists()).toBe(true);
+				expect(await Bun.file(join(processDir, "backlog", "config.yml")).exists()).toBe(false);
+				expect(await Bun.file(join(processDir, "AGENTS.md")).exists()).toBe(false);
+			});
+
+			it("initializes the process directory when the override is absent", async () => {
+				const { pinnedDir, processDir } = await createSiblingRepos();
+
+				const output = await $`bun ${CLI_PATH} init ProcessProj --defaults --agent-instructions agents`
+					.cwd(processDir)
+					.text();
+
+				expect(output).toContain("Initialized backlog project: ProcessProj");
+				expect(await Bun.file(join(processDir, "backlog", "config.yml")).exists()).toBe(true);
+				expect(await Bun.file(join(processDir, "AGENTS.md")).exists()).toBe(true);
+				expect(await Bun.file(join(pinnedDir, "backlog", "config.yml")).exists()).toBe(false);
+			});
+
+			it("fails without initializing anything when the override points at a missing directory", async () => {
+				const { processDir } = await createSiblingRepos();
+				const missingDir = join(TEST_DIR, "missing");
+
+				const result = await $`bun ${CLI_PATH} init MissingProj --defaults --integration-mode none`
+					.cwd(processDir)
+					.env({ ...process.env, [BACKLOG_CWD_ENV]: missingDir })
+					.nothrow();
+				const output = result.stdout.toString() + result.stderr.toString();
+
+				expect(result.exitCode).toBe(1);
+				expect(output).toContain(`Invalid directory from ${BACKLOG_CWD_ENV}`);
+				expect(await Bun.file(join(processDir, "backlog", "config.yml")).exists()).toBe(false);
+			});
 		});
 
 		it("should error on invalid agent instruction value", async () => {
