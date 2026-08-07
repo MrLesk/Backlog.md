@@ -174,6 +174,21 @@ describe("CLI Integration", () => {
 			expect(decisions[0]?.title).toBe("Choose Stack");
 		});
 
+		it("should accept --plain when creating a decision", async () => {
+			const result = await $`bun ${CLI_PATH} decision create "Choose Stack" --plain`.cwd(TEST_DIR).quiet().nothrow();
+			expect(result.exitCode).toBe(0);
+			expect(result.stderr.toString()).toBe("");
+
+			const stdout = result.stdout.toString();
+			expect(stdout.trim()).toBe("Created decision decision-1");
+			expect(stdout.includes("[")).toBe(false);
+
+			const core = new Core(TEST_DIR);
+			const decisions = await core.filesystem.listDecisions();
+			expect(decisions).toHaveLength(1);
+			expect(decisions[0]?.title).toBe("Choose Stack");
+		});
+
 		it("should list decisions with id, title, and status as plain text", async () => {
 			await $`bun ${CLI_PATH} decision create "Choose Stack" -s accepted`.cwd(TEST_DIR).quiet();
 			await $`bun ${CLI_PATH} decision create "Adopt Free Form Status" -s "Under Review"`.cwd(TEST_DIR).quiet();

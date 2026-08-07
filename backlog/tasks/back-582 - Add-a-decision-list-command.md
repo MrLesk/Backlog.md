@@ -5,7 +5,7 @@ status: Done
 assignee:
   - '@claude'
 created_date: '2026-08-07 17:25'
-updated_date: '2026-08-07 22:51'
+updated_date: '2026-08-07 23:00'
 labels:
   - enhancement
 dependencies: []
@@ -73,10 +73,24 @@ Scope guards honored:
 - No identity/duplicate-ID changes; listing uses core.filesystem.listDecisions() as-is, so duplicate decision IDs surface as separate rows rather than being silently collapsed. BACK-580 still owns fail-closed identity for docs/decisions.
 
 Left unchanged: `decision create --plain` still errors on the unknown option. That is outside this task's acceptance criteria (scope is list).
+
+Follow-up accepted by the coordinator as AC-adjacent in-scope work (issue #845 reported it as the sharp edge): `backlog decision create` now accepts `--plain` instead of failing with "error: unknown option '--plain'". Shipped agent guidance tells agents to always pass --plain, so the error was a guidance/CLI contradiction.
+
+- Mirrors the `task create --plain` shape: a plain output-mode flag on the create command, declared with `.option("--plain", ...)` and listed in the command's help schema.
+- Behavior is accept-and-proceed rather than a second output format. `decision create` already prints one plain line ('Created decision decision-1') with no color or interactive UI, and there is no `decision view`/`formatDecisionPlainText` to render a created record with, so inventing a decision detail format here would have added surface the task did not ask for. A code comment records why the flag is accepted.
+- `decision create` also gained the help schema and descriptions it never had (title, status, plain, writes, output, example); previously `backlog decision create --help` showed a bare undescribed `-s, --status`.
+
+Test added in src/test/cli-doc-decision-board.test.ts: create with --plain exits 0, writes no stderr, prints exactly 'Created decision decision-1' with no ANSI escapes, and the decision is persisted.
+
+Re-verified after this change: bunx tsc --noEmit clean, bun run check . clean, cli-doc-decision-board + cli-guidance + cli-json-output green (47 pass), full bun run test 1972 pass / 5 skip / 0 fail.
 <!-- SECTION:NOTES:END -->
 
 ## Final Summary
 
 <!-- SECTION:FINAL_SUMMARY:BEGIN -->
-Added `backlog decision list` so decisions are enumerable from the CLI, not just writable and searchable. Text mode prints 'decision-1 - Title (status)' rows (doc list row shape plus task list's status suffix, statuses shown exactly as stored since decisions are free-form) and 'No decisions found.' when empty; --json prints { schemaVersion: 1, kind: "decision-list", decisions: [...] } built from the same toDecisionSummaryJson helper that search --json already uses. Output mode resolution reuses getReadOutputMode, so --json --plain is rejected identically to task list/view and search, and the command is documented in the CLI help schema. Scope stayed on list: no MCP tools, no status filter, no create options, no identity changes (BACK-580 owns that). Verified with bunx tsc --noEmit, bun run check ., and bun run test (1971 pass / 5 skip / 0 fail), including new coverage in src/test/cli-doc-decision-board.test.ts (plain rows, non-TTY default, empty log in both modes) and src/test/cli-json-output.test.ts (versioned envelope, --json/--plain conflict, help documents --json).
+Added `backlog decision list` so decisions are enumerable from the CLI, not just writable and searchable, and made `backlog decision create` accept `--plain` instead of erroring on it (issue #845's sharp edge, accepted by the coordinator as AC-adjacent).
+
+decision list: text mode prints 'decision-1 - Title (status)' rows (doc list row shape plus task list's status suffix, statuses shown exactly as stored since decisions are free-form) and 'No decisions found.' when empty; --json prints { schemaVersion: 1, kind: "decision-list", decisions: [...] } built from the same toDecisionSummaryJson helper that search --json already uses. Output mode resolution reuses getReadOutputMode, so --json --plain is rejected identically to task list/view and search. decision create: --plain is accepted as an output-mode flag mirroring task create; create output was already a single plain line, so the flag ends the guidance/CLI contradiction without inventing a decision detail format. Both commands are now described in the CLI help schema. Scope stayed on list plus that accepted create fix: no MCP tools, no status filter, no identity changes (BACK-580 owns that).
+
+Verified with bunx tsc --noEmit, bun run check ., and bun run test (1972 pass / 5 skip / 0 fail), including new coverage in src/test/cli-doc-decision-board.test.ts (create --plain, plain rows, non-TTY default, empty log in both modes) and src/test/cli-json-output.test.ts (versioned envelope, --json/--plain conflict, help documents --json).
 <!-- SECTION:FINAL_SUMMARY:END -->

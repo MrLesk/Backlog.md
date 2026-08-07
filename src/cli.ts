@@ -4291,9 +4291,20 @@ addHelpSchema(docCmd.command("view <docId>"), {
 
 const decisionCmd = program.command("decision");
 
-decisionCmd
-	.command("create <title>")
-	.option("-s, --status <status>")
+addHelpSchema(decisionCmd.command("create <title>"), {
+	required: [{ name: "title", type: "String", description: "Decision title" }],
+	optional: [
+		{ name: "status", type: "String", description: "Decision status; free-form, defaults to proposed" },
+		{ name: "plain", type: "Boolean", description: "Use plain text output" },
+	],
+	writes: "Creates a decision markdown file under the configured decisions directory",
+	output: "Created decision ID",
+	examples: ['backlog decision create "Adopt Bun test runner" -s accepted --plain'],
+})
+	.description("create a decision")
+	.option("-s, --status <status>", "set decision status (free-form, defaults to proposed)")
+	// Accepted so agent guidance that always passes --plain works; create output is already plain text.
+	.option("--plain", "use plain text output")
 	.action(async (title: string, options) => {
 		const cwd = await requireProjectRoot();
 		const core = new Core(cwd);
