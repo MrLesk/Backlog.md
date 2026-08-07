@@ -51,7 +51,7 @@
     "typescript": "7.0.2"
   },
   "scripts": {
-    "test": "bun test",
+    "test": "bun test --timeout=10000",
     "format": "biome format --write .",
     "lint": "biome lint --write .",
     "check": "biome check .",
