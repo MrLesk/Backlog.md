@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it } from "bun:test";
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "bun:test";
 import { mkdir, stat } from "node:fs/promises";
 import { join } from "node:path";
 import { $ } from "bun";
@@ -11,6 +11,24 @@ let TEST_DIR: string;
 const CLI_PATH = getTestCliPath();
 
 describe("CLI Integration", () => {
+	// Every CLI subprocess below inherits this process's environment. A BACKLOG_CWD exported in
+	// the developer's shell would otherwise pin them to a real board outside the test directory,
+	// so it is removed here and restored afterwards; tests that need it set it explicitly.
+	let originalBacklogCwd: string | undefined;
+
+	beforeAll(() => {
+		originalBacklogCwd = process.env[BACKLOG_CWD_ENV];
+		delete process.env[BACKLOG_CWD_ENV];
+	});
+
+	afterAll(() => {
+		if (originalBacklogCwd === undefined) {
+			delete process.env[BACKLOG_CWD_ENV];
+		} else {
+			process.env[BACKLOG_CWD_ENV] = originalBacklogCwd;
+		}
+	});
+
 	beforeEach(async () => {
 		TEST_DIR = createUniqueTestDir("test-cli");
 		await mkdir(TEST_DIR, { recursive: true });

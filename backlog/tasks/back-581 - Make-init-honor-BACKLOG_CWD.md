@@ -5,7 +5,7 @@ status: Done
 assignee:
   - '@claude'
 created_date: '2026-08-07 17:25'
-updated_date: '2026-08-07 18:36'
+updated_date: '2026-08-07 18:48'
 labels:
   - bug
 dependencies: []
@@ -73,6 +73,14 @@ Tests (src/test/cli-init-create.test.ts, new BACKLOG_CWD describe, mirroring src
 Regression check: with src/cli.ts stashed, the pinned-directory and invalid-override tests fail (the pinned case initializes the process directory, the invalid case exits 0) while the no-override case still passes.
 
 Post-review finalization: fresh review approved with zero blocking findings. `git fetch origin` showed origin/main still at 3b3bddc9 (the branch base), so the rebase was a no-op and no conflicts arose. Re-verified after the fetch: bunx tsc --noEmit clean, and the init/runtime-cwd suites (cli-init-create, cli-init-claude-default, cli-init-cursor-pty, cli-init-no-git, runtime-cwd, enhanced-init, server-init) pass — 66 pass, 1 skip, 0 fail.
+
+Review fixes from PR #859 (Codex), both accepted:
+
+P1 - test isolation from an inherited BACKLOG_CWD (src/test/cli-init-create.test.ts): the suite's CLI subprocesses inherit the test process environment, so a BACKLOG_CWD exported in a developer's shell would have pointed the unpinned init runs at a real board. Fixed at the suite level with beforeAll/afterAll that remove the variable and restore it, mirroring the save/restore in runtime-cwd.test.ts. One guard covers every subprocess in the file, including the pre-existing init and task/draft create tests, rather than adding .env() to ~20 spawn sites; the pinned test still sets the variable explicitly.
+
+P2 - init help description (src/cli.ts): now reads 'initialize backlog project in the current directory (or BACKLOG_CWD when set)'. One line, no added help prose; this string had no other copies in the tree.
+
+Verification: cli-init-create passes with no override (29 pass) and again with BACKLOG_CWD exported to a decoy git repo (29 pass, decoy left containing only .git and a clean git status). Demonstrated the guard is load-bearing: with it stashed and the same decoy exported, 12 tests fail and the decoy is written with backlog/config.yml, AGENTS.md and CLAUDE.md. Also green: the init/runtime-cwd/guidance suites together (81 pass across 7 files), bunx tsc --noEmit, and bun run check . (357 files).
 <!-- SECTION:NOTES:END -->
 
 ## Final Summary

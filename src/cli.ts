@@ -698,7 +698,7 @@ addHelpSchema(program.command("init [projectName]"), {
 		'backlog init "My Project" --defaults --agent-instructions agents,claude',
 	],
 })
-	.description("initialize backlog project in the current directory")
+	.description("initialize backlog project in the current directory (or BACKLOG_CWD when set)")
 	.option(
 		"--agent-instructions <instructions>",
 		"comma-separated agent instructions to create. Valid: claude, agents, gemini, copilot, cursor (writes AGENTS.md), none. Use 'none' to skip; when combined with others, 'none' is ignored.",
