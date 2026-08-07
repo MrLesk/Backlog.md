@@ -43,6 +43,34 @@ const PLATFORM_CONTRACT_FILES = [
 	"src/test/server-port.test.ts",
 ] as const;
 
+// Test files whose realms need the jsdom/react-dom preload. They must not run
+// inside `bun test --parallel` worker processes on Linux: the jsdom -> undici
+// -> node:assert import chain lazily constructs process.stderr per isolated
+// realm, and in a worker (whose stdio is a Bun socketpair) that construction
+// intermittently dies with an uncatchable "EEXIST: file already exists,
+// epoll_ctl", failing whole unrelated test files with "Cannot call describe()
+// after the test run has completed" (BACK-585). A plain single-process
+// `bun test --isolate` run has never shown the failure, so the full profile
+// runs these files in a separate non-parallel pass with the DOM preload, and
+// every other pass skips the preload via BACKLOG_TEST_SKIP_DOM_PRELOAD.
+const DOM_TEST_FILES = [
+	"src/test/mermaid-markdown.test.tsx",
+	"src/test/mermaid.test.ts",
+	"src/test/react-dom-preload.test.ts",
+	"src/test/web-board-filters.test.tsx",
+	"src/test/web-duplicate-id-repair.test.tsx",
+	"src/test/web-initialization-cursor.test.tsx",
+	"src/test/web-milestones-page-search.test.tsx",
+	"src/test/web-task-column-sort.test.tsx",
+	"src/test/web-task-detail-deeplink.test.tsx",
+	"src/test/web-task-details-modal-acceptance-criteria.test.tsx",
+	"src/test/web-task-details-modal-documentation.test.tsx",
+	"src/test/web-task-details-modal-final-summary.test.tsx",
+	"src/test/web-task-details-modal-keyboard-shortcuts.test.tsx",
+	"src/test/web-task-list-labels-menu.test.tsx",
+	"src/test/web-task-types.test.tsx",
+] as const;
+
 const profileArgument = process.argv.find((argument) => argument.startsWith("--profile="));
 const profile = profileArgument?.slice("--profile=".length) ?? "full";
 const forwardedArguments = process.argv.slice(2).filter((argument) => argument !== profileArgument);
@@ -52,12 +80,40 @@ if (profile !== "full" && profile !== "platform") {
 	process.exit(2);
 }
 
-const files = profile === "platform" ? PLATFORM_CONTRACT_FILES : [];
-const child = Bun.spawn([process.execPath, "test", ...files, ...forwardedArguments], {
-	stdin: "inherit",
-	stdout: "inherit",
-	stderr: "inherit",
-	env: process.env,
-});
+async function runBunTest(
+	files: readonly string[],
+	args: readonly string[],
+	options: { skipDomPreload: boolean },
+): Promise<number> {
+	const child = Bun.spawn([process.execPath, "test", ...files, ...args], {
+		stdin: "inherit",
+		stdout: "inherit",
+		stderr: "inherit",
+		env: options.skipDomPreload ? { ...process.env, BACKLOG_TEST_SKIP_DOM_PRELOAD: "1" } : process.env,
+	});
+	return await child.exited;
+}
 
-process.exit(await child.exited);
+if (profile === "platform") {
+	process.exit(await runBunTest(PLATFORM_CONTRACT_FILES, forwardedArguments, { skipDomPreload: true }));
+}
+
+const allTestFiles = [...new Bun.Glob("src/**/*.test.{ts,tsx}").scanSync()]
+	.map((file) => file.replaceAll("\\", "/"))
+	.sort();
+const domTestFiles = new Set<string>(DOM_TEST_FILES);
+const missingDomFiles = DOM_TEST_FILES.filter((file) => !allTestFiles.includes(file));
+if (missingDomFiles.length > 0) {
+	console.error(`DOM test files not found (update DOM_TEST_FILES): ${missingDomFiles.join(", ")}`);
+	process.exit(2);
+}
+const parallelFiles = allTestFiles.filter((file) => !domTestFiles.has(file));
+
+// The DOM pass drops --parallel* (single process) and writes its own JUnit file.
+const domArguments = forwardedArguments
+	.filter((argument) => !argument.startsWith("--parallel"))
+	.map((argument) => (argument.startsWith("--reporter-outfile=") ? argument.replace(/\.xml$/, "-dom.xml") : argument));
+
+const parallelExit = await runBunTest(parallelFiles, forwardedArguments, { skipDomPreload: true });
+const domExit = await runBunTest(DOM_TEST_FILES, domArguments, { skipDomPreload: false });
+process.exit(parallelExit !== 0 ? parallelExit : domExit);

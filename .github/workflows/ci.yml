@@ -69,7 +69,8 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: test-results-${{ matrix.os }}
-          path: test-results.xml
+          # The full profile writes a second JUnit file for the serial DOM pass.
+          path: test-results*.xml
           if-no-files-found: error
       - name: Run interactive TUI regression tests
         if: matrix.os == 'ubuntu-latest'
