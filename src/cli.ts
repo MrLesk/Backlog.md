@@ -465,6 +465,7 @@ function hasEditFieldFlags(options: Record<string, unknown>): boolean {
 			options.clearFinalSummary ||
 			options.dependsOn !== undefined ||
 			options.dep !== undefined ||
+			options.clearDeps ||
 			options.ref !== undefined ||
 			options.doc !== undefined ||
 			options.modifiedFile !== undefined,
@@ -2663,6 +2664,11 @@ addHelpSchema(taskCmd.command("edit [taskId]"), {
 			type: "Boolean",
 			description: "Remove all labels; cannot combine with other label flags",
 		},
+		{
+			name: "clear-deps",
+			type: "Boolean",
+			description: "Remove all task dependencies; cannot combine with dependency flags",
+		},
 		{ name: "plan", type: "Markdown", description: "Replacement implementation plan" },
 		{
 			name: "append-plan",
@@ -2773,6 +2779,7 @@ addHelpSchema(taskCmd.command("edit [taskId]"), {
 		createMultiValueAccumulator(),
 	)
 	.option("--clear-final-summary", "remove final summary")
+	.option("--clear-deps", "remove all task dependencies (cannot combine with --depends-on or --dep)")
 	.option(
 		"--depends-on <taskIds>",
 		"set task dependencies (comma-separated or use multiple times)",
@@ -3006,6 +3013,18 @@ addHelpSchema(taskCmd.command("edit [taskId]"), {
 			.filter((value) => value.length > 0);
 
 		const combinedDependencies = [...toStringArray(options.dependsOn), ...toStringArray(options.dep)];
+		if (options.clearDeps && combinedDependencies.length > 0) {
+			console.error("Cannot combine --clear-deps with --depends-on or --dep. Use --clear-deps by itself.");
+			process.exitCode = 1;
+			return;
+		}
+		if (combinedDependencies.some((value) => normalizeDependencies([value]).length === 0)) {
+			console.error(
+				"Cannot use an empty value with --depends-on or --dep. Use --clear-deps to remove all task dependencies.",
+			);
+			process.exitCode = 1;
+			return;
+		}
 		const dependencyValues = combinedDependencies.length > 0 ? normalizeDependencies(combinedDependencies) : undefined;
 
 		const normalizedReferences = parseDelimitedStringList(options.ref);
@@ -3054,8 +3073,10 @@ addHelpSchema(taskCmd.command("edit [taskId]"), {
 		if (assigneeValues.length > 0) {
 			editArgs.assignee = assigneeValues;
 		}
-		if (dependencyValues && dependencyValues.length > 0) {
+		if (dependencyValues) {
 			editArgs.dependencies = dependencyValues;
+		} else if (options.clearDeps) {
+			editArgs.dependencies = [];
 		}
 		if (normalizedReferences && normalizedReferences.length > 0) {
 			editArgs.references = normalizedReferences;

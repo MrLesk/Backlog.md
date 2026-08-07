@@ -852,6 +852,52 @@ describe("MCP task tools (MVP)", () => {
 		expect((await mcpServer.getTask("task-1"))?.labels).toEqual([]);
 	});
 
+	it("does not clear dependencies from blank-only task_edit dependency arrays", async () => {
+		await mcpServer.testInterface.callTool({
+			params: {
+				name: "task_create",
+				arguments: {
+					title: "Dependency target",
+				},
+			},
+		});
+		await mcpServer.testInterface.callTool({
+			params: {
+				name: "task_create",
+				arguments: {
+					title: "Dependency blank input",
+					dependencies: ["task-1"],
+				},
+			},
+		});
+
+		const blankEdit = await mcpServer.testInterface.callTool({
+			params: {
+				name: "task_edit",
+				arguments: {
+					id: "task-2",
+					dependencies: ["", "   "],
+				},
+			},
+		});
+
+		expect(getText(blankEdit.content)).toContain("Dependencies: TASK-1");
+		expect((await mcpServer.getTask("task-2"))?.dependencies).toEqual(["TASK-1"]);
+
+		const clearEdit = await mcpServer.testInterface.callTool({
+			params: {
+				name: "task_edit",
+				arguments: {
+					id: "task-2",
+					dependencies: [],
+				},
+			},
+		});
+
+		expect(getText(clearEdit.content)).not.toContain("Dependencies:");
+		expect((await mcpServer.getTask("task-2"))?.dependencies).toEqual([]);
+	});
+
 	it("creates, edits, lists, and views tasks with ordinal", async () => {
 		const createdA = await mcpServer.testInterface.callTool({
 			params: {
