@@ -5,6 +5,7 @@ status: In Progress
 assignee:
   - '@codex'
 created_date: '2026-04-03 05:57'
+updated_date: '2026-08-07 21:28'
 labels: []
 dependencies: []
 documentation:
@@ -33,3 +34,9 @@ Create an initial Codex plugin that makes Backlog easy to install and use inside
 - [ ] #2 bun run check . passes when formatting/linting touched
 - [ ] #3 bun test (or scoped test) passes
 <!-- DOD:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+Retired 2026-08-07 by maintainer decision: wait until Codex releases a native way to handle plugins before any Codex-specific packaging. The still-live pieces moved on: the plugin manifest target became the Agent Plugins 1.0.0 standard (BACK-595), and the mcp start project-root-resolution question is owned by BACK-594. Also noted: the Agent Plugins spec forbids plugins shipping or installing binaries, which invalidates this task's AC #2 approach.
+<!-- SECTION:NOTES:END -->
