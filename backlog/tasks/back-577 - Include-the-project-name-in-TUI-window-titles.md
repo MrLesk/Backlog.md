@@ -5,7 +5,7 @@ status: Done
 assignee:
   - '@claude'
 created_date: '2026-08-07 17:25'
-updated_date: '2026-08-07 20:34'
+updated_date: '2026-08-07 20:56'
 labels:
   - bug
 dependencies: []
@@ -70,6 +70,8 @@ Verification: RUN_INTERACTIVE_TUI_TESTS=1 bun test src/test/tui-interactive-edit
 Follow-up (PR #863 review, P1 accepted): formatTuiTitle now strips control characters. The title is emitted as `ESC ] 0 ; <title> BEL` by the fork's Program.setTitle with no escaping, so a project name from a cloned repo's backlog/config.yml containing BEL or ESC could close the OSC sequence and inject arbitrary escape codes into the user's terminal. A single stripControlCharacters helper in src/ui/tui.ts removes C0 controls, DEL, and C1 controls (0x00-0x1f, 0x7f, 0x80-0x9f) from the composed title, so the caller-supplied view strings (search queries, task titles read from task markdown, which are equally attacker-controlled) are covered by the same strip point; the project name is also cleaned before the blank/'Untitled Project' fallback check so a name made only of control characters still falls back instead of producing ' - Board'. Implemented as a code-point filter rather than a regex because Biome's noControlCharactersInRegex forbids control escapes in regular expressions.
 
 Verification: src/test/tui-window-title.test.ts covers a crafted project name (Acme+BEL+ESC]0;pwned), a crafted view/task title, a C1 character, a control-only name falling back to 'Backlog Board', and the emitted screen.title being control-character free (7 pass). Re-ran RUN_INTERACTIVE_TUI_TESTS=1 PTY suite (4 pass), bunx tsc --noEmit, bun run check ., and bun run test (1916 pass, 5 skip, 0 fail).
+
+Rebased onto main after PR #833 (BACK-565 TUI task composer rewrite) merged. One conflict, in the renderBoardTui options type in src/ui/board.ts: #833 dropped the '@internal Retained while the disabled entrypoint is reverted after BACK-565' comments above createTask/taskComposer, which was the context my 'projectName?: string' line was anchored to. Resolved by keeping main's version of that block verbatim and re-adding only 'projectName?: string' after 'dateFormat?: string'. Everything else re-applied cleanly. Re-grepped after the rebase for screen titles: #833 added no new createScreen or screen.title site (the composer and the help/filter popups are in-screen widgets whose 'title' fields are box labels and task-field values, not terminal titles), so no additional call site needs the helper. Re-verified on the rebased tree: bunx tsc --noEmit, bun run check ., title unit tests (7 pass), RUN_INTERACTIVE_TUI_TESTS=1 PTY suite (4 pass), bun run test (1952 pass, 5 skip, 0 fail).
 <!-- SECTION:NOTES:END -->
 
 ## Final Summary
