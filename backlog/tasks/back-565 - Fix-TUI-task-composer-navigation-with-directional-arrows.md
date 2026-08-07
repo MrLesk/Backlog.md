@@ -6,7 +6,7 @@ assignee:
   - '@codex'
   - '@claude'
 created_date: '2026-08-02 21:12'
-updated_date: '2026-08-07 20:03'
+updated_date: '2026-08-07 20:37'
 labels:
   - tui
   - bug
@@ -114,6 +114,18 @@ Tab/Shift+Tab now traverse Title, Description, Status, Type, Priority, Create, C
 Verification. tmux at 80x24 and 80x10: Backspace at end and mid-field in Title and Description, including a two-line description where the deletion happened on the second line; caret confirmed to stay put by typing after each deletion; Ctrl+W word delete; Delete forward-delete; Tab forward through all seven controls with wrap to Title, Shift+Tab backward with wrap to Cancel, focus highlight verified from the captured attributes at each step; Tab into and out of the Description leaves the field text untouched; task created from a Tab-reached Create button. Tests: caretIndexFromCursor and deletionStart unit cases (single line, two logical lines, one wrapped logical line), a rendered-harness deletion test that forces screen.fullUnicode true to reproduce the real terminal condition and asserts both a repaint and mid-field/Ctrl+W results in both fields, and the former Tab-inertness test rewritten to pin full Tab and Shift+Tab traversal with wrapping. The deletion test was confirmed to fail with the deletion binding removed. Gate: bunx tsc --noEmit, Biome clean on 342 files, composer/help/popup-chrome suites, full bun test 1891 pass, 5 skip, 0 fail.
 
 Note: the harness only exposes these bugs when screen.fullUnicode is forced on, so any future editing test must set it or it will pass against broken code.
+
+Codex review follow-up: three accepted findings.
+
+P1 crash on joining description lines. Reproduced first in tmux: a two-line description, caret at End of line one, Delete - the whole TUI died and took the tmux server with it, with 'TypeError' in stderr. Root cause is in the widget: setValue immediately calls _updateCursor, which reads _clines[this._clines.length - 1 + this.offsetY]; removing the newline shrinks the wrapped lines while the negative row offset still points a line further down, so currentText is undefined and strWidth(undefined) throws. deleteText now parks the caret on the last line via setCursor(0, 0) before setValue - a position valid for any content - then restores the exact caret with the new cursorFromCaretIndex helper, the inverse of caretIndexFromCursor, and repaints via _updateCursor. moveCursor could not be used for the restore because it recomputes the column whenever the row changes.
+
+P1 wrong status silently confirmed. openSingleSelectFilterPopup passed 'selected: selectedIndex' to the list widget, which always starts on row 0 and ignores the option, so the Status picker opened on Draft and Enter confirmed Draft instead of the current value. Fixed with an explicit picker.select(selectedIndex) after construction. This is janosmiko's fix from PR #809 - credit to janosmiko. His accompanying vi:true change was deliberately not taken here; it stays with the separate salvage task.
+
+P2 surrogate-pair corruption. Backspace or Delete next to an astral character removed one UTF-16 unit and left an unpaired surrogate, which renders as a replacement character and would have been written to the task file. deletionStart and the new deletionEnd now step over a full pair in both directions.
+
+Verification. tmux at 80x24 with stderr captured to a file: Delete at the end of a nonfinal line joins the lines with empty stderr and the caret verified at the join by typing into it; Backspace at the start of the second line does the same from the other side; the Status picker opens with To Do inverted rather than Draft, and Enter without navigating keeps To Do; Backspace beside an emoji removes it whole, and the created task file was inspected programmatically and contains no unpaired surrogate or replacement character. Tests, each confirmed to fail against a deliberately broken build: the line-join test reproduces the exact 'undefined is not an object (evaluating str.length)' crash when the cursor parking is removed; the picker test returns 'Draft' instead of 'In Progress' when picker.select is removed; the emoji assertions produce 'ab�cd' when the surrogate step is removed. Added a caret round-trip property test over single-line, two-logical-line and wrapped-line models. Gate: bunx tsc --noEmit, Biome clean on 342 files, composer/help/popup-chrome 64 pass, full bun test 1895 pass, 5 skip, 0 fail.
+
+Codex's help-popup finding is stale: it describes the fixed 20-row popup that commit 81f361bb already replaced with content-based sizing plus scrolling. The remaining Codex findings were deferred to follow-up tasks by coordinator decision and are untouched here.
 <!-- SECTION:NOTES:END -->
 
 ## Final Summary

@@ -37,14 +37,46 @@ export function caretIndexFromCursor(value: string, cursor: { x: number; y: numb
 	return Math.min(value.length, Math.max(0, value.length - after));
 }
 
+/** Cursor offsets placing the caret at `caretIndex`; the inverse of {@link caretIndexFromCursor}. */
+export function cursorFromCaretIndex(value: string, caretIndex: number, lines: CaretLines): { x: number; y: number } {
+	const lastLine = lines.real.length - 1;
+	if (lastLine < 0) return { x: 0, y: 0 };
+	const after = Math.max(0, value.length - caretIndex);
+	let trailing = 0;
+	for (let line = lastLine; line >= 0; line -= 1) {
+		const newlines = Math.max(0, lines.fakeCount - 1 - (lines.rtof[line] ?? 0));
+		const column = after - trailing - newlines;
+		if (column >= 0 && column <= (lines.real[line] ?? "").length) return { x: -column, y: -(lastLine - line) };
+		trailing += (lines.real[line] ?? "").length;
+	}
+	return { x: 0, y: -lastLine };
+}
+
+// An astral character such as an emoji is two UTF-16 units, and removing one of them leaves an
+// unpaired surrogate that renders as a replacement character and corrupts the saved task file.
+const isHighSurrogate = (code: number) => code >= 0xd800 && code <= 0xdbff;
+const isLowSurrogate = (code: number) => code >= 0xdc00 && code <= 0xdfff;
+
 /** First index Backspace (one character) or Ctrl+W (one word) should remove, counting back from the caret. */
 export function deletionStart(value: string, caretIndex: number, unit: "char" | "word"): number {
 	if (caretIndex <= 0) return caretIndex;
-	if (unit === "char") return caretIndex - 1;
+	if (unit === "char") {
+		const pairedBack =
+			isLowSurrogate(value.charCodeAt(caretIndex - 1)) && isHighSurrogate(value.charCodeAt(caretIndex - 2));
+		return caretIndex - (pairedBack ? 2 : 1);
+	}
 	let start = caretIndex;
 	while (start > 0 && /\s/.test(value[start - 1] ?? "")) start -= 1;
 	while (start > 0 && !/\s/.test(value[start - 1] ?? "")) start -= 1;
 	return start;
+}
+
+/** Last index Delete should remove, counting forward from the caret. */
+export function deletionEnd(value: string, caretIndex: number): number {
+	if (caretIndex >= value.length) return caretIndex;
+	const pairedForward =
+		isHighSurrogate(value.charCodeAt(caretIndex)) && isLowSurrogate(value.charCodeAt(caretIndex + 1));
+	return caretIndex + (pairedForward ? 2 : 1);
 }
 
 export type TaskComposerValues = {
@@ -582,7 +614,8 @@ export async function openTaskComposer(options: TaskComposerOptions): Promise<Ta
 			_listener?: (ch: string, key: { name?: string }) => void;
 			_clines?: { length: number; real?: string[]; rtof?: number[]; fake?: string[] };
 			getCursor?: () => { x: number; y: number };
-			moveCursor?: (x: number, y: number) => void;
+			setCursor?: (x: number, y: number) => void;
+			_updateCursor?: () => void;
 		};
 		/**
 		 * Keys the composer implements itself. Tab moves between fields instead of typing a tab,
@@ -602,23 +635,29 @@ export async function openTaskComposer(options: TaskComposerOptions): Promise<Ta
 		ownInputKeys(titleInput as ComposerInput);
 		ownInputKeys(descriptionInput as ComposerInput);
 
+		const readCaretLines = (input: ComposerInput, value: string): CaretLines => ({
+			real: input._clines?.real ?? [value],
+			rtof: input._clines?.rtof ?? [0],
+			fakeCount: input._clines?.fake?.length ?? 1,
+		});
+
 		const deleteText = (input: ComposerInput, unit: "char" | "word" | "forward") => {
 			const value = input.getValue();
 			const cursor = input.getCursor?.() ?? { x: 0, y: 0 };
-			const clines = input._clines;
-			const caret = caretIndexFromCursor(value, cursor, {
-				real: clines?.real ?? [value],
-				rtof: clines?.rtof ?? [0],
-				fakeCount: clines?.fake?.length ?? 1,
-			});
+			const caret = caretIndexFromCursor(value, cursor, readCaretLines(input, value));
 			const start = unit === "forward" ? caret : deletionStart(value, caret, unit);
-			const end = unit === "forward" ? caret + 1 : caret;
-			if (start >= Math.min(end, value.length)) return;
-			input.setValue(value.slice(0, start) + value.slice(end));
+			const end = unit === "forward" ? deletionEnd(value, caret) : caret;
+			if (start >= end) return;
+			const next = value.slice(0, start) + value.slice(end);
+			// Removing a line break shortens the wrapped lines, and setValue makes the widget
+			// reposition its cursor straight away. Park the caret on the last line first, which is
+			// valid for any content, so that update cannot read past the end of the new lines.
+			input.setCursor?.(0, 0);
+			input.setValue(next);
 			syncInputs();
-			// Only text on one side of the caret changed, so the end-relative offsets still hold;
-			// re-apply them so the widget clamps them against the new lines and repaints.
-			input.moveCursor?.(unit === "forward" ? cursor.x + 1 : cursor.x, cursor.y);
+			const caretAfter = cursorFromCaretIndex(next, start, readCaretLines(input, next));
+			input.setCursor?.(caretAfter.x, caretAfter.y);
+			input._updateCursor?.();
 			options.screen.render();
 		};
 

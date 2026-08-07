@@ -210,6 +210,9 @@ export async function openSingleSelectFilterPopup(options: {
 				item: { bg: "default", hover: { inverse: true } },
 			},
 		});
+		// The list widget always starts on the first row and ignores the `selected` option, so the
+		// current value has to be selected explicitly or Enter would silently confirm a different one.
+		picker.select(selectedIndex);
 
 		const finish = (value: string | null) => {
 			if (settled) return;

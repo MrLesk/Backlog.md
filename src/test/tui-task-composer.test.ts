@@ -6,9 +6,13 @@ import { $ } from "bun";
 import { Core } from "../core/backlog.ts";
 import type { Task, TaskCreateInput } from "../types/index.ts";
 import { getCreatedTaskBoardOutcome, renderBoardTui, upsertBoardTask } from "../ui/board.ts";
+import { openSingleSelectFilterPopup } from "../ui/components/filter-popup.ts";
+import type { CaretLines } from "../ui/components/task-composer.ts";
 import {
 	caretIndexFromCursor,
 	createTaskComposerValues,
+	cursorFromCaretIndex,
+	deletionEnd,
 	deletionStart,
 	getTaskComposerLayout,
 	getTaskComposerPriorityChoices,
@@ -138,6 +142,36 @@ describe("TUI task composer model", () => {
 		expect(deletionStart("hello world  ", 13, "word")).toBe(6);
 		expect(deletionStart("hello", 5, "word")).toBe(0);
 		expect(deletionStart("", 0, "word")).toBe(0);
+	});
+
+	it("treats an astral character as one unit in both directions", () => {
+		const value = "ab🚀cd";
+		// Four visible characters, but six UTF-16 units: the emoji occupies indices 2 and 3.
+		expect(value.length).toBe(6);
+		// Backspace just after the emoji removes both of its UTF-16 units.
+		expect(deletionStart(value, 4, "char")).toBe(2);
+		expect(value.slice(0, deletionStart(value, 4, "char")) + value.slice(4)).toBe("abcd");
+		// Delete just before it does the same going forward.
+		expect(deletionEnd(value, 2)).toBe(4);
+		expect(value.slice(0, 2) + value.slice(deletionEnd(value, 2))).toBe("abcd");
+		// Ordinary characters either side still move by one.
+		expect(deletionStart(value, 2, "char")).toBe(1);
+		expect(deletionEnd(value, 4)).toBe(5);
+		expect(deletionEnd(value, value.length)).toBe(value.length);
+	});
+
+	it("round-trips the caret between an index and the widget's cursor offsets", () => {
+		const cases: Array<[string, CaretLines]> = [
+			["abcdef", { real: ["abcdef"], rtof: [0], fakeCount: 1 }],
+			["alpha beta\nsecond line", { real: ["alpha beta", "second line"], rtof: [0, 1], fakeCount: 2 }],
+			["wwww xxxx yyyy zzzz", { real: ["wwww xxxx ", "yyyy zzzz"], rtof: [0, 0], fakeCount: 1 }],
+		];
+		for (const [value, lines] of cases) {
+			for (let index = 0; index <= value.length; index += 1) {
+				const cursor = cursorFromCaretIndex(value, index, lines);
+				expect(caretIndexFromCursor(value, cursor, lines)).toBe(index);
+			}
+		}
 	});
 
 	it("rests on the first configured workflow status and never Draft", () => {
@@ -983,8 +1017,87 @@ describe("TUI task composer interaction", () => {
 			pressKey(description, "C-w", "\x17");
 			expect(description?.getValue?.()).toBe("hello rl");
 
+			// An astral character is removed whole, never leaving half a surrogate pair behind.
+			// setValue does not move the caret, so anchor it at the end before stepping back.
+			const putCaret = (stepsBack: number) => {
+				description?.emit?.("keypress", "", { name: "end", full: "end" });
+				for (let step = 0; step < stepsBack; step += 1) {
+					description?.emit?.("keypress", "", { name: "left", full: "left" });
+				}
+			};
+			description?.setValue?.("ab🚀cd");
+			putCaret(2); // just after the emoji
+			pressKey(description, "backspace", "\x7f");
+			expect(description?.getValue?.()).toBe("abcd");
+			description?.setValue?.("ab🚀cd");
+			putCaret(4); // just before the emoji
+			pressKey(description, "delete", "");
+			expect(description?.getValue?.()).toBe("abcd");
+
 			pressKey(eventScreen.focused, "escape", "\x1b");
 			expect(await withTimeout(resultPromise, "composer deletion cancellation", 1000)).toBeNull();
+		} finally {
+			screen.destroy();
+		}
+	});
+
+	it("opens a single-select picker on the current value so Enter keeps it", async () => {
+		const screen = createScreen({ smartCSR: false });
+		Object.defineProperty(screen, "width", { configurable: true, value: 100, writable: true });
+		Object.defineProperty(screen, "height", { configurable: true, value: 30, writable: true });
+		try {
+			// "Draft" is the first choice, so an unselected list would silently confirm it.
+			const choices = getTaskComposerStatusChoices(["To Do", "In Progress", "Done"]);
+			expect(choices[0]?.value).toBe("Draft");
+			const pickerPromise = openSingleSelectFilterPopup({
+				screen,
+				title: "Task Status",
+				choices,
+				selectedValue: "In Progress",
+			});
+			await settleComposerFocus();
+			pressKey((screen as unknown as { focused?: TestWidget }).focused, "enter", "\r");
+			expect(await withTimeout(pickerPromise, "picker preselection", 1000)).toBe("In Progress");
+		} finally {
+			screen.destroy();
+		}
+	});
+
+	it("joins description lines without crashing on the widget's stale cursor", async () => {
+		const screen = createScreen({ smartCSR: false });
+		Object.defineProperty(screen, "width", { configurable: true, value: 100, writable: true });
+		Object.defineProperty(screen, "height", { configurable: true, value: 30, writable: true });
+		Object.defineProperty(screen, "fullUnicode", { configurable: true, value: true, writable: true });
+		const eventScreen = screen as unknown as { focused?: TestWidget };
+		try {
+			const resultPromise = openTaskComposer({
+				screen,
+				statuses: ["To Do", "Done"],
+				persist: async () => task(),
+			});
+			await settleComposerFocus();
+			pressKey(eventScreen.focused, "tab", "\t");
+			await settleComposerFocus();
+			const description = eventScreen.focused;
+			description?.setValue?.("line one\nline two");
+
+			// Caret at the end of the first line: Delete removes the newline, so the widget has one
+			// fewer line than its negative row offset still points at.
+			description?.emit?.("keypress", "", { name: "up", full: "up" });
+			description?.emit?.("keypress", "", { name: "end", full: "end" });
+			pressKey(description, "delete", "");
+			expect(description?.getValue?.()).toBe("line oneline two");
+
+			// The same join from the other side: Backspace at the start of the second line.
+			description?.setValue?.("first\nsecond");
+			description?.emit?.("keypress", "", { name: "up", full: "up" });
+			description?.emit?.("keypress", "", { name: "home", full: "home" });
+			description?.emit?.("keypress", "", { name: "down", full: "down" });
+			pressKey(description, "backspace", "\x7f");
+			expect(description?.getValue?.()).toBe("firstsecond");
+
+			pressKey(eventScreen.focused, "escape", "\x1b");
+			expect(await withTimeout(resultPromise, "description line join", 1000)).toBeNull();
 		} finally {
 			screen.destroy();
 		}
