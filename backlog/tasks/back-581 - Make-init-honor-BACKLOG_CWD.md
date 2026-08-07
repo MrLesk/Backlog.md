@@ -1,11 +1,11 @@
 ---
 id: BACK-581
 title: Make init honor BACKLOG_CWD
-status: In Progress
+status: Done
 assignee:
   - '@claude'
 created_date: '2026-08-07 17:25'
-updated_date: '2026-08-07 18:23'
+updated_date: '2026-08-07 18:36'
 labels:
   - bug
 dependencies: []
@@ -45,6 +45,8 @@ Maintainer decision (confirmed): init follows the same resolveRuntimeCwd flow as
 2. Audit the whole init path for other process.cwd() reads so the entire flow targets the resolved directory: git detection/init (isGitRepository/initializeGitRepository), `new Core(cwd)` and FileSystem/backlog-directory resolution, initializeProject in src/core/init.ts (agent instruction files, MCP guideline nudges, Claude agent install), the advanced config wizard, shell completion install, and MCP client setup commands. Confirm each already derives from the passed directory or is intentionally user/home-scoped; fix anything that is not.
 3. Add coverage in src/test/cli-init-create.test.ts mirroring src/test/runtime-cwd.test.ts env handling: run `backlog init` from an unrelated directory with BACKLOG_CWD pinned to the project directory and assert the pinned directory receives backlog/config.yml (and the agent instruction file) while the process directory stays untouched; assert an invalid BACKLOG_CWD exits 1 with the shared 'Invalid directory from BACKLOG_CWD' message. Existing init tests without the env var stay as the unchanged-behavior baseline.
 4. Verify with bunx tsc --noEmit, bun run check ., the init-related suites (cli-init-*, runtime-cwd, enhanced-init, server-init), then a full bun test.
+
+5. Implemented as above; the shared helper shipped as `requireRuntimeCwd()` (not `resolveRuntimeCwdOrExit()`) to match the existing `requireProjectRoot()` naming in src/cli.ts. Step 2's audit found no other process.cwd() reads on the init path, so no further code changes were needed.
 <!-- SECTION:PLAN:END -->
 
 ## Implementation Notes
@@ -69,6 +71,8 @@ No new `--cwd` flag on init: only `mcp start` accepts one, and the plain `resolv
 Tests (src/test/cli-init-create.test.ts, new BACKLOG_CWD describe, mirroring src/test/runtime-cwd.test.ts env handling): two sibling git repos, init run from one with BACKLOG_CWD pinned to the other. Asserts config.yml and AGENTS.md land in the pinned directory and the process directory stays empty; a paired case without the env var asserts the process directory is still initialized; a third case asserts an override pointing at a missing directory exits 1 with 'Invalid directory from BACKLOG_CWD' and initializes nothing.
 
 Regression check: with src/cli.ts stashed, the pinned-directory and invalid-override tests fail (the pinned case initializes the process directory, the invalid case exits 0) while the no-override case still passes.
+
+Post-review finalization: fresh review approved with zero blocking findings. `git fetch origin` showed origin/main still at 3b3bddc9 (the branch base), so the rebase was a no-op and no conflicts arose. Re-verified after the fetch: bunx tsc --noEmit clean, and the init/runtime-cwd suites (cli-init-create, cli-init-claude-default, cli-init-cursor-pty, cli-init-no-git, runtime-cwd, enhanced-init, server-init) pass — 66 pass, 1 skip, 0 fail.
 <!-- SECTION:NOTES:END -->
 
 ## Final Summary
