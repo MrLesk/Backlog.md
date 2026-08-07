@@ -2033,16 +2033,27 @@ export class Core {
 			return await this.demoteTaskWithUpdates(task, input, autoCommit);
 		}
 
-		const { mutated } = await this.applyTaskUpdateInput(task, input, async (status) =>
-			this.requireCanonicalStatus(status),
-		);
+		// Fail fast when another process is mid-edit, and re-read inside the lock so the whole
+		// read-modify-write is protected. Locking only the write would still lose an update
+		// whenever one writer releases before the next acquires: the second would then apply
+		// its changes to a snapshot taken before the first wrote.
+		return await this.fs.withTaskLock(task, async () => {
+			const current = await this.loadLocalTaskForMutation(taskId);
+			if (!current) {
+				throw new Error(`Task not found: ${taskId}`);
+			}
 
-		if (!mutated) {
-			return task;
-		}
+			const { mutated } = await this.applyTaskUpdateInput(current, input, async (status) =>
+				this.requireCanonicalStatus(status),
+			);
 
-		await this.updateTask(task, autoCommit);
-		return task;
+			if (!mutated) {
+				return current;
+			}
+
+			await this.updateTask(current, autoCommit);
+			return current;
+		});
 	}
 
 	async updateDraft(task: Task, autoCommit?: boolean): Promise<void> {

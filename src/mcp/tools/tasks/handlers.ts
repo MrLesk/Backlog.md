@@ -1,7 +1,7 @@
 import { basename, join } from "node:path";
 import { DEFAULT_STATUSES } from "../../../constants/index.ts";
 import { findLocalDuplicateTaskIds } from "../../../core/duplicate-task-repair.ts";
-import { isCreateLockError } from "../../../file-system/operations.ts";
+import { isCreateLockError, isTaskLockError } from "../../../file-system/operations.ts";
 import {
 	isLocalEditableTask,
 	type SearchPriorityFilter,
@@ -531,6 +531,9 @@ export class TaskHandlers {
 			const updatedTask = await this.core.editTaskOrDraft(args.id, updateInput);
 			return await formatTaskCallResult(updatedTask);
 		} catch (error) {
+			if (isTaskLockError(error)) {
+				throw new BacklogToolError(error.message, "OPERATION_FAILED");
+			}
 			if (error instanceof Error) {
 				throw new BacklogToolError(error.message, "VALIDATION_ERROR");
 			}

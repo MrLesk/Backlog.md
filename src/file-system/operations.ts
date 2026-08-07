@@ -51,6 +51,12 @@ interface CreateLockTarget {
 	locksDir: string;
 }
 
+interface LockAttemptSettings {
+	staleMs: number;
+	retries: number;
+	retryDelayMs: number;
+}
+
 const DEFAULT_CREATE_LOCK_TIMEOUT_MS = 30_000;
 const DEFAULT_CREATE_LOCK_RETRY_DELAY_MS = 100;
 const DEFAULT_CREATE_LOCK_STALE_MS = 10_000;
@@ -59,19 +65,39 @@ export const CREATE_LOCK_ERROR_CODE = "ECREATELOCK";
 export const CREATE_LOCK_ERROR_MESSAGE =
 	"Another task create/promote/demote operation is already in progress. Please try again.";
 
-function createLockError(message: string, cause?: unknown): Error {
+const CREATE_LOCK_ERROR_NAME = "CreateLockError";
+const TASK_LOCK_ERROR_NAME = "TaskLockError";
+const TASK_LOCK_ERROR_CODE = "ETASKLOCK";
+
+function lockError(name: string, code: string, message: string, cause?: unknown): Error {
 	const error = new Error(message, cause === undefined ? undefined : { cause }) as Error & { code?: string };
-	error.name = "CreateLockError";
-	error.code = CREATE_LOCK_ERROR_CODE;
+	error.name = name;
+	error.code = code;
 	return error;
 }
 
+function isLockError(error: unknown, name: string, code: string): error is Error {
+	return error instanceof Error && error.name === name && (error as Error & { code?: string }).code === code;
+}
+
+function createLockError(message: string, cause?: unknown): Error {
+	return lockError(CREATE_LOCK_ERROR_NAME, CREATE_LOCK_ERROR_CODE, message, cause);
+}
+
+function taskLockError(message: string, cause?: unknown): Error {
+	return lockError(TASK_LOCK_ERROR_NAME, TASK_LOCK_ERROR_CODE, message, cause);
+}
+
 export function isCreateLockError(error: unknown): error is Error {
-	return (
-		error instanceof Error &&
-		(error as Error & { code?: string }).code === CREATE_LOCK_ERROR_CODE &&
-		error.name === "CreateLockError"
-	);
+	return isLockError(error, CREATE_LOCK_ERROR_NAME, CREATE_LOCK_ERROR_CODE);
+}
+
+export function isTaskLockError(error: unknown): error is Error {
+	return isLockError(error, TASK_LOCK_ERROR_NAME, TASK_LOCK_ERROR_CODE);
+}
+
+export function taskLockErrorMessage(taskId: string): string {
+	return `Edit failed: ${taskId} is being modified by another process; retry if appropriate.`;
 }
 
 export class FileSystem {
@@ -286,6 +312,21 @@ export class FileSystem {
 		return error instanceof Error ? error : new Error(String(error));
 	}
 
+	private toTaskLockError(error: unknown, taskId: string): Error {
+		if (isTaskLockError(error)) {
+			return error;
+		}
+
+		const code = (error as NodeJS.ErrnoException | undefined)?.code;
+		if (code === "ELOCKED") {
+			return taskLockError(taskLockErrorMessage(taskId), error);
+		}
+		if (code === "ECOMPROMISED") {
+			return taskLockError(`Edit failed: the lock on ${taskId} was interrupted; retry if appropriate.`, error);
+		}
+		return error instanceof Error ? error : new Error(String(error));
+	}
+
 	private async getGitCommonDir(): Promise<string | null> {
 		try {
 			const config = await this.loadConfig();
@@ -338,31 +379,82 @@ export class FileSystem {
 
 		const backlogDir = await this.getBacklogDir();
 		const lockTarget = await this.getCreateLockTarget(backlogDir);
-		const locksDir = lockTarget.locksDir;
-		const lockDir = join(locksDir, "create");
 		const timeoutMs = options.timeoutMs ?? DEFAULT_CREATE_LOCK_TIMEOUT_MS;
 		const retryDelayMs = options.retryDelayMs ?? DEFAULT_CREATE_LOCK_RETRY_DELAY_MS;
-		const staleMs = Math.max(options.staleMs ?? DEFAULT_CREATE_LOCK_STALE_MS, 2_000);
-		const retries = Math.max(Math.ceil(timeoutMs / retryDelayMs) - 1, 0);
+		return await this.withLockTarget(
+			lockTarget.targetPath,
+			join(lockTarget.locksDir, "create"),
+			{
+				staleMs: options.staleMs ?? DEFAULT_CREATE_LOCK_STALE_MS,
+				retryDelayMs,
+				retries: Math.max(Math.ceil(timeoutMs / retryDelayMs) - 1, 0),
+			},
+			(error) => this.toCreateLockError(error),
+			fn,
+		);
+	}
 
-		await mkdir(locksDir, { recursive: true });
+	/**
+	 * Per-task counterpart of the create lock, used to serialize a task's read-modify-write.
+	 * It fails fast instead of waiting: on contention the caller (human or agent) decides
+	 * whether to retry, and nothing is merged or overwritten behind their back.
+	 *
+	 * The lock target is the task file itself because proper-lockfile keys its in-process
+	 * lock registry by target path: a shared target with per-task lockfile paths would
+	 * clobber concurrent locks held by one process. Unlike the create lock, the lockfile
+	 * lives under this project's backlog directory rather than the shared git common dir:
+	 * an edit protects one file, so sibling worktrees editing their own copy of a task must
+	 * not fail each other. USE_GLOBAL_TASK_ID_LOCK=false bypasses it like the create lock.
+	 */
+	async withTaskLock<T>(task: Pick<Task, "id" | "filePath">, fn: () => Promise<T>): Promise<T> {
+		if (process.env.USE_GLOBAL_TASK_ID_LOCK?.toLowerCase() === "false") {
+			return await fn();
+		}
+
+		const filePath = task.filePath?.trim();
+		if (!filePath) {
+			throw new Error(`Cannot lock task ${task.id} for editing without its file path.`);
+		}
+
+		const lockKey = task.id
+			.trim()
+			.toLowerCase()
+			.replace(/[^a-z0-9._-]+/g, "-")
+			.replace(/^\.+/, "");
+		return await this.withLockTarget(
+			filePath,
+			join(await this.getBacklogDir(), ".locks", `task-${lockKey || "unknown"}`),
+			{ staleMs: DEFAULT_CREATE_LOCK_STALE_MS, retries: 0, retryDelayMs: 0 },
+			(error) => this.toTaskLockError(error, task.id),
+			fn,
+		);
+	}
+
+	private async withLockTarget<T>(
+		targetPath: string,
+		lockDir: string,
+		settings: LockAttemptSettings,
+		toError: (error: unknown) => Error,
+		fn: () => Promise<T>,
+	): Promise<T> {
+		await mkdir(dirname(lockDir), { recursive: true });
 
 		let release: (() => Promise<void>) | undefined;
 		try {
-			release = await lockfile.lock(lockTarget.targetPath, {
+			release = await lockfile.lock(targetPath, {
 				lockfilePath: lockDir,
 				realpath: true,
-				stale: staleMs,
+				stale: Math.max(settings.staleMs, 2_000),
 				retries: {
-					retries,
+					retries: settings.retries,
 					factor: 1,
-					minTimeout: retryDelayMs,
-					maxTimeout: retryDelayMs,
+					minTimeout: settings.retryDelayMs,
+					maxTimeout: settings.retryDelayMs,
 					randomize: false,
 				},
 			});
 		} catch (error) {
-			throw this.toCreateLockError(error);
+			throw toError(error);
 		}
 
 		try {
@@ -370,7 +462,7 @@ export class FileSystem {
 			try {
 				await release?.();
 			} catch (error) {
-				throw this.toCreateLockError(error);
+				throw toError(error);
 			}
 			return result;
 		} catch (error) {
