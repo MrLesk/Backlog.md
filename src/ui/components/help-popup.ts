@@ -1,6 +1,5 @@
 import type { ScreenInterface } from "neo-neo-bblessed";
-import { box } from "neo-neo-bblessed";
-import { createPopupChrome } from "./filter-popup.ts";
+import { createPopupChrome, createScrollableViewport } from "./filter-popup.ts";
 
 export type HelpPopupContext = "board" | "task-list";
 
@@ -11,6 +10,7 @@ type Shortcut = {
 
 const BOARD_SHORTCUTS: Shortcut[] = [
 	{ key: "Tab", desc: "Switch View (Kanban/List)" },
+	{ key: "N", desc: "Create a task" },
 	{ key: "/", desc: "Search tasks" },
 	{ key: "T", desc: "Filter by Type" },
 	{ key: "P", desc: "Filter by Priority" },
@@ -51,22 +51,34 @@ export function getHelpShortcuts(context: HelpPopupContext = "board"): Shortcut[
 	return context === "task-list" ? TASK_LIST_SHORTCUTS : BOARD_SHORTCUTS;
 }
 
+/** Popup rows spent on borders, the top spacer and the help line, leaving one row per shortcut. */
+const HELP_POPUP_CHROME_ROWS = 4;
+
+export function getHelpPopupHeight(shortcutCount: number, screenHeight: number): number {
+	return Math.max(5, Math.min(shortcutCount + HELP_POPUP_CHROME_ROWS, screenHeight - 2));
+}
+
 export async function openHelpPopup(screen: ScreenInterface, context: HelpPopupContext = "board"): Promise<void> {
 	return new Promise<void>((resolve) => {
 		let settled = false;
+		const shortcuts = getHelpShortcuts(context);
+		const screenHeight = typeof screen.height === "number" ? screen.height : 40;
+		const popupHeight = getHelpPopupHeight(shortcuts.length, screenHeight);
+		const scrolls = shortcuts.length > popupHeight - HELP_POPUP_CHROME_ROWS;
 		const { popup, close } = createPopupChrome({
 			screen,
 			title: "Keyboard Shortcuts",
-			helpText: " {cyan-fg}[Esc/q]{/} Close Help",
+			helpText: scrolls
+				? " {cyan-fg}[↑↓]{/} Scroll | {cyan-fg}[Esc/q]{/} Close Help"
+				: " {cyan-fg}[Esc/q]{/} Close Help",
 			width: 60,
-			height: 20,
+			height: popupHeight,
 		});
-
-		const shortcuts = getHelpShortcuts(context);
 
 		const content = shortcuts.map((s) => `{cyan-fg}[${s.key.padStart(5)}]{/} ${s.desc}`).join("\n");
 
-		box({
+		// Terminals too short for every shortcut keep the remaining rows reachable by scrolling.
+		const contentBox = createScrollableViewport({
 			parent: popup,
 			top: 1,
 			left: 2,
@@ -88,6 +100,15 @@ export async function openHelpPopup(screen: ScreenInterface, context: HelpPopupC
 			finish();
 			return false;
 		});
+
+		const maxScrollOffset = Math.max(0, shortcuts.length - (popupHeight - HELP_POPUP_CHROME_ROWS));
+		const scrollBy = (delta: number) => {
+			contentBox.childBase = Math.min(maxScrollOffset, Math.max(0, contentBox.childBase + delta));
+			screen.render();
+			return false;
+		};
+		popup.key(["up"], () => scrollBy(-1));
+		popup.key(["down"], () => scrollBy(1));
 
 		setImmediate(() => {
 			popup.focus();

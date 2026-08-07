@@ -3,9 +3,81 @@ import { box, textarea, textbox } from "neo-neo-bblessed";
 import type { Task, TaskCreateInput } from "../../types/index.ts";
 import { getPriorityOptions } from "../../utils/priority-config.ts";
 import { getTaskTypeValues } from "../../utils/task-type-config.ts";
-import { createPopupChrome, type FilterPopupChoice, openSingleSelectFilterPopup } from "./filter-popup.ts";
+import {
+	createPopupChrome,
+	createScrollableViewport,
+	type FilterPopupChoice,
+	openSingleSelectFilterPopup,
+} from "./filter-popup.ts";
 
 const DRAFT_STATUS = "Draft";
+
+/** Tab order, matching the top-to-bottom reading order of the composer. */
+const FIELD_ORDER = ["title", "description", "status", "type", "priority", "create", "cancel"] as const;
+
+/** The widget's wrapped lines (`real`), the logical lines they belong to, and how many there are. */
+export type CaretLines = {
+	real: readonly string[];
+	rtof: readonly number[];
+	fakeCount: number;
+};
+
+/**
+ * The input widgets report the caret as a negative offset from the end of its wrapped line
+ * rather than as an index, so count everything that follows the caret to place it in the value.
+ */
+export function caretIndexFromCursor(value: string, cursor: { x: number; y: number }, lines: CaretLines): number {
+	if (lines.real.length === 0) return value.length;
+	const lastLine = lines.real.length - 1;
+	const currentLine = Math.min(lastLine, Math.max(0, lastLine + cursor.y));
+	let after = -Math.min(0, cursor.x);
+	for (let line = currentLine + 1; line <= lastLine; line += 1) after += (lines.real[line] ?? "").length;
+	// Wrapped lines share a logical line; only logical breaks add a newline character.
+	after += Math.max(0, lines.fakeCount - 1 - (lines.rtof[currentLine] ?? 0));
+	return Math.min(value.length, Math.max(0, value.length - after));
+}
+
+/** Cursor offsets placing the caret at `caretIndex`; the inverse of {@link caretIndexFromCursor}. */
+export function cursorFromCaretIndex(value: string, caretIndex: number, lines: CaretLines): { x: number; y: number } {
+	const lastLine = lines.real.length - 1;
+	if (lastLine < 0) return { x: 0, y: 0 };
+	const after = Math.max(0, value.length - caretIndex);
+	let trailing = 0;
+	for (let line = lastLine; line >= 0; line -= 1) {
+		const newlines = Math.max(0, lines.fakeCount - 1 - (lines.rtof[line] ?? 0));
+		const column = after - trailing - newlines;
+		if (column >= 0 && column <= (lines.real[line] ?? "").length) return { x: -column, y: -(lastLine - line) };
+		trailing += (lines.real[line] ?? "").length;
+	}
+	return { x: 0, y: -lastLine };
+}
+
+// An astral character such as an emoji is two UTF-16 units, and removing one of them leaves an
+// unpaired surrogate that renders as a replacement character and corrupts the saved task file.
+const isHighSurrogate = (code: number) => code >= 0xd800 && code <= 0xdbff;
+const isLowSurrogate = (code: number) => code >= 0xdc00 && code <= 0xdfff;
+
+/** First index Backspace (one character) or Ctrl+W (one word) should remove, counting back from the caret. */
+export function deletionStart(value: string, caretIndex: number, unit: "char" | "word"): number {
+	if (caretIndex <= 0) return caretIndex;
+	if (unit === "char") {
+		const pairedBack =
+			isLowSurrogate(value.charCodeAt(caretIndex - 1)) && isHighSurrogate(value.charCodeAt(caretIndex - 2));
+		return caretIndex - (pairedBack ? 2 : 1);
+	}
+	let start = caretIndex;
+	while (start > 0 && /\s/.test(value[start - 1] ?? "")) start -= 1;
+	while (start > 0 && !/\s/.test(value[start - 1] ?? "")) start -= 1;
+	return start;
+}
+
+/** Last index Delete should remove, counting forward from the caret. */
+export function deletionEnd(value: string, caretIndex: number): number {
+	if (caretIndex >= value.length) return caretIndex;
+	const pairedForward =
+		isHighSurrogate(value.charCodeAt(caretIndex)) && isLowSurrogate(value.charCodeAt(caretIndex + 1));
+	return caretIndex + (pairedForward ? 2 : 1);
+}
 
 export type TaskComposerValues = {
 	title: string;
@@ -19,30 +91,47 @@ export type TaskComposerLayout = {
 	compact: boolean;
 	popupWidth: string | number;
 	popupHeight: number;
+	descriptionHeight: number;
+	detailsTop: number;
+	detailsHeight: number;
+	actionsTop: number;
+	contentHeight: number;
 };
 
 export function getTaskComposerLayout(screenWidth: number, screenHeight: number): TaskComposerLayout {
-	const compact = screenWidth < 70 || screenHeight < 30;
+	const compact = screenWidth < 64 || screenHeight < 20;
+	const descriptionHeight = compact ? 3 : 6;
+	const detailsTop = 3 + descriptionHeight;
+	const detailsHeight = compact ? 4 : 3;
+	const actionsTop = detailsTop + detailsHeight;
 	return {
 		compact,
 		popupWidth: screenWidth < 76 ? "96%" : 72,
-		popupHeight: compact ? Math.max(8, screenHeight - 2) : Math.min(30, screenHeight),
+		// The popup must never be taller than the screen: blessed centers it by subtracting
+		// half its height, so an oversized popup starts at a negative row and its actions,
+		// error and help rows fall outside the terminal.
+		popupHeight: Math.min(20, Math.max(3, screenHeight - 2)),
+		descriptionHeight,
+		detailsTop,
+		detailsHeight,
+		actionsTop,
+		// Compact hides the "Actions" caption, so the buttons are the last row instead of the second-last.
+		contentHeight: actionsTop + (compact ? 1 : 2),
 	};
 }
 
 function getTaskComposerHelpText(screenWidth: number, compact: boolean): string {
-	if (!compact) {
-		return " {cyan-fg}[Tab/Shift+Tab]{/} Field | {cyan-fg}[Enter/Space]{/} Open/Create | {cyan-fg}[Esc]{/} Cancel";
-	}
+	// Each variant has to fit the popup width it is shown at, so drop hints as the screen narrows.
 	if (screenWidth < 60) {
-		return " {cyan-fg}[Tab]{/} Next | {cyan-fg}[Enter]{/} Open | {cyan-fg}[Esc]{/} Cancel";
+		return " {cyan-fg}[↑↓←→/Tab]{/} Nav | {cyan-fg}[Enter]{/} Choose";
 	}
-	return " {cyan-fg}[Tab]{/} Next | {cyan-fg}[Enter]{/} Open/Create | {cyan-fg}[Esc]{/} Cancel";
+	if (compact) {
+		return " {cyan-fg}[↑↓←→/Tab]{/} Nav | {cyan-fg}[Enter]{/} Choose | {cyan-fg}[Esc]{/} Cancel";
+	}
+	return " {cyan-fg}[↑↓/←→/Tab]{/} Navigate | {cyan-fg}[Enter/Space]{/} Choose | {cyan-fg}[Esc]{/} Cancel";
 }
 
 type TaskComposerField = "title" | "description" | "status" | "type" | "priority" | "create" | "cancel";
-
-const FIELD_ORDER: TaskComposerField[] = ["title", "description", "status", "type", "priority", "create", "cancel"];
 
 function uniqueChoices(values: readonly string[], excludedValue?: string): string[] {
 	const choices: string[] = [];
@@ -154,108 +243,116 @@ export async function openTaskComposer(options: TaskComposerOptions): Promise<Ta
 		let pickerOpen = false;
 		let activeField: TaskComposerField = "title";
 		let layout = getTaskComposerLayout(options.screen.width, options.screen.height);
-		let narrow = layout.compact;
 		const { popup, close, reflow } = createPopupChrome({
 			screen: options.screen,
 			title: "Create Task",
-			helpText: getTaskComposerHelpText(options.screen.width, narrow),
+			helpText: getTaskComposerHelpText(options.screen.width, layout.compact),
 			width: layout.popupWidth,
 			height: layout.popupHeight,
 		});
 
-		const form = box({
+		// Short terminals cannot show every field at once, so the fields live in a viewport
+		// that clips them to the popup and scrolls the focused one into view.
+		const form = createScrollableViewport({
 			parent: popup,
 			top: 1,
 			left: 1,
 			right: 1,
 			bottom: 2,
-			scrollable: true,
-			alwaysScroll: true,
 			keys: false,
 			mouse: true,
 		});
 
-		const label = (top: number, content: string) =>
-			box({ parent: form, top, left: 1, height: 1, content, style: { fg: "cyan" } });
-
-		const titleLabel = label(0, "Title");
 		const titleInput = textbox({
 			parent: form,
-			top: 1,
+			top: 0,
 			left: 1,
 			right: 1,
 			height: 3,
 			border: { type: "line" },
+			label: " Title ",
 			keys: true,
 			mouse: true,
 			inputOnFocus: false,
+			// Suppresses the scroll key bindings this widget inherits from its scrollable base.
+			ignoreKeys: true,
+			style: { border: { fg: "gray" } },
 		});
 
-		const descriptionLabel = label(4, "Description");
 		const descriptionInput = textarea({
 			parent: form,
-			top: 5,
+			top: 3,
 			left: 1,
 			right: 1,
-			height: narrow ? 3 : 5,
+			height: layout.descriptionHeight,
 			border: { type: "line" },
+			label: " Description ",
 			keys: true,
 			mouse: true,
 			inputOnFocus: false,
 			scrollable: true,
+			style: { border: { fg: "gray" } },
 		});
 
-		const createSelectField = (top: number, fieldLabel: string, value: string, side?: "left" | "right") => {
-			return box({
+		const detailsGroup = box({
+			parent: form,
+			top: layout.detailsTop,
+			left: 1,
+			right: 1,
+			height: layout.detailsHeight,
+			border: { type: "line" },
+			label: " Details ",
+			style: { border: { fg: "cyan" } },
+		});
+		// The selectors and buttons sit inside the details frame visually, but stay direct
+		// children of the viewport: blessed drops grandchildren of a scrolled viewport, which
+		// would make them invisible on short terminals.
+		const selectorContent = (label: string, value: string) => `${label}: ${displayChoice(value)} ▼`;
+		const createSelector = (label: string, value: string) =>
+			box({
 				parent: form,
-				top: narrow ? top : top + 1,
-				left: narrow && side === "right" ? "50%" : 1,
-				...(narrow && side ? { width: "48%" } : { right: 1 }),
-				height: narrow ? 1 : 3,
-				...(narrow ? {} : { border: { type: "line" } }),
-				content: narrow ? `${fieldLabel}: ${displayChoice(value)}` : ` ${displayChoice(value)}`,
+				top: 0,
+				left: 3,
+				height: 1,
+				content: selectorContent(label, value),
 				keys: true,
 				mouse: true,
 			});
-		};
+		const statusField = createSelector("Status", controller.values.status);
+		const typeField = createSelector("Type", controller.values.type);
+		const priorityField = createSelector("Priority", controller.values.priority);
 
-		const statusLabel = label(10, "Status");
-		const typeLabel = label(14, "Type");
-		const priorityLabel = label(18, "Priority");
-		const statusField = createSelectField(narrow ? 8 : 10, "Status", controller.values.status);
-		const typeField = createSelectField(narrow ? 9 : 14, "Type", controller.values.type, narrow ? "left" : undefined);
-		const priorityField = createSelectField(
-			narrow ? 9 : 18,
-			"Priority",
-			controller.values.priority,
-			narrow ? "right" : undefined,
-		);
-
+		const actionsLabel = box({
+			parent: form,
+			top: layout.actionsTop,
+			left: 1,
+			height: 1,
+			content: "Actions",
+			style: { fg: "cyan", bold: true },
+		});
 		const createAction = box({
 			parent: form,
-			top: narrow ? 10 : 22,
-			left: 1,
-			width: 14,
-			height: narrow ? 1 : 3,
-			...(narrow ? {} : { border: { type: "line" } }),
+			top: layout.actionsTop + 1,
+			left: 2,
+			width: 18,
+			height: 1,
 			align: "center",
-			valign: "middle",
-			content: "Create",
+			content: "Create task",
 			keys: true,
 			mouse: true,
+			style: { fg: "green" },
 		});
 		const cancelAction = box({
 			parent: form,
-			top: narrow ? 10 : 22,
-			left: 17,
+			top: layout.actionsTop + 1,
+			left: 22,
 			width: 14,
-			height: narrow ? 1 : 3,
-			...(narrow ? {} : { border: { type: "line" } }),
+			height: 1,
 			align: "center",
-			valign: "middle",
 			content: "Cancel",
 			keys: true,
 			mouse: true,
+			style: { fg: "gray" },
 		});
 
 		const errorBox = box({
@@ -277,91 +374,40 @@ export async function openTaskComposer(options: TaskComposerOptions): Promise<Ta
 			create: createAction,
 			cancel: cancelAction,
 		};
-		const getFieldTop = (field: TaskComposerField): number => {
-			const tops: Record<TaskComposerField, number> = {
+		/** Row of each field inside the scrollable viewport; selectors sit inside the details frame. */
+		const getFieldTops = (): Record<TaskComposerField, number> => {
+			const secondSelectorRow = layout.detailsTop + (layout.compact ? 2 : 1);
+			const actionsRow = layout.actionsTop + (layout.compact ? 0 : 1);
+			return {
 				title: 0,
-				description: 4,
-				status: narrow ? 8 : 10,
-				type: narrow ? 9 : 14,
-				priority: narrow ? 9 : 18,
-				create: narrow ? 10 : 22,
-				cancel: narrow ? 10 : 22,
+				description: 3,
+				status: layout.detailsTop + 1,
+				type: secondSelectorRow,
+				priority: secondSelectorRow,
+				create: actionsRow,
+				cancel: actionsRow,
 			};
-			return tops[field];
 		};
-		type MutableLayoutWidget = BoxInterface & {
-			border?: { type: "line" };
-			hide(): void;
-			show(): void;
-		};
+		const getFieldTop = (field: TaskComposerField): number => getFieldTops()[field];
 		const setFieldGeometry = (
 			widget: BoxInterface,
-			geometry: { top: number; left: string | number; width: string | number; height: number },
-			bordered: boolean,
+			geometry: { top: number; left: string | number; width: string | number; height?: number },
 		) => {
 			widget.top = geometry.top;
 			widget.left = geometry.left;
 			widget.width = geometry.width;
-			widget.height = geometry.height;
-			(widget as MutableLayoutWidget).border = bordered ? { type: "line" } : undefined;
-		};
-		const applyLayout = () => {
-			layout = getTaskComposerLayout(options.screen.width, options.screen.height);
-			narrow = layout.compact;
-			reflow(layout.popupWidth, layout.popupHeight, getTaskComposerHelpText(options.screen.width, layout.compact));
-			titleLabel.top = 0;
-			descriptionLabel.top = 4;
-			descriptionInput.height = narrow ? 3 : 5;
-			for (const fieldLabel of [statusLabel, typeLabel, priorityLabel] as MutableLayoutWidget[]) {
-				if (narrow) fieldLabel.hide();
-				else fieldLabel.show();
-			}
-			statusLabel.top = 10;
-			typeLabel.top = 14;
-			priorityLabel.top = 18;
-			setFieldGeometry(
-				statusField,
-				{ top: narrow ? 8 : 11, left: 1, width: "100%-2", height: narrow ? 1 : 3 },
-				!narrow,
-			);
-			setFieldGeometry(
-				typeField,
-				{ top: narrow ? 9 : 15, left: 1, width: narrow ? "48%" : "100%-2", height: narrow ? 1 : 3 },
-				!narrow,
-			);
-			setFieldGeometry(
-				priorityField,
-				{
-					top: narrow ? 9 : 19,
-					left: narrow ? "50%" : 1,
-					width: narrow ? "48%" : "100%-2",
-					height: narrow ? 1 : 3,
-				},
-				!narrow,
-			);
-			setFieldGeometry(createAction, { top: narrow ? 10 : 22, left: 1, width: 14, height: narrow ? 1 : 3 }, !narrow);
-			setFieldGeometry(cancelAction, { top: narrow ? 10 : 22, left: 17, width: 14, height: narrow ? 1 : 3 }, !narrow);
-			statusField.setContent(
-				narrow ? `Status: ${displayChoice(controller.values.status)}` : ` ${displayChoice(controller.values.status)}`,
-			);
-			typeField.setContent(
-				narrow ? `Type: ${displayChoice(controller.values.type)}` : ` ${displayChoice(controller.values.type)}`,
-			);
-			priorityField.setContent(
-				narrow
-					? `Priority: ${displayChoice(controller.values.priority)}`
-					: ` ${displayChoice(controller.values.priority)}`,
-			);
-			scrollFieldIntoView(activeField);
+			if (geometry.height !== undefined) widget.height = geometry.height;
 		};
 
 		const setBorder = (widget: BoxInterface | TextboxInterface, active: boolean) => {
 			const style = (widget.style ?? {}) as { border?: { fg?: string }; inverse?: boolean; bold?: boolean };
-			style.border ??= {};
-			style.border.fg = active ? "yellow" : "gray";
 			const isTextInput = widget === titleInput || widget === descriptionInput;
-			style.inverse = active && (!isTextInput || widget === createAction || widget === cancelAction) && narrow;
-			style.bold = active && (widget === createAction || widget === cancelAction);
+			if (isTextInput) {
+				style.border ??= {};
+				style.border.fg = active ? "yellow" : "gray";
+			}
+			style.inverse = active && !isTextInput;
+			style.bold = active && !isTextInput;
 			widget.style = style;
 		};
 
@@ -374,11 +420,39 @@ export async function openTaskComposer(options: TaskComposerOptions): Promise<Ta
 		};
 
 		const scrollFieldIntoView = (field: TaskComposerField) => {
-			const scrollable = form as BoxInterface & { scrollTo?: (index: number) => void };
-			const visibleHeight = typeof form.height === "number" ? form.height : 14;
-			const top = getFieldTop(field);
-			const target = Math.max(0, top - Math.max(0, visibleHeight - 5));
-			scrollable.scrollTo?.(target);
+			const visibleHeight = typeof form.height === "number" ? form.height : 12;
+			const target = Math.max(0, getFieldTop(field) - Math.max(0, visibleHeight - 3));
+			form.childBase = Math.min(Math.max(0, layout.contentHeight - visibleHeight), target);
+		};
+
+		const applyLayout = () => {
+			layout = getTaskComposerLayout(options.screen.width, options.screen.height);
+			reflow(layout.popupWidth, layout.popupHeight, getTaskComposerHelpText(options.screen.width, layout.compact));
+			descriptionInput.height = layout.descriptionHeight;
+			detailsGroup.top = layout.detailsTop;
+			detailsGroup.height = layout.detailsHeight;
+			actionsLabel.top = layout.actionsTop;
+			const mutableActionsLabel = actionsLabel as BoxInterface & { hide(): void; show(): void };
+			if (layout.compact) mutableActionsLabel.hide();
+			else mutableActionsLabel.show();
+			const tops = getFieldTops();
+			if (layout.compact) {
+				setFieldGeometry(statusField, { top: tops.status, left: 3, width: "100%-6" });
+				setFieldGeometry(typeField, { top: tops.type, left: 3, width: "44%" });
+				setFieldGeometry(priorityField, { top: tops.priority, left: "50%", width: "44%" });
+				setFieldGeometry(createAction, { top: tops.create, left: 3, width: "44%" });
+				setFieldGeometry(cancelAction, { top: tops.cancel, left: "50%", width: "44%" });
+			} else {
+				setFieldGeometry(statusField, { top: tops.status, left: 3, width: "30%" });
+				setFieldGeometry(typeField, { top: tops.type, left: "35%", width: "30%" });
+				setFieldGeometry(priorityField, { top: tops.priority, left: "67%", width: "30%" });
+				setFieldGeometry(createAction, { top: tops.create, left: 2, width: 18 });
+				setFieldGeometry(cancelAction, { top: tops.cancel, left: 22, width: 14 });
+			}
+			statusField.setContent(selectorContent("Status", controller.values.status));
+			typeField.setContent(selectorContent("Type", controller.values.type));
+			priorityField.setContent(selectorContent("Priority", controller.values.priority));
+			scrollFieldIntoView(activeField);
 		};
 
 		const focusField = (field: TaskComposerField) => {
@@ -392,19 +466,53 @@ export async function openTaskComposer(options: TaskComposerOptions): Promise<Ta
 			>) {
 				setBorder(widget, name === field);
 			}
-			scrollFieldIntoView(field);
 			const widget = widgets[field];
 			widget.focus();
 			if (field === "title" || field === "description") {
 				(widget as TextboxInterface).readInput();
 			}
+			// blessed scrolls a focused widget into view using its offset within its immediate
+			// parent, which is wrong for the grouped selectors and buttons, so correct it after.
+			scrollFieldIntoView(field);
 			options.screen.render();
 		};
 
-		const moveFocus = (direction: -1 | 1) => {
+		const navigate = (direction: "up" | "down" | "left" | "right") => {
+			let next = activeField;
+			if (layout.compact) {
+				if (activeField === "status" && direction === "up") next = "description";
+				if (activeField === "status" && direction === "down") next = "type";
+				if (activeField === "type" && direction === "up") next = "status";
+				if (activeField === "type" && direction === "down") next = "create";
+				if (activeField === "type" && direction === "right") next = "priority";
+				if (activeField === "priority" && direction === "up") next = "status";
+				if (activeField === "priority" && direction === "down") next = "cancel";
+				if (activeField === "priority" && direction === "left") next = "type";
+				if (activeField === "create" && direction === "up") next = "type";
+				if (activeField === "cancel" && direction === "up") next = "priority";
+			} else {
+				if (["status", "type", "priority"].includes(activeField)) {
+					if (direction === "up") next = "description";
+					if (direction === "down") next = activeField === "priority" ? "cancel" : "create";
+				}
+				if (activeField === "create" && direction === "up") next = "status";
+				if (activeField === "cancel" && direction === "up") next = "priority";
+			}
+			if (activeField === "status" && direction === "left") next = "status";
+			if (activeField === "status" && direction === "right" && !layout.compact) next = "type";
+			if (activeField === "type" && direction === "left" && !layout.compact) next = "status";
+			if (activeField === "type" && direction === "right" && !layout.compact) next = "priority";
+			if (activeField === "priority" && direction === "left" && !layout.compact) next = "type";
+			if (activeField === "create" && direction === "right") next = "cancel";
+			if (activeField === "cancel" && direction === "left") next = "create";
+			if (next !== activeField) focusField(next);
+		};
+
+		/** Tab traversal: reading order, wrapping at both ends. */
+		const moveFocus = (step: number) => {
 			const index = FIELD_ORDER.indexOf(activeField);
-			const nextIndex = (index + direction + FIELD_ORDER.length) % FIELD_ORDER.length;
-			focusField(FIELD_ORDER[nextIndex] ?? "title");
+			const next = FIELD_ORDER[(index + step + FIELD_ORDER.length) % FIELD_ORDER.length];
+			if (next) focusField(next);
 		};
 		const onResize = () => {
 			syncInputs();
@@ -472,9 +580,7 @@ export async function openTaskComposer(options: TaskComposerOptions): Promise<Ta
 				if (selected !== null) {
 					controller.values[field] = selected;
 					const fieldLabel = field === "status" ? "Status" : field === "type" ? "Type" : "Priority";
-					widgets[field].setContent(
-						narrow ? `${fieldLabel}: ${displayChoice(selected)}` : ` ${displayChoice(selected)}`,
-					);
+					widgets[field].setContent(selectorContent(fieldLabel, selected));
 				}
 			} finally {
 				pickerOpen = false;
@@ -494,23 +600,104 @@ export async function openTaskComposer(options: TaskComposerOptions): Promise<Ta
 		popup.key(["escape"], escapeHandler);
 		for (const widget of Object.values(widgets)) {
 			widget.key(["escape"], escapeHandler);
-		}
-
-		for (const input of [titleInput, descriptionInput]) {
-			input.key(["tab"], () => {
+			widget.key(["tab"], () => {
 				moveFocus(1);
 				return false;
 			});
-			input.key(["S-tab"], () => {
+			widget.key(["S-tab"], () => {
 				moveFocus(-1);
 				return false;
 			});
+		}
+
+		type ComposerInput = TextboxInterface & {
+			_listener?: (ch: string, key: { name?: string }) => void;
+			_clines?: { length: number; real?: string[]; rtof?: number[]; fake?: string[] };
+			getCursor?: () => { x: number; y: number };
+			setCursor?: (x: number, y: number) => void;
+			_updateCursor?: () => void;
+		};
+		/**
+		 * Keys the composer implements itself. Tab moves between fields instead of typing a tab,
+		 * and deletion is owned here because the widgets cannot do it: the textbox deletes from the
+		 * end and returns before repainting, and the textarea's backspace branch is empty on the
+		 * unicode-capable screens this TUI creates.
+		 */
+		const ownedInputKeys = new Set(["tab", "backspace", "delete"]);
+		const ownInputKeys = (input: ComposerInput) => {
+			const listener = input._listener?.bind(input);
+			if (!listener) return;
+			input._listener = (ch, key) => {
+				if ((key.name && ownedInputKeys.has(key.name)) || ch === "\t") return;
+				listener(ch, key);
+			};
+		};
+		ownInputKeys(titleInput as ComposerInput);
+		ownInputKeys(descriptionInput as ComposerInput);
+
+		const readCaretLines = (input: ComposerInput, value: string): CaretLines => ({
+			real: input._clines?.real ?? [value],
+			rtof: input._clines?.rtof ?? [0],
+			fakeCount: input._clines?.fake?.length ?? 1,
+		});
+
+		const deleteText = (input: ComposerInput, unit: "char" | "word" | "forward") => {
+			const value = input.getValue();
+			const cursor = input.getCursor?.() ?? { x: 0, y: 0 };
+			const caret = caretIndexFromCursor(value, cursor, readCaretLines(input, value));
+			const start = unit === "forward" ? caret : deletionStart(value, caret, unit);
+			const end = unit === "forward" ? deletionEnd(value, caret) : caret;
+			if (start >= end) return;
+			const next = value.slice(0, start) + value.slice(end);
+			// Removing a line break shortens the wrapped lines, and setValue makes the widget
+			// reposition its cursor straight away. Park the caret on the last line first, which is
+			// valid for any content, so that update cannot read past the end of the new lines.
+			input.setCursor?.(0, 0);
+			input.setValue(next);
+			syncInputs();
+			const caretAfter = cursorFromCaretIndex(next, start, readCaretLines(input, next));
+			input.setCursor?.(caretAfter.x, caretAfter.y);
+			input._updateCursor?.();
+			options.screen.render();
+		};
+
+		let cursorBeforeKey: { y: number; lines: number } | null = null;
+		for (const input of [titleInput, descriptionInput] as ComposerInput[]) {
 			input.on("keypress", () => {
+				cursorBeforeKey = {
+					y: input.getCursor?.().y ?? 0,
+					lines: Math.max(1, input._clines?.length ?? input.getValue().split("\n").length),
+				};
 				controller.error = "";
 				errorBox.setContent("");
 			});
+			input.key(["backspace"], () => {
+				deleteText(input, "char");
+				return false;
+			});
+			input.key(["delete"], () => {
+				deleteText(input, "forward");
+				return false;
+			});
+			input.key(["C-w"], () => {
+				deleteText(input, "word");
+				return false;
+			});
 		}
+		titleInput.key(["down"], () => {
+			focusField("description");
+			return false;
+		});
 		titleInput.on("submit", () => focusField("description"));
+		descriptionInput.key(["up"], () => {
+			const cursor = cursorBeforeKey;
+			if (cursor && cursor.y <= -(cursor.lines - 1)) focusField("title");
+			return false;
+		});
+		descriptionInput.key(["down"], () => {
+			if (cursorBeforeKey?.y === 0) focusField("status");
+			return false;
+		});
 
 		for (const field of ["status", "type", "priority"] as const) {
 			const widget = widgets[field];
@@ -523,14 +710,12 @@ export async function openTaskComposer(options: TaskComposerOptions): Promise<Ta
 
 		for (const field of ["status", "type", "priority", "create", "cancel"] as const) {
 			const widget = widgets[field];
-			widget.key(["tab"], () => {
-				moveFocus(1);
-				return false;
-			});
-			widget.key(["S-tab"], () => {
-				moveFocus(-1);
-				return false;
-			});
+			for (const direction of ["up", "down", "left", "right"] as const) {
+				widget.key([direction], () => {
+					navigate(direction);
+					return false;
+				});
+			}
 		}
 
 		createAction.key(["enter", "space"], () => {
