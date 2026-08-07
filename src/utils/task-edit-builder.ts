@@ -8,6 +8,14 @@ function sanitizeStringArray(values: string[] | undefined): string[] | undefined
 	return trimmed.length > 0 ? trimmed : undefined;
 }
 
+/**
+ * Resolve a clearable list field: blank-only values are a no-op, an explicit empty array clears the list.
+ */
+function sanitizeClearableStringArray(values: string[] | undefined): string[] | undefined {
+	if (values === undefined) return undefined;
+	return sanitizeStringArray(values) ?? (values.length === 0 ? [] : undefined);
+}
+
 function sanitizeAppend(values: string[] | undefined): string[] | undefined {
 	const sanitized = sanitizeStringArray(values);
 	if (!sanitized) {
@@ -80,16 +88,12 @@ export function buildTaskUpdateInput(args: TaskEditArgs): TaskUpdateInput {
 		updateInput.assignee = assignee;
 	}
 
-	if (args.dependencies !== undefined) {
-		const dependencies = sanitizeStringArray(args.dependencies);
-		if (dependencies) {
-			updateInput.dependencies = dependencies;
-		} else if (args.dependencies.length === 0) {
-			updateInput.dependencies = [];
-		}
+	const dependencies = sanitizeClearableStringArray(args.dependencies);
+	if (dependencies) {
+		updateInput.dependencies = dependencies;
 	}
 
-	const references = sanitizeStringArray(args.references);
+	const references = sanitizeClearableStringArray(args.references);
 	if (references) {
 		updateInput.references = references;
 	}
@@ -104,7 +108,7 @@ export function buildTaskUpdateInput(args: TaskEditArgs): TaskUpdateInput {
 		updateInput.removeReferences = removeReferences;
 	}
 
-	const documentation = sanitizeStringArray(args.documentation);
+	const documentation = sanitizeClearableStringArray(args.documentation);
 	if (documentation) {
 		updateInput.documentation = documentation;
 	}

@@ -116,4 +116,51 @@ describe("MCP task references and documentation", () => {
 		expect(task?.references).toEqual(["ref-1.ts", "ref-3.ts"]);
 		expect(task?.documentation).toEqual(["doc-1.md", "doc-3.md"]);
 	});
+
+	it("does not clear references or documentation from blank-only task_edit arrays", async () => {
+		await mcpServer.testInterface.callTool({
+			params: {
+				name: "task_create",
+				arguments: {
+					title: "Blank input",
+					references: ["ref-1.ts"],
+					documentation: ["doc-1.md"],
+				},
+			},
+		});
+
+		const blankEdit = await mcpServer.testInterface.callTool({
+			params: {
+				name: "task_edit",
+				arguments: {
+					id: "task-1",
+					references: ["", "   "],
+					documentation: ["", "   "],
+				},
+			},
+		});
+
+		expect(getText(blankEdit.content)).toContain("References: ref-1.ts");
+		expect(getText(blankEdit.content)).toContain("Documentation: doc-1.md");
+		let task = await mcpServer.getTask("task-1");
+		expect(task?.references).toEqual(["ref-1.ts"]);
+		expect(task?.documentation).toEqual(["doc-1.md"]);
+
+		const clearEdit = await mcpServer.testInterface.callTool({
+			params: {
+				name: "task_edit",
+				arguments: {
+					id: "task-1",
+					references: [],
+					documentation: [],
+				},
+			},
+		});
+
+		expect(getText(clearEdit.content)).not.toContain("References:");
+		expect(getText(clearEdit.content)).not.toContain("Documentation:");
+		task = await mcpServer.getTask("task-1");
+		expect(task?.references).toEqual([]);
+		expect(task?.documentation).toEqual([]);
+	});
 });
