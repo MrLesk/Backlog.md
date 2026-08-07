@@ -1,0 +1,220 @@
+<!doctype html>
+<html lang="en">
+<head>
+	<meta charset="utf-8" />
+	<meta name="viewport" content="width=device-width, initial-scale=1" />
+	<style>
+		:root { color-scheme: dark; font-family: ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; background: #202020; color: #ececec; }
+		* { box-sizing: border-box; }
+		body { margin: 0; background: #202020; }
+		button, input, select { font: inherit; color: inherit; }
+		.app { min-height: 520px; padding: 22px; }
+		header { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 18px; }
+		.title { display: flex; align-items: center; gap: 12px; min-width: 0; }
+		.mark { width: 35px; height: 35px; display: grid; place-items: center; border-radius: 10px; background: #303030; border: 1px solid #424242; }
+		.mark svg { width: 20px; fill: none; stroke: #b6caf0; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
+		h1 { font-size: 21px; line-height: 1.2; margin: 0; font-weight: 600; }
+		.project { color: #929292; font-size: 13px; margin-top: 3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 480px; }
+		.actions { display: flex; align-items: center; gap: 8px; }
+		.icon-button, .view-button, .chat { display: inline-grid; place-items: center; border: 1px solid #494949; background: #2b2b2b; border-radius: 9px; cursor: pointer; }
+		.icon-button { width: 36px; height: 36px; }
+		.icon-button svg, .chat svg { width: 17px; height: 17px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
+		.view-button { display: flex; gap: 7px; padding: 8px 11px; }
+		.view-button svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.6; }
+		.controls { display: grid; grid-template-columns: minmax(190px, 1fr) repeat(3, minmax(130px, 180px)); gap: 9px; margin-bottom: 16px; }
+		input, select { width: 100%; border: 1px solid #454545; background: #292929; border-radius: 9px; padding: 9px 11px; outline: none; }
+		input:focus, select:focus { border-color: #6e86ab; }
+		.table { border-top: 1px solid #383838; }
+		.row { display: grid; grid-template-columns: 105px minmax(240px, 1.7fr) minmax(175px, .8fr) 120px 155px 42px; gap: 16px; align-items: center; min-height: 62px; border-bottom: 1px solid #383838; padding: 10px 9px; }
+		.row.head { color: #888; font-size: 12px; text-transform: uppercase; letter-spacing: .04em; min-height: 38px; }
+		.id { color: #95b6ee; font-variant-numeric: tabular-nums; }
+		.task-title { line-height: 1.35; }
+		.muted { color: #929292; }
+		.status-line { display: flex; align-items: center; gap: 9px; white-space: nowrap; }
+		.ring { --progress: 0deg; --status: #7d9fd8; width: 21px; height: 21px; flex: 0 0 auto; border-radius: 50%; display: grid; place-items: center; background: conic-gradient(var(--status) var(--progress), #505050 0); }
+		.ring::after { content: ""; width: 15px; height: 15px; border-radius: 50%; background: #202020; }
+		.ring.done::after { content: "✓"; width: 15px; height: 15px; display: grid; place-items: center; background: #67b279; color: #17231a; font-size: 10px; font-weight: 800; }
+		.count { color: #8f8f8f; font-size: 13px; }
+		.chat { width: 36px; height: 34px; color: #c8c8c8; }
+		.chat:hover, .icon-button:hover, .view-button:hover { background: #373737; border-color: #5a5a5a; }
+		.board { display: grid; grid-template-columns: repeat(3, minmax(250px, 1fr)); gap: 12px; overflow-x: auto; }
+		.column { border: 1px solid #414141; border-radius: 13px; background: #242424; min-height: 380px; overflow: hidden; }
+		.column-head { display: flex; align-items: center; justify-content: space-between; padding: 15px 16px; border-bottom: 1px solid #3e3e3e; }
+		.column-title { display: flex; align-items: center; gap: 9px; font-weight: 550; }
+		.dot { width: 8px; height: 8px; border-radius: 50%; }
+		.cards { padding: 10px; display: grid; gap: 9px; }
+		.card { border: 1px solid #414141; border-radius: 11px; background: #2a2a2a; padding: 13px; }
+		.row.current { background: #27303d; box-shadow: inset 3px 0 #7d9fd8; }
+		.card.current { border-color: #7898c9; box-shadow: 0 0 0 1px #7898c955, 0 8px 24px #0003; }
+		.card-top, .card-bottom { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+		.card .task-title { margin: 12px 0 17px; min-height: 38px; }
+		.progress { display: flex; align-items: center; gap: 7px; }
+		.empty, .loading { min-height: 360px; display: grid; place-items: center; color: #969696; }
+		footer { display: flex; align-items: center; justify-content: space-between; color: #838383; font-size: 12px; padding-top: 14px; }
+		.badge { border: 1px solid #444; background: #292929; border-radius: 999px; padding: 3px 8px; }
+		.detail { border: 1px solid #414141; border-radius: 15px; background: #272727; overflow: hidden; }
+		.detail-main { padding: 24px; }
+		.detail-kicker, .detail-status, .detail-meta { display: flex; align-items: center; gap: 10px; }
+		.detail-kicker { justify-content: space-between; }
+		.detail h2 { font-size: 25px; line-height: 1.25; margin: 18px 0 12px; font-weight: 600; }
+		.description { color: #c9c9c9; line-height: 1.55; margin: 0 0 22px; white-space: pre-wrap; }
+		.detail-meta { flex-wrap: wrap; color: #9b9b9b; font-size: 13px; }
+		.detail-meta span { border: 1px solid #444; border-radius: 999px; padding: 4px 9px; }
+		.detail-section { border-top: 1px solid #3e3e3e; padding: 18px 24px; }
+		.detail-section h3 { font-size: 13px; color: #a9a9a9; text-transform: uppercase; letter-spacing: .05em; margin: 0 0 13px; }
+		.checklist { display: grid; gap: 10px; }
+		.check { display: grid; grid-template-columns: 18px 1fr; align-items: start; gap: 10px; line-height: 1.4; }
+		.check-mark { width: 17px; height: 17px; border: 1px solid #5a5a5a; border-radius: 5px; display: grid; place-items: center; color: #17231a; margin-top: 1px; }
+		.check.done .check-mark { background: #67b279; border-color: #67b279; }
+		.check.done .check-mark::after { content: "✓"; font-size: 11px; font-weight: 800; }
+		.check.done .check-text { color: #989898; }
+		@media (max-width: 850px) {
+			.controls { grid-template-columns: 1fr 1fr; }
+			.row { grid-template-columns: 88px minmax(200px, 1fr) 170px 42px; }
+			.row > :nth-child(4), .row > :nth-child(5) { display: none; }
+		}
+	</style>
+</head>
+<body>
+	<main class="app" id="app"><div class="loading">Connecting to Backlog.md…</div></main>
+	<script>
+		const STATUS_ORDER = { "In Progress": 0, "To Do": 1, "Done": 2 };
+		const STATUS_COLORS = { "In Progress": "#d6a654", "To Do": "#7d9fd8", "Done": "#67b279" };
+		const state = { data: null, mode: "browse", view: "list", selectedTaskId: null, query: "", status: "", priority: "", assignee: "" };
+		let requestId = 0;
+		const pending = new Map();
+
+		function send(method, params) {
+			const id = ++requestId;
+			parent.postMessage({ jsonrpc: "2.0", id, method, params }, "*");
+			return new Promise((resolve, reject) => pending.set(id, { resolve, reject }));
+		}
+
+		function notify(method, params) {
+			parent.postMessage({ jsonrpc: "2.0", method, ...(params === undefined ? {} : { params }) }, "*");
+		}
+
+		function acceptToolResult(result) {
+			const payload = result?.structuredContent ?? result?.toolOutput?.structuredContent ?? result;
+			if (!payload?.tasks) return;
+			state.data = payload;
+			state.mode = payload.view === "detail" && payload.selectedTask ? "detail" : "browse";
+			state.selectedTaskId = payload.selectedTaskId ?? null;
+			render();
+		}
+
+		window.addEventListener("message", (event) => {
+			const message = event.data;
+			if (!message || message.jsonrpc !== "2.0") return;
+			if (message.id && pending.has(message.id)) {
+				const callback = pending.get(message.id);
+				pending.delete(message.id);
+				if (message.error) callback.reject(message.error); else callback.resolve(message.result);
+				return;
+			}
+			if (message.method === "ui/notifications/tool-result") acceptToolResult(message.params);
+		});
+
+		function esc(value) {
+			return String(value ?? "").replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;").replaceAll('"', "&quot;");
+		}
+
+		function filteredTasks() {
+			if (!state.data) return [];
+			const query = state.query.trim().toLowerCase();
+			return state.data.tasks.filter((task) => {
+				if (query && !`${task.id} ${task.title}`.toLowerCase().includes(query)) return false;
+				if (state.status && task.status !== state.status) return false;
+				if (state.priority && (task.priority ?? "") !== state.priority) return false;
+				if (state.assignee && !task.assignees.includes(state.assignee)) return false;
+				return true;
+			}).sort((a, b) => (STATUS_ORDER[a.status] ?? 99) - (STATUS_ORDER[b.status] ?? 99));
+		}
+
+		function ring(task) {
+			const total = task.progress?.total ?? 0;
+			const checked = task.progress?.checked ?? 0;
+			const complete = total > 0 && checked === total;
+			const degrees = total ? (checked / total) * 360 : 0;
+			return `<span class="ring ${complete ? "done" : ""}" style="--progress:${degrees}deg;--status:${STATUS_COLORS[task.status] ?? "#7d9fd8"}"></span><span class="count">${checked}/${total}</span>`;
+		}
+
+		function chatButton(task) {
+			return `<button class="chat" data-chat="${esc(task.id)}" title="Use in Chat" aria-label="Use ${esc(task.id)} in Chat"><svg viewBox="0 0 18 18"><path d="M10.8 11.5H6l-3.5 2.7V5.6A2.6 2.6 0 0 1 5.1 3h7.8a2.6 2.6 0 0 1 2.6 2.6v3.3a2.6 2.6 0 0 1-2.6 2.6h-2.1Z"/><path d="m8 6.2 2.7 1.5L8 9.2Z"/></svg></button>`;
+		}
+
+		function list(tasks) {
+			return `<div class="table"><div class="row head"><span>Task</span><span>Title</span><span>Status</span><span>Priority</span><span>Assignee</span><span></span></div>${tasks.map((task) => `<div class="row ${task.id === state.selectedTaskId ? "current" : ""}" data-current="${task.id === state.selectedTaskId}"><span class="id">${esc(task.id)}</span><span class="task-title">${esc(task.title)}</span><span class="status-line">${ring(task)}<span>${esc(task.status)}</span></span><span class="muted">${esc(task.priority ?? "—")}</span><span class="muted">${esc(task.assignees[0] ?? "Unassigned")}</span>${chatButton(task)}</div>`).join("")}</div>`;
+		}
+
+		function kanban(tasks) {
+			const statuses = ["In Progress", "To Do", "Done"];
+			return `<div class="board">${statuses.map((status) => { const matches = tasks.filter((task) => task.status === status); return `<section class="column"><div class="column-head"><span class="column-title"><span class="dot" style="background:${STATUS_COLORS[status]}"></span>${status}</span><span class="muted">${matches.length}</span></div><div class="cards">${matches.map((task) => `<article class="card ${task.id === state.selectedTaskId ? "current" : ""}" data-current="${task.id === state.selectedTaskId}"><div class="card-top"><span class="id">${esc(task.id)}</span><span class="progress">${ring(task)}</span></div><div class="task-title">${esc(task.title)}</div><div class="card-bottom"><span class="muted">${esc(task.assignees[0] ?? "Unassigned")}</span>${chatButton(task)}</div></article>`).join("")}</div></section>`; }).join("")}</div>`;
+		}
+
+		function appHeader(title, actions) {
+			return `<header><div class="title"><span class="mark"><svg viewBox="0 0 24 24"><path d="M9 5h6m-7 4h8m-8 4h8m-8 4h5M7 3h10a2 2 0 0 1 2 2v15l-3-2-4 2-4-2-3 2V5a2 2 0 0 1 2-2Z"/></svg></span><div><h1>${esc(title)}</h1><div class="project">${esc(state.data.project.name)} · ${esc(state.data.project.path)}</div></div></div><div class="actions">${actions}<button class="icon-button" data-expand title="Expand"><svg viewBox="0 0 20 20"><path d="M7 3H3v4M13 3h4v4M7 17H3v-4M13 17h4v-4"/></svg></button></div></header>`;
+		}
+
+		function detail(task) {
+			const criteria = task.acceptanceCriteria ?? [];
+			const metadata = [task.status, task.priority, task.type, ...(task.assignees ?? [])].filter(Boolean);
+			const actions = `<button class="view-button" data-browse="list">List</button><button class="view-button" data-browse="kanban">Kanban</button>`;
+			return `${appHeader(task.id, actions)}<article class="detail"><div class="detail-main"><div class="detail-kicker"><span class="id">${esc(task.id)}</span><span class="detail-status">${ring(task)}<span>${esc(task.status)}</span></span></div><h2>${esc(task.title)}</h2>${task.description ? `<p class="description">${esc(task.description)}</p>` : ""}<div class="detail-meta">${metadata.map((item) => `<span>${esc(item)}</span>`).join("")}</div></div>${criteria.length ? `<section class="detail-section"><h3>Acceptance criteria · ${task.progress.checked}/${task.progress.total}</h3><div class="checklist">${criteria.map((item) => `<div class="check ${item.checked ? "done" : ""}"><span class="check-mark"></span><span class="check-text">${esc(item.text)}</span></div>`).join("")}</div></section>` : ""}${task.implementationPlan ? `<section class="detail-section"><h3>Implementation plan</h3><div class="description">${esc(task.implementationPlan)}</div></section>` : ""}</article><footer><span>Current task is retained when browsing</span><span class="badge">MCP Apps demo</span></footer>`;
+		}
+
+		function options(values, selected, all) {
+			return `<option value="">${all}</option>${values.map((value) => `<option ${value === selected ? "selected" : ""}>${esc(value)}</option>`).join("")}`;
+		}
+
+		function render() {
+			if (!state.data) return;
+			if (state.mode === "detail" && state.data.selectedTask) {
+				document.querySelector("#app").innerHTML = detail(state.data.selectedTask);
+				return;
+			}
+			const tasks = filteredTasks();
+			const priorities = [...new Set(state.data.tasks.map((task) => task.priority).filter(Boolean))];
+			const assignees = [...new Set(state.data.tasks.flatMap((task) => task.assignees))];
+			const switchView = `<button class="view-button" data-view><svg viewBox="0 0 20 20">${state.view === "list" ? '<rect x="2.5" y="3" width="4" height="14" rx="1"/><rect x="8" y="3" width="4" height="9" rx="1"/><rect x="13.5" y="3" width="4" height="12" rx="1"/>' : '<path d="M6 5h11M6 10h11M6 15h11"/>'}</svg>${state.view === "list" ? "Kanban" : "List"}</button>`;
+			document.querySelector("#app").innerHTML = `${appHeader("Tasks", switchView)}<div class="controls"><input data-query placeholder="Search tasks" value="${esc(state.query)}"/><select data-filter="status">${options(["In Progress", "To Do", "Done"], state.status, "All statuses")}</select><select data-filter="priority">${options(priorities, state.priority, "All priorities")}</select><select data-filter="assignee">${options(assignees, state.assignee, "All assignees")}</select></div>${tasks.length ? (state.view === "list" ? list(tasks) : kanban(tasks)) : '<div class="empty">No matching tasks</div>'}<footer><span>${tasks.length} tasks</span><span class="badge">MCP Apps demo</span></footer>`;
+			requestAnimationFrame(() => document.querySelector('[data-current="true"]')?.scrollIntoView({ block: "center", inline: "center" }));
+		}
+
+		document.addEventListener("input", (event) => {
+			if (!event.target.matches("[data-query]")) return;
+			state.query = event.target.value;
+			render();
+			document.querySelector("[data-query]")?.focus();
+		});
+		document.addEventListener("change", (event) => {
+			const filter = event.target.dataset.filter;
+			if (!filter) return;
+			state[filter] = event.target.value;
+			render();
+		});
+		document.addEventListener("click", (event) => {
+			const browse = event.target.closest("[data-browse]");
+			if (browse) {
+				state.mode = "browse";
+				state.view = browse.dataset.browse;
+				window.openai?.setWidgetState?.({ mode: state.mode, view: state.view, selectedTaskId: state.selectedTaskId });
+				render();
+				return;
+			}
+			if (event.target.closest("[data-view]")) { state.view = state.view === "list" ? "kanban" : "list"; render(); return; }
+			if (event.target.closest("[data-expand]")) { send("ui/request-display-mode", { mode: "fullscreen" }).catch(() => {}); return; }
+			const button = event.target.closest("[data-chat]");
+			if (!button) return;
+			const task = state.data.tasks.find((item) => item.id === button.dataset.chat);
+			if (!task) return;
+			send("ui/message", { role: "user", content: [{ type: "text", text: `Use Backlog task ${task.id}: ${task.title}. Read its details with task_view before starting.` }] }).catch(() => {});
+		});
+
+		if (window.openai?.toolOutput) acceptToolResult(window.openai.toolOutput);
+		send("ui/initialize", { appInfo: { name: "Backlog Tasks", version: "0.1.0" }, appCapabilities: {}, protocolVersion: "2025-06-18" })
+			.then(() => notify("ui/notifications/initialized"))
+			.catch(() => {});
+	</script>
+</body>
+</html>

@@ -597,6 +597,10 @@ export class Core {
 			return filtered;
 		};
 
+		if (!includeCrossBranch && !trimmedQuery) {
+			return await applyFiltersAndLimit(await this.fs.listTasks());
+		}
+
 		if (!trimmedQuery) {
 			const store = await this.getContentStore();
 			await this.refreshCachedTasksForCrossBranchRead(includeCrossBranch);
@@ -658,13 +662,20 @@ export class Core {
 		return identityResolution.status === "found" ? identityResolution.task : null;
 	}
 
-	async getTaskWithSubtasks(taskId: string, localTasks?: Task[]): Promise<Task | null> {
-		const task = await this.getTask(taskId);
+	async getTaskWithSubtasks(
+		taskId: string,
+		localTasks?: Task[],
+		options?: { includeCrossBranch?: boolean },
+	): Promise<Task | null> {
+		const tasks = localTasks ?? (await this.fs.listTasks());
+		const task =
+			options?.includeCrossBranch === false
+				? (tasks.find((candidate) => taskIdsEqual(taskId, candidate.id)) ?? null)
+				: await this.getTask(taskId);
 		if (!task) {
 			return null;
 		}
 
-		const tasks = localTasks ?? (await this.fs.listTasks());
 		return attachSubtaskSummaries(task, tasks);
 	}
 

@@ -19,6 +19,13 @@ type TaskSummaryJson = {
 	updatedAt: string | null;
 };
 
+type TaskListItemJson = TaskSummaryJson & {
+	acceptanceCriteria: {
+		checked: number;
+		total: number;
+	};
+};
+
 type ChecklistItemJson = {
 	index: number;
 	text: string;
@@ -172,7 +179,20 @@ function toDecisionSummaryJson(decision: Decision): DecisionSummaryJson {
 }
 
 export function taskListJson(tasks: Task[]) {
-	return { schemaVersion: 1, kind: "task-list" as const, tasks: tasks.map(toTaskSummaryJson) };
+	return {
+		schemaVersion: 1,
+		kind: "task-list" as const,
+		tasks: tasks.map((task): TaskListItemJson => {
+			const criteria = task.acceptanceCriteriaItems ?? [];
+			return {
+				...toTaskSummaryJson(task),
+				acceptanceCriteria: {
+					checked: criteria.filter((item) => item.checked).length,
+					total: criteria.length,
+				},
+			};
+		}),
+	};
 }
 
 export function taskViewJson(task: Task, projectRoot: string) {
