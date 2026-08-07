@@ -5,7 +5,7 @@ status: Done
 assignee:
   - '@claude'
 created_date: '2026-08-07 21:40'
-updated_date: '2026-08-07 21:49'
+updated_date: '2026-08-07 21:53'
 labels:
   - security
 dependencies: []
@@ -85,6 +85,18 @@ Per-alert triage:
 | 9 | GHSA-2v8p-3f2j-5mp7 | medium | XY chart infinite loop DoS | Low. Same bounded local-tab impact as the radar DoS | Guards the single-datum case that made step 0 and produced a non-terminating loop |
 
 Scope note: Dependabot labels all five as scope "development", but that is inaccurate for the shipped artifact. src/web/utils/mermaid.ts imports mermaid/dist/mermaid.esm.mjs and the bundle is embedded in the compiled binary, confirmed by finding mermaid-architecture and flowchart-v2 markers inside dist/backlog. Mermaid does render repository markdown at runtime. Impact stays bounded because the browser server is loopback-only and the rendered content is the local repository, so the realistic vector is a diagram authored by a contributor in a task or document file. Mermaid is initialized with securityLevel strict, which already blocks script injection but does not cover the CSS or prototype pollution issues.
+
+Nix packaging follow-up:
+
+bun.nix pins one fetchurl entry per package with an explicit url and sha512 hash, so the mermaid 11.16.0 to 11.16.1 change invalidated it. Regenerated with the documented generator, bun run update-nix, which is bunx bun2nix@2.1.1 -o bun.nix reading bun.lock. The resulting diff is exactly 3 lines, the mermaid key, url, and hash, and the hash matches the bun.lock integrity for 11.16.1. bun.lock and package.json were not touched by the regeneration.
+
+Is the manual step still required? Yes. Nothing regenerates bun.nix automatically. package.json defines only prepare: husky, with no postinstall hook. An earlier iteration did regenerate it from a postinstall hook (see BACK-286 and BACK-340), but that was removed and DEVELOPMENT.md now documents bun run update-nix as a manual step to run whenever bun.lock changes.
+
+Would CI catch a forgotten regeneration? Yes, through two independent guards in .github/workflows/ci.yml:
+- Verify bun2nix dependency lock (ubuntu-latest, in the main test job) runs bun run update-nix and then git diff --exit-code -- bun.nix, so a stale committed file fails the build immediately.
+- The nix-package job runs nix build .#backlog-md --print-build-logs. It would also fail, because fetchBunDeps builds the offline dependency cache from bun.nix while bun.lock demands mermaid 11.16.1, which would be absent from that cache.
+
+So the step is manual but not silently forgettable: CI fails rather than repairing it. Nix is not installed in this environment, so nix build was not run locally and the nix-package CI job on the PR is the validation.
 <!-- SECTION:NOTES:END -->
 
 ## Final Summary
