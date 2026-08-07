@@ -11,7 +11,7 @@ bun install
 Run tests:
 
 ```bash
-bun test
+bun run test
 ```
 
 Format and lint:

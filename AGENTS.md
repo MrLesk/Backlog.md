@@ -46,8 +46,8 @@ is necessary to prevent misunderstanding or error, and never use it to restate t
 
 ### Testing
 
-- `bun test` - Run all tests
-- `bun test <filename>` - Run specific test file
+- `bun run test` - Run all tests (applies the same test timeout CI uses)
+- `bun test --timeout=10000 <filename>` - Run specific test file
 
 ### Configuration Management
 
