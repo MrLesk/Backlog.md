@@ -5,7 +5,7 @@ status: Done
 assignee:
   - '@alex-agent'
 created_date: '2026-07-13 16:06'
-updated_date: '2026-08-07 23:33'
+updated_date: '2026-08-07 23:46'
 labels:
   - tui
   - web
@@ -87,6 +87,8 @@ Final verification on the built binary (dist/backlog) against a disposable proje
 - MCP: driven over stdio against the shipped binary, task_list with ready true returns the same three tasks and without it returns all four. No new MCP tools; the existing tool and schema carry the filter.
 - TUI: detail pane shows 'Readiness: ● Blocked by TASK-2' and 'Readiness: ✓ Ready to start', nothing for a task without dependencies, and no stale render cells when navigating between them.
 - Browser: the Dependencies card shows the matching amber and green badges in light and dark themes with no console errors.
+
+Merged origin/main (BACK-593 web task-ID linking) into the branch. The merge was clean, but the full suite then failed one rendered assertion: main made the task-details modal router-dependent, so the readiness modal test now wraps it in MemoryRouter and TaskIdIndexProvider like the other modal tests. Re-verified on the merged tree: bun run test 2008 pass, 0 fail across 219 files; tsc, biome and build clean; TUI detail pane, browser modal (ready and blocked, no console errors), and task list --ready all re-checked on the rebuilt binary.
 <!-- SECTION:NOTES:END -->
 
 ## Final Summary
