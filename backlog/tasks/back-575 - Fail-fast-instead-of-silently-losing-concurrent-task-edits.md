@@ -5,7 +5,7 @@ status: In Progress
 assignee:
   - '@claude'
 created_date: '2026-08-07 17:25'
-updated_date: '2026-08-07 17:53'
+updated_date: '2026-08-07 18:39'
 labels:
   - bug
 dependencies: []
@@ -105,4 +105,24 @@ scripts/smoke-parallel-task-locking.sh gains scenario 4 (8 parallel CLI edits ov
 - An edit holds the lock across auto-commit and any `onStatusChange` callback, so a slow callback makes concurrent edits of that same task fail fast.
 
 Credit: the defect report, the measurement of the lost-write window, and the shape of the concurrency harness come from iRonin (withdrawn PR #852, issue #843).
+
+## Review fix: Draft demotion was outside the lock (F1)
+
+The Draft-status branch routed to `demoteTaskWithUpdates` before the lock was taken, leaving its whole read-modify-write (apply input to a pre-lock snapshot, save draft, unlink the task file) unprotected. Reachable from the web PUT and MCP `task_edit` (its status enum includes "Draft"); plain CLI `task edit` rejects "Draft" and was never exposed.
+
+Fix: the task lock now lives **inside `demoteTaskWithUpdates`**, with the same in-lock re-read. That placement was chosen over wrapping the branch in `updateTaskFromInput` because `editTaskOrDraft` (the MCP path) calls `demoteTaskWithUpdates` **directly**, bypassing `updateTaskFromInput` entirely - locking at the demote closes both entry points with one lock site and no nesting. `updateTaskFromInput` still delegates to it before taking its own lock, so the locks never nest.
+
+**Deadlock check (verified, not assumed):** inside the task lock the demote waits on the create lock, so the order is task lock then create lock. All six `withCreateLock` bodies were read - `createTaskFromInput`, `promoteDraftWithUpdates`, `demoteTaskWithUpdates`, `promoteDraft`, `createDocumentFromInput`, and `applyDuplicateTaskIdRepair` - and none of them acquires a task lock or calls the edit funnel (`grep` for editTask/updateTask/withTaskLock in duplicate-task-repair.ts is empty). The order is acyclic. Even a future cycle would surface as an immediate fail-fast error rather than a hang, because the task lock never retries.
+
+Also fixed (F4, advisory): ENOENT while acquiring the lock - the task file moved or was removed between snapshot load and lock acquisition - now maps to 'Edit failed: <id> was moved or removed by another process.' instead of a raw errno, and therefore to 409 / OPERATION_FAILED like other contention.
+
+Two new tests (9 total in the file):
+- **the demote race**: the create lock is held so the demote parks inside its draft-id allocation, then a concurrent edit runs; the invariant asserted is that either the edit fails loudly with the contention message and the draft does not carry its label, or the edit succeeded and the draft does carry it - never a success report with a lost write. Verified as a genuine regression test: with the lock removed from the demote it fails with exactly the reported symptom - the edit resolved successfully and the demoted draft came back with `[]`.
+- **the MCP entry point**: with the task lock held, `editTaskOrDraft(id, { status: "Draft" })` now rejects with the contention message, the task file survives, and no draft is created. Confirmed by probe that this path was previously unprotected even after the first fix.
+
+Re-verified after the fix: `bunx tsc --noEmit` clean, Biome clean, `bun test` 1898 pass / 5 skip / 0 fail, smoke script all four scenarios pass (8 jobs, 1 succeeded).
+
+Still out of scope and unchanged as declared follow-ups: draft edits (`updateDraftFromInput`), board reorder / `updateTasksBulk`, and the TUI external-editor write path. Plain `backlog task demote` (`Core.demoteTask`) is a separate path and remains unprotected.
+
+**F3, recorded as a known behavioral consequence:** the lock is held across auto-commit and the `onStatusChange` callback, so a callback that itself edits the same task will always fail with the contention message, and any slow callback makes concurrent edits of that task fail fast for its duration.
 <!-- SECTION:NOTES:END -->

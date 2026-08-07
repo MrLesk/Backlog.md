@@ -321,6 +321,10 @@ export class FileSystem {
 		if (code === "ELOCKED") {
 			return taskLockError(taskLockErrorMessage(taskId), error);
 		}
+		if (code === "ENOENT") {
+			// The file was moved or removed between loading the snapshot and locking it.
+			return taskLockError(`Edit failed: ${taskId} was moved or removed by another process.`, error);
+		}
 		if (code === "ECOMPROMISED") {
 			return taskLockError(`Edit failed: the lock on ${taskId} was interrupted; retry if appropriate.`, error);
 		}

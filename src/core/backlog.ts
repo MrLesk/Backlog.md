@@ -2030,6 +2030,7 @@ export class Core {
 
 		const requestedStatus = input.status?.trim().toLowerCase();
 		if (requestedStatus === "draft") {
+			// demoteTaskWithUpdates takes the task lock itself, so it must not be nested here.
 			return await this.demoteTaskWithUpdates(task, input, autoCommit);
 		}
 
@@ -2173,44 +2174,55 @@ export class Core {
 		return savedTask ?? { ...promotedTask, filePath: savedPath };
 	}
 
+	// Demotion is a read-modify-write of the task file too, reached from both updateTaskFromInput
+	// and editTaskOrDraft, so it takes the task lock here rather than at each caller. Waiting on
+	// the create lock below happens while the task lock is held; the order is always task lock
+	// then create lock, never the reverse, so the two cannot deadlock.
 	private async demoteTaskWithUpdates(task: Task, input: TaskUpdateInput, autoCommit?: boolean): Promise<Task> {
-		const { mutated } = await this.applyTaskUpdateInput(task, { ...input, status: undefined }, async (status) => {
-			if (status.trim().toLowerCase() === "draft") {
-				return "Draft";
-			}
-			return this.requireCanonicalStatus(status);
-		});
-
-		const { demotedDraft, savedPath } = await this.withCreateLock(async () => {
-			const newDraftId = await this.generateNextId(EntityType.Draft);
-			const taskPath = task.filePath;
-
-			const demotedDraft: Task = {
-				...task,
-				id: newDraftId,
-				status: "Draft",
-				filePath: undefined,
-				...(mutated || task.status !== "Draft"
-					? { updatedDate: new Date().toISOString().slice(0, 16).replace("T", " ") }
-					: {}),
-			};
-
-			normalizeAssignee(demotedDraft);
-			const savedPath = await this.fs.saveDraft(demotedDraft);
-
-			if (taskPath) {
-				await unlink(taskPath);
+		return await this.fs.withTaskLock(task, async () => {
+			const current = await this.loadLocalTaskForMutation(task.id);
+			if (!current) {
+				throw new Error(`Task not found: ${task.id}`);
 			}
 
-			return { demotedDraft, savedPath };
+			const { mutated } = await this.applyTaskUpdateInput(current, { ...input, status: undefined }, async (status) => {
+				if (status.trim().toLowerCase() === "draft") {
+					return "Draft";
+				}
+				return this.requireCanonicalStatus(status);
+			});
+
+			const { demotedDraft, savedPath } = await this.withCreateLock(async () => {
+				const newDraftId = await this.generateNextId(EntityType.Draft);
+				const taskPath = current.filePath;
+
+				const demotedDraft: Task = {
+					...current,
+					id: newDraftId,
+					status: "Draft",
+					filePath: undefined,
+					...(mutated || current.status !== "Draft"
+						? { updatedDate: new Date().toISOString().slice(0, 16).replace("T", " ") }
+						: {}),
+				};
+
+				normalizeAssignee(demotedDraft);
+				const savedPath = await this.fs.saveDraft(demotedDraft);
+
+				if (taskPath) {
+					await unlink(taskPath);
+				}
+
+				return { demotedDraft, savedPath };
+			});
+
+			if (await this.shouldAutoCommit(autoCommit)) {
+				const previousPaths = current.filePath ? [current.filePath] : [];
+				await this.commitWrittenFile(`backlog: Demote task ${normalizeTaskId(current.id)}`, previousPaths, savedPath);
+			}
+
+			return (await this.fs.loadDraft(demotedDraft.id)) ?? { ...demotedDraft, filePath: savedPath };
 		});
-
-		if (await this.shouldAutoCommit(autoCommit)) {
-			const previousPaths = task.filePath ? [task.filePath] : [];
-			await this.commitWrittenFile(`backlog: Demote task ${normalizeTaskId(task.id)}`, previousPaths, savedPath);
-		}
-
-		return (await this.fs.loadDraft(demotedDraft.id)) ?? { ...demotedDraft, filePath: savedPath };
 	}
 
 	/**

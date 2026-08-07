@@ -99,6 +99,83 @@ describe("atomic task editing", () => {
 		expect(await finalLabels()).toEqual([...succeeded].sort());
 	});
 
+	it("never silently loses an edit that races a demotion to Draft", async () => {
+		await createContendedTask();
+
+		// Demotion is reachable with status "Draft" from the web PUT and MCP task_edit. Holding
+		// the create lock parks the demote inside its draft-id allocation, the window where an
+		// unprotected demote used to apply its own pre-lock snapshot over a concurrent edit.
+		const createLockEntered = createDeferred<void>();
+		const releaseCreateLock = createDeferred<void>();
+		const heldCreateLock = setup.fs.withCreateLock(async () => {
+			createLockEntered.resolve();
+			await releaseCreateLock.promise;
+		});
+		await withTimeout(createLockEntered.promise, "the create lock to be held", 5_000);
+
+		const demoter = new Core(testDir);
+		const editor = new Core(testDir);
+		const demoteReachedCreateLock = createDeferred<void>();
+		const originalWithCreateLock = demoter.withCreateLock.bind(demoter);
+		demoter.withCreateLock = (async <T>(fn: () => Promise<T>): Promise<T> => {
+			demoteReachedCreateLock.resolve();
+			return await originalWithCreateLock(fn);
+		}) as typeof demoter.withCreateLock;
+
+		try {
+			const demotion = demoter.updateTaskFromInput(CONTENDED_ID, { status: "Draft" }, false);
+			await withTimeout(demoteReachedCreateLock.promise, "the demote to reach the create lock", 5_000);
+
+			const editOutcome = await editor.updateTaskFromInput(CONTENDED_ID, { addLabels: ["racer"] }, false).then(
+				() => null,
+				(error: unknown) => error,
+			);
+			releaseCreateLock.resolve();
+			await heldCreateLock;
+			await demotion;
+
+			const draft = await setup.fs.loadDraft("DRAFT-1");
+			expect(draft?.status).toBe("Draft");
+			if (editOutcome === null) {
+				// If the edit was told it succeeded, the demoted draft must carry it.
+				expect(draft?.labels ?? []).toContain("racer");
+			} else {
+				// Otherwise it must have failed loudly rather than being silently dropped.
+				expect(isTaskLockError(editOutcome)).toBe(true);
+				expect((editOutcome as Error).message).toBe(CONTENTION_MESSAGE);
+				expect(draft?.labels ?? []).not.toContain("racer");
+			}
+		} finally {
+			releaseCreateLock.resolve();
+			demoter.disposeContentStore();
+			editor.disposeContentStore();
+		}
+	});
+
+	it("blocks a demotion to Draft that reaches the funnel through editTaskOrDraft", async () => {
+		const task = await createContendedTask();
+		const lockEntered = createDeferred<void>();
+		const releaseLock = createDeferred<void>();
+		const heldLock = setup.fs.withTaskLock(task, async () => {
+			lockEntered.resolve();
+			await releaseLock.promise;
+		});
+		await withTimeout(lockEntered.promise, "the lock to be held", 5_000);
+
+		// MCP task_edit with status "Draft" calls demoteTaskWithUpdates directly, skipping
+		// updateTaskFromInput, so the lock has to live in the demote itself.
+		const other = new Core(testDir);
+		try {
+			await expect(other.editTaskOrDraft(CONTENDED_ID, { status: "Draft" }, false)).rejects.toThrow(CONTENTION_MESSAGE);
+			expect(await setup.fs.loadTask(CONTENDED_ID)).not.toBeNull();
+			expect(await setup.fs.listDrafts()).toEqual([]);
+		} finally {
+			releaseLock.resolve();
+			await heldLock;
+			other.disposeContentStore();
+		}
+	});
+
 	it("keeps concurrent edits of different tasks independent", async () => {
 		await setup.createTaskFromInput({ title: "Task A" }, false);
 		await setup.createTaskFromInput({ title: "Task B" }, false);
