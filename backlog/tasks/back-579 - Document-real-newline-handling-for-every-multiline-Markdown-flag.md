@@ -5,7 +5,7 @@ status: Done
 assignee:
   - '@claude'
 created_date: '2026-08-07 17:25'
-updated_date: '2026-08-07 20:10'
+updated_date: '2026-08-07 20:32'
 labels:
   - bug
 dependencies: []
@@ -64,6 +64,13 @@ Escape decoding was deliberately not implemented. The reporter did not ask for i
 Verified: bunx tsc --noEmit clean; bun run check . clean (357 files); bun run test 1910 pass / 5 skip / 0 fail across 213 files; rendered task create/edit/draft create/doc update/milestone add/task list --help by hand.
 
 Validation: bunx tsc --noEmit, bun run check ., bun run test (1910 pass, 0 fail), plus manual --help rendering for task create, task edit, draft create, doc update, milestone add, and task list.
+
+Review follow-up (approved advisories):
+- Fixed the quick-reference table example that taught the reported anti-pattern: 'backlog task edit 42 --plan "1. Step one\n2. Step two"' now reads '--plan "1. Step one" --append-plan "2. Step two"', the top-ranked form in the guidelines' own multi-line section. The identical example appeared twice in src/guidelines/agent-guidelines.md (lines 177 and 563), so both were fixed; leaving one would have kept the trap. The '\n' mention at line 279 is a warning about the sequence, not an example, and the $'...' snippets in the Multi-line Input section are explicitly labelled shell-specific shorthand, so both stay.
+- Added append-notes and append-final-summary to the task edit schema for symmetry with append-plan and the create-side additions; all eight Markdown-typed edit fields now render.
+- Extended the help test with a milestone add positive assertion (block renders, example resolves to --description) and a doc create negative (no Markdown field, so no block).
+
+Re-verified: bunx tsc --noEmit clean; bun run check . clean (358 files); cli-guidance + agent-instructions 37 pass / 0 fail; bun run test 1919 pass / 5 skip / 0 fail across 214 files. Task stays Done; the $'...' example wording is unchanged pending the maintainer's separate call.
 <!-- SECTION:NOTES:END -->
 
 ## Final Summary

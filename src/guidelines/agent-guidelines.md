@@ -174,7 +174,7 @@ PR-style summary of what was implemented.
 | Uncheck DoD #2          | `backlog task edit 42 --uncheck-dod 2`                   |
 | Remove AC #3            | `backlog task edit 42 --remove-ac 3`                     |
 | Remove DoD #3           | `backlog task edit 42 --remove-dod 3`                    |
-| Add Plan                | `backlog task edit 42 --plan "1. Step one\n2. Step two"` |
+| Add Plan                | `backlog task edit 42 --plan "1. Step one" --append-plan "2. Step two"` |
 | Add Notes (replace)     | `backlog task edit 42 --notes "What I did"`              |
 | Append Notes            | `backlog task edit 42 --append-notes "Another note"` |
 | Add Comment             | `backlog task edit 42 --comment "Review question" --comment-author @agent` |
@@ -560,7 +560,7 @@ backlog search --modified-file src/server/api.ts --plain
 
 | Action           | Command                                                  |
 |------------------|----------------------------------------------------------|
-| Add plan         | `backlog task edit 42 --plan "1. Step one\n2. Step two"` |
+| Add plan         | `backlog task edit 42 --plan "1. Step one" --append-plan "2. Step two"` |
 | Add notes        | `backlog task edit 42 --notes "Implementation details"`  |
 | Add comment      | `backlog task edit 42 --comment "Review question" --comment-author @agent` |
 | Add final summary | `backlog task edit 42 --final-summary "PR-style summary"` |

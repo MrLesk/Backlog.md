@@ -368,6 +368,8 @@ describe("CLI Integration", () => {
 			const editHelp = await $`bun ${CLI_PATH} task edit --help`.cwd(TEST_DIR).text();
 			const listHelp = await $`bun ${CLI_PATH} task list --help`.cwd(TEST_DIR).text();
 			const docHelp = await $`bun ${CLI_PATH} doc update --help`.cwd(TEST_DIR).text();
+			const docCreateHelp = await $`bun ${CLI_PATH} doc create --help`.cwd(TEST_DIR).text();
+			const milestoneHelp = await $`bun ${CLI_PATH} milestone add --help`.cwd(TEST_DIR).text();
 			const draftHelp = (await $`bun ${CLI_PATH} draft create --help`.cwd(TEST_DIR).text()).replace(/\s+/g, " ");
 
 			for (const help of [createHelp, editHelp]) {
@@ -378,7 +380,16 @@ describe("CLI Integration", () => {
 			for (const field of ["description", "plan", "notes", "final-summary"]) {
 				expect(createHelp).toContain(`${field}: Markdown`);
 			}
-			for (const field of ["description", "plan", "notes", "comment", "final-summary"]) {
+			for (const field of [
+				"description",
+				"plan",
+				"append-plan",
+				"notes",
+				"append-notes",
+				"comment",
+				"final-summary",
+				"append-final-summary",
+			]) {
 				expect(editHelp).toContain(`${field}: Markdown`);
 			}
 
@@ -390,8 +401,11 @@ describe("CLI Integration", () => {
 
 			// The example always names a flag the command actually accepts.
 			expect(docHelp).toContain("Example (bash/zsh): --content $'First line\\nSecond line'");
+			expect(milestoneHelp).toContain("Markdown fields:");
+			expect(milestoneHelp).toContain("Example (bash/zsh): --description $'First line\\nSecond line'");
 			// Commands without Markdown fields stay unchanged.
 			expect(listHelp).not.toContain("Markdown fields:");
+			expect(docCreateHelp).not.toContain("Markdown fields:");
 		}, 15_000);
 
 		it("shows configured status values in task help", async () => {
