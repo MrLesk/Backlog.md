@@ -77,7 +77,7 @@ import { resolveMilestoneInputForStorage } from "./utils/milestone-storage.ts";
 import { hasAnyPrefix } from "./utils/prefix-config.ts";
 import { formatValidPriorityValues, getPriorityOptions, resolvePriorityValue } from "./utils/priority-config.ts";
 import { type ReadOutputMode, resolveReadOutputMode } from "./utils/read-output-mode.ts";
-import { type RuntimeCwdResolution, resolveRuntimeCwd } from "./utils/runtime-cwd.ts";
+import { resolveRuntimeCwd } from "./utils/runtime-cwd.ts";
 import { formatValidStatuses, getCanonicalStatus, getCanonicalStatuses, getValidStatuses } from "./utils/status.ts";
 import {
 	normalizeDependencies,
@@ -501,21 +501,27 @@ function getDefaultAdvancedConfig(existingConfig?: BacklogConfig | null): Partia
 }
 
 /**
- * Resolves the Backlog.md project root from the current working directory.
- * Walks up the directory tree to find backlog/ or backlog.json, with git root fallback.
- * Exits with error message if no Backlog.md project is found.
+ * Resolves the working directory commands operate on, honouring --cwd and BACKLOG_CWD.
+ * Exits with the resolution error message when the override points at an invalid directory.
  */
-async function requireProjectRoot(): Promise<string> {
-	let runtimeCwd: RuntimeCwdResolution;
+async function requireRuntimeCwd(): Promise<string> {
 	try {
-		runtimeCwd = await resolveRuntimeCwd();
+		const runtimeCwd = await resolveRuntimeCwd();
+		return runtimeCwd.cwd;
 	} catch (error) {
 		const message = error instanceof Error ? error.message : String(error);
 		console.error(message);
 		process.exit(1);
 	}
+}
 
-	const root = await findBacklogRoot(runtimeCwd.cwd);
+/**
+ * Resolves the Backlog.md project root from the current working directory.
+ * Walks up the directory tree to find backlog/ or backlog.json, with git root fallback.
+ * Exits with error message if no Backlog.md project is found.
+ */
+async function requireProjectRoot(): Promise<string> {
+	const root = await findBacklogRoot(await requireRuntimeCwd());
 	if (!root) {
 		console.error("No Backlog.md project found. Run `backlog init` to initialize.");
 		process.exit(1);
@@ -692,7 +698,7 @@ addHelpSchema(program.command("init [projectName]"), {
 		'backlog init "My Project" --defaults --agent-instructions agents,claude',
 	],
 })
-	.description("initialize backlog project in the current directory")
+	.description("initialize backlog project in the current directory (or BACKLOG_CWD when set)")
 	.option(
 		"--agent-instructions <instructions>",
 		"comma-separated agent instructions to create. Valid: claude, agents, gemini, copilot, cursor (writes AGENTS.md), none. Use 'none' to skip; when combined with others, 'none' is ignored.",
@@ -738,8 +744,8 @@ addHelpSchema(program.command("init [projectName]"), {
 			},
 		) => {
 			try {
-				// init command uses process.cwd() directly - it initializes in the current directory
-				const cwd = process.cwd();
+				// init targets the same directory every other command resolves (--cwd/BACKLOG_CWD, else process.cwd()).
+				const cwd = await requireRuntimeCwd();
 				const isRepo = await isGitRepository(cwd);
 				let filesystemOnly = options.git === false;
 
