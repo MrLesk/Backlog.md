@@ -101,13 +101,56 @@ describe("resolveBinaryPath", () => {
 	});
 });
 
+type ExecCall = { file: string; args: string[]; options: { encoding?: string; stdio?: unknown } };
+
+function execStub(result: string | (() => never)) {
+	const calls: ExecCall[] = [];
+	const exec = (file: string, args: string[], options: ExecCall["options"]) => {
+		calls.push({ file, args, options });
+		if (typeof result === "function") return result();
+		return result;
+	};
+	return { calls, exec };
+}
+
 describe("isRosettaTranslated", () => {
 	it("is false off macOS without shelling out", () => {
-		expect(isRosettaTranslated("linux")).toBe(false);
-		expect(isRosettaTranslated("win32")).toBe(false);
+		const { calls, exec } = execStub("1\n");
+		expect(isRosettaTranslated("linux", exec)).toBe(false);
+		expect(isRosettaTranslated("win32", exec)).toBe(false);
+		expect(calls).toHaveLength(0);
 	});
 
 	it("returns a boolean on the current platform", () => {
 		expect(typeof isRosettaTranslated()).toBe("boolean");
+	});
+
+	it("ignores the child's stderr so a denied sysctl cannot leak into our output", () => {
+		const { calls, exec } = execStub("0\n");
+		isRosettaTranslated("darwin", exec);
+		expect(calls).toHaveLength(1);
+		expect(calls[0]?.options.stdio).toEqual(["ignore", "pipe", "ignore"]);
+	});
+
+	it("probes sysctl for proc_translated with utf8 output", () => {
+		const { calls, exec } = execStub("0\n");
+		isRosettaTranslated("darwin", exec);
+		expect(calls[0]?.file).toBe("/usr/sbin/sysctl");
+		expect(calls[0]?.args).toEqual(["-in", "sysctl.proc_translated"]);
+		expect(calls[0]?.options.encoding).toBe("utf8");
+	});
+
+	it("reports translation only when sysctl returns 1", () => {
+		expect(isRosettaTranslated("darwin", execStub("1\n").exec)).toBe(true);
+		expect(isRosettaTranslated("darwin", execStub("0\n").exec)).toBe(false);
+		expect(isRosettaTranslated("darwin", execStub("").exec)).toBe(false);
+	});
+
+	it("falls back to false when the probe throws", () => {
+		const throwing = execStub(() => {
+			throw new Error("Operation not permitted");
+		});
+		expect(isRosettaTranslated("darwin", throwing.exec)).toBe(false);
+		expect(throwing.calls).toHaveLength(1);
 	});
 });
