@@ -1603,9 +1603,14 @@ ${description || `Milestone: ${title}`}`,
 					break;
 				case "default_assignee": {
 					// A YAML list, an inline array, or the legacy scalar form (`default_assignee: "@alex"`).
-					const scalar = value.replace(/['"]/g, "").trim();
-					config.defaultAssignee =
-						parsedListValues.default_assignee ?? this.parseInlineConfigList(value) ?? (scalar ? [scalar] : []);
+					const parsedList = parsedListValues.default_assignee ?? this.parseInlineConfigList(value);
+					if (parsedList) {
+						config.defaultAssignee = parsedList;
+					} else if (!value.startsWith("[")) {
+						const scalar = value.replace(/['"]/g, "").trim();
+						config.defaultAssignee = scalar ? [scalar] : [];
+					}
+					// A malformed array (`["@a`) is left unset rather than read as a bracket-shaped assignee.
 					break;
 				}
 				case "default_reporter":
@@ -1718,7 +1723,7 @@ ${description || `Milestone: ${title}`}`,
 		const lines = [
 			`project_name: "${config.projectName}"`,
 			...(config.defaultAssignee?.length
-				? [`default_assignee: [${config.defaultAssignee.map((assignee) => `"${assignee}"`).join(", ")}]`]
+				? [`default_assignee: [${config.defaultAssignee.map((assignee) => JSON.stringify(assignee)).join(", ")}]`]
 				: []),
 			...(config.defaultReporter ? [`default_reporter: "${config.defaultReporter}"`] : []),
 			...(config.defaultStatus ? [`default_status: "${config.defaultStatus}"`] : []),

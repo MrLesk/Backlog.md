@@ -64,6 +64,7 @@ Include:
 - Acceptance criteria that are specific, testable, and independent.
 - References or documentation when they are needed for implementation.
 - Dependencies when work must happen in order.
+- An assignee with `-a` when the task has a known owner; omitting it applies the project's configured `defaultAssignee` when one is set.
 
 For future work, do **not** add an implementation plan or speculative code approach during task creation. Creation
 captures the durable intent, context, scope, acceptance criteria, references, and dependencies. The worker researches

@@ -1712,7 +1712,8 @@ addHelpSchema(taskCmd.command("create [title]"), {
 		{
 			name: "assignee",
 			type: "Comma-separated strings",
-			description: "Assign one or more @names; repeat -a or use @name1,@name2",
+			description:
+				"Assign one or more @names; repeat -a or use @name1,@name2; omitting it applies the configured defaultAssignee",
 		},
 		{ name: "labels", type: "Comma-separated strings", description: "Task labels" },
 		{ name: "priority", type: priorityType, description: "Task priority" },

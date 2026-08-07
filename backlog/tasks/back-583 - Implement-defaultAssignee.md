@@ -5,7 +5,7 @@ status: Done
 assignee:
   - '@claude'
 created_date: '2026-08-07 17:25'
-updated_date: '2026-08-07 21:51'
+updated_date: '2026-08-07 22:25'
 labels:
   - bug
 dependencies: []
@@ -67,6 +67,18 @@ Empty vs absent: at the CLI, `-a` is parsed by `parseDelimitedStringList`, so bo
 No change was needed in src/utils/config-watcher.ts: `default_assignee` is already a recognized key and is deliberately left out of ARRAY_CONFIG_KEYS so configs still using the legacy scalar form keep publishing live updates.
 
 Also fixed a stale expectation in src/test/cli-guidance.test.ts, which asserts the literal `config set` key list in help output.
+
+PR #867 review (Codex), three accepted findings fixed:
+
+1. P1 instruction surface — with a configured defaultAssignee, omitting the flag now changes ownership, so agent-facing create surfaces say so. One clause each: the CLI task-creation guide (src/guidelines/cli-instructions/task-creation.md, Step 4 'Include' list), the `task create` help schema assignee entry (src/cli.ts), and the MCP `task_create` assignee property description (src/mcp/utils/schema-generators.ts). ADVANCED-CONFIG.md already documented it; these are the surfaces agents actually read.
+
+2. P2 YAML escaping — serializing an assignee containing a double quote or backslash emitted invalid YAML. Now uses `JSON.stringify` per item, the same escape mechanism serializeConfig already uses for definition_of_done, rather than a bespoke one. Verified: `config set defaultAssignee '@a"b'` writes `default_assignee: ["@a\\"b"]` and round-trips through parse and task create.
+
+3. P2 fail closed on malformed arrays — when both the YAML parser and parseInlineConfigList fail on a truncated array like `default_assignee: ["@a`, the legacy-scalar fallback used to reinterpret the raw text as a bracket-shaped assignee. Values starting with `[` are now rejected and the key is left unset, matching how the other list keys silently ignore malformed values; new tasks are created unassigned.
+
+Tests added in src/test/config-commands.test.ts (escaped-assignee round trip through set/parse/create; malformed array yields undefined config and an unassigned task) and src/test/cli-guidance.test.ts (task-creation guide clause; the create help-schema assertion moved to the whitespace-normalized text so the longer description survives help wrapping).
+
+Re-verified: bunx tsc --noEmit, bun run check ., config-commands + cli-guidance + mcp-server scoped runs, full bun run test (1955 pass, 5 skip, 0 fail).
 <!-- SECTION:NOTES:END -->
 
 ## Final Summary

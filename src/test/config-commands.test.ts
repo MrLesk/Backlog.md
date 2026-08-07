@@ -346,6 +346,32 @@ describe("Config commands", () => {
 		expect((await core.filesystem.loadConfig())?.defaultAssignee).toEqual(["@alice", "@bob"]);
 	});
 
+	it("round-trips a defaultAssignee containing characters that need YAML escaping", async () => {
+		const quoted = '@a"b\\c';
+		const set = await $`bun ${CLI_PATH} config set defaultAssignee ${quoted}`.cwd(TEST_DIR).nothrow().quiet();
+		expect(set.exitCode).toBe(0);
+
+		expect(await Bun.file(core.filesystem.configFilePath).text()).toContain('default_assignee: ["@a\\"b\\\\c"]');
+
+		core.filesystem.invalidateConfigCache();
+		expect((await core.filesystem.loadConfig())?.defaultAssignee).toEqual([quoted]);
+
+		const created = await core.createTaskFromInput({ title: "Escaped default assignee" }, false);
+		expect(created.task.assignee).toEqual([quoted]);
+	});
+
+	it("ignores a malformed defaultAssignee array instead of reading it as a scalar", async () => {
+		const configPath = core.filesystem.configFilePath;
+		const baseConfig = await Bun.file(configPath).text();
+
+		await Bun.write(configPath, `${baseConfig}default_assignee: ["@alice\n`);
+		core.filesystem.invalidateConfigCache();
+		expect((await core.filesystem.loadConfig())?.defaultAssignee).toBeUndefined();
+
+		const created = await core.createTaskFromInput({ title: "Malformed default assignee" }, false);
+		expect(created.task.assignee).toEqual([]);
+	});
+
 	it("clears defaultEditor via config set with an explicitly empty value", async () => {
 		// An empty value means "no editor": it must be stored, not rejected as an invalid executable
 		const config = await core.filesystem.loadConfig();
