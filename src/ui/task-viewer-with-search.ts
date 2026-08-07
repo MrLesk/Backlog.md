@@ -34,7 +34,7 @@ import {
 	type FilterState,
 } from "./components/filter-header.ts";
 import { openMultiSelectFilterPopup, openSingleSelectFilterPopup } from "./components/filter-popup.ts";
-import { createGenericList, type GenericList } from "./components/generic-list.ts";
+import { type BoundaryNavigationKey, createGenericList, type GenericList } from "./components/generic-list.ts";
 import { openHelpPopup } from "./components/help-popup.ts";
 import { formatFooterContent } from "./footer-content.ts";
 import { formatHeading } from "./heading.ts";
@@ -74,28 +74,30 @@ export type TaskListBoundaryDirection = "up" | "down";
 export type PendingSearchWrap = "to-first" | "to-last" | null;
 type PaneFocus = "list" | "detail";
 
-export function shouldMoveFromListBoundaryToSearch(
+/** What vertical navigation should do next: keep moving, hand focus to search, or stay put. */
+export type ListBoundaryNavigation = "move" | "search" | "stay";
+
+/**
+ * Resolves vertical navigation in the task list and in board columns. Arrow keys hand focus
+ * to the search input at a boundary (and from an empty list), while vim keys stay inside the
+ * list so j/k never leave it.
+ */
+export function resolveListBoundaryNavigation(
 	direction: TaskListBoundaryDirection,
 	selectedIndex: number,
 	totalTasks: number,
-): boolean {
-	if (totalTasks <= 0) {
-		return false;
+	key: BoundaryNavigationKey,
+): ListBoundaryNavigation {
+	const atBoundary = totalTasks <= 0 || (direction === "up" ? selectedIndex <= 0 : selectedIndex >= totalTasks - 1);
+	if (!atBoundary) {
+		return "move";
 	}
-	if (direction === "up") {
-		return selectedIndex <= 0;
-	}
-	return selectedIndex >= totalTasks - 1;
+	return key === "arrow" ? "search" : "stay";
 }
 
-export function shouldMoveFromDetailBoundaryToSearch(
-	direction: TaskListBoundaryDirection,
-	scrollOffset: number,
-): boolean {
-	if (direction !== "up") {
-		return false;
-	}
-	return scrollOffset <= 0;
+/** The detail pane hands focus back to search only when the up arrow is pressed at the top. */
+export function shouldMoveFromDetailBoundaryToSearch(scrollOffset: number, key: BoundaryNavigationKey): boolean {
+	return key === "arrow" && scrollOffset <= 0;
 }
 
 export function resolveSearchExitTargetIndex(
@@ -893,12 +895,16 @@ export async function viewTaskEnhanced(
 			onHighlight: (selected: Task | null) => {
 				void applySelection(selected);
 			},
-			onBoundaryNavigation: (direction, selectedIndex, total) => {
-				if (!shouldMoveFromListBoundaryToSearch(direction, selectedIndex, total)) {
+			onBoundaryNavigation: (direction, selectedIndex, total, key) => {
+				const navigation = resolveListBoundaryNavigation(direction, selectedIndex, total, key);
+				if (navigation === "move") {
 					return false;
 				}
-				pendingSearchWrap = direction === "up" ? "to-last" : "to-first";
-				filterHeader.focusSearch();
+				if (navigation === "search") {
+					pendingSearchWrap = direction === "up" ? "to-last" : "to-first";
+					filterHeader.focusSearch();
+				}
+				// "stay" consumes the key so vim navigation neither wraps nor leaves the list.
 				return true;
 			},
 			showHelp: false,
@@ -950,14 +956,18 @@ export async function viewTaskEnhanced(
 				return height > 0 ? Math.max(1, height - 3) : 0;
 			};
 
-			boxInstance.key(["up", "k"], () => {
-				if (!shouldMoveFromDetailBoundaryToSearch("up", scrollable.getScroll?.() ?? 0)) {
+			// Returning true leaves the key to the built-in scroll handling, which is clamped at the top.
+			const moveUpFromDetail = (key: BoundaryNavigationKey) => {
+				if (!shouldMoveFromDetailBoundaryToSearch(scrollable.getScroll?.() ?? 0, key)) {
 					return true;
 				}
 				pendingSearchWrap = null;
 				filterHeader.focusSearch();
 				return false;
-			});
+			};
+
+			boxInstance.key(["up"], () => moveUpFromDetail("arrow"));
+			boxInstance.key(["k"], () => moveUpFromDetail("vim"));
 
 			boxInstance.key(["pageup", "b"], () => {
 				const delta = pageAmount();
