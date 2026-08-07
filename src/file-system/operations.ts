@@ -57,6 +57,10 @@ interface LockAttemptSettings {
 	retryDelayMs: number;
 }
 
+/** Config keys stored as YAML lists. */
+const CONFIG_LIST_KEYS = ["statuses", "labels", "types", "priorities", "default_assignee"] as const;
+type ConfigListKey = (typeof CONFIG_LIST_KEYS)[number];
+
 const DEFAULT_CREATE_LOCK_TIMEOUT_MS = 30_000;
 const DEFAULT_CREATE_LOCK_RETRY_DELAY_MS = 100;
 const DEFAULT_CREATE_LOCK_STALE_MS = 10_000;
@@ -1597,9 +1601,13 @@ ${description || `Milestone: ${title}`}`,
 				case "project_name":
 					config.projectName = value.replace(/['"]/g, "");
 					break;
-				case "default_assignee":
-					config.defaultAssignee = value.replace(/['"]/g, "");
+				case "default_assignee": {
+					// A YAML list, an inline array, or the legacy scalar form (`default_assignee: "@alex"`).
+					const scalar = value.replace(/['"]/g, "").trim();
+					config.defaultAssignee =
+						parsedListValues.default_assignee ?? this.parseInlineConfigList(value) ?? (scalar ? [scalar] : []);
 					break;
+				}
 				case "default_reporter":
 					config.defaultReporter = value.replace(/['"]/g, "");
 					break;
@@ -1610,15 +1618,9 @@ ${description || `Milestone: ${title}`}`,
 				case "labels":
 				case "types":
 				case "priorities": {
-					const parsedList = parsedListValues[key];
+					const parsedList = parsedListValues[key] ?? this.parseInlineConfigList(value);
 					if (parsedList) {
 						config[key] = parsedList;
-					} else if (value.startsWith("[") && value.endsWith("]")) {
-						const arrayContent = value.slice(1, -1);
-						config[key] = arrayContent
-							.split(",")
-							.map((item) => item.trim().replace(/['"]/g, ""))
-							.filter(Boolean);
 					}
 					break;
 				}
@@ -1715,7 +1717,9 @@ ${description || `Milestone: ${title}`}`,
 		const normalizedDefinitionOfDone = this.normalizeDefinitionOfDone(config.definitionOfDone);
 		const lines = [
 			`project_name: "${config.projectName}"`,
-			...(config.defaultAssignee ? [`default_assignee: "${config.defaultAssignee}"`] : []),
+			...(config.defaultAssignee?.length
+				? [`default_assignee: [${config.defaultAssignee.map((assignee) => `"${assignee}"`).join(", ")}]`]
+				: []),
 			...(config.defaultReporter ? [`default_reporter: "${config.defaultReporter}"`] : []),
 			...(config.defaultStatus ? [`default_status: "${config.defaultStatus}"`] : []),
 			`statuses: [${config.statuses.map((s) => `"${s}"`).join(", ")}]`,
@@ -1756,13 +1760,11 @@ ${description || `Milestone: ${title}`}`,
 	 * key when the document is not valid YAML, so the legacy inline-bracket line
 	 * parse stays the fallback.
 	 */
-	private parseConfigListValues(
-		content: string,
-	): Partial<Record<"statuses" | "labels" | "types" | "priorities", string[]>> {
-		const result: Partial<Record<"statuses" | "labels" | "types" | "priorities", string[]>> = {};
+	private parseConfigListValues(content: string): Partial<Record<ConfigListKey, string[]>> {
+		const result: Partial<Record<ConfigListKey, string[]>> = {};
 		try {
 			const data = matter(`---\n${content.trimEnd()}\n---\n`).data as Record<string, unknown>;
-			for (const key of ["statuses", "labels", "types", "priorities"] as const) {
+			for (const key of CONFIG_LIST_KEYS) {
 				const value = data[key];
 				if (Array.isArray(value)) {
 					result[key] = value.map((item) => String(item).trim()).filter((item) => item.length > 0);
@@ -1772,6 +1774,16 @@ ${description || `Milestone: ${title}`}`,
 			// Not valid YAML; the caller falls back to the line-based parse.
 		}
 		return result;
+	}
+
+	/** Parse an inline YAML array line (`["a", "b"]`). Returns nothing for any other shape. */
+	private parseInlineConfigList(value: string): string[] | undefined {
+		if (!value.startsWith("[") || !value.endsWith("]")) return undefined;
+		return value
+			.slice(1, -1)
+			.split(",")
+			.map((item) => item.trim().replace(/['"]/g, ""))
+			.filter(Boolean);
 	}
 
 	private parseDefinitionOfDone(content: string): string[] | undefined {

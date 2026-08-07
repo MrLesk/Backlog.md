@@ -542,6 +542,24 @@ describe("CLI Integration", () => {
 			expect(task?.assignee).toEqual(["@alice", "@bob", "@carol"]);
 		});
 
+		it("should apply the configured defaultAssignee when task create has no -a", async () => {
+			await $`bun ${CLI_PATH} config set defaultAssignee ${"@alice,@bob"}`.cwd(TEST_DIR).quiet();
+			await $`bun ${CLI_PATH} task create "Default assignee task"`.cwd(TEST_DIR).quiet();
+
+			const core = new Core(TEST_DIR);
+			const task = await core.filesystem.loadTask("task-1");
+			expect(task?.assignee).toEqual(["@alice", "@bob"]);
+		});
+
+		it("should let an explicit -a override the configured defaultAssignee on task create", async () => {
+			await $`bun ${CLI_PATH} config set defaultAssignee ${"@alice,@bob"}`.cwd(TEST_DIR).quiet();
+			await $`bun ${CLI_PATH} task create "Explicit assignee task" -a @carol`.cwd(TEST_DIR).quiet();
+
+			const core = new Core(TEST_DIR);
+			const task = await core.filesystem.loadTask("task-1");
+			expect(task?.assignee).toEqual(["@carol"]);
+		});
+
 		it("should accept dependencies from other active branches", async () => {
 			const core = new Core(TEST_DIR);
 

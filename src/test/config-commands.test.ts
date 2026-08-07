@@ -309,6 +309,43 @@ describe("Config commands", () => {
 		expect(config?.statuses).toEqual(originalStatuses);
 	});
 
+	it("round-trips defaultAssignee through config set, get, and list", async () => {
+		const unset = await $`bun ${CLI_PATH} config get defaultAssignee`.cwd(TEST_DIR).nothrow().quiet();
+		expect(unset.exitCode).toBe(0);
+		expect(unset.stdout.toString().trim()).toBe("");
+
+		const set = await $`bun ${CLI_PATH} config set defaultAssignee ${"@alice, @bob"}`.cwd(TEST_DIR).nothrow().quiet();
+		expect(set.exitCode).toBe(0);
+
+		core.filesystem.invalidateConfigCache();
+		expect((await core.filesystem.loadConfig())?.defaultAssignee).toEqual(["@alice", "@bob"]);
+
+		const get = await $`bun ${CLI_PATH} config get defaultAssignee`.cwd(TEST_DIR).nothrow().quiet();
+		expect(get.stdout.toString().trim()).toBe("@alice, @bob");
+
+		const list = await $`bun ${CLI_PATH} config list`.cwd(TEST_DIR).nothrow().quiet();
+		expect(list.stdout.toString()).toContain("defaultAssignee: [@alice, @bob]");
+
+		const cleared = await $`bun ${CLI_PATH} config set defaultAssignee ${""}`.cwd(TEST_DIR).nothrow().quiet();
+		expect(cleared.exitCode).toBe(0);
+
+		core.filesystem.invalidateConfigCache();
+		expect((await core.filesystem.loadConfig())?.defaultAssignee).toBeUndefined();
+	});
+
+	it("reads defaultAssignee written as a legacy scalar or a block sequence", async () => {
+		const configPath = core.filesystem.configFilePath;
+		const baseConfig = await Bun.file(configPath).text();
+
+		await Bun.write(configPath, `${baseConfig}default_assignee: "@legacy"\n`);
+		core.filesystem.invalidateConfigCache();
+		expect((await core.filesystem.loadConfig())?.defaultAssignee).toEqual(["@legacy"]);
+
+		await Bun.write(configPath, `${baseConfig}default_assignee:\n  - "@alice"\n  - "@bob"\n`);
+		core.filesystem.invalidateConfigCache();
+		expect((await core.filesystem.loadConfig())?.defaultAssignee).toEqual(["@alice", "@bob"]);
+	});
+
 	it("clears defaultEditor via config set with an explicitly empty value", async () => {
 		// An empty value means "no editor": it must be stored, not rejected as an invalid executable
 		const config = await core.filesystem.loadConfig();

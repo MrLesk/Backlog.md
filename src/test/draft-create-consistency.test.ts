@@ -51,6 +51,16 @@ describe("Draft creation consistency", () => {
 		expect((await core.filesystem.loadDraft("draft-2"))?.assignee).toEqual(["@alice", "@bob", "@carol"]);
 	});
 
+	it("applies the configured defaultAssignee to drafts created without -a", async () => {
+		await $`bun ${CLI_PATH} config set defaultAssignee ${"@alice,@bob"}`.cwd(TEST_DIR).quiet();
+		await $`bun ${CLI_PATH} draft create "Default assignees"`.cwd(TEST_DIR).quiet();
+		await $`bun ${CLI_PATH} draft create "Explicit assignee" -a @carol`.cwd(TEST_DIR).quiet();
+
+		const core = new Core(TEST_DIR);
+		expect((await core.filesystem.loadDraft("draft-1"))?.assignee).toEqual(["@alice", "@bob"]);
+		expect((await core.filesystem.loadDraft("draft-2"))?.assignee).toEqual(["@carol"]);
+	});
+
 	it("uses DRAFT IDs in plain output for task create --draft", async () => {
 		const result = await $`bun ${CLI_PATH} task create --draft "Plain sample" --plain`.cwd(TEST_DIR).quiet();
 		const output = result.stdout.toString();

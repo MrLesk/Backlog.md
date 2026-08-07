@@ -1305,6 +1305,47 @@ describe("Core", () => {
 			const loadedTask = await core.filesystem.loadTask("task-fallback");
 			expect(loadedTask?.status).toBe("To Do");
 		});
+
+		// createTaskFromInput is the shared create path for every surface (CLI, wizard, TUI, Web, MCP),
+		// so applying defaultAssignee here is what keeps the surfaces consistent.
+		it("should apply defaultAssignee to tasks and drafts created without an assignee", async () => {
+			await initializeTestProject(core, "Default Assignee Project");
+			const config = await core.filesystem.loadConfig();
+			if (!config) throw new Error("Expected config");
+			config.defaultAssignee = ["@alice", "@bob"];
+			await core.filesystem.saveConfig(config);
+
+			const { task } = await core.createTaskFromInput({ title: "Inherits default" }, false);
+			expect(task.assignee).toEqual(["@alice", "@bob"]);
+
+			const { task: draft } = await core.createTaskFromInput(
+				{ title: "Draft inherits default", status: "Draft" },
+				false,
+			);
+			expect(draft.assignee).toEqual(["@alice", "@bob"]);
+		});
+
+		it("should let an explicit assignee replace defaultAssignee entirely", async () => {
+			await initializeTestProject(core, "Override Assignee Project");
+			const config = await core.filesystem.loadConfig();
+			if (!config) throw new Error("Expected config");
+			config.defaultAssignee = ["@alice", "@bob"];
+			await core.filesystem.saveConfig(config);
+
+			const { task } = await core.createTaskFromInput({ title: "Explicit assignee", assignee: ["@carol"] }, false);
+			expect(task.assignee).toEqual(["@carol"]);
+		});
+
+		it("should leave new tasks unassigned when defaultAssignee is empty", async () => {
+			await initializeTestProject(core, "Empty Assignee Project");
+			const config = await core.filesystem.loadConfig();
+			if (!config) throw new Error("Expected config");
+			config.defaultAssignee = [];
+			await core.filesystem.saveConfig(config);
+
+			const { task } = await core.createTaskFromInput({ title: "No default assignee" }, false);
+			expect(task.assignee).toEqual([]);
+		});
 	});
 
 	describe("directory accessor integration", () => {

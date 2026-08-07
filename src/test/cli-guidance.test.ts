@@ -399,7 +399,7 @@ describe("CLI Integration", () => {
 			expect(docHelp).toContain("content: Markdown");
 			expect(docHelp).toContain("path: Docs-relative path");
 			expect(docHelp).toContain("type: one of: readme, guide, specification, other");
-			expect(configHelp).toContain("key: one of: defaultEditor, projectName, defaultStatus");
+			expect(configHelp).toContain("key: one of: defaultEditor, projectName, defaultAssignee, defaultStatus");
 			expect(configHelp).toContain("value: String");
 			expect(searchHelp).toContain("type: one or more of: task, document, decision");
 			expect(searchHelp).toContain("status: one of configured statuses: To Do, In Progress, Done");

@@ -99,6 +99,7 @@ type IntegrationMode = "mcp" | "cli" | "none";
 const CONFIG_GET_KEYS = [
 	"defaultEditor",
 	"projectName",
+	"defaultAssignee",
 	"defaultStatus",
 	"statuses",
 	"labels",
@@ -122,6 +123,7 @@ const CONFIG_GET_KEYS = [
 const CONFIG_SET_KEYS = [
 	"defaultEditor",
 	"projectName",
+	"defaultAssignee",
 	"defaultStatus",
 	"dateFormat",
 	"maxColumnWidth",
@@ -4322,7 +4324,7 @@ agentsCmd
 
 // Config command group
 const CONFIG_AVAILABLE_KEYS =
-	"Available keys: defaultEditor, projectName, defaultStatus, statuses, labels, priorities, types, milestones, definitionOfDone, dateFormat, maxColumnWidth, defaultPort, autoOpenBrowser, hideEmptyColumns, remoteOperations, autoCommit, filesystemOnly, bypassGitHooks, zeroPaddedIds, checkActiveBranches, activeBranchDays";
+	"Available keys: defaultEditor, projectName, defaultAssignee, defaultStatus, statuses, labels, priorities, types, milestones, definitionOfDone, dateFormat, maxColumnWidth, defaultPort, autoOpenBrowser, hideEmptyColumns, remoteOperations, autoCommit, filesystemOnly, bypassGitHooks, zeroPaddedIds, checkActiveBranches, activeBranchDays";
 
 const configCmd = addHelpSchema(program.command("config"), {
 	reads: "Project Backlog.md configuration",
@@ -4446,6 +4448,9 @@ addHelpSchema(configCmd.command("get <key>"), {
 				case "projectName":
 					console.log(config.projectName);
 					break;
+				case "defaultAssignee":
+					console.log(config.defaultAssignee?.join(", ") || "");
+					break;
 				case "defaultStatus":
 					console.log(config.defaultStatus || "");
 					break;
@@ -4528,7 +4533,11 @@ addHelpSchema(configCmd.command("set <key> <value>"), {
 	optional: [],
 	writes: "Updates the project Backlog.md configuration file",
 	output: "Confirmation of the updated config value",
-	examples: ['backlog config set defaultEditor "code --wait"', "backlog config set autoCommit true"],
+	examples: [
+		'backlog config set defaultEditor "code --wait"',
+		"backlog config set autoCommit true",
+		'backlog config set defaultAssignee "@alice,@bob"',
+	],
 })
 	.description("set a configuration value")
 	.action(async (key: string, value: string) => {
@@ -4561,6 +4570,10 @@ addHelpSchema(configCmd.command("set <key> <value>"), {
 				}
 				case "projectName":
 					config.projectName = value;
+					break;
+				case "defaultAssignee":
+					// An empty value clears the default; comma-separated values set several assignees.
+					config.defaultAssignee = parseDelimitedStringList(value);
 					break;
 				case "defaultStatus":
 					config.defaultStatus = value;
@@ -4761,6 +4774,7 @@ addHelpSchema(configCmd.command("list"), {
 			console.log("Configuration:");
 			console.log(`  projectName: ${config.projectName}`);
 			console.log(`  defaultEditor: ${config.defaultEditor || "(not set)"}`);
+			console.log(`  defaultAssignee: [${(config.defaultAssignee ?? []).join(", ")}]`);
 			console.log(`  defaultStatus: ${config.defaultStatus || "(not set)"}`);
 			console.log(`  statuses: [${config.statuses.join(", ")}]`);
 			console.log(`  labels: [${config.labels.join(", ")}]`);
