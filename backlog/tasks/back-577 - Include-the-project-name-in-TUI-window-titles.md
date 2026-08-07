@@ -5,7 +5,7 @@ status: Done
 assignee:
   - '@claude'
 created_date: '2026-08-07 17:25'
-updated_date: '2026-08-07 20:09'
+updated_date: '2026-08-07 20:34'
 labels:
   - bug
 dependencies: []
@@ -66,6 +66,10 @@ Out of scope (AC #5): restoring the previous terminal title on exit, including C
 Also not included: the issue also asks for the project name inside the board Filters view; that is not part of this task's acceptance criteria.
 
 Verification: RUN_INTERACTIVE_TUI_TESTS=1 bun test src/test/tui-interactive-editor-handoff.test.ts (4 pass) drives the real CLI through an expect PTY; the captured transcripts contain the actual OSC title writes `\x1b]0;Interactive board - Board\x07` and `\x1b]0;Interactive task-list - Tasks\x07` followed by `\x1b]0;Interactive task-list - Task TASK-1 - Task list interactive editor task\x07`.
+
+Follow-up (PR #863 review, P1 accepted): formatTuiTitle now strips control characters. The title is emitted as `ESC ] 0 ; <title> BEL` by the fork's Program.setTitle with no escaping, so a project name from a cloned repo's backlog/config.yml containing BEL or ESC could close the OSC sequence and inject arbitrary escape codes into the user's terminal. A single stripControlCharacters helper in src/ui/tui.ts removes C0 controls, DEL, and C1 controls (0x00-0x1f, 0x7f, 0x80-0x9f) from the composed title, so the caller-supplied view strings (search queries, task titles read from task markdown, which are equally attacker-controlled) are covered by the same strip point; the project name is also cleaned before the blank/'Untitled Project' fallback check so a name made only of control characters still falls back instead of producing ' - Board'. Implemented as a code-point filter rather than a regex because Biome's noControlCharactersInRegex forbids control escapes in regular expressions.
+
+Verification: src/test/tui-window-title.test.ts covers a crafted project name (Acme+BEL+ESC]0;pwned), a crafted view/task title, a C1 character, a control-only name falling back to 'Backlog Board', and the emitted screen.title being control-character free (7 pass). Re-ran RUN_INTERACTIVE_TUI_TESTS=1 PTY suite (4 pass), bunx tsc --noEmit, bun run check ., and bun run test (1916 pass, 5 skip, 0 fail).
 <!-- SECTION:NOTES:END -->
 
 ## Final Summary

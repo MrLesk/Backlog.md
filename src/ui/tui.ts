@@ -85,17 +85,30 @@ export function addScrollKeys(
 	});
 }
 
+/** Remove C0 controls, DEL, and C1 controls so they can never reach the terminal title. */
+function stripControlCharacters(value: string): string {
+	return Array.from(value)
+		.filter((character) => {
+			const code = character.codePointAt(0) ?? 0;
+			return code > 0x1f && code !== 0x7f && !(code >= 0x80 && code <= 0x9f);
+		})
+		.join("");
+}
+
 /**
  * Terminal/window title for a TUI surface, so parallel terminals can be told apart.
  * Uses the configured project name when it identifies the project, and falls back to a
  * generic "Backlog <view>" title for a blank name or the "Untitled Project" placeholder.
+ *
+ * The title is emitted as `ESC ] 0 ; <title> BEL`, so the composed string is stripped of
+ * control characters: both the project name and the view (search queries, task titles)
+ * come from repository files that a clone can control, and an embedded BEL or ESC would
+ * otherwise close the title sequence and inject arbitrary escape codes into the terminal.
  */
 export function formatTuiTitle(view: string, projectName?: string): string {
-	const name = projectName?.trim() ?? "";
-	if (!name || name.toLowerCase() === "untitled project") {
-		return `Backlog ${view}`;
-	}
-	return `${name} - ${view}`;
+	const name = stripControlCharacters(projectName ?? "").trim();
+	const usableName = name && name.toLowerCase() !== "untitled project" ? name : "";
+	return stripControlCharacters(usableName ? `${usableName} - ${view}` : `Backlog ${view}`);
 }
 
 export function createScreen(options: Partial<ScreenOptions> = {}): ScreenInterface {
