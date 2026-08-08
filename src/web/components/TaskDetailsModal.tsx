@@ -709,7 +709,9 @@ export const TaskDetailsModal: React.FC<Props> = ({
         finalSummary,
         acceptanceCriteriaItems: criteria,
         status,
-        assignee,
+        // A blank assignee field on create means "no opinion", so the configured
+        // defaultAssignee still applies; on edit an explicit empty list clears the assignees.
+        ...(isCreateMode && assignee.length === 0 ? {} : { assignee }),
         labels,
         priority: priority === "" ? undefined : priority,
         dependencies,

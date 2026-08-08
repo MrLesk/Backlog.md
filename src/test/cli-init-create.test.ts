@@ -576,6 +576,15 @@ describe("CLI Integration", () => {
 			expect(task?.assignee).toEqual(["@carol"]);
 		});
 
+		it("should leave a task unassigned when -a is empty while defaultAssignee is set", async () => {
+			await $`bun ${CLI_PATH} config set defaultAssignee ${"@alice,@bob"}`.cwd(TEST_DIR).quiet();
+			await $`bun ${CLI_PATH} task create "Explicitly unassigned task" -a ${""}`.cwd(TEST_DIR).quiet();
+
+			const core = new Core(TEST_DIR);
+			const task = await core.filesystem.loadTask("task-1");
+			expect(task?.assignee).toEqual([]);
+		});
+
 		it("should accept dependencies from other active branches", async () => {
 			const core = new Core(TEST_DIR);
 

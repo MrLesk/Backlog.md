@@ -319,7 +319,12 @@ describe("CLI Integration", () => {
 			expect(createHelpCompact).toContain(
 				"assignee: Comma-separated strings - Assign one or more @names; repeat -a or use @name1,@name2; omitting it applies the configured defaultAssignee",
 			);
-			expect(createHelpCompact).toContain("assign task to one or more @names (comma-separated or repeatable)");
+			expect(createHelpCompact).toContain(
+				'assign task to one or more @names (comma-separated or repeatable); pass "" to leave it unassigned',
+			);
+			expect(editHelpCompact).toContain(
+				'replace all task assignees with one or more @names (comma-separated or repeatable); pass "" to clear them',
+			);
 			expect(createHelpCompact).toContain(
 				"--plan <text> add a plan only for already-started work created directly in an active status (for example, In Progress)",
 			);

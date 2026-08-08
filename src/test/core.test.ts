@@ -1336,6 +1336,25 @@ describe("Core", () => {
 			expect(task.assignee).toEqual(["@carol"]);
 		});
 
+		// An explicit empty list is how every surface says "unassigned": CLI/draft `-a ""`,
+		// MCP `assignee: []`, and the Web edit payload all reach this method that way.
+		it("should let an explicit empty assignee override defaultAssignee", async () => {
+			await initializeTestProject(core, "Explicit Unassign Project");
+			const config = await core.filesystem.loadConfig();
+			if (!config) throw new Error("Expected config");
+			config.defaultAssignee = ["@alice", "@bob"];
+			await core.filesystem.saveConfig(config);
+
+			const { task } = await core.createTaskFromInput({ title: "Explicitly unassigned", assignee: [] }, false);
+			expect(task.assignee).toEqual([]);
+
+			const { task: draft } = await core.createTaskFromInput(
+				{ title: "Explicitly unassigned draft", status: "Draft", assignee: [] },
+				false,
+			);
+			expect(draft.assignee).toEqual([]);
+		});
+
 		it("should leave new tasks unassigned when defaultAssignee is empty", async () => {
 			await initializeTestProject(core, "Empty Assignee Project");
 			const config = await core.filesystem.loadConfig();
