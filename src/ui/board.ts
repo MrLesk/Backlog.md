@@ -22,6 +22,7 @@ import { getTaskTypeValues, resolveTaskTypeValues } from "../utils/task-type-con
 import { openConfirmPopup } from "./components/confirm-popup.ts";
 import { createFilterHeader, type FilterHeader, type FilterState } from "./components/filter-header.ts";
 import { openMultiSelectFilterPopup, openSingleSelectFilterPopup } from "./components/filter-popup.ts";
+import type { BoundaryNavigationKey } from "./components/generic-list.ts";
 import { openHelpPopup } from "./components/help-popup.ts";
 import { openTaskComposer, type TaskComposerOptions } from "./components/task-composer.ts";
 import { formatFooterContent } from "./footer-content.ts";
@@ -30,10 +31,10 @@ import { completeTaskFromTui, formatTaskCompletionBlockedMessage } from "./task-
 import { formatTaskTypeBadge } from "./task-type.ts";
 import {
 	createTaskPopup,
+	resolveListBoundaryNavigation,
 	resolveSearchExitTargetIndex,
-	shouldMoveFromListBoundaryToSearch,
 } from "./task-viewer-with-search.ts";
-import { createScreen } from "./tui.ts";
+import { createScreen, formatTuiTitle } from "./tui.ts";
 import { stripBlessedFgTags } from "./utils/strip-tags.ts";
 
 export type ColumnData = {
@@ -278,6 +279,7 @@ export async function renderBoardTui(
 		milestoneEntities?: Milestone[];
 		startupWarning?: string;
 		dateFormat?: string;
+		projectName?: string;
 		createTask?: (input: TaskCreateInput) => Promise<Task>;
 		screen?: ScreenInterface;
 		taskComposer?: (options: TaskComposerOptions) => Promise<Task | null>;
@@ -299,7 +301,7 @@ export async function renderBoardTui(
 	}
 
 	await new Promise<void>((resolve) => {
-		const screen = options?.screen ?? createScreen({ title: "Backlog Board" });
+		const screen = options?.screen ?? createScreen({ title: formatTuiTitle("Board", options?.projectName) });
 		const container = box({
 			parent: screen,
 			width: "100%",
@@ -1113,76 +1115,52 @@ export async function renderBoardTui(
 			}
 		});
 
-		screen.key(["up", "k"], () => {
+		const moveBoardSelection = (direction: "up" | "down", key: BoundaryNavigationKey) => {
 			if (popupOpen || filterPopupOpen || modalOpen || currentFocus === "filters") return;
 
+			const column = columns[currentCol];
 			if (moveOp) {
-				if (moveOp.targetIndex > 0) {
-					moveOp.targetIndex--;
-					renderView();
-				}
-			} else {
-				const column = columns[currentCol];
-				if (!column) return;
-				const listWidget = column.list;
-				const selected = listWidget.selected ?? 0;
-				const total = column.tasks.length;
-				if (total === 0) {
-					pendingSearchWrap = null;
-					focusFilterControl("search");
-					updateFooter();
-					screen.render();
+				if (direction === "up") {
+					if (moveOp.targetIndex > 0) {
+						moveOp.targetIndex--;
+						renderView();
+					}
 					return;
 				}
-				if (shouldMoveFromListBoundaryToSearch("up", selected, total)) {
-					pendingSearchWrap = "to-last";
-					focusFilterControl("search");
-					updateFooter();
-					screen.render();
-					return;
-				}
-				const nextIndex = selected - 1;
-				selectColumnRow(column, nextIndex, true);
-				screen.render();
-			}
-		});
-
-		screen.key(["down", "j"], () => {
-			if (popupOpen || filterPopupOpen || modalOpen || currentFocus === "filters") return;
-
-			if (moveOp) {
-				const column = columns[currentCol];
 				// We need to check the projected length to know if we can move down
 				// The current rendered column has the correct length including the ghost task
 				if (column && moveOp.targetIndex < column.tasks.length - 1) {
 					moveOp.targetIndex++;
 					renderView();
 				}
-			} else {
-				const column = columns[currentCol];
-				if (!column) return;
-				const listWidget = column.list;
-				const selected = listWidget.selected ?? 0;
-				const total = column.tasks.length;
-				if (total === 0) {
-					pendingSearchWrap = null;
-					focusFilterControl("search");
-					updateFooter();
-					screen.render();
-					return;
-				}
-				if (shouldMoveFromListBoundaryToSearch("down", selected, total)) {
-					pendingSearchWrap = "to-first";
-					focusFilterControl("search");
-					updateFooter();
-					screen.render();
-					return;
-				}
-				const nextIndex = selected + 1;
-				selectColumnRow(column, nextIndex, true);
-				screen.render();
+				return;
 			}
-		});
+
+			if (!column) return;
+			const selected = column.list.selected ?? 0;
+			const total = column.tasks.length;
+			const navigation = resolveListBoundaryNavigation(direction, selected, total, key);
+			if (navigation === "stay") return;
+			if (navigation === "search") {
+				if (total === 0) {
+					// An empty column has no row to return to, so leaving search selects nothing.
+					pendingSearchWrap = null;
+				} else {
+					pendingSearchWrap = direction === "up" ? "to-last" : "to-first";
+				}
+				focusFilterControl("search");
+				updateFooter();
+				screen.render();
+				return;
+			}
+			selectColumnRow(column, direction === "up" ? selected - 1 : selected + 1, true);
+			screen.render();
+		};
+
+		screen.key(["up"], () => moveBoardSelection("up", "arrow"));
+		screen.key(["k"], () => moveBoardSelection("up", "vim"));
+		screen.key(["down"], () => moveBoardSelection("down", "arrow"));
+		screen.key(["j"], () => moveBoardSelection("down", "vim"));
 
 		const lanePageAmount = () => {
 			const column = columns[currentCol];

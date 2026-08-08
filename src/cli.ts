@@ -469,6 +469,8 @@ function hasEditFieldFlags(options: Record<string, unknown>): boolean {
 			options.dep !== undefined ||
 			options.clearDeps ||
 			options.ref !== undefined ||
+			options.addRef !== undefined ||
+			options.removeRef !== undefined ||
 			options.clearRefs ||
 			options.doc !== undefined ||
 			options.clearDocs ||
@@ -1727,6 +1729,12 @@ addHelpSchema(taskCmd.command("create [title]"), {
 			description:
 				"Only for already-started work created directly in a configured active status (for example, In Progress)",
 		},
+		{ name: "notes", type: "Markdown", description: "Same restriction as plan" },
+		{
+			name: "final-summary",
+			type: "Markdown",
+			description: "Only for finished, verified work created directly in a configured terminal status",
+		},
 	],
 	writes: "Creates a task or draft markdown file through Backlog.md",
 	output: "Created task details; use --plain for text output",
@@ -1736,7 +1744,7 @@ addHelpSchema(taskCmd.command("create [title]"), {
 		'backlog task create -p {{TASK_ID:1}} "Add tests"',
 	],
 })
-	.option("-d, --description <text>", "task description (multi-line: include real newlines inside the quoted string)")
+	.option("-d, --description <text>", "task description")
 	.option("--desc <text>", "alias for --description")
 	.option(
 		"-a, --assignee <assignees>",
@@ -2707,9 +2715,19 @@ addHelpSchema(taskCmd.command("edit [taskId]"), {
 			description: "Remove all task dependencies; cannot combine with dependency flags",
 		},
 		{
+			name: "add-ref",
+			type: "Comma-separated strings",
+			description: "Add references; repeat --add-ref or use ref1,ref2",
+		},
+		{
+			name: "remove-ref",
+			type: "Comma-separated strings",
+			description: "Remove references; repeat --remove-ref or use ref1,ref2",
+		},
+		{
 			name: "clear-refs",
 			type: "Boolean",
-			description: "Remove all references; cannot combine with --ref",
+			description: "Remove all references; cannot combine with --ref, --add-ref, or --remove-ref",
 		},
 		{
 			name: "clear-docs",
@@ -2723,8 +2741,10 @@ addHelpSchema(taskCmd.command("edit [taskId]"), {
 			description: "Append after --plan replacement; repeatable",
 		},
 		{ name: "notes", type: "Markdown", description: "Replacement implementation notes" },
+		{ name: "append-notes", type: "Markdown", description: "Append to implementation notes; repeatable" },
 		{ name: "comment", type: "Markdown", description: "Append a discussion comment" },
 		{ name: "final-summary", type: "Markdown", description: "Completion summary" },
+		{ name: "append-final-summary", type: "Markdown", description: "Append to final summary; repeatable" },
 		{ name: "check-ac", type: "Integer", description: "1-based acceptance criterion index" },
 	],
 	writes: "Updates task metadata and structured task sections through Backlog.md",
@@ -2737,7 +2757,7 @@ addHelpSchema(taskCmd.command("edit [taskId]"), {
 })
 	.description("edit an existing task")
 	.option("-t, --title <title>")
-	.option("-d, --description <text>", "task description (multi-line: include real newlines inside the quoted string)")
+	.option("-d, --description <text>", "task description")
 	.option("--desc <text>", "alias for --description")
 	.option(
 		"-a, --assignee <assignees>",
@@ -2843,11 +2863,22 @@ addHelpSchema(taskCmd.command("edit [taskId]"), {
 		const soFar = Array.isArray(previous) ? previous : previous ? [previous] : [];
 		return [...soFar, value];
 	})
-	.option("--ref <reference>", "set references (can be used multiple times)", (value, previous) => {
-		const soFar = Array.isArray(previous) ? previous : previous ? [previous] : [];
-		return [...soFar, value];
-	})
-	.option("--clear-refs", "remove all references (cannot combine with --ref)")
+	.option(
+		"--ref <reference>",
+		"replace all references (comma-separated or repeatable; cannot combine with --add-ref/--remove-ref)",
+		createMultiValueAccumulator(),
+	)
+	.option(
+		"--add-ref <reference>",
+		"add references without replacing existing references (comma-separated or repeatable)",
+		createMultiValueAccumulator(),
+	)
+	.option(
+		"--remove-ref <reference>",
+		"remove references without replacing others (comma-separated or repeatable)",
+		createMultiValueAccumulator(),
+	)
+	.option("--clear-refs", "remove all references (cannot combine with --ref/--add-ref/--remove-ref)")
 	.option(
 		"--modified-file <path>",
 		"set modified file paths from project root (can be used multiple times)",
@@ -3067,6 +3098,8 @@ addHelpSchema(taskCmd.command("edit [taskId]"), {
 
 		const combinedDependencies = [...toStringArray(options.dependsOn), ...toStringArray(options.dep)];
 		const rawReferences = toStringArray(options.ref);
+		const rawAddReferences = toStringArray(options.addRef);
+		const rawRemoveReferences = toStringArray(options.removeRef);
 		const rawDocumentation = toStringArray(options.doc);
 		const isBlankListValue = (value: string) => parseDelimitedStringList(value) === undefined;
 		const clearableListError =
@@ -3087,6 +3120,22 @@ addHelpSchema(taskCmd.command("edit [taskId]"), {
 				subject: "references",
 			}) ??
 			validateClearableListInput({
+				rawValues: rawAddReferences,
+				cleared: Boolean(options.clearRefs),
+				isBlank: isBlankListValue,
+				setterFlags: "--add-ref",
+				clearFlag: "--clear-refs",
+				subject: "references",
+			}) ??
+			validateClearableListInput({
+				rawValues: rawRemoveReferences,
+				cleared: Boolean(options.clearRefs),
+				isBlank: isBlankListValue,
+				setterFlags: "--remove-ref",
+				clearFlag: "--clear-refs",
+				subject: "references",
+			}) ??
+			validateClearableListInput({
 				rawValues: rawDocumentation,
 				cleared: Boolean(options.clearDocs),
 				isBlank: isBlankListValue,
@@ -3099,9 +3148,19 @@ addHelpSchema(taskCmd.command("edit [taskId]"), {
 			process.exitCode = 1;
 			return;
 		}
+
+		if (options.ref !== undefined && (options.addRef !== undefined || options.removeRef !== undefined)) {
+			console.error(
+				"Cannot combine --ref with --add-ref or --remove-ref. Use --ref a,b for the final full reference set, or use add/remove flags without --ref.",
+			);
+			process.exitCode = 1;
+			return;
+		}
 		const dependencyValues = combinedDependencies.length > 0 ? normalizeDependencies(combinedDependencies) : undefined;
 
 		const normalizedReferences = parseDelimitedStringList(options.ref);
+		const addReferenceValues = parseDelimitedStringList(options.addRef) ?? [];
+		const removeReferenceValues = parseDelimitedStringList(options.removeRef) ?? [];
 		const normalizedDocumentation = parseDelimitedStringList(options.doc);
 		const normalizedModifiedFiles = parseDelimitedStringList(options.modifiedFile);
 
@@ -3156,6 +3215,12 @@ addHelpSchema(taskCmd.command("edit [taskId]"), {
 			editArgs.references = normalizedReferences;
 		} else if (options.clearRefs) {
 			editArgs.references = [];
+		}
+		if (addReferenceValues.length > 0) {
+			editArgs.addReferences = addReferenceValues;
+		}
+		if (removeReferenceValues.length > 0) {
+			editArgs.removeReferences = removeReferenceValues;
 		}
 		if (normalizedDocumentation) {
 			editArgs.documentation = normalizedDocumentation;

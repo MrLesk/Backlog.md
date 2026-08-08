@@ -2,32 +2,44 @@ import { describe, expect, it } from "bun:test";
 import {
 	type PendingSearchWrap,
 	resolveFilterExitPane,
+	resolveListBoundaryNavigation,
 	resolveSearchExitTargetIndex,
 	resolveTaskListSelection,
 	shouldMoveFromDetailBoundaryToSearch,
-	shouldMoveFromListBoundaryToSearch,
 } from "../ui/task-viewer-with-search.ts";
 
 describe("task viewer boundary navigation", () => {
-	it("moves from first list row to search on up", () => {
-		expect(shouldMoveFromListBoundaryToSearch("up", 0, 4)).toBe(true);
-		expect(shouldMoveFromListBoundaryToSearch("up", 1, 4)).toBe(false);
+	it("moves from first list row to search on arrow up", () => {
+		expect(resolveListBoundaryNavigation("up", 0, 4, "arrow")).toBe("search");
+		expect(resolveListBoundaryNavigation("up", 1, 4, "arrow")).toBe("move");
 	});
 
-	it("moves from last list row to search on down", () => {
-		expect(shouldMoveFromListBoundaryToSearch("down", 3, 4)).toBe(true);
-		expect(shouldMoveFromListBoundaryToSearch("down", 2, 4)).toBe(false);
+	it("moves from last list row to search on arrow down", () => {
+		expect(resolveListBoundaryNavigation("down", 3, 4, "arrow")).toBe("search");
+		expect(resolveListBoundaryNavigation("down", 2, 4, "arrow")).toBe("move");
 	});
 
-	it("does not move to search when there are no rows", () => {
-		expect(shouldMoveFromListBoundaryToSearch("up", 0, 0)).toBe(false);
-		expect(shouldMoveFromListBoundaryToSearch("down", 0, 0)).toBe(false);
+	it("keeps vim keys inside the list at both boundaries", () => {
+		expect(resolveListBoundaryNavigation("up", 0, 4, "vim")).toBe("stay");
+		expect(resolveListBoundaryNavigation("down", 3, 4, "vim")).toBe("stay");
 	});
 
-	it("moves from detail pane to search only when navigating up at top boundary", () => {
-		expect(shouldMoveFromDetailBoundaryToSearch("up", 0)).toBe(true);
-		expect(shouldMoveFromDetailBoundaryToSearch("up", 2)).toBe(false);
-		expect(shouldMoveFromDetailBoundaryToSearch("down", 0)).toBe(false);
+	it("moves vim keys like arrows away from the boundaries", () => {
+		expect(resolveListBoundaryNavigation("up", 1, 4, "vim")).toBe("move");
+		expect(resolveListBoundaryNavigation("down", 2, 4, "vim")).toBe("move");
+	});
+
+	it("treats an empty list as a boundary for both key families", () => {
+		expect(resolveListBoundaryNavigation("up", 0, 0, "arrow")).toBe("search");
+		expect(resolveListBoundaryNavigation("down", 0, 0, "arrow")).toBe("search");
+		expect(resolveListBoundaryNavigation("up", 0, 0, "vim")).toBe("stay");
+		expect(resolveListBoundaryNavigation("down", 0, 0, "vim")).toBe("stay");
+	});
+
+	it("moves from detail pane to search only on arrow up at the top boundary", () => {
+		expect(shouldMoveFromDetailBoundaryToSearch(0, "arrow")).toBe(true);
+		expect(shouldMoveFromDetailBoundaryToSearch(2, "arrow")).toBe(false);
+		expect(shouldMoveFromDetailBoundaryToSearch(0, "vim")).toBe(false);
 	});
 
 	it("resolves search exit target to last row after top-boundary handoff", () => {

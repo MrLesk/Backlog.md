@@ -174,7 +174,7 @@ PR-style summary of what was implemented.
 | Uncheck DoD #2          | `backlog task edit 42 --uncheck-dod 2`                   |
 | Remove AC #3            | `backlog task edit 42 --remove-ac 3`                     |
 | Remove DoD #3           | `backlog task edit 42 --remove-dod 3`                    |
-| Add Plan                | `backlog task edit 42 --plan "1. Step one\n2. Step two"` |
+| Add Plan                | `backlog task edit 42 --plan "1. Step one" --append-plan "2. Step two"` |
 | Add Notes (replace)     | `backlog task edit 42 --notes "What I did"`              |
 | Append Notes            | `backlog task edit 42 --append-notes "Another note"` |
 | Add Comment             | `backlog task edit 42 --comment "Review question" --comment-author @agent` |
@@ -560,15 +560,17 @@ backlog search --modified-file src/server/api.ts --plain
 
 | Action           | Command                                                  |
 |------------------|----------------------------------------------------------|
-| Add plan         | `backlog task edit 42 --plan "1. Step one\n2. Step two"` |
+| Add plan         | `backlog task edit 42 --plan "1. Step one" --append-plan "2. Step two"` |
 | Add notes        | `backlog task edit 42 --notes "Implementation details"`  |
 | Add comment      | `backlog task edit 42 --comment "Review question" --comment-author @agent` |
 | Add final summary | `backlog task edit 42 --final-summary "PR-style summary"` |
 | Append final summary | `backlog task edit 42 --append-final-summary "More details"` |
 | Clear final summary | `backlog task edit 42 --clear-final-summary` |
 | Add dependencies | `backlog task edit 42 --dep task-1 --dep task-2`         |
-| Add references   | `backlog task edit 42 --ref src/api.ts --ref https://github.com/issue/123` |
-| Add documentation | `backlog task edit 42 --doc https://design-docs.example.com --doc docs/spec.md` |
+| Replace references | `backlog task edit 42 --ref src/api.ts --ref https://github.com/issue/123` |
+| Add references   | `backlog task edit 42 --add-ref src/api.ts --add-ref https://github.com/issue/123` |
+| Remove references | `backlog task edit 42 --remove-ref src/api.ts` |
+| Replace documentation | `backlog task edit 42 --doc https://design-docs.example.com --doc docs/spec.md` |
 | Set modified files | `backlog task edit 42 --modified-file src/api.ts --modified-file src/ui.ts` |
 
 ### Multi‑line Input (Description/Plan/Notes/Comments/Final Summary)

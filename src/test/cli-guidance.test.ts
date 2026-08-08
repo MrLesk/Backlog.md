@@ -364,6 +364,55 @@ describe("CLI Integration", () => {
 			expect(completeHelp).toContain("cleanup/archive purposes");
 		});
 
+		it("documents real-newline handling once for every multiline Markdown flag", async () => {
+			const createHelp = await $`bun ${CLI_PATH} task create --help`.cwd(TEST_DIR).text();
+			const editHelp = await $`bun ${CLI_PATH} task edit --help`.cwd(TEST_DIR).text();
+			const listHelp = await $`bun ${CLI_PATH} task list --help`.cwd(TEST_DIR).text();
+			const docHelp = await $`bun ${CLI_PATH} doc update --help`.cwd(TEST_DIR).text();
+			const docCreateHelp = await $`bun ${CLI_PATH} doc create --help`.cwd(TEST_DIR).text();
+			const milestoneHelp = await $`bun ${CLI_PATH} milestone add --help`.cwd(TEST_DIR).text();
+			const draftHelp = (await $`bun ${CLI_PATH} draft create --help`.cwd(TEST_DIR).text()).replace(/\s+/g, " ");
+
+			for (const help of [createHelp, editHelp]) {
+				expect(help).toContain("Markdown fields:");
+				expect(help).toContain("Multi-line values need real newlines; a literal \\n is stored as text");
+				expect(help).toContain("Example (bash/zsh): --description $'First line\\nSecond line'");
+			}
+			for (const field of ["description", "plan", "notes", "final-summary"]) {
+				expect(createHelp).toContain(`${field}: Markdown`);
+			}
+			// final-summary states its own lifecycle rule; it does not borrow plan's "already-started" restriction.
+			expect(createHelp).toContain(
+				"final-summary: Markdown - Only for finished, verified work created directly in a configured terminal status",
+			);
+			for (const field of [
+				"description",
+				"plan",
+				"append-plan",
+				"notes",
+				"append-notes",
+				"comment",
+				"final-summary",
+				"append-final-summary",
+			]) {
+				expect(editHelp).toContain(`${field}: Markdown`);
+			}
+
+			// The shared note replaces the per-option copy instead of repeating it.
+			expect(createHelp).not.toContain("multi-line: include real newlines");
+			expect(editHelp).not.toContain("multi-line: include real newlines");
+			// draft create has no input schema, so its option string keeps the note.
+			expect(draftHelp).toContain("task description (multi-line: include real newlines inside the quoted string)");
+
+			// The example always names a flag the command actually accepts.
+			expect(docHelp).toContain("Example (bash/zsh): --content $'First line\\nSecond line'");
+			expect(milestoneHelp).toContain("Markdown fields:");
+			expect(milestoneHelp).toContain("Example (bash/zsh): --description $'First line\\nSecond line'");
+			// Commands without Markdown fields stay unchanged.
+			expect(listHelp).not.toContain("Markdown fields:");
+			expect(docCreateHelp).not.toContain("Markdown fields:");
+		}, 15_000);
+
 		it("shows configured status values in task help", async () => {
 			await mkdir(join(TEST_DIR, "backlog"), { recursive: true });
 			await Bun.write(

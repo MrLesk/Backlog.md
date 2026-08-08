@@ -7,7 +7,7 @@ status: To Do
 assignee:
   - '@codex'
 created_date: '2025-12-18 21:59'
-updated_date: '2025-12-18 22:03'
+updated_date: '2026-08-07 21:27'
 labels:
   - agent-skills
   - mcp
@@ -33,3 +33,9 @@ Reference: https://agentskills.io/llms.txt
 - [ ] #4 `backlog init`/agent‑instruction messaging is updated to align with skill‑based guidance (no instructions that rely on `backlog://` resources).
 - [ ] #5 Skill guidance is treated as the canonical source so the MCP guidance content (if still present) remains consistent with it.
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+Retired 2026-08-07 by maintainer decision. Superseded by BACK-595 (Ship Backlog.md as an Agent Plugin with skill-based instructions): the skill-packaging goal moved there under the Agent Plugins 1.0.0 spec with the guidance shipped as skills. This task's ACs #2 and #5 (instruct agents to use MCP tools; skill becomes the canonical guidance source) no longer match the shipped CLI-first guidance and the src/guidelines-as-canonical posture.
+<!-- SECTION:NOTES:END -->

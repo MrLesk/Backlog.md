@@ -1,5 +1,9 @@
-import React, { useState, useRef, useEffect, type KeyboardEvent } from 'react';
+import React, { useState, useRef, useEffect, useMemo, type KeyboardEvent } from 'react';
+import { Link } from 'react-router-dom';
 import { type Task } from '../../types';
+import { buildTaskIdIndex, resolveTaskReference } from '../utils/task-id-links';
+
+const CHIP_LABEL_CLASS = 'truncate max-w-[16rem] sm:max-w-[20rem] md:max-w-[24rem]';
 
 interface DependencyInputProps {
   value: string[];
@@ -17,11 +21,10 @@ const DependencyInput: React.FC<DependencyInputProps> = ({ value, onChange, avai
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const inputId = 'dependency-input';
 
-  // Get task display text
-  const getTaskDisplay = (taskId: string) => {
-    const task = availableTasks.find(t => t.id === taskId);
-    return task ? `${task.id} - ${task.title}` : taskId;
-  };
+  // Resolve chips through the same canonical identity the markdown auto-links use, so
+  // case and zero-padding differences still resolve and ambiguous IDs stay unlinked
+  const taskIdIndex = useMemo(() => buildTaskIdIndex(availableTasks), [availableTasks]);
+  const resolveDependency = (taskId: string) => resolveTaskReference(taskIdIndex, taskId);
 
   // Filter tasks based on input
   useEffect(() => {
@@ -112,12 +115,25 @@ const DependencyInput: React.FC<DependencyInputProps> = ({ value, onChange, avai
           {/* Display selected dependencies */}
           {value.length > 0 && (
             <div className="flex flex-wrap gap-2 mb-2">
-              {value.map((taskId, index) => (
+              {value.map((taskId, index) => {
+                const dependency = resolveDependency(taskId);
+                const display = dependency ? `${dependency.id} - ${dependency.title}` : taskId;
+                return (
                 <span
                   key={index}
                   className="inline-flex items-center gap-1 px-2 py-0.5 text-sm bg-blue-100 dark:bg-blue-900/50 text-blue-800 dark:text-blue-200 rounded-md transition-colors duration-200 min-w-0 max-w-full"
                 >
-                  <span className="truncate max-w-[16rem] sm:max-w-[20rem] md:max-w-[24rem]">{getTaskDisplay(taskId)}</span>
+                  {dependency ? (
+                    <Link
+                      to={`/tasks/${dependency.id}`}
+                      className={`${CHIP_LABEL_CLASS} hover:underline`}
+                      title={display}
+                    >
+                      {display}
+                    </Link>
+                  ) : (
+                    <span className={CHIP_LABEL_CLASS} title={display}>{display}</span>
+                  )}
 	                  {!disabled && (
 	                    <button
 	                      type="button"
@@ -135,7 +151,8 @@ const DependencyInput: React.FC<DependencyInputProps> = ({ value, onChange, avai
                     </button>
                   )}
                 </span>
-              ))}
+                );
+              })}
             </div>
           )}
           
