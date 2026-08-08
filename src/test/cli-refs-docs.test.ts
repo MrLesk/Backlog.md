@@ -130,6 +130,42 @@ await import(${JSON.stringify(pathToFileURL(cliPath).href)});
 		});
 	});
 
+	describe("task create with empty --ref and --doc values", () => {
+		it("rejects an empty reference without creating the task", async () => {
+			const result = await $`bun ${cliPath} task create "Feature" --ref ""`.cwd(TEST_DIR).quiet().nothrow();
+
+			expect(result.exitCode).toBe(1);
+			expect(result.stderr.toString()).toContain("Cannot use an empty value with --ref");
+			expect(await new Core(TEST_DIR).filesystem.loadTask("TASK-1")).toBeNull();
+		});
+
+		it("rejects an empty reference alongside a valid one", async () => {
+			const result = await $`bun ${cliPath} task create "Feature" --ref "" --ref src/api.ts`
+				.cwd(TEST_DIR)
+				.quiet()
+				.nothrow();
+
+			expect(result.exitCode).toBe(1);
+			expect(result.stderr.toString()).toContain("Cannot use an empty value with --ref");
+		});
+
+		it("rejects an empty documentation entry without creating the task", async () => {
+			const result = await $`bun ${cliPath} task create "Feature" --doc ""`.cwd(TEST_DIR).quiet().nothrow();
+
+			expect(result.exitCode).toBe(1);
+			expect(result.stderr.toString()).toContain("Cannot use an empty value with --doc");
+			expect(await new Core(TEST_DIR).filesystem.loadTask("TASK-1")).toBeNull();
+		});
+
+		it("rejects an empty reference on task create --draft without creating the draft", async () => {
+			const result = await $`bun ${cliPath} task create "Feature" --draft --ref ""`.cwd(TEST_DIR).quiet().nothrow();
+
+			expect(result.exitCode).toBe(1);
+			expect(result.stderr.toString()).toContain("Cannot use an empty value with --ref");
+			expect(await new Core(TEST_DIR).filesystem.listDrafts()).toHaveLength(0);
+		});
+	});
+
 	describe("task edit with --ref flag", () => {
 		it("sets references on existing task", async () => {
 			await $`bun ${cliPath} task create "Feature"`.cwd(TEST_DIR).quiet();

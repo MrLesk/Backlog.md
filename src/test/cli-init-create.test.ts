@@ -542,6 +542,22 @@ describe("CLI Integration", () => {
 			expect(task?.assignee).toEqual(["@alice", "@bob", "@carol"]);
 		});
 
+		it("should split comma-separated labels on task create", async () => {
+			await $`bun ${CLI_PATH} task create "Comma label task" -l "ui,bug"`.cwd(TEST_DIR).quiet();
+
+			const core = new Core(TEST_DIR);
+			const task = await core.filesystem.loadTask("task-1");
+			expect(task?.labels).toEqual(["ui", "bug"]);
+		});
+
+		it("should collect repeated label flags on task create", async () => {
+			await $`bun ${CLI_PATH} task create "Repeated label task" -l ui -l bug,api`.cwd(TEST_DIR).quiet();
+
+			const core = new Core(TEST_DIR);
+			const task = await core.filesystem.loadTask("task-1");
+			expect(task?.labels).toEqual(["ui", "bug", "api"]);
+		});
+
 		it("should apply the configured defaultAssignee when task create has no -a", async () => {
 			await $`bun ${CLI_PATH} config set defaultAssignee ${"@alice,@bob"}`.cwd(TEST_DIR).quiet();
 			await $`bun ${CLI_PATH} task create "Default assignee task"`.cwd(TEST_DIR).quiet();
