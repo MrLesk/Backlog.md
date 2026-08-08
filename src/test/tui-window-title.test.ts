@@ -8,6 +8,26 @@ function hasControlCharacters(value: string): boolean {
 	});
 }
 
+/** Collect everything the screen writes to the terminal while `run` executes. */
+function captureTerminalWrites(run: (record: () => string, reset: () => void) => void): void {
+	const chunks: string[] = [];
+	const originalWrite = process.stdout.write;
+	process.stdout.write = ((chunk: unknown) => {
+		chunks.push(typeof chunk === "string" ? chunk : String(chunk));
+		return true;
+	}) as typeof process.stdout.write;
+	try {
+		run(
+			() => chunks.join(""),
+			() => {
+				chunks.length = 0;
+			},
+		);
+	} finally {
+		process.stdout.write = originalWrite;
+	}
+}
+
 describe("TUI window titles", () => {
 	it("prefixes the configured project name", () => {
 		expect(formatTuiTitle("Board", "Acme Website")).toBe("Acme Website - Board");
@@ -57,6 +77,42 @@ describe("TUI window titles", () => {
 		} finally {
 			screen.destroy();
 		}
+	});
+
+	it("saves the previous window title and restores it when the screen is destroyed", () => {
+		captureTerminalWrites((record, reset) => {
+			const screen = createScreen({ smartCSR: false, title: formatTuiTitle("Board", "Acme Website") });
+			// blessed buffers the title write, so drain it before checking the ordering.
+			screen.program.flush?.();
+
+			// ESC [ 22 ; 2 t pushes the title the user already had onto the terminal's stack.
+			const opened = record();
+			expect(opened).toContain("\x1b[22;2t");
+			expect(opened.indexOf("\x1b[22;2t")).toBeLessThan(opened.indexOf("Acme Website - Board"));
+
+			reset();
+			screen.destroy();
+
+			// The title is cleared for terminals without a title stack, then popped for the
+			// ones that have it, so the pop must come last to win where it is supported.
+			const closed = record();
+			expect(closed).toContain("\x1b]0;\x07");
+			expect(closed).toContain("\x1b[23;2t");
+			expect(closed.indexOf("\x1b]0;\x07")).toBeLessThan(closed.indexOf("\x1b[23;2t"));
+			// blessed emits "destroy" twice per screen, and one push must not be popped twice.
+			expect(closed.split("\x1b[23;2t")).toHaveLength(2);
+		});
+	});
+
+	it("leaves the window title alone for screens that do not set one", () => {
+		captureTerminalWrites((record) => {
+			const screen = createScreen({ smartCSR: false });
+			screen.destroy();
+
+			const written = record();
+			expect(written).not.toContain("\x1b[22;2t");
+			expect(written).not.toContain("\x1b[23;2t");
+		});
 	});
 
 	it("keeps the emitted screen title free of injected escape sequences", () => {

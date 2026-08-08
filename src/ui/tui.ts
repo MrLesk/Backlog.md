@@ -111,9 +111,41 @@ export function formatTuiTitle(view: string, projectName?: string): string {
 	return stripControlCharacters(usableName ? `${usableName} - ${view}` : `Backlog ${view}`);
 }
 
+/** Push the current terminal window title onto the terminal's title stack. */
+const PUSH_WINDOW_TITLE = "\x1b[22;2t";
+/** Pop the terminal window title the matching push saved. */
+const POP_WINDOW_TITLE = "\x1b[23;2t";
+
 export function createScreen(options: Partial<ScreenOptions> = {}): ScreenInterface {
 	const program: ProgramInterface = createProgram({ tput: false });
+
+	// Renaming the terminal window must not outlive the session, so save the title the
+	// user had before blessed overwrites it and put it back during teardown. Terminals
+	// without a title stack ignore the push and pop, so teardown clears the title first
+	// and they fall back to their own default instead of keeping a stale view name.
+	const managesWindowTitle = typeof options.title === "string" && options.title.length > 0;
+	if (managesWindowTitle) {
+		program.write(PUSH_WINDOW_TITLE);
+	}
+
 	const screen = blessedScreen({ smartCSR: true, program, fullUnicode: true, ...options });
+
+	if (managesWindowTitle) {
+		// blessed routes its exit, SIGINT/SIGTERM/SIGQUIT, and uncaughtException teardown
+		// through screen.destroy(), so this covers every path that already ends a session.
+		// It emits "destroy" twice per screen, and one push must not be popped twice.
+		let restoredWindowTitle = false;
+		screen.on("destroy", () => {
+			if (restoredWindowTitle) {
+				return;
+			}
+			restoredWindowTitle = true;
+			program.setTitle("");
+			// screen.destroy() can run from process exit, where a deferred flush never happens.
+			program.flush?.();
+			program.write(POP_WINDOW_TITLE);
+		});
+	}
 
 	if (process.env.DEBUG) {
 		const tputColors = (screen as unknown as { tput?: { colors?: number } }).tput?.colors;
