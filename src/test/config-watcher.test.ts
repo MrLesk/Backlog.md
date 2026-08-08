@@ -128,7 +128,6 @@ describe("config watcher", () => {
 			]),
 		);
 		core.filesystem.parseConfig = (content) => {
-			const parsed = originalParseConfig(content);
 			const attempts = unusableParseAttempts.get(content);
 			if (attempts !== undefined) {
 				const nextAttempts = attempts + 1;
@@ -137,7 +136,8 @@ describe("config watcher", () => {
 					unusableAttemptResolvers.get(content)?.();
 				}
 			}
-			return parsed;
+			// Counted before parsing: a rejected list value throws instead of returning.
+			return originalParseConfig(content);
 		};
 
 		const published: BacklogConfig[] = [];
@@ -185,7 +185,7 @@ describe("config watcher", () => {
 		}
 	});
 
-	it("retains the cached defaultAssignee while an inline edit is not valid YAML", async () => {
+	it("retains the cached defaultAssignee while an inline edit is not a usable assignee value", async () => {
 		await core.filesystem.saveConfig({ ...initialConfig, defaultAssignee: ["@alice"] });
 		const baseLines = [
 			'project_name: "Config watcher"',
@@ -196,8 +196,14 @@ describe("config watcher", () => {
 			'task_prefix: "BACK"',
 		];
 		const withAssignee = (line: string) => [baseLines[0], line, ...baseLines.slice(1), ""].join("\n");
-		// Truncated mid-edit, and an unbalanced quote that still opens and closes with brackets.
-		const invalidContents = [withAssignee('default_assignee: ["@alice'), withAssignee('default_assignee: ["@alice]')];
+		// Truncated mid-edit and an unbalanced quote that still opens and closes with brackets, then two
+		// values YAML reads but the key cannot hold: publishing either would drop the cached assignee.
+		const invalidContents = [
+			withAssignee('default_assignee: ["@alice'),
+			withAssignee('default_assignee: ["@alice]'),
+			withAssignee('default_assignee: {name: "@alice"}'),
+			withAssignee("default_assignee: 42"),
+		];
 		const scalarContent = withAssignee('default_assignee: "@carol"');
 		const inlineArrayContent = withAssignee('default_assignee: ["@alice", "@bob"]');
 

@@ -360,6 +360,10 @@ export class MilestoneHandlers {
 			);
 		}
 
+		// Read the config before writing: a config Backlog refuses to read must abort the command
+		// before the milestone file exists, not after.
+		await this.core.ensureConfigLoaded();
+
 		// Create milestone file
 		const milestone = await this.core.filesystem.createMilestone(name, args.description);
 		const milestonePath = await this.core.filesystem.getMilestoneFilePath(milestone.id);
