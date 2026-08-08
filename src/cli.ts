@@ -2485,8 +2485,15 @@ addHelpSchema(taskCmd.command("list"), {
 		// configured prefix; the canonical form is only used for display.
 		let parentId: string | undefined;
 		let parentDisplayId: string | undefined;
-		if (options.parent) {
+		if (options.parent !== undefined) {
 			parentId = String(options.parent).trim();
+			if (parentId === "") {
+				// A blank value must not silently degrade into "no parent filter" and list every task.
+				console.error("Cannot use an empty value with --parent. Omit the flag to list every task.");
+				process.exitCode = 1;
+				cleanup();
+				return;
+			}
 			baseFilters.parentTaskId = parentId;
 			const config = await core.filesystem.loadConfig();
 			parentDisplayId = canonicalTaskId(parentId, config?.prefixes?.task ?? "task");
@@ -2558,7 +2565,7 @@ addHelpSchema(taskCmd.command("list"), {
 			}
 
 			if (filtered.length === 0) {
-				if (options.parent) {
+				if (parentId) {
 					console.log(`No child tasks found for parent task ${parentDisplayId}.`);
 				} else {
 					console.log("No tasks found.");
@@ -2622,7 +2629,7 @@ addHelpSchema(taskCmd.command("list"), {
 		if (options.assignee) activeFilters.push(`Assignee: ${options.assignee}`);
 		if (options.unassigned) activeFilters.push("Unassigned");
 		if (options.ready) activeFilters.push("Ready");
-		if (options.parent) {
+		if (parentId) {
 			activeFilters.push(`Parent: ${parentDisplayId}`);
 		}
 		if (options.milestone) activeFilters.push(`Milestone: ${options.milestone}`);

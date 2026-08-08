@@ -218,6 +218,99 @@ describe("CLI task ID resolution with a custom ID prefix", () => {
 		expect((await core.filesystem.loadTask("BACK-2"))?.dependencies).toEqual(["BACK-1"]);
 	});
 
+	it("stores one dependency when equivalent ID forms name the same task", async () => {
+		const core = await initCustomPrefixProject();
+		await createTask(core, "BACK-1", "Target task");
+		await createTask(core, "BACK-2", "Dependent task");
+
+		const edited = await $`bun ${CLI_PATH} task edit 2 --dep 1,BACK-1`.cwd(TEST_DIR).nothrow().quiet();
+		expect(edited.exitCode).toBe(0);
+		expect((await core.filesystem.loadTask("BACK-2"))?.dependencies).toEqual(["BACK-1"]);
+
+		const created = await $`bun ${CLI_PATH} task create Dependent --dep BACK-1,1,back-001`
+			.cwd(TEST_DIR)
+			.nothrow()
+			.quiet();
+		expect(created.exitCode).toBe(0);
+		expect((await core.filesystem.loadTask("BACK-3"))?.dependencies).toEqual(["BACK-1"]);
+	});
+
+	it("fails closed when a dependency ID matches two files claiming one identity", async () => {
+		const core = await initCustomPrefixProject();
+		await createTask(core, "BACK-1", "Target task");
+		await createTask(core, "BACK-2", "Dependent task");
+		// BACK-01 is the same identity as BACK-1, so no dependency write may guess between them.
+		// saveTask deletes same-identity files by design, so the twin is written straight to disk.
+		const tasksDir = core.filesystem.tasksDir;
+		await Bun.write(
+			join(tasksDir, "back-01 - Duplicate-identity.md"),
+			(await Bun.file(join(tasksDir, "back-1 - Target-task.md")).text()).replace("id: BACK-1", "id: BACK-01"),
+		);
+
+		for (const args of [
+			["task", "edit", "2", "--dep", "1"],
+			["task", "edit", "2", "--dep", "BACK-1"],
+			["task", "create", "Dependent", "--dep", "1"],
+		]) {
+			const result = await $`bun ${CLI_PATH} ${args}`.cwd(TEST_DIR).nothrow().quiet();
+
+			expect(result.exitCode).not.toBe(0);
+			const output = `${result.stdout.toString()}${result.stderr.toString()}`;
+			// The colliding identity is named, not the bare input the user typed.
+			expect(output).toContain("Task ID BACK-1 is ambiguous");
+			expect(output).toContain("backlog doctor");
+		}
+
+		expect((await core.filesystem.loadTask("BACK-2"))?.dependencies ?? []).toEqual([]);
+		expect(await core.filesystem.loadTask("BACK-3")).toBeNull();
+	});
+
+	it("fails closed when a bare dependency ID matches both a task and a draft", async () => {
+		const core = await initCustomPrefixProject();
+		await createTask(core, "BACK-1", "Target task");
+		await createTask(core, "BACK-2", "Dependent task");
+		// Task and draft IDs come from separate counters, so a bare 1 names two different tasks.
+		await createDraft(core, "DRAFT-1", "Target draft");
+
+		const ambiguous = await $`bun ${CLI_PATH} task edit 2 --dep 1`.cwd(TEST_DIR).nothrow().quiet();
+		expect(ambiguous.exitCode).not.toBe(0);
+		const output = `${ambiguous.stdout.toString()}${ambiguous.stderr.toString()}`;
+		expect(output).toContain("Dependency ID 1 is ambiguous");
+		expect(output).toContain("back-1 - Target-task.md");
+		expect(output).toContain("draft-1 - Target-draft.md");
+		expect((await core.filesystem.loadTask("BACK-2"))?.dependencies ?? []).toEqual([]);
+
+		// A fully qualified ID still names exactly one of them, in either namespace.
+		const onTask = await $`bun ${CLI_PATH} task edit 2 --dep BACK-1`.cwd(TEST_DIR).nothrow().quiet();
+		expect(onTask.exitCode).toBe(0);
+		expect((await core.filesystem.loadTask("BACK-2"))?.dependencies).toEqual(["BACK-1"]);
+
+		const onDraft = await $`bun ${CLI_PATH} task edit 2 --dep DRAFT-1`.cwd(TEST_DIR).nothrow().quiet();
+		expect(onDraft.exitCode).toBe(0);
+		expect((await core.filesystem.loadTask("BACK-2"))?.dependencies).toEqual(["DRAFT-1"]);
+	});
+
+	it("rejects a blank parent filter instead of listing every task", async () => {
+		const core = await initCustomPrefixProject();
+		await createTask(core, "BACK-1", "Target task");
+		await createTask(core, "BACK-2", "Other task");
+
+		for (const parent of ["   ", ""]) {
+			const result = await $`bun ${CLI_PATH} task list --parent ${parent} --plain`.cwd(TEST_DIR).nothrow().quiet();
+
+			expect(result.exitCode).toBe(1);
+			expect(result.stderr.toString()).toContain(
+				"Cannot use an empty value with --parent. Omit the flag to list every task.",
+			);
+			expect(result.stdout.toString()).not.toContain("BACK-2 - Other task");
+		}
+
+		// Omitting the flag still lists everything.
+		const unfiltered = await $`bun ${CLI_PATH} task list --plain`.cwd(TEST_DIR).nothrow().quiet();
+		expect(unfiltered.exitCode).toBe(0);
+		expect(unfiltered.stdout.toString()).toContain("BACK-2 - Other task");
+	});
+
 	it("reports missing IDs with the configured prefix instead of the default one", async () => {
 		const core = await initCustomPrefixProject();
 		await createTask(core, "BACK-1", "Target task");

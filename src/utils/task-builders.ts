@@ -1,6 +1,7 @@
 import type { Core } from "../core/backlog.ts";
-import type { AcceptanceCriterion } from "../types/index.ts";
-import { taskIdsEqual } from "./task-path.ts";
+import type { AcceptanceCriterion, Task } from "../types/index.ts";
+import { AmbiguousIdError } from "./entity-id.ts";
+import { AmbiguousTaskIdError, canonicalTaskId, taskIdsEqual } from "./task-path.ts";
 
 /**
  * Shared utilities for building tasks and validating dependencies
@@ -8,9 +9,37 @@ import { taskIdsEqual } from "./task-path.ts";
  */
 
 /**
+ * Resolve one dependency input to the single task it names.
+ *
+ * Identity fails closed here exactly as it does for the task a command targets: an input that
+ * could mean more than one task never picks a winner. Matching several distinct IDs means the
+ * input is underspecified (bare numbers span the separate task and draft counters), while one
+ * identity claimed by several files is the duplicate-ID defect `backlog doctor` repairs.
+ */
+function resolveUniqueDependency(dependency: string, matches: Task[]): string | null {
+	const distinctIds = [...new Set(matches.map((match) => match.id))];
+	if (distinctIds.length <= 1) {
+		return distinctIds[0] ?? null;
+	}
+
+	const candidates = matches.map((match) => match.filePath ?? match.id);
+	const [canonicalId, ...otherIdentities] = [...new Set(distinctIds.map((id) => canonicalTaskId(id)))];
+	if (canonicalId && otherIdentities.length === 0) {
+		// Name the colliding identity rather than the input, which may be a bare number.
+		throw new AmbiguousTaskIdError(canonicalId, candidates);
+	}
+	throw new AmbiguousIdError(
+		"Dependency",
+		dependency,
+		candidates,
+		`Use a full task ID instead of ${dependency.trim()} to choose one.`,
+	);
+}
+
+/**
  * Validate that all dependencies exist in the current project.
  * Inputs are matched by task identity, so bare numeric IDs resolve under any configured prefix.
- * Returns the matched canonical IDs plus the inputs that matched nothing.
+ * Returns the matched canonical IDs, deduplicated, plus the inputs that matched nothing.
  */
 export async function validateDependencies(
 	dependencies: string[],
@@ -24,13 +53,19 @@ export async function validateDependencies(
 	// Task dependencies should honor cross-branch visibility when enabled in config,
 	// while draft dependencies remain local-only.
 	const [tasks, drafts] = await Promise.all([core.queryTasks(), core.filesystem.listDrafts()]);
-	const knownIds = [...tasks.map((t) => t.id), ...drafts.map((d) => d.id)];
-	for (const dep of dependencies) {
-		const match = knownIds.find((id) => taskIdsEqual(dep, id));
-		if (match) {
-			valid.push(match);
-		} else {
-			invalid.push(dep);
+	const known = [...tasks, ...drafts];
+	for (const dependency of dependencies) {
+		const resolved = resolveUniqueDependency(
+			dependency,
+			known.filter((candidate) => taskIdsEqual(dependency, candidate.id)),
+		);
+		if (resolved === null) {
+			invalid.push(dependency);
+			continue;
+		}
+		// Equivalent spellings of one task (1 and BACK-1) must not persist twice.
+		if (!valid.some((existing) => taskIdsEqual(existing, resolved))) {
+			valid.push(resolved);
 		}
 	}
 	return { valid, invalid };
