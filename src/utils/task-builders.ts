@@ -1,6 +1,7 @@
 import type { Core } from "../core/backlog.ts";
-import type { AcceptanceCriterion } from "../types/index.ts";
-import { normalizeTaskId, taskIdsEqual } from "./task-path.ts";
+import type { AcceptanceCriterion, Task } from "../types/index.ts";
+import { AmbiguousIdError } from "./entity-id.ts";
+import { AmbiguousTaskIdError, canonicalTaskId, taskIdsEqual } from "./task-path.ts";
 
 /**
  * Shared utilities for building tasks and validating dependencies
@@ -8,33 +9,41 @@ import { normalizeTaskId, taskIdsEqual } from "./task-path.ts";
  */
 
 /**
- * Normalize dependencies to proper task-X format
- * Handles both array and comma-separated string inputs
+ * Reject a dependency input that names more than one entity in the corpus.
+ *
+ * Several canonical identities mean the input is underspecified, because bare numbers span the
+ * separate task and draft counters. Several spellings of one identity (BACK-1 and BACK-01) are the
+ * duplicate-ID defect `backlog doctor` repairs.
  */
-export function normalizeDependencies(dependencies: unknown): string[] {
-	if (!dependencies) return [];
-	const normalizeList = (values: string[]): string[] =>
-		values
-			.map((value) => value.trim())
-			.filter((value): value is string => value.length > 0)
-			.map((value) => normalizeTaskId(value));
+function resolveUniqueDependency(dependency: string, matches: Task[]): string | null {
+	const [first, ...rest] = matches;
+	if (!first) return null;
+	if (rest.length === 0) return first.id;
 
-	if (Array.isArray(dependencies)) {
-		return normalizeList(
-			dependencies.flatMap((dep) =>
-				String(dep)
-					.split(",")
-					.map((d) => d.trim()),
-			),
-		);
+	const candidates = matches.map((match) => match.filePath ?? match.id);
+	const [canonicalId, ...otherIdentities] = [...new Set(matches.map((match) => canonicalTaskId(match.id)))];
+	if (canonicalId && otherIdentities.length === 0) {
+		// Name the colliding identity rather than the input, which may be a bare number.
+		throw new AmbiguousTaskIdError(canonicalId, candidates);
 	}
-
-	return normalizeList(String(dependencies).split(","));
+	throw new AmbiguousIdError(
+		"Dependency",
+		dependency,
+		candidates,
+		`Use a full task ID instead of ${dependency.trim()} to choose one.`,
+	);
 }
 
 /**
- * Validate that all dependencies exist in the current project
- * Returns arrays of valid and invalid dependency IDs
+ * Validate that all dependencies exist in the current project.
+ *
+ * Inputs are matched by task identity, so bare numeric IDs resolve under any configured prefix, and
+ * identity fails closed exactly as it does for the task a command targets. That takes two checks,
+ * mirroring the identity index itself: the corpus answers whether the input names more than one
+ * identity, and `Core.getTask` answers whether that identity is claimed by more than one file -
+ * which the corpus cannot, because it keeps one entry per ID.
+ *
+ * Returns the matched canonical IDs, deduplicated, plus the inputs that matched nothing.
  */
 export async function validateDependencies(
 	dependencies: string[],
@@ -48,13 +57,22 @@ export async function validateDependencies(
 	// Task dependencies should honor cross-branch visibility when enabled in config,
 	// while draft dependencies remain local-only.
 	const [tasks, drafts] = await Promise.all([core.queryTasks(), core.filesystem.listDrafts()]);
-	const knownIds = [...tasks.map((t) => t.id), ...drafts.map((d) => d.id)];
-	for (const dep of dependencies) {
-		const match = knownIds.find((id) => taskIdsEqual(dep, id));
-		if (match) {
-			valid.push(match);
-		} else {
-			invalid.push(dep);
+	const known = [...tasks, ...drafts];
+	for (const dependency of dependencies) {
+		const resolved = resolveUniqueDependency(
+			dependency,
+			known.filter((candidate) => taskIdsEqual(dependency, candidate.id)),
+		);
+		if (resolved === null) {
+			invalid.push(dependency);
+			continue;
+		}
+		// Called for its ambiguity check: it raises AmbiguousTaskIdError when several files claim
+		// this ID. Drafts resolve to null here and keep their own local-only lookup.
+		await core.getTask(resolved);
+		// Equivalent spellings of one task (1 and BACK-1) must not persist twice.
+		if (!valid.some((existing) => taskIdsEqual(existing, resolved))) {
+			valid.push(resolved);
 		}
 	}
 	return { valid, invalid };

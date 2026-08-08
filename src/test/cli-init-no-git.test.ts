@@ -108,7 +108,7 @@ describe("CLI init without Git", () => {
 
 		const promotedResult = await $`bun ${CLI_PATH} draft promote draft-1`.cwd(TEST_DIR).quiet();
 		expect(promotedResult.exitCode).toBe(0);
-		expect(promotedResult.stdout.toString()).toContain("Promoted draft draft-1");
+		expect(promotedResult.stdout.toString()).toContain("Promoted draft DRAFT-1");
 
 		const milestone = await core.filesystem.createMilestone("No Git Milestone");
 		const archiveMilestoneResult = await core.archiveMilestone(milestone.id, true);

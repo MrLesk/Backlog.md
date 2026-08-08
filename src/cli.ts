@@ -81,14 +81,13 @@ import {
 	runMcpClientSetupCommand,
 } from "./utils/mcp-client-setup.ts";
 import { resolveMilestoneInputForStorage } from "./utils/milestone-storage.ts";
-import { hasAnyPrefix } from "./utils/prefix-config.ts";
+import { DRAFT_PREFIX, hasAnyPrefix, normalizeId } from "./utils/prefix-config.ts";
 import { formatValidPriorityValues, getPriorityOptions, resolvePriorityValue } from "./utils/priority-config.ts";
 import { type ReadOutputMode, resolveReadOutputMode } from "./utils/read-output-mode.ts";
 import { getTaskReadiness, loadReadinessGraph } from "./utils/readiness.ts";
 import { resolveRuntimeCwd } from "./utils/runtime-cwd.ts";
 import { formatValidStatuses, getCanonicalStatus, getCanonicalStatuses, getValidStatuses } from "./utils/status.ts";
 import {
-	normalizeDependencies,
 	parseClearableStringList,
 	parseDelimitedStringList,
 	parsePositiveIndexList,
@@ -96,7 +95,7 @@ import {
 	toStringArray,
 } from "./utils/task-builders.ts";
 import { buildTaskUpdateInput } from "./utils/task-edit-builder.ts";
-import { normalizeTaskId, taskIdsEqual } from "./utils/task-path.ts";
+import { AmbiguousTaskIdError, canonicalTaskId, taskIdsEqual } from "./utils/task-path.ts";
 import { sortTasks } from "./utils/task-sorting.ts";
 import { formatValidTaskTypeValues, getTaskTypeValues, resolveTaskTypeValues } from "./utils/task-type-config.ts";
 import { getTerminalStatus, isTerminalStatus } from "./utils/terminal-status.ts";
@@ -553,6 +552,35 @@ function validateClearableListInput(input: {
 }
 
 /**
+ * Resolve a --parent argument to the single task it names, before any child task is read.
+ *
+ * Identity fails closed here exactly as it does for a targeted task ID: a value matching several
+ * files must not silently filter on whichever one came first. Returns the resolved canonical ID so
+ * filtering never runs on the raw input.
+ *
+ * The corpus is loaded here rather than passed in, so every output mode resolves the parent from the
+ * same local task list that produces the displayed children and cannot drift apart.
+ */
+async function resolveParentFilterId(core: Core, parentId: string, parentDisplayId: string): Promise<string> {
+	const tasks = await core.queryTasks({ includeCrossBranch: false });
+	const matches = tasks.filter((task) => taskIdsEqual(parentId, task.id));
+	if (matches.length > 1) {
+		throw new AmbiguousTaskIdError(
+			parentDisplayId,
+			matches.map((task) => task.filePath ?? task.id),
+		);
+	}
+	const parent = matches[0];
+	if (!parent) {
+		throw new Error(`Parent task ${parentDisplayId} not found.`);
+	}
+	// Called for its ambiguity check: it raises AmbiguousTaskIdError when several files claim this
+	// ID, which the corpus cannot report because it keeps one entry per ID.
+	await core.getTask(parent.id);
+	return parent.id;
+}
+
+/**
  * Validate the dependency, reference, and documentation list flags shared by task create and task edit.
  * `supportsClearFlags` is false for task create, which has no --clear-deps/--clear-refs/--clear-docs flags.
  */
@@ -566,7 +594,7 @@ function validateTaskListFlags(
 		validateClearableListInput({
 			rawValues: [...toStringArray(options.dependsOn), ...toStringArray(options.dep)],
 			cleared: Boolean(options.clearDeps),
-			isBlank: (value) => normalizeDependencies([value]).length === 0,
+			isBlank: isBlankListValue,
 			setterFlags: "--depends-on or --dep",
 			clearFlag: clearFlag("--clear-deps"),
 			subject: "task dependencies",
@@ -1843,7 +1871,7 @@ addHelpSchema(taskCmd.command("create [title]"), {
 			return;
 		}
 
-		const dependencies = [...toStringArray(options.dependsOn), ...toStringArray(options.dep)];
+		const dependencies = parseDelimitedStringList([...toStringArray(options.dependsOn), ...toStringArray(options.dep)]);
 
 		try {
 			const criteria = processAcceptanceCriteriaOptions(options);
@@ -1855,7 +1883,7 @@ addHelpSchema(taskCmd.command("create [title]"), {
 				status: createAsDraft ? "Draft" : options.status ? String(options.status) : undefined,
 				assignee: parseClearableStringList(options.assignee),
 				labels: parseDelimitedStringList(options.labels),
-				dependencies: dependencies.length > 0 ? normalizeDependencies(dependencies) : undefined,
+				dependencies,
 				references: parseDelimitedStringList(options.ref),
 				documentation: parseDelimitedStringList(options.doc),
 				modifiedFiles: parseDelimitedStringList(options.modifiedFile),
@@ -2415,11 +2443,22 @@ addHelpSchema(taskCmd.command("list"), {
 			taskLimit = parsedLimit;
 		}
 
+		// The raw argument reaches identity comparison untouched so bare numeric IDs resolve under any
+		// configured prefix; the canonical form is only used for display.
 		let parentId: string | undefined;
-		if (options.parent) {
-			const parentInput = String(options.parent);
-			parentId = normalizeTaskId(parentInput);
-			baseFilters.parentTaskId = parentInput;
+		let parentDisplayId: string | undefined;
+		if (options.parent !== undefined) {
+			parentId = String(options.parent).trim();
+			if (parentId === "") {
+				// A blank value must not silently degrade into "no parent filter" and list every task.
+				console.error("Cannot use an empty value with --parent. Omit the flag to list every task.");
+				process.exitCode = 1;
+				cleanup();
+				return;
+			}
+			baseFilters.parentTaskId = parentId;
+			const config = await core.filesystem.loadConfig();
+			parentDisplayId = canonicalTaskId(parentId, config?.prefixes?.task ?? "task");
 		}
 
 		if (options.sort) {
@@ -2433,6 +2472,20 @@ addHelpSchema(taskCmd.command("list"), {
 		}
 
 		if (outputMode !== "interactive") {
+			// Resolve the parent before reading children so an ambiguous ID never emits task data.
+			let resolvedParentId: string | undefined;
+			if (parentId) {
+				try {
+					resolvedParentId = await resolveParentFilterId(core, parentId, parentDisplayId ?? parentId);
+				} catch (error) {
+					console.error(error instanceof Error ? error.message : String(error));
+					process.exitCode = 1;
+					cleanup();
+					return;
+				}
+				baseFilters.parentTaskId = resolvedParentId;
+			}
+
 			let tasks = await core.queryTasks({
 				query: searchQuery || undefined,
 				filters: Object.keys(baseFilters).length > 0 ? baseFilters : undefined,
@@ -2443,18 +2496,6 @@ addHelpSchema(taskCmd.command("list"), {
 			if (options.ready) {
 				const readinessGraph = await loadReadinessGraph(core);
 				tasks = tasks.filter((task) => getTaskReadiness(task, readinessGraph).isReady);
-			}
-
-			if (parentId) {
-				const parentExists = (await core.queryTasks({ includeCrossBranch: false })).some((task) =>
-					taskIdsEqual(parentId, task.id),
-				);
-				if (!parentExists) {
-					console.error(`Parent task ${parentId} not found.`);
-					process.exitCode = 1;
-					cleanup();
-					return;
-				}
 			}
 
 			let sortedTasks = tasks;
@@ -2472,8 +2513,9 @@ addHelpSchema(taskCmd.command("list"), {
 			}
 
 			let filtered = sortedTasks;
-			if (parentId) {
-				filtered = filtered.filter((task) => task.parentTaskId && taskIdsEqual(parentId, task.parentTaskId));
+			if (resolvedParentId) {
+				const parent = resolvedParentId;
+				filtered = filtered.filter((task) => task.parentTaskId && taskIdsEqual(parent, task.parentTaskId));
 			}
 			if (labelFilters.length > 0) {
 				filtered = filtered.filter((task) => taskMatchesAllLabels(task, labelFilters));
@@ -2488,9 +2530,8 @@ addHelpSchema(taskCmd.command("list"), {
 			}
 
 			if (filtered.length === 0) {
-				if (options.parent) {
-					const canonicalParent = normalizeTaskId(String(options.parent));
-					console.log(`No child tasks found for parent task ${canonicalParent}.`);
+				if (resolvedParentId) {
+					console.log(`No child tasks found for parent task ${parentDisplayId}.`);
 				} else {
 					console.log("No tasks found.");
 				}
@@ -2553,8 +2594,8 @@ addHelpSchema(taskCmd.command("list"), {
 		if (options.assignee) activeFilters.push(`Assignee: ${options.assignee}`);
 		if (options.unassigned) activeFilters.push("Unassigned");
 		if (options.ready) activeFilters.push("Ready");
-		if (options.parent) {
-			activeFilters.push(`Parent: ${normalizeTaskId(String(options.parent))}`);
+		if (parentId) {
+			activeFilters.push(`Parent: ${parentDisplayId}`);
 		}
 		if (options.milestone) activeFilters.push(`Milestone: ${options.milestone}`);
 		if (baseFilters.priority) activeFilters.push(`Priority: ${baseFilters.priority}`);
@@ -2634,20 +2675,15 @@ addHelpSchema(taskCmd.command("list"), {
 
 				// Now query with filters - this will use the already-populated ContentStore
 				updateProgress("Applying filters...");
-				const [tasks, allTasksForParentCheck] = await Promise.all([
-					core.queryTasks({
-						filters: Object.keys(interactiveLoaderFilters).length > 0 ? interactiveLoaderFilters : undefined,
-						includeCrossBranch: false,
-					}),
-					parentId ? core.queryTasks() : Promise.resolve(undefined),
-				]);
+				const tasks = await core.queryTasks({
+					filters: Object.keys(interactiveLoaderFilters).length > 0 ? interactiveLoaderFilters : undefined,
+					includeCrossBranch: false,
+				});
 
-				if (parentId && allTasksForParentCheck) {
-					const parentExists = allTasksForParentCheck.some((task) => taskIdsEqual(parentId, task.id));
-					if (!parentExists) {
-						throw new Error(`Parent task ${parentId} not found.`);
-					}
-				}
+				// Throws before anything is displayed when the parent is missing or ambiguous.
+				const resolvedParentId = parentId
+					? await resolveParentFilterId(core, parentId, parentDisplayId ?? parentId)
+					: undefined;
 
 				let sortedTasks = tasks;
 				if (options.sort) {
@@ -2661,8 +2697,8 @@ addHelpSchema(taskCmd.command("list"), {
 				}
 
 				let filtered = sortedTasks;
-				if (parentId) {
-					filtered = filtered.filter((task) => task.parentTaskId && taskIdsEqual(parentId, task.parentTaskId));
+				if (resolvedParentId) {
+					filtered = filtered.filter((task) => task.parentTaskId && taskIdsEqual(resolvedParentId, task.parentTaskId));
 				}
 
 				return {
@@ -2906,7 +2942,7 @@ addHelpSchema(taskCmd.command("edit [taskId]"), {
 		const core = new Core(cwd);
 
 		if (shouldUseWizard) {
-			let selectedTaskId = taskId ? normalizeTaskId(taskId) : undefined;
+			let selectedTaskId = taskId?.trim() || undefined;
 			if (!selectedTaskId) {
 				const localTasks = await core.queryTasks({ includeCrossBranch: false });
 				const taskOptions = localTasks.map((candidate) => ({
@@ -2954,8 +2990,7 @@ addHelpSchema(taskCmd.command("edit [taskId]"), {
 			return;
 		}
 
-		const canonicalId = normalizeTaskId(taskId ?? "");
-		const existingTask = await core.loadTaskById(canonicalId);
+		const existingTask = await core.loadTaskById(taskId ?? "");
 
 		if (!existingTask) {
 			console.error(`Task ${taskId} not found.`);
@@ -3043,7 +3078,7 @@ addHelpSchema(taskCmd.command("edit [taskId]"), {
 				uncheckDod = dodUnchecks;
 			}
 		} catch (error) {
-			console.error(formatTaskEditError(error, canonicalId));
+			console.error(formatTaskEditError(error, existingTask.id));
 			process.exitCode = 1;
 			return;
 		}
@@ -3099,7 +3134,6 @@ addHelpSchema(taskCmd.command("edit [taskId]"), {
 			.map((value) => String(value).trim())
 			.filter((value) => value.length > 0);
 
-		const combinedDependencies = [...toStringArray(options.dependsOn), ...toStringArray(options.dep)];
 		const clearableListError = validateTaskListFlags(options, { supportsClearFlags: true });
 		if (clearableListError) {
 			console.error(clearableListError);
@@ -3114,7 +3148,10 @@ addHelpSchema(taskCmd.command("edit [taskId]"), {
 			process.exitCode = 1;
 			return;
 		}
-		const dependencyValues = combinedDependencies.length > 0 ? normalizeDependencies(combinedDependencies) : undefined;
+		const dependencyValues = parseDelimitedStringList([
+			...toStringArray(options.dependsOn),
+			...toStringArray(options.dep),
+		]);
 
 		const normalizedReferences = parseDelimitedStringList(options.ref);
 		const addReferenceValues = parseDelimitedStringList(options.addRef) ?? [];
@@ -3248,9 +3285,9 @@ addHelpSchema(taskCmd.command("edit [taskId]"), {
 		let updatedTask: Task;
 		try {
 			const updateInput = buildTaskUpdateInput(editArgs);
-			updatedTask = await core.editTask(canonicalId, updateInput);
+			updatedTask = await core.editTask(existingTask.id, updateInput);
 		} catch (error) {
-			console.error(formatTaskEditError(error, canonicalId));
+			console.error(formatTaskEditError(error, existingTask.id));
 			process.exitCode = 1;
 			return;
 		}
@@ -3423,11 +3460,12 @@ taskCmd
 		const cwd = await requireProjectRoot();
 		const core = new Core(cwd);
 		try {
-			const success = await core.demoteTask(taskId);
-			if (success) {
-				console.log(`Demoted task ${taskId}`);
+			const task = await core.loadTaskById(taskId);
+			if (task && (await core.demoteTask(task.id))) {
+				console.log(`Demoted task ${task.id}`);
 			} else {
 				console.error(`Task ${taskId} not found.`);
+				process.exitCode = 1;
 			}
 		} catch (error) {
 			console.error(error instanceof Error ? error.message : String(error));
@@ -3592,11 +3630,13 @@ draftCmd
 	.action(async (taskId: string) => {
 		const cwd = await requireProjectRoot();
 		const core = new Core(cwd);
-		const success = await core.archiveDraft(taskId);
-		if (success) {
-			console.log(`Archived draft ${taskId}`);
+		// The argument itself selects the draft file; re-resolving by its frontmatter ID could
+		// target a different file when a draft filename and its ID have drifted apart.
+		if (await core.archiveDraft(taskId)) {
+			console.log(`Archived draft ${normalizeId(taskId, DRAFT_PREFIX)}`);
 		} else {
 			console.error(`Draft ${taskId} not found.`);
+			process.exitCode = 1;
 		}
 	});
 
@@ -3607,11 +3647,12 @@ draftCmd
 		const cwd = await requireProjectRoot();
 		const core = new Core(cwd);
 		try {
-			const success = await core.promoteDraft(taskId);
-			if (success) {
-				console.log(`Promoted draft ${taskId}`);
+			// Same as archive: the argument selects the file, so it must not be re-resolved by ID.
+			if (await core.promoteDraft(taskId)) {
+				console.log(`Promoted draft ${normalizeId(taskId, DRAFT_PREFIX)}`);
 			} else {
 				console.error(`Draft ${taskId} not found.`);
+				process.exitCode = 1;
 			}
 		} catch (error) {
 			console.error(error instanceof Error ? error.message : String(error));

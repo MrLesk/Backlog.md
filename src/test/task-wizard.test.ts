@@ -75,7 +75,9 @@ describe("task wizard", () => {
 		expect(input?.implementationNotes).toBe("Decision notes");
 		expect(input?.references).toEqual(["src/cli.ts", "docs/plan.md"]);
 		expect(input?.documentation).toEqual(["docs/spec.md"]);
-		expect(input?.dependencies).toEqual(["TASK-1", "TASK-2"]);
+		// Dependency IDs stay exactly as typed; Core resolves them against real task IDs, which is the
+		// only place the configured ID prefix is known.
+		expect(input?.dependencies).toEqual(["task-1", "2"]);
 	});
 
 	it("builds prefilled edit update input", async () => {
@@ -136,7 +138,7 @@ describe("task wizard", () => {
 		expect(updateInput?.type).toBe("Epic");
 		expect(updateInput?.assignee).toEqual(["alice", "bob"]);
 		expect(updateInput?.labels).toEqual(["existing", "cli"]);
-		expect(updateInput?.dependencies).toEqual(["TASK-2", "TASK-3"]);
+		expect(updateInput?.dependencies).toEqual(["task-2", "3"]);
 		expect(updateInput?.references).toEqual(["docs/new.md", "src/cli.ts"]);
 		expect(updateInput?.documentation).toEqual(["docs/spec.md"]);
 		expect(updateInput?.implementationPlan).toBe("New plan");
