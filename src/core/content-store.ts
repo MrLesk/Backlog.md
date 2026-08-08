@@ -1020,7 +1020,7 @@ export class ContentStore {
 						epoch,
 						readEventPath: async () => {
 							if (!(await Bun.file(fullPath).exists())) return null;
-							const decision = parseDecision(await Bun.file(fullPath).text());
+							const decision = { ...parseDecision(await Bun.file(fullPath).text()), path: file };
 							if (decision.id !== id) throw new Error("Decision identity mismatch");
 							return decision;
 						},
@@ -1029,8 +1029,11 @@ export class ContentStore {
 								decisionsDir,
 								"decision-*.md",
 								(path) => basename(path).split(" - ")[0] === id,
-								async (candidatePath) => {
-									const decision = parseDecision(await Bun.file(candidatePath).text());
+								async (candidatePath, candidateRelativePath) => {
+									const decision = {
+										...parseDecision(await Bun.file(candidatePath).text()),
+										path: candidateRelativePath,
+									};
 									if (decision.id !== id) throw new Error("Decision identity mismatch");
 									return decision;
 								},
@@ -1049,7 +1052,7 @@ export class ContentStore {
 						return false;
 					}
 					try {
-						const decision = parseDecision(await Bun.file(fullPath).text());
+						const decision = { ...parseDecision(await Bun.file(fullPath).text()), path: file };
 						if (decision.id !== id) return true;
 						const previous = this.decisions.get(id);
 						if (previous && !this.hasDecisionChanged(previous, decision)) return true;

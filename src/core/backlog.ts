@@ -23,12 +23,14 @@ import {
 	type TaskUpdateInput,
 } from "../types/index.ts";
 import { normalizeAssignee } from "../utils/assignee.ts";
-import { documentIdsEqual, normalizeDocumentId } from "../utils/document-id.ts";
+import { decisionIdKey } from "../utils/decision-id.ts";
+import { documentIdKey, findDocumentById, normalizeDocumentId } from "../utils/document-id.ts";
 import {
 	getDocumentSubPathFromRelativePath,
 	normalizeDocumentRelativePath,
 	normalizeDocumentSubPath,
 } from "../utils/document-path.ts";
+import { type ContentIdentityReport, detectContentIdentityIssues } from "../utils/duplicate-detection.ts";
 import { openInEditor } from "../utils/editor.ts";
 import { generateNextDocId } from "../utils/id-generators.ts";
 import {
@@ -280,6 +282,31 @@ export class Core {
 			await this.contentStore.refreshTasks();
 		}
 		return result;
+	}
+
+	/** Reports document and decision files whose IDs collide or are missing, so lookups can fail closed. */
+	async diagnoseContentIdentity(): Promise<ContentIdentityReport> {
+		const unreadableDocuments: string[] = [];
+		const unreadableDecisions: string[] = [];
+		const [documents, decisions] = await Promise.all([
+			this.fs.listDocuments(unreadableDocuments),
+			this.fs.listDecisions(unreadableDecisions),
+		]);
+		const locate = (directory: string, path: string) => `${this.fs.backlogDirName}/${directory}/${path}`;
+		const describe = (directory: string, item: { path?: string; title: string }) =>
+			item.path ? locate(directory, item.path) : item.title;
+		return {
+			documents: detectContentIdentityIssues(
+				documents.map((document) => ({ id: document.id, path: describe(DEFAULT_DIRECTORIES.DOCS, document) })),
+				documentIdKey,
+				unreadableDocuments.map((path) => locate(DEFAULT_DIRECTORIES.DOCS, path)),
+			),
+			decisions: detectContentIdentityIssues(
+				decisions.map((decision) => ({ id: decision.id, path: describe(DEFAULT_DIRECTORIES.DECISIONS, decision) })),
+				decisionIdKey,
+				unreadableDecisions.map((path) => locate(DEFAULT_DIRECTORIES.DECISIONS, path)),
+			),
+		};
 	}
 
 	private async resolveCreateOrdinal(inputOrdinal: number | undefined, isDraft: boolean): Promise<number | undefined> {
@@ -688,9 +715,7 @@ export class Core {
 	}
 
 	async getDocument(documentId: string): Promise<Document | null> {
-		const documents = await this.fs.listDocuments();
-		const match = documents.find((doc) => documentIdsEqual(documentId, doc.id));
-		return match ?? null;
+		return findDocumentById(await this.fs.listDocuments(), documentId);
 	}
 
 	async getDocumentContent(documentId: string): Promise<string | null> {

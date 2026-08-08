@@ -1,9 +1,11 @@
 ---
 id: BACK-580
 title: Fail closed on ambiguous document and decision identity
-status: To Do
-assignee: []
+status: Done
+assignee:
+  - '@claude'
 created_date: '2026-08-07 17:25'
+updated_date: '2026-08-08 05:12'
 labels:
   - bug
 dependencies: []
@@ -29,17 +31,79 @@ Maintainer context: docs and decisions operations lag well behind tasks, and equ
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 `backlog doctor` detects duplicate document IDs
-- [ ] #2 `backlog doctor` detects duplicate decision IDs
-- [ ] #3 Looking up an ambiguous document or decision ID fails with a clear error instead of silently picking a winner
-- [ ] #4 The empty-string ID no longer resolves to any document
-- [ ] #5 Documents missing an `id:` in frontmatter are surfaced as malformed rather than silently half-usable
-- [ ] #6 Tests cover duplicate detection, ambiguous lookup failure, the empty-string ID, and documents missing an id
+- [x] #1 `backlog doctor` detects duplicate document IDs
+- [x] #2 `backlog doctor` detects duplicate decision IDs
+- [x] #3 Looking up an ambiguous document or decision ID fails with a clear error instead of silently picking a winner
+- [x] #4 The empty-string ID no longer resolves to any document
+- [x] #5 Documents missing an `id:` in frontmatter are surfaced as malformed rather than silently half-usable
+- [x] #6 Tests cover duplicate detection, ambiguous lookup failure, the empty-string ID, and documents missing an id
 <!-- AC:END -->
 
 ## Definition of Done
 <!-- DOD:BEGIN -->
-- [ ] #1 bunx tsc --noEmit passes when TypeScript touched
-- [ ] #2 bun run check . passes when formatting/linting touched
-- [ ] #3 bun test (or scoped test) passes
+- [x] #1 bunx tsc --noEmit passes when TypeScript touched
+- [x] #2 bun run check . passes when formatting/linting touched
+- [x] #3 bun test (or scoped test) passes
 <!-- DOD:END -->
+
+## Implementation Plan
+
+<!-- SECTION:PLAN:BEGIN -->
+1. Add src/utils/entity-id.ts: one shared prefixed-ID identity helper (canonical key, equality that treats a blank ID body as unaddressable, AmbiguousIdError, findUniqueById). Make AmbiguousTaskIdError extend AmbiguousIdError so there is one ambiguity error shape.
+2. Reduce src/utils/document-id.ts to thin wrappers over it and add src/utils/decision-id.ts mirroring it (findDocumentById / findDecisionById throw on more than one match).
+3. src/file-system/operations.ts: listDecisions records each decision's backlog-relative path (new optional Decision.path); loadDocument and loadDecision resolve through the shared resolver and fail closed on ambiguity; decisions resolve by frontmatter ID like documents.
+4. src/core/backlog.ts: getDocument uses the shared resolver; add diagnoseContentIdentity() returning duplicate and missing-ID findings for documents and decisions.
+5. src/utils/duplicate-detection.ts: add detectContentIdentityIssues() next to detectDuplicateTaskIds (group by canonical key, collect entries with no ID).
+6. src/cli.ts: doctor reports duplicate and malformed document/decision IDs alongside task findings and exits 1; update the doctor help schema/description; doc view surfaces the ambiguity error instead of reporting not found.
+7. src/server/index.ts document and decision GET endpoints return 409 on ambiguity; src/mcp/errors maps AmbiguousIdError to a clear code.
+8. Tests: extend src/test/cli-doctor.test.ts, src/test/filesystem.test.ts, src/test/documentation.test.ts (or a focused new file) covering duplicate detection, ambiguous lookup failure, the empty-string ID, and documents missing an id.
+9. Verify: bunx tsc --noEmit, bun run check ., scoped tests, then full bun test.
+<!-- SECTION:PLAN:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+Identity is now enforced by one shared helper, src/utils/entity-id.ts: a canonical key per prefixed ID, equality that returns false whenever either side has no addressable body, AmbiguousIdError, and findUniqueEntityById. AmbiguousTaskIdError now extends AmbiguousIdError so tasks, documents, and decisions raise the same error shape (existing task message text unchanged). src/utils/document-id.ts became thin wrappers over it and src/utils/decision-id.ts mirrors it.
+
+Fail-closed lookups: FileSystem.loadDocument, FileSystem.loadDecision, and Core.getDocument now resolve through findDocumentById/findDecisionById and throw instead of taking the first title-sorted match. loadDecision previously matched on filename prefix and now matches frontmatter IDs like documents do, so a single authoritative identity applies across surfaces. The empty-string ID resolves to nothing anywhere because documentIdsEqual("", "") is false.
+
+Doctor: Core.diagnoseContentIdentity() reuses the tasks-side pattern (detectContentIdentityIssues sits next to detectDuplicateTaskIds in src/utils/duplicate-detection.ts) and reports duplicate document/decision IDs plus files with no id in frontmatter. Findings are diagnostic-only, like cross-branch findings; no automatic doc/decision repair was added. Doctor exits 1 when findings exist and its help schema and description now name documents and decisions.
+
+Other surfaces kept consistent: doc view prints the ambiguity error instead of "not found"; the server document and decision GET endpoints answer 409; MCP maps AmbiguousIdError to AMBIGUOUS_ID.
+
+Two supporting changes: Decision gained an optional path (set by listDecisions and by the decision watcher) so diagnostics can name files, and the existing MCP test that asserted an update silently collapsing duplicate doc-1/doc-01 files now asserts the fail-closed behavior instead, because that silent collapse is what this task removes.
+
+Documents and decisions missing an id are still listed by doc list and search rather than hidden; hiding them would trade one silent failure for another. They are surfaced by doctor as malformed and are unaddressable by ID.
+
+Review outcome: approved with no blocking findings.
+
+Accepted ride-along (A2): the server document and decision PUT endpoints previously fell through to generic 500s on ambiguity while the GETs already answered 409 with the full message. Both catches now branch on isAmbiguousIdError first, so mutation callers get the same legible 409. Covered by a new case in src/test/server-documents-endpoint.test.ts asserting 409 on PUT for both endpoints and that every candidate file is byte-identical afterward.
+
+Recorded as observations, not fixed here:
+
+A1 (split out as BACK-600): reads now key on frontmatter identity but save-side duplicate cleanup still keys on the filename prefix. Pre-existing on main and unchanged by this task, a file such as nested/doc-2 - Shadow.md carrying frontmatter id: doc-99 is silently deleted by doc update doc-2 because the removal loop matches by filename prefix. Newly reachable but fail-safe, updating a decision whose filename prefix disagrees with its frontmatter ID writes a new file, leaves the old one, and manufactures a duplicate that doctor then reports. Fix direction recorded in BACK-600: locate source files by frontmatter identity using Document.path/Decision.path, and have doctor flag filename-prefix-vs-frontmatter-ID mismatches.
+
+A3-A5 advisories: doc list and search still show documents and decisions with no id (deliberate, they stay visible and are reported by doctor rather than hidden); the web surfaces turn the 409 into a generic fetch failure message rather than showing the ambiguity detail; and doctor reports doc/decision findings as diagnostic-only with no automatic repair, matching how cross-branch task findings are handled.
+
+Codex round 2 on #872: four findings accepted, one deferred.
+
+P1 store-backed resolution: ContentStore.replaceDecisions keys its map on the raw frontmatter ID, so two files carrying the identical raw id collapsed to one entry before the ambiguity resolver ran and the server answered 200 with a silently chosen winner. handleGetDecision now resolves from disk via filesystem.loadDecision, matching how handleGetDoc already resolves through core.getDocument. Documents were already disk-backed on this path (patchFilesystem only wraps the save methods), so no document change was needed. Verified the new test reproduces the bug: with the old store-based resolver it returns 200 instead of 409.
+
+P2 collection-wide catch: listDocuments and listDecisions wrapped the whole scan in one try/catch, so a single malformed file returned an empty array and hid every valid document or decision from lookup. Both now catch per file, skip the unreadable one, and collect its path in an optional out-param.
+
+P2 doctor blind spot: ContentIdentityIssues gained an unreadable list, diagnoseContentIdentity passes the collectors, and doctor prints an 'Unreadable ... files' section and exits 1. Doctor can no longer report healthy on a repo it could not fully read.
+
+Root cause found while testing the above: gray-matter stores the file object in its cache BEFORE parsing, so once a malformed file threw, every later parse of the same content returned empty frontmatter instead of failing. An unparseable file therefore silently became a document with no id, and its doctor classification depended on parse order. parseMarkdown now passes an options object, which bypasses that cache. Regression test in markdown.test.ts asserts malformed frontmatter fails on every parse. Tradeoff: Backlog no longer benefits from gray-matter's memoization of identical content; deterministic identity reporting is worth more than that micro-optimization, and the full suite runtime is unchanged.
+
+P1 web display: the API client discarded the 409 body and both detail components fell back to the cached list entry, rendering one ambiguous candidate as if resolution had succeeded. api.ts now builds an ApiError that keeps the server message and status for the document and decision fetch/update calls, and exports isAmbiguousIdConflict. DocumentationDetail and DecisionDetail never fall back to the cached entry on a 409 and render one shared AmbiguousIdNotice with the server's candidate list. DocumentationDetail's error state was previously declared but discarded; it is now read rather than duplicated.
+
+Deferred: the filename-vs-frontmatter decision update that leaves the old file behind is BACK-600 case (b), already filed with this evidence. Coordinator handles the reply.
+
+Verified: bunx tsc --noEmit, bun run check ., new tests for each accepted finding (server identical-raw-ID 409, per-file parse isolation, doctor unreadable findings, parser cache regression, web ambiguity rendering for both components), and full bun run test at 2014 pass / 0 fail.
+<!-- SECTION:NOTES:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+Document and decision identity now fails closed instead of resolving by title sort order. A single shared helper (src/utils/entity-id.ts) defines the canonical key, blank-ID rejection, and AmbiguousIdError that tasks, documents, and decisions all use; FileSystem.loadDocument, FileSystem.loadDecision, and Core.getDocument raise that error rather than picking a winner, and the empty-string ID no longer matches anything. Lookups resolve from disk on every surface, so two files sharing an identical raw frontmatter ID cannot be collapsed by the content store's by-ID map before the check runs. backlog doctor reports duplicate document and decision IDs, files with no id, and files it could not parse, and exits 1, reusing the existing tasks-side detection module. Per-file parse isolation means one malformed file no longer hides every other document or decision, and parseMarkdown bypasses gray-matter's cache so a malformed file fails on every parse instead of silently becoming a document with no id. doc view, the server document and decision GET and PUT endpoints (409), MCP, and the two web detail components all surface the ambiguity instead of a chosen candidate. Verified with bunx tsc --noEmit, bun run check ., new tests in src/test/content-identity.test.ts, src/test/cli-doctor.test.ts, src/test/server-documents-endpoint.test.ts, src/test/markdown.test.ts, and src/test/web-ambiguous-id.test.tsx, plus full bun run test at 2014 pass / 0 fail. Reviewed twice with no blocking findings; the save-side identity gap is tracked as BACK-600.
+<!-- SECTION:FINAL_SUMMARY:END -->

@@ -3,7 +3,7 @@ import { chmod, mkdir, unlink } from "node:fs/promises";
 import { join } from "node:path";
 import { $ } from "bun";
 import { Core } from "../core/backlog.ts";
-import { serializeTask } from "../markdown/serializer.ts";
+import { serializeDecision, serializeDocument, serializeTask } from "../markdown/serializer.ts";
 import type { Task } from "../types/index.ts";
 import { getTestCliPath } from "./test-cli.ts";
 import { createUniqueTestDir, safeCleanup } from "./test-utils.ts";
@@ -23,6 +23,37 @@ function makeTask(id: string, title: string): Task {
 		dependencies: [],
 		rawContent: `## Description\n\n${title} content with TASK-1 reference.`,
 	};
+}
+
+async function removeDuplicateTasks(): Promise<void> {
+	await unlink(join(core.filesystem.tasksDir, "task-01 - Beta.md"));
+	await unlink(join(core.filesystem.completedDir, "task-001 - Gamma.md"));
+}
+
+async function writeDocument(relativePath: string, id: string, title: string): Promise<void> {
+	const filePath = join(core.filesystem.docsDir, ...relativePath.split("/"));
+	await mkdir(join(filePath, ".."), { recursive: true });
+	await Bun.write(
+		filePath,
+		serializeDocument({ id, title, type: "other", createdDate: "2026-01-01 00:00", rawContent: title }),
+	);
+}
+
+async function writeDecision(filename: string, id: string, title: string): Promise<void> {
+	await mkdir(core.filesystem.decisionsDir, { recursive: true });
+	await Bun.write(
+		join(core.filesystem.decisionsDir, filename),
+		serializeDecision({
+			id,
+			title,
+			date: "2026-01-01 00:00",
+			status: "proposed",
+			context: "",
+			decision: "",
+			consequences: "",
+			rawContent: "",
+		}),
+	);
 }
 
 async function writeDuplicateTasks(): Promise<void> {
@@ -188,5 +219,119 @@ describe("CLI collision safety", () => {
 		expect(output).toContain("backlog/tasks/task-1 - Alpha.md");
 		expect(output).toContain("backlog/completed/task-001 - Gamma.md");
 		expect(await Bun.file(outputPath).text()).toBe("sentinel board content");
+	});
+});
+
+describe("document and decision identity", () => {
+	beforeEach(async () => {
+		await removeDuplicateTasks();
+	});
+
+	it("reports a project with no colliding IDs as healthy", async () => {
+		await writeDocument("doc-1 - Alpha.md", "doc-1", "Alpha");
+		await writeDecision("decision-1 - Alpha.md", "decision-1", "Alpha");
+
+		const result = await $`bun ${cliPath} doctor`.cwd(testDir).quiet().nothrow();
+		const output = `${result.stdout}${result.stderr}`;
+		expect(result.exitCode).toBe(0);
+		expect(output).toContain("No duplicate task, document, or decision IDs found.");
+	});
+
+	it("detects duplicate document and decision IDs", async () => {
+		await writeDocument("doc-1 - Alpha.md", "doc-1", "Alpha");
+		await writeDocument("nested/doc-01 - Beta.md", "doc-01", "Beta");
+		await writeDecision("decision-2 - Gamma.md", "decision-2", "Gamma");
+		await writeDecision("decision-002 - Delta.md", "decision-002", "Delta");
+
+		const result = await $`bun ${cliPath} doctor`.cwd(testDir).quiet().nothrow();
+		const output = `${result.stdout}${result.stderr}`;
+		expect(result.exitCode).toBe(1);
+		expect(output).toContain("Duplicate document IDs (diagnostic only)");
+		expect(output).toContain("backlog/docs/doc-1 - Alpha.md");
+		expect(output).toContain("backlog/docs/nested/doc-01 - Beta.md");
+		expect(output).toContain("Duplicate decision IDs (diagnostic only)");
+		expect(output).toContain("backlog/decisions/decision-2 - Gamma.md");
+		expect(output).toContain("backlog/decisions/decision-002 - Delta.md");
+	});
+
+	it("surfaces documents and decisions without an id as malformed", async () => {
+		await writeDocument("orphan.md", "", "Orphan doc");
+		await writeDecision("decision-orphan.md", "", "Orphan decision");
+
+		const result = await $`bun ${cliPath} doctor`.cwd(testDir).quiet().nothrow();
+		const output = `${result.stdout}${result.stderr}`;
+		expect(result.exitCode).toBe(1);
+		expect(output).toContain("Malformed document files without an id in frontmatter");
+		expect(output).toContain("backlog/docs/orphan.md");
+		expect(output).toContain("Malformed decision files without an id in frontmatter");
+		expect(output).toContain("backlog/decisions/decision-orphan.md");
+	});
+
+	it("never reports healthy when a document or decision file cannot be parsed", async () => {
+		await writeDocument("doc-1 - Alpha.md", "doc-1", "Alpha");
+		// gray-matter rejects an unterminated flow collection; distinct bodies avoid its parse cache.
+		await Bun.write(
+			join(core.filesystem.docsDir, "doc-2 - Broken.md"),
+			"---\nid: doc-2\ntitle: [unterminated\n---\n\ndoc body\n",
+		);
+		await Bun.write(
+			join(core.filesystem.decisionsDir, "decision-2 - Broken.md"),
+			"---\nid: decision-2\ntitle: [unterminated\n---\n\ndecision body\n",
+		);
+
+		const result = await $`bun ${cliPath} doctor`.cwd(testDir).quiet().nothrow();
+		const output = `${result.stdout}${result.stderr}`;
+		expect(result.exitCode).toBe(1);
+		expect(output).not.toContain("No duplicate task, document, or decision IDs found.");
+		expect(output).toContain("Unreadable document files");
+		expect(output).toContain("backlog/docs/doc-2 - Broken.md");
+		expect(output).toContain("Unreadable decision files");
+		expect(output).toContain("backlog/decisions/decision-2 - Broken.md");
+	});
+
+	it("keeps valid documents readable when a sibling file cannot be parsed", async () => {
+		await writeDocument("doc-1 - Alpha.md", "doc-1", "Alpha");
+		await Bun.write(
+			join(core.filesystem.docsDir, "doc-2 - Broken.md"),
+			"---\nid: doc-2\ntitle: [unterminated\n---\n\ndoc body\n",
+		);
+
+		const result = await $`bun ${cliPath} doc view doc-1 --plain`.cwd(testDir).quiet().nothrow();
+		const output = `${result.stdout}${result.stderr}`;
+		expect(result.exitCode).toBe(0);
+		expect(output).toContain("Alpha");
+		expect(output).not.toContain("not found");
+	});
+
+	it("refuses to repair document findings with --fix", async () => {
+		await writeDocument("doc-1 - Alpha.md", "doc-1", "Alpha");
+		await writeDocument("nested/doc-01 - Beta.md", "doc-01", "Beta");
+
+		const result = await $`bun ${cliPath} doctor --fix --yes`.cwd(testDir).quiet().nothrow();
+		const output = `${result.stdout}${result.stderr}`;
+		expect(result.exitCode).toBe(1);
+		expect(output).toContain("cannot be repaired automatically");
+		expect(await Bun.file(join(core.filesystem.docsDir, "doc-1 - Alpha.md")).exists()).toBe(true);
+		expect(await Bun.file(join(core.filesystem.docsDir, "nested", "doc-01 - Beta.md")).exists()).toBe(true);
+	});
+
+	it("blocks ambiguous document reads and mutations instead of picking a winner", async () => {
+		await writeDocument("doc-1 - Alpha.md", "doc-1", "Alpha");
+		await writeDocument("nested/doc-01 - Beta.md", "doc-01", "Beta");
+		const alphaPath = join(core.filesystem.docsDir, "doc-1 - Alpha.md");
+		const alphaBefore = await Bun.file(alphaPath).text();
+
+		const view = await $`bun ${cliPath} doc view doc-1 --plain`.cwd(testDir).quiet().nothrow();
+		const update = await $`bun ${cliPath} doc update doc-1 --title Changed`.cwd(testDir).quiet().nothrow();
+
+		for (const result of [view, update]) {
+			const output = `${result.stdout}${result.stderr}`;
+			expect(result.exitCode).toBe(1);
+			expect(output).toContain("Document ID doc-1 is ambiguous");
+			expect(output).toContain("doc-1 - Alpha.md");
+			expect(output).toContain("nested/doc-01 - Beta.md");
+			expect(output).toContain("backlog doctor");
+		}
+		expect(await Bun.file(alphaPath).text()).toBe(alphaBefore);
 	});
 });
