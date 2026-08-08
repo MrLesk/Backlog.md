@@ -62,6 +62,48 @@ describe("CLI dependency options", () => {
 		expect((await core.filesystem.loadTask("TASK-3"))?.dependencies).toEqual(["TASK-1", "TASK-2"]);
 	});
 
+	it("merges --depends-on and --dep on task create", async () => {
+		await $`bun ${CLI_PATH} task create "Base task one"`.cwd(testDir).quiet();
+		await $`bun ${CLI_PATH} task create "Base task two"`.cwd(testDir).quiet();
+
+		await $`bun ${CLI_PATH} task create "Dependent task" --depends-on TASK-1 --dep TASK-2`.cwd(testDir).quiet();
+
+		expect((await core.filesystem.loadTask("TASK-3"))?.dependencies).toEqual(["TASK-1", "TASK-2"]);
+	});
+
+	it("rejects empty dependency values on task create and draft create without creating anything", async () => {
+		await $`bun ${CLI_PATH} task create "Base task"`.cwd(testDir).quiet();
+
+		const emptyDependsOn = await $`bun ${CLI_PATH} task create "Empty depends-on" --depends-on ""`
+			.cwd(testDir)
+			.quiet()
+			.nothrow();
+		expect(emptyDependsOn.exitCode).toBe(1);
+		expect(emptyDependsOn.stderr.toString()).toContain("Cannot use an empty value with --depends-on or --dep");
+
+		const emptyDep = await $`bun ${CLI_PATH} task create "Empty dep" --dep ""`.cwd(testDir).quiet().nothrow();
+		expect(emptyDep.exitCode).toBe(1);
+		expect(emptyDep.stderr.toString()).toContain("Cannot use an empty value with --depends-on or --dep");
+
+		const emptyAlongsideValue =
+			await $`bun ${CLI_PATH} task create "Empty alongside value" --depends-on "" --dep TASK-1`
+				.cwd(testDir)
+				.quiet()
+				.nothrow();
+		expect(emptyAlongsideValue.exitCode).toBe(1);
+		expect(emptyAlongsideValue.stderr.toString()).toContain("Cannot use an empty value with --depends-on or --dep");
+
+		const emptyDraftDep = await $`bun ${CLI_PATH} task create "Empty draft dep" --draft --dep ""`
+			.cwd(testDir)
+			.quiet()
+			.nothrow();
+		expect(emptyDraftDep.exitCode).toBe(1);
+		expect(emptyDraftDep.stderr.toString()).toContain("Cannot use an empty value with --depends-on or --dep");
+
+		expect(await core.filesystem.loadTask("TASK-2")).toBeNull();
+		expect(await core.filesystem.listDrafts()).toHaveLength(0);
+	});
+
 	it("clears dependencies with --clear-deps", async () => {
 		await $`bun ${CLI_PATH} task create "Base task"`.cwd(testDir).quiet();
 		await $`bun ${CLI_PATH} task create "Dependent task" --depends-on TASK-1`.cwd(testDir).quiet();

@@ -514,22 +514,80 @@ function hasEditFieldFlags(options: Record<string, unknown>): boolean {
 /**
  * Validate a clearable list option pair such as --ref/--clear-refs.
  * Returns an error message when the clear flag conflicts with a setter or a setter value is blank.
+ * Omit `clearFlag` on surfaces without a clear flag (task create) so the guidance stays accurate.
  */
 function validateClearableListInput(input: {
 	rawValues: string[];
-	cleared: boolean;
+	cleared?: boolean;
 	isBlank: (value: string) => boolean;
 	setterFlags: string;
-	clearFlag: string;
+	clearFlag?: string;
 	subject: string;
 }): string | undefined {
-	if (input.cleared && input.rawValues.length > 0) {
+	if (input.clearFlag && input.cleared && input.rawValues.length > 0) {
 		return `Cannot combine ${input.clearFlag} with ${input.setterFlags}. Use ${input.clearFlag} by itself.`;
 	}
 	if (input.rawValues.some(input.isBlank)) {
-		return `Cannot use an empty value with ${input.setterFlags}. Use ${input.clearFlag} to remove all ${input.subject}.`;
+		const guidance = input.clearFlag
+			? `Use ${input.clearFlag} to remove all ${input.subject}.`
+			: `Omit the flag to leave ${input.subject} unset.`;
+		return `Cannot use an empty value with ${input.setterFlags}. ${guidance}`;
 	}
 	return undefined;
+}
+
+/**
+ * Validate the dependency, reference, and documentation list flags shared by task create and task edit.
+ * `supportsClearFlags` is false for task create, which has no --clear-deps/--clear-refs/--clear-docs flags.
+ */
+function validateTaskListFlags(
+	options: Record<string, unknown>,
+	{ supportsClearFlags }: { supportsClearFlags: boolean },
+): string | undefined {
+	const isBlankListValue = (value: string) => parseDelimitedStringList(value) === undefined;
+	const clearFlag = (flag: string) => (supportsClearFlags ? flag : undefined);
+	return (
+		validateClearableListInput({
+			rawValues: [...toStringArray(options.dependsOn), ...toStringArray(options.dep)],
+			cleared: Boolean(options.clearDeps),
+			isBlank: (value) => normalizeDependencies([value]).length === 0,
+			setterFlags: "--depends-on or --dep",
+			clearFlag: clearFlag("--clear-deps"),
+			subject: "task dependencies",
+		}) ??
+		validateClearableListInput({
+			rawValues: toStringArray(options.ref),
+			cleared: Boolean(options.clearRefs),
+			isBlank: isBlankListValue,
+			setterFlags: "--ref",
+			clearFlag: clearFlag("--clear-refs"),
+			subject: "references",
+		}) ??
+		validateClearableListInput({
+			rawValues: toStringArray(options.addRef),
+			cleared: Boolean(options.clearRefs),
+			isBlank: isBlankListValue,
+			setterFlags: "--add-ref",
+			clearFlag: clearFlag("--clear-refs"),
+			subject: "references",
+		}) ??
+		validateClearableListInput({
+			rawValues: toStringArray(options.removeRef),
+			cleared: Boolean(options.clearRefs),
+			isBlank: isBlankListValue,
+			setterFlags: "--remove-ref",
+			clearFlag: clearFlag("--clear-refs"),
+			subject: "references",
+		}) ??
+		validateClearableListInput({
+			rawValues: toStringArray(options.doc),
+			cleared: Boolean(options.clearDocs),
+			isBlank: isBlankListValue,
+			setterFlags: "--doc",
+			clearFlag: clearFlag("--clear-docs"),
+			subject: "documentation",
+		})
+	);
 }
 
 async function resolveCliMilestoneInput(core: Core, milestone: string): Promise<string> {
@@ -1750,7 +1808,11 @@ addHelpSchema(taskCmd.command("create [title]"), {
 			description:
 				"Assign one or more @names; repeat -a or use @name1,@name2; omitting it applies the configured defaultAssignee",
 		},
-		{ name: "labels", type: "Comma-separated strings", description: "Task labels" },
+		{
+			name: "labels",
+			type: "Comma-separated strings",
+			description: "Task labels; repeat -l or use label1,label2",
+		},
 		{ name: "priority", type: priorityType, description: "Task priority" },
 		{ name: "type", type: taskType, description: "Task type; case-insensitive" },
 		{ name: "acceptanceCriteria", type: "Markdown list item text", description: "Repeat --ac for multiple criteria" },
@@ -1785,7 +1847,7 @@ addHelpSchema(taskCmd.command("create [title]"), {
 		createMultiValueAccumulator(),
 	)
 	.option("-s, --status <status>")
-	.option("-l, --labels <labels>")
+	.option("-l, --labels <labels>", "add task labels (comma-separated or repeatable)", createMultiValueAccumulator())
 	.option("--priority <priority>", "set task priority (configured priorities)")
 	.option("--type <type>", "set task type (configured task types)")
 	.option("--plain", "use plain text output after creating")
@@ -1889,6 +1951,15 @@ addHelpSchema(taskCmd.command("create [title]"), {
 			ordinalValue = parsed;
 		}
 
+		const listFlagError = validateTaskListFlags(options, { supportsClearFlags: false });
+		if (listFlagError) {
+			console.error(listFlagError);
+			process.exitCode = 1;
+			return;
+		}
+
+		const dependencies = [...toStringArray(options.dependsOn), ...toStringArray(options.dep)];
+
 		try {
 			const criteria = processAcceptanceCriteriaOptions(options);
 			const milestone =
@@ -1899,8 +1970,7 @@ addHelpSchema(taskCmd.command("create [title]"), {
 				status: createAsDraft ? "Draft" : options.status ? String(options.status) : undefined,
 				assignee: parseDelimitedStringList(options.assignee),
 				labels: parseDelimitedStringList(options.labels),
-				dependencies:
-					options.dependsOn || options.dep ? normalizeDependencies(options.dependsOn || options.dep) : undefined,
+				dependencies: dependencies.length > 0 ? normalizeDependencies(dependencies) : undefined,
 				references: parseDelimitedStringList(options.ref),
 				documentation: parseDelimitedStringList(options.doc),
 				modifiedFiles: parseDelimitedStringList(options.modifiedFile),
@@ -3145,52 +3215,7 @@ addHelpSchema(taskCmd.command("edit [taskId]"), {
 			.filter((value) => value.length > 0);
 
 		const combinedDependencies = [...toStringArray(options.dependsOn), ...toStringArray(options.dep)];
-		const rawReferences = toStringArray(options.ref);
-		const rawAddReferences = toStringArray(options.addRef);
-		const rawRemoveReferences = toStringArray(options.removeRef);
-		const rawDocumentation = toStringArray(options.doc);
-		const isBlankListValue = (value: string) => parseDelimitedStringList(value) === undefined;
-		const clearableListError =
-			validateClearableListInput({
-				rawValues: combinedDependencies,
-				cleared: Boolean(options.clearDeps),
-				isBlank: (value) => normalizeDependencies([value]).length === 0,
-				setterFlags: "--depends-on or --dep",
-				clearFlag: "--clear-deps",
-				subject: "task dependencies",
-			}) ??
-			validateClearableListInput({
-				rawValues: rawReferences,
-				cleared: Boolean(options.clearRefs),
-				isBlank: isBlankListValue,
-				setterFlags: "--ref",
-				clearFlag: "--clear-refs",
-				subject: "references",
-			}) ??
-			validateClearableListInput({
-				rawValues: rawAddReferences,
-				cleared: Boolean(options.clearRefs),
-				isBlank: isBlankListValue,
-				setterFlags: "--add-ref",
-				clearFlag: "--clear-refs",
-				subject: "references",
-			}) ??
-			validateClearableListInput({
-				rawValues: rawRemoveReferences,
-				cleared: Boolean(options.clearRefs),
-				isBlank: isBlankListValue,
-				setterFlags: "--remove-ref",
-				clearFlag: "--clear-refs",
-				subject: "references",
-			}) ??
-			validateClearableListInput({
-				rawValues: rawDocumentation,
-				cleared: Boolean(options.clearDocs),
-				isBlank: isBlankListValue,
-				setterFlags: "--doc",
-				clearFlag: "--clear-docs",
-				subject: "documentation",
-			});
+		const clearableListError = validateTaskListFlags(options, { supportsClearFlags: true });
 		if (clearableListError) {
 			console.error(clearableListError);
 			process.exitCode = 1;
@@ -3655,7 +3680,7 @@ draftCmd
 		createMultiValueAccumulator(),
 	)
 	.option("-s, --status <status>")
-	.option("-l, --labels <labels>")
+	.option("-l, --labels <labels>", "add draft labels (comma-separated or repeatable)", createMultiValueAccumulator())
 	.action(async (title: string, options) => {
 		const cwd = await requireProjectRoot();
 		const core = new Core(cwd);

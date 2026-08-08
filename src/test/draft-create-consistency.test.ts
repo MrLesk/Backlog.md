@@ -51,6 +51,15 @@ describe("Draft creation consistency", () => {
 		expect((await core.filesystem.loadDraft("draft-2"))?.assignee).toEqual(["@alice", "@bob", "@carol"]);
 	});
 
+	it("splits comma-separated and repeated labels on draft create", async () => {
+		await $`bun ${CLI_PATH} draft create "Comma labels" -l "ui,bug"`.cwd(TEST_DIR).quiet();
+		await $`bun ${CLI_PATH} draft create "Repeated labels" -l ui -l bug,api`.cwd(TEST_DIR).quiet();
+
+		const core = new Core(TEST_DIR);
+		expect((await core.filesystem.loadDraft("draft-1"))?.labels).toEqual(["ui", "bug"]);
+		expect((await core.filesystem.loadDraft("draft-2"))?.labels).toEqual(["ui", "bug", "api"]);
+	});
+
 	it("applies the configured defaultAssignee to drafts created without -a", async () => {
 		await $`bun ${CLI_PATH} config set defaultAssignee ${"@alice,@bob"}`.cwd(TEST_DIR).quiet();
 		await $`bun ${CLI_PATH} draft create "Default assignees"`.cwd(TEST_DIR).quiet();
