@@ -363,21 +363,123 @@ describe("Config commands", () => {
 		expect(created.task.assignee).toEqual([quoted]);
 	});
 
-	it("leaves defaultAssignee unset when the value is not valid YAML", async () => {
+	it("refuses to load a list config value that is not valid YAML, naming the file and the key", async () => {
 		const configPath = core.filesystem.configFilePath;
 		const baseConfig = await Bun.file(configPath).text();
-		const loadAssignee = async (line: string) => {
-			await Bun.write(configPath, `${baseConfig}${line}\n`);
-			core.filesystem.invalidateConfigCache();
-			return (await core.filesystem.loadConfig())?.defaultAssignee;
-		};
 
-		// Truncated array, and an unbalanced quote that still opens and closes with brackets.
-		expect(await loadAssignee('default_assignee: ["@alice')).toBeUndefined();
-		expect(await loadAssignee('default_assignee: ["@alice]')).toBeUndefined();
+		for (const key of ["statuses", "labels", "types", "priorities", "default_assignee"]) {
+			// Truncated array, and an unbalanced quote that still opens and closes with brackets.
+			for (const line of [`${key}: ["a`, `${key}: ["a]`]) {
+				await Bun.write(configPath, `${baseConfig}${line}\n`);
+				core.filesystem.invalidateConfigCache();
 
-		const created = await core.createTaskFromInput({ title: "Malformed default assignee" }, false);
-		expect(created.task.assignee).toEqual([]);
+				const failure = await core.filesystem.loadConfig().then(
+					() => undefined,
+					(error: unknown) => (error instanceof Error ? error.message : String(error)),
+				);
+				expect(failure).toBeDefined();
+				expect(failure).toStartWith("Backlog could not start because");
+				expect(failure).toContain(configPath);
+				expect(failure).toContain(`invalid value for "${key}"`);
+			}
+		}
+	});
+
+	it("keeps a malformed list value from changing how another list key reads", () => {
+		// The commas inside the quoted labels are only safe when labels is parsed as YAML; the
+		// malformed statuses value must be reported instead of downgrading labels to a text split.
+		expect(() => core.filesystem.parseConfig('project_name: "P"\nstatuses: ["To Do]\nlabels: ["a, b", "c"]\n')).toThrow(
+			'invalid value for "statuses"',
+		);
+		expect(core.filesystem.parseConfig('project_name: "P"\nlabels: ["a, b", "c"]\n').labels).toEqual(["a, b", "c"]);
+	});
+
+	it("reads the config key at column 0, not an indented look-alike inside another key's value", () => {
+		// A nested mapping and a block scalar can both contain a line that looks like a config key.
+		const nested = core.filesystem.parseConfig(
+			'project_name: "P"\nstatuses: [top]\nmeta_thing:\n  statuses: [nested1, nested2]\n',
+		);
+		expect(nested.statuses).toEqual(["top"]);
+
+		const blockScalar = core.filesystem.parseConfig(
+			'project_name: "P"\nstatuses: [real]\nnotes_thing: |\n  statuses: [fake]\n',
+		);
+		expect(blockScalar.statuses).toEqual(["real"]);
+
+		// A block-sequence top-level key must win over the look-alike too, and a malformed
+		// look-alike must not make the real key unreadable.
+		const blockSequence = core.filesystem.parseConfig(
+			'project_name: "P"\nstatuses:\n  - Top\nmeta_thing:\n  statuses: [nested]\n',
+		);
+		expect(blockSequence.statuses).toEqual(["Top"]);
+		expect(
+			core.filesystem.parseConfig('project_name: "P"\nstatuses: [top]\nmeta_thing:\n  statuses: ["broken\n').statuses,
+		).toEqual(["top"]);
+
+		// Control: with no column-0 occurrence, an indented key is still the only value there is.
+		expect(core.filesystem.parseConfig('project_name: "P"\n\tstatuses: ["tabbed"]\n').statuses).toEqual(["tabbed"]);
+		expect(core.filesystem.parseConfig('project_name: "P"\n  statuses: ["spaced"]\n').statuses).toEqual(["spaced"]);
+	});
+
+	it("does not blame a valid list key for a malformed value under a key Backlog does not read", () => {
+		// Any mapping key ends the previous key's block, whatever characters its name uses. Without that,
+		// the malformed custom-setting line folds into the statuses block and startup blames statuses —
+		// an error the user cannot fix by editing the key it names.
+		for (const unreadKey of ["custom-setting", "my.setting", '"quoted-key"', "2fa"]) {
+			const config = core.filesystem.parseConfig(`project_name: "P"\nstatuses: [Queued, Done]\n${unreadKey}: ["bad]\n`);
+			expect(config.statuses).toEqual(["Queued", "Done"]);
+		}
+
+		// A block-sequence value survives the same shape, and each key is still reported on its own.
+		expect(
+			core.filesystem.parseConfig('project_name: "P"\nstatuses:\n  - Queued\ncustom-setting: ["bad]\n').statuses,
+		).toEqual(["Queued"]);
+		expect(() =>
+			core.filesystem.parseConfig('project_name: "P"\nstatuses: ["Queued]\ncustom-setting: ["bad]\n'),
+		).toThrow('invalid value for "statuses"');
+
+		// A sequence item is not a key even when its text contains a colon, so it must not cut the block.
+		expect(core.filesystem.parseConfig('project_name: "P"\nstatuses:\n- "a: b"\n- Done\n').statuses).toEqual([
+			"a: b",
+			"Done",
+		]);
+	});
+
+	it("resolves a YAML alias against the anchor defined under another key", () => {
+		// An alias only has meaning in document context, so a list value that uses one must still
+		// resolve even though each key's own block is what gets parsed.
+		const shared = core.filesystem.parseConfig(
+			'project_name: "P"\nstatuses: &workflow [To Do, Done]\nlabels: *workflow\n',
+		);
+		expect(shared.statuses).toEqual(["To Do", "Done"]);
+		expect(shared.labels).toEqual(["To Do", "Done"]);
+
+		const scalarAnchor = core.filesystem.parseConfig('project_name: "P"\ndefault_status: &s "To Do"\nstatuses: [*s]\n');
+		expect(scalarAnchor.statuses).toEqual(["To Do"]);
+
+		// Document context must not rescue a value that is genuinely malformed.
+		expect(() => core.filesystem.parseConfig('project_name: "P"\nstatuses: ["To Do]\n')).toThrow(
+			'invalid value for "statuses"',
+		);
+	});
+
+	it("exits non-zero with the config error at every entry point that reads config", async () => {
+		const configPath = core.filesystem.configFilePath;
+		const baseConfig = await Bun.file(configPath).text();
+		await Bun.write(configPath, `${baseConfig}statuses: ["To Do]\n`);
+
+		// Bare invocation must not report an initialized project as uninitialized, the empty-list fast
+		// path must not hide the failure, and MCP startup must not bury the message behind a summary.
+		for (const args of [["task", "list", "--plain"], ["--plain"], ["draft", "list", "--plain"], ["mcp", "start"]]) {
+			const result = await $`bun ${CLI_PATH} ${args}`.cwd(TEST_DIR).nothrow().quiet();
+			const stderr = result.stderr.toString();
+			expect(result.exitCode).not.toBe(0);
+			expect(stderr).toStartWith("Backlog could not start because");
+			expect(stderr).toContain('invalid value for "statuses"');
+			expect(stderr).not.toContain("at parseConfig");
+			expect(result.stdout.toString()).not.toContain("not initialized");
+			expect(result.stdout.toString()).not.toContain("No drafts found");
+		}
 	});
 
 	it("clears defaultEditor via config set with an explicitly empty value", async () => {

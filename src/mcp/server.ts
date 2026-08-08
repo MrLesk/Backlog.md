@@ -20,6 +20,7 @@ import {
 	type ServerRequest,
 } from "@modelcontextprotocol/sdk/types.js";
 import { Core } from "../core/backlog.ts";
+import type { BacklogConfig } from "../types/index.ts";
 import { getPackageName } from "../utils/app-info.ts";
 import { resolveBacklogDirectory } from "../utils/backlog-directory.ts";
 import { getVersion } from "../utils/version.ts";
@@ -239,8 +240,17 @@ export class McpServer extends Core {
 
 		const previousProjectRoot = this.filesystem.rootDir;
 		this.reinitializeProjectRoot(projectRoot);
-		await this.ensureConfigLoaded();
-		const config = await this.filesystem.loadConfig();
+		let config: BacklogConfig | null;
+		try {
+			await this.ensureConfigLoaded();
+			config = await this.filesystem.loadConfig();
+		} catch (error) {
+			// A root whose config Backlog refuses to read is unusable like one with no config at all:
+			// restore the previous root and keep examining the remaining roots instead of aborting.
+			this.reinitializeProjectRoot(previousProjectRoot);
+			this.log(`Skipping root ${projectRoot}: ${error instanceof Error ? error.message : String(error)}`, options);
+			return false;
+		}
 
 		if (!config) {
 			this.reinitializeProjectRoot(previousProjectRoot);

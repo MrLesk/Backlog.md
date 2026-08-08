@@ -209,6 +209,29 @@ describe("MCP roots discovery", () => {
 		}
 	});
 
+	it("skips a root whose config value is rejected and keeps examining later roots", async () => {
+		const { uninitializedDir, projectRoot, secondProjectRoot } = await setupDirs();
+		// The first root is a real project whose statuses value Backlog refuses to read.
+		const brokenConfigPath = join(projectRoot, "backlog", "config.yml");
+		const brokenConfig = (await Bun.file(brokenConfigPath).text()).replace(/^statuses:.*$/m, 'statuses: ["To Do]');
+		await Bun.write(brokenConfigPath, brokenConfig);
+
+		const server = await createMcpServer(uninitializedDir);
+		const rootsRef = {
+			current: [pathToFileURL(projectRoot).toString(), pathToFileURL(secondProjectRoot).toString()],
+		};
+		const { client } = await connectRootsClient(server, rootsRef);
+
+		try {
+			const tools = await client.listTools();
+			expect(tools.tools.map((tool) => tool.name)).toContain("task_create");
+			expect(server.filesystem.rootDir).toBe(secondProjectRoot);
+		} finally {
+			await client.close();
+			await server.stop();
+		}
+	});
+
 	it("invalidates cached roots on roots/list_changed and re-resolves on the next request", async () => {
 		const { uninitializedDir, projectRoot, secondProjectRoot } = await setupDirs();
 

@@ -58,36 +58,119 @@ interface LockAttemptSettings {
 	retryDelayMs: number;
 }
 
-/** Config keys stored as YAML lists. */
-const CONFIG_LIST_KEYS = ["statuses", "labels", "types", "priorities", "default_assignee"] as const;
-type ConfigListKey = (typeof CONFIG_LIST_KEYS)[number];
+/** Config keys stored as YAML lists. `default_assignee` also accepts a single scalar. */
+type ConfigListKey = "statuses" | "labels" | "types" | "priorities" | "default_assignee";
 
-/** Parse an inline YAML array line (`["a", "b"]`). Returns nothing for any other shape. */
-function parseInlineConfigList(value: string): string[] | undefined {
-	if (!value.startsWith("[") || !value.endsWith("]")) return undefined;
-	return value
-		.slice(1, -1)
-		.split(",")
-		.map((item) => item.trim().replace(/['"]/g, ""))
-		.filter(Boolean);
+/**
+ * A mapping key line, whatever characters the name uses. Keys Backlog does not read still end the
+ * previous key's block, so an unrelated `custom-setting:` cannot fold its value into the block being
+ * extracted. A sequence item is not a key even when its text contains a colon.
+ */
+const CONFIG_KEY_LINE_PATTERN = /^\s*(?!-\s)[^\s#][^:]*:/;
+
+/**
+ * Extract the YAML block that carries one config key's value: its `key:` line plus the lines that
+ * continue it, stopping at the next key written at the same or lower indentation. Returns nothing
+ * when the key is absent. The last occurrence wins, which is what YAML does with a repeated key.
+ *
+ * A config key belongs at column 0, so an unindented line always outranks an indented look-alike:
+ * without that rule a `statuses:` line nested inside another key's mapping or block scalar would
+ * hijack the real key. Indented matches are used only when the key appears nowhere at column 0.
+ */
+function extractConfigKeyYaml(content: string, key: string): string | undefined {
+	const lines = content.split(/\r?\n/);
+	const keyPattern = new RegExp(`^(\\s*)${key}\\s*:`);
+	const keyIndent = (line: string) => line.match(keyPattern)?.[1]?.length;
+	const startIndex = lines.some((line) => keyIndent(line) === 0)
+		? lines.findLastIndex((line) => keyIndent(line) === 0)
+		: lines.findLastIndex((line) => keyIndent(line) !== undefined);
+	if (startIndex === -1) {
+		return undefined;
+	}
+
+	const startIndent = keyIndent(lines[startIndex] ?? "") ?? 0;
+	const collected: string[] = [];
+
+	for (let index = startIndex; index < lines.length; index++) {
+		const line = lines[index] ?? "";
+		const trimmed = line.trim();
+		const indent = line.length - line.trimStart().length;
+		const isNextKey =
+			index > startIndex && trimmed.length > 0 && indent <= startIndent && CONFIG_KEY_LINE_PATTERN.test(line);
+
+		if (isNextKey) {
+			break;
+		}
+
+		collected.push(line);
+	}
+
+	return collected.join("\n");
+}
+
+const CONFIG_VALUE_ERROR_NAME = "ConfigValueError";
+
+/** Reports a config value Backlog refuses to guess at, naming the file and the offending key. */
+function configValueError(configPath: string, key: string, reason: unknown): Error {
+	const detail = (reason instanceof Error ? reason.message : String(reason)).split("\n")[0]?.trim();
+	const error = new Error(
+		`Backlog could not start because ${configPath} has an invalid value for "${key}"${detail ? `: ${detail}` : ""}. Edit that key so its value is valid YAML, then run the command again.`,
+	);
+	error.name = CONFIG_VALUE_ERROR_NAME;
+	return error;
+}
+
+/** True when an error already explains an unreadable config value, so it needs no extra framing. */
+export function isConfigValueError(error: unknown): error is Error {
+	return error instanceof Error && error.name === CONFIG_VALUE_ERROR_NAME;
+}
+
+/** Read one key from a YAML document, reporting the parse error instead of a value when invalid. */
+function readYamlKey(document: string, key: string): { value: unknown } | { error: unknown } {
+	try {
+		return { value: (Bun.YAML.parse(document) as Record<string, unknown> | null)?.[key] };
+	} catch (error) {
+		return { error };
+	}
 }
 
 /**
- * Parse a `default_assignee` config line value as YAML, so quoting, escapes, and trailing
- * comments are handled by the parser instead of by hand. Returns nothing when the value is
- * not valid YAML or is not a string or list, so callers fail closed rather than guess at
- * malformed input. Shared with the config watcher so both apply the same rule.
+ * Parse one list-valued config key as YAML, so quoting, escapes, block sequences, and trailing
+ * comments are handled by the parser instead of by hand. The key's own block is what gets parsed, so a
+ * malformed value for one key cannot change how another key reads; only a block YAML rejects outright
+ * is reread in document context, where aliases resolve. Throws when neither read succeeds, so callers
+ * fail fast rather than proceed with a guessed value. Returns nothing when the key is absent, carries
+ * no value, or holds a shape it cannot represent; `default_assignee` also accepts a single scalar.
  */
-export function parseAssigneeConfigValue(value: string): string[] | undefined {
-	let parsed: unknown;
-	try {
-		parsed = Bun.YAML.parse(value);
-	} catch {
+function parseConfigListValue(content: string, key: ConfigListKey, configPath: string): string[] | undefined {
+	const block = extractConfigKeyYaml(content, key);
+	if (block === undefined) {
 		return undefined;
 	}
-	// `default_assignee:` with no value, including the first line of a block sequence.
-	if (parsed === null) return [];
+
+	const fromBlock = readYamlKey(block, key);
+	let parsed: unknown;
+	if ("value" in fromBlock) {
+		parsed = fromBlock.value;
+	} else {
+		// An alias resolves only against the anchors defined elsewhere in the file, so a block YAML
+		// rejects on its own gets one more read in document context before it counts as broken. The
+		// document is never read first: doing that is what let one broken key change how another reads.
+		const fromDocument = readYamlKey(content, key);
+		if (!("value" in fromDocument)) {
+			throw configValueError(configPath, key, fromBlock.error);
+		}
+		parsed = fromDocument.value;
+	}
+
+	// `key:` with no value, including the first line of a block sequence.
+	if (parsed === null || parsed === undefined) {
+		return key === "default_assignee" ? [] : undefined;
+	}
 	if (typeof parsed === "string") {
+		if (key !== "default_assignee") {
+			return undefined;
+		}
 		const assignee = parsed.trim();
 		return assignee ? [assignee] : [];
 	}
@@ -1559,27 +1642,25 @@ ${description || `Milestone: ${title}`}`,
 			return this.cachedConfig;
 		}
 
+		const configPath = this.resolvedConfigPath;
+		let content: string;
 		try {
-			const configPath = this.resolvedConfigPath;
-
 			// Check if file exists first to avoid hanging on Windows
 			const file = Bun.file(configPath);
-			const exists = await file.exists();
-
-			if (!exists) {
+			if (!(await file.exists())) {
 				return null;
 			}
-
-			const content = await file.text();
-			const config = this.parseConfig(content);
-
-			// Cache the loaded config
-			this.cachedConfig = config;
-			this.cachedConfigSnapshot = { path: configPath, content };
-			return config;
+			content = await file.text();
 		} catch (_error) {
 			return null;
 		}
+
+		// A value Backlog cannot read is reported, not swallowed: callers must not silently
+		// fall back to defaults while the config file says something else.
+		const config = this.parseConfig(content);
+		this.cachedConfig = config;
+		this.cachedConfigSnapshot = { path: configPath, content };
+		return config;
 	}
 
 	async saveConfig(config: BacklogConfig): Promise<void> {
@@ -1623,7 +1704,13 @@ ${description || `Milestone: ${title}`}`,
 	parseConfig(content: string): BacklogConfig {
 		const config: Partial<BacklogConfig> = {};
 		const parsedDefinitionOfDone = this.parseDefinitionOfDone(content);
-		const parsedListValues = this.parseConfigListValues(content);
+		// Every list key goes through the same strict parse, which throws rather than guess.
+		const parseListValue = (key: ConfigListKey) => parseConfigListValue(content, key, this.resolvedConfigPath);
+		config.statuses = parseListValue("statuses");
+		config.labels = parseListValue("labels");
+		config.types = parseListValue("types");
+		config.priorities = parseListValue("priorities");
+		config.defaultAssignee = parseListValue("default_assignee");
 		const lines = content.split("\n");
 
 		for (const line of lines) {
@@ -1640,27 +1727,12 @@ ${description || `Milestone: ${title}`}`,
 				case "project_name":
 					config.projectName = value.replace(/['"]/g, "");
 					break;
-				case "default_assignee":
-					// Block sequences come from the whole-document parse; everything else is parsed as
-					// YAML per line. A value YAML rejects leaves the key unset rather than being guessed at.
-					config.defaultAssignee = parsedListValues.default_assignee ?? parseAssigneeConfigValue(value);
-					break;
 				case "default_reporter":
 					config.defaultReporter = value.replace(/['"]/g, "");
 					break;
 				case "default_status":
 					config.defaultStatus = value.replace(/['"]/g, "");
 					break;
-				case "statuses":
-				case "labels":
-				case "types":
-				case "priorities": {
-					const parsedList = parsedListValues[key] ?? parseInlineConfigList(value);
-					if (parsedList) {
-						config[key] = parsedList;
-					}
-					break;
-				}
 				case "definition_of_done":
 					if (parsedDefinitionOfDone !== undefined) {
 						config.definitionOfDone = parsedDefinitionOfDone;
@@ -1791,30 +1863,8 @@ ${description || `Milestone: ${title}`}`,
 		return `${lines.join("\n")}\n`;
 	}
 
-	/**
-	 * Parse the list-valued config keys with a real YAML parser so block-style
-	 * sequences and quoted values work like inline arrays. Returns nothing for a
-	 * key when the document is not valid YAML, so the legacy inline-bracket line
-	 * parse stays the fallback.
-	 */
-	private parseConfigListValues(content: string): Partial<Record<ConfigListKey, string[]>> {
-		const result: Partial<Record<ConfigListKey, string[]>> = {};
-		try {
-			const { data } = parseFrontmatter(`---\n${content.trimEnd()}\n---\n`);
-			for (const key of CONFIG_LIST_KEYS) {
-				const value = data[key];
-				if (Array.isArray(value)) {
-					result[key] = value.map((item) => String(item).trim()).filter((item) => item.length > 0);
-				}
-			}
-		} catch {
-			// Not valid YAML; the caller falls back to the line-based parse.
-		}
-		return result;
-	}
-
 	private parseDefinitionOfDone(content: string): string[] | undefined {
-		const definitionOfDoneYaml = this.extractDefinitionOfDoneYaml(content);
+		const definitionOfDoneYaml = extractConfigKeyYaml(content, "definition_of_done");
 		const legacyEscapedDefinitionOfDoneYaml = definitionOfDoneYaml
 			? this.escapeLegacyDefinitionOfDoneBackslashes(definitionOfDoneYaml)
 			: undefined;
@@ -1850,36 +1900,6 @@ ${description || `Milestone: ${title}`}`,
 		} catch {
 			return undefined;
 		}
-	}
-
-	private extractDefinitionOfDoneYaml(content: string): string | undefined {
-		const lines = content.split(/\r?\n/);
-		const keyPattern = /^(\s*)definition_of_done\s*:/;
-		const topLevelKeyPattern = /^\s*[A-Za-z_][A-Za-z0-9_]*\s*:/;
-		const startIndex = lines.findIndex((line) => keyPattern.test(line));
-		if (startIndex === -1) {
-			return undefined;
-		}
-
-		const startLine = lines[startIndex];
-		const startIndent = startLine?.match(keyPattern)?.[1]?.length ?? 0;
-		const collected: string[] = [];
-
-		for (let index = startIndex; index < lines.length; index++) {
-			const line = lines[index] ?? "";
-			const trimmed = line.trim();
-			const indent = line.length - line.trimStart().length;
-			const isNextTopLevelKey =
-				index > startIndex && trimmed.length > 0 && indent <= startIndent && topLevelKeyPattern.test(line);
-
-			if (isNextTopLevelKey) {
-				break;
-			}
-
-			collected.push(line);
-		}
-
-		return collected.join("\n");
 	}
 
 	private escapeLegacyDefinitionOfDoneBackslashes(content: string): string | undefined {
