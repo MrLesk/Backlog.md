@@ -87,7 +87,6 @@ import { getTaskReadiness, loadReadinessGraph } from "./utils/readiness.ts";
 import { resolveRuntimeCwd } from "./utils/runtime-cwd.ts";
 import { formatValidStatuses, getCanonicalStatus, getCanonicalStatuses, getValidStatuses } from "./utils/status.ts";
 import {
-	normalizeDependencies,
 	parseClearableStringList,
 	parseDelimitedStringList,
 	parsePositiveIndexList,
@@ -95,7 +94,7 @@ import {
 	toStringArray,
 } from "./utils/task-builders.ts";
 import { buildTaskUpdateInput } from "./utils/task-edit-builder.ts";
-import { normalizeTaskId, taskIdsEqual } from "./utils/task-path.ts";
+import { canonicalTaskId, taskIdsEqual } from "./utils/task-path.ts";
 import { sortTasks } from "./utils/task-sorting.ts";
 import { formatValidTaskTypeValues, getTaskTypeValues, resolveTaskTypeValues } from "./utils/task-type-config.ts";
 import { getTerminalStatus, isTerminalStatus } from "./utils/terminal-status.ts";
@@ -565,7 +564,7 @@ function validateTaskListFlags(
 		validateClearableListInput({
 			rawValues: [...toStringArray(options.dependsOn), ...toStringArray(options.dep)],
 			cleared: Boolean(options.clearDeps),
-			isBlank: (value) => normalizeDependencies([value]).length === 0,
+			isBlank: isBlankListValue,
 			setterFlags: "--depends-on or --dep",
 			clearFlag: clearFlag("--clear-deps"),
 			subject: "task dependencies",
@@ -1910,7 +1909,7 @@ addHelpSchema(taskCmd.command("create [title]"), {
 			return;
 		}
 
-		const dependencies = [...toStringArray(options.dependsOn), ...toStringArray(options.dep)];
+		const dependencies = parseDelimitedStringList([...toStringArray(options.dependsOn), ...toStringArray(options.dep)]);
 
 		try {
 			const criteria = processAcceptanceCriteriaOptions(options);
@@ -1922,7 +1921,7 @@ addHelpSchema(taskCmd.command("create [title]"), {
 				status: createAsDraft ? "Draft" : options.status ? String(options.status) : undefined,
 				assignee: parseClearableStringList(options.assignee),
 				labels: parseDelimitedStringList(options.labels),
-				dependencies: dependencies.length > 0 ? normalizeDependencies(dependencies) : undefined,
+				dependencies,
 				references: parseDelimitedStringList(options.ref),
 				documentation: parseDelimitedStringList(options.doc),
 				modifiedFiles: parseDelimitedStringList(options.modifiedFile),
@@ -2482,11 +2481,15 @@ addHelpSchema(taskCmd.command("list"), {
 			taskLimit = parsedLimit;
 		}
 
+		// The raw argument reaches identity comparison untouched so bare numeric IDs resolve under any
+		// configured prefix; the canonical form is only used for display.
 		let parentId: string | undefined;
+		let parentDisplayId: string | undefined;
 		if (options.parent) {
-			const parentInput = String(options.parent);
-			parentId = normalizeTaskId(parentInput);
-			baseFilters.parentTaskId = parentInput;
+			parentId = String(options.parent).trim();
+			baseFilters.parentTaskId = parentId;
+			const config = await core.filesystem.loadConfig();
+			parentDisplayId = canonicalTaskId(parentId, config?.prefixes?.task ?? "task");
 		}
 
 		if (options.sort) {
@@ -2517,7 +2520,7 @@ addHelpSchema(taskCmd.command("list"), {
 					taskIdsEqual(parentId, task.id),
 				);
 				if (!parentExists) {
-					console.error(`Parent task ${parentId} not found.`);
+					console.error(`Parent task ${parentDisplayId} not found.`);
 					process.exitCode = 1;
 					cleanup();
 					return;
@@ -2556,8 +2559,7 @@ addHelpSchema(taskCmd.command("list"), {
 
 			if (filtered.length === 0) {
 				if (options.parent) {
-					const canonicalParent = normalizeTaskId(String(options.parent));
-					console.log(`No child tasks found for parent task ${canonicalParent}.`);
+					console.log(`No child tasks found for parent task ${parentDisplayId}.`);
 				} else {
 					console.log("No tasks found.");
 				}
@@ -2621,7 +2623,7 @@ addHelpSchema(taskCmd.command("list"), {
 		if (options.unassigned) activeFilters.push("Unassigned");
 		if (options.ready) activeFilters.push("Ready");
 		if (options.parent) {
-			activeFilters.push(`Parent: ${normalizeTaskId(String(options.parent))}`);
+			activeFilters.push(`Parent: ${parentDisplayId}`);
 		}
 		if (options.milestone) activeFilters.push(`Milestone: ${options.milestone}`);
 		if (baseFilters.priority) activeFilters.push(`Priority: ${baseFilters.priority}`);
@@ -2712,7 +2714,7 @@ addHelpSchema(taskCmd.command("list"), {
 				if (parentId && allTasksForParentCheck) {
 					const parentExists = allTasksForParentCheck.some((task) => taskIdsEqual(parentId, task.id));
 					if (!parentExists) {
-						throw new Error(`Parent task ${parentId} not found.`);
+						throw new Error(`Parent task ${parentDisplayId} not found.`);
 					}
 				}
 
@@ -2973,7 +2975,7 @@ addHelpSchema(taskCmd.command("edit [taskId]"), {
 		const core = new Core(cwd);
 
 		if (shouldUseWizard) {
-			let selectedTaskId = taskId ? normalizeTaskId(taskId) : undefined;
+			let selectedTaskId = taskId?.trim() || undefined;
 			if (!selectedTaskId) {
 				const localTasks = await core.queryTasks({ includeCrossBranch: false });
 				const taskOptions = localTasks.map((candidate) => ({
@@ -3021,8 +3023,7 @@ addHelpSchema(taskCmd.command("edit [taskId]"), {
 			return;
 		}
 
-		const canonicalId = normalizeTaskId(taskId ?? "");
-		const existingTask = await core.loadTaskById(canonicalId);
+		const existingTask = await core.loadTaskById(taskId ?? "");
 
 		if (!existingTask) {
 			console.error(`Task ${taskId} not found.`);
@@ -3110,7 +3111,7 @@ addHelpSchema(taskCmd.command("edit [taskId]"), {
 				uncheckDod = dodUnchecks;
 			}
 		} catch (error) {
-			console.error(formatTaskEditError(error, canonicalId));
+			console.error(formatTaskEditError(error, existingTask.id));
 			process.exitCode = 1;
 			return;
 		}
@@ -3166,7 +3167,6 @@ addHelpSchema(taskCmd.command("edit [taskId]"), {
 			.map((value) => String(value).trim())
 			.filter((value) => value.length > 0);
 
-		const combinedDependencies = [...toStringArray(options.dependsOn), ...toStringArray(options.dep)];
 		const clearableListError = validateTaskListFlags(options, { supportsClearFlags: true });
 		if (clearableListError) {
 			console.error(clearableListError);
@@ -3181,7 +3181,10 @@ addHelpSchema(taskCmd.command("edit [taskId]"), {
 			process.exitCode = 1;
 			return;
 		}
-		const dependencyValues = combinedDependencies.length > 0 ? normalizeDependencies(combinedDependencies) : undefined;
+		const dependencyValues = parseDelimitedStringList([
+			...toStringArray(options.dependsOn),
+			...toStringArray(options.dep),
+		]);
 
 		const normalizedReferences = parseDelimitedStringList(options.ref);
 		const addReferenceValues = parseDelimitedStringList(options.addRef) ?? [];
@@ -3315,9 +3318,9 @@ addHelpSchema(taskCmd.command("edit [taskId]"), {
 		let updatedTask: Task;
 		try {
 			const updateInput = buildTaskUpdateInput(editArgs);
-			updatedTask = await core.editTask(canonicalId, updateInput);
+			updatedTask = await core.editTask(existingTask.id, updateInput);
 		} catch (error) {
-			console.error(formatTaskEditError(error, canonicalId));
+			console.error(formatTaskEditError(error, existingTask.id));
 			process.exitCode = 1;
 			return;
 		}
@@ -3490,11 +3493,12 @@ taskCmd
 		const cwd = await requireProjectRoot();
 		const core = new Core(cwd);
 		try {
-			const success = await core.demoteTask(taskId);
-			if (success) {
-				console.log(`Demoted task ${taskId}`);
+			const task = await core.loadTaskById(taskId);
+			if (task && (await core.demoteTask(task.id))) {
+				console.log(`Demoted task ${task.id}`);
 			} else {
 				console.error(`Task ${taskId} not found.`);
+				process.exitCode = 1;
 			}
 		} catch (error) {
 			console.error(error instanceof Error ? error.message : String(error));
@@ -3659,11 +3663,12 @@ draftCmd
 	.action(async (taskId: string) => {
 		const cwd = await requireProjectRoot();
 		const core = new Core(cwd);
-		const success = await core.archiveDraft(taskId);
-		if (success) {
-			console.log(`Archived draft ${taskId}`);
+		const draft = await core.filesystem.loadDraft(taskId);
+		if (draft && (await core.archiveDraft(draft.id))) {
+			console.log(`Archived draft ${draft.id}`);
 		} else {
 			console.error(`Draft ${taskId} not found.`);
+			process.exitCode = 1;
 		}
 	});
 
@@ -3674,11 +3679,12 @@ draftCmd
 		const cwd = await requireProjectRoot();
 		const core = new Core(cwd);
 		try {
-			const success = await core.promoteDraft(taskId);
-			if (success) {
-				console.log(`Promoted draft ${taskId}`);
+			const draft = await core.filesystem.loadDraft(taskId);
+			if (draft && (await core.promoteDraft(draft.id))) {
+				console.log(`Promoted draft ${draft.id}`);
 			} else {
 				console.error(`Draft ${taskId} not found.`);
+				process.exitCode = 1;
 			}
 		} catch (error) {
 			console.error(error instanceof Error ? error.message : String(error));

@@ -58,12 +58,19 @@ import {
 import { executeStatusCallback } from "../utils/status-callback.ts";
 import {
 	buildDefinitionOfDoneItems,
-	normalizeDependencies,
 	normalizeStringList,
+	parseDelimitedStringList,
 	stringArraysEqual,
 	validateDependencies,
 } from "../utils/task-builders.ts";
-import { AmbiguousTaskIdError, getDraftPath, getTaskPath, normalizeTaskId, taskIdsEqual } from "../utils/task-path.ts";
+import {
+	AmbiguousTaskIdError,
+	canonicalTaskId,
+	getDraftPath,
+	getTaskPath,
+	normalizeTaskId,
+	taskIdsEqual,
+} from "../utils/task-path.ts";
 import { attachSubtaskSummaries } from "../utils/task-subtasks.ts";
 import { formatValidTaskTypeValues, matchesTaskTypeFilter, resolveTaskTypeValue } from "../utils/task-type-config.ts";
 import { upsertTaskUpdatedDate } from "../utils/task-updated-date.ts";
@@ -1295,7 +1302,7 @@ export class Core {
 
 		const normalizedLabels = normalizeStringList(input.labels) ?? [];
 		const normalizedAssignees = normalizeStringList(input.assignee) ?? [];
-		const normalizedDependencies = normalizeDependencies(input.dependencies);
+		const normalizedDependencies = parseDelimitedStringList(input.dependencies) ?? [];
 		const normalizedReferences = normalizeStringList(input.references) ?? [];
 		const normalizedDocumentation = normalizeStringList(input.documentation) ?? [];
 		const normalizedModifiedFiles = normalizeStringList(input.modifiedFiles) ?? [];
@@ -1436,9 +1443,10 @@ export class Core {
 	private async resolveParentTaskIdForCreate(parentTaskId: string): Promise<string> {
 		const parentTask = await this.loadTaskById(parentTaskId);
 		if (!parentTask) {
-			const normalizedParent = normalizeTaskId(parentTaskId);
+			const config = await this.fs.loadConfig();
+			const canonicalParent = canonicalTaskId(parentTaskId, config?.prefixes?.task ?? "task");
 			throw new Error(
-				`Parent task ${normalizedParent} not found. Use an existing task ID with --parent; use --milestone to assign a task to a milestone.`,
+				`Parent task ${canonicalParent} not found. Use an existing task ID with --parent; use --milestone to assign a task to a milestone.`,
 			);
 		}
 		return parentTask.id;
@@ -1624,7 +1632,7 @@ export class Core {
 			let currentDependencies = [...(task.dependencies ?? [])];
 
 			if (input.dependencies !== undefined) {
-				const normalized = normalizeDependencies(input.dependencies);
+				const normalized = parseDelimitedStringList(input.dependencies) ?? [];
 				const { valid, invalid } = await validateDependencies(normalized, this);
 				if (invalid.length > 0) {
 					throw new Error(
@@ -1638,7 +1646,7 @@ export class Core {
 			}
 
 			if (input.addDependencies && input.addDependencies.length > 0) {
-				const additions = normalizeDependencies(input.addDependencies);
+				const additions = parseDelimitedStringList(input.addDependencies) ?? [];
 				const { valid, invalid } = await validateDependencies(additions, this);
 				if (invalid.length > 0) {
 					throw new Error(
@@ -1656,8 +1664,8 @@ export class Core {
 			}
 
 			if (input.removeDependencies && input.removeDependencies.length > 0) {
-				const removals = new Set(normalizeDependencies(input.removeDependencies));
-				const filtered = currentDependencies.filter((dep) => !removals.has(dep));
+				const removals = parseDelimitedStringList(input.removeDependencies) ?? [];
+				const filtered = currentDependencies.filter((dep) => !removals.some((removal) => taskIdsEqual(removal, dep)));
 				if (!stringArraysEqual(filtered, currentDependencies)) {
 					currentDependencies = filtered;
 					mutated = true;
@@ -2585,7 +2593,7 @@ export class Core {
 		if (await this.shouldAutoCommit(autoCommit)) {
 			// Stage the file move for proper Git tracking
 			const repoRoot = await this.git.stageFileMove(fromPath, toPath);
-			await this.git.commitFiles(`backlog: Complete task ${normalizeTaskId(taskId)}`, [fromPath, toPath], repoRoot);
+			await this.git.commitFiles(`backlog: Complete task ${task.id}`, [fromPath, toPath], repoRoot);
 		}
 
 		return true;
@@ -2690,11 +2698,7 @@ export class Core {
 		const moved = movedPaths[0];
 
 		if (success && moved && (await this.shouldAutoCommit(autoCommit))) {
-			await this.commitWrittenFile(
-				`backlog: Demote task ${normalizeTaskId(taskId)}`,
-				[moved.previousPath],
-				moved.savedPath,
-			);
+			await this.commitWrittenFile(`backlog: Demote task ${task.id}`, [moved.previousPath], moved.savedPath);
 		}
 
 		return success;

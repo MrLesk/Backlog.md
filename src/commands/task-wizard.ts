@@ -4,7 +4,7 @@ import picocolors from "picocolors";
 import { DEFAULT_STATUSES } from "../constants/index.ts";
 import type { AcceptanceCriterion, Task, TaskCreateInput, TaskUpdateInput } from "../types/index.ts";
 import { getPriorityOptions, normalizePriorityValue } from "../utils/priority-config.ts";
-import { normalizeDependencies, normalizeStringList } from "../utils/task-builders.ts";
+import { normalizeStringList } from "../utils/task-builders.ts";
 import { getTaskTypeValues, resolveTaskTypeValue } from "../utils/task-type-config.ts";
 
 interface TaskWizardValues {
@@ -635,7 +635,7 @@ export async function runTaskCreateWizard(
 	const labels = parseListInput(values.labels);
 	const references = parseListInput(values.references);
 	const documentation = parseListInput(values.documentation);
-	const dependencies = normalizeDependencies(parseListInput(values.dependencies));
+	const dependencies = parseListInput(values.dependencies);
 	const acceptanceCriteria = parseChecklistInput(values.acceptanceCriteria).map((entry) => ({
 		text: entry.text,
 		checked: false,
@@ -708,8 +708,8 @@ export async function runTaskEditWizard(
 		updateInput.labels = nextLabels;
 	}
 
-	const initialDependencies = normalizeDependencies(parseListInput(initial.dependencies));
-	const nextDependencies = normalizeDependencies(parseListInput(values.dependencies));
+	const initialDependencies = parseListInput(initial.dependencies);
+	const nextDependencies = parseListInput(values.dependencies);
 	if (!areStringArraysEqual(initialDependencies, nextDependencies)) {
 		updateInput.dependencies = nextDependencies;
 	}
