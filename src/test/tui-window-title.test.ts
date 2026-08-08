@@ -30,22 +30,16 @@ function captureTerminalWrites(run: (record: () => string, reset: () => void) =>
 
 /**
  * Run `capture` as if the process were inside tmux. blessed reads `process.env.TMUX` when
- * the program is constructed, and it defers its tmux writes until the output stream has
- * been written to, so `bytesWritten` is primed the way a rendered session leaves it.
+ * the program is constructed. Nothing else is faked: `bytesWritten` stays at the value Bun
+ * reports, which is what makes blessed defer its own tmux writes, so these titles have to
+ * arrive without waiting on that.
  */
 function inTmux(capture: () => void): void {
 	const originalTmux = process.env.TMUX;
-	const originalBytesWritten = process.stdout.bytesWritten;
 	process.env.TMUX = "/private/tmp/tmux-501/default,1,0";
-	Object.defineProperty(process.stdout, "bytesWritten", { value: 1, configurable: true, writable: true });
 	try {
 		capture();
 	} finally {
-		Object.defineProperty(process.stdout, "bytesWritten", {
-			value: originalBytesWritten,
-			configurable: true,
-			writable: true,
-		});
 		if (originalTmux === undefined) {
 			delete process.env.TMUX;
 		} else {
@@ -111,10 +105,11 @@ describe("TUI window titles", () => {
 			// blessed buffers the title write, so drain it before checking the ordering.
 			screen.program.flush?.();
 
-			// ESC [ 22 ; 2 t pushes the title the user already had onto the terminal's stack.
+			// ESC [ 22 ; 0 t saves the icon and window titles the user already had, the pair
+			// OSC 0 goes on to overwrite.
 			const opened = record();
-			expect(opened).toContain("\x1b[22;2t");
-			expect(opened.indexOf("\x1b[22;2t")).toBeLessThan(opened.indexOf("Acme Website - Board"));
+			expect(opened).toContain("\x1b[22;0t");
+			expect(opened.indexOf("\x1b[22;0t")).toBeLessThan(opened.indexOf("Acme Website - Board"));
 
 			reset();
 			screen.destroy();
@@ -123,33 +118,36 @@ describe("TUI window titles", () => {
 			// ones that have it, so the pop must come last to win where it is supported.
 			const closed = record();
 			expect(closed).toContain("\x1b]0;\x07");
-			expect(closed).toContain("\x1b[23;2t");
-			expect(closed.indexOf("\x1b]0;\x07")).toBeLessThan(closed.indexOf("\x1b[23;2t"));
+			expect(closed).toContain("\x1b[23;0t");
+			expect(closed.indexOf("\x1b]0;\x07")).toBeLessThan(closed.indexOf("\x1b[23;0t"));
 			// blessed emits "destroy" twice per screen, and one push must not be popped twice.
-			expect(closed.split("\x1b[23;2t")).toHaveLength(2);
+			expect(closed.split("\x1b[23;0t")).toHaveLength(2);
 		});
 	});
 
-	it("forwards the title stack controls to the outer terminal inside tmux", () => {
+	it("forwards the title stack controls to the outer terminal inside tmux, without waiting", () => {
 		inTmux(() => {
 			captureTerminalWrites((record, reset) => {
 				const screen = createScreen({ smartCSR: false, title: formatTuiTitle("Board", "Acme Website") });
-				screen.program.flush?.();
 
-				// Inside tmux every one of these has to travel through the DCS passthrough,
-				// otherwise tmux consumes it and the outer terminal never sees it. blessed
-				// already does that for the title, so the push and pop must match it.
+				// Inside tmux these have to travel through the DCS passthrough, otherwise tmux
+				// consumes them and the outer terminal never sees them. They also have to be
+				// written synchronously: blessed's own tmux writes wait on a byte counter Bun
+				// never moves, and a sequence queued that way is lost when the process exits.
 				const opened = record();
-				expect(opened).toContain("\x1bPtmux;\x1b\x1b[22;2t\x1b\\");
-				expect(opened).toContain("\x1bPtmux;\x1b\x1b]0;Acme Website - Board\x07\x1b\\");
+				expect(opened).toContain("\x1bPtmux;\x1b\x1b[22;0t\x1b\\");
+				// Nothing was flushed or awaited, and blessed's deferred title has not landed.
+				expect(opened).not.toContain("Acme Website - Board");
 
 				reset();
 				screen.destroy();
 
 				const closed = record();
 				expect(closed).toContain("\x1bPtmux;\x1b\x1b]0;\x07\x1b\\");
-				expect(closed).toContain("\x1bPtmux;\x1b\x1b[23;2t\x1b\\");
-				expect(closed.indexOf("\x1b]0;\x07")).toBeLessThan(closed.indexOf("\x1b[23;2t"));
+				expect(closed).toContain("\x1bPtmux;\x1b\x1b[23;0t\x1b\\");
+				expect(closed.indexOf("\x1b]0;\x07")).toBeLessThan(closed.indexOf("\x1b[23;0t"));
+				// Each sequence needs its own envelope: the DCS escapes one leading ESC only.
+				expect(closed).not.toContain("\x1b]0;\x07\x1b[23;0t");
 			});
 		});
 	});
@@ -160,8 +158,8 @@ describe("TUI window titles", () => {
 			screen.destroy();
 
 			const written = record();
-			expect(written).not.toContain("\x1b[22;2t");
-			expect(written).not.toContain("\x1b[23;2t");
+			expect(written).not.toContain("\x1b[22;0t");
+			expect(written).not.toContain("\x1b[23;0t");
 		});
 	});
 

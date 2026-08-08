@@ -5,9 +5,10 @@ declare module "neo-neo-bblessed" {
 		hideCursor(): void;
 		showCursor(): void;
 		input: NodeJS.EventEmitter;
-		setTitle(title: string): boolean;
-		/** Writes escape sequences, wrapping them in the tmux DCS passthrough when inside tmux. */
-		_twrite(data: string): boolean;
+		/** True when the process is running inside tmux, so writes need DCS passthrough. */
+		tmux: boolean;
+		/** Writes straight to the output stream, unbuffered. */
+		write(text: string): boolean;
 		pause?: () => (() => void) | undefined;
 		flush?: () => void;
 		put?: {

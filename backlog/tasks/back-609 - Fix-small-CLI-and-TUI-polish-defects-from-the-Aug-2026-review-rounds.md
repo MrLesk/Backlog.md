@@ -5,7 +5,7 @@ status: Done
 assignee:
   - '@Claude'
 created_date: '2026-08-08 15:56'
-updated_date: '2026-08-08 17:51'
+updated_date: '2026-08-08 19:07'
 labels: []
 dependencies: []
 ordinal: 248000
@@ -61,6 +61,10 @@ Verification. Item 1: reproduced 'error: unknown option --plain' before the chan
 Out of scope, surfaced while researching item 2 and left unfixed: the document watcher in src/core/content-store.ts retries forever for a file named doc-1.md (it passes the doc- prefix gate but its split(" - ") id never matches the frontmatter id) and compares ids with raw equality where the rest of the codebase uses documentIdsEqual; and src/cli.ts carries an unused duplicate of generateNextDocId that also lives in src/utils/id-generators.ts.
 
 Review follow-up (PR #879, Codex P2 on the title-restore fix): the title stack push and pop were written with program.write, which is blessed's raw _owrite, while setTitle goes through _twrite. Inside tmux _twrite wraps output in the DCS passthrough (ESC P tmux ; ESC <data> ESC \\) that reaches the outer terminal, so the outer terminal received the title set and the clear but never the push or pop, and could not restore the title it started with even when it supports the stack. Verified against node_modules/neo-neo-bblessed/lib/program.ts: setTitle calls _twrite, and _twrite wraps when program.tmux (set from process.env.TMUX) is true. Both controls now go through _twrite as well, and the flush moved after the pop so the clear and the pop share one buffer flush. Outside tmux the emitted bytes are unchanged, confirmed byte-for-byte against the pre-change PTY capture. Also dropped write from the hand-written ProgramInterface declaration, since _twrite replaced its only use.
+
+Review follow-up 2 (PR 879, Codex P1+P2 on the title work). P1 verified empirically in a real tmux 3.6a session with no test priming: blessed _twrite defers every tmux write until output.bytesWritten moves, which Bun never does, so it waits out a 50x100ms poll. Measured a titled screen opened and torn down: natural return took 5.139s and all four sequences arrived, but quitting with process.exit(0) right after destroy took 0.048s and none of the four reached the terminal, so the restore was lost exactly where it matters. The 5s latency is pre-existing, not introduced here: unmodified origin/main at 36c0f65c measured 5.144s for the same script, since blessed setTitle defers identically. Outside tmux the same script runs in 0.042s.
+
+Simplified rather than layering another workaround: one helper, writeTerminalControl, writes a single control sequence straight to the output through the raw write path and applies the same tmux DCS transform blessed uses (BEL-for-ST substitution inside an ESC Ptmux envelope) when program.tmux is set. Push, clear and pop all use it, so setTitle, flush and _twrite are no longer needed here and the type declaration drops back to write plus tmux. One sequence per call, because the DCS envelope escapes only a single leading ESC. P2 folded in: the stack controls moved from 22;2t/23;2t to 22;0t/23;0t so they save and restore both values OSC 0 overwrites, leaving no blank icon title. Re-measured after the change: the process.exit path now delivers push, clear and pop in 0.048s, a realistic 6s session delivers all four in push then set then clear then pop order, and outside tmux the bytes stay unwrapped with the pop emitted exactly once on clean exit and on SIGINT.
 <!-- SECTION:NOTES:END -->
 
 ## Final Summary
