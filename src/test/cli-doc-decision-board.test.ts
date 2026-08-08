@@ -57,6 +57,15 @@ describe("CLI Integration", () => {
 			expect(docs[0]?.path).toBe("guides/setup/doc-1 - Setup-Guide.md");
 		});
 
+		it("should accept --plain on doc create and print the plain result", async () => {
+			const result = await $`bun ${CLI_PATH} doc create "Setup Guide" --plain`.cwd(TEST_DIR).quiet().nothrow();
+			expect(result.exitCode).toBe(0);
+			expect(result.stderr.toString()).not.toContain("unknown option");
+			const stdout = result.stdout.toString();
+			expect(stdout).toContain("Created document doc-1");
+			expect(stdout).toContain("Path: backlog/docs/doc-1 - Setup-Guide.md");
+		});
+
 		it("should reject unsafe document paths", async () => {
 			const result = await $`bun ${CLI_PATH} doc create "Unsafe" -p ../outside`.cwd(TEST_DIR).quiet().nothrow();
 			expect(result.exitCode).not.toBe(0);
@@ -231,6 +240,28 @@ describe("CLI Integration", () => {
 
 			const core = new Core(TEST_DIR);
 			await initializeTestProject(core, "Board Test Project", true);
+		});
+
+		it("should print the configured project name in the piped board header", async () => {
+			const core = new Core(TEST_DIR);
+			await core.createTask(
+				{
+					id: "task-1",
+					title: "Todo Task",
+					status: "To Do",
+					assignee: [],
+					createdDate: "2025-06-08",
+					labels: [],
+					dependencies: [],
+					rawContent: "A task in todo",
+				},
+				false,
+			);
+
+			// Piping makes stdout a non-TTY, which is the plain-text board fallback.
+			const result = await $`bun ${CLI_PATH} board`.cwd(TEST_DIR).quiet().nothrow();
+			expect(result.exitCode).toBe(0);
+			expect(result.stdout.toString()).toContain("Project: Board Test Project");
 		});
 
 		it("should display kanban board with tasks grouped by status", async () => {

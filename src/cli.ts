@@ -4172,6 +4172,7 @@ addHelpSchema(docCmd.command("create <title>"), {
 			description: "Subdirectory under backlog/docs; absolute paths and .. are rejected",
 		},
 		{ name: "type", type: choiceType(DOCUMENT_TYPE_VALUES), description: "Document type" },
+		{ name: "plain", type: "Boolean", description: "Use plain text output" },
 	],
 	writes: "Creates a document markdown file under the configured docs directory",
 	output: "Created document ID and path",
@@ -4179,6 +4180,8 @@ addHelpSchema(docCmd.command("create <title>"), {
 })
 	.option("-p, --path <path>")
 	.option("-t, --type <type>", `document type (${DOCUMENT_TYPE_VALUES.join(", ")})`)
+	// Accepted so agent guidance that always passes --plain works; create output is already plain text.
+	.option("--plain", "use plain text output")
 	.action(async (title: string, options) => {
 		const cwd = await requireProjectRoot();
 		const core = new Core(cwd);
@@ -4265,16 +4268,11 @@ addHelpSchema(docCmd.command("list"), {
 		// Interactive UI
 		const selected = await genericSelectList("Select a document", docs);
 		if (selected) {
-			// Show document details (recursive search)
-			const files = await Array.fromAsync(
-				new Bun.Glob("**/*.md").scan({ cwd: core.filesystem.docsDir, followSymlinks: true }),
-			);
-			const docFile = files.find(
-				(f) => f.startsWith(`${selected.id} -`) || f.endsWith(`/${selected.id}.md`) || f === `${selected.id}.md`,
-			);
-			if (docFile) {
-				const filePath = join(core.filesystem.docsDir, docFile);
-				const content = await Bun.file(filePath).text();
+			// Resolve through the same reader as `doc view`. Matching filenames against the id
+			// only found `<id> - <title>.md` at the top level, so documents written under the
+			// older title-only filenames, or in a subdirectory, opened as nothing.
+			const content = await core.getDocumentContent(selected.id);
+			if (content !== null) {
 				await scrollableViewer(content);
 			}
 		}

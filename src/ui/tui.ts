@@ -111,9 +111,58 @@ export function formatTuiTitle(view: string, projectName?: string): string {
 	return stripControlCharacters(usableName ? `${usableName} - ${view}` : `Backlog ${view}`);
 }
 
+/** Save the icon and window titles onto the terminal's title stack, the pair OSC 0 sets. */
+const PUSH_WINDOW_TITLE = "\x1b[22;0t";
+/** Restore the pair the matching push saved. */
+const POP_WINDOW_TITLE = "\x1b[23;0t";
+/** Clear the title, for terminals that keep no title stack to pop from. */
+const CLEAR_WINDOW_TITLE = "\x1b]0;\x07";
+
+/**
+ * Write one terminal control sequence straight to the output, wrapping it in the tmux DCS
+ * passthrough when inside tmux so the outer terminal receives it rather than tmux itself.
+ *
+ * blessed's own `_twrite` wraps the same way, but for tmux it defers the write until the
+ * output reports bytes written, which Bun never reports, so it falls back to a five second
+ * poll. A teardown sequence queued that way is lost as soon as the process exits, which is
+ * exactly the case this restore exists for, so these are written raw and synchronously.
+ *
+ * One sequence per call: the DCS envelope escapes a single leading ESC, so two sequences
+ * cannot share one envelope.
+ */
+function writeTerminalControl(program: ProgramInterface, sequence: string): void {
+	program.write(program.tmux ? `\x1bPtmux;\x1b${sequence.replaceAll("\x1b\\", "\x07")}\x1b\\` : sequence);
+}
+
 export function createScreen(options: Partial<ScreenOptions> = {}): ScreenInterface {
 	const program: ProgramInterface = createProgram({ tput: false });
+
+	// Renaming the terminal window must not outlive the session, so save the titles the
+	// user had before blessed overwrites them and put them back during teardown.
+	const managesWindowTitle = typeof options.title === "string" && options.title.length > 0;
+	if (managesWindowTitle) {
+		writeTerminalControl(program, PUSH_WINDOW_TITLE);
+	}
+
 	const screen = blessedScreen({ smartCSR: true, program, fullUnicode: true, ...options });
+
+	if (managesWindowTitle) {
+		// blessed routes its exit, SIGINT/SIGTERM/SIGQUIT, and uncaughtException teardown
+		// through screen.destroy(), so this covers every path that already ends a session.
+		// It emits "destroy" twice per screen, and one push must not be popped twice.
+		let restoredWindowTitle = false;
+		screen.on("destroy", () => {
+			if (restoredWindowTitle) {
+				return;
+			}
+			restoredWindowTitle = true;
+			// Clear first so terminals without a title stack fall back to their own default
+			// instead of keeping a stale view name, then pop so terminals that have one
+			// restore the exact pair the push saved.
+			writeTerminalControl(program, CLEAR_WINDOW_TITLE);
+			writeTerminalControl(program, POP_WINDOW_TITLE);
+		});
+	}
 
 	if (process.env.DEBUG) {
 		const tputColors = (screen as unknown as { tput?: { colors?: number } }).tput?.colors;

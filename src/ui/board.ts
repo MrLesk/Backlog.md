@@ -288,10 +288,11 @@ export async function renderBoardTui(
 	},
 ): Promise<void> {
 	if (!process.stdout.isTTY) {
+		const projectName = options?.projectName?.trim() || "Project";
 		if (options?.milestoneMode) {
-			console.log(generateMilestoneGroupedBoard(initialTasks, statuses, options.milestoneEntities ?? [], "Project"));
+			console.log(generateMilestoneGroupedBoard(initialTasks, statuses, options.milestoneEntities ?? [], projectName));
 		} else {
-			console.log(generateKanbanBoardWithMetadata(initialTasks, statuses, "Project"));
+			console.log(generateKanbanBoardWithMetadata(initialTasks, statuses, projectName));
 		}
 		return;
 	}
