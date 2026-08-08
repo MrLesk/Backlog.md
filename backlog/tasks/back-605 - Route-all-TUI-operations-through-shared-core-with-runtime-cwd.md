@@ -5,7 +5,7 @@ status: Done
 assignee:
   - '@Claude'
 created_date: '2026-08-08 15:56'
-updated_date: '2026-08-08 16:23'
+updated_date: '2026-08-08 16:41'
 labels: []
 dependencies: []
 ordinal: 244000
@@ -81,10 +81,26 @@ Remaining `process.cwd()` uses that are not project resolution and were left alo
 - New src/test/tui-runtime-cwd.test.ts drives the board's `n` handler through its own `persist` with process.cwd() pointed at an unrelated directory: one case asserts the task lands in BACKLOG_CWD, the other asserts a supplied Core instance wins over BACKLOG_CWD. Both fail against the pre-change board.ts (`Expected length: 1 / Received length: 0`) and pass after.
 - src/test/runtime-cwd.test.ts covers `createRuntimeCore` for the process.cwd() default, the BACKLOG_CWD override, and the invalid-override rejection.
 - PTY verification of a real mutation: cwd = this repo worktree (a different Backlog project), BACKLOG_CWD = a /tmp fixture project holding one task. `expect` spawned `bun src/cli.ts board`, the window title rendered as "Fixture Project - Board" with the fixture's TASK-1, then `a` + Enter produced the "Archived TASK-1" footer and moved `backlog/tasks/task-1 - Second-fixture-task.md` into the fixture's `backlog/archive/tasks/`. The same script against the pre-change board.ts timed out waiting for the footer and left the file in `backlog/tasks/`.
+
+## Review follow-up (Codex P2 on PR #876, thread src/core/backlog.ts:3306)
+
+`createRuntimeCore` used `resolveRuntimeCwd()` verbatim, but the CLI goes `requireProjectRoot()` -> `findBacklogRoot()`, which ascends from the resolved directory to the actual project root. So when BACKLOG_CWD (or the shell cwd, for fallback callers) pointed at a *subdirectory* of a valid project, the factory targeted `<subdir>/backlog`, which does not exist: shell completions silently returned empty task/label/assignee lists while CLI commands on the same environment worked. That is the same cross-interface divergence this task exists to remove, so it was fixed here rather than deferred.
+
+Fix: `createRuntimeCore` now resolves the runtime cwd and then walks up with the existing `findBacklogRoot`, mirroring `requireProjectRoot`.
+
+Not-found semantics: when `findBacklogRoot` returns null the factory keeps the resolved directory as the project root (`(await findBacklogRoot(cwd)) ?? cwd`) instead of exiting the way `requireProjectRoot` does. That preserves the exact pre-change behaviour of every caller — these are optional-core fallbacks in library code, not CLI entry points, so completions must degrade to their static fallbacks and never crash the shell. An invalid BACKLOG_CWD still rejects from `resolveRuntimeCwd` (fail closed), which `withCore` swallows into the static fallback. No semantics fork: exiting the process was never an option for these call sites.
+
+Coverage added to src/test/runtime-cwd.test.ts: BACKLOG_CWD at a nested subdirectory resolves to the parent project root; the same via process.cwd(); no-project stays on the resolved directory; and completion providers (`getTaskIds`/`getLabels`/`getAssignees`) read the parent project from a subdirectory plus two graceful-degradation cases. The three subdirectory assertions fail without the ascent, reproducing Codex's empty-`getTaskIds()` finding.
+
+CLI-level confirmation with BACKLOG_CWD pointing at `<fixture>/packages/cli` inside an initialized fixture project:
+- after: `bun src/cli.ts completion __complete "backlog task view " 18` -> `TASK-1`, `--plain`, `--json`
+- before: same command -> `--plain`, `--json` only (task ID missing)
+
+Re-verified: `bunx tsc --noEmit` clean, `bun run check .` clean (367 files), `bun run test` -> 2071 pass, 6 skip, 0 fail (2077 tests, 223 files).
 <!-- SECTION:NOTES:END -->
 
 ## Final Summary
 
 <!-- SECTION:FINAL_SUMMARY:BEGIN -->
-Routed every TUI mutation through the Core instance its caller already holds, with a single `createRuntimeCore()` factory (resolveRuntimeCwd, so --cwd/BACKLOG_CWD then process.cwd()) as the only remaining construction path. All seven board.ts handlers, enhanced-views and the task-viewer fallback no longer build `new Core(process.cwd())`; the same factory now covers the getTaskPath/getValidStatuses fallbacks and the shell-completion provider. Web server and MCP were already resolver-based and unchanged. Verified with `grep -rn 'Core(process.cwd' src/` (no matches), new src/test/tui-runtime-cwd.test.ts plus createRuntimeCore cases in src/test/runtime-cwd.test.ts (both new suites fail against the pre-change board.ts), a PTY run where BACKLOG_CWD archived a fixture task while cwd sat in a different Backlog project, and clean bunx tsc --noEmit, bun run check ., bun run test (2065 pass / 6 skip / 0 fail).
+Routed every TUI mutation through the Core instance its caller already holds, with a single `createRuntimeCore()` factory as the only remaining construction path: it resolves the runtime working directory (--cwd/BACKLOG_CWD, else process.cwd()) and then ascends to the project root via findBacklogRoot, mirroring the CLI's requireProjectRoot; when no project is found it keeps the resolved directory so optional-core fallbacks (notably shell completions) degrade gracefully instead of exiting. All seven board.ts handlers, enhanced-views and the task-viewer fallback no longer build `new Core(process.cwd())`; the same factory covers the getTaskPath/getValidStatuses fallbacks and the completion data providers. Web server and MCP were already resolver-based and unchanged. Verified with `grep -rn 'Core(process.cwd' src/` (no matches), new src/test/tui-runtime-cwd.test.ts and createRuntimeCore/completion cases in src/test/runtime-cwd.test.ts (each new assertion confirmed failing against the pre-change code), a PTY run where BACKLOG_CWD archived a fixture task while cwd sat in a different Backlog project, a CLI completion run resolving TASK-1 from a project subdirectory, and clean bunx tsc --noEmit, bun run check ., bun run test (2071 pass / 6 skip / 0 fail).
 <!-- SECTION:FINAL_SUMMARY:END -->

@@ -32,6 +32,7 @@ import {
 } from "../utils/document-path.ts";
 import { type ContentIdentityReport, detectContentIdentityIssues } from "../utils/duplicate-detection.ts";
 import { openInEditor } from "../utils/editor.ts";
+import { findBacklogRoot } from "../utils/find-backlog-root.ts";
 import { generateNextDocId } from "../utils/id-generators.ts";
 import {
 	createMilestoneFilterMatcher,
@@ -3297,11 +3298,13 @@ export class Core {
 }
 
 /**
- * Builds a Core bound to the working directory every interface resolves the same way
- * (`--cwd`/`BACKLOG_CWD`, else `process.cwd()`). Prefer passing an existing Core; use this
- * only where no instance is available.
+ * Builds a Core bound to the project every interface resolves the same way: the runtime working
+ * directory (`--cwd`/`BACKLOG_CWD`, else `process.cwd()`), then walked up to the project root just
+ * like the CLI commands do. When no project is found the resolved directory is used as-is, so
+ * callers keep degrading to their own fallbacks instead of failing.
+ * Prefer passing an existing Core; use this only where no instance is available.
  */
 export async function createRuntimeCore(options?: { enableWatchers?: boolean }): Promise<Core> {
 	const { cwd } = await resolveRuntimeCwd();
-	return new Core(cwd, options);
+	return new Core((await findBacklogRoot(cwd)) ?? cwd, options);
 }
