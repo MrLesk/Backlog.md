@@ -51,7 +51,6 @@ async function writeDecision(filename: string, decision: Decision): Promise<stri
 }
 
 // gray-matter rejects an unterminated flow collection, so these files cannot be parsed at all.
-// Each fixture needs distinct content because gray-matter caches parse results by input string.
 function malformedFrontmatter(id: string): string {
 	return `---\nid: ${id}\ntitle: [unterminated\n---\n\n${id} body\n`;
 }

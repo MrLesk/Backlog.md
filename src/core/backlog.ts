@@ -3,6 +3,7 @@ import { basename, isAbsolute, join, relative } from "node:path";
 import { DEFAULT_DIRECTORIES, DEFAULT_STATUSES, FALLBACK_STATUS } from "../constants/index.ts";
 import { FileSystem, isCreateLockError } from "../file-system/operations.ts";
 import { type GitIndexEntry, GitOperations } from "../git/operations.ts";
+import { parseFrontmatter } from "../markdown/frontmatter.ts";
 import {
 	type AcceptanceCriterion,
 	type BacklogConfig,
@@ -2832,8 +2833,7 @@ export class Core {
 		}
 
 		// Parse the markdown content to extract the decision data
-		const matter = await import("gray-matter");
-		const { data } = matter.default(content);
+		const frontmatter = parseFrontmatter(content).data as Partial<Pick<Decision, "title" | "status" | "date">>;
 
 		const extractSection = (content: string, sectionName: string): string | undefined => {
 			const regex = new RegExp(`## ${sectionName}\\s*([\\s\\S]*?)(?=## |$)`, "i");
@@ -2843,9 +2843,9 @@ export class Core {
 
 		const updatedDecision = {
 			...existingDecision,
-			title: data.title || existingDecision.title,
-			status: data.status || existingDecision.status,
-			date: data.date || existingDecision.date,
+			title: frontmatter.title || existingDecision.title,
+			status: frontmatter.status || existingDecision.status,
+			date: frontmatter.date || existingDecision.date,
 			context: extractSection(content, "Context") || existingDecision.context,
 			decision: extractSection(content, "Decision") || existingDecision.decision,
 			consequences: extractSection(content, "Consequences") || existingDecision.consequences,

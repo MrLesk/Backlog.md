@@ -1,4 +1,5 @@
 import { describe, expect, it } from "bun:test";
+import { parseFrontmatter } from "../markdown/frontmatter.ts";
 import { parseDecision, parseDocument, parseMarkdown, parseTask } from "../markdown/parser.ts";
 import {
 	serializeDecision,
@@ -380,6 +381,37 @@ describe("malformed frontmatter", () => {
 		for (const parse of [parseDocument, parseDecision, parseTask, parseMarkdown]) {
 			expect(() => parse(malformed)).toThrow();
 		}
+	});
+});
+
+describe("frontmatter parse cache", () => {
+	// gray-matter hands the same data object to every caller that parses identical content, so a
+	// caller mutating its own result used to change what later parses of that content returned.
+	const content = "---\nid: task-608\ntitle: Cache probe\nlabels: [cache]\n---\n\nBody text\n";
+
+	it("gives each parseFrontmatter call an independent result", () => {
+		const first = parseFrontmatter(content);
+		first.data.title = "mutated title";
+		first.data.injected = true;
+		(first.data.labels as string[]).push("mutated label");
+		first.content = "mutated content";
+
+		const second = parseFrontmatter(content);
+		expect(second.data).toEqual({ id: "task-608", title: "Cache probe", labels: ["cache"] });
+		expect(second.content.trim()).toBe("Body text");
+	});
+
+	it("parses a task correctly after an earlier parse of the same content was mutated", () => {
+		const parsed = parseMarkdown(content);
+		parsed.frontmatter.title = "mutated title";
+		parsed.frontmatter.status = "Done";
+		delete parsed.frontmatter.id;
+
+		const task = parseTask(content);
+		expect(task.id).toBe("task-608");
+		expect(task.title).toBe("Cache probe");
+		expect(task.status).toBe("");
+		expect(task.labels).toEqual(["cache"]);
 	});
 });
 

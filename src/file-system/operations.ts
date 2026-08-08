@@ -1,8 +1,8 @@
 import { mkdir, rename, stat, unlink } from "node:fs/promises";
 import { dirname, isAbsolute, join, resolve } from "node:path";
-import matter from "gray-matter";
 import lockfile from "proper-lockfile";
 import { DEFAULT_DIRECTORIES, DEFAULT_FILES, DEFAULT_STATUSES, FALLBACK_STATUS } from "../constants/index.ts";
+import { parseFrontmatter } from "../markdown/frontmatter.ts";
 import { parseDecision, parseDocument, parseMilestone, parseTask } from "../markdown/parser.ts";
 import { serializeDecision, serializeDocument, serializeTask } from "../markdown/serializer.ts";
 import type { BacklogConfig, Decision, Document, Milestone, Task, TaskListFilter } from "../types/index.ts";
@@ -1800,7 +1800,7 @@ ${description || `Milestone: ${title}`}`,
 	private parseConfigListValues(content: string): Partial<Record<ConfigListKey, string[]>> {
 		const result: Partial<Record<ConfigListKey, string[]>> = {};
 		try {
-			const data = matter(`---\n${content.trimEnd()}\n---\n`).data as Record<string, unknown>;
+			const { data } = parseFrontmatter(`---\n${content.trimEnd()}\n---\n`);
 			for (const key of CONFIG_LIST_KEYS) {
 				const value = data[key];
 				if (Array.isArray(value)) {
@@ -1836,7 +1836,7 @@ ${description || `Milestone: ${title}`}`,
 
 	private parseDefinitionOfDoneFromYaml(content: string): string[] | undefined {
 		try {
-			const data = matter(`---\n${content.trimEnd()}\n---\n`).data as Record<string, unknown>;
+			const { data } = parseFrontmatter(`---\n${content.trimEnd()}\n---\n`);
 			if (!Object.hasOwn(data, "definition_of_done")) {
 				return undefined;
 			}
