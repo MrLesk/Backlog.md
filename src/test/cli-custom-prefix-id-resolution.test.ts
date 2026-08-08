@@ -4,7 +4,13 @@ import { join } from "node:path";
 import { $ } from "bun";
 import { Core } from "../index.ts";
 import { getTestCliPath } from "./test-cli.ts";
-import { createUniqueTestDir, initializeFilesystemTestProject, safeCleanup } from "./test-utils.ts";
+import {
+	commitSamePathBranchTaskVariant,
+	createUniqueTestDir,
+	initializeFilesystemTestProject,
+	initializeTestProject,
+	safeCleanup,
+} from "./test-utils.ts";
 
 const CLI_PATH = getTestCliPath();
 let TEST_DIR: string;
@@ -323,6 +329,68 @@ describe("CLI task ID resolution with a custom ID prefix", () => {
 			}
 		});
 	}
+
+	it("resolves the parent filter from the local corpus in every output mode", async () => {
+		// A branch variant spelling BACK-1 as BACK-001 sits at its own path. The cross-branch corpus
+		// therefore holds two entries for identity BACK-1 while the local corpus holds one, so the
+		// parent filter must not resolve from a cross-branch list: whichever corpus a mode used would
+		// otherwise decide whether the same argument is accepted.
+		const core = new Core(TEST_DIR);
+		await $`git init -b main`.cwd(TEST_DIR).quiet();
+		await $`git config user.email test@example.com`.cwd(TEST_DIR).quiet();
+		await $`git config user.name Test`.cwd(TEST_DIR).quiet();
+		await initializeTestProject(core, "Cross Branch Parent Filter");
+		const config = await core.filesystem.loadConfig();
+		if (!config) throw new Error("Expected config to be loaded");
+		await core.filesystem.saveConfig({
+			...config,
+			prefixes: { ...config.prefixes, task: "BACK" },
+			checkActiveBranches: true,
+			remoteOperations: false,
+		});
+		await createTask(core, "BACK-1.1", "Child task", { parentTaskId: "BACK-1" });
+		await commitSamePathBranchTaskVariant(
+			core,
+			{
+				id: "BACK-1",
+				title: "Parent local",
+				status: "To Do",
+				assignee: [],
+				labels: [],
+				dependencies: [],
+				createdDate: "2026-08-09",
+				rawContent: "",
+			},
+			{
+				id: "BACK-001",
+				title: "Parent branch variant",
+				status: "To Do",
+				assignee: [],
+				labels: [],
+				dependencies: [],
+				createdDate: "2026-08-09",
+				rawContent: "",
+			},
+			join(core.filesystem.tasksDir, "back-001 - Parent-branch-variant.md"),
+		);
+
+		// The corpus the resolver reads sees one BACK-1; a cross-branch corpus would see two.
+		const localMatches = (await core.queryTasks({ includeCrossBranch: false })).filter((task) =>
+			["BACK-1", "BACK-001"].includes(task.id),
+		);
+		const crossBranchMatches = (await core.queryTasks()).filter((task) => ["BACK-1", "BACK-001"].includes(task.id));
+		expect(localMatches).toHaveLength(1);
+		expect(crossBranchMatches.length).toBeGreaterThan(1);
+
+		// Selecting the parent from the local corpus finds exactly one candidate, and the shared
+		// identity check then fails closed because the branch variant claims the same identity.
+		const result = await $`bun ${CLI_PATH} task list --parent 1 --plain`.cwd(TEST_DIR).nothrow().quiet();
+		const output = `${result.stdout.toString()}${result.stderr.toString()}`;
+		expect(result.exitCode).not.toBe(0);
+		expect(output).toContain("Task ID BACK-1 is ambiguous");
+		expect(output).not.toContain("Parent task BACK-1 not found.");
+		expect(result.stdout.toString()).not.toContain("BACK-1.1 - Child task");
+	});
 
 	it("archives and promotes the draft file named by the argument, not by its frontmatter ID", async () => {
 		// A drifted draft file (filename draft-1, frontmatter DRAFT-2) alongside a real draft-2 must

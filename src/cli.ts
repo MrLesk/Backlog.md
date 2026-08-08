@@ -556,13 +556,12 @@ function validateClearableListInput(input: {
  * Identity fails closed here exactly as it does for a targeted task ID: a value matching several
  * files must not silently filter on whichever one came first. Returns the resolved canonical ID so
  * filtering never runs on the raw input.
+ *
+ * The corpus is loaded here rather than passed in, so every output mode resolves the parent from the
+ * same local task list that produces the displayed children and cannot drift apart.
  */
-async function resolveParentFilterId(
-	core: Core,
-	tasks: Task[],
-	parentId: string,
-	parentDisplayId: string,
-): Promise<string> {
+async function resolveParentFilterId(core: Core, parentId: string, parentDisplayId: string): Promise<string> {
+	const tasks = await core.queryTasks({ includeCrossBranch: false });
 	const matches = tasks.filter((task) => taskIdsEqual(parentId, task.id));
 	if (matches.length > 1) {
 		throw new AmbiguousTaskIdError(
@@ -2544,12 +2543,7 @@ addHelpSchema(taskCmd.command("list"), {
 			let resolvedParentId: string | undefined;
 			if (parentId) {
 				try {
-					resolvedParentId = await resolveParentFilterId(
-						core,
-						await core.queryTasks({ includeCrossBranch: false }),
-						parentId,
-						parentDisplayId ?? parentId,
-					);
+					resolvedParentId = await resolveParentFilterId(core, parentId, parentDisplayId ?? parentId);
 				} catch (error) {
 					console.error(error instanceof Error ? error.message : String(error));
 					process.exitCode = 1;
@@ -2748,19 +2742,15 @@ addHelpSchema(taskCmd.command("list"), {
 
 				// Now query with filters - this will use the already-populated ContentStore
 				updateProgress("Applying filters...");
-				const [tasks, allTasksForParentCheck] = await Promise.all([
-					core.queryTasks({
-						filters: Object.keys(interactiveLoaderFilters).length > 0 ? interactiveLoaderFilters : undefined,
-						includeCrossBranch: false,
-					}),
-					parentId ? core.queryTasks() : Promise.resolve(undefined),
-				]);
+				const tasks = await core.queryTasks({
+					filters: Object.keys(interactiveLoaderFilters).length > 0 ? interactiveLoaderFilters : undefined,
+					includeCrossBranch: false,
+				});
 
 				// Throws before anything is displayed when the parent is missing or ambiguous.
-				const resolvedParentId =
-					parentId && allTasksForParentCheck
-						? await resolveParentFilterId(core, allTasksForParentCheck, parentId, parentDisplayId ?? parentId)
-						: undefined;
+				const resolvedParentId = parentId
+					? await resolveParentFilterId(core, parentId, parentDisplayId ?? parentId)
+					: undefined;
 
 				let sortedTasks = tasks;
 				if (options.sort) {
