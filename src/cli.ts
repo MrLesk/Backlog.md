@@ -80,7 +80,7 @@ import {
 	runMcpClientSetupCommand,
 } from "./utils/mcp-client-setup.ts";
 import { resolveMilestoneInputForStorage } from "./utils/milestone-storage.ts";
-import { hasAnyPrefix } from "./utils/prefix-config.ts";
+import { DRAFT_PREFIX, hasAnyPrefix, normalizeId } from "./utils/prefix-config.ts";
 import { formatValidPriorityValues, getPriorityOptions, resolvePriorityValue } from "./utils/priority-config.ts";
 import { type ReadOutputMode, resolveReadOutputMode } from "./utils/read-output-mode.ts";
 import { getTaskReadiness, loadReadinessGraph } from "./utils/readiness.ts";
@@ -94,7 +94,7 @@ import {
 	toStringArray,
 } from "./utils/task-builders.ts";
 import { buildTaskUpdateInput } from "./utils/task-edit-builder.ts";
-import { canonicalTaskId, taskIdsEqual } from "./utils/task-path.ts";
+import { AmbiguousTaskIdError, canonicalTaskId, taskIdsEqual } from "./utils/task-path.ts";
 import { sortTasks } from "./utils/task-sorting.ts";
 import { formatValidTaskTypeValues, getTaskTypeValues, resolveTaskTypeValues } from "./utils/task-type-config.ts";
 import { getTerminalStatus, isTerminalStatus } from "./utils/terminal-status.ts";
@@ -548,6 +548,28 @@ function validateClearableListInput(input: {
 		return `Cannot use an empty value with ${input.setterFlags}. ${guidance}`;
 	}
 	return undefined;
+}
+
+/**
+ * Resolve a --parent argument to the single task it names, before any child task is read.
+ *
+ * Identity fails closed here exactly as it does for a targeted task ID: a value matching several
+ * files must not silently filter on whichever one came first. Returns the resolved canonical ID so
+ * filtering never runs on the raw input.
+ */
+function resolveParentFilterId(tasks: Task[], parentId: string, parentDisplayId: string): string {
+	const matches = tasks.filter((task) => taskIdsEqual(parentId, task.id));
+	if (matches.length > 1) {
+		throw new AmbiguousTaskIdError(
+			parentDisplayId,
+			matches.map((task) => task.filePath ?? task.id),
+		);
+	}
+	const parent = matches[0];
+	if (!parent) {
+		throw new Error(`Parent task ${parentDisplayId} not found.`);
+	}
+	return parent.id;
 }
 
 /**
@@ -2510,6 +2532,24 @@ addHelpSchema(taskCmd.command("list"), {
 		}
 
 		if (outputMode !== "interactive") {
+			// Resolve the parent before reading children so an ambiguous ID never emits task data.
+			let resolvedParentId: string | undefined;
+			if (parentId) {
+				try {
+					resolvedParentId = resolveParentFilterId(
+						await core.queryTasks({ includeCrossBranch: false }),
+						parentId,
+						parentDisplayId ?? parentId,
+					);
+				} catch (error) {
+					console.error(error instanceof Error ? error.message : String(error));
+					process.exitCode = 1;
+					cleanup();
+					return;
+				}
+				baseFilters.parentTaskId = resolvedParentId;
+			}
+
 			let tasks = await core.queryTasks({
 				query: searchQuery || undefined,
 				filters: Object.keys(baseFilters).length > 0 ? baseFilters : undefined,
@@ -2520,18 +2560,6 @@ addHelpSchema(taskCmd.command("list"), {
 			if (options.ready) {
 				const readinessGraph = await loadReadinessGraph(core);
 				tasks = tasks.filter((task) => getTaskReadiness(task, readinessGraph).isReady);
-			}
-
-			if (parentId) {
-				const parentExists = (await core.queryTasks({ includeCrossBranch: false })).some((task) =>
-					taskIdsEqual(parentId, task.id),
-				);
-				if (!parentExists) {
-					console.error(`Parent task ${parentDisplayId} not found.`);
-					process.exitCode = 1;
-					cleanup();
-					return;
-				}
 			}
 
 			let sortedTasks = tasks;
@@ -2549,8 +2577,9 @@ addHelpSchema(taskCmd.command("list"), {
 			}
 
 			let filtered = sortedTasks;
-			if (parentId) {
-				filtered = filtered.filter((task) => task.parentTaskId && taskIdsEqual(parentId, task.parentTaskId));
+			if (resolvedParentId) {
+				const parent = resolvedParentId;
+				filtered = filtered.filter((task) => task.parentTaskId && taskIdsEqual(parent, task.parentTaskId));
 			}
 			if (labelFilters.length > 0) {
 				filtered = filtered.filter((task) => taskMatchesAllLabels(task, labelFilters));
@@ -2565,7 +2594,7 @@ addHelpSchema(taskCmd.command("list"), {
 			}
 
 			if (filtered.length === 0) {
-				if (parentId) {
+				if (resolvedParentId) {
 					console.log(`No child tasks found for parent task ${parentDisplayId}.`);
 				} else {
 					console.log("No tasks found.");
@@ -2718,12 +2747,11 @@ addHelpSchema(taskCmd.command("list"), {
 					parentId ? core.queryTasks() : Promise.resolve(undefined),
 				]);
 
-				if (parentId && allTasksForParentCheck) {
-					const parentExists = allTasksForParentCheck.some((task) => taskIdsEqual(parentId, task.id));
-					if (!parentExists) {
-						throw new Error(`Parent task ${parentDisplayId} not found.`);
-					}
-				}
+				// Throws before anything is displayed when the parent is missing or ambiguous.
+				const resolvedParentId =
+					parentId && allTasksForParentCheck
+						? resolveParentFilterId(allTasksForParentCheck, parentId, parentDisplayId ?? parentId)
+						: undefined;
 
 				let sortedTasks = tasks;
 				if (options.sort) {
@@ -2737,8 +2765,8 @@ addHelpSchema(taskCmd.command("list"), {
 				}
 
 				let filtered = sortedTasks;
-				if (parentId) {
-					filtered = filtered.filter((task) => task.parentTaskId && taskIdsEqual(parentId, task.parentTaskId));
+				if (resolvedParentId) {
+					filtered = filtered.filter((task) => task.parentTaskId && taskIdsEqual(resolvedParentId, task.parentTaskId));
 				}
 
 				return {
@@ -3670,9 +3698,10 @@ draftCmd
 	.action(async (taskId: string) => {
 		const cwd = await requireProjectRoot();
 		const core = new Core(cwd);
-		const draft = await core.filesystem.loadDraft(taskId);
-		if (draft && (await core.archiveDraft(draft.id))) {
-			console.log(`Archived draft ${draft.id}`);
+		// The argument itself selects the draft file; re-resolving by its frontmatter ID could
+		// target a different file when a draft filename and its ID have drifted apart.
+		if (await core.archiveDraft(taskId)) {
+			console.log(`Archived draft ${normalizeId(taskId, DRAFT_PREFIX)}`);
 		} else {
 			console.error(`Draft ${taskId} not found.`);
 			process.exitCode = 1;
@@ -3686,9 +3715,9 @@ draftCmd
 		const cwd = await requireProjectRoot();
 		const core = new Core(cwd);
 		try {
-			const draft = await core.filesystem.loadDraft(taskId);
-			if (draft && (await core.promoteDraft(draft.id))) {
-				console.log(`Promoted draft ${draft.id}`);
+			// Same as archive: the argument selects the file, so it must not be re-resolved by ID.
+			if (await core.promoteDraft(taskId)) {
+				console.log(`Promoted draft ${normalizeId(taskId, DRAFT_PREFIX)}`);
 			} else {
 				console.error(`Draft ${taskId} not found.`);
 				process.exitCode = 1;

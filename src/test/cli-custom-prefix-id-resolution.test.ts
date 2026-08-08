@@ -265,6 +265,79 @@ describe("CLI task ID resolution with a custom ID prefix", () => {
 		expect(await core.filesystem.loadTask("BACK-3")).toBeNull();
 	});
 
+	it("fails closed when a dependency ID matches two files declaring the exact same ID", async () => {
+		const core = await initCustomPrefixProject();
+		await createTask(core, "BACK-1", "Target task");
+		await createTask(core, "BACK-2", "Dependent task");
+		// Two files spelling the ID identically still collide. The task corpus keeps one entry per
+		// ID, so only the identity index can see this; dependency writes must consult it.
+		const tasksDir = core.filesystem.tasksDir;
+		await Bun.write(
+			join(tasksDir, "back-1 - Duplicate-file.md"),
+			await Bun.file(join(tasksDir, "back-1 - Target-task.md")).text(),
+		);
+
+		for (const args of [
+			["task", "edit", "2", "--dep", "1"],
+			["task", "edit", "2", "--dep", "BACK-1"],
+			["task", "create", "Dependent", "--dep", "1"],
+		]) {
+			const result = await $`bun ${CLI_PATH} ${args}`.cwd(TEST_DIR).nothrow().quiet();
+
+			expect(result.exitCode).not.toBe(0);
+			const output = `${result.stdout.toString()}${result.stderr.toString()}`;
+			expect(output).toContain("Task ID BACK-1 is ambiguous");
+		}
+
+		expect((await core.filesystem.loadTask("BACK-2"))?.dependencies ?? []).toEqual([]);
+		expect(await core.filesystem.loadTask("BACK-3")).toBeNull();
+	});
+
+	it("fails closed instead of listing children when a parent filter ID is ambiguous", async () => {
+		const core = await initCustomPrefixProject();
+		await createTask(core, "BACK-1", "Target task");
+		await createTask(core, "BACK-1.1", "Child task", { parentTaskId: "BACK-1" });
+		const tasksDir = core.filesystem.tasksDir;
+		await Bun.write(
+			join(tasksDir, "back-01 - Duplicate-identity.md"),
+			(await Bun.file(join(tasksDir, "back-1 - Target-task.md")).text()).replace("id: BACK-1", "id: BACK-01"),
+		);
+
+		for (const parent of ["1", "BACK-1"]) {
+			const result = await $`bun ${CLI_PATH} task list --parent ${parent} --plain`.cwd(TEST_DIR).nothrow().quiet();
+
+			expect(result.exitCode).not.toBe(0);
+			const output = `${result.stdout.toString()}${result.stderr.toString()}`;
+			expect(output).toContain("Task ID BACK-1 is ambiguous");
+			// The command must fail before emitting any child task data.
+			expect(result.stdout.toString()).not.toContain("BACK-1.1 - Child task");
+		}
+	});
+
+	it("archives and promotes the draft file named by the argument, not by its frontmatter ID", async () => {
+		// A drifted draft file (filename draft-1, frontmatter DRAFT-2) alongside a real draft-2 must
+		// not redirect the mutation onto the other file.
+		const core = await initCustomPrefixProject();
+		await createDraft(core, "DRAFT-2", "Two");
+		const draftsDir = await core.filesystem.getDraftsDir();
+		await Bun.write(
+			join(draftsDir, "draft-1 - One.md"),
+			(await Bun.file(join(draftsDir, "draft-2 - Two.md")).text()).replace("title: Two", "title: One"),
+		);
+
+		const archived = await $`bun ${CLI_PATH} draft archive 1`.cwd(TEST_DIR).nothrow().quiet();
+		expect(archived.exitCode).toBe(0);
+		expect(archived.stdout.toString()).toContain("Archived draft DRAFT-1");
+		expect(await Bun.file(join(draftsDir, "draft-1 - One.md")).exists()).toBe(false);
+		expect(await Bun.file(join(draftsDir, "draft-2 - Two.md")).exists()).toBe(true);
+
+		// Same for promote: the remaining draft-2 file must be the one promoted when asked for 2.
+		const promoted = await $`bun ${CLI_PATH} draft promote 2`.cwd(TEST_DIR).nothrow().quiet();
+		expect(promoted.exitCode).toBe(0);
+		expect(promoted.stdout.toString()).toContain("Promoted draft DRAFT-2");
+		expect(await Bun.file(join(draftsDir, "draft-2 - Two.md")).exists()).toBe(false);
+	});
+
 	it("fails closed when a bare dependency ID matches both a task and a draft", async () => {
 		const core = await initCustomPrefixProject();
 		await createTask(core, "BACK-1", "Target task");

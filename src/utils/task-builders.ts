@@ -9,21 +9,19 @@ import { AmbiguousTaskIdError, canonicalTaskId, taskIdsEqual } from "./task-path
  */
 
 /**
- * Resolve one dependency input to the single task it names.
+ * Reject a dependency input that names more than one entity in the corpus.
  *
- * Identity fails closed here exactly as it does for the task a command targets: an input that
- * could mean more than one task never picks a winner. Matching several distinct IDs means the
- * input is underspecified (bare numbers span the separate task and draft counters), while one
- * identity claimed by several files is the duplicate-ID defect `backlog doctor` repairs.
+ * Several canonical identities mean the input is underspecified, because bare numbers span the
+ * separate task and draft counters. Several spellings of one identity (BACK-1 and BACK-01) are the
+ * duplicate-ID defect `backlog doctor` repairs.
  */
 function resolveUniqueDependency(dependency: string, matches: Task[]): string | null {
-	const distinctIds = [...new Set(matches.map((match) => match.id))];
-	if (distinctIds.length <= 1) {
-		return distinctIds[0] ?? null;
-	}
+	const [first, ...rest] = matches;
+	if (!first) return null;
+	if (rest.length === 0) return first.id;
 
 	const candidates = matches.map((match) => match.filePath ?? match.id);
-	const [canonicalId, ...otherIdentities] = [...new Set(distinctIds.map((id) => canonicalTaskId(id)))];
+	const [canonicalId, ...otherIdentities] = [...new Set(matches.map((match) => canonicalTaskId(match.id)))];
 	if (canonicalId && otherIdentities.length === 0) {
 		// Name the colliding identity rather than the input, which may be a bare number.
 		throw new AmbiguousTaskIdError(canonicalId, candidates);
@@ -38,7 +36,13 @@ function resolveUniqueDependency(dependency: string, matches: Task[]): string | 
 
 /**
  * Validate that all dependencies exist in the current project.
- * Inputs are matched by task identity, so bare numeric IDs resolve under any configured prefix.
+ *
+ * Inputs are matched by task identity, so bare numeric IDs resolve under any configured prefix, and
+ * identity fails closed exactly as it does for the task a command targets. That takes two checks,
+ * mirroring the identity index itself: the corpus answers whether the input names more than one
+ * identity, and `Core.getTask` answers whether that identity is claimed by more than one file -
+ * which the corpus cannot, because it keeps one entry per ID.
+ *
  * Returns the matched canonical IDs, deduplicated, plus the inputs that matched nothing.
  */
 export async function validateDependencies(
@@ -63,6 +67,9 @@ export async function validateDependencies(
 			invalid.push(dependency);
 			continue;
 		}
+		// Called for its ambiguity check: it raises AmbiguousTaskIdError when several files claim
+		// this ID. Drafts resolve to null here and keep their own local-only lookup.
+		await core.getTask(resolved);
 		// Equivalent spellings of one task (1 and BACK-1) must not persist twice.
 		if (!valid.some((existing) => taskIdsEqual(existing, resolved))) {
 			valid.push(resolved);
