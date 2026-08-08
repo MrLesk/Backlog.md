@@ -1,25 +1,28 @@
-function ensureDocumentPrefix(value: string): string {
-	const trimmed = value.trim();
-	const match = trimmed.match(/^doc-(.+)$/i);
-	const body = match ? match[1] : trimmed;
-	return `doc-${body}`;
-}
+import { entityIdKey, entityIdsEqual, findUniqueEntityById, normalizeEntityId } from "./entity-id.ts";
 
-function extractDocumentNumber(value: string): string | null {
-	const trimmed = value.trim();
-	const match = trimmed.match(/^(?:doc-)?0*([0-9]+)$/i);
-	return match?.[1] ?? null;
-}
+const DOCUMENT_PREFIX = "doc";
+
+type DocumentIdentity = { id: string; title: string; path?: string };
 
 export function normalizeDocumentId(id: string): string {
-	return ensureDocumentPrefix(id);
+	return normalizeEntityId(DOCUMENT_PREFIX, id);
+}
+
+/** Canonical lookup key, or null when the document has no addressable ID. */
+export function documentIdKey(id: string): string | null {
+	return entityIdKey(DOCUMENT_PREFIX, id);
 }
 
 export function documentIdsEqual(left: string, right: string): boolean {
-	const leftNumber = extractDocumentNumber(left);
-	const rightNumber = extractDocumentNumber(right);
-	if (leftNumber !== null && rightNumber !== null) {
-		return leftNumber === rightNumber;
-	}
-	return normalizeDocumentId(left).toLowerCase() === normalizeDocumentId(right).toLowerCase();
+	return entityIdsEqual(DOCUMENT_PREFIX, left, right);
+}
+
+export function findDocumentById<T extends DocumentIdentity>(documents: readonly T[], id: string): T | null {
+	return findUniqueEntityById(
+		"Document",
+		DOCUMENT_PREFIX,
+		id,
+		documents,
+		(document) => document.path ?? document.title,
+	);
 }

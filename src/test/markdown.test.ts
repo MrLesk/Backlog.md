@@ -371,6 +371,18 @@ Document body.`;
 	});
 });
 
+describe("malformed frontmatter", () => {
+	// gray-matter caches the file object before parsing, so an uncached second parse used to
+	// return empty frontmatter and make an unparseable file look like one with no id.
+	it("fails on every parse, not just the first", () => {
+		const malformed = "---\nid: doc-2\ntitle: [unterminated\n---\n\nBody\n";
+
+		for (const parse of [parseDocument, parseDecision, parseTask, parseMarkdown]) {
+			expect(() => parse(malformed)).toThrow();
+		}
+	});
+});
+
 describe("Markdown Serializer", () => {
 	describe("serializeTask", () => {
 		it("should serialize a task correctly", () => {

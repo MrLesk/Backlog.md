@@ -66,6 +66,20 @@ export class NetworkError extends Error {
 	}
 }
 
+/** Builds an ApiError that keeps the server's message when the response body carries one. */
+async function toApiError(response: Response, fallbackMessage: string): Promise<ApiError> {
+	const data = await response.json().catch(() => undefined);
+	const serverMessage = typeof data === "object" && data !== null ? (data as { error?: unknown }).error : undefined;
+	const message =
+		typeof serverMessage === "string" && serverMessage.trim().length > 0 ? serverMessage : fallbackMessage;
+	return new ApiError(message, response.status, response.statusText, data);
+}
+
+/** The document and decision endpoints answer 409 only when an ID matches more than one file. */
+export function isAmbiguousIdConflict(error: unknown): error is ApiError {
+	return error instanceof ApiError && error.status === 409;
+}
+
 // Request configuration interface
 interface RequestConfig {
 	retries?: number;
@@ -373,7 +387,7 @@ export class ApiClient {
 	async fetchDoc(filename: string): Promise<Document> {
 		const response = await fetch(`${API_BASE}/docs/${encodeURIComponent(filename)}`);
 		if (!response.ok) {
-			throw new Error("Failed to fetch document");
+			throw await toApiError(response, "Failed to fetch document");
 		}
 		return response.json();
 	}
@@ -381,7 +395,7 @@ export class ApiClient {
 	async fetchDocument(id: string): Promise<Document> {
 		const response = await fetch(`${API_BASE}/doc/${encodeURIComponent(id)}`);
 		if (!response.ok) {
-			throw new Error("Failed to fetch document");
+			throw await toApiError(response, "Failed to fetch document");
 		}
 		return response.json();
 	}
@@ -403,7 +417,7 @@ export class ApiClient {
 			body: JSON.stringify(payload),
 		});
 		if (!response.ok) {
-			throw new Error("Failed to update document");
+			throw await toApiError(response, "Failed to update document");
 		}
 		return response.json();
 	}
@@ -433,7 +447,7 @@ export class ApiClient {
 	async fetchDecision(id: string): Promise<Decision> {
 		const response = await fetch(`${API_BASE}/decisions/${encodeURIComponent(id)}`);
 		if (!response.ok) {
-			throw new Error("Failed to fetch decision");
+			throw await toApiError(response, "Failed to fetch decision");
 		}
 		return response.json();
 	}
@@ -441,7 +455,7 @@ export class ApiClient {
 	async fetchDecisionData(id: string): Promise<Decision> {
 		const response = await fetch(`${API_BASE}/decision/${encodeURIComponent(id)}`);
 		if (!response.ok) {
-			throw new Error("Failed to fetch decision");
+			throw await toApiError(response, "Failed to fetch decision");
 		}
 		return response.json();
 	}
@@ -455,7 +469,7 @@ export class ApiClient {
 			body: content,
 		});
 		if (!response.ok) {
-			throw new Error("Failed to update decision");
+			throw await toApiError(response, "Failed to update decision");
 		}
 	}
 

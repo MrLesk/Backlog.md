@@ -63,7 +63,12 @@ import { scrollableViewer } from "./ui/tui.ts";
 import { type AgentSelectionValue, processAgentSelection } from "./utils/agent-selection.ts";
 import { normalizeProjectBacklogDirectory } from "./utils/backlog-directory.ts";
 import { launchBrowser } from "./utils/browser-launch.ts";
-import { formatDuplicateTaskIdWarning } from "./utils/duplicate-detection.ts";
+import {
+	type ContentIdentityReport,
+	formatDuplicateTaskIdWarning,
+	hasContentIdentityIssues,
+} from "./utils/duplicate-detection.ts";
+import { isAmbiguousIdError } from "./utils/entity-id.ts";
 import { findBacklogRoot } from "./utils/find-backlog-root.ts";
 import { labelsToLower } from "./utils/label-filter.ts";
 import {
@@ -374,6 +379,33 @@ function printDuplicateRepairPlan(plan: DuplicateRepairPlan): void {
 	if (plan.blockedReasons.length > 0) {
 		console.log("\nRepair is blocked:");
 		for (const reason of plan.blockedReasons) console.log(`  - ${reason}`);
+	}
+}
+
+function printContentIdentityReport(report: ContentIdentityReport): void {
+	const sections = [
+		["document", report.documents],
+		["decision", report.decisions],
+	] as const;
+	for (const [label, issues] of sections) {
+		if (issues.duplicates.length > 0) {
+			console.log(`\nDuplicate ${label} IDs (diagnostic only):`);
+			for (const group of issues.duplicates) {
+				console.log(`  ${group.id}:`);
+				for (const path of group.paths) console.log(`    - ${path}`);
+			}
+			console.log(`Give each file a unique id; ${label} lookups for these IDs stay blocked until then.`);
+		}
+		if (issues.missingIds.length > 0) {
+			console.log(`\nMalformed ${label} files without an id in frontmatter:`);
+			for (const path of issues.missingIds) console.log(`  - ${path}`);
+			console.log(`Add an id to each file; these ${label}s cannot be addressed until then.`);
+		}
+		if (issues.unreadable.length > 0) {
+			console.log(`\nUnreadable ${label} files (could not be read or parsed):`);
+			for (const path of issues.unreadable) console.log(`  - ${path}`);
+			console.log(`Repair the frontmatter or file permissions; identity could not be checked for these ${label}s.`);
+		}
 	}
 }
 
@@ -4303,7 +4335,12 @@ addHelpSchema(docCmd.command("view <docId>"), {
 				return;
 			}
 			await scrollableViewer(content);
-		} catch {
+		} catch (error) {
+			if (isAmbiguousIdError(error)) {
+				console.error(error.message);
+				process.exitCode = 1;
+				return;
+			}
 			console.error(`Document ${docId} not found.`);
 		}
 	});
@@ -4937,7 +4974,7 @@ addHelpSchema(configCmd.command("list"), {
 		}
 	});
 addHelpSchema(program.command("doctor"), {
-	reads: "Active and completed task files plus Backlog Markdown references",
+	reads: "Active and completed task files, document and decision files, plus Backlog Markdown references",
 	required: [],
 	optional: [
 		{ name: "fix", type: "Boolean", description: "Apply the displayed duplicate-ID repair" },
@@ -4945,10 +4982,11 @@ addHelpSchema(program.command("doctor"), {
 	],
 	writes:
 		"With --fix, atomically renames duplicate task files and updates only their frontmatter IDs; ambiguous references are reported for human review",
-	output: "Duplicate-ID diagnosis, deterministic repair preview, and reference-review report",
+	output:
+		"Duplicate-ID diagnosis for tasks, documents, and decisions, a deterministic task repair preview, and a reference-review report",
 	examples: ["backlog doctor", "backlog doctor --fix", "backlog doctor --fix --yes"],
 })
-	.description("diagnose and safely repair duplicate task IDs")
+	.description("diagnose duplicate task, document, and decision IDs and safely repair duplicate task IDs")
 	.option("--fix", "apply the displayed duplicate task ID repair")
 	.option("--yes", "confirm --fix without prompting")
 	.action(async (options: { fix?: boolean; yes?: boolean }) => {
@@ -4962,12 +5000,15 @@ addHelpSchema(program.command("doctor"), {
 		const core = new Core(cwd);
 		try {
 			const plan = await core.previewDuplicateTaskIdRepair({ includeBranches: true });
-			if (plan.groups.length === 0 && plan.crossBranchFindings.length === 0) {
-				console.log("No duplicate task IDs found in active or completed tasks.");
+			const contentIdentity = await core.diagnoseContentIdentity();
+			const contentIdentityBroken = hasContentIdentityIssues(contentIdentity);
+			if (plan.groups.length === 0 && plan.crossBranchFindings.length === 0 && !contentIdentityBroken) {
+				console.log("No duplicate task, document, or decision IDs found.");
 				return;
 			}
 
 			printDuplicateRepairPlan(plan);
+			printContentIdentityReport(contentIdentity);
 			if (!options.fix) {
 				if (plan.groups.length > 0 && plan.repairable) {
 					console.log("\nRun 'backlog doctor --fix' to apply this repair after reviewing the preview.");
@@ -4978,7 +5019,7 @@ addHelpSchema(program.command("doctor"), {
 				return;
 			}
 			if (plan.groups.length === 0) {
-				console.error("Cross-branch findings cannot be repaired from the current branch.");
+				console.error("The reported findings cannot be repaired automatically; resolve them by hand.");
 				process.exitCode = 1;
 				return;
 			}
@@ -5020,6 +5061,10 @@ addHelpSchema(program.command("doctor"), {
 			console.log("Verification passed: no duplicate active/completed task IDs remain.");
 			if (plan.crossBranchFindings.length > 0) {
 				console.log("Cross-branch findings remain diagnostic-only and still require branch-by-branch review.");
+				process.exitCode = 1;
+			}
+			if (contentIdentityBroken) {
+				console.log("Document and decision findings remain diagnostic-only and still require manual review.");
 				process.exitCode = 1;
 			}
 		} catch (error) {

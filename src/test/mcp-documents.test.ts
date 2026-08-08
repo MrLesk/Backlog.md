@@ -387,7 +387,7 @@ describe("MCP document tools", () => {
 		expect(status).toContain("?? backlog/plans/");
 	});
 
-	it("commits every duplicate document path removed by an update", async () => {
+	it("refuses to update a document whose ID matches more than one file", async () => {
 		await enableGitTestProject();
 		await mcpServer.testInterface.callTool({
 			params: {
@@ -416,6 +416,10 @@ describe("MCP document tools", () => {
 		await mcpServer.filesystem.saveConfig(config);
 		await mcpServer.ensureConfigLoaded();
 
+		const primaryPath = join(mcpServer.filesystem.docsDir, "doc-1 - Primary-document.md");
+		const primaryBefore = await Bun.file(primaryPath).text();
+		const duplicateBefore = await Bun.file(duplicatePath).text();
+
 		const updateResult = await mcpServer.testInterface.callTool({
 			params: {
 				name: "document_update",
@@ -427,12 +431,15 @@ describe("MCP document tools", () => {
 				},
 			},
 		});
-		expect(getText(updateResult.content)).toContain("Document updated successfully.");
+		const message = getText(updateResult.content);
+		expect(updateResult.isError).toBe(true);
+		expect(message).toContain("Document ID doc-1 is ambiguous");
+		expect(message).toContain("doc-1 - Primary-document.md");
+		expect(message).toContain("duplicates/doc-01 - ZZZ-Duplicate.md");
+		expect(message).toContain("backlog doctor");
 
-		const committed = await $`git show --no-renames --name-only --pretty=format:`.cwd(TEST_DIR).text();
-		expect(committed).toContain("backlog/docs/doc-1 - Primary-document.md");
-		expect(committed).toContain("backlog/docs/duplicates/doc-01 - ZZZ-Duplicate.md");
-		expect(committed).toContain("backlog/docs/runbooks/doc-1 - Renamed-document.md");
+		expect(await Bun.file(primaryPath).text()).toBe(primaryBefore);
+		expect(await Bun.file(duplicatePath).text()).toBe(duplicateBefore);
 		expect(await $`git status --short`.cwd(TEST_DIR).text()).not.toContain("backlog/docs/");
 	});
 });

@@ -1,9 +1,10 @@
 import { useState, useEffect, memo } from 'react';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
-import { apiClient } from '../lib/api';
+import { apiClient, isAmbiguousIdConflict } from '../lib/api';
 import MDEditor from '@uiw/react-md-editor';
 import MermaidMarkdown from './MermaidMarkdown';
 import { type Decision } from '../../types';
+import AmbiguousIdNotice from './AmbiguousIdNotice';
 import ErrorBoundary from '../components/ErrorBoundary';
 import { SuccessToast } from './SuccessToast';
 import { useTheme } from '../contexts/ThemeContext';
@@ -84,8 +85,7 @@ export default function DecisionDetail({ decisions, onRefreshData, dateFormat }:
 	const [isLoading, setIsLoading] = useState(true);
 	const [isSaving, setIsSaving] = useState(false);
 	const [isEditing, setIsEditing] = useState(false);
-	
-	
+	const [error, setError] = useState<Error | null>(null);
 	const [isNewDecision, setIsNewDecision] = useState(false);
 	const [showSaveSuccess, setShowSaveSuccess] = useState(false);
 
@@ -123,6 +123,7 @@ export default function DecisionDetail({ decisions, onRefreshData, dateFormat }:
 		
 		try {
 			setIsLoading(true);
+			setError(null);
 			// Find decision from props
 			const prefixedId = addDecisionPrefix(id);
 			const decision = decisions.find(d => d.id === prefixedId);
@@ -138,8 +139,14 @@ export default function DecisionDetail({ decisions, onRefreshData, dateFormat }:
 				// Update decision state with full data
 				setDecision(fullDecision);
 			} catch (fetchError) {
-				// If fetch fails and we don't have the decision in props, show error
-				if (!decision) {
+				// Never fall back to the cached list entry when the ID is ambiguous: that entry is
+				// one of the candidates, and showing it would silently pick a winner.
+				if (isAmbiguousIdConflict(fetchError)) {
+					setDecision(null);
+					setError(fetchError);
+					console.error('Failed to load decision:', fetchError);
+				} else if (!decision) {
+					// If fetch fails and we don't have the decision in props, show error
 					console.error('Failed to load decision:', fetchError);
 				} else {
 					// We have basic info from props even if fetch failed
@@ -245,6 +252,10 @@ export default function DecisionDetail({ decisions, onRefreshData, dateFormat }:
 				<div className="text-gray-500">Loading...</div>
 			</div>
 		);
+	}
+
+	if (isAmbiguousIdConflict(error)) {
+		return <AmbiguousIdNotice message={error.message} />;
 	}
 
 	return (

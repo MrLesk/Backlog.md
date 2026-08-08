@@ -138,7 +138,10 @@ export function parseMarkdown(content: string): ParsedMarkdown {
 		toParse = content.replace(fmRegex, () => `---\n${processed}\n---`);
 	}
 
-	const parsed = matter(toParse);
+	// Passing an options object bypasses gray-matter's cache. The cache stores the file object
+	// before parsing, so once a malformed file throws, later parses of the same content silently
+	// return empty frontmatter instead of failing again.
+	const parsed = matter(toParse, {});
 	return {
 		frontmatter: parsed.data,
 		content: parsed.content.trim(),
