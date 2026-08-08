@@ -5,7 +5,7 @@ status: Done
 assignee:
   - '@Claude'
 created_date: '2026-08-08 21:52'
-updated_date: '2026-08-08 22:06'
+updated_date: '2026-08-08 22:23'
 labels: []
 dependencies: []
 ordinal: 249000
@@ -61,6 +61,8 @@ Wrong-type coverage verified per key: scalar, mapping, number and boolean reject
 Entry points spot-checked with a wrong-typed value ('statuses: To Do') against the BACK-606 sweep table: task list, board, config list, task create, draft promote, draft archive, bare backlog --plain and mcp start all exit non-zero, lead with the established prefix, carry the 'expected a list, got a scalar' detail, and leave the backlog file tree unchanged.
 
 Validation: bunx tsc --noEmit clean, bun run check . clean, targeted batch 174 pass / 0 fail across 12 files.
+
+Review disposition: Codex proposed rejecting explicit null (statuses: null / ~). Declined as reasoned no-change: null is the YAML spelling of absence, all no-value spellings stay uniformly valid-unset, matching main. Strictness applies to type confusion only.
 <!-- SECTION:NOTES:END -->
 
 ## Final Summary
