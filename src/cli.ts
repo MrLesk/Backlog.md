@@ -23,6 +23,7 @@ import { DEFAULT_DIRECTORIES, DEFAULT_FILES, DEFAULT_STATUSES } from "./constant
 import { type DuplicateRepairPlan, findLocalDuplicateTaskIds } from "./core/duplicate-task-repair.ts";
 import { initializeProject } from "./core/init.ts";
 import { buildMilestoneBuckets, collectArchivedMilestoneKeys, milestoneKey } from "./core/milestones.ts";
+import { isConfigValueError } from "./file-system/operations.ts";
 import { decisionListJson, printJson, searchJson, taskListJson, taskViewJson } from "./formatters/json-output.ts";
 import { formatTaskPlainText } from "./formatters/task-plain-text.ts";
 import {
@@ -230,6 +231,19 @@ function createMultiValueAccumulator() {
 
 function printMissingRequiredArgument(argumentName: string): void {
 	console.error(`error: missing required argument '${argumentName}'`);
+	process.exitCode = 1;
+}
+
+/**
+ * Reports a command that could not finish. A config value Backlog refuses to read already states
+ * the file, the key, and the fix, so it is printed as written instead of behind a stack trace.
+ */
+function reportCommandFailure(summary: string, error: unknown): void {
+	if (isConfigValueError(error)) {
+		console.error(error.message);
+	} else {
+		console.error(summary, error);
+	}
 	process.exitCode = 1;
 }
 
@@ -1635,8 +1649,7 @@ addHelpSchema(program.command("init [projectName]"), {
 					// Ignore failures in final advisory warning
 				}
 			} catch (err) {
-				console.error("Failed to initialize project", err);
-				process.exitCode = 1;
+				reportCommandFailure("Failed to initialize project", err);
 			}
 		},
 	);
@@ -4510,8 +4523,7 @@ agentsCmd
 				console.log("No files selected for update.");
 			}
 		} catch (err) {
-			console.error("Failed to update agent instructions", err);
-			process.exitCode = 1;
+			reportCommandFailure("Failed to update agent instructions", err);
 		}
 	});
 
@@ -4604,8 +4616,7 @@ const configCmd = addHelpSchema(program.command("config"), {
 			}
 			console.log("\nUse `backlog config list` to review all configuration values.");
 		} catch (err) {
-			console.error("Failed to update configuration", err);
-			process.exitCode = 1;
+			reportCommandFailure("Failed to update configuration", err);
 		}
 	});
 
@@ -4713,8 +4724,7 @@ addHelpSchema(configCmd.command("get <key>"), {
 					process.exit(1);
 			}
 		} catch (err) {
-			console.error("Failed to get config value", err);
-			process.exitCode = 1;
+			reportCommandFailure("Failed to get config value", err);
 		}
 	});
 
@@ -4940,8 +4950,7 @@ addHelpSchema(configCmd.command("set <key> <value>"), {
 			await core.filesystem.saveConfig(config);
 			console.log(`Set ${key} = ${value}`);
 		} catch (err) {
-			console.error("Failed to set config value", err);
-			process.exitCode = 1;
+			reportCommandFailure("Failed to set config value", err);
 		}
 	});
 
@@ -4994,8 +5003,7 @@ addHelpSchema(configCmd.command("list"), {
 			console.log(`  checkActiveBranches: ${config.checkActiveBranches ?? "true"}`);
 			console.log(`  activeBranchDays: ${config.activeBranchDays ?? "30"}`);
 		} catch (err) {
-			console.error("Failed to list config values", err);
-			process.exitCode = 1;
+			reportCommandFailure("Failed to list config values", err);
 		}
 	});
 addHelpSchema(program.command("doctor"), {
@@ -5236,8 +5244,7 @@ addHelpSchema(program.command("cleanup"), {
 				console.log("Files have been staged. To commit: git commit -m 'cleanup: Move completed tasks'");
 			}
 		} catch (err) {
-			console.error("Failed to run cleanup", err);
-			process.exitCode = 1;
+			reportCommandFailure("Failed to run cleanup", err);
 		}
 	});
 
@@ -5317,8 +5324,7 @@ program
 			process.once("SIGTERM", () => void shutdown("SIGTERM"));
 			process.once("SIGQUIT", () => void shutdown("SIGQUIT"));
 		} catch (err) {
-			console.error("Failed to start browser interface", err);
-			process.exitCode = 1;
+			reportCommandFailure("Failed to start browser interface", err);
 		}
 	});
 
@@ -5341,8 +5347,7 @@ program
 			const { runOverviewCommand } = await import("./commands/overview.ts");
 			await runOverviewCommand(core);
 		} catch (err) {
-			console.error("Failed to display project overview", err);
-			process.exitCode = 1;
+			reportCommandFailure("Failed to display project overview", err);
 		}
 	});
 

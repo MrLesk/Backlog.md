@@ -819,12 +819,12 @@ describe("BacklogServer task SPA fallback", () => {
 		const originalParseConfig = serverFilesystem.parseConfig.bind(serverFilesystem);
 		const unusableParseAttempts = new Map(unusableContents.map((content) => [content, 0]));
 		serverFilesystem.parseConfig = (content) => {
-			const parsed = originalParseConfig(content);
 			const attempts = unusableParseAttempts.get(content);
 			if (attempts !== undefined) {
 				unusableParseAttempts.set(content, attempts + 1);
 			}
-			return parsed;
+			// Counted before parsing: a rejected list value throws instead of returning.
+			return originalParseConfig(content);
 		};
 
 		let publicationAttempts = 0;

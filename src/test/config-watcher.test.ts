@@ -128,7 +128,6 @@ describe("config watcher", () => {
 			]),
 		);
 		core.filesystem.parseConfig = (content) => {
-			const parsed = originalParseConfig(content);
 			const attempts = unusableParseAttempts.get(content);
 			if (attempts !== undefined) {
 				const nextAttempts = attempts + 1;
@@ -137,7 +136,8 @@ describe("config watcher", () => {
 					unusableAttemptResolvers.get(content)?.();
 				}
 			}
-			return parsed;
+			// Counted before parsing: a rejected list value throws instead of returning.
+			return originalParseConfig(content);
 		};
 
 		const published: BacklogConfig[] = [];

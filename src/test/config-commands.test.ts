@@ -363,21 +363,52 @@ describe("Config commands", () => {
 		expect(created.task.assignee).toEqual([quoted]);
 	});
 
-	it("leaves defaultAssignee unset when the value is not valid YAML", async () => {
+	it("refuses to load a list config value that is not valid YAML, naming the file and the key", async () => {
 		const configPath = core.filesystem.configFilePath;
 		const baseConfig = await Bun.file(configPath).text();
-		const loadAssignee = async (line: string) => {
-			await Bun.write(configPath, `${baseConfig}${line}\n`);
-			core.filesystem.invalidateConfigCache();
-			return (await core.filesystem.loadConfig())?.defaultAssignee;
-		};
 
-		// Truncated array, and an unbalanced quote that still opens and closes with brackets.
-		expect(await loadAssignee('default_assignee: ["@alice')).toBeUndefined();
-		expect(await loadAssignee('default_assignee: ["@alice]')).toBeUndefined();
+		for (const key of ["statuses", "labels", "types", "priorities", "default_assignee"]) {
+			// Truncated array, and an unbalanced quote that still opens and closes with brackets.
+			for (const line of [`${key}: ["a`, `${key}: ["a]`]) {
+				await Bun.write(configPath, `${baseConfig}${line}\n`);
+				core.filesystem.invalidateConfigCache();
 
-		const created = await core.createTaskFromInput({ title: "Malformed default assignee" }, false);
-		expect(created.task.assignee).toEqual([]);
+				const failure = await core.filesystem.loadConfig().then(
+					() => undefined,
+					(error: unknown) => (error instanceof Error ? error.message : String(error)),
+				);
+				expect(failure).toBeDefined();
+				expect(failure).toStartWith("Backlog could not start because");
+				expect(failure).toContain(configPath);
+				expect(failure).toContain(`invalid value for "${key}"`);
+			}
+		}
+	});
+
+	it("keeps a malformed list value from changing how another list key reads", async () => {
+		const configPath = core.filesystem.configFilePath;
+		// The commas inside the quoted labels are only safe when labels is parsed as YAML; the
+		// malformed statuses value must be reported instead of downgrading labels to a text split.
+		await Bun.write(configPath, 'project_name: "P"\nstatuses: ["To Do]\nlabels: ["a, b", "c"]\n');
+		core.filesystem.invalidateConfigCache();
+
+		expect(() => core.filesystem.parseConfig('project_name: "P"\nstatuses: ["To Do]\nlabels: ["a, b", "c"]\n')).toThrow(
+			'invalid value for "statuses"',
+		);
+		expect(core.filesystem.parseConfig('project_name: "P"\nlabels: ["a, b", "c"]\n').labels).toEqual(["a, b", "c"]);
+	});
+
+	it("exits non-zero with the config error when a list value is not valid YAML", async () => {
+		const configPath = core.filesystem.configFilePath;
+		const baseConfig = await Bun.file(configPath).text();
+		await Bun.write(configPath, `${baseConfig}statuses: ["To Do]\n`);
+
+		const listed = await $`bun ${CLI_PATH} task list --plain`.cwd(TEST_DIR).nothrow().quiet();
+		const stderr = listed.stderr.toString();
+		expect(listed.exitCode).not.toBe(0);
+		expect(stderr).toContain("Backlog could not start because");
+		expect(stderr).toContain('invalid value for "statuses"');
+		expect(stderr).not.toContain("at parseConfig");
 	});
 
 	it("clears defaultEditor via config set with an explicitly empty value", async () => {
