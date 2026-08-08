@@ -185,6 +185,80 @@ describe("config watcher", () => {
 		}
 	});
 
+	it("retains the cached defaultAssignee while an inline edit is not valid YAML", async () => {
+		await core.filesystem.saveConfig({ ...initialConfig, defaultAssignee: ["@alice"] });
+		const baseLines = [
+			'project_name: "Config watcher"',
+			'statuses: ["To Do", "Done"]',
+			'labels: ["web"]',
+			"date_format: YYYY-MM-DD",
+			"check_active_branches: true",
+			'task_prefix: "BACK"',
+		];
+		const withAssignee = (line: string) => [baseLines[0], line, ...baseLines.slice(1), ""].join("\n");
+		// Truncated mid-edit, and an unbalanced quote that still opens and closes with brackets.
+		const invalidContents = [withAssignee('default_assignee: ["@alice'), withAssignee('default_assignee: ["@alice]')];
+		const scalarContent = withAssignee('default_assignee: "@carol"');
+		const inlineArrayContent = withAssignee('default_assignee: ["@alice", "@bob"]');
+
+		const originalParseConfig = core.filesystem.parseConfig.bind(core.filesystem);
+		const invalidAttempts = new Map(invalidContents.map((content) => [content, 0]));
+		const invalidResolvers = new Map<string, () => void>();
+		const invalidExhausted = new Map(
+			invalidContents.map((content) => [
+				content,
+				new Promise<void>((resolve) => invalidResolvers.set(content, resolve)),
+			]),
+		);
+		core.filesystem.parseConfig = (content) => {
+			const attempts = invalidAttempts.get(content);
+			if (attempts !== undefined) {
+				const nextAttempts = attempts + 1;
+				invalidAttempts.set(content, nextAttempts);
+				// Accepted content is parsed once and published; a re-read means the watcher rejected it.
+				if (nextAttempts >= 3) invalidResolvers.get(content)?.();
+			}
+			return originalParseConfig(content);
+		};
+
+		const published: BacklogConfig[] = [];
+		let resolveNextPublished: (config: BacklogConfig) => void = () => {};
+		const nextPublished = () =>
+			new Promise<BacklogConfig>((resolve) => {
+				resolveNextPublished = resolve;
+			});
+		const configWatcher = watchConfigFile(core.filesystem, {
+			onConfigChanged: (config) => {
+				if (!config) return;
+				published.push(config);
+				resolveNextPublished(config);
+			},
+		});
+
+		try {
+			// Neither malformed edit may publish an undefined default over the cached one.
+			for (const invalidContent of invalidContents) {
+				await replaceConfigFile(invalidContent);
+				const exhausted = invalidExhausted.get(invalidContent);
+				if (!exhausted) throw new Error("Missing invalid config attempt signal");
+				await withTimeout(exhausted, "invalid default_assignee read attempts");
+				expect(published).toHaveLength(0);
+				expect((await core.filesystem.loadConfig())?.defaultAssignee).toEqual(["@alice"]);
+			}
+
+			const scalarPublished = nextPublished();
+			await replaceConfigFile(scalarContent);
+			expect((await withTimeout(scalarPublished, "scalar callback")).defaultAssignee).toEqual(["@carol"]);
+
+			const inlinePublished = nextPublished();
+			await replaceConfigFile(inlineArrayContent);
+			expect((await withTimeout(inlinePublished, "inline array callback")).defaultAssignee).toEqual(["@alice", "@bob"]);
+		} finally {
+			configWatcher.stop();
+			core.filesystem.parseConfig = originalParseConfig;
+		}
+	});
+
 	it("publishes root config resolution from the same accepted content", async () => {
 		const rootDir = createUniqueTestDir("config-watcher-root");
 		const rootConfigPath = join(rootDir, "backlog.config.yml");

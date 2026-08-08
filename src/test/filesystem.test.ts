@@ -494,7 +494,7 @@ Invalid content`,
 	describe("config operations", () => {
 		const sampleConfig: BacklogConfig = {
 			projectName: "Test Project",
-			defaultAssignee: "@admin",
+			defaultAssignee: ["@admin"],
 			defaultStatus: "To Do",
 			defaultReporter: undefined,
 			statuses: ["To Do", "In Progress", "Done"],
@@ -839,7 +839,7 @@ Invalid content`,
 		it("should handle config with all optional fields", async () => {
 			const fullConfig: BacklogConfig = {
 				projectName: "Full Project",
-				defaultAssignee: "@admin",
+				defaultAssignee: ["@admin"],
 				defaultStatus: "To Do",
 				defaultReporter: undefined,
 				statuses: ["To Do", "In Progress", "Done"],

@@ -309,6 +309,77 @@ describe("Config commands", () => {
 		expect(config?.statuses).toEqual(originalStatuses);
 	});
 
+	it("round-trips defaultAssignee through config set, get, and list", async () => {
+		const unset = await $`bun ${CLI_PATH} config get defaultAssignee`.cwd(TEST_DIR).nothrow().quiet();
+		expect(unset.exitCode).toBe(0);
+		expect(unset.stdout.toString().trim()).toBe("");
+
+		const set = await $`bun ${CLI_PATH} config set defaultAssignee ${"@alice, @bob"}`.cwd(TEST_DIR).nothrow().quiet();
+		expect(set.exitCode).toBe(0);
+
+		core.filesystem.invalidateConfigCache();
+		expect((await core.filesystem.loadConfig())?.defaultAssignee).toEqual(["@alice", "@bob"]);
+
+		const get = await $`bun ${CLI_PATH} config get defaultAssignee`.cwd(TEST_DIR).nothrow().quiet();
+		expect(get.stdout.toString().trim()).toBe("@alice, @bob");
+
+		const list = await $`bun ${CLI_PATH} config list`.cwd(TEST_DIR).nothrow().quiet();
+		expect(list.stdout.toString()).toContain("defaultAssignee: [@alice, @bob]");
+
+		const cleared = await $`bun ${CLI_PATH} config set defaultAssignee ${""}`.cwd(TEST_DIR).nothrow().quiet();
+		expect(cleared.exitCode).toBe(0);
+
+		core.filesystem.invalidateConfigCache();
+		expect((await core.filesystem.loadConfig())?.defaultAssignee).toBeUndefined();
+	});
+
+	it("reads defaultAssignee written as a scalar, a block sequence, or with a trailing comment", async () => {
+		const configPath = core.filesystem.configFilePath;
+		const baseConfig = await Bun.file(configPath).text();
+		const loadAssignee = async (line: string) => {
+			await Bun.write(configPath, `${baseConfig}${line}\n`);
+			core.filesystem.invalidateConfigCache();
+			return (await core.filesystem.loadConfig())?.defaultAssignee;
+		};
+
+		expect(await loadAssignee('default_assignee: "@legacy"')).toEqual(["@legacy"]);
+		expect(await loadAssignee('default_assignee:\n  - "@alice"\n  - "@bob"')).toEqual(["@alice", "@bob"]);
+		// YAML comments belong to the file, not to the assignee.
+		expect(await loadAssignee('default_assignee: "@alice" # owner')).toEqual(["@alice"]);
+		expect(await loadAssignee('default_assignee: ["@alice", "@bob"] # owners')).toEqual(["@alice", "@bob"]);
+	});
+
+	it("round-trips a defaultAssignee containing characters that need YAML escaping", async () => {
+		const quoted = '@a"b\\c';
+		const set = await $`bun ${CLI_PATH} config set defaultAssignee ${quoted}`.cwd(TEST_DIR).nothrow().quiet();
+		expect(set.exitCode).toBe(0);
+
+		expect(await Bun.file(core.filesystem.configFilePath).text()).toContain('default_assignee: ["@a\\"b\\\\c"]');
+
+		core.filesystem.invalidateConfigCache();
+		expect((await core.filesystem.loadConfig())?.defaultAssignee).toEqual([quoted]);
+
+		const created = await core.createTaskFromInput({ title: "Escaped default assignee" }, false);
+		expect(created.task.assignee).toEqual([quoted]);
+	});
+
+	it("leaves defaultAssignee unset when the value is not valid YAML", async () => {
+		const configPath = core.filesystem.configFilePath;
+		const baseConfig = await Bun.file(configPath).text();
+		const loadAssignee = async (line: string) => {
+			await Bun.write(configPath, `${baseConfig}${line}\n`);
+			core.filesystem.invalidateConfigCache();
+			return (await core.filesystem.loadConfig())?.defaultAssignee;
+		};
+
+		// Truncated array, and an unbalanced quote that still opens and closes with brackets.
+		expect(await loadAssignee('default_assignee: ["@alice')).toBeUndefined();
+		expect(await loadAssignee('default_assignee: ["@alice]')).toBeUndefined();
+
+		const created = await core.createTaskFromInput({ title: "Malformed default assignee" }, false);
+		expect(created.task.assignee).toEqual([]);
+	});
+
 	it("clears defaultEditor via config set with an explicitly empty value", async () => {
 		// An empty value means "no editor": it must be stored, not rejected as an invalid executable
 		const config = await core.filesystem.loadConfig();

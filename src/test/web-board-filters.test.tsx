@@ -159,14 +159,21 @@ const clickElement = async (element: Element) => {
 	});
 };
 
+// A fixed number of event-loop turns is a budget of milliseconds on a fast machine and the
+// same milliseconds on a slow one, so the wait is bounded by wall clock instead, and reports
+// what it was waiting for rather than `expected true, received false`.
+const WAIT_FOR_TIMEOUT_MS = 4000;
+
 const waitFor = async (predicate: () => boolean) => {
-	for (let attempts = 0; attempts < 20; attempts += 1) {
-		if (predicate()) return;
+	const deadline = Date.now() + WAIT_FOR_TIMEOUT_MS;
+	while (!predicate()) {
+		if (Date.now() >= deadline) {
+			throw new Error(`Timed out after ${WAIT_FOR_TIMEOUT_MS}ms waiting for ${predicate}`);
+		}
 		await act(async () => {
-			await new Promise((resolve) => setTimeout(resolve, 0));
+			await new Promise((resolve) => setTimeout(resolve, 5));
 		});
 	}
-	expect(predicate()).toBe(true);
 };
 
 const toggleCheckbox = async (checkbox: HTMLInputElement) => {

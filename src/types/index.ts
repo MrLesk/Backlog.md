@@ -297,7 +297,8 @@ export interface PrefixConfig {
 
 export interface BacklogConfig {
 	projectName: string;
-	defaultAssignee?: string;
+	/** Assignees applied to new tasks when none are provided. Empty or unset means no default. */
+	defaultAssignee?: string[];
 	defaultReporter?: string;
 	statuses: string[];
 	labels: string[];

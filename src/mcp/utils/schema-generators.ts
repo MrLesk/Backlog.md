@@ -164,6 +164,7 @@ export function generateTaskCreateSchema(config: BacklogConfig): JsonSchema {
 					type: "string",
 					maxLength: 100,
 				},
+				description: "Optional assignees. When omitted, the project's configured defaultAssignee applies.",
 			},
 			dependencies: {
 				type: "array",

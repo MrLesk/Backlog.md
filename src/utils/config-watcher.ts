@@ -1,7 +1,7 @@
 import { type FSWatcher, unwatchFile, watch, watchFile } from "node:fs";
 import { basename, dirname } from "node:path";
 import type { Core } from "../core/backlog.ts";
-import type { FileSystem } from "../file-system/operations.ts";
+import { type FileSystem, parseAssigneeConfigValue } from "../file-system/operations.ts";
 import type { BacklogConfig } from "../types/index.ts";
 
 export interface ConfigWatcherCallbacks {
@@ -60,6 +60,9 @@ function hasValidExplicitValues(content: string, config: BacklogConfig): boolean
 		const value = line.slice(colonIndex + 1).trim();
 		if (!RECOGNIZED_CONFIG_KEYS.has(key)) continue;
 		if (ARRAY_CONFIG_KEYS.has(key) && !(value.startsWith("[") && value.endsWith("]"))) return false;
+		// default_assignee is not in ARRAY_CONFIG_KEYS because it also accepts scalars and block
+		// sequences; it is valid when YAML can read it, which is the rule the config parser applies.
+		if (key === "default_assignee" && parseAssigneeConfigValue(value) === undefined) return false;
 		if (key === "definition_of_done" && value.startsWith("[") && !value.endsWith("]")) return false;
 		if (key === "definition_of_done" && config.definitionOfDone === undefined) return false;
 		if ((key === "project_name" || key === "date_format") && !value.replace(/['"]/g, "").trim()) return false;
