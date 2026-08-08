@@ -267,6 +267,42 @@ describe("document and decision identity", () => {
 		expect(output).toContain("backlog/decisions/decision-orphan.md");
 	});
 
+	it("never reports healthy when a document or decision file cannot be parsed", async () => {
+		await writeDocument("doc-1 - Alpha.md", "doc-1", "Alpha");
+		// gray-matter rejects an unterminated flow collection; distinct bodies avoid its parse cache.
+		await Bun.write(
+			join(core.filesystem.docsDir, "doc-2 - Broken.md"),
+			"---\nid: doc-2\ntitle: [unterminated\n---\n\ndoc body\n",
+		);
+		await Bun.write(
+			join(core.filesystem.decisionsDir, "decision-2 - Broken.md"),
+			"---\nid: decision-2\ntitle: [unterminated\n---\n\ndecision body\n",
+		);
+
+		const result = await $`bun ${cliPath} doctor`.cwd(testDir).quiet().nothrow();
+		const output = `${result.stdout}${result.stderr}`;
+		expect(result.exitCode).toBe(1);
+		expect(output).not.toContain("No duplicate task, document, or decision IDs found.");
+		expect(output).toContain("Unreadable document files");
+		expect(output).toContain("backlog/docs/doc-2 - Broken.md");
+		expect(output).toContain("Unreadable decision files");
+		expect(output).toContain("backlog/decisions/decision-2 - Broken.md");
+	});
+
+	it("keeps valid documents readable when a sibling file cannot be parsed", async () => {
+		await writeDocument("doc-1 - Alpha.md", "doc-1", "Alpha");
+		await Bun.write(
+			join(core.filesystem.docsDir, "doc-2 - Broken.md"),
+			"---\nid: doc-2\ntitle: [unterminated\n---\n\ndoc body\n",
+		);
+
+		const result = await $`bun ${cliPath} doc view doc-1 --plain`.cwd(testDir).quiet().nothrow();
+		const output = `${result.stdout}${result.stderr}`;
+		expect(result.exitCode).toBe(0);
+		expect(output).toContain("Alpha");
+		expect(output).not.toContain("not found");
+	});
+
 	it("refuses to repair document findings with --fix", async () => {
 		await writeDocument("doc-1 - Alpha.md", "doc-1", "Alpha");
 		await writeDocument("nested/doc-01 - Beta.md", "doc-01", "Beta");

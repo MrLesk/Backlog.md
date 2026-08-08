@@ -400,6 +400,11 @@ function printContentIdentityReport(report: ContentIdentityReport): void {
 			for (const path of issues.missingIds) console.log(`  - ${path}`);
 			console.log(`Add an id to each file; these ${label}s cannot be addressed until then.`);
 		}
+		if (issues.unreadable.length > 0) {
+			console.log(`\nUnreadable ${label} files (could not be read or parsed):`);
+			for (const path of issues.unreadable) console.log(`  - ${path}`);
+			console.log(`Repair the frontmatter or file permissions; identity could not be checked for these ${label}s.`);
+		}
 	}
 }
 

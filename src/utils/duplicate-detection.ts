@@ -6,15 +6,17 @@ export type DuplicateGroup = {
 	tasks: Task[];
 };
 
-/** Duplicate and missing-ID findings for a content collection such as documents or decisions. */
+/** Duplicate, missing-ID, and unreadable-file findings for documents or decisions. */
 export type ContentIdentityIssues = {
 	duplicates: Array<{ id: string; paths: string[] }>;
 	missingIds: string[];
+	unreadable: string[];
 };
 
 export function detectContentIdentityIssues(
 	entries: ReadonlyArray<{ id: string; path: string }>,
 	toKey: (id: string) => string | null,
+	unreadable: readonly string[] = [],
 ): ContentIdentityIssues {
 	const byKey = new Map<string, string[]>();
 	const missingIds: string[] = [];
@@ -32,7 +34,11 @@ export function detectContentIdentityIssues(
 		.filter(([, paths]) => paths.length > 1)
 		.map(([id, paths]) => ({ id, paths: [...paths].sort((left, right) => left.localeCompare(right)) }))
 		.sort((left, right) => left.id.localeCompare(right.id, undefined, { numeric: true }));
-	return { duplicates, missingIds: missingIds.sort((left, right) => left.localeCompare(right)) };
+	return {
+		duplicates,
+		missingIds: missingIds.sort((left, right) => left.localeCompare(right)),
+		unreadable: [...unreadable].sort((left, right) => left.localeCompare(right)),
+	};
 }
 
 export type ContentIdentityReport = {
@@ -42,7 +48,7 @@ export type ContentIdentityReport = {
 
 export function hasContentIdentityIssues(report: ContentIdentityReport): boolean {
 	return [report.documents, report.decisions].some(
-		(issues) => issues.duplicates.length > 0 || issues.missingIds.length > 0,
+		(issues) => issues.duplicates.length > 0 || issues.missingIds.length > 0 || issues.unreadable.length > 0,
 	);
 }
 

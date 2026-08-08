@@ -222,56 +222,64 @@ describe("BacklogServer document endpoints", () => {
 	});
 });
 
+// The second file's raw frontmatter ID is a parameter: `doc-01` differs from `doc-1` as a raw
+// map key, while an identical `doc-1` also collides inside the ContentStore's by-ID maps.
+async function startServerWithColliding(secondDocumentId: string, secondDecisionId: string): Promise<void> {
+	TEST_DIR = createUniqueTestDir("server-content-identity");
+	const filesystem = new FileSystem(TEST_DIR);
+	await filesystem.ensureBacklogStructure();
+	await filesystem.saveConfig({
+		projectName: "Server Content Identity",
+		statuses: ["To Do", "In Progress", "Done"],
+		labels: [],
+		milestones: [],
+		dateFormat: "YYYY-MM-DD",
+		remoteOperations: false,
+	});
+
+	const document = (id: string, title: string): string =>
+		serializeDocument({ id, title, type: "other", createdDate: "2026-01-01 00:00", rawContent: title });
+	const decision = (id: string, title: string): string =>
+		serializeDecision({
+			id,
+			title,
+			date: "2026-01-01 00:00",
+			status: "proposed",
+			context: "",
+			decision: "",
+			consequences: "",
+			rawContent: "",
+		});
+	await Bun.write(join(filesystem.docsDir, "doc-1 - Alpha.md"), document("doc-1", "Alpha"));
+	await Bun.write(join(filesystem.docsDir, "nested", "doc-01 - Beta.md"), document(secondDocumentId, "Beta"));
+	await Bun.write(join(filesystem.decisionsDir, "decision-1 - Alpha.md"), decision("decision-1", "Alpha"));
+	await Bun.write(join(filesystem.decisionsDir, "decision-01 - Beta.md"), decision(secondDecisionId, "Beta"));
+
+	server = new BacklogServer(TEST_DIR);
+	await server.start(0, false);
+	const port = server.getPort();
+	expect(port).not.toBeNull();
+	serverPort = port ?? 0;
+
+	await retry(async () => {
+		await fetchJson<Document[]>("/api/docs");
+	});
+}
+
+async function stopServer(): Promise<void> {
+	if (server) {
+		await server.stop();
+		server = null;
+	}
+	await safeCleanup(TEST_DIR);
+}
+
 describe("BacklogServer ambiguous content identity", () => {
 	beforeEach(async () => {
-		TEST_DIR = createUniqueTestDir("server-content-identity");
-		const filesystem = new FileSystem(TEST_DIR);
-		await filesystem.ensureBacklogStructure();
-		await filesystem.saveConfig({
-			projectName: "Server Content Identity",
-			statuses: ["To Do", "In Progress", "Done"],
-			labels: [],
-			milestones: [],
-			dateFormat: "YYYY-MM-DD",
-			remoteOperations: false,
-		});
-
-		const document = (id: string, title: string): string =>
-			serializeDocument({ id, title, type: "other", createdDate: "2026-01-01 00:00", rawContent: title });
-		const decision = (id: string, title: string): string =>
-			serializeDecision({
-				id,
-				title,
-				date: "2026-01-01 00:00",
-				status: "proposed",
-				context: "",
-				decision: "",
-				consequences: "",
-				rawContent: "",
-			});
-		await Bun.write(join(filesystem.docsDir, "doc-1 - Alpha.md"), document("doc-1", "Alpha"));
-		await Bun.write(join(filesystem.docsDir, "nested", "doc-01 - Beta.md"), document("doc-01", "Beta"));
-		await Bun.write(join(filesystem.decisionsDir, "decision-1 - Alpha.md"), decision("decision-1", "Alpha"));
-		await Bun.write(join(filesystem.decisionsDir, "decision-01 - Beta.md"), decision("decision-01", "Beta"));
-
-		server = new BacklogServer(TEST_DIR);
-		await server.start(0, false);
-		const port = server.getPort();
-		expect(port).not.toBeNull();
-		serverPort = port ?? 0;
-
-		await retry(async () => {
-			await fetchJson<Document[]>("/api/docs");
-		});
+		await startServerWithColliding("doc-01", "decision-01");
 	});
 
-	afterEach(async () => {
-		if (server) {
-			await server.stop();
-			server = null;
-		}
-		await safeCleanup(TEST_DIR);
-	});
+	afterEach(stopServer);
 
 	it("answers 409 instead of picking a winner", async () => {
 		const documentResponse = await fetch(`http://127.0.0.1:${serverPort}/api/docs/doc-1`);
@@ -312,5 +320,29 @@ describe("BacklogServer ambiguous content identity", () => {
 
 		expect(await Bun.file(documentPath).text()).toBe(documentBefore);
 		expect(await Bun.file(decisionPath).text()).toBe(decisionBefore);
+	});
+});
+
+describe("BacklogServer identical raw content IDs", () => {
+	beforeEach(async () => {
+		await startServerWithColliding("doc-1", "decision-1");
+	});
+
+	afterEach(stopServer);
+
+	it("still answers 409 when both files carry the exact same frontmatter ID", async () => {
+		const documentResponse = await fetch(`http://127.0.0.1:${serverPort}/api/docs/doc-1`);
+		expect(documentResponse.status).toBe(409);
+		const documentBody = await documentResponse.text();
+		expect(documentBody).toContain("Document ID doc-1 is ambiguous; 2 files match:");
+		expect(documentBody).toContain("doc-1 - Alpha.md");
+		expect(documentBody).toContain("nested/doc-01 - Beta.md");
+
+		const decisionResponse = await fetch(`http://127.0.0.1:${serverPort}/api/decisions/decision-1`);
+		expect(decisionResponse.status).toBe(409);
+		const decisionBody = await decisionResponse.text();
+		expect(decisionBody).toContain("Decision ID decision-1 is ambiguous; 2 files match:");
+		expect(decisionBody).toContain("decision-1 - Alpha.md");
+		expect(decisionBody).toContain("decision-01 - Beta.md");
 	});
 });

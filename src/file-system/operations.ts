@@ -1088,7 +1088,8 @@ export class FileSystem {
 		return { relativePath, removedFilepaths };
 	}
 
-	async listDecisions(): Promise<Decision[]> {
+	/** Lists decisions, skipping files that cannot be read or parsed and collecting their paths in `unreadable`. */
+	async listDecisions(unreadable?: string[]): Promise<Decision[]> {
 		try {
 			const decisionsDir = await this.getDecisionsDir();
 			const decisionFiles = await Array.fromAsync(
@@ -1101,8 +1102,13 @@ export class FileSystem {
 					continue;
 				}
 				const filepath = join(decisionsDir, file);
-				const content = await Bun.file(filepath).text();
-				decisions.push({ ...parseDecision(content), path: file });
+				try {
+					const content = await Bun.file(filepath).text();
+					decisions.push({ ...parseDecision(content), path: file });
+				} catch {
+					// One malformed file must not hide every other decision from lookups.
+					unreadable?.push(file);
+				}
 			}
 			return sortByTaskId(decisions);
 		} catch {
@@ -1110,7 +1116,8 @@ export class FileSystem {
 		}
 	}
 
-	async listDocuments(): Promise<Document[]> {
+	/** Lists documents, skipping files that cannot be read or parsed and collecting their paths in `unreadable`. */
+	async listDocuments(unreadable?: string[]): Promise<Document[]> {
 		try {
 			const docsDir = await this.getDocsDir();
 			// Recursively include all markdown files under docs, excluding README.md variants
@@ -1122,12 +1129,13 @@ export class FileSystem {
 				const base = relativePath.split("/").pop() || relativePath;
 				if (base.toLowerCase() === "readme.md") continue;
 				const filepath = join(docsDir, ...relativePath.split("/"));
-				const content = await Bun.file(filepath).text();
-				const parsed = parseDocument(content);
-				docs.push({
-					...parsed,
-					path: relativePath,
-				});
+				try {
+					const content = await Bun.file(filepath).text();
+					docs.push({ ...parseDocument(content), path: relativePath });
+				} catch {
+					// One malformed file must not hide every other document from lookups.
+					unreadable?.push(relativePath);
+				}
 			}
 
 			// Stable sort by title for UI/CLI listing

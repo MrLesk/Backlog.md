@@ -6,6 +6,7 @@ import { serializeDecision, serializeDocument } from "../markdown/serializer.ts"
 import type { Decision, Document } from "../types/index.ts";
 import { decisionIdKey } from "../utils/decision-id.ts";
 import { documentIdKey, documentIdsEqual } from "../utils/document-id.ts";
+import { hasContentIdentityIssues } from "../utils/duplicate-detection.ts";
 import { AmbiguousIdError } from "../utils/entity-id.ts";
 import { createUniqueTestDir, initializeFilesystemTestProject, safeCleanup } from "./test-utils.ts";
 
@@ -47,6 +48,18 @@ async function writeDecision(filename: string, decision: Decision): Promise<stri
 	await mkdir(core.filesystem.decisionsDir, { recursive: true });
 	await Bun.write(filePath, serializeDecision(decision));
 	return filePath;
+}
+
+// gray-matter rejects an unterminated flow collection, so these files cannot be parsed at all.
+// Each fixture needs distinct content because gray-matter caches parse results by input string.
+function malformedFrontmatter(id: string): string {
+	return `---\nid: ${id}\ntitle: [unterminated\n---\n\n${id} body\n`;
+}
+
+async function writeRaw(directory: string, relativePath: string, content: string): Promise<void> {
+	const filePath = join(directory, ...relativePath.split("/"));
+	await mkdir(join(filePath, ".."), { recursive: true });
+	await Bun.write(filePath, content);
 }
 
 beforeEach(async () => {
@@ -137,8 +150,8 @@ describe("diagnoseContentIdentity", () => {
 		await writeDecision("decision-1 - Alpha.md", makeDecision("decision-1", "Alpha"));
 
 		expect(await core.diagnoseContentIdentity()).toEqual({
-			documents: { duplicates: [], missingIds: [] },
-			decisions: { duplicates: [], missingIds: [] },
+			documents: { duplicates: [], missingIds: [], unreadable: [] },
+			decisions: { duplicates: [], missingIds: [], unreadable: [] },
 		});
 	});
 
@@ -169,5 +182,39 @@ describe("diagnoseContentIdentity", () => {
 		expect(report.decisions.missingIds).toEqual(["backlog/decisions/decision-blank.md"]);
 		expect(report.documents.duplicates).toEqual([]);
 		expect(report.decisions.duplicates).toEqual([]);
+	});
+});
+
+describe("unreadable content files", () => {
+	it("keeps every other document and decision resolvable", async () => {
+		await writeDocument("doc-1 - Alpha.md", makeDocument("doc-1", "Alpha"));
+		await writeRaw(core.filesystem.docsDir, "doc-2 - Broken.md", malformedFrontmatter("doc-2"));
+		await writeDecision("decision-1 - Alpha.md", makeDecision("decision-1", "Alpha"));
+		await writeRaw(core.filesystem.decisionsDir, "decision-2 - Broken.md", malformedFrontmatter("decision-2"));
+
+		const unreadableDocuments: string[] = [];
+		const documents = await core.filesystem.listDocuments(unreadableDocuments);
+		expect(documents.map((document) => document.id)).toEqual(["doc-1"]);
+		expect(unreadableDocuments).toEqual(["doc-2 - Broken.md"]);
+
+		const unreadableDecisions: string[] = [];
+		const decisions = await core.filesystem.listDecisions(unreadableDecisions);
+		expect(decisions.map((decision) => decision.id)).toEqual(["decision-1"]);
+		expect(unreadableDecisions).toEqual(["decision-2 - Broken.md"]);
+
+		expect((await core.getDocument("doc-1"))?.title).toBe("Alpha");
+		expect((await core.filesystem.loadDecision("decision-1"))?.title).toBe("Alpha");
+	});
+
+	it("are reported as findings so identity is never called healthy on an unread file", async () => {
+		await writeRaw(core.filesystem.docsDir, "nested/doc-2 - Broken.md", malformedFrontmatter("doc-9"));
+		await writeRaw(core.filesystem.decisionsDir, "decision-2 - Broken.md", malformedFrontmatter("decision-9"));
+
+		const report = await core.diagnoseContentIdentity();
+		expect(report.documents.unreadable).toEqual(["backlog/docs/nested/doc-2 - Broken.md"]);
+		expect(report.decisions.unreadable).toEqual(["backlog/decisions/decision-2 - Broken.md"]);
+		expect(report.documents.duplicates).toEqual([]);
+		expect(report.documents.missingIds).toEqual([]);
+		expect(hasContentIdentityIssues(report)).toBe(true);
 	});
 });

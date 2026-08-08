@@ -286,17 +286,25 @@ export class Core {
 
 	/** Reports document and decision files whose IDs collide or are missing, so lookups can fail closed. */
 	async diagnoseContentIdentity(): Promise<ContentIdentityReport> {
-		const [documents, decisions] = await Promise.all([this.fs.listDocuments(), this.fs.listDecisions()]);
-		const locate = (directory: string, item: { path?: string; title: string }) =>
-			item.path ? `${this.fs.backlogDirName}/${directory}/${item.path}` : item.title;
+		const unreadableDocuments: string[] = [];
+		const unreadableDecisions: string[] = [];
+		const [documents, decisions] = await Promise.all([
+			this.fs.listDocuments(unreadableDocuments),
+			this.fs.listDecisions(unreadableDecisions),
+		]);
+		const locate = (directory: string, path: string) => `${this.fs.backlogDirName}/${directory}/${path}`;
+		const describe = (directory: string, item: { path?: string; title: string }) =>
+			item.path ? locate(directory, item.path) : item.title;
 		return {
 			documents: detectContentIdentityIssues(
-				documents.map((document) => ({ id: document.id, path: locate(DEFAULT_DIRECTORIES.DOCS, document) })),
+				documents.map((document) => ({ id: document.id, path: describe(DEFAULT_DIRECTORIES.DOCS, document) })),
 				documentIdKey,
+				unreadableDocuments.map((path) => locate(DEFAULT_DIRECTORIES.DOCS, path)),
 			),
 			decisions: detectContentIdentityIssues(
-				decisions.map((decision) => ({ id: decision.id, path: locate(DEFAULT_DIRECTORIES.DECISIONS, decision) })),
+				decisions.map((decision) => ({ id: decision.id, path: describe(DEFAULT_DIRECTORIES.DECISIONS, decision) })),
 				decisionIdKey,
+				unreadableDecisions.map((path) => locate(DEFAULT_DIRECTORIES.DECISIONS, path)),
 			),
 		};
 	}

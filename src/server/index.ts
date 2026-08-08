@@ -19,7 +19,6 @@ import {
 } from "../types/index.ts";
 import { launchBrowser } from "../utils/browser-launch.ts";
 import type { BrowserLoadingState } from "../utils/browser-loading-state.ts";
-import { findDecisionById } from "../utils/decision-id.ts";
 import { isAmbiguousIdError } from "../utils/entity-id.ts";
 import { resolveMilestoneInputForStorage } from "../utils/milestone-storage.ts";
 import { formatValidPriorityValues, resolvePriorityValue } from "../utils/priority-config.ts";
@@ -1241,8 +1240,9 @@ export class BacklogServer {
 
 	private async handleGetDecision(decisionId: string): Promise<Response> {
 		try {
-			const store = await this.getContentStoreInstance();
-			const decision = findDecisionById(store.getDecisions(), decisionId);
+			// Resolve from disk, not the content store: the store keys decisions by raw ID and would
+			// silently drop one of two files that share an ID before the ambiguity check could run.
+			const decision = await this.core.filesystem.loadDecision(decisionId);
 
 			if (!decision) {
 				return Response.json({ error: "Decision not found" }, { status: 404 });
