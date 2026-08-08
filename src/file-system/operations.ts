@@ -61,7 +61,12 @@ interface LockAttemptSettings {
 /** Config keys stored as YAML lists. `default_assignee` also accepts a single scalar. */
 type ConfigListKey = "statuses" | "labels" | "types" | "priorities" | "default_assignee";
 
-const CONFIG_KEY_LINE_PATTERN = /^\s*[A-Za-z_][A-Za-z0-9_]*\s*:/;
+/**
+ * A mapping key line, whatever characters the name uses. Keys Backlog does not read still end the
+ * previous key's block, so an unrelated `custom-setting:` cannot fold its value into the block being
+ * extracted. A sequence item is not a key even when its text contains a colon.
+ */
+const CONFIG_KEY_LINE_PATTERN = /^\s*(?!-\s)[^\s#][^:]*:/;
 
 /**
  * Extract the YAML block that carries one config key's value: its `key:` line plus the lines that

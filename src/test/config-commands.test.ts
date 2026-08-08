@@ -421,6 +421,30 @@ describe("Config commands", () => {
 		expect(core.filesystem.parseConfig('project_name: "P"\n  statuses: ["spaced"]\n').statuses).toEqual(["spaced"]);
 	});
 
+	it("does not blame a valid list key for a malformed value under a key Backlog does not read", () => {
+		// Any mapping key ends the previous key's block, whatever characters its name uses. Without that,
+		// the malformed custom-setting line folds into the statuses block and startup blames statuses —
+		// an error the user cannot fix by editing the key it names.
+		for (const unreadKey of ["custom-setting", "my.setting", '"quoted-key"', "2fa"]) {
+			const config = core.filesystem.parseConfig(`project_name: "P"\nstatuses: [Queued, Done]\n${unreadKey}: ["bad]\n`);
+			expect(config.statuses).toEqual(["Queued", "Done"]);
+		}
+
+		// A block-sequence value survives the same shape, and each key is still reported on its own.
+		expect(
+			core.filesystem.parseConfig('project_name: "P"\nstatuses:\n  - Queued\ncustom-setting: ["bad]\n').statuses,
+		).toEqual(["Queued"]);
+		expect(() =>
+			core.filesystem.parseConfig('project_name: "P"\nstatuses: ["Queued]\ncustom-setting: ["bad]\n'),
+		).toThrow('invalid value for "statuses"');
+
+		// A sequence item is not a key even when its text contains a colon, so it must not cut the block.
+		expect(core.filesystem.parseConfig('project_name: "P"\nstatuses:\n- "a: b"\n- Done\n').statuses).toEqual([
+			"a: b",
+			"Done",
+		]);
+	});
+
 	it("resolves a YAML alias against the anchor defined under another key", () => {
 		// An alias only has meaning in document context, so a list value that uses one must still
 		// resolve even though each key's own block is what gets parsed.

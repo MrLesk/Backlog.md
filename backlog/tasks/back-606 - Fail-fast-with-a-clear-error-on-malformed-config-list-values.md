@@ -5,7 +5,7 @@ status: Done
 assignee:
   - '@Claude'
 created_date: '2026-08-08 15:56'
-updated_date: '2026-08-08 18:35'
+updated_date: '2026-08-08 18:48'
 labels: []
 dependencies: []
 ordinal: 245000
@@ -103,6 +103,22 @@ Finding (4) watcher wrong-type: restored exact main parity. Rather than reinstat
 Finding (3) exotic shape: accepted as a documented limitation, no code change. The PR body now names it precisely (a column-0 continuation line of a multi-line quoted flow scalar beginning with a list-key name), bounds it (only quoted multi-line flow values; indented look-alikes, literal and folded block scalars, block sequence items and nested mappings are all handled), and states why it is out: separating a real top-level key from a column-0 line inside another key's multi-line scalar needs YAML scalar-state tracking, i.e. growing the extractor into a YAML parser, which the project's simplicity rules reject for a shape saveConfig never writes.
 
 Validation: bunx tsc --noEmit clean, bun run check . clean, 51-case parse matrix unchanged, targeted batch of the ten touched test files 154 pass / 0 fail. Local full-suite runs remain unreliable on this machine because concurrent agent suites saturate it and starve the filesystem-watcher tests; CI's clean-runner full suite across Linux, macOS and Windows is the authoritative signal.
+
+Final authorized patch round: block-boundary detection.
+
+Regression fixed: extractConfigKeyYaml only recognized identifier-character key lines as block boundaries, so a top-level key whose name uses other characters did not end the previous key's block. A config like 'statuses: [Queued, Done]' followed by 'custom-setting: ["bad]' folded the malformed line into the statuses block, and startup aborted blaming statuses — a valid key the user cannot fix by editing it. Reproduced on both heads before changing anything: origin/main tolerated all these configs (its line fallback ignored the unknown key) while the branch threw for hyphenated, dotted, quoted and digit-leading key names.
+
+Fix: broadened only the boundary pattern to /^\s*(?!-\s)[^\s#][^:]*:/ so any mapping key line ends the previous block regardless of the characters in its name. Key selection still targets only the five list keys, so the malformed unknown key is simply ignored exactly as main ignores it — confirmed, those configs now load with statuses correct. The negative lookahead matters: a sequence item is not a key even when its text contains a colon, and without it a same-indent item such as '- "a: b"' would have cut the block short.
+
+Interaction with the round-2 document-context retry confirmed: after the fix the isolated statuses parse succeeds, so the retry is not reached and no error is raised for the unrelated key. A genuinely malformed statuses value beside a malformed unknown key still fails fast naming statuses.
+
+Verification: a 14-case risk probe covering same-indent and indented sequence items with colons, definition_of_done items containing colons, indented flow continuations, comment and blank lines inside blocks, colon-bearing onStatusChange and date_format values, block-sequence default_assignee, and nested mappings under unknown keys — all 14 match origin/main except the already-documented multi-line-quoted-scalar shape, which is unchanged. The 51-case parse matrix is unchanged, the findings 1-3 shapes probe is unchanged, and the unindented-continuation strictness is unchanged.
+
+Two differences from main worth recording, both in already-accepted families: with a malformed unknown key present, quoted commas in another list key are now read as YAML rather than comma-split (['a, b'] instead of ['a','b']), and where the affected key used a block sequence main silently fell back to default statuses while the branch now returns the configured value.
+
+New regression test 'does not blame a valid list key for a malformed value under a key Backlog does not read' covers four unread key spellings, the block-sequence variant, the still-fails-fast case, and the colon-bearing sequence item. Confirmed non-vacuous: reverting only the pattern reproduces the reported ConfigValueError blaming statuses.
+
+Validation: bunx tsc --noEmit clean, bun run check . clean, targeted batch of the ten touched test files 155 pass / 0 fail.
 <!-- SECTION:NOTES:END -->
 
 ## Final Summary
