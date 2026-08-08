@@ -28,6 +28,32 @@ function captureTerminalWrites(run: (record: () => string, reset: () => void) =>
 	}
 }
 
+/**
+ * Run `capture` as if the process were inside tmux. blessed reads `process.env.TMUX` when
+ * the program is constructed, and it defers its tmux writes until the output stream has
+ * been written to, so `bytesWritten` is primed the way a rendered session leaves it.
+ */
+function inTmux(capture: () => void): void {
+	const originalTmux = process.env.TMUX;
+	const originalBytesWritten = process.stdout.bytesWritten;
+	process.env.TMUX = "/private/tmp/tmux-501/default,1,0";
+	Object.defineProperty(process.stdout, "bytesWritten", { value: 1, configurable: true, writable: true });
+	try {
+		capture();
+	} finally {
+		Object.defineProperty(process.stdout, "bytesWritten", {
+			value: originalBytesWritten,
+			configurable: true,
+			writable: true,
+		});
+		if (originalTmux === undefined) {
+			delete process.env.TMUX;
+		} else {
+			process.env.TMUX = originalTmux;
+		}
+	}
+}
+
 describe("TUI window titles", () => {
 	it("prefixes the configured project name", () => {
 		expect(formatTuiTitle("Board", "Acme Website")).toBe("Acme Website - Board");
@@ -101,6 +127,30 @@ describe("TUI window titles", () => {
 			expect(closed.indexOf("\x1b]0;\x07")).toBeLessThan(closed.indexOf("\x1b[23;2t"));
 			// blessed emits "destroy" twice per screen, and one push must not be popped twice.
 			expect(closed.split("\x1b[23;2t")).toHaveLength(2);
+		});
+	});
+
+	it("forwards the title stack controls to the outer terminal inside tmux", () => {
+		inTmux(() => {
+			captureTerminalWrites((record, reset) => {
+				const screen = createScreen({ smartCSR: false, title: formatTuiTitle("Board", "Acme Website") });
+				screen.program.flush?.();
+
+				// Inside tmux every one of these has to travel through the DCS passthrough,
+				// otherwise tmux consumes it and the outer terminal never sees it. blessed
+				// already does that for the title, so the push and pop must match it.
+				const opened = record();
+				expect(opened).toContain("\x1bPtmux;\x1b\x1b[22;2t\x1b\\");
+				expect(opened).toContain("\x1bPtmux;\x1b\x1b]0;Acme Website - Board\x07\x1b\\");
+
+				reset();
+				screen.destroy();
+
+				const closed = record();
+				expect(closed).toContain("\x1bPtmux;\x1b\x1b]0;\x07\x1b\\");
+				expect(closed).toContain("\x1bPtmux;\x1b\x1b[23;2t\x1b\\");
+				expect(closed.indexOf("\x1b]0;\x07")).toBeLessThan(closed.indexOf("\x1b[23;2t"));
+			});
 		});
 	});
 

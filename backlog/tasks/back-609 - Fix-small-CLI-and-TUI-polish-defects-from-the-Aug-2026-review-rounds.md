@@ -5,7 +5,7 @@ status: Done
 assignee:
   - '@Claude'
 created_date: '2026-08-08 15:56'
-updated_date: '2026-08-08 17:20'
+updated_date: '2026-08-08 17:51'
 labels: []
 dependencies: []
 ordinal: 248000
@@ -59,6 +59,8 @@ Item 4 - piped board header: renderBoardTui's non-TTY branch passed the literal 
 Verification. Item 1: reproduced 'error: unknown option --plain' before the change; after it, 'backlog doc create "Plain Doc" --plain' exits 0 and prints the created id and path. Item 2: against a project holding both a legacy title-only file (API-Guidelines.md) and a current nested file (guides/api/doc-2 - Nested-Doc.md), the old id-to-filename matcher resolved neither ('OPENED NOTHING' for both) while the new reader opens both. Item 3: verified under a real PTY (script -q). Before, teardown emitted no title sequence at all and the shell title stayed 'Acme Website - Board'. After, open emits ESC[22;2t then the rename, and teardown emits ESC]0;BEL then ESC[23;2t exactly once - confirmed on both clean exit and the SIGINT path. Item 4: piped 'backlog board' and 'backlog board --milestones' now print 'Project: Acme Website' instead of 'Project: Project'. Checks: bunx tsc --noEmit clean, bun run check . clean, bun run test green with 2078 pass / 6 skip / 0 fail across 223 files.
 
 Out of scope, surfaced while researching item 2 and left unfixed: the document watcher in src/core/content-store.ts retries forever for a file named doc-1.md (it passes the doc- prefix gate but its split(" - ") id never matches the frontmatter id) and compares ids with raw equality where the rest of the codebase uses documentIdsEqual; and src/cli.ts carries an unused duplicate of generateNextDocId that also lives in src/utils/id-generators.ts.
+
+Review follow-up (PR #879, Codex P2 on the title-restore fix): the title stack push and pop were written with program.write, which is blessed's raw _owrite, while setTitle goes through _twrite. Inside tmux _twrite wraps output in the DCS passthrough (ESC P tmux ; ESC <data> ESC \\) that reaches the outer terminal, so the outer terminal received the title set and the clear but never the push or pop, and could not restore the title it started with even when it supports the stack. Verified against node_modules/neo-neo-bblessed/lib/program.ts: setTitle calls _twrite, and _twrite wraps when program.tmux (set from process.env.TMUX) is true. Both controls now go through _twrite as well, and the flush moved after the pop so the clear and the pop share one buffer flush. Outside tmux the emitted bytes are unchanged, confirmed byte-for-byte against the pre-change PTY capture. Also dropped write from the hand-written ProgramInterface declaration, since _twrite replaced its only use.
 <!-- SECTION:NOTES:END -->
 
 ## Final Summary

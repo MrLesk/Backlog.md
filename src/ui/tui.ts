@@ -123,9 +123,14 @@ export function createScreen(options: Partial<ScreenOptions> = {}): ScreenInterf
 	// user had before blessed overwrites it and put it back during teardown. Terminals
 	// without a title stack ignore the push and pop, so teardown clears the title first
 	// and they fall back to their own default instead of keeping a stale view name.
+	//
+	// These go through _twrite, the same writer setTitle uses, because inside tmux it
+	// wraps output in the DCS passthrough that reaches the outer terminal. A raw write
+	// would be consumed by tmux itself, so the outer terminal would see the title change
+	// but never the push or the pop, and could not restore the title it started with.
 	const managesWindowTitle = typeof options.title === "string" && options.title.length > 0;
 	if (managesWindowTitle) {
-		program.write(PUSH_WINDOW_TITLE);
+		program._twrite(PUSH_WINDOW_TITLE);
 	}
 
 	const screen = blessedScreen({ smartCSR: true, program, fullUnicode: true, ...options });
@@ -141,9 +146,9 @@ export function createScreen(options: Partial<ScreenOptions> = {}): ScreenInterf
 			}
 			restoredWindowTitle = true;
 			program.setTitle("");
+			program._twrite(POP_WINDOW_TITLE);
 			// screen.destroy() can run from process exit, where a deferred flush never happens.
 			program.flush?.();
-			program.write(POP_WINDOW_TITLE);
 		});
 	}
 
