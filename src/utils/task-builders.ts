@@ -1,6 +1,6 @@
 import type { Core } from "../core/backlog.ts";
 import type { AcceptanceCriterion } from "../types/index.ts";
-import { normalizeTaskId, taskIdsEqual } from "./task-path.ts";
+import { taskIdsEqual } from "./task-path.ts";
 
 /**
  * Shared utilities for building tasks and validating dependencies
@@ -8,33 +8,9 @@ import { normalizeTaskId, taskIdsEqual } from "./task-path.ts";
  */
 
 /**
- * Normalize dependencies to proper task-X format
- * Handles both array and comma-separated string inputs
- */
-export function normalizeDependencies(dependencies: unknown): string[] {
-	if (!dependencies) return [];
-	const normalizeList = (values: string[]): string[] =>
-		values
-			.map((value) => value.trim())
-			.filter((value): value is string => value.length > 0)
-			.map((value) => normalizeTaskId(value));
-
-	if (Array.isArray(dependencies)) {
-		return normalizeList(
-			dependencies.flatMap((dep) =>
-				String(dep)
-					.split(",")
-					.map((d) => d.trim()),
-			),
-		);
-	}
-
-	return normalizeList(String(dependencies).split(","));
-}
-
-/**
- * Validate that all dependencies exist in the current project
- * Returns arrays of valid and invalid dependency IDs
+ * Validate that all dependencies exist in the current project.
+ * Inputs are matched by task identity, so bare numeric IDs resolve under any configured prefix.
+ * Returns the matched canonical IDs plus the inputs that matched nothing.
  */
 export async function validateDependencies(
 	dependencies: string[],
