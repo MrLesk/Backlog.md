@@ -157,7 +157,7 @@ describe("Enhanced init command", () => {
 			defaultStatus: "To Do",
 			dateFormat: "yyyy-mm-dd",
 			definitionOfDone: ["Run tests", "Update docs"],
-			defaultAssignee: "@alex",
+			defaultAssignee: ["@alex"],
 			defaultReporter: "@bot",
 			includeDateTimeInDates: true,
 			onStatusChange: "echo changed",
@@ -185,7 +185,7 @@ describe("Enhanced init command", () => {
 		const reloaded = await core.filesystem.loadConfig();
 		expect(reloaded?.projectName).toBe("Preserve Fields Project Updated");
 		expect(reloaded?.definitionOfDone).toEqual(["Run tests", "Update docs"]);
-		expect(reloaded?.defaultAssignee).toBe("@alex");
+		expect(reloaded?.defaultAssignee).toEqual(["@alex"]);
 		expect(reloaded?.defaultReporter).toBe("@bot");
 		expect(reloaded?.includeDateTimeInDates).toBe(true);
 		expect(reloaded?.onStatusChange).toBe("echo changed");

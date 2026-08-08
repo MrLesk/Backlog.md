@@ -124,6 +124,7 @@ describe("CLI Integration", () => {
 			expect(taskCreation).toContain(
 				"Repeat `--exclude-status` or pass comma-separated configured statuses to exclude multiple states.",
 			);
+			expect(taskCreation).toContain("omitting it applies the project's configured `defaultAssignee` when one is set");
 			expect(taskCreation).not.toContain('backlog task list --status "In Progress" --plain');
 			expect(taskCreation).toContain(
 				"Do not pass milestone IDs such as `m-0` to `--parent`; assign a task to a milestone with `--milestone`/`-m`.",
@@ -315,8 +316,8 @@ describe("CLI Integration", () => {
 			expect(createHelp).toContain("status: one of configured statuses: Draft, To Do, In Progress, Done");
 			expect(createHelp).toContain("priority: one of configured priorities: High, Medium, Low");
 			expect(createHelp).toContain("ordinal: Integer");
-			expect(createHelp).toContain(
-				"assignee: Comma-separated strings - Assign one or more @names; repeat -a or use @name1,@name2",
+			expect(createHelpCompact).toContain(
+				"assignee: Comma-separated strings - Assign one or more @names; repeat -a or use @name1,@name2; omitting it applies the configured defaultAssignee",
 			);
 			expect(createHelpCompact).toContain("assign task to one or more @names (comma-separated or repeatable)");
 			expect(createHelpCompact).toContain(
@@ -448,7 +449,7 @@ describe("CLI Integration", () => {
 			expect(docHelp).toContain("content: Markdown");
 			expect(docHelp).toContain("path: Docs-relative path");
 			expect(docHelp).toContain("type: one of: readme, guide, specification, other");
-			expect(configHelp).toContain("key: one of: defaultEditor, projectName, defaultStatus");
+			expect(configHelp).toContain("key: one of: defaultEditor, projectName, defaultAssignee, defaultStatus");
 			expect(configHelp).toContain("value: String");
 			expect(searchHelp).toContain("type: one or more of: task, document, decision");
 			expect(searchHelp).toContain("status: one of configured statuses: To Do, In Progress, Done");
