@@ -5,7 +5,7 @@ status: Done
 assignee:
   - '@Claude'
 created_date: '2026-08-08 15:56'
-updated_date: '2026-08-08 17:52'
+updated_date: '2026-08-08 18:35'
 labels: []
 dependencies: []
 ordinal: 245000
@@ -95,6 +95,14 @@ Mostly refuted (3) key-like text in scalars: four of the five shapes probed (inl
 Reported, not decided (4) watcher wrong-type shapes: measured both heads with a live watcher. On origin/main, 'default_assignee: {name: "@alice"}' and 'default_assignee: 42' publish nothing and the cached ['@alice'] is retained. On this branch the candidate is published with defaultAssignee undefined, so the configured assignee is silently dropped at runtime. This is the direct effect of removing the watcher's per-line assignee shape check; it belongs to the wrong-typed-config question already escalated to the owner. Restoring the two-line check would return exact main parity at the cost of duplicating the rule.
 
 Rebased onto origin/main again (BACK-603 #878) with no conflicts. The 51-case parse matrix is unchanged by this round; against main the only remaining diffs are the intended fail-fast rows plus the two documented strictness rows.
+
+Coordinator dispositions applied.
+
+Finding (4) watcher wrong-type: restored exact main parity. Rather than reinstating the deleted value-level YAML shape parser, the check now uses the declared-but-unset idiom the neighbouring definition_of_done check in the same function already uses: 'if (key === "default_assignee" && config.defaultAssignee === undefined) return false'. That is one line, no duplicated parsing, and equivalent to main by construction — a value YAML rejects never reaches the check because parseConfig throws first, and a value YAML reads but the key cannot hold leaves the key unset, which is precisely the set main rejected. Comment marks it as pending the owner's wrong-type decision so it is easy to remove. Verified with a live watcher on both heads: 'default_assignee: {name: "@alice"}' and 'default_assignee: 42' publish nothing and retain the cached ['@alice']. The existing config-watcher test covering malformed inline assignee edits was extended with both wrong-typed shapes and renamed; confirmed non-vacuous, since reverting the one line makes it time out waiting for re-read attempts because the candidate is published on the first parse.
+
+Finding (3) exotic shape: accepted as a documented limitation, no code change. The PR body now names it precisely (a column-0 continuation line of a multi-line quoted flow scalar beginning with a list-key name), bounds it (only quoted multi-line flow values; indented look-alikes, literal and folded block scalars, block sequence items and nested mappings are all handled), and states why it is out: separating a real top-level key from a column-0 line inside another key's multi-line scalar needs YAML scalar-state tracking, i.e. growing the extractor into a YAML parser, which the project's simplicity rules reject for a shape saveConfig never writes.
+
+Validation: bunx tsc --noEmit clean, bun run check . clean, 51-case parse matrix unchanged, targeted batch of the ten touched test files 154 pass / 0 fail. Local full-suite runs remain unreliable on this machine because concurrent agent suites saturate it and starve the filesystem-watcher tests; CI's clean-runner full suite across Linux, macOS and Windows is the authoritative signal.
 <!-- SECTION:NOTES:END -->
 
 ## Final Summary

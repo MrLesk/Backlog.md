@@ -61,7 +61,11 @@ function hasValidExplicitValues(content: string, config: BacklogConfig): boolean
 		if (!RECOGNIZED_CONFIG_KEYS.has(key)) continue;
 		if (ARRAY_CONFIG_KEYS.has(key) && !(value.startsWith("[") && value.endsWith("]"))) return false;
 		// default_assignee is not in ARRAY_CONFIG_KEYS because it also accepts scalars and block
-		// sequences; the config parser rejects values YAML cannot read before this check runs.
+		// sequences; the config parser rejects values YAML cannot read before this check runs. A value
+		// YAML reads but the key cannot hold, such as a mapping or a number, leaves the key unset, and
+		// publishing that would drop the configured assignee — so the candidate is rejected and the last
+		// good config stays cached. Pending the open decision on whether such values should fail fast.
+		if (key === "default_assignee" && config.defaultAssignee === undefined) return false;
 		if (key === "definition_of_done" && value.startsWith("[") && !value.endsWith("]")) return false;
 		if (key === "definition_of_done" && config.definitionOfDone === undefined) return false;
 		if ((key === "project_name" || key === "date_format") && !value.replace(/['"]/g, "").trim()) return false;
