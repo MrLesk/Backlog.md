@@ -5,7 +5,7 @@ status: Done
 assignee:
   - '@alex-agent'
 created_date: '2026-07-13 16:06'
-updated_date: '2026-08-08 07:55'
+updated_date: '2026-08-08 08:13'
 labels:
   - tui
   - web
@@ -119,6 +119,8 @@ Review round 3 (Codex on PR #873): three accepted, one deferred. All three are f
 Testing: added src/test/tui-ready-filter-pty.test.ts, an expect-driven PTY test asserting the interactive --ready render never lists the blocked task, following the project's existing RUN_INTERACTIVE_TUI_TESTS convention, and wired it into the CI step that runs interactive TUI tests against the compiled binary. Note that it passes with and without fix 1 for the reason above, so it guards the end-to-end behavior rather than proving that one line. The routed-completed-task case is covered by an assertion in readiness.test.tsx that does fail without its fix.
 
 Deferred item 4 appended to BACK-601: getTaskStatistics counts blockers with exact-ID matching and a hard-coded 'Done'.
+
+Merged origin/main again (BACK-580 and BACK-602 identity work) with no conflicts; the round-3 fixes are intact. Final verification on the merged tree: bun run test 2055 pass, 0 fail across 222 files, exit 0; scripts/run-tui-interactive-tests.sh 5 pass, 0 fail including the new readiness PTY test; bunx tsc --noEmit, bun run check ., and bun run build clean.
 <!-- SECTION:NOTES:END -->
 
 ## Final Summary
