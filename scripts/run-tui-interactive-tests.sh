@@ -6,5 +6,8 @@ if ! command -v expect >/dev/null 2>&1; then
 	exit 0
 fi
 
-echo "Running interactive TUI editor handoff tests with expect..."
-RUN_INTERACTIVE_TUI_TESTS=1 bun test src/test/tui-interactive-editor-handoff.test.ts --timeout=30000
+echo "Running interactive TUI tests with expect..."
+RUN_INTERACTIVE_TUI_TESTS=1 bun test \
+	src/test/tui-interactive-editor-handoff.test.ts \
+	src/test/tui-ready-filter-pty.test.ts \
+	--timeout=30000

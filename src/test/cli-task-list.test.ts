@@ -505,6 +505,202 @@ describe("CLI Integration", () => {
 			expect(out).not.toContain("TASK-2 - OAuth Callback Other Parent");
 		});
 
+		it("should filter tasks by readiness using --ready and --ready --json", async () => {
+			const core = new Core(TEST_DIR);
+
+			await core.createTask(
+				{
+					id: "task-1",
+					title: "Done Dep",
+					status: "Done",
+					assignee: [],
+					labels: [],
+					dependencies: [],
+					createdDate: "2026-07-24",
+					rawContent: "",
+				},
+				false,
+			);
+			await core.createTask(
+				{
+					id: "task-2",
+					title: "In Progress Dep",
+					status: "In Progress",
+					assignee: [],
+					labels: [],
+					dependencies: [],
+					createdDate: "2026-07-24",
+					rawContent: "",
+				},
+				false,
+			);
+			await core.createTask(
+				{
+					id: "task-3",
+					title: "Blocked Task",
+					status: "To Do",
+					assignee: [],
+					labels: [],
+					dependencies: ["task-2"],
+					createdDate: "2026-07-24",
+					rawContent: "",
+				},
+				false,
+			);
+			await core.createTask(
+				{
+					id: "task-4",
+					title: "Ready Task",
+					status: "To Do",
+					assignee: [],
+					labels: [],
+					dependencies: ["task-1"],
+					createdDate: "2026-07-24",
+					rawContent: "",
+				},
+				false,
+			);
+
+			const plainResult = await $`bun ${CLI_PATH} task list --plain --ready`.cwd(TEST_DIR).quiet();
+			const plainOut = plainResult.stdout.toString();
+			expect(plainOut).toContain("TASK-4 - Ready Task");
+			expect(plainOut).toContain("TASK-2 - In Progress Dep");
+			expect(plainOut).not.toContain("TASK-3 - Blocked Task");
+
+			const jsonResult = await $`bun ${CLI_PATH} task list --json --ready`.cwd(TEST_DIR).quiet();
+			const json = JSON.parse(jsonResult.stdout.toString());
+			const readyIds = json.tasks.map((t: { id: string }) => t.id);
+			expect(readyIds).toContain("TASK-4");
+			expect(readyIds).toContain("TASK-2");
+			expect(readyIds).not.toContain("TASK-3");
+			expect(readyIds).not.toContain("TASK-1");
+
+			// Readiness must resolve against the whole graph, not the tasks left after --status.
+			const scopedResult = await $`bun ${CLI_PATH} task list --plain --ready --status "To Do"`.cwd(TEST_DIR).quiet();
+			const scopedOut = scopedResult.stdout.toString();
+			expect(scopedOut).toContain("TASK-4 - Ready Task");
+			expect(scopedOut).not.toContain("TASK-3 - Blocked Task");
+		});
+
+		it("should resolve --ready dependencies that were completed and moved out of the active corpus", async () => {
+			const core = new Core(TEST_DIR);
+
+			await core.createTask(
+				{
+					id: "task-1",
+					title: "Completed Dep",
+					status: "Done",
+					assignee: [],
+					labels: [],
+					dependencies: [],
+					createdDate: "2026-07-24",
+					rawContent: "",
+				},
+				false,
+			);
+			await core.createTask(
+				{
+					id: "task-2",
+					title: "Depends On Completed",
+					status: "To Do",
+					assignee: [],
+					labels: [],
+					dependencies: ["task-1"],
+					createdDate: "2026-07-24",
+					rawContent: "",
+				},
+				false,
+			);
+			await core.createTask(
+				{
+					id: "task-3",
+					title: "Depends On Nothing Known",
+					status: "To Do",
+					assignee: [],
+					labels: [],
+					dependencies: ["task-404"],
+					createdDate: "2026-07-24",
+					rawContent: "",
+				},
+				false,
+			);
+			expect(await core.completeTask("task-1", false)).toBe(true);
+
+			const result = await $`bun ${CLI_PATH} task list --plain --ready`.cwd(TEST_DIR).quiet();
+			const out = result.stdout.toString();
+			expect(out).toContain("TASK-2 - Depends On Completed");
+			// An unresolvable dependency fails closed instead of being treated as satisfied.
+			expect(out).not.toContain("TASK-3 - Depends On Nothing Known");
+		});
+
+		it("should keep --ready verdicts correct when display filters hide the dependencies", async () => {
+			const core = new Core(TEST_DIR);
+
+			await core.createTask(
+				{
+					id: "task-1",
+					title: "Someone Elses Blocker",
+					status: "In Progress",
+					assignee: ["@other"],
+					labels: [],
+					dependencies: [],
+					createdDate: "2026-07-24",
+					rawContent: "",
+				},
+				false,
+			);
+			await core.createTask(
+				{
+					id: "task-2",
+					title: "Someone Elses Finished Work",
+					status: "Done",
+					assignee: ["@other"],
+					labels: [],
+					dependencies: [],
+					createdDate: "2026-07-24",
+					rawContent: "",
+				},
+				false,
+			);
+			await core.createTask(
+				{
+					id: "task-3",
+					title: "Mine Blocked",
+					status: "To Do",
+					assignee: ["@me"],
+					labels: [],
+					dependencies: ["task-1"],
+					createdDate: "2026-07-24",
+					rawContent: "",
+				},
+				false,
+			);
+			await core.createTask(
+				{
+					id: "task-4",
+					title: "Mine Ready",
+					status: "To Do",
+					assignee: ["@me"],
+					labels: [],
+					dependencies: ["task-2"],
+					createdDate: "2026-07-24",
+					rawContent: "",
+				},
+				false,
+			);
+
+			// Both dependencies belong to @other, so --assignee @me removes them from the listing.
+			// Readiness must still resolve them instead of calling them unknown.
+			const assigneeResult = await $`bun ${CLI_PATH} task list --plain --ready --assignee @me`.cwd(TEST_DIR).quiet();
+			const assigneeOut = assigneeResult.stdout.toString();
+			expect(assigneeOut).toContain("TASK-4 - Mine Ready");
+			expect(assigneeOut).not.toContain("TASK-3 - Mine Blocked");
+			expect(assigneeOut).not.toContain("TASK-1 - Someone Elses Blocker");
+
+			const unassignedResult = await $`bun ${CLI_PATH} task list --plain --ready --unassigned`.cwd(TEST_DIR).quiet();
+			expect(unassignedResult.stdout.toString()).toContain("No tasks found.");
+		});
+
 		it("should reject invalid task list limit", async () => {
 			const result = await $`bun ${CLI_PATH} task list --plain --limit 0`.cwd(TEST_DIR).nothrow().quiet();
 			const out = result.stdout.toString() + result.stderr.toString();

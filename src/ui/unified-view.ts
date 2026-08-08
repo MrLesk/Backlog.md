@@ -21,7 +21,9 @@ export interface UnifiedViewOptions {
 	initialView: ViewType;
 	selectedTask?: Task;
 	tasks?: Task[];
-	tasksLoader?: (updateProgress: (message: string) => void) => Promise<{ tasks: Task[]; statuses: string[] }>;
+	tasksLoader?: (
+		updateProgress: (message: string) => void,
+	) => Promise<{ tasks: Task[]; statuses: string[]; readinessTasks?: Task[] }>;
 	loadingScreenFactory?: (initialMessage: string) => Promise<LoadingScreen | null>;
 	title?: string;
 	filter?: {
@@ -39,6 +41,7 @@ export interface UnifiedViewOptions {
 		excludeStatus?: string[];
 		parentTaskId?: string;
 		limit?: number;
+		ready?: boolean;
 	};
 	preloadedKanbanData?: {
 		tasks: Task[];
@@ -56,6 +59,11 @@ type LoadingScreen = {
 export interface UnifiedViewLoadResult {
 	tasks: Task[];
 	statuses: string[];
+	/**
+	 * Unfiltered task corpus for dependency readiness. Only needed when `tasks` was narrowed by
+	 * loader-side filters; otherwise `tasks` is already the whole corpus.
+	 */
+	readinessTasks?: Task[];
 }
 
 export type UnifiedTaskUpdate = { type: "upsert"; task: Task } | { type: "remove"; taskId: string };
@@ -218,7 +226,9 @@ export async function loadTasksForUnifiedView(
 
 	const loader =
 		options.tasksLoader ||
-		(async (updateProgress: (message: string) => void): Promise<{ tasks: Task[]; statuses: string[] }> => {
+		(async (
+			updateProgress: (message: string) => void,
+		): Promise<{ tasks: Task[]; statuses: string[]; readinessTasks?: Task[] }> => {
 			const tasks = await core.loadTasks(updateProgress);
 			const config = await core.filesystem.loadConfig();
 			return {
@@ -238,6 +248,7 @@ export async function loadTasksForUnifiedView(
 		return {
 			tasks: result.tasks,
 			statuses: result.statuses,
+			readinessTasks: result.readinessTasks,
 		};
 	} finally {
 		await loadingScreen?.close();
@@ -272,7 +283,11 @@ export async function createTaskFromBoard(
  */
 export async function runUnifiedView(options: UnifiedViewOptions): Promise<void> {
 	try {
-		const { tasks: loadedTasks, statuses: loadedStatuses } = await loadTasksForUnifiedView(options.core, {
+		const {
+			tasks: loadedTasks,
+			statuses: loadedStatuses,
+			readinessTasks: loadedReadinessTasks,
+		} = await loadTasksForUnifiedView(options.core, {
 			tasks: options.tasks,
 			tasksLoader: options.tasksLoader,
 			loadingScreenFactory: options.loadingScreenFactory,
@@ -419,6 +434,8 @@ export async function runUnifiedView(options: UnifiedViewOptions): Promise<void>
 					labelFilter: currentFilters.labelFilter,
 					labelMatch: currentFilters.labelMatch,
 					milestoneFilter: currentFilters.milestoneFilter,
+					readyFilter: options.filter?.ready,
+					readinessTasks: loadedReadinessTasks,
 					limit: currentFilters.limit,
 					startWithDetailFocus: currentView === "task-detail",
 					startWithSearchFocus: shouldFocusSearch,

@@ -12,6 +12,7 @@ import type { TaskEditArgs, TaskEditRequest } from "../../../types/task-edit-arg
 import { formatDuplicateTaskIdWarning } from "../../../utils/duplicate-detection.ts";
 import { createMilestoneFilterMatcher, createMilestoneFilterValueResolver } from "../../../utils/milestone-filter.ts";
 import { resolveMilestoneInputForStorage } from "../../../utils/milestone-storage.ts";
+import { getTaskReadiness, loadReadinessGraph } from "../../../utils/readiness.ts";
 import { buildTaskUpdateInput } from "../../../utils/task-edit-builder.ts";
 import { createTaskSearchIndex } from "../../../utils/task-search.ts";
 import { sortByOrdinalAndPriority } from "../../../utils/task-sorting.ts";
@@ -50,6 +51,7 @@ export type TaskListArgs = {
 	milestone?: string;
 	labels?: string[];
 	search?: string;
+	ready?: boolean;
 	limit?: number;
 };
 
@@ -193,6 +195,11 @@ export class TaskHandlers {
 				});
 			}
 
+			if (args.ready) {
+				const readinessGraph = await loadReadinessGraph(this.core);
+				drafts = drafts.filter((draft) => getTaskReadiness(draft, readinessGraph).isReady);
+			}
+
 			if (drafts.length === 0) {
 				return {
 					content: [
@@ -240,11 +247,16 @@ export class TaskHandlers {
 			filters.milestone = args.milestone;
 		}
 
-		const tasks = await this.core.queryTasks({
+		let tasks = await this.core.queryTasks({
 			query: args.search,
 			filters: Object.keys(filters).length > 0 ? filters : undefined,
 			includeCrossBranch: false,
 		});
+
+		if (args.ready) {
+			const readinessGraph = await loadReadinessGraph(this.core);
+			tasks = tasks.filter((task) => getTaskReadiness(task, readinessGraph).isReady);
+		}
 
 		let filteredByLabels = tasks.filter((task) => isLocalEditableTask(task));
 		const labelFilters = args.labels ?? [];

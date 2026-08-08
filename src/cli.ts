@@ -82,6 +82,7 @@ import { resolveMilestoneInputForStorage } from "./utils/milestone-storage.ts";
 import { hasAnyPrefix } from "./utils/prefix-config.ts";
 import { formatValidPriorityValues, getPriorityOptions, resolvePriorityValue } from "./utils/priority-config.ts";
 import { type ReadOutputMode, resolveReadOutputMode } from "./utils/read-output-mode.ts";
+import { getTaskReadiness, loadReadinessGraph } from "./utils/readiness.ts";
 import { resolveRuntimeCwd } from "./utils/runtime-cwd.ts";
 import { formatValidStatuses, getCanonicalStatus, getCanonicalStatuses, getValidStatuses } from "./utils/status.ts";
 import {
@@ -2343,6 +2344,7 @@ addHelpSchema(taskCmd.command("list"), {
 			description: "Require every listed label; repeat --labels or use label1,label2",
 		},
 		{ name: "search", type: "String", description: "Search task title, description, notes, comments, and metadata" },
+		{ name: "ready", type: "Boolean", description: "Only show unblocked tasks with all dependencies completed" },
 		{ name: "limit", type: "Positive integer", description: "Maximum tasks to display after sorting" },
 		{ name: "sort", type: choiceType(TASK_SORT_FIELDS), description: "Task ordering before applying limit" },
 		{ name: "plain", type: "Boolean", description: "Use text output instead of interactive UI" },
@@ -2351,6 +2353,7 @@ addHelpSchema(taskCmd.command("list"), {
 	output: "Interactive task list, plain text with --plain, or versioned JSON with --json",
 	examples: [
 		'backlog task list --status "<todo status>" --plain',
+		"backlog task list --ready --plain",
 		'backlog task list --status "<todo status>" --json',
 		"backlog task list --parent {{TASK_ID:1}}",
 		`backlog task list --type ${TASK_TYPE_EXAMPLE} --plain`,
@@ -2380,6 +2383,7 @@ addHelpSchema(taskCmd.command("list"), {
 		createMultiValueAccumulator(),
 	)
 	.option("--search <query>", "search task title, description, notes, comments, and metadata")
+	.option("--ready", "only show unblocked tasks with all dependencies completed")
 	.option("--limit <number>", "limit tasks displayed after sorting")
 	.option("--sort <field>", `sort tasks by field (${TASK_SORT_FIELD_LIST})`)
 	.option("--plain", "use plain text output instead of interactive UI")
@@ -2474,12 +2478,17 @@ addHelpSchema(taskCmd.command("list"), {
 		}
 
 		if (outputMode !== "interactive") {
-			const tasks = await core.queryTasks({
+			let tasks = await core.queryTasks({
 				query: searchQuery || undefined,
 				filters: Object.keys(baseFilters).length > 0 ? baseFilters : undefined,
 				includeCrossBranch: false,
 			});
 			const config = await core.filesystem.loadConfig();
+
+			if (options.ready) {
+				const readinessGraph = await loadReadinessGraph(core);
+				tasks = tasks.filter((task) => getTaskReadiness(task, readinessGraph).isReady);
+			}
 
 			if (parentId) {
 				const parentExists = (await core.queryTasks({ includeCrossBranch: false })).some((task) =>
@@ -2588,6 +2597,7 @@ addHelpSchema(taskCmd.command("list"), {
 		}
 		if (options.assignee) activeFilters.push(`Assignee: ${options.assignee}`);
 		if (options.unassigned) activeFilters.push("Unassigned");
+		if (options.ready) activeFilters.push("Ready");
 		if (options.parent) {
 			activeFilters.push(`Parent: ${normalizeTaskId(String(options.parent))}`);
 		}
@@ -2621,6 +2631,7 @@ addHelpSchema(taskCmd.command("list"), {
 			filterDescription?: string;
 			parentTaskId?: string;
 			limit?: number;
+			ready?: boolean;
 		} = {
 			status: options.status,
 			excludeStatus: Array.isArray(baseFilters.excludeStatus) ? baseFilters.excludeStatus : undefined,
@@ -2635,6 +2646,7 @@ addHelpSchema(taskCmd.command("list"), {
 			filterDescription,
 			parentTaskId: parentId,
 			limit: taskLimit,
+			ready: options.ready,
 		};
 		if (searchQuery) {
 			initialUnifiedFilter.searchQuery = searchQuery;
@@ -2651,6 +2663,7 @@ addHelpSchema(taskCmd.command("list"), {
 		if (parentId) {
 			interactiveLoaderFilters.parentTaskId = parentId;
 		}
+		const prefiltersDisplayList = Object.keys(interactiveLoaderFilters).length > 0;
 		await runUnifiedView({
 			core,
 			initialView: "task-list",
@@ -2700,6 +2713,9 @@ addHelpSchema(taskCmd.command("list"), {
 				return {
 					tasks: filtered,
 					statuses: config?.statuses || [],
+					// The filters above narrow what is displayed. Dependency readiness must still see
+					// every task, or a dependency assigned to someone else reads as unknown.
+					readinessTasks: prefiltersDisplayList ? await core.queryTasks({ includeCrossBranch: false }) : undefined,
 				};
 			},
 			filter: initialUnifiedFilter,

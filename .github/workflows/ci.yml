@@ -147,7 +147,7 @@ jobs:
           RUN_INTERACTIVE_TUI_TESTS=1 \
           TUI_TEST_CLI_RUNTIME= \
           TUI_TEST_CLI_PATH="$PWD/backlog-test" \
-          bun test src/test/tui-interactive-editor-handoff.test.ts --timeout=30000
+          bun test src/test/tui-interactive-editor-handoff.test.ts src/test/tui-ready-filter-pty.test.ts --timeout=30000
       - name: Upload compiled-binary interactive transcripts on failure
         if: failure() && matrix.os == 'ubuntu-latest'
         uses: actions/upload-artifact@v7

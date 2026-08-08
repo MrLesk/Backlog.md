@@ -21,6 +21,13 @@ import {
 } from "../utils/milestone-filter.ts";
 import { hasAnyPrefix } from "../utils/prefix-config.ts";
 import { formatPriorityLabel, getPriorityOptions, normalizePriorityValue } from "../utils/priority-config.ts";
+import {
+	createReadinessGraph,
+	formatReadinessBlockers,
+	getTaskReadiness,
+	type ReadinessGraph,
+} from "../utils/readiness.ts";
+import { canonicalTaskId, taskIdsEqual } from "../utils/task-id.ts";
 import { applyTaskFilters, createTaskSearchIndex, type LabelMatchMode } from "../utils/task-search.ts";
 import { attachSubtaskSummaries } from "../utils/task-subtasks.ts";
 import { getTaskTypeValues, resolveTaskTypeValues } from "../utils/task-type-config.ts";
@@ -183,6 +190,9 @@ export async function viewTaskEnhanced(
 		milestoneFilter?: string;
 		labelFilter?: string[];
 		labelMatch?: LabelMatchMode;
+		readyFilter?: boolean;
+		/** Unfiltered corpus for dependency readiness; defaults to the tasks being displayed. */
+		readinessTasks?: Task[];
 		limit?: number;
 		startWithDetailFocus?: boolean;
 		startWithSearchFocus?: boolean;
@@ -225,9 +235,12 @@ export async function viewTaskEnhanced(
 	let taskSearchIndex: ReturnType<typeof createTaskSearchIndex> | null = null;
 	let searchService: Awaited<ReturnType<typeof core.getSearchService>> | null = null;
 	let contentStore: Awaited<ReturnType<typeof core.getContentStore>> | null = null;
-	const [milestoneEntities, archivedMilestones] = await Promise.all([
+	// Completed tasks are loaded alongside the milestone metadata so dependency readiness can
+	// resolve dependencies that already left the active corpus, without a second full task load.
+	const [milestoneEntities, archivedMilestones, completedTasks] = await Promise.all([
 		core.filesystem.listMilestones(),
 		core.filesystem.listArchivedMilestones(),
+		core.filesystem.listCompletedTasks(),
 	]);
 	const { availableMilestoneTitles, resolveMilestoneLabel } = buildTaskViewerMilestoneFilterModel(
 		milestoneEntities,
@@ -276,6 +289,22 @@ export async function viewTaskEnhanced(
 	// Collect available labels from config, tasks, and CLI-provided filters.
 	availableLabels = collectAvailableLabels(allTasks, [...labels, ...(options.labelFilter ?? [])]);
 
+	// Dependency readiness must resolve against the whole corpus, not the filtered display list, so
+	// it uses the unfiltered snapshot when the caller narrowed what is shown. Both sides stay
+	// mutable because completing a task from this view moves it between them.
+	let readinessSnapshot = options.readinessTasks ? [...options.readinessTasks] : null;
+	const readinessCompletedTasks = [...completedTasks];
+	const buildReadinessGraph = () => {
+		let tasks = allTasks;
+		if (readinessSnapshot) {
+			// Live display copies win over the snapshot so status edits in this session count.
+			const byId = new Map(readinessSnapshot.map((task) => [canonicalTaskId(task.id), task]));
+			for (const task of allTasks) byId.set(canonicalTaskId(task.id), task);
+			tasks = [...byId.values()];
+		}
+		return createReadinessGraph({ tasks, completedTasks: readinessCompletedTasks, statuses });
+	};
+
 	// State for filtering - normalize filters to match configured values
 	let searchQuery = options.searchQuery || "";
 
@@ -301,6 +330,9 @@ export async function viewTaskEnhanced(
 		labelFilter = options.labelFilter.filter((label) => availableSet.has(label.toLowerCase()));
 	}
 
+	// Decides whether the first render goes through applyFilters(). Every filter that narrows the
+	// list has to be listed here, or the flag that set it silently does nothing until something
+	// else triggers a refilter.
 	const filtersActive = Boolean(
 		searchQuery ||
 			statusFilter ||
@@ -309,6 +341,7 @@ export async function viewTaskEnhanced(
 			priorityFilter ||
 			labelFilter.length > 0 ||
 			milestoneFilter ||
+			options.readyFilter ||
 			taskLimit !== undefined,
 	);
 	let requireInitialFilterSelection = filtersActive;
@@ -669,7 +702,8 @@ export async function viewTaskEnhanced(
 				taskTypeFilter.length > 0 ||
 				priorityFilter ||
 				labelFilter.length > 0 ||
-				milestoneFilter,
+				milestoneFilter ||
+				options.readyFilter,
 		);
 		let nextFilteredTasks: Task[];
 		if (!hasActiveFilters) {
@@ -687,6 +721,7 @@ export async function viewTaskEnhanced(
 					labelMatch,
 					milestone: milestoneFilter || undefined,
 					resolveMilestoneLabel,
+					ready: options.readyFilter ? buildReadinessGraph() : undefined,
 				},
 				taskSearchIndex,
 			);
@@ -719,6 +754,10 @@ export async function viewTaskEnhanced(
 					const taskLabels = new Set(labelsToLower(task.labels ?? []));
 					return requiredLabels.every((label) => taskLabels.has(label));
 				});
+			}
+			if (options.readyFilter) {
+				const graph = buildReadinessGraph();
+				nextFilteredTasks = nextFilteredTasks.filter((task) => getTaskReadiness(task, graph).isReady);
 			}
 		} else {
 			nextFilteredTasks = [...allTasks];
@@ -1064,7 +1103,12 @@ export async function viewTaskEnhanced(
 
 		screen.title = formatTuiTitle(`Task ${currentSelectedTask.id} - ${currentSelectedTask.title}`, projectName);
 
-		const detailContent = generateDetailContent(currentSelectedTask, resolveMilestoneLabel, dateFormat);
+		const detailContent = generateDetailContent(
+			currentSelectedTask,
+			resolveMilestoneLabel,
+			dateFormat,
+			buildReadinessGraph(),
+		);
 
 		// Calculate header height based on content and available width
 		const detailPaneWidth = typeof detailPane.width === "number" ? detailPane.width : 60;
@@ -1262,6 +1306,13 @@ export async function viewTaskEnhanced(
 						};
 
 			if (result.success) {
+				// The record just left the active corpus, so drop it from the readiness graph. A
+				// completed one is re-added as completion evidence; an archived one is simply gone, and
+				// its dependents honestly report it as an unresolvable dependency from now on.
+				readinessSnapshot = readinessSnapshot?.filter((candidate) => !taskIdsEqual(candidate.id, task.id)) ?? null;
+				if (action === "complete") {
+					readinessCompletedTasks.push(task);
+				}
 				removeTaskFromCurrentView(task.id);
 				const label = action === "complete" ? "Completed" : "Archived";
 				showTransientHelp(` {green-fg}${label} ${task.id}{/}`);
@@ -1471,10 +1522,14 @@ export async function viewTaskEnhanced(
 	});
 }
 
-function generateDetailContent(
+export function generateDetailContent(
 	task: Task,
 	resolveMilestoneLabel?: (milestone: string) => string,
 	dateFormat?: string,
+	// Readiness is rendered only when the caller can supply the task graph to resolve dependencies
+	// against. Callers without one (the board quick-look popup) get no readiness line rather than a
+	// wrong one derived from an empty graph.
+	readinessGraph?: ReadinessGraph,
 ): { headerContent: string[]; bodyContent: string[] } {
 	const headerContent = [
 		` ${wrapStatusColor(formatStatusWithIcon(task.status), getStatusColor(task.status))} {bold}{blue-fg}${task.id}{/blue-fg}{/bold} - ${task.title}`,
@@ -1529,6 +1584,17 @@ function generateDetailContent(
 	}
 	if (task.dependencies?.length) {
 		metadata.push(`{bold}Dependencies:{/bold} ${task.dependencies.join(", ")}`);
+		// Readiness only earns a line when dependencies exist; otherwise the status already says it.
+		if (readinessGraph) {
+			const readiness = getTaskReadiness(task, readinessGraph);
+			if (readiness.isReady) {
+				metadata.push("{bold}Readiness:{/bold} {green-fg}✓ Ready to start{/}");
+			} else if (readiness.isBlocked) {
+				// Single-width glyphs only: blessed miscounts East Asian Wide characters and leaves
+				// stale cells behind when the detail pane re-renders a shorter line.
+				metadata.push(`{bold}Readiness:{/bold} {yellow-fg}● ${formatReadinessBlockers(readiness)}{/}`);
+			}
+		}
 	}
 	if (task.modifiedFiles?.length) {
 		metadata.push(`{bold}Modified files:{/bold} ${task.modifiedFiles.join(", ")}`);

@@ -90,6 +90,10 @@ export function generateTaskListSchema(config: Pick<BacklogConfig, "types">): Js
 				type: "string",
 				maxLength: 200,
 			},
+			ready: {
+				type: "boolean",
+				description: "When true, filter tasks that are ready for work (all dependencies satisfied/completed).",
+			},
 			limit: {
 				type: "number",
 				minimum: 1,

@@ -11,6 +11,8 @@ import DependencyInput from "./DependencyInput";
 import { formatStoredUtcDateForDisplay } from "../utils/date-display";
 import { getPriorityOptions } from "../../utils/priority-config";
 import { getTaskTypeValues, resolveTaskTypeValue } from "../../utils/task-type-config";
+import { createReadinessGraph, formatReadinessBlockers, getTaskReadiness } from "../../utils/readiness";
+import { canonicalTaskId } from "../../utils/task-id.ts";
 
 interface Props {
   task?: Task; // Optional for create mode
@@ -324,6 +326,51 @@ export const TaskDetailsModal: React.FC<Props> = ({
   const typeSelectionValue = canonicalTypeSelection ?? taskType;
   const milestoneSelectionValue = resolveMilestoneToId(milestone);
   const hasMilestoneSelection = (milestoneEntities ?? []).some((milestoneEntity) => milestoneEntity.id === milestoneSelectionValue);
+
+  // Dependencies that already left the board corpus (completed tasks) are fetched by ID so the
+  // browser resolves the same task graph the CLI does instead of calling them unknown.
+  // Keyed on a string because availableTasks and dependencies are new arrays on every render.
+  const unresolvedDependencyKey = useMemo(() => {
+    const known = new Set(availableTasks.map((candidate) => canonicalTaskId(candidate.id)));
+    return dependencies
+      .filter((id) => !known.has(canonicalTaskId(id)))
+      .join(",");
+  }, [availableTasks, dependencies]);
+  const [offBoardDependencies, setOffBoardDependencies] = useState<Task[]>([]);
+  useEffect(() => {
+    if (!isOpen || unresolvedDependencyKey === "") {
+      setOffBoardDependencies((current) => (current.length === 0 ? current : []));
+      return;
+    }
+    let cancelled = false;
+    Promise.all(unresolvedDependencyKey.split(",").map((id) => apiClient.fetchTask(id).catch(() => null))).then(
+      (results) => {
+        if (!cancelled) setOffBoardDependencies(results.filter((result): result is Task => Boolean(result)));
+      },
+    );
+    return () => {
+      cancelled = true;
+    };
+  }, [isOpen, unresolvedDependencyKey]);
+
+  // Dependency readiness, derived at render time from the dependencies and status currently shown,
+  // so an inline edit is reflected immediately instead of waiting for a refresh.
+  // Only meaningful while dependencies exist and the task has not been completed.
+  const readiness = useMemo(() => {
+    if (!task || dependencies.length === 0) return null;
+    // Records resolved outside the board corpus come from backlog/completed, where the record's
+    // location is the completion evidence rather than its status string. That applies to the open
+    // task itself as well: a direct link can open a completed task whose historical status is no
+    // longer the configured terminal one.
+    const offBoard = [...offBoardDependencies, ...(task.source === "completed" ? [task] : [])];
+    const graph = createReadinessGraph({
+      tasks: [...availableTasks, ...offBoard.filter((entry) => entry.source !== "completed")],
+      completedTasks: offBoard.filter((entry) => entry.source === "completed"),
+      statuses: availableStatuses,
+    });
+    const result = getTaskReadiness({ ...task, dependencies, status }, graph);
+    return result.isReady || result.isBlocked ? result : null;
+  }, [task, dependencies, status, availableTasks, offBoardDependencies, availableStatuses]);
 
   // Keep a baseline for dirty-check
   const baseline = useMemo(() => ({
@@ -1443,6 +1490,18 @@ export const TaskDetailsModal: React.FC<Props> = ({
               label=""
               disabled={isFromOtherBranch}
             />
+            {readiness && (
+              <div
+                className={`mt-2 flex items-start gap-1.5 rounded-md px-2 py-1.5 text-xs font-medium ${
+                  readiness.isReady
+                    ? 'bg-emerald-50 dark:bg-emerald-900/30 text-emerald-800 dark:text-emerald-300'
+                    : 'bg-amber-50 dark:bg-amber-900/30 text-amber-800 dark:text-amber-300'
+                }`}
+              >
+                <span aria-hidden="true">{readiness.isReady ? '✓' : '⏳'}</span>
+                <span>{readiness.isReady ? 'Ready to start' : formatReadinessBlockers(readiness)}</span>
+              </div>
+            )}
           </div>
 
           {/* Archive button at bottom of sidebar */}
