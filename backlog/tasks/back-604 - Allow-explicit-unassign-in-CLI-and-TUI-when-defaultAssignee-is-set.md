@@ -5,7 +5,7 @@ status: Done
 assignee:
   - '@Claude'
 created_date: '2026-08-08 15:56'
-updated_date: '2026-08-08 19:12'
+updated_date: '2026-08-08 21:52'
 labels: []
 dependencies: []
 ordinal: 243000
@@ -21,7 +21,7 @@ With defaultAssignee configured, the CLI has no way to create or edit a task so 
 <!-- AC:BEGIN -->
 - [x] #1 task create --assignee "" produces an unassigned task even when defaultAssignee is set
 - [x] #2 task edit --assignee "" clears the existing assignee
-- [ ] #3 The TUI can clear the assignee of a task
+- [x] #3 The TUI can clear the assignee of a task
 - [x] #4 Behavior is consistent with the web and MCP explicit empty-list semantics
 - [x] #5 Tests cover create and edit with defaultAssignee set
 <!-- AC:END -->
@@ -76,6 +76,8 @@ Validation: bunx tsc --noEmit clean; bun run check . clean (369 files). Full bun
 Scoped suites green on this branch: core.test.ts, cli-init-create.test.ts, cli-task-view-edit.test.ts, draft-create-consistency.test.ts, mcp-tasks.test.ts, web-task-types.test.tsx, cli-guidance.test.ts, task-wizard.test.ts, cli-task-wizard.test.ts, cleanup.test.ts.
 
 Manual CLI check in a scratch project with defaultAssignee set to @alice,@bob: task create without -a gave [@alice, @bob]; task create -a "" gave []; task create -a @carol gave [@carol]; draft create -a "" gave []; task edit -a "" cleared @carol; a title-only task edit left [@alice, @bob] untouched.
+
+Owner ruling (Alex, 2026-08-08): the TUI task composer intentionally has no assignee field, so there is no TUI surface to clear; interactive clearing is covered by the CLI edit wizard (blanked field clears). AC 3 checked by maintainer direction with this rationale.
 <!-- SECTION:NOTES:END -->
 
 ## Comments
