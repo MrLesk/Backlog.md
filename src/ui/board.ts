@@ -6,7 +6,7 @@ import {
 	generateKanbanBoardWithMetadata,
 	generateMilestoneGroupedBoard,
 } from "../board.ts";
-import { Core } from "../core/backlog.ts";
+import { type Core, createRuntimeCore } from "../core/backlog.ts";
 import type { Milestone, Task, TaskCreateInput } from "../types/index.ts";
 import { copyToClipboard } from "../utils/clipboard.ts";
 import { areLabelSelectionsEqual, collectAvailableLabels } from "../utils/label-filter.ts";
@@ -247,6 +247,8 @@ export async function renderBoardTui(
 	_layout: BoardLayout,
 	_maxColumnWidth: number,
 	options?: {
+		/** Core instance the board mutates through. Falls back to the runtime working directory. */
+		core?: Core;
 		viewSwitcher?: import("./view-switcher.ts").ViewSwitcher;
 		onTaskSelect?: (task: Task) => void;
 		onTabPress?: () => Promise<void>;
@@ -330,6 +332,13 @@ export async function renderBoardTui(
 		let pendingSearchWrap: "to-first" | "to-last" | null = null;
 		let programmaticColumnSelection = false;
 		let renderingView = false;
+		let fallbackCore: Core | null = null;
+		// Board mutations reuse the caller's Core so every surface reads the same project root.
+		const getCore = async (): Promise<Core> => {
+			if (options?.core) return options.core;
+			fallbackCore ??= await createRuntimeCore({ enableWatchers: true });
+			return fallbackCore;
+		};
 		const configuredTaskTypes = getTaskTypeValues(options?.types);
 		const sharedFilters = {
 			searchQuery: options?.filters?.searchQuery ?? "",
@@ -1022,7 +1031,7 @@ export async function renderBoardTui(
 						priorities: options?.priorities,
 						persist: async (input) => {
 							if (options?.createTask) return options.createTask(input);
-							const core = new Core(process.cwd(), { enableWatchers: true });
+							const core = await getCore();
 							const config = await core.fs.loadConfig();
 							return (await core.createTaskFromInput(input, config?.autoCommit ?? false)).task;
 						},
@@ -1212,7 +1221,7 @@ export async function renderBoardTui(
 
 		const openTaskEditor = async (task: Task) => {
 			try {
-				const core = new Core(process.cwd(), { enableWatchers: true });
+				const core = await getCore();
 				const result = await core.editTaskInTui(task.id, screen, task);
 				if (result.reason === "read_only") {
 					const branchInfo = result.task?.branch ? ` from branch "${result.task.branch}"` : "";
@@ -1306,7 +1315,7 @@ export async function renderBoardTui(
 
 				if (confirmed) {
 					try {
-						const core = new Core(process.cwd(), { enableWatchers: true });
+						const core = await getCore();
 						const result = await completeTaskFromTui(core, task);
 
 						if (result.success) {
@@ -1344,7 +1353,7 @@ export async function renderBoardTui(
 
 				if (confirmed) {
 					try {
-						const core = new Core(process.cwd(), { enableWatchers: true });
+						const core = await getCore();
 						const config = await core.fs.loadConfig();
 						const success = await core.archiveTask(task.id, config?.autoCommit ?? false);
 
@@ -1393,7 +1402,7 @@ export async function renderBoardTui(
 			}
 
 			try {
-				const core = new Core(process.cwd(), { enableWatchers: true });
+				const core = await getCore();
 				const config = await core.fs.loadConfig();
 
 				// Get the final state from the projection
@@ -1551,7 +1560,7 @@ export async function renderBoardTui(
 
 			if (confirmed) {
 				try {
-					const core = new Core(process.cwd(), { enableWatchers: true });
+					const core = await getCore();
 					const result = await completeTaskFromTui(core, task);
 
 					if (result.success) {
@@ -1594,7 +1603,7 @@ export async function renderBoardTui(
 
 			if (confirmed) {
 				try {
-					const core = new Core(process.cwd(), { enableWatchers: true });
+					const core = await getCore();
 					const config = await core.fs.loadConfig();
 					const success = await core.archiveTask(task.id, config?.autoCommit ?? false);
 
