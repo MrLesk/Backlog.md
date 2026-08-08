@@ -164,7 +164,8 @@ export function generateTaskCreateSchema(config: BacklogConfig): JsonSchema {
 					type: "string",
 					maxLength: 100,
 				},
-				description: "Optional assignees. When omitted, the project's configured defaultAssignee applies.",
+				description:
+					"Optional assignees. When omitted, the project's configured defaultAssignee applies; pass an empty array to leave the task unassigned.",
 			},
 			dependencies: {
 				type: "array",
@@ -282,6 +283,7 @@ export function generateTaskEditSchema(config: BacklogConfig): JsonSchema {
 					type: "string",
 					maxLength: 100,
 				},
+				description: "Replace all assignees. Pass an empty array to clear them.",
 			},
 			dependencies: {
 				type: "array",

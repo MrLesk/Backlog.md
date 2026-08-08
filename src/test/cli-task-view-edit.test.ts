@@ -555,6 +555,48 @@ describe("CLI Integration", () => {
 			expect(updatedTask?.assignee).toEqual(["@alice", "@bob"]);
 		});
 
+		it("should clear assignees when task edit passes an explicit empty assignee", async () => {
+			const core = new Core(TEST_DIR);
+
+			await core.createTask(
+				{
+					id: "task-13",
+					title: "Explicit Unassign Test",
+					status: "To Do",
+					assignee: ["@alice", "@bob"],
+					createdDate: "2025-06-08",
+					labels: [],
+					dependencies: [],
+					rawContent: "Testing explicit unassign",
+				},
+				false,
+			);
+
+			await $`bun ${CLI_PATH} task edit task-13 -a ${""} --plain`.cwd(TEST_DIR).quiet();
+			expect((await core.filesystem.loadTask("task-13"))?.assignee).toEqual([]);
+		});
+
+		it("should keep existing assignees when task edit omits the assignee flag", async () => {
+			const core = new Core(TEST_DIR);
+
+			await core.createTask(
+				{
+					id: "task-14",
+					title: "Assignee Preserved Test",
+					status: "To Do",
+					assignee: ["@alice"],
+					createdDate: "2025-06-08",
+					labels: [],
+					dependencies: [],
+					rawContent: "Testing assignee preservation",
+				},
+				false,
+			);
+
+			await $`bun ${CLI_PATH} task edit task-14 -t "Assignee Preserved Renamed" --plain`.cwd(TEST_DIR).quiet();
+			expect((await core.filesystem.loadTask("task-14"))?.assignee).toEqual(["@alice"]);
+		});
+
 		it("should handle non-existent task gracefully", async () => {
 			const core = new Core(TEST_DIR);
 
