@@ -292,7 +292,10 @@ export class Core {
 			this.fs.listDocuments(unreadableDocuments),
 			this.fs.listDecisions(unreadableDecisions),
 		]);
-		const locate = (directory: string, path: string) => `${this.fs.backlogDirName}/${directory}/${path}`;
+		// An empty collected path denotes the content directory itself, which the filesystem reports
+		// when it could not be scanned at all.
+		const locate = (directory: string, path: string) =>
+			path ? `${this.fs.backlogDirName}/${directory}/${path}` : `${this.fs.backlogDirName}/${directory}`;
 		const describe = (directory: string, item: { path?: string; title: string }) =>
 			item.path ? locate(directory, item.path) : item.title;
 		return {

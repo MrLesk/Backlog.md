@@ -2,10 +2,11 @@ import { afterEach, describe, expect, it } from "bun:test";
 import { JSDOM } from "jsdom";
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
-import { MemoryRouter, Route, Routes } from "react-router-dom";
+import { MemoryRouter, Route, Routes, useNavigate } from "react-router-dom";
 import type { Decision as BacklogDecision, Document as BacklogDocument } from "../types/index.ts";
 import DecisionDetail from "../web/components/DecisionDetail.tsx";
 import DocumentationDetail from "../web/components/DocumentationDetail.tsx";
+import { ThemeProvider } from "../web/contexts/ThemeContext.tsx";
 
 let activeRoot: Root | null = null;
 const originalFetch = globalThis.fetch;
@@ -50,15 +51,63 @@ async function renderRoute(path: string, pattern: string, element: React.ReactEl
 	activeRoot = createRoot(container);
 	await act(async () => {
 		activeRoot?.render(
-			<MemoryRouter initialEntries={[path]}>
-				<Routes>
-					<Route path={pattern} element={element} />
-				</Routes>
-			</MemoryRouter>,
+			<ThemeProvider>
+				<MemoryRouter initialEntries={[path]}>
+					<Routes>
+						<Route path={pattern} element={element} />
+					</Routes>
+				</MemoryRouter>
+			</ThemeProvider>,
 		);
 		await Promise.resolve();
 	});
 	return container;
+}
+
+function NavigateButton({ to }: { to: string }): React.ReactElement {
+	const navigate = useNavigate();
+	return (
+		<button type="button" data-testid="navigate" onClick={() => navigate(to)}>
+			navigate
+		</button>
+	);
+}
+
+/**
+ * Renders one route pattern with a sibling navigation button so a param change keeps the same
+ * component instance mounted, which is how the create route is reached in the real app.
+ */
+async function renderReusableRoute(
+	path: string,
+	pattern: string,
+	createPath: string,
+	element: React.ReactElement,
+): Promise<HTMLElement> {
+	const container = setupDom();
+	activeRoot = createRoot(container);
+	await act(async () => {
+		activeRoot?.render(
+			<ThemeProvider>
+				<MemoryRouter initialEntries={[path]}>
+					<NavigateButton to={createPath} />
+					<Routes>
+						<Route path={pattern} element={element} />
+					</Routes>
+				</MemoryRouter>
+			</ThemeProvider>,
+		);
+		await Promise.resolve();
+	});
+	return container;
+}
+
+async function clickNavigate(container: HTMLElement): Promise<void> {
+	const button = container.querySelector('[data-testid="navigate"]') as HTMLButtonElement;
+	expect(button).toBeTruthy();
+	await act(async () => {
+		button.dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
+		await Promise.resolve();
+	});
 }
 
 afterEach(() => {
@@ -118,5 +167,59 @@ describe("web ambiguous ID handling", () => {
 		expect(container.textContent).toContain("backlog doctor");
 		expect(container.textContent).not.toContain("Cached body that must not be shown");
 		expect(container.textContent).not.toContain("Cached Alpha");
+	});
+});
+
+describe("create route after an ambiguity error", () => {
+	it("renders the document create editor instead of the stale notice", async () => {
+		respondWithConflict(AMBIGUOUS_DOCUMENT_MESSAGE);
+		const cached: BacklogDocument = {
+			id: "doc-1",
+			title: "Cached Alpha",
+			type: "other",
+			createdDate: "2026-01-01 00:00",
+			rawContent: "Cached body",
+			path: "doc-1 - Alpha.md",
+		};
+
+		const container = await renderReusableRoute(
+			"/documentation/1",
+			"/documentation/:id",
+			"/documentation/new",
+			<DocumentationDetail docs={[cached]} onRefreshData={async () => {}} />,
+		);
+		expect(container.textContent).toContain("This ID matches more than one file");
+
+		await clickNavigate(container);
+
+		expect(container.textContent).not.toContain("This ID matches more than one file");
+		expect(container.querySelector('input[placeholder="Document title"]')).toBeTruthy();
+	});
+
+	it("renders the decision create editor instead of the stale notice", async () => {
+		respondWithConflict(AMBIGUOUS_DECISION_MESSAGE);
+		const cached: BacklogDecision = {
+			id: "decision-1",
+			title: "Cached Alpha",
+			date: "2026-01-01 00:00",
+			status: "proposed",
+			context: "",
+			decision: "",
+			consequences: "",
+			rawContent: "Cached body",
+		};
+
+		const container = await renderReusableRoute(
+			"/decisions/1",
+			"/decisions/:id",
+			"/decisions/new",
+			<DecisionDetail decisions={[cached]} onRefreshData={async () => {}} />,
+		);
+		expect(container.textContent).toContain("This ID matches more than one file");
+
+		await clickNavigate(container);
+
+		expect(container.textContent).not.toContain("This ID matches more than one file");
+		expect(container.querySelector('input[placeholder="Decision title"]')).toBeTruthy();
 	});
 });

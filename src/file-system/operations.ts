@@ -128,6 +128,17 @@ function taskLockError(message: string, cause?: unknown): Error {
 	return lockError(TASK_LOCK_ERROR_NAME, TASK_LOCK_ERROR_CODE, message, cause);
 }
 
+/**
+ * Records a directory-level listing failure so callers can report it instead of treating an
+ * unreadable directory as an empty one. A directory that does not exist yet is normal and is
+ * reported as empty; anything else means the contents could not be inspected. The empty string
+ * denotes the content directory itself.
+ */
+function recordUnreadableDirectory(error: unknown, unreadable?: string[]): void {
+	if ((error as NodeJS.ErrnoException | undefined)?.code === "ENOENT") return;
+	unreadable?.push("");
+}
+
 export function isCreateLockError(error: unknown): error is Error {
 	return isLockError(error, CREATE_LOCK_ERROR_NAME, CREATE_LOCK_ERROR_CODE);
 }
@@ -1111,7 +1122,8 @@ export class FileSystem {
 				}
 			}
 			return sortByTaskId(decisions);
-		} catch {
+		} catch (error) {
+			recordUnreadableDirectory(error, unreadable);
 			return [];
 		}
 	}
@@ -1140,7 +1152,8 @@ export class FileSystem {
 
 			// Stable sort by title for UI/CLI listing
 			return docs.sort((a, b) => a.title.localeCompare(b.title));
-		} catch {
+		} catch (error) {
+			recordUnreadableDirectory(error, unreadable);
 			return [];
 		}
 	}

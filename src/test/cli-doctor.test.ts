@@ -289,6 +289,33 @@ describe("document and decision identity", () => {
 		expect(output).toContain("backlog/decisions/decision-2 - Broken.md");
 	});
 
+	it.skipIf(process.platform === "win32")("reports a document directory it cannot scan", async () => {
+		await writeDocument("doc-1 - Alpha.md", "doc-1", "Alpha");
+		// chmod is a no-op for root, so confirm the directory really became unreadable first.
+		await chmod(core.filesystem.docsDir, 0o000);
+		const reallyLocked = await Array.fromAsync(new Bun.Glob("*.md").scan({ cwd: core.filesystem.docsDir }))
+			.then(() => false)
+			.catch(() => true);
+		if (!reallyLocked) {
+			await chmod(core.filesystem.docsDir, 0o755);
+			return;
+		}
+
+		const result = await (async () => {
+			try {
+				return await $`bun ${cliPath} doctor`.cwd(testDir).quiet().nothrow();
+			} finally {
+				await chmod(core.filesystem.docsDir, 0o755);
+			}
+		})();
+
+		const output = `${result.stdout}${result.stderr}`;
+		expect(result.exitCode).toBe(1);
+		expect(output).not.toContain("No duplicate task, document, or decision IDs found.");
+		expect(output).toContain("Unreadable document files or directories");
+		expect(output).toContain("backlog/docs");
+	});
+
 	it("keeps valid documents readable when a sibling file cannot be parsed", async () => {
 		await writeDocument("doc-1 - Alpha.md", "doc-1", "Alpha");
 		await Bun.write(
