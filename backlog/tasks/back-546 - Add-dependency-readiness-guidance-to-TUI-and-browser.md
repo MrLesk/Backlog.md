@@ -5,7 +5,7 @@ status: Done
 assignee:
   - '@alex-agent'
 created_date: '2026-07-13 16:06'
-updated_date: '2026-08-07 23:46'
+updated_date: '2026-08-08 05:42'
 labels:
   - tui
   - web
@@ -89,6 +89,24 @@ Final verification on the built binary (dist/backlog) against a disposable proje
 - Browser: the Dependencies card shows the matching amber and green badges in light and dark themes with no console errors.
 
 Merged origin/main (BACK-593 web task-ID linking) into the branch. The merge was clean, but the full suite then failed one rendered assertion: main made the task-details modal router-dependent, so the readiness modal test now wraps it in MemoryRouter and TaskIdIndexProvider like the other modal tests. Re-verified on the merged tree: bun run test 2008 pass, 0 fail across 219 files; tsc, biome and build clean; TUI detail pane, browser modal (ready and blocked, no console errors), and task list --ready all re-checked on the rebuilt binary.
+
+Review round 2 (Codex on PR #873, ten P2s: seven accepted and fixed here, three deferred to BACK-601).
+
+1. Interactive --ready combined with --assignee, --unassigned or --parent resolved readiness against the prefiltered display list, so a dependency owned by someone else read as an unknown dependency and a blocked task could pass the filter. The interactive loader now returns the unfiltered corpus as readinessTasks, unified-view threads it to the viewer, and the viewer resolves readiness against it while still displaying only the filtered list. The one-shot plain and json paths were already correct because they used loadReadinessGraph.
+2. Duplicate canonical identities in the graph were resolved first-wins, so the verdict depended on insertion order. An identity claimed by more than one record now resolves as unresolved and fails closed, per the manifesto's rule on ambiguous identity.
+3. statuses: [] in config left no terminal status, so every dependency looked unfinished and everything was blocked. The CLI and server paths defaulted to DEFAULT_STATUSES but the interactive loader passed the empty array straight through. The default now resolves once inside createReadinessGraph, which covers every surface.
+4. A record in backlog/completed whose status is not the currently configured terminal one (renamed statuses, or history from Core.completeTask) classified as unfinished and blocked its dependents permanently. Location in the completed corpus is now the completion evidence: completed records are passed separately and satisfy a dependency whatever their status string says.
+5. The browser modal derived readiness from the persisted task.status and ignored the optimistic inline status state, so a task set to a terminal status inline still showed its blocked or ready badge until a refresh. It now depends on the edited status.
+6. Completing a task with the TUI C shortcut removed it from the display list but left the startup completed snapshot stale, so dependents immediately flipped to 'Unknown dependency'. The shortcut now moves the record from the active side of the readiness graph to the completed side.
+7. The id-to-task index was rebuilt for every evaluated candidate, which is quadratic on large ready-filters. It is built once per filter pass and passed through as a ReadinessGraph value. applyTaskFilters now takes ready?: ReadinessGraph instead of ready/statuses/readinessTasks, so readiness filtering cannot be requested without the graph it needs.
+
+Deferred to BACK-601 (created off main, low priority, labels tui+web): draft-on-draft dependencies unresolvable in the browser, the readiness filter silently dropping when tabbing to the board, and cross-branch terminal dependencies missing from the graph under checkActiveBranches.
+
+New coverage: duplicate-identity fail-closed in both insertion orders, renamed-terminal completed record, a task whose own record is completed, statuses: [] falling back to the default, readiness verdicts independent of the filters that narrowed the display list, a 2000-task scale guard that the quadratic version failed, CLI --ready with --assignee and --unassigned where the dependencies are hidden by the filter, and unified-view plumbing of the unfiltered corpus.
+
+Rendered re-verification on the rebuilt binary: task list --ready --assignee @me returns only the task whose dependency is completed; the detail pane of the assignee-filtered list reports 'Blocked by TASK-2' for a dependency that is not in the list; completing that dependency with C leaves the dependent reading '✓ Ready to start' with the record confirmed in backlog/completed; and the browser badge switches off and back on immediately when the status is changed inline, with no console errors.
+
+Verification after the review fixes: bun run test -> 2015 pass, 0 fail across 219 files, exit 0; bunx tsc --noEmit and bun run check . clean; bun run build clean. Follow-up task BACK-601 created on a branch off main so it lands independently of this PR.
 <!-- SECTION:NOTES:END -->
 
 ## Final Summary
