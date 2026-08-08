@@ -1,11 +1,11 @@
 ---
 id: BACK-585
 title: Diagnose and fix the ubuntu-latest CI test-runner flake
-status: In Progress
+status: Done
 assignee:
   - '@claude'
 created_date: '2026-08-07 17:44'
-updated_date: '2026-08-07 22:15'
+updated_date: '2026-08-08 23:03'
 labels:
   - bug
   - ci
@@ -46,17 +46,17 @@ Seen once and possibly unrelated (runner slowness), worth noting during investig
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 The failure signature (empty "N tests failed:" list plus `Cannot call describe() after the test run has completed`) no longer reproduces across repeated ubuntu-latest CI runs, and the task records the number of runs sampled as evidence
-- [ ] #2 The root cause, or the best-available explanation when the root cause cannot be proven, is documented in the task
-- [ ] #3 Any workaround applied is documented in the task, including a pointer to the upstream Bun issue if one is filed
-- [ ] #4 The resolution does not rely on rerunning failed CI jobs, and no affected test file is deleted or skipped
+- [x] #1 The failure signature (empty "N tests failed:" list plus `Cannot call describe() after the test run has completed`) no longer reproduces across repeated ubuntu-latest CI runs, and the task records the number of runs sampled as evidence
+- [x] #2 The root cause, or the best-available explanation when the root cause cannot be proven, is documented in the task
+- [x] #3 Any workaround applied is documented in the task, including a pointer to the upstream Bun issue if one is filed
+- [x] #4 The resolution does not rely on rerunning failed CI jobs, and no affected test file is deleted or skipped
 <!-- AC:END -->
 
 ## Definition of Done
 <!-- DOD:BEGIN -->
-- [ ] #1 bunx tsc --noEmit passes when TypeScript touched
-- [ ] #2 bun run check . passes when formatting/linting touched
-- [ ] #3 bun test (or scoped test) passes
+- [x] #1 bunx tsc --noEmit passes when TypeScript touched
+- [x] #2 bun run check . passes when formatting/linting touched
+- [x] #3 bun test (or scoped test) passes
 <!-- DOD:END -->
 
 ## Implementation Plan
@@ -103,4 +103,6 @@ Evidence sample and validation status:
 - Upstream: no existing Bun issue matches this signature; recommend filing one (uncatchable epoll_ctl EEXIST from process.stderr lazy construction in --parallel worker realms on Linux). Filing needs a maintainer decision since it is a public action; probe scripts and findings are preserved in this task's notes.
 
 Review outcome and maintainer decisions (2026-08-08): independent review approved the branch with no blocking findings; the two-pass full profile and the BACKLOG_TEST_SKIP_DOM_PRELOAD env gate were verified empirically, including the exact-union property (198 parallel + 15 DOM files, no overlap, no loss). Maintainer decisions recorded: (1) the two-pass CI shape is APPROVED (no longer a pending proposal); (2) NO upstream Bun issue will be filed while the Bun 1.4 test-runner rewrite is pending. One accepted simplification was applied: the hardcoded DOM_TEST_FILES list and its missing-file guard were replaced by content-derivation - the full profile scans the collected test files for a jsdom reference (/["']jsdom["']/) and adds react-dom-preload.test.ts explicitly (its jsdom load comes through react-dom-preload.ts). Re-verified after the change: full profile end-to-end with CI's exact args exits 0 and the JUnit file attributes reproduce the identical partition (198/15, disjoint, union = all 213 test files, DOM list byte-identical to the previous hardcoded 15); platform profile 389 pass / 0 fail; bunx tsc --noEmit clean; bun run check clean; full local bun run test 1909 pass / 0 fail. Task stays In Progress pending the CI-observation acceptance criterion (next PRs to main).
+
+Observation window closed 2026-08-09. Evidence for AC1: since the two-pass runner fix merged on 2026-08-07, zero recurrences of the epoll_ctl/nameless-failure signature. Sample recorded: the 11 most recent consecutive ubuntu-latest runs on main are all green, plus every ubuntu-latest job across the ~25 CI runs for PRs #875-#884 (the Aug 8-9 batch) passed with the full behavioral profile. AC3 note: no upstream Bun issue was filed by explicit owner decision (Bun 1.4 is an imminent full rewrite); the two-pass workaround in scripts/run-ci-tests.ts is the durable mitigation and is documented in the notes above. AC4: resolution is structural, no reruns were normalized, no tests deleted or skipped.
 <!-- SECTION:NOTES:END -->
