@@ -286,6 +286,27 @@ describe("MCP task tools (MVP)", () => {
 		expect(searchText).not.toContain("TASK-2 - Server search");
 	});
 
+	it("treats an explicit empty assignee as unassigned in task_create and task_edit", async () => {
+		const config = await loadConfig(mcpServer);
+		await mcpServer.filesystem.saveConfig({ ...config, defaultAssignee: ["@alice"] });
+		await mcpServer.ensureConfigLoaded();
+
+		await mcpServer.testInterface.callTool({
+			params: { name: "task_create", arguments: { title: "Default assignee applies" } },
+		});
+		expect((await mcpServer.filesystem.loadTask("task-1"))?.assignee).toEqual(["@alice"]);
+
+		await mcpServer.testInterface.callTool({
+			params: { name: "task_create", arguments: { title: "Explicitly unassigned", assignee: [] } },
+		});
+		expect((await mcpServer.filesystem.loadTask("task-2"))?.assignee).toEqual([]);
+
+		await mcpServer.testInterface.callTool({
+			params: { name: "task_edit", arguments: { id: "task-1", assignee: [] } },
+		});
+		expect((await mcpServer.filesystem.loadTask("task-1"))?.assignee).toEqual([]);
+	});
+
 	it("appends and renders task comments through task_edit and task_view", async () => {
 		await mcpServer.testInterface.callTool({
 			params: {

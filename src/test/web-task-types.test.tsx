@@ -194,6 +194,9 @@ describe("Web task type UI", () => {
 
 		expect(submitted?.title).toBe("Customer interview");
 		expect(submitted?.type).toBe("Customer Request");
+		// A blank assignee field is omitted so the configured defaultAssignee still applies;
+		// an explicit empty list means "unassigned" everywhere else.
+		expect(submitted && "assignee" in submitted).toBe(false);
 	});
 
 	it("keeps the selected type visible when create validation fails", async () => {

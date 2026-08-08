@@ -1340,9 +1340,10 @@ export class Core {
 			disableDefaults: input.disableDefinitionOfDoneDefaults,
 		});
 		const resolvedStatus = isDraft ? "Draft" : status || config?.defaultStatus || FALLBACK_STATUS;
-		// An explicit assignee replaces the configured default entirely; the default only fills an empty list.
+		// An absent assignee means "no opinion" and takes the configured default; an explicit
+		// assignee replaces it entirely, and an explicit empty list means "unassigned".
 		const resolvedAssignees =
-			normalizedAssignees.length > 0 ? normalizedAssignees : (normalizeStringList(config?.defaultAssignee) ?? []);
+			input.assignee === undefined ? (normalizeStringList(config?.defaultAssignee) ?? []) : normalizedAssignees;
 		const autoCommitEnabled = await this.shouldAutoCommit(autoCommit);
 
 		const { task, write } = await this.withCreateLock(async () => {

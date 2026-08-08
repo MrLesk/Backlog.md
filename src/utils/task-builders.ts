@@ -122,6 +122,16 @@ export function parseDelimitedStringList(value: unknown): string[] | undefined {
 }
 
 /**
+ * Parse a CLI list option that supports an explicit empty value.
+ * Returns `undefined` when the option was absent (no opinion) and `[]` when it was supplied
+ * with only blank values (explicitly empty), so callers can tell the two cases apart.
+ */
+export function parseClearableStringList(value: unknown): string[] | undefined {
+	if (value === undefined || value === null) return undefined;
+	return parseDelimitedStringList(value) ?? [];
+}
+
+/**
  * Parse a Commander option (single value or array) into a strictly positive integer list.
  * Throws an Error when any value is invalid so callers can surface CLI-friendly messaging.
  */

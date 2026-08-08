@@ -87,6 +87,7 @@ import { resolveRuntimeCwd } from "./utils/runtime-cwd.ts";
 import { formatValidStatuses, getCanonicalStatus, getCanonicalStatuses, getValidStatuses } from "./utils/status.ts";
 import {
 	normalizeDependencies,
+	parseClearableStringList,
 	parseDelimitedStringList,
 	parsePositiveIndexList,
 	processAcceptanceCriteriaOptions,
@@ -1806,7 +1807,7 @@ addHelpSchema(taskCmd.command("create [title]"), {
 			name: "assignee",
 			type: "Comma-separated strings",
 			description:
-				"Assign one or more @names; repeat -a or use @name1,@name2; omitting it applies the configured defaultAssignee",
+				'Assign one or more @names; repeat -a or use @name1,@name2; omitting it applies the configured defaultAssignee, while -a "" leaves the task unassigned',
 		},
 		{
 			name: "labels",
@@ -1843,7 +1844,7 @@ addHelpSchema(taskCmd.command("create [title]"), {
 	.option("--desc <text>", "alias for --description")
 	.option(
 		"-a, --assignee <assignees>",
-		"assign task to one or more @names (comma-separated or repeatable)",
+		'assign task to one or more @names (comma-separated or repeatable); pass "" to leave it unassigned',
 		createMultiValueAccumulator(),
 	)
 	.option("-s, --status <status>")
@@ -1968,7 +1969,7 @@ addHelpSchema(taskCmd.command("create [title]"), {
 				title: title ?? "",
 				description: options.description || options.desc ? String(options.description || options.desc) : undefined,
 				status: createAsDraft ? "Draft" : options.status ? String(options.status) : undefined,
-				assignee: parseDelimitedStringList(options.assignee),
+				assignee: parseClearableStringList(options.assignee),
 				labels: parseDelimitedStringList(options.labels),
 				dependencies: dependencies.length > 0 ? normalizeDependencies(dependencies) : undefined,
 				references: parseDelimitedStringList(options.ref),
@@ -2805,7 +2806,7 @@ addHelpSchema(taskCmd.command("edit [taskId]"), {
 		{
 			name: "assignee",
 			type: "Comma-separated strings",
-			description: "Replace all assignees; repeat -a or use @name1,@name2",
+			description: 'Replace all assignees; repeat -a or use @name1,@name2; -a "" clears them',
 		},
 		{
 			name: "label",
@@ -2879,7 +2880,7 @@ addHelpSchema(taskCmd.command("edit [taskId]"), {
 	.option("--desc <text>", "alias for --description")
 	.option(
 		"-a, --assignee <assignees>",
-		"replace all task assignees with one or more @names (comma-separated or repeatable)",
+		'replace all task assignees with one or more @names (comma-separated or repeatable); pass "" to clear them',
 		createMultiValueAccumulator(),
 	)
 	.option("-s, --status <status>")
@@ -3205,7 +3206,7 @@ addHelpSchema(taskCmd.command("edit [taskId]"), {
 		const labelValues = parseDelimitedStringList(options.label) ?? [];
 		const addLabelValues = parseDelimitedStringList(options.addLabel) ?? [];
 		const removeLabelValues = parseDelimitedStringList(options.removeLabel) ?? [];
-		const assigneeValues = parseDelimitedStringList(options.assignee) ?? [];
+		const assigneeValues = parseClearableStringList(options.assignee);
 		const acceptanceAdditions = processAcceptanceCriteriaOptions({ ac: options.ac });
 		const acceptanceReplacement = processAcceptanceCriteriaOptions({
 			acceptanceCriteria: options.acceptanceCriteria,
@@ -3276,7 +3277,7 @@ addHelpSchema(taskCmd.command("edit [taskId]"), {
 		if (removeLabelValues.length > 0) {
 			editArgs.removeLabels = removeLabelValues;
 		}
-		if (assigneeValues.length > 0) {
+		if (assigneeValues) {
 			editArgs.assignee = assigneeValues;
 		}
 		if (dependencyValues) {
@@ -3676,7 +3677,7 @@ draftCmd
 	.option("--desc <text>", "alias for --description")
 	.option(
 		"-a, --assignee <assignees>",
-		"assign draft to one or more @names (comma-separated or repeatable)",
+		'assign draft to one or more @names (comma-separated or repeatable); pass "" to leave it unassigned',
 		createMultiValueAccumulator(),
 	)
 	.option("-s, --status <status>")
@@ -3690,7 +3691,7 @@ draftCmd
 				title,
 				description: options.description || options.desc ? String(options.description || options.desc) : undefined,
 				status: "Draft",
-				assignee: parseDelimitedStringList(options.assignee),
+				assignee: parseClearableStringList(options.assignee),
 				labels: parseDelimitedStringList(options.labels),
 			});
 			console.log(`Created draft ${task.id}`);
