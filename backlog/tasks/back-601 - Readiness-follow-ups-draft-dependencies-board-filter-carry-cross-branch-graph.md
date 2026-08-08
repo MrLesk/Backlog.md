@@ -6,7 +6,7 @@ title: >-
 status: To Do
 assignee: []
 created_date: '2026-08-08 05:36'
-updated_date: '2026-08-08 08:05'
+updated_date: '2026-08-08 15:14'
 labels:
   - tui
   - web
@@ -49,4 +49,6 @@ Three dependency-readiness gaps deferred from the review of PR #873 (BACK-546), 
 
 <!-- SECTION:NOTES:BEGIN -->
 Fourth deferred item, from review round 3 of PR #873: getTaskStatistics in src/core/statistics.ts counts blocked tasks with semantics that diverge from the shared readiness helper. It matches dependencies with exact string equality (tasks.find((t) => t.id === depId)), so zero-padded or differently-prefixed IDs that canonicalTaskId treats as the same task are missed; it hard-codes the literal "Done" instead of resolving the configured terminal status, so a project that renamed its terminal status gets wrong blocked counts; and it treats an unresolvable dependency as not blocking (dep && dep.status !== "Done"), which is the opposite of the fail-closed rule readiness now applies everywhere else. This is pre-existing statistics behavior rather than a regression, but it means the statistics view and the readiness guidance can disagree about the same task. Align it with getTaskReadiness or document why the counts differ.
+
+Round-4 deferrals from PR #873 (all fail toward blocked, never falsely ready): (1) the interactive snapshot merge in task-viewer-with-search.ts collapses duplicate canonical IDs via Map before createReadinessGraph can mark the identity ambiguous — the merge path defeats the fail-closed dedup under prefiltered --ready; (2) completing a dependency outside the TUI while a unified list is open removes it from allTasks via the watcher but the completed-corpus snapshot stays stale, excluding the dependent from --ready until relaunch (sibling of the fixed C/A shortcut paths, for out-of-process changes); (3) the web modal fetches the same off-board dependency once per alias form (TASK-1 vs task-01) and passing both records to createReadinessGraph can mark the identity ambiguous against itself — dedup the fetch set by canonical ID.
 <!-- SECTION:NOTES:END -->
