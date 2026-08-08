@@ -23,7 +23,7 @@ import { DEFAULT_DIRECTORIES, DEFAULT_FILES, DEFAULT_STATUSES } from "./constant
 import { type DuplicateRepairPlan, findLocalDuplicateTaskIds } from "./core/duplicate-task-repair.ts";
 import { initializeProject } from "./core/init.ts";
 import { buildMilestoneBuckets, collectArchivedMilestoneKeys, milestoneKey } from "./core/milestones.ts";
-import { printJson, searchJson, taskListJson, taskViewJson } from "./formatters/json-output.ts";
+import { decisionListJson, printJson, searchJson, taskListJson, taskViewJson } from "./formatters/json-output.ts";
 import { formatTaskPlainText } from "./formatters/task-plain-text.ts";
 import {
 	type AgentInstructionFile,
@@ -4294,9 +4294,20 @@ addHelpSchema(docCmd.command("view <docId>"), {
 
 const decisionCmd = program.command("decision");
 
-decisionCmd
-	.command("create <title>")
-	.option("-s, --status <status>")
+addHelpSchema(decisionCmd.command("create <title>"), {
+	required: [{ name: "title", type: "String", description: "Decision title" }],
+	optional: [
+		{ name: "status", type: "String", description: "Decision status; free-form, defaults to proposed" },
+		{ name: "plain", type: "Boolean", description: "Use plain text output" },
+	],
+	writes: "Creates a decision markdown file under the configured decisions directory",
+	output: "Created decision ID",
+	examples: ['backlog decision create "Adopt Bun test runner" -s accepted --plain'],
+})
+	.description("create a decision")
+	.option("-s, --status <status>", "set decision status (free-form, defaults to proposed)")
+	// Accepted so agent guidance that always passes --plain works; create output is already plain text.
+	.option("--plain", "use plain text output")
 	.action(async (title: string, options) => {
 		const cwd = await requireProjectRoot();
 		const core = new Core(cwd);
@@ -4313,6 +4324,44 @@ decisionCmd
 		};
 		await core.createDecision(decision);
 		console.log(`Created decision ${id}`);
+	});
+
+addHelpSchema(decisionCmd.command("list"), {
+	reads: "Decisions under the configured decisions directory",
+	writes: "None; this is a read-only command",
+	required: [],
+	optional: [
+		{ name: "plain", type: "Boolean", description: "Use plain text output, which is the default for this command" },
+		{ name: "json", type: "Boolean", description: "Use versioned machine-readable JSON output" },
+	],
+	output: "Decision list with IDs, titles, and statuses; versioned JSON with --json",
+	examples: ["backlog decision list --plain", "backlog decision list --json"],
+})
+	.description("list decisions")
+	.option("--plain", "use plain text output")
+	.option("--json", "print versioned machine-readable JSON output")
+	.action(async (options) => {
+		const outputMode = getReadOutputMode(options);
+		if (!outputMode) return;
+		const cwd = await requireProjectRoot();
+		const core = new Core(cwd);
+		const decisions = await core.filesystem.listDecisions();
+
+		if (outputMode === "json") {
+			printJson(decisionListJson(decisions));
+			return;
+		}
+
+		if (decisions.length === 0) {
+			console.log("No decisions found.");
+			return;
+		}
+
+		// Decisions have no interactive detail view, so text output covers plain and TTY runs.
+		for (const decision of decisions) {
+			const status = decision.status ? ` (${decision.status})` : "";
+			console.log(`${decision.id} - ${decision.title}${status}`);
+		}
 	});
 
 // Agents command group

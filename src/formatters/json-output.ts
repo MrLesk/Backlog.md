@@ -179,6 +179,10 @@ export function taskViewJson(task: Task, projectRoot: string) {
 	return { schemaVersion: 1, kind: "task-view" as const, task: toTaskDetailsJson(task, projectRoot) };
 }
 
+export function decisionListJson(decisions: Decision[]) {
+	return { schemaVersion: 1, kind: "decision-list" as const, decisions: decisions.map(toDecisionSummaryJson) };
+}
+
 export function searchJson(results: SearchResult[], projectRoot: string, docsDir: string) {
 	const publicResults: SearchResultJson[] = [];
 	for (const result of results) {
