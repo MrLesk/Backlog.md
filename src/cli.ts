@@ -557,7 +557,12 @@ function validateClearableListInput(input: {
  * files must not silently filter on whichever one came first. Returns the resolved canonical ID so
  * filtering never runs on the raw input.
  */
-function resolveParentFilterId(tasks: Task[], parentId: string, parentDisplayId: string): string {
+async function resolveParentFilterId(
+	core: Core,
+	tasks: Task[],
+	parentId: string,
+	parentDisplayId: string,
+): Promise<string> {
 	const matches = tasks.filter((task) => taskIdsEqual(parentId, task.id));
 	if (matches.length > 1) {
 		throw new AmbiguousTaskIdError(
@@ -569,6 +574,9 @@ function resolveParentFilterId(tasks: Task[], parentId: string, parentDisplayId:
 	if (!parent) {
 		throw new Error(`Parent task ${parentDisplayId} not found.`);
 	}
+	// Called for its ambiguity check: it raises AmbiguousTaskIdError when several files claim this
+	// ID, which the corpus cannot report because it keeps one entry per ID.
+	await core.getTask(parent.id);
 	return parent.id;
 }
 
@@ -2536,7 +2544,8 @@ addHelpSchema(taskCmd.command("list"), {
 			let resolvedParentId: string | undefined;
 			if (parentId) {
 				try {
-					resolvedParentId = resolveParentFilterId(
+					resolvedParentId = await resolveParentFilterId(
+						core,
 						await core.queryTasks({ includeCrossBranch: false }),
 						parentId,
 						parentDisplayId ?? parentId,
@@ -2750,7 +2759,7 @@ addHelpSchema(taskCmd.command("list"), {
 				// Throws before anything is displayed when the parent is missing or ambiguous.
 				const resolvedParentId =
 					parentId && allTasksForParentCheck
-						? resolveParentFilterId(allTasksForParentCheck, parentId, parentDisplayId ?? parentId)
+						? await resolveParentFilterId(core, allTasksForParentCheck, parentId, parentDisplayId ?? parentId)
 						: undefined;
 
 				let sortedTasks = tasks;

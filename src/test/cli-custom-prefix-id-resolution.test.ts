@@ -293,26 +293,36 @@ describe("CLI task ID resolution with a custom ID prefix", () => {
 		expect(await core.filesystem.loadTask("BACK-3")).toBeNull();
 	});
 
-	it("fails closed instead of listing children when a parent filter ID is ambiguous", async () => {
-		const core = await initCustomPrefixProject();
-		await createTask(core, "BACK-1", "Target task");
-		await createTask(core, "BACK-1.1", "Child task", { parentTaskId: "BACK-1" });
-		const tasksDir = core.filesystem.tasksDir;
-		await Bun.write(
-			join(tasksDir, "back-01 - Duplicate-identity.md"),
-			(await Bun.file(join(tasksDir, "back-1 - Target-task.md")).text()).replace("id: BACK-1", "id: BACK-01"),
-		);
+	// Both collision shapes: a differently spelled twin (BACK-01) and an identically spelled one.
+	for (const [shape, twinFile, rewrite] of [
+		[
+			"a zero-padded twin",
+			"back-01 - Duplicate-identity.md",
+			(text: string) => text.replace("id: BACK-1", "id: BACK-01"),
+		],
+		["an identical ID", "back-1 - Duplicate-file.md", (text: string) => text],
+	] as const) {
+		it(`fails closed instead of listing children when the parent filter ID collides with ${shape}`, async () => {
+			const core = await initCustomPrefixProject();
+			await createTask(core, "BACK-1", "Target task");
+			await createTask(core, "BACK-1.1", "Child task", { parentTaskId: "BACK-1" });
+			const tasksDir = core.filesystem.tasksDir;
+			await Bun.write(
+				join(tasksDir, twinFile),
+				rewrite(await Bun.file(join(tasksDir, "back-1 - Target-task.md")).text()),
+			);
 
-		for (const parent of ["1", "BACK-1"]) {
-			const result = await $`bun ${CLI_PATH} task list --parent ${parent} --plain`.cwd(TEST_DIR).nothrow().quiet();
+			for (const parent of ["1", "BACK-1"]) {
+				const result = await $`bun ${CLI_PATH} task list --parent ${parent} --plain`.cwd(TEST_DIR).nothrow().quiet();
 
-			expect(result.exitCode).not.toBe(0);
-			const output = `${result.stdout.toString()}${result.stderr.toString()}`;
-			expect(output).toContain("Task ID BACK-1 is ambiguous");
-			// The command must fail before emitting any child task data.
-			expect(result.stdout.toString()).not.toContain("BACK-1.1 - Child task");
-		}
-	});
+				expect(result.exitCode).not.toBe(0);
+				const output = `${result.stdout.toString()}${result.stderr.toString()}`;
+				expect(output).toContain("Task ID BACK-1 is ambiguous");
+				// The command must fail before emitting any child task data.
+				expect(result.stdout.toString()).not.toContain("BACK-1.1 - Child task");
+			}
+		});
+	}
 
 	it("archives and promotes the draft file named by the argument, not by its frontmatter ID", async () => {
 		// A drifted draft file (filename draft-1, frontmatter DRAFT-2) alongside a real draft-2 must
