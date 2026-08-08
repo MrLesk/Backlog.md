@@ -7,6 +7,7 @@ import type { SearchResult, Task } from "../types/index.ts";
 import { isValidTaskId, resolveTaskById } from "../utils/task-id.ts";
 import App from "../web/App.tsx";
 import { HealthCheckProvider } from "../web/contexts/HealthCheckContext.tsx";
+import { setNativeInputValue } from "./react-dom-input.ts";
 
 const tasks: Task[] = [
 	{
@@ -552,9 +553,7 @@ const clickWithHistory = async (element: Element, expectations: FetchExpectation
 
 const setInputValue = async (input: HTMLInputElement, value: string, expectations: FetchExpectation[] = []) => {
 	await runOperation(`set input to ${JSON.stringify(value)}`, expectations, () => {
-		const valueSetter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, "value")?.set;
-		valueSetter?.call(input, value);
-		input.dispatchEvent(new window.Event("input", { bubbles: true }));
+		setNativeInputValue(input, value);
 	});
 };
 

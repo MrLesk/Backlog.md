@@ -7,6 +7,7 @@ import type { Milestone, Task } from "../types/index.ts";
 import { ThemeProvider } from "../web/contexts/ThemeContext";
 import { TaskDetailsModal } from "../web/components/TaskDetailsModal";
 import { apiClient } from "../web/lib/api.ts";
+import { setNativeInputValue } from "./react-dom-input.ts";
 
 let activeRoot: Root | null = null;
 
@@ -15,9 +16,7 @@ const setFormValue = (element: HTMLInputElement | HTMLTextAreaElement, value: st
 	globalThis.HTMLElement = ownerWindow.HTMLElement;
 	globalThis.HTMLInputElement = ownerWindow.HTMLInputElement;
 	globalThis.HTMLTextAreaElement = ownerWindow.HTMLTextAreaElement;
-	const valueSetter = Object.getOwnPropertyDescriptor(Object.getPrototypeOf(element), "value")?.set;
-	valueSetter?.call(element, value);
-	element.dispatchEvent(new ownerWindow.Event("input", { bubbles: true }));
+	setNativeInputValue(element, value);
 };
 
 const clickElement = (element: Element) => {

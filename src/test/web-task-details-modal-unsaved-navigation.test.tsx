@@ -7,6 +7,7 @@ import type { Task } from "../types/index.ts";
 import { TaskDetailsModal } from "../web/components/TaskDetailsModal";
 import { TaskIdIndexProvider } from "../web/contexts/TaskIdIndexContext.tsx";
 import { ThemeProvider } from "../web/contexts/ThemeContext";
+import { setNativeInputValue } from "./react-dom-input.ts";
 
 let activeRoot: Root | null = null;
 let activeDom: JSDOM | null = null;
@@ -116,12 +117,8 @@ const click = async (element: Element): Promise<MouseEvent> => {
 };
 
 const typeInto = async (element: HTMLInputElement | HTMLTextAreaElement, value: string) => {
-	const prototype =
-		element.tagName === "TEXTAREA" ? window.HTMLTextAreaElement.prototype : window.HTMLInputElement.prototype;
-	const setter = Object.getOwnPropertyDescriptor(prototype, "value")?.set;
 	await act(async () => {
-		setter?.call(element, value);
-		element.dispatchEvent(new window.Event("input", { bubbles: true }));
+		setNativeInputValue(element, value);
 		await Promise.resolve();
 	});
 };

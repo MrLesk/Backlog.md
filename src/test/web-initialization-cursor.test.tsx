@@ -4,6 +4,7 @@ import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import InitializationScreen from "../web/components/InitializationScreen.tsx";
 import { apiClient } from "../web/lib/api.ts";
+import { setNativeInputValue } from "./react-dom-input.ts";
 
 const originalCheckStatus = apiClient.checkStatus.bind(apiClient);
 const originalInitializeProject = apiClient.initializeProject.bind(apiClient);
@@ -21,6 +22,13 @@ function setupDom(): HTMLElement {
 	globalThis.HTMLElement = dom.window.HTMLElement;
 	globalThis.HTMLInputElement = dom.window.HTMLInputElement;
 
+	const htmlElementPrototype = window.HTMLElement.prototype as unknown as {
+		attachEvent?: () => void;
+		detachEvent?: () => void;
+	};
+	htmlElementPrototype.attachEvent ??= () => {};
+	htmlElementPrototype.detachEvent ??= () => {};
+
 	apiClient.checkStatus = async () => ({ initialized: false, projectPath: "/tmp/cursor-web-init" });
 
 	const container = document.getElementById("root");
@@ -37,9 +45,7 @@ async function click(element: Element): Promise<void> {
 
 async function setInputValue(input: HTMLInputElement, value: string): Promise<void> {
 	await act(async () => {
-		const valueSetter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, "value")?.set;
-		valueSetter?.call(input, value);
-		input.dispatchEvent(new window.Event("input", { bubbles: true }));
+		setNativeInputValue(input, value);
 		await Promise.resolve();
 	});
 }

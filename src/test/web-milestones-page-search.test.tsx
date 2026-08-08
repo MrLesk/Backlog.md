@@ -6,6 +6,7 @@ import { MemoryRouter } from "react-router-dom";
 import type { Milestone, Task } from "../types/index.ts";
 import MilestonesPage from "../web/components/MilestonesPage.tsx";
 import { apiClient } from "../web/lib/api.ts";
+import { setNativeInputValue } from "./react-dom-input.ts";
 
 const createTask = (overrides: Partial<Task>): Task => ({
 	id: "task-1",
@@ -114,8 +115,7 @@ const getSearchInput = (container: HTMLElement): HTMLInputElement => {
 const setSearchValue = (container: HTMLElement, value: string) => {
 	const input = getSearchInput(container);
 	act(() => {
-		input.value = value;
-		input.dispatchEvent(new window.Event("input", { bubbles: true }));
+		setNativeInputValue(input, value);
 	});
 };
 
@@ -127,10 +127,7 @@ const clickElement = (element: Element) => {
 
 const setInputValue = (input: HTMLInputElement, value: string) => {
 	act(() => {
-		const valueSetter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, "value")?.set;
-		valueSetter?.call(input, value);
-		input.dispatchEvent(new window.Event("input", { bubbles: true }));
-		input.dispatchEvent(new window.Event("change", { bubbles: true }));
+		setNativeInputValue(input, value);
 	});
 };
 

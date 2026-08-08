@@ -8,6 +8,7 @@ import TaskCard from "../web/components/TaskCard.tsx";
 import { TaskDetailsModal } from "../web/components/TaskDetailsModal.tsx";
 import { ThemeProvider } from "../web/contexts/ThemeContext.tsx";
 import { apiClient, type TaskUpdateRequest } from "../web/lib/api.ts";
+import { setNativeInputValue } from "./react-dom-input.ts";
 
 const createTask = (overrides: Partial<Task> = {}): Task => ({
 	id: "TASK-1",
@@ -67,19 +68,9 @@ function setupDom(): HTMLElement {
 	return container as HTMLElement;
 }
 
-// react-dom decides once, while its module is evaluated, whether it can listen for `input`
-// events. Evaluated without a DOM on globalThis - which happens whenever the jsdom preload
-// is not the module instance a realm ends up using, as under `bun test --isolate` - it falls
-// back to its legacy focus + keyup value polyfill and ignores `input` entirely, silently
-// dropping the typed value. Driving both paths keeps the value reaching onChange exactly once
-// either way: the polyfill ignores `input`, and the modern path ignores `keyup`.
 async function setInputValue(input: HTMLInputElement, value: string): Promise<void> {
 	await act(async () => {
-		input.focus();
-		const valueSetter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, "value")?.set;
-		valueSetter?.call(input, value);
-		input.dispatchEvent(new window.Event("input", { bubbles: true }));
-		input.dispatchEvent(new window.KeyboardEvent("keyup", { bubbles: true }));
+		setNativeInputValue(input, value);
 		await Promise.resolve();
 	});
 }
