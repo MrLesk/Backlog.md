@@ -727,7 +727,13 @@ try {
 				const cfg = await core.filesystem.loadConfig();
 				initialized = !!cfg;
 			}
-		} catch {
+		} catch (error) {
+			// An initialized project whose config Backlog refuses to read must not be presented as an
+			// uninitialized directory: report the value and stop, as every other entry point does.
+			if (isConfigValueError(error)) {
+				console.error(error.message);
+				process.exit(1);
+			}
 			initialized = false;
 		}
 

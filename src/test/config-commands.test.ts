@@ -421,17 +421,41 @@ describe("Config commands", () => {
 		expect(core.filesystem.parseConfig('project_name: "P"\n  statuses: ["spaced"]\n').statuses).toEqual(["spaced"]);
 	});
 
-	it("exits non-zero with the config error when a list value is not valid YAML", async () => {
+	it("resolves a YAML alias against the anchor defined under another key", () => {
+		// An alias only has meaning in document context, so a list value that uses one must still
+		// resolve even though each key's own block is what gets parsed.
+		const shared = core.filesystem.parseConfig(
+			'project_name: "P"\nstatuses: &workflow [To Do, Done]\nlabels: *workflow\n',
+		);
+		expect(shared.statuses).toEqual(["To Do", "Done"]);
+		expect(shared.labels).toEqual(["To Do", "Done"]);
+
+		const scalarAnchor = core.filesystem.parseConfig('project_name: "P"\ndefault_status: &s "To Do"\nstatuses: [*s]\n');
+		expect(scalarAnchor.statuses).toEqual(["To Do"]);
+
+		// Document context must not rescue a value that is genuinely malformed.
+		expect(() => core.filesystem.parseConfig('project_name: "P"\nstatuses: ["To Do]\n')).toThrow(
+			'invalid value for "statuses"',
+		);
+	});
+
+	it("exits non-zero with the config error at every entry point that reads config", async () => {
 		const configPath = core.filesystem.configFilePath;
 		const baseConfig = await Bun.file(configPath).text();
 		await Bun.write(configPath, `${baseConfig}statuses: ["To Do]\n`);
 
-		const listed = await $`bun ${CLI_PATH} task list --plain`.cwd(TEST_DIR).nothrow().quiet();
-		const stderr = listed.stderr.toString();
-		expect(listed.exitCode).not.toBe(0);
-		expect(stderr).toContain("Backlog could not start because");
-		expect(stderr).toContain('invalid value for "statuses"');
-		expect(stderr).not.toContain("at parseConfig");
+		// Bare invocation must not report an initialized project as uninitialized, the empty-list fast
+		// path must not hide the failure, and MCP startup must not bury the message behind a summary.
+		for (const args of [["task", "list", "--plain"], ["--plain"], ["draft", "list", "--plain"], ["mcp", "start"]]) {
+			const result = await $`bun ${CLI_PATH} ${args}`.cwd(TEST_DIR).nothrow().quiet();
+			const stderr = result.stderr.toString();
+			expect(result.exitCode).not.toBe(0);
+			expect(stderr).toStartWith("Backlog could not start because");
+			expect(stderr).toContain('invalid value for "statuses"');
+			expect(stderr).not.toContain("at parseConfig");
+			expect(result.stdout.toString()).not.toContain("not initialized");
+			expect(result.stdout.toString()).not.toContain("No drafts found");
+		}
 	});
 
 	it("clears defaultEditor via config set with an explicitly empty value", async () => {

@@ -120,13 +120,22 @@ export function isConfigValueError(error: unknown): error is Error {
 	return error instanceof Error && error.name === CONFIG_VALUE_ERROR_NAME;
 }
 
+/** Read one key from a YAML document, reporting the parse error instead of a value when invalid. */
+function readYamlKey(document: string, key: string): { value: unknown } | { error: unknown } {
+	try {
+		return { value: (Bun.YAML.parse(document) as Record<string, unknown> | null)?.[key] };
+	} catch (error) {
+		return { error };
+	}
+}
+
 /**
  * Parse one list-valued config key as YAML, so quoting, escapes, block sequences, and trailing
- * comments are handled by the parser instead of by hand. Only the key's own block is parsed, so a
- * malformed value for one key cannot change how another key reads. Throws when YAML rejects the
- * block, so callers fail fast rather than proceed with a guessed value. Returns nothing when the
- * key is absent, carries no value, or holds a shape it cannot represent; `default_assignee` also
- * accepts a single scalar.
+ * comments are handled by the parser instead of by hand. The key's own block is what gets parsed, so a
+ * malformed value for one key cannot change how another key reads; only a block YAML rejects outright
+ * is reread in document context, where aliases resolve. Throws when neither read succeeds, so callers
+ * fail fast rather than proceed with a guessed value. Returns nothing when the key is absent, carries
+ * no value, or holds a shape it cannot represent; `default_assignee` also accepts a single scalar.
  */
 function parseConfigListValue(content: string, key: ConfigListKey, configPath: string): string[] | undefined {
 	const block = extractConfigKeyYaml(content, key);
@@ -134,11 +143,19 @@ function parseConfigListValue(content: string, key: ConfigListKey, configPath: s
 		return undefined;
 	}
 
+	const fromBlock = readYamlKey(block, key);
 	let parsed: unknown;
-	try {
-		parsed = (Bun.YAML.parse(block) as Record<string, unknown> | null)?.[key];
-	} catch (error) {
-		throw configValueError(configPath, key, error);
+	if ("value" in fromBlock) {
+		parsed = fromBlock.value;
+	} else {
+		// An alias resolves only against the anchors defined elsewhere in the file, so a block YAML
+		// rejects on its own gets one more read in document context before it counts as broken. The
+		// document is never read first: doing that is what let one broken key change how another reads.
+		const fromDocument = readYamlKey(content, key);
+		if (!("value" in fromDocument)) {
+			throw configValueError(configPath, key, fromBlock.error);
+		}
+		parsed = fromDocument.value;
 	}
 
 	// `key:` with no value, including the first line of a block sequence.

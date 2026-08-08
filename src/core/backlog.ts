@@ -1,7 +1,7 @@
 import { rename as moveFile, readFile, stat, unlink, writeFile } from "node:fs/promises";
 import { basename, isAbsolute, join, relative } from "node:path";
 import { DEFAULT_DIRECTORIES, DEFAULT_STATUSES, FALLBACK_STATUS } from "../constants/index.ts";
-import { FileSystem, isCreateLockError } from "../file-system/operations.ts";
+import { FileSystem, isConfigValueError, isCreateLockError } from "../file-system/operations.ts";
 import { type GitIndexEntry, GitOperations } from "../git/operations.ts";
 import { parseFrontmatter } from "../markdown/frontmatter.ts";
 import {
@@ -781,6 +781,11 @@ export class Core {
 			const config = await this.fs.loadConfig();
 			this.git.setConfig(config);
 		} catch (error) {
+			// A config value Backlog refuses to read is the user's to fix and must reach the command;
+			// only the recoverable git-configuration failures this guard exists for are suppressed.
+			if (isConfigValueError(error)) {
+				throw error;
+			}
 			// Config loading failed, git operations will work with null config
 			if (process.env.DEBUG) {
 				console.warn("Failed to load config for git operations:", error);

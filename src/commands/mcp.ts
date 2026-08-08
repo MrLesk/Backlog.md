@@ -6,6 +6,7 @@
  */
 
 import type { Command } from "commander";
+import { isConfigValueError } from "../file-system/operations.ts";
 import { createMcpServer } from "../mcp/server.ts";
 import { findBacklogRoot } from "../utils/find-backlog-root.ts";
 import { resolveRuntimeCwd } from "../utils/runtime-cwd.ts";
@@ -98,8 +99,14 @@ function registerStartCommand(mcpCmd: Command): void {
 					process.once("SIGPIPE", () => shutdown("SIGPIPE"));
 				}
 			} catch (error) {
-				const message = error instanceof Error ? error.message : String(error);
-				console.error(`Failed to start MCP server: ${message}`);
+				// A config value Backlog refuses to read already names the file, the key, and the fix,
+				// so it is reported as written instead of behind a startup summary.
+				if (isConfigValueError(error)) {
+					console.error(error.message);
+				} else {
+					const message = error instanceof Error ? error.message : String(error);
+					console.error(`Failed to start MCP server: ${message}`);
+				}
 				process.exit(1);
 			}
 		});

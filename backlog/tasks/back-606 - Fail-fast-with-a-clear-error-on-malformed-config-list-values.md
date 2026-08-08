@@ -5,7 +5,7 @@ status: Done
 assignee:
   - '@Claude'
 created_date: '2026-08-08 15:56'
-updated_date: '2026-08-08 17:25'
+updated_date: '2026-08-08 17:52'
 labels: []
 dependencies: []
 ordinal: 245000
@@ -75,6 +75,26 @@ New regression test 'reads the config key at column 0, not an indented look-alik
 Also rebased onto origin/main after #875 (shared no-cache parseFrontmatter wrapper) and #876 merged. One conflict, in src/file-system/operations.ts: #875 had migrated the old whole-document parseConfigListValues to parseFrontmatter, and this task deletes that method outright, so the deletion stands; the surviving definition_of_done parse uses parseFrontmatter, and no module outside src/markdown/frontmatter.ts imports gray-matter.
 
 Validation on the final head: bunx tsc --noEmit clean, bun run check . clean (369 files), bun run test 2076 pass / 6 skip / 0 fail across 223 files. The earlier note's 2062 figure predates the rebase; upstream test additions account for the difference.
+
+Second review cycle (Codex, 8 P2 threads on PR #877). Triaged each against origin/main before believing it.
+
+Fixed (5) MCP startup prefix: src/commands/mcp.ts printed 'Failed to start MCP server: Backlog could not start because ...', so the required phrase was not at the start. Config value errors are now printed as written.
+
+Fixed (6) MCP fallback root: upgradeToProject loaded the config after reinitializing to a candidate root, so a rejected value escaped, aborted the whole roots loop at the outer catch, and left the server pointed at the bad root with fallback registrations. It now restores the previous root, logs the skip, and continues with the remaining roots, exactly like the existing no-config branch. New test in src/test/mcp-roots-discovery.test.ts; confirmed non-vacuous (without the fix the client sees tools: []).
+
+Fixed (7) bare CLI: bare 'backlog' and 'backlog --plain' caught the error in the pre-dispatch probe and printed 'This directory is not initialized for Backlog.md.' with exit 0, actively misdiagnosing an initialized project. Config value errors now print and exit non-zero.
+
+Fixed (8) Core.ensureConfigLoaded: it suppressed the error, so 'draft list --plain' with no drafts took its empty-list fast path and exited 0 with 'No drafts found.'. It now rethrows config value errors and still suppresses the recoverable git-configuration failures it exists for.
+
+Fixed (1) YAML aliases: a valid config that defines an anchor under one key and aliases it from another ('statuses: &workflow [To Do, Done]' with 'labels: *workflow') aborted every command with 'Unresolved alias', because an alias only resolves against the whole document. When a key's own block is rejected, the value is now read once more in document context before it counts as broken; the document is never read first, so cross-key isolation is preserved and genuinely malformed values still fail fast. Verified against origin/main: the alias shapes now match it exactly.
+
+Refuted (2) quoted keys: origin/main also ignores '"statuses": [...]'. Its whole-document parse did contain the key, but parseConfig's switch is driven by the raw line key ('"statuses"' including quotes), which matches no case, so the value was never assigned. Probed both heads: main and this branch both fall back to default statuses for quoted, single-quoted, and malformed-quoted keys. No behavior change, nothing to fix.
+
+Mostly refuted (3) key-like text in scalars: four of the five shapes probed (inline DoD item text, indented literal block scalar, block sequence item text, onStatusChange block scalar) behave identically on both heads, because the column-0 rule from the previous round already outranks indented look-alikes. One exotic shape does diverge: a multi-line double-quoted flow scalar whose continuation sits at column 0 and begins with a list-key name ('definition_of_done: ["run' / 'statuses: fake"]') lets that line hijack the real key, so statuses falls back to defaults where main returned the configured list. Not patched: distinguishing a column-0 line inside another key's multi-line scalar requires tracking YAML scalar state, i.e. growing the line extractor into a YAML parser. The alternative is a document-parse-first design with per-key isolation only on document failure, which would fix this and honor quoted keys but changes several other shapes; escalated as a design decision rather than patched.
+
+Reported, not decided (4) watcher wrong-type shapes: measured both heads with a live watcher. On origin/main, 'default_assignee: {name: "@alice"}' and 'default_assignee: 42' publish nothing and the cached ['@alice'] is retained. On this branch the candidate is published with defaultAssignee undefined, so the configured assignee is silently dropped at runtime. This is the direct effect of removing the watcher's per-line assignee shape check; it belongs to the wrong-typed-config question already escalated to the owner. Restoring the two-line check would return exact main parity at the cost of duplicating the rule.
+
+Rebased onto origin/main again (BACK-603 #878) with no conflicts. The 51-case parse matrix is unchanged by this round; against main the only remaining diffs are the intended fail-fast rows plus the two documented strictness rows.
 <!-- SECTION:NOTES:END -->
 
 ## Final Summary
