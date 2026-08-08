@@ -5,7 +5,7 @@ status: Done
 assignee:
   - '@alex-agent'
 created_date: '2026-07-13 16:06'
-updated_date: '2026-08-08 05:42'
+updated_date: '2026-08-08 05:54'
 labels:
   - tui
   - web
@@ -107,6 +107,8 @@ New coverage: duplicate-identity fail-closed in both insertion orders, renamed-t
 Rendered re-verification on the rebuilt binary: task list --ready --assignee @me returns only the task whose dependency is completed; the detail pane of the assignee-filtered list reports 'Blocked by TASK-2' for a dependency that is not in the list; completing that dependency with C leaves the dependent reading '✓ Ready to start' with the record confirmed in backlog/completed; and the browser badge switches off and back on immediately when the status is changed inline, with no console errors.
 
 Verification after the review fixes: bun run test -> 2015 pass, 0 fail across 219 files, exit 0; bunx tsc --noEmit and bun run check . clean; bun run build clean. Follow-up task BACK-601 created on a branch off main so it lands independently of this PR.
+
+Integrated a merge commit that had been pushed to the remote branch (a merge of main into the pre-fix branch state) instead of force-pushing over it. The result is content-identical to the review fixes: readiness.ts, task-search.ts, task-viewer-with-search.ts, unified-view.ts and TaskDetailsModal.tsx are byte-identical to the fix commit, and cli.ts differs only by main's decision-list and defaultAssignee changes. Re-verified: bun run test 2031 pass, 0 fail across 219 files; tsc, biome and build clean.
 <!-- SECTION:NOTES:END -->
 
 ## Final Summary
