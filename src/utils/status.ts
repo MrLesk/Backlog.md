@@ -1,5 +1,5 @@
 import { DEFAULT_STATUSES } from "../constants/index.ts";
-import { Core } from "../core/backlog.ts";
+import { type Core, createRuntimeCore } from "../core/backlog.ts";
 
 type StatusConfigReader = Pick<Core, "filesystem">;
 
@@ -7,7 +7,7 @@ type StatusConfigReader = Pick<Core, "filesystem">;
  * Load valid statuses from project configuration.
  */
 export async function getValidStatuses(core?: StatusConfigReader): Promise<string[]> {
-	const c = core ?? new Core(process.cwd());
+	const c = core ?? (await createRuntimeCore());
 	const config = await c.filesystem.loadConfig();
 	return config?.statuses && config.statuses.length > 0 ? config.statuses : [...DEFAULT_STATUSES];
 }

@@ -102,6 +102,7 @@ export async function runEnhancedViews(options: EnhancedViewOptions): Promise<vo
 
 				// Now show the kanban board
 				await renderBoardTuiWithSwitching(tasks, statuses, {
+					core: options.core,
 					viewSwitcher,
 					onTaskSelect: (task) => {
 						// When user selects a task in kanban, prepare for potential switch back
@@ -119,6 +120,7 @@ export async function runEnhancedViews(options: EnhancedViewOptions): Promise<vo
 		} else {
 			// Data is ready, show kanban board immediately
 			await renderBoardTuiWithSwitching(state.kanbanData.tasks, state.kanbanData.statuses, {
+				core: options.core,
 				viewSwitcher,
 				onTaskSelect: (task) => {
 					viewSwitcher?.updateState({
@@ -171,13 +173,14 @@ async function viewTaskEnhancedWithSwitching(
 async function renderBoardTuiWithSwitching(
 	tasks: Task[],
 	statuses: string[],
-	_options: {
+	options: {
+		core: Core;
 		viewSwitcher?: ViewSwitcher;
 		onTaskSelect?: (task: Task) => void;
 	},
 ): Promise<void> {
 	// Get config for layout and column width
-	const core = new (await import("../core/backlog.ts")).Core(process.cwd());
+	const core = options.core;
 	const config = await core.filesystem.loadConfig();
 	const layout = "horizontal" as const; // Default layout
 	const maxColumnWidth = config?.maxColumnWidth || 20;
@@ -185,6 +188,7 @@ async function renderBoardTuiWithSwitching(
 	// For now, use the original function but we'll need to modify it to support Tab switching
 	// This is a placeholder - we'll need to modify the actual board.ts
 	return renderBoardTui(tasks, statuses, layout, maxColumnWidth, {
+		core,
 		dateFormat: config?.dateFormat,
 		projectName: config?.projectName,
 		priorities: config?.priorities,

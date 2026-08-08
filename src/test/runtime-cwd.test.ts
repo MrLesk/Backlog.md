@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import { mkdir, mkdtemp, realpath, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { createRuntimeCore } from "../core/backlog.ts";
 import { BACKLOG_CWD_ENV, resolveRuntimeCwd } from "../utils/runtime-cwd.ts";
 
 describe("resolveRuntimeCwd", () => {
@@ -78,5 +79,29 @@ describe("resolveRuntimeCwd", () => {
 		process.env[BACKLOG_CWD_ENV] = join(testDir, "missing");
 
 		await expect(resolveRuntimeCwd()).rejects.toThrow(`Invalid directory from ${BACKLOG_CWD_ENV}`);
+	});
+
+	describe("createRuntimeCore", () => {
+		it("binds the Core to process.cwd() when no override is provided", async () => {
+			const core = await createRuntimeCore();
+
+			await expectCanonicalPath(core.filesystem.rootDir, testDir);
+		});
+
+		it("binds the Core to BACKLOG_CWD when the override is provided", async () => {
+			const projectDir = join(testDir, "workspace", "project");
+			await mkdir(projectDir, { recursive: true });
+			process.env[BACKLOG_CWD_ENV] = projectDir;
+
+			const core = await createRuntimeCore();
+
+			await expectCanonicalPath(core.filesystem.rootDir, projectDir);
+		});
+
+		it("fails closed when BACKLOG_CWD points at a missing directory", async () => {
+			process.env[BACKLOG_CWD_ENV] = join(testDir, "missing");
+
+			await expect(createRuntimeCore()).rejects.toThrow(`Invalid directory from ${BACKLOG_CWD_ENV}`);
+		});
 	});
 });

@@ -1,5 +1,5 @@
 import { basename, join } from "node:path";
-import { Core } from "../core/backlog.ts";
+import { type Core, createRuntimeCore } from "../core/backlog.ts";
 import type { Task } from "../types/index.ts";
 import { AmbiguousIdError } from "./entity-id.ts";
 import {
@@ -76,7 +76,7 @@ export function extractTaskIdFromFilename(filename: string): string | null {
  * For numeric-only IDs, automatically detects the prefix from existing files.
  */
 export async function getTaskPath(taskId: string, core?: Core | TaskPathContext): Promise<string | null> {
-	const coreInstance = core || new Core(process.cwd());
+	const coreInstance = core || (await createRuntimeCore());
 	const activeMatches = await findMatchingTaskPaths(coreInstance.filesystem.tasksDir, taskId);
 	const completedMatches = coreInstance.filesystem.completedDir
 		? await findMatchingTaskPaths(coreInstance.filesystem.completedDir, taskId)

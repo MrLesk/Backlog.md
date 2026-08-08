@@ -1,4 +1,4 @@
-import { Core } from "../index.ts";
+import { type Core, createRuntimeCore } from "../core/backlog.ts";
 import type { BacklogConfig } from "../types/index.ts";
 import { getPriorityValues } from "../utils/priority-config.ts";
 import { getTaskTypeValues } from "../utils/task-type-config.ts";
@@ -6,18 +6,11 @@ import { getTaskTypeValues } from "../utils/task-type-config.ts";
 type CoreCallback<T> = (core: Core) => Promise<T>;
 
 /**
- * Create a Core instance bound to the current working directory.
- */
-function createCore(): Core {
-	return new Core(process.cwd());
-}
-
-/**
  * Execute a callback with a Core instance, returning a fallback value if anything fails.
  */
 async function withCore<T>(callback: CoreCallback<T>, fallback: T): Promise<T> {
 	try {
-		const core = createCore();
+		const core = await createRuntimeCore();
 		return await callback(core);
 	} catch {
 		return fallback;

@@ -48,6 +48,7 @@ import {
 	normalizeId,
 } from "../utils/prefix-config.ts";
 import { formatValidPriorityValues, normalizePriorityValue, resolvePriorityValue } from "../utils/priority-config.ts";
+import { resolveRuntimeCwd } from "../utils/runtime-cwd.ts";
 import {
 	getCanonicalStatus as resolveCanonicalStatus,
 	getValidStatuses as resolveValidStatuses,
@@ -3293,4 +3294,14 @@ export class Core {
 			identityIndex,
 		};
 	}
+}
+
+/**
+ * Builds a Core bound to the working directory every interface resolves the same way
+ * (`--cwd`/`BACKLOG_CWD`, else `process.cwd()`). Prefer passing an existing Core; use this
+ * only where no instance is available.
+ */
+export async function createRuntimeCore(options?: { enableWatchers?: boolean }): Promise<Core> {
+	const { cwd } = await resolveRuntimeCwd();
+	return new Core(cwd, options);
 }
