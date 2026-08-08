@@ -67,11 +67,19 @@ function setupDom(): HTMLElement {
 	return container as HTMLElement;
 }
 
+// react-dom decides once, while its module is evaluated, whether it can listen for `input`
+// events. Evaluated without a DOM on globalThis - which happens whenever the jsdom preload
+// is not the module instance a realm ends up using, as under `bun test --isolate` - it falls
+// back to its legacy focus + keyup value polyfill and ignores `input` entirely, silently
+// dropping the typed value. Driving both paths keeps the value reaching onChange exactly once
+// either way: the polyfill ignores `input`, and the modern path ignores `keyup`.
 async function setInputValue(input: HTMLInputElement, value: string): Promise<void> {
 	await act(async () => {
+		input.focus();
 		const valueSetter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, "value")?.set;
 		valueSetter?.call(input, value);
 		input.dispatchEvent(new window.Event("input", { bubbles: true }));
+		input.dispatchEvent(new window.KeyboardEvent("keyup", { bubbles: true }));
 		await Promise.resolve();
 	});
 }
@@ -85,14 +93,21 @@ async function setSelectValue(select: HTMLSelectElement, value: string): Promise
 	});
 }
 
+// A fixed number of event-loop turns is a budget of milliseconds on a fast machine and the
+// same milliseconds on a slow one, so the wait is bounded by wall clock instead, and reports
+// what it was waiting for rather than `expected true, received false`.
+const WAIT_FOR_TIMEOUT_MS = 4000;
+
 async function waitFor(predicate: () => boolean): Promise<void> {
-	for (let attempts = 0; attempts < 20; attempts += 1) {
-		if (predicate()) return;
+	const deadline = Date.now() + WAIT_FOR_TIMEOUT_MS;
+	while (!predicate()) {
+		if (Date.now() >= deadline) {
+			throw new Error(`Timed out after ${WAIT_FOR_TIMEOUT_MS}ms waiting for ${predicate}`);
+		}
 		await act(async () => {
-			await new Promise((resolve) => setTimeout(resolve, 0));
+			await new Promise((resolve) => setTimeout(resolve, 5));
 		});
 	}
-	expect(predicate()).toBe(true);
 }
 
 afterEach(() => {
