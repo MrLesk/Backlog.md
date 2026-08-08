@@ -3,6 +3,7 @@ import { mkdir } from "node:fs/promises";
 import { $ } from "bun";
 import type { PromptRunner } from "../commands/advanced-config-wizard.ts";
 import { configureAdvancedSettings } from "../commands/configure-advanced-settings.ts";
+import { DEFAULT_STATUSES } from "../constants/index.ts";
 import { Core } from "../core/backlog.ts";
 import { getTestCliPath } from "./test-cli.ts";
 import { createUniqueTestDir, initializeFilesystemTestProject, safeCleanup } from "./test-utils.ts";
@@ -383,6 +384,53 @@ describe("Config commands", () => {
 				expect(failure).toContain(`invalid value for "${key}"`);
 			}
 		}
+	});
+
+	it("refuses to load a list config value YAML reads but the key cannot hold, naming the type problem", async () => {
+		const configPath = core.filesystem.configFilePath;
+		const baseConfig = await Bun.file(configPath).text();
+
+		for (const key of ["statuses", "labels", "types", "priorities", "default_assignee"]) {
+			// A single name is the legacy spelling of default_assignee, so only that key accepts a scalar.
+			const wrongTyped = [
+				[`${key}: {name: "@alice"}`, "a mapping"],
+				[`${key}: 42`, "a number"],
+				[`${key}: true`, "a boolean"],
+				...(key === "default_assignee" ? [] : [[`${key}: To Do`, "a scalar"]]),
+			];
+			const expected = key === "default_assignee" ? "a list or a single name" : "a list";
+
+			for (const [line, shape] of wrongTyped) {
+				await Bun.write(configPath, `${baseConfig}${line}\n`);
+				core.filesystem.invalidateConfigCache();
+
+				const failure = await core.filesystem.loadConfig().then(
+					() => undefined,
+					(error: unknown) => (error instanceof Error ? error.message : String(error)),
+				);
+				expect(failure).toBeDefined();
+				expect(failure).toStartWith("Backlog could not start because");
+				expect(failure).toContain(configPath);
+				expect(failure).toContain(`invalid value for "${key}"`);
+				expect(failure).toContain(`expected ${expected}, got ${shape}`);
+			}
+		}
+	});
+
+	it("still accepts the value shapes a list key legitimately has", () => {
+		// Strictness must not reach an explicitly empty value, a legacy single assignee name, or a list.
+		expect(core.filesystem.parseConfig('project_name: "P"\nstatuses:\n').statuses).toEqual([...DEFAULT_STATUSES]);
+		expect(core.filesystem.parseConfig('project_name: "P"\nstatuses: []\n').statuses).toEqual([]);
+		expect(core.filesystem.parseConfig('project_name: "P"\nlabels:\n').labels).toEqual([]);
+		expect(core.filesystem.parseConfig('project_name: "P"\ndefault_assignee: "@alex"\n').defaultAssignee).toEqual([
+			"@alex",
+		]);
+		expect(core.filesystem.parseConfig('project_name: "P"\ndefault_assignee:\n').defaultAssignee).toEqual([]);
+		expect(core.filesystem.parseConfig('project_name: "P"\ndefault_assignee:\n  - "@a"\n').defaultAssignee).toEqual([
+			"@a",
+		]);
+		// Numbers inside a list are still coerced to their written form rather than rejected.
+		expect(core.filesystem.parseConfig('project_name: "P"\nstatuses: [1, 2]\n').statuses).toEqual(["1", "2"]);
 	});
 
 	it("keeps a malformed list value from changing how another list key reads", () => {

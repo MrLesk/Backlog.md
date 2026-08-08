@@ -197,7 +197,9 @@ describe("config watcher", () => {
 		];
 		const withAssignee = (line: string) => [baseLines[0], line, ...baseLines.slice(1), ""].join("\n");
 		// Truncated mid-edit and an unbalanced quote that still opens and closes with brackets, then two
-		// values YAML reads but the key cannot hold: publishing either would drop the cached assignee.
+		// values YAML reads but the key cannot hold. default_assignee is the key that proves the shared
+		// parser rejects wrong types: the other list keys are also screened by the inline-array check,
+		// but this one accepts scalars and block sequences, so only the parser can judge it.
 		const invalidContents = [
 			withAssignee('default_assignee: ["@alice'),
 			withAssignee('default_assignee: ["@alice]'),
