@@ -315,5 +315,14 @@ describe("rendered readiness guidance", () => {
 		// Same rule as the TUI: no readiness copy without dependencies, or once the task is done.
 		expect(renderModal(noDepsTask)).not.toContain("Ready to start");
 		expect(renderModal(doneDep)).not.toContain("Ready to start");
+
+		// A direct link can open a completed task whose historical status is no longer the configured
+		// terminal one. Its location in the completed corpus still means the work is finished, so the
+		// modal must not offer it as ready to start.
+		const routedCompletedTask: Task = {
+			...makeTask("BACK-7", "Shipped", ["BACK-1"]),
+			source: "completed",
+		};
+		expect(renderModal(routedCompletedTask)).not.toContain("Ready to start");
 	});
 });

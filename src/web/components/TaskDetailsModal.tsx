@@ -358,11 +358,14 @@ export const TaskDetailsModal: React.FC<Props> = ({
   // Only meaningful while dependencies exist and the task has not been completed.
   const readiness = useMemo(() => {
     if (!task || dependencies.length === 0) return null;
-    // A dependency resolved outside the board corpus came from backlog/completed, where the
-    // record's location is the completion evidence rather than its status string.
+    // Records resolved outside the board corpus come from backlog/completed, where the record's
+    // location is the completion evidence rather than its status string. That applies to the open
+    // task itself as well: a direct link can open a completed task whose historical status is no
+    // longer the configured terminal one.
+    const offBoard = [...offBoardDependencies, ...(task.source === "completed" ? [task] : [])];
     const graph = createReadinessGraph({
-      tasks: [...availableTasks, ...offBoardDependencies.filter((dep) => dep.source !== "completed")],
-      completedTasks: offBoardDependencies.filter((dep) => dep.source === "completed"),
+      tasks: [...availableTasks, ...offBoard.filter((entry) => entry.source !== "completed")],
+      completedTasks: offBoard.filter((entry) => entry.source === "completed"),
       statuses: availableStatuses,
     });
     const result = getTaskReadiness({ ...task, dependencies, status }, graph);

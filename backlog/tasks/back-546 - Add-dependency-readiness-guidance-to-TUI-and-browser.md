@@ -5,7 +5,7 @@ status: Done
 assignee:
   - '@alex-agent'
 created_date: '2026-07-13 16:06'
-updated_date: '2026-08-08 05:54'
+updated_date: '2026-08-08 07:55'
 labels:
   - tui
   - web
@@ -109,6 +109,16 @@ Rendered re-verification on the rebuilt binary: task list --ready --assignee @me
 Verification after the review fixes: bun run test -> 2015 pass, 0 fail across 219 files, exit 0; bunx tsc --noEmit and bun run check . clean; bun run build clean. Follow-up task BACK-601 created on a branch off main so it lands independently of this PR.
 
 Integrated a merge commit that had been pushed to the remote branch (a merge of main into the pre-fix branch state) instead of force-pushing over it. The result is content-identical to the review fixes: readiness.ts, task-search.ts, task-viewer-with-search.ts, unified-view.ts and TaskDetailsModal.tsx are byte-identical to the fix commit, and cli.ts differs only by main's decision-list and defaultAssignee changes. Re-verified: bun run test 2031 pass, 0 fail across 219 files; tsc, biome and build clean.
+
+Review round 3 (Codex on PR #873): three accepted, one deferred. All three are fixed, but two of the accepted findings do not reproduce as described, and that is worth recording.
+
+1. filtersActive omitted options.readyFilter, so the first render was not routed through applyFilters(). Fixed by listing readyFilter with the other narrowing filters. However the claimed symptom, that interactive 'task list --ready' never filters, is NOT reproducible: unified-view's subscribeUpdates calls emitTaskListUpdate() synchronously on subscription, and that callback ends in applyFilters(), so the list is always filtered before anything is painted. Verified directly by reverting the one-line fix and rendering in a PTY: 'task list --ready' still showed Tasks (2) with the blocked task excluded and no unfiltered flash. Today unified-view is the only caller that passes readyFilter, so the defect was latent. The fix is still right: a narrowing filter should gate the initial render on its own rather than depend on an incidental initial emit from the caller.
+2. The A archive shortcut left the archived task in readinessSnapshot. Fixed by dropping the record from the snapshot for both lifecycle actions and re-adding only a completed one as completion evidence, so an archived dependency reads as unresolvable rather than as still-blocking. The claimed stale verdict also does not reproduce through the shortcut: archiving rewrites dependents' frontmatter to drop the reference, so in a rendered check the dependent simply lost its Dependencies and Readiness lines. The fix matters when the in-memory record has not caught up.
+3. Genuine user-visible bug, reproduced and now covered by a test. A completed task opened by direct link, whose historical status is no longer the configured terminal status, was absent from the completed side of the graph, so the modal offered it as '✓ Ready to start'. The open task's own completed-corpus membership is now treated as completion evidence, the same location-is-evidence rule already used for dependencies. Reverting the fix makes the new assertion fail with the badge present in the rendered HTML.
+
+Testing: added src/test/tui-ready-filter-pty.test.ts, an expect-driven PTY test asserting the interactive --ready render never lists the blocked task, following the project's existing RUN_INTERACTIVE_TUI_TESTS convention, and wired it into the CI step that runs interactive TUI tests against the compiled binary. Note that it passes with and without fix 1 for the reason above, so it guards the end-to-end behavior rather than proving that one line. The routed-completed-task case is covered by an assertion in readiness.test.tsx that does fail without its fix.
+
+Deferred item 4 appended to BACK-601: getTaskStatistics counts blockers with exact-ID matching and a hard-coded 'Done'.
 <!-- SECTION:NOTES:END -->
 
 ## Final Summary

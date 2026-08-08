@@ -330,6 +330,9 @@ export async function viewTaskEnhanced(
 		labelFilter = options.labelFilter.filter((label) => availableSet.has(label.toLowerCase()));
 	}
 
+	// Decides whether the first render goes through applyFilters(). Every filter that narrows the
+	// list has to be listed here, or the flag that set it silently does nothing until something
+	// else triggers a refilter.
 	const filtersActive = Boolean(
 		searchQuery ||
 			statusFilter ||
@@ -338,6 +341,7 @@ export async function viewTaskEnhanced(
 			priorityFilter ||
 			labelFilter.length > 0 ||
 			milestoneFilter ||
+			options.readyFilter ||
 			taskLimit !== undefined,
 	);
 	let requireInitialFilterSelection = filtersActive;
@@ -1302,10 +1306,11 @@ export async function viewTaskEnhanced(
 						};
 
 			if (result.success) {
+				// The record just left the active corpus, so drop it from the readiness graph. A
+				// completed one is re-added as completion evidence; an archived one is simply gone, and
+				// its dependents honestly report it as an unresolvable dependency from now on.
+				readinessSnapshot = readinessSnapshot?.filter((candidate) => !taskIdsEqual(candidate.id, task.id)) ?? null;
 				if (action === "complete") {
-					// The record just moved into the completed corpus. Move it in the readiness graph too,
-					// or dependents would immediately report it as an unknown dependency.
-					readinessSnapshot = readinessSnapshot?.filter((candidate) => !taskIdsEqual(candidate.id, task.id)) ?? null;
 					readinessCompletedTasks.push(task);
 				}
 				removeTaskFromCurrentView(task.id);
