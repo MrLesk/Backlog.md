@@ -5,7 +5,7 @@ status: Done
 assignee:
   - '@Claude'
 created_date: '2026-08-08 15:56'
-updated_date: '2026-08-08 18:48'
+updated_date: '2026-08-08 21:13'
 labels: []
 dependencies: []
 ordinal: 245000
@@ -119,6 +119,24 @@ Two differences from main worth recording, both in already-accepted families: wi
 New regression test 'does not blame a valid list key for a malformed value under a key Backlog does not read' covers four unread key spellings, the block-sequence variant, the still-fails-fast case, and the colon-bearing sequence item. Confirmed non-vacuous: reverting only the pattern reproduces the reported ConfigValueError blaming statuses.
 
 Validation: bunx tsc --noEmit clean, bun run check . clean, targeted batch of the ten touched test files 155 pass / 0 fail.
+
+Fourth review round: config-error propagation class sweep.
+
+Findings 13 and 14 reproduced exactly. 'draft promote draft-1' exited 0 printing 'Draft draft-1 not found.' while the draft was still on disk, because promoteDraft's catch converted the propagated ConfigValueError to false. 'draft archive draft-1' printed the right message and exited 1 but had already moved the file: backlog/drafts lost the draft and backlog/archive/drafts gained it, so a retry would report it missing.
+
+Finding 12 refuted per the stated criterion. For the compound shape (statuses anchor + labels alias + malformed custom-setting) origin/main produced statuses=default and labels=[], silently discarding both configured values rather than handling it correctly end to end. The coordinator's hypothesis of a literal '*workflow' string was not what happened: main's line fallback rejects both '&workflow [...]' and '*workflow' because neither starts with a bracket, so both keys were simply lost. The branch fails fast with a clear error whose named key can be the alias rather than the true offender, which is the already-accepted compound-diagnostics limitation.
+
+Class sweep instead of static analysis. A hand-rolled enclosing-try analyzer proved unreliable (it missed promoteDraft's known catch), so the class was closed empirically: a runtime sweep runs every config-reading CLI surface against a malformed config, rebuilding a pristine fixture before each command and comparing a file-tree snapshot before and after, so both swallowing and mutate-then-validate ordering are visible. 40 surfaces covered across two passes.
+
+The sweep found two members Codex had not reported: 'milestone add' created the milestone file before the config read, and 'milestone archive' moved the file before it. Both mutated then failed.
+
+Four fixes, all minimal: promoteDraft now rethrows ConfigValueError alongside the existing create-lock rethrow; Core.archiveDraft and Core.archiveMilestone hoist the shouldAutoCommit config read above their file move; MilestoneHandlers.addMilestone calls ensureConfigLoaded before creating the file. Fixing archiveMilestone in Core rather than the handler covers the CLI and MCP surfaces in one place.
+
+Verified safe without changes, from sweep evidence rather than reasoning: milestone rename and remove, task archive, task demote, task edit (status, title, ordinal, milestone), task create, draft create, doc create, decision create, doctor --fix, cleanup, config set, agents --update-instructions, and every read surface. 'doc list' and 'decision list' still exit 0 on a malformed config because they never read config at all; nothing is swallowed there, and adding a config read purely to make them fail would be scope creep, so they are recorded as out of class.
+
+New regression test asserts all four fixed commands exit non-zero, carry the clear message, never say 'not found', and leave the backlog file tree byte-identical. Confirmed non-vacuous: reverting the core and handler changes fails it.
+
+Validation: bunx tsc --noEmit clean, bun run check . clean, 51-case parse matrix unchanged, targeted batch 189 pass / 0 fail across 11 files plus 65 pass / 0 fail across the six milestone and draft lifecycle files, and both sweep passes now report PASS with no mutation for every config-reading surface.
 <!-- SECTION:NOTES:END -->
 
 ## Final Summary

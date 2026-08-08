@@ -2494,9 +2494,12 @@ export class Core {
 		identifier: string,
 		autoCommit?: boolean,
 	): Promise<{ success: boolean; sourcePath?: string; targetPath?: string; milestone?: Milestone }> {
+		// Read the config before the move, so a config Backlog refuses to read aborts the command
+		// while the milestone is still active rather than after it has been archived.
+		const autoCommitEnabled = await this.shouldAutoCommit(autoCommit);
 		const result = await this.fs.archiveMilestone(identifier);
 
-		if (result.success && result.sourcePath && result.targetPath && (await this.shouldAutoCommit(autoCommit))) {
+		if (result.success && result.sourcePath && result.targetPath && autoCommitEnabled) {
 			const repoRoot = await this.git.stageFileMove(result.sourcePath, result.targetPath);
 			const label = result.milestone?.id ? ` ${result.milestone.id}` : "";
 			const commitPaths = [result.sourcePath, result.targetPath];
@@ -2607,9 +2610,12 @@ export class Core {
 	}
 
 	async archiveDraft(draftId: string, autoCommit?: boolean): Promise<boolean> {
+		// Read the config before the move: a config Backlog refuses to read must abort the command
+		// while the draft is still where the user left it, not after it has been half-archived.
+		const autoCommitEnabled = await this.shouldAutoCommit(autoCommit);
 		const moved = await this.fs.archiveDraft(draftId);
 
-		if (moved && (await this.shouldAutoCommit(autoCommit))) {
+		if (moved && autoCommitEnabled) {
 			await this.commitWrittenFile(
 				`backlog: Archive draft ${normalizeId(draftId, "draft")}`,
 				[moved.sourcePath],
@@ -2654,7 +2660,9 @@ export class Core {
 				return { previousPath, savedPath };
 			});
 		} catch (error) {
-			if (isCreateLockError(error)) {
+			// A missing draft is the only thing "false" may mean here; a config value Backlog refuses to
+			// read must not be reported as a draft that does not exist.
+			if (isCreateLockError(error) || isConfigValueError(error)) {
 				throw error;
 			}
 			return false;

@@ -445,6 +445,35 @@ describe("Config commands", () => {
 		]);
 	});
 
+	it("reports a rejected config value without half-applying a draft or milestone mutation", async () => {
+		await $`bun ${CLI_PATH} draft create "Draftling" --plain`.cwd(TEST_DIR).nothrow().quiet();
+		await core.filesystem.createMilestone("Mile");
+		const configPath = core.filesystem.configFilePath;
+		const baseConfig = await Bun.file(configPath).text();
+		const listFiles = async () =>
+			(await $`find backlog -type f`.cwd(TEST_DIR).nothrow().quiet().text()).split("\n").sort();
+
+		await Bun.write(configPath, `${baseConfig}statuses: ["To Do]\n`);
+		const before = await listFiles();
+
+		// A swallowed error used to report a draft that still exists as missing, and a mutation ordered
+		// before the first config read used to leave the draft or milestone half-moved.
+		for (const args of [
+			["draft", "promote", "draft-1"],
+			["draft", "archive", "draft-1"],
+			["milestone", "add", "Second"],
+			["milestone", "archive", "Mile"],
+		]) {
+			const result = await $`bun ${CLI_PATH} ${args}`.cwd(TEST_DIR).nothrow().quiet();
+			const stderr = result.stderr.toString();
+			expect(result.exitCode).not.toBe(0);
+			expect(stderr).toContain("Backlog could not start because");
+			expect(stderr).toContain('invalid value for "statuses"');
+			expect(stderr).not.toContain("not found");
+			expect(await listFiles()).toEqual(before);
+		}
+	});
+
 	it("resolves a YAML alias against the anchor defined under another key", () => {
 		// An alias only has meaning in document context, so a list value that uses one must still
 		// resolve even though each key's own block is what gets parsed.
