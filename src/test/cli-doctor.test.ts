@@ -269,7 +269,7 @@ describe("document and decision identity", () => {
 
 	it("never reports healthy when a document or decision file cannot be parsed", async () => {
 		await writeDocument("doc-1 - Alpha.md", "doc-1", "Alpha");
-		// gray-matter rejects an unterminated flow collection; distinct bodies avoid its parse cache.
+		// gray-matter rejects an unterminated flow collection, so these files cannot be parsed at all.
 		await Bun.write(
 			join(core.filesystem.docsDir, "doc-2 - Broken.md"),
 			"---\nid: doc-2\ntitle: [unterminated\n---\n\ndoc body\n",
