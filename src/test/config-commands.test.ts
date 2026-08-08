@@ -385,17 +385,40 @@ describe("Config commands", () => {
 		}
 	});
 
-	it("keeps a malformed list value from changing how another list key reads", async () => {
-		const configPath = core.filesystem.configFilePath;
+	it("keeps a malformed list value from changing how another list key reads", () => {
 		// The commas inside the quoted labels are only safe when labels is parsed as YAML; the
 		// malformed statuses value must be reported instead of downgrading labels to a text split.
-		await Bun.write(configPath, 'project_name: "P"\nstatuses: ["To Do]\nlabels: ["a, b", "c"]\n');
-		core.filesystem.invalidateConfigCache();
-
 		expect(() => core.filesystem.parseConfig('project_name: "P"\nstatuses: ["To Do]\nlabels: ["a, b", "c"]\n')).toThrow(
 			'invalid value for "statuses"',
 		);
 		expect(core.filesystem.parseConfig('project_name: "P"\nlabels: ["a, b", "c"]\n').labels).toEqual(["a, b", "c"]);
+	});
+
+	it("reads the config key at column 0, not an indented look-alike inside another key's value", () => {
+		// A nested mapping and a block scalar can both contain a line that looks like a config key.
+		const nested = core.filesystem.parseConfig(
+			'project_name: "P"\nstatuses: [top]\nmeta_thing:\n  statuses: [nested1, nested2]\n',
+		);
+		expect(nested.statuses).toEqual(["top"]);
+
+		const blockScalar = core.filesystem.parseConfig(
+			'project_name: "P"\nstatuses: [real]\nnotes_thing: |\n  statuses: [fake]\n',
+		);
+		expect(blockScalar.statuses).toEqual(["real"]);
+
+		// A block-sequence top-level key must win over the look-alike too, and a malformed
+		// look-alike must not make the real key unreadable.
+		const blockSequence = core.filesystem.parseConfig(
+			'project_name: "P"\nstatuses:\n  - Top\nmeta_thing:\n  statuses: [nested]\n',
+		);
+		expect(blockSequence.statuses).toEqual(["Top"]);
+		expect(
+			core.filesystem.parseConfig('project_name: "P"\nstatuses: [top]\nmeta_thing:\n  statuses: ["broken\n').statuses,
+		).toEqual(["top"]);
+
+		// Control: with no column-0 occurrence, an indented key is still the only value there is.
+		expect(core.filesystem.parseConfig('project_name: "P"\n\tstatuses: ["tabbed"]\n').statuses).toEqual(["tabbed"]);
+		expect(core.filesystem.parseConfig('project_name: "P"\n  statuses: ["spaced"]\n').statuses).toEqual(["spaced"]);
 	});
 
 	it("exits non-zero with the config error when a list value is not valid YAML", async () => {

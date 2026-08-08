@@ -5,7 +5,7 @@ status: Done
 assignee:
   - '@Claude'
 created_date: '2026-08-08 15:56'
-updated_date: '2026-08-08 16:42'
+updated_date: '2026-08-08 17:25'
 labels: []
 dependencies: []
 ordinal: 245000
@@ -61,6 +61,20 @@ Deliberate scope decision to flag: a list key holding valid YAML that is not a l
 Two existing tests wrapped filesystem.parseConfig and counted attempts after calling through; they now count before, because a rejected value throws instead of returning (src/test/config-watcher.test.ts, src/test/server-tasks-spa-fallback.test.ts).
 
 Validation: bunx tsc --noEmit clean, bun run check . clean, bun run test 2062 pass / 6 skip / 0 fail.
+
+Review round on PR #877 (head 3ac4b1c1) returned one blocking finding, fixed in a follow-up commit on the same branch.
+
+Blocking finding: extractConfigKeyYaml matched the key with a leading-whitespace-tolerant pattern and took the last match, so a look-alike line nested inside ANOTHER key's value silently outranked the real top-level key. Two reproductions on fully valid YAML that main parses correctly: 'statuses: [top]' followed by 'meta_thing:\n  statuses: [nested1, nested2]' returned the nested values, and 'statuses: [real]' followed by 'notes_thing: |\n  statuses: [fake]' let the line inside the literal block scalar win. Both were silent wrong values on currently-valid configs, violating the backward-compat invariant.
+
+Fix: a config key belongs at column 0, so an unindented match now always outranks an indented look-alike; the last column-0 match wins, and indented matches are used only when the key appears nowhere at column 0. That fallback keeps a key that exists only as an indented line (tab- or space-indented) readable, which is how it parses on main.
+
+Evidence: the parse matrix was extended to 51 cases with the two reproductions plus deep-nested, folded-scalar, block-sequence-top-key, malformed-nested-look-alike, and tab/space-indented-key-only controls, and captured against origin/main and this branch. Pre-fix the branch regressed six valid-config rows (both reproductions, the folded-scalar variant, block-sequence top key, default_assignee nested look-alike, and a valid top-level key made unreadable by a malformed nested look-alike). Post-fix all six match origin/main exactly. The remaining matrix diffs are only the intended fail-fast rows plus one accepted strictness row: a key present ONLY as an indented look-alike now reads its value as YAML instead of a comma split, so 'something:\n  labels: ["a, b"]' yields ["a, b"] rather than ["a", "b"].
+
+New regression test 'reads the config key at column 0, not an indented look-alike inside another key's value' in src/test/config-commands.test.ts covers both reproductions, the block-sequence and malformed-look-alike variants, and the tab/space-indented controls. Confirmed non-vacuous: reverting only the column-0 rule fails it (received ["nested1","nested2"] instead of ["top"]); restoring turns it green.
+
+Also rebased onto origin/main after #875 (shared no-cache parseFrontmatter wrapper) and #876 merged. One conflict, in src/file-system/operations.ts: #875 had migrated the old whole-document parseConfigListValues to parseFrontmatter, and this task deletes that method outright, so the deletion stands; the surviving definition_of_done parse uses parseFrontmatter, and no module outside src/markdown/frontmatter.ts imports gray-matter.
+
+Validation on the final head: bunx tsc --noEmit clean, bun run check . clean (369 files), bun run test 2076 pass / 6 skip / 0 fail across 223 files. The earlier note's 2062 figure predates the rebase; upstream test additions account for the difference.
 <!-- SECTION:NOTES:END -->
 
 ## Final Summary

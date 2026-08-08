@@ -67,16 +67,23 @@ const CONFIG_KEY_LINE_PATTERN = /^\s*[A-Za-z_][A-Za-z0-9_]*\s*:/;
  * Extract the YAML block that carries one config key's value: its `key:` line plus the lines that
  * continue it, stopping at the next key written at the same or lower indentation. Returns nothing
  * when the key is absent. The last occurrence wins, which is what YAML does with a repeated key.
+ *
+ * A config key belongs at column 0, so an unindented line always outranks an indented look-alike:
+ * without that rule a `statuses:` line nested inside another key's mapping or block scalar would
+ * hijack the real key. Indented matches are used only when the key appears nowhere at column 0.
  */
 function extractConfigKeyYaml(content: string, key: string): string | undefined {
 	const lines = content.split(/\r?\n/);
 	const keyPattern = new RegExp(`^(\\s*)${key}\\s*:`);
-	const startIndex = lines.findLastIndex((line) => keyPattern.test(line));
+	const keyIndent = (line: string) => line.match(keyPattern)?.[1]?.length;
+	const startIndex = lines.some((line) => keyIndent(line) === 0)
+		? lines.findLastIndex((line) => keyIndent(line) === 0)
+		: lines.findLastIndex((line) => keyIndent(line) !== undefined);
 	if (startIndex === -1) {
 		return undefined;
 	}
 
-	const startIndent = lines[startIndex]?.match(keyPattern)?.[1]?.length ?? 0;
+	const startIndent = keyIndent(lines[startIndex] ?? "") ?? 0;
 	const collected: string[] = [];
 
 	for (let index = startIndex; index < lines.length; index++) {
