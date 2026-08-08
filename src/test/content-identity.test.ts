@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
-import { mkdir } from "node:fs/promises";
+import { chmod, mkdir } from "node:fs/promises";
 import { join } from "node:path";
 import { Core } from "../core/backlog.ts";
 import { serializeDecision, serializeDocument } from "../markdown/serializer.ts";
@@ -8,7 +8,7 @@ import { decisionIdKey } from "../utils/decision-id.ts";
 import { documentIdKey, documentIdsEqual } from "../utils/document-id.ts";
 import { hasContentIdentityIssues } from "../utils/duplicate-detection.ts";
 import { AmbiguousIdError } from "../utils/entity-id.ts";
-import { createUniqueTestDir, initializeFilesystemTestProject, safeCleanup } from "./test-utils.ts";
+import { createUniqueTestDir, initializeFilesystemTestProject, isWindows, safeCleanup } from "./test-utils.ts";
 
 let TEST_DIR: string;
 let core: Core;
@@ -216,5 +216,61 @@ describe("unreadable content files", () => {
 		expect(report.documents.duplicates).toEqual([]);
 		expect(report.documents.missingIds).toEqual([]);
 		expect(hasContentIdentityIssues(report)).toBe(true);
+	});
+});
+
+describe("unreadable content directories", () => {
+	// chmod has no effect for root, and Windows ignores these mode bits, so confirm the directory
+	// really became unreadable before asserting on the finding.
+	async function lockDirectory(directory: string): Promise<boolean> {
+		if (isWindows()) return false;
+		await chmod(directory, 0o000);
+		try {
+			await Array.fromAsync(new Bun.Glob("*.md").scan({ cwd: directory, followSymlinks: true }));
+			await chmod(directory, 0o755);
+			return false;
+		} catch {
+			return true;
+		}
+	}
+
+	it("reports a directory that cannot be scanned instead of calling identity healthy", async () => {
+		await writeDocument("doc-1 - Alpha.md", makeDocument("doc-1", "Alpha"));
+		const locked = await lockDirectory(core.filesystem.docsDir);
+		if (!locked) return;
+
+		try {
+			const unreadable: string[] = [];
+			expect(await core.filesystem.listDocuments(unreadable)).toEqual([]);
+			expect(unreadable).toEqual([""]);
+
+			const report = await core.diagnoseContentIdentity();
+			expect(report.documents.unreadable).toEqual(["backlog/docs"]);
+			expect(hasContentIdentityIssues(report)).toBe(true);
+		} finally {
+			await chmod(core.filesystem.docsDir, 0o755);
+		}
+	});
+
+	it("still treats a directory that does not exist as empty", async () => {
+		// A project that has never created docs or decisions is healthy, not broken.
+		const bareDir = createUniqueTestDir("content-identity-bare");
+		await mkdir(bareDir, { recursive: true });
+		const bare = new Core(bareDir);
+		await initializeFilesystemTestProject(bare, "Bare project");
+		await safeCleanup(bare.filesystem.docsDir);
+		await safeCleanup(bare.filesystem.decisionsDir);
+
+		try {
+			const unreadable: string[] = [];
+			expect(await bare.filesystem.listDocuments(unreadable)).toEqual([]);
+			expect(await bare.filesystem.listDecisions(unreadable)).toEqual([]);
+			expect(unreadable).toEqual([]);
+			expect(hasContentIdentityIssues(await bare.diagnoseContentIdentity())).toBe(false);
+		} finally {
+			bare.disposeSearchService();
+			bare.disposeContentStore();
+			await safeCleanup(bareDir);
+		}
 	});
 });

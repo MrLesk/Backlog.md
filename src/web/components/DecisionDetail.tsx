@@ -95,6 +95,10 @@ export default function DecisionDetail({ decisions, onRefreshData, dateFormat }:
 			setIsNewDecision(true);
 			setIsEditing(true);
 			setIsLoading(false);
+			// Creating is unrelated to whatever failed to load before, so clear any load error.
+			// Otherwise a previous ambiguity notice keeps rendering instead of the create editor.
+			setError(null);
+			setDecision(null);
 			setDecisionTitle('');
 			setOriginalDecisionTitle('');
 			setContent('');
