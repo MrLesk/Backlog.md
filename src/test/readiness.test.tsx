@@ -4,7 +4,7 @@ import { renderToString } from "react-dom/server";
 import { MemoryRouter } from "react-router-dom";
 import type { Task } from "../types/index.ts";
 import { generateDetailContent } from "../ui/task-viewer-with-search.ts";
-import { formatReadinessBlockers, getTaskReadiness } from "../utils/readiness.ts";
+import { createReadinessGraph, formatReadinessBlockers, getTaskReadiness } from "../utils/readiness.ts";
 import { applyTaskFilters } from "../utils/task-search.ts";
 import { TaskDetailsModal } from "../web/components/TaskDetailsModal.tsx";
 import { TaskIdIndexProvider } from "../web/contexts/TaskIdIndexContext.tsx";
@@ -25,10 +25,19 @@ function makeTask(id: string, status: string, dependencies: string[] = []): Task
 	};
 }
 
+/** Readiness against an active-only corpus with the default statuses. */
+function graphOf(tasks: Task[], graphStatuses: readonly string[] = statuses) {
+	return createReadinessGraph({ tasks, statuses: graphStatuses });
+}
+
+function readinessOf(task: Task, tasks: Task[], graphStatuses: readonly string[] = statuses) {
+	return getTaskReadiness(task, graphOf(tasks, graphStatuses));
+}
+
 describe("getTaskReadiness", () => {
 	it("returns ready for a task with no dependencies", () => {
 		const task = makeTask("BACK-1", "To Do");
-		const readiness = getTaskReadiness(task, [task], statuses);
+		const readiness = readinessOf(task, [task]);
 
 		expect(readiness.isReady).toBe(true);
 		expect(readiness.isBlocked).toBe(false);
@@ -39,7 +48,7 @@ describe("getTaskReadiness", () => {
 	it("returns ready when all dependencies are in terminal status", () => {
 		const dep = makeTask("BACK-1", "Done");
 		const task = makeTask("BACK-2", "To Do", ["BACK-1"]);
-		const readiness = getTaskReadiness(task, [dep, task], statuses);
+		const readiness = readinessOf(task, [dep, task]);
 
 		expect(readiness.isReady).toBe(true);
 		expect(readiness.isBlocked).toBe(false);
@@ -48,7 +57,7 @@ describe("getTaskReadiness", () => {
 	it("returns blocked when a dependency is in non-terminal status", () => {
 		const dep = makeTask("BACK-1", "In Progress");
 		const task = makeTask("BACK-2", "To Do", ["BACK-1"]);
-		const readiness = getTaskReadiness(task, [dep, task], statuses);
+		const readiness = readinessOf(task, [dep, task]);
 
 		expect(readiness.isReady).toBe(false);
 		expect(readiness.isBlocked).toBe(true);
@@ -59,7 +68,7 @@ describe("getTaskReadiness", () => {
 	it("reports an unresolvable dependency separately from an unfinished one and fails closed", () => {
 		const unfinished = makeTask("BACK-1", "In Progress");
 		const task = makeTask("BACK-2", "To Do", ["BACK-1", "BACK-99"]);
-		const readiness = getTaskReadiness(task, [unfinished, task], statuses);
+		const readiness = readinessOf(task, [unfinished, task]);
 
 		expect(readiness.isReady).toBe(false);
 		expect(readiness.isBlocked).toBe(true);
@@ -71,7 +80,7 @@ describe("getTaskReadiness", () => {
 	it("resolves dependencies through canonical task identity, not raw string equality", () => {
 		const dep = makeTask("BACK-007", "Done");
 		const task = makeTask("BACK-2", "To Do", ["back-7"]);
-		const readiness = getTaskReadiness(task, [dep, task], statuses);
+		const readiness = readinessOf(task, [dep, task]);
 
 		expect(readiness.isReady).toBe(true);
 		expect(readiness.missingDependencies).toEqual([]);
@@ -80,23 +89,67 @@ describe("getTaskReadiness", () => {
 	it("does not confuse task IDs that only differ by prefix", () => {
 		const otherPrefix = makeTask("BACK-355.01", "Done");
 		const task = makeTask("BACK-2", "To Do", ["task-355.01"]);
-		const readiness = getTaskReadiness(task, [otherPrefix, task], statuses);
+		const readiness = readinessOf(task, [otherPrefix, task]);
 
 		expect(readiness.isReady).toBe(false);
 		expect(readiness.missingDependencies).toEqual(["task-355.01"]);
 	});
 
-	it("prefers the first entry when the graph carries a duplicate identity", () => {
-		const live = makeTask("BACK-1", "In Progress");
-		const completedCopy = makeTask("BACK-1", "Done");
+	it("fails closed when more than one record claims the dependency identity", () => {
+		const unfinished = makeTask("BACK-1", "In Progress");
+		const doneCopy = makeTask("BACK-01", "Done");
 		const task = makeTask("BACK-2", "To Do", ["BACK-1"]);
 
-		expect(getTaskReadiness(task, [live, completedCopy, task], statuses).isReady).toBe(false);
+		// Order must not decide the verdict: an ambiguous identity is never satisfied by luck.
+		for (const corpus of [
+			[unfinished, doneCopy, task],
+			[doneCopy, unfinished, task],
+		]) {
+			const readiness = readinessOf(task, corpus);
+			expect(readiness.isReady).toBe(false);
+			expect(readiness.isBlocked).toBe(true);
+			expect(readiness.missingDependencies).toEqual(["BACK-1"]);
+			expect(readiness.blockingDependencies).toEqual([]);
+		}
+	});
+
+	it("treats a record in the completed corpus as completed whatever its status string says", () => {
+		// The terminal status was renamed to Shipped, so the archived record's "Done" is not terminal.
+		const renamedStatuses = ["To Do", "In Progress", "Shipped"];
+		const completedDep = makeTask("BACK-1", "Done");
+		const task = makeTask("BACK-2", "To Do", ["BACK-1"]);
+
+		const graph = createReadinessGraph({ tasks: [task], completedTasks: [completedDep], statuses: renamedStatuses });
+		const readiness = getTaskReadiness(task, graph);
+		expect(readiness.isReady).toBe(true);
+		expect(readiness.isBlocked).toBe(false);
+
+		// The same record left in the active corpus is genuinely unfinished under that configuration.
+		expect(readinessOf(task, [completedDep, task], renamedStatuses).blockingDependencies).toEqual(["BACK-1"]);
+	});
+
+	it("treats a task whose own record is in the completed corpus as not actionable", () => {
+		const completedTask = makeTask("BACK-1", "To Do", ["BACK-2"]);
+		const graph = createReadinessGraph({ tasks: [], completedTasks: [completedTask], statuses });
+
+		const readiness = getTaskReadiness(completedTask, graph);
+		expect(readiness.isReady).toBe(false);
+		expect(readiness.isBlocked).toBe(false);
+	});
+
+	it("falls back to the default statuses when the configured list is empty", () => {
+		const dep = makeTask("BACK-1", "Done");
+		const task = makeTask("BACK-2", "To Do", ["BACK-1"]);
+
+		// An empty statuses array leaves no terminal status, which would block everything forever.
+		const readiness = readinessOf(task, [dep, task], []);
+		expect(readiness.isReady).toBe(true);
+		expect(readiness.isBlocked).toBe(false);
 	});
 
 	it("returns not ready and not blocked for tasks already in terminal status", () => {
 		const task = makeTask("BACK-1", "Done");
-		const readiness = getTaskReadiness(task, [task], statuses);
+		const readiness = readinessOf(task, [task]);
 
 		expect(readiness.isReady).toBe(false);
 		expect(readiness.isBlocked).toBe(false);
@@ -105,8 +158,8 @@ describe("getTaskReadiness", () => {
 	it("handles dependency cycles safely without infinite recursion", () => {
 		const task1 = makeTask("BACK-1", "To Do", ["BACK-2"]);
 		const task2 = makeTask("BACK-2", "To Do", ["BACK-1"]);
-		const readiness1 = getTaskReadiness(task1, [task1, task2], statuses);
-		const readiness2 = getTaskReadiness(task2, [task1, task2], statuses);
+		const readiness1 = readinessOf(task1, [task1, task2]);
+		const readiness2 = readinessOf(task2, [task1, task2]);
 
 		expect(readiness1.isReady).toBe(false);
 		expect(readiness1.isBlocked).toBe(true);
@@ -122,7 +175,7 @@ describe("getTaskReadiness", () => {
 		const dep = makeTask("BACK-1", "Closed");
 		const task = makeTask("BACK-2", "Open", ["BACK-1"]);
 
-		const readiness = getTaskReadiness(task, [dep, task], customStatuses);
+		const readiness = readinessOf(task, [dep, task], customStatuses);
 		expect(readiness.isReady).toBe(true);
 		expect(readiness.isBlocked).toBe(false);
 	});
@@ -136,29 +189,47 @@ describe("applyTaskFilters with readiness filter integration", () => {
 		const readyTask = makeTask("BACK-4", "To Do", ["BACK-1"]);
 
 		const allTasks = [doneDep, blockedTask, inProgDep, readyTask];
+		const graph = graphOf(allTasks);
 
 		// BACK-3 (In Progress, no deps) and BACK-4 (To Do, dependency BACK-1 is Done) can be worked on
-		const readyFiltered = applyTaskFilters(allTasks, { ready: true, statuses });
+		const readyFiltered = applyTaskFilters(allTasks, { ready: graph });
 		expect(readyFiltered.map((t) => t.id)).toEqual(["BACK-3", "BACK-4"]);
 
 		// Combine ready filter with status filter
-		const readyToDoFiltered = applyTaskFilters(allTasks, { ready: true, status: "To Do", statuses });
+		const readyToDoFiltered = applyTaskFilters(allTasks, { ready: graph, status: "To Do" });
 		expect(readyToDoFiltered.map((t) => t.id)).toEqual(["BACK-4"]);
 	});
 
-	it("evaluates readiness against readinessTasks when display candidates omit completed tasks", () => {
+	it("keeps readiness verdicts independent of the filters that narrowed the display list", () => {
+		// The display list was prefiltered by assignee, so the blocking and completed dependencies
+		// are both absent from it. Readiness must still resolve them.
 		const completedDep = makeTask("BACK-1", "Done");
-		const activeTask = makeTask("BACK-2", "To Do", ["BACK-1"]);
+		const unfinishedDep = makeTask("BACK-2", "In Progress");
+		const readyTask = makeTask("BACK-3", "To Do", ["BACK-1"]);
+		const blockedTask = makeTask("BACK-4", "To Do", ["BACK-2"]);
 
-		const displayCandidates = [activeTask]; // BACK-1 excluded from active candidates
-		const readinessTasks = [activeTask, completedDep];
+		const displayCandidates = [readyTask, blockedTask];
+		const fullCorpus = [completedDep, unfinishedDep, readyTask, blockedTask];
 
-		expect(applyTaskFilters(displayCandidates, { ready: true, statuses, readinessTasks }).map((t) => t.id)).toEqual([
-			"BACK-2",
-		]);
+		expect(applyTaskFilters(displayCandidates, { ready: graphOf(fullCorpus) }).map((t) => t.id)).toEqual(["BACK-3"]);
 
-		// Without the wider graph the same dependency is unresolvable, so the task fails closed.
-		expect(applyTaskFilters(displayCandidates, { ready: true, statuses })).toEqual([]);
+		// Resolving against the narrowed list instead loses both verdicts and fails closed.
+		expect(applyTaskFilters(displayCandidates, { ready: graphOf(displayCandidates) })).toEqual([]);
+	});
+
+	it("stays linear when filtering a large dependent corpus", () => {
+		// The graph index is built once per filter pass. Rebuilding it per candidate made this
+		// quadratic and took seconds at this size.
+		const dependency = makeTask("BACK-0", "Done");
+		const dependents = Array.from({ length: 2000 }, (_, index) => makeTask(`BACK-${index + 1}`, "To Do", ["BACK-0"]));
+		const corpus = [dependency, ...dependents];
+
+		const startedAt = performance.now();
+		const ready = applyTaskFilters(corpus, { ready: graphOf(corpus) });
+		const elapsedMs = performance.now() - startedAt;
+
+		expect(ready).toHaveLength(dependents.length);
+		expect(elapsedMs).toBeLessThan(2000);
 	});
 });
 
@@ -173,7 +244,7 @@ describe("rendered readiness guidance", () => {
 		const graph = [doneDep, inProgDep, readyTask, blockedTask, unknownDepTask, noDepsTask];
 
 		const detailBody = (task: Task) =>
-			generateDetailContent(task, undefined, undefined, { tasks: graph, statuses }).bodyContent.join("\n");
+			generateDetailContent(task, undefined, undefined, graphOf(graph)).bodyContent.join("\n");
 
 		expect(detailBody(readyTask)).toContain("Readiness:");
 		expect(detailBody(readyTask)).toContain("✓ Ready to start");

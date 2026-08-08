@@ -633,6 +633,74 @@ describe("CLI Integration", () => {
 			expect(out).not.toContain("TASK-3 - Depends On Nothing Known");
 		});
 
+		it("should keep --ready verdicts correct when display filters hide the dependencies", async () => {
+			const core = new Core(TEST_DIR);
+
+			await core.createTask(
+				{
+					id: "task-1",
+					title: "Someone Elses Blocker",
+					status: "In Progress",
+					assignee: ["@other"],
+					labels: [],
+					dependencies: [],
+					createdDate: "2026-07-24",
+					rawContent: "",
+				},
+				false,
+			);
+			await core.createTask(
+				{
+					id: "task-2",
+					title: "Someone Elses Finished Work",
+					status: "Done",
+					assignee: ["@other"],
+					labels: [],
+					dependencies: [],
+					createdDate: "2026-07-24",
+					rawContent: "",
+				},
+				false,
+			);
+			await core.createTask(
+				{
+					id: "task-3",
+					title: "Mine Blocked",
+					status: "To Do",
+					assignee: ["@me"],
+					labels: [],
+					dependencies: ["task-1"],
+					createdDate: "2026-07-24",
+					rawContent: "",
+				},
+				false,
+			);
+			await core.createTask(
+				{
+					id: "task-4",
+					title: "Mine Ready",
+					status: "To Do",
+					assignee: ["@me"],
+					labels: [],
+					dependencies: ["task-2"],
+					createdDate: "2026-07-24",
+					rawContent: "",
+				},
+				false,
+			);
+
+			// Both dependencies belong to @other, so --assignee @me removes them from the listing.
+			// Readiness must still resolve them instead of calling them unknown.
+			const assigneeResult = await $`bun ${CLI_PATH} task list --plain --ready --assignee @me`.cwd(TEST_DIR).quiet();
+			const assigneeOut = assigneeResult.stdout.toString();
+			expect(assigneeOut).toContain("TASK-4 - Mine Ready");
+			expect(assigneeOut).not.toContain("TASK-3 - Mine Blocked");
+			expect(assigneeOut).not.toContain("TASK-1 - Someone Elses Blocker");
+
+			const unassignedResult = await $`bun ${CLI_PATH} task list --plain --ready --unassigned`.cwd(TEST_DIR).quiet();
+			expect(unassignedResult.stdout.toString()).toContain("No tasks found.");
+		});
+
 		it("should reject invalid task list limit", async () => {
 			const result = await $`bun ${CLI_PATH} task list --plain --limit 0`.cwd(TEST_DIR).nothrow().quiet();
 			const out = result.stdout.toString() + result.stderr.toString();

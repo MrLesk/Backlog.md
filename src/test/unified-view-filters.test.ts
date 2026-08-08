@@ -8,6 +8,7 @@ import {
 	type UnifiedViewFilters,
 } from "../ui/unified-view.ts";
 import { NO_MILESTONE_FILTER_VALUE } from "../utils/milestone-filter.ts";
+import { createReadinessGraph } from "../utils/readiness.ts";
 import { applyTaskFilters } from "../utils/task-search.ts";
 
 describe("unified view filter state", () => {
@@ -503,10 +504,10 @@ describe("unified view filter state", () => {
 		expect(literalMilestoneResults).toEqual(["task-4"]);
 	});
 
-	it("evaluates interactive TUI --ready filter against readinessTasks when active candidates omit completed tasks", () => {
-		const archivedDoneDep: Task = {
+	it("evaluates the interactive --ready filter against the full corpus, not the display candidates", () => {
+		const completedDep: Task = {
 			id: "task-1",
-			title: "Archived Completed Dep",
+			title: "Completed Dep",
 			status: "Done",
 			assignee: [],
 			createdDate: "2026-07-01",
@@ -524,12 +525,8 @@ describe("unified view filter state", () => {
 		};
 
 		const displayCandidates = [activeTask];
-		const fullGraph = [archivedDoneDep, activeTask];
-
 		const readyFiltered = applyTaskFilters(displayCandidates, {
-			ready: true,
-			statuses: ["To Do", "In Progress", "Done"],
-			readinessTasks: fullGraph,
+			ready: createReadinessGraph({ tasks: [activeTask], completedTasks: [completedDep] }),
 		});
 
 		expect(readyFiltered.map((task) => task.id)).toEqual(["task-2"]);

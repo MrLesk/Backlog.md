@@ -4,7 +4,6 @@
  */
 
 import Fuse from "fuse.js";
-import { DEFAULT_STATUSES } from "../constants/index.ts";
 import type { Task } from "../types/index.ts";
 import { labelsToLower } from "./label-filter.ts";
 import {
@@ -14,7 +13,7 @@ import {
 } from "./milestone-filter.ts";
 import { matchesModifiedFileFilters, normalizeModifiedFileFilters } from "./modified-files.ts";
 import { normalizePriorityValue } from "./priority-config.ts";
-import { getTaskReadiness } from "./readiness.ts";
+import { getTaskReadiness, type ReadinessGraph } from "./readiness.ts";
 import { matchesTaskTypeFilter } from "./task-type-config.ts";
 
 export type LabelMatchMode = "any" | "all";
@@ -45,11 +44,11 @@ export interface SharedTaskFilterOptions {
 export interface TaskFilterOptions extends SharedTaskFilterOptions {
 	status?: string;
 	excludeStatus?: string | string[];
-	ready?: boolean;
-	/** Configured statuses, used to decide which status counts as completed. */
-	statuses?: readonly string[];
-	/** Task graph readiness resolves against; defaults to the tasks being filtered. */
-	readinessTasks?: Task[];
+	/**
+	 * When set, keep only tasks that are ready according to this graph. The graph carries the full
+	 * task corpus, so readiness never depends on which tasks survived the other filters.
+	 */
+	ready?: ReadinessGraph;
 }
 
 export interface TaskSearchIndex {
@@ -300,9 +299,8 @@ export function applyTaskFilters(tasks: Task[], options: TaskFilterOptions, inde
 	}
 
 	if (options.ready) {
-		const statuses = options.statuses ?? DEFAULT_STATUSES;
-		const graph = options.readinessTasks ?? tasks;
-		results = results.filter((task) => getTaskReadiness(task, graph, statuses).isReady);
+		const graph = options.ready;
+		results = results.filter((task) => getTaskReadiness(task, graph).isReady);
 	}
 
 	return results;

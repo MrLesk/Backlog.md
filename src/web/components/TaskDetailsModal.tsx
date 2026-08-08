@@ -11,8 +11,7 @@ import DependencyInput from "./DependencyInput";
 import { formatStoredUtcDateForDisplay } from "../utils/date-display";
 import { getPriorityOptions } from "../../utils/priority-config";
 import { getTaskTypeValues, resolveTaskTypeValue } from "../../utils/task-type-config";
-import { DEFAULT_STATUSES } from "../../constants/index.ts";
-import { formatReadinessBlockers, getTaskReadiness } from "../../utils/readiness";
+import { createReadinessGraph, formatReadinessBlockers, getTaskReadiness } from "../../utils/readiness";
 import { canonicalTaskId } from "../../utils/task-id.ts";
 
 interface Props {
@@ -354,14 +353,21 @@ export const TaskDetailsModal: React.FC<Props> = ({
     };
   }, [isOpen, unresolvedDependencyKey]);
 
-  // Dependency readiness, derived at render time from the dependencies currently shown.
-  // Only meaningful while dependencies exist and the task has not reached the terminal status.
+  // Dependency readiness, derived at render time from the dependencies and status currently shown,
+  // so an inline edit is reflected immediately instead of waiting for a refresh.
+  // Only meaningful while dependencies exist and the task has not been completed.
   const readiness = useMemo(() => {
     if (!task || dependencies.length === 0) return null;
-    const graph = [...availableTasks, ...offBoardDependencies];
-    const result = getTaskReadiness({ ...task, dependencies }, graph, availableStatuses ?? DEFAULT_STATUSES);
+    // A dependency resolved outside the board corpus came from backlog/completed, where the
+    // record's location is the completion evidence rather than its status string.
+    const graph = createReadinessGraph({
+      tasks: [...availableTasks, ...offBoardDependencies.filter((dep) => dep.source !== "completed")],
+      completedTasks: offBoardDependencies.filter((dep) => dep.source === "completed"),
+      statuses: availableStatuses,
+    });
+    const result = getTaskReadiness({ ...task, dependencies, status }, graph);
     return result.isReady || result.isBlocked ? result : null;
-  }, [task, dependencies, availableTasks, offBoardDependencies, availableStatuses]);
+  }, [task, dependencies, status, availableTasks, offBoardDependencies, availableStatuses]);
 
   // Keep a baseline for dirty-check
   const baseline = useMemo(() => ({

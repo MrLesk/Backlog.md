@@ -155,7 +155,6 @@ export class TaskHandlers {
 		}
 		const config = await this.core.filesystem.loadConfig();
 		const priorities = config?.priorities;
-		const readinessStatuses = config?.statuses?.length ? config.statuses : [...DEFAULT_STATUSES];
 		if (this.isDraftStatus(args.status)) {
 			let drafts = await this.core.filesystem.listDrafts();
 			const milestoneCandidates = drafts;
@@ -197,8 +196,8 @@ export class TaskHandlers {
 			}
 
 			if (args.ready) {
-				const readinessTasks = await loadReadinessGraph(this.core);
-				drafts = drafts.filter((draft) => getTaskReadiness(draft, readinessTasks, readinessStatuses).isReady);
+				const readinessGraph = await loadReadinessGraph(this.core);
+				drafts = drafts.filter((draft) => getTaskReadiness(draft, readinessGraph).isReady);
 			}
 
 			if (drafts.length === 0) {
@@ -255,8 +254,8 @@ export class TaskHandlers {
 		});
 
 		if (args.ready) {
-			const readinessTasks = await loadReadinessGraph(this.core);
-			tasks = tasks.filter((task) => getTaskReadiness(task, readinessTasks, readinessStatuses).isReady);
+			const readinessGraph = await loadReadinessGraph(this.core);
+			tasks = tasks.filter((task) => getTaskReadiness(task, readinessGraph).isReady);
 		}
 
 		let filteredByLabels = tasks.filter((task) => isLocalEditableTask(task));

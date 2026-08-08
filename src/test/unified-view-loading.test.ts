@@ -50,6 +50,33 @@ describe("loadTasksForUnifiedView", () => {
 		expect(result.statuses).toEqual(["To Do", "In Progress"]);
 	});
 
+	it("passes the loader's unfiltered readiness corpus through to the viewer", async () => {
+		const displayed = { id: "TASK-2", title: "Displayed", status: "To Do" } as never;
+		const hiddenDependency = { id: "TASK-1", title: "Hidden dependency", status: "Done" } as never;
+
+		const result = await loadTasksForUnifiedView(core, {
+			tasksLoader: async () => ({
+				tasks: [displayed],
+				statuses: ["To Do", "Done"],
+				readinessTasks: [hiddenDependency, displayed],
+			}),
+			loadingScreenFactory: async () => null,
+		});
+
+		expect(result.tasks).toEqual([displayed]);
+		// Without this the viewer would resolve readiness against the narrowed display list only.
+		expect(result.readinessTasks).toEqual([hiddenDependency, displayed]);
+	});
+
+	it("leaves the readiness corpus unset when the loader did not narrow the task list", async () => {
+		const result = await loadTasksForUnifiedView(core, {
+			tasksLoader: async () => ({ tasks: [], statuses: ["To Do"] }),
+			loadingScreenFactory: async () => null,
+		});
+
+		expect(result.readinessTasks).toBeUndefined();
+	});
+
 	it("opens an unfiltered empty kanban but preserves other empty-result messages", () => {
 		expect(getEmptyUnifiedViewMessage("kanban")).toBeNull();
 		expect(getEmptyUnifiedViewMessage("task-list")).toBe("No tasks found.");

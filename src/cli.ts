@@ -2451,9 +2451,8 @@ addHelpSchema(taskCmd.command("list"), {
 			const config = await core.filesystem.loadConfig();
 
 			if (options.ready) {
-				const readinessTasks = await loadReadinessGraph(core);
-				const readinessStatuses = config?.statuses?.length ? config.statuses : [...DEFAULT_STATUSES];
-				tasks = tasks.filter((task) => getTaskReadiness(task, readinessTasks, readinessStatuses).isReady);
+				const readinessGraph = await loadReadinessGraph(core);
+				tasks = tasks.filter((task) => getTaskReadiness(task, readinessGraph).isReady);
 			}
 
 			if (parentId) {
@@ -2629,6 +2628,7 @@ addHelpSchema(taskCmd.command("list"), {
 		if (parentId) {
 			interactiveLoaderFilters.parentTaskId = parentId;
 		}
+		const prefiltersDisplayList = Object.keys(interactiveLoaderFilters).length > 0;
 		await runUnifiedView({
 			core,
 			initialView: "task-list",
@@ -2678,6 +2678,9 @@ addHelpSchema(taskCmd.command("list"), {
 				return {
 					tasks: filtered,
 					statuses: config?.statuses || [],
+					// The filters above narrow what is displayed. Dependency readiness must still see
+					// every task, or a dependency assigned to someone else reads as unknown.
+					readinessTasks: prefiltersDisplayList ? await core.queryTasks({ includeCrossBranch: false }) : undefined,
 				};
 			},
 			filter: initialUnifiedFilter,
