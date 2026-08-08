@@ -111,13 +111,49 @@ function extractConfigKeyYaml(content: string, key: string): string | undefined 
 const CONFIG_VALUE_ERROR_NAME = "ConfigValueError";
 
 /** Reports a config value Backlog refuses to guess at, naming the file and the offending key. */
-function configValueError(configPath: string, key: string, reason: unknown): Error {
-	const detail = (reason instanceof Error ? reason.message : String(reason)).split("\n")[0]?.trim();
+function configValueError(configPath: string, key: string, problem: string, remedy: string): Error {
 	const error = new Error(
-		`Backlog could not start because ${configPath} has an invalid value for "${key}"${detail ? `: ${detail}` : ""}. Edit that key so its value is valid YAML, then run the command again.`,
+		`Backlog could not start because ${configPath} has an invalid value for "${key}"${problem ? `: ${problem}` : ""}. ${remedy}`,
 	);
 	error.name = CONFIG_VALUE_ERROR_NAME;
 	return error;
+}
+
+/** Reports a value YAML could not read at all. */
+function configSyntaxError(configPath: string, key: string, reason: unknown): Error {
+	const detail = (reason instanceof Error ? reason.message : String(reason)).split("\n")[0]?.trim();
+	return configValueError(
+		configPath,
+		key,
+		detail ?? "",
+		"Edit that key so its value is valid YAML, then run the command again.",
+	);
+}
+
+/** Names the shape a rejected value turned out to have, for an error a person has to act on. */
+function describeConfigValue(value: unknown): string {
+	if (value === undefined) return "no value Backlog could read";
+	switch (typeof value) {
+		case "string":
+			return "a scalar";
+		case "number":
+			return "a number";
+		case "boolean":
+			return "a boolean";
+		default:
+			return "a mapping";
+	}
+}
+
+/** Reports a value YAML read fine but the key cannot hold, such as a scalar where a list belongs. */
+function configTypeError(configPath: string, key: ConfigListKey, value: unknown): Error {
+	const expected = key === "default_assignee" ? "a list or a single name" : "a list";
+	return configValueError(
+		configPath,
+		key,
+		`expected ${expected}, got ${describeConfigValue(value)}`,
+		`Edit that key so its value is ${expected}, then run the command again.`,
+	);
 }
 
 /** True when an error already explains an unreadable config value, so it needs no extra framing. */
@@ -138,9 +174,10 @@ function readYamlKey(document: string, key: string): { value: unknown } | { erro
  * Parse one list-valued config key as YAML, so quoting, escapes, block sequences, and trailing
  * comments are handled by the parser instead of by hand. The key's own block is what gets parsed, so a
  * malformed value for one key cannot change how another key reads; only a block YAML rejects outright
- * is reread in document context, where aliases resolve. Throws when neither read succeeds, so callers
- * fail fast rather than proceed with a guessed value. Returns nothing when the key is absent, carries
- * no value, or holds a shape it cannot represent; `default_assignee` also accepts a single scalar.
+ * is reread in document context, where aliases resolve. Throws when neither read succeeds, and when the
+ * value YAML read is not a shape the key can hold, so callers fail fast rather than proceed with a
+ * guessed value. Returns nothing when the key is absent or carries no value; `default_assignee` also
+ * accepts a single scalar name.
  */
 function parseConfigListValue(content: string, key: ConfigListKey, configPath: string): string[] | undefined {
 	const block = extractConfigKeyYaml(content, key);
@@ -158,26 +195,24 @@ function parseConfigListValue(content: string, key: ConfigListKey, configPath: s
 		// document is never read first: doing that is what let one broken key change how another reads.
 		const fromDocument = readYamlKey(content, key);
 		if (!("value" in fromDocument)) {
-			throw configValueError(configPath, key, fromBlock.error);
+			throw configSyntaxError(configPath, key, fromBlock.error);
 		}
 		parsed = fromDocument.value;
 	}
 
 	// `key:` with no value, including the first line of a block sequence.
-	if (parsed === null || parsed === undefined) {
+	if (parsed === null) {
 		return key === "default_assignee" ? [] : undefined;
-	}
-	if (typeof parsed === "string") {
-		if (key !== "default_assignee") {
-			return undefined;
-		}
-		const assignee = parsed.trim();
-		return assignee ? [assignee] : [];
 	}
 	if (Array.isArray(parsed)) {
 		return parsed.map((item) => String(item).trim()).filter((item) => item.length > 0);
 	}
-	return undefined;
+	// A single name is the legacy spelling of a one-entry default_assignee.
+	if (typeof parsed === "string" && key === "default_assignee") {
+		const assignee = parsed.trim();
+		return assignee ? [assignee] : [];
+	}
+	throw configTypeError(configPath, key, parsed);
 }
 
 const DEFAULT_CREATE_LOCK_TIMEOUT_MS = 30_000;
