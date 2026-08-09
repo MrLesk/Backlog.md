@@ -4,6 +4,7 @@ title: Make the web task list fit without horizontal scroll and trim page paddin
 status: To Do
 assignee: []
 created_date: '2026-08-09 19:02'
+updated_date: '2026-08-09 19:32'
 labels: []
 dependencies: []
 ordinal: 259000
@@ -21,6 +22,7 @@ Reported by Alex 2026-08-09 with screenshots. The All Tasks table in the web UI 
 - [ ] #2 The gutter between the collapsed sidebar and page content is visibly reduced
 - [ ] #3 No table columns are removed or hidden; all pages remain usable at the same viewports
 - [ ] #4 Before and after screenshots at the target viewports are included in the PR
+- [ ] #5 All scrollbars across the web UI (page, tables, modals, dropdowns) use a subtle themed style: transparent track, thin theme-matched thumb, in both Chromium and Firefox
 <!-- AC:END -->
 
 ## Definition of Done
@@ -29,3 +31,9 @@ Reported by Alex 2026-08-09 with screenshots. The All Tasks table in the web UI 
 - [ ] #2 bun run check . passes when formatting/linting touched
 - [ ] #3 bun test (or scoped test) passes
 <!-- DOD:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+Scope extended by Alex 2026-08-09: also restyle scrollbars site-wide (invisible track, subtle thumb) - the default bright scrollbar is visible in modals per his screenshot.
+<!-- SECTION:NOTES:END -->
