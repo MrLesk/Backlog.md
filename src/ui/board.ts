@@ -303,13 +303,16 @@ export async function renderBoardTui(
 ): Promise<void> {
 	if (!process.stdout.isTTY) {
 		const projectName = options?.projectName?.trim() || "Project";
+		// The piped board is the same view, so it hides the same columns the TUI hides.
+		// Milestone lanes filter on the same board-wide emptiness the browser lanes use.
+		const visibleStatuses = options?.hideEmptyColumns
+			? filterVisibleColumns(prepareBoardColumns(initialTasks, statuses), true, false).map((column) => column.status)
+			: statuses;
 		if (options?.milestoneMode) {
-			console.log(generateMilestoneGroupedBoard(initialTasks, statuses, options.milestoneEntities ?? [], projectName));
+			console.log(
+				generateMilestoneGroupedBoard(initialTasks, visibleStatuses, options.milestoneEntities ?? [], projectName),
+			);
 		} else {
-			// The piped board is the same view, so it hides the same columns the TUI hides.
-			const visibleStatuses = options?.hideEmptyColumns
-				? filterVisibleColumns(prepareBoardColumns(initialTasks, statuses), true, false).map((column) => column.status)
-				: statuses;
 			console.log(generateKanbanBoardWithMetadata(initialTasks, visibleStatuses, projectName));
 		}
 		return;
@@ -342,7 +345,7 @@ export async function renderBoardTui(
 		let configuredWorkflowStatuses = [...statuses];
 		let currentStatuses = initialColumns.map((column) => column.status);
 		let hideEmptyColumns = options?.hideEmptyColumns ?? false;
-		let hideEmptyColumnsSaving = false;
+		let pendingSettingWrite: Promise<void> | null = null;
 		let currentCol = 0;
 		let popupOpen = false;
 		let currentFocus: "board" | "filters" = "board";
@@ -936,6 +939,17 @@ export async function renderBoardTui(
 			}, durationMs);
 		};
 
+		/** Tear the board down, optionally handing off to another view before resolving. */
+		const closeBoard = async (beforeResolve?: () => Promise<unknown>) => {
+			// A Shift+H write can still be in flight, and the caller may exit the process
+			// as soon as the board resolves, which would drop the setting.
+			if (pendingSettingWrite) await pendingSettingWrite;
+			clearFooterTimer();
+			screen.destroy();
+			await beforeResolve?.();
+			resolve();
+		};
+
 		const renderView = (preferredTaskId?: string) => {
 			renderingView = true;
 			try {
@@ -1527,18 +1541,13 @@ export async function renderBoardTui(
 			}
 
 			if (options?.onTabPress) {
-				clearFooterTimer();
-				screen.destroy();
-				await options.onTabPress();
-				resolve();
+				await closeBoard(options.onTabPress);
 				return;
 			}
 
-			if (options?.viewSwitcher) {
-				clearFooterTimer();
-				screen.destroy();
-				await options.viewSwitcher.switchView();
-				resolve();
+			const viewSwitcher = options?.viewSwitcher;
+			if (viewSwitcher) {
+				await closeBoard(() => viewSwitcher.switchView());
 			}
 		});
 
@@ -1648,15 +1657,7 @@ export async function renderBoardTui(
 			}
 		});
 
-		// Shift+H writes the shared hideEmptyColumns setting, so the board, the browser
-		// board and `backlog config` all read the same preference.
-		screen.key(["S-h"], async () => {
-			if (popupOpen || filterPopupOpen || modalOpen || currentFocus === "filters" || moveOp) return;
-			// Ignore toggles while a save is in flight: overlapping load/save
-			// cycles would write back stale config snapshots (lost updates).
-			if (hideEmptyColumnsSaving) return;
-			hideEmptyColumnsSaving = true;
-
+		const toggleHideEmptyColumns = async () => {
 			const previous = hideEmptyColumns;
 			hideEmptyColumns = !hideEmptyColumns;
 			renderView();
@@ -1668,28 +1669,40 @@ export async function renderBoardTui(
 					throw new Error("No config found");
 				}
 				await core.fs.saveConfig({ ...config, hideEmptyColumns });
-				showTransientFooter(
-					hideEmptyColumns ? " {green-fg}Hiding empty columns{/}" : " {green-fg}Showing empty columns{/}",
-				);
 			} catch (error) {
 				hideEmptyColumns = previous;
 				renderView();
 				showTransientFooter(
 					` {red-fg}Error saving hide empty columns setting: ${error instanceof Error ? error.message : "Unknown error"}{/}`,
 				);
-			} finally {
-				hideEmptyColumnsSaving = false;
+				return;
 			}
+			showTransientFooter(
+				hideEmptyColumns ? " {green-fg}Hiding empty columns{/}" : " {green-fg}Showing empty columns{/}",
+			);
+		};
+
+		// Shift+H writes the shared hideEmptyColumns setting, so the board, the browser
+		// board and `backlog config` all read the same preference.
+		screen.key(["S-h"], () => {
+			if (popupOpen || filterPopupOpen || modalOpen || currentFocus === "filters" || moveOp) return;
+			// Ignore toggles while a write is in flight: overlapping load/save
+			// cycles would write back stale config snapshots (lost updates).
+			if (pendingSettingWrite) return;
+			pendingSettingWrite = toggleHideEmptyColumns()
+				// The toggle reports its own failures; this only keeps the exit path awaitable.
+				.catch(() => {})
+				.finally(() => {
+					pendingSettingWrite = null;
+				});
 		});
 
-		screen.key(["q", "C-c"], () => {
+		screen.key(["q", "C-c"], async () => {
 			if (popupOpen || filterPopupOpen || modalOpen) return;
-			clearFooterTimer();
-			screen.destroy();
-			resolve();
+			await closeBoard();
 		});
 
-		screen.key(["escape"], () => {
+		screen.key(["escape"], async () => {
 			if (popupOpen || filterPopupOpen || modalOpen) return;
 			if (currentFocus === "filters") {
 				focusColumn(currentCol);
@@ -1703,9 +1716,7 @@ export async function renderBoardTui(
 			}
 
 			if (!popupOpen) {
-				clearFooterTimer();
-				screen.destroy();
-				resolve();
+				await closeBoard();
 			}
 		});
 
