@@ -5,6 +5,7 @@ import type { FileSystem } from "../file-system/operations.ts";
 import { parseDecision, parseDocument, parseTask } from "../markdown/parser.ts";
 import type { BacklogConfig, Decision, Document, Task, TaskListFilter } from "../types/index.ts";
 import { watchConfigFile } from "../utils/config-watcher.ts";
+import { documentIdKey, documentIdsEqual } from "../utils/document-id.ts";
 import { normalizeDocumentRelativePath } from "../utils/document-path.ts";
 import { normalizePriorityValue } from "../utils/priority-config.ts";
 import { normalizeTaskId, normalizeTaskIdentity, taskIdsEqual } from "../utils/task-path.ts";
@@ -72,6 +73,16 @@ type IdentityLookup<T> = { state: "found"; item: T } | { state: "absent" } | { s
 
 const CONTENT_RETRY_ATTEMPTS = 12;
 const CONTENT_RETRY_DELAY_MS = 75;
+
+/**
+ * Document ID carried by a watched filename, for both `doc-1.md` and `doc-1 - Title.md`,
+ * or null when the name carries no addressable document identity.
+ */
+function documentFilenameId(filename: string): string | null {
+	const [candidate] = basename(filename, ".md").split(" - ");
+	if (!candidate?.startsWith("doc-") || !documentIdKey(candidate)) return null;
+	return candidate;
+}
 
 export class ContentStore {
 	private initialized = false;
@@ -875,7 +886,14 @@ export class ContentStore {
 		this.notify("tasks");
 	}
 
+	/** Documents are keyed by their frontmatter ID, which may spell the same identity differently. */
+	private findWatchedDocument(id: string): Document | undefined {
+		return this.documents.get(id) ?? [...this.documents.values()].find((document) => documentIdsEqual(document.id, id));
+	}
+
 	private publishWatchedDocument(document: Document): void {
+		const previous = this.findWatchedDocument(document.id);
+		if (previous && previous.id !== document.id) this.documents.delete(previous.id);
 		this.nextContentItemGeneration("documents", document.id);
 		this.nextContentItemVersion("documents", document.id, this.currentRoot());
 		this.documents.set(document.id, document);
@@ -884,9 +902,10 @@ export class ContentStore {
 	}
 
 	private removeWatchedDocument(id: string): void {
-		if (!this.documents.delete(id)) return;
-		this.nextContentItemGeneration("documents", id);
-		this.nextContentItemVersion("documents", id, this.currentRoot());
+		const existing = this.findWatchedDocument(id);
+		if (!existing || !this.documents.delete(existing.id)) return;
+		this.nextContentItemGeneration("documents", existing.id);
+		this.nextContentItemVersion("documents", existing.id, this.currentRoot());
 		this.cachedDocuments = [...this.documents.values()].sort((a, b) => a.title.localeCompare(b.title));
 		this.notify("documents");
 	}
@@ -1077,11 +1096,7 @@ export class ContentStore {
 				if (relativePath === null) await this.refreshDocumentsFromDisk(undefined, epoch);
 				return;
 			}
-			if (!base.startsWith("doc-")) {
-				await this.refreshDocumentsFromDisk(undefined, epoch);
-				return;
-			}
-			const [id] = base.split(" - ");
+			const id = documentFilenameId(base);
 			if (!id) {
 				await this.refreshDocumentsFromDisk(undefined, epoch);
 				return;
@@ -1097,24 +1112,27 @@ export class ContentStore {
 							...parseDocument(await Bun.file(absolutePath).text()),
 							path: normalizeDocumentRelativePath(relativePath ?? relative(docsDir, absolutePath)),
 						};
-						if (document.id !== id) throw new Error("Document identity mismatch");
+						if (!documentIdsEqual(document.id, id)) throw new Error("Document identity mismatch");
 						return document;
 					},
 					findIdentity: () =>
 						this.findIdentityCandidate(
 							docsDir,
 							"**/*.md",
-							(path) => basename(path).split(" - ")[0] === id,
+							(path) => {
+								const candidateId = documentFilenameId(path);
+								return candidateId ? documentIdsEqual(candidateId, id) : false;
+							},
 							async (candidatePath, candidateRelativePath) => {
 								const document = {
 									...parseDocument(await Bun.file(candidatePath).text()),
 									path: normalizeDocumentRelativePath(candidateRelativePath),
 								};
-								if (document.id !== id) throw new Error("Document identity mismatch");
+								if (!documentIdsEqual(document.id, id)) throw new Error("Document identity mismatch");
 								return document;
 							},
 						),
-					current: () => this.documents.get(id),
+					current: () => this.findWatchedDocument(id),
 					hasChanged: (previous, next) => this.hasDocumentChanged(previous, next),
 					publish: (document) => this.publishWatchedDocument(document),
 					remove: () => this.removeWatchedDocument(id),
@@ -1132,8 +1150,8 @@ export class ContentStore {
 						...parseDocument(await Bun.file(absolutePath).text()),
 						path: normalizeDocumentRelativePath(relativePath ?? relative(docsDir, absolutePath)),
 					};
-					if (document.id !== id) return true;
-					const previous = this.documents.get(id);
+					if (!documentIdsEqual(document.id, id)) return true;
+					const previous = this.findWatchedDocument(id);
 					if (previous && !this.hasDocumentChanged(previous, document)) return true;
 					this.publishWatchedDocument(document);
 					return false;
