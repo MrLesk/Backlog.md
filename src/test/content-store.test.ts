@@ -9,7 +9,7 @@ import { SearchService } from "../core/search-service.ts";
 import { TaskIdentityIndex, type TaskIdentityRecord } from "../core/task-identity-index.ts";
 import { FileSystem } from "../file-system/operations.ts";
 import { parseTask } from "../markdown/parser.ts";
-import { serializeTask } from "../markdown/serializer.ts";
+import { serializeDocument, serializeTask } from "../markdown/serializer.ts";
 import type { BacklogConfig, Decision, Document, Task } from "../types/index.ts";
 import { normalizeTaskIdentity } from "../utils/task-path.ts";
 import { createUniqueTestDir, getPlatformTimeout, safeCleanup, sleep } from "./test-utils.ts";
@@ -1611,6 +1611,351 @@ describe("ContentStore", () => {
 			expect(store.getDocuments()[0]?.path).toBe(newDocumentPath);
 			expect(store.getDecisions()[0]?.id).toBe(decision.id);
 			expect(internals.deferredRechecks.size).toBe(0);
+		} finally {
+			watchSpy.mockRestore();
+		}
+	});
+
+	it("settles a watched document file whose name omits the title suffix", async () => {
+		store.dispose();
+		const { relativePath } = await filesystem.saveDocument({ ...sampleDocument, path: undefined });
+		const untitledPath = join(filesystem.docsDir, "doc-1.md");
+		await rename(join(filesystem.docsDir, ...relativePath.split("/")), untitledPath);
+
+		const callbacks = new Map<string, CapturedWatchCallback>();
+		const watchSpy = captureWatchCallbacks(callbacks);
+		try {
+			store = new ContentStore(filesystem, undefined, true);
+			const initial = await store.ensureInitialized();
+			expect(initial.documents[0]?.path).toBe("doc-1.md");
+
+			const internals = store as unknown as {
+				deferredRechecks: Map<string, unknown>;
+				enqueue: (fn: () => Promise<void>) => Promise<void>;
+			};
+			await Bun.write(
+				untitledPath,
+				(await Bun.file(untitledPath).text()).replace("type: guide", "type: specification"),
+			);
+			getCapturedWatcher(callbacks, filesystem.docsDir)("change", "doc-1.md");
+			await internals.enqueue(async () => {});
+
+			expect(store.getDocuments()).toHaveLength(1);
+			expect(store.getDocuments()[0]?.type).toBe("specification");
+			expect(internals.deferredRechecks.size).toBe(0);
+		} finally {
+			watchSpy.mockRestore();
+		}
+	});
+
+	it("reconciles watched documents whose filename id padding differs from the frontmatter id", async () => {
+		store.dispose();
+		const paddedPath = "doc-0001 - Architecture Guide.md";
+		const unpaddedPath = "doc-2 - Implementation Notes.md";
+		const paddedDocument = { ...sampleDocument, path: undefined };
+		const unpaddedDocument = {
+			...sampleDocument,
+			id: "doc-0002",
+			title: "Implementation Notes",
+			rawContent: "# Implementation Notes",
+			path: undefined,
+		};
+		await Promise.all([
+			Bun.write(join(filesystem.docsDir, paddedPath), serializeDocument(paddedDocument)),
+			Bun.write(join(filesystem.docsDir, unpaddedPath), serializeDocument(unpaddedDocument)),
+		]);
+
+		const callbacks = new Map<string, CapturedWatchCallback>();
+		const watchSpy = captureWatchCallbacks(callbacks);
+		try {
+			store = new ContentStore(filesystem, undefined, true);
+			const initial = await store.ensureInitialized();
+			expect(initial.documents.map((document) => document.path)).toEqual([paddedPath, unpaddedPath]);
+
+			const internals = store as unknown as {
+				deferredRechecks: Map<string, unknown>;
+				enqueue: (fn: () => Promise<void>) => Promise<void>;
+			};
+
+			const renamedPaddedPath = "doc-0001 - Renamed guide.md";
+			const renamedUnpaddedPath = "doc-2 - Renamed notes.md";
+			await Promise.all([
+				rename(join(filesystem.docsDir, paddedPath), join(filesystem.docsDir, renamedPaddedPath)),
+				rename(join(filesystem.docsDir, unpaddedPath), join(filesystem.docsDir, renamedUnpaddedPath)),
+			]);
+			getCapturedWatcher(callbacks, filesystem.docsDir)("rename", renamedPaddedPath);
+			getCapturedWatcher(callbacks, filesystem.docsDir)("rename", renamedUnpaddedPath);
+			await internals.enqueue(async () => {});
+
+			expect(store.getDocuments().map((document) => document.path)).toEqual([renamedPaddedPath, renamedUnpaddedPath]);
+			expect(internals.deferredRechecks.size).toBe(0);
+
+			await Promise.all([
+				unlink(join(filesystem.docsDir, renamedPaddedPath)),
+				unlink(join(filesystem.docsDir, renamedUnpaddedPath)),
+			]);
+			getCapturedWatcher(callbacks, filesystem.docsDir)("rename", renamedPaddedPath);
+			getCapturedWatcher(callbacks, filesystem.docsDir)("rename", renamedUnpaddedPath);
+			await internals.enqueue(async () => {});
+
+			expect(store.getDocuments()).toHaveLength(0);
+			expect(internals.deferredRechecks.size).toBe(0);
+		} finally {
+			watchSpy.mockRestore();
+		}
+	});
+
+	it("replaces a watched document whose frontmatter id changes padding", async () => {
+		store.dispose();
+		const documentPath = "doc-1 - Architecture Guide.md";
+		await Bun.write(join(filesystem.docsDir, documentPath), serializeDocument({ ...sampleDocument, path: undefined }));
+
+		const callbacks = new Map<string, CapturedWatchCallback>();
+		const watchSpy = captureWatchCallbacks(callbacks);
+		try {
+			store = new ContentStore(filesystem, undefined, true);
+			const initial = await store.ensureInitialized();
+			expect(initial.documents.map((document) => document.id)).toEqual(["doc-1"]);
+
+			const internals = store as unknown as { enqueue: (fn: () => Promise<void>) => Promise<void> };
+			await Bun.write(
+				join(filesystem.docsDir, documentPath),
+				serializeDocument({ ...sampleDocument, id: "doc-0001", path: undefined }),
+			);
+			getCapturedWatcher(callbacks, filesystem.docsDir)("change", documentPath);
+			await internals.enqueue(async () => {});
+
+			expect(store.getDocuments().map((document) => document.id)).toEqual(["doc-0001"]);
+		} finally {
+			watchSpy.mockRestore();
+		}
+	});
+
+	it("does not let a concurrent refresh resurrect a respelled document id", async () => {
+		store.dispose();
+		const documentPath = "doc-1 - Architecture Guide.md";
+		await Bun.write(join(filesystem.docsDir, documentPath), serializeDocument({ ...sampleDocument, path: undefined }));
+
+		const callbacks = new Map<string, CapturedWatchCallback>();
+		const watchSpy = captureWatchCallbacks(callbacks);
+		try {
+			store = new ContentStore(filesystem, undefined, true);
+			await store.ensureInitialized();
+
+			const originalListDocuments = filesystem.listDocuments.bind(filesystem);
+			let heldLoad: DeferredGate | null = null;
+			filesystem.listDocuments = async () => {
+				const documents = await originalListDocuments();
+				const gate = heldLoad;
+				heldLoad = null;
+				if (gate) {
+					gate.markStarted();
+					await gate.waitForRelease;
+				}
+				return documents;
+			};
+
+			const internals = store as unknown as {
+				enqueue: (fn: () => Promise<void>) => Promise<void>;
+				refreshDocumentsFromDisk: () => Promise<void>;
+			};
+			const gate = createDeferredGate();
+			heldLoad = gate;
+			const heldRefresh = internals.refreshDocumentsFromDisk();
+			await withTimeout(gate.started, "held document collection refresh");
+
+			await Bun.write(
+				join(filesystem.docsDir, documentPath),
+				serializeDocument({ ...sampleDocument, id: "doc-0001", path: undefined }),
+			);
+			getCapturedWatcher(callbacks, filesystem.docsDir)("change", documentPath);
+			await internals.enqueue(async () => {});
+			expect(store.getDocuments().map((document) => document.id)).toEqual(["doc-0001"]);
+
+			gate.release();
+			await heldRefresh;
+
+			expect(store.getDocuments().map((document) => document.id)).toEqual(["doc-0001"]);
+		} finally {
+			watchSpy.mockRestore();
+		}
+	});
+
+	it("keeps padding-equivalent siblings apart when a watched frontmatter id is respelled", async () => {
+		store.dispose();
+		const alphaPath = "doc-001 - Alpha guide.md";
+		const betaPath = "doc-01 - Beta guide.md";
+		await Promise.all([
+			Bun.write(
+				join(filesystem.docsDir, alphaPath),
+				serializeDocument({ ...sampleDocument, id: "doc-001", title: "Alpha guide", path: undefined }),
+			),
+			Bun.write(
+				join(filesystem.docsDir, betaPath),
+				serializeDocument({ ...sampleDocument, id: "doc-01", title: "Beta guide", path: undefined }),
+			),
+		]);
+
+		const callbacks = new Map<string, CapturedWatchCallback>();
+		const watchSpy = captureWatchCallbacks(callbacks);
+		try {
+			store = new ContentStore(filesystem, undefined, true);
+			const initial = await store.ensureInitialized();
+			expect(initial.documents.map((document) => document.id)).toEqual(["doc-001", "doc-01"]);
+
+			const internals = store as unknown as { enqueue: (fn: () => Promise<void>) => Promise<void> };
+			await Bun.write(
+				join(filesystem.docsDir, betaPath),
+				serializeDocument({ ...sampleDocument, id: "doc-1", title: "Beta guide", path: undefined }),
+			);
+			getCapturedWatcher(callbacks, filesystem.docsDir)("change", betaPath);
+			await internals.enqueue(async () => {});
+
+			expect(store.getDocuments().map((document) => [document.id, document.path])).toEqual([
+				["doc-001", alphaPath],
+				["doc-1", betaPath],
+			]);
+		} finally {
+			watchSpy.mockRestore();
+		}
+	});
+
+	it("keeps a live document when a stale recheck for an absent path runs", async () => {
+		store.dispose();
+		const stalePath = "doc-0001 - Architecture Guide.md";
+		const livePath = "doc-1 - Architecture Guide.md";
+		await Bun.write(join(filesystem.docsDir, stalePath), serializeDocument({ ...sampleDocument, path: undefined }));
+
+		const callbacks = new Map<string, CapturedWatchCallback>();
+		const watchSpy = captureWatchCallbacks(callbacks);
+		try {
+			store = new ContentStore(filesystem, undefined, true);
+			const initial = await store.ensureInitialized();
+			expect(initial.documents.map((document) => document.path)).toEqual([stalePath]);
+
+			const timerCallbacks: Array<() => void> = [];
+			const internals = store as unknown as {
+				chainTail: Promise<void>;
+				deferredRechecks: Map<string, unknown>;
+				enqueue: (fn: () => Promise<void>) => Promise<void>;
+				startDeferredTimer: (callback: () => void, delayMs: number) => ReturnType<typeof setTimeout>;
+			};
+			internals.startDeferredTimer = (callback) => {
+				timerCallbacks.push(callback);
+				const timer = setTimeout(() => {}, 60_000);
+				timer.unref();
+				return timer;
+			};
+
+			// A transient malformed write schedules a recheck keyed by the padded filename id.
+			const validContent = await Bun.file(join(filesystem.docsDir, stalePath)).text();
+			await Bun.write(join(filesystem.docsDir, stalePath), "---\nid: {\n---\n");
+			getCapturedWatcher(callbacks, filesystem.docsDir)("change", stalePath);
+			await internals.enqueue(async () => {});
+			expect([...internals.deferredRechecks.keys()]).toEqual(["document:doc-0001"]);
+
+			// The file is repaired under an unpadded name and only the new-path event is delivered.
+			await Bun.write(join(filesystem.docsDir, livePath), validContent);
+			await unlink(join(filesystem.docsDir, stalePath));
+			getCapturedWatcher(callbacks, filesystem.docsDir)("rename", livePath);
+			await internals.enqueue(async () => {});
+			expect(store.getDocuments().map((document) => document.path)).toEqual([livePath]);
+
+			for (const callback of timerCallbacks) callback();
+			await internals.chainTail;
+
+			expect(store.getDocuments().map((document) => document.path)).toEqual([livePath]);
+		} finally {
+			watchSpy.mockRestore();
+		}
+	});
+
+	it("drops the vacated entry when a watched document is renamed and respelled at once", async () => {
+		store.dispose();
+		const oldPath = "doc-1 - Architecture Guide.md";
+		const newPath = "doc-0001 - Architecture Guide.md";
+		await Bun.write(join(filesystem.docsDir, oldPath), serializeDocument({ ...sampleDocument, path: undefined }));
+
+		const callbacks = new Map<string, CapturedWatchCallback>();
+		const watchSpy = captureWatchCallbacks(callbacks);
+		try {
+			store = new ContentStore(filesystem, undefined, true);
+			const initial = await store.ensureInitialized();
+			expect(initial.documents.map((document) => document.path)).toEqual([oldPath]);
+
+			const internals = store as unknown as { enqueue: (fn: () => Promise<void>) => Promise<void> };
+			await Bun.write(
+				join(filesystem.docsDir, newPath),
+				serializeDocument({ ...sampleDocument, id: "doc-0001", path: undefined }),
+			);
+			await unlink(join(filesystem.docsDir, oldPath));
+			getCapturedWatcher(callbacks, filesystem.docsDir)("rename", newPath);
+			getCapturedWatcher(callbacks, filesystem.docsDir)("rename", oldPath);
+			await internals.enqueue(async () => {});
+
+			expect(store.getDocuments().map((document) => [document.id, document.path])).toEqual([["doc-0001", newPath]]);
+		} finally {
+			watchSpy.mockRestore();
+		}
+	});
+
+	it("refreshes when a destination-only respelled rename strands the old entry", async () => {
+		store.dispose();
+		const oldPath = "doc-1 - Architecture Guide.md";
+		const newPath = "doc-0001 - Renamed guide.md";
+		await Bun.write(join(filesystem.docsDir, oldPath), serializeDocument({ ...sampleDocument, path: undefined }));
+
+		const callbacks = new Map<string, CapturedWatchCallback>();
+		const watchSpy = captureWatchCallbacks(callbacks);
+		try {
+			store = new ContentStore(filesystem, undefined, true);
+			const initial = await store.ensureInitialized();
+			expect(initial.documents.map((document) => document.path)).toEqual([oldPath]);
+
+			const internals = store as unknown as { enqueue: (fn: () => Promise<void>) => Promise<void> };
+			await Bun.write(
+				join(filesystem.docsDir, newPath),
+				serializeDocument({ ...sampleDocument, id: "doc-0001", path: undefined }),
+			);
+			await unlink(join(filesystem.docsDir, oldPath));
+			// Only the destination event is delivered, so nothing identifies the entry the file vacated.
+			getCapturedWatcher(callbacks, filesystem.docsDir)("rename", newPath);
+			await internals.enqueue(async () => {});
+
+			expect(store.getDocuments().map((document) => [document.id, document.path])).toEqual([["doc-0001", newPath]]);
+		} finally {
+			watchSpy.mockRestore();
+		}
+	});
+
+	it("publishes a genuinely new watched document without a collection refresh", async () => {
+		store.dispose();
+		await filesystem.saveDocument({ ...sampleDocument, path: undefined });
+
+		const callbacks = new Map<string, CapturedWatchCallback>();
+		const watchSpy = captureWatchCallbacks(callbacks);
+		try {
+			store = new ContentStore(filesystem, undefined, true);
+			await store.ensureInitialized();
+
+			const originalListDocuments = filesystem.listDocuments.bind(filesystem);
+			let listCalls = 0;
+			filesystem.listDocuments = async () => {
+				listCalls += 1;
+				return await originalListDocuments();
+			};
+
+			const internals = store as unknown as { enqueue: (fn: () => Promise<void>) => Promise<void> };
+			const addedPath = "doc-2 - Implementation Notes.md";
+			await Bun.write(
+				join(filesystem.docsDir, addedPath),
+				serializeDocument({ ...sampleDocument, id: "doc-2", title: "Implementation Notes", path: undefined }),
+			);
+			getCapturedWatcher(callbacks, filesystem.docsDir)("rename", addedPath);
+			await internals.enqueue(async () => {});
+
+			expect(store.getDocuments().map((document) => document.id)).toEqual(["doc-1", "doc-2"]);
+			expect(listCalls).toBe(0);
 		} finally {
 			watchSpy.mockRestore();
 		}

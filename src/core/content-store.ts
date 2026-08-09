@@ -5,6 +5,7 @@ import type { FileSystem } from "../file-system/operations.ts";
 import { parseDecision, parseDocument, parseTask } from "../markdown/parser.ts";
 import type { BacklogConfig, Decision, Document, Task, TaskListFilter } from "../types/index.ts";
 import { watchConfigFile } from "../utils/config-watcher.ts";
+import { documentIdKey, documentIdsEqual } from "../utils/document-id.ts";
 import { normalizeDocumentRelativePath } from "../utils/document-path.ts";
 import { normalizePriorityValue } from "../utils/priority-config.ts";
 import { normalizeTaskId, normalizeTaskIdentity, taskIdsEqual } from "../utils/task-path.ts";
@@ -72,6 +73,25 @@ type IdentityLookup<T> = { state: "found"; item: T } | { state: "absent" } | { s
 
 const CONTENT_RETRY_ATTEMPTS = 12;
 const CONTENT_RETRY_DELAY_MS = 75;
+
+/**
+ * Document ID carried by a watched filename, for both `doc-1.md` and `doc-1 - Title.md`,
+ * or null when the name carries no addressable document identity.
+ */
+function documentFilenameId(filename: string): string | null {
+	const [candidate] = basename(filename, ".md").split(" - ");
+	if (!candidate?.startsWith("doc-") || !documentIdKey(candidate)) return null;
+	return candidate;
+}
+
+/** Docs-relative path a watcher event refers to, or null when it cannot be expressed as one. */
+function watchedDocumentPath(docsDir: string, absolutePath: string, relativePath: string | null): string | null {
+	try {
+		return normalizeDocumentRelativePath(relativePath ?? relative(docsDir, absolutePath));
+	} catch {
+		return null;
+	}
+}
 
 export class ContentStore {
 	private initialized = false;
@@ -875,18 +895,47 @@ export class ContentStore {
 		this.notify("tasks");
 	}
 
-	private publishWatchedDocument(document: Document): void {
+	/**
+	 * Documents are keyed by frontmatter ID, so equivalent IDs can be spelled differently and belong to
+	 * different files. A watcher event is about one file, so its store entry is the one holding that path.
+	 */
+	private findWatchedDocumentByPath(path?: string): Document | undefined {
+		if (!path) return undefined;
+		return [...this.documents.values()].find((document) => document.path === path);
+	}
+
+	/** Drops one entry and versions the removal so a concurrent refresh cannot resurrect it. */
+	private dropWatchedDocument(document: Document): boolean {
+		if (!this.documents.delete(document.id)) return false;
+		this.nextContentItemGeneration("documents", document.id);
+		this.nextContentItemVersion("documents", document.id, this.currentRoot());
+		return true;
+	}
+
+	/**
+	 * Publishes one watched file. Returns true when the publish landed on a path the store did not
+	 * hold while an equivalent ID still sits at another path: the file may have been renamed and
+	 * respelled at once with only the destination event delivered, and no path identifies what it
+	 * vacated. Only a full refresh can settle that without guessing which entry it was.
+	 */
+	private publishWatchedDocument(document: Document, replacedPath?: string): boolean {
+		// A respelled frontmatter ID rekeys the entry, so drop the one this file used to occupy.
+		const replaced = this.findWatchedDocumentByPath(replacedPath) ?? this.findWatchedDocumentByPath(document.path);
+		if (replaced && replaced.id !== document.id) this.dropWatchedDocument(replaced);
 		this.nextContentItemGeneration("documents", document.id);
 		this.nextContentItemVersion("documents", document.id, this.currentRoot());
 		this.documents.set(document.id, document);
 		this.cachedDocuments = [...this.documents.values()].sort((a, b) => a.title.localeCompare(b.title));
 		this.notify("documents");
+		if (replaced) return false;
+		return this.cachedDocuments.some(
+			(candidate) => candidate.path !== document.path && documentIdsEqual(candidate.id, document.id),
+		);
 	}
 
-	private removeWatchedDocument(id: string): void {
-		if (!this.documents.delete(id)) return;
-		this.nextContentItemGeneration("documents", id);
-		this.nextContentItemVersion("documents", id, this.currentRoot());
+	private removeWatchedDocument(path: string): void {
+		const existing = this.findWatchedDocumentByPath(path);
+		if (!existing || !this.dropWatchedDocument(existing)) return;
 		this.cachedDocuments = [...this.documents.values()].sort((a, b) => a.title.localeCompare(b.title));
 		this.notify("documents");
 	}
@@ -1077,70 +1126,69 @@ export class ContentStore {
 				if (relativePath === null) await this.refreshDocumentsFromDisk(undefined, epoch);
 				return;
 			}
-			if (!base.startsWith("doc-")) {
-				await this.refreshDocumentsFromDisk(undefined, epoch);
-				return;
-			}
-			const [id] = base.split(" - ");
-			if (!id) {
+			const id = documentFilenameId(base);
+			const eventPath = watchedDocumentPath(docsDir, absolutePath, relativePath);
+			if (!id || !eventPath) {
 				await this.refreshDocumentsFromDisk(undefined, epoch);
 				return;
 			}
 
+			let strandedEquivalent = false;
 			if (eventType === "rename") {
 				await this.reconcileRenamedItem({
 					key: `document:${id}`,
 					epoch,
 					readEventPath: async () => {
 						if (!(await Bun.file(absolutePath).exists())) return null;
-						const document = {
-							...parseDocument(await Bun.file(absolutePath).text()),
-							path: normalizeDocumentRelativePath(relativePath ?? relative(docsDir, absolutePath)),
-						};
-						if (document.id !== id) throw new Error("Document identity mismatch");
+						const document = { ...parseDocument(await Bun.file(absolutePath).text()), path: eventPath };
+						if (!documentIdsEqual(document.id, id)) throw new Error("Document identity mismatch");
 						return document;
 					},
 					findIdentity: () =>
 						this.findIdentityCandidate(
 							docsDir,
 							"**/*.md",
-							(path) => basename(path).split(" - ")[0] === id,
+							(path) => {
+								const candidateId = documentFilenameId(path);
+								return candidateId ? documentIdsEqual(candidateId, id) : false;
+							},
 							async (candidatePath, candidateRelativePath) => {
 								const document = {
 									...parseDocument(await Bun.file(candidatePath).text()),
 									path: normalizeDocumentRelativePath(candidateRelativePath),
 								};
-								if (document.id !== id) throw new Error("Document identity mismatch");
+								if (!documentIdsEqual(document.id, id)) throw new Error("Document identity mismatch");
 								return document;
 							},
 						),
-					current: () => this.documents.get(id),
+					current: () => this.findWatchedDocumentByPath(eventPath),
 					hasChanged: (previous, next) => this.hasDocumentChanged(previous, next),
-					publish: (document) => this.publishWatchedDocument(document),
-					remove: () => this.removeWatchedDocument(id),
+					publish: (document) => {
+						strandedEquivalent = this.publishWatchedDocument(document, eventPath);
+					},
+					remove: () => this.removeWatchedDocument(eventPath),
 				});
+				if (strandedEquivalent) await this.refreshDocumentsFromDisk(undefined, epoch);
 				return;
 			}
 
 			await this.reconcileOrSchedule(`document:${id}`, epoch, async () => {
 				if (!(await Bun.file(absolutePath).exists())) {
-					this.removeWatchedDocument(id);
+					this.removeWatchedDocument(eventPath);
 					return false;
 				}
 				try {
-					const document = {
-						...parseDocument(await Bun.file(absolutePath).text()),
-						path: normalizeDocumentRelativePath(relativePath ?? relative(docsDir, absolutePath)),
-					};
-					if (document.id !== id) return true;
-					const previous = this.documents.get(id);
+					const document = { ...parseDocument(await Bun.file(absolutePath).text()), path: eventPath };
+					if (!documentIdsEqual(document.id, id)) return true;
+					const previous = this.findWatchedDocumentByPath(eventPath);
 					if (previous && !this.hasDocumentChanged(previous, document)) return true;
-					this.publishWatchedDocument(document);
+					strandedEquivalent = this.publishWatchedDocument(document, eventPath);
 					return false;
 				} catch {
 					return true;
 				}
 			});
+			if (strandedEquivalent) await this.refreshDocumentsFromDisk(undefined, epoch);
 		});
 	}
 
