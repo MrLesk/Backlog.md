@@ -1870,6 +1870,35 @@ describe("ContentStore", () => {
 		}
 	});
 
+	it("drops the vacated entry when a watched document is renamed and respelled at once", async () => {
+		store.dispose();
+		const oldPath = "doc-1 - Architecture Guide.md";
+		const newPath = "doc-0001 - Architecture Guide.md";
+		await Bun.write(join(filesystem.docsDir, oldPath), serializeDocument({ ...sampleDocument, path: undefined }));
+
+		const callbacks = new Map<string, CapturedWatchCallback>();
+		const watchSpy = captureWatchCallbacks(callbacks);
+		try {
+			store = new ContentStore(filesystem, undefined, true);
+			const initial = await store.ensureInitialized();
+			expect(initial.documents.map((document) => document.path)).toEqual([oldPath]);
+
+			const internals = store as unknown as { enqueue: (fn: () => Promise<void>) => Promise<void> };
+			await Bun.write(
+				join(filesystem.docsDir, newPath),
+				serializeDocument({ ...sampleDocument, id: "doc-0001", path: undefined }),
+			);
+			await unlink(join(filesystem.docsDir, oldPath));
+			getCapturedWatcher(callbacks, filesystem.docsDir)("rename", newPath);
+			getCapturedWatcher(callbacks, filesystem.docsDir)("rename", oldPath);
+			await internals.enqueue(async () => {});
+
+			expect(store.getDocuments().map((document) => [document.id, document.path])).toEqual([["doc-0001", newPath]]);
+		} finally {
+			watchSpy.mockRestore();
+		}
+	});
+
 	it("coalesces deferred rechecks and invalidates them across root changes and disposal", async () => {
 		await store.ensureInitialized();
 		const timerCallbacks: Array<() => void> = [];

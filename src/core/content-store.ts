@@ -914,7 +914,7 @@ export class ContentStore {
 
 	private publishWatchedDocument(document: Document, replacedPath?: string): void {
 		// A respelled frontmatter ID rekeys the entry, so drop the one this file used to occupy.
-		const replaced = this.findWatchedDocumentByPath(document.path) ?? this.findWatchedDocumentByPath(replacedPath);
+		const replaced = this.findWatchedDocumentByPath(replacedPath) ?? this.findWatchedDocumentByPath(document.path);
 		if (replaced && replaced.id !== document.id) this.dropWatchedDocument(replaced);
 		this.nextContentItemGeneration("documents", document.id);
 		this.nextContentItemVersion("documents", document.id, this.currentRoot());

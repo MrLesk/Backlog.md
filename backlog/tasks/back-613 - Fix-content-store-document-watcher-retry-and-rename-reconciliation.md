@@ -5,7 +5,7 @@ status: Done
 assignee:
   - '@Claude'
 created_date: '2026-08-09 13:49'
-updated_date: '2026-08-09 14:38'
+updated_date: '2026-08-09 14:50'
 labels: []
 dependencies: []
 ordinal: 252000
@@ -59,6 +59,8 @@ Review round 1 (Codex, PR #887): all three P2 findings reproduced with the exist
 (3) Stale recheck deleting a live document: a malformed write to 'doc-0001 - Title.md' scheduled a recheck keyed document:doc-0001; after the file was repaired as 'doc-1 - Title.md' and published, firing the stale timer removed the live document by identity - the store went empty.
 
 (2) and (3) share one root cause: the store side was matching by ID equivalence when a watcher event is about one specific FILE. Replaced findWatchedDocument(id) with findWatchedDocumentByPath(path), so publish replaces (and remove deletes) only the entry holding that path, mirroring the task watcher's filePath-based current/replacedPath design. publishWatchedDocument now takes the event path as replacedPath, which also covers a simultaneous rename plus id respell. documentIdsEqual stays where identity actually matters: the filename-vs-frontmatter checks in the watcher. Also hoisted the event path derivation into one watchedDocumentPath() helper that fails closed to a full refresh.
+
+Follow-on found while validating the path-based design: a simultaneous rename plus id respell (file P -> Q and frontmatter doc-1 -> doc-0001) left the vacated P entry behind, because publish preferred the entry at the published path over the one at the event path. Ordering the vacated (event) path first drops it on the old-path event; covered by a fourth red-then-green test.
 <!-- SECTION:NOTES:END -->
 
 ## Final Summary
