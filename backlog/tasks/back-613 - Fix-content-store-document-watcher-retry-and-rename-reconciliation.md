@@ -5,7 +5,7 @@ status: Done
 assignee:
   - '@Claude'
 created_date: '2026-08-09 13:49'
-updated_date: '2026-08-09 14:08'
+updated_date: '2026-08-09 14:38'
 labels: []
 dependencies: []
 ordinal: 252000
@@ -49,6 +49,16 @@ Repro (pre-fix, scratch harness draining the deferred-recheck timers from one wa
 Defect 2 repro: 'doc-0001 - Architecture Guide.md' with frontmatter doc-1 (and the mirror case 'doc-2 - Implementation Notes.md' with frontmatter doc-0002) stayed on the old path after a rename because readEventPath threw 'Document identity mismatch' on raw ===; removeWatchedDocument also missed the map entry stored under the frontmatter id, so deletions were invisible.
 
 Fix (src/core/content-store.ts): one module-level documentFilenameId() derives the id from basename(name, '.md').split(' - ')[0] for both filename shapes and returns null when the name carries no addressable document identity, which collapses the old 'doc-' prefix gate and the empty-id gate into a single deterministic full-refresh fallback. All document watcher comparisons now use documentIdsEqual (readEventPath, findIdentity filter, candidate reader, non-rename reconcile), and store-side lookups go through one findWatchedDocument() helper used by the rename 'current' callback, the non-rename previous lookup, removeWatchedDocument, and publishWatchedDocument (which now drops an equal-identity entry stored under a differently spelled id, so a frontmatter padding change cannot leave two entries for one file).
+
+Review round 1 (Codex, PR #887): all three P2 findings reproduced with the existing harness patterns, all three fixed.
+
+(1) Resurrection through a concurrent refresh: with listDocuments gated mid-refresh, publishing the same file respelled doc-1 -> doc-0001 dropped the doc-1 map entry but versioned only doc-0001, so mergeConcurrentChanges saw doc-1 unchanged and re-added the stale copy - store ended with [doc-1, doc-0001]. Fixed by versioning every drop (new dropWatchedDocument records generation + version for the removed id, exactly as removeWatchedDocument already did).
+
+(2) Wrong entry dropped among padding-equivalent siblings: with doc-001 'Alpha guide' and doc-01 'Beta guide' on disk, respelling Beta's frontmatter to doc-1 deleted Alpha (first equivalent in map order) and left Beta twice.
+
+(3) Stale recheck deleting a live document: a malformed write to 'doc-0001 - Title.md' scheduled a recheck keyed document:doc-0001; after the file was repaired as 'doc-1 - Title.md' and published, firing the stale timer removed the live document by identity - the store went empty.
+
+(2) and (3) share one root cause: the store side was matching by ID equivalence when a watcher event is about one specific FILE. Replaced findWatchedDocument(id) with findWatchedDocumentByPath(path), so publish replaces (and remove deletes) only the entry holding that path, mirroring the task watcher's filePath-based current/replacedPath design. publishWatchedDocument now takes the event path as replacedPath, which also covers a simultaneous rename plus id respell. documentIdsEqual stays where identity actually matters: the filename-vs-frontmatter checks in the watcher. Also hoisted the event path derivation into one watchedDocumentPath() helper that fails closed to a full refresh.
 <!-- SECTION:NOTES:END -->
 
 ## Final Summary

@@ -84,6 +84,15 @@ function documentFilenameId(filename: string): string | null {
 	return candidate;
 }
 
+/** Docs-relative path a watcher event refers to, or null when it cannot be expressed as one. */
+function watchedDocumentPath(docsDir: string, absolutePath: string, relativePath: string | null): string | null {
+	try {
+		return normalizeDocumentRelativePath(relativePath ?? relative(docsDir, absolutePath));
+	} catch {
+		return null;
+	}
+}
+
 export class ContentStore {
 	private initialized = false;
 	private initializing: Promise<void> | null = null;
@@ -886,14 +895,27 @@ export class ContentStore {
 		this.notify("tasks");
 	}
 
-	/** Documents are keyed by their frontmatter ID, which may spell the same identity differently. */
-	private findWatchedDocument(id: string): Document | undefined {
-		return this.documents.get(id) ?? [...this.documents.values()].find((document) => documentIdsEqual(document.id, id));
+	/**
+	 * Documents are keyed by frontmatter ID, so equivalent IDs can be spelled differently and belong to
+	 * different files. A watcher event is about one file, so its store entry is the one holding that path.
+	 */
+	private findWatchedDocumentByPath(path?: string): Document | undefined {
+		if (!path) return undefined;
+		return [...this.documents.values()].find((document) => document.path === path);
 	}
 
-	private publishWatchedDocument(document: Document): void {
-		const previous = this.findWatchedDocument(document.id);
-		if (previous && previous.id !== document.id) this.documents.delete(previous.id);
+	/** Drops one entry and versions the removal so a concurrent refresh cannot resurrect it. */
+	private dropWatchedDocument(document: Document): boolean {
+		if (!this.documents.delete(document.id)) return false;
+		this.nextContentItemGeneration("documents", document.id);
+		this.nextContentItemVersion("documents", document.id, this.currentRoot());
+		return true;
+	}
+
+	private publishWatchedDocument(document: Document, replacedPath?: string): void {
+		// A respelled frontmatter ID rekeys the entry, so drop the one this file used to occupy.
+		const replaced = this.findWatchedDocumentByPath(document.path) ?? this.findWatchedDocumentByPath(replacedPath);
+		if (replaced && replaced.id !== document.id) this.dropWatchedDocument(replaced);
 		this.nextContentItemGeneration("documents", document.id);
 		this.nextContentItemVersion("documents", document.id, this.currentRoot());
 		this.documents.set(document.id, document);
@@ -901,11 +923,9 @@ export class ContentStore {
 		this.notify("documents");
 	}
 
-	private removeWatchedDocument(id: string): void {
-		const existing = this.findWatchedDocument(id);
-		if (!existing || !this.documents.delete(existing.id)) return;
-		this.nextContentItemGeneration("documents", existing.id);
-		this.nextContentItemVersion("documents", existing.id, this.currentRoot());
+	private removeWatchedDocument(path: string): void {
+		const existing = this.findWatchedDocumentByPath(path);
+		if (!existing || !this.dropWatchedDocument(existing)) return;
 		this.cachedDocuments = [...this.documents.values()].sort((a, b) => a.title.localeCompare(b.title));
 		this.notify("documents");
 	}
@@ -1097,7 +1117,8 @@ export class ContentStore {
 				return;
 			}
 			const id = documentFilenameId(base);
-			if (!id) {
+			const eventPath = watchedDocumentPath(docsDir, absolutePath, relativePath);
+			if (!id || !eventPath) {
 				await this.refreshDocumentsFromDisk(undefined, epoch);
 				return;
 			}
@@ -1108,10 +1129,7 @@ export class ContentStore {
 					epoch,
 					readEventPath: async () => {
 						if (!(await Bun.file(absolutePath).exists())) return null;
-						const document = {
-							...parseDocument(await Bun.file(absolutePath).text()),
-							path: normalizeDocumentRelativePath(relativePath ?? relative(docsDir, absolutePath)),
-						};
+						const document = { ...parseDocument(await Bun.file(absolutePath).text()), path: eventPath };
 						if (!documentIdsEqual(document.id, id)) throw new Error("Document identity mismatch");
 						return document;
 					},
@@ -1132,28 +1150,25 @@ export class ContentStore {
 								return document;
 							},
 						),
-					current: () => this.findWatchedDocument(id),
+					current: () => this.findWatchedDocumentByPath(eventPath),
 					hasChanged: (previous, next) => this.hasDocumentChanged(previous, next),
-					publish: (document) => this.publishWatchedDocument(document),
-					remove: () => this.removeWatchedDocument(id),
+					publish: (document) => this.publishWatchedDocument(document, eventPath),
+					remove: () => this.removeWatchedDocument(eventPath),
 				});
 				return;
 			}
 
 			await this.reconcileOrSchedule(`document:${id}`, epoch, async () => {
 				if (!(await Bun.file(absolutePath).exists())) {
-					this.removeWatchedDocument(id);
+					this.removeWatchedDocument(eventPath);
 					return false;
 				}
 				try {
-					const document = {
-						...parseDocument(await Bun.file(absolutePath).text()),
-						path: normalizeDocumentRelativePath(relativePath ?? relative(docsDir, absolutePath)),
-					};
+					const document = { ...parseDocument(await Bun.file(absolutePath).text()), path: eventPath };
 					if (!documentIdsEqual(document.id, id)) return true;
-					const previous = this.findWatchedDocument(id);
+					const previous = this.findWatchedDocumentByPath(eventPath);
 					if (previous && !this.hasDocumentChanged(previous, document)) return true;
-					this.publishWatchedDocument(document);
+					this.publishWatchedDocument(document, eventPath);
 					return false;
 				} catch {
 					return true;
