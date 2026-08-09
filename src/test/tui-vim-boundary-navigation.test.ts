@@ -2,6 +2,7 @@ import { describe, expect, it } from "bun:test";
 import type { ListInterface, ScreenInterface } from "neo-neo-bblessed";
 import type { Task } from "../types/index.ts";
 import { renderBoardTui } from "../ui/board.ts";
+import { openMultiSelectFilterPopup, openSingleSelectFilterPopup } from "../ui/components/filter-popup.ts";
 import { GenericList } from "../ui/components/generic-list.ts";
 import { resolveListBoundaryNavigation } from "../ui/task-viewer-with-search.ts";
 import { createScreen } from "../ui/tui.ts";
@@ -104,6 +105,97 @@ describe("vim keys stay inside the task list at boundaries", () => {
 				screen.destroy();
 			}
 		});
+	});
+});
+
+describe("vim keys navigate the filter popups", () => {
+	function popupScreen(): ScreenInterface {
+		const screen = createScreen({ smartCSR: false });
+		Object.defineProperty(screen, "width", { configurable: true, value: 100, writable: true });
+		Object.defineProperty(screen, "height", { configurable: true, value: 30, writable: true });
+		return screen;
+	}
+
+	// The popups focus their picker on the next tick.
+	async function settleFocus(): Promise<void> {
+		await new Promise<void>((resolve) => setImmediate(resolve));
+		await new Promise<void>((resolve) => setImmediate(resolve));
+	}
+
+	function focusedPicker(screen: ScreenInterface): EmittingWidget & { selected?: number } {
+		const focused = (screen as unknown as { focused?: EmittingWidget & { selected?: number } }).focused;
+		if (!focused) throw new Error("No focused picker");
+		return focused;
+	}
+
+	it("moves the single-select picker with j and k and clamps at both ends", async () => {
+		const screen = popupScreen();
+		try {
+			const answer = openSingleSelectFilterPopup({
+				screen,
+				title: "Filter Status",
+				choices: [
+					{ label: "To Do", value: "To Do" },
+					{ label: "In Progress", value: "In Progress" },
+					{ label: "Done", value: "Done" },
+				],
+				selectedValue: "To Do",
+			});
+			await settleFocus();
+			const picker = focusedPicker(screen);
+			expect(picker.selected).toBe(0);
+
+			// k on the first row stays put, exactly like ArrowUp does here.
+			pressKey(picker, "k");
+			expect(picker.selected).toBe(0);
+
+			pressKey(picker, "j");
+			pressKey(picker, "j");
+			expect(picker.selected).toBe(2);
+
+			// j on the last row stays put too: the picker never wrapped for the arrows either.
+			pressKey(picker, "j");
+			expect(picker.selected).toBe(2);
+
+			pressKey(picker, "k");
+			expect(picker.selected).toBe(1);
+
+			pressKey(picker, "enter");
+			expect(await withTimeout(answer, "single-select filter popup", 1000)).toBe("In Progress");
+		} finally {
+			screen.destroy();
+		}
+	});
+
+	it("moves the multi-select picker with j and k", async () => {
+		const screen = popupScreen();
+		try {
+			const answer = openMultiSelectFilterPopup({
+				screen,
+				title: "Filter Labels",
+				items: ["bug", "docs", "enhancement"],
+				selectedItems: [],
+			});
+			await settleFocus();
+			const picker = focusedPicker(screen);
+			expect(picker.selected).toBe(0);
+
+			// This popup is a GenericList, which wraps at both ends for the arrows and for j/k alike.
+			pressKey(picker, "k");
+			expect(picker.selected).toBe(2);
+
+			pressKey(picker, "j");
+			expect(picker.selected).toBe(0);
+
+			pressKey(picker, "j");
+			expect(picker.selected).toBe(1);
+
+			pressKey(picker, "space");
+			pressKey(picker, "enter");
+			expect(await withTimeout(answer, "multi-select filter popup", 1000)).toEqual(["docs"]);
+		} finally {
+			screen.destroy();
+		}
 	});
 });
 
