@@ -162,7 +162,9 @@ describe("local task command performance boundaries", () => {
 	it("edits a working-copy task without loading branches", async () => {
 		const tripwires = installCrossBranchTripwires(core);
 		try {
-			const updated = await core.updateTaskFromInput(parentTask.id, { title: "Renamed locally" }, false);
+			const updated = await core.updateTaskFromInput(parentTask.id, { title: "Renamed locally" }, false, {
+				includeCrossBranch: false,
+			});
 
 			expect(updated.title).toBe("Renamed locally");
 			expect((await core.filesystem.listTasks()).find((task) => task.id === parentTask.id)?.title).toBe(
@@ -192,9 +194,11 @@ describe("local task command performance boundaries", () => {
 			await expect(
 				core.getTaskWithSubtasks(parentTask.id, undefined, { includeCrossBranch: false }),
 			).rejects.toBeInstanceOf(AmbiguousTaskIdError);
-			await expect(core.updateTaskFromInput(parentTask.id, { title: "Must not change" }, false)).rejects.toBeInstanceOf(
-				AmbiguousTaskIdError,
-			);
+			await expect(
+				core.updateTaskFromInput(parentTask.id, { title: "Must not change" }, false, {
+					includeCrossBranch: false,
+				}),
+			).rejects.toBeInstanceOf(AmbiguousTaskIdError);
 			tripwires.expectUntouched();
 		} finally {
 			tripwires.restore();

@@ -2988,7 +2988,9 @@ addHelpSchema(taskCmd.command("edit [taskId]"), {
 			}
 
 			try {
-				const updatedTask = await core.editTask(existingTaskForWizard.id, wizardInput);
+				const updatedTask = await core.editTask(existingTaskForWizard.id, wizardInput, undefined, {
+					includeCrossBranch: false,
+				});
 				console.log(`Updated task ${updatedTask.id}`);
 			} catch (error) {
 				console.error(formatTaskEditError(error, existingTaskForWizard.id));
@@ -3294,7 +3296,7 @@ addHelpSchema(taskCmd.command("edit [taskId]"), {
 		let updatedTask: Task;
 		try {
 			const updateInput = buildTaskUpdateInput(editArgs);
-			updatedTask = await core.editTask(existingTask.id, updateInput);
+			updatedTask = await core.editTask(existingTask.id, updateInput, undefined, { includeCrossBranch: false });
 		} catch (error) {
 			console.error(formatTaskEditError(error, existingTask.id));
 			process.exitCode = 1;

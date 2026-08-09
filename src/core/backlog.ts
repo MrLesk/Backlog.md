@@ -748,8 +748,15 @@ export class Core {
 		return resolution.status === "found" ? { ...resolution.task } : null;
 	}
 
-	private async loadLocalTaskForMutation(taskId: string): Promise<Task | null> {
-		return await this.loadWorkingCopyTask(taskId, true);
+	private async loadTaskForMutation(taskId: string, options: TaskReadOptions = {}): Promise<Task | null> {
+		if (options.includeCrossBranch === false) {
+			return await this.loadWorkingCopyTask(taskId, true);
+		}
+		const store = await this.getContentStore();
+		await store.refreshTasks();
+		const resolution = store.resolveTaskForMutation(taskId);
+		if (resolution.status === "ambiguous") throw new AmbiguousTaskIdError(taskId, resolution.candidates);
+		return resolution.status === "found" ? { ...resolution.task } : null;
 	}
 
 	async getTaskContent(taskId: string): Promise<string | null> {
@@ -2102,8 +2109,13 @@ export class Core {
 		return { task, mutated };
 	}
 
-	async updateTaskFromInput(taskId: string, input: TaskUpdateInput, autoCommit?: boolean): Promise<Task> {
-		const task = await this.loadLocalTaskForMutation(taskId);
+	async updateTaskFromInput(
+		taskId: string,
+		input: TaskUpdateInput,
+		autoCommit?: boolean,
+		options: TaskReadOptions = {},
+	): Promise<Task> {
+		const task = await this.loadTaskForMutation(taskId, options);
 		if (!task) {
 			throw new Error(`Task not found: ${taskId}`);
 		}
@@ -2111,7 +2123,7 @@ export class Core {
 		const requestedStatus = input.status?.trim().toLowerCase();
 		if (requestedStatus === "draft") {
 			// demoteTaskWithUpdates takes the task lock itself, so it must not be nested here.
-			return await this.demoteTaskWithUpdates(task, input, autoCommit);
+			return await this.demoteTaskWithUpdates(task, input, autoCommit, options);
 		}
 
 		// Fail fast when another process is mid-edit, and re-read inside the lock so the whole
@@ -2119,7 +2131,7 @@ export class Core {
 		// whenever one writer releases before the next acquires: the second would then apply
 		// its changes to a snapshot taken before the first wrote.
 		return await this.fs.withTaskLock(task, async () => {
-			const current = await this.loadLocalTaskForMutation(taskId);
+			const current = await this.loadTaskForMutation(taskId, options);
 			if (!current) {
 				throw new Error(`Task not found: ${taskId}`);
 			}
@@ -2173,7 +2185,12 @@ export class Core {
 		return refreshed ?? draft;
 	}
 
-	async editTaskOrDraft(taskId: string, input: TaskUpdateInput, autoCommit?: boolean): Promise<Task> {
+	async editTaskOrDraft(
+		taskId: string,
+		input: TaskUpdateInput,
+		autoCommit?: boolean,
+		options: TaskReadOptions = {},
+	): Promise<Task> {
 		const draft = await this.fs.loadDraft(taskId);
 		if (draft) {
 			const requestedStatus = input.status?.trim();
@@ -2192,10 +2209,10 @@ export class Core {
 		const requestedStatus = input.status?.trim();
 		const wantsDraft = requestedStatus?.toLowerCase() === "draft";
 		if (wantsDraft) {
-			return await this.demoteTaskWithUpdates(task, input, autoCommit);
+			return await this.demoteTaskWithUpdates(task, input, autoCommit, options);
 		}
 
-		return await this.updateTaskFromInput(task.id, input, autoCommit);
+		return await this.updateTaskFromInput(task.id, input, autoCommit, options);
 	}
 
 	private async promoteDraftWithUpdates(draft: Task, input: TaskUpdateInput, autoCommit?: boolean): Promise<Task> {
@@ -2258,9 +2275,14 @@ export class Core {
 	// and editTaskOrDraft, so it takes the task lock here rather than at each caller. Waiting on
 	// the create lock below happens while the task lock is held; the order is always task lock
 	// then create lock, never the reverse, so the two cannot deadlock.
-	private async demoteTaskWithUpdates(task: Task, input: TaskUpdateInput, autoCommit?: boolean): Promise<Task> {
+	private async demoteTaskWithUpdates(
+		task: Task,
+		input: TaskUpdateInput,
+		autoCommit?: boolean,
+		options: TaskReadOptions = {},
+	): Promise<Task> {
 		return await this.fs.withTaskLock(task, async () => {
-			const current = await this.loadLocalTaskForMutation(task.id);
+			const current = await this.loadTaskForMutation(task.id, options);
 			if (!current) {
 				throw new Error(`Task not found: ${task.id}`);
 			}
@@ -2342,8 +2364,13 @@ export class Core {
 		}
 	}
 
-	async editTask(taskId: string, input: TaskUpdateInput, autoCommit?: boolean): Promise<Task> {
-		return await this.updateTaskFromInput(taskId, input, autoCommit);
+	async editTask(
+		taskId: string,
+		input: TaskUpdateInput,
+		autoCommit?: boolean,
+		options: TaskReadOptions = {},
+	): Promise<Task> {
+		return await this.updateTaskFromInput(taskId, input, autoCommit, options);
 	}
 
 	async updateTasksBulk(tasks: Task[], commitMessage?: string, autoCommit?: boolean): Promise<void> {
@@ -2486,8 +2513,8 @@ export class Core {
 		return { updatedTask, changedTasks };
 	}
 
-	async archiveTask(taskId: string, autoCommit?: boolean): Promise<boolean> {
-		const taskToArchive = await this.loadLocalTaskForMutation(taskId);
+	async archiveTask(taskId: string, autoCommit?: boolean, options: TaskReadOptions = {}): Promise<boolean> {
+		const taskToArchive = await this.loadTaskForMutation(taskId, options);
 		if (!taskToArchive) {
 			return false;
 		}
@@ -2602,8 +2629,8 @@ export class Core {
 		return result;
 	}
 
-	async completeTask(taskId: string, autoCommit?: boolean): Promise<boolean> {
-		const task = await this.loadLocalTaskForMutation(taskId);
+	async completeTask(taskId: string, autoCommit?: boolean, options: TaskReadOptions = {}): Promise<boolean> {
+		const task = await this.loadTaskForMutation(taskId, options);
 		if (!task) return false;
 		// Get paths before moving the file
 		const completedDir = this.fs.completedDir;
@@ -2720,8 +2747,8 @@ export class Core {
 		return moved !== null;
 	}
 
-	async demoteTask(taskId: string, autoCommit?: boolean): Promise<boolean> {
-		const task = await this.loadLocalTaskForMutation(taskId);
+	async demoteTask(taskId: string, autoCommit?: boolean, options: TaskReadOptions = {}): Promise<boolean> {
+		const task = await this.loadTaskForMutation(taskId, options);
 		if (!task) return false;
 		const movedPaths: Array<{ previousPath: string; savedPath: string }> = [];
 		const success = await this.fs.demoteTask(task.id, (previousPath, savedPath) => {
