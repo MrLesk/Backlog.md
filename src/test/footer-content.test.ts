@@ -1,5 +1,39 @@
 import { describe, expect, it } from "bun:test";
-import { formatFooterContent } from "../ui/footer-content.ts";
+import { getHelpShortcuts } from "../ui/components/help-popup.ts";
+import { BOARD_FOOTER_CONTENT, formatFooterContent, TASK_LIST_FOOTER_CONTENT } from "../ui/footer-content.ts";
+
+/** Filter letters advertised by a footer, e.g. "t/p/i/f" -> ["t", "p", "i", "f"]. */
+function filterHintKeys(footer: string): string[] {
+	const hint = footer.match(/\[([^\]]+)\]\{\/\} Filter\b/)?.[1];
+	if (!hint) throw new Error(`footer has no filter hint: ${footer}`);
+	return hint.split("/");
+}
+
+function helpFilterKeys(context: "board" | "task-list"): string[] {
+	return getHelpShortcuts(context)
+		.filter((shortcut) => shortcut.desc.startsWith("Filter by "))
+		.map((shortcut) => shortcut.key);
+}
+
+describe("TUI footer filter hint", () => {
+	// Shift+letter is delivered as `S-t`, so bindings registered as ["t", "T"] only fire
+	// for the lowercase letter. Hints must therefore stay lowercase.
+	it("advertises the filter keys each view actually binds", () => {
+		expect(filterHintKeys(BOARD_FOOTER_CONTENT)).toEqual(["t", "p", "i", "f"]);
+		expect(filterHintKeys(TASK_LIST_FOOTER_CONTENT)).toEqual(["s", "t", "p", "i", "l"]);
+	});
+
+	it("uses the same lowercase slash-separated convention in both views", () => {
+		for (const footer of [BOARD_FOOTER_CONTENT, TASK_LIST_FOOTER_CONTENT]) {
+			expect(footer).toMatch(/\{cyan-fg\}\[[a-z](?:\/[a-z])+\]\{\/\} Filter \|/);
+		}
+	});
+
+	it("keeps the help popup filter rows in step with the footer hint", () => {
+		expect(helpFilterKeys("board")).toEqual(filterHintKeys(BOARD_FOOTER_CONTENT));
+		expect(helpFilterKeys("task-list")).toEqual(filterHintKeys(TASK_LIST_FOOTER_CONTENT));
+	});
+});
 
 describe("formatFooterContent", () => {
 	it("keeps footer on one line when terminal width is sufficient", () => {
