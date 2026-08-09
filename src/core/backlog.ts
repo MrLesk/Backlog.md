@@ -71,6 +71,7 @@ import {
 	normalizeTaskId,
 	taskIdsEqual,
 } from "../utils/task-path.ts";
+import { createTaskSearchIndex } from "../utils/task-search.ts";
 import { attachSubtaskSummaries } from "../utils/task-subtasks.ts";
 import { formatValidTaskTypeValues, matchesTaskTypeFilter, resolveTaskTypeValue } from "../utils/task-type-config.ts";
 import { upsertTaskUpdatedDate } from "../utils/task-updated-date.ts";
@@ -137,6 +138,10 @@ interface TaskQueryOptions {
 	filters?: TaskListFilter;
 	query?: string;
 	limit?: number;
+	includeCrossBranch?: boolean;
+}
+
+interface TaskReadOptions {
 	includeCrossBranch?: boolean;
 }
 
@@ -237,6 +242,7 @@ export class Core {
 		branchRecords: BranchTaskStateEntry[],
 		statuses: string[],
 		resolutionStrategy: "most_recent" | "most_progressed",
+		repositoryRoot?: string | null,
 	): Promise<TaskIdentityIndex> {
 		const records: TaskIdentityRecord[] = [];
 		for (const task of localTasks) {
@@ -266,7 +272,7 @@ export class Core {
 		return new TaskIdentityIndex(
 			records,
 			{
-				repositoryRoot: await this.git.getRepositoryRoot(),
+				repositoryRoot: repositoryRoot === undefined ? await this.git.getRepositoryRoot() : repositoryRoot,
 				projectRoot: this.fs.rootDir,
 				backlogDirectory: this.fs.backlogDirName,
 			},
@@ -637,6 +643,12 @@ export class Core {
 			return filtered;
 		};
 
+		if (!includeCrossBranch) {
+			const localTasks = await this.fs.listTasks();
+			const tasks = trimmedQuery ? createTaskSearchIndex(localTasks).search({ query: trimmedQuery }) : localTasks;
+			return await applyFiltersAndLimit(tasks);
+		}
+
 		if (!trimmedQuery) {
 			const store = await this.getContentStore();
 			await this.refreshCachedTasksForCrossBranchRead(includeCrossBranch);
@@ -698,8 +710,11 @@ export class Core {
 		return identityResolution.status === "found" ? identityResolution.task : null;
 	}
 
-	async getTaskWithSubtasks(taskId: string, localTasks?: Task[]): Promise<Task | null> {
-		const task = await this.getTask(taskId);
+	async getTaskWithSubtasks(taskId: string, localTasks?: Task[], options: TaskReadOptions = {}): Promise<Task | null> {
+		const task =
+			options.includeCrossBranch === false
+				? await this.loadWorkingCopyTask(taskId, false, localTasks)
+				: await this.getTask(taskId);
 		if (!task) {
 			return null;
 		}
@@ -708,16 +723,33 @@ export class Core {
 		return attachSubtaskSummaries(task, tasks);
 	}
 
-	async loadTaskById(taskId: string): Promise<Task | null> {
-		return await this.getTask(taskId);
+	async loadTaskById(taskId: string, options: TaskReadOptions = {}): Promise<Task | null> {
+		return options.includeCrossBranch === false
+			? await this.loadWorkingCopyTask(taskId, false)
+			: await this.getTask(taskId);
+	}
+
+	private async loadWorkingCopyTask(taskId: string, forMutation: boolean, activeTasks?: Task[]): Promise<Task | null> {
+		const [localTasks, completedTasks, config] = await Promise.all([
+			activeTasks ? Promise.resolve(activeTasks) : this.fs.listTasks(),
+			this.fs.listCompletedTasks(),
+			this.fs.loadConfig(),
+		]);
+		const index = await this.buildTaskIdentityIndex(
+			localTasks,
+			completedTasks,
+			[],
+			config?.statuses ?? [...DEFAULT_STATUSES],
+			config?.taskResolutionStrategy ?? "most_progressed",
+			null,
+		);
+		const resolution = forMutation ? index.resolveForMutation(taskId) : index.resolveForRead(taskId);
+		if (resolution.status === "ambiguous") throw new AmbiguousTaskIdError(taskId, resolution.candidates);
+		return resolution.status === "found" ? { ...resolution.task } : null;
 	}
 
 	private async loadLocalTaskForMutation(taskId: string): Promise<Task | null> {
-		const store = await this.getContentStore();
-		await store.refreshTasks();
-		const resolution = store.resolveTaskForMutation(taskId);
-		if (resolution.status === "ambiguous") throw new AmbiguousTaskIdError(taskId, resolution.candidates);
-		return resolution.status === "found" ? { ...resolution.task } : null;
+		return await this.loadWorkingCopyTask(taskId, true);
 	}
 
 	async getTaskContent(taskId: string): Promise<string | null> {

@@ -581,9 +581,8 @@ async function resolveParentFilterId(core: Core, parentId: string, parentDisplay
 	if (!parent) {
 		throw new Error(`Parent task ${parentDisplayId} not found.`);
 	}
-	// Called for its ambiguity check: it raises AmbiguousTaskIdError when several files claim this
-	// ID, which the corpus cannot report because it keeps one entry per ID.
-	await core.getTask(parent.id);
+	// Include completed working-copy files in the ambiguity check without scanning branches.
+	await core.loadTaskById(parent.id, { includeCrossBranch: false });
 	return parent.id;
 }
 
@@ -2678,14 +2677,7 @@ addHelpSchema(taskCmd.command("list"), {
 				updateProgress("Loading configuration...");
 				const config = await core.filesystem.loadConfig();
 
-				// Use loadTasks with progress callback for consistent loading experience
-				// This populates the ContentStore, so subsequent queryTasks calls are fast
-				await core.loadTasks((msg) => {
-					updateProgress(msg);
-				});
-
-				// Now query with filters - this will use the already-populated ContentStore
-				updateProgress("Applying filters...");
+				updateProgress("Loading local tasks...");
 				const tasks = await core.queryTasks({
 					filters: Object.keys(interactiveLoaderFilters).length > 0 ? interactiveLoaderFilters : undefined,
 					includeCrossBranch: false,
@@ -2975,7 +2967,7 @@ addHelpSchema(taskCmd.command("edit [taskId]"), {
 				}
 			}
 
-			const existingTaskForWizard = await core.loadTaskById(selectedTaskId);
+			const existingTaskForWizard = await core.loadTaskById(selectedTaskId, { includeCrossBranch: false });
 			if (!existingTaskForWizard) {
 				console.error(`Task ${selectedTaskId} not found.`);
 				process.exitCode = 1;
@@ -3005,7 +2997,7 @@ addHelpSchema(taskCmd.command("edit [taskId]"), {
 			return;
 		}
 
-		const existingTask = await core.loadTaskById(taskId ?? "");
+		const existingTask = await core.loadTaskById(taskId ?? "", { includeCrossBranch: false });
 
 		if (!existingTask) {
 			console.error(`Task ${taskId} not found.`);
@@ -3339,7 +3331,7 @@ addHelpSchema(taskCmd.command("view <taskId>"), {
 		const cwd = await requireProjectRoot();
 		const core = new Core(cwd);
 		const localTasks = await core.fs.listTasks();
-		const task = await core.getTaskWithSubtasks(taskId, localTasks);
+		const task = await core.getTaskWithSubtasks(taskId, localTasks, { includeCrossBranch: false });
 		if (!task) {
 			console.error(`Task ${taskId} not found.`);
 			process.exitCode = 1;
@@ -3515,7 +3507,7 @@ taskCmd
 		}
 
 		const localTasks = await core.fs.listTasks();
-		const task = await core.getTaskWithSubtasks(taskId, localTasks);
+		const task = await core.getTaskWithSubtasks(taskId, localTasks, { includeCrossBranch: false });
 		if (!task) {
 			console.error(`Task ${taskId} not found.`);
 			process.exitCode = 1;

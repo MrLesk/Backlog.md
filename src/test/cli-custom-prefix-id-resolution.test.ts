@@ -330,7 +330,7 @@ describe("CLI task ID resolution with a custom ID prefix", () => {
 		});
 	}
 
-	it("resolves the parent filter from the local corpus in every output mode", async () => {
+	it("keeps the parent filter local when another branch has a canonical ID variant", async () => {
 		// A branch variant spelling BACK-1 as BACK-001 sits at its own path. The cross-branch corpus
 		// therefore holds two entries for identity BACK-1 while the local corpus holds one, so the
 		// parent filter must not resolve from a cross-branch list: whichever corpus a mode used would
@@ -382,14 +382,14 @@ describe("CLI task ID resolution with a custom ID prefix", () => {
 		expect(localMatches).toHaveLength(1);
 		expect(crossBranchMatches.length).toBeGreaterThan(1);
 
-		// Selecting the parent from the local corpus finds exactly one candidate, and the shared
-		// identity check then fails closed because the branch variant claims the same identity.
+		// Parent filtering is a local task-list operation, so the branch variant must neither block
+		// the command nor change which local children are displayed.
 		const result = await $`bun ${CLI_PATH} task list --parent 1 --plain`.cwd(TEST_DIR).nothrow().quiet();
 		const output = `${result.stdout.toString()}${result.stderr.toString()}`;
-		expect(result.exitCode).not.toBe(0);
-		expect(output).toContain("Task ID BACK-1 is ambiguous");
+		expect(result.exitCode).toBe(0);
+		expect(output).not.toContain("Task ID BACK-1 is ambiguous");
 		expect(output).not.toContain("Parent task BACK-1 not found.");
-		expect(result.stdout.toString()).not.toContain("BACK-1.1 - Child task");
+		expect(result.stdout.toString()).toContain("BACK-1.1 - Child task");
 	});
 
 	it("archives and promotes the draft file named by the argument, not by its frontmatter ID", async () => {
