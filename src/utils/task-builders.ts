@@ -143,9 +143,12 @@ export function parseDelimitedStringList(value: unknown): string[] | undefined {
  * Parse a CLI list option that supports an explicit empty value.
  * Returns `undefined` when the option was absent (no opinion) and `[]` when it was supplied
  * with only blank values (explicitly empty), so callers can tell the two cases apart.
+ * An empty array counts as absent, so callers merging several flags into one list can pass the
+ * merged values straight through.
  */
 export function parseClearableStringList(value: unknown): string[] | undefined {
 	if (value === undefined || value === null) return undefined;
+	if (Array.isArray(value) && value.length === 0) return undefined;
 	return parseDelimitedStringList(value) ?? [];
 }
 
