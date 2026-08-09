@@ -201,7 +201,6 @@ export async function openSingleSelectFilterPopup(options: {
 			items: options.choices.map((choice) => choice.label),
 			selected: selectedIndex,
 			keys: true,
-			vi: true,
 			mouse: true,
 			tags: true,
 			scrollable: true,
@@ -243,6 +242,17 @@ export async function openSingleSelectFilterPopup(options: {
 			return false;
 		});
 
+		// The list widget binds j/k only under `vi`, which would also bind l=select, q=cancel,
+		// g/G, H/M/L and Ctrl+B/U/D/F on the picker. Every other list in the TUI wires the vim
+		// keys to plain up/down (see generic-list.ts, which drives the multi-select popup below),
+		// so match that. `select` clamps, which is what the arrow keys already do in this list.
+		const moveBy = (offset: number) => {
+			picker.select((picker.selected ?? 0) + offset);
+			options.screen.render();
+		};
+		picker.key(["j"], () => moveBy(1));
+		picker.key(["k"], () => moveBy(-1));
+
 		picker.on("select", (...args: unknown[]) => {
 			const index =
 				typeof args[1] === "number" ? args[1] : typeof args[0] === "number" ? args[0] : (picker.selected ?? 0);
@@ -275,7 +285,7 @@ export async function openMultiSelectFilterPopup(options: {
 			title: options.title,
 			helpText:
 				options.helpText ??
-				" {cyan-fg}[↑↓]{/} Navigate | {cyan-fg}[Space]{/} Toggle | {cyan-fg}[Enter]{/} Apply | {cyan-fg}[Esc]{/} Cancel",
+				" {cyan-fg}[↑↓/jk]{/} Navigate | {cyan-fg}[Space]{/} Toggle | {cyan-fg}[Enter]{/} Apply | {cyan-fg}[Esc]{/} Cancel",
 			width: "52%",
 			height: "72%",
 		});
