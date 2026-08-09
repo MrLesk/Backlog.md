@@ -912,7 +912,13 @@ export class ContentStore {
 		return true;
 	}
 
-	private publishWatchedDocument(document: Document, replacedPath?: string): void {
+	/**
+	 * Publishes one watched file. Returns true when the publish landed on a path the store did not
+	 * hold while an equivalent ID still sits at another path: the file may have been renamed and
+	 * respelled at once with only the destination event delivered, and no path identifies what it
+	 * vacated. Only a full refresh can settle that without guessing which entry it was.
+	 */
+	private publishWatchedDocument(document: Document, replacedPath?: string): boolean {
 		// A respelled frontmatter ID rekeys the entry, so drop the one this file used to occupy.
 		const replaced = this.findWatchedDocumentByPath(replacedPath) ?? this.findWatchedDocumentByPath(document.path);
 		if (replaced && replaced.id !== document.id) this.dropWatchedDocument(replaced);
@@ -921,6 +927,10 @@ export class ContentStore {
 		this.documents.set(document.id, document);
 		this.cachedDocuments = [...this.documents.values()].sort((a, b) => a.title.localeCompare(b.title));
 		this.notify("documents");
+		if (replaced) return false;
+		return this.cachedDocuments.some(
+			(candidate) => candidate.path !== document.path && documentIdsEqual(candidate.id, document.id),
+		);
 	}
 
 	private removeWatchedDocument(path: string): void {
@@ -1123,6 +1133,7 @@ export class ContentStore {
 				return;
 			}
 
+			let strandedEquivalent = false;
 			if (eventType === "rename") {
 				await this.reconcileRenamedItem({
 					key: `document:${id}`,
@@ -1152,9 +1163,12 @@ export class ContentStore {
 						),
 					current: () => this.findWatchedDocumentByPath(eventPath),
 					hasChanged: (previous, next) => this.hasDocumentChanged(previous, next),
-					publish: (document) => this.publishWatchedDocument(document, eventPath),
+					publish: (document) => {
+						strandedEquivalent = this.publishWatchedDocument(document, eventPath);
+					},
 					remove: () => this.removeWatchedDocument(eventPath),
 				});
+				if (strandedEquivalent) await this.refreshDocumentsFromDisk(undefined, epoch);
 				return;
 			}
 
@@ -1168,12 +1182,13 @@ export class ContentStore {
 					if (!documentIdsEqual(document.id, id)) return true;
 					const previous = this.findWatchedDocumentByPath(eventPath);
 					if (previous && !this.hasDocumentChanged(previous, document)) return true;
-					this.publishWatchedDocument(document, eventPath);
+					strandedEquivalent = this.publishWatchedDocument(document, eventPath);
 					return false;
 				} catch {
 					return true;
 				}
 			});
+			if (strandedEquivalent) await this.refreshDocumentsFromDisk(undefined, epoch);
 		});
 	}
 

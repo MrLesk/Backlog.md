@@ -5,7 +5,7 @@ status: Done
 assignee:
   - '@Claude'
 created_date: '2026-08-09 13:49'
-updated_date: '2026-08-09 14:56'
+updated_date: '2026-08-09 15:12'
 labels: []
 dependencies: []
 ordinal: 252000
@@ -65,6 +65,12 @@ Follow-on found while validating the path-based design: a simultaneous rename pl
 Round 1 verification: four red-then-green tests added (gated-refresh resurrection, padding-equivalent siblings, stale recheck against a live document, rename-with-respell), each confirmed failing on the preceding commit and passing after. bunx tsc --noEmit clean, bun run check . clean, ContentStore suite 60/60, full bun run test 2149 pass / 6 skip / 0 fail with no load flakes this round. PR #887 CI green across ubuntu, macos and windows (lint-and-unit-test, compile-and-smoke-test, nix-package, CodeQL).
 
 Observation recorded, deliberately not changed: updateDocumentFromDisk() still reads the store map with documents.get(documentId) on the save path. It is the last raw-key document lookup, but the id there comes from the file just written, so reaching a mismatch needs a caller to pass a differently padded id than the file's frontmatter, which no current CLI path does. Outside the acceptance criteria and would need its own coverage to justify.
+
+Review round 2 (final patch round): one thread taken, 'Remove the old entry after a destination-only respelled rename'. Reproduced: renaming 'doc-1 - Architecture Guide.md' to 'doc-0001 - Renamed guide.md' while respelling frontmatter doc-1 -> doc-0001, with only the destination event delivered, left the store showing both the stale doc-1 at the old path and the new doc-0001 - no deferred recheck involved, the single destination event creates the duplicate. The round-1 vacated-path fix cannot help because this delivery provides no vacated path to consult.
+
+Fixed without reintroducing identity guessing: publishWatchedDocument now returns whether it landed on a path the store did not hold while an equivalent ID still sits at another path, and the watcher fails closed to refreshDocumentsFromDisk in that case. The guard is 'replaced is undefined AND an equivalent entry exists at a different path', so a genuinely new document never triggers a refresh (regression test asserts zero listDocuments calls when publishing a new file), and the accepted corrupt-repo staleness cases keep their reviewed behavior because a change event on a known path always finds its replaced entry.
+
+Verified: red-then-green test plus the new-file no-refresh guard, bunx tsc --noEmit clean, bun run check . clean, ContentStore suite 62/62, full bun run test 2151 pass / 6 skip / 0 fail.
 <!-- SECTION:NOTES:END -->
 
 ## Final Summary

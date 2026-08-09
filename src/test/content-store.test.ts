@@ -1899,6 +1899,68 @@ describe("ContentStore", () => {
 		}
 	});
 
+	it("refreshes when a destination-only respelled rename strands the old entry", async () => {
+		store.dispose();
+		const oldPath = "doc-1 - Architecture Guide.md";
+		const newPath = "doc-0001 - Renamed guide.md";
+		await Bun.write(join(filesystem.docsDir, oldPath), serializeDocument({ ...sampleDocument, path: undefined }));
+
+		const callbacks = new Map<string, CapturedWatchCallback>();
+		const watchSpy = captureWatchCallbacks(callbacks);
+		try {
+			store = new ContentStore(filesystem, undefined, true);
+			const initial = await store.ensureInitialized();
+			expect(initial.documents.map((document) => document.path)).toEqual([oldPath]);
+
+			const internals = store as unknown as { enqueue: (fn: () => Promise<void>) => Promise<void> };
+			await Bun.write(
+				join(filesystem.docsDir, newPath),
+				serializeDocument({ ...sampleDocument, id: "doc-0001", path: undefined }),
+			);
+			await unlink(join(filesystem.docsDir, oldPath));
+			// Only the destination event is delivered, so nothing identifies the entry the file vacated.
+			getCapturedWatcher(callbacks, filesystem.docsDir)("rename", newPath);
+			await internals.enqueue(async () => {});
+
+			expect(store.getDocuments().map((document) => [document.id, document.path])).toEqual([["doc-0001", newPath]]);
+		} finally {
+			watchSpy.mockRestore();
+		}
+	});
+
+	it("publishes a genuinely new watched document without a collection refresh", async () => {
+		store.dispose();
+		await filesystem.saveDocument({ ...sampleDocument, path: undefined });
+
+		const callbacks = new Map<string, CapturedWatchCallback>();
+		const watchSpy = captureWatchCallbacks(callbacks);
+		try {
+			store = new ContentStore(filesystem, undefined, true);
+			await store.ensureInitialized();
+
+			const originalListDocuments = filesystem.listDocuments.bind(filesystem);
+			let listCalls = 0;
+			filesystem.listDocuments = async () => {
+				listCalls += 1;
+				return await originalListDocuments();
+			};
+
+			const internals = store as unknown as { enqueue: (fn: () => Promise<void>) => Promise<void> };
+			const addedPath = "doc-2 - Implementation Notes.md";
+			await Bun.write(
+				join(filesystem.docsDir, addedPath),
+				serializeDocument({ ...sampleDocument, id: "doc-2", title: "Implementation Notes", path: undefined }),
+			);
+			getCapturedWatcher(callbacks, filesystem.docsDir)("rename", addedPath);
+			await internals.enqueue(async () => {});
+
+			expect(store.getDocuments().map((document) => document.id)).toEqual(["doc-1", "doc-2"]);
+			expect(listCalls).toBe(0);
+		} finally {
+			watchSpy.mockRestore();
+		}
+	});
+
 	it("coalesces deferred rechecks and invalidates them across root changes and disposal", async () => {
 		await store.ensureInitialized();
 		const timerCallbacks: Array<() => void> = [];
