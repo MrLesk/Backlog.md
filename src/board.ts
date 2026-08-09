@@ -129,12 +129,12 @@ Project: ${projectName}
 		for (const t of top) {
 			result.push(t);
 			const subs = children.get(t.id) || [];
-			subs.sort((a, b) => {
+			const sortedSubs = [...subs].sort((a, b) => {
 				const idA = Number.parseInt(a.id.replace("task-", ""), 10);
 				const idB = Number.parseInt(b.id.replace("task-", ""), 10);
 				return idA - idB; // Subtasks in ascending order
 			});
-			result.push(...subs);
+			result.push(...sortedSubs);
 		}
 
 		return result;
