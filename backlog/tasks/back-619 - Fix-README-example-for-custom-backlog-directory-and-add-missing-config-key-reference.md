@@ -1,5 +1,5 @@
 ---
-id: BACK-617
+id: BACK-619
 title: >-
   Fix README example for custom backlog directory and add missing config key
   reference
@@ -16,7 +16,7 @@ ordinal: 256000
 ## Description
 
 <!-- SECTION:DESCRIPTION:BEGIN -->
-README.md describes a custom project-relative backlog folder configured via backlog.config.yml but gives "task-10 - Add core search functionality.md" as the example - that is a task filename, not a folder path, and does not exist anywhere in the repo. The config key backlog_directory (accepted keys: backlog_directory / backlogDirectory, see src/utils/backlog-directory.ts) is also missing from the "Available Configuration Options" table in ADVANCED-CONFIG.md, while README points to it as the full configuration reference. Task originally opened as BACK-613; renumbered after upstream main claimed BACK-613.
+README.md describes a custom project-relative backlog folder configured via backlog.config.yml but gives "task-10 - Add core search functionality.md" as the example - that is a task filename, not a folder path, and does not exist anywhere in the repo. The config key backlog_directory (accepted keys: backlog_directory / backlogDirectory, see src/utils/backlog-directory.ts) is also missing from the "Available Configuration Options" table in ADVANCED-CONFIG.md, while README points to it as the full configuration reference. Task originally opened as BACK-613, then BACK-617; renumbered to BACK-619 because upstream main claimed both IDs first.
 <!-- SECTION:DESCRIPTION:END -->
 
 ## Acceptance Criteria
