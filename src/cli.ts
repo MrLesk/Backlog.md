@@ -530,6 +530,11 @@ function hasEditFieldFlags(options: Record<string, unknown>): boolean {
  * Validate a clearable list option pair such as --ref/--clear-refs.
  * Returns an error message when the clear flag conflicts with a setter or a setter value is blank.
  * Omit `clearFlag` on surfaces without a clear flag (task create) so the guidance stays accurate.
+ *
+ * Set `emptyClears` where an explicit empty value is a second spelling of the clear flag, as it is for
+ * `-a ""`. A blank value is then not a setter value at all: it cannot conflict with the clear flag and
+ * needs no rejecting. Task create leaves it off because there is nothing to clear on a new task, and so
+ * do the incremental --add-ref/--remove-ref flags, which have no list to replace.
  */
 function validateClearableListInput(input: {
 	rawValues: string[];
@@ -538,11 +543,13 @@ function validateClearableListInput(input: {
 	setterFlags: string;
 	clearFlag?: string;
 	subject: string;
+	emptyClears?: boolean;
 }): string | undefined {
-	if (input.clearFlag && input.cleared && input.rawValues.length > 0) {
+	const settingValues = input.emptyClears ? input.rawValues.filter((value) => !input.isBlank(value)) : input.rawValues;
+	if (input.clearFlag && input.cleared && settingValues.length > 0) {
 		return `Cannot combine ${input.clearFlag} with ${input.setterFlags}. Use ${input.clearFlag} by itself.`;
 	}
-	if (input.rawValues.some(input.isBlank)) {
+	if (!input.emptyClears && input.rawValues.some(input.isBlank)) {
 		const guidance = input.clearFlag
 			? `Use ${input.clearFlag} to remove all ${input.subject}.`
 			: `Omit the flag to leave ${input.subject} unset.`;
@@ -582,7 +589,8 @@ async function resolveParentFilterId(core: Core, parentId: string, parentDisplay
 
 /**
  * Validate the dependency, reference, and documentation list flags shared by task create and task edit.
- * `supportsClearFlags` is false for task create, which has no --clear-deps/--clear-refs/--clear-docs flags.
+ * `supportsClearFlags` is false for task create, which has no --clear-deps/--clear-refs/--clear-docs flags
+ * and where an empty value therefore stays an error rather than clearing a list that does not exist yet.
  */
 function validateTaskListFlags(
 	options: Record<string, unknown>,
@@ -598,6 +606,7 @@ function validateTaskListFlags(
 			setterFlags: "--depends-on or --dep",
 			clearFlag: clearFlag("--clear-deps"),
 			subject: "task dependencies",
+			emptyClears: supportsClearFlags,
 		}) ??
 		validateClearableListInput({
 			rawValues: toStringArray(options.ref),
@@ -606,6 +615,7 @@ function validateTaskListFlags(
 			setterFlags: "--ref",
 			clearFlag: clearFlag("--clear-refs"),
 			subject: "references",
+			emptyClears: supportsClearFlags,
 		}) ??
 		validateClearableListInput({
 			rawValues: toStringArray(options.addRef),
@@ -630,6 +640,7 @@ function validateTaskListFlags(
 			setterFlags: "--doc",
 			clearFlag: clearFlag("--clear-docs"),
 			subject: "documentation",
+			emptyClears: supportsClearFlags,
 		})
 	);
 }
@@ -2892,7 +2903,7 @@ addHelpSchema(taskCmd.command("edit [taskId]"), {
 	.option("--clear-deps", "remove all task dependencies (cannot combine with --depends-on or --dep)")
 	.option(
 		"--depends-on <taskIds>",
-		"set task dependencies (comma-separated or use multiple times)",
+		'set task dependencies (comma-separated or use multiple times); pass "" to clear them',
 		(value, previous) => {
 			const soFar = Array.isArray(previous) ? previous : previous ? [previous] : [];
 			return [...soFar, value];
@@ -2904,7 +2915,7 @@ addHelpSchema(taskCmd.command("edit [taskId]"), {
 	})
 	.option(
 		"--ref <reference>",
-		"replace all references (comma-separated or repeatable; cannot combine with --add-ref/--remove-ref)",
+		'replace all references (comma-separated or repeatable; cannot combine with --add-ref/--remove-ref); pass "" to clear them',
 		createMultiValueAccumulator(),
 	)
 	.option(
@@ -2926,10 +2937,14 @@ addHelpSchema(taskCmd.command("edit [taskId]"), {
 			return [...soFar, value];
 		},
 	)
-	.option("--doc <documentation>", "set documentation (can be used multiple times)", (value, previous) => {
-		const soFar = Array.isArray(previous) ? previous : previous ? [previous] : [];
-		return [...soFar, value];
-	})
+	.option(
+		"--doc <documentation>",
+		'set documentation (can be used multiple times); pass "" to clear it',
+		(value, previous) => {
+			const soFar = Array.isArray(previous) ? previous : previous ? [previous] : [];
+			return [...soFar, value];
+		},
+	)
 	.option("--clear-docs", "remove all documentation (cannot combine with --doc)")
 	.action(async (taskId: string | undefined, options) => {
 		const shouldUseWizard = hasInteractiveTTY && !hasEditFieldFlags(options);
@@ -3148,15 +3163,17 @@ addHelpSchema(taskCmd.command("edit [taskId]"), {
 			process.exitCode = 1;
 			return;
 		}
-		const dependencyValues = parseDelimitedStringList([
+		// These three read as clearable lists: an absent flag keeps the current list, and an explicit
+		// empty value produces [], which the assignments below apply as the same clear as --clear-deps.
+		const dependencyValues = parseClearableStringList([
 			...toStringArray(options.dependsOn),
 			...toStringArray(options.dep),
 		]);
 
-		const normalizedReferences = parseDelimitedStringList(options.ref);
+		const normalizedReferences = parseClearableStringList(options.ref);
 		const addReferenceValues = parseDelimitedStringList(options.addRef) ?? [];
 		const removeReferenceValues = parseDelimitedStringList(options.removeRef) ?? [];
-		const normalizedDocumentation = parseDelimitedStringList(options.doc);
+		const normalizedDocumentation = parseClearableStringList(options.doc);
 		const normalizedModifiedFiles = parseDelimitedStringList(options.modifiedFile);
 
 		const planAppendValues = toStringArray(options.appendPlan);

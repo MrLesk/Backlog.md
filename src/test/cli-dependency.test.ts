@@ -79,7 +79,10 @@ describe("CLI dependency options", () => {
 			.quiet()
 			.nothrow();
 		expect(emptyDependsOn.exitCode).toBe(1);
-		expect(emptyDependsOn.stderr.toString()).toContain("Cannot use an empty value with --depends-on or --dep");
+		// Create has nothing to clear, so the empty value stays an error here even though task edit clears.
+		expect(emptyDependsOn.stderr.toString()).toContain(
+			"Cannot use an empty value with --depends-on or --dep. Omit the flag to leave task dependencies unset.",
+		);
 
 		const emptyDep = await $`bun ${CLI_PATH} task create "Empty dep" --dep ""`.cwd(testDir).quiet().nothrow();
 		expect(emptyDep.exitCode).toBe(1);
@@ -125,24 +128,46 @@ describe("CLI dependency options", () => {
 		expect((await core.filesystem.loadTask("TASK-2"))?.dependencies).toEqual([]);
 	});
 
-	it("rejects empty and conflicting dependency edits without changing dependencies", async () => {
+	// On edit an explicit empty value is the second spelling of --clear-deps, matching `-a ""`.
+	it("clears dependencies with an explicit empty value", async () => {
 		await $`bun ${CLI_PATH} task create "Base task"`.cwd(testDir).quiet();
 		await $`bun ${CLI_PATH} task create "Dependent task" --depends-on TASK-1`.cwd(testDir).quiet();
 
-		const emptyDependsOn = await $`bun ${CLI_PATH} task edit 2 --depends-on ""`.cwd(testDir).quiet().nothrow();
-		expect(emptyDependsOn.exitCode).toBe(1);
-		expect(emptyDependsOn.stderr.toString()).toContain("Cannot use an empty value with --depends-on or --dep");
+		const emptyDependsOn = await $`bun ${CLI_PATH} task edit 2 --depends-on ${""} --plain`.cwd(testDir).quiet();
+		expect(emptyDependsOn.exitCode).toBe(0);
+		expect((await core.filesystem.loadTask("TASK-2"))?.dependencies).toEqual([]);
 
-		const emptyDep = await $`bun ${CLI_PATH} task edit 2 --dep ""`.cwd(testDir).quiet().nothrow();
-		expect(emptyDep.exitCode).toBe(1);
-		expect(emptyDep.stderr.toString()).toContain("Cannot use an empty value with --depends-on or --dep");
+		await $`bun ${CLI_PATH} task edit 2 --depends-on TASK-1`.cwd(testDir).quiet();
+		const emptyDep = await $`bun ${CLI_PATH} task edit 2 --dep ${""} --plain`.cwd(testDir).quiet();
+		expect(emptyDep.exitCode).toBe(0);
+		expect((await core.filesystem.loadTask("TASK-2"))?.dependencies).toEqual([]);
+	});
 
-		const emptyAlongsideValue = await $`bun ${CLI_PATH} task edit 2 --depends-on "" --dep TASK-1`
-			.cwd(testDir)
-			.quiet()
-			.nothrow();
-		expect(emptyAlongsideValue.exitCode).toBe(1);
-		expect(emptyAlongsideValue.stderr.toString()).toContain("Cannot use an empty value with --depends-on or --dep");
+	it("accepts an explicit empty value together with --clear-deps", async () => {
+		await $`bun ${CLI_PATH} task create "Base task"`.cwd(testDir).quiet();
+		await $`bun ${CLI_PATH} task create "Dependent task" --depends-on TASK-1`.cwd(testDir).quiet();
+
+		const result = await $`bun ${CLI_PATH} task edit 2 --clear-deps --dep ${""} --plain`.cwd(testDir).quiet().nothrow();
+
+		expect(result.exitCode).toBe(0);
+		expect((await core.filesystem.loadTask("TASK-2"))?.dependencies).toEqual([]);
+	});
+
+	// Blank values normalize away exactly as they do inside one value (`--dep "TASK-1,"`) and for `-a ""`,
+	// so a real dependency alongside a blank one still sets that dependency.
+	it("ignores an empty value when a dependency value is also given", async () => {
+		await $`bun ${CLI_PATH} task create "Base task"`.cwd(testDir).quiet();
+		await $`bun ${CLI_PATH} task create "Dependent task"`.cwd(testDir).quiet();
+
+		const result = await $`bun ${CLI_PATH} task edit 2 --depends-on ${""} --dep TASK-1 --plain`.cwd(testDir).quiet();
+
+		expect(result.exitCode).toBe(0);
+		expect((await core.filesystem.loadTask("TASK-2"))?.dependencies).toEqual(["TASK-1"]);
+	});
+
+	it("rejects conflicting dependency edits without changing dependencies", async () => {
+		await $`bun ${CLI_PATH} task create "Base task"`.cwd(testDir).quiet();
+		await $`bun ${CLI_PATH} task create "Dependent task" --depends-on TASK-1`.cwd(testDir).quiet();
 
 		const conflicting = await $`bun ${CLI_PATH} task edit 2 --clear-deps --depends-on TASK-1`
 			.cwd(testDir)
