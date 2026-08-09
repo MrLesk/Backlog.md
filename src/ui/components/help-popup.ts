@@ -8,16 +8,16 @@ type Shortcut = {
 	desc: string;
 };
 
-// Keys are listed exactly as they must be typed: Shift+letter arrives as `S-t`, so a
-// binding registered as `["t", "T"]` only ever fires for the lowercase letter.
+// Letters are uppercase key indicators, matching the footer: `T` means "press the T key",
+// not Shift+T. The bound key is the lowercase letter.
 const BOARD_SHORTCUTS: Shortcut[] = [
 	{ key: "Tab", desc: "Switch View (Kanban/List)" },
 	{ key: "N", desc: "Create a task" },
 	{ key: "/", desc: "Search tasks" },
-	{ key: "t", desc: "Filter by Type" },
-	{ key: "p", desc: "Filter by Priority" },
-	{ key: "i", desc: "Filter by Milestone" },
-	{ key: "f", desc: "Filter by Labels" },
+	{ key: "T", desc: "Filter by Type" },
+	{ key: "P", desc: "Filter by Priority" },
+	{ key: "I", desc: "Filter by Milestone" },
+	{ key: "F", desc: "Filter by Labels" },
 	{ key: "←→", desc: "Navigate columns" },
 	{ key: "↑↓", desc: "Navigate tasks" },
 	{ key: "Enter", desc: "View task details" },
@@ -34,11 +34,11 @@ const BOARD_SHORTCUTS: Shortcut[] = [
 const TASK_LIST_SHORTCUTS: Shortcut[] = [
 	{ key: "Tab", desc: "Switch View (Kanban/List)" },
 	{ key: "/", desc: "Search tasks" },
-	{ key: "s", desc: "Filter by Status" },
-	{ key: "t", desc: "Filter by Type" },
-	{ key: "p", desc: "Filter by Priority" },
-	{ key: "i", desc: "Filter by Milestone" },
-	{ key: "l", desc: "Filter by Labels" },
+	{ key: "S", desc: "Filter by Status" },
+	{ key: "T", desc: "Filter by Type" },
+	{ key: "P", desc: "Filter by Priority" },
+	{ key: "I", desc: "Filter by Milestone" },
+	{ key: "L", desc: "Filter by Labels" },
 	{ key: "↑↓", desc: "Navigate tasks" },
 	{ key: "←→", desc: "Switch between list and details" },
 	{ key: "Enter", desc: "Focus task details" },
