@@ -22,6 +22,7 @@ Running `backlog config` with no arguments launches the interactive advanced wiz
 | Key               | Purpose            | Default                       |
 |-------------------|--------------------|-------------------------------|
 | `defaultAssignee` | Assignees for new tasks created without `-a` | `[]`             |
+| `backlog_directory` | Custom backlog folder (project-relative path, e.g. `my-backlog`) | `backlog`       |
 | `defaultStatus`   | First column       | `To Do`                       |
 | `definition_of_done` | Default DoD checklist items for new tasks | `(not set)` |
 | `statuses`        | Board columns      | `[To Do, In Progress, Done]`  |
