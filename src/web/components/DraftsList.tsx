@@ -105,7 +105,7 @@ const DraftsList: React.FC<DraftsListProps> = ({ onEditTask, onNewDraft, dateFor
   }
 
   return (
-    <div className="container mx-auto px-4 py-8 transition-colors duration-200">
+    <div className="page-shell transition-colors duration-200">
       <div className="flex items-center justify-between mb-6">
           <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Draft Tasks</h1>
           <div className="flex items-center space-x-4">

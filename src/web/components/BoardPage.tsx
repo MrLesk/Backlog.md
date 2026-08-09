@@ -162,7 +162,7 @@ export default function BoardPage({
 	}, [filterPriority, filterType, isLoading, rawFilterPriority, rawFilterType, setSearchParams]);
 
 	return (
-		<div className="container mx-auto px-4 py-8 transition-colors duration-200">
+		<div className="page-shell transition-colors duration-200">
 			<Board
 				onEditTask={handleEditTask}
 				onNewTask={onNewTask}

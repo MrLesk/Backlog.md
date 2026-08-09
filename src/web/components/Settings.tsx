@@ -114,7 +114,7 @@ const Settings: React.FC = () => {
 
 	if (loading) {
 		return (
-			<div className="container mx-auto px-4 py-8">
+			<div className="page-shell">
 				<div className="flex items-center justify-center py-12">
 					<div className="text-lg text-gray-600 dark:text-gray-300">Loading settings...</div>
 				</div>
@@ -124,7 +124,7 @@ const Settings: React.FC = () => {
 
 	if (!config) {
 		return (
-			<div className="container mx-auto px-4 py-8">
+			<div className="page-shell">
 				<div className="flex items-center justify-center py-12">
 					<div className="text-red-600 dark:text-red-400">Failed to load configuration</div>
 				</div>
@@ -133,7 +133,7 @@ const Settings: React.FC = () => {
 	}
 
 	return (
-		<div className="container mx-auto px-4 py-8 transition-colors duration-200">
+		<div className="page-shell transition-colors duration-200">
 			<div className="max-w-4xl mx-auto">
 				<h1 className="text-3xl font-bold text-gray-900 dark:text-gray-100 mb-8">Settings</h1>
 
