@@ -763,7 +763,8 @@ export class FileSystem {
 		let prefix = isDraft ? "draft" : extractAnyPrefix(task.id);
 		if (!prefix) prefix = (await this.loadConfig())?.prefixes?.task ?? "task";
 		const id = normalizeId(task.id, prefix);
-		const filename = `${idForFilename(id)} - ${this.sanitizeFilename(task.title)}.md`;
+		const sanitizedTitle = this.sanitizeFilename(task.title);
+		const filename = sanitizedTitle ? `${idForFilename(id)} - ${sanitizedTitle}.md` : `${idForFilename(id)}.md`;
 		const directory = isDraft ? await this.getDraftsDir() : await this.getTasksDir();
 		const preservesPath = !isDraft && typeof task.filePath === "string" && task.filePath.trim().length > 0;
 		return { id, filename, filePath: preservesPath ? (task.filePath as string) : join(directory, filename) };
@@ -1469,7 +1470,8 @@ export class FileSystem {
 	async saveDecision(decision: Decision): Promise<{ filepath: string; removedFilepaths: string[] }> {
 		// Normalize ID - remove "decision-" prefix if present
 		const normalizedId = decision.id.replace(/^decision-/, "");
-		const filename = `decision-${normalizedId} - ${this.sanitizeFilename(decision.title)}.md`;
+		const sanitizedTitle = this.sanitizeFilename(decision.title);
+		const filename = sanitizedTitle ? `decision-${normalizedId} - ${sanitizedTitle}.md` : `decision-${normalizedId}.md`;
 		const decisionsDir = await this.getDecisionsDir();
 		const filepath = join(decisionsDir, filename);
 		const content = serializeDecision(decision);
@@ -1505,7 +1507,8 @@ export class FileSystem {
 		const docsDir = await this.getDocsDir();
 		const canonicalId = normalizeDocumentId(document.id);
 		document.id = canonicalId;
-		const filename = `${canonicalId} - ${this.sanitizeFilename(document.title)}.md`;
+		const sanitizedTitle = this.sanitizeFilename(document.title);
+		const filename = sanitizedTitle ? `${canonicalId} - ${sanitizedTitle}.md` : `${canonicalId}.md`;
 		const normalizedSubPath = normalizeDocumentSubPath(subPath);
 		const relativePath = normalizedSubPath ? `${normalizedSubPath}/${filename}` : filename;
 		const filepath = join(docsDir, ...relativePath.split("/"));
