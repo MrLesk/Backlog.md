@@ -5,7 +5,7 @@ status: Done
 assignee:
   - '@Claude'
 created_date: '2026-08-09 18:59'
-updated_date: '2026-08-09 19:25'
+updated_date: '2026-08-09 19:47'
 labels: []
 dependencies: []
 ordinal: 258000
@@ -57,16 +57,26 @@ Convention chosen: lowercase letters, slash separated, no spaces, ordered the wa
 Changes: both footer strings moved to src/ui/footer-content.ts as BOARD_FOOTER_CONTENT and TASK_LIST_FOOTER_CONTENT (that module already owns footer wrapping and was already imported by both views), so one test covers both. Board help popup filter rows corrected to lowercase and reordered to match; task-list help popup rows reordered to milestone-before-labels so the popup and its own footer agree. No keybindings changed.
 
 Out of scope observation: the same S- parsing gotcha makes parts of other footer hints wrong. E and M are safe because they also bind S-e/S-m, and H binds S-h, but c, a and y have no S- variants, so [E/M/C/A] and [Y] advertise dead uppercase C, A and Y. Verified in the PTY: lowercase c opened the complete-task confirm dialog, Shift+C did nothing. Not touched here; needs a product decision (fix the hints or add the S- bindings).
+
+Reopened after owner review of PR #892. Owner ruling, verbatim: "uppercase footer instructions don't mean shift + key... They are clearly key indicators. nobody is expecting to press the upper key version."
+
+So uppercase letters in footer and help hints are this TUI's display convention for "this key", not a claim that Shift is required. My lowercasing in #892 misread the design language and broke the footer's own visual grammar, where [Tab], [N], [E/M/C/A] and [Y] are all uppercase indicators. Restoring uppercase display for the filter hints.
+
+The two substantive fixes from #892 stay, because they were about content rather than styling: the corrected letter sets (board has no status filter and uses F for labels since L is column navigation) and the filter-bar ordering (status, type, priority, milestone, labels, matching ALL_FILTER_ITEMS in src/ui/components/filter-header.ts). Shipping [T/P/I/F] on the board and [S/T/P/I/L] in the task list, with the help-popup filter rows uppercased to match the untouched C/A/Y rows. No keybinding changes; the bound keys remain the lowercase letters plus the existing S- variants for e, m, n and h.
 <!-- SECTION:NOTES:END -->
 
 ## Final Summary
 
 <!-- SECTION:FINAL_SUMMARY:BEGIN -->
-Aligned the TUI filter footer hint across the kanban board and the task list, and fixed the board hint's dead keys.
+Aligned the TUI filter footer hint across the kanban board and the task list.
 
-Research in a real PTY showed the board footer's [T/P/F/I] advertised four keys that do nothing: both views bind their filter pickers as screen.key(["t", "T"]), but Shift+letter arrives as S-t, so only the lowercase letter fires. The board footer is now [t/p/i/f] and the task list stays [s/t/p/i/l] - both lowercase, slash separated, ordered the way the shared filter header renders its controls (status, type, priority, milestone, labels). The board keeps f for labels because l is column navigation there; that is the only remaining per-view letter difference and it reflects a real binding difference, not styling. The board help popup's filter rows were corrected the same way, and the task-list help popup rows reordered so each view's popup and footer agree. No keybindings changed and the hint is the same width as before, so the footer does not grow.
+Both footers now use the same uppercase slash-separated key indicators, in the order the shared filter header renders its controls (status, type, priority, milestone, labels): board [T/P/I/F], task list [S/T/P/I/L]. Uppercase is this TUI's display convention for a key indicator, consistent with [Tab], [N], [E/M/C/A] and [Y]; it does not mean Shift. The bound keys are the lowercase letters (plus the existing S- variants for e, m, n and h) and no binding changed.
 
-Both footer strings now live in src/ui/footer-content.ts as BOARD_FOOTER_CONTENT and TASK_LIST_FOOTER_CONTENT, next to the wrapping helper both views already imported.
+Two content fixes beyond styling: the board omits a status filter because its columns are the statuses, and it uses F for labels because L navigates columns there, so the letter sets legitimately differ per view; and the board hint previously listed labels before milestone, which contradicted its own filter bar. The board and task-list help popup filter rows were brought in line with the same letters and order, so each view's footer and its ? popup agree. The hints are the same visible width as before, so the footer does not grow.
 
-Verified: new tests in src/test/footer-content.test.ts assert both footer strings' filter letters, the shared lowercase slash-separated convention, and that the help popup filter rows match each footer; src/test/help-popup.test.ts updated. bunx tsc --noEmit clean, bun run check . clean, bun run test 2188 pass / 6 skip / 0 fail. Behavior confirmed by tmux PTY captures of both footers before and after, plus per-key probes showing lowercase keys open the expected picker and uppercase keys open nothing.
+Both footer strings live in src/ui/footer-content.ts as BOARD_FOOTER_CONTENT and TASK_LIST_FOOTER_CONTENT, next to the wrapping helper both views already imported.
+
+Verified: src/test/footer-content.test.ts asserts the uppercase indicator convention in both views, that each hint maps to the lowercase keys the view actually binds, and that the help-popup filter rows match each footer; src/test/help-popup.test.ts covers the per-view letter sets. bunx tsc --noEmit clean, bun run check . clean, bun run test 2188 pass / 6 skip / 0 fail. Rendered footers and both help popups confirmed with tmux PTY captures at 130x30, and a PTY key probe confirmed T/P/I/F and S/T/P/I/L still open the expected pickers after the change.
+
+History: PR #892 shipped this with lowercase hints; the owner ruled that uppercase footer letters are key indicators rather than Shift chords, and PR for branch tasks/back-620-uppercase-hints restores uppercase while keeping the corrected letters and order.
 <!-- SECTION:FINAL_SUMMARY:END -->

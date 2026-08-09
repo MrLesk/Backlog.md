@@ -7,8 +7,8 @@ describe("help popup shortcuts", () => {
 	it("keeps board-specific shortcuts in the board help menu", () => {
 		const keys = keysFor("board");
 
-		expect(keys).toContain("f");
-		expect(keys).toContain("t");
+		expect(keys).toContain("F");
+		expect(keys).toContain("T");
 		expect(keys).toContain("M");
 		expect(keys).toContain("N");
 		expect(keys).toContain("←→");
@@ -17,10 +17,10 @@ describe("help popup shortcuts", () => {
 	it("uses task-list shortcuts in the task viewer help menu", () => {
 		const keys = keysFor("task-list");
 
-		expect(keys).toContain("s");
-		expect(keys).toContain("t");
-		expect(keys).toContain("l");
-		expect(keys).not.toContain("f");
+		expect(keys).toContain("S");
+		expect(keys).toContain("T");
+		expect(keys).toContain("L");
+		expect(keys).not.toContain("F");
 		expect(keys).not.toContain("M");
 	});
 
