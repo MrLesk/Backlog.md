@@ -30,6 +30,7 @@ interface Props {
   milestoneEntities?: Milestone[];
   archivedMilestoneEntities?: Milestone[];
   definitionOfDoneDefaults?: string[];
+  defaultAssignee?: string[];
   dateFormat?: string;
 }
 
@@ -89,12 +90,14 @@ const buildTaskDetailsFormState = ({
   isDraftMode,
   availableStatuses,
   defaultDefinitionOfDone,
+  createModeAssignee,
 }: {
   task?: Task;
   isCreateMode: boolean;
   isDraftMode?: boolean;
   availableStatuses?: string[];
   defaultDefinitionOfDone: AcceptanceCriterion[];
+  createModeAssignee: string[];
 }): TaskDetailsFormState => ({
   title: task?.title || "",
   description: task?.description || "",
@@ -105,7 +108,7 @@ const buildTaskDetailsFormState = ({
   criteria: task?.acceptanceCriteriaItems || [],
   definitionOfDone: task?.definitionOfDoneItems || (isCreateMode ? defaultDefinitionOfDone : []),
   status: task?.status || (isDraftMode ? "Draft" : (availableStatuses?.[0] || "To Do")),
-  assignee: task?.assignee || [],
+  assignee: task?.assignee || createModeAssignee,
   labels: task?.labels || [],
   priority: task?.priority || "",
   taskType: task?.type || "",
@@ -139,6 +142,7 @@ export const TaskDetailsModal: React.FC<Props> = ({
   archivedMilestoneEntities,
   isDraftMode,
   definitionOfDoneDefaults,
+  defaultAssignee,
   dateFormat,
 }) => {
   const { theme } = useTheme();
@@ -170,6 +174,12 @@ export const TaskDetailsModal: React.FC<Props> = ({
   const defaultDefinitionOfDone = useMemo(
     () => (definitionOfDoneDefaults ?? []).map((text, index) => ({ index: index + 1, text, checked: false })),
     [definitionOfDoneDefaults],
+  );
+  // Create mode starts with the configured defaultAssignee already in the field, as ordinary
+  // removable chips, so emptying it says "unassigned" instead of "no opinion".
+  const createModeAssignee = useMemo(
+    () => (isCreateMode ? (defaultAssignee ?? []) : []),
+    [isCreateMode, defaultAssignee],
   );
   const initialDefinitionOfDone = task?.definitionOfDoneItems ?? (isCreateMode ? defaultDefinitionOfDone : []);
   const [definitionOfDone, setDefinitionOfDone] = useState<AcceptanceCriterion[]>(initialDefinitionOfDone);
@@ -311,7 +321,7 @@ export const TaskDetailsModal: React.FC<Props> = ({
 
   // Sidebar metadata (inline edit)
   const [status, setStatus] = useState(task?.status || (isDraftMode ? "Draft" : (availableStatuses?.[0] || "To Do")));
-  const [assignee, setAssignee] = useState<string[]>(task?.assignee || []);
+  const [assignee, setAssignee] = useState<string[]>(task?.assignee || createModeAssignee);
   const [labels, setLabels] = useState<string[]>(task?.labels || []);
   const [priority, setPriority] = useState<string>(task?.priority || "");
   const [taskType, setTaskType] = useState<string>(task?.type || "");
@@ -446,6 +456,7 @@ export const TaskDetailsModal: React.FC<Props> = ({
       isDraftMode,
       availableStatuses,
       defaultDefinitionOfDone,
+      createModeAssignee,
     });
     const previousFormState = formBaselineRef.current;
     const sameOpenModalRefresh =
@@ -532,7 +543,7 @@ export const TaskDetailsModal: React.FC<Props> = ({
     previousIsOpen.current = isOpen;
     formBaselineRef.current = nextFormState;
     setError(null);
-  }, [task, isOpen, isCreateMode, isDraftMode, availableStatuses, defaultDefinitionOfDone]);
+  }, [task, isOpen, isCreateMode, isDraftMode, availableStatuses, defaultDefinitionOfDone, createModeAssignee]);
 
   const refreshAfterCommentChange = useCallback(() => {
     if (!commentsChanged) return;
@@ -548,7 +559,8 @@ export const TaskDetailsModal: React.FC<Props> = ({
       taskType.trim() !== "" ||
       priority.trim() !== "" ||
       milestone.trim() !== "" ||
-      assignee.length > 0 ||
+      // The prefilled default is not the user's work, but removing or replacing it is.
+      !areJsonEqual(assignee, createModeAssignee) ||
       labels.length > 0 ||
       dependencies.length > 0 ||
       references.length > 0);
@@ -709,9 +721,11 @@ export const TaskDetailsModal: React.FC<Props> = ({
         finalSummary,
         acceptanceCriteriaItems: criteria,
         status,
-        // A blank assignee field on create means "no opinion", so the configured
-        // defaultAssignee still applies; on edit an explicit empty list clears the assignees.
-        ...(isCreateMode && assignee.length === 0 ? {} : { assignee }),
+        // Create starts with the configured defaultAssignee in the field, so what the field
+        // holds is what the user meant: empty is an explicit "unassigned". Only a project
+        // without a default has nothing to remove, so there a blank field still omits the
+        // field. On edit an explicit empty list clears the assignees.
+        ...(isCreateMode && assignee.length === 0 && createModeAssignee.length === 0 ? {} : { assignee }),
         labels,
         priority: priority === "" ? undefined : priority,
         dependencies,

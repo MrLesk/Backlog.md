@@ -813,6 +813,7 @@ function AppContent() {
         archivedMilestoneEntities={archivedMilestones}
         isDraftMode={isDraftMode}
         definitionOfDoneDefaults={config?.definitionOfDone ?? []}
+        defaultAssignee={config?.defaultAssignee}
         dateFormat={config?.dateFormat}
       />
 
