@@ -174,7 +174,7 @@ export async function openSingleSelectFilterPopup(options: {
 			screen: options.screen,
 			title: options.title,
 			helpText:
-				options.helpText ?? " {cyan-fg}[↑↓]{/} Navigate | {cyan-fg}[Enter]{/} Select | {cyan-fg}[Esc]{/} Cancel",
+				options.helpText ?? " {cyan-fg}[↑↓/jk]{/} Navigate | {cyan-fg}[Enter]{/} Select | {cyan-fg}[Esc]{/} Cancel",
 			width: "48%",
 			height: "60%",
 		});
@@ -201,6 +201,7 @@ export async function openSingleSelectFilterPopup(options: {
 			items: options.choices.map((choice) => choice.label),
 			selected: selectedIndex,
 			keys: true,
+			vi: true,
 			mouse: true,
 			tags: true,
 			scrollable: true,
