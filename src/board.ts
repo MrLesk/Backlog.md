@@ -97,7 +97,7 @@ Project: ${projectName}
 		const children = new Map<string, Task[]>();
 
 		// Sort items: All columns by updatedDate descending (fallback to createdDate), then by ID as secondary
-		const sortedItems = items.sort((a, b) => {
+		const sortedItems = [...items].sort((a, b) => {
 			// Primary sort: updatedDate (newest first), fallback to createdDate if updatedDate is missing
 			const dateA = a.updatedDate ? new Date(a.updatedDate).getTime() : new Date(a.createdDate).getTime();
 			const dateB = b.updatedDate ? new Date(b.updatedDate).getTime() : new Date(b.createdDate).getTime();
