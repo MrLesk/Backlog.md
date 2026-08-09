@@ -38,6 +38,7 @@ Running `backlog config` with no arguments launches the interactive advanced wiz
 | `checkActiveBranches` | Check task states across active branches for accuracy | `true` |
 | `activeBranchDays` | How many days a branch is considered active | `30` |
 | `onStatusChange`  | Shell command to run on status change | `(disabled)` |
+| `backlog_directory` | Project-relative backlog folder, chosen at `backlog init` and read from `backlog.config.yml` in the project root | `backlog` |
 
 ## Detailed Notes
 
@@ -60,3 +61,5 @@ Running `backlog config` with no arguments launches the interactive advanced wiz
 > **Date/Time Support**: Backlog.md now supports datetime precision for all dates. New items automatically include time (YYYY-MM-DD HH:mm format in UTC), while existing date-only entries remain unchanged for backward compatibility. Use the migration script `bun src/scripts/migrate-dates.ts` to optionally add time to existing items.
 
 > **Date Display Format**: `dateFormat` only changes how dates are *displayed* in the web UI and TUI; markdown files always store dates in the canonical `yyyy-mm-dd [hh:mm]` UTC format. The format string is split at the first whitespace into a date part and an optional time part. Date part tokens (case-insensitive, each exactly once): `yyyy`, `mm` (month), `dd`; any other characters are kept literally. Time part tokens: `hh` and `mm` (minutes) — `mm` means month in the date part and minutes in the time part. If a stored value includes a time it is always shown: through the format's time part when present, otherwise appended as ` hh:mm`. Date-only values never invent a time. Invalid formats fall back to the canonical display. Agent-facing output (`--plain` CLI output and MCP responses) always stays canonical regardless of this setting. Example: `dateFormat: dd/mm/yyyy` renders `2026-07-04 21:54` as `04/07/2026 21:54`.
+
+> **Custom Backlog Folder**: `backlog_directory` is chosen when the project is initialized — select "Custom project-relative path" in the wizard or run `backlog init --backlog-dir my-backlog --config-location root` — and init refuses to move the folder afterwards. Unlike every other key here it is read only from `backlog.config.yml` in the project root: the same key inside `backlog/config.yml` is ignored, and `backlog config` cannot set, get, or list it. The path is only checked lexically: absolute values and paths that normalize to outside the project are ignored, while a relative path that symlinks outside the repository is accepted. When the value is ignored Backlog.md uses `backlog/` or `.backlog/` if one exists, and otherwise reports that no project was found.
