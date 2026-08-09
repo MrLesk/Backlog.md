@@ -5,7 +5,7 @@ status: Done
 assignee:
   - '@Claude'
 created_date: '2026-08-09 13:49'
-updated_date: '2026-08-09 14:38'
+updated_date: '2026-08-09 15:04'
 labels: []
 dependencies: []
 ordinal: 254000
@@ -59,6 +59,14 @@ Footer decision (owner constraint): no [H] hint was added. The default footer is
 Not shipped from PR #808: the browser board toolbar button, the drag-and-drop hardening, the README copy and the bundled BACK-555 task-composer commits, all outside this task's acceptance criteria. Worth noting for a separate decision: his drag-and-drop findings describe a live defect in the already-shipped web behavior - Board.tsx flips isDragging synchronously inside dragstart, which re-inserts the hidden columns during the drag and (per his report) cancels the native drag in Chromium, making cards undraggable while hideEmptyColumns is on.
 
 Piped board: the non-TTY branch of renderBoardTui now applies the same filter, so 'backlog board' means the same thing with and without a TTY. 'backlog board export' was deliberately left alone - it writes a full snapshot artifact.
+
+Review follow-up (Codex P2 threads on PR #889):
+
+1. Shutdown race, confirmed and fixed. The Shift+H handler is async but the key emitter does not await it, so quitting right after the toggle resolved the board while getCore()/loadConfig()/saveConfig() were still in flight, and unified-view's process.exit(0) dropped the write. Reproduced with a red test that delays saveConfig by 300ms: the board resolved with hide_empty_columns still unset. The in-flight boolean guard is now the pending promise itself (pendingSettingWrite), and a new closeBoard() helper awaits it before clearing the footer timer, destroying the screen and resolving. closeBoard also replaced the duplicated teardown in the q, Esc, Tab and view-switcher paths, so a handoff to the task list cannot drop the write either. No UI copy was added.
+
+2. Milestone-grouped piped board, fixed. The non-TTY --milestones branch bypassed the filter and still printed '### <status> (0)' headings per milestone. The visible statuses are now derived once before the milestone branch and passed to both generators, matching the browser, whose milestone lanes hide a status that is empty across all lanes.
+
+Verified: bunx tsc --noEmit clean, bun run check . clean across 369 files, 14 tests in board-hide-empty-columns.test.ts (2 new, both red before the fixes), 115 tests across the 9 board/TUI files, full bun run test 2164 pass / 6 skip / 0 fail. Live tmux run: pressing H then q back to back with no pause left hide_empty_columns: true in config.yml, and 'backlog board --milestones' piped drops the In Progress heading with the setting on and keeps it with the setting off.
 <!-- SECTION:NOTES:END -->
 
 ## Final Summary
