@@ -761,7 +761,7 @@ const MilestonesPage: React.FC<MilestonesPageProps> = ({
 	const canReassignRemovedMilestone = removeReassignOptions.length > 0;
 
 	return (
-		<div className="container mx-auto px-4 py-8 transition-colors duration-200">
+		<div className="page-shell transition-colors duration-200">
 			{/* Header */}
 			<div className="flex flex-wrap items-center justify-between gap-4 mb-6">
 				<div className="flex flex-wrap items-center gap-4">

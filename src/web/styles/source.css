@@ -18,6 +18,47 @@
     button:disabled {
         cursor: not-allowed;
     }
+
+    /* Scrollbars: no track, only a thumb tinted for the active theme. scrollbar-color
+       inherits, so every scroll container picks it up - page, tables, modals, dropdowns. */
+    html {
+        --scrollbar-thumb: rgb(0 0 0 / 0.22);
+        --scrollbar-thumb-hover: rgb(0 0 0 / 0.4);
+        scrollbar-color: var(--scrollbar-thumb) transparent;
+    }
+
+    html.dark {
+        --scrollbar-thumb: rgb(255 255 255 / 0.2);
+        --scrollbar-thumb-hover: rgb(255 255 255 / 0.36);
+    }
+
+    /* scrollbar-width does not inherit, so it has to be declared on every element. */
+    * {
+        scrollbar-width: thin;
+    }
+
+    /* Fallback for WebKit versions without scrollbar-width/scrollbar-color. Browsers that
+       support the standard properties above ignore these rules. */
+    ::-webkit-scrollbar {
+        width: 10px;
+        height: 10px;
+    }
+
+    ::-webkit-scrollbar-track,
+    ::-webkit-scrollbar-corner {
+        background: transparent;
+    }
+
+    ::-webkit-scrollbar-thumb {
+        background-color: var(--scrollbar-thumb);
+        background-clip: padding-box;
+        border: 2px solid transparent;
+        border-radius: var(--radius-circle);
+    }
+
+    ::-webkit-scrollbar-thumb:hover {
+        background-color: var(--scrollbar-thumb-hover);
+    }
 }
 
 @layer utilities {
@@ -72,6 +113,14 @@
 }
 
 @layer components {
+    /* Shared page shell. Pages fill the content area next to the side navigation
+       instead of being centred inside a viewport-sized max width, which left a wide
+       empty gutter whenever the side navigation was collapsed. */
+    .page-shell {
+        width: 100%;
+        padding: 1.5rem 1rem;
+    }
+
     /* Custom styles that can't be done with Tailwind utilities */
     /* Line clamp utilities for text truncation */
     .line-clamp-2 {
