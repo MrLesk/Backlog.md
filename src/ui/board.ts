@@ -179,6 +179,19 @@ function formatColumnLabel(status: string, count: number): string {
 const DEFAULT_FOOTER_CONTENT =
 	" {cyan-fg}[Tab]{/} View | {cyan-fg}[N]{/} New | {cyan-fg}[/]{/} Search | {cyan-fg}[T/P/F/I]{/} Filter | {cyan-fg}[←→/↑↓]{/} Nav | {cyan-fg}[Enter]{/} Details | {cyan-fg}[E/M/C/A]{/} Edit/Move/Comp/Arch | {cyan-fg}[Y]{/} Yank | {cyan-fg}[?]{/} Help | {cyan-fg}[q]{/} Quit";
 
+/**
+ * Board columns to render: with `hideEmptyColumns` enabled, columns without tasks are
+ * dropped. A move keeps every column so all drop targets stay reachable, and a board
+ * where every column is empty keeps them all so the board never renders blank.
+ */
+export function filterVisibleColumns(data: ColumnData[], hideEmptyColumns: boolean, isMoving: boolean): ColumnData[] {
+	if (!hideEmptyColumns || isMoving) {
+		return data;
+	}
+	const nonEmpty = data.filter((column) => column.tasks.length > 0);
+	return nonEmpty.length > 0 ? nonEmpty : data;
+}
+
 export function shouldRebuildColumns(current: ColumnData[], next: ColumnData[]): boolean {
 	if (current.length !== next.length) {
 		return true;
@@ -281,6 +294,7 @@ export async function renderBoardTui(
 		milestoneEntities?: Milestone[];
 		startupWarning?: string;
 		dateFormat?: string;
+		hideEmptyColumns?: boolean;
 		projectName?: string;
 		createTask?: (input: TaskCreateInput) => Promise<Task>;
 		screen?: ScreenInterface;
@@ -292,7 +306,11 @@ export async function renderBoardTui(
 		if (options?.milestoneMode) {
 			console.log(generateMilestoneGroupedBoard(initialTasks, statuses, options.milestoneEntities ?? [], projectName));
 		} else {
-			console.log(generateKanbanBoardWithMetadata(initialTasks, statuses, projectName));
+			// The piped board is the same view, so it hides the same columns the TUI hides.
+			const visibleStatuses = options?.hideEmptyColumns
+				? filterVisibleColumns(prepareBoardColumns(initialTasks, statuses), true, false).map((column) => column.status)
+				: statuses;
+			console.log(generateKanbanBoardWithMetadata(initialTasks, visibleStatuses, projectName));
 		}
 		return;
 	}
@@ -323,6 +341,8 @@ export async function renderBoardTui(
 		let currentColumnsData: ColumnData[] = [];
 		let configuredWorkflowStatuses = [...statuses];
 		let currentStatuses = initialColumns.map((column) => column.status);
+		let hideEmptyColumns = options?.hideEmptyColumns ?? false;
+		let hideEmptyColumnsSaving = false;
 		let currentCol = 0;
 		let popupOpen = false;
 		let currentFocus: "board" | "filters" = "board";
@@ -676,7 +696,6 @@ export async function renderBoardTui(
 
 		const rebuildColumns = (data: ColumnData[], selectedTaskId?: string) => {
 			currentColumnsData = data;
-			currentStatuses = data.map((column) => column.status);
 			createColumnViews(data);
 			restoreSelection(selectedTaskId);
 		};
@@ -921,17 +940,23 @@ export async function renderBoardTui(
 			renderingView = true;
 			try {
 				const projectedData = getProjectedColumns(getFilteredTasks(), moveOp);
+				// Track every projected status, not only the rendered ones, so hiding empty
+				// columns cannot narrow the move targets or the next projection.
+				if (projectedData.length > 0) {
+					currentStatuses = projectedData.map((column) => column.status);
+				}
+				const dataForColumns = filterVisibleColumns(projectedData, hideEmptyColumns, Boolean(moveOp));
 
 				// If we are moving, we want to select the moving task
 				const selectedId = preferredTaskId ?? (moveOp ? moveOp.taskId : getSelectedTaskId());
 
-				if (projectedData.length === 0) {
+				if (dataForColumns.length === 0) {
 					const fallbackStatus = currentStatuses[0] ?? "No Status";
 					rebuildColumns([{ status: fallbackStatus, tasks: [] }], selectedId);
-				} else if (shouldRebuildColumns(currentColumnsData, projectedData)) {
-					rebuildColumns(projectedData, selectedId);
+				} else if (shouldRebuildColumns(currentColumnsData, dataForColumns)) {
+					rebuildColumns(dataForColumns, selectedId);
 				} else {
-					applyColumnData(projectedData, selectedId);
+					applyColumnData(dataForColumns, selectedId);
 				}
 
 				updateFooter();
@@ -1620,6 +1645,40 @@ export async function renderBoardTui(
 						` {red-fg}Error archiving task: ${error instanceof Error ? error.message : "Unknown error"}{/}`,
 					);
 				}
+			}
+		});
+
+		// Shift+H writes the shared hideEmptyColumns setting, so the board, the browser
+		// board and `backlog config` all read the same preference.
+		screen.key(["S-h"], async () => {
+			if (popupOpen || filterPopupOpen || modalOpen || currentFocus === "filters" || moveOp) return;
+			// Ignore toggles while a save is in flight: overlapping load/save
+			// cycles would write back stale config snapshots (lost updates).
+			if (hideEmptyColumnsSaving) return;
+			hideEmptyColumnsSaving = true;
+
+			const previous = hideEmptyColumns;
+			hideEmptyColumns = !hideEmptyColumns;
+			renderView();
+
+			try {
+				const core = await getCore();
+				const config = await core.fs.loadConfig();
+				if (!config) {
+					throw new Error("No config found");
+				}
+				await core.fs.saveConfig({ ...config, hideEmptyColumns });
+				showTransientFooter(
+					hideEmptyColumns ? " {green-fg}Hiding empty columns{/}" : " {green-fg}Showing empty columns{/}",
+				);
+			} catch (error) {
+				hideEmptyColumns = previous;
+				renderView();
+				showTransientFooter(
+					` {red-fg}Error saving hide empty columns setting: ${error instanceof Error ? error.message : "Unknown error"}{/}`,
+				);
+			} finally {
+				hideEmptyColumnsSaving = false;
 			}
 		});
 
