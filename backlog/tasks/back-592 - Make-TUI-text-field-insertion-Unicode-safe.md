@@ -1,9 +1,11 @@
 ---
 id: BACK-592
 title: Make TUI text field insertion Unicode-safe
-status: To Do
-assignee: []
+status: Done
+assignee:
+  - '@codex'
 created_date: '2026-08-07 20:48'
+updated_date: '2026-08-10 05:37'
 labels:
   - tui
 dependencies: []
@@ -28,15 +30,37 @@ Users hit this with any emoji, CJK-adjacent astral character, or flag sequence i
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 Typing adjacent to an astral character in the Title field never splits its surrogate pair; the saved task file contains the original character with no replacement characters
-- [ ] #2 The same holds for the Description field, including when the astral character sits mid-field rather than at an edge
-- [ ] #3 The caret lands where the user aimed after such an insertion, never inside a surrogate pair
-- [ ] #4 A regression test exercises insertion next to an astral character placed mid-field and asserts on the persisted file content
+- [x] #1 Typing adjacent to an astral character in the Title field never splits its surrogate pair; the saved task file contains the original character with no replacement characters
+- [x] #2 The same holds for the Description field, including when the astral character sits mid-field rather than at an edge
+- [x] #3 The caret lands where the user aimed after such an insertion, never inside a surrogate pair
+- [x] #4 A regression test exercises insertion next to an astral character placed mid-field and asserts on the persisted file content
 <!-- AC:END -->
 
 ## Definition of Done
 <!-- DOD:BEGIN -->
-- [ ] #1 bunx tsc --noEmit passes when TypeScript touched
-- [ ] #2 bun run check . passes when formatting/linting touched
-- [ ] #3 bun test (or scoped test) passes
+- [x] #1 bunx tsc --noEmit passes when TypeScript touched
+- [x] #2 bun run check . passes when formatting/linting touched
+- [x] #3 bun test (or scoped test) passes
 <!-- DOD:END -->
+
+## Implementation Plan
+
+<!-- SECTION:PLAN:BEGIN -->
+1. Make the composer's caret conversion map terminal display columns onto safe UTF-16 code-point boundaries, ignoring the widget's internal wide-character placeholders.
+2. Own printable insertion for both Title and Description and reuse one mutation/caret-repositioning path with the existing deletion behavior.
+3. Add deterministic model and end-to-end composer regressions for mid-field wide astral insertion, including canonical persisted task bytes, then run focused and repository checks.
+<!-- SECTION:PLAN:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+Implemented one display-width-aware caret conversion for the composer, stripping Blessed's internal wide-character placeholder and snapping ambiguous display cells to a complete code-point boundary. Title and Description now own printable insertion and reuse the same mutation/caret-restoration path as deletion. Added model coverage plus a real composer-to-canonical-file regression for a mid-field double-width astral character in both fields.
+
+Validation so far: the 61 relevant composer tests pass with the unrelated pre-existing watcher test excluded; `bunx tsc --noEmit`, `bun run check .`, `bun run build`, and `git diff --check` pass. The excluded watcher test also fails unchanged on clean main.
+<!-- SECTION:NOTES:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+Made TUI Title and Description insertion Unicode-safe by translating display-cell cursor positions to complete UTF-16 code-point boundaries and owning insertion through the composer's shared mutation path. Verified a mid-field double-width astral character through the real composer into canonical task bytes and reload, including exact caret placement; 61 relevant composer tests, TypeScript, Biome, build, and diff checks pass.
+<!-- SECTION:FINAL_SUMMARY:END -->
