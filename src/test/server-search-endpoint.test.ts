@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import { join } from "node:path";
 import { DEFAULT_STATUSES } from "../constants/index.ts";
+import type { Core } from "../core/backlog.ts";
 import { FileSystem } from "../file-system/operations.ts";
 import { BacklogServer } from "../server/index.ts";
 import type { Decision, Document, Milestone, Task } from "../types/index.ts";
@@ -141,6 +142,54 @@ describe("BacklogServer search endpoint", () => {
 		expect(finalTypes.has("task")).toBe(true);
 		expect(finalTypes.has("document")).toBe(true);
 		expect(finalTypes.has("decision")).toBe(true);
+	});
+
+	it("refreshes task refs only when the requested result types include tasks", async () => {
+		if (!server) throw new Error("Server not started");
+		const core = (server as unknown as { core: Core }).core;
+		const originalRefreshTasksForTaskRead = core.refreshTasksForTaskRead.bind(core);
+		const originalListRecentBranchTips = core.git.listRecentBranchTips.bind(core.git);
+		let taskRefreshes = 0;
+		let branchSnapshots = 0;
+		core.refreshTasksForTaskRead = async () => {
+			taskRefreshes += 1;
+			return await originalRefreshTasksForTaskRead();
+		};
+		core.git.listRecentBranchTips = async () => {
+			branchSnapshots += 1;
+			return [];
+		};
+
+		try {
+			const nonTaskResults = await fetchJson<Array<{ type?: string }>>(
+				"/api/search?type=document&type=decision&query=alpha",
+			);
+			expect(new Set(nonTaskResults.map((item) => item.type))).toEqual(new Set(["document", "decision"]));
+			expect(taskRefreshes).toBe(0);
+
+			const invalidResponse = await fetch(`http://127.0.0.1:${serverPort}/api/search?type=milestone&query=alpha`);
+			expect(invalidResponse.status).toBe(400);
+			expect(taskRefreshes).toBe(0);
+			expect(branchSnapshots).toBe(0);
+
+			const invalidStatusResponse = await fetch(
+				`http://127.0.0.1:${serverPort}/api/search?type=task&excludeStatus=Blocked&query=alpha`,
+			);
+			expect(invalidStatusResponse.status).toBe(400);
+			const invalidPriorityResponse = await fetch(
+				`http://127.0.0.1:${serverPort}/api/search?type=task&priority=urgent&query=alpha`,
+			);
+			expect(invalidPriorityResponse.status).toBe(400);
+			expect(taskRefreshes).toBe(0);
+			expect(branchSnapshots).toBe(0);
+
+			await fetchJson<Array<{ type?: string }>>("/api/search?type=task&query=alpha");
+			expect(taskRefreshes).toBe(1);
+			expect(branchSnapshots).toBeGreaterThan(0);
+		} finally {
+			core.refreshTasksForTaskRead = originalRefreshTasksForTaskRead;
+			core.git.listRecentBranchTips = originalListRecentBranchTips;
+		}
 	});
 
 	it("filters search results by priority and status", async () => {

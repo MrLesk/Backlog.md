@@ -218,6 +218,12 @@ function parseConfigListValue(content: string, key: ConfigListKey, configPath: s
 const DEFAULT_CREATE_LOCK_TIMEOUT_MS = 30_000;
 const DEFAULT_CREATE_LOCK_RETRY_DELAY_MS = 100;
 const DEFAULT_CREATE_LOCK_STALE_MS = 10_000;
+const TASK_FILE_READ_CONCURRENCY = 32;
+
+interface ParsedTaskFile {
+	content: string;
+	task: Task;
+}
 
 export const CREATE_LOCK_ERROR_CODE = "ECREATELOCK";
 export const CREATE_LOCK_ERROR_MESSAGE =
@@ -277,6 +283,12 @@ export class FileSystem {
 	private readonly projectRoot: string;
 	private cachedConfig: BacklogConfig | null = null;
 	private cachedConfigSnapshot: { path: string; content: string } | null = null;
+	private readonly parsedTaskFiles = new Map<string, ParsedTaskFile>();
+	private taskParseCacheEpoch = 0;
+	private taskFileReadGeneration = 0;
+	private readonly taskFileReadGenerations = new Map<string, number>();
+	private activeTaskFileReads = 0;
+	private readonly pendingTaskFileReads: Array<() => void> = [];
 
 	constructor(projectRoot: string) {
 		this.projectRoot = projectRoot;
@@ -366,8 +378,13 @@ export class FileSystem {
 	}
 
 	private applyConfigResolution(resolution: ReturnType<typeof resolveBacklogDirectory>): void {
-		this.resolvedBacklogDirName = resolution.backlogDir ?? DEFAULT_DIRECTORIES.BACKLOG;
-		this.resolvedBacklogDir = resolution.backlogPath ?? join(this.projectRoot, DEFAULT_DIRECTORIES.BACKLOG);
+		const backlogDirName = resolution.backlogDir ?? DEFAULT_DIRECTORIES.BACKLOG;
+		const backlogDir = resolution.backlogPath ?? join(this.projectRoot, DEFAULT_DIRECTORIES.BACKLOG);
+		if (resolve(backlogDir) !== resolve(this.resolvedBacklogDir)) {
+			this.invalidateTaskParseCache();
+		}
+		this.resolvedBacklogDirName = backlogDirName;
+		this.resolvedBacklogDir = backlogDir;
 		this.resolvedConfigPath = resolution.configPath ?? join(this.resolvedBacklogDir, DEFAULT_FILES.CONFIG);
 		this.configSource = resolution.configSource ?? "folder";
 	}
@@ -377,11 +394,21 @@ export class FileSystem {
 		if (!normalized) {
 			throw new Error("Backlog directory must be a project-relative path.");
 		}
+		const nextBacklogDir = join(this.projectRoot, normalized);
+		if (resolve(nextBacklogDir) !== resolve(this.resolvedBacklogDir)) {
+			this.invalidateTaskParseCache();
+		}
 		this.resolvedBacklogDirName = normalized;
-		this.resolvedBacklogDir = join(this.projectRoot, normalized);
+		this.resolvedBacklogDir = nextBacklogDir;
 		if (this.configSource === "folder") {
 			this.resolvedConfigPath = join(this.resolvedBacklogDir, DEFAULT_FILES.CONFIG);
 		}
+	}
+
+	private invalidateTaskParseCache(): void {
+		this.taskParseCacheEpoch++;
+		this.parsedTaskFiles.clear();
+		this.taskFileReadGenerations.clear();
 	}
 
 	setConfigLocation(configSource: BacklogConfigSource): void {
@@ -748,7 +775,91 @@ export class FileSystem {
 		}
 	}
 
+	private async withTaskFileReadSlot<T>(read: () => Promise<T>): Promise<T> {
+		if (this.activeTaskFileReads < TASK_FILE_READ_CONCURRENCY) {
+			this.activeTaskFileReads++;
+		} else {
+			await new Promise<void>((resolve) => this.pendingTaskFileReads.push(resolve));
+		}
+
+		try {
+			return await read();
+		} finally {
+			const next = this.pendingTaskFileReads.shift();
+			if (next) {
+				// Transfer this slot directly to the next reader before it resumes.
+				next();
+			} else {
+				this.activeTaskFileReads--;
+			}
+		}
+	}
+
+	/** Re-read for freshness, but only reparse when the exact text changed. */
+	private async readParsedTaskFile(filepath: string, cacheEpoch = this.taskParseCacheEpoch): Promise<Task> {
+		const cacheKey = resolve(filepath);
+		const generation = ++this.taskFileReadGeneration;
+		if (cacheEpoch === this.taskParseCacheEpoch) {
+			this.taskFileReadGenerations.set(cacheKey, generation);
+		}
+		const content = await this.withTaskFileReadSlot(async () => await Bun.file(filepath).text());
+		const cached = this.parsedTaskFiles.get(cacheKey);
+		if (cached?.content === content) {
+			return structuredClone(cached.task);
+		}
+
+		const parsed = parseTask(content);
+		if (cacheEpoch === this.taskParseCacheEpoch && this.taskFileReadGenerations.get(cacheKey) === generation) {
+			this.parsedTaskFiles.set(cacheKey, { content, task: parsed });
+		}
+		// Task consumers mutate nested lists while preparing edits and branch metadata.
+		return structuredClone(parsed);
+	}
+
+	private async readTaskFiles(
+		directory: string,
+		files: string[],
+		options: { normalizeIdentity: boolean; debugLabel: string },
+		cacheEpoch = this.taskParseCacheEpoch,
+	): Promise<Task[]> {
+		const directoryPath = resolve(directory);
+		const livePaths = new Set(files.map((file) => resolve(directory, file)));
+		if (cacheEpoch === this.taskParseCacheEpoch) {
+			const trackedPaths = new Set([...this.parsedTaskFiles.keys(), ...this.taskFileReadGenerations.keys()]);
+			for (const trackedPath of trackedPaths) {
+				if (dirname(trackedPath) === directoryPath && !livePaths.has(trackedPath)) {
+					this.parsedTaskFiles.delete(trackedPath);
+					this.taskFileReadGenerations.delete(trackedPath);
+				}
+			}
+		}
+
+		const tasks = new Array<Task | undefined>(files.length);
+		let nextIndex = 0;
+		const worker = async () => {
+			while (nextIndex < files.length) {
+				const index = nextIndex++;
+				const file = files[index];
+				if (!file) continue;
+				const filepath = join(directory, file);
+				try {
+					const parsed = await this.readParsedTaskFile(filepath, cacheEpoch);
+					const task = options.normalizeIdentity ? normalizeTaskIdentity(parsed) : parsed;
+					tasks[index] = { ...task, filePath: filepath };
+				} catch (error) {
+					if (process.env.DEBUG) {
+						console.error(`Failed to parse ${options.debugLabel} ${filepath}`, error);
+					}
+				}
+			}
+		};
+
+		await Promise.all(Array.from({ length: Math.min(TASK_FILE_READ_CONCURRENCY, files.length) }, () => worker()));
+		return tasks.filter((task): task is Task => task !== undefined);
+	}
+
 	async listTasks(filter?: TaskListFilter): Promise<Task[]> {
+		const cacheEpoch = this.taskParseCacheEpoch;
 		let tasksDir: string;
 		try {
 			tasksDir = await this.getTasksDir();
@@ -768,19 +879,15 @@ export class FileSystem {
 			return [];
 		}
 
-		let tasks: Task[] = [];
-		for (const file of taskFiles) {
-			const filepath = join(tasksDir, file);
-			try {
-				const content = await Bun.file(filepath).text();
-				const task = normalizeTaskIdentity(parseTask(content));
-				tasks.push({ ...task, filePath: filepath });
-			} catch (error) {
-				if (process.env.DEBUG) {
-					console.error(`Failed to parse task file ${filepath}`, error);
-				}
-			}
-		}
+		let tasks = await this.readTaskFiles(
+			tasksDir,
+			taskFiles,
+			{
+				normalizeIdentity: true,
+				debugLabel: "task file",
+			},
+			cacheEpoch,
+		);
 
 		if (filter?.status) {
 			const statusLower = filter.status.toLowerCase();
@@ -808,6 +915,7 @@ export class FileSystem {
 	}
 
 	async listCompletedTasks(): Promise<Task[]> {
+		const cacheEpoch = this.taskParseCacheEpoch;
 		let completedDir: string;
 		try {
 			completedDir = await this.getCompletedDir();
@@ -827,19 +935,15 @@ export class FileSystem {
 			return [];
 		}
 
-		const tasks: Task[] = [];
-		for (const file of taskFiles) {
-			const filepath = join(completedDir, file);
-			try {
-				const content = await Bun.file(filepath).text();
-				const task = parseTask(content);
-				tasks.push({ ...task, filePath: filepath });
-			} catch (error) {
-				if (process.env.DEBUG) {
-					console.error(`Failed to parse completed task file ${filepath}`, error);
-				}
-			}
-		}
+		const tasks = await this.readTaskFiles(
+			completedDir,
+			taskFiles,
+			{
+				normalizeIdentity: false,
+				debugLabel: "completed task file",
+			},
+			cacheEpoch,
+		);
 
 		return sortByTaskId(tasks);
 	}

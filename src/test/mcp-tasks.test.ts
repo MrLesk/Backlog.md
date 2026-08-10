@@ -1,5 +1,5 @@
-import { afterEach, beforeEach, describe, expect, it } from "bun:test";
-import { join } from "node:path";
+import { afterEach, beforeEach, describe, expect, it, spyOn } from "bun:test";
+import { basename, join } from "node:path";
 import { $ } from "bun";
 import { DEFAULT_STATUSES, DEFAULT_TASK_TYPES } from "../constants/index.ts";
 import { serializeTask } from "../markdown/serializer.ts";
@@ -38,6 +38,44 @@ async function enableGitTestProject(): Promise<void> {
 	config.filesystemOnly = false;
 	await mcpServer.filesystem.saveConfig(config);
 	await mcpServer.ensureConfigLoaded();
+}
+
+function installCrossBranchTripwires(server: McpServer) {
+	const error = new Error("MCP task search crossed the branch-loading boundary");
+	const loadTasks = spyOn(server, "loadTasks").mockRejectedValue(error);
+	const fetch = spyOn(server.gitOps, "fetch").mockRejectedValue(error);
+	const listRecentBranchTips = spyOn(server.gitOps, "listRecentBranchTips").mockRejectedValue(error);
+	const listRecentBranches = spyOn(server.gitOps, "listRecentBranches").mockRejectedValue(error);
+	const listRecentRemoteBranches = spyOn(server.gitOps, "listRecentRemoteBranches").mockRejectedValue(error);
+	const listFilesInTree = spyOn(server.gitOps, "listFilesInTree").mockRejectedValue(error);
+	const showFile = spyOn(server.gitOps, "showFile").mockRejectedValue(error);
+	const getRepositoryRoot = spyOn(server.gitOps, "getRepositoryRoot").mockRejectedValue(error);
+	const resolveCommit = spyOn(server.gitOps, "resolveCommit").mockRejectedValue(error);
+
+	return {
+		expectUntouched() {
+			expect(loadTasks).toHaveBeenCalledTimes(0);
+			expect(fetch).toHaveBeenCalledTimes(0);
+			expect(listRecentBranchTips).toHaveBeenCalledTimes(0);
+			expect(listRecentBranches).toHaveBeenCalledTimes(0);
+			expect(listRecentRemoteBranches).toHaveBeenCalledTimes(0);
+			expect(listFilesInTree).toHaveBeenCalledTimes(0);
+			expect(showFile).toHaveBeenCalledTimes(0);
+			expect(getRepositoryRoot).toHaveBeenCalledTimes(0);
+			expect(resolveCommit).toHaveBeenCalledTimes(0);
+		},
+		restore() {
+			loadTasks.mockRestore();
+			fetch.mockRestore();
+			listRecentBranchTips.mockRestore();
+			listRecentBranches.mockRestore();
+			listRecentRemoteBranches.mockRestore();
+			listFilesInTree.mockRestore();
+			showFile.mockRestore();
+			getRepositoryRoot.mockRestore();
+			resolveCommit.mockRestore();
+		},
+	};
 }
 
 describe("MCP task tools (MVP)", () => {
@@ -618,14 +656,58 @@ describe("MCP task tools (MVP)", () => {
 			},
 		});
 
+		const tripwires = installCrossBranchTripwires(mcpServer);
+		try {
+			const searchResults = [
+				await mcpServer.testInterface.callTool({
+					params: { name: "task_search", arguments: { query: "task" } },
+				}),
+				await mcpServer.testInterface.callTool({
+					params: { name: "task_search", arguments: { query: "task" } },
+				}),
+			];
+
+			for (const searchResult of searchResults) {
+				expect(searchResult.isError).not.toBe(true);
+				expect(getText(searchResult.content)).toBe(
+					"Tasks:\n  TASK-1 - Active task (To Do)\n  TASK-2 - Completed task (Done)",
+				);
+			}
+
+			const limitedResult = await mcpServer.testInterface.callTool({
+				params: { name: "task_search", arguments: { query: "task", limit: 1 } },
+			});
+			expect(limitedResult.isError).not.toBe(true);
+			expect(getText(limitedResult.content)).toBe("Tasks:\n  TASK-1 - Active task (To Do)");
+			expect(getText(limitedResult.content)).not.toContain("TASK-3 - Archived task");
+			tripwires.expectUntouched();
+		} finally {
+			tripwires.restore();
+		}
+	});
+
+	it("searches one active lifecycle identity when the same path is also completed", async () => {
+		const activeTask: Task = {
+			id: "TASK-1",
+			title: "Active lifecycle identity",
+			status: "To Do",
+			assignee: [],
+			createdDate: "2026-08-10",
+			labels: [],
+			dependencies: [],
+		};
+		const activePath = await mcpServer.filesystem.saveTask(activeTask);
+		await Bun.write(
+			join(mcpServer.filesystem.completedDir, basename(activePath)),
+			serializeTask({ ...activeTask, title: "Completed lifecycle identity", status: "Done" }),
+		);
+
 		const searchResult = await mcpServer.testInterface.callTool({
-			params: { name: "task_search", arguments: { query: "task" } },
+			params: { name: "task_search", arguments: { query: "lifecycle identity" } },
 		});
 
-		const searchText = getText(searchResult.content);
-		expect(searchText).toContain("TASK-2 - Completed task");
-		expect(searchText).toContain("(Done)");
-		expect(searchText).not.toContain("TASK-3 - Archived task");
+		expect(searchResult.isError).not.toBe(true);
+		expect(getText(searchResult.content)).toBe("Tasks:\n  TASK-1 - Active lifecycle identity (To Do)");
 	});
 
 	it("exposes status enums and defaults from configuration", async () => {

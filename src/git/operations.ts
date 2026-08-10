@@ -1,6 +1,6 @@
 import { mkdtemp, realpath, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { basename, dirname, isAbsolute, join, relative } from "node:path";
+import { basename, dirname, isAbsolute, join, relative, resolve } from "node:path";
 import { $ } from "bun";
 import type { BacklogConfig } from "../types/index.ts";
 
@@ -10,6 +10,8 @@ type GitPathContext = {
 };
 
 type GitConfigLoader = () => Promise<BacklogConfig | null>;
+
+const FETCH_TIMEOUT_MS = 10_000;
 
 export interface GitBranchTip {
 	name: string;
@@ -54,6 +56,9 @@ export class GitOperations {
 	private config: BacklogConfig | null = null;
 	private readonly configLoader?: GitConfigLoader;
 	private hookRunSupported?: boolean;
+	private readonly repositories = new Set<string>();
+	private readonly repositoryChecks = new Map<string, Promise<boolean>>();
+	private readonly fetches = new Map<string, Promise<void>>();
 
 	constructor(projectRoot: string, config: BacklogConfig | null = null, configLoader?: GitConfigLoader) {
 		this.projectRoot = projectRoot;
@@ -81,6 +86,32 @@ export class GitOperations {
 		if (this.config?.filesystemOnly) {
 			return false;
 		}
+
+		const cacheKey = resolve(cwd);
+		if (this.repositories.has(cacheKey)) {
+			return true;
+		}
+
+		let check = this.repositoryChecks.get(cacheKey);
+		if (!check) {
+			check = this.detectRepository(cwd);
+			this.repositoryChecks.set(cacheKey, check);
+		}
+
+		try {
+			const isRepository = await check;
+			if (isRepository) {
+				this.repositories.add(cacheKey);
+			}
+			return isRepository;
+		} finally {
+			if (this.repositoryChecks.get(cacheKey) === check) {
+				this.repositoryChecks.delete(cacheKey);
+			}
+		}
+	}
+
+	private async detectRepository(cwd: string): Promise<boolean> {
 		return await isGitRepository(cwd);
 	}
 
@@ -539,14 +570,33 @@ export class GitOperations {
 	}
 
 	async fetch(remote = "origin"): Promise<void> {
-		// Check if remote operations are disabled
+		let fetch = this.fetches.get(remote);
+		if (!fetch) {
+			fetch = this.fetchConfiguredRemote(remote);
+			this.fetches.set(remote, fetch);
+		}
+
+		try {
+			await fetch;
+		} finally {
+			if (this.fetches.get(remote) === fetch) {
+				this.fetches.delete(remote);
+			}
+		}
+	}
+
+	private async fetchConfiguredRemote(remote: string): Promise<void> {
+		await this.loadConfigIfNeeded();
 		if (this.config?.remoteOperations === false) {
 			if (process.env.DEBUG) {
 				console.warn("Remote operations are disabled in config. Skipping fetch.");
 			}
 			return;
 		}
+		await this.fetchRemote(remote);
+	}
 
+	private async fetchRemote(remote: string): Promise<void> {
 		// Preflight: skip if repository has no remotes configured
 		const hasRemotes = await this.hasAnyRemote();
 		if (!hasRemotes) {
@@ -556,7 +606,13 @@ export class GitOperations {
 
 		try {
 			// Use --prune to remove dead refs and reduce later scans
-			await this.execGit(["fetch", remote, "--prune", "--quiet"]);
+			await this.execGit(["fetch", remote, "--prune", "--quiet"], {
+				timeoutMs: FETCH_TIMEOUT_MS,
+				env: {
+					GIT_TERMINAL_PROMPT: "0",
+					GCM_INTERACTIVE: "Never",
+				},
+			});
 		} catch (error) {
 			// Check if this is a network-related error
 			if (this.isNetworkError(error)) {
@@ -770,7 +826,7 @@ export class GitOperations {
 						Boolean(entry.name && entry.commit) &&
 						entry.name !== "origin/HEAD" &&
 						Number.isFinite(entry.timestamp) &&
-						entry.timestamp >= since,
+						(entry.current || entry.timestamp >= since),
 				)
 				.map(({ name, commit, current }) => ({ name, commit, current }))
 				.sort((left, right) => left.name.localeCompare(right.name));
@@ -928,61 +984,58 @@ export class GitOperations {
 	 * Much more efficient than individual getFileLastModifiedTime calls
 	 * Returns a Map of filePath -> Date
 	 */
-	async getBranchLastModifiedMap(ref: string, dir: string, sinceDays?: number): Promise<Map<string, Date>> {
+	async getBranchLastModifiedMap(ref: string, dir: string, since?: number | Date): Promise<Map<string, Date>> {
 		const out = new Map<string, Date>();
 		if (!(await this.isRepository())) {
 			return out;
 		}
 
-		try {
-			// Build args with optional --since filter
-			const args = [
-				"log",
-				"--pretty=format:%ct%x00", // Unix timestamp + NUL for bulletproof parsing
-				"--name-only",
-				"-z", // Null-delimited for safety
-			];
+		// Build args with optional --since filter
+		const args = [
+			"log",
+			"--pretty=format:%ct%x00", // Unix timestamp + NUL for bulletproof parsing
+			"--name-only",
+			"-z", // Null-delimited for safety
+		];
 
-			if (sinceDays) {
-				args.push(`--since=${sinceDays}.days`);
-			}
+		if (typeof since === "number" && since) {
+			args.push(`--since=${since}.days`);
+		} else if (since instanceof Date) {
+			args.push(`--since=@${Math.floor(since.getTime() / 1000)}`);
+		}
 
-			args.push(ref, "--", dir);
+		args.push(ref, "--", dir);
 
-			// Null-delimited to be safe with filenames
-			const { stdout } = await this.execGit(args, { readOnly: true });
+		// Null-delimited to be safe with filenames
+		const { stdout } = await this.execGit(args, { readOnly: true });
 
-			// Parse null-delimited output
-			// Format is: timestamp\0 file1\0 file2\0 ... timestamp\0 file1\0 ...
-			const parts = stdout.split("\0").filter(Boolean);
-			let i = 0;
+		// Parse null-delimited output
+		// Format is: timestamp\0 file1\0 file2\0 ... timestamp\0 file1\0 ...
+		const parts = stdout.split("\0").filter(Boolean);
+		let i = 0;
 
-			while (i < parts.length) {
-				const timestampStr = parts[i]?.trim();
-				if (timestampStr && /^\d+$/.test(timestampStr)) {
-					// This is a timestamp, files follow until next timestamp
-					const epoch = Number(timestampStr);
-					const date = new Date(epoch * 1000);
-					i++;
+		while (i < parts.length) {
+			const timestampStr = parts[i]?.trim();
+			if (timestampStr && /^\d+$/.test(timestampStr)) {
+				// This is a timestamp, files follow until next timestamp
+				const epoch = Number(timestampStr);
+				const date = new Date(epoch * 1000);
+				i++;
 
-					// Process files until we hit another timestamp or end
-					// Check if next part looks like a timestamp (digits only)
-					while (i < parts.length && parts[i] && !/^\d+$/.test(parts[i]?.trim() || "")) {
-						const file = parts[i]?.trim();
-						// First time we see a file is its last modification
-						if (file && !out.has(file)) {
-							out.set(file, date);
-						}
-						i++;
+				// Process files until we hit another timestamp or end
+				// Check if next part looks like a timestamp (digits only)
+				while (i < parts.length && parts[i] && !/^\d+$/.test(parts[i]?.trim() || "")) {
+					const file = parts[i]?.trim();
+					// First time we see a file is its last modification
+					if (file && !out.has(file)) {
+						out.set(file, date);
 					}
-				} else {
-					// Skip unexpected content
 					i++;
 				}
+			} else {
+				// Skip unexpected content
+				i++;
 			}
-		} catch (error) {
-			// If the command fails, return empty map
-			console.error(`Failed to get branch last modified map for ${ref}:${dir}`, error);
 		}
 
 		return out;
@@ -1033,6 +1086,7 @@ export class GitOperations {
 			input?: string;
 			env?: Record<string, string>;
 			acceptedExitCodes?: readonly number[];
+			timeoutMs?: number;
 		},
 	): Promise<{ stdout: string; stderr: string }> {
 		// Use Bun.spawn so we can explicitly control stdio behaviour on Windows. When running
@@ -1043,21 +1097,94 @@ export class GitOperations {
 			...options?.env,
 		} as Record<string, string>;
 
+		const useProcessGroup = options?.timeoutMs !== undefined && process.platform !== "win32";
 		const subprocess = Bun.spawn(["git", ...args], {
 			cwd: options?.cwd ?? this.projectRoot,
 			stdin: options?.input === undefined ? "ignore" : "pipe",
 			stdout: "pipe",
 			stderr: "pipe",
 			env,
+			detached: useProcessGroup,
 		});
+		const stdoutReader = subprocess.stdout?.getReader();
+		const stderrReader = subprocess.stderr?.getReader();
+		const readAll = async (reader: ReadableStreamDefaultReader<Uint8Array> | undefined): Promise<string> => {
+			if (!reader) return "";
+			const decoder = new TextDecoder();
+			let output = "";
+			while (true) {
+				const { done, value } = await reader.read();
+				if (done) return `${output}${decoder.decode()}`;
+				output += decoder.decode(value, { stream: true });
+			}
+		};
 		if (options?.input !== undefined && subprocess.stdin) {
 			subprocess.stdin.write(options.input);
 			await subprocess.stdin.end();
 		}
 
-		const stdoutPromise = subprocess.stdout ? new Response(subprocess.stdout).text() : Promise.resolve("");
-		const stderrPromise = subprocess.stderr ? new Response(subprocess.stderr).text() : Promise.resolve("");
-		const [exitCode, stdout, stderr] = await Promise.all([subprocess.exited, stdoutPromise, stderrPromise]);
+		const completion = Promise.all([subprocess.exited, readAll(stdoutReader), readAll(stderrReader)]);
+		const killDirectly = () => {
+			try {
+				subprocess.kill("SIGKILL");
+			} catch {
+				try {
+					subprocess.kill();
+				} catch {}
+			}
+		};
+		const killProcessTree = () => {
+			if (useProcessGroup) {
+				try {
+					process.kill(-subprocess.pid, "SIGKILL");
+					return;
+				} catch {
+					killDirectly();
+					return;
+				}
+			}
+			if (process.platform !== "win32") {
+				killDirectly();
+				return;
+			}
+
+			try {
+				const taskkill = Bun.spawn(["taskkill", "/PID", String(subprocess.pid), "/T", "/F"], {
+					stdin: "ignore",
+					stdout: "ignore",
+					stderr: "ignore",
+				});
+				void taskkill.exited
+					.then((exitCode) => {
+						if (exitCode !== 0) killDirectly();
+					})
+					.catch(killDirectly);
+			} catch {
+				killDirectly();
+			}
+		};
+		let timeout: ReturnType<typeof setTimeout> | undefined;
+		let result: Awaited<typeof completion>;
+		try {
+			result =
+				options?.timeoutMs === undefined
+					? await completion
+					: await Promise.race([
+							completion,
+							new Promise<never>((_, reject) => {
+								timeout = setTimeout(() => {
+									killProcessTree();
+									void stdoutReader?.cancel().catch(() => undefined);
+									void stderrReader?.cancel().catch(() => undefined);
+									reject(new Error(`Git command timeout after ${options.timeoutMs}ms: git ${args.join(" ")}`));
+								}, options.timeoutMs);
+								timeout.unref();
+							}),
+						]);
+		} finally {
+			if (timeout) clearTimeout(timeout);
+		}
+		const [exitCode, stdout, stderr] = result;
 
 		if (exitCode !== 0 && !options?.acceptedExitCodes?.includes(exitCode)) {
 			throw new Error(`Git command failed (exit code ${exitCode}): git ${args.join(" ")}\n${stderr}`);

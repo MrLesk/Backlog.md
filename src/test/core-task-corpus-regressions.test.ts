@@ -1,0 +1,224 @@
+import { afterEach, beforeEach, describe, expect, it } from "bun:test";
+import { mkdir, unlink } from "node:fs/promises";
+import { join } from "node:path";
+import { $ } from "bun";
+import { Core } from "../core/backlog.ts";
+import { serializeTask } from "../markdown/serializer.ts";
+import type { Task } from "../types/index.ts";
+import { createUniqueTestDir, safeCleanup } from "./test-utils.ts";
+
+let testDir: string;
+let core: Core;
+
+function task(id: string, title: string, status = "To Do"): Task {
+	return {
+		id,
+		title,
+		status,
+		assignee: [],
+		createdDate: "2026-08-01",
+		labels: [],
+		dependencies: [],
+		description: `${title} body`,
+	};
+}
+
+async function writeTask(directory: string, filename: string, value: Task): Promise<string> {
+	await mkdir(directory, { recursive: true });
+	const path = join(directory, filename);
+	await Bun.write(path, serializeTask(value));
+	return path;
+}
+
+async function commit(message: string, date: string): Promise<void> {
+	await $`git add -A`.cwd(testDir).quiet();
+	await $`GIT_AUTHOR_DATE="${date}" GIT_COMMITTER_DATE="${date}" git -c user.name="Backlog Test" -c user.email="test@example.com" commit -m ${message}`
+		.cwd(testDir)
+		.quiet();
+}
+
+function recentCommitDate(minutesAgo: number): string {
+	return new Date(Date.now() - minutesAgo * 60_000).toISOString();
+}
+
+beforeEach(async () => {
+	testDir = createUniqueTestDir("core-task-corpus-regressions");
+	core = new Core(testDir);
+	await core.filesystem.ensureBacklogStructure();
+	await core.filesystem.saveConfig({
+		projectName: "Core task corpus regressions",
+		statuses: ["To Do", "In Progress", "Done"],
+		labels: [],
+		milestones: [],
+		dateFormat: "YYYY-MM-DD",
+		remoteOperations: false,
+		checkActiveBranches: true,
+		activeBranchDays: 30,
+		autoCommit: false,
+	});
+	await $`git init -b main`.cwd(testDir).quiet();
+	await commit("Initialize project", recentCommitDate(3));
+});
+
+afterEach(async () => {
+	core.disposeSearchService();
+	core.disposeContentStore();
+	await safeCleanup(testDir);
+});
+
+describe("Core shared task corpus regressions", () => {
+	it("publishes changed completed branch content at the same path after its ref moves", async () => {
+		await $`git switch -c feature-completed`.cwd(testDir).quiet();
+		const completedPath = await writeTask(
+			core.filesystem.completedDir,
+			"task-1 - Completed.md",
+			task("TASK-1", "Before ref move", "Done"),
+		);
+		await commit("Add completed branch task", recentCommitDate(2));
+		await $`git switch main`.cwd(testDir).quiet();
+
+		expect((await core.getTask("TASK-1"))?.title).toBe("Before ref move");
+		const store = await core.getContentStore();
+		expect(store.getTasks()).toEqual([]);
+		const publications: Array<{ status: string; title?: string }> = [];
+		const unsubscribe = store.subscribe((event) => {
+			if (event.type !== "tasks") return;
+			const resolution = store.resolveTaskForRead("TASK-1");
+			publications.push({
+				status: resolution.status,
+				...(resolution.status === "found" && { title: resolution.task.title }),
+			});
+		});
+
+		await $`git switch feature-completed`.cwd(testDir).quiet();
+		await Bun.write(completedPath, serializeTask(task("TASK-1", "After ref move", "Done")));
+		await commit("Update completed branch task", recentCommitDate(1));
+		await $`git switch main`.cwd(testDir).quiet();
+
+		expect((await core.getTask("TASK-1"))?.title).toBe("After ref move");
+		unsubscribe();
+		expect(publications).toEqual([{ status: "found", title: "After ref move" }]);
+		expect(store.getTasks()).toEqual([]);
+		expect(
+			store
+				.getTaskCorpusSnapshot()
+				.branchStateEntries?.find((entry) => entry.id === "TASK-1" && entry.type === "completed")?.task?.title,
+		).toBe("After ref move");
+	});
+
+	it("refreshes warm cross-branch duplicate findings after branch addition and deletion", async () => {
+		const mainTaskPath = await writeTask(core.filesystem.tasksDir, "task-1 - Main.md", task("TASK-1", "Main task"));
+		await commit("Add main task", recentCommitDate(2));
+
+		const initial = await core.previewDuplicateTaskIdRepair({ includeBranches: true });
+		expect(initial.crossBranchFindings).toEqual([]);
+
+		await $`git switch -c feature-duplicate`.cwd(testDir).quiet();
+		await unlink(mainTaskPath);
+		await writeTask(core.filesystem.tasksDir, "task-1 - Feature.md", task("TASK-1", "Feature task"));
+		await commit("Add distinct branch identity", recentCommitDate(1));
+		await $`git switch main`.cwd(testDir).quiet();
+
+		const added = await core.previewDuplicateTaskIdRepair({ includeBranches: true });
+		expect(added.crossBranchFindings).toHaveLength(1);
+		expect(added.crossBranchFindings[0]?.locations.map((location) => location.branch).sort()).toEqual([
+			"feature-duplicate",
+			"main",
+		]);
+
+		await $`git branch -D feature-duplicate`.cwd(testDir).quiet();
+		const deleted = await core.previewDuplicateTaskIdRepair({ includeBranches: true });
+		expect(deleted.crossBranchFindings).toEqual([]);
+	});
+
+	it("allocates through one shared branch snapshot without hydrating completed task blobs", async () => {
+		await $`git switch -c feature-completed-id`.cwd(testDir).quiet();
+		await writeTask(
+			core.filesystem.completedDir,
+			"task-41 - Completed.md",
+			task("TASK-41", "Completed branch reservation", "Done"),
+		);
+		await commit("Reserve completed branch ID", recentCommitDate(2));
+		await $`git branch feature-completed-id-alias`.cwd(testDir).quiet();
+		await $`git switch main`.cwd(testDir).quiet();
+
+		const git = core.gitOps;
+		const originals = {
+			fetch: git.fetch.bind(git),
+			listRecentBranchTips: git.listRecentBranchTips.bind(git),
+			listRecentBranches: git.listRecentBranches.bind(git),
+			listRecentRemoteBranches: git.listRecentRemoteBranches.bind(git),
+			resolveCommit: git.resolveCommit.bind(git),
+			listFilesInTree: git.listFilesInTree.bind(git),
+			getBranchLastModifiedMap: git.getBranchLastModifiedMap.bind(git),
+			showFile: git.showFile.bind(git),
+		};
+		const counts = {
+			fetch: 0,
+			tips: 0,
+			legacyBranches: 0,
+			legacyRemoteBranches: 0,
+			resolveCommit: 0,
+			trees: 0,
+			histories: 0,
+			blobs: [] as string[],
+		};
+		git.fetch = async (...args) => {
+			counts.fetch += 1;
+			return await originals.fetch(...args);
+		};
+		git.listRecentBranchTips = async (...args) => {
+			counts.tips += 1;
+			return await originals.listRecentBranchTips(...args);
+		};
+		git.listRecentBranches = async (...args) => {
+			counts.legacyBranches += 1;
+			return await originals.listRecentBranches(...args);
+		};
+		git.listRecentRemoteBranches = async (...args) => {
+			counts.legacyRemoteBranches += 1;
+			return await originals.listRecentRemoteBranches(...args);
+		};
+		git.resolveCommit = async (...args) => {
+			counts.resolveCommit += 1;
+			return await originals.resolveCommit(...args);
+		};
+		git.listFilesInTree = async (...args) => {
+			counts.trees += 1;
+			return await originals.listFilesInTree(...args);
+		};
+		git.getBranchLastModifiedMap = async (...args) => {
+			counts.histories += 1;
+			return await originals.getBranchLastModifiedMap(...args);
+		};
+		git.showFile = async (ref, path) => {
+			counts.blobs.push(path);
+			return await originals.showFile(ref, path);
+		};
+
+		try {
+			const created = await core.createTaskFromInput({ title: "Allocated after completed branch ID" }, false);
+			expect(created.task.id).toBe("TASK-42");
+		} finally {
+			git.fetch = originals.fetch;
+			git.listRecentBranchTips = originals.listRecentBranchTips;
+			git.listRecentBranches = originals.listRecentBranches;
+			git.listRecentRemoteBranches = originals.listRecentRemoteBranches;
+			git.resolveCommit = originals.resolveCommit;
+			git.listFilesInTree = originals.listFilesInTree;
+			git.getBranchLastModifiedMap = originals.getBranchLastModifiedMap;
+			git.showFile = originals.showFile;
+		}
+
+		expect(counts).toEqual({
+			fetch: 0,
+			tips: 2,
+			legacyBranches: 0,
+			legacyRemoteBranches: 0,
+			resolveCommit: 0,
+			trees: 1,
+			histories: 1,
+			blobs: [],
+		});
+	});
+});

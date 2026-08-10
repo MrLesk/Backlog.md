@@ -91,6 +91,55 @@ describe("worktree task refresh", () => {
 		expect(listedTasks.map((task) => task.id)).toContain("TASK-1");
 	});
 
+	it("reconciles missed working-copy changes on warm list and search reads", async () => {
+		mainCore = new Core(TEST_DIR, { enableWatchers: true });
+		await initializeTestProject(mainCore, "Missed Working Copy Refresh", true);
+		const config = await mainCore.filesystem.loadConfig();
+		if (!config) throw new Error("Expected initialized config");
+		await mainCore.filesystem.saveConfig({
+			...config,
+			checkActiveBranches: true,
+			remoteOperations: false,
+		});
+
+		expect(await mainCore.queryTasks({ includeCrossBranch: true })).toEqual([]);
+		const store = await mainCore.getContentStore();
+		const fullRefreshSpy = spyOn(store, "refreshTasks");
+		let localTasks: Task[] = [
+			{
+				id: "TASK-1",
+				title: "Recovered by list",
+				status: "To Do",
+				assignee: [],
+				createdDate: "2026-08-10",
+				labels: [],
+				dependencies: [],
+			},
+		];
+		mainCore.fs.listTasks = async () => localTasks.map((task) => ({ ...task }));
+
+		expect((await mainCore.queryTasks({ includeCrossBranch: true })).map((task) => task.title)).toEqual([
+			"Recovered by list",
+		]);
+
+		const listedTask = localTasks[0];
+		if (!listedTask) throw new Error("Expected the list task");
+		localTasks = [{ ...listedTask, title: "Recovered by search" }];
+		expect(
+			(await mainCore.queryTasks({ query: "Recovered by search", includeCrossBranch: true })).map((task) => task.title),
+		).toEqual(["Recovered by search"]);
+
+		const searchService = await mainCore.getSearchService();
+		localTasks = [{ ...listedTask, title: "Recovered by direct refresh" }];
+		expect(await mainCore.refreshTasksForTaskRead()).toBe(false);
+		expect(
+			searchService
+				.search({ query: "Recovered by direct refresh", types: ["task"] })
+				.flatMap((result) => (result.type === "task" ? [result.task.title] : [])),
+		).toEqual(["Recovered by direct refresh"]);
+		expect(fullRefreshSpy).toHaveBeenCalledTimes(0);
+	});
+
 	it("serves repeated cross-branch reads from an unchanged watcher-backed corpus", async () => {
 		mainCore = new Core(TEST_DIR, { enableWatchers: true });
 		await initializeTestProject(mainCore, "Stable Browser Reads", true);
@@ -119,6 +168,31 @@ describe("worktree task refresh", () => {
 		expect(refreshSpy).toHaveBeenCalledTimes(0);
 		expect(taskEvents).toEqual([]);
 		unsubscribe();
+	});
+
+	it("does not rebuild the task corpus when only the current branch commit changes", async () => {
+		mainCore = new Core(TEST_DIR, { enableWatchers: true });
+		await initializeTestProject(mainCore, "Current Branch Commit", true);
+		const config = await mainCore.filesystem.loadConfig();
+		if (!config) throw new Error("Expected initialized config");
+		await mainCore.filesystem.saveConfig({
+			...config,
+			checkActiveBranches: true,
+			remoteOperations: false,
+		});
+		await $`git add backlog/config.yml`.cwd(TEST_DIR).quiet();
+		await $`git commit -m "Configure branch loading"`.cwd(TEST_DIR).quiet();
+
+		expect(await mainCore.queryTasks({ includeCrossBranch: true })).toEqual([]);
+		const store = await mainCore.getContentStore();
+		const refreshSpy = spyOn(store, "refreshTasks");
+
+		await Bun.write(`${TEST_DIR}/README.md`, "Unrelated current-branch change\n");
+		await $`git add README.md`.cwd(TEST_DIR).quiet();
+		await $`git commit -m "Update readme"`.cwd(TEST_DIR).quiet();
+
+		expect(await mainCore.queryTasks({ includeCrossBranch: true })).toEqual([]);
+		expect(refreshSpy).toHaveBeenCalledTimes(0);
 	});
 
 	it("refreshes remote refs once when the browser read lease expires", async () => {
