@@ -95,7 +95,13 @@ import {
 	toStringArray,
 } from "./utils/task-builders.ts";
 import { buildTaskUpdateInput } from "./utils/task-edit-builder.ts";
-import { AmbiguousTaskIdError, canonicalTaskId, LOCAL_TASK_LOOKUP_HINT, taskIdsEqual } from "./utils/task-path.ts";
+import {
+	AmbiguousTaskIdError,
+	canonicalTaskId,
+	isAmbiguousTaskIdError,
+	LOCAL_TASK_LOOKUP_HINT,
+	taskIdsEqual,
+} from "./utils/task-path.ts";
 import { sortTasks } from "./utils/task-sorting.ts";
 import { formatValidTaskTypeValues, getTaskTypeValues, resolveTaskTypeValues } from "./utils/task-type-config.ts";
 import { getTerminalStatus, isTerminalStatus } from "./utils/terminal-status.ts";
@@ -561,28 +567,24 @@ function validateClearableListInput(input: {
 /**
  * Resolve a --parent argument to the single task it names, before any child task is read.
  *
- * Identity fails closed here exactly as it does for a targeted task ID: a value matching several
- * files must not silently filter on whichever one came first. Returns the resolved canonical ID so
- * filtering never runs on the raw input.
- *
- * The corpus is loaded here rather than passed in, so every output mode resolves the parent from the
- * same local task list that produces the displayed children and cannot drift apart.
+ * This is the same working-copy lookup that `task view` and `task create --parent` use, so one ID
+ * cannot name a filterable parent for one command and a missing task for another. Identity fails
+ * closed exactly as it does for a targeted task ID: a value matching several files must not silently
+ * filter on whichever one came first. Returns the resolved canonical ID so filtering never runs on
+ * the raw input.
  */
 async function resolveParentFilterId(core: Core, parentId: string, parentDisplayId: string): Promise<string> {
-	const tasks = await core.queryTasks({ includeCrossBranch: false });
-	const matches = tasks.filter((task) => taskIdsEqual(parentId, task.id));
-	if (matches.length > 1) {
-		throw new AmbiguousTaskIdError(
-			parentDisplayId,
-			matches.map((task) => task.filePath ?? task.id),
-		);
+	let parent: Task | null;
+	try {
+		parent = await core.loadTaskById(parentId, { includeCrossBranch: false });
+	} catch (error) {
+		// Report the collision under the configured prefix, which a bare numeric argument lacks.
+		if (isAmbiguousTaskIdError(error)) throw new AmbiguousTaskIdError(parentDisplayId, error.candidates);
+		throw error;
 	}
-	const parent = matches[0];
 	if (!parent) {
 		throw new Error(`Parent task ${parentDisplayId} not found. ${LOCAL_TASK_LOOKUP_HINT}`);
 	}
-	// Include completed working-copy files in the ambiguity check without scanning branches.
-	await core.loadTaskById(parent.id, { includeCrossBranch: false });
 	return parent.id;
 }
 
