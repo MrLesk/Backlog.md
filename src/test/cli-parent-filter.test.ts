@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import { mkdir } from "node:fs/promises";
 import { $ } from "bun";
 import { Core } from "../index.ts";
+import { LOCAL_TASK_LOOKUP_HINT } from "../utils/task-path.ts";
 import { getTestCliPath } from "./test-cli.ts";
 import { createUniqueTestDir, initializeFilesystemTestProject, safeCleanup } from "./test-utils.ts";
 
@@ -131,6 +132,7 @@ describe("CLI parent task filtering", () => {
 
 		expect(exitCode).toBe(1); // CLI exits with error for non-existent parent
 		expect(result.stderr.toString()).toContain("Parent task TASK-999 not found.");
+		expect(result.stderr.toString()).toContain(LOCAL_TASK_LOOKUP_HINT);
 	});
 
 	it("should show message when parent has no children", async () => {

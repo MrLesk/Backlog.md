@@ -5,7 +5,7 @@ import { $ } from "bun";
 import { Core } from "../core/backlog.ts";
 import { serializeTask } from "../markdown/serializer.ts";
 import type { Task } from "../types/index.ts";
-import { AmbiguousTaskIdError } from "../utils/task-path.ts";
+import { AmbiguousTaskIdError, LOCAL_TASK_LOOKUP_HINT } from "../utils/task-path.ts";
 import { getTestCliPath } from "./test-cli.ts";
 import { createUniqueTestDir, initializeTestProject, safeCleanup } from "./test-utils.ts";
 
@@ -132,7 +132,7 @@ describe("local task command performance boundaries", () => {
 		}
 	});
 
-	it("keeps CLI view, shorthand, and edit scoped to the working copy", async () => {
+	it("keeps CLI reads, parent resolution, and dependency validation scoped to the working copy", async () => {
 		await $`git add .`.cwd(testDir).quiet();
 		await $`git commit -m ${"Commit working copy"}`.cwd(testDir).quiet();
 		await $`git switch -c branch-only`.cwd(testDir).quiet();
@@ -151,12 +151,99 @@ describe("local task command performance boundaries", () => {
 			.cwd(testDir)
 			.nothrow()
 			.quiet();
+		const parentFilter = await $`bun ${CLI_PATH} task list --parent TASK-99 --plain`.cwd(testDir).nothrow().quiet();
+		const parentCreate = await $`bun ${CLI_PATH} task create ${"Child of a branch task"} --parent TASK-99`
+			.cwd(testDir)
+			.nothrow()
+			.quiet();
+		const dependencyEdit = await $`bun ${CLI_PATH} task edit TASK-1 --dep TASK-99 --plain`
+			.cwd(testDir)
+			.nothrow()
+			.quiet();
 
-		for (const result of [view, shorthand, edit]) {
+		const outputOf = (result: { stdout: Buffer; stderr: Buffer }) =>
+			`${result.stdout.toString()}${result.stderr.toString()}`;
+		// Every local miss names the working copy as the corpus it searched, so a task parked on
+		// another branch reads as scope rather than as a missing task.
+		for (const result of [view, shorthand, edit, parentFilter, parentCreate, dependencyEdit]) {
 			expect(result.exitCode).not.toBe(0);
-			expect(`${result.stdout.toString()}${result.stderr.toString()}`).toContain("Task TASK-99 not found.");
+			expect(outputOf(result)).toContain(LOCAL_TASK_LOOKUP_HINT);
 		}
+		for (const result of [view, shorthand, edit]) {
+			expect(outputOf(result)).toContain("Task TASK-99 not found.");
+		}
+		for (const result of [parentFilter, parentCreate]) {
+			expect(outputOf(result)).toContain("Parent task TASK-99 not found.");
+		}
+		expect(outputOf(dependencyEdit)).toContain("The following dependencies do not exist: TASK-99");
+
 		expect(await core.filesystem.loadTask("TASK-99")).toBeNull();
+		expect(await core.filesystem.loadTask("TASK-99.1")).toBeNull();
+		expect((await core.filesystem.loadTask("TASK-1"))?.dependencies ?? []).toEqual([]);
+	});
+
+	it("resolves a create parent from the working copy without loading branches", async () => {
+		const tripwires = installCrossBranchTripwires(core);
+		try {
+			await expect(
+				core.createTaskFromInput({ title: "Child of a missing parent", parentTaskId: "TASK-99" }, false),
+			).rejects.toThrow("Parent task TASK-99 not found.");
+			// The parent is rejected before an ID is allocated, which is the only step that may
+			// legitimately look beyond the working copy.
+			tripwires.expectUntouched();
+		} finally {
+			tripwires.restore();
+		}
+
+		const child = await core.createTaskFromInput({ title: "Child of a local parent", parentTaskId: "1" }, false);
+		expect(child.task.id).toBe("TASK-1.2");
+		expect(child.task.parentTaskId).toBe("TASK-1");
+	});
+
+	it("validates dependencies against the working copy without loading branches", async () => {
+		const tripwires = installCrossBranchTripwires(core);
+		try {
+			const updated = await core.updateTaskFromInput("TASK-1", { addDependencies: ["2"] }, false, {
+				includeCrossBranch: false,
+			});
+			expect(updated.dependencies).toEqual(["TASK-2"]);
+
+			await expect(
+				core.updateTaskFromInput("TASK-1", { dependencies: ["TASK-99"] }, false, { includeCrossBranch: false }),
+			).rejects.toThrow("The following dependencies do not exist: TASK-99");
+			tripwires.expectUntouched();
+		} finally {
+			tripwires.restore();
+		}
+
+		expect((await core.filesystem.loadTask("TASK-1"))?.dependencies).toEqual(["TASK-2"]);
+	});
+
+	it("fails closed on ambiguous parent and dependency identities without loading branches", async () => {
+		await Bun.write(
+			join(core.filesystem.completedDir, "task-02 - Completed-collision.md"),
+			serializeTask({
+				...parentTask,
+				id: "TASK-02",
+				title: "Completed collision",
+				status: "Done",
+			}),
+		);
+		const tripwires = installCrossBranchTripwires(core);
+		try {
+			await expect(
+				core.createTaskFromInput({ title: "Child of an ambiguous parent", parentTaskId: "2" }, false),
+			).rejects.toBeInstanceOf(AmbiguousTaskIdError);
+			await expect(
+				core.updateTaskFromInput("TASK-1", { addDependencies: ["2"] }, false, { includeCrossBranch: false }),
+			).rejects.toBeInstanceOf(AmbiguousTaskIdError);
+			tripwires.expectUntouched();
+		} finally {
+			tripwires.restore();
+		}
+
+		expect((await core.filesystem.loadTask("TASK-1"))?.dependencies ?? []).toEqual([]);
+		expect(await core.filesystem.loadTask("TASK-2.1")).toBeNull();
 	});
 
 	it("edits a working-copy task without loading branches", async () => {

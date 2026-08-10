@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { $ } from "bun";
 import { Core } from "../index.ts";
 import type { Task } from "../types/index.ts";
+import { LOCAL_TASK_LOOKUP_HINT } from "../utils/task-path.ts";
 import { getTestCliPath } from "./test-cli.ts";
 import { createUniqueTestDir, initializeTestProject, safeCleanup } from "./test-utils.ts";
 
@@ -46,7 +47,9 @@ describe("CLI parent task id normalization", () => {
 		expect(child?.parentTaskId).toBe("TASK-4");
 	});
 
-	it("accepts parent task IDs from other active branches", async () => {
+	// A parent that only exists on another branch cannot be shown by any task command, so accepting
+	// it would create a child whose parent the CLI reports as missing.
+	it("rejects parent task IDs that exist only on another branch", async () => {
 		const core = new Core(TEST_DIR);
 		await initializeTestProject(core, "Cross Branch Parent Test", true);
 
@@ -74,11 +77,13 @@ describe("CLI parent task id normalization", () => {
 		await $`git checkout main`.cwd(TEST_DIR).quiet();
 		await core.gitOps.fetch();
 
-		const createResult = await $`bun run ${CLI_PATH} task create Child --parent task-1`.cwd(TEST_DIR).quiet();
+		const createResult = await $`bun run ${CLI_PATH} task create Child --parent task-1`.cwd(TEST_DIR).nothrow().quiet();
 
-		expect(createResult.stdout.toString()).toContain("Created task TASK-1.1");
-		const child = await core.filesystem.loadTask("task-1.1");
-		expect(child?.parentTaskId).toBe("TASK-1");
+		expect(createResult.exitCode).toBe(1);
+		expect(createResult.stderr.toString()).toContain("Parent task TASK-1 not found.");
+		expect(createResult.stderr.toString()).toContain(LOCAL_TASK_LOOKUP_HINT);
+		expect(await core.filesystem.loadTask("task-1.1")).toBeNull();
+		expect(await core.filesystem.listTasks()).toHaveLength(0);
 	});
 
 	it("rejects milestone IDs as parent task IDs when creating subtasks", async () => {

@@ -95,7 +95,7 @@ import {
 	toStringArray,
 } from "./utils/task-builders.ts";
 import { buildTaskUpdateInput } from "./utils/task-edit-builder.ts";
-import { AmbiguousTaskIdError, canonicalTaskId, taskIdsEqual } from "./utils/task-path.ts";
+import { AmbiguousTaskIdError, canonicalTaskId, LOCAL_TASK_LOOKUP_HINT, taskIdsEqual } from "./utils/task-path.ts";
 import { sortTasks } from "./utils/task-sorting.ts";
 import { formatValidTaskTypeValues, getTaskTypeValues, resolveTaskTypeValues } from "./utils/task-type-config.ts";
 import { getTerminalStatus, isTerminalStatus } from "./utils/terminal-status.ts";
@@ -579,7 +579,7 @@ async function resolveParentFilterId(core: Core, parentId: string, parentDisplay
 	}
 	const parent = matches[0];
 	if (!parent) {
-		throw new Error(`Parent task ${parentDisplayId} not found.`);
+		throw new Error(`Parent task ${parentDisplayId} not found. ${LOCAL_TASK_LOOKUP_HINT}`);
 	}
 	// Include completed working-copy files in the ambiguity check without scanning branches.
 	await core.loadTaskById(parent.id, { includeCrossBranch: false });
@@ -2969,7 +2969,7 @@ addHelpSchema(taskCmd.command("edit [taskId]"), {
 
 			const existingTaskForWizard = await core.loadTaskById(selectedTaskId, { includeCrossBranch: false });
 			if (!existingTaskForWizard) {
-				console.error(`Task ${selectedTaskId} not found.`);
+				console.error(`Task ${selectedTaskId} not found. ${LOCAL_TASK_LOOKUP_HINT}`);
 				process.exitCode = 1;
 				return;
 			}
@@ -3002,7 +3002,7 @@ addHelpSchema(taskCmd.command("edit [taskId]"), {
 		const existingTask = await core.loadTaskById(taskId ?? "", { includeCrossBranch: false });
 
 		if (!existingTask) {
-			console.error(`Task ${taskId} not found.`);
+			console.error(`Task ${taskId} not found. ${LOCAL_TASK_LOOKUP_HINT}`);
 			process.exitCode = 1;
 			return;
 		}
@@ -3335,7 +3335,7 @@ addHelpSchema(taskCmd.command("view <taskId>"), {
 		const localTasks = await core.fs.listTasks();
 		const task = await core.getTaskWithSubtasks(taskId, localTasks, { includeCrossBranch: false });
 		if (!task) {
-			console.error(`Task ${taskId} not found.`);
+			console.error(`Task ${taskId} not found. ${LOCAL_TASK_LOOKUP_HINT}`);
 			process.exitCode = 1;
 			return;
 		}
@@ -3511,7 +3511,7 @@ taskCmd
 		const localTasks = await core.fs.listTasks();
 		const task = await core.getTaskWithSubtasks(taskId, localTasks, { includeCrossBranch: false });
 		if (!task) {
-			console.error(`Task ${taskId} not found.`);
+			console.error(`Task ${taskId} not found. ${LOCAL_TASK_LOOKUP_HINT}`);
 			process.exitCode = 1;
 			return;
 		}

@@ -3,6 +3,7 @@ import { mkdir } from "node:fs/promises";
 import { join } from "node:path";
 import { $ } from "bun";
 import { Core } from "../index.ts";
+import { LOCAL_TASK_LOOKUP_HINT } from "../utils/task-path.ts";
 import { getTestCliPath } from "./test-cli.ts";
 import {
 	commitSamePathBranchTaskVariant,
@@ -469,10 +470,12 @@ describe("CLI task ID resolution with a custom ID prefix", () => {
 		const parentFilter = await $`bun ${CLI_PATH} task list --parent 999 --plain`.cwd(TEST_DIR).nothrow().quiet();
 		expect(parentFilter.exitCode).toBe(1);
 		expect(parentFilter.stderr.toString()).toContain("Parent task BACK-999 not found.");
+		expect(parentFilter.stderr.toString()).toContain(LOCAL_TASK_LOOKUP_HINT);
 
 		const parentCreate = await $`bun ${CLI_PATH} task create Child --parent 999`.cwd(TEST_DIR).nothrow().quiet();
 		expect(parentCreate.exitCode).toBe(1);
 		expect(parentCreate.stderr.toString()).toContain("Parent task BACK-999 not found.");
+		expect(parentCreate.stderr.toString()).toContain(LOCAL_TASK_LOOKUP_HINT);
 	});
 
 	it("fails closed on every ID-accepting command when the ID is ambiguous", async () => {

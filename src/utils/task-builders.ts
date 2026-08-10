@@ -35,13 +35,17 @@ function resolveUniqueDependency(dependency: string, matches: Task[]): string | 
 }
 
 /**
- * Validate that all dependencies exist in the current project.
+ * Validate that all dependencies exist in the working copy.
  *
  * Inputs are matched by task identity, so bare numeric IDs resolve under any configured prefix, and
  * identity fails closed exactly as it does for the task a command targets. That takes two checks,
  * mirroring the identity index itself: the corpus answers whether the input names more than one
- * identity, and `Core.getTask` answers whether that identity is claimed by more than one file -
- * which the corpus cannot, because it keeps one entry per ID.
+ * identity, and the working-copy lookup answers whether that identity is claimed by more than one
+ * file - which the corpus cannot, because it keeps one entry per ID.
+ *
+ * Resolution stays local for the same reason task reads do: a dependency validated against another
+ * branch would name a task no task command can show, and reaching for branches here would put a
+ * remote fetch inside the task lock.
  *
  * Returns the matched canonical IDs, deduplicated, plus the inputs that matched nothing.
  */
@@ -54,9 +58,10 @@ export async function validateDependencies(
 	if (dependencies.length === 0) {
 		return { valid, invalid };
 	}
-	// Task dependencies should honor cross-branch visibility when enabled in config,
-	// while draft dependencies remain local-only.
-	const [tasks, drafts] = await Promise.all([core.queryTasks(), core.filesystem.listDrafts()]);
+	const [tasks, drafts] = await Promise.all([
+		core.queryTasks({ includeCrossBranch: false }),
+		core.filesystem.listDrafts(),
+	]);
 	const known = [...tasks, ...drafts];
 	for (const dependency of dependencies) {
 		const resolved = resolveUniqueDependency(
@@ -67,9 +72,9 @@ export async function validateDependencies(
 			invalid.push(dependency);
 			continue;
 		}
-		// Called for its ambiguity check: it raises AmbiguousTaskIdError when several files claim
-		// this ID. Drafts resolve to null here and keep their own local-only lookup.
-		await core.getTask(resolved);
+		// Called for its ambiguity check: it raises AmbiguousTaskIdError when several working-copy
+		// files claim this ID. Drafts resolve to null here and keep their own local-only lookup.
+		await core.loadTaskById(resolved, { includeCrossBranch: false });
 		// Equivalent spellings of one task (1 and BACK-1) must not persist twice.
 		if (!valid.some((existing) => taskIdsEqual(existing, resolved))) {
 			valid.push(resolved);

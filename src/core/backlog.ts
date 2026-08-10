@@ -68,6 +68,7 @@ import {
 	canonicalTaskId,
 	getDraftPath,
 	getTaskPath,
+	LOCAL_TASK_LOOKUP_HINT,
 	normalizeTaskId,
 	taskIdsEqual,
 } from "../utils/task-path.ts";
@@ -213,6 +214,13 @@ function formatAvailableIndexHint(items: AcceptanceCriterion[], emptyMessage: st
 	const last = indexes[indexes.length - 1] ?? first;
 	const range = first === last ? `#${first}` : `#${first}-#${last}`;
 	return `Available indexes: ${range}.`;
+}
+
+/** Dependencies are validated against the working copy on both the create and the edit path. */
+function formatMissingDependenciesError(invalid: string[]): Error {
+	return new Error(
+		`The following dependencies do not exist: ${invalid.join(", ")}. Please create these tasks first or verify the IDs. ${LOCAL_TASK_LOOKUP_HINT}`,
+	);
 }
 
 export class Core {
@@ -1351,9 +1359,7 @@ export class Core {
 			this,
 		);
 		if (invalidDependencies.length > 0) {
-			throw new Error(
-				`The following dependencies do not exist: ${invalidDependencies.join(", ")}. Please create these tasks first or verify the IDs.`,
-			);
+			throw formatMissingDependenciesError(invalidDependencies);
 		}
 
 		let status = "";
@@ -1479,13 +1485,17 @@ export class Core {
 		}
 	}
 
+	/**
+	 * Resolve `--parent` against the working copy, the same corpus the parent filter and task reads
+	 * use, so one ID cannot be an acceptable parent for a child that no task command can then show.
+	 */
 	private async resolveParentTaskIdForCreate(parentTaskId: string): Promise<string> {
-		const parentTask = await this.loadTaskById(parentTaskId);
+		const parentTask = await this.loadTaskById(parentTaskId, { includeCrossBranch: false });
 		if (!parentTask) {
 			const config = await this.fs.loadConfig();
 			const canonicalParent = canonicalTaskId(parentTaskId, config?.prefixes?.task ?? "task");
 			throw new Error(
-				`Parent task ${canonicalParent} not found. Use an existing task ID with --parent; use --milestone to assign a task to a milestone.`,
+				`Parent task ${canonicalParent} not found. ${LOCAL_TASK_LOOKUP_HINT} Use an existing task ID with --parent; use --milestone to assign a task to a milestone.`,
 			);
 		}
 		return parentTask.id;
@@ -1674,9 +1684,7 @@ export class Core {
 				const normalized = parseDelimitedStringList(input.dependencies) ?? [];
 				const { valid, invalid } = await validateDependencies(normalized, this);
 				if (invalid.length > 0) {
-					throw new Error(
-						`The following dependencies do not exist: ${invalid.join(", ")}. Please create these tasks first or verify the IDs.`,
-					);
+					throw formatMissingDependenciesError(invalid);
 				}
 				if (!stringArraysEqual(valid, currentDependencies)) {
 					currentDependencies = valid;
@@ -1688,9 +1696,7 @@ export class Core {
 				const additions = parseDelimitedStringList(input.addDependencies) ?? [];
 				const { valid, invalid } = await validateDependencies(additions, this);
 				if (invalid.length > 0) {
-					throw new Error(
-						`The following dependencies do not exist: ${invalid.join(", ")}. Please create these tasks first or verify the IDs.`,
-					);
+					throw formatMissingDependenciesError(invalid);
 				}
 				const depSet = new Set(currentDependencies);
 				for (const dep of valid) {
@@ -2185,12 +2191,7 @@ export class Core {
 		return refreshed ?? draft;
 	}
 
-	async editTaskOrDraft(
-		taskId: string,
-		input: TaskUpdateInput,
-		autoCommit?: boolean,
-		options: TaskReadOptions = {},
-	): Promise<Task> {
+	async editTaskOrDraft(taskId: string, input: TaskUpdateInput, autoCommit?: boolean): Promise<Task> {
 		const draft = await this.fs.loadDraft(taskId);
 		if (draft) {
 			const requestedStatus = input.status?.trim();
@@ -2209,10 +2210,10 @@ export class Core {
 		const requestedStatus = input.status?.trim();
 		const wantsDraft = requestedStatus?.toLowerCase() === "draft";
 		if (wantsDraft) {
-			return await this.demoteTaskWithUpdates(task, input, autoCommit, options);
+			return await this.demoteTaskWithUpdates(task, input, autoCommit);
 		}
 
-		return await this.updateTaskFromInput(task.id, input, autoCommit, options);
+		return await this.updateTaskFromInput(task.id, input, autoCommit);
 	}
 
 	private async promoteDraftWithUpdates(draft: Task, input: TaskUpdateInput, autoCommit?: boolean): Promise<Task> {
@@ -2513,8 +2514,8 @@ export class Core {
 		return { updatedTask, changedTasks };
 	}
 
-	async archiveTask(taskId: string, autoCommit?: boolean, options: TaskReadOptions = {}): Promise<boolean> {
-		const taskToArchive = await this.loadTaskForMutation(taskId, options);
+	async archiveTask(taskId: string, autoCommit?: boolean): Promise<boolean> {
+		const taskToArchive = await this.loadTaskForMutation(taskId);
 		if (!taskToArchive) {
 			return false;
 		}
@@ -2629,8 +2630,8 @@ export class Core {
 		return result;
 	}
 
-	async completeTask(taskId: string, autoCommit?: boolean, options: TaskReadOptions = {}): Promise<boolean> {
-		const task = await this.loadTaskForMutation(taskId, options);
+	async completeTask(taskId: string, autoCommit?: boolean): Promise<boolean> {
+		const task = await this.loadTaskForMutation(taskId);
 		if (!task) return false;
 		// Get paths before moving the file
 		const completedDir = this.fs.completedDir;
@@ -2747,8 +2748,8 @@ export class Core {
 		return moved !== null;
 	}
 
-	async demoteTask(taskId: string, autoCommit?: boolean, options: TaskReadOptions = {}): Promise<boolean> {
-		const task = await this.loadTaskForMutation(taskId, options);
+	async demoteTask(taskId: string, autoCommit?: boolean): Promise<boolean> {
+		const task = await this.loadTaskForMutation(taskId);
 		if (!task) return false;
 		const movedPaths: Array<{ previousPath: string; savedPath: string }> = [];
 		const success = await this.fs.demoteTask(task.id, (previousPath, savedPath) => {
