@@ -30,7 +30,7 @@ function resolveDimension(value: string | number, total: number): number {
 }
 
 /** A viewport that clips its content, with `childBase` as the first visible row. */
-export type ScrollableViewport = BoxInterface & { childBase: number };
+export type ScrollableViewport = BoxInterface & { childBase: number; getScrollHeight(): number };
 
 /**
  * `box({ scrollable: true })` is a no-op in neo-neo-bblessed: the option is ignored, so the

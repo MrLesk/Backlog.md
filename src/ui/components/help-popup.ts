@@ -56,25 +56,28 @@ export function getHelpShortcuts(context: HelpPopupContext = "board"): Shortcut[
 
 /** Popup rows spent on borders, the top spacer and the help line, leaving one row per shortcut. */
 const HELP_POPUP_CHROME_ROWS = 4;
+const HELP_POPUP_WIDTH = 60;
+
+function getHelpText(scrolls: boolean): string {
+	return scrolls ? " {cyan-fg}[↑↓]{/} Scroll | {cyan-fg}[Esc/q]{/} Close Help" : " {cyan-fg}[Esc/q]{/} Close Help";
+}
 
 export function getHelpPopupHeight(shortcutCount: number, screenHeight: number): number {
-	return Math.max(5, Math.min(shortcutCount + HELP_POPUP_CHROME_ROWS, screenHeight - 2));
+	const boundedScreenHeight = Math.max(1, screenHeight);
+	const preferredHeight = Math.max(5, Math.min(shortcutCount + HELP_POPUP_CHROME_ROWS, boundedScreenHeight - 2));
+	return Math.min(boundedScreenHeight, preferredHeight);
 }
 
 export async function openHelpPopup(screen: ScreenInterface, context: HelpPopupContext = "board"): Promise<void> {
 	return new Promise<void>((resolve) => {
 		let settled = false;
 		const shortcuts = getHelpShortcuts(context);
-		const screenHeight = typeof screen.height === "number" ? screen.height : 40;
-		const popupHeight = getHelpPopupHeight(shortcuts.length, screenHeight);
-		const scrolls = shortcuts.length > popupHeight - HELP_POPUP_CHROME_ROWS;
-		const { popup, close } = createPopupChrome({
+		let popupHeight = getHelpPopupHeight(shortcuts.length, screen.height);
+		const { popup, close, reflow } = createPopupChrome({
 			screen,
 			title: "Keyboard Shortcuts",
-			helpText: scrolls
-				? " {cyan-fg}[↑↓]{/} Scroll | {cyan-fg}[Esc/q]{/} Close Help"
-				: " {cyan-fg}[Esc/q]{/} Close Help",
-			width: 60,
+			helpText: getHelpText(false),
+			width: HELP_POPUP_WIDTH,
 			height: popupHeight,
 		});
 
@@ -90,10 +93,34 @@ export async function openHelpPopup(screen: ScreenInterface, context: HelpPopupC
 			content,
 			tags: true,
 		});
+		const getMaxScrollOffset = () => {
+			const visibleRows =
+				typeof contentBox.height === "number" ? contentBox.height : popupHeight - HELP_POPUP_CHROME_ROWS;
+			return Math.max(0, contentBox.getScrollHeight() - Math.max(1, visibleRows));
+		};
+		const applyLayout = () => {
+			popupHeight = getHelpPopupHeight(shortcuts.length, screen.height);
+			reflow(HELP_POPUP_WIDTH, popupHeight);
+			// Rendering reparses the content at its new width, producing the exact number of
+			// visual rows after tag removal and wrapping.
+			screen.render();
+			const maxOffset = getMaxScrollOffset();
+			contentBox.childBase = Math.min(maxOffset, Math.max(0, contentBox.childBase));
+			reflow(HELP_POPUP_WIDTH, popupHeight, getHelpText(maxOffset > 0));
+			screen.render();
+		};
+		const onResize = () => {
+			if (!settled) applyLayout();
+		};
 
 		const finish = () => {
 			if (settled) return;
 			settled = true;
+			(
+				screen as ScreenInterface & {
+					removeListener(event: string, listener: (...args: unknown[]) => void): void;
+				}
+			).removeListener("resize", onResize);
 			close();
 			screen.render();
 			resolve();
@@ -104,18 +131,20 @@ export async function openHelpPopup(screen: ScreenInterface, context: HelpPopupC
 			return false;
 		});
 
-		const maxScrollOffset = Math.max(0, shortcuts.length - (popupHeight - HELP_POPUP_CHROME_ROWS));
 		const scrollBy = (delta: number) => {
-			contentBox.childBase = Math.min(maxScrollOffset, Math.max(0, contentBox.childBase + delta));
+			const maxOffset = getMaxScrollOffset();
+			contentBox.childBase = Math.min(maxOffset, Math.max(0, contentBox.childBase + delta));
 			screen.render();
 			return false;
 		};
 		popup.key(["up"], () => scrollBy(-1));
 		popup.key(["down"], () => scrollBy(1));
+		screen.on("resize", onResize);
 
 		setImmediate(() => {
+			if (settled) return;
 			popup.focus();
-			screen.render();
+			applyLayout();
 		});
 	});
 }
