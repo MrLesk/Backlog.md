@@ -393,7 +393,7 @@ export class TaskHandlers {
 			};
 		}
 
-		const tasks = await this.core.loadTasks(undefined, undefined, { includeCompleted: true });
+		const tasks = await this.core.loadWorkingCopyTasks(true);
 		const searchIndex = createTaskSearchIndex(tasks);
 		let taskMatches = searchIndex.search({
 			query,

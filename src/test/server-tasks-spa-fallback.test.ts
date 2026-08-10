@@ -197,6 +197,21 @@ async function replaceCollisionBranchTask(replacementId: string, title: string):
 	auxiliaryWorktreeDir = null;
 }
 
+async function addCollisionBranchTask(task: Task): Promise<void> {
+	auxiliaryWorktreeDir = createUniqueTestDir("server-task-collision-worktree");
+	await $`git worktree add ${auxiliaryWorktreeDir} collision-shadow`.cwd(TEST_DIR).quiet();
+	try {
+		const branchFilesystem = new FileSystem(auxiliaryWorktreeDir);
+		await branchFilesystem.saveTask(task);
+		await $`git add backlog`.cwd(auxiliaryWorktreeDir).quiet();
+		await $`git commit -m "Add branch task"`.cwd(auxiliaryWorktreeDir).quiet();
+	} finally {
+		await $`git worktree remove --force ${auxiliaryWorktreeDir}`.cwd(TEST_DIR).quiet().nothrow();
+		await safeCleanup(auxiliaryWorktreeDir);
+		auxiliaryWorktreeDir = null;
+	}
+}
+
 describe("BacklogServer task SPA fallback", () => {
 	beforeEach(async () => {
 		TEST_DIR = createUniqueTestDir("server-task-spa-fallback");
@@ -518,6 +533,84 @@ describe("BacklogServer task SPA fallback", () => {
 		}
 	});
 
+	it("takes exactly two branch-tip snapshots for a cold cross-branch task list", async () => {
+		await restartWithActiveBranchCollision("BACK-1", true);
+		const coreGit = (
+			server as unknown as {
+				core: {
+					git: {
+						listRecentBranchTips: (days: number) => Promise<Array<{ name: string; commit: string }>>;
+					};
+				};
+			}
+		).core.git;
+		const originalListRecentBranchTips = coreGit.listRecentBranchTips.bind(coreGit);
+		let tipSnapshotCount = 0;
+		coreGit.listRecentBranchTips = async (days) => {
+			tipSnapshotCount += 1;
+			return await originalListRecentBranchTips(days);
+		};
+
+		try {
+			const response = await request("/api/tasks?crossBranch=true", {}, 10000);
+			expect(response.status).toBe(200);
+			expect(((await response.json()) as Task[]).map((task) => task.id)).toContain("BACK-099");
+			expect(tipSnapshotCount).toBe(2);
+		} finally {
+			coreGit.listRecentBranchTips = originalListRecentBranchTips;
+		}
+	});
+
+	it("refreshes branch tips once for a warm parent-filtered task list", async () => {
+		await restartWithActiveBranchCollision("BACK-1");
+		expect((await request("/api/tasks?crossBranch=true", {}, 10000)).status).toBe(200);
+
+		const coreGit = (
+			server as unknown as {
+				core: {
+					git: {
+						listRecentBranchTips: (days: number) => Promise<Array<{ name: string; commit: string }>>;
+					};
+				};
+			}
+		).core.git;
+		const originalListRecentBranchTips = coreGit.listRecentBranchTips.bind(coreGit);
+		let tipSnapshotCount = 0;
+		coreGit.listRecentBranchTips = async (days) => {
+			tipSnapshotCount += 1;
+			return await originalListRecentBranchTips(days);
+		};
+
+		try {
+			const response = await request("/api/tasks?parent=BACK-1&crossBranch=true", {}, 10000);
+			expect(response.status).toBe(200);
+			expect(await response.json()).toEqual([]);
+			expect(tipSnapshotCount).toBe(1);
+		} finally {
+			coreGit.listRecentBranchTips = originalListRecentBranchTips;
+		}
+	});
+
+	it("refreshes search results after an active branch ref moves", async () => {
+		await restartWithActiveBranchCollision("BACK-1");
+		const searchPath = "/api/search?type=task&query=zirconium";
+		const initial = await request(searchPath, {}, 10000);
+		expect(initial.status).toBe(200);
+		expect(await initial.json()).toEqual([]);
+
+		await addCollisionBranchTask({
+			...routedTask,
+			id: "BACK-120",
+			title: "Zirconium branch ref sentinel",
+			status: "To Do",
+		});
+
+		const refreshed = await request(searchPath, {}, 10000);
+		expect(refreshed.status).toBe(200);
+		const results = (await refreshed.json()) as Array<{ type: string; task?: Task }>;
+		expect(results.map((result) => result.task?.id)).toContain("BACK-120");
+	});
+
 	it("coalesces concurrent ref fingerprints and skips full reloads while refs are unchanged", async () => {
 		const serverInternals = server as unknown as {
 			core: {
@@ -677,13 +770,17 @@ describe("BacklogServer task SPA fallback", () => {
 			const defaultList = await request("/api/tasks");
 			expect(defaultList.status).toBe(200);
 			expect(((await defaultList.json()) as Task[]).map((task) => task.id)).toContain("BACK-099");
-			expect(workingCopyScans).toBe(0);
+			// The response still comes from the store's cross-branch corpus. The single working-copy
+			// pass is the cache-validated reconciliation every cross-branch read performs so a missed
+			// watcher event cannot leave the browser stale; it is not the read that builds the list.
+			expect(workingCopyScans).toBe(1);
 
-			// The explicit local view still costs a working-copy read, which is why it must not be the default.
+			// The explicit local view builds its response from a working-copy read of its own, which is
+			// why it must not be the default.
 			const localList = await request("/api/tasks?crossBranch=false");
 			expect(localList.status).toBe(200);
 			expect(((await localList.json()) as Task[]).map((task) => task.id)).not.toContain("BACK-099");
-			expect(workingCopyScans).toBeGreaterThan(0);
+			expect(workingCopyScans).toBeGreaterThan(1);
 		} finally {
 			serverFilesystem.listTasks = originalListTasks;
 		}
@@ -960,6 +1057,9 @@ describe("BacklogServer task SPA fallback", () => {
 		await restartWithActiveBranchCollision("BACK-001");
 		expect((await request("/api/task/BACK-1")).status).toBe(409);
 
+		// Advance the branch to an uncached generation first. Unchanged commit trees are
+		// intentionally reused, so the movement trigger must run while a new SHA is indexed.
+		await replaceCollisionBranchTask("BACK-001", "Uncached collision generation");
 		const collisionCommit = (await $`git rev-parse collision-shadow`.cwd(TEST_DIR).quiet()).text().trim();
 		const coreGit = (
 			server as unknown as {

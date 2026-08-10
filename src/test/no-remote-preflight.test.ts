@@ -1,9 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, join as joinPath } from "node:path";
 import { $ } from "bun";
-import { loadRemoteTasks } from "../core/task-loader.ts";
+import { Core } from "../core/backlog.ts";
 import { GitOperations } from "../git/operations.ts";
 import type { BacklogConfig } from "../types/index.ts";
 
@@ -49,21 +49,23 @@ describe("Missing git remote preflight", () => {
 		console.warn = originalWarn;
 	});
 
-	it("loadRemoteTasks() handles no-remote repos without throwing", async () => {
+	it("Core cross-branch loading handles remoteOperations=true without a remote", async () => {
 		const config: BacklogConfig = {
 			projectName: "Test",
 			statuses: ["To Do", "Done"],
 			labels: [],
 			milestones: [],
 			dateFormat: "YYYY-MM-DD",
+			checkActiveBranches: true,
 			remoteOperations: true,
 		};
 
-		const gitOps = new GitOperations(tempDir, config);
-		const progress: string[] = [];
-		const remoteTasks = await loadRemoteTasks(gitOps as unknown as typeof gitOps, config, (m) => progress.push(m));
-		expect(Array.isArray(remoteTasks)).toBe(true);
-		expect(remoteTasks.length).toBe(0);
+		await mkdir(join(tempDir, "backlog", "tasks"), { recursive: true });
+		await mkdir(join(tempDir, "backlog", "completed"), { recursive: true });
+		const core = new Core(tempDir, { enableWatchers: false });
+		await core.filesystem.saveConfig(config);
+
+		await expect(core.loadTasks()).resolves.toEqual([]);
 	});
 
 	it("CLI init with includeRemote=true in no-remote repo shows a final warning", async () => {

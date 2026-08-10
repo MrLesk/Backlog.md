@@ -25,6 +25,17 @@ const remoteTask: Task = {
 	source: "remote",
 };
 
+const completedTask: Task = {
+	id: "task-3",
+	title: "Completed task",
+	status: "Done",
+	assignee: [],
+	createdDate: "2025-12-03",
+	labels: [],
+	dependencies: [],
+	source: "completed",
+};
+
 describe("MCP task tools local filtering", () => {
 	const mockConfig = { statuses: ["To Do", "In Progress", "Done"] };
 
@@ -45,20 +56,40 @@ describe("MCP task tools local filtering", () => {
 		expect(text).not.toContain("task-2 - Remote task");
 	});
 
-	it("filters cross-branch tasks out of task_search", async () => {
+	it("searches active and completed working-copy tasks without loading branches", async () => {
+		let crossBranchLoads = 0;
+		let includeCompleted = false;
+		const laterActiveTask = { ...localTask, id: "task-20" };
+		const earlierCompletedTask = { ...completedTask, id: "task-1" };
 		const handlers = new TaskHandlers({
-			loadTasks: async () => [localTask, remoteTask],
-			filesystem: {
-				loadConfig: async () => mockConfig,
+			loadTasks: async () => {
+				crossBranchLoads++;
+				return [localTask, remoteTask];
+			},
+			loadWorkingCopyTasks: async (requestedIncludeCompleted = false) => {
+				includeCompleted = requestedIncludeCompleted;
+				return [earlierCompletedTask, laterActiveTask];
 			},
 		} as unknown as McpServer);
 
-		const result = await handlers.searchTasks({ query: "task" });
-		const text = (result.content ?? [])
+		const results = [await handlers.searchTasks({ query: "task" }), await handlers.searchTasks({ query: "task" })];
+		const texts = results.map((result) =>
+			(result.content ?? []).map((c) => (typeof c === "object" && c && "text" in c ? c.text : "")).join("\n"),
+		);
+
+		for (const text of texts) {
+			expect(text).toContain("task-20 - Local task");
+			expect(text).toContain("task-1 - Completed task");
+			expect(text).not.toContain("task-2 - Remote task");
+		}
+
+		const limitedResult = await handlers.searchTasks({ query: "task", limit: 1 });
+		const limitedText = (limitedResult.content ?? [])
 			.map((c) => (typeof c === "object" && c && "text" in c ? c.text : ""))
 			.join("\n");
-
-		expect(text).toContain("task-1 - Local task");
-		expect(text).not.toContain("task-2 - Remote task");
+		expect(limitedText).toContain("task-1 - Completed task");
+		expect(limitedText).not.toContain("task-20 - Local task");
+		expect(crossBranchLoads).toBe(0);
+		expect(includeCompleted).toBe(true);
 	});
 });

@@ -2,7 +2,6 @@ import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { loadRemoteTasks } from "../core/task-loader.ts";
 import { GitOperations } from "../git/operations.ts";
 import type { BacklogConfig } from "../types/index.ts";
 
@@ -169,84 +168,6 @@ describe("Offline Mode Configuration", () => {
 				);
 				expect(isNetworkError).toBe(false);
 			}
-		});
-	});
-
-	describe("loadRemoteTasks with offline config", () => {
-		it("should skip remote operations when remoteOperations is false", async () => {
-			const config: BacklogConfig = {
-				projectName: "Test",
-				statuses: ["To Do", "Done"],
-				labels: [],
-				milestones: [],
-				dateFormat: "YYYY-MM-DD",
-				remoteOperations: false,
-			};
-
-			const progressMessages: string[] = [];
-			const onProgress = (msg: string) => progressMessages.push(msg);
-
-			const mockGitOperations = {
-				fetch: async () => {
-					throw new Error("This should not be called");
-				},
-				listRemoteBranches: async () => [],
-				listRecentRemoteBranches: async (_daysAgo: number) => [],
-			} as unknown as GitOperations;
-
-			const remoteTasks = await loadRemoteTasks(mockGitOperations, config, onProgress);
-
-			expect(remoteTasks).toEqual([]);
-			expect(progressMessages).toContain("Remote operations disabled - skipping remote tasks");
-		});
-
-		it("should proceed with remote operations when remoteOperations is true", async () => {
-			const config: BacklogConfig = {
-				projectName: "Test",
-				statuses: ["To Do", "Done"],
-				labels: [],
-				milestones: [],
-				dateFormat: "YYYY-MM-DD",
-				remoteOperations: true,
-			};
-
-			const progressMessages: string[] = [];
-			const onProgress = (msg: string) => progressMessages.push(msg);
-
-			let fetchCalled = false;
-			const mockGitOperations = {
-				fetch: async () => {
-					fetchCalled = true;
-				},
-				listRemoteBranches: async () => [],
-				listRecentRemoteBranches: async (_daysAgo: number) => [],
-			} as unknown as GitOperations;
-
-			const remoteTasks = await loadRemoteTasks(mockGitOperations, config, onProgress);
-
-			expect(fetchCalled).toBe(true);
-			expect(remoteTasks).toEqual([]);
-			expect(progressMessages).toContain("Fetching remote branches...");
-		});
-
-		it("should proceed with remote operations when config is null (default behavior)", async () => {
-			const progressMessages: string[] = [];
-			const onProgress = (msg: string) => progressMessages.push(msg);
-
-			let fetchCalled = false;
-			const mockGitOperations = {
-				fetch: async () => {
-					fetchCalled = true;
-				},
-				listRemoteBranches: async () => [],
-				listRecentRemoteBranches: async (_daysAgo: number) => [],
-			} as unknown as GitOperations;
-
-			const remoteTasks = await loadRemoteTasks(mockGitOperations, null, onProgress);
-
-			expect(fetchCalled).toBe(true);
-			expect(remoteTasks).toEqual([]);
-			expect(progressMessages).toContain("Fetching remote branches...");
 		});
 	});
 

@@ -6,7 +6,7 @@ import { escapeRegex, generateNextId, generateNextSubtaskId, idForFilename } fro
 import { canonicalTaskId, isNumericTaskId } from "../utils/task-id.ts";
 import type { Core } from "./backlog.ts";
 import type { TaskCorpusSnapshot } from "./content-store.ts";
-import { type BranchTaskStateEntry, loadLocalBranchTasks, loadRemoteTasks } from "./task-loader.ts";
+import type { BranchTaskStateEntry } from "./task-loader.ts";
 
 export type DuplicateTaskLocation = "active" | "completed";
 
@@ -108,27 +108,16 @@ function logicalBranchTaskPath(path: string, id: string): string {
 	return `${canonicalTaskId(id).toLowerCase()}${filename.slice(separatorIndex)}`;
 }
 
-export async function findCrossBranchDuplicateTaskIds(core: Core): Promise<CrossBranchDuplicateFinding[]> {
-	const config = await core.filesystem.loadConfig();
+export async function findCrossBranchDuplicateTaskIds(
+	core: Core,
+	snapshot?: TaskCorpusSnapshot,
+): Promise<CrossBranchDuplicateFinding[]> {
+	const corpus = snapshot ?? (await core.getContentStore()).getTaskCorpusSnapshot();
+	const config = corpus.config ?? (await core.filesystem.loadConfig());
 	if (config?.checkActiveBranches === false) return [];
-	const [activeTasks, completedTasks, currentBranch] = await Promise.all([
-		core.filesystem.listTasks(),
-		core.filesystem.listCompletedTasks(),
-		core.gitOps.getCurrentBranch(),
-	]);
-	const stateEntries: BranchTaskStateEntry[] = [];
-	await Promise.all([
-		loadLocalBranchTasks(
-			core.gitOps,
-			config,
-			undefined,
-			activeTasks,
-			stateEntries,
-			true,
-			core.filesystem.backlogDirName,
-		),
-		loadRemoteTasks(core.gitOps, config, undefined, activeTasks, stateEntries, true, core.filesystem.backlogDirName),
-	]);
+	const { activeTasks, completedTasks } = corpus;
+	const currentBranch = await core.gitOps.getCurrentBranch();
+	const stateEntries: BranchTaskStateEntry[] = corpus.branchStateEntries?.slice() ?? [];
 
 	const current = currentBranch ?? "current";
 	for (const task of activeTasks) {
@@ -386,7 +375,7 @@ export async function previewDuplicateTaskIdRepair(
 	snapshot?: TaskCorpusSnapshot,
 ): Promise<DuplicateRepairPlan> {
 	const groups = await findLocalDuplicateTaskIds(core, snapshot);
-	const crossBranchFindings = options.includeBranches ? await findCrossBranchDuplicateTaskIds(core) : [];
+	const crossBranchFindings = options.includeBranches ? await findCrossBranchDuplicateTaskIds(core, snapshot) : [];
 	const blockedReasons: string[] = [];
 	const changes: DuplicateRepairChange[] = [];
 	const [activeTasks, completedTasks, config] = await Promise.all([

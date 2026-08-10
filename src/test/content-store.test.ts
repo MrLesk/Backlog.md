@@ -442,6 +442,81 @@ describe("ContentStore", () => {
 		expect(store.getTasks()[0]?.type).toBe("feature");
 	});
 
+	it("does not let a local corpus refresh overwrite a concurrent task publication", async () => {
+		await filesystem.saveTask(sampleTask);
+		await store.ensureInitialized();
+		const gate = createDeferredGate();
+		const listTasks = filesystem.listTasks.bind(filesystem);
+		filesystem.listTasks = async () => {
+			const tasks = await listTasks();
+			gate.markStarted();
+			await gate.waitForRelease;
+			return tasks;
+		};
+
+		const refresh = store.refreshLocalTaskCorpus();
+		await withTimeout(gate.started, "held local task corpus refresh");
+		const current = store.getTasks()[0];
+		if (!current) throw new Error("Expected initialized task");
+		store.upsertTask({ ...current, title: "Published while refreshing" });
+		expect(store.getTasks()[0]?.title).toBe("Published while refreshing");
+		gate.release();
+		await refresh;
+
+		expect(store.getTasks()[0]?.title).toBe("Published while refreshing");
+	});
+
+	it("does not let a local corpus refresh resurrect a concurrently completed task", async () => {
+		await filesystem.saveTask(sampleTask);
+		await store.ensureInitialized();
+		const gate = createDeferredGate();
+		const listTasks = filesystem.listTasks.bind(filesystem);
+		filesystem.listTasks = async () => {
+			const tasks = await listTasks();
+			gate.markStarted();
+			await gate.waitForRelease;
+			return tasks;
+		};
+
+		const refresh = store.refreshLocalTaskCorpus();
+		await withTimeout(gate.started, "held local task refresh before completion");
+		const current = store.getTasks()[0];
+		if (!current) throw new Error("Expected initialized task");
+		store.transitionTask(current.id, {
+			...current,
+			status: "Done",
+			filePath: join(filesystem.completedDir, basename(current.filePath ?? "task-1.md")),
+		});
+		expect(store.getTasks()).toEqual([]);
+		gate.release();
+		await refresh;
+
+		expect(store.getTasks()).toEqual([]);
+		expect(store.getTaskCorpusSnapshot().completedTasks.map((task) => task.status)).toEqual(["Done"]);
+	});
+
+	it("preserves duplicate working-copy identities across a local corpus refresh", async () => {
+		store.dispose();
+		await Promise.all([
+			Bun.write(
+				join(filesystem.tasksDir, "task-1 - First.md"),
+				serializeTask({ ...sampleTask, id: "TASK-1", title: "First identity" }),
+			),
+			Bun.write(
+				join(filesystem.tasksDir, "task-01 - Second.md"),
+				serializeTask({ ...sampleTask, id: "TASK-01", title: "Second identity" }),
+			),
+		]);
+		store = new ContentStore(filesystem, branchSnapshotLoader([]));
+		await store.ensureInitialized();
+		expect(store.resolveTaskForRead("TASK-1").status).toBe("ambiguous");
+
+		await store.refreshLocalTaskCorpus();
+
+		expect(store.getTaskCorpusSnapshot().activeTasks).toHaveLength(2);
+		expect(store.resolveTaskForRead("TASK-1").status).toBe("ambiguous");
+	});
+
 	it("refreshes completed identity state when the completed corpus changes", async () => {
 		store.dispose();
 		const core = new Core(TEST_DIR, { enableWatchers: true });

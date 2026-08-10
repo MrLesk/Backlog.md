@@ -539,11 +539,41 @@ describe("Core", () => {
 				"Active branch identity",
 				"Completed branch identity",
 			]);
+			core.git.listRecentBranches = async () => {
+				throw new Error("Statistics must not use the legacy local-branch loader");
+			};
+			core.git.listRecentRemoteBranches = async () => {
+				throw new Error("Statistics must not use the legacy remote-branch loader");
+			};
 			const statistics = (await core.loadAllTasksForStatistics()).tasks;
 			expect(statistics.map((task) => task.title).sort()).toEqual([
 				"Active branch identity",
 				"Completed branch identity",
 			]);
+		});
+
+		it("loads other local branches while the current branch is unborn", async () => {
+			const currentConfig = await core.filesystem.loadConfig();
+			if (!currentConfig) throw new Error("Expected config to be loaded");
+			const branchConfig = {
+				...currentConfig,
+				checkActiveBranches: true,
+				remoteOperations: false,
+			};
+			await core.filesystem.saveConfig(branchConfig);
+			await $`git add .`.cwd(TEST_DIR).quiet();
+			await $`git commit -m "Configure orphan branch loading"`.cwd(TEST_DIR).quiet();
+
+			await $`git switch -c feature/unborn-source`.cwd(TEST_DIR).quiet();
+			await core.filesystem.saveTask({ ...sampleTask, id: "TASK-2", title: "Task on another branch" });
+			await $`git add .`.cwd(TEST_DIR).quiet();
+			await $`git commit -m "Add branch-only task"`.cwd(TEST_DIR).quiet();
+			await $`git switch main`.cwd(TEST_DIR).quiet();
+			await $`git switch --orphan blank`.cwd(TEST_DIR).quiet();
+			await core.filesystem.ensureBacklogStructure();
+			await core.filesystem.saveConfig(branchConfig);
+
+			expect((await core.loadTasks()).map((task) => task.title)).toEqual(["Task on another branch"]);
 		});
 
 		it("fails closed when an archive snapshot would otherwise hide distinct active paths", async () => {

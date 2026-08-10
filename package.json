@@ -52,6 +52,7 @@
   },
   "scripts": {
     "test": "bun test --timeout=10000",
+    "benchmark:task-loading": "bun scripts/benchmark-task-loading.ts",
     "format": "biome format --write .",
     "lint": "biome lint --write .",
     "check": "biome check .",

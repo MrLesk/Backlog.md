@@ -1,6 +1,6 @@
 import { type FSWatcher, watch } from "node:fs";
 import { readdir, stat } from "node:fs/promises";
-import { basename, dirname, join, relative, resolve, sep } from "node:path";
+import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import type { FileSystem } from "../file-system/operations.ts";
 import { parseDecision, parseDocument, parseTask } from "../markdown/parser.ts";
 import type { BacklogConfig, Decision, Document, Task, TaskListFilter } from "../types/index.ts";
@@ -8,16 +8,23 @@ import { watchConfigFile } from "../utils/config-watcher.ts";
 import { documentIdKey, documentIdsEqual } from "../utils/document-id.ts";
 import { normalizeDocumentRelativePath } from "../utils/document-path.ts";
 import { normalizePriorityValue } from "../utils/priority-config.ts";
-import { normalizeTaskId, normalizeTaskIdentity, taskIdsEqual } from "../utils/task-path.ts";
+import { canonicalTaskId, normalizeTaskId, normalizeTaskIdentity, taskIdsEqual } from "../utils/task-path.ts";
 import { sortByTaskId } from "../utils/task-sorting.ts";
 import { matchesTaskTypeFilter } from "../utils/task-type-config.ts";
-import type { TaskIdentityIndex, TaskIdentityResolution } from "./task-identity-index.ts";
+import {
+	normalizeTaskLifecyclePath,
+	type TaskIdentityIndex,
+	type TaskIdentityResolution,
+} from "./task-identity-index.ts";
+import type { BranchTaskStateEntry } from "./task-loader.ts";
 
 export interface TaskCorpusSnapshot {
 	tasks: Task[];
 	activeTasks: Task[];
 	completedTasks: Task[];
 	identityIndex?: TaskIdentityIndex;
+	branchStateEntries?: BranchTaskStateEntry[];
+	config?: BacklogConfig | null;
 }
 
 type TaskLoaderResult = Task[] | TaskCorpusSnapshot;
@@ -106,6 +113,8 @@ export class ContentStore {
 	private activeTasks: Task[] = [];
 	private completedTasks: Task[] = [];
 	private taskIdentityIndex?: TaskIdentityIndex;
+	private branchTaskStateEntries: BranchTaskStateEntry[] = [];
+	private taskCorpusConfig: BacklogConfig | null | undefined;
 	private cachedDocuments: Document[] = [];
 	private cachedDecisions: Decision[] = [];
 
@@ -220,30 +229,60 @@ export class ContentStore {
 		if (!this.localTaskRefreshPromise) {
 			const epoch = this.rootWatcherEpoch;
 			const refresh = this.enqueueRoot(epoch, async () => {
+				const targetRoot = this.currentRoot();
+				const generation = this.nextContentRefreshGeneration("tasks");
+				const versionsBeforeLoad = new Map(this.contentItemVersions.tasks);
 				const [activeTasks, completedTasks] = await Promise.all([
 					this.filesystem.listTasks(),
 					this.filesystem.listCompletedTasks(),
 				]);
+				if (
+					!this.isRootWatcherCurrent(epoch) ||
+					targetRoot !== this.currentRoot() ||
+					!this.isContentRefreshCurrent("tasks", generation)
+				) {
+					return;
+				}
+				const mergedActiveTasks = this.mergeConcurrentTaskCorpus(
+					activeTasks,
+					this.activeTasks,
+					versionsBeforeLoad,
+					targetRoot,
+				);
+				const mergedCompletedTasks = this.mergeConcurrentTaskCorpus(
+					completedTasks,
+					this.completedTasks,
+					versionsBeforeLoad,
+					targetRoot,
+				);
+				if (this.needsBranchFallbackHydration(mergedActiveTasks, mergedCompletedTasks)) {
+					await this.refreshTasksFromDisk(undefined, epoch);
+					return;
+				}
 				const previousFingerprint = this.taskIdentityIndex?.getFingerprint();
-				this.activeTasks = activeTasks;
-				this.completedTasks = completedTasks;
+				this.activeTasks = mergedActiveTasks;
+				this.completedTasks = mergedCompletedTasks;
 				if (this.taskIdentityIndex) {
-					this.taskIdentityIndex = this.taskIdentityIndex.withWorkingCopyCorpus(activeTasks, completedTasks);
+					this.taskIdentityIndex = this.taskIdentityIndex.withWorkingCopyCorpus(
+						mergedActiveTasks,
+						mergedCompletedTasks,
+					);
 					const tasks = this.taskIdentityIndex.getTasks(false);
 					const changed = this.hasTaskCollectionChanged(tasks);
 					const identityChanged = previousFingerprint !== this.taskIdentityIndex.getFingerprint();
 					this.replaceVisibleTasks(tasks);
 					if (changed || identityChanged) this.publishTaskChange();
 				} else {
-					const changed = this.hasTaskCollectionChanged(activeTasks);
-					this.replaceVisibleTasks(activeTasks);
+					const changed = this.hasTaskCollectionChanged(mergedActiveTasks);
+					this.replaceVisibleTasks(mergedActiveTasks);
 					if (changed) this.publishTaskChange();
 				}
 			});
 			this.localTaskRefreshPromise = refresh;
-			void refresh.finally(() => {
+			const clearRefreshPromise = () => {
 				if (this.localTaskRefreshPromise === refresh) this.localTaskRefreshPromise = null;
-			});
+			};
+			void refresh.then(clearRefreshPromise, clearRefreshPromise);
 		}
 		await this.localTaskRefreshPromise;
 	}
@@ -293,6 +332,8 @@ export class ContentStore {
 			activeTasks: this.activeTasks.slice(),
 			completedTasks: this.completedTasks.slice(),
 			identityIndex: this.taskIdentityIndex,
+			branchStateEntries: this.branchTaskStateEntries.slice(),
+			config: this.taskCorpusConfig,
 		};
 	}
 
@@ -388,11 +429,20 @@ export class ContentStore {
 	}
 
 	transitionTask(taskId: string, completedTask?: Task): void {
-		const previousActiveCount = this.activeTasks.length;
-		this.activeTasks = this.activeTasks.filter((task) => !taskIdsEqual(task.id, taskId));
-		this.completedTasks = this.completedTasks.filter((task) => !taskIdsEqual(task.id, taskId));
-		if (completedTask) this.completedTasks.push({ ...completedTask, source: "completed" });
-		if (previousActiveCount === this.activeTasks.length && !completedTask) return;
+		const activeTasks = this.activeTasks.filter((task) => !taskIdsEqual(task.id, taskId));
+		const completedTasks = this.completedTasks.filter((task) => !taskIdsEqual(task.id, taskId));
+		if (completedTask) completedTasks.push({ ...completedTask, source: "completed" });
+		if (
+			activeTasks.length === this.activeTasks.length &&
+			completedTasks.length === this.completedTasks.length &&
+			!completedTask
+		)
+			return;
+		const normalizedId = normalizeTaskId(taskId);
+		this.nextContentItemGeneration("tasks", normalizedId);
+		this.nextContentItemVersion("tasks", normalizedId, this.currentRoot());
+		this.activeTasks = activeTasks;
+		this.completedTasks = completedTasks;
 		if (this.taskIdentityIndex) {
 			this.taskIdentityIndex = this.taskIdentityIndex.withWorkingCopyCorpus(this.activeTasks, this.completedTasks);
 			this.replaceVisibleTasks(this.taskIdentityIndex.getTasks(false));
@@ -1261,6 +1311,8 @@ export class ContentStore {
 		this.activeTasks = corpus.activeTasks.slice();
 		this.completedTasks = corpus.completedTasks.slice();
 		this.taskIdentityIndex = corpus.identityIndex;
+		this.branchTaskStateEntries = corpus.branchStateEntries?.slice() ?? [];
+		this.taskCorpusConfig = corpus.config;
 		this.replaceVisibleTasks(visibleTasks);
 	}
 
@@ -1529,8 +1581,14 @@ export class ContentStore {
 				this.contentItemPublicationRoots.tasks,
 				targetRoot,
 			);
+			const visibleChanged = this.hasTaskCollectionChanged(merged);
 			const identityChanged = this.taskIdentityIndex?.getFingerprint() !== corpus.identityIndex?.getFingerprint();
-			if (!this.hasTaskCollectionChanged(merged) && !identityChanged) return false;
+			const corpusChanged =
+				this.hasTaskListChanged(this.activeTasks, corpus.activeTasks) ||
+				this.hasTaskListChanged(this.completedTasks, corpus.completedTasks) ||
+				this.hasBranchTaskStateChanged(corpus.branchStateEntries ?? []) ||
+				JSON.stringify(this.taskCorpusConfig) !== JSON.stringify(corpus.config);
+			if (!visibleChanged && !identityChanged && !corpusChanged) return false;
 			this.installTaskCorpus(corpus, merged);
 			this.notify("tasks");
 			return false;
@@ -1611,6 +1669,25 @@ export class ContentStore {
 		});
 	}
 
+	private mergeConcurrentTaskCorpus(
+		loaded: Task[],
+		current: Task[],
+		versionsBeforeLoad: ReadonlyMap<string, number>,
+		targetRoot: string,
+	): Task[] {
+		const changedIds = new Set<string>();
+		for (const [id, version] of this.contentItemVersions.tasks) {
+			if (version !== versionsBeforeLoad.get(id) && this.contentItemPublicationRoots.tasks.get(id) === targetRoot) {
+				changedIds.add(id);
+			}
+		}
+		if (changedIds.size === 0) return loaded;
+		return [
+			...loaded.filter((task) => !changedIds.has(normalizeTaskId(task.id))),
+			...current.filter((task) => changedIds.has(normalizeTaskId(task.id))),
+		];
+	}
+
 	private mergeConcurrentChanges<T>(
 		loaded: T[],
 		before: T[],
@@ -1653,15 +1730,60 @@ export class ContentStore {
 	}
 
 	private hasTaskCollectionChanged(nextTasks: Task[]): boolean {
-		const nextCachedTasks = sortByTaskId(nextTasks);
-		if (this.cachedTasks.length !== nextCachedTasks.length) {
-			return true;
-		}
+		return this.hasTaskListChanged(this.cachedTasks, nextTasks);
+	}
 
-		return nextCachedTasks.some((task, index) => {
-			const previous = this.cachedTasks[index];
+	private hasTaskListChanged(currentTasks: Task[], nextTasks: Task[]): boolean {
+		const current = sortByTaskId(currentTasks);
+		const next = sortByTaskId(nextTasks);
+		if (current.length !== next.length) return true;
+		return next.some((task, index) => {
+			const previous = current[index];
 			return !previous || this.hasTaskChanged(previous, task);
 		});
+	}
+
+	private needsBranchFallbackHydration(activeTasks: Task[], completedTasks: Task[]): boolean {
+		if (!this.taskLoader || this.branchTaskStateEntries.length === 0) return false;
+		const identity = (id: string, path: string | undefined): string | null => {
+			if (!path) return null;
+			const projectPath = isAbsolute(path) ? relative(this.filesystem.rootDir, path) : path;
+			return `${canonicalTaskId(id)}\0${normalizeTaskLifecyclePath(
+				projectPath.replaceAll("\\", "/"),
+				this.filesystem.backlogDirName,
+			)}`;
+		};
+		const nextIdentities = new Set(
+			[...activeTasks, ...completedTasks].flatMap((task) => {
+				const value = identity(task.id, task.filePath);
+				return value ? [value] : [];
+			}),
+		);
+		const removedIdentities = new Set(
+			[...this.activeTasks, ...this.completedTasks].flatMap((task) => {
+				const value = identity(task.id, task.filePath);
+				return value && !nextIdentities.has(value) ? [value] : [];
+			}),
+		);
+		if (removedIdentities.size === 0) return false;
+		return this.branchTaskStateEntries.some((entry) => {
+			if (entry.task || (entry.type !== "task" && entry.type !== "completed")) return false;
+			const value = identity(entry.id, entry.path);
+			return value !== null && removedIdentities.has(value);
+		});
+	}
+
+	private hasBranchTaskStateChanged(nextEntries: BranchTaskStateEntry[]): boolean {
+		const serialize = (entries: BranchTaskStateEntry[]) =>
+			entries
+				.map((entry) =>
+					JSON.stringify({
+						...entry,
+						lastModified: entry.lastModified.toISOString(),
+					}),
+				)
+				.sort((left, right) => left.localeCompare(right));
+		return JSON.stringify(serialize(this.branchTaskStateEntries)) !== JSON.stringify(serialize(nextEntries));
 	}
 
 	private async handleDecisionWrite(decisionId: string, owner: PublicationOwner): Promise<void> {

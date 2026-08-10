@@ -9,10 +9,10 @@
  */
 
 import { DEFAULT_DIRECTORIES } from "../constants/index.ts";
-import type { GitOperations } from "../git/operations.ts";
+import type { GitBranchTip, GitOperations } from "../git/operations.ts";
 import { parseTask } from "../markdown/parser.ts";
 import type { BacklogConfig, Task } from "../types/index.ts";
-import { extractAnyPrefix, normalizeId } from "../utils/prefix-config.ts";
+import { extractAnyPrefix } from "../utils/prefix-config.ts";
 import {
 	canonicalTaskId,
 	extractTaskIdFromFilename,
@@ -25,6 +25,14 @@ import { normalizeTaskLifecyclePath } from "./task-identity-index.ts";
 /** Default prefix for tasks */
 const DEFAULT_TASK_PREFIX = "task";
 
+export function getBranchHistoryCutoff(activeBranchDays: number, now = Date.now()): Date | undefined {
+	if (!activeBranchDays) return undefined;
+	const cutoff = new Date(now);
+	cutoff.setUTCHours(0, 0, 0, 0);
+	cutoff.setUTCDate(cutoff.getUTCDate() - activeBranchDays);
+	return cutoff;
+}
+
 export interface BranchTaskStateEntry {
 	id: string;
 	type: TaskDirectoryType;
@@ -32,6 +40,12 @@ export interface BranchTaskStateEntry {
 	branch: string;
 	path: string;
 	task?: Task;
+}
+
+export interface BranchTaskLoadResult {
+	entries: BranchTaskStateEntry[];
+	/** False when at least one branch index or selected task payload could not be read. */
+	complete: boolean;
 }
 
 function extractConfiguredTaskId(filePath: string, prefix: string): string | null {
@@ -74,13 +88,7 @@ interface RemoteIndexEntry {
 	branch: string;
 	path: string; // "backlog/tasks/task-123 - title.md"
 	lastModified: Date;
-	/**
-	 * Immutable commit SHA the branch pointed at when the index was built.
-	 * Hydration uses this instead of the branch name so a branch that is
-	 * deleted/renamed/moved between indexing and hydration does not break
-	 * `git show`. Undefined when the SHA could not be resolved (best effort).
-	 */
-	commit?: string;
+	commit: string;
 	stateEntry?: BranchTaskStateEntry;
 }
 
@@ -88,8 +96,27 @@ interface HydrationCandidate {
 	id: string;
 	ref: string;
 	path: string;
-	commit?: string;
+	commit: string;
 	stateEntry?: BranchTaskStateEntry;
+}
+
+interface CachedTaskTreeEntry {
+	id: string;
+	path: string;
+	type: TaskDirectoryType | null;
+	lastModified: number;
+}
+
+interface PinnedBranchRef {
+	branch: string;
+	ref: string;
+	commit: string;
+	source: "local-branch" | "remote";
+}
+
+interface HydrationOptions {
+	source: "local-branch" | "remote";
+	loadTask: (commit: string, path: string) => Promise<Task | null>;
 }
 
 function logicalTaskPath(path: string, backlogDir: string): string {
@@ -116,6 +143,14 @@ function isPreferredIdentityEntry(candidate: RemoteIndexEntry, current: RemoteIn
 	const rankDifference = lifecycleRank(candidate.stateEntry?.type) - lifecycleRank(current.stateEntry?.type);
 	if (rankDifference !== 0) return rankDifference > 0;
 	return `${candidate.branch}\0${candidate.path}`.localeCompare(`${current.branch}\0${current.path}`) < 0;
+}
+
+function selectPreferredIdentityEntry(entries: RemoteIndexEntry[]): RemoteIndexEntry {
+	const first = entries[0];
+	if (!first) throw new Error("Cannot select a task from an empty branch index");
+	return entries
+		.slice(1)
+		.reduce((current, candidate) => (isPreferredIdentityEntry(candidate, current) ? candidate : current), first);
 }
 
 function chooseIdentityHydrationCandidates(
@@ -154,22 +189,9 @@ function mergeHydrationCandidates(
 ): HydrationCandidate[] {
 	const candidates = new Map<string, HydrationCandidate>();
 	for (const candidate of [...primary, ...supplemental]) {
-		candidates.set(`${candidate.ref}\0${candidate.path}\0${candidate.commit ?? ""}`, candidate);
+		candidates.set(`${candidate.ref}\0${candidate.path}\0${candidate.commit}`, candidate);
 	}
 	return [...candidates.values()];
-}
-
-/**
- * Best-effort resolve a ref to its commit SHA, tolerating mocks/older
- * GitOperations that do not implement resolveCommit.
- */
-async function resolveCommitSafe(git: GitOperations, ref: string): Promise<string | undefined> {
-	if (typeof git.resolveCommit !== "function") return undefined;
-	try {
-		return (await git.resolveCommit(ref)) ?? undefined;
-	} catch {
-		return undefined;
-	}
 }
 
 function normalizeRemoteBranch(branch: string): string | null {
@@ -199,99 +221,13 @@ function normalizeLocalBranch(branch: string, currentBranch: string): string | n
 }
 
 /**
- * Build a cheap index of remote tasks without fetching content
- * This is VERY fast as it only lists files and gets modification times in batch
- */
-export async function buildRemoteTaskIndex(
-	git: GitOperations,
-	branches: string[],
-	backlogDir = "backlog",
-	sinceDays?: number,
-	stateCollector?: BranchTaskStateEntry[],
-	prefix = DEFAULT_TASK_PREFIX,
-	includeCompleted = false,
-): Promise<Map<string, RemoteIndexEntry[]>> {
-	const out = new Map<string, RemoteIndexEntry[]>();
-
-	const normalized = branches.map(normalizeRemoteBranch).filter((b): b is string => Boolean(b));
-
-	// Do branches in parallel but not unbounded
-	const CONCURRENCY = 4;
-	const queue = [...normalized];
-
-	const workers = Array.from({ length: Math.min(CONCURRENCY, queue.length) }, async () => {
-		while (queue.length) {
-			const br = queue.pop();
-			if (!br) break;
-
-			const ref = `origin/${br}`;
-
-			try {
-				const listPath = stateCollector ? backlogDir : `${backlogDir}/tasks`;
-
-				// Pin the branch tip before indexing so list/log/show all read the same
-				// immutable tree even if the branch is deleted/renamed/moved mid-load.
-				const commit = await resolveCommitSafe(git, ref);
-				const indexRef = commit ?? ref;
-
-				// Get backlog files for this branch
-				const files = await git.listFilesInTree(indexRef, listPath);
-				if (files.length === 0) continue;
-
-				// Get last modified times for all files in one pass
-				const lm = await git.getBranchLastModifiedMap(indexRef, listPath, sinceDays);
-
-				for (const f of files) {
-					const id = extractConfiguredTaskId(f, prefix);
-					if (!id) continue;
-					const lastModified = lm.get(f) ?? new Date(0);
-					const entry: RemoteIndexEntry = { id, branch: br, path: f, lastModified, commit };
-
-					// Collect full state info when requested
-					const type = getTaskTypeFromPath(f, backlogDir);
-					if (!stateCollector && type !== "task") {
-						continue;
-					}
-					if (type && stateCollector) {
-						entry.stateEntry = {
-							id,
-							type,
-							branch: ref,
-							path: f,
-							lastModified,
-						};
-						stateCollector.push(entry.stateEntry);
-					}
-
-					// Only index active tasks for hydration selection (optionally include completed)
-					if (type === "task" || (includeCompleted && type === "completed")) {
-						const arr = out.get(id);
-						if (arr) {
-							arr.push(entry);
-						} else {
-							out.set(id, [entry]);
-						}
-					}
-				}
-			} catch (error) {
-				// Branch might not have backlog directory, skip it
-				console.debug(`Skipping branch ${br}: ${error}`);
-			}
-		}
-	});
-
-	await Promise.all(workers);
-	return out;
-}
-
-/**
  * Hydrate tasks by fetching their content
  * Only call this for the "winner" tasks that we actually need
  */
-async function hydrateTasks(git: GitOperations, winners: HydrationCandidate[]): Promise<Task[]> {
+async function hydrateTasks(winners: HydrationCandidate[], options: HydrationOptions): Promise<boolean> {
 	const CONCURRENCY = 8;
-	const result: Task[] = [];
 	let i = 0;
+	let complete = true;
 
 	async function worker() {
 		while (i < winners.length) {
@@ -302,119 +238,21 @@ async function hydrateTasks(git: GitOperations, winners: HydrationCandidate[]): 
 			if (!w) break;
 
 			try {
-				// Hydrate from the pinned SHA when available so a branch deleted/renamed
-				// between indexing and now does not break `git show` (falls back to the
-				// branch name for mocks/older callers that did not capture a SHA).
-				const hydrateRef = w.commit ?? w.ref;
-				const content = await git.showFile(hydrateRef, w.path);
-				const task = normalizeTaskIdentity(parseTask(content));
+				const task = await options.loadTask(w.commit, w.path);
 				if (task) {
-					// Mark as remote source and branch
-					task.source = "remote";
-					// Extract branch name from ref (e.g., "origin/main" -> "main")
-					task.branch = w.ref.replace("origin/", "");
+					task.source = options.source;
+					task.branch = options.source === "remote" ? w.ref.replace(/^origin\//, "") : w.ref;
 					if (w.stateEntry) w.stateEntry.task = task;
-					result.push(task);
 				}
 			} catch (error) {
+				complete = false;
 				console.error(`Failed to hydrate task ${w.id} from ${w.ref}:${w.path}`, error);
 			}
 		}
 	}
 
 	await Promise.all(Array.from({ length: Math.min(CONCURRENCY, winners.length) }, worker));
-	return result;
-}
-
-/**
- * Build a cheap index of tasks from local branches (excluding current branch)
- * Similar to buildRemoteTaskIndex but for local refs
- */
-export async function buildLocalBranchTaskIndex(
-	git: GitOperations,
-	branches: string[],
-	currentBranch: string,
-	backlogDir = "backlog",
-	sinceDays?: number,
-	stateCollector?: BranchTaskStateEntry[],
-	prefix = DEFAULT_TASK_PREFIX,
-	includeCompleted = false,
-): Promise<Map<string, RemoteIndexEntry[]>> {
-	const out = new Map<string, RemoteIndexEntry[]>();
-
-	const normalized = branches.map((b) => normalizeLocalBranch(b, currentBranch)).filter((b): b is string => Boolean(b));
-
-	if (normalized.length === 0) {
-		return out;
-	}
-
-	// Do branches in parallel but not unbounded
-	const CONCURRENCY = 4;
-	const queue = [...normalized];
-
-	const workers = Array.from({ length: Math.min(CONCURRENCY, queue.length) }, async () => {
-		while (queue.length) {
-			const br = queue.pop();
-			if (!br) break;
-
-			try {
-				const listPath = stateCollector ? backlogDir : `${backlogDir}/tasks`;
-
-				// Pin the branch tip before indexing so list/log/show all read the same
-				// immutable tree even if the branch is deleted/renamed/moved mid-load.
-				const commit = await resolveCommitSafe(git, br);
-				const indexRef = commit ?? br;
-
-				// Get backlog files in this branch
-				const files = await git.listFilesInTree(indexRef, listPath);
-				if (files.length === 0) continue;
-
-				// Get last modified times for all files in one pass
-				const lm = await git.getBranchLastModifiedMap(indexRef, listPath, sinceDays);
-
-				for (const f of files) {
-					const id = extractConfiguredTaskId(f, prefix);
-					if (!id) continue;
-					const lastModified = lm.get(f) ?? new Date(0);
-					const entry: RemoteIndexEntry = { id, branch: br, path: f, lastModified, commit };
-
-					// Collect full state info when requested
-					const type = getTaskTypeFromPath(f, backlogDir);
-					if (!stateCollector && type !== "task") {
-						continue;
-					}
-					if (type && stateCollector) {
-						entry.stateEntry = {
-							id,
-							type,
-							branch: br,
-							path: f,
-							lastModified,
-						};
-						stateCollector.push(entry.stateEntry);
-					}
-
-					// Only index active tasks for hydration selection (optionally include completed)
-					if (type === "task" || (includeCompleted && type === "completed")) {
-						const arr = out.get(id);
-						if (arr) {
-							arr.push(entry);
-						} else {
-							out.set(id, [entry]);
-						}
-					}
-				}
-			} catch (error) {
-				// Branch might not have backlog directory, skip it
-				if (process.env.DEBUG) {
-					console.debug(`Skipping local branch ${br}: ${error}`);
-				}
-			}
-		}
-	});
-
-	await Promise.all(workers);
-	return out;
+	return complete;
 }
 
 /**
@@ -424,7 +262,8 @@ export async function buildLocalBranchTaskIndex(
 function chooseWinners(
 	localById: Map<string, Task>,
 	remoteIndex: Map<string, RemoteIndexEntry[]>,
-	strategy: "most_recent" | "most_progressed" = "most_progressed",
+	strategy: "most_recent" | "most_progressed",
+	toRef: (entry: RemoteIndexEntry) => string,
 ): HydrationCandidate[] {
 	const winners: HydrationCandidate[] = [];
 
@@ -433,10 +272,10 @@ function chooseWinners(
 
 		if (!local) {
 			// No local version - take the newest remote
-			const best = entries.reduce((a, b) => (a.lastModified >= b.lastModified ? a : b));
+			const best = selectPreferredIdentityEntry(entries);
 			winners.push({
 				id,
-				ref: `origin/${best.branch}`,
+				ref: toRef(best),
 				path: best.path,
 				commit: best.commit,
 				stateEntry: best.stateEntry,
@@ -447,12 +286,12 @@ function chooseWinners(
 		// If strategy is "most_recent", only hydrate if any remote is newer
 		if (strategy === "most_recent") {
 			const localTs = local.updatedDate ? new Date(local.updatedDate).getTime() : 0;
-			const newestRemote = entries.reduce((a, b) => (a.lastModified >= b.lastModified ? a : b));
+			const newestRemote = selectPreferredIdentityEntry(entries);
 
 			if (newestRemote.lastModified.getTime() > localTs) {
 				winners.push({
 					id,
-					ref: `origin/${newestRemote.branch}`,
+					ref: toRef(newestRemote),
 					path: newestRemote.path,
 					commit: newestRemote.commit,
 					stateEntry: newestRemote.stateEntry,
@@ -468,10 +307,10 @@ function chooseWinners(
 
 		if (maybeNewer) {
 			// Only hydrate the newest remote to check if it's more progressed
-			const newestRemote = entries.reduce((a, b) => (a.lastModified >= b.lastModified ? a : b));
+			const newestRemote = selectPreferredIdentityEntry(entries);
 			winners.push({
 				id,
-				ref: `origin/${newestRemote.branch}`,
+				ref: toRef(newestRemote),
 				path: newestRemote.path,
 				commit: newestRemote.commit,
 				stateEntry: newestRemote.stateEntry,
@@ -483,408 +322,252 @@ function chooseWinners(
 }
 
 /**
- * Find and load a specific task from remote branches
- * Searches through recent remote branches for the task and returns the newest version
+ * Reuses immutable branch trees and task blobs for the lifetime of one Core.
+ * Branch names are deliberately kept out of cache keys: several refs at one
+ * commit share the same Git reads, while fresh state entries retain each ref's
+ * provenance for identity and ambiguity resolution.
  */
-export async function findTaskInRemoteBranches(
-	git: GitOperations,
-	taskId: string,
-	backlogDir = "backlog",
-	sinceDays = 30,
-	prefix = DEFAULT_TASK_PREFIX,
-): Promise<Task | null> {
-	try {
-		// Check if we have any remote
-		if (!(await git.hasAnyRemote())) return null;
+export class BranchTaskLoader {
+	private readonly commitIndexCache = new Map<string, Promise<readonly CachedTaskTreeEntry[]>>();
+	private readonly taskCache = new Map<string, { commit: string; promise: Promise<Task | null> }>();
 
-		// Get recent remote branches
-		const branches = await git.listRecentRemoteBranches(sinceDays);
-		if (branches.length === 0) return null;
+	constructor(private readonly git: GitOperations) {}
 
-		// Build task index for remote branches
-		const remoteIndex = await buildRemoteTaskIndex(git, branches, backlogDir, sinceDays, undefined, prefix);
-
-		const normalizedId = normalizeId(taskId, prefix);
-
-		// Check if the task exists in the index
-		const entries = remoteIndex.get(normalizedId);
-		if (!entries || entries.length === 0) return null;
-
-		// Get the newest version
-		const best = entries.reduce((a, b) => (a.lastModified >= b.lastModified ? a : b));
-
-		// Hydrate the task from the pinned SHA when available (immune to ref movement)
-		const ref = `origin/${best.branch}`;
-		const content = await git.showFile(best.commit ?? ref, best.path);
-		const task = normalizeTaskIdentity(parseTask(content));
-		if (task) {
-			task.source = "remote";
-			task.branch = best.branch;
-		}
-		return task;
-	} catch (error) {
-		if (process.env.DEBUG) {
-			console.error(`Failed to find task ${taskId} in remote branches:`, error);
-		}
-		return null;
+	clear(): void {
+		this.commitIndexCache.clear();
+		this.taskCache.clear();
 	}
-}
 
-/**
- * Find and load a specific task from local branches (excluding current branch)
- * Searches through recent local branches for the task and returns the newest version
- */
-export async function findTaskInLocalBranches(
-	git: GitOperations,
-	taskId: string,
-	backlogDir = "backlog",
-	sinceDays = 30,
-	prefix = DEFAULT_TASK_PREFIX,
-): Promise<Task | null> {
-	try {
-		const currentBranch = await git.getCurrentBranch();
-		if (!currentBranch) return null;
-
-		// Get recent local branches
-		const allBranches = await git.listRecentBranches(sinceDays);
-		const localBranches = allBranches.filter(
-			(b) => !b.startsWith("origin/") && !b.startsWith("refs/remotes/") && b !== "origin",
+	retainSnapshot(
+		tips: readonly GitBranchTip[],
+		options: { backlogDir: string; prefix: string; activeBranchDays: number },
+	): void {
+		const historyCutoff = getBranchHistoryCutoff(options.activeBranchDays);
+		const retainedCommits = new Set(tips.map((tip) => tip.commit));
+		const retainedIndexKeys = new Set(
+			[...retainedCommits].map((commit) =>
+				this.commitIndexKey(commit, options.backlogDir, options.prefix, historyCutoff),
+			),
 		);
-
-		if (localBranches.length <= 1) return null; // Only current branch
-
-		// Build task index for local branches
-		const localIndex = await buildLocalBranchTaskIndex(
-			git,
-			localBranches,
-			currentBranch,
-			backlogDir,
-			sinceDays,
-			undefined,
-			prefix,
-		);
-
-		const normalizedId = normalizeId(taskId, prefix);
-
-		// Check if the task exists in the index
-		const entries = localIndex.get(normalizedId);
-		if (!entries || entries.length === 0) return null;
-
-		// Get the newest version
-		const best = entries.reduce((a, b) => (a.lastModified >= b.lastModified ? a : b));
-
-		// Hydrate the task from the pinned SHA when available (immune to ref movement)
-		const content = await git.showFile(best.commit ?? best.branch, best.path);
-		const task = normalizeTaskIdentity(parseTask(content));
-		if (task) {
-			task.source = "local-branch";
-			task.branch = best.branch;
+		for (const key of this.commitIndexCache.keys()) {
+			if (!retainedIndexKeys.has(key)) this.commitIndexCache.delete(key);
 		}
-		return task;
-	} catch (error) {
-		if (process.env.DEBUG) {
-			console.error(`Failed to find task ${taskId} in local branches:`, error);
+		for (const [key, entry] of this.taskCache) {
+			if (!retainedCommits.has(entry.commit)) this.taskCache.delete(key);
 		}
-		return null;
 	}
-}
 
-/**
- * Load all remote tasks using optimized index-first, hydrate-later pattern
- * Dramatically reduces git operations by only fetching content for tasks that need it
- */
-export async function loadRemoteTasks(
-	gitOps: GitOperations,
-	userConfig: BacklogConfig | null = null,
-	onProgress?: (message: string) => void,
-	localTasks?: Task[],
-	stateCollector?: BranchTaskStateEntry[],
-	includeCompleted = false,
-	backlogDir: string = DEFAULT_DIRECTORIES.BACKLOG,
-): Promise<Task[]> {
-	try {
-		// Skip remote operations if disabled
-		if (userConfig?.remoteOperations === false) {
-			onProgress?.("Remote operations disabled - skipping remote tasks");
-			return [];
-		}
+	async load(
+		tips: readonly GitBranchTip[],
+		userConfig: BacklogConfig | null,
+		localTasks: Task[],
+		includeCompleted: boolean,
+		backlogDir: string = DEFAULT_DIRECTORIES.BACKLOG,
+		onProgress?: (message: string) => void,
+		currentBranch?: string,
+	): Promise<BranchTaskLoadResult> {
+		const branchRefs = await this.getPinnedBranchRefs(tips, userConfig, currentBranch);
+		if (branchRefs.length === 0) return { entries: [], complete: true };
 
-		// Fetch remote branches
-		onProgress?.("Fetching remote branches...");
-		await gitOps.fetch();
+		const remoteCount = branchRefs.filter((branch) => branch.source === "remote").length;
+		const localCount = branchRefs.length - remoteCount;
+		if (remoteCount > 0) onProgress?.(`Indexing ${remoteCount} recent remote branches...`);
+		if (localCount > 0) onProgress?.(`Indexing ${localCount} other local branches...`);
 
-		// Use recent branches only for better performance
-		const days = userConfig?.activeBranchDays ?? 30;
-		const branches = await gitOps.listRecentRemoteBranches(days);
+		const prefix = userConfig?.prefixes?.task ?? DEFAULT_TASK_PREFIX;
+		const historyCutoff = getBranchHistoryCutoff(userConfig?.activeBranchDays ?? 30);
+		const stateEntries: BranchTaskStateEntry[] = [];
+		const remoteIndex = new Map<string, RemoteIndexEntry[]>();
+		const localIndex = new Map<string, RemoteIndexEntry[]>();
+		const queue = [...branchRefs];
+		const CONCURRENCY = 4;
+		let complete = true;
 
-		if (branches.length === 0) {
-			onProgress?.("No recent remote branches found");
-			return [];
-		}
-
-		onProgress?.(`Indexing ${branches.length} recent remote branches (last ${days} days)...`);
-
-		// Build a cheap index without fetching content
-		const taskPrefix = userConfig?.prefixes?.task ?? DEFAULT_TASK_PREFIX;
-		const remoteIndex = await buildRemoteTaskIndex(
-			gitOps,
-			branches,
-			backlogDir,
-			days,
-			stateCollector,
-			taskPrefix,
-			includeCompleted,
-		);
-
-		if (remoteIndex.size === 0) {
-			onProgress?.("No remote tasks found");
-			return [];
-		}
-
-		onProgress?.(`Found ${remoteIndex.size} unique tasks across remote branches`);
-
-		// If we have local tasks, use them to determine which remote tasks to hydrate
-		let winners: HydrationCandidate[];
-
-		if (localTasks && localTasks.length > 0) {
-			const localById = new Map(localTasks.map((t) => [normalizeTaskId(t.id), t]));
-			const strategy = userConfig?.taskResolutionStrategy || "most_progressed";
-
-			// Only hydrate remote tasks that are newer or missing locally
-			winners = chooseWinners(localById, remoteIndex, strategy);
-			onProgress?.(`Hydrating ${winners.length} remote candidates...`);
-		} else {
-			// No local tasks, need to hydrate all remote tasks (take newest of each)
-			winners = [];
-			for (const [id, entries] of remoteIndex) {
-				const best = entries.reduce((a, b) => (a.lastModified >= b.lastModified ? a : b));
-				winners.push({
-					id,
-					ref: `origin/${best.branch}`,
-					path: best.path,
-					commit: best.commit,
-					stateEntry: best.stateEntry,
-				});
+		const workers = Array.from({ length: Math.min(CONCURRENCY, queue.length) }, async () => {
+			while (queue.length > 0) {
+				const branchRef = queue.pop();
+				if (!branchRef) break;
+				try {
+					const tree = await this.loadCommitIndex(branchRef.commit, backlogDir, prefix, historyCutoff);
+					const index = branchRef.source === "remote" ? remoteIndex : localIndex;
+					for (const cached of tree) {
+						const lastModified = new Date(cached.lastModified);
+						const entry: RemoteIndexEntry = {
+							id: cached.id,
+							branch: branchRef.branch,
+							path: cached.path,
+							lastModified,
+							commit: branchRef.commit,
+						};
+						if (cached.type) {
+							entry.stateEntry = {
+								id: cached.id,
+								type: cached.type,
+								branch: branchRef.ref,
+								path: cached.path,
+								lastModified,
+							};
+							stateEntries.push(entry.stateEntry);
+						}
+						if (cached.type === "task" || (includeCompleted && cached.type === "completed")) {
+							const entries = index.get(cached.id);
+							if (entries) entries.push(entry);
+							else index.set(cached.id, [entry]);
+						}
+					}
+				} catch (error) {
+					complete = false;
+					if (process.env.DEBUG) {
+						console.debug(`Skipping branch ${branchRef.ref}: ${error}`);
+					}
+				}
 			}
-			onProgress?.(`Hydrating ${winners.length} remote tasks...`);
-		}
+		});
+		await Promise.all(workers);
 
-		if (stateCollector) {
-			winners = mergeHydrationCandidates(
-				winners,
-				chooseIdentityHydrationCandidates(remoteIndex, localTasks, backlogDir, (entry) => `origin/${entry.branch}`),
-			);
-		}
-
-		// Only fetch content for the tasks we actually need
-		const hydratedTasks = await hydrateTasks(gitOps, winners);
-
-		onProgress?.(`Loaded ${hydratedTasks.length} remote tasks`);
-		return hydratedTasks;
-	} catch (error) {
-		// If fetch fails, we can still work with local tasks
-		console.error("Failed to fetch remote tasks:", error);
-		return [];
-	}
-}
-
-/**
- * Resolve conflicts between local and remote tasks based on strategy
- */
-function getTaskDate(task: Task): Date {
-	if (task.updatedDate) {
-		return new Date(task.updatedDate);
-	}
-	return task.lastModified ?? new Date(0);
-}
-
-export function resolveTaskConflict(
-	existing: Task,
-	incoming: Task,
-	statuses: string[],
-	strategy: "most_recent" | "most_progressed" = "most_progressed",
-): Task {
-	if (strategy === "most_recent") {
-		const existingDate = getTaskDate(existing);
-		const incomingDate = getTaskDate(incoming);
-		return existingDate >= incomingDate ? existing : incoming;
-	}
-
-	// Default to most_progressed strategy
-	// Map status to rank (default to 0 for unknown statuses)
-	const currentIdx = statuses.indexOf(existing.status);
-	const newIdx = statuses.indexOf(incoming.status);
-	const currentRank = currentIdx >= 0 ? currentIdx : 0;
-	const newRank = newIdx >= 0 ? newIdx : 0;
-
-	// If incoming task has a more progressed status, use it
-	if (newRank > currentRank) {
-		return incoming;
-	}
-
-	// If statuses are equal, use the most recent
-	if (newRank === currentRank) {
-		const existingDate = getTaskDate(existing);
-		const incomingDate = getTaskDate(incoming);
-		return existingDate >= incomingDate ? existing : incoming;
-	}
-
-	return existing;
-}
-
-/**
- * Load tasks from other local branches (not current branch, not remote)
- * Uses the same optimized index-first, hydrate-later pattern as remote loading
- */
-export async function loadLocalBranchTasks(
-	gitOps: GitOperations,
-	userConfig: BacklogConfig | null = null,
-	onProgress?: (message: string) => void,
-	localTasks?: Task[],
-	stateCollector?: BranchTaskStateEntry[],
-	includeCompleted = false,
-	backlogDir: string = DEFAULT_DIRECTORIES.BACKLOG,
-): Promise<Task[]> {
-	try {
-		const currentBranch = await gitOps.getCurrentBranch();
-		if (!currentBranch) {
-			// Not on a branch (detached HEAD), skip local branch loading
-			return [];
-		}
-
-		// Get recent local branches (excludes remote refs)
-		const days = userConfig?.activeBranchDays ?? 30;
-		const allBranches = await gitOps.listRecentBranches(days);
-
-		// Filter to only local branches (not origin/*)
-		const localBranches = allBranches.filter(
-			(b) => !b.startsWith("origin/") && !b.startsWith("refs/remotes/") && b !== "origin",
-		);
-
-		if (localBranches.length <= 1) {
-			// Only current branch or no branches
-			return [];
-		}
-
-		onProgress?.(`Indexing ${localBranches.length - 1} other local branches...`);
-
-		// Build index of tasks from other local branches
-		const taskPrefix = userConfig?.prefixes?.task ?? DEFAULT_TASK_PREFIX;
-		const localBranchIndex = await buildLocalBranchTaskIndex(
-			gitOps,
-			localBranches,
-			currentBranch,
-			backlogDir,
-			days,
-			stateCollector,
-			taskPrefix,
-			includeCompleted,
-		);
-
-		if (localBranchIndex.size === 0) {
-			return [];
-		}
-
-		onProgress?.(`Found ${localBranchIndex.size} unique tasks in other local branches`);
-
-		// Determine which tasks to hydrate
-		let winners: HydrationCandidate[];
-
-		if (localTasks && localTasks.length > 0) {
-			const localById = new Map(localTasks.map((t) => [normalizeTaskId(t.id), t]));
-			const strategy = userConfig?.taskResolutionStrategy || "most_progressed";
-
-			// Only hydrate tasks that are missing locally or potentially newer
-			winners = [];
-			for (const [id, entries] of localBranchIndex) {
-				const local = localById.get(id);
-
-				if (!local) {
-					// Task doesn't exist locally - take the newest from other branches
-					const best = entries.reduce((a, b) => (a.lastModified >= b.lastModified ? a : b));
-					winners.push({
+		const localById = new Map(localTasks.map((task) => [normalizeTaskId(task.id), task]));
+		const strategy = userConfig?.taskResolutionStrategy ?? "most_progressed";
+		const candidatesFor = (
+			index: Map<string, RemoteIndexEntry[]>,
+			source: "local-branch" | "remote",
+		): HydrationCandidate[] => {
+			const toRef =
+				source === "remote"
+					? (entry: RemoteIndexEntry) => `origin/${entry.branch}`
+					: (entry: RemoteIndexEntry) => entry.branch;
+			let candidates: HydrationCandidate[];
+			if (localTasks.length > 0) {
+				candidates = chooseWinners(localById, index, strategy, toRef);
+			} else {
+				candidates = [];
+				for (const [id, entries] of index) {
+					const best = selectPreferredIdentityEntry(entries);
+					candidates.push({
 						id,
-						ref: best.branch,
+						ref: toRef(best),
 						path: best.path,
 						commit: best.commit,
 						stateEntry: best.stateEntry,
 					});
-					continue;
-				}
-
-				// For existing tasks, check if any other branch version is newer
-				if (strategy === "most_recent") {
-					const localTs = local.updatedDate ? new Date(local.updatedDate).getTime() : 0;
-					const newestOther = entries.reduce((a, b) => (a.lastModified >= b.lastModified ? a : b));
-
-					if (newestOther.lastModified.getTime() > localTs) {
-						winners.push({
-							id,
-							ref: newestOther.branch,
-							path: newestOther.path,
-							commit: newestOther.commit,
-							stateEntry: newestOther.stateEntry,
-						});
-					}
-				} else {
-					// For most_progressed, we need to hydrate to check status
-					const localTs = local.updatedDate ? new Date(local.updatedDate).getTime() : 0;
-					const maybeNewer = entries.some((e) => e.lastModified.getTime() > localTs);
-
-					if (maybeNewer) {
-						const newestOther = entries.reduce((a, b) => (a.lastModified >= b.lastModified ? a : b));
-						winners.push({
-							id,
-							ref: newestOther.branch,
-							path: newestOther.path,
-							commit: newestOther.commit,
-							stateEntry: newestOther.stateEntry,
-						});
-					}
 				}
 			}
-		} else {
-			// No local tasks, hydrate all from other branches (take newest of each)
-			winners = [];
-			for (const [id, entries] of localBranchIndex) {
-				const best = entries.reduce((a, b) => (a.lastModified >= b.lastModified ? a : b));
-				winners.push({
-					id,
-					ref: best.branch,
-					path: best.path,
-					commit: best.commit,
-					stateEntry: best.stateEntry,
-				});
-			}
-		}
-
-		if (stateCollector) {
-			winners = mergeHydrationCandidates(
-				winners,
-				chooseIdentityHydrationCandidates(localBranchIndex, localTasks, backlogDir, (entry) => entry.branch),
+			return mergeHydrationCandidates(
+				candidates,
+				chooseIdentityHydrationCandidates(index, localTasks, backlogDir, toRef),
 			);
+		};
+
+		const loadTask = (commit: string, path: string) => this.loadCachedTask(commit, path);
+		const hydrationResults = await Promise.all([
+			hydrateTasks(candidatesFor(remoteIndex, "remote"), { source: "remote", loadTask }),
+			hydrateTasks(candidatesFor(localIndex, "local-branch"), {
+				source: "local-branch",
+				loadTask,
+			}),
+		]);
+		return {
+			entries: stateEntries,
+			complete: complete && hydrationResults.every(Boolean),
+		};
+	}
+
+	private async getPinnedBranchRefs(
+		tips: readonly GitBranchTip[],
+		userConfig: BacklogConfig | null,
+		snapshotCurrentBranch?: string,
+	): Promise<PinnedBranchRef[]> {
+		const isRemote = (name: string) => {
+			const normalized = name.trim().replace(/^refs\/remotes\//, "");
+			return normalized.startsWith("origin/");
+		};
+		const currentTip = tips.find((tip) => tip.current && !isRemote(tip.name));
+		const currentBranch = currentTip?.name ?? snapshotCurrentBranch ?? (await this.git.getCurrentBranch()).trim();
+		const refs: PinnedBranchRef[] = [];
+		const seen = new Set<string>();
+
+		for (const tip of tips) {
+			let branchRef: PinnedBranchRef | null = null;
+			if (isRemote(tip.name)) {
+				if (userConfig?.remoteOperations === false) continue;
+				const branch = normalizeRemoteBranch(tip.name);
+				if (branch) {
+					branchRef = { branch, ref: `origin/${branch}`, commit: tip.commit, source: "remote" };
+				}
+			} else if (currentBranch && !tip.current) {
+				const branch = normalizeLocalBranch(tip.name, currentBranch);
+				if (branch) branchRef = { branch, ref: branch, commit: tip.commit, source: "local-branch" };
+			}
+
+			if (!branchRef) continue;
+			const key = `${branchRef.source}\0${branchRef.ref}\0${branchRef.commit}`;
+			if (seen.has(key)) continue;
+			seen.add(key);
+			refs.push(branchRef);
 		}
+		return refs;
+	}
 
-		if (winners.length === 0) {
-			return [];
+	private commitIndexKey(commit: string, backlogDir: string, prefix: string, cutoff: Date | undefined): string {
+		return JSON.stringify([commit, backlogDir, prefix.toLowerCase(), cutoff?.getTime() ?? null]);
+	}
+
+	private async loadCommitIndex(
+		commit: string,
+		backlogDir: string,
+		prefix: string,
+		historyCutoff: Date | undefined,
+	): Promise<readonly CachedTaskTreeEntry[]> {
+		const key = this.commitIndexKey(commit, backlogDir, prefix, historyCutoff);
+		const cached = this.commitIndexCache.get(key);
+		if (cached) return await cached;
+
+		const promise = (async (): Promise<readonly CachedTaskTreeEntry[]> => {
+			const files = await this.git.listFilesInTree(commit, backlogDir);
+			if (files.length === 0) return [];
+			const lastModified = await this.git.getBranchLastModifiedMap(commit, backlogDir, historyCutoff);
+			return files.flatMap((path) => {
+				const id = extractConfiguredTaskId(path, prefix);
+				if (!id) return [];
+				return [
+					{
+						id,
+						path,
+						type: getTaskTypeFromPath(path, backlogDir),
+						lastModified: (lastModified.get(path) ?? new Date(0)).getTime(),
+					},
+				];
+			});
+		})();
+		this.commitIndexCache.set(key, promise);
+		try {
+			return await promise;
+		} catch (error) {
+			if (this.commitIndexCache.get(key) === promise) this.commitIndexCache.delete(key);
+			throw error;
 		}
+	}
 
-		onProgress?.(`Hydrating ${winners.length} tasks from other local branches...`);
-
-		// Hydrate the tasks - note: ref is the branch name directly (not origin/)
-		const hydratedTasks = await hydrateTasks(gitOps, winners);
-
-		// Mark these as coming from local branches
-		for (const task of hydratedTasks) {
-			task.source = "local-branch";
+	private async loadCachedTask(commit: string, path: string): Promise<Task | null> {
+		const key = `${commit}\0${path}`;
+		let cached = this.taskCache.get(key);
+		if (!cached) {
+			const promise = this.git.showFile(commit, path).then((content) => {
+				try {
+					return normalizeTaskIdentity(parseTask(content));
+				} catch (error) {
+					console.error(`Failed to parse task ${commit}:${path}`, error);
+					return null;
+				}
+			});
+			cached = { commit, promise };
+			this.taskCache.set(key, cached);
 		}
-
-		onProgress?.(`Loaded ${hydratedTasks.length} tasks from other local branches`);
-		return hydratedTasks;
-	} catch (error) {
-		if (process.env.DEBUG) {
-			console.error("Failed to load local branch tasks:", error);
+		try {
+			const task = await cached.promise;
+			return task ? structuredClone(task) : null;
+		} catch (error) {
+			if (this.taskCache.get(key)?.promise === cached.promise) this.taskCache.delete(key);
+			throw error;
 		}
-		return [];
 	}
 }

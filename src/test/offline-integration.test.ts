@@ -195,19 +195,4 @@ backlog_directory: "backlog"
 		expect(migratedConfig?.remoteOperations).toBe(true); // Default should be true
 		expect(migratedConfig?.projectName).toBe("Legacy Project");
 	});
-
-	it("should handle loadRemoteTasks in offline mode", async () => {
-		const config = await core.filesystem.loadConfig();
-		expect(config?.remoteOperations).toBe(false);
-
-		// Import loadRemoteTasks
-		const { loadRemoteTasks } = await import("../core/task-loader.ts");
-
-		const progressMessages: string[] = [];
-		const remoteTasks = await loadRemoteTasks(core.gitOps, config, (msg: string) => progressMessages.push(msg));
-
-		// Should return empty array and skip remote operations
-		expect(remoteTasks).toEqual([]);
-		expect(progressMessages).toContain("Remote operations disabled - skipping remote tasks");
-	});
 });
