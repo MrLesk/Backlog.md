@@ -248,16 +248,22 @@ describe("TUI task composer model", () => {
 		});
 	});
 
-	it("keeps the composer compact at 100x30 and 80x24, then stacks details at 50x18", () => {
+	it("fits shipped selector content at 100x30 and 80x24, then stacks details at 50x18", () => {
 		expect(getTaskComposerLayout(100, 30)).toMatchObject({
 			compact: false,
+			popupWidth: 74,
 			popupHeight: 20,
 			descriptionHeight: 6,
 			detailsTop: 9,
 			detailsHeight: 3,
 			actionsTop: 12,
 		});
-		expect(getTaskComposerLayout(80, 24)).toMatchObject({ compact: false, popupHeight: 20, actionsTop: 12 });
+		expect(getTaskComposerLayout(80, 24)).toMatchObject({
+			compact: false,
+			popupWidth: 74,
+			popupHeight: 20,
+			actionsTop: 12,
+		});
 		expect(getTaskComposerLayout(50, 18)).toMatchObject({
 			compact: true,
 			popupHeight: 16,
@@ -268,12 +274,21 @@ describe("TUI task composer model", () => {
 		});
 	});
 
+	it("derives compact selector layout from configured content instead of a screen breakpoint", () => {
+		const statuses = ["To Do", "Waiting for external approval", "Done"];
+		expect(getTaskComposerLayout(100, 30, { statuses }).compact).toBe(true);
+		expect(getTaskComposerLayout(140, 30, { statuses }).compact).toBe(false);
+	});
+
 	it("keeps the composer inside short terminals so no row is pushed off-screen", () => {
 		for (const screenHeight of [6, 8, 10, 12, 14, 16, 20, 24, 40]) {
 			const { popupHeight } = getTaskComposerLayout(80, screenHeight);
 			expect(popupHeight).toBeLessThanOrEqual(screenHeight);
 		}
 		expect(getTaskComposerLayout(80, 10).popupHeight).toBe(8);
+		for (const screenHeight of [8, 9, 10]) {
+			expect(getTaskComposerLayout(80, screenHeight).popupHeight).toBeGreaterThanOrEqual(8);
+		}
 	});
 
 	it("does not persist invalid input and preserves values after a failed attempt", async () => {
@@ -1568,6 +1583,107 @@ describe("TUI task composer interaction", () => {
 					status: "To Do",
 				},
 			]);
+		} finally {
+			screen.destroy();
+		}
+	});
+
+	it("keeps an editable row and visible cursor for both text fields at 8-10 terminal rows", async () => {
+		for (const screenHeight of [8, 9, 10]) {
+			const screen = createScreen({ smartCSR: false });
+			Object.defineProperty(screen, "width", { configurable: true, value: 80, writable: true });
+			Object.defineProperty(screen, "height", { configurable: true, value: screenHeight, writable: true });
+			const eventScreen = screen as unknown as {
+				focused?: TestWidget;
+				program?: { cursorHidden?: boolean };
+			};
+			try {
+				const resultPromise = openTaskComposer({
+					screen,
+					statuses: ["To Do", "In Progress", "Done"],
+					persist: async () => task(),
+				});
+				await settleComposerFocus();
+				const widgets = collectWidgets(screen as unknown as { children?: unknown[] });
+				const form = widgets.find((widget) => widget.type === "scrollable-box");
+				const title = widgets.find((widget) => widget.options?.label === " Title ");
+				const description = widgets.find((widget) => widget.options?.label === " Description ");
+				expect(form?.height).toBeGreaterThanOrEqual(3);
+
+				const expectEditableRowVisible = (input: TestWidget | undefined) => {
+					const fieldTop = Number(input?.position?.top ?? 0);
+					const firstEditableRow = fieldTop + 1;
+					const viewportTop = form?.childBase ?? 0;
+					const viewportBottom = viewportTop + (form?.height ?? 0);
+					expect(firstEditableRow).toBeGreaterThanOrEqual(viewportTop);
+					expect(firstEditableRow).toBeLessThan(viewportBottom);
+					expect(input?._reading).toBe(true);
+					expect(input?.getCursor?.()).toBeDefined();
+					expect(eventScreen.program?.cursorHidden).toBe(false);
+				};
+
+				expect(eventScreen.focused).toBe(title);
+				expectEditableRowVisible(title);
+				pressKey(eventScreen.focused, "tab", "\t");
+				expect(eventScreen.focused).toBe(description);
+				expectEditableRowVisible(description);
+
+				pressKey(eventScreen.focused, "escape", "\x1b");
+				expect(await withTimeout(resultPromise, `short ${screenHeight}-row composer cancellation`, 1000)).toBeNull();
+			} finally {
+				screen.destroy();
+			}
+		}
+	});
+
+	it("renders the longest shipped status and selector cue without clipping at 80 and 100 columns", async () => {
+		for (const screenWidth of [80, 100]) {
+			const screen = createScreen({ smartCSR: false });
+			Object.defineProperty(screen, "width", { configurable: true, value: screenWidth, writable: true });
+			Object.defineProperty(screen, "height", { configurable: true, value: 24, writable: true });
+			try {
+				const resultPromise = openTaskComposer({
+					screen,
+					statuses: ["In Progress", "To Do", "Done"],
+					persist: async () => task(),
+				});
+				await settleComposerFocus();
+				const status = collectWidgets(screen as unknown as { children?: unknown[] }).find(
+					(widget) => widget.content === "Status: In Progress ▼",
+				);
+				expect(status).toBeDefined();
+				expect(status?.content?.endsWith(" ▼")).toBe(true);
+				expect(status?.width).toBeGreaterThanOrEqual(Bun.stringWidth(status?.content ?? ""));
+
+				pressKey((screen as unknown as { focused?: TestWidget }).focused, "escape", "\x1b");
+				expect(await withTimeout(resultPromise, `${screenWidth}-column composer cancellation`, 1000)).toBeNull();
+			} finally {
+				screen.destroy();
+			}
+		}
+	});
+
+	it("stacks selector rows when configured content cannot fit a normal column", async () => {
+		const screen = createScreen({ smartCSR: false });
+		Object.defineProperty(screen, "width", { configurable: true, value: 100, writable: true });
+		Object.defineProperty(screen, "height", { configurable: true, value: 30, writable: true });
+		try {
+			const statusValue = "Waiting for external approval";
+			const resultPromise = openTaskComposer({
+				screen,
+				statuses: [statusValue, "Done"],
+				persist: async () => task(),
+			});
+			await settleComposerFocus();
+			const widgets = collectWidgets(screen as unknown as { children?: unknown[] });
+			const status = widgets.find((widget) => widget.content === `Status: ${statusValue} ▼`);
+			const type = widgets.find((widget) => widget.content === "Type: None ▼");
+			expect(status?.position?.top).toBe(7);
+			expect(type?.position?.top).toBe(8);
+			expect(status?.width).toBeGreaterThanOrEqual(Bun.stringWidth(status?.content ?? ""));
+
+			pressKey((screen as unknown as { focused?: TestWidget }).focused, "escape", "\x1b");
+			expect(await withTimeout(resultPromise, "content-constrained composer cancellation", 1000)).toBeNull();
 		} finally {
 			screen.destroy();
 		}
