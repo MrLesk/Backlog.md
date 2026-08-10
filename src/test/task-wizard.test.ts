@@ -41,6 +41,7 @@ describe("task wizard", () => {
 			status: "In Progress",
 			priority: "medium",
 			type: "epic",
+			dueDate: "2026-08-10T16:30+02:00",
 			assignee: "alice, @bob",
 			labels: "cli, wizard",
 			acceptanceCriteria: "[x] First criterion, Second criterion",
@@ -64,6 +65,7 @@ describe("task wizard", () => {
 		expect(input?.status).toBe("In Progress");
 		expect(input?.priority).toBe("medium");
 		expect(input?.type).toBe("Epic");
+		expect(input?.dueDate).toBe("2026-08-10 14:30");
 		expect(input?.assignee).toEqual(["alice", "@bob"]);
 		expect(input?.labels).toEqual(["cli", "wizard"]);
 		expect(input?.acceptanceCriteria).toEqual([
@@ -89,6 +91,7 @@ describe("task wizard", () => {
 			type: "Bug",
 			assignee: ["alice"],
 			createdDate: "2026-02-20 12:00",
+			dueDate: "2026-08-10 14:30",
 			labels: ["existing"],
 			dependencies: ["task-1"],
 			references: ["docs/old.md"],
@@ -112,6 +115,7 @@ describe("task wizard", () => {
 			status: "In Progress",
 			priority: "high",
 			type: "Epic",
+			dueDate: "",
 			assignee: "alice, bob",
 			labels: "existing, cli",
 			acceptanceCriteria: "[x] New AC 1, [ ] New AC 2",
@@ -136,6 +140,7 @@ describe("task wizard", () => {
 		expect(updateInput?.status).toBe("In Progress");
 		expect(updateInput?.priority).toBe("high");
 		expect(updateInput?.type).toBe("Epic");
+		expect(updateInput?.dueDate).toBeNull();
 		expect(updateInput?.assignee).toEqual(["alice", "bob"]);
 		expect(updateInput?.labels).toEqual(["existing", "cli"]);
 		expect(updateInput?.dependencies).toEqual(["task-2", "3"]);

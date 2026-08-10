@@ -27,6 +27,7 @@ import { formatValidPriorityValues, resolvePriorityValue } from "../utils/priori
 import { formatValidStatuses, getCanonicalStatuses, getValidStatuses } from "../utils/status.ts";
 import { isValidTaskId } from "../utils/task-id.ts";
 import { isAmbiguousTaskIdError } from "../utils/task-path.ts";
+import { normalizeUtcDateTime } from "../utils/utc-datetime.ts";
 import { getVersion } from "../utils/version.ts";
 
 // Regex pattern to match any prefix (letters followed by dash)
@@ -40,6 +41,23 @@ const DOCUMENT_TYPES = new Set<Document["type"]>(DOCUMENT_TYPE_VALUES);
  */
 function isDraftId(taskId: string): boolean {
 	return extractAnyPrefix(taskId) === DRAFT_PREFIX;
+}
+
+type DueDatePayloadResult = { ok: true; value: string | null | undefined } | { ok: false; error: string };
+
+function parseDueDatePayload(value: unknown, clearable: boolean): DueDatePayloadResult {
+	if (value === undefined) return { ok: true, value: undefined };
+	if (value === null) {
+		return clearable ? { ok: true, value: null } : { ok: false, error: "Due date must be a string." };
+	}
+	if (typeof value !== "string") {
+		return { ok: false, error: `Due date must be a string${clearable ? " or null" : ""}.` };
+	}
+	try {
+		return { ok: true, value: normalizeUtcDateTime(value, "Due date") };
+	} catch (error) {
+		return { ok: false, error: error instanceof Error ? error.message : String(error) };
+	}
 }
 
 class DocumentPayloadValidationError extends Error {
@@ -892,6 +910,8 @@ export class BacklogServer {
 		if (!payload || typeof payload.title !== "string" || payload.title.trim().length === 0) {
 			return Response.json({ error: "Title is required" }, { status: 400 });
 		}
+		const dueDate = parseDueDatePayload(payload.dueDate, false);
+		if (!dueDate.ok) return Response.json({ error: dueDate.error }, { status: 400 });
 
 		const acceptanceCriteria = Array.isArray(payload.acceptanceCriteriaItems)
 			? payload.acceptanceCriteriaItems
@@ -914,6 +934,7 @@ export class BacklogServer {
 
 			const { task: createdTask } = await this.core.createTaskFromInput({
 				title: payload.title,
+				dueDate: dueDate.value ?? undefined,
 				description: payload.description,
 				status: payload.status,
 				priority: payload.priority,
@@ -968,11 +989,17 @@ export class BacklogServer {
 
 	private async handleUpdateTask(req: Request, taskId: string): Promise<Response> {
 		const updates = await req.json();
+		const dueDate = parseDueDatePayload(updates?.dueDate, true);
+		if (!dueDate.ok) return Response.json({ error: dueDate.error }, { status: 400 });
 
 		const updateInput: TaskUpdateInput = {};
 
 		if ("title" in updates && typeof updates.title === "string") {
 			updateInput.title = updates.title;
+		}
+
+		if ("dueDate" in updates) {
+			updateInput.dueDate = dueDate.value ?? null;
 		}
 
 		if ("description" in updates && typeof updates.description === "string") {
@@ -1508,12 +1535,14 @@ export class BacklogServer {
 
 	private async handleCreateMilestone(req: Request): Promise<Response> {
 		try {
-			const body = (await req.json()) as { title?: string; description?: string };
+			const body = (await req.json()) as { title?: string; description?: string; dueDate?: unknown };
 			const title = body.title?.trim();
 
 			if (!title) {
 				return Response.json({ error: "Milestone title is required" }, { status: 400 });
 			}
+			const dueDate = parseDueDatePayload(body.dueDate, false);
+			if (!dueDate.ok) return Response.json({ error: dueDate.error }, { status: 400 });
 
 			// Check for duplicates
 			const existingMilestones = await this.core.filesystem.listMilestones();
@@ -1552,7 +1581,7 @@ export class BacklogServer {
 				return Response.json({ error: "A milestone with this title or ID already exists" }, { status: 400 });
 			}
 
-			const milestone = await this.core.filesystem.createMilestone(title, body.description);
+			const milestone = await this.core.filesystem.createMilestone(title, body.description, dueDate.value ?? undefined);
 			return Response.json(milestone, { status: 201 });
 		} catch (error) {
 			console.error("Error creating milestone:", error);
@@ -1565,6 +1594,8 @@ export class BacklogServer {
 			const body = await this.readOptionalJsonBody(req);
 			const title = typeof body.title === "string" ? body.title.trim() : "";
 			const updateTasks = typeof body.updateTasks === "boolean" ? body.updateTasks : true;
+			const dueDate = parseDueDatePayload(body.dueDate, true);
+			if (!dueDate.ok) return Response.json({ error: dueDate.error }, { status: 400 });
 
 			if (!title) {
 				return Response.json({ error: "Milestone title is required" }, { status: 400 });
@@ -1575,6 +1606,7 @@ export class BacklogServer {
 				from: milestoneId,
 				to: title,
 				updateTasks,
+				dueDate: "dueDate" in body ? (dueDate.value ?? null) : undefined,
 			});
 			const milestone =
 				(await this.core.filesystem.loadMilestone(sourceMilestone?.id ?? milestoneId)) ??

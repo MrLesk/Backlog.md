@@ -32,6 +32,7 @@ import {
 } from "../utils/task-path.ts";
 import { sortByTaskId } from "../utils/task-sorting.ts";
 import { matchesTaskTypeFilter } from "../utils/task-type-config.ts";
+import { normalizeUtcDateTime } from "../utils/utc-datetime.ts";
 
 // Interface for task path resolution context
 interface TaskPathContext {
@@ -1450,11 +1451,11 @@ export class FileSystem {
 		return `${id} - ${safeTitle}.md`;
 	}
 
-	private serializeMilestoneContent(id: string, title: string, rawContent: string): string {
+	private serializeMilestoneContent(id: string, title: string, rawContent: string, dueDate?: string): string {
 		return `---
 id: ${id}
 title: "${title.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"
----
+${dueDate ? `due_date: "${dueDate}"\n` : ""}---
 
 ${rawContent.trim()}
 `;
@@ -1569,24 +1570,26 @@ ${rawContent.trim()}
 	}
 
 	// Milestone operations
+	private async listMilestonesInDirectory(milestonesDir: string): Promise<Milestone[]> {
+		const milestoneFiles = await Array.fromAsync(
+			new Bun.Glob("m-*.md").scan({ cwd: milestonesDir, followSymlinks: true }),
+		);
+		const milestones: Milestone[] = [];
+		for (const file of milestoneFiles) {
+			if (file.toLowerCase() === "readme.md") continue;
+			try {
+				const content = await Bun.file(join(milestonesDir, file)).text();
+				milestones.push(parseMilestone(content));
+			} catch {
+				// Match task loading: one malformed file must not hide every valid item.
+			}
+		}
+		return milestones.sort((a, b) => a.id.localeCompare(b.id, undefined, { numeric: true }));
+	}
+
 	async listMilestones(): Promise<Milestone[]> {
 		try {
-			const milestonesDir = await this.getMilestonesDir();
-			const milestoneFiles = await Array.fromAsync(
-				new Bun.Glob("m-*.md").scan({ cwd: milestonesDir, followSymlinks: true }),
-			);
-			const milestones: Milestone[] = [];
-			for (const file of milestoneFiles) {
-				// Filter out README files
-				if (file.toLowerCase() === "readme.md") {
-					continue;
-				}
-				const filepath = join(milestonesDir, file);
-				const content = await Bun.file(filepath).text();
-				milestones.push(parseMilestone(content));
-			}
-			// Sort by ID for consistent ordering
-			return milestones.sort((a, b) => a.id.localeCompare(b.id, undefined, { numeric: true }));
+			return await this.listMilestonesInDirectory(await this.getMilestonesDir());
 		} catch {
 			return [];
 		}
@@ -1594,20 +1597,7 @@ ${rawContent.trim()}
 
 	async listArchivedMilestones(): Promise<Milestone[]> {
 		try {
-			const milestonesDir = await this.getArchiveMilestonesDir();
-			const milestoneFiles = await Array.fromAsync(
-				new Bun.Glob("m-*.md").scan({ cwd: milestonesDir, followSymlinks: true }),
-			);
-			const milestones: Milestone[] = [];
-			for (const file of milestoneFiles) {
-				if (file.toLowerCase() === "readme.md") {
-					continue;
-				}
-				const filepath = join(milestonesDir, file);
-				const content = await Bun.file(filepath).text();
-				milestones.push(parseMilestone(content));
-			}
-			return milestones.sort((a, b) => a.id.localeCompare(b.id, undefined, { numeric: true }));
+			return await this.listMilestonesInDirectory(await this.getArchiveMilestonesDir());
 		} catch {
 			return [];
 		}
@@ -1627,7 +1617,8 @@ ${rawContent.trim()}
 		}
 	}
 
-	async createMilestone(title: string, description?: string): Promise<Milestone> {
+	async createMilestone(title: string, description?: string, dueDate?: string): Promise<Milestone> {
+		const normalizedDueDate = normalizeUtcDateTime(dueDate, "Due date");
 		return await this.withCreateLock(async () => {
 			const milestonesDir = await this.getMilestonesDir();
 
@@ -1679,35 +1670,34 @@ ${rawContent.trim()}
 				`## Description
 
 ${description || `Milestone: ${title}`}`,
+				normalizedDueDate,
 			);
 
 			const filepath = join(milestonesDir, filename);
 			await Bun.write(filepath, content);
 
-			return {
-				id,
-				title,
-				description: description || `Milestone: ${title}`,
-				rawContent: parseMilestone(content).rawContent,
-			};
+			return parseMilestone(content);
 		});
 	}
 
 	async renameMilestone(
 		identifier: string,
 		title: string,
+		dueDate?: string | null,
 	): Promise<{
 		success: boolean;
 		sourcePath?: string;
 		targetPath?: string;
 		milestone?: Milestone;
 		previousTitle?: string;
+		previousDueDate?: string;
 	}> {
 		const normalizedTitle = title.trim();
 		if (!normalizedTitle) {
 			return { success: false };
 		}
 
+		const normalizedDueDate = dueDate === null ? undefined : normalizeUtcDateTime(dueDate, "Due date");
 		let sourcePath: string | undefined;
 		let targetPath: string | undefined;
 		let movedFile = false;
@@ -1730,7 +1720,8 @@ ${description || `Milestone: ${title}`}`,
 				milestone.title,
 				normalizedTitle,
 			);
-			const updatedContent = this.serializeMilestoneContent(milestone.id, normalizedTitle, nextRawContent);
+			const nextDueDate = dueDate === undefined ? milestone.dueDate : normalizedDueDate;
+			const updatedContent = this.serializeMilestoneContent(milestone.id, normalizedTitle, nextRawContent, nextDueDate);
 
 			if (sourcePath !== targetPath) {
 				if (await Bun.file(targetPath).exists()) {
@@ -1747,6 +1738,7 @@ ${description || `Milestone: ${title}`}`,
 				targetPath,
 				milestone: parseMilestone(updatedContent),
 				previousTitle: milestone.title,
+				previousDueDate: milestone.dueDate,
 			};
 		} catch {
 			try {

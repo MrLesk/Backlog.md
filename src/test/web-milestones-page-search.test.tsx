@@ -23,6 +23,7 @@ const milestoneEntities: Milestone[] = [
 	{
 		id: "m-1",
 		title: "Release 1",
+		dueDate: "2026-09-01 12:00",
 		description: "Milestone: Release 1",
 		rawContent: "## Description\n\nMilestone: Release 1",
 	},
@@ -173,6 +174,7 @@ describe("Web milestones page search", () => {
 		const text = container.textContent ?? "";
 
 		expect(text.indexOf("Release 1")).toBeLessThan(text.indexOf("Release 2"));
+		expect(text).toContain("Due (UTC):");
 	});
 
 	it("searching one milestone still renders other milestone sections", () => {
@@ -260,10 +262,10 @@ describe("Web milestones page search", () => {
 	});
 
 	it("submits milestone edits through the API and refreshes data", async () => {
-		let updateArgs: [string, string] | undefined;
+		let updateArgs: [string, string, string | null | undefined] | undefined;
 		let refreshCount = 0;
-		apiClient.updateMilestone = async (id: string, title: string) => {
-			updateArgs = [id, title];
+		apiClient.updateMilestone = async (id: string, title: string, dueDate?: string | null) => {
+			updateArgs = [id, title, dueDate];
 			return { success: true, milestone: { ...milestoneEntities[0]!, title } };
 		};
 
@@ -280,10 +282,14 @@ describe("Web milestones page search", () => {
 		const input = container.querySelector("#edit-milestone-name") as HTMLInputElement | null;
 		expect(input).toBeTruthy();
 		setInputValue(input as HTMLInputElement, "Release 1.1");
+		const dueDateInput = container.querySelector("#edit-milestone-due-date") as HTMLInputElement | null;
+		expect(dueDateInput?.value).toBe("2026-09-01T12:00");
+		setInputValue(dueDateInput as HTMLInputElement, "2026-09-02T13:30");
 		await submitForm(input?.closest("form") as HTMLFormElement);
 
 		expect(updateArgs?.[0]).toBe("m-1");
 		expect(updateArgs?.[1]).toBe("Release 1.1");
+		expect(updateArgs?.[2]).toBe("2026-09-02T13:30");
 		expect(refreshCount).toBe(1);
 	});
 

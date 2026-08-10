@@ -21,6 +21,11 @@ export const milestoneAddSchema: JsonSchema = {
 			maxLength: 2000,
 			description: "Optional description for the milestone",
 		},
+		dueDate: {
+			type: "string",
+			maxLength: 64,
+			description: "Optional UTC milestone due datetime; date-only values are rejected",
+		},
 	},
 	required: ["name"],
 	additionalProperties: false,
@@ -45,6 +50,11 @@ export const milestoneRenameSchema: JsonSchema = {
 			type: "boolean",
 			description: "Whether to update local tasks that reference the milestone (default: true)",
 			default: true,
+		},
+		dueDate: {
+			type: ["string", "null"],
+			maxLength: 64,
+			description: "Set the UTC milestone due datetime, or pass null to clear it",
 		},
 	},
 	required: ["from", "to"],

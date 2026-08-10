@@ -36,7 +36,8 @@ interface Props {
 
 type Mode = "preview" | "edit" | "create";
 
-type TaskUpdatePayload = Partial<Task> & {
+type TaskUpdatePayload = Omit<Partial<Task>, "dueDate"> & {
+	dueDate?: string | null;
   definitionOfDoneAdd?: string[];
   definitionOfDoneRemove?: number[];
   definitionOfDoneCheck?: number[];
@@ -68,6 +69,7 @@ type TaskDetailsFormState = {
   references: string[];
   modifiedFiles: string[];
   milestone: string;
+  dueDate: string;
 };
 
 const containsCommentDelimiterLine = (value: string): boolean => /^\s*---\s*$/m.test(value.replace(/\r\n/g, "\n"));
@@ -131,6 +133,7 @@ const buildTaskDetailsFormState = ({
   references: task?.references || [],
   modifiedFiles: task?.modifiedFiles || [],
   milestone: task?.milestone || "",
+  dueDate: task?.dueDate?.replace(" ", "T") || "",
 });
 
 const SectionHeader: React.FC<{ title: string; right?: React.ReactNode }> = ({ title, right }) => (
@@ -357,6 +360,7 @@ export const TaskDetailsModal: React.FC<Props> = ({
   const [references, setReferences] = useState<string[]>(task?.references || []);
   const [modifiedFiles, setModifiedFiles] = useState<string[]>(task?.modifiedFiles || []);
   const [milestone, setMilestone] = useState<string>(task?.milestone || "");
+  const [dueDate, setDueDate] = useState<string>(task?.dueDate?.replace(" ", "T") || "");
   const canonicalTypeSelection = resolveTaskTypeValue(taskType, typeOptions);
   const typeSelectionValue = canonicalTypeSelection ?? taskType;
   const milestoneSelectionValue = resolveMilestoneToId(milestone);
@@ -414,6 +418,7 @@ export const TaskDetailsModal: React.FC<Props> = ({
     plan: task?.implementationPlan || "",
     notes: task?.implementationNotes || "",
     finalSummary: task?.finalSummary || "",
+    dueDate: task?.dueDate?.replace(" ", "T") || "",
     criteria: JSON.stringify(task?.acceptanceCriteriaItems || []),
     definitionOfDone: JSON.stringify(task?.definitionOfDoneItems || (isCreateMode ? defaultDefinitionOfDone : [])),
   }), [task, defaultDefinitionOfDone, isCreateMode]);
@@ -425,10 +430,11 @@ export const TaskDetailsModal: React.FC<Props> = ({
       plan !== baseline.plan ||
       notes !== baseline.notes ||
       finalSummary !== baseline.finalSummary ||
+      dueDate !== baseline.dueDate ||
       JSON.stringify(criteria) !== baseline.criteria ||
       JSON.stringify(definitionOfDone) !== baseline.definitionOfDone
     );
-  }, [title, description, plan, notes, finalSummary, criteria, definitionOfDone, baseline]);
+  }, [title, description, plan, notes, finalSummary, dueDate, criteria, definitionOfDone, baseline]);
 
   useEffect(() => {
     modeRef.current = mode;
@@ -553,6 +559,7 @@ export const TaskDetailsModal: React.FC<Props> = ({
       setMilestone((current) =>
         preserveDirtyRefreshValue(current, previousFormState.milestone, nextFormState.milestone),
       );
+      setDueDate((current) => preserveDirtyRefreshValue(current, previousFormState.dueDate, nextFormState.dueDate));
       setMode(shouldPreserveEditMode ? "edit" : isCreateMode ? "create" : modeRef.current);
       preserveEditModeAfterCommentRefresh.current = false;
       previousTaskId.current = nextTaskId;
@@ -583,6 +590,7 @@ export const TaskDetailsModal: React.FC<Props> = ({
     setReferences(nextFormState.references);
     setModifiedFiles(nextFormState.modifiedFiles);
     setMilestone(nextFormState.milestone);
+    setDueDate(nextFormState.dueDate);
     setMode(isCreateMode ? "create" : "preview");
     preserveEditModeAfterCommentRefresh.current = false;
     previousTaskId.current = nextTaskId;
@@ -605,6 +613,7 @@ export const TaskDetailsModal: React.FC<Props> = ({
       taskType.trim() !== "" ||
       priority.trim() !== "" ||
       milestone.trim() !== "" ||
+      dueDate.trim() !== "" ||
       // The prefilled default is not the user's work, but removing or replacing it is.
       !areJsonEqual(assignee, createModeAssignee) ||
       labels.length > 0 ||
@@ -648,6 +657,7 @@ export const TaskDetailsModal: React.FC<Props> = ({
       setCommentBody("");
       setCommentAuthor("");
       setFinalSummary(task?.finalSummary || "");
+      setDueDate(task?.dueDate?.replace(" ", "T") || "");
       setCriteria(task?.acceptanceCriteriaItems || []);
       setDefinitionOfDone(task?.definitionOfDoneItems || []);
       setMode("preview");
@@ -779,6 +789,7 @@ export const TaskDetailsModal: React.FC<Props> = ({
         priority: priority === "" ? undefined : priority,
         dependencies,
         milestone: milestone.trim().length > 0 ? milestone.trim() : undefined,
+        dueDate: dueDate.trim().length > 0 ? dueDate.trim() : isCreateMode ? undefined : null,
       };
 
       if (isCreateMode) {
@@ -788,7 +799,7 @@ export const TaskDetailsModal: React.FC<Props> = ({
       if (isCreateMode && onSubmit) {
         Object.assign(taskData, buildDefinitionOfDoneCreatePayload());
         // Create new task
-        await onSubmit(taskData);
+        await onSubmit({ ...taskData, dueDate: taskData.dueDate ?? undefined } as Partial<Task>);
         // Only close if successful (no error thrown)
         onClose();
       } else if (task) {
@@ -1568,8 +1579,22 @@ export const TaskDetailsModal: React.FC<Props> = ({
 	              {task.updatedDate && (
 	                <div><span className="font-semibold text-gray-800 dark:text-gray-100">Updated:</span> <span className="text-gray-700 dark:text-gray-200">{formatStoredUtcDateForDisplay(task.updatedDate, dateFormat)}</span></div>
 	              )}
+	              {task.dueDate && mode === "preview" && (
+	                <div><span className="font-semibold text-gray-800 dark:text-gray-100">Due (UTC):</span> <span className="text-gray-700 dark:text-gray-200">{formatStoredUtcDateForDisplay(task.dueDate, dateFormat)}</span></div>
+	              )}
 	            </div>
 	          )}
+          {mode !== "preview" && (
+            <div className="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-3">
+              <SectionHeader title="Due (UTC)" />
+              <input
+                type="datetime-local"
+                value={dueDate}
+                onChange={(event) => setDueDate(event.target.value)}
+                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md text-sm bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400 focus:border-transparent"
+              />
+            </div>
+          )}
           {/* Title (editable for existing tasks) */}
           {task && (
             <div className="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-3">

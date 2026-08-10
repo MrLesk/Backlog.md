@@ -31,6 +31,7 @@ describe("CLI JSON output", () => {
 				reporter: "@sam",
 				createdDate: "2026-07-14 09:30",
 				updatedDate: "2026-07-14 10:45",
+				dueDate: "2026-08-10 14:30",
 				labels: ["cli", "json"],
 				milestone: "m-1",
 				dependencies: ["TASK-2"],
@@ -107,6 +108,7 @@ describe("CLI JSON output", () => {
 					ordinal: 1000,
 					createdAt: "2026-07-14T09:30:00Z",
 					updatedAt: "2026-07-14T10:45:00Z",
+					dueDate: "2026-08-10T14:30:00Z",
 				},
 			],
 		});
@@ -164,6 +166,7 @@ describe("CLI JSON output", () => {
 			]);
 			expect(output.task.subtasks).toEqual([]);
 			expect(output.task.finalSummary).toBe("Ready for review");
+			expect(output.task.dueDate).toBe("2026-08-10T14:30:00Z");
 			expect(output.task.rawContent).toBeUndefined();
 			expect(output.task.filePath).toBeUndefined();
 			expect(output.task.branch).toBeUndefined();

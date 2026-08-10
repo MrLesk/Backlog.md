@@ -11,7 +11,11 @@ import { collectAvailableLabels } from "../../utils/label-filter.ts";
 import { compareTaskIds, compareTaskIdsDescending } from "../../utils/task-sorting.ts";
 import { isTerminalStatus } from "../../utils/terminal-status.ts";
 import { collectArchivedMilestoneKeys, getMilestoneLabel, milestoneKey } from "../utils/milestones";
-import { formatStoredUtcDateForCompactDisplay, parseStoredUtcDate } from "../utils/date-display";
+import {
+	formatStoredUtcDateForCompactDisplay,
+	formatStoredUtcDateForDisplay,
+	parseStoredUtcDate,
+} from "../utils/date-display";
 import {
 	formatPriorityLabel,
 	getPriorityOptions,
@@ -907,6 +911,11 @@ const TaskList: React.FC<TaskListProps> = ({
 													)}
 												</div>
 												<AcceptanceCriteriaProgress task={task} cells={10} className="mt-1" />
+												{task.dueDate && (
+													<div className="mt-1 text-xs text-gray-500 dark:text-gray-400 whitespace-nowrap">
+														Due (UTC): {formatStoredUtcDateForDisplay(task.dueDate, dateFormat)}
+													</div>
+												)}
 											</td>
 											<td className="px-3 py-2.5">
 												<span className={`inline-flex rounded-circle px-2 py-0.5 text-[11px] font-medium ${getStatusColor(task.status)}`}>

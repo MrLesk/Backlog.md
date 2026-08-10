@@ -112,6 +112,9 @@ export function formatTaskPlainText(task: Task, options: TaskPlainTextOptions = 
 	if (task.updatedDate) {
 		lines.push(`Updated: ${formatDateForDisplay(task.updatedDate, plainDateDisplayOptions)}`);
 	}
+	if (task.dueDate) {
+		lines.push(`Due: ${formatDateForDisplay(task.dueDate, plainDateDisplayOptions)}`);
+	}
 
 	if (task.labels?.length) {
 		lines.push(`Labels: ${task.labels.join(", ")}`);

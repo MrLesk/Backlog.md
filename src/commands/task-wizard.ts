@@ -6,6 +6,7 @@ import type { AcceptanceCriterion, Task, TaskCreateInput, TaskUpdateInput } from
 import { getPriorityOptions, normalizePriorityValue } from "../utils/priority-config.ts";
 import { normalizeStringList } from "../utils/task-builders.ts";
 import { getTaskTypeValues, resolveTaskTypeValue } from "../utils/task-type-config.ts";
+import { normalizeUtcDateTime } from "../utils/utc-datetime.ts";
 
 interface TaskWizardValues {
 	title: string;
@@ -13,6 +14,7 @@ interface TaskWizardValues {
 	status: string;
 	priority: string;
 	type: string;
+	dueDate: string;
 	assignee: string;
 	labels: string;
 	acceptanceCriteria: string;
@@ -437,6 +439,19 @@ async function runTaskWizardValues(params: {
 			},
 			{
 				type: "text",
+				name: "dueDate",
+				message: "Due date (UTC datetime; blank for none)",
+				validate: (value) => {
+					try {
+						normalizeUtcDateTime(value, "Due date");
+						return undefined;
+					} catch (error) {
+						return error instanceof Error ? error.message : "Invalid due date.";
+					}
+				},
+			},
+			{
+				type: "text",
 				name: "assignee",
 				message:
 					params.mode === "create"
@@ -542,6 +557,7 @@ async function runTaskWizardValues(params: {
 			status: canonicalStatus,
 			priority: normalizePriorityValue(values.priority) ?? "",
 			type: resolveTaskTypeValue(values.type, params.types) ?? values.type.trim(),
+			dueDate: normalizeUtcDateTime(values.dueDate, "Due date") ?? "",
 			assignee: values.assignee,
 			labels: values.labels,
 			acceptanceCriteria: values.acceptanceCriteria,
@@ -597,6 +613,7 @@ function toInitialWizardValues(input: { title?: string } & Partial<Task>): TaskW
 		status: input.status ?? "",
 		priority: input.priority ?? "",
 		type: input.type ?? "",
+		dueDate: input.dueDate ?? "",
 		assignee: formatListInput(input.assignee),
 		labels: formatListInput(input.labels),
 		acceptanceCriteria: formatChecklistInput(input.acceptanceCriteriaItems),
@@ -631,6 +648,7 @@ export async function runTaskCreateWizard(
 	const parsedPriority = priority.length > 0 ? priority : undefined;
 	const type = values.type.trim();
 	const parsedType = type.length > 0 ? type : undefined;
+	const dueDate = normalizeUtcDateTime(values.dueDate, "Due date");
 	const assignee = parseListInput(values.assignee);
 	const labels = parseListInput(values.labels);
 	const references = parseListInput(values.references);
@@ -648,6 +666,7 @@ export async function runTaskCreateWizard(
 		...(values.status.trim().length > 0 && { status: values.status }),
 		...(parsedPriority && { priority: parsedPriority }),
 		...(parsedType && { type: parsedType }),
+		...(dueDate && { dueDate }),
 		...(assignee.length > 0 && { assignee }),
 		...(labels.length > 0 && { labels }),
 		...(dependencies.length > 0 && { dependencies }),
@@ -694,6 +713,9 @@ export async function runTaskEditWizard(
 	}
 	if (values.type !== initial.type) {
 		updateInput.type = values.type;
+	}
+	if (values.dueDate !== initial.dueDate) {
+		updateInput.dueDate = values.dueDate || null;
 	}
 
 	const initialAssignee = parseListInput(initial.assignee);

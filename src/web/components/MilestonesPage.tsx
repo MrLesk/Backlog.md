@@ -6,6 +6,7 @@ import { buildMilestoneBuckets, collectArchivedMilestoneKeys, isDoneStatus, mile
 import { type Milestone, type MilestoneBucket, type Task } from "../../types";
 import MilestoneTaskRow from "./MilestoneTaskRow";
 import Modal from "./Modal";
+import { formatStoredUtcDateForDisplay } from "../utils/date-display";
 
 interface MilestoneSearchEntry {
 	id: string;
@@ -59,6 +60,7 @@ const MilestonesPage: React.FC<MilestonesPageProps> = ({
 	onRefreshData,
 }) => {
 	const [newMilestone, setNewMilestone] = useState("");
+	const [newMilestoneDueDate, setNewMilestoneDueDate] = useState("");
 	const [error, setError] = useState<string | null>(null);
 	const [success, setSuccess] = useState<string | null>(null);
 	const [isSaving, setIsSaving] = useState(false);
@@ -73,6 +75,7 @@ const MilestonesPage: React.FC<MilestonesPageProps> = ({
 	const [removingMilestoneKey, setRemovingMilestoneKey] = useState<string | null>(null);
 	const [editingBucket, setEditingBucket] = useState<MilestoneBucket | null>(null);
 	const [editMilestoneName, setEditMilestoneName] = useState("");
+	const [editMilestoneDueDate, setEditMilestoneDueDate] = useState("");
 	const [removingBucket, setRemovingBucket] = useState<MilestoneBucket | null>(null);
 	const [removeTaskHandling, setRemoveTaskHandling] = useState<RemoveTaskHandling>("clear");
 	const [removeReassignTo, setRemoveReassignTo] = useState("");
@@ -233,6 +236,7 @@ const MilestonesPage: React.FC<MilestonesPageProps> = ({
 	const closeAddModal = () => {
 		setShowAddModal(false);
 		setNewMilestone("");
+		setNewMilestoneDueDate("");
 		setError(null);
 	};
 
@@ -249,8 +253,9 @@ const MilestonesPage: React.FC<MilestonesPageProps> = ({
 		setError(null);
 		setSuccess(null);
 		try {
-			await apiClient.createMilestone(value);
+			await apiClient.createMilestone(value, undefined, newMilestoneDueDate || undefined);
 			setNewMilestone("");
+			setNewMilestoneDueDate("");
 			setSuccess(`Added milestone "${value}"`);
 			setShowAddModal(false);
 			if (onRefreshData) {
@@ -310,6 +315,8 @@ const MilestonesPage: React.FC<MilestonesPageProps> = ({
 		if (!bucket.milestone) return;
 		setEditingBucket(bucket);
 		setEditMilestoneName(bucket.label || bucket.milestone);
+		const milestone = milestoneEntities.find((candidate) => milestoneKey(candidate.id) === milestoneKey(bucket.milestone));
+		setEditMilestoneDueDate(milestone?.dueDate?.replace(" ", "T") ?? "");
 		setModalError(null);
 		setError(null);
 		setSuccess(null);
@@ -318,6 +325,7 @@ const MilestonesPage: React.FC<MilestonesPageProps> = ({
 	const closeEditModal = () => {
 		setEditingBucket(null);
 		setEditMilestoneName("");
+		setEditMilestoneDueDate("");
 		setModalError(null);
 	};
 
@@ -351,9 +359,9 @@ const MilestonesPage: React.FC<MilestonesPageProps> = ({
 		setError(null);
 		setSuccess(null);
 		try {
-			await apiClient.updateMilestone(bucket.milestone, value);
+			await apiClient.updateMilestone(bucket.milestone, value, editMilestoneDueDate || null);
 			closeEditModal();
-			setSuccess(`Renamed milestone "${previousLabel}" to "${value}"`);
+			setSuccess(previousLabel === value ? `Updated milestone "${value}"` : `Renamed milestone "${previousLabel}" to "${value}"`);
 			if (onRefreshData) {
 				await onRefreshData();
 			}
@@ -489,6 +497,9 @@ const MilestonesPage: React.FC<MilestonesPageProps> = ({
 		const isArchiving = archivingMilestoneKey === bucket.key;
 		const isSavingMilestone = savingMilestoneKey === bucket.key;
 		const isRemoving = removingMilestoneKey === bucket.key;
+		const milestoneEntity = milestoneEntities.find(
+			(milestone) => milestoneKey(milestone.id) === milestoneKey(bucket.milestone ?? ""),
+		);
 
 		return (
 			<div
@@ -507,9 +518,14 @@ const MilestonesPage: React.FC<MilestonesPageProps> = ({
 				<div className="px-5 py-4">
 					{/* Header row */}
 					<div className="flex items-center justify-between gap-4">
-						<h3 className="text-base font-semibold text-gray-900 dark:text-gray-100 truncate">
-							{bucket.label}
-						</h3>
+						<div className="min-w-0">
+							<h3 className="text-base font-semibold text-gray-900 dark:text-gray-100 truncate">{bucket.label}</h3>
+							{milestoneEntity?.dueDate && (
+								<p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+									Due (UTC): {formatStoredUtcDateForDisplay(milestoneEntity.dueDate)}
+								</p>
+							)}
+						</div>
 						{isEmpty ? (
 							<span className="text-sm text-gray-400 dark:text-gray-500">
 								{isDragging ? "Drop here" : "No tasks"}
@@ -910,6 +926,18 @@ const MilestonesPage: React.FC<MilestonesPageProps> = ({
 						/>
 						{error && <p className="text-xs text-red-600 dark:text-red-400">{error}</p>}
 					</div>
+					<div className="space-y-2">
+						<label htmlFor="new-milestone-due-date" className="text-sm font-medium text-gray-900 dark:text-gray-100">
+							Due (UTC)
+						</label>
+						<input
+							id="new-milestone-due-date"
+							type="datetime-local"
+							value={newMilestoneDueDate}
+							onChange={(event) => setNewMilestoneDueDate(event.target.value)}
+							className="w-full rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 px-3 py-2 text-sm text-gray-900 dark:text-gray-100 focus:border-transparent focus:outline-none focus:ring-2 focus:ring-blue-500"
+						/>
+					</div>
 					<div className="flex justify-end gap-2">
 						<button
 							type="button"
@@ -948,6 +976,18 @@ const MilestonesPage: React.FC<MilestonesPageProps> = ({
 							Renaming updates local tasks that reference this milestone.
 						</p>
 						{modalError && <p className="text-xs text-red-600 dark:text-red-400">{modalError}</p>}
+					</div>
+					<div className="space-y-2">
+						<label htmlFor="edit-milestone-due-date" className="text-sm font-medium text-gray-900 dark:text-gray-100">
+							Due (UTC)
+						</label>
+						<input
+							id="edit-milestone-due-date"
+							type="datetime-local"
+							value={editMilestoneDueDate}
+							onChange={(event) => setEditMilestoneDueDate(event.target.value)}
+							className="w-full rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 px-3 py-2 text-sm text-gray-900 dark:text-gray-100 focus:border-transparent focus:outline-none focus:ring-2 focus:ring-blue-500"
+						/>
 					</div>
 					<div className="flex justify-end gap-2">
 						<button

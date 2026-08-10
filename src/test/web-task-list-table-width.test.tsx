@@ -59,7 +59,15 @@ const renderTaskList = (): HTMLElement => {
 		activeRoot?.render(
 			<MemoryRouter>
 				<TaskList
-					tasks={[createTask({ id: "task-101", title: "Fit the task table", labels: ["ui"], assignee: ["@alex"] })]}
+					tasks={[
+						createTask({
+							id: "task-101",
+							title: "Fit the task table",
+							dueDate: "2026-08-10 14:30",
+							labels: ["ui"],
+							assignee: ["@alex"],
+						}),
+					]}
 					availableStatuses={["To Do", "In Progress", "Done"]}
 					availableLabels={["ui"]}
 					availableMilestones={[]}
@@ -103,6 +111,7 @@ describe("TaskList table width budget", () => {
 
 		expect(headers).toEqual(EXPECTED_HEADERS);
 		expect(container.querySelectorAll("tbody tr td")).toHaveLength(EXPECTED_HEADERS.length);
+		expect(container.textContent).toContain("Due (UTC): 2026-08-10 14:30");
 	});
 
 	it("leaves Title as the only flexible column", () => {

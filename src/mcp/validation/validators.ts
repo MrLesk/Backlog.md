@@ -2,7 +2,7 @@
  * JSON Schema validator interface
  */
 export interface JsonSchema {
-	type?: string; // Optional to allow "any type" schemas
+	type?: string | string[]; // Optional to allow "any type" schemas; arrays support nullable public schemas
 	properties?: Record<string, JsonSchema>;
 	required?: string[];
 	items?: JsonSchema;
@@ -98,8 +98,15 @@ function validateField(
 		return { isValid: true, errors: [], sanitizedValue: value };
 	}
 
+	// Nullable schemas use a JSON Schema type union. Null has already returned above, so
+	// validate the value against the union's concrete type.
+	const schemaType = Array.isArray(schema.type) ? schema.type.find((type) => type !== "null") : schema.type;
+	if (!schemaType) {
+		return { isValid: false, errors: [`Unknown schema type '${String(schema.type)}' for field '${fieldName}'`] };
+	}
+
 	// Type validation
-	switch (schema.type) {
+	switch (schemaType) {
 		case "string": {
 			if (typeof value !== "string") {
 				errors.push(`Field '${fieldName}' must be a string`);
@@ -203,7 +210,7 @@ function validateField(
 		}
 
 		default: {
-			errors.push(`Unknown schema type '${schema.type}' for field '${fieldName}'`);
+			errors.push(`Unknown schema type '${schemaType}' for field '${fieldName}'`);
 		}
 	}
 
