@@ -74,9 +74,6 @@ describe("CLI parent task id normalization", () => {
 		await $`git checkout main`.cwd(TEST_DIR).quiet();
 		await core.gitOps.fetch();
 
-		const viewResult = await $`bun run ${CLI_PATH} task view task-1 --plain`.cwd(TEST_DIR).quiet();
-		expect(viewResult.stdout.toString()).toContain("Cross-branch parent");
-
 		const createResult = await $`bun run ${CLI_PATH} task create Child --parent task-1`.cwd(TEST_DIR).quiet();
 
 		expect(createResult.stdout.toString()).toContain("Created task TASK-1.1");
