@@ -660,6 +660,35 @@ describe("BacklogServer task SPA fallback", () => {
 		expect(((await response.json()) as Task).title).toBe("Local legacy task");
 	});
 
+	it("serves the default task list from the content store instead of re-reading the working copy", async () => {
+		await restartWithActiveBranchCollision("BACK-001", true);
+		// Warm the store so the counted requests measure steady-state list serving.
+		expect((await request("/api/tasks")).status).toBe(200);
+
+		const serverFilesystem = (server as unknown as { core: { filesystem: FileSystem } }).core.filesystem;
+		const originalListTasks = serverFilesystem.listTasks.bind(serverFilesystem);
+		let workingCopyScans = 0;
+		serverFilesystem.listTasks = async (...args) => {
+			workingCopyScans += 1;
+			return await originalListTasks(...args);
+		};
+
+		try {
+			const defaultList = await request("/api/tasks");
+			expect(defaultList.status).toBe(200);
+			expect(((await defaultList.json()) as Task[]).map((task) => task.id)).toContain("BACK-099");
+			expect(workingCopyScans).toBe(0);
+
+			// The explicit local view still costs a working-copy read, which is why it must not be the default.
+			const localList = await request("/api/tasks?crossBranch=false");
+			expect(localList.status).toBe(200);
+			expect(((await localList.json()) as Task[]).map((task) => task.id)).not.toContain("BACK-099");
+			expect(workingCopyScans).toBeGreaterThan(0);
+		} finally {
+			serverFilesystem.listTasks = originalListTasks;
+		}
+	});
+
 	it("reopens the local task after a browser save with an inherited active branch", async () => {
 		await restartWithActiveBranchCollision("BACK-1");
 

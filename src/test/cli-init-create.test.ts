@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { $ } from "bun";
 import { CLI_AGENT_NUDGE, Core, isGitRepository } from "../index.ts";
 import { BACKLOG_CWD_ENV } from "../utils/runtime-cwd.ts";
+import { LOCAL_TASK_LOOKUP_HINT } from "../utils/task-path.ts";
 import { getTestCliPath } from "./test-cli.ts";
 import { createUniqueTestDir, initializeTestProject, safeCleanup } from "./test-utils.ts";
 
@@ -585,7 +586,9 @@ describe("CLI Integration", () => {
 			expect(task?.assignee).toEqual([]);
 		});
 
-		it("should accept dependencies from other active branches", async () => {
+		// Dependency validation shares the working-copy corpus with every other task lookup, so a
+		// dependency the CLI could never resolve afterwards is refused up front.
+		it("should reject dependencies that exist only on another active branch", async () => {
 			const core = new Core(TEST_DIR);
 
 			const remoteDir = join(TEST_DIR, "remote.git");
@@ -614,14 +617,18 @@ describe("CLI Integration", () => {
 
 			const visibleTasks = await core.queryTasks();
 			expect(visibleTasks.some((task) => task.id === "TASK-1")).toBe(true);
+			expect((await core.filesystem.listTasks()).some((task) => task.id === "TASK-1")).toBe(false);
 
-			const output = await $`bun ${CLI_PATH} task create "Depends on feature task" --depends-on task-1`
+			const result = await $`bun ${CLI_PATH} task create "Depends on feature task" --depends-on task-1`
 				.cwd(TEST_DIR)
-				.text();
-			const createdTask = await core.filesystem.loadTask("task-2");
+				.nothrow()
+				.quiet();
+			const output = `${result.stdout.toString()}${result.stderr.toString()}`;
 
-			expect(output).toContain("Created task TASK-2");
-			expect(createdTask?.dependencies).toEqual(["TASK-1"]);
+			expect(result.exitCode).toBe(1);
+			expect(output).toContain("The following dependencies do not exist: task-1");
+			expect(output).toContain(LOCAL_TASK_LOOKUP_HINT);
+			expect(await core.filesystem.loadTask("task-2")).toBeNull();
 		});
 	});
 });

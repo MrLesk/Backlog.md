@@ -68,9 +68,11 @@ import {
 	canonicalTaskId,
 	getDraftPath,
 	getTaskPath,
+	LOCAL_TASK_LOOKUP_HINT,
 	normalizeTaskId,
 	taskIdsEqual,
 } from "../utils/task-path.ts";
+import { createTaskSearchIndex } from "../utils/task-search.ts";
 import { attachSubtaskSummaries } from "../utils/task-subtasks.ts";
 import { formatValidTaskTypeValues, matchesTaskTypeFilter, resolveTaskTypeValue } from "../utils/task-type-config.ts";
 import { upsertTaskUpdatedDate } from "../utils/task-updated-date.ts";
@@ -137,6 +139,10 @@ interface TaskQueryOptions {
 	filters?: TaskListFilter;
 	query?: string;
 	limit?: number;
+	includeCrossBranch?: boolean;
+}
+
+interface TaskReadOptions {
 	includeCrossBranch?: boolean;
 }
 
@@ -210,6 +216,13 @@ function formatAvailableIndexHint(items: AcceptanceCriterion[], emptyMessage: st
 	return `Available indexes: ${range}.`;
 }
 
+/** Dependencies are validated against the working copy on both the create and the edit path. */
+function formatMissingDependenciesError(invalid: string[]): Error {
+	return new Error(
+		`The following dependencies do not exist: ${invalid.join(", ")}. Please create these tasks first or verify the IDs. ${LOCAL_TASK_LOOKUP_HINT}`,
+	);
+}
+
 export class Core {
 	public fs: FileSystem;
 	public git: GitOperations;
@@ -237,6 +250,7 @@ export class Core {
 		branchRecords: BranchTaskStateEntry[],
 		statuses: string[],
 		resolutionStrategy: "most_recent" | "most_progressed",
+		repositoryRoot?: string | null,
 	): Promise<TaskIdentityIndex> {
 		const records: TaskIdentityRecord[] = [];
 		for (const task of localTasks) {
@@ -266,7 +280,7 @@ export class Core {
 		return new TaskIdentityIndex(
 			records,
 			{
-				repositoryRoot: await this.git.getRepositoryRoot(),
+				repositoryRoot: repositoryRoot === undefined ? await this.git.getRepositoryRoot() : repositoryRoot,
 				projectRoot: this.fs.rootDir,
 				backlogDirectory: this.fs.backlogDirName,
 			},
@@ -637,6 +651,12 @@ export class Core {
 			return filtered;
 		};
 
+		if (!includeCrossBranch) {
+			const localTasks = await this.fs.listTasks();
+			const tasks = trimmedQuery ? createTaskSearchIndex(localTasks).search({ query: trimmedQuery }) : localTasks;
+			return await applyFiltersAndLimit(tasks);
+		}
+
 		if (!trimmedQuery) {
 			const store = await this.getContentStore();
 			await this.refreshCachedTasksForCrossBranchRead(includeCrossBranch);
@@ -698,8 +718,11 @@ export class Core {
 		return identityResolution.status === "found" ? identityResolution.task : null;
 	}
 
-	async getTaskWithSubtasks(taskId: string, localTasks?: Task[]): Promise<Task | null> {
-		const task = await this.getTask(taskId);
+	async getTaskWithSubtasks(taskId: string, localTasks?: Task[], options: TaskReadOptions = {}): Promise<Task | null> {
+		const task =
+			options.includeCrossBranch === false
+				? await this.loadWorkingCopyTask(taskId, false, localTasks)
+				: await this.getTask(taskId);
 		if (!task) {
 			return null;
 		}
@@ -708,11 +731,35 @@ export class Core {
 		return attachSubtaskSummaries(task, tasks);
 	}
 
-	async loadTaskById(taskId: string): Promise<Task | null> {
-		return await this.getTask(taskId);
+	async loadTaskById(taskId: string, options: TaskReadOptions = {}): Promise<Task | null> {
+		return options.includeCrossBranch === false
+			? await this.loadWorkingCopyTask(taskId, false)
+			: await this.getTask(taskId);
 	}
 
-	private async loadLocalTaskForMutation(taskId: string): Promise<Task | null> {
+	private async loadWorkingCopyTask(taskId: string, forMutation: boolean, activeTasks?: Task[]): Promise<Task | null> {
+		const [localTasks, completedTasks, config] = await Promise.all([
+			activeTasks ? Promise.resolve(activeTasks) : this.fs.listTasks(),
+			this.fs.listCompletedTasks(),
+			this.fs.loadConfig(),
+		]);
+		const index = await this.buildTaskIdentityIndex(
+			localTasks,
+			completedTasks,
+			[],
+			config?.statuses ?? [...DEFAULT_STATUSES],
+			config?.taskResolutionStrategy ?? "most_progressed",
+			null,
+		);
+		const resolution = forMutation ? index.resolveForMutation(taskId) : index.resolveForRead(taskId);
+		if (resolution.status === "ambiguous") throw new AmbiguousTaskIdError(taskId, resolution.candidates);
+		return resolution.status === "found" ? { ...resolution.task } : null;
+	}
+
+	private async loadTaskForMutation(taskId: string, options: TaskReadOptions = {}): Promise<Task | null> {
+		if (options.includeCrossBranch === false) {
+			return await this.loadWorkingCopyTask(taskId, true);
+		}
 		const store = await this.getContentStore();
 		await store.refreshTasks();
 		const resolution = store.resolveTaskForMutation(taskId);
@@ -1312,9 +1359,7 @@ export class Core {
 			this,
 		);
 		if (invalidDependencies.length > 0) {
-			throw new Error(
-				`The following dependencies do not exist: ${invalidDependencies.join(", ")}. Please create these tasks first or verify the IDs.`,
-			);
+			throw formatMissingDependenciesError(invalidDependencies);
 		}
 
 		let status = "";
@@ -1440,13 +1485,17 @@ export class Core {
 		}
 	}
 
+	/**
+	 * Resolve `--parent` against the working copy, the same corpus the parent filter and task reads
+	 * use, so one ID cannot be an acceptable parent for a child that no task command can then show.
+	 */
 	private async resolveParentTaskIdForCreate(parentTaskId: string): Promise<string> {
-		const parentTask = await this.loadTaskById(parentTaskId);
+		const parentTask = await this.loadTaskById(parentTaskId, { includeCrossBranch: false });
 		if (!parentTask) {
 			const config = await this.fs.loadConfig();
 			const canonicalParent = canonicalTaskId(parentTaskId, config?.prefixes?.task ?? "task");
 			throw new Error(
-				`Parent task ${canonicalParent} not found. Use an existing task ID with --parent; use --milestone to assign a task to a milestone.`,
+				`Parent task ${canonicalParent} not found. ${LOCAL_TASK_LOOKUP_HINT} Use an existing task ID with --parent; use --milestone to assign a task to a milestone.`,
 			);
 		}
 		return parentTask.id;
@@ -1635,9 +1684,7 @@ export class Core {
 				const normalized = parseDelimitedStringList(input.dependencies) ?? [];
 				const { valid, invalid } = await validateDependencies(normalized, this);
 				if (invalid.length > 0) {
-					throw new Error(
-						`The following dependencies do not exist: ${invalid.join(", ")}. Please create these tasks first or verify the IDs.`,
-					);
+					throw formatMissingDependenciesError(invalid);
 				}
 				if (!stringArraysEqual(valid, currentDependencies)) {
 					currentDependencies = valid;
@@ -1649,9 +1696,7 @@ export class Core {
 				const additions = parseDelimitedStringList(input.addDependencies) ?? [];
 				const { valid, invalid } = await validateDependencies(additions, this);
 				if (invalid.length > 0) {
-					throw new Error(
-						`The following dependencies do not exist: ${invalid.join(", ")}. Please create these tasks first or verify the IDs.`,
-					);
+					throw formatMissingDependenciesError(invalid);
 				}
 				const depSet = new Set(currentDependencies);
 				for (const dep of valid) {
@@ -2070,8 +2115,13 @@ export class Core {
 		return { task, mutated };
 	}
 
-	async updateTaskFromInput(taskId: string, input: TaskUpdateInput, autoCommit?: boolean): Promise<Task> {
-		const task = await this.loadLocalTaskForMutation(taskId);
+	async updateTaskFromInput(
+		taskId: string,
+		input: TaskUpdateInput,
+		autoCommit?: boolean,
+		options: TaskReadOptions = {},
+	): Promise<Task> {
+		const task = await this.loadTaskForMutation(taskId, options);
 		if (!task) {
 			throw new Error(`Task not found: ${taskId}`);
 		}
@@ -2079,7 +2129,7 @@ export class Core {
 		const requestedStatus = input.status?.trim().toLowerCase();
 		if (requestedStatus === "draft") {
 			// demoteTaskWithUpdates takes the task lock itself, so it must not be nested here.
-			return await this.demoteTaskWithUpdates(task, input, autoCommit);
+			return await this.demoteTaskWithUpdates(task, input, autoCommit, options);
 		}
 
 		// Fail fast when another process is mid-edit, and re-read inside the lock so the whole
@@ -2087,7 +2137,7 @@ export class Core {
 		// whenever one writer releases before the next acquires: the second would then apply
 		// its changes to a snapshot taken before the first wrote.
 		return await this.fs.withTaskLock(task, async () => {
-			const current = await this.loadLocalTaskForMutation(taskId);
+			const current = await this.loadTaskForMutation(taskId, options);
 			if (!current) {
 				throw new Error(`Task not found: ${taskId}`);
 			}
@@ -2226,9 +2276,14 @@ export class Core {
 	// and editTaskOrDraft, so it takes the task lock here rather than at each caller. Waiting on
 	// the create lock below happens while the task lock is held; the order is always task lock
 	// then create lock, never the reverse, so the two cannot deadlock.
-	private async demoteTaskWithUpdates(task: Task, input: TaskUpdateInput, autoCommit?: boolean): Promise<Task> {
+	private async demoteTaskWithUpdates(
+		task: Task,
+		input: TaskUpdateInput,
+		autoCommit?: boolean,
+		options: TaskReadOptions = {},
+	): Promise<Task> {
 		return await this.fs.withTaskLock(task, async () => {
-			const current = await this.loadLocalTaskForMutation(task.id);
+			const current = await this.loadTaskForMutation(task.id, options);
 			if (!current) {
 				throw new Error(`Task not found: ${task.id}`);
 			}
@@ -2310,8 +2365,13 @@ export class Core {
 		}
 	}
 
-	async editTask(taskId: string, input: TaskUpdateInput, autoCommit?: boolean): Promise<Task> {
-		return await this.updateTaskFromInput(taskId, input, autoCommit);
+	async editTask(
+		taskId: string,
+		input: TaskUpdateInput,
+		autoCommit?: boolean,
+		options: TaskReadOptions = {},
+	): Promise<Task> {
+		return await this.updateTaskFromInput(taskId, input, autoCommit, options);
 	}
 
 	async updateTasksBulk(tasks: Task[], commitMessage?: string, autoCommit?: boolean): Promise<void> {
@@ -2455,7 +2515,7 @@ export class Core {
 	}
 
 	async archiveTask(taskId: string, autoCommit?: boolean): Promise<boolean> {
-		const taskToArchive = await this.loadLocalTaskForMutation(taskId);
+		const taskToArchive = await this.loadTaskForMutation(taskId);
 		if (!taskToArchive) {
 			return false;
 		}
@@ -2571,7 +2631,7 @@ export class Core {
 	}
 
 	async completeTask(taskId: string, autoCommit?: boolean): Promise<boolean> {
-		const task = await this.loadLocalTaskForMutation(taskId);
+		const task = await this.loadTaskForMutation(taskId);
 		if (!task) return false;
 		// Get paths before moving the file
 		const completedDir = this.fs.completedDir;
@@ -2689,7 +2749,7 @@ export class Core {
 	}
 
 	async demoteTask(taskId: string, autoCommit?: boolean): Promise<boolean> {
-		const task = await this.loadLocalTaskForMutation(taskId);
+		const task = await this.loadTaskForMutation(taskId);
 		if (!task) return false;
 		const movedPaths: Array<{ previousPath: string; savedPath: string }> = [];
 		const success = await this.fs.demoteTask(task.id, (previousPath, savedPath) => {
