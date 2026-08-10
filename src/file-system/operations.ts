@@ -1114,42 +1114,46 @@ export class FileSystem {
 	}
 
 	async demoteTask(taskId: string, onMoved?: (fromPath: string, toPath: string) => void): Promise<boolean> {
-		try {
-			return await this.withCreateLock(async () => {
-				// Load the task
-				const task = await this.loadTask(taskId);
-				if (!task?.filePath) return false;
+		return await this.withCreateLock(async () => {
+			// Load the task. A missing task is the only false result; filesystem failures must reach
+			// callers so the Web API can distinguish an operational failure from a 404.
+			const task = await this.loadTask(taskId);
+			if (!task?.filePath) return false;
 
-				// Get existing draft IDs to generate next ID
-				// Draft prefix is always "draft" (not configurable like task prefix)
-				const existingDrafts = await this.listDrafts();
-				const existingIds = existingDrafts.map((d) => d.id);
+			// Get existing draft IDs to generate next ID
+			// Draft prefix is always "draft" (not configurable like task prefix)
+			const existingDrafts = await this.listDrafts();
+			const existingIds = existingDrafts.map((d) => d.id);
 
-				// Generate new draft ID
-				const config = await this.loadConfig();
-				const newDraftId = generateNextId(existingIds, "draft", config?.zeroPaddedIds);
+			// Generate new draft ID
+			const config = await this.loadConfig();
+			const newDraftId = generateNextId(existingIds, "draft", config?.zeroPaddedIds);
 
-				// Update task with new draft ID and save as draft
-				const demotedDraft: Task = {
-					...task,
-					id: newDraftId,
-					filePath: undefined, // Will be set by saveDraft
-				};
+			// Update task with new draft ID and save as draft
+			const demotedDraft: Task = {
+				...task,
+				id: newDraftId,
+				filePath: undefined, // Will be set by saveDraft
+			};
 
-				const savedPath = await this.saveDraft(demotedDraft);
+			const savedPath = await this.saveDraft(demotedDraft);
 
-				// Delete old task file
+			// Delete old task file. If that fails, remove the newly written draft so a retry cannot
+			// encounter two copies of the task.
+			try {
 				await unlink(task.filePath);
-				onMoved?.(task.filePath, savedPath);
-
-				return true;
-			});
-		} catch (error) {
-			if (isCreateLockError(error) || isAmbiguousTaskIdError(error)) {
+			} catch (error) {
+				try {
+					await unlink(savedPath);
+				} catch {
+					// Preserve the original failure; the response still reports an operational error.
+				}
 				throw error;
 			}
-			return false;
-		}
+			onMoved?.(task.filePath, savedPath);
+
+			return true;
+		});
 	}
 
 	// Draft operations

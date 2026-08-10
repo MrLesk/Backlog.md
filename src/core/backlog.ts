@@ -2963,9 +2963,18 @@ export class Core {
 			movedPaths.push({ previousPath, savedPath });
 		});
 		const moved = movedPaths[0];
+		if (success) {
+			this.contentStore?.transitionTask(task.id);
+		}
 
 		if (success && moved && (await this.shouldAutoCommit(autoCommit))) {
-			await this.commitWrittenFile(`backlog: Demote task ${task.id}`, [moved.previousPath], moved.savedPath);
+			try {
+				await this.commitWrittenFile(`backlog: Demote task ${task.id}`, [moved.previousPath], moved.savedPath);
+			} catch (error) {
+				const failure = error instanceof Error ? error : new Error(String(error));
+				(failure as Error & { moved?: boolean }).moved = true;
+				throw failure;
+			}
 		}
 
 		return success;

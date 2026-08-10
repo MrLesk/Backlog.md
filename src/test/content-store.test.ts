@@ -839,6 +839,82 @@ describe("ContentStore", () => {
 		search.dispose();
 	});
 
+	it("does not let an older task refresh resurrect a transitioned task", async () => {
+		store.dispose();
+		const heldRefresh = createDeferredGate();
+		let loadCount = 0;
+		const staleSnapshot = (): TaskCorpusSnapshot => {
+			const identityIndex = new TaskIdentityIndex(
+				[
+					{
+						id: sampleTask.id,
+						type: "task",
+						branch: "local",
+						path: join(filesystem.tasksDir, "task-1 - Sample Task.md"),
+						lastModified: new Date("2026-08-01T11:00:00Z"),
+						task: sampleTask,
+						workingCopy: true,
+					},
+				],
+				{ repositoryRoot: null, projectRoot: TEST_DIR, backlogDirectory: "backlog" },
+				["To Do", "In Progress", "Done"],
+				"most_progressed",
+			);
+			return {
+				tasks: identityIndex.getTasks(false),
+				activeTasks: [sampleTask],
+				completedTasks: [],
+				identityIndex,
+			};
+		};
+		store = new ContentStore(filesystem, async () => {
+			loadCount += 1;
+			if (loadCount === 2) {
+				heldRefresh.markStarted();
+				await heldRefresh.waitForRelease;
+			}
+			return staleSnapshot();
+		});
+		await store.ensureInitialized();
+
+		const refresh = store.refreshTasks();
+		await withTimeout(heldRefresh.started, "held stale task refresh");
+		store.transitionTask(sampleTask.id);
+		expect(store.getTasks()).toEqual([]);
+
+		heldRefresh.release();
+		await refresh;
+
+		expect(store.getTasks()).toEqual([]);
+		expect(store.getTaskCorpusSnapshot().activeTasks).toEqual([]);
+		expect(store.resolveTaskForMutation(sampleTask.id)).toEqual({ status: "not-found" });
+	});
+
+	it("does not let an older local corpus refresh resurrect a transitioned task", async () => {
+		const taskPath = await filesystem.saveTask(sampleTask);
+		await store.ensureInitialized();
+		const heldRefresh = createDeferredGate();
+		const listTasks = filesystem.listTasks.bind(filesystem);
+		filesystem.listTasks = async () => {
+			const tasks = await listTasks();
+			heldRefresh.markStarted();
+			await heldRefresh.waitForRelease;
+			return tasks;
+		};
+
+		const refresh = store.refreshLocalTaskCorpus();
+		await withTimeout(heldRefresh.started, "held stale local task refresh");
+		await unlink(taskPath);
+		store.transitionTask(sampleTask.id);
+		expect(store.getTasks()).toEqual([]);
+
+		heldRefresh.release();
+		await refresh;
+
+		expect(store.getTasks()).toEqual([]);
+		expect(store.getTaskCorpusSnapshot().activeTasks).toEqual([]);
+	});
+
 	it("publishes a validated task refresh without a microtask overwrite window", async () => {
 		store.dispose();
 		const taskWithTitle = (title: string): Task => ({ ...sampleTask, title });

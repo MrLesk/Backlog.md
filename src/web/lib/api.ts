@@ -101,8 +101,9 @@ export class ApiClient {
 	}
 
 	// Enhanced fetch with retry logic and better error handling
-	private async fetchWithRetry(url: string, options: RequestInit = {}): Promise<Response> {
-		const { retries = 3, timeout = 10000 } = this.config;
+	private async fetchWithRetry(url: string, options: RequestInit = {}, retriesOverride?: number): Promise<Response> {
+		const { retries: configuredRetries = 3, timeout = 10000 } = this.config;
+		const retries = retriesOverride ?? configuredRetries;
 		let lastError: Error | undefined;
 
 		for (let attempt = 0; attempt <= retries; attempt++) {
@@ -154,6 +155,10 @@ export class ApiClient {
 			throw lastError;
 		}
 		throw new NetworkError(`Request failed after ${retries + 1} attempts: ${lastError?.message}`);
+	}
+
+	private async fetchWithoutRetry(url: string, options: RequestInit = {}): Promise<Response> {
+		return await this.fetchWithRetry(url, options, 0);
 	}
 
 	// Helper method for JSON responses
@@ -302,6 +307,12 @@ export class ApiClient {
 
 	async completeTask(id: string): Promise<void> {
 		await this.fetchWithRetry(`${API_BASE}/tasks/${id}/complete`, {
+			method: "POST",
+		});
+	}
+
+	async demoteTask(id: string): Promise<void> {
+		await this.fetchWithoutRetry(`${API_BASE}/tasks/${encodeURIComponent(id)}/demote`, {
 			method: "POST",
 		});
 	}

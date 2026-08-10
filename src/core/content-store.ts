@@ -844,6 +844,8 @@ export class ContentStore {
 			decisions: this.nextContentRefreshGeneration("decisions"),
 		};
 		const before = this.getSnapshot();
+		const beforeActiveTasks = this.activeTasks.slice();
+		const beforeCompletedTasks = this.completedTasks.slice();
 		const itemVersions: Record<ContentCollection, Map<string, number>> = {
 			tasks: new Map(this.contentItemVersions.tasks),
 			documents: new Map(this.contentItemVersions.documents),
@@ -864,8 +866,15 @@ export class ContentStore {
 			return false;
 		}
 
+		const reconciledTaskCorpus = this.mergeConcurrentWorkingCopyCorpus(
+			taskCorpus,
+			beforeActiveTasks,
+			beforeCompletedTasks,
+			itemVersions.tasks,
+			targetRoot,
+		);
 		const mergedTasks = this.mergeConcurrentChanges(
-			taskCorpus.tasks,
+			reconciledTaskCorpus.tasks,
 			before.tasks,
 			this.tasksForPublicationRoot(targetRoot),
 			(task) => normalizeTaskId(task.id),
@@ -877,9 +886,9 @@ export class ContentStore {
 		publish({
 			tasks: mergedTasks,
 			taskCorpus: {
-				...taskCorpus,
+				...reconciledTaskCorpus,
 				tasks: mergedTasks,
-				activeTasks: taskCorpus.identityIndex ? taskCorpus.activeTasks : mergedTasks,
+				activeTasks: reconciledTaskCorpus.identityIndex ? reconciledTaskCorpus.activeTasks : mergedTasks,
 			},
 			documents: this.mergeConcurrentChanges(
 				documents,
@@ -1556,7 +1565,12 @@ export class ContentStore {
 		await this.reconcileOrSchedule(`task:${normalizedExpectedId}`, epoch, async () => {
 			const targetRoot = this.currentRoot();
 			const generation = this.nextContentRefreshGeneration("tasks");
-			const before = { items: this.cachedTasks.slice(), versions: new Map(this.contentItemVersions.tasks) };
+			const before = {
+				items: this.cachedTasks.slice(),
+				activeTasks: this.activeTasks.slice(),
+				completedTasks: this.completedTasks.slice(),
+				versions: new Map(this.contentItemVersions.tasks),
+			};
 			let corpus: TaskCorpusSnapshot;
 			try {
 				const loaded = await this.loadTasksWithLoader();
@@ -1571,8 +1585,15 @@ export class ContentStore {
 				!this.isContentRefreshCurrent("tasks", generation)
 			)
 				return false;
+			const reconciledCorpus = this.mergeConcurrentWorkingCopyCorpus(
+				corpus,
+				before.activeTasks,
+				before.completedTasks,
+				before.versions,
+				targetRoot,
+			);
 			const merged = this.mergeConcurrentChanges(
-				corpus.tasks,
+				reconciledCorpus.tasks,
 				before.items,
 				this.cachedTasks,
 				(task) => normalizeTaskId(task.id),
@@ -1582,14 +1603,15 @@ export class ContentStore {
 				targetRoot,
 			);
 			const visibleChanged = this.hasTaskCollectionChanged(merged);
-			const identityChanged = this.taskIdentityIndex?.getFingerprint() !== corpus.identityIndex?.getFingerprint();
+			const identityChanged =
+				this.taskIdentityIndex?.getFingerprint() !== reconciledCorpus.identityIndex?.getFingerprint();
 			const corpusChanged =
-				this.hasTaskListChanged(this.activeTasks, corpus.activeTasks) ||
-				this.hasTaskListChanged(this.completedTasks, corpus.completedTasks) ||
-				this.hasBranchTaskStateChanged(corpus.branchStateEntries ?? []) ||
-				JSON.stringify(this.taskCorpusConfig) !== JSON.stringify(corpus.config);
+				this.hasTaskListChanged(this.activeTasks, reconciledCorpus.activeTasks) ||
+				this.hasTaskListChanged(this.completedTasks, reconciledCorpus.completedTasks) ||
+				this.hasBranchTaskStateChanged(reconciledCorpus.branchStateEntries ?? []) ||
+				JSON.stringify(this.taskCorpusConfig) !== JSON.stringify(reconciledCorpus.config);
 			if (!visibleChanged && !identityChanged && !corpusChanged) return false;
-			this.installTaskCorpus(corpus, merged);
+			this.installTaskCorpus(reconciledCorpus, merged);
 			this.notify("tasks");
 			return false;
 		});
@@ -1678,6 +1700,80 @@ export class ContentStore {
 		const changedIds = new Set<string>();
 		for (const [id, version] of this.contentItemVersions.tasks) {
 			if (version !== versionsBeforeLoad.get(id) && this.contentItemPublicationRoots.tasks.get(id) === targetRoot) {
+				changedIds.add(id);
+			}
+		}
+		if (changedIds.size === 0) return loaded;
+		return [
+			...loaded.filter((task) => !changedIds.has(normalizeTaskId(task.id))),
+			...current.filter((task) => changedIds.has(normalizeTaskId(task.id))),
+		];
+	}
+
+	private mergeConcurrentWorkingCopyCorpus(
+		loaded: TaskCorpusSnapshot,
+		beforeActiveTasks: Task[],
+		beforeCompletedTasks: Task[],
+		beforeVersions: ReadonlyMap<string, number>,
+		targetRoot: string,
+	): TaskCorpusSnapshot {
+		const { activeTasks, completedTasks } = this.mergeConcurrentWorkingCopyTasks(
+			loaded.activeTasks,
+			loaded.completedTasks,
+			beforeActiveTasks,
+			beforeCompletedTasks,
+			beforeVersions,
+			targetRoot,
+		);
+		const identityIndex = loaded.identityIndex?.withWorkingCopyCorpus(activeTasks, completedTasks);
+		return {
+			...loaded,
+			activeTasks,
+			completedTasks,
+			identityIndex,
+			tasks: identityIndex ? identityIndex.getTasks(false) : loaded.tasks,
+		};
+	}
+
+	private mergeConcurrentWorkingCopyTasks(
+		loadedActiveTasks: Task[],
+		loadedCompletedTasks: Task[],
+		beforeActiveTasks: Task[],
+		beforeCompletedTasks: Task[],
+		beforeVersions: ReadonlyMap<string, number>,
+		targetRoot: string,
+	): { activeTasks: Task[]; completedTasks: Task[] } {
+		const activeTasks = this.mergeConcurrentWorkingCopyTaskList(
+			loadedActiveTasks,
+			beforeActiveTasks,
+			this.activeTasks,
+			beforeVersions,
+			targetRoot,
+		);
+		const completedTasks = this.mergeConcurrentWorkingCopyTaskList(
+			loadedCompletedTasks,
+			beforeCompletedTasks,
+			this.completedTasks,
+			beforeVersions,
+			targetRoot,
+		);
+		return { activeTasks, completedTasks };
+	}
+
+	private mergeConcurrentWorkingCopyTaskList(
+		loaded: Task[],
+		before: Task[],
+		current: Task[],
+		beforeVersions: ReadonlyMap<string, number>,
+		targetRoot: string,
+	): Task[] {
+		const changedIds = new Set<string>();
+		for (const task of [...before, ...current]) {
+			const id = normalizeTaskId(task.id);
+			if (
+				beforeVersions.get(id) !== this.contentItemVersions.tasks.get(id) &&
+				this.contentItemPublicationRoots.tasks.get(id) === targetRoot
+			) {
 				changedIds.add(id);
 			}
 		}

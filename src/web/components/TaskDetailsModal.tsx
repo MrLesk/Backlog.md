@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { AcceptanceCriterion, Milestone, Task, TaskComment } from "../../types";
+import { isLocalEditableTask, type AcceptanceCriterion, type Milestone, type Task, type TaskComment } from "../../types";
 import Modal from "./Modal";
-import { apiClient } from "../lib/api";
+import { ApiError, apiClient } from "../lib/api";
 import { useTheme } from "../contexts/ThemeContext";
 import MDEditor from "@uiw/react-md-editor";
 import AcceptanceCriteriaEditor from "./AcceptanceCriteriaEditor";
@@ -73,6 +73,14 @@ type TaskDetailsFormState = {
 const containsCommentDelimiterLine = (value: string): boolean => /^\s*---\s*$/m.test(value.replace(/\r\n/g, "\n"));
 
 const areJsonEqual = (first: unknown, second: unknown): boolean => JSON.stringify(first) === JSON.stringify(second);
+
+const isPartialDemotionError = (error: unknown): boolean =>
+	error instanceof ApiError &&
+	error.status !== undefined &&
+	error.status >= 500 &&
+	typeof error.data === "object" &&
+	error.data !== null &&
+	(error.data as { moved?: unknown }).moved === true;
 
 const isEditableKeyboardTarget = (target: EventTarget | null): boolean =>
   target instanceof Element &&
@@ -153,12 +161,17 @@ export const TaskDetailsModal: React.FC<Props> = ({
   // Promoting a draft replaces it with a new task ID, which the Drafts page does through its own
   // Promote action, so the popup shows the draft status without turning the field into a second one.
   const isOpenDraft = (task?.status ?? "").trim().toLowerCase() === "draft";
+  const demotionIdentity = [isOpen ? "open" : "closed", task?.id, task?.source, task?.branch, isOpenDraft ? "draft" : "task"].join("\0");
+  const demotionIdentityRef = useRef(demotionIdentity);
+  demotionIdentityRef.current = demotionIdentity;
   const [mode, setMode] = useState<Mode>(isCreateMode ? "create" : "preview");
   const modeRef = useRef(mode);
   const previousTaskId = useRef(task?.id ?? "");
   const previousIsOpen = useRef(isOpen);
   const formBaselineRef = useRef<TaskDetailsFormState | null>(null);
+  const activeDemotionRequest = useRef<{ identity: string } | null>(null);
   const [saving, setSaving] = useState(false);
+  const [demoting, setDemoting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   // Title field for create mode
@@ -414,6 +427,18 @@ export const TaskDetailsModal: React.FC<Props> = ({
   useEffect(() => {
     modeRef.current = mode;
   }, [mode]);
+
+  useEffect(
+    () => () => {
+      activeDemotionRequest.current = null;
+    },
+    [],
+  );
+
+  useEffect(() => {
+    activeDemotionRequest.current = null;
+    setDemoting(false);
+  }, [demotionIdentity]);
 
   // Intercept Escape to cancel edit (not close modal) when in edit mode
   useEffect(() => {
@@ -930,8 +955,54 @@ export const TaskDetailsModal: React.FC<Props> = ({
 			onClose();
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
-    }
-  };
+		}
+	};
+
+	const handleDemote = async () => {
+		if (!task || !canDemote || activeDemotionRequest.current !== null) return;
+		if (!window.confirm(`Demote "${task.title}" to draft? It will be moved to the drafts folder.`)) return;
+
+		const request = { identity: demotionIdentity };
+		activeDemotionRequest.current = request;
+		const isCurrentRequest = () =>
+			activeDemotionRequest.current === request && demotionIdentityRef.current === request.identity;
+		setDemoting(true);
+		setError(null);
+		try {
+			await apiClient.demoteTask(task.id);
+			if (!isCurrentRequest()) return;
+			window.dispatchEvent(new window.Event("drafts-updated"));
+			if (onSaved) await onSaved();
+			if (!isCurrentRequest()) return;
+			onClose();
+		} catch (err) {
+			if (!isCurrentRequest()) return;
+			if (isPartialDemotionError(err)) {
+				window.dispatchEvent(new window.Event("drafts-updated"));
+				try {
+					if (onSaved) await onSaved();
+				} catch (refreshError) {
+					console.error("Task was demoted, but refreshing the Web UI failed", refreshError);
+				}
+				if (!isCurrentRequest()) return;
+				const message =
+					"The task was moved to drafts, but recording the Git commit failed. The view was refreshed; verify the draft before retrying.";
+				try {
+					window.alert(message);
+				} catch {
+					setError(message);
+				}
+				onClose();
+				return;
+			}
+			setError(err instanceof Error ? err.message : String(err));
+		} finally {
+			if (isCurrentRequest()) {
+				activeDemotionRequest.current = null;
+				setDemoting(false);
+			}
+		}
+	};
 
   const handleArchive = async () => {
     if (!task || !onArchive) return;
@@ -944,6 +1015,9 @@ export const TaskDetailsModal: React.FC<Props> = ({
   const definitionCheckedCount = (definitionOfDone || []).filter((c) => c.checked).length;
   const definitionTotalCount = (definitionOfDone || []).length;
   const isDoneStatus = (status || "").toLowerCase().includes("done");
+  const canDemote = Boolean(
+		task && !isOpenDraft && isLocalEditableTask(task) && task.source !== "completed" && !isFromOtherBranch,
+	);
   const comments = displayComments;
 
   const displayId = task?.id ?? "";
@@ -953,6 +1027,7 @@ export const TaskDetailsModal: React.FC<Props> = ({
     <Modal
       isOpen={isOpen}
       onClose={() => {
+		if (demoting) return;
         // When in edit mode, confirm closing if dirty
         if (mode === "edit" && isDirty) {
           if (!window.confirm("Discard unsaved changes and close?")) return;
@@ -962,7 +1037,7 @@ export const TaskDetailsModal: React.FC<Props> = ({
       }}
       title={isCreateMode ? (isDraftMode ? "Create New Draft" : "Create New Task") : `${displayId} — ${task.title}`}
       maxWidthClass="max-w-5xl"
-      disableEscapeClose={mode === "edit" || mode === "create"}
+      disableEscapeClose={mode === "edit" || mode === "create" || demoting}
       actions={
         <div className="flex items-center gap-2">
 		          {isDoneStatus && mode === "preview" && !isCreateMode && !isFromOtherBranch && (
@@ -972,6 +1047,16 @@ export const TaskDetailsModal: React.FC<Props> = ({
 		              title="Move to completed folder (removes from board)"
 		            >
 		              Mark as completed
+		            </button>
+		          )}
+		          {canDemote && mode === "preview" && (
+		            <button
+		              onClick={() => void handleDemote()}
+		              disabled={demoting}
+		              className="inline-flex items-center px-4 py-2 rounded-lg text-sm font-medium text-white bg-amber-500 dark:bg-amber-600 hover:bg-amber-600 dark:hover:bg-amber-700 focus:outline-none focus:ring-2 focus:ring-amber-500 dark:focus:ring-amber-400 focus:ring-offset-2 dark:focus:ring-offset-gray-900 transition-colors duration-200 disabled:cursor-not-allowed disabled:opacity-50"
+		              title="Move task to drafts"
+		            >
+		              {demoting ? "Demoting…" : "Demote to draft"}
 		            </button>
 		          )}
 		          {mode === "preview" && !isCreateMode && !isFromOtherBranch ? (
