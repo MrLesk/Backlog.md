@@ -770,13 +770,17 @@ describe("BacklogServer task SPA fallback", () => {
 			const defaultList = await request("/api/tasks");
 			expect(defaultList.status).toBe(200);
 			expect(((await defaultList.json()) as Task[]).map((task) => task.id)).toContain("BACK-099");
-			expect(workingCopyScans).toBe(0);
+			// The response still comes from the store's cross-branch corpus. The single working-copy
+			// pass is the cache-validated reconciliation every cross-branch read performs so a missed
+			// watcher event cannot leave the browser stale; it is not the read that builds the list.
+			expect(workingCopyScans).toBe(1);
 
-			// The explicit local view still costs a working-copy read, which is why it must not be the default.
+			// The explicit local view builds its response from a working-copy read of its own, which is
+			// why it must not be the default.
 			const localList = await request("/api/tasks?crossBranch=false");
 			expect(localList.status).toBe(200);
 			expect(((await localList.json()) as Task[]).map((task) => task.id)).not.toContain("BACK-099");
-			expect(workingCopyScans).toBeGreaterThan(0);
+			expect(workingCopyScans).toBeGreaterThan(1);
 		} finally {
 			serverFilesystem.listTasks = originalListTasks;
 		}
