@@ -66,6 +66,7 @@ type TaskDetailsFormState = {
   taskType: string;
   dependencies: string[];
   references: string[];
+  modifiedFiles: string[];
   milestone: string;
 };
 
@@ -114,6 +115,7 @@ const buildTaskDetailsFormState = ({
   taskType: task?.type || "",
   dependencies: task?.dependencies || [],
   references: task?.references || [],
+  modifiedFiles: task?.modifiedFiles || [],
   milestone: task?.milestone || "",
 });
 
@@ -331,6 +333,7 @@ export const TaskDetailsModal: React.FC<Props> = ({
   const typeUpdateRequestRef = useRef(0);
   const [dependencies, setDependencies] = useState<string[]>(task?.dependencies || []);
   const [references, setReferences] = useState<string[]>(task?.references || []);
+  const [modifiedFiles, setModifiedFiles] = useState<string[]>(task?.modifiedFiles || []);
   const [milestone, setMilestone] = useState<string>(task?.milestone || "");
   const canonicalTypeSelection = resolveTaskTypeValue(taskType, typeOptions);
   const typeSelectionValue = canonicalTypeSelection ?? taskType;
@@ -505,6 +508,14 @@ export const TaskDetailsModal: React.FC<Props> = ({
       setReferences((current) =>
         preserveDirtyRefreshValue(current, previousFormState.references, nextFormState.references, areJsonEqual),
       );
+      setModifiedFiles((current) =>
+        preserveDirtyRefreshValue(
+          current,
+          previousFormState.modifiedFiles,
+          nextFormState.modifiedFiles,
+          areJsonEqual,
+        ),
+      );
       setMilestone((current) =>
         preserveDirtyRefreshValue(current, previousFormState.milestone, nextFormState.milestone),
       );
@@ -536,6 +547,7 @@ export const TaskDetailsModal: React.FC<Props> = ({
     setTaskType(nextFormState.taskType);
     setDependencies(nextFormState.dependencies);
     setReferences(nextFormState.references);
+    setModifiedFiles(nextFormState.modifiedFiles);
     setMilestone(nextFormState.milestone);
     setMode(isCreateMode ? "create" : "preview");
     preserveEditModeAfterCommentRefresh.current = false;
@@ -815,6 +827,7 @@ export const TaskDetailsModal: React.FC<Props> = ({
     if (updates.type !== undefined) setTaskType(String(updates.type));
     if (updates.dependencies !== undefined) setDependencies(updates.dependencies as string[]);
     if (updates.references !== undefined) setReferences(updates.references as string[]);
+    if (updates.modifiedFiles !== undefined) setModifiedFiles(updates.modifiedFiles as string[]);
     if (updates.milestone !== undefined) setMilestone((updates.milestone ?? "") as string);
 
     // Only update server if editing existing task
@@ -1114,6 +1127,69 @@ export const TaskDetailsModal: React.FC<Props> = ({
                     name="newRef"
                     type="text"
                     placeholder="URL or file path..."
+                    className="flex-1 text-sm px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors"
+                  />
+                  <button
+                    type="submit"
+                    className="px-4 py-2 text-sm font-medium bg-blue-500 text-white rounded-md hover:bg-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition-colors"
+                  >
+                    Add
+                  </button>
+                </form>
+              )}
+            </div>
+          </div>
+
+          {/* Modified files */}
+          <div className="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-4">
+            <SectionHeader title="Modified files" />
+            <div className="space-y-3">
+              {modifiedFiles.length > 0 ? (
+                <ul className="space-y-2">
+                  {modifiedFiles.map((file, idx) => (
+                    <li key={idx} className="flex items-center gap-3 group">
+                      <span className="flex-1 min-w-0">
+                        <code className="text-sm font-mono text-gray-700 dark:text-gray-300 bg-gray-100 dark:bg-gray-700 px-2 py-0.5 rounded break-all">
+                          {file}
+                        </code>
+                      </span>
+                      {!isFromOtherBranch && (
+                        <button
+                          onClick={() => {
+                            const newFiles = modifiedFiles.filter((_, i) => i !== idx);
+                            handleInlineMetaUpdate({ modifiedFiles: newFiles });
+                          }}
+                          className="opacity-0 group-hover:opacity-100 text-gray-400 hover:text-red-500 transition-all flex-shrink-0"
+                          title="Remove modified file"
+                        >
+                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                          </svg>
+                        </button>
+                      )}
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <p className="text-sm text-gray-500 dark:text-gray-400">No modified files</p>
+              )}
+              {mode === "preview" && !isFromOtherBranch && (
+                <form
+                  onSubmit={(e) => {
+                    e.preventDefault();
+                    const input = e.currentTarget.elements.namedItem("newModifiedFile") as HTMLInputElement;
+                    const value = input.value.trim();
+                    if (value && !modifiedFiles.includes(value)) {
+                      handleInlineMetaUpdate({ modifiedFiles: [...modifiedFiles, value] });
+                      input.value = "";
+                    }
+                  }}
+                  className="flex gap-2"
+                >
+                  <input
+                    name="newModifiedFile"
+                    type="text"
+                    placeholder="Path from project root..."
                     className="flex-1 text-sm px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors"
                   />
                   <button
