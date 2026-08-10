@@ -648,7 +648,9 @@ export class BacklogServer {
 		const assignee = url.searchParams.get("assignee") || undefined;
 		const parent = url.searchParams.get("parent") || undefined;
 		const priorityParam = url.searchParams.get("priority") || undefined;
-		const crossBranch = url.searchParams.get("crossBranch") === "true";
+		// The browser reads the cross-branch corpus the server already keeps in the content store, so
+		// the default must not fall back to re-reading the working copy on every list request.
+		const crossBranch = url.searchParams.get("crossBranch") !== "false";
 		const excludeStatusParams = collectDelimitedSearchParams(url, [
 			"excludeStatus",
 			"exclude-status",
