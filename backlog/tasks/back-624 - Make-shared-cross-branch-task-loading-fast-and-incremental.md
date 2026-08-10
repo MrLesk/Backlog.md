@@ -5,7 +5,7 @@ status: Done
 assignee:
   - '@codex'
 created_date: '2026-08-09 23:11'
-updated_date: '2026-08-10 01:04'
+updated_date: '2026-08-10 06:24'
 labels:
   - core
   - performance
@@ -63,6 +63,8 @@ Working-copy active and completed Markdown uses an exact-content parse cache wit
 Correctness-gated benchmark: 80 active, 20 completed, 6 branches x 12 tasks, 3 samples. Core cold improved 534.49 ms / 394 Git processes to 183.91 ms / 76; Core warm 554.16 ms / 394 to 27.19 ms / 3. MCP search cold 531.86 ms / 394 to 14.00 ms / 0; warm 530.65 ms / 394 to 3.99 ms / 0. Web list cold 582.27 ms / 395 to 185.03 ms / 76. Web warm changed from 7.71 ms / 1 to 16.00 ms / 1 because it now performs exact local reconciliation for missed watcher events while still doing no branch re-indexing. Every sample checks exact task counts, task IDs, required and forbidden sentinels, and stable digests.
 
 Final race and recovery review added logical backlog-root guards, joined-refresh rechecks, generation-safe ContentStore/SearchService acquisition, duplicate-preserving version-aware local reconciliation, hidden completed lifecycle suppression, cached branch fallback hydration, and retryable partial branch generations without malformed-content hot loops. Final benchmark on the verified tree: Core 189.8 ms / 76 Git cold and 27.7 ms / 3 warm; MCP search 13.8 ms / 0 cold and 3.8 ms / 0 warm; Web list 185.3 ms / 76 cold and 16.9 ms / 1 warm. Exact counts, IDs, required/forbidden sentinels, and digests passed for every sample.
+
+Fix round after review: standalone corpus loads no longer advance shared cross-branch freshness state. Only the ContentStore corpus loader passes publishSharedState, so a task-ID allocation (or a statistics/TUI load) between a branch-tip move and the next read can no longer publish the moved fingerprint without installing the matching corpus, which previously froze stale cross-branch data in watcher-backed web/MCP processes until the next ref or config change. Task-ID allocation now sets forceRemoteRefresh, bypassing the 60s coalesced remote-refresh window that ordinary reads keep, so allocation is at least as fresh as it was before this task (the 10s fetch bound and offline degradation are unchanged) and two clones cannot hand out the same numeric ID inside that window. Cancellation is checked before the remote refresh so an aborted TUI view switch no longer waits out the fetch timeout, and allocation reuses the completed tasks its own corpus load already listed instead of listing them a second time. Three regression tests in src/test/core-task-corpus-regressions.test.ts pin each behaviour and were confirmed to fail on the pre-fix source.
 <!-- SECTION:NOTES:END -->
 
 ## Final Summary
