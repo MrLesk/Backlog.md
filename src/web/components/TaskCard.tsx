@@ -1,6 +1,7 @@
 import React from 'react';
 import { type Task } from '../../types';
 import { formatPriorityLabel } from '../../utils/priority-config';
+import AcceptanceCriteriaProgress from './AcceptanceCriteriaProgress';
 import TaskTypeBadge from './TaskTypeBadge';
 
 interface TaskCardProps {
@@ -161,6 +162,8 @@ const TaskCard: React.FC<TaskCardProps> = ({ task, onEdit, onDragStart, onDragEn
         }`}>
           {task.title}
         </h4>
+
+        <AcceptanceCriteriaProgress task={task} cells={5} className="mt-2" />
 
         {/* Labels - limit to 3 */}
         {task.labels.length > 0 && (

@@ -19,6 +19,7 @@ import {
 	resolvePriorityValue,
 } from "../../utils/priority-config.ts";
 import CleanupModal from "./CleanupModal";
+import AcceptanceCriteriaProgress from "./AcceptanceCriteriaProgress";
 import LabelFilterDropdown from "./LabelFilterDropdown";
 import { SuccessToast } from "./SuccessToast";
 
@@ -833,22 +834,22 @@ const TaskList: React.FC<TaskListProps> = ({
 											</td>
 											<td className="px-3 py-2.5">
 												<div className="flex items-center gap-2 min-w-0">
-											<button
-												type="button"
-												onClick={(event) => {
-													event.stopPropagation();
-													onEditTask(task);
-												}}
-												className={`block truncate text-sm ${
-													isFromOtherBranch
-														? "text-gray-600 dark:text-gray-300"
-														: "text-gray-900 dark:text-gray-100"
-												} rounded text-left focus:outline-none focus:ring-2 focus:ring-stone-500`}
-												title={task.title}
-												aria-label={`Open ${task.id}: ${task.title}`}
-											>
-												{task.title}
-											</button>
+													<button
+														type="button"
+														onClick={(event) => {
+															event.stopPropagation();
+															onEditTask(task);
+														}}
+														className={`block truncate text-sm ${
+															isFromOtherBranch
+																? "text-gray-600 dark:text-gray-300"
+																: "text-gray-900 dark:text-gray-100"
+														} rounded text-left focus:outline-none focus:ring-2 focus:ring-stone-500`}
+														title={task.title}
+														aria-label={`Open ${task.id}: ${task.title}`}
+													>
+														{task.title}
+													</button>
 													{isFromOtherBranch && task.branch && (
 														<span
 															className="inline-flex shrink-0 items-center rounded-circle bg-amber-100 px-2 py-0.5 text-[10px] font-medium text-amber-700 dark:bg-amber-900/40 dark:text-amber-300"
@@ -858,6 +859,7 @@ const TaskList: React.FC<TaskListProps> = ({
 														</span>
 													)}
 												</div>
+												<AcceptanceCriteriaProgress task={task} cells={10} className="mt-1" />
 											</td>
 											<td className="px-3 py-2.5">
 												<span className={`inline-flex rounded-circle px-2 py-0.5 text-[11px] font-medium ${getStatusColor(task.status)}`}>
