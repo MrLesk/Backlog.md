@@ -4,6 +4,7 @@ title: Align MCP task reads with the CLI local-first approach
 status: To Do
 assignee: []
 created_date: '2026-08-10 06:10'
+updated_date: '2026-08-10 07:13'
 labels: []
 dependencies: []
 ordinal: 261000
@@ -29,3 +30,9 @@ Owner ruling (2026-08-10, BACK-623/BACK-624 fix round): CLI task commands are lo
 - [ ] #2 bun run check . passes when formatting/linting touched
 - [ ] #3 bun test (or scoped test) passes
 <!-- DOD:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+Concrete mismatch found in the PR #898 verification round: MCP reads are still cross-branch (getTask/getTaskWithSubtasks in src/mcp/tools/tasks/handlers.ts) while MCP create-parent/dependency validation is now local, so an MCP agent can get TASK-99 and then fail to create a task with --parent TASK-99. Aligning MCP reads local-first (this task) resolves that asymmetry.
+<!-- SECTION:NOTES:END -->
