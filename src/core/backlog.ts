@@ -135,6 +135,17 @@ interface CreatedTaskRollbackResult {
 
 const REMOTE_REF_REFRESH_INTERVAL_MS = 60_000;
 
+interface TaskCorpusLoadOptions {
+	progressCallback?: (msg: string) => void;
+	abortSignal?: AbortSignal;
+	includeCompleted?: boolean;
+	visibleCompleted?: boolean;
+	/** Set only by the ContentStore corpus loader, whose result becomes the shared cross-branch state. */
+	publishSharedState?: boolean;
+	/** Set by task ID allocation, which cannot trust the coalesced remote-refresh window. */
+	forceRemoteRefresh?: boolean;
+}
+
 interface TaskQueryOptions {
 	filters?: TaskListFilter;
 	query?: string;
@@ -555,14 +566,23 @@ export class Core {
 		return await this.activeBranchSnapshotPromise.promise;
 	}
 
-	private async refreshRemoteRefsForTaskRead(config: BacklogConfig | null, git = this.git): Promise<void> {
+	private async refreshRemoteRefsForTaskRead(
+		config: BacklogConfig | null,
+		git = this.git,
+		options?: { force?: boolean },
+	): Promise<void> {
 		if (git !== this.git) return;
 		if (
 			config?.checkActiveBranches === false ||
 			config?.remoteOperations === false ||
-			config?.filesystemOnly === true ||
-			Date.now() - this.lastRemoteRefRefreshAt < REMOTE_REF_REFRESH_INTERVAL_MS
+			config?.filesystemOnly === true
 		) {
+			return;
+		}
+		// Reads may reuse a recent fetch, but task ID allocation may not: an ID that
+		// looks free only because remote refs are up to a minute old is an ID another
+		// clone has already published.
+		if (options?.force !== true && Date.now() - this.lastRemoteRefRefreshAt < REMOTE_REF_REFRESH_INTERVAL_MS) {
 			return;
 		}
 
@@ -1377,15 +1397,12 @@ export class Core {
 	}
 
 	private async getActiveAndCompletedTaskIds(): Promise<string[]> {
-		const [snapshot, completedTasks] = await Promise.all([
-			this.loadTasksWithStableBranchSnapshot(
-				undefined,
-				undefined,
-				{ includeCompleted: false, visibleCompleted: false },
-				0,
-			),
-			this.fs.listCompletedTasks(),
-		]);
+		const snapshot = await this.loadTasksWithStableBranchSnapshot({
+			includeCompleted: false,
+			visibleCompleted: false,
+			forceRemoteRefresh: true,
+		});
+		const completedTasks = snapshot.completedTasks;
 		const config = snapshot.config;
 		const taskPrefix = config?.prefixes?.task ?? "task";
 		if (!snapshot.identityIndex) throw new Error("Task corpus identity index was not initialized");
@@ -3410,18 +3427,28 @@ export class Core {
 		abortSignal?: AbortSignal,
 		options?: { includeCompleted?: boolean },
 	): Promise<Task[]> {
-		return (await this.loadTasksWithStableBranchSnapshot(progressCallback, abortSignal, options, 0)).tasks;
+		return (
+			await this.loadTasksWithStableBranchSnapshot({
+				progressCallback,
+				abortSignal,
+				includeCompleted: options?.includeCompleted,
+			})
+		).tasks;
 	}
 
-	private async loadTaskCorpusSnapshot(progressCallback?: (message: string) => void): Promise<TaskCorpusSnapshot> {
-		return await this.loadTasksWithStableBranchSnapshot(
+	private async loadTaskCorpusSnapshot(
+		progressCallback?: (message: string) => void,
+		options?: { publishSharedState?: boolean },
+	): Promise<TaskCorpusSnapshot> {
+		return await this.loadTasksWithStableBranchSnapshot({
 			progressCallback,
-			undefined,
-			{ includeCompleted: true, visibleCompleted: false },
-			0,
-		);
+			includeCompleted: true,
+			visibleCompleted: false,
+			publishSharedState: options?.publishSharedState,
+		});
 	}
 
+	/** The ContentStore's corpus loader: the only load whose result becomes the shared cross-branch state. */
 	private async loadContentStoreCorpus(progressCallback?: (message: string) => void): Promise<TaskCorpusSnapshot> {
 		if (Object.hasOwn(this, "loadTasks")) {
 			const [activeTasks, completedTasks, config] = await Promise.all([
@@ -3445,16 +3472,15 @@ export class Core {
 				config,
 			};
 		}
-		return await this.loadTaskCorpusSnapshot(progressCallback);
+		return await this.loadTaskCorpusSnapshot(progressCallback, { publishSharedState: true });
 	}
 
 	private async loadTasksWithStableBranchSnapshot(
-		progressCallback: ((msg: string) => void) | undefined,
-		abortSignal: AbortSignal | undefined,
-		options: { includeCompleted?: boolean; visibleCompleted?: boolean } | undefined,
-		snapshotAttempt: number,
+		options: TaskCorpusLoadOptions,
+		snapshotAttempt = 0,
 		retrySnapshot?: ActiveBranchSnapshot,
 	): Promise<TaskCorpusSnapshot> {
+		const { progressCallback, abortSignal } = options;
 		const generation = this.projectGeneration;
 		const filesystem = this.fs;
 		const git = this.git;
@@ -3472,19 +3498,17 @@ export class Core {
 			if (snapshotAttempt >= 2) {
 				throw new Error("Project root or active branch refs kept changing while tasks were loading");
 			}
-			return await this.loadTasksWithStableBranchSnapshot(
-				progressCallback,
-				abortSignal,
-				options,
-				snapshotAttempt + 1,
-				nextSnapshot,
-			);
+			return await this.loadTasksWithStableBranchSnapshot(options, snapshotAttempt + 1, nextSnapshot);
 		};
 
 		const config = await filesystem.loadConfig();
 		if (projectChanged()) return await retryForCurrentProject();
 		git.setConfig(config);
-		await this.refreshRemoteRefsForTaskRead(config, git);
+		// A cancelled load must not wait out the fetch timeout before noticing.
+		if (abortSignal?.aborted) {
+			throw new Error("Loading cancelled");
+		}
+		await this.refreshRemoteRefsForTaskRead(config, git, { force: options.forceRemoteRefresh });
 		if (projectChanged()) return await retryForCurrentProject();
 		const settingsKey = JSON.stringify(this.getActiveBranchSettings(config, filesystem));
 		const snapshotBefore =
@@ -3494,7 +3518,7 @@ export class Core {
 		if (projectChanged()) return await retryForCurrentProject();
 		const statuses = config?.statuses || [...DEFAULT_STATUSES];
 		const resolutionStrategy = config?.taskResolutionStrategy || "most_progressed";
-		const includeCompleted = options?.includeCompleted ?? false;
+		const includeCompleted = options.includeCompleted ?? false;
 		const shouldLoadBranches = config?.checkActiveBranches !== false && config?.filesystemOnly !== true;
 
 		// Check for cancellation
@@ -3561,7 +3585,7 @@ export class Core {
 			git,
 		);
 		if (projectChanged()) return await retryForCurrentProject();
-		const filteredTasks = identityIndex.getTasks(options?.visibleCompleted ?? includeCompleted);
+		const filteredTasks = identityIndex.getTasks(options.visibleCompleted ?? includeCompleted);
 
 		// This read must begin after this scan finishes. Reusing an unrelated
 		// in-flight pre-scan snapshot could otherwise publish a generation that
@@ -3571,9 +3595,15 @@ export class Core {
 		if (snapshotBefore.stabilityFingerprint !== snapshotAfter.stabilityFingerprint) {
 			return await retryForCurrentProject(snapshotAfter);
 		}
+		// Only the corpus this Core installs into its ContentStore may advance shared
+		// freshness state. A standalone load (statistics, ID allocation, a TUI board
+		// read) that publishes its refs would make every later read believe the store
+		// already holds them and serve the older corpus until the refs move again.
 		// Healthy branches remain publishable after a partial read, but an
 		// incomplete generation must retry even while its refs stay unchanged.
-		this.activeBranchFingerprint = branchLoadComplete ? snapshotAfter.fingerprint : null;
+		if (options.publishSharedState) {
+			this.activeBranchFingerprint = branchLoadComplete ? snapshotAfter.fingerprint : null;
+		}
 		if (shouldLoadBranches && backlogDir) {
 			branchTaskLoader.retainSnapshot(snapshotAfter.branchTips, {
 				backlogDir,

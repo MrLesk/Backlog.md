@@ -9,6 +9,33 @@ import { createUniqueTestDir, safeCleanup } from "./test-utils.ts";
 
 let testDir: string;
 let core: Core;
+let extraDirs: string[];
+let extraCores: Core[];
+
+function trackDir(suffix: string): string {
+	const dir = `${testDir}-${suffix}`;
+	extraDirs.push(dir);
+	return dir;
+}
+
+function trackCore(instance: Core): Core {
+	extraCores.push(instance);
+	return instance;
+}
+
+async function saveRemoteEnabledConfig(projectName: string): Promise<void> {
+	await core.filesystem.saveConfig({
+		projectName,
+		statuses: ["To Do", "In Progress", "Done"],
+		labels: [],
+		milestones: [],
+		dateFormat: "YYYY-MM-DD",
+		remoteOperations: true,
+		checkActiveBranches: true,
+		activeBranchDays: 30,
+		autoCommit: false,
+	});
+}
 
 function task(id: string, title: string, status = "To Do"): Task {
 	return {
@@ -43,6 +70,8 @@ function recentCommitDate(minutesAgo: number): string {
 
 beforeEach(async () => {
 	testDir = createUniqueTestDir("core-task-corpus-regressions");
+	extraDirs = [];
+	extraCores = [];
 	core = new Core(testDir);
 	await core.filesystem.ensureBacklogStructure();
 	await core.filesystem.saveConfig({
@@ -61,9 +90,13 @@ beforeEach(async () => {
 });
 
 afterEach(async () => {
-	core.disposeSearchService();
-	core.disposeContentStore();
-	await safeCleanup(testDir);
+	for (const instance of [core, ...extraCores]) {
+		instance.disposeSearchService();
+		instance.disposeContentStore();
+	}
+	for (const dir of [testDir, ...extraDirs]) {
+		await safeCleanup(dir);
+	}
 });
 
 describe("Core shared task corpus regressions", () => {
@@ -220,5 +253,92 @@ describe("Core shared task corpus regressions", () => {
 			histories: 1,
 			blobs: [],
 		});
+	});
+
+	it("keeps serving fresh branch state after an ID allocation that never installed a corpus", async () => {
+		const watcherCore = trackCore(new Core(testDir, { enableWatchers: true }));
+		await $`git switch -c feature-stale`.cwd(testDir).quiet();
+		await writeTask(watcherCore.filesystem.tasksDir, "task-1 - Branch.md", task("TASK-1", "Before ref move"));
+		await commit("Add branch task", recentCommitDate(2));
+		await $`git switch main`.cwd(testDir).quiet();
+
+		// Warms the shared corpus at the current branch tips.
+		expect((await watcherCore.getTask("TASK-1"))?.title).toBe("Before ref move");
+
+		// Moving the tip from a second worktree leaves this project's watched
+		// directories untouched, so only ref-fingerprint comparison can notice it.
+		const worktreeDir = trackDir("worktree");
+		await $`git worktree add ${worktreeDir} feature-stale`.cwd(testDir).quiet();
+		const worktreeTaskPath = join(worktreeDir, "backlog", "tasks", "task-1 - Branch.md");
+		await Bun.write(worktreeTaskPath, serializeTask(task("TASK-1", "After ref move")));
+		await $`git add -A`.cwd(worktreeDir).quiet();
+		await $`git -c user.name="Backlog Test" -c user.email="test@example.com" commit -m "Move branch tip"`
+			.cwd(worktreeDir)
+			.quiet();
+
+		// Allocation loads its own corpus without installing it; that load must not
+		// claim the moved refs on behalf of the store.
+		expect(await watcherCore.generateNextId()).toBe("TASK-2");
+
+		expect((await watcherCore.getTask("TASK-1"))?.title).toBe("After ref move");
+	});
+
+	it("allocates past a remote task pushed inside the read refresh window", async () => {
+		await saveRemoteEnabledConfig("Core allocation freshness");
+		const originDir = trackDir("origin");
+		await mkdir(originDir, { recursive: true });
+		await $`git init --bare -b main`.cwd(originDir).quiet();
+		await writeTask(core.filesystem.tasksDir, "task-1 - Local.md", task("TASK-1", "Local task"));
+		await commit("Add local task", recentCommitDate(2));
+		await $`git remote add origin ${originDir}`.cwd(testDir).quiet();
+		await $`git push -u origin main`.cwd(testDir).quiet();
+
+		// A read refreshes remote refs and opens the coalesced refresh window.
+		expect((await core.loadTasks()).map((entry) => entry.id)).toEqual(["TASK-1"]);
+
+		const contributorDir = trackDir("contributor");
+		await $`git clone ${originDir} ${contributorDir}`.quiet();
+		await $`git switch -c contributed`.cwd(contributorDir).quiet();
+		await writeTask(join(contributorDir, "backlog", "tasks"), "task-2 - Contributed.md", task("TASK-2", "Contributed"));
+		await $`git add -A`.cwd(contributorDir).quiet();
+		await $`git -c user.name="Backlog Test" -c user.email="test@example.com" commit -m "Contribute task"`
+			.cwd(contributorDir)
+			.quiet();
+		await $`git push -u origin contributed`.cwd(contributorDir).quiet();
+
+		const git = core.gitOps;
+		const originalFetch = git.fetch.bind(git);
+		let fetches = 0;
+		git.fetch = async (...args) => {
+			fetches += 1;
+			return await originalFetch(...args);
+		};
+		try {
+			// Reads may reuse the window; allocation may not, or two clones hand out
+			// the same numeric ID.
+			expect(await core.generateNextId()).toBe("TASK-3");
+		} finally {
+			git.fetch = originalFetch;
+		}
+		expect(fetches).toBe(1);
+	});
+
+	it("cancels a load before it starts a remote refresh", async () => {
+		await saveRemoteEnabledConfig("Core cancellation before fetch");
+		const git = core.gitOps;
+		const originalFetch = git.fetch.bind(git);
+		let fetches = 0;
+		git.fetch = async (...args) => {
+			fetches += 1;
+			return await originalFetch(...args);
+		};
+		const controller = new AbortController();
+		controller.abort();
+		try {
+			await expect(core.loadTasks(undefined, controller.signal)).rejects.toThrow("Loading cancelled");
+		} finally {
+			git.fetch = originalFetch;
+		}
+		expect(fetches).toBe(0);
 	});
 });
