@@ -105,9 +105,9 @@ Each successful response is one pretty-printed JSON document followed by a newli
 | `task view <id> --json` and `task <id> --json` | `{ "schemaVersion": 1, "kind": "task-view", "task": {...} }` |
 | `search [query] --json` | `{ "schemaVersion": 1, "kind": "search", "results": [...] }` |
 
-Task list and task search results use these compact fields: `id`, `title`, `status`, `type`, `priority`, `assignees`, `reporter`, `labels`, `milestone`, `parentTaskId`, `ordinal`, `createdAt`, and `updatedAt`.
+Task list and task search results use these compact fields: `id`, `title`, `status`, `type`, `priority`, `assignees`, `reporter`, `labels`, `milestone`, `parentTaskId`, `acceptanceCriteriaCompleted`, `acceptanceCriteriaCount`, `ordinal`, `createdAt`, and `updatedAt`. `acceptanceCriteriaCompleted` is the number of checked acceptance criteria and `acceptanceCriteriaCount` is the total; both are `0` when the task has no acceptance criteria.
 
-Task view adds `path`, `description`, `dependencies`, `references`, `documentation`, `modifiedFiles`, `subtasks`, `acceptanceCriteria`, `definitionOfDone`, `implementationPlan`, `implementationNotes`, `comments`, and `finalSummary`. `path` is relative to the project root. Checklist entries contain `index`, `text`, and `checked`. Comment entries contain `index`, `body`, `createdAt`, and `author`.
+Task view includes the same progress counts alongside the full checklist and adds `path`, `description`, `dependencies`, `references`, `documentation`, `modifiedFiles`, `subtasks`, `acceptanceCriteria`, `definitionOfDone`, `implementationPlan`, `implementationNotes`, `comments`, and `finalSummary`. `path` is relative to the project root. Checklist entries contain `index`, `text`, and `checked`. Comment entries contain `index`, `body`, `createdAt`, and `author`.
 
 Search keeps relevance order and discriminates every result with `type` and `data`. Task data uses the compact task fields. Document data contains `id`, `title`, `type`, `path`, `tags`, `createdAt`, and `updatedAt`. Decision data contains `id`, `title`, `status`, and `date`. Search scores are not part of the version 1 public contract.
 

@@ -102,6 +102,8 @@ describe("CLI JSON output", () => {
 					labels: ["cli", "json"],
 					milestone: "m-1",
 					parentTaskId: null,
+					acceptanceCriteriaCompleted: 1,
+					acceptanceCriteriaCount: 1,
 					ordinal: 1000,
 					createdAt: "2026-07-14T09:30:00Z",
 					updatedAt: "2026-07-14T10:45:00Z",
@@ -148,6 +150,8 @@ describe("CLI JSON output", () => {
 			expect(output.task.path).toMatch(/^backlog\/tasks\/task-1 - JSON-task\.md$/);
 			expect(output.task.description).toBe("Machine-readable output");
 			expect(output.task.dependencies).toEqual(["TASK-2"]);
+			expect(output.task.acceptanceCriteriaCompleted).toBe(1);
+			expect(output.task.acceptanceCriteriaCount).toBe(1);
 			expect(output.task.acceptanceCriteria).toEqual([{ index: 1, text: "Produces JSON", checked: true }]);
 			expect(output.task.definitionOfDone).toEqual([{ index: 1, text: "Tests pass", checked: false }]);
 			expect(output.task.comments).toEqual([
@@ -196,6 +200,8 @@ describe("CLI JSON output", () => {
 		expect(output.kind).toBe("search");
 		expect(output.results.map((entry: { type: string }) => entry.type)).toEqual(["task", "document", "decision"]);
 		expect(output.results[0].data.id).toBe("TASK-1");
+		expect(output.results[0].data.acceptanceCriteriaCompleted).toBe(1);
+		expect(output.results[0].data.acceptanceCriteriaCount).toBe(1);
 		expect(output.results[1].data).toEqual({
 			id: "doc-1",
 			title: "JSON guide",
@@ -214,6 +220,74 @@ describe("CLI JSON output", () => {
 		for (const entry of output.results) {
 			expect(entry.score).toBeUndefined();
 		}
+	});
+
+	it("returns complete, partial, and empty acceptance-criteria progress across task JSON surfaces", async () => {
+		const core = new Core(TEST_DIR);
+		await core.createTask(
+			{
+				id: "task-2",
+				title: "Partial JSON task",
+				status: "To Do",
+				assignee: [],
+				createdDate: "2026-07-15 09:00",
+				labels: [],
+				dependencies: [],
+				acceptanceCriteriaItems: [
+					{ index: 1, text: "Finished", checked: true },
+					{ index: 2, text: "Pending", checked: false },
+				],
+			},
+			false,
+		);
+		await core.createTask(
+			{
+				id: "task-3",
+				title: "Empty JSON task",
+				status: "To Do",
+				assignee: [],
+				createdDate: "2026-07-15 10:00",
+				labels: [],
+				dependencies: [],
+			},
+			false,
+		);
+
+		const expectedProgress = {
+			"TASK-1": { acceptanceCriteriaCompleted: 1, acceptanceCriteriaCount: 1 },
+			"TASK-2": { acceptanceCriteriaCompleted: 1, acceptanceCriteriaCount: 2 },
+			"TASK-3": { acceptanceCriteriaCompleted: 0, acceptanceCriteriaCount: 0 },
+		};
+		const progressById = (tasks: Array<Record<string, unknown>>) =>
+			Object.fromEntries(
+				tasks.map((task) => [
+					task.id,
+					{
+						acceptanceCriteriaCompleted: task.acceptanceCriteriaCompleted,
+						acceptanceCriteriaCount: task.acceptanceCriteriaCount,
+					},
+				]),
+			);
+
+		const list = await runCli(["task", "list", "--json"]);
+		expect(list.exitCode).toBe(0);
+		expect(progressById(JSON.parse(list.stdout.toString()).tasks)).toEqual(expectedProgress);
+
+		for (const id of ["1", "2", "3"]) {
+			const view = await runCli(["task", "view", id, "--json"]);
+			expect(view.exitCode).toBe(0);
+			const task = JSON.parse(view.stdout.toString()).task;
+			expect(progressById([task])).toEqual({ [task.id]: expectedProgress[task.id as keyof typeof expectedProgress] });
+		}
+
+		const search = await runCli(["search", "JSON task", "--json"]);
+		expect(search.exitCode).toBe(0);
+		const taskResults = JSON.parse(search.stdout.toString()).results.filter(
+			(result: { type: string }) => result.type === "task",
+		);
+		expect(progressById(taskResults.map((result: { data: Record<string, unknown> }) => result.data))).toEqual(
+			expectedProgress,
+		);
 	});
 
 	it("uses the configured project-relative docs directory in search paths", async () => {

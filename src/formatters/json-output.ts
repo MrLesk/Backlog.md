@@ -14,6 +14,8 @@ type TaskSummaryJson = {
 	labels: string[];
 	milestone: string | null;
 	parentTaskId: string | null;
+	acceptanceCriteriaCompleted: number;
+	acceptanceCriteriaCount: number;
 	ordinal: number | null;
 	createdAt: string | null;
 	updatedAt: string | null;
@@ -93,6 +95,7 @@ function normalizePublicDate(value: string | undefined): string | null {
 }
 
 function toTaskSummaryJson(task: Task): TaskSummaryJson {
+	const acceptanceCriteria = task.acceptanceCriteriaItems ?? [];
 	return {
 		id: task.id,
 		title: task.title,
@@ -104,6 +107,8 @@ function toTaskSummaryJson(task: Task): TaskSummaryJson {
 		labels: task.labels ?? [],
 		milestone: nullable(task.milestone),
 		parentTaskId: nullable(task.parentTaskId),
+		acceptanceCriteriaCompleted: acceptanceCriteria.filter((criterion) => criterion.checked).length,
+		acceptanceCriteriaCount: acceptanceCriteria.length,
 		ordinal: task.ordinal ?? null,
 		createdAt: normalizePublicDate(task.createdDate),
 		updatedAt: normalizePublicDate(task.updatedDate),
