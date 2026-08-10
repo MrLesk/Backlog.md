@@ -5,7 +5,7 @@ status: Done
 assignee:
   - '@codex'
 created_date: '2026-08-09 22:02'
-updated_date: '2026-08-10 06:43'
+updated_date: '2026-08-10 06:56'
 labels: []
 dependencies: []
 priority: high
@@ -58,6 +58,8 @@ Validation passed: TypeScript, Biome over 371 files, build, and 178 focused/cont
 Same-checkout benchmark, v1.50 to fixed binary: task view 4.42s to 0.85s; task list 4.15s to 0.21s; no-op task edit 12.19s to 0.42s. The old commands attempted remote fetches; the fixed commands did not.
 
 Review fix round: reconciled parent-ID resolution so task create --parent uses the same local active/completed fail-closed resolution as task list --parent and task view, and moved dependency validation onto the same working-copy lookup so it no longer runs a cross-branch load and remote fetch inside the task lock; a parent or dependency that exists only on another branch is now refused on every surface. Local not-found messages (view, shorthand, edit, --parent on list and create, missing dependencies) now name the working copy as the corpus searched and point at the browser view, using a fixed sentence with no branch scanning. Restored the browser default: /api/tasks serves the cross-branch ContentStore again instead of re-globbing the working copy per request, with crossBranch=false still serving the local view. Removed the unused TaskReadOptions parameters from archiveTask, completeTask, demoteTask, and editTaskOrDraft; archive/complete/demote keep their existing cross-branch reads. New pins cover create-parent and dependency locality under the fetch tripwire, fail-closed ambiguity for both, the hint wording across CLI surfaces, and the store-served /api/tasks default; the two tests that pinned cross-branch parent and dependency acceptance were inverted. Gates: tsc, biome (371 files), build, and the full suite at 2201 pass / 6 skip / 0 fail.
+
+Reconciliation went both ways: task list --parent now resolves through the same working-copy lookup as task view and task create --parent, so a completed parent is no longer missing for the filter alone, the filter reads the corpus once instead of twice, and the ambiguity message still names the configured prefix. Full suite after that change: 2203 pass / 6 skip / 0 fail.
 <!-- SECTION:NOTES:END -->
 
 ## Final Summary
