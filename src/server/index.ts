@@ -22,6 +22,7 @@ import { launchBrowser } from "../utils/browser-launch.ts";
 import type { BrowserLoadingState } from "../utils/browser-loading-state.ts";
 import { isAmbiguousIdError } from "../utils/entity-id.ts";
 import { resolveMilestoneInputForStorage } from "../utils/milestone-storage.ts";
+import { DRAFT_PREFIX, extractAnyPrefix } from "../utils/prefix-config.ts";
 import { formatValidPriorityValues, resolvePriorityValue } from "../utils/priority-config.ts";
 import { formatValidStatuses, getCanonicalStatuses, getValidStatuses } from "../utils/status.ts";
 import { isValidTaskId } from "../utils/task-id.ts";
@@ -32,6 +33,14 @@ import { getVersion } from "../utils/version.ts";
 const PREFIX_PATTERN = /^[a-zA-Z]+-/i;
 const DEFAULT_PREFIX = "task-";
 const DOCUMENT_TYPES = new Set<Document["type"]>(DOCUMENT_TYPE_VALUES);
+
+/**
+ * The task routes serve drafts too, so only an explicit DRAFT- id addresses a draft.
+ * A prefix-less id such as "2" keeps naming a task, which is what the task store resolves it to.
+ */
+function isDraftId(taskId: string): boolean {
+	return extractAnyPrefix(taskId) === DRAFT_PREFIX;
+}
 
 class DocumentPayloadValidationError extends Error {
 	constructor(message: string) {
@@ -933,6 +942,10 @@ export class BacklogServer {
 
 	private async handleGetTask(taskId: string): Promise<Response> {
 		if (!isValidTaskId(taskId)) return Response.json({ error: `Invalid task ID: ${taskId}` }, { status: 400 });
+		if (isDraftId(taskId)) {
+			const draft = await this.core.filesystem.loadDraft(taskId);
+			return draft ? Response.json(draft) : Response.json({ error: `Task ${taskId} not found` }, { status: 404 });
+		}
 		let resolvedTask: Task | null;
 		try {
 			resolvedTask = await this.core.getTask(taskId);
@@ -1062,7 +1075,10 @@ export class BacklogServer {
 		}
 
 		try {
-			const updatedTask = await this.core.updateTaskFromInput(taskId, updateInput);
+			// editTaskOrDraft keeps a draft a draft, or promotes it when a real status is requested.
+			const updatedTask = isDraftId(taskId)
+				? await this.core.editTaskOrDraft(taskId, updateInput)
+				: await this.core.updateTaskFromInput(taskId, updateInput);
 			return Response.json(updatedTask);
 		} catch (error) {
 			const message = error instanceof Error ? error.message : "Failed to update task";

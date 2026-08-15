@@ -2402,7 +2402,12 @@ export class Core {
 		return refreshed ?? draft;
 	}
 
-	async editTaskOrDraft(taskId: string, input: TaskUpdateInput, autoCommit?: boolean): Promise<Task> {
+	async editTaskOrDraft(
+		taskId: string,
+		input: TaskUpdateInput,
+		autoCommit?: boolean,
+		options: TaskReadOptions = {},
+	): Promise<Task> {
 		const draft = await this.fs.loadDraft(taskId);
 		if (draft) {
 			const requestedStatus = input.status?.trim();
@@ -2413,18 +2418,9 @@ export class Core {
 			return await this.updateDraftFromInput(draft.id, input, autoCommit);
 		}
 
-		const task = await this.fs.loadTask(taskId);
-		if (!task) {
-			throw new Error(`Task not found: ${taskId}`);
-		}
-
-		const requestedStatus = input.status?.trim();
-		const wantsDraft = requestedStatus?.toLowerCase() === "draft";
-		if (wantsDraft) {
-			return await this.demoteTaskWithUpdates(task, input, autoCommit);
-		}
-
-		return await this.updateTaskFromInput(task.id, input, autoCommit);
+		// updateTaskFromInput already demotes when the requested status is Draft, resolves the id
+		// against the task store (so ambiguous ids still fail closed) and reports a missing task.
+		return await this.updateTaskFromInput(taskId, input, autoCommit, options);
 	}
 
 	private async promoteDraftWithUpdates(draft: Task, input: TaskUpdateInput, autoCommit?: boolean): Promise<Task> {

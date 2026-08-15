@@ -543,6 +543,9 @@ function AppContent() {
 
   const refreshData = useCallback(async () => {
     await loadAllData();
+    // Drafts are loaded by the drafts page, not by loadAllData, and creating, editing, promoting or
+    // demoting a task can change them, so tell that page to reload whenever the rest of the data does.
+    window.dispatchEvent(new Event('drafts-updated'));
   }, [loadAllData]);
 
 	const applyReorderedTasks = useCallback((updatedTasks: Task[], requestTask: Task) => {
@@ -625,12 +628,6 @@ function AppContent() {
     }
     handleCloseModal();
     await refreshData();
-
-    // If we're on the drafts page and created a draft, trigger a refresh
-    if (isDraftMode && window.location.pathname === '/drafts') {
-      // Trigger refresh by updating a timestamp that DraftsList can watch
-      window.dispatchEvent(new Event('drafts-updated'));
-    }
   };
 
   const handleArchiveTask = async (taskId: string) => {
