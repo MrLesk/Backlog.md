@@ -148,6 +148,9 @@ export const TaskDetailsModal: React.FC<Props> = ({
   const { theme } = useTheme();
   const isCreateMode = !task;
   const isFromOtherBranch = Boolean(task?.branch);
+  // Promoting a draft replaces it with a new task ID, which the Drafts page does through its own
+  // Promote action, so the popup shows the draft status without turning the field into a second one.
+  const isOpenDraft = (task?.status ?? "").trim().toLowerCase() === "draft";
   const [mode, setMode] = useState<Mode>(isCreateMode ? "create" : "preview");
   const modeRef = useRef(mode);
   const previousTaskId = useRef(task?.id ?? "");
@@ -1394,7 +1397,7 @@ export const TaskDetailsModal: React.FC<Props> = ({
           {/* Status */}
           <div className="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-3">
             <SectionHeader title="Status" />
-            <StatusSelect current={status} onChange={(val) => handleInlineMetaUpdate({ status: val })} disabled={isFromOtherBranch} />
+            <StatusSelect current={status} onChange={(val) => handleInlineMetaUpdate({ status: val })} disabled={isFromOtherBranch || isOpenDraft} />
           </div>
 
           {/* Type */}
@@ -1545,6 +1548,9 @@ const StatusSelect: React.FC<{ current: string; onChange: (v: string) => void; d
   useEffect(() => {
     apiClient.fetchStatuses().then(setStatuses).catch(() => setStatuses(["To Do", "In Progress", "Done"]));
   }, []);
+  // A draft is on status Draft, and a completed record can hold a historical status, neither of
+  // which is configured. Showing the value the record actually has beats showing the first option.
+  const options = !current || statuses.includes(current) ? statuses : [current, ...statuses];
   return (
     <select
       className={`w-full h-10 px-3 pr-10 py-2 border border-gray-300 dark:border-gray-600 rounded-md text-sm bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-stone-500 dark:focus:ring-stone-400 focus:border-transparent transition-colors duration-200 ${disabled ? 'opacity-60 cursor-not-allowed' : ''}`}
@@ -1552,7 +1558,7 @@ const StatusSelect: React.FC<{ current: string; onChange: (v: string) => void; d
       onChange={(e) => onChange(e.target.value)}
       disabled={disabled}
     >
-      {statuses.map((s) => (
+      {options.map((s) => (
         <option key={s} value={s}>{s}</option>
       ))}
     </select>
