@@ -575,7 +575,8 @@ export const TaskDetailsModal: React.FC<Props> = ({
       !areJsonEqual(assignee, createModeAssignee) ||
       labels.length > 0 ||
       dependencies.length > 0 ||
-      references.length > 0);
+      references.length > 0 ||
+      modifiedFiles.length > 0);
   const hasUnsavedEdits =
     (mode === "edit" || mode === "create") && (isDirty || hasCommentDraft || hasCreateModeEntries);
 
@@ -1142,12 +1143,14 @@ export const TaskDetailsModal: React.FC<Props> = ({
 
           {/* Modified files */}
           <div className="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-4">
-            <SectionHeader title="Modified files" />
+            <SectionHeader title={`Modified files${modifiedFiles.length ? ` (${modifiedFiles.length})` : ""}`} />
             <div className="space-y-3">
               {modifiedFiles.length > 0 ? (
-                <ul className="space-y-2">
+                // A finished task can list hundreds of paths, so the list scrolls inside the
+                // section instead of pushing the sections below it out of reach.
+                <ul className="space-y-2 max-h-64 overflow-y-auto overscroll-contain pr-1">
                   {modifiedFiles.map((file, idx) => (
-                    <li key={idx} className="flex items-center gap-3 group">
+                    <li key={idx} className="flex items-start gap-3 group">
                       <span className="flex-1 min-w-0">
                         <code className="text-sm font-mono text-gray-700 dark:text-gray-300 bg-gray-100 dark:bg-gray-700 px-2 py-0.5 rounded break-all">
                           {file}
@@ -1159,7 +1162,7 @@ export const TaskDetailsModal: React.FC<Props> = ({
                             const newFiles = modifiedFiles.filter((_, i) => i !== idx);
                             handleInlineMetaUpdate({ modifiedFiles: newFiles });
                           }}
-                          className="opacity-0 group-hover:opacity-100 text-gray-400 hover:text-red-500 transition-all flex-shrink-0"
+                          className="opacity-0 group-hover:opacity-100 text-gray-400 hover:text-red-500 transition-all flex-shrink-0 mt-0.5"
                           title="Remove modified file"
                         >
                           <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
