@@ -159,6 +159,41 @@ export function parseMarkdown(content: string): ParsedMarkdown {
 	};
 }
 
+/**
+ * Frontmatter keys parseTask maps onto typed Task fields. Anything outside this set is
+ * carried through untouched in Task.extraFrontmatter instead of being discarded.
+ */
+export const KNOWN_TASK_FRONTMATTER_KEYS: ReadonlySet<string> = new Set([
+	"id",
+	"title",
+	"status",
+	"assignee",
+	"reporter",
+	"created_date",
+	"updated_date",
+	"labels",
+	"milestone",
+	"dependencies",
+	"references",
+	"documentation",
+	"modified_files",
+	"parent_task_id",
+	"subtasks",
+	"priority",
+	"type",
+	"ordinal",
+	"onStatusChange",
+]);
+
+function collectExtraFrontmatter(frontmatter: Record<string, unknown>): Record<string, unknown> | undefined {
+	const extras: Record<string, unknown> = {};
+	for (const [key, value] of Object.entries(frontmatter)) {
+		if (KNOWN_TASK_FRONTMATTER_KEYS.has(key)) continue;
+		extras[key] = value;
+	}
+	return Object.keys(extras).length > 0 ? extras : undefined;
+}
+
 export function parseTask(content: string): Task {
 	const { frontmatter, content: rawContent } = parseMarkdown(content);
 
@@ -208,6 +243,7 @@ export function parseTask(content: string): Task {
 		type: frontmatter.type ? String(frontmatter.type) : undefined,
 		ordinal: frontmatter.ordinal !== undefined ? Number(frontmatter.ordinal) : undefined,
 		onStatusChange: frontmatter.onStatusChange ? String(frontmatter.onStatusChange) : undefined,
+		extraFrontmatter: collectExtraFrontmatter(frontmatter),
 	};
 }
 

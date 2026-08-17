@@ -76,6 +76,11 @@ export interface Task {
 	source?: "local" | "remote" | "completed" | "local-branch";
 	/** Optional per-task callback command to run on status change (overrides global config) */
 	onStatusChange?: string;
+	/**
+	 * Frontmatter keys this version of Backlog.md does not recognize, kept verbatim so that
+	 * external editors can annotate task files without their fields being dropped on the next write.
+	 */
+	extraFrontmatter?: Record<string, unknown>;
 }
 
 export interface MilestoneBucket {
