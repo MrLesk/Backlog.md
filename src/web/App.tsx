@@ -810,6 +810,7 @@ function AppContent() {
         onArchive={editingTask ? () => handleArchiveTask(editingTask.id) : undefined}
         availableStatuses={isDraftMode ? ['Draft', ...statuses] : statuses}
         availableTasks={tasks}
+        onNavigateToTask={handleEditTask}
         availableMilestones={milestones}
         availablePriorities={config?.priorities}
         availableTypes={availableTypes}
