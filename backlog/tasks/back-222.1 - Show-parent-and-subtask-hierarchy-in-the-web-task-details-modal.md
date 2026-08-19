@@ -1,11 +1,11 @@
 ---
 id: BACK-222.1
 title: Show parent and subtask hierarchy in the web task details modal
-status: Done
+status: In Progress
 assignee:
-  - '@yss19850810-crypto'
+  - '@codex'
 created_date: '2026-08-17 07:26'
-updated_date: '2026-08-17 07:27'
+updated_date: '2026-08-19 21:34'
 labels: []
 dependencies: []
 parent_task_id: BACK-222
@@ -45,6 +45,15 @@ Contributed by @yss19850810-crypto.
 - [x] #3 bun test (or scoped test) passes
 <!-- DOD:END -->
 
+## Implementation Plan
+
+<!-- SECTION:PLAN:BEGIN -->
+1. Keep the accepted parent/subtask hierarchy and preserve existing routes, clients, accessibility, and theme classes.
+2. Use one shared responsive Modal header layout so long task titles and actions do not overlap at 390px.
+3. Make hierarchy row titles readable with the existing task-card wrapping pattern, without new controls or data fetching.
+4. Verify board and All Tasks navigation in the in-app Browser at desktop and mobile sizes, then record evidence and finalize after PR review and CI.
+<!-- SECTION:PLAN:END -->
+
 ## Implementation Notes
 
 <!-- SECTION:NOTES:BEGIN -->
@@ -69,4 +78,8 @@ The status dot uses the project's `rounded-circle` utility, not `rounded-full` �
 Verification: `bunx tsc --noEmit` clean; `bun run lint` 375 files with no fixes applied; `bun run build` clean; new tests 10 + 8 pass; the existing `web-task-details-modal-modified-files` suite still 5 pass. Browser QA against two real projects — a six-child parent reading 6/6, and a three-level tree reading 5/6 with its `To Do` child annotated 1/4 — with parent and child navigation checked in both directions.
 
 `bun run check .` is not reported as passing: on Windows the repo's `* text=auto` gitattribute produces CRLF worktree files that biome's formatter rejects wholesale, independently of this change. Committed blobs are LF, and `bun run lint` is clean. A maintainer on Linux or macOS, or CI, should see the formatter pass.
+
+Maintainer follow-up: responsive modal-header and hierarchy-title polish requested after rendered mobile QA. No product semantics or data flow changes.
+
+Rendered QA after maintainer polish (in-app Browser): board and All Tasks parent-to-child and child-parent routes checked at 1280x720 and 390x844. The shared modal header has no title/action overlap at 390px, no horizontal overflow, and hierarchy rows remain keyboard-semantic buttons with status sr-only labels and canonical route metadata. Parent subtasks row is readable across two lines; child Parent row is readable across two lines. Empty BACK-633 modal renders no Parent/Subtasks section. Dark and light theme hierarchy states were checked; no framework overlays or console warnings/errors observed. Screenshots: /private/tmp/pr917-after-parent-desktop-visible.png, /private/tmp/pr917-after-child-desktop.png, /private/tmp/pr917-after-parent-mobile.png, /private/tmp/pr917-after-child-mobile.png, /private/tmp/pr917-after-parent-light-desktop.png.
 <!-- SECTION:NOTES:END -->

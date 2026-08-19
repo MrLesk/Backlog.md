@@ -121,11 +121,11 @@ const Modal: React.FC<ModalProps> = ({
 				aria-modal="true"
 				aria-labelledby="modal-title"
 			>
-				<div className="sticky top-0 z-10 flex flex-wrap items-center justify-between gap-2 px-6 pt-4 pb-3 border-b border-gray-200 dark:border-gray-700 bg-white/95 dark:bg-gray-800/95 backdrop-blur supports-[backdrop-filter]:bg-white/75 supports-[backdrop-filter]:dark:bg-gray-800/75">
-					<h2 id="modal-title" className="min-w-0 text-base font-semibold text-gray-900 dark:text-gray-100">
+				<div className="sticky top-0 z-10 flex flex-wrap items-start gap-3 px-6 pt-4 pb-3 border-b border-gray-200 dark:border-gray-700 bg-white/95 dark:bg-gray-800/95 backdrop-blur supports-[backdrop-filter]:bg-white/75 supports-[backdrop-filter]:dark:bg-gray-800/75">
+					<h2 id="modal-title" className="min-w-0 flex-1 basis-full break-words text-base font-semibold text-gray-900 dark:text-gray-100 sm:basis-auto">
 						{title}
 					</h2>
-					<div className="flex min-w-0 flex-wrap items-center justify-end gap-2">
+					<div className="ml-auto flex min-w-0 max-w-full flex-wrap items-center justify-end gap-2">
 						{actions}
 						<button
 							type="button"

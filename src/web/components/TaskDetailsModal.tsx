@@ -1780,13 +1780,15 @@ export const TaskDetailsModal: React.FC<Props> = ({
                 disabled={!onNavigateToTask}
                 data-parent-task-id={parentTask.id}
                 data-parent-task-href={createUrlPath('/tasks', parentTask.id, parentTask.title)}
-                className="w-full flex items-center gap-2 rounded-md px-2 py-1.5 text-left transition-colors duration-200 hover:bg-gray-50 dark:hover:bg-gray-700/50 disabled:cursor-default disabled:hover:bg-transparent"
+                className="w-full flex items-start gap-2 rounded-md px-2 py-1.5 text-left transition-colors duration-200 hover:bg-gray-50 dark:hover:bg-gray-700/50 disabled:cursor-default disabled:hover:bg-transparent"
               >
-                <StatusDot status={parentTask.status} statuses={availableStatuses} />
+                <span className="mt-1">
+                  <StatusDot status={parentTask.status} statuses={availableStatuses} />
+                </span>
                 <span className="text-xs font-mono text-gray-500 dark:text-gray-400 whitespace-nowrap">
                   {parentTask.id}
                 </span>
-                <span className="min-w-0 flex-1 truncate text-sm text-gray-900 dark:text-gray-100">
+                <span className="min-w-0 flex-1 line-clamp-2 break-words text-sm text-gray-900 dark:text-gray-100" title={parentTask.title}>
                   {parentTask.title}
                 </span>
               </button>
@@ -1815,9 +1817,11 @@ export const TaskDetailsModal: React.FC<Props> = ({
                       disabled={!onNavigateToTask}
                       data-subtask-id={subtask.id}
                       data-subtask-href={createUrlPath('/tasks', subtask.id, subtask.title)}
-                      className="w-full flex items-center gap-2 rounded-md px-2 py-1.5 text-left transition-colors duration-200 hover:bg-gray-50 dark:hover:bg-gray-700/50 disabled:cursor-default disabled:hover:bg-transparent"
+                      className="w-full flex items-start gap-2 rounded-md px-2 py-1.5 text-left transition-colors duration-200 hover:bg-gray-50 dark:hover:bg-gray-700/50 disabled:cursor-default disabled:hover:bg-transparent"
                     >
-                      <StatusDot status={subtask.status} statuses={availableStatuses} />
+                      <span className="mt-1">
+                        <StatusDot status={subtask.status} statuses={availableStatuses} />
+                      </span>
                       <span
                         className={`text-xs font-mono whitespace-nowrap ${
                           isComplete ? 'text-gray-400 dark:text-gray-500' : 'text-gray-500 dark:text-gray-400'
@@ -1826,11 +1830,12 @@ export const TaskDetailsModal: React.FC<Props> = ({
                         {subtask.id}
                       </span>
                       <span
-                        className={`min-w-0 flex-1 truncate text-sm ${
+                        className={`min-w-0 flex-1 line-clamp-2 break-words text-sm ${
                           isComplete
                             ? 'text-gray-400 dark:text-gray-500 line-through'
                             : 'text-gray-900 dark:text-gray-100'
                         }`}
+                        title={subtask.title}
                       >
                         {subtask.title}
                       </span>
