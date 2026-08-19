@@ -20,7 +20,41 @@ export type CaretLines = {
 	real: readonly string[];
 	rtof: readonly number[];
 	fakeCount: number;
+	displayWidth?: (value: string) => number;
 };
+
+// Blessed inserts this zero-width marker after double-width characters while wrapping.
+// It is not part of the input value, so caret calculations must ignore it.
+const WIDE_CHARACTER_PLACEHOLDER = "\x03";
+
+// An astral character such as an emoji is two UTF-16 units, and splitting them leaves an
+// unpaired surrogate that renders as a replacement character and corrupts the saved task file.
+const isHighSurrogate = (code: number) => code >= 0xd800 && code <= 0xdbff;
+const isLowSurrogate = (code: number) => code >= 0xdc00 && code <= 0xdfff;
+
+const visibleLineText = (value: string): string => value.replaceAll(WIDE_CHARACTER_PLACEHOLDER, "");
+const codePointWidth = (value: string): number => Array.from(value).length;
+
+function safeCodePointBoundary(value: string, index: number): number {
+	const clamped = Math.min(value.length, Math.max(0, index));
+	if (isLowSurrogate(value.charCodeAt(clamped)) && isHighSurrogate(value.charCodeAt(clamped - 1))) {
+		return clamped - 1;
+	}
+	return clamped;
+}
+
+function indexAtDisplayColumn(value: string, column: number, displayWidth: (value: string) => number): number {
+	const target = Math.max(0, column);
+	let index = 0;
+	let width = 0;
+	for (const character of value) {
+		const nextWidth = width + Math.max(0, displayWidth(character));
+		if (target < nextWidth) return index;
+		width = nextWidth;
+		index += character.length;
+	}
+	return value.length;
+}
 
 /**
  * The input widgets report the caret as a negative offset from the end of its wrapped line
@@ -30,32 +64,40 @@ export function caretIndexFromCursor(value: string, cursor: { x: number; y: numb
 	if (lines.real.length === 0) return value.length;
 	const lastLine = lines.real.length - 1;
 	const currentLine = Math.min(lastLine, Math.max(0, lastLine + cursor.y));
-	let after = -Math.min(0, cursor.x);
-	for (let line = currentLine + 1; line <= lastLine; line += 1) after += (lines.real[line] ?? "").length;
+	const displayWidth = lines.displayWidth ?? codePointWidth;
+	const currentText = visibleLineText(lines.real[currentLine] ?? "");
+	const caretColumn = displayWidth(currentText) + Math.min(0, cursor.x);
+	const lineIndex = indexAtDisplayColumn(currentText, caretColumn, displayWidth);
+	let after = currentText.length - lineIndex;
+	for (let line = currentLine + 1; line <= lastLine; line += 1) {
+		after += visibleLineText(lines.real[line] ?? "").length;
+	}
 	// Wrapped lines share a logical line; only logical breaks add a newline character.
 	after += Math.max(0, lines.fakeCount - 1 - (lines.rtof[currentLine] ?? 0));
-	return Math.min(value.length, Math.max(0, value.length - after));
+	return safeCodePointBoundary(value, value.length - after);
 }
 
 /** Cursor offsets placing the caret at `caretIndex`; the inverse of {@link caretIndexFromCursor}. */
 export function cursorFromCaretIndex(value: string, caretIndex: number, lines: CaretLines): { x: number; y: number } {
 	const lastLine = lines.real.length - 1;
 	if (lastLine < 0) return { x: 0, y: 0 };
-	const after = Math.max(0, value.length - caretIndex);
+	const displayWidth = lines.displayWidth ?? codePointWidth;
+	const after = value.length - safeCodePointBoundary(value, caretIndex);
 	let trailing = 0;
 	for (let line = lastLine; line >= 0; line -= 1) {
+		const lineText = visibleLineText(lines.real[line] ?? "");
 		const newlines = Math.max(0, lines.fakeCount - 1 - (lines.rtof[line] ?? 0));
-		const column = after - trailing - newlines;
-		if (column >= 0 && column <= (lines.real[line] ?? "").length) return { x: -column, y: -(lastLine - line) };
-		trailing += (lines.real[line] ?? "").length;
+		const trailingCodeUnits = after - trailing - newlines;
+		if (trailingCodeUnits >= 0 && trailingCodeUnits <= lineText.length) {
+			return {
+				x: -displayWidth(lineText.slice(lineText.length - trailingCodeUnits)),
+				y: line === lastLine ? 0 : -(lastLine - line),
+			};
+		}
+		trailing += lineText.length;
 	}
 	return { x: 0, y: -lastLine };
 }
-
-// An astral character such as an emoji is two UTF-16 units, and removing one of them leaves an
-// unpaired surrogate that renders as a replacement character and corrupts the saved task file.
-const isHighSurrogate = (code: number) => code >= 0xd800 && code <= 0xdbff;
-const isLowSurrogate = (code: number) => code >= 0xdc00 && code <= 0xdfff;
 
 /** First index Backspace (one character) or Ctrl+W (one word) should remove, counting back from the caret. */
 export function deletionStart(value: string, caretIndex: number, unit: "char" | "word"): number {
@@ -615,31 +657,40 @@ export async function openTaskComposer(options: TaskComposerOptions): Promise<Ta
 			_clines?: { length: number; real?: string[]; rtof?: number[]; fake?: string[] };
 			getCursor?: () => { x: number; y: number };
 			setCursor?: (x: number, y: number) => void;
+			setScroll?: (offset: number) => void;
+			strWidth?: (value: string) => number;
 			_updateCursor?: () => void;
 		};
-		/**
-		 * Keys the composer implements itself. Tab moves between fields instead of typing a tab,
-		 * and deletion is owned here because the widgets cannot do it: the textbox deletes from the
-		 * end and returns before repainting, and the textarea's backspace branch is empty on the
-		 * unicode-capable screens this TUI creates.
-		 */
-		const ownedInputKeys = new Set(["tab", "backspace", "delete"]);
-		const ownInputKeys = (input: ComposerInput) => {
-			const listener = input._listener?.bind(input);
-			if (!listener) return;
-			input._listener = (ch, key) => {
-				if ((key.name && ownedInputKeys.has(key.name)) || ch === "\t") return;
-				listener(ch, key);
-			};
-		};
-		ownInputKeys(titleInput as ComposerInput);
-		ownInputKeys(descriptionInput as ComposerInput);
 
 		const readCaretLines = (input: ComposerInput, value: string): CaretLines => ({
 			real: input._clines?.real ?? [value],
 			rtof: input._clines?.rtof ?? [0],
 			fakeCount: input._clines?.fake?.length ?? 1,
+			displayWidth: input.strWidth?.bind(input),
 		});
+
+		const setTextAtCaret = (input: ComposerInput, value: string, caret: number) => {
+			// Changing a line can invalidate the widget's current negative row offset. Park the
+			// caret on the last line first, which is valid for any replacement value.
+			input.setCursor?.(0, 0);
+			input.setValue(value);
+			syncInputs();
+			const lines = readCaretLines(input, value);
+			const cursor = cursorFromCaretIndex(value, caret, lines);
+			input.setCursor?.(cursor.x, cursor.y);
+			// setValue() scrolls to the last line while the caret is parked at (0, 0). Restore
+			// the caret's line so an edit near the top of a long description stays visible.
+			input.setScroll?.(Math.max(0, lines.real.length - 1 + cursor.y));
+			input._updateCursor?.();
+			options.screen.render();
+		};
+
+		const insertText = (input: ComposerInput, inserted: string) => {
+			const value = input.getValue();
+			const cursor = input.getCursor?.() ?? { x: 0, y: 0 };
+			const caret = caretIndexFromCursor(value, cursor, readCaretLines(input, value));
+			setTextAtCaret(input, value.slice(0, caret) + inserted + value.slice(caret), caret + inserted.length);
+		};
 
 		const deleteText = (input: ComposerInput, unit: "char" | "word" | "forward") => {
 			const value = input.getValue();
@@ -648,18 +699,35 @@ export async function openTaskComposer(options: TaskComposerOptions): Promise<Ta
 			const start = unit === "forward" ? caret : deletionStart(value, caret, unit);
 			const end = unit === "forward" ? deletionEnd(value, caret) : caret;
 			if (start >= end) return;
-			const next = value.slice(0, start) + value.slice(end);
-			// Removing a line break shortens the wrapped lines, and setValue makes the widget
-			// reposition its cursor straight away. Park the caret on the last line first, which is
-			// valid for any content, so that update cannot read past the end of the new lines.
-			input.setCursor?.(0, 0);
-			input.setValue(next);
-			syncInputs();
-			const caretAfter = cursorFromCaretIndex(next, start, readCaretLines(input, next));
-			input.setCursor?.(caretAfter.x, caretAfter.y);
-			input._updateCursor?.();
-			options.screen.render();
+			setTextAtCaret(input, value.slice(0, start) + value.slice(end), start);
 		};
+
+		/**
+		 * Text changes the composer implements itself. The widgets mix display-cell cursor offsets
+		 * with UTF-16 slicing, and their deletion behavior also differs between textbox and textarea.
+		 * Owning both paths keeps every mutation on a code-point boundary.
+		 */
+		const ownedInputKeys = new Set(["tab", "backspace", "delete"]);
+		const isTextInsertion = (ch: string): boolean => {
+			if (!ch) return false;
+			if (ch.length > 1) return true;
+			const code = ch.charCodeAt(0);
+			return code > 0x1f && code !== 0x7f;
+		};
+		const ownInputKeys = (input: ComposerInput) => {
+			const listener = input._listener?.bind(input);
+			if (!listener) return;
+			input._listener = (ch, key) => {
+				if ((key.name && ownedInputKeys.has(key.name)) || ch === "\t") return;
+				if (isTextInsertion(ch)) {
+					insertText(input, ch);
+					return;
+				}
+				listener(ch, key);
+			};
+		};
+		ownInputKeys(titleInput as ComposerInput);
+		ownInputKeys(descriptionInput as ComposerInput);
 
 		let cursorBeforeKey: { y: number; lines: number } | null = null;
 		for (const input of [titleInput, descriptionInput] as ComposerInput[]) {

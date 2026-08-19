@@ -58,13 +58,14 @@ async function installFailingHook(testDir: string, body = "exit 1"): Promise<str
 }
 
 type TestWidget = {
-	_clines?: { length: number };
+	_clines?: { length: number; real?: string[]; rtof?: number[]; fake?: string[] };
 	_reading?: boolean;
 	childBase?: number;
 	content?: string;
 	type?: string;
 	children?: unknown[];
 	getCursor?: () => { x: number; y: number };
+	setCursor?: (x: number, y: number) => void;
 	getValue?: () => string;
 	height?: number;
 	hidden?: boolean;
@@ -174,6 +175,25 @@ describe("TUI task composer model", () => {
 				const cursor = cursorFromCaretIndex(value, index, lines);
 				expect(caretIndexFromCursor(value, cursor, lines)).toBe(index);
 			}
+		}
+	});
+
+	it("maps a display-cell cursor onto code-point boundaries around a wide astral character", () => {
+		const value = "A𠮷B";
+		const lines: CaretLines = {
+			// Blessed adds \x03 as an internal placeholder for the second terminal cell.
+			real: ["A𠮷\x03B"],
+			rtof: [0],
+			fakeCount: 1,
+			displayWidth: (text) => Array.from(text).reduce((width, character) => width + (character === "𠮷" ? 2 : 1), 0),
+		};
+
+		// The widget can leave its cursor on the second cell of a wide character. Resolve that
+		// ambiguous cell to the boundary before the character, never between its surrogates.
+		expect(caretIndexFromCursor(value, { x: -2, y: 0 }, lines)).toBe(1);
+		expect(cursorFromCaretIndex(value, 1, lines)).toEqual({ x: -3, y: 0 });
+		for (const index of [0, 1, 3, 4]) {
+			expect(caretIndexFromCursor(value, cursorFromCaretIndex(value, index, lines), lines)).toBe(index);
 		}
 	});
 
@@ -334,6 +354,67 @@ describe("TUI task composer canonical persistence", () => {
 		expect(createdDraft?.id).toBe("DRAFT-1");
 		expect(await core.fs.loadDraft("DRAFT-1")).not.toBeNull();
 		expect(await core.fs.loadTask("DRAFT-1")).toBeNull();
+	});
+
+	it("persists mid-field astral insertions from both text fields without corrupting their caret", async () => {
+		const screen = createScreen({ smartCSR: false });
+		Object.defineProperty(screen, "width", { configurable: true, value: 100, writable: true });
+		Object.defineProperty(screen, "height", { configurable: true, value: 30, writable: true });
+		Object.defineProperty(screen, "fullUnicode", { configurable: true, value: true, writable: true });
+		const eventScreen = screen as unknown as { focused?: TestWidget };
+		let taskPath = "";
+
+		try {
+			const resultPromise = openTaskComposer({
+				screen,
+				statuses: ["To Do", "Done"],
+				persist: async (input) => {
+					const result = await core.createTaskFromInput(input, false);
+					if (!result.filePath) throw new Error("Expected canonical task creation to return its path");
+					taskPath = result.filePath;
+					return result.task;
+				},
+			});
+			await settleComposerFocus();
+
+			const title = eventScreen.focused;
+			title?.setValue?.("A𠮷B");
+			pressKey(title, "end");
+			pressKey(title, "left");
+			pressKey(title, "left");
+			typeText(title, "X");
+			expect(title?.getValue?.()).toBe("AX𠮷B");
+			expect(title?.getCursor?.()).toEqual({ x: -3, y: 0 });
+
+			pressKey(title, "tab", "\t");
+			await settleComposerFocus();
+			const description = eventScreen.focused;
+			description?.setValue?.("left 𠮷 right");
+			pressKey(description, "end");
+			for (let step = 0; step < 7; step += 1) pressKey(description, "left");
+			typeText(description, "Y");
+			expect(description?.getValue?.()).toBe("left Y𠮷 right");
+			expect(description?.getCursor?.()).toEqual({ x: -8, y: 0 });
+
+			for (let step = 0; step < 4; step += 1) pressKey(eventScreen.focused, "tab", "\t");
+			expect(eventScreen.focused?.content).toBe("Create task");
+			pressKey(eventScreen.focused, "enter", "\r");
+			expect((await withTimeout(resultPromise, "Unicode-safe composer persistence", 1000))?.id).toBe("TASK-1");
+
+			const persisted = await readFile(taskPath, "utf8");
+			// YAML escapes astral title characters, while Markdown keeps them literal. Both forms
+			// must represent the complete code point rather than separate surrogate halves.
+			expect(persisted).toContain("AX\\U00020BB7B");
+			expect(persisted).toContain("left Y𠮷 right");
+			expect(persisted).not.toContain("�");
+			expect(persisted).not.toContain("\\uD842");
+			expect(await core.fs.loadTask("TASK-1")).toMatchObject({
+				title: "AX𠮷B",
+				description: "left Y𠮷 right",
+			});
+		} finally {
+			screen.destroy();
+		}
 	});
 
 	it("rolls back a task when auto-commit fails and retries with the same ID", async () => {
@@ -1148,7 +1229,7 @@ describe("TUI task composer interaction", () => {
 			pressKey(description, "backspace", "\x7f");
 			expect(description?.getValue?.()).toBe("abcd");
 			description?.setValue?.("ab🚀cd");
-			putCaret(4); // just before the emoji
+			putCaret(3); // just before the emoji (terminal columns, not UTF-16 units)
 			pressKey(description, "delete", "");
 			expect(description?.getValue?.()).toBe("abcd");
 
@@ -1216,6 +1297,50 @@ describe("TUI task composer interaction", () => {
 
 			pressKey(eventScreen.focused, "escape", "\x1b");
 			expect(await withTimeout(resultPromise, "description line join", 1000)).toBeNull();
+		} finally {
+			screen.destroy();
+		}
+	});
+
+	it("keeps an edited early description line in the viewport", async () => {
+		const screen = createScreen({ smartCSR: false });
+		Object.defineProperty(screen, "width", { configurable: true, value: 40, writable: true });
+		Object.defineProperty(screen, "height", { configurable: true, value: 30, writable: true });
+		Object.defineProperty(screen, "fullUnicode", { configurable: true, value: true, writable: true });
+		const eventScreen = screen as unknown as { focused?: TestWidget };
+		try {
+			const resultPromise = openTaskComposer({
+				screen,
+				statuses: ["To Do", "Done"],
+				persist: async () => task(),
+			});
+			await settleComposerFocus();
+			pressKey(eventScreen.focused, "tab", "\t");
+			await settleComposerFocus();
+			const description = eventScreen.focused;
+			const longDescription = "one ".repeat(80).trim();
+			description?.setValue?.(longDescription);
+			description?.setCursor?.(0, -Math.max(0, (description?._clines?.length ?? 1) - 1));
+			const valueBeforeEdit = description?.getValue?.() ?? "";
+			const cursorBeforeEdit = description?.getCursor?.() ?? { x: 0, y: 0 };
+			const clines = description?._clines;
+			const caretBeforeEdit = caretIndexFromCursor(valueBeforeEdit, cursorBeforeEdit, {
+				real: clines?.real ?? [valueBeforeEdit],
+				rtof: clines?.rtof ?? [0],
+				fakeCount: clines?.fake?.length ?? 1,
+			});
+			expect(caretBeforeEdit).toBeLessThan(valueBeforeEdit.length / 2);
+			typeText(description, "X");
+
+			expect(description?.getValue?.()).toBe(
+				`${valueBeforeEdit.slice(0, caretBeforeEdit)}X${valueBeforeEdit.slice(caretBeforeEdit)}`,
+			);
+			// The caret is on an early wrapped line, so setValue must not leave the textarea parked
+			// on its final line. The exact offset can vary with the terminal's wrapping geometry.
+			expect(description?.childBase).toBeLessThan((description?._clines?.length ?? 1) - 1);
+
+			pressKey(eventScreen.focused, "escape", "\x1b");
+			expect(await withTimeout(resultPromise, "description viewport cancellation", 1000)).toBeNull();
 		} finally {
 			screen.destroy();
 		}
