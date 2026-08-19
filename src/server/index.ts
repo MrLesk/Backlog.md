@@ -1140,6 +1140,9 @@ export class BacklogServer {
 				typeof error === "object" && error !== null &&
 				(error as { demotionState?: unknown }).demotionState;
 			const knownDemotionState = demotionState === "moved" || demotionState === "partial" ? demotionState : undefined;
+			if (knownDemotionState) {
+				this.broadcastTasksUpdated();
+			}
 			if (!conflict) {
 				console.error("Error demoting task:", error);
 			}

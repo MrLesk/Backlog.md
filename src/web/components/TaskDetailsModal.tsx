@@ -122,7 +122,7 @@ const buildTaskDetailsFormState = ({
   finalSummary: task?.finalSummary || "",
   criteria: task?.acceptanceCriteriaItems || [],
   definitionOfDone: task?.definitionOfDoneItems || (isCreateMode ? defaultDefinitionOfDone : []),
-  status: task?.status || (isDraftMode ? "Draft" : (availableStatuses?.[0] || "To Do")),
+  status: isDraftMode ? "Draft" : (task?.status || (availableStatuses?.[0] || "To Do")),
   assignee: task?.assignee || createModeAssignee,
   labels: task?.labels || [],
   priority: task?.priority || "",
@@ -344,7 +344,7 @@ export const TaskDetailsModal: React.FC<Props> = ({
   }, [milestoneEntities, archivedMilestoneEntities]);
 
   // Sidebar metadata (inline edit)
-  const [status, setStatus] = useState(task?.status || (isDraftMode ? "Draft" : (availableStatuses?.[0] || "To Do")));
+  const [status, setStatus] = useState(isDraftMode ? "Draft" : (task?.status || (availableStatuses?.[0] || "To Do")));
   const [assignee, setAssignee] = useState<string[]>(task?.assignee || createModeAssignee);
   const [labels, setLabels] = useState<string[]>(task?.labels || []);
   const [priority, setPriority] = useState<string>(task?.priority || "");

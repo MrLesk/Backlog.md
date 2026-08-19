@@ -2584,7 +2584,11 @@ export class Core {
 	async updateTasksBulk(tasks: Task[], commitMessage?: string, autoCommit?: boolean): Promise<void> {
 		const filePaths: string[] = [];
 		const updateAll = async () => {
-			for (const task of tasks) filePaths.push(await this.updateTask(task, false));
+			for (const task of tasks) {
+				// Bulk writes are still per-task mutations. Keep each write under the same
+				// lock used by direct edits so a reorder cannot recreate a task after demotion.
+				filePaths.push(await this.fs.withTaskLock(task, () => this.updateTask(task, false)));
+			}
 		};
 		if (this.contentStore) await this.contentStore.batchTaskUpdates(updateAll);
 		else await updateAll();
