@@ -59,6 +59,7 @@ async function installFailingHook(testDir: string, body = "exit 1"): Promise<str
 
 type TestWidget = {
 	_clines?: { length: number };
+	_reading?: boolean;
 	childBase?: number;
 	content?: string;
 	type?: string;
@@ -104,6 +105,10 @@ function pressKey(widget: TestWidget | undefined, name: string, ch = ""): void {
 	const key = { name: keyName, full: name, shift };
 	widget?.emit?.("keypress", ch, key);
 	widget?.emit?.(`key ${name}`, ch, key);
+}
+
+function clickWidget(widget: TestWidget | undefined): void {
+	widget?.emit?.("click", { button: "left", x: 0, y: 0 });
 }
 
 function typeText(widget: TestWidget | undefined, value: string): void {
@@ -963,6 +968,112 @@ describe("TUI task composer interaction", () => {
 
 			expect(await withTimeout(resultPromise, "composer cancel", 1000)).toBeNull();
 			expect(writes).toBe(0);
+		} finally {
+			screen.destroy();
+		}
+	});
+
+	it("clicks text fields into exclusive read mode and handles repeated Title clicks", async () => {
+		const screen = createScreen({ smartCSR: false });
+		Object.defineProperty(screen, "width", { configurable: true, value: 100, writable: true });
+		Object.defineProperty(screen, "height", { configurable: true, value: 30, writable: true });
+		const eventScreen = screen as unknown as {
+			focused?: TestWidget;
+			program?: { cursorHidden?: boolean };
+		};
+		try {
+			const resultPromise = openTaskComposer({
+				screen,
+				statuses: ["To Do", "Done"],
+				persist: async () => task(),
+			});
+			await settleComposerFocus();
+			const widgets = collectWidgets(screen as unknown as { children?: unknown[] });
+			const title = widgets.find((widget) => widget.options?.label === " Title ");
+			const description = widgets.find((widget) => widget.options?.label === " Description ");
+			const status = widgets.find((widget) => widget.content === "Status: To Do ▼");
+
+			clickWidget(description);
+			await settleComposerFocus();
+			expect(eventScreen.focused).toBe(description);
+			expect(description?._reading).toBe(true);
+			expect(description?.getCursor?.()).toBeDefined();
+			expect(eventScreen.program?.cursorHidden).toBe(false);
+			expect(description?.style?.border?.fg).toBe("yellow");
+			expect(title?.style?.border?.fg).toBe("gray");
+			typeText(eventScreen.focused, "Clicked description");
+			expect(description?.getValue?.()).toBe("Clicked description");
+
+			pressKey(eventScreen.focused, "tab", "\t");
+			expect(eventScreen.focused).toBe(status);
+			expect(status?.style).toMatchObject({ inverse: true, bold: true });
+
+			clickWidget(title);
+			await settleComposerFocus();
+			expect(eventScreen.focused).toBe(title);
+			expect(title?._reading).toBe(true);
+			expect(title?.style?.border?.fg).toBe("yellow");
+			expect(description?.style?.border?.fg).toBe("gray");
+			expect(status?.style).toMatchObject({ inverse: false, bold: false });
+			typeText(eventScreen.focused, "First");
+
+			// Clicking the already active Title takes the same cancel/readInput path and remains editable.
+			clickWidget(title);
+			await settleComposerFocus();
+			expect(eventScreen.focused).toBe(title);
+			expect(title?._reading).toBe(true);
+			typeText(eventScreen.focused, " again");
+			expect(title?.getValue?.()).toBe("First again");
+
+			pressKey(eventScreen.focused, "escape", "\x1b");
+			expect(await withTimeout(resultPromise, "mouse text-field cancellation", 1000)).toBeNull();
+		} finally {
+			screen.destroy();
+		}
+	});
+
+	it("opens every selector picker from a click and restores exclusive selector focus", async () => {
+		const screen = createScreen({ smartCSR: false });
+		Object.defineProperty(screen, "width", { configurable: true, value: 100, writable: true });
+		Object.defineProperty(screen, "height", { configurable: true, value: 30, writable: true });
+		const eventScreen = screen as unknown as { focused?: TestWidget };
+		try {
+			const resultPromise = openTaskComposer({
+				screen,
+				statuses: ["To Do", "Done"],
+				types: ["Bug", "Feature"],
+				priorities: ["High", "Low"],
+				persist: async () => task(),
+			});
+			await settleComposerFocus();
+			const widgets = collectWidgets(screen as unknown as { children?: unknown[] });
+			const selectors = [
+				{
+					widget: widgets.find((candidate) => candidate.content === "Status: To Do ▼"),
+					choices: ["Draft", "To Do", "Done"],
+				},
+				{
+					widget: widgets.find((candidate) => candidate.content === "Type: None ▼"),
+					choices: ["None", "Bug", "Feature"],
+				},
+				{
+					widget: widgets.find((candidate) => candidate.content === "Priority: None ▼"),
+					choices: ["None", "High", "Low"],
+				},
+			];
+
+			for (const { widget, choices } of selectors) {
+				clickWidget(widget);
+				await settleComposerFocus();
+				expect(eventScreen.focused?.items?.map((item) => item.content)).toEqual(choices);
+				pressKey(eventScreen.focused, "enter", "\r");
+				await settleComposerFocus();
+				expect(eventScreen.focused).toBe(widget);
+				expect(widget?.style).toMatchObject({ inverse: true, bold: true });
+			}
+
+			pressKey(eventScreen.focused, "escape", "\x1b");
+			expect(await withTimeout(resultPromise, "mouse selector cancellation", 1000)).toBeNull();
 		} finally {
 			screen.destroy();
 		}
