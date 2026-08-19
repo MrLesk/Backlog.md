@@ -1,7 +1,8 @@
 import type { Task } from "../types/index.ts";
 
 // A 10-cell indicator occupies about half this width, leaving room for task identity and title.
-const WIDE_PROGRESS_MIN_WIDTH = 32;
+// Keep enough room for the task identity and a meaningful title after the indicator.
+const WIDE_PROGRESS_MIN_WIDTH = 40;
 const WIDE_PROGRESS_CELLS = 10;
 const COMPACT_PROGRESS_CELLS = 5;
 

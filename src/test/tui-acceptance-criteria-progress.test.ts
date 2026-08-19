@@ -31,10 +31,10 @@ describe("TUI acceptance-criteria progress", () => {
 	it("renders the exact wide and constrained bars from live checklist state", () => {
 		const task = makeTask();
 
-		expect(formatAcceptanceCriteriaProgress(task, 32)).toBe("[██████░░░░] 4/7");
-		expect(formatAcceptanceCriteriaProgress(task, 31)).toBe("[███░░] 4/7");
+		expect(formatAcceptanceCriteriaProgress(task, 40)).toBe("[██████░░░░] 4/7");
+		expect(formatAcceptanceCriteriaProgress(task, 39)).toBe("[███░░] 4/7");
 		if (task.acceptanceCriteriaItems?.[4]) task.acceptanceCriteriaItems[4].checked = true;
-		expect(formatAcceptanceCriteriaProgress(task, 32)).toBe("[███████░░░] 5/7");
+		expect(formatAcceptanceCriteriaProgress(task, 40)).toBe("[███████░░░] 5/7");
 	});
 
 	it("omits progress when criteria are absent or the task is not in progress", () => {
@@ -55,6 +55,13 @@ describe("TUI acceptance-criteria progress", () => {
 		expect(task.status).toBe("In Progress");
 		expect(listItem).toContain("◒ [██████████] 2/2");
 		expect(listItem).not.toContain("✔");
+	});
+
+	it("normalizes configured status casing before choosing the active-work icon", () => {
+		const task = makeTask({ status: " IN PROGRESS " });
+		const listItem = stripBlessedFgTags(formatTaskViewerListItem(task, 40));
+
+		expect(listItem).toContain("◒ [██████░░░░] 4/7");
 	});
 
 	it("reuses the same responsive indicator in board cards and task-list summaries", () => {
