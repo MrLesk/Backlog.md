@@ -49,6 +49,7 @@ interface MilestonesPageProps {
 	archivedMilestones: Milestone[];
 	onEditTask: (task: Task) => void;
 	onRefreshData?: () => Promise<void>;
+	dateFormat?: string;
 }
 
 const MilestonesPage: React.FC<MilestonesPageProps> = ({
@@ -58,6 +59,7 @@ const MilestonesPage: React.FC<MilestonesPageProps> = ({
 	archivedMilestones,
 	onEditTask,
 	onRefreshData,
+	dateFormat,
 }) => {
 	const [newMilestone, setNewMilestone] = useState("");
 	const [newMilestoneDueDate, setNewMilestoneDueDate] = useState("");
@@ -522,7 +524,7 @@ const MilestonesPage: React.FC<MilestonesPageProps> = ({
 							<h3 className="text-base font-semibold text-gray-900 dark:text-gray-100 truncate">{bucket.label}</h3>
 							{milestoneEntity?.dueDate && (
 								<p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-									Due (UTC): {formatStoredUtcDateForDisplay(milestoneEntity.dueDate)}
+									Due (UTC): {formatStoredUtcDateForDisplay(milestoneEntity.dueDate, dateFormat)}
 								</p>
 							)}
 						</div>

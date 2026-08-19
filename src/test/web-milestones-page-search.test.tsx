@@ -84,6 +84,7 @@ const renderPage = (
 	tasks: Task[] = baseTasks,
 	options: {
 		onRefreshData?: () => Promise<void>;
+		dateFormat?: string;
 	} = {},
 ): HTMLElement => {
 	setupDom();
@@ -100,6 +101,7 @@ const renderPage = (
 					archivedMilestones={[]}
 					onEditTask={() => {}}
 					onRefreshData={options.onRefreshData}
+					dateFormat={options.dateFormat}
 				/>
 			</MemoryRouter>,
 		);
@@ -175,6 +177,11 @@ describe("Web milestones page search", () => {
 
 		expect(text.indexOf("Release 1")).toBeLessThan(text.indexOf("Release 2"));
 		expect(text).toContain("Due (UTC):");
+	});
+
+	it("uses the configured date format for milestone due dates", () => {
+		const container = renderPage(baseTasks, { dateFormat: "dd/mm/yyyy hh:mm" });
+		expect(container.textContent).toContain("Due (UTC): 01/09/2026 12:00");
 	});
 
 	it("searching one milestone still renders other milestone sections", () => {

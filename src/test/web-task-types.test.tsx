@@ -179,6 +179,14 @@ describe("Web task type UI", () => {
 			/>,
 		);
 		const untypedHtml = renderToString(<TaskCard task={createTask()} onUpdate={() => {}} onEdit={() => {}} />);
+		const datedHtml = renderToString(
+			<TaskCard
+				task={createTask({ dueDate: "2026-08-10 14:30" })}
+				onUpdate={() => {}}
+				onEdit={() => {}}
+				dateFormat="dd/mm/yyyy hh:mm"
+			/>,
+		);
 
 		expect(bugHtml).toContain('data-task-type="bug"');
 		expect(bugHtml).toContain("bg-red-100");
@@ -188,6 +196,7 @@ describe("Web task type UI", () => {
 		expect(customHtml).toContain("bg-blue-100");
 		expect(docsHtml).toContain("bg-cyan-100");
 		expect(untypedHtml).not.toContain("data-task-type");
+		expect(datedHtml).toContain("Due (UTC): 10/08/2026 14:30");
 	});
 
 	it("creates a task with a configured custom type and defaults to untyped", async () => {

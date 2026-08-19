@@ -48,7 +48,8 @@ function preprocessFrontmatter(frontmatter: string): string {
 				const scalarMatch = raw.match(/^(.*?)(\s+#.*)?$/);
 				const value = (scalarMatch?.[1] ?? raw).trim();
 				const comment = scalarMatch?.[2] ?? "";
-				if (value && !value.startsWith("'") && !value.startsWith('"')) {
+				const isYamlNull = /^(?:null|~)$/i.test(value);
+				if (value && !isYamlNull && !value.startsWith("'") && !value.startsWith('"')) {
 					return `${prefix}"${value.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"${comment}`;
 				}
 			}

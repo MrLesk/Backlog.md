@@ -73,6 +73,31 @@ dependencies: []
 `),
 		).toThrow("Date-only values are not supported");
 	});
+
+	it("treats YAML null due_date values as absent", () => {
+		for (const value of ["null", "NULL", "~"]) {
+			const task = parseTask(`---
+id: TASK-1
+title: No due date
+status: To Do
+assignee: []
+created_date: 2026-08-01
+due_date: ${value}
+labels: []
+dependencies: []
+---
+`);
+			expect(task.dueDate).toBeUndefined();
+
+			const milestone = parseMilestone(`---
+id: m-1
+title: No due date
+due_date: ${value}
+---
+`);
+			expect(milestone.dueDate).toBeUndefined();
+		}
+	});
 });
 
 describe("due date persistence operations", () => {
