@@ -2744,7 +2744,7 @@ export class Core {
 		const fromPath = taskPath;
 		const toPath = join(await this.fs.getArchiveTasksDir(), taskFilename);
 
-		const activeTasks = await this.fs.listTasks();
+		const activeTasks = (await this.fs.listTasks()).filter((task) => !taskIdsEqual(task.id, normalizedTaskId));
 		const sanitizedTasks = this.sanitizeArchivedTaskLinks(activeTasks, normalizedTaskId);
 
 		return await this.fs.withTaskLocks([taskToArchive, ...sanitizedTasks], async () => {
