@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { isLocalEditableTask, type AcceptanceCriterion, type Milestone, type Task, type TaskComment } from "../../types";
 import Modal from "./Modal";
-import { ApiError, apiClient } from "../lib/api";
+import { ApiError, apiClient, NetworkError } from "../lib/api";
 import { useTheme } from "../contexts/ThemeContext";
 import MDEditor from "@uiw/react-md-editor";
 import AcceptanceCriteriaEditor from "./AcceptanceCriteriaEditor";
@@ -1020,6 +1020,12 @@ export const TaskDetailsModal: React.FC<Props> = ({
 						? "The task was moved to drafts, but recording the Git commit failed. The view was refreshed; verify the draft before retrying."
 						: "The demotion encountered a filesystem failure and may have left both task and draft copies. The view was refreshed; inspect them before retrying.";
 				await finishWithRefreshWarning(message);
+				return;
+			}
+			if (err instanceof NetworkError) {
+				await finishWithRefreshWarning(
+					"The demotion request may have succeeded, but its response was lost. Check the task and drafts views before retrying.",
+				);
 				return;
 			}
 			setError(err instanceof Error ? err.message : String(err));

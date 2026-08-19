@@ -844,8 +844,6 @@ export class ContentStore {
 			decisions: this.nextContentRefreshGeneration("decisions"),
 		};
 		const before = this.getSnapshot();
-		const beforeActiveTasks = this.activeTasks.slice();
-		const beforeCompletedTasks = this.completedTasks.slice();
 		const itemVersions: Record<ContentCollection, Map<string, number>> = {
 			tasks: new Map(this.contentItemVersions.tasks),
 			documents: new Map(this.contentItemVersions.documents),
@@ -868,8 +866,6 @@ export class ContentStore {
 
 		const reconciledTaskCorpus = this.mergeConcurrentWorkingCopyCorpus(
 			taskCorpus,
-			beforeActiveTasks,
-			beforeCompletedTasks,
 			itemVersions.tasks,
 			targetRoot,
 		);
@@ -1567,8 +1563,6 @@ export class ContentStore {
 			const generation = this.nextContentRefreshGeneration("tasks");
 			const before = {
 				items: this.cachedTasks.slice(),
-				activeTasks: this.activeTasks.slice(),
-				completedTasks: this.completedTasks.slice(),
 				versions: new Map(this.contentItemVersions.tasks),
 			};
 			let corpus: TaskCorpusSnapshot;
@@ -1587,8 +1581,6 @@ export class ContentStore {
 				return false;
 			const reconciledCorpus = this.mergeConcurrentWorkingCopyCorpus(
 				corpus,
-				before.activeTasks,
-				before.completedTasks,
 				before.versions,
 				targetRoot,
 			);
@@ -1712,16 +1704,12 @@ export class ContentStore {
 
 	private mergeConcurrentWorkingCopyCorpus(
 		loaded: TaskCorpusSnapshot,
-		beforeActiveTasks: Task[],
-		beforeCompletedTasks: Task[],
 		beforeVersions: ReadonlyMap<string, number>,
 		targetRoot: string,
 	): TaskCorpusSnapshot {
 		const { activeTasks, completedTasks } = this.mergeConcurrentWorkingCopyTasks(
 			loaded.activeTasks,
 			loaded.completedTasks,
-			beforeActiveTasks,
-			beforeCompletedTasks,
 			beforeVersions,
 			targetRoot,
 		);
@@ -1738,55 +1726,22 @@ export class ContentStore {
 	private mergeConcurrentWorkingCopyTasks(
 		loadedActiveTasks: Task[],
 		loadedCompletedTasks: Task[],
-		beforeActiveTasks: Task[],
-		beforeCompletedTasks: Task[],
 		beforeVersions: ReadonlyMap<string, number>,
 		targetRoot: string,
 	): { activeTasks: Task[]; completedTasks: Task[] } {
-		const activeTasks = this.mergeConcurrentWorkingCopyTaskList(
+		const activeTasks = this.mergeConcurrentTaskCorpus(
 			loadedActiveTasks,
-			beforeActiveTasks,
 			this.activeTasks,
 			beforeVersions,
 			targetRoot,
 		);
-		const completedTasks = this.mergeConcurrentWorkingCopyTaskList(
+		const completedTasks = this.mergeConcurrentTaskCorpus(
 			loadedCompletedTasks,
-			beforeCompletedTasks,
 			this.completedTasks,
 			beforeVersions,
 			targetRoot,
 		);
 		return { activeTasks, completedTasks };
-	}
-
-	private mergeConcurrentWorkingCopyTaskList(
-		loaded: Task[],
-		before: Task[],
-		current: Task[],
-		beforeVersions: ReadonlyMap<string, number>,
-		targetRoot: string,
-	): Task[] {
-		const changedIds = new Set<string>();
-		for (const [id, version] of this.contentItemVersions.tasks) {
-			if (version !== beforeVersions.get(id) && this.contentItemPublicationRoots.tasks.get(id) === targetRoot) {
-				changedIds.add(id);
-			}
-		}
-		for (const task of [...before, ...current]) {
-			const id = normalizeTaskId(task.id);
-			if (
-				beforeVersions.get(id) !== this.contentItemVersions.tasks.get(id) &&
-				this.contentItemPublicationRoots.tasks.get(id) === targetRoot
-			) {
-				changedIds.add(id);
-			}
-		}
-		if (changedIds.size === 0) return loaded;
-		return [
-			...loaded.filter((task) => !changedIds.has(normalizeTaskId(task.id))),
-			...current.filter((task) => changedIds.has(normalizeTaskId(task.id))),
-		];
 	}
 
 	private mergeConcurrentChanges<T>(
