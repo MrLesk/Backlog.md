@@ -606,7 +606,7 @@ export async function openTaskComposer(options: TaskComposerOptions): Promise<Ta
 				if (activeField === "priority" && direction === "up") next = layout.stackSelectors ? "type" : "status";
 				if (activeField === "priority" && direction === "down") next = layout.stackSelectors ? "create" : "cancel";
 				if (activeField === "priority" && direction === "left") next = "type";
-				if (activeField === "create" && direction === "up") next = "type";
+				if (activeField === "create" && direction === "up") next = layout.stackSelectors ? "priority" : "type";
 				if (activeField === "cancel" && direction === "up") next = "priority";
 			} else {
 				if (["status", "type", "priority"].includes(activeField)) {

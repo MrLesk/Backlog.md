@@ -1697,7 +1697,13 @@ describe("TUI task composer interaction", () => {
 			expect(priority?.width).toBeGreaterThanOrEqual(Bun.stringWidth(priority?.content ?? ""));
 			expect(status?.width).toBeGreaterThanOrEqual(Bun.stringWidth(status?.content ?? ""));
 
-			pressKey((screen as unknown as { focused?: TestWidget }).focused, "escape", "\x1b");
+			const eventScreen = screen as unknown as { focused?: TestWidget };
+			for (let step = 0; step < 5; step += 1) pressKey(eventScreen.focused, "down");
+			expect(eventScreen.focused?.content).toBe("Create task");
+			pressKey(eventScreen.focused, "up");
+			expect(eventScreen.focused?.content).toBe("Priority: None ▼");
+
+			pressKey(eventScreen.focused, "escape", "\x1b");
 			expect(await withTimeout(resultPromise, "content-constrained composer cancellation", 1000)).toBeNull();
 		} finally {
 			screen.destroy();
