@@ -132,6 +132,7 @@ export type TaskComposerValues = {
 
 export type TaskComposerLayout = {
 	compact: boolean;
+	stackSelectors: boolean;
 	popupWidth: number;
 	popupHeight: number;
 	descriptionHeight: number;
@@ -156,22 +157,31 @@ const POPUP_FORM_HORIZONTAL_CHROME = 4;
 const POPUP_OUTER_HORIZONTAL_MARGIN = 4;
 const PREFERRED_POPUP_WIDTH = 72;
 const NORMAL_SELECTOR_WIDTH_RATIO = 0.3;
+const COMPACT_SELECTOR_WIDTH_RATIO = 0.44;
 
 function selectorContent(label: string, value: string): string {
 	return `${label}: ${displayChoice(value)} ▼`;
 }
 
-function getLongestSelectorContentWidth(options: TaskComposerLayoutOptions): number {
+function getSelectorContentWidths(options: TaskComposerLayoutOptions): {
+	longest: number;
+	longestCompactColumn: number;
+} {
 	const selectors: Array<[string, FilterPopupChoice[]]> = [
 		["Status", getTaskComposerStatusChoices(options.statuses ?? DEFAULT_STATUSES)],
 		["Type", getTaskComposerTypeChoices(options.types)],
 		["Priority", getTaskComposerPriorityChoices(options.priorities)],
 	];
-	return Math.max(
-		...selectors.flatMap(([label, choices]) =>
-			choices.map((choice) => Bun.stringWidth(selectorContent(label, choice.value))),
-		),
-	);
+	let longest = 0;
+	let longestCompactColumn = 0;
+	for (const [label, choices] of selectors) {
+		for (const choice of choices) {
+			const width = Bun.stringWidth(selectorContent(label, choice.value));
+			longest = Math.max(longest, width);
+			if (label === "Type" || label === "Priority") longestCompactColumn = Math.max(longestCompactColumn, width);
+		}
+	}
+	return { longest, longestCompactColumn };
 }
 
 export function getTaskComposerLayout(
@@ -179,7 +189,7 @@ export function getTaskComposerLayout(
 	screenHeight: number,
 	options: TaskComposerLayoutOptions = {},
 ): TaskComposerLayout {
-	const longestSelectorWidth = getLongestSelectorContentWidth(options);
+	const { longest: longestSelectorWidth, longestCompactColumn } = getSelectorContentWidths(options);
 	const requiredPopupWidth =
 		Math.ceil(longestSelectorWidth / NORMAL_SELECTOR_WIDTH_RATIO) + POPUP_FORM_HORIZONTAL_CHROME;
 	const availablePopupWidth = Math.max(1, screenWidth - POPUP_OUTER_HORIZONTAL_MARGIN);
@@ -192,6 +202,9 @@ export function getTaskComposerLayout(
 	const normalSelectorWidth = Math.floor(
 		Math.max(0, popupWidth - POPUP_FORM_HORIZONTAL_CHROME) * NORMAL_SELECTOR_WIDTH_RATIO,
 	);
+	const compactSelectorWidth = Math.floor(
+		Math.max(0, popupWidth - POPUP_FORM_HORIZONTAL_CHROME) * COMPACT_SELECTOR_WIDTH_RATIO,
+	);
 	const expandedDescriptionHeight = 6;
 	const expandedDetailsHeight = 3;
 	const expandedActionsHeight = 2;
@@ -199,12 +212,14 @@ export function getTaskComposerLayout(
 		TEXT_INPUT_HEIGHT + expandedDescriptionHeight + expandedDetailsHeight + expandedActionsHeight;
 	const visibleFormHeight = Math.max(0, popupHeight - POPUP_FORM_VERTICAL_CHROME);
 	const compact = normalSelectorWidth < longestSelectorWidth || visibleFormHeight < expandedContentHeight;
+	const stackSelectors = compact && longestCompactColumn > compactSelectorWidth;
 	const descriptionHeight = compact ? 3 : expandedDescriptionHeight;
 	const detailsTop = TEXT_INPUT_HEIGHT + descriptionHeight;
-	const detailsHeight = compact ? 4 : expandedDetailsHeight;
+	const detailsHeight = compact ? (stackSelectors ? 5 : 4) : expandedDetailsHeight;
 	const actionsTop = detailsTop + detailsHeight;
 	return {
 		compact,
+		stackSelectors,
 		popupWidth,
 		// The popup must never be taller than the screen: blessed centers it by subtracting
 		// half its height. At extreme sizes it also needs enough rows for popup chrome and one
@@ -481,7 +496,7 @@ export async function openTaskComposer(options: TaskComposerOptions): Promise<Ta
 				description: 3,
 				status: layout.detailsTop + 1,
 				type: secondSelectorRow,
-				priority: secondSelectorRow,
+				priority: layout.stackSelectors ? secondSelectorRow + 1 : secondSelectorRow,
 				create: actionsRow,
 				cancel: actionsRow,
 			};
@@ -536,8 +551,13 @@ export async function openTaskComposer(options: TaskComposerOptions): Promise<Ta
 			const tops = getFieldTops();
 			if (layout.compact) {
 				setFieldGeometry(statusField, { top: tops.status, left: 3, width: "100%-6" });
-				setFieldGeometry(typeField, { top: tops.type, left: 3, width: "44%" });
-				setFieldGeometry(priorityField, { top: tops.priority, left: "50%", width: "44%" });
+				if (layout.stackSelectors) {
+					setFieldGeometry(typeField, { top: tops.type, left: 3, width: "100%-6" });
+					setFieldGeometry(priorityField, { top: tops.priority, left: 3, width: "100%-6" });
+				} else {
+					setFieldGeometry(typeField, { top: tops.type, left: 3, width: "44%" });
+					setFieldGeometry(priorityField, { top: tops.priority, left: "50%", width: "44%" });
+				}
 				setFieldGeometry(createAction, { top: tops.create, left: 3, width: "44%" });
 				setFieldGeometry(cancelAction, { top: tops.cancel, left: "50%", width: "44%" });
 			} else {
@@ -581,10 +601,10 @@ export async function openTaskComposer(options: TaskComposerOptions): Promise<Ta
 				if (activeField === "status" && direction === "up") next = "description";
 				if (activeField === "status" && direction === "down") next = "type";
 				if (activeField === "type" && direction === "up") next = "status";
-				if (activeField === "type" && direction === "down") next = "create";
-				if (activeField === "type" && direction === "right") next = "priority";
-				if (activeField === "priority" && direction === "up") next = "status";
-				if (activeField === "priority" && direction === "down") next = "cancel";
+				if (activeField === "type" && direction === "down") next = layout.stackSelectors ? "priority" : "create";
+				if (activeField === "type" && direction === "right" && !layout.stackSelectors) next = "priority";
+				if (activeField === "priority" && direction === "up") next = layout.stackSelectors ? "type" : "status";
+				if (activeField === "priority" && direction === "down") next = layout.stackSelectors ? "create" : "cancel";
 				if (activeField === "priority" && direction === "left") next = "type";
 				if (activeField === "create" && direction === "up") next = "type";
 				if (activeField === "cancel" && direction === "up") next = "priority";

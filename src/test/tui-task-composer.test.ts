@@ -278,6 +278,14 @@ describe("TUI task composer model", () => {
 		const statuses = ["To Do", "Waiting for external approval", "Done"];
 		expect(getTaskComposerLayout(100, 30, { statuses }).compact).toBe(true);
 		expect(getTaskComposerLayout(140, 30, { statuses }).compact).toBe(false);
+
+		const types = ["A very long configured type value that exceeds a compact column"];
+		expect(getTaskComposerLayout(100, 30, { types })).toMatchObject({
+			compact: true,
+			stackSelectors: true,
+			detailsHeight: 5,
+			actionsTop: 11,
+		});
 	});
 
 	it("keeps the composer inside short terminals so no row is pushed off-screen", () => {
@@ -1668,18 +1676,23 @@ describe("TUI task composer interaction", () => {
 		Object.defineProperty(screen, "width", { configurable: true, value: 100, writable: true });
 		Object.defineProperty(screen, "height", { configurable: true, value: 30, writable: true });
 		try {
-			const statusValue = "Waiting for external approval";
+			const typeValue = "A very long configured type value that exceeds a compact column";
 			const resultPromise = openTaskComposer({
 				screen,
-				statuses: [statusValue, "Done"],
+				statuses: ["To Do", "Done"],
+				types: [typeValue],
 				persist: async () => task(),
 			});
 			await settleComposerFocus();
 			const widgets = collectWidgets(screen as unknown as { children?: unknown[] });
-			const status = widgets.find((widget) => widget.content === `Status: ${statusValue} ▼`);
+			const status = widgets.find((widget) => widget.content === "Status: To Do ▼");
 			const type = widgets.find((widget) => widget.content === "Type: None ▼");
+			const priority = widgets.find((widget) => widget.content === "Priority: None ▼");
 			expect(status?.position?.top).toBe(7);
 			expect(type?.position?.top).toBe(8);
+			expect(priority?.position?.top).toBe(9);
+			expect(type?.width).toBe("100%-6");
+			expect(priority?.width).toBe("100%-6");
 			expect(status?.width).toBeGreaterThanOrEqual(Bun.stringWidth(status?.content ?? ""));
 
 			pressKey((screen as unknown as { focused?: TestWidget }).focused, "escape", "\x1b");
