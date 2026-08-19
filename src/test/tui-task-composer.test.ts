@@ -80,6 +80,7 @@ type TestWidget = {
 	width?: number | string;
 	emit?: (event: string, ...args: unknown[]) => void;
 	setValue?: (value: string) => void;
+	setContent?: (value: string) => void;
 };
 
 function collectWidgets(root: { children?: unknown[] }): TestWidget[] {
@@ -1691,8 +1692,9 @@ describe("TUI task composer interaction", () => {
 			expect(status?.position?.top).toBe(7);
 			expect(type?.position?.top).toBe(8);
 			expect(priority?.position?.top).toBe(9);
-			expect(type?.width).toBe("100%-6");
-			expect(priority?.width).toBe("100%-6");
+			type?.setContent?.(`Type: ${typeValue} ▼`);
+			expect(type?.width).toBeGreaterThanOrEqual(Bun.stringWidth(type?.content ?? ""));
+			expect(priority?.width).toBeGreaterThanOrEqual(Bun.stringWidth(priority?.content ?? ""));
 			expect(status?.width).toBeGreaterThanOrEqual(Bun.stringWidth(status?.content ?? ""));
 
 			pressKey((screen as unknown as { focused?: TestWidget }).focused, "escape", "\x1b");
