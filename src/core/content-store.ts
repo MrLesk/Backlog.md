@@ -1768,6 +1768,11 @@ export class ContentStore {
 		targetRoot: string,
 	): Task[] {
 		const changedIds = new Set<string>();
+		for (const [id, version] of this.contentItemVersions.tasks) {
+			if (version !== beforeVersions.get(id) && this.contentItemPublicationRoots.tasks.get(id) === targetRoot) {
+				changedIds.add(id);
+			}
+		}
 		for (const task of [...before, ...current]) {
 			const id = normalizeTaskId(task.id);
 			if (

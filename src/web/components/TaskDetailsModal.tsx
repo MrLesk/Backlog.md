@@ -632,6 +632,7 @@ export const TaskDetailsModal: React.FC<Props> = ({
   };
 
   const handleCancelEdit = () => {
+    if (demoting) return;
     if (isDirty) {
       const confirmDiscard = window.confirm("Discard unsaved changes?");
       if (!confirmDiscard) return;
@@ -749,6 +750,7 @@ export const TaskDetailsModal: React.FC<Props> = ({
   };
 
   const handleSave = async () => {
+    if (demoting) return;
     setSaving(true);
     setError(null);
 
@@ -816,6 +818,7 @@ export const TaskDetailsModal: React.FC<Props> = ({
   };
 
   const handleToggleCriterion = async (index: number, checked: boolean) => {
+    if (demoting) return;
     if (!task) return; // Can't toggle in create mode
     if (isFromOtherBranch) return; // Can't toggle for cross-branch tasks
     // Optimistic update
@@ -832,6 +835,7 @@ export const TaskDetailsModal: React.FC<Props> = ({
   };
 
   const handleToggleDefinitionOfDone = async (index: number, checked: boolean) => {
+    if (demoting) return;
     if (!task) return; // Can't toggle in create mode
     if (isFromOtherBranch) return; // Can't toggle for cross-branch tasks
     const next = (definitionOfDone || []).map((c) => (c.index === index ? { ...c, checked } : c));
@@ -849,6 +853,7 @@ export const TaskDetailsModal: React.FC<Props> = ({
   };
 
   const handleInlineMetaUpdate = async (updates: InlineMetaUpdatePayload) => {
+    if (demoting) return;
     // Don't allow updates for cross-branch tasks
     if (isFromOtherBranch) return;
 
@@ -878,6 +883,7 @@ export const TaskDetailsModal: React.FC<Props> = ({
   };
 
   const handleTaskTypeChange = async (nextType: string) => {
+    if (demoting) return;
     if (isFromOtherBranch) return;
     if (!task) {
       setTaskType(nextType);
@@ -918,6 +924,7 @@ export const TaskDetailsModal: React.FC<Props> = ({
   };
 
   const handleAddComment = async () => {
+    if (demoting) return;
     if (!task || isFromOtherBranch) return;
     const body = commentBody.trim();
     if (!body) return;
@@ -953,6 +960,7 @@ export const TaskDetailsModal: React.FC<Props> = ({
   // labels handled via ChipInput; no textarea parsing
 
 	const handleComplete = async () => {
+		if (demoting) return;
 		if (!task) return;
 		if (!window.confirm("Complete this task? It will be moved to the completed folder.")) return;
 		try {
@@ -972,36 +980,46 @@ export const TaskDetailsModal: React.FC<Props> = ({
 		activeDemotionRequest.current = request;
 		const isCurrentRequest = () =>
 			activeDemotionRequest.current === request && demotionIdentityRef.current === request.identity;
+		const finishWithRefreshWarning = async (message: string) => {
+			window.dispatchEvent(new window.Event("drafts-updated"));
+			try {
+				if (onSaved) await onSaved();
+			} catch (refreshError) {
+				console.error("Task was demoted, but refreshing the Web UI failed", refreshError);
+			}
+			if (!isCurrentRequest()) return;
+			try {
+				window.alert(message);
+			} catch {
+				setError(message);
+			}
+			onClose();
+		};
 		setDemoting(true);
 		setError(null);
 		try {
 			await apiClient.demoteTask(task.id);
 			if (!isCurrentRequest()) return;
-			window.dispatchEvent(new window.Event("drafts-updated"));
-			if (onSaved) await onSaved();
+			try {
+				window.dispatchEvent(new window.Event("drafts-updated"));
+				if (onSaved) await onSaved();
+			} catch {
+				await finishWithRefreshWarning(
+					"The task was moved to drafts, but refreshing the view failed. Close this dialog and verify the draft before retrying.",
+				);
+				return;
+			}
 			if (!isCurrentRequest()) return;
 			onClose();
 		} catch (err) {
 			if (!isCurrentRequest()) return;
 			const demotionFailureState = getDemotionFailureState(err);
 			if (demotionFailureState) {
-				window.dispatchEvent(new window.Event("drafts-updated"));
-				try {
-					if (onSaved) await onSaved();
-				} catch (refreshError) {
-					console.error("Task was demoted, but refreshing the Web UI failed", refreshError);
-				}
-				if (!isCurrentRequest()) return;
 				const message =
 					demotionFailureState === "moved"
 						? "The task was moved to drafts, but recording the Git commit failed. The view was refreshed; verify the draft before retrying."
 						: "The demotion encountered a filesystem failure and may have left both task and draft copies. The view was refreshed; inspect them before retrying.";
-				try {
-					window.alert(message);
-				} catch {
-					setError(message);
-				}
-				onClose();
+				await finishWithRefreshWarning(message);
 				return;
 			}
 			setError(err instanceof Error ? err.message : String(err));
@@ -1014,6 +1032,7 @@ export const TaskDetailsModal: React.FC<Props> = ({
 	};
 
   const handleArchive = async () => {
+    if (demoting) return;
     if (!task || !onArchive) return;
     if (!window.confirm(`Are you sure you want to archive "${task.title}"? This will move the task to the archive folder.`)) return;
     await onArchive();
@@ -1023,9 +1042,9 @@ export const TaskDetailsModal: React.FC<Props> = ({
   const totalCount = (criteria || []).length;
   const definitionCheckedCount = (definitionOfDone || []).filter((c) => c.checked).length;
   const definitionTotalCount = (definitionOfDone || []).length;
-  const isDoneStatus = (status || "").toLowerCase().includes("done");
-  const canDemote = Boolean(
-		task && !isOpenDraft && isLocalEditableTask(task) && task.source !== "completed" && !isFromOtherBranch,
+	const isDoneStatus = (status || "").toLowerCase().includes("done");
+	const canDemote = Boolean(
+		task && !isDraftMode && !isOpenDraft && isLocalEditableTask(task) && task.source !== "completed" && !isFromOtherBranch,
 	);
   const comments = displayComments;
 
@@ -1048,10 +1067,11 @@ export const TaskDetailsModal: React.FC<Props> = ({
       maxWidthClass="max-w-5xl"
       disableEscapeClose={mode === "edit" || mode === "create" || demoting}
       actions={
-        <div className="flex items-center gap-2">
+		<div className="flex flex-wrap items-center justify-end gap-2">
 		          {isDoneStatus && mode === "preview" && !isCreateMode && !isFromOtherBranch && (
 		            <button
 		              onClick={handleComplete}
+		              disabled={demoting}
 		              className="inline-flex items-center px-4 py-2 rounded-lg text-sm font-medium text-white bg-emerald-600 dark:bg-emerald-700 hover:bg-emerald-700 dark:hover:bg-emerald-800 focus:outline-none focus:ring-2 focus:ring-emerald-500 dark:focus:ring-emerald-400 focus:ring-offset-2 dark:focus:ring-offset-gray-900 transition-colors duration-200"
 		              title="Move to completed folder (removes from board)"
 		            >
@@ -1071,6 +1091,7 @@ export const TaskDetailsModal: React.FC<Props> = ({
 		          {mode === "preview" && !isCreateMode && !isFromOtherBranch ? (
 		            <button
 		              onClick={() => setMode("edit")}
+		              disabled={demoting}
 		              className="inline-flex items-center px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg text-sm font-medium text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400 focus:ring-offset-2 dark:focus:ring-offset-gray-900 transition-colors duration-200"
 		              title="Edit"
 		            >
@@ -1082,8 +1103,9 @@ export const TaskDetailsModal: React.FC<Props> = ({
             </button>
           ) : (mode === "edit" || mode === "create") ? (
             <div className="flex items-center gap-2">
-		              <button
+	              <button
 		                onClick={handleCancelEdit}
+		                disabled={demoting}
 		                className="inline-flex items-center px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg text-sm font-medium text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400 focus:ring-offset-2 dark:focus:ring-offset-gray-900 transition-colors duration-200"
 		                title="Cancel"
 		              >
@@ -1092,9 +1114,9 @@ export const TaskDetailsModal: React.FC<Props> = ({
                 </svg>
                 Cancel
               </button>
-		              <button
+	              <button
 		                onClick={() => void handleSave()}
-		                disabled={saving}
+		                disabled={saving || demoting}
 		                className="inline-flex items-center px-4 py-2 rounded-lg text-sm font-medium text-white bg-blue-600 dark:bg-blue-700 hover:bg-blue-700 dark:hover:bg-blue-800 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400 focus:ring-offset-2 dark:focus:ring-offset-gray-900 transition-colors duration-200 disabled:opacity-50"
 		                title="Save"
 		              >
@@ -1112,6 +1134,7 @@ export const TaskDetailsModal: React.FC<Props> = ({
         <div role="alert" className="mb-3 text-sm text-red-600 dark:text-red-400">{error}</div>
       )}
 
+		<fieldset disabled={demoting} className="contents" aria-busy={demoting}>
       {/* Cross-branch task indicator */}
       {isFromOtherBranch && (
         <div className="mb-4 flex items-center gap-2 px-4 py-3 bg-amber-50 dark:bg-amber-900/30 border border-amber-200 dark:border-amber-700 rounded-lg text-amber-800 dark:text-amber-200">
@@ -1701,6 +1724,7 @@ export const TaskDetailsModal: React.FC<Props> = ({
 		            <div className="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-3">
 		              <button
 		                onClick={handleArchive}
+		                disabled={demoting}
 		                className="w-full inline-flex items-center justify-center px-4 py-2 bg-red-500 dark:bg-red-600 text-white text-sm font-medium rounded-md hover:bg-red-600 dark:hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 dark:focus:ring-offset-gray-800 focus:ring-red-400 dark:focus:ring-red-500 transition-colors duration-200"
 		              >
 		                <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -1711,7 +1735,8 @@ export const TaskDetailsModal: React.FC<Props> = ({
             </div>
           )}
         </div>
-      </div>
+	      </div>
+		</fieldset>
     </Modal>
   );
 };
