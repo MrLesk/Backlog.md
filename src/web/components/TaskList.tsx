@@ -82,6 +82,28 @@ function getStatusFilters(searchParams: URLSearchParams): string[] {
 		.filter((status) => status.length > 0);
 }
 
+function normalizeStatusFilters(statuses: string[], availableStatuses: string[]): string[] {
+	const canonicalStatuses = new Map(
+		availableStatuses
+			.map((status) => status.trim())
+			.filter((status) => status.length > 0)
+			.map((status) => [status.toLowerCase(), status] as const),
+	);
+	const seen = new Set<string>();
+
+	return statuses.reduce<string[]>((normalized, status) => {
+		const trimmed = status.trim();
+		if (!trimmed) return normalized;
+		const canonical = canonicalStatuses.get(trimmed.toLowerCase()) ?? trimmed;
+		const key = canonical.toLowerCase();
+		if (!seen.has(key)) {
+			seen.add(key);
+			normalized.push(canonical);
+		}
+		return normalized;
+	}, []);
+}
+
 function areEqualStringArrays(left: string[], right: string[]): boolean {
 	return left.length === right.length && left.every((value, index) => value === right[index]);
 }
@@ -101,7 +123,13 @@ const TaskList: React.FC<TaskListProps> = ({
 	isLoading = false,
 }) => {
 	const [searchParams, setSearchParams] = useSearchParams();
-	const [statusFilter, setStatusFilter] = useState<string[]>(() => getStatusFilters(searchParams));
+	const statusOptions = useMemo(
+		() => (availableStatuses.length > 0 ? availableStatuses : [...DEFAULT_STATUSES]),
+		[availableStatuses],
+	);
+	const [statusFilter, setStatusFilter] = useState<string[]>(() =>
+		normalizeStatusFilters(getStatusFilters(searchParams), statusOptions),
+	);
 	const initialExcludeStatusParams = useMemo(() => {
 		const statuses = [...searchParams.getAll("excludeStatus")];
 		const statusesCsv = searchParams.get("excludeStatuses");
@@ -133,7 +161,6 @@ const TaskList: React.FC<TaskListProps> = ({
 	const tableHeaderScrollRef = useRef<HTMLDivElement | null>(null);
 	const tableBodyScrollRef = useRef<HTMLDivElement | null>(null);
 	const isSyncingTableScrollRef = useRef(false);
-	const statusOptions = availableStatuses.length > 0 ? availableStatuses : [...DEFAULT_STATUSES];
 	const isFilteringTerminalStatus = statusFilter.some((status) => isTerminalStatus(status, statusOptions));
 	const milestoneAliasToCanonical = useMemo(() => {
 		const aliasMap = new Map<string, string>();
@@ -287,7 +314,7 @@ const TaskList: React.FC<TaskListProps> = ({
 	const totalTasks = sortedBaseTasks.length;
 
 	useEffect(() => {
-		const paramStatuses = getStatusFilters(searchParams);
+		const paramStatuses = normalizeStatusFilters(getStatusFilters(searchParams), statusOptions);
 		const paramExcludedStatuses = [...searchParams.getAll("excludeStatus")];
 		const excludedStatusesCsv = searchParams.get("excludeStatuses");
 		if (excludedStatusesCsv) {
@@ -334,7 +361,7 @@ const TaskList: React.FC<TaskListProps> = ({
 		if (!areEqualStringArrays(normalizedLabels, labelFilter)) {
 			setLabelFilter(normalizedLabels);
 		}
-	}, [availablePriorities, isLoading, searchParams, setSearchParams]);
+	}, [availablePriorities, isLoading, searchParams, setSearchParams, statusOptions]);
 
 	useEffect(() => {
 		if (!hasActiveFilters) {
@@ -451,7 +478,7 @@ const TaskList: React.FC<TaskListProps> = ({
 	};
 
 	const handleStatusChange = (next: string[]) => {
-		const normalized = next.map((status) => status.trim()).filter((status) => status.length > 0);
+		const normalized = normalizeStatusFilters(next, statusOptions);
 		setStatusFilter(normalized);
 		syncUrl(normalized, excludedStatusFilter, priorityFilter, labelFilter, milestoneFilter);
 	};

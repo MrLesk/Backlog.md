@@ -401,6 +401,34 @@ describe("TaskList labels filter menu", () => {
 		expect(container.textContent).not.toContain("Done hidden");
 	});
 
+	it("canonicalizes case-insensitive status deep links before toggling them", async () => {
+		const doneTask = createTask({ id: "task-101", title: "Done task", status: "Done" });
+		const fetchCalls: string[] = [];
+		globalThis.fetch = (async (input: RequestInfo | URL) => {
+			const url = typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
+			fetchCalls.push(url);
+			return {
+				ok: true,
+				status: 200,
+				statusText: "OK",
+				json: async () => [{ type: "task", score: 0, task: doneTask }],
+			} as Response;
+		}) as typeof fetch;
+
+		const container = renderTaskList(["/?status=done&status=DONE"], {
+			tasks: [doneTask],
+			availableStatuses: ["To Do", "In Progress", "Done"],
+		});
+		await waitFor(() => fetchCalls.length === 1 && getRenderedTaskIds(container).join(",") === "task-101");
+
+		expect(new URL(fetchCalls[0] ?? "", "http://localhost").searchParams.getAll("status")).toEqual(["Done"]);
+		expect(getStatusButton(container).textContent).toContain("Done");
+
+		await selectStatus(container, "Done");
+		await waitFor(() => getStatusButton(container).textContent?.includes("All") === true);
+		expect(new URLSearchParams(getLocationSearch(container)).getAll("status")).toEqual([]);
+	});
+
 	it("clears all selected statuses and restores the unfiltered task list", async () => {
 		const filteredTasks = [
 			createTask({ id: "task-101", title: "Todo task", status: "To Do" }),
