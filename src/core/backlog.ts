@@ -2581,13 +2581,20 @@ export class Core {
 		return await this.updateTaskFromInput(taskId, input, autoCommit, options);
 	}
 
-	async updateTasksBulk(tasks: Task[], commitMessage?: string, autoCommit?: boolean): Promise<void> {
+	private async writeTasksBulk(tasks: Task[]): Promise<string[]> {
 		const filePaths: string[] = [];
 		const updateAll = async () => {
-			for (const task of tasks) filePaths.push(await this.updateTask(task, false));
+			for (const task of tasks) {
+				filePaths.push(await this.updateTask(task, false));
+			}
 		};
 		if (this.contentStore) await this.contentStore.batchTaskUpdates(updateAll);
 		else await updateAll();
+		return filePaths;
+	}
+
+	async updateTasksBulk(tasks: Task[], commitMessage?: string, autoCommit?: boolean): Promise<void> {
+		const filePaths = await this.fs.withTaskLocks(tasks, async () => await this.writeTasksBulk(tasks));
 
 		// Commit all changes at once if auto-commit is enabled
 		if (await this.shouldAutoCommit(autoCommit)) {
@@ -2737,33 +2744,32 @@ export class Core {
 		const fromPath = taskPath;
 		const toPath = join(await this.fs.getArchiveTasksDir(), taskFilename);
 
-		try {
-			await moveFile(fromPath, toPath);
-		} catch {
-			return false;
-		}
-		this.contentStore?.transitionTask(normalizedTaskId);
-
-		const activeTasks = await this.fs.listTasks();
+		const activeTasks = (await this.fs.listTasks()).filter((task) => !taskIdsEqual(task.id, normalizedTaskId));
 		const sanitizedTasks = this.sanitizeArchivedTaskLinks(activeTasks, normalizedTaskId);
-		if (sanitizedTasks.length > 0) {
-			await this.updateTasksBulk(sanitizedTasks, undefined, false);
-		}
 
-		if (await this.shouldAutoCommit(autoCommit)) {
-			// Stage the file move for proper Git tracking
-			const repoRoot = await this.git.stageFileMove(fromPath, toPath);
-			const commitPaths = [fromPath, toPath];
-			for (const sanitizedTask of sanitizedTasks) {
-				if (sanitizedTask.filePath) {
-					await this.git.addFile(sanitizedTask.filePath);
-					commitPaths.push(sanitizedTask.filePath);
-				}
+		return await this.fs.withTaskLocks([taskToArchive, ...sanitizedTasks], async () => {
+			try {
+				await moveFile(fromPath, toPath);
+			} catch {
+				return false;
 			}
-			await this.git.commitFiles(`backlog: Archive task ${normalizedTaskId}`, commitPaths, repoRoot);
-		}
+			this.contentStore?.transitionTask(normalizedTaskId);
 
-		return true;
+			const sanitizedPaths =
+				sanitizedTasks.length > 0 ? await this.writeTasksBulk(sanitizedTasks) : [];
+
+			if (await this.shouldAutoCommit(autoCommit)) {
+				// Stage the file move for proper Git tracking
+				const repoRoot = await this.git.stageFileMove(fromPath, toPath);
+				const commitPaths = [fromPath, toPath, ...sanitizedPaths];
+				for (const sanitizedPath of sanitizedPaths) {
+					await this.git.addFile(sanitizedPath);
+				}
+				await this.git.commitFiles(`backlog: Archive task ${normalizedTaskId}`, commitPaths, repoRoot);
+			}
+
+			return true;
+		});
 	}
 
 	async archiveMilestone(
@@ -2958,14 +2964,49 @@ export class Core {
 	async demoteTask(taskId: string, autoCommit?: boolean): Promise<boolean> {
 		const task = await this.loadTaskForMutation(taskId);
 		if (!task) return false;
-		const movedPaths: Array<{ previousPath: string; savedPath: string }> = [];
-		const success = await this.fs.demoteTask(task.id, (previousPath, savedPath) => {
-			movedPaths.push({ previousPath, savedPath });
-		});
-		const moved = movedPaths[0];
+		// Direct demotion is a read-modify-write too. Hold the task lock across the
+		// filesystem read and move so an in-flight task update cannot recreate the
+		// active file after this operation has written the draft.
+		const demotion = {
+			success: false,
+			moved: undefined as { previousPath: string; savedPath: string } | undefined,
+		};
+		let result: typeof demotion;
+		try {
+			result = await this.fs.withTaskLock(task, async () => {
+				const movedPaths: Array<{ previousPath: string; savedPath: string }> = [];
+				const success = await this.fs.demoteTask(task.id, (previousPath, savedPath) => {
+					movedPaths.push({ previousPath, savedPath });
+				});
+				if (success) {
+					this.contentStore?.transitionTask(task.id);
+				}
+				demotion.success = success;
+				demotion.moved = movedPaths[0];
+				return demotion;
+			});
+		} catch (error) {
+			// The lock wrapper can fail while releasing after the move completed. Keep
+			// the mutation outcome visible to the Web API and other clients.
+			if (demotion.success && demotion.moved) {
+				const failure = error instanceof Error ? error : new Error(String(error));
+				(failure as Error & { demotionState?: string }).demotionState = "moved";
+				throw failure;
+			}
+			throw error;
+		}
+		const { success, moved } = result;
 
-		if (success && moved && (await this.shouldAutoCommit(autoCommit))) {
-			await this.commitWrittenFile(`backlog: Demote task ${task.id}`, [moved.previousPath], moved.savedPath);
+		if (success && moved) {
+			try {
+				if (await this.shouldAutoCommit(autoCommit)) {
+					await this.commitWrittenFile(`backlog: Demote task ${task.id}`, [moved.previousPath], moved.savedPath);
+				}
+			} catch (error) {
+				const failure = error instanceof Error ? error : new Error(String(error));
+				(failure as Error & { demotionState?: string }).demotionState = "moved";
+				throw failure;
+			}
 		}
 
 		return success;

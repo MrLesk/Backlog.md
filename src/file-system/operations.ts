@@ -630,6 +630,26 @@ export class FileSystem {
 		);
 	}
 
+	/**
+	 * Hold a stable set of task locks for one operation. The callback runs only after every
+	 * lock is acquired, so a contended task cannot leave an earlier write from a bulk operation
+	 * on disk. Sorting also keeps multi-task operations from acquiring the same locks in opposite
+	 * orders and deadlocking each other.
+	 */
+	async withTaskLocks<T>(tasks: Array<Pick<Task, "id" | "filePath">>, fn: () => Promise<T>): Promise<T> {
+		const uniqueTasks = Array.from(
+			new Map(tasks.map((task) => [task.id.trim().toLowerCase(), task])).values(),
+		).sort((left, right) => left.id.localeCompare(right.id));
+
+		const acquire = async (index: number): Promise<T> => {
+			const task = uniqueTasks[index];
+			if (!task) return await fn();
+			return await this.withTaskLock(task, async () => await acquire(index + 1));
+		};
+
+		return await acquire(0);
+	}
+
 	private async withLockTarget<T>(
 		targetPath: string,
 		lockDir: string,
@@ -1114,42 +1134,49 @@ export class FileSystem {
 	}
 
 	async demoteTask(taskId: string, onMoved?: (fromPath: string, toPath: string) => void): Promise<boolean> {
-		try {
-			return await this.withCreateLock(async () => {
-				// Load the task
-				const task = await this.loadTask(taskId);
-				if (!task?.filePath) return false;
+		return await this.withCreateLock(async () => {
+			// Load the task. A missing task is the only false result; filesystem failures must reach
+			// callers so the Web API can distinguish an operational failure from a 404.
+			const task = await this.loadTask(taskId);
+			if (!task?.filePath) return false;
 
-				// Get existing draft IDs to generate next ID
-				// Draft prefix is always "draft" (not configurable like task prefix)
-				const existingDrafts = await this.listDrafts();
-				const existingIds = existingDrafts.map((d) => d.id);
+			// Get existing draft IDs to generate next ID
+			// Draft prefix is always "draft" (not configurable like task prefix)
+			const existingDrafts = await this.listDrafts();
+			const existingIds = existingDrafts.map((d) => d.id);
 
-				// Generate new draft ID
-				const config = await this.loadConfig();
-				const newDraftId = generateNextId(existingIds, "draft", config?.zeroPaddedIds);
+			// Generate new draft ID
+			const config = await this.loadConfig();
+			const newDraftId = generateNextId(existingIds, "draft", config?.zeroPaddedIds);
 
-				// Update task with new draft ID and save as draft
-				const demotedDraft: Task = {
-					...task,
-					id: newDraftId,
-					filePath: undefined, // Will be set by saveDraft
-				};
+			// Update task with new draft ID and save as draft
+			const demotedDraft: Task = {
+				...task,
+				id: newDraftId,
+				filePath: undefined, // Will be set by saveDraft
+			};
 
-				const savedPath = await this.saveDraft(demotedDraft);
+			const savedPath = await this.saveDraft(demotedDraft);
 
-				// Delete old task file
+			// Delete old task file. If that fails, remove the newly written draft so a retry cannot
+			// encounter two copies of the task.
+			try {
 				await unlink(task.filePath);
-				onMoved?.(task.filePath, savedPath);
-
-				return true;
-			});
-		} catch (error) {
-			if (isCreateLockError(error) || isAmbiguousTaskIdError(error)) {
+			} catch (error) {
+				try {
+					await unlink(savedPath);
+				} catch (cleanupError) {
+					const failure = error instanceof Error ? error : new Error(String(error));
+					(failure as Error & { demotionState?: string }).demotionState = "partial";
+					failure.cause = cleanupError;
+					throw failure;
+				}
 				throw error;
 			}
-			return false;
-		}
+			onMoved?.(task.filePath, savedPath);
+
+			return true;
+		});
 	}
 
 	// Draft operations

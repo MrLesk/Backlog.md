@@ -429,6 +429,12 @@ function AppContent() {
     setShowModal(true);
   }, []);
 
+  const openDraftModal = useCallback((draft: Task) => {
+    setEditingTask(draft);
+    setIsDraftMode(true);
+    setShowModal(true);
+  }, []);
+
   const clearTaskModal = useCallback(() => {
     isTaskRouteModalRef.current = false;
     setShowModal(false);
@@ -764,7 +770,7 @@ function AppContent() {
               />
             }
           />
-            <Route path="drafts" element={<DraftsList onEditTask={handleEditTask} onNewDraft={handleNewDraft} dateFormat={config?.dateFormat} />} />
+            <Route path="drafts" element={<DraftsList onEditTask={openDraftModal} onNewDraft={handleNewDraft} dateFormat={config?.dateFormat} />} />
             <Route path="documentation" element={<DocumentationDetail docs={docs} onRefreshData={refreshData} dateFormat={config?.dateFormat} />} />
             <Route path="documentation/:id" element={<DocumentationDetail docs={docs} onRefreshData={refreshData} dateFormat={config?.dateFormat} />} />
             <Route path="documentation/:id/:title" element={<DocumentationDetail docs={docs} onRefreshData={refreshData} dateFormat={config?.dateFormat} />} />

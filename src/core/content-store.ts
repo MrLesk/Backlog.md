@@ -864,8 +864,13 @@ export class ContentStore {
 			return false;
 		}
 
+		const reconciledTaskCorpus = this.mergeConcurrentWorkingCopyCorpus(
+			taskCorpus,
+			itemVersions.tasks,
+			targetRoot,
+		);
 		const mergedTasks = this.mergeConcurrentChanges(
-			taskCorpus.tasks,
+			reconciledTaskCorpus.tasks,
 			before.tasks,
 			this.tasksForPublicationRoot(targetRoot),
 			(task) => normalizeTaskId(task.id),
@@ -877,9 +882,9 @@ export class ContentStore {
 		publish({
 			tasks: mergedTasks,
 			taskCorpus: {
-				...taskCorpus,
+				...reconciledTaskCorpus,
 				tasks: mergedTasks,
-				activeTasks: taskCorpus.identityIndex ? taskCorpus.activeTasks : mergedTasks,
+				activeTasks: reconciledTaskCorpus.identityIndex ? reconciledTaskCorpus.activeTasks : mergedTasks,
 			},
 			documents: this.mergeConcurrentChanges(
 				documents,
@@ -1556,7 +1561,10 @@ export class ContentStore {
 		await this.reconcileOrSchedule(`task:${normalizedExpectedId}`, epoch, async () => {
 			const targetRoot = this.currentRoot();
 			const generation = this.nextContentRefreshGeneration("tasks");
-			const before = { items: this.cachedTasks.slice(), versions: new Map(this.contentItemVersions.tasks) };
+			const before = {
+				items: this.cachedTasks.slice(),
+				versions: new Map(this.contentItemVersions.tasks),
+			};
 			let corpus: TaskCorpusSnapshot;
 			try {
 				const loaded = await this.loadTasksWithLoader();
@@ -1571,8 +1579,13 @@ export class ContentStore {
 				!this.isContentRefreshCurrent("tasks", generation)
 			)
 				return false;
+			const reconciledCorpus = this.mergeConcurrentWorkingCopyCorpus(
+				corpus,
+				before.versions,
+				targetRoot,
+			);
 			const merged = this.mergeConcurrentChanges(
-				corpus.tasks,
+				reconciledCorpus.tasks,
 				before.items,
 				this.cachedTasks,
 				(task) => normalizeTaskId(task.id),
@@ -1582,14 +1595,15 @@ export class ContentStore {
 				targetRoot,
 			);
 			const visibleChanged = this.hasTaskCollectionChanged(merged);
-			const identityChanged = this.taskIdentityIndex?.getFingerprint() !== corpus.identityIndex?.getFingerprint();
+			const identityChanged =
+				this.taskIdentityIndex?.getFingerprint() !== reconciledCorpus.identityIndex?.getFingerprint();
 			const corpusChanged =
-				this.hasTaskListChanged(this.activeTasks, corpus.activeTasks) ||
-				this.hasTaskListChanged(this.completedTasks, corpus.completedTasks) ||
-				this.hasBranchTaskStateChanged(corpus.branchStateEntries ?? []) ||
-				JSON.stringify(this.taskCorpusConfig) !== JSON.stringify(corpus.config);
+				this.hasTaskListChanged(this.activeTasks, reconciledCorpus.activeTasks) ||
+				this.hasTaskListChanged(this.completedTasks, reconciledCorpus.completedTasks) ||
+				this.hasBranchTaskStateChanged(reconciledCorpus.branchStateEntries ?? []) ||
+				JSON.stringify(this.taskCorpusConfig) !== JSON.stringify(reconciledCorpus.config);
 			if (!visibleChanged && !identityChanged && !corpusChanged) return false;
-			this.installTaskCorpus(corpus, merged);
+			this.installTaskCorpus(reconciledCorpus, merged);
 			this.notify("tasks");
 			return false;
 		});
@@ -1686,6 +1700,48 @@ export class ContentStore {
 			...loaded.filter((task) => !changedIds.has(normalizeTaskId(task.id))),
 			...current.filter((task) => changedIds.has(normalizeTaskId(task.id))),
 		];
+	}
+
+	private mergeConcurrentWorkingCopyCorpus(
+		loaded: TaskCorpusSnapshot,
+		beforeVersions: ReadonlyMap<string, number>,
+		targetRoot: string,
+	): TaskCorpusSnapshot {
+		const { activeTasks, completedTasks } = this.mergeConcurrentWorkingCopyTasks(
+			loaded.activeTasks,
+			loaded.completedTasks,
+			beforeVersions,
+			targetRoot,
+		);
+		const identityIndex = loaded.identityIndex?.withWorkingCopyCorpus(activeTasks, completedTasks);
+		return {
+			...loaded,
+			activeTasks,
+			completedTasks,
+			identityIndex,
+			tasks: identityIndex ? identityIndex.getTasks(false) : activeTasks,
+		};
+	}
+
+	private mergeConcurrentWorkingCopyTasks(
+		loadedActiveTasks: Task[],
+		loadedCompletedTasks: Task[],
+		beforeVersions: ReadonlyMap<string, number>,
+		targetRoot: string,
+	): { activeTasks: Task[]; completedTasks: Task[] } {
+		const activeTasks = this.mergeConcurrentTaskCorpus(
+			loadedActiveTasks,
+			this.activeTasks,
+			beforeVersions,
+			targetRoot,
+		);
+		const completedTasks = this.mergeConcurrentTaskCorpus(
+			loadedCompletedTasks,
+			this.completedTasks,
+			beforeVersions,
+			targetRoot,
+		);
+		return { activeTasks, completedTasks };
 	}
 
 	private mergeConcurrentChanges<T>(

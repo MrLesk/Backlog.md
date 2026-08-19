@@ -376,6 +376,9 @@ export class BacklogServer {
 					"/api/tasks/:id/complete": {
 						POST: async (req: Request & { params: { id: string } }) => await this.handleCompleteTask(req.params.id),
 					},
+					"/api/tasks/:id/demote": {
+						POST: async (req: Request & { params: { id: string } }) => await this.handleDemoteTask(req.params.id),
+					},
 					"/api/statuses": {
 						GET: async () => await this.handleGetStatuses(),
 					},
@@ -1118,6 +1121,36 @@ export class BacklogServer {
 				console.error("Error completing task:", error);
 			}
 			return Response.json({ error: message }, { status: isAmbiguousTaskIdError(error) ? 409 : 500 });
+		}
+	}
+
+	private async handleDemoteTask(taskId: string): Promise<Response> {
+		try {
+			const success = await this.core.demoteTask(taskId);
+			if (!success) {
+				return Response.json({ error: "Task not found" }, { status: 404 });
+			}
+
+			this.broadcastTasksUpdated();
+			return Response.json({ success: true });
+		} catch (error) {
+			const message = error instanceof Error ? error.message : "Failed to demote task";
+			const conflict = isAmbiguousTaskIdError(error) || isCreateLockError(error) || isTaskLockError(error);
+			const demotionState =
+				typeof error === "object" && error !== null &&
+				(error as { demotionState?: unknown }).demotionState;
+			const knownDemotionState = demotionState === "moved" || demotionState === "partial" ? demotionState : undefined;
+			if (knownDemotionState) {
+				this.broadcastTasksUpdated();
+			}
+			if (!conflict) {
+				console.error("Error demoting task:", error);
+			}
+			const status = knownDemotionState ? 500 : conflict ? 409 : 500;
+			return Response.json(
+				{ error: message, ...(knownDemotionState ? { demotionState: knownDemotionState } : {}) },
+				{ status },
+			);
 		}
 	}
 

@@ -176,6 +176,28 @@ describe("atomic task editing", () => {
 		}
 	});
 
+	it("blocks direct demotion while another task mutation holds the lock", async () => {
+		const task = await createContendedTask();
+		const lockEntered = createDeferred<void>();
+		const releaseLock = createDeferred<void>();
+		const heldLock = setup.fs.withTaskLock(task, async () => {
+			lockEntered.resolve();
+			await releaseLock.promise;
+		});
+		await withTimeout(lockEntered.promise, "the lock to be held", 5_000);
+
+		const other = new Core(testDir);
+		try {
+			await expect(other.demoteTask(CONTENDED_ID, false)).rejects.toThrow(CONTENTION_MESSAGE);
+			expect(await setup.fs.loadTask(CONTENDED_ID)).not.toBeNull();
+			expect(await setup.fs.listDrafts()).toEqual([]);
+		} finally {
+			releaseLock.resolve();
+			await heldLock;
+			other.disposeContentStore();
+		}
+	});
+
 	it("keeps concurrent edits of different tasks independent", async () => {
 		await setup.createTaskFromInput({ title: "Task A" }, false);
 		await setup.createTaskFromInput({ title: "Task B" }, false);
@@ -282,6 +304,40 @@ describe("atomic task editing", () => {
 				method: "PUT",
 				headers: { "Content-Type": "application/json" },
 				body: JSON.stringify({ ...task, labels: ["from-web"] }),
+			});
+
+			expect(response.status).toBe(409);
+			expect((await response.json()).error).toBe(CONTENTION_MESSAGE);
+		} finally {
+			releaseLock.resolve();
+			await heldLock;
+			await server.stop();
+		}
+	});
+
+	it("returns HTTP 409 from the web demotion endpoint on contention", async () => {
+		const task = await createContendedTask();
+		const server = new BacklogServer(testDir);
+		await server.start(0, false);
+		const port = server.getPort() ?? 0;
+		expect(port).toBeGreaterThan(0);
+
+		const lockEntered = createDeferred<void>();
+		const releaseLock = createDeferred<void>();
+		const heldLock = setup.fs.withTaskLock(task, async () => {
+			lockEntered.resolve();
+			await releaseLock.promise;
+		});
+
+		try {
+			await retry(async () => {
+				const ping = await fetch(`http://127.0.0.1:${port}/api/tasks`);
+				if (!ping.ok) throw new Error(`server not ready: ${ping.status}`);
+			});
+			await withTimeout(lockEntered.promise, "the lock to be held", 5_000);
+
+			const response = await fetch(`http://127.0.0.1:${port}/api/tasks/${CONTENDED_ID}/demote`, {
+				method: "POST",
 			});
 
 			expect(response.status).toBe(409);
