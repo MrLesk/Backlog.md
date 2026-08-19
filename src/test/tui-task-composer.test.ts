@@ -443,7 +443,7 @@ describe("TUI task composer canonical persistence", () => {
 			expect(description?.getValue?.()).toBe("left Y𠮷 right");
 			expect(description?.getCursor?.()).toEqual({ x: -8, y: 0 });
 
-			for (let step = 0; step < 4; step += 1) pressKey(eventScreen.focused, "tab", "\t");
+			for (let step = 0; step < 5; step += 1) pressKey(eventScreen.focused, "tab", "\t");
 			expect(eventScreen.focused?.content).toBe("Create task");
 			pressKey(eventScreen.focused, "enter", "\r");
 			expect((await withTimeout(resultPromise, "Unicode-safe composer persistence", 1000))?.id).toBe("TASK-1");
@@ -1740,9 +1740,9 @@ describe("TUI task composer interaction", () => {
 			const status = widgets.find((widget) => widget.content === "Status: To Do ▼");
 			const type = widgets.find((widget) => widget.content === "Type: None ▼");
 			const priority = widgets.find((widget) => widget.content === "Priority: None ▼");
-			expect(status?.position?.top).toBe(7);
-			expect(type?.position?.top).toBe(8);
-			expect(priority?.position?.top).toBe(9);
+			expect(status?.position?.top).toBe(10);
+			expect(type?.position?.top).toBe(11);
+			expect(priority?.position?.top).toBe(12);
 			type?.setContent?.(`Type: ${typeValue} ▼`);
 			expect(type?.width).toBeGreaterThanOrEqual(Bun.stringWidth(type?.content ?? ""));
 			expect(priority?.width).toBeGreaterThanOrEqual(Bun.stringWidth(priority?.content ?? ""));
