@@ -80,6 +80,7 @@ type TestWidget = {
 	width?: number | string;
 	emit?: (event: string, ...args: unknown[]) => void;
 	setValue?: (value: string) => void;
+	setContent?: (value: string) => void;
 };
 
 function collectWidgets(root: { children?: unknown[] }): TestWidget[] {
@@ -248,23 +249,44 @@ describe("TUI task composer model", () => {
 		});
 	});
 
-	it("keeps the composer compact at 100x30 and 80x24, then stacks details at 50x18", () => {
+	it("fits shipped selector content at 100x30 and 80x24, then stacks details at 50x18", () => {
 		expect(getTaskComposerLayout(100, 30)).toMatchObject({
 			compact: false,
+			popupWidth: 74,
 			popupHeight: 20,
 			descriptionHeight: 6,
 			detailsTop: 9,
 			detailsHeight: 3,
 			actionsTop: 12,
 		});
-		expect(getTaskComposerLayout(80, 24)).toMatchObject({ compact: false, popupHeight: 20, actionsTop: 12 });
+		expect(getTaskComposerLayout(80, 24)).toMatchObject({
+			compact: false,
+			popupWidth: 74,
+			popupHeight: 20,
+			actionsTop: 12,
+		});
 		expect(getTaskComposerLayout(50, 18)).toMatchObject({
 			compact: true,
+			stackSelectors: true,
 			popupHeight: 16,
 			descriptionHeight: 3,
 			detailsTop: 6,
-			detailsHeight: 4,
-			actionsTop: 10,
+			detailsHeight: 5,
+			actionsTop: 11,
+		});
+	});
+
+	it("derives compact selector layout from configured content instead of a screen breakpoint", () => {
+		const statuses = ["To Do", "Waiting for external approval", "Done"];
+		expect(getTaskComposerLayout(100, 30, { statuses }).compact).toBe(true);
+		expect(getTaskComposerLayout(140, 30, { statuses }).compact).toBe(false);
+
+		const types = ["A very long configured type value that exceeds a compact column"];
+		expect(getTaskComposerLayout(100, 30, { types })).toMatchObject({
+			compact: true,
+			stackSelectors: true,
+			detailsHeight: 5,
+			actionsTop: 11,
 		});
 	});
 
@@ -274,6 +296,9 @@ describe("TUI task composer model", () => {
 			expect(popupHeight).toBeLessThanOrEqual(screenHeight);
 		}
 		expect(getTaskComposerLayout(80, 10).popupHeight).toBe(8);
+		for (const screenHeight of [8, 9, 10]) {
+			expect(getTaskComposerLayout(80, screenHeight).popupHeight).toBeGreaterThanOrEqual(8);
+		}
 	});
 
 	it("does not persist invalid input and preserves values after a failed attempt", async () => {
@@ -1412,7 +1437,7 @@ describe("TUI task composer interaction", () => {
 		}
 	});
 
-	it("adapts the spatial focus graph to the narrow two-row selector layout", async () => {
+	it("adapts the spatial focus graph to the narrow stacked selector layout", async () => {
 		const screen = createScreen({ smartCSR: false });
 		Object.defineProperty(screen, "width", { configurable: true, value: 50, writable: true });
 		Object.defineProperty(screen, "height", { configurable: true, value: 18, writable: true });
@@ -1429,9 +1454,14 @@ describe("TUI task composer interaction", () => {
 			expect(eventScreen.focused?.content).toBe("Status: To Do ▼");
 			pressKey(eventScreen.focused, "down");
 			expect(eventScreen.focused?.content).toBe("Type: None ▼");
-			pressKey(eventScreen.focused, "right");
+			pressKey(eventScreen.focused, "down");
 			expect(eventScreen.focused?.content).toBe("Priority: None ▼");
 			pressKey(eventScreen.focused, "down");
+			expect(eventScreen.focused?.content).toBe("Create task");
+			pressKey(eventScreen.focused, "up");
+			expect(eventScreen.focused?.content).toBe("Priority: None ▼");
+			pressKey(eventScreen.focused, "down");
+			pressKey(eventScreen.focused, "right");
 			expect(eventScreen.focused?.content).toBe("Cancel");
 			pressKey(eventScreen.focused, "left");
 			expect(eventScreen.focused?.content).toBe("Create task");
@@ -1573,6 +1603,119 @@ describe("TUI task composer interaction", () => {
 		}
 	});
 
+	it("keeps an editable row and visible cursor for both text fields at 8-10 terminal rows", async () => {
+		for (const screenHeight of [8, 9, 10]) {
+			const screen = createScreen({ smartCSR: false });
+			Object.defineProperty(screen, "width", { configurable: true, value: 80, writable: true });
+			Object.defineProperty(screen, "height", { configurable: true, value: screenHeight, writable: true });
+			const eventScreen = screen as unknown as {
+				focused?: TestWidget;
+				program?: { cursorHidden?: boolean };
+			};
+			try {
+				const resultPromise = openTaskComposer({
+					screen,
+					statuses: ["To Do", "In Progress", "Done"],
+					persist: async () => task(),
+				});
+				await settleComposerFocus();
+				const widgets = collectWidgets(screen as unknown as { children?: unknown[] });
+				const form = widgets.find((widget) => widget.type === "scrollable-box");
+				const title = widgets.find((widget) => widget.options?.label === " Title ");
+				const description = widgets.find((widget) => widget.options?.label === " Description ");
+				expect(form?.height).toBeGreaterThanOrEqual(3);
+
+				const expectEditableRowVisible = (input: TestWidget | undefined) => {
+					const fieldTop = Number(input?.position?.top ?? 0);
+					const firstEditableRow = fieldTop + 1;
+					const viewportTop = form?.childBase ?? 0;
+					const viewportBottom = viewportTop + (form?.height ?? 0);
+					expect(firstEditableRow).toBeGreaterThanOrEqual(viewportTop);
+					expect(firstEditableRow).toBeLessThan(viewportBottom);
+					expect(input?._reading).toBe(true);
+					expect(input?.getCursor?.()).toBeDefined();
+					expect(eventScreen.program?.cursorHidden).toBe(false);
+				};
+
+				expect(eventScreen.focused).toBe(title);
+				expectEditableRowVisible(title);
+				pressKey(eventScreen.focused, "tab", "\t");
+				expect(eventScreen.focused).toBe(description);
+				expectEditableRowVisible(description);
+
+				pressKey(eventScreen.focused, "escape", "\x1b");
+				expect(await withTimeout(resultPromise, `short ${screenHeight}-row composer cancellation`, 1000)).toBeNull();
+			} finally {
+				screen.destroy();
+			}
+		}
+	});
+
+	it("renders the longest shipped status and selector cue without clipping at 80 and 100 columns", async () => {
+		for (const screenWidth of [80, 100]) {
+			const screen = createScreen({ smartCSR: false });
+			Object.defineProperty(screen, "width", { configurable: true, value: screenWidth, writable: true });
+			Object.defineProperty(screen, "height", { configurable: true, value: 24, writable: true });
+			try {
+				const resultPromise = openTaskComposer({
+					screen,
+					statuses: ["In Progress", "To Do", "Done"],
+					persist: async () => task(),
+				});
+				await settleComposerFocus();
+				const status = collectWidgets(screen as unknown as { children?: unknown[] }).find(
+					(widget) => widget.content === "Status: In Progress ▼",
+				);
+				expect(status).toBeDefined();
+				expect(status?.content?.endsWith(" ▼")).toBe(true);
+				expect(status?.width).toBeGreaterThanOrEqual(Bun.stringWidth(status?.content ?? ""));
+
+				pressKey((screen as unknown as { focused?: TestWidget }).focused, "escape", "\x1b");
+				expect(await withTimeout(resultPromise, `${screenWidth}-column composer cancellation`, 1000)).toBeNull();
+			} finally {
+				screen.destroy();
+			}
+		}
+	});
+
+	it("stacks selector rows when configured content cannot fit a normal column", async () => {
+		const screen = createScreen({ smartCSR: false });
+		Object.defineProperty(screen, "width", { configurable: true, value: 100, writable: true });
+		Object.defineProperty(screen, "height", { configurable: true, value: 30, writable: true });
+		try {
+			const typeValue = "A very long configured type value that exceeds a compact column";
+			const resultPromise = openTaskComposer({
+				screen,
+				statuses: ["To Do", "Done"],
+				types: [typeValue],
+				persist: async () => task(),
+			});
+			await settleComposerFocus();
+			const widgets = collectWidgets(screen as unknown as { children?: unknown[] });
+			const status = widgets.find((widget) => widget.content === "Status: To Do ▼");
+			const type = widgets.find((widget) => widget.content === "Type: None ▼");
+			const priority = widgets.find((widget) => widget.content === "Priority: None ▼");
+			expect(status?.position?.top).toBe(7);
+			expect(type?.position?.top).toBe(8);
+			expect(priority?.position?.top).toBe(9);
+			type?.setContent?.(`Type: ${typeValue} ▼`);
+			expect(type?.width).toBeGreaterThanOrEqual(Bun.stringWidth(type?.content ?? ""));
+			expect(priority?.width).toBeGreaterThanOrEqual(Bun.stringWidth(priority?.content ?? ""));
+			expect(status?.width).toBeGreaterThanOrEqual(Bun.stringWidth(status?.content ?? ""));
+
+			const eventScreen = screen as unknown as { focused?: TestWidget };
+			for (let step = 0; step < 5; step += 1) pressKey(eventScreen.focused, "down");
+			expect(eventScreen.focused?.content).toBe("Create task");
+			pressKey(eventScreen.focused, "up");
+			expect(eventScreen.focused?.content).toBe("Priority: None ▼");
+
+			pressKey(eventScreen.focused, "escape", "\x1b");
+			expect(await withTimeout(resultPromise, "content-constrained composer cancellation", 1000)).toBeNull();
+		} finally {
+			screen.destroy();
+		}
+	});
+
 	it("reflows an open composer between full and compact terminal sizes", async () => {
 		const screen = createScreen({ smartCSR: false });
 		const mutableScreen = screen as unknown as { width: number; height: number; emit(event: string): void };
@@ -1610,11 +1753,13 @@ describe("TUI task composer interaction", () => {
 			status = widgets.find((widget) => widget.content === "Status: To Do ▼");
 			type = widgets.find((widget) => widget.content === "Type: None ▼");
 			expect(description?.position).toMatchObject({ top: 3, height: 3 });
-			expect(details?.position).toMatchObject({ top: 6, height: 4 });
-			expect(actions?.position).toMatchObject({ top: 10, height: 1 });
+			expect(details?.position).toMatchObject({ top: 6, height: 5 });
+			expect(actions?.position).toMatchObject({ top: 11, height: 1 });
 			expect(actions?.hidden).toBe(true);
 			expect(status?.position).toMatchObject({ top: 7, left: 3 });
-			expect(type?.position).toMatchObject({ top: 8, left: 3, width: "44%" });
+			expect(type?.position).toMatchObject({ top: 8, left: 3 });
+			const priority = widgets.find((widget) => widget.content === "Priority: None ▼");
+			expect(priority?.position).toMatchObject({ top: 9, left: 3 });
 			expect(widgets.some((widget) => widget.content?.includes("[↑↓←→/Tab]"))).toBe(true);
 
 			mutableScreen.width = 80;
