@@ -1719,7 +1719,7 @@ export class ContentStore {
 			activeTasks,
 			completedTasks,
 			identityIndex,
-			tasks: identityIndex ? identityIndex.getTasks(false) : loaded.tasks,
+			tasks: identityIndex ? identityIndex.getTasks(false) : activeTasks,
 		};
 	}
 
