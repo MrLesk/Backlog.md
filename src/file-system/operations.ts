@@ -630,6 +630,26 @@ export class FileSystem {
 		);
 	}
 
+	/**
+	 * Hold a stable set of task locks for one operation. The callback runs only after every
+	 * lock is acquired, so a contended task cannot leave an earlier write from a bulk operation
+	 * on disk. Sorting also keeps multi-task operations from acquiring the same locks in opposite
+	 * orders and deadlocking each other.
+	 */
+	async withTaskLocks<T>(tasks: Array<Pick<Task, "id" | "filePath">>, fn: () => Promise<T>): Promise<T> {
+		const uniqueTasks = Array.from(
+			new Map(tasks.map((task) => [task.id.trim().toLowerCase(), task])).values(),
+		).sort((left, right) => left.id.localeCompare(right.id));
+
+		const acquire = async (index: number): Promise<T> => {
+			const task = uniqueTasks[index];
+			if (!task) return await fn();
+			return await this.withTaskLock(task, async () => await acquire(index + 1));
+		};
+
+		return await acquire(0);
+	}
+
 	private async withLockTarget<T>(
 		targetPath: string,
 		lockDir: string,

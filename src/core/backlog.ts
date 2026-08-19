@@ -2581,24 +2581,20 @@ export class Core {
 		return await this.updateTaskFromInput(taskId, input, autoCommit, options);
 	}
 
-	async updateTasksBulk(tasks: Task[], commitMessage?: string, autoCommit?: boolean): Promise<void> {
+	private async writeTasksBulk(tasks: Task[]): Promise<string[]> {
 		const filePaths: string[] = [];
 		const updateAll = async () => {
-			// Acquire every task lock before the first write. Reorders can rebalance
-			// several files, so locking one at a time would leave a partial update when
-			// a later task is contended.
-			const updateLocked = async (index: number): Promise<void> => {
-				const task = tasks[index];
-				if (!task) return;
-				await this.fs.withTaskLock(task, async () => {
-					await updateLocked(index + 1);
-					filePaths.push(await this.updateTask(task, false));
-				});
-			};
-			await updateLocked(0);
+			for (const task of tasks) {
+				filePaths.push(await this.updateTask(task, false));
+			}
 		};
 		if (this.contentStore) await this.contentStore.batchTaskUpdates(updateAll);
 		else await updateAll();
+		return filePaths;
+	}
+
+	async updateTasksBulk(tasks: Task[], commitMessage?: string, autoCommit?: boolean): Promise<void> {
+		const filePaths = await this.fs.withTaskLocks(tasks, async () => await this.writeTasksBulk(tasks));
 
 		// Commit all changes at once if auto-commit is enabled
 		if (await this.shouldAutoCommit(autoCommit)) {
@@ -2748,33 +2744,32 @@ export class Core {
 		const fromPath = taskPath;
 		const toPath = join(await this.fs.getArchiveTasksDir(), taskFilename);
 
-		try {
-			await moveFile(fromPath, toPath);
-		} catch {
-			return false;
-		}
-		this.contentStore?.transitionTask(normalizedTaskId);
-
 		const activeTasks = await this.fs.listTasks();
 		const sanitizedTasks = this.sanitizeArchivedTaskLinks(activeTasks, normalizedTaskId);
-		if (sanitizedTasks.length > 0) {
-			await this.updateTasksBulk(sanitizedTasks, undefined, false);
-		}
 
-		if (await this.shouldAutoCommit(autoCommit)) {
-			// Stage the file move for proper Git tracking
-			const repoRoot = await this.git.stageFileMove(fromPath, toPath);
-			const commitPaths = [fromPath, toPath];
-			for (const sanitizedTask of sanitizedTasks) {
-				if (sanitizedTask.filePath) {
-					await this.git.addFile(sanitizedTask.filePath);
-					commitPaths.push(sanitizedTask.filePath);
-				}
+		return await this.fs.withTaskLocks([taskToArchive, ...sanitizedTasks], async () => {
+			try {
+				await moveFile(fromPath, toPath);
+			} catch {
+				return false;
 			}
-			await this.git.commitFiles(`backlog: Archive task ${normalizedTaskId}`, commitPaths, repoRoot);
-		}
+			this.contentStore?.transitionTask(normalizedTaskId);
 
-		return true;
+			const sanitizedPaths =
+				sanitizedTasks.length > 0 ? await this.writeTasksBulk(sanitizedTasks) : [];
+
+			if (await this.shouldAutoCommit(autoCommit)) {
+				// Stage the file move for proper Git tracking
+				const repoRoot = await this.git.stageFileMove(fromPath, toPath);
+				const commitPaths = [fromPath, toPath, ...sanitizedPaths];
+				for (const sanitizedPath of sanitizedPaths) {
+					await this.git.addFile(sanitizedPath);
+				}
+				await this.git.commitFiles(`backlog: Archive task ${normalizedTaskId}`, commitPaths, repoRoot);
+			}
+
+			return true;
+		});
 	}
 
 	async archiveMilestone(
