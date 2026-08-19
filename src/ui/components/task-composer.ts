@@ -657,6 +657,7 @@ export async function openTaskComposer(options: TaskComposerOptions): Promise<Ta
 			_clines?: { length: number; real?: string[]; rtof?: number[]; fake?: string[] };
 			getCursor?: () => { x: number; y: number };
 			setCursor?: (x: number, y: number) => void;
+			setScroll?: (offset: number) => void;
 			strWidth?: (value: string) => number;
 			_updateCursor?: () => void;
 		};
@@ -674,8 +675,12 @@ export async function openTaskComposer(options: TaskComposerOptions): Promise<Ta
 			input.setCursor?.(0, 0);
 			input.setValue(value);
 			syncInputs();
-			const cursor = cursorFromCaretIndex(value, caret, readCaretLines(input, value));
+			const lines = readCaretLines(input, value);
+			const cursor = cursorFromCaretIndex(value, caret, lines);
 			input.setCursor?.(cursor.x, cursor.y);
+			// setValue() scrolls to the last line while the caret is parked at (0, 0). Restore
+			// the caret's line so an edit near the top of a long description stays visible.
+			input.setScroll?.(Math.max(0, lines.real.length - 1 + cursor.y));
 			input._updateCursor?.();
 			options.screen.render();
 		};

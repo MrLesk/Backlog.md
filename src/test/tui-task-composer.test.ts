@@ -65,6 +65,7 @@ type TestWidget = {
 	type?: string;
 	children?: unknown[];
 	getCursor?: () => { x: number; y: number };
+	setCursor?: (x: number, y: number) => void;
 	getValue?: () => string;
 	height?: number;
 	hidden?: boolean;
@@ -1296,6 +1297,37 @@ describe("TUI task composer interaction", () => {
 
 			pressKey(eventScreen.focused, "escape", "\x1b");
 			expect(await withTimeout(resultPromise, "description line join", 1000)).toBeNull();
+		} finally {
+			screen.destroy();
+		}
+	});
+
+	it("keeps an edited early description line in the viewport", async () => {
+		const screen = createScreen({ smartCSR: false });
+		Object.defineProperty(screen, "width", { configurable: true, value: 40, writable: true });
+		Object.defineProperty(screen, "height", { configurable: true, value: 30, writable: true });
+		Object.defineProperty(screen, "fullUnicode", { configurable: true, value: true, writable: true });
+		const eventScreen = screen as unknown as { focused?: TestWidget };
+		try {
+			const resultPromise = openTaskComposer({
+				screen,
+				statuses: ["To Do", "Done"],
+				persist: async () => task(),
+			});
+			await settleComposerFocus();
+			pressKey(eventScreen.focused, "tab", "\t");
+			await settleComposerFocus();
+			const description = eventScreen.focused;
+			const longDescription = "one ".repeat(80).trim();
+			description?.setValue?.(longDescription);
+			description?.setCursor?.(0, -Math.max(0, (description?._clines?.length ?? 1) - 1));
+			typeText(description, "X");
+
+			expect(description?.getValue?.()).toBe(`X${longDescription}`);
+			expect(description?.childBase).toBe(0);
+
+			pressKey(eventScreen.focused, "escape", "\x1b");
+			expect(await withTimeout(resultPromise, "description viewport cancellation", 1000)).toBeNull();
 		} finally {
 			screen.destroy();
 		}
