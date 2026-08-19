@@ -76,6 +76,12 @@ type TaskDetailsFormState = {
   dueDate: string;
 };
 
+// Shared empty defaults. A `= []` default parameter allocates a fresh array on every render, so
+// every memo and effect keyed on it re-runs each time; combined with a state update in that chain
+// the modal spins until React aborts with "Maximum update depth exceeded".
+const EMPTY_STATUSES: string[] = [];
+const EMPTY_TASKS: Task[] = [];
+
 const containsCommentDelimiterLine = (value: string): boolean => /^\s*---\s*$/m.test(value.replace(/\r\n/g, "\n"));
 
 const areJsonEqual = (first: unknown, second: unknown): boolean => JSON.stringify(first) === JSON.stringify(second);
@@ -173,8 +179,8 @@ export const TaskDetailsModal: React.FC<Props> = ({
   onSaved,
   onSubmit,
   onArchive,
-  availableStatuses = [],
-  availableTasks = [],
+  availableStatuses = EMPTY_STATUSES,
+  availableTasks = EMPTY_TASKS,
   onNavigateToTask,
   availableMilestones: _availableMilestones,
   availablePriorities,
