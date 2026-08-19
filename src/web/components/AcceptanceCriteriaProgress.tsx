@@ -8,16 +8,27 @@ interface AcceptanceCriteriaProgressProps {
 
 const normalizeStatus = (status: string) => status.trim().toLowerCase().replace(/\s+/g, "");
 
+export function getAcceptanceCriteriaProgressCounts(
+	task: Pick<Task, "status" | "acceptanceCriteriaItems">,
+): { checked: number; total: number } | null {
+	const criteria = task.acceptanceCriteriaItems ?? [];
+	if (normalizeStatus(task.status) !== "inprogress" || criteria.length === 0) return null;
+
+	return {
+		checked: criteria.reduce((total, criterion) => total + Number(criterion.checked), 0),
+		total: criteria.length,
+	};
+}
+
 export default function AcceptanceCriteriaProgress({
 	task,
 	cells,
 	className = "",
 }: AcceptanceCriteriaProgressProps) {
-	const criteria = task.acceptanceCriteriaItems ?? [];
-	if (normalizeStatus(task.status) !== "inprogress" || criteria.length === 0) return null;
+	const progress = getAcceptanceCriteriaProgressCounts(task);
+	if (!progress) return null;
 
-	const checked = criteria.reduce((total, criterion) => total + Number(criterion.checked), 0);
-	const filledCells = Math.round((checked / criteria.length) * cells);
+	const filledCells = Math.round((progress.checked / progress.total) * cells);
 	const bar = `[${"█".repeat(filledCells)}${"░".repeat(cells - filledCells)}]`;
 
 	return (
@@ -28,12 +39,12 @@ export default function AcceptanceCriteriaProgress({
 			role="progressbar"
 			aria-label="Acceptance criteria progress"
 			aria-valuemin={0}
-			aria-valuemax={criteria.length}
-			aria-valuenow={checked}
-			title={`${checked} of ${criteria.length} acceptance criteria checked`}
+			aria-valuemax={progress.total}
+			aria-valuenow={progress.checked}
+			title={`${progress.checked} of ${progress.total} acceptance criteria checked`}
 		>
 			<span aria-hidden="true">{bar}</span>
-			<span>{checked}/{criteria.length}</span>
+			<span>{progress.checked}/{progress.total}</span>
 		</span>
 	);
 }

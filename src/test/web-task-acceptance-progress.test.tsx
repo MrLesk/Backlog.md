@@ -100,6 +100,13 @@ describe("browser task acceptance criteria progress", () => {
 		expect(progress?.textContent).not.toContain("Acceptance criteria");
 	});
 
+	it("includes card progress in the accessible name", () => {
+		const container = renderCard(createTask({ acceptanceCriteriaItems: createCriteria(4, 7) }));
+		const card = container.querySelector("[role='button']");
+
+		expect(card?.getAttribute("aria-label")).toBe("Open task-1: Task summary. Acceptance criteria progress: 4 of 7");
+	});
+
 	it("does not render progress for an In Progress task without criteria", () => {
 		const container = renderCard(createTask({ acceptanceCriteriaItems: [] }));
 
