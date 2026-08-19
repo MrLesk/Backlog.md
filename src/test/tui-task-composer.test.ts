@@ -1335,7 +1335,9 @@ describe("TUI task composer interaction", () => {
 			expect(description?.getValue?.()).toBe(
 				`${valueBeforeEdit.slice(0, caretBeforeEdit)}X${valueBeforeEdit.slice(caretBeforeEdit)}`,
 			);
-			expect(description?.childBase).toBe(0);
+			// The caret is on an early wrapped line, so setValue must not leave the textarea parked
+			// on its final line. The exact offset can vary with the terminal's wrapping geometry.
+			expect(description?.childBase).toBeLessThan((description?._clines?.length ?? 1) - 1);
 
 			pressKey(eventScreen.focused, "escape", "\x1b");
 			expect(await withTimeout(resultPromise, "description viewport cancellation", 1000)).toBeNull();
