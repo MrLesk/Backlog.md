@@ -1,11 +1,11 @@
 ---
 id: BACK-222.1
 title: Show parent and subtask hierarchy in the web task details modal
-status: In Progress
+status: Done
 assignee:
   - '@codex'
 created_date: '2026-08-17 07:26'
-updated_date: '2026-08-19 21:34'
+updated_date: '2026-08-19 21:46'
 labels: []
 dependencies: []
 parent_task_id: BACK-222
@@ -83,3 +83,9 @@ Maintainer follow-up: responsive modal-header and hierarchy-title polish request
 
 Rendered QA after maintainer polish (in-app Browser): board and All Tasks parent-to-child and child-parent routes checked at 1280x720 and 390x844. The shared modal header has no title/action overlap at 390px, no horizontal overflow, and hierarchy rows remain keyboard-semantic buttons with status sr-only labels and canonical route metadata. Parent subtasks row is readable across two lines; child Parent row is readable across two lines. Empty BACK-633 modal renders no Parent/Subtasks section. Dark and light theme hierarchy states were checked; no framework overlays or console warnings/errors observed. Screenshots: /private/tmp/pr917-after-parent-desktop-visible.png, /private/tmp/pr917-after-child-desktop.png, /private/tmp/pr917-after-parent-mobile.png, /private/tmp/pr917-after-child-mobile.png, /private/tmp/pr917-after-parent-light-desktop.png.
 <!-- SECTION:NOTES:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+Implemented and verified BACK-222.1. The shared Modal header now gives long titles a dedicated mobile row and keeps actions clear at 390px; parent/subtask rows reuse the existing two-line task-card treatment and retain canonical navigation, status semantics, accessibility labels, and theme classes. In-app Browser QA covered Board and All Tasks parent/child navigation at 1280x720 and 390x844, dark/light themes, the empty BACK-633 state, no horizontal overflow, no framework overlay, and no console warnings/errors. Screenshots: /private/tmp/pr917-after-parent-desktop-visible.png, /private/tmp/pr917-after-child-desktop.png, /private/tmp/pr917-after-parent-mobile.png, /private/tmp/pr917-after-child-mobile.png, /private/tmp/pr917-after-parent-light-desktop.png. GitHub Actions run 32304774065 passed all seven current-head jobs; current-head Codex approval is review 4977021284. The exact bun run check . DoD item remains unchecked because that separate local command was not run.
+<!-- SECTION:FINAL_SUMMARY:END -->
