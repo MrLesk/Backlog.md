@@ -1,6 +1,7 @@
 import React from 'react';
 import { type Task } from '../../types';
 import { formatPriorityLabel } from '../../utils/priority-config';
+import AcceptanceCriteriaProgress, { getAcceptanceCriteriaProgressCounts } from './AcceptanceCriteriaProgress';
 import TaskTypeBadge from './TaskTypeBadge';
 
 interface TaskCardProps {
@@ -20,6 +21,10 @@ const TaskCard: React.FC<TaskCardProps> = ({ task, onEdit, onDragStart, onDragEn
 
   // Check if task is from another branch (read-only)
   const isFromOtherBranch = Boolean(task.branch);
+  const acceptanceCriteriaProgress = getAcceptanceCriteriaProgressCounts(task);
+  const accessibleLabel = acceptanceCriteriaProgress
+    ? `Open ${task.id}: ${task.title}. Acceptance criteria progress: ${acceptanceCriteriaProgress.checked} of ${acceptanceCriteriaProgress.total}`
+    : `Open ${task.id}: ${task.title}`;
 
   const handleDragStart = (e: React.DragEvent) => {
     // Prevent dragging cross-branch tasks
@@ -114,7 +119,7 @@ const TaskCard: React.FC<TaskCardProps> = ({ task, onEdit, onDragStart, onDragEn
         draggable={!isFromOtherBranch}
 		role="button"
 		tabIndex={0}
-		aria-label={`Open ${task.id}: ${task.title}`}
+		aria-label={accessibleLabel}
         onDragStart={handleDragStart}
         onDragEnd={handleDragEnd}
         onClick={() => onEdit(task)}
@@ -161,6 +166,8 @@ const TaskCard: React.FC<TaskCardProps> = ({ task, onEdit, onDragStart, onDragEn
         }`}>
           {task.title}
         </h4>
+
+        <AcceptanceCriteriaProgress task={task} cells={5} className="mt-2" />
 
         {/* Labels - limit to 3 */}
         {task.labels.length > 0 && (
