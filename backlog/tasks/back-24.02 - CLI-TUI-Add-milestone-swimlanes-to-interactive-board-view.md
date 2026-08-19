@@ -1,10 +1,10 @@
 ---
 id: BACK-24.02
 title: 'CLI TUI: Add milestone swimlanes to interactive board view'
-status: To Do
+status: Done
 assignee: []
 created_date: '2025-12-17 21:42'
-updated_date: '2025-12-17 22:11'
+updated_date: '2026-08-10 05:28'
 labels:
   - cli
   - tui
@@ -22,3 +22,15 @@ The `-m/--milestones` flag for `backlog board` only works in non-TTY mode (markd
 
 Implement milestone swimlanes in the TUI board view to match the web UI's milestone view behavior - grouping tasks by milestone with collapsible sections.
 <!-- SECTION:DESCRIPTION:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+Maintainer decision: close this task as Done without implementation or additional acceptance criteria.
+<!-- SECTION:NOTES:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+Marked Done by maintainer direction. No code changes were requested or made for milestone swimlanes.
+<!-- SECTION:FINAL_SUMMARY:END -->
