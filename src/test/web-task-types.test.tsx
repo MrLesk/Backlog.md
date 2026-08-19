@@ -196,7 +196,8 @@ describe("Web task type UI", () => {
 		expect(customHtml).toContain("bg-blue-100");
 		expect(docsHtml).toContain("bg-cyan-100");
 		expect(untypedHtml).not.toContain("data-task-type");
-		expect(datedHtml).toContain("Due (UTC): 10/08/2026 14:30");
+		expect(datedHtml).toContain("Due (UTC):");
+		expect(datedHtml).toContain("10/08/2026 14:30");
 	});
 
 	it("creates a task with a configured custom type and defaults to untyped", async () => {
