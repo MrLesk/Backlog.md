@@ -74,13 +74,19 @@ const containsCommentDelimiterLine = (value: string): boolean => /^\s*---\s*$/m.
 
 const areJsonEqual = (first: unknown, second: unknown): boolean => JSON.stringify(first) === JSON.stringify(second);
 
-const isPartialDemotionError = (error: unknown): boolean =>
-	error instanceof ApiError &&
-	error.status !== undefined &&
-	error.status >= 500 &&
-	typeof error.data === "object" &&
-	error.data !== null &&
-	(error.data as { moved?: unknown }).moved === true;
+const getDemotionFailureState = (error: unknown): "moved" | "partial" | null => {
+	if (
+		!(error instanceof ApiError) ||
+		error.status === undefined ||
+		error.status < 500 ||
+		typeof error.data !== "object" ||
+		error.data === null
+	) {
+		return null;
+	}
+	const state = (error.data as { demotionState?: unknown }).demotionState;
+	return state === "moved" || state === "partial" ? state : null;
+};
 
 const isEditableKeyboardTarget = (target: EventTarget | null): boolean =>
   target instanceof Element &&
@@ -977,7 +983,8 @@ export const TaskDetailsModal: React.FC<Props> = ({
 			onClose();
 		} catch (err) {
 			if (!isCurrentRequest()) return;
-			if (isPartialDemotionError(err)) {
+			const demotionFailureState = getDemotionFailureState(err);
+			if (demotionFailureState) {
 				window.dispatchEvent(new window.Event("drafts-updated"));
 				try {
 					if (onSaved) await onSaved();
@@ -986,7 +993,9 @@ export const TaskDetailsModal: React.FC<Props> = ({
 				}
 				if (!isCurrentRequest()) return;
 				const message =
-					"The task was moved to drafts, but recording the Git commit failed. The view was refreshed; verify the draft before retrying.";
+					demotionFailureState === "moved"
+						? "The task was moved to drafts, but recording the Git commit failed. The view was refreshed; verify the draft before retrying."
+						: "The demotion encountered a filesystem failure and may have left both task and draft copies. The view was refreshed; inspect them before retrying.";
 				try {
 					window.alert(message);
 				} catch {

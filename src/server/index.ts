@@ -1136,14 +1136,17 @@ export class BacklogServer {
 		} catch (error) {
 			const message = error instanceof Error ? error.message : "Failed to demote task";
 			const conflict = isAmbiguousTaskIdError(error) || isCreateLockError(error);
-			const moved =
-				typeof error === "object" &&
-				error !== null &&
-				(error as { moved?: unknown }).moved === true;
+			const demotionState =
+				typeof error === "object" && error !== null &&
+				(error as { demotionState?: unknown }).demotionState;
+			const knownDemotionState = demotionState === "moved" || demotionState === "partial" ? demotionState : undefined;
 			if (!conflict) {
 				console.error("Error demoting task:", error);
 			}
-			return Response.json({ error: message, ...(moved ? { moved: true } : {}) }, { status: conflict ? 409 : 500 });
+			return Response.json(
+				{ error: message, ...(knownDemotionState ? { demotionState: knownDemotionState } : {}) },
+				{ status: conflict ? 409 : 500 },
+			);
 		}
 	}
 

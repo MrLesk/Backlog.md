@@ -1145,8 +1145,11 @@ export class FileSystem {
 			} catch (error) {
 				try {
 					await unlink(savedPath);
-				} catch {
-					// Preserve the original failure; the response still reports an operational error.
+				} catch (cleanupError) {
+					const failure = error instanceof Error ? error : new Error(String(error));
+					(failure as Error & { demotionState?: string }).demotionState = "partial";
+					failure.cause = cleanupError;
+					throw failure;
 				}
 				throw error;
 			}

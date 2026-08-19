@@ -2967,12 +2967,14 @@ export class Core {
 			this.contentStore?.transitionTask(task.id);
 		}
 
-		if (success && moved && (await this.shouldAutoCommit(autoCommit))) {
+		if (success && moved) {
 			try {
-				await this.commitWrittenFile(`backlog: Demote task ${task.id}`, [moved.previousPath], moved.savedPath);
+				if (await this.shouldAutoCommit(autoCommit)) {
+					await this.commitWrittenFile(`backlog: Demote task ${task.id}`, [moved.previousPath], moved.savedPath);
+				}
 			} catch (error) {
 				const failure = error instanceof Error ? error : new Error(String(error));
-				(failure as Error & { moved?: boolean }).moved = true;
+				(failure as Error & { demotionState?: string }).demotionState = "moved";
 				throw failure;
 			}
 		}
