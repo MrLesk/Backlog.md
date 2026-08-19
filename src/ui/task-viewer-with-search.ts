@@ -65,7 +65,11 @@ function getPriorityDisplay(priority?: string): string {
 	}
 }
 
-export function formatTaskViewerListItem(task: Task, availableWidth = Number.POSITIVE_INFINITY): string {
+export function formatTaskViewerListItem(
+	task: Task,
+	availableWidth = Number.POSITIVE_INFINITY,
+	dateFormat?: string,
+): string {
 	const progress = formatAcceptanceCriteriaProgress(task, availableWidth);
 	// The compact status icon keeps task identity visible beside the progress indicator. Its
 	// shape still distinguishes active work from the terminal-status checkmark.
@@ -78,11 +82,14 @@ export function formatTaskViewerListItem(task: Task, availableWidth = Number.POS
 	const typeBadge = formatTaskTypeBadge(task.type);
 	const typeText = typeBadge ? ` ${typeBadge}` : "";
 	const priorityText = getPriorityDisplay(task.priority);
+	const dueDateText = task.dueDate
+		? ` {gray-fg}(due ${formatDateForDisplay(task.dueDate, { dateFormat, appendUtcLabel: true })}){/}`
+		: "";
 	const isCrossBranch = Boolean((task as Task & { branch?: string }).branch);
 	const branchText = isCrossBranch ? ` {green-fg}(${(task as Task & { branch?: string }).branch}){/}` : "";
 	const progressText = progress ? ` ${progress}` : "";
 
-	const content = `${wrapStatusColor(status, statusColor)}${progressText} {bold}${task.id}{/bold}${typeText} - ${task.title}${priorityText}${assigneeText}${labelsText}${branchText}`;
+	const content = `${wrapStatusColor(status, statusColor)}${progressText} {bold}${task.id}{/bold}${typeText}${dueDateText} - ${task.title}${priorityText}${assigneeText}${labelsText}${branchText}`;
 	return isCrossBranch ? `{gray-fg}${content}{/}` : content;
 }
 
@@ -939,7 +946,7 @@ export async function viewTaskEnhanced(
 			left: 1,
 			width: "100%-4",
 			height: "100%-3",
-			itemRenderer: (task: Task) => formatTaskViewerListItem(task, getTaskListSummaryWidth()),
+			itemRenderer: (task: Task) => formatTaskViewerListItem(task, getTaskListSummaryWidth(), dateFormat),
 			onSelect: (selected: Task | Task[]) => {
 				const selectedTask = Array.isArray(selected) ? selected[0] : selected;
 				void applySelection(selectedTask || null);
@@ -1560,6 +1567,9 @@ export function generateDetailContent(
 	metadata.push(`{bold}Created:{/bold} ${formatDateForDisplay(task.createdDate, { dateFormat })}`);
 	if (task.updatedDate && task.updatedDate !== task.createdDate) {
 		metadata.push(`{bold}Updated:{/bold} ${formatDateForDisplay(task.updatedDate, { dateFormat })}`);
+	}
+	if (task.dueDate) {
+		metadata.push(`{bold}Due:{/bold} ${formatDateForDisplay(task.dueDate, { dateFormat, appendUtcLabel: true })}`);
 	}
 	if (task.priority) {
 		const priorityDisplay = getPriorityDisplay(task.priority);

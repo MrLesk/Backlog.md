@@ -1,6 +1,8 @@
 import { rename as moveFile } from "node:fs/promises";
 import type { Core } from "../../../core/backlog.ts";
 import type { Milestone, Task } from "../../../types/index.ts";
+import { formatUtcDateForDisplay } from "../../../utils/utc-date-display.ts";
+import { normalizeUtcDateTime } from "../../../utils/utc-datetime.ts";
 import { BacklogToolError } from "../../errors/mcp-errors.ts";
 import type { CallToolResult } from "../../types.ts";
 import {
@@ -14,12 +16,14 @@ import {
 export type MilestoneAddArgs = {
 	name: string;
 	description?: string;
+	dueDate?: string;
 };
 
 export type MilestoneRenameArgs = {
 	from: string;
 	to: string;
 	updateTasks?: boolean;
+	dueDate?: string | null;
 };
 
 export type MilestoneRemoveArgs = {
@@ -320,7 +324,11 @@ export class MilestoneHandlers {
 			.sort((a, b) => a.localeCompare(b));
 
 		const blocks: string[] = [];
-		const milestoneLines = fileMilestones.map((m) => `${m.id}: ${m.title}`);
+		const milestoneLines = fileMilestones.map((m) =>
+			m.dueDate
+				? `${m.id}: ${m.title} (due ${formatUtcDateForDisplay(m.dueDate, { appendUtcLabel: true })})`
+				: `${m.id}: ${m.title}`,
+		);
 		blocks.push(formatListBlock(`Milestones (${fileMilestones.length}):`, milestoneLines));
 		blocks.push(formatListBlock(`Milestones found on tasks without files (${unconfigured.length}):`, unconfigured));
 		blocks.push(
@@ -345,6 +353,12 @@ export class MilestoneHandlers {
 		if (!name) {
 			throw new BacklogToolError("Milestone name cannot be empty.", "VALIDATION_ERROR");
 		}
+		let dueDate: string | undefined;
+		try {
+			dueDate = normalizeUtcDateTime(args.dueDate, "Due date");
+		} catch (error) {
+			throw new BacklogToolError(error instanceof Error ? error.message : String(error), "VALIDATION_ERROR");
+		}
 
 		// Check for duplicates in existing milestone files
 		const existing = await this.listFileMilestones();
@@ -365,7 +379,7 @@ export class MilestoneHandlers {
 		await this.core.ensureConfigLoaded();
 
 		// Create milestone file
-		const milestone = await this.core.filesystem.createMilestone(name, args.description);
+		const milestone = await this.core.filesystem.createMilestone(name, args.description, dueDate);
 		const milestonePath = await this.core.filesystem.getMilestoneFilePath(milestone.id);
 		await this.commitMilestoneMutation(`backlog: Add milestone ${milestone.id}`, {
 			taskFilePaths: milestonePath ? [milestonePath] : [],
@@ -375,7 +389,7 @@ export class MilestoneHandlers {
 			content: [
 				{
 					type: "text",
-					text: `Created milestone "${milestone.title}" (${milestone.id}).`,
+					text: `Created milestone "${milestone.title}" (${milestone.id}).${milestone.dueDate ? `\nDue: ${formatUtcDateForDisplay(milestone.dueDate, { appendUtcLabel: true })}` : ""}`,
 				},
 			],
 		};
@@ -394,7 +408,20 @@ export class MilestoneHandlers {
 		if (!sourceMilestone) {
 			throw new BacklogToolError(`Milestone not found: "${fromName}"`, "NOT_FOUND");
 		}
-		if (toName === sourceMilestone.title.trim()) {
+		let requestedDueDate: string | undefined;
+		try {
+			requestedDueDate =
+				args.dueDate === undefined
+					? sourceMilestone.dueDate
+					: args.dueDate === null
+						? undefined
+						: normalizeUtcDateTime(args.dueDate, "Due date");
+		} catch (error) {
+			throw new BacklogToolError(error instanceof Error ? error.message : String(error), "VALIDATION_ERROR");
+		}
+		const titleChanged = toName !== sourceMilestone.title.trim();
+		const dueDateChanged = requestedDueDate !== sourceMilestone.dueDate;
+		if (!titleChanged && !dueDateChanged) {
 			return {
 				content: [
 					{
@@ -423,7 +450,7 @@ export class MilestoneHandlers {
 		}
 
 		const targetMilestone = sourceMilestone.id;
-		const shouldUpdateTasks = args.updateTasks ?? true;
+		const shouldUpdateTasks = titleChanged && (args.updateTasks ?? true);
 		const tasks = shouldUpdateTasks ? await this.listLocalTasks() : [];
 		const matchKeys = shouldUpdateTasks
 			? buildTaskMatchKeysForMilestone(fromName, sourceMilestone, !hasTitleCollision)
@@ -432,7 +459,7 @@ export class MilestoneHandlers {
 		let updatedTaskIds: string[] = [];
 		const updatedTaskFilePaths = new Set<string>();
 
-		const renameResult = await this.core.renameMilestone(sourceMilestone.id, toName, false);
+		const renameResult = await this.core.renameMilestone(sourceMilestone.id, toName, false, args.dueDate);
 		if (!renameResult.success || !renameResult.milestone) {
 			throw new BacklogToolError(`Failed to rename milestone "${sourceMilestone.title}".`, "INTERNAL_ERROR");
 		}
@@ -453,7 +480,12 @@ export class MilestoneHandlers {
 				updatedTaskIds = updatedTaskIds.sort((a, b) => a.localeCompare(b));
 			} catch {
 				const rollbackTaskFailures = await this.rollbackTaskMilestones(previousMilestones);
-				const rollbackRenameResult = await this.core.renameMilestone(sourceMilestone.id, sourceMilestone.title, false);
+				const rollbackRenameResult = await this.core.renameMilestone(
+					sourceMilestone.id,
+					sourceMilestone.title,
+					false,
+					sourceMilestone.dueDate ?? null,
+				);
 				const rollbackDetails: string[] = [];
 				if (!rollbackRenameResult.success) {
 					rollbackDetails.push("failed to rollback milestone file rename");
@@ -469,14 +501,20 @@ export class MilestoneHandlers {
 			}
 		}
 		try {
-			await this.commitMilestoneMutation(`backlog: Rename milestone ${sourceMilestone.id}`, {
+			const commitAction = titleChanged ? "Rename" : "Update";
+			await this.commitMilestoneMutation(`backlog: ${commitAction} milestone ${sourceMilestone.id}`, {
 				sourcePath: renameResult.sourcePath,
 				targetPath: renameResult.targetPath,
 				taskFilePaths: updatedTaskFilePaths,
 			});
 		} catch {
 			const rollbackTaskFailures = await this.rollbackTaskMilestones(previousMilestones);
-			const rollbackRenameResult = await this.core.renameMilestone(sourceMilestone.id, sourceMilestone.title, false);
+			const rollbackRenameResult = await this.core.renameMilestone(
+				sourceMilestone.id,
+				sourceMilestone.title,
+				false,
+				sourceMilestone.dueDate ?? null,
+			);
 			const rollbackDetails: string[] = [];
 			if (!rollbackRenameResult.success) {
 				rollbackDetails.push("failed to rollback milestone file rename");
@@ -491,14 +529,24 @@ export class MilestoneHandlers {
 			);
 		}
 
-		const summaryLines: string[] = [
-			`Renamed milestone "${sourceMilestone.title}" (${sourceMilestone.id}) → "${renamedMilestone.title}" (${renamedMilestone.id}).`,
-		];
+		const summaryLines: string[] = [];
+		if (titleChanged) {
+			summaryLines.push(
+				`Renamed milestone "${sourceMilestone.title}" (${sourceMilestone.id}) → "${renamedMilestone.title}" (${renamedMilestone.id}).`,
+			);
+		}
+		if (dueDateChanged) {
+			summaryLines.push(
+				renamedMilestone.dueDate
+					? `Due: ${formatUtcDateForDisplay(renamedMilestone.dueDate, { appendUtcLabel: true })}`
+					: "Cleared milestone due date.",
+			);
+		}
 		if (shouldUpdateTasks) {
 			summaryLines.push(
 				`Updated ${updatedTaskIds.length} local task${updatedTaskIds.length === 1 ? "" : "s"}: ${formatTaskIdList(updatedTaskIds)}`,
 			);
-		} else {
+		} else if (titleChanged) {
 			summaryLines.push("Skipped updating tasks (updateTasks=false).");
 		}
 		if (renameResult.sourcePath && renameResult.targetPath && renameResult.sourcePath !== renameResult.targetPath) {

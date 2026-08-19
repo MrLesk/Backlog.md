@@ -112,6 +112,49 @@ afterEach(() => {
 });
 
 describe("Web task type UI", () => {
+	it("displays and clears a task due date through the edit form", async () => {
+		const container = setupDom();
+		const task = createTask({ dueDate: "2026-08-10 14:30" });
+		const receivedUpdates: TaskUpdateRequest[] = [];
+		apiClient.updateTask = async (_taskId, updates) => {
+			receivedUpdates.push(updates);
+			return { ...task, dueDate: updates.dueDate ?? undefined };
+		};
+
+		activeRoot = createRoot(container);
+		await act(async () => {
+			activeRoot?.render(
+				<ThemeProvider>
+					<TaskDetailsModal task={task} isOpen onClose={() => {}} />
+				</ThemeProvider>,
+			);
+			await Promise.resolve();
+		});
+		expect(container.textContent).toContain("Due (UTC):");
+
+		const editButton = Array.from(container.querySelectorAll("button")).find(
+			(button) => button.textContent?.trim() === "Edit",
+		);
+		expect(editButton).toBeTruthy();
+		await act(async () => {
+			editButton?.dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
+			await Promise.resolve();
+		});
+
+		const dueDateInput = container.querySelector('input[type="datetime-local"]') as HTMLInputElement | null;
+		expect(dueDateInput?.value).toBe("2026-08-10T14:30");
+		await setInputValue(dueDateInput as HTMLInputElement, "");
+		const saveButton = Array.from(container.querySelectorAll("button")).find(
+			(button) => button.textContent?.trim() === "Save",
+		);
+		await act(async () => {
+			saveButton?.dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
+			await Promise.resolve();
+		});
+		await waitFor(() => receivedUpdates.length === 1);
+		expect(receivedUpdates[0]?.dueDate).toBeNull();
+	});
+
 	it("shows distinct type badges on cards and no badge for untyped tasks", () => {
 		const bugHtml = renderToString(
 			<TaskCard task={createTask({ type: "bug" })} onUpdate={() => {}} onEdit={() => {}} />,
@@ -136,6 +179,14 @@ describe("Web task type UI", () => {
 			/>,
 		);
 		const untypedHtml = renderToString(<TaskCard task={createTask()} onUpdate={() => {}} onEdit={() => {}} />);
+		const datedHtml = renderToString(
+			<TaskCard
+				task={createTask({ dueDate: "2026-08-10 14:30" })}
+				onUpdate={() => {}}
+				onEdit={() => {}}
+				dateFormat="dd/mm/yyyy hh:mm"
+			/>,
+		);
 
 		expect(bugHtml).toContain('data-task-type="bug"');
 		expect(bugHtml).toContain("bg-red-100");
@@ -145,6 +196,8 @@ describe("Web task type UI", () => {
 		expect(customHtml).toContain("bg-blue-100");
 		expect(docsHtml).toContain("bg-cyan-100");
 		expect(untypedHtml).not.toContain("data-task-type");
+		expect(datedHtml).toContain("Due (UTC):");
+		expect(datedHtml).toContain("10/08/2026 14:30");
 	});
 
 	it("creates a task with a configured custom type and defaults to untyped", async () => {
@@ -178,8 +231,11 @@ describe("Web task type UI", () => {
 		]);
 
 		const titleInput = container.querySelector("input[placeholder='Enter task title']") as HTMLInputElement | null;
+		const dueDateInput = container.querySelector('input[type="datetime-local"]') as HTMLInputElement | null;
 		expect(titleInput).toBeTruthy();
+		expect(dueDateInput).toBeTruthy();
 		await setInputValue(titleInput as HTMLInputElement, "Customer interview");
+		await setInputValue(dueDateInput as HTMLInputElement, "2026-08-11T09:45");
 		await setSelectValue(typeSelect as HTMLSelectElement, "Customer Request");
 
 		const createButton = Array.from(container.querySelectorAll("button")).find(
@@ -194,6 +250,7 @@ describe("Web task type UI", () => {
 
 		expect(submitted?.title).toBe("Customer interview");
 		expect(submitted?.type).toBe("Customer Request");
+		expect(submitted?.dueDate).toBe("2026-08-11T09:45");
 		// A blank assignee field is omitted so the configured defaultAssignee still applies;
 		// an explicit empty list means "unassigned" everywhere else.
 		expect(submitted && "assignee" in submitted).toBe(false);

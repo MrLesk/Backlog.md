@@ -44,6 +44,7 @@ Humans and agents can run `backlog instructions` for workflow guides and `backlo
 | Create with status | `backlog task create "Feature" -s "In Progress"`    |
 | Create with labels | `backlog task create "Feature" -l auth,backend`     |
 | Create with priority | `backlog task create "Feature" --priority high`     |
+| Create with due date | `backlog task create "Feature" --due-date "2026-08-10 14:30"` |
 | Create with plan | `backlog task create "Feature" --plan "1. Research\n2. Implement"`     |
 | Create with AC | `backlog task create "Feature" --ac "Must work,Must be tested"` |
 | Add DoD items on create | `backlog task create "Feature" --dod "Run tests"` |
@@ -82,9 +83,13 @@ Humans and agents can run `backlog instructions` for workflow guides and `backlo
 | Append final summary | `backlog task edit 7 --append-final-summary "More details"` |
 | Clear final summary | `backlog task edit 7 --clear-final-summary` |
 | Add deps    | `backlog task edit 7 --dep task-1 --dep task-2`     |
+| Set due date | `backlog task edit 7 --due-date "2026-08-10 14:30"` |
+| Clear due date | `backlog task edit 7 --clear-due-date` |
 | Archive     | `backlog task archive 7`                             |
 
 Task comments are append-only discussion entries with optional author labels. Use comments for review questions and collaboration notes; use implementation notes for execution progress and final summary for PR-ready completion notes. Comment bodies may contain Markdown, but standalone `---` lines are reserved as comment delimiters.
+
+Task and milestone due dates are UTC datetimes stored at minute precision. Use `YYYY-MM-DD HH:mm` or an ISO datetime with an explicit offset; date-only values are rejected.
 
 ### Stable JSON output
 
@@ -105,7 +110,7 @@ Each successful response is one pretty-printed JSON document followed by a newli
 | `task view <id> --json` and `task <id> --json` | `{ "schemaVersion": 1, "kind": "task-view", "task": {...} }` |
 | `search [query] --json` | `{ "schemaVersion": 1, "kind": "search", "results": [...] }` |
 
-Task list and task search results use these compact fields: `id`, `title`, `status`, `type`, `priority`, `assignees`, `reporter`, `labels`, `milestone`, `parentTaskId`, `acceptanceCriteriaCompleted`, `acceptanceCriteriaCount`, `ordinal`, `createdAt`, and `updatedAt`. `acceptanceCriteriaCompleted` is the number of checked acceptance criteria and `acceptanceCriteriaCount` is the total; both are `0` when the task has no acceptance criteria.
+Task list and task search results use these compact fields: `id`, `title`, `status`, `type`, `priority`, `assignees`, `reporter`, `labels`, `milestone`, `parentTaskId`, `acceptanceCriteriaCompleted`, `acceptanceCriteriaCount`, `ordinal`, `createdAt`, `updatedAt`, and `dueDate`. `acceptanceCriteriaCompleted` is the number of checked acceptance criteria and `acceptanceCriteriaCount` is the total; both are `0` when the task has no acceptance criteria.
 
 Task view includes the same progress counts alongside the full checklist and adds `path`, `description`, `dependencies`, `references`, `documentation`, `modifiedFiles`, `subtasks`, `acceptanceCriteria`, `definitionOfDone`, `implementationPlan`, `implementationNotes`, `comments`, and `finalSummary`. `path` is relative to the project root. Checklist entries contain `index`, `text`, and `checked`. Comment entries contain `index`, `body`, `createdAt`, and `author`.
 
@@ -181,7 +186,10 @@ Milestones are managed through milestone files. Use CLI commands instead of edit
 | List completed milestones too | `backlog milestone list --show-completed --plain` |
 | Add milestone | `backlog milestone add "Release 1.0"` |
 | Add with description | `backlog milestone add "Beta" --description "Beta scope"` |
+| Add with due date | `backlog milestone add "Beta" --due-date "2026-08-10 14:30"` |
 | Rename and update tasks | `backlog milestone rename "Release 1.0" "Release 2.0"` |
+| Set due date without renaming | `backlog milestone rename "Release 1.0" "Release 1.0" --due-date "2026-08-10 14:30"` |
+| Clear due date | `backlog milestone rename "Release 1.0" "Release 1.0" --clear-due-date` |
 | Rename without task updates | `backlog milestone rename m-1 "Release 2.0" --no-update-tasks` |
 | Remove and clear task milestones | `backlog milestone remove "Release 1.0"` |
 | Remove and keep task values | `backlog milestone remove "Release 1.0" --task-handling keep` |

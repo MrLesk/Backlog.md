@@ -37,6 +37,12 @@ export function buildTaskUpdateInput(args: TaskEditArgs): TaskUpdateInput {
 		updateInput.title = args.title;
 	}
 
+	if (args.dueDate === null) {
+		updateInput.dueDate = null;
+	} else if (typeof args.dueDate === "string") {
+		updateInput.dueDate = args.dueDate.trim().length > 0 ? args.dueDate : null;
+	}
+
 	if (typeof args.description === "string") {
 		updateInput.description = args.description;
 	}

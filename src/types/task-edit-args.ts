@@ -1,5 +1,6 @@
 export interface TaskEditArgs {
 	title?: string;
+	dueDate?: string | null;
 	description?: string;
 	status?: string;
 	priority?: string;

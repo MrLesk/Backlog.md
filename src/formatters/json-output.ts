@@ -19,6 +19,7 @@ type TaskSummaryJson = {
 	ordinal: number | null;
 	createdAt: string | null;
 	updatedAt: string | null;
+	dueDate: string | null;
 };
 
 type ChecklistItemJson = {
@@ -112,6 +113,7 @@ function toTaskSummaryJson(task: Task): TaskSummaryJson {
 		ordinal: task.ordinal ?? null,
 		createdAt: normalizePublicDate(task.createdDate),
 		updatedAt: normalizePublicDate(task.updatedDate),
+		dueDate: normalizePublicDate(task.dueDate),
 	};
 }
 

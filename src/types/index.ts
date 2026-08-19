@@ -44,6 +44,7 @@ export interface Task {
 	reporter?: string;
 	createdDate: string;
 	updatedDate?: string;
+	dueDate?: string;
 	labels: string[];
 	milestone?: string;
 	dependencies: string[];
@@ -104,6 +105,7 @@ export function isLocalEditableTask(task: Task): boolean {
 
 export interface TaskCreateInput {
 	title: string;
+	dueDate?: string;
 	description?: string;
 	status?: TaskStatus;
 	priority?: string;
@@ -128,6 +130,7 @@ export interface TaskCreateInput {
 
 export interface TaskUpdateInput {
 	title?: string;
+	dueDate?: string | null;
 	description?: string;
 	status?: TaskStatus;
 	priority?: string;
@@ -198,6 +201,7 @@ export interface Decision {
 export interface Milestone {
 	id: string;
 	title: string;
+	dueDate?: string;
 	description: string;
 	readonly rawContent: string; // Raw markdown content without frontmatter
 }

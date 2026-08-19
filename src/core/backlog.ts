@@ -77,6 +77,7 @@ import { attachSubtaskSummaries } from "../utils/task-subtasks.ts";
 import { formatValidTaskTypeValues, matchesTaskTypeFilter, resolveTaskTypeValue } from "../utils/task-type-config.ts";
 import { upsertTaskUpdatedDate } from "../utils/task-updated-date.ts";
 import { isTerminalStatus } from "../utils/terminal-status.ts";
+import { normalizeUtcDateTime } from "../utils/utc-datetime.ts";
 import { migrateConfig, needsMigration } from "./config-migration.ts";
 import { ContentStore, type TaskCorpusSnapshot } from "./content-store.ts";
 import {
@@ -183,6 +184,7 @@ function buildUpdatedDateComparableTask(task: Task): Record<string, unknown> {
 		assignee: task.assignee ?? [],
 		reporter: task.reporter,
 		createdDate: task.createdDate,
+		dueDate: task.dueDate,
 		labels: task.labels ?? [],
 		milestone: task.milestone,
 		dependencies: task.dependencies ?? [],
@@ -1564,6 +1566,7 @@ export class Core {
 		const normalizedReferences = normalizeStringList(input.references) ?? [];
 		const normalizedDocumentation = normalizeStringList(input.documentation) ?? [];
 		const normalizedModifiedFiles = normalizeStringList(input.modifiedFiles) ?? [];
+		const dueDate = normalizeUtcDateTime(input.dueDate, "Due date");
 
 		const { valid: validDependencies, invalid: invalidDependencies } = await validateDependencies(
 			normalizedDependencies,
@@ -1632,6 +1635,7 @@ export class Core {
 				modifiedFiles: normalizedModifiedFiles,
 				rawContent: input.rawContent ?? "",
 				createdDate,
+				...(dueDate && { dueDate }),
 				...(parentTaskId && { parentTaskId }),
 				...(priority && { priority }),
 				...(type && { type }),
@@ -1795,6 +1799,15 @@ export class Core {
 		applyStringField(input.description, task.description, (next) => {
 			task.description = next;
 		});
+
+		if (input.dueDate !== undefined) {
+			const dueDate = input.dueDate === null ? undefined : normalizeUtcDateTime(input.dueDate, "Due date");
+			if (task.dueDate !== dueDate) {
+				if (dueDate) task.dueDate = dueDate;
+				else delete task.dueDate;
+				mutated = true;
+			}
+		}
 
 		if (input.status !== undefined) {
 			const canonicalStatus = await statusResolver(input.status);
@@ -2810,14 +2823,16 @@ export class Core {
 		identifier: string,
 		title: string,
 		autoCommit?: boolean,
+		dueDate?: string | null,
 	): Promise<{
 		success: boolean;
 		sourcePath?: string;
 		targetPath?: string;
 		milestone?: Milestone;
 		previousTitle?: string;
+		previousDueDate?: string;
 	}> {
-		const result = await this.fs.renameMilestone(identifier, title);
+		const result = await this.fs.renameMilestone(identifier, title, dueDate);
 		if (!result.success) {
 			return result;
 		}
@@ -2832,7 +2847,11 @@ export class Core {
 				await this.git.resetPaths(commitPaths, repoRoot);
 				const rollbackTitle = result.previousTitle ?? title;
 				try {
-					await this.fs.renameMilestone(result.milestone?.id ?? identifier, rollbackTitle);
+					await this.fs.renameMilestone(
+						result.milestone?.id ?? identifier,
+						rollbackTitle,
+						result.previousDueDate ?? null,
+					);
 				} catch {
 					// Ignore rollback failure and propagate original commit error.
 				}

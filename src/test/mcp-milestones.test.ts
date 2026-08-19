@@ -78,6 +78,47 @@ describe("MCP milestone tools", () => {
 		if (errors.length > 1) throw new AggregateError(errors, "MCP server and fixture cleanup both failed");
 	});
 
+	it("creates, lists, updates, and clears milestone dueDate", async () => {
+		const tools = await server.testInterface.listTools();
+		const toolByName = new Map(tools.tools.map((tool) => [tool.name, tool]));
+		const addSchema = toolByName.get("milestone_add")?.inputSchema as {
+			properties?: Record<string, { type?: string | string[] }>;
+		};
+		const renameSchema = toolByName.get("milestone_rename")?.inputSchema as {
+			properties?: Record<string, { type?: string | string[] }>;
+		};
+		expect(addSchema.properties?.dueDate).toBeDefined();
+		expect(renameSchema.properties?.dueDate?.type).toEqual(["string", "null"]);
+
+		const added = await server.testInterface.callTool({
+			params: {
+				name: "milestone_add",
+				arguments: { name: "Dated release", dueDate: "2026-09-01T14:00+02:00" },
+			},
+		});
+		expect(getText(added.content)).toContain("Due: 2026-09-01 12:00 (UTC)");
+
+		const listed = await server.testInterface.callTool({ params: { name: "milestone_list", arguments: {} } });
+		expect(getText(listed.content)).toContain("m-0: Dated release (due 2026-09-01 12:00 (UTC))");
+
+		const updated = await server.testInterface.callTool({
+			params: {
+				name: "milestone_rename",
+				arguments: { from: "m-0", to: "Dated release", dueDate: "2026-09-02T13:30Z" },
+			},
+		});
+		expect(getText(updated.content)).toContain("Due: 2026-09-02 13:30 (UTC)");
+		expect((await server.filesystem.loadMilestone("m-0"))?.dueDate).toBe("2026-09-02 13:30");
+
+		await server.testInterface.callTool({
+			params: {
+				name: "milestone_rename",
+				arguments: { from: "m-0", to: "Dated release", dueDate: null },
+			},
+		});
+		expect((await server.filesystem.loadMilestone("m-0"))?.dueDate).toBeUndefined();
+	});
+
 	it("assigns and clears a milestone without blocking the content store", async () => {
 		await server.testInterface.callTool({
 			params: { name: "milestone_add", arguments: { name: "Release 1.0" } },

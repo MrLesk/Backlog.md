@@ -767,6 +767,7 @@ function AppContent() {
                 archivedMilestones={archivedMilestones}
                 onEditTask={handleEditTask}
                 onRefreshData={refreshData}
+                dateFormat={config?.dateFormat}
               />
             }
           />

@@ -17,6 +17,7 @@ import { buildTaskUpdateInput } from "../../../utils/task-edit-builder.ts";
 import { createTaskSearchIndex } from "../../../utils/task-search.ts";
 import { sortByOrdinalAndPriority } from "../../../utils/task-sorting.ts";
 import { getTerminalStatus, isTerminalStatus } from "../../../utils/terminal-status.ts";
+import { formatUtcDateForDisplay } from "../../../utils/utc-date-display.ts";
 import { BacklogToolError } from "../../errors/mcp-errors.ts";
 import type { McpServer } from "../../server.ts";
 import type { CallToolResult } from "../../types.ts";
@@ -31,6 +32,7 @@ export type TaskCreateArgs = {
 	type?: string;
 	ordinal?: number;
 	status?: string;
+	dueDate?: string;
 	milestone?: string;
 	parentTaskId?: string;
 	acceptanceCriteria?: string[];
@@ -89,7 +91,8 @@ export class TaskHandlers {
 		const typeIndicator = task.type ? `[${task.type}] ` : "";
 		const status = task.status || (task.source === "completed" ? "Done" : "");
 		const statusText = options.includeStatus && status ? ` (${status})` : "";
-		return `  ${priorityIndicator}${typeIndicator}${task.id} - ${task.title}${statusText}`;
+		const dueDate = task.dueDate ? ` (due ${formatUtcDateForDisplay(task.dueDate, { appendUtcLabel: true })})` : "";
+		return `  ${priorityIndicator}${typeIndicator}${task.id} - ${task.title}${statusText}${dueDate}`;
 	}
 
 	private async loadTaskOrThrow(id: string): Promise<Task> {
@@ -119,6 +122,7 @@ export class TaskHandlers {
 			const { task: createdTask } = await this.core.createTaskFromInput({
 				title: args.title,
 				description: args.description,
+				dueDate: args.dueDate,
 				status: args.status,
 				priority: args.priority,
 				type: args.type,

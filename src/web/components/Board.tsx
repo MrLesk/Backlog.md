@@ -695,6 +695,7 @@ const Board: React.FC<BoardProps> = ({
                             targetMilestone={lane.milestone ?? null}
                             priorityOrder={availablePriorities}
                             availableTypes={typeOptions}
+                            dateFormat={dateFormat}
                             onDragStart={handleColumnDragStart}
                             onDragEnd={handleColumnDragEnd}
                             onCleanup={status === terminalStatus ? () => setShowCleanupModal(true) : undefined}
@@ -724,6 +725,7 @@ const Board: React.FC<BoardProps> = ({
                   laneId={DEFAULT_LANE_KEY}
                   priorityOrder={availablePriorities}
                   availableTypes={typeOptions}
+                  dateFormat={dateFormat}
                   onDragStart={handleColumnDragStart}
                   onDragEnd={handleColumnDragEnd}
                   onCleanup={status === terminalStatus ? () => setShowCleanupModal(true) : undefined}

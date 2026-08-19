@@ -36,6 +36,11 @@ describe("TUI task type display", () => {
 		expect(untyped).not.toContain("{magenta-fg}");
 	});
 
+	it("shows due dates on board task cards", () => {
+		const task = createTask({ dueDate: "2026-08-10 14:30" });
+		expect(formatTaskListItem(task)).toContain("due 2026-08-10 14:30 (UTC)");
+	});
+
 	it("shows the type field in task details and hides it for untyped tasks", async () => {
 		const screen = createScreen({ smartCSR: false });
 		const originalIsTTY = process.stdout.isTTY;

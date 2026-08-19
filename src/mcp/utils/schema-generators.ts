@@ -120,6 +120,14 @@ function generatePriorityFieldSchema(config: Pick<BacklogConfig, "priorities">):
 	};
 }
 
+function generateDueDateFieldSchema(description: string, clearable = false): JsonSchema {
+	return {
+		type: clearable ? ["string", "null"] : "string",
+		maxLength: 64,
+		description: `${description} Use a UTC datetime such as 2026-08-10 14:30 or an ISO datetime with an explicit offset. Date-only values are rejected.`,
+	};
+}
+
 /**
  * Generates the task_create input schema with dynamic status enum
  */
@@ -137,6 +145,7 @@ export function generateTaskCreateSchema(config: BacklogConfig): JsonSchema {
 				maxLength: 10000,
 			},
 			status: generateStatusFieldSchema(config),
+			dueDate: generateDueDateFieldSchema("Optional task due date and time."),
 			priority: generatePriorityFieldSchema(config),
 			type: generateTypeFieldSchema(config),
 			ordinal: {
@@ -256,6 +265,7 @@ export function generateTaskEditSchema(config: BacklogConfig): JsonSchema {
 				maxLength: 10000,
 			},
 			status: generateStatusFieldSchema(config),
+			dueDate: generateDueDateFieldSchema("Set the task due date and time, or pass null to clear it.", true),
 			priority: generatePriorityFieldSchema(config),
 			type: generateTypeFieldSchema(config),
 			ordinal: {

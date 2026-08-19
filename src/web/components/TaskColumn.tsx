@@ -20,6 +20,7 @@ interface TaskColumnProps {
   targetMilestone?: string | null;
   priorityOrder?: string[];
   availableTypes?: string[];
+  dateFormat?: string;
 }
 
 type CreatedDateSortDirection = 'asc' | 'desc';
@@ -65,6 +66,7 @@ const TaskColumn: React.FC<TaskColumnProps> = ({
   targetMilestone,
   priorityOrder,
   availableTypes,
+  dateFormat,
 }) => {
   const [isDragOver, setIsDragOver] = React.useState(false);
   const [draggedTaskId, setDraggedTaskId] = React.useState<string | null>(null);
@@ -334,6 +336,7 @@ const TaskColumn: React.FC<TaskColumnProps> = ({
               status={title}
               laneId={laneId}
               availableTypes={availableTypes}
+              dateFormat={dateFormat}
             />
             
             {/* Drop indicator for after this task */}

@@ -137,6 +137,43 @@ describe("MCP task tools (MVP)", () => {
 		expect(searchText).not.toContain("Implementation Plan:");
 	});
 
+	it("creates, reports, edits, and clears dueDate", async () => {
+		const tools = await mcpServer.testInterface.listTools();
+		const toolByName = new Map(tools.tools.map((tool) => [tool.name, tool]));
+		const createDueDateSchema = (toolByName.get("task_create")?.inputSchema as JsonSchema | undefined)?.properties
+			?.dueDate;
+		const editDueDateSchema = (toolByName.get("task_edit")?.inputSchema as JsonSchema | undefined)?.properties?.dueDate;
+		expect(createDueDateSchema?.type).toBe("string");
+		expect(editDueDateSchema?.type).toEqual(["string", "null"]);
+		expect(editDueDateSchema?.description).toContain("null to clear");
+
+		const createResult = await mcpServer.testInterface.callTool({
+			params: {
+				name: "task_create",
+				arguments: { title: "Due task", dueDate: "2026-08-10T16:30+02:00" },
+			},
+		});
+		expect(getText(createResult.content)).toContain("Due: 2026-08-10 14:30 (UTC)");
+		expect((await mcpServer.getTask("task-1"))?.dueDate).toBe("2026-08-10 14:30");
+
+		const listResult = await mcpServer.testInterface.callTool({
+			params: { name: "task_list", arguments: {} },
+		});
+		expect(getText(listResult.content)).toContain("due 2026-08-10 14:30 (UTC)");
+
+		const editResult = await mcpServer.testInterface.callTool({
+			params: { name: "task_edit", arguments: { id: "task-1", dueDate: null } },
+		});
+		expect(editResult.isError).not.toBe(true);
+		expect((await mcpServer.getTask("task-1"))?.dueDate).toBeUndefined();
+
+		const invalidResult = await mcpServer.testInterface.callTool({
+			params: { name: "task_edit", arguments: { id: "task-1", dueDate: "2026-08-10" } },
+		});
+		expect(invalidResult.isError).toBe(true);
+		expect(getText(invalidResult.content)).toContain("Date-only values are not supported");
+	});
+
 	it("adapts duplicate diagnosis to the canonical CLI without agent repair prompts", async () => {
 		const makeTask = (id: string, title: string): Task => ({
 			id,

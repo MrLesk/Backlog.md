@@ -20,6 +20,7 @@ import { applySharedTaskFilters, createTaskSearchIndex, type LabelMatchMode } fr
 import { compareTaskIds } from "../utils/task-sorting.ts";
 import { getTaskTypeValues, resolveTaskTypeValues } from "../utils/task-type-config.ts";
 import { formatAcceptanceCriteriaProgress } from "./acceptance-criteria-progress.ts";
+import { formatUtcDateForDisplay } from "../utils/utc-date-display.ts";
 import { openConfirmPopup } from "./components/confirm-popup.ts";
 import { createFilterHeader, type FilterHeader, type FilterState } from "./components/filter-header.ts";
 import { openMultiSelectFilterPopup, openSingleSelectFilterPopup } from "./components/filter-popup.ts";
@@ -144,11 +145,19 @@ function prepareBoardColumns(tasks: Task[], statuses: string[]): ColumnData[] {
 	});
 }
 
-export function formatTaskListItem(task: Task, isMoving = false, availableWidth = Number.POSITIVE_INFINITY): string {
+export function formatTaskListItem(
+	task: Task,
+	isMoving = false,
+	availableWidth = Number.POSITIVE_INFINITY,
+	dateFormat?: string,
+): string {
 	const assignee = task.assignee?.[0]
 		? ` {cyan-fg}${task.assignee[0].startsWith("@") ? task.assignee[0] : `@${task.assignee[0]}`}{/}`
 		: "";
 	const labels = task.labels?.length ? ` {yellow-fg}[${task.labels.join(", ")}]{/}` : "";
+	const dueDate = task.dueDate
+		? ` {gray-fg}(due ${formatUtcDateForDisplay(task.dueDate, { dateFormat, appendUtcLabel: true })}){/}`
+		: "";
 	const typeBadge = formatTaskTypeBadge(task.type);
 	const type = typeBadge ? ` ${typeBadge}` : "";
 	const isCrossBranch = Boolean((task as Task & { branch?: string }).branch);
@@ -157,7 +166,7 @@ export function formatTaskListItem(task: Task, isMoving = false, availableWidth 
 	const progressPrefix = progress ? `${progress} ` : "";
 
 	// Cross-branch tasks are dimmed to indicate read-only status
-	const content = `${progressPrefix}{bold}${task.id}{/bold}${type} - ${task.title}${assignee}${labels}${branch}`;
+	const content = `${progressPrefix}{bold}${task.id}{/bold}${type}${dueDate} - ${task.title}${assignee}${labels}${branch}`;
 	if (isMoving) {
 		return `{magenta-fg}► ${content}{/}`;
 	}
@@ -171,8 +180,9 @@ function buildRenderedTaskListItems(
 	tasks: Task[],
 	movingTaskId?: string,
 	availableWidth = Number.POSITIVE_INFINITY,
+	dateFormat?: string,
 ): { rich: string[]; plain: string[] } {
-	const rich = tasks.map((task) => formatTaskListItem(task, movingTaskId === task.id, availableWidth));
+	const rich = tasks.map((task) => formatTaskListItem(task, movingTaskId === task.id, availableWidth, dateFormat));
 	return {
 		rich,
 		plain: rich.map((item) => stripBlessedFgTags(item)),
@@ -535,7 +545,7 @@ export async function renderBoardTui(
 		const getFormattedItems = (tasks: Task[]) => {
 			const columnCount = Math.max(1, currentColumnsData.length);
 			const availableWidth = Math.max(1, Math.floor(getTerminalWidth() / columnCount) - 4);
-			return buildRenderedTaskListItems(tasks, moveOp?.taskId, availableWidth);
+			return buildRenderedTaskListItems(tasks, moveOp?.taskId, availableWidth, options?.dateFormat);
 		};
 
 		const createColumnViews = (data: ColumnData[]) => {
