@@ -2584,11 +2584,18 @@ export class Core {
 	async updateTasksBulk(tasks: Task[], commitMessage?: string, autoCommit?: boolean): Promise<void> {
 		const filePaths: string[] = [];
 		const updateAll = async () => {
-			for (const task of tasks) {
-				// Bulk writes are still per-task mutations. Keep each write under the same
-				// lock used by direct edits so a reorder cannot recreate a task after demotion.
-				filePaths.push(await this.fs.withTaskLock(task, () => this.updateTask(task, false)));
-			}
+			// Acquire every task lock before the first write. Reorders can rebalance
+			// several files, so locking one at a time would leave a partial update when
+			// a later task is contended.
+			const updateLocked = async (index: number): Promise<void> => {
+				const task = tasks[index];
+				if (!task) return;
+				await this.fs.withTaskLock(task, async () => {
+					await updateLocked(index + 1);
+					filePaths.push(await this.updateTask(task, false));
+				});
+			};
+			await updateLocked(0);
 		};
 		if (this.contentStore) await this.contentStore.batchTaskUpdates(updateAll);
 		else await updateAll();
@@ -2965,16 +2972,35 @@ export class Core {
 		// Direct demotion is a read-modify-write too. Hold the task lock across the
 		// filesystem read and move so an in-flight task update cannot recreate the
 		// active file after this operation has written the draft.
-		const { success, moved } = await this.fs.withTaskLock(task, async () => {
-			const movedPaths: Array<{ previousPath: string; savedPath: string }> = [];
-			const success = await this.fs.demoteTask(task.id, (previousPath, savedPath) => {
-				movedPaths.push({ previousPath, savedPath });
+		const demotion = {
+			success: false,
+			moved: undefined as { previousPath: string; savedPath: string } | undefined,
+		};
+		let result: typeof demotion;
+		try {
+			result = await this.fs.withTaskLock(task, async () => {
+				const movedPaths: Array<{ previousPath: string; savedPath: string }> = [];
+				const success = await this.fs.demoteTask(task.id, (previousPath, savedPath) => {
+					movedPaths.push({ previousPath, savedPath });
+				});
+				if (success) {
+					this.contentStore?.transitionTask(task.id);
+				}
+				demotion.success = success;
+				demotion.moved = movedPaths[0];
+				return demotion;
 			});
-			if (success) {
-				this.contentStore?.transitionTask(task.id);
+		} catch (error) {
+			// The lock wrapper can fail while releasing after the move completed. Keep
+			// the mutation outcome visible to the Web API and other clients.
+			if (demotion.success && demotion.moved) {
+				const failure = error instanceof Error ? error : new Error(String(error));
+				(failure as Error & { demotionState?: string }).demotionState = "moved";
+				throw failure;
 			}
-			return { success, moved: movedPaths[0] };
-		});
+			throw error;
+		}
+		const { success, moved } = result;
 
 		if (success && moved) {
 			try {

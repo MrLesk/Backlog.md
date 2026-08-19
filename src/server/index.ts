@@ -1146,9 +1146,10 @@ export class BacklogServer {
 			if (!conflict) {
 				console.error("Error demoting task:", error);
 			}
+			const status = knownDemotionState ? 500 : conflict ? 409 : 500;
 			return Response.json(
 				{ error: message, ...(knownDemotionState ? { demotionState: knownDemotionState } : {}) },
-				{ status: conflict ? 409 : 500 },
+				{ status },
 			);
 		}
 	}
