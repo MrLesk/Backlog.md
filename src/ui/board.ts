@@ -19,6 +19,7 @@ import { getPriorityOptions } from "../utils/priority-config.ts";
 import { applySharedTaskFilters, createTaskSearchIndex, type LabelMatchMode } from "../utils/task-search.ts";
 import { compareTaskIds } from "../utils/task-sorting.ts";
 import { getTaskTypeValues, resolveTaskTypeValues } from "../utils/task-type-config.ts";
+import { formatAcceptanceCriteriaProgress } from "./acceptance-criteria-progress.ts";
 import { openConfirmPopup } from "./components/confirm-popup.ts";
 import { createFilterHeader, type FilterHeader, type FilterState } from "./components/filter-header.ts";
 import { openMultiSelectFilterPopup, openSingleSelectFilterPopup } from "./components/filter-popup.ts";
@@ -143,7 +144,7 @@ function prepareBoardColumns(tasks: Task[], statuses: string[]): ColumnData[] {
 	});
 }
 
-export function formatTaskListItem(task: Task, isMoving = false): string {
+export function formatTaskListItem(task: Task, isMoving = false, availableWidth = Number.POSITIVE_INFINITY): string {
 	const assignee = task.assignee?.[0]
 		? ` {cyan-fg}${task.assignee[0].startsWith("@") ? task.assignee[0] : `@${task.assignee[0]}`}{/}`
 		: "";
@@ -152,9 +153,11 @@ export function formatTaskListItem(task: Task, isMoving = false): string {
 	const type = typeBadge ? ` ${typeBadge}` : "";
 	const isCrossBranch = Boolean((task as Task & { branch?: string }).branch);
 	const branch = isCrossBranch ? ` {green-fg}(${(task as Task & { branch?: string }).branch}){/}` : "";
+	const progress = formatAcceptanceCriteriaProgress(task, availableWidth);
+	const progressPrefix = progress ? `${progress} ` : "";
 
 	// Cross-branch tasks are dimmed to indicate read-only status
-	const content = `{bold}${task.id}{/bold}${type} - ${task.title}${assignee}${labels}${branch}`;
+	const content = `${progressPrefix}{bold}${task.id}{/bold}${type} - ${task.title}${assignee}${labels}${branch}`;
 	if (isMoving) {
 		return `{magenta-fg}► ${content}{/}`;
 	}
@@ -164,8 +167,12 @@ export function formatTaskListItem(task: Task, isMoving = false): string {
 	return content;
 }
 
-function buildRenderedTaskListItems(tasks: Task[], movingTaskId?: string): { rich: string[]; plain: string[] } {
-	const rich = tasks.map((task) => formatTaskListItem(task, movingTaskId === task.id));
+function buildRenderedTaskListItems(
+	tasks: Task[],
+	movingTaskId?: string,
+	availableWidth = Number.POSITIVE_INFINITY,
+): { rich: string[]; plain: string[] } {
+	const rich = tasks.map((task) => formatTaskListItem(task, movingTaskId === task.id, availableWidth));
 	return {
 		rich,
 		plain: rich.map((item) => stripBlessedFgTags(item)),
@@ -526,7 +533,9 @@ export async function renderBoardTui(
 		};
 
 		const getFormattedItems = (tasks: Task[]) => {
-			return buildRenderedTaskListItems(tasks, moveOp?.taskId);
+			const columnCount = Math.max(1, currentColumnsData.length);
+			const availableWidth = Math.max(1, Math.floor(getTerminalWidth() / columnCount) - 4);
+			return buildRenderedTaskListItems(tasks, moveOp?.taskId, availableWidth);
 		};
 
 		const createColumnViews = (data: ColumnData[]) => {

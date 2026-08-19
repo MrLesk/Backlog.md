@@ -12,16 +12,16 @@ export interface StatusStyle {
  */
 export function getStatusStyle(status: string): StatusStyle {
 	const statusMap: Record<string, StatusStyle> = {
-		Done: { icon: "✔", color: "green" },
-		"In Progress": { icon: "◒", color: "yellow" },
-		Blocked: { icon: "●", color: "red" },
-		"To Do": { icon: "○", color: "default" },
-		Review: { icon: "◆", color: "blue" },
-		Testing: { icon: "▣", color: "cyan" },
+		done: { icon: "✔", color: "green" },
+		"in progress": { icon: "◒", color: "yellow" },
+		blocked: { icon: "●", color: "red" },
+		"to do": { icon: "○", color: "default" },
+		review: { icon: "◆", color: "blue" },
+		testing: { icon: "▣", color: "cyan" },
 	};
 
 	// Return the mapped style or default for unknown statuses
-	return statusMap[status] || { icon: "○", color: "default" };
+	return statusMap[status.trim().toLowerCase()] || { icon: "○", color: "default" };
 }
 
 /**

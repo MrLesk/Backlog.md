@@ -31,6 +31,7 @@ import { canonicalTaskId, taskIdsEqual } from "../utils/task-id.ts";
 import { applyTaskFilters, createTaskSearchIndex, type LabelMatchMode } from "../utils/task-search.ts";
 import { attachSubtaskSummaries } from "../utils/task-subtasks.ts";
 import { getTaskTypeValues, resolveTaskTypeValues } from "../utils/task-type-config.ts";
+import { formatAcceptanceCriteriaProgress } from "./acceptance-criteria-progress.ts";
 import { formatChecklistItem } from "./checklist.ts";
 import { transformCodePaths } from "./code-path.ts";
 import { openConfirmPopup } from "./components/confirm-popup.ts";
@@ -46,7 +47,7 @@ import { openHelpPopup } from "./components/help-popup.ts";
 import { formatFooterContent, TASK_LIST_FOOTER_CONTENT } from "./footer-content.ts";
 import { formatHeading } from "./heading.ts";
 import { createLoadingScreen } from "./loading.ts";
-import { formatStatusWithIcon, getStatusColor, wrapStatusColor } from "./status-icon.ts";
+import { formatStatusWithIcon, getStatusColor, getStatusIcon, wrapStatusColor } from "./status-icon.ts";
 import { completeTaskFromTui, formatTaskCompletionBlockedMessage } from "./task-lifecycle.ts";
 import { formatTaskTypeBadge } from "./task-type.ts";
 import { addScrollKeys, createScreen, formatTuiTitle } from "./tui.ts";
@@ -62,6 +63,27 @@ function getPriorityDisplay(priority?: string): string {
 		default:
 			return "";
 	}
+}
+
+export function formatTaskViewerListItem(task: Task, availableWidth = Number.POSITIVE_INFINITY): string {
+	const progress = formatAcceptanceCriteriaProgress(task, availableWidth);
+	// The compact status icon keeps task identity visible beside the progress indicator. Its
+	// shape still distinguishes active work from the terminal-status checkmark.
+	const status = progress ? getStatusIcon(task.status) : formatStatusWithIcon(task.status);
+	const statusColor = getStatusColor(task.status);
+	const assigneeText = task.assignee?.length
+		? ` {cyan-fg}${task.assignee[0]?.startsWith("@") ? task.assignee[0] : `@${task.assignee[0]}`}{/}`
+		: "";
+	const labelsText = task.labels?.length ? ` {yellow-fg}[${task.labels.join(", ")}]{/}` : "";
+	const typeBadge = formatTaskTypeBadge(task.type);
+	const typeText = typeBadge ? ` ${typeBadge}` : "";
+	const priorityText = getPriorityDisplay(task.priority);
+	const isCrossBranch = Boolean((task as Task & { branch?: string }).branch);
+	const branchText = isCrossBranch ? ` {green-fg}(${(task as Task & { branch?: string }).branch}){/}` : "";
+	const progressText = progress ? ` ${progress}` : "";
+
+	const content = `${wrapStatusColor(status, statusColor)}${progressText} {bold}${task.id}{/bold}${typeText} - ${task.title}${priorityText}${assigneeText}${labelsText}${branchText}`;
+	return isCrossBranch ? `{gray-fg}${content}{/}` : content;
 }
 
 export function buildTaskViewerMilestoneFilterModel(
@@ -618,6 +640,10 @@ export async function viewTaskEnhanced(
 		return typeof screen.width === "number" ? screen.width : 80;
 	}
 
+	function getTaskListSummaryWidth(): number {
+		return Math.max(1, Math.floor(getTerminalWidth() * 0.4) - 4);
+	}
+
 	function syncPaneLayout() {
 		const headerHeight = filterHeader.getHeight();
 		const helpHeight = typeof helpBar.height === "number" ? helpBar.height : 1;
@@ -913,23 +939,7 @@ export async function viewTaskEnhanced(
 			left: 1,
 			width: "100%-4",
 			height: "100%-3",
-			itemRenderer: (task: Task) => {
-				const statusIcon = formatStatusWithIcon(task.status);
-				const statusColor = getStatusColor(task.status);
-				const assigneeText = task.assignee?.length
-					? ` {cyan-fg}${task.assignee[0]?.startsWith("@") ? task.assignee[0] : `@${task.assignee[0]}`}{/}`
-					: "";
-				const labelsText = task.labels?.length ? ` {yellow-fg}[${task.labels.join(", ")}]{/}` : "";
-				const typeBadge = formatTaskTypeBadge(task.type);
-				const typeText = typeBadge ? ` ${typeBadge}` : "";
-				const priorityText = getPriorityDisplay(task.priority);
-				const isCrossBranch = Boolean((task as Task & { branch?: string }).branch);
-				const branchText = isCrossBranch ? ` {green-fg}(${(task as Task & { branch?: string }).branch}){/}` : "";
-
-				const content = `${wrapStatusColor(statusIcon, statusColor)} {bold}${task.id}{/bold}${typeText} - ${task.title}${priorityText}${assigneeText}${labelsText}${branchText}`;
-				// Dim cross-branch tasks to indicate read-only status
-				return isCrossBranch ? `{gray-fg}${content}{/}` : content;
-			},
+			itemRenderer: (task: Task) => formatTaskViewerListItem(task, getTaskListSummaryWidth()),
 			onSelect: (selected: Task | Task[]) => {
 				const selectedTask = Array.isArray(selected) ? selected[0] : selected;
 				void applySelection(selectedTask || null);
@@ -1329,6 +1339,7 @@ export async function viewTaskEnhanced(
 	// Handle resize
 	screen.on("resize", () => {
 		filterHeader.rebuild();
+		taskList?.updateItems(filteredTasks);
 		updateHelpBar();
 	});
 
