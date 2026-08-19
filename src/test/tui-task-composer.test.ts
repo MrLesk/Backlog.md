@@ -58,7 +58,7 @@ async function installFailingHook(testDir: string, body = "exit 1"): Promise<str
 }
 
 type TestWidget = {
-	_clines?: { length: number };
+	_clines?: { length: number; real?: string[]; rtof?: number[]; fake?: string[] };
 	_reading?: boolean;
 	childBase?: number;
 	content?: string;
@@ -1321,9 +1321,20 @@ describe("TUI task composer interaction", () => {
 			const longDescription = "one ".repeat(80).trim();
 			description?.setValue?.(longDescription);
 			description?.setCursor?.(0, -Math.max(0, (description?._clines?.length ?? 1) - 1));
+			const valueBeforeEdit = description?.getValue?.() ?? "";
+			const cursorBeforeEdit = description?.getCursor?.() ?? { x: 0, y: 0 };
+			const clines = description?._clines;
+			const caretBeforeEdit = caretIndexFromCursor(valueBeforeEdit, cursorBeforeEdit, {
+				real: clines?.real ?? [valueBeforeEdit],
+				rtof: clines?.rtof ?? [0],
+				fakeCount: clines?.fake?.length ?? 1,
+			});
+			expect(caretBeforeEdit).toBeLessThan(valueBeforeEdit.length / 2);
 			typeText(description, "X");
 
-			expect(description?.getValue?.()).toBe(`X${longDescription}`);
+			expect(description?.getValue?.()).toBe(
+				`${valueBeforeEdit.slice(0, caretBeforeEdit)}X${valueBeforeEdit.slice(caretBeforeEdit)}`,
+			);
 			expect(description?.childBase).toBe(0);
 
 			pressKey(eventScreen.focused, "escape", "\x1b");
