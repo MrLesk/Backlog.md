@@ -203,7 +203,7 @@ export function getTaskComposerLayout(
 		Math.max(0, popupWidth - POPUP_FORM_HORIZONTAL_CHROME) * NORMAL_SELECTOR_WIDTH_RATIO,
 	);
 	const compactSelectorWidth = Math.floor(
-		Math.max(0, popupWidth - 2) * COMPACT_SELECTOR_WIDTH_RATIO,
+		Math.max(0, popupWidth - POPUP_FORM_HORIZONTAL_CHROME) * COMPACT_SELECTOR_WIDTH_RATIO,
 	);
 	const expandedDescriptionHeight = 6;
 	const expandedDetailsHeight = 3;

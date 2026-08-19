@@ -267,11 +267,12 @@ describe("TUI task composer model", () => {
 		});
 		expect(getTaskComposerLayout(50, 18)).toMatchObject({
 			compact: true,
+			stackSelectors: true,
 			popupHeight: 16,
 			descriptionHeight: 3,
 			detailsTop: 6,
-			detailsHeight: 4,
-			actionsTop: 10,
+			detailsHeight: 5,
+			actionsTop: 11,
 		});
 	});
 
@@ -1436,7 +1437,7 @@ describe("TUI task composer interaction", () => {
 		}
 	});
 
-	it("adapts the spatial focus graph to the narrow two-row selector layout", async () => {
+	it("adapts the spatial focus graph to the narrow stacked selector layout", async () => {
 		const screen = createScreen({ smartCSR: false });
 		Object.defineProperty(screen, "width", { configurable: true, value: 50, writable: true });
 		Object.defineProperty(screen, "height", { configurable: true, value: 18, writable: true });
@@ -1453,9 +1454,14 @@ describe("TUI task composer interaction", () => {
 			expect(eventScreen.focused?.content).toBe("Status: To Do ▼");
 			pressKey(eventScreen.focused, "down");
 			expect(eventScreen.focused?.content).toBe("Type: None ▼");
-			pressKey(eventScreen.focused, "right");
+			pressKey(eventScreen.focused, "down");
 			expect(eventScreen.focused?.content).toBe("Priority: None ▼");
 			pressKey(eventScreen.focused, "down");
+			expect(eventScreen.focused?.content).toBe("Create task");
+			pressKey(eventScreen.focused, "up");
+			expect(eventScreen.focused?.content).toBe("Priority: None ▼");
+			pressKey(eventScreen.focused, "down");
+			pressKey(eventScreen.focused, "right");
 			expect(eventScreen.focused?.content).toBe("Cancel");
 			pressKey(eventScreen.focused, "left");
 			expect(eventScreen.focused?.content).toBe("Create task");
@@ -1747,11 +1753,13 @@ describe("TUI task composer interaction", () => {
 			status = widgets.find((widget) => widget.content === "Status: To Do ▼");
 			type = widgets.find((widget) => widget.content === "Type: None ▼");
 			expect(description?.position).toMatchObject({ top: 3, height: 3 });
-			expect(details?.position).toMatchObject({ top: 6, height: 4 });
-			expect(actions?.position).toMatchObject({ top: 10, height: 1 });
+			expect(details?.position).toMatchObject({ top: 6, height: 5 });
+			expect(actions?.position).toMatchObject({ top: 11, height: 1 });
 			expect(actions?.hidden).toBe(true);
 			expect(status?.position).toMatchObject({ top: 7, left: 3 });
-			expect(type?.position).toMatchObject({ top: 8, left: 3, width: "44%" });
+			expect(type?.position).toMatchObject({ top: 8, left: 3 });
+			const priority = widgets.find((widget) => widget.content === "Priority: None ▼");
+			expect(priority?.position).toMatchObject({ top: 9, left: 3 });
 			expect(widgets.some((widget) => widget.content?.includes("[↑↓←→/Tab]"))).toBe(true);
 
 			mutableScreen.width = 80;
