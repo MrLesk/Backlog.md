@@ -166,7 +166,7 @@ export function formatTaskListItem(
 	const progressPrefix = progress ? `${progress} ` : "";
 
 	// Cross-branch tasks are dimmed to indicate read-only status
-	const content = `${progressPrefix}{bold}${task.id}{/bold}${type} - ${task.title}${dueDate}${assignee}${labels}${branch}`;
+	const content = `${progressPrefix}{bold}${task.id}{/bold}${type}${dueDate} - ${task.title}${assignee}${labels}${branch}`;
 	if (isMoving) {
 		return `{magenta-fg}► ${content}{/}`;
 	}
