@@ -3798,7 +3798,9 @@ addHelpSchema(milestoneCmd.command("list"), {
 		const formatBucket = (bucket: (typeof buckets)[number]) => {
 			const id = bucket.milestone ?? bucket.label;
 			const label = bucket.label;
-			const milestone = milestones.find((candidate) => milestoneKey(candidate.id) === milestoneKey(id));
+			const milestone = [...milestones, ...archivedMilestones].find(
+				(candidate) => milestoneKey(candidate.id) === milestoneKey(id),
+			);
 			const dueDate = milestone?.dueDate
 				? `, due ${formatUtcDateForDisplay(milestone.dueDate, { appendUtcLabel: true })}`
 				: "";

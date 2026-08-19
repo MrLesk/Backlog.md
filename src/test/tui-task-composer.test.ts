@@ -271,19 +271,19 @@ describe("TUI task composer model", () => {
 
 	it("fits shipped selector content at 100x30 and 80x24, then stacks details at 50x18", () => {
 		expect(getTaskComposerLayout(100, 30)).toMatchObject({
-			compact: false,
+			compact: true,
 			popupWidth: 74,
 			popupHeight: 20,
-			descriptionHeight: 6,
-			detailsTop: 12,
-			detailsHeight: 3,
-			actionsTop: 15,
+			descriptionHeight: 3,
+			detailsTop: 9,
+			detailsHeight: 4,
+			actionsTop: 13,
 		});
 		expect(getTaskComposerLayout(80, 24)).toMatchObject({
-			compact: false,
+			compact: true,
 			popupWidth: 74,
 			popupHeight: 20,
-			actionsTop: 15,
+			actionsTop: 13,
 		});
 		expect(getTaskComposerLayout(50, 18)).toMatchObject({
 			compact: true,
@@ -299,7 +299,7 @@ describe("TUI task composer model", () => {
 	it("derives compact selector layout from configured content instead of a screen breakpoint", () => {
 		const statuses = ["To Do", "Waiting for external approval", "Done"];
 		expect(getTaskComposerLayout(100, 30, { statuses }).compact).toBe(true);
-		expect(getTaskComposerLayout(140, 30, { statuses }).compact).toBe(false);
+		expect(getTaskComposerLayout(140, 30, { statuses }).compact).toBe(true);
 
 		const types = ["A very long configured type value that exceeds a compact column"];
 		expect(getTaskComposerLayout(100, 30, { types })).toMatchObject({
@@ -1456,10 +1456,12 @@ describe("TUI task composer interaction", () => {
 			expect(eventScreen.focused?.content).toBe("Status: To Do ▼");
 			expect(eventScreen.focused?.style).toMatchObject({ inverse: true, bold: true });
 			pressKey(eventScreen.focused, "right");
-			expect(eventScreen.focused?.content).toBe("Type: None ▼");
-			pressKey(eventScreen.focused, "right");
-			expect(eventScreen.focused?.content).toBe("Priority: None ▼");
+			expect(eventScreen.focused?.content).toBe("Status: To Do ▼");
 			pressKey(eventScreen.focused, "down");
+			expect(eventScreen.focused?.content).toBe("Type: None ▼");
+			pressKey(eventScreen.focused, "down");
+			expect(eventScreen.focused?.content).toBe("Create task");
+			pressKey(eventScreen.focused, "right");
 			expect(eventScreen.focused?.content).toBe("Cancel");
 			pressKey(eventScreen.focused, "left");
 			expect(eventScreen.focused?.content).toBe("Create task");
@@ -1615,6 +1617,7 @@ describe("TUI task composer interaction", () => {
 			pressKey(eventScreen.focused, "down");
 			pressKey(eventScreen.focused, "down");
 			pressKey(eventScreen.focused, "down");
+			pressKey(eventScreen.focused, "down");
 			expect(eventScreen.focused?.content).toBe("Create task");
 			pressKey(eventScreen.focused, "enter", "\r");
 			await waitUntil(() => eventScreen.focused?.options?.label === " Title ", "invalid title focus");
@@ -1629,6 +1632,7 @@ describe("TUI task composer interaction", () => {
 			pressKey(eventScreen.focused, "down");
 			await settleComposerFocus();
 			eventScreen.focused?.setValue?.("Kept description");
+			pressKey(eventScreen.focused, "down");
 			pressKey(eventScreen.focused, "down");
 			pressKey(eventScreen.focused, "down");
 			pressKey(eventScreen.focused, "down");
@@ -1779,14 +1783,14 @@ describe("TUI task composer interaction", () => {
 			let actions = widgets.find((widget) => widget.content === "Actions");
 			let status = widgets.find((widget) => widget.content === "Status: To Do ▼");
 			let type = widgets.find((widget) => widget.content === "Type: None ▼");
-			expect(description?.position).toMatchObject({ top: 3, height: 6 });
-			expect(details?.position).toMatchObject({ top: 12, height: 3 });
-			expect(actions?.position).toMatchObject({ top: 15, height: 1 });
-			expect(actions?.hidden).toBe(false);
+			expect(description?.position).toMatchObject({ top: 3, height: 3 });
+			expect(details?.position).toMatchObject({ top: 9, height: 4 });
+			expect(actions?.position).toMatchObject({ top: 13, height: 1 });
+			expect(actions?.hidden).toBe(true);
 			// Selectors sit inside the details frame but are positioned in viewport coordinates.
-			expect(status?.position).toMatchObject({ top: 13, left: 3 });
-			expect(type?.position).toMatchObject({ top: 13, left: "35%" });
-			expect(widgets.some((widget) => widget.content?.includes("[↑↓/←→/Tab]"))).toBe(true);
+			expect(status?.position).toMatchObject({ top: 10, left: 3 });
+			expect(type?.position).toMatchObject({ top: 11, left: 3 });
+			expect(widgets.some((widget) => widget.content?.includes("[↑↓←→/Tab]"))).toBe(true);
 
 			mutableScreen.width = 50;
 			mutableScreen.height = 18;
@@ -1813,8 +1817,8 @@ describe("TUI task composer interaction", () => {
 			widgets = collectWidgets(screen as unknown as { children?: unknown[] });
 			details = widgets.find((widget) => widget.options?.label === " Details ");
 			type = widgets.find((widget) => widget.content === "Type: None ▼");
-			expect(details?.position).toMatchObject({ top: 12, height: 3 });
-			expect(type?.position).toMatchObject({ top: 13, left: "35%" });
+			expect(details?.position).toMatchObject({ top: 9, height: 4 });
+			expect(type?.position).toMatchObject({ top: 11, left: 3 });
 			pressKey((screen as unknown as { focused?: TestWidget }).focused, "escape", "\x1b");
 			expect(await withTimeout(resultPromise, "resized composer cancellation", 1000)).toBeNull();
 		} finally {
@@ -1893,6 +1897,7 @@ describe("TUI task composer interaction", () => {
 			);
 			const focused = (screen as unknown as { focused?: TestWidget }).focused;
 			focused?.setValue?.("Actual composer task");
+			pressKey((screen as unknown as { focused?: TestWidget }).focused, "down");
 			pressKey((screen as unknown as { focused?: TestWidget }).focused, "down");
 			pressKey((screen as unknown as { focused?: TestWidget }).focused, "down");
 			pressKey((screen as unknown as { focused?: TestWidget }).focused, "down");

@@ -211,7 +211,11 @@ export function getTaskComposerLayout(
 	const expandedDetailsHeight = 3;
 	const expandedActionsHeight = 2;
 	const expandedContentHeight =
-		TEXT_INPUT_HEIGHT + expandedDescriptionHeight + expandedDetailsHeight + expandedActionsHeight;
+		TEXT_INPUT_HEIGHT +
+		expandedDescriptionHeight +
+		TEXT_INPUT_HEIGHT +
+		expandedDetailsHeight +
+		expandedActionsHeight;
 	const visibleFormHeight = Math.max(0, popupHeight - POPUP_FORM_VERTICAL_CHROME);
 	const compact = normalSelectorWidth < longestSelectorWidth || visibleFormHeight < expandedContentHeight;
 	const stackSelectors = compact && longestCompactColumn > compactSelectorWidth;
@@ -698,7 +702,8 @@ export async function openTaskComposer(options: TaskComposerOptions): Promise<Ta
 				return;
 			}
 			showError();
-			if (!controller.values.title.trim()) focusField("title");
+			if (controller.error.startsWith("Due date")) focusField("dueDate");
+			else if (!controller.values.title.trim()) focusField("title");
 			else focusField("create");
 		};
 
@@ -887,7 +892,7 @@ export async function openTaskComposer(options: TaskComposerOptions): Promise<Ta
 
 		// Pointer activation uses the same transition as keyboard navigation so text inputs
 		// enter read mode and every field has one source of truth for focus styling and scrolling.
-		for (const field of ["title", "description", "status", "type", "priority"] as const) {
+		for (const field of ["title", "description", "dueDate", "status", "type", "priority"] as const) {
 			widgets[field].on("click", () => {
 				focusField(field);
 				if (field === "status" || field === "type" || field === "priority") void openPicker(field);

@@ -88,6 +88,10 @@ const MilestonesPage: React.FC<MilestonesPageProps> = ({
 		() => collectArchivedMilestoneKeys(archivedMilestones, milestoneEntities),
 		[archivedMilestones, milestoneEntities],
 	);
+	const allMilestoneEntities = useMemo(
+		() => [...milestoneEntities, ...archivedMilestones],
+		[milestoneEntities, archivedMilestones],
+	);
 	const buckets = useMemo(
 		() => buildMilestoneBuckets(tasks, milestoneEntities, statuses, { archivedMilestoneIds, archivedMilestones }),
 		[tasks, milestoneEntities, statuses, archivedMilestoneIds, archivedMilestones],
@@ -499,7 +503,7 @@ const MilestonesPage: React.FC<MilestonesPageProps> = ({
 		const isArchiving = archivingMilestoneKey === bucket.key;
 		const isSavingMilestone = savingMilestoneKey === bucket.key;
 		const isRemoving = removingMilestoneKey === bucket.key;
-		const milestoneEntity = milestoneEntities.find(
+		const milestoneEntity = allMilestoneEntities.find(
 			(milestone) => milestoneKey(milestone.id) === milestoneKey(bucket.milestone ?? ""),
 		);
 

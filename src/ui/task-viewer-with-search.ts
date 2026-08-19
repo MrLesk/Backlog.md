@@ -89,7 +89,7 @@ export function formatTaskViewerListItem(
 	const branchText = isCrossBranch ? ` {green-fg}(${(task as Task & { branch?: string }).branch}){/}` : "";
 	const progressText = progress ? ` ${progress}` : "";
 
-	const content = `${wrapStatusColor(status, statusColor)}${progressText} {bold}${task.id}{/bold}${typeText} - ${task.title}${priorityText}${dueDateText}${assigneeText}${labelsText}${branchText}`;
+	const content = `${wrapStatusColor(status, statusColor)}${progressText} {bold}${task.id}{/bold}${typeText}${dueDateText} - ${task.title}${priorityText}${assigneeText}${labelsText}${branchText}`;
 	return isCrossBranch ? `{gray-fg}${content}{/}` : content;
 }
 
