@@ -1749,7 +1749,7 @@ describe("TUI task composer interaction", () => {
 			expect(status?.width).toBeGreaterThanOrEqual(Bun.stringWidth(status?.content ?? ""));
 
 			const eventScreen = screen as unknown as { focused?: TestWidget };
-			for (let step = 0; step < 5; step += 1) pressKey(eventScreen.focused, "down");
+			for (let step = 0; step < 6; step += 1) pressKey(eventScreen.focused, "down");
 			expect(eventScreen.focused?.content).toBe("Create task");
 			pressKey(eventScreen.focused, "up");
 			expect(eventScreen.focused?.content).toBe("Priority: None ▼");
