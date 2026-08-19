@@ -13,6 +13,9 @@ import { getPriorityOptions } from "../../utils/priority-config";
 import { getTaskTypeValues, resolveTaskTypeValue } from "../../utils/task-type-config";
 import { createReadinessGraph, formatReadinessBlockers, getTaskReadiness } from "../../utils/readiness";
 import { canonicalTaskId } from "../../utils/task-id.ts";
+import { findDirectSubtasks, findParentTask, summarizeSubtaskProgress } from "../../utils/task-subtasks.ts";
+import { isTerminalStatus } from "../../utils/terminal-status.ts";
+import { createUrlPath } from "../utils/urlHelpers";
 
 interface Props {
   task?: Task; // Optional for create mode
@@ -23,6 +26,7 @@ interface Props {
   onArchive?: () => Promise<void> | void; // For archiving tasks
   availableStatuses?: string[]; // Available statuses for new tasks
   availableTasks?: Task[]; // Shared task corpus for dependency selection
+  onNavigateToTask?: (task: Task) => void; // Opens another task, preserving close/back context
   isDraftMode?: boolean; // Whether creating a draft
   availableMilestones?: string[];
   availablePriorities?: string[];
@@ -71,6 +75,12 @@ type TaskDetailsFormState = {
   milestone: string;
   dueDate: string;
 };
+
+// Shared empty defaults. A `= []` default parameter allocates a fresh array on every render, so
+// every memo and effect keyed on it re-runs each time; combined with a state update in that chain
+// the modal spins until React aborts with "Maximum update depth exceeded".
+const EMPTY_STATUSES: string[] = [];
+const EMPTY_TASKS: Task[] = [];
 
 const containsCommentDelimiterLine = (value: string): boolean => /^\s*---\s*$/m.test(value.replace(/\r\n/g, "\n"));
 
@@ -145,6 +155,23 @@ const SectionHeader: React.FC<{ title: string; right?: React.ReactNode }> = ({ t
   </div>
 );
 
+// Status is conveyed by colour on the dot; the title attribute carries it for pointer users and
+// the sr-only span for assistive technology, so no visible label competes with the task title.
+const StatusDot: React.FC<{ status: string; statuses: string[] }> = ({ status, statuses }) => {
+  const normalized = (status ?? '').toLowerCase();
+  const tone = isTerminalStatus(status, statuses)
+    ? 'bg-emerald-500 dark:bg-emerald-400'
+    : normalized.includes('progress')
+      ? 'bg-blue-500 dark:bg-blue-400'
+      : 'bg-gray-300 dark:bg-gray-600';
+  return (
+    <span className="flex-shrink-0 leading-none" title={status}>
+      <span className={`inline-block h-2 w-2 rounded-circle ${tone}`} aria-hidden="true" />
+      <span className="sr-only">{status}</span>
+    </span>
+  );
+};
+
 export const TaskDetailsModal: React.FC<Props> = ({
   task,
   isOpen,
@@ -152,8 +179,9 @@ export const TaskDetailsModal: React.FC<Props> = ({
   onSaved,
   onSubmit,
   onArchive,
-  availableStatuses,
-  availableTasks = [],
+  availableStatuses = EMPTY_STATUSES,
+  availableTasks = EMPTY_TASKS,
+  onNavigateToTask,
   availableMilestones: _availableMilestones,
   availablePriorities,
   availableTypes,
@@ -410,6 +438,23 @@ export const TaskDetailsModal: React.FC<Props> = ({
     const result = getTaskReadiness({ ...task, dependencies, status }, graph);
     return result.isReady || result.isBlocked ? result : null;
   }, [task, dependencies, status, availableTasks, offBoardDependencies, availableStatuses]);
+
+  // Hierarchy is derived from the shared corpus rather than the task payload: the single-task
+  // API does not carry parent/subtask fields, while the list the modal already receives does.
+  const parentTask = useMemo(
+    () => (task ? findParentTask(task, availableTasks) : null),
+    [task, availableTasks],
+  );
+
+  const subtasks = useMemo(
+    () => (task ? findDirectSubtasks(task, availableTasks) : []),
+    [task, availableTasks],
+  );
+
+  const subtaskProgress = useMemo(
+    () => (task ? summarizeSubtaskProgress(task, availableTasks, availableStatuses) : null),
+    [task, availableTasks, availableStatuses],
+  );
 
   // Keep a baseline for dirty-check
   const baseline = useMemo(() => ({
@@ -1724,6 +1769,90 @@ export const TaskDetailsModal: React.FC<Props> = ({
               ))}
             </select>
           </div>
+
+          {/* Parent task */}
+          {parentTask && (
+            <div className="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-3">
+              <SectionHeader title="Parent" />
+              <button
+                type="button"
+                onClick={() => onNavigateToTask?.(parentTask)}
+                disabled={!onNavigateToTask}
+                data-parent-task-id={parentTask.id}
+                data-parent-task-href={createUrlPath('/tasks', parentTask.id, parentTask.title)}
+                className="w-full flex items-start gap-2 rounded-md px-2 py-1.5 text-left transition-colors duration-200 hover:bg-gray-50 dark:hover:bg-gray-700/50 disabled:cursor-default disabled:hover:bg-transparent"
+              >
+                <span className="mt-1">
+                  <StatusDot status={parentTask.status} statuses={availableStatuses} />
+                </span>
+                <span className="text-xs font-mono text-gray-500 dark:text-gray-400 whitespace-nowrap">
+                  {parentTask.id}
+                </span>
+                <span className="min-w-0 flex-1 line-clamp-2 break-words text-sm text-gray-900 dark:text-gray-100" title={parentTask.title}>
+                  {parentTask.title}
+                </span>
+              </button>
+            </div>
+          )}
+
+          {/* Subtasks */}
+          {subtasks.length > 0 && (
+            <div className="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-3">
+              <SectionHeader
+                title={
+                  subtaskProgress
+                    ? `Subtasks ${subtaskProgress.completed}/${subtaskProgress.total}`
+                    : 'Subtasks'
+                }
+              />
+              <div className="flex flex-col gap-0.5" data-subtask-list>
+                {subtasks.map((subtask) => {
+                  const nested = summarizeSubtaskProgress(subtask, availableTasks, availableStatuses);
+                  const isComplete = isTerminalStatus(subtask.status, availableStatuses);
+                  return (
+                    <button
+                      key={subtask.id}
+                      type="button"
+                      onClick={() => onNavigateToTask?.(subtask)}
+                      disabled={!onNavigateToTask}
+                      data-subtask-id={subtask.id}
+                      data-subtask-href={createUrlPath('/tasks', subtask.id, subtask.title)}
+                      className="w-full flex items-start gap-2 rounded-md px-2 py-1.5 text-left transition-colors duration-200 hover:bg-gray-50 dark:hover:bg-gray-700/50 disabled:cursor-default disabled:hover:bg-transparent"
+                    >
+                      <span className="mt-1">
+                        <StatusDot status={subtask.status} statuses={availableStatuses} />
+                      </span>
+                      <span
+                        className={`text-xs font-mono whitespace-nowrap ${
+                          isComplete ? 'text-gray-400 dark:text-gray-500' : 'text-gray-500 dark:text-gray-400'
+                        }`}
+                      >
+                        {subtask.id}
+                      </span>
+                      <span
+                        className={`min-w-0 flex-1 line-clamp-2 break-words text-sm ${
+                          isComplete
+                            ? 'text-gray-400 dark:text-gray-500 line-through'
+                            : 'text-gray-900 dark:text-gray-100'
+                        }`}
+                        title={subtask.title}
+                      >
+                        {subtask.title}
+                      </span>
+                      {nested && (
+                        <span
+                          className="text-[11px] font-mono text-gray-400 dark:text-gray-500 whitespace-nowrap"
+                          data-nested-progress={`${nested.completed}/${nested.total}`}
+                        >
+                          {nested.completed}/{nested.total}
+                        </span>
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
 
           {/* Dependencies */}
           <div className="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-3">
