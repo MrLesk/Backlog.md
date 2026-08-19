@@ -1135,7 +1135,7 @@ export class BacklogServer {
 			return Response.json({ success: true });
 		} catch (error) {
 			const message = error instanceof Error ? error.message : "Failed to demote task";
-			const conflict = isAmbiguousTaskIdError(error) || isCreateLockError(error);
+			const conflict = isAmbiguousTaskIdError(error) || isCreateLockError(error) || isTaskLockError(error);
 			const demotionState =
 				typeof error === "object" && error !== null &&
 				(error as { demotionState?: unknown }).demotionState;

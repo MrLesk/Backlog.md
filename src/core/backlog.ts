@@ -2958,14 +2958,19 @@ export class Core {
 	async demoteTask(taskId: string, autoCommit?: boolean): Promise<boolean> {
 		const task = await this.loadTaskForMutation(taskId);
 		if (!task) return false;
-		const movedPaths: Array<{ previousPath: string; savedPath: string }> = [];
-		const success = await this.fs.demoteTask(task.id, (previousPath, savedPath) => {
-			movedPaths.push({ previousPath, savedPath });
+		// Direct demotion is a read-modify-write too. Hold the task lock across the
+		// filesystem read and move so an in-flight task update cannot recreate the
+		// active file after this operation has written the draft.
+		const { success, moved } = await this.fs.withTaskLock(task, async () => {
+			const movedPaths: Array<{ previousPath: string; savedPath: string }> = [];
+			const success = await this.fs.demoteTask(task.id, (previousPath, savedPath) => {
+				movedPaths.push({ previousPath, savedPath });
+			});
+			if (success) {
+				this.contentStore?.transitionTask(task.id);
+			}
+			return { success, moved: movedPaths[0] };
 		});
-		const moved = movedPaths[0];
-		if (success) {
-			this.contentStore?.transitionTask(task.id);
-		}
 
 		if (success && moved) {
 			try {
