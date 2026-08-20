@@ -317,7 +317,7 @@ const TaskColumn: React.FC<TaskColumnProps> = ({
         </div>
       </div>
 
-      <div className="flex-1 px-3 pb-3">
+      <div className="flex-1">
         {tasks.map((task, index) => (
           <div 
             key={task.id} 
@@ -371,7 +371,7 @@ const TaskColumn: React.FC<TaskColumnProps> = ({
         
         {/* Drop zone indicator - only show in different columns */}
         {isDragOver && dragSourceStatus !== title && (
-          <div className="border border-dashed border-blue-400 bg-blue-50 p-4 text-center transition-colors duration-200 dark:border-blue-500 dark:bg-blue-900/20">
+          <div className="m-4 border border-dashed border-blue-400 bg-blue-50 p-4 text-center transition-colors duration-200 dark:border-blue-500 dark:bg-blue-900/20">
             <div className="text-sm text-blue-600 transition-colors duration-200 dark:text-blue-400">
               Drop task here to change status
             </div>
@@ -379,14 +379,14 @@ const TaskColumn: React.FC<TaskColumnProps> = ({
         )}
         
         {isEmpty && !isDragOver && (
-          <div className="border border-dashed border-gray-300 py-6 text-center text-xs text-gray-400 transition-colors duration-200 dark:border-gray-600 dark:text-gray-500">
+          <div className="m-4 border border-dashed border-gray-300 py-6 text-center text-sm text-gray-400 transition-colors duration-200 dark:border-gray-600 dark:text-gray-500">
             {dragSourceStatus && dragSourceStatus !== title ? `Drop to move` : `No tasks`}
           </div>
         )}
 
         {/* Cleanup button for the configured terminal column */}
         {onCleanup && tasks.length > 0 && (
-          <div className="mt-4 pt-4 border-t border-gray-200 dark:border-gray-700">
+          <div className="border-t border-gray-200 p-4 dark:border-gray-700">
 	            <button
 	              onClick={onCleanup}
 	              className="w-full flex items-center justify-center gap-2 px-3 py-2 text-sm text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-md transition-colors duration-200"

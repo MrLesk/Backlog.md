@@ -114,7 +114,7 @@ const TaskCard: React.FC<TaskCardProps> = ({ task, onEdit, onDragStart, onDragEn
       )}
 
       <div
-        className={`-mx-px -mt-px border border-gray-200 bg-white p-3 outline-none transition-colors duration-200 focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-gray-900 dark:border-gray-700 dark:bg-gray-900 ${
+        className={`border-b border-gray-200 bg-white px-4 py-3.5 outline-none transition-colors duration-200 focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-gray-900 dark:border-gray-700 dark:bg-gray-900 ${
           isFromOtherBranch
             ? 'cursor-not-allowed border-dashed opacity-75'
             : 'cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800'
@@ -137,7 +137,7 @@ const TaskCard: React.FC<TaskCardProps> = ({ task, onEdit, onDragStart, onDragEn
       >
         {/* Cross-branch indicator banner */}
         {isFromOtherBranch && (
-          <div className="flex items-center gap-1.5 mb-2 px-2 py-1 -mx-1 -mt-1 bg-amber-50 dark:bg-amber-900/30 border-b border-amber-200 dark:border-amber-700 rounded-t text-xs text-amber-700 dark:text-amber-300">
+          <div className="flex items-center gap-1.5 mb-2.5 px-4 py-1.5 -mx-4 -mt-3.5 bg-amber-50 dark:bg-amber-900/30 border-b border-amber-200 dark:border-amber-700 rounded-t text-xs text-amber-700 dark:text-amber-300">
             <svg className="w-3.5 h-3.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
             </svg>
