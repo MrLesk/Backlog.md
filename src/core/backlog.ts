@@ -399,7 +399,11 @@ export class Core {
 			let store = this.contentStore;
 			if (!store) {
 				// Use loadTasks as the task loader to include cross-branch tasks
-				store = new ContentStore(filesystem, (callback) => this.loadContentStoreCorpus(callback), this.enableWatchers);
+				store = new ContentStore(
+					filesystem,
+					(callback, options) => this.loadContentStoreCorpus(callback, options),
+					this.enableWatchers,
+				);
 				this.contentStore = store;
 			}
 
@@ -2768,8 +2772,7 @@ export class Core {
 			}
 			this.contentStore?.transitionTask(normalizedTaskId);
 
-			const sanitizedPaths =
-				sanitizedTasks.length > 0 ? await this.writeTasksBulk(sanitizedTasks) : [];
+			const sanitizedPaths = sanitizedTasks.length > 0 ? await this.writeTasksBulk(sanitizedTasks) : [];
 
 			if (await this.shouldAutoCommit(autoCommit)) {
 				// Stage the file move for proper Git tracking
@@ -3504,8 +3507,15 @@ export class Core {
 		});
 	}
 
-	/** The ContentStore's corpus loader: the only load whose result becomes the shared cross-branch state. */
-	private async loadContentStoreCorpus(progressCallback?: (message: string) => void): Promise<TaskCorpusSnapshot> {
+	/**
+	 * The ContentStore's corpus loader. By default its result becomes the shared cross-branch
+	 * state; pass { publish: false } for a throwaway load (e.g. resolving one task's identity)
+	 * whose result must not be installed on the store's behalf.
+	 */
+	private async loadContentStoreCorpus(
+		progressCallback?: (message: string) => void,
+		options?: { publish?: boolean },
+	): Promise<TaskCorpusSnapshot> {
 		if (Object.hasOwn(this, "loadTasks")) {
 			const [activeTasks, completedTasks, config] = await Promise.all([
 				this.loadTasks(progressCallback),
@@ -3528,7 +3538,7 @@ export class Core {
 				config,
 			};
 		}
-		return await this.loadTaskCorpusSnapshot(progressCallback, { publishSharedState: true });
+		return await this.loadTaskCorpusSnapshot(progressCallback, { publishSharedState: options?.publish ?? true });
 	}
 
 	private async loadTasksWithStableBranchSnapshot(
