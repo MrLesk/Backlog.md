@@ -68,6 +68,8 @@ export interface Task {
 	priority?: string;
 	/** Semantic task type (e.g. bug, feature). Allowed values come from config `types` (defaults to DEFAULT_TASK_TYPES); absent means untyped. */
 	type?: string;
+	/** Monorepo project/component this task belongs to. Allowed values come from config `projects`; absent config means the field is unusable. */
+	project?: string;
 	branch?: string;
 	ordinal?: number;
 	filePath?: string;
@@ -110,6 +112,7 @@ export interface TaskCreateInput {
 	status?: TaskStatus;
 	priority?: string;
 	type?: string;
+	project?: string;
 	ordinal?: number;
 	milestone?: string;
 	labels?: string[];
@@ -135,6 +138,7 @@ export interface TaskUpdateInput {
 	status?: TaskStatus;
 	priority?: string;
 	type?: string;
+	project?: string;
 	milestone?: string | null;
 	labels?: string[];
 	addLabels?: string[];
@@ -181,6 +185,7 @@ export interface TaskListFilter {
 	assignee?: string;
 	unassigned?: boolean;
 	priority?: string;
+	project?: string | string[];
 	milestone?: string;
 	parentTaskId?: string;
 	labels?: string[];
@@ -256,6 +261,7 @@ export interface SearchFilters {
 	excludeStatus?: string | string[];
 	type?: string | string[];
 	priority?: SearchPriorityFilter | SearchPriorityFilter[];
+	project?: string | string[];
 	assignee?: string | string[];
 	labels?: string | string[];
 	modifiedFiles?: string | string[];
@@ -312,6 +318,8 @@ export interface BacklogConfig {
 	types?: string[];
 	/** Ordered task priority labels. Defaults to High, Medium, Low when not configured. */
 	priorities?: string[];
+	/** Allowed monorepo project/component values. No default; the `project` field is unusable until this is configured. */
+	projects?: string[];
 	/** @deprecated Milestones are sourced from milestone files, not config. */
 	milestones?: string[];
 	definitionOfDone?: string[];

@@ -30,6 +30,7 @@ export type TaskCreateArgs = {
 	assignee?: string[];
 	priority?: string;
 	type?: string;
+	project?: string;
 	ordinal?: number;
 	status?: string;
 	dueDate?: string;
@@ -48,6 +49,7 @@ export type TaskCreateArgs = {
 export type TaskListArgs = {
 	status?: string;
 	type?: string[];
+	project?: string[];
 	assignee?: string;
 	unassigned?: boolean;
 	milestone?: string;
@@ -61,6 +63,7 @@ export type TaskSearchArgs = {
 	query?: string;
 	status?: string;
 	type?: string[];
+	project?: string[];
 	priority?: SearchPriorityFilter;
 	modifiedFiles?: string[];
 	limit?: number;
@@ -89,10 +92,11 @@ export class TaskHandlers {
 	private formatTaskSummaryLine(task: Task, options: { includeStatus?: boolean } = {}): string {
 		const priorityIndicator = task.priority ? `[${task.priority.toUpperCase()}] ` : "";
 		const typeIndicator = task.type ? `[${task.type}] ` : "";
+		const projectIndicator = task.project ? `[${task.project}] ` : "";
 		const status = task.status || (task.source === "completed" ? "Done" : "");
 		const statusText = options.includeStatus && status ? ` (${status})` : "";
 		const dueDate = task.dueDate ? ` (due ${formatUtcDateForDisplay(task.dueDate, { appendUtcLabel: true })})` : "";
-		return `  ${priorityIndicator}${typeIndicator}${task.id} - ${task.title}${statusText}${dueDate}`;
+		return `  ${priorityIndicator}${typeIndicator}${projectIndicator}${task.id} - ${task.title}${statusText}${dueDate}`;
 	}
 
 	private async loadTaskOrThrow(id: string): Promise<Task> {
@@ -126,6 +130,7 @@ export class TaskHandlers {
 				status: args.status,
 				priority: args.priority,
 				type: args.type,
+				project: args.project,
 				...(typeof rawOrdinal === "number" ? { ordinal: rawOrdinal } : {}),
 				milestone,
 				labels: args.labels,
@@ -162,9 +167,9 @@ export class TaskHandlers {
 		if (this.isDraftStatus(args.status)) {
 			let drafts = await this.core.filesystem.listDrafts();
 			const milestoneCandidates = drafts;
-			if (args.search || args.type?.length) {
+			if (args.search || args.type?.length || args.project?.length) {
 				const draftSearch = createTaskSearchIndex(drafts);
-				drafts = draftSearch.search({ query: args.search, status: "Draft", type: args.type });
+				drafts = draftSearch.search({ query: args.search, status: "Draft", type: args.type, project: args.project });
 			}
 
 			if (args.assignee) {
@@ -240,6 +245,9 @@ export class TaskHandlers {
 		}
 		if (args.type?.length) {
 			filters.type = args.type;
+		}
+		if (args.project?.length) {
+			filters.project = args.project;
 		}
 		if (args.assignee) {
 			filters.assignee = args.assignee;
@@ -353,8 +361,11 @@ export class TaskHandlers {
 	async searchTasks(args: TaskSearchArgs): Promise<CallToolResult> {
 		const query = args.query?.trim() ?? "";
 		const modifiedFiles = args.modifiedFiles?.map((file) => file.trim()).filter((file) => file.length > 0);
-		if (!query && (!modifiedFiles || modifiedFiles.length === 0) && !args.type?.length) {
-			throw new BacklogToolError("Search query, modifiedFiles, or type filter is required", "VALIDATION_ERROR");
+		if (!query && (!modifiedFiles || modifiedFiles.length === 0) && !args.type?.length && !args.project?.length) {
+			throw new BacklogToolError(
+				"Search query, modifiedFiles, type filter, or project filter is required",
+				"VALIDATION_ERROR",
+			);
 		}
 
 		if (this.isDraftStatus(args.status)) {
@@ -364,6 +375,7 @@ export class TaskHandlers {
 				query,
 				status: "Draft",
 				type: args.type,
+				project: args.project,
 				priority: args.priority,
 				modifiedFiles,
 			});
@@ -403,6 +415,7 @@ export class TaskHandlers {
 			query,
 			status: args.status,
 			type: args.type,
+			project: args.project,
 			priority: args.priority,
 			modifiedFiles,
 		});

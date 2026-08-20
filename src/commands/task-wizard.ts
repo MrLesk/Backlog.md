@@ -4,6 +4,7 @@ import picocolors from "picocolors";
 import { DEFAULT_STATUSES } from "../constants/index.ts";
 import type { AcceptanceCriterion, Task, TaskCreateInput, TaskUpdateInput } from "../types/index.ts";
 import { getPriorityOptions, normalizePriorityValue } from "../utils/priority-config.ts";
+import { getProjectValues, resolveProjectValue } from "../utils/project-config.ts";
 import { normalizeStringList } from "../utils/task-builders.ts";
 import { getTaskTypeValues, resolveTaskTypeValue } from "../utils/task-type-config.ts";
 import { normalizeUtcDateTime } from "../utils/utc-datetime.ts";
@@ -14,6 +15,7 @@ interface TaskWizardValues {
 	status: string;
 	priority: string;
 	type: string;
+	project: string;
 	dueDate: string;
 	assignee: string;
 	labels: string;
@@ -70,6 +72,7 @@ interface WizardOptions {
 	statuses: string[];
 	priorities?: string[];
 	types?: string[];
+	projects?: string[];
 	promptImpl?: TaskWizardPromptRunner;
 }
 
@@ -222,6 +225,30 @@ function buildTaskTypePromptValues(
 	return {
 		options: [{ label: `${initialType} (current)`, value: initialType }, ...options],
 		initial: initialType,
+	};
+}
+
+function buildProjectPromptValues(
+	initialProject: string,
+	projects?: string[],
+): {
+	options: PromptChoice[];
+	initial: string;
+} {
+	const canonicalInitial = resolveProjectValue(initialProject, projects) ?? initialProject.trim();
+	const options: PromptChoice[] = [
+		{ label: "None", value: "", hint: "No project" },
+		...getProjectValues(projects).map((project) => ({ label: project, value: project })),
+	];
+	if (!canonicalInitial) {
+		return { options, initial: "" };
+	}
+	if (options.some((option) => option.value === canonicalInitial)) {
+		return { options, initial: canonicalInitial };
+	}
+	return {
+		options: [{ label: `${initialProject} (current)`, value: initialProject }, ...options],
+		initial: initialProject,
 	};
 }
 
@@ -382,6 +409,7 @@ async function runTaskWizardValues(params: {
 	statuses: string[];
 	priorities?: string[];
 	types?: string[];
+	projects?: string[];
 	initialValues: TaskWizardValues;
 	promptImpl?: TaskWizardPromptRunner;
 }): Promise<TaskWizardValues | null> {
@@ -395,6 +423,8 @@ async function runTaskWizardValues(params: {
 	});
 	const priorityPrompt = buildPriorityPromptValues(initial.priority, params.priorities);
 	const taskTypePrompt = buildTaskTypePromptValues(initial.type, params.types);
+	const projectPrompt = buildProjectPromptValues(initial.project, params.projects);
+	const hasProjects = getProjectValues(params.projects).length > 0;
 
 	try {
 		const values: TaskWizardValues = {
@@ -402,6 +432,7 @@ async function runTaskWizardValues(params: {
 			status: statusPrompt.initial,
 			priority: priorityPrompt.initial,
 			type: taskTypePrompt.initial,
+			project: projectPrompt.initial,
 		};
 		const questions: TaskWizardValueQuestion[] = [
 			{
@@ -439,6 +470,16 @@ async function runTaskWizardValues(params: {
 				message: "Type",
 				options: taskTypePrompt.options,
 			},
+			...(hasProjects
+				? [
+						{
+							type: "select" as const,
+							name: "project" as const,
+							message: "Project",
+							options: projectPrompt.options,
+						},
+					]
+				: []),
 			{
 				type: "text",
 				name: "dueDate",
@@ -559,6 +600,7 @@ async function runTaskWizardValues(params: {
 			status: canonicalStatus,
 			priority: normalizePriorityValue(values.priority) ?? "",
 			type: resolveTaskTypeValue(values.type, params.types) ?? values.type.trim(),
+			project: resolveProjectValue(values.project, params.projects) ?? values.project.trim(),
 			dueDate: normalizeUtcDateTime(values.dueDate, "Due date") ?? "",
 			assignee: values.assignee,
 			labels: values.labels,
@@ -615,6 +657,7 @@ function toInitialWizardValues(input: { title?: string } & Partial<Task>): TaskW
 		status: input.status ?? "",
 		priority: input.priority ?? "",
 		type: input.type ?? "",
+		project: input.project ?? "",
 		dueDate: input.dueDate ?? "",
 		assignee: formatListInput(input.assignee),
 		labels: formatListInput(input.labels),
@@ -639,6 +682,7 @@ export async function runTaskCreateWizard(
 		statuses: options.statuses,
 		priorities: options.priorities,
 		types: options.types,
+		projects: options.projects,
 		initialValues,
 		promptImpl: options.promptImpl,
 	});
@@ -650,6 +694,8 @@ export async function runTaskCreateWizard(
 	const parsedPriority = priority.length > 0 ? priority : undefined;
 	const type = values.type.trim();
 	const parsedType = type.length > 0 ? type : undefined;
+	const project = values.project.trim();
+	const parsedProject = project.length > 0 ? project : undefined;
 	const dueDate = normalizeUtcDateTime(values.dueDate, "Due date");
 	const assignee = parseListInput(values.assignee);
 	const labels = parseListInput(values.labels);
@@ -668,6 +714,7 @@ export async function runTaskCreateWizard(
 		...(values.status.trim().length > 0 && { status: values.status }),
 		...(parsedPriority && { priority: parsedPriority }),
 		...(parsedType && { type: parsedType }),
+		...(parsedProject && { project: parsedProject }),
 		...(dueDate && { dueDate }),
 		...(assignee.length > 0 && { assignee }),
 		...(labels.length > 0 && { labels }),
@@ -693,6 +740,7 @@ export async function runTaskEditWizard(
 		statuses: options.statuses,
 		priorities: options.priorities,
 		types: options.types,
+		projects: options.projects,
 		initialValues: initial,
 		promptImpl: options.promptImpl,
 	});
@@ -715,6 +763,9 @@ export async function runTaskEditWizard(
 	}
 	if (values.type !== initial.type) {
 		updateInput.type = values.type;
+	}
+	if (values.project !== initial.project) {
+		updateInput.project = values.project;
 	}
 	if (values.dueDate !== initial.dueDate) {
 		updateInput.dueDate = values.dueDate || null;

@@ -13,6 +13,7 @@ import {
 	choiceType,
 	getCliTaskTypeValues,
 	priorityType,
+	projectType,
 	statusType,
 	taskType,
 } from "./commands/help-schema.ts";
@@ -86,6 +87,7 @@ import {
 import { resolveMilestoneInputForStorage } from "./utils/milestone-storage.ts";
 import { DRAFT_PREFIX, hasAnyPrefix, normalizeId } from "./utils/prefix-config.ts";
 import { formatValidPriorityValues, getPriorityOptions, resolvePriorityValue } from "./utils/priority-config.ts";
+import { formatValidProjectValues, getProjectValues, resolveProjectValues } from "./utils/project-config.ts";
 import { type ReadOutputMode, resolveReadOutputMode } from "./utils/read-output-mode.ts";
 import { getTaskReadiness, loadReadinessGraph } from "./utils/readiness.ts";
 import { resolveRuntimeCwd } from "./utils/runtime-cwd.ts";
@@ -122,6 +124,7 @@ const CONFIG_GET_KEYS = [
 	"labels",
 	"priorities",
 	"types",
+	"projects",
 	"milestones",
 	"definitionOfDone",
 	"dateFormat",
@@ -339,6 +342,24 @@ async function normalizeCliTaskTypes(core: Core, values: string[], optionName: s
 		return null;
 	}
 	return canonicalTypes;
+}
+
+async function normalizeCliProjects(core: Core, values: string[], optionName: string): Promise<string[] | null> {
+	const config = await core.filesystem.loadConfig();
+	if (getProjectValues(config).length === 0) {
+		console.error("No projects are configured. Add a 'projects:' list to backlog/config.yml.");
+		process.exitCode = 1;
+		return null;
+	}
+	const { values: canonicalProjects, invalid } = resolveProjectValues(values, config);
+	if (invalid.length > 0) {
+		console.error(
+			`Invalid ${optionName}: ${invalid.join(", ")}. Valid projects are: ${formatValidProjectValues(config)}`,
+		);
+		process.exitCode = 1;
+		return null;
+	}
+	return canonicalProjects;
 }
 
 function formatToolResultText(result: CallToolResult): string {
@@ -1772,6 +1793,7 @@ addHelpSchema(taskCmd.command("create [title]"), {
 		},
 		{ name: "priority", type: priorityType, description: "Task priority" },
 		{ name: "type", type: taskType, description: "Task type; case-insensitive" },
+		{ name: "project", type: projectType, description: "Task project; case-insensitive" },
 		{ name: "due-date", type: "UTC datetime", description: "Optional due date and time" },
 		{ name: "acceptanceCriteria", type: "Markdown list item text", description: "Repeat --ac for multiple criteria" },
 		{ name: "ordinal", type: "Integer", description: "Non-negative manual ordering value" },
@@ -1808,6 +1830,7 @@ addHelpSchema(taskCmd.command("create [title]"), {
 	.option("-l, --labels <labels>", "add task labels (comma-separated or repeatable)", createMultiValueAccumulator())
 	.option("--priority <priority>", "set task priority (configured priorities)")
 	.option("--type <type>", "set task type (configured task types)")
+	.option("--project <project>", "set task project (configured projects)")
 	.option("--due-date <datetime>", "set due date as a UTC datetime")
 	.option("--plain", "use plain text output after creating")
 	.option("--ac <criteria>", "add acceptance criteria (can be used multiple times)", createMultiValueAccumulator())
@@ -1878,6 +1901,7 @@ addHelpSchema(taskCmd.command("create [title]"), {
 				statuses,
 				priorities: config?.priorities,
 				types: config?.types,
+				projects: config?.projects,
 			});
 			if (!wizardInput) {
 				clack.cancel("Task create cancelled.");
@@ -1937,6 +1961,7 @@ addHelpSchema(taskCmd.command("create [title]"), {
 				parentTaskId: options.parent ? String(options.parent) : undefined,
 				priority: options.priority ? String(options.priority) : undefined,
 				type: options.type !== undefined ? String(options.type) : undefined,
+				project: options.project !== undefined ? String(options.project) : undefined,
 				...(ordinalValue !== undefined ? { ordinal: ordinalValue } : {}),
 				milestone,
 				implementationPlan: options.plan ? String(options.plan) : undefined,
@@ -1993,6 +2018,11 @@ addHelpSchema(program.command("search [query]"), {
 		},
 		{ name: "priority", type: priorityType, description: "Filter task results by priority" },
 		{
+			name: "project",
+			type: () => projectType({ multiple: true }),
+			description: "Filter task results by one or more configured projects; repeat or comma-separate values",
+		},
+		{
 			name: "modified-file",
 			type: "Project-root-relative path",
 			description: "Filter by modified file path substring",
@@ -2027,6 +2057,11 @@ addHelpSchema(program.command("search [query]"), {
 		createMultiValueAccumulator(),
 	)
 	.option("--priority <priority>", "filter task results by priority (configured priorities)")
+	.option(
+		"--project <project>",
+		"filter task results by configured project (repeatable or comma-separated)",
+		createMultiValueAccumulator(),
+	)
 	.option(
 		"--modified-file <path>",
 		"filter task results by modified file path substring",
@@ -2080,6 +2115,7 @@ addHelpSchema(program.command("search [query]"), {
 			status?: string | string[];
 			excludeStatus?: string[];
 			type?: string[];
+			project?: string[];
 			priority?: SearchPriorityFilter;
 			modifiedFiles?: string[];
 		} = {};
@@ -2102,6 +2138,15 @@ addHelpSchema(program.command("search [query]"), {
 				return;
 			}
 			filters.type = canonicalTaskTypes;
+		}
+		const rawSearchProjects = parseDelimitedStringList(options.project) ?? [];
+		if (rawSearchProjects.length > 0) {
+			const canonicalProjects = await normalizeCliProjects(core, rawSearchProjects, "project");
+			if (!canonicalProjects) {
+				cleanup();
+				return;
+			}
+			filters.project = canonicalProjects;
 		}
 		if (options.priority) {
 			const priority = await normalizeCliPriority(core, String(options.priority));
@@ -2382,6 +2427,11 @@ addHelpSchema(taskCmd.command("list"), {
 			description: "Filter by one or more configured task types; repeat or comma-separate values",
 		},
 		{
+			name: "project",
+			type: () => projectType({ multiple: true }),
+			description: "Filter by one or more configured projects; repeat or comma-separate values",
+		},
+		{
 			name: "labels",
 			type: "Comma-separated strings",
 			description: "Require every listed label; repeat --labels or use label1,label2",
@@ -2422,6 +2472,11 @@ addHelpSchema(taskCmd.command("list"), {
 	.option(
 		"--type <type>",
 		"filter tasks by configured task type (repeatable or comma-separated)",
+		createMultiValueAccumulator(),
+	)
+	.option(
+		"--project <project>",
+		"filter tasks by configured project (repeatable or comma-separated)",
 		createMultiValueAccumulator(),
 	)
 	.option(
@@ -2493,6 +2548,15 @@ addHelpSchema(taskCmd.command("list"), {
 				return;
 			}
 			baseFilters.type = canonicalTaskTypes;
+		}
+		const rawProjects = parseDelimitedStringList(options.project) ?? [];
+		if (rawProjects.length > 0) {
+			const canonicalProjects = await normalizeCliProjects(core, rawProjects, "project");
+			if (!canonicalProjects) {
+				cleanup();
+				return;
+			}
+			baseFilters.project = canonicalProjects;
 		}
 
 		const labelFilters = parseDelimitedStringList(options.labels) ?? [];
@@ -2666,6 +2730,10 @@ addHelpSchema(taskCmd.command("list"), {
 		if (baseFilters.type) {
 			const taskTypes = Array.isArray(baseFilters.type) ? baseFilters.type : [baseFilters.type];
 			activeFilters.push(`Type: ${taskTypes.join(", ")}`);
+		}
+		if (baseFilters.project) {
+			const projects = Array.isArray(baseFilters.project) ? baseFilters.project : [baseFilters.project];
+			activeFilters.push(`Project: ${projects.join(", ")}`);
 		}
 		if (labelFilters.length > 0) activeFilters.push(`Labels: ${labelFilters.join(", ")}`);
 		if (searchQuery) activeFilters.push(`Search: ${searchQuery}`);
@@ -2879,6 +2947,7 @@ async function runEditCommand(target: EditCommandTarget, taskId: string | undefi
 			statuses,
 			priorities: config?.priorities,
 			types: config?.types,
+			projects: config?.projects,
 		});
 		if (!wizardInput) {
 			clack.cancel(`${target.label} edit cancelled.`);
@@ -3091,6 +3160,9 @@ async function runEditCommand(target: EditCommandTarget, taskId: string | undefi
 	if (options.type !== undefined) {
 		editArgs.type = String(options.type);
 	}
+	if (options.project !== undefined) {
+		editArgs.project = String(options.project);
+	}
 	if (ordinalValue !== undefined) {
 		editArgs.ordinal = ordinalValue;
 	}
@@ -3234,6 +3306,7 @@ function addEditFieldOptions(cmd: Command) {
 		)
 		.option("--priority <priority>", "set task priority (configured priorities)")
 		.option("--type <type>", "set task type (configured task types; pass an empty value to clear)")
+		.option("--project <project>", "set task project (configured projects; pass an empty value to clear)")
 		.option("--due-date <datetime>", "set due date as a UTC datetime")
 		.option("--clear-due-date", "clear task due date")
 		.option("--ordinal <number>", "set task ordinal for custom ordering")
@@ -3371,6 +3444,11 @@ const taskEditCommand = addHelpSchema(taskCmd.command("edit [taskId]"), {
 		{ name: "description", type: "Markdown", description: "Replacement description" },
 		{ name: "status", type: statusType, description: "Project task status; case-insensitive" },
 		{ name: "type", type: taskType, description: "Replacement task type; case-insensitive" },
+		{
+			name: "project",
+			type: projectType,
+			description: "Replacement task project; case-insensitive; pass an empty value to clear",
+		},
 		{ name: "due-date", type: "UTC datetime", description: "Set the task due date and time" },
 		{ name: "clear-due-date", type: "Boolean", description: "Clear the task due date" },
 		{
@@ -3803,6 +3881,11 @@ const draftEditCommand = addHelpSchema(draftCmd.command("edit [taskId]"), {
 		{ name: "description", type: "Markdown", description: "Replacement description" },
 		{ name: "status", type: "String", description: 'Only "Draft" is valid; drafts cannot change status' },
 		{ name: "type", type: taskType, description: "Replacement task type; case-insensitive" },
+		{
+			name: "project",
+			type: projectType,
+			description: "Replacement task project; case-insensitive; pass an empty value to clear",
+		},
 		{ name: "due-date", type: "UTC datetime", description: "Set the due date and time" },
 		{ name: "clear-due-date", type: "Boolean", description: "Clear the due date" },
 		{
@@ -4662,7 +4745,7 @@ agentsCmd
 
 // Config command group
 const CONFIG_AVAILABLE_KEYS =
-	"Available keys: defaultEditor, projectName, defaultAssignee, defaultStatus, statuses, labels, priorities, types, milestones, definitionOfDone, dateFormat, maxColumnWidth, defaultPort, autoOpenBrowser, hideEmptyColumns, remoteOperations, autoCommit, filesystemOnly, bypassGitHooks, zeroPaddedIds, checkActiveBranches, activeBranchDays";
+	"Available keys: defaultEditor, projectName, defaultAssignee, defaultStatus, statuses, labels, priorities, types, projects, milestones, definitionOfDone, dateFormat, maxColumnWidth, defaultPort, autoOpenBrowser, hideEmptyColumns, remoteOperations, autoCommit, filesystemOnly, bypassGitHooks, zeroPaddedIds, checkActiveBranches, activeBranchDays";
 
 const configCmd = addHelpSchema(program.command("config"), {
 	reads: "Project Backlog.md configuration",
@@ -4807,6 +4890,11 @@ addHelpSchema(configCmd.command("get <key>"), {
 				case "types":
 					console.log(getTaskTypeValues(config).join(", "));
 					break;
+				case "projects": {
+					const projects = getProjectValues(config);
+					console.log(projects.length > 0 ? projects.join(", ") : "No projects configured");
+					break;
+				}
 				case "milestones": {
 					const milestones = await core.filesystem.listMilestones();
 					console.log(milestones.map((milestone) => milestone.id).join(", "));
@@ -5046,6 +5134,7 @@ addHelpSchema(configCmd.command("set <key> <value>"), {
 				case "labels":
 				case "types":
 				case "priorities":
+				case "projects":
 				case "milestones":
 				case "definitionOfDone":
 					if (key === "milestones") {
@@ -5119,6 +5208,7 @@ addHelpSchema(configCmd.command("list"), {
 					.join(", ")}]`,
 			);
 			console.log(`  types: [${getTaskTypeValues(config).join(", ")}]`);
+			console.log(`  projects: [${getProjectValues(config).join(", ")}]`);
 			const milestones = await core.filesystem.listMilestones();
 			console.log(`  milestones: [${milestones.map((milestone) => milestone.id).join(", ")}]`);
 			console.log(`  definitionOfDone: [${(config.definitionOfDone ?? []).join(", ")}]`);

@@ -8,6 +8,7 @@ import { watchConfigFile } from "../utils/config-watcher.ts";
 import { documentIdKey, documentIdsEqual } from "../utils/document-id.ts";
 import { normalizeDocumentRelativePath } from "../utils/document-path.ts";
 import { normalizePriorityValue } from "../utils/priority-config.ts";
+import { matchesProjectFilter } from "../utils/project-config.ts";
 import { normalizeStatusSet, statusMatchesSet } from "../utils/status-filter.ts";
 import { canonicalTaskId, normalizeTaskId, normalizeTaskIdentity, taskIdsEqual } from "../utils/task-path.ts";
 import { sortByTaskId } from "../utils/task-sorting.ts";
@@ -310,6 +311,9 @@ export class ContentStore {
 		}
 		if (filter?.type) {
 			tasks = tasks.filter((task) => matchesTaskTypeFilter(task.type, filter.type));
+		}
+		if (filter?.project) {
+			tasks = tasks.filter((task) => matchesProjectFilter(task.project, filter.project));
 		}
 		if (filter?.assignee) {
 			const assignee = filter.assignee;
