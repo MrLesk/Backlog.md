@@ -54,18 +54,6 @@ const TaskCard: React.FC<TaskCardProps> = ({ task, onEdit, onDragStart, onDragEn
     onDragEnd?.();
   };
 
-  // The old thick left border was the only piece of chrome on the card.
-  // vibe-kanban carries this kind of state on a dot instead, which keeps
-  // the card a plain rectangle and leaves the priority legible.
-  const getPriorityDotClass = (priority?: string) => {
-    switch (priority) {
-      case 'high': return 'bg-red-500';
-      case 'medium': return 'bg-amber-500';
-      case 'low': return 'bg-green-500';
-      default: return 'bg-gray-300 dark:bg-gray-600';
-    }
-  };
-
   const formatRelativeDate = (dateStr: string) => {
     // Handle both date-only and datetime formats
     const hasTime = dateStr.includes(" ") || dateStr.includes("T");
@@ -150,17 +138,13 @@ const TaskCard: React.FC<TaskCardProps> = ({ task, onEdit, onDragStart, onDragEn
         {/* Header row with task metadata */}
         <div className="flex items-center justify-between gap-2 mb-1.5">
           <div className="flex min-w-0 items-center gap-2">
-            <span
-              className={`h-1.5 w-1.5 shrink-0 rounded-circle ${getPriorityDotClass(task.priority)}`}
-              title={task.priority ? `${task.priority} priority` : 'no priority'}
-            />
             <span className="shrink-0 font-mono text-sm text-gray-500 transition-colors duration-200 dark:text-gray-400">{task.id}</span>
             <TaskTypeBadge type={task.type} availableTypes={availableTypes} className="min-w-0" />
           </div>
           {(() => {
             const badge = getPriorityBadge(task.priority);
             return badge ? (
-              <span className={`px-1.5 py-0.5 text-[10px] font-medium rounded-circle ${badge.bg} ${badge.text} transition-colors duration-200`}>
+              <span className={`px-2 py-0.5 text-xs font-medium rounded-circle ${badge.bg} ${badge.text} transition-colors duration-200`}>
                 {badge.label}
               </span>
             ) : null;
@@ -180,17 +164,17 @@ const TaskCard: React.FC<TaskCardProps> = ({ task, onEdit, onDragStart, onDragEn
 
         {/* Labels - limit to 3 */}
         {task.labels.length > 0 && (
-          <div className="flex flex-wrap gap-1 mt-2">
+          <div className="flex flex-wrap gap-1.5 mt-2.5">
             {task.labels.slice(0, 3).map(label => (
               <span
                 key={label}
-                className="inline-block rounded-circle bg-gray-100 px-1.5 py-0.5 text-[10px] text-gray-600 transition-colors duration-200 dark:bg-gray-700 dark:text-gray-300"
+                className="inline-block rounded-circle bg-gray-100 px-2 py-0.5 text-xs text-gray-600 transition-colors duration-200 dark:bg-gray-700 dark:text-gray-300"
               >
                 {label}
               </span>
             ))}
             {task.labels.length > 3 && (
-              <span className="inline-block px-1.5 py-0.5 text-[10px] text-gray-400 dark:text-gray-500">
+              <span className="inline-block px-2 py-0.5 text-xs text-gray-400 dark:text-gray-500">
                 +{task.labels.length - 3}
               </span>
             )}
@@ -198,7 +182,7 @@ const TaskCard: React.FC<TaskCardProps> = ({ task, onEdit, onDragStart, onDragEn
         )}
 
         {/* Footer with date */}
-        <div className="mt-2 flex flex-wrap items-center justify-between gap-x-2 gap-y-1 text-[10px] text-gray-400 transition-colors duration-200 dark:text-gray-500">
+        <div className="mt-2.5 flex flex-wrap items-center justify-between gap-x-2 gap-y-1 text-xs text-gray-500 transition-colors duration-200 dark:text-gray-400">
           <span>{formatRelativeDate(task.createdDate)}</span>
           {task.dueDate && <span>Due (UTC): {formatStoredUtcDateForDisplay(task.dueDate, dateFormat)}</span>}
           {task.assignee.length > 0 && (
