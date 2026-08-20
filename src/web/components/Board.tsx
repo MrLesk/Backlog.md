@@ -761,7 +761,12 @@ const Board: React.FC<BoardProps> = ({
         // page's <main> scrollport instead, so the sticky column headers below
         // have a scrollport that actually scrolls to stick against.
         <div className="pb-2">
-          <div className="flex w-full flex-row flex-nowrap items-stretch border border-gray-200 dark:border-gray-700">
+          {/*
+            No bottom border. Every card closes itself with a rule, so the last
+            card in each column already draws the line that ends its stack, and
+            a frame border underneath would sit 1px below it as a doubled seam.
+          */}
+          <div className="flex w-full flex-row flex-nowrap items-stretch border-x border-t border-gray-200 dark:border-gray-700">
             {visibleStatuses.map((status) => (
               <div key={status} className="min-w-[200px] max-w-[560px] flex-1 border-l border-gray-200 first:border-l-0 dark:border-gray-700">
                 <TaskColumn
