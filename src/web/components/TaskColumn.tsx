@@ -235,20 +235,27 @@ const TaskColumn: React.FC<TaskColumnProps> = ({
       onDragEnter={handleDragEnter}
       onDragLeave={handleDragLeave}
     >
+      {/*
+        Fixed height and a reserved action slot, so To Do, In Progress and Done
+        are the same shape whether or not a column can be reordered. The height
+        used to follow the content, so a column with fewer than two tasks lost
+        the menu button and stood 10px shorter than its neighbours.
+      */}
       <div
-        className="sticky top-0 z-20 flex shrink-0 items-center justify-between gap-2 bg-white px-3 py-2 transition-colors duration-200 dark:bg-gray-900"
+        className="sticky top-0 z-20 flex h-11 shrink-0 items-center justify-between gap-2 border-b border-gray-200 bg-white px-4 transition-colors duration-200 dark:border-gray-700 dark:bg-gray-900"
         style={{ backgroundImage: `linear-gradient(${statusTint(title)}, ${statusTint(title)})` }}
       >
         <div className="flex min-w-0 items-center gap-2">
           <span className={`h-2 w-2 shrink-0 rounded-circle ${getStatusDotClass(title)}`} aria-hidden="true" />
-          <h3 className="truncate text-sm text-gray-900 transition-colors duration-200 dark:text-gray-100">{title}</h3>
+          <h3 className="truncate text-sm font-medium text-gray-900 transition-colors duration-200 dark:text-gray-100">{title}</h3>
           <span className="shrink-0 text-xs tabular-nums text-gray-500 dark:text-gray-400">
             {tasks.length}
           </span>
         </div>
-        
-        {canReorderColumn && (
-          <div className="relative" ref={menuRef}>
+
+        <div className="relative h-7 w-7 shrink-0" ref={menuRef}>
+          {canReorderColumn && (
+          <>
             <button
               type="button"
               onClick={() => setShowMenu(!showMenu)}
@@ -305,10 +312,11 @@ const TaskColumn: React.FC<TaskColumnProps> = ({
                 </button>
               </div>
             )}
-          </div>
-        )}
+          </>
+          )}
+        </div>
       </div>
-      
+
       <div className="flex-1 px-3 pb-3">
         {tasks.map((task, index) => (
           <div 
