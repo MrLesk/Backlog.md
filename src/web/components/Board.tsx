@@ -6,7 +6,7 @@ import { collectAvailableLabels, labelsToLower } from '../../utils/label-filter'
 import { collectArchivedMilestoneKeys, milestoneKey } from '../utils/milestones';
 import { getTerminalStatus } from '../../utils/terminal-status';
 import { getPriorityOptions, normalizePriorityValue } from '../../utils/priority-config';
-import { getTaskTypeValues, matchesTaskTypeFilter } from '../../utils/task-type-config';
+import { getTaskTypeValues, matchesTaskTypeFilter, UNTYPED_FILTER_VALUE } from '../../utils/task-type-config';
 import { resolveTaskById } from '../../utils/task-id';
 import TaskColumn from './TaskColumn';
 import CleanupModal from './CleanupModal';
@@ -89,7 +89,34 @@ const Board: React.FC<BoardProps> = ({
     () => [{ label: 'All priorities', value: '' }, ...getPriorityOptions(availablePriorities)],
     [availablePriorities]
   );
+  // Every type the configuration knows about. Card badges use this, so a badge
+  // colour stays stable even for a type no task carries yet.
   const typeOptions = useMemo(() => getTaskTypeValues(availableTypes), [availableTypes]);
+
+  // The type filter offers only types some task actually carries. Offering the
+  // configured list instead lets you pick a type nothing has, which empties the
+  // board and reads as a broken filter rather than an empty result.
+  const typeFilterOptions = useMemo(() => {
+    const seen = new Set<string>();
+    const present: string[] = [];
+    for (const task of tasks) {
+      const value = String(task.type ?? '').trim();
+      const normalized = value.toLowerCase();
+      if (!normalized || seen.has(normalized)) continue;
+      seen.add(normalized);
+      present.push(value);
+    }
+    // Configured order first so the list is stable, then anything only the data has.
+    const configured = typeOptions.filter(type => seen.has(type.trim().toLowerCase()));
+    const configuredKeys = new Set(configured.map(type => type.trim().toLowerCase()));
+    const extras = present.filter(type => !configuredKeys.has(type.trim().toLowerCase()));
+    return [...configured, ...extras];
+  }, [tasks, typeOptions]);
+
+  // Only worth offering once some task is typed, otherwise "Untyped" means "all".
+  const hasUntypedTasks = useMemo(() => tasks.some(task => !String(task.type ?? '').trim()), [tasks]);
+  const showTypeFilter = typeFilterOptions.length > 0;
+
   const archivedMilestoneIds = useMemo(
     () => collectArchivedMilestoneKeys(archivedMilestones, milestoneEntities),
     [archivedMilestones, milestoneEntities]
@@ -269,11 +296,17 @@ const Board: React.FC<BoardProps> = ({
       const normalizedFilterPriority = normalizePriorityValue(filterPriority);
       result = result.filter(task => normalizePriorityValue(task.priority) === normalizedFilterPriority);
     }
-    if (filterType) {
+    if (filterType === UNTYPED_FILTER_VALUE) {
+      result = result.filter(task => !String(task.type ?? '').trim());
+    } else if (filterType) {
       result = result.filter(task => matchesTaskTypeFilter(task.type, filterType));
     }
     return result;
   }, [tasks, milestoneFilter, canonicalMilestoneFilter, milestoneAliasToCanonical, filterAssignee, normalizedFilterLabels, filterPriority, filterType]);
+
+  // Columns render a bare "Empty" when filtered down to nothing, which reads as a
+  // broken board rather than an empty result. Say what happened instead.
+  const filtersHideEverything = hasActiveFilters && tasks.length > 0 && filteredTasks.length === 0;
 
   // Handle highlighting a task (opening its edit popup)
   useEffect(() => {
@@ -566,17 +599,20 @@ const Board: React.FC<BoardProps> = ({
                   className="min-w-[200px]"
                 />
 
-                <select
-                  aria-label="Filter board by type"
-                  value={filterType}
-                  onChange={e => onFiltersChange({ assignee: filterAssignee, labels: normalizedFilterLabels, priority: filterPriority, taskType: e.target.value })}
-                  className={BOARD_FILTER_SELECT_CLASS}
-                >
-                  <option value="">All types</option>
-                  {typeOptions.map(type => (
-                    <option key={type} value={type}>{type}</option>
-                  ))}
-                </select>
+                {showTypeFilter && (
+                  <select
+                    aria-label="Filter board by type"
+                    value={filterType}
+                    onChange={e => onFiltersChange({ assignee: filterAssignee, labels: normalizedFilterLabels, priority: filterPriority, taskType: e.target.value })}
+                    className={BOARD_FILTER_SELECT_CLASS}
+                  >
+                    <option value="">All types</option>
+                    {typeFilterOptions.map(type => (
+                      <option key={type} value={type}>{type}</option>
+                    ))}
+                    {hasUntypedTasks && <option value={UNTYPED_FILTER_VALUE}>Untyped</option>}
+                  </select>
+                )}
 
                 <select
                   aria-label="Filter board by priority"
@@ -602,6 +638,17 @@ const Board: React.FC<BoardProps> = ({
             )}
         </div>
       </div>
+
+      {filtersHideEverything && (
+        <div className="mb-4 rounded-lg border border-gray-200 bg-gray-50 px-4 py-6 text-center dark:border-gray-700 dark:bg-gray-800/40">
+          <p className="text-sm font-medium text-gray-900 dark:text-white">
+            No tasks match the current filters
+          </p>
+          <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
+            {tasks.length} {tasks.length === 1 ? 'task is' : 'tasks are'} hidden. Clear the filters to see them.
+          </p>
+        </div>
+      )}
 
       {loadError ? (
         <div className="rounded-lg border border-red-200 bg-red-50 px-6 py-10 text-center dark:border-red-800 dark:bg-red-900/20" role="alert">
