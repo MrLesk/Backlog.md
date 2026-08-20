@@ -1,6 +1,7 @@
 import type { AcceptanceCriterion, Decision, Document, Task } from "../types/index.ts";
 import { normalizeAssignee } from "../utils/assignee.ts";
 import { stringifyFrontmatter } from "./frontmatter.ts";
+import { KNOWN_TASK_FRONTMATTER_KEYS } from "./parser.ts";
 import {
 	AcceptanceCriteriaManager,
 	CommentsManager,
@@ -46,6 +47,16 @@ function commentItemsEqual(left: Task["comments"], right: Task["comments"]): boo
 	});
 }
 
+function unrecognizedFrontmatter(extras: Task["extraFrontmatter"]): Record<string, unknown> {
+	if (!extras) return {};
+	const safe: Record<string, unknown> = {};
+	for (const [key, value] of Object.entries(extras)) {
+		if (KNOWN_TASK_FRONTMATTER_KEYS.has(key)) continue;
+		safe[key] = value;
+	}
+	return safe;
+}
+
 export function serializeTask(task: Task): string {
 	normalizeAssignee(task);
 	const frontmatter = {
@@ -69,6 +80,9 @@ export function serializeTask(task: Task): string {
 		...(task.type && { type: task.type }),
 		...(task.ordinal !== undefined && { ordinal: task.ordinal }),
 		...(task.onStatusChange && { onStatusChange: task.onStatusChange }),
+		// Written last, and filtered against the recognized keys, so a stray copy of a real
+		// field sitting in extras can never shadow the value Backlog.md itself maintains.
+		...unrecognizedFrontmatter(task.extraFrontmatter),
 	};
 
 	let contentBody = task.rawContent ?? "";

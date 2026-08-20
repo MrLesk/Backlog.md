@@ -97,5 +97,16 @@
     "@biomejs/biome",
     "bun",
     "node-pty"
-  ]
+  ],
+  "dependencies": {
+    "@lexical/code": "^0.49.0",
+    "@lexical/headless": "^0.49.0",
+    "@lexical/link": "^0.49.0",
+    "@lexical/list": "^0.49.0",
+    "@lexical/markdown": "^0.49.0",
+    "@lexical/react": "^0.49.0",
+    "@lexical/rich-text": "^0.49.0",
+    "@lexical/utils": "^0.49.0",
+    "lexical": "^0.49.0"
+  }
 }

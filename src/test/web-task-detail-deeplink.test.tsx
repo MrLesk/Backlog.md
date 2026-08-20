@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it } from "bun:test";
 import { JSDOM } from "jsdom";
+import { installDomGlobals } from "./dom-globals.ts";
 import { StrictMode, act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import type { DuplicateRepairPlan } from "../core/duplicate-task-repair.ts";
@@ -432,6 +433,7 @@ const setupDom = (path: string) => {
 	globalThis.window = activeDom.window as unknown as Window & typeof globalThis;
 	globalThis.document = activeDom.window.document;
 	globalThis.navigator = activeDom.window.navigator;
+	installDomGlobals(activeDom);
 	globalThis.localStorage = activeDom.window.localStorage;
 	globalThis.WebSocket = FakeWebSocket as unknown as typeof WebSocket;
 	globalThis.ResizeObserver = FakeResizeObserver as unknown as typeof ResizeObserver;
@@ -579,10 +581,7 @@ const dropTaskIntoStatus = async (
 	targetStatus: string,
 	requestStarted: Promise<void> | undefined,
 ) => {
-	const targetHeading = Array.from(container.querySelectorAll("h3")).find(
-		(heading) => heading.textContent === targetStatus,
-	);
-	const targetColumn = targetHeading?.closest(".rounded-lg");
+	const targetColumn = container.querySelector(`[data-column-status="${targetStatus}"]`);
 	expect(targetColumn).toBeTruthy();
 	const dropEvent = new window.Event("drop", { bubbles: true, cancelable: true });
 	Object.defineProperty(dropEvent, "dataTransfer", {
@@ -889,10 +888,7 @@ describe("task detail routes", () => {
 		});
 		reorder.finish();
 
-		const targetHeading = Array.from(container.querySelectorAll("h3")).find(
-			(heading) => heading.textContent === "To Do",
-		);
-		const targetColumn = targetHeading?.closest(".rounded-lg");
+		const targetColumn = container.querySelector('[data-column-status="To Do"]');
 		const visibleTaskTitles = Array.from(targetColumn?.querySelectorAll("[draggable='true'] h4") ?? []).map(
 			(element) => element.textContent,
 		);

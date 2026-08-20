@@ -49,7 +49,15 @@ export default function Layout({
 			<div className="flex-1 flex flex-col min-h-0 min-w-0">
 				<Navigation projectName={projectName} />
 				<DuplicateIdWarning plan={duplicateRepairPlan} onRepaired={onRefreshData} />
-				<main className="flex-1 min-h-0 min-w-0 overflow-y-auto overflow-x-hidden">
+				{/*
+				  Both axes scroll here so this is the single scrollport for the
+				  page body. The board used to wrap its lanes in an overflow-x-auto
+				  div; because CSS forces the other axis to auto alongside it, that
+				  wrapper became a vertical scrollport of its own that never
+				  scrolled, and the sticky column headers bound to it instead of to
+				  this element and so never stuck to anything.
+				*/}
+				<main className="flex-1 min-h-0 min-w-0 overflow-auto">
 					<Outlet context={{ tasks, docs, decisions, isLoading, onRefreshData }} />
 				</main>
 			</div>

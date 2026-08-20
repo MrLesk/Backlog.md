@@ -78,7 +78,9 @@ const getCard = (container: HTMLElement): HTMLElement => {
 
 const getColumn = (container: HTMLElement, status: string): HTMLElement => {
 	const heading = Array.from(container.querySelectorAll("h3")).find((element) => element.textContent === status);
-	const column = heading?.closest(".rounded-lg");
+	// The column is found by its status attribute rather than by a rounding class,
+	// so restyling the board cannot silently break the drop target lookup.
+	const column = heading?.closest("[data-column-status]");
 	expect(column).toBeTruthy();
 	return column as HTMLElement;
 };

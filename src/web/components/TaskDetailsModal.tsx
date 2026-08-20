@@ -3,8 +3,8 @@ import { isLocalEditableTask, type AcceptanceCriterion, type Milestone, type Tas
 import Modal from "./Modal";
 import { ApiError, apiClient, NetworkError } from "../lib/api";
 import { useTheme } from "../contexts/ThemeContext";
-import MDEditor from "@uiw/react-md-editor";
 import AcceptanceCriteriaEditor from "./AcceptanceCriteriaEditor";
+import LongFormField from './LongFormField';
 import MermaidMarkdown from './MermaidMarkdown';
 import ChipInput from "./ChipInput";
 import DependencyInput from "./DependencyInput";
@@ -147,8 +147,8 @@ const buildTaskDetailsFormState = ({
 });
 
 const SectionHeader: React.FC<{ title: string; right?: React.ReactNode }> = ({ title, right }) => (
-  <div className="flex items-center justify-between mb-3">
-    <h3 className="text-sm font-semibold text-gray-900 dark:text-gray-100 tracking-tight transition-colors duration-200">
+  <div className="mb-2 flex items-center justify-between">
+    <h3 className="text-sm font-medium text-gray-600 transition-colors duration-200 dark:text-gray-400">
       {title}
     </h3>
     {right ? <div className="ml-2 text-xs text-gray-500 dark:text-gray-400">{right}</div> : null}
@@ -934,6 +934,12 @@ export const TaskDetailsModal: React.FC<Props> = ({
     if (updates.references !== undefined) setReferences(updates.references as string[]);
     if (updates.modifiedFiles !== undefined) setModifiedFiles(updates.modifiedFiles as string[]);
     if (updates.milestone !== undefined) setMilestone((updates.milestone ?? "") as string);
+    if (updates.description !== undefined) setDescription(String(updates.description));
+    if ((updates as { implementationPlan?: string }).implementationPlan !== undefined)
+      setPlan(String((updates as { implementationPlan?: string }).implementationPlan));
+    if ((updates as { implementationNotes?: string }).implementationNotes !== undefined)
+      setNotes(String((updates as { implementationNotes?: string }).implementationNotes));
+    if (updates.finalSummary !== undefined) setFinalSummary(String(updates.finalSummary));
 
     // Only update server if editing existing task
     if (task) {
@@ -1169,7 +1175,7 @@ export const TaskDetailsModal: React.FC<Props> = ({
 		            <button
 		              onClick={() => setMode("edit")}
 		              disabled={demoting}
-		              className="inline-flex items-center px-3 py-2 sm:px-4 border border-gray-300 dark:border-gray-600 rounded-lg text-sm font-medium text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400 focus:ring-offset-2 dark:focus:ring-offset-gray-900 transition-colors duration-200"
+		              className="inline-flex items-center px-3 py-2 sm:px-4 border border-gray-300 dark:border-gray-600 rounded-lg text-sm font-medium text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-gray-900 dark:focus:ring-gray-300 focus:ring-offset-2 dark:focus:ring-offset-gray-900 transition-colors duration-200"
 		              title="Edit"
 		            >
               <svg className="w-4 h-4 mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -1183,7 +1189,7 @@ export const TaskDetailsModal: React.FC<Props> = ({
 	              <button
 		                onClick={handleCancelEdit}
 		                disabled={demoting}
-		                className="inline-flex items-center px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg text-sm font-medium text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400 focus:ring-offset-2 dark:focus:ring-offset-gray-900 transition-colors duration-200"
+		                className="inline-flex items-center px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg text-sm font-medium text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-gray-900 dark:focus:ring-gray-300 focus:ring-offset-2 dark:focus:ring-offset-gray-900 transition-colors duration-200"
 		                title="Cancel"
 		              >
                 <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
@@ -1194,7 +1200,7 @@ export const TaskDetailsModal: React.FC<Props> = ({
 	              <button
 		                onClick={() => void handleSave()}
 		                disabled={saving || demoting}
-		                className="inline-flex items-center px-4 py-2 rounded-lg text-sm font-medium text-white bg-blue-600 dark:bg-blue-700 hover:bg-blue-700 dark:hover:bg-blue-800 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400 focus:ring-offset-2 dark:focus:ring-offset-gray-900 transition-colors duration-200 disabled:opacity-50"
+		                className="inline-flex items-center px-4 py-2 rounded-lg text-sm font-medium text-white bg-blue-600 dark:bg-blue-700 hover:bg-blue-700 dark:hover:bg-blue-800 focus:outline-none focus:ring-2 focus:ring-gray-900 dark:focus:ring-gray-300 focus:ring-offset-2 dark:focus:ring-offset-gray-900 transition-colors duration-200 disabled:opacity-50"
 		                title="Save"
 		              >
                 <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
@@ -1267,39 +1273,34 @@ export const TaskDetailsModal: React.FC<Props> = ({
         <div className="md:col-span-2 space-y-6">
           {/* Title field for create mode */}
           {isCreateMode && (
-            <div className="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-4">
+            <div className="border-b border-gray-200 px-1 pb-5 last:border-b-0 dark:border-gray-700">
               <SectionHeader title="Title" />
               <input
                 type="text"
                 value={title}
                 onChange={(e) => setTitle(e.target.value)}
                 placeholder="Enter task title"
-                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md text-sm bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400 focus:border-transparent transition-colors duration-200"
+                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-transparent text-sm text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-gray-900 dark:focus:ring-gray-300 focus:border-transparent transition-colors duration-200"
               />
             </div>
           )}
           {/* Description */}
-          <div className="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-4">
+          <div className="border-b border-gray-200 px-1 pb-5 last:border-b-0 dark:border-gray-700">
             <SectionHeader title="Description" />
-            {mode === "preview" ? (
-              description ? (
-                <div className="prose prose-sm !max-w-none wmde-markdown" data-color-mode={theme}>
-                  <MermaidMarkdown source={description} />
-                </div>
-              ) : (
-                <div className="text-sm text-gray-500 dark:text-gray-400">No description</div>
-              )
-            ) : (
-              <div className="border border-gray-200 dark:border-gray-700 rounded-md">
-                <MDEditor
-                  value={description}
-                  onChange={(val) => setDescription(val || "")}
-                  preview="edit"
-                  height={320}
-                  data-color-mode={theme}
-                />
-              </div>
-            )}
+            <LongFormField
+              value={description}
+              onCommit={(next) => {
+                setDescription(next);
+                void handleInlineMetaUpdate({ description: next } as InlineMetaUpdatePayload);
+              }}
+              emptyLabel="No description"
+              placeholder="Describe the task"
+              ariaLabel="description"
+              colorMode={theme}
+              minHeight="12rem"
+              readOnly={isFromOtherBranch}
+              startEditing={isCreateMode}
+            />
           </div>
 
           {subtasks.length > 0 && (
@@ -1354,7 +1355,7 @@ export const TaskDetailsModal: React.FC<Props> = ({
           )}
 
           {/* References */}
-          <div className="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-4">
+          <div className="border-b border-gray-200 px-1 pb-5 last:border-b-0 dark:border-gray-700">
             <SectionHeader title="References" />
             <div className="space-y-3">
               {references.length > 0 ? (
@@ -1414,11 +1415,11 @@ export const TaskDetailsModal: React.FC<Props> = ({
                     name="newRef"
                     type="text"
                     placeholder="URL or file path..."
-                    className="flex-1 text-sm px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors"
+                    className="flex-1 text-sm px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-transparent text-gray-900 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-gray-900 focus:border-transparent transition-colors"
                   />
                   <button
                     type="submit"
-                    className="px-4 py-2 text-sm font-medium bg-blue-500 text-white rounded-md hover:bg-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition-colors"
+                    className="rounded-md border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-100 focus:outline-none focus:ring-1 focus:ring-gray-900 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-800 dark:focus:ring-gray-300"
                   >
                     Add
                   </button>
@@ -1494,7 +1495,7 @@ export const TaskDetailsModal: React.FC<Props> = ({
 
           {/* Documentation */}
           {documentation.length > 0 && (
-            <div className="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-4">
+            <div className="border-b border-gray-200 px-1 pb-5 last:border-b-0 dark:border-gray-700">
               <SectionHeader title="Documentation" />
               <div className="space-y-2">
                 <ul className="space-y-2">
@@ -1524,7 +1525,7 @@ export const TaskDetailsModal: React.FC<Props> = ({
           )}
 
           {/* Acceptance Criteria */}
-          <div className="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-4">
+          <div className="border-b border-gray-200 px-1 pb-5 last:border-b-0 dark:border-gray-700">
             <SectionHeader
               title={`Acceptance Criteria ${totalCount ? `(${checkedCount}/${totalCount})` : ""}`}
               right={mode === "preview" ? (
@@ -1539,7 +1540,7 @@ export const TaskDetailsModal: React.FC<Props> = ({
                       type="checkbox"
                       checked={c.checked}
                       onChange={(e) => void handleToggleCriterion(c.index, e.target.checked)}
-                      className="mt-0.5 h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                      className="mt-0.5 h-4 w-4 accent-gray-900 focus:ring-gray-900 dark:accent-gray-300 border-gray-300 rounded"
                     />
                     <span className="mt-0.5 w-8 shrink-0 text-right font-mono text-xs font-semibold text-gray-500 dark:text-gray-400">
                       {`#${c.index}`}
@@ -1552,12 +1553,12 @@ export const TaskDetailsModal: React.FC<Props> = ({
                 )}
               </ul>
             ) : (
-              <AcceptanceCriteriaEditor criteria={criteria} onChange={setCriteria} />
+              <AcceptanceCriteriaEditor criteria={criteria} onChange={setCriteria} label="" />
             )}
           </div>
 
           {/* Definition of Done */}
-          <div className="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-4">
+          <div className="border-b border-gray-200 px-1 pb-5 last:border-b-0 dark:border-gray-700">
             <SectionHeader
               title={`Definition of Done ${definitionTotalCount ? `(${definitionCheckedCount}/${definitionTotalCount})` : ""}`}
               right={mode === "preview" ? (
@@ -1572,7 +1573,7 @@ export const TaskDetailsModal: React.FC<Props> = ({
                       type="checkbox"
                       checked={item.checked}
                       onChange={(e) => void handleToggleDefinitionOfDone(item.index, e.target.checked)}
-                      className="mt-0.5 h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                      className="mt-0.5 h-4 w-4 accent-gray-900 focus:ring-gray-900 dark:accent-gray-300 border-gray-300 rounded"
                     />
                     <div className="text-sm text-gray-800 dark:text-gray-100">{item.text}</div>
                   </li>
@@ -1585,7 +1586,7 @@ export const TaskDetailsModal: React.FC<Props> = ({
               <AcceptanceCriteriaEditor
                 criteria={definitionOfDone}
                 onChange={setDefinitionOfDone}
-                label="Definition of Done"
+                label=""
                 preserveIndices
                 disableToggle={isCreateMode}
               />
@@ -1593,56 +1594,46 @@ export const TaskDetailsModal: React.FC<Props> = ({
           </div>
 
           {/* Implementation Plan */}
-          <div className="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-4">
+          <div className="border-b border-gray-200 px-1 pb-5 last:border-b-0 dark:border-gray-700">
             <SectionHeader title="Implementation Plan" />
-            {mode === "preview" ? (
-              plan ? (
-                <div className="prose prose-sm !max-w-none wmde-markdown" data-color-mode={theme}>
-                  <MermaidMarkdown source={plan} />
-                </div>
-              ) : (
-                <div className="text-sm text-gray-500 dark:text-gray-400">No plan</div>
-              )
-            ) : (
-              <div className="border border-gray-200 dark:border-gray-700 rounded-md">
-                <MDEditor
-                  value={plan}
-                  onChange={(val) => setPlan(val || "")}
-                  preview="edit"
-                  height={280}
-                  data-color-mode={theme}
-                />
-              </div>
-            )}
+            <LongFormField
+              value={plan}
+              onCommit={(next) => {
+                setPlan(next);
+                void handleInlineMetaUpdate({ implementationPlan: next } as InlineMetaUpdatePayload);
+              }}
+              emptyLabel="No plan"
+              placeholder="How will this be done"
+              ariaLabel="implementation plan"
+              colorMode={theme}
+              minHeight="8rem"
+              readOnly={isFromOtherBranch}
+              startEditing={isCreateMode}
+            />
           </div>
 
           {/* Implementation Notes */}
-          <div className="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-4">
+          <div className="border-b border-gray-200 px-1 pb-5 last:border-b-0 dark:border-gray-700">
             <SectionHeader title="Implementation Notes" />
-            {mode === "preview" ? (
-              notes ? (
-                <div className="prose prose-sm !max-w-none wmde-markdown" data-color-mode={theme}>
-                  <MermaidMarkdown source={notes} />
-                </div>
-              ) : (
-                <div className="text-sm text-gray-500 dark:text-gray-400">No notes</div>
-              )
-            ) : (
-              <div className="border border-gray-200 dark:border-gray-700 rounded-md">
-                <MDEditor
-                  value={notes}
-                  onChange={(val) => setNotes(val || "")}
-                  preview="edit"
-                  height={280}
-                  data-color-mode={theme}
-                />
-              </div>
-            )}
+            <LongFormField
+              value={notes}
+              onCommit={(next) => {
+                setNotes(next);
+                void handleInlineMetaUpdate({ implementationNotes: next } as InlineMetaUpdatePayload);
+              }}
+              emptyLabel="No notes"
+              placeholder="What was actually done"
+              ariaLabel="implementation notes"
+              colorMode={theme}
+              minHeight="8rem"
+              readOnly={isFromOtherBranch}
+              startEditing={isCreateMode}
+            />
           </div>
 
           {/* Comments */}
           {!isCreateMode && (
-            <div className="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-4">
+            <div className="border-b border-gray-200 px-1 pb-5 last:border-b-0 dark:border-gray-700">
               <SectionHeader title={`Comments${comments.length ? ` (${comments.length})` : ""}`} />
               {comments.length > 0 ? (
                 <div className="space-y-4">
@@ -1669,21 +1660,21 @@ export const TaskDetailsModal: React.FC<Props> = ({
                     value={commentAuthor}
                     onChange={(e) => setCommentAuthor(e.target.value)}
                     placeholder="Author"
-                    className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md text-sm bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400 focus:border-transparent transition-colors duration-200"
+                    className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-transparent text-sm text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-gray-900 dark:focus:ring-gray-300 focus:border-transparent transition-colors duration-200"
                   />
                   <textarea
                     value={commentBody}
                     onChange={(e) => setCommentBody(e.target.value)}
                     rows={4}
                     placeholder="Add a comment..."
-                    className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md text-sm bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors"
+                    className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-transparent text-sm text-gray-900 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-gray-900 focus:border-transparent transition-colors"
                   />
                   <div className="flex justify-end">
                     <button
                       type="button"
                       onClick={() => void handleAddComment()}
                       disabled={commentSaving || commentBody.trim().length === 0}
-                      className="px-4 py-2 text-sm font-medium bg-blue-500 text-white rounded-md hover:bg-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition-colors disabled:opacity-50"
+                      className="px-4 py-2 text-sm font-medium bg-blue-500 text-white rounded-md hover:bg-blue-600 focus:outline-none focus:ring-2 focus:ring-gray-900 focus:ring-offset-2 transition-colors disabled:opacity-50"
                     >
                       {commentSaving ? "Adding..." : "Add comment"}
                     </button>
@@ -1695,26 +1686,22 @@ export const TaskDetailsModal: React.FC<Props> = ({
 
           {/* Final Summary */}
           {(mode !== "preview" || finalSummary.trim().length > 0) && (
-            <div className="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-4">
+            <div className="border-b border-gray-200 px-1 pb-5 last:border-b-0 dark:border-gray-700">
               <SectionHeader title="Final Summary" right="Completion summary" />
-              {mode === "preview" ? (
-                <div className="prose prose-sm !max-w-none wmde-markdown" data-color-mode={theme}>
-                  <MermaidMarkdown source={finalSummary} />
-                </div>
-              ) : (
-                <div className="border border-gray-200 dark:border-gray-700 rounded-md">
-                  <MDEditor
-                    value={finalSummary}
-                    onChange={(val) => setFinalSummary(val || "")}
-                    preview="edit"
-                    height={220}
-                    data-color-mode={theme}
-                    textareaProps={{
-                      placeholder: "PR-style summary of what was implemented (write when task is complete)",
-                    }}
-                  />
-                </div>
-              )}
+              <LongFormField
+                value={finalSummary}
+                onCommit={(next) => {
+                  setFinalSummary(next);
+                  void handleInlineMetaUpdate({ finalSummary: next } as InlineMetaUpdatePayload);
+                }}
+                emptyLabel="No summary"
+                placeholder="PR-style summary of what was implemented"
+                startEditing={isCreateMode}
+                ariaLabel="final summary"
+                colorMode={theme}
+                minHeight="6rem"
+                readOnly={isFromOtherBranch}
+              />
             </div>
           )}
         </div>
@@ -1723,7 +1710,7 @@ export const TaskDetailsModal: React.FC<Props> = ({
         <div className="md:col-span-1 space-y-4">
           {/* Dates */}
 	          {task && (
-	            <div className="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-3 text-xs text-gray-600 dark:text-gray-300 space-y-1">
+	            <div className="border-b border-gray-200 px-1 pb-4 last:border-b-0 dark:border-gray-700 text-xs text-gray-600 dark:text-gray-300 space-y-1">
 	              <div><span className="font-semibold text-gray-800 dark:text-gray-100">Created:</span> <span className="text-gray-700 dark:text-gray-200">{formatStoredUtcDateForDisplay(task.createdDate, dateFormat)}</span></div>
 	              {task.updatedDate && (
 	                <div><span className="font-semibold text-gray-800 dark:text-gray-100">Updated:</span> <span className="text-gray-700 dark:text-gray-200">{formatStoredUtcDateForDisplay(task.updatedDate, dateFormat)}</span></div>
@@ -1746,7 +1733,7 @@ export const TaskDetailsModal: React.FC<Props> = ({
           )}
           {/* Title (editable for existing tasks) */}
           {task && (
-            <div className="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-3">
+            <div className="border-b border-gray-200 px-1 pb-4 last:border-b-0 dark:border-gray-700">
               <SectionHeader title="Title" />
               <input
                 type="text"
@@ -1765,25 +1752,25 @@ export const TaskDetailsModal: React.FC<Props> = ({
                   }
                 }}
                 disabled={isFromOtherBranch}
-                className={`w-full h-10 px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md text-sm bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-stone-500 dark:focus:ring-stone-400 focus:border-transparent transition-colors duration-200 ${isFromOtherBranch ? 'opacity-60 cursor-not-allowed' : ''}`}
+                className={`w-full h-10 px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-transparent text-sm text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-stone-500 dark:focus:ring-stone-400 focus:border-transparent transition-colors duration-200 ${isFromOtherBranch ? 'opacity-60 cursor-not-allowed' : ''}`}
               />
             </div>
           )}
 
           {/* Status */}
-          <div className="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-3">
+          <div className="border-b border-gray-200 px-1 pb-4 last:border-b-0 dark:border-gray-700">
             <SectionHeader title="Status" />
             <StatusSelect current={status} onChange={(val) => handleInlineMetaUpdate({ status: val })} disabled={isFromOtherBranch || isOpenDraft} />
           </div>
 
           {/* Type */}
-          <div className="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-3">
+          <div className="border-b border-gray-200 px-1 pb-4 last:border-b-0 dark:border-gray-700">
             <SectionHeader title="Type" />
             <select
               aria-label="Task type"
               aria-invalid={typeUpdateError ? true : undefined}
               aria-describedby={typeUpdateError ? "task-type-update-error" : undefined}
-              className={`w-full h-10 px-3 pr-10 py-2 border border-gray-300 dark:border-gray-600 rounded-md text-sm bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-stone-500 dark:focus:ring-stone-400 focus:border-transparent transition-colors duration-200 ${isFromOtherBranch || isTypeUpdating ? 'opacity-60 cursor-not-allowed' : ''}`}
+              className={`w-full h-10 px-3 pr-10 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-transparent text-sm text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-stone-500 dark:focus:ring-stone-400 focus:border-transparent transition-colors duration-200 ${isFromOtherBranch || isTypeUpdating ? 'opacity-60 cursor-not-allowed' : ''}`}
               value={typeSelectionValue}
               onChange={(event) => void handleTaskTypeChange(event.target.value)}
               disabled={isFromOtherBranch || isTypeUpdating}
@@ -1806,7 +1793,7 @@ export const TaskDetailsModal: React.FC<Props> = ({
           </div>
 
           {/* Assignee */}
-          <div className="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-3">
+          <div className="border-b border-gray-200 px-1 pb-4 last:border-b-0 dark:border-gray-700">
             <SectionHeader title="Assignee" />
             <ChipInput
               name="assignee"
@@ -1819,7 +1806,7 @@ export const TaskDetailsModal: React.FC<Props> = ({
           </div>
 
           {/* Labels */}
-          <div className="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-3">
+          <div className="border-b border-gray-200 px-1 pb-4 last:border-b-0 dark:border-gray-700">
             <SectionHeader title="Labels" />
             <ChipInput
               name="labels"
@@ -1832,10 +1819,10 @@ export const TaskDetailsModal: React.FC<Props> = ({
           </div>
 
           {/* Priority */}
-          <div className="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-3">
+          <div className="border-b border-gray-200 px-1 pb-4 last:border-b-0 dark:border-gray-700">
             <SectionHeader title="Priority" />
             <select
-              className={`w-full h-10 px-3 pr-10 py-2 border border-gray-300 dark:border-gray-600 rounded-md text-sm bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-stone-500 dark:focus:ring-stone-400 focus:border-transparent transition-colors duration-200 ${isFromOtherBranch ? 'opacity-60 cursor-not-allowed' : ''}`}
+              className={`w-full h-10 px-3 pr-10 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-transparent text-sm text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-stone-500 dark:focus:ring-stone-400 focus:border-transparent transition-colors duration-200 ${isFromOtherBranch ? 'opacity-60 cursor-not-allowed' : ''}`}
               value={priority}
               onChange={(e) => handleInlineMetaUpdate({ priority: e.target.value as any })}
               disabled={isFromOtherBranch}
@@ -1850,10 +1837,10 @@ export const TaskDetailsModal: React.FC<Props> = ({
           </div>
 
           {/* Milestone */}
-          <div className="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-3">
+          <div className="border-b border-gray-200 px-1 pb-4 last:border-b-0 dark:border-gray-700">
             <SectionHeader title="Milestone" />
             <select
-              className={`w-full h-10 px-3 pr-10 py-2 border border-gray-300 dark:border-gray-600 rounded-md text-sm bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-stone-500 dark:focus:ring-stone-400 focus:border-transparent transition-colors duration-200 ${isFromOtherBranch ? 'opacity-60 cursor-not-allowed' : ''}`}
+              className={`w-full h-10 px-3 pr-10 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-transparent text-sm text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-stone-500 dark:focus:ring-stone-400 focus:border-transparent transition-colors duration-200 ${isFromOtherBranch ? 'opacity-60 cursor-not-allowed' : ''}`}
               value={milestoneSelectionValue}
 				onChange={(e) => {
 					const value = e.target.value;
@@ -1875,7 +1862,7 @@ export const TaskDetailsModal: React.FC<Props> = ({
           </div>
 
           {/* Dependencies */}
-          <div className="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-3">
+          <div className="border-b border-gray-200 px-1 pb-4 last:border-b-0 dark:border-gray-700">
             <SectionHeader title="Dependencies" />
             <DependencyInput
               value={dependencies}
@@ -1901,11 +1888,11 @@ export const TaskDetailsModal: React.FC<Props> = ({
 
           {/* Archive button at bottom of sidebar */}
 		          {task && onArchive && !isFromOtherBranch && (
-		            <div className="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-3">
+		            <div className="border-b border-gray-200 px-1 pb-4 last:border-b-0 dark:border-gray-700">
 		              <button
 		                onClick={handleArchive}
 		                disabled={demoting}
-		                className="w-full inline-flex items-center justify-center px-4 py-2 bg-red-500 dark:bg-red-600 text-white text-sm font-medium rounded-md hover:bg-red-600 dark:hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 dark:focus:ring-offset-gray-800 focus:ring-red-400 dark:focus:ring-red-500 transition-colors duration-200"
+		                className="inline-flex w-full items-center justify-center gap-2 rounded-md border border-red-600 px-4 py-2 text-sm font-medium text-red-600 transition-colors duration-200 hover:bg-red-600/10 focus:outline-none focus:ring-1 focus:ring-red-600 dark:border-red-400 dark:text-red-400 dark:hover:bg-red-400/10 dark:focus:ring-red-400"
 		              >
 		                <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 		                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4" />
@@ -1931,7 +1918,7 @@ const StatusSelect: React.FC<{ current: string; onChange: (v: string) => void; d
   const options = !current || statuses.includes(current) ? statuses : [current, ...statuses];
   return (
     <select
-      className={`w-full h-10 px-3 pr-10 py-2 border border-gray-300 dark:border-gray-600 rounded-md text-sm bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-stone-500 dark:focus:ring-stone-400 focus:border-transparent transition-colors duration-200 ${disabled ? 'opacity-60 cursor-not-allowed' : ''}`}
+      className={`w-full h-10 px-3 pr-10 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-transparent text-sm text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-stone-500 dark:focus:ring-stone-400 focus:border-transparent transition-colors duration-200 ${disabled ? 'opacity-60 cursor-not-allowed' : ''}`}
       value={current}
       onChange={(e) => onChange(e.target.value)}
       disabled={disabled}

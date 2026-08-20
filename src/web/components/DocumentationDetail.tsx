@@ -316,14 +316,14 @@ export default function DocumentationDetail({docs, onRefreshData, dateFormat}: D
                                             type="text"
                                             value={docTitle}
                                             onChange={(e) => setDocTitle(e.target.value)}
-                                            className="text-3xl font-bold text-gray-900 dark:text-gray-100 w-full bg-transparent border border-gray-300 dark:border-gray-600 rounded px-2 py-1 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400 focus:border-transparent transition-colors duration-200"
+                                            className="text-3xl font-bold text-gray-900 dark:text-gray-100 w-full bg-transparent border border-gray-300 dark:border-gray-600 rounded px-2 py-1 focus:outline-none focus:ring-2 focus:ring-gray-900 dark:focus:ring-gray-300 focus:border-transparent transition-colors duration-200"
                                             placeholder="Document title"
                                         />
                                         <input
                                             type="text"
                                             value={docPath}
                                             onChange={(e) => setDocPath(e.target.value)}
-                                            className="w-full max-w-md bg-transparent border border-gray-300 dark:border-gray-600 rounded px-2 py-1 text-sm text-gray-700 dark:text-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400 focus:border-transparent transition-colors duration-200"
+                                            className="w-full max-w-md bg-transparent border border-gray-300 dark:border-gray-600 rounded px-2 py-1 text-sm text-gray-700 dark:text-gray-300 focus:outline-none focus:ring-2 focus:ring-gray-900 dark:focus:ring-gray-300 focus:border-transparent transition-colors duration-200"
                                             placeholder="guides/setup"
                                         />
                                     </div>
@@ -372,7 +372,7 @@ export default function DocumentationDetail({docs, onRefreshData, dateFormat}: D
                                 {!isEditing ? (
                                     <button
                                         onClick={handleEdit}
-                                        className="inline-flex items-center px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg text-sm font-medium text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400 focus:ring-offset-2 dark:focus:ring-offset-gray-900 transition-colors duration-200"
+                                        className="inline-flex items-center px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg text-sm font-medium text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-gray-900 dark:focus:ring-gray-300 focus:ring-offset-2 dark:focus:ring-offset-gray-900 transition-colors duration-200"
                                     >
                                         <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor"
                                              viewBox="0 0 24 24">
@@ -394,7 +394,7 @@ export default function DocumentationDetail({docs, onRefreshData, dateFormat}: D
                                             disabled={!hasChanges || isSaving}
 	                                            className={`inline-flex items-center px-4 py-2 rounded-lg text-sm font-medium focus:outline-none focus:ring-2 focus:ring-offset-2 dark:focus:ring-offset-gray-900 transition-colors duration-200 ${
 	                                                hasChanges && !isSaving
-	                                                    ? 'bg-blue-600 dark:bg-blue-600 text-white hover:bg-blue-700 dark:hover:bg-blue-700 focus:ring-blue-500 dark:focus:ring-blue-400'
+	                                                    ? 'bg-blue-600 dark:bg-blue-600 text-white hover:bg-blue-700 dark:hover:bg-blue-700 focus:ring-gray-900 dark:focus:ring-gray-300'
 	                                                    : 'bg-gray-300 dark:bg-gray-700 text-gray-500 dark:text-gray-400'
 	                                            }`}
 	                                        >

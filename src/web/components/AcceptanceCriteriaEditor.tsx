@@ -78,15 +78,17 @@ const AcceptanceCriteriaEditor: React.FC<Props> = ({
 
   return (
     <div className="space-y-2">
-      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1 transition-colors duration-200">
-        {label}
-      </label>
+      {label ? (
+        <label className="mb-1 block text-sm font-medium text-gray-600 transition-colors duration-200 dark:text-gray-400">
+          {label}
+        </label>
+      ) : null}
       <ul className="space-y-2">
         {criteria.map((c) => (
           <li key={c.index} className="flex items-center gap-2">
             <input
               type="checkbox"
-              className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+              className="h-4 w-4 accent-gray-900 focus:ring-gray-900 dark:accent-gray-300 border-gray-300 rounded"
               checked={c.checked}
               onChange={(e) => handleToggle(c.index, e.target.checked)}
               disabled={disableToggle}
@@ -97,7 +99,7 @@ const AcceptanceCriteriaEditor: React.FC<Props> = ({
               value={c.text}
               onChange={(e) => handleTextChange(c.index, e.target.value)}
               onInput={(e) => autoResize(e.currentTarget)}
-              className="flex-1 px-2 py-1 text-sm border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-stone-500 dark:focus:ring-stone-400 focus:border-transparent transition-colors duration-200 resize-none overflow-hidden leading-5"
+              className="flex-1 px-2 py-1 text-sm border border-gray-300 dark:border-gray-600 rounded-md bg-transparent text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-1 focus:ring-gray-900 dark:focus:ring-gray-300 focus:border-transparent transition-colors duration-200 resize-none overflow-hidden leading-5"
             />
             <button
               type="button"
@@ -116,12 +118,12 @@ const AcceptanceCriteriaEditor: React.FC<Props> = ({
             onChange={(e) => setNewCriterion(e.target.value)}
             onInput={(e) => autoResize(e.currentTarget)}
             placeholder="New criterion"
-            className="flex-1 px-2 py-1 text-sm border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-stone-500 dark:focus:ring-stone-400 focus:border-transparent transition-colors duration-200 resize-none overflow-hidden leading-5"
+            className="flex-1 px-2 py-1 text-sm border border-gray-300 dark:border-gray-600 rounded-md bg-transparent text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-1 focus:ring-gray-900 dark:focus:ring-gray-300 focus:border-transparent transition-colors duration-200 resize-none overflow-hidden leading-5"
           />
           <button
             type="button"
             onClick={handleAdd}
-            className="px-2 py-1 text-sm bg-blue-500 dark:bg-blue-600 text-white rounded-md hover:bg-blue-600 dark:hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 dark:focus:ring-offset-gray-800 focus:ring-blue-400 dark:focus:ring-blue-500 transition-colors duration-200"
+            className="rounded-md border border-gray-300 px-2 py-1 text-sm text-gray-700 transition-colors duration-200 hover:bg-gray-100 focus:outline-none focus:ring-1 focus:ring-gray-900 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-800 dark:focus:ring-gray-300"
           >
             Add
           </button>

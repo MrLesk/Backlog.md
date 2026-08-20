@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it } from "bun:test";
 import { JSDOM } from "jsdom";
+import { installDomGlobals } from "./dom-globals.ts";
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { BrowserRouter } from "react-router-dom";
@@ -63,6 +64,7 @@ const setupDom = (url = "http://localhost/board") => {
 	globalThis.window = dom.window as unknown as Window & typeof globalThis;
 	globalThis.document = dom.window.document as unknown as Document;
 	globalThis.navigator = dom.window.navigator as unknown as Navigator;
+	installDomGlobals(dom);
 	globalThis.localStorage = dom.window.localStorage as unknown as Storage;
 
 	if (!window.matchMedia) {
@@ -286,10 +288,10 @@ describe("Web board filters", () => {
 				},
 				onTasksUpdated: (changedTasks) => publishedTasks.push(...changedTasks),
 			});
-			const targetHeading = Array.from(container.querySelectorAll("h3")).find(
-				(heading) => heading.textContent === "In Progress",
-			);
-			const targetColumn = targetHeading?.closest(".rounded-lg");
+			// Addressed by the data attribute rather than by a layout class, so
+			// restyling the column cannot silently stop this test dropping on it.
+			const targetColumn = container.querySelector('[data-column-status="In Progress"]');
+			expect(targetColumn).toBeTruthy();
 			const dropEvent = new window.Event("drop", { bubbles: true, cancelable: true });
 			Object.defineProperty(dropEvent, "dataTransfer", {
 				value: {
@@ -391,11 +393,75 @@ describe("Web board filters", () => {
 			"All types",
 			"Bug",
 			"Customer Request",
+			"Untyped",
 		]);
 		expect(typeSelect.value).toBe("Customer Request");
 		expect(container.textContent).toContain("Interview customers");
 		expect(container.textContent).not.toContain("Fix checkout");
 		expect(container.textContent).not.toContain("Unclassified follow-up");
+	});
+
+	it("only offers task types that some task actually has", async () => {
+		const customTasks = [
+			createTask({ id: "task-301", title: "Fix checkout", type: "Bug" }),
+			createTask({ id: "task-302", title: "Unclassified follow-up" }),
+		];
+		const container = renderBoardPage("http://localhost/board", {
+			tasks: customTasks,
+			// "Feature" and "Chore" are configured but no task carries them.
+			availableTypes: ["Bug", "Feature", "Chore"],
+		});
+
+		const typeSelect = getSelectByFirstOption(container, "All types");
+		expect(Array.from(typeSelect.options).map((option) => option.textContent)).toEqual([
+			"All types",
+			"Bug",
+			"Untyped",
+		]);
+	});
+
+	it("hides the type filter when no task has a type", async () => {
+		const container = renderBoardPage("http://localhost/board", {
+			tasks: [
+				createTask({ id: "task-311", title: "Untyped one" }),
+				createTask({ id: "task-312", title: "Untyped two" }),
+			],
+			availableTypes: ["Bug", "Feature"],
+		});
+
+		const typeSelects = Array.from(container.querySelectorAll("select")).filter(
+			(select) => select.getAttribute("aria-label") === "Filter board by type",
+		);
+		expect(typeSelects).toHaveLength(0);
+		expectVisibleTasks(container, ["Untyped one", "Untyped two"]);
+	});
+
+	it("filters to the untyped tasks and explains an empty result", async () => {
+		const customTasks = [
+			createTask({ id: "task-321", title: "Fix checkout", type: "Bug" }),
+			createTask({ id: "task-322", title: "Unclassified follow-up" }),
+		];
+		const container = renderBoardPage("http://localhost/board?type=__untyped__", {
+			tasks: customTasks,
+			availableTypes: ["Bug"],
+		});
+
+		const typeSelect = getSelectByFirstOption(container, "All types");
+		expect(typeSelect.value).toBe("__untyped__");
+		expect(container.textContent).toContain("Unclassified follow-up");
+		expect(container.textContent).not.toContain("Fix checkout");
+		// The untyped filter matched something, so no empty-state banner.
+		expect(container.textContent).not.toContain("No tasks match the current filters");
+	});
+
+	it("says why the board is blank when filters hide every task", async () => {
+		const container = renderBoardPage("http://localhost/board?assignee=nobody-has-this", {
+			tasks: [createTask({ id: "task-331", title: "Fix checkout", type: "Bug" })],
+			availableTypes: ["Bug"],
+		});
+
+		expect(container.textContent).toContain("No tasks match the current filters");
+		expect(container.textContent).not.toContain("Fix checkout");
 	});
 
 	it("clears unsupported task type URL values", async () => {

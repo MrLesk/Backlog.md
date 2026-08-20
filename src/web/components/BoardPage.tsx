@@ -3,7 +3,7 @@ import { useSearchParams } from 'react-router-dom';
 import Board from './Board';
 import { type Milestone, type Task } from '../../types';
 import { resolvePriorityValue } from '../../utils/priority-config';
-import { resolveTaskTypeValue } from '../../utils/task-type-config';
+import { resolveTaskTypeValue, UNTYPED_FILTER_VALUE } from '../../utils/task-type-config';
 import { type LaneMode } from '../lib/lanes';
 
 interface BoardPageProps {
@@ -140,7 +140,12 @@ export default function BoardPage({
 	const rawFilterPriority = searchParams.get('priority') ?? '';
 	const filterPriority = resolvePriorityValue(rawFilterPriority, availablePriorities) ?? '';
 	const rawFilterType = searchParams.get('type') ?? '';
-	const filterType = resolveTaskTypeValue(rawFilterType, availableTypes) ?? '';
+	// __untyped__ is a filter-only value, so it is not in the configured type list
+	// and would otherwise be treated as invalid and stripped from the URL.
+	const filterType =
+		rawFilterType === UNTYPED_FILTER_VALUE
+			? UNTYPED_FILTER_VALUE
+			: (resolveTaskTypeValue(rawFilterType, availableTypes) ?? '');
 
 	useEffect(() => {
 		if (isLoading || (rawFilterPriority === filterPriority && rawFilterType === filterType)) {

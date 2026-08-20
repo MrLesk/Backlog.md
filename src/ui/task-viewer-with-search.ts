@@ -946,6 +946,10 @@ export async function viewTaskEnhanced(
 			left: 1,
 			width: "100%-4",
 			height: "100%-3",
+			// Task titles are the reason this pane exists; clipping them hides the
+			// only part of a row the user actually reads.
+			wrap: true,
+			wrapIndent: "  ",
 			itemRenderer: (task: Task) => formatTaskViewerListItem(task, getTaskListSummaryWidth(), dateFormat),
 			onSelect: (selected: Task | Task[]) => {
 				const selectedTask = Array.isArray(selected) ? selected[0] : selected;

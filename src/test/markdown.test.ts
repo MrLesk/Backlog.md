@@ -909,3 +909,74 @@ Some additional notes.`;
 		});
 	});
 });
+
+describe("unknown frontmatter fields", () => {
+	const taskWithExtras = `---
+id: task-1
+title: "Task with extras"
+status: "To Do"
+assignee: []
+created_date: '2025-06-03'
+labels: []
+dependencies: []
+kanban_order: a5
+custom_map:
+  nested: value
+---
+
+## Description
+
+<!-- SECTION:DESCRIPTION:BEGIN -->
+Body text.
+<!-- SECTION:DESCRIPTION:END -->`;
+
+	it("keeps unrecognized fields when a task is parsed", () => {
+		const task = parseTask(taskWithExtras);
+
+		expect(task.extraFrontmatter).toEqual({
+			kanban_order: "a5",
+			custom_map: { nested: "value" },
+		});
+	});
+
+	it("writes unrecognized fields back out when a task is serialized", () => {
+		const serialized = serializeTask(parseTask(taskWithExtras));
+
+		expect(serialized).toContain("kanban_order: a5");
+		expect(serialized).toContain("nested: value");
+	});
+
+	it("lets a recognized field win over an unrecognized one of the same name", () => {
+		const task = parseTask(taskWithExtras);
+		task.extraFrontmatter = { ...task.extraFrontmatter, status: "Done" };
+
+		const serialized = serializeTask(task);
+
+		expect(serialized).toContain("status: To Do");
+		expect(serialized).not.toContain("status: Done");
+	});
+
+	it("leaves a task without unrecognized fields byte for byte unchanged", () => {
+		const plainTask = `---
+id: task-2
+title: "Plain task"
+status: "To Do"
+assignee: []
+created_date: '2025-06-03'
+labels: []
+dependencies: []
+---
+
+## Description
+
+<!-- SECTION:DESCRIPTION:BEGIN -->
+Body text.
+<!-- SECTION:DESCRIPTION:END -->`;
+
+		const once = serializeTask(parseTask(plainTask));
+		const twice = serializeTask(parseTask(once));
+
+		expect(twice).toBe(once);
+		expect(once).not.toContain("extraFrontmatter");
+	});
+});
