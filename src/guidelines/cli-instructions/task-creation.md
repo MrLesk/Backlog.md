@@ -15,7 +15,7 @@ Recommended CLI commands:
 - `backlog task list --type {{TASK_TYPE:1}} --plain`
 - `backlog task list --search "desktop app" --labels frontend,bug --limit 20 --plain`
 
-Avoid broad unfiltered listing when the project may have many tasks. Use `--status`, `--exclude-status`, `--type`, `--assignee`, `--unassigned`, `--parent`, `--priority`, `--labels`, `--search`, or `--limit` where applicable. Repeat `--exclude-status` or pass comma-separated configured statuses to exclude multiple states. Repeat `--type` or pass comma-separated configured task types to include multiple types.
+Avoid broad unfiltered listing when the project may have many tasks. Use `--status`, `--exclude-status`, `--type`, `--project`, `--assignee`, `--unassigned`, `--parent`, `--priority`, `--labels`, `--search`, or `--limit` where applicable. Repeat `--exclude-status` or pass comma-separated configured statuses to exclude multiple states. Repeat `--type` or pass comma-separated configured task types to include multiple types. `--project` filters by configured project in monorepo-style backlogs; it has no effect and is not shown in `--help` when no `projects:` list is configured.
 
 Use `backlog task view {{TASK_ID:123}} --plain` to read full context for likely matches.
 

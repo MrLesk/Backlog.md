@@ -8,6 +8,7 @@ import { watchConfigFile } from "../utils/config-watcher.ts";
 import { documentIdKey, documentIdsEqual } from "../utils/document-id.ts";
 import { normalizeDocumentRelativePath } from "../utils/document-path.ts";
 import { normalizePriorityValue } from "../utils/priority-config.ts";
+import { matchesProjectFilter } from "../utils/project-config.ts";
 import { canonicalTaskId, normalizeTaskId, normalizeTaskIdentity, taskIdsEqual } from "../utils/task-path.ts";
 import { sortByTaskId } from "../utils/task-sorting.ts";
 import { matchesTaskTypeFilter } from "../utils/task-type-config.ts";
@@ -308,6 +309,9 @@ export class ContentStore {
 		}
 		if (filter?.type) {
 			tasks = tasks.filter((task) => matchesTaskTypeFilter(task.type, filter.type));
+		}
+		if (filter?.project) {
+			tasks = tasks.filter((task) => matchesProjectFilter(task.project, filter.project));
 		}
 		if (filter?.assignee) {
 			const assignee = filter.assignee;
@@ -864,11 +868,7 @@ export class ContentStore {
 			return false;
 		}
 
-		const reconciledTaskCorpus = this.mergeConcurrentWorkingCopyCorpus(
-			taskCorpus,
-			itemVersions.tasks,
-			targetRoot,
-		);
+		const reconciledTaskCorpus = this.mergeConcurrentWorkingCopyCorpus(taskCorpus, itemVersions.tasks, targetRoot);
 		const mergedTasks = this.mergeConcurrentChanges(
 			reconciledTaskCorpus.tasks,
 			before.tasks,
@@ -1579,11 +1579,7 @@ export class ContentStore {
 				!this.isContentRefreshCurrent("tasks", generation)
 			)
 				return false;
-			const reconciledCorpus = this.mergeConcurrentWorkingCopyCorpus(
-				corpus,
-				before.versions,
-				targetRoot,
-			);
+			const reconciledCorpus = this.mergeConcurrentWorkingCopyCorpus(corpus, before.versions, targetRoot);
 			const merged = this.mergeConcurrentChanges(
 				reconciledCorpus.tasks,
 				before.items,
@@ -1729,12 +1725,7 @@ export class ContentStore {
 		beforeVersions: ReadonlyMap<string, number>,
 		targetRoot: string,
 	): { activeTasks: Task[]; completedTasks: Task[] } {
-		const activeTasks = this.mergeConcurrentTaskCorpus(
-			loadedActiveTasks,
-			this.activeTasks,
-			beforeVersions,
-			targetRoot,
-		);
+		const activeTasks = this.mergeConcurrentTaskCorpus(loadedActiveTasks, this.activeTasks, beforeVersions, targetRoot);
 		const completedTasks = this.mergeConcurrentTaskCorpus(
 			loadedCompletedTasks,
 			this.completedTasks,

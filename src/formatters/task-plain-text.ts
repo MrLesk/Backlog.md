@@ -94,6 +94,9 @@ export function formatTaskPlainText(task: Task, options: TaskPlainTextOptions = 
 	if (task.type) {
 		lines.push(`Type: ${task.type}`);
 	}
+	if (task.project) {
+		lines.push(`Project: ${task.project}`);
+	}
 	if (task.ordinal !== undefined) {
 		lines.push(`Ordinal: ${task.ordinal}`);
 	}
