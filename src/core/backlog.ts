@@ -269,6 +269,7 @@ export class Core {
 	} | null = null;
 	private activeBranchRefreshPromise: Promise<void> | null = null;
 	private remoteRefRefreshPromise: Promise<void> | null = null;
+	private remoteRefRefreshStartedAt = 0;
 	private lastRemoteRefRefreshAt = 0;
 
 	constructor(projectRoot: string, options?: { enableWatchers?: boolean }) {
@@ -591,29 +592,40 @@ export class Core {
 		// Reads may reuse a recent fetch, but task ID allocation may not: an ID that
 		// looks free only because remote refs are up to a minute old is an ID another
 		// clone has already published.
-		if (options?.force !== true && Date.now() - this.lastRemoteRefRefreshAt < REMOTE_REF_REFRESH_INTERVAL_MS) {
+		const requestedAt = Date.now();
+		if (options?.force !== true && requestedAt - this.lastRemoteRefRefreshAt < REMOTE_REF_REFRESH_INTERVAL_MS) {
 			return;
 		}
 
-		if (!this.remoteRefRefreshPromise) {
-			const refreshPromise = (async () => {
-				git.setConfig(config);
-				try {
-					await git.fetch();
-				} catch (error) {
-					console.error("Failed to refresh remote refs:", error);
-				} finally {
-					if (this.git === git) this.lastRemoteRefRefreshAt = Date.now();
-				}
-			})();
-			this.remoteRefRefreshPromise = refreshPromise;
-			const clearRefreshPromise = () => {
-				if (this.remoteRefRefreshPromise === refreshPromise) this.remoteRefRefreshPromise = null;
-			};
-			void refreshPromise.then(clearRefreshPromise, clearRefreshPromise);
-		}
+		// A forced request must observe refs at least as fresh as requestedAt. Joining
+		// an in-flight non-forced fetch that started before requestedAt isn't enough --
+		// a push landing while that fetch is in flight would be invisible to it -- so
+		// loop once more to trigger a fetch that starts at/after requestedAt.
+		while (true) {
+			if (!this.remoteRefRefreshPromise) {
+				this.remoteRefRefreshStartedAt = Date.now();
+				const refreshPromise = (async () => {
+					git.setConfig(config);
+					try {
+						await git.fetch();
+					} catch (error) {
+						console.error("Failed to refresh remote refs:", error);
+					} finally {
+						if (this.git === git) this.lastRemoteRefRefreshAt = Date.now();
+					}
+				})();
+				this.remoteRefRefreshPromise = refreshPromise;
+				const clearRefreshPromise = () => {
+					if (this.remoteRefRefreshPromise === refreshPromise) this.remoteRefRefreshPromise = null;
+				};
+				void refreshPromise.then(clearRefreshPromise, clearRefreshPromise);
+			}
 
-		await this.remoteRefRefreshPromise;
+			const joinedRefreshStartedAt = this.remoteRefRefreshStartedAt;
+			await this.remoteRefRefreshPromise;
+
+			if (options?.force !== true || joinedRefreshStartedAt >= requestedAt) return;
+		}
 	}
 
 	/** Refresh the existing cross-branch store only when relevant config or refs changed. */
@@ -1077,6 +1089,7 @@ export class Core {
 		this.activeBranchSnapshotPromise = null;
 		this.activeBranchRefreshPromise = null;
 		this.remoteRefRefreshPromise = null;
+		this.remoteRefRefreshStartedAt = 0;
 		this.lastRemoteRefRefreshAt = 0;
 	}
 

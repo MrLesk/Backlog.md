@@ -323,6 +323,72 @@ describe("Core shared task corpus regressions", () => {
 		expect(fetches).toBe(1);
 	});
 
+	it("allocates past a remote task pushed while a non-forced fetch is in flight", async () => {
+		await saveRemoteEnabledConfig("Core allocation in-flight freshness");
+		const originDir = trackDir("origin");
+		await mkdir(originDir, { recursive: true });
+		await $`git init --bare -b main`.cwd(originDir).quiet();
+		await writeTask(core.filesystem.tasksDir, "task-1 - Local.md", task("TASK-1", "Local task"));
+		await commit("Add local task", recentCommitDate(2));
+		await $`git remote add origin ${originDir}`.cwd(testDir).quiet();
+		await $`git push -u origin main`.cwd(testDir).quiet();
+
+		const git = core.gitOps;
+		const originalFetch = git.fetch.bind(git);
+		let fetches = 0;
+		let releaseFirstFetch: () => void = () => {};
+		const firstFetchStarted = new Promise<void>((resolve) => {
+			git.fetch = async (...args) => {
+				fetches += 1;
+				const isFirstFetch = fetches === 1;
+				// Capture the remote state now (before any later push), but withhold
+				// resolution until released, so the caller is still "in flight" per the
+				// remoteRefRefreshPromise coalescing while the push below lands.
+				const result = await originalFetch(...args);
+				if (isFirstFetch) {
+					resolve();
+					await new Promise<void>((releaseResolve) => {
+						releaseFirstFetch = releaseResolve;
+					});
+				}
+				return result;
+			};
+		});
+
+		try {
+			// A read starts a non-forced fetch and blocks in flight.
+			const readPromise = core.loadTasks();
+			await firstFetchStarted;
+
+			// A contributor pushes a new task while that fetch is still running, so it
+			// is invisible to the fetch already in flight.
+			const contributorDir = trackDir("contributor");
+			await $`git clone ${originDir} ${contributorDir}`.quiet();
+			await $`git switch -c contributed`.cwd(contributorDir).quiet();
+			await writeTask(
+				join(contributorDir, "backlog", "tasks"),
+				"task-2 - Contributed.md",
+				task("TASK-2", "Contributed"),
+			);
+			await $`git add -A`.cwd(contributorDir).quiet();
+			await $`git -c user.name="Backlog Test" -c user.email="test@example.com" commit -m "Contribute task"`
+				.cwd(contributorDir)
+				.quiet();
+			await $`git push -u origin contributed`.cwd(contributorDir).quiet();
+
+			// A forced allocation joins the in-flight fetch; it must not treat that
+			// stale-at-start fetch as sufficient once it observes the push above.
+			const allocationPromise = core.generateNextId();
+			releaseFirstFetch();
+
+			const [nextId] = await Promise.all([allocationPromise, readPromise]);
+			expect(nextId).toBe("TASK-3");
+		} finally {
+			git.fetch = originalFetch;
+		}
+		expect(fetches).toBe(2);
+	});
+
 	it("cancels a load before it starts a remote refresh", async () => {
 		await saveRemoteEnabledConfig("Core cancellation before fetch");
 		const git = core.gitOps;
