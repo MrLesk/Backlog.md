@@ -78,6 +78,7 @@ Create all tasks in the same session to maintain consistency and context.
 - Include negative or edge scenarios when relevant
 - Capture testing expectations explicitly
 - Include documentation expectations in the same task (no deferring to follow-up tasks)
+- Reflect real needs only: prefer fewer true criteria over invented scope. For an observable bug, the reported failure mode is usually enough.
 
 **Definition of Done defaults (optional):**
 - Project-level defaults are managed with `definition_of_done_defaults_get` / `definition_of_done_defaults_upsert`
@@ -109,7 +110,7 @@ If you will continue from task creation into implementation in the same session,
 ### Common Anti-patterns to Avoid
 
 - Creating a single task called "Build desktop application" with 10+ acceptance criteria
-- Adding implementation steps to acceptance criteria
+- Adding implementation steps to acceptance criteria, or inventing criteria to look thorough
 - Creating a task before understanding if it needs to be split
 - Deferring tests or documentation to "later tasks" (e.g., "Add tests/docs in a follow-up")
 
