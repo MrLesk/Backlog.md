@@ -286,10 +286,10 @@ describe("Web board filters", () => {
 				},
 				onTasksUpdated: (changedTasks) => publishedTasks.push(...changedTasks),
 			});
-			const targetHeading = Array.from(container.querySelectorAll("h3")).find(
-				(heading) => heading.textContent === "In Progress",
-			);
-			const targetColumn = targetHeading?.closest(".rounded-lg");
+			// Addressed by the data attribute rather than by a layout class, so
+			// restyling the column cannot silently stop this test dropping on it.
+			const targetColumn = container.querySelector('[data-column-status="In Progress"]');
+			expect(targetColumn).toBeTruthy();
 			const dropEvent = new window.Event("drop", { bubbles: true, cancelable: true });
 			Object.defineProperty(dropEvent, "dataTransfer", {
 				value: {

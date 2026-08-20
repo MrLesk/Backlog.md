@@ -726,10 +726,10 @@ const Board: React.FC<BoardProps> = ({
 
                 {/* Lane content - columns */}
                 {!isCollapsed && (
-                  <div className="p-4">
-                    <div className="grid gap-4" style={{ gridTemplateColumns: `repeat(${visibleStatuses.length}, minmax(0, 1fr))` }}>
+                  <div>
+                    <div className="grid" style={{ gridTemplateColumns: `repeat(${visibleStatuses.length}, minmax(0, 1fr))` }}>
                       {visibleStatuses.map((status) => (
-                        <div key={`${lane.key}-${status}`} className="min-w-0">
+                        <div key={`${lane.key}-${status}`} className="min-w-0 border-l border-gray-200 first:border-l-0 dark:border-gray-700">
                           <TaskColumn
                             title={status}
                             tasks={getTasksForLane(lane.key, status)}
@@ -757,10 +757,10 @@ const Board: React.FC<BoardProps> = ({
           })}
         </div>
       ) : (
-        <div className="overflow-x-auto pb-2">
-          <div className="flex flex-row flex-nowrap gap-4 w-full">
+        <div className="overflow-x-auto border-y border-gray-200 pb-2 dark:border-gray-700">
+          <div className="flex w-full flex-row flex-nowrap">
             {visibleStatuses.map((status) => (
-              <div key={status} className="flex-1 min-w-[16rem] max-w-[24rem]">
+              <div key={status} className="min-w-[16rem] flex-1 border-l border-gray-200 first:border-l-0 dark:border-gray-700">
                 <TaskColumn
                   title={status}
                   tasks={getTasksForLane(DEFAULT_LANE_KEY, status)}

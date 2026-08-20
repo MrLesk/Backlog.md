@@ -118,18 +118,21 @@ const TaskColumn: React.FC<TaskColumnProps> = ({
     emitColumnReorder(sortByCreatedDate(tasks, direction).map(t => t.id));
   };
 
-  const getStatusBadgeClass = (status: string) => {
+  // vibe-kanban marks a column with a small coloured dot rather than a
+  // filled pill, so the status reads at a glance without adding a second
+  // block of colour to a header that already has a title and a count.
+  const getStatusDotClass = (status: string) => {
     const statusLower = status.toLowerCase();
     if (statusLower.includes('done') || statusLower.includes('complete')) {
-      return 'bg-green-100 dark:bg-green-900 text-green-800 dark:text-green-200 transition-colors duration-200';
+      return 'bg-green-500';
     }
     if (statusLower.includes('progress') || statusLower.includes('doing')) {
-      return 'bg-yellow-100 dark:bg-yellow-900 text-yellow-800 dark:text-yellow-200 transition-colors duration-200';
+      return 'bg-amber-500';
     }
     if (statusLower.includes('blocked') || statusLower.includes('stuck')) {
-      return 'bg-red-100 dark:bg-red-900 text-red-800 dark:text-red-200 transition-colors duration-200';
+      return 'bg-red-500';
     }
-    return 'bg-gray-100 dark:bg-gray-900 text-gray-800 dark:text-gray-200 transition-colors duration-200';
+    return 'bg-gray-400 dark:bg-gray-500';
   };
 
   const handleDrop = (e: React.DragEvent) => {
@@ -210,24 +213,24 @@ const TaskColumn: React.FC<TaskColumnProps> = ({
 
   return (
     <div
-      className={`rounded-lg p-4 transition-colors duration-200 h-full ${
+      data-column-status={title}
+      className={`flex h-full flex-col transition-colors duration-200 ${
         isEmpty ? 'min-h-24' : 'min-h-96'
       } ${
         isDragOver && (dragSourceStatus !== title || (dragSourceLane ?? null) !== (laneId ?? null))
-          ? 'bg-blue-50 dark:bg-blue-900/20 border border-blue-300 dark:border-blue-600 border-dashed'
-          : isEmpty
-            ? 'bg-gray-50/60 dark:bg-gray-800/25'
-            : 'bg-gray-50 dark:bg-gray-800/40'
+          ? 'bg-blue-50/70 dark:bg-blue-900/15'
+          : ''
       }`}
       onDrop={handleDrop}
       onDragOver={handleDragOverColumn}
       onDragEnter={handleDragEnter}
       onDragLeave={handleDragLeave}
     >
-      <div className="flex items-center justify-between mb-4">
-        <div className="flex items-center gap-2">
-          <h3 className="font-semibold text-gray-900 dark:text-gray-100 transition-colors duration-200">{title}</h3>
-          <span className={`px-2 py-1 text-xs font-medium rounded-circle ${getStatusBadgeClass(title)}`}>
+      <div className="flex items-center justify-between gap-2 border-b border-gray-200 dark:border-gray-700 bg-gray-100/70 px-3 py-2 transition-colors duration-200 dark:bg-gray-800/50">
+        <div className="flex min-w-0 items-center gap-2">
+          <span className={`h-1.5 w-1.5 shrink-0 rounded-circle ${getStatusDotClass(title)}`} aria-hidden="true" />
+          <h3 className="truncate text-sm text-gray-900 transition-colors duration-200 dark:text-gray-100">{title}</h3>
+          <span className="shrink-0 text-xs tabular-nums text-gray-500 dark:text-gray-400">
             {tasks.length}
           </span>
         </div>
@@ -294,7 +297,7 @@ const TaskColumn: React.FC<TaskColumnProps> = ({
         )}
       </div>
       
-      <div className="space-y-3">
+      <div className="flex-1 space-y-2 px-3 py-3">
         {tasks.map((task, index) => (
           <div 
             key={task.id} 
@@ -317,7 +320,7 @@ const TaskColumn: React.FC<TaskColumnProps> = ({
           >
             {/* Drop indicator for before this task */}
             {dropPosition?.index === index && dropPosition.position === 'before' && (
-              <div className="h-1 bg-blue-500 rounded-full mb-2 animate-pulse" />
+              <div className="mb-2 h-0.5 bg-blue-500" />
             )}
             
             <TaskCard
@@ -341,22 +344,22 @@ const TaskColumn: React.FC<TaskColumnProps> = ({
             
             {/* Drop indicator for after this task */}
             {dropPosition?.index === index && dropPosition.position === 'after' && (
-              <div className="h-1 bg-blue-500 rounded-full mt-2 animate-pulse" />
+              <div className="mt-2 h-0.5 bg-blue-500" />
             )}
           </div>
         ))}
         
         {/* Drop zone indicator - only show in different columns */}
         {isDragOver && dragSourceStatus !== title && (
-          <div className="border-2 border-blue-400 dark:border-blue-500 border-dashed rounded-md bg-blue-50 dark:bg-blue-900/20 p-4 text-center transition-colors duration-200">
-            <div className="text-blue-600 dark:text-blue-400 text-sm font-medium transition-colors duration-200">
+          <div className="border border-dashed border-blue-400 bg-blue-50 p-4 text-center transition-colors duration-200 dark:border-blue-500 dark:bg-blue-900/20">
+            <div className="text-sm text-blue-600 transition-colors duration-200 dark:text-blue-400">
               Drop task here to change status
             </div>
           </div>
         )}
         
         {isEmpty && !isDragOver && (
-          <div className="rounded-md border border-dashed border-gray-300 py-6 text-center text-xs text-gray-400 transition-colors duration-200 dark:border-gray-600 dark:text-gray-500">
+          <div className="border border-dashed border-gray-300 py-6 text-center text-xs text-gray-400 transition-colors duration-200 dark:border-gray-600 dark:text-gray-500">
             {dragSourceStatus && dragSourceStatus !== title ? `Drop to move` : `No tasks`}
           </div>
         )}

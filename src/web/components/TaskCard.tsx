@@ -54,12 +54,15 @@ const TaskCard: React.FC<TaskCardProps> = ({ task, onEdit, onDragStart, onDragEn
     onDragEnd?.();
   };
 
-  const getPriorityClass = (priority?: string) => {
+  // The old thick left border was the only piece of chrome on the card.
+  // vibe-kanban carries this kind of state on a dot instead, which keeps
+  // the card a plain rectangle and leaves the priority legible.
+  const getPriorityDotClass = (priority?: string) => {
     switch (priority) {
-      case 'high': return 'border-l-4 border-l-red-500 dark:border-l-red-400';
-      case 'medium': return 'border-l-4 border-l-yellow-500 dark:border-l-yellow-400';
-      case 'low': return 'border-l-4 border-l-green-500 dark:border-l-green-400';
-      default: return 'border-l-4 border-l-gray-300 dark:border-l-gray-600';
+      case 'high': return 'bg-red-500';
+      case 'medium': return 'bg-amber-500';
+      case 'low': return 'bg-green-500';
+      default: return 'bg-gray-300 dark:bg-gray-600';
     }
   };
 
@@ -82,7 +85,7 @@ const TaskCard: React.FC<TaskCardProps> = ({ task, onEdit, onDragStart, onDragEn
   const getPriorityBadge = (priority?: string) => {
     switch (priority) {
       case 'high': return { bg: 'bg-red-100 dark:bg-red-900/40', text: 'text-red-700 dark:text-red-300', label: 'High' };
-      case 'medium': return { bg: 'bg-yellow-100 dark:bg-yellow-900/40', text: 'text-yellow-700 dark:text-yellow-300', label: 'Med' };
+      case 'medium': return { bg: 'bg-amber-100 dark:bg-amber-900/40', text: 'text-amber-700 dark:text-amber-300', label: 'Med' };
       case 'low': return { bg: 'bg-green-100 dark:bg-green-900/40', text: 'text-green-700 dark:text-green-300', label: 'Low' };
       default:
         return priority
@@ -99,7 +102,7 @@ const TaskCard: React.FC<TaskCardProps> = ({ task, onEdit, onDragStart, onDragEn
     <div className="relative">
       {/* Branch tooltip when trying to drag cross-branch task */}
       {showBranchTooltip && isFromOtherBranch && (
-        <div className="absolute -top-12 left-1/2 transform -translate-x-1/2 z-50 px-3 py-2 bg-gray-900 dark:bg-gray-700 text-white text-xs rounded-md shadow-lg whitespace-nowrap">
+        <div className="absolute -top-12 left-1/2 transform -translate-x-1/2 z-50 px-3 py-2 bg-gray-900 dark:bg-gray-700 text-white text-xs rounded-sm shadow-lg whitespace-nowrap">
           <div className="flex items-center gap-1">
             <svg className="w-3.5 h-3.5 text-amber-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
@@ -111,12 +114,12 @@ const TaskCard: React.FC<TaskCardProps> = ({ task, onEdit, onDragStart, onDragEn
       )}
 
       <div
-        className={`bg-white dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-md p-3 mb-2 shadow-sm transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400 ${
-          isFromOtherBranch 
-            ? 'opacity-75 cursor-not-allowed border-dashed' 
-            : 'cursor-pointer hover:shadow-md dark:hover:shadow-lg hover:border-gray-400 dark:hover:border-gray-500'
-        } ${getPriorityClass(task.priority)} ${
-          isDragging ? 'opacity-50 transform rotate-2 scale-105' : ''
+        className={`rounded-sm border border-gray-200 bg-white p-3 transition-colors duration-200 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-blue-500 dark:border-gray-700 dark:bg-gray-800 ${
+          isFromOtherBranch
+            ? 'cursor-not-allowed border-dashed opacity-75'
+            : 'cursor-pointer hover:border-gray-400 dark:hover:border-gray-500'
+        } ${
+          isDragging ? 'opacity-50' : ''
         }`}
         draggable={!isFromOtherBranch}
 		role="button"
@@ -147,13 +150,17 @@ const TaskCard: React.FC<TaskCardProps> = ({ task, onEdit, onDragStart, onDragEn
         {/* Header row with task metadata */}
         <div className="flex items-center justify-between gap-2 mb-1.5">
           <div className="flex min-w-0 items-center gap-2">
-            <span className="shrink-0 text-xs text-gray-400 dark:text-gray-500 font-mono transition-colors duration-200">{task.id}</span>
+            <span
+              className={`h-1.5 w-1.5 shrink-0 rounded-circle ${getPriorityDotClass(task.priority)}`}
+              title={task.priority ? `${task.priority} priority` : 'no priority'}
+            />
+            <span className="shrink-0 font-mono text-xs text-gray-500 transition-colors duration-200 dark:text-gray-400">{task.id}</span>
             <TaskTypeBadge type={task.type} availableTypes={availableTypes} className="min-w-0" />
           </div>
           {(() => {
             const badge = getPriorityBadge(task.priority);
             return badge ? (
-              <span className={`px-1.5 py-0.5 text-[10px] font-semibold rounded-full ${badge.bg} ${badge.text} transition-colors duration-200`}>
+              <span className={`px-1.5 py-0.5 text-[10px] font-medium rounded-sm ${badge.bg} ${badge.text} transition-colors duration-200`}>
                 {badge.label}
               </span>
             ) : null;
@@ -177,7 +184,7 @@ const TaskCard: React.FC<TaskCardProps> = ({ task, onEdit, onDragStart, onDragEn
             {task.labels.slice(0, 3).map(label => (
               <span
                 key={label}
-                className="inline-block px-1.5 py-0.5 text-[10px] bg-gray-100 dark:bg-gray-600 text-gray-600 dark:text-gray-300 rounded-full transition-colors duration-200"
+                className="inline-block rounded-sm bg-gray-100 px-1.5 py-0.5 text-[10px] text-gray-600 transition-colors duration-200 dark:bg-gray-700 dark:text-gray-300"
               >
                 {label}
               </span>
@@ -191,7 +198,7 @@ const TaskCard: React.FC<TaskCardProps> = ({ task, onEdit, onDragStart, onDragEn
         )}
 
         {/* Footer with date */}
-        <div className="flex flex-wrap items-center justify-between gap-x-2 gap-y-1 text-[10px] text-gray-400 dark:text-gray-500 mt-2 pt-1.5 border-t border-gray-100 dark:border-gray-600/50 transition-colors duration-200">
+        <div className="mt-2 flex flex-wrap items-center justify-between gap-x-2 gap-y-1 text-[10px] text-gray-400 transition-colors duration-200 dark:text-gray-500">
           <span>{formatRelativeDate(task.createdDate)}</span>
           {task.dueDate && <span>Due (UTC): {formatStoredUtcDateForDisplay(task.dueDate, dateFormat)}</span>}
           {task.assignee.length > 0 && (

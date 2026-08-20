@@ -579,10 +579,7 @@ const dropTaskIntoStatus = async (
 	targetStatus: string,
 	requestStarted: Promise<void> | undefined,
 ) => {
-	const targetHeading = Array.from(container.querySelectorAll("h3")).find(
-		(heading) => heading.textContent === targetStatus,
-	);
-	const targetColumn = targetHeading?.closest(".rounded-lg");
+	const targetColumn = container.querySelector(`[data-column-status="${targetStatus}"]`);
 	expect(targetColumn).toBeTruthy();
 	const dropEvent = new window.Event("drop", { bubbles: true, cancelable: true });
 	Object.defineProperty(dropEvent, "dataTransfer", {
@@ -889,10 +886,7 @@ describe("task detail routes", () => {
 		});
 		reorder.finish();
 
-		const targetHeading = Array.from(container.querySelectorAll("h3")).find(
-			(heading) => heading.textContent === "To Do",
-		);
-		const targetColumn = targetHeading?.closest(".rounded-lg");
+		const targetColumn = container.querySelector('[data-column-status="To Do"]');
 		const visibleTaskTitles = Array.from(targetColumn?.querySelectorAll("[draggable='true'] h4") ?? []).map(
 			(element) => element.textContent,
 		);
