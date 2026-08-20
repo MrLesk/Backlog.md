@@ -90,6 +90,7 @@ describe("Web task details modal subtask hierarchy", () => {
 		expect(html).toContain("data-subtask-list");
 		expect(html).toContain('data-subtask-id="TASK-2.1"');
 		expect(html).toContain('data-subtask-id="TASK-2.6"');
+		expect(html).toContain('aria-label="Open subtask TASK-2.1: Task TASK-2.1 (Done)"');
 		expect(html).toContain("Child that has children");
 		// Grandchildren are not flattened into the parent's list.
 		expect(html).not.toContain('data-subtask-id="TASK-2.6.1"');
@@ -100,15 +101,17 @@ describe("Web task details modal subtask hierarchy", () => {
 		const html = renderModal(tasks[0] as Task, tasks);
 
 		// Five of six direct children are Done; the sixth has its own children but is not itself Done.
-		expect(html).toContain("Subtasks 5/6");
-		expect(html).not.toContain("Subtasks 6/10");
+		expect(html).toContain("5 of 6 complete");
+		expect(html).not.toContain("6 of 10 complete");
 	});
 
 	it("marks a child that has children of its own with its nested progress", () => {
 		const tasks = nestedCorpus();
 		const html = renderModal(tasks[0] as Task, tasks);
+		const document = new JSDOM(html).window.document;
 
 		expect(html).toContain('data-nested-progress="1/4"');
+		expect(document.querySelector('[data-nested-progress="1/4"]')?.textContent).toBe("1 of 4 complete");
 	});
 
 	it("counts only the configured terminal status as complete", () => {
@@ -121,7 +124,7 @@ describe("Web task details modal subtask hierarchy", () => {
 		const html = renderModal(tasks[0] as Task, tasks);
 
 		// In Progress must not be counted as complete.
-		expect(html).toContain("Subtasks 1/3");
+		expect(html).toContain("1 of 3 complete");
 	});
 
 	it("links each child to its canonical task route", () => {
@@ -136,8 +139,10 @@ describe("Web task details modal subtask hierarchy", () => {
 		const child = tasks.find((task) => task.id === "TASK-2.6") as Task;
 		const html = renderModal(child, tasks);
 
+		expect(html).toContain("data-task-hierarchy");
 		expect(html).toContain('data-parent-task-id="TASK-2"');
 		expect(html).toContain("Parent with six children");
+		expect(html).toContain('aria-label="Open parent task TASK-2: Parent with six children (In Progress)"');
 		expect(html).toContain('data-parent-task-href="/tasks/TASK-2/parent-with-six-children"');
 	});
 

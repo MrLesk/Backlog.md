@@ -155,22 +155,31 @@ const SectionHeader: React.FC<{ title: string; right?: React.ReactNode }> = ({ t
   </div>
 );
 
-// Status is conveyed by colour on the dot; the title attribute carries it for pointer users and
-// the sr-only span for assistive technology, so no visible label competes with the task title.
-const StatusDot: React.FC<{ status: string; statuses: string[] }> = ({ status, statuses }) => {
+const HierarchyStatusBadge: React.FC<{ status: string; statuses: string[] }> = ({ status, statuses }) => {
   const normalized = (status ?? '').toLowerCase();
   const tone = isTerminalStatus(status, statuses)
-    ? 'bg-emerald-500 dark:bg-emerald-400'
+    ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300'
     : normalized.includes('progress')
-      ? 'bg-blue-500 dark:bg-blue-400'
-      : 'bg-gray-300 dark:bg-gray-600';
+      ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300'
+      : 'bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-300';
   return (
-    <span className="flex-shrink-0 leading-none" title={status}>
-      <span className={`inline-block h-2 w-2 rounded-circle ${tone}`} aria-hidden="true" />
-      <span className="sr-only">{status}</span>
+    <span className={`shrink-0 rounded-md px-1.5 py-0.5 text-[11px] font-medium ${tone}`}>
+      {status}
     </span>
   );
 };
+
+const HierarchyChevron: React.FC = () => (
+  <svg
+    className="h-4 w-4 shrink-0 text-gray-400 transition-transform duration-200 group-hover:translate-x-0.5 dark:text-gray-500"
+    fill="none"
+    stroke="currentColor"
+    viewBox="0 0 24 24"
+    aria-hidden="true"
+  >
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+  </svg>
+);
 
 export const TaskDetailsModal: React.FC<Props> = ({
   task,
@@ -670,7 +679,7 @@ export const TaskDetailsModal: React.FC<Props> = ({
 
   // Links inside the modal (dependency chips, auto-linked task IDs in markdown) leave this
   // task behind, so they ask the same question closing does before the navigation happens.
-  const confirmNavigationAwayFromEdits = (event: React.MouseEvent<HTMLDivElement>) => {
+  const confirmNavigationAwayFromEdits = (event: React.MouseEvent<HTMLElement>) => {
     if (!hasUnsavedEdits || event.defaultPrevented || event.button !== 0) return;
     if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
     const link = (event.target as Element | null)?.closest?.("a[href]") as HTMLAnchorElement | null;
@@ -1129,35 +1138,41 @@ export const TaskDetailsModal: React.FC<Props> = ({
       maxWidthClass="max-w-5xl"
       disableEscapeClose={mode === "edit" || mode === "create" || demoting}
       actions={
-		<div className="flex flex-wrap items-center justify-end gap-2">
+		<div className="flex flex-nowrap items-center justify-end gap-2">
 		          {isDoneStatus && mode === "preview" && !isCreateMode && !isFromOtherBranch && (
 		            <button
 		              onClick={handleComplete}
 		              disabled={demoting}
-		              className="inline-flex items-center px-4 py-2 rounded-lg text-sm font-medium text-white bg-emerald-600 dark:bg-emerald-700 hover:bg-emerald-700 dark:hover:bg-emerald-800 focus:outline-none focus:ring-2 focus:ring-emerald-500 dark:focus:ring-emerald-400 focus:ring-offset-2 dark:focus:ring-offset-gray-900 transition-colors duration-200"
+		              className="inline-flex items-center px-3 py-2 sm:px-4 rounded-lg text-sm font-medium text-white bg-emerald-600 dark:bg-emerald-700 hover:bg-emerald-700 dark:hover:bg-emerald-800 focus:outline-none focus:ring-2 focus:ring-emerald-500 dark:focus:ring-emerald-400 focus:ring-offset-2 dark:focus:ring-offset-gray-900 transition-colors duration-200"
 		              title="Move to completed folder (removes from board)"
 		            >
-		              Mark as completed
+		              <span className="sm:hidden">Complete</span>
+		              <span className="hidden sm:inline">Mark as completed</span>
 		            </button>
 		          )}
 		          {canDemote && mode === "preview" && (
 		            <button
 		              onClick={() => void handleDemote()}
 		              disabled={demoting}
-		              className="inline-flex items-center px-4 py-2 rounded-lg text-sm font-medium text-white bg-amber-500 dark:bg-amber-600 hover:bg-amber-600 dark:hover:bg-amber-700 focus:outline-none focus:ring-2 focus:ring-amber-500 dark:focus:ring-amber-400 focus:ring-offset-2 dark:focus:ring-offset-gray-900 transition-colors duration-200 disabled:cursor-not-allowed disabled:opacity-50"
+		              className="inline-flex items-center px-3 py-2 sm:px-4 rounded-lg text-sm font-medium text-white bg-amber-500 dark:bg-amber-600 hover:bg-amber-600 dark:hover:bg-amber-700 focus:outline-none focus:ring-2 focus:ring-amber-500 dark:focus:ring-amber-400 focus:ring-offset-2 dark:focus:ring-offset-gray-900 transition-colors duration-200 disabled:cursor-not-allowed disabled:opacity-50"
 		              title="Move task to drafts"
 		            >
-		              {demoting ? "Demoting…" : "Demote to draft"}
+		              {demoting ? "Demoting…" : (
+		                <>
+		                  <span className="sm:hidden">Demote</span>
+		                  <span className="hidden sm:inline">Demote to draft</span>
+		                </>
+		              )}
 		            </button>
 		          )}
 		          {mode === "preview" && !isCreateMode && !isFromOtherBranch ? (
 		            <button
 		              onClick={() => setMode("edit")}
 		              disabled={demoting}
-		              className="inline-flex items-center px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg text-sm font-medium text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400 focus:ring-offset-2 dark:focus:ring-offset-gray-900 transition-colors duration-200"
+		              className="inline-flex items-center px-3 py-2 sm:px-4 border border-gray-300 dark:border-gray-600 rounded-lg text-sm font-medium text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400 focus:ring-offset-2 dark:focus:ring-offset-gray-900 transition-colors duration-200"
 		              title="Edit"
 		            >
-              <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <svg className="w-4 h-4 mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
                       d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
               </svg>
@@ -1209,6 +1224,44 @@ export const TaskDetailsModal: React.FC<Props> = ({
         </div>
       )}
 
+      {parentTask && task && (
+        <nav
+          aria-label="Task hierarchy"
+          className="mb-4"
+          data-task-hierarchy
+          onClickCapture={confirmNavigationAwayFromEdits}
+        >
+          <ol className="flex flex-wrap items-center gap-x-2 gap-y-1.5 text-sm">
+            <li className="text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
+              Parent
+            </li>
+            <li className="min-w-0 max-w-full">
+              <button
+                type="button"
+                onClick={() => onNavigateToTask?.(parentTask)}
+                disabled={!onNavigateToTask}
+                data-parent-task-id={parentTask.id}
+                data-parent-task-href={createUrlPath('/tasks', parentTask.id, parentTask.title)}
+                className="group inline-flex max-w-full flex-wrap items-center gap-x-2 gap-y-1 rounded-md px-2 py-1 text-left text-gray-700 transition-colors duration-200 hover:bg-gray-100 hover:text-gray-950 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:cursor-default disabled:hover:bg-transparent dark:text-gray-200 dark:hover:bg-gray-700 dark:hover:text-white"
+                aria-label={`Open parent task ${parentTask.id}: ${parentTask.title} (${parentTask.status})`}
+              >
+                <span className="shrink-0 font-mono text-xs text-gray-500 dark:text-gray-400">
+                  {parentTask.id}
+                </span>
+                <span className="min-w-0 break-words font-medium">{parentTask.title}</span>
+                <HierarchyStatusBadge status={parentTask.status} statuses={availableStatuses} />
+              </button>
+            </li>
+            <li aria-hidden="true">
+              <HierarchyChevron />
+            </li>
+            <li aria-current="page" className="font-mono text-xs text-gray-500 dark:text-gray-400">
+              {task.id}
+            </li>
+          </ol>
+        </nav>
+      )}
+
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6" onClickCapture={confirmNavigationAwayFromEdits}>
         {/* Main content */}
         <div className="md:col-span-2 space-y-6">
@@ -1248,6 +1301,57 @@ export const TaskDetailsModal: React.FC<Props> = ({
               </div>
             )}
           </div>
+
+          {subtasks.length > 0 && (
+            <section className="rounded-lg border border-gray-200 bg-white p-4 dark:border-gray-700 dark:bg-gray-800">
+              <SectionHeader
+                title="Subtasks"
+                right={
+                  subtaskProgress
+                    ? `${subtaskProgress.completed} of ${subtaskProgress.total} complete`
+                    : undefined
+                }
+              />
+              <div className="divide-y divide-gray-100 dark:divide-gray-700" data-subtask-list>
+                {subtasks.map((subtask) => {
+                  const nested = summarizeSubtaskProgress(subtask, availableTasks, availableStatuses);
+                  return (
+                    <button
+                      key={subtask.id}
+                      type="button"
+                      onClick={() => onNavigateToTask?.(subtask)}
+                      disabled={!onNavigateToTask}
+                      data-subtask-id={subtask.id}
+                      data-subtask-href={createUrlPath('/tasks', subtask.id, subtask.title)}
+                      className="group flex w-full items-center gap-3 rounded-md px-2 py-3 text-left transition-colors duration-200 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:cursor-default disabled:hover:bg-transparent dark:hover:bg-gray-700/50"
+                      aria-label={`Open subtask ${subtask.id}: ${subtask.title} (${subtask.status})`}
+                    >
+                      <span className="min-w-0 flex-1">
+                        <span className="flex flex-wrap items-center gap-2">
+                          <span className="shrink-0 font-mono text-xs text-gray-500 dark:text-gray-400">
+                            {subtask.id}
+                          </span>
+                          <HierarchyStatusBadge status={subtask.status} statuses={availableStatuses} />
+                          {nested && (
+                            <span
+                              className="text-xs text-gray-500 dark:text-gray-400"
+                              data-nested-progress={`${nested.completed}/${nested.total}`}
+                            >
+                              {nested.completed} of {nested.total} complete
+                            </span>
+                          )}
+                        </span>
+                        <span className="mt-1 block break-words text-sm font-medium text-gray-900 dark:text-gray-100">
+                          {subtask.title}
+                        </span>
+                      </span>
+                      <HierarchyChevron />
+                    </button>
+                  );
+                })}
+              </div>
+            </section>
+          )}
 
           {/* References */}
           <div className="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-4">
@@ -1769,90 +1873,6 @@ export const TaskDetailsModal: React.FC<Props> = ({
               ))}
             </select>
           </div>
-
-          {/* Parent task */}
-          {parentTask && (
-            <div className="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-3">
-              <SectionHeader title="Parent" />
-              <button
-                type="button"
-                onClick={() => onNavigateToTask?.(parentTask)}
-                disabled={!onNavigateToTask}
-                data-parent-task-id={parentTask.id}
-                data-parent-task-href={createUrlPath('/tasks', parentTask.id, parentTask.title)}
-                className="w-full flex items-start gap-2 rounded-md px-2 py-1.5 text-left transition-colors duration-200 hover:bg-gray-50 dark:hover:bg-gray-700/50 disabled:cursor-default disabled:hover:bg-transparent"
-              >
-                <span className="mt-1">
-                  <StatusDot status={parentTask.status} statuses={availableStatuses} />
-                </span>
-                <span className="text-xs font-mono text-gray-500 dark:text-gray-400 whitespace-nowrap">
-                  {parentTask.id}
-                </span>
-                <span className="min-w-0 flex-1 line-clamp-2 break-words text-sm text-gray-900 dark:text-gray-100" title={parentTask.title}>
-                  {parentTask.title}
-                </span>
-              </button>
-            </div>
-          )}
-
-          {/* Subtasks */}
-          {subtasks.length > 0 && (
-            <div className="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-3">
-              <SectionHeader
-                title={
-                  subtaskProgress
-                    ? `Subtasks ${subtaskProgress.completed}/${subtaskProgress.total}`
-                    : 'Subtasks'
-                }
-              />
-              <div className="flex flex-col gap-0.5" data-subtask-list>
-                {subtasks.map((subtask) => {
-                  const nested = summarizeSubtaskProgress(subtask, availableTasks, availableStatuses);
-                  const isComplete = isTerminalStatus(subtask.status, availableStatuses);
-                  return (
-                    <button
-                      key={subtask.id}
-                      type="button"
-                      onClick={() => onNavigateToTask?.(subtask)}
-                      disabled={!onNavigateToTask}
-                      data-subtask-id={subtask.id}
-                      data-subtask-href={createUrlPath('/tasks', subtask.id, subtask.title)}
-                      className="w-full flex items-start gap-2 rounded-md px-2 py-1.5 text-left transition-colors duration-200 hover:bg-gray-50 dark:hover:bg-gray-700/50 disabled:cursor-default disabled:hover:bg-transparent"
-                    >
-                      <span className="mt-1">
-                        <StatusDot status={subtask.status} statuses={availableStatuses} />
-                      </span>
-                      <span
-                        className={`text-xs font-mono whitespace-nowrap ${
-                          isComplete ? 'text-gray-400 dark:text-gray-500' : 'text-gray-500 dark:text-gray-400'
-                        }`}
-                      >
-                        {subtask.id}
-                      </span>
-                      <span
-                        className={`min-w-0 flex-1 line-clamp-2 break-words text-sm ${
-                          isComplete
-                            ? 'text-gray-400 dark:text-gray-500 line-through'
-                            : 'text-gray-900 dark:text-gray-100'
-                        }`}
-                        title={subtask.title}
-                      >
-                        {subtask.title}
-                      </span>
-                      {nested && (
-                        <span
-                          className="text-[11px] font-mono text-gray-400 dark:text-gray-500 whitespace-nowrap"
-                          data-nested-progress={`${nested.completed}/${nested.total}`}
-                        >
-                          {nested.completed}/{nested.total}
-                        </span>
-                      )}
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-          )}
 
           {/* Dependencies */}
           <div className="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-3">
