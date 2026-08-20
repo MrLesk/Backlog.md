@@ -54,6 +54,39 @@ confirmed working. Verified on 2026-08-20 that `dist/backlog` was byte
 identical to the installed binary, so this is the path that was actually
 used.
 
+If a `backlog browser` server is running, the copy fails with `Text file
+busy`, because the running process holds that exact file. Do not kill the
+server. Rename the old binary out of the way first, which Linux allows even
+while it is running, then copy the new one into place.
+
+```bash
+mv "$D/backlog" "$D/backlog.inuse-old"
+cp dist/backlog "$D/backlog"
+chmod +x "$D/backlog"
+rm -f "$D/backlog.inuse-old"
+```
+
+The running server keeps the old code until it is restarted, since it still
+holds the original inode.
+
+## You cannot preview the web UI from source
+
+`bun src/cli.ts browser` starts and serves the page, but the page is blank.
+The server returns the HTML and then 404s on its own JavaScript chunk at
+`/backlog/chunk-*.js`. The same project directory works correctly through a
+built binary, so this is a development mode asset routing problem rather than
+a fault in the application. There is no watch or dev script in `package.json`
+either.
+
+To see a web UI change you have to run `bun run build` and then run
+`dist/backlog browser`. Budget for it. The build takes a few minutes and
+produces a 100 MB executable.
+
+The full test suite is about six minutes, 1904 tests across 211 files. Run a
+single file while working, e.g. `bun test src/test/web-board-filters.test.tsx`.
+A commit also triggers husky and lint-staged, which runs biome over the staged
+files and can rewrite them.
+
 ## Verifying the fork is actually live
 
 Version alone does not prove it, since a stock build can share a version
