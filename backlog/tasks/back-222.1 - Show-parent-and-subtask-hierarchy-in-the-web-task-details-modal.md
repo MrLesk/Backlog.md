@@ -1,11 +1,11 @@
 ---
 id: BACK-222.1
 title: Show parent and subtask hierarchy in the web task details modal
-status: In Progress
+status: Done
 assignee:
   - '@codex'
 created_date: '2026-08-17 07:26'
-updated_date: '2026-08-20 06:30'
+updated_date: '2026-08-20 06:48'
 labels: []
 dependencies: []
 parent_task_id: BACK-222
@@ -65,4 +65,12 @@ The parent is task navigation, not editable metadata: it appears above the detai
 Parent and subtask navigation still use the existing `onNavigateToTask` path and canonical route metadata, preserving close/back behavior without adding routing or fetch logic to the modal. Mobile action labels shorten at the supported mobile breakpoint so the existing actions remain on one row without a new menu.
 
 Per maintainer workflow, no local test, lint, or build gate is used for this follow-up. Verification is delegated to PR Codex review and CI.
+
+Verification for the code-bearing head `72fdffbb0ec4bf8632e750f619eeda769b5eb0df`: GitHub Actions run 32340551392 passed the full Linux/macOS/Windows test, lint, type, build/smoke, Nix, and CodeQL matrix. PR Codex review reported no major issues on that exact commit.
 <!-- SECTION:NOTES:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+Polished the task hierarchy presentation without changing its data flow or routing: parent context is now compact navigation above the details grid, subtasks are readable main-column rows with visible status and explicit progress, completed titles are no longer struck through, and supported mobile actions remain on one compact row. Verified on the code-bearing commit `72fdffbb0ec4bf8632e750f619eeda769b5eb0df` by green GitHub Actions run 32340551392 and a clean PR Codex review on the same commit. The final task-record commit is metadata-only and must clear the same remote gates before merge.
+<!-- SECTION:FINAL_SUMMARY:END -->
