@@ -12,7 +12,7 @@ import { parseTask } from "../markdown/parser.ts";
 import { serializeDocument, serializeTask } from "../markdown/serializer.ts";
 import type { BacklogConfig, Decision, Document, Task } from "../types/index.ts";
 import { normalizeTaskIdentity } from "../utils/task-path.ts";
-import { createUniqueTestDir, getPlatformTimeout, safeCleanup, sleep } from "./test-utils.ts";
+import { createUniqueTestDir, getPlatformTimeout, safeCleanup, sleep, waitUntil } from "./test-utils.ts";
 
 let TEST_DIR: string;
 
@@ -3386,13 +3386,4 @@ async function findDecisionFile(decisionsDir: string, decisionId: string): Promi
 		return file;
 	}
 	throw new Error(`Expected decision file for ${decisionId}`);
-}
-
-async function waitUntil(predicate: () => boolean, label: string, timeout = getPlatformTimeout(15000)): Promise<void> {
-	const deadline = Date.now() + timeout;
-	while (Date.now() < deadline) {
-		if (predicate()) return;
-		await sleep(25);
-	}
-	throw new Error(`Timed out waiting for ${label}`);
 }

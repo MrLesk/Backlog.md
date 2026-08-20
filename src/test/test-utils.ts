@@ -198,6 +198,22 @@ export function getPlatformTimeout(baseTimeout = 5000): number {
 }
 
 /**
+ * Polls a predicate until it is true, for asserting on async/watcher-driven state.
+ */
+export async function waitUntil(
+	predicate: () => boolean,
+	label: string,
+	timeout = getPlatformTimeout(15000),
+): Promise<void> {
+	const deadline = Date.now() + timeout;
+	while (Date.now() < deadline) {
+		if (predicate()) return;
+		await sleep(25);
+	}
+	throw new Error(`Timed out waiting for ${label}`);
+}
+
+/**
  * Gets the exit code from a spawnSync result, handling Windows quirks
  * On Windows, result.status can be undefined even for successful processes
  */

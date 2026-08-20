@@ -29,6 +29,8 @@ export interface TaskCorpusSnapshot {
 
 type TaskLoaderResult = Task[] | TaskCorpusSnapshot;
 type ProgressCallback = (message: string) => void;
+/** publish: false requests a load whose result must not be installed as shared cross-branch state. */
+type TaskLoaderOptions = { publish?: boolean };
 
 interface ContentSnapshot {
 	tasks: Task[];
@@ -166,7 +168,10 @@ export class ContentStore {
 
 	constructor(
 		private readonly filesystem: FileSystem,
-		private readonly taskLoader?: (progressCallback?: ProgressCallback) => Promise<TaskLoaderResult>,
+		private readonly taskLoader?: (
+			progressCallback?: ProgressCallback,
+			options?: TaskLoaderOptions,
+		) => Promise<TaskLoaderResult>,
 		private readonly enableWatchers = false,
 	) {
 		this.publishedRoot = this.currentRoot();
@@ -864,11 +869,7 @@ export class ContentStore {
 			return false;
 		}
 
-		const reconciledTaskCorpus = this.mergeConcurrentWorkingCopyCorpus(
-			taskCorpus,
-			itemVersions.tasks,
-			targetRoot,
-		);
+		const reconciledTaskCorpus = this.mergeConcurrentWorkingCopyCorpus(taskCorpus, itemVersions.tasks, targetRoot);
 		const mergedTasks = this.mergeConcurrentChanges(
 			reconciledTaskCorpus.tasks,
 			before.tasks,
@@ -1053,8 +1054,10 @@ export class ContentStore {
 							);
 							if (local.state !== "absent" || !this.taskLoader) return local;
 							try {
-								const matches = (await this.loadTasksWithLoader()).activeTasks.filter((task) =>
-									taskIdsEqual(task.id, normalizedTaskId),
+								// This load exists only to resolve one task's identity and is discarded
+								// afterward, so it must not publish shared cross-branch freshness state.
+								const matches = (await this.loadTasksWithLoader(undefined, { publish: false })).activeTasks.filter(
+									(task) => taskIdsEqual(task.id, normalizedTaskId),
 								);
 								if (matches.length === 0) return { state: "absent" };
 								if (matches.length !== 1) return { state: "incomplete" };
@@ -1579,11 +1582,7 @@ export class ContentStore {
 				!this.isContentRefreshCurrent("tasks", generation)
 			)
 				return false;
-			const reconciledCorpus = this.mergeConcurrentWorkingCopyCorpus(
-				corpus,
-				before.versions,
-				targetRoot,
-			);
+			const reconciledCorpus = this.mergeConcurrentWorkingCopyCorpus(corpus, before.versions, targetRoot);
 			const merged = this.mergeConcurrentChanges(
 				reconciledCorpus.tasks,
 				before.items,
@@ -1729,12 +1728,7 @@ export class ContentStore {
 		beforeVersions: ReadonlyMap<string, number>,
 		targetRoot: string,
 	): { activeTasks: Task[]; completedTasks: Task[] } {
-		const activeTasks = this.mergeConcurrentTaskCorpus(
-			loadedActiveTasks,
-			this.activeTasks,
-			beforeVersions,
-			targetRoot,
-		);
+		const activeTasks = this.mergeConcurrentTaskCorpus(loadedActiveTasks, this.activeTasks, beforeVersions, targetRoot);
 		const completedTasks = this.mergeConcurrentTaskCorpus(
 			loadedCompletedTasks,
 			this.completedTasks,
@@ -2060,9 +2054,12 @@ export class ContentStore {
 		});
 	}
 
-	private async loadTasksWithLoader(progressCallback?: ProgressCallback): Promise<TaskCorpusSnapshot> {
+	private async loadTasksWithLoader(
+		progressCallback?: ProgressCallback,
+		options?: TaskLoaderOptions,
+	): Promise<TaskCorpusSnapshot> {
 		if (this.taskLoader) {
-			const loaded = await this.taskLoader(progressCallback);
+			const loaded = await this.taskLoader(progressCallback, options);
 			return Array.isArray(loaded) ? this.asTaskCorpus(loaded) : loaded;
 		}
 		return this.asTaskCorpus(await this.filesystem.listTasks());
