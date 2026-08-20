@@ -1,11 +1,11 @@
 ---
 id: BACK-222.1
 title: Show parent and subtask hierarchy in the web task details modal
-status: Done
+status: In Progress
 assignee:
   - '@codex'
 created_date: '2026-08-17 07:26'
-updated_date: '2026-08-19 21:46'
+updated_date: '2026-08-20 06:30'
 labels: []
 dependencies: []
 parent_task_id: BACK-222
@@ -48,44 +48,21 @@ Contributed by @yss19850810-crypto.
 ## Implementation Plan
 
 <!-- SECTION:PLAN:BEGIN -->
-1. Keep the accepted parent/subtask hierarchy and preserve existing routes, clients, accessibility, and theme classes.
-2. Use one shared responsive Modal header layout so long task titles and actions do not overlap at 390px.
-3. Make hierarchy row titles readable with the existing task-card wrapping pattern, without new controls or data fetching.
-4. Verify board and All Tasks navigation in the in-app Browser at desktop and mobile sizes, then record evidence and finalize after PR review and CI.
+1. Preserve the existing shared hierarchy derivation and canonical navigation.
+2. Present the parent as compact task navigation above the details grid.
+3. Present subtasks in the main content column with shared readable rows, visible status text, full titles, and explicit completion wording.
+4. Keep mobile modal actions on one compact row without adding a menu or another interaction model.
+5. Update focused render assertions, then rely on PR Codex review and CI for verification.
 <!-- SECTION:PLAN:END -->
 
 ## Implementation Notes
 
 <!-- SECTION:NOTES:BEGIN -->
-Derived in the browser from the corpus the modal already receives as `availableTasks`, rather than extending the server payload. `GET /api/tasks` already carries `parentTaskId` and each task's status, so no server change was needed; `GET /api/task/:id` carries neither, which is why the single-task payload is not the source here.
+Hierarchy data stays derived from the `availableTasks` corpus through `findParentTask`, `findDirectSubtasks`, and `summarizeSubtaskProgress`; the single-task API remains unchanged. Completion continues to use `isTerminalStatus` and configured statuses.
 
-`attachSubtaskSummaries` was deliberately left untouched. Its return type is `Task` and `subtaskSummaries` is already part of the JSON contract, so adding status to it would widen a frozen public surface for a browser-only need. The three new functions sit beside it as plain derivations instead:
+The parent is task navigation, not editable metadata: it appears above the details grid as a compact hierarchy path with ID, full title, visible status, and the current task ID. Subtasks live in the main content column immediately after Description. Every row shows ID, visible status, full title, optional nested progress, and a navigation chevron; completed titles remain readable instead of using strikethrough.
 
-- `summarizeSubtaskProgress(task, tasks, statuses)` returns `{ total, completed }` or `null` when there are no children, so callers render nothing rather than an empty state
-- `findDirectSubtasks(task, tasks)` returns direct children only, ordered by `sortByTaskId`
-- `findParentTask(task, tasks)` resolves the parent, or `null` when it is outside the corpus
+Parent and subtask navigation still use the existing `onNavigateToTask` path and canonical route metadata, preserving close/back behavior without adding routing or fetch logic to the modal. Mobile action labels shorten at the supported mobile breakpoint so the existing actions remain on one row without a new menu.
 
-Completion uses `isTerminalStatus`. The two existing `isDoneStatus` helpers in `core/milestones.ts` and `ui/board.ts` hardcode "done"/"complete" substrings, disagree with each other, and would misreport any project whose terminal status is named differently — neither was reused.
-
-Navigation goes through the existing `handleEditTask` in `App.tsx`, passed down as `onNavigateToTask`. That path already builds canonical `/tasks/:id/:title` routes and threads `taskModalFrom`, so close and back behave exactly as they did before; the modal itself stays free of routing concerns.
-
-Two notes for reviewers:
-
-`taskIdsEqual` is imported from `utils/task-id.ts` rather than the `utils/task-path.ts` re-export. `task-path.ts` pulls in `node:path` and `core/backlog.ts`, which breaks the browser bundle with `graceful-fs` requiring `fs`, `util` and `assert`. This was verified by building clean `main` first to confirm the failure was introduced here.
-
-The status dot uses the project's `rounded-circle` utility, not `rounded-full` — `src/web/styles/source.css` explicitly disables the latter via `@source not inline("{rounded-full}")`, so it silently renders square.
-
-Verification: `bunx tsc --noEmit` clean; `bun run lint` 375 files with no fixes applied; `bun run build` clean; new tests 10 + 8 pass; the existing `web-task-details-modal-modified-files` suite still 5 pass. Browser QA against two real projects — a six-child parent reading 6/6, and a three-level tree reading 5/6 with its `To Do` child annotated 1/4 — with parent and child navigation checked in both directions.
-
-`bun run check .` is not reported as passing: on Windows the repo's `* text=auto` gitattribute produces CRLF worktree files that biome's formatter rejects wholesale, independently of this change. Committed blobs are LF, and `bun run lint` is clean. A maintainer on Linux or macOS, or CI, should see the formatter pass.
-
-Maintainer follow-up: responsive modal-header and hierarchy-title polish requested after rendered mobile QA. No product semantics or data flow changes.
-
-Rendered QA after maintainer polish (in-app Browser): board and All Tasks parent-to-child and child-parent routes checked at 1280x720 and 390x844. The shared modal header has no title/action overlap at 390px, no horizontal overflow, and hierarchy rows remain keyboard-semantic buttons with status sr-only labels and canonical route metadata. Parent subtasks row is readable across two lines; child Parent row is readable across two lines. Empty BACK-633 modal renders no Parent/Subtasks section. Dark and light theme hierarchy states were checked; no framework overlays or console warnings/errors observed. Screenshots: /private/tmp/pr917-after-parent-desktop-visible.png, /private/tmp/pr917-after-child-desktop.png, /private/tmp/pr917-after-parent-mobile.png, /private/tmp/pr917-after-child-mobile.png, /private/tmp/pr917-after-parent-light-desktop.png.
+Per maintainer workflow, no local test, lint, or build gate is used for this follow-up. Verification is delegated to PR Codex review and CI.
 <!-- SECTION:NOTES:END -->
-
-## Final Summary
-
-<!-- SECTION:FINAL_SUMMARY:BEGIN -->
-Implemented and verified BACK-222.1. The shared Modal header now gives long titles a dedicated mobile row and keeps actions clear at 390px; parent/subtask rows reuse the existing two-line task-card treatment and retain canonical navigation, status semantics, accessibility labels, and theme classes. In-app Browser QA covered Board and All Tasks parent/child navigation at 1280x720 and 390x844, dark/light themes, the empty BACK-633 state, no horizontal overflow, no framework overlay, and no console warnings/errors. Screenshots: /private/tmp/pr917-after-parent-desktop-visible.png, /private/tmp/pr917-after-child-desktop.png, /private/tmp/pr917-after-parent-mobile.png, /private/tmp/pr917-after-child-mobile.png, /private/tmp/pr917-after-parent-light-desktop.png. GitHub Actions run 32304774065 passed all seven current-head jobs; current-head Codex approval is review 4977021284. The exact bun run check . DoD item remains unchecked because that separate local command was not run.
-<!-- SECTION:FINAL_SUMMARY:END -->
