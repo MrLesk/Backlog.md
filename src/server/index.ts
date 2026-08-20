@@ -26,7 +26,7 @@ import { DRAFT_PREFIX, extractAnyPrefix } from "../utils/prefix-config.ts";
 import { formatValidPriorityValues, resolvePriorityValue } from "../utils/priority-config.ts";
 import { formatValidStatuses, getCanonicalStatuses, getValidStatuses } from "../utils/status.ts";
 import { isValidTaskId } from "../utils/task-id.ts";
-import { isAmbiguousTaskIdError } from "../utils/task-path.ts";
+import { isAmbiguousTaskIdError, LOCAL_TASK_LOOKUP_HINT } from "../utils/task-path.ts";
 import { normalizeUtcDateTime } from "../utils/utc-datetime.ts";
 import { getVersion } from "../utils/version.ts";
 
@@ -41,6 +41,19 @@ const DOCUMENT_TYPES = new Set<Document["type"]>(DOCUMENT_TYPE_VALUES);
  */
 function isDraftId(taskId: string): boolean {
 	return extractAnyPrefix(taskId) === DRAFT_PREFIX;
+}
+
+/**
+ * A missing-dependency error carries the CLI's LOCAL_TASK_LOOKUP_HINT, which tells the reader to
+ * open 'backlog browser' - nonsensical when the rejected save already happened in the browser.
+ */
+const WEB_DEPENDENCY_LOOKUP_HINT =
+	"Dependency lookups read only the local working copy; a task that only exists on another branch cannot be added as a dependency yet.";
+
+function formatDependencyErrorForWeb(message: string): string {
+	return message.startsWith("The following dependencies do not exist")
+		? message.replace(LOCAL_TASK_LOOKUP_HINT, WEB_DEPENDENCY_LOOKUP_HINT)
+		: message;
 }
 
 type DueDatePayloadResult = { ok: true; value: string | null | undefined } | { ok: false; error: string };
@@ -959,7 +972,7 @@ export class BacklogServer {
 				const message = error instanceof Error ? error.message : "Failed to create task";
 				return Response.json({ error: message }, { status: 409 });
 			}
-			const message = error instanceof Error ? error.message : "Failed to create task";
+			const message = formatDependencyErrorForWeb(error instanceof Error ? error.message : "Failed to create task");
 			return Response.json({ error: message }, { status: 400 });
 		}
 	}
@@ -1118,7 +1131,7 @@ export class BacklogServer {
 				: await this.core.updateTaskFromInput(taskId, updateInput);
 			return Response.json(updatedTask);
 		} catch (error) {
-			const message = error instanceof Error ? error.message : "Failed to update task";
+			const message = formatDependencyErrorForWeb(error instanceof Error ? error.message : "Failed to update task");
 			const conflict = isAmbiguousIdError(error) || isAmbiguousTaskIdError(error) || isTaskLockError(error);
 			return Response.json({ error: message }, { status: conflict ? 409 : 400 });
 		}
