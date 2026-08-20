@@ -21,6 +21,7 @@ import {
 } from "../utils/milestone-filter.ts";
 import { hasAnyPrefix } from "../utils/prefix-config.ts";
 import { formatPriorityLabel, getPriorityOptions, normalizePriorityValue } from "../utils/priority-config.ts";
+import { getProjectValues, resolveProjectValues } from "../utils/project-config.ts";
 import {
 	createReadinessGraph,
 	formatReadinessBlockers,
@@ -47,6 +48,7 @@ import { openHelpPopup } from "./components/help-popup.ts";
 import { formatFooterContent, TASK_LIST_FOOTER_CONTENT } from "./footer-content.ts";
 import { formatHeading } from "./heading.ts";
 import { createLoadingScreen } from "./loading.ts";
+import { formatProjectBadge } from "./project.ts";
 import { formatStatusWithIcon, getStatusColor, getStatusIcon, wrapStatusColor } from "./status-icon.ts";
 import { completeTaskFromTui, formatTaskCompletionBlockedMessage } from "./task-lifecycle.ts";
 import { formatTaskTypeBadge } from "./task-type.ts";
@@ -81,6 +83,8 @@ export function formatTaskViewerListItem(
 	const labelsText = task.labels?.length ? ` {yellow-fg}[${task.labels.join(", ")}]{/}` : "";
 	const typeBadge = formatTaskTypeBadge(task.type);
 	const typeText = typeBadge ? ` ${typeBadge}` : "";
+	const projectBadge = formatProjectBadge(task.project);
+	const projectText = projectBadge ? ` ${projectBadge}` : "";
 	const priorityText = getPriorityDisplay(task.priority);
 	const dueDateText = task.dueDate
 		? ` {gray-fg}(due ${formatDateForDisplay(task.dueDate, { dateFormat, appendUtcLabel: true })}){/}`
@@ -89,7 +93,7 @@ export function formatTaskViewerListItem(
 	const branchText = isCrossBranch ? ` {green-fg}(${(task as Task & { branch?: string }).branch}){/}` : "";
 	const progressText = progress ? ` ${progress}` : "";
 
-	const content = `${wrapStatusColor(status, statusColor)}${progressText} {bold}${task.id}{/bold}${typeText}${dueDateText} - ${task.title}${priorityText}${assigneeText}${labelsText}${branchText}`;
+	const content = `${wrapStatusColor(status, statusColor)}${progressText} {bold}${task.id}{/bold}${typeText}${projectText}${dueDateText} - ${task.title}${priorityText}${assigneeText}${labelsText}${branchText}`;
 	return isCrossBranch ? `{gray-fg}${content}{/}` : content;
 }
 
@@ -215,6 +219,7 @@ export async function viewTaskEnhanced(
 		statusFilter?: string | string[];
 		excludeStatus?: string[];
 		typeFilter?: string[];
+		projectFilter?: string[];
 		priorityFilter?: string;
 		milestoneFilter?: string;
 		labelFilter?: string[];
@@ -237,6 +242,7 @@ export async function viewTaskEnhanced(
 			statusFilter: string[];
 			excludeStatus: string[];
 			typeFilter: string[];
+			projectFilter: string[];
 			priorityFilter: string;
 			labelFilter: string[];
 			labelMatch?: LabelMatchMode;
@@ -258,6 +264,7 @@ export async function viewTaskEnhanced(
 	let labels: string[];
 	let priorityOptions = getPriorityOptions();
 	let configuredTaskTypes = getTaskTypeValues();
+	let configuredProjects = getProjectValues();
 	let availableLabels: string[] = [];
 	// When tasks are provided, use in-memory search; otherwise use ContentStore-backed search
 	let taskSearchIndex: ReturnType<typeof createTaskSearchIndex> | null = null;
@@ -286,6 +293,7 @@ export async function viewTaskEnhanced(
 		labels = config?.labels || [];
 		priorityOptions = getPriorityOptions(config);
 		configuredTaskTypes = getTaskTypeValues(config);
+		configuredProjects = getProjectValues(config);
 		dateFormat = config?.dateFormat;
 		projectName = config?.projectName;
 		taskSearchIndex = createTaskSearchIndex(allTasks);
@@ -299,6 +307,7 @@ export async function viewTaskEnhanced(
 			labels = config?.labels || [];
 			priorityOptions = getPriorityOptions(config);
 			configuredTaskTypes = getTaskTypeValues(config);
+			configuredProjects = getProjectValues(config);
 			dateFormat = config?.dateFormat;
 			projectName = config?.projectName;
 
@@ -349,6 +358,7 @@ export async function viewTaskEnhanced(
 	const excludeStatusFilter = [...(options.excludeStatus ?? [])];
 
 	let taskTypeFilter = resolveTaskTypeValues(options.typeFilter ?? [], configuredTaskTypes).values;
+	let projectFilter = resolveProjectValues(options.projectFilter ?? [], configuredProjects).values;
 	let priorityFilter = normalizePriorityValue(options.priorityFilter) || "";
 	let labelFilter: string[] = [];
 	let milestoneFilter = options.milestoneFilter || "";
@@ -369,6 +379,7 @@ export async function viewTaskEnhanced(
 			statusFilter.length > 0 ||
 			excludeStatusFilter.length > 0 ||
 			taskTypeFilter.length > 0 ||
+			projectFilter.length > 0 ||
 			priorityFilter ||
 			labelFilter.length > 0 ||
 			milestoneFilter ||
@@ -418,6 +429,9 @@ export async function viewTaskEnhanced(
 			case "type":
 				filterHeader.focusType();
 				break;
+			case "project":
+				filterHeader.focusProject();
+				break;
 			case "priority":
 				filterHeader.focusPriority();
 				break;
@@ -447,6 +461,22 @@ export async function viewTaskEnhanced(
 				if (nextTypes !== null) {
 					taskTypeFilter = nextTypes;
 					filterHeader.setFilters({ taskTypes: nextTypes });
+					applyFilters();
+					notifyFilterChange();
+				}
+				return;
+			}
+
+			if (filterId === "project") {
+				const nextProjects = await openMultiSelectFilterPopup({
+					screen,
+					title: "Project Filter",
+					items: configuredProjects,
+					selectedItems: projectFilter,
+				});
+				if (nextProjects !== null) {
+					projectFilter = nextProjects;
+					filterHeader.setFilters({ projects: nextProjects });
 					applyFilters();
 					notifyFilterChange();
 				}
@@ -533,10 +563,20 @@ export async function viewTaskEnhanced(
 		statuses,
 		availableLabels,
 		availableMilestones: availableMilestoneTitles,
+		visibleFilters: [
+			"search",
+			"status",
+			"type",
+			...(configuredProjects.length > 0 ? (["project"] as const) : []),
+			"priority",
+			"milestone",
+			"labels",
+		],
 		initialFilters: {
 			search: searchQuery,
 			status: statusFilter,
 			taskTypes: taskTypeFilter,
+			projects: projectFilter,
 			priority: priorityFilter,
 			labels: labelFilter,
 			milestone: milestoneFilter,
@@ -546,6 +586,7 @@ export async function viewTaskEnhanced(
 			searchQuery = filters.search;
 			statusFilter = filters.status;
 			taskTypeFilter = filters.taskTypes;
+			projectFilter = filters.projects;
 			priorityFilter = filters.priority;
 			labelFilter = filters.labels;
 			if (labelsChanged) {
@@ -720,6 +761,7 @@ export async function viewTaskEnhanced(
 				statusFilter,
 				excludeStatus: excludeStatusFilter,
 				typeFilter: taskTypeFilter,
+				projectFilter,
 				priorityFilter,
 				labelFilter,
 				labelMatch,
@@ -735,6 +777,7 @@ export async function viewTaskEnhanced(
 				statusFilter.length > 0 ||
 				excludeStatusFilter.length > 0 ||
 				taskTypeFilter.length > 0 ||
+				projectFilter.length > 0 ||
 				priorityFilter ||
 				labelFilter.length > 0 ||
 				milestoneFilter ||
@@ -751,6 +794,7 @@ export async function viewTaskEnhanced(
 					status: statusFilter.length > 0 ? [...statusFilter] : undefined,
 					excludeStatus: excludeStatusFilter,
 					type: taskTypeFilter,
+					project: projectFilter,
 					priority: priorityFilter || undefined,
 					labels: labelFilter,
 					labelMatch,
@@ -767,6 +811,7 @@ export async function viewTaskEnhanced(
 					status: statusFilter.length > 0 ? [...statusFilter] : undefined,
 					excludeStatus: excludeStatusFilter,
 					type: taskTypeFilter,
+					project: projectFilter,
 					priority: priorityFilter || undefined,
 					labels: labelFilter.length > 0 ? labelFilter : undefined,
 				},
@@ -822,6 +867,9 @@ export async function viewTaskEnhanced(
 			}
 			if (taskTypeFilter.length > 0) {
 				activeFilters.push(`Type: {magenta-fg}${taskTypeFilter.join(", ")}{/}`);
+			}
+			if (projectFilter.length > 0) {
+				activeFilters.push(`Project: {blue-fg}${projectFilter.join(", ")}{/}`);
 			}
 			if (priorityFilter) {
 				activeFilters.push(`Priority: {cyan-fg}${priorityFilter}{/}`);
@@ -1400,6 +1448,13 @@ export async function viewTaskEnhanced(
 		void openFilterPicker("type");
 	});
 
+	if (configuredProjects.length > 0) {
+		screen.key(["g", "G"], () => {
+			if (modalOpen || filterPopupOpen) return;
+			void openFilterPicker("project");
+		});
+	}
+
 	screen.key(["p", "P"], () => {
 		if (modalOpen) return;
 		void openFilterPicker("priority");
@@ -1448,7 +1503,7 @@ export async function viewTaskEnhanced(
 
 	screen.key(["?"], async () => {
 		if (modalOpen || filterPopupOpen) return;
-		await runWithModalGuard(() => openHelpPopup(screen, "task-list"));
+		await runWithModalGuard(() => openHelpPopup(screen, "task-list", { hasProjects: configuredProjects.length > 0 }));
 	});
 
 	screen.key(["escape"], () => {
@@ -1605,6 +1660,9 @@ export function generateDetailContent(
 	}
 	if (task.type) {
 		metadata.push(`{bold}Type:{/bold} ${formatTaskTypeBadge(task.type)}`);
+	}
+	if (task.project) {
+		metadata.push(`{bold}Project:{/bold} ${formatProjectBadge(task.project)}`);
 	}
 	if (task.assignee?.length) {
 		const assigneeList = task.assignee.map((a) => (a.startsWith("@") ? a : `@${a}`)).join(", ");

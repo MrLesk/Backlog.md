@@ -16,6 +16,7 @@ import {
 	deletionStart,
 	getTaskComposerLayout,
 	getTaskComposerPriorityChoices,
+	getTaskComposerProjectChoices,
 	getTaskComposerStatusChoices,
 	getTaskComposerTypeChoices,
 	openTaskComposer,
@@ -203,6 +204,7 @@ describe("TUI task composer model", () => {
 		expect(values.status).toBe("Review");
 		expect(values.type).toBe("");
 		expect(values.priority).toBe("");
+		expect(values.project).toBe("");
 	});
 
 	it("offers Draft only in the opened status choices without changing the resting value", () => {
@@ -224,6 +226,12 @@ describe("TUI task composer model", () => {
 			{ label: "Urgent", value: "urgent" },
 			{ label: "Eventually", value: "eventually" },
 		]);
+		expect(getTaskComposerProjectChoices(["Web", "API"])).toEqual([
+			{ label: "None", value: "" },
+			{ label: "Web", value: "Web" },
+			{ label: "API", value: "API" },
+		]);
+		expect(getTaskComposerProjectChoices()).toEqual([{ label: "None", value: "" }]);
 	});
 
 	it("builds the canonical first-slice payload and omits unset fields", () => {
@@ -234,6 +242,7 @@ describe("TUI task composer model", () => {
 				status: "Review",
 				type: "Feature",
 				priority: "urgent",
+				project: "",
 				dueDate: "2026-08-10T16:30+02:00",
 			}),
 		).toEqual({
@@ -246,11 +255,47 @@ describe("TUI task composer model", () => {
 		});
 
 		expect(
-			toTaskCreateInput({ title: "Minimal", description: "", status: "To Do", type: "", priority: "", dueDate: "" }),
+			toTaskCreateInput({
+				title: "Minimal",
+				description: "",
+				status: "To Do",
+				type: "",
+				priority: "",
+				project: "",
+				dueDate: "",
+			}),
 		).toEqual({
 			title: "Minimal",
 			status: "To Do",
 		});
+
+		expect(
+			toTaskCreateInput({
+				title: "Projected task",
+				description: "",
+				status: "To Do",
+				type: "",
+				priority: "",
+				project: "Web",
+				dueDate: "",
+			}),
+		).toEqual({
+			title: "Projected task",
+			status: "To Do",
+			project: "Web",
+		});
+	});
+
+	it("adds one row to the details frame only when projects are configured", () => {
+		const withoutProjects = getTaskComposerLayout(100, 30, { types: ["Feature"], priorities: ["High"] });
+		const withProjects = getTaskComposerLayout(100, 30, {
+			types: ["Feature"],
+			priorities: ["High"],
+			projects: ["Web", "API"],
+		});
+
+		expect(withProjects.detailsHeight).toBe(withoutProjects.detailsHeight + 1);
+		expect(withProjects.actionsTop).toBe(withoutProjects.actionsTop + 1);
 	});
 
 	it("rejects date-only due dates before persistence", async () => {
@@ -345,6 +390,7 @@ describe("TUI task composer model", () => {
 			status: "Review",
 			type: "",
 			priority: "",
+			project: "",
 			dueDate: "",
 		});
 	});

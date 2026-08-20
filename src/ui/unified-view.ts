@@ -30,6 +30,7 @@ export interface UnifiedViewOptions {
 		status?: string | string[];
 		assignee?: string;
 		type?: string[];
+		project?: string[];
 		priority?: string;
 		labels?: string[];
 		labelMatch?: LabelMatchMode;
@@ -112,6 +113,7 @@ export interface UnifiedViewFilters {
 	statusFilter: string[];
 	excludeStatus: string[];
 	typeFilter: string[];
+	projectFilter: string[];
 	priorityFilter: string;
 	labelFilter: string[];
 	labelMatch?: LabelMatchMode;
@@ -119,13 +121,14 @@ export interface UnifiedViewFilters {
 	limit?: number;
 }
 
-type UnifiedViewFilterUpdate = Omit<UnifiedViewFilters, "excludeStatus" | "typeFilter"> &
-	Partial<Pick<UnifiedViewFilters, "excludeStatus" | "typeFilter">>;
+type UnifiedViewFilterUpdate = Omit<UnifiedViewFilters, "excludeStatus" | "typeFilter" | "projectFilter"> &
+	Partial<Pick<UnifiedViewFilters, "excludeStatus" | "typeFilter" | "projectFilter">>;
 
 export interface KanbanSharedFilters {
 	searchQuery: string;
 	excludeStatus: string[];
 	typeFilter?: string[];
+	projectFilter?: string[];
 	priorityFilter: string;
 	labelFilter: string[];
 	labelMatch?: LabelMatchMode;
@@ -138,6 +141,7 @@ export function createKanbanSharedFilters(filters: UnifiedViewFilters): KanbanSh
 		searchQuery: filters.searchQuery,
 		excludeStatus: [...filters.excludeStatus],
 		typeFilter: [...filters.typeFilter],
+		projectFilter: [...filters.projectFilter],
 		priorityFilter: filters.priorityFilter,
 		labelFilter: [...filters.labelFilter],
 		labelMatch: filters.labelMatch,
@@ -155,6 +159,7 @@ export function filterTasksForKanban(
 		!filters.searchQuery.trim() &&
 		filters.excludeStatus.length === 0 &&
 		(filters.typeFilter?.length ?? 0) === 0 &&
+		(filters.projectFilter?.length ?? 0) === 0 &&
 		!filters.priorityFilter &&
 		filters.labelFilter.length === 0 &&
 		!filters.milestoneFilter
@@ -169,6 +174,7 @@ export function filterTasksForKanban(
 			query: filters.searchQuery,
 			excludeStatus: filters.excludeStatus,
 			type: filters.typeFilter,
+			project: filters.projectFilter,
 			priority: filters.priorityFilter || undefined,
 			labels: filters.labelFilter,
 			labelMatch: filters.labelMatch ?? "any",
@@ -187,6 +193,7 @@ export function createUnifiedViewFilters(filter: UnifiedViewOptions["filter"] | 
 		statusFilter: Array.isArray(status) ? [...status] : status ? [status] : [],
 		excludeStatus: [...(filter?.excludeStatus || [])],
 		typeFilter: [...(filter?.type || [])],
+		projectFilter: [...(filter?.project || [])],
 		priorityFilter: filter?.priority || "",
 		labelFilter: [...(filter?.labels || [])],
 		labelMatch: filter?.labelMatch ?? "any",
@@ -205,6 +212,7 @@ export function mergeUnifiedViewFilters(
 		statusFilter: update.statusFilter,
 		excludeStatus: [...(update.excludeStatus ?? current.excludeStatus)],
 		typeFilter: [...(update.typeFilter ?? current.typeFilter)],
+		projectFilter: [...(update.projectFilter ?? current.projectFilter)],
 		priorityFilter: update.priorityFilter,
 		labelFilter: [...update.labelFilter],
 		labelMatch: update.labelMatch ?? current.labelMatch ?? "any",
@@ -431,6 +439,7 @@ export async function runUnifiedView(options: UnifiedViewOptions): Promise<void>
 					statusFilter: currentFilters.statusFilter,
 					excludeStatus: currentFilters.excludeStatus,
 					typeFilter: currentFilters.typeFilter,
+					projectFilter: currentFilters.projectFilter,
 					priorityFilter: currentFilters.priorityFilter,
 					labelFilter: currentFilters.labelFilter,
 					labelMatch: currentFilters.labelMatch,
@@ -498,6 +507,7 @@ export async function runUnifiedView(options: UnifiedViewOptions): Promise<void>
 							statusFilter: currentFilters.statusFilter,
 							excludeStatus: filters.excludeStatus,
 							typeFilter: [...filters.typeFilter],
+							projectFilter: [...filters.projectFilter],
 							priorityFilter: filters.priorityFilter,
 							labelFilter: [...filters.labelFilter],
 							labelMatch: filters.labelMatch ?? currentFilters.labelMatch ?? "any",
@@ -516,6 +526,7 @@ export async function runUnifiedView(options: UnifiedViewOptions): Promise<void>
 					projectName: config?.projectName,
 					priorities: config?.priorities,
 					types: config?.types,
+					projects: config?.projects,
 					hideEmptyColumns: config?.hideEmptyColumns ?? false,
 					createTask: async (input) => createTaskFromBoard(options.core, input, taskUpdateCallbacks.onTaskAdded),
 				}).then(() => {
