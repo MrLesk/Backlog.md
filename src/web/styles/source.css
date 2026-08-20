@@ -109,6 +109,31 @@
     --color-brand-hover: #e79256;
     --color-brand-secondary: #aa5213;
     --color-on-brand: #ffffff;
+
+    /* Priority chips. These used to be stock Tailwind red-100, amber-100 and
+       green-100, which are the only fully saturated colours left on a board
+       whose neutrals are true greys and whose accent is a warm orange. Three
+       traffic lights on every card fought the whole palette.
+
+       These are the same three hues pulled towards the warm neutral family
+       and dropped in chroma: brick rather than red, ochre rather than amber,
+       sage rather than green. They still rank against each other, they no
+       longer outshout the New Task button, and error and success colours are
+       deliberately left alone because those should still shout. */
+    --color-priority-high-surface: #f3e0da;
+    --color-priority-high-text: #8f3a20;
+    --color-priority-high-surface-dark: #452019;
+    --color-priority-high-text-dark: #dda389;
+
+    --color-priority-medium-surface: #f0e6d2;
+    --color-priority-medium-text: #7d6128;
+    --color-priority-medium-text-dark: #d0b684;
+    --color-priority-medium-surface-dark: #3b3018;
+
+    --color-priority-low-surface: #e4eadd;
+    --color-priority-low-text: #4f6244;
+    --color-priority-low-surface-dark: #26301f;
+    --color-priority-low-text-dark: #a8bb99;
 }
 
 @layer base {

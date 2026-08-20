@@ -70,11 +70,25 @@ const TaskCard: React.FC<TaskCardProps> = ({ task, onEdit, onDragStart, onDragEn
     return `${Math.floor(diffDays / 365)}y ago`;
   };
 
+  // Brick, ochre and sage rather than red, amber and green. See the priority
+  // tokens in source.css for why the traffic lights had to go.
   const getPriorityBadge = (priority?: string) => {
     switch (priority) {
-      case 'high': return { bg: 'bg-red-100 dark:bg-red-900/40', text: 'text-red-700 dark:text-red-300', label: 'High' };
-      case 'medium': return { bg: 'bg-amber-100 dark:bg-amber-900/40', text: 'text-amber-700 dark:text-amber-300', label: 'Med' };
-      case 'low': return { bg: 'bg-green-100 dark:bg-green-900/40', text: 'text-green-700 dark:text-green-300', label: 'Low' };
+      case 'high': return {
+        bg: 'bg-priority-high-surface dark:bg-priority-high-surface-dark',
+        text: 'text-priority-high-text dark:text-priority-high-text-dark',
+        label: 'High',
+      };
+      case 'medium': return {
+        bg: 'bg-priority-medium-surface dark:bg-priority-medium-surface-dark',
+        text: 'text-priority-medium-text dark:text-priority-medium-text-dark',
+        label: 'Med',
+      };
+      case 'low': return {
+        bg: 'bg-priority-low-surface dark:bg-priority-low-surface-dark',
+        text: 'text-priority-low-text dark:text-priority-low-text-dark',
+        label: 'Low',
+      };
       default:
         return priority
           ? {
