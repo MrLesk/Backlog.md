@@ -111,10 +111,10 @@ const TaskCard: React.FC<TaskCardProps> = ({ task, onEdit, onDragStart, onDragEn
       )}
 
       <div
-        className={`bg-white dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-md p-3 mb-2 transition-all duration-200 ${
+        className={`bg-white dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-md p-3 mb-2 shadow-sm transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400 ${
           isFromOtherBranch 
             ? 'opacity-75 cursor-not-allowed border-dashed' 
-            : 'cursor-pointer hover:shadow-md dark:hover:shadow-lg hover:border-stone-500 dark:hover:border-stone-400'
+            : 'cursor-pointer hover:shadow-md dark:hover:shadow-lg hover:border-gray-400 dark:hover:border-gray-500'
         } ${getPriorityClass(task.priority)} ${
           isDragging ? 'opacity-50 transform rotate-2 scale-105' : ''
         }`}
@@ -153,7 +153,7 @@ const TaskCard: React.FC<TaskCardProps> = ({ task, onEdit, onDragStart, onDragEn
           {(() => {
             const badge = getPriorityBadge(task.priority);
             return badge ? (
-              <span className={`px-1.5 py-0.5 text-[10px] font-semibold rounded ${badge.bg} ${badge.text} transition-colors duration-200`}>
+              <span className={`px-1.5 py-0.5 text-[10px] font-semibold rounded-full ${badge.bg} ${badge.text} transition-colors duration-200`}>
                 {badge.label}
               </span>
             ) : null;
@@ -161,7 +161,7 @@ const TaskCard: React.FC<TaskCardProps> = ({ task, onEdit, onDragStart, onDragEn
         </div>
 
         {/* Title */}
-        <h4 className={`font-semibold text-sm line-clamp-2 transition-colors duration-200 ${
+        <h4 className={`font-medium text-sm line-clamp-2 transition-colors duration-200 ${
           isFromOtherBranch
             ? 'text-gray-600 dark:text-gray-400'
             : 'text-gray-900 dark:text-gray-100'
@@ -177,7 +177,7 @@ const TaskCard: React.FC<TaskCardProps> = ({ task, onEdit, onDragStart, onDragEn
             {task.labels.slice(0, 3).map(label => (
               <span
                 key={label}
-                className="inline-block px-1.5 py-0.5 text-[10px] bg-gray-100 dark:bg-gray-600 text-gray-600 dark:text-gray-300 rounded transition-colors duration-200"
+                className="inline-block px-1.5 py-0.5 text-[10px] bg-gray-100 dark:bg-gray-600 text-gray-600 dark:text-gray-300 rounded-full transition-colors duration-200"
               >
                 {label}
               </span>

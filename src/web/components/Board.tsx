@@ -760,7 +760,7 @@ const Board: React.FC<BoardProps> = ({
         <div className="overflow-x-auto pb-2">
           <div className="flex flex-row flex-nowrap gap-4 w-full">
             {visibleStatuses.map((status) => (
-              <div key={status} className="flex-1 min-w-[16rem]">
+              <div key={status} className="flex-1 min-w-[16rem] max-w-[24rem]">
                 <TaskColumn
                   title={status}
                   tasks={getTasksForLane(DEFAULT_LANE_KEY, status)}

@@ -129,7 +129,7 @@ const TaskColumn: React.FC<TaskColumnProps> = ({
     if (statusLower.includes('blocked') || statusLower.includes('stuck')) {
       return 'bg-red-100 dark:bg-red-900 text-red-800 dark:text-red-200 transition-colors duration-200';
     }
-    return 'bg-stone-100 dark:bg-stone-900 text-stone-800 dark:text-stone-200 transition-colors duration-200';
+    return 'bg-gray-100 dark:bg-gray-900 text-gray-800 dark:text-gray-200 transition-colors duration-200';
   };
 
   const handleDrop = (e: React.DragEvent) => {
@@ -214,10 +214,10 @@ const TaskColumn: React.FC<TaskColumnProps> = ({
         isEmpty ? 'min-h-24' : 'min-h-96'
       } ${
         isDragOver && (dragSourceStatus !== title || (dragSourceLane ?? null) !== (laneId ?? null))
-          ? 'bg-green-50 dark:bg-green-900/20 border border-green-300 dark:border-green-600 border-dashed'
+          ? 'bg-blue-50 dark:bg-blue-900/20 border border-blue-300 dark:border-blue-600 border-dashed'
           : isEmpty
-            ? 'bg-gray-50/50 dark:bg-gray-800/30 border border-gray-200/50 dark:border-gray-700/50'
-            : 'bg-white border border-gray-200 shadow-sm dark:bg-gray-800 dark:border-gray-700'
+            ? 'bg-gray-50/60 dark:bg-gray-800/25'
+            : 'bg-gray-50 dark:bg-gray-800/40'
       }`}
       onDrop={handleDrop}
       onDragOver={handleDragOverColumn}
@@ -348,18 +348,16 @@ const TaskColumn: React.FC<TaskColumnProps> = ({
         
         {/* Drop zone indicator - only show in different columns */}
         {isDragOver && dragSourceStatus !== title && (
-          <div className="border-2 border-green-400 dark:border-green-500 border-dashed rounded-md bg-green-50 dark:bg-green-900/20 p-4 text-center transition-colors duration-200">
-            <div className="text-green-600 dark:text-green-400 text-sm font-medium transition-colors duration-200">
+          <div className="border-2 border-blue-400 dark:border-blue-500 border-dashed rounded-md bg-blue-50 dark:bg-blue-900/20 p-4 text-center transition-colors duration-200">
+            <div className="text-blue-600 dark:text-blue-400 text-sm font-medium transition-colors duration-200">
               Drop task here to change status
             </div>
           </div>
         )}
         
         {isEmpty && !isDragOver && (
-          <div className="text-center py-2 text-gray-400 dark:text-gray-500 text-xs transition-colors duration-200">
-            {dragSourceStatus && dragSourceStatus !== title
-              ? `Drop to move`
-              : `Empty`}
+          <div className="rounded-md border border-dashed border-gray-300 py-6 text-center text-xs text-gray-400 transition-colors duration-200 dark:border-gray-600 dark:text-gray-500">
+            {dragSourceStatus && dragSourceStatus !== title ? `Drop to move` : `No tasks`}
           </div>
         )}
 
