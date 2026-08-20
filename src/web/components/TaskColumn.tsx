@@ -20,6 +20,7 @@ interface TaskColumnProps {
   targetMilestone?: string | null;
   priorityOrder?: string[];
   availableTypes?: string[];
+  availableProjects?: string[];
   dateFormat?: string;
 }
 
@@ -66,6 +67,7 @@ const TaskColumn: React.FC<TaskColumnProps> = ({
   targetMilestone,
   priorityOrder,
   availableTypes,
+  availableProjects,
   dateFormat,
 }) => {
   const [isDragOver, setIsDragOver] = React.useState(false);
@@ -336,6 +338,7 @@ const TaskColumn: React.FC<TaskColumnProps> = ({
               status={title}
               laneId={laneId}
               availableTypes={availableTypes}
+              availableProjects={availableProjects}
               dateFormat={dateFormat}
             />
             

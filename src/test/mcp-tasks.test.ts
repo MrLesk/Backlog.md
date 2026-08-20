@@ -1530,4 +1530,98 @@ describe("MCP task tools (MVP)", () => {
 		if (primaryError !== undefined) throw primaryError;
 		if (cleanupError !== undefined) throw cleanupError;
 	});
+
+	it("omits the project field from tool schemas and rejects it when no projects are configured", async () => {
+		const tools = await mcpServer.testInterface.listTools();
+		const toolByName = new Map(tools.tools.map((tool) => [tool.name, tool]));
+		const createSchema = toolByName.get("task_create")?.inputSchema as JsonSchema | undefined;
+		const editSchema = toolByName.get("task_edit")?.inputSchema as JsonSchema | undefined;
+
+		expect(createSchema?.properties?.project).toBeUndefined();
+		expect(editSchema?.properties?.project).toBeUndefined();
+
+		const createResult = await mcpServer.testInterface.callTool({
+			params: {
+				name: "task_create",
+				arguments: { title: "Web task", project: "web" },
+			},
+		});
+		expect(createResult.isError).toBe(true);
+		expect(getText(createResult.content)).toContain("Unknown field 'project' is not allowed");
+	});
+
+	it("creates and edits tasks with a project when configured and shows it in view and list output", async () => {
+		const config = await loadConfig(mcpServer);
+		config.projects = ["Web", "API"];
+		await mcpServer.filesystem.saveConfig(config);
+
+		const customServer = new McpServer(TEST_DIR, "Test instructions");
+		let primaryError: unknown;
+		try {
+			registerTaskTools(customServer, await loadConfig(customServer));
+
+			const tools = await customServer.testInterface.listTools();
+			const toolByName = new Map(tools.tools.map((tool) => [tool.name, tool]));
+			const createProjectSchema = (toolByName.get("task_create")?.inputSchema as JsonSchema | undefined)?.properties
+				?.project;
+			expect(createProjectSchema?.enum).toEqual(["Web", "API"]);
+			expect(createProjectSchema?.enumCaseInsensitive).toBe(true);
+
+			const createResult = await customServer.testInterface.callTool({
+				params: {
+					name: "task_create",
+					arguments: { title: "Projected task", project: "web", priority: "high" },
+				},
+			});
+			expect(getText(createResult.content)).toContain("Project: Web");
+
+			const createdTask = await customServer.getTask("task-1");
+			expect(createdTask?.project).toBe("Web");
+
+			await customServer.testInterface.callTool({
+				params: { name: "task_create", arguments: { title: "Unprojected task" } },
+			});
+
+			const listResult = await customServer.testInterface.callTool({
+				params: { name: "task_list", arguments: {} },
+			});
+			const listText = (listResult.content ?? []).map((entry) => ("text" in entry ? entry.text : "")).join("\n\n");
+			expect(listText).toContain("[HIGH] [Web] TASK-1 - Projected task");
+			expect(listText).toContain("  TASK-2 - Unprojected task");
+
+			const editResult = await customServer.testInterface.callTool({
+				params: { name: "task_edit", arguments: { id: "task-1", project: "API" } },
+			});
+			expect(getText(editResult.content)).toContain("Project: API");
+
+			const editedTask = await customServer.getTask("task-1");
+			expect(editedTask?.project).toBe("API");
+
+			const unprojectedView = await customServer.testInterface.callTool({
+				params: { name: "task_view", arguments: { id: "task-2" } },
+			});
+			expect(getText(unprojectedView.content)).not.toContain("Project:");
+
+			const invalidResult = await customServer.testInterface.callTool({
+				params: { name: "task_create", arguments: { title: "Rejected project task", project: "mobile" } },
+			});
+			expect(invalidResult.isError).toBe(true);
+			expect(getText(invalidResult.content)).toContain("must be one of: Web, API");
+		} catch (error) {
+			primaryError = error;
+		}
+
+		let cleanupError: unknown;
+		try {
+			await customServer.stop();
+		} catch (error) {
+			cleanupError = error;
+		}
+
+		if (primaryError !== undefined && cleanupError !== undefined) {
+			throw new AggregateError([primaryError, cleanupError], "Test and MCP server cleanup both failed");
+		}
+		if (primaryError !== undefined) throw primaryError;
+		if (cleanupError !== undefined) throw cleanupError;
+	});
 });

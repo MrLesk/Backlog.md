@@ -206,6 +206,7 @@ export function parseTask(content: string): Task {
 		subtasks: Array.isArray(frontmatter.subtasks) ? frontmatter.subtasks.map(String) : undefined,
 		priority,
 		type: frontmatter.type ? String(frontmatter.type) : undefined,
+		project: frontmatter.project ? String(frontmatter.project) : undefined,
 		ordinal: frontmatter.ordinal !== undefined ? Number(frontmatter.ordinal) : undefined,
 		onStatusChange: frontmatter.onStatusChange ? String(frontmatter.onStatusChange) : undefined,
 	};

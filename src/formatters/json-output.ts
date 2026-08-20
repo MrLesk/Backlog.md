@@ -9,6 +9,7 @@ type TaskSummaryJson = {
 	status: string;
 	type: string | null;
 	priority: string | null;
+	project: string | null;
 	assignees: string[];
 	reporter: string | null;
 	labels: string[];
@@ -103,6 +104,7 @@ function toTaskSummaryJson(task: Task): TaskSummaryJson {
 		status: task.status,
 		type: nullable(task.type),
 		priority: nullable(task.priority),
+		project: nullable(task.project),
 		assignees: task.assignee ?? [],
 		reporter: nullable(task.reporter),
 		labels: task.labels ?? [],
