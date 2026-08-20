@@ -9,17 +9,21 @@ interface DependencyInputProps {
   value: string[];
   onChange: (values: string[]) => void;
   availableTasks: Task[];
+  // Tasks the server will actually accept as a dependency (the local working copy). Defaults to
+  // availableTasks so callers with no cross-branch corpus keep suggesting everything they show.
+  suggestableTasks?: Task[];
   currentTaskId?: string;
   label?: string; // optional label; render only if provided
   disabled?: boolean;
 }
 
-const DependencyInput: React.FC<DependencyInputProps> = ({ value, onChange, availableTasks, currentTaskId, label = 'Dependencies', disabled }) => {
+const DependencyInput: React.FC<DependencyInputProps> = ({ value, onChange, availableTasks, suggestableTasks, currentTaskId, label = 'Dependencies', disabled }) => {
   const [inputValue, setInputValue] = useState('');
   const [suggestions, setSuggestions] = useState<Task[]>([]);
   const [selectedIndex, setSelectedIndex] = useState(0);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const inputId = 'dependency-input';
+  const suggestionSource = suggestableTasks ?? availableTasks;
 
   // Resolve chips through the same canonical identity the markdown auto-links use, so
   // case and zero-padding differences still resolve and ambiguous IDs stay unlinked
@@ -29,7 +33,7 @@ const DependencyInput: React.FC<DependencyInputProps> = ({ value, onChange, avai
   // Filter tasks based on input
   useEffect(() => {
     if (inputValue.trim()) {
-      const filtered = availableTasks.filter(task => 
+      const filtered = suggestionSource.filter(task =>
         task.id !== currentTaskId && // Don't suggest current task
         !value.includes(task.id) && // Don't suggest already added tasks
         (task.id.toLowerCase().includes(inputValue.toLowerCase()) ||
@@ -40,7 +44,7 @@ const DependencyInput: React.FC<DependencyInputProps> = ({ value, onChange, avai
     } else {
       setSuggestions([]);
     }
-  }, [inputValue, availableTasks, value, currentTaskId]);
+  }, [inputValue, suggestionSource, value, currentTaskId]);
 
   // Auto-resize textarea
   useEffect(() => {

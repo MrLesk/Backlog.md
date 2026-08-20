@@ -429,6 +429,25 @@ export const TaskDetailsModal: React.FC<Props> = ({
     };
   }, [isOpen, unresolvedDependencyKey]);
 
+  // Dependency validation stays local-only (see BACK-623), so the picker must only suggest tasks
+  // from the local working copy - a cross-branch suggestion here would fail on save.
+  const [localAvailableTasks, setLocalAvailableTasks] = useState<Task[]>([]);
+  useEffect(() => {
+    if (!isOpen) return;
+    let cancelled = false;
+    apiClient
+      .fetchTasks({ crossBranch: false })
+      .then((tasks) => {
+        if (!cancelled) setLocalAvailableTasks(tasks);
+      })
+      .catch(() => {
+        if (!cancelled) setLocalAvailableTasks([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [isOpen]);
+
   // Dependency readiness, derived at render time from the dependencies and status currently shown,
   // so an inline edit is reflected immediately instead of waiting for a refresh.
   // Only meaningful while dependencies exist and the task has not been completed.
@@ -1881,6 +1900,7 @@ export const TaskDetailsModal: React.FC<Props> = ({
               value={dependencies}
               onChange={(value) => handleInlineMetaUpdate({ dependencies: value })}
               availableTasks={availableTasks}
+              suggestableTasks={localAvailableTasks}
               currentTaskId={task?.id}
               label=""
               disabled={isFromOtherBranch}
