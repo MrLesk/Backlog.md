@@ -14,6 +14,7 @@ import {
 	getPrefixForType,
 	hasPrefix,
 	idsEqual,
+	isReservedTaskPrefix,
 	mergePrefixConfig,
 	normalizeId,
 } from "../utils/prefix-config.ts";
@@ -339,6 +340,26 @@ describe("prefix-config", () => {
 
 		test("returns decision prefix for Decision type", () => {
 			expect(getPrefixForType(EntityType.Decision)).toBe("decision");
+		});
+	});
+
+	describe("isReservedTaskPrefix", () => {
+		test("rejects prefixes matching the draft, doc, and decision system prefixes", () => {
+			expect(isReservedTaskPrefix("draft")).toBe(true);
+			expect(isReservedTaskPrefix("doc")).toBe(true);
+			expect(isReservedTaskPrefix("decision")).toBe(true);
+		});
+
+		test("is case-insensitive", () => {
+			expect(isReservedTaskPrefix("DRAFT")).toBe(true);
+			expect(isReservedTaskPrefix("Doc")).toBe(true);
+			expect(isReservedTaskPrefix("DECISION")).toBe(true);
+		});
+
+		test("allows non-reserved prefixes", () => {
+			expect(isReservedTaskPrefix("task")).toBe(false);
+			expect(isReservedTaskPrefix("JIRA")).toBe(false);
+			expect(isReservedTaskPrefix("documents")).toBe(false);
 		});
 	});
 
