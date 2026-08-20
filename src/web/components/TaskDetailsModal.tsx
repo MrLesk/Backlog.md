@@ -3,8 +3,8 @@ import { isLocalEditableTask, type AcceptanceCriterion, type Milestone, type Tas
 import Modal from "./Modal";
 import { ApiError, apiClient, NetworkError } from "../lib/api";
 import { useTheme } from "../contexts/ThemeContext";
-import MDEditor from "@uiw/react-md-editor";
 import AcceptanceCriteriaEditor from "./AcceptanceCriteriaEditor";
+import LongFormField from './LongFormField';
 import MermaidMarkdown from './MermaidMarkdown';
 import ChipInput from "./ChipInput";
 import DependencyInput from "./DependencyInput";
@@ -934,6 +934,12 @@ export const TaskDetailsModal: React.FC<Props> = ({
     if (updates.references !== undefined) setReferences(updates.references as string[]);
     if (updates.modifiedFiles !== undefined) setModifiedFiles(updates.modifiedFiles as string[]);
     if (updates.milestone !== undefined) setMilestone((updates.milestone ?? "") as string);
+    if (updates.description !== undefined) setDescription(String(updates.description));
+    if ((updates as { implementationPlan?: string }).implementationPlan !== undefined)
+      setPlan(String((updates as { implementationPlan?: string }).implementationPlan));
+    if ((updates as { implementationNotes?: string }).implementationNotes !== undefined)
+      setNotes(String((updates as { implementationNotes?: string }).implementationNotes));
+    if (updates.finalSummary !== undefined) setFinalSummary(String(updates.finalSummary));
 
     // Only update server if editing existing task
     if (task) {
@@ -1281,25 +1287,20 @@ export const TaskDetailsModal: React.FC<Props> = ({
           {/* Description */}
           <div className="border-b border-gray-200 px-1 pb-5 last:border-b-0 dark:border-gray-700">
             <SectionHeader title="Description" />
-            {mode === "preview" ? (
-              description ? (
-                <div className="prose prose-sm !max-w-none wmde-markdown" data-color-mode={theme}>
-                  <MermaidMarkdown source={description} />
-                </div>
-              ) : (
-                <div className="text-sm text-gray-500 dark:text-gray-400">No description</div>
-              )
-            ) : (
-              <div className="border border-gray-200 dark:border-gray-700 rounded-md">
-                <MDEditor
-                  value={description}
-                  onChange={(val) => setDescription(val || "")}
-                  preview="edit"
-                  height={320}
-                  data-color-mode={theme}
-                />
-              </div>
-            )}
+            <LongFormField
+              value={description}
+              onCommit={(next) => {
+                setDescription(next);
+                void handleInlineMetaUpdate({ description: next } as InlineMetaUpdatePayload);
+              }}
+              emptyLabel="No description"
+              placeholder="Describe the task"
+              ariaLabel="description"
+              colorMode={theme}
+              minHeight="12rem"
+              readOnly={isFromOtherBranch}
+              startEditing={isCreateMode}
+            />
           </div>
 
           {subtasks.length > 0 && (
@@ -1539,7 +1540,7 @@ export const TaskDetailsModal: React.FC<Props> = ({
                       type="checkbox"
                       checked={c.checked}
                       onChange={(e) => void handleToggleCriterion(c.index, e.target.checked)}
-                      className="mt-0.5 h-4 w-4 text-blue-600 focus:ring-gray-900 border-gray-300 rounded"
+                      className="mt-0.5 h-4 w-4 accent-gray-900 focus:ring-gray-900 dark:accent-gray-300 border-gray-300 rounded"
                     />
                     <span className="mt-0.5 w-8 shrink-0 text-right font-mono text-xs font-semibold text-gray-500 dark:text-gray-400">
                       {`#${c.index}`}
@@ -1552,7 +1553,7 @@ export const TaskDetailsModal: React.FC<Props> = ({
                 )}
               </ul>
             ) : (
-              <AcceptanceCriteriaEditor criteria={criteria} onChange={setCriteria} />
+              <AcceptanceCriteriaEditor criteria={criteria} onChange={setCriteria} label="" />
             )}
           </div>
 
@@ -1572,7 +1573,7 @@ export const TaskDetailsModal: React.FC<Props> = ({
                       type="checkbox"
                       checked={item.checked}
                       onChange={(e) => void handleToggleDefinitionOfDone(item.index, e.target.checked)}
-                      className="mt-0.5 h-4 w-4 text-blue-600 focus:ring-gray-900 border-gray-300 rounded"
+                      className="mt-0.5 h-4 w-4 accent-gray-900 focus:ring-gray-900 dark:accent-gray-300 border-gray-300 rounded"
                     />
                     <div className="text-sm text-gray-800 dark:text-gray-100">{item.text}</div>
                   </li>
@@ -1585,7 +1586,7 @@ export const TaskDetailsModal: React.FC<Props> = ({
               <AcceptanceCriteriaEditor
                 criteria={definitionOfDone}
                 onChange={setDefinitionOfDone}
-                label="Definition of Done"
+                label=""
                 preserveIndices
                 disableToggle={isCreateMode}
               />
@@ -1595,49 +1596,39 @@ export const TaskDetailsModal: React.FC<Props> = ({
           {/* Implementation Plan */}
           <div className="border-b border-gray-200 px-1 pb-5 last:border-b-0 dark:border-gray-700">
             <SectionHeader title="Implementation Plan" />
-            {mode === "preview" ? (
-              plan ? (
-                <div className="prose prose-sm !max-w-none wmde-markdown" data-color-mode={theme}>
-                  <MermaidMarkdown source={plan} />
-                </div>
-              ) : (
-                <div className="text-sm text-gray-500 dark:text-gray-400">No plan</div>
-              )
-            ) : (
-              <div className="border border-gray-200 dark:border-gray-700 rounded-md">
-                <MDEditor
-                  value={plan}
-                  onChange={(val) => setPlan(val || "")}
-                  preview="edit"
-                  height={280}
-                  data-color-mode={theme}
-                />
-              </div>
-            )}
+            <LongFormField
+              value={plan}
+              onCommit={(next) => {
+                setPlan(next);
+                void handleInlineMetaUpdate({ implementationPlan: next } as InlineMetaUpdatePayload);
+              }}
+              emptyLabel="No plan"
+              placeholder="How will this be done"
+              ariaLabel="implementation plan"
+              colorMode={theme}
+              minHeight="8rem"
+              readOnly={isFromOtherBranch}
+              startEditing={isCreateMode}
+            />
           </div>
 
           {/* Implementation Notes */}
           <div className="border-b border-gray-200 px-1 pb-5 last:border-b-0 dark:border-gray-700">
             <SectionHeader title="Implementation Notes" />
-            {mode === "preview" ? (
-              notes ? (
-                <div className="prose prose-sm !max-w-none wmde-markdown" data-color-mode={theme}>
-                  <MermaidMarkdown source={notes} />
-                </div>
-              ) : (
-                <div className="text-sm text-gray-500 dark:text-gray-400">No notes</div>
-              )
-            ) : (
-              <div className="border border-gray-200 dark:border-gray-700 rounded-md">
-                <MDEditor
-                  value={notes}
-                  onChange={(val) => setNotes(val || "")}
-                  preview="edit"
-                  height={280}
-                  data-color-mode={theme}
-                />
-              </div>
-            )}
+            <LongFormField
+              value={notes}
+              onCommit={(next) => {
+                setNotes(next);
+                void handleInlineMetaUpdate({ implementationNotes: next } as InlineMetaUpdatePayload);
+              }}
+              emptyLabel="No notes"
+              placeholder="What was actually done"
+              ariaLabel="implementation notes"
+              colorMode={theme}
+              minHeight="8rem"
+              readOnly={isFromOtherBranch}
+              startEditing={isCreateMode}
+            />
           </div>
 
           {/* Comments */}
@@ -1697,24 +1688,19 @@ export const TaskDetailsModal: React.FC<Props> = ({
           {(mode !== "preview" || finalSummary.trim().length > 0) && (
             <div className="border-b border-gray-200 px-1 pb-5 last:border-b-0 dark:border-gray-700">
               <SectionHeader title="Final Summary" right="Completion summary" />
-              {mode === "preview" ? (
-                <div className="prose prose-sm !max-w-none wmde-markdown" data-color-mode={theme}>
-                  <MermaidMarkdown source={finalSummary} />
-                </div>
-              ) : (
-                <div className="border border-gray-200 dark:border-gray-700 rounded-md">
-                  <MDEditor
-                    value={finalSummary}
-                    onChange={(val) => setFinalSummary(val || "")}
-                    preview="edit"
-                    height={220}
-                    data-color-mode={theme}
-                    textareaProps={{
-                      placeholder: "PR-style summary of what was implemented (write when task is complete)",
-                    }}
-                  />
-                </div>
-              )}
+              <LongFormField
+                value={finalSummary}
+                onCommit={(next) => {
+                  setFinalSummary(next);
+                  void handleInlineMetaUpdate({ finalSummary: next } as InlineMetaUpdatePayload);
+                }}
+                emptyLabel="No summary"
+                placeholder="PR-style summary of what was implemented"
+                ariaLabel="final summary"
+                colorMode={theme}
+                minHeight="6rem"
+                readOnly={isFromOtherBranch}
+              />
             </div>
           )}
         </div>
