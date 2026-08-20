@@ -8,6 +8,91 @@
 
 @theme {
     --radius-circle: 9999px;
+
+    /* ---------------------------------------------------------------
+       Design system, ported from BloopAI/vibe-kanban.
+
+       The look is deliberately plain. One warm accent, everything else
+       a true neutral grey, corners almost square, IBM Plex throughout.
+
+       It is applied by redefining Tailwind's own palette rather than by
+       rewriting two and a half thousand utility classes across 37 files.
+       So `bg-gray-50` no longer means Tailwind's blue-tinted grey and
+       `text-blue-600` no longer means blue. Read the class names as
+       roles, not as colours.
+       --------------------------------------------------------------- */
+
+    /* Type. The webfont is fetched from Google Fonts, so an offline
+       first load falls back to the system stack and the app still
+       renders correctly, just not in Plex. */
+    --font-sans: "IBM Plex Sans", ui-sans-serif, system-ui, -apple-system,
+        "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    --font-mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo,
+        Consolas, "Liberation Mono", monospace;
+
+    /* Corners. vibe-kanban's base radius is 2px and its largest is 4.5px,
+       so every rounded-* utility collapses to nearly square. */
+    --radius-xs: 0.0625rem;
+    --radius-sm: 0.125rem;
+    --radius-md: 0.1875rem;
+    --radius-lg: 0.25rem;
+    --radius-xl: 0.28125rem;
+    --radius-2xl: 0.375rem;
+    --radius-3xl: 0.5rem;
+    --radius-4xl: 0.625rem;
+
+    /* Neutrals. True grey, no blue cast. The stops are picked to land on
+       vibe-kanban's own lightness values where this codebase already uses
+       them: 200 is its light border, 600 its low-contrast text, 900 its
+       dark page background. */
+    --color-gray-50: #f7f7f7;
+    --color-gray-100: #f0f0f0;
+    --color-gray-200: #d9d9d9;
+    --color-gray-300: #c2c2c2;
+    --color-gray-400: #9e9e9e;
+    --color-gray-500: #858585;
+    --color-gray-600: #636363;
+    --color-gray-700: #3d3d3d;
+    --color-gray-800: #292929;
+    --color-gray-900: #212121;
+    --color-gray-950: #141414;
+
+    /* Stone is used in a handful of places this codebase never converted.
+       Point it at the same ramp so those places stop drifting warm. */
+    --color-stone-50: #f7f7f7;
+    --color-stone-100: #f0f0f0;
+    --color-stone-200: #d9d9d9;
+    --color-stone-300: #c2c2c2;
+    --color-stone-400: #9e9e9e;
+    --color-stone-500: #858585;
+    --color-stone-600: #636363;
+    --color-stone-700: #3d3d3d;
+    --color-stone-800: #292929;
+    --color-stone-900: #212121;
+    --color-stone-950: #141414;
+
+    /* The accent. vibe-kanban has exactly one, a warm orange, and this app
+       spends `blue` on the same job: buttons, links, focus rings, drop
+       targets. So blue becomes that orange. 500 is its --brand and 700 is
+       its --brand-secondary, the darker shade its buttons actually use. */
+    --color-blue-50: #fef3ec;
+    --color-blue-100: #fce5d4;
+    --color-blue-200: #f8ceaf;
+    --color-blue-300: #f4b180;
+    --color-blue-400: #ef9452;
+    --color-blue-500: #ea7a2a;
+    --color-blue-600: #d56515;
+    --color-blue-700: #aa5213;
+    --color-blue-800: #874312;
+    --color-blue-900: #693611;
+    --color-blue-950: #3d200b;
+
+    /* Named aliases, so anything written from here on can say what it
+       means instead of borrowing a colour name. */
+    --color-brand: #ea7a2a;
+    --color-brand-hover: #e79256;
+    --color-brand-secondary: #aa5213;
+    --color-on-brand: #ffffff;
 }
 
 @layer base {
