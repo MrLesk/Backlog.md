@@ -92,7 +92,7 @@ export default function LabelFilterDropdown({
 										type="checkbox"
 										checked={isSelected}
 										onChange={() => toggleLabel(label)}
-										className="h-4 w-4 text-blue-600 border-gray-300 dark:border-gray-600 rounded focus:ring-blue-500"
+										className="h-4 w-4 text-blue-600 border-gray-300 dark:border-gray-600 rounded focus:ring-gray-900"
 									/>
 									<span className="truncate">{label}</span>
 								</label>

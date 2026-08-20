@@ -114,7 +114,7 @@ const TaskCard: React.FC<TaskCardProps> = ({ task, onEdit, onDragStart, onDragEn
       )}
 
       <div
-        className={`rounded-sm border border-gray-200 bg-white p-3 transition-colors duration-200 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-blue-500 dark:border-gray-700 dark:bg-gray-800 ${
+        className={`rounded-sm border border-gray-200 bg-white p-3 transition-colors duration-200 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-gray-900 dark:border-gray-700 dark:bg-gray-800 ${
           isFromOtherBranch
             ? 'cursor-not-allowed border-dashed opacity-75'
             : 'cursor-pointer hover:border-gray-400 dark:hover:border-gray-500'
@@ -160,7 +160,7 @@ const TaskCard: React.FC<TaskCardProps> = ({ task, onEdit, onDragStart, onDragEn
           {(() => {
             const badge = getPriorityBadge(task.priority);
             return badge ? (
-              <span className={`px-1.5 py-0.5 text-[10px] font-medium rounded-sm ${badge.bg} ${badge.text} transition-colors duration-200`}>
+              <span className={`px-1.5 py-0.5 text-[10px] font-medium rounded-circle ${badge.bg} ${badge.text} transition-colors duration-200`}>
                 {badge.label}
               </span>
             ) : null;
@@ -184,7 +184,7 @@ const TaskCard: React.FC<TaskCardProps> = ({ task, onEdit, onDragStart, onDragEn
             {task.labels.slice(0, 3).map(label => (
               <span
                 key={label}
-                className="inline-block rounded-sm bg-gray-100 px-1.5 py-0.5 text-[10px] text-gray-600 transition-colors duration-200 dark:bg-gray-700 dark:text-gray-300"
+                className="inline-block rounded-circle bg-gray-100 px-1.5 py-0.5 text-[10px] text-gray-600 transition-colors duration-200 dark:bg-gray-700 dark:text-gray-300"
               >
                 {label}
               </span>

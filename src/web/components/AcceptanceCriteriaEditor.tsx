@@ -86,7 +86,7 @@ const AcceptanceCriteriaEditor: React.FC<Props> = ({
           <li key={c.index} className="flex items-center gap-2">
             <input
               type="checkbox"
-              className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+              className="h-4 w-4 text-blue-600 focus:ring-gray-900 border-gray-300 rounded"
               checked={c.checked}
               onChange={(e) => handleToggle(c.index, e.target.checked)}
               disabled={disableToggle}
@@ -121,7 +121,7 @@ const AcceptanceCriteriaEditor: React.FC<Props> = ({
           <button
             type="button"
             onClick={handleAdd}
-            className="px-2 py-1 text-sm bg-blue-500 dark:bg-blue-600 text-white rounded-md hover:bg-blue-600 dark:hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 dark:focus:ring-offset-gray-800 focus:ring-blue-400 dark:focus:ring-blue-500 transition-colors duration-200"
+            className="px-2 py-1 text-sm bg-blue-500 dark:bg-blue-600 text-white rounded-md hover:bg-blue-600 dark:hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 dark:focus:ring-offset-gray-800 focus:ring-gray-900 dark:focus:ring-gray-300 transition-colors duration-200"
           >
             Add
           </button>
