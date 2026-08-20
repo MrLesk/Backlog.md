@@ -171,6 +171,7 @@ export const KNOWN_TASK_FRONTMATTER_KEYS: ReadonlySet<string> = new Set([
 	"reporter",
 	"created_date",
 	"updated_date",
+	"due_date",
 	"labels",
 	"milestone",
 	"dependencies",

@@ -104,16 +104,16 @@ describe("SideNavigation task loading", () => {
 		expect(loading).toContain("Kanban Board");
 		expect(loading).toContain(phase);
 		expect(loading).toContain('role="status"');
-		expect(loading).not.toContain("Empty");
+		expect(loading).not.toContain(">No tasks<");
 
 		const loadedEmpty = renderBoard(false);
-		expect(loadedEmpty).toContain("Empty");
+		expect(loadedEmpty).toContain(">No tasks<");
 		expect(loadedEmpty).not.toContain(phase);
 
 		const failed = renderBoard(false, new Error("corpus failed"));
 		expect(failed).toContain("Failed to load tasks");
 		expect(failed).toContain("corpus failed");
 		expect(failed).toContain("Retry");
-		expect(failed).not.toContain("Empty");
+		expect(failed).not.toContain(">No tasks<");
 	});
 });
