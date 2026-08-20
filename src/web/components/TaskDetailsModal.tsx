@@ -1696,6 +1696,7 @@ export const TaskDetailsModal: React.FC<Props> = ({
                 }}
                 emptyLabel="No summary"
                 placeholder="PR-style summary of what was implemented"
+                startEditing={isCreateMode}
                 ariaLabel="final summary"
                 colorMode={theme}
                 minHeight="6rem"

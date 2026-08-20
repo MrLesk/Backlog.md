@@ -114,12 +114,12 @@ const TaskCard: React.FC<TaskCardProps> = ({ task, onEdit, onDragStart, onDragEn
       )}
 
       <div
-        className={`rounded-sm border border-gray-200 bg-white p-3 transition-colors duration-200 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-gray-900 dark:border-gray-700 dark:bg-gray-800 ${
+        className={`-mx-px -mt-px border border-gray-200 bg-white p-3 outline-none transition-colors duration-200 focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-gray-900 dark:border-gray-700 dark:bg-gray-900 ${
           isFromOtherBranch
             ? 'cursor-not-allowed border-dashed opacity-75'
-            : 'cursor-pointer hover:border-gray-400 dark:hover:border-gray-500'
+            : 'cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800'
         } ${
-          isDragging ? 'opacity-50' : ''
+          isDragging ? 'cursor-grabbing shadow-lg' : ''
         }`}
         draggable={!isFromOtherBranch}
 		role="button"
@@ -154,7 +154,7 @@ const TaskCard: React.FC<TaskCardProps> = ({ task, onEdit, onDragStart, onDragEn
               className={`h-1.5 w-1.5 shrink-0 rounded-circle ${getPriorityDotClass(task.priority)}`}
               title={task.priority ? `${task.priority} priority` : 'no priority'}
             />
-            <span className="shrink-0 font-mono text-xs text-gray-500 transition-colors duration-200 dark:text-gray-400">{task.id}</span>
+            <span className="shrink-0 font-mono text-sm text-gray-500 transition-colors duration-200 dark:text-gray-400">{task.id}</span>
             <TaskTypeBadge type={task.type} availableTypes={availableTypes} className="min-w-0" />
           </div>
           {(() => {
@@ -168,7 +168,7 @@ const TaskCard: React.FC<TaskCardProps> = ({ task, onEdit, onDragStart, onDragEn
         </div>
 
         {/* Title */}
-        <h4 className={`font-medium text-sm line-clamp-2 transition-colors duration-200 ${
+        <h4 className={`text-base leading-snug transition-colors duration-200 ${
           isFromOtherBranch
             ? 'text-gray-600 dark:text-gray-400'
             : 'text-gray-900 dark:text-gray-100'

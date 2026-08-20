@@ -118,6 +118,15 @@ const TaskColumn: React.FC<TaskColumnProps> = ({
     emitColumnReorder(sortByCreatedDate(tasks, direction).map(t => t.id));
   };
 
+  // KanbanBoard.tsx:224 washes each column header with 3% of its status colour.
+  const statusTint = (status: string) => {
+    const statusLower = status.toLowerCase();
+    if (statusLower.includes('done') || statusLower.includes('complete')) return 'rgb(34 197 94 / 0.04)';
+    if (statusLower.includes('progress') || statusLower.includes('doing')) return 'rgb(245 158 11 / 0.04)';
+    if (statusLower.includes('blocked') || statusLower.includes('stuck')) return 'rgb(239 68 68 / 0.04)';
+    return 'rgb(128 128 128 / 0.04)';
+  };
+
   // vibe-kanban marks a column with a small coloured dot rather than a
   // filled pill, so the status reads at a glance without adding a second
   // block of colour to a header that already has a title and a count.
@@ -226,9 +235,12 @@ const TaskColumn: React.FC<TaskColumnProps> = ({
       onDragEnter={handleDragEnter}
       onDragLeave={handleDragLeave}
     >
-      <div className="flex items-center justify-between gap-2 border-b border-gray-200 dark:border-gray-700 bg-gray-100/70 px-3 py-2 transition-colors duration-200 dark:bg-gray-800/50">
+      <div
+        className="sticky top-0 z-20 flex shrink-0 items-center justify-between gap-2 bg-white px-3 py-2 transition-colors duration-200 dark:bg-gray-900"
+        style={{ backgroundImage: `linear-gradient(${statusTint(title)}, ${statusTint(title)})` }}
+      >
         <div className="flex min-w-0 items-center gap-2">
-          <span className={`h-1.5 w-1.5 shrink-0 rounded-circle ${getStatusDotClass(title)}`} aria-hidden="true" />
+          <span className={`h-2 w-2 shrink-0 rounded-circle ${getStatusDotClass(title)}`} aria-hidden="true" />
           <h3 className="truncate text-sm text-gray-900 transition-colors duration-200 dark:text-gray-100">{title}</h3>
           <span className="shrink-0 text-xs tabular-nums text-gray-500 dark:text-gray-400">
             {tasks.length}
@@ -297,7 +309,7 @@ const TaskColumn: React.FC<TaskColumnProps> = ({
         )}
       </div>
       
-      <div className="flex-1 space-y-2 px-3 py-3">
+      <div className="flex-1 px-3 pb-3">
         {tasks.map((task, index) => (
           <div 
             key={task.id} 

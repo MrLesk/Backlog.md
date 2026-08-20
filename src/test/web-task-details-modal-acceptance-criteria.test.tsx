@@ -1,5 +1,6 @@
 import { describe, expect, it } from "bun:test";
 import { JSDOM } from "jsdom";
+import { installDomGlobals } from "./dom-globals.ts";
 import { renderToString } from "react-dom/server";
 import type { Task } from "../types/index.ts";
 import TaskCard from "../web/components/TaskCard";
@@ -11,6 +12,7 @@ const setupDom = () => {
 	globalThis.window = dom.window as unknown as Window & typeof globalThis;
 	globalThis.document = dom.window.document as Document;
 	globalThis.navigator = dom.window.navigator as Navigator;
+	installDomGlobals(dom);
 	globalThis.localStorage = dom.window.localStorage;
 
 	if (!window.matchMedia) {

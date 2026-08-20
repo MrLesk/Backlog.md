@@ -757,10 +757,10 @@ const Board: React.FC<BoardProps> = ({
           })}
         </div>
       ) : (
-        <div className="overflow-x-auto border-y border-gray-200 pb-2 dark:border-gray-700">
-          <div className="flex w-full flex-row flex-nowrap">
+        <div className="overflow-x-auto pb-2">
+          <div className="flex w-full flex-row flex-nowrap items-stretch border-x border-gray-200 dark:border-gray-700">
             {visibleStatuses.map((status) => (
-              <div key={status} className="min-w-[16rem] flex-1 border-l border-gray-200 first:border-l-0 dark:border-gray-700">
+              <div key={status} className="min-w-[200px] max-w-[400px] flex-1 border-l border-gray-200 first:border-l-0 dark:border-gray-700">
                 <TaskColumn
                   title={status}
                   tasks={getTasksForLane(DEFAULT_LANE_KEY, status)}
