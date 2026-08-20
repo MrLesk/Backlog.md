@@ -81,7 +81,7 @@ import {
 	runMcpClientSetupCommand,
 } from "./utils/mcp-client-setup.ts";
 import { resolveMilestoneInputForStorage } from "./utils/milestone-storage.ts";
-import { DRAFT_PREFIX, hasAnyPrefix, normalizeId } from "./utils/prefix-config.ts";
+import { DRAFT_PREFIX, hasAnyPrefix, isReservedTaskPrefix, normalizeId } from "./utils/prefix-config.ts";
 import { formatValidPriorityValues, getPriorityOptions, resolvePriorityValue } from "./utils/priority-config.ts";
 import { type ReadOutputMode, resolveReadOutputMode } from "./utils/read-output-mode.ts";
 import { getTaskReadiness, loadReadinessGraph } from "./utils/readiness.ts";
@@ -1191,6 +1191,9 @@ addHelpSchema(program.command("init [projectName]"), {
 							if (!/^[a-zA-Z]+$/.test(normalized)) {
 								return "Task prefix must contain only letters (a-z, A-Z).";
 							}
+							if (isReservedTaskPrefix(normalized)) {
+								return `Task prefix "${normalized}" is reserved for drafts, docs, or decisions. Choose a different prefix.`;
+							}
 							return undefined;
 						},
 					});
@@ -1203,6 +1206,12 @@ addHelpSchema(program.command("init [projectName]"), {
 				// Validate task prefix if provided
 				if (taskPrefix && !/^[a-zA-Z]+$/.test(taskPrefix)) {
 					console.error("Task prefix must contain only letters (a-z, A-Z).");
+					process.exit(1);
+				}
+				if (taskPrefix && isReservedTaskPrefix(taskPrefix)) {
+					console.error(
+						`Task prefix "${taskPrefix}" is reserved for drafts, docs, or decisions. Choose a different prefix.`,
+					);
 					process.exit(1);
 				}
 
@@ -5005,11 +5014,23 @@ addHelpSchema(program.command("doctor"), {
 		const cwd = await requireProjectRoot();
 		const core = new Core(cwd);
 		try {
+			const config = await core.filesystem.loadConfig();
+			const taskPrefix = config?.prefixes?.task;
+			const reservedTaskPrefix = taskPrefix && isReservedTaskPrefix(taskPrefix) ? taskPrefix : null;
+			if (reservedTaskPrefix) {
+				console.error(
+					`Task prefix "${reservedTaskPrefix}" collides with a reserved prefix (draft, doc, decision); tasks are misrouted as that entity type. Task prefix cannot be changed after initialization; re-initialize the project with a different prefix instead.`,
+				);
+				process.exitCode = 1;
+			}
+
 			const plan = await core.previewDuplicateTaskIdRepair({ includeBranches: true });
 			const contentIdentity = await core.diagnoseContentIdentity();
 			const contentIdentityBroken = hasContentIdentityIssues(contentIdentity);
 			if (plan.groups.length === 0 && plan.crossBranchFindings.length === 0 && !contentIdentityBroken) {
-				console.log("No duplicate task, document, or decision IDs found.");
+				if (!reservedTaskPrefix) {
+					console.log("No duplicate task, document, or decision IDs found.");
+				}
 				return;
 			}
 

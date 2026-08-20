@@ -453,6 +453,21 @@ describe("CLI Integration", () => {
 
 			expect(failed).toBe(true);
 		});
+
+		for (const reservedPrefix of ["draft", "DRAFT", "doc", "Doc", "decision", "DECISION"]) {
+			it(`should reject reserved --task-prefix value ${reservedPrefix}`, async () => {
+				await $`git init -b main`.cwd(TEST_DIR).quiet();
+
+				const result = await $`bun ${CLI_PATH} init ReservedPrefixProj --defaults --task-prefix ${reservedPrefix}`
+					.cwd(TEST_DIR)
+					.nothrow();
+				const output = result.stdout.toString() + result.stderr.toString();
+
+				expect(result.exitCode).toBe(1);
+				expect(output).toContain("is reserved for drafts, docs, or decisions");
+				expect(await Bun.file(join(TEST_DIR, "backlog", "config.yml")).exists()).toBe(false);
+			});
+		}
 	});
 
 	describe("git integration", () => {
