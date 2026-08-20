@@ -13,6 +13,7 @@ import {
 } from "./milestone-filter.ts";
 import { matchesModifiedFileFilters, normalizeModifiedFileFilters } from "./modified-files.ts";
 import { normalizePriorityValue } from "./priority-config.ts";
+import { matchesProjectFilter } from "./project-config.ts";
 import { getTaskReadiness, type ReadinessGraph } from "./readiness.ts";
 import { createTaskIdSearchVariants } from "./task-id-search.ts";
 import { matchesTaskTypeFilter } from "./task-type-config.ts";
@@ -24,6 +25,7 @@ export interface TaskSearchOptions {
 	status?: string;
 	excludeStatus?: string | string[];
 	type?: string | string[];
+	project?: string | string[];
 	priority?: string;
 	labels?: string[];
 	labelMatch?: LabelMatchMode;
@@ -34,6 +36,7 @@ export interface SharedTaskFilterOptions {
 	query?: string;
 	excludeStatus?: string | string[];
 	type?: string | string[];
+	project?: string | string[];
 	priority?: string;
 	labels?: string[];
 	labelMatch?: LabelMatchMode;
@@ -152,6 +155,9 @@ export function createTaskSearchIndex(tasks: Task[]): TaskSearchIndex {
 			if (options.type) {
 				results = results.filter((task) => matchesTaskTypeFilter(task.task.type, options.type));
 			}
+			if (options.project) {
+				results = results.filter((task) => matchesProjectFilter(task.task.project, options.project));
+			}
 
 			// Apply priority filter
 			if (options.priority) {
@@ -224,6 +230,7 @@ export function applyTaskFilters(tasks: Task[], options: TaskFilterOptions, inde
 			options.status ||
 			options.excludeStatus ||
 			options.type ||
+			options.project ||
 			options.priority ||
 			(options.labels && options.labels.length > 0) ||
 			(options.modifiedFiles && options.modifiedFiles.length > 0),
@@ -235,6 +242,7 @@ export function applyTaskFilters(tasks: Task[], options: TaskFilterOptions, inde
 				status: options.status,
 				excludeStatus: options.excludeStatus,
 				type: options.type,
+				project: options.project,
 				priority: options.priority,
 				labels: options.labels,
 				labelMatch: options.labelMatch,
@@ -265,6 +273,7 @@ export function applySharedTaskFilters(
 			query: options.query,
 			excludeStatus: options.excludeStatus,
 			type: options.type,
+			project: options.project,
 			priority: options.priority,
 			labels: options.labels,
 			labelMatch: options.labelMatch,

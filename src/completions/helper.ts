@@ -11,6 +11,7 @@ import {
 	getDocumentIds,
 	getLabels,
 	getPriorities,
+	getProjects,
 	getStatuses,
 	getTaskIds,
 	getTaskTypes,
@@ -129,6 +130,12 @@ async function getFlagValueCompletions(flagName: string, context: CompletionCont
 				: [];
 		case "task-type":
 			return context.command === "search" ? await getTaskTypes() : [];
+		case "project":
+			return (context.command === "task" &&
+				(context.subcommand === "create" || context.subcommand === "edit" || context.subcommand === "list")) ||
+				context.command === "search"
+				? await getProjects()
+				: [];
 		case "labels":
 		case "label":
 			return await getLabels();

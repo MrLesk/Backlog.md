@@ -50,6 +50,12 @@ import {
 	normalizeId,
 } from "../utils/prefix-config.ts";
 import { formatValidPriorityValues, normalizePriorityValue, resolvePriorityValue } from "../utils/priority-config.ts";
+import {
+	formatValidProjectValues,
+	getProjectValues,
+	matchesProjectFilter,
+	resolveProjectValue,
+} from "../utils/project-config.ts";
 import { resolveRuntimeCwd } from "../utils/runtime-cwd.ts";
 import {
 	getCanonicalStatus as resolveCanonicalStatus,
@@ -203,6 +209,7 @@ function buildUpdatedDateComparableTask(task: Task): Record<string, unknown> {
 		subtasks: task.subtasks ?? [],
 		priority: task.priority,
 		type: task.type,
+		project: task.project,
 		onStatusChange: task.onStatusChange,
 	};
 }
@@ -262,6 +269,7 @@ export class Core {
 	} | null = null;
 	private activeBranchRefreshPromise: Promise<void> | null = null;
 	private remoteRefRefreshPromise: Promise<void> | null = null;
+	private remoteRefRefreshStartedAt = 0;
 	private lastRemoteRefRefreshAt = 0;
 
 	constructor(projectRoot: string, options?: { enableWatchers?: boolean }) {
@@ -584,29 +592,40 @@ export class Core {
 		// Reads may reuse a recent fetch, but task ID allocation may not: an ID that
 		// looks free only because remote refs are up to a minute old is an ID another
 		// clone has already published.
-		if (options?.force !== true && Date.now() - this.lastRemoteRefRefreshAt < REMOTE_REF_REFRESH_INTERVAL_MS) {
+		const requestedAt = Date.now();
+		if (options?.force !== true && requestedAt - this.lastRemoteRefRefreshAt < REMOTE_REF_REFRESH_INTERVAL_MS) {
 			return;
 		}
 
-		if (!this.remoteRefRefreshPromise) {
-			const refreshPromise = (async () => {
-				git.setConfig(config);
-				try {
-					await git.fetch();
-				} catch (error) {
-					console.error("Failed to refresh remote refs:", error);
-				} finally {
-					if (this.git === git) this.lastRemoteRefRefreshAt = Date.now();
-				}
-			})();
-			this.remoteRefRefreshPromise = refreshPromise;
-			const clearRefreshPromise = () => {
-				if (this.remoteRefRefreshPromise === refreshPromise) this.remoteRefRefreshPromise = null;
-			};
-			void refreshPromise.then(clearRefreshPromise, clearRefreshPromise);
-		}
+		// A forced request must observe refs at least as fresh as requestedAt. Joining
+		// an in-flight non-forced fetch that started before requestedAt isn't enough --
+		// a push landing while that fetch is in flight would be invisible to it -- so
+		// loop once more to trigger a fetch that starts at/after requestedAt.
+		while (true) {
+			if (!this.remoteRefRefreshPromise) {
+				this.remoteRefRefreshStartedAt = Date.now();
+				const refreshPromise = (async () => {
+					git.setConfig(config);
+					try {
+						await git.fetch();
+					} catch (error) {
+						console.error("Failed to refresh remote refs:", error);
+					} finally {
+						if (this.git === git) this.lastRemoteRefRefreshAt = Date.now();
+					}
+				})();
+				this.remoteRefRefreshPromise = refreshPromise;
+				const clearRefreshPromise = () => {
+					if (this.remoteRefRefreshPromise === refreshPromise) this.remoteRefRefreshPromise = null;
+				};
+				void refreshPromise.then(clearRefreshPromise, clearRefreshPromise);
+			}
 
-		await this.remoteRefRefreshPromise;
+			const joinedRefreshStartedAt = this.remoteRefRefreshStartedAt;
+			await this.remoteRefRefreshPromise;
+
+			if (options?.force !== true || joinedRefreshStartedAt >= requestedAt) return;
+		}
 	}
 
 	/** Refresh the existing cross-branch store only when relevant config or refs changed. */
@@ -683,6 +702,9 @@ export class Core {
 		if (filters.type) {
 			result = result.filter((task) => matchesTaskTypeFilter(task.type, filters.type));
 		}
+		if (filters.project) {
+			result = result.filter((task) => matchesProjectFilter(task.project, filters.project));
+		}
 		if (filters.assignee) {
 			const assigneeLower = filters.assignee.toLowerCase();
 			result = result.filter((task) => (task.assignee ?? []).some((value) => value.toLowerCase() === assigneeLower));
@@ -751,6 +773,22 @@ export class Core {
 		const canonical = resolveTaskTypeValue(value, config);
 		if (!canonical) {
 			throw new Error(`Invalid type: ${value}. Valid types are: ${formatValidTaskTypeValues(config)}`);
+		}
+		return canonical;
+	}
+
+	private async normalizeProject(value: string | undefined): Promise<string | undefined> {
+		if (value === undefined || value === "") {
+			return undefined;
+		}
+		const config = await this.fs.loadConfig();
+		const configuredProjects = getProjectValues(config);
+		if (configuredProjects.length === 0) {
+			throw new Error("No projects are configured. Add a 'projects:' list to backlog/config.yml.");
+		}
+		const canonical = resolveProjectValue(value, config);
+		if (!canonical) {
+			throw new Error(`Invalid project: ${value}. Valid projects are: ${formatValidProjectValues(config)}`);
 		}
 		return canonical;
 	}
@@ -863,6 +901,9 @@ export class Core {
 			}
 			if (filters?.type) {
 				searchFilters.type = filters.type;
+			}
+			if (filters?.project) {
+				searchFilters.project = filters.project;
 			}
 			if (filters?.priority) {
 				searchFilters.priority = filters.priority;
@@ -1048,6 +1089,7 @@ export class Core {
 		this.activeBranchSnapshotPromise = null;
 		this.activeBranchRefreshPromise = null;
 		this.remoteRefRefreshPromise = null;
+		this.remoteRefRefreshStartedAt = 0;
 		this.lastRemoteRefRefreshAt = 0;
 	}
 
@@ -1587,6 +1629,7 @@ export class Core {
 
 		const priority = await this.normalizePriority(input.priority);
 		const type = await this.normalizeTaskType(input.type);
+		const project = await this.normalizeProject(input.project);
 		const createdDate = new Date().toISOString().slice(0, 16).replace("T", " ");
 		if (
 			input.ordinal !== undefined &&
@@ -1639,6 +1682,7 @@ export class Core {
 				...(parentTaskId && { parentTaskId }),
 				...(priority && { priority }),
 				...(type && { type }),
+				...(project && { project }),
 				...(typeof ordinal === "number" && { ordinal }),
 				...(typeof input.milestone === "string" &&
 					input.milestone.trim().length > 0 && {
@@ -1829,6 +1873,14 @@ export class Core {
 			const normalizedType = await this.normalizeTaskType(String(input.type));
 			if (task.type !== normalizedType) {
 				task.type = normalizedType;
+				mutated = true;
+			}
+		}
+
+		if (input.project !== undefined) {
+			const normalizedProject = await this.normalizeProject(String(input.project));
+			if (task.project !== normalizedProject) {
+				task.project = normalizedProject;
 				mutated = true;
 			}
 		}
@@ -2768,8 +2820,7 @@ export class Core {
 			}
 			this.contentStore?.transitionTask(normalizedTaskId);
 
-			const sanitizedPaths =
-				sanitizedTasks.length > 0 ? await this.writeTasksBulk(sanitizedTasks) : [];
+			const sanitizedPaths = sanitizedTasks.length > 0 ? await this.writeTasksBulk(sanitizedTasks) : [];
 
 			if (await this.shouldAutoCommit(autoCommit)) {
 				// Stage the file move for proper Git tracking

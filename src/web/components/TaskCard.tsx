@@ -3,6 +3,7 @@ import { type Task } from '../../types';
 import { formatPriorityLabel } from '../../utils/priority-config';
 import AcceptanceCriteriaProgress, { getAcceptanceCriteriaProgressCounts } from './AcceptanceCriteriaProgress';
 import { formatStoredUtcDateForDisplay } from '../utils/date-display';
+import ProjectBadge from './ProjectBadge';
 import TaskTypeBadge from './TaskTypeBadge';
 
 interface TaskCardProps {
@@ -14,10 +15,11 @@ interface TaskCardProps {
   status?: string;
   laneId?: string;
   availableTypes?: string[];
+  availableProjects?: string[];
   dateFormat?: string;
 }
 
-const TaskCard: React.FC<TaskCardProps> = ({ task, onEdit, onDragStart, onDragEnd, status, laneId, availableTypes, dateFormat }) => {
+const TaskCard: React.FC<TaskCardProps> = ({ task, onEdit, onDragStart, onDragEnd, status, laneId, availableTypes, availableProjects, dateFormat }) => {
   const [isDragging, setIsDragging] = React.useState(false);
   const [showBranchTooltip, setShowBranchTooltip] = React.useState(false);
 
@@ -149,6 +151,7 @@ const TaskCard: React.FC<TaskCardProps> = ({ task, onEdit, onDragStart, onDragEn
           <div className="flex min-w-0 items-center gap-2">
             <span className="shrink-0 text-xs text-gray-400 dark:text-gray-500 font-mono transition-colors duration-200">{task.id}</span>
             <TaskTypeBadge type={task.type} availableTypes={availableTypes} className="min-w-0" />
+            <ProjectBadge project={task.project} availableProjects={availableProjects} className="min-w-0" />
           </div>
           {(() => {
             const badge = getPriorityBadge(task.priority);
