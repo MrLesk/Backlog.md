@@ -464,15 +464,18 @@ const MilestonesPage: React.FC<MilestonesPageProps> = ({
 
 	const getStatusDotColor = (status?: string | null) => {
 		const normalized = (status ?? "").toLowerCase();
+		// Literal hex, so these bypass the palette in source.css. Keep them on
+		// the same vocabulary the board dots use: amber for in progress, and
+		// the neutral grey rather than Tailwind's stock blue-tinted one.
 		if (normalized.includes("done") || normalized.includes("complete")) return "#10b981";
-		if (normalized.includes("progress")) return "#3b82f6";
-		return "#6b7280";
+		if (normalized.includes("progress")) return "#f59e0b";
+		return "#858585";
 	};
 
 	const getInlineStatusClass = (status: string) => {
 		const normalized = status.toLowerCase();
 		if (normalized.includes("done") || normalized.includes("complete")) return "text-emerald-700 dark:text-emerald-300";
-		if (normalized.includes("progress")) return "text-blue-700 dark:text-blue-300";
+		if (normalized.includes("progress")) return "text-amber-700 dark:text-amber-300";
 		return "text-gray-600 dark:text-gray-400";
 	};
 
