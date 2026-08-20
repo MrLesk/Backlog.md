@@ -108,9 +108,10 @@ describe("Web task details modal subtask hierarchy", () => {
 	it("marks a child that has children of its own with its nested progress", () => {
 		const tasks = nestedCorpus();
 		const html = renderModal(tasks[0] as Task, tasks);
+		const document = new JSDOM(html).window.document;
 
 		expect(html).toContain('data-nested-progress="1/4"');
-		expect(html).toContain("1 of 4 complete");
+		expect(document.querySelector('[data-nested-progress="1/4"]')?.textContent).toBe("1 of 4 complete");
 	});
 
 	it("counts only the configured terminal status as complete", () => {
