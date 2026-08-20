@@ -231,6 +231,20 @@ describe("backlog doctor", () => {
 			expect(output).not.toContain("backlog doctor --fix");
 		},
 	);
+
+	it("mentions a task prefix that collides with a reserved system prefix", async () => {
+		await removeDuplicateTasks();
+		const config = await core.filesystem.loadConfig();
+		if (!config) throw new Error("Missing test config");
+		config.prefixes = { task: "draft" };
+		await core.filesystem.saveConfig(config);
+
+		const result = await $`bun ${cliPath} doctor`.cwd(testDir).quiet().nothrow();
+		const output = `${result.stdout}${result.stderr}`;
+		expect(result.exitCode).toBe(1);
+		expect(output).toContain('Task prefix "draft" collides with a reserved prefix');
+		expect(output).not.toContain("No duplicate task, document, or decision IDs found.");
+	});
 });
 
 describe("CLI collision safety", () => {
