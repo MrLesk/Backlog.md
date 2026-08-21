@@ -911,8 +911,15 @@ export class FileSystem {
 		);
 
 		if (filter?.status) {
-			const statusLower = filter.status.toLowerCase();
-			tasks = tasks.filter((t) => t.status.toLowerCase() === statusLower);
+			// Any of the given statuses, matching the content store.
+			const wanted = new Set(
+				(Array.isArray(filter.status) ? filter.status : [filter.status])
+					.map((status) => status.trim().toLowerCase())
+					.filter((status) => status.length > 0),
+			);
+			if (wanted.size > 0) {
+				tasks = tasks.filter((t) => wanted.has(t.status.toLowerCase()));
+			}
 		}
 		if (filter?.excludeStatus) {
 			const excludedStatuses = Array.isArray(filter.excludeStatus) ? filter.excludeStatus : [filter.excludeStatus];

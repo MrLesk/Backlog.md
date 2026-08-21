@@ -2048,7 +2048,7 @@ addHelpSchema(program.command("search [query]"), {
 			modifiedFiles?: string[];
 		} = {};
 		if (options.status) {
-			filters.status = options.status;
+			filters.status = parseDelimitedStringList(options.status) ?? options.status;
 		}
 		const excludeStatuses = parseDelimitedStringList(options.excludeStatus) ?? [];
 		if (excludeStatuses.length > 0) {
@@ -2363,7 +2363,11 @@ addHelpSchema(taskCmd.command("list"), {
 	],
 })
 	.description("list tasks grouped by status")
-	.option("-s, --status <status>", "filter tasks by status (case-insensitive)")
+	.option(
+		"-s, --status <status>",
+		"filter tasks by status (case-insensitive, repeatable or comma-separated)",
+		createMultiValueAccumulator(),
+	)
 	.option(
 		"--exclude-status <status>",
 		"exclude tasks by status (repeatable or comma-separated)",
@@ -2412,7 +2416,7 @@ addHelpSchema(taskCmd.command("list"), {
 		}
 		const baseFilters: TaskListFilter = {};
 		if (options.status) {
-			baseFilters.status = options.status;
+			baseFilters.status = parseDelimitedStringList(options.status) ?? options.status;
 		}
 		const excludeStatuses = parseDelimitedStringList(options.excludeStatus) ?? [];
 		if (excludeStatuses.length > 0) {

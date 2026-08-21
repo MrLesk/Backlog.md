@@ -668,8 +668,15 @@ export class Core {
 		}
 		let result = tasks;
 		if (filters.status) {
-			const statusLower = filters.status.toLowerCase();
-			result = result.filter((task) => (task.status ?? "").toLowerCase() === statusLower);
+			// Any of the given statuses, matching the content store.
+			const wanted = new Set(
+				(Array.isArray(filters.status) ? filters.status : [filters.status])
+					.map((status) => status.trim().toLowerCase())
+					.filter((status) => status.length > 0),
+			);
+			if (wanted.size > 0) {
+				result = result.filter((task) => wanted.has((task.status ?? "").toLowerCase()));
+			}
 		}
 		if (filters.excludeStatus) {
 			const excludedStatuses = Array.isArray(filters.excludeStatus) ? filters.excludeStatus : [filters.excludeStatus];

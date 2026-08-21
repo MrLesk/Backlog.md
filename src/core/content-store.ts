@@ -294,8 +294,16 @@ export class ContentStore {
 
 		let tasks = this.cachedTasks;
 		if (filter?.status) {
-			const statusLower = filter.status.toLowerCase();
-			tasks = tasks.filter((task) => task.status.toLowerCase() === statusLower);
+			// Any of the given statuses. Repeating -s used to overwrite rather than accumulate, so
+			// "list everything unfinished" silently returned whatever matched the last one alone.
+			const wanted = new Set(
+				(Array.isArray(filter.status) ? filter.status : [filter.status])
+					.map((status) => status.trim().toLowerCase())
+					.filter((status) => status.length > 0),
+			);
+			if (wanted.size > 0) {
+				tasks = tasks.filter((task) => wanted.has(task.status.toLowerCase()));
+			}
 		}
 		if (filter?.excludeStatus) {
 			const excludedStatuses = Array.isArray(filter.excludeStatus) ? filter.excludeStatus : [filter.excludeStatus];
