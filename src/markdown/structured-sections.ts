@@ -83,6 +83,53 @@ function restoreLineEndings(text: string, useCRLF: boolean): string {
 	return useCRLF ? text.replace(/\n/g, "\r\n") : text;
 }
 
+const FENCE_OPENING_REGEX = /^ {0,3}(`{3,}|~{3,})(.*)$/;
+
+/**
+ * Collapses runs of two or more blank lines to a single blank line outside
+ * fenced code blocks and leaves every newline inside fences untouched.
+ * Fence tracking follows CommonMark: ``` or ~~~ openers indented up to three
+ * spaces, backtick openers whose info string contains a backtick are prose,
+ * closings repeat the same character with at least the opening length, and an
+ * unterminated fence extends to the end of the text.
+ */
+function collapseBlankLines(text: string): string {
+	const lines: string[] = [];
+	let pendingBlankLines = 0;
+	let fenceCharacter = "";
+	let minimumFenceLength = 0;
+	for (const line of text.split("\n")) {
+		if (!fenceCharacter && line === "") {
+			pendingBlankLines += 1;
+			continue;
+		}
+		if (pendingBlankLines > 0) {
+			lines.push("");
+			pendingBlankLines = 0;
+		}
+		lines.push(line);
+		if (!fenceCharacter) {
+			const opening = FENCE_OPENING_REGEX.exec(line);
+			const fenceRun = opening?.[1] ?? "";
+			const info = opening?.[2] ?? "";
+			if (fenceRun && (fenceRun.charAt(0) !== "`" || !info.includes("`"))) {
+				fenceCharacter = fenceRun.charAt(0);
+				minimumFenceLength = fenceRun.length;
+			}
+			continue;
+		}
+		const remainder = line.replace(/^ {0,3}/, "");
+		let closingLength = 0;
+		while (remainder.charAt(closingLength) === fenceCharacter) closingLength += 1;
+		if (closingLength >= minimumFenceLength && /^[\t ]*$/.test(remainder.slice(closingLength))) {
+			fenceCharacter = "";
+			minimumFenceLength = 0;
+		}
+	}
+	if (pendingBlankLines > 0) lines.push("");
+	return lines.join("\n");
+}
+
 function escapeForRegex(value: string): string {
 	return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
@@ -533,7 +580,7 @@ function stripSectionInstances(content: string, key: StructuredSectionKey): stri
 	const legacyRegex = legacySectionRegex(title, "gi");
 	stripped = stripped.replace(legacyRegex, "\n");
 
-	return stripped.replace(/\n{3,}/g, "\n\n").trimEnd();
+	return collapseBlankLines(stripped).trimEnd();
 }
 
 function insertAfterSection(content: string, title: string, block: string): { inserted: boolean; content: string } {
@@ -674,7 +721,7 @@ export function updateStructuredSections(content: string, sections: SectionValue
 		output = insertAtStart(tail, descriptionBlock);
 	}
 
-	const finalOutput = output.replace(/\n{3,}/g, "\n\n").trim();
+	const finalOutput = collapseBlankLines(output).trim();
 	return restoreLineEndings(finalOutput, useCRLF);
 }
 
@@ -1086,7 +1133,7 @@ function stripCommentsSection(content: string): string {
 	for (const range of findCommentSectionRanges(content)) {
 		stripped = `${stripped.slice(0, range.start)}\n${stripped.slice(range.end)}`;
 	}
-	return stripped.replace(/\n{3,}/g, "\n\n").trimEnd();
+	return collapseBlankLines(stripped).trimEnd();
 }
 
 function updateCommentsContent(content: string, comments: TaskComment[]): string {
@@ -1114,7 +1161,7 @@ function updateCommentsContent(content: string, comments: TaskComment[]): string
 		res = insertAfterSection(stripped, getConfig("description").title, newSection);
 	}
 	const output = res.inserted ? res.content : appendBlock(stripped, newSection);
-	return restoreLineEndings(output.replace(/\n{3,}/g, "\n\n").trim(), useCRLF);
+	return restoreLineEndings(collapseBlankLines(output).trim(), useCRLF);
 }
 
 /* biome-ignore lint/complexity/noStaticOnlyClass: Utility methods grouped for clarity */
