@@ -1,5 +1,5 @@
 import { join } from "node:path";
-import { exportKanbanBoardToFile } from "./board.ts";
+import { generateKanbanBoardWithMetadata } from "./board.ts";
 import type { Task } from "./types/index.ts";
 
 const BOARD_START = "<!-- BOARD_START -->";
@@ -14,11 +14,7 @@ export async function updateReadmeWithBoard(tasks: Task[], statuses: string[], p
 		// If README.md doesn't exist, create it.
 	}
 
-	// Use the same high-quality board generation as file export
-	// Create a temporary file to get the properly formatted board
-	const tempPath = join(process.cwd(), ".temp-board.md");
-	await exportKanbanBoardToFile(tasks, statuses, tempPath, projectName);
-	const fullBoardContent = await Bun.file(tempPath).text();
+	const fullBoardContent = generateKanbanBoardWithMetadata(tasks, statuses, projectName);
 
 	// Extract timestamp from the board content
 	const timestampMatch = fullBoardContent.match(/Generated on: ([^\n]+)/);
@@ -32,14 +28,6 @@ export async function updateReadmeWithBoard(tasks: Task[], statuses: string[], p
 			(line.includes("To Do") || line.includes("In Progress") || line.includes("Done") || line.includes("---")),
 	);
 	const boardTable = lines.slice(tableStartIndex).join("\n").trim();
-
-	// Clean up temp file
-	try {
-		await Bun.file(tempPath).write("");
-		await Bun.$`rm -f ${tempPath}`;
-	} catch {
-		// Ignore cleanup errors
-	}
 
 	// Create the board section with a nice title
 	const versionText = version ? ` (${version})` : "";
