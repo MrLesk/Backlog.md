@@ -174,7 +174,8 @@ export interface TaskUpdateInput {
 }
 
 export interface TaskListFilter {
-	status?: string;
+	/** Matches any of these when several are given, mirroring `excludeStatus`. */
+	status?: string | string[];
 	excludeStatus?: string | string[];
 	type?: string | string[];
 	assignee?: string;
