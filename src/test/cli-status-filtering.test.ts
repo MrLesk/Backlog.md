@@ -83,10 +83,9 @@ describe("CLI status filtering", () => {
 	});
 
 	it("still honours exclude-status alongside several included statuses", async () => {
-		const result =
-			await $`bun ${cliPath} task list --status "To Do" --status "Done" --exclude-status Done --plain`
-				.cwd(TEST_DIR)
-				.quiet();
+		const result = await $`bun ${cliPath} task list --status "To Do" --status "Done" --exclude-status Done --plain`
+			.cwd(TEST_DIR)
+			.quiet();
 
 		expect(result.exitCode).toBe(0);
 		const stdout = result.stdout.toString();
