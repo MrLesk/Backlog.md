@@ -92,4 +92,47 @@ describe("CLI status filtering", () => {
 		expect(stdout).toContain("TASK-1 - Todo one");
 		expect(stdout).not.toContain("TASK-3 - Done one");
 	});
+
+	it("returns tasks matching any repeated status in JSON output", async () => {
+		const result = await $`bun ${cliPath} task list --status "To Do" --status "Done" --json`.cwd(TEST_DIR).quiet();
+
+		expect(result.exitCode).toBe(0);
+		expect(result.stderr.toString()).toBe("");
+		const ids = JSON.parse(result.stdout.toString()).tasks.map((t: { id: string }) => t.id);
+		expect(ids).toContain("TASK-1");
+		expect(ids).toContain("TASK-3");
+		expect(ids).not.toContain("TASK-2");
+	});
+
+	it("accepts comma-separated statuses in JSON output", async () => {
+		const result = await $`bun ${cliPath} task list --status "To Do,Done" --json`.cwd(TEST_DIR).quiet();
+
+		expect(result.exitCode).toBe(0);
+		const ids = JSON.parse(result.stdout.toString()).tasks.map((t: { id: string }) => t.id);
+		expect(ids).toContain("TASK-1");
+		expect(ids).toContain("TASK-3");
+		expect(ids).not.toContain("TASK-2");
+	});
+
+	it("search keeps every selected status in plain output when the flag is repeated", async () => {
+		const result = await $`bun ${cliPath} search work --type task --status "To Do" --status "Done" --plain`
+			.cwd(TEST_DIR)
+			.quiet();
+
+		expect(result.exitCode).toBe(0);
+		const stdout = result.stdout.toString();
+		expect(stdout).toContain("TASK-1 - Todo one");
+		expect(stdout).toContain("TASK-3 - Done one");
+		expect(stdout).not.toContain("TASK-2 - Progress one");
+	});
+
+	it("search accepts comma-separated statuses in plain output", async () => {
+		const result = await $`bun ${cliPath} search work --type task --status "to do,DONE" --plain`.cwd(TEST_DIR).quiet();
+
+		expect(result.exitCode).toBe(0);
+		const stdout = result.stdout.toString();
+		expect(stdout).toContain("TASK-1 - Todo one");
+		expect(stdout).toContain("TASK-3 - Done one");
+		expect(stdout).not.toContain("TASK-2 - Progress one");
+	});
 });

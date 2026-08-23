@@ -56,6 +56,7 @@ import {
 	getValidStatuses as resolveValidStatuses,
 } from "../utils/status.ts";
 import { executeStatusCallback } from "../utils/status-callback.ts";
+import { normalizeStatusSet, statusMatchesSet } from "../utils/status-filter.ts";
 import {
 	buildDefinitionOfDoneItems,
 	normalizeStringList,
@@ -668,23 +669,15 @@ export class Core {
 		}
 		let result = tasks;
 		if (filters.status) {
-			// Any of the given statuses, matching the content store.
-			const wanted = new Set(
-				(Array.isArray(filters.status) ? filters.status : [filters.status])
-					.map((status) => status.trim().toLowerCase())
-					.filter((status) => status.length > 0),
-			);
+			const wanted = normalizeStatusSet(filters.status);
 			if (wanted.size > 0) {
-				result = result.filter((task) => wanted.has((task.status ?? "").toLowerCase()));
+				result = result.filter((task) => statusMatchesSet(wanted, task.status));
 			}
 		}
 		if (filters.excludeStatus) {
-			const excludedStatuses = Array.isArray(filters.excludeStatus) ? filters.excludeStatus : [filters.excludeStatus];
-			const excluded = new Set(
-				excludedStatuses.map((status) => status.trim().toLowerCase()).filter((status) => status.length > 0),
-			);
+			const excluded = normalizeStatusSet(filters.excludeStatus);
 			if (excluded.size > 0) {
-				result = result.filter((task) => !excluded.has((task.status ?? "").toLowerCase()));
+				result = result.filter((task) => !statusMatchesSet(excluded, task.status));
 			}
 		}
 		if (filters.type) {
@@ -2775,8 +2768,7 @@ export class Core {
 			}
 			this.contentStore?.transitionTask(normalizedTaskId);
 
-			const sanitizedPaths =
-				sanitizedTasks.length > 0 ? await this.writeTasksBulk(sanitizedTasks) : [];
+			const sanitizedPaths = sanitizedTasks.length > 0 ? await this.writeTasksBulk(sanitizedTasks) : [];
 
 			if (await this.shouldAutoCommit(autoCommit)) {
 				// Stage the file move for proper Git tracking

@@ -212,7 +212,7 @@ export async function viewTaskEnhanced(
 		title?: string;
 		filterDescription?: string;
 		searchQuery?: string;
-		statusFilter?: string;
+		statusFilter?: string | string[];
 		excludeStatus?: string[];
 		typeFilter?: string[];
 		priorityFilter?: string;
@@ -234,7 +234,7 @@ export async function viewTaskEnhanced(
 		onTabPress?: () => Promise<void>;
 		onFilterChange?: (filters: {
 			searchQuery: string;
-			statusFilter: string;
+			statusFilter: string[];
 			excludeStatus: string[];
 			typeFilter: string[];
 			priorityFilter: string;
@@ -336,12 +336,15 @@ export async function viewTaskEnhanced(
 	// State for filtering - normalize filters to match configured values
 	let searchQuery = options.searchQuery || "";
 
-	// Find the canonical status value from configured statuses (case-insensitive)
-	let statusFilter = "";
-	if (options.statusFilter) {
-		const lowerFilter = options.statusFilter.toLowerCase();
-		const matchedStatus = statuses.find((s) => s.toLowerCase() === lowerFilter);
-		statusFilter = matchedStatus || "";
+	// Keep the requested statuses that match configured ones (case-insensitive), in config order
+	let statusFilter: string[] = [];
+	if (options.statusFilter && options.statusFilter.length > 0) {
+		const requested = new Set(
+			(Array.isArray(options.statusFilter) ? options.statusFilter : [options.statusFilter]).map((status) =>
+				status.trim().toLowerCase(),
+			),
+		);
+		statusFilter = statuses.filter((status) => requested.has(status.toLowerCase()));
 	}
 	const excludeStatusFilter = [...(options.excludeStatus ?? [])];
 
@@ -363,7 +366,7 @@ export async function viewTaskEnhanced(
 	// else triggers a refilter.
 	const filtersActive = Boolean(
 		searchQuery ||
-			statusFilter ||
+			statusFilter.length > 0 ||
 			excludeStatusFilter.length > 0 ||
 			taskTypeFilter.length > 0 ||
 			priorityFilter ||
@@ -468,15 +471,15 @@ export async function viewTaskEnhanced(
 			}
 
 			if (filterId === "status") {
-				const selected = await openSingleSelectFilterPopup({
+				const nextStatuses = await openMultiSelectFilterPopup({
 					screen,
 					title: "Status Filter",
-					selectedValue: statusFilter,
-					choices: [{ label: "All", value: "" }, ...statuses.map((status) => ({ label: status, value: status }))],
+					items: statuses,
+					selectedItems: statusFilter,
 				});
-				if (selected !== null) {
-					statusFilter = selected;
-					filterHeader.setFilters({ status: selected });
+				if (nextStatuses !== null) {
+					statusFilter = nextStatuses;
+					filterHeader.setFilters({ status: nextStatuses });
 					applyFilters();
 					notifyFilterChange();
 				}
@@ -729,7 +732,7 @@ export async function viewTaskEnhanced(
 	function applyFilters() {
 		const hasActiveFilters = Boolean(
 			searchQuery.trim() ||
-				statusFilter ||
+				statusFilter.length > 0 ||
 				excludeStatusFilter.length > 0 ||
 				taskTypeFilter.length > 0 ||
 				priorityFilter ||
@@ -745,7 +748,7 @@ export async function viewTaskEnhanced(
 				allTasks,
 				{
 					query: searchQuery,
-					status: statusFilter || undefined,
+					status: statusFilter.length > 0 ? [...statusFilter] : undefined,
 					excludeStatus: excludeStatusFilter,
 					type: taskTypeFilter,
 					priority: priorityFilter || undefined,
@@ -761,7 +764,7 @@ export async function viewTaskEnhanced(
 			const searchResults = searchService.search({
 				query: searchQuery,
 				filters: {
-					status: statusFilter || undefined,
+					status: statusFilter.length > 0 ? [...statusFilter] : undefined,
 					excludeStatus: excludeStatusFilter,
 					type: taskTypeFilter,
 					priority: priorityFilter || undefined,
@@ -811,8 +814,8 @@ export async function viewTaskEnhanced(
 			if (trimmedQuery) {
 				activeFilters.push(`Search: {cyan-fg}${trimmedQuery}{/}`);
 			}
-			if (statusFilter) {
-				activeFilters.push(`Status: {cyan-fg}${statusFilter}{/}`);
+			if (statusFilter.length > 0) {
+				activeFilters.push(`Status: {cyan-fg}${statusFilter.join(", ")}{/}`);
 			}
 			if (excludeStatusFilter.length > 0) {
 				activeFilters.push(`Exclude status: {cyan-fg}${excludeStatusFilter.join(", ")}{/}`);

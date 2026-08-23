@@ -22,6 +22,7 @@ import {
 	idForFilename,
 	normalizeId,
 } from "../utils/prefix-config.ts";
+import { normalizeStatusSet, statusMatchesSet } from "../utils/status-filter.ts";
 import {
 	AmbiguousTaskIdError,
 	getTaskFilename,
@@ -638,9 +639,9 @@ export class FileSystem {
 	 * orders and deadlocking each other.
 	 */
 	async withTaskLocks<T>(tasks: Array<Pick<Task, "id" | "filePath">>, fn: () => Promise<T>): Promise<T> {
-		const uniqueTasks = Array.from(
-			new Map(tasks.map((task) => [task.id.trim().toLowerCase(), task])).values(),
-		).sort((left, right) => left.id.localeCompare(right.id));
+		const uniqueTasks = Array.from(new Map(tasks.map((task) => [task.id.trim().toLowerCase(), task])).values()).sort(
+			(left, right) => left.id.localeCompare(right.id),
+		);
 
 		const acquire = async (index: number): Promise<T> => {
 			const task = uniqueTasks[index];
@@ -912,22 +913,15 @@ export class FileSystem {
 
 		if (filter?.status) {
 			// Any of the given statuses, matching the content store.
-			const wanted = new Set(
-				(Array.isArray(filter.status) ? filter.status : [filter.status])
-					.map((status) => status.trim().toLowerCase())
-					.filter((status) => status.length > 0),
-			);
+			const wanted = normalizeStatusSet(filter.status);
 			if (wanted.size > 0) {
-				tasks = tasks.filter((t) => wanted.has(t.status.toLowerCase()));
+				tasks = tasks.filter((t) => statusMatchesSet(wanted, t.status));
 			}
 		}
 		if (filter?.excludeStatus) {
-			const excludedStatuses = Array.isArray(filter.excludeStatus) ? filter.excludeStatus : [filter.excludeStatus];
-			const excluded = new Set(
-				excludedStatuses.map((status) => status.trim().toLowerCase()).filter((status) => status.length > 0),
-			);
+			const excluded = normalizeStatusSet(filter.excludeStatus);
 			if (excluded.size > 0) {
-				tasks = tasks.filter((t) => !excluded.has(t.status.toLowerCase()));
+				tasks = tasks.filter((t) => !statusMatchesSet(excluded, t.status));
 			}
 		}
 		if (filter?.type) {

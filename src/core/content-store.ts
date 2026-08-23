@@ -8,6 +8,7 @@ import { watchConfigFile } from "../utils/config-watcher.ts";
 import { documentIdKey, documentIdsEqual } from "../utils/document-id.ts";
 import { normalizeDocumentRelativePath } from "../utils/document-path.ts";
 import { normalizePriorityValue } from "../utils/priority-config.ts";
+import { normalizeStatusSet, statusMatchesSet } from "../utils/status-filter.ts";
 import { canonicalTaskId, normalizeTaskId, normalizeTaskIdentity, taskIdsEqual } from "../utils/task-path.ts";
 import { sortByTaskId } from "../utils/task-sorting.ts";
 import { matchesTaskTypeFilter } from "../utils/task-type-config.ts";
@@ -296,22 +297,15 @@ export class ContentStore {
 		if (filter?.status) {
 			// Any of the given statuses. Repeating -s used to overwrite rather than accumulate, so
 			// "list everything unfinished" silently returned whatever matched the last one alone.
-			const wanted = new Set(
-				(Array.isArray(filter.status) ? filter.status : [filter.status])
-					.map((status) => status.trim().toLowerCase())
-					.filter((status) => status.length > 0),
-			);
+			const wanted = normalizeStatusSet(filter.status);
 			if (wanted.size > 0) {
-				tasks = tasks.filter((task) => wanted.has(task.status.toLowerCase()));
+				tasks = tasks.filter((task) => statusMatchesSet(wanted, task.status));
 			}
 		}
 		if (filter?.excludeStatus) {
-			const excludedStatuses = Array.isArray(filter.excludeStatus) ? filter.excludeStatus : [filter.excludeStatus];
-			const excluded = new Set(
-				excludedStatuses.map((status) => status.trim().toLowerCase()).filter((status) => status.length > 0),
-			);
+			const excluded = normalizeStatusSet(filter.excludeStatus);
 			if (excluded.size > 0) {
-				tasks = tasks.filter((task) => !excluded.has(task.status.toLowerCase()));
+				tasks = tasks.filter((task) => !statusMatchesSet(excluded, task.status));
 			}
 		}
 		if (filter?.type) {
@@ -872,11 +866,7 @@ export class ContentStore {
 			return false;
 		}
 
-		const reconciledTaskCorpus = this.mergeConcurrentWorkingCopyCorpus(
-			taskCorpus,
-			itemVersions.tasks,
-			targetRoot,
-		);
+		const reconciledTaskCorpus = this.mergeConcurrentWorkingCopyCorpus(taskCorpus, itemVersions.tasks, targetRoot);
 		const mergedTasks = this.mergeConcurrentChanges(
 			reconciledTaskCorpus.tasks,
 			before.tasks,
@@ -1587,11 +1577,7 @@ export class ContentStore {
 				!this.isContentRefreshCurrent("tasks", generation)
 			)
 				return false;
-			const reconciledCorpus = this.mergeConcurrentWorkingCopyCorpus(
-				corpus,
-				before.versions,
-				targetRoot,
-			);
+			const reconciledCorpus = this.mergeConcurrentWorkingCopyCorpus(corpus, before.versions, targetRoot);
 			const merged = this.mergeConcurrentChanges(
 				reconciledCorpus.tasks,
 				before.items,
@@ -1737,12 +1723,7 @@ export class ContentStore {
 		beforeVersions: ReadonlyMap<string, number>,
 		targetRoot: string,
 	): { activeTasks: Task[]; completedTasks: Task[] } {
-		const activeTasks = this.mergeConcurrentTaskCorpus(
-			loadedActiveTasks,
-			this.activeTasks,
-			beforeVersions,
-			targetRoot,
-		);
+		const activeTasks = this.mergeConcurrentTaskCorpus(loadedActiveTasks, this.activeTasks, beforeVersions, targetRoot);
 		const completedTasks = this.mergeConcurrentTaskCorpus(
 			loadedCompletedTasks,
 			this.completedTasks,

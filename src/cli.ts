@@ -1984,7 +1984,11 @@ addHelpSchema(program.command("search [query]"), {
 		"filter task results by configured task type (repeatable or comma-separated)",
 		createMultiValueAccumulator(),
 	)
-	.option("--status <status>", "filter task results by status")
+	.option(
+		"--status <status>",
+		"filter task results by status (repeatable or comma-separated)",
+		createMultiValueAccumulator(),
+	)
 	.option(
 		"--exclude-status <status>",
 		"exclude task results by status (repeatable or comma-separated)",
@@ -2041,7 +2045,7 @@ addHelpSchema(program.command("search [query]"), {
 		}
 
 		const filters: {
-			status?: string;
+			status?: string | string[];
 			excludeStatus?: string[];
 			type?: string[];
 			priority?: SearchPriorityFilter;
@@ -2162,7 +2166,7 @@ addHelpSchema(program.command("search [query]"), {
 	});
 
 function buildSearchFilterDescription(filters: {
-	status?: string;
+	status?: string | string[];
 	excludeStatus?: string[];
 	type?: string[];
 	priority?: SearchPriorityFilter;
@@ -2174,7 +2178,8 @@ function buildSearchFilterDescription(filters: {
 		parts.push(`Query: ${filters.query}`);
 	}
 	if (filters.status) {
-		parts.push(`Status: ${filters.status}`);
+		const statusText = Array.isArray(filters.status) ? filters.status.join(", ") : filters.status;
+		parts.push(`Status: ${statusText}`);
 	}
 	if (filters.excludeStatus?.length) {
 		parts.push(`Exclude status: ${filters.excludeStatus.join(", ")}`);
@@ -2636,7 +2641,7 @@ addHelpSchema(taskCmd.command("list"), {
 			title = `Tasks (${activeFilters.join(" • ")})`;
 		}
 		const initialUnifiedFilter: {
-			status?: string;
+			status?: string | string[];
 			excludeStatus?: string[];
 			assignee?: string;
 			milestone?: string;
@@ -2652,7 +2657,7 @@ addHelpSchema(taskCmd.command("list"), {
 			limit?: number;
 			ready?: boolean;
 		} = {
-			status: options.status,
+			status: baseFilters.status,
 			excludeStatus: Array.isArray(baseFilters.excludeStatus) ? baseFilters.excludeStatus : undefined,
 			assignee: options.assignee,
 			milestone: options.milestone,

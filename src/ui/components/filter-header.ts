@@ -12,7 +12,7 @@ export type FilterControlId = "search" | "status" | "type" | "priority" | "label
 
 export interface FilterState {
 	search: string;
-	status: string;
+	status: string[];
 	taskTypes: string[];
 	priority: string;
 	labels: string[];
@@ -150,7 +150,7 @@ export class FilterHeader {
 		this.visibleFilterIds = normalizeVisibleFilters(options.visibleFilters);
 		this.state = {
 			search: options.initialFilters?.search ?? "",
-			status: options.initialFilters?.status ?? "",
+			status: options.initialFilters?.status ?? [],
 			taskTypes: options.initialFilters?.taskTypes ?? [],
 			priority: options.initialFilters?.priority ?? "",
 			labels: options.initialFilters?.labels ?? [],
@@ -198,7 +198,7 @@ export class FilterHeader {
 			this.searchInput?.setValue(filters.search);
 		}
 		if (filters.status !== undefined) {
-			this.state.status = filters.status;
+			this.state.status = [...filters.status];
 			this.updateStatusButton();
 		}
 		if (filters.taskTypes !== undefined) {
@@ -618,7 +618,9 @@ export class FilterHeader {
 	private getPopupButtonContent(field: Exclude<FilterControlId, "search">): string {
 		switch (field) {
 			case "status":
-				return this.state.status ? `${this.state.status} ▼` : "All ▼";
+				if (this.state.status.length === 0) return "All ▼";
+				if (this.state.status.length === 1) return `${this.state.status[0]} ▼`;
+				return `${this.state.status.length} selected ▼`;
 			case "type":
 				if (this.state.taskTypes.length === 0) return "All ▼";
 				if (this.state.taskTypes.length === 1) return `${this.state.taskTypes[0]} ▼`;
