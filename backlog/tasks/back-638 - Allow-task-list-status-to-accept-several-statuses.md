@@ -5,7 +5,7 @@ status: Done
 assignee:
   - '@MrLesk'
 created_date: '2026-08-22 12:22'
-updated_date: '2026-08-23 12:27'
+updated_date: '2026-08-23 12:44'
 labels: []
 dependencies: []
 references:
@@ -46,6 +46,8 @@ Make the task list --status flag accept repeated values and comma-separated valu
 Verification: contributor PR #929 branch checked out locally (worktree). tsc --noEmit passes; new test file 5/5 pass; full suite 2350 pass / 0 fail; TUI suite 109 pass / 0 fail; manual CLI checks for repeated flag, comma-separated, case-insensitive, and exclude-status composition all match PR claims. All 7 CI jobs green on approved run. Biome: only PR-introduced format issue (one line in new test) fixed locally as maintainer edit.
 
 Review round (PR #929 takeover): fixed Codex findings 1/2/4. Finding 1+4: interactive paths now receive the structured multi-status selection - UnifiedViewFilters.statusFilter became string[], the TUI status popup is multi-select like type/labels, task-search matches any selected status via the shared helper, and search --status is repeatable like task list --status so repeated flags accumulate instead of last-wins. Finding 2: one shared helper src/utils/status-filter.ts (normalizeStatusSet + statusMatchesSet) now backs Core.applyTaskFilters, ContentStore.getTasks, FileSystem.listTasks, and utils/task-search include/exclude blocks with identical trim/lowercase/blank-drop semantics. Finding 3 (status names containing commas) declined by maintainer decision; comma-splitting untouched. Verified: tsc clean; biome clean on changed files; cli-status-filtering 9/9, status-filter 6/6 + unified-view-filters 17/17, full suite 2357 pass / 0 fail; tui-test manual check of task list and search with repeated and comma forms shows only matching tasks ('Status: 2 selected') with no crash.
+
+Help-schema follow-up (P2): statusType gained a multiple option and the task list / search help schemas now advertise 'one or more of configured statuses' with repeat/comma-separate, case-insensitive descriptions; cli-guidance expectations updated. Help text only.
 <!-- SECTION:NOTES:END -->
 
 ## Final Summary
