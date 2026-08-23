@@ -1953,7 +1953,11 @@ addHelpSchema(program.command("search [query]"), {
 			type: () => taskType({ multiple: true }),
 			description: "Filter task results by one or more configured task types; repeat or comma-separate values",
 		},
-		{ name: "status", type: statusType, description: "Filter task results by status; case-insensitive" },
+		{
+			name: "status",
+			type: () => statusType({ multiple: true }),
+			description: "Filter task results by one or more statuses; repeat or comma-separate values; case-insensitive",
+		},
 		{
 			name: "exclude-status",
 			type: statusType,
@@ -2325,7 +2329,11 @@ addHelpSchema(taskCmd.command("list"), {
 	reads: "Local editable tasks from the configured backlog directory",
 	required: [],
 	optional: [
-		{ name: "status", type: statusType, description: "Filter by task status; case-insensitive" },
+		{
+			name: "status",
+			type: () => statusType({ multiple: true }),
+			description: "Filter tasks by one or more statuses; repeat or comma-separate values; case-insensitive",
+		},
 		{
 			name: "exclude-status",
 			type: statusType,
