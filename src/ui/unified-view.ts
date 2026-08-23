@@ -27,7 +27,7 @@ export interface UnifiedViewOptions {
 	loadingScreenFactory?: (initialMessage: string) => Promise<LoadingScreen | null>;
 	title?: string;
 	filter?: {
-		status?: string;
+		status?: string | string[];
 		assignee?: string;
 		type?: string[];
 		priority?: string;
@@ -109,7 +109,7 @@ export function createUnifiedTaskUpdateCallbacks(
 
 export interface UnifiedViewFilters {
 	searchQuery: string;
-	statusFilter: string;
+	statusFilter: string[];
 	excludeStatus: string[];
 	typeFilter: string[];
 	priorityFilter: string;
@@ -181,9 +181,10 @@ export function filterTasksForKanban(
 }
 
 export function createUnifiedViewFilters(filter: UnifiedViewOptions["filter"] | undefined): UnifiedViewFilters {
+	const status = filter?.status;
 	return {
 		searchQuery: filter?.searchQuery || "",
-		statusFilter: filter?.status || "",
+		statusFilter: Array.isArray(status) ? [...status] : status ? [status] : [],
 		excludeStatus: [...(filter?.excludeStatus || [])],
 		typeFilter: [...(filter?.type || [])],
 		priorityFilter: filter?.priority || "",

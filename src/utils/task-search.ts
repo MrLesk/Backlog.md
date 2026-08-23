@@ -14,6 +14,7 @@ import {
 import { matchesModifiedFileFilters, normalizeModifiedFileFilters } from "./modified-files.ts";
 import { normalizePriorityValue } from "./priority-config.ts";
 import { getTaskReadiness, type ReadinessGraph } from "./readiness.ts";
+import { normalizeStatusSet, statusMatchesSet } from "./status-filter.ts";
 import { createTaskIdSearchVariants } from "./task-id-search.ts";
 import { matchesTaskTypeFilter } from "./task-type-config.ts";
 
@@ -21,7 +22,7 @@ export type LabelMatchMode = "any" | "all";
 
 export interface TaskSearchOptions {
 	query?: string;
-	status?: string;
+	status?: string | string[];
 	excludeStatus?: string | string[];
 	type?: string | string[];
 	priority?: string;
@@ -43,7 +44,7 @@ export interface SharedTaskFilterOptions {
 }
 
 export interface TaskFilterOptions extends SharedTaskFilterOptions {
-	status?: string;
+	status?: string | string[];
 	excludeStatus?: string | string[];
 	/**
 	 * When set, keep only tasks that are ready according to this graph. The graph carries the full
@@ -135,18 +136,15 @@ export function createTaskSearchIndex(tasks: Task[]): TaskSearchIndex {
 				results = [...searchableTasks];
 			}
 
-			// Apply status filter
-			if (options.status) {
-				const statusLower = options.status.toLowerCase();
-				results = results.filter((t) => t.statusLower === statusLower);
+			// Apply status filter: any of the given statuses, matching the stores.
+			const wantedStatuses = options.status ? normalizeStatusSet(options.status) : null;
+			if (wantedStatuses && wantedStatuses.size > 0) {
+				results = results.filter((t) => statusMatchesSet(wantedStatuses, t.statusLower));
 			}
 			if (options.excludeStatus) {
-				const excludedStatuses = Array.isArray(options.excludeStatus) ? options.excludeStatus : [options.excludeStatus];
-				const excluded = new Set(
-					excludedStatuses.map((status) => status.trim().toLowerCase()).filter((status) => status.length > 0),
-				);
+				const excluded = normalizeStatusSet(options.excludeStatus);
 				if (excluded.size > 0) {
-					results = results.filter((t) => !excluded.has(t.statusLower));
+					results = results.filter((t) => !statusMatchesSet(excluded, t.statusLower));
 				}
 			}
 			if (options.type) {

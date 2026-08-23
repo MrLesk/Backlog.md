@@ -269,8 +269,9 @@ export function choiceType(values: readonly string[], options?: { multiple?: boo
 	return `${options?.multiple ? "one or more of" : "one of"}: ${values.join(", ")}`;
 }
 
-export function statusType(options?: { includeDraft?: boolean }): string {
-	return `one of configured statuses: ${getCliStatusValues(options).join(", ")}`;
+export function statusType(options?: { includeDraft?: boolean; multiple?: boolean }): string {
+	const cardinality = options?.multiple ? "one or more of" : "one of";
+	return `${cardinality} configured statuses: ${getCliStatusValues(options).join(", ")}`;
 }
 
 export function priorityType(): string {

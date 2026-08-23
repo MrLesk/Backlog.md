@@ -331,7 +331,7 @@ describe("CLI Integration", () => {
 			expect(createHelp).toContain(
 				"plan: Markdown - Only for already-started work created directly in a configured active status (for example, In Progress)",
 			);
-			expect(listHelp).toContain("status: one of configured statuses: To Do, In Progress, Done");
+			expect(listHelp).toContain("status: one or more of configured statuses: To Do, In Progress, Done");
 			expect(listHelp).not.toContain("status: one of configured statuses: Draft, To Do, In Progress, Done");
 			expect(listHelp).toContain("priority: one of configured priorities: High, Medium, Low");
 			expect(listHelp).toContain("labels: Comma-separated strings");
@@ -437,8 +437,8 @@ describe("CLI Integration", () => {
 			const editHelp = await $`bun ${CLI_PATH} task edit --help`.cwd(TEST_DIR).text();
 
 			expect(createHelp).toContain("status: one of configured statuses: Draft, Ready, Review, Closed");
-			expect(listHelp).toContain("status: one of configured statuses: Ready, Review, Closed");
-			expect(searchHelp).toContain("status: one of configured statuses: Ready, Review, Closed");
+			expect(listHelp).toContain("status: one or more of configured statuses: Ready, Review, Closed");
+			expect(searchHelp).toContain("status: one or more of configured statuses: Ready, Review, Closed");
 			expect(editHelp).toContain("status: one of configured statuses: Ready, Review, Closed");
 			for (const output of [listHelp, searchHelp, editHelp]) {
 				expect(output).not.toContain("status: one of configured statuses: Draft, Ready, Review, Closed");
@@ -457,7 +457,7 @@ describe("CLI Integration", () => {
 			expect(configHelp).toContain("key: one of: defaultEditor, projectName, defaultAssignee, defaultStatus");
 			expect(configHelp).toContain("value: String");
 			expect(searchHelp).toContain("type: one or more of: task, document, decision");
-			expect(searchHelp).toContain("status: one of configured statuses: To Do, In Progress, Done");
+			expect(searchHelp).toContain("status: one or more of configured statuses: To Do, In Progress, Done");
 			expect(searchHelp).not.toContain("status: one of configured statuses: Draft, To Do, In Progress, Done");
 			expect(searchHelp).toContain("priority: one of configured priorities: High, Medium, Low");
 			expect(searchHelp).toContain("modified-file: Project-root-relative path");

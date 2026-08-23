@@ -1953,7 +1953,11 @@ addHelpSchema(program.command("search [query]"), {
 			type: () => taskType({ multiple: true }),
 			description: "Filter task results by one or more configured task types; repeat or comma-separate values",
 		},
-		{ name: "status", type: statusType, description: "Filter task results by status; case-insensitive" },
+		{
+			name: "status",
+			type: () => statusType({ multiple: true }),
+			description: "Filter task results by one or more statuses; repeat or comma-separate values; case-insensitive",
+		},
 		{
 			name: "exclude-status",
 			type: statusType,
@@ -1984,7 +1988,11 @@ addHelpSchema(program.command("search [query]"), {
 		"filter task results by configured task type (repeatable or comma-separated)",
 		createMultiValueAccumulator(),
 	)
-	.option("--status <status>", "filter task results by status")
+	.option(
+		"--status <status>",
+		"filter task results by status (repeatable or comma-separated)",
+		createMultiValueAccumulator(),
+	)
 	.option(
 		"--exclude-status <status>",
 		"exclude task results by status (repeatable or comma-separated)",
@@ -2041,14 +2049,14 @@ addHelpSchema(program.command("search [query]"), {
 		}
 
 		const filters: {
-			status?: string;
+			status?: string | string[];
 			excludeStatus?: string[];
 			type?: string[];
 			priority?: SearchPriorityFilter;
 			modifiedFiles?: string[];
 		} = {};
 		if (options.status) {
-			filters.status = options.status;
+			filters.status = parseDelimitedStringList(options.status) ?? options.status;
 		}
 		const excludeStatuses = parseDelimitedStringList(options.excludeStatus) ?? [];
 		if (excludeStatuses.length > 0) {
@@ -2162,7 +2170,7 @@ addHelpSchema(program.command("search [query]"), {
 	});
 
 function buildSearchFilterDescription(filters: {
-	status?: string;
+	status?: string | string[];
 	excludeStatus?: string[];
 	type?: string[];
 	priority?: SearchPriorityFilter;
@@ -2174,7 +2182,8 @@ function buildSearchFilterDescription(filters: {
 		parts.push(`Query: ${filters.query}`);
 	}
 	if (filters.status) {
-		parts.push(`Status: ${filters.status}`);
+		const statusText = Array.isArray(filters.status) ? filters.status.join(", ") : filters.status;
+		parts.push(`Status: ${statusText}`);
 	}
 	if (filters.excludeStatus?.length) {
 		parts.push(`Exclude status: ${filters.excludeStatus.join(", ")}`);
@@ -2320,7 +2329,11 @@ addHelpSchema(taskCmd.command("list"), {
 	reads: "Local editable tasks from the configured backlog directory",
 	required: [],
 	optional: [
-		{ name: "status", type: statusType, description: "Filter by task status; case-insensitive" },
+		{
+			name: "status",
+			type: () => statusType({ multiple: true }),
+			description: "Filter tasks by one or more statuses; repeat or comma-separate values; case-insensitive",
+		},
 		{
 			name: "exclude-status",
 			type: statusType,
@@ -2363,7 +2376,11 @@ addHelpSchema(taskCmd.command("list"), {
 	],
 })
 	.description("list tasks grouped by status")
-	.option("-s, --status <status>", "filter tasks by status (case-insensitive)")
+	.option(
+		"-s, --status <status>",
+		"filter tasks by status (case-insensitive, repeatable or comma-separated)",
+		createMultiValueAccumulator(),
+	)
 	.option(
 		"--exclude-status <status>",
 		"exclude tasks by status (repeatable or comma-separated)",
@@ -2412,7 +2429,7 @@ addHelpSchema(taskCmd.command("list"), {
 		}
 		const baseFilters: TaskListFilter = {};
 		if (options.status) {
-			baseFilters.status = options.status;
+			baseFilters.status = parseDelimitedStringList(options.status) ?? options.status;
 		}
 		const excludeStatuses = parseDelimitedStringList(options.excludeStatus) ?? [];
 		if (excludeStatuses.length > 0) {
@@ -2632,7 +2649,7 @@ addHelpSchema(taskCmd.command("list"), {
 			title = `Tasks (${activeFilters.join(" • ")})`;
 		}
 		const initialUnifiedFilter: {
-			status?: string;
+			status?: string | string[];
 			excludeStatus?: string[];
 			assignee?: string;
 			milestone?: string;
@@ -2648,7 +2665,7 @@ addHelpSchema(taskCmd.command("list"), {
 			limit?: number;
 			ready?: boolean;
 		} = {
-			status: options.status,
+			status: baseFilters.status,
 			excludeStatus: Array.isArray(baseFilters.excludeStatus) ? baseFilters.excludeStatus : undefined,
 			assignee: options.assignee,
 			milestone: options.milestone,
