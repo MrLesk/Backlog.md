@@ -18,6 +18,7 @@ import { normalizeDocumentRelativePath, normalizeDocumentSubPath } from "../util
 import {
 	buildGlobPattern,
 	extractAnyPrefix,
+	filenameMatchesId,
 	generateNextId,
 	idForFilename,
 	normalizeId,
@@ -1068,7 +1069,7 @@ export class FileSystem {
 			);
 			const normalizedId = normalizeId(draftId, "draft");
 			const filenameId = idForFilename(normalizedId);
-			const draftFile = files.find((f) => f.startsWith(`${filenameId} -`) || f.startsWith(`${filenameId}-`));
+			const draftFile = files.find((f) => filenameMatchesId(f, filenameId));
 
 			if (!draftFile) return null;
 
@@ -1195,7 +1196,7 @@ export class FileSystem {
 			const existingFiles = await Array.fromAsync(
 				new Bun.Glob(buildGlobPattern("draft")).scan({ cwd: draftsDir, followSymlinks: true }),
 			);
-			const existingFile = existingFiles.find((f) => f.startsWith(`${filenameId} -`) || f.startsWith(`${filenameId}-`));
+			const existingFile = existingFiles.find((f) => filenameMatchesId(f, filenameId));
 			if (existingFile && existingFile !== filename) {
 				await unlink(join(draftsDir, existingFile));
 			}
@@ -1219,7 +1220,7 @@ export class FileSystem {
 			const filenameId = idForFilename(normalizedId);
 
 			// Find matching draft file
-			const draftFile = files.find((f) => f.startsWith(`${filenameId} -`) || f.startsWith(`${filenameId}-`));
+			const draftFile = files.find((f) => filenameMatchesId(f, filenameId));
 			if (!draftFile) return null;
 
 			const filepath = join(draftsDir, draftFile);

@@ -82,7 +82,7 @@ import {
 	runMcpClientSetupCommand,
 } from "./utils/mcp-client-setup.ts";
 import { resolveMilestoneInputForStorage } from "./utils/milestone-storage.ts";
-import { DRAFT_PREFIX, hasAnyPrefix, idForFilename, normalizeId } from "./utils/prefix-config.ts";
+import { DRAFT_PREFIX, filenameMatchesId, hasAnyPrefix, idForFilename, normalizeId } from "./utils/prefix-config.ts";
 import { formatValidPriorityValues, getPriorityOptions, resolvePriorityValue } from "./utils/priority-config.ts";
 import { type ReadOutputMode, resolveReadOutputMode } from "./utils/read-output-mode.ts";
 import { getTaskReadiness, loadReadinessGraph } from "./utils/readiness.ts";
@@ -2772,10 +2772,9 @@ const draftEditTarget: EditCommandTarget = {
 		// Same filename-based matching as fs.loadDraft so the resolved target and the mutation
 		// target cannot disagree; several matching files must fail closed instead of picking one.
 		const filenameId = idForFilename(normalizeId(id, DRAFT_PREFIX));
-		const matches = (await core.filesystem.listDrafts()).filter((draft) => {
-			const file = basename(draft.filePath ?? "");
-			return file.startsWith(`${filenameId} -`) || file.startsWith(`${filenameId}-`);
-		});
+		const matches = (await core.filesystem.listDrafts()).filter((draft) =>
+			filenameMatchesId(basename(draft.filePath ?? ""), filenameId),
+		);
 		if (matches.length > 1) {
 			throw new AmbiguousIdError(
 				"Draft",

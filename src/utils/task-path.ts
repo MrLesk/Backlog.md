@@ -7,6 +7,7 @@ import {
 	buildGlobPattern,
 	escapeRegex,
 	extractAnyPrefix,
+	filenameMatchesId,
 	idForFilename,
 	normalizeId,
 } from "./prefix-config.ts";
@@ -188,7 +189,7 @@ export async function getDraftPath(draftId: string, core: Core): Promise<string 
 		// Use lowercase ID for filename matching (filenames use lowercase prefix)
 		const filenameId = idForFilename(normalizedId);
 		// First exact match
-		let draftFile = files.find((f) => f.startsWith(`${filenameId} -`) || f.startsWith(`${filenameId}-`));
+		let draftFile = files.find((f) => filenameMatchesId(f, filenameId));
 		// Fallback to loose numeric match ignoring leading zeros
 		if (!draftFile) {
 			draftFile = files.find((f) => draftIdsMatchLoosely(draftId, f));

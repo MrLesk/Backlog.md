@@ -363,6 +363,21 @@ export function idForFilename(id: string): string {
 }
 
 /**
+ * Whether a filename belongs to the given filename-cased ID, accepting both
+ * the "id - Title.md" and "id-suffix.md" spellings used by entity files.
+ *
+ * @param filename - The file name to test (e.g., "draft-5 - Title.md")
+ * @param filenameId - Lowercase ID from {@link idForFilename} (e.g., "draft-5")
+ *
+ * @example
+ * filenameMatchesId("draft-5 - Title.md", "draft-5") // => true
+ * filenameMatchesId("draft-50 - Other.md", "draft-5") // => false
+ */
+export function filenameMatchesId(filename: string, filenameId: string): boolean {
+	return filename.startsWith(`${filenameId} -`) || filename.startsWith(`${filenameId}-`);
+}
+
+/**
  * Escapes special regex characters in a string.
  * Used to safely build regex patterns from user-provided prefixes.
  *
