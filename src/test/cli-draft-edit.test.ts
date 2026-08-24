@@ -122,7 +122,39 @@ describe("CLI draft edit", () => {
 		expect(output).toContain("Draft ID DRAFT-7 is ambiguous; 2 files match:");
 		expect(output).toContain("draft-7 - Alpha.md");
 		expect(output).toContain("draft-7 - Beta.md");
-		expect(output).toContain("backlog doctor");
+		expect(output).toContain("Rename these files or fix their frontmatter ids");
+		expect(output).not.toContain("doctor");
+	});
+
+	it("fails closed when padded and unpadded files claim the same numeric id", async () => {
+		const draftsDir = join(TEST_DIR, "backlog", "drafts");
+		const write = (filename: string, id: string, title: string) =>
+			Bun.write(
+				join(draftsDir, filename),
+				serializeTask({
+					id,
+					title,
+					status: "Draft",
+					assignee: [],
+					createdDate: "2026-08-24 10:00",
+					labels: [],
+					dependencies: [],
+				}),
+			);
+		await write("draft-1 - Alpha.md", "DRAFT-1", "Alpha");
+		await write("draft-001 - Beta.md", "DRAFT-001", "Beta");
+
+		const result = await $`bun ${CLI_PATH} draft edit 1 -t X`.cwd(TEST_DIR).nothrow().quiet();
+		const output = normalizeCliOutput(result.stdout.toString() + result.stderr.toString());
+		expect(result.exitCode).toBe(1);
+		expect(output).toContain("Draft ID DRAFT-1 is ambiguous; 2 files match:");
+		expect(output).toContain("draft-1 - Alpha.md");
+		expect(output).toContain("draft-001 - Beta.md");
+		expect(output).not.toContain("Updated draft");
+
+		const core = new Core(TEST_DIR);
+		expect((await core.filesystem.loadDraft("DRAFT-1"))?.title).toBe("Alpha");
+		expect((await core.filesystem.loadDraft("DRAFT-001"))?.title).toBe("Beta");
 	});
 
 	it("reuses the task edit flag validation rules", async () => {
@@ -167,7 +199,8 @@ describe("CLI draft edit", () => {
 		expect(output).toContain(basename(draftPath));
 		expect(output).toContain("DRAFT-99");
 		expect(output).toContain("does not match its filename");
-		expect(output).toContain("backlog doctor");
+		expect(output).toContain("Fix the frontmatter id or rename the file so they agree");
+		expect(output).not.toContain("doctor");
 
 		const after = await Bun.file(draftPath).text();
 		expect(after).toBe(before);
@@ -223,6 +256,26 @@ describe("CLI draft edit", () => {
 		expect(damagedEdit.exitCode).toBe(1);
 		expect(damagedOutput).toContain("could not be parsed");
 		expect(damagedOutput).toContain(basename(damaged.filePath));
+	});
+
+	it("keeps healthy drafts listed for interactive selection when a sibling is damaged", async () => {
+		const healthy = await createDraft("Healthy wizard target");
+		await createDraft("Damaged wizard target");
+		const core = new Core(TEST_DIR);
+		expect((await core.filesystem.listHealthyDrafts()).length).toBe(2);
+
+		const draftsDir = join(TEST_DIR, "backlog", "drafts");
+		const files = await Array.fromAsync(new Bun.Glob("draft-*.md").scan({ cwd: draftsDir }));
+		for (const file of files) {
+			if (file.includes("Damaged")) {
+				await Bun.write(join(draftsDir, file), "---\nid: [unclosed\ntitle: Damaged\n---\nbroken yaml");
+			}
+		}
+
+		expect((await core.filesystem.listDrafts()).length).toBe(0);
+		const afterDamage = await core.filesystem.listHealthyDrafts();
+		expect(afterDamage.length).toBe(1);
+		expect(afterDamage[0]?.id).toBe(healthy.id);
 	});
 
 	it("points recovery guidance at the draft commands", async () => {

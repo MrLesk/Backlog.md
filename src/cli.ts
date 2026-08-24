@@ -2793,14 +2793,20 @@ const draftEditTarget: EditCommandTarget = {
 			return null;
 		}
 		const normalizedId = normalizeId(id, DRAFT_PREFIX);
-		const exactMatches = files.filter((f) => filenameMatchesId(f, idForFilename(normalizedId))).sort();
-		const matches = exactMatches.length > 0 ? exactMatches : files.filter((f) => draftIdsMatchLoosely(id, f)).sort();
+		// Exact and loose matches are collected together: two files claiming one numeric id
+		// (e.g. draft-1 and draft-001) must fail closed before any of them can be mutated.
+		const candidates = new Set(
+			files
+				.filter((f) => filenameMatchesId(f, idForFilename(normalizedId)))
+				.concat(files.filter((f) => draftIdsMatchLoosely(id, f))),
+		);
+		const matches = [...candidates].sort();
 		if (matches.length > 1) {
 			throw new AmbiguousIdError(
 				"Draft",
 				normalizedId,
 				matches,
-				"Run 'backlog doctor' to review the conflicting files.",
+				"Rename these files or fix their frontmatter ids so each numeric draft id is unique.",
 			);
 		}
 		if (matches.length === 0) return null;
@@ -2817,12 +2823,12 @@ const draftEditTarget: EditCommandTarget = {
 		const declaredId = extractDraftIdFromFilename(filename);
 		if (!declaredId || !draftIdsMatchLoosely(draft.id, filename)) {
 			throw new Error(
-				`Draft file ${filename} declares frontmatter id ${draft.id}, which does not match its filename id ${declaredId ?? "(unreadable)"}. Run 'backlog doctor' to review the conflicting files.`,
+				`Draft file ${filename} declares frontmatter id ${draft.id}, which does not match its filename id ${declaredId ?? "(unreadable)"}. Fix the frontmatter id or rename the file so they agree, then rerun the edit.`,
 			);
 		}
 		return { ...draft, id: declaredId, filePath };
 	},
-	listCandidates: (core) => core.filesystem.listDrafts(),
+	listCandidates: (core) => core.filesystem.listHealthyDrafts(),
 	update: (core, id, input) => core.updateDraftFromInput(id, input),
 	notFoundMessage: (id) => `Draft ${id} not found.`,
 };

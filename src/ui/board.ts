@@ -1293,7 +1293,9 @@ export async function renderBoardTui(
 					return;
 				}
 				if (result.reason === "identity_conflict") {
-					showTransientFooter(` {red-fg}File identity is inconsistent; run 'backlog doctor' to repair.{/}`);
+					showTransientFooter(
+						" {red-fg}File identity is inconsistent; make the frontmatter id match the filename, then retry.{/}",
+					);
 					return;
 				}
 

@@ -1234,7 +1234,9 @@ export async function viewTaskEnhanced(
 				return;
 			}
 			if (result.reason === "identity_conflict") {
-				showTransientHelp(` {red-fg}File identity is inconsistent; run 'backlog doctor' to repair.{/}`);
+				showTransientHelp(
+					" {red-fg}File identity is inconsistent; make the frontmatter id match the filename, then retry.{/}",
+				);
 				return;
 			}
 

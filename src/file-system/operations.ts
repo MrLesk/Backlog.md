@@ -1253,6 +1253,33 @@ export class FileSystem {
 		}
 	}
 
+	/**
+	 * Lists drafts while skipping individual files that fail to parse, so one damaged
+	 * file cannot hide the healthy drafts from interactive selection.
+	 */
+	async listHealthyDrafts(): Promise<Task[]> {
+		try {
+			const draftsDir = await this.getDraftsDir();
+			const taskFiles = (
+				await Array.fromAsync(new Bun.Glob(buildGlobPattern("draft")).scan({ cwd: draftsDir, followSymlinks: true }))
+			).sort();
+
+			const tasks: Task[] = [];
+			for (const file of taskFiles) {
+				try {
+					const filepath = join(draftsDir, file);
+					const content = await Bun.file(filepath).text();
+					const task = normalizeTaskIdentity(parseTask(content));
+					tasks.push({ ...task, filePath: filepath });
+				} catch {}
+			}
+
+			return sortByTaskId(tasks);
+		} catch {
+			return [];
+		}
+	}
+
 	// Decision log operations
 	async saveDecision(decision: Decision): Promise<{ filepath: string; removedFilepaths: string[] }> {
 		// Normalize ID - remove "decision-" prefix if present

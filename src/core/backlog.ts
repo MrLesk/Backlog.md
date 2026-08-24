@@ -1,5 +1,5 @@
 import { rename as moveFile, readFile, stat, unlink, writeFile } from "node:fs/promises";
-import { basename, isAbsolute, join, relative } from "node:path";
+import { basename, dirname, isAbsolute, join, relative } from "node:path";
 import { DEFAULT_DIRECTORIES, DEFAULT_STATUSES, FALLBACK_STATUS } from "../constants/index.ts";
 import { FileSystem, isConfigValueError, isCreateLockError } from "../file-system/operations.ts";
 import { type GitBranchTip, type GitIndexEntry, GitOperations } from "../git/operations.ts";
@@ -3359,11 +3359,13 @@ export class Core {
 
 		const taskFilePath = await getTaskPath(editableTask.id, this);
 		// A selected draft must open its own file: re-resolving by id could land on a different
-		// file when a draft's filename and frontmatter id drifted apart.
+		// file when a draft's filename and frontmatter id drifted apart. The row's home directory
+		// identifies it as a draft regardless of the status the record carries.
 		let draftFilePath: string | null = null;
 		if (!taskFilePath) {
-			const isDraftEntity = editableTask.status?.trim().toLowerCase() === "draft";
-			if (isDraftEntity && editableTask.filePath) {
+			const inDraftsDir =
+				editableTask.filePath !== undefined && dirname(editableTask.filePath) === (await this.fs.getDraftsDir());
+			if (editableTask.filePath && (inDraftsDir || editableTask.status?.trim().toLowerCase() === "draft")) {
 				if (!draftIdsMatchLoosely(editableTask.id, basename(editableTask.filePath))) {
 					return { changed: false, task: editableTask, reason: "identity_conflict" };
 				}

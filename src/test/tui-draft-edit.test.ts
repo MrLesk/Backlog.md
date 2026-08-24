@@ -171,6 +171,36 @@ process.exit(0);
 		expect(await Bun.file(draftPath).text()).toBe(before);
 	});
 
+	it("fails closed on drift even when the record carries a non-Draft status", async () => {
+		const draft = await createDraft();
+		const draftPath = draft.filePath;
+		if (!draftPath) throw new Error("expected draft file path");
+		await Bun.write(
+			draftPath,
+			serializeTask({
+				id: "DRAFT-42",
+				title: "Drifted active",
+				status: "In Progress",
+				assignee: [],
+				createdDate: "2026-08-24 10:00",
+				labels: [],
+				dependencies: [],
+			}),
+		);
+		const before = await Bun.file(draftPath).text();
+		const noopScript = await createEditorScript("noop-editor.js", "process.exit(0);\n");
+		await setEditor(`node ${noopScript}`);
+
+		const selected = (await core.filesystem.listHealthyDrafts()).at(0);
+		if (!selected) throw new Error("expected draft row");
+
+		const result = await core.editTaskInTui(selected.id, screen, selected);
+
+		expect(result.reason).toBe("identity_conflict");
+		expect(result.changed).toBe(false);
+		expect(await Bun.file(draftPath).text()).toBe(before);
+	});
+
 	it("opens exactly the selected draft file when several files resolve to one id", async () => {
 		const draftsDir = join(testDir, "backlog", "drafts");
 		const draftFile = (filename: string, id: string, title: string) =>
