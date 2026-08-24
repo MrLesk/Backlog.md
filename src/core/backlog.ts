@@ -3345,7 +3345,7 @@ export class Core {
 			return { changed: false, task: contextualTask, reason: "read_only" };
 		}
 
-		const resolvedTask = contextualTask ?? (await this.getTask(taskId));
+		const resolvedTask = contextualTask ?? (await this.getTask(taskId)) ?? (await this.fs.loadDraft(taskId));
 		if (!resolvedTask) {
 			return { changed: false, reason: "not_found" };
 		}
@@ -3356,10 +3356,15 @@ export class Core {
 		const localTask = await this.fs.loadTask(resolvedTask.id);
 		const editableTask = localTask ?? resolvedTask;
 
-		const filePath = await getTaskPath(editableTask.id, this);
+		const taskFilePath = await getTaskPath(editableTask.id, this);
+		// Selected items can be drafts; they live outside the task/completed directories.
+		const draftFilePath = taskFilePath ? null : await getDraftPath(editableTask.id, this);
+		const filePath = taskFilePath ?? draftFilePath;
 		if (!filePath) {
 			return { changed: false, task: editableTask, reason: "not_found" };
 		}
+		const reloadEditedEntity = () =>
+			taskFilePath ? this.fs.loadTask(editableTask.id) : this.fs.loadDraft(editableTask.id);
 
 		let beforeContent: string;
 		try {
@@ -3381,7 +3386,7 @@ export class Core {
 		}
 
 		if (afterContent === beforeContent) {
-			const refreshedTask = await this.fs.loadTask(editableTask.id);
+			const refreshedTask = await reloadEditedEntity();
 			return { changed: false, task: refreshedTask ?? editableTask };
 		}
 
@@ -3389,8 +3394,8 @@ export class Core {
 		const withUpdatedDate = upsertTaskUpdatedDate(afterContent, now);
 		await Bun.write(filePath, withUpdatedDate);
 
-		const refreshedTask = await this.fs.loadTask(editableTask.id);
-		if (refreshedTask && this.contentStore) {
+		const refreshedTask = await reloadEditedEntity();
+		if (refreshedTask && taskFilePath && this.contentStore) {
 			this.contentStore.upsertTask(refreshedTask);
 		}
 
