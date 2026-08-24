@@ -5,7 +5,7 @@ status: Done
 assignee:
   - '@claude'
 created_date: '2026-08-15 14:00'
-updated_date: '2026-08-20 22:44'
+updated_date: '2026-08-24 21:25'
 labels: []
 dependencies: []
 priority: medium
@@ -54,6 +54,8 @@ Verification:
 - bunx tsc --noEmit: clean.
 - bunx biome check on all touched files: clean. bun run check . reports 6 pre-existing errors in unrelated files (src/server/index.ts, src/ui/board.ts, src/ui/components/task-composer.ts) - confirmed present on unmodified main via git stash, untouched.
 - Full suite: bun test --timeout=10000 -> 2348 pass / 6 skip / 1 fail / 243 files. The sole fail (Config commands > reads the config key at column 0...) is the same pre-existing, unrelated YAML-parsing flake in config-commands.test.ts confirmed in the prior BACK-630 session.
+
+Addressed Codex PR review (PR #928): moved reserved-prefix validation into initializeProject so the browser init path is covered too; documented reserved names in --task-prefix help; fixed doctor's impossible re-init recovery text; blocked 'doctor --fix --yes' automatic repair when the prefix is reserved.
 <!-- SECTION:NOTES:END -->
 
 ## Final Summary
