@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { Core } from "../core/backlog.ts";
+import { serializeTask } from "../markdown/serializer.ts";
 import type { BacklogConfig, Task } from "../types/index.ts";
 import { createUniqueTestDir, initializeTestProject, safeCleanup } from "./test-utils.ts";
 
@@ -138,5 +139,75 @@ process.exit(0);
 
 		expect(result.reason).toBeUndefined();
 		expect(result.task?.id).toBe(draft.id);
+	});
+
+	it("fails closed when the selected draft's frontmatter id drifted from its filename", async () => {
+		const draft = await createDraft();
+		const draftPath = draft.filePath;
+		if (!draftPath) throw new Error("expected draft file path");
+		await Bun.write(
+			draftPath,
+			serializeTask({
+				id: "DRAFT-42",
+				title: "Drifted",
+				status: "Draft",
+				assignee: [],
+				createdDate: "2026-08-24 10:00",
+				labels: [],
+				dependencies: [],
+			}),
+		);
+		const before = await Bun.file(draftPath).text();
+		const noopScript = await createEditorScript("noop-editor.js", "process.exit(0);\n");
+		await setEditor(`node ${noopScript}`);
+
+		const selected = (await core.filesystem.listDrafts()).at(0);
+		if (!selected) throw new Error("expected draft row");
+
+		const result = await core.editTaskInTui(selected.id, screen, selected);
+
+		expect(result.reason).toBe("identity_conflict");
+		expect(result.changed).toBe(false);
+		expect(await Bun.file(draftPath).text()).toBe(before);
+	});
+
+	it("opens exactly the selected draft file when several files resolve to one id", async () => {
+		const draftsDir = join(testDir, "backlog", "drafts");
+		const draftFile = (filename: string, id: string, title: string) =>
+			Bun.write(
+				join(draftsDir, filename),
+				serializeTask({
+					id,
+					title,
+					status: "Draft",
+					assignee: [],
+					createdDate: "2026-08-24 10:00",
+					labels: [],
+					dependencies: [],
+				}),
+			);
+		await draftFile("draft-3 - Alpha.md", "DRAFT-3", "Alpha");
+		await draftFile("draft-03 - Beta.md", "DRAFT-03", "Beta");
+		const selected = (await core.filesystem.listDrafts()).find((draft) =>
+			draft.filePath?.endsWith("draft-03 - Beta.md"),
+		);
+		if (!selected?.filePath) throw new Error("expected beta draft row");
+		const editScript = await createEditorScript(
+			"append-editor.js",
+			`import { appendFileSync } from "node:fs";
+const filePath = process.argv[2];
+if (filePath) {
+	appendFileSync(filePath, "\\nMarker\\n");
+}
+process.exit(0);
+`,
+		);
+		await setEditor(`node ${editScript}`);
+
+		const result = await core.editTaskInTui(selected.id, screen, selected);
+
+		expect(result.changed).toBe(true);
+		expect(await Bun.file(selected.filePath).text()).toContain("Marker");
+		expect(await Bun.file(join(draftsDir, "draft-3 - Alpha.md")).text()).not.toContain("Marker");
 	});
 });

@@ -1233,6 +1233,10 @@ export async function viewTaskEnhanced(
 				showTransientHelp(` {red-fg}Task ${selectedTask.id} was not found on this branch.{/}`);
 				return;
 			}
+			if (result.reason === "identity_conflict") {
+				showTransientHelp(` {red-fg}File identity is inconsistent; run 'backlog doctor' to repair.{/}`);
+				return;
+			}
 
 			if (result.task) {
 				const index = allTasks.findIndex((taskItem) => taskItem.id === selectedTask.id);

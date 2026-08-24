@@ -38,6 +38,7 @@ import {
 	isGitRepository,
 	updateReadmeWithBoard,
 } from "./index.ts";
+import { parseTask } from "./markdown/parser.ts";
 import { MilestoneHandlers, type MilestoneRemoveArgs } from "./mcp/tools/milestones/handlers.ts";
 import type { CallToolResult } from "./mcp/types.ts";
 import {
@@ -82,7 +83,14 @@ import {
 	runMcpClientSetupCommand,
 } from "./utils/mcp-client-setup.ts";
 import { resolveMilestoneInputForStorage } from "./utils/milestone-storage.ts";
-import { DRAFT_PREFIX, filenameMatchesId, hasAnyPrefix, idForFilename, normalizeId } from "./utils/prefix-config.ts";
+import {
+	buildGlobPattern,
+	DRAFT_PREFIX,
+	filenameMatchesId,
+	hasAnyPrefix,
+	idForFilename,
+	normalizeId,
+} from "./utils/prefix-config.ts";
 import { formatValidPriorityValues, getPriorityOptions, resolvePriorityValue } from "./utils/priority-config.ts";
 import { type ReadOutputMode, resolveReadOutputMode } from "./utils/read-output-mode.ts";
 import { getTaskReadiness, loadReadinessGraph } from "./utils/readiness.ts";
@@ -99,8 +107,11 @@ import { buildTaskUpdateInput } from "./utils/task-edit-builder.ts";
 import {
 	AmbiguousTaskIdError,
 	canonicalTaskId,
+	draftIdsMatchLoosely,
+	extractDraftIdFromFilename,
 	isAmbiguousTaskIdError,
 	LOCAL_TASK_LOOKUP_HINT,
+	normalizeTaskIdentity,
 	taskIdsEqual,
 } from "./utils/task-path.ts";
 import { sortTasks } from "./utils/task-sorting.ts";
@@ -266,22 +277,22 @@ function parsePositiveIntegerOption(value: unknown, optionName: string, helpComm
 	return Number.parseInt(rawValue, 10);
 }
 
-function formatTaskEditError(error: unknown, taskId: string): string {
+function formatTaskEditError(error: unknown, taskId: string, commandKind = "task"): string {
 	const message = error instanceof Error ? error.message : String(error);
 	if (
 		message.startsWith("Malformed Acceptance Criteria markers:") ||
 		message.startsWith("Malformed Definition of Done markers:")
 	) {
-		return `${message}\nThe edit was not applied. Run 'backlog task view ${taskId} --plain' to locate the task file, repair or remove the malformed marker block in that Markdown file, then rerun the edit.`;
+		return `${message}\nThe edit was not applied. Run 'backlog ${commandKind} view ${taskId} --plain' to locate the ${commandKind} file, repair or remove the malformed marker block in that Markdown file, then rerun the edit.`;
 	}
 	if (message.startsWith("Invalid index:")) {
-		return `${message} Try 'backlog task edit ${taskId} --help' for index options.`;
+		return `${message} Try 'backlog ${commandKind} edit ${taskId} --help' for index options.`;
 	}
 	if (
 		message.includes(" not found") &&
 		(message.startsWith("Acceptance criterion ") || message.startsWith("Definition of Done item "))
 	) {
-		return `${message}\nRun 'backlog task view ${taskId} --plain' to inspect indexes, or 'backlog task edit ${taskId} --help' for edit options.`;
+		return `${message}\nRun 'backlog ${commandKind} view ${taskId} --plain' to inspect indexes, or 'backlog ${commandKind} edit ${taskId} --help' for edit options.`;
 	}
 	return message;
 }
@@ -2769,21 +2780,47 @@ const draftEditTarget: EditCommandTarget = {
 	pluralLabel: "drafts",
 	statuses: async () => ["Draft"],
 	async resolve(core, id) {
-		// Same filename-based matching as fs.loadDraft so the resolved target and the mutation
-		// target cannot disagree; several matching files must fail closed instead of picking one.
-		const filenameId = idForFilename(normalizeId(id, DRAFT_PREFIX));
-		const matches = (await core.filesystem.listDrafts()).filter((draft) =>
-			filenameMatchesId(basename(draft.filePath ?? ""), filenameId),
-		);
+		// Draft identity is bound to files: match candidate filenames first and parse only those,
+		// so one damaged draft cannot hide the rest, then require the frontmatter id to agree with
+		// the filename before anything can mutate through a second, possibly divergent resolution.
+		const draftsDir = await core.filesystem.getDraftsDir();
+		let files: string[] = [];
+		try {
+			files = await Array.fromAsync(
+				new Bun.Glob(buildGlobPattern(DRAFT_PREFIX)).scan({ cwd: draftsDir, followSymlinks: true }),
+			);
+		} catch {
+			return null;
+		}
+		const normalizedId = normalizeId(id, DRAFT_PREFIX);
+		const exactMatches = files.filter((f) => filenameMatchesId(f, idForFilename(normalizedId))).sort();
+		const matches = exactMatches.length > 0 ? exactMatches : files.filter((f) => draftIdsMatchLoosely(id, f)).sort();
 		if (matches.length > 1) {
 			throw new AmbiguousIdError(
 				"Draft",
-				normalizeId(id, DRAFT_PREFIX),
-				matches.map((draft) => basename(draft.filePath ?? "")),
+				normalizedId,
+				matches,
 				"Run 'backlog doctor' to review the conflicting files.",
 			);
 		}
-		return matches[0] ?? null;
+		if (matches.length === 0) return null;
+
+		const filename = matches.at(0);
+		if (!filename) return null;
+		const filePath = join(draftsDir, filename);
+		let draft: Task;
+		try {
+			draft = normalizeTaskIdentity(parseTask(await Bun.file(filePath).text()));
+		} catch {
+			throw new Error(`Draft file ${filename} could not be parsed. Repair or remove the file, then rerun the edit.`);
+		}
+		const declaredId = extractDraftIdFromFilename(filename);
+		if (!declaredId || !draftIdsMatchLoosely(draft.id, filename)) {
+			throw new Error(
+				`Draft file ${filename} declares frontmatter id ${draft.id}, which does not match its filename id ${declaredId ?? "(unreadable)"}. Run 'backlog doctor' to review the conflicting files.`,
+			);
+		}
+		return { ...draft, id: declaredId, filePath };
 	},
 	listCandidates: (core) => core.filesystem.listDrafts(),
 	update: (core, id, input) => core.updateDraftFromInput(id, input),
@@ -2843,7 +2880,7 @@ async function runEditCommand(target: EditCommandTarget, taskId: string | undefi
 			const updatedTask = await target.update(core, existingTaskForWizard.id, wizardInput);
 			console.log(`Updated ${target.label.toLowerCase()} ${updatedTask.id}`);
 		} catch (error) {
-			console.error(formatTaskEditError(error, existingTaskForWizard.id));
+			console.error(formatTaskEditError(error, existingTaskForWizard.id, target.label.toLowerCase()));
 			process.exitCode = 1;
 		}
 		return;
@@ -2940,7 +2977,7 @@ async function runEditCommand(target: EditCommandTarget, taskId: string | undefi
 			uncheckDod = dodUnchecks;
 		}
 	} catch (error) {
-		console.error(formatTaskEditError(error, existingTask.id));
+		console.error(formatTaskEditError(error, existingTask.id, target.label.toLowerCase()));
 		process.exitCode = 1;
 		return;
 	}
@@ -3156,7 +3193,7 @@ async function runEditCommand(target: EditCommandTarget, taskId: string | undefi
 		const updateInput = buildTaskUpdateInput(editArgs);
 		updatedTask = await target.update(core, existingTask.id, updateInput);
 	} catch (error) {
-		console.error(formatTaskEditError(error, existingTask.id));
+		console.error(formatTaskEditError(error, existingTask.id, target.label.toLowerCase()));
 		process.exitCode = 1;
 		return;
 	}

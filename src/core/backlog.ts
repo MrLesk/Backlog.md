@@ -67,6 +67,7 @@ import {
 import {
 	AmbiguousTaskIdError,
 	canonicalTaskId,
+	draftIdsMatchLoosely,
 	getDraftPath,
 	getTaskPath,
 	LOCAL_TASK_LOOKUP_HINT,
@@ -169,7 +170,7 @@ interface ActiveBranchSnapshot {
 	settingsKey: string;
 }
 
-export type TuiTaskEditFailureReason = "not_found" | "read_only" | "editor_failed";
+export type TuiTaskEditFailureReason = "not_found" | "read_only" | "editor_failed" | "identity_conflict";
 
 export interface TuiTaskEditResult {
 	changed: boolean;
@@ -3357,8 +3358,20 @@ export class Core {
 		const editableTask = localTask ?? resolvedTask;
 
 		const taskFilePath = await getTaskPath(editableTask.id, this);
-		// Selected items can be drafts; they live outside the task/completed directories.
-		const draftFilePath = taskFilePath ? null : await getDraftPath(editableTask.id, this);
+		// A selected draft must open its own file: re-resolving by id could land on a different
+		// file when a draft's filename and frontmatter id drifted apart.
+		let draftFilePath: string | null = null;
+		if (!taskFilePath) {
+			const isDraftEntity = editableTask.status?.trim().toLowerCase() === "draft";
+			if (isDraftEntity && editableTask.filePath) {
+				if (!draftIdsMatchLoosely(editableTask.id, basename(editableTask.filePath))) {
+					return { changed: false, task: editableTask, reason: "identity_conflict" };
+				}
+				draftFilePath = editableTask.filePath;
+			} else {
+				draftFilePath = await getDraftPath(editableTask.id, this);
+			}
+		}
 		const filePath = taskFilePath ?? draftFilePath;
 		if (!filePath) {
 			return { changed: false, task: editableTask, reason: "not_found" };

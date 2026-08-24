@@ -134,8 +134,10 @@ function normalizeDraftId(draftId: string): string {
 
 /**
  * Checks if an input ID matches a filename loosely for drafts.
+ * Loose means case-insensitive with leading zeros ignored, the same rule
+ * {@link getDraftPath} applies when no exact filename match exists.
  */
-function draftIdsMatchLoosely(inputId: string, filename: string): boolean {
+export function draftIdsMatchLoosely(inputId: string, filename: string): boolean {
 	const candidate = extractDraftIdFromFilename(filename);
 	if (!candidate) return false;
 	return draftIdsEqual(inputId, candidate);
@@ -144,7 +146,7 @@ function draftIdsMatchLoosely(inputId: string, filename: string): boolean {
 /**
  * Extracts the draft ID from a filename.
  */
-function extractDraftIdFromFilename(filename: string): string | null {
+export function extractDraftIdFromFilename(filename: string): string | null {
 	const regex = buildFilenameIdRegex(DEFAULT_DRAFT_PREFIX);
 	const match = filename.match(regex);
 	if (!match?.[1]) return null;

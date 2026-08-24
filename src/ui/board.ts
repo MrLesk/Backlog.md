@@ -19,8 +19,8 @@ import { getPriorityOptions } from "../utils/priority-config.ts";
 import { applySharedTaskFilters, createTaskSearchIndex, type LabelMatchMode } from "../utils/task-search.ts";
 import { compareTaskIds } from "../utils/task-sorting.ts";
 import { getTaskTypeValues, resolveTaskTypeValues } from "../utils/task-type-config.ts";
-import { formatAcceptanceCriteriaProgress } from "./acceptance-criteria-progress.ts";
 import { formatUtcDateForDisplay } from "../utils/utc-date-display.ts";
+import { formatAcceptanceCriteriaProgress } from "./acceptance-criteria-progress.ts";
 import { openConfirmPopup } from "./components/confirm-popup.ts";
 import { createFilterHeader, type FilterHeader, type FilterState } from "./components/filter-header.ts";
 import { openMultiSelectFilterPopup, openSingleSelectFilterPopup } from "./components/filter-popup.ts";
@@ -1290,6 +1290,10 @@ export async function renderBoardTui(
 				}
 				if (result.reason === "not_found") {
 					showTransientFooter(` {red-fg}Task ${task.id} not found on this branch.{/}`);
+					return;
+				}
+				if (result.reason === "identity_conflict") {
+					showTransientFooter(` {red-fg}File identity is inconsistent; run 'backlog doctor' to repair.{/}`);
 					return;
 				}
 

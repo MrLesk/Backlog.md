@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import { mkdir } from "node:fs/promises";
-import { join } from "node:path";
+import { basename, join } from "node:path";
 import { $ } from "bun";
 import { Core } from "../index.ts";
 import { serializeTask } from "../markdown/serializer.ts";
@@ -143,6 +143,98 @@ describe("CLI draft edit", () => {
 		expect(normalizeCliOutput(conflict.stderr.toString())).toContain(
 			"Cannot use --due-date and --clear-due-date together.",
 		);
+	});
+
+	it("fails closed when a draft's frontmatter id drifted from its filename", async () => {
+		const draft = await createDraft("Drifted draft");
+		const draftPath = draft.filePath;
+		if (!draftPath) throw new Error("expected draft file path");
+		const drifted = serializeTask({
+			id: "DRAFT-99",
+			title: "Drifted draft",
+			status: "Draft",
+			assignee: [],
+			createdDate: "2026-08-24 10:00",
+			labels: [],
+			dependencies: [],
+		});
+		await Bun.write(draftPath, drifted);
+		const before = await Bun.file(draftPath).text();
+
+		const result = await $`bun ${CLI_PATH} draft edit 1 -t X`.cwd(TEST_DIR).nothrow().quiet();
+		const output = normalizeCliOutput(result.stdout.toString() + result.stderr.toString());
+		expect(result.exitCode).toBe(1);
+		expect(output).toContain(basename(draftPath));
+		expect(output).toContain("DRAFT-99");
+		expect(output).toContain("does not match its filename");
+		expect(output).toContain("backlog doctor");
+
+		const after = await Bun.file(draftPath).text();
+		expect(after).toBe(before);
+		const core = new Core(TEST_DIR);
+		expect(await core.filesystem.loadDraft("DRAFT-99")).toBeNull();
+	});
+
+	it("resolves zero-padded drafts through the same loose numeric rule as the TUI", async () => {
+		const draftsDir = join(TEST_DIR, "backlog", "drafts");
+		await Bun.write(
+			join(draftsDir, "draft-001 - Padded.md"),
+			serializeTask({
+				id: "DRAFT-001",
+				title: "Padded",
+				status: "Draft",
+				assignee: [],
+				createdDate: "2026-08-24 10:00",
+				labels: [],
+				dependencies: [],
+			}),
+		);
+
+		const shorthand = await $`bun ${CLI_PATH} draft edit 1 -t "Padded edited"`.cwd(TEST_DIR).nothrow().quiet();
+		expect(shorthand.exitCode).toBe(0);
+
+		const paddedInput = await $`bun ${CLI_PATH} draft edit 01 -a @alex`.cwd(TEST_DIR).nothrow().quiet();
+		expect(paddedInput.exitCode).toBe(0);
+
+		const core = new Core(TEST_DIR);
+		const reloaded = await core.filesystem.loadDraft("DRAFT-001");
+		expect(reloaded?.title).toBe("Padded edited");
+		expect(reloaded?.assignee).toEqual(["@alex"]);
+	});
+
+	it("keeps one damaged draft from blocking edits of its siblings and names the damaged file", async () => {
+		const healthy = await createDraft("Healthy sibling");
+		await createDraft("Damaged sibling");
+		const core = new Core(TEST_DIR);
+		const drafts = await core.filesystem.listDrafts();
+		const damaged = drafts.find((draft) => draft.title === "Damaged sibling");
+		if (!damaged?.filePath) throw new Error("expected damaged draft file path");
+		await Bun.write(damaged.filePath, "---\nid: [unclosed\ntitle: Damaged sibling\n---\nbroken yaml");
+
+		const healthyEdit = await $`bun ${CLI_PATH} draft edit ${healthy.id} -t "Still editable"`
+			.cwd(TEST_DIR)
+			.nothrow()
+			.quiet();
+		expect(healthyEdit.exitCode).toBe(0);
+		expect((await core.filesystem.loadDraft(healthy.id))?.title).toBe("Still editable");
+
+		const damagedEdit = await $`bun ${CLI_PATH} draft edit 2 -t X`.cwd(TEST_DIR).nothrow().quiet();
+		const damagedOutput = normalizeCliOutput(damagedEdit.stdout.toString() + damagedEdit.stderr.toString());
+		expect(damagedEdit.exitCode).toBe(1);
+		expect(damagedOutput).toContain("could not be parsed");
+		expect(damagedOutput).toContain(basename(damaged.filePath));
+	});
+
+	it("points recovery guidance at the draft commands", async () => {
+		const draft = await createDraft("Guidance target");
+
+		const result = await $`bun ${CLI_PATH} draft edit ${draft.id} --check-ac 7`.cwd(TEST_DIR).nothrow().quiet();
+		const output = normalizeCliOutput(result.stdout.toString() + result.stderr.toString());
+		expect(result.exitCode).toBe(1);
+		expect(output).toContain(`backlog draft view ${draft.id} --plain`);
+		expect(output).toContain(`backlog draft edit ${draft.id} --help`);
+		expect(output).not.toContain("backlog task view");
+		expect(output).not.toContain("backlog task edit");
 	});
 
 	it("requires a task id outside interactive mode like task edit does", async () => {
