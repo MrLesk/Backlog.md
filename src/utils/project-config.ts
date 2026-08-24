@@ -86,3 +86,7 @@ export function matchesProjectFilter(
 export function formatValidProjectValues(configOrProjects?: ProjectConfig): string {
 	return getProjectValues(configOrProjects).join(", ");
 }
+
+export function noProjectsConfiguredMessage(configFilePath: string): string {
+	return `No projects are configured. Add a 'projects:' list to ${configFilePath}.`;
+}

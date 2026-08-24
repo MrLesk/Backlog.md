@@ -71,6 +71,7 @@ export function formatTaskViewerListItem(
 	task: Task,
 	availableWidth = Number.POSITIVE_INFINITY,
 	dateFormat?: string,
+	configuredProjects?: string[],
 ): string {
 	const progress = formatAcceptanceCriteriaProgress(task, availableWidth);
 	// The compact status icon keeps task identity visible beside the progress indicator. Its
@@ -83,7 +84,7 @@ export function formatTaskViewerListItem(
 	const labelsText = task.labels?.length ? ` {yellow-fg}[${task.labels.join(", ")}]{/}` : "";
 	const typeBadge = formatTaskTypeBadge(task.type);
 	const typeText = typeBadge ? ` ${typeBadge}` : "";
-	const projectBadge = formatProjectBadge(task.project);
+	const projectBadge = formatProjectBadge(task.project, configuredProjects);
 	const projectText = projectBadge ? ` ${projectBadge}` : "";
 	const priorityText = getPriorityDisplay(task.priority);
 	const dueDateText = task.dueDate
@@ -997,7 +998,8 @@ export async function viewTaskEnhanced(
 			left: 1,
 			width: "100%-4",
 			height: "100%-3",
-			itemRenderer: (task: Task) => formatTaskViewerListItem(task, getTaskListSummaryWidth(), dateFormat),
+			itemRenderer: (task: Task) =>
+				formatTaskViewerListItem(task, getTaskListSummaryWidth(), dateFormat, configuredProjects),
 			onSelect: (selected: Task | Task[]) => {
 				const selectedTask = Array.isArray(selected) ? selected[0] : selected;
 				void applySelection(selectedTask || null);
@@ -1175,6 +1177,7 @@ export async function viewTaskEnhanced(
 			resolveMilestoneLabel,
 			dateFormat,
 			buildReadinessGraph(),
+			configuredProjects,
 		);
 
 		// Calculate header height based on content and available width
@@ -1449,7 +1452,9 @@ export async function viewTaskEnhanced(
 	});
 
 	if (configuredProjects.length > 0) {
-		screen.key(["g", "G"], () => {
+		// Not "g"/"G": those already scroll the detail pane to top/bottom (see the
+		// boxInstance bindings above) and a screen-level handler here would conflict.
+		screen.key(["v", "V"], () => {
 			if (modalOpen || filterPopupOpen) return;
 			void openFilterPicker("project");
 		});
@@ -1628,6 +1633,7 @@ export function generateDetailContent(
 	// against. Callers without one (the board quick-look popup) get no readiness line rather than a
 	// wrong one derived from an empty graph.
 	readinessGraph?: ReadinessGraph,
+	configuredProjects?: string[],
 ): { headerContent: string[]; bodyContent: string[] } {
 	const headerContent = [
 		` ${wrapStatusColor(formatStatusWithIcon(task.status), getStatusColor(task.status))} {bold}{blue-fg}${task.id}{/blue-fg}{/bold} - ${task.title}`,
@@ -1661,8 +1667,8 @@ export function generateDetailContent(
 	if (task.type) {
 		metadata.push(`{bold}Type:{/bold} ${formatTaskTypeBadge(task.type)}`);
 	}
-	if (task.project) {
-		metadata.push(`{bold}Project:{/bold} ${formatProjectBadge(task.project)}`);
+	if (task.project && configuredProjects?.length) {
+		metadata.push(`{bold}Project:{/bold} ${formatProjectBadge(task.project, configuredProjects)}`);
 	}
 	if (task.assignee?.length) {
 		const assigneeList = task.assignee.map((a) => (a.startsWith("@") ? a : `@${a}`)).join(", ");
@@ -1826,6 +1832,7 @@ export async function createTaskPopup(
 	task: Task,
 	resolveMilestoneLabel?: (milestone: string) => string,
 	dateFormat?: string,
+	configuredProjects?: string[],
 ): Promise<{
 	background: BoxInterface;
 	popup: BoxInterface;
@@ -1862,7 +1869,13 @@ export async function createTaskPopup(
 
 	popup.setFront?.();
 
-	const { headerContent, bodyContent } = generateDetailContent(task, resolveMilestoneLabel, dateFormat);
+	const { headerContent, bodyContent } = generateDetailContent(
+		task,
+		resolveMilestoneLabel,
+		dateFormat,
+		undefined,
+		configuredProjects,
+	);
 
 	// Calculate header height based on content and available width
 	const popupWidth = typeof popup.width === "number" ? popup.width : 80;

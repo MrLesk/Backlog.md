@@ -42,8 +42,9 @@ interface Props {
 
 type Mode = "preview" | "edit" | "create";
 
-type TaskUpdatePayload = Omit<Partial<Task>, "dueDate"> & {
+type TaskUpdatePayload = Omit<Partial<Task>, "dueDate" | "project"> & {
 	dueDate?: string | null;
+  project?: string | null;
   definitionOfDoneAdd?: string[];
   definitionOfDoneRemove?: number[];
   definitionOfDoneCheck?: number[];
@@ -851,7 +852,7 @@ export const TaskDetailsModal: React.FC<Props> = ({
         ...(isCreateMode && assignee.length === 0 && createModeAssignee.length === 0 ? {} : { assignee }),
         labels,
         priority: priority === "" ? undefined : priority,
-        project: project === "" ? undefined : project,
+        project: project.trim().length > 0 ? project.trim() : isCreateMode ? undefined : null,
         dependencies,
         milestone: milestone.trim().length > 0 ? milestone.trim() : undefined,
         dueDate: dueDate.trim().length > 0 ? dueDate.trim() : isCreateMode ? undefined : null,

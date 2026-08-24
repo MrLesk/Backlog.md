@@ -26,14 +26,14 @@ describe("task project field", () => {
 	describe("fail-closed when unconfigured", () => {
 		it("should reject a project value when no projects are configured", async () => {
 			await expect(core.createTaskFromInput({ title: "Web task", project: "web" }, false)).rejects.toThrow(
-				"No projects are configured. Add a 'projects:' list to backlog/config.yml.",
+				"No projects are configured. Add a 'projects:' list to",
 			);
 		});
 
 		it("should reject a project value on edit when no projects are configured", async () => {
 			const { task } = await core.createTaskFromInput({ title: "Task" }, false);
 			await expect(core.updateTaskFromInput(task.id, { project: "web" }, false)).rejects.toThrow(
-				"No projects are configured. Add a 'projects:' list to backlog/config.yml.",
+				"No projects are configured. Add a 'projects:' list to",
 			);
 		});
 

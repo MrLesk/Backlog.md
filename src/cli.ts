@@ -87,7 +87,12 @@ import {
 import { resolveMilestoneInputForStorage } from "./utils/milestone-storage.ts";
 import { DRAFT_PREFIX, hasAnyPrefix, normalizeId } from "./utils/prefix-config.ts";
 import { formatValidPriorityValues, getPriorityOptions, resolvePriorityValue } from "./utils/priority-config.ts";
-import { formatValidProjectValues, getProjectValues, resolveProjectValues } from "./utils/project-config.ts";
+import {
+	formatValidProjectValues,
+	getProjectValues,
+	noProjectsConfiguredMessage,
+	resolveProjectValues,
+} from "./utils/project-config.ts";
 import { type ReadOutputMode, resolveReadOutputMode } from "./utils/read-output-mode.ts";
 import { getTaskReadiness, loadReadinessGraph } from "./utils/readiness.ts";
 import { resolveRuntimeCwd } from "./utils/runtime-cwd.ts";
@@ -347,7 +352,7 @@ async function normalizeCliTaskTypes(core: Core, values: string[], optionName: s
 async function normalizeCliProjects(core: Core, values: string[], optionName: string): Promise<string[] | null> {
 	const config = await core.filesystem.loadConfig();
 	if (getProjectValues(config).length === 0) {
-		console.error("No projects are configured. Add a 'projects:' list to backlog/config.yml.");
+		console.error(noProjectsConfiguredMessage(core.filesystem.configFilePath));
 		process.exitCode = 1;
 		return null;
 	}
@@ -513,6 +518,7 @@ function hasCreateFieldFlags(options: Record<string, unknown>): boolean {
 			options.labels !== undefined ||
 			options.priority !== undefined ||
 			options.type !== undefined ||
+			options.project !== undefined ||
 			options.ordinal !== undefined ||
 			options.milestone !== undefined ||
 			options.dueDate !== undefined ||
@@ -544,6 +550,7 @@ function hasEditFieldFlags(options: Record<string, unknown>): boolean {
 			options.label !== undefined ||
 			options.priority !== undefined ||
 			options.type !== undefined ||
+			options.project !== undefined ||
 			options.ordinal !== undefined ||
 			options.milestone !== undefined ||
 			options.clearMilestone ||
@@ -2089,6 +2096,7 @@ addHelpSchema(program.command("search [query]"), {
 
 		const modifiedFileFilters = parseDelimitedStringList(options.modifiedFile);
 		const rawTaskTypes = parseDelimitedStringList(options.taskType) ?? [];
+		const rawSearchProjects = parseDelimitedStringList(options.project) ?? [];
 		const rawTypes = options.type ? (Array.isArray(options.type) ? options.type : [options.type]) : undefined;
 		const allowedTypes: SearchResultType[] = ["task", "document", "decision"];
 		const types = rawTypes
@@ -2101,11 +2109,17 @@ addHelpSchema(program.command("search [query]"), {
 						}
 						return true;
 					})
-			: modifiedFileFilters?.length || rawTaskTypes.length > 0
+			: modifiedFileFilters?.length || rawTaskTypes.length > 0 || rawSearchProjects.length > 0
 				? ["task"]
 				: allowedTypes;
 		if (rawTaskTypes.length > 0 && rawTypes && !types.includes("task")) {
 			console.error("--task-type filters task results. Include --type task or omit --type.");
+			cleanup();
+			process.exitCode = 1;
+			return;
+		}
+		if (rawSearchProjects.length > 0 && rawTypes && !types.includes("task")) {
+			console.error("--project filters task results. Include --type task or omit --type.");
 			cleanup();
 			process.exitCode = 1;
 			return;
@@ -2139,7 +2153,6 @@ addHelpSchema(program.command("search [query]"), {
 			}
 			filters.type = canonicalTaskTypes;
 		}
-		const rawSearchProjects = parseDelimitedStringList(options.project) ?? [];
 		if (rawSearchProjects.length > 0) {
 			const canonicalProjects = await normalizeCliProjects(core, rawSearchProjects, "project");
 			if (!canonicalProjects) {
@@ -2203,7 +2216,7 @@ addHelpSchema(program.command("search [query]"), {
 			return;
 		}
 
-		const requiresPrefilteredTaskSet = Boolean(modifiedFileFilters?.length);
+		const requiresPrefilteredTaskSet = Boolean(modifiedFileFilters?.length) || rawSearchProjects.length > 0;
 		const interactiveTasks = requiresPrefilteredTaskSet ? searchResultTasks : allTasks;
 		if (interactiveTasks.length === 0) {
 			printSearchResults(searchResults);
@@ -2228,6 +2241,7 @@ addHelpSchema(program.command("search [query]"), {
 					status: statusFilter,
 					excludeStatus: filters.excludeStatus,
 					type: filters.type,
+					project: filters.project,
 					priority: priorityFilter,
 					query: query ?? "",
 					modifiedFiles: modifiedFileFilters ?? [],
@@ -2235,6 +2249,7 @@ addHelpSchema(program.command("search [query]"), {
 				status: statusFilter,
 				excludeStatus: filters.excludeStatus,
 				type: filters.type,
+				project: filters.project,
 				priority: priorityFilter,
 				searchQuery: query ?? "", // Pre-populate search with the query
 			},
@@ -2246,6 +2261,7 @@ function buildSearchFilterDescription(filters: {
 	status?: string | string[];
 	excludeStatus?: string[];
 	type?: string[];
+	project?: string[];
 	priority?: SearchPriorityFilter;
 	query?: string;
 	modifiedFiles?: string[];
@@ -2263,6 +2279,9 @@ function buildSearchFilterDescription(filters: {
 	}
 	if (filters.type?.length) {
 		parts.push(`Type: ${filters.type.join(", ")}`);
+	}
+	if (filters.project?.length) {
+		parts.push(`Project: ${filters.project.join(", ")}`);
 	}
 	if (filters.priority) {
 		parts.push(`Priority: ${filters.priority}`);
@@ -2750,6 +2769,7 @@ addHelpSchema(taskCmd.command("list"), {
 			assignee?: string;
 			milestone?: string;
 			type?: string[];
+			project?: string[];
 			priority?: string;
 			sort?: string;
 			labels?: string[];
@@ -2766,6 +2786,11 @@ addHelpSchema(taskCmd.command("list"), {
 			assignee: options.assignee,
 			milestone: options.milestone,
 			type: Array.isArray(baseFilters.type) ? baseFilters.type : baseFilters.type ? [baseFilters.type] : undefined,
+			project: Array.isArray(baseFilters.project)
+				? baseFilters.project
+				: baseFilters.project
+					? [baseFilters.project]
+					: undefined,
 			priority: baseFilters.priority,
 			sort: options.sort,
 			labels: labelFilters,
@@ -2790,6 +2815,9 @@ addHelpSchema(taskCmd.command("list"), {
 		}
 		if (parentId) {
 			interactiveLoaderFilters.parentTaskId = parentId;
+		}
+		if (baseFilters.project) {
+			interactiveLoaderFilters.project = baseFilters.project;
 		}
 		const prefiltersDisplayList = Object.keys(interactiveLoaderFilters).length > 0;
 		await runUnifiedView({

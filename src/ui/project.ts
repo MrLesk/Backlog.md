@@ -1,4 +1,7 @@
-export function formatProjectBadge(project: string | null | undefined): string {
+export function formatProjectBadge(project: string | null | undefined, configuredProjects?: string[]): string {
 	const value = project?.trim();
-	return value ? `{blue-fg}[${value}]{/}` : "";
+	if (!value || !configuredProjects?.length) {
+		return "";
+	}
+	return `{blue-fg}[${value}]{/}`;
 }

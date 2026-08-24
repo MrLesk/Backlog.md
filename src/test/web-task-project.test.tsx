@@ -119,12 +119,27 @@ afterEach(() => {
 describe("Web task project UI", () => {
 	it("shows a project badge on cards and no badge for unprojected tasks", () => {
 		const webHtml = renderToString(
-			<TaskCard task={createTask({ project: "Web" })} onUpdate={() => {}} onEdit={() => {}} />,
+			<TaskCard
+				task={createTask({ project: "Web" })}
+				onUpdate={() => {}}
+				onEdit={() => {}}
+				availableProjects={["Web"]}
+			/>,
 		);
-		const untaggedHtml = renderToString(<TaskCard task={createTask()} onUpdate={() => {}} onEdit={() => {}} />);
+		const untaggedHtml = renderToString(
+			<TaskCard task={createTask()} onUpdate={() => {}} onEdit={() => {}} availableProjects={["Web"]} />,
+		);
 
 		expect(webHtml).toContain('data-task-project="Web"');
 		expect(untaggedHtml).not.toContain("data-task-project");
+	});
+
+	it("hides the project badge when no projects are configured, even if the task has one", () => {
+		const html = renderToString(
+			<TaskCard task={createTask({ project: "Web" })} onUpdate={() => {}} onEdit={() => {}} />,
+		);
+
+		expect(html).not.toContain("data-task-project");
 	});
 
 	it("omits the project select from the task detail modal when no projects are configured", async () => {

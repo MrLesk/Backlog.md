@@ -21,9 +21,10 @@ export interface ReorderTaskPayload {
 	targetMilestone?: string | null;
 }
 
-export type TaskUpdateRequest = Omit<Partial<Task>, "milestone" | "dueDate"> & {
+export type TaskUpdateRequest = Omit<Partial<Task>, "milestone" | "dueDate" | "project"> & {
 	milestone?: string | null;
 	dueDate?: string | null;
+	project?: string | null;
 	commentsAppend?: string[];
 	commentAuthor?: string;
 };

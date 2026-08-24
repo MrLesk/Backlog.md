@@ -154,6 +154,7 @@ export function formatTaskListItem(
 	isMoving = false,
 	availableWidth = Number.POSITIVE_INFINITY,
 	dateFormat?: string,
+	configuredProjects?: string[],
 ): string {
 	const assignee = task.assignee?.[0]
 		? ` {cyan-fg}${task.assignee[0].startsWith("@") ? task.assignee[0] : `@${task.assignee[0]}`}{/}`
@@ -164,7 +165,7 @@ export function formatTaskListItem(
 		: "";
 	const typeBadge = formatTaskTypeBadge(task.type);
 	const type = typeBadge ? ` ${typeBadge}` : "";
-	const projectBadge = formatProjectBadge(task.project);
+	const projectBadge = formatProjectBadge(task.project, configuredProjects);
 	const project = projectBadge ? ` ${projectBadge}` : "";
 	const isCrossBranch = Boolean((task as Task & { branch?: string }).branch);
 	const branch = isCrossBranch ? ` {green-fg}(${(task as Task & { branch?: string }).branch}){/}` : "";
@@ -187,8 +188,11 @@ function buildRenderedTaskListItems(
 	movingTaskId?: string,
 	availableWidth = Number.POSITIVE_INFINITY,
 	dateFormat?: string,
+	configuredProjects?: string[],
 ): { rich: string[]; plain: string[] } {
-	const rich = tasks.map((task) => formatTaskListItem(task, movingTaskId === task.id, availableWidth, dateFormat));
+	const rich = tasks.map((task) =>
+		formatTaskListItem(task, movingTaskId === task.id, availableWidth, dateFormat, configuredProjects),
+	);
 	return {
 		rich,
 		plain: rich.map((item) => stripBlessedFgTags(item)),
@@ -559,7 +563,7 @@ export async function renderBoardTui(
 		const getFormattedItems = (tasks: Task[]) => {
 			const columnCount = Math.max(1, currentColumnsData.length);
 			const availableWidth = Math.max(1, Math.floor(getTerminalWidth() / columnCount) - 4);
-			return buildRenderedTaskListItems(tasks, moveOp?.taskId, availableWidth, options?.dateFormat);
+			return buildRenderedTaskListItems(tasks, moveOp?.taskId, availableWidth, options?.dateFormat, options?.projects);
 		};
 
 		const createColumnViews = (data: ColumnData[]) => {
@@ -1176,7 +1180,10 @@ export async function renderBoardTui(
 		});
 
 		if (configuredProjects.length > 0) {
-			screen.key(["g", "G"], () => {
+			// "v"/"V", not "g"/"G": kept consistent with the task-list view's project filter
+			// shortcut, which had to move off "g"/"G" to avoid colliding with that view's
+			// detail-pane scroll-to-top/bottom keys.
+			screen.key(["v", "V"], () => {
 				if (popupOpen || filterPopupOpen || modalOpen || moveOp) return;
 				void openFilterPicker("project");
 			});
@@ -1401,7 +1408,7 @@ export async function renderBoardTui(
 			if (!task) return;
 			popupOpen = true;
 
-			const popup = await createTaskPopup(screen, task, resolveMilestoneLabel, options?.dateFormat);
+			const popup = await createTaskPopup(screen, task, resolveMilestoneLabel, options?.dateFormat, options?.projects);
 			if (!popup) {
 				popupOpen = false;
 				return;

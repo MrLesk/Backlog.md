@@ -68,6 +68,7 @@ import {
 	formatValidProjectValues,
 	getProjectValues,
 	matchesProjectFilter,
+	noProjectsConfiguredMessage,
 	resolveProjectValue,
 } from "../utils/project-config.ts";
 import { resolveRuntimeCwd } from "../utils/runtime-cwd.ts";
@@ -799,7 +800,7 @@ export class Core {
 		const config = await this.fs.loadConfig();
 		const configuredProjects = getProjectValues(config);
 		if (configuredProjects.length === 0) {
-			throw new Error("No projects are configured. Add a 'projects:' list to backlog/config.yml.");
+			throw new Error(noProjectsConfiguredMessage(this.fs.configFilePath));
 		}
 		const canonical = resolveProjectValue(value, config);
 		if (!canonical) {
@@ -1896,9 +1897,13 @@ export class Core {
 		}
 
 		if (input.project !== undefined) {
-			const normalizedProject = await this.normalizeProject(String(input.project));
-			if (task.project !== normalizedProject) {
-				task.project = normalizedProject;
+			const normalizedProject = input.project === null ? undefined : await this.normalizeProject(input.project);
+			if ((task.project ?? undefined) !== normalizedProject) {
+				if (normalizedProject === undefined) {
+					delete task.project;
+				} else {
+					task.project = normalizedProject;
+				}
 				mutated = true;
 			}
 		}

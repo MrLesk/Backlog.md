@@ -24,7 +24,12 @@ import { isAmbiguousIdError } from "../utils/entity-id.ts";
 import { resolveMilestoneInputForStorage } from "../utils/milestone-storage.ts";
 import { DRAFT_PREFIX, extractAnyPrefix } from "../utils/prefix-config.ts";
 import { formatValidPriorityValues, resolvePriorityValue } from "../utils/priority-config.ts";
-import { formatValidProjectValues, getProjectValues, resolveProjectValues } from "../utils/project-config.ts";
+import {
+	formatValidProjectValues,
+	getProjectValues,
+	noProjectsConfiguredMessage,
+	resolveProjectValues,
+} from "../utils/project-config.ts";
 import { formatValidStatuses, getCanonicalStatuses, getValidStatuses } from "../utils/status.ts";
 import { isValidTaskId } from "../utils/task-id.ts";
 import { isAmbiguousTaskIdError } from "../utils/task-path.ts";
@@ -873,7 +878,7 @@ export class BacklogServer {
 				const config = await this.core.filesystem.loadConfig();
 				if (getProjectValues(config).length === 0) {
 					return Response.json(
-						{ error: "No projects are configured. Add a 'projects:' list to backlog/config.yml." },
+						{ error: noProjectsConfiguredMessage(this.core.filesystem.configFilePath) },
 						{ status: 400 },
 					);
 				}
@@ -962,6 +967,7 @@ export class BacklogServer {
 				status: payload.status,
 				priority: payload.priority,
 				type: typeof payload.type === "string" ? payload.type : undefined,
+				project: typeof payload.project === "string" ? payload.project : undefined,
 				milestone,
 				labels: payload.labels,
 				assignee: payload.assignee,
@@ -1046,6 +1052,10 @@ export class BacklogServer {
 
 		if ("type" in updates && typeof updates.type === "string") {
 			updateInput.type = updates.type;
+		}
+
+		if ("project" in updates && (typeof updates.project === "string" || updates.project === null)) {
+			updateInput.project = updates.project;
 		}
 
 		if ("milestone" in updates && (typeof updates.milestone === "string" || updates.milestone === null)) {

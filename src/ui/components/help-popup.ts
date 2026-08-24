@@ -15,7 +15,7 @@ const BOARD_SHORTCUTS: Shortcut[] = [
 	{ key: "N", desc: "Create a task" },
 	{ key: "/", desc: "Search tasks" },
 	{ key: "T", desc: "Filter by Type" },
-	{ key: "G", desc: "Filter by Project" },
+	{ key: "V", desc: "Filter by Project" },
 	{ key: "P", desc: "Filter by Priority" },
 	{ key: "I", desc: "Filter by Milestone" },
 	{ key: "F", desc: "Filter by Labels" },
@@ -37,7 +37,7 @@ const TASK_LIST_SHORTCUTS: Shortcut[] = [
 	{ key: "/", desc: "Search tasks" },
 	{ key: "S", desc: "Filter by Status" },
 	{ key: "T", desc: "Filter by Type" },
-	{ key: "G", desc: "Filter by Project" },
+	{ key: "V", desc: "Filter by Project" },
 	{ key: "P", desc: "Filter by Priority" },
 	{ key: "I", desc: "Filter by Milestone" },
 	{ key: "L", desc: "Filter by Labels" },
@@ -57,7 +57,7 @@ export function getHelpShortcuts(
 	options: { hasProjects?: boolean } = {},
 ): Shortcut[] {
 	const shortcuts = context === "task-list" ? TASK_LIST_SHORTCUTS : BOARD_SHORTCUTS;
-	return options.hasProjects ? shortcuts : shortcuts.filter((shortcut) => shortcut.key !== "G");
+	return options.hasProjects ? shortcuts : shortcuts.filter((shortcut) => shortcut.key !== "V");
 }
 
 /** Popup rows spent on borders, the top spacer and the help line, leaving one row per shortcut. */

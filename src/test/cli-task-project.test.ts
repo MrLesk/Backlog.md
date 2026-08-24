@@ -25,9 +25,7 @@ describe("CLI task projects", () => {
 	it("fails closed when no projects are configured", async () => {
 		const created = await $`bun ${CLI_PATH} task create "Web task" --project web`.cwd(TEST_DIR).quiet().nothrow();
 		expect(created.exitCode).toBe(1);
-		expect(created.stderr.toString()).toContain(
-			"No projects are configured. Add a 'projects:' list to backlog/config.yml.",
-		);
+		expect(created.stderr.toString()).toContain("No projects are configured. Add a 'projects:' list to");
 
 		const createHelp = await $`bun ${CLI_PATH} task create --help`.cwd(TEST_DIR).text();
 		expect(createHelp).toContain("no projects configured; see 'backlog config get projects'");

@@ -159,15 +159,11 @@ describe("task project filtering", () => {
 
 		const list = await $`bun ${cliPath} task list --project web --plain`.cwd(testDir).nothrow().quiet();
 		expect(list.exitCode).toBe(1);
-		expect(list.stderr.toString()).toContain(
-			"No projects are configured. Add a 'projects:' list to backlog/config.yml.",
-		);
+		expect(list.stderr.toString()).toContain("No projects are configured. Add a 'projects:' list to");
 
 		const search = await $`bun ${cliPath} search --project web --plain`.cwd(testDir).nothrow().quiet();
 		expect(search.exitCode).toBe(1);
-		expect(search.stderr.toString()).toContain(
-			"No projects are configured. Add a 'projects:' list to backlog/config.yml.",
-		);
+		expect(search.stderr.toString()).toContain("No projects are configured. Add a 'projects:' list to");
 	});
 
 	it("documents configured project filters and completes their values", async () => {

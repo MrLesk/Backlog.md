@@ -138,7 +138,7 @@ export interface TaskUpdateInput {
 	status?: TaskStatus;
 	priority?: string;
 	type?: string;
-	project?: string;
+	project?: string | null;
 	milestone?: string | null;
 	labels?: string[];
 	addLabels?: string[];

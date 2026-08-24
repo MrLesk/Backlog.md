@@ -35,7 +35,7 @@ interface ProjectBadgeProps {
 
 const ProjectBadge: React.FC<ProjectBadgeProps> = ({ project, availableProjects, className = '' }) => {
   const label = project?.trim();
-  if (!label) {
+  if (!label || !availableProjects?.length) {
     return null;
   }
 
