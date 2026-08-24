@@ -1,5 +1,5 @@
 import { mkdir, rename, stat, unlink } from "node:fs/promises";
-import { dirname, isAbsolute, join, resolve } from "node:path";
+import { basename, dirname, isAbsolute, join, resolve } from "node:path";
 import lockfile from "proper-lockfile";
 import { DEFAULT_DIRECTORIES, DEFAULT_FILES, DEFAULT_STATUSES, FALLBACK_STATUS } from "../constants/index.ts";
 import { parseFrontmatter } from "../markdown/frontmatter.ts";
@@ -15,6 +15,7 @@ import {
 import { findDecisionById } from "../utils/decision-id.ts";
 import { documentIdsEqual, findDocumentById, normalizeDocumentId } from "../utils/document-id.ts";
 import { normalizeDocumentRelativePath, normalizeDocumentSubPath } from "../utils/document-path.ts";
+import { AmbiguousIdError } from "../utils/entity-id.ts";
 import {
 	buildGlobPattern,
 	extractAnyPrefix,
@@ -26,6 +27,8 @@ import {
 import { normalizeStatusSet, statusMatchesSet } from "../utils/status-filter.ts";
 import {
 	AmbiguousTaskIdError,
+	draftIdsMatchLoosely,
+	extractDraftIdFromFilename,
 	getTaskFilename,
 	getTaskPath,
 	isAmbiguousTaskIdError,
@@ -276,6 +279,15 @@ export function isTaskLockError(error: unknown): error is Error {
 
 export function taskLockErrorMessage(taskId: string): string {
 	return `Edit failed: ${taskId} is being modified by another process; retry if appropriate.`;
+}
+
+/**
+ * The only handle through which a draft may be read or mutated: the exact file plus the id
+ * derived from that file's name. Nothing may re-resolve a draft id to a different path.
+ */
+export interface DraftFileReference {
+	filePath: string;
+	canonicalId: string;
 }
 
 export class FileSystem {
@@ -618,17 +630,37 @@ export class FileSystem {
 		if (!filePath) {
 			throw new Error(`Cannot lock task ${task.id} for editing without its file path.`);
 		}
+		return await this.withEntityFileLock("task", task.id, filePath, fn);
+	}
 
-		const lockKey = task.id
+	/**
+	 * Draft counterpart of the per-task lock. The lock key is namespaced by store so a project
+	 * whose task prefix is "draft" does not make an unrelated task contend with its draft twin,
+	 * while two editors of the same draft file still fail fast against each other.
+	 */
+	async withDraftLock<T>(reference: DraftFileReference, fn: () => Promise<T>): Promise<T> {
+		if (process.env.USE_GLOBAL_TASK_ID_LOCK?.toLowerCase() === "false") {
+			return await fn();
+		}
+		return await this.withEntityFileLock("draft", reference.canonicalId, reference.filePath, fn);
+	}
+
+	private async withEntityFileLock<T>(
+		scope: "task" | "draft",
+		entityId: string,
+		filePath: string,
+		fn: () => Promise<T>,
+	): Promise<T> {
+		const lockKey = entityId
 			.trim()
 			.toLowerCase()
 			.replace(/[^a-z0-9._-]+/g, "-")
 			.replace(/^\.+/, "");
 		return await this.withLockTarget(
 			filePath,
-			join(await this.getBacklogDir(), ".locks", `task-${lockKey || "unknown"}`),
+			join(await this.getBacklogDir(), ".locks", `${scope}-${lockKey || "unknown"}`),
 			{ staleMs: DEFAULT_CREATE_LOCK_STALE_MS, retries: 0, retryDelayMs: 0 },
-			(error) => this.toTaskLockError(error, task.id),
+			(error) => this.toTaskLockError(error, entityId),
 			fn,
 		);
 	}
@@ -1278,6 +1310,63 @@ export class FileSystem {
 		} catch {
 			return [];
 		}
+	}
+
+	/**
+	 * The single validation authority for one draft file: parse it and require its frontmatter
+	 * id to agree with its filename under the loose matching rules. Throws with actionable
+	 * context when the file is damaged or its identity drifted.
+	 */
+	async draftReferenceFromPath(filePath: string): Promise<DraftFileReference & { task: Task }> {
+		const filename = basename(filePath);
+		let task: Task;
+		try {
+			task = normalizeTaskIdentity(parseTask(await Bun.file(filePath).text()));
+		} catch {
+			throw new Error(`Draft file ${filename} could not be parsed. Repair or remove the file, then rerun the edit.`);
+		}
+		const canonicalId = extractDraftIdFromFilename(filename);
+		if (!canonicalId || !draftIdsMatchLoosely(task.id, filename)) {
+			throw new Error(
+				`Draft file ${filename} declares frontmatter id ${task.id}, which does not match its filename id ${canonicalId ?? "(unreadable)"}. Fix the frontmatter id or rename the file so they agree, then rerun the edit.`,
+			);
+		}
+		return { filePath, canonicalId, task: { ...task, filePath } };
+	}
+
+	/**
+	 * Resolve a user-supplied draft id to a validated reference. Candidate filenames are matched
+	 * by exact prefix and loose numeric rules together, so duplicate numeric identities fail
+	 * closed; only the matched file is parsed.
+	 */
+	async resolveDraftReference(draftId: string): Promise<(DraftFileReference & { task: Task }) | null> {
+		const draftsDir = await this.getDraftsDir();
+		let files: string[] = [];
+		try {
+			files = await Array.fromAsync(
+				new Bun.Glob(buildGlobPattern("draft")).scan({ cwd: draftsDir, followSymlinks: true }),
+			);
+		} catch {
+			return null;
+		}
+		const normalizedId = normalizeId(draftId, "draft");
+		const candidates = new Set(
+			files
+				.filter((f) => filenameMatchesId(f, idForFilename(normalizedId)))
+				.concat(files.filter((f) => draftIdsMatchLoosely(draftId, f))),
+		);
+		const matches = [...candidates].sort();
+		if (matches.length > 1) {
+			throw new AmbiguousIdError(
+				"Draft",
+				normalizedId,
+				matches,
+				"Rename these files or fix their frontmatter ids so each numeric draft id is unique.",
+			);
+		}
+		const filename = matches.at(0);
+		if (!filename) return null;
+		return await this.draftReferenceFromPath(join(draftsDir, filename));
 	}
 
 	// Decision log operations

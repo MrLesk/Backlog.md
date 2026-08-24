@@ -1,7 +1,12 @@
 import { rename as moveFile, readFile, stat, unlink, writeFile } from "node:fs/promises";
 import { basename, dirname, isAbsolute, join, relative } from "node:path";
 import { DEFAULT_DIRECTORIES, DEFAULT_STATUSES, FALLBACK_STATUS } from "../constants/index.ts";
-import { FileSystem, isConfigValueError, isCreateLockError } from "../file-system/operations.ts";
+import {
+	type DraftFileReference,
+	FileSystem,
+	isConfigValueError,
+	isCreateLockError,
+} from "../file-system/operations.ts";
 import { type GitBranchTip, type GitIndexEntry, GitOperations } from "../git/operations.ts";
 import { parseFrontmatter } from "../markdown/frontmatter.ts";
 import {
@@ -67,7 +72,6 @@ import {
 import {
 	AmbiguousTaskIdError,
 	canonicalTaskId,
-	draftIdsMatchLoosely,
 	getDraftPath,
 	getTaskPath,
 	LOCAL_TASK_LOOKUP_HINT,
@@ -2380,35 +2384,43 @@ export class Core {
 		});
 	}
 
-	async updateDraft(task: Task, autoCommit?: boolean): Promise<void> {
+	async updateDraft(task: Task, autoCommit?: boolean): Promise<string> {
 		// Drafts always keep status Draft
 		task.status = "Draft";
 		normalizeAssignee(task);
 		task.updatedDate = new Date().toISOString().slice(0, 16).replace("T", " ");
 
+		const previousPath = task.filePath;
 		const filepath = await this.fs.saveDraft(task);
 
 		if (await this.shouldAutoCommit(autoCommit)) {
-			await this.git.addFile(filepath);
-			await this.git.commitTaskChange(task.id, `Update draft ${task.id}`, filepath);
+			if (previousPath && previousPath !== filepath) {
+				// A title rename moved the file: stage the deletion of the old path together with
+				// the addition of the new one, mirroring how task moves stage their renames.
+				const repoRoot = await this.git.stageFileMove(previousPath, filepath);
+				await this.git.commitFiles(`Update draft ${task.id}`, [previousPath, filepath], repoRoot ?? undefined);
+			} else {
+				await this.git.addFile(filepath);
+				await this.git.commitTaskChange(task.id, `Update draft ${task.id}`, filepath);
+			}
 		}
+
+		return filepath;
 	}
 
-	async updateDraftFromInput(draftId: string, input: TaskUpdateInput, autoCommit?: boolean): Promise<Task> {
-		// Same discipline as task edits: acquire the per-file lock before the read-modify-write
-		// and re-read inside it, so a concurrent editor fails fast instead of losing its update.
-		const draftForLock = await this.fs.loadDraft(draftId);
-		if (!draftForLock) {
-			throw new Error(`Draft not found: ${draftId}`);
-		}
+	async updateDraftFromInput(
+		reference: DraftFileReference,
+		input: TaskUpdateInput,
+		autoCommit?: boolean,
+	): Promise<Task> {
+		// Same discipline as task edits: acquire the namespaced per-file lock before the
+		// read-modify-write and re-read inside it, so a concurrent editor fails fast instead of
+		// losing its update. The reference's own file is the only thing touched; no id is ever
+		// re-resolved to a different path.
+		return await this.fs.withDraftLock(reference, async () => {
+			const current = await this.fs.draftReferenceFromPath(reference.filePath);
 
-		return await this.fs.withTaskLock(draftForLock, async () => {
-			const draft = await this.fs.loadDraft(draftId);
-			if (!draft) {
-				throw new Error(`Draft not found: ${draftId}`);
-			}
-
-			const { mutated } = await this.applyTaskUpdateInput(draft, input, async (status) => {
+			const { mutated } = await this.applyTaskUpdateInput(current.task, input, async (status) => {
 				if (status.trim().toLowerCase() !== "draft") {
 					throw new Error("Drafts must use status Draft.");
 				}
@@ -2416,12 +2428,12 @@ export class Core {
 			});
 
 			if (!mutated) {
-				return draft;
+				return current.task;
 			}
 
-			await this.updateDraft(draft, autoCommit);
-			const refreshed = await this.fs.loadDraft(draftId);
-			return refreshed ?? draft;
+			const savedPath = await this.updateDraft(current.task, autoCommit);
+			const refreshed = await this.fs.draftReferenceFromPath(savedPath);
+			return refreshed.task;
 		});
 	}
 
@@ -2431,14 +2443,14 @@ export class Core {
 		autoCommit?: boolean,
 		options: TaskReadOptions = {},
 	): Promise<Task> {
-		const draft = await this.fs.loadDraft(taskId);
-		if (draft) {
+		const resolvedDraft = await this.fs.resolveDraftReference(taskId);
+		if (resolvedDraft) {
 			const requestedStatus = input.status?.trim();
 			const wantsDraft = requestedStatus?.toLowerCase() === "draft";
 			if (requestedStatus && !wantsDraft) {
-				return await this.promoteDraftWithUpdates(draft, input, autoCommit);
+				return await this.promoteDraftWithUpdates(resolvedDraft.task, input, autoCommit);
 			}
-			return await this.updateDraftFromInput(draft.id, input, autoCommit);
+			return await this.updateDraftFromInput(resolvedDraft, input, autoCommit);
 		}
 
 		// updateTaskFromInput already demotes when the requested status is Draft, resolves the id
@@ -3373,26 +3385,37 @@ export class Core {
 		if (selectedFilePath !== undefined && dirname(selectedFilePath) === draftsDir) {
 			// The row's home directory decides its store before any task lookup: a project whose
 			// task prefix is "draft" can hold task ids identical to draft ids, so resolving by id
-			// first would silently target the task file instead of the selected draft row.
-			if (!draftIdsMatchLoosely(resolvedTask.id, basename(selectedFilePath))) {
+			// first would silently target the task file instead of the selected draft row. The
+			// validated reference binds the editor session to this exact file.
+			let validated: Awaited<ReturnType<FileSystem["draftReferenceFromPath"]>>;
+			try {
+				validated = await this.fs.draftReferenceFromPath(selectedFilePath);
+			} catch {
 				return { changed: false, task: resolvedTask, reason: "identity_conflict" };
 			}
-			editableTask = resolvedTask;
-			draftFilePath = selectedFilePath;
+			editableTask = validated.task;
+			draftFilePath = validated.filePath;
 		} else {
 			const localTask = await this.fs.loadTask(resolvedTask.id);
 			editableTask = localTask ?? resolvedTask;
 
 			taskFilePath = await getTaskPath(editableTask.id, this);
 			if (!taskFilePath) {
-				const looksLikeDraftRow = editableTask.filePath !== undefined && dirname(editableTask.filePath) === draftsDir;
-				if (editableTask.filePath && (looksLikeDraftRow || editableTask.status?.trim().toLowerCase() === "draft")) {
-					if (!draftIdsMatchLoosely(editableTask.id, basename(editableTask.filePath))) {
+				if (editableTask.filePath && dirname(editableTask.filePath) === draftsDir) {
+					let validatedRow: Awaited<ReturnType<FileSystem["draftReferenceFromPath"]>>;
+					try {
+						validatedRow = await this.fs.draftReferenceFromPath(editableTask.filePath);
+					} catch {
 						return { changed: false, task: editableTask, reason: "identity_conflict" };
 					}
-					draftFilePath = editableTask.filePath;
+					draftFilePath = validatedRow.filePath;
 				} else {
-					draftFilePath = await getDraftPath(editableTask.id, this);
+					const resolvedReference = await this.fs.resolveDraftReference(editableTask.id);
+					if (!resolvedReference) {
+						return { changed: false, task: editableTask, reason: "not_found" };
+					}
+					editableTask = resolvedReference.task;
+					draftFilePath = resolvedReference.filePath;
 				}
 			}
 		}
@@ -3401,8 +3424,13 @@ export class Core {
 		if (!filePath) {
 			return { changed: false, task: editableTask, reason: "not_found" };
 		}
-		const reloadEditedEntity = () =>
-			taskFilePath ? this.fs.loadTask(editableTask.id) : this.fs.loadDraft(editableTask.id);
+		const reloadEditedEntity = (): Promise<Task | null> =>
+			taskFilePath
+				? this.fs.loadTask(editableTask.id)
+				: this.fs
+						.draftReferenceFromPath(filePath)
+						.then((validated) => validated.task)
+						.catch(() => null);
 
 		let beforeContent: string;
 		try {

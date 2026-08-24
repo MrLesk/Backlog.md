@@ -2,12 +2,18 @@ import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import { mkdir } from "node:fs/promises";
 import { basename, join } from "node:path";
 import { $ } from "bun";
+import { pickTaskForEditWizard } from "../commands/task-wizard.ts";
 import { isTaskLockError } from "../file-system/operations.ts";
 import { Core } from "../index.ts";
 import { serializeTask } from "../markdown/serializer.ts";
 import type { Task } from "../types/index.ts";
 import { getTestCliPath } from "./test-cli.ts";
-import { createUniqueTestDir, initializeFilesystemTestProject, safeCleanup } from "./test-utils.ts";
+import {
+	createUniqueTestDir,
+	initializeFilesystemTestProject,
+	initializeTestProject,
+	safeCleanup,
+} from "./test-utils.ts";
 
 const normalizeCliOutput = (output: string) => output.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
 
@@ -329,6 +335,8 @@ describe("atomic draft editing", () => {
 		const match = created.stdout.toString().match(/Created draft (\S+)/);
 		const draftId = match?.[1];
 		if (!draftId) throw new Error("draft create did not report a draft id");
+		const reference = await setup.filesystem.resolveDraftReference(draftId);
+		if (!reference) throw new Error("expected draft reference");
 
 		// Separate Cores race like separate processes: without serialization each one mutates
 		// the same pre-write snapshot and all but one label disappear from the file.
@@ -338,7 +346,7 @@ describe("atomic draft editing", () => {
 		let outcomes: PromiseSettledResult<Task>[];
 		try {
 			outcomes = await Promise.allSettled(
-				writers.map(({ label, core }) => core.updateDraftFromInput(draftId, { addLabels: [label] }, false)),
+				writers.map(({ label, core }) => core.updateDraftFromInput(reference, { addLabels: [label] }, false)),
 			);
 		} finally {
 			for (const { core } of writers) core.disposeContentStore();
@@ -355,5 +363,185 @@ describe("atomic draft editing", () => {
 		const core = new Core(TEST_DIR);
 		const reloaded = await core.filesystem.loadDraft(draftId);
 		expect([...(reloaded?.labels ?? [])].sort()).toEqual([...succeeded].sort());
+	});
+
+	it("does not contend with a task that shares the draft's id, but still fails fast on real contention", async () => {
+		await $`bun ${CLI_PATH} draft create "Namespaced draft"`.cwd(TEST_DIR).quiet();
+		const draftReference = await setup.filesystem.resolveDraftReference("DRAFT-1");
+		if (!draftReference) throw new Error("expected draft reference");
+		await setup.createTask(
+			{
+				id: "draft-1",
+				title: "Task twin",
+				status: "To Do",
+				assignee: [],
+				createdDate: "2026-08-24 10:00",
+				labels: [],
+				dependencies: [],
+			},
+			false,
+		);
+		const taskTwin = await setup.filesystem.loadTask("draft-1");
+		if (!taskTwin?.filePath) throw new Error("expected task twin");
+
+		let releaseTaskLock: (() => void) | undefined;
+		try {
+			// Holding the TASK lock on the colliding id must not block the draft edit.
+			const taskLockHeld = new Promise<void>((resolveHeld) => {
+				void setup.fs.withTaskLock(taskTwin, async () => {
+					resolveHeld();
+					await new Promise<void>((resolveRelease) => {
+						releaseTaskLock = resolveRelease;
+					});
+				});
+			});
+			await taskLockHeld;
+
+			const editingCore = new Core(TEST_DIR);
+			try {
+				const updated = await editingCore.updateDraftFromInput(draftReference, { addLabels: ["no-contention"] }, false);
+				expect(updated.labels).toContain("no-contention");
+			} finally {
+				editingCore.disposeContentStore();
+			}
+		} finally {
+			releaseTaskLock?.();
+		}
+
+		// Genuine same-file contention still fails fast with the shared error style.
+		let releaseDraftLock: (() => void) | undefined;
+		try {
+			const holdingCore = new Core(TEST_DIR);
+			const draftLockHeld = new Promise<void>((resolveHeld) => {
+				void holdingCore.fs.withDraftLock(draftReference, async () => {
+					resolveHeld();
+					await new Promise<void>((resolveRelease) => {
+						releaseDraftLock = resolveRelease;
+					});
+				});
+			});
+			await draftLockHeld;
+
+			const losingCore = new Core(TEST_DIR);
+			try {
+				let lockFailure: unknown;
+				try {
+					await losingCore.updateDraftFromInput(draftReference, { addLabels: ["lost"] }, false);
+					throw new Error("expected same-file contention to fail fast");
+				} catch (error) {
+					if ((error as Error).message.startsWith("expected same-file")) throw error;
+					lockFailure = error;
+				}
+				expect(isTaskLockError(lockFailure)).toBe(true);
+			} finally {
+				losingCore.disposeContentStore();
+			}
+		} finally {
+			releaseDraftLock?.();
+		}
+	});
+});
+
+describe("draft wizard selection binding", () => {
+	let TEST_DIR: string;
+
+	beforeEach(async () => {
+		TEST_DIR = createUniqueTestDir("test-draft-wizard-binding");
+		await mkdir(TEST_DIR, { recursive: true });
+
+		const core = new Core(TEST_DIR);
+		await initializeFilesystemTestProject(core, "Draft Wizard Binding Project");
+	});
+
+	afterEach(async () => {
+		await safeCleanup(TEST_DIR);
+	});
+
+	it("hands the wizard selection back as the bound row handle", async () => {
+		let capturedValue: string | undefined;
+		const selected = await pickTaskForEditWizard({
+			tasks: [{ id: "DRAFT-2", title: "Drifted row", value: "/drafts/draft-1 - Alpha.md" }],
+			promptImpl: async (question) => {
+				capturedValue = question.options?.at(0)?.value;
+				return { taskId: question.options?.at(0)?.value };
+			},
+		});
+
+		expect(capturedValue).toBe("/drafts/draft-1 - Alpha.md");
+		expect(selected).toBe("/drafts/draft-1 - Alpha.md");
+	});
+
+	it("selecting a drifted row fails closed against that file and never edits its twin", async () => {
+		const core = new Core(TEST_DIR);
+		const draftsDir = join(TEST_DIR, "backlog", "drafts");
+		const drifted = serializeTask({
+			id: "DRAFT-2",
+			title: "Alpha",
+			status: "Draft",
+			assignee: [],
+			createdDate: "2026-08-24 10:00",
+			labels: [],
+			dependencies: [],
+		});
+		await Bun.write(join(draftsDir, "draft-1 - Alpha.md"), drifted);
+		await $`bun ${CLI_PATH} draft create "Beta"`.cwd(TEST_DIR).nothrow().quiet();
+
+		const rows = await core.filesystem.listHealthyDrafts();
+		const alphaRow = rows.find((row) => row.filePath?.includes("draft-1 - Alpha"));
+		if (!alphaRow?.filePath) throw new Error("expected drifted row");
+
+		await expect(core.filesystem.draftReferenceFromPath(alphaRow.filePath)).rejects.toThrow(
+			"does not match its filename",
+		);
+
+		const betaRow = rows.find((row) => row.filePath?.includes("- Beta"));
+		if (!betaRow?.filePath) throw new Error("expected beta row");
+		await core.updateDraftFromInput(
+			{ filePath: betaRow.filePath, canonicalId: betaRow.id },
+			{ addLabels: ["touched-beta"] },
+			false,
+		);
+		expect(await Bun.file(betaRow.filePath).text()).toContain("touched-beta");
+		expect(await Bun.file(alphaRow.filePath).text()).not.toContain("touched-beta");
+	});
+});
+
+describe("CLI draft edit auto-commit rename staging", () => {
+	let TEST_DIR: string;
+
+	beforeEach(async () => {
+		TEST_DIR = createUniqueTestDir("test-draft-rename-autocommit");
+		await mkdir(TEST_DIR, { recursive: true });
+		await $`git init`.cwd(TEST_DIR).quiet();
+
+		const core = new Core(TEST_DIR);
+		await initializeTestProject(core, "Draft Rename Autocommit Project", true);
+		const config = await core.filesystem.loadConfig();
+		if (config) {
+			config.autoCommit = true;
+			await core.filesystem.saveConfig(config);
+		}
+	});
+
+	afterEach(async () => {
+		await safeCleanup(TEST_DIR);
+	});
+
+	it("stages the old path deletion together with the new path addition on a title rename", async () => {
+		await $`bun ${CLI_PATH} draft create "Original title"`.cwd(TEST_DIR).quiet();
+		await $`git add .`.cwd(TEST_DIR).quiet();
+		await $`git commit -m seed`.cwd(TEST_DIR).quiet();
+
+		await $`bun ${CLI_PATH} draft edit 1 -t "Renamed title"`.cwd(TEST_DIR).nothrow().quiet();
+
+		const status = await $`git status --porcelain`.cwd(TEST_DIR).quiet();
+		expect(status.stdout.toString().trim()).toBe("");
+
+		const nameStatus = await $`git show --no-renames --name-status --pretty=format:`.cwd(TEST_DIR).quiet();
+		const lines = normalizeCliOutput(nameStatus.stdout.toString())
+			.split("\n")
+			.filter((line) => line.trim().length > 0);
+		expect(lines.some((line) => line.startsWith("D") && line.includes("draft-1 - Original-title.md"))).toBe(true);
+		expect(lines.some((line) => line.startsWith("A") && line.includes("draft-1 - Renamed-title.md"))).toBe(true);
 	});
 });

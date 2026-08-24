@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-import { basename, join } from "node:path";
+import { basename, isAbsolute, join } from "node:path";
 import { stdin as input } from "node:process";
 import { createInterface } from "node:readline/promises";
 import * as clack from "@clack/prompts";
@@ -38,7 +38,6 @@ import {
 	isGitRepository,
 	updateReadmeWithBoard,
 } from "./index.ts";
-import { parseTask } from "./markdown/parser.ts";
 import { MilestoneHandlers, type MilestoneRemoveArgs } from "./mcp/tools/milestones/handlers.ts";
 import type { CallToolResult } from "./mcp/types.ts";
 import {
@@ -71,7 +70,7 @@ import {
 	formatDuplicateTaskIdWarning,
 	hasContentIdentityIssues,
 } from "./utils/duplicate-detection.ts";
-import { AmbiguousIdError, isAmbiguousIdError } from "./utils/entity-id.ts";
+import { isAmbiguousIdError } from "./utils/entity-id.ts";
 import { findBacklogRoot } from "./utils/find-backlog-root.ts";
 import { generateNextDecisionId } from "./utils/id-generators.ts";
 import { labelsToLower } from "./utils/label-filter.ts";
@@ -83,14 +82,7 @@ import {
 	runMcpClientSetupCommand,
 } from "./utils/mcp-client-setup.ts";
 import { resolveMilestoneInputForStorage } from "./utils/milestone-storage.ts";
-import {
-	buildGlobPattern,
-	DRAFT_PREFIX,
-	filenameMatchesId,
-	hasAnyPrefix,
-	idForFilename,
-	normalizeId,
-} from "./utils/prefix-config.ts";
+import { DRAFT_PREFIX, hasAnyPrefix, normalizeId } from "./utils/prefix-config.ts";
 import { formatValidPriorityValues, getPriorityOptions, resolvePriorityValue } from "./utils/priority-config.ts";
 import { type ReadOutputMode, resolveReadOutputMode } from "./utils/read-output-mode.ts";
 import { getTaskReadiness, loadReadinessGraph } from "./utils/readiness.ts";
@@ -107,11 +99,8 @@ import { buildTaskUpdateInput } from "./utils/task-edit-builder.ts";
 import {
 	AmbiguousTaskIdError,
 	canonicalTaskId,
-	draftIdsMatchLoosely,
-	extractDraftIdFromFilename,
 	isAmbiguousTaskIdError,
 	LOCAL_TASK_LOOKUP_HINT,
-	normalizeTaskIdentity,
 	taskIdsEqual,
 } from "./utils/task-path.ts";
 import { sortTasks } from "./utils/task-sorting.ts";
@@ -2759,9 +2748,10 @@ type EditCommandTarget = {
 	label: string;
 	pluralLabel: string;
 	statuses: (core: Core) => Promise<string[]>;
-	resolve: (core: Core, id: string) => Promise<Task | null>;
+	resolve: (core: Core, idOrSelectedPath: string) => Promise<Task | null>;
 	listCandidates: (core: Core) => Promise<Task[]>;
-	update: (core: Core, id: string, input: TaskUpdateInput) => Promise<Task>;
+	selectionValue: (candidate: Task) => string;
+	update: (core: Core, existing: Task, input: TaskUpdateInput) => Promise<Task>;
 	notFoundMessage: (id: string) => string;
 };
 
@@ -2771,7 +2761,8 @@ const taskEditTarget: EditCommandTarget = {
 	statuses: (core) => getValidStatuses(core),
 	resolve: (core, id) => core.loadTaskById(id, { includeCrossBranch: false }),
 	listCandidates: (core) => core.queryTasks({ includeCrossBranch: false }),
-	update: (core, id, input) => core.editTask(id, input, undefined, { includeCrossBranch: false }),
+	selectionValue: (candidate) => candidate.id,
+	update: (core, existing, input) => core.editTask(existing.id, input, undefined, { includeCrossBranch: false }),
 	notFoundMessage: (id) => `Task ${id} not found. ${LOCAL_TASK_LOOKUP_HINT}`,
 };
 
@@ -2779,57 +2770,25 @@ const draftEditTarget: EditCommandTarget = {
 	label: "Draft",
 	pluralLabel: "drafts",
 	statuses: async () => ["Draft"],
-	async resolve(core, id) {
-		// Draft identity is bound to files: match candidate filenames first and parse only those,
-		// so one damaged draft cannot hide the rest, then require the frontmatter id to agree with
-		// the filename before anything can mutate through a second, possibly divergent resolution.
-		const draftsDir = await core.filesystem.getDraftsDir();
-		let files: string[] = [];
-		try {
-			files = await Array.fromAsync(
-				new Bun.Glob(buildGlobPattern(DRAFT_PREFIX)).scan({ cwd: draftsDir, followSymlinks: true }),
-			);
-		} catch {
-			return null;
+	async resolve(core, idOrSelectedPath) {
+		// The single resolution authority for every draft entry point: direct ids go through the
+		// id resolver; wizard selections arrive as the selected row's file path and are validated
+		// against that exact file, so a drifted frontmatter id can never redirect the edit.
+		if (isAbsolute(idOrSelectedPath)) {
+			const reference = await core.filesystem.draftReferenceFromPath(idOrSelectedPath);
+			return { ...reference.task, id: reference.canonicalId, filePath: reference.filePath };
 		}
-		const normalizedId = normalizeId(id, DRAFT_PREFIX);
-		// Exact and loose matches are collected together: two files claiming one numeric id
-		// (e.g. draft-1 and draft-001) must fail closed before any of them can be mutated.
-		const candidates = new Set(
-			files
-				.filter((f) => filenameMatchesId(f, idForFilename(normalizedId)))
-				.concat(files.filter((f) => draftIdsMatchLoosely(id, f))),
-		);
-		const matches = [...candidates].sort();
-		if (matches.length > 1) {
-			throw new AmbiguousIdError(
-				"Draft",
-				normalizedId,
-				matches,
-				"Rename these files or fix their frontmatter ids so each numeric draft id is unique.",
-			);
-		}
-		if (matches.length === 0) return null;
-
-		const filename = matches.at(0);
-		if (!filename) return null;
-		const filePath = join(draftsDir, filename);
-		let draft: Task;
-		try {
-			draft = normalizeTaskIdentity(parseTask(await Bun.file(filePath).text()));
-		} catch {
-			throw new Error(`Draft file ${filename} could not be parsed. Repair or remove the file, then rerun the edit.`);
-		}
-		const declaredId = extractDraftIdFromFilename(filename);
-		if (!declaredId || !draftIdsMatchLoosely(draft.id, filename)) {
-			throw new Error(
-				`Draft file ${filename} declares frontmatter id ${draft.id}, which does not match its filename id ${declaredId ?? "(unreadable)"}. Fix the frontmatter id or rename the file so they agree, then rerun the edit.`,
-			);
-		}
-		return { ...draft, id: declaredId, filePath };
+		const reference = await core.filesystem.resolveDraftReference(idOrSelectedPath);
+		return reference ? { ...reference.task, id: reference.canonicalId, filePath: reference.filePath } : null;
 	},
 	listCandidates: (core) => core.filesystem.listHealthyDrafts(),
-	update: (core, id, input) => core.updateDraftFromInput(id, input),
+	selectionValue: (candidate) => candidate.filePath ?? candidate.id,
+	update: (core, existing, input) => {
+		if (!existing.filePath) {
+			throw new Error(`Cannot update draft ${existing.id} without its file path.`);
+		}
+		return core.updateDraftFromInput({ filePath: existing.filePath, canonicalId: existing.id }, input);
+	},
 	notFoundMessage: (id) => `Draft ${id} not found.`,
 };
 
@@ -2850,6 +2809,7 @@ async function runEditCommand(target: EditCommandTarget, taskId: string | undefi
 			const taskOptions = candidates.map((candidate) => ({
 				id: candidate.id,
 				title: candidate.title,
+				value: target.selectionValue(candidate),
 			}));
 			if (taskOptions.length === 0) {
 				console.log(`No ${target.pluralLabel} found.`);
@@ -2883,7 +2843,7 @@ async function runEditCommand(target: EditCommandTarget, taskId: string | undefi
 		}
 
 		try {
-			const updatedTask = await target.update(core, existingTaskForWizard.id, wizardInput);
+			const updatedTask = await target.update(core, existingTaskForWizard, wizardInput);
 			console.log(`Updated ${target.label.toLowerCase()} ${updatedTask.id}`);
 		} catch (error) {
 			console.error(formatTaskEditError(error, existingTaskForWizard.id, target.label.toLowerCase()));
@@ -3197,7 +3157,7 @@ async function runEditCommand(target: EditCommandTarget, taskId: string | undefi
 	let updatedTask: Task;
 	try {
 		const updateInput = buildTaskUpdateInput(editArgs);
-		updatedTask = await target.update(core, existingTask.id, updateInput);
+		updatedTask = await target.update(core, existingTask, updateInput);
 	} catch (error) {
 		console.error(formatTaskEditError(error, existingTask.id, target.label.toLowerCase()));
 		process.exitCode = 1;
