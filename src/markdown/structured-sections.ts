@@ -83,23 +83,59 @@ function restoreLineEndings(text: string, useCRLF: boolean): string {
 	return useCRLF ? text.replace(/\n/g, "\r\n") : text;
 }
 
-const FENCE_OPENING_REGEX = /^ {0,3}(`{3,}|~{3,})(.*)$/;
+const FENCE_OPENING_REGEX = /^(`{3,}|~{3,})(.*)$/;
+const SECTION_SENTINEL_LINE_REGEX = /^<!-- SECTION:[A-Z][A-Z0-9_]*:(BEGIN|END) -->$/;
+const LIST_ITEM_MARKER_REGEX = /^( *)([-+*]|\d{1,9}[.)])(?:[\t ]+|$)/;
+const HTML_BLOCK_TAG_NAMES =
+	"address|article|aside|base|basefont|blockquote|body|caption|center|col|colgroup|dd|details|dialog|dir|div|dl|dt|fieldset|figcaption|figure|footer|form|frame|frameset|h[1-6]|head|header|hr|html|iframe|legend|li|link|main|menu|menuitem|nav|noframes|ol|optgroup|option|p|param|search|section|summary|table|tbody|td|tfoot|th|thead|title|tr|track|ul";
+const HTML_TYPE1_OPENING_REGEX = /^ {0,3}<(script|pre|style|textarea)(?=[\t />]|$)/i;
+const HTML_COMMENT_OPENING_REGEX = /^ {0,3}<!--/;
+const HTML_PROCESSING_INSTRUCTION_OPENING_REGEX = /^ {0,3}<\?/;
+const HTML_DECLARATION_OPENING_REGEX = /^ {0,3}<![a-zA-Z]/;
+const HTML_CDATA_OPENING_REGEX = /^ {0,3}<!\[CDATA\[/;
+const HTML_BLOCK_TAG_OPENING_REGEX = new RegExp(`^ {0,3}</?(?:${HTML_BLOCK_TAG_NAMES})(?=[\t />]|$)`, "i");
+const HTML_COMPLETE_TAG_LINE_REGEX = /^ {0,3}<\/?[a-zA-Z][a-zA-Z0-9-]*(?:[\t ][^<>]*)?\/?>[\t ]*$/;
+
+interface FenceSpec {
+	character: string;
+	minLength: number;
+}
+
+interface HtmlBlockState {
+	endRegex?: RegExp;
+	endsOnBlankLine: boolean;
+}
 
 /**
- * Collapses runs of two or more blank lines to a single blank line outside
- * fenced code blocks and leaves every newline inside fences untouched.
- * Fence tracking follows CommonMark: ``` or ~~~ openers indented up to three
- * spaces, backtick openers whose info string contains a backtick are prose,
- * closings repeat the same character with at least the opening length, and an
- * unterminated fence extends to the end of the text.
+ * Collapses runs of two or more blank lines to a single blank line in prose
+ * and leaves every newline inside fences untouched. Fence tracking follows
+ * CommonMark: ``` or ~~~ openers indented up to three spaces past the content
+ * column of any enclosing list container, backtick openers whose info string
+ * contains a backtick are prose, closings repeat the same character with at
+ * least the opening length, raw HTML blocks never open or close fences, and
+ * an unterminated fence extends to the end of the text or to the next
+ * structured-section sentinel line so fence state never leaks across section
+ * bodies.
  */
 function collapseBlankLines(text: string): string {
 	const lines: string[] = [];
 	let pendingBlankLines = 0;
-	let fenceCharacter = "";
-	let minimumFenceLength = 0;
+	let fence: FenceSpec | undefined;
+	let htmlBlock: HtmlBlockState | undefined;
+	const containerColumns: number[] = [];
 	for (const line of text.split("\n")) {
-		if (!fenceCharacter && line === "") {
+		if (SECTION_SENTINEL_LINE_REGEX.test(line)) {
+			fence = undefined;
+			htmlBlock = undefined;
+			containerColumns.length = 0;
+		}
+		if (fence) {
+			lines.push(line);
+			if (closesFence(line, fence, containerColumns)) fence = undefined;
+			continue;
+		}
+		if (line === "") {
+			if (htmlBlock?.endsOnBlankLine) htmlBlock = undefined;
 			pendingBlankLines += 1;
 			continue;
 		}
@@ -108,26 +144,86 @@ function collapseBlankLines(text: string): string {
 			pendingBlankLines = 0;
 		}
 		lines.push(line);
-		if (!fenceCharacter) {
-			const opening = FENCE_OPENING_REGEX.exec(line);
-			const fenceRun = opening?.[1] ?? "";
-			const info = opening?.[2] ?? "";
-			if (fenceRun && (fenceRun.charAt(0) !== "`" || !info.includes("`"))) {
-				fenceCharacter = fenceRun.charAt(0);
-				minimumFenceLength = fenceRun.length;
-			}
+		if (htmlBlock) {
+			if (htmlBlock.endRegex?.test(line)) htmlBlock = undefined;
 			continue;
 		}
-		const remainder = line.replace(/^ {0,3}/, "");
-		let closingLength = 0;
-		while (remainder.charAt(closingLength) === fenceCharacter) closingLength += 1;
-		if (closingLength >= minimumFenceLength && /^[\t ]*$/.test(remainder.slice(closingLength))) {
-			fenceCharacter = "";
-			minimumFenceLength = 0;
-		}
+		updateListContainers(line, containerColumns);
+		fence = matchFenceOpener(line, containerColumns);
+		if (!fence) htmlBlock = matchHtmlBlockStart(line);
 	}
 	if (pendingBlankLines > 0) lines.push("");
 	return lines.join("\n");
+}
+
+function leadingSpaceCount(line: string): number {
+	let count = 0;
+	while (line.charAt(count) === " ") count += 1;
+	return count;
+}
+
+function listItemContentColumn(line: string): number | undefined {
+	const match = LIST_ITEM_MARKER_REGEX.exec(line);
+	if (!match) return undefined;
+	const markerIndent = match[1]?.length ?? 0;
+	const marker = String(match[2] ?? "");
+	const trailingWhitespace = match[0].length - markerIndent - marker.length;
+	return markerIndent + marker.length + trailingWhitespace;
+}
+
+function updateListContainers(line: string, containerColumns: number[]): void {
+	while ((containerColumns.at(-1) ?? 0) > leadingSpaceCount(line)) containerColumns.pop();
+	const column = listItemContentColumn(line);
+	if (column === undefined) return;
+	containerColumns.push(column);
+}
+
+function isWithinContainerIndent(indent: number, containerColumns: number[]): boolean {
+	return indent <= 3 || containerColumns.some((base) => indent - base >= 0 && indent - base <= 3);
+}
+
+function matchFenceOpener(line: string, containerColumns: number[]): FenceSpec | undefined {
+	const indent = leadingSpaceCount(line);
+	if (!isWithinContainerIndent(indent, containerColumns)) return undefined;
+	const remainder = line.slice(indent);
+	const opening = FENCE_OPENING_REGEX.exec(remainder);
+	const run = opening?.[1] ?? "";
+	const info = opening?.[2] ?? "";
+	if (!run || (run.charAt(0) === "`" && info.includes("`"))) return undefined;
+	return { character: run.charAt(0), minLength: run.length };
+}
+
+function closesFence(line: string, fence: FenceSpec, containerColumns: number[]): boolean {
+	const indent = leadingSpaceCount(line);
+	if (!isWithinContainerIndent(indent, containerColumns)) return false;
+	const remainder = line.slice(indent);
+	let runLength = 0;
+	while (remainder.charAt(runLength) === fence.character) runLength += 1;
+	return runLength >= fence.minLength && /^[\t ]*$/.test(remainder.slice(runLength));
+}
+
+function matchHtmlBlockStart(line: string): HtmlBlockState | undefined {
+	const type1Match = HTML_TYPE1_OPENING_REGEX.exec(line);
+	if (type1Match) {
+		const endRegex = new RegExp(`</${type1Match[1]}>`, "i");
+		return endRegex.test(line) ? undefined : { endRegex, endsOnBlankLine: false };
+	}
+	if (HTML_COMMENT_OPENING_REGEX.test(line)) {
+		return line.includes("-->") ? undefined : { endRegex: /-->/, endsOnBlankLine: false };
+	}
+	if (HTML_PROCESSING_INSTRUCTION_OPENING_REGEX.test(line)) {
+		return line.includes("?>") ? undefined : { endRegex: /\?>/, endsOnBlankLine: false };
+	}
+	if (HTML_DECLARATION_OPENING_REGEX.test(line)) {
+		return line.includes(">") ? undefined : { endRegex: />/, endsOnBlankLine: false };
+	}
+	if (HTML_CDATA_OPENING_REGEX.test(line)) {
+		return line.includes("]]>") ? undefined : { endRegex: /\]\]>/, endsOnBlankLine: false };
+	}
+	if (HTML_BLOCK_TAG_OPENING_REGEX.test(line) || HTML_COMPLETE_TAG_LINE_REGEX.test(line)) {
+		return { endsOnBlankLine: true };
+	}
+	return undefined;
 }
 
 function escapeForRegex(value: string): string {

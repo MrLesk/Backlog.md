@@ -117,4 +117,46 @@ describe("structured sections blank-line normalization with code fences", () => 
 		const once = roundTripNotes(notes);
 		expect(roundTripNotes(once)).toBe(once);
 	});
+
+	it("scopes unterminated fences to their section so later sections normalize prose", () => {
+		const notes = ["intro", "", "```", "opened", "", "", "still fenced"].join("\n");
+		const summary = ["alpha", "", "", "", "beta"].join("\n");
+		const content = updateStructuredSections("# Task\n\nInitial description", {
+			implementationNotes: notes,
+			finalSummary: summary,
+		});
+		expect(extractStructuredSection(content, "implementationNotes")).toBe(notes);
+		expect(extractStructuredSection(content, "finalSummary")).toBe("alpha\n\nbeta");
+	});
+
+	it("preserves blank lines in a fence nested inside a list item", () => {
+		const notes = ["- item", "", "    ```", "    code", "", "", "    more", "    ```", "done"].join("\n");
+		expect(roundTripNotes(notes)).toBe(notes);
+	});
+
+	it("preserves blank lines in a fence nested deeply inside nested list items", () => {
+		const notes = [
+			"1. outer",
+			"   - inner",
+			"",
+			"       ```",
+			"       x",
+			"",
+			"",
+			"       y",
+			"       ```",
+			"after",
+		].join("\n");
+		expect(roundTripNotes(notes)).toBe(notes);
+	});
+
+	it("ignores fence-like lines inside html comments and normalizes following prose", () => {
+		const notes = ["<!--", "```", "-->", "after", "", "", "", "more"].join("\n");
+		expect(roundTripNotes(notes)).toBe("<!--\n```\n-->\nafter\n\nmore");
+	});
+
+	it("ignores fence-like lines inside html block tags and normalizes following prose", () => {
+		const notes = ["<div>", "```", "</div>", "", "", "", "after"].join("\n");
+		expect(roundTripNotes(notes)).toBe("<div>\n```\n</div>\n\nafter");
+	});
 });
