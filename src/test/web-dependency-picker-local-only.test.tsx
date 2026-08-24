@@ -5,7 +5,6 @@ import { createRoot, type Root } from "react-dom/client";
 import { MemoryRouter } from "react-router-dom";
 import type { Task } from "../types/index.ts";
 import { TaskDetailsModal } from "../web/components/TaskDetailsModal";
-import { apiClient } from "../web/lib/api";
 import { TaskIdIndexProvider } from "../web/contexts/TaskIdIndexContext.tsx";
 import { ThemeProvider } from "../web/contexts/ThemeContext";
 import { setNativeInputValue } from "./react-dom-input.ts";
@@ -21,6 +20,7 @@ const crossBranchTask: Task = {
 	createdDate: "2026-08-10",
 	labels: [],
 	dependencies: [],
+	source: "remote",
 };
 
 const localTask: Task = {
@@ -129,22 +129,48 @@ afterEach(() => {
 
 describe("Task details modal dependency picker", () => {
 	it("only suggests tasks the local working copy can validate as dependencies", async () => {
-		const originalFetchTasks = apiClient.fetchTasks;
-		(apiClient as { fetchTasks: typeof apiClient.fetchTasks }).fetchTasks = (async (options) => {
-			// The picker must ask for the local-only corpus, matching what dependency validation reads.
-			expect(options?.crossBranch).toBe(false);
-			return [localTask];
-		}) as typeof apiClient.fetchTasks;
+		const container = await renderModal();
+		await flushReact();
 
-		try {
-			const container = await renderModal();
-			await flushReact();
+		await typeIntoDependencyInput(container, "task");
 
-			await typeIntoDependencyInput(container, "task");
+		expect(suggestionIds(container)).toEqual(["BACK-10"]);
+	});
 
-			expect(suggestionIds(container)).toEqual(["BACK-10"]);
-		} finally {
-			(apiClient as { fetchTasks: typeof apiClient.fetchTasks }).fetchTasks = originalFetchTasks;
-		}
+	it("excludes ambiguous local IDs (multiple files sharing a canonical ID) from suggestions", async () => {
+		const paddedDuplicate: Task = {
+			id: "BACK-010",
+			title: "Local task (padded duplicate)",
+			status: "To Do",
+			assignee: [],
+			createdDate: "2026-08-10",
+			labels: [],
+			dependencies: [],
+		};
+		setupDom();
+		const container = document.getElementById("root") as HTMLElement;
+		activeRoot = createRoot(container);
+		await act(async () => {
+			activeRoot?.render(
+				<MemoryRouter initialEntries={["/"]}>
+					<ThemeProvider>
+						<TaskIdIndexProvider tasks={[crossBranchTask, localTask, paddedDuplicate]}>
+							<TaskDetailsModal
+								isOpen={true}
+								onClose={() => {}}
+								onSubmit={async () => {}}
+								availableTasks={[crossBranchTask, localTask, paddedDuplicate]}
+							/>
+						</TaskIdIndexProvider>
+					</ThemeProvider>
+				</MemoryRouter>,
+			);
+			await Promise.resolve();
+		});
+		await flushReact();
+
+		await typeIntoDependencyInput(container, "task");
+
+		expect(suggestionIds(container)).toEqual([]);
 	});
 });

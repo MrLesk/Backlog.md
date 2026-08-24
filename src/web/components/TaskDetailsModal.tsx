@@ -430,23 +430,25 @@ export const TaskDetailsModal: React.FC<Props> = ({
   }, [isOpen, unresolvedDependencyKey]);
 
   // Dependency validation stays local-only (see BACK-623), so the picker must only suggest tasks
-  // from the local working copy - a cross-branch suggestion here would fail on save.
-  const [localAvailableTasks, setLocalAvailableTasks] = useState<Task[]>([]);
-  useEffect(() => {
-    if (!isOpen) return;
-    let cancelled = false;
-    apiClient
-      .fetchTasks({ crossBranch: false })
-      .then((tasks) => {
-        if (!cancelled) setLocalAvailableTasks(tasks);
-      })
-      .catch(() => {
-        if (!cancelled) setLocalAvailableTasks([]);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [isOpen]);
+  // from the local working copy - a cross-branch suggestion here would fail on save. Derived from
+  // availableTasks (kept fresh by the parent's tasks-updated refresh) rather than a separate fetch,
+  // so the picker never suggests a stale snapshot while the modal stays open. IDs with more than one
+  // local file (e.g. BACK-1 and BACK-001) are ambiguous and rejected by validateDependencies on save,
+  // so they're excluded here too rather than offered as a dead-end suggestion.
+  const localAvailableTasks = useMemo(() => {
+    const local = availableTasks.filter(isLocalEditableTask);
+    const byCanonicalId = new Map<string, Task[]>();
+    for (const candidate of local) {
+      const key = canonicalTaskId(candidate.id);
+      const group = byCanonicalId.get(key);
+      if (group) {
+        group.push(candidate);
+      } else {
+        byCanonicalId.set(key, [candidate]);
+      }
+    }
+    return local.filter((candidate) => (byCanonicalId.get(canonicalTaskId(candidate.id))?.length ?? 0) === 1);
+  }, [availableTasks]);
 
   // Dependency readiness, derived at render time from the dependencies and status currently shown,
   // so an inline edit is reflected immediately instead of waiting for a refresh.
