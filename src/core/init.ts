@@ -15,6 +15,7 @@ import {
 	type McpClientSetupKey,
 	runMcpClientSetupCommand,
 } from "../utils/mcp-client-setup.ts";
+import { isReservedTaskPrefix } from "../utils/prefix-config.ts";
 import type { Core } from "./backlog.ts";
 
 export const MCP_SERVER_NAME = "backlog";
@@ -115,6 +116,11 @@ export async function initializeProject(
 	} = options;
 
 	const isReInitialization = !!existingConfig;
+	if (!isReInitialization && advancedConfig.taskPrefix && isReservedTaskPrefix(advancedConfig.taskPrefix)) {
+		throw new Error(
+			`Task prefix "${advancedConfig.taskPrefix}" is reserved for drafts, docs, or decisions. Choose a different prefix.`,
+		);
+	}
 	const projectRoot = core.filesystem.rootDir;
 	const effectiveFilesystemOnly = filesystemOnly || existingConfig?.filesystemOnly === true;
 	const normalizedAdvancedConfig = effectiveFilesystemOnly

@@ -930,7 +930,10 @@ addHelpSchema(program.command("init [projectName]"), {
 	)
 	.option("--backlog-dir <path>", "backlog folder for init: backlog, .backlog, or a custom project-relative path")
 	.option("--config-location <location>", "config location for init: folder or root")
-	.option("--task-prefix <prefix>", "custom task prefix, letters only (default: task)")
+	.option(
+		"--task-prefix <prefix>",
+		"custom task prefix, letters only (default: task); draft, doc, and decision are reserved",
+	)
 	.option("--no-git", "initialize without Git integration")
 	.option("--defaults", "use default values for all prompts")
 	.action(
@@ -5179,9 +5182,13 @@ addHelpSchema(program.command("doctor"), {
 			const reservedTaskPrefix = taskPrefix && isReservedTaskPrefix(taskPrefix) ? taskPrefix : null;
 			if (reservedTaskPrefix) {
 				console.error(
-					`Task prefix "${reservedTaskPrefix}" collides with a reserved prefix (draft, doc, decision); tasks are misrouted as that entity type. Task prefix cannot be changed after initialization; re-initialize the project with a different prefix instead.`,
+					`Task prefix "${reservedTaskPrefix}" collides with a reserved prefix (draft, doc, decision); tasks are misrouted as that entity type. Task prefix cannot be changed after initialization; there is no automated migration. Manually rename the affected task files and update the prefix in the project config file.`,
 				);
 				process.exitCode = 1;
+				if (options.fix) {
+					console.error("Resolve the reserved task prefix before running --fix.");
+					return;
+				}
 			}
 
 			const plan = await core.previewDuplicateTaskIdRepair({ includeBranches: true });
