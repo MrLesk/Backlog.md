@@ -2741,8 +2741,8 @@ export class Core {
 		return { updatedTask, changedTasks };
 	}
 
-	async archiveTask(taskId: string, autoCommit?: boolean): Promise<boolean> {
-		const taskToArchive = await this.loadTaskForMutation(taskId);
+	async archiveTask(taskId: string, autoCommit?: boolean, options: TaskReadOptions = {}): Promise<boolean> {
+		const taskToArchive = await this.loadTaskForMutation(taskId, options);
 		if (!taskToArchive) {
 			return false;
 		}
@@ -2861,8 +2861,8 @@ export class Core {
 		return result;
 	}
 
-	async completeTask(taskId: string, autoCommit?: boolean): Promise<boolean> {
-		const task = await this.loadTaskForMutation(taskId);
+	async completeTask(taskId: string, autoCommit?: boolean, options: TaskReadOptions = {}): Promise<boolean> {
+		const task = await this.loadTaskForMutation(taskId, options);
 		if (!task) return false;
 		// Get paths before moving the file
 		const completedDir = this.fs.completedDir;
@@ -2979,8 +2979,8 @@ export class Core {
 		return moved !== null;
 	}
 
-	async demoteTask(taskId: string, autoCommit?: boolean): Promise<boolean> {
-		const task = await this.loadTaskForMutation(taskId);
+	async demoteTask(taskId: string, autoCommit?: boolean, options: TaskReadOptions = {}): Promise<boolean> {
+		const task = await this.loadTaskForMutation(taskId, options);
 		if (!task) return false;
 		// Direct demotion is a read-modify-write too. Hold the task lock across the
 		// filesystem read and move so an in-flight task update cannot recreate the

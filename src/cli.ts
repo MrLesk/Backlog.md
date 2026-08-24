@@ -3410,9 +3410,9 @@ addHelpSchema(taskCmd.command("archive <taskId>"), {
 	.action(async (taskId: string) => {
 		const cwd = await requireProjectRoot();
 		const core = new Core(cwd);
-		const task = await core.loadTaskById(taskId);
+		const task = await core.loadTaskById(taskId, { includeCrossBranch: false });
 		if (!task) {
-			console.error(`Task ${taskId} not found.`);
+			console.error(`Task ${taskId} not found. ${LOCAL_TASK_LOOKUP_HINT}`);
 			process.exitCode = 1;
 			return;
 		}
@@ -3434,7 +3434,7 @@ addHelpSchema(taskCmd.command("archive <taskId>"), {
 			return;
 		}
 
-		const success = await core.archiveTask(task.id);
+		const success = await core.archiveTask(task.id, undefined, { includeCrossBranch: false });
 		if (success) {
 			console.log(`Archived task ${task.id}`);
 		} else {
@@ -3465,10 +3465,10 @@ addHelpSchema(taskCmd.command("complete <taskId>"), {
 	.action(async (taskId: string) => {
 		const cwd = await requireProjectRoot();
 		const core = new Core(cwd);
-		const task = await core.loadTaskById(taskId);
+		const task = await core.loadTaskById(taskId, { includeCrossBranch: false });
 
 		if (!task) {
-			console.error(`Task ${taskId} not found.`);
+			console.error(`Task ${taskId} not found. ${LOCAL_TASK_LOOKUP_HINT}`);
 			process.exitCode = 1;
 			return;
 		}
@@ -3491,7 +3491,7 @@ addHelpSchema(taskCmd.command("complete <taskId>"), {
 		}
 
 		const completedFilePath = task.filePath ? join(core.filesystem.completedDir, basename(task.filePath)) : undefined;
-		const success = await core.completeTask(task.id);
+		const success = await core.completeTask(task.id, undefined, { includeCrossBranch: false });
 		if (!success) {
 			console.error(`Failed to complete task: ${task.id}`);
 			process.exitCode = 1;
@@ -3511,11 +3511,11 @@ taskCmd
 		const cwd = await requireProjectRoot();
 		const core = new Core(cwd);
 		try {
-			const task = await core.loadTaskById(taskId);
-			if (task && (await core.demoteTask(task.id))) {
+			const task = await core.loadTaskById(taskId, { includeCrossBranch: false });
+			if (task && (await core.demoteTask(task.id, undefined, { includeCrossBranch: false }))) {
 				console.log(`Demoted task ${task.id}`);
 			} else {
-				console.error(`Task ${taskId} not found.`);
+				console.error(`Task ${taskId} not found. ${LOCAL_TASK_LOOKUP_HINT}`);
 				process.exitCode = 1;
 			}
 		} catch (error) {
