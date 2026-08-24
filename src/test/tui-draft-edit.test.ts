@@ -201,6 +201,59 @@ process.exit(0);
 		expect(await Bun.file(draftPath).text()).toBe(before);
 	});
 
+	it("opens the drafts-dir file when a task id collides with the draft id", async () => {
+		// A task whose prefix is literally "draft" mints task ids identical to draft ids;
+		// pressing E on the draft row must never fall through to the task file.
+		await core.createTask(
+			{
+				id: "draft-1",
+				title: "Task collision",
+				status: "To Do",
+				assignee: [],
+				createdDate: "2026-08-24 10:00",
+				labels: [],
+				dependencies: [],
+			},
+			false,
+		);
+		const { task: draftRow } = await core.createTaskFromInput({ title: "Draft collision", status: "Draft" });
+		// The unified view feeds editTaskInTui rows produced by the listing APIs, which carry
+		// the row's own filePath.
+		const selected = (await core.filesystem.listHealthyDrafts()).find(
+			(candidate) => candidate.id === draftRow.id && candidate.filePath !== undefined,
+		);
+		if (!selected?.filePath) throw new Error("expected selectable draft row");
+		const taskPath = await core.filesystem.getTaskWritePath({
+			id: "draft-1",
+			title: "Task collision",
+			status: "To Do",
+			assignee: [],
+			createdDate: "2026-08-24 10:00",
+			labels: [],
+			dependencies: [],
+		});
+		const draftPath = selected.filePath;
+		const taskFileBefore = await Bun.file(taskPath).text();
+		const editScript = await createEditorScript(
+			"append-editor.js",
+			`import { appendFileSync } from "node:fs";
+const filePath = process.argv[2];
+if (filePath) {
+	appendFileSync(filePath, "\\nMarker\\n");
+}
+process.exit(0);
+`,
+		);
+		await setEditor(`node ${editScript}`);
+
+		const result = await core.editTaskInTui(selected.id, screen, selected);
+
+		expect(result.changed).toBe(true);
+		expect(result.task?.id).toBe(selected.id);
+		expect(await Bun.file(draftPath).text()).toContain("Marker");
+		expect(await Bun.file(taskPath).text()).toBe(taskFileBefore);
+	});
+
 	it("opens exactly the selected draft file when several files resolve to one id", async () => {
 		const draftsDir = join(testDir, "backlog", "drafts");
 		const draftFile = (filename: string, id: string, title: string) =>

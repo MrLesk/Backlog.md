@@ -2395,25 +2395,34 @@ export class Core {
 	}
 
 	async updateDraftFromInput(draftId: string, input: TaskUpdateInput, autoCommit?: boolean): Promise<Task> {
-		const draft = await this.fs.loadDraft(draftId);
-		if (!draft) {
+		// Same discipline as task edits: acquire the per-file lock before the read-modify-write
+		// and re-read inside it, so a concurrent editor fails fast instead of losing its update.
+		const draftForLock = await this.fs.loadDraft(draftId);
+		if (!draftForLock) {
 			throw new Error(`Draft not found: ${draftId}`);
 		}
 
-		const { mutated } = await this.applyTaskUpdateInput(draft, input, async (status) => {
-			if (status.trim().toLowerCase() !== "draft") {
-				throw new Error("Drafts must use status Draft.");
+		return await this.fs.withTaskLock(draftForLock, async () => {
+			const draft = await this.fs.loadDraft(draftId);
+			if (!draft) {
+				throw new Error(`Draft not found: ${draftId}`);
 			}
-			return "Draft";
+
+			const { mutated } = await this.applyTaskUpdateInput(draft, input, async (status) => {
+				if (status.trim().toLowerCase() !== "draft") {
+					throw new Error("Drafts must use status Draft.");
+				}
+				return "Draft";
+			});
+
+			if (!mutated) {
+				return draft;
+			}
+
+			await this.updateDraft(draft, autoCommit);
+			const refreshed = await this.fs.loadDraft(draftId);
+			return refreshed ?? draft;
 		});
-
-		if (!mutated) {
-			return draft;
-		}
-
-		await this.updateDraft(draft, autoCommit);
-		const refreshed = await this.fs.loadDraft(draftId);
-		return refreshed ?? draft;
 	}
 
 	async editTaskOrDraft(
@@ -3354,26 +3363,40 @@ export class Core {
 			return { changed: false, task: resolvedTask, reason: "read_only" };
 		}
 
-		const localTask = await this.fs.loadTask(resolvedTask.id);
-		const editableTask = localTask ?? resolvedTask;
+		const draftsDir = await this.fs.getDraftsDir();
+		const selectedFilePath = resolvedTask.filePath;
 
-		const taskFilePath = await getTaskPath(editableTask.id, this);
-		// A selected draft must open its own file: re-resolving by id could land on a different
-		// file when a draft's filename and frontmatter id drifted apart. The row's home directory
-		// identifies it as a draft regardless of the status the record carries.
+		let taskFilePath: string | null = null;
 		let draftFilePath: string | null = null;
-		if (!taskFilePath) {
-			const inDraftsDir =
-				editableTask.filePath !== undefined && dirname(editableTask.filePath) === (await this.fs.getDraftsDir());
-			if (editableTask.filePath && (inDraftsDir || editableTask.status?.trim().toLowerCase() === "draft")) {
-				if (!draftIdsMatchLoosely(editableTask.id, basename(editableTask.filePath))) {
-					return { changed: false, task: editableTask, reason: "identity_conflict" };
+		let editableTask: Task;
+
+		if (selectedFilePath !== undefined && dirname(selectedFilePath) === draftsDir) {
+			// The row's home directory decides its store before any task lookup: a project whose
+			// task prefix is "draft" can hold task ids identical to draft ids, so resolving by id
+			// first would silently target the task file instead of the selected draft row.
+			if (!draftIdsMatchLoosely(resolvedTask.id, basename(selectedFilePath))) {
+				return { changed: false, task: resolvedTask, reason: "identity_conflict" };
+			}
+			editableTask = resolvedTask;
+			draftFilePath = selectedFilePath;
+		} else {
+			const localTask = await this.fs.loadTask(resolvedTask.id);
+			editableTask = localTask ?? resolvedTask;
+
+			taskFilePath = await getTaskPath(editableTask.id, this);
+			if (!taskFilePath) {
+				const looksLikeDraftRow = editableTask.filePath !== undefined && dirname(editableTask.filePath) === draftsDir;
+				if (editableTask.filePath && (looksLikeDraftRow || editableTask.status?.trim().toLowerCase() === "draft")) {
+					if (!draftIdsMatchLoosely(editableTask.id, basename(editableTask.filePath))) {
+						return { changed: false, task: editableTask, reason: "identity_conflict" };
+					}
+					draftFilePath = editableTask.filePath;
+				} else {
+					draftFilePath = await getDraftPath(editableTask.id, this);
 				}
-				draftFilePath = editableTask.filePath;
-			} else {
-				draftFilePath = await getDraftPath(editableTask.id, this);
 			}
 		}
+
 		const filePath = taskFilePath ?? draftFilePath;
 		if (!filePath) {
 			return { changed: false, task: editableTask, reason: "not_found" };

@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import { mkdir } from "node:fs/promises";
 import { basename, join } from "node:path";
 import { $ } from "bun";
+import { isTaskLockError } from "../file-system/operations.ts";
 import { Core } from "../index.ts";
 import { serializeTask } from "../markdown/serializer.ts";
 import type { Task } from "../types/index.ts";
@@ -295,5 +296,64 @@ describe("CLI draft edit", () => {
 		const output = normalizeCliOutput(result.stdout.toString() + result.stderr.toString());
 		expect(result.exitCode).toBe(1);
 		expect(output).toContain("missing required argument 'taskId'");
+	});
+});
+
+describe("atomic draft editing", () => {
+	let TEST_DIR: string;
+	let setup: Core;
+	let originalGlobalLockEnv: string | undefined;
+
+	beforeEach(async () => {
+		originalGlobalLockEnv = process.env.USE_GLOBAL_TASK_ID_LOCK;
+		delete process.env.USE_GLOBAL_TASK_ID_LOCK;
+
+		TEST_DIR = createUniqueTestDir("test-atomic-draft-edit");
+		await mkdir(TEST_DIR, { recursive: true });
+		setup = new Core(TEST_DIR);
+		await initializeFilesystemTestProject(setup, "Atomic Draft Edit Test");
+	});
+
+	afterEach(async () => {
+		setup.disposeContentStore();
+		if (originalGlobalLockEnv === undefined) {
+			delete process.env.USE_GLOBAL_TASK_ID_LOCK;
+		} else {
+			process.env.USE_GLOBAL_TASK_ID_LOCK = originalGlobalLockEnv;
+		}
+		await safeCleanup(TEST_DIR);
+	});
+
+	it("never silently loses concurrent draft edits: winners land, losers fail loudly", async () => {
+		const created = await $`bun ${CLI_PATH} draft create "Contended draft"`.cwd(TEST_DIR).quiet();
+		const match = created.stdout.toString().match(/Created draft (\S+)/);
+		const draftId = match?.[1];
+		if (!draftId) throw new Error("draft create did not report a draft id");
+
+		// Separate Cores race like separate processes: without serialization each one mutates
+		// the same pre-write snapshot and all but one label disappear from the file.
+		const writerCount = 6;
+		const labels = Array.from({ length: writerCount }, (_, index) => `label-${index + 1}`);
+		const writers = labels.map((label) => ({ label, core: new Core(TEST_DIR) }));
+		let outcomes: PromiseSettledResult<Task>[];
+		try {
+			outcomes = await Promise.allSettled(
+				writers.map(({ label, core }) => core.updateDraftFromInput(draftId, { addLabels: [label] }, false)),
+			);
+		} finally {
+			for (const { core } of writers) core.disposeContentStore();
+		}
+
+		const succeeded = labels.filter((_, index) => outcomes[index]?.status === "fulfilled");
+		expect(succeeded.length).toBeGreaterThanOrEqual(1);
+
+		for (const outcome of outcomes) {
+			if (outcome.status === "fulfilled") continue;
+			expect(isTaskLockError(outcome.reason)).toBe(true);
+		}
+
+		const core = new Core(TEST_DIR);
+		const reloaded = await core.filesystem.loadDraft(draftId);
+		expect([...(reloaded?.labels ?? [])].sort()).toEqual([...succeeded].sort());
 	});
 });
