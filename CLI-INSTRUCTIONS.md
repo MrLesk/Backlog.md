@@ -64,6 +64,12 @@ Humans and agents can run `backlog instructions` for workflow guides and `backlo
 | View (AI mode) | `backlog task 7 --plain`                           |
 | View as JSON | `backlog task 7 --json` |
 | Edit        | `backlog task edit 7 -a @sara -l auth,backend`       |
+| Start work safely | `backlog task start BACK-7 --owner @sara` (atomic remote claim, assignment, and active status) |
+| Claim task | `backlog task claim BACK-7 --owner @sara --lease-hours 8` |
+| Renew claim | `backlog task claim BACK-7 --owner @sara --renew` |
+| Release claim | `backlog task release BACK-7 --owner @sara` |
+| Publish live state | `backlog task publish BACK-7` |
+| List live state | `backlog task claims` |
 | Add plan    | `backlog task edit 7 --plan "Implementation approach"`    |
 | Add AC      | `backlog task edit 7 --ac "New criterion" --ac "Another one"` |
 | Add DoD     | `backlog task edit 7 --dod "Ship notes"` |
