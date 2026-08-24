@@ -285,7 +285,7 @@ export class Core {
 	} | null = null;
 	private activeBranchRefreshPromise: Promise<void> | null = null;
 	private remoteRefRefreshPromise: Promise<void> | null = null;
-	private remoteRefRefreshStartedAt = 0;
+	private remoteRefRefreshGeneration = 0;
 	private lastRemoteRefRefreshAt = 0;
 
 	constructor(projectRoot: string, options?: { enableWatchers?: boolean }) {
@@ -618,13 +618,16 @@ export class Core {
 			return;
 		}
 
-		// A forced request must observe refs at least as fresh as requestedAt. Joining
-		// an in-flight non-forced fetch that started before requestedAt isn't enough --
-		// a push landing while that fetch is in flight would be invisible to it -- so
-		// loop once more to trigger a fetch that starts at/after requestedAt.
+		// A forced request must observe refs from a fetch that started at/after this request
+		// arrived. Joining an in-flight non-forced fetch that started earlier isn't enough --
+		// a push landing while that fetch is in flight would be invisible to it -- so loop once
+		// more to trigger a fetch that starts after this point. Ordering is tracked with a
+		// monotonic generation counter rather than Date.now(): two requests can otherwise land
+		// in the same millisecond, which would make a stale fetch look sufficiently fresh.
+		const requestedGeneration = this.remoteRefRefreshGeneration;
 		while (true) {
 			if (!this.remoteRefRefreshPromise) {
-				this.remoteRefRefreshStartedAt = Date.now();
+				this.remoteRefRefreshGeneration += 1;
 				const refreshPromise = (async () => {
 					git.setConfig(config);
 					try {
@@ -642,10 +645,10 @@ export class Core {
 				void refreshPromise.then(clearRefreshPromise, clearRefreshPromise);
 			}
 
-			const joinedRefreshStartedAt = this.remoteRefRefreshStartedAt;
+			const joinedRefreshGeneration = this.remoteRefRefreshGeneration;
 			await this.remoteRefRefreshPromise;
 
-			if (options?.force !== true || joinedRefreshStartedAt >= requestedAt) return;
+			if (options?.force !== true || joinedRefreshGeneration > requestedGeneration) return;
 		}
 	}
 
@@ -1087,7 +1090,6 @@ export class Core {
 		this.activeBranchSnapshotPromise = null;
 		this.activeBranchRefreshPromise = null;
 		this.remoteRefRefreshPromise = null;
-		this.remoteRefRefreshStartedAt = 0;
 		this.lastRemoteRefRefreshAt = 0;
 	}
 
