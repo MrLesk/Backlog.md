@@ -5,7 +5,7 @@ status: Done
 assignee:
   - '@claude'
 created_date: '2026-08-20 16:20'
-updated_date: '2026-08-24 22:01'
+updated_date: '2026-08-24 22:35'
 labels: []
 dependencies: []
 ordinal: 273000
@@ -53,6 +53,8 @@ Manual end-to-end smoke test in two scratch repos (not just automated tests): co
 Committed as 4 commits on tasks/back-637-multiproject-attribute: e5772ae (slices .1-.4), 02020dc (.5 TUI), 3ab7c73 (.6 Web UI), 21ef2d7 (JSON test fix). Branch not yet pushed or merged -- that's the user's call.
 
 Addressed Codex PR review (PR #924): wired --project through search/list type-scoping and the interactive view's filter+loader; hasCreateFieldFlags/hasEditFieldFlags now recognize --project; centralized the 'No projects configured' message on the resolved config path; web UI can now clear project on edit end-to-end (server handlers were previously silently discarding it); project badges (web + TUI) now hide when no projects are configured; moved the TUI project filter picker off g/G to stop colliding with detail-pane scroll shortcuts.
+
+Rebased onto upstream main (which had advanced with BACK-626/BACK-638, touching overlapping files) to resolve real merge conflicts reported by GitHub; resolved two import-ordering conflicts in content-store.ts and file-system/operations.ts, retested clean.
 <!-- SECTION:NOTES:END -->
 
 ## Final Summary
