@@ -5,7 +5,7 @@ status: Done
 assignee:
   - '@claude'
 created_date: '2026-08-10 06:37'
-updated_date: '2026-08-20 21:32'
+updated_date: '2026-08-24 22:12'
 labels: []
 dependencies: []
 priority: medium
@@ -52,6 +52,8 @@ Implemented the reviewer-validated fix: refreshRemoteRefsForTaskRead now capture
 Added a regression test that gates a mocked git.fetch so the real fetch data-capture happens before a contributor push (to make the race realistic) but resolution is withheld until released, simulating a genuinely in-flight non-forced fetch while the push lands and a forced generateNextId() call joins it. Verified the test fails on pre-fix code (allocates TASK-2, colliding with the pushed task) and passes post-fix (allocates TASK-3, exactly 2 fetches).
 
 Verified: bunx tsc --noEmit clean, bun run check . clean (391 files), full bun run test suite: 2395 pass / 6 pre-existing skips / 0 fail across 250 files (was 2394 pass before the new test).
+
+Addressed Codex PR review (PR #925): replaced the Date.now()-based remoteRefRefreshStartedAt/requestedAt comparison with a monotonic remoteRefRefreshGeneration counter, avoiding a same-millisecond edge case where a stale in-flight fetch could look sufficiently fresh; disposeContentStore no longer resets the counter.
 <!-- SECTION:NOTES:END -->
 
 ## Final Summary
