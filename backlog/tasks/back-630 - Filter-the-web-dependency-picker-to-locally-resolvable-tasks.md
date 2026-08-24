@@ -5,7 +5,7 @@ status: Done
 assignee:
   - '@claude'
 created_date: '2026-08-10 07:12'
-updated_date: '2026-08-20 22:23'
+updated_date: '2026-08-24 21:38'
 labels: []
 dependencies: []
 priority: medium
@@ -55,6 +55,8 @@ Verification:
 - bunx tsc --noEmit: clean.
 - bunx biome check on touched .ts files: clean (DependencyInput.tsx/TaskDetailsModal.tsx are .tsx, outside this repo's biome includes, consistent with all other .tsx files).
 - Full suite (bun test --timeout=10000): 2341 pass / 6 skip / 1 fail across 245 files. The 1 fail (config-commands.test.ts, a YAML tab-indentation parsing edge case) is unrelated - reproduces identically on unmodified main, confirmed via git stash.
+
+Addressed Codex PR review (PR #927): api.ts fetchTasks now sends crossBranch explicitly instead of omitting false; TaskDetailsModal derives the local-only suggestion list from the live availableTasks prop (filtered + deduped by canonical ID) instead of a stale one-time fetch; added/fixed test coverage.
 <!-- SECTION:NOTES:END -->
 
 ## Final Summary
