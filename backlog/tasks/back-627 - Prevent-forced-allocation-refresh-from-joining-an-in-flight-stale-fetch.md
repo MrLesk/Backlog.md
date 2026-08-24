@@ -5,7 +5,7 @@ status: Done
 assignee:
   - '@claude'
 created_date: '2026-08-10 06:37'
-updated_date: '2026-08-24 22:12'
+updated_date: '2026-08-24 22:35'
 labels: []
 dependencies: []
 priority: medium
@@ -54,6 +54,8 @@ Added a regression test that gates a mocked git.fetch so the real fetch data-cap
 Verified: bunx tsc --noEmit clean, bun run check . clean (391 files), full bun run test suite: 2395 pass / 6 pre-existing skips / 0 fail across 250 files (was 2394 pass before the new test).
 
 Addressed Codex PR review (PR #925): replaced the Date.now()-based remoteRefRefreshStartedAt/requestedAt comparison with a monotonic remoteRefRefreshGeneration counter, avoiding a same-millisecond edge case where a stale in-flight fetch could look sufficiently fresh; disposeContentStore no longer resets the counter.
+
+Rebased onto the newly conflict-free BACK-637 branch tip after that branch was rebased onto upstream main; no additional conflicts.
 <!-- SECTION:NOTES:END -->
 
 ## Final Summary
