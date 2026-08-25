@@ -279,6 +279,11 @@ export function isTaskLockError(error: unknown): error is Error {
 	return isLockError(error, TASK_LOCK_ERROR_NAME, TASK_LOCK_ERROR_CODE);
 }
 
+/** Raises the shared fail-fast lock failure for contention detected outside an acquisition. */
+export function newTaskLockError(taskId: string): Error {
+	return taskLockError(taskLockErrorMessage(taskId));
+}
+
 export function taskLockErrorMessage(taskId: string): string {
 	return `Edit failed: ${taskId} is being modified by another process; retry if appropriate.`;
 }
@@ -1110,21 +1115,26 @@ export class FileSystem {
 
 	async archiveDraft(draftId: string): Promise<{ sourcePath: string; targetPath: string } | null> {
 		// Whole-file operation: the argument names the file to move, so filename binding is the
-		// identity that matters and frontmatter equivalence is not required.
+		// identity that matters and frontmatter equivalence is not required. The draft lock spans
+		// read-copy-unlink so a concurrent edit cannot be archived in pre-edit form or lost.
 		const sourcePath = await this.resolveDraftFilePath(draftId);
 		if (!sourcePath) return null;
+		const canonicalId = extractDraftIdFromFilename(basename(sourcePath));
+		if (!canonicalId) return null;
 		const archiveDraftsDir = await this.getArchiveDraftsDir();
 
-		const filename = basename(sourcePath);
-		const targetPath = join(archiveDraftsDir, filename);
+		return await this.withDraftLock({ filePath: sourcePath, canonicalId }, async () => {
+			const filename = basename(sourcePath);
+			const targetPath = join(archiveDraftsDir, filename);
 
-		const content = await Bun.file(sourcePath).text();
-		await this.ensureDirectoryExists(dirname(targetPath));
-		await Bun.write(targetPath, content);
+			const content = await Bun.file(sourcePath).text();
+			await this.ensureDirectoryExists(dirname(targetPath));
+			await Bun.write(targetPath, content);
 
-		await unlink(sourcePath);
+			await unlink(sourcePath);
 
-		return { sourcePath, targetPath };
+			return { sourcePath, targetPath };
+		});
 	}
 
 	/**
@@ -1247,25 +1257,30 @@ export class FileSystem {
 		const normalizedTask = { ...task, id: draftId };
 		const content = serializeTask(normalizedTask);
 
-		try {
-			// Remove every existing draft file whose numeric identity matches the saved id but
-			// whose filename differs (title change, zero-padding drift): a save must converge
-			// to one file instead of breeding duplicates that future edits report as ambiguous.
-			// A candidate that fails to parse is never deleted: its identity was not validated,
-			// and its content may be a real draft only its filename proclaims.
-			const filenameId = idForFilename(draftId);
-			const existingFiles = await Array.fromAsync(
-				new Bun.Glob(buildGlobPattern("draft")).scan({ cwd: draftsDir, followSymlinks: true }),
-			);
-			for (const existingFile of existingFiles.filter(
-				(f) => f !== filename && (filenameMatchesId(f, filenameId) || draftIdsMatchLoosely(draftId, f)),
-			)) {
-				const candidatePath = join(draftsDir, existingFile);
-				if (!(await this.loadDraftFromFile(candidatePath))) continue;
+		// Remove every existing draft file whose numeric identity matches the saved id but
+		// whose filename differs (title change, zero-padding drift): a save must converge
+		// to one file instead of breeding duplicates that future edits report as ambiguous.
+		// A candidate that fails to parse is never deleted: its identity was not validated,
+		// and its content may be a real draft only its filename proclaims. A candidate that
+		// cannot be removed aborts the save: writing past it would mint a duplicate identity.
+		const filenameId = idForFilename(draftId);
+		const existingFiles = await Array.fromAsync(
+			new Bun.Glob(buildGlobPattern("draft")).scan({ cwd: draftsDir, followSymlinks: true }),
+		);
+		for (const existingFile of existingFiles.filter(
+			(f) => f !== filename && (filenameMatchesId(f, filenameId) || draftIdsMatchLoosely(draftId, f)),
+		)) {
+			const candidatePath = join(draftsDir, existingFile);
+			if (!(await this.loadDraftFromFile(candidatePath))) continue;
+			try {
 				await unlink(candidatePath);
+			} catch (error) {
+				throw new Error(
+					`Could not remove superseded draft file ${existingFile} while saving ${filename}: ${
+						error instanceof Error ? error.message : String(error)
+					}. No changes were written; resolve the file conflict, then retry.`,
+				);
 			}
-		} catch {
-			// Ignore errors if no existing files found
 		}
 
 		await this.ensureDirectoryExists(dirname(filepath));

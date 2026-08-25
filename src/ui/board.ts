@@ -1310,9 +1310,15 @@ export async function renderBoardTui(
 				}
 
 				if (result.task) {
-					currentTasks = currentTasks.map((existingTask) =>
-						existingTask.id === task.id ? result.task || existingTask : existingTask,
-					);
+					// Reconcile by file identity first: with task_prefix="draft" a task and a draft
+					// can share one id, so an id match alone may target the wrong record.
+					currentTasks = currentTasks.map((existingTask) => {
+						const matchesByFile =
+							result.task?.filePath !== undefined &&
+							existingTask.filePath !== undefined &&
+							existingTask.filePath === result.task.filePath;
+						return existingTask.id === task.id || matchesByFile ? result.task || existingTask : existingTask;
+					});
 				}
 
 				if (result.changed) {

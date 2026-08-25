@@ -4,7 +4,7 @@ title: Fail closed on ambiguous draft identities
 status: In Progress
 assignee: []
 created_date: '2026-08-15 14:00'
-updated_date: '2026-08-25 19:49'
+updated_date: '2026-08-25 21:09'
 labels: []
 dependencies: []
 references:
@@ -54,4 +54,6 @@ BACK-636 implementation notes (stacked on BACK-639 @46d2cd5e). FOUNDATION: one c
 Round-7 correction fixes (5 P2s): (1) doctor --fix --yes now checks draftIdentityBroken on the post-repair path - mixed task+draft projects exit 1 after repairing task duplicates, reporting 'Draft identity findings remain diagnostic-only'; (2) server promote handler maps TaskLockError to retryable 409 like create-lock/ambiguity errors; (3) listDraftFilenames gained an optional unreadable out-param - directory scan failures surface as 'Unreadable draft files' findings naming the drafts dir so doctor never reports healthy without checking; (4) draft edit help schema adds --clear-ac Boolean alongside the other AC fields; (5) duplicate recovery copy reworded to 'Rename one file to a distinct numeric id, then make its frontmatter agree.' across printer + both AmbiguousIdError guidance sites (frontmatter-only repair cannot resolve filename-derived duplicates). Tests added/updated: doctor mixed task+draft --fix --yes exit code test; doctor unscannable drafts-dir test (chmod-gated scan failure surfaces as finding); web promote 409 under held draft lock; schema completeness includes --clear-ac; copy wording assertions updated. Note: observed pre-existing flaky mcp-tasks search test (spy interference) reproducing on parent commit too - unrelated. Verification: targeted 51 tests across doctor/server/cli-draft-edit pass; full bun test 2398 pass / 1 pre-existing main failure; tsc clean; biome clean except untouched task-composer.ts.
 
 Correction round on 377da47d: (1) path-form draft edit arguments that resolve inside the drafts dir now re-resolve through resolveDraftReference(canonicalId) with a filePath-equality requirement - duplicate pairs fail closed naming files (neither deleted) while unique in-drafts-dir paths still work through the picker channel; (2) doctor drafts-dir unreadable test mirrors the document-directory probe-and-skip pattern (probe scan after chmod; skip diagnostics when chmod cannot block, e.g. root/Windows; restore perms in finally) and the printer copy now reads 'Unreadable draft files or directories' matching the document section. Verified: duplicate-pair path edit asserts ambiguity naming both files with both preserved; lone-file path edit succeeds; unscannable-dir test exercises the locked path on this machine (4 assertions) and degrades to healthy-exit assertion where chmod cannot block.
+
+Round-8 note: six full-stack re-review P1/P2s fixed on top of this task's foundation while stacked under BACK-639 (see BACK-639 notes for details): locked status-promotion path, locked archive span, locked TUI close window with TaskLockError fail-fast, saveDraft unlink-failure abort, soft-collision picker behavior, and file-identity row reconciliation in both TUI callers.
 <!-- SECTION:NOTES:END -->

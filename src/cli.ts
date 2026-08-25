@@ -101,7 +101,6 @@ import { buildTaskUpdateInput } from "./utils/task-edit-builder.ts";
 import {
 	AmbiguousTaskIdError,
 	canonicalTaskId,
-	findDuplicateDraftFilenameGroups,
 	isAmbiguousTaskIdError,
 	LOCAL_TASK_LOOKUP_HINT,
 	taskIdsEqual,
@@ -2825,20 +2824,7 @@ const draftEditTarget: EditCommandTarget = {
 		const reference = await core.filesystem.resolveDraftReference(idOrSelectedPath);
 		return reference ? { ...reference.task, id: reference.canonicalId, filePath: reference.filePath } : null;
 	},
-	listCandidates: async (core) => {
-		// Collision detection runs over every draft filename regardless of parse status: an
-		// unparsable twin still occupies its numeric identity and must not be bypassed.
-		const duplicateGroups = findDuplicateDraftFilenameGroups(await core.filesystem.listDraftFilenames());
-		if (duplicateGroups.length > 0) {
-			throw new AmbiguousIdError(
-				"Draft",
-				duplicateGroups[0]?.[0] ?? "",
-				duplicateGroups.flat(),
-				"Rename one file to a distinct numeric id, then make its frontmatter agree.",
-			);
-		}
-		return core.filesystem.listHealthyDrafts();
-	},
+	listCandidates: (core) => core.filesystem.listHealthyDrafts(),
 	selectionValue: (candidate) => candidate.filePath ?? candidate.id,
 	update: (core, existing, input) => {
 		if (!existing.filePath) {

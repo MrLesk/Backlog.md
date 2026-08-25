@@ -133,6 +133,39 @@ describe("BacklogServer draft task endpoints", () => {
 		}
 	});
 
+	it("reports 409 when a status-promotion edit contends with a held draft lock", async () => {
+		await core.createTaskFromInput({ title: "Contended status promotion", status: "Draft" });
+		const reference = await core.filesystem.resolveDraftReference("DRAFT-1");
+		if (!reference) throw new Error("expected draft reference");
+
+		let release: () => void = () => {};
+		try {
+			const held = new Promise<void>((resolveHeld) => {
+				void core.filesystem.withDraftLock(reference, async () => {
+					resolveHeld();
+					await new Promise<void>((resolveRelease) => {
+						release = resolveRelease;
+					});
+				});
+			});
+			await held;
+
+			const response = await put("/api/tasks/DRAFT-1", { status: "To Do" });
+			expect(response.status).toBe(409);
+			const body = (await response.json()) as { error: string };
+			expect(body.error).toContain("being modified by another process");
+
+			expect((await core.filesystem.loadDraft("DRAFT-1"))?.status).toBe("Draft");
+			expect((await request("/api/tasks/TASK-1")).status).toBe(404);
+
+			release();
+			const retried = await put("/api/tasks/DRAFT-1", { status: "To Do" });
+			expect(retried.status).toBe(200);
+		} finally {
+			release();
+		}
+	});
+
 	it("keeps a prefix-less id pointing at the task with that number", async () => {
 		await core.createTaskFromInput({ title: "Real task one", status: "To Do" });
 		await core.createTaskFromInput({ title: "Only draft", status: "Draft" });

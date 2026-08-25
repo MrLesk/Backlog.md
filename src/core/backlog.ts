@@ -3,10 +3,12 @@ import { basename, dirname, isAbsolute, join, relative } from "node:path";
 import { DEFAULT_DIRECTORIES, DEFAULT_STATUSES, FALLBACK_STATUS } from "../constants/index.ts";
 import {
 	type DraftFileReference,
+	DraftIdentityError,
 	DraftParseError,
 	FileSystem,
 	isConfigValueError,
 	isCreateLockError,
+	newTaskLockError,
 } from "../file-system/operations.ts";
 import { type GitBranchTip, type GitIndexEntry, GitOperations } from "../git/operations.ts";
 import { parseFrontmatter } from "../markdown/frontmatter.ts";
@@ -2474,7 +2476,7 @@ export class Core {
 			const requestedStatus = input.status?.trim();
 			const wantsDraft = requestedStatus?.toLowerCase() === "draft";
 			if (requestedStatus && !wantsDraft) {
-				return await this.promoteDraftWithUpdates(resolvedDraft.task, input, autoCommit);
+				return await this.promoteDraftWithUpdates(resolvedDraft, input, autoCommit);
 			}
 			return await this.updateDraftFromInput(resolvedDraft, input, autoCommit);
 		}
@@ -2484,60 +2486,72 @@ export class Core {
 		return await this.updateTaskFromInput(taskId, input, autoCommit, options);
 	}
 
-	private async promoteDraftWithUpdates(draft: Task, input: TaskUpdateInput, autoCommit?: boolean): Promise<Task> {
+	private async promoteDraftWithUpdates(
+		reference: DraftFileReference,
+		input: TaskUpdateInput,
+		autoCommit?: boolean,
+	): Promise<Task> {
 		const targetStatus = input.status?.trim();
 		if (!targetStatus || targetStatus.toLowerCase() === "draft") {
 			throw new Error("Promoting a draft requires a non-draft status.");
 		}
 
-		const { mutated } = await this.applyTaskUpdateInput(draft, { ...input, status: undefined }, async (status) => {
-			if (status.trim().toLowerCase() !== "draft") {
-				throw new Error("Drafts must use status Draft.");
-			}
-			return "Draft";
-		});
-
 		const canonicalStatus = await this.requireCanonicalStatus(targetStatus);
 
-		const { promotedTask, savedPath } = await this.withCreateLock(async () => {
-			const newTaskId = await this.generateNextId(EntityType.Task, draft.parentTaskId);
-			const draftPath = draft.filePath;
+		// Same locked read-apply-promote discipline as edit/promote: hold the draft lock across
+		// the whole span and re-read inside it, so a concurrent editor cannot be omitted from the
+		// promoted task or left behind as a second record.
+		return await this.fs.withDraftLock(reference, async () => {
+			const current = await this.fs.draftReferenceFromPath(reference.filePath);
+			const draft = current.task;
+			draft.id = reference.canonicalId;
 
-			const promotedTask: Task = {
-				...draft,
-				id: newTaskId,
-				status: canonicalStatus,
-				filePath: undefined,
-				...(mutated || draft.status !== canonicalStatus
-					? { updatedDate: new Date().toISOString().slice(0, 16).replace("T", " ") }
-					: {}),
-			};
+			const { mutated } = await this.applyTaskUpdateInput(draft, { ...input, status: undefined }, async (status) => {
+				if (status.trim().toLowerCase() !== "draft") {
+					throw new Error("Drafts must use status Draft.");
+				}
+				return "Draft";
+			});
 
-			normalizeAssignee(promotedTask);
-			const savedPath = await this.fs.saveTask(promotedTask);
+			const { promotedTask, savedPath } = await this.withCreateLock(async () => {
+				const newTaskId = await this.generateNextId(EntityType.Task, draft.parentTaskId);
+				const draftPath = current.filePath;
 
-			if (draftPath) {
-				await unlink(draftPath);
+				const promotedTask: Task = {
+					...draft,
+					id: newTaskId,
+					status: canonicalStatus,
+					filePath: undefined,
+					...(mutated || draft.status !== canonicalStatus
+						? { updatedDate: new Date().toISOString().slice(0, 16).replace("T", " ") }
+						: {}),
+				};
+
+				normalizeAssignee(promotedTask);
+				const savedPath = await this.fs.saveTask(promotedTask);
+
+				if (draftPath) {
+					await unlink(draftPath);
+				}
+
+				return { promotedTask, savedPath };
+			});
+
+			const savedTask = await this.fs.loadTask(promotedTask.id);
+			if (this.contentStore && savedTask) {
+				this.contentStore.upsertTask(savedTask);
 			}
 
-			return { promotedTask, savedPath };
+			if (await this.shouldAutoCommit(autoCommit)) {
+				await this.commitWrittenFile(
+					`backlog: Promote draft ${normalizeId(reference.canonicalId, "draft")}`,
+					[reference.filePath],
+					savedPath,
+				);
+			}
+
+			return savedTask ?? { ...promotedTask, filePath: savedPath };
 		});
-
-		const savedTask = await this.fs.loadTask(promotedTask.id);
-		if (this.contentStore && savedTask) {
-			this.contentStore.upsertTask(savedTask);
-		}
-
-		if (await this.shouldAutoCommit(autoCommit)) {
-			const previousPaths = draft.filePath ? [draft.filePath] : [];
-			await this.commitWrittenFile(
-				`backlog: Promote draft ${normalizeId(draft.id, "draft")}`,
-				previousPaths,
-				savedPath,
-			);
-		}
-
-		return savedTask ?? { ...promotedTask, filePath: savedPath };
 	}
 
 	// Demotion is a read-modify-write of the task file too, reached from both updateTaskFromInput
@@ -3486,20 +3500,11 @@ export class Core {
 		// Re-reading through the validation authority keeps the editor session honest. Parse or
 		// read failures and genuine identity conflicts are reported as distinct outcomes. The
 		// known on-disk path is attached to reloaded tasks so contentStore publication works.
-		const reloadAfterEdit = async (): Promise<
-			{ task: Task | null } | { failure: "identity_conflict" | "unreadable" }
-		> => {
-			if (!taskFilePath) {
-				try {
-					return { task: (await this.fs.draftReferenceFromPath(filePath)).task };
-				} catch (error) {
-					return { failure: error instanceof DraftParseError ? "unreadable" : "identity_conflict" };
-				}
-			}
+		const reloadTaskAfterEdit = async (path: string): Promise<{ task: Task } | { failure: "unreadable" }> => {
 			try {
-				const content = await Bun.file(taskFilePath).text();
+				const content = await Bun.file(path).text();
 				const reparsed = normalizeTaskIdentity(parseTask(content));
-				return { task: { ...reparsed, filePath: taskFilePath } };
+				return { task: { ...reparsed, filePath: path } };
 			} catch {
 				return { failure: "unreadable" };
 			}
@@ -3525,25 +3530,61 @@ export class Core {
 		}
 
 		if (afterContent === beforeContent) {
-			const outcome = await reloadAfterEdit();
+			if (!taskFilePath) {
+				try {
+					return { changed: false, task: (await this.fs.draftReferenceFromPath(filePath)).task };
+				} catch (error) {
+					return {
+						changed: false,
+						task: editableTask,
+						reason: error instanceof DraftParseError ? "unreadable" : "identity_conflict",
+					};
+				}
+			}
+			const outcome = await reloadTaskAfterEdit(taskFilePath);
 			if ("failure" in outcome) {
 				return { changed: false, task: editableTask, reason: outcome.failure };
 			}
-			return { changed: false, task: outcome.task ?? editableTask };
+			return { changed: false, task: outcome.task };
 		}
 
 		const now = new Date().toISOString().slice(0, 16).replace("T", " ");
-		const withUpdatedDate = upsertTaskUpdatedDate(afterContent, now);
-		await Bun.write(filePath, withUpdatedDate);
 
-		const outcome = await reloadAfterEdit();
+		if (!taskFilePath) {
+			// Draft close: hold the draft lock around the write+validate window so a concurrent
+			// edit cannot interleave with the save. The lock is never held across the interactive
+			// editor itself; contention detected inside fails fast and leaves the user's saved
+			// content on disk untouched. Identity or parse problems keep their distinct reasons.
+			const canonicalId = extractDraftIdFromFilename(basename(filePath)) ?? "";
+			try {
+				return await this.fs.withDraftLock({ filePath, canonicalId }, async () => {
+					const currentOnDisk = await Bun.file(filePath).text();
+					if (currentOnDisk !== afterContent) {
+						throw newTaskLockError(canonicalId);
+					}
+					await Bun.write(filePath, upsertTaskUpdatedDate(afterContent, now));
+					const validated = await this.fs.draftReferenceFromPath(filePath);
+					return { changed: true, task: validated.task };
+				});
+			} catch (error) {
+				if (error instanceof DraftParseError) {
+					return { changed: false, task: editableTask, reason: "unreadable" };
+				}
+				if (error instanceof DraftIdentityError) {
+					return { changed: false, task: editableTask, reason: "identity_conflict" };
+				}
+				throw error;
+			}
+		}
+
+		await Bun.write(filePath, upsertTaskUpdatedDate(afterContent, now));
+
+		const outcome = await reloadTaskAfterEdit(taskFilePath);
 		if ("failure" in outcome) {
-			// The edited file stays on disk exactly as the user saved it so it can be repaired by
-			// hand; reporting success here would silently strand every later validated edit.
 			return { changed: false, task: editableTask, reason: outcome.failure };
 		}
 		const refreshedTask = outcome.task;
-		if (refreshedTask && taskFilePath && this.contentStore) {
+		if (this.contentStore && refreshedTask) {
 			this.contentStore.upsertTask(refreshedTask);
 		}
 

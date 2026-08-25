@@ -367,6 +367,89 @@ describe("atomic draft editing", () => {
 		expect([...(reloaded?.labels ?? [])].sort()).toEqual([...succeeded].sort());
 	});
 
+	it.skipIf(process.platform === "win32")(
+		"archive fails fast while an edit holds the draft lock, leaving the draft intact",
+		async () => {
+			const created = await $`bun ${CLI_PATH} draft create "Archive race"`.cwd(TEST_DIR).quiet();
+			const match = created.stdout.toString().match(/Created draft (\S+)/);
+			const draftId = match?.[1];
+			if (!draftId) throw new Error("draft create did not report a draft id");
+			const reference = await setup.filesystem.resolveDraftReference(draftId);
+			if (!reference) throw new Error("expected draft reference");
+
+			let release: () => void = () => {};
+			try {
+				const held = new Promise<void>((resolveHeld) => {
+					void setup.fs.withDraftLock(reference, async () => {
+						resolveHeld();
+						await new Promise<void>((resolveRelease) => {
+							release = resolveRelease;
+						});
+					});
+				});
+				await held;
+
+				const racingCore = new Core(TEST_DIR);
+				try {
+					let failure: unknown;
+					try {
+						await racingCore.archiveDraft(draftId, false);
+						throw new Error("expected contended archive to fail fast");
+					} catch (error) {
+						if ((error as Error).message.startsWith("expected contended")) throw error;
+						failure = error;
+					}
+					expect(isTaskLockError(failure)).toBe(true);
+				} finally {
+					racingCore.disposeContentStore();
+				}
+			} finally {
+				release();
+			}
+
+			const core = new Core(TEST_DIR);
+			const reloaded = await core.filesystem.loadDraft(draftId);
+			expect(reloaded?.title).toBe("Archive race");
+			const archivedFiles = (await readdir(join(TEST_DIR, "backlog", "archive", "drafts")).catch(() => [])).length;
+			expect(archivedFiles).toBe(0);
+
+			// After release, archiving succeeds cleanly.
+			expect(await core.archiveDraft(draftId, false)).toBe(true);
+			expect(await core.filesystem.loadDraft(draftId)).toBeNull();
+		},
+	);
+
+	it("picker lists unrelated healthy drafts beside colliding ones and only selection fails closed", async () => {
+		const draftsDir = join(TEST_DIR, "backlog", "drafts");
+		const writeTwin = (filename: string, id: string, title: string) =>
+			Bun.write(
+				join(draftsDir, filename),
+				serializeTask({
+					id,
+					title,
+					status: "Draft",
+					assignee: [],
+					createdDate: "2026-08-24 10:00",
+					labels: [],
+					dependencies: [],
+				}),
+			);
+		await writeTwin("draft-1 - Alpha.md", "DRAFT-1", "Alpha");
+		await writeTwin("draft-01 - Alpha twin.md", "DRAFT-01", "Alpha twin");
+		await $`bun ${CLI_PATH} draft create "Unrelated gamma"`.cwd(TEST_DIR).nothrow().quiet();
+
+		const rows = await setup.filesystem.listHealthyDrafts();
+		expect(rows.length).toBe(3);
+
+		const unrelated = await $`bun ${CLI_PATH} draft edit DRAFT-2 -t "Gamma edited"`.cwd(TEST_DIR).nothrow().quiet();
+		expect(unrelated.exitCode).toBe(0);
+
+		const colliding = await $`bun ${CLI_PATH} draft edit 01 -t X`.cwd(TEST_DIR).nothrow().quiet();
+		const collidingOutput = normalizeCliOutput(colliding.stdout.toString() + colliding.stderr.toString());
+		expect(colliding.exitCode).toBe(1);
+		expect(collidingOutput).toContain("is ambiguous");
+	});
+
 	it("promotion fails fast while an edit holds the draft lock, then succeeds cleanly", async () => {
 		const created = await $`bun ${CLI_PATH} draft create "Promotion race"`.cwd(TEST_DIR).quiet();
 		const match = created.stdout.toString().match(/Created draft (\S+)/);
@@ -685,7 +768,7 @@ const itInteractive = EXPECT_PATH && RUN_INTERACTIVE_TUI_TESTS ? it : it.skip;
 
 describe("interactive draft picker collision guard", () => {
 	itInteractive(
-		"fails closed on numeric-id collisions before any choice is rendered",
+		"renders unrelated healthy drafts beside an unparsable twin",
 		async () => {
 			const TEST_DIR = createUniqueTestDir("test-draft-picker-pty");
 			await mkdir(TEST_DIR, { recursive: true });
@@ -708,7 +791,7 @@ describe("interactive draft picker collision guard", () => {
 				// The padded twin is unparsable: its numeric identity must still block the picker.
 				await Bun.write(join(draftsDir, "draft-01 - Alpha.md"), "---\nid: [oops\ntitle: Alpha\n---\nbroken");
 
-				const script = `spawn {${CLI_RUNTIME}} {${CLI_PATH}} draft edit\nexpect {\n\t-re {is ambiguous} { puts "\\nAMBIGUOUS_SHOWN" }\n\ttimeout { puts "\\nNO_AMBIGUOUS_ERROR"; exit 2 }\n\teof { puts "\\nEOF_EARLY"; exit 3 }\n}`;
+				const script = `log_user 1\nspawn {${CLI_RUNTIME}} {${CLI_PATH}} draft edit\nset timeout 15\nsleep 3\nsend "\\x03"\nexpect {\n\teof {}\n\ttimeout { exit 2 }\n}`;
 				const proc = Bun.spawnSync({
 					cmd: ["expect", "-c", script],
 					env: { ...process.env, TERM: "xterm", BACKLOG_CWD: TEST_DIR },
@@ -716,9 +799,16 @@ describe("interactive draft picker collision guard", () => {
 					stderr: "pipe",
 				});
 				const output = `${proc.stdout.toString()}${proc.stderr.toString()}`;
-				expect(output).toContain("AMBIGUOUS_SHOWN");
-				expect(output).toContain("Rename one file to a distinct numeric id, then make its frontmatter agree");
-				expect(output).not.toContain("Select task to edit");
+				// The pty interleaves frame borders and split SGR tails between bytes, so reduce
+				// aggressively before asserting: the picker must render its choices even though an
+				// unparsable padded twin occupies the same numeric identity.
+				const cleaned = output
+					.replace(/[\r\n]/g, "")
+					.replace(new RegExp(`${String.fromCharCode(27)}\\[[0-9;?]*[A-Za-z]`, "g"), "");
+				const letters = cleaned.replace(/[^A-Za-z0-9]/g, "").replace(/[0-9]+m/g, "");
+				expect(letters).toContain("Selecttasktoedit");
+				expect(letters).toContain("DRAFT1Alpha");
+				expect(letters).not.toContain("isambiguous");
 			} finally {
 				await safeCleanup(TEST_DIR);
 			}

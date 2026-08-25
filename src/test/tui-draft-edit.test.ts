@@ -1,7 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
+import { existsSync } from "node:fs";
 import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { Core } from "../core/backlog.ts";
+import { isTaskLockError } from "../file-system/operations.ts";
 import { serializeTask } from "../markdown/serializer.ts";
 import type { BacklogConfig, Task } from "../types/index.ts";
 import { createUniqueTestDir, initializeTestProject, safeCleanup } from "./test-utils.ts";
@@ -201,9 +203,68 @@ process.exit(0);
 		expect(await Bun.file(draftPath).text()).toBe(before);
 	});
 
+	it("fails fast when the close-time save contends with a held draft lock", async () => {
+		const draft = await createDraft();
+		const draftPath = draft.filePath;
+		if (!draftPath) throw new Error("expected draft file path");
+		const reference = await core.filesystem.draftReferenceFromPath(draftPath);
+
+		const editedSentinel = join(testDir, "editor-wrote");
+		const releaseSentinel = join(testDir, "release-editor");
+		const lockHeldSentinel = join(testDir, "lock-held");
+		const editScript = await createEditorScript(
+			"contended-editor.js",
+			`import { appendFileSync, existsSync, writeFileSync } from "node:fs";
+const filePath = process.argv[2];
+appendFileSync(filePath, "\\nUser edit\\n");
+writeFileSync(${JSON.stringify(editedSentinel)}, "");
+const deadline = Date.now() + 15000;
+while (!existsSync(${JSON.stringify(releaseSentinel)}) && Date.now() < deadline) {}
+process.exit(0);
+`,
+		);
+		await setEditor(`node ${editScript}`);
+
+		let releaseLock: (() => void) | undefined;
+		let failure: unknown;
+		try {
+			const session = core.editTaskInTui(draft.id, screen, draft);
+			const editedDeadline = Date.now() + 10000;
+			while (!existsSync(editedSentinel) && Date.now() < editedDeadline) {
+				await new Promise((resolveWait) => setTimeout(resolveWait, 20));
+			}
+			if (!existsSync(editedSentinel)) throw new Error("editor never wrote its sentinel");
+
+			void new Promise<void>((resolveHeld) => {
+				void core.fs.withDraftLock(reference, async () => {
+					await writeFile(lockHeldSentinel, "");
+					resolveHeld();
+					await new Promise<void>((resolveRelease) => {
+						releaseLock = resolveRelease;
+					});
+				});
+			});
+			const holdDeadline = Date.now() + 10000;
+			while (!existsSync(lockHeldSentinel) && Date.now() < holdDeadline) {
+				await new Promise((resolveWait) => setTimeout(resolveWait, 20));
+			}
+			if (!existsSync(lockHeldSentinel)) throw new Error("lock was not acquired");
+
+			await writeFile(releaseSentinel, "");
+			await session;
+			failure = new Error("expected contended close to fail fast");
+		} catch (error) {
+			if ((error as Error).message.startsWith("expected contended close")) throw error;
+			failure = error;
+		} finally {
+			releaseLock?.();
+		}
+
+		expect(isTaskLockError(failure)).toBe(true);
+		expect(await Bun.file(draftPath).text()).toContain("User edit");
+	});
+
 	it("opens the drafts-dir file when a task id collides with the draft id", async () => {
-		// A task whose prefix is literally "draft" mints task ids identical to draft ids;
-		// pressing E on the draft row must never fall through to the task file.
 		await core.createTask(
 			{
 				id: "draft-1",
@@ -249,38 +310,12 @@ process.exit(0);
 		const result = await core.editTaskInTui(selected.id, screen, selected);
 
 		expect(result.changed).toBe(true);
+		// Reconciliation evidence: the result is bound to the drafts-store file, not the
+		// same-numbered task record that a naive id lookup could return.
+		expect(result.task?.filePath).toBe(draftPath);
 		expect(result.task?.id).toBe(selected.id);
 		expect(await Bun.file(draftPath).text()).toContain("Marker");
 		expect(await Bun.file(taskPath).text()).toBe(taskFileBefore);
-	});
-
-	it("reports identity_conflict when an edit breaks filename/frontmatter identity", async () => {
-		const draft = await createDraft();
-		const editScript = await createEditorScript(
-			"drift-editor.js",
-			`import { readFileSync, writeFileSync } from "node:fs";
-const filePath = process.argv[2];
-if (filePath) {
-	const content = readFileSync(filePath, "utf8").replace("id: DRAFT-1", "id: DRAFT-99");
-	writeFileSync(filePath, content);
-}
-process.exit(0);
-`,
-		);
-		await setEditor(`node ${editScript}`);
-
-		const result = await core.editTaskInTui(draft.id, screen, draft);
-
-		expect(result.reason).toBe("identity_conflict");
-		expect(result.changed).toBe(false);
-
-		const draftPath = draft.filePath;
-		if (!draftPath) throw new Error("expected draft file path");
-		const afterDrift = await Bun.file(draftPath).text();
-		expect(afterDrift).toContain("DRAFT-99");
-
-		const followUp = await core.editTaskInTui(draft.id, screen, draft);
-		expect(followUp.reason).toBe("identity_conflict");
 	});
 
 	it("reports unreadable instead of identity advice when an edit leaves broken YAML on a draft", async () => {

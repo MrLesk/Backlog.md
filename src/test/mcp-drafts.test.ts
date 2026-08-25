@@ -136,6 +136,52 @@ describe("MCP draft support via task tools", () => {
 		expect(taskFile).toBeNull();
 	});
 
+	it("task_edit status promotion fails fast under a held draft lock", async () => {
+		await mcpServer.testInterface.callTool({
+			params: {
+				name: "task_create",
+				arguments: {
+					title: "Contended MCP promotion",
+					status: "Draft",
+				},
+			},
+		});
+
+		const reference = await mcpServer.filesystem.resolveDraftReference("DRAFT-1");
+		if (!reference) throw new Error("expected draft reference");
+
+		let release: () => void = () => {};
+		try {
+			const held = new Promise<void>((resolveHeld) => {
+				void mcpServer.filesystem.withDraftLock(reference, async () => {
+					resolveHeld();
+					await new Promise<void>((resolveRelease) => {
+						release = resolveRelease;
+					});
+				});
+			});
+			await held;
+
+			const result = await mcpServer.testInterface.callTool({
+				params: {
+					name: "task_edit",
+					arguments: {
+						id: "DRAFT-1",
+						status: "To Do",
+					},
+				},
+			});
+
+			expect(result.isError).toBe(true);
+			expect(getText(result.content)).toContain("being modified by another process");
+
+			const stillDraft = await mcpServer.filesystem.loadDraft("DRAFT-1");
+			expect(stillDraft?.status).toBe("Draft");
+		} finally {
+			release();
+		}
+	});
+
 	it("task_edit fails closed when duplicate numeric draft identities exist", async () => {
 		await mcpServer.testInterface.callTool({
 			params: {
