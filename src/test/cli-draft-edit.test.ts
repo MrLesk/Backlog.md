@@ -787,6 +787,62 @@ describe("draft identity edge cases", () => {
 		expect((await readdir(join(TEST_DIR, "backlog", "drafts"))).length).toBe(0);
 	});
 
+	it("fails closed when a path-form id names one member of a duplicate pair", async () => {
+		const draftsDir = join(TEST_DIR, "backlog", "drafts");
+		const alphaPath = join(draftsDir, "draft-1 - Alpha.md");
+		const twinPath = join(draftsDir, "draft-01 - Beta.md");
+		await Bun.write(
+			alphaPath,
+			serializeTask({
+				id: "DRAFT-1",
+				title: "Alpha",
+				status: "Draft",
+				assignee: [],
+				createdDate: "2026-08-24 10:00",
+				labels: [],
+				dependencies: [],
+			}),
+		);
+		await Bun.write(
+			twinPath,
+			serializeTask({
+				id: "DRAFT-01",
+				title: "Beta",
+				status: "Draft",
+				assignee: [],
+				createdDate: "2026-08-24 10:00",
+				labels: [],
+				dependencies: [],
+			}),
+		);
+
+		const result = await $`bun ${CLI_PATH} draft edit ${alphaPath} --title Hijacked`.cwd(TEST_DIR).nothrow().quiet();
+		const output = normalizeCliOutput(result.stdout.toString() + result.stderr.toString());
+		expect(result.exitCode).toBe(1);
+		expect(output).toContain("is ambiguous");
+		expect(output).toContain("Rename one file to a distinct numeric id, then make its frontmatter agree.");
+
+		expect(await Bun.file(alphaPath).text()).toContain("Alpha");
+		expect(await Bun.file(twinPath).text()).toContain("Beta");
+		expect((await readdir(draftsDir)).sort()).toEqual(["draft-01 - Beta.md", "draft-1 - Alpha.md"]);
+	});
+
+	it("still accepts an in-drafts-dir path for a unique draft", async () => {
+		await $`bun ${CLI_PATH} draft create "Solo draft"`.cwd(TEST_DIR).nothrow().quiet();
+		const draftsDir = join(TEST_DIR, "backlog", "drafts");
+		const soloPath = (await readdir(draftsDir))
+			.filter((file) => file.endsWith(".md"))
+			.map((file) => join(draftsDir, file))
+			.at(0);
+		if (!soloPath) throw new Error("expected the created draft file");
+
+		const result = await $`bun ${CLI_PATH} draft edit ${soloPath} -a @alex`.cwd(TEST_DIR).nothrow().quiet();
+		expect(result.exitCode).toBe(0);
+
+		const core = new Core(TEST_DIR);
+		expect((await core.filesystem.loadDraft("DRAFT-1"))?.assignee).toEqual(["@alex"]);
+	});
+
 	it("lists the real supported fields in draft edit help", async () => {
 		const help = await $`bun ${CLI_PATH} draft edit --help`.cwd(TEST_DIR).nothrow().quiet();
 		const output = normalizeCliOutput(help.stdout.toString());

@@ -136,19 +136,37 @@ describe("backlog doctor", () => {
 		expect(remainingDrafts).toEqual(["draft-01 - Beta.md", "draft-1 - Alpha.md"]);
 	});
 
-	it("surfaces an unscannable drafts directory as a finding instead of reporting healthy", async () => {
-		const draftsDir = await core.filesystem.getDraftsDir();
-		await chmod(draftsDir, 0o000);
-		try {
-			const result = await $`bun ${cliPath} doctor`.cwd(testDir).quiet().nothrow();
+	it.skipIf(process.platform === "win32")(
+		"surfaces an unscannable drafts directory as a finding instead of reporting healthy",
+		async () => {
+			const draftsDir = await core.filesystem.getDraftsDir();
+			// chmod is a no-op for root, so confirm the directory really became unreadable first.
+			await chmod(draftsDir, 0o000);
+			const reallyLocked = await Array.fromAsync(new Bun.Glob("draft-*.md").scan({ cwd: draftsDir }))
+				.then(() => false)
+				.catch(() => true);
+
+			if (!reallyLocked) {
+				// Permissions could not block the scan here; assert doctor stays healthy either way.
+				const healthy = await $`bun ${cliPath} doctor`.cwd(testDir).quiet().nothrow();
+				await chmod(draftsDir, 0o755);
+				expect(healthy.exitCode).toBe(0);
+				return;
+			}
+
+			let result: { exitCode: number; stdout: Uint8Array; stderr: Uint8Array };
+			try {
+				result = await $`bun ${cliPath} doctor`.cwd(testDir).quiet().nothrow();
+			} finally {
+				await chmod(draftsDir, 0o755);
+			}
 			const output = `${result.stdout}${result.stderr}`;
 			expect(result.exitCode).toBe(1);
-			expect(output).toContain("Unreadable draft files:");
-			expect(output).toContain(draftsDir);
-		} finally {
-			await chmod(draftsDir, 0o755);
-		}
-	});
+			expect(output).not.toContain("No duplicate task, document, decision, or draft IDs found.");
+			expect(output).toContain("Unreadable draft files or directories");
+			expect(output).toContain("backlog/drafts");
+		},
+	);
 
 	it("requires --fix when --yes is supplied", async () => {
 		const result = await $`bun ${cliPath} doctor --yes`.cwd(testDir).quiet().nothrow();

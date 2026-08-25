@@ -454,9 +454,9 @@ function printDraftIdentityReport(findings: DraftIdentityFindings): void {
 		console.log("Fix the frontmatter id or rename each file so they agree.");
 	}
 	if (findings.unreadable.length > 0) {
-		console.log("\nUnreadable draft files:");
+		console.log("\nUnreadable draft files or directories:");
 		for (const path of findings.unreadable) console.log(`  - ${path}`);
-		console.log("Repair the YAML/frontmatter or remove the file; identity could not be checked for these drafts.");
+		console.log("Repair the YAML/frontmatter or file permissions; identity could not be checked for these drafts.");
 	}
 }
 
@@ -2801,7 +2801,8 @@ const draftEditTarget: EditCommandTarget = {
 	async resolve(core, idOrSelectedPath) {
 		// The single resolution authority for every draft entry point: direct ids go through the
 		// id resolver; wizard selections arrive as the selected row's file path and are validated
-		// against that exact file, so a drifted frontmatter id can never redirect the edit.
+		// against that exact file. Path-form handles re-resolve through the id authority so a
+		// duplicate numeric identity can never bypass ambiguity detection.
 		if (isAbsolute(idOrSelectedPath)) {
 			const draftsDir = await core.filesystem.getDraftsDir();
 			if (dirname(idOrSelectedPath) !== draftsDir) {
@@ -2809,8 +2810,17 @@ const draftEditTarget: EditCommandTarget = {
 					`Invalid draft id: ${idOrSelectedPath}. Use a draft id (for example DRAFT-1), or pick the draft through 'backlog draft edit'.`,
 				);
 			}
-			const reference = await core.filesystem.draftReferenceFromPath(idOrSelectedPath);
-			return { ...reference.task, id: reference.canonicalId, filePath: reference.filePath };
+			const direct = await core.filesystem.draftReferenceFromPath(idOrSelectedPath);
+			const resolved = await core.filesystem.resolveDraftReference(direct.canonicalId);
+			if (!resolved || resolved.filePath !== idOrSelectedPath) {
+				throw new AmbiguousIdError(
+					"Draft",
+					normalizeId(direct.canonicalId, DRAFT_PREFIX),
+					[idOrSelectedPath],
+					"Rename one file to a distinct numeric id, then make its frontmatter agree.",
+				);
+			}
+			return { ...resolved.task, id: resolved.canonicalId, filePath: resolved.filePath };
 		}
 		const reference = await core.filesystem.resolveDraftReference(idOrSelectedPath);
 		return reference ? { ...reference.task, id: reference.canonicalId, filePath: reference.filePath } : null;
