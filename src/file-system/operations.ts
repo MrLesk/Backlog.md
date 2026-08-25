@@ -290,6 +290,22 @@ export interface DraftFileReference {
 	canonicalId: string;
 }
 
+export class DraftParseError extends Error {
+	constructor(filename: string) {
+		super(`Draft file ${filename} could not be parsed. Repair or remove the file, then rerun the edit.`);
+		this.name = "DraftParseError";
+	}
+}
+
+export class DraftIdentityError extends Error {
+	constructor(filename: string, frontmatterId: string, filenameId: string | null) {
+		super(
+			`Draft file ${filename} declares frontmatter id ${frontmatterId}, which does not match its filename id ${filenameId ?? "(unreadable)"}. Fix the frontmatter id or rename the file so they agree, then rerun the edit.`,
+		);
+		this.name = "DraftIdentityError";
+	}
+}
+
 export class FileSystem {
 	private resolvedBacklogDir: string;
 	private resolvedBacklogDirName: string;
@@ -1183,8 +1199,9 @@ export class FileSystem {
 
 			// Get existing draft IDs to generate next ID
 			// Draft prefix is always "draft" (not configurable like task prefix)
-			const existingDrafts = await this.listDrafts();
-			const existingIds = existingDrafts.map((d) => d.id);
+			// Occupancy includes filename-derived ids: an unparsable file still reserves its id.
+			const [existingDrafts, occupiedFileIds] = await Promise.all([this.listDrafts(), this.listOccupiedDraftFileIds()]);
+			const existingIds = [...existingDrafts.map((d) => d.id), ...occupiedFileIds];
 
 			// Generate new draft ID
 			const config = await this.loadConfig();
@@ -1232,6 +1249,8 @@ export class FileSystem {
 			// Remove every existing draft file whose numeric identity matches the saved id but
 			// whose filename differs (title change, zero-padding drift): a save must converge
 			// to one file instead of breeding duplicates that future edits report as ambiguous.
+			// A candidate that fails to parse is never deleted: its identity was not validated,
+			// and its content may be a real draft only its filename proclaims.
 			const filenameId = idForFilename(draftId);
 			const existingFiles = await Array.fromAsync(
 				new Bun.Glob(buildGlobPattern("draft")).scan({ cwd: draftsDir, followSymlinks: true }),
@@ -1239,7 +1258,9 @@ export class FileSystem {
 			for (const existingFile of existingFiles.filter(
 				(f) => f !== filename && (filenameMatchesId(f, filenameId) || draftIdsMatchLoosely(draftId, f)),
 			)) {
-				await unlink(join(draftsDir, existingFile));
+				const candidatePath = join(draftsDir, existingFile);
+				if (!(await this.loadDraftFromFile(candidatePath))) continue;
+				await unlink(candidatePath);
 			}
 		} catch {
 			// Ignore errors if no existing files found
@@ -1332,13 +1353,11 @@ export class FileSystem {
 		try {
 			task = normalizeTaskIdentity(parseTask(await Bun.file(filePath).text()));
 		} catch {
-			throw new Error(`Draft file ${filename} could not be parsed. Repair or remove the file, then rerun the edit.`);
+			throw new DraftParseError(filename);
 		}
 		const canonicalId = extractDraftIdFromFilename(filename);
 		if (!canonicalId || !draftIdsMatchLoosely(task.id, filename)) {
-			throw new Error(
-				`Draft file ${filename} declares frontmatter id ${task.id}, which does not match its filename id ${canonicalId ?? "(unreadable)"}. Fix the frontmatter id or rename the file so they agree, then rerun the edit.`,
-			);
+			throw new DraftIdentityError(filename, task.id, canonicalId);
 		}
 		return { filePath, canonicalId, task: { ...task, filePath } };
 	}
@@ -1386,6 +1405,26 @@ export class FileSystem {
 		}
 		const filename = matches.at(0);
 		return filename ? join(draftsDir, filename) : null;
+	}
+
+	/**
+	 * Numeric draft identities occupied on disk, derived from filenames: files that fail to
+	 * parse still reserve their id against future allocation.
+	 */
+	async listOccupiedDraftFileIds(): Promise<string[]> {
+		const filenames = await this.listDraftFilenames();
+		return filenames.map(extractDraftIdFromFilename).filter((id): id is string => id !== null);
+	}
+
+	async listDraftFilenames(): Promise<string[]> {
+		const draftsDir = await this.getDraftsDir();
+		try {
+			return (
+				await Array.fromAsync(new Bun.Glob(buildGlobPattern("draft")).scan({ cwd: draftsDir, followSymlinks: true }))
+			).sort();
+		} catch {
+			return [];
+		}
 	}
 
 	// Decision log operations

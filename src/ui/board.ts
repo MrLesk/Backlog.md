@@ -1298,6 +1298,10 @@ export async function renderBoardTui(
 					);
 					return;
 				}
+				if (result.reason === "unreadable") {
+					showTransientFooter(" {red-fg}Could not read the saved file; fix its YAML/markdown syntax.{/}");
+					return;
+				}
 
 				if (result.task) {
 					currentTasks = currentTasks.map((existingTask) =>

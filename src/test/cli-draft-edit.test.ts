@@ -600,6 +600,27 @@ describe("draft identity sweep", () => {
 		expect(reloaded?.assignee).toEqual(["@alex"]);
 	});
 
+	it("never deletes an unparsable padded twin during allocation or convergence", async () => {
+		// Unparsable content: the numeric id is only proclaimed by the filename.
+		const notesPath = join(TEST_DIR, "backlog", "drafts", "draft-001 - Notes.md");
+		const brokenYaml = "---\nid: [oops\ntitle: Notes\n---\nbroken yaml";
+		await Bun.write(notesPath, brokenYaml);
+
+		const created = await $`bun ${CLI_PATH} draft create "Fresh work"`.cwd(TEST_DIR).nothrow().quiet();
+		expect(created.exitCode).toBe(0);
+		expect(created.stdout.toString()).toContain("Created draft DRAFT-2");
+
+		expect(await Bun.file(notesPath).exists()).toBe(true);
+		expect(await Bun.file(notesPath).text()).toBe(brokenYaml);
+
+		// The unparsable file stays reported as unparsable, never silently consumed.
+		const editBroken = await $`bun ${CLI_PATH} draft edit 1 -t X`.cwd(TEST_DIR).nothrow().quiet();
+		const brokenOutput = normalizeCliOutput(editBroken.stdout.toString() + editBroken.stderr.toString());
+		expect(editBroken.exitCode).toBe(1);
+		expect(brokenOutput).toContain("could not be parsed");
+		expect(brokenOutput).toContain("draft-001 - Notes.md");
+	});
+
 	it("groups colliding draft filenames for fail-closed picker rendering", () => {
 		const groups = findDuplicateDraftFilenameGroups([
 			"draft-2 - Beta.md",
@@ -626,23 +647,20 @@ describe("interactive draft picker collision guard", () => {
 				const core = new Core(TEST_DIR);
 				await initializeFilesystemTestProject(core, "Picker Collision Project");
 				const draftsDir = join(TEST_DIR, "backlog", "drafts");
-				for (const [filename, id] of [
-					["draft-1 - Alpha.md", "DRAFT-1"],
-					["draft-01 - Alpha.md", "DRAFT-01"],
-				] as const) {
-					await Bun.write(
-						join(draftsDir, filename),
-						serializeTask({
-							id,
-							title: "Alpha",
-							status: "Draft",
-							assignee: [],
-							createdDate: "2026-08-24 10:00",
-							labels: [],
-							dependencies: [],
-						}),
-					);
-				}
+				await Bun.write(
+					join(draftsDir, "draft-1 - Alpha.md"),
+					serializeTask({
+						id: "DRAFT-1",
+						title: "Alpha",
+						status: "Draft",
+						assignee: [],
+						createdDate: "2026-08-24 10:00",
+						labels: [],
+						dependencies: [],
+					}),
+				);
+				// The padded twin is unparsable: its numeric identity must still block the picker.
+				await Bun.write(join(draftsDir, "draft-01 - Alpha.md"), "---\nid: [oops\ntitle: Alpha\n---\nbroken");
 
 				const script = `spawn {${CLI_RUNTIME}} {${CLI_PATH}} draft edit\nexpect {\n\t-re {is ambiguous} { puts "\\nAMBIGUOUS_SHOWN" }\n\ttimeout { puts "\\nNO_AMBIGUOUS_ERROR"; exit 2 }\n\teof { puts "\\nEOF_EARLY"; exit 3 }\n}`;
 				const proc = Bun.spawnSync({

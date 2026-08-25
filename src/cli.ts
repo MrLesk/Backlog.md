@@ -2783,8 +2783,9 @@ const draftEditTarget: EditCommandTarget = {
 		return reference ? { ...reference.task, id: reference.canonicalId, filePath: reference.filePath } : null;
 	},
 	listCandidates: async (core) => {
-		const drafts = await core.filesystem.listHealthyDrafts();
-		const duplicateGroups = findDuplicateDraftFilenameGroups(drafts.map((draft) => basename(draft.filePath ?? "")));
+		// Collision detection runs over every draft filename regardless of parse status: an
+		// unparsable twin still occupies its numeric identity and must not be bypassed.
+		const duplicateGroups = findDuplicateDraftFilenameGroups(await core.filesystem.listDraftFilenames());
 		if (duplicateGroups.length > 0) {
 			throw new AmbiguousIdError(
 				"Draft",
@@ -2793,7 +2794,7 @@ const draftEditTarget: EditCommandTarget = {
 				"Rename these files or fix their frontmatter ids so each numeric draft id is unique.",
 			);
 		}
-		return drafts;
+		return core.filesystem.listHealthyDrafts();
 	},
 	selectionValue: (candidate) => candidate.filePath ?? candidate.id,
 	update: (core, existing, input) => {

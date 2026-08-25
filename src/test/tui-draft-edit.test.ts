@@ -283,6 +283,53 @@ process.exit(0);
 		expect(followUp.reason).toBe("identity_conflict");
 	});
 
+	it("reports unreadable instead of identity advice when an edit leaves broken YAML on a draft", async () => {
+		const draft = await createDraft();
+		const editScript = await createEditorScript(
+			"break-yaml-editor.js",
+			`import { writeFileSync } from "node:fs";
+const filePath = process.argv[2];
+if (filePath) {
+	writeFileSync(filePath, "---\\nid: [oops\\ntitle: Broken\\n---\\nbroken yaml");
+}
+process.exit(0);
+`,
+		);
+		await setEditor(`node ${editScript}`);
+
+		const result = await core.editTaskInTui(draft.id, screen, draft);
+
+		expect(result.reason).toBe("unreadable");
+		expect(result.changed).toBe(false);
+	});
+
+	it("reports unreadable for tasks too when an edit leaves broken YAML", async () => {
+		const taskRow = (await core.filesystem.listTasks()).at(0);
+		if (!taskRow?.filePath) throw new Error("expected task row");
+		const before = await Bun.file(taskRow.filePath).text();
+		const editScript = await createEditorScript(
+			"break-yaml-editor.js",
+			`import { writeFileSync } from "node:fs";
+const filePath = process.argv[2];
+if (filePath) {
+	writeFileSync(filePath, "---\\nid: [oops\\ntitle: Broken\\n---\\nbroken yaml");
+}
+process.exit(0);
+`,
+		);
+		await setEditor(`node ${editScript}`);
+
+		const result = await core.editTaskInTui(taskRow.id, screen, taskRow);
+
+		expect(result.reason).toBe("unreadable");
+		expect(result.changed).toBe(false);
+
+		await setEditor("true");
+		const recovered = await core.editTaskInTui(taskRow.id, screen, taskRow);
+		expect(recovered.reason).toBe("unreadable");
+		expect(await Bun.file(taskRow.filePath).text()).not.toBe(before);
+	});
+
 	it("opens exactly the selected draft file when several files resolve to one id", async () => {
 		const draftsDir = join(testDir, "backlog", "drafts");
 		const draftFile = (filename: string, id: string, title: string) =>

@@ -1239,6 +1239,10 @@ export async function viewTaskEnhanced(
 				);
 				return;
 			}
+			if (result.reason === "unreadable") {
+				showTransientHelp(" {red-fg}Could not read the saved file; fix its YAML/markdown syntax.{/}");
+				return;
+			}
 
 			if (result.task) {
 				const index = allTasks.findIndex((taskItem) => taskItem.id === selectedTask.id);

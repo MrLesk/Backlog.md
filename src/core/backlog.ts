@@ -3,12 +3,14 @@ import { basename, dirname, isAbsolute, join, relative } from "node:path";
 import { DEFAULT_DIRECTORIES, DEFAULT_STATUSES, FALLBACK_STATUS } from "../constants/index.ts";
 import {
 	type DraftFileReference,
+	DraftParseError,
 	FileSystem,
 	isConfigValueError,
 	isCreateLockError,
 } from "../file-system/operations.ts";
 import { type GitBranchTip, type GitIndexEntry, GitOperations } from "../git/operations.ts";
 import { parseFrontmatter } from "../markdown/frontmatter.ts";
+import { parseTask } from "../markdown/parser.ts";
 import {
 	type AcceptanceCriterion,
 	type BacklogConfig,
@@ -76,6 +78,7 @@ import {
 	getTaskPath,
 	LOCAL_TASK_LOOKUP_HINT,
 	normalizeTaskId,
+	normalizeTaskIdentity,
 	taskIdsEqual,
 } from "../utils/task-path.ts";
 import { createTaskSearchIndex } from "../utils/task-search.ts";
@@ -174,7 +177,7 @@ interface ActiveBranchSnapshot {
 	settingsKey: string;
 }
 
-export type TuiTaskEditFailureReason = "not_found" | "read_only" | "editor_failed" | "identity_conflict";
+export type TuiTaskEditFailureReason = "not_found" | "read_only" | "editor_failed" | "identity_conflict" | "unreadable";
 
 export interface TuiTaskEditResult {
 	changed: boolean;
@@ -1440,8 +1443,10 @@ export class Core {
 				return this.getActiveAndCompletedTaskIds();
 			}
 			case EntityType.Draft: {
-				const drafts = await this.fs.listDrafts();
-				return drafts.map((d) => d.id);
+				// Occupancy includes filename-derived ids: an unparsable file still reserves its
+				// numeric id, so allocation can never reuse what it cannot parse.
+				const [drafts, occupiedFileIds] = await Promise.all([this.fs.listDrafts(), this.fs.listOccupiedDraftFileIds()]);
+				return [...drafts.map((d) => d.id), ...occupiedFileIds];
 			}
 			case EntityType.Document: {
 				const documents = await this.fs.listDocuments();
@@ -3399,8 +3404,12 @@ export class Core {
 			let validated: Awaited<ReturnType<FileSystem["draftReferenceFromPath"]>>;
 			try {
 				validated = await this.fs.draftReferenceFromPath(selectedFilePath);
-			} catch {
-				return { changed: false, task: resolvedTask, reason: "identity_conflict" };
+			} catch (error) {
+				return {
+					changed: false,
+					task: resolvedTask,
+					reason: error instanceof DraftParseError ? "unreadable" : "identity_conflict",
+				};
 			}
 			editableTask = validated.task;
 			draftFilePath = validated.filePath;
@@ -3414,8 +3423,12 @@ export class Core {
 					let validatedRow: Awaited<ReturnType<FileSystem["draftReferenceFromPath"]>>;
 					try {
 						validatedRow = await this.fs.draftReferenceFromPath(editableTask.filePath);
-					} catch {
-						return { changed: false, task: editableTask, reason: "identity_conflict" };
+					} catch (error) {
+						return {
+							changed: false,
+							task: editableTask,
+							reason: error instanceof DraftParseError ? "unreadable" : "identity_conflict",
+						};
 					}
 					draftFilePath = validatedRow.filePath;
 				} else {
@@ -3433,17 +3446,23 @@ export class Core {
 		if (!filePath) {
 			return { changed: false, task: editableTask, reason: "not_found" };
 		}
-		// Re-reading the draft through the validation authority keeps the editor session honest:
-		// an edit that breaks filename/frontmatter identity is reported, never swallowed.
-		const reloadEditedEntityOrConflict = async (): Promise<Task | null | { conflict: true }> => {
-			try {
-				if (taskFilePath) {
-					return await this.fs.loadTask(editableTask.id);
+		// Re-reading through the validation authority keeps the editor session honest. Parse or
+		// read failures and genuine identity conflicts are reported as distinct outcomes.
+		const reloadAfterEdit = async (): Promise<
+			{ task: Task | null } | { failure: "identity_conflict" | "unreadable" }
+		> => {
+			if (!taskFilePath) {
+				try {
+					return { task: (await this.fs.draftReferenceFromPath(filePath)).task };
+				} catch (error) {
+					return { failure: error instanceof DraftParseError ? "unreadable" : "identity_conflict" };
 				}
-				return (await this.fs.draftReferenceFromPath(filePath)).task;
-			} catch (error) {
-				if (!taskFilePath) return { conflict: true };
-				throw error;
+			}
+			try {
+				const content = await Bun.file(taskFilePath).text();
+				return { task: normalizeTaskIdentity(parseTask(content)) };
+			} catch {
+				return { failure: "unreadable" };
 			}
 		};
 
@@ -3467,24 +3486,24 @@ export class Core {
 		}
 
 		if (afterContent === beforeContent) {
-			const refreshedTask = await reloadEditedEntityOrConflict();
-			if (refreshedTask === null || "conflict" in refreshedTask) {
-				return { changed: false, task: editableTask, reason: "identity_conflict" };
+			const outcome = await reloadAfterEdit();
+			if ("failure" in outcome) {
+				return { changed: false, task: editableTask, reason: outcome.failure };
 			}
-			return { changed: false, task: refreshedTask };
+			return { changed: false, task: outcome.task ?? editableTask };
 		}
 
 		const now = new Date().toISOString().slice(0, 16).replace("T", " ");
 		const withUpdatedDate = upsertTaskUpdatedDate(afterContent, now);
 		await Bun.write(filePath, withUpdatedDate);
 
-		const reloadResult = await reloadEditedEntityOrConflict();
-		if (reloadResult === null || "conflict" in reloadResult) {
+		const outcome = await reloadAfterEdit();
+		if ("failure" in outcome) {
 			// The edited file stays on disk exactly as the user saved it so it can be repaired by
 			// hand; reporting success here would silently strand every later validated edit.
-			return { changed: false, task: editableTask, reason: "identity_conflict" };
+			return { changed: false, task: editableTask, reason: outcome.failure };
 		}
-		const refreshedTask: Task = reloadResult;
+		const refreshedTask = outcome.task;
 		if (refreshedTask && taskFilePath && this.contentStore) {
 			this.contentStore.upsertTask(refreshedTask);
 		}
