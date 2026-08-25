@@ -131,7 +131,7 @@ describe("CLI draft edit", () => {
 		expect(output).toContain("Draft ID DRAFT-7 is ambiguous; 2 files match:");
 		expect(output).toContain("draft-7 - Alpha.md");
 		expect(output).toContain("draft-7 - Beta.md");
-		expect(output).toContain("Rename these files or fix their frontmatter ids");
+		expect(output).toContain("Rename one file to a distinct numeric id, then make its frontmatter agree");
 		expect(output).not.toContain("doctor");
 	});
 
@@ -365,6 +365,52 @@ describe("atomic draft editing", () => {
 		const core = new Core(TEST_DIR);
 		const reloaded = await core.filesystem.loadDraft(draftId);
 		expect([...(reloaded?.labels ?? [])].sort()).toEqual([...succeeded].sort());
+	});
+
+	it("promotion fails fast while an edit holds the draft lock, then succeeds cleanly", async () => {
+		const created = await $`bun ${CLI_PATH} draft create "Promotion race"`.cwd(TEST_DIR).quiet();
+		const match = created.stdout.toString().match(/Created draft (\S+)/);
+		const draftId = match?.[1];
+		if (!draftId) throw new Error("draft create did not report a draft id");
+		const reference = await setup.filesystem.resolveDraftReference(draftId);
+		if (!reference) throw new Error("expected draft reference");
+
+		let release: () => void = () => {};
+		const held = new Promise<void>((resolveHeld) => {
+			void setup.fs.withDraftLock(reference, async () => {
+				resolveHeld();
+				await new Promise<void>((resolveRelease) => {
+					release = resolveRelease;
+				});
+			});
+		});
+		await held;
+
+		const racingCore = new Core(TEST_DIR);
+		try {
+			let failure: unknown;
+			try {
+				await racingCore.promoteDraft(draftId, false);
+				throw new Error("expected contended promotion to fail fast");
+			} catch (error) {
+				if ((error as Error).message.startsWith("expected contended")) throw error;
+				failure = error;
+			}
+			expect(isTaskLockError(failure)).toBe(true);
+		} finally {
+			release();
+			racingCore.disposeContentStore();
+		}
+
+		// No dual records were produced by the contended attempt; promotion then succeeds.
+		const promotingCore = new Core(TEST_DIR);
+		try {
+			expect(await promotingCore.filesystem.loadDraft(draftId)).not.toBeNull();
+			expect(await promotingCore.promoteDraft(draftId, false)).toBe(true);
+			expect(await promotingCore.filesystem.loadDraft(draftId)).toBeNull();
+		} finally {
+			promotingCore.disposeContentStore();
+		}
 	});
 
 	it("does not contend with a task that shares the draft's id, but still fails fast on real contention", async () => {
@@ -671,7 +717,7 @@ describe("interactive draft picker collision guard", () => {
 				});
 				const output = `${proc.stdout.toString()}${proc.stderr.toString()}`;
 				expect(output).toContain("AMBIGUOUS_SHOWN");
-				expect(output).toContain("Rename these files or fix their frontmatter ids");
+				expect(output).toContain("Rename one file to a distinct numeric id, then make its frontmatter agree");
 				expect(output).not.toContain("Select task to edit");
 			} finally {
 				await safeCleanup(TEST_DIR);
@@ -679,4 +725,157 @@ describe("interactive draft picker collision guard", () => {
 		},
 		{ timeout: 30_000 },
 	);
+});
+
+describe("draft identity edge cases", () => {
+	let TEST_DIR: string;
+
+	beforeEach(async () => {
+		TEST_DIR = createUniqueTestDir("test-draft-edge");
+		await mkdir(TEST_DIR, { recursive: true });
+
+		const core = new Core(TEST_DIR);
+		await initializeFilesystemTestProject(core, "Draft Edge Project");
+	});
+
+	afterEach(async () => {
+		await safeCleanup(TEST_DIR);
+	});
+
+	it("groups dotted-segment padding variants so direct ids and the picker fail closed", async () => {
+		const draftsDir = join(TEST_DIR, "backlog", "drafts");
+		const twin = (filename: string, id: string, title: string) =>
+			Bun.write(
+				join(draftsDir, filename),
+				serializeTask({
+					id,
+					title,
+					status: "Draft",
+					assignee: [],
+					createdDate: "2026-08-24 10:00",
+					labels: [],
+					dependencies: [],
+				}),
+			);
+		await twin("draft-1.1 - Sub.md", "DRAFT-1.1", "Sub");
+		await twin("draft-1.01 - Twin.md", "DRAFT-1.01", "Twin");
+
+		expect(findDuplicateDraftFilenameGroups(["draft-1.1 - Sub.md", "draft-1.01 - Twin.md"])).toHaveLength(1);
+
+		const edit = await $`bun ${CLI_PATH} draft edit 1.1 -t X`.cwd(TEST_DIR).nothrow().quiet();
+		const output = normalizeCliOutput(edit.stdout.toString() + edit.stderr.toString());
+		expect(edit.exitCode).toBe(1);
+		expect(output).toContain("is ambiguous");
+		expect(output).toContain("draft-1.01 - Twin.md");
+
+		const after = (await readdir(draftsDir)).sort();
+		expect(after).toEqual(["draft-1.01 - Twin.md", "draft-1.1 - Sub.md"]);
+	});
+
+	it("rejects absolute paths as the public taskId argument", async () => {
+		const foreignDir = join(TEST_DIR, "outside");
+		await mkdir(foreignDir, { recursive: true });
+		const foreignPath = join(foreignDir, "draft-1 - Foreign.md");
+		const foreignContent = "---\nid: DRAFT-1\ntitle: Foreign\nstatus: Draft\n---\nforeign body";
+		await Bun.write(foreignPath, foreignContent);
+
+		const result = await $`bun ${CLI_PATH} draft edit ${foreignPath} --title Hijacked`.cwd(TEST_DIR).nothrow().quiet();
+		const output = normalizeCliOutput(result.stdout.toString() + result.stderr.toString());
+		expect(result.exitCode).toBe(1);
+		expect(output).toContain("Invalid draft id");
+		expect(await Bun.file(foreignPath).text()).toBe(foreignContent);
+		expect((await readdir(join(TEST_DIR, "backlog", "drafts"))).length).toBe(0);
+	});
+
+	it("fails closed when a path-form id names one member of a duplicate pair", async () => {
+		const draftsDir = join(TEST_DIR, "backlog", "drafts");
+		const alphaPath = join(draftsDir, "draft-1 - Alpha.md");
+		const twinPath = join(draftsDir, "draft-01 - Beta.md");
+		await Bun.write(
+			alphaPath,
+			serializeTask({
+				id: "DRAFT-1",
+				title: "Alpha",
+				status: "Draft",
+				assignee: [],
+				createdDate: "2026-08-24 10:00",
+				labels: [],
+				dependencies: [],
+			}),
+		);
+		await Bun.write(
+			twinPath,
+			serializeTask({
+				id: "DRAFT-01",
+				title: "Beta",
+				status: "Draft",
+				assignee: [],
+				createdDate: "2026-08-24 10:00",
+				labels: [],
+				dependencies: [],
+			}),
+		);
+
+		const result = await $`bun ${CLI_PATH} draft edit ${alphaPath} --title Hijacked`.cwd(TEST_DIR).nothrow().quiet();
+		const output = normalizeCliOutput(result.stdout.toString() + result.stderr.toString());
+		expect(result.exitCode).toBe(1);
+		expect(output).toContain("is ambiguous");
+		expect(output).toContain("Rename one file to a distinct numeric id, then make its frontmatter agree.");
+
+		expect(await Bun.file(alphaPath).text()).toContain("Alpha");
+		expect(await Bun.file(twinPath).text()).toContain("Beta");
+		expect((await readdir(draftsDir)).sort()).toEqual(["draft-01 - Beta.md", "draft-1 - Alpha.md"]);
+	});
+
+	it("still accepts an in-drafts-dir path for a unique draft", async () => {
+		await $`bun ${CLI_PATH} draft create "Solo draft"`.cwd(TEST_DIR).nothrow().quiet();
+		const draftsDir = join(TEST_DIR, "backlog", "drafts");
+		const soloPath = (await readdir(draftsDir))
+			.filter((file) => file.endsWith(".md"))
+			.map((file) => join(draftsDir, file))
+			.at(0);
+		if (!soloPath) throw new Error("expected the created draft file");
+
+		const result = await $`bun ${CLI_PATH} draft edit ${soloPath} -a @alex`.cwd(TEST_DIR).nothrow().quiet();
+		expect(result.exitCode).toBe(0);
+
+		const core = new Core(TEST_DIR);
+		expect((await core.filesystem.loadDraft("DRAFT-1"))?.assignee).toEqual(["@alex"]);
+	});
+
+	it("lists the real supported fields in draft edit help", async () => {
+		const help = await $`bun ${CLI_PATH} draft edit --help`.cwd(TEST_DIR).nothrow().quiet();
+		const output = normalizeCliOutput(help.stdout.toString());
+		for (const flag of [
+			"--title",
+			"--description",
+			"--assignee",
+			"--label",
+			"--add-label",
+			"--remove-label",
+			"--priority",
+			"--ordinal",
+			"--milestone",
+			"--due-date",
+			"--clear-due-date",
+			"--plan",
+			"--append-plan",
+			"--notes",
+			"--comment",
+			"--final-summary",
+			"--depends-on",
+			"--clear-deps",
+			"--ref",
+			"--add-ref",
+			"--doc",
+			"--check-ac",
+			"--clear-ac",
+			"--uncheck-ac",
+			"--dod",
+			"--check-dod",
+			"--plain",
+		]) {
+			expect(output).toContain(flag);
+		}
+	});
 });

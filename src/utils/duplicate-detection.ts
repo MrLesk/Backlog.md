@@ -46,6 +46,17 @@ export type ContentIdentityReport = {
 	decisions: ContentIdentityIssues;
 };
 
+/** Duplicate, drifted, and unreadable findings for draft files. */
+export type DraftIdentityFindings = {
+	duplicates: Array<{ id: string; paths: string[] }>;
+	unreadable: string[];
+	drifted: Array<{ path: string; frontmatterId: string; filenameId: string }>;
+};
+
+export function hasDraftIdentityFindings(findings: DraftIdentityFindings): boolean {
+	return findings.duplicates.length > 0 || findings.unreadable.length > 0 || findings.drifted.length > 0;
+}
+
 export function hasContentIdentityIssues(report: ContentIdentityReport): boolean {
 	return [report.documents, report.decisions].some(
 		(issues) => issues.duplicates.length > 0 || issues.missingIds.length > 0 || issues.unreadable.length > 0,

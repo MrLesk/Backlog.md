@@ -38,7 +38,11 @@ import {
 	normalizeDocumentRelativePath,
 	normalizeDocumentSubPath,
 } from "../utils/document-path.ts";
-import { type ContentIdentityReport, detectContentIdentityIssues } from "../utils/duplicate-detection.ts";
+import {
+	type ContentIdentityReport,
+	type DraftIdentityFindings,
+	detectContentIdentityIssues,
+} from "../utils/duplicate-detection.ts";
 import { openInEditor } from "../utils/editor.ts";
 import { findBacklogRoot } from "../utils/find-backlog-root.ts";
 import { generateNextDecisionId, generateNextDocId } from "../utils/id-generators.ts";
@@ -74,6 +78,8 @@ import {
 import {
 	AmbiguousTaskIdError,
 	canonicalTaskId,
+	extractDraftIdFromFilename,
+	findDuplicateDraftFilenameGroups,
 	getDraftPath,
 	getTaskPath,
 	LOCAL_TASK_LOOKUP_HINT,
@@ -177,7 +183,13 @@ interface ActiveBranchSnapshot {
 	settingsKey: string;
 }
 
-export type TuiTaskEditFailureReason = "not_found" | "read_only" | "editor_failed" | "identity_conflict" | "unreadable";
+export type TuiTaskEditFailureReason =
+	| "not_found"
+	| "read_only"
+	| "editor_failed"
+	| "identity_conflict"
+	| "unreadable"
+	| "ambiguous";
 
 export interface TuiTaskEditResult {
 	changed: boolean;
@@ -350,6 +362,11 @@ export class Core {
 			await this.contentStore.refreshTasks();
 		}
 		return result;
+	}
+
+	/** Reports draft files whose numeric identities collide, whose frontmatter drifted from their filename, or that are unreadable. */
+	async diagnoseDraftIdentity(): Promise<DraftIdentityFindings> {
+		return this.fs.diagnoseDraftIdentity();
 	}
 
 	/** Reports document and decision files whose IDs collide or are missing, so lookups can fail closed. */
@@ -2962,57 +2979,63 @@ export class Core {
 		// goes through the file resolver and frontmatter equivalence is not required.
 		const sourcePath = await this.fs.resolveDraftFilePath(draftId);
 		if (!sourcePath) return false;
+		const canonicalId = extractDraftIdFromFilename(basename(sourcePath));
+		if (!canonicalId) return false;
 
-		let moved: { previousPath: string; savedPath: string } | null = null;
-		try {
-			moved = await this.withCreateLock(async () => {
-				const draft = await this.fs.loadDraftFromFile(sourcePath);
-				if (!draft) return null;
+		// Hold the draft lock across the read-unlink span so a concurrent edit cannot be omitted
+		// from the promoted task or leave both records on disk. Draft lock first, create lock
+		// second: nothing acquires them in the opposite order, so this cannot deadlock.
+		return await this.fs.withDraftLock({ filePath: sourcePath, canonicalId }, async () => {
+			let moved: { previousPath: string; savedPath: string } | null = null;
+			try {
+				moved = await this.withCreateLock(async () => {
+					const draft = await this.fs.loadDraftFromFile(sourcePath);
+					if (!draft) return null;
 
-				const config = await this.fs.loadConfig();
-				const newTaskId = await this.generateNextId(EntityType.Task, draft.parentTaskId);
-				const promotedStatus =
-					!draft.status || draft.status.trim().toLowerCase() === "draft"
-						? config?.defaultStatus || FALLBACK_STATUS
-						: draft.status;
+					const config = await this.fs.loadConfig();
+					const newTaskId = await this.generateNextId(EntityType.Task, draft.parentTaskId);
+					const promotedStatus =
+						!draft.status || draft.status.trim().toLowerCase() === "draft"
+							? config?.defaultStatus || FALLBACK_STATUS
+							: draft.status;
 
-				const promotedTask: Task = {
-					...draft,
-					id: newTaskId,
-					status: promotedStatus,
-					filePath: undefined,
-				};
+					const promotedTask: Task = {
+						...draft,
+						id: newTaskId,
+						status: promotedStatus,
+						filePath: undefined,
+					};
 
-				normalizeAssignee(promotedTask);
-				const savedPath = await this.fs.saveTask(promotedTask);
-				const previousPath = sourcePath;
-				await unlink(previousPath);
+					normalizeAssignee(promotedTask);
+					const savedPath = await this.fs.saveTask(promotedTask);
+					await unlink(sourcePath);
 
-				const savedTask = await this.fs.loadTask(promotedTask.id);
-				if (this.contentStore && savedTask) {
-					this.contentStore.upsertTask(savedTask);
+					const savedTask = await this.fs.loadTask(promotedTask.id);
+					if (this.contentStore && savedTask) {
+						this.contentStore.upsertTask(savedTask);
+					}
+
+					return { previousPath: sourcePath, savedPath };
+				});
+			} catch (error) {
+				// A missing draft is the only thing "false" may mean here; a config value Backlog refuses to
+				// read must not be reported as a draft that does not exist.
+				if (isCreateLockError(error) || isConfigValueError(error)) {
+					throw error;
 				}
-
-				return { previousPath, savedPath };
-			});
-		} catch (error) {
-			// A missing draft is the only thing "false" may mean here; a config value Backlog refuses to
-			// read must not be reported as a draft that does not exist.
-			if (isCreateLockError(error) || isConfigValueError(error)) {
-				throw error;
+				return false;
 			}
-			return false;
-		}
 
-		if (moved && (await this.shouldAutoCommit(autoCommit))) {
-			await this.commitWrittenFile(
-				`backlog: Promote draft ${normalizeId(draftId, "draft")}`,
-				[moved.previousPath],
-				moved.savedPath,
-			);
-		}
+			if (moved && (await this.shouldAutoCommit(autoCommit))) {
+				await this.commitWrittenFile(
+					`backlog: Promote draft ${normalizeId(draftId, "draft")}`,
+					[moved.previousPath],
+					moved.savedPath,
+				);
+			}
 
-		return moved !== null;
+			return moved !== null;
+		});
 	}
 
 	async demoteTask(taskId: string, autoCommit?: boolean, options: TaskReadOptions = {}): Promise<boolean> {
@@ -3400,7 +3423,8 @@ export class Core {
 			// The row's home directory decides its store before any task lookup: a project whose
 			// task prefix is "draft" can hold task ids identical to draft ids, so resolving by id
 			// first would silently target the task file instead of the selected draft row. The
-			// validated reference binds the editor session to this exact file.
+			// validated reference binds the editor session to this exact file — but a numeric
+			// identity shared with another file stays ambiguous and must fail closed here too.
 			let validated: Awaited<ReturnType<FileSystem["draftReferenceFromPath"]>>;
 			try {
 				validated = await this.fs.draftReferenceFromPath(selectedFilePath);
@@ -3411,6 +3435,12 @@ export class Core {
 					reason: error instanceof DraftParseError ? "unreadable" : "identity_conflict",
 				};
 			}
+			const selectedDuplicates = findDuplicateDraftFilenameGroups(await this.fs.listDraftFilenames()).find((group) =>
+				group.includes(basename(selectedFilePath)),
+			);
+			if (selectedDuplicates) {
+				return { changed: false, task: resolvedTask, reason: "ambiguous" };
+			}
 			editableTask = validated.task;
 			draftFilePath = validated.filePath;
 		} else {
@@ -3419,16 +3449,23 @@ export class Core {
 
 			taskFilePath = await getTaskPath(editableTask.id, this);
 			if (!taskFilePath) {
-				if (editableTask.filePath && dirname(editableTask.filePath) === draftsDir) {
+				const rowFilePath = editableTask.filePath;
+				if (rowFilePath !== undefined && dirname(rowFilePath) === draftsDir) {
 					let validatedRow: Awaited<ReturnType<FileSystem["draftReferenceFromPath"]>>;
 					try {
-						validatedRow = await this.fs.draftReferenceFromPath(editableTask.filePath);
+						validatedRow = await this.fs.draftReferenceFromPath(rowFilePath);
 					} catch (error) {
 						return {
 							changed: false,
 							task: editableTask,
 							reason: error instanceof DraftParseError ? "unreadable" : "identity_conflict",
 						};
+					}
+					const rowDuplicates = findDuplicateDraftFilenameGroups(await this.fs.listDraftFilenames()).find((group) =>
+						group.includes(basename(rowFilePath)),
+					);
+					if (rowDuplicates) {
+						return { changed: false, task: editableTask, reason: "ambiguous" };
 					}
 					draftFilePath = validatedRow.filePath;
 				} else {
@@ -3447,7 +3484,8 @@ export class Core {
 			return { changed: false, task: editableTask, reason: "not_found" };
 		}
 		// Re-reading through the validation authority keeps the editor session honest. Parse or
-		// read failures and genuine identity conflicts are reported as distinct outcomes.
+		// read failures and genuine identity conflicts are reported as distinct outcomes. The
+		// known on-disk path is attached to reloaded tasks so contentStore publication works.
 		const reloadAfterEdit = async (): Promise<
 			{ task: Task | null } | { failure: "identity_conflict" | "unreadable" }
 		> => {
@@ -3460,7 +3498,8 @@ export class Core {
 			}
 			try {
 				const content = await Bun.file(taskFilePath).text();
-				return { task: normalizeTaskIdentity(parseTask(content)) };
+				const reparsed = normalizeTaskIdentity(parseTask(content));
+				return { task: { ...reparsed, filePath: taskFilePath } };
 			} catch {
 				return { failure: "unreadable" };
 			}

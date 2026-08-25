@@ -1243,6 +1243,12 @@ export async function viewTaskEnhanced(
 				showTransientHelp(" {red-fg}Could not read the saved file; fix its YAML/markdown syntax.{/}");
 				return;
 			}
+			if (result.reason === "ambiguous") {
+				showTransientHelp(
+					" {red-fg}Numeric draft id is shared by multiple files; rename or fix their ids, then retry.{/}",
+				);
+				return;
+			}
 
 			if (result.task) {
 				const index = allTasks.findIndex((taskItem) => taskItem.id === selectedTask.id);

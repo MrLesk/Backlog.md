@@ -1302,6 +1302,12 @@ export async function renderBoardTui(
 					showTransientFooter(" {red-fg}Could not read the saved file; fix its YAML/markdown syntax.{/}");
 					return;
 				}
+				if (result.reason === "ambiguous") {
+					showTransientFooter(
+						" {red-fg}Numeric draft id is shared by multiple files; rename or fix their ids, then retry.{/}",
+					);
+					return;
+				}
 
 				if (result.task) {
 					currentTasks = currentTasks.map((existingTask) =>

@@ -15,6 +15,7 @@ import {
 import { findDecisionById } from "../utils/decision-id.ts";
 import { documentIdsEqual, findDocumentById, normalizeDocumentId } from "../utils/document-id.ts";
 import { normalizeDocumentRelativePath, normalizeDocumentSubPath } from "../utils/document-path.ts";
+import type { DraftIdentityFindings } from "../utils/duplicate-detection.ts";
 import { AmbiguousIdError } from "../utils/entity-id.ts";
 import {
 	buildGlobPattern,
@@ -29,6 +30,7 @@ import {
 	AmbiguousTaskIdError,
 	draftIdsMatchLoosely,
 	extractDraftIdFromFilename,
+	findDuplicateDraftFilenameGroups,
 	getTaskFilename,
 	getTaskPath,
 	isAmbiguousTaskIdError,
@@ -1400,7 +1402,7 @@ export class FileSystem {
 				"Draft",
 				normalizedId,
 				matches,
-				"Rename these files or fix their frontmatter ids so each numeric draft id is unique.",
+				"Rename one file to a distinct numeric id, then make its frontmatter agree.",
 			);
 		}
 		const filename = matches.at(0);
@@ -1416,15 +1418,48 @@ export class FileSystem {
 		return filenames.map(extractDraftIdFromFilename).filter((id): id is string => id !== null);
 	}
 
-	async listDraftFilenames(): Promise<string[]> {
+	async listDraftFilenames(unreadable?: string[]): Promise<string[]> {
 		const draftsDir = await this.getDraftsDir();
 		try {
 			return (
 				await Array.fromAsync(new Bun.Glob(buildGlobPattern("draft")).scan({ cwd: draftsDir, followSymlinks: true }))
 			).sort();
 		} catch {
+			// A directory that cannot be scanned is a finding, not an empty store: surface it so
+			// doctor never reports draft identities as healthy without having checked them.
+			unreadable?.push(draftsDir);
 			return [];
 		}
+	}
+
+	/**
+	 * Draft identity findings for doctor: duplicate numeric identities (filename-derived, so
+	 * unparsable files count), drifted frontmatter-vs-filename records, and unreadable files.
+	 */
+	async diagnoseDraftIdentity(): Promise<DraftIdentityFindings> {
+		const unreadableDirectories: string[] = [];
+		const filenames = await this.listDraftFilenames(unreadableDirectories);
+		const duplicates = findDuplicateDraftFilenameGroups(filenames).map((paths) => ({
+			id: extractDraftIdFromFilename(paths[0] ?? "") ?? "",
+			paths,
+		}));
+		const draftsDir = await this.getDraftsDir();
+		const unreadable: string[] = [...unreadableDirectories];
+		const drifted: Array<{ path: string; frontmatterId: string; filenameId: string }> = [];
+		for (const filename of filenames) {
+			let parsed: Task | null;
+			try {
+				parsed = normalizeTaskIdentity(parseTask(await Bun.file(join(draftsDir, filename)).text()));
+			} catch {
+				unreadable.push(filename);
+				continue;
+			}
+			const declaredId = extractDraftIdFromFilename(filename);
+			if (!declaredId || !draftIdsMatchLoosely(parsed.id, filename)) {
+				drifted.push({ path: filename, frontmatterId: parsed.id, filenameId: declaredId ?? "(unreadable)" });
+			}
+		}
+		return { duplicates, unreadable, drifted };
 	}
 
 	// Decision log operations
