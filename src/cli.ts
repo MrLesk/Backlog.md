@@ -70,7 +70,7 @@ import {
 	formatDuplicateTaskIdWarning,
 	hasContentIdentityIssues,
 } from "./utils/duplicate-detection.ts";
-import { isAmbiguousIdError } from "./utils/entity-id.ts";
+import { AmbiguousIdError, isAmbiguousIdError } from "./utils/entity-id.ts";
 import { findBacklogRoot } from "./utils/find-backlog-root.ts";
 import { generateNextDecisionId } from "./utils/id-generators.ts";
 import { labelsToLower } from "./utils/label-filter.ts";
@@ -99,6 +99,7 @@ import { buildTaskUpdateInput } from "./utils/task-edit-builder.ts";
 import {
 	AmbiguousTaskIdError,
 	canonicalTaskId,
+	findDuplicateDraftFilenameGroups,
 	isAmbiguousTaskIdError,
 	LOCAL_TASK_LOOKUP_HINT,
 	taskIdsEqual,
@@ -2781,7 +2782,19 @@ const draftEditTarget: EditCommandTarget = {
 		const reference = await core.filesystem.resolveDraftReference(idOrSelectedPath);
 		return reference ? { ...reference.task, id: reference.canonicalId, filePath: reference.filePath } : null;
 	},
-	listCandidates: (core) => core.filesystem.listHealthyDrafts(),
+	listCandidates: async (core) => {
+		const drafts = await core.filesystem.listHealthyDrafts();
+		const duplicateGroups = findDuplicateDraftFilenameGroups(drafts.map((draft) => basename(draft.filePath ?? "")));
+		if (duplicateGroups.length > 0) {
+			throw new AmbiguousIdError(
+				"Draft",
+				duplicateGroups[0]?.[0] ?? "",
+				duplicateGroups.flat(),
+				"Rename these files or fix their frontmatter ids so each numeric draft id is unique.",
+			);
+		}
+		return drafts;
+	},
 	selectionValue: (candidate) => candidate.filePath ?? candidate.id,
 	update: (core, existing, input) => {
 		if (!existing.filePath) {

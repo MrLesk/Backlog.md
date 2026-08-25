@@ -254,6 +254,35 @@ process.exit(0);
 		expect(await Bun.file(taskPath).text()).toBe(taskFileBefore);
 	});
 
+	it("reports identity_conflict when an edit breaks filename/frontmatter identity", async () => {
+		const draft = await createDraft();
+		const editScript = await createEditorScript(
+			"drift-editor.js",
+			`import { readFileSync, writeFileSync } from "node:fs";
+const filePath = process.argv[2];
+if (filePath) {
+	const content = readFileSync(filePath, "utf8").replace("id: DRAFT-1", "id: DRAFT-99");
+	writeFileSync(filePath, content);
+}
+process.exit(0);
+`,
+		);
+		await setEditor(`node ${editScript}`);
+
+		const result = await core.editTaskInTui(draft.id, screen, draft);
+
+		expect(result.reason).toBe("identity_conflict");
+		expect(result.changed).toBe(false);
+
+		const draftPath = draft.filePath;
+		if (!draftPath) throw new Error("expected draft file path");
+		const afterDrift = await Bun.file(draftPath).text();
+		expect(afterDrift).toContain("DRAFT-99");
+
+		const followUp = await core.editTaskInTui(draft.id, screen, draft);
+		expect(followUp.reason).toBe("identity_conflict");
+	});
+
 	it("opens exactly the selected draft file when several files resolve to one id", async () => {
 		const draftsDir = join(testDir, "backlog", "drafts");
 		const draftFile = (filename: string, id: string, title: string) =>

@@ -1091,41 +1091,47 @@ export class FileSystem {
 	}
 
 	async archiveDraft(draftId: string): Promise<{ sourcePath: string; targetPath: string } | null> {
+		// Whole-file operation: the argument names the file to move, so filename binding is the
+		// identity that matters and frontmatter equivalence is not required.
+		const sourcePath = await this.resolveDraftFilePath(draftId);
+		if (!sourcePath) return null;
+		const archiveDraftsDir = await this.getArchiveDraftsDir();
+
+		const filename = basename(sourcePath);
+		const targetPath = join(archiveDraftsDir, filename);
+
+		const content = await Bun.file(sourcePath).text();
+		await this.ensureDirectoryExists(dirname(targetPath));
+		await Bun.write(targetPath, content);
+
+		await unlink(sourcePath);
+
+		return { sourcePath, targetPath };
+	}
+
+	/**
+	 * Parses one exact draft file path without identity validation; whole-file operations
+	 * (archive/promote) are bound by filename and must tolerate frontmatter drift.
+	 */
+	async loadDraftFromFile(filePath: string): Promise<Task | null> {
 		try {
-			const draftsDir = await this.getDraftsDir();
-			const archiveDraftsDir = await this.getArchiveDraftsDir();
-
-			// Find draft file with draft- prefix
-			const files = await Array.fromAsync(
-				new Bun.Glob(buildGlobPattern("draft")).scan({ cwd: draftsDir, followSymlinks: true }),
-			);
-			const normalizedId = normalizeId(draftId, "draft");
-			const filenameId = idForFilename(normalizedId);
-			const draftFile = files.find((f) => filenameMatchesId(f, filenameId));
-
-			if (!draftFile) return null;
-
-			const sourcePath = join(draftsDir, draftFile);
-			const targetPath = join(archiveDraftsDir, draftFile);
-
-			const content = await Bun.file(sourcePath).text();
-			await this.ensureDirectoryExists(dirname(targetPath));
-			await Bun.write(targetPath, content);
-
-			await unlink(sourcePath);
-
-			return { sourcePath, targetPath };
+			const task = normalizeTaskIdentity(parseTask(await Bun.file(filePath).text()));
+			return { ...task, filePath };
 		} catch {
 			return null;
 		}
 	}
 
 	async promoteDraft(draftId: string): Promise<boolean> {
+		// Whole-file operation: filename binding decides which file is promoted; frontmatter
+		// equivalence is not required. Duplicate numeric identities still fail closed.
+		const sourcePath = await this.resolveDraftFilePath(draftId);
+		if (!sourcePath) return false;
+
 		try {
 			return await this.withCreateLock(async () => {
-				// Load the draft
-				const draft = await this.loadDraft(draftId);
-				if (!draft?.filePath) return false;
+				const draft = await this.loadDraftFromFile(sourcePath);
+				if (!draft) return false;
 
 				// Get task prefix from config (default: "task")
 				const config = await this.loadConfig();
@@ -1156,7 +1162,7 @@ export class FileSystem {
 				await this.saveTask(promotedTask);
 
 				// Delete old draft file
-				await unlink(draft.filePath);
+				await unlink(sourcePath);
 
 				return true;
 			});
@@ -1223,13 +1229,16 @@ export class FileSystem {
 		const content = serializeTask(normalizedTask);
 
 		try {
-			// Find existing draft file with same ID but possibly different filename (e.g., title changed)
+			// Remove every existing draft file whose numeric identity matches the saved id but
+			// whose filename differs (title change, zero-padding drift): a save must converge
+			// to one file instead of breeding duplicates that future edits report as ambiguous.
 			const filenameId = idForFilename(draftId);
 			const existingFiles = await Array.fromAsync(
 				new Bun.Glob(buildGlobPattern("draft")).scan({ cwd: draftsDir, followSymlinks: true }),
 			);
-			const existingFile = existingFiles.find((f) => filenameMatchesId(f, filenameId));
-			if (existingFile && existingFile !== filename) {
+			for (const existingFile of existingFiles.filter(
+				(f) => f !== filename && (filenameMatchesId(f, filenameId) || draftIdsMatchLoosely(draftId, f)),
+			)) {
 				await unlink(join(draftsDir, existingFile));
 			}
 		} catch {
@@ -1340,6 +1349,17 @@ export class FileSystem {
 	 * closed; only the matched file is parsed.
 	 */
 	async resolveDraftReference(draftId: string): Promise<(DraftFileReference & { task: Task }) | null> {
+		const filePath = await this.resolveDraftFilePath(draftId);
+		if (!filePath) return null;
+		return await this.draftReferenceFromPath(filePath);
+	}
+
+	/**
+	 * Filename-bound resolution for whole-file operations (archive, promote). These move or
+	 * delete the matched file itself, so frontmatter equivalence does not apply; duplicate
+	 * numeric identities still fail closed.
+	 */
+	async resolveDraftFilePath(draftId: string): Promise<string | null> {
 		const draftsDir = await this.getDraftsDir();
 		let files: string[] = [];
 		try {
@@ -1365,8 +1385,7 @@ export class FileSystem {
 			);
 		}
 		const filename = matches.at(0);
-		if (!filename) return null;
-		return await this.draftReferenceFromPath(join(draftsDir, filename));
+		return filename ? join(draftsDir, filename) : null;
 	}
 
 	// Decision log operations

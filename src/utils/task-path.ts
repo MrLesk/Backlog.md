@@ -154,6 +154,24 @@ export function extractDraftIdFromFilename(filename: string): string | null {
 }
 
 /**
+ * Groups draft filenames by their numeric identity and returns every group that claims more
+ * than one file (e.g. "draft-1 - A.md" and "draft-01 - B.md"). Such sets must never be
+ * offered as separate selectable choices.
+ */
+export function findDuplicateDraftFilenameGroups(filenames: readonly string[]): string[][] {
+	const groups = new Map<string, string[]>();
+	for (const filename of filenames) {
+		const declared = extractDraftIdFromFilename(filename);
+		if (!declared) continue;
+		const key = declared.toLowerCase().replace(/^draft-0*(?=\d)/, "draft-");
+		const group = groups.get(key) ?? [];
+		group.push(filename);
+		groups.set(key, group);
+	}
+	return [...groups.values()].filter((group) => group.length > 1).map((group) => group.sort());
+}
+
+/**
  * Compares two draft IDs for equality.
  */
 function draftIdsEqual(left: string, right: string): boolean {

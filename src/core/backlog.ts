@@ -2419,6 +2419,10 @@ export class Core {
 		// re-resolved to a different path.
 		return await this.fs.withDraftLock(reference, async () => {
 			const current = await this.fs.draftReferenceFromPath(reference.filePath);
+			// Bind the mutated record to the selected file's own identity: a padded filename whose
+			// frontmatter carries an unpadded id must keep converging onto that one file instead of
+			// minting a second spelling of the same numeric id.
+			current.task.id = reference.canonicalId;
 
 			const { mutated } = await this.applyTaskUpdateInput(current.task, input, async (status) => {
 				if (status.trim().toLowerCase() !== "draft") {
@@ -2949,11 +2953,16 @@ export class Core {
 	}
 
 	async promoteDraft(draftId: string, autoCommit?: boolean): Promise<boolean> {
+		// Whole-file operation: filename binding decides which file is promoted, so resolution
+		// goes through the file resolver and frontmatter equivalence is not required.
+		const sourcePath = await this.fs.resolveDraftFilePath(draftId);
+		if (!sourcePath) return false;
+
 		let moved: { previousPath: string; savedPath: string } | null = null;
 		try {
 			moved = await this.withCreateLock(async () => {
-				const draft = await this.fs.loadDraft(draftId);
-				if (!draft?.filePath) return null;
+				const draft = await this.fs.loadDraftFromFile(sourcePath);
+				if (!draft) return null;
 
 				const config = await this.fs.loadConfig();
 				const newTaskId = await this.generateNextId(EntityType.Task, draft.parentTaskId);
@@ -2971,7 +2980,7 @@ export class Core {
 
 				normalizeAssignee(promotedTask);
 				const savedPath = await this.fs.saveTask(promotedTask);
-				const previousPath = draft.filePath;
+				const previousPath = sourcePath;
 				await unlink(previousPath);
 
 				const savedTask = await this.fs.loadTask(promotedTask.id);
@@ -3424,13 +3433,19 @@ export class Core {
 		if (!filePath) {
 			return { changed: false, task: editableTask, reason: "not_found" };
 		}
-		const reloadEditedEntity = (): Promise<Task | null> =>
-			taskFilePath
-				? this.fs.loadTask(editableTask.id)
-				: this.fs
-						.draftReferenceFromPath(filePath)
-						.then((validated) => validated.task)
-						.catch(() => null);
+		// Re-reading the draft through the validation authority keeps the editor session honest:
+		// an edit that breaks filename/frontmatter identity is reported, never swallowed.
+		const reloadEditedEntityOrConflict = async (): Promise<Task | null | { conflict: true }> => {
+			try {
+				if (taskFilePath) {
+					return await this.fs.loadTask(editableTask.id);
+				}
+				return (await this.fs.draftReferenceFromPath(filePath)).task;
+			} catch (error) {
+				if (!taskFilePath) return { conflict: true };
+				throw error;
+			}
+		};
 
 		let beforeContent: string;
 		try {
@@ -3452,15 +3467,24 @@ export class Core {
 		}
 
 		if (afterContent === beforeContent) {
-			const refreshedTask = await reloadEditedEntity();
-			return { changed: false, task: refreshedTask ?? editableTask };
+			const refreshedTask = await reloadEditedEntityOrConflict();
+			if (refreshedTask === null || "conflict" in refreshedTask) {
+				return { changed: false, task: editableTask, reason: "identity_conflict" };
+			}
+			return { changed: false, task: refreshedTask };
 		}
 
 		const now = new Date().toISOString().slice(0, 16).replace("T", " ");
 		const withUpdatedDate = upsertTaskUpdatedDate(afterContent, now);
 		await Bun.write(filePath, withUpdatedDate);
 
-		const refreshedTask = await reloadEditedEntity();
+		const reloadResult = await reloadEditedEntityOrConflict();
+		if (reloadResult === null || "conflict" in reloadResult) {
+			// The edited file stays on disk exactly as the user saved it so it can be repaired by
+			// hand; reporting success here would silently strand every later validated edit.
+			return { changed: false, task: editableTask, reason: "identity_conflict" };
+		}
+		const refreshedTask: Task = reloadResult;
 		if (refreshedTask && taskFilePath && this.contentStore) {
 			this.contentStore.upsertTask(refreshedTask);
 		}

@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
-import { mkdir } from "node:fs/promises";
+import { mkdir, readdir } from "node:fs/promises";
 import { basename, join } from "node:path";
 import { $ } from "bun";
 import { pickTaskForEditWizard } from "../commands/task-wizard.ts";
@@ -7,6 +7,7 @@ import { isTaskLockError } from "../file-system/operations.ts";
 import { Core } from "../index.ts";
 import { serializeTask } from "../markdown/serializer.ts";
 import type { Task } from "../types/index.ts";
+import { findDuplicateDraftFilenameGroups } from "../utils/task-path.ts";
 import { getTestCliPath } from "./test-cli.ts";
 import {
 	createUniqueTestDir,
@@ -19,6 +20,7 @@ const normalizeCliOutput = (output: string) => output.replace(/\r\n/g, "\n").rep
 
 let TEST_DIR: string;
 const CLI_PATH = getTestCliPath();
+const CLI_RUNTIME = process.env.TUI_TEST_CLI_RUNTIME?.trim() ?? "bun";
 
 describe("CLI draft edit", () => {
 	beforeEach(async () => {
@@ -544,4 +546,119 @@ describe("CLI draft edit auto-commit rename staging", () => {
 		expect(lines.some((line) => line.startsWith("D") && line.includes("draft-1 - Original-title.md"))).toBe(true);
 		expect(lines.some((line) => line.startsWith("A") && line.includes("draft-1 - Renamed-title.md"))).toBe(true);
 	});
+});
+
+describe("draft identity sweep", () => {
+	let TEST_DIR: string;
+
+	beforeEach(async () => {
+		TEST_DIR = createUniqueTestDir("test-draft-sweep");
+		await mkdir(TEST_DIR, { recursive: true });
+
+		const core = new Core(TEST_DIR);
+		await initializeFilesystemTestProject(core, "Draft Sweep Project");
+	});
+
+	afterEach(async () => {
+		await safeCleanup(TEST_DIR);
+	});
+
+	const writeDraftFile = async (filename: string, id: string, title: string): Promise<string> => {
+		const filePath = join(TEST_DIR, "backlog", "drafts", filename);
+		await Bun.write(
+			filePath,
+			serializeTask({
+				id,
+				title,
+				status: "Draft",
+				assignee: [],
+				createdDate: "2026-08-24 10:00",
+				labels: [],
+				dependencies: [],
+			}),
+		);
+		return filePath;
+	};
+
+	it("converges a padded file to one file instead of minting a duplicate", async () => {
+		await writeDraftFile("draft-001 - Padded.md", "DRAFT-1", "Padded");
+		const draftsDir = join(TEST_DIR, "backlog", "drafts");
+
+		const renamed = await $`bun ${CLI_PATH} draft edit 1 -t "Converged"`.cwd(TEST_DIR).nothrow().quiet();
+		expect(renamed.exitCode).toBe(0);
+
+		const afterRename = (await readdir(draftsDir)).sort();
+		expect(afterRename).toEqual(["draft-001 - Converged.md"]);
+
+		const relabeled = await $`bun ${CLI_PATH} draft edit 1 -a @alex`.cwd(TEST_DIR).nothrow().quiet();
+		expect(relabeled.exitCode).toBe(0);
+		expect((await readdir(draftsDir)).sort()).toEqual(["draft-001 - Converged.md"]);
+
+		const core = new Core(TEST_DIR);
+		const reloaded = await core.filesystem.loadDraft("DRAFT-001");
+		expect(reloaded?.title).toBe("Converged");
+		expect(reloaded?.assignee).toEqual(["@alex"]);
+	});
+
+	it("groups colliding draft filenames for fail-closed picker rendering", () => {
+		const groups = findDuplicateDraftFilenameGroups([
+			"draft-2 - Beta.md",
+			"draft-1 - Alpha.md",
+			"draft-01 - Alpha.md",
+			"task-1 - Not a draft.md",
+		]);
+		expect(groups).toEqual([["draft-01 - Alpha.md", "draft-1 - Alpha.md"]]);
+		expect(findDuplicateDraftFilenameGroups(["draft-1 - Solo.md", "draft-2 - Other.md"])).toEqual([]);
+	});
+});
+
+const EXPECT_PATH = Bun.which("expect");
+const RUN_INTERACTIVE_TUI_TESTS = process.env.RUN_INTERACTIVE_TUI_TESTS === "1";
+const itInteractive = EXPECT_PATH && RUN_INTERACTIVE_TUI_TESTS ? it : it.skip;
+
+describe("interactive draft picker collision guard", () => {
+	itInteractive(
+		"fails closed on numeric-id collisions before any choice is rendered",
+		async () => {
+			const TEST_DIR = createUniqueTestDir("test-draft-picker-pty");
+			await mkdir(TEST_DIR, { recursive: true });
+			try {
+				const core = new Core(TEST_DIR);
+				await initializeFilesystemTestProject(core, "Picker Collision Project");
+				const draftsDir = join(TEST_DIR, "backlog", "drafts");
+				for (const [filename, id] of [
+					["draft-1 - Alpha.md", "DRAFT-1"],
+					["draft-01 - Alpha.md", "DRAFT-01"],
+				] as const) {
+					await Bun.write(
+						join(draftsDir, filename),
+						serializeTask({
+							id,
+							title: "Alpha",
+							status: "Draft",
+							assignee: [],
+							createdDate: "2026-08-24 10:00",
+							labels: [],
+							dependencies: [],
+						}),
+					);
+				}
+
+				const script = `spawn {${CLI_RUNTIME}} {${CLI_PATH}} draft edit\nexpect {\n\t-re {is ambiguous} { puts "\\nAMBIGUOUS_SHOWN" }\n\ttimeout { puts "\\nNO_AMBIGUOUS_ERROR"; exit 2 }\n\teof { puts "\\nEOF_EARLY"; exit 3 }\n}`;
+				const proc = Bun.spawnSync({
+					cmd: ["expect", "-c", script],
+					env: { ...process.env, TERM: "xterm", BACKLOG_CWD: TEST_DIR },
+					stdout: "pipe",
+					stderr: "pipe",
+				});
+				const output = `${proc.stdout.toString()}${proc.stderr.toString()}`;
+				expect(output).toContain("AMBIGUOUS_SHOWN");
+				expect(output).toContain("Rename these files or fix their frontmatter ids");
+				expect(output).not.toContain("Select task to edit");
+			} finally {
+				await safeCleanup(TEST_DIR);
+			}
+		},
+		{ timeout: 30_000 },
+	);
 });
