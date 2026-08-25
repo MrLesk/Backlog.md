@@ -1402,7 +1402,7 @@ export class FileSystem {
 				"Draft",
 				normalizedId,
 				matches,
-				"Rename these files or fix their frontmatter ids so each numeric draft id is unique.",
+				"Rename one file to a distinct numeric id, then make its frontmatter agree.",
 			);
 		}
 		const filename = matches.at(0);
@@ -1418,13 +1418,16 @@ export class FileSystem {
 		return filenames.map(extractDraftIdFromFilename).filter((id): id is string => id !== null);
 	}
 
-	async listDraftFilenames(): Promise<string[]> {
+	async listDraftFilenames(unreadable?: string[]): Promise<string[]> {
 		const draftsDir = await this.getDraftsDir();
 		try {
 			return (
 				await Array.fromAsync(new Bun.Glob(buildGlobPattern("draft")).scan({ cwd: draftsDir, followSymlinks: true }))
 			).sort();
 		} catch {
+			// A directory that cannot be scanned is a finding, not an empty store: surface it so
+			// doctor never reports draft identities as healthy without having checked them.
+			unreadable?.push(draftsDir);
 			return [];
 		}
 	}
@@ -1434,13 +1437,14 @@ export class FileSystem {
 	 * unparsable files count), drifted frontmatter-vs-filename records, and unreadable files.
 	 */
 	async diagnoseDraftIdentity(): Promise<DraftIdentityFindings> {
-		const filenames = await this.listDraftFilenames();
+		const unreadableDirectories: string[] = [];
+		const filenames = await this.listDraftFilenames(unreadableDirectories);
 		const duplicates = findDuplicateDraftFilenameGroups(filenames).map((paths) => ({
 			id: extractDraftIdFromFilename(paths[0] ?? "") ?? "",
 			paths,
 		}));
 		const draftsDir = await this.getDraftsDir();
-		const unreadable: string[] = [];
+		const unreadable: string[] = [...unreadableDirectories];
 		const drifted: Array<{ path: string; frontmatterId: string; filenameId: string }> = [];
 		for (const filename of filenames) {
 			let parsed: Task | null;

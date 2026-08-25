@@ -131,7 +131,7 @@ describe("CLI draft edit", () => {
 		expect(output).toContain("Draft ID DRAFT-7 is ambiguous; 2 files match:");
 		expect(output).toContain("draft-7 - Alpha.md");
 		expect(output).toContain("draft-7 - Beta.md");
-		expect(output).toContain("Rename these files or fix their frontmatter ids");
+		expect(output).toContain("Rename one file to a distinct numeric id, then make its frontmatter agree");
 		expect(output).not.toContain("doctor");
 	});
 
@@ -717,7 +717,7 @@ describe("interactive draft picker collision guard", () => {
 				});
 				const output = `${proc.stdout.toString()}${proc.stderr.toString()}`;
 				expect(output).toContain("AMBIGUOUS_SHOWN");
-				expect(output).toContain("Rename these files or fix their frontmatter ids");
+				expect(output).toContain("Rename one file to a distinct numeric id, then make its frontmatter agree");
 				expect(output).not.toContain("Select task to edit");
 			} finally {
 				await safeCleanup(TEST_DIR);
@@ -813,6 +813,7 @@ describe("draft identity edge cases", () => {
 			"--add-ref",
 			"--doc",
 			"--check-ac",
+			"--clear-ac",
 			"--uncheck-ac",
 			"--dod",
 			"--check-dod",

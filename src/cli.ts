@@ -442,7 +442,7 @@ function printDraftIdentityReport(findings: DraftIdentityFindings): void {
 			console.log(`  ${group.id}:`);
 			for (const path of group.paths) console.log(`    - ${path}`);
 		}
-		console.log("Rename these files or fix their frontmatter ids so each numeric draft id is unique.");
+		console.log("Rename one file to a distinct numeric id, then make its frontmatter agree.");
 	}
 	if (findings.drifted.length > 0) {
 		console.log("\nDrifted draft files (frontmatter id does not match filename):");
@@ -2824,7 +2824,7 @@ const draftEditTarget: EditCommandTarget = {
 				"Draft",
 				duplicateGroups[0]?.[0] ?? "",
 				duplicateGroups.flat(),
-				"Rename these files or fix their frontmatter ids so each numeric draft id is unique.",
+				"Rename one file to a distinct numeric id, then make its frontmatter agree.",
 			);
 		}
 		return core.filesystem.listHealthyDrafts();
@@ -3801,6 +3801,7 @@ const draftEditCommand = addHelpSchema(draftCmd.command("edit [taskId]"), {
 		{ name: "clear-milestone", type: "Boolean", description: "Clear the milestone assignment" },
 		{ name: "ac", type: "Comma-separated strings", description: "Add acceptance criteria; repeatable" },
 		{ name: "acceptance-criteria", type: "Comma-separated strings", description: "Replace all acceptance criteria" },
+		{ name: "clear-ac", type: "Boolean", description: "Remove all acceptance criteria" },
 		{ name: "remove-ac", type: "Integer", description: "Remove acceptance criterion by 1-based index; repeatable" },
 		{ name: "check-ac", type: "Integer", description: "Check acceptance criterion by 1-based index; repeatable" },
 		{ name: "uncheck-ac", type: "Integer", description: "Uncheck acceptance criterion by 1-based index; repeatable" },
@@ -5258,6 +5259,10 @@ addHelpSchema(program.command("doctor"), {
 			}
 			if (contentIdentityBroken) {
 				console.log("Document and decision findings remain diagnostic-only and still require manual review.");
+				process.exitCode = 1;
+			}
+			if (draftIdentityBroken) {
+				console.log("Draft identity findings remain diagnostic-only and still require manual review.");
 				process.exitCode = 1;
 			}
 		} catch (error) {

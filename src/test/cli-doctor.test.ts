@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
-import { chmod, mkdir, unlink } from "node:fs/promises";
+import { chmod, mkdir, readdir, unlink } from "node:fs/promises";
 import { join } from "node:path";
 import { $ } from "bun";
 import { Core } from "../core/backlog.ts";
@@ -109,6 +109,45 @@ describe("backlog doctor", () => {
 		expect(output).toContain("Repaired 2 duplicate task files");
 		expect(output).toContain("Verification passed");
 		expect((await core.previewDuplicateTaskIdRepair()).groups).toEqual([]);
+	});
+
+	it("keeps a non-zero exit when repairable task duplicates are fixed but draft findings remain", async () => {
+		const draftsDir = await core.filesystem.getDraftsDir();
+		await Bun.write(
+			join(draftsDir, "draft-1 - Alpha.md"),
+			serializeTask({ ...makeTask("DRAFT-1", "Alpha"), status: "Draft" }),
+		);
+		await Bun.write(
+			join(draftsDir, "draft-01 - Beta.md"),
+			serializeTask({ ...makeTask("DRAFT-01", "Beta"), status: "Draft" }),
+		);
+
+		const result = await $`bun ${cliPath} doctor --fix --yes`.cwd(testDir).quiet().nothrow();
+		const output = `${result.stdout}${result.stderr}`;
+		expect(result.exitCode).toBe(1);
+		expect(output).toContain("Repaired 2 duplicate task files");
+		expect(output).toContain("Duplicate draft IDs (diagnostic only):");
+		expect(output).toContain("draft-01 - Beta.md");
+		expect(output).toContain("Rename one file to a distinct numeric id, then make its frontmatter agree.");
+		expect(output).toContain("Draft identity findings remain diagnostic-only and still require manual review.");
+		expect((await core.previewDuplicateTaskIdRepair()).groups).toEqual([]);
+
+		const remainingDrafts = (await readdir(draftsDir)).sort();
+		expect(remainingDrafts).toEqual(["draft-01 - Beta.md", "draft-1 - Alpha.md"]);
+	});
+
+	it("surfaces an unscannable drafts directory as a finding instead of reporting healthy", async () => {
+		const draftsDir = await core.filesystem.getDraftsDir();
+		await chmod(draftsDir, 0o000);
+		try {
+			const result = await $`bun ${cliPath} doctor`.cwd(testDir).quiet().nothrow();
+			const output = `${result.stdout}${result.stderr}`;
+			expect(result.exitCode).toBe(1);
+			expect(output).toContain("Unreadable draft files:");
+			expect(output).toContain(draftsDir);
+		} finally {
+			await chmod(draftsDir, 0o755);
+		}
 	});
 
 	it("requires --fix when --yes is supplied", async () => {

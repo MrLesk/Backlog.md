@@ -1445,7 +1445,7 @@ export class BacklogServer {
 			return Response.json({ success: true });
 		} catch (error) {
 			console.error("Error promoting draft:", error);
-			if (isCreateLockError(error) || isAmbiguousIdError(error)) {
+			if (isCreateLockError(error) || isAmbiguousIdError(error) || isTaskLockError(error)) {
 				return Response.json({ error: error.message }, { status: 409 });
 			}
 			return Response.json({ error: "Failed to promote draft" }, { status: 500 });
