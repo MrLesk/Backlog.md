@@ -11,7 +11,7 @@ import {
 	idForFilename,
 	normalizeId,
 } from "./prefix-config.ts";
-import { canonicalTaskId, normalizeTaskId, numericIdBodiesEqual, taskIdsEqual } from "./task-id.ts";
+import { canonicalTaskId, normalizeTaskId, taskIdsEqual } from "./task-id.ts";
 
 export { canonicalTaskId, normalizeTaskId, taskIdsEqual } from "./task-id.ts";
 
@@ -154,16 +154,34 @@ export function extractDraftIdFromFilename(filename: string): string | null {
 }
 
 /**
- * Groups draft filenames by their numeric identity and returns every group that claims more
- * than one file (e.g. "draft-1 - A.md" and "draft-01 - B.md"). Such sets must never be
- * offered as separate selectable choices.
+ * The one canonicalization authority for draft identity keys: lowercases the prefix and strips
+ * leading zeros within every numeric segment, including dotted subtask segments. "draft-1",
+ * "DRAFT-01", and "draft-1" collapse together; "draft-1.1" and "draft-1.01" collapse together.
+ * Every consumer that groups, matches, or compares draft identities must go through this.
+ */
+export function draftIdentityKey(id: string): string {
+	const trimmed = id.trim().toLowerCase();
+	const match = trimmed.match(new RegExp(`^(?:${escapeRegex(DEFAULT_DRAFT_PREFIX)}-)?(\\d+(?:\\.\\d+)*)$`));
+	if (!match?.[1]) return trimmed;
+	const body = match[1]
+		.split(".")
+		.map((segment) => segment.replace(/^0+(?=\d)/, "") || "0")
+		.join(".");
+	return `${DEFAULT_DRAFT_PREFIX}-${body}`;
+}
+
+/**
+ * Groups draft filenames by their canonical numeric identity (see {@link draftIdentityKey}) and
+ * returns every group that claims more than one file (e.g. "draft-1 - A.md" alongside
+ * "draft-01 - B.md", or "draft-1.1 - A.md" alongside "draft-1.01 - B.md"). Such sets must never
+ * be offered as separate selectable choices.
  */
 export function findDuplicateDraftFilenameGroups(filenames: readonly string[]): string[][] {
 	const groups = new Map<string, string[]>();
 	for (const filename of filenames) {
 		const declared = extractDraftIdFromFilename(filename);
 		if (!declared) continue;
-		const key = declared.toLowerCase().replace(/^draft-0*(?=\d)/, "draft-");
+		const key = draftIdentityKey(declared);
 		const group = groups.get(key) ?? [];
 		group.push(filename);
 		groups.set(key, group);
@@ -172,28 +190,10 @@ export function findDuplicateDraftFilenameGroups(filenames: readonly string[]): 
 }
 
 /**
- * Compares two draft IDs for equality.
+ * Compares two draft IDs for equality through {@link draftIdentityKey}.
  */
 function draftIdsEqual(left: string, right: string): boolean {
-	const leftBody = extractDraftBody(left);
-	const rightBody = extractDraftBody(right);
-
-	if (leftBody && rightBody) {
-		return numericIdBodiesEqual(leftBody, rightBody);
-	}
-
-	return normalizeDraftId(left).toLowerCase() === normalizeDraftId(right).toLowerCase();
-}
-
-/**
- * Extracts the body from a draft ID.
- */
-function extractDraftBody(value: string): string | null {
-	const trimmed = value.trim();
-	if (trimmed === "") return "";
-	const prefixPattern = new RegExp(`^(?:${escapeRegex(DEFAULT_DRAFT_PREFIX)}-)?([0-9]+(?:\\.[0-9]+)*)$`, "i");
-	const match = trimmed.match(prefixPattern);
-	return match?.[1] ?? null;
+	return draftIdentityKey(left) === draftIdentityKey(right);
 }
 
 /**

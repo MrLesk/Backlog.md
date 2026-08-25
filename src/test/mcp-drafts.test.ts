@@ -136,6 +136,43 @@ describe("MCP draft support via task tools", () => {
 		expect(taskFile).toBeNull();
 	});
 
+	it("task_edit fails closed when duplicate numeric draft identities exist", async () => {
+		await mcpServer.testInterface.callTool({
+			params: {
+				name: "task_create",
+				arguments: {
+					title: "Alpha one",
+					status: "Draft",
+				},
+			},
+		});
+
+		const draftsDir = join(TEST_DIR, "backlog", "drafts");
+		const twinPath = join(draftsDir, "draft-001 - Alpha two.md");
+		await Bun.write(
+			twinPath,
+			"---\nid: DRAFT-001\ntitle: Alpha two\nstatus: Draft\nassignee: []\ncreated_date: 2026-08-24 10:00\nlabels: []\ndependencies: []\n---\n\n## Description\n\nbody\n",
+		);
+
+		const result = await mcpServer.testInterface.callTool({
+			params: {
+				name: "task_edit",
+				arguments: {
+					id: "DRAFT-1",
+					title: "Hijacked",
+				},
+			},
+		});
+
+		expect(result.isError).toBe(true);
+		expect(getText(result.content)).toContain("is ambiguous");
+		expect(getText(result.content)).toContain("draft-001 - Alpha two.md");
+
+		const healthyText = await Bun.file(join(draftsDir, "draft-1 - Alpha-one.md")).text();
+		expect(healthyText).toContain("Alpha one");
+		expect(await Bun.file(twinPath).text()).toContain("Alpha two");
+	});
+
 	it("searches and archives drafts when requested", async () => {
 		await mcpServer.testInterface.callTool({
 			params: {

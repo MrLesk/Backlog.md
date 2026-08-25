@@ -1,6 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
+import { join } from "node:path";
 import { Core } from "../core/backlog.ts";
 import { FileSystem } from "../file-system/operations.ts";
+import { serializeTask } from "../markdown/serializer.ts";
 import { BacklogServer } from "../server/index.ts";
 import type { Task } from "../types/index.ts";
 import { createUniqueTestDir, retry, safeCleanup } from "./test-utils.ts";
@@ -116,6 +118,38 @@ describe("BacklogServer draft task endpoints", () => {
 		expect(response.status).toBe(200);
 		expect(((await response.json()) as Task).id).toBe("TASK-1");
 		expect((await core.filesystem.loadDraft("DRAFT-1"))?.title).toBe("Only draft");
+	});
+
+	it("fails closed on duplicate numeric draft identities instead of mutating an arbitrary match", async () => {
+		await core.createTaskFromInput({ title: "Alpha one", status: "Draft" });
+		const draftsDir = await core.filesystem.getDraftsDir();
+		const twinPath = join(draftsDir, "draft-001 - Alpha two.md");
+		await Bun.write(
+			twinPath,
+			serializeTask({
+				id: "DRAFT-001",
+				title: "Alpha two",
+				status: "Draft",
+				assignee: [],
+				createdDate: "2026-08-24 10:00",
+				labels: [],
+				dependencies: [],
+			}),
+		);
+
+		const edit = await put("/api/tasks/DRAFT-1", { title: "Hijacked" });
+		expect(edit.status).toBe(409);
+		expect(((await edit.json()) as { error: string }).error).toContain("is ambiguous");
+
+		expect((await core.filesystem.loadDraft("DRAFT-1"))?.title).toBe("Alpha one");
+		expect(await Bun.file(twinPath).text()).toContain("Alpha two");
+
+		// The promote endpoint surfaces the same conflict instead of moving either file.
+		const promote = await request("/api/drafts/DRAFT-001/promote", { method: "POST" });
+		expect(promote.status).toBe(409);
+		expect(((await promote.json()) as { error: string }).error).toContain("is ambiguous");
+		expect(await Bun.file(join(draftsDir, "draft-1 - Alpha-one.md")).exists()).toBe(true);
+		expect(await Bun.file(twinPath).exists()).toBe(true);
 	});
 
 	it("reports an unknown draft id as missing", async () => {

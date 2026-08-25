@@ -234,7 +234,33 @@ describe("document and decision identity", () => {
 		const result = await $`bun ${cliPath} doctor`.cwd(testDir).quiet().nothrow();
 		const output = `${result.stdout}${result.stderr}`;
 		expect(result.exitCode).toBe(0);
-		expect(output).toContain("No duplicate task, document, or decision IDs found.");
+		expect(output).toContain("No duplicate task, document, decision, or draft IDs found.");
+	});
+
+	it("reports duplicate and drifted draft identities and contributes to the exit code", async () => {
+		await writeDocument("doc-1 - Alpha.md", "doc-1", "Alpha");
+		await writeDecision("decision-1 - Alpha.md", "decision-1", "Alpha");
+
+		const draftsDir = await core.filesystem.getDraftsDir();
+		await Bun.write(
+			join(draftsDir, "draft-1 - Alpha.md"),
+			serializeTask({ ...makeTask("DRAFT-1", "Alpha"), status: "Draft" }),
+		);
+		await Bun.write(
+			join(draftsDir, "draft-01 - Beta.md"),
+			serializeTask({ ...makeTask("DRAFT-01", "Beta"), status: "Draft" }),
+		);
+		await Bun.write(join(draftsDir, "draft-2 - Drifted.md"), "---\nid: DRAFT-9\ntitle: Drifted\n---\ndrifted body");
+
+		const result = await $`bun ${cliPath} doctor`.cwd(testDir).quiet().nothrow();
+		const output = `${result.stdout}${result.stderr}`;
+		expect(result.exitCode).toBe(1);
+		expect(output).toContain("Duplicate draft IDs (diagnostic only):");
+		expect(output).toContain("draft-01 - Beta.md");
+		expect(output).toContain("draft-1 - Alpha.md");
+		expect(output).toContain("Drifted draft files (frontmatter id does not match filename):");
+		expect(output).toContain("frontmatter declares DRAFT-9, filename declares DRAFT-2");
+		expect(output).toContain("Fix the frontmatter id or rename each file so they agree.");
 	});
 
 	it("detects duplicate document and decision IDs", async () => {
@@ -282,7 +308,7 @@ describe("document and decision identity", () => {
 		const result = await $`bun ${cliPath} doctor`.cwd(testDir).quiet().nothrow();
 		const output = `${result.stdout}${result.stderr}`;
 		expect(result.exitCode).toBe(1);
-		expect(output).not.toContain("No duplicate task, document, or decision IDs found.");
+		expect(output).not.toContain("No duplicate task, document, decision, or draft IDs found.");
 		expect(output).toContain("Unreadable document files");
 		expect(output).toContain("backlog/docs/doc-2 - Broken.md");
 		expect(output).toContain("Unreadable decision files");
@@ -311,7 +337,7 @@ describe("document and decision identity", () => {
 
 		const output = `${result.stdout}${result.stderr}`;
 		expect(result.exitCode).toBe(1);
-		expect(output).not.toContain("No duplicate task, document, or decision IDs found.");
+		expect(output).not.toContain("No duplicate task, document, decision, or draft IDs found.");
 		expect(output).toContain("Unreadable document files or directories");
 		expect(output).toContain("backlog/docs");
 	});

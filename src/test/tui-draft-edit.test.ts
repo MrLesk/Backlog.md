@@ -330,7 +330,7 @@ process.exit(0);
 		expect(await Bun.file(taskRow.filePath).text()).not.toBe(before);
 	});
 
-	it("opens exactly the selected draft file when several files resolve to one id", async () => {
+	it("fails closed when the selected row shares a numeric id with another draft", async () => {
 		const draftsDir = join(testDir, "backlog", "drafts");
 		const draftFile = (filename: string, id: string, title: string) =>
 			Bun.write(
@@ -365,8 +365,9 @@ process.exit(0);
 
 		const result = await core.editTaskInTui(selected.id, screen, selected);
 
-		expect(result.changed).toBe(true);
-		expect(await Bun.file(selected.filePath).text()).toContain("Marker");
+		expect(result.reason).toBe("ambiguous");
+		expect(result.changed).toBe(false);
+		expect(await Bun.file(selected.filePath).text()).not.toContain("Marker");
 		expect(await Bun.file(join(draftsDir, "draft-3 - Alpha.md")).text()).not.toContain("Marker");
 	});
 });

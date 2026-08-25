@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-import { basename, isAbsolute, join } from "node:path";
+import { basename, dirname, isAbsolute, join } from "node:path";
 import { stdin as input } from "node:process";
 import { createInterface } from "node:readline/promises";
 import * as clack from "@clack/prompts";
@@ -67,8 +67,10 @@ import { normalizeProjectBacklogDirectory } from "./utils/backlog-directory.ts";
 import { launchBrowser } from "./utils/browser-launch.ts";
 import {
 	type ContentIdentityReport,
+	type DraftIdentityFindings,
 	formatDuplicateTaskIdWarning,
 	hasContentIdentityIssues,
+	hasDraftIdentityFindings,
 } from "./utils/duplicate-detection.ts";
 import { AmbiguousIdError, isAmbiguousIdError } from "./utils/entity-id.ts";
 import { findBacklogRoot } from "./utils/find-backlog-root.ts";
@@ -430,6 +432,31 @@ function printContentIdentityReport(report: ContentIdentityReport): void {
 			for (const path of issues.unreadable) console.log(`  - ${path}`);
 			console.log(`Repair the frontmatter or file permissions; identity could not be checked for these ${label}s.`);
 		}
+	}
+}
+
+function printDraftIdentityReport(findings: DraftIdentityFindings): void {
+	if (findings.duplicates.length > 0) {
+		console.log("\nDuplicate draft IDs (diagnostic only):");
+		for (const group of findings.duplicates) {
+			console.log(`  ${group.id}:`);
+			for (const path of group.paths) console.log(`    - ${path}`);
+		}
+		console.log("Rename these files or fix their frontmatter ids so each numeric draft id is unique.");
+	}
+	if (findings.drifted.length > 0) {
+		console.log("\nDrifted draft files (frontmatter id does not match filename):");
+		for (const drift of findings.drifted) {
+			console.log(
+				`  - ${drift.path}: frontmatter declares ${drift.frontmatterId}, filename declares ${drift.filenameId}`,
+			);
+		}
+		console.log("Fix the frontmatter id or rename each file so they agree.");
+	}
+	if (findings.unreadable.length > 0) {
+		console.log("\nUnreadable draft files:");
+		for (const path of findings.unreadable) console.log(`  - ${path}`);
+		console.log("Repair the YAML/frontmatter or remove the file; identity could not be checked for these drafts.");
 	}
 }
 
@@ -2776,6 +2803,12 @@ const draftEditTarget: EditCommandTarget = {
 		// id resolver; wizard selections arrive as the selected row's file path and are validated
 		// against that exact file, so a drifted frontmatter id can never redirect the edit.
 		if (isAbsolute(idOrSelectedPath)) {
+			const draftsDir = await core.filesystem.getDraftsDir();
+			if (dirname(idOrSelectedPath) !== draftsDir) {
+				throw new Error(
+					`Invalid draft id: ${idOrSelectedPath}. Use a draft id (for example DRAFT-1), or pick the draft through 'backlog draft edit'.`,
+				);
+			}
 			const reference = await core.filesystem.draftReferenceFromPath(idOrSelectedPath);
 			return { ...reference.task, id: reference.canonicalId, filePath: reference.filePath };
 		}
@@ -3750,10 +3783,55 @@ const draftEditCommand = addHelpSchema(draftCmd.command("edit [taskId]"), {
 		{ name: "title", type: "String", description: "Replacement draft title" },
 		{ name: "description", type: "Markdown", description: "Replacement description" },
 		{ name: "status", type: "String", description: 'Only "Draft" is valid; drafts cannot change status' },
+		{ name: "type", type: taskType, description: "Replacement task type; case-insensitive" },
+		{ name: "due-date", type: "UTC datetime", description: "Set the due date and time" },
+		{ name: "clear-due-date", type: "Boolean", description: "Clear the due date" },
+		{
+			name: "assignee",
+			type: "Comma-separated strings",
+			description: 'Replace all assignees; repeat -a or use @name1,@name2; -a "" clears them',
+		},
+		{ name: "label", type: "Comma-separated strings", description: "Replace all labels; repeatable" },
+		{ name: "add-label", type: "Comma-separated strings", description: "Add labels; repeatable" },
+		{ name: "remove-label", type: "Comma-separated strings", description: "Remove labels; repeatable" },
+		{ name: "clear-labels", type: "Boolean", description: "Remove all labels" },
+		{ name: "priority", type: "String", description: "Set priority (configured priorities)" },
+		{ name: "ordinal", type: "Number", description: "Set ordinal for custom ordering" },
+		{ name: "milestone", type: "String", description: "Assign to milestone by ID or title" },
+		{ name: "clear-milestone", type: "Boolean", description: "Clear the milestone assignment" },
+		{ name: "ac", type: "Comma-separated strings", description: "Add acceptance criteria; repeatable" },
+		{ name: "acceptance-criteria", type: "Comma-separated strings", description: "Replace all acceptance criteria" },
+		{ name: "remove-ac", type: "Integer", description: "Remove acceptance criterion by 1-based index; repeatable" },
+		{ name: "check-ac", type: "Integer", description: "Check acceptance criterion by 1-based index; repeatable" },
+		{ name: "uncheck-ac", type: "Integer", description: "Uncheck acceptance criterion by 1-based index; repeatable" },
+		{ name: "dod", type: "Comma-separated strings", description: "Add Definition of Done items; repeatable" },
+		{ name: "remove-dod", type: "Integer", description: "Remove Definition of Done item by index; repeatable" },
+		{ name: "check-dod", type: "Integer", description: "Check Definition of Done item by index; repeatable" },
+		{ name: "uncheck-dod", type: "Integer", description: "Uncheck Definition of Done item by index; repeatable" },
+		{ name: "plan", type: "Markdown", description: "Replacement implementation plan" },
+		{ name: "append-plan", type: "Markdown", description: "Append after --plan replacement; repeatable" },
+		{ name: "notes", type: "Markdown", description: "Replacement implementation notes" },
+		{ name: "append-notes", type: "Markdown", description: "Append to implementation notes; repeatable" },
+		{ name: "comment", type: "Markdown", description: "Append a discussion comment; repeatable" },
+		{ name: "comment-author", type: "String", description: "Author to record for appended comments" },
+		{ name: "final-summary", type: "Markdown", description: "Completion summary" },
+		{ name: "append-final-summary", type: "Markdown", description: "Append to final summary; repeatable" },
+		{ name: "clear-final-summary", type: "Boolean", description: "Remove final summary" },
+		{ name: "depends-on", type: "Comma-separated strings", description: 'Set dependencies; pass "" to clear' },
+		{ name: "dep", type: "Comma-separated strings", description: "Set dependencies (shortcut for --depends-on)" },
+		{ name: "clear-deps", type: "Boolean", description: "Remove all dependencies" },
+		{ name: "ref", type: "Comma-separated strings", description: 'Replace all references; pass "" to clear' },
+		{ name: "add-ref", type: "Comma-separated strings", description: "Add references; repeatable" },
+		{ name: "remove-ref", type: "Comma-separated strings", description: "Remove references; repeatable" },
+		{ name: "clear-refs", type: "Boolean", description: "Remove all references" },
+		{ name: "doc", type: "Comma-separated strings", description: 'Set documentation; pass "" to clear' },
+		{ name: "modified-file", type: "Comma-separated strings", description: "Set modified file paths; repeatable" },
+		{ name: "clear-docs", type: "Boolean", description: "Remove all documentation" },
+		{ name: "plain", type: "Boolean", description: "Use plain text output after editing" },
 	],
 	writes: "Updates draft metadata and structured sections through Backlog.md",
 	output: "Updated draft details; use --plain for text output",
-	examples: ['backlog draft edit DRAFT-1 -t "Renamed draft"'],
+	examples: ['backlog draft edit DRAFT-1 -t "Renamed draft"', "backlog draft edit DRAFT-1 --check-ac 1"],
 }).description("edit an existing draft");
 addEditFieldOptions(draftEditCommand).action(async (taskId: string | undefined, options) => {
 	await runEditCommand(draftEditTarget, taskId, options);
@@ -5081,7 +5159,7 @@ addHelpSchema(configCmd.command("list"), {
 		}
 	});
 addHelpSchema(program.command("doctor"), {
-	reads: "Active and completed task files, document and decision files, plus Backlog Markdown references",
+	reads: "Active and completed task files, document, decision, and draft files, plus Backlog Markdown references",
 	required: [],
 	optional: [
 		{ name: "fix", type: "Boolean", description: "Apply the displayed duplicate-ID repair" },
@@ -5090,7 +5168,7 @@ addHelpSchema(program.command("doctor"), {
 	writes:
 		"With --fix, atomically renames duplicate task files and updates only their frontmatter IDs; ambiguous references are reported for human review",
 	output:
-		"Duplicate-ID diagnosis for tasks, documents, and decisions, a deterministic task repair preview, and a reference-review report",
+		"Duplicate-ID diagnosis for tasks, documents, decisions, and drafts, a deterministic task repair preview, and a reference-review report",
 	examples: ["backlog doctor", "backlog doctor --fix", "backlog doctor --fix --yes"],
 })
 	.description("diagnose duplicate task, document, and decision IDs and safely repair duplicate task IDs")
@@ -5109,13 +5187,21 @@ addHelpSchema(program.command("doctor"), {
 			const plan = await core.previewDuplicateTaskIdRepair({ includeBranches: true });
 			const contentIdentity = await core.diagnoseContentIdentity();
 			const contentIdentityBroken = hasContentIdentityIssues(contentIdentity);
-			if (plan.groups.length === 0 && plan.crossBranchFindings.length === 0 && !contentIdentityBroken) {
-				console.log("No duplicate task, document, or decision IDs found.");
+			const draftIdentity = await core.filesystem.diagnoseDraftIdentity();
+			const draftIdentityBroken = hasDraftIdentityFindings(draftIdentity);
+			if (
+				plan.groups.length === 0 &&
+				plan.crossBranchFindings.length === 0 &&
+				!contentIdentityBroken &&
+				!draftIdentityBroken
+			) {
+				console.log("No duplicate task, document, decision, or draft IDs found.");
 				return;
 			}
 
 			printDuplicateRepairPlan(plan);
 			printContentIdentityReport(contentIdentity);
+			printDraftIdentityReport(draftIdentity);
 			if (!options.fix) {
 				if (plan.groups.length > 0 && plan.repairable) {
 					console.log("\nRun 'backlog doctor --fix' to apply this repair after reviewing the preview.");
