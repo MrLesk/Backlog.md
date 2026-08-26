@@ -17,9 +17,23 @@ interface TaskCardProps {
   availableTypes?: string[];
   availableProjects?: string[];
   dateFormat?: string;
+  isSelected?: boolean;
+  onSelect?: (event: { shiftKey: boolean }) => void;
 }
 
-const TaskCard: React.FC<TaskCardProps> = ({ task, onEdit, onDragStart, onDragEnd, status, laneId, availableTypes, availableProjects, dateFormat }) => {
+const TaskCard: React.FC<TaskCardProps> = ({
+  task,
+  onEdit,
+  onDragStart,
+  onDragEnd,
+  status,
+  laneId,
+  availableTypes,
+  availableProjects,
+  dateFormat,
+  isSelected = false,
+  onSelect,
+}) => {
   const [isDragging, setIsDragging] = React.useState(false);
   const [showBranchTooltip, setShowBranchTooltip] = React.useState(false);
 
@@ -119,17 +133,35 @@ const TaskCard: React.FC<TaskCardProps> = ({ task, onEdit, onDragStart, onDragEn
             : 'cursor-pointer hover:shadow-md dark:hover:shadow-lg hover:border-stone-500 dark:hover:border-stone-400'
         } ${getPriorityClass(task.priority)} ${
           isDragging ? 'opacity-50 transform rotate-2 scale-105' : ''
+        } ${
+          isSelected
+            ? 'ring-2 ring-blue-500 dark:ring-blue-400 border-blue-500 dark:border-blue-400 bg-blue-50 dark:bg-blue-900/30'
+            : ''
         }`}
+        aria-selected={isSelected}
         draggable={!isFromOtherBranch}
 		role="button"
 		tabIndex={0}
 		aria-label={accessibleLabel}
         onDragStart={handleDragStart}
         onDragEnd={handleDragEnd}
-        onClick={() => onEdit(task)}
+        onClick={(event) => {
+          // Ctrl/Cmd and Shift belong to the board selection, so they must not open the editor.
+          if (onSelect && !isFromOtherBranch && (event.ctrlKey || event.metaKey || event.shiftKey)) {
+            event.preventDefault();
+            event.stopPropagation();
+            onSelect({ shiftKey: event.shiftKey });
+            return;
+          }
+          onEdit(task);
+        }}
 		onKeyDown={(event) => {
 			if (event.key === 'Enter' || event.key === ' ') {
 				event.preventDefault();
+				if (onSelect && !isFromOtherBranch && (event.ctrlKey || event.metaKey || event.shiftKey)) {
+					onSelect({ shiftKey: event.shiftKey });
+					return;
+				}
 				onEdit(task);
 			}
 		}}

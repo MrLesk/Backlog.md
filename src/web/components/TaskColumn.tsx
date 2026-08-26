@@ -22,6 +22,11 @@ interface TaskColumnProps {
   availableTypes?: string[];
   availableProjects?: string[];
   dateFormat?: string;
+  selectedTaskIds?: string[];
+  selectionAnchorId?: string | null;
+  onToggleTaskSelection?: (taskId: string) => void;
+  onSelectTaskRange?: (taskIds: string[]) => void;
+  onBatchMove?: (targetStatus: string) => void;
 }
 
 type CreatedDateSortDirection = 'asc' | 'desc';
@@ -69,6 +74,11 @@ const TaskColumn: React.FC<TaskColumnProps> = ({
   availableTypes,
   availableProjects,
   dateFormat,
+  selectedTaskIds,
+  selectionAnchorId,
+  onToggleTaskSelection,
+  onSelectTaskRange,
+  onBatchMove,
 }) => {
   const [isDragOver, setIsDragOver] = React.useState(false);
   const [draggedTaskId, setDraggedTaskId] = React.useState<string | null>(null);
@@ -143,7 +153,13 @@ const TaskColumn: React.FC<TaskColumnProps> = ({
     const sourceStatus = e.dataTransfer.getData('text/status');
     
     if (!droppedTaskId) return;
-    
+
+    // Dragging one card of a selection moves the whole selection, so the drop skips reordering.
+    if (onBatchMove && selectedTaskIds && selectedTaskIds.length > 1 && selectedTaskIds.includes(droppedTaskId)) {
+      onBatchMove(title);
+      return;
+    }
+
     if (!onTaskReorder) {
       return;
     }
@@ -326,6 +342,22 @@ const TaskColumn: React.FC<TaskColumnProps> = ({
               task={task}
               onUpdate={onTaskUpdate}
               onEdit={onEditTask}
+              isSelected={selectedTaskIds?.includes(task.id) ?? false}
+              onSelect={
+                onToggleTaskSelection
+                  ? ({ shiftKey }) => {
+                      const anchorIndex = selectionAnchorId
+                        ? tasks.findIndex((candidate) => candidate.id === selectionAnchorId)
+                        : -1;
+                      if (shiftKey && onSelectTaskRange && anchorIndex !== -1) {
+                        const [from, to] = anchorIndex < index ? [anchorIndex, index] : [index, anchorIndex];
+                        onSelectTaskRange(tasks.slice(from, to + 1).map((candidate) => candidate.id));
+                        return;
+                      }
+                      onToggleTaskSelection(task.id);
+                    }
+                  : undefined
+              }
               onDragStart={() => {
                 setDraggedTaskId(task.id);
                 onDragStart?.({ status: title, laneId: laneId ?? null });

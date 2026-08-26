@@ -81,6 +81,9 @@ const Board: React.FC<BoardProps> = ({
   dateFormat,
 }) => {
   const [updateError, setUpdateError] = useState<string | null>(null);
+  const [selectedTaskIds, setSelectedTaskIds] = useState<string[]>([]);
+  const [selectionAnchorId, setSelectionAnchorId] = useState<string | null>(null);
+  const [batchMoveStatus, setBatchMoveStatus] = useState<string>('');
   const [dragSourceStatus, setDragSourceStatus] = useState<string | null>(null);
   const [dragSourceLane, setDragSourceLane] = useState<string | null>(null);
   // Set one task after dragstart, never inside it: see handleColumnDragStart.
@@ -301,6 +304,57 @@ const Board: React.FC<BoardProps> = ({
     }
   }, [highlightTaskId, tasks, onEditTask]);
 
+  const clearSelection = React.useCallback(() => {
+    setSelectedTaskIds([]);
+    setSelectionAnchorId(null);
+  }, []);
+
+  const toggleTaskSelection = React.useCallback((taskId: string) => {
+    setSelectedTaskIds((previous) =>
+      previous.includes(taskId) ? previous.filter((id) => id !== taskId) : [...previous, taskId]
+    );
+    setSelectionAnchorId(taskId);
+  }, []);
+
+  const selectTaskRange = React.useCallback((taskIds: string[]) => {
+    setSelectedTaskIds((previous) => {
+      const next = [...previous];
+      for (const taskId of taskIds) {
+        if (!next.includes(taskId)) next.push(taskId);
+      }
+      return next;
+    });
+  }, []);
+
+  useEffect(() => {
+    if (selectedTaskIds.length === 0) return;
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') clearSelection();
+    };
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, [selectedTaskIds.length, clearSelection]);
+
+  const handleBatchMove = async (targetStatus: string) => {
+    if (selectedTaskIds.length === 0 || !targetStatus) return;
+    const taskIds = selectedTaskIds;
+    clearSelection();
+    setBatchMoveStatus('');
+    try {
+      const result = await apiClient.moveTasks({ taskIds, targetStatus });
+      setUpdateError(
+        result.failures.length > 0
+          ? `Could not move ${result.failures.length} of ${taskIds.length} tasks. ${result.failures
+              .map((failure) => `${failure.taskId}: ${failure.reason}`)
+              .join(' ')}`
+          : null
+      );
+      if (onRefreshData) await onRefreshData();
+    } catch (err) {
+      setUpdateError(err instanceof Error ? err.message : 'Failed to move tasks');
+    }
+  };
+
   const handleTaskUpdate = async (taskId: string, updates: Partial<Task>) => {
     try {
       await apiClient.updateTask(taskId, updates);
@@ -510,8 +564,22 @@ const Board: React.FC<BoardProps> = ({
   // - A minimum width keeps columns readable; beyond available space, container scrolls horizontally
   // - Works uniformly for any number of columns without per-count conditionals
 
+  const selectionProps = {
+    selectedTaskIds,
+    selectionAnchorId,
+    onToggleTaskSelection: toggleTaskSelection,
+    onSelectTaskRange: selectTaskRange,
+    onBatchMove: handleBatchMove,
+  };
+
   return (
-    <div className="w-full">
+    // biome-ignore lint/a11y/useKeyWithClickEvents: Escape already clears the selection for keyboard users.
+    <div
+      className="w-full"
+      onClick={(event) => {
+        if (selectedTaskIds.length > 0 && event.target === event.currentTarget) clearSelection();
+      }}
+    >
       {updateError && (
         <div className="mb-4 rounded-md bg-red-100 px-4 py-3 text-sm text-red-700 dark:bg-red-900/40 dark:text-red-200 transition-colors duration-200">
           {updateError}
@@ -527,6 +595,44 @@ const Board: React.FC<BoardProps> = ({
             + New Task
           </button>
         </div>
+        {selectedTaskIds.length > 0 && (
+          <div
+            className="flex flex-wrap items-center gap-3 rounded-lg border border-blue-300 dark:border-blue-600 bg-blue-50 dark:bg-blue-900/30 px-4 py-2 transition-colors duration-200"
+            role="toolbar"
+            aria-label="Task selection"
+          >
+            <span className="text-sm font-medium text-blue-900 dark:text-blue-100">
+              {selectedTaskIds.length} selected
+            </span>
+            <label className="sr-only" htmlFor="batch-move-status">
+              Move selected tasks to
+            </label>
+            <select
+              id="batch-move-status"
+              className={BOARD_FILTER_SELECT_CLASS}
+              value={batchMoveStatus}
+              onChange={(event) => setBatchMoveStatus(event.target.value)}
+            >
+              <option value="">Move to...</option>
+              {statuses.map((status) => (
+                <option key={status} value={status}>
+                  {status}
+                </option>
+              ))}
+            </select>
+            <button
+              type="button"
+              className={BOARD_FILTER_BUTTON_CLASS}
+              disabled={!batchMoveStatus}
+              onClick={() => handleBatchMove(batchMoveStatus)}
+            >
+              Move
+            </button>
+            <button type="button" className={BOARD_FILTER_BUTTON_CLASS} onClick={clearSelection}>
+              Clear
+            </button>
+          </div>
+        )}
         <div className="flex flex-wrap items-center gap-3" role="toolbar" aria-label="Board view controls">
             <div className="inline-flex rounded-lg border border-gray-200 dark:border-gray-700 p-1 bg-gray-50 dark:bg-gray-800/50 transition-colors duration-200">
               <button
@@ -727,6 +833,7 @@ const Board: React.FC<BoardProps> = ({
                             onDragStart={handleColumnDragStart}
                             onDragEnd={handleColumnDragEnd}
                             onCleanup={status === terminalStatus ? () => setShowCleanupModal(true) : undefined}
+                            {...selectionProps}
                           />
                         </div>
                       ))}
@@ -758,6 +865,7 @@ const Board: React.FC<BoardProps> = ({
                   onDragStart={handleColumnDragStart}
                   onDragEnd={handleColumnDragEnd}
                   onCleanup={status === terminalStatus ? () => setShowCleanupModal(true) : undefined}
+                  {...selectionProps}
                 />
               </div>
             ))}

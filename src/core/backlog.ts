@@ -91,6 +91,7 @@ import {
 	taskIdsEqual,
 } from "../utils/task-path.ts";
 import { applyTaskFilters, createTaskSearchIndex } from "../utils/task-search.ts";
+import { sortByOrdinal } from "../utils/task-sorting.ts";
 import { attachSubtaskSummaries } from "../utils/task-subtasks.ts";
 import { formatValidTaskTypeValues, resolveTaskTypeValue } from "../utils/task-type-config.ts";
 import { upsertTaskUpdatedDate } from "../utils/task-updated-date.ts";
@@ -2800,6 +2801,90 @@ export class Core {
 
 		const updatedTask = updatesMap.get(taskId) ?? updatedMoved;
 		return { updatedTask, changedTasks };
+	}
+
+	async moveTasksToStatus(params: {
+		taskIds: string[];
+		targetStatus: string;
+		commitMessage?: string;
+		autoCommit?: boolean;
+		defaultStep?: number;
+	}): Promise<{ movedTasks: Task[]; changedTasks: Task[]; failures: Array<{ taskId: string; reason: string }> }> {
+		const targetStatus = String(params.targetStatus || "").trim();
+		if (!targetStatus) throw new Error("targetStatus is required");
+		const defaultStep = params.defaultStep ?? DEFAULT_ORDINAL_STEP;
+
+		const requestedIds: string[] = [];
+		const seen = new Set<string>();
+		for (const rawId of params.taskIds) {
+			const trimmed = String(rawId || "").trim();
+			if (!trimmed) continue;
+			const key = normalizeTaskId(trimmed);
+			if (seen.has(key)) continue;
+			seen.add(key);
+			requestedIds.push(trimmed);
+		}
+		if (requestedIds.length === 0) throw new Error("taskIds must include at least one task");
+
+		const store = await this.getContentStore();
+		await store.refreshTasks();
+
+		const failures: Array<{ taskId: string; reason: string }> = [];
+		const tasksToMove: Task[] = [];
+		for (const taskId of requestedIds) {
+			const resolution = store.resolveTaskForMutation(normalizeTaskId(taskId));
+			if (resolution.status === "ambiguous") {
+				failures.push({ taskId, reason: new AmbiguousTaskIdError(taskId, resolution.candidates).message });
+				continue;
+			}
+			if (resolution.status !== "found") {
+				failures.push({ taskId, reason: `Task ${taskId} not found.` });
+				continue;
+			}
+			const task = resolution.task;
+			if (task.branch) {
+				failures.push({
+					taskId,
+					reason: `Task ${task.id} exists in branch "${task.branch}" and cannot be moved from the current branch. Switch to that branch to modify it.`,
+				});
+				continue;
+			}
+			tasksToMove.push(task);
+		}
+
+		if (tasksToMove.length === 0) {
+			return { movedTasks: [], changedTasks: [], failures };
+		}
+
+		// The batch appends to the end of the target column, so only the moved tasks get a new
+		// ordinal. Tasks already in the column keep theirs and stay out of the write set.
+		const movedIds = new Set(tasksToMove.map((task) => task.id));
+		const columnTasks = sortByOrdinal(
+			store.getTasks({ status: targetStatus }).filter((task) => !movedIds.has(task.id)),
+		);
+		const lastOrdinal = columnTasks.reduce((highest, task) => Math.max(highest, task.ordinal ?? 0), 0);
+
+		const movedTasks = tasksToMove.map((task, index) => ({
+			...task,
+			status: targetStatus,
+			ordinal: lastOrdinal + defaultStep * (index + 1),
+		}));
+
+		const changedTasks = movedTasks.filter((task, index) => {
+			const original = tasksToMove[index];
+			if (!original) return true;
+			return original.status !== task.status || (original.ordinal ?? null) !== task.ordinal;
+		});
+
+		if (changedTasks.length > 0) {
+			await this.updateTasksBulk(
+				changedTasks,
+				params.commitMessage ?? `Move ${changedTasks.length} tasks to ${targetStatus}`,
+				params.autoCommit,
+			);
+		}
+
+		return { movedTasks, changedTasks, failures };
 	}
 
 	async archiveTask(taskId: string, autoCommit?: boolean, options: TaskReadOptions = {}): Promise<boolean> {

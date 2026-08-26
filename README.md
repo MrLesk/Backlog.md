@@ -202,6 +202,7 @@ backlog browser --no-open
 
 **Features:**
 - Interactive Kanban board with drag-and-drop
+- Multi-select cards to move several tasks to one column
 - Task creation and editing with forms
 - Interactive acceptance criteria editor with checklists
 - Real-time updates across all views
