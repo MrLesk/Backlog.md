@@ -29,6 +29,8 @@ interface TaskWizardValues {
 export interface TaskWizardTaskOption {
 	id: string;
 	title: string;
+	/** Opaque value returned on selection; defaults to the id when a caller binds rows to other handles. */
+	value?: string;
 }
 
 interface PromptChoice {
@@ -593,7 +595,7 @@ export async function pickTaskForEditWizard(params: {
 			message: "Select task to edit",
 			options: tasks.map((task) => ({
 				label: `${task.id} - ${task.title}`,
-				value: task.id,
+				value: task.value ?? task.id,
 			})),
 		});
 		const selected = response.taskId;

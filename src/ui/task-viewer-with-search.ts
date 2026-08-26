@@ -1233,9 +1233,33 @@ export async function viewTaskEnhanced(
 				showTransientHelp(` {red-fg}Task ${selectedTask.id} was not found on this branch.{/}`);
 				return;
 			}
+			if (result.reason === "identity_conflict") {
+				showTransientHelp(
+					" {red-fg}File identity is inconsistent; make the frontmatter id match the filename, then retry.{/}",
+				);
+				return;
+			}
+			if (result.reason === "unreadable") {
+				showTransientHelp(" {red-fg}Could not read the saved file; fix its YAML/markdown syntax.{/}");
+				return;
+			}
+			if (result.reason === "ambiguous") {
+				showTransientHelp(
+					" {red-fg}Numeric draft id is shared by multiple files; rename or fix their ids, then retry.{/}",
+				);
+				return;
+			}
 
 			if (result.task) {
-				const index = allTasks.findIndex((taskItem) => taskItem.id === selectedTask.id);
+				// Reconcile by file identity first: with task_prefix="draft" a task and a draft can
+				// share one id, so an id match alone may target the wrong record.
+				const index = allTasks.findIndex(
+					(taskItem) =>
+						(result.task?.filePath !== undefined &&
+							taskItem.filePath !== undefined &&
+							taskItem.filePath === result.task.filePath) ||
+						taskItem.id === result.task?.id,
+				);
 				if (index >= 0) {
 					allTasks[index] = result.task;
 				}

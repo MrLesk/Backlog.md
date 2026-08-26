@@ -1,5 +1,5 @@
 import { mkdir, rename, stat, unlink } from "node:fs/promises";
-import { dirname, isAbsolute, join, resolve } from "node:path";
+import { basename, dirname, isAbsolute, join, resolve } from "node:path";
 import lockfile from "proper-lockfile";
 import { DEFAULT_DIRECTORIES, DEFAULT_FILES, DEFAULT_STATUSES, FALLBACK_STATUS } from "../constants/index.ts";
 import { parseFrontmatter } from "../markdown/frontmatter.ts";
@@ -15,9 +15,12 @@ import {
 import { findDecisionById } from "../utils/decision-id.ts";
 import { documentIdsEqual, findDocumentById, normalizeDocumentId } from "../utils/document-id.ts";
 import { normalizeDocumentRelativePath, normalizeDocumentSubPath } from "../utils/document-path.ts";
+import type { DraftIdentityFindings } from "../utils/duplicate-detection.ts";
+import { AmbiguousIdError, isAmbiguousIdError } from "../utils/entity-id.ts";
 import {
 	buildGlobPattern,
 	extractAnyPrefix,
+	filenameMatchesId,
 	generateNextId,
 	idForFilename,
 	normalizeId,
@@ -25,6 +28,9 @@ import {
 import { normalizeStatusSet, statusMatchesSet } from "../utils/status-filter.ts";
 import {
 	AmbiguousTaskIdError,
+	draftIdsMatchLoosely,
+	extractDraftIdFromFilename,
+	findDuplicateDraftFilenameGroups,
 	getTaskFilename,
 	getTaskPath,
 	isAmbiguousTaskIdError,
@@ -273,8 +279,38 @@ export function isTaskLockError(error: unknown): error is Error {
 	return isLockError(error, TASK_LOCK_ERROR_NAME, TASK_LOCK_ERROR_CODE);
 }
 
+/** Raises the shared fail-fast lock failure for contention detected outside an acquisition. */
+export function newTaskLockError(taskId: string): Error {
+	return taskLockError(taskLockErrorMessage(taskId));
+}
+
 export function taskLockErrorMessage(taskId: string): string {
 	return `Edit failed: ${taskId} is being modified by another process; retry if appropriate.`;
+}
+
+/**
+ * The only handle through which a draft may be read or mutated: the exact file plus the id
+ * derived from that file's name. Nothing may re-resolve a draft id to a different path.
+ */
+export interface DraftFileReference {
+	filePath: string;
+	canonicalId: string;
+}
+
+export class DraftParseError extends Error {
+	constructor(filename: string) {
+		super(`Draft file ${filename} could not be parsed. Repair or remove the file, then rerun the edit.`);
+		this.name = "DraftParseError";
+	}
+}
+
+export class DraftIdentityError extends Error {
+	constructor(filename: string, frontmatterId: string, filenameId: string | null) {
+		super(
+			`Draft file ${filename} declares frontmatter id ${frontmatterId}, which does not match its filename id ${filenameId ?? "(unreadable)"}. Fix the frontmatter id or rename the file so they agree, then rerun the edit.`,
+		);
+		this.name = "DraftIdentityError";
+	}
 }
 
 export class FileSystem {
@@ -617,17 +653,37 @@ export class FileSystem {
 		if (!filePath) {
 			throw new Error(`Cannot lock task ${task.id} for editing without its file path.`);
 		}
+		return await this.withEntityFileLock("task", task.id, filePath, fn);
+	}
 
-		const lockKey = task.id
+	/**
+	 * Draft counterpart of the per-task lock. The lock key is namespaced by store so a project
+	 * whose task prefix is "draft" does not make an unrelated task contend with its draft twin,
+	 * while two editors of the same draft file still fail fast against each other.
+	 */
+	async withDraftLock<T>(reference: DraftFileReference, fn: () => Promise<T>): Promise<T> {
+		if (process.env.USE_GLOBAL_TASK_ID_LOCK?.toLowerCase() === "false") {
+			return await fn();
+		}
+		return await this.withEntityFileLock("draft", reference.canonicalId, reference.filePath, fn);
+	}
+
+	private async withEntityFileLock<T>(
+		scope: "task" | "draft",
+		entityId: string,
+		filePath: string,
+		fn: () => Promise<T>,
+	): Promise<T> {
+		const lockKey = entityId
 			.trim()
 			.toLowerCase()
 			.replace(/[^a-z0-9._-]+/g, "-")
 			.replace(/^\.+/, "");
 		return await this.withLockTarget(
 			filePath,
-			join(await this.getBacklogDir(), ".locks", `task-${lockKey || "unknown"}`),
+			join(await this.getBacklogDir(), ".locks", `${scope}-${lockKey || "unknown"}`),
 			{ staleMs: DEFAULT_CREATE_LOCK_STALE_MS, retries: 0, retryDelayMs: 0 },
-			(error) => this.toTaskLockError(error, task.id),
+			(error) => this.toTaskLockError(error, entityId),
 			fn,
 		);
 	}
@@ -1058,22 +1114,18 @@ export class FileSystem {
 	}
 
 	async archiveDraft(draftId: string): Promise<{ sourcePath: string; targetPath: string } | null> {
-		try {
-			const draftsDir = await this.getDraftsDir();
-			const archiveDraftsDir = await this.getArchiveDraftsDir();
+		// Whole-file operation: the argument names the file to move, so filename binding is the
+		// identity that matters and frontmatter equivalence is not required. The draft lock spans
+		// read-copy-unlink so a concurrent edit cannot be archived in pre-edit form or lost.
+		const sourcePath = await this.resolveDraftFilePath(draftId);
+		if (!sourcePath) return null;
+		const canonicalId = extractDraftIdFromFilename(basename(sourcePath));
+		if (!canonicalId) return null;
+		const archiveDraftsDir = await this.getArchiveDraftsDir();
 
-			// Find draft file with draft- prefix
-			const files = await Array.fromAsync(
-				new Bun.Glob(buildGlobPattern("draft")).scan({ cwd: draftsDir, followSymlinks: true }),
-			);
-			const normalizedId = normalizeId(draftId, "draft");
-			const filenameId = idForFilename(normalizedId);
-			const draftFile = files.find((f) => f.startsWith(`${filenameId} -`) || f.startsWith(`${filenameId}-`));
-
-			if (!draftFile) return null;
-
-			const sourcePath = join(draftsDir, draftFile);
-			const targetPath = join(archiveDraftsDir, draftFile);
+		return await this.withDraftLock({ filePath: sourcePath, canonicalId }, async () => {
+			const filename = basename(sourcePath);
+			const targetPath = join(archiveDraftsDir, filename);
 
 			const content = await Bun.file(sourcePath).text();
 			await this.ensureDirectoryExists(dirname(targetPath));
@@ -1082,17 +1134,32 @@ export class FileSystem {
 			await unlink(sourcePath);
 
 			return { sourcePath, targetPath };
+		});
+	}
+
+	/**
+	 * Parses one exact draft file path without identity validation; whole-file operations
+	 * (archive/promote) are bound by filename and must tolerate frontmatter drift.
+	 */
+	async loadDraftFromFile(filePath: string): Promise<Task | null> {
+		try {
+			const task = normalizeTaskIdentity(parseTask(await Bun.file(filePath).text()));
+			return { ...task, filePath };
 		} catch {
 			return null;
 		}
 	}
 
 	async promoteDraft(draftId: string): Promise<boolean> {
+		// Whole-file operation: filename binding decides which file is promoted; frontmatter
+		// equivalence is not required. Duplicate numeric identities still fail closed.
+		const sourcePath = await this.resolveDraftFilePath(draftId);
+		if (!sourcePath) return false;
+
 		try {
 			return await this.withCreateLock(async () => {
-				// Load the draft
-				const draft = await this.loadDraft(draftId);
-				if (!draft?.filePath) return false;
+				const draft = await this.loadDraftFromFile(sourcePath);
+				if (!draft) return false;
 
 				// Get task prefix from config (default: "task")
 				const config = await this.loadConfig();
@@ -1123,7 +1190,7 @@ export class FileSystem {
 				await this.saveTask(promotedTask);
 
 				// Delete old draft file
-				await unlink(draft.filePath);
+				await unlink(sourcePath);
 
 				return true;
 			});
@@ -1144,8 +1211,9 @@ export class FileSystem {
 
 			// Get existing draft IDs to generate next ID
 			// Draft prefix is always "draft" (not configurable like task prefix)
-			const existingDrafts = await this.listDrafts();
-			const existingIds = existingDrafts.map((d) => d.id);
+			// Occupancy includes filename-derived ids: an unparsable file still reserves its id.
+			const [existingDrafts, occupiedFileIds] = await Promise.all([this.listDrafts(), this.listOccupiedDraftFileIds()]);
+			const existingIds = [...existingDrafts.map((d) => d.id), ...occupiedFileIds];
 
 			// Generate new draft ID
 			const config = await this.loadConfig();
@@ -1189,18 +1257,30 @@ export class FileSystem {
 		const normalizedTask = { ...task, id: draftId };
 		const content = serializeTask(normalizedTask);
 
-		try {
-			// Find existing draft file with same ID but possibly different filename (e.g., title changed)
-			const filenameId = idForFilename(draftId);
-			const existingFiles = await Array.fromAsync(
-				new Bun.Glob(buildGlobPattern("draft")).scan({ cwd: draftsDir, followSymlinks: true }),
-			);
-			const existingFile = existingFiles.find((f) => f.startsWith(`${filenameId} -`) || f.startsWith(`${filenameId}-`));
-			if (existingFile && existingFile !== filename) {
-				await unlink(join(draftsDir, existingFile));
+		// Remove every existing draft file whose numeric identity matches the saved id but
+		// whose filename differs (title change, zero-padding drift): a save must converge
+		// to one file instead of breeding duplicates that future edits report as ambiguous.
+		// A candidate that fails to parse is never deleted: its identity was not validated,
+		// and its content may be a real draft only its filename proclaims. A candidate that
+		// cannot be removed aborts the save: writing past it would mint a duplicate identity.
+		const filenameId = idForFilename(draftId);
+		const existingFiles = await Array.fromAsync(
+			new Bun.Glob(buildGlobPattern("draft")).scan({ cwd: draftsDir, followSymlinks: true }),
+		);
+		for (const existingFile of existingFiles.filter(
+			(f) => f !== filename && (filenameMatchesId(f, filenameId) || draftIdsMatchLoosely(draftId, f)),
+		)) {
+			const candidatePath = join(draftsDir, existingFile);
+			if (!(await this.loadDraftFromFile(candidatePath))) continue;
+			try {
+				await unlink(candidatePath);
+			} catch (error) {
+				throw new Error(
+					`Could not remove superseded draft file ${existingFile} while saving ${filename}: ${
+						error instanceof Error ? error.message : String(error)
+					}. No changes were written; resolve the file conflict, then retry.`,
+				);
 			}
-		} catch {
-			// Ignore errors if no existing files found
 		}
 
 		await this.ensureDirectoryExists(dirname(filepath));
@@ -1210,23 +1290,11 @@ export class FileSystem {
 
 	async loadDraft(draftId: string): Promise<Task | null> {
 		try {
-			const draftsDir = await this.getDraftsDir();
-			// Search for draft files with draft- prefix
-			const files = await Array.fromAsync(
-				new Bun.Glob(buildGlobPattern("draft")).scan({ cwd: draftsDir, followSymlinks: true }),
-			);
-			const normalizedId = normalizeId(draftId, "draft");
-			const filenameId = idForFilename(normalizedId);
-
-			// Find matching draft file
-			const draftFile = files.find((f) => f.startsWith(`${filenameId} -`) || f.startsWith(`${filenameId}-`));
-			if (!draftFile) return null;
-
-			const filepath = join(draftsDir, draftFile);
-			const content = await Bun.file(filepath).text();
-			const task = normalizeTaskIdentity(parseTask(content));
-			return { ...task, filePath: filepath };
-		} catch {
+			const filePath = await this.resolveDraftFilePath(draftId);
+			if (!filePath) return null;
+			return await this.loadDraftFromFile(filePath);
+		} catch (error) {
+			if (isAmbiguousIdError(error)) throw error;
 			return null;
 		}
 	}
@@ -1250,6 +1318,151 @@ export class FileSystem {
 		} catch {
 			return [];
 		}
+	}
+
+	/**
+	 * Lists drafts while skipping individual files that fail to parse, so one damaged
+	 * file cannot hide the healthy drafts from interactive selection.
+	 */
+	async listHealthyDrafts(): Promise<Task[]> {
+		try {
+			const draftsDir = await this.getDraftsDir();
+			const taskFiles = (
+				await Array.fromAsync(new Bun.Glob(buildGlobPattern("draft")).scan({ cwd: draftsDir, followSymlinks: true }))
+			).sort();
+
+			const tasks: Task[] = [];
+			for (const file of taskFiles) {
+				try {
+					const filepath = join(draftsDir, file);
+					const content = await Bun.file(filepath).text();
+					const task = normalizeTaskIdentity(parseTask(content));
+					tasks.push({ ...task, filePath: filepath });
+				} catch {}
+			}
+
+			return sortByTaskId(tasks);
+		} catch {
+			return [];
+		}
+	}
+
+	/**
+	 * The single validation authority for one draft file: parse it and require its frontmatter
+	 * id to agree with its filename under the loose matching rules. Throws with actionable
+	 * context when the file is damaged or its identity drifted.
+	 */
+	async draftReferenceFromPath(filePath: string): Promise<DraftFileReference & { task: Task }> {
+		const filename = basename(filePath);
+		let task: Task;
+		try {
+			task = normalizeTaskIdentity(parseTask(await Bun.file(filePath).text()));
+		} catch {
+			throw new DraftParseError(filename);
+		}
+		const canonicalId = extractDraftIdFromFilename(filename);
+		if (!canonicalId || !draftIdsMatchLoosely(task.id, filename)) {
+			throw new DraftIdentityError(filename, task.id, canonicalId);
+		}
+		return { filePath, canonicalId, task: { ...task, filePath } };
+	}
+
+	/**
+	 * Resolve a user-supplied draft id to a validated reference. Candidate filenames are matched
+	 * by exact prefix and loose numeric rules together, so duplicate numeric identities fail
+	 * closed; only the matched file is parsed.
+	 */
+	async resolveDraftReference(draftId: string): Promise<(DraftFileReference & { task: Task }) | null> {
+		const filePath = await this.resolveDraftFilePath(draftId);
+		if (!filePath) return null;
+		return await this.draftReferenceFromPath(filePath);
+	}
+
+	/**
+	 * Filename-bound resolution for whole-file operations (archive, promote). These move or
+	 * delete the matched file itself, so frontmatter equivalence does not apply; duplicate
+	 * numeric identities still fail closed.
+	 */
+	async resolveDraftFilePath(draftId: string): Promise<string | null> {
+		const draftsDir = await this.getDraftsDir();
+		let files: string[] = [];
+		try {
+			files = await Array.fromAsync(
+				new Bun.Glob(buildGlobPattern("draft")).scan({ cwd: draftsDir, followSymlinks: true }),
+			);
+		} catch {
+			return null;
+		}
+		const normalizedId = normalizeId(draftId, "draft");
+		const candidates = new Set(
+			files
+				.filter((f) => filenameMatchesId(f, idForFilename(normalizedId)))
+				.concat(files.filter((f) => draftIdsMatchLoosely(draftId, f))),
+		);
+		const matches = [...candidates].sort();
+		if (matches.length > 1) {
+			throw new AmbiguousIdError(
+				"Draft",
+				normalizedId,
+				matches,
+				"Rename one file to a distinct numeric id, then make its frontmatter agree.",
+			);
+		}
+		const filename = matches.at(0);
+		return filename ? join(draftsDir, filename) : null;
+	}
+
+	/**
+	 * Numeric draft identities occupied on disk, derived from filenames: files that fail to
+	 * parse still reserve their id against future allocation.
+	 */
+	async listOccupiedDraftFileIds(): Promise<string[]> {
+		const filenames = await this.listDraftFilenames();
+		return filenames.map(extractDraftIdFromFilename).filter((id): id is string => id !== null);
+	}
+
+	async listDraftFilenames(unreadable?: string[]): Promise<string[]> {
+		const draftsDir = await this.getDraftsDir();
+		try {
+			return (
+				await Array.fromAsync(new Bun.Glob(buildGlobPattern("draft")).scan({ cwd: draftsDir, followSymlinks: true }))
+			).sort();
+		} catch {
+			// A directory that cannot be scanned is a finding, not an empty store: surface it so
+			// doctor never reports draft identities as healthy without having checked them.
+			unreadable?.push(draftsDir);
+			return [];
+		}
+	}
+
+	/**
+	 * Draft identity findings for doctor: duplicate numeric identities (filename-derived, so
+	 * unparsable files count), drifted frontmatter-vs-filename records, and unreadable files.
+	 */
+	async diagnoseDraftIdentity(): Promise<DraftIdentityFindings> {
+		const unreadableDirectories: string[] = [];
+		const filenames = await this.listDraftFilenames(unreadableDirectories);
+		const duplicates = findDuplicateDraftFilenameGroups(filenames).map((paths) => ({
+			id: extractDraftIdFromFilename(paths[0] ?? "") ?? "",
+			paths,
+		}));
+		const draftsDir = await this.getDraftsDir();
+		const unreadable: string[] = [...unreadableDirectories];
+		const drifted: Array<{ path: string; frontmatterId: string; filenameId: string }> = [];
+		for (const filename of filenames) {
+			let parsed: Task | null;
+			try {
+				parsed = normalizeTaskIdentity(parseTask(await Bun.file(join(draftsDir, filename)).text()));
+			} catch {
+				unreadable.push(filename);
+				continue;
+			}
+			const declaredId = extractDraftIdFromFilename(filename);
+			if (!declaredId || !draftIdsMatchLoosely(parsed.id, filename)) {
+				drifted.push({ path: filename, frontmatterId: parsed.id, filenameId: declaredId ?? "(unreadable)" });
+			}
+		}
+		return { duplicates, unreadable, drifted };
 	}
 
 	// Decision log operations

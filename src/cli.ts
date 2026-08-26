@@ -1,10 +1,10 @@
 #!/usr/bin/env node
 
-import { basename, join } from "node:path";
+import { basename, dirname, isAbsolute, join } from "node:path";
 import { stdin as input } from "node:process";
 import { createInterface } from "node:readline/promises";
 import * as clack from "@clack/prompts";
-import { Command } from "commander";
+import { Command, type OptionValues } from "commander";
 import { runAdvancedConfigWizard } from "./commands/advanced-config-wizard.ts";
 import { type CompletionInstallResult, installCompletion, registerCompletionCommand } from "./commands/completion.ts";
 import { configureAdvancedSettings } from "./commands/configure-advanced-settings.ts";
@@ -55,6 +55,7 @@ import {
 	type Task,
 	type TaskListFilter,
 	type TaskSearchResult,
+	type TaskUpdateInput,
 } from "./types/index.ts";
 import type { TaskEditArgs } from "./types/task-edit-args.ts";
 import { genericSelectList } from "./ui/components/generic-list.ts";
@@ -66,10 +67,12 @@ import { normalizeProjectBacklogDirectory } from "./utils/backlog-directory.ts";
 import { launchBrowser } from "./utils/browser-launch.ts";
 import {
 	type ContentIdentityReport,
+	type DraftIdentityFindings,
 	formatDuplicateTaskIdWarning,
 	hasContentIdentityIssues,
+	hasDraftIdentityFindings,
 } from "./utils/duplicate-detection.ts";
-import { isAmbiguousIdError } from "./utils/entity-id.ts";
+import { AmbiguousIdError, isAmbiguousIdError } from "./utils/entity-id.ts";
 import { findBacklogRoot } from "./utils/find-backlog-root.ts";
 import { generateNextDecisionId } from "./utils/id-generators.ts";
 import { labelsToLower } from "./utils/label-filter.ts";
@@ -265,22 +268,22 @@ function parsePositiveIntegerOption(value: unknown, optionName: string, helpComm
 	return Number.parseInt(rawValue, 10);
 }
 
-function formatTaskEditError(error: unknown, taskId: string): string {
+function formatTaskEditError(error: unknown, taskId: string, commandKind = "task"): string {
 	const message = error instanceof Error ? error.message : String(error);
 	if (
 		message.startsWith("Malformed Acceptance Criteria markers:") ||
 		message.startsWith("Malformed Definition of Done markers:")
 	) {
-		return `${message}\nThe edit was not applied. Run 'backlog task view ${taskId} --plain' to locate the task file, repair or remove the malformed marker block in that Markdown file, then rerun the edit.`;
+		return `${message}\nThe edit was not applied. Run 'backlog ${commandKind} view ${taskId} --plain' to locate the ${commandKind} file, repair or remove the malformed marker block in that Markdown file, then rerun the edit.`;
 	}
 	if (message.startsWith("Invalid index:")) {
-		return `${message} Try 'backlog task edit ${taskId} --help' for index options.`;
+		return `${message} Try 'backlog ${commandKind} edit ${taskId} --help' for index options.`;
 	}
 	if (
 		message.includes(" not found") &&
 		(message.startsWith("Acceptance criterion ") || message.startsWith("Definition of Done item "))
 	) {
-		return `${message}\nRun 'backlog task view ${taskId} --plain' to inspect indexes, or 'backlog task edit ${taskId} --help' for edit options.`;
+		return `${message}\nRun 'backlog ${commandKind} view ${taskId} --plain' to inspect indexes, or 'backlog ${commandKind} edit ${taskId} --help' for edit options.`;
 	}
 	return message;
 }
@@ -428,6 +431,31 @@ function printContentIdentityReport(report: ContentIdentityReport): void {
 			for (const path of issues.unreadable) console.log(`  - ${path}`);
 			console.log(`Repair the frontmatter or file permissions; identity could not be checked for these ${label}s.`);
 		}
+	}
+}
+
+function printDraftIdentityReport(findings: DraftIdentityFindings): void {
+	if (findings.duplicates.length > 0) {
+		console.log("\nDuplicate draft IDs (diagnostic only):");
+		for (const group of findings.duplicates) {
+			console.log(`  ${group.id}:`);
+			for (const path of group.paths) console.log(`    - ${path}`);
+		}
+		console.log("Rename one file to a distinct numeric id, then make its frontmatter agree.");
+	}
+	if (findings.drifted.length > 0) {
+		console.log("\nDrifted draft files (frontmatter id does not match filename):");
+		for (const drift of findings.drifted) {
+			console.log(
+				`  - ${drift.path}: frontmatter declares ${drift.frontmatterId}, filename declares ${drift.filenameId}`,
+			);
+		}
+		console.log("Fix the frontmatter id or rename each file so they agree.");
+	}
+	if (findings.unreadable.length > 0) {
+		console.log("\nUnreadable draft files or directories:");
+		for (const path of findings.unreadable) console.log(`  - ${path}`);
+		console.log("Repair the YAML/frontmatter or file permissions; identity could not be checked for these drafts.");
 	}
 }
 
@@ -2743,7 +2771,598 @@ addHelpSchema(taskCmd.command("list"), {
 		cleanup();
 	});
 
-addHelpSchema(taskCmd.command("edit [taskId]"), {
+type EditCommandTarget = {
+	label: string;
+	pluralLabel: string;
+	statuses: (core: Core) => Promise<string[]>;
+	resolve: (core: Core, idOrSelectedPath: string) => Promise<Task | null>;
+	listCandidates: (core: Core) => Promise<Task[]>;
+	selectionValue: (candidate: Task) => string;
+	update: (core: Core, existing: Task, input: TaskUpdateInput) => Promise<Task>;
+	notFoundMessage: (id: string) => string;
+};
+
+const taskEditTarget: EditCommandTarget = {
+	label: "Task",
+	pluralLabel: "tasks",
+	statuses: (core) => getValidStatuses(core),
+	resolve: (core, id) => core.loadTaskById(id, { includeCrossBranch: false }),
+	listCandidates: (core) => core.queryTasks({ includeCrossBranch: false }),
+	selectionValue: (candidate) => candidate.id,
+	update: (core, existing, input) => core.editTask(existing.id, input, undefined, { includeCrossBranch: false }),
+	notFoundMessage: (id) => `Task ${id} not found. ${LOCAL_TASK_LOOKUP_HINT}`,
+};
+
+const draftEditTarget: EditCommandTarget = {
+	label: "Draft",
+	pluralLabel: "drafts",
+	statuses: async () => ["Draft"],
+	async resolve(core, idOrSelectedPath) {
+		// The single resolution authority for every draft entry point: direct ids go through the
+		// id resolver; wizard selections arrive as the selected row's file path and are validated
+		// against that exact file. Path-form handles re-resolve through the id authority so a
+		// duplicate numeric identity can never bypass ambiguity detection.
+		if (isAbsolute(idOrSelectedPath)) {
+			const draftsDir = await core.filesystem.getDraftsDir();
+			if (dirname(idOrSelectedPath) !== draftsDir) {
+				throw new Error(
+					`Invalid draft id: ${idOrSelectedPath}. Use a draft id (for example DRAFT-1), or pick the draft through 'backlog draft edit'.`,
+				);
+			}
+			const direct = await core.filesystem.draftReferenceFromPath(idOrSelectedPath);
+			const resolved = await core.filesystem.resolveDraftReference(direct.canonicalId);
+			if (!resolved || resolved.filePath !== idOrSelectedPath) {
+				throw new AmbiguousIdError(
+					"Draft",
+					normalizeId(direct.canonicalId, DRAFT_PREFIX),
+					[idOrSelectedPath],
+					"Rename one file to a distinct numeric id, then make its frontmatter agree.",
+				);
+			}
+			return { ...resolved.task, id: resolved.canonicalId, filePath: resolved.filePath };
+		}
+		const reference = await core.filesystem.resolveDraftReference(idOrSelectedPath);
+		return reference ? { ...reference.task, id: reference.canonicalId, filePath: reference.filePath } : null;
+	},
+	listCandidates: (core) => core.filesystem.listHealthyDrafts(),
+	selectionValue: (candidate) => candidate.filePath ?? candidate.id,
+	update: (core, existing, input) => {
+		if (!existing.filePath) {
+			throw new Error(`Cannot update draft ${existing.id} without its file path.`);
+		}
+		return core.updateDraftFromInput({ filePath: existing.filePath, canonicalId: existing.id }, input);
+	},
+	notFoundMessage: (id) => `Draft ${id} not found.`,
+};
+
+async function runEditCommand(target: EditCommandTarget, taskId: string | undefined, options: OptionValues) {
+	const shouldUseWizard = hasInteractiveTTY && !hasEditFieldFlags(options);
+	if (!shouldUseWizard && !taskId) {
+		printMissingRequiredArgument("taskId");
+		return;
+	}
+
+	const cwd = await requireProjectRoot();
+	const core = new Core(cwd);
+
+	if (shouldUseWizard) {
+		let selectedTaskId = taskId?.trim() || undefined;
+		if (!selectedTaskId) {
+			const candidates = await target.listCandidates(core);
+			const taskOptions = candidates.map((candidate) => ({
+				id: candidate.id,
+				title: candidate.title,
+				value: target.selectionValue(candidate),
+			}));
+			if (taskOptions.length === 0) {
+				console.log(`No ${target.pluralLabel} found.`);
+				return;
+			}
+			selectedTaskId = await pickTaskForEditWizard({ tasks: taskOptions });
+			if (!selectedTaskId) {
+				clack.cancel(`${target.label} edit cancelled.`);
+				return;
+			}
+		}
+
+		const existingTaskForWizard = await target.resolve(core, selectedTaskId);
+		if (!existingTaskForWizard) {
+			console.error(target.notFoundMessage(selectedTaskId));
+			process.exitCode = 1;
+			return;
+		}
+
+		const statuses = await target.statuses(core);
+		const config = await core.filesystem.loadConfig();
+		const wizardInput = await runTaskEditWizard({
+			task: existingTaskForWizard,
+			statuses,
+			priorities: config?.priorities,
+			types: config?.types,
+		});
+		if (!wizardInput) {
+			clack.cancel(`${target.label} edit cancelled.`);
+			return;
+		}
+
+		try {
+			const updatedTask = await target.update(core, existingTaskForWizard, wizardInput);
+			console.log(`Updated ${target.label.toLowerCase()} ${updatedTask.id}`);
+		} catch (error) {
+			console.error(formatTaskEditError(error, existingTaskForWizard.id, target.label.toLowerCase()));
+			process.exitCode = 1;
+		}
+		return;
+	}
+
+	const existingTask = await target.resolve(core, taskId ?? "");
+
+	if (!existingTask) {
+		console.error(target.notFoundMessage(taskId ?? ""));
+		process.exitCode = 1;
+		return;
+	}
+
+	let canonicalStatus: string | undefined;
+	if (options.status) {
+		const validStatuses = await target.statuses(core);
+		const canonical = await getCanonicalStatus(String(options.status), core, validStatuses);
+		if (!canonical) {
+			console.error(`Invalid status: ${options.status}. Valid statuses are: ${formatValidStatuses(validStatuses)}`);
+			process.exitCode = 1;
+			return;
+		}
+		canonicalStatus = canonical;
+	}
+
+	let normalizedPriority: string | undefined;
+	if (options.priority) {
+		const priority = await normalizeCliPriority(core, String(options.priority));
+		if (!priority) {
+			return;
+		}
+		normalizedPriority = priority;
+	}
+
+	let ordinalValue: number | undefined;
+	if (options.ordinal !== undefined) {
+		const parsed = Number(options.ordinal);
+		if (Number.isNaN(parsed) || parsed < 0) {
+			console.error(`Invalid ordinal: ${options.ordinal}. Must be a non-negative number.`);
+			process.exitCode = 1;
+			return;
+		}
+		ordinalValue = parsed;
+	}
+
+	if (options.milestone !== undefined && options.clearMilestone) {
+		console.error("Cannot use --milestone and --clear-milestone together.");
+		process.exitCode = 1;
+		return;
+	}
+	if (options.dueDate !== undefined && options.clearDueDate) {
+		console.error("Cannot use --due-date and --clear-due-date together.");
+		process.exitCode = 1;
+		return;
+	}
+
+	let milestoneValue: string | null | undefined;
+	if (typeof options.milestone === "string") {
+		milestoneValue = await resolveCliMilestoneInput(core, options.milestone);
+	} else if (options.clearMilestone) {
+		milestoneValue = null;
+	}
+
+	let removeCriteria: number[] | undefined;
+	let checkCriteria: number[] | undefined;
+	let uncheckCriteria: number[] | undefined;
+	let removeDod: number[] | undefined;
+	let checkDod: number[] | undefined;
+	let uncheckDod: number[] | undefined;
+
+	try {
+		const removes = parsePositiveIndexList(options.removeAc);
+		if (removes.length > 0) {
+			removeCriteria = removes;
+		}
+		const checks = parsePositiveIndexList(options.checkAc);
+		if (checks.length > 0) {
+			checkCriteria = checks;
+		}
+		const unchecks = parsePositiveIndexList(options.uncheckAc);
+		if (unchecks.length > 0) {
+			uncheckCriteria = unchecks;
+		}
+		const dodRemoves = parsePositiveIndexList(options.removeDod);
+		if (dodRemoves.length > 0) {
+			removeDod = dodRemoves;
+		}
+		const dodChecks = parsePositiveIndexList(options.checkDod);
+		if (dodChecks.length > 0) {
+			checkDod = dodChecks;
+		}
+		const dodUnchecks = parsePositiveIndexList(options.uncheckDod);
+		if (dodUnchecks.length > 0) {
+			uncheckDod = dodUnchecks;
+		}
+	} catch (error) {
+		console.error(formatTaskEditError(error, existingTask.id, target.label.toLowerCase()));
+		process.exitCode = 1;
+		return;
+	}
+
+	if (
+		options.clearLabels &&
+		(options.label !== undefined || options.addLabel !== undefined || options.removeLabel !== undefined)
+	) {
+		console.error(
+			"Cannot combine --clear-labels with --label, --add-label, or --remove-label. Use --clear-labels by itself, or --label a,b for the final full label set.",
+		);
+		process.exitCode = 1;
+		return;
+	}
+
+	if (options.label !== undefined && (options.addLabel !== undefined || options.removeLabel !== undefined)) {
+		console.error(
+			"Cannot combine --label with --add-label or --remove-label. Use --label a,b for the final full label set, or use add/remove flags without --label.",
+		);
+		process.exitCode = 1;
+		return;
+	}
+
+	const hasIncrementalAcceptanceCriteriaMutation =
+		options.ac !== undefined ||
+		options.removeAc !== undefined ||
+		options.checkAc !== undefined ||
+		options.uncheckAc !== undefined;
+	if (options.clearAc && (options.acceptanceCriteria !== undefined || hasIncrementalAcceptanceCriteriaMutation)) {
+		console.error(
+			"Cannot combine --clear-ac with --acceptance-criteria, --ac, --remove-ac, --check-ac, or --uncheck-ac. Use --clear-ac by itself.",
+		);
+		process.exitCode = 1;
+		return;
+	}
+	if (options.acceptanceCriteria !== undefined && hasIncrementalAcceptanceCriteriaMutation) {
+		console.error(
+			"Cannot combine --acceptance-criteria with --ac, --remove-ac, --check-ac, or --uncheck-ac. Use replacement by itself, or use only incremental operations.",
+		);
+		process.exitCode = 1;
+		return;
+	}
+
+	const labelValues = parseDelimitedStringList(options.label) ?? [];
+	const addLabelValues = parseDelimitedStringList(options.addLabel) ?? [];
+	const removeLabelValues = parseDelimitedStringList(options.removeLabel) ?? [];
+	const assigneeValues = parseClearableStringList(options.assignee);
+	const acceptanceAdditions = processAcceptanceCriteriaOptions({ ac: options.ac });
+	const acceptanceReplacement = processAcceptanceCriteriaOptions({
+		acceptanceCriteria: options.acceptanceCriteria,
+	});
+	const definitionOfDoneAdditions = toStringArray(options.dod)
+		.map((value) => String(value).trim())
+		.filter((value) => value.length > 0);
+
+	const clearableListError = validateTaskListFlags(options, { supportsClearFlags: true });
+	if (clearableListError) {
+		console.error(clearableListError);
+		process.exitCode = 1;
+		return;
+	}
+
+	if (options.ref !== undefined && (options.addRef !== undefined || options.removeRef !== undefined)) {
+		console.error(
+			"Cannot combine --ref with --add-ref or --remove-ref. Use --ref a,b for the final full reference set, or use add/remove flags without --ref.",
+		);
+		process.exitCode = 1;
+		return;
+	}
+	// These three read as clearable lists: an absent flag keeps the current list, and an explicit
+	// empty value produces [], which the assignments below apply as the same clear as --clear-deps.
+	const dependencyValues = parseClearableStringList([
+		...toStringArray(options.dependsOn),
+		...toStringArray(options.dep),
+	]);
+
+	const normalizedReferences = parseClearableStringList(options.ref);
+	const addReferenceValues = parseDelimitedStringList(options.addRef) ?? [];
+	const removeReferenceValues = parseDelimitedStringList(options.removeRef) ?? [];
+	const normalizedDocumentation = parseClearableStringList(options.doc);
+	const normalizedModifiedFiles = parseDelimitedStringList(options.modifiedFile);
+
+	const planAppendValues = toStringArray(options.appendPlan);
+	const notesAppendValues = toStringArray(options.appendNotes);
+	const commentsAppendValues = toStringArray(options.comment);
+	const finalSummaryAppendValues = toStringArray(options.appendFinalSummary);
+
+	const editArgs: TaskEditArgs = {};
+	if (options.title) {
+		editArgs.title = String(options.title);
+	}
+	const descriptionOption = options.description ?? options.desc;
+	if (descriptionOption !== undefined) {
+		editArgs.description = String(descriptionOption);
+	}
+	if (canonicalStatus) {
+		editArgs.status = canonicalStatus;
+	}
+	if (normalizedPriority) {
+		editArgs.priority = normalizedPriority;
+	}
+	if (options.type !== undefined) {
+		editArgs.type = String(options.type);
+	}
+	if (ordinalValue !== undefined) {
+		editArgs.ordinal = ordinalValue;
+	}
+	if (milestoneValue !== undefined) {
+		editArgs.milestone = milestoneValue;
+	}
+	if (typeof options.dueDate === "string") {
+		editArgs.dueDate = options.dueDate;
+	} else if (options.clearDueDate) {
+		editArgs.dueDate = null;
+	}
+	if (labelValues.length > 0) {
+		editArgs.labels = labelValues;
+	} else if (options.clearLabels) {
+		editArgs.labels = [];
+	}
+	if (addLabelValues.length > 0) {
+		editArgs.addLabels = addLabelValues;
+	}
+	if (removeLabelValues.length > 0) {
+		editArgs.removeLabels = removeLabelValues;
+	}
+	if (assigneeValues) {
+		editArgs.assignee = assigneeValues;
+	}
+	if (dependencyValues) {
+		editArgs.dependencies = dependencyValues;
+	} else if (options.clearDeps) {
+		editArgs.dependencies = [];
+	}
+	if (normalizedReferences) {
+		editArgs.references = normalizedReferences;
+	} else if (options.clearRefs) {
+		editArgs.references = [];
+	}
+	if (addReferenceValues.length > 0) {
+		editArgs.addReferences = addReferenceValues;
+	}
+	if (removeReferenceValues.length > 0) {
+		editArgs.removeReferences = removeReferenceValues;
+	}
+	if (normalizedDocumentation) {
+		editArgs.documentation = normalizedDocumentation;
+	} else if (options.clearDocs) {
+		editArgs.documentation = [];
+	}
+	if (normalizedModifiedFiles && normalizedModifiedFiles.length > 0) {
+		editArgs.modifiedFiles = normalizedModifiedFiles;
+	}
+	if (typeof options.plan === "string") {
+		editArgs.planSet = String(options.plan);
+	}
+	if (typeof options.notes === "string") {
+		editArgs.notesSet = String(options.notes);
+	}
+	if (planAppendValues.length > 0) {
+		editArgs.planAppend = planAppendValues;
+	}
+	if (notesAppendValues.length > 0) {
+		editArgs.notesAppend = notesAppendValues;
+	}
+	if (commentsAppendValues.length > 0) {
+		editArgs.commentsAppend = commentsAppendValues;
+	}
+	if (typeof options.commentAuthor === "string") {
+		editArgs.commentAuthor = String(options.commentAuthor);
+	}
+	if (typeof options.finalSummary === "string") {
+		editArgs.finalSummary = String(options.finalSummary);
+	}
+	if (finalSummaryAppendValues.length > 0) {
+		editArgs.finalSummaryAppend = finalSummaryAppendValues;
+	}
+	if (options.clearFinalSummary) {
+		editArgs.finalSummaryClear = true;
+	}
+	if (options.clearAc) {
+		editArgs.acceptanceCriteriaSet = [];
+	} else if (options.acceptanceCriteria !== undefined) {
+		editArgs.acceptanceCriteriaSet = acceptanceReplacement;
+	}
+	if (acceptanceAdditions.length > 0) {
+		editArgs.acceptanceCriteriaAdd = acceptanceAdditions;
+	}
+	if (removeCriteria) {
+		editArgs.acceptanceCriteriaRemove = removeCriteria;
+	}
+	if (checkCriteria) {
+		editArgs.acceptanceCriteriaCheck = checkCriteria;
+	}
+	if (uncheckCriteria) {
+		editArgs.acceptanceCriteriaUncheck = uncheckCriteria;
+	}
+	if (definitionOfDoneAdditions.length > 0) {
+		editArgs.definitionOfDoneAdd = definitionOfDoneAdditions;
+	}
+	if (removeDod) {
+		editArgs.definitionOfDoneRemove = removeDod;
+	}
+	if (checkDod) {
+		editArgs.definitionOfDoneCheck = checkDod;
+	}
+	if (uncheckDod) {
+		editArgs.definitionOfDoneUncheck = uncheckDod;
+	}
+
+	let updatedTask: Task;
+	try {
+		const updateInput = buildTaskUpdateInput(editArgs);
+		updatedTask = await target.update(core, existingTask, updateInput);
+	} catch (error) {
+		console.error(formatTaskEditError(error, existingTask.id, target.label.toLowerCase()));
+		process.exitCode = 1;
+		return;
+	}
+
+	const usePlainOutput = isPlainRequested(options);
+	if (usePlainOutput) {
+		console.log(formatTaskPlainText(updatedTask));
+		return;
+	}
+
+	console.log(`Updated ${target.label.toLowerCase()} ${updatedTask.id}`);
+}
+
+function addEditFieldOptions(cmd: Command) {
+	return cmd
+		.option("-t, --title <title>")
+		.option("-d, --description <text>", "task description")
+		.option("--desc <text>", "alias for --description")
+		.option(
+			"-a, --assignee <assignees>",
+			'replace all task assignees with one or more @names (comma-separated or repeatable); pass "" to clear them',
+			createMultiValueAccumulator(),
+		)
+		.option("-s, --status <status>")
+		.option(
+			"-l, --label <labels>",
+			"replace all task labels (comma-separated or repeatable; cannot combine with --add-label/--remove-label)",
+			createMultiValueAccumulator(),
+		)
+		.option("--priority <priority>", "set task priority (configured priorities)")
+		.option("--type <type>", "set task type (configured task types; pass an empty value to clear)")
+		.option("--due-date <datetime>", "set due date as a UTC datetime")
+		.option("--clear-due-date", "clear task due date")
+		.option("--ordinal <number>", "set task ordinal for custom ordering")
+		.option("-m, --milestone <milestone>", "assign task to milestone by ID or title")
+		.option("--clear-milestone", "clear task milestone assignment")
+		.option("--plain", "use plain text output after editing")
+		.option(
+			"--add-label <labels>",
+			"add task labels without replacing existing labels (comma-separated or repeatable)",
+			createMultiValueAccumulator(),
+		)
+		.option(
+			"--remove-label <labels>",
+			"remove task labels without replacing others (comma-separated or repeatable)",
+			createMultiValueAccumulator(),
+		)
+		.option("--clear-labels", "remove all task labels (cannot combine with --label/--add-label/--remove-label)")
+		.option("--ac <criteria>", "add acceptance criteria (can be used multiple times)", createMultiValueAccumulator())
+		.option("--dod <item>", "add Definition of Done item (can be used multiple times)", createMultiValueAccumulator())
+		.option(
+			"--remove-ac <index>",
+			"remove acceptance criterion by index (1-based, can be used multiple times)",
+			createMultiValueAccumulator(),
+		)
+		.option(
+			"--remove-dod <index>",
+			"remove Definition of Done item by index (1-based, can be used multiple times)",
+			createMultiValueAccumulator(),
+		)
+		.option(
+			"--check-ac <index>",
+			"check acceptance criterion by index (1-based, can be used multiple times)",
+			createMultiValueAccumulator(),
+		)
+		.option(
+			"--check-dod <index>",
+			"check Definition of Done item by index (1-based, can be used multiple times)",
+			createMultiValueAccumulator(),
+		)
+		.option(
+			"--uncheck-ac <index>",
+			"uncheck acceptance criterion by index (1-based, can be used multiple times)",
+			createMultiValueAccumulator(),
+		)
+		.option(
+			"--uncheck-dod <index>",
+			"uncheck Definition of Done item by index (1-based, can be used multiple times)",
+			createMultiValueAccumulator(),
+		)
+		.option(
+			"--acceptance-criteria <criteria>",
+			"replace all acceptance criteria (can be used multiple times; commas are preserved)",
+			createMultiValueAccumulator(),
+		)
+		.option("--clear-ac", "remove all acceptance criteria (cannot combine with acceptance criteria mutation options)")
+		.option("--plan <text>", "set implementation plan")
+		.option("--notes <text>", "set implementation notes (replaces existing)")
+		.option(
+			"--comment <text>",
+			"append a task comment; standalone '---' lines are reserved (can be used multiple times)",
+			createMultiValueAccumulator(),
+		)
+		.option("--comment-author <author>", "author to record for appended comments")
+		.option("--final-summary <text>", "set final summary (replaces existing)")
+		.option(
+			"--append-plan <text>",
+			"append after --plan replacement (can be used multiple times)",
+			createMultiValueAccumulator(),
+		)
+		.option(
+			"--append-notes <text>",
+			"append to implementation notes (can be used multiple times)",
+			createMultiValueAccumulator(),
+		)
+		.option(
+			"--append-final-summary <text>",
+			"append to final summary (can be used multiple times)",
+			createMultiValueAccumulator(),
+		)
+		.option("--clear-final-summary", "remove final summary")
+		.option("--clear-deps", "remove all task dependencies (cannot combine with --depends-on or --dep)")
+		.option(
+			"--depends-on <taskIds>",
+			'set task dependencies (comma-separated or use multiple times); pass "" to clear them',
+			(value, previous) => {
+				const soFar = Array.isArray(previous) ? previous : previous ? [previous] : [];
+				return [...soFar, value];
+			},
+		)
+		.option("--dep <taskIds>", "set task dependencies (shortcut for --depends-on)", (value, previous) => {
+			const soFar = Array.isArray(previous) ? previous : previous ? [previous] : [];
+			return [...soFar, value];
+		})
+		.option(
+			"--ref <reference>",
+			'replace all references (comma-separated or repeatable; cannot combine with --add-ref/--remove-ref); pass "" to clear them',
+			createMultiValueAccumulator(),
+		)
+		.option(
+			"--add-ref <reference>",
+			"add references without replacing existing references (comma-separated or repeatable)",
+			createMultiValueAccumulator(),
+		)
+		.option(
+			"--remove-ref <reference>",
+			"remove references without replacing others (comma-separated or repeatable)",
+			createMultiValueAccumulator(),
+		)
+		.option("--clear-refs", "remove all references (cannot combine with --ref/--add-ref/--remove-ref)")
+		.option(
+			"--modified-file <path>",
+			"set modified file paths from project root (can be used multiple times)",
+			(value, previous) => {
+				const soFar = Array.isArray(previous) ? previous : previous ? [previous] : [];
+				return [...soFar, value];
+			},
+		)
+		.option(
+			"--doc <documentation>",
+			'set documentation (can be used multiple times); pass "" to clear it',
+			(value, previous) => {
+				const soFar = Array.isArray(previous) ? previous : previous ? [previous] : [];
+				return [...soFar, value];
+			},
+		)
+		.option("--clear-docs", "remove all documentation (cannot combine with --doc)");
+}
+
+const taskEditCommand = addHelpSchema(taskCmd.command("edit [taskId]"), {
 	required: [
 		{ name: "taskId", type: "Task ID", description: "Task to update; prompted when omitted in interactive mode" },
 	],
@@ -2824,533 +3443,10 @@ addHelpSchema(taskCmd.command("edit [taskId]"), {
 		`backlog task edit {{TASK_ID:1}} --type ${TASK_TYPE_EXAMPLE}`,
 		"backlog task edit {{TASK_ID:1}} --check-ac 1",
 	],
-})
-	.description("edit an existing task")
-	.option("-t, --title <title>")
-	.option("-d, --description <text>", "task description")
-	.option("--desc <text>", "alias for --description")
-	.option(
-		"-a, --assignee <assignees>",
-		'replace all task assignees with one or more @names (comma-separated or repeatable); pass "" to clear them',
-		createMultiValueAccumulator(),
-	)
-	.option("-s, --status <status>")
-	.option(
-		"-l, --label <labels>",
-		"replace all task labels (comma-separated or repeatable; cannot combine with --add-label/--remove-label)",
-		createMultiValueAccumulator(),
-	)
-	.option("--priority <priority>", "set task priority (configured priorities)")
-	.option("--type <type>", "set task type (configured task types; pass an empty value to clear)")
-	.option("--due-date <datetime>", "set due date as a UTC datetime")
-	.option("--clear-due-date", "clear task due date")
-	.option("--ordinal <number>", "set task ordinal for custom ordering")
-	.option("-m, --milestone <milestone>", "assign task to milestone by ID or title")
-	.option("--clear-milestone", "clear task milestone assignment")
-	.option("--plain", "use plain text output after editing")
-	.option(
-		"--add-label <labels>",
-		"add task labels without replacing existing labels (comma-separated or repeatable)",
-		createMultiValueAccumulator(),
-	)
-	.option(
-		"--remove-label <labels>",
-		"remove task labels without replacing others (comma-separated or repeatable)",
-		createMultiValueAccumulator(),
-	)
-	.option("--clear-labels", "remove all task labels (cannot combine with --label/--add-label/--remove-label)")
-	.option("--ac <criteria>", "add acceptance criteria (can be used multiple times)", createMultiValueAccumulator())
-	.option("--dod <item>", "add Definition of Done item (can be used multiple times)", createMultiValueAccumulator())
-	.option(
-		"--remove-ac <index>",
-		"remove acceptance criterion by index (1-based, can be used multiple times)",
-		createMultiValueAccumulator(),
-	)
-	.option(
-		"--remove-dod <index>",
-		"remove Definition of Done item by index (1-based, can be used multiple times)",
-		createMultiValueAccumulator(),
-	)
-	.option(
-		"--check-ac <index>",
-		"check acceptance criterion by index (1-based, can be used multiple times)",
-		createMultiValueAccumulator(),
-	)
-	.option(
-		"--check-dod <index>",
-		"check Definition of Done item by index (1-based, can be used multiple times)",
-		createMultiValueAccumulator(),
-	)
-	.option(
-		"--uncheck-ac <index>",
-		"uncheck acceptance criterion by index (1-based, can be used multiple times)",
-		createMultiValueAccumulator(),
-	)
-	.option(
-		"--uncheck-dod <index>",
-		"uncheck Definition of Done item by index (1-based, can be used multiple times)",
-		createMultiValueAccumulator(),
-	)
-	.option(
-		"--acceptance-criteria <criteria>",
-		"replace all acceptance criteria (can be used multiple times; commas are preserved)",
-		createMultiValueAccumulator(),
-	)
-	.option("--clear-ac", "remove all acceptance criteria (cannot combine with acceptance criteria mutation options)")
-	.option("--plan <text>", "set implementation plan")
-	.option("--notes <text>", "set implementation notes (replaces existing)")
-	.option(
-		"--comment <text>",
-		"append a task comment; standalone '---' lines are reserved (can be used multiple times)",
-		createMultiValueAccumulator(),
-	)
-	.option("--comment-author <author>", "author to record for appended comments")
-	.option("--final-summary <text>", "set final summary (replaces existing)")
-	.option(
-		"--append-plan <text>",
-		"append after --plan replacement (can be used multiple times)",
-		createMultiValueAccumulator(),
-	)
-	.option(
-		"--append-notes <text>",
-		"append to implementation notes (can be used multiple times)",
-		createMultiValueAccumulator(),
-	)
-	.option(
-		"--append-final-summary <text>",
-		"append to final summary (can be used multiple times)",
-		createMultiValueAccumulator(),
-	)
-	.option("--clear-final-summary", "remove final summary")
-	.option("--clear-deps", "remove all task dependencies (cannot combine with --depends-on or --dep)")
-	.option(
-		"--depends-on <taskIds>",
-		'set task dependencies (comma-separated or use multiple times); pass "" to clear them',
-		(value, previous) => {
-			const soFar = Array.isArray(previous) ? previous : previous ? [previous] : [];
-			return [...soFar, value];
-		},
-	)
-	.option("--dep <taskIds>", "set task dependencies (shortcut for --depends-on)", (value, previous) => {
-		const soFar = Array.isArray(previous) ? previous : previous ? [previous] : [];
-		return [...soFar, value];
-	})
-	.option(
-		"--ref <reference>",
-		'replace all references (comma-separated or repeatable; cannot combine with --add-ref/--remove-ref); pass "" to clear them',
-		createMultiValueAccumulator(),
-	)
-	.option(
-		"--add-ref <reference>",
-		"add references without replacing existing references (comma-separated or repeatable)",
-		createMultiValueAccumulator(),
-	)
-	.option(
-		"--remove-ref <reference>",
-		"remove references without replacing others (comma-separated or repeatable)",
-		createMultiValueAccumulator(),
-	)
-	.option("--clear-refs", "remove all references (cannot combine with --ref/--add-ref/--remove-ref)")
-	.option(
-		"--modified-file <path>",
-		"set modified file paths from project root (can be used multiple times)",
-		(value, previous) => {
-			const soFar = Array.isArray(previous) ? previous : previous ? [previous] : [];
-			return [...soFar, value];
-		},
-	)
-	.option(
-		"--doc <documentation>",
-		'set documentation (can be used multiple times); pass "" to clear it',
-		(value, previous) => {
-			const soFar = Array.isArray(previous) ? previous : previous ? [previous] : [];
-			return [...soFar, value];
-		},
-	)
-	.option("--clear-docs", "remove all documentation (cannot combine with --doc)")
-	.action(async (taskId: string | undefined, options) => {
-		const shouldUseWizard = hasInteractiveTTY && !hasEditFieldFlags(options);
-		if (!shouldUseWizard && !taskId) {
-			printMissingRequiredArgument("taskId");
-			return;
-		}
-
-		const cwd = await requireProjectRoot();
-		const core = new Core(cwd);
-
-		if (shouldUseWizard) {
-			let selectedTaskId = taskId?.trim() || undefined;
-			if (!selectedTaskId) {
-				const localTasks = await core.queryTasks({ includeCrossBranch: false });
-				const taskOptions = localTasks.map((candidate) => ({
-					id: candidate.id,
-					title: candidate.title,
-				}));
-				if (taskOptions.length === 0) {
-					console.log("No tasks found.");
-					return;
-				}
-				selectedTaskId = await pickTaskForEditWizard({ tasks: taskOptions });
-				if (!selectedTaskId) {
-					clack.cancel("Task edit cancelled.");
-					return;
-				}
-			}
-
-			const existingTaskForWizard = await core.loadTaskById(selectedTaskId, { includeCrossBranch: false });
-			if (!existingTaskForWizard) {
-				console.error(`Task ${selectedTaskId} not found. ${LOCAL_TASK_LOOKUP_HINT}`);
-				process.exitCode = 1;
-				return;
-			}
-
-			const statuses = await getValidStatuses(core);
-			const config = await core.filesystem.loadConfig();
-			const wizardInput = await runTaskEditWizard({
-				task: existingTaskForWizard,
-				statuses,
-				priorities: config?.priorities,
-				types: config?.types,
-			});
-			if (!wizardInput) {
-				clack.cancel("Task edit cancelled.");
-				return;
-			}
-
-			try {
-				const updatedTask = await core.editTask(existingTaskForWizard.id, wizardInput, undefined, {
-					includeCrossBranch: false,
-				});
-				console.log(`Updated task ${updatedTask.id}`);
-			} catch (error) {
-				console.error(formatTaskEditError(error, existingTaskForWizard.id));
-				process.exitCode = 1;
-			}
-			return;
-		}
-
-		const existingTask = await core.loadTaskById(taskId ?? "", { includeCrossBranch: false });
-
-		if (!existingTask) {
-			console.error(`Task ${taskId} not found. ${LOCAL_TASK_LOOKUP_HINT}`);
-			process.exitCode = 1;
-			return;
-		}
-
-		let canonicalStatus: string | undefined;
-		if (options.status) {
-			const canonical = await getCanonicalStatus(String(options.status), core);
-			if (!canonical) {
-				const configuredStatuses = await getValidStatuses(core);
-				console.error(
-					`Invalid status: ${options.status}. Valid statuses are: ${formatValidStatuses(configuredStatuses)}`,
-				);
-				process.exitCode = 1;
-				return;
-			}
-			canonicalStatus = canonical;
-		}
-
-		let normalizedPriority: string | undefined;
-		if (options.priority) {
-			const priority = await normalizeCliPriority(core, String(options.priority));
-			if (!priority) {
-				return;
-			}
-			normalizedPriority = priority;
-		}
-
-		let ordinalValue: number | undefined;
-		if (options.ordinal !== undefined) {
-			const parsed = Number(options.ordinal);
-			if (Number.isNaN(parsed) || parsed < 0) {
-				console.error(`Invalid ordinal: ${options.ordinal}. Must be a non-negative number.`);
-				process.exitCode = 1;
-				return;
-			}
-			ordinalValue = parsed;
-		}
-
-		if (options.milestone !== undefined && options.clearMilestone) {
-			console.error("Cannot use --milestone and --clear-milestone together.");
-			process.exitCode = 1;
-			return;
-		}
-		if (options.dueDate !== undefined && options.clearDueDate) {
-			console.error("Cannot use --due-date and --clear-due-date together.");
-			process.exitCode = 1;
-			return;
-		}
-
-		let milestoneValue: string | null | undefined;
-		if (typeof options.milestone === "string") {
-			milestoneValue = await resolveCliMilestoneInput(core, options.milestone);
-		} else if (options.clearMilestone) {
-			milestoneValue = null;
-		}
-
-		let removeCriteria: number[] | undefined;
-		let checkCriteria: number[] | undefined;
-		let uncheckCriteria: number[] | undefined;
-		let removeDod: number[] | undefined;
-		let checkDod: number[] | undefined;
-		let uncheckDod: number[] | undefined;
-
-		try {
-			const removes = parsePositiveIndexList(options.removeAc);
-			if (removes.length > 0) {
-				removeCriteria = removes;
-			}
-			const checks = parsePositiveIndexList(options.checkAc);
-			if (checks.length > 0) {
-				checkCriteria = checks;
-			}
-			const unchecks = parsePositiveIndexList(options.uncheckAc);
-			if (unchecks.length > 0) {
-				uncheckCriteria = unchecks;
-			}
-			const dodRemoves = parsePositiveIndexList(options.removeDod);
-			if (dodRemoves.length > 0) {
-				removeDod = dodRemoves;
-			}
-			const dodChecks = parsePositiveIndexList(options.checkDod);
-			if (dodChecks.length > 0) {
-				checkDod = dodChecks;
-			}
-			const dodUnchecks = parsePositiveIndexList(options.uncheckDod);
-			if (dodUnchecks.length > 0) {
-				uncheckDod = dodUnchecks;
-			}
-		} catch (error) {
-			console.error(formatTaskEditError(error, existingTask.id));
-			process.exitCode = 1;
-			return;
-		}
-
-		if (
-			options.clearLabels &&
-			(options.label !== undefined || options.addLabel !== undefined || options.removeLabel !== undefined)
-		) {
-			console.error(
-				"Cannot combine --clear-labels with --label, --add-label, or --remove-label. Use --clear-labels by itself, or --label a,b for the final full label set.",
-			);
-			process.exitCode = 1;
-			return;
-		}
-
-		if (options.label !== undefined && (options.addLabel !== undefined || options.removeLabel !== undefined)) {
-			console.error(
-				"Cannot combine --label with --add-label or --remove-label. Use --label a,b for the final full label set, or use add/remove flags without --label.",
-			);
-			process.exitCode = 1;
-			return;
-		}
-
-		const hasIncrementalAcceptanceCriteriaMutation =
-			options.ac !== undefined ||
-			options.removeAc !== undefined ||
-			options.checkAc !== undefined ||
-			options.uncheckAc !== undefined;
-		if (options.clearAc && (options.acceptanceCriteria !== undefined || hasIncrementalAcceptanceCriteriaMutation)) {
-			console.error(
-				"Cannot combine --clear-ac with --acceptance-criteria, --ac, --remove-ac, --check-ac, or --uncheck-ac. Use --clear-ac by itself.",
-			);
-			process.exitCode = 1;
-			return;
-		}
-		if (options.acceptanceCriteria !== undefined && hasIncrementalAcceptanceCriteriaMutation) {
-			console.error(
-				"Cannot combine --acceptance-criteria with --ac, --remove-ac, --check-ac, or --uncheck-ac. Use replacement by itself, or use only incremental operations.",
-			);
-			process.exitCode = 1;
-			return;
-		}
-
-		const labelValues = parseDelimitedStringList(options.label) ?? [];
-		const addLabelValues = parseDelimitedStringList(options.addLabel) ?? [];
-		const removeLabelValues = parseDelimitedStringList(options.removeLabel) ?? [];
-		const assigneeValues = parseClearableStringList(options.assignee);
-		const acceptanceAdditions = processAcceptanceCriteriaOptions({ ac: options.ac });
-		const acceptanceReplacement = processAcceptanceCriteriaOptions({
-			acceptanceCriteria: options.acceptanceCriteria,
-		});
-		const definitionOfDoneAdditions = toStringArray(options.dod)
-			.map((value) => String(value).trim())
-			.filter((value) => value.length > 0);
-
-		const clearableListError = validateTaskListFlags(options, { supportsClearFlags: true });
-		if (clearableListError) {
-			console.error(clearableListError);
-			process.exitCode = 1;
-			return;
-		}
-
-		if (options.ref !== undefined && (options.addRef !== undefined || options.removeRef !== undefined)) {
-			console.error(
-				"Cannot combine --ref with --add-ref or --remove-ref. Use --ref a,b for the final full reference set, or use add/remove flags without --ref.",
-			);
-			process.exitCode = 1;
-			return;
-		}
-		// These three read as clearable lists: an absent flag keeps the current list, and an explicit
-		// empty value produces [], which the assignments below apply as the same clear as --clear-deps.
-		const dependencyValues = parseClearableStringList([
-			...toStringArray(options.dependsOn),
-			...toStringArray(options.dep),
-		]);
-
-		const normalizedReferences = parseClearableStringList(options.ref);
-		const addReferenceValues = parseDelimitedStringList(options.addRef) ?? [];
-		const removeReferenceValues = parseDelimitedStringList(options.removeRef) ?? [];
-		const normalizedDocumentation = parseClearableStringList(options.doc);
-		const normalizedModifiedFiles = parseDelimitedStringList(options.modifiedFile);
-
-		const planAppendValues = toStringArray(options.appendPlan);
-		const notesAppendValues = toStringArray(options.appendNotes);
-		const commentsAppendValues = toStringArray(options.comment);
-		const finalSummaryAppendValues = toStringArray(options.appendFinalSummary);
-
-		const editArgs: TaskEditArgs = {};
-		if (options.title) {
-			editArgs.title = String(options.title);
-		}
-		const descriptionOption = options.description ?? options.desc;
-		if (descriptionOption !== undefined) {
-			editArgs.description = String(descriptionOption);
-		}
-		if (canonicalStatus) {
-			editArgs.status = canonicalStatus;
-		}
-		if (normalizedPriority) {
-			editArgs.priority = normalizedPriority;
-		}
-		if (options.type !== undefined) {
-			editArgs.type = String(options.type);
-		}
-		if (ordinalValue !== undefined) {
-			editArgs.ordinal = ordinalValue;
-		}
-		if (milestoneValue !== undefined) {
-			editArgs.milestone = milestoneValue;
-		}
-		if (typeof options.dueDate === "string") {
-			editArgs.dueDate = options.dueDate;
-		} else if (options.clearDueDate) {
-			editArgs.dueDate = null;
-		}
-		if (labelValues.length > 0) {
-			editArgs.labels = labelValues;
-		} else if (options.clearLabels) {
-			editArgs.labels = [];
-		}
-		if (addLabelValues.length > 0) {
-			editArgs.addLabels = addLabelValues;
-		}
-		if (removeLabelValues.length > 0) {
-			editArgs.removeLabels = removeLabelValues;
-		}
-		if (assigneeValues) {
-			editArgs.assignee = assigneeValues;
-		}
-		if (dependencyValues) {
-			editArgs.dependencies = dependencyValues;
-		} else if (options.clearDeps) {
-			editArgs.dependencies = [];
-		}
-		if (normalizedReferences) {
-			editArgs.references = normalizedReferences;
-		} else if (options.clearRefs) {
-			editArgs.references = [];
-		}
-		if (addReferenceValues.length > 0) {
-			editArgs.addReferences = addReferenceValues;
-		}
-		if (removeReferenceValues.length > 0) {
-			editArgs.removeReferences = removeReferenceValues;
-		}
-		if (normalizedDocumentation) {
-			editArgs.documentation = normalizedDocumentation;
-		} else if (options.clearDocs) {
-			editArgs.documentation = [];
-		}
-		if (normalizedModifiedFiles && normalizedModifiedFiles.length > 0) {
-			editArgs.modifiedFiles = normalizedModifiedFiles;
-		}
-		if (typeof options.plan === "string") {
-			editArgs.planSet = String(options.plan);
-		}
-		if (typeof options.notes === "string") {
-			editArgs.notesSet = String(options.notes);
-		}
-		if (planAppendValues.length > 0) {
-			editArgs.planAppend = planAppendValues;
-		}
-		if (notesAppendValues.length > 0) {
-			editArgs.notesAppend = notesAppendValues;
-		}
-		if (commentsAppendValues.length > 0) {
-			editArgs.commentsAppend = commentsAppendValues;
-		}
-		if (typeof options.commentAuthor === "string") {
-			editArgs.commentAuthor = String(options.commentAuthor);
-		}
-		if (typeof options.finalSummary === "string") {
-			editArgs.finalSummary = String(options.finalSummary);
-		}
-		if (finalSummaryAppendValues.length > 0) {
-			editArgs.finalSummaryAppend = finalSummaryAppendValues;
-		}
-		if (options.clearFinalSummary) {
-			editArgs.finalSummaryClear = true;
-		}
-		if (options.clearAc) {
-			editArgs.acceptanceCriteriaSet = [];
-		} else if (options.acceptanceCriteria !== undefined) {
-			editArgs.acceptanceCriteriaSet = acceptanceReplacement;
-		}
-		if (acceptanceAdditions.length > 0) {
-			editArgs.acceptanceCriteriaAdd = acceptanceAdditions;
-		}
-		if (removeCriteria) {
-			editArgs.acceptanceCriteriaRemove = removeCriteria;
-		}
-		if (checkCriteria) {
-			editArgs.acceptanceCriteriaCheck = checkCriteria;
-		}
-		if (uncheckCriteria) {
-			editArgs.acceptanceCriteriaUncheck = uncheckCriteria;
-		}
-		if (definitionOfDoneAdditions.length > 0) {
-			editArgs.definitionOfDoneAdd = definitionOfDoneAdditions;
-		}
-		if (removeDod) {
-			editArgs.definitionOfDoneRemove = removeDod;
-		}
-		if (checkDod) {
-			editArgs.definitionOfDoneCheck = checkDod;
-		}
-		if (uncheckDod) {
-			editArgs.definitionOfDoneUncheck = uncheckDod;
-		}
-
-		let updatedTask: Task;
-		try {
-			const updateInput = buildTaskUpdateInput(editArgs);
-			updatedTask = await core.editTask(existingTask.id, updateInput, undefined, { includeCrossBranch: false });
-		} catch (error) {
-			console.error(formatTaskEditError(error, existingTask.id));
-			process.exitCode = 1;
-			return;
-		}
-
-		const usePlainOutput = isPlainRequested(options);
-		if (usePlainOutput) {
-			console.log(formatTaskPlainText(updatedTask));
-			return;
-		}
-
-		console.log(`Updated task ${updatedTask.id}`);
-	});
+}).description("edit an existing task");
+addEditFieldOptions(taskEditCommand).action(async (taskId: string | undefined, options) => {
+	await runEditCommand(taskEditTarget, taskId, options);
+});
 
 // Note: Implementation notes appending is handled via `task edit --append-notes` only.
 
@@ -3581,6 +3677,29 @@ taskCmd
 		});
 	});
 
+async function viewDraftById(core: Core, taskId: string, options?: { plain?: boolean }): Promise<void> {
+	try {
+		const draft = await core.filesystem.loadDraft(taskId);
+		if (!draft) {
+			console.error(`Draft ${taskId} not found.`);
+			return;
+		}
+		const usePlainOutput = isPlainRequested(options) || shouldAutoPlain;
+		if (usePlainOutput) {
+			console.log(formatTaskPlainText(draft));
+			return;
+		}
+		await viewTaskEnhanced(draft, { startWithDetailFocus: true, core });
+	} catch (error) {
+		if (isAmbiguousIdError(error)) {
+			console.error(error.message);
+			process.exitCode = 1;
+			return;
+		}
+		throw error;
+	}
+}
+
 const draftCmd = program.command("draft");
 
 draftCmd
@@ -3675,18 +3794,86 @@ draftCmd
 		}
 	});
 
+const draftEditCommand = addHelpSchema(draftCmd.command("edit [taskId]"), {
+	required: [
+		{ name: "taskId", type: "Draft ID", description: "Draft to update; prompted when omitted in interactive mode" },
+	],
+	optional: [
+		{ name: "title", type: "String", description: "Replacement draft title" },
+		{ name: "description", type: "Markdown", description: "Replacement description" },
+		{ name: "status", type: "String", description: 'Only "Draft" is valid; drafts cannot change status' },
+		{ name: "type", type: taskType, description: "Replacement task type; case-insensitive" },
+		{ name: "due-date", type: "UTC datetime", description: "Set the due date and time" },
+		{ name: "clear-due-date", type: "Boolean", description: "Clear the due date" },
+		{
+			name: "assignee",
+			type: "Comma-separated strings",
+			description: 'Replace all assignees; repeat -a or use @name1,@name2; -a "" clears them',
+		},
+		{ name: "label", type: "Comma-separated strings", description: "Replace all labels; repeatable" },
+		{ name: "add-label", type: "Comma-separated strings", description: "Add labels; repeatable" },
+		{ name: "remove-label", type: "Comma-separated strings", description: "Remove labels; repeatable" },
+		{ name: "clear-labels", type: "Boolean", description: "Remove all labels" },
+		{ name: "priority", type: "String", description: "Set priority (configured priorities)" },
+		{ name: "ordinal", type: "Number", description: "Set ordinal for custom ordering" },
+		{ name: "milestone", type: "String", description: "Assign to milestone by ID or title" },
+		{ name: "clear-milestone", type: "Boolean", description: "Clear the milestone assignment" },
+		{ name: "ac", type: "Comma-separated strings", description: "Add acceptance criteria; repeatable" },
+		{ name: "acceptance-criteria", type: "Comma-separated strings", description: "Replace all acceptance criteria" },
+		{ name: "clear-ac", type: "Boolean", description: "Remove all acceptance criteria" },
+		{ name: "remove-ac", type: "Integer", description: "Remove acceptance criterion by 1-based index; repeatable" },
+		{ name: "check-ac", type: "Integer", description: "Check acceptance criterion by 1-based index; repeatable" },
+		{ name: "uncheck-ac", type: "Integer", description: "Uncheck acceptance criterion by 1-based index; repeatable" },
+		{ name: "dod", type: "Comma-separated strings", description: "Add Definition of Done items; repeatable" },
+		{ name: "remove-dod", type: "Integer", description: "Remove Definition of Done item by index; repeatable" },
+		{ name: "check-dod", type: "Integer", description: "Check Definition of Done item by index; repeatable" },
+		{ name: "uncheck-dod", type: "Integer", description: "Uncheck Definition of Done item by index; repeatable" },
+		{ name: "plan", type: "Markdown", description: "Replacement implementation plan" },
+		{ name: "append-plan", type: "Markdown", description: "Append after --plan replacement; repeatable" },
+		{ name: "notes", type: "Markdown", description: "Replacement implementation notes" },
+		{ name: "append-notes", type: "Markdown", description: "Append to implementation notes; repeatable" },
+		{ name: "comment", type: "Markdown", description: "Append a discussion comment; repeatable" },
+		{ name: "comment-author", type: "String", description: "Author to record for appended comments" },
+		{ name: "final-summary", type: "Markdown", description: "Completion summary" },
+		{ name: "append-final-summary", type: "Markdown", description: "Append to final summary; repeatable" },
+		{ name: "clear-final-summary", type: "Boolean", description: "Remove final summary" },
+		{ name: "depends-on", type: "Comma-separated strings", description: 'Set dependencies; pass "" to clear' },
+		{ name: "dep", type: "Comma-separated strings", description: "Set dependencies (shortcut for --depends-on)" },
+		{ name: "clear-deps", type: "Boolean", description: "Remove all dependencies" },
+		{ name: "ref", type: "Comma-separated strings", description: 'Replace all references; pass "" to clear' },
+		{ name: "add-ref", type: "Comma-separated strings", description: "Add references; repeatable" },
+		{ name: "remove-ref", type: "Comma-separated strings", description: "Remove references; repeatable" },
+		{ name: "clear-refs", type: "Boolean", description: "Remove all references" },
+		{ name: "doc", type: "Comma-separated strings", description: 'Set documentation; pass "" to clear' },
+		{ name: "modified-file", type: "Comma-separated strings", description: "Set modified file paths; repeatable" },
+		{ name: "clear-docs", type: "Boolean", description: "Remove all documentation" },
+		{ name: "plain", type: "Boolean", description: "Use plain text output after editing" },
+	],
+	writes: "Updates draft metadata and structured sections through Backlog.md",
+	output: "Updated draft details; use --plain for text output",
+	examples: ['backlog draft edit DRAFT-1 -t "Renamed draft"', "backlog draft edit DRAFT-1 --check-ac 1"],
+}).description("edit an existing draft");
+addEditFieldOptions(draftEditCommand).action(async (taskId: string | undefined, options) => {
+	await runEditCommand(draftEditTarget, taskId, options);
+});
+
 draftCmd
 	.command("archive <taskId>")
 	.description("archive a draft")
 	.action(async (taskId: string) => {
 		const cwd = await requireProjectRoot();
 		const core = new Core(cwd);
-		// The argument itself selects the draft file; re-resolving by its frontmatter ID could
-		// target a different file when a draft filename and its ID have drifted apart.
-		if (await core.archiveDraft(taskId)) {
-			console.log(`Archived draft ${normalizeId(taskId, DRAFT_PREFIX)}`);
-		} else {
-			console.error(`Draft ${taskId} not found.`);
+		try {
+			// The argument itself selects the draft file; re-resolving by its frontmatter ID could
+			// target a different file when a draft filename and its ID have drifted apart.
+			if (await core.archiveDraft(taskId)) {
+				console.log(`Archived draft ${normalizeId(taskId, DRAFT_PREFIX)}`);
+			} else {
+				console.error(`Draft ${taskId} not found.`);
+				process.exitCode = 1;
+			}
+		} catch (error) {
+			console.error(error instanceof Error ? error.message : String(error));
 			process.exitCode = 1;
 		}
 	});
@@ -3718,29 +3905,7 @@ draftCmd
 	.action(async (taskId: string, options) => {
 		const cwd = await requireProjectRoot();
 		const core = new Core(cwd);
-		const { getDraftPath } = await import("./utils/task-path.ts");
-		const filePath = await getDraftPath(taskId, core);
-
-		if (!filePath) {
-			console.error(`Draft ${taskId} not found.`);
-			return;
-		}
-		const draft = await core.filesystem.loadDraft(taskId);
-
-		if (!draft) {
-			console.error(`Draft ${taskId} not found.`);
-			return;
-		}
-
-		// Plain text output for non-interactive environments
-		const usePlainOutput = isPlainRequested(options) || shouldAutoPlain;
-		if (usePlainOutput) {
-			console.log(formatTaskPlainText(draft));
-			return;
-		}
-
-		// Use enhanced task viewer with detail focus
-		await viewTaskEnhanced(draft, { startWithDetailFocus: true, core });
+		await viewDraftById(core, taskId, options);
 	});
 
 draftCmd
@@ -3754,29 +3919,7 @@ draftCmd
 
 		const cwd = await requireProjectRoot();
 		const core = new Core(cwd);
-		const { getDraftPath } = await import("./utils/task-path.ts");
-		const filePath = await getDraftPath(taskId, core);
-
-		if (!filePath) {
-			console.error(`Draft ${taskId} not found.`);
-			return;
-		}
-		const draft = await core.filesystem.loadDraft(taskId);
-
-		if (!draft) {
-			console.error(`Draft ${taskId} not found.`);
-			return;
-		}
-
-		// Plain text output for non-interactive environments
-		const usePlainOutput = isPlainRequested(options) || shouldAutoPlain;
-		if (usePlainOutput) {
-			console.log(formatTaskPlainText(draft, { filePathOverride: filePath }));
-			return;
-		}
-
-		// Use enhanced task viewer with detail focus
-		await viewTaskEnhanced(draft, { startWithDetailFocus: true, core });
+		await viewDraftById(core, taskId, options);
 	});
 
 const milestoneCmd = program.command("milestone").aliases(["milestones"]);
@@ -4997,7 +5140,7 @@ addHelpSchema(configCmd.command("list"), {
 		}
 	});
 addHelpSchema(program.command("doctor"), {
-	reads: "Active and completed task files, document and decision files, plus Backlog Markdown references",
+	reads: "Active and completed task files, document, decision, and draft files, plus Backlog Markdown references",
 	required: [],
 	optional: [
 		{ name: "fix", type: "Boolean", description: "Apply the displayed duplicate-ID repair" },
@@ -5006,7 +5149,7 @@ addHelpSchema(program.command("doctor"), {
 	writes:
 		"With --fix, atomically renames duplicate task files and updates only their frontmatter IDs; ambiguous references are reported for human review",
 	output:
-		"Duplicate-ID diagnosis for tasks, documents, and decisions, a deterministic task repair preview, and a reference-review report",
+		"Duplicate-ID diagnosis for tasks, documents, decisions, and drafts, a deterministic task repair preview, and a reference-review report",
 	examples: ["backlog doctor", "backlog doctor --fix", "backlog doctor --fix --yes"],
 })
 	.description("diagnose duplicate task, document, and decision IDs and safely repair duplicate task IDs")
@@ -5025,13 +5168,21 @@ addHelpSchema(program.command("doctor"), {
 			const plan = await core.previewDuplicateTaskIdRepair({ includeBranches: true });
 			const contentIdentity = await core.diagnoseContentIdentity();
 			const contentIdentityBroken = hasContentIdentityIssues(contentIdentity);
-			if (plan.groups.length === 0 && plan.crossBranchFindings.length === 0 && !contentIdentityBroken) {
-				console.log("No duplicate task, document, or decision IDs found.");
+			const draftIdentity = await core.filesystem.diagnoseDraftIdentity();
+			const draftIdentityBroken = hasDraftIdentityFindings(draftIdentity);
+			if (
+				plan.groups.length === 0 &&
+				plan.crossBranchFindings.length === 0 &&
+				!contentIdentityBroken &&
+				!draftIdentityBroken
+			) {
+				console.log("No duplicate task, document, decision, or draft IDs found.");
 				return;
 			}
 
 			printDuplicateRepairPlan(plan);
 			printContentIdentityReport(contentIdentity);
+			printDraftIdentityReport(draftIdentity);
 			if (!options.fix) {
 				if (plan.groups.length > 0 && plan.repairable) {
 					console.log("\nRun 'backlog doctor --fix' to apply this repair after reviewing the preview.");
@@ -5088,6 +5239,10 @@ addHelpSchema(program.command("doctor"), {
 			}
 			if (contentIdentityBroken) {
 				console.log("Document and decision findings remain diagnostic-only and still require manual review.");
+				process.exitCode = 1;
+			}
+			if (draftIdentityBroken) {
+				console.log("Draft identity findings remain diagnostic-only and still require manual review.");
 				process.exitCode = 1;
 			}
 		} catch (error) {

@@ -136,6 +136,100 @@ describe("MCP draft support via task tools", () => {
 		expect(taskFile).toBeNull();
 	});
 
+	it("task_edit status promotion fails fast under a held draft lock", async () => {
+		await mcpServer.testInterface.callTool({
+			params: {
+				name: "task_create",
+				arguments: {
+					title: "Contended MCP promotion",
+					status: "Draft",
+				},
+			},
+		});
+
+		const reference = await mcpServer.filesystem.resolveDraftReference("DRAFT-1");
+		if (!reference) throw new Error("expected draft reference");
+
+		let release: () => void = () => {};
+		try {
+			const held = new Promise<void>((resolveHeld) => {
+				void mcpServer.filesystem.withDraftLock(reference, async () => {
+					resolveHeld();
+					await new Promise<void>((resolveRelease) => {
+						release = resolveRelease;
+					});
+				});
+			});
+			await held;
+
+			const result = await mcpServer.testInterface.callTool({
+				params: {
+					name: "task_edit",
+					arguments: {
+						id: "DRAFT-1",
+						status: "To Do",
+					},
+				},
+			});
+
+			expect(result.isError).toBe(true);
+			expect(getText(result.content)).toContain("being modified by another process");
+
+			const stillDraft = await mcpServer.filesystem.loadDraft("DRAFT-1");
+			expect(stillDraft?.status).toBe("Draft");
+		} finally {
+			release();
+		}
+	});
+
+	it("task_edit fails closed when duplicate numeric draft identities exist", async () => {
+		await mcpServer.testInterface.callTool({
+			params: {
+				name: "task_create",
+				arguments: {
+					title: "Alpha one",
+					status: "Draft",
+				},
+			},
+		});
+
+		const draftsDir = join(TEST_DIR, "backlog", "drafts");
+		const twinPath = join(draftsDir, "draft-001 - Alpha two.md");
+		await Bun.write(
+			twinPath,
+			"---\nid: DRAFT-001\ntitle: Alpha two\nstatus: Draft\nassignee: []\ncreated_date: 2026-08-24 10:00\nlabels: []\ndependencies: []\n---\n\n## Description\n\nbody\n",
+		);
+
+		const view = await mcpServer.testInterface.callTool({
+			params: {
+				name: "task_view",
+				arguments: { id: "DRAFT-1" },
+			},
+		});
+		expect(view.isError).toBe(true);
+		expect(getText(view.content)).toContain("is ambiguous");
+		expect(getText(view.content)).toContain("draft-1 - Alpha-one.md");
+		expect(getText(view.content)).toContain("draft-001 - Alpha two.md");
+
+		const result = await mcpServer.testInterface.callTool({
+			params: {
+				name: "task_edit",
+				arguments: {
+					id: "DRAFT-1",
+					title: "Hijacked",
+				},
+			},
+		});
+
+		expect(result.isError).toBe(true);
+		expect(getText(result.content)).toContain("is ambiguous");
+		expect(getText(result.content)).toContain("draft-001 - Alpha two.md");
+
+		const healthyText = await Bun.file(join(draftsDir, "draft-1 - Alpha-one.md")).text();
+		expect(healthyText).toContain("Alpha one");
+		expect(await Bun.file(twinPath).text()).toContain("Alpha two");
+	});
+
 	it("searches and archives drafts when requested", async () => {
 		await mcpServer.testInterface.callTool({
 			params: {

@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
-import { chmod, mkdir, unlink } from "node:fs/promises";
+import { chmod, mkdir, readdir, unlink } from "node:fs/promises";
 import { join } from "node:path";
 import { $ } from "bun";
 import { Core } from "../core/backlog.ts";
@@ -110,6 +110,63 @@ describe("backlog doctor", () => {
 		expect(output).toContain("Verification passed");
 		expect((await core.previewDuplicateTaskIdRepair()).groups).toEqual([]);
 	});
+
+	it("keeps a non-zero exit when repairable task duplicates are fixed but draft findings remain", async () => {
+		const draftsDir = await core.filesystem.getDraftsDir();
+		await Bun.write(
+			join(draftsDir, "draft-1 - Alpha.md"),
+			serializeTask({ ...makeTask("DRAFT-1", "Alpha"), status: "Draft" }),
+		);
+		await Bun.write(
+			join(draftsDir, "draft-01 - Beta.md"),
+			serializeTask({ ...makeTask("DRAFT-01", "Beta"), status: "Draft" }),
+		);
+
+		const result = await $`bun ${cliPath} doctor --fix --yes`.cwd(testDir).quiet().nothrow();
+		const output = `${result.stdout}${result.stderr}`;
+		expect(result.exitCode).toBe(1);
+		expect(output).toContain("Repaired 2 duplicate task files");
+		expect(output).toContain("Duplicate draft IDs (diagnostic only):");
+		expect(output).toContain("draft-01 - Beta.md");
+		expect(output).toContain("Rename one file to a distinct numeric id, then make its frontmatter agree.");
+		expect(output).toContain("Draft identity findings remain diagnostic-only and still require manual review.");
+		expect((await core.previewDuplicateTaskIdRepair()).groups).toEqual([]);
+
+		const remainingDrafts = (await readdir(draftsDir)).sort();
+		expect(remainingDrafts).toEqual(["draft-01 - Beta.md", "draft-1 - Alpha.md"]);
+	});
+
+	it.skipIf(process.platform === "win32")(
+		"surfaces an unscannable drafts directory as a finding instead of reporting healthy",
+		async () => {
+			const draftsDir = await core.filesystem.getDraftsDir();
+			// chmod is a no-op for root, so confirm the directory really became unreadable first.
+			await chmod(draftsDir, 0o000);
+			const reallyLocked = await Array.fromAsync(new Bun.Glob("draft-*.md").scan({ cwd: draftsDir }))
+				.then(() => false)
+				.catch(() => true);
+
+			if (!reallyLocked) {
+				// Permissions could not block the scan here; assert doctor stays healthy either way.
+				const healthy = await $`bun ${cliPath} doctor`.cwd(testDir).quiet().nothrow();
+				await chmod(draftsDir, 0o755);
+				expect(healthy.exitCode).toBe(0);
+				return;
+			}
+
+			let result: { exitCode: number; stdout: Uint8Array; stderr: Uint8Array };
+			try {
+				result = await $`bun ${cliPath} doctor`.cwd(testDir).quiet().nothrow();
+			} finally {
+				await chmod(draftsDir, 0o755);
+			}
+			const output = `${result.stdout}${result.stderr}`;
+			expect(result.exitCode).toBe(1);
+			expect(output).not.toContain("No duplicate task, document, decision, or draft IDs found.");
+			expect(output).toContain("Unreadable draft files or directories");
+			expect(output).toContain("backlog/drafts");
+		},
+	);
 
 	it("requires --fix when --yes is supplied", async () => {
 		const result = await $`bun ${cliPath} doctor --yes`.cwd(testDir).quiet().nothrow();
@@ -234,7 +291,33 @@ describe("document and decision identity", () => {
 		const result = await $`bun ${cliPath} doctor`.cwd(testDir).quiet().nothrow();
 		const output = `${result.stdout}${result.stderr}`;
 		expect(result.exitCode).toBe(0);
-		expect(output).toContain("No duplicate task, document, or decision IDs found.");
+		expect(output).toContain("No duplicate task, document, decision, or draft IDs found.");
+	});
+
+	it("reports duplicate and drifted draft identities and contributes to the exit code", async () => {
+		await writeDocument("doc-1 - Alpha.md", "doc-1", "Alpha");
+		await writeDecision("decision-1 - Alpha.md", "decision-1", "Alpha");
+
+		const draftsDir = await core.filesystem.getDraftsDir();
+		await Bun.write(
+			join(draftsDir, "draft-1 - Alpha.md"),
+			serializeTask({ ...makeTask("DRAFT-1", "Alpha"), status: "Draft" }),
+		);
+		await Bun.write(
+			join(draftsDir, "draft-01 - Beta.md"),
+			serializeTask({ ...makeTask("DRAFT-01", "Beta"), status: "Draft" }),
+		);
+		await Bun.write(join(draftsDir, "draft-2 - Drifted.md"), "---\nid: DRAFT-9\ntitle: Drifted\n---\ndrifted body");
+
+		const result = await $`bun ${cliPath} doctor`.cwd(testDir).quiet().nothrow();
+		const output = `${result.stdout}${result.stderr}`;
+		expect(result.exitCode).toBe(1);
+		expect(output).toContain("Duplicate draft IDs (diagnostic only):");
+		expect(output).toContain("draft-01 - Beta.md");
+		expect(output).toContain("draft-1 - Alpha.md");
+		expect(output).toContain("Drifted draft files (frontmatter id does not match filename):");
+		expect(output).toContain("frontmatter declares DRAFT-9, filename declares DRAFT-2");
+		expect(output).toContain("Fix the frontmatter id or rename each file so they agree.");
 	});
 
 	it("detects duplicate document and decision IDs", async () => {
@@ -282,7 +365,7 @@ describe("document and decision identity", () => {
 		const result = await $`bun ${cliPath} doctor`.cwd(testDir).quiet().nothrow();
 		const output = `${result.stdout}${result.stderr}`;
 		expect(result.exitCode).toBe(1);
-		expect(output).not.toContain("No duplicate task, document, or decision IDs found.");
+		expect(output).not.toContain("No duplicate task, document, decision, or draft IDs found.");
 		expect(output).toContain("Unreadable document files");
 		expect(output).toContain("backlog/docs/doc-2 - Broken.md");
 		expect(output).toContain("Unreadable decision files");
@@ -311,7 +394,7 @@ describe("document and decision identity", () => {
 
 		const output = `${result.stdout}${result.stderr}`;
 		expect(result.exitCode).toBe(1);
-		expect(output).not.toContain("No duplicate task, document, or decision IDs found.");
+		expect(output).not.toContain("No duplicate task, document, decision, or draft IDs found.");
 		expect(output).toContain("Unreadable document files or directories");
 		expect(output).toContain("backlog/docs");
 	});

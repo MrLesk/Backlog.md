@@ -15,6 +15,7 @@ export async function getValidStatuses(core?: StatusConfigReader): Promise<strin
 /**
  * Find the canonical status (matching config casing) for a given input.
  * Loads configured statuses and matches case-insensitively and space-insensitively.
+ * `allowedStatuses` narrows the match set (e.g. drafts, which only accept Draft).
  * Returns the canonical value or null if no match is found.
  *
  * Examples:
@@ -22,9 +23,13 @@ export async function getValidStatuses(core?: StatusConfigReader): Promise<strin
  * - "in progress" matches "In Progress"
  * - "DONE" matches "Done"
  */
-export async function getCanonicalStatus(input: string | undefined, core?: StatusConfigReader): Promise<string | null> {
+export async function getCanonicalStatus(
+	input: string | undefined,
+	core?: StatusConfigReader,
+	allowedStatuses?: string[],
+): Promise<string | null> {
 	if (!input) return null;
-	const statuses = await getValidStatuses(core);
+	const statuses = allowedStatuses ?? (await getValidStatuses(core));
 	// Normalize: lowercase, trim, and remove all whitespace
 	const normalized = String(input).trim().toLowerCase().replace(/\s+/g, "");
 	if (!normalized) return null;

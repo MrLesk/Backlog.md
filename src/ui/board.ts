@@ -19,8 +19,8 @@ import { getPriorityOptions } from "../utils/priority-config.ts";
 import { applySharedTaskFilters, createTaskSearchIndex, type LabelMatchMode } from "../utils/task-search.ts";
 import { compareTaskIds } from "../utils/task-sorting.ts";
 import { getTaskTypeValues, resolveTaskTypeValues } from "../utils/task-type-config.ts";
-import { formatAcceptanceCriteriaProgress } from "./acceptance-criteria-progress.ts";
 import { formatUtcDateForDisplay } from "../utils/utc-date-display.ts";
+import { formatAcceptanceCriteriaProgress } from "./acceptance-criteria-progress.ts";
 import { openConfirmPopup } from "./components/confirm-popup.ts";
 import { createFilterHeader, type FilterHeader, type FilterState } from "./components/filter-header.ts";
 import { openMultiSelectFilterPopup, openSingleSelectFilterPopup } from "./components/filter-popup.ts";
@@ -1292,11 +1292,33 @@ export async function renderBoardTui(
 					showTransientFooter(` {red-fg}Task ${task.id} not found on this branch.{/}`);
 					return;
 				}
+				if (result.reason === "identity_conflict") {
+					showTransientFooter(
+						" {red-fg}File identity is inconsistent; make the frontmatter id match the filename, then retry.{/}",
+					);
+					return;
+				}
+				if (result.reason === "unreadable") {
+					showTransientFooter(" {red-fg}Could not read the saved file; fix its YAML/markdown syntax.{/}");
+					return;
+				}
+				if (result.reason === "ambiguous") {
+					showTransientFooter(
+						" {red-fg}Numeric draft id is shared by multiple files; rename or fix their ids, then retry.{/}",
+					);
+					return;
+				}
 
 				if (result.task) {
-					currentTasks = currentTasks.map((existingTask) =>
-						existingTask.id === task.id ? result.task || existingTask : existingTask,
-					);
+					// Reconcile by file identity first: with task_prefix="draft" a task and a draft
+					// can share one id, so an id match alone may target the wrong record.
+					currentTasks = currentTasks.map((existingTask) => {
+						const matchesByFile =
+							result.task?.filePath !== undefined &&
+							existingTask.filePath !== undefined &&
+							existingTask.filePath === result.task.filePath;
+						return existingTask.id === task.id || matchesByFile ? result.task || existingTask : existingTask;
+					});
 				}
 
 				if (result.changed) {
