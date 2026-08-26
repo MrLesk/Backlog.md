@@ -3,11 +3,11 @@ id: BACK-637
 title: >-
   Preserve consecutive blank lines inside fenced code blocks in notes (issue
   930)
-status: Done
+status: In Progress
 assignee:
-  - ox-alpha
+  - '@grok'
 created_date: '2026-08-22 12:02'
-updated_date: '2026-08-22 21:29'
+updated_date: '2026-08-26 21:41'
 labels: []
 dependencies: []
 ordinal: 272000
@@ -37,7 +37,17 @@ ordinal: 272000
 ## Implementation Plan
 
 <!-- SECTION:PLAN:BEGIN -->
-1. Root cause: updateStructuredSections() in src/markdown/structured-sections.ts ends with output.replace(/\\n{3,}/g) over the whole serialized task file, collapsing blank lines inside fenced code blocks stored in notes; the same literal normalization exists in stripSectionInstances(), stripCommentsSection(), and updateCommentsContent(). 2. Add one shared fence-aware helper that collapses runs of 2+ blank lines to one outside fences and leaves every line inside backtick or tilde fences untouched (CommonMark-style open/close tracking). 3. Replace the four raw regex normalizations with calls to the helper, keeping each site existing trim behavior. 4. Regression tests: notes with 2+ blank lines inside backtick and tilde fences preserved byte-for-byte via the Core edit path; normalization still applied to prose outside fences. 5. Verify tsc, biome check, full test suite.
+1. Blocking CI: CodeQL js/bad-tag-filter on the HTML-comment end detector in collapseBlankLines. Change the comment-end regexp so it accepts both --> and --!> (standard `--!?>` form). Do not add an HTML parser or extra CommonMark features.
+
+2. Sentinel-in-fence (Codex P2, confirmed user-visible): `SECTION_SENTINEL_LINE_REGEX` currently resets fence state on any marker-shaped line, so a fenced example such as `<!-- SECTION:DESCRIPTION:BEGIN -->` stops being fenced and consecutive blanks collapse. Skip sentinel resets while a fence is already open (marker-shaped lines inside fences stay fence content).
+
+3. Keep unterminated-fence scoping without treating in-fence markers as boundaries: run the existing collapseBlankLines helper on each section body in buildSectionBlock so later sections still normalize independently.
+
+4. List-indented HTML (Codex P2, confirmed): HTML-block openers still use `^ {0,3}` on the raw line, so a list-nested `<div>` is missed while the fence detector already honors list indent. Reuse the existing container-relative indent for HTML-block starts so fence-like lines inside that HTML stay non-fences and prose blanks still collapse.
+
+5. Skip trailing-blank unterminated-fence P2: loss comes from pre-existing `.trim()` / `replace(/\s+$/)` on section bodies and extractStructuredSection, not from this PR.
+
+6. Regression tests for (2) and (4); keep existing fence/HTML/section-scoping tests. tsc, biome on touched files, targeted markdown tests, full bun test. Commit `BACK-637 - ...` and push to origin/tasks/back-637-preserve-blank-lines-in-code-fences.
 <!-- SECTION:PLAN:END -->
 
 ## Implementation Notes
@@ -46,6 +56,15 @@ ordinal: 272000
 Audited inherited WIP: call-site swaps were correct, but the helper misclassified runs adjacent to fence boundaries (checked the line before the run instead of the first blank line) and accepted any indent width plus backticks in backtick info strings. Rewrote it as a single-pass CommonMark tracker (<=3 space indents, same-character closings at least as long as the opener, unterminated fence extends to end of text); all four normalization sites share it.
 
 Validation: bunx tsc --noEmit clean; biome clean on structured-sections.ts + both test files; targeted 22 pass (structured-sections-code-fences.test.ts, implementation-notes.test.ts); scoped suites 106 pass (markdown, append-notes, edit-preservation, acceptance-criteria x3); full suite 2358 pass / 6 skip / 0 fail across 244 files. bun run check . still fails on 5 untouched files with pre-existing format drift (core/backlog.ts, core/content-store.ts, file-system/operations.ts, server/index.ts, ui/components/task-composer.ts) - out of scope.
+
+Merge-ready follow-up on PR #933:
+
+- CodeQL js/bad-tag-filter: HTML comment end detector is now `--!?>` (matches `-->` and `--!>`).
+- Sentinel-shaped lines inside an open fence no longer reset fence state; blank lines in those examples round-trip.
+- Unterminated-fence scoping is preserved by collapsing each section body with the existing helper before wrapping.
+- HTML-block openers use the same list-container indent as fences, so list-nested `<div>` content is not treated as a fence.
+- Skipped trailing-blank unterminated-fence P2: pre-existing section `.trim()` / extract trim, not introduced here.
+- Skipped NOTES:END-inside-fence extraction: extractStructuredSection still matches the first real END marker (pre-existing).
 <!-- SECTION:NOTES:END -->
 
 ## Final Summary

@@ -159,4 +159,23 @@ describe("structured sections blank-line normalization with code fences", () => 
 		const notes = ["<div>", "```", "</div>", "", "", "", "after"].join("\n");
 		expect(roundTripNotes(notes)).toBe("<div>\n```\n</div>\n\nafter");
 	});
+
+	it("keeps sentinel-shaped examples inside a fence from becoming section boundaries", () => {
+		const notes = ["```", "<!-- SECTION:DESCRIPTION:BEGIN -->", "", "", "still fenced", "```"].join("\n");
+		expect(roundTripNotes(notes)).toBe(notes);
+	});
+
+	it("keeps sentinel end examples inside a fence from becoming section boundaries", () => {
+		const notes = ["```", "<!-- SECTION:DESCRIPTION:END -->", "", "", "still fenced", "```"].join("\n");
+		expect(roundTripNotes(notes)).toBe(notes);
+	});
+
+	it("honors list indentation when detecting raw html blocks", () => {
+		const notes = ["- item", "    <div>", "    ```", "", "", "    foo", "    </div>", "after", "", "", "more"].join(
+			"\n",
+		);
+		expect(roundTripNotes(notes)).toBe(
+			["- item", "    <div>", "    ```", "", "    foo", "    </div>", "after", "", "more"].join("\n"),
+		);
+	});
 });

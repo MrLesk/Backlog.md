@@ -90,6 +90,7 @@ const HTML_BLOCK_TAG_NAMES =
 	"address|article|aside|base|basefont|blockquote|body|caption|center|col|colgroup|dd|details|dialog|dir|div|dl|dt|fieldset|figcaption|figure|footer|form|frame|frameset|h[1-6]|head|header|hr|html|iframe|legend|li|link|main|menu|menuitem|nav|noframes|ol|optgroup|option|p|param|search|section|summary|table|tbody|td|tfoot|th|thead|title|tr|track|ul";
 const HTML_TYPE1_OPENING_REGEX = /^ {0,3}<(script|pre|style|textarea)(?=[\t />]|$)/i;
 const HTML_COMMENT_OPENING_REGEX = /^ {0,3}<!--/;
+const HTML_COMMENT_END_REGEX = /--!?>/;
 const HTML_PROCESSING_INSTRUCTION_OPENING_REGEX = /^ {0,3}<\?/;
 const HTML_DECLARATION_OPENING_REGEX = /^ {0,3}<![a-zA-Z]/;
 const HTML_CDATA_OPENING_REGEX = /^ {0,3}<!\[CDATA\[/;
@@ -112,10 +113,10 @@ interface HtmlBlockState {
  * CommonMark: ``` or ~~~ openers indented up to three spaces past the content
  * column of any enclosing list container, backtick openers whose info string
  * contains a backtick are prose, closings repeat the same character with at
- * least the opening length, raw HTML blocks never open or close fences, and
- * an unterminated fence extends to the end of the text or to the next
- * structured-section sentinel line so fence state never leaks across section
- * bodies.
+ * least the opening length, and raw HTML blocks never open or close fences.
+ * Marker-shaped lines inside an open fence stay fence content. Callers that
+ * must keep unterminated fences from leaking across sections collapse each
+ * section body independently.
  */
 function collapseBlankLines(text: string): string {
 	const lines: string[] = [];
@@ -124,15 +125,14 @@ function collapseBlankLines(text: string): string {
 	let htmlBlock: HtmlBlockState | undefined;
 	const containerColumns: number[] = [];
 	for (const line of text.split("\n")) {
-		if (SECTION_SENTINEL_LINE_REGEX.test(line)) {
-			fence = undefined;
-			htmlBlock = undefined;
-			containerColumns.length = 0;
-		}
 		if (fence) {
 			lines.push(line);
 			if (closesFence(line, fence, containerColumns)) fence = undefined;
 			continue;
+		}
+		if (SECTION_SENTINEL_LINE_REGEX.test(line)) {
+			htmlBlock = undefined;
+			containerColumns.length = 0;
 		}
 		if (line === "") {
 			if (htmlBlock?.endsOnBlankLine) htmlBlock = undefined;
@@ -150,7 +150,7 @@ function collapseBlankLines(text: string): string {
 		}
 		updateListContainers(line, containerColumns);
 		fence = matchFenceOpener(line, containerColumns);
-		if (!fence) htmlBlock = matchHtmlBlockStart(line);
+		if (!fence) htmlBlock = matchHtmlBlockStart(line, containerColumns);
 	}
 	if (pendingBlankLines > 0) lines.push("");
 	return lines.join("\n");
@@ -202,25 +202,29 @@ function closesFence(line: string, fence: FenceSpec, containerColumns: number[])
 	return runLength >= fence.minLength && /^[\t ]*$/.test(remainder.slice(runLength));
 }
 
-function matchHtmlBlockStart(line: string): HtmlBlockState | undefined {
-	const type1Match = HTML_TYPE1_OPENING_REGEX.exec(line);
+function matchHtmlBlockStart(line: string, containerColumns: number[]): HtmlBlockState | undefined {
+	const base = containerColumns.at(-1) ?? 0;
+	const relative = base > 0 && leadingSpaceCount(line) >= base ? line.slice(base) : line;
+	const type1Match = HTML_TYPE1_OPENING_REGEX.exec(relative);
 	if (type1Match) {
 		const endRegex = new RegExp(`</${type1Match[1]}>`, "i");
-		return endRegex.test(line) ? undefined : { endRegex, endsOnBlankLine: false };
+		return endRegex.test(relative) ? undefined : { endRegex, endsOnBlankLine: false };
 	}
-	if (HTML_COMMENT_OPENING_REGEX.test(line)) {
-		return line.includes("-->") ? undefined : { endRegex: /-->/, endsOnBlankLine: false };
+	if (HTML_COMMENT_OPENING_REGEX.test(relative)) {
+		return HTML_COMMENT_END_REGEX.test(relative)
+			? undefined
+			: { endRegex: HTML_COMMENT_END_REGEX, endsOnBlankLine: false };
 	}
-	if (HTML_PROCESSING_INSTRUCTION_OPENING_REGEX.test(line)) {
-		return line.includes("?>") ? undefined : { endRegex: /\?>/, endsOnBlankLine: false };
+	if (HTML_PROCESSING_INSTRUCTION_OPENING_REGEX.test(relative)) {
+		return relative.includes("?>") ? undefined : { endRegex: /\?>/, endsOnBlankLine: false };
 	}
-	if (HTML_DECLARATION_OPENING_REGEX.test(line)) {
-		return line.includes(">") ? undefined : { endRegex: />/, endsOnBlankLine: false };
+	if (HTML_DECLARATION_OPENING_REGEX.test(relative)) {
+		return relative.includes(">") ? undefined : { endRegex: />/, endsOnBlankLine: false };
 	}
-	if (HTML_CDATA_OPENING_REGEX.test(line)) {
-		return line.includes("]]>") ? undefined : { endRegex: /\]\]>/, endsOnBlankLine: false };
+	if (HTML_CDATA_OPENING_REGEX.test(relative)) {
+		return relative.includes("]]>") ? undefined : { endRegex: /\]\]>/, endsOnBlankLine: false };
 	}
-	if (HTML_BLOCK_TAG_OPENING_REGEX.test(line) || HTML_COMPLETE_TAG_LINE_REGEX.test(line)) {
+	if (HTML_BLOCK_TAG_OPENING_REGEX.test(relative) || HTML_COMPLETE_TAG_LINE_REGEX.test(relative)) {
 		return { endsOnBlankLine: true };
 	}
 	return undefined;
@@ -246,7 +250,7 @@ function buildSectionBlock(key: StructuredSectionKey, body: string): string {
 	const { title } = getConfig(key);
 	const begin = getBeginMarker(key);
 	const end = getEndMarker(key);
-	const normalized = body.replace(/\r\n/g, "\n").replace(/\s+$/g, "");
+	const normalized = collapseBlankLines(body.replace(/\r\n/g, "\n").replace(/\s+$/g, ""));
 	const content = normalized ? `${normalized}\n` : "";
 	return `## ${title}\n\n${begin}\n${content}${end}`;
 }
