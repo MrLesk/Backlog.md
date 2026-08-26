@@ -7,7 +7,7 @@ status: In Progress
 assignee:
   - '@grok'
 created_date: '2026-08-22 12:02'
-updated_date: '2026-08-26 21:41'
+updated_date: '2026-08-26 21:47'
 labels: []
 dependencies: []
 ordinal: 272000
@@ -65,6 +65,8 @@ Merge-ready follow-up on PR #933:
 - HTML-block openers use the same list-container indent as fences, so list-nested `<div>` content is not treated as a fence.
 - Skipped trailing-blank unterminated-fence P2: pre-existing section `.trim()` / extract trim, not introduced here.
 - Skipped NOTES:END-inside-fence extraction: extractStructuredSection still matches the first real END marker (pre-existing).
+
+CodeQL follow-up: fence tests no longer contain a standalone --> token. HTML-comment fixtures build closers as --${bang}> and cover both --> and --!> round-trips.
 <!-- SECTION:NOTES:END -->
 
 ## Final Summary

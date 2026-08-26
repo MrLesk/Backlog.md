@@ -8,6 +8,15 @@ function roundTripNotes(notes: string): string {
 	return extracted ?? "";
 }
 
+function htmlCommentCloser(bang: "" | "!"): string {
+	return `--${bang}>`;
+}
+
+function assertHtmlCommentHidesFences(closer: string): void {
+	const notes = ["<!--", "```", closer, "after", "", "", "", "more"].join("\n");
+	expect(roundTripNotes(notes)).toBe(["<!--", "```", closer, "after", "", "more"].join("\n"));
+}
+
 describe("structured sections blank-line normalization with code fences", () => {
 	it("preserves consecutive blank lines inside backtick fences byte-for-byte", () => {
 		const notes = [
@@ -151,8 +160,11 @@ describe("structured sections blank-line normalization with code fences", () => 
 	});
 
 	it("ignores fence-like lines inside html comments and normalizes following prose", () => {
-		const notes = ["<!--", "```", "-->", "after", "", "", "", "more"].join("\n");
-		expect(roundTripNotes(notes)).toBe("<!--\n```\n-->\nafter\n\nmore");
+		assertHtmlCommentHidesFences(htmlCommentCloser(""));
+	});
+
+	it("ignores fence-like lines inside html comments closed with a bang sequence", () => {
+		assertHtmlCommentHidesFences(htmlCommentCloser("!"));
 	});
 
 	it("ignores fence-like lines inside html block tags and normalizes following prose", () => {
