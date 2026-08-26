@@ -3677,6 +3677,29 @@ taskCmd
 		});
 	});
 
+async function viewDraftById(core: Core, taskId: string, options?: { plain?: boolean }): Promise<void> {
+	try {
+		const draft = await core.filesystem.loadDraft(taskId);
+		if (!draft) {
+			console.error(`Draft ${taskId} not found.`);
+			return;
+		}
+		const usePlainOutput = isPlainRequested(options) || shouldAutoPlain;
+		if (usePlainOutput) {
+			console.log(formatTaskPlainText(draft));
+			return;
+		}
+		await viewTaskEnhanced(draft, { startWithDetailFocus: true, core });
+	} catch (error) {
+		if (isAmbiguousIdError(error)) {
+			console.error(error.message);
+			process.exitCode = 1;
+			return;
+		}
+		throw error;
+	}
+}
+
 const draftCmd = program.command("draft");
 
 draftCmd
@@ -3840,12 +3863,17 @@ draftCmd
 	.action(async (taskId: string) => {
 		const cwd = await requireProjectRoot();
 		const core = new Core(cwd);
-		// The argument itself selects the draft file; re-resolving by its frontmatter ID could
-		// target a different file when a draft filename and its ID have drifted apart.
-		if (await core.archiveDraft(taskId)) {
-			console.log(`Archived draft ${normalizeId(taskId, DRAFT_PREFIX)}`);
-		} else {
-			console.error(`Draft ${taskId} not found.`);
+		try {
+			// The argument itself selects the draft file; re-resolving by its frontmatter ID could
+			// target a different file when a draft filename and its ID have drifted apart.
+			if (await core.archiveDraft(taskId)) {
+				console.log(`Archived draft ${normalizeId(taskId, DRAFT_PREFIX)}`);
+			} else {
+				console.error(`Draft ${taskId} not found.`);
+				process.exitCode = 1;
+			}
+		} catch (error) {
+			console.error(error instanceof Error ? error.message : String(error));
 			process.exitCode = 1;
 		}
 	});
@@ -3877,29 +3905,7 @@ draftCmd
 	.action(async (taskId: string, options) => {
 		const cwd = await requireProjectRoot();
 		const core = new Core(cwd);
-		const { getDraftPath } = await import("./utils/task-path.ts");
-		const filePath = await getDraftPath(taskId, core);
-
-		if (!filePath) {
-			console.error(`Draft ${taskId} not found.`);
-			return;
-		}
-		const draft = await core.filesystem.loadDraft(taskId);
-
-		if (!draft) {
-			console.error(`Draft ${taskId} not found.`);
-			return;
-		}
-
-		// Plain text output for non-interactive environments
-		const usePlainOutput = isPlainRequested(options) || shouldAutoPlain;
-		if (usePlainOutput) {
-			console.log(formatTaskPlainText(draft));
-			return;
-		}
-
-		// Use enhanced task viewer with detail focus
-		await viewTaskEnhanced(draft, { startWithDetailFocus: true, core });
+		await viewDraftById(core, taskId, options);
 	});
 
 draftCmd
@@ -3913,29 +3919,7 @@ draftCmd
 
 		const cwd = await requireProjectRoot();
 		const core = new Core(cwd);
-		const { getDraftPath } = await import("./utils/task-path.ts");
-		const filePath = await getDraftPath(taskId, core);
-
-		if (!filePath) {
-			console.error(`Draft ${taskId} not found.`);
-			return;
-		}
-		const draft = await core.filesystem.loadDraft(taskId);
-
-		if (!draft) {
-			console.error(`Draft ${taskId} not found.`);
-			return;
-		}
-
-		// Plain text output for non-interactive environments
-		const usePlainOutput = isPlainRequested(options) || shouldAutoPlain;
-		if (usePlainOutput) {
-			console.log(formatTaskPlainText(draft, { filePathOverride: filePath }));
-			return;
-		}
-
-		// Use enhanced task viewer with detail focus
-		await viewTaskEnhanced(draft, { startWithDetailFocus: true, core });
+		await viewDraftById(core, taskId, options);
 	});
 
 const milestoneCmd = program.command("milestone").aliases(["milestones"]);

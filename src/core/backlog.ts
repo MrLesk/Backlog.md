@@ -46,6 +46,7 @@ import {
 	detectContentIdentityIssues,
 } from "../utils/duplicate-detection.ts";
 import { openInEditor } from "../utils/editor.ts";
+import { isAmbiguousIdError } from "../utils/entity-id.ts";
 import { findBacklogRoot } from "../utils/find-backlog-root.ts";
 import { generateNextDecisionId, generateNextDocId } from "../utils/id-generators.ts";
 import {
@@ -82,7 +83,6 @@ import {
 	canonicalTaskId,
 	extractDraftIdFromFilename,
 	findDuplicateDraftFilenameGroups,
-	getDraftPath,
 	getTaskPath,
 	LOCAL_TASK_LOOKUP_HINT,
 	normalizeTaskId,
@@ -1681,7 +1681,9 @@ export class Core {
 				...(definitionOfDoneItems && definitionOfDoneItems.length > 0 && { definitionOfDoneItems }),
 			};
 
-			const resolvedPreviousPath = isDraft ? await getDraftPath(task.id, this) : await getTaskPath(task.id, this);
+			const resolvedPreviousPath = isDraft
+				? await this.fs.resolveDraftFilePath(task.id)
+				: await getTaskPath(task.id, this);
 			const targetPath = await this.fs.getTaskWritePath(task, isDraft);
 			const targetContent = await this.readFileIfPresent(targetPath);
 			const previousPath = targetContent ? targetPath : resolvedPreviousPath;
@@ -3418,7 +3420,17 @@ export class Core {
 			return { changed: false, task: contextualTask, reason: "read_only" };
 		}
 
-		const resolvedTask = contextualTask ?? (await this.getTask(taskId)) ?? (await this.fs.loadDraft(taskId));
+		let resolvedTask: Task | null | undefined = contextualTask ?? (await this.getTask(taskId));
+		if (!resolvedTask) {
+			try {
+				resolvedTask = await this.fs.loadDraft(taskId);
+			} catch (error) {
+				if (isAmbiguousIdError(error)) {
+					return { changed: false, reason: "ambiguous" };
+				}
+				throw error;
+			}
+		}
 		if (!resolvedTask) {
 			return { changed: false, reason: "not_found" };
 		}

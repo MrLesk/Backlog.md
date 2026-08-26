@@ -2,15 +2,7 @@ import { basename, join } from "node:path";
 import { type Core, createRuntimeCore } from "../core/backlog.ts";
 import type { Task } from "../types/index.ts";
 import { AmbiguousIdError } from "./entity-id.ts";
-import {
-	buildFilenameIdRegex,
-	buildGlobPattern,
-	escapeRegex,
-	extractAnyPrefix,
-	filenameMatchesId,
-	idForFilename,
-	normalizeId,
-} from "./prefix-config.ts";
+import { buildFilenameIdRegex, buildGlobPattern, escapeRegex, extractAnyPrefix, normalizeId } from "./prefix-config.ts";
 import { canonicalTaskId, normalizeTaskId, taskIdsEqual } from "./task-id.ts";
 
 export { canonicalTaskId, normalizeTaskId, taskIdsEqual } from "./task-id.ts";
@@ -135,7 +127,7 @@ function normalizeDraftId(draftId: string): string {
 /**
  * Checks if an input ID matches a filename loosely for drafts.
  * Loose means case-insensitive with leading zeros ignored, the same rule
- * {@link getDraftPath} applies when no exact filename match exists.
+ * used to collect filename-derived draft identity candidates.
  */
 export function draftIdsMatchLoosely(inputId: string, filename: string): boolean {
 	const candidate = extractDraftIdFromFilename(filename);
@@ -194,35 +186,6 @@ export function findDuplicateDraftFilenameGroups(filenames: readonly string[]): 
  */
 function draftIdsEqual(left: string, right: string): boolean {
 	return draftIdentityKey(left) === draftIdentityKey(right);
-}
-
-/**
- * Get the file path for a draft by ID
- */
-export async function getDraftPath(draftId: string, core: Core): Promise<string | null> {
-	try {
-		const draftsDir = await core.filesystem.getDraftsDir();
-		const files = await Array.fromAsync(
-			new Bun.Glob(buildGlobPattern("draft")).scan({ cwd: draftsDir, followSymlinks: true }),
-		);
-		const normalizedId = normalizeDraftId(draftId);
-		// Use lowercase ID for filename matching (filenames use lowercase prefix)
-		const filenameId = idForFilename(normalizedId);
-		// First exact match
-		let draftFile = files.find((f) => filenameMatchesId(f, filenameId));
-		// Fallback to loose numeric match ignoring leading zeros
-		if (!draftFile) {
-			draftFile = files.find((f) => draftIdsMatchLoosely(draftId, f));
-		}
-
-		if (draftFile) {
-			return join(draftsDir, draftFile);
-		}
-
-		return null;
-	} catch {
-		return null;
-	}
 }
 
 /**

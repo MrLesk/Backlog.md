@@ -197,11 +197,18 @@ describe("BacklogServer draft task endpoints", () => {
 			}),
 		);
 
+		const read = await request("/api/tasks/DRAFT-1");
+		expect(read.status).toBe(409);
+		const readBody = (await read.json()) as { error: string };
+		expect(readBody.error).toContain("is ambiguous");
+		expect(readBody.error).toContain("draft-1 - Alpha-one.md");
+		expect(readBody.error).toContain("draft-001 - Alpha two.md");
+
 		const edit = await put("/api/tasks/DRAFT-1", { title: "Hijacked" });
 		expect(edit.status).toBe(409);
 		expect(((await edit.json()) as { error: string }).error).toContain("is ambiguous");
 
-		expect((await core.filesystem.loadDraft("DRAFT-1"))?.title).toBe("Alpha one");
+		expect(await Bun.file(join(draftsDir, "draft-1 - Alpha-one.md")).text()).toContain("Alpha one");
 		expect(await Bun.file(twinPath).text()).toContain("Alpha two");
 
 		// The promote endpoint surfaces the same conflict instead of moving either file.

@@ -967,8 +967,15 @@ export class BacklogServer {
 	private async handleGetTask(taskId: string): Promise<Response> {
 		if (!isValidTaskId(taskId)) return Response.json({ error: `Invalid task ID: ${taskId}` }, { status: 400 });
 		if (isDraftId(taskId)) {
-			const draft = await this.core.filesystem.loadDraft(taskId);
-			return draft ? Response.json(draft) : Response.json({ error: `Task ${taskId} not found` }, { status: 404 });
+			try {
+				const draft = await this.core.filesystem.loadDraft(taskId);
+				return draft ? Response.json(draft) : Response.json({ error: `Task ${taskId} not found` }, { status: 404 });
+			} catch (error) {
+				if (isAmbiguousIdError(error)) {
+					return Response.json({ error: error.message }, { status: 409 });
+				}
+				throw error;
+			}
 		}
 		let resolvedTask: Task | null;
 		try {

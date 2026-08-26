@@ -16,7 +16,7 @@ import { findDecisionById } from "../utils/decision-id.ts";
 import { documentIdsEqual, findDocumentById, normalizeDocumentId } from "../utils/document-id.ts";
 import { normalizeDocumentRelativePath, normalizeDocumentSubPath } from "../utils/document-path.ts";
 import type { DraftIdentityFindings } from "../utils/duplicate-detection.ts";
-import { AmbiguousIdError } from "../utils/entity-id.ts";
+import { AmbiguousIdError, isAmbiguousIdError } from "../utils/entity-id.ts";
 import {
 	buildGlobPattern,
 	extractAnyPrefix,
@@ -1290,23 +1290,11 @@ export class FileSystem {
 
 	async loadDraft(draftId: string): Promise<Task | null> {
 		try {
-			const draftsDir = await this.getDraftsDir();
-			// Search for draft files with draft- prefix
-			const files = await Array.fromAsync(
-				new Bun.Glob(buildGlobPattern("draft")).scan({ cwd: draftsDir, followSymlinks: true }),
-			);
-			const normalizedId = normalizeId(draftId, "draft");
-			const filenameId = idForFilename(normalizedId);
-
-			// Find matching draft file
-			const draftFile = files.find((f) => filenameMatchesId(f, filenameId));
-			if (!draftFile) return null;
-
-			const filepath = join(draftsDir, draftFile);
-			const content = await Bun.file(filepath).text();
-			const task = normalizeTaskIdentity(parseTask(content));
-			return { ...task, filePath: filepath };
-		} catch {
+			const filePath = await this.resolveDraftFilePath(draftId);
+			if (!filePath) return null;
+			return await this.loadDraftFromFile(filePath);
+		} catch (error) {
+			if (isAmbiguousIdError(error)) throw error;
 			return null;
 		}
 	}

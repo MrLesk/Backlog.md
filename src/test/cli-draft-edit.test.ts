@@ -161,9 +161,51 @@ describe("CLI draft edit", () => {
 		expect(output).toContain("draft-001 - Beta.md");
 		expect(output).not.toContain("Updated draft");
 
-		const core = new Core(TEST_DIR);
-		expect((await core.filesystem.loadDraft("DRAFT-1"))?.title).toBe("Alpha");
-		expect((await core.filesystem.loadDraft("DRAFT-001"))?.title).toBe("Beta");
+		expect(await Bun.file(join(draftsDir, "draft-1 - Alpha.md")).text()).toContain("Alpha");
+		expect(await Bun.file(join(draftsDir, "draft-001 - Beta.md")).text()).toContain("Beta");
+	});
+
+	it("fails closed on draft view when padded and unpadded files claim the same numeric id", async () => {
+		const draftsDir = join(TEST_DIR, "backlog", "drafts");
+		const write = (filename: string, id: string, title: string) =>
+			Bun.write(
+				join(draftsDir, filename),
+				serializeTask({
+					id,
+					title,
+					status: "Draft",
+					assignee: [],
+					createdDate: "2026-08-24 10:00",
+					labels: [],
+					dependencies: [],
+				}),
+			);
+		await write("draft-1 - Alpha.md", "DRAFT-1", "Alpha");
+		await write("draft-001 - Beta.md", "DRAFT-001", "Beta");
+
+		for (const args of [
+			["draft", "view", "1", "--plain"],
+			["draft", "1", "--plain"],
+		]) {
+			const result = await $`bun ${CLI_PATH} ${args}`.cwd(TEST_DIR).nothrow().quiet();
+			const output = normalizeCliOutput(result.stdout.toString() + result.stderr.toString());
+			expect(result.exitCode).toBe(1);
+			expect(output).toContain("Draft ID DRAFT-1 is ambiguous; 2 files match:");
+			expect(output).toContain("draft-1 - Alpha.md");
+			expect(output).toContain("draft-001 - Beta.md");
+			expect(output).not.toContain("Task DRAFT-1");
+		}
+
+		expect(await Bun.file(join(draftsDir, "draft-1 - Alpha.md")).text()).toContain("Alpha");
+		expect(await Bun.file(join(draftsDir, "draft-001 - Beta.md")).text()).toContain("Beta");
+	});
+
+	it("still views a unique draft by id", async () => {
+		const draft = await createDraft("Solo view");
+		const result = await $`bun ${CLI_PATH} draft view ${draft.id} --plain`.cwd(TEST_DIR).nothrow().quiet();
+		const output = normalizeCliOutput(result.stdout.toString());
+		expect(result.exitCode).toBe(0);
+		expect(output).toContain("Solo view");
 	});
 
 	it("reuses the task edit flag validation rules", async () => {

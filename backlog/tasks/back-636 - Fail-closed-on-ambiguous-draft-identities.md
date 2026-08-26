@@ -2,9 +2,10 @@
 id: BACK-636
 title: Fail closed on ambiguous draft identities
 status: In Progress
-assignee: []
+assignee:
+  - '@grok'
 created_date: '2026-08-15 14:00'
-updated_date: '2026-08-26 18:40'
+updated_date: '2026-08-26 18:56'
 labels: []
 dependencies: []
 references:
@@ -37,12 +38,12 @@ Codex finding on PR #916 (BACK-634), pre-existing class, confirmed as the root c
 ## Implementation Plan
 
 <!-- SECTION:PLAN:BEGIN -->
-1. Continue on the preserved PR #940 stack (branch tasks/back-639-draft-editing) so the validated-reference flow, locking, and test suites already banked there become the foundation rather than being rebuilt.
-2. Introduce one shared canonicalization authority for filename-derived draft ids and route grouping keys, loose matching, occupancy checks, and save-time cleanup through it.
-3. Enforce fail-closed resolution for duplicates and drifted frontmatter in every mutation surface (CLI direct/wizard, TUI open/edit/close, web PUT, MCP task_edit, promote/demote/archive).
-4. Extend doctor to report duplicate or drifted draft identities (existing AC #3).
-5. Fix the six outstanding round-7 Codex findings on PR #940 within this model.
-6. Finalize BACK-636 record, then rebase/finalize BACK-639 editing work in the same pull request.
+1. Collapse find-by-id onto resolveDraftFilePath: loadDraft becomes a thin wrapper (resolve path, then loadDraftFromFile) that rethrows AmbiguousIdError. Delete getDraftPath so it cannot first-match.
+2. CLI draft view and draft [id] load through loadDraft and catch AmbiguousIdError like document view. CLI draft archive catches the same error as draft promote.
+3. Web GET /api/tasks/DRAFT-* maps AmbiguousIdError to 409. MCP task_view already uses loadDraft plus the existing error mapper.
+4. TUI editTaskInTui id-only lookup catches AmbiguousIdError and returns reason ambiguous; the selected-row path already fail-closes.
+5. Core create previous-path lookup uses filesystem.resolveDraftFilePath instead of getDraftPath.
+6. Tests: draft-1 plus draft-001 fail closed on CLI view, CLI edit, web GET, and MCP fetch (files named, neither changed). Unique drafts still view and edit. Existing mutation fail-closed tests stay. Replace twin first-match loadDraft assertions with file reads.
 <!-- SECTION:PLAN:END -->
 
 ## Implementation Notes
@@ -59,6 +60,8 @@ Correction round on 377da47d: (1) path-form draft edit arguments that resolve in
 Round-8 note: six full-stack re-review P1/P2s fixed on top of this task's foundation while stacked under BACK-639 (see BACK-639 notes for details): locked status-promotion path, locked archive span, locked TUI close window with TaskLockError fail-fast, saveDraft unlink-failure abort, soft-collision picker behavior, and file-identity row reconciliation in both TUI callers.
 
 Alex confirmed 2026-08-26: task_prefix=draft is unsupported and must not drive design. Remaining work on this task is one filename-derived finder for every surface, including reads. Mutations already fail closed; loadDraft/getDraftPath first-match on view/GET/MCP fetch still guesses. Unifying tasks/documents/decisions onto one shared helper is a follow-up task, not this PR. Do not add a new service layer.
+
+Reads now use the same filename-derived finder as mutations. loadDraft is a thin wrapper of resolveDraftFilePath + loadDraftFromFile and rethrows AmbiguousIdError. Deleted getDraftPath. CLI draft view / draft [id], web GET, MCP task_view, and TUI id-only edit fail closed naming both files for draft-1 + draft-001 twins; neither file changes. Unique drafts still view and edit. Existing mutation fail-closed tests still pass. bunx tsc --noEmit clean; biome clean on touched files. Targeted draft suites pass. Full bun test 2408 pass / 7 skip / 1 pre-existing config-commands failure on main. Did not start BACK-640 (one helper for tasks/docs/decisions/drafts). Did not add task_prefix=draft handling.
 <!-- SECTION:NOTES:END -->
 
 ## Comments

@@ -200,6 +200,17 @@ describe("MCP draft support via task tools", () => {
 			"---\nid: DRAFT-001\ntitle: Alpha two\nstatus: Draft\nassignee: []\ncreated_date: 2026-08-24 10:00\nlabels: []\ndependencies: []\n---\n\n## Description\n\nbody\n",
 		);
 
+		const view = await mcpServer.testInterface.callTool({
+			params: {
+				name: "task_view",
+				arguments: { id: "DRAFT-1" },
+			},
+		});
+		expect(view.isError).toBe(true);
+		expect(getText(view.content)).toContain("is ambiguous");
+		expect(getText(view.content)).toContain("draft-1 - Alpha-one.md");
+		expect(getText(view.content)).toContain("draft-001 - Alpha two.md");
+
 		const result = await mcpServer.testInterface.callTool({
 			params: {
 				name: "task_edit",

@@ -405,4 +405,41 @@ process.exit(0);
 		expect(await Bun.file(selected.filePath).text()).not.toContain("Marker");
 		expect(await Bun.file(join(draftsDir, "draft-3 - Alpha.md")).text()).not.toContain("Marker");
 	});
+
+	it("fails closed when a draft id is requested without row context and twins exist", async () => {
+		const draftsDir = join(testDir, "backlog", "drafts");
+		await Bun.write(
+			join(draftsDir, "draft-1 - Alpha.md"),
+			serializeTask({
+				id: "DRAFT-1",
+				title: "Alpha",
+				status: "Draft",
+				assignee: [],
+				createdDate: "2026-08-24 10:00",
+				labels: [],
+				dependencies: [],
+			}),
+		);
+		await Bun.write(
+			join(draftsDir, "draft-001 - Beta.md"),
+			serializeTask({
+				id: "DRAFT-001",
+				title: "Beta",
+				status: "Draft",
+				assignee: [],
+				createdDate: "2026-08-24 10:00",
+				labels: [],
+				dependencies: [],
+			}),
+		);
+		const noopScript = await createEditorScript("noop-editor.js", "process.exit(0);\n");
+		await setEditor(`node ${noopScript}`);
+
+		const result = await core.editTaskInTui("DRAFT-1", screen);
+
+		expect(result.reason).toBe("ambiguous");
+		expect(result.changed).toBe(false);
+		expect(await Bun.file(join(draftsDir, "draft-1 - Alpha.md")).text()).toContain("Alpha");
+		expect(await Bun.file(join(draftsDir, "draft-001 - Beta.md")).text()).toContain("Beta");
+	});
 });
