@@ -4,7 +4,7 @@ title: Fail closed on ambiguous draft identities
 status: In Progress
 assignee: []
 created_date: '2026-08-15 14:00'
-updated_date: '2026-08-25 21:09'
+updated_date: '2026-08-26 18:40'
 labels: []
 dependencies: []
 references:
@@ -24,6 +24,7 @@ Codex finding on PR #916 (BACK-634), pre-existing class, confirmed as the root c
 - [ ] #1 Draft resolution fails closed with an error naming candidate files when multiple drafts share an identity
 - [ ] #2 Web and MCP draft edit/promote paths surface the conflict instead of mutating an arbitrary match
 - [ ] #3 doctor reports duplicate draft identities
+- [ ] #4 CLI draft view, web GET, and MCP draft fetch fail closed on duplicate identity using the same resolver as edit
 <!-- AC:END -->
 
 ## Definition of Done
@@ -56,4 +57,16 @@ Round-7 correction fixes (5 P2s): (1) doctor --fix --yes now checks draftIdentit
 Correction round on 377da47d: (1) path-form draft edit arguments that resolve inside the drafts dir now re-resolve through resolveDraftReference(canonicalId) with a filePath-equality requirement - duplicate pairs fail closed naming files (neither deleted) while unique in-drafts-dir paths still work through the picker channel; (2) doctor drafts-dir unreadable test mirrors the document-directory probe-and-skip pattern (probe scan after chmod; skip diagnostics when chmod cannot block, e.g. root/Windows; restore perms in finally) and the printer copy now reads 'Unreadable draft files or directories' matching the document section. Verified: duplicate-pair path edit asserts ambiguity naming both files with both preserved; lone-file path edit succeeds; unscannable-dir test exercises the locked path on this machine (4 assertions) and degrades to healthy-exit assertion where chmod cannot block.
 
 Round-8 note: six full-stack re-review P1/P2s fixed on top of this task's foundation while stacked under BACK-639 (see BACK-639 notes for details): locked status-promotion path, locked archive span, locked TUI close window with TaskLockError fail-fast, saveDraft unlink-failure abort, soft-collision picker behavior, and file-identity row reconciliation in both TUI callers.
+
+Alex confirmed 2026-08-26: task_prefix=draft is unsupported and must not drive design. Remaining work on this task is one filename-derived finder for every surface, including reads. Mutations already fail closed; loadDraft/getDraftPath first-match on view/GET/MCP fetch still guesses. Unifying tasks/documents/decisions onto one shared helper is a follow-up task, not this PR. Do not add a new service layer.
 <!-- SECTION:NOTES:END -->
+
+## Comments
+
+<!-- COMMENTS:BEGIN -->
+author: @grok
+created: 2026-08-26 18:40
+---
+Remaining scope: one draft finder for CLI, TUI, web, and MCP (reads and writes). Prefixing tasks as draft is unsupported. Shared lookup across all entity types is the dependent follow-up, not this PR.
+---
+<!-- COMMENTS:END -->
