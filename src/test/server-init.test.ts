@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
+import { join } from "node:path";
 import { Core } from "../core/backlog.ts";
 import { BacklogServer } from "../server/index.ts";
 import { createUniqueTestDir, safeCleanup } from "./test-utils.ts";
@@ -40,6 +41,20 @@ describe("BacklogServer init endpoint", () => {
 		expect(config?.filesystemOnly).toBe(false);
 		expect(config?.remoteOperations).toBe(true);
 		expect(config?.checkActiveBranches).toBe(true);
+	});
+
+	it("rejects reserved task prefixes before writing config", async () => {
+		const server = new BacklogServer(TEST_DIR) as unknown as InitHandler;
+		const response = await server.handleInit(
+			initRequest({
+				advancedConfig: { taskPrefix: "draft" },
+			}),
+		);
+		const body = (await response.json()) as { error?: string };
+
+		expect(response.status).not.toBe(200);
+		expect(body.error).toContain("reserved for drafts, docs, or decisions");
+		expect(await Bun.file(join(TEST_DIR, "backlog", "config.yml")).exists()).toBe(false);
 	});
 
 	it("accepts string true filesystemOnly for loose init callers", async () => {

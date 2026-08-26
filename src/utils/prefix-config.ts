@@ -46,6 +46,23 @@ export function isReservedTaskPrefix(prefix: string): boolean {
 }
 
 /**
+ * Init-time task prefix validation. Empty input is allowed (the default prefix is used).
+ */
+export function getTaskPrefixError(prefix: string): string | undefined {
+	const normalized = prefix.trim();
+	if (!normalized) {
+		return undefined;
+	}
+	if (!/^[a-zA-Z]+$/.test(normalized)) {
+		return "Task prefix must contain only letters (a-z, A-Z).";
+	}
+	if (isReservedTaskPrefix(normalized)) {
+		return `Task prefix "${normalized}" is reserved for drafts, docs, or decisions. Choose a different prefix.`;
+	}
+	return undefined;
+}
+
+/**
  * Returns the default prefix configuration.
  * Use this when no custom config is specified.
  */

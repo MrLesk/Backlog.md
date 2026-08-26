@@ -271,6 +271,13 @@ describe("CLI Integration", () => {
 			expect(help).toContain("cursor writes AGENTS.md");
 		});
 
+		it("documents reserved task prefixes in init help", async () => {
+			const help = await $`bun ${CLI_PATH} init --help`.cwd(TEST_DIR).text();
+
+			expect(help).toContain("--task-prefix");
+			expect(help).toContain("draft, doc, and decision are reserved");
+		});
+
 		it("should label created and updated agent instruction files separately", async () => {
 			await $`git init -b main`.cwd(TEST_DIR).quiet();
 			await Bun.write(join(TEST_DIR, "AGENTS.md"), "Existing instructions\n");

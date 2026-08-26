@@ -12,6 +12,7 @@ import {
 	generateNextSubtaskId,
 	getDefaultPrefixConfig,
 	getPrefixForType,
+	getTaskPrefixError,
 	hasPrefix,
 	idsEqual,
 	isReservedTaskPrefix,
@@ -360,6 +361,30 @@ describe("prefix-config", () => {
 			expect(isReservedTaskPrefix("task")).toBe(false);
 			expect(isReservedTaskPrefix("JIRA")).toBe(false);
 			expect(isReservedTaskPrefix("documents")).toBe(false);
+		});
+	});
+
+	describe("getTaskPrefixError", () => {
+		test("rejects reserved prefixes with the init error used by the wizard and flag", () => {
+			expect(getTaskPrefixError("draft")).toBe(
+				'Task prefix "draft" is reserved for drafts, docs, or decisions. Choose a different prefix.',
+			);
+			expect(getTaskPrefixError("DOC")).toBe(
+				'Task prefix "DOC" is reserved for drafts, docs, or decisions. Choose a different prefix.',
+			);
+			expect(getTaskPrefixError("Decision")).toBe(
+				'Task prefix "Decision" is reserved for drafts, docs, or decisions. Choose a different prefix.',
+			);
+		});
+
+		test("rejects non-letter prefixes", () => {
+			expect(getTaskPrefixError("task-1")).toBe("Task prefix must contain only letters (a-z, A-Z).");
+		});
+
+		test("allows empty input and non-reserved prefixes", () => {
+			expect(getTaskPrefixError("")).toBeUndefined();
+			expect(getTaskPrefixError("   ")).toBeUndefined();
+			expect(getTaskPrefixError("JIRA")).toBeUndefined();
 		});
 	});
 

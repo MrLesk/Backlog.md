@@ -1,11 +1,11 @@
 ---
 id: BACK-635
 title: 'Reserve draft, doc, and decision prefixes at init'
-status: Done
+status: In Progress
 assignee:
-  - '@claude'
+  - '@grok'
 created_date: '2026-08-15 14:00'
-updated_date: '2026-08-24 21:25'
+updated_date: '2026-08-26 21:39'
 labels: []
 dependencies: []
 priority: medium
@@ -20,25 +20,25 @@ From the PR #916 (BACK-634) review and a matching Codex finding. backlog init --
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [x] #1 backlog init rejects draft, doc, and decision (case-insensitive) as --task-prefix and wizard values with a clear error
-- [x] #2 Existing projects with a reserved prefix are unaffected at runtime (no new failures beyond current behavior); doctor mentions the misconfiguration
+- [ ] #1 backlog init rejects draft, doc, and decision (case-insensitive) as --task-prefix and wizard values with a clear error
+- [ ] #2 Existing projects with a reserved prefix are unaffected at runtime (no new failures beyond current behavior); doctor mentions the misconfiguration
 <!-- AC:END -->
 
 ## Definition of Done
 <!-- DOD:BEGIN -->
-- [x] #1 bunx tsc --noEmit passes when TypeScript touched
-- [x] #2 bun run check . passes when formatting/linting touched
-- [x] #3 bun test (or scoped test) passes
+- [ ] #1 bunx tsc --noEmit passes when TypeScript touched
+- [ ] #2 bun run check . passes when formatting/linting touched
+- [ ] #3 bun test (or scoped test) passes
 <!-- DOD:END -->
 
 ## Implementation Plan
 
 <!-- SECTION:PLAN:BEGIN -->
-1. Add RESERVED_TASK_PREFIXES (draft, doc, decision) and isReservedTaskPrefix() to src/utils/prefix-config.ts; extract DOC_PREFIX/DECISION_PREFIX constants used by getPrefixForType.
-2. Reject reserved prefixes (case-insensitive) in src/cli.ts: the --task-prefix flag validation and the interactive init wizard's clack.text validate callback, with a clear error message.
-3. Add a doctor check: load config.prefixes.task and warn (clear message, exitCode 1) when it collides with a reserved prefix, without altering any other runtime behavior for existing projects.
-4. Add regression tests: CLI test for init rejecting draft/doc/decision (case-insensitive) via --task-prefix, and a cli-doctor test asserting the new warning for an existing reserved-prefix project.
-5. Run bunx tsc --noEmit, bun run check ., and the scoped/full test suite; finalize the task.
+1. Keep a single reserved-prefix check in src/utils/prefix-config.ts (draft, doc, decision; case-insensitive) and reuse it from the init wizard, --task-prefix flag, and initializeProject so CLI and browser init fail the same way.
+2. Do not fail existing reserved-prefix projects at runtime. Re-init keeps existing prefixes. Doctor reports the collision and refuses --fix so duplicate repair cannot allocate into the colliding draft/doc/decision store.
+3. Document reserved names in public init help (commander option plus input schema). Replace doctor copy that tells users to re-init or otherwise do something that cannot work.
+4. Add/keep tests for: flag rejection (case-insensitive), shared initializeProject rejection, doctor mention, doctor --fix no-op, runtime commands still working on a reserved-prefix project, init --help listing reserved names.
+5. Rebase onto current main so cli.ts picks up BACK-626/BACK-638 without changing reserved-prefix behavior. Run tsc, biome on touched files, and scoped tests.
 <!-- SECTION:PLAN:END -->
 
 ## Implementation Notes
@@ -56,10 +56,10 @@ Verification:
 - Full suite: bun test --timeout=10000 -> 2348 pass / 6 skip / 1 fail / 243 files. The sole fail (Config commands > reads the config key at column 0...) is the same pre-existing, unrelated YAML-parsing flake in config-commands.test.ts confirmed in the prior BACK-630 session.
 
 Addressed Codex PR review (PR #928): moved reserved-prefix validation into initializeProject so the browser init path is covered too; documented reserved names in --task-prefix help; fixed doctor's impossible re-init recovery text; blocked 'doctor --fix --yes' automatic repair when the prefix is reserved.
+
+Follow-up on PR #928 after rebase onto current main:
+- Shared getTaskPrefixError() across the init wizard, --task-prefix flag, and initializeProject (CLI + browser).
+- Documented reserved names in the init help schema as well as the commander option.
+- Doctor copy no longer suggests re-init; doctor --fix --yes returns without renaming files. task list still succeeds on an existing reserved-prefix project.
+- Scoped tests: prefix-config, cli-init-create, cli-doctor, enhanced-init, server-init. bunx tsc --noEmit and biome on touched files passed.
 <!-- SECTION:NOTES:END -->
-
-## Final Summary
-
-<!-- SECTION:FINAL_SUMMARY:BEGIN -->
-backlog init now rejects draft, doc, and decision (case-insensitive) as --task-prefix, both via the CLI flag and the interactive wizard prompt, using a new shared isReservedTaskPrefix() helper in src/utils/prefix-config.ts. Existing projects that already have a reserved prefix are untouched at runtime; backlog doctor now detects and clearly reports the misconfiguration (exitCode 1) instead of staying silent. Verified with new unit/CLI tests (prefix-config.test.ts, cli-init-create.test.ts, cli-doctor.test.ts), git-stash fail/pass confirmation, clean tsc/biome on touched files, and a full suite run (2348 pass, 1 pre-existing unrelated flake in config-commands.test.ts).
-<!-- SECTION:FINAL_SUMMARY:END -->
