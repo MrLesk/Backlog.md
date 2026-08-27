@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it } from "bun:test";
 import { JSDOM } from "jsdom";
+import { installDomGlobals } from "./dom-globals.ts";
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import InitializationScreen from "../web/components/InitializationScreen.tsx";
@@ -18,6 +19,7 @@ function setupDom(): HTMLElement {
 	globalThis.window = dom.window as unknown as Window & typeof globalThis;
 	globalThis.document = dom.window.document as Document;
 	globalThis.navigator = dom.window.navigator as Navigator;
+	installDomGlobals(dom);
 	globalThis.localStorage = dom.window.localStorage;
 	globalThis.HTMLElement = dom.window.HTMLElement;
 	globalThis.HTMLInputElement = dom.window.HTMLInputElement;

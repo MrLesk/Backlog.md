@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it } from "bun:test";
 import { JSDOM } from "jsdom";
+import { installDomGlobals } from "./dom-globals.ts";
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import type { DuplicateRepairPlan } from "../core/duplicate-task-repair.ts";
@@ -67,6 +68,7 @@ function renderWarning(plan = makePlan(), onRepaired = async () => {}): HTMLElem
 	globalThis.window = dom.window as unknown as Window & typeof globalThis;
 	globalThis.document = dom.window.document as unknown as Document;
 	globalThis.navigator = dom.window.navigator as unknown as Navigator;
+	installDomGlobals(dom);
 	const container = document.getElementById("root") as HTMLElement;
 	activeRoot = createRoot(container);
 	act(() => {

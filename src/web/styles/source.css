@@ -8,11 +8,171 @@
 
 @theme {
     --radius-circle: 9999px;
+
+    /* ---------------------------------------------------------------
+       Design system, ported from BloopAI/vibe-kanban.
+
+       The look is deliberately plain. One warm accent, everything else
+       a true neutral grey, corners almost square, IBM Plex throughout.
+
+       It is applied by redefining Tailwind's own palette rather than by
+       rewriting two and a half thousand utility classes across 37 files.
+       So `bg-gray-50` no longer means Tailwind's blue-tinted grey and
+       `text-blue-600` no longer means blue. Read the class names as
+       roles, not as colours.
+       --------------------------------------------------------------- */
+
+    /* Type. The webfont is fetched from Google Fonts, so an offline
+       first load falls back to the system stack and the app still
+       renders correctly, just not in Plex. */
+    --font-sans: "IBM Plex Sans", ui-sans-serif, system-ui, -apple-system,
+        "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    --font-mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo,
+        Consolas, "Liberation Mono", monospace;
+
+    /* Corners. vibe-kanban's base radius is 2px and its largest is 4.5px,
+       so every rounded-* utility collapses to nearly square. */
+    /* vibe-kanban's Button, Input, Select, Textarea and Card carry NO radius
+       class at all, so they render fully square; the largest radius anywhere
+       in the system is its rounded-lg at 4.5px. This codebase writes
+       rounded-md and rounded-lg on the same controls, so the whole scale is
+       capped at 3px to land in the same place. rounded-circle is untouched,
+       which is where pills still come from. */
+    --radius-xs: 0rem;
+    --radius-sm: 0.125rem;
+    --radius-md: 0.1875rem;
+    --radius-lg: 0.1875rem;
+    --radius-xl: 0.1875rem;
+    --radius-2xl: 0.1875rem;
+    --radius-3xl: 0.1875rem;
+    --radius-4xl: 0.1875rem;
+
+    /* Neutrals. True grey, no blue cast. The stops are picked to land on
+       vibe-kanban's own lightness values where this codebase already uses
+       them: 200 is its light border, 600 its low-contrast text, 900 its
+       dark page background. */
+    --color-gray-50: #f2f2f2;   /* 95% - its page background */
+    --color-gray-100: #e3e3e3;   /* 89% - its panel, behind code and chips */
+    --color-gray-200: #d9d9d9;   /* 85% - its light border */
+    --color-gray-300: #c4c4c4;   /* 77% - its dark-mode body text */
+    --color-gray-400: #a3a3a3;   /* 64% - its dark-mode muted text */
+    --color-gray-500: #8f8f8f;   /* 56% - its low-contrast text */
+    --color-gray-600: #636363;   /* 39% - its light-mode low text */
+    --color-gray-700: #333333;   /* 20% - its dark border and accent */
+    --color-gray-800: #292929;   /* 16% - its dark panel */
+    --color-gray-900: #212121;   /* 13% - its dark page background */
+    --color-gray-950: #0d0d0d;   /* 5%  - its light-mode high text */
+
+    /* Stone is used in a handful of places this codebase never converted.
+       Point it at the same ramp so those places stop drifting warm. */
+    --color-stone-50: #f2f2f2;
+    --color-stone-100: #e3e3e3;
+    --color-stone-200: #d9d9d9;
+    --color-stone-300: #c4c4c4;
+    --color-stone-400: #a3a3a3;
+    --color-stone-500: #8f8f8f;
+    --color-stone-600: #636363;
+    --color-stone-700: #333333;
+    --color-stone-800: #292929;
+    --color-stone-900: #212121;
+    --color-stone-950: #0d0d0d;
+
+    /* The accent. vibe-kanban has exactly one, a warm orange, and this app
+       spends `blue` on the same job: buttons, links, focus rings, drop
+       targets. So blue becomes that orange. 500 is its --brand and 700 is
+       its --brand-secondary, the darker shade its buttons actually use. */
+    --color-blue-50: #fef3ec;
+    --color-blue-100: #fce5d4;
+    --color-blue-200: #f8ceaf;
+    --color-blue-300: #f4b180;
+    --color-blue-400: #ef9452;
+    --color-blue-500: #ea7a2a;
+    --color-blue-600: #d56515;
+    --color-blue-700: #aa5213;
+    --color-blue-800: #874312;
+    --color-blue-900: #693611;
+    --color-blue-950: #3d200b;
+
+    /* Elevation. vibe-kanban puts no shadow on cards, inputs or panels at
+       all; only floating surfaces get one, its Dialog at shadow-lg and its
+       Popover and dropdowns at shadow-md. This codebase uses shadow-sm on
+       resting surfaces, so that step is flattened to nothing and md and up
+       are left alone. */
+    --shadow-2xs: 0 0 #0000;
+    --shadow-xs: 0 0 #0000;
+    --shadow-sm: 0 0 #0000;
+    --shadow: 0 0 #0000;
+
+    /* Named aliases, so anything written from here on can say what it
+       means instead of borrowing a colour name. */
+    --color-brand: #ea7a2a;
+    --color-brand-hover: #e79256;
+    --color-brand-secondary: #aa5213;
+    --color-on-brand: #ffffff;
+
+    /* Priority chips. These used to be stock Tailwind red-100, amber-100 and
+       green-100, which are the only fully saturated colours left on a board
+       whose neutrals are true greys and whose accent is a warm orange. Three
+       traffic lights on every card fought the whole palette.
+
+       These are the same three hues pulled towards the warm neutral family
+       and dropped in chroma: brick rather than red, ochre rather than amber,
+       sage rather than green. They still rank against each other, they no
+       longer outshout the New Task button, and error and success colours are
+       deliberately left alone because those should still shout. */
+    --color-priority-high-surface: #f3e0da;
+    --color-priority-high-text: #8f3a20;
+    --color-priority-high-surface-dark: #452019;
+    --color-priority-high-text-dark: #dda389;
+
+    --color-priority-medium-surface: #f0e6d2;
+    --color-priority-medium-text: #7d6128;
+    --color-priority-medium-text-dark: #d0b684;
+    --color-priority-medium-surface-dark: #3b3018;
+
+    --color-priority-low-surface: #e4eadd;
+    --color-priority-low-text: #4f6244;
+    --color-priority-low-surface-dark: #26301f;
+    --color-priority-low-text-dark: #a8bb99;
 }
 
 @layer base {
+    /* vibe-kanban declares this on :root and .dark. It is what makes native
+       chrome follow the theme: scrollbars, select popups, date pickers and
+       form control defaults. Without it a dark modal renders a white
+       scrollbar track down its own edge. */
+    :root {
+        color-scheme: light;
+    }
+
+    .dark {
+        color-scheme: dark;
+    }
+
     button {
         cursor: pointer;
+    }
+
+    /* Native selects. vibe-kanban's SelectTrigger draws its own chevron at
+       h-4 w-4 opacity-50 and lets the trigger stay a plain bordered box.
+       A native select cannot host a pseudo-element, so the same chevron is
+       painted as a background image and the OS arrow is switched off. The
+       stroke is fixed at the mid grey of the ramp, which reads as the
+       muted foreground against either theme. */
+    select {
+        appearance: none;
+        -webkit-appearance: none;
+        background-image: url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%238f8f8f' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+        background-repeat: no-repeat;
+        background-position: right 0.6rem center;
+        background-size: 1rem 1rem;
+        padding-right: 2rem;
+    }
+
+    select[multiple],
+    select[size]:not([size="1"]) {
+        background-image: none;
+        padding-right: 0.75rem;
     }
 
     button:disabled {
@@ -66,49 +226,103 @@
         border-radius: var(--radius-circle);
     }
 
-    /* Custom Blue-Dark Theme for MDEditor - moved to utilities for higher precedence */
+    /* Markdown rendering, from @uiw/react-md-editor and its preview.
+
+       These ship GitHub's own theme, which arrives with its own font stack,
+       its own canvas colour and blue links. Left alone it renders the task
+       description in a completely different design system from the rest of
+       the app: a slate navy panel, Tailwind blue links and -apple-system
+       type. Everything below exists to hand it the app's tokens instead.
+
+       The syntax colours are vibe-kanban's, taken from its --syntax-* set.
+       Selectors and !important are inherited from the block this replaces;
+       the upstream CSS is specific enough to need them. */
+    .wmde-markdown,
+    .wmde-markdown-var,
+    .w-md-editor,
+    .w-md-editor-text-pre > code,
+    .w-md-editor-text-input {
+        font-family: var(--font-sans) !important;
+    }
+
+    .wmde-markdown code,
+    .wmde-markdown pre,
+    .w-md-editor-text-pre > code,
+    .w-md-editor-text-input {
+        font-family: var(--font-mono) !important;
+    }
+
+    /* Light */
+    .wmde-markdown-var,
+    .wmde-markdown,
+    .w-md-editor,
+    [data-color-mode*="light"] .wmde-markdown,
+    [data-color-mode*="light"] .wmde-markdown-var {
+        /* Transparent, so rendered markdown sits on whatever panel holds it
+           rather than painting a competing background of its own. */
+        --color-canvas-default: transparent !important;
+        --color-canvas-subtle: #e3e3e3 !important;
+        --color-fg-default: #333333 !important;
+        --color-fg-muted: #636363 !important;
+        --color-fg-subtle: #8f8f8f !important;
+
+        --color-border-default: #d9d9d9 !important;
+        --color-border-muted: #e3e3e3 !important;
+
+        /* Links take the accent, not GitHub blue. */
+        --color-accent-fg: #d56515 !important;
+        --color-accent-emphasis: #aa5213 !important;
+
+        --color-prettylights-syntax-keyword: #d73a49 !important;
+        --color-prettylights-syntax-entity: #6f42c1 !important;
+        --color-prettylights-syntax-constant: #005cc5 !important;
+        --color-prettylights-syntax-string: #032f62 !important;
+        --color-prettylights-syntax-variable: #e36209 !important;
+        --color-prettylights-syntax-comment: #6a737d !important;
+        --color-prettylights-syntax-entity-tag: #22863a !important;
+        --color-prettylights-syntax-markup-deleted-text: #b31d28 !important;
+        --color-prettylights-syntax-markup-heading: #0d0d0d !important;
+        --color-prettylights-syntax-markup-bold: #0d0d0d !important;
+        --color-prettylights-syntax-markup-italic: #333333 !important;
+        --color-prettylights-syntax-markup-list: #636363 !important;
+        --color-prettylights-syntax-markup-code-bg: #e3e3e3 !important;
+    }
+
+    /* Dark */
+    .dark .wmde-markdown,
+    .dark .wmde-markdown-var,
+    .dark .w-md-editor,
     .wmde-markdown-var[data-color-mode*="dark"],
     .wmde-markdown[data-color-mode*="dark"],
     [data-color-mode*="dark"] .wmde-markdown,
     [data-color-mode*="dark"] .wmde-markdown-var,
     div[data-color-mode*="dark"] .wmde-markdown-var,
     div[data-color-mode*="dark"] .wmde-markdown {
-        /* Base canvas and text colors */
-        --color-canvas-default: #1e293b !important;
-        /* slate-800 - main background */
-        --color-canvas-subtle: #334155 !important;
-        /* slate-700 - subtle background */
-        --color-fg-default: #f1f5f9 !important;
-        /* slate-100 - primary text */
-        --color-fg-muted: #94a3b8 !important;
-        /* slate-400 - muted text */
-        --color-fg-subtle: #64748b !important;
-        /* slate-500 - subtle text */
+        --color-canvas-default: transparent !important;
+        --color-canvas-subtle: #212121 !important;
+        --color-fg-default: #c4c4c4 !important;
+        --color-fg-muted: #8f8f8f !important;
+        --color-fg-subtle: #767676 !important;
 
-        /* Borders */
-        --color-border-default: #475569 !important;
-        /* slate-600 - borders */
-        --color-border-muted: #334155 !important;
-        /* slate-700 - muted borders */
+        --color-border-default: #333333 !important;
+        --color-border-muted: #292929 !important;
 
-        /* Syntax highlighting with blue theme */
-        --color-prettylights-syntax-comment: #94a3b8 !important;
-        --color-prettylights-syntax-constant: #60a5fa !important;
-        --color-prettylights-syntax-string: #10b981 !important;
-        --color-prettylights-syntax-keyword: #f59e0b !important;
-        --color-prettylights-syntax-entity: #a855f7 !important;
-        --color-prettylights-syntax-variable: #06b6d4 !important;
+        --color-accent-fg: #ea7a2a !important;
+        --color-accent-emphasis: #ef9452 !important;
 
-        /* Accent colors */
-        --color-accent-fg: #3b82f6 !important;
-        --color-accent-emphasis: #2563eb !important;
-
-        /* Additional variables for preview mode */
-        --color-prettylights-syntax-markup-heading: #3b82f6 !important;
-        --color-prettylights-syntax-markup-bold: #f1f5f9 !important;
-        --color-prettylights-syntax-markup-italic: #cbd5e1 !important;
-        --color-prettylights-syntax-markup-list: #fbbf24 !important;
-        --color-prettylights-syntax-markup-code-bg: #334155 !important;
+        --color-prettylights-syntax-keyword: #ff7b72 !important;
+        --color-prettylights-syntax-entity: #d2a8ff !important;
+        --color-prettylights-syntax-constant: #79c0ff !important;
+        --color-prettylights-syntax-string: #a5d6ff !important;
+        --color-prettylights-syntax-variable: #ffa657 !important;
+        --color-prettylights-syntax-comment: #8b949e !important;
+        --color-prettylights-syntax-entity-tag: #7ee787 !important;
+        --color-prettylights-syntax-markup-deleted-text: #ffdcd7 !important;
+        --color-prettylights-syntax-markup-heading: #f5f5f5 !important;
+        --color-prettylights-syntax-markup-bold: #f5f5f5 !important;
+        --color-prettylights-syntax-markup-italic: #c4c4c4 !important;
+        --color-prettylights-syntax-markup-list: #8f8f8f !important;
+        --color-prettylights-syntax-markup-code-bg: #292929 !important;
     }
 }
 

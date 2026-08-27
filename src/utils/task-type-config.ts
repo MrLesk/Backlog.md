@@ -1,6 +1,13 @@
 import { DEFAULT_TASK_TYPES } from "../constants/index.ts";
 import type { BacklogConfig } from "../types/index.ts";
 
+/**
+ * Filter value for tasks that carry no type at all. Deliberately not a member of
+ * the configured type list, so it can only ever be filtered on and never written
+ * onto a task. Mirrors how the assignee filter uses __unassigned__.
+ */
+export const UNTYPED_FILTER_VALUE = "__untyped__";
+
 type TaskTypeConfig = Pick<BacklogConfig, "types"> | readonly string[] | null | undefined;
 
 function normalizeTaskTypeValue(value: string | null | undefined): string | undefined {

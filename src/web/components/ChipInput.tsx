@@ -55,19 +55,19 @@ const ChipInput: React.FC<ChipInputProps> = ({ value, onChange, placeholder, lab
       <label htmlFor={inputId} className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1 transition-colors duration-200">
         {label}
       </label>
-      <div className={`relative w-full min-h-10 px-3 py-2 border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 rounded-md focus-within:ring-2 focus-within:ring-blue-500 dark:focus-within:ring-blue-400 focus-within:border-transparent transition-colors duration-200 pr-2 ${disabled ? 'opacity-60 cursor-not-allowed' : ''}`}>
+      <div className={`relative w-full min-h-10 px-3 py-2 border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 rounded-md focus-within:ring-1 focus-within:ring-gray-900 dark:focus-within:ring-gray-300 focus-within:border-transparent transition-colors duration-200 pr-2 ${disabled ? 'opacity-60 cursor-not-allowed' : ''}`}>
         <div className="flex flex-wrap gap-2 items-center w-full">
           {value.map((item, index) => (
             <span
               key={index}
-              className="inline-flex items-center gap-1 px-2 py-0.5 text-sm bg-blue-100 dark:bg-blue-900/50 text-blue-800 dark:text-blue-200 rounded-md flex-shrink-0 min-w-0 max-w-full transition-colors duration-200"
+              className="inline-flex min-w-0 max-w-full flex-shrink-0 items-center gap-1 rounded-sm bg-gray-100 px-2 py-0.5 text-sm font-medium text-gray-600 transition-colors duration-200 dark:bg-gray-800 dark:text-gray-400"
             >
               <span className="truncate max-w-[16rem] sm:max-w-[20rem] md:max-w-[24rem]">{item}</span>
               {!disabled && (
 	                <button
 	                  type="button"
 	                  onClick={() => removeChip(index)}
-	                  className="hover:bg-blue-200 dark:hover:bg-blue-800 rounded-sm p-0.5 transition-colors duration-200"
+	                  className="rounded-sm p-0.5 transition-colors duration-200 hover:bg-red-500/20 hover:text-red-600 dark:hover:text-red-400"
 	                  aria-label={`Remove ${item}`}
 	                >
 	                  <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">

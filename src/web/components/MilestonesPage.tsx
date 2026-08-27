@@ -464,15 +464,18 @@ const MilestonesPage: React.FC<MilestonesPageProps> = ({
 
 	const getStatusDotColor = (status?: string | null) => {
 		const normalized = (status ?? "").toLowerCase();
+		// Literal hex, so these bypass the palette in source.css. Keep them on
+		// the same vocabulary the board dots use: amber for in progress, and
+		// the neutral grey rather than Tailwind's stock blue-tinted one.
 		if (normalized.includes("done") || normalized.includes("complete")) return "#10b981";
-		if (normalized.includes("progress")) return "#3b82f6";
-		return "#6b7280";
+		if (normalized.includes("progress")) return "#f59e0b";
+		return "#858585";
 	};
 
 	const getInlineStatusClass = (status: string) => {
 		const normalized = status.toLowerCase();
 		if (normalized.includes("done") || normalized.includes("complete")) return "text-emerald-700 dark:text-emerald-300";
-		if (normalized.includes("progress")) return "text-blue-700 dark:text-blue-300";
+		if (normalized.includes("progress")) return "text-amber-700 dark:text-amber-300";
 		return "text-gray-600 dark:text-gray-400";
 	};
 
@@ -840,7 +843,7 @@ const MilestonesPage: React.FC<MilestonesPageProps> = ({
 					<button
 						type="button"
 						onClick={() => setShowAddModal(true)}
-						className="inline-flex items-center px-4 py-2 bg-blue-500 text-white text-sm font-medium rounded-md hover:bg-blue-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-400 dark:focus:ring-offset-gray-900 transition-colors"
+						className="inline-flex items-center px-4 py-2 bg-blue-500 text-white text-sm font-medium rounded-md hover:bg-blue-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-900 dark:focus:ring-offset-gray-900 transition-colors"
 					>
 						+ Add milestone
 					</button>
@@ -928,7 +931,7 @@ const MilestonesPage: React.FC<MilestonesPageProps> = ({
 							onChange={(e) => handleNewMilestoneChange(e.target.value)}
 							placeholder="e.g. Release 1.0"
 							autoFocus
-							className="w-full rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 px-3 py-2 text-sm text-gray-900 dark:text-gray-100 focus:border-transparent focus:outline-none focus:ring-2 focus:ring-blue-500"
+							className="w-full rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 px-3 py-2 text-sm text-gray-900 dark:text-gray-100 focus:border-transparent focus:outline-none focus:ring-2 focus:ring-gray-900"
 						/>
 						{error && <p className="text-xs text-red-600 dark:text-red-400">{error}</p>}
 					</div>
@@ -976,7 +979,7 @@ const MilestonesPage: React.FC<MilestonesPageProps> = ({
 							value={editMilestoneName}
 							onInput={(event) => handleEditMilestoneNameChange((event.target as HTMLInputElement).value)}
 							autoFocus
-							className="w-full rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 px-3 py-2 text-sm text-gray-900 dark:text-gray-100 focus:border-transparent focus:outline-none focus:ring-2 focus:ring-blue-500"
+							className="w-full rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 px-3 py-2 text-sm text-gray-900 dark:text-gray-100 focus:border-transparent focus:outline-none focus:ring-2 focus:ring-gray-900"
 						/>
 						<p className="text-xs text-gray-500 dark:text-gray-400">
 							Renaming updates local tasks that reference this milestone.
@@ -1089,7 +1092,7 @@ const MilestonesPage: React.FC<MilestonesPageProps> = ({
 							type="button"
 							onClick={handleRemoveMilestone}
 							disabled={removingMilestoneKey !== null || (removeTaskHandling === "reassign" && !removeReassignTo)}
-							className="px-4 py-2 rounded-md text-sm font-medium text-white bg-red-600 hover:bg-red-700 disabled:opacity-60 transition-colors"
+							className="rounded-md border border-red-600 px-4 py-2 text-sm font-medium text-red-600 transition-colors hover:bg-red-600/10 disabled:opacity-60 dark:border-red-400 dark:text-red-400 dark:hover:bg-red-400/10"
 						>
 							{removingMilestoneKey ? "Removing..." : "Remove milestone"}
 						</button>

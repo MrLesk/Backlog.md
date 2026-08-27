@@ -619,7 +619,7 @@ const SideNavigation = memo(function SideNavigation({
 								{onRetry && (
 									<button
 										onClick={onRetry}
-										className="text-xs px-3 py-1 bg-red-600 dark:bg-red-700 text-white rounded hover:bg-red-700 dark:hover:bg-red-600 transition-colors duration-200"
+										className="rounded border border-red-600 px-3 py-1 text-xs text-red-600 transition-colors duration-200 hover:bg-red-600/10 dark:border-red-400 dark:text-red-400 dark:hover:bg-red-400/10"
 									>
 										Retry
 									</button>

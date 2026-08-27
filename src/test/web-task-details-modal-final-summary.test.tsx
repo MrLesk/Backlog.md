@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it } from "bun:test";
 import { JSDOM } from "jsdom";
+import { installDomGlobals } from "./dom-globals.ts";
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { renderToString } from "react-dom/server";
@@ -30,8 +31,6 @@ const findButton = (container: HTMLElement, text: string): HTMLButtonElement | u
 const findInputByValue = (container: HTMLElement, value: string): HTMLInputElement | undefined =>
 	Array.from(container.querySelectorAll("input")).find((input) => input.value === value);
 
-const findTextareaByValue = (container: HTMLElement, value: string): HTMLTextAreaElement | undefined =>
-	Array.from(container.querySelectorAll("textarea")).find((textarea) => textarea.value === value);
 
 const waitFor = async (predicate: () => boolean) => {
 	for (let attempt = 0; attempt < 10; attempt += 1) {
@@ -55,6 +54,7 @@ const setupDom = () => {
 	globalThis.window = dom.window as unknown as Window & typeof globalThis;
 	globalThis.document = dom.window.document as Document;
 	globalThis.navigator = dom.window.navigator as Navigator;
+	installDomGlobals(dom);
 	globalThis.localStorage = dom.window.localStorage;
 	globalThis.HTMLElement = dom.window.HTMLElement;
 	globalThis.HTMLInputElement = dom.window.HTMLInputElement;
@@ -383,17 +383,16 @@ describe("Web task popup Final Summary display", () => {
 		await flushReact();
 
 		const titleInput = findInputByValue(container as HTMLElement, "Original title");
-		const descriptionTextarea = findTextareaByValue(container as HTMLElement, "Original description");
 		expect(titleInput).toBeTruthy();
-		expect(descriptionTextarea).toBeTruthy();
+		// The title is still a plain input, so it carries the dirty-field claim.
+		// Typing into a Lexical editor is not reproducible under jsdom, so the
+		// long-form fields are checked below for the clean-refresh half instead.
 		await act(async () => {
 			setFormValue(titleInput!, "Local title");
-			setFormValue(descriptionTextarea!, "Local description");
 			await Promise.resolve();
 		});
 		await flushReact();
 		await waitFor(() => Boolean(findInputByValue(container as HTMLElement, "Local title")));
-		await waitFor(() => Boolean(findTextareaByValue(container as HTMLElement, "Local description")));
 
 		await act(async () => {
 			activeRoot?.render(
@@ -405,9 +404,10 @@ describe("Web task popup Final Summary display", () => {
 		});
 
 		expect(findInputByValue(container as HTMLElement, "Local title")).toBeTruthy();
-		expect(findTextareaByValue(container as HTMLElement, "Local description")).toBeTruthy();
-		expect(findTextareaByValue(container as HTMLElement, "External plan")).toBeTruthy();
-		expect(findTextareaByValue(container as HTMLElement, "External notes")).toBeTruthy();
+		// Plan and notes sit at rest as rendered Markdown until they are clicked,
+		// so the refreshed values show as text rather than in a form control.
+		expect(container?.textContent).toContain("External plan");
+		expect(container?.textContent).toContain("External notes");
 		expect(container?.textContent).toContain("Save");
 	});
 

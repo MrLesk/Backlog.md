@@ -220,7 +220,7 @@ const Statistics: React.FC<StatisticsProps> = ({
 	const getStatusColor = (status: string) => {
 		switch (status.toLowerCase()) {
 			case 'to do': return 'bg-gray-100 dark:bg-gray-700 text-gray-800 dark:text-gray-200';
-			case 'in progress': return 'bg-blue-100 dark:bg-blue-900/30 text-blue-800 dark:text-blue-200';
+			case 'in progress': return 'bg-amber-100 dark:bg-amber-900/30 text-amber-800 dark:text-amber-200';
 			case 'done': return 'bg-green-100 dark:bg-green-900/30 text-green-800 dark:text-green-200';
 			default: return 'bg-gray-100 dark:bg-gray-700 text-gray-800 dark:text-gray-200';
 		}

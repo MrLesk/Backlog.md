@@ -9,6 +9,7 @@ import { list } from "neo-neo-bblessed";
 import { formatHeading } from "../heading.ts";
 import { createScreen } from "../tui.ts";
 import { stripBlessedFgTags } from "../utils/strip-tags.ts";
+import { visibleLength, wrapBlessedText } from "../utils/wrap-tags.ts";
 
 export interface GenericListItem {
 	id: string;
@@ -62,6 +63,10 @@ export interface GenericListOptions<T extends GenericListItem> {
 	};
 	showHelp?: boolean;
 	scrollbar?: boolean;
+	// Wrap items wider than the list across several rows instead of clipping them.
+	wrap?: boolean;
+	// Indent applied to every continuation row of a wrapped item.
+	wrapIndent?: string;
 }
 
 export interface GenericListController<T extends GenericListItem> {
@@ -91,8 +96,9 @@ export class GenericList<T extends GenericListItem> implements GenericListContro
 	private options: GenericListOptions<T>;
 	private displayIndexByFilteredIndex = new Map<number, number>();
 	private filteredIndexByDisplayIndex = new Map<number, number>();
-	private normalDisplayByFilteredIndex = new Map<number, string>();
-	private highlightedDisplayByFilteredIndex = new Map<number, string>();
+	// A wrapped item occupies several display rows, so both variants are stored per row.
+	private normalDisplayByFilteredIndex = new Map<number, string[]>();
+	private highlightedDisplayByFilteredIndex = new Map<number, string[]>();
 	private highlightedIndex: number | null = null;
 	private updatingListSelection = false;
 
@@ -125,14 +131,50 @@ export class GenericList<T extends GenericListItem> implements GenericListContro
 		this.createListComponent();
 	}
 
-	private buildDisplayContent(item: T, index: number, grouped: boolean): { normal: string; highlighted: string } {
+	/**
+	 * Width available for item text, discounting the border and scrollbar the
+	 * list draws over its own columns.
+	 */
+	private getContentWidth(): number {
+		const rawWidth = this.listBox?.width;
+		const width = typeof rawWidth === "number" ? rawWidth : 0;
+		if (width <= 0) {
+			return 0;
+		}
+		const borderWidth = this.options.border !== false ? 2 : 0;
+		const scrollbarWidth = this.options.scrollbar !== false ? 1 : 0;
+		return Math.max(1, width - borderWidth - scrollbarWidth);
+	}
+
+	private buildDisplayContent(item: T, index: number, grouped: boolean): { normal: string[]; highlighted: string[] } {
 		const isSelected = this.isMultiSelect ? this.selectedIndices.has(index) : false;
 		const rendered = this.itemRenderer(item, index, isSelected);
 		const prefix = this.isMultiSelect ? (isSelected ? "[✓] " : "[ ] ") : grouped ? "  " : "";
 		const normal = prefix + rendered;
+
+		if (!this.options.wrap) {
+			return {
+				normal: [normal],
+				highlighted: [stripBlessedFgTags(normal)],
+			};
+		}
+
+		const contentWidth = this.getContentWidth();
+		const indent = this.options.wrapIndent ?? `${prefix}  `;
+		const lines = contentWidth > 0 ? wrapBlessedText(normal, contentWidth, indent) : [normal];
 		return {
-			normal,
-			highlighted: stripBlessedFgTags(normal),
+			normal: lines,
+			// The list widget only styles the row it considers selected, so every
+			// continuation row has to carry the selected styling itself. Padding to
+			// the full width keeps the highlight bar rectangular instead of ragged.
+			highlighted: lines.map((line, row) => {
+				const stripped = stripBlessedFgTags(line);
+				if (row === 0) {
+					return stripped;
+				}
+				const padding = " ".repeat(Math.max(0, contentWidth - visibleLength(stripped)));
+				return `{inverse}{bold}${stripped}${padding}{/bold}{/inverse}`;
+			}),
 		};
 	}
 
@@ -238,12 +280,16 @@ export class GenericList<T extends GenericListItem> implements GenericListContro
 				displayIndex += 1;
 				for (const { item, filteredIndex } of groupItems) {
 					const content = this.buildDisplayContent(item, filteredIndex, true);
-					displayItems.push(content.normal);
+					displayItems.push(...content.normal);
+					// The first row anchors the item; every row maps back so clicks
+					// on a continuation row still resolve to the same item.
 					this.displayIndexByFilteredIndex.set(filteredIndex, displayIndex);
-					this.filteredIndexByDisplayIndex.set(displayIndex, filteredIndex);
+					for (let row = 0; row < content.normal.length; row += 1) {
+						this.filteredIndexByDisplayIndex.set(displayIndex + row, filteredIndex);
+					}
 					this.normalDisplayByFilteredIndex.set(filteredIndex, content.normal);
 					this.highlightedDisplayByFilteredIndex.set(filteredIndex, content.highlighted);
-					displayIndex += 1;
+					displayIndex += content.normal.length;
 				}
 			}
 		} else {
@@ -251,12 +297,14 @@ export class GenericList<T extends GenericListItem> implements GenericListContro
 			for (const [filteredIndex, item] of this.filteredItems.entries()) {
 				if (!item) continue;
 				const content = this.buildDisplayContent(item, filteredIndex, false);
-				displayItems.push(content.normal);
+				displayItems.push(...content.normal);
 				this.displayIndexByFilteredIndex.set(filteredIndex, displayIndex);
-				this.filteredIndexByDisplayIndex.set(displayIndex, filteredIndex);
+				for (let row = 0; row < content.normal.length; row += 1) {
+					this.filteredIndexByDisplayIndex.set(displayIndex + row, filteredIndex);
+				}
 				this.normalDisplayByFilteredIndex.set(filteredIndex, content.normal);
 				this.highlightedDisplayByFilteredIndex.set(filteredIndex, content.highlighted);
-				displayIndex += 1;
+				displayIndex += content.normal.length;
 			}
 		}
 
@@ -582,10 +630,18 @@ export class GenericList<T extends GenericListItem> implements GenericListContro
 		const content = highlighted
 			? this.highlightedDisplayByFilteredIndex.get(index)
 			: this.normalDisplayByFilteredIndex.get(index);
-		if (!content) {
+		if (!content || content.length === 0) {
 			return;
 		}
-		(this.listBox as { setItem?: (itemIndex: number, content: string) => void }).setItem?.(displayIndex, content);
+		const setItem = (this.listBox as { setItem?: (itemIndex: number, content: string) => void }).setItem;
+		if (!setItem) {
+			return;
+		}
+		// A wrapped item spans several rows; all of them change together so the
+		// highlight covers the whole entry rather than just its first line.
+		for (const [row, line] of content.entries()) {
+			setItem.call(this.listBox, displayIndex + row, line);
+		}
 	}
 }
 

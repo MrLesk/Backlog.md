@@ -6,7 +6,7 @@ import { collectAvailableLabels, labelsToLower } from '../../utils/label-filter'
 import { collectArchivedMilestoneKeys, milestoneKey } from '../utils/milestones';
 import { getTerminalStatus } from '../../utils/terminal-status';
 import { getPriorityOptions, normalizePriorityValue } from '../../utils/priority-config';
-import { getTaskTypeValues, matchesTaskTypeFilter } from '../../utils/task-type-config';
+import { getTaskTypeValues, matchesTaskTypeFilter, UNTYPED_FILTER_VALUE } from '../../utils/task-type-config';
 import { resolveTaskById } from '../../utils/task-id';
 import TaskColumn from './TaskColumn';
 import CleanupModal from './CleanupModal';
@@ -89,7 +89,34 @@ const Board: React.FC<BoardProps> = ({
     () => [{ label: 'All priorities', value: '' }, ...getPriorityOptions(availablePriorities)],
     [availablePriorities]
   );
+  // Every type the configuration knows about. Card badges use this, so a badge
+  // colour stays stable even for a type no task carries yet.
   const typeOptions = useMemo(() => getTaskTypeValues(availableTypes), [availableTypes]);
+
+  // The type filter offers only types some task actually carries. Offering the
+  // configured list instead lets you pick a type nothing has, which empties the
+  // board and reads as a broken filter rather than an empty result.
+  const typeFilterOptions = useMemo(() => {
+    const seen = new Set<string>();
+    const present: string[] = [];
+    for (const task of tasks) {
+      const value = String(task.type ?? '').trim();
+      const normalized = value.toLowerCase();
+      if (!normalized || seen.has(normalized)) continue;
+      seen.add(normalized);
+      present.push(value);
+    }
+    // Configured order first so the list is stable, then anything only the data has.
+    const configured = typeOptions.filter(type => seen.has(type.trim().toLowerCase()));
+    const configuredKeys = new Set(configured.map(type => type.trim().toLowerCase()));
+    const extras = present.filter(type => !configuredKeys.has(type.trim().toLowerCase()));
+    return [...configured, ...extras];
+  }, [tasks, typeOptions]);
+
+  // Only worth offering once some task is typed, otherwise "Untyped" means "all".
+  const hasUntypedTasks = useMemo(() => tasks.some(task => !String(task.type ?? '').trim()), [tasks]);
+  const showTypeFilter = typeFilterOptions.length > 0;
+
   const archivedMilestoneIds = useMemo(
     () => collectArchivedMilestoneKeys(archivedMilestones, milestoneEntities),
     [archivedMilestones, milestoneEntities]
@@ -269,11 +296,17 @@ const Board: React.FC<BoardProps> = ({
       const normalizedFilterPriority = normalizePriorityValue(filterPriority);
       result = result.filter(task => normalizePriorityValue(task.priority) === normalizedFilterPriority);
     }
-    if (filterType) {
+    if (filterType === UNTYPED_FILTER_VALUE) {
+      result = result.filter(task => !String(task.type ?? '').trim());
+    } else if (filterType) {
       result = result.filter(task => matchesTaskTypeFilter(task.type, filterType));
     }
     return result;
   }, [tasks, milestoneFilter, canonicalMilestoneFilter, milestoneAliasToCanonical, filterAssignee, normalizedFilterLabels, filterPriority, filterType]);
+
+  // Columns render a bare "Empty" when filtered down to nothing, which reads as a
+  // broken board rather than an empty result. Say what happened instead.
+  const filtersHideEverything = hasActiveFilters && tasks.length > 0 && filteredTasks.length === 0;
 
   // Handle highlighting a task (opening its edit popup)
   useEffect(() => {
@@ -508,7 +541,7 @@ const Board: React.FC<BoardProps> = ({
         <div className="flex flex-wrap items-center justify-between gap-3">
           <h2 className="text-2xl font-bold text-gray-900 dark:text-gray-100 transition-colors duration-200">Kanban Board</h2>
           <button
-            className="inline-flex items-center px-4 py-2 bg-blue-500 dark:bg-blue-600 text-white text-sm font-medium rounded-md hover:bg-blue-600 dark:hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-400 dark:focus:ring-blue-500 dark:focus:ring-offset-gray-800 transition-colors duration-200"
+            className="inline-flex items-center px-4 py-2 bg-blue-500 dark:bg-blue-600 text-white text-sm font-medium rounded-md hover:bg-blue-600 dark:hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-900 dark:focus:ring-gray-300 dark:focus:ring-offset-gray-800 transition-colors duration-200"
             onClick={onNewTask}
           >
             + New Task
@@ -566,17 +599,20 @@ const Board: React.FC<BoardProps> = ({
                   className="min-w-[200px]"
                 />
 
-                <select
-                  aria-label="Filter board by type"
-                  value={filterType}
-                  onChange={e => onFiltersChange({ assignee: filterAssignee, labels: normalizedFilterLabels, priority: filterPriority, taskType: e.target.value })}
-                  className={BOARD_FILTER_SELECT_CLASS}
-                >
-                  <option value="">All types</option>
-                  {typeOptions.map(type => (
-                    <option key={type} value={type}>{type}</option>
-                  ))}
-                </select>
+                {showTypeFilter && (
+                  <select
+                    aria-label="Filter board by type"
+                    value={filterType}
+                    onChange={e => onFiltersChange({ assignee: filterAssignee, labels: normalizedFilterLabels, priority: filterPriority, taskType: e.target.value })}
+                    className={BOARD_FILTER_SELECT_CLASS}
+                  >
+                    <option value="">All types</option>
+                    {typeFilterOptions.map(type => (
+                      <option key={type} value={type}>{type}</option>
+                    ))}
+                    {hasUntypedTasks && <option value={UNTYPED_FILTER_VALUE}>Untyped</option>}
+                  </select>
+                )}
 
                 <select
                   aria-label="Filter board by priority"
@@ -602,6 +638,17 @@ const Board: React.FC<BoardProps> = ({
             )}
         </div>
       </div>
+
+      {filtersHideEverything && (
+        <div className="mb-4 rounded-lg border border-gray-200 bg-gray-50 px-4 py-6 text-center dark:border-gray-700 dark:bg-gray-800/40">
+          <p className="text-sm font-medium text-gray-900 dark:text-white">
+            No tasks match the current filters
+          </p>
+          <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
+            {tasks.length} {tasks.length === 1 ? 'task is' : 'tasks are'} hidden. Clear the filters to see them.
+          </p>
+        </div>
+      )}
 
       {loadError ? (
         <div className="rounded-lg border border-red-200 bg-red-50 px-6 py-10 text-center dark:border-red-800 dark:bg-red-900/20" role="alert">
@@ -679,10 +726,10 @@ const Board: React.FC<BoardProps> = ({
 
                 {/* Lane content - columns */}
                 {!isCollapsed && (
-                  <div className="p-4">
-                    <div className="grid gap-4" style={{ gridTemplateColumns: `repeat(${visibleStatuses.length}, minmax(0, 1fr))` }}>
+                  <div>
+                    <div className="grid" style={{ gridTemplateColumns: `repeat(${visibleStatuses.length}, minmax(0, 1fr))` }}>
                       {visibleStatuses.map((status) => (
-                        <div key={`${lane.key}-${status}`} className="min-w-0">
+                        <div key={`${lane.key}-${status}`} className="min-w-0 border-l border-gray-200 first:border-l-0 dark:border-gray-700">
                           <TaskColumn
                             title={status}
                             tasks={getTasksForLane(lane.key, status)}
@@ -710,10 +757,18 @@ const Board: React.FC<BoardProps> = ({
           })}
         </div>
       ) : (
-        <div className="overflow-x-auto pb-2">
-          <div className="flex flex-row flex-nowrap gap-4 w-full">
+        // No overflow wrapper here on purpose. Horizontal scrolling lives on the
+        // page's <main> scrollport instead, so the sticky column headers below
+        // have a scrollport that actually scrolls to stick against.
+        <div className="pb-2">
+          {/*
+            No bottom border. Every card closes itself with a rule, so the last
+            card in each column already draws the line that ends its stack, and
+            a frame border underneath would sit 1px below it as a doubled seam.
+          */}
+          <div className="flex w-full flex-row flex-nowrap items-stretch border-x border-t border-gray-200 dark:border-gray-700">
             {visibleStatuses.map((status) => (
-              <div key={status} className="flex-1 min-w-[16rem]">
+              <div key={status} className="min-w-[200px] max-w-[560px] flex-1 border-l border-gray-200 first:border-l-0 dark:border-gray-700">
                 <TaskColumn
                   title={status}
                   tasks={getTasksForLane(DEFAULT_LANE_KEY, status)}

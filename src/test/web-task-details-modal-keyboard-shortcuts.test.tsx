@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it } from "bun:test";
 import { JSDOM } from "jsdom";
+import { installDomGlobals } from "./dom-globals.ts";
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import type { Task } from "../types/index.ts";
@@ -29,6 +30,7 @@ const setupDom = () => {
 	globalThis.window = activeDom.window as unknown as Window & typeof globalThis;
 	globalThis.document = activeDom.window.document as Document;
 	globalThis.navigator = activeDom.window.navigator as Navigator;
+	installDomGlobals(activeDom);
 	globalThis.localStorage = activeDom.window.localStorage;
 	globalThis.Element = activeDom.window.Element;
 	globalThis.HTMLElement = activeDom.window.HTMLElement;

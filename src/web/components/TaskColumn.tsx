@@ -118,18 +118,30 @@ const TaskColumn: React.FC<TaskColumnProps> = ({
     emitColumnReorder(sortByCreatedDate(tasks, direction).map(t => t.id));
   };
 
-  const getStatusBadgeClass = (status: string) => {
+  // KanbanBoard.tsx:224 washes each column header with 3% of its status colour.
+  const statusTint = (status: string) => {
+    const statusLower = status.toLowerCase();
+    if (statusLower.includes('done') || statusLower.includes('complete')) return 'rgb(34 197 94 / 0.04)';
+    if (statusLower.includes('progress') || statusLower.includes('doing')) return 'rgb(245 158 11 / 0.04)';
+    if (statusLower.includes('blocked') || statusLower.includes('stuck')) return 'rgb(239 68 68 / 0.04)';
+    return 'rgb(128 128 128 / 0.04)';
+  };
+
+  // vibe-kanban marks a column with a small coloured dot rather than a
+  // filled pill, so the status reads at a glance without adding a second
+  // block of colour to a header that already has a title and a count.
+  const getStatusDotClass = (status: string) => {
     const statusLower = status.toLowerCase();
     if (statusLower.includes('done') || statusLower.includes('complete')) {
-      return 'bg-green-100 dark:bg-green-900 text-green-800 dark:text-green-200 transition-colors duration-200';
+      return 'bg-green-500';
     }
     if (statusLower.includes('progress') || statusLower.includes('doing')) {
-      return 'bg-yellow-100 dark:bg-yellow-900 text-yellow-800 dark:text-yellow-200 transition-colors duration-200';
+      return 'bg-amber-500';
     }
     if (statusLower.includes('blocked') || statusLower.includes('stuck')) {
-      return 'bg-red-100 dark:bg-red-900 text-red-800 dark:text-red-200 transition-colors duration-200';
+      return 'bg-red-500';
     }
-    return 'bg-stone-100 dark:bg-stone-900 text-stone-800 dark:text-stone-200 transition-colors duration-200';
+    return 'bg-gray-400 dark:bg-gray-500';
   };
 
   const handleDrop = (e: React.DragEvent) => {
@@ -210,30 +222,40 @@ const TaskColumn: React.FC<TaskColumnProps> = ({
 
   return (
     <div
-      className={`rounded-lg p-4 transition-colors duration-200 h-full ${
+      data-column-status={title}
+      className={`flex h-full flex-col transition-colors duration-200 ${
         isEmpty ? 'min-h-24' : 'min-h-96'
       } ${
         isDragOver && (dragSourceStatus !== title || (dragSourceLane ?? null) !== (laneId ?? null))
-          ? 'bg-green-50 dark:bg-green-900/20 border border-green-300 dark:border-green-600 border-dashed'
-          : isEmpty
-            ? 'bg-gray-50/50 dark:bg-gray-800/30 border border-gray-200/50 dark:border-gray-700/50'
-            : 'bg-white border border-gray-200 shadow-sm dark:bg-gray-800 dark:border-gray-700'
+          ? 'bg-blue-50/70 dark:bg-blue-900/15'
+          : ''
       }`}
       onDrop={handleDrop}
       onDragOver={handleDragOverColumn}
       onDragEnter={handleDragEnter}
       onDragLeave={handleDragLeave}
     >
-      <div className="flex items-center justify-between mb-4">
-        <div className="flex items-center gap-2">
-          <h3 className="font-semibold text-gray-900 dark:text-gray-100 transition-colors duration-200">{title}</h3>
-          <span className={`px-2 py-1 text-xs font-medium rounded-circle ${getStatusBadgeClass(title)}`}>
+      {/*
+        Fixed height and a reserved action slot, so To Do, In Progress and Done
+        are the same shape whether or not a column can be reordered. The height
+        used to follow the content, so a column with fewer than two tasks lost
+        the menu button and stood 10px shorter than its neighbours.
+      */}
+      <div
+        className="sticky top-0 z-20 flex h-11 shrink-0 items-center justify-between gap-2 border-b border-gray-200 bg-white px-4 transition-colors duration-200 dark:border-gray-700 dark:bg-gray-900"
+        style={{ backgroundImage: `linear-gradient(${statusTint(title)}, ${statusTint(title)})` }}
+      >
+        <div className="flex min-w-0 items-center gap-2">
+          <span className={`h-2 w-2 shrink-0 rounded-circle ${getStatusDotClass(title)}`} aria-hidden="true" />
+          <h3 className="truncate text-sm font-medium text-gray-900 transition-colors duration-200 dark:text-gray-100">{title}</h3>
+          <span className="shrink-0 text-xs tabular-nums text-gray-500 dark:text-gray-400">
             {tasks.length}
           </span>
         </div>
-        
-        {canReorderColumn && (
-          <div className="relative" ref={menuRef}>
+
+        <div className="relative h-7 w-7 shrink-0" ref={menuRef}>
+          {canReorderColumn && (
+          <>
             <button
               type="button"
               onClick={() => setShowMenu(!showMenu)}
@@ -290,11 +312,12 @@ const TaskColumn: React.FC<TaskColumnProps> = ({
                 </button>
               </div>
             )}
-          </div>
-        )}
+          </>
+          )}
+        </div>
       </div>
-      
-      <div className="space-y-3">
+
+      <div className="flex-1">
         {tasks.map((task, index) => (
           <div 
             key={task.id} 
@@ -317,7 +340,7 @@ const TaskColumn: React.FC<TaskColumnProps> = ({
           >
             {/* Drop indicator for before this task */}
             {dropPosition?.index === index && dropPosition.position === 'before' && (
-              <div className="h-1 bg-blue-500 rounded-full mb-2 animate-pulse" />
+              <div className="mb-2 h-0.5 bg-blue-500" />
             )}
             
             <TaskCard
@@ -341,31 +364,29 @@ const TaskColumn: React.FC<TaskColumnProps> = ({
             
             {/* Drop indicator for after this task */}
             {dropPosition?.index === index && dropPosition.position === 'after' && (
-              <div className="h-1 bg-blue-500 rounded-full mt-2 animate-pulse" />
+              <div className="mt-2 h-0.5 bg-blue-500" />
             )}
           </div>
         ))}
         
         {/* Drop zone indicator - only show in different columns */}
         {isDragOver && dragSourceStatus !== title && (
-          <div className="border-2 border-green-400 dark:border-green-500 border-dashed rounded-md bg-green-50 dark:bg-green-900/20 p-4 text-center transition-colors duration-200">
-            <div className="text-green-600 dark:text-green-400 text-sm font-medium transition-colors duration-200">
+          <div className="m-4 border border-dashed border-blue-400 bg-blue-50 p-4 text-center transition-colors duration-200 dark:border-blue-500 dark:bg-blue-900/20">
+            <div className="text-sm text-blue-600 transition-colors duration-200 dark:text-blue-400">
               Drop task here to change status
             </div>
           </div>
         )}
         
         {isEmpty && !isDragOver && (
-          <div className="text-center py-2 text-gray-400 dark:text-gray-500 text-xs transition-colors duration-200">
-            {dragSourceStatus && dragSourceStatus !== title
-              ? `Drop to move`
-              : `Empty`}
+          <div className="m-4 border border-dashed border-gray-300 py-6 text-center text-sm text-gray-400 transition-colors duration-200 dark:border-gray-600 dark:text-gray-500">
+            {dragSourceStatus && dragSourceStatus !== title ? `Drop to move` : `No tasks`}
           </div>
         )}
 
         {/* Cleanup button for the configured terminal column */}
         {onCleanup && tasks.length > 0 && (
-          <div className="mt-4 pt-4 border-t border-gray-200 dark:border-gray-700">
+          <div className="border-t border-gray-200 p-4 dark:border-gray-700">
 	            <button
 	              onClick={onCleanup}
 	              className="w-full flex items-center justify-center gap-2 px-3 py-2 text-sm text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-md transition-colors duration-200"

@@ -213,6 +213,10 @@ function AppContent() {
   const loadAllDataRequestRef = useRef(0);
   const pendingDataRequestRef = useRef<number | null>(null);
   const protocolOnlyLoadingRef = useRef(false);
+  // A refresh is not a first load. Everything that reloads the board goes
+  // through loadAllData, and it used to raise isLoading every time, which
+  // tore the sidebar down to its skeleton on every file change.
+  const hasLoadedOnceRef = useRef(false);
   const location = useLocation();
   const navigate = useNavigate();
   const tasksRouteWithTitle = useMatch('/tasks/:id/:title');
@@ -305,7 +309,11 @@ function AppContent() {
 	protocolOnlyLoadingRef.current = false;
 		pendingDataRequestRef.current = requestId;
 		try {
-			setIsLoading(true);
+			// A refresh is not a first load; raising isLoading on every refresh
+			// put the sidebar back into its loading state on every file change.
+			if (!hasLoadedOnceRef.current) {
+				setIsLoading(true);
+			}
 			setLoadError(null);
       const shellDataPromise = Promise.all([
         apiClient.fetchStatuses(),
@@ -349,6 +357,7 @@ function AppContent() {
       }).catch(() => {
         if (loadAllDataRequestRef.current === requestId) setDuplicateRepairPlan(null);
       });
+      hasLoadedOnceRef.current = true;
     } catch (error) {
       if (loadAllDataRequestRef.current === requestId) {
         console.error('Failed to load data:', error);
