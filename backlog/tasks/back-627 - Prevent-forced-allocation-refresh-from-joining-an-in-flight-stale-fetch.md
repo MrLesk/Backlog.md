@@ -5,7 +5,7 @@ status: Done
 assignee:
   - '@claude'
 created_date: '2026-08-10 06:37'
-updated_date: '2026-08-24 22:35'
+updated_date: '2026-08-27 17:05'
 labels: []
 dependencies: []
 priority: medium
@@ -56,6 +56,8 @@ Verified: bunx tsc --noEmit clean, bun run check . clean (391 files), full bun r
 Addressed Codex PR review (PR #925): replaced the Date.now()-based remoteRefRefreshStartedAt/requestedAt comparison with a monotonic remoteRefRefreshGeneration counter, avoiding a same-millisecond edge case where a stale in-flight fetch could look sufficiently fresh; disposeContentStore no longer resets the counter.
 
 Rebased onto the newly conflict-free BACK-637 branch tip after that branch was rebased onto upstream main; no additional conflicts.
+
+Rebased again (BACK-641) onto BACK-637's new post-BACK-639 tip after that branch was itself rebased onto upstream main -- the previous note here about 'the conflict-free BACK-637 tip' referred to a tip that no longer exists (BACK-637's rebase rewrote every commit SHA). This rebase (via 'git rebase --onto' against the old BACK-637 tip 6753c4d) replayed cleanly with zero conflicts. Verified refreshRemoteRefsForTaskRead and the remoteRefRefreshGeneration field are byte-identical to the pre-rebase version (isolated function-body diff, not just a whole-file diff, since the whole file shifted substantially due to BACK-639's unrelated draft-editing changes). bunx tsc --noEmit clean; the scoped core-task-corpus-regressions.test.ts (7 tests) passes.
 <!-- SECTION:NOTES:END -->
 
 ## Final Summary
