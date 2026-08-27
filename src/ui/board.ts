@@ -1275,38 +1275,38 @@ export async function renderBoardTui(
 			screen.render();
 		});
 
-		const openTaskEditor = async (task: Task) => {
+		const openTaskEditor = async (task: Task): Promise<Task | null> => {
 			try {
 				const core = await getCore();
 				const result = await core.editTaskInTui(task.id, screen, task);
 				if (result.reason === "read_only") {
 					const branchInfo = result.task?.branch ? ` from branch "${result.task.branch}"` : "";
 					showTransientFooter(` {red-fg}Cannot edit task${branchInfo}.{/}`);
-					return;
+					return null;
 				}
 				if (result.reason === "editor_failed") {
 					showTransientFooter(" {red-fg}Editor exited with an error; task was not modified.{/}");
-					return;
+					return null;
 				}
 				if (result.reason === "not_found") {
 					showTransientFooter(` {red-fg}Task ${task.id} not found on this branch.{/}`);
-					return;
+					return null;
 				}
 				if (result.reason === "identity_conflict") {
 					showTransientFooter(
 						" {red-fg}File identity is inconsistent; make the frontmatter id match the filename, then retry.{/}",
 					);
-					return;
+					return null;
 				}
 				if (result.reason === "unreadable") {
 					showTransientFooter(" {red-fg}Could not read the saved file; fix its YAML/markdown syntax.{/}");
-					return;
+					return null;
 				}
 				if (result.reason === "ambiguous") {
 					showTransientFooter(
 						" {red-fg}Numeric draft id is shared by multiple files; rename or fix their ids, then retry.{/}",
 					);
-					return;
+					return null;
 				}
 
 				if (result.task) {
@@ -1324,7 +1324,7 @@ export async function renderBoardTui(
 				if (result.changed) {
 					renderView();
 					showTransientFooter(` {green-fg}Task ${result.task?.id ?? task.id} marked modified.{/}`);
-					return;
+					return result.task ?? null;
 				}
 
 				renderView();
@@ -1332,23 +1332,10 @@ export async function renderBoardTui(
 			} catch (_error) {
 				showTransientFooter(" {red-fg}Failed to open editor.{/}");
 			}
+			return null;
 		};
 
-		screen.key(["enter"], async () => {
-			if (popupOpen || filterPopupOpen || modalOpen || currentFocus === "filters") return;
-
-			// In move mode, Enter confirms the move
-			if (moveOp) {
-				await performTaskMove();
-				return;
-			}
-
-			const column = columns[currentCol];
-			if (!column) return;
-			const idx = column.list.selected ?? 0;
-			if (idx < 0 || idx >= column.tasks.length) return;
-			const task = column.tasks[idx];
-			if (!task) return;
+		const openTaskPopup = async (task: Task): Promise<void> => {
 			popupOpen = true;
 
 			const popup = await createTaskPopup(screen, task, resolveMilestoneLabel, options?.dateFormat);
@@ -1365,7 +1352,13 @@ export async function renderBoardTui(
 			});
 
 			contentArea.key(["e", "E", "S-e"], async () => {
-				await openTaskEditor(task);
+				const updatedTask = await openTaskEditor(task);
+				if (updatedTask) {
+					// Rebuild the popup so its content and key handlers reflect the edit.
+					popupOpen = false;
+					close();
+					await openTaskPopup(updatedTask);
+				}
 			});
 
 			contentArea.key(["y", "Y"], async () => {
@@ -1453,6 +1446,24 @@ export async function renderBoardTui(
 			});
 
 			screen.render();
+		};
+
+		screen.key(["enter"], async () => {
+			if (popupOpen || filterPopupOpen || modalOpen || currentFocus === "filters") return;
+
+			// In move mode, Enter confirms the move
+			if (moveOp) {
+				await performTaskMove();
+				return;
+			}
+
+			const column = columns[currentCol];
+			if (!column) return;
+			const idx = column.list.selected ?? 0;
+			if (idx < 0 || idx >= column.tasks.length) return;
+			const task = column.tasks[idx];
+			if (!task) return;
+			await openTaskPopup(task);
 		});
 
 		screen.key(["e", "E", "S-e"], async () => {
