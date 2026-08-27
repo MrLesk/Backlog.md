@@ -1,0 +1,354 @@
+diff --git a/node_modules/neo-neo-bblessed/.bun-tag-fceb7ad038786fe4 b/.bun-tag-fceb7ad038786fe4
+new file mode 100644
+index 0000000000000000000000000000000000000000..e69de29bb2d1d6434b8b29ae775ad8c2e48c5391
+diff --git a/dist/blessed.js b/dist/blessed.js
+index b33ef67fd6d2ba179d32fcbaf7207d966583aedb..0e7a3b967248153e8c8c642b3fb339e79d25776f 100644
+--- a/dist/blessed.js
++++ b/dist/blessed.js
+@@ -6905,6 +6905,50 @@ __export(unicode_exports, {
+   isSurrogate: () => isSurrogate,
+   strWidth: () => strWidth
+ });
++function isWidePoint(point) {
++  const width = unicode__namespace.getEastAsianWidth(point);
++  return width === "W" || width === "F";
++}
++function computeWideRanges(lo, hi) {
++  const ranges = [];
++  let start = -1;
++  for (let point = lo; point <= hi; point++) {
++    if (isWidePoint(point)) {
++      if (start === -1) start = point;
++    } else if (start !== -1) {
++      ranges.push([start, point - 1]);
++      start = -1;
++    }
++  }
++  if (start !== -1) ranges.push([start, hi]);
++  return ranges;
++}
++function bmpEscape(point) {
++  return "\\u" + point.toString(16).padStart(4, "0");
++}
++function buildWideBmpClass() {
++  return computeWideRanges(4352, 65535).map(
++    ([lo, hi]) => lo === hi ? bmpEscape(lo) : bmpEscape(lo) + "-" + bmpEscape(hi)
++  ).join("");
++}
++function surrogatePairAlternation([lo, hi]) {
++  const parts = [];
++  let start = lo;
++  while (start <= hi) {
++    const high = 55296 + (start - 65536 >> 10);
++    const lowStart = 56320 + (start - 65536 & 1023);
++    const blockEnd = Math.min(hi, (start - 65536 | 1023) + 65536);
++    const lowEnd = 56320 + (blockEnd - 65536 & 1023);
++    parts.push(
++      bmpEscape(high) + (lowStart === lowEnd ? bmpEscape(lowStart) : "[" + bmpEscape(lowStart) + "-" + bmpEscape(lowEnd) + "]")
++    );
++    start = blockEnd + 1;
++  }
++  return parts.join("|");
++}
++function buildSwideSource() {
++  return computeWideRanges(126976, 129983).map(surrogatePairAlternation).join("|") + "|[\\ud840-\\ud87f][\\udc00-\\udffd]|[\\ud880-\\ud8bf][\\udc00-\\udffd]";
++}
+ function charWidth(str, i) {
+   const point = typeof str !== "number" ? codePointAt(str, i || 0) : str;
+   if (point === 0) return 0;
+@@ -6914,10 +6958,21 @@ function charWidth(str, i) {
+   if (point < 32 || point >= 127 && point < 160) {
+     return 0;
+   }
++  if (point === 65039) {
++    if (typeof str === "string" && typeof i === "number" && i > 0) {
++      let prevIndex = i - 1;
++      const prevCode = str.charCodeAt(prevIndex);
++      if (prevCode >= 56320 && prevCode <= 57343 && prevIndex > 0) {
++        prevIndex -= 1;
++      }
++      return isWidePoint(codePointAt(str, prevIndex)) ? 0 : 1;
++    }
++    return 1;
++  }
+   if (unicode__namespace.getCategory(point) === "Mn" || unicode__namespace.getCategory(point) === "Me" || unicode__namespace.getCategory(point) === "Mc") {
+     return 0;
+   }
+-  const width = eastasianwidth__namespace.eastAsianWidth(String.fromCodePoint(point));
++  const width = unicode__namespace.getEastAsianWidth(point);
+   switch (width) {
+     case "F":
+     // Fullwidth
+@@ -7041,15 +7096,9 @@ var init_unicode = __esm({
+   "lib/unicode.ts"() {
+     chars = {
+       // Double width characters that are _not_ surrogate pairs.
+-      wide: new RegExp(
+-        "([\\u1100-\\u115f\\u2329\\u232a\\u2e80-\\u303e\\u3040-\\ua4cf\\uac00-\\ud7a3\\uf900-\\ufaff\\ufe10-\\ufe19\\ufe30-\\ufe6f\\uff00-\\uff60\\uffe0-\\uffe6])",
+-        "g"
+-      ),
++      wide: new RegExp("([" + buildWideBmpClass() + "])", "g"),
+       // All surrogate pair wide chars.
+-      swide: new RegExp(
+-        "([\\ud840-\\ud87f][\\udc00-\\udffd]|[\\ud880-\\ud8bf][\\udc00-\\udffd])",
+-        "g"
+-      ),
++      swide: new RegExp("(" + buildSwideSource() + ")", "g"),
+       // Regex to detect a surrogate pair.
+       surrogate: /[\ud800-\udbff][\udc00-\udfff]/g,
+       // Basic combining regex (simplified, using unicode-properties for actual detection)
+diff --git a/dist/blessed.mjs b/dist/blessed.mjs
+index 7a321e16088090b323900d28df336e0c4065957e..31395f9f9ec269a5ad73e49b5495d58da4e31da2 100644
+--- a/dist/blessed.mjs
++++ b/dist/blessed.mjs
+@@ -6873,6 +6873,50 @@ __export(unicode_exports, {
+   isSurrogate: () => isSurrogate,
+   strWidth: () => strWidth
+ });
++function isWidePoint(point) {
++  const width = unicode.getEastAsianWidth(point);
++  return width === "W" || width === "F";
++}
++function computeWideRanges(lo, hi) {
++  const ranges = [];
++  let start = -1;
++  for (let point = lo; point <= hi; point++) {
++    if (isWidePoint(point)) {
++      if (start === -1) start = point;
++    } else if (start !== -1) {
++      ranges.push([start, point - 1]);
++      start = -1;
++    }
++  }
++  if (start !== -1) ranges.push([start, hi]);
++  return ranges;
++}
++function bmpEscape(point) {
++  return "\\u" + point.toString(16).padStart(4, "0");
++}
++function buildWideBmpClass() {
++  return computeWideRanges(4352, 65535).map(
++    ([lo, hi]) => lo === hi ? bmpEscape(lo) : bmpEscape(lo) + "-" + bmpEscape(hi)
++  ).join("");
++}
++function surrogatePairAlternation([lo, hi]) {
++  const parts = [];
++  let start = lo;
++  while (start <= hi) {
++    const high = 55296 + (start - 65536 >> 10);
++    const lowStart = 56320 + (start - 65536 & 1023);
++    const blockEnd = Math.min(hi, (start - 65536 | 1023) + 65536);
++    const lowEnd = 56320 + (blockEnd - 65536 & 1023);
++    parts.push(
++      bmpEscape(high) + (lowStart === lowEnd ? bmpEscape(lowStart) : "[" + bmpEscape(lowStart) + "-" + bmpEscape(lowEnd) + "]")
++    );
++    start = blockEnd + 1;
++  }
++  return parts.join("|");
++}
++function buildSwideSource() {
++  return computeWideRanges(126976, 129983).map(surrogatePairAlternation).join("|") + "|[\\ud840-\\ud87f][\\udc00-\\udffd]|[\\ud880-\\ud8bf][\\udc00-\\udffd]";
++}
+ function charWidth(str, i) {
+   const point = typeof str !== "number" ? codePointAt(str, i || 0) : str;
+   if (point === 0) return 0;
+@@ -6882,10 +6926,21 @@ function charWidth(str, i) {
+   if (point < 32 || point >= 127 && point < 160) {
+     return 0;
+   }
++  if (point === 65039) {
++    if (typeof str === "string" && typeof i === "number" && i > 0) {
++      let prevIndex = i - 1;
++      const prevCode = str.charCodeAt(prevIndex);
++      if (prevCode >= 56320 && prevCode <= 57343 && prevIndex > 0) {
++        prevIndex -= 1;
++      }
++      return isWidePoint(codePointAt(str, prevIndex)) ? 0 : 1;
++    }
++    return 1;
++  }
+   if (unicode.getCategory(point) === "Mn" || unicode.getCategory(point) === "Me" || unicode.getCategory(point) === "Mc") {
+     return 0;
+   }
+-  const width = eastasianwidth.eastAsianWidth(String.fromCodePoint(point));
++  const width = unicode.getEastAsianWidth(point);
+   switch (width) {
+     case "F":
+     // Fullwidth
+@@ -7009,15 +7064,9 @@ var init_unicode = __esm({
+   "lib/unicode.ts"() {
+     chars = {
+       // Double width characters that are _not_ surrogate pairs.
+-      wide: new RegExp(
+-        "([\\u1100-\\u115f\\u2329\\u232a\\u2e80-\\u303e\\u3040-\\ua4cf\\uac00-\\ud7a3\\uf900-\\ufaff\\ufe10-\\ufe19\\ufe30-\\ufe6f\\uff00-\\uff60\\uffe0-\\uffe6])",
+-        "g"
+-      ),
++      wide: new RegExp("([" + buildWideBmpClass() + "])", "g"),
+       // All surrogate pair wide chars.
+-      swide: new RegExp(
+-        "([\\ud840-\\ud87f][\\udc00-\\udffd]|[\\ud880-\\ud8bf][\\udc00-\\udffd])",
+-        "g"
+-      ),
++      swide: new RegExp("(" + buildSwideSource() + ")", "g"),
+       // Regex to detect a surrogate pair.
+       surrogate: /[\ud800-\udbff][\udc00-\udfff]/g,
+       // Basic combining regex (simplified, using unicode-properties for actual detection)
+diff --git a/lib/unicode.ts b/lib/unicode.ts
+index 0194ab4e938f5acae0515b43a0169e7c0f2e9aa1..749f4091e72e83cef9fe691c4fdc0a731c84c255 100644
+--- a/lib/unicode.ts
++++ b/lib/unicode.ts
+@@ -4,13 +4,20 @@
+  * Replaces embedded unicode libraries with proper npm dependencies
+  */
+ 
+-import * as eastasianwidth from 'eastasianwidth';
+ import * as unicode from 'unicode-properties';
+ 
+ /**
+  * Wide, Surrogates, and Combining
+  */
+ 
++// Wide per the East Asian Width data in unicode-properties, which (unlike the
++// eastasianwidth package, whose data predates Unicode 9) classifies default
++// emoji-presentation codepoints as Wide the way terminals render them.
++function isWidePoint(point: number): boolean {
++  const width = unicode.getEastAsianWidth(point);
++  return width === 'W' || width === 'F';
++}
++
+ function charWidth(str: string | number, i?: number): number {
+   const point = typeof str !== 'number' ? codePointAt(str, i || 0) : str;
+ 
+@@ -28,6 +35,24 @@ function charWidth(str: string | number, i?: number): number {
+     return 0;
+   }
+ 
++  // Variation Selector-16 asks for emoji presentation of the preceding
++  // character. A narrow base plus VS16 renders 2 cells (e.g. U+26A0 U+FE0F
++  // warning sign), so VS16 contributes the missing cell; after an
++  // already-wide emoji a redundant VS16 contributes nothing. This must run
++  // before the combining-mark check below, which would otherwise zero VS16
++  // (its general category is Mn).
++  if (point === 0xfe0f) {
++    if (typeof str === 'string' && typeof i === 'number' && i > 0) {
++      let prevIndex = i - 1;
++      const prevCode = str.charCodeAt(prevIndex);
++      if (prevCode >= 0xdc00 && prevCode <= 0xdfff && prevIndex > 0) {
++        prevIndex -= 1;
++      }
++      return isWidePoint(codePointAt(str, prevIndex)) ? 0 : 1;
++    }
++    return 1;
++  }
++
+   // Use unicode-properties to check for combining characters
+   if (
+     unicode.getCategory(point) === 'Mn' ||
+@@ -37,8 +62,10 @@ function charWidth(str: string | number, i?: number): number {
+     return 0;
+   }
+ 
+-  // Use eastasianwidth package for proper width detection
+-  const width = eastasianwidth.eastAsianWidth(String.fromCodePoint(point));
++  // Use unicode-properties for width detection: unlike the eastasianwidth
++  // package (data predates Unicode 9), it counts emoji-presentation
++  // codepoints as Wide, matching how terminals render them.
++  const width = unicode.getEastAsianWidth(point);
+ 
+   switch (width) {
+     case 'F': // Fullwidth
+@@ -190,34 +217,70 @@ function fromCodePoint(...codePoints: number[]): string {
+  * Regexes for compatibility
+  */
+ 
++// Contiguous ranges of Wide/Fullwidth codepoints per unicode-properties EAW
++// data, computed once at load so these regexes share their source of truth
++// with charWidth instead of hand-maintained tables. This is what makes
++// emoji (Wide since Unicode 9) count as 2 cells during layout.
++function computeWideRanges(lo: number, hi: number): Array<[number, number]> {
++  const ranges: Array<[number, number]> = [];
++  let start = -1;
++  for (let point = lo; point <= hi; point++) {
++    if (isWidePoint(point)) {
++      if (start === -1) start = point;
++    } else if (start !== -1) {
++      ranges.push([start, point - 1]);
++      start = -1;
++    }
++  }
++  if (start !== -1) ranges.push([start, hi]);
++  return ranges;
++}
++
++function bmpEscape(point: number): string {
++  return '\\u' + point.toString(16).padStart(4, '0');
++}
++
++// BMP emoji-presentation symbols (watch, check mark, star, ...) live in
++// U+2000-U+2BFF; the blocks the original hardcoded class covered start at
++// U+1100 and are recomputed from the same data.
++const wideBmpClass = computeWideRanges(0x1100, 0xffff)
++  .map(([lo, hi]) => (lo === hi ? bmpEscape(lo) : bmpEscape(lo) + '-' + bmpEscape(hi)))
++  .join('');
++
++function surrogatePairAlternation([lo, hi]: [number, number]): string {
++  const parts: string[] = [];
++  let start = lo;
++  while (start <= hi) {
++    const high = 0xd800 + ((start - 0x10000) >> 10);
++    const lowStart = 0xdc00 + ((start - 0x10000) & 0x3ff);
++    const blockEnd = Math.min(hi, ((start - 0x10000) | 0x3ff) + 0x10000);
++    const lowEnd = 0xdc00 + ((blockEnd - 0x10000) & 0x3ff);
++    parts.push(
++      bmpEscape(high) +
++        (lowStart === lowEnd ? bmpEscape(lowStart) : '[' + bmpEscape(lowStart) + '-' + bmpEscape(lowEnd) + ']')
++    );
++    start = blockEnd + 1;
++  }
++  return parts.join('|');
++}
++
++// Astral wide chars: the emoji/pictograph plane segment is computed from EAW
++// data; the huge CJK Extension planes keep their original closed-form ranges.
++const swideSource =
++  computeWideRanges(0x1f000, 0x1fbff).map(surrogatePairAlternation).join('|') +
++  '|' +
++  // 0x20000 - 0x2fffd:
++  '[\\ud840-\\ud87f][\\udc00-\\udffd]' +
++  '|' +
++  // 0x30000 - 0x3fffd:
++  '[\\ud880-\\ud8bf][\\udc00-\\udffd]';
++
+ const chars = {
+   // Double width characters that are _not_ surrogate pairs.
+-  wide: new RegExp(
+-    '([' +
+-      '\\u1100-\\u115f' + // Hangul Jamo init. consonants
+-      '\\u2329\\u232a' +
+-      '\\u2e80-\\u303e\\u3040-\\ua4cf' + // CJK ... Yi
+-      '\\uac00-\\ud7a3' + // Hangul Syllables
+-      '\\uf900-\\ufaff' + // CJK Compatibility Ideographs
+-      '\\ufe10-\\ufe19' + // Vertical forms
+-      '\\ufe30-\\ufe6f' + // CJK Compatibility Forms
+-      '\\uff00-\\uff60' + // Fullwidth Forms
+-      '\\uffe0-\\uffe6' +
+-      '])',
+-    'g'
+-  ),
++  wide: new RegExp('([' + wideBmpClass + '])', 'g'),
+ 
+   // All surrogate pair wide chars.
+-  swide: new RegExp(
+-    '(' +
+-      // 0x20000 - 0x2fffd:
+-      '[\\ud840-\\ud87f][\\udc00-\\udffd]' +
+-      '|' +
+-      // 0x30000 - 0x3fffd:
+-      '[\\ud880-\\ud8bf][\\udc00-\\udffd]' +
+-      ')',
+-    'g'
+-  ),
++  swide: new RegExp('(' + swideSource + ')', 'g'),
+ 
+   // Regex to detect a surrogate pair.
+   surrogate: /[\ud800-\udbff][\udc00-\udfff]/g,
