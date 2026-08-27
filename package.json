@@ -97,5 +97,8 @@
     "@biomejs/biome",
     "bun",
     "node-pty"
-  ]
+  ],
+  "patchedDependencies": {
+    "neo-neo-bblessed@1.0.9": "patches/neo-neo-bblessed@1.0.9.patch"
+  }
 }
