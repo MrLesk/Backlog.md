@@ -3,11 +3,11 @@ id: BACK-641
 title: >-
   Rebase BACK-637 project attribute onto main past the BACK-639 task-edit
   refactor
-status: In Progress
+status: Done
 assignee:
   - '@claude'
 created_date: '2026-08-27 16:36'
-updated_date: '2026-08-27 16:55'
+updated_date: '2026-08-27 16:57'
 labels: []
 dependencies: []
 ordinal: 280000
@@ -21,18 +21,18 @@ PR #924 (tasks/back-637-multiproject-attribute) now conflicts with main: mergeSt
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 tasks/back-637-multiproject-attribute is rebased onto the current MrLesk/Backlog.md main (past BACK-639) with no unresolved conflicts
-- [ ] #2 backlog task edit --project <value> and --project '' (clear) work through the new addEditFieldOptions/runEditCommand shared path, matching prior --project behavior (validation, wizard bypass via hasEditFieldFlags, frontmatter clear)
-- [ ] #3 backlog task create --project and task list/search --project filtering are unaffected by the rebase (still pass)
-- [ ] #4 PR #924 shows no merge conflicts against main after the branch is pushed
-- [ ] #5 Full bun test suite passes and bunx tsc --noEmit is clean after the rebase
+- [x] #1 tasks/back-637-multiproject-attribute is rebased onto the current MrLesk/Backlog.md main (past BACK-639) with no unresolved conflicts
+- [x] #2 backlog task edit --project <value> and --project '' (clear) work through the new addEditFieldOptions/runEditCommand shared path, matching prior --project behavior (validation, wizard bypass via hasEditFieldFlags, frontmatter clear)
+- [x] #3 backlog task create --project and task list/search --project filtering are unaffected by the rebase (still pass)
+- [x] #4 PR #924 shows no merge conflicts against main after the branch is pushed
+- [x] #5 Full bun test suite passes and bunx tsc --noEmit is clean after the rebase
 <!-- AC:END -->
 
 ## Definition of Done
 <!-- DOD:BEGIN -->
-- [ ] #1 bunx tsc --noEmit passes when TypeScript touched
-- [ ] #2 bun run check . passes when formatting/linting touched
-- [ ] #3 bun test (or scoped test) passes
+- [x] #1 bunx tsc --noEmit passes when TypeScript touched
+- [x] #2 bun run check . passes when formatting/linting touched
+- [x] #3 bun test (or scoped test) passes
 <!-- DOD:END -->
 
 ## Implementation Plan
@@ -55,3 +55,9 @@ Rebased tasks/back-637-multiproject-attribute (fork) onto origin/main in an isol
 
 Verification: redid the rebase's exact endpoint as a throwaway 'git merge origin/main' in a second worktree, applied the identical port, and diffed the two resulting trees -- zero differences outside node_modules, confirming no BACK-639 hunk (TUI badges, board.ts, task-viewer-with-search.ts, server/index.ts, file-system/operations.ts) was dropped during the per-commit replay. bunx tsc --noEmit clean, bun run check . clean (397 files), full bun test suite: 2468 pass / 7 skip / 0 fail across 255 files. Manually smoke-tested in a scratch repo (projects: Web, Mobile configured): 'draft edit --project Web' sets frontmatter project: Web and shows it in --plain output; 'draft edit --project ""' clears the frontmatter key entirely; 'draft edit --project Bogus' rejects with 'Invalid project: Bogus. Valid projects are: Web, Mobile'; 'draft edit --help' lists --project; 'task create --project Mobile' and 'task list --project Mobile' still work unaffected (task create/list were never touched by the BACK-639 refactor).
 <!-- SECTION:NOTES:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+Rebased tasks/back-637-multiproject-attribute onto current main and pushed the update to fork/tasks/back-637-multiproject-attribute (PR #924), which now shows mergeable: MERGEABLE. The rebase's only real conflict was in src/cli.ts's task-edit command, caused by BACK-639's refactor of 'task edit' into a shared EditCommandTarget/runEditCommand/addEditFieldOptions abstraction reused by task and draft edit; resolved by porting --project into that shared shape (option, editArgs assignment, wizard projects list, draft help-schema entry) instead of picking a side. Verified the rebase dropped nothing from BACK-639 by diffing its tip against an independent throwaway trial merge -- zero differences. bunx tsc --noEmit clean, bun run check . clean, full bun test suite 2468 pass / 7 skip / 0 fail. Manually smoke-tested task edit --project and draft edit --project (set, clear, invalid-value rejection) plus task create/list/search --project in a scratch repo. PR #925 (BACK-627) remains stacked on BACK-637's old commit SHAs; rebasing it onto the new BACK-637 tip (or later onto main once MrLesk merges #924) is a separate decision for the user.
+<!-- SECTION:FINAL_SUMMARY:END -->
