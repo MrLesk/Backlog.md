@@ -7,7 +7,7 @@ status: Done
 assignee:
   - '@claude'
 created_date: '2026-08-27 16:36'
-updated_date: '2026-08-27 16:57'
+updated_date: '2026-08-27 17:01'
 labels: []
 dependencies: []
 ordinal: 280000
@@ -54,6 +54,10 @@ PR #924 (tasks/back-637-multiproject-attribute) now conflicts with main: mergeSt
 Rebased tasks/back-637-multiproject-attribute (fork) onto origin/main in an isolated worktree (branch back641-rebase-wip). Only 2 of 8 commits touched src/cli.ts; only the first (8dc42a7, adding --project) conflicted, localized entirely to the task-edit command area, because main's BACK-639 refactored 'task edit' from a standalone .option()/.action() block into a shared EditCommandTarget/runEditCommand/addEditFieldOptions abstraction reused by task edit and draft edit. Resolved by discarding the old standalone block and porting --project into the shared shape: added '--project <project>' to addEditFieldOptions(); added the editArgs.project assignment next to the type handling in runEditCommand(); added 'projects: config?.projects' to the shared runTaskEditWizard() call; added a project field to draftEditCommand's help schema (taskEditCommand's entry had already auto-merged). The second cli.ts-touching commit (6d570da) and all 6 other commits replayed with zero further conflicts.
 
 Verification: redid the rebase's exact endpoint as a throwaway 'git merge origin/main' in a second worktree, applied the identical port, and diffed the two resulting trees -- zero differences outside node_modules, confirming no BACK-639 hunk (TUI badges, board.ts, task-viewer-with-search.ts, server/index.ts, file-system/operations.ts) was dropped during the per-commit replay. bunx tsc --noEmit clean, bun run check . clean (397 files), full bun test suite: 2468 pass / 7 skip / 0 fail across 255 files. Manually smoke-tested in a scratch repo (projects: Web, Mobile configured): 'draft edit --project Web' sets frontmatter project: Web and shows it in --plain output; 'draft edit --project ""' clears the frontmatter key entirely; 'draft edit --project Bogus' rejects with 'Invalid project: Bogus. Valid projects are: Web, Mobile'; 'draft edit --help' lists --project; 'task create --project Mobile' and 'task list --project Mobile' still work unaffected (task create/list were never touched by the BACK-639 refactor).
+
+Follow-up verification after advisor review: diffed all case-insensitive 'project' mentions in src/cli.ts between the pre-rebase fork tip (6753c4d) and the pushed result (94f55d2) -- the only differences are indentation shifts from the block moving into the shared function scope, plus the net-new 'projects: config?.projects' wizard wiring; no project-handling call (normalizeCliProjects, resolveProjectValues, formatValidProjectValues, getProjectValues) was dropped. Confirmed 'git diff 5021d8a 94f55d2 --stat' (tested commit vs. shipped commit) touches only the BACK-641 task markdown, so the pushed code is exactly what the full suite ran against -- the husky pre-commit hook did not reformat anything else.
+
+Caveat on AC #2: the 'wizard bypass via hasEditFieldFlags' sub-claim rests on hasEditFieldFlags/hasCreateFieldFlags being untouched by this rebase (confirmed unchanged, auto-merged cleanly from 6d570da) plus cli-task-project.test.ts exercising --project through the real CLI end to end -- there is no dedicated automated or manual TTY test proving the wizard is actually skipped when --project is the only flag passed on an interactive terminal. That gap predates this task (inherited from BACK-637) and this rebase did not touch that code path, but it remains unverified by direct TTY observation.
 <!-- SECTION:NOTES:END -->
 
 ## Final Summary
