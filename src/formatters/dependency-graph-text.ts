@@ -40,31 +40,45 @@ const REPEAT_SUFFIXES: Record<NonNullable<DependencyTreeNode["repeat"]>, string>
 	repeat: " (shown above)",
 };
 
-function appendTreeLines(children: DependencyTreeNode[], prefix: string, lines: string[]): void {
+export type DependencyGraphTextOptions = {
+	/** Decorate a node label, for a surface that can render more than plain characters. */
+	formatLabel?: (node: DependencyGraphNode) => string;
+};
+
+function appendTreeLines(
+	children: DependencyTreeNode[],
+	prefix: string,
+	lines: string[],
+	formatLabel: (node: DependencyGraphNode) => string,
+): void {
 	children.forEach((child, position) => {
 		const last = position === children.length - 1;
 		const suffix = child.repeat ? REPEAT_SUFFIXES[child.repeat] : "";
-		lines.push(`${prefix}${last ? "└─ " : "├─ "}${formatDependencyNodeLabel(child.node)}${suffix}`);
-		appendTreeLines(child.children, `${prefix}${last ? "   " : "│  "}`, lines);
+		lines.push(`${prefix}${last ? "└─ " : "├─ "}${formatLabel(child.node)}${suffix}`);
+		appendTreeLines(child.children, `${prefix}${last ? "   " : "│  "}`, lines, formatLabel);
 	});
 }
 
 /** One direction of the graph as text, or no lines at all when nothing was reached that way. */
-export function formatDependencyGraphSection(graph: DependencyGraph, direction: DependencyDirection): string[] {
+export function formatDependencyGraphSection(
+	graph: DependencyGraph,
+	direction: DependencyDirection,
+	options: DependencyGraphTextOptions = {},
+): string[] {
 	const reached = nodesInDirection(graph, direction);
 	if (reached.length === 0) return [];
 
 	const direct = reached.filter((node) => depthInDirection(node, direction) === 1).length;
 	const lines = [`${DIRECTION_HEADINGS[direction]} (${direct} direct, ${reached.length} total):`];
-	appendTreeLines(buildDependencyTree(graph, direction), "", lines);
+	appendTreeLines(buildDependencyTree(graph, direction), "", lines, options.formatLabel ?? formatDependencyNodeLabel);
 	return lines;
 }
 
 /** Both directions as text, each kept separate, or no lines at all for an isolated task. */
-export function formatDependencyGraphLines(graph: DependencyGraph): string[] {
+export function formatDependencyGraphLines(graph: DependencyGraph, options: DependencyGraphTextOptions = {}): string[] {
 	const sections = [
-		formatDependencyGraphSection(graph, "dependencies"),
-		formatDependencyGraphSection(graph, "dependents"),
+		formatDependencyGraphSection(graph, "dependencies", options),
+		formatDependencyGraphSection(graph, "dependents", options),
 	].filter((section) => section.length > 0);
 
 	return sections.flatMap((section, position) => (position === 0 ? section : ["", ...section]));

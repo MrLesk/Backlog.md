@@ -244,7 +244,7 @@ describe("rendered readiness guidance", () => {
 		const graph = [doneDep, inProgDep, readyTask, blockedTask, unknownDepTask, noDepsTask];
 
 		const detailBody = (task: Task) =>
-			generateDetailContent(task, undefined, undefined, graphOf(graph)).bodyContent.join("\n");
+			generateDetailContent(task, { readinessGraph: graphOf(graph) }).bodyContent.join("\n");
 
 		expect(detailBody(readyTask)).toContain("Readiness:");
 		expect(detailBody(readyTask)).toContain("✓ Ready to start");

@@ -4,6 +4,7 @@ import { stdout as output } from "node:process";
 import type { BoxInterface, LineInterface, ScreenInterface, ScrollableTextInterface } from "neo-neo-bblessed";
 import { box, line, scrollabletext } from "neo-neo-bblessed";
 import { type Core, createRuntimeCore } from "../core/backlog.ts";
+import { formatDependencyGraphLines, formatDependencyNodeLabel } from "../formatters/dependency-graph-text.ts";
 import {
 	buildAcceptanceCriteriaItems,
 	buildDefinitionOfDoneItems,
@@ -12,6 +13,7 @@ import {
 } from "../formatters/task-plain-text.ts";
 import type { LabelMatchMode, Milestone, Task } from "../types/index.ts";
 import { copyToClipboard } from "../utils/clipboard.ts";
+import { buildDependencyGraph, type DependencyGraph, type DependencyGraphNode } from "../utils/dependency-graph.ts";
 import { areLabelSelectionsEqual, collectAvailableLabels } from "../utils/label-filter.ts";
 import {
 	createMilestoneFilterValueResolver,
@@ -331,7 +333,9 @@ export async function viewTaskEnhanced(
 	// mutable because completing a task from this view moves it between them.
 	let readinessSnapshot = options.readinessTasks ? [...options.readinessTasks] : null;
 	const readinessCompletedTasks = [...completedTasks];
-	const buildReadinessGraph = () => {
+	// The corpus that both readiness and the dependency graph resolve against, so the two never
+	// disagree about which records this view can see.
+	const resolveDependencyCorpus = () => {
 		let tasks = allTasks;
 		if (readinessSnapshot) {
 			// Live display copies win over the snapshot so status edits in this session count.
@@ -339,8 +343,9 @@ export async function viewTaskEnhanced(
 			for (const task of allTasks) byId.set(canonicalTaskId(task.id), task);
 			tasks = [...byId.values()];
 		}
-		return createReadinessGraph({ tasks, completedTasks: readinessCompletedTasks, statuses });
+		return { tasks, completedTasks: readinessCompletedTasks, statuses };
 	};
+	const buildReadinessGraph = () => createReadinessGraph(resolveDependencyCorpus());
 
 	// State for filtering - normalize filters to match configured values
 	let searchQuery = options.searchQuery || "";
@@ -1119,13 +1124,14 @@ export async function viewTaskEnhanced(
 
 		screen.title = formatTuiTitle(`Task ${currentSelectedTask.id} - ${currentSelectedTask.title}`, projectName);
 
-		const detailContent = generateDetailContent(
-			currentSelectedTask,
+		const dependencyCorpus = resolveDependencyCorpus();
+		const detailContent = generateDetailContent(currentSelectedTask, {
 			resolveMilestoneLabel,
 			dateFormat,
-			buildReadinessGraph(),
+			readinessGraph: createReadinessGraph(dependencyCorpus),
+			dependencyGraph: buildDependencyGraph(currentSelectedTask, dependencyCorpus),
 			configuredProjects,
-		);
+		});
 
 		// Calculate header height based on content and available width
 		const detailPaneWidth = typeof detailPane.width === "number" ? detailPane.width : 60;
@@ -1564,16 +1570,36 @@ export async function viewTaskEnhanced(
 	});
 }
 
+/**
+ * The shared node label, colored for the terminal. Unresolved identities are called out, finished
+ * work recedes, and the wording itself stays the one every surface uses.
+ */
+function formatDependencyNodeTuiLabel(node: DependencyGraphNode): string {
+	const label = formatDependencyNodeLabel(node);
+	if (node.state !== "resolved") return `{yellow-fg}${label}{/}`;
+	if (node.completed) return `{gray-fg}${label}{/}`;
+	return label;
+}
+
+export interface TaskDetailContentOptions {
+	resolveMilestoneLabel?: (milestone: string) => string;
+	dateFormat?: string;
+	/**
+	 * Readiness is rendered only when the caller can supply the task graph to resolve dependencies
+	 * against. Callers without one (the board quick-look popup) get no readiness line rather than a
+	 * wrong one derived from an empty graph. The dependency graph section works the same way, which
+	 * is what keeps board cards and the quick-look popup the size they already are.
+	 */
+	readinessGraph?: ReadinessGraph;
+	dependencyGraph?: DependencyGraph;
+	configuredProjects?: string[];
+}
+
 export function generateDetailContent(
 	task: Task,
-	resolveMilestoneLabel?: (milestone: string) => string,
-	dateFormat?: string,
-	// Readiness is rendered only when the caller can supply the task graph to resolve dependencies
-	// against. Callers without one (the board quick-look popup) get no readiness line rather than a
-	// wrong one derived from an empty graph.
-	readinessGraph?: ReadinessGraph,
-	configuredProjects?: string[],
+	options: TaskDetailContentOptions = {},
 ): { headerContent: string[]; bodyContent: string[] } {
+	const { resolveMilestoneLabel, dateFormat, readinessGraph, dependencyGraph, configuredProjects } = options;
 	const headerContent = [
 		` ${wrapStatusColor(formatStatusWithIcon(task.status), getStatusColor(task.status))} {bold}{blue-fg}${task.id}{/blue-fg}{/bold} - ${task.title}`,
 	];
@@ -1651,6 +1677,16 @@ export function generateDetailContent(
 
 	bodyContent.push(metadata.join("\n"));
 	bodyContent.push("");
+
+	// Derived from the whole visible corpus, so it stays below the editable Dependencies line.
+	const dependencyGraphLines = dependencyGraph
+		? formatDependencyGraphLines(dependencyGraph, { formatLabel: formatDependencyNodeTuiLabel })
+		: [];
+	if (dependencyGraphLines.length > 0) {
+		bodyContent.push(formatHeading("Dependency Graph", 2));
+		bodyContent.push(dependencyGraphLines.join("\n"));
+		bodyContent.push("");
+	}
 
 	bodyContent.push(formatHeading("Description", 2));
 	const descriptionText = task.description?.trim();
@@ -1808,13 +1844,11 @@ export async function createTaskPopup(
 
 	popup.setFront?.();
 
-	const { headerContent, bodyContent } = generateDetailContent(
-		task,
+	const { headerContent, bodyContent } = generateDetailContent(task, {
 		resolveMilestoneLabel,
 		dateFormat,
-		undefined,
 		configuredProjects,
-	);
+	});
 
 	// Calculate header height based on content and available width
 	const popupWidth = typeof popup.width === "number" ? popup.width : 80;
