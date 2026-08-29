@@ -66,6 +66,7 @@ import { scrollableViewer } from "./ui/tui.ts";
 import { type AgentSelectionValue, processAgentSelection } from "./utils/agent-selection.ts";
 import { normalizeProjectBacklogDirectory } from "./utils/backlog-directory.ts";
 import { launchBrowser } from "./utils/browser-launch.ts";
+import { loadTaskDependencyGraph } from "./utils/dependency-graph.ts";
 import {
 	type ContentIdentityReport,
 	type DraftIdentityFindings,
@@ -3589,12 +3590,12 @@ addHelpSchema(taskCmd.command("view <taskId>"), {
 
 		// Plain text output for non-interactive environments
 		if (outputMode === "json") {
-			printJson(taskViewJson(task, cwd));
+			printJson(taskViewJson(task, cwd, await loadTaskDependencyGraph(core, task)));
 			return;
 		}
 
 		if (outputMode === "plain") {
-			console.log(formatTaskPlainText(task));
+			console.log(formatTaskPlainText(task, { dependencyGraph: await loadTaskDependencyGraph(core, task) }));
 			return;
 		}
 
@@ -3765,12 +3766,12 @@ taskCmd
 
 		// Plain text output for non-interactive environments
 		if (outputMode === "json") {
-			printJson(taskViewJson(task, cwd));
+			printJson(taskViewJson(task, cwd, await loadTaskDependencyGraph(core, task)));
 			return;
 		}
 
 		if (outputMode === "plain") {
-			console.log(formatTaskPlainText(task));
+			console.log(formatTaskPlainText(task, { dependencyGraph: await loadTaskDependencyGraph(core, task) }));
 			return;
 		}
 

@@ -1,6 +1,7 @@
 import { isAbsolute, join, relative } from "node:path";
 import type { Decision, Document, SearchResult, Task } from "../types/index.ts";
 import { isLocalEditableTask } from "../types/index.ts";
+import type { DependencyGraph } from "../utils/dependency-graph.ts";
 import { sortByTaskId } from "../utils/task-sorting.ts";
 
 type TaskSummaryJson = {
@@ -184,8 +185,28 @@ export function taskListJson(tasks: Task[]) {
 	return { schemaVersion: 1, kind: "task-list" as const, tasks: tasks.map(toTaskSummaryJson) };
 }
 
-export function taskViewJson(task: Task, projectRoot: string) {
-	return { schemaVersion: 1, kind: "task-view" as const, task: toTaskDetailsJson(task, projectRoot) };
+type DependencyGraphJson = {
+	root: string;
+	nodes: DependencyGraph["nodes"];
+	edges: DependencyGraph["edges"];
+};
+
+/**
+ * The dependency context, normalized. It sits beside `task` rather than inside it because it is
+ * derived from the whole visible corpus, while `task.dependencies` stays the task's own editable
+ * list of direct dependency IDs, unchanged.
+ */
+function toDependencyGraphJson(graph: DependencyGraph): DependencyGraphJson {
+	return { root: graph.rootId, nodes: graph.nodes, edges: graph.edges };
+}
+
+export function taskViewJson(task: Task, projectRoot: string, dependencyGraph: DependencyGraph) {
+	return {
+		schemaVersion: 1,
+		kind: "task-view" as const,
+		task: toTaskDetailsJson(task, projectRoot),
+		dependencyGraph: toDependencyGraphJson(dependencyGraph),
+	};
 }
 
 export function decisionListJson(decisions: Decision[]) {
