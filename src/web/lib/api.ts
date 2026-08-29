@@ -11,8 +11,16 @@ import type {
 	Task,
 	TaskStatus,
 } from "../../types/index.ts";
+import type { DependencyGraph } from "../../utils/dependency-graph.ts";
 
 const API_BASE = "/api";
+
+/** The dependency graph as the API serves it: an explicit root plus nodes and directed edges. */
+export type DependencyGraphPayload = {
+	root: string;
+	nodes: DependencyGraph["nodes"];
+	edges: DependencyGraph["edges"];
+};
 
 export interface ReorderTaskPayload {
 	taskId: string;
@@ -278,6 +286,11 @@ export class ApiClient {
 
 	async fetchTask(id: string): Promise<Task> {
 		return this.fetchJson<Task>(`${API_BASE}/task/${encodeURIComponent(id)}`);
+	}
+
+	/** The dependency context for one task, resolved on the server and fetched only when it is shown. */
+	async fetchTaskDependencyGraph(id: string): Promise<DependencyGraphPayload> {
+		return this.fetchJson<DependencyGraphPayload>(`${API_BASE}/tasks/${encodeURIComponent(id)}/dependency-graph`);
 	}
 
 	async createTask(task: Omit<Task, "id" | "createdDate">): Promise<Task> {

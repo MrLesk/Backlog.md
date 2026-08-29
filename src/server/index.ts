@@ -20,6 +20,7 @@ import {
 } from "../types/index.ts";
 import { launchBrowser } from "../utils/browser-launch.ts";
 import type { BrowserLoadingState } from "../utils/browser-loading-state.ts";
+import { buildDependencyGraph } from "../utils/dependency-graph.ts";
 import { isAmbiguousIdError } from "../utils/entity-id.ts";
 import { resolveMilestoneInputForStorage } from "../utils/milestone-storage.ts";
 import { DRAFT_PREFIX, extractAnyPrefix, getTaskPrefixError } from "../utils/prefix-config.ts";
@@ -31,7 +32,7 @@ import {
 	resolveProjectValues,
 } from "../utils/project-config.ts";
 import { formatValidStatuses, getCanonicalStatuses, getValidStatuses } from "../utils/status.ts";
-import { isValidTaskId } from "../utils/task-id.ts";
+import { canonicalTaskId, isValidTaskId } from "../utils/task-id.ts";
 import { isAmbiguousTaskIdError, LOCAL_TASK_LOOKUP_HINT } from "../utils/task-path.ts";
 import { normalizeUtcDateTime } from "../utils/utc-datetime.ts";
 import { getVersion } from "../utils/version.ts";
@@ -408,6 +409,10 @@ export class BacklogServer {
 						GET: async (req: Request & { params: { id: string } }) => await this.handleGetTask(req.params.id),
 						PUT: async (req: Request & { params: { id: string } }) => await this.handleUpdateTask(req, req.params.id),
 						DELETE: async (req: Request & { params: { id: string } }) => await this.handleDeleteTask(req.params.id),
+					},
+					"/api/tasks/:id/dependency-graph": {
+						GET: async (req: Request & { params: { id: string } }) =>
+							await this.handleGetTaskDependencyGraph(req.params.id),
 					},
 					"/api/tasks/:id/complete": {
 						POST: async (req: Request & { params: { id: string } }) => await this.handleCompleteTask(req.params.id),
@@ -1005,12 +1010,16 @@ export class BacklogServer {
 		}
 	}
 
-	private async handleGetTask(taskId: string): Promise<Response> {
+	/**
+	 * Resolve the one task a detail read is about, or the response that explains why it could not be
+	 * resolved. Shared so every detail endpoint fails closed on an ambiguous ID the same way.
+	 */
+	private async resolveDetailTask(taskId: string): Promise<Task | Response> {
 		if (!isValidTaskId(taskId)) return Response.json({ error: `Invalid task ID: ${taskId}` }, { status: 400 });
 		if (isDraftId(taskId)) {
 			try {
 				const draft = await this.core.filesystem.loadDraft(taskId);
-				return draft ? Response.json(draft) : Response.json({ error: `Task ${taskId} not found` }, { status: 404 });
+				return draft ?? Response.json({ error: `Task ${taskId} not found` }, { status: 404 });
 			} catch (error) {
 				if (isAmbiguousIdError(error)) {
 					return Response.json({ error: error.message }, { status: 409 });
@@ -1028,11 +1037,37 @@ export class BacklogServer {
 				: error.message;
 			return Response.json({ error: message }, { status: 409 });
 		}
-		if (resolvedTask) {
-			return Response.json(resolvedTask);
-		}
+		return resolvedTask ?? Response.json({ error: `Task ${taskId} not found` }, { status: 404 });
+	}
 
-		return Response.json({ error: `Task ${taskId} not found` }, { status: 404 });
+	private async handleGetTask(taskId: string): Promise<Response> {
+		const resolved = await this.resolveDetailTask(taskId);
+		return resolved instanceof Response ? resolved : Response.json(resolved);
+	}
+
+	/**
+	 * The dependency context for one task, resolved on demand against the corpus the browser already
+	 * shows: the current checkout, the completed records, and the cross-branch tasks the server keeps
+	 * in its content store. It is derived data, so it is served apart from the task's own record.
+	 */
+	private async handleGetTaskDependencyGraph(taskId: string): Promise<Response> {
+		const resolved = await this.resolveDetailTask(taskId);
+		if (resolved instanceof Response) return resolved;
+
+		await this.ensureServicesReady();
+		const [workingCopyTasks, storeTasks, completedTasks, config] = await Promise.all([
+			this.core.queryTasks({ includeCrossBranch: false }),
+			this.core.queryTasks({ includeCrossBranch: true }),
+			this.core.filesystem.listCompletedTasks(),
+			this.core.filesystem.loadConfig(),
+		]);
+		// The cross-branch store resolves each identity to a single record, which would hide a local
+		// ID that two files claim. So the working copy is read as written, and the store only
+		// contributes the identities the working copy does not have.
+		const workingCopyIds = new Set(workingCopyTasks.map((task) => canonicalTaskId(task.id)));
+		const tasks = [...workingCopyTasks, ...storeTasks.filter((task) => !workingCopyIds.has(canonicalTaskId(task.id)))];
+		const graph = buildDependencyGraph(resolved, { tasks, completedTasks, statuses: config?.statuses });
+		return Response.json({ root: graph.rootId, nodes: graph.nodes, edges: graph.edges });
 	}
 
 	private async handleUpdateTask(req: Request, taskId: string): Promise<Response> {

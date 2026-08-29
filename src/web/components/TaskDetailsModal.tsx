@@ -1,13 +1,14 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { isLocalEditableTask, type AcceptanceCriterion, type Milestone, type Task, type TaskComment } from "../../types";
 import Modal from "./Modal";
-import { ApiError, apiClient, NetworkError } from "../lib/api";
+import { ApiError, apiClient, NetworkError, type DependencyGraphPayload } from "../lib/api";
 import { useTheme } from "../contexts/ThemeContext";
 import MDEditor from "@uiw/react-md-editor";
 import AcceptanceCriteriaEditor from "./AcceptanceCriteriaEditor";
 import MermaidMarkdown from './MermaidMarkdown';
 import ChipInput from "./ChipInput";
 import DependencyInput from "./DependencyInput";
+import { DependencyGraphSection } from "./DependencyGraphSection";
 import { formatStoredUtcDateForDisplay } from "../utils/date-display";
 import { getPriorityOptions } from "../../utils/priority-config";
 import { getProjectValues, resolveProjectValue } from "../../utils/project-config";
@@ -439,6 +440,30 @@ export const TaskDetailsModal: React.FC<Props> = ({
       cancelled = true;
     };
   }, [isOpen, unresolvedDependencyKey]);
+
+  // The dependency graph is derived from the whole visible corpus, which the browser does not hold,
+  // so it is resolved on the server and fetched on demand for the task that is actually open.
+  const [dependencyGraph, setDependencyGraph] = useState<DependencyGraphPayload | null>(null);
+  const dependencyGraphTaskId = isOpen ? (task?.id ?? null) : null;
+  // Editing the direct dependencies saves immediately, so the derived graph is resolved again.
+  const dependencyGraphKey = dependencies.join(",");
+  useEffect(() => {
+    setDependencyGraph(null);
+    if (!dependencyGraphTaskId) return;
+    let cancelled = false;
+    apiClient
+      .fetchTaskDependencyGraph(dependencyGraphTaskId)
+      .then((graph) => {
+        // A derived section must never be the reason the detail view fails to render.
+        if (!cancelled) setDependencyGraph(Array.isArray(graph?.nodes) ? graph : null);
+      })
+      .catch(() => {
+        if (!cancelled) setDependencyGraph(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [dependencyGraphTaskId, dependencyGraphKey]);
 
   // Dependency validation stays local-only (see BACK-623), so the picker must only suggest what a
   // save can accept: a cross-branch task is rejected, and so is a canonically ambiguous ID that more
@@ -1380,6 +1405,13 @@ export const TaskDetailsModal: React.FC<Props> = ({
                   );
                 })}
               </div>
+            </section>
+          )}
+
+          {dependencyGraph && dependencyGraph.nodes.length > 1 && (
+            <section className="rounded-lg border border-gray-200 bg-white p-4 dark:border-gray-700 dark:bg-gray-800">
+              <SectionHeader title="Dependency Graph" />
+              <DependencyGraphSection graph={dependencyGraph} />
             </section>
           )}
 
