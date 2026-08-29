@@ -1,7 +1,6 @@
-import { DEFAULT_STATUSES } from "../constants/index.ts";
 import type { Core } from "../core/backlog.ts";
 import type { Task } from "../types/index.ts";
-import { canonicalTaskId } from "./task-id.ts";
+import { createTaskRecordIndex } from "./task-record-index.ts";
 import { isTerminalStatus } from "./terminal-status.ts";
 
 export interface TaskReadiness {
@@ -36,41 +35,29 @@ export interface ReadinessGraph {
 }
 
 /**
- * Build the readiness index.
+ * Build the readiness index over the corpus this read is allowed to see.
  *
- * `completedTasks` are records that live in the completed corpus (`backlog/completed`). Their
- * location is the completion evidence, so they satisfy a dependency whatever their status string
- * says: the terminal status may have been renamed since, or the record may predate the current
- * configuration. Passing them separately is what keeps that distinction available.
- *
- * Identity is canonical, and an identity claimed by more than one record resolves as unresolved
- * rather than picking a winner by insertion order.
+ * Identity, ambiguity, and completion evidence come from the shared task record index, so readiness
+ * and the dependency graph never disagree about which record an ID means. An identity claimed by
+ * more than one record resolves as unresolved rather than picking a winner by insertion order.
  */
 export function createReadinessGraph(options: {
 	tasks: Task[];
 	completedTasks?: Task[];
 	statuses?: readonly string[];
 }): ReadinessGraph {
-	const statuses = options.statuses?.length ? options.statuses : DEFAULT_STATUSES;
-	const records = new Map<string, { task: Task; completed: boolean } | "ambiguous">();
-
-	const add = (task: Task, completed: boolean) => {
-		const key = canonicalTaskId(task.id);
-		records.set(key, records.has(key) ? "ambiguous" : { task, completed });
-	};
-	for (const task of options.tasks) add(task, false);
-	for (const task of options.completedTasks ?? []) add(task, true);
+	const index = createTaskRecordIndex(options);
 
 	return {
-		statuses,
+		statuses: index.statuses,
 		isCompletedRecord(taskId) {
-			const record = records.get(canonicalTaskId(taskId));
-			return record !== undefined && record !== "ambiguous" && record.completed;
+			const record = index.lookup(taskId);
+			return record !== undefined && record !== "ambiguous" && record.completedRecord;
 		},
 		resolveDependency(dependencyId) {
-			const record = records.get(canonicalTaskId(dependencyId));
+			const record = index.lookup(dependencyId);
 			if (record === undefined || record === "ambiguous") return { state: "unresolved" };
-			if (record.completed || isTerminalStatus(record.task.status, statuses)) return { state: "completed" };
+			if (index.isFinished(record)) return { state: "completed" };
 			return { state: "unfinished", id: record.task.id };
 		},
 	};

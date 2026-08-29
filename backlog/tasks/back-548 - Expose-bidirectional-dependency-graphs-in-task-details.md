@@ -1,9 +1,11 @@
 ---
 id: BACK-548
 title: Expose bidirectional dependency graphs in task details
-status: To Do
-assignee: []
+status: In Progress
+assignee:
+  - '@claude'
 created_date: '2026-07-16 21:38'
+updated_date: '2026-08-29 23:14'
 labels:
   - cli
   - tui
@@ -42,3 +44,20 @@ Task detail views should explain the complete dependency context around the sele
 - [ ] #2 bun run check . passes when formatting/linting touched
 - [ ] #3 bun test (or scoped test) passes
 <!-- DOD:END -->
+
+## Implementation Plan
+
+<!-- SECTION:PLAN:BEGIN -->
+1. Shared model. Add one dependency-graph module beside readiness so both share a single canonical identity, ambiguity, and completion rule: buildDependencyGraph(rootTask, { tasks, completedTasks, statuses }) returning { rootId, nodes, edges }. There is no existing reverse-dependency owner in the codebase, so this module becomes the single owner of the reverse edge.
+2. Contract. Every edge is directed from the task that declares the dependency to the task it depends on. Nodes are unique per canonical identity and carry state (resolved, ambiguous, missing), completed, and the shortest dependencyDepth and dependentDepth, where 0 is the root, 1 is direct, greater than 1 is transitive, and null means not reachable in that direction. Both traversals are breadth-first with a visited set, so chains, branches, diamonds, and cycles terminate and never duplicate a node. Unresolved references become explicit nodes and are never traversed or counted as satisfied.
+3. Visibility. The caller supplies the corpus, so each surface keeps its own canonical task-detail visibility. CLI and TUI use the current checkout plus completed records, matching task view today. The browser keeps its configured cross-branch corpus and gets the graph from the server rather than from the board list, because the task modal has no full corpus of its own. Archived records are never loaded, so an archived ID resolves as missing instead of being resurrected.
+4. Determinism. Nodes are ordered root first then by compareTaskIds, edges by from then to with the same comparator. Rendered trees expand each node once and show later occurrences as a back-reference, so output stays linear in nodes plus edges.
+5. Canonical CLI. Render direction-separated Depends on and Dependents sections in the shared plain-text task formatter, marking direct versus transitive, completed records, cycle and repeat references, and unresolved or ambiguous identities. The existing Dependencies line stays as the editable direct list. The section is omitted when the task has neither dependencies nor dependents.
+6. JSON. taskViewJson gains an additive dependencyGraph object under schemaVersion 1 with root, nodes, and directed edges. The existing dependencies array is unchanged, and task-list plus search summary payloads are untouched.
+7. TUI. Add the same direction-separated sections to the task detail pane using branch glyphs, scrollable and keyboard reachable, without touching board cards or task list rows.
+8. Browser. Serve the graph with the single-task detail payload and render it web-natively with semantic list markup and accessible labels, no ASCII or glyph art, with links that navigate to each task. Editable direct dependencies stay in their own control.
+9. MCP. Mirror the settled CLI contract in the legacy task detail adapter only after the shared model and CLI are done.
+10. Docs. Document edge direction, direct versus transitive, dependents terminology, visibility scope, cycle handling, and unresolved identity diagnostics in the public CLI and agent instruction surfaces.
+11. Tests. Cover direct and multi-level traversal in both directions, diamonds, cycles, self-references, missing and ambiguous IDs, completed and cross-branch records, deterministic ordering, unchanged list and search payloads, and bounded output on wide and deep graphs.
+12. QA. Automate what a pty and jsdom can verify and list the remaining rendered TUI and desktop-browser checks for the maintainer.
+<!-- SECTION:PLAN:END -->
