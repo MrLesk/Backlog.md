@@ -475,6 +475,21 @@ describe("CLI Integration", () => {
 				expect(await Bun.file(join(TEST_DIR, "backlog", "config.yml")).exists()).toBe(false);
 			});
 		}
+
+		it("should reject a padded --task-prefix instead of persisting the padding", async () => {
+			// init writes --task-prefix into task_prefix verbatim, so accepting " JIRA " produced
+			// a config of task_prefix: " JIRA " and task files named ' jira -jira -1 - Title.md'.
+			await $`git init -b main`.cwd(TEST_DIR).quiet();
+
+			const result = await $`bun ${CLI_PATH} init PaddedPrefixProj --defaults --task-prefix ${" JIRA "}`
+				.cwd(TEST_DIR)
+				.nothrow();
+			const output = result.stdout.toString() + result.stderr.toString();
+
+			expect(result.exitCode).toBe(1);
+			expect(output).toContain("Task prefix must contain only letters (a-z, A-Z).");
+			expect(await Bun.file(join(TEST_DIR, "backlog", "config.yml")).exists()).toBe(false);
+		});
 	});
 
 	describe("git integration", () => {

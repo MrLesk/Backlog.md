@@ -37,17 +37,19 @@ export function isReservedTaskPrefix(prefix: string): boolean {
 
 /**
  * Init-time task prefix validation. Empty input is allowed (the default prefix is used).
+ * The value is judged exactly as given, because init persists it verbatim: padding that
+ * passed validation but survived into the config would end up inside task IDs and filenames.
+ * Callers that mean to accept surrounding whitespace must trim before calling.
  */
 export function getTaskPrefixError(prefix: string): string | undefined {
-	const normalized = prefix.trim();
-	if (!normalized) {
+	if (!prefix) {
 		return undefined;
 	}
-	if (!/^[a-zA-Z]+$/.test(normalized)) {
+	if (!/^[a-zA-Z]+$/.test(prefix)) {
 		return "Task prefix must contain only letters (a-z, A-Z).";
 	}
-	if (isReservedTaskPrefix(normalized)) {
-		return `Task prefix "${normalized}" is reserved for drafts, docs, or decisions. Choose a different prefix.`;
+	if (isReservedTaskPrefix(prefix)) {
+		return `Task prefix "${prefix}" is reserved for drafts, docs, or decisions. Choose a different prefix.`;
 	}
 	return undefined;
 }

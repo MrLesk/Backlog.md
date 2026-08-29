@@ -6,7 +6,7 @@ assignee:
   - '@grok'
   - '@claude'
 created_date: '2026-08-15 14:00'
-updated_date: '2026-08-29 18:07'
+updated_date: '2026-08-29 18:36'
 labels: []
 dependencies: []
 priority: medium
@@ -89,6 +89,18 @@ The single failure is 'Config commands > reads the config key at column 0, not a
 Separately, 'bun run check .' reports one formatter-only error in src/ui/components/task-composer.ts. That file is also byte-identical to origin/main and is outside CI's gate (CI runs 'bun run lint' = biome lint, not biome check). Left untouched to keep the diff scoped. Biome is clean on every file this PR touches, and 'bun run lint' is clean repo-wide.
 
 Verification on the final head: bunx tsc --noEmit clean; bun run lint clean; scoped suites green (prefix-config, enhanced-init, server-init, cli-doctor, cli-init-create = 170 tests, 0 fail).
+
+Codex-thread triage fixes on head 1fe43a7d:
+
+1. Whitespace-prefix regression (real regression vs old main). getTaskPrefixError() trimmed before validating while initializeProject persists advancedConfig.taskPrefix verbatim, so 'init --task-prefix " JIRA "' wrote task_prefix: " JIRA " and produced task files literally named ' jira -jira -1 - Title.md'. Whitespace-only '   ' persisted the same way. Old main rejected the raw value because its check was untrimmed.
+   Fix keeps one owner for the rule: getTaskPrefixError() now judges the value exactly as given, since init stores it verbatim. The init wizard trims before calling (it already trimmed what it assigned), so blank input still means 'use the default' and typing a padded value in the prompt is still accepted and trimmed - wizard behavior is unchanged. The --task-prefix flag, initializeProject, and the browser endpoint now all reject padding instead of persisting it.
+   Regression coverage: unit cases for ' JIRA ', 'JIRA ', '   ', and ' draft ' in prefix-config.test.ts, plus a CLI end-to-end case in cli-init-create.test.ts asserting exit 1 and no config.yml.
+
+2. Doctor guidance named a nonexistent config key. The message said 'set prefixes.task in the project config file', but the on-disk YAML key is task_prefix (src/file-system/operations.ts serializes prefixes.task as task_prefix). prefixes.task is the in-memory shape only, so the advice could not be followed as written. Copy now names task_prefix.
+
+Verified end to end: padded, whitespace-only, and padded-reserved values all exit 1 with no config.yml written; clean 'JIRA' still initializes and creates jira-1; doctor now prints the task_prefix key name. bunx tsc --noEmit clean, bun run lint clean, scoped suites green (prefix-config, enhanced-init, server-init, cli-doctor, cli-init-create).
+
+Deferred per triage, not touched: git-init-before-validation ordering, and the non-string taskPrefix 500 on the browser endpoint (both pre-existing/edge).
 <!-- SECTION:NOTES:END -->
 
 ## Final Summary

@@ -1225,7 +1225,8 @@ addHelpSchema(program.command("init [projectName]"), {
 				if (!taskPrefix && !isNonInteractive && !isReInitialization) {
 					const enteredPrefix = await clack.text({
 						message: "Task prefix (default: task):",
-						validate: (value) => getTaskPrefixError(String(value ?? "")),
+						// The prompt trims what it accepts below, so judge the trimmed value here too.
+						validate: (value) => getTaskPrefixError(String(value ?? "").trim()),
 					});
 					if (clack.isCancel(enteredPrefix)) {
 						abortInitialization();
@@ -5178,7 +5179,7 @@ addHelpSchema(program.command("doctor"), {
 					`Task prefix "${reservedTaskPrefix}" collides with a reserved prefix (draft, doc, decision); tasks are misrouted as that entity type.`,
 				);
 				console.error(
-					"There is no automated migration. Rename the affected task files and IDs to a non-reserved prefix, then set prefixes.task in the project config file to match.",
+					"There is no automated migration. Rename the affected task files and IDs to a non-reserved prefix, then set task_prefix in the project config file to match.",
 				);
 				process.exitCode = 1;
 				if (options.fix) {

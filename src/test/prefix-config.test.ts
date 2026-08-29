@@ -383,8 +383,18 @@ describe("prefix-config", () => {
 
 		test("allows empty input and non-reserved prefixes", () => {
 			expect(getTaskPrefixError("")).toBeUndefined();
-			expect(getTaskPrefixError("   ")).toBeUndefined();
 			expect(getTaskPrefixError("JIRA")).toBeUndefined();
+		});
+
+		test("rejects surrounding whitespace, which init would otherwise persist verbatim", () => {
+			// init writes the value straight into task_prefix, so padding would leak into IDs and filenames.
+			expect(getTaskPrefixError(" JIRA ")).toBe("Task prefix must contain only letters (a-z, A-Z).");
+			expect(getTaskPrefixError("JIRA ")).toBe("Task prefix must contain only letters (a-z, A-Z).");
+			expect(getTaskPrefixError("   ")).toBe("Task prefix must contain only letters (a-z, A-Z).");
+		});
+
+		test("still rejects a reserved prefix that is padded", () => {
+			expect(getTaskPrefixError(" draft ")).toBe("Task prefix must contain only letters (a-z, A-Z).");
 		});
 	});
 
