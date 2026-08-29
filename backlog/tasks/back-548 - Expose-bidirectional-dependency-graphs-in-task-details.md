@@ -5,7 +5,7 @@ status: In Progress
 assignee:
   - '@claude'
 created_date: '2026-07-16 21:38'
-updated_date: '2026-08-29 23:14'
+updated_date: '2026-08-29 23:49'
 labels:
   - cli
   - tui
@@ -26,23 +26,23 @@ Task detail views should explain the complete dependency context around the sele
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 Canonical CLI task detail output shows direction-separated, complete forward dependencies and reverse dependents for the selected task, with direct relationships distinguishable from transitive relationships.
-- [ ] #2 JSON task-view preserves the existing direct dependencies array and adds a documented, additive normalized graph representation with an explicit root, nodes, and directed edges for both traversals; task list and search summary contracts remain unchanged.
-- [ ] #3 The graph is computed on demand for one selected task, represents each resolved node once, orders nodes and edges deterministically, and handles chains, branches, diamonds, and cycles without recursive duplication or unbounded output.
-- [ ] #4 Missing dependency references and ambiguous task identities are represented explicitly and fail closed; the graph never guesses a target or silently reports an incomplete relationship as resolved.
-- [ ] #5 Graph resolution follows canonical task-detail visibility and identity rules for current-checkout, completed, and configured cross-branch tasks, while archived task IDs are not resurrected after archive releases their identity.
-- [ ] #6 TUI and browser task details show accessible, navigable forward and reverse dependency sections without expanding board cards, task-list rows, or search-result summaries, and keep editable direct dependencies separate from derived graph data.
-- [ ] #7 The legacy MCP task-detail adapter exposes the same graph semantics only after the shared model and canonical CLI contract are defined; no MCP-first contract or separate dependency meaning is introduced.
-- [ ] #8 Public CLI and agent documentation explains edge direction, direct versus transitive relationships, dependents terminology, visibility scope, cycle handling, and unresolved identity diagnostics.
-- [ ] #9 Automated tests cover direct and multi-level forward and reverse traversal, diamonds, cycles, missing and ambiguous IDs, completed and cross-branch tasks, deterministic ordering, unchanged compact summary payloads, and payload growth without recursion explosion.
+- [x] #1 Canonical CLI task detail output shows direction-separated, complete forward dependencies and reverse dependents for the selected task, with direct relationships distinguishable from transitive relationships.
+- [x] #2 JSON task-view preserves the existing direct dependencies array and adds a documented, additive normalized graph representation with an explicit root, nodes, and directed edges for both traversals; task list and search summary contracts remain unchanged.
+- [x] #3 The graph is computed on demand for one selected task, represents each resolved node once, orders nodes and edges deterministically, and handles chains, branches, diamonds, and cycles without recursive duplication or unbounded output.
+- [x] #4 Missing dependency references and ambiguous task identities are represented explicitly and fail closed; the graph never guesses a target or silently reports an incomplete relationship as resolved.
+- [x] #5 Graph resolution follows canonical task-detail visibility and identity rules for current-checkout, completed, and configured cross-branch tasks, while archived task IDs are not resurrected after archive releases their identity.
+- [x] #6 TUI and browser task details show accessible, navigable forward and reverse dependency sections without expanding board cards, task-list rows, or search-result summaries, and keep editable direct dependencies separate from derived graph data.
+- [x] #7 The legacy MCP task-detail adapter exposes the same graph semantics only after the shared model and canonical CLI contract are defined; no MCP-first contract or separate dependency meaning is introduced.
+- [x] #8 Public CLI and agent documentation explains edge direction, direct versus transitive relationships, dependents terminology, visibility scope, cycle handling, and unresolved identity diagnostics.
+- [x] #9 Automated tests cover direct and multi-level forward and reverse traversal, diamonds, cycles, missing and ambiguous IDs, completed and cross-branch tasks, deterministic ordering, unchanged compact summary payloads, and payload growth without recursion explosion.
 - [ ] #10 Rendered TUI and desktop-browser QA verifies readable forward and reverse graphs, keyboard and accessibility behavior, and best-effort narrow-screen behavior on representative deep, branching, cyclic, and unresolved examples.
 <!-- AC:END -->
 
 ## Definition of Done
 <!-- DOD:BEGIN -->
-- [ ] #1 bunx tsc --noEmit passes when TypeScript touched
-- [ ] #2 bun run check . passes when formatting/linting touched
-- [ ] #3 bun test (or scoped test) passes
+- [x] #1 bunx tsc --noEmit passes when TypeScript touched
+- [x] #2 bun run check . passes when formatting/linting touched
+- [x] #3 bun test (or scoped test) passes
 <!-- DOD:END -->
 
 ## Implementation Plan
@@ -61,3 +61,19 @@ Task detail views should explain the complete dependency context around the sele
 11. Tests. Cover direct and multi-level traversal in both directions, diamonds, cycles, self-references, missing and ambiguous IDs, completed and cross-branch records, deterministic ordering, unchanged list and search payloads, and bounded output on wide and deep graphs.
 12. QA. Automate what a pty and jsdom can verify and list the remaining rendered TUI and desktop-browser checks for the maintainer.
 <!-- SECTION:PLAN:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+Built one shared bidirectional dependency graph (src/utils/dependency-graph.ts) and moved canonical identity, ambiguity, and completion evidence into src/utils/task-record-index.ts so readiness and the graph resolve records by the same rule. There was no reverse-dependency owner anywhere in the codebase before this, so the new module is the single one.
+
+Contract: every edge points from the task that declares the dependency to the task it depends on. Each reached identity is one node carrying the shortest dependencyDepth and dependentDepth, where 0 is the root, 1 is direct, higher is transitive, and null means unreachable that way. Both traversals are breadth-first with a visited set, and rendering expands each node once and marks later occurrences as (cycle) or (shown above). Missing and ambiguous identities become explicit nodes that are never traversed and never counted as satisfied.
+
+The caller supplies the corpus, so each surface keeps its own task-detail visibility. The browser needed a server-side source because the modal only ever held the board list, so GET /api/tasks/:id/dependency-graph reads the working copy as written and lets the cross-branch store contribute only identities the working copy lacks. Without that, a locally duplicated ID would have been flattened to resolved by the store and the browser would have disagreed with the CLI.
+
+Validation: bunx tsc --noEmit passed; bun run check . passed; full bun test run: 2608 pass, 7 skip, 3 fail, where the only 3 failures are the pre-existing "patched blessed emoji widths" tests, confirmed to fail identically against origin/main sources in this same worktree. New coverage is 44 tests across the shared model, CLI end-to-end, TUI detail, browser section, server endpoint, and MCP.
+
+Rendered QA used a fixture with a five-deep chain, a diamond, a cycle, a completed dependency, an archived target, a dangling cross-branch reference, and an identity two files claim. CLI output was inspected for each case. The TUI was rendered through a real pty at 150x50 and 24x80; the section renders correctly at both, and at 24x80 long node lines wrap exactly as the existing Readiness line already does in that pane. The browser was driven live: the accessibility tree shows region, heading, and nested list/listitem with links for resolved nodes and plain text for unresolved ones, clicking a node navigates and re-resolves the graph, and a 375px viewport produces no horizontal page overflow.
+
+AC #10 is left unchecked on purpose. Screenshots returned blank in this environment, so the browser evidence is accessibility-tree and DOM level and the TUI evidence is a decoded pty transcript. Pixel-level visual review of the TUI colours and the modal badge weights still needs the maintainer.
+<!-- SECTION:NOTES:END -->
