@@ -371,6 +371,11 @@ export async function renderBoardTui(
 			openPopup = null;
 			popupOpen = false;
 		};
+		let popupSyncPending = false;
+		/** Focus a column after a popup closes; the board may have lost columns while it was open. */
+		const restoreColumnFocus = (preferredIndex: number, preferredRow?: number) => {
+			focusColumn(Math.max(0, Math.min(preferredIndex, columns.length - 1)), preferredRow);
+		};
 		let currentFocus: "board" | "filters" = "board";
 		let filterPopupOpen = false;
 		let modalOpen = false;
@@ -403,6 +408,11 @@ export async function renderBoardTui(
 				return await operation();
 			} finally {
 				modalOpen = false;
+				// A task update that arrived while the dialog held the screen was deferred.
+				if (popupSyncPending) {
+					popupSyncPending = false;
+					void syncOpenPopup();
+				}
 			}
 		};
 		let configuredLabels = collectAvailableLabels(initialTasks, options?.availableLabels ?? []);
@@ -1365,7 +1375,7 @@ export async function renderBoardTui(
 				// A status change while the popup was open moves the task to another column,
 				// so follow it instead of returning to the column it was opened from.
 				const columnIndex = columns.findIndex((column) => column.tasks.some((candidate) => candidate.id === task.id));
-				focusColumn(
+				restoreColumnFocus(
 					columnIndex === -1 ? currentCol : columnIndex,
 					columns[columnIndex]?.tasks.findIndex((candidate) => candidate.id === task.id),
 				);
@@ -1467,10 +1477,16 @@ export async function renderBoardTui(
 		const syncOpenPopup = async (): Promise<void> => {
 			const current = openPopup;
 			if (!current) return;
+			// A confirmation dialog is stacked on the popup and owns the keyboard; rebuilding
+			// underneath it would steal focus and leave the dialog unanswerable.
+			if (modalOpen) {
+				popupSyncPending = true;
+				return;
+			}
 			const nextTask = currentTasks.find((candidate) => candidate.id === current.taskId);
 			if (!nextTask) {
 				closeOpenPopup();
-				focusColumn(currentCol);
+				restoreColumnFocus(currentCol);
 				showTransientFooter(` {yellow-fg}${current.taskId} is no longer on the board; its details closed.{/}`, 6000);
 				return;
 			}

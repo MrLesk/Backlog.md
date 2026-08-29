@@ -5,7 +5,7 @@ status: Done
 assignee:
   - '@claude'
 created_date: '2026-08-29 17:59'
-updated_date: '2026-08-29 18:28'
+updated_date: '2026-08-29 21:30'
 labels:
   - tui
   - bug
@@ -67,6 +67,14 @@ Changed vs the contributor's version:
 Verification: new src/test/board-popup-sync.test.ts drives renderBoardTui with an injected screen, a stub core.editTaskInTui and a captured subscribeUpdates updater; 4 tests cover the editor path, the external-edit path, the external-removal path (asserting the footer notice) and the watcher echo (asserting the popup widget identity is preserved, so no rebuild). Stashing the board change makes the external-edit and external-removal tests fail, confirming they are not vacuous.
 
 bunx tsc --noEmit clean. Biome clean on all files this task touched. Two repo-level conditions are pre-existing on the branch and unrelated: 'bun run check .' fails formatting on the untouched src/ui/components/task-composer.ts (CI runs check:types only, not Biome), and 'bun test' has 2 pre-existing failures in src/test/core.test.ts (archive-snapshot / equal-time branch record ID occupancy) that also fail with this change stashed. Full suite otherwise 2411 pass / 7 skip.
+
+Review follow-up on maintainer PR #957 (Codex findings). Both confirmed real and fixed:
+
+1. Rebuild vs confirmation dialog - REAL. The popup's c/a handlers open a confirm dialog through runWithModalGuard while the task popup stays alive underneath. A watcher update arriving mid-confirmation ran syncOpenPopup, which destroyed and recreated the popup; createTaskPopup's setImmediate(contentArea.focus()) then stole focus from the dialog. Because openConfirmPopup binds its keys to its own widget and only resolves when answered, the dialog became unanswerable and modalOpen stayed true, wedging the board. Fix mirrors the taskCreationOpen guard: syncOpenPopup sets popupSyncPending and returns while modalOpen is true, and runWithModalGuard's finally flushes the deferred sync once the dialog closes. Proven by a test asserting the dialog keeps focus across an external edit and that the deferred refresh lands after it is answered; the test fails without the guard.
+
+2. Unclamped column index on focus restore - REAL, and reachable through the removal path rather than only Escape. focusColumn ignores an out-of-range index, so the failure mode is silent: no column is focused and the board stops responding to navigation. With hideEmptyColumns, a lane disappears when its last task goes, so currentCol can exceed columns.length - 1 exactly when the popup closes because its task was removed. Added restoreColumnFocus(), which clamps into range, and routed both the Escape path and the removal path through it. Proven by a test that opens the popup on the only Done task with hideEmptyColumns enabled, removes it externally, and asserts focus lands on a surviving column list; it fails without the clamp.
+
+Not rebasing onto the moved origin/main: the push must stay fast-forward. CI runs on the pull_request merge result, which already carries main's formatting fix for the untouched src/ui/components/task-composer.ts, so the repo-wide 'bun run check' failure noted earlier does not apply to this PR.
 <!-- SECTION:NOTES:END -->
 
 ## Comments
