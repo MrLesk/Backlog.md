@@ -616,8 +616,24 @@ export class Core {
 		// Reads may reuse a recent fetch, but task ID allocation may not: an ID that
 		// looks free only because remote refs are up to a minute old is an ID another
 		// clone has already published.
-		if (options?.force !== true && Date.now() - this.lastRemoteRefRefreshAt < REMOTE_REF_REFRESH_INTERVAL_MS) {
+		const force = options?.force === true;
+		if (!force && Date.now() - this.lastRemoteRefRefreshAt < REMOTE_REF_REFRESH_INTERVAL_MS) {
 			return;
+		}
+
+		// A forced request must observe refs from a fetch that started after the request
+		// arrived. Joining a refresh that was already in flight is not enough: it captured
+		// remote state before this request, so a push landing while it runs stays invisible
+		// and allocation can hand out an ID another clone already published. Waiting that
+		// refresh out first leaves the slot empty, so the fetch joined below always starts
+		// afterwards. A non-forced request keeps the plain join-or-start behavior.
+		if (force && this.remoteRefRefreshPromise) {
+			await this.remoteRefRefreshPromise;
+			// The project may have been re-pointed while we waited: reinitializeProjectRoot
+			// clears this slot and installs a new GitOperations. Starting a fetch for the old
+			// project now would publish it into the new project's slot, where a new-project
+			// read could join it and skip the refresh it actually needs.
+			if (git !== this.git) return;
 		}
 
 		if (!this.remoteRefRefreshPromise) {
