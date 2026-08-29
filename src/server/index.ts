@@ -967,8 +967,15 @@ export class BacklogServer {
 	private async handleGetTask(taskId: string): Promise<Response> {
 		if (!isValidTaskId(taskId)) return Response.json({ error: `Invalid task ID: ${taskId}` }, { status: 400 });
 		if (isDraftId(taskId)) {
-			const draft = await this.core.filesystem.loadDraft(taskId);
-			return draft ? Response.json(draft) : Response.json({ error: `Task ${taskId} not found` }, { status: 404 });
+			try {
+				const draft = await this.core.filesystem.loadDraft(taskId);
+				return draft ? Response.json(draft) : Response.json({ error: `Task ${taskId} not found` }, { status: 404 });
+			} catch (error) {
+				if (isAmbiguousIdError(error)) {
+					return Response.json({ error: error.message }, { status: 409 });
+				}
+				throw error;
+			}
 		}
 		let resolvedTask: Task | null;
 		try {
@@ -1112,7 +1119,7 @@ export class BacklogServer {
 			return Response.json(updatedTask);
 		} catch (error) {
 			const message = error instanceof Error ? error.message : "Failed to update task";
-			const conflict = isAmbiguousTaskIdError(error) || isTaskLockError(error);
+			const conflict = isAmbiguousIdError(error) || isAmbiguousTaskIdError(error) || isTaskLockError(error);
 			return Response.json({ error: message }, { status: conflict ? 409 : 400 });
 		}
 	}
@@ -1164,8 +1171,7 @@ export class BacklogServer {
 			const message = error instanceof Error ? error.message : "Failed to demote task";
 			const conflict = isAmbiguousTaskIdError(error) || isCreateLockError(error) || isTaskLockError(error);
 			const demotionState =
-				typeof error === "object" && error !== null &&
-				(error as { demotionState?: unknown }).demotionState;
+				typeof error === "object" && error !== null && (error as { demotionState?: unknown }).demotionState;
 			const knownDemotionState = demotionState === "moved" || demotionState === "partial" ? demotionState : undefined;
 			if (knownDemotionState) {
 				this.broadcastTasksUpdated();
@@ -1446,7 +1452,7 @@ export class BacklogServer {
 			return Response.json({ success: true });
 		} catch (error) {
 			console.error("Error promoting draft:", error);
-			if (isCreateLockError(error)) {
+			if (isCreateLockError(error) || isAmbiguousIdError(error) || isTaskLockError(error)) {
 				return Response.json({ error: error.message }, { status: 409 });
 			}
 			return Response.json({ error: "Failed to promote draft" }, { status: 500 });

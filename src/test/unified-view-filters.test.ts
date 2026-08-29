@@ -66,7 +66,7 @@ describe("unified view filter state", () => {
 		});
 
 		expect(filters.searchQuery).toBe("sync");
-		expect(filters.statusFilter).toBe("In Progress");
+		expect(filters.statusFilter).toEqual(["In Progress"]);
 		expect(filters.excludeStatus).toEqual(["Done"]);
 		expect(filters.priorityFilter).toBe("high");
 		expect(filters.labelFilter).toEqual(["backend"]);
@@ -74,6 +74,13 @@ describe("unified view filter state", () => {
 		expect(filters.milestoneFilter).toBe("Release 1");
 		expect(filters.limit).toBe(2);
 		expect(filters.labelFilter).not.toBe(labels);
+	});
+
+	it("seeds several selected statuses without sharing the caller's array", () => {
+		const status = ["To Do", "Done"];
+		const filters = createUnifiedViewFilters({ status });
+		expect(filters.statusFilter).toEqual(["To Do", "Done"]);
+		expect(filters.statusFilter).not.toBe(status);
 	});
 
 	it("preserves milestone filter when merging filter updates", () => {
@@ -86,7 +93,7 @@ describe("unified view filter state", () => {
 
 		const updated: UnifiedViewFilters = {
 			searchQuery: "api",
-			statusFilter: "To Do",
+			statusFilter: ["To Do"],
 			excludeStatus: [],
 			typeFilter: [],
 			priorityFilter: "",
@@ -111,7 +118,7 @@ describe("unified view filter state", () => {
 
 		const updated: UnifiedViewFilters = {
 			searchQuery: "api auth",
-			statusFilter: "",
+			statusFilter: [],
 			excludeStatus: [],
 			typeFilter: [],
 			priorityFilter: "high",
@@ -131,7 +138,7 @@ describe("unified view filter state", () => {
 
 		const updated = {
 			searchQuery: "api auth",
-			statusFilter: "",
+			statusFilter: [],
 			priorityFilter: "",
 			labelFilter: [],
 			milestoneFilter: "",
@@ -149,7 +156,7 @@ describe("unified view filter state", () => {
 
 		const updated: UnifiedViewFilters = {
 			searchQuery: "api",
-			statusFilter: "",
+			statusFilter: [],
 			excludeStatus: [],
 			typeFilter: [],
 			priorityFilter: "",
@@ -170,7 +177,7 @@ describe("unified view filter state", () => {
 
 		const updated: UnifiedViewFilters = {
 			searchQuery: "auth",
-			statusFilter: "",
+			statusFilter: [],
 			excludeStatus: [],
 			typeFilter: [],
 			priorityFilter: "",
@@ -190,7 +197,7 @@ describe("unified view filter state", () => {
 
 		const updated: UnifiedViewFilters = {
 			searchQuery: "",
-			statusFilter: "",
+			statusFilter: [],
 			excludeStatus: [],
 			typeFilter: [],
 			priorityFilter: "",
@@ -372,6 +379,44 @@ describe("unified view filter state", () => {
 		}).map((task) => task.id);
 
 		expect(results).toEqual(["task-1"]);
+	});
+
+	it("matches any selected status case-insensitively in the task list", () => {
+		const tasks: Task[] = [
+			{
+				id: "task-1",
+				title: "Todo one",
+				status: "To Do",
+				labels: [],
+				assignee: [],
+				createdDate: "2026-01-01",
+				dependencies: [],
+			},
+			{
+				id: "task-2",
+				title: "Progress one",
+				status: "In Progress",
+				labels: [],
+				assignee: [],
+				createdDate: "2026-01-02",
+				dependencies: [],
+			},
+			{
+				id: "task-3",
+				title: "Done one",
+				status: "Done",
+				labels: [],
+				assignee: [],
+				createdDate: "2026-01-03",
+				dependencies: [],
+			},
+		];
+
+		const results = applyTaskFilters(tasks, { status: ["to do", "DONE"] }).map((task) => task.id);
+		expect(results).toEqual(["task-1", "task-3"]);
+
+		const singleStringResults = applyTaskFilters(tasks, { status: "done" }).map((task) => task.id);
+		expect(singleStringResults).toEqual(["task-3"]);
 	});
 
 	it("keeps shared filter results consistent between task list and kanban", () => {

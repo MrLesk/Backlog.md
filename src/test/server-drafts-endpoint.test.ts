@@ -1,6 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
+import { join } from "node:path";
 import { Core } from "../core/backlog.ts";
 import { FileSystem } from "../file-system/operations.ts";
+import { serializeTask } from "../markdown/serializer.ts";
 import { BacklogServer } from "../server/index.ts";
 import type { Task } from "../types/index.ts";
 import { createUniqueTestDir, retry, safeCleanup } from "./test-utils.ts";
@@ -104,6 +106,66 @@ describe("BacklogServer draft task endpoints", () => {
 		expect((await request("/api/tasks/TASK-1")).status).toBe(200);
 	});
 
+	it("reports 409 when promotion contends with a held draft lock", async () => {
+		await core.createTaskFromInput({ title: "Contended promotion", status: "Draft" });
+		const reference = await core.filesystem.resolveDraftReference("DRAFT-1");
+		if (!reference) throw new Error("expected draft reference");
+
+		let release: () => void = () => {};
+		try {
+			const held = new Promise<void>((resolveHeld) => {
+				void core.filesystem.withDraftLock(reference, async () => {
+					resolveHeld();
+					await new Promise<void>((resolveRelease) => {
+						release = resolveRelease;
+					});
+				});
+			});
+			await held;
+
+			const response = await request("/api/drafts/DRAFT-1/promote", { method: "POST" });
+			expect(response.status).toBe(409);
+			const body = (await response.json()) as { error: string };
+			expect(body.error).toContain("being modified by another process");
+			expect((await core.filesystem.loadDraft("DRAFT-1"))?.title).toBe("Contended promotion");
+		} finally {
+			release();
+		}
+	});
+
+	it("reports 409 when a status-promotion edit contends with a held draft lock", async () => {
+		await core.createTaskFromInput({ title: "Contended status promotion", status: "Draft" });
+		const reference = await core.filesystem.resolveDraftReference("DRAFT-1");
+		if (!reference) throw new Error("expected draft reference");
+
+		let release: () => void = () => {};
+		try {
+			const held = new Promise<void>((resolveHeld) => {
+				void core.filesystem.withDraftLock(reference, async () => {
+					resolveHeld();
+					await new Promise<void>((resolveRelease) => {
+						release = resolveRelease;
+					});
+				});
+			});
+			await held;
+
+			const response = await put("/api/tasks/DRAFT-1", { status: "To Do" });
+			expect(response.status).toBe(409);
+			const body = (await response.json()) as { error: string };
+			expect(body.error).toContain("being modified by another process");
+
+			expect((await core.filesystem.loadDraft("DRAFT-1"))?.status).toBe("Draft");
+			expect((await request("/api/tasks/TASK-1")).status).toBe(404);
+
+			release();
+			const retried = await put("/api/tasks/DRAFT-1", { status: "To Do" });
+			expect(retried.status).toBe(200);
+		} finally {
+			release();
+		}
+	});
+
 	it("keeps a prefix-less id pointing at the task with that number", async () => {
 		await core.createTaskFromInput({ title: "Real task one", status: "To Do" });
 		await core.createTaskFromInput({ title: "Only draft", status: "Draft" });
@@ -116,6 +178,45 @@ describe("BacklogServer draft task endpoints", () => {
 		expect(response.status).toBe(200);
 		expect(((await response.json()) as Task).id).toBe("TASK-1");
 		expect((await core.filesystem.loadDraft("DRAFT-1"))?.title).toBe("Only draft");
+	});
+
+	it("fails closed on duplicate numeric draft identities instead of mutating an arbitrary match", async () => {
+		await core.createTaskFromInput({ title: "Alpha one", status: "Draft" });
+		const draftsDir = await core.filesystem.getDraftsDir();
+		const twinPath = join(draftsDir, "draft-001 - Alpha two.md");
+		await Bun.write(
+			twinPath,
+			serializeTask({
+				id: "DRAFT-001",
+				title: "Alpha two",
+				status: "Draft",
+				assignee: [],
+				createdDate: "2026-08-24 10:00",
+				labels: [],
+				dependencies: [],
+			}),
+		);
+
+		const read = await request("/api/tasks/DRAFT-1");
+		expect(read.status).toBe(409);
+		const readBody = (await read.json()) as { error: string };
+		expect(readBody.error).toContain("is ambiguous");
+		expect(readBody.error).toContain("draft-1 - Alpha-one.md");
+		expect(readBody.error).toContain("draft-001 - Alpha two.md");
+
+		const edit = await put("/api/tasks/DRAFT-1", { title: "Hijacked" });
+		expect(edit.status).toBe(409);
+		expect(((await edit.json()) as { error: string }).error).toContain("is ambiguous");
+
+		expect(await Bun.file(join(draftsDir, "draft-1 - Alpha-one.md")).text()).toContain("Alpha one");
+		expect(await Bun.file(twinPath).text()).toContain("Alpha two");
+
+		// The promote endpoint surfaces the same conflict instead of moving either file.
+		const promote = await request("/api/drafts/DRAFT-001/promote", { method: "POST" });
+		expect(promote.status).toBe(409);
+		expect(((await promote.json()) as { error: string }).error).toContain("is ambiguous");
+		expect(await Bun.file(join(draftsDir, "draft-1 - Alpha-one.md")).exists()).toBe(true);
+		expect(await Bun.file(twinPath).exists()).toBe(true);
 	});
 
 	it("reports an unknown draft id as missing", async () => {

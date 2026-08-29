@@ -1,9 +1,18 @@
 import { rename as moveFile, readFile, stat, unlink, writeFile } from "node:fs/promises";
-import { basename, isAbsolute, join, relative } from "node:path";
+import { basename, dirname, isAbsolute, join, relative } from "node:path";
 import { DEFAULT_DIRECTORIES, DEFAULT_STATUSES, FALLBACK_STATUS } from "../constants/index.ts";
-import { FileSystem, isConfigValueError, isCreateLockError } from "../file-system/operations.ts";
+import {
+	type DraftFileReference,
+	DraftIdentityError,
+	DraftParseError,
+	FileSystem,
+	isConfigValueError,
+	isCreateLockError,
+	newTaskLockError,
+} from "../file-system/operations.ts";
 import { type GitBranchTip, type GitIndexEntry, GitOperations } from "../git/operations.ts";
 import { parseFrontmatter } from "../markdown/frontmatter.ts";
+import { parseTask } from "../markdown/parser.ts";
 import {
 	type AcceptanceCriterion,
 	type BacklogConfig,
@@ -31,8 +40,13 @@ import {
 	normalizeDocumentRelativePath,
 	normalizeDocumentSubPath,
 } from "../utils/document-path.ts";
-import { type ContentIdentityReport, detectContentIdentityIssues } from "../utils/duplicate-detection.ts";
+import {
+	type ContentIdentityReport,
+	type DraftIdentityFindings,
+	detectContentIdentityIssues,
+} from "../utils/duplicate-detection.ts";
 import { openInEditor } from "../utils/editor.ts";
+import { isAmbiguousIdError } from "../utils/entity-id.ts";
 import { findBacklogRoot } from "../utils/find-backlog-root.ts";
 import { generateNextDecisionId, generateNextDocId } from "../utils/id-generators.ts";
 import {
@@ -56,6 +70,7 @@ import {
 	getValidStatuses as resolveValidStatuses,
 } from "../utils/status.ts";
 import { executeStatusCallback } from "../utils/status-callback.ts";
+import { normalizeStatusSet, statusMatchesSet } from "../utils/status-filter.ts";
 import {
 	buildDefinitionOfDoneItems,
 	normalizeStringList,
@@ -66,10 +81,12 @@ import {
 import {
 	AmbiguousTaskIdError,
 	canonicalTaskId,
-	getDraftPath,
+	extractDraftIdFromFilename,
+	findDuplicateDraftFilenameGroups,
 	getTaskPath,
 	LOCAL_TASK_LOOKUP_HINT,
 	normalizeTaskId,
+	normalizeTaskIdentity,
 	taskIdsEqual,
 } from "../utils/task-path.ts";
 import { createTaskSearchIndex } from "../utils/task-search.ts";
@@ -168,7 +185,13 @@ interface ActiveBranchSnapshot {
 	settingsKey: string;
 }
 
-export type TuiTaskEditFailureReason = "not_found" | "read_only" | "editor_failed";
+export type TuiTaskEditFailureReason =
+	| "not_found"
+	| "read_only"
+	| "editor_failed"
+	| "identity_conflict"
+	| "unreadable"
+	| "ambiguous";
 
 export interface TuiTaskEditResult {
 	changed: boolean;
@@ -341,6 +364,11 @@ export class Core {
 			await this.contentStore.refreshTasks();
 		}
 		return result;
+	}
+
+	/** Reports draft files whose numeric identities collide, whose frontmatter drifted from their filename, or that are unreadable. */
+	async diagnoseDraftIdentity(): Promise<DraftIdentityFindings> {
+		return this.fs.diagnoseDraftIdentity();
 	}
 
 	/** Reports document and decision files whose IDs collide or are missing, so lookups can fail closed. */
@@ -668,16 +696,15 @@ export class Core {
 		}
 		let result = tasks;
 		if (filters.status) {
-			const statusLower = filters.status.toLowerCase();
-			result = result.filter((task) => (task.status ?? "").toLowerCase() === statusLower);
+			const wanted = normalizeStatusSet(filters.status);
+			if (wanted.size > 0) {
+				result = result.filter((task) => statusMatchesSet(wanted, task.status));
+			}
 		}
 		if (filters.excludeStatus) {
-			const excludedStatuses = Array.isArray(filters.excludeStatus) ? filters.excludeStatus : [filters.excludeStatus];
-			const excluded = new Set(
-				excludedStatuses.map((status) => status.trim().toLowerCase()).filter((status) => status.length > 0),
-			);
+			const excluded = normalizeStatusSet(filters.excludeStatus);
 			if (excluded.size > 0) {
-				result = result.filter((task) => !excluded.has((task.status ?? "").toLowerCase()));
+				result = result.filter((task) => !statusMatchesSet(excluded, task.status));
 			}
 		}
 		if (filters.type) {
@@ -1435,8 +1462,10 @@ export class Core {
 				return this.getActiveAndCompletedTaskIds();
 			}
 			case EntityType.Draft: {
-				const drafts = await this.fs.listDrafts();
-				return drafts.map((d) => d.id);
+				// Occupancy includes filename-derived ids: an unparsable file still reserves its
+				// numeric id, so allocation can never reuse what it cannot parse.
+				const [drafts, occupiedFileIds] = await Promise.all([this.fs.listDrafts(), this.fs.listOccupiedDraftFileIds()]);
+				return [...drafts.map((d) => d.id), ...occupiedFileIds];
 			}
 			case EntityType.Document: {
 				const documents = await this.fs.listDocuments();
@@ -1652,7 +1681,9 @@ export class Core {
 				...(definitionOfDoneItems && definitionOfDoneItems.length > 0 && { definitionOfDoneItems }),
 			};
 
-			const resolvedPreviousPath = isDraft ? await getDraftPath(task.id, this) : await getTaskPath(task.id, this);
+			const resolvedPreviousPath = isDraft
+				? await this.fs.resolveDraftFilePath(task.id)
+				: await getTaskPath(task.id, this);
 			const targetPath = await this.fs.getTaskWritePath(task, isDraft);
 			const targetContent = await this.readFileIfPresent(targetPath);
 			const previousPath = targetContent ? targetPath : resolvedPreviousPath;
@@ -2379,40 +2410,61 @@ export class Core {
 		});
 	}
 
-	async updateDraft(task: Task, autoCommit?: boolean): Promise<void> {
+	async updateDraft(task: Task, autoCommit?: boolean): Promise<string> {
 		// Drafts always keep status Draft
 		task.status = "Draft";
 		normalizeAssignee(task);
 		task.updatedDate = new Date().toISOString().slice(0, 16).replace("T", " ");
 
+		const previousPath = task.filePath;
 		const filepath = await this.fs.saveDraft(task);
 
 		if (await this.shouldAutoCommit(autoCommit)) {
-			await this.git.addFile(filepath);
-			await this.git.commitTaskChange(task.id, `Update draft ${task.id}`, filepath);
+			if (previousPath && previousPath !== filepath) {
+				// A title rename moved the file: stage the deletion of the old path together with
+				// the addition of the new one, mirroring how task moves stage their renames.
+				const repoRoot = await this.git.stageFileMove(previousPath, filepath);
+				await this.git.commitFiles(`Update draft ${task.id}`, [previousPath, filepath], repoRoot ?? undefined);
+			} else {
+				await this.git.addFile(filepath);
+				await this.git.commitTaskChange(task.id, `Update draft ${task.id}`, filepath);
+			}
 		}
+
+		return filepath;
 	}
 
-	async updateDraftFromInput(draftId: string, input: TaskUpdateInput, autoCommit?: boolean): Promise<Task> {
-		const draft = await this.fs.loadDraft(draftId);
-		if (!draft) {
-			throw new Error(`Draft not found: ${draftId}`);
-		}
+	async updateDraftFromInput(
+		reference: DraftFileReference,
+		input: TaskUpdateInput,
+		autoCommit?: boolean,
+	): Promise<Task> {
+		// Same discipline as task edits: acquire the namespaced per-file lock before the
+		// read-modify-write and re-read inside it, so a concurrent editor fails fast instead of
+		// losing its update. The reference's own file is the only thing touched; no id is ever
+		// re-resolved to a different path.
+		return await this.fs.withDraftLock(reference, async () => {
+			const current = await this.fs.draftReferenceFromPath(reference.filePath);
+			// Bind the mutated record to the selected file's own identity: a padded filename whose
+			// frontmatter carries an unpadded id must keep converging onto that one file instead of
+			// minting a second spelling of the same numeric id.
+			current.task.id = reference.canonicalId;
 
-		const { mutated } = await this.applyTaskUpdateInput(draft, input, async (status) => {
-			if (status.trim().toLowerCase() !== "draft") {
-				throw new Error("Drafts must use status Draft.");
+			const { mutated } = await this.applyTaskUpdateInput(current.task, input, async (status) => {
+				if (status.trim().toLowerCase() !== "draft") {
+					throw new Error("Drafts must use status Draft.");
+				}
+				return "Draft";
+			});
+
+			if (!mutated) {
+				return current.task;
 			}
-			return "Draft";
+
+			const savedPath = await this.updateDraft(current.task, autoCommit);
+			const refreshed = await this.fs.draftReferenceFromPath(savedPath);
+			return refreshed.task;
 		});
-
-		if (!mutated) {
-			return draft;
-		}
-
-		await this.updateDraft(draft, autoCommit);
-		const refreshed = await this.fs.loadDraft(draftId);
-		return refreshed ?? draft;
 	}
 
 	async editTaskOrDraft(
@@ -2421,14 +2473,14 @@ export class Core {
 		autoCommit?: boolean,
 		options: TaskReadOptions = {},
 	): Promise<Task> {
-		const draft = await this.fs.loadDraft(taskId);
-		if (draft) {
+		const resolvedDraft = await this.fs.resolveDraftReference(taskId);
+		if (resolvedDraft) {
 			const requestedStatus = input.status?.trim();
 			const wantsDraft = requestedStatus?.toLowerCase() === "draft";
 			if (requestedStatus && !wantsDraft) {
-				return await this.promoteDraftWithUpdates(draft, input, autoCommit);
+				return await this.promoteDraftWithUpdates(resolvedDraft, input, autoCommit);
 			}
-			return await this.updateDraftFromInput(draft.id, input, autoCommit);
+			return await this.updateDraftFromInput(resolvedDraft, input, autoCommit);
 		}
 
 		// updateTaskFromInput already demotes when the requested status is Draft, resolves the id
@@ -2436,60 +2488,72 @@ export class Core {
 		return await this.updateTaskFromInput(taskId, input, autoCommit, options);
 	}
 
-	private async promoteDraftWithUpdates(draft: Task, input: TaskUpdateInput, autoCommit?: boolean): Promise<Task> {
+	private async promoteDraftWithUpdates(
+		reference: DraftFileReference,
+		input: TaskUpdateInput,
+		autoCommit?: boolean,
+	): Promise<Task> {
 		const targetStatus = input.status?.trim();
 		if (!targetStatus || targetStatus.toLowerCase() === "draft") {
 			throw new Error("Promoting a draft requires a non-draft status.");
 		}
 
-		const { mutated } = await this.applyTaskUpdateInput(draft, { ...input, status: undefined }, async (status) => {
-			if (status.trim().toLowerCase() !== "draft") {
-				throw new Error("Drafts must use status Draft.");
-			}
-			return "Draft";
-		});
-
 		const canonicalStatus = await this.requireCanonicalStatus(targetStatus);
 
-		const { promotedTask, savedPath } = await this.withCreateLock(async () => {
-			const newTaskId = await this.generateNextId(EntityType.Task, draft.parentTaskId);
-			const draftPath = draft.filePath;
+		// Same locked read-apply-promote discipline as edit/promote: hold the draft lock across
+		// the whole span and re-read inside it, so a concurrent editor cannot be omitted from the
+		// promoted task or left behind as a second record.
+		return await this.fs.withDraftLock(reference, async () => {
+			const current = await this.fs.draftReferenceFromPath(reference.filePath);
+			const draft = current.task;
+			draft.id = reference.canonicalId;
 
-			const promotedTask: Task = {
-				...draft,
-				id: newTaskId,
-				status: canonicalStatus,
-				filePath: undefined,
-				...(mutated || draft.status !== canonicalStatus
-					? { updatedDate: new Date().toISOString().slice(0, 16).replace("T", " ") }
-					: {}),
-			};
+			const { mutated } = await this.applyTaskUpdateInput(draft, { ...input, status: undefined }, async (status) => {
+				if (status.trim().toLowerCase() !== "draft") {
+					throw new Error("Drafts must use status Draft.");
+				}
+				return "Draft";
+			});
 
-			normalizeAssignee(promotedTask);
-			const savedPath = await this.fs.saveTask(promotedTask);
+			const { promotedTask, savedPath } = await this.withCreateLock(async () => {
+				const newTaskId = await this.generateNextId(EntityType.Task, draft.parentTaskId);
+				const draftPath = current.filePath;
 
-			if (draftPath) {
-				await unlink(draftPath);
+				const promotedTask: Task = {
+					...draft,
+					id: newTaskId,
+					status: canonicalStatus,
+					filePath: undefined,
+					...(mutated || draft.status !== canonicalStatus
+						? { updatedDate: new Date().toISOString().slice(0, 16).replace("T", " ") }
+						: {}),
+				};
+
+				normalizeAssignee(promotedTask);
+				const savedPath = await this.fs.saveTask(promotedTask);
+
+				if (draftPath) {
+					await unlink(draftPath);
+				}
+
+				return { promotedTask, savedPath };
+			});
+
+			const savedTask = await this.fs.loadTask(promotedTask.id);
+			if (this.contentStore && savedTask) {
+				this.contentStore.upsertTask(savedTask);
 			}
 
-			return { promotedTask, savedPath };
+			if (await this.shouldAutoCommit(autoCommit)) {
+				await this.commitWrittenFile(
+					`backlog: Promote draft ${normalizeId(reference.canonicalId, "draft")}`,
+					[reference.filePath],
+					savedPath,
+				);
+			}
+
+			return savedTask ?? { ...promotedTask, filePath: savedPath };
 		});
-
-		const savedTask = await this.fs.loadTask(promotedTask.id);
-		if (this.contentStore && savedTask) {
-			this.contentStore.upsertTask(savedTask);
-		}
-
-		if (await this.shouldAutoCommit(autoCommit)) {
-			const previousPaths = draft.filePath ? [draft.filePath] : [];
-			await this.commitWrittenFile(
-				`backlog: Promote draft ${normalizeId(draft.id, "draft")}`,
-				previousPaths,
-				savedPath,
-			);
-		}
-
-		return savedTask ?? { ...promotedTask, filePath: savedPath };
 	}
 
 	// Demotion is a read-modify-write of the task file too, reached from both updateTaskFromInput
@@ -2741,8 +2805,8 @@ export class Core {
 		return { updatedTask, changedTasks };
 	}
 
-	async archiveTask(taskId: string, autoCommit?: boolean): Promise<boolean> {
-		const taskToArchive = await this.loadTaskForMutation(taskId);
+	async archiveTask(taskId: string, autoCommit?: boolean, options: TaskReadOptions = {}): Promise<boolean> {
+		const taskToArchive = await this.loadTaskForMutation(taskId, options);
 		if (!taskToArchive) {
 			return false;
 		}
@@ -2768,8 +2832,7 @@ export class Core {
 			}
 			this.contentStore?.transitionTask(normalizedTaskId);
 
-			const sanitizedPaths =
-				sanitizedTasks.length > 0 ? await this.writeTasksBulk(sanitizedTasks) : [];
+			const sanitizedPaths = sanitizedTasks.length > 0 ? await this.writeTasksBulk(sanitizedTasks) : [];
 
 			if (await this.shouldAutoCommit(autoCommit)) {
 				// Stage the file move for proper Git tracking
@@ -2862,8 +2925,8 @@ export class Core {
 		return result;
 	}
 
-	async completeTask(taskId: string, autoCommit?: boolean): Promise<boolean> {
-		const task = await this.loadTaskForMutation(taskId);
+	async completeTask(taskId: string, autoCommit?: boolean, options: TaskReadOptions = {}): Promise<boolean> {
+		const task = await this.loadTaskForMutation(taskId, options);
 		if (!task) return false;
 		// Get paths before moving the file
 		const completedDir = this.fs.completedDir;
@@ -2928,60 +2991,71 @@ export class Core {
 	}
 
 	async promoteDraft(draftId: string, autoCommit?: boolean): Promise<boolean> {
-		let moved: { previousPath: string; savedPath: string } | null = null;
-		try {
-			moved = await this.withCreateLock(async () => {
-				const draft = await this.fs.loadDraft(draftId);
-				if (!draft?.filePath) return null;
+		// Whole-file operation: filename binding decides which file is promoted, so resolution
+		// goes through the file resolver and frontmatter equivalence is not required.
+		const sourcePath = await this.fs.resolveDraftFilePath(draftId);
+		if (!sourcePath) return false;
+		const canonicalId = extractDraftIdFromFilename(basename(sourcePath));
+		if (!canonicalId) return false;
 
-				const config = await this.fs.loadConfig();
-				const newTaskId = await this.generateNextId(EntityType.Task, draft.parentTaskId);
-				const promotedStatus =
-					!draft.status || draft.status.trim().toLowerCase() === "draft"
-						? config?.defaultStatus || FALLBACK_STATUS
-						: draft.status;
+		// Hold the draft lock across the read-unlink span so a concurrent edit cannot be omitted
+		// from the promoted task or leave both records on disk. Draft lock first, create lock
+		// second: nothing acquires them in the opposite order, so this cannot deadlock.
+		return await this.fs.withDraftLock({ filePath: sourcePath, canonicalId }, async () => {
+			let moved: { previousPath: string; savedPath: string } | null = null;
+			try {
+				moved = await this.withCreateLock(async () => {
+					const draft = await this.fs.loadDraftFromFile(sourcePath);
+					if (!draft) return null;
 
-				const promotedTask: Task = {
-					...draft,
-					id: newTaskId,
-					status: promotedStatus,
-					filePath: undefined,
-				};
+					const config = await this.fs.loadConfig();
+					const newTaskId = await this.generateNextId(EntityType.Task, draft.parentTaskId);
+					const promotedStatus =
+						!draft.status || draft.status.trim().toLowerCase() === "draft"
+							? config?.defaultStatus || FALLBACK_STATUS
+							: draft.status;
 
-				normalizeAssignee(promotedTask);
-				const savedPath = await this.fs.saveTask(promotedTask);
-				const previousPath = draft.filePath;
-				await unlink(previousPath);
+					const promotedTask: Task = {
+						...draft,
+						id: newTaskId,
+						status: promotedStatus,
+						filePath: undefined,
+					};
 
-				const savedTask = await this.fs.loadTask(promotedTask.id);
-				if (this.contentStore && savedTask) {
-					this.contentStore.upsertTask(savedTask);
+					normalizeAssignee(promotedTask);
+					const savedPath = await this.fs.saveTask(promotedTask);
+					await unlink(sourcePath);
+
+					const savedTask = await this.fs.loadTask(promotedTask.id);
+					if (this.contentStore && savedTask) {
+						this.contentStore.upsertTask(savedTask);
+					}
+
+					return { previousPath: sourcePath, savedPath };
+				});
+			} catch (error) {
+				// A missing draft is the only thing "false" may mean here; a config value Backlog refuses to
+				// read must not be reported as a draft that does not exist.
+				if (isCreateLockError(error) || isConfigValueError(error)) {
+					throw error;
 				}
-
-				return { previousPath, savedPath };
-			});
-		} catch (error) {
-			// A missing draft is the only thing "false" may mean here; a config value Backlog refuses to
-			// read must not be reported as a draft that does not exist.
-			if (isCreateLockError(error) || isConfigValueError(error)) {
-				throw error;
+				return false;
 			}
-			return false;
-		}
 
-		if (moved && (await this.shouldAutoCommit(autoCommit))) {
-			await this.commitWrittenFile(
-				`backlog: Promote draft ${normalizeId(draftId, "draft")}`,
-				[moved.previousPath],
-				moved.savedPath,
-			);
-		}
+			if (moved && (await this.shouldAutoCommit(autoCommit))) {
+				await this.commitWrittenFile(
+					`backlog: Promote draft ${normalizeId(draftId, "draft")}`,
+					[moved.previousPath],
+					moved.savedPath,
+				);
+			}
 
-		return moved !== null;
+			return moved !== null;
+		});
 	}
 
-	async demoteTask(taskId: string, autoCommit?: boolean): Promise<boolean> {
-		const task = await this.loadTaskForMutation(taskId);
+	async demoteTask(taskId: string, autoCommit?: boolean, options: TaskReadOptions = {}): Promise<boolean> {
+		const task = await this.loadTaskForMutation(taskId, options);
 		if (!task) return false;
 		// Direct demotion is a read-modify-write too. Hold the task lock across the
 		// filesystem read and move so an in-flight task update cannot recreate the
@@ -3346,7 +3420,17 @@ export class Core {
 			return { changed: false, task: contextualTask, reason: "read_only" };
 		}
 
-		const resolvedTask = contextualTask ?? (await this.getTask(taskId));
+		let resolvedTask: Task | null | undefined = contextualTask ?? (await this.getTask(taskId));
+		if (!resolvedTask) {
+			try {
+				resolvedTask = await this.fs.loadDraft(taskId);
+			} catch (error) {
+				if (isAmbiguousIdError(error)) {
+					return { changed: false, reason: "ambiguous" };
+				}
+				throw error;
+			}
+		}
 		if (!resolvedTask) {
 			return { changed: false, reason: "not_found" };
 		}
@@ -3354,13 +3438,89 @@ export class Core {
 			return { changed: false, task: resolvedTask, reason: "read_only" };
 		}
 
-		const localTask = await this.fs.loadTask(resolvedTask.id);
-		const editableTask = localTask ?? resolvedTask;
+		const draftsDir = await this.fs.getDraftsDir();
+		const selectedFilePath = resolvedTask.filePath;
 
-		const filePath = await getTaskPath(editableTask.id, this);
+		let taskFilePath: string | null = null;
+		let draftFilePath: string | null = null;
+		let editableTask: Task;
+
+		if (selectedFilePath !== undefined && dirname(selectedFilePath) === draftsDir) {
+			// The row's home directory decides its store before any task lookup: a project whose
+			// task prefix is "draft" can hold task ids identical to draft ids, so resolving by id
+			// first would silently target the task file instead of the selected draft row. The
+			// validated reference binds the editor session to this exact file — but a numeric
+			// identity shared with another file stays ambiguous and must fail closed here too.
+			let validated: Awaited<ReturnType<FileSystem["draftReferenceFromPath"]>>;
+			try {
+				validated = await this.fs.draftReferenceFromPath(selectedFilePath);
+			} catch (error) {
+				return {
+					changed: false,
+					task: resolvedTask,
+					reason: error instanceof DraftParseError ? "unreadable" : "identity_conflict",
+				};
+			}
+			const selectedDuplicates = findDuplicateDraftFilenameGroups(await this.fs.listDraftFilenames()).find((group) =>
+				group.includes(basename(selectedFilePath)),
+			);
+			if (selectedDuplicates) {
+				return { changed: false, task: resolvedTask, reason: "ambiguous" };
+			}
+			editableTask = validated.task;
+			draftFilePath = validated.filePath;
+		} else {
+			const localTask = await this.fs.loadTask(resolvedTask.id);
+			editableTask = localTask ?? resolvedTask;
+
+			taskFilePath = await getTaskPath(editableTask.id, this);
+			if (!taskFilePath) {
+				const rowFilePath = editableTask.filePath;
+				if (rowFilePath !== undefined && dirname(rowFilePath) === draftsDir) {
+					let validatedRow: Awaited<ReturnType<FileSystem["draftReferenceFromPath"]>>;
+					try {
+						validatedRow = await this.fs.draftReferenceFromPath(rowFilePath);
+					} catch (error) {
+						return {
+							changed: false,
+							task: editableTask,
+							reason: error instanceof DraftParseError ? "unreadable" : "identity_conflict",
+						};
+					}
+					const rowDuplicates = findDuplicateDraftFilenameGroups(await this.fs.listDraftFilenames()).find((group) =>
+						group.includes(basename(rowFilePath)),
+					);
+					if (rowDuplicates) {
+						return { changed: false, task: editableTask, reason: "ambiguous" };
+					}
+					draftFilePath = validatedRow.filePath;
+				} else {
+					const resolvedReference = await this.fs.resolveDraftReference(editableTask.id);
+					if (!resolvedReference) {
+						return { changed: false, task: editableTask, reason: "not_found" };
+					}
+					editableTask = resolvedReference.task;
+					draftFilePath = resolvedReference.filePath;
+				}
+			}
+		}
+
+		const filePath = taskFilePath ?? draftFilePath;
 		if (!filePath) {
 			return { changed: false, task: editableTask, reason: "not_found" };
 		}
+		// Re-reading through the validation authority keeps the editor session honest. Parse or
+		// read failures and genuine identity conflicts are reported as distinct outcomes. The
+		// known on-disk path is attached to reloaded tasks so contentStore publication works.
+		const reloadTaskAfterEdit = async (path: string): Promise<{ task: Task } | { failure: "unreadable" }> => {
+			try {
+				const content = await Bun.file(path).text();
+				const reparsed = normalizeTaskIdentity(parseTask(content));
+				return { task: { ...reparsed, filePath: path } };
+			} catch {
+				return { failure: "unreadable" };
+			}
+		};
 
 		let beforeContent: string;
 		try {
@@ -3382,16 +3542,61 @@ export class Core {
 		}
 
 		if (afterContent === beforeContent) {
-			const refreshedTask = await this.fs.loadTask(editableTask.id);
-			return { changed: false, task: refreshedTask ?? editableTask };
+			if (!taskFilePath) {
+				try {
+					return { changed: false, task: (await this.fs.draftReferenceFromPath(filePath)).task };
+				} catch (error) {
+					return {
+						changed: false,
+						task: editableTask,
+						reason: error instanceof DraftParseError ? "unreadable" : "identity_conflict",
+					};
+				}
+			}
+			const outcome = await reloadTaskAfterEdit(taskFilePath);
+			if ("failure" in outcome) {
+				return { changed: false, task: editableTask, reason: outcome.failure };
+			}
+			return { changed: false, task: outcome.task };
 		}
 
 		const now = new Date().toISOString().slice(0, 16).replace("T", " ");
-		const withUpdatedDate = upsertTaskUpdatedDate(afterContent, now);
-		await Bun.write(filePath, withUpdatedDate);
 
-		const refreshedTask = await this.fs.loadTask(editableTask.id);
-		if (refreshedTask && this.contentStore) {
+		if (!taskFilePath) {
+			// Draft close: hold the draft lock around the write+validate window so a concurrent
+			// edit cannot interleave with the save. The lock is never held across the interactive
+			// editor itself; contention detected inside fails fast and leaves the user's saved
+			// content on disk untouched. Identity or parse problems keep their distinct reasons.
+			const canonicalId = extractDraftIdFromFilename(basename(filePath)) ?? "";
+			try {
+				return await this.fs.withDraftLock({ filePath, canonicalId }, async () => {
+					const currentOnDisk = await Bun.file(filePath).text();
+					if (currentOnDisk !== afterContent) {
+						throw newTaskLockError(canonicalId);
+					}
+					await Bun.write(filePath, upsertTaskUpdatedDate(afterContent, now));
+					const validated = await this.fs.draftReferenceFromPath(filePath);
+					return { changed: true, task: validated.task };
+				});
+			} catch (error) {
+				if (error instanceof DraftParseError) {
+					return { changed: false, task: editableTask, reason: "unreadable" };
+				}
+				if (error instanceof DraftIdentityError) {
+					return { changed: false, task: editableTask, reason: "identity_conflict" };
+				}
+				throw error;
+			}
+		}
+
+		await Bun.write(filePath, upsertTaskUpdatedDate(afterContent, now));
+
+		const outcome = await reloadTaskAfterEdit(taskFilePath);
+		if ("failure" in outcome) {
+			return { changed: false, task: editableTask, reason: outcome.failure };
+		}
+		const refreshedTask = outcome.task;
+		if (this.contentStore && refreshedTask) {
 			this.contentStore.upsertTask(refreshedTask);
 		}
 

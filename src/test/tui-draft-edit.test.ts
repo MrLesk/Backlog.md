@@ -1,0 +1,445 @@
+import { afterEach, beforeEach, describe, expect, it } from "bun:test";
+import { existsSync } from "node:fs";
+import { mkdir, writeFile } from "node:fs/promises";
+import { join } from "node:path";
+import { Core } from "../core/backlog.ts";
+import { isTaskLockError } from "../file-system/operations.ts";
+import { serializeTask } from "../markdown/serializer.ts";
+import type { BacklogConfig, Task } from "../types/index.ts";
+import { createUniqueTestDir, initializeTestProject, safeCleanup } from "./test-utils.ts";
+
+function createMockScreen(): Parameters<Core["editTaskInTui"]>[1] {
+	return {
+		program: {
+			disableMouse: () => {},
+			enableMouse: () => {},
+			hideCursor: () => {},
+			showCursor: () => {},
+			input: process.stdin,
+			pause: () => () => {},
+			flush: () => {},
+			put: {
+				keypad_local: () => {},
+				keypad_xmit: () => {},
+			},
+		},
+		leave: () => {},
+		enter: () => {},
+		render: () => {},
+		clearRegion: () => {},
+		width: 120,
+		height: 40,
+		emit: () => {},
+	};
+}
+
+describe("Core.editTaskInTui draft resolution", () => {
+	let testDir: string;
+	let core: Core;
+	let originalEditor: string | undefined;
+	const screen = createMockScreen();
+
+	const setEditor = async (editorCommand: string) => {
+		const config = await core.filesystem.loadConfig();
+		if (!config) {
+			throw new Error("Expected config to be initialized");
+		}
+		const updated: BacklogConfig = { ...config, defaultEditor: editorCommand };
+		await core.filesystem.saveConfig(updated);
+	};
+
+	const createEditorScript = async (name: string, source: string): Promise<string> => {
+		const scriptPath = join(testDir, name);
+		await writeFile(scriptPath, source);
+		return scriptPath;
+	};
+
+	const createDraft = async (): Promise<Task> => {
+		const { task } = await core.createTaskFromInput({ title: "Draft under edit", status: "Draft" });
+		return task;
+	};
+
+	beforeEach(async () => {
+		originalEditor = process.env.EDITOR;
+		delete process.env.EDITOR;
+
+		testDir = createUniqueTestDir("test-tui-draft-edit");
+		await mkdir(testDir, { recursive: true });
+		core = new Core(testDir, { enableWatchers: true });
+		await initializeTestProject(core, "TUI Draft Edit Test");
+
+		await core.createTask(
+			{
+				id: "task-1",
+				title: "Regular task",
+				status: "To Do",
+				assignee: [],
+				createdDate: "2026-08-24 10:00",
+				labels: [],
+				dependencies: [],
+			},
+			false,
+		);
+	});
+
+	afterEach(async () => {
+		if (originalEditor !== undefined) {
+			process.env.EDITOR = originalEditor;
+		} else {
+			delete process.env.EDITOR;
+		}
+		await safeCleanup(testDir);
+	});
+
+	it("opens the selected draft instead of reporting it missing", async () => {
+		const draft = await createDraft();
+		const noopScript = await createEditorScript("noop-editor.js", "process.exit(0);\n");
+		await setEditor(`node ${noopScript}`);
+
+		const result = await core.editTaskInTui(draft.id, screen, draft);
+
+		expect(result.reason).toBeUndefined();
+		expect(result.changed).toBe(false);
+		expect(result.task?.id).toBe(draft.id);
+	});
+
+	it("persists editor changes to the draft file and refreshes the draft", async () => {
+		const draft = await createDraft();
+		const editScript = await createEditorScript(
+			"append-editor.js",
+			`import { appendFileSync } from "node:fs";
+const filePath = process.argv[2];
+if (filePath) {
+	appendFileSync(filePath, "\\nEdited draft body\\n");
+}
+process.exit(0);
+`,
+		);
+		await setEditor(`node ${editScript}`);
+
+		const result = await core.editTaskInTui(draft.id, screen, draft);
+
+		expect(result.changed).toBe(true);
+		expect(result.task?.id).toBe(draft.id);
+		expect(result.task?.updatedDate).toBeTruthy();
+
+		const reloaded = await core.filesystem.loadDraft(draft.id);
+		expect(reloaded).not.toBeNull();
+		expect(reloaded?.status).toBe("Draft");
+		expect(reloaded?.rawContent).toContain("Edited draft body");
+
+		const taskReloaded = await core.filesystem.loadTask("task-1");
+		expect(taskReloaded?.rawContent ?? "").not.toContain("Edited draft body");
+	});
+
+	it("resolves a draft id even when no selected task context is passed", async () => {
+		const draft = await createDraft();
+		const noopScript = await createEditorScript("noop-editor.js", "process.exit(0);\n");
+		await setEditor(`node ${noopScript}`);
+
+		const result = await core.editTaskInTui(draft.id, screen);
+
+		expect(result.reason).toBeUndefined();
+		expect(result.task?.id).toBe(draft.id);
+	});
+
+	it("fails closed when the selected draft's frontmatter id drifted from its filename", async () => {
+		const draft = await createDraft();
+		const draftPath = draft.filePath;
+		if (!draftPath) throw new Error("expected draft file path");
+		await Bun.write(
+			draftPath,
+			serializeTask({
+				id: "DRAFT-42",
+				title: "Drifted",
+				status: "Draft",
+				assignee: [],
+				createdDate: "2026-08-24 10:00",
+				labels: [],
+				dependencies: [],
+			}),
+		);
+		const before = await Bun.file(draftPath).text();
+		const noopScript = await createEditorScript("noop-editor.js", "process.exit(0);\n");
+		await setEditor(`node ${noopScript}`);
+
+		const selected = (await core.filesystem.listDrafts()).at(0);
+		if (!selected) throw new Error("expected draft row");
+
+		const result = await core.editTaskInTui(selected.id, screen, selected);
+
+		expect(result.reason).toBe("identity_conflict");
+		expect(result.changed).toBe(false);
+		expect(await Bun.file(draftPath).text()).toBe(before);
+	});
+
+	it("fails closed on drift even when the record carries a non-Draft status", async () => {
+		const draft = await createDraft();
+		const draftPath = draft.filePath;
+		if (!draftPath) throw new Error("expected draft file path");
+		await Bun.write(
+			draftPath,
+			serializeTask({
+				id: "DRAFT-42",
+				title: "Drifted active",
+				status: "In Progress",
+				assignee: [],
+				createdDate: "2026-08-24 10:00",
+				labels: [],
+				dependencies: [],
+			}),
+		);
+		const before = await Bun.file(draftPath).text();
+		const noopScript = await createEditorScript("noop-editor.js", "process.exit(0);\n");
+		await setEditor(`node ${noopScript}`);
+
+		const selected = (await core.filesystem.listHealthyDrafts()).at(0);
+		if (!selected) throw new Error("expected draft row");
+
+		const result = await core.editTaskInTui(selected.id, screen, selected);
+
+		expect(result.reason).toBe("identity_conflict");
+		expect(result.changed).toBe(false);
+		expect(await Bun.file(draftPath).text()).toBe(before);
+	});
+
+	it("fails fast when the close-time save contends with a held draft lock", async () => {
+		const draft = await createDraft();
+		const draftPath = draft.filePath;
+		if (!draftPath) throw new Error("expected draft file path");
+		const reference = await core.filesystem.draftReferenceFromPath(draftPath);
+
+		const editedSentinel = join(testDir, "editor-wrote");
+		const releaseSentinel = join(testDir, "release-editor");
+		const lockHeldSentinel = join(testDir, "lock-held");
+		const editScript = await createEditorScript(
+			"contended-editor.js",
+			`import { appendFileSync, existsSync, writeFileSync } from "node:fs";
+const filePath = process.argv[2];
+appendFileSync(filePath, "\\nUser edit\\n");
+writeFileSync(${JSON.stringify(editedSentinel)}, "");
+const deadline = Date.now() + 15000;
+while (!existsSync(${JSON.stringify(releaseSentinel)}) && Date.now() < deadline) {}
+process.exit(0);
+`,
+		);
+		await setEditor(`node ${editScript}`);
+
+		let releaseLock: (() => void) | undefined;
+		let failure: unknown;
+		try {
+			const session = core.editTaskInTui(draft.id, screen, draft);
+			const editedDeadline = Date.now() + 10000;
+			while (!existsSync(editedSentinel) && Date.now() < editedDeadline) {
+				await new Promise((resolveWait) => setTimeout(resolveWait, 20));
+			}
+			if (!existsSync(editedSentinel)) throw new Error("editor never wrote its sentinel");
+
+			void new Promise<void>((resolveHeld) => {
+				void core.fs.withDraftLock(reference, async () => {
+					await writeFile(lockHeldSentinel, "");
+					resolveHeld();
+					await new Promise<void>((resolveRelease) => {
+						releaseLock = resolveRelease;
+					});
+				});
+			});
+			const holdDeadline = Date.now() + 10000;
+			while (!existsSync(lockHeldSentinel) && Date.now() < holdDeadline) {
+				await new Promise((resolveWait) => setTimeout(resolveWait, 20));
+			}
+			if (!existsSync(lockHeldSentinel)) throw new Error("lock was not acquired");
+
+			await writeFile(releaseSentinel, "");
+			await session;
+			failure = new Error("expected contended close to fail fast");
+		} catch (error) {
+			if ((error as Error).message.startsWith("expected contended close")) throw error;
+			failure = error;
+		} finally {
+			releaseLock?.();
+		}
+
+		expect(isTaskLockError(failure)).toBe(true);
+		expect(await Bun.file(draftPath).text()).toContain("User edit");
+	});
+
+	it("opens the drafts-dir file when a task id collides with the draft id", async () => {
+		await core.createTask(
+			{
+				id: "draft-1",
+				title: "Task collision",
+				status: "To Do",
+				assignee: [],
+				createdDate: "2026-08-24 10:00",
+				labels: [],
+				dependencies: [],
+			},
+			false,
+		);
+		const { task: draftRow } = await core.createTaskFromInput({ title: "Draft collision", status: "Draft" });
+		// The unified view feeds editTaskInTui rows produced by the listing APIs, which carry
+		// the row's own filePath.
+		const selected = (await core.filesystem.listHealthyDrafts()).find(
+			(candidate) => candidate.id === draftRow.id && candidate.filePath !== undefined,
+		);
+		if (!selected?.filePath) throw new Error("expected selectable draft row");
+		const taskPath = await core.filesystem.getTaskWritePath({
+			id: "draft-1",
+			title: "Task collision",
+			status: "To Do",
+			assignee: [],
+			createdDate: "2026-08-24 10:00",
+			labels: [],
+			dependencies: [],
+		});
+		const draftPath = selected.filePath;
+		const taskFileBefore = await Bun.file(taskPath).text();
+		const editScript = await createEditorScript(
+			"append-editor.js",
+			`import { appendFileSync } from "node:fs";
+const filePath = process.argv[2];
+if (filePath) {
+	appendFileSync(filePath, "\\nMarker\\n");
+}
+process.exit(0);
+`,
+		);
+		await setEditor(`node ${editScript}`);
+
+		const result = await core.editTaskInTui(selected.id, screen, selected);
+
+		expect(result.changed).toBe(true);
+		// Reconciliation evidence: the result is bound to the drafts-store file, not the
+		// same-numbered task record that a naive id lookup could return.
+		expect(result.task?.filePath).toBe(draftPath);
+		expect(result.task?.id).toBe(selected.id);
+		expect(await Bun.file(draftPath).text()).toContain("Marker");
+		expect(await Bun.file(taskPath).text()).toBe(taskFileBefore);
+	});
+
+	it("reports unreadable instead of identity advice when an edit leaves broken YAML on a draft", async () => {
+		const draft = await createDraft();
+		const editScript = await createEditorScript(
+			"break-yaml-editor.js",
+			`import { writeFileSync } from "node:fs";
+const filePath = process.argv[2];
+if (filePath) {
+	writeFileSync(filePath, "---\\nid: [oops\\ntitle: Broken\\n---\\nbroken yaml");
+}
+process.exit(0);
+`,
+		);
+		await setEditor(`node ${editScript}`);
+
+		const result = await core.editTaskInTui(draft.id, screen, draft);
+
+		expect(result.reason).toBe("unreadable");
+		expect(result.changed).toBe(false);
+	});
+
+	it("reports unreadable for tasks too when an edit leaves broken YAML", async () => {
+		const taskRow = (await core.filesystem.listTasks()).at(0);
+		if (!taskRow?.filePath) throw new Error("expected task row");
+		const before = await Bun.file(taskRow.filePath).text();
+		const editScript = await createEditorScript(
+			"break-yaml-editor.js",
+			`import { writeFileSync } from "node:fs";
+const filePath = process.argv[2];
+if (filePath) {
+	writeFileSync(filePath, "---\\nid: [oops\\ntitle: Broken\\n---\\nbroken yaml");
+}
+process.exit(0);
+`,
+		);
+		await setEditor(`node ${editScript}`);
+
+		const result = await core.editTaskInTui(taskRow.id, screen, taskRow);
+
+		expect(result.reason).toBe("unreadable");
+		expect(result.changed).toBe(false);
+
+		await setEditor("true");
+		const recovered = await core.editTaskInTui(taskRow.id, screen, taskRow);
+		expect(recovered.reason).toBe("unreadable");
+		expect(await Bun.file(taskRow.filePath).text()).not.toBe(before);
+	});
+
+	it("fails closed when the selected row shares a numeric id with another draft", async () => {
+		const draftsDir = join(testDir, "backlog", "drafts");
+		const draftFile = (filename: string, id: string, title: string) =>
+			Bun.write(
+				join(draftsDir, filename),
+				serializeTask({
+					id,
+					title,
+					status: "Draft",
+					assignee: [],
+					createdDate: "2026-08-24 10:00",
+					labels: [],
+					dependencies: [],
+				}),
+			);
+		await draftFile("draft-3 - Alpha.md", "DRAFT-3", "Alpha");
+		await draftFile("draft-03 - Beta.md", "DRAFT-03", "Beta");
+		const selected = (await core.filesystem.listDrafts()).find((draft) =>
+			draft.filePath?.endsWith("draft-03 - Beta.md"),
+		);
+		if (!selected?.filePath) throw new Error("expected beta draft row");
+		const editScript = await createEditorScript(
+			"append-editor.js",
+			`import { appendFileSync } from "node:fs";
+const filePath = process.argv[2];
+if (filePath) {
+	appendFileSync(filePath, "\\nMarker\\n");
+}
+process.exit(0);
+`,
+		);
+		await setEditor(`node ${editScript}`);
+
+		const result = await core.editTaskInTui(selected.id, screen, selected);
+
+		expect(result.reason).toBe("ambiguous");
+		expect(result.changed).toBe(false);
+		expect(await Bun.file(selected.filePath).text()).not.toContain("Marker");
+		expect(await Bun.file(join(draftsDir, "draft-3 - Alpha.md")).text()).not.toContain("Marker");
+	});
+
+	it("fails closed when a draft id is requested without row context and twins exist", async () => {
+		const draftsDir = join(testDir, "backlog", "drafts");
+		await Bun.write(
+			join(draftsDir, "draft-1 - Alpha.md"),
+			serializeTask({
+				id: "DRAFT-1",
+				title: "Alpha",
+				status: "Draft",
+				assignee: [],
+				createdDate: "2026-08-24 10:00",
+				labels: [],
+				dependencies: [],
+			}),
+		);
+		await Bun.write(
+			join(draftsDir, "draft-001 - Beta.md"),
+			serializeTask({
+				id: "DRAFT-001",
+				title: "Beta",
+				status: "Draft",
+				assignee: [],
+				createdDate: "2026-08-24 10:00",
+				labels: [],
+				dependencies: [],
+			}),
+		);
+		const noopScript = await createEditorScript("noop-editor.js", "process.exit(0);\n");
+		await setEditor(`node ${noopScript}`);
+
+		const result = await core.editTaskInTui("DRAFT-1", screen);
+
+		expect(result.reason).toBe("ambiguous");
+		expect(result.changed).toBe(false);
+		expect(await Bun.file(join(draftsDir, "draft-1 - Alpha.md")).text()).toContain("Alpha");
+		expect(await Bun.file(join(draftsDir, "draft-001 - Beta.md")).text()).toContain("Beta");
+	});
+});

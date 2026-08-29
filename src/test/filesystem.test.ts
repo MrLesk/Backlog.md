@@ -334,6 +334,30 @@ Invalid content`,
 			expect(loaded?.title).toBe(sampleDraft.title);
 		});
 
+		it("fails closed when loadDraft finds padded twins of one identity", async () => {
+			await filesystem.saveDraft(sampleDraft);
+			const draftsDir = await filesystem.getDraftsDir();
+			await Bun.write(
+				join(draftsDir, "draft-001 - Twin.md"),
+				serializeTask({
+					id: "DRAFT-001",
+					title: "Twin",
+					status: "Draft",
+					assignee: [],
+					createdDate: "2026-08-24 10:00",
+					labels: [],
+					dependencies: [],
+				}),
+			);
+
+			await expect(filesystem.loadDraft("DRAFT-1")).rejects.toThrow(/is ambiguous/);
+			await expect(filesystem.loadDraft("DRAFT-001")).rejects.toThrow(/draft-001 - Twin\.md/);
+			const files = (await readdir(draftsDir)).sort();
+			expect(files.some((file) => file.startsWith("draft-1 "))).toBe(true);
+			expect(files).toContain("draft-001 - Twin.md");
+			expect(await Bun.file(join(draftsDir, "draft-001 - Twin.md")).text()).toContain("Twin");
+		});
+
 		it("should list all drafts", async () => {
 			await filesystem.saveDraft(sampleDraft);
 			await filesystem.saveDraft({ ...sampleDraft, id: "draft-2", title: "Second" });
