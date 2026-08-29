@@ -693,6 +693,10 @@ describe("MCP task tools (MVP)", () => {
 			},
 		});
 
+		// The setup mutations above moved task files; dispose the content store so
+		// pending fs-watcher reconciles can't fire inside the tripwire window.
+		mcpServer.disposeContentStore();
+
 		const tripwires = installCrossBranchTripwires(mcpServer);
 		try {
 			const searchResults = [
