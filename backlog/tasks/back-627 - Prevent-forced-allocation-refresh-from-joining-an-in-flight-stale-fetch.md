@@ -5,7 +5,7 @@ status: Done
 assignee:
   - '@claude'
 created_date: '2026-08-10 06:37'
-updated_date: '2026-08-29 18:27'
+updated_date: '2026-08-29 18:52'
 labels: []
 dependencies: []
 priority: medium
@@ -69,6 +69,12 @@ Residual race (inherent, not introduced here): a push that lands during the seco
 Residual hole found during maintainer review, deliberately left out of scope (needs a product decision): GitOperations.fetch has its own coalescing layer (this.fetches, keyed by remote, in src/git/operations.ts). Core's forced pre-wait guarantees Core's own remoteRefRefreshPromise slot is empty, and because GitOperations deletes its map entry in a finally before fetch() returns, the forced path does start a genuinely new git fetch in the common case. But generateNextDocId and generateNextDecisionId (src/utils/id-generators.ts) call core.gitOps.fetch() directly, bypassing Core's slot. If one of those is in flight when a forced task-ID refresh runs, Core sees an empty slot, calls git.fetch(), and joins the older git-level fetch -- reintroducing exactly the staleness this task closes. Narrow: it needs a concurrent doc/decision ID allocation in the same process (TUI or web server, not separate CLI invocations). Not fixed here because the obvious fix (a force flag that skips the git-level dedup) can put two concurrent git fetches on the same remote and risk ref lock contention, which is a bigger decision than this task's scope.
 
 Correction to the verification above: the two src/test/core.test.ts failures seen during review ('fails closed when an archive snapshot...' and 'keeps an ID occupied when equal-time branch records...') were not environmental and not caused by this branch. They were a time-bomb in main's own tests -- hardcoded commit dates that aged out of the activeBranchDays window -- and upstream fixed them in main commit 6c6f1843 'Fix expired hardcoded commit dates in core branch-record tests'. Rebased this branch onto that new main; src/test/core.test.ts is now 66 pass / 0 fail locally.
+
+Pre-merge fix from Codex-thread triage at head 74e672a8. The forced pre-wait introduced a new interleaving window that the original synchronous join-or-start did not have: the entry guard 'if (git !== this.git) return' runs before the pre-wait, so if reinitializeProjectRoot() fires during that await it synchronously calls disposeContentStore() (nulling remoteRefRefreshPromise) and swaps this.git and this.fs. The forced continuation then resumes holding the captured old git and config, sees an empty slot, and starts an old-project fetch that it installs into the new project's slot. A new-project read entering afterwards passes its own entry guard, finds that slot occupied, joins it, and proceeds as though its remote refs were refreshed. Note the new-project caller does not self-heal via projectChanged(), because from its perspective nothing changed -- it started after the swap.
+
+Fixed by re-checking 'if (git !== this.git) return' immediately after the pre-wait, mirroring the entry guard and the existing 'if (this.git === git)' guard already used around lastRemoteRefRefreshAt. Returning early is safe for the old-project caller: loadTasksWithStableBranchSnapshot re-checks projectChanged() right after the refresh call and retries.
+
+Added a regression test 'does not start an old-root fetch when the project moves during a forced refresh' in src/test/shared-branch-task-loader.test.ts, next to its sibling 'does not let an old-root fetch lease suppress the new root' and reusing that file's existing lightweight scaffolding (fake roots, stubbed git.fetch, internals cast) rather than the heavier real-git setup in core-task-corpus-regressions.test.ts. The test is deterministic because the function body runs synchronously into the pre-wait, so the forced call is guaranteed parked there when reinitializeProjectRoot() is invoked. Verified it discriminates: 2 old-root fetches without the guard, 1 with it.
 <!-- SECTION:NOTES:END -->
 
 ## Final Summary

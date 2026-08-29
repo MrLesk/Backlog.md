@@ -582,6 +582,45 @@ describe("shared immutable branch task loading", () => {
 		expect(newFetches).toBe(1);
 	});
 
+	it("does not start an old-root fetch when the project moves during a forced refresh", async () => {
+		const core = new Core("/tmp/forced-refresh-old-root");
+		let oldFetches = 0;
+		let releaseOldFetch: () => void = () => {};
+		const oldFetchGate = new Promise<void>((resolve) => {
+			releaseOldFetch = resolve;
+		});
+		const oldFetchStarted = new Promise<void>((resolve) => {
+			core.git.fetch = async () => {
+				oldFetches += 1;
+				resolve();
+				await oldFetchGate;
+			};
+		});
+		const internals = core as unknown as {
+			refreshRemoteRefsForTaskRead: (
+				loadedConfig: BacklogConfig,
+				git?: GitOperations,
+				options?: { force?: boolean },
+			) => Promise<void>;
+		};
+		const loadedConfig = { ...config, checkActiveBranches: true, remoteOperations: true };
+		const oldGit = core.git;
+
+		const readRefresh = internals.refreshRemoteRefsForTaskRead(loadedConfig);
+		await oldFetchStarted;
+
+		// Runs synchronously into its wait on the in-flight fetch, so the root moves
+		// while the forced refresh is parked there.
+		const forcedRefresh = internals.refreshRemoteRefsForTaskRead(loadedConfig, oldGit, { force: true });
+		core.reinitializeProjectRoot("/tmp/forced-refresh-new-root");
+		releaseOldFetch();
+		await Promise.all([readRefresh, forcedRefresh]);
+
+		// A second old-root fetch here would land in the new root's refresh slot, where a
+		// new-root read could join it and skip the refresh it actually needs.
+		expect(oldFetches).toBe(1);
+	});
+
 	it("retries a working-copy task snapshot after the project root changes", async () => {
 		const core = new Core("/tmp/working-copy-root-a");
 		const oldFilesystem = core.fs;

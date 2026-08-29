@@ -625,6 +625,11 @@ export class Core {
 		// afterwards. A non-forced request keeps the plain join-or-start behavior.
 		if (force && this.remoteRefRefreshPromise) {
 			await this.remoteRefRefreshPromise;
+			// The project may have been re-pointed while we waited: reinitializeProjectRoot
+			// clears this slot and installs a new GitOperations. Starting a fetch for the old
+			// project now would publish it into the new project's slot, where a new-project
+			// read could join it and skip the refresh it actually needs.
+			if (git !== this.git) return;
 		}
 
 		if (!this.remoteRefRefreshPromise) {
