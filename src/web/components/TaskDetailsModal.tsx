@@ -13,6 +13,7 @@ import { getPriorityOptions } from "../../utils/priority-config";
 import { getTaskTypeValues, resolveTaskTypeValue } from "../../utils/task-type-config";
 import { createReadinessGraph, formatReadinessBlockers, getTaskReadiness } from "../../utils/readiness";
 import { canonicalTaskId } from "../../utils/task-id.ts";
+import { buildTaskIdIndex, resolveTaskReference } from "../utils/task-id-links";
 import { findDirectSubtasks, findParentTask, summarizeSubtaskProgress } from "../../utils/task-subtasks.ts";
 import { isTerminalStatus } from "../../utils/terminal-status.ts";
 import { createUrlPath } from "../utils/urlHelpers";
@@ -429,25 +430,14 @@ export const TaskDetailsModal: React.FC<Props> = ({
     };
   }, [isOpen, unresolvedDependencyKey]);
 
-  // Dependency validation stays local-only (see BACK-623), so the picker must only suggest tasks
-  // from the local working copy - a cross-branch suggestion here would fail on save. Derived from
-  // availableTasks (kept fresh by the parent's tasks-updated refresh) rather than a separate fetch,
-  // so the picker never suggests a stale snapshot while the modal stays open. IDs with more than one
-  // local file (e.g. BACK-1 and BACK-001) are ambiguous and rejected by validateDependencies on save,
-  // so they're excluded here too rather than offered as a dead-end suggestion.
+  // Dependency validation stays local-only (see BACK-623), so the picker must only suggest what a
+  // save can accept: a cross-branch task is rejected, and so is a canonically ambiguous ID that more
+  // than one local file claims. The index drops those collisions already, so a task survives only
+  // when it is the one its own canonical ID resolves to.
   const localAvailableTasks = useMemo(() => {
     const local = availableTasks.filter(isLocalEditableTask);
-    const byCanonicalId = new Map<string, Task[]>();
-    for (const candidate of local) {
-      const key = canonicalTaskId(candidate.id);
-      const group = byCanonicalId.get(key);
-      if (group) {
-        group.push(candidate);
-      } else {
-        byCanonicalId.set(key, [candidate]);
-      }
-    }
-    return local.filter((candidate) => (byCanonicalId.get(canonicalTaskId(candidate.id))?.length ?? 0) === 1);
+    const index = buildTaskIdIndex(local);
+    return local.filter((candidate) => resolveTaskReference(index, candidate.id) === candidate);
   }, [availableTasks]);
 
   // Dependency readiness, derived at render time from the dependencies and status currently shown,

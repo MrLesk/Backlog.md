@@ -5,7 +5,6 @@ import { createRoot, type Root } from "react-dom/client";
 import { MemoryRouter, useLocation } from "react-router-dom";
 import type { Task } from "../types/index.ts";
 import { TaskDetailsModal } from "../web/components/TaskDetailsModal";
-import { apiClient } from "../web/lib/api";
 import { TaskIdIndexProvider } from "../web/contexts/TaskIdIndexContext.tsx";
 import { ThemeProvider } from "../web/contexts/ThemeContext";
 import { setNativeInputValue } from "./react-dom-input.ts";
@@ -13,7 +12,6 @@ import { setNativeInputValue } from "./react-dom-input.ts";
 let activeRoot: Root | null = null;
 let activeDom: JSDOM | null = null;
 let currentPath = "";
-const originalFetchTasks = apiClient.fetchTasks;
 
 const dependency: Task = {
 	id: "BACK-2",
@@ -81,12 +79,6 @@ function LocationProbe() {
 const renderModal = async (modalTask: Task | undefined): Promise<HTMLElement> => {
 	setupDom();
 	currentPath = "";
-	// The dependency picker suggests only what local validation accepts (see BACK-630), fetched
-	// separately from availableTasks - mock it so typing a known dependency still suggests it.
-	(apiClient as { fetchTasks: typeof apiClient.fetchTasks }).fetchTasks = (async () => [
-		task,
-		dependency,
-	]) as typeof apiClient.fetchTasks;
 	const container = document.getElementById("root");
 	activeRoot = createRoot(container as HTMLElement);
 	await act(async () => {
@@ -105,7 +97,6 @@ const renderModal = async (modalTask: Task | undefined): Promise<HTMLElement> =>
 				</ThemeProvider>
 			</MemoryRouter>,
 		);
-		await Promise.resolve();
 		await Promise.resolve();
 	});
 	return container as HTMLElement;
@@ -186,7 +177,6 @@ afterEach(() => {
 	}
 	activeDom?.window.close();
 	activeDom = null;
-	(apiClient as { fetchTasks: typeof apiClient.fetchTasks }).fetchTasks = originalFetchTasks;
 });
 
 describe("Task details modal navigation with unsaved edits", () => {

@@ -44,16 +44,15 @@ function isDraftId(taskId: string): boolean {
 }
 
 /**
- * A missing-dependency error carries the CLI's LOCAL_TASK_LOOKUP_HINT, which tells the reader to
- * open 'backlog browser' - nonsensical when the rejected save already happened in the browser.
+ * Lookups stay local on every surface, but the CLI's hint ends by telling the reader to open
+ * 'backlog browser' - nonsensical once the rejected save already happened there. Same fact,
+ * addressed to a reader who is already in the browser.
  */
-const WEB_DEPENDENCY_LOOKUP_HINT =
-	"Dependency lookups read only the local working copy; a task that only exists on another branch cannot be added as a dependency yet.";
+const WEB_TASK_LOOKUP_HINT =
+	"Task lookups read only the local working copy; a task that exists only on another branch cannot be referenced yet.";
 
-function formatDependencyErrorForWeb(message: string): string {
-	return message.startsWith("The following dependencies do not exist")
-		? message.replace(LOCAL_TASK_LOOKUP_HINT, WEB_DEPENDENCY_LOOKUP_HINT)
-		: message;
+function formatErrorForWeb(message: string): string {
+	return message.replace(LOCAL_TASK_LOOKUP_HINT, WEB_TASK_LOOKUP_HINT);
 }
 
 type DueDatePayloadResult = { ok: true; value: string | null | undefined } | { ok: false; error: string };
@@ -972,7 +971,7 @@ export class BacklogServer {
 				const message = error instanceof Error ? error.message : "Failed to create task";
 				return Response.json({ error: message }, { status: 409 });
 			}
-			const message = formatDependencyErrorForWeb(error instanceof Error ? error.message : "Failed to create task");
+			const message = formatErrorForWeb(error instanceof Error ? error.message : "Failed to create task");
 			return Response.json({ error: message }, { status: 400 });
 		}
 	}
@@ -1131,7 +1130,7 @@ export class BacklogServer {
 				: await this.core.updateTaskFromInput(taskId, updateInput);
 			return Response.json(updatedTask);
 		} catch (error) {
-			const message = formatDependencyErrorForWeb(error instanceof Error ? error.message : "Failed to update task");
+			const message = formatErrorForWeb(error instanceof Error ? error.message : "Failed to update task");
 			const conflict = isAmbiguousIdError(error) || isAmbiguousTaskIdError(error) || isTaskLockError(error);
 			return Response.json({ error: message }, { status: conflict ? 409 : 400 });
 		}

@@ -69,7 +69,7 @@ const setupDom = () => {
 	htmlElementPrototype.detachEvent = () => {};
 };
 
-const renderModal = async (): Promise<HTMLElement> => {
+const renderModal = async (availableTasks: Task[]): Promise<HTMLElement> => {
 	setupDom();
 	const container = document.getElementById("root") as HTMLElement;
 	activeRoot = createRoot(container);
@@ -77,12 +77,12 @@ const renderModal = async (): Promise<HTMLElement> => {
 		activeRoot?.render(
 			<MemoryRouter initialEntries={["/"]}>
 				<ThemeProvider>
-					<TaskIdIndexProvider tasks={[crossBranchTask, localTask]}>
+					<TaskIdIndexProvider tasks={availableTasks}>
 						<TaskDetailsModal
 							isOpen={true}
 							onClose={() => {}}
 							onSubmit={async () => {}}
-							availableTasks={[crossBranchTask, localTask]}
+							availableTasks={availableTasks}
 						/>
 					</TaskIdIndexProvider>
 				</ThemeProvider>
@@ -129,7 +129,7 @@ afterEach(() => {
 
 describe("Task details modal dependency picker", () => {
 	it("only suggests tasks the local working copy can validate as dependencies", async () => {
-		const container = await renderModal();
+		const container = await renderModal([crossBranchTask, localTask]);
 		await flushReact();
 
 		await typeIntoDependencyInput(container, "task");
@@ -139,34 +139,11 @@ describe("Task details modal dependency picker", () => {
 
 	it("excludes ambiguous local IDs (multiple files sharing a canonical ID) from suggestions", async () => {
 		const paddedDuplicate: Task = {
+			...localTask,
 			id: "BACK-010",
 			title: "Local task (padded duplicate)",
-			status: "To Do",
-			assignee: [],
-			createdDate: "2026-08-10",
-			labels: [],
-			dependencies: [],
 		};
-		setupDom();
-		const container = document.getElementById("root") as HTMLElement;
-		activeRoot = createRoot(container);
-		await act(async () => {
-			activeRoot?.render(
-				<MemoryRouter initialEntries={["/"]}>
-					<ThemeProvider>
-						<TaskIdIndexProvider tasks={[crossBranchTask, localTask, paddedDuplicate]}>
-							<TaskDetailsModal
-								isOpen={true}
-								onClose={() => {}}
-								onSubmit={async () => {}}
-								availableTasks={[crossBranchTask, localTask, paddedDuplicate]}
-							/>
-						</TaskIdIndexProvider>
-					</ThemeProvider>
-				</MemoryRouter>,
-			);
-			await Promise.resolve();
-		});
+		const container = await renderModal([crossBranchTask, localTask, paddedDuplicate]);
 		await flushReact();
 
 		await typeIntoDependencyInput(container, "task");

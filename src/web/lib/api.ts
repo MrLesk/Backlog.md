@@ -196,10 +196,8 @@ export class ApiClient {
 				}
 			}
 		}
-		// Default to true for cross-branch loading to match TUI behavior. Always send the
-		// resolved value explicitly - the server treats an absent param as true, so an
-		// explicit `false` must not be silently dropped.
-		params.append("crossBranch", String(options?.crossBranch !== false));
+		// Default to true for cross-branch loading to match TUI behavior
+		if (options?.crossBranch !== false) params.append("crossBranch", "true");
 
 		const url = `${API_BASE}/tasks${params.toString() ? `?${params.toString()}` : ""}`;
 		return this.fetchJson<Task[]>(url);

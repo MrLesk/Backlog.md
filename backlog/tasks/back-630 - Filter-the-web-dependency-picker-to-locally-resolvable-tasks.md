@@ -5,7 +5,7 @@ status: Done
 assignee:
   - '@claude'
 created_date: '2026-08-10 07:12'
-updated_date: '2026-08-24 21:38'
+updated_date: '2026-08-29 18:03'
 labels: []
 dependencies: []
 priority: medium
@@ -34,39 +34,38 @@ Follow-up from the PR #898 (BACK-623) verification round. Since dependency valid
 ## Implementation Plan
 
 <!-- SECTION:PLAN:BEGIN -->
-1. Investigate: DependencyInput.tsx suggests from `availableTasks`, which TaskDetailsModal fills from App's search corpus (cross-branch). Server-side validateDependencies() (task-builders.ts) only accepts core.queryTasks({ includeCrossBranch: false }) plus drafts. Web picker never suggested drafts anyway (search results only carry type=task), so scope is: stop suggesting branch-only tasks.
-2. Frontend fix (AC1): add a `suggestableTasks` prop to DependencyInput, used only for the autocomplete filter (chip display keeps using the full `availableTasks` corpus so already-saved cross-branch dependency chips still resolve/link). TaskDetailsModal fetches a local-only task list via apiClient.fetchTasks({ crossBranch: false }) when the modal opens (mirrors the existing offBoardDependencies fetch pattern) and passes it as suggestableTasks.
-3. Backend fix (AC2): server/index.ts surfaces Core-thrown error messages verbatim, including the CLI-oriented LOCAL_TASK_LOOKUP_HINT ("...use 'backlog browser'..."), which is nonsensical once you're already in the browser. Add formatDependencyErrorForWeb() that rewrites only messages starting with "The following dependencies do not exist" (the missing-dependency error), swapping the hint for browser-appropriate copy. Apply in handleCreateTask and handleUpdateTask catch blocks (covers both the create-task save path and the inline dependency edit path).
-4. Add regression tests: a DependencyInput/TaskDetailsModal interactive test (mounted with react-dom/client + act, apiClient.fetchTasks mocked) proving a cross-branch-only task is not suggested while a local task is; a server test proving the missing-dependency error response no longer contains the CLI hint.
-5. Verify: bunx tsc --noEmit, bunx biome check on touched files, scoped test run, then full suite.
+1. Investigate: DependencyInput suggests from `availableTasks`, which TaskDetailsModal receives from App's search corpus. That corpus is cross-branch (branch-only tasks arrive with source 'local-branch' or 'remote'), while server-side validateDependencies() resolves against core.queryTasks({ includeCrossBranch: false }) plus drafts. So the picker offers tasks a save cannot accept.
+2. AC1: give DependencyInput a `suggestableTasks` prop used only for autocomplete filtering, defaulting to `availableTasks`. Chip rendering keeps using the full corpus so dependencies saved before the local-only ruling still resolve and link.
+3. AC1: in TaskDetailsModal derive the suggestion list from the live `availableTasks` prop - filter with isLocalEditableTask, then drop canonically ambiguous IDs by reusing buildTaskIdIndex/resolveTaskReference, which already drop collisions the same way route resolution does. Deriving beats a separate fetch: no stale snapshot while the modal stays open.
+4. AC2: the CLI's LOCAL_TASK_LOOKUP_HINT ends by telling the reader to run 'backlog browser', which is nonsense once the rejected save happened in the browser. Rewrite that hint into web copy in the server's create-task and update-task error paths.
+5. Verify: jsdom picker tests, a real-HTTP server test, and a live browser check against a two-branch fixture repo.
 <!-- SECTION:PLAN:END -->
 
 ## Implementation Notes
 
 <!-- SECTION:NOTES:BEGIN -->
-AC1: DependencyInput now takes a `suggestableTasks` prop (defaults to `availableTasks`, used only for autocomplete filtering; chip display still uses `availableTasks` so already-saved cross-branch dependency chips keep resolving/linking). TaskDetailsModal fetches a local-only task list via apiClient.fetchTasks({ crossBranch: false }) when the modal opens (mirrors the existing offBoardDependencies fetch pattern) and passes it as suggestableTasks - matching exactly what validateDependencies() in task-builders.ts checks (core.queryTasks({ includeCrossBranch: false })). Drafts stay out of scope: the web picker never suggested them before this fix either (search results only carry type=task).
+AC1 - picker filtered to locally-resolvable tasks. DependencyInput takes an optional `suggestableTasks` prop that feeds the autocomplete filter only; it defaults to `availableTasks`, so callers without a cross-branch corpus are unchanged. Chip display still resolves through the full `availableTasks` corpus, so a cross-branch dependency saved before the local-only ruling keeps rendering with its title and link instead of degrading to an unknown ID.
 
-AC2: server/index.ts now has formatDependencyErrorForWeb(), which rewrites only messages starting with "The following dependencies do not exist" - swapping the CLI's LOCAL_TASK_LOOKUP_HINT ("...use 'backlog browser'...") for browser-appropriate copy. Applied in handleCreateTask and handleUpdateTask catch blocks (covers both the create-task save path and the inline dependency edit path used by handleInlineMetaUpdate). Left the parent-task-not-found error (same hint constant, different message shape) untouched since it's out of this task's scope.
+TaskDetailsModal derives `localAvailableTasks` from the live `availableTasks` prop rather than fetching its own list: the parent already refreshes that corpus, so the picker cannot suggest from a snapshot that went stale while the modal stayed open. The filter is isLocalEditableTask plus a canonical-ambiguity drop that reuses the existing buildTaskIdIndex/resolveTaskReference helpers (the index already drops canonical collisions the way route resolution does, so no second implementation of that rule was added). Ambiguous IDs are excluded because validateDependencies rejects them on save, so suggesting one would be a dead end.
+
+AC2 - web-appropriate rejection copy. server/index.ts rewrites LOCAL_TASK_LOOKUP_HINT into WEB_TASK_LOOKUP_HINT in the create-task and update-task error paths. The rewrite targets the hint sentence itself rather than matching a specific error message prefix, so it is not coupled to the wording of the dependency error and also fixes the parent-task-not-found message, which carries the same hint.
+
+Known gap (pre-existing, not a regression): drafts are valid dependency targets for validateDependencies, but the web corpus does not contain drafts (App loads them on the drafts page only), so the picker still cannot suggest a draft. It could not before this change either.
 
 Verification:
-- New interactive test src/test/web-dependency-picker-local-only.test.tsx: mounts TaskDetailsModal with a cross-branch task and a local task, mocks apiClient.fetchTasks to assert it's called with crossBranch:false and to return only the local task, types a query matching both by title, and asserts the suggestion dropdown shows only the local task. Verified fail-before/pass-after via git stash on the DependencyInput/TaskDetailsModal changes.
-- New server test src/test/server-dependency-error-copy.test.ts: PUTs/POSTs a missing dependency through the real BacklogServer HTTP API and asserts the error response contains the task ID but not "backlog browser". Verified fail-before/pass-after via git stash on server/index.ts.
-- Fixed a real regression the fix surfaced in the existing src/test/web-task-details-modal-unsaved-navigation.test.tsx: it typed a known dependency ID and pressed Enter expecting a suggestion, but didn't mock apiClient.fetchTasks, so the new local-only fetch (real network call in jsdom, swallowed by the effect's .catch) returned nothing to suggest. Added the same fetchTasks mock pattern used elsewhere in the test file, restored in afterEach, plus an extra microtask flush for the two-hop async fetch->then->setState chain.
-- bunx tsc --noEmit: clean.
-- bunx biome check on touched .ts files: clean (DependencyInput.tsx/TaskDetailsModal.tsx are .tsx, outside this repo's biome includes, consistent with all other .tsx files).
-- Full suite (bun test --timeout=10000): 2341 pass / 6 skip / 1 fail across 245 files. The 1 fail (config-commands.test.ts, a YAML tab-indentation parsing edge case) is unrelated - reproduces identically on unmodified main, confirmed via git stash.
-
-Addressed Codex PR review (PR #927): api.ts fetchTasks now sends crossBranch explicitly instead of omitting false; TaskDetailsModal derives the local-only suggestion list from the live availableTasks prop (filtered + deduped by canonical ID) instead of a stale one-time fetch; added/fixed test coverage.
+- Live browser check against a purpose-built two-branch fixture repo (local TASK-1/TASK-3 on main, branch-only TASK-2 on a feature branch, checkActiveBranches on). The search corpus really does carry source=local-branch for the branch-only task, so the filter is not a no-op. Typing 'task' - which matches all three by title - suggested only TASK-3; TASK-2 was excluded and the current task was excluded as before. A pre-existing dependency on cross-branch TASK-2 still rendered as a resolved chip linking to /tasks/TASK-2 with its 'Blocked by TASK-2' readiness text.
+- Same fixture over HTTP: PUT of a branch-only dependency returns 400 with 'Task lookups read only the local working copy; a task that exists only on another branch cannot be referenced yet.' and no 'backlog browser'.
+- src/test/web-dependency-picker-local-only.test.tsx (jsdom): cross-branch task not suggested; canonically ambiguous local IDs (BACK-10 and BACK-010) not suggested. Both fail when the suggestableTasks wiring is removed, so they are not vacuous.
+- src/test/server-dependency-error-copy.test.ts: real BacklogServer HTTP, create and update paths.
+- bunx tsc --noEmit clean; bunx biome check clean on the touched .ts files (.tsx are outside this repo's biome includes).
 <!-- SECTION:NOTES:END -->
 
 ## Final Summary
 
 <!-- SECTION:FINAL_SUMMARY:BEGIN -->
-Filtered the web dependency picker to locally-resolvable tasks and fixed the rejected-save error copy for the web surface.
+The web dependency picker now suggests only tasks that local dependency validation will accept, and a rejected save explains itself in web terms.
 
-DependencyInput gained a `suggestableTasks` prop (autocomplete only; chip display keeps the full corpus), fed by a new local-only task fetch (apiClient.fetchTasks({ crossBranch: false })) in TaskDetailsModal, so the picker now only suggests what local dependency validation (task-builders.ts validateDependencies) will actually accept.
+DependencyInput gained an optional `suggestableTasks` prop that filters autocomplete only, so chips for dependencies saved before the local-only ruling still resolve through the full cross-branch corpus. TaskDetailsModal derives that suggestion list from the live task corpus - local-editable tasks, minus canonically ambiguous IDs - reusing the existing task-ID index helpers rather than restating the ambiguity rule. server/index.ts rewrites the CLI's 'use backlog browser' lookup hint into web copy on the create-task and update-task error paths, keyed on the hint itself so it also covers the parent-not-found message.
 
-server/index.ts's handleCreateTask/handleUpdateTask now rewrite the missing-dependency error's CLI-oriented "use 'backlog browser'" hint into web-appropriate copy before returning it to the client.
-
-Verified with two new tests (interactive DependencyInput/TaskDetailsModal suggestion test, and a real-HTTP server error-copy test), both confirmed fail-before/pass-after via git stash. Fixed a regression surfaced in an existing unsaved-navigation test that needed the new fetch mocked. Full suite: 2341 pass / 6 skip / 1 unrelated pre-existing fail (config-commands.test.ts, reproduces on unmodified main).
+Verified in a live browser against a two-branch fixture repo (branch-only task excluded from suggestions, local task suggested, existing cross-branch chip still resolving), over real HTTP for the error copy, and by jsdom and server tests that were confirmed to fail without the change.
 <!-- SECTION:FINAL_SUMMARY:END -->
