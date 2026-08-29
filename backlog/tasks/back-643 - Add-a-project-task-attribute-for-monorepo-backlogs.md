@@ -5,7 +5,7 @@ status: Done
 assignee:
   - '@claude'
 created_date: '2026-08-20 16:20'
-updated_date: '2026-08-24 22:35'
+updated_date: '2026-08-29 18:13'
 labels: []
 dependencies: []
 ordinal: 273000
@@ -55,6 +55,16 @@ Committed as 4 commits on tasks/back-637-multiproject-attribute: e5772ae (slices
 Addressed Codex PR review (PR #924): wired --project through search/list type-scoping and the interactive view's filter+loader; hasCreateFieldFlags/hasEditFieldFlags now recognize --project; centralized the 'No projects configured' message on the resolved config path; web UI can now clear project on edit end-to-end (server handlers were previously silently discarding it); project badges (web + TUI) now hide when no projects are configured; moved the TUI project filter picker off g/G to stop colliding with detail-pane scroll shortcuts.
 
 Rebased onto upstream main (which had advanced with BACK-626/BACK-638, touching overlapping files) to resolve real merge conflicts reported by GitHub; resolved two import-ordering conflicts in content-store.ts and file-system/operations.ts, retested clean.
+
+Maintainer takeover review (PR #924): renumbered this task and its six subtasks from BACK-637, which is owned by a different task in this repo (blank lines in fenced code blocks, PR #933); 641 and 642 were also taken. Dropped the coordination-only 'rebase this branch' task that shipped in the PR -- process state, not product history, and it collided with BACK-641.
+
+Fixes applied on top of the contributor's work:
+- Web: the task modal sent project in the edit-mode Save payload while the project select only renders when projects are configured. Saving a task in a repo with no projects:, or one whose stored project had left the config list, re-sent a value the form never showed -- clearing the field or failing the entire save. Now sent from the create form only, matching how type already behaves; the sidebar select persists edits immediately. Added an accessible name and a '(not configured)' option to match the type select.
+- TUI: Down from Type skipped Priority in the stacked compact layout because the project override was unconditional. Board badges and the quick-look popup received the raw config array instead of the normalized list, so blank config entries would still render badges after the filter control had correctly disappeared. The footer never advertised the V project filter that the help popup listed; it is now derived from the same condition that binds the key.
+- CLI: 'config get projects' printed prose where every sibling list key prints a value; it now prints the joined list, and --help points at the config file.
+- Docs: documented projects: in ADVANCED-CONFIG.md (the only way to enable the feature, since like statuses/labels/types/priorities it cannot be set via 'config set'), and corrected the CLI-INSTRUCTIONS claim that project is null without configured projects.
+
+Verified per interface: CLI (interactive, --plain, --json) create/edit/clear/list/search with case-insensitive canonicalization and OR filtering; MCP over real stdio JSON-RPC (schemas carry the enum when configured and omit the property entirely when not, so passing project is a clean validation error); web API (search filter, PUT set/clear/invalid -> 400) and the rendered board (badges, filter select); TUI board captured in a pty with and without projects configured.
 <!-- SECTION:NOTES:END -->
 
 ## Final Summary
