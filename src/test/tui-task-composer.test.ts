@@ -1116,6 +1116,75 @@ describe("TUI task composer canonical persistence", () => {
 	});
 });
 
+describe("TUI task composer selector navigation", () => {
+	const PROJECTS = ["Web"];
+
+	/**
+	 * Tab from the initial focus until the selector whose label starts with `prefix` is focused,
+	 * then press Down and report the content of whatever ends up focused. Tab traversal and the
+	 * arrow keys both act on the composer's own active field, so driving Tab first is what makes
+	 * the arrow assertion meaningful.
+	 */
+	async function focusSelectorThenPressDown(
+		width: number,
+		height: number,
+		prefix: string,
+	): Promise<string | undefined> {
+		const screen = createScreen({ smartCSR: false });
+		Object.defineProperty(screen, "width", { configurable: true, value: width, writable: true });
+		Object.defineProperty(screen, "height", { configurable: true, value: height, writable: true });
+		const eventScreen = screen as unknown as { focused?: TestWidget };
+		try {
+			const resultPromise = openTaskComposer({
+				screen,
+				statuses: ["To Do", "Done"],
+				projects: PROJECTS,
+				persist: async () => task(),
+			});
+			await settleComposerFocus();
+
+			let steps = 0;
+			while (!eventScreen.focused?.content?.startsWith(prefix)) {
+				if (steps > 20) throw new Error(`never focused a widget starting with "${prefix}"`);
+				pressKey(eventScreen.focused, "tab", "\t");
+				await settleComposerFocus();
+				steps += 1;
+			}
+
+			pressKey(eventScreen.focused, "down");
+			await settleComposerFocus();
+			const landed = eventScreen.focused?.content;
+
+			pressKey(eventScreen.focused, "escape", "\x1b");
+			await withTimeout(resultPromise, "composer navigation cancellation", 1000);
+			return landed;
+		} finally {
+			screen.destroy();
+		}
+	}
+
+	// Unstacked compact keeps Type and Priority on one row, so Down from Type drops past both
+	// to the full-width Project row below them.
+	it("moves Down from Type to Project when Type and Priority share a row", async () => {
+		const layout = getTaskComposerLayout(100, 30, { projects: PROJECTS });
+		expect(layout.compact).toBe(true);
+		expect(layout.stackSelectors).toBe(false);
+
+		expect(await focusSelectorThenPressDown(100, 30, "Type:")).toStartWith("Project:");
+	});
+
+	// Stacked compact puts Type on its own row above Priority, so Down from Type must still
+	// reach Priority. An unconditional project override used to skip Priority entirely, leaving
+	// it unreachable by arrow keys on a narrow terminal.
+	it("moves Down from Type to Priority in the stacked compact layout", async () => {
+		const layout = getTaskComposerLayout(46, 18, { projects: PROJECTS });
+		expect(layout.compact).toBe(true);
+		expect(layout.stackSelectors).toBe(true);
+
+		expect(await focusSelectorThenPressDown(46, 18, "Type:")).toStartWith("Priority:");
+	});
+});
+
 describe("TUI task composer interaction", () => {
 	it("opens the actual composer and Cancel performs no write", async () => {
 		const screen = createScreen({ smartCSR: false });

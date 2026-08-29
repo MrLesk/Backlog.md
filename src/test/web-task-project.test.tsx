@@ -194,6 +194,47 @@ describe("Web task project UI", () => {
 		expect(receivedUpdates[0]).toEqual({ project: "Web" });
 	});
 
+	// The project select only renders when projects are configured, so an edit-mode Save must
+	// not carry project at all: otherwise saving a task in a repo with no projects: silently
+	// cleared a stored value the form never showed, and a value no longer in the config list
+	// failed the whole save with "Invalid project".
+	it("omits project from an edit-mode save so an unshown value survives", async () => {
+		const container = setupDom();
+		const task = createTask({ project: "Retired" });
+		const receivedUpdates: TaskUpdateRequest[] = [];
+		apiClient.updateTask = async (_taskId, updates) => {
+			receivedUpdates.push(updates);
+			return task;
+		};
+
+		activeRoot = createRoot(container);
+		await act(async () => {
+			activeRoot?.render(
+				<ThemeProvider>
+					<TaskDetailsModal task={task} isOpen onClose={() => {}} />
+				</ThemeProvider>,
+			);
+			await Promise.resolve();
+		});
+
+		const clickButton = async (label: string) => {
+			const button = Array.from(container.querySelectorAll("button")).find(
+				(element) => element.textContent?.trim() === label,
+			);
+			expect(button).toBeTruthy();
+			await act(async () => {
+				button?.dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
+				await Promise.resolve();
+			});
+		};
+
+		await clickButton("Edit");
+		await clickButton("Save");
+		await waitFor(() => receivedUpdates.length === 1);
+
+		expect(receivedUpdates[0]).not.toHaveProperty("project");
+	});
+
 	it("creates a task with a configured project", async () => {
 		const container = setupDom();
 		let submitted: Partial<Task> | undefined;
