@@ -211,11 +211,7 @@ export function getTaskComposerLayout(
 	const expandedDetailsHeight = 3;
 	const expandedActionsHeight = 2;
 	const expandedContentHeight =
-		TEXT_INPUT_HEIGHT +
-		expandedDescriptionHeight +
-		TEXT_INPUT_HEIGHT +
-		expandedDetailsHeight +
-		expandedActionsHeight;
+		TEXT_INPUT_HEIGHT + expandedDescriptionHeight + TEXT_INPUT_HEIGHT + expandedDetailsHeight + expandedActionsHeight;
 	const visibleFormHeight = Math.max(0, popupHeight - POPUP_FORM_VERTICAL_CHROME);
 	const compact = normalSelectorWidth < longestSelectorWidth || visibleFormHeight < expandedContentHeight;
 	const stackSelectors = compact && longestCompactColumn > compactSelectorWidth;

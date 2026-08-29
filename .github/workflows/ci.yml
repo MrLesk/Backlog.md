@@ -52,7 +52,7 @@ jobs:
           git diff --exit-code -- bun.nix
       - run: bun run check:types
         if: matrix.test_profile == 'full'
-      - run: bun run lint
+      - run: bun run check
         if: matrix.test_profile == 'full'
       - name: Bundle CLI for integration tests
         run: BACKLOG_BUILD_OUTDIR="$RUNNER_TEMP/backlog-test-cli" bun scripts/build.ts
