@@ -2216,7 +2216,11 @@ addHelpSchema(program.command("search [query]"), {
 			return;
 		}
 
-		const requiresPrefilteredTaskSet = Boolean(modifiedFileFilters?.length) || rawSearchProjects.length > 0;
+		// Only filters the interactive view cannot edit may narrow the set it loads. Modified-file
+		// filters have no in-view control, so the view would never be able to widen past them.
+		// Project does have one, and it is applied below as a view filter, so prefiltering here
+		// would leave clearing it in the picker unable to reveal anything it had excluded.
+		const requiresPrefilteredTaskSet = Boolean(modifiedFileFilters?.length);
 		const interactiveTasks = requiresPrefilteredTaskSet ? searchResultTasks : allTasks;
 		if (interactiveTasks.length === 0) {
 			printSearchResults(searchResults);
@@ -2816,9 +2820,9 @@ addHelpSchema(taskCmd.command("list"), {
 		if (parentId) {
 			interactiveLoaderFilters.parentTaskId = parentId;
 		}
-		if (baseFilters.project) {
-			interactiveLoaderFilters.project = baseFilters.project;
-		}
+		// Assignee and parent stay loader filters because the view has no control for them.
+		// Project deliberately does not: it travels in initialUnifiedFilter instead, so the
+		// picker can widen it again. Loading a project-narrowed set would make that a no-op.
 		const prefiltersDisplayList = Object.keys(interactiveLoaderFilters).length > 0;
 		await runUnifiedView({
 			core,
