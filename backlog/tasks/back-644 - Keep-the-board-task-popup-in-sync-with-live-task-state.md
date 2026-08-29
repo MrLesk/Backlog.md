@@ -69,6 +69,16 @@ Verification: new src/test/board-popup-sync.test.ts drives renderBoardTui with a
 bunx tsc --noEmit clean. Biome clean on all files this task touched. Two repo-level conditions are pre-existing on the branch and unrelated: 'bun run check .' fails formatting on the untouched src/ui/components/task-composer.ts (CI runs check:types only, not Biome), and 'bun test' has 2 pre-existing failures in src/test/core.test.ts (archive-snapshot / equal-time branch record ID occupancy) that also fail with this change stashed. Full suite otherwise 2411 pass / 7 skip.
 <!-- SECTION:NOTES:END -->
 
+## Comments
+
+<!-- COMMENTS:BEGIN -->
+author: @claude
+created: 2026-08-29 18:28
+---
+Implementation is complete, committed locally as 4f727552 on branch fix/board-popup-refresh (on top of bjohas's 6f714d88). Pushing the maintainer edit to the PR branch is blocked by GitHub: the head fork OpenDevEd/Backlog.md is organization-owned, and 'allow edits by maintainers' does not apply to org-owned forks. The API reports maintainerCanModify: true, but 'git push' returns 403 'Permission to OpenDevEd/Backlog.md.git denied to MrLesk' and repos/OpenDevEd/Backlog.md reports push: false for this account. Auth is fine (repo scope present). Needs a decision from Alex: ask OpenDevEd to grant push access on the fork branch, ask bjohas to apply the patch, or supersede PR #952 with a maintainer branch on origin.
+---
+<!-- COMMENTS:END -->
+
 ## Final Summary
 
 <!-- SECTION:FINAL_SUMMARY:BEGIN -->
