@@ -5,7 +5,7 @@ import { $ } from "bun";
 import { Core } from "../core/backlog.ts";
 import { serializeTask } from "../markdown/serializer.ts";
 import type { Task } from "../types/index.ts";
-import { createUniqueTestDir, safeCleanup } from "./test-utils.ts";
+import { createUniqueTestDir, getPlatformTimeout, safeCleanup, waitUntil } from "./test-utils.ts";
 
 let testDir: string;
 let core: Core;
@@ -279,6 +279,48 @@ describe("Core shared task corpus regressions", () => {
 		// Allocation loads its own corpus without installing it; that load must not
 		// claim the moved refs on behalf of the store.
 		expect(await watcherCore.generateNextId()).toBe("TASK-2");
+
+		expect((await watcherCore.getTask("TASK-1"))?.title).toBe("After ref move");
+	});
+
+	it("keeps serving fresh branch state after a rename fallback that never installed a corpus", async () => {
+		const watcherCore = trackCore(new Core(testDir, { enableWatchers: true }));
+		await $`git switch -c feature-stale`.cwd(testDir).quiet();
+		await writeTask(watcherCore.filesystem.tasksDir, "task-1 - Branch.md", task("TASK-1", "Before ref move"));
+		await commit("Add branch task", recentCommitDate(2));
+		await $`git switch main`.cwd(testDir).quiet();
+
+		const deletedTaskPath = await writeTask(
+			watcherCore.filesystem.tasksDir,
+			"task-2 - Local only.md",
+			task("TASK-2", "Local only task"),
+		);
+
+		// Warms the shared corpus at the current branch tips.
+		expect((await watcherCore.getTask("TASK-1"))?.title).toBe("Before ref move");
+
+		// Moving the tip from a second worktree leaves this project's watched
+		// directories untouched, so only ref-fingerprint comparison can notice it.
+		const worktreeDir = trackDir("worktree");
+		await $`git worktree add ${worktreeDir} feature-stale`.cwd(testDir).quiet();
+		const worktreeTaskPath = join(worktreeDir, "backlog", "tasks", "task-1 - Branch.md");
+		await Bun.write(worktreeTaskPath, serializeTask(task("TASK-1", "After ref move")));
+		await $`git add -A`.cwd(worktreeDir).quiet();
+		await $`git -c user.name="Backlog Test" -c user.email="test@example.com" commit -m "Move branch tip"`
+			.cwd(worktreeDir)
+			.quiet();
+
+		// Deleting a local-only task with no branch-side copy sends the rename watcher
+		// through findIdentity's fallback: it loads the full corpus purely to confirm the
+		// task is gone, and that throwaway load must not claim the moved refs on behalf
+		// of the store.
+		const store = await watcherCore.getContentStore();
+		await unlink(deletedTaskPath);
+		await waitUntil(
+			() => store.resolveTaskForRead("TASK-2").status === "not-found",
+			"watched deletion with no branch-side copy",
+			getPlatformTimeout(3000),
+		);
 
 		expect((await watcherCore.getTask("TASK-1"))?.title).toBe("After ref move");
 	});
