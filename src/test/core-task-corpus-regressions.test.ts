@@ -5,7 +5,7 @@ import { $ } from "bun";
 import { Core } from "../core/backlog.ts";
 import { serializeTask } from "../markdown/serializer.ts";
 import type { Task } from "../types/index.ts";
-import { createUniqueTestDir, safeCleanup } from "./test-utils.ts";
+import { createUniqueTestDir, getPlatformTimeout, safeCleanup, waitUntil } from "./test-utils.ts";
 
 let testDir: string;
 let core: Core;
@@ -283,6 +283,48 @@ describe("Core shared task corpus regressions", () => {
 		expect((await watcherCore.getTask("TASK-1"))?.title).toBe("After ref move");
 	});
 
+	it("keeps serving fresh branch state after a rename fallback that never installed a corpus", async () => {
+		const watcherCore = trackCore(new Core(testDir, { enableWatchers: true }));
+		await $`git switch -c feature-stale`.cwd(testDir).quiet();
+		await writeTask(watcherCore.filesystem.tasksDir, "task-1 - Branch.md", task("TASK-1", "Before ref move"));
+		await commit("Add branch task", recentCommitDate(2));
+		await $`git switch main`.cwd(testDir).quiet();
+
+		const deletedTaskPath = await writeTask(
+			watcherCore.filesystem.tasksDir,
+			"task-2 - Local only.md",
+			task("TASK-2", "Local only task"),
+		);
+
+		// Warms the shared corpus at the current branch tips.
+		expect((await watcherCore.getTask("TASK-1"))?.title).toBe("Before ref move");
+
+		// Moving the tip from a second worktree leaves this project's watched
+		// directories untouched, so only ref-fingerprint comparison can notice it.
+		const worktreeDir = trackDir("worktree");
+		await $`git worktree add ${worktreeDir} feature-stale`.cwd(testDir).quiet();
+		const worktreeTaskPath = join(worktreeDir, "backlog", "tasks", "task-1 - Branch.md");
+		await Bun.write(worktreeTaskPath, serializeTask(task("TASK-1", "After ref move")));
+		await $`git add -A`.cwd(worktreeDir).quiet();
+		await $`git -c user.name="Backlog Test" -c user.email="test@example.com" commit -m "Move branch tip"`
+			.cwd(worktreeDir)
+			.quiet();
+
+		// Deleting a local-only task with no branch-side copy sends the rename watcher
+		// through findIdentity's fallback: it loads the full corpus purely to confirm the
+		// task is gone, and that throwaway load must not claim the moved refs on behalf
+		// of the store.
+		const store = await watcherCore.getContentStore();
+		await unlink(deletedTaskPath);
+		await waitUntil(
+			() => store.resolveTaskForRead("TASK-2").status === "not-found",
+			"watched deletion with no branch-side copy",
+			getPlatformTimeout(3000),
+		);
+
+		expect((await watcherCore.getTask("TASK-1"))?.title).toBe("After ref move");
+	});
+
 	it("allocates past a remote task pushed inside the read refresh window", async () => {
 		await saveRemoteEnabledConfig("Core allocation freshness");
 		const originDir = trackDir("origin");
@@ -321,6 +363,72 @@ describe("Core shared task corpus regressions", () => {
 			git.fetch = originalFetch;
 		}
 		expect(fetches).toBe(1);
+	});
+
+	it("allocates past a remote task pushed while a non-forced fetch is in flight", async () => {
+		await saveRemoteEnabledConfig("Core allocation in-flight freshness");
+		const originDir = trackDir("origin");
+		await mkdir(originDir, { recursive: true });
+		await $`git init --bare -b main`.cwd(originDir).quiet();
+		await writeTask(core.filesystem.tasksDir, "task-1 - Local.md", task("TASK-1", "Local task"));
+		await commit("Add local task", recentCommitDate(2));
+		await $`git remote add origin ${originDir}`.cwd(testDir).quiet();
+		await $`git push -u origin main`.cwd(testDir).quiet();
+
+		const git = core.gitOps;
+		const originalFetch = git.fetch.bind(git);
+		let fetches = 0;
+		let releaseFirstFetch: () => void = () => {};
+		const firstFetchStarted = new Promise<void>((resolve) => {
+			git.fetch = async (...args) => {
+				fetches += 1;
+				const isFirstFetch = fetches === 1;
+				// Capture the remote state now (before any later push), but withhold
+				// resolution until released, so the caller is still "in flight" per the
+				// remoteRefRefreshPromise coalescing while the push below lands.
+				const result = await originalFetch(...args);
+				if (isFirstFetch) {
+					resolve();
+					await new Promise<void>((releaseResolve) => {
+						releaseFirstFetch = releaseResolve;
+					});
+				}
+				return result;
+			};
+		});
+
+		try {
+			// A read starts a non-forced fetch and blocks in flight.
+			const readPromise = core.loadTasks();
+			await firstFetchStarted;
+
+			// A contributor pushes a new task while that fetch is still running, so it
+			// is invisible to the fetch already in flight.
+			const contributorDir = trackDir("contributor");
+			await $`git clone ${originDir} ${contributorDir}`.quiet();
+			await $`git switch -c contributed`.cwd(contributorDir).quiet();
+			await writeTask(
+				join(contributorDir, "backlog", "tasks"),
+				"task-2 - Contributed.md",
+				task("TASK-2", "Contributed"),
+			);
+			await $`git add -A`.cwd(contributorDir).quiet();
+			await $`git -c user.name="Backlog Test" -c user.email="test@example.com" commit -m "Contribute task"`
+				.cwd(contributorDir)
+				.quiet();
+			await $`git push -u origin contributed`.cwd(contributorDir).quiet();
+
+			// A forced allocation joins the in-flight fetch; it must not treat that
+			// stale-at-start fetch as sufficient once it observes the push above.
+			const allocationPromise = core.generateNextId();
+			releaseFirstFetch();
+
+			const [nextId] = await Promise.all([allocationPromise, readPromise]);
+			expect(nextId).toBe("TASK-3");
+		} finally {
+			git.fetch = originalFetch;
+		}
+		expect(fetches).toBe(2);
 	});
 
 	it("cancels a load before it starts a remote refresh", async () => {

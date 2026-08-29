@@ -15,6 +15,7 @@ import {
 	type McpClientSetupKey,
 	runMcpClientSetupCommand,
 } from "../utils/mcp-client-setup.ts";
+import { getTaskPrefixError } from "../utils/prefix-config.ts";
 import type { Core } from "./backlog.ts";
 
 export const MCP_SERVER_NAME = "backlog";
@@ -115,6 +116,11 @@ export async function initializeProject(
 	} = options;
 
 	const isReInitialization = !!existingConfig;
+	// An explicitly requested prefix is always validated; existing prefixes are preserved below untouched.
+	const taskPrefixError = getTaskPrefixError(advancedConfig.taskPrefix ?? "");
+	if (taskPrefixError) {
+		throw new Error(taskPrefixError);
+	}
 	const projectRoot = core.filesystem.rootDir;
 	const effectiveFilesystemOnly = filesystemOnly || existingConfig?.filesystemOnly === true;
 	const normalizedAdvancedConfig = effectiveFilesystemOnly

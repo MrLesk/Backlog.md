@@ -84,7 +84,13 @@ import {
 	runMcpClientSetupCommand,
 } from "./utils/mcp-client-setup.ts";
 import { resolveMilestoneInputForStorage } from "./utils/milestone-storage.ts";
-import { DRAFT_PREFIX, hasAnyPrefix, normalizeId } from "./utils/prefix-config.ts";
+import {
+	DRAFT_PREFIX,
+	getTaskPrefixError,
+	hasAnyPrefix,
+	isReservedTaskPrefix,
+	normalizeId,
+} from "./utils/prefix-config.ts";
 import { formatValidPriorityValues, getPriorityOptions, resolvePriorityValue } from "./utils/priority-config.ts";
 import { type ReadOutputMode, resolveReadOutputMode } from "./utils/read-output-mode.ts";
 import { getTaskReadiness, loadReadinessGraph } from "./utils/readiness.ts";
@@ -900,6 +906,11 @@ addHelpSchema(program.command("init [projectName]"), {
 			description: "Instruction files to create; cursor writes AGENTS.md; comma-separated",
 		},
 		{ name: "--backlog-dir", type: "Project-relative path", description: "backlog, .backlog, or custom path" },
+		{
+			name: "--task-prefix",
+			type: "String (letters only; default: task)",
+			description: "Task ID prefix; draft, doc, and decision are reserved",
+		},
 		{ name: "--no-git", type: "Boolean", description: "Initialize without Git integration" },
 	],
 	writes: "Backlog directory, config file, optional agent instruction files, and optional git commit",
@@ -930,7 +941,10 @@ addHelpSchema(program.command("init [projectName]"), {
 	)
 	.option("--backlog-dir <path>", "backlog folder for init: backlog, .backlog, or a custom project-relative path")
 	.option("--config-location <location>", "config location for init: folder or root")
-	.option("--task-prefix <prefix>", "custom task prefix, letters only (default: task)")
+	.option(
+		"--task-prefix <prefix>",
+		"custom task prefix, letters only (default: task); draft, doc, and decision are reserved",
+	)
 	.option("--no-git", "initialize without Git integration")
 	.option("--defaults", "use default values for all prompts")
 	.action(
@@ -1211,16 +1225,8 @@ addHelpSchema(program.command("init [projectName]"), {
 				if (!taskPrefix && !isNonInteractive && !isReInitialization) {
 					const enteredPrefix = await clack.text({
 						message: "Task prefix (default: task):",
-						validate: (value) => {
-							const normalized = String(value ?? "").trim();
-							if (!normalized) {
-								return undefined;
-							}
-							if (!/^[a-zA-Z]+$/.test(normalized)) {
-								return "Task prefix must contain only letters (a-z, A-Z).";
-							}
-							return undefined;
-						},
+						// The prompt trims what it accepts below, so judge the trimmed value here too.
+						validate: (value) => getTaskPrefixError(String(value ?? "").trim()),
 					});
 					if (clack.isCancel(enteredPrefix)) {
 						abortInitialization();
@@ -1228,9 +1234,9 @@ addHelpSchema(program.command("init [projectName]"), {
 					}
 					taskPrefix = String(enteredPrefix ?? "").trim();
 				}
-				// Validate task prefix if provided
-				if (taskPrefix && !/^[a-zA-Z]+$/.test(taskPrefix)) {
-					console.error("Task prefix must contain only letters (a-z, A-Z).");
+				const taskPrefixError = getTaskPrefixError(taskPrefix ?? "");
+				if (taskPrefixError) {
+					console.error(taskPrefixError);
 					process.exit(1);
 				}
 
@@ -5165,6 +5171,23 @@ addHelpSchema(program.command("doctor"), {
 		const cwd = await requireProjectRoot();
 		const core = new Core(cwd);
 		try {
+			const config = await core.filesystem.loadConfig();
+			const taskPrefix = config?.prefixes?.task;
+			const reservedTaskPrefix = taskPrefix && isReservedTaskPrefix(taskPrefix) ? taskPrefix : null;
+			if (reservedTaskPrefix) {
+				console.error(
+					`Task prefix "${reservedTaskPrefix}" collides with a reserved prefix (draft, doc, decision); tasks are misrouted as that entity type.`,
+				);
+				console.error(
+					"There is no automated migration. Rename the affected task files and IDs to a non-reserved prefix, then set task_prefix in the project config file to match.",
+				);
+				process.exitCode = 1;
+				if (options.fix) {
+					console.error("Resolve the reserved task prefix before running --fix.");
+					return;
+				}
+			}
+
 			const plan = await core.previewDuplicateTaskIdRepair({ includeBranches: true });
 			const contentIdentity = await core.diagnoseContentIdentity();
 			const contentIdentityBroken = hasContentIdentityIssues(contentIdentity);
@@ -5176,7 +5199,9 @@ addHelpSchema(program.command("doctor"), {
 				!contentIdentityBroken &&
 				!draftIdentityBroken
 			) {
-				console.log("No duplicate task, document, decision, or draft IDs found.");
+				if (!reservedTaskPrefix) {
+					console.log("No duplicate task, document, decision, or draft IDs found.");
+				}
 				return;
 			}
 

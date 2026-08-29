@@ -377,6 +377,54 @@ describe("Enhanced init command", () => {
 		expect(existingConfig?.prefixes?.task).toBe("BUG");
 	});
 
+	test("initializeProject should reject reserved task prefixes", async () => {
+		for (const taskPrefix of ["draft", "DOC", "Decision"]) {
+			const core = new Core(tmpDir);
+			await expect(
+				initializeProject(core, {
+					projectName: "Reserved Prefix Init",
+					integrationMode: "none",
+					advancedConfig: { taskPrefix },
+				}),
+			).rejects.toThrow(/reserved for drafts, docs, or decisions/);
+			expect(await Bun.file(join(tmpDir, "backlog", "config.yml")).exists()).toBe(false);
+		}
+	});
+
+	test("initializeProject should preserve an existing reserved prefix on re-init", async () => {
+		const core = new Core(tmpDir);
+		await initializeProject(core, {
+			projectName: "Legacy Reserved Prefix",
+			integrationMode: "none",
+			advancedConfig: { taskPrefix: "JIRA" },
+		});
+		const existingConfig = await core.filesystem.loadConfig();
+		if (!existingConfig) throw new Error("Missing test config");
+		existingConfig.prefixes = { task: "draft" };
+		await core.filesystem.saveConfig(existingConfig);
+
+		const result = await initializeProject(core, {
+			projectName: "Legacy Reserved Prefix",
+			integrationMode: "none",
+			existingConfig,
+			advancedConfig: { taskPrefix: "task" },
+		});
+
+		expect(result.config.prefixes?.task).toBe("draft");
+		const loadedConfig = await core.filesystem.loadConfig();
+		expect(loadedConfig?.prefixes?.task).toBe("draft");
+
+		// Re-init cannot introduce a reserved prefix either.
+		await expect(
+			initializeProject(core, {
+				projectName: "Legacy Reserved Prefix",
+				integrationMode: "none",
+				existingConfig,
+				advancedConfig: { taskPrefix: "doc" },
+			}),
+		).rejects.toThrow(/reserved for drafts, docs, or decisions/);
+	});
+
 	test("initializeProject should use custom taskPrefix from advancedConfig", async () => {
 		const core = new Core(tmpDir);
 
