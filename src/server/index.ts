@@ -26,7 +26,7 @@ import { DRAFT_PREFIX, extractAnyPrefix, getTaskPrefixError } from "../utils/pre
 import { formatValidPriorityValues, resolvePriorityValue } from "../utils/priority-config.ts";
 import { formatValidStatuses, getCanonicalStatuses, getValidStatuses } from "../utils/status.ts";
 import { isValidTaskId } from "../utils/task-id.ts";
-import { isAmbiguousTaskIdError } from "../utils/task-path.ts";
+import { isAmbiguousTaskIdError, LOCAL_TASK_LOOKUP_HINT } from "../utils/task-path.ts";
 import { normalizeUtcDateTime } from "../utils/utc-datetime.ts";
 import { getVersion } from "../utils/version.ts";
 
@@ -41,6 +41,18 @@ const DOCUMENT_TYPES = new Set<Document["type"]>(DOCUMENT_TYPE_VALUES);
  */
 function isDraftId(taskId: string): boolean {
 	return extractAnyPrefix(taskId) === DRAFT_PREFIX;
+}
+
+/**
+ * Lookups stay local on every surface, but the CLI's hint ends by telling the reader to open
+ * 'backlog browser' - nonsensical once the rejected save already happened there. Same fact,
+ * addressed to a reader who is already in the browser.
+ */
+const WEB_TASK_LOOKUP_HINT =
+	"Task lookups read only the local working copy; a task that exists only on another branch cannot be referenced yet.";
+
+function formatErrorForWeb(message: string): string {
+	return message.replace(LOCAL_TASK_LOOKUP_HINT, WEB_TASK_LOOKUP_HINT);
 }
 
 type DueDatePayloadResult = { ok: true; value: string | null | undefined } | { ok: false; error: string };
@@ -959,7 +971,7 @@ export class BacklogServer {
 				const message = error instanceof Error ? error.message : "Failed to create task";
 				return Response.json({ error: message }, { status: 409 });
 			}
-			const message = error instanceof Error ? error.message : "Failed to create task";
+			const message = formatErrorForWeb(error instanceof Error ? error.message : "Failed to create task");
 			return Response.json({ error: message }, { status: 400 });
 		}
 	}
@@ -1118,7 +1130,7 @@ export class BacklogServer {
 				: await this.core.updateTaskFromInput(taskId, updateInput);
 			return Response.json(updatedTask);
 		} catch (error) {
-			const message = error instanceof Error ? error.message : "Failed to update task";
+			const message = formatErrorForWeb(error instanceof Error ? error.message : "Failed to update task");
 			const conflict = isAmbiguousIdError(error) || isAmbiguousTaskIdError(error) || isTaskLockError(error);
 			return Response.json({ error: message }, { status: conflict ? 409 : 400 });
 		}
