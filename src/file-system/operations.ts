@@ -2054,15 +2054,15 @@ ${description || `Milestone: ${title}`}`,
 	// Utility methods
 	private sanitizeFilename(filename: string): string {
 		// Remove path-unsafe characters, then strip noisy punctuation before normalizing whitespace
-		return (
-			filename
-				.replace(/[<>:"/\\|?*]/g, "-")
-				// biome-ignore lint/complexity/noUselessEscapeInRegex: we need explicit escapes inside the character class
-				.replace(/['(),!@#$%^&+=\[\]{};]/g, "")
-				.replace(/\s+/g, "-")
-				.replace(/-+/g, "-")
-				.replace(/^-|-$/g, "")
-		);
+		const sanitized = filename
+			.replace(/[<>:"/\\|?*]/g, "-")
+			// biome-ignore lint/complexity/noUselessEscapeInRegex: we need explicit escapes inside the character class
+			.replace(/['(),!@#$%^&+=\[\]{};]/g, "")
+			.replace(/\s+/g, "-")
+			.replace(/-+/g, "-")
+			.replace(/^-|-$/g, "");
+		// A punctuation-only title sanitizes to nothing; fall back so filenames keep the "<id> - <title>.md" shape
+		return sanitized || "untitled";
 	}
 
 	private async ensureDirectoryExists(dirPath: string): Promise<void> {
