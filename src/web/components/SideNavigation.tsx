@@ -434,15 +434,20 @@ const SideNavigation = memo(function SideNavigation({
 		if (!searchQuery.trim()) {
 			return [];
 		}
-		const filtered = searchResults
-			.filter((result) => result.score === null || result.score <= 0.45)
-			.sort((a, b) => {
-				const scoreA = a.score ?? Number.POSITIVE_INFINITY;
-				const scoreB = b.score ?? Number.POSITIVE_INFINITY;
-				return scoreA - scoreB;
-			});
+		// No extra score cutoff: Fuse blends several weighted keys (title,
+		// bodyText, id, ...) into one score, so a result that matches well on
+		// one key but poorly on others can score well above any small constant
+		// even for an exact substring hit in the title - on a large,
+		// text-heavy project this hid most real matches. The server's own
+		// Fuse threshold already decided these are matches by returning them
+		// at all; sorting + slicing to 5 is enough to keep the dropdown short.
+		const sorted = [...searchResults].sort((a, b) => {
+			const scoreA = a.score ?? Number.POSITIVE_INFINITY;
+			const scoreB = b.score ?? Number.POSITIVE_INFINITY;
+			return scoreA - scoreB;
+		});
 
-		return filtered.slice(0, 5);
+		return sorted.slice(0, 5);
 	}, [searchQuery, searchResults]);
 
 	// Always show full lists in their sections, search results are separate
