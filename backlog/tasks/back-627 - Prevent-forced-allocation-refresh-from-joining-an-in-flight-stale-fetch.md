@@ -5,7 +5,7 @@ status: Done
 assignee:
   - '@claude'
 created_date: '2026-08-10 06:37'
-updated_date: '2026-08-29 18:00'
+updated_date: '2026-08-29 18:27'
 labels: []
 dependencies: []
 priority: medium
@@ -67,6 +67,8 @@ Maintainer review (takeover of PR #925): the contributor's diagnosis and fix wer
 Residual race (inherent, not introduced here): a push that lands during the second, post-request fetch is still invisible to that allocation. Closing that would need server-side reservation, not a client fetch.
 
 Residual hole found during maintainer review, deliberately left out of scope (needs a product decision): GitOperations.fetch has its own coalescing layer (this.fetches, keyed by remote, in src/git/operations.ts). Core's forced pre-wait guarantees Core's own remoteRefRefreshPromise slot is empty, and because GitOperations deletes its map entry in a finally before fetch() returns, the forced path does start a genuinely new git fetch in the common case. But generateNextDocId and generateNextDecisionId (src/utils/id-generators.ts) call core.gitOps.fetch() directly, bypassing Core's slot. If one of those is in flight when a forced task-ID refresh runs, Core sees an empty slot, calls git.fetch(), and joins the older git-level fetch -- reintroducing exactly the staleness this task closes. Narrow: it needs a concurrent doc/decision ID allocation in the same process (TUI or web server, not separate CLI invocations). Not fixed here because the obvious fix (a force flag that skips the git-level dedup) can put two concurrent git fetches on the same remote and risk ref lock contention, which is a bigger decision than this task's scope.
+
+Correction to the verification above: the two src/test/core.test.ts failures seen during review ('fails closed when an archive snapshot...' and 'keeps an ID occupied when equal-time branch records...') were not environmental and not caused by this branch. They were a time-bomb in main's own tests -- hardcoded commit dates that aged out of the activeBranchDays window -- and upstream fixed them in main commit 6c6f1843 'Fix expired hardcoded commit dates in core branch-record tests'. Rebased this branch onto that new main; src/test/core.test.ts is now 66 pass / 0 fail locally.
 <!-- SECTION:NOTES:END -->
 
 ## Final Summary
