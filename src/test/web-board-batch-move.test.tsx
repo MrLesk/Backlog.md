@@ -2,11 +2,18 @@ import { afterEach, describe, expect, it } from "bun:test";
 import { JSDOM } from "jsdom";
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
-import type { Task } from "../types/index.ts";
+import type { Milestone, Task } from "../types/index.ts";
 import Board from "../web/components/Board.tsx";
 import { apiClient, type MoveTasksPayload } from "../web/lib/api.ts";
 
 const STATUSES = ["To Do", "In Progress", "Done"];
+
+const MILESTONE: Milestone = {
+	id: "Release 1",
+	title: "Release 1",
+	description: "",
+	rawContent: "",
+};
 
 const buildTask = (id: string, ordinal: number): Task => ({
 	id,
@@ -58,6 +65,34 @@ const renderBoard = (onEditTask: (task: Task) => void = () => {}): HTMLElement =
 	return container as HTMLElement;
 };
 
+// A lane with no tasks is hidden, so the milestone lane needs a card of its own to exist at all.
+const MILESTONE_TASKS = [TASKS[0], TASKS[1], { ...TASKS[2], milestone: MILESTONE.title }] as Task[];
+
+const renderMilestoneBoard = (): HTMLElement => {
+	setupDom();
+	const container = document.getElementById("root");
+	expect(container).toBeTruthy();
+	activeRoot = createRoot(container as HTMLElement);
+	act(() => {
+		activeRoot?.render(
+			<Board
+				onEditTask={() => {}}
+				onNewTask={() => {}}
+				tasks={MILESTONE_TASKS}
+				statuses={STATUSES}
+				isLoading={false}
+				milestones={[MILESTONE.title]}
+				availableLabels={[]}
+				milestoneEntities={[MILESTONE]}
+				archivedMilestones={[]}
+				laneMode="milestone"
+				onLaneChange={() => {}}
+			/>,
+		);
+	});
+	return container as HTMLElement;
+};
+
 const getCard = (container: HTMLElement, taskId: string): HTMLElement => {
 	const card = Array.from(container.querySelectorAll('[draggable="true"]')).find((element) =>
 		element.textContent?.includes(taskId),
@@ -97,6 +132,21 @@ const dispatchDrop = (target: HTMLElement, data: Record<string, string>) => {
 const getColumn = (container: HTMLElement, status: string): HTMLElement => {
 	const heading = Array.from(container.querySelectorAll("h3")).find((element) => element.textContent === status);
 	const column = heading?.closest(".rounded-lg");
+	expect(column).toBeTruthy();
+	return column as HTMLElement;
+};
+
+/** Milestone view renders one column per status per lane, so the column has to be found inside its lane. */
+const getLaneColumn = (container: HTMLElement, laneLabel: string, status: string): HTMLElement => {
+	const lane = Array.from(container.querySelectorAll("h3")).find(
+		(heading) => heading.textContent?.trim() === laneLabel,
+	);
+	expect(lane).toBeTruthy();
+	const laneRoot = lane?.closest(".rounded-lg.border") as HTMLElement | null;
+	expect(laneRoot).toBeTruthy();
+	const column = Array.from((laneRoot as HTMLElement).querySelectorAll("h3"))
+		.find((heading) => heading.textContent === status)
+		?.closest(".rounded-lg");
 	expect(column).toBeTruthy();
 	return column as HTMLElement;
 };
@@ -235,6 +285,104 @@ describe("Web board batch move", () => {
 		} finally {
 			apiClient.moveTasks = originalMoveTasks;
 		}
+	});
+
+	it("carries the milestone lane a batch is dropped into, exactly as a single-card drop does", async () => {
+		const originalMoveTasks = apiClient.moveTasks.bind(apiClient);
+		const calls: MoveTasksPayload[] = [];
+		apiClient.moveTasks = async (payload) => {
+			calls.push(payload);
+			return { success: true, tasks: [], changedTasks: [], failures: [] };
+		};
+
+		try {
+			const container = renderMilestoneBoard();
+			await clickCard(getCard(container, "TASK-1"), { ctrlKey: true });
+			await clickCard(getCard(container, "TASK-2"), { ctrlKey: true });
+
+			await act(async () => {
+				dispatchDrop(getLaneColumn(container, MILESTONE.title, "In Progress"), {
+					"text/plain": "TASK-1",
+					"text/status": "To Do",
+				});
+				await Promise.resolve();
+			});
+
+			expect(calls).toEqual([
+				{ taskIds: ["TASK-1", "TASK-2"], targetStatus: "In Progress", targetMilestone: MILESTONE.title },
+			]);
+		} finally {
+			apiClient.moveTasks = originalMoveTasks;
+		}
+	});
+
+	it("clears the milestone when a batch is dropped into the no-milestone lane", async () => {
+		const originalMoveTasks = apiClient.moveTasks.bind(apiClient);
+		const calls: MoveTasksPayload[] = [];
+		apiClient.moveTasks = async (payload) => {
+			calls.push(payload);
+			return { success: true, tasks: [], changedTasks: [], failures: [] };
+		};
+
+		try {
+			const container = renderMilestoneBoard();
+			await clickCard(getCard(container, "TASK-1"), { ctrlKey: true });
+			await clickCard(getCard(container, "TASK-2"), { ctrlKey: true });
+
+			await act(async () => {
+				dispatchDrop(getLaneColumn(container, "Unassigned", "Done"), {
+					"text/plain": "TASK-1",
+					"text/status": "To Do",
+				});
+				await Promise.resolve();
+			});
+
+			expect(calls).toEqual([{ taskIds: ["TASK-1", "TASK-2"], targetStatus: "Done", targetMilestone: null }]);
+		} finally {
+			apiClient.moveTasks = originalMoveTasks;
+		}
+	});
+
+	it("leaves the milestone alone when the toolbar moves the selection", async () => {
+		const originalMoveTasks = apiClient.moveTasks.bind(apiClient);
+		const calls: MoveTasksPayload[] = [];
+		apiClient.moveTasks = async (payload) => {
+			calls.push(payload);
+			return { success: true, tasks: [], changedTasks: [], failures: [] };
+		};
+
+		try {
+			const container = renderMilestoneBoard();
+			await clickCard(getCard(container, "TASK-1"), { ctrlKey: true });
+
+			const select = container.querySelector("#batch-move-status") as HTMLSelectElement;
+			await act(async () => {
+				select.value = "Done";
+				select.dispatchEvent(new window.Event("change", { bubbles: true }));
+				await Promise.resolve();
+			});
+			await act(async () => {
+				findButton(container, "Move").dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
+				await Promise.resolve();
+			});
+
+			expect(calls).toEqual([{ taskIds: ["TASK-1"], targetStatus: "Done" }]);
+		} finally {
+			apiClient.moveTasks = originalMoveTasks;
+		}
+	});
+
+	// A range only ever adds to the selection, so a second shift-click reaches the same union whether
+	// it extends from the first anchor or from the card just clicked. This pins that down so a later
+	// change to replacing selections has to decide the anchor question deliberately.
+	it("reaches the same selection from two shift-clicks in a row", async () => {
+		const container = renderBoard();
+
+		await clickCard(getCard(container, "TASK-2"), { ctrlKey: true });
+		await clickCard(getCard(container, "TASK-1"), { shiftKey: true });
+		await clickCard(getCard(container, "TASK-3"), { shiftKey: true });
+
+		expect(selectedCardIds(container)).toEqual(["TASK-1", "TASK-2", "TASK-3"]);
 	});
 
 	it("reports the tasks that failed to move", async () => {

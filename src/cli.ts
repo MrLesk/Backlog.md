@@ -2969,9 +2969,15 @@ const draftEditTarget: EditCommandTarget = {
 };
 
 async function runEditCommand(target: EditCommandTarget, requestedIds: string[] | undefined, options: OptionValues) {
-	const taskIds = Array.from(
-		new Set((requestedIds ?? []).map((value) => String(value).trim()).filter((value) => value.length > 0)),
-	);
+	// Listing the same task twice is a slip, not a request to edit it twice, so identities that
+	// compare equal collapse to the first spelling the user typed.
+	const taskIds: string[] = [];
+	for (const value of requestedIds ?? []) {
+		const trimmed = String(value).trim();
+		if (!trimmed) continue;
+		if (taskIds.some((seen) => taskIdsEqual(seen, trimmed))) continue;
+		taskIds.push(trimmed);
+	}
 	const taskId = taskIds[0];
 	const shouldUseWizard = hasInteractiveTTY && !hasEditFieldFlags(options);
 	if (!shouldUseWizard && !taskId) {
@@ -3376,8 +3382,6 @@ async function runEditCommand(target: EditCommandTarget, requestedIds: string[] 
 		editArgs.definitionOfDoneUncheck = uncheckDod;
 	}
 
-	const usePlainOutput = isPlainRequested(options);
-
 	if (taskIds.length === 1) {
 		let updatedTask: Task;
 		try {
@@ -3388,7 +3392,7 @@ async function runEditCommand(target: EditCommandTarget, requestedIds: string[] 
 			return;
 		}
 
-		if (usePlainOutput) {
+		if (isPlainRequested(options)) {
 			console.log(formatTaskPlainText(updatedTask));
 			return;
 		}
@@ -3398,12 +3402,12 @@ async function runEditCommand(target: EditCommandTarget, requestedIds: string[] 
 	}
 
 	// A batch writes the same change to independent files, so one failure must not stop the rest.
+	// The outcome of each task is the useful output here, so a batch reports one line per task
+	// rather than repeating a full task body for every ID.
 	for (const task of resolvedTasks) {
 		try {
 			const updated = await target.update(core, task, buildTaskUpdateInput(editArgs));
-			console.log(
-				usePlainOutput ? formatTaskPlainText(updated) : `Updated ${target.label.toLowerCase()} ${updated.id}`,
-			);
+			console.log(`Updated ${target.label.toLowerCase()} ${updated.id}`);
 		} catch (error) {
 			editFailures.push({ taskId: task.id, message: formatTaskEditError(error, task.id, target.label.toLowerCase()) });
 		}

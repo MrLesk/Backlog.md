@@ -24,6 +24,7 @@ export interface ReorderTaskPayload {
 export interface MoveTasksPayload {
 	taskIds: string[];
 	targetStatus: string;
+	targetMilestone?: string | null;
 }
 
 export interface MoveTasksResult {

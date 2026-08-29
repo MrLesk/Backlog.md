@@ -96,6 +96,29 @@ describe("BacklogServer batch move endpoint", () => {
 		expect((await core.filesystem.loadTask("task-1"))?.status).toBe("Done");
 	});
 
+	it("applies the milestone lane the request names", async () => {
+		const { status, payload } = await postMove({
+			taskIds: ["task-1", "task-2"],
+			targetStatus: "Done",
+			targetMilestone: "Release 1",
+		});
+
+		expect(status).toBe(200);
+		expect(payload.success).toBe(true);
+		expect((await core.filesystem.loadTask("task-1"))?.milestone).toBe("Release 1");
+		expect((await core.filesystem.loadTask("task-2"))?.milestone).toBe("Release 1");
+	});
+
+	it("clears the milestone for the no-milestone lane and leaves it alone when unnamed", async () => {
+		await postMove({ taskIds: ["task-1", "task-2"], targetStatus: "To Do", targetMilestone: "Release 1" });
+
+		await postMove({ taskIds: ["task-1"], targetStatus: "Done", targetMilestone: null });
+		await postMove({ taskIds: ["task-2"], targetStatus: "Done" });
+
+		expect((await core.filesystem.loadTask("task-1"))?.milestone).toBeUndefined();
+		expect((await core.filesystem.loadTask("task-2"))?.milestone).toBe("Release 1");
+	});
+
 	it("rejects a request without task IDs", async () => {
 		const { status, payload } = await postMove({ taskIds: [], targetStatus: "Done" });
 

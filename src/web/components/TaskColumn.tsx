@@ -26,7 +26,7 @@ interface TaskColumnProps {
   selectionAnchorId?: string | null;
   onToggleTaskSelection?: (taskId: string) => void;
   onSelectTaskRange?: (taskIds: string[]) => void;
-  onBatchMove?: (targetStatus: string) => void;
+  onBatchMove?: (targetStatus: string, targetMilestone?: string | null) => void;
 }
 
 type CreatedDateSortDirection = 'asc' | 'desc';
@@ -155,8 +155,10 @@ const TaskColumn: React.FC<TaskColumnProps> = ({
     if (!droppedTaskId) return;
 
     // Dragging one card of a selection moves the whole selection, so the drop skips reordering.
+    // The lane travels with the column exactly as it does for a single-card drop below, so a batch
+    // dropped into a milestone lane lands in that milestone too.
     if (onBatchMove && selectedTaskIds && selectedTaskIds.length > 1 && selectedTaskIds.includes(droppedTaskId)) {
-      onBatchMove(title);
+      onBatchMove(title, targetMilestone);
       return;
     }
 

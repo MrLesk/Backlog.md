@@ -316,6 +316,8 @@ const Board: React.FC<BoardProps> = ({
     setSelectionAnchorId(taskId);
   }, []);
 
+  // A range only adds to the selection, so leaving the anchor on the first clicked card reaches the
+  // same union a moved anchor would. The anchor moves on ctrl-click, where it does change the range.
   const selectTaskRange = React.useCallback((taskIds: string[]) => {
     setSelectedTaskIds((previous) => {
       const next = [...previous];
@@ -335,13 +337,19 @@ const Board: React.FC<BoardProps> = ({
     return () => document.removeEventListener('keydown', handleKeyDown);
   }, [selectedTaskIds.length, clearSelection]);
 
-  const handleBatchMove = async (targetStatus: string) => {
+  // targetMilestone is only supplied by a drop into a milestone lane; the toolbar moves the
+  // selection between columns and leaves every task's milestone alone.
+  const handleBatchMove = async (targetStatus: string, targetMilestone?: string | null) => {
     if (selectedTaskIds.length === 0 || !targetStatus) return;
     const taskIds = selectedTaskIds;
     clearSelection();
     setBatchMoveStatus('');
     try {
-      const result = await apiClient.moveTasks({ taskIds, targetStatus });
+      const result = await apiClient.moveTasks({
+        taskIds,
+        targetStatus,
+        ...(targetMilestone !== undefined ? { targetMilestone } : {}),
+      });
       setUpdateError(
         result.failures.length > 0
           ? `Could not move ${result.failures.length} of ${taskIds.length} tasks. ${result.failures

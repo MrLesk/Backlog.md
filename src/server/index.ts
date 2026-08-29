@@ -1782,6 +1782,14 @@ export class BacklogServer {
 			const body = await req.json();
 			const taskIds = Array.isArray(body.taskIds) ? body.taskIds.filter((id: unknown) => typeof id === "string") : [];
 			const targetStatus = typeof body.targetStatus === "string" ? body.targetStatus : "";
+			// Same shape as the reorder endpoint: a string names a lane, null is the no-milestone lane,
+			// and an absent field leaves each task's milestone alone.
+			const targetMilestone =
+				typeof body.targetMilestone === "string"
+					? body.targetMilestone
+					: body.targetMilestone === null
+						? null
+						: undefined;
 
 			if (taskIds.length === 0 || !targetStatus) {
 				return Response.json({ error: "Missing required fields: taskIds and targetStatus" }, { status: 400 });
@@ -1790,6 +1798,7 @@ export class BacklogServer {
 			const { movedTasks, changedTasks, failures } = await this.core.moveTasksToStatus({
 				taskIds,
 				targetStatus,
+				targetMilestone,
 				commitMessage: `Move ${taskIds.length} tasks to ${targetStatus}`,
 			});
 

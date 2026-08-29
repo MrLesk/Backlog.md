@@ -272,6 +272,25 @@ function formatMissingDependenciesError(invalid: string[]): Error {
 	);
 }
 
+/**
+ * A board move rewrites the task file, so a task that belongs to another branch can only be moved
+ * from that branch. Returns the reason to report, or null when the task is local and writable.
+ */
+function crossBranchMoveReason(task: Task, verb: "reordered" | "moved"): string | null {
+	if (!task.branch) return null;
+	return `Task ${task.id} exists in branch "${task.branch}" and cannot be ${verb} from the current branch. Switch to that branch to modify it.`;
+}
+
+/**
+ * Normalize the milestone a board move targets. A named lane stores its trimmed name, while the
+ * board's no-milestone lane arrives as null or a blank string and clears the field.
+ */
+function normalizeTargetMilestone(targetMilestone: string | null | undefined): string | undefined {
+	if (typeof targetMilestone !== "string") return undefined;
+	const trimmed = targetMilestone.trim();
+	return trimmed.length > 0 ? trimmed : undefined;
+}
+
 export class Core {
 	public fs: FileSystem;
 	public git: GitOperations;
@@ -2680,6 +2699,47 @@ export class Core {
 		}
 	}
 
+	/**
+	 * Resolve the task ids of a board move against a freshly refreshed content store.
+	 *
+	 * Ids are trimmed and de-duplicated by normalized identity while keeping the caller's spelling so
+	 * messages echo what was asked for. An identity that matches more than one file fails closed with
+	 * the ambiguity error instead of picking a winner. An id the store does not know comes back as
+	 * `task: null` with no error, because a gap means different things to different callers.
+	 *
+	 * The failure semantics stay with the callers on purpose: {@link reorderTask} raises the first
+	 * problem and writes all or nothing, while {@link moveTasksToStatus} reports problems per task and
+	 * moves the tasks that did resolve.
+	 */
+	private async resolveTasksForBoardMove(taskIds: readonly string[]): Promise<{
+		store: ContentStore;
+		resolutions: Array<{ taskId: string; task: Task | null; ambiguity: AmbiguousTaskIdError | null }>;
+	}> {
+		const requestedIds: string[] = [];
+		const seen = new Set<string>();
+		for (const rawId of taskIds) {
+			const trimmed = String(rawId || "").trim();
+			if (!trimmed) continue;
+			const key = normalizeTaskId(trimmed);
+			if (seen.has(key)) continue;
+			seen.add(key);
+			requestedIds.push(trimmed);
+		}
+
+		const store = await this.getContentStore();
+		await store.refreshTasks();
+
+		const resolutions = requestedIds.map((taskId) => {
+			const resolution = store.resolveTaskForMutation(normalizeTaskId(taskId));
+			if (resolution.status === "ambiguous") {
+				return { taskId, task: null, ambiguity: new AmbiguousTaskIdError(taskId, resolution.candidates) };
+			}
+			return { taskId, task: resolution.status === "found" ? resolution.task : null, ambiguity: null };
+		});
+
+		return { store, resolutions };
+	}
+
 	async reorderTask(params: {
 		taskId: string;
 		targetStatus: string;
@@ -2701,6 +2761,8 @@ export class Core {
 			throw new Error("orderedTaskIds must include the task being moved");
 		}
 
+		// A repeated id means the caller sent a corrupt ordering, so reject it rather than let the
+		// shared resolver quietly drop it and reorder the column into an order nobody asked for.
 		const seen = new Set<string>();
 		for (const id of orderedTaskIds) {
 			if (seen.has(id)) {
@@ -2709,16 +2771,13 @@ export class Core {
 			seen.add(id);
 		}
 
-		const store = await this.getContentStore();
-		await store.refreshTasks();
-		const loadedTasks = orderedTaskIds.map((id) => {
-			const resolution = store.resolveTaskForMutation(id);
-			if (resolution.status === "ambiguous") throw new AmbiguousTaskIdError(id, resolution.candidates);
-			return resolution.status === "found" ? resolution.task : null;
-		});
+		const { resolutions } = await this.resolveTasksForBoardMove(orderedTaskIds);
+		for (const resolution of resolutions) {
+			if (resolution.ambiguity) throw resolution.ambiguity;
+		}
 
-		// Filter out any tasks that couldn't be loaded (may have been moved/deleted)
-		const validTasks = loadedTasks.filter((t): t is Task => t !== null);
+		// Tasks that couldn't be loaded (may have been moved/deleted) drop out of the ordering
+		const validTasks = resolutions.map((resolution) => resolution.task).filter((t): t is Task => t !== null);
 
 		// Verify the moved task itself exists
 		const movedTask = validTasks.find((t) => t.id === taskId);
@@ -2727,19 +2786,13 @@ export class Core {
 		}
 
 		// Reject reordering tasks from other branches - they can only be modified in their source branch
-		if (movedTask.branch) {
-			throw new Error(
-				`Task ${taskId} exists in branch "${movedTask.branch}" and cannot be reordered from the current branch. Switch to that branch to modify it.`,
-			);
+		const crossBranchReason = crossBranchMoveReason(movedTask, "reordered");
+		if (crossBranchReason) {
+			throw new Error(crossBranchReason);
 		}
 
 		const hasTargetMilestone = params.targetMilestone !== undefined;
-		const normalizedTargetMilestone =
-			params.targetMilestone === null
-				? undefined
-				: typeof params.targetMilestone === "string" && params.targetMilestone.trim().length > 0
-					? params.targetMilestone.trim()
-					: undefined;
+		const normalizedTargetMilestone = normalizeTargetMilestone(params.targetMilestone);
 
 		// Calculate target index within the valid tasks list
 		const validOrderedIds = orderedTaskIds.filter((id) => validTasks.some((t) => t.id === id));
@@ -2806,6 +2859,7 @@ export class Core {
 	async moveTasksToStatus(params: {
 		taskIds: string[];
 		targetStatus: string;
+		targetMilestone?: string | null;
 		commitMessage?: string;
 		autoCommit?: boolean;
 		defaultStep?: number;
@@ -2814,39 +2868,23 @@ export class Core {
 		if (!targetStatus) throw new Error("targetStatus is required");
 		const defaultStep = params.defaultStep ?? DEFAULT_ORDINAL_STEP;
 
-		const requestedIds: string[] = [];
-		const seen = new Set<string>();
-		for (const rawId of params.taskIds) {
-			const trimmed = String(rawId || "").trim();
-			if (!trimmed) continue;
-			const key = normalizeTaskId(trimmed);
-			if (seen.has(key)) continue;
-			seen.add(key);
-			requestedIds.push(trimmed);
-		}
-		if (requestedIds.length === 0) throw new Error("taskIds must include at least one task");
-
-		const store = await this.getContentStore();
-		await store.refreshTasks();
+		const { store, resolutions } = await this.resolveTasksForBoardMove(params.taskIds);
+		if (resolutions.length === 0) throw new Error("taskIds must include at least one task");
 
 		const failures: Array<{ taskId: string; reason: string }> = [];
 		const tasksToMove: Task[] = [];
-		for (const taskId of requestedIds) {
-			const resolution = store.resolveTaskForMutation(normalizeTaskId(taskId));
-			if (resolution.status === "ambiguous") {
-				failures.push({ taskId, reason: new AmbiguousTaskIdError(taskId, resolution.candidates).message });
+		for (const { taskId, task, ambiguity } of resolutions) {
+			if (ambiguity) {
+				failures.push({ taskId, reason: ambiguity.message });
 				continue;
 			}
-			if (resolution.status !== "found") {
+			if (!task) {
 				failures.push({ taskId, reason: `Task ${taskId} not found.` });
 				continue;
 			}
-			const task = resolution.task;
-			if (task.branch) {
-				failures.push({
-					taskId,
-					reason: `Task ${task.id} exists in branch "${task.branch}" and cannot be moved from the current branch. Switch to that branch to modify it.`,
-				});
+			const crossBranchReason = crossBranchMoveReason(task, "moved");
+			if (crossBranchReason) {
+				failures.push({ taskId, reason: crossBranchReason });
 				continue;
 			}
 			tasksToMove.push(task);
@@ -2855,6 +2893,12 @@ export class Core {
 		if (tasksToMove.length === 0) {
 			return { movedTasks: [], changedTasks: [], failures };
 		}
+
+		// A drop into a milestone lane means the lane as much as the column, so the batch carries the
+		// same milestone semantics as a single-task reorder: the field is only touched when the caller
+		// names a lane, and the board's no-milestone lane clears it.
+		const hasTargetMilestone = params.targetMilestone !== undefined;
+		const normalizedTargetMilestone = normalizeTargetMilestone(params.targetMilestone);
 
 		// The batch appends to the end of the target column, so only the moved tasks get a new
 		// ordinal. Tasks already in the column keep theirs and stay out of the write set.
@@ -2867,13 +2911,18 @@ export class Core {
 		const movedTasks = tasksToMove.map((task, index) => ({
 			...task,
 			status: targetStatus,
+			...(hasTargetMilestone ? { milestone: normalizedTargetMilestone } : {}),
 			ordinal: lastOrdinal + defaultStep * (index + 1),
 		}));
 
 		const changedTasks = movedTasks.filter((task, index) => {
 			const original = tasksToMove[index];
 			if (!original) return true;
-			return original.status !== task.status || (original.ordinal ?? null) !== task.ordinal;
+			return (
+				original.status !== task.status ||
+				(original.ordinal ?? null) !== task.ordinal ||
+				(original.milestone ?? "") !== (task.milestone ?? "")
+			);
 		});
 
 		if (changedTasks.length > 0) {
