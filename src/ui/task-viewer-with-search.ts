@@ -10,7 +10,7 @@ import {
 	formatDateForDisplay,
 	formatTaskPlainText,
 } from "../formatters/task-plain-text.ts";
-import type { Milestone, Task, TaskSearchResult } from "../types/index.ts";
+import type { LabelMatchMode, Milestone, Task, TaskSearchResult } from "../types/index.ts";
 import { copyToClipboard } from "../utils/clipboard.ts";
 import { areLabelSelectionsEqual, collectAvailableLabels, labelsToLower } from "../utils/label-filter.ts";
 import {
@@ -29,7 +29,7 @@ import {
 	type ReadinessGraph,
 } from "../utils/readiness.ts";
 import { canonicalTaskId, taskIdsEqual } from "../utils/task-id.ts";
-import { applyTaskFilters, createTaskSearchIndex, type LabelMatchMode } from "../utils/task-search.ts";
+import { applyTaskFilters, createTaskSearchIndex } from "../utils/task-search.ts";
 import { attachSubtaskSummaries } from "../utils/task-subtasks.ts";
 import { getTaskTypeValues, resolveTaskTypeValues } from "../utils/task-type-config.ts";
 import { formatAcceptanceCriteriaProgress } from "./acceptance-criteria-progress.ts";

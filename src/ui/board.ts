@@ -7,7 +7,7 @@ import {
 	generateMilestoneGroupedBoard,
 } from "../board.ts";
 import { type Core, createRuntimeCore } from "../core/backlog.ts";
-import type { Milestone, Task, TaskCreateInput } from "../types/index.ts";
+import type { LabelMatchMode, Milestone, Task, TaskCreateInput } from "../types/index.ts";
 import { copyToClipboard } from "../utils/clipboard.ts";
 import { areLabelSelectionsEqual, collectAvailableLabels } from "../utils/label-filter.ts";
 import {
@@ -17,7 +17,7 @@ import {
 } from "../utils/milestone-filter.ts";
 import { getPriorityOptions } from "../utils/priority-config.ts";
 import { getProjectValues, resolveProjectValues } from "../utils/project-config.ts";
-import { applySharedTaskFilters, createTaskSearchIndex, type LabelMatchMode } from "../utils/task-search.ts";
+import { applyTaskFilters, createTaskSearchIndex } from "../utils/task-search.ts";
 import { compareTaskIds } from "../utils/task-sorting.ts";
 import { getTaskTypeValues, resolveTaskTypeValues } from "../utils/task-type-config.ts";
 import { taskContentSignature } from "../utils/task-watcher.ts";
@@ -476,7 +476,7 @@ export async function renderBoardTui(
 				filteredTasks = [...currentTasks];
 			} else {
 				const searchIndex = createTaskSearchIndex(currentTasks);
-				filteredTasks = applySharedTaskFilters(
+				filteredTasks = applyTaskFilters(
 					currentTasks,
 					{
 						query: sharedFilters.searchQuery,
