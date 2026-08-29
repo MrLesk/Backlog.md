@@ -3,11 +3,11 @@ id: BACK-637
 title: >-
   Preserve consecutive blank lines inside fenced code blocks in notes (issue
   930)
-status: In Progress
+status: Done
 assignee:
   - '@grok'
 created_date: '2026-08-22 12:02'
-updated_date: '2026-08-26 21:47'
+updated_date: '2026-08-29 18:14'
 labels: []
 dependencies: []
 ordinal: 272000
