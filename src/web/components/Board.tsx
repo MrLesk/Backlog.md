@@ -342,6 +342,26 @@ const Board: React.FC<BoardProps> = ({
   const handleBatchMove = async (targetStatus: string, targetMilestone?: string | null) => {
     if (selectedTaskIds.length === 0 || !targetStatus) return;
     const taskIds = selectedTaskIds;
+    const selectedTasks = taskIds
+      .map((taskId) => {
+        const resolution = resolveTaskById(tasks, taskId);
+        return resolution.status === 'found' ? resolution.task : undefined;
+      })
+      .filter((task): task is Task => task !== undefined);
+
+    // Dropping the selection back where it already sits changes nothing, so it stays a pure no-op:
+    // no request, no refresh, and the selection survives so the drag can be retried.
+    const landsWhereItAlreadyIs =
+      selectedTasks.length === taskIds.length &&
+      selectedTasks.every(
+        (task) =>
+          task.status === targetStatus &&
+          (targetMilestone === undefined ||
+            canonicalizeMilestone(task.milestone) === canonicalizeMilestone(targetMilestone))
+      );
+    if (landsWhereItAlreadyIs) return;
+
+    const requestTask = selectedTasks[0];
     clearSelection();
     setBatchMoveStatus('');
     try {
@@ -357,7 +377,12 @@ const Board: React.FC<BoardProps> = ({
               .join(' ')}`
           : null
       );
-      if (onRefreshData) await onRefreshData();
+      // Feed the moved tasks back through the board's own store update, exactly as a single-card
+      // reorder does. Reloading every board resource instead remounts the whole view.
+      const movedTasks = result.changedTasks ?? result.tasks;
+      if (requestTask && onTasksUpdated && movedTasks.length > 0) {
+        onTasksUpdated(movedTasks, requestTask);
+      } else if (onRefreshData) await onRefreshData();
     } catch (err) {
       setUpdateError(err instanceof Error ? err.message : 'Failed to move tasks');
     }

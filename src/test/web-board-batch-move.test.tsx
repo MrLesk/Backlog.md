@@ -40,7 +40,13 @@ const setupDom = () => {
 	globalThis.navigator = dom.window.navigator as unknown as Navigator;
 };
 
-const renderBoard = (onEditTask: (task: Task) => void = () => {}): HTMLElement => {
+const renderBoard = (
+	onEditTask: (task: Task) => void = () => {},
+	extra: {
+		onTasksUpdated?: (tasks: Task[], requestTask: Task) => void;
+		onRefreshData?: () => Promise<void>;
+	} = {},
+): HTMLElement => {
 	setupDom();
 	const container = document.getElementById("root");
 	expect(container).toBeTruthy();
@@ -59,6 +65,8 @@ const renderBoard = (onEditTask: (task: Task) => void = () => {}): HTMLElement =
 				archivedMilestones={[]}
 				laneMode="none"
 				onLaneChange={() => {}}
+				onTasksUpdated={extra.onTasksUpdated}
+				onRefreshData={extra.onRefreshData}
 			/>,
 		);
 	});
@@ -127,6 +135,26 @@ const dispatchDrop = (target: HTMLElement, data: Record<string, string>) => {
 		value: { setData: () => {}, getData: (key: string) => data[key] ?? "", effectAllowed: "" },
 	});
 	target.dispatchEvent(event);
+};
+
+const dispatchDragStart = async (
+	card: HTMLElement,
+): Promise<Array<{ element: HTMLElement; x: number; y: number }>> => {
+	const dragImages: Array<{ element: HTMLElement; x: number; y: number }> = [];
+	const event = new window.Event("dragstart", { bubbles: true, cancelable: true });
+	Object.defineProperty(event, "dataTransfer", {
+		value: {
+			setData: () => {},
+			getData: () => "",
+			effectAllowed: "",
+			setDragImage: (element: HTMLElement, x: number, y: number) => dragImages.push({ element, x, y }),
+		},
+	});
+	await act(async () => {
+		card.dispatchEvent(event);
+		await Promise.resolve();
+	});
+	return dragImages;
 };
 
 const getColumn = (container: HTMLElement, status: string): HTMLElement => {
@@ -383,6 +411,122 @@ describe("Web board batch move", () => {
 		await clickCard(getCard(container, "TASK-3"), { shiftKey: true });
 
 		expect(selectedCardIds(container)).toEqual(["TASK-1", "TASK-2", "TASK-3"]);
+	});
+
+	// Releasing a card where it was picked up used to move the whole selection anyway, and the
+	// refresh that followed rebuilt every board resource, which reads as a full page reload.
+	it("does nothing when the selection is dropped back where it already is", async () => {
+		const originalMoveTasks = apiClient.moveTasks.bind(apiClient);
+		const calls: MoveTasksPayload[] = [];
+		apiClient.moveTasks = async (payload) => {
+			calls.push(payload);
+			return { success: true, tasks: [], changedTasks: [], failures: [] };
+		};
+		let refreshes = 0;
+
+		try {
+			const container = renderBoard(() => {}, { onRefreshData: async () => void refreshes++ });
+			await clickCard(getCard(container, "TASK-1"), { ctrlKey: true });
+			await clickCard(getCard(container, "TASK-2"), { ctrlKey: true });
+			const locationBefore = window.location.href;
+
+			await act(async () => {
+				dispatchDrop(getColumn(container, "To Do"), { "text/plain": "TASK-1", "text/status": "To Do" });
+				await Promise.resolve();
+			});
+
+			expect(calls).toEqual([]);
+			expect(refreshes).toBe(0);
+			expect(window.location.href).toBe(locationBefore);
+			// The drop changed nothing, so the selection is still there to drag somewhere else.
+			expect(selectedCardIds(container)).toEqual(["TASK-1", "TASK-2"]);
+		} finally {
+			apiClient.moveTasks = originalMoveTasks;
+		}
+	});
+
+	it("does nothing when the toolbar moves the selection to the status it already has", async () => {
+		const originalMoveTasks = apiClient.moveTasks.bind(apiClient);
+		const calls: MoveTasksPayload[] = [];
+		apiClient.moveTasks = async (payload) => {
+			calls.push(payload);
+			return { success: true, tasks: [], changedTasks: [], failures: [] };
+		};
+
+		try {
+			const container = renderBoard();
+			await clickCard(getCard(container, "TASK-1"), { ctrlKey: true });
+
+			const select = container.querySelector("#batch-move-status") as HTMLSelectElement;
+			await act(async () => {
+				select.value = "To Do";
+				select.dispatchEvent(new window.Event("change", { bubbles: true }));
+				await Promise.resolve();
+			});
+			await act(async () => {
+				findButton(container, "Move").dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
+				await Promise.resolve();
+			});
+
+			expect(calls).toEqual([]);
+		} finally {
+			apiClient.moveTasks = originalMoveTasks;
+		}
+	});
+
+	it("feeds a completed batch move through the board store rather than reloading the board", async () => {
+		const originalMoveTasks = apiClient.moveTasks.bind(apiClient);
+		const moved: Task[] = [
+			{ ...TASKS[0], status: "Done" } as Task,
+			{ ...TASKS[1], status: "Done" } as Task,
+		];
+		apiClient.moveTasks = async () => ({ success: true, tasks: moved, changedTasks: moved, failures: [] });
+		const updates: Array<{ tasks: Task[]; requestTask: Task }> = [];
+		let refreshes = 0;
+
+		try {
+			const container = renderBoard(() => {}, {
+				onTasksUpdated: (tasks, requestTask) => updates.push({ tasks, requestTask }),
+				onRefreshData: async () => void refreshes++,
+			});
+			await clickCard(getCard(container, "TASK-1"), { ctrlKey: true });
+			await clickCard(getCard(container, "TASK-2"), { ctrlKey: true });
+
+			await act(async () => {
+				dispatchDrop(getColumn(container, "Done"), { "text/plain": "TASK-1", "text/status": "To Do" });
+				await Promise.resolve();
+			});
+
+			expect(updates).toHaveLength(1);
+			expect(updates[0]?.tasks).toEqual(moved);
+			// The board matches the request task by identity, so it has to be the rendered object.
+			expect(updates[0]?.requestTask).toBe(TASKS[0] as Task);
+			expect(refreshes).toBe(0);
+		} finally {
+			apiClient.moveTasks = originalMoveTasks;
+		}
+	});
+
+	it("shows the whole selection in the drag image", async () => {
+		const container = renderBoard();
+		await clickCard(getCard(container, "TASK-1"), { ctrlKey: true });
+		await clickCard(getCard(container, "TASK-2"), { ctrlKey: true });
+
+		const dragImages = await dispatchDragStart(getCard(container, "TASK-1"));
+
+		expect(dragImages).toHaveLength(1);
+		const ghost = dragImages[0]?.element as HTMLElement;
+		// Two cards stacked behind a copy of the dragged card, plus the count.
+		expect(ghost.children).toHaveLength(4);
+		expect(ghost.lastElementChild?.textContent).toBe("2");
+		expect(ghost.textContent).toContain("TASK-1");
+	});
+
+	it("leaves the drag image alone when a single card is dragged", async () => {
+		const container = renderBoard();
+		await clickCard(getCard(container, "TASK-1"), { ctrlKey: true });
+
+		expect(await dispatchDragStart(getCard(container, "TASK-1"))).toEqual([]);
 	});
 
 	it("reports the tasks that failed to move", async () => {

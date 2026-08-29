@@ -345,6 +345,7 @@ const TaskColumn: React.FC<TaskColumnProps> = ({
               onUpdate={onTaskUpdate}
               onEdit={onEditTask}
               isSelected={selectedTaskIds?.includes(task.id) ?? false}
+              selectionCount={selectedTaskIds?.length ?? 0}
               onSelect={
                 onToggleTaskSelection
                   ? ({ shiftKey }) => {

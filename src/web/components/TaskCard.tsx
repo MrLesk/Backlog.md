@@ -18,8 +18,41 @@ interface TaskCardProps {
   availableProjects?: string[];
   dateFormat?: string;
   isSelected?: boolean;
+  selectionCount?: number;
   onSelect?: (event: { shiftKey: boolean }) => void;
 }
+
+// Dragging a selected card moves the whole selection, so the drag image has to show it. Stacking two
+// empty cards behind a copy of the dragged one, plus the count, keeps the board's own card styling.
+const buildSelectionDragImage = (source: HTMLElement, count: number): HTMLElement => {
+  const width = source.offsetWidth;
+  const height = source.offsetHeight;
+  const layer = (offset: number) => `position:absolute;top:${offset}px;left:${offset}px;width:${width}px;height:${height}px;margin:0;`;
+
+  const ghost = document.createElement('div');
+  ghost.style.cssText = `position:fixed;top:-1000px;left:-1000px;width:${width + 12}px;height:${height + 12}px;pointer-events:none;`;
+
+  for (const offset of [12, 6]) {
+    const shell = document.createElement('div');
+    shell.className = source.className;
+    shell.style.cssText = layer(offset);
+    ghost.appendChild(shell);
+  }
+
+  const front = source.cloneNode(true) as HTMLElement;
+  front.style.cssText = layer(0);
+  ghost.appendChild(front);
+
+  const badge = document.createElement('div');
+  badge.textContent = String(count);
+  badge.style.cssText =
+    'position:absolute;top:-8px;right:-8px;min-width:24px;height:24px;padding:0 6px;border-radius:9999px;' +
+    'background:#3b82f6;color:#ffffff;font-size:12px;font-weight:600;line-height:24px;text-align:center;' +
+    'box-shadow:0 1px 3px rgba(0,0,0,0.3);';
+  ghost.appendChild(badge);
+
+  return ghost;
+};
 
 const TaskCard: React.FC<TaskCardProps> = ({
   task,
@@ -32,6 +65,7 @@ const TaskCard: React.FC<TaskCardProps> = ({
   availableProjects,
   dateFormat,
   isSelected = false,
+  selectionCount = 0,
   onSelect,
 }) => {
   const [isDragging, setIsDragging] = React.useState(false);
@@ -61,6 +95,15 @@ const TaskCard: React.FC<TaskCardProps> = ({
       e.dataTransfer.setData('text/lane', laneId);
     }
     e.dataTransfer.effectAllowed = 'move';
+
+    if (isSelected && selectionCount > 1 && typeof e.dataTransfer.setDragImage === 'function') {
+      const ghost = buildSelectionDragImage(e.currentTarget as HTMLElement, selectionCount);
+      document.body.appendChild(ghost);
+      e.dataTransfer.setDragImage(ghost, 16, 16);
+      // The browser snapshots the element during setDragImage, so it only has to survive this tick.
+      setTimeout(() => ghost.remove(), 0);
+    }
+
     setIsDragging(true);
     onDragStart?.();
   };
