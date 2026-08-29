@@ -25,7 +25,7 @@
         "jsdom": "29.1.1",
         "lint-staged": "17.0.8",
         "mermaid": "11.16.1",
-        "neo-neo-bblessed": "1.0.9",
+        "neo-neo-bblessed": "1.0.10",
         "picocolors": "1.1.1",
         "proper-lockfile": "4.1.2",
         "react": "19.2.7",
@@ -49,9 +49,6 @@
     "@biomejs/biome",
     "bun",
   ],
-  "patchedDependencies": {
-    "neo-neo-bblessed@1.0.9": "patches/neo-neo-bblessed@1.0.9.patch",
-  },
   "packages": {
     "@antfu/install-pkg": ["@antfu/install-pkg@1.1.0", "", { "dependencies": { "package-manager-detector": "^1.3.0", "tinyexec": "^1.0.1" } }, "sha512-MGQsmw10ZyI+EJo45CdSER4zEb+p31LpDAFp2Z3gkSd1yqVZGi0Ebx++YTEMonJy4oChEMLsxZ64j8FH6sSqtQ=="],
 
@@ -879,7 +876,7 @@
 
     "negotiator": ["negotiator@1.0.0", "", {}, "sha512-8Ofs/AUQh8MaEcrlq5xOX0CQ9ypTF5dl78mjlMNfOK08fzpgTHQRQPBxcPlEtIw0yRpws+Zo/3r+5WRby7u3Gg=="],
 
-    "neo-neo-bblessed": ["neo-neo-bblessed@1.0.9", "", { "dependencies": { "@xterm/headless": "^5.5.0", "crc-32": "^1.2.2", "eastasianwidth": "^0.3.0", "jimp": "^1.6.0", "pngjs": "^7.0.0", "unicode-properties": "^1.4.1" }, "peerDependencies": { "node-pty": "^1.0.0" }, "optionalPeers": ["node-pty"], "bin": { "neo-neo-bblessed": "bin/tput.ts" } }, "sha512-QiHsh4BZnjV9PLzxW8ZvfBuGgkyUNYPSdk/NgT1a9xq3a6WdCOAWLjBRpbkKAukgDXQROGLfIKj/bpvDhCBjRg=="],
+    "neo-neo-bblessed": ["neo-neo-bblessed@1.0.10", "", { "dependencies": { "@xterm/headless": "^5.5.0", "crc-32": "^1.2.2", "eastasianwidth": "^0.3.0", "jimp": "^1.6.0", "pngjs": "^7.0.0", "unicode-properties": "^1.4.1" }, "peerDependencies": { "node-pty": "^1.0.0" }, "optionalPeers": ["node-pty"], "bin": { "neo-neo-bblessed": "bin/tput.ts" } }, "sha512-yMRryiO0PCxlGhhB/zZ8KtRXJVIGfHwNuv66gNOltJRzjcSrH0xp7WYEFdCBD/mCJtg9gKkvdKTRGtCmPvjXoQ=="],
 
     "nth-check": ["nth-check@2.1.1", "", { "dependencies": { "boolbase": "^1.0.0" } }, "sha512-lqjrjmaOoAnWfMmBPL+XNnynZh2+swxiX3WUE0s4yEHI6m+AwrK2UZOimIRl3X/4QctVqS8AiZjFqyOGrMXb/w=="],
 

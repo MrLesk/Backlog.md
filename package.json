@@ -40,7 +40,7 @@
     "jsdom": "29.1.1",
     "lint-staged": "17.0.8",
     "mermaid": "11.16.1",
-    "neo-neo-bblessed": "1.0.9",
+    "neo-neo-bblessed": "1.0.10",
     "picocolors": "1.1.1",
     "proper-lockfile": "4.1.2",
     "react": "19.2.7",
@@ -97,8 +97,5 @@
     "@biomejs/biome",
     "bun",
     "node-pty"
-  ],
-  "patchedDependencies": {
-    "neo-neo-bblessed@1.0.9": "patches/neo-neo-bblessed@1.0.9.patch"
-  }
+  ]
 }
