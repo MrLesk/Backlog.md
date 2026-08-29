@@ -7,7 +7,7 @@ status: Done
 assignee:
   - '@claude'
 created_date: '2026-08-10 06:37'
-updated_date: '2026-08-29 18:21'
+updated_date: '2026-08-29 18:32'
 labels: []
 dependencies: []
 priority: medium
@@ -65,6 +65,8 @@ Independently reproduced the regression: reverting only src/core/backlog.ts and 
 Rebased from the stale base (BACK-222.1, PR #921) onto current origin/main. The rebase absorbed the pure-reformatting hunks the PR previously carried in backlog.ts and content-store.ts -- main has since been formatted -- so the diff is now confined to the fix, its test, and the shared helper. The earlier note listing pre-existing Biome findings in file-system/operations.ts, server/index.ts and ui/board.ts is therefore stale; only src/ui/components/task-composer.ts is still unformatted on main, and it is untouched here.
 
 Noted but not changed (pre-existing, out of scope): content-store.ts refreshTasksFromDisk still does 'corpus = Array.isArray(loaded) ? this.asTaskCorpus(loaded) : loaded' on the result of loadTasksWithLoader, which already normalizes and is typed TaskCorpusSnapshot, so that branch is dead.
+
+Correction to the verification note above: the two src/test/core.test.ts failures ('fails closed when an archive snapshot...' and 'keeps an ID occupied when equal-time branch records...') were NOT environmental and not caused by this branch. They were a time-bomb in main's own tests -- hardcoded commit dates that aged out of the activeBranchDays window -- and they failed on CI too. Upstream fixed them in main commit 6c6f1843 'Fix expired hardcoded commit dates in core branch-record tests'. This branch has been rebased onto current origin/main (b2fbf08d) past that fix, and the suite is clean again.
 <!-- SECTION:NOTES:END -->
 
 ## Final Summary
