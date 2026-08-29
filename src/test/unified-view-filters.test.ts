@@ -52,6 +52,46 @@ describe("unified view filter state", () => {
 		expect(filterTasksForKanban(tasks, shared).map((task) => task.id)).toEqual(["task-1"]);
 	});
 
+	it("carries project filters into kanban and applies them to projected tasks only", () => {
+		const tasks: Task[] = [
+			{
+				id: "task-1",
+				title: "Web task",
+				status: "To Do",
+				project: "Web",
+				assignee: [],
+				createdDate: "2026-07-10",
+				labels: [],
+				dependencies: [],
+			},
+			{
+				id: "task-2",
+				title: "API task",
+				status: "To Do",
+				project: "API",
+				assignee: [],
+				createdDate: "2026-07-10",
+				labels: [],
+				dependencies: [],
+			},
+			{
+				id: "task-3",
+				title: "Unprojected task",
+				status: "To Do",
+				assignee: [],
+				createdDate: "2026-07-10",
+				labels: [],
+				dependencies: [],
+			},
+		];
+		const unified = createUnifiedViewFilters({ project: ["Web"] });
+		const shared = createKanbanSharedFilters(unified);
+
+		expect(unified.projectFilter).toEqual(["Web"]);
+		expect(shared.projectFilter).toEqual(["Web"]);
+		expect(filterTasksForKanban(tasks, shared).map((task) => task.id)).toEqual(["task-1"]);
+	});
+
 	it("initializes milestone filter from options", () => {
 		const labels = ["backend"];
 		const filters = createUnifiedViewFilters({
@@ -96,6 +136,7 @@ describe("unified view filter state", () => {
 			statusFilter: ["To Do"],
 			excludeStatus: [],
 			typeFilter: [],
+			projectFilter: [],
 			priorityFilter: "",
 			labelFilter: ["infra"],
 			milestoneFilter: "Sprint 7",
@@ -121,6 +162,7 @@ describe("unified view filter state", () => {
 			statusFilter: [],
 			excludeStatus: [],
 			typeFilter: [],
+			projectFilter: [],
 			priorityFilter: "high",
 			labelFilter: ["frontend", "bug"],
 			milestoneFilter: "",
@@ -159,6 +201,7 @@ describe("unified view filter state", () => {
 			statusFilter: [],
 			excludeStatus: [],
 			typeFilter: [],
+			projectFilter: [],
 			priorityFilter: "",
 			labelFilter: [],
 			milestoneFilter: "",
@@ -180,6 +223,7 @@ describe("unified view filter state", () => {
 			statusFilter: [],
 			excludeStatus: [],
 			typeFilter: [],
+			projectFilter: [],
 			priorityFilter: "",
 			labelFilter: ["frontend", "bug"],
 			milestoneFilter: "",
@@ -200,6 +244,7 @@ describe("unified view filter state", () => {
 			statusFilter: [],
 			excludeStatus: [],
 			typeFilter: [],
+			projectFilter: [],
 			priorityFilter: "",
 			labelFilter: ["frontend", "bug"],
 			labelMatch: "any",

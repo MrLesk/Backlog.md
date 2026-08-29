@@ -25,6 +25,7 @@ import {
 	idForFilename,
 	normalizeId,
 } from "../utils/prefix-config.ts";
+import { matchesProjectFilter } from "../utils/project-config.ts";
 import { normalizeStatusSet, statusMatchesSet } from "../utils/status-filter.ts";
 import {
 	AmbiguousTaskIdError,
@@ -67,7 +68,7 @@ interface LockAttemptSettings {
 }
 
 /** Config keys stored as YAML lists. `default_assignee` also accepts a single scalar. */
-type ConfigListKey = "statuses" | "labels" | "types" | "priorities" | "default_assignee";
+type ConfigListKey = "statuses" | "labels" | "types" | "priorities" | "projects" | "default_assignee";
 
 /**
  * A mapping key line, whatever characters the name uses. Keys Backlog does not read still end the
@@ -982,6 +983,9 @@ export class FileSystem {
 		}
 		if (filter?.type) {
 			tasks = tasks.filter((task) => matchesTaskTypeFilter(task.type, filter.type));
+		}
+		if (filter?.project) {
+			tasks = tasks.filter((task) => matchesProjectFilter(task.project, filter.project));
 		}
 
 		if (filter?.assignee) {
@@ -2082,6 +2086,7 @@ ${description || `Milestone: ${title}`}`,
 		config.labels = parseListValue("labels");
 		config.types = parseListValue("types");
 		config.priorities = parseListValue("priorities");
+		config.projects = parseListValue("projects");
 		config.defaultAssignee = parseListValue("default_assignee");
 		const lines = content.split("\n");
 
@@ -2173,6 +2178,7 @@ ${description || `Milestone: ${title}`}`,
 			labels: config.labels || [],
 			types: config.types,
 			priorities: config.priorities,
+			projects: config.projects,
 			definitionOfDone: config.definitionOfDone,
 			defaultStatus: config.defaultStatus,
 			dateFormat: config.dateFormat || "yyyy-mm-dd",
@@ -2208,6 +2214,9 @@ ${description || `Milestone: ${title}`}`,
 			...(config.types && config.types.length > 0 ? [`types: [${config.types.map((t) => `"${t}"`).join(", ")}]`] : []),
 			...(config.priorities && config.priorities.length > 0
 				? [`priorities: [${config.priorities.map((p) => `"${p}"`).join(", ")}]`]
+				: []),
+			...(config.projects && config.projects.length > 0
+				? [`projects: [${config.projects.map((p) => `"${p}"`).join(", ")}]`]
 				: []),
 			...(Array.isArray(normalizedDefinitionOfDone)
 				? [`definition_of_done: [${normalizedDefinitionOfDone.map((item) => JSON.stringify(item)).join(", ")}]`]

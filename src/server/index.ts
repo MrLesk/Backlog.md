@@ -24,6 +24,12 @@ import { isAmbiguousIdError } from "../utils/entity-id.ts";
 import { resolveMilestoneInputForStorage } from "../utils/milestone-storage.ts";
 import { DRAFT_PREFIX, extractAnyPrefix, getTaskPrefixError } from "../utils/prefix-config.ts";
 import { formatValidPriorityValues, resolvePriorityValue } from "../utils/priority-config.ts";
+import {
+	formatValidProjectValues,
+	getProjectValues,
+	noProjectsConfiguredMessage,
+	resolveProjectValues,
+} from "../utils/project-config.ts";
 import { formatValidStatuses, getCanonicalStatuses, getValidStatuses } from "../utils/status.ts";
 import { isValidTaskId } from "../utils/task-id.ts";
 import { isAmbiguousTaskIdError, LOCAL_TASK_LOOKUP_HINT } from "../utils/task-path.ts";
@@ -792,6 +798,7 @@ export class BacklogServer {
 				"exclude-statuses",
 			]);
 			const priorityParamsRaw = url.searchParams.getAll("priority");
+			const projectParamsRaw = url.searchParams.getAll("project");
 			const assigneeParamsRaw = [...url.searchParams.getAll("assignee"), ...url.searchParams.getAll("assignees")];
 			const labelParamsRaw = [...url.searchParams.getAll("label"), ...url.searchParams.getAll("labels")];
 			const modifiedFileParamsRaw = [
@@ -838,6 +845,7 @@ export class BacklogServer {
 				status?: string | string[];
 				excludeStatus?: string | string[];
 				priority?: SearchPriorityFilter | SearchPriorityFilter[];
+				project?: string | string[];
 				assignee?: string | string[];
 				labels?: string | string[];
 				modifiedFiles?: string | string[];
@@ -876,6 +884,26 @@ export class BacklogServer {
 				}
 				const casted = normalizedPriorities.filter((value): value is SearchPriorityFilter => Boolean(value));
 				filters.priority = casted.length === 1 ? casted[0] : casted;
+			}
+
+			if (projectParamsRaw.length > 0) {
+				const config = await this.core.filesystem.loadConfig();
+				if (getProjectValues(config).length === 0) {
+					return Response.json(
+						{ error: noProjectsConfiguredMessage(this.core.filesystem.configFilePath) },
+						{ status: 400 },
+					);
+				}
+				const { values: canonicalProjects, invalid } = resolveProjectValues(projectParamsRaw, config);
+				if (invalid.length > 0) {
+					return Response.json(
+						{
+							error: `Unsupported project '${invalid[0]}'. Use ${formatValidProjectValues(config)}.`,
+						},
+						{ status: 400 },
+					);
+				}
+				filters.project = canonicalProjects.length === 1 ? canonicalProjects[0] : canonicalProjects;
 			}
 
 			if (assigneeParamsRaw.length > 0) {
@@ -951,6 +979,7 @@ export class BacklogServer {
 				status: payload.status,
 				priority: payload.priority,
 				type: typeof payload.type === "string" ? payload.type : undefined,
+				project: typeof payload.project === "string" ? payload.project : undefined,
 				milestone,
 				labels: payload.labels,
 				assignee: payload.assignee,
@@ -1035,6 +1064,10 @@ export class BacklogServer {
 
 		if ("type" in updates && typeof updates.type === "string") {
 			updateInput.type = updates.type;
+		}
+
+		if ("project" in updates && (typeof updates.project === "string" || updates.project === null)) {
+			updateInput.project = updates.project;
 		}
 
 		if ("milestone" in updates && (typeof updates.milestone === "string" || updates.milestone === null)) {

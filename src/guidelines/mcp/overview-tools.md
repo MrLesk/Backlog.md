@@ -49,6 +49,7 @@ Backlog tracks **commitments** (what will be built). Use your judgment to distin
 - `get_backlog_instructions`
 - `task_list`, `task_search`, `task_view`, `task_create`, `task_edit`, `task_complete`, `task_archive`
 - `task_list` and `task_search` accept configured task types with OR semantics; `task_search` also accepts `modifiedFiles` for case-insensitive substring filtering against project-root-relative modified file paths
+- `task_list` and `task_search` also accept configured `project` values with OR semantics for monorepo-style backlogs; the field is absent from both tool schemas when no `projects:` list is configured
 - `task_edit` accepts `commentsAppend` and optional `commentAuthor` to append task discussion or review comments
 - Comment bodies may contain Markdown, but standalone `---` lines are reserved as comment delimiters
 - `document_list`, `document_view`, `document_create`, `document_update`, `document_search`

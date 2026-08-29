@@ -3,6 +3,7 @@ import { box, textarea, textbox } from "neo-neo-bblessed";
 import { DEFAULT_STATUSES } from "../../constants/index.ts";
 import type { Task, TaskCreateInput } from "../../types/index.ts";
 import { getPriorityOptions } from "../../utils/priority-config.ts";
+import { getProjectValues } from "../../utils/project-config.ts";
 import { getTaskTypeValues } from "../../utils/task-type-config.ts";
 import { normalizeUtcDateTime } from "../../utils/utc-datetime.ts";
 import {
@@ -16,6 +17,17 @@ const DRAFT_STATUS = "Draft";
 
 /** Tab order, matching the top-to-bottom reading order of the composer. */
 const FIELD_ORDER = ["title", "description", "dueDate", "status", "type", "priority", "create", "cancel"] as const;
+const FIELD_ORDER_WITH_PROJECT = [
+	"title",
+	"description",
+	"dueDate",
+	"status",
+	"type",
+	"priority",
+	"project",
+	"create",
+	"cancel",
+] as const;
 
 /** The widget's wrapped lines (`real`), the logical lines they belong to, and how many there are. */
 export type CaretLines = {
@@ -129,6 +141,7 @@ export type TaskComposerValues = {
 	status: string;
 	type: string;
 	priority: string;
+	project: string;
 	dueDate: string;
 };
 
@@ -148,6 +161,7 @@ export type TaskComposerLayoutOptions = {
 	statuses?: readonly string[];
 	types?: readonly string[];
 	priorities?: readonly string[];
+	projects?: readonly string[];
 };
 
 const TEXT_INPUT_HEIGHT = 3;
@@ -173,6 +187,9 @@ function getSelectorContentWidths(options: TaskComposerLayoutOptions): {
 		["Status", getTaskComposerStatusChoices(options.statuses ?? DEFAULT_STATUSES)],
 		["Type", getTaskComposerTypeChoices(options.types)],
 		["Priority", getTaskComposerPriorityChoices(options.priorities)],
+		...(getProjectValues(options.projects).length > 0
+			? ([["Project", getTaskComposerProjectChoices(options.projects)]] as Array<[string, FilterPopupChoice[]]>)
+			: []),
 	];
 	let longest = 0;
 	let longestCompactColumn = 0;
@@ -217,7 +234,11 @@ export function getTaskComposerLayout(
 	const stackSelectors = compact && longestCompactColumn > compactSelectorWidth;
 	const descriptionHeight = compact ? 3 : expandedDescriptionHeight;
 	const detailsTop = TEXT_INPUT_HEIGHT + descriptionHeight + TEXT_INPUT_HEIGHT;
-	const detailsHeight = compact ? (stackSelectors ? 5 : 4) : expandedDetailsHeight;
+	const hasProjects = getProjectValues(options.projects).length > 0;
+	// Project always renders as its own full-width row below type/priority, so it adds one row
+	// to whatever the base details height would be, regardless of compact/stacked layout.
+	const baseDetailsHeight = compact ? (stackSelectors ? 5 : 4) : expandedDetailsHeight;
+	const detailsHeight = hasProjects ? baseDetailsHeight + 1 : baseDetailsHeight;
 	const actionsTop = detailsTop + detailsHeight;
 	return {
 		compact,
@@ -247,7 +268,16 @@ function getTaskComposerHelpText(screenWidth: number, compact: boolean): string 
 	return " {cyan-fg}[↑↓/←→/Tab]{/} Navigate | {cyan-fg}[Enter/Space]{/} Choose | {cyan-fg}[Esc]{/} Cancel";
 }
 
-type TaskComposerField = "title" | "description" | "dueDate" | "status" | "type" | "priority" | "create" | "cancel";
+type TaskComposerField =
+	| "title"
+	| "description"
+	| "dueDate"
+	| "status"
+	| "type"
+	| "priority"
+	| "project"
+	| "create"
+	| "cancel";
 
 function uniqueChoices(values: readonly string[], excludedValue?: string): string[] {
 	const choices: string[] = [];
@@ -285,6 +315,13 @@ export function getTaskComposerPriorityChoices(priorities?: readonly string[]): 
 	];
 }
 
+export function getTaskComposerProjectChoices(projects?: readonly string[]): FilterPopupChoice[] {
+	return [
+		{ label: "None", value: "" },
+		...getProjectValues(projects).map((project) => ({ label: project, value: project })),
+	];
+}
+
 export function createTaskComposerValues(statuses: readonly string[]): TaskComposerValues {
 	return {
 		title: "",
@@ -292,6 +329,7 @@ export function createTaskComposerValues(statuses: readonly string[]): TaskCompo
 		status: getTaskComposerWorkflowStatuses(statuses)[0] ?? "To Do",
 		type: "",
 		priority: "",
+		project: "",
 		dueDate: "",
 	};
 }
@@ -308,6 +346,7 @@ export function toTaskCreateInput(values: TaskComposerValues): TaskCreateInput {
 		...(dueDate && { dueDate }),
 		...(values.type && { type: values.type }),
 		...(values.priority && { priority: values.priority }),
+		...(values.project && { project: values.project }),
 	};
 }
 
@@ -352,11 +391,23 @@ export type TaskComposerOptions = {
 	statuses: readonly string[];
 	types?: readonly string[];
 	priorities?: readonly string[];
+	projects?: readonly string[];
 	persist: (input: TaskCreateInput) => Promise<Task>;
 };
 
 export async function openTaskComposer(options: TaskComposerOptions): Promise<Task | null> {
 	return new Promise<Task | null>((resolve) => {
+		const hasProjects = getProjectValues(options.projects).length > 0;
+		const fieldOrder: readonly TaskComposerField[] = hasProjects ? FIELD_ORDER_WITH_PROJECT : FIELD_ORDER;
+		const selectorFields = hasProjects
+			? (["status", "type", "priority", "project"] as const)
+			: (["status", "type", "priority"] as const);
+		const clickFields = hasProjects
+			? (["title", "description", "dueDate", "status", "type", "priority", "project"] as const)
+			: (["title", "description", "dueDate", "status", "type", "priority"] as const);
+		const navFields = hasProjects
+			? (["status", "type", "priority", "project", "create", "cancel"] as const)
+			: (["status", "type", "priority", "create", "cancel"] as const);
 		const controller = new TaskComposerController(options.statuses);
 		let settled = false;
 		let pickerOpen = false;
@@ -454,6 +505,7 @@ export async function openTaskComposer(options: TaskComposerOptions): Promise<Ta
 		const statusField = createSelector("Status", controller.values.status);
 		const typeField = createSelector("Type", controller.values.type);
 		const priorityField = createSelector("Priority", controller.values.priority);
+		const projectField = createSelector("Project", controller.values.project);
 
 		const actionsLabel = box({
 			parent: form,
@@ -505,12 +557,16 @@ export async function openTaskComposer(options: TaskComposerOptions): Promise<Ta
 			status: statusField,
 			type: typeField,
 			priority: priorityField,
+			project: projectField,
 			create: createAction,
 			cancel: cancelAction,
 		};
 		/** Row of each field inside the scrollable viewport; selectors sit inside the details frame. */
 		const getFieldTops = (): Record<TaskComposerField, number> => {
 			const secondSelectorRow = layout.detailsTop + (layout.compact ? 2 : 1);
+			const priorityRow = layout.stackSelectors ? secondSelectorRow + 1 : secondSelectorRow;
+			// Project always renders on its own row, one row below wherever priority landed.
+			const projectRow = priorityRow + 1;
 			const actionsRow = layout.actionsTop + (layout.compact ? 0 : 1);
 			return {
 				title: 0,
@@ -518,7 +574,8 @@ export async function openTaskComposer(options: TaskComposerOptions): Promise<Ta
 				dueDate: 3 + layout.descriptionHeight,
 				status: layout.detailsTop + 1,
 				type: secondSelectorRow,
-				priority: layout.stackSelectors ? secondSelectorRow + 1 : secondSelectorRow,
+				priority: priorityRow,
+				project: projectRow,
 				create: actionsRow,
 				cancel: actionsRow,
 			};
@@ -591,6 +648,14 @@ export async function openTaskComposer(options: TaskComposerOptions): Promise<Ta
 				setFieldGeometry(createAction, { top: tops.create, left: 2, width: 18 });
 				setFieldGeometry(cancelAction, { top: tops.cancel, left: 22, width: 14 });
 			}
+			const mutableProjectField = projectField as BoxInterface & { hide(): void; show(): void };
+			if (hasProjects) {
+				mutableProjectField.show();
+				setFieldGeometry(projectField, { top: tops.project, left: 3, width: "100%-6" });
+				projectField.setContent(selectorContent("Project", controller.values.project));
+			} else {
+				mutableProjectField.hide();
+			}
 			statusField.setContent(selectorContent("Status", controller.values.status));
 			typeField.setContent(selectorContent("Type", controller.values.type));
 			priorityField.setContent(selectorContent("Priority", controller.values.priority));
@@ -647,13 +712,29 @@ export async function openTaskComposer(options: TaskComposerOptions): Promise<Ta
 			if (activeField === "priority" && direction === "left" && !layout.compact) next = "type";
 			if (activeField === "create" && direction === "right") next = "cancel";
 			if (activeField === "cancel" && direction === "left") next = "create";
+			// Project always sits on its own row below type/priority, so it takes over as the
+			// boundary between the selectors and the action buttons whenever it is present.
+			if (hasProjects) {
+				// In the stacked compact layout Type sits on its own row above Priority, so Down
+				// from Type must still reach Priority. Every other layout puts Status, Type, and
+				// Priority on one row, so Down from any of them drops to the Project row.
+				if (activeField === "status" && direction === "down" && !layout.compact) next = "project";
+				if (activeField === "type" && direction === "down" && !(layout.compact && layout.stackSelectors))
+					next = "project";
+				if (activeField === "priority" && direction === "down") next = "project";
+				if (activeField === "project" && direction === "up") next = "priority";
+				if (activeField === "project" && direction === "down") next = "create";
+				if (activeField === "project" && (direction === "left" || direction === "right")) next = "project";
+				if (activeField === "create" && direction === "up") next = "project";
+				if (activeField === "cancel" && direction === "up") next = "project";
+			}
 			if (next !== activeField) focusField(next);
 		};
 
 		/** Tab traversal: reading order, wrapping at both ends. */
 		const moveFocus = (step: number) => {
-			const index = FIELD_ORDER.indexOf(activeField);
-			const next = FIELD_ORDER[(index + step + FIELD_ORDER.length) % FIELD_ORDER.length];
+			const index = fieldOrder.indexOf(activeField);
+			const next = fieldOrder[(index + step + fieldOrder.length) % fieldOrder.length];
 			if (next) focusField(next);
 		};
 		const onResize = () => {
@@ -703,7 +784,7 @@ export async function openTaskComposer(options: TaskComposerOptions): Promise<Ta
 			else focusField("create");
 		};
 
-		const openPicker = async (field: "status" | "type" | "priority") => {
+		const openPicker = async (field: "status" | "type" | "priority" | "project") => {
 			if (pickerOpen || controller.submitting) return;
 			syncInputs();
 			pickerOpen = true;
@@ -713,17 +794,20 @@ export async function openTaskComposer(options: TaskComposerOptions): Promise<Ta
 					? getTaskComposerStatusChoices(options.statuses)
 					: field === "type"
 						? getTaskComposerTypeChoices(options.types)
-						: getTaskComposerPriorityChoices(options.priorities);
+						: field === "priority"
+							? getTaskComposerPriorityChoices(options.priorities)
+							: getTaskComposerProjectChoices(options.projects);
+			const fieldLabel =
+				field === "status" ? "Status" : field === "type" ? "Type" : field === "priority" ? "Priority" : "Project";
 			try {
 				const selected = await openSingleSelectFilterPopup({
 					screen: options.screen,
-					title: field === "status" ? "Task Status" : field === "type" ? "Task Type" : "Task Priority",
+					title: `Task ${fieldLabel}`,
 					choices,
 					selectedValue: currentValue,
 				});
 				if (selected !== null) {
 					controller.values[field] = selected;
-					const fieldLabel = field === "status" ? "Status" : field === "type" ? "Type" : "Priority";
 					widgets[field].setContent(selectorContent(fieldLabel, selected));
 				}
 			} finally {
@@ -878,7 +962,7 @@ export async function openTaskComposer(options: TaskComposerOptions): Promise<Ta
 		});
 		dueDateInput.on("submit", () => focusField("status"));
 
-		for (const field of ["status", "type", "priority"] as const) {
+		for (const field of selectorFields) {
 			const widget = widgets[field];
 			widget.key(["enter", "space"], () => {
 				void openPicker(field);
@@ -888,17 +972,19 @@ export async function openTaskComposer(options: TaskComposerOptions): Promise<Ta
 
 		// Pointer activation uses the same transition as keyboard navigation so text inputs
 		// enter read mode and every field has one source of truth for focus styling and scrolling.
-		for (const field of ["title", "description", "dueDate", "status", "type", "priority"] as const) {
+		for (const field of clickFields) {
 			widgets[field].on("click", () => {
 				focusField(field);
-				if (field === "status" || field === "type" || field === "priority") void openPicker(field);
+				if ((selectorFields as readonly TaskComposerField[]).includes(field)) {
+					void openPicker(field as "status" | "type" | "priority" | "project");
+				}
 				// The screen otherwise auto-focuses clickable widgets after this event bubbles,
 				// which blurs a text field immediately after readInput starts.
 				return false;
 			});
 		}
 
-		for (const field of ["status", "type", "priority", "create", "cancel"] as const) {
+		for (const field of navFields) {
 			const widget = widgets[field];
 			for (const direction of ["up", "down", "left", "right"] as const) {
 				widget.key([direction], () => {

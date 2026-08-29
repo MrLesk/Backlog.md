@@ -4,6 +4,7 @@ import type { Command } from "commander";
 import { DEFAULT_STATUSES } from "../constants/index.ts";
 import { resolveBacklogDirectory } from "../utils/backlog-directory.ts";
 import { getPriorityLabels } from "../utils/priority-config.ts";
+import { getProjectValues } from "../utils/project-config.ts";
 import { BACKLOG_CWD_ENV } from "../utils/runtime-cwd.ts";
 import { getTaskTypeValues } from "../utils/task-type-config.ts";
 
@@ -146,6 +147,10 @@ function parseTaskTypesFromConfig(content: string): string[] | null {
 	return parseArrayFromConfig(content, "types");
 }
 
+function parseProjectsFromConfig(content: string): string[] | null {
+	return parseArrayFromConfig(content, "projects");
+}
+
 function parseStringValueFromConfig(content: string, keys: string[]): string | null {
 	for (const rawLine of content.split(/\r?\n/)) {
 		const line = rawLine.trim();
@@ -239,6 +244,19 @@ export function getCliTaskTypeValues(): string[] {
 	return getTaskTypeValues();
 }
 
+export function getCliProjectValues(): string[] {
+	const configPath = findBacklogConfigPathSync(getRuntimeConfigStartDir());
+	if (configPath) {
+		try {
+			const parsed = parseProjectsFromConfig(readFileSync(configPath, "utf8"));
+			return getProjectValues(parsed ?? []);
+		} catch {
+			return [];
+		}
+	}
+	return [];
+}
+
 export function getCliTaskPrefix(): string {
 	const configPath = findBacklogConfigPathSync(getRuntimeConfigStartDir());
 	if (configPath) {
@@ -281,4 +299,13 @@ export function priorityType(): string {
 export function taskType(options?: { multiple?: boolean }): string {
 	const cardinality = options?.multiple ? "one or more of" : "one of";
 	return `${cardinality} configured task types: ${getCliTaskTypeValues().join(", ")}`;
+}
+
+export function projectType(options?: { multiple?: boolean }): string {
+	const values = getCliProjectValues();
+	if (values.length === 0) {
+		return "no projects configured; add a 'projects:' list to the project config file";
+	}
+	const cardinality = options?.multiple ? "one or more of" : "one of";
+	return `${cardinality} configured projects: ${values.join(", ")}`;
 }

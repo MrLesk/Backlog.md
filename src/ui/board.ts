@@ -16,6 +16,7 @@ import {
 	NO_MILESTONE_FILTER_VALUE,
 } from "../utils/milestone-filter.ts";
 import { getPriorityOptions } from "../utils/priority-config.ts";
+import { getProjectValues, resolveProjectValues } from "../utils/project-config.ts";
 import { applySharedTaskFilters, createTaskSearchIndex, type LabelMatchMode } from "../utils/task-search.ts";
 import { compareTaskIds } from "../utils/task-sorting.ts";
 import { getTaskTypeValues, resolveTaskTypeValues } from "../utils/task-type-config.ts";
@@ -28,7 +29,8 @@ import { openMultiSelectFilterPopup, openSingleSelectFilterPopup } from "./compo
 import type { BoundaryNavigationKey } from "./components/generic-list.ts";
 import { openHelpPopup } from "./components/help-popup.ts";
 import { openTaskComposer, type TaskComposerOptions } from "./components/task-composer.ts";
-import { BOARD_FOOTER_CONTENT, formatFooterContent } from "./footer-content.ts";
+import { formatFooterContent, getBoardFooterContent } from "./footer-content.ts";
+import { formatProjectBadge } from "./project.ts";
 import { getStatusIcon } from "./status-icon.ts";
 import { completeTaskFromTui, formatTaskCompletionBlockedMessage } from "./task-lifecycle.ts";
 import { formatTaskTypeBadge } from "./task-type.ts";
@@ -49,6 +51,7 @@ type BoardSharedFilters = {
 	searchQuery: string;
 	excludeStatus?: string[];
 	typeFilter?: string[];
+	projectFilter?: string[];
 	priorityFilter: string;
 	labelFilter: string[];
 	milestoneFilter: string;
@@ -59,6 +62,7 @@ export function hasMoveBlockingBoardFilters(filters: BoardSharedFilters): boolea
 	return Boolean(
 		filters.searchQuery.trim() ||
 			(filters.typeFilter?.length ?? 0) > 0 ||
+			(filters.projectFilter?.length ?? 0) > 0 ||
 			filters.priorityFilter ||
 			filters.labelFilter.length > 0 ||
 			filters.milestoneFilter ||
@@ -151,6 +155,7 @@ export function formatTaskListItem(
 	isMoving = false,
 	availableWidth = Number.POSITIVE_INFINITY,
 	dateFormat?: string,
+	configuredProjects?: string[],
 ): string {
 	const assignee = task.assignee?.[0]
 		? ` {cyan-fg}${task.assignee[0].startsWith("@") ? task.assignee[0] : `@${task.assignee[0]}`}{/}`
@@ -161,13 +166,15 @@ export function formatTaskListItem(
 		: "";
 	const typeBadge = formatTaskTypeBadge(task.type);
 	const type = typeBadge ? ` ${typeBadge}` : "";
+	const projectBadge = formatProjectBadge(task.project, configuredProjects);
+	const project = projectBadge ? ` ${projectBadge}` : "";
 	const isCrossBranch = Boolean((task as Task & { branch?: string }).branch);
 	const branch = isCrossBranch ? ` {green-fg}(${(task as Task & { branch?: string }).branch}){/}` : "";
 	const progress = formatAcceptanceCriteriaProgress(task, availableWidth);
 	const progressPrefix = progress ? `${progress} ` : "";
 
 	// Cross-branch tasks are dimmed to indicate read-only status
-	const content = `${progressPrefix}{bold}${task.id}{/bold}${type}${dueDate} - ${task.title}${assignee}${labels}${branch}`;
+	const content = `${progressPrefix}{bold}${task.id}{/bold}${type}${project}${dueDate} - ${task.title}${assignee}${labels}${branch}`;
 	if (isMoving) {
 		return `{magenta-fg}► ${content}{/}`;
 	}
@@ -182,8 +189,11 @@ function buildRenderedTaskListItems(
 	movingTaskId?: string,
 	availableWidth = Number.POSITIVE_INFINITY,
 	dateFormat?: string,
+	configuredProjects?: string[],
 ): { rich: string[]; plain: string[] } {
-	const rich = tasks.map((task) => formatTaskListItem(task, movingTaskId === task.id, availableWidth, dateFormat));
+	const rich = tasks.map((task) =>
+		formatTaskListItem(task, movingTaskId === task.id, availableWidth, dateFormat, configuredProjects),
+	);
 	return {
 		rich,
 		plain: rich.map((item) => stripBlessedFgTags(item)),
@@ -285,6 +295,7 @@ export async function renderBoardTui(
 			searchQuery: string;
 			excludeStatus?: string[];
 			typeFilter?: string[];
+			projectFilter?: string[];
 			priorityFilter: string;
 			labelFilter: string[];
 			labelMatch?: LabelMatchMode;
@@ -295,10 +306,12 @@ export async function renderBoardTui(
 		availableMilestones?: string[];
 		priorities?: string[];
 		types?: string[];
+		projects?: string[];
 		onFilterChange?: (filters: {
 			searchQuery: string;
 			excludeStatus?: string[];
 			typeFilter: string[];
+			projectFilter: string[];
 			priorityFilter: string;
 			labelFilter: string[];
 			labelMatch?: LabelMatchMode;
@@ -392,10 +405,12 @@ export async function renderBoardTui(
 			return fallbackCore;
 		};
 		const configuredTaskTypes = getTaskTypeValues(options?.types);
+		const configuredProjects = getProjectValues(options?.projects);
 		const sharedFilters = {
 			searchQuery: options?.filters?.searchQuery ?? "",
 			excludeStatus: [...(options?.filters?.excludeStatus ?? [])],
 			typeFilter: resolveTaskTypeValues(options?.filters?.typeFilter ?? [], configuredTaskTypes).values,
+			projectFilter: resolveProjectValues(options?.filters?.projectFilter ?? [], configuredProjects).values,
 			priorityFilter: options?.filters?.priorityFilter ?? "",
 			labelFilter: [...(options?.filters?.labelFilter ?? [])],
 			labelMatch: options?.filters?.labelMatch ?? "any",
@@ -435,6 +450,7 @@ export async function renderBoardTui(
 				sharedFilters.searchQuery.trim() ||
 					sharedFilters.excludeStatus.length > 0 ||
 					sharedFilters.typeFilter.length > 0 ||
+					sharedFilters.projectFilter.length > 0 ||
 					sharedFilters.priorityFilter ||
 					sharedFilters.labelFilter.length > 0 ||
 					sharedFilters.milestoneFilter ||
@@ -446,6 +462,7 @@ export async function renderBoardTui(
 				searchQuery: sharedFilters.searchQuery,
 				excludeStatus: [...sharedFilters.excludeStatus],
 				typeFilter: [...sharedFilters.typeFilter],
+				projectFilter: [...sharedFilters.projectFilter],
 				priorityFilter: sharedFilters.priorityFilter,
 				labelFilter: [...sharedFilters.labelFilter],
 				labelMatch: sharedFilters.labelMatch,
@@ -465,6 +482,7 @@ export async function renderBoardTui(
 						query: sharedFilters.searchQuery,
 						excludeStatus: sharedFilters.excludeStatus,
 						type: sharedFilters.typeFilter,
+						project: sharedFilters.projectFilter,
 						priority: sharedFilters.priorityFilter || undefined,
 						labels: sharedFilters.labelFilter,
 						labelMatch: sharedFilters.labelMatch,
@@ -564,7 +582,7 @@ export async function renderBoardTui(
 		const getFormattedItems = (tasks: Task[]) => {
 			const columnCount = Math.max(1, currentColumnsData.length);
 			const availableWidth = Math.max(1, Math.floor(getTerminalWidth() / columnCount) - 4);
-			return buildRenderedTaskListItems(tasks, moveOp?.taskId, availableWidth, options?.dateFormat);
+			return buildRenderedTaskListItems(tasks, moveOp?.taskId, availableWidth, options?.dateFormat, configuredProjects);
 		};
 
 		const createColumnViews = (data: ColumnData[]) => {
@@ -769,7 +787,7 @@ export async function renderBoardTui(
 			return columns;
 		};
 
-		const focusFilterControl = (filterId: "search" | "type" | "priority" | "milestone" | "labels") => {
+		const focusFilterControl = (filterId: "search" | "type" | "project" | "priority" | "milestone" | "labels") => {
 			if (!filterHeader) return;
 			switch (filterId) {
 				case "search":
@@ -777,6 +795,9 @@ export async function renderBoardTui(
 					break;
 				case "type":
 					filterHeader.focusType();
+					break;
+				case "project":
+					filterHeader.focusProject();
 					break;
 				case "priority":
 					filterHeader.focusPriority();
@@ -790,7 +811,7 @@ export async function renderBoardTui(
 			}
 		};
 
-		const openFilterPicker = async (filterId: "type" | "priority" | "milestone" | "labels") => {
+		const openFilterPicker = async (filterId: "type" | "project" | "priority" | "milestone" | "labels") => {
 			if (filterPopupOpen || modalOpen || moveOp || !filterHeader) {
 				return;
 			}
@@ -806,6 +827,22 @@ export async function renderBoardTui(
 					if (nextTypes !== null) {
 						sharedFilters.typeFilter = nextTypes;
 						filterHeader.setFilters({ taskTypes: nextTypes });
+						emitFilterChange();
+						renderView();
+					}
+					return;
+				}
+
+				if (filterId === "project") {
+					const nextProjects = await openMultiSelectFilterPopup({
+						screen,
+						title: "Project Filter",
+						items: configuredProjects,
+						selectedItems: sharedFilters.projectFilter,
+					});
+					if (nextProjects !== null) {
+						sharedFilters.projectFilter = nextProjects;
+						filterHeader.setFilters({ projects: nextProjects });
 						emitFilterChange();
 						renderView();
 					}
@@ -876,10 +913,18 @@ export async function renderBoardTui(
 			statuses: [],
 			availableLabels: configuredLabels,
 			availableMilestones,
-			visibleFilters: ["search", "type", "priority", "milestone", "labels"],
+			visibleFilters: [
+				"search",
+				"type",
+				...(configuredProjects.length > 0 ? (["project"] as const) : []),
+				"priority",
+				"milestone",
+				"labels",
+			],
 			initialFilters: {
 				search: sharedFilters.searchQuery,
 				taskTypes: sharedFilters.typeFilter,
+				projects: sharedFilters.projectFilter,
 				priority: sharedFilters.priorityFilter,
 				labels: sharedFilters.labelFilter,
 				milestone: sharedFilters.milestoneFilter,
@@ -888,6 +933,7 @@ export async function renderBoardTui(
 				const labelsChanged = !areLabelSelectionsEqual(sharedFilters.labelFilter, filters.labels);
 				sharedFilters.searchQuery = filters.search;
 				sharedFilters.typeFilter = filters.taskTypes;
+				sharedFilters.projectFilter = filters.projects;
 				sharedFilters.priorityFilter = filters.priority;
 				sharedFilters.labelFilter = filters.labels;
 				if (labelsChanged) {
@@ -955,7 +1001,7 @@ export async function renderBoardTui(
 					" {green-fg}MOVE MODE{/} | {cyan-fg}[←→]{/} Change Column | {cyan-fg}[↑↓]{/} Reorder | {cyan-fg}[Enter/M]{/} Confirm | {cyan-fg}[Esc]{/} Cancel",
 				);
 			} else {
-				const base = BOARD_FOOTER_CONTENT;
+				const base = getBoardFooterContent({ hasProjects: configuredProjects.length > 0 });
 				setFooterContent(hasActiveSharedFilters() ? `${base} | {yellow-fg}Filtered{/}` : base);
 			}
 			syncBoardAreaLayout();
@@ -1105,6 +1151,7 @@ export async function renderBoardTui(
 						statuses: configuredWorkflowStatuses,
 						types: options?.types,
 						priorities: options?.priorities,
+						projects: options?.projects,
 						persist: async (input) => {
 							if (options?.createTask) return options.createTask(input);
 							const core = await getCore();
@@ -1151,6 +1198,16 @@ export async function renderBoardTui(
 			if (popupOpen || filterPopupOpen || modalOpen || moveOp) return;
 			void openFilterPicker("type");
 		});
+
+		if (configuredProjects.length > 0) {
+			// "v"/"V", not "g"/"G": kept consistent with the task-list view's project filter
+			// shortcut, which had to move off "g"/"G" to avoid colliding with that view's
+			// detail-pane scroll-to-top/bottom keys.
+			screen.key(["v", "V"], () => {
+				if (popupOpen || filterPopupOpen || modalOpen || moveOp) return;
+				void openFilterPicker("project");
+			});
+		}
 
 		screen.key(["f", "F"], () => {
 			if (popupOpen || filterPopupOpen || modalOpen || moveOp) return;
@@ -1360,7 +1417,7 @@ export async function renderBoardTui(
 		const openTaskPopup = async (task: Task): Promise<void> => {
 			popupOpen = true;
 
-			const popup = await createTaskPopup(screen, task, resolveMilestoneLabel, options?.dateFormat);
+			const popup = await createTaskPopup(screen, task, resolveMilestoneLabel, options?.dateFormat, configuredProjects);
 			if (!popup) {
 				popupOpen = false;
 				openPopup = null;
@@ -1652,7 +1709,7 @@ export async function renderBoardTui(
 
 		screen.key(["?"], async () => {
 			if (popupOpen || filterPopupOpen || modalOpen || moveOp) return;
-			await runWithModalGuard(() => openHelpPopup(screen));
+			await runWithModalGuard(() => openHelpPopup(screen, "board", { hasProjects: configuredProjects.length > 0 }));
 		});
 
 		screen.key(["y", "Y"], async () => {

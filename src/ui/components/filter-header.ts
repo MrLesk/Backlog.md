@@ -8,12 +8,13 @@ import { box, textbox } from "neo-neo-bblessed";
 import { formatLabelSummary } from "../../utils/label-filter.ts";
 import { NO_MILESTONE_FILTER_LABEL, NO_MILESTONE_FILTER_VALUE } from "../../utils/milestone-filter.ts";
 
-export type FilterControlId = "search" | "status" | "type" | "priority" | "labels" | "milestone";
+export type FilterControlId = "search" | "status" | "type" | "project" | "priority" | "labels" | "milestone";
 
 export interface FilterState {
 	search: string;
 	status: string[];
 	taskTypes: string[];
+	projects: string[];
 	priority: string;
 	labels: string[];
 	milestone: string;
@@ -52,6 +53,7 @@ const ALL_FILTER_ITEMS: FilterItem[] = [
 	{ id: "search", labelText: "Search:", labelWidth: 8, minWidth: 28, flexGrow: true },
 	{ id: "status", labelText: "Status:", labelWidth: 8, minWidth: 22, flexGrow: false },
 	{ id: "type", labelText: "Type:", labelWidth: 6, minWidth: 18, flexGrow: false },
+	{ id: "project", labelText: "Project:", labelWidth: 9, minWidth: 20, flexGrow: false },
 	{ id: "priority", labelText: "Priority:", labelWidth: 9, minWidth: 20, flexGrow: false },
 	{ id: "milestone", labelText: "Milestone:", labelWidth: 10, minWidth: 22, flexGrow: false },
 	{ id: "labels", labelText: "Labels:", labelWidth: 8, minWidth: 18, flexGrow: false },
@@ -133,6 +135,7 @@ export class FilterHeader {
 	private searchInput: TextboxInterface | null = null;
 	private statusButton: BoxInterface | null = null;
 	private typeButton: BoxInterface | null = null;
+	private projectButton: BoxInterface | null = null;
 	private priorityButton: BoxInterface | null = null;
 	private milestoneButton: BoxInterface | null = null;
 	private labelsButton: BoxInterface | null = null;
@@ -152,6 +155,7 @@ export class FilterHeader {
 			search: options.initialFilters?.search ?? "",
 			status: options.initialFilters?.status ?? [],
 			taskTypes: options.initialFilters?.taskTypes ?? [],
+			projects: options.initialFilters?.projects ?? [],
 			priority: options.initialFilters?.priority ?? "",
 			labels: options.initialFilters?.labels ?? [],
 			milestone: options.initialFilters?.milestone ?? "",
@@ -205,6 +209,10 @@ export class FilterHeader {
 			this.state.taskTypes = filters.taskTypes;
 			this.updateTypeButton();
 		}
+		if (filters.projects !== undefined) {
+			this.state.projects = filters.projects;
+			this.updateProjectButton();
+		}
 		if (filters.priority !== undefined) {
 			this.state.priority = filters.priority;
 			this.updatePriorityButton();
@@ -247,6 +255,10 @@ export class FilterHeader {
 
 	focusType(): void {
 		this.typeButton?.focus();
+	}
+
+	focusProject(): void {
+		this.projectButton?.focus();
 	}
 
 	focusPriority(): void {
@@ -354,6 +366,9 @@ export class FilterHeader {
 			case "type":
 				this.focusType();
 				break;
+			case "project":
+				this.focusProject();
+				break;
 			case "priority":
 				this.focusPriority();
 				break;
@@ -374,6 +389,7 @@ export class FilterHeader {
 		this.searchInput = null;
 		this.statusButton = null;
 		this.typeButton = null;
+		this.projectButton = null;
 		this.priorityButton = null;
 		this.milestoneButton = null;
 		this.labelsButton = null;
@@ -434,6 +450,9 @@ export class FilterHeader {
 				break;
 			case "type":
 				this.buildPopupButton("type", controlX, y, controlWidth);
+				break;
+			case "project":
+				this.buildPopupButton("project", controlX, y, controlWidth);
 				break;
 			case "priority":
 				this.buildPopupButton("priority", controlX, y, controlWidth);
@@ -560,6 +579,7 @@ export class FilterHeader {
 
 		if (field === "status") this.statusButton = button;
 		if (field === "type") this.typeButton = button;
+		if (field === "project") this.projectButton = button;
 		if (field === "priority") this.priorityButton = button;
 		if (field === "milestone") this.milestoneButton = button;
 		if (field === "labels") this.labelsButton = button;
@@ -625,6 +645,10 @@ export class FilterHeader {
 				if (this.state.taskTypes.length === 0) return "All ▼";
 				if (this.state.taskTypes.length === 1) return `${this.state.taskTypes[0]} ▼`;
 				return `${this.state.taskTypes.length} selected ▼`;
+			case "project":
+				if (this.state.projects.length === 0) return "All ▼";
+				if (this.state.projects.length === 1) return `${this.state.projects[0]} ▼`;
+				return `${this.state.projects.length} selected ▼`;
 			case "priority":
 				return this.state.priority ? `${this.state.priority} ▼` : "All ▼";
 			case "milestone":
@@ -647,6 +671,11 @@ export class FilterHeader {
 	private updateTypeButton(): void {
 		if (!this.typeButton) return;
 		this.typeButton.setContent(this.getPopupButtonContent("type"));
+	}
+
+	private updateProjectButton(): void {
+		if (!this.projectButton) return;
+		this.projectButton.setContent(this.getPopupButtonContent("project"));
 	}
 
 	private updatePriorityButton(): void {

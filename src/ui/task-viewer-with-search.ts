@@ -21,6 +21,7 @@ import {
 } from "../utils/milestone-filter.ts";
 import { hasAnyPrefix } from "../utils/prefix-config.ts";
 import { formatPriorityLabel, getPriorityOptions, normalizePriorityValue } from "../utils/priority-config.ts";
+import { getProjectValues, resolveProjectValues } from "../utils/project-config.ts";
 import {
 	createReadinessGraph,
 	formatReadinessBlockers,
@@ -44,9 +45,10 @@ import {
 import { openMultiSelectFilterPopup, openSingleSelectFilterPopup } from "./components/filter-popup.ts";
 import { type BoundaryNavigationKey, createGenericList, type GenericList } from "./components/generic-list.ts";
 import { openHelpPopup } from "./components/help-popup.ts";
-import { formatFooterContent, TASK_LIST_FOOTER_CONTENT } from "./footer-content.ts";
+import { formatFooterContent, getTaskListFooterContent } from "./footer-content.ts";
 import { formatHeading } from "./heading.ts";
 import { createLoadingScreen } from "./loading.ts";
+import { formatProjectBadge } from "./project.ts";
 import { formatStatusWithIcon, getStatusColor, getStatusIcon, wrapStatusColor } from "./status-icon.ts";
 import { completeTaskFromTui, formatTaskCompletionBlockedMessage } from "./task-lifecycle.ts";
 import { formatTaskTypeBadge } from "./task-type.ts";
@@ -69,6 +71,7 @@ export function formatTaskViewerListItem(
 	task: Task,
 	availableWidth = Number.POSITIVE_INFINITY,
 	dateFormat?: string,
+	configuredProjects?: string[],
 ): string {
 	const progress = formatAcceptanceCriteriaProgress(task, availableWidth);
 	// The compact status icon keeps task identity visible beside the progress indicator. Its
@@ -81,6 +84,8 @@ export function formatTaskViewerListItem(
 	const labelsText = task.labels?.length ? ` {yellow-fg}[${task.labels.join(", ")}]{/}` : "";
 	const typeBadge = formatTaskTypeBadge(task.type);
 	const typeText = typeBadge ? ` ${typeBadge}` : "";
+	const projectBadge = formatProjectBadge(task.project, configuredProjects);
+	const projectText = projectBadge ? ` ${projectBadge}` : "";
 	const priorityText = getPriorityDisplay(task.priority);
 	const dueDateText = task.dueDate
 		? ` {gray-fg}(due ${formatDateForDisplay(task.dueDate, { dateFormat, appendUtcLabel: true })}){/}`
@@ -89,7 +94,7 @@ export function formatTaskViewerListItem(
 	const branchText = isCrossBranch ? ` {green-fg}(${(task as Task & { branch?: string }).branch}){/}` : "";
 	const progressText = progress ? ` ${progress}` : "";
 
-	const content = `${wrapStatusColor(status, statusColor)}${progressText} {bold}${task.id}{/bold}${typeText}${dueDateText} - ${task.title}${priorityText}${assigneeText}${labelsText}${branchText}`;
+	const content = `${wrapStatusColor(status, statusColor)}${progressText} {bold}${task.id}{/bold}${typeText}${projectText}${dueDateText} - ${task.title}${priorityText}${assigneeText}${labelsText}${branchText}`;
 	return isCrossBranch ? `{gray-fg}${content}{/}` : content;
 }
 
@@ -215,6 +220,7 @@ export async function viewTaskEnhanced(
 		statusFilter?: string | string[];
 		excludeStatus?: string[];
 		typeFilter?: string[];
+		projectFilter?: string[];
 		priorityFilter?: string;
 		milestoneFilter?: string;
 		labelFilter?: string[];
@@ -237,6 +243,7 @@ export async function viewTaskEnhanced(
 			statusFilter: string[];
 			excludeStatus: string[];
 			typeFilter: string[];
+			projectFilter: string[];
 			priorityFilter: string;
 			labelFilter: string[];
 			labelMatch?: LabelMatchMode;
@@ -258,6 +265,7 @@ export async function viewTaskEnhanced(
 	let labels: string[];
 	let priorityOptions = getPriorityOptions();
 	let configuredTaskTypes = getTaskTypeValues();
+	let configuredProjects = getProjectValues();
 	let availableLabels: string[] = [];
 	// When tasks are provided, use in-memory search; otherwise use ContentStore-backed search
 	let taskSearchIndex: ReturnType<typeof createTaskSearchIndex> | null = null;
@@ -286,6 +294,7 @@ export async function viewTaskEnhanced(
 		labels = config?.labels || [];
 		priorityOptions = getPriorityOptions(config);
 		configuredTaskTypes = getTaskTypeValues(config);
+		configuredProjects = getProjectValues(config);
 		dateFormat = config?.dateFormat;
 		projectName = config?.projectName;
 		taskSearchIndex = createTaskSearchIndex(allTasks);
@@ -299,6 +308,7 @@ export async function viewTaskEnhanced(
 			labels = config?.labels || [];
 			priorityOptions = getPriorityOptions(config);
 			configuredTaskTypes = getTaskTypeValues(config);
+			configuredProjects = getProjectValues(config);
 			dateFormat = config?.dateFormat;
 			projectName = config?.projectName;
 
@@ -349,6 +359,7 @@ export async function viewTaskEnhanced(
 	const excludeStatusFilter = [...(options.excludeStatus ?? [])];
 
 	let taskTypeFilter = resolveTaskTypeValues(options.typeFilter ?? [], configuredTaskTypes).values;
+	let projectFilter = resolveProjectValues(options.projectFilter ?? [], configuredProjects).values;
 	let priorityFilter = normalizePriorityValue(options.priorityFilter) || "";
 	let labelFilter: string[] = [];
 	let milestoneFilter = options.milestoneFilter || "";
@@ -369,6 +380,7 @@ export async function viewTaskEnhanced(
 			statusFilter.length > 0 ||
 			excludeStatusFilter.length > 0 ||
 			taskTypeFilter.length > 0 ||
+			projectFilter.length > 0 ||
 			priorityFilter ||
 			labelFilter.length > 0 ||
 			milestoneFilter ||
@@ -418,6 +430,9 @@ export async function viewTaskEnhanced(
 			case "type":
 				filterHeader.focusType();
 				break;
+			case "project":
+				filterHeader.focusProject();
+				break;
 			case "priority":
 				filterHeader.focusPriority();
 				break;
@@ -447,6 +462,22 @@ export async function viewTaskEnhanced(
 				if (nextTypes !== null) {
 					taskTypeFilter = nextTypes;
 					filterHeader.setFilters({ taskTypes: nextTypes });
+					applyFilters();
+					notifyFilterChange();
+				}
+				return;
+			}
+
+			if (filterId === "project") {
+				const nextProjects = await openMultiSelectFilterPopup({
+					screen,
+					title: "Project Filter",
+					items: configuredProjects,
+					selectedItems: projectFilter,
+				});
+				if (nextProjects !== null) {
+					projectFilter = nextProjects;
+					filterHeader.setFilters({ projects: nextProjects });
 					applyFilters();
 					notifyFilterChange();
 				}
@@ -533,10 +564,20 @@ export async function viewTaskEnhanced(
 		statuses,
 		availableLabels,
 		availableMilestones: availableMilestoneTitles,
+		visibleFilters: [
+			"search",
+			"status",
+			"type",
+			...(configuredProjects.length > 0 ? (["project"] as const) : []),
+			"priority",
+			"milestone",
+			"labels",
+		],
 		initialFilters: {
 			search: searchQuery,
 			status: statusFilter,
 			taskTypes: taskTypeFilter,
+			projects: projectFilter,
 			priority: priorityFilter,
 			labels: labelFilter,
 			milestone: milestoneFilter,
@@ -546,6 +587,7 @@ export async function viewTaskEnhanced(
 			searchQuery = filters.search;
 			statusFilter = filters.status;
 			taskTypeFilter = filters.taskTypes;
+			projectFilter = filters.projects;
 			priorityFilter = filters.priority;
 			labelFilter = filters.labels;
 			if (labelsChanged) {
@@ -720,6 +762,7 @@ export async function viewTaskEnhanced(
 				statusFilter,
 				excludeStatus: excludeStatusFilter,
 				typeFilter: taskTypeFilter,
+				projectFilter,
 				priorityFilter,
 				labelFilter,
 				labelMatch,
@@ -735,6 +778,7 @@ export async function viewTaskEnhanced(
 				statusFilter.length > 0 ||
 				excludeStatusFilter.length > 0 ||
 				taskTypeFilter.length > 0 ||
+				projectFilter.length > 0 ||
 				priorityFilter ||
 				labelFilter.length > 0 ||
 				milestoneFilter ||
@@ -751,6 +795,7 @@ export async function viewTaskEnhanced(
 					status: statusFilter.length > 0 ? [...statusFilter] : undefined,
 					excludeStatus: excludeStatusFilter,
 					type: taskTypeFilter,
+					project: projectFilter,
 					priority: priorityFilter || undefined,
 					labels: labelFilter,
 					labelMatch,
@@ -767,6 +812,7 @@ export async function viewTaskEnhanced(
 					status: statusFilter.length > 0 ? [...statusFilter] : undefined,
 					excludeStatus: excludeStatusFilter,
 					type: taskTypeFilter,
+					project: projectFilter,
 					priority: priorityFilter || undefined,
 					labels: labelFilter.length > 0 ? labelFilter : undefined,
 				},
@@ -822,6 +868,9 @@ export async function viewTaskEnhanced(
 			}
 			if (taskTypeFilter.length > 0) {
 				activeFilters.push(`Type: {magenta-fg}${taskTypeFilter.join(", ")}{/}`);
+			}
+			if (projectFilter.length > 0) {
+				activeFilters.push(`Project: {blue-fg}${projectFilter.join(", ")}{/}`);
 			}
 			if (priorityFilter) {
 				activeFilters.push(`Priority: {cyan-fg}${priorityFilter}{/}`);
@@ -949,7 +998,8 @@ export async function viewTaskEnhanced(
 			left: 1,
 			width: "100%-4",
 			height: "100%-3",
-			itemRenderer: (task: Task) => formatTaskViewerListItem(task, getTaskListSummaryWidth(), dateFormat),
+			itemRenderer: (task: Task) =>
+				formatTaskViewerListItem(task, getTaskListSummaryWidth(), dateFormat, configuredProjects),
 			onSelect: (selected: Task | Task[]) => {
 				const selectedTask = Array.isArray(selected) ? selected[0] : selected;
 				void applySelection(selectedTask || null);
@@ -1127,6 +1177,7 @@ export async function viewTaskEnhanced(
 			resolveMilestoneLabel,
 			dateFormat,
 			buildReadinessGraph(),
+			configuredProjects,
 		);
 
 		// Calculate header height based on content and available width
@@ -1205,7 +1256,7 @@ export async function viewTaskEnhanced(
 				" {cyan-fg}[Tab]{/} View | {cyan-fg}[←]{/} List | {cyan-fg}[↑↓]{/} Scroll | {cyan-fg}[E]{/} Edit | {cyan-fg}[Y]{/} Yank | {cyan-fg}[?]{/} Help | {cyan-fg}[q]{/} Quit";
 		} else {
 			// Task list help
-			content = TASK_LIST_FOOTER_CONTENT;
+			content = getTaskListFooterContent({ hasProjects: configuredProjects.length > 0 });
 		}
 
 		setHelpBarContent(content);
@@ -1400,6 +1451,15 @@ export async function viewTaskEnhanced(
 		void openFilterPicker("type");
 	});
 
+	if (configuredProjects.length > 0) {
+		// Not "g"/"G": those already scroll the detail pane to top/bottom (see the
+		// boxInstance bindings above) and a screen-level handler here would conflict.
+		screen.key(["v", "V"], () => {
+			if (modalOpen || filterPopupOpen) return;
+			void openFilterPicker("project");
+		});
+	}
+
 	screen.key(["p", "P"], () => {
 		if (modalOpen) return;
 		void openFilterPicker("priority");
@@ -1448,7 +1508,7 @@ export async function viewTaskEnhanced(
 
 	screen.key(["?"], async () => {
 		if (modalOpen || filterPopupOpen) return;
-		await runWithModalGuard(() => openHelpPopup(screen, "task-list"));
+		await runWithModalGuard(() => openHelpPopup(screen, "task-list", { hasProjects: configuredProjects.length > 0 }));
 	});
 
 	screen.key(["escape"], () => {
@@ -1573,6 +1633,7 @@ export function generateDetailContent(
 	// against. Callers without one (the board quick-look popup) get no readiness line rather than a
 	// wrong one derived from an empty graph.
 	readinessGraph?: ReadinessGraph,
+	configuredProjects?: string[],
 ): { headerContent: string[]; bodyContent: string[] } {
 	const headerContent = [
 		` ${wrapStatusColor(formatStatusWithIcon(task.status), getStatusColor(task.status))} {bold}{blue-fg}${task.id}{/blue-fg}{/bold} - ${task.title}`,
@@ -1605,6 +1666,9 @@ export function generateDetailContent(
 	}
 	if (task.type) {
 		metadata.push(`{bold}Type:{/bold} ${formatTaskTypeBadge(task.type)}`);
+	}
+	if (task.project && configuredProjects?.length) {
+		metadata.push(`{bold}Project:{/bold} ${formatProjectBadge(task.project, configuredProjects)}`);
 	}
 	if (task.assignee?.length) {
 		const assigneeList = task.assignee.map((a) => (a.startsWith("@") ? a : `@${a}`)).join(", ");
@@ -1768,6 +1832,7 @@ export async function createTaskPopup(
 	task: Task,
 	resolveMilestoneLabel?: (milestone: string) => string,
 	dateFormat?: string,
+	configuredProjects?: string[],
 ): Promise<{
 	background: BoxInterface;
 	popup: BoxInterface;
@@ -1804,7 +1869,13 @@ export async function createTaskPopup(
 
 	popup.setFront?.();
 
-	const { headerContent, bodyContent } = generateDetailContent(task, resolveMilestoneLabel, dateFormat);
+	const { headerContent, bodyContent } = generateDetailContent(
+		task,
+		resolveMilestoneLabel,
+		dateFormat,
+		undefined,
+		configuredProjects,
+	);
 
 	// Calculate header height based on content and available width
 	const popupWidth = typeof popup.width === "number" ? popup.width : 80;

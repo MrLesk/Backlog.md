@@ -1,6 +1,6 @@
 import { describe, expect, it } from "bun:test";
 import { getHelpShortcuts } from "../ui/components/help-popup.ts";
-import { BOARD_FOOTER_CONTENT, formatFooterContent, TASK_LIST_FOOTER_CONTENT } from "../ui/footer-content.ts";
+import { formatFooterContent, getBoardFooterContent, getTaskListFooterContent } from "../ui/footer-content.ts";
 
 /** Filter letters advertised by a footer, e.g. "T/P/I/F" -> ["T", "P", "I", "F"]. */
 function filterHintKeys(footer: string): string[] {
@@ -14,8 +14,8 @@ function boundKeys(footer: string): string[] {
 	return filterHintKeys(footer).map((key) => key.toLowerCase());
 }
 
-function helpFilterKeys(context: "board" | "task-list"): string[] {
-	return getHelpShortcuts(context)
+function helpFilterKeys(context: "board" | "task-list", hasProjects = false): string[] {
+	return getHelpShortcuts(context, { hasProjects })
 		.filter((shortcut) => shortcut.desc.startsWith("Filter by "))
 		.map((shortcut) => shortcut.key);
 }
@@ -23,21 +23,34 @@ function helpFilterKeys(context: "board" | "task-list"): string[] {
 describe("TUI footer filter hint", () => {
 	// The board has no status filter (its columns are the statuses) and uses F for labels
 	// because L navigates columns there. Both views list the letters in filter-header order:
-	// status, type, priority, milestone, labels.
+	// status, type, project, priority, milestone, labels.
 	it("maps to the filter keys each view actually binds", () => {
-		expect(boundKeys(BOARD_FOOTER_CONTENT)).toEqual(["t", "p", "i", "f"]);
-		expect(boundKeys(TASK_LIST_FOOTER_CONTENT)).toEqual(["s", "t", "p", "i", "l"]);
+		expect(boundKeys(getBoardFooterContent())).toEqual(["t", "p", "i", "f"]);
+		expect(boundKeys(getTaskListFooterContent())).toEqual(["s", "t", "p", "i", "l"]);
+	});
+
+	// The project filter key is only bound when `projects:` is configured, so the footer must
+	// advertise it only then -- the board and task list bind "v"/"V" behind the same check.
+	it("advertises the project filter key only when projects are configured", () => {
+		expect(boundKeys(getBoardFooterContent({ hasProjects: true }))).toEqual(["t", "v", "p", "i", "f"]);
+		expect(boundKeys(getTaskListFooterContent({ hasProjects: true }))).toEqual(["s", "t", "v", "p", "i", "l"]);
 	});
 
 	it("uses the same uppercase slash-separated indicator convention in both views", () => {
-		for (const footer of [BOARD_FOOTER_CONTENT, TASK_LIST_FOOTER_CONTENT]) {
-			expect(footer).toMatch(/\{cyan-fg\}\[[A-Z](?:\/[A-Z])+\]\{\/\} Filter \|/);
+		for (const hasProjects of [false, true]) {
+			for (const footer of [getBoardFooterContent({ hasProjects }), getTaskListFooterContent({ hasProjects })]) {
+				expect(footer).toMatch(/\{cyan-fg\}\[[A-Z](?:\/[A-Z])+\]\{\/\} Filter \|/);
+			}
 		}
 	});
 
 	it("keeps the help popup filter rows in step with the footer hint", () => {
-		expect(helpFilterKeys("board")).toEqual(filterHintKeys(BOARD_FOOTER_CONTENT));
-		expect(helpFilterKeys("task-list")).toEqual(filterHintKeys(TASK_LIST_FOOTER_CONTENT));
+		for (const hasProjects of [false, true]) {
+			expect(helpFilterKeys("board", hasProjects)).toEqual(filterHintKeys(getBoardFooterContent({ hasProjects })));
+			expect(helpFilterKeys("task-list", hasProjects)).toEqual(
+				filterHintKeys(getTaskListFooterContent({ hasProjects })),
+			);
+		}
 	});
 });
 

@@ -10,6 +10,7 @@ import ChipInput from "./ChipInput";
 import DependencyInput from "./DependencyInput";
 import { formatStoredUtcDateForDisplay } from "../utils/date-display";
 import { getPriorityOptions } from "../../utils/priority-config";
+import { getProjectValues, resolveProjectValue } from "../../utils/project-config";
 import { getTaskTypeValues, resolveTaskTypeValue } from "../../utils/task-type-config";
 import { createReadinessGraph, formatReadinessBlockers, getTaskReadiness } from "../../utils/readiness";
 import { canonicalTaskId } from "../../utils/task-id.ts";
@@ -32,6 +33,7 @@ interface Props {
   availableMilestones?: string[];
   availablePriorities?: string[];
   availableTypes?: string[];
+  availableProjects?: string[];
   milestoneEntities?: Milestone[];
   archivedMilestoneEntities?: Milestone[];
   definitionOfDoneDefaults?: string[];
@@ -41,8 +43,9 @@ interface Props {
 
 type Mode = "preview" | "edit" | "create";
 
-type TaskUpdatePayload = Omit<Partial<Task>, "dueDate"> & {
+type TaskUpdatePayload = Omit<Partial<Task>, "dueDate" | "project"> & {
 	dueDate?: string | null;
+  project?: string | null;
   definitionOfDoneAdd?: string[];
   definitionOfDoneRemove?: number[];
   definitionOfDoneCheck?: number[];
@@ -70,6 +73,7 @@ type TaskDetailsFormState = {
   labels: string[];
   priority: string;
   taskType: string;
+  project: string;
   dependencies: string[];
   references: string[];
   modifiedFiles: string[];
@@ -140,6 +144,7 @@ const buildTaskDetailsFormState = ({
   labels: task?.labels || [],
   priority: task?.priority || "",
   taskType: task?.type || "",
+  project: task?.project || "",
   dependencies: task?.dependencies || [],
   references: task?.references || [],
   modifiedFiles: task?.modifiedFiles || [],
@@ -195,6 +200,7 @@ export const TaskDetailsModal: React.FC<Props> = ({
   availableMilestones: _availableMilestones,
   availablePriorities,
   availableTypes,
+  availableProjects,
   milestoneEntities,
   archivedMilestoneEntities,
   isDraftMode,
@@ -250,6 +256,7 @@ export const TaskDetailsModal: React.FC<Props> = ({
   const [definitionOfDone, setDefinitionOfDone] = useState<AcceptanceCriterion[]>(initialDefinitionOfDone);
   const priorityOptions = useMemo(() => getPriorityOptions(availablePriorities), [availablePriorities]);
   const typeOptions = useMemo(() => getTaskTypeValues(availableTypes), [availableTypes]);
+  const projectOptions = useMemo(() => getProjectValues(availableProjects), [availableProjects]);
   const resolveMilestoneToId = useCallback((value?: string | null): string => {
     const normalized = (value ?? "").trim();
     if (!normalized) return "";
@@ -390,6 +397,7 @@ export const TaskDetailsModal: React.FC<Props> = ({
   const [labels, setLabels] = useState<string[]>(task?.labels || []);
   const [priority, setPriority] = useState<string>(task?.priority || "");
   const [taskType, setTaskType] = useState<string>(task?.type || "");
+  const [project, setProject] = useState<string>(task?.project || "");
   const [typeUpdateError, setTypeUpdateError] = useState<string | null>(null);
   const [isTypeUpdating, setIsTypeUpdating] = useState(false);
   const typeUpdateInFlightRef = useRef(false);
@@ -401,6 +409,8 @@ export const TaskDetailsModal: React.FC<Props> = ({
   const [dueDate, setDueDate] = useState<string>(task?.dueDate?.replace(" ", "T") || "");
   const canonicalTypeSelection = resolveTaskTypeValue(taskType, typeOptions);
   const typeSelectionValue = canonicalTypeSelection ?? taskType;
+  const canonicalProjectSelection = resolveProjectValue(project, projectOptions);
+  const projectSelectionValue = canonicalProjectSelection ?? project;
   const milestoneSelectionValue = resolveMilestoneToId(milestone);
   const hasMilestoneSelection = (milestoneEntities ?? []).some((milestoneEntity) => milestoneEntity.id === milestoneSelectionValue);
 
@@ -607,6 +617,7 @@ export const TaskDetailsModal: React.FC<Props> = ({
       );
       setPriority((current) => preserveDirtyRefreshValue(current, previousFormState.priority, nextFormState.priority));
       setTaskType((current) => preserveDirtyRefreshValue(current, previousFormState.taskType, nextFormState.taskType));
+      setProject((current) => preserveDirtyRefreshValue(current, previousFormState.project, nextFormState.project));
       setDependencies((current) =>
         preserveDirtyRefreshValue(current, previousFormState.dependencies, nextFormState.dependencies, areJsonEqual),
       );
@@ -651,6 +662,7 @@ export const TaskDetailsModal: React.FC<Props> = ({
     setLabels(nextFormState.labels);
     setPriority(nextFormState.priority);
     setTaskType(nextFormState.taskType);
+    setProject(nextFormState.project);
     setDependencies(nextFormState.dependencies);
     setReferences(nextFormState.references);
     setModifiedFiles(nextFormState.modifiedFiles);
@@ -677,6 +689,7 @@ export const TaskDetailsModal: React.FC<Props> = ({
     (title.trim() !== "" ||
       taskType.trim() !== "" ||
       priority.trim() !== "" ||
+      project.trim() !== "" ||
       milestone.trim() !== "" ||
       dueDate.trim() !== "" ||
       // The prefilled default is not the user's work, but removing or replacing it is.
@@ -857,8 +870,13 @@ export const TaskDetailsModal: React.FC<Props> = ({
         dueDate: dueDate.trim().length > 0 ? dueDate.trim() : isCreateMode ? undefined : null,
       };
 
+      // Like type, project is only sent from the create form. On edit the sidebar select
+      // persists immediately through handleInlineMetaUpdate, so including it here would
+      // re-send a value the form never showed -- clearing a stale project when none are
+      // configured, or failing the whole save when the stored value is no longer valid.
       if (isCreateMode) {
         taskData.type = taskType;
+        taskData.project = project.trim().length > 0 ? project.trim() : undefined;
       }
 
       if (isCreateMode && onSubmit) {
@@ -941,6 +959,7 @@ export const TaskDetailsModal: React.FC<Props> = ({
     if (updates.labels !== undefined) setLabels(updates.labels as string[]);
     if (updates.priority !== undefined) setPriority(String(updates.priority));
     if (updates.type !== undefined) setTaskType(String(updates.type));
+    if (updates.project !== undefined) setProject(String(updates.project));
     if (updates.dependencies !== undefined) setDependencies(updates.dependencies as string[]);
     if (updates.references !== undefined) setReferences(updates.references as string[]);
     if (updates.modifiedFiles !== undefined) setModifiedFiles(updates.modifiedFiles as string[]);
@@ -1859,6 +1878,30 @@ export const TaskDetailsModal: React.FC<Props> = ({
               ))}
             </select>
           </div>
+
+          {/* Project */}
+          {projectOptions.length > 0 && (
+            <div className="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-3">
+              <SectionHeader title="Project" />
+              <select
+                className={`w-full h-10 px-3 pr-10 py-2 border border-gray-300 dark:border-gray-600 rounded-md text-sm bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-stone-500 dark:focus:ring-stone-400 focus:border-transparent transition-colors duration-200 ${isFromOtherBranch ? 'opacity-60 cursor-not-allowed' : ''}`}
+                aria-label="Task project"
+                value={projectSelectionValue}
+                onChange={(e) => handleInlineMetaUpdate({ project: e.target.value })}
+                disabled={isFromOtherBranch}
+              >
+                <option value="">No Project</option>
+                {!canonicalProjectSelection && project.trim() ? (
+                  <option value={project}>{project} (not configured)</option>
+                ) : null}
+                {projectOptions.map((option) => (
+                  <option key={option} value={option}>
+                    {option}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
 
           {/* Milestone */}
           <div className="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-3">
