@@ -36,7 +36,12 @@ function isUsableTask(task: Task | null, taskId: string): task is Task {
 	return Boolean(task && taskIdsEqual(task.id, taskId) && task.title.trim() && task.status.trim());
 }
 
-function taskSignature(task: Task): string {
+/**
+ * Identity of a task's content, ignoring where it was read from and when.
+ * Re-reading the same task after a write yields the same signature, so consumers can
+ * tell a real edit from a watcher echo.
+ */
+export function taskContentSignature(task: Task): string {
 	const { branch: _branch, filePath: _filePath, lastModified: _lastModified, source: _source, ...content } = task;
 	return JSON.stringify(content);
 }
@@ -47,7 +52,7 @@ function createReconciliation(initialTask?: Task): TaskReconciliation {
 		processing: false,
 		pending: false,
 		hasPublishedState: initialTask !== undefined,
-		lastPublishedSignature: initialTask ? taskSignature(initialTask) : null,
+		lastPublishedSignature: initialTask ? taskContentSignature(initialTask) : null,
 	};
 }
 
@@ -118,7 +123,7 @@ export function watchTasks(
 				return;
 			}
 
-			const signature = taskSignature(task);
+			const signature = taskContentSignature(task);
 			if (signature !== previousCandidateSignature) {
 				previousCandidateSignature = signature;
 				continue;
@@ -186,7 +191,8 @@ export function watchTasks(
 					const taskId = normalizeTaskId(task.id);
 					visibleTaskIds.add(taskId);
 					const state = reconciliations.get(taskId);
-					if (!state?.hasPublishedState || state.lastPublishedSignature !== taskSignature(task)) schedule(taskId);
+					if (!state?.hasPublishedState || state.lastPublishedSignature !== taskContentSignature(task))
+						schedule(taskId);
 				}
 			}
 

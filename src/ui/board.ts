@@ -19,6 +19,7 @@ import { getPriorityOptions } from "../utils/priority-config.ts";
 import { applySharedTaskFilters, createTaskSearchIndex, type LabelMatchMode } from "../utils/task-search.ts";
 import { compareTaskIds } from "../utils/task-sorting.ts";
 import { getTaskTypeValues, resolveTaskTypeValues } from "../utils/task-type-config.ts";
+import { taskContentSignature } from "../utils/task-watcher.ts";
 import { formatUtcDateForDisplay } from "../utils/utc-date-display.ts";
 import { formatAcceptanceCriteriaProgress } from "./acceptance-criteria-progress.ts";
 import { openConfirmPopup } from "./components/confirm-popup.ts";
@@ -362,6 +363,19 @@ export async function renderBoardTui(
 		let pendingSettingWrite: Promise<void> | null = null;
 		let currentCol = 0;
 		let popupOpen = false;
+		// The task popup renders a snapshot, so the board remembers which task it shows and
+		// what that task's content looked like to keep it in step with later updates.
+		let openPopup: { taskId: string; signature: string; close: () => void } | null = null;
+		const closeOpenPopup = () => {
+			openPopup?.close();
+			openPopup = null;
+			popupOpen = false;
+		};
+		let popupSyncPending = false;
+		/** Focus a column after a popup closes; the board may have lost columns while it was open. */
+		const restoreColumnFocus = (preferredIndex: number, preferredRow?: number) => {
+			focusColumn(Math.max(0, Math.min(preferredIndex, columns.length - 1)), preferredRow);
+		};
 		let currentFocus: "board" | "filters" = "board";
 		let filterPopupOpen = false;
 		let modalOpen = false;
@@ -394,6 +408,11 @@ export async function renderBoardTui(
 				return await operation();
 			} finally {
 				modalOpen = false;
+				// A task update that arrived while the dialog held the screen was deferred.
+				if (popupSyncPending) {
+					popupSyncPending = false;
+					void syncOpenPopup();
+				}
 			}
 		};
 		let configuredLabels = collectAvailableLabels(initialTasks, options?.availableLabels ?? []);
@@ -1042,6 +1061,7 @@ export async function renderBoardTui(
 				return;
 			}
 			renderView();
+			if (openPopup) void syncOpenPopup();
 		};
 
 		options?.subscribeUpdates?.(updateBoard);
@@ -1312,56 +1332,53 @@ export async function renderBoardTui(
 				if (result.task) {
 					// Reconcile by file identity first: with task_prefix="draft" a task and a draft
 					// can share one id, so an id match alone may target the wrong record.
-					currentTasks = currentTasks.map((existingTask) => {
+					const editedTask = result.task;
+					const nextTasks = currentTasks.map((existingTask) => {
 						const matchesByFile =
-							result.task?.filePath !== undefined &&
+							editedTask.filePath !== undefined &&
 							existingTask.filePath !== undefined &&
-							existingTask.filePath === result.task.filePath;
-						return existingTask.id === task.id || matchesByFile ? result.task || existingTask : existingTask;
+							existingTask.filePath === editedTask.filePath;
+						return existingTask.id === task.id || matchesByFile ? editedTask : existingTask;
 					});
+					// Feed the edit through the shared update funnel so the board and any open
+					// popup refresh the same way a watcher update would.
+					updateBoard(nextTasks, []);
 				}
 
-				if (result.changed) {
-					renderView();
-					showTransientFooter(` {green-fg}Task ${result.task?.id ?? task.id} marked modified.{/}`);
-					return;
-				}
-
+				// The editor owned the terminal; repaint even when nothing changed.
 				renderView();
-				showTransientFooter(` {gray-fg}No changes detected for ${result.task?.id ?? task.id}.{/}`);
+				showTransientFooter(
+					result.changed
+						? ` {green-fg}Task ${result.task?.id ?? task.id} marked modified.{/}`
+						: ` {gray-fg}No changes detected for ${result.task?.id ?? task.id}.{/}`,
+				);
 			} catch (_error) {
 				showTransientFooter(" {red-fg}Failed to open editor.{/}");
 			}
 		};
 
-		screen.key(["enter"], async () => {
-			if (popupOpen || filterPopupOpen || modalOpen || currentFocus === "filters") return;
-
-			// In move mode, Enter confirms the move
-			if (moveOp) {
-				await performTaskMove();
-				return;
-			}
-
-			const column = columns[currentCol];
-			if (!column) return;
-			const idx = column.list.selected ?? 0;
-			if (idx < 0 || idx >= column.tasks.length) return;
-			const task = column.tasks[idx];
-			if (!task) return;
+		const openTaskPopup = async (task: Task): Promise<void> => {
 			popupOpen = true;
 
 			const popup = await createTaskPopup(screen, task, resolveMilestoneLabel, options?.dateFormat);
 			if (!popup) {
 				popupOpen = false;
+				openPopup = null;
 				return;
 			}
 
 			const { contentArea, close } = popup;
+			openPopup = { taskId: task.id, signature: taskContentSignature(task), close };
+
 			contentArea.key(["escape", "q"], () => {
-				popupOpen = false;
-				close();
-				focusColumn(currentCol);
+				closeOpenPopup();
+				// A status change while the popup was open moves the task to another column,
+				// so follow it instead of returning to the column it was opened from.
+				const columnIndex = columns.findIndex((column) => column.tasks.some((candidate) => candidate.id === task.id));
+				restoreColumnFocus(
+					columnIndex === -1 ? currentCol : columnIndex,
+					columns[columnIndex]?.tasks.findIndex((candidate) => candidate.id === task.id),
+				);
 			});
 
 			contentArea.key(["e", "E", "S-e"], async () => {
@@ -1399,8 +1416,7 @@ export async function renderBoardTui(
 						if (result.success) {
 							currentTasks = currentTasks.filter((t) => t.id !== task.id);
 							showTransientFooter(` {green-fg}Completed ${task.id}{/}`);
-							close();
-							popupOpen = false;
+							closeOpenPopup();
 							renderView();
 						} else if (result.reason === "not-terminal") {
 							showTransientFooter(` {red-fg}${formatTaskCompletionBlockedMessage(task.id, result.terminalStatus)}{/}`);
@@ -1438,8 +1454,7 @@ export async function renderBoardTui(
 						if (success) {
 							currentTasks = currentTasks.filter((t) => t.id !== task.id);
 							showTransientFooter(` {green-fg}Archived ${task.id}{/}`);
-							close();
-							popupOpen = false;
+							closeOpenPopup();
 							renderView();
 						} else {
 							showTransientFooter(` {red-fg}Failed to archive ${task.id}{/}`);
@@ -1453,6 +1468,52 @@ export async function renderBoardTui(
 			});
 
 			screen.render();
+		};
+
+		/**
+		 * Bring an open task popup back in step with the board's tasks: rebuild it when its
+		 * task changed, close it with a notice when the task left the board.
+		 */
+		const syncOpenPopup = async (): Promise<void> => {
+			const current = openPopup;
+			if (!current) return;
+			// A confirmation dialog is stacked on the popup and owns the keyboard; rebuilding
+			// underneath it would steal focus and leave the dialog unanswerable.
+			if (modalOpen) {
+				popupSyncPending = true;
+				return;
+			}
+			const nextTask = currentTasks.find((candidate) => candidate.id === current.taskId);
+			if (!nextTask) {
+				closeOpenPopup();
+				restoreColumnFocus(currentCol);
+				showTransientFooter(` {yellow-fg}${current.taskId} is no longer on the board; its details closed.{/}`, 6000);
+				return;
+			}
+			// Rebuilding only on a content change keeps the watcher echo of an in-popup edit invisible.
+			if (taskContentSignature(nextTask) === current.signature) return;
+			closeOpenPopup();
+			await openTaskPopup(nextTask);
+			// The board may have moved on again while the popup was rebuilding.
+			await syncOpenPopup();
+		};
+
+		screen.key(["enter"], async () => {
+			if (popupOpen || filterPopupOpen || modalOpen || currentFocus === "filters") return;
+
+			// In move mode, Enter confirms the move
+			if (moveOp) {
+				await performTaskMove();
+				return;
+			}
+
+			const column = columns[currentCol];
+			if (!column) return;
+			const idx = column.list.selected ?? 0;
+			if (idx < 0 || idx >= column.tasks.length) return;
+			const task = column.tasks[idx];
+			if (!task) return;
+			await openTaskPopup(task);
 		});
 
 		screen.key(["e", "E", "S-e"], async () => {
