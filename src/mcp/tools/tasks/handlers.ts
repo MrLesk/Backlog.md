@@ -10,11 +10,14 @@ import {
 } from "../../../types/index.ts";
 import type { TaskEditArgs, TaskEditRequest } from "../../../types/task-edit-args.ts";
 import { formatDuplicateTaskIdWarning } from "../../../utils/duplicate-detection.ts";
-import { createMilestoneFilterMatcher, createMilestoneFilterValueResolver } from "../../../utils/milestone-filter.ts";
+import {
+	createMilestoneFilterValueResolver,
+	type MilestoneFilterValueResolver,
+} from "../../../utils/milestone-filter.ts";
 import { resolveMilestoneInputForStorage } from "../../../utils/milestone-storage.ts";
 import { getTaskReadiness, loadReadinessGraph } from "../../../utils/readiness.ts";
 import { buildTaskUpdateInput } from "../../../utils/task-edit-builder.ts";
-import { createTaskSearchIndex } from "../../../utils/task-search.ts";
+import { applyTaskFilters, createTaskSearchIndex } from "../../../utils/task-search.ts";
 import { sortByOrdinalAndPriority } from "../../../utils/task-sorting.ts";
 import { getTerminalStatus, isTerminalStatus } from "../../../utils/terminal-status.ts";
 import { formatUtcDateForDisplay } from "../../../utils/utc-date-display.ts";
@@ -78,6 +81,14 @@ export class TaskHandlers {
 			this.core.filesystem.listArchivedMilestones(),
 		]);
 		return resolveMilestoneInputForStorage(milestone, activeMilestones, archivedMilestones);
+	}
+
+	private async createMilestoneFilterValueResolver(): Promise<MilestoneFilterValueResolver> {
+		const [activeMilestones, archivedMilestones] = await Promise.all([
+			this.core.filesystem.listMilestones(),
+			this.core.filesystem.listArchivedMilestones(),
+		]);
+		return createMilestoneFilterValueResolver([...activeMilestones, ...archivedMilestones]);
 	}
 
 	private async getConfiguredStatuses(): Promise<string[]> {
@@ -165,49 +176,20 @@ export class TaskHandlers {
 		const config = await this.core.filesystem.loadConfig();
 		const priorities = config?.priorities;
 		if (this.isDraftStatus(args.status)) {
-			let drafts = await this.core.filesystem.listDrafts();
-			const milestoneCandidates = drafts;
-			if (args.search || args.type?.length || args.project?.length) {
-				const draftSearch = createTaskSearchIndex(drafts);
-				drafts = draftSearch.search({ query: args.search, status: "Draft", type: args.type, project: args.project });
-			}
-
-			if (args.assignee) {
-				drafts = drafts.filter((draft) => (draft.assignee ?? []).includes(args.assignee ?? ""));
-			}
-			if (args.unassigned) {
-				drafts = drafts.filter((draft) => !(draft.assignee ?? []).some((value) => value.trim().length > 0));
-			}
-			if (args.milestone) {
-				const [activeMilestones, archivedMilestones] = await Promise.all([
-					this.core.filesystem.listMilestones(),
-					this.core.filesystem.listArchivedMilestones(),
-				]);
-				const resolveMilestoneFilterValue = createMilestoneFilterValueResolver([
-					...activeMilestones,
-					...archivedMilestones,
-				]);
-				const milestoneValues = milestoneCandidates.map((draft) => draft.milestone ?? "");
-				const matchesMilestone = createMilestoneFilterMatcher(
-					args.milestone,
-					milestoneValues,
-					resolveMilestoneFilterValue,
-				);
-				drafts = drafts.filter((draft) => matchesMilestone(draft.milestone ?? ""));
-			}
-
-			const labelFilters = args.labels ?? [];
-			if (labelFilters.length > 0) {
-				drafts = drafts.filter((draft) => {
-					const draftLabels = draft.labels ?? [];
-					return labelFilters.every((label) => draftLabels.includes(label));
-				});
-			}
-
-			if (args.ready) {
-				const readinessGraph = await loadReadinessGraph(this.core);
-				drafts = drafts.filter((draft) => getTaskReadiness(draft, readinessGraph).isReady);
-			}
+			const drafts = applyTaskFilters(await this.core.filesystem.listDrafts(), {
+				query: args.search,
+				// Searching drafts has always narrowed to the literal "Draft" status; listing them has not.
+				status: args.search || args.type?.length || args.project?.length ? "Draft" : undefined,
+				type: args.type,
+				project: args.project,
+				assignee: args.assignee,
+				unassigned: args.unassigned,
+				milestone: args.milestone,
+				resolveMilestoneLabel: args.milestone ? await this.createMilestoneFilterValueResolver() : undefined,
+				labels: args.labels,
+				labelMatch: "all",
+				ready: args.ready ? await loadReadinessGraph(this.core) : undefined,
+			});
 
 			if (drafts.length === 0) {
 				return {
@@ -258,6 +240,10 @@ export class TaskHandlers {
 		if (args.milestone) {
 			filters.milestone = args.milestone;
 		}
+		if (args.labels?.length) {
+			filters.labels = args.labels;
+			filters.labelMatch = "all";
+		}
 
 		let tasks = await this.core.queryTasks({
 			query: args.search,
@@ -270,14 +256,7 @@ export class TaskHandlers {
 			tasks = tasks.filter((task) => getTaskReadiness(task, readinessGraph).isReady);
 		}
 
-		let filteredByLabels = tasks.filter((task) => isLocalEditableTask(task));
-		const labelFilters = args.labels ?? [];
-		if (labelFilters.length > 0) {
-			filteredByLabels = filteredByLabels.filter((task) => {
-				const taskLabels = task.labels ?? [];
-				return labelFilters.every((label) => taskLabels.includes(label));
-			});
-		}
+		const filteredByLabels = tasks.filter((task) => isLocalEditableTask(task));
 
 		if (filteredByLabels.length === 0) {
 			return {

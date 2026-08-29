@@ -4,12 +4,12 @@
 
 import type { Core } from "../core/backlog.ts";
 import { findLocalDuplicateTaskIds } from "../core/duplicate-task-repair.ts";
-import type { Milestone, Task, TaskCreateInput } from "../types/index.ts";
+import type { LabelMatchMode, Milestone, Task, TaskCreateInput } from "../types/index.ts";
 import { watchConfig } from "../utils/config-watcher.ts";
 import { formatDuplicateTaskIdSummary } from "../utils/duplicate-detection.ts";
 import { collectAvailableLabels } from "../utils/label-filter.ts";
 import { hasAnyPrefix } from "../utils/prefix-config.ts";
-import { applySharedTaskFilters, createTaskSearchIndex, type LabelMatchMode } from "../utils/task-search.ts";
+import { applyTaskFilters, createTaskSearchIndex } from "../utils/task-search.ts";
 import { type TaskWatcherCallbacks, watchTasks } from "../utils/task-watcher.ts";
 import { renderBoardTui } from "./board.ts";
 import { createLoadingScreen } from "./loading.ts";
@@ -168,7 +168,7 @@ export function filterTasksForKanban(
 	}
 
 	const searchIndex = createTaskSearchIndex(tasks);
-	const filteredTasks = applySharedTaskFilters(
+	const filteredTasks = applyTaskFilters(
 		tasks,
 		{
 			query: filters.searchQuery,

@@ -1,6 +1,13 @@
 export type TaskStatus = string;
 
 /**
+ * How a multi-label filter is combined. Interactive multi-select pickers use "any" so adding a
+ * label widens the result set; callers that pass an explicitly typed label list (the CLI
+ * `--labels` flag and the MCP `labels` argument) use "all" so every listed label is required.
+ */
+export type LabelMatchMode = "any" | "all";
+
+/**
  * Entity types in the backlog system.
  * Used for ID generation and prefix resolution.
  */
@@ -189,6 +196,8 @@ export interface TaskListFilter {
 	milestone?: string;
 	parentTaskId?: string;
 	labels?: string[];
+	/** Defaults to "any"; callers passing an explicitly typed label list use "all". */
+	labelMatch?: LabelMatchMode;
 }
 
 export interface Decision {
@@ -264,6 +273,8 @@ export interface SearchFilters {
 	project?: string | string[];
 	assignee?: string | string[];
 	labels?: string | string[];
+	/** Defaults to "any"; callers passing an explicitly typed label list use "all". */
+	labelMatch?: LabelMatchMode;
 	modifiedFiles?: string | string[];
 }
 

@@ -49,11 +49,7 @@ import { openInEditor } from "../utils/editor.ts";
 import { isAmbiguousIdError } from "../utils/entity-id.ts";
 import { findBacklogRoot } from "../utils/find-backlog-root.ts";
 import { generateNextDecisionId, generateNextDocId } from "../utils/id-generators.ts";
-import {
-	createMilestoneFilterMatcher,
-	createMilestoneFilterValueResolver,
-	type MilestoneFilterValueResolver,
-} from "../utils/milestone-filter.ts";
+import { createMilestoneFilterValueResolver } from "../utils/milestone-filter.ts";
 import {
 	buildGlobPattern,
 	buildIdRegex,
@@ -63,11 +59,10 @@ import {
 	getPrefixForType,
 	normalizeId,
 } from "../utils/prefix-config.ts";
-import { formatValidPriorityValues, normalizePriorityValue, resolvePriorityValue } from "../utils/priority-config.ts";
+import { formatValidPriorityValues, resolvePriorityValue } from "../utils/priority-config.ts";
 import {
 	formatValidProjectValues,
 	getProjectValues,
-	matchesProjectFilter,
 	noProjectsConfiguredMessage,
 	resolveProjectValue,
 } from "../utils/project-config.ts";
@@ -77,7 +72,6 @@ import {
 	getValidStatuses as resolveValidStatuses,
 } from "../utils/status.ts";
 import { executeStatusCallback } from "../utils/status-callback.ts";
-import { normalizeStatusSet, statusMatchesSet } from "../utils/status-filter.ts";
 import {
 	buildDefinitionOfDoneItems,
 	normalizeStringList,
@@ -96,9 +90,9 @@ import {
 	normalizeTaskIdentity,
 	taskIdsEqual,
 } from "../utils/task-path.ts";
-import { createTaskSearchIndex } from "../utils/task-search.ts";
+import { applyTaskFilters, createTaskSearchIndex } from "../utils/task-search.ts";
 import { attachSubtaskSummaries } from "../utils/task-subtasks.ts";
-import { formatValidTaskTypeValues, matchesTaskTypeFilter, resolveTaskTypeValue } from "../utils/task-type-config.ts";
+import { formatValidTaskTypeValues, resolveTaskTypeValue } from "../utils/task-type-config.ts";
 import { upsertTaskUpdatedDate } from "../utils/task-updated-date.ts";
 import { isTerminalStatus } from "../utils/terminal-status.ts";
 import { normalizeUtcDateTime } from "../utils/utc-datetime.ts";
@@ -714,68 +708,6 @@ export class Core {
 		}
 	}
 
-	private applyTaskFilters(
-		tasks: Task[],
-		filters?: TaskListFilter,
-		resolveMilestoneFilterValue?: MilestoneFilterValueResolver,
-	): Task[] {
-		if (!filters) {
-			return tasks;
-		}
-		let result = tasks;
-		if (filters.status) {
-			const wanted = normalizeStatusSet(filters.status);
-			if (wanted.size > 0) {
-				result = result.filter((task) => statusMatchesSet(wanted, task.status));
-			}
-		}
-		if (filters.excludeStatus) {
-			const excluded = normalizeStatusSet(filters.excludeStatus);
-			if (excluded.size > 0) {
-				result = result.filter((task) => !statusMatchesSet(excluded, task.status));
-			}
-		}
-		if (filters.type) {
-			result = result.filter((task) => matchesTaskTypeFilter(task.type, filters.type));
-		}
-		if (filters.project) {
-			result = result.filter((task) => matchesProjectFilter(task.project, filters.project));
-		}
-		if (filters.assignee) {
-			const assigneeLower = filters.assignee.toLowerCase();
-			result = result.filter((task) => (task.assignee ?? []).some((value) => value.toLowerCase() === assigneeLower));
-		}
-		if (filters.unassigned) {
-			result = result.filter((task) => !(task.assignee ?? []).some((value) => value.trim().length > 0));
-		}
-		if (filters.priority) {
-			const priorityLower = normalizePriorityValue(String(filters.priority));
-			result = result.filter((task) => normalizePriorityValue(task.priority) === priorityLower);
-		}
-		if (filters.milestone) {
-			const resolveValue = resolveMilestoneFilterValue ?? createMilestoneFilterValueResolver([]);
-			const milestoneValues = tasks.map((task) => task.milestone ?? "");
-			const matchesMilestone = createMilestoneFilterMatcher(filters.milestone, milestoneValues, resolveValue);
-			result = result.filter((task) => matchesMilestone(task.milestone ?? ""));
-		}
-		if (filters.parentTaskId) {
-			const parentFilter = filters.parentTaskId;
-			result = result.filter((task) => task.parentTaskId && taskIdsEqual(parentFilter, task.parentTaskId));
-		}
-		if (filters.labels && filters.labels.length > 0) {
-			const requiredLabels = filters.labels.map((label) => label.toLowerCase()).filter(Boolean);
-			if (requiredLabels.length > 0) {
-				result = result.filter((task) => {
-					const taskLabels = task.labels?.map((label) => label.toLowerCase()) || [];
-					if (taskLabels.length === 0) return false;
-					const labelSet = new Set(taskLabels);
-					return requiredLabels.some((label) => labelSet.has(label));
-				});
-			}
-		}
-		return result;
-	}
-
 	private filterLocalEditableTasks(tasks: Task[]): Task[] {
 		return tasks.filter(isLocalEditableTask);
 	}
@@ -891,8 +823,8 @@ export class Core {
 				: undefined;
 
 			const applyFiltersAndLimit = async (collection: Task[]): Promise<Task[]> => {
-				const resolveMilestoneFilterValue = milestoneResolverPromise ? await milestoneResolverPromise : undefined;
-				let filtered = this.applyTaskFilters(collection, filters, resolveMilestoneFilterValue);
+				const resolveMilestoneLabel = milestoneResolverPromise ? await milestoneResolverPromise : undefined;
+				let filtered = filters ? applyTaskFilters(collection, { ...filters, resolveMilestoneLabel }) : [...collection];
 				if (!includeCrossBranch) {
 					filtered = this.filterLocalEditableTasks(filtered);
 				}
@@ -949,6 +881,7 @@ export class Core {
 			}
 			if (filters?.labels) {
 				searchFilters.labels = filters.labels;
+				searchFilters.labelMatch = filters.labelMatch;
 			}
 
 			const searchResults = searchService.search({

@@ -76,7 +76,6 @@ import {
 import { AmbiguousIdError, isAmbiguousIdError } from "./utils/entity-id.ts";
 import { findBacklogRoot } from "./utils/find-backlog-root.ts";
 import { generateNextDecisionId } from "./utils/id-generators.ts";
-import { labelsToLower } from "./utils/label-filter.ts";
 import {
 	formatMcpClientSetupCommand,
 	getMcpClientSetupCommand,
@@ -300,15 +299,6 @@ function formatTaskEditError(error: unknown, taskId: string, commandKind = "task
 		return `${message}\nRun 'backlog ${commandKind} view ${taskId} --plain' to inspect indexes, or 'backlog ${commandKind} edit ${taskId} --help' for edit options.`;
 	}
 	return message;
-}
-
-function taskMatchesAllLabels(task: Task, labels: string[]): boolean {
-	const requiredLabels = labelsToLower(labels);
-	if (requiredLabels.length === 0) {
-		return true;
-	}
-	const taskLabels = new Set(labelsToLower(task.labels ?? []));
-	return requiredLabels.every((label) => taskLabels.has(label));
 }
 
 function formatPlainTaskListRow(task: Task, options: { includeStatus?: boolean } = {}): string {
@@ -2589,6 +2579,11 @@ addHelpSchema(taskCmd.command("list"), {
 		}
 
 		const labelFilters = parseDelimitedStringList(options.labels) ?? [];
+		if (labelFilters.length > 0) {
+			// `--labels` is documented as requiring every listed label.
+			baseFilters.labels = labelFilters;
+			baseFilters.labelMatch = "all";
+		}
 		const searchQuery = typeof options.search === "string" ? options.search.trim() : "";
 		let taskLimit: number | undefined;
 		if (options.limit !== undefined) {
@@ -2674,10 +2669,6 @@ addHelpSchema(taskCmd.command("list"), {
 				const parent = resolvedParentId;
 				filtered = filtered.filter((task) => task.parentTaskId && taskIdsEqual(parent, task.parentTaskId));
 			}
-			if (labelFilters.length > 0) {
-				filtered = filtered.filter((task) => taskMatchesAllLabels(task, labelFilters));
-			}
-
 			const displayTasks = taskLimit !== undefined ? filtered.slice(0, taskLimit) : filtered;
 
 			if (outputMode === "json") {

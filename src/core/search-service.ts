@@ -2,38 +2,37 @@ import Fuse, { type FuseResult, type FuseResultMatch } from "fuse.js";
 import type {
 	Decision,
 	Document,
-	SearchFilters,
 	SearchMatch,
 	SearchOptions,
-	SearchPriorityFilter,
 	SearchResult,
 	SearchResultType,
 	Task,
 } from "../types/index.ts";
-import { matchesModifiedFileFilters, normalizeModifiedFileFilters } from "../utils/modified-files.ts";
-import { normalizePriorityValue } from "../utils/priority-config.ts";
-import { matchesProjectFilter } from "../utils/project-config.ts";
-import { createTaskIdSearchVariants } from "../utils/task-id-search.ts";
-import { matchesTaskTypeFilter } from "../utils/task-type-config.ts";
+import {
+	buildTaskSearchFields,
+	createTaskFilterMatcher,
+	TASK_SEARCH_FUSE_OPTIONS,
+	type TaskSearchFields,
+} from "../utils/task-search.ts";
 import type { ContentStore, ContentStoreEvent } from "./content-store.ts";
 
-interface BaseSearchEntity {
-	readonly id: string;
+/**
+ * Documents and decisions are indexed with the same Fuse keys as tasks, so they expose the task
+ * search fields with empty values for the task-only ones.
+ */
+const EMPTY_TASK_SEARCH_FIELDS: Omit<TaskSearchFields, "title" | "bodyText" | "id"> = {
+	idVariants: [],
+	dependencyIds: [],
+	modifiedFiles: [],
+};
+
+interface BaseSearchEntity extends TaskSearchFields {
 	readonly type: SearchResultType;
-	readonly title: string;
-	readonly bodyText: string;
 }
 
 interface TaskSearchEntity extends BaseSearchEntity {
 	readonly type: "task";
 	readonly task: Task;
-	readonly statusLower: string;
-	readonly priorityLower?: SearchPriorityFilter;
-	readonly assigneesLower: string[];
-	readonly labelsLower: string[];
-	readonly idVariants: string[];
-	readonly dependencyIds: string[];
-	readonly modifiedFiles: string[];
 }
 
 interface DocumentSearchEntity extends BaseSearchEntity {
@@ -47,17 +46,6 @@ interface DecisionSearchEntity extends BaseSearchEntity {
 }
 
 type SearchEntity = TaskSearchEntity | DocumentSearchEntity | DecisionSearchEntity;
-
-type NormalizedFilters = {
-	statuses?: string[];
-	excludedStatuses?: string[];
-	taskTypes?: string[];
-	projects?: string[];
-	priorities?: SearchPriorityFilter[];
-	assignees?: string[];
-	labels?: string[];
-	modifiedFiles?: string[];
-};
 
 export class SearchService {
 	private initialized = false;
@@ -112,10 +100,10 @@ export class SearchService {
 		const allowedTypes = new Set<SearchResultType>(
 			types && types.length > 0 ? types : ["task", "document", "decision"],
 		);
-		const normalizedFilters = this.normalizeFilters(filters);
+		const matchesTaskFilters = createTaskFilterMatcher(filters ?? {});
 
 		if (trimmedQuery === "") {
-			return this.collectWithoutQuery(allowedTypes, normalizedFilters, limit);
+			return this.collectWithoutQuery(allowedTypes, matchesTaskFilters, limit);
 		}
 
 		const fuse = this.fuse;
@@ -132,7 +120,7 @@ export class SearchService {
 				continue;
 			}
 
-			if (entity.type === "task" && !this.matchesTaskFilters(entity, normalizedFilters)) {
+			if (entity.type === "task" && !matchesTaskFilters(entity.task)) {
 				continue;
 			}
 
@@ -169,21 +157,13 @@ export class SearchService {
 
 	private applySnapshot(tasks: Task[], documents: Document[], decisions: Decision[]): void {
 		this.tasks = tasks.map((task) => ({
-			id: task.id,
+			...buildTaskSearchFields(task),
 			type: "task",
-			title: task.title,
-			bodyText: buildTaskBodyText(task),
 			task,
-			statusLower: task.status.toLowerCase(),
-			priorityLower: normalizePriorityValue(task.priority),
-			assigneesLower: (task.assignee ?? []).map((assignee) => assignee.toLowerCase()),
-			labelsLower: (task.labels || []).map((label) => label.toLowerCase()),
-			idVariants: createTaskIdSearchVariants(task.id),
-			dependencyIds: (task.dependencies ?? []).flatMap((dependency) => createTaskIdSearchVariants(dependency)),
-			modifiedFiles: task.modifiedFiles ?? [],
 		}));
 
 		this.documents = documents.map((document) => ({
+			...EMPTY_TASK_SEARCH_FIELDS,
 			id: document.id,
 			type: "document",
 			title: document.title,
@@ -192,6 +172,7 @@ export class SearchService {
 		}));
 
 		this.decisions = decisions.map((decision) => ({
+			...EMPTY_TASK_SEARCH_FIELDS,
 			id: decision.id,
 			type: "decision",
 			title: decision.title,
@@ -209,32 +190,20 @@ export class SearchService {
 			return;
 		}
 
-		this.fuse = new Fuse(this.collection, {
-			includeScore: true,
-			includeMatches: true,
-			threshold: 0.35,
-			ignoreLocation: true,
-			minMatchCharLength: 2,
-			keys: [
-				{ name: "title", weight: 0.35 },
-				{ name: "bodyText", weight: 0.3 },
-				{ name: "id", weight: 0.2 },
-				{ name: "idVariants", weight: 0.1 },
-				{ name: "dependencyIds", weight: 0.05 },
-				{ name: "modifiedFiles", weight: 0.15 },
-			],
-		});
+		// Same keys, weights, and threshold as every other task search; only the highlight ranges
+		// this surface reports back to callers are extra.
+		this.fuse = new Fuse(this.collection, { ...TASK_SEARCH_FUSE_OPTIONS, includeMatches: true });
 	}
 
 	private collectWithoutQuery(
 		allowedTypes: Set<SearchResultType>,
-		filters: NormalizedFilters,
+		matchesTaskFilters: (task: Task) => boolean,
 		limit?: number,
 	): SearchResult[] {
 		const results: SearchResult[] = [];
 
 		if (allowedTypes.has("task")) {
-			const tasks = this.applyTaskFilters(this.tasks, filters);
+			const tasks = this.tasks.filter((entity) => matchesTaskFilters(entity.task));
 			for (const entity of tasks) {
 				results.push(this.mapEntityToResult(entity));
 				if (limit && results.length >= limit) {
@@ -262,170 +231,6 @@ export class SearchService {
 		}
 
 		return results;
-	}
-
-	private applyTaskFilters(tasks: TaskSearchEntity[], filters: NormalizedFilters): TaskSearchEntity[] {
-		let filtered = tasks;
-		if (filters.statuses && filters.statuses.length > 0) {
-			const allowedStatuses = new Set(filters.statuses);
-			filtered = filtered.filter((task) => allowedStatuses.has(task.statusLower));
-		}
-		if (filters.excludedStatuses && filters.excludedStatuses.length > 0) {
-			const excludedStatuses = new Set(filters.excludedStatuses);
-			filtered = filtered.filter((task) => !excludedStatuses.has(task.statusLower));
-		}
-		if (filters.taskTypes && filters.taskTypes.length > 0) {
-			filtered = filtered.filter((task) => matchesTaskTypeFilter(task.task.type, filters.taskTypes));
-		}
-		if (filters.projects && filters.projects.length > 0) {
-			filtered = filtered.filter((task) => matchesProjectFilter(task.task.project, filters.projects));
-		}
-		if (filters.priorities && filters.priorities.length > 0) {
-			const allowedPriorities = new Set(filters.priorities);
-			filtered = filtered.filter((task) => {
-				if (!task.priorityLower) {
-					return false;
-				}
-				return allowedPriorities.has(task.priorityLower);
-			});
-		}
-		if (filters.assignees && filters.assignees.length > 0) {
-			const requiredAssignees = new Set(filters.assignees);
-			filtered = filtered.filter((task) => {
-				if (!task.assigneesLower || task.assigneesLower.length === 0) {
-					return false;
-				}
-				return task.assigneesLower.some((assignee) => requiredAssignees.has(assignee));
-			});
-		}
-		if (filters.labels && filters.labels.length > 0) {
-			const requiredLabels = new Set(filters.labels);
-			filtered = filtered.filter((task) => {
-				if (!task.labelsLower || task.labelsLower.length === 0) {
-					return false;
-				}
-				return task.labelsLower.some((label) => requiredLabels.has(label));
-			});
-		}
-		if (filters.modifiedFiles && filters.modifiedFiles.length > 0) {
-			filtered = filtered.filter((task) => matchesModifiedFileFilters(task.modifiedFiles, filters.modifiedFiles));
-		}
-		return filtered;
-	}
-
-	private matchesTaskFilters(task: TaskSearchEntity, filters: NormalizedFilters): boolean {
-		if (filters.statuses && filters.statuses.length > 0) {
-			if (!filters.statuses.includes(task.statusLower)) {
-				return false;
-			}
-		}
-		if (filters.excludedStatuses?.includes(task.statusLower)) {
-			return false;
-		}
-		if (filters.taskTypes && !matchesTaskTypeFilter(task.task.type, filters.taskTypes)) {
-			return false;
-		}
-
-		if (filters.projects && !matchesProjectFilter(task.task.project, filters.projects)) {
-			return false;
-		}
-
-		if (filters.priorities && filters.priorities.length > 0) {
-			if (!task.priorityLower || !filters.priorities.includes(task.priorityLower)) {
-				return false;
-			}
-		}
-
-		if (filters.assignees && filters.assignees.length > 0) {
-			if (!task.assigneesLower || task.assigneesLower.length === 0) {
-				return false;
-			}
-			const assigneeSet = new Set(task.assigneesLower);
-			const anyMatch = filters.assignees.some((assignee) => assigneeSet.has(assignee));
-			if (!anyMatch) {
-				return false;
-			}
-		}
-
-		if (filters.labels && filters.labels.length > 0) {
-			if (!task.labelsLower || task.labelsLower.length === 0) {
-				return false;
-			}
-			const labelSet = new Set(task.labelsLower);
-			const anyMatch = filters.labels.some((label) => labelSet.has(label));
-			if (!anyMatch) {
-				return false;
-			}
-		}
-
-		if (filters.modifiedFiles && !matchesModifiedFileFilters(task.modifiedFiles, filters.modifiedFiles)) {
-			return false;
-		}
-
-		return true;
-	}
-
-	private normalizeFilters(filters?: SearchFilters): NormalizedFilters {
-		if (!filters) {
-			return {};
-		}
-
-		const statuses = this.normalizeStringArray(filters.status);
-		const excludedStatuses = this.normalizeStringArray(filters.excludeStatus);
-		const taskTypes = this.normalizeStringArray(filters.type);
-		const projects = this.normalizeStringArray(filters.project);
-		const priorities = this.normalizePriorityArray(filters.priority);
-		const assignees = this.normalizeStringArray(filters.assignee);
-		const labels = this.normalizeLabelsArray(filters.labels);
-		const modifiedFiles = normalizeModifiedFileFilters(filters.modifiedFiles);
-
-		return {
-			statuses,
-			excludedStatuses,
-			taskTypes,
-			projects,
-			priorities,
-			assignees,
-			labels,
-			modifiedFiles,
-		};
-	}
-
-	private normalizeStringArray(value?: string | string[]): string[] | undefined {
-		if (!value) {
-			return undefined;
-		}
-
-		const values = Array.isArray(value) ? value : [value];
-		const normalized = values.map((item) => item.trim().toLowerCase()).filter((item) => item.length > 0);
-
-		return normalized.length > 0 ? normalized : undefined;
-	}
-
-	private normalizeLabelsArray(value?: string | string[]): string[] | undefined {
-		if (!value) {
-			return undefined;
-		}
-
-		const values = Array.isArray(value) ? value : [value];
-		const normalized = values.map((item) => item.trim().toLowerCase()).filter((item) => item.length > 0);
-
-		return normalized.length > 0 ? normalized : undefined;
-	}
-
-	private normalizePriorityArray(
-		value?: SearchPriorityFilter | SearchPriorityFilter[],
-	): SearchPriorityFilter[] | undefined {
-		if (!value) {
-			return undefined;
-		}
-
-		const values = Array.isArray(value) ? value : [value];
-		const normalized = values
-			.map((item) => normalizePriorityValue(item))
-			.filter((item): item is SearchPriorityFilter => Boolean(item));
-
-		return normalized.length > 0 ? normalized : undefined;
 	}
 
 	private mapEntityToResult(entity: SearchEntity, result?: FuseResult<SearchEntity>): SearchResult {
@@ -469,36 +274,4 @@ export class SearchService {
 			value: match.value,
 		}));
 	}
-}
-function buildTaskBodyText(task: Task): string {
-	const parts: string[] = [];
-
-	if (task.description) {
-		parts.push(task.description);
-	}
-
-	if (Array.isArray(task.acceptanceCriteriaItems) && task.acceptanceCriteriaItems.length > 0) {
-		const lines = [...task.acceptanceCriteriaItems]
-			.sort((a, b) => a.index - b.index)
-			.map((criterion) => `- [${criterion.checked ? "x" : " "}] ${criterion.text}`);
-		parts.push(lines.join("\n"));
-	}
-
-	if (task.implementationPlan) {
-		parts.push(task.implementationPlan);
-	}
-
-	if (task.implementationNotes) {
-		parts.push(task.implementationNotes);
-	}
-
-	if (Array.isArray(task.comments) && task.comments.length > 0) {
-		parts.push(task.comments.map((comment) => comment.body).join("\n\n"));
-	}
-
-	if (task.modifiedFiles?.length) {
-		parts.push(task.modifiedFiles.join("\n"));
-	}
-
-	return parts.join("\n\n");
 }
