@@ -8,6 +8,8 @@ import { FileSystem } from "../file-system/operations.ts";
 import { McpServer } from "../mcp/server.ts";
 import { registerTaskTools } from "../mcp/tools/tasks/index.ts";
 import type { Task, TaskSearchResult } from "../types/index.ts";
+import { NO_MILESTONE_FILTER_VALUE } from "../utils/milestone-filter.ts";
+import { createReadinessGraph } from "../utils/readiness.ts";
 import { applyTaskFilters, buildTaskSearchBodyText, createTaskSearchIndex } from "../utils/task-search.ts";
 import { getTestCliPath } from "./test-cli.ts";
 import { createUniqueTestDir, initializeFilesystemTestProject, safeCleanup } from "./test-utils.ts";
@@ -136,6 +138,68 @@ describe("cross-surface search parity", () => {
 		const withQuery = { query: "the", labels: bothLabels } as const;
 		expect(taskIds(applyTaskFilters(tasks, { ...withQuery, labelMatch: "all" }))).toEqual(["task-1"]);
 		expect(taskIds(applyTaskFilters(tasks, { ...withQuery, labelMatch: "any" }))).toEqual(["task-1", "task-2"]);
+	});
+});
+
+/**
+ * The TUI task viewer used to re-implement the milestone, labelMatch=all, and readiness filters by
+ * hand on top of a query, so those three could drift from the same filters applied without one.
+ * They all live in the shared predicate now; these pin that a query no longer changes what a filter
+ * means.
+ */
+describe("filters mean the same thing with and without a query", () => {
+	const milestoneTasks: Task[] = [
+		{
+			id: "task-10",
+			title: "Wire the release checklist",
+			status: "To Do",
+			assignee: [],
+			createdDate: "2026-01-05 09:00",
+			labels: [],
+			dependencies: [],
+			milestone: "m-1",
+		},
+		{
+			id: "task-11",
+			title: "Wire the follow-up checklist",
+			status: "To Do",
+			assignee: [],
+			createdDate: "2026-01-05 09:00",
+			labels: [],
+			dependencies: ["task-10"],
+			milestone: "m-2",
+		},
+		{
+			id: "task-12",
+			title: "Wire the unscheduled checklist",
+			status: "To Do",
+			assignee: [],
+			createdDate: "2026-01-05 09:00",
+			labels: [],
+			dependencies: [],
+		},
+	];
+	const resolveMilestoneLabel = (milestone: string) => (milestone === "m-1" ? "Release 1" : "Release 2");
+	// Every task's title matches, so the query narrows nothing and only the filter can change the set.
+	const query = "checklist";
+
+	it("resolves a milestone title the same way with and without a query", () => {
+		const options = { milestone: "Release 1", resolveMilestoneLabel } as const;
+		expect(taskIds(applyTaskFilters(milestoneTasks, options))).toEqual(["task-10"]);
+		expect(taskIds(applyTaskFilters(milestoneTasks, { ...options, query }))).toEqual(["task-10"]);
+	});
+
+	it("keeps the no-milestone filter meaning the same with and without a query", () => {
+		const options = { milestone: NO_MILESTONE_FILTER_VALUE, resolveMilestoneLabel } as const;
+		expect(taskIds(applyTaskFilters(milestoneTasks, options))).toEqual(["task-12"]);
+		expect(taskIds(applyTaskFilters(milestoneTasks, { ...options, query }))).toEqual(["task-12"]);
+	});
+
+	it("keeps dependency readiness meaning the same with and without a query", () => {
+		const ready = createReadinessGraph({ tasks: milestoneTasks, statuses: ["To Do", "In Progress", "Done"] });
+		// task-11 depends on an unfinished task-10, so it is the one readiness must drop.
+		expect(taskIds(applyTaskFilters(milestoneTasks, { ready }))).toEqual(["task-10", "task-12"]);
+		expect(taskIds(applyTaskFilters(milestoneTasks, { ready, query }))).toEqual(["task-10", "task-12"]);
 	});
 });
 

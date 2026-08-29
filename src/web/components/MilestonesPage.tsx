@@ -1,17 +1,12 @@
 import React, { useMemo, useState, useCallback } from "react";
 import { Link } from "react-router-dom";
-import Fuse from "fuse.js";
 import { apiClient } from "../lib/api";
 import { buildMilestoneBuckets, collectArchivedMilestoneKeys, isDoneStatus, milestoneKey } from "../utils/milestones";
 import { type Milestone, type MilestoneBucket, type Task } from "../../types";
+import { createTaskSearchIndex } from "../../utils/task-search";
 import MilestoneTaskRow from "./MilestoneTaskRow";
 import Modal from "./Modal";
 import { formatStoredUtcDateForDisplay } from "../utils/date-display";
-
-interface MilestoneSearchEntry {
-	id: string;
-	title: string;
-}
 
 type RemoveTaskHandling = "clear" | "reassign";
 
@@ -110,33 +105,13 @@ const MilestonesPage: React.FC<MilestonesPageProps> = ({
 			return buckets;
 		}
 
-		const searchableTasks: MilestoneSearchEntry[] = buckets.flatMap((bucket) =>
-			bucket.tasks.map((task) => ({
-				id: task.id,
-				title: task.title,
-			})),
+		// The shared task index, so a query means here what it means in the CLI, the TUI, and the
+		// rest of the web. The buckets are already loaded, so this filters them in place.
+		const matchedTaskIds = new Set(
+			createTaskSearchIndex(buckets.flatMap((bucket) => bucket.tasks))
+				.search({ query: searchQueryTrimmed })
+				.map((task) => task.id),
 		);
-		if (searchableTasks.length === 0) {
-			return buckets.map((bucket) => rebuildFilteredBucket(bucket, [], statuses));
-		}
-		const normalizedQuery = searchQueryTrimmed.toLowerCase();
-		const exactIdMatches = searchableTasks.filter((task) => task.id.toLowerCase() === normalizedQuery);
-		const matchedTaskIds =
-			exactIdMatches.length > 0
-				? new Set(exactIdMatches.map((task) => task.id))
-				: (() => {
-						const fuse = new Fuse(searchableTasks, {
-							threshold: 0.35,
-							ignoreLocation: true,
-							minMatchCharLength: 2,
-							keys: [
-								{ name: "title", weight: 0.55 },
-								{ name: "id", weight: 0.45 },
-							],
-						});
-						const matches = fuse.search(searchQueryTrimmed);
-						return new Set(matches.map((match) => match.item.id));
-					})();
 
 		return buckets.map((bucket) => {
 			const filteredTasks = bucket.tasks.filter((task) => matchedTaskIds.has(task.id));
@@ -802,7 +777,7 @@ const MilestonesPage: React.FC<MilestonesPageProps> = ({
 							type="text"
 							value={searchQuery}
 							onInput={(event) => setSearchQuery((event.target as HTMLInputElement).value)}
-							placeholder="Search by task ID or title"
+							placeholder="Search tasks"
 							aria-label="Search milestones"
 							className="w-full pl-10 pr-10 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-sm text-gray-900 dark:text-gray-100 placeholder-gray-500 dark:placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-stone-500 dark:focus:ring-stone-400 focus:border-transparent transition-colors duration-200"
 						/>

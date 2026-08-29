@@ -10,9 +10,9 @@ import {
 	formatDateForDisplay,
 	formatTaskPlainText,
 } from "../formatters/task-plain-text.ts";
-import type { LabelMatchMode, Milestone, Task, TaskSearchResult } from "../types/index.ts";
+import type { LabelMatchMode, Milestone, Task } from "../types/index.ts";
 import { copyToClipboard } from "../utils/clipboard.ts";
-import { areLabelSelectionsEqual, collectAvailableLabels, labelsToLower } from "../utils/label-filter.ts";
+import { areLabelSelectionsEqual, collectAvailableLabels } from "../utils/label-filter.ts";
 import {
 	createMilestoneFilterValueResolver,
 	type MilestoneFilterValueResolver,
@@ -267,9 +267,6 @@ export async function viewTaskEnhanced(
 	let configuredTaskTypes = getTaskTypeValues();
 	let configuredProjects = getProjectValues();
 	let availableLabels: string[] = [];
-	// When tasks are provided, use in-memory search; otherwise use ContentStore-backed search
-	let taskSearchIndex: ReturnType<typeof createTaskSearchIndex> | null = null;
-	let searchService: Awaited<ReturnType<typeof core.getSearchService>> | null = null;
 	let contentStore: Awaited<ReturnType<typeof core.getContentStore>> | null = null;
 	// Completed tasks are loaded alongside the milestone metadata so dependency readiness can
 	// resolve dependencies that already left the active corpus, without a second full task load.
@@ -287,7 +284,7 @@ export async function viewTaskEnhanced(
 	let projectName: string | undefined;
 
 	if (options.tasks) {
-		// Tasks already provided - use in-memory search (no ContentStore loading)
+		// Tasks already provided - no ContentStore loading
 		allTasks = options.tasks.filter((t) => t.id && t.id.trim() !== "" && hasAnyPrefix(t.id));
 		const config = await core.filesystem.loadConfig();
 		statuses = config?.statuses || ["To Do", "In Progress", "Done"];
@@ -297,7 +294,6 @@ export async function viewTaskEnhanced(
 		configuredProjects = getProjectValues(config);
 		dateFormat = config?.dateFormat;
 		projectName = config?.projectName;
-		taskSearchIndex = createTaskSearchIndex(allTasks);
 	} else {
 		// Need to load tasks - show loading screen
 		const loadingScreen = await createLoadingScreen("Loading tasks");
@@ -314,7 +310,6 @@ export async function viewTaskEnhanced(
 
 			loadingScreen?.update("Loading tasks from branches...");
 			contentStore = await core.getContentStore();
-			searchService = await core.getSearchService();
 
 			loadingScreen?.update("Preparing task list...");
 			const tasks = await core.queryTasks();
@@ -323,6 +318,10 @@ export async function viewTaskEnhanced(
 			await loadingScreen?.close();
 		}
 	}
+
+	// One shared index over the loaded corpus, however that corpus arrived. Searching exactly the
+	// tasks this list renders is what keeps its results identical to the other surfaces'.
+	let taskSearchIndex = createTaskSearchIndex(allTasks);
 
 	// Collect available labels from config, tasks, and CLI-provided filters.
 	availableLabels = collectAvailableLabels(allTasks, [...labels, ...(options.labelFilter ?? [])]);
@@ -773,76 +772,24 @@ export async function viewTaskEnhanced(
 
 	// Function to apply filters and refresh the task list
 	function applyFilters() {
-		const hasActiveFilters = Boolean(
-			searchQuery.trim() ||
-				statusFilter.length > 0 ||
-				excludeStatusFilter.length > 0 ||
-				taskTypeFilter.length > 0 ||
-				projectFilter.length > 0 ||
-				priorityFilter ||
-				labelFilter.length > 0 ||
-				milestoneFilter ||
-				options.readyFilter,
-		);
-		let nextFilteredTasks: Task[];
-		if (!hasActiveFilters) {
-			nextFilteredTasks = [...allTasks];
-		} else if (taskSearchIndex) {
-			nextFilteredTasks = applyTaskFilters(
-				allTasks,
-				{
-					query: searchQuery,
-					status: statusFilter.length > 0 ? [...statusFilter] : undefined,
-					excludeStatus: excludeStatusFilter,
-					type: taskTypeFilter,
-					project: projectFilter,
-					priority: priorityFilter || undefined,
-					labels: labelFilter,
-					labelMatch,
-					milestone: milestoneFilter || undefined,
-					resolveMilestoneLabel,
-					ready: options.readyFilter ? buildReadinessGraph() : undefined,
-				},
-				taskSearchIndex,
-			);
-		} else if (searchService) {
-			const searchResults = searchService.search({
+		// An unset filter contributes no check, so this covers the no-filters case too.
+		const nextFilteredTasks = applyTaskFilters(
+			allTasks,
+			{
 				query: searchQuery,
-				filters: {
-					status: statusFilter.length > 0 ? [...statusFilter] : undefined,
-					excludeStatus: excludeStatusFilter,
-					type: taskTypeFilter,
-					project: projectFilter,
-					priority: priorityFilter || undefined,
-					labels: labelFilter.length > 0 ? labelFilter : undefined,
-				},
-				types: ["task"],
-			});
-			nextFilteredTasks = searchResults.filter((r): r is TaskSearchResult => r.type === "task").map((r) => r.task);
-			if (milestoneFilter) {
-				nextFilteredTasks = nextFilteredTasks.filter((task) => {
-					if (milestoneFilter === NO_MILESTONE_FILTER_VALUE) {
-						return !task.milestone?.trim();
-					}
-					if (!task.milestone) return false;
-					const taskMilestoneTitle = resolveMilestoneLabel(task.milestone);
-					return taskMilestoneTitle.toLowerCase() === milestoneFilter.toLowerCase();
-				});
-			}
-			if (labelMatch === "all" && labelFilter.length > 0) {
-				const requiredLabels = labelsToLower(labelFilter);
-				nextFilteredTasks = nextFilteredTasks.filter((task) => {
-					const taskLabels = new Set(labelsToLower(task.labels ?? []));
-					return requiredLabels.every((label) => taskLabels.has(label));
-				});
-			}
-			if (options.readyFilter) {
-				const graph = buildReadinessGraph();
-				nextFilteredTasks = nextFilteredTasks.filter((task) => getTaskReadiness(task, graph).isReady);
-			}
-		} else {
-			nextFilteredTasks = [...allTasks];
-		}
+				status: statusFilter.length > 0 ? [...statusFilter] : undefined,
+				excludeStatus: excludeStatusFilter,
+				type: taskTypeFilter,
+				project: projectFilter,
+				priority: priorityFilter || undefined,
+				labels: labelFilter,
+				labelMatch,
+				milestone: milestoneFilter || undefined,
+				resolveMilestoneLabel,
+				ready: options.readyFilter ? buildReadinessGraph() : undefined,
+			},
+			taskSearchIndex,
+		);
 		filteredTasks = taskLimit !== undefined ? nextFilteredTasks.slice(0, taskLimit) : nextFilteredTasks;
 
 		// Update the task list label
@@ -1317,9 +1264,7 @@ export async function viewTaskEnhanced(
 				const enhancedTask = enrichTask(result.task) ?? result.task;
 				currentSelectedTask = enhancedTask;
 				options.onTaskChange?.(enhancedTask);
-				if (taskSearchIndex) {
-					taskSearchIndex = createTaskSearchIndex(allTasks);
-				}
+				taskSearchIndex = createTaskSearchIndex(allTasks);
 			}
 
 			applyFilters();
@@ -1347,9 +1292,7 @@ export async function viewTaskEnhanced(
 		const nextTask = remainingFilteredTasks[nextIndex] ?? null;
 
 		allTasks = allTasks.filter((taskItem) => taskItem.id !== taskId);
-		if (taskSearchIndex) {
-			taskSearchIndex = createTaskSearchIndex(allTasks);
-		}
+		taskSearchIndex = createTaskSearchIndex(allTasks);
 		if (nextTask) {
 			currentSelectedTask = enrichTask(nextTask) ?? nextTask;
 			options.onTaskChange?.(currentSelectedTask);
@@ -1529,7 +1472,6 @@ export async function viewTaskEnhanced(
 			}
 		} else {
 			// If already in task list, quit
-			searchService?.dispose();
 			contentStore?.dispose();
 			filterHeader.destroy();
 			screen.destroy();
@@ -1546,7 +1488,6 @@ export async function viewTaskEnhanced(
 			}
 			if (currentFocus === "list" || currentFocus === "detail") {
 				// Cleanup before switching
-				searchService?.dispose();
 				contentStore?.dispose();
 				filterHeader.destroy();
 				screen.destroy();
@@ -1560,7 +1501,6 @@ export async function viewTaskEnhanced(
 		if (modalOpen || filterPopupOpen) {
 			return;
 		}
-		searchService?.dispose();
 		contentStore?.dispose();
 		filterHeader.destroy();
 		screen.destroy();
@@ -1581,7 +1521,7 @@ export async function viewTaskEnhanced(
 		statuses = nextStatuses;
 		labels = nextLabels;
 		availableLabels = collectAvailableLabels(allTasks, labels);
-		if (taskSearchIndex) taskSearchIndex = createTaskSearchIndex(allTasks);
+		taskSearchIndex = createTaskSearchIndex(allTasks);
 
 		const previousTaskId = currentSelectedTask.id;
 		const currentTask =
@@ -1618,7 +1558,6 @@ export async function viewTaskEnhanced(
 				clearTimeout(helpRestoreTimer);
 				helpRestoreTimer = null;
 			}
-			searchService?.dispose();
 			contentStore?.dispose();
 			resolve();
 		});
