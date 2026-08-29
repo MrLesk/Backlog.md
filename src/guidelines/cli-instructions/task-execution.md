@@ -10,6 +10,10 @@ Before writing code for non-trivial work:
    - `backlog task view {{TASK_ID:123}} --plain`
 2. Review its current status, description, acceptance criteria, dependencies, references, and documentation. Confirm the
    task is eligible to start and remains within the requested scope.
+   - The `Dependency Graph` section reads the whole context: `Depends on` is what this task transitively waits on,
+     `Dependents` is what transitively waits on it. Outermost entries are direct, indented entries are transitive.
+   - `unknown task ID` and `ambiguous task ID` are unresolved identities, never satisfied dependencies. The graph stops
+     at one instead of guessing, so treat that branch as unknown and run `backlog doctor` before relying on it.
 3. Mark it in progress and assign yourself:
    - Inspect accepted statuses if needed: `backlog task edit {{TASK_ID:123}} --help`
    - `backlog task edit {{TASK_ID:123}} -s "<active status>" -a @your-name`

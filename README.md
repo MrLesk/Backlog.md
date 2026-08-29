@@ -58,7 +58,7 @@ Backlog.md itself. The full task ledger lives in this repo's [backlog folder](ba
 
 * ✅ **Acceptance criteria & Definition of Done** -- verifiable scope per task, plus a reusable DoD checklist for every new task
 
-* 🎯 **Milestones & dependencies** -- structure bigger efforts and make execution order reviewable
+* 🎯 **Milestones & dependencies** -- structure bigger efforts and make execution order reviewable, with task detail showing what a task waits on and what waits on it
 
 * 📊 **Terminal Kanban** -- `backlog board` paints a live board in your shell; `backlog board export` creates shareable markdown reports
 

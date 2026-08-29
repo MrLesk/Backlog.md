@@ -573,6 +573,22 @@ backlog search --modified-file src/server/api.ts --plain
 | Replace documentation | `backlog task edit 42 --doc https://design-docs.example.com --doc docs/spec.md` |
 | Set modified files | `backlog task edit 42 --modified-file src/api.ts --modified-file src/ui.ts` |
 
+### Dependency Graph in Task Detail
+
+Task detail adds a read-only `Dependency Graph` section below the editable `Dependencies:` line. `Depends on` is everything the
+task transitively depends on; `Dependents` is everything that transitively depends on it. A dependency edge points from the task
+that declares it to the task it depends on, so the task it points at blocks the task it comes from. Nesting shows the distance:
+outermost entries are direct, indented entries are transitive, and the heading counts both.
+
+Every task appears once. `(cycle)` marks a relationship that points back into the branch above it and `(shown above)` marks a
+task already listed in the same section. `unknown task ID` means nothing visible claims that ID and `ambiguous task ID` means
+more than one record does; neither counts as satisfied, and the graph stops there rather than guessing what lies behind it. Run
+`backlog doctor` when one appears. The graph sees what task detail sees: the current checkout plus completed tasks, and the
+configured cross-branch corpus in the browser. Archived tasks are not resurrected.
+
+With `--json`, the same information is a `dependencyGraph` object beside `task`, with `root`, `nodes`, and directed `edges`.
+`task.dependencies` still holds only the task's own direct dependency IDs.
+
 ### Multi‑line Input (Description/Plan/Notes/Comments/Final Summary)
 
 The CLI preserves input literally — shells do not convert `\n` inside normal quotes. Use one of the following forms, listed in order of preference for AI agents:

@@ -137,6 +137,37 @@ describe("MCP task tools (MVP)", () => {
 		expect(searchText).not.toContain("Implementation Plan:");
 	});
 
+	it("carries the canonical dependency graph in task detail only", async () => {
+		const create = async (title: string, dependencies?: string[]) =>
+			await mcpServer.testInterface.callTool({
+				params: { name: "task_create", arguments: { title, ...(dependencies ? { dependencies } : {}) } },
+			});
+		await create("Foundation");
+		await create("Selected", ["TASK-1"]);
+		await create("Follow up", ["TASK-2"]);
+
+		const viewText = getText(
+			(await mcpServer.testInterface.callTool({ params: { name: "task_view", arguments: { id: "TASK-2" } } })).content,
+		);
+		// Exactly the section the canonical CLI renders, from the same shared model.
+		expect(viewText).toContain("Dependency Graph:");
+		expect(viewText).toContain("Depends on (1 direct, 1 total):");
+		expect(viewText).toContain("└─ TASK-1 - Foundation [To Do]");
+		expect(viewText).toContain("Dependents (1 direct, 1 total):");
+		expect(viewText).toContain("└─ TASK-3 - Follow up [To Do]");
+
+		// Confirmations are not task detail, so they stay the size they were.
+		const editText = getText(
+			(
+				await mcpServer.testInterface.callTool({
+					params: { name: "task_edit", arguments: { id: "TASK-2", priority: "high" } },
+				})
+			).content,
+		);
+		expect(editText).toContain("TASK-2");
+		expect(editText).not.toContain("Dependency Graph:");
+	});
+
 	it("creates, reports, edits, and clears dueDate", async () => {
 		const tools = await mcpServer.testInterface.listTools();
 		const toolByName = new Map(tools.tools.map((tool) => [tool.name, tool]));

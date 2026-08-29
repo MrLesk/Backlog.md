@@ -9,6 +9,7 @@ import {
 	type TaskListFilter,
 } from "../../../types/index.ts";
 import type { TaskEditArgs, TaskEditRequest } from "../../../types/task-edit-args.ts";
+import { loadTaskDependencyGraph } from "../../../utils/dependency-graph.ts";
 import { formatDuplicateTaskIdWarning } from "../../../utils/duplicate-detection.ts";
 import {
 	createMilestoneFilterValueResolver,
@@ -439,7 +440,11 @@ export class TaskHandlers {
 		if (!task) {
 			throw new BacklogToolError(`Task not found: ${args.id}`, "TASK_NOT_FOUND");
 		}
-		return await formatTaskCallResult(task);
+		// Task detail is the only MCP result that carries the graph, and it carries exactly the one
+		// the canonical CLI defines. The edit and lifecycle confirmations stay as short as they were.
+		return await formatTaskCallResult(task, [], {
+			dependencyGraph: await loadTaskDependencyGraph(this.core, task),
+		});
 	}
 
 	async archiveTask(args: { id: string }): Promise<CallToolResult> {

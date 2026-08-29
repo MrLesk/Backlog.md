@@ -107,12 +107,14 @@ Each successful response is one pretty-printed JSON document followed by a newli
 | Command | Envelope |
 |---------|----------|
 | `task list --json` | `{ "schemaVersion": 1, "kind": "task-list", "tasks": [...] }` |
-| `task view <id> --json` and `task <id> --json` | `{ "schemaVersion": 1, "kind": "task-view", "task": {...} }` |
+| `task view <id> --json` and `task <id> --json` | `{ "schemaVersion": 1, "kind": "task-view", "task": {...}, "dependencyGraph": {...} }` |
 | `search [query] --json` | `{ "schemaVersion": 1, "kind": "search", "results": [...] }` |
 
 Task list and task search results use these compact fields: `id`, `title`, `status`, `type`, `priority`, `project`, `assignees`, `reporter`, `labels`, `milestone`, `parentTaskId`, `acceptanceCriteriaCompleted`, `acceptanceCriteriaCount`, `ordinal`, `createdAt`, `updatedAt`, and `dueDate`. `acceptanceCriteriaCompleted` is the number of checked acceptance criteria and `acceptanceCriteriaCount` is the total; both are `0` when the task has no acceptance criteria. `project` reports the task's `project:` frontmatter and is `null` when the task has none. Setting or filtering by it requires a `projects:` list in the project config.
 
 Task view includes the same progress counts alongside the full checklist and adds `path`, `description`, `dependencies`, `references`, `documentation`, `modifiedFiles`, `subtasks`, `acceptanceCriteria`, `definitionOfDone`, `implementationPlan`, `implementationNotes`, `comments`, and `finalSummary`. `path` is relative to the project root. Checklist entries contain `index`, `text`, and `checked`. Comment entries contain `index`, `body`, `createdAt`, and `author`.
+
+`dependencyGraph` sits beside `task` because it is derived from the whole visible corpus, while `task.dependencies` stays the task's own list of direct dependency IDs. It contains `root` (the selected task's ID), `nodes`, and `edges`. Each edge is `{ "from": ..., "to": ... }` and always points from the task that declares the dependency to the task it depends on, so `to` blocks `from`. Each node contains `id`, `title`, `status`, `state`, `completed`, `dependencyDepth`, and `dependentDepth`. The two depths are the shortest hop counts from the root: `0` is the root itself, `1` is a direct relationship, anything higher is transitive, and `null` means the node is not reachable in that direction. Nodes are listed root first and then by task ID, edges by `from` and then `to`. See "Dependency Management" for what the graph covers and how it reports identities it cannot resolve.
 
 Search keeps relevance order and discriminates every result with `type` and `data`. Task data uses the compact task fields. Document data contains `id`, `title`, `type`, `path`, `tags`, `createdAt`, and `updatedAt`. Decision data contains `id`, `title`, `status`, and `date`. Search scores are not part of the version 1 public contract.
 
@@ -242,6 +244,29 @@ Manage task dependencies to express execution order:
 - **Automatic validation**: verifies that referenced dependency tasks exist
 - **Flexible formats**: Use `task-1`, `1`, or comma-separated lists like `1,2,3`
 - **Completion tracking**: See which dependencies are blocking task progress
+
+### Dependency graph in task detail
+
+Task detail shows the whole dependency context around the selected task, under `Dependency Graph`. The `Dependencies:` line above it stays the task's own editable list of direct dependency IDs; the graph below it is derived and read-only.
+
+```text
+Dependency Graph:
+--------------------------------------------------
+Depends on (1 direct, 2 total):
+└─ BACK-2 - Parser rewrite [In Progress]
+   └─ BACK-1 - Token schema [completed]
+
+Dependents (2 direct, 2 total):
+├─ BACK-8 - Migration guide [To Do]
+└─ BACK-9 - Release checklist [To Do]
+```
+
+- **Edge direction.** A dependency edge points from the task that declares it to the task it depends on, so the task it points at blocks the task it comes from.
+- **Direct versus transitive.** `Depends on` lists everything the selected task transitively depends on; `Dependents` lists everything that transitively depends on it. Nesting shows the distance: the outermost entries are direct relationships and everything indented below them is transitive. The heading counts both, as `N direct, M total`.
+- **Dependents.** "Dependents" means the tasks this one blocks. It is the reverse of `Dependencies:`, and nothing on that list is editable from here; change it on the task that declares it.
+- **Visibility.** The graph resolves against exactly what task detail can already see: the current checkout plus completed tasks for the CLI, TUI, and MCP, and the configured cross-branch corpus in the browser. Archiving a task takes it out of every one of those, so an archived ID stops resolving instead of coming back.
+- **Cycles and repeats.** Every task appears once. A relationship that points back into the branch above it is marked `(cycle)`, and a task already shown elsewhere in the same section is marked `(shown above)` rather than being expanded again.
+- **Unresolved identities.** `unknown task ID` means no visible task claims that ID. `ambiguous task ID` means more than one record claims it, so nothing is chosen. Neither is ever treated as satisfied, and the graph never traverses past one, so anything behind it is left out rather than reported as resolved. Diagnose and repair duplicate IDs with `backlog doctor` before trusting a graph that reports one.
 
 ## Board Operations
 
