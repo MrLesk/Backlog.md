@@ -28,7 +28,7 @@ import { openMultiSelectFilterPopup, openSingleSelectFilterPopup } from "./compo
 import type { BoundaryNavigationKey } from "./components/generic-list.ts";
 import { openHelpPopup } from "./components/help-popup.ts";
 import { openTaskComposer, type TaskComposerOptions } from "./components/task-composer.ts";
-import { BOARD_FOOTER_CONTENT, formatFooterContent } from "./footer-content.ts";
+import { formatFooterContent, getBoardFooterContent } from "./footer-content.ts";
 import { formatProjectBadge } from "./project.ts";
 import { getStatusIcon } from "./status-icon.ts";
 import { completeTaskFromTui, formatTaskCompletionBlockedMessage } from "./task-lifecycle.ts";
@@ -563,7 +563,7 @@ export async function renderBoardTui(
 		const getFormattedItems = (tasks: Task[]) => {
 			const columnCount = Math.max(1, currentColumnsData.length);
 			const availableWidth = Math.max(1, Math.floor(getTerminalWidth() / columnCount) - 4);
-			return buildRenderedTaskListItems(tasks, moveOp?.taskId, availableWidth, options?.dateFormat, options?.projects);
+			return buildRenderedTaskListItems(tasks, moveOp?.taskId, availableWidth, options?.dateFormat, configuredProjects);
 		};
 
 		const createColumnViews = (data: ColumnData[]) => {
@@ -982,7 +982,7 @@ export async function renderBoardTui(
 					" {green-fg}MOVE MODE{/} | {cyan-fg}[←→]{/} Change Column | {cyan-fg}[↑↓]{/} Reorder | {cyan-fg}[Enter/M]{/} Confirm | {cyan-fg}[Esc]{/} Cancel",
 				);
 			} else {
-				const base = BOARD_FOOTER_CONTENT;
+				const base = getBoardFooterContent({ hasProjects: configuredProjects.length > 0 });
 				setFooterContent(hasActiveSharedFilters() ? `${base} | {yellow-fg}Filtered{/}` : base);
 			}
 			syncBoardAreaLayout();
@@ -1408,7 +1408,7 @@ export async function renderBoardTui(
 			if (!task) return;
 			popupOpen = true;
 
-			const popup = await createTaskPopup(screen, task, resolveMilestoneLabel, options?.dateFormat, options?.projects);
+			const popup = await createTaskPopup(screen, task, resolveMilestoneLabel, options?.dateFormat, configuredProjects);
 			if (!popup) {
 				popupOpen = false;
 				return;

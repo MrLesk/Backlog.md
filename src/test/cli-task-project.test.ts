@@ -28,10 +28,12 @@ describe("CLI task projects", () => {
 		expect(created.stderr.toString()).toContain("No projects are configured. Add a 'projects:' list to");
 
 		const createHelp = await $`bun ${CLI_PATH} task create --help`.cwd(TEST_DIR).text();
-		expect(createHelp).toContain("no projects configured; see 'backlog config get projects'");
+		expect(createHelp).toContain("no projects configured; add a 'projects:' list to the project config file");
 
+		// `config get <list key>` stays machine-readable: an unset list prints nothing, the same
+		// as labels or definitionOfDone, so scripts can test it for emptiness.
 		const getOutput = await $`bun ${CLI_PATH} config get projects`.cwd(TEST_DIR).text();
-		expect(getOutput.trim()).toBe("No projects configured");
+		expect(getOutput.trim()).toBe("");
 	});
 
 	describe("with configured projects", () => {

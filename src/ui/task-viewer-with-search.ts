@@ -45,7 +45,7 @@ import {
 import { openMultiSelectFilterPopup, openSingleSelectFilterPopup } from "./components/filter-popup.ts";
 import { type BoundaryNavigationKey, createGenericList, type GenericList } from "./components/generic-list.ts";
 import { openHelpPopup } from "./components/help-popup.ts";
-import { formatFooterContent, TASK_LIST_FOOTER_CONTENT } from "./footer-content.ts";
+import { formatFooterContent, getTaskListFooterContent } from "./footer-content.ts";
 import { formatHeading } from "./heading.ts";
 import { createLoadingScreen } from "./loading.ts";
 import { formatProjectBadge } from "./project.ts";
@@ -1256,7 +1256,7 @@ export async function viewTaskEnhanced(
 				" {cyan-fg}[Tab]{/} View | {cyan-fg}[←]{/} List | {cyan-fg}[↑↓]{/} Scroll | {cyan-fg}[E]{/} Edit | {cyan-fg}[Y]{/} Yank | {cyan-fg}[?]{/} Help | {cyan-fg}[q]{/} Quit";
 		} else {
 			// Task list help
-			content = TASK_LIST_FOOTER_CONTENT;
+			content = getTaskListFooterContent({ hasProjects: configuredProjects.length > 0 });
 		}
 
 		setHelpBarContent(content);

@@ -4918,11 +4918,9 @@ addHelpSchema(configCmd.command("get <key>"), {
 				case "types":
 					console.log(getTaskTypeValues(config).join(", "));
 					break;
-				case "projects": {
-					const projects = getProjectValues(config);
-					console.log(projects.length > 0 ? projects.join(", ") : "No projects configured");
+				case "projects":
+					console.log(getProjectValues(config).join(", "));
 					break;
-				}
 				case "milestones": {
 					const milestones = await core.filesystem.listMilestones();
 					console.log(milestones.map((milestone) => milestone.id).join(", "));

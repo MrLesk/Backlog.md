@@ -715,7 +715,12 @@ export async function openTaskComposer(options: TaskComposerOptions): Promise<Ta
 			// Project always sits on its own row below type/priority, so it takes over as the
 			// boundary between the selectors and the action buttons whenever it is present.
 			if (hasProjects) {
-				if (activeField === "type" && direction === "down") next = "project";
+				// In the stacked compact layout Type sits on its own row above Priority, so Down
+				// from Type must still reach Priority. Every other layout puts Status, Type, and
+				// Priority on one row, so Down from any of them drops to the Project row.
+				if (activeField === "status" && direction === "down" && !layout.compact) next = "project";
+				if (activeField === "type" && direction === "down" && !(layout.compact && layout.stackSelectors))
+					next = "project";
 				if (activeField === "priority" && direction === "down") next = "project";
 				if (activeField === "project" && direction === "up") next = "priority";
 				if (activeField === "project" && direction === "down") next = "create";

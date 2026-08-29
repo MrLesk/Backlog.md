@@ -304,7 +304,7 @@ export function taskType(options?: { multiple?: boolean }): string {
 export function projectType(options?: { multiple?: boolean }): string {
 	const values = getCliProjectValues();
 	if (values.length === 0) {
-		return "no projects configured; see 'backlog config get projects'";
+		return "no projects configured; add a 'projects:' list to the project config file";
 	}
 	const cardinality = options?.multiple ? "one or more of" : "one of";
 	return `${cardinality} configured projects: ${values.join(", ")}`;

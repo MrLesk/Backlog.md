@@ -4,13 +4,23 @@
  * Letters are uppercase key indicators, not Shift chords: `[T]` means "press the T key".
  * The bound key is the lowercase letter (some actions also bind an explicit `S-` variant,
  * which is how Shift+letter is delivered). Filter letters are listed in the same order the
- * filter header renders its controls (status, type, priority, milestone, labels).
+ * filter header renders its controls (status, type, project, priority, milestone, labels).
+ * The project filter (`V`) is only bound when the project configures `projects:`, so it is
+ * listed only when it is actually available, matching the help popup.
  */
-export const BOARD_FOOTER_CONTENT =
-	" {cyan-fg}[Tab]{/} View | {cyan-fg}[N]{/} New | {cyan-fg}[/]{/} Search | {cyan-fg}[T/P/I/F]{/} Filter | {cyan-fg}[←→/↑↓]{/} Nav | {cyan-fg}[Enter]{/} Details | {cyan-fg}[E/M/C/A]{/} Edit/Move/Comp/Arch | {cyan-fg}[Y]{/} Yank | {cyan-fg}[?]{/} Help | {cyan-fg}[q]{/} Quit";
+function filterKeys(before: string[], after: string[], hasProjects: boolean): string {
+	return [...before, ...(hasProjects ? ["V"] : []), ...after].join("/");
+}
 
-export const TASK_LIST_FOOTER_CONTENT =
-	" {cyan-fg}[Tab]{/} View | {cyan-fg}[/]{/} Search | {cyan-fg}[S/T/P/I/L]{/} Filter | {cyan-fg}[↑↓]{/} Nav | {cyan-fg}[E/C/A]{/} Edit/Comp/Arch | {cyan-fg}[Y]{/} Yank | {cyan-fg}[?]{/} Help | {cyan-fg}[q]{/} Quit";
+export function getBoardFooterContent(options: { hasProjects?: boolean } = {}): string {
+	const keys = filterKeys(["T"], ["P", "I", "F"], options.hasProjects ?? false);
+	return ` {cyan-fg}[Tab]{/} View | {cyan-fg}[N]{/} New | {cyan-fg}[/]{/} Search | {cyan-fg}[${keys}]{/} Filter | {cyan-fg}[←→/↑↓]{/} Nav | {cyan-fg}[Enter]{/} Details | {cyan-fg}[E/M/C/A]{/} Edit/Move/Comp/Arch | {cyan-fg}[Y]{/} Yank | {cyan-fg}[?]{/} Help | {cyan-fg}[q]{/} Quit`;
+}
+
+export function getTaskListFooterContent(options: { hasProjects?: boolean } = {}): string {
+	const keys = filterKeys(["S", "T"], ["P", "I", "L"], options.hasProjects ?? false);
+	return ` {cyan-fg}[Tab]{/} View | {cyan-fg}[/]{/} Search | {cyan-fg}[${keys}]{/} Filter | {cyan-fg}[↑↓]{/} Nav | {cyan-fg}[E/C/A]{/} Edit/Comp/Arch | {cyan-fg}[Y]{/} Yank | {cyan-fg}[?]{/} Help | {cyan-fg}[q]{/} Quit`;
+}
 
 function visibleLength(value: string): number {
 	return value.replace(/\{[^{}]+\}/g, "").length;

@@ -10,7 +10,7 @@ import ChipInput from "./ChipInput";
 import DependencyInput from "./DependencyInput";
 import { formatStoredUtcDateForDisplay } from "../utils/date-display";
 import { getPriorityOptions } from "../../utils/priority-config";
-import { getProjectValues } from "../../utils/project-config";
+import { getProjectValues, resolveProjectValue } from "../../utils/project-config";
 import { getTaskTypeValues, resolveTaskTypeValue } from "../../utils/task-type-config";
 import { createReadinessGraph, formatReadinessBlockers, getTaskReadiness } from "../../utils/readiness";
 import { canonicalTaskId } from "../../utils/task-id.ts";
@@ -408,6 +408,8 @@ export const TaskDetailsModal: React.FC<Props> = ({
   const [dueDate, setDueDate] = useState<string>(task?.dueDate?.replace(" ", "T") || "");
   const canonicalTypeSelection = resolveTaskTypeValue(taskType, typeOptions);
   const typeSelectionValue = canonicalTypeSelection ?? taskType;
+  const canonicalProjectSelection = resolveProjectValue(project, projectOptions);
+  const projectSelectionValue = canonicalProjectSelection ?? project;
   const milestoneSelectionValue = resolveMilestoneToId(milestone);
   const hasMilestoneSelection = (milestoneEntities ?? []).some((milestoneEntity) => milestoneEntity.id === milestoneSelectionValue);
 
@@ -852,14 +854,18 @@ export const TaskDetailsModal: React.FC<Props> = ({
         ...(isCreateMode && assignee.length === 0 && createModeAssignee.length === 0 ? {} : { assignee }),
         labels,
         priority: priority === "" ? undefined : priority,
-        project: project.trim().length > 0 ? project.trim() : isCreateMode ? undefined : null,
         dependencies,
         milestone: milestone.trim().length > 0 ? milestone.trim() : undefined,
         dueDate: dueDate.trim().length > 0 ? dueDate.trim() : isCreateMode ? undefined : null,
       };
 
+      // Like type, project is only sent from the create form. On edit the sidebar select
+      // persists immediately through handleInlineMetaUpdate, so including it here would
+      // re-send a value the form never showed -- clearing a stale project when none are
+      // configured, or failing the whole save when the stored value is no longer valid.
       if (isCreateMode) {
         taskData.type = taskType;
+        taskData.project = project.trim().length > 0 ? project.trim() : undefined;
       }
 
       if (isCreateMode && onSubmit) {
@@ -1868,11 +1874,15 @@ export const TaskDetailsModal: React.FC<Props> = ({
               <SectionHeader title="Project" />
               <select
                 className={`w-full h-10 px-3 pr-10 py-2 border border-gray-300 dark:border-gray-600 rounded-md text-sm bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-stone-500 dark:focus:ring-stone-400 focus:border-transparent transition-colors duration-200 ${isFromOtherBranch ? 'opacity-60 cursor-not-allowed' : ''}`}
-                value={project}
-                onChange={(e) => handleInlineMetaUpdate({ project: e.target.value as any })}
+                aria-label="Task project"
+                value={projectSelectionValue}
+                onChange={(e) => handleInlineMetaUpdate({ project: e.target.value })}
                 disabled={isFromOtherBranch}
               >
                 <option value="">No Project</option>
+                {!canonicalProjectSelection && project.trim() ? (
+                  <option value={project}>{project} (not configured)</option>
+                ) : null}
                 {projectOptions.map((option) => (
                   <option key={option} value={option}>
                     {option}
