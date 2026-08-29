@@ -1044,4 +1044,105 @@ Invalid content`,
 			expect(filename?.includes("--")).toBe(false);
 		});
 	});
+
+	describe("punctuation-only titles", () => {
+		const punctuationOnlyTitle = "!!!";
+
+		it("names a task file with a placeholder title instead of an empty segment", async () => {
+			const task: Task = {
+				id: "task-punct-only",
+				title: punctuationOnlyTitle,
+				status: "To Do",
+				assignee: [],
+				createdDate: "2025-06-07",
+				labels: [],
+				dependencies: [],
+				description: "Punctuation-only title",
+			};
+
+			await filesystem.saveTask(task);
+
+			const files = await readdir(filesystem.tasksDir);
+			expect(files).toContain("task-punct-only - untitled.md");
+			expect(await filesystem.getTaskWritePath(task)).toBe(join(filesystem.tasksDir, "task-punct-only - untitled.md"));
+			// The title itself is preserved in the file; only the filename uses the placeholder
+			expect((await filesystem.loadTask("task-punct-only"))?.title).toBe(punctuationOnlyTitle);
+		});
+
+		it("keeps the id parseable by the readers that split the task filename", async () => {
+			await filesystem.saveTask({
+				id: "task-punct-reader",
+				title: punctuationOnlyTitle,
+				status: "To Do",
+				assignee: [],
+				createdDate: "2025-06-07",
+				labels: [],
+				dependencies: [],
+				description: "Punctuation-only title",
+			});
+
+			const files = await readdir(filesystem.tasksDir);
+			const filename = files.find((f) => f.startsWith("task-punct-reader"));
+			expect(filename).toBeDefined();
+			// The content-store task watcher recovers the id by splitting on the first space
+			expect(filename?.split(" ")[0]).toBe("task-punct-reader");
+			// Duplicate-task repair refuses to rebuild a path whose filename has no " - " separator
+			expect(filename?.indexOf(" - ")).toBeGreaterThan(0);
+		});
+
+		it("names a draft file with a placeholder title", async () => {
+			await filesystem.saveDraft({
+				id: "draft-punct",
+				title: punctuationOnlyTitle,
+				status: "Draft",
+				assignee: [],
+				createdDate: "2025-06-07",
+				labels: [],
+				dependencies: [],
+				description: "Punctuation-only title",
+			});
+
+			const draftFiles = await readdir(await filesystem.getDraftsDir());
+			expect(draftFiles).toContain("draft-punct - untitled.md");
+		});
+
+		it("names a decision file with a placeholder title", async () => {
+			await filesystem.saveDecision({
+				id: "decision-punct",
+				title: punctuationOnlyTitle,
+				date: "2025-06-07",
+				status: "accepted",
+				context: "Punctuation-only title",
+				decision: "Use a placeholder",
+				consequences: "Filenames stay parseable",
+				rawContent: "",
+			});
+
+			const decisionFiles = await readdir(filesystem.decisionsDir);
+			expect(decisionFiles).toContain("decision-punct - untitled.md");
+		});
+
+		it("names a document file with a placeholder title and still dedupes it on resave", async () => {
+			const document: Document = {
+				id: "doc-punct",
+				title: punctuationOnlyTitle,
+				type: "guide",
+				createdDate: "2025-06-07",
+				updatedDate: "2025-06-08",
+				rawContent: "Original content",
+				tags: [],
+			};
+
+			await filesystem.saveDocument(document);
+			expect(await readdir(filesystem.docsDir)).toContain("doc-punct - untitled.md");
+
+			// Document save dedup matches an existing file by splitting the basename on " - "
+			await filesystem.saveDocument({ ...document, rawContent: "Updated content" });
+
+			const docFiles = await Array.fromAsync(
+				new Bun.Glob("doc-*.md").scan({ cwd: filesystem.docsDir, followSymlinks: true }),
+			);
+			expect(docFiles).toEqual(["doc-punct - untitled.md"]);
+		});
+	});
 });
