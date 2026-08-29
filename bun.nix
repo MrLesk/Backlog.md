@@ -1721,9 +1721,9 @@
     url = "https://registry.npmjs.org/negotiator/-/negotiator-1.0.0.tgz";
     hash = "sha512-8Ofs/AUQh8MaEcrlq5xOX0CQ9ypTF5dl78mjlMNfOK08fzpgTHQRQPBxcPlEtIw0yRpws+Zo/3r+5WRby7u3Gg==";
   };
-  "neo-neo-bblessed@1.0.9" = fetchurl {
-    url = "https://registry.npmjs.org/neo-neo-bblessed/-/neo-neo-bblessed-1.0.9.tgz";
-    hash = "sha512-QiHsh4BZnjV9PLzxW8ZvfBuGgkyUNYPSdk/NgT1a9xq3a6WdCOAWLjBRpbkKAukgDXQROGLfIKj/bpvDhCBjRg==";
+  "neo-neo-bblessed@1.0.10" = fetchurl {
+    url = "https://registry.npmjs.org/neo-neo-bblessed/-/neo-neo-bblessed-1.0.10.tgz";
+    hash = "sha512-yMRryiO0PCxlGhhB/zZ8KtRXJVIGfHwNuv66gNOltJRzjcSrH0xp7WYEFdCBD/mCJtg9gKkvdKTRGtCmPvjXoQ==";
   };
   "nth-check@2.1.1" = fetchurl {
     url = "https://registry.npmjs.org/nth-check/-/nth-check-2.1.1.tgz";
