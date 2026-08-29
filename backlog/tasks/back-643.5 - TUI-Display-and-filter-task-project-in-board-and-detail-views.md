@@ -1,5 +1,5 @@
 ---
-id: BACK-637.5
+id: BACK-643.5
 title: 'TUI: Display and filter task project in board and detail views'
 status: Done
 assignee:
@@ -8,15 +8,15 @@ created_date: '2026-08-20 16:21'
 updated_date: '2026-08-20 17:37'
 labels: []
 dependencies:
-  - BACK-637.1
-parent_task_id: BACK-637
+  - BACK-643.1
+parent_task_id: BACK-643
 ordinal: 278000
 ---
 
 ## Description
 
 <!-- SECTION:DESCRIPTION:BEGIN -->
-Add a project display helper (src/ui/project.ts, mirroring src/ui/task-type.ts). Add 'project' to the FilterControlId union and filter-header state/layout/popup wiring in src/ui/components/filter-header.ts. Show project on board cards (src/ui/board.ts) and in the list/detail view (src/ui/task-viewer-with-search.ts), add project to visibleFilters and the filter picker, add a keyboard shortcut and help-popup entry, and add project to src/ui/unified-view.ts/simple-unified-view.ts filter state. Add a project field to the task composer (src/ui/components/task-composer.ts). The project filter control and any project UI must be hidden entirely when no projects are configured, matching the MCP schema's omit-when-empty behavior from BACK-637.3.
+Add a project display helper (src/ui/project.ts, mirroring src/ui/task-type.ts). Add 'project' to the FilterControlId union and filter-header state/layout/popup wiring in src/ui/components/filter-header.ts. Show project on board cards (src/ui/board.ts) and in the list/detail view (src/ui/task-viewer-with-search.ts), add project to visibleFilters and the filter picker, add a keyboard shortcut and help-popup entry, and add project to src/ui/unified-view.ts/simple-unified-view.ts filter state. Add a project field to the task composer (src/ui/components/task-composer.ts). The project filter control and any project UI must be hidden entirely when no projects are configured, matching the MCP schema's omit-when-empty behavior from BACK-643.3.
 <!-- SECTION:DESCRIPTION:END -->
 
 ## Acceptance Criteria

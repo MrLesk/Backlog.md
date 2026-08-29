@@ -1,5 +1,5 @@
 ---
-id: BACK-637.2
+id: BACK-643.2
 title: 'CLI: Add --project flag to task create/edit, config get, and completions'
 status: Done
 assignee:
@@ -8,8 +8,8 @@ created_date: '2026-08-20 16:20'
 updated_date: '2026-08-20 16:38'
 labels: []
 dependencies:
-  - BACK-637.1
-parent_task_id: BACK-637
+  - BACK-643.1
+parent_task_id: BACK-643
 ordinal: 275000
 ---
 
@@ -65,5 +65,5 @@ Verification: bunx tsc --noEmit clean, bun run check . clean on all 18 touched f
 ## Final Summary
 
 <!-- SECTION:FINAL_SUMMARY:BEGIN -->
-Added the project attribute to the CLI surface: --project on task create/edit (clears via empty string, matching --type), config get/list/set support (get and list show configured projects, set is blocked like its siblings), --help text via projectType(), a task-wizard prompt shown only when projects are configured, shell completions scoped to create/edit, and project output in plain-text task view and JSON summaries. Deliberately excluded --project from standalone 'draft create' and from task list/search filtering, matching --priority/--type's actual precedent and deferring filtering to BACK-637.4. Verified with bunx tsc --noEmit, bun run check . (clean), and 12 new tests across cli-task-project.test.ts and task-wizard.test.ts, plus regression runs of the existing type/config test suites.
+Added the project attribute to the CLI surface: --project on task create/edit (clears via empty string, matching --type), config get/list/set support (get and list show configured projects, set is blocked like its siblings), --help text via projectType(), a task-wizard prompt shown only when projects are configured, shell completions scoped to create/edit, and project output in plain-text task view and JSON summaries. Deliberately excluded --project from standalone 'draft create' and from task list/search filtering, matching --priority/--type's actual precedent and deferring filtering to BACK-643.4. Verified with bunx tsc --noEmit, bun run check . (clean), and 12 new tests across cli-task-project.test.ts and task-wizard.test.ts, plus regression runs of the existing type/config test suites.
 <!-- SECTION:FINAL_SUMMARY:END -->

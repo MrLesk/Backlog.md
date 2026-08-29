@@ -1,5 +1,5 @@
 ---
-id: BACK-637
+id: BACK-643
 title: Add a project task attribute for monorepo backlogs
 status: Done
 assignee:
@@ -41,10 +41,10 @@ Backlog.md resolves exactly one project root per Core instance and has no way to
 
 <!-- SECTION:NOTES:BEGIN -->
 All 6 subtasks (.1-.6) completed sequentially, each with its own plan, notes, and finalization. Scope was corrected against verified source evidence at four points during execution, each recorded on the relevant subtask:
-1. BACK-637.2: --project not added to standalone 'draft create' (it has neither --priority nor --type either).
-2. BACK-637.3/.4: MCP task_list/task_search project filtering moved from the mutation slice to the filtering slice, matching BACK-355's actual commit split.
-3. BACK-637.4: GET /api/tasks gets no project param (task type has zero HTTP filtering there today -- confirmed by grep, not assumed); GET /api/search does, since it has real filtering infra.
-4. BACK-637.6: Web UI project support scoped to Board/BoardPage/TaskCard/TaskDetailsModal only -- TaskList.tsx and DraftsList.tsx have zero task-type support today (confirmed via source), so project doesn't add filtering there either.
+1. BACK-643.2: --project not added to standalone 'draft create' (it has neither --priority nor --type either).
+2. BACK-643.3/.4: MCP task_list/task_search project filtering moved from the mutation slice to the filtering slice, matching BACK-355's actual commit split.
+3. BACK-643.4: GET /api/tasks gets no project param (task type has zero HTTP filtering there today -- confirmed by grep, not assumed); GET /api/search does, since it has real filtering infra.
+4. BACK-643.6: Web UI project support scoped to Board/BoardPage/TaskCard/TaskDetailsModal only -- TaskList.tsx and DraftsList.tsx have zero task-type support today (confirmed via source), so project doesn't add filtering there either.
 
 Final verification after all 6 subtasks landed: bunx tsc --noEmit clean, bun run check . clean (391 files), bun run build succeeds, and the FULL project test suite (bun run test) passes: 2394 pass / 6 skip (pre-existing interactive-PTY skips, unrelated) / 0 fail across 2400 tests in 250 files. One pre-existing test (cli-json-output.test.ts) needed updating for the new project: null field in the compact JSON envelope -- fixed and verified (separate commit).
 
@@ -60,7 +60,7 @@ Rebased onto upstream main (which had advanced with BACK-626/BACK-638, touching 
 ## Final Summary
 
 <!-- SECTION:FINAL_SUMMARY:BEGIN -->
-Added a validated, single-valued 'project' task attribute for monorepo backlogs, following the exact six-slice pattern of the prior BACK-355 task-type feature: core domain model + frontmatter persistence + config projects: list (BACK-637.1), CLI --project on create/edit/list/search + config get + completions + help text (BACK-637.2), MCP task_create/task_edit (BACK-637.3), project-based filtering across Core/ContentStore/FileSystem/SearchService/task-search plus MCP task_list/task_search and GET /api/search (BACK-637.4), TUI board/list badges, filter control, and task composer (BACK-637.5), and Web UI Board/TaskCard/TaskDetailsModal (BACK-637.6).
+Added a validated, single-valued 'project' task attribute for monorepo backlogs, following the exact six-slice pattern of the prior BACK-355 task-type feature: core domain model + frontmatter persistence + config projects: list (BACK-643.1), CLI --project on create/edit/list/search + config get + completions + help text (BACK-643.2), MCP task_create/task_edit (BACK-643.3), project-based filtering across Core/ContentStore/FileSystem/SearchService/task-search plus MCP task_list/task_search and GET /api/search (BACK-643.4), TUI board/list badges, filter control, and task composer (BACK-643.5), and Web UI Board/TaskCard/TaskDetailsModal (BACK-643.6).
 
 Unlike priority and type, projects has no default value, so the feature is fail-closed by design: with no 'projects:' configured, --project errors clearly and every project UI element (badge, filter control, MCP schema field, TUI keyboard shortcut, task composer row) is entirely absent, verified in dedicated tests and a manual scratch-repo smoke test on both a configured and an unconfigured repo.
 

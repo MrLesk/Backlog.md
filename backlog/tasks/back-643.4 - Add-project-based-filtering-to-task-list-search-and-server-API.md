@@ -1,5 +1,5 @@
 ---
-id: BACK-637.4
+id: BACK-643.4
 title: 'Add project-based filtering to task list, search, and server API'
 status: Done
 assignee:
@@ -8,8 +8,8 @@ created_date: '2026-08-20 16:20'
 updated_date: '2026-08-20 16:57'
 labels: []
 dependencies:
-  - BACK-637.1
-parent_task_id: BACK-637
+  - BACK-643.1
+parent_task_id: BACK-643
 ordinal: 277000
 ---
 
@@ -26,7 +26,7 @@ Add --project filtering to task list, search, and draft list in src/cli.ts, matc
 - [x] #3 Core.filterTasks, ContentStore.getTasks, FileSystem.listTasks, and both task-search/search-service filter engines all honor the project filter consistently
 - [x] #4 CLI-INSTRUCTIONS.md and src/guidelines/* document the project field and --project flag
 - [x] #5 Tests cover filtering across CLI, server, and MCP-adjacent core paths
-- [x] #6 GET /api/search?project=... filters task results with OR semantics and returns 400 with valid values listed on an invalid or unconfigured project, mirroring priority's HTTP validation pattern. GET /api/tasks intentionally gains no project param: it is the unfiltered base fetch for the web task list and has no type filter either (confirmed: task type has zero HTTP-layer filtering today -- the /api/search 'type' param is the result kind, not task type). BACK-637.6 will decide whether the web UI's project filter goes through /api/search (like priority/labels already do) or filters client-side.
+- [x] #6 GET /api/search?project=... filters task results with OR semantics and returns 400 with valid values listed on an invalid or unconfigured project, mirroring priority's HTTP validation pattern. GET /api/tasks intentionally gains no project param: it is the unfiltered base fetch for the web task list and has no type filter either (confirmed: task type has zero HTTP-layer filtering today -- the /api/search 'type' param is the result kind, not task type). BACK-643.6 will decide whether the web UI's project filter goes through /api/search (like priority/labels already do) or filters client-side.
 - [x] #7 task_list and task_search MCP tools support filtering by project with OR semantics and canonical-casing validation, matching type's precedent. Implemented in src/mcp/tools/tasks/handlers.ts (TaskListArgs/TaskSearchArgs, both draft and task branches) and src/mcp/utils/schema-generators.ts (generateProjectFilterSchema, wired into generateTaskListSchema and generateTaskSearchSchema, omitted when unconfigured). src/mcp/tools/tasks/schemas.ts needed no direct changes -- it only re-exports the generator output built with an empty config object for a static workflow-documentation test, which already omits unconfigured fields correctly.
 <!-- AC:END -->
 
@@ -41,8 +41,8 @@ Add --project filtering to task list, search, and draft list in src/cli.ts, matc
 
 <!-- SECTION:NOTES:BEGIN -->
 Corrected scope twice during execution, both against verified evidence:
-1. task_list MCP filtering: moved from BACK-637.3 to this task (matching the actual BACK-355 commit split -- .03 was mutation-only, .04 added filtering).
-2. Server API: verified via 'grep getAll("taskType")' that task type has ZERO HTTP-layer filtering (the /api/search 'type' param is result-kind task|document|decision, not task type). So project follows type's real precedent -- no changes to GET /api/tasks. However, I DID add project filtering to GET /api/search, since that endpoint already has real SearchService-backed filtering infra (priority/labels/status all work there) and it costs little now versus deferring to BACK-637.6.
+1. task_list MCP filtering: moved from BACK-643.3 to this task (matching the actual BACK-355 commit split -- .03 was mutation-only, .04 added filtering).
+2. Server API: verified via 'grep getAll("taskType")' that task type has ZERO HTTP-layer filtering (the /api/search 'type' param is result-kind task|document|decision, not task type). So project follows type's real precedent -- no changes to GET /api/tasks. However, I DID add project filtering to GET /api/search, since that endpoint already has real SearchService-backed filtering infra (priority/labels/status all work there) and it costs little now versus deferring to BACK-643.6.
 
 Core/filesystem/search-service/task-search: added filters.project handling in Core.applyTaskFilters, the searchFilters bridge, ContentStore.getTasks, FileSystem.listTasks, SearchService's NormalizedFilters+both filter engines (using task.task.project directly via matchesProjectFilter, no separate projectLower projection needed -- mirrors how type is actually implemented there, not priority/labels' pre-lowered-field pattern).
 

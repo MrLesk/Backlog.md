@@ -1,5 +1,5 @@
 ---
-id: BACK-637.1
+id: BACK-643.1
 title: 'Core: Add project field to task domain model and persistence'
 status: Done
 assignee:
@@ -8,7 +8,7 @@ created_date: '2026-08-20 16:20'
 updated_date: '2026-08-20 16:28'
 labels: []
 dependencies: []
-parent_task_id: BACK-637
+parent_task_id: BACK-643
 ordinal: 274000
 ---
 

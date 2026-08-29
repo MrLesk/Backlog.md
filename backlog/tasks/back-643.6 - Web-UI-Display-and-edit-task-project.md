@@ -1,5 +1,5 @@
 ---
-id: BACK-637.6
+id: BACK-643.6
 title: 'Web UI: Display and edit task project'
 status: Done
 assignee:
@@ -8,8 +8,8 @@ created_date: '2026-08-20 16:21'
 updated_date: '2026-08-20 17:50'
 labels: []
 dependencies:
-  - BACK-637.1
-parent_task_id: BACK-637
+  - BACK-643.1
+parent_task_id: BACK-643
 ordinal: 279000
 ---
 
