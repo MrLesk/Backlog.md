@@ -17,6 +17,12 @@ let TEST_DIR: string;
 
 const toPosixPath = (path: string): string => path.replace(/\\/g, "/");
 
+// Branch records are only visible inside the rolling activeBranchDays window,
+// so commit dates must stay relative to the test run, never absolute.
+function recentCommitDate(minutesAgo: number): string {
+	return new Date(Date.now() - minutesAgo * 60_000).toISOString();
+}
+
 describe("Core", () => {
 	let core: Core;
 
@@ -96,7 +102,7 @@ describe("Core", () => {
 				title: "Local task version",
 				status: "To Do",
 			});
-			const localDate = "2026-07-30T18:00:00Z";
+			const localDate = recentCommitDate(3);
 			await $`git add .`.cwd(TEST_DIR).quiet();
 			await $`GIT_AUTHOR_DATE="${localDate}" GIT_COMMITTER_DATE="${localDate}" git commit -m "Add local task"`
 				.cwd(TEST_DIR)
@@ -112,7 +118,7 @@ describe("Core", () => {
 					status: "Done",
 				}),
 			);
-			const progressedDate = "2026-07-30T18:01:00Z";
+			const progressedDate = recentCommitDate(2);
 			await $`git add .`.cwd(TEST_DIR).quiet();
 			await $`GIT_AUTHOR_DATE="${progressedDate}" GIT_COMMITTER_DATE="${progressedDate}" git commit -m "Progress padded task variant"`
 				.cwd(TEST_DIR)
@@ -122,7 +128,7 @@ describe("Core", () => {
 			const destinationDir = type === "archived" ? core.filesystem.archiveTasksDir : core.filesystem.completedDir;
 			const destinationPath = join(destinationDir, "back-1 - Local-task-version.md");
 			await $`git mv -- ${taskPath} ${destinationPath}`.cwd(TEST_DIR).quiet();
-			const lifecycleDate = "2026-07-30T18:02:00Z";
+			const lifecycleDate = recentCommitDate(1);
 			await $`GIT_AUTHOR_DATE="${lifecycleDate}" GIT_COMMITTER_DATE="${lifecycleDate}" git commit -m ${`${type} padded task variant`}`
 				.cwd(TEST_DIR)
 				.quiet();
@@ -606,7 +612,7 @@ describe("Core", () => {
 					title: "Distinct branch path",
 				}),
 			);
-			const activeDate = "2026-07-30T18:01:00Z";
+			const activeDate = recentCommitDate(2);
 			await $`git add .`.cwd(TEST_DIR).quiet();
 			await $`GIT_AUTHOR_DATE="${activeDate}" GIT_COMMITTER_DATE="${activeDate}" git commit -m "Move task to a distinct active path"`
 				.cwd(TEST_DIR)
@@ -617,13 +623,14 @@ describe("Core", () => {
 				join(core.filesystem.archiveTasksDir, "back-1 - Local-active-path.md"),
 				serializeTask({ ...sampleTask, id: "BACK-1", title: "Archived local path" }),
 			);
-			const archiveDate = "2026-07-30T18:02:00Z";
+			const archiveDate = recentCommitDate(1);
 			await $`git add .`.cwd(TEST_DIR).quiet();
 			await $`GIT_AUTHOR_DATE="${archiveDate}" GIT_COMMITTER_DATE="${archiveDate}" git commit -m "Archive the original path"`
 				.cwd(TEST_DIR)
 				.quiet();
 			await $`git switch main`.cwd(TEST_DIR).quiet();
-			await utimes(localTaskPath, new Date("2026-07-30T18:00:00Z"), new Date("2026-07-30T18:00:00Z"));
+			const localMtime = new Date(recentCommitDate(3));
+			await utimes(localTaskPath, localMtime, localMtime);
 
 			await expect(core.getTask("BACK-1")).rejects.toBeInstanceOf(AmbiguousTaskIdError);
 		});
@@ -651,7 +658,7 @@ describe("Core", () => {
 				join(core.filesystem.tasksDir, "back-001 - Active-version.md"),
 				serializeTask({ ...sampleTask, id: "BACK-001", title: "Active version" }),
 			);
-			const commitDate = "2026-07-30T18:00:00Z";
+			const commitDate = recentCommitDate(3);
 			await $`git add .`.cwd(TEST_DIR).quiet();
 			await $`GIT_AUTHOR_DATE="${commitDate}" GIT_COMMITTER_DATE="${commitDate}" git commit -m "Add equal-time states"`
 				.cwd(TEST_DIR)
