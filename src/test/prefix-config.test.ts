@@ -12,8 +12,10 @@ import {
 	generateNextSubtaskId,
 	getDefaultPrefixConfig,
 	getPrefixForType,
+	getTaskPrefixError,
 	hasPrefix,
 	idsEqual,
+	isReservedTaskPrefix,
 	mergePrefixConfig,
 	normalizeId,
 } from "../utils/prefix-config.ts";
@@ -339,6 +341,60 @@ describe("prefix-config", () => {
 
 		test("returns decision prefix for Decision type", () => {
 			expect(getPrefixForType(EntityType.Decision)).toBe("decision");
+		});
+	});
+
+	describe("isReservedTaskPrefix", () => {
+		test("rejects prefixes matching the draft, doc, and decision system prefixes", () => {
+			expect(isReservedTaskPrefix("draft")).toBe(true);
+			expect(isReservedTaskPrefix("doc")).toBe(true);
+			expect(isReservedTaskPrefix("decision")).toBe(true);
+		});
+
+		test("is case-insensitive", () => {
+			expect(isReservedTaskPrefix("DRAFT")).toBe(true);
+			expect(isReservedTaskPrefix("Doc")).toBe(true);
+			expect(isReservedTaskPrefix("DECISION")).toBe(true);
+		});
+
+		test("allows non-reserved prefixes", () => {
+			expect(isReservedTaskPrefix("task")).toBe(false);
+			expect(isReservedTaskPrefix("JIRA")).toBe(false);
+			expect(isReservedTaskPrefix("documents")).toBe(false);
+		});
+	});
+
+	describe("getTaskPrefixError", () => {
+		test("rejects reserved prefixes with the init error used by the wizard and flag", () => {
+			expect(getTaskPrefixError("draft")).toBe(
+				'Task prefix "draft" is reserved for drafts, docs, or decisions. Choose a different prefix.',
+			);
+			expect(getTaskPrefixError("DOC")).toBe(
+				'Task prefix "DOC" is reserved for drafts, docs, or decisions. Choose a different prefix.',
+			);
+			expect(getTaskPrefixError("Decision")).toBe(
+				'Task prefix "Decision" is reserved for drafts, docs, or decisions. Choose a different prefix.',
+			);
+		});
+
+		test("rejects non-letter prefixes", () => {
+			expect(getTaskPrefixError("task-1")).toBe("Task prefix must contain only letters (a-z, A-Z).");
+		});
+
+		test("allows empty input and non-reserved prefixes", () => {
+			expect(getTaskPrefixError("")).toBeUndefined();
+			expect(getTaskPrefixError("JIRA")).toBeUndefined();
+		});
+
+		test("rejects surrounding whitespace, which init would otherwise persist verbatim", () => {
+			// init writes the value straight into task_prefix, so padding would leak into IDs and filenames.
+			expect(getTaskPrefixError(" JIRA ")).toBe("Task prefix must contain only letters (a-z, A-Z).");
+			expect(getTaskPrefixError("JIRA ")).toBe("Task prefix must contain only letters (a-z, A-Z).");
+			expect(getTaskPrefixError("   ")).toBe("Task prefix must contain only letters (a-z, A-Z).");
+		});
+
+		test("still rejects a reserved prefix that is padded", () => {
+			expect(getTaskPrefixError(" draft ")).toBe("Task prefix must contain only letters (a-z, A-Z).");
 		});
 	});
 

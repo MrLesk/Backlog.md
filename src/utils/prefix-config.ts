@@ -13,6 +13,48 @@ export const DEFAULT_PREFIX_CONFIG: PrefixConfig = {
 export const DRAFT_PREFIX = "draft";
 
 /**
+ * Hardcoded document prefix. Not configurable - always "doc".
+ */
+const DOC_PREFIX = "doc";
+
+/**
+ * Hardcoded decision prefix. Not configurable - always "decision".
+ */
+const DECISION_PREFIX = "decision";
+
+/**
+ * Prefixes owned by system entity types. A configurable task prefix matching one
+ * of these collides with drafts, documents, or decisions and misroutes their IDs.
+ */
+const RESERVED_TASK_PREFIXES = [DRAFT_PREFIX, DOC_PREFIX, DECISION_PREFIX];
+
+/**
+ * Checks whether a candidate task prefix collides with a reserved system prefix (case-insensitive).
+ */
+export function isReservedTaskPrefix(prefix: string): boolean {
+	return RESERVED_TASK_PREFIXES.includes(prefix.trim().toLowerCase());
+}
+
+/**
+ * Init-time task prefix validation. Empty input is allowed (the default prefix is used).
+ * The value is judged exactly as given, because init persists it verbatim: padding that
+ * passed validation but survived into the config would end up inside task IDs and filenames.
+ * Callers that mean to accept surrounding whitespace must trim before calling.
+ */
+export function getTaskPrefixError(prefix: string): string | undefined {
+	if (!prefix) {
+		return undefined;
+	}
+	if (!/^[a-zA-Z]+$/.test(prefix)) {
+		return "Task prefix must contain only letters (a-z, A-Z).";
+	}
+	if (isReservedTaskPrefix(prefix)) {
+		return `Task prefix "${prefix}" is reserved for drafts, docs, or decisions. Choose a different prefix.`;
+	}
+	return undefined;
+}
+
+/**
  * Returns the default prefix configuration.
  * Use this when no custom config is specified.
  */
@@ -414,9 +456,9 @@ export function getPrefixForType(type: EntityType, config?: BacklogConfig): stri
 		case EntityType.Draft:
 			return DRAFT_PREFIX;
 		case EntityType.Document:
-			return "doc";
+			return DOC_PREFIX;
 		case EntityType.Decision:
-			return "decision";
+			return DECISION_PREFIX;
 		default:
 			return type;
 	}

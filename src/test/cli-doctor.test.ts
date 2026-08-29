@@ -231,6 +231,68 @@ describe("backlog doctor", () => {
 			expect(output).not.toContain("backlog doctor --fix");
 		},
 	);
+
+	it("mentions a task prefix that collides with a reserved system prefix", async () => {
+		await removeDuplicateTasks();
+		const config = await core.filesystem.loadConfig();
+		if (!config) throw new Error("Missing test config");
+		config.prefixes = { task: "draft" };
+		await core.filesystem.saveConfig(config);
+
+		const result = await $`bun ${cliPath} doctor`.cwd(testDir).quiet().nothrow();
+		const output = `${result.stdout}${result.stderr}`;
+		expect(result.exitCode).toBe(1);
+		expect(output).toContain('Task prefix "draft" collides with a reserved prefix');
+		expect(output).toContain("There is no automated migration");
+		expect(output.toLowerCase()).not.toContain("re-initialize");
+		expect(output).not.toContain("No duplicate task, document, decision, or draft IDs found.");
+	});
+
+	it("does not auto-repair duplicates when the task prefix is reserved", async () => {
+		await unlink(join(core.filesystem.tasksDir, "task-1 - Alpha.md"));
+		await unlink(join(core.filesystem.tasksDir, "task-01 - Beta.md"));
+		await unlink(join(core.filesystem.completedDir, "task-001 - Gamma.md"));
+		const config = await core.filesystem.loadConfig();
+		if (!config) throw new Error("Missing test config");
+		config.prefixes = { task: "draft" };
+		await core.filesystem.saveConfig(config);
+
+		const draftTaskAlpha = join(core.filesystem.tasksDir, "draft-1 - Alpha.md");
+		const draftTaskBeta = join(core.filesystem.tasksDir, "draft-01 - Beta.md");
+		const realDraft = join(await core.filesystem.getDraftsDir(), "draft-2 - Real draft.md");
+		await Bun.write(draftTaskAlpha, serializeTask(makeTask("DRAFT-1", "Alpha")));
+		await Bun.write(draftTaskBeta, serializeTask(makeTask("DRAFT-01", "Beta")));
+		await Bun.write(realDraft, serializeTask(makeTask("DRAFT-2", "Real draft")));
+		const alphaBefore = await Bun.file(draftTaskAlpha).text();
+		const betaBefore = await Bun.file(draftTaskBeta).text();
+		const draftBefore = await Bun.file(realDraft).text();
+
+		const result = await $`bun ${cliPath} doctor --fix --yes`.cwd(testDir).quiet().nothrow();
+		const output = `${result.stdout}${result.stderr}`;
+		expect(result.exitCode).toBe(1);
+		expect(output).toContain('Task prefix "draft" collides with a reserved prefix');
+		expect(output).toContain("Resolve the reserved task prefix before running --fix.");
+		expect(output).not.toContain("Repaired");
+		expect(await Bun.file(draftTaskAlpha).text()).toBe(alphaBefore);
+		expect(await Bun.file(draftTaskBeta).text()).toBe(betaBefore);
+		expect(await Bun.file(realDraft).text()).toBe(draftBefore);
+	});
+
+	it("does not fail task list solely because the task prefix is reserved", async () => {
+		await unlink(join(core.filesystem.tasksDir, "task-1 - Alpha.md"));
+		await unlink(join(core.filesystem.tasksDir, "task-01 - Beta.md"));
+		await unlink(join(core.filesystem.completedDir, "task-001 - Gamma.md"));
+		const config = await core.filesystem.loadConfig();
+		if (!config) throw new Error("Missing test config");
+		config.prefixes = { task: "draft" };
+		await core.filesystem.saveConfig(config);
+		await Bun.write(join(core.filesystem.tasksDir, "draft-1 - Hello.md"), serializeTask(makeTask("DRAFT-1", "Hello")));
+
+		const result = await $`bun ${cliPath} task list --plain`.cwd(testDir).quiet().nothrow();
+		const output = `${result.stdout}${result.stderr}`;
+		expect(result.exitCode).toBe(0);
+		expect(output).toContain("Hello");
+	});
 });
 
 describe("CLI collision safety", () => {
