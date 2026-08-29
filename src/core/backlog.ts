@@ -285,7 +285,6 @@ export class Core {
 	} | null = null;
 	private activeBranchRefreshPromise: Promise<void> | null = null;
 	private remoteRefRefreshPromise: Promise<void> | null = null;
-	private remoteRefRefreshGeneration = 0;
 	private lastRemoteRefRefreshAt = 0;
 
 	constructor(projectRoot: string, options?: { enableWatchers?: boolean }) {
@@ -613,43 +612,40 @@ export class Core {
 		// Reads may reuse a recent fetch, but task ID allocation may not: an ID that
 		// looks free only because remote refs are up to a minute old is an ID another
 		// clone has already published.
-		const requestedAt = Date.now();
-		if (options?.force !== true && requestedAt - this.lastRemoteRefRefreshAt < REMOTE_REF_REFRESH_INTERVAL_MS) {
+		const force = options?.force === true;
+		if (!force && Date.now() - this.lastRemoteRefRefreshAt < REMOTE_REF_REFRESH_INTERVAL_MS) {
 			return;
 		}
 
-		// A forced request must observe refs from a fetch that started at/after this request
-		// arrived. Joining an in-flight non-forced fetch that started earlier isn't enough --
-		// a push landing while that fetch is in flight would be invisible to it -- so loop once
-		// more to trigger a fetch that starts after this point. Ordering is tracked with a
-		// monotonic generation counter rather than Date.now(): two requests can otherwise land
-		// in the same millisecond, which would make a stale fetch look sufficiently fresh.
-		const requestedGeneration = this.remoteRefRefreshGeneration;
-		while (true) {
-			if (!this.remoteRefRefreshPromise) {
-				this.remoteRefRefreshGeneration += 1;
-				const refreshPromise = (async () => {
-					git.setConfig(config);
-					try {
-						await git.fetch();
-					} catch (error) {
-						console.error("Failed to refresh remote refs:", error);
-					} finally {
-						if (this.git === git) this.lastRemoteRefRefreshAt = Date.now();
-					}
-				})();
-				this.remoteRefRefreshPromise = refreshPromise;
-				const clearRefreshPromise = () => {
-					if (this.remoteRefRefreshPromise === refreshPromise) this.remoteRefRefreshPromise = null;
-				};
-				void refreshPromise.then(clearRefreshPromise, clearRefreshPromise);
-			}
-
-			const joinedRefreshGeneration = this.remoteRefRefreshGeneration;
+		// A forced request must observe refs from a fetch that started after the request
+		// arrived. Joining a refresh that was already in flight is not enough: it captured
+		// remote state before this request, so a push landing while it runs stays invisible
+		// and allocation can hand out an ID another clone already published. Waiting that
+		// refresh out first leaves the slot empty, so the fetch joined below always starts
+		// afterwards. A non-forced request keeps the plain join-or-start behavior.
+		if (force && this.remoteRefRefreshPromise) {
 			await this.remoteRefRefreshPromise;
-
-			if (options?.force !== true || joinedRefreshGeneration > requestedGeneration) return;
 		}
+
+		if (!this.remoteRefRefreshPromise) {
+			const refreshPromise = (async () => {
+				git.setConfig(config);
+				try {
+					await git.fetch();
+				} catch (error) {
+					console.error("Failed to refresh remote refs:", error);
+				} finally {
+					if (this.git === git) this.lastRemoteRefRefreshAt = Date.now();
+				}
+			})();
+			this.remoteRefRefreshPromise = refreshPromise;
+			const clearRefreshPromise = () => {
+				if (this.remoteRefRefreshPromise === refreshPromise) this.remoteRefRefreshPromise = null;
+			};
+			void refreshPromise.then(clearRefreshPromise, clearRefreshPromise);
+		}
+
+		await this.remoteRefRefreshPromise;
 	}
 
 	/** Refresh the existing cross-branch store only when relevant config or refs changed. */
