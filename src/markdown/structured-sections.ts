@@ -83,6 +83,153 @@ function restoreLineEndings(text: string, useCRLF: boolean): string {
 	return useCRLF ? text.replace(/\n/g, "\r\n") : text;
 }
 
+const FENCE_OPENING_REGEX = /^(`{3,}|~{3,})(.*)$/;
+const SECTION_SENTINEL_LINE_REGEX = /^<!-- SECTION:[A-Z][A-Z0-9_]*:(BEGIN|END) -->$/;
+const LIST_ITEM_MARKER_REGEX = /^( *)([-+*]|\d{1,9}[.)])(?:[\t ]+|$)/;
+const HTML_BLOCK_TAG_NAMES =
+	"address|article|aside|base|basefont|blockquote|body|caption|center|col|colgroup|dd|details|dialog|dir|div|dl|dt|fieldset|figcaption|figure|footer|form|frame|frameset|h[1-6]|head|header|hr|html|iframe|legend|li|link|main|menu|menuitem|nav|noframes|ol|optgroup|option|p|param|search|section|summary|table|tbody|td|tfoot|th|thead|title|tr|track|ul";
+const HTML_TYPE1_OPENING_REGEX = /^ {0,3}<(script|pre|style|textarea)(?=[\t />]|$)/i;
+const HTML_COMMENT_OPENING_REGEX = /^ {0,3}<!--/;
+const HTML_COMMENT_END_REGEX = /--!?>/;
+const HTML_PROCESSING_INSTRUCTION_OPENING_REGEX = /^ {0,3}<\?/;
+const HTML_DECLARATION_OPENING_REGEX = /^ {0,3}<![a-zA-Z]/;
+const HTML_CDATA_OPENING_REGEX = /^ {0,3}<!\[CDATA\[/;
+const HTML_BLOCK_TAG_OPENING_REGEX = new RegExp(`^ {0,3}</?(?:${HTML_BLOCK_TAG_NAMES})(?=[\t />]|$)`, "i");
+const HTML_COMPLETE_TAG_LINE_REGEX = /^ {0,3}<\/?[a-zA-Z][a-zA-Z0-9-]*(?:[\t ][^<>]*)?\/?>[\t ]*$/;
+
+interface FenceSpec {
+	character: string;
+	minLength: number;
+}
+
+interface HtmlBlockState {
+	endRegex?: RegExp;
+	endsOnBlankLine: boolean;
+}
+
+/**
+ * Collapses runs of two or more blank lines to a single blank line in prose
+ * and leaves every newline inside fences untouched. Fence tracking follows
+ * CommonMark: ``` or ~~~ openers indented up to three spaces past the content
+ * column of any enclosing list container, backtick openers whose info string
+ * contains a backtick are prose, closings repeat the same character with at
+ * least the opening length, and raw HTML blocks never open or close fences.
+ * Marker-shaped lines inside an open fence stay fence content. Callers that
+ * must keep unterminated fences from leaking across sections collapse each
+ * section body independently.
+ */
+function collapseBlankLines(text: string): string {
+	const lines: string[] = [];
+	let pendingBlankLines = 0;
+	let fence: FenceSpec | undefined;
+	let htmlBlock: HtmlBlockState | undefined;
+	const containerColumns: number[] = [];
+	for (const line of text.split("\n")) {
+		if (fence) {
+			lines.push(line);
+			if (closesFence(line, fence, containerColumns)) fence = undefined;
+			continue;
+		}
+		if (SECTION_SENTINEL_LINE_REGEX.test(line)) {
+			htmlBlock = undefined;
+			containerColumns.length = 0;
+		}
+		if (line === "") {
+			if (htmlBlock?.endsOnBlankLine) htmlBlock = undefined;
+			pendingBlankLines += 1;
+			continue;
+		}
+		if (pendingBlankLines > 0) {
+			lines.push("");
+			pendingBlankLines = 0;
+		}
+		lines.push(line);
+		if (htmlBlock) {
+			if (htmlBlock.endRegex?.test(line)) htmlBlock = undefined;
+			continue;
+		}
+		updateListContainers(line, containerColumns);
+		fence = matchFenceOpener(line, containerColumns);
+		if (!fence) htmlBlock = matchHtmlBlockStart(line, containerColumns);
+	}
+	if (pendingBlankLines > 0) lines.push("");
+	return lines.join("\n");
+}
+
+function leadingSpaceCount(line: string): number {
+	let count = 0;
+	while (line.charAt(count) === " ") count += 1;
+	return count;
+}
+
+function listItemContentColumn(line: string): number | undefined {
+	const match = LIST_ITEM_MARKER_REGEX.exec(line);
+	if (!match) return undefined;
+	const markerIndent = match[1]?.length ?? 0;
+	const marker = String(match[2] ?? "");
+	const trailingWhitespace = match[0].length - markerIndent - marker.length;
+	return markerIndent + marker.length + trailingWhitespace;
+}
+
+function updateListContainers(line: string, containerColumns: number[]): void {
+	while ((containerColumns.at(-1) ?? 0) > leadingSpaceCount(line)) containerColumns.pop();
+	const column = listItemContentColumn(line);
+	if (column === undefined) return;
+	containerColumns.push(column);
+}
+
+function isWithinContainerIndent(indent: number, containerColumns: number[]): boolean {
+	return indent <= 3 || containerColumns.some((base) => indent - base >= 0 && indent - base <= 3);
+}
+
+function matchFenceOpener(line: string, containerColumns: number[]): FenceSpec | undefined {
+	const indent = leadingSpaceCount(line);
+	if (!isWithinContainerIndent(indent, containerColumns)) return undefined;
+	const remainder = line.slice(indent);
+	const opening = FENCE_OPENING_REGEX.exec(remainder);
+	const run = opening?.[1] ?? "";
+	const info = opening?.[2] ?? "";
+	if (!run || (run.charAt(0) === "`" && info.includes("`"))) return undefined;
+	return { character: run.charAt(0), minLength: run.length };
+}
+
+function closesFence(line: string, fence: FenceSpec, containerColumns: number[]): boolean {
+	const indent = leadingSpaceCount(line);
+	if (!isWithinContainerIndent(indent, containerColumns)) return false;
+	const remainder = line.slice(indent);
+	let runLength = 0;
+	while (remainder.charAt(runLength) === fence.character) runLength += 1;
+	return runLength >= fence.minLength && /^[\t ]*$/.test(remainder.slice(runLength));
+}
+
+function matchHtmlBlockStart(line: string, containerColumns: number[]): HtmlBlockState | undefined {
+	const base = containerColumns.at(-1) ?? 0;
+	const relative = base > 0 && leadingSpaceCount(line) >= base ? line.slice(base) : line;
+	const type1Match = HTML_TYPE1_OPENING_REGEX.exec(relative);
+	if (type1Match) {
+		const endRegex = new RegExp(`</${type1Match[1]}>`, "i");
+		return endRegex.test(relative) ? undefined : { endRegex, endsOnBlankLine: false };
+	}
+	if (HTML_COMMENT_OPENING_REGEX.test(relative)) {
+		return HTML_COMMENT_END_REGEX.test(relative)
+			? undefined
+			: { endRegex: HTML_COMMENT_END_REGEX, endsOnBlankLine: false };
+	}
+	if (HTML_PROCESSING_INSTRUCTION_OPENING_REGEX.test(relative)) {
+		return relative.includes("?>") ? undefined : { endRegex: /\?>/, endsOnBlankLine: false };
+	}
+	if (HTML_DECLARATION_OPENING_REGEX.test(relative)) {
+		return relative.includes(">") ? undefined : { endRegex: />/, endsOnBlankLine: false };
+	}
+	if (HTML_CDATA_OPENING_REGEX.test(relative)) {
+		return relative.includes("]]>") ? undefined : { endRegex: /\]\]>/, endsOnBlankLine: false };
+	}
+	if (HTML_BLOCK_TAG_OPENING_REGEX.test(relative) || HTML_COMPLETE_TAG_LINE_REGEX.test(relative)) {
+		return { endsOnBlankLine: true };
+	}
+	return undefined;
+}
+
 function escapeForRegex(value: string): string {
 	return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
@@ -103,7 +250,7 @@ function buildSectionBlock(key: StructuredSectionKey, body: string): string {
 	const { title } = getConfig(key);
 	const begin = getBeginMarker(key);
 	const end = getEndMarker(key);
-	const normalized = body.replace(/\r\n/g, "\n").replace(/\s+$/g, "");
+	const normalized = collapseBlankLines(body.replace(/\r\n/g, "\n").replace(/\s+$/g, ""));
 	const content = normalized ? `${normalized}\n` : "";
 	return `## ${title}\n\n${begin}\n${content}${end}`;
 }
@@ -533,7 +680,7 @@ function stripSectionInstances(content: string, key: StructuredSectionKey): stri
 	const legacyRegex = legacySectionRegex(title, "gi");
 	stripped = stripped.replace(legacyRegex, "\n");
 
-	return stripped.replace(/\n{3,}/g, "\n\n").trimEnd();
+	return collapseBlankLines(stripped).trimEnd();
 }
 
 function insertAfterSection(content: string, title: string, block: string): { inserted: boolean; content: string } {
@@ -674,7 +821,7 @@ export function updateStructuredSections(content: string, sections: SectionValue
 		output = insertAtStart(tail, descriptionBlock);
 	}
 
-	const finalOutput = output.replace(/\n{3,}/g, "\n\n").trim();
+	const finalOutput = collapseBlankLines(output).trim();
 	return restoreLineEndings(finalOutput, useCRLF);
 }
 
@@ -1086,7 +1233,7 @@ function stripCommentsSection(content: string): string {
 	for (const range of findCommentSectionRanges(content)) {
 		stripped = `${stripped.slice(0, range.start)}\n${stripped.slice(range.end)}`;
 	}
-	return stripped.replace(/\n{3,}/g, "\n\n").trimEnd();
+	return collapseBlankLines(stripped).trimEnd();
 }
 
 function updateCommentsContent(content: string, comments: TaskComment[]): string {
@@ -1114,7 +1261,7 @@ function updateCommentsContent(content: string, comments: TaskComment[]): string
 		res = insertAfterSection(stripped, getConfig("description").title, newSection);
 	}
 	const output = res.inserted ? res.content : appendBlock(stripped, newSection);
-	return restoreLineEndings(output.replace(/\n{3,}/g, "\n\n").trim(), useCRLF);
+	return restoreLineEndings(collapseBlankLines(output).trim(), useCRLF);
 }
 
 /* biome-ignore lint/complexity/noStaticOnlyClass: Utility methods grouped for clarity */

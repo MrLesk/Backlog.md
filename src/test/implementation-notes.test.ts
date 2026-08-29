@@ -335,4 +335,118 @@ Technical decisions:
 			expect(notesContent).toContain("Added verification details");
 		});
 	});
+
+	describe("blank lines in fenced code blocks (BACK-637)", () => {
+		it("preserves consecutive blank lines inside backtick fences when editing notes", async () => {
+			const core = new Core(TEST_DIR);
+			await core.createTask(
+				{
+					id: "task-8",
+					title: "Fence Preservation",
+					status: "To Do",
+					assignee: [],
+					createdDate: "2025-07-03",
+					labels: [],
+					dependencies: [],
+					rawContent: "Initial description",
+				},
+				false,
+			);
+
+			const notes = [
+				"intro",
+				"",
+				"```python",
+				"def a():",
+				"    pass",
+				"",
+				"",
+				"def b():",
+				"    pass",
+				"```",
+				"outro",
+			].join("\n");
+			const result = await editTaskViaCli({ taskId: "task-8", notes }, TEST_DIR);
+			expect(result.exitCode).toBe(0);
+
+			const updated = await core.filesystem.loadTask("task-8");
+			const notesContent = extractStructuredSection(updated?.rawContent || "", "implementationNotes") || "";
+			expect(notesContent).toBe(notes);
+		});
+
+		it("preserves consecutive blank lines inside tilde fences when editing notes", async () => {
+			const core = new Core(TEST_DIR);
+			await core.createTask(
+				{
+					id: "task-9",
+					title: "Tilde Fence Preservation",
+					status: "To Do",
+					assignee: [],
+					createdDate: "2025-07-03",
+					labels: [],
+					dependencies: [],
+					rawContent: "Initial description",
+				},
+				false,
+			);
+
+			const notes = ["intro", "", "~~~", "line one", "", "", "line two", "~~~", "outro"].join("\n");
+			const result = await editTaskViaCli({ taskId: "task-9", notes }, TEST_DIR);
+			expect(result.exitCode).toBe(0);
+
+			const updated = await core.filesystem.loadTask("task-9");
+			const notesContent = extractStructuredSection(updated?.rawContent || "", "implementationNotes") || "";
+			expect(notesContent).toBe(notes);
+		});
+
+		it("preserves blank lines in an unterminated fence when editing notes", async () => {
+			const core = new Core(TEST_DIR);
+			await core.createTask(
+				{
+					id: "task-11",
+					title: "Unterminated Fence Preservation",
+					status: "To Do",
+					assignee: [],
+					createdDate: "2025-07-03",
+					labels: [],
+					dependencies: [],
+					rawContent: "Initial description",
+				},
+				false,
+			);
+
+			const notes = ["intro", "", "```text", "opened", "", "", "still fenced"].join("\n");
+			const result = await editTaskViaCli({ taskId: "task-11", notes }, TEST_DIR);
+			expect(result.exitCode).toBe(0);
+
+			const updated = await core.filesystem.loadTask("task-11");
+			const notesContent = extractStructuredSection(updated?.rawContent || "", "implementationNotes") || "";
+			expect(notesContent).toBe(notes);
+		});
+
+		it("still collapses consecutive blank lines outside fences when editing notes", async () => {
+			const core = new Core(TEST_DIR);
+			await core.createTask(
+				{
+					id: "task-10",
+					title: "Prose Normalization",
+					status: "To Do",
+					assignee: [],
+					createdDate: "2025-07-03",
+					labels: [],
+					dependencies: [],
+					rawContent: "Initial description",
+				},
+				false,
+			);
+
+			const notes = ["first paragraph", "", "", "", "second paragraph"].join("\n");
+			const result = await editTaskViaCli({ taskId: "task-10", notes }, TEST_DIR);
+			expect(result.exitCode).toBe(0);
+
+			const updated = await core.filesystem.loadTask("task-10");
+			const notesContent = extractStructuredSection(updated?.rawContent || "", "implementationNotes") || "";
+			expect(notesContent).toBe("first paragraph\n\nsecond paragraph");
+		});
+	});
 });
