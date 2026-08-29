@@ -4,6 +4,7 @@ import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { MemoryRouter } from "react-router-dom";
 import type { Milestone, Task } from "../types/index.ts";
+import { createTaskSearchIndex } from "../utils/task-search.ts";
 import MilestonesPage from "../web/components/MilestonesPage.tsx";
 import { apiClient } from "../web/lib/api.ts";
 import { setNativeInputValue } from "./react-dom-input.ts";
@@ -207,7 +208,7 @@ describe("Web milestones page search", () => {
 	it("keeps unassigned section visible during search even when no unassigned tasks match", () => {
 		const container = renderPage();
 
-		setSearchValue(container, "task-404");
+		setSearchValue(container, "docs");
 		const filteredText = container.textContent ?? "";
 		expect(filteredText).toContain("Unassigned tasks");
 		expect(filteredText).toContain("No matching unassigned tasks.");
@@ -221,6 +222,26 @@ describe("Web milestones page search", () => {
 		expect(restoredText).toContain("Setup authentication flow");
 		expect(restoredText).toContain("Deploy pipeline");
 		expect(restoredText).toContain("Draft release notes");
+	});
+
+	it("matches exactly what the shared task search matches for the same query", () => {
+		for (const query of ["authentication", "docs", "pipeline", "release", "task-404", "zzzz-no-match"]) {
+			const expected = new Set(
+				createTaskSearchIndex(baseTasks)
+					.search({ query })
+					.map((task) => task.id),
+			);
+			const container = renderPage();
+			setSearchValue(container, query);
+			const text = container.textContent ?? "";
+			for (const task of baseTasks) {
+				expect({ query, id: task.id, shown: text.includes(task.id) }).toEqual({
+					query,
+					id: task.id,
+					shown: expected.has(task.id),
+				});
+			}
+		}
 	});
 
 	it("no-match search keeps milestone and unassigned sections visible", () => {
