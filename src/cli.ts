@@ -1233,7 +1233,7 @@ addHelpSchema(program.command("init [projectName]"), {
 					}
 					taskPrefix = String(enteredPrefix ?? "").trim();
 				}
-				const taskPrefixError = taskPrefix ? getTaskPrefixError(taskPrefix) : undefined;
+				const taskPrefixError = getTaskPrefixError(taskPrefix ?? "");
 				if (taskPrefixError) {
 					console.error(taskPrefixError);
 					process.exit(1);
@@ -5175,7 +5175,10 @@ addHelpSchema(program.command("doctor"), {
 			const reservedTaskPrefix = taskPrefix && isReservedTaskPrefix(taskPrefix) ? taskPrefix : null;
 			if (reservedTaskPrefix) {
 				console.error(
-					`Task prefix "${reservedTaskPrefix}" collides with a reserved prefix (draft, doc, decision); tasks are misrouted as that entity type. There is no automated migration. Rename the affected task files and IDs to a non-reserved prefix, then set prefixes.task in the project config file to match.`,
+					`Task prefix "${reservedTaskPrefix}" collides with a reserved prefix (draft, doc, decision); tasks are misrouted as that entity type.`,
+				);
+				console.error(
+					"There is no automated migration. Rename the affected task files and IDs to a non-reserved prefix, then set prefixes.task in the project config file to match.",
 				);
 				process.exitCode = 1;
 				if (options.fix) {

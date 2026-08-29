@@ -52,7 +52,7 @@ describe("BacklogServer init endpoint", () => {
 		);
 		const body = (await response.json()) as { error?: string };
 
-		expect(response.status).not.toBe(200);
+		expect(response.status).toBe(400);
 		expect(body.error).toContain("reserved for drafts, docs, or decisions");
 		expect(await Bun.file(join(TEST_DIR, "backlog", "config.yml")).exists()).toBe(false);
 	});

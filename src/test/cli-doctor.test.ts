@@ -245,7 +245,7 @@ describe("backlog doctor", () => {
 		expect(output).toContain('Task prefix "draft" collides with a reserved prefix');
 		expect(output).toContain("There is no automated migration");
 		expect(output.toLowerCase()).not.toContain("re-initialize");
-		expect(output).not.toContain("No duplicate task, document, or decision IDs found.");
+		expect(output).not.toContain("No duplicate task, document, decision, or draft IDs found.");
 	});
 
 	it("does not auto-repair duplicates when the task prefix is reserved", async () => {

@@ -116,11 +116,10 @@ export async function initializeProject(
 	} = options;
 
 	const isReInitialization = !!existingConfig;
-	if (!isReInitialization && advancedConfig.taskPrefix) {
-		const taskPrefixError = getTaskPrefixError(advancedConfig.taskPrefix);
-		if (taskPrefixError) {
-			throw new Error(taskPrefixError);
-		}
+	// An explicitly requested prefix is always validated; existing prefixes are preserved below untouched.
+	const taskPrefixError = getTaskPrefixError(advancedConfig.taskPrefix ?? "");
+	if (taskPrefixError) {
+		throw new Error(taskPrefixError);
 	}
 	const projectRoot = core.filesystem.rootDir;
 	const effectiveFilesystemOnly = filesystemOnly || existingConfig?.filesystemOnly === true;

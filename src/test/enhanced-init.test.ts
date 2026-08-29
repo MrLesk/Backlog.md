@@ -413,6 +413,16 @@ describe("Enhanced init command", () => {
 		expect(result.config.prefixes?.task).toBe("draft");
 		const loadedConfig = await core.filesystem.loadConfig();
 		expect(loadedConfig?.prefixes?.task).toBe("draft");
+
+		// Re-init cannot introduce a reserved prefix either.
+		await expect(
+			initializeProject(core, {
+				projectName: "Legacy Reserved Prefix",
+				integrationMode: "none",
+				existingConfig,
+				advancedConfig: { taskPrefix: "doc" },
+			}),
+		).rejects.toThrow(/reserved for drafts, docs, or decisions/);
 	});
 
 	test("initializeProject should use custom taskPrefix from advancedConfig", async () => {
