@@ -615,6 +615,13 @@ const PER_TASK_ONLY_EDIT_FLAGS: ReadonlyArray<{ option: string; flag: string }> 
 	{ option: "removeDod", flag: "--remove-dod" },
 	{ option: "checkDod", flag: "--check-dod" },
 	{ option: "uncheckDod", flag: "--uncheck-dod" },
+	// Acceptance criteria and Definition of Done are task-specific body sections like the plan and
+	// notes above: replacing, clearing, or adding to them across a batch erases or duplicates
+	// content that differs per task.
+	{ option: "acceptanceCriteria", flag: "--acceptance-criteria" },
+	{ option: "clearAc", flag: "--clear-ac" },
+	{ option: "ac", flag: "--ac" },
+	{ option: "dod", flag: "--dod" },
 ];
 
 function findPerTaskOnlyFlag(options: Record<string, unknown>): string | null {

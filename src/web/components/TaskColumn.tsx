@@ -328,6 +328,11 @@ const TaskColumn: React.FC<TaskColumnProps> = ({
             onDragOver={(e) => {
               if (!onTaskReorder || !draggedTaskId) return;
 
+              // A drag that moves the whole selection ignores the drop position (a same-column
+              // batch drop is inert, a cross-column one appends), so no insertion indicator is
+              // shown that the drop would not honor.
+              if (selectedTaskIds && selectedTaskIds.length > 1 && selectedTaskIds.includes(draggedTaskId)) return;
+
               // Hovering the lifted card itself previews "stay in place": no indicator, and the
               // drop resolves to the card's current position instead of the end of the column.
               if (draggedTaskId === task.id) {

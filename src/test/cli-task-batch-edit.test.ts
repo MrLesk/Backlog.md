@@ -181,6 +181,23 @@ describe("task edit with several task IDs", () => {
 		expect((await new Core(TEST_DIR).filesystem.loadTask("task-1"))?.status).toBe("Done");
 	});
 
+	it("rejects acceptance-criteria and Definition of Done flags for a batch", async () => {
+		for (const flags of [
+			["--acceptance-criteria", "Same list"],
+			["--clear-ac"],
+			["--ac", "Same criterion"],
+			["--dod", "Same item"],
+		]) {
+			const result = await $`bun ${CLI_PATH} task edit task-1 task-2 ${flags}`.cwd(TEST_DIR).nothrow().quiet();
+
+			expect(result.exitCode).not.toBe(0);
+			expect(result.stderr.toString()).toContain("applies to one task only");
+		}
+
+		// The criteria of both tasks stay untouched.
+		expect((await new Core(TEST_DIR).filesystem.loadTask("task-1"))?.acceptanceCriteriaItems ?? []).toHaveLength(0);
+	});
+
 	it("keeps a bare number and an explicitly prefixed ID distinct", async () => {
 		// A bare "1" means TASK-1, so it must not swallow JIRA-1 (or the other way round): the
 		// prefixed ID stays in the batch and reports its own failure.

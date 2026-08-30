@@ -666,6 +666,27 @@ describe("Web board batch move", () => {
 		}
 	});
 
+	it("hides the insertion indicator during a batch drag", async () => {
+		const container = renderBoard();
+		await clickCard(getCard(container, "TASK-1"), { ctrlKey: true });
+		await clickCard(getCard(container, "TASK-2"), { ctrlKey: true });
+
+		await dispatchDragStart(getCard(container, "TASK-1"));
+		await dispatchDragOver(getCard(container, "TASK-3"));
+
+		// A batch drop does not honor a card-level position, so no indicator may promise one.
+		expect(container.querySelector(".bg-blue-500.animate-pulse")).toBeNull();
+	});
+
+	it("still shows the insertion indicator during a single-card drag", async () => {
+		const container = renderBoard();
+
+		await dispatchDragStart(getCard(container, "TASK-1"));
+		await dispatchDragOver(getCard(container, "TASK-3"));
+
+		expect(container.querySelector(".bg-blue-500.animate-pulse")).not.toBeNull();
+	});
+
 	it("sends the batch in board order, not click order", async () => {
 		const originalMoveTasks = apiClient.moveTasks.bind(apiClient);
 		const calls: MoveTasksPayload[] = [];
