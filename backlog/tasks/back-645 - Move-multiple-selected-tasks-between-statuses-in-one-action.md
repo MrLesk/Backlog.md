@@ -1,11 +1,11 @@
 ---
 id: BACK-645
 title: Move multiple selected tasks between statuses in one action
-status: In Progress
+status: Done
 assignee:
   - '@claude'
 created_date: '2026-08-29 18:57'
-updated_date: '2026-08-30 19:50'
+updated_date: '2026-08-30 19:54'
 labels:
   - cli
   - tui
