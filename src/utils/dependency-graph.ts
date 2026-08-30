@@ -248,6 +248,13 @@ export function buildDependencyTree(graph: DependencyGraph, direction: Dependenc
 				continue;
 			}
 			expanded.add(childId);
+			// An unresolved identity is reported, never traversed through. The reverse traversal can
+			// contribute edges leaving an ambiguous identity to the shared edge set, so the tree must
+			// refuse to follow them rather than trust the traversals to have kept them out.
+			if (node.state !== "resolved") {
+				result.push({ node, children: [], repeat: null });
+				continue;
+			}
 			branch.add(childId);
 			result.push({ node, children: expand(childId), repeat: null });
 			branch.delete(childId);

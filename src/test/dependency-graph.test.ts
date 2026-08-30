@@ -137,6 +137,27 @@ describe("buildDependencyGraph", () => {
 		expect(nodeIds(graph, "dependencies")).toEqual(["TASK-2"]);
 	});
 
+	it("keeps an ambiguous identity a leaf even when reverse edges leave it", () => {
+		// One duplicate record behind the ambiguous identity declares a dependency on task-3, which is
+		// itself a dependent of the root, so the shared edge set carries an edge leaving the ambiguous
+		// node. The display tree must not follow it in either direction.
+		const graph = graphFor("task-1", [
+			task("task-1", ["task-2"]),
+			task("task-2", ["task-3"]),
+			task("TASK-02"),
+			task("task-3", ["task-1"]),
+		]);
+
+		const dependsOn = buildDependencyTree(graph, "dependencies");
+		expect(dependsOn.map((entry) => entry.node.state)).toEqual(["ambiguous"]);
+		expect(dependsOn[0]?.children).toEqual([]);
+
+		const dependents = buildDependencyTree(graph, "dependents");
+		expect(dependents[0]?.node.id).toBe("task-3");
+		expect(dependents[0]?.children[0]?.node.state).toBe("ambiguous");
+		expect(dependents[0]?.children[0]?.children).toEqual([]);
+	});
+
 	it("keeps a completed record visible as a resolved dependency", () => {
 		const graph = graphFor("task-1", [task("task-1", ["task-2"])], [task("task-2", [], { status: "In Progress" })]);
 

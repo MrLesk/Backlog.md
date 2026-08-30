@@ -54,6 +54,16 @@ describe("TUI dependency graph section", () => {
 		expect(body).toContain("{yellow-fg}BACK-404 - unknown task ID{/}");
 	});
 
+	it("renders a title containing blessed tag syntax as literal characters", () => {
+		const styled = makeTask("BACK-7", "Style {red-fg}accent{/} braces");
+		const root = makeTask("BACK-8", "Root", ["BACK-7"]);
+		const detail = withDependencyGraph(root, { tasks: [root, styled], completedTasks: [], statuses: STATUSES });
+		const body = generateDetailContent(detail).bodyContent.join("\n");
+
+		expect(body).toContain("BACK-7 - Style {open}red-fg{close}accent{open}/{close} braces [To Do]");
+		expect(body).not.toContain("{red-fg}accent");
+	});
+
 	it("leaves the board quick-look popup and other graph-less callers unchanged", () => {
 		// The popup passes no graph, so it renders exactly what it rendered before.
 		expect(detailBody(selected, false)).not.toContain("Dependency Graph");
