@@ -1,11 +1,11 @@
 ---
 id: BACK-642
 title: Show acceptance criteria progress in MCP and plain task lists
-status: In Progress
+status: Done
 assignee:
   - '@claude'
 created_date: '2026-08-29 17:53'
-updated_date: '2026-08-30 15:18'
+updated_date: '2026-08-30 15:34'
 labels:
   - cli
   - mcp
@@ -21,17 +21,17 @@ External tools can already read per-task acceptance criteria progress from `back
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 MCP task list summary lines include acceptance criteria progress as completed/total for each task that has criteria
-- [ ] #2 `backlog task list --plain` includes the same completed/total progress per task
-- [ ] #3 Tasks without acceptance criteria render without progress noise, consistently across both surfaces
-- [ ] #4 Automated tests cover MCP list and plain list output with and without acceptance criteria
+- [x] #1 MCP task list summary lines include acceptance criteria progress as completed/total for each task that has criteria
+- [x] #2 `backlog task list --plain` includes the same completed/total progress per task
+- [x] #3 Tasks without acceptance criteria render without progress noise, consistently across both surfaces
+- [x] #4 Automated tests cover MCP list and plain list output with and without acceptance criteria
 <!-- AC:END -->
 
 ## Definition of Done
 <!-- DOD:BEGIN -->
-- [ ] #1 bunx tsc --noEmit passes when TypeScript touched
-- [ ] #2 bun run check . passes when formatting/linting touched
-- [ ] #3 bun test (or scoped test) passes
+- [x] #1 bunx tsc --noEmit passes when TypeScript touched
+- [x] #2 bun run check . passes when formatting/linting touched
+- [x] #3 bun test (or scoped test) passes
 <!-- DOD:END -->
 
 ## Implementation Plan
@@ -47,4 +47,12 @@ External tools can already read per-task acceptance criteria progress from `back
 
 <!-- SECTION:NOTES:BEGIN -->
 Added shared formatAcceptanceCriteriaSummarySuffix in src/ui/acceptance-criteria-progress.ts and wired it into formatPlainTaskListRow (cli.ts) and MCP formatTaskSummaryLine. Tests added in cli-task-list.test.ts and mcp-tasks.test.ts (with/without criteria). tsc and biome clean; full suite running.
+
+Validation: bunx tsc --noEmit clean; bun run check . clean; bun test src/test/cli-task-list.test.ts src/test/mcp-tasks.test.ts 55 pass / 0 fail. Full suite: only pre-existing failures remain (tui-emoji-width fails identically on origin/main - BACK-657 glyph environment issue; web modal/server tests flaky under full-suite load, pass in isolation). Real-data smoke: plain list shows '(ac: 0/4)' style after status, tasks without criteria unchanged.
 <!-- SECTION:NOTES:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+Added a shared formatAcceptanceCriteriaSummarySuffix helper (src/ui/acceptance-criteria-progress.ts) that renders ' (ac: checked/total)' only when a task has acceptance criteria, and appended it to the CLI plain list row (formatPlainTaskListRow in src/cli.ts) and the MCP summary line (formatTaskSummaryLine in src/mcp/tools/tasks/handlers.ts), after the status suffix. Tasks without criteria render unchanged on both surfaces; task list --json untouched. Verified with new tests in cli-task-list.test.ts and mcp-tasks.test.ts covering with/without criteria (55 pass), tsc, Biome, and a real-project smoke run.
+<!-- SECTION:FINAL_SUMMARY:END -->
