@@ -311,6 +311,82 @@ describe("Task Dependencies", () => {
 		expect(updatedDependent?.dependencies).toEqual([]);
 	});
 
+	test("accepts a completed task as a dependency at create and edit time", async () => {
+		const { task: predecessor } = await core.createTaskFromInput({ title: "Finished predecessor", status: "Done" });
+		expect(await core.completeTask(predecessor.id, false)).toBe(true);
+
+		const { task: created } = await core.createTaskFromInput({
+			title: "Created after completion",
+			dependencies: [predecessor.id],
+		});
+		expect(created.dependencies).toEqual([predecessor.id]);
+
+		const { task: edited } = await core.createTaskFromInput({ title: "Edited after completion" });
+		await core.updateTaskFromInput(edited.id, { dependencies: [predecessor.id] }, false);
+		expect((await core.filesystem.loadTask(edited.id))?.dependencies).toEqual([predecessor.id]);
+	});
+
+	test("accepts an archived task as a dependency at create and edit time", async () => {
+		const { task: predecessor } = await core.createTaskFromInput({ title: "Archived predecessor" });
+		// Keep an active task with a higher ID so the allocator does not reuse the archived ID.
+		const { task: edited } = await core.createTaskFromInput({ title: "Edited after archive" });
+		expect(await core.archiveTask(predecessor.id, false)).toBe(true);
+
+		const { task: created } = await core.createTaskFromInput({
+			title: "Created after archive",
+			dependencies: [predecessor.id],
+		});
+		expect(created.dependencies).toEqual([predecessor.id]);
+
+		await core.updateTaskFromInput(edited.id, { dependencies: [predecessor.id] }, false);
+		expect((await core.filesystem.loadTask(edited.id))?.dependencies).toEqual([predecessor.id]);
+	});
+
+	test("re-editing the dependency list of a task whose predecessor completed keeps working", async () => {
+		const { task: predecessor } = await core.createTaskFromInput({ title: "Predecessor", status: "Done" });
+		const { task: other } = await core.createTaskFromInput({ title: "Other target" });
+		const { task: dependent } = await core.createTaskFromInput({
+			title: "Dependent",
+			dependencies: [predecessor.id],
+		});
+
+		expect(await core.completeTask(predecessor.id, false)).toBe(true);
+
+		// --depends-on replaces the whole list, so the existing completed entry must revalidate too.
+		await core.updateTaskFromInput(dependent.id, { dependencies: [predecessor.id, other.id] }, false);
+		expect((await core.filesystem.loadTask(dependent.id))?.dependencies).toEqual([predecessor.id, other.id]);
+	});
+
+	test("still accepts drafts and rejects unknown dependency IDs", async () => {
+		const { task: draft } = await core.createTaskFromInput({ title: "Draft target", status: "Draft" }, false);
+		const { task } = await core.createTaskFromInput({ title: "Dependent task" });
+
+		await core.updateTaskFromInput(task.id, { dependencies: [draft.id] }, false);
+		expect((await core.filesystem.loadTask(task.id))?.dependencies).toEqual([draft.id]);
+
+		await expect(core.updateTaskFromInput(task.id, { dependencies: ["task-999"] }, false)).rejects.toThrow(
+			"The following dependencies do not exist: task-999",
+		);
+	});
+
+	test("fails closed when a completed task and an active file claim the same identity", async () => {
+		const { task: predecessor } = await core.createTaskFromInput({ title: "Predecessor", status: "Done" });
+		const { task: dependent } = await core.createTaskFromInput({ title: "Dependent" });
+		expect(await core.completeTask(predecessor.id, false)).toBe(true);
+
+		// Recreate the completed task's file in the active tasks directory so two files claim its ID.
+		const completed = (await core.filesystem.listCompletedTasks()).find((task) => task.id === predecessor.id);
+		expect(completed?.filePath).toBeDefined();
+		if (!completed?.filePath) return;
+		const duplicatePath = join(core.filesystem.tasksDir, "task-1 - Duplicate.md");
+		await Bun.write(duplicatePath, await Bun.file(completed.filePath).text());
+
+		await expect(core.updateTaskFromInput(dependent.id, { dependencies: [predecessor.id] }, false)).rejects.toThrow(
+			/ambiguous/,
+		);
+		expect((await core.filesystem.loadTask(dependent.id))?.dependencies ?? []).toEqual([]);
+	});
+
 	test("should not sanitize draft dependencies when archiving", async () => {
 		const archiveTarget: Task = {
 			id: "task-1",
