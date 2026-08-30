@@ -605,6 +605,7 @@ const PER_TASK_ONLY_EDIT_FLAGS: ReadonlyArray<{ option: string; flag: string }> 
 	{ option: "appendNotes", flag: "--append-notes" },
 	{ option: "finalSummary", flag: "--final-summary" },
 	{ option: "appendFinalSummary", flag: "--append-final-summary" },
+	{ option: "clearFinalSummary", flag: "--clear-final-summary" },
 	{ option: "comment", flag: "--comment" },
 	{ option: "commentAuthor", flag: "--comment-author" },
 	{ option: "ordinal", flag: "--ordinal" },
