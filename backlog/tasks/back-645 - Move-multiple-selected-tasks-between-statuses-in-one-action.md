@@ -5,7 +5,7 @@ status: In Progress
 assignee:
   - '@claude'
 created_date: '2026-08-29 18:57'
-updated_date: '2026-08-30 17:52'
+updated_date: '2026-08-30 18:03'
 labels:
   - cli
   - tui
@@ -70,4 +70,6 @@ Maintainer re-test follow-up (head 551323e7): during a selection drag, every sel
 Maintainer decision: the TUI multi-mark flow is rejected (overloading m collides with within-column reordering) and split to successor task BACK-661 (maintainer-designed shift-arrow recruitment). The branch now ships CLI batch edit + web multi-select (no-op guards, drag ghost, selection-drag styling) + core moveTasksToStatus with orderedTaskIds placement (used by the web API and the upcoming BACK-661 TUI design). src/ui/board.ts is back to main's single-task mover except a standalone double-Enter movePending guard; TUI tests rewritten as board-tui-move.test.ts asserting main's single-mover semantics.
 
 Verification for AC checks: full suite green on head f4f1ba61 (2670 tests, 0 fail) covering cli-task-batch-edit.test.ts (ACs 1-2), web-board-batch-move.test.tsx + server-move-tasks-endpoint.test.ts (AC 3 web scope, milestone lanes), core-move-tasks-to-status.test.ts (ACs 4-5, shared resolution and fail-closed per-task errors); web batch drop additionally verified live in Chromium earlier on this branch. AC 6 verified by diff review each round. TUI diff against main is exactly the 7-line movePending guard in src/ui/board.ts.
+
+Codex thread round (head 2e39335f): lane-scoped append ordering (a drop into one milestone lane no longer renumbers other lanes), cross-branch cards excluded from the batch write set (they order the column but are never persisted locally), web batch requests built in board order instead of click order, and CLI batch edit dedups on resolved identity so bare-number aliases under a custom prefix cannot save a task twice. The TUI marked-set thread is obsolete - that code was deleted with the BACK-661 split. Regression tests added for the three fixturable fixes.
 <!-- SECTION:NOTES:END -->
