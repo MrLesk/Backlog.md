@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { type Milestone, type Task } from '../../types';
 import { apiClient, type ReorderTaskPayload } from '../lib/api';
-import { buildLanes, DEFAULT_LANE_KEY, groupTasksByLaneAndStatus, type LaneMode } from '../lib/lanes';
+import { buildLanes, DEFAULT_LANE_KEY, groupTasksByLaneAndStatus, type LaneMode, sortTasksForStatus } from '../lib/lanes';
 import { collectAvailableLabels, labelsToLower } from '../../utils/label-filter';
 import { collectArchivedMilestoneKeys, milestoneKey } from '../utils/milestones';
 import { getTerminalStatus } from '../../utils/terminal-status';
@@ -358,13 +358,25 @@ const Board: React.FC<BoardProps> = ({
   // selection between columns and leaves every task's milestone alone.
   const handleBatchMove = async (targetStatus: string, targetMilestone?: string | null) => {
     if (selectedTaskIds.length === 0 || !targetStatus) return;
-    const taskIds = selectedTaskIds;
-    const selectedTasks = taskIds
-      .map((taskId) => {
-        const resolution = resolveTaskById(tasks, taskId);
-        return resolution.status === 'found' ? resolution.task : undefined;
-      })
+    const resolutions = selectedTaskIds.map((taskId) => {
+      const resolution = resolveTaskById(tasks, taskId);
+      return { taskId, task: resolution.status === 'found' ? resolution.task : undefined };
+    });
+    const selectedTasks = resolutions
+      .map((resolution) => resolution.task)
       .filter((task): task is Task => task !== undefined);
+
+    // The batch lands in the target column in the order it reads on the board, not in the order
+    // the cards happened to be clicked. Unresolvable IDs stay in the request so the server can
+    // report them per task.
+    const orderedTasks = statuses.flatMap((status) =>
+      sortTasksForStatus(selectedTasks.filter((task) => task.status === status), status)
+    );
+    const orderedIds = new Set(orderedTasks.map((task) => task.id));
+    const taskIds = [
+      ...orderedTasks.map((task) => task.id),
+      ...resolutions.filter(({ task }) => !task || !orderedIds.has(task.id)).map(({ taskId }) => taskId),
+    ];
 
     // Dropping the selection back where it already sits changes nothing, so it stays a pure no-op:
     // no request, no refresh, and the selection survives so the drag can be retried.

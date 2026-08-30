@@ -3069,6 +3069,10 @@ async function runEditCommand(target: EditCommandTarget, requestedIds: string[] 
 	for (const requestedId of taskIds) {
 		try {
 			const loaded = await target.resolve(core, requestedId);
+			// Under a custom prefix, a bare number is an alias the pre-resolution dedup cannot see
+			// ("7" and "BACK-7"), so the resolved identity is the last line of defense against
+			// editing the same task twice.
+			if (loaded && resolvedTasks.some((seen) => seen.id === loaded.id)) continue;
 			if (loaded) resolvedTasks.push(loaded);
 			else editFailures.push({ taskId: requestedId, message: target.notFoundMessage(requestedId) });
 		} catch (error) {

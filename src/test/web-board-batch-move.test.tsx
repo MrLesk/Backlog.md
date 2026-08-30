@@ -666,6 +666,32 @@ describe("Web board batch move", () => {
 		}
 	});
 
+	it("sends the batch in board order, not click order", async () => {
+		const originalMoveTasks = apiClient.moveTasks.bind(apiClient);
+		const calls: MoveTasksPayload[] = [];
+		apiClient.moveTasks = async (payload) => {
+			calls.push(payload);
+			return { success: true, tasks: [], changedTasks: [], failures: [] };
+		};
+
+		try {
+			const container = renderBoard();
+			// Click the lower card first: the request must still read top-to-bottom.
+			await clickCard(getCard(container, "TASK-3"), { ctrlKey: true });
+			await clickCard(getCard(container, "TASK-1"), { ctrlKey: true });
+
+			await act(async () => {
+				dispatchDrop(getColumn(container, "Done"), { "text/plain": "TASK-1", "text/status": "To Do" });
+				await Promise.resolve();
+			});
+
+			expect(calls).toHaveLength(1);
+			expect(calls[0]?.taskIds).toEqual(["TASK-1", "TASK-3"]);
+		} finally {
+			apiClient.moveTasks = originalMoveTasks;
+		}
+	});
+
 	it("shows the whole selection in the drag image", async () => {
 		const container = renderBoard();
 		await clickCard(getCard(container, "TASK-1"), { ctrlKey: true });

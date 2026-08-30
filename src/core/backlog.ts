@@ -3061,12 +3061,17 @@ export class Core {
 				// Ordinal-less column tasks render after ordinal-bearing ones, so they get materialized
 				// ordinals rather than letting the appended tasks slot in above them, and a non-finite
 				// ordinal from a corrupt file counts as missing instead of poisoning the column.
+				// A named lane scopes the ordering to that lane: a drop into Milestone A must not
+				// renumber cards that only share the status in other lanes. Staying tasks remain in
+				// scope regardless, because a named lane still has to be applied to them.
 				const sanitizeOrdinal = (task: Task): Task =>
 					task.ordinal === undefined || Number.isFinite(task.ordinal) ? task : { ...task, ordinal: undefined };
+				const inTargetLane = (task: Task): boolean =>
+					!hasTargetMilestone || (task.milestone?.trim() || "") === (normalizedTargetMilestone ?? "");
 				const columnTasks = sortByOrdinal(
 					store
 						.getTasks({ status: targetStatus })
-						.filter((task) => !movedIds.has(task.id) || stayingIds.has(task.id))
+						.filter((task) => (stayingIds.has(task.id) ? true : !movedIds.has(task.id) && inTargetLane(task)))
 						.map(sanitizeOrdinal),
 				);
 				const tasksInOrder: Task[] = [
@@ -3095,6 +3100,10 @@ export class Core {
 				});
 			}
 		}
+
+		// A cross-branch card can constrain the ordering, but writing it here would create a local
+		// copy of a task the board treats as read-only. It keeps its file untouched on its own branch.
+		changedTasks = changedTasks.filter((task) => !task.branch);
 
 		if (changedTasks.length > 0) {
 			await this.updateTasksBulk(

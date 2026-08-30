@@ -279,6 +279,28 @@ describe("Core.moveTasksToStatus", () => {
 			expect((await core.filesystem.loadTask("task-1"))?.milestone).toBeUndefined();
 		});
 
+		it("scopes append ordering to the target lane instead of the whole status", async () => {
+			await createTasks([["task-1", "To Do", 1000]]);
+			await core.createTask(buildTask("task-3", "In Progress", 1000, { milestone: "Release 1" }), false);
+			// Same status, different lane, and no ordinal: a drop into Release 1 must not touch it.
+			await core.createTask(buildTask("task-4", "In Progress", undefined, { milestone: "Release 2" }), false);
+
+			const result = await core.moveTasksToStatus({
+				taskIds: ["task-1"],
+				targetStatus: "In Progress",
+				targetMilestone: "Release 1",
+				autoCommit: false,
+			});
+
+			expect(result.failures).toHaveLength(0);
+			expect(result.changedTasks.map((task) => task.id)).toEqual(["TASK-1"]);
+			const moved = await core.filesystem.loadTask("task-1");
+			expect(moved?.milestone).toBe("Release 1");
+			expect(moved?.ordinal ?? 0).toBeGreaterThan(1000);
+			// The other lane keeps its ordinal-less card exactly as it was.
+			expect((await core.filesystem.loadTask("task-4"))?.ordinal).toBeUndefined();
+		});
+
 		it("leaves the milestone alone when the caller names no lane", async () => {
 			await createTasks([["task-1", "To Do", 1000]]);
 			await core.moveTasksToStatus({
