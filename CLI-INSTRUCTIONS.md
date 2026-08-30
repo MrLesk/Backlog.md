@@ -247,7 +247,7 @@ Manage task dependencies to express execution order:
 
 ### Dependency graph in task detail
 
-Task detail shows the whole dependency context around the selected task, under `Dependency Graph`. The `Dependencies:` line above it stays the task's own editable list of direct dependency IDs; the graph below it is derived and read-only.
+Task detail shows the whole dependency context around the selected task, under `Dependency Graph`, directly above the description. It is derived and read-only, and it replaces the raw `Dependencies:` ID list in plain output: the graph names the same direct dependencies and resolves their titles, status, and everything behind them. A write confirmation, such as the output of `backlog task edit`, carries no graph and still echoes `Dependencies:` so you can see what was just set. `--json` is unaffected: `task.dependencies` remains the editable direct list.
 
 ```text
 Dependency Graph:
@@ -263,7 +263,7 @@ Dependents (2 direct, 2 total):
 
 - **Edge direction.** A dependency edge points from the task that declares it to the task it depends on, so the task it points at blocks the task it comes from.
 - **Direct versus transitive.** `Depends on` lists everything the selected task transitively depends on; `Dependents` lists everything that transitively depends on it. Nesting shows the distance: the outermost entries are direct relationships and everything indented below them is transitive. The heading counts both, as `N direct, M total`.
-- **Dependents.** "Dependents" means the tasks this one blocks. It is the reverse of `Dependencies:`, and nothing on that list is editable from here; change it on the task that declares it.
+- **Dependents.** "Dependents" means the tasks this one blocks. It is the reverse of the task's own dependency list, and nothing on it is editable from here; change it on the task that declares it.
 - **Visibility.** The graph resolves against exactly what task detail can already see: the current checkout plus completed tasks for the CLI, TUI, and MCP, and the configured cross-branch corpus in the browser. Archiving a task takes it out of every one of those, so an archived ID stops resolving instead of coming back.
 - **Cycles and repeats.** Every task appears once. A relationship that points back into the branch above it is marked `(cycle)`, and a task already shown elsewhere in the same section is marked `(shown above)` rather than being expanded again.
 - **Unresolved identities.** `unknown task ID` means no visible task claims that ID. `ambiguous task ID` means more than one record claims it, so nothing is chosen. Neither is ever treated as satisfied, and the graph never traverses past one, so anything behind it is left out rather than reported as resolved. Diagnose and repair duplicate IDs with `backlog doctor` before trusting a graph that reports one.

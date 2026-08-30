@@ -68,13 +68,30 @@ describe("CLI dependency graph", () => {
 		]);
 	});
 
-	it("keeps the editable dependencies line separate from the derived graph", async () => {
+	it("replaces the raw dependency ID list with the graph, and keeps it on write confirmations", async () => {
 		await addTask("task-1", "Foundation");
 		await addTask("task-2", "Selected", ["task-1"]);
 
-		const stdout = (await runCli(["task", "view", "2", "--plain"])).stdout.toString();
-		expect(stdout).toContain("Dependencies: task-1");
-		expect(stdout.indexOf("Dependencies: task-1")).toBeLessThan(stdout.indexOf("Dependency Graph:"));
+		// The graph says everything the ID list would, so task detail does not repeat it.
+		const viewed = (await runCli(["task", "view", "2", "--plain"])).stdout.toString();
+		expect(viewed).not.toContain("Dependencies:");
+		expect(viewed).toContain("Dependency Graph:");
+		expect(viewed.indexOf("Dependency Graph:")).toBeLessThan(viewed.indexOf("Description:"));
+
+		// A write confirmation carries no graph, so it still echoes what was just set.
+		const edited = (await runCli(["task", "edit", "2", "--plain", "-l", "graph"])).stdout.toString();
+		expect(edited).toContain("Dependencies: task-1");
+		expect(edited).not.toContain("Dependency Graph:");
+	});
+
+	it("renders modified files with the plan and notes rather than in the header block", async () => {
+		await addTask("task-1", "Selected");
+		await runCli(["task", "edit", "1", "--notes", "Did the work", "--modified-file", "src/api.ts"]);
+
+		const stdout = (await runCli(["task", "view", "1", "--plain"])).stdout.toString();
+		expect(stdout).toContain("Modified files: src/api.ts");
+		expect(stdout.indexOf("Implementation Notes:")).toBeLessThan(stdout.indexOf("Modified files:"));
+		expect(stdout.indexOf("Description:")).toBeLessThan(stdout.indexOf("Modified files:"));
 	});
 
 	it("renders a diamond once and marks the repeated branch", async () => {

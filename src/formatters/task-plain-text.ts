@@ -77,6 +77,7 @@ function formatCommentHeader(
 
 export function formatTaskPlainText(task: Task | TaskDetail, options: TaskPlainTextOptions = {}): string {
 	const lines: string[] = [];
+	const graph = taskDependencyGraph(task);
 	const filePath = options.filePathOverride ?? task.filePath;
 
 	if (filePath) {
@@ -146,7 +147,9 @@ export function formatTaskPlainText(task: Task | TaskDetail, options: TaskPlainT
 		}
 	}
 
-	if (task.dependencies?.length) {
+	// The Dependency Graph below says everything this line would, and more, so task detail drops it.
+	// A write confirmation carries no graph, so it still echoes the dependencies that were just set.
+	if (task.dependencies?.length && !graph) {
 		lines.push(`Dependencies: ${task.dependencies.join(", ")}`);
 	}
 
@@ -158,8 +161,13 @@ export function formatTaskPlainText(task: Task | TaskDetail, options: TaskPlainT
 		lines.push(`Documentation: ${task.documentation.join(", ")}`);
 	}
 
-	if (task.modifiedFiles?.length) {
-		lines.push(`Modified files: ${task.modifiedFiles.join(", ")}`);
+	// Present only on a task detail read, and it replaces the raw dependency ID list above.
+	const graphLines = graph ? formatDependencyGraphLines(graph) : [];
+	if (graphLines.length > 0) {
+		lines.push("");
+		lines.push("Dependency Graph:");
+		lines.push("-".repeat(50));
+		lines.push(...graphLines);
 	}
 
 	lines.push("");
@@ -189,17 +197,6 @@ export function formatTaskPlainText(task: Task | TaskDetail, options: TaskPlainT
 	}
 	lines.push("");
 
-	// Present only on a task detail read. It sits below the Definition of Done with the rest of the
-	// context you read before starting work, so the description and the checklists stay at the top.
-	const graph = taskDependencyGraph(task);
-	const graphLines = graph ? formatDependencyGraphLines(graph) : [];
-	if (graphLines.length > 0) {
-		lines.push("Dependency Graph:");
-		lines.push("-".repeat(50));
-		lines.push(...graphLines);
-		lines.push("");
-	}
-
 	const implementationPlan = task.implementationPlan?.trim();
 	if (implementationPlan) {
 		lines.push("Implementation Plan:");
@@ -213,6 +210,13 @@ export function formatTaskPlainText(task: Task | TaskDetail, options: TaskPlainT
 		lines.push("Implementation Notes:");
 		lines.push("-".repeat(50));
 		lines.push(transformCodePathsPlain(implementationNotes));
+		lines.push("");
+	}
+
+	// Records what the work touched, so it belongs with the plan and the notes rather than with the
+	// metadata you read before starting.
+	if (task.modifiedFiles?.length) {
+		lines.push(`Modified files: ${task.modifiedFiles.join(", ")}`);
 		lines.push("");
 	}
 
