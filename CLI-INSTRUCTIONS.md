@@ -247,7 +247,9 @@ Manage task dependencies to express execution order:
 
 ### Dependency graph in task detail
 
-Task detail shows the whole dependency context around the selected task, under `Dependency Graph`, directly above the description. It is derived and read-only, and it replaces the raw `Dependencies:` ID list in plain output: the graph names the same direct dependencies and resolves their titles, status, and everything behind them. A write confirmation, such as the output of `backlog task edit`, carries no graph and still echoes `Dependencies:` so you can see what was just set. `--json` is unaffected: `task.dependencies` remains the editable direct list.
+Task detail shows the whole dependency context around the selected task, under `Dependency Graph`, directly above the description. It is derived and read-only, and it replaces the raw `Dependencies:` ID list in plain output: the graph names the same direct dependencies and resolves their titles, status, and everything behind them.
+
+Every plain task output uses this one layout, so `task create --plain`, `task edit --plain`, `task view --plain`, and the MCP task results all render identically. `--json` is unaffected: `task.dependencies` remains the editable direct list alongside `task.dependencyGraph`.
 
 ```text
 Dependency Graph:

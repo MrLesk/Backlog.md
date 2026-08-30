@@ -158,7 +158,7 @@ export class TaskHandlers {
 				disableDefinitionOfDoneDefaults: args.disableDefinitionOfDoneDefaults,
 			});
 
-			return await formatTaskCallResult(createdTask);
+			return await formatTaskCallResult(await loadTaskDetail(this.core, createdTask));
 		} catch (error) {
 			if (isCreateLockError(error)) {
 				throw new BacklogToolError(error.message, "OPERATION_FAILED");
@@ -433,7 +433,7 @@ export class TaskHandlers {
 	async viewTask(args: { id: string }): Promise<CallToolResult> {
 		const draft = await this.core.filesystem.loadDraft(args.id);
 		if (draft) {
-			return await formatTaskCallResult(draft);
+			return await formatTaskCallResult(await loadTaskDetail(this.core, draft));
 		}
 
 		const task = await this.core.getTaskWithSubtasks(args.id);
@@ -453,7 +453,7 @@ export class TaskHandlers {
 				throw new BacklogToolError(`Failed to archive task: ${args.id}`, "OPERATION_FAILED");
 			}
 
-			return await formatTaskCallResult(draft, [`Archived draft ${draft.id}.`]);
+			return await formatTaskCallResult(await loadTaskDetail(this.core, draft), [`Archived draft ${draft.id}.`]);
 		}
 
 		const task = await this.loadTaskOrThrow(args.id);
@@ -477,7 +477,7 @@ export class TaskHandlers {
 		}
 
 		const refreshed = (await this.core.getTask(task.id)) ?? task;
-		return await formatTaskCallResult(refreshed);
+		return await formatTaskCallResult(await loadTaskDetail(this.core, refreshed));
 	}
 
 	async completeTask(args: { id: string }): Promise<CallToolResult> {
@@ -504,7 +504,7 @@ export class TaskHandlers {
 			throw new BacklogToolError(`Failed to complete task: ${args.id}`, "OPERATION_FAILED");
 		}
 
-		return await formatTaskCallResult(task, [`Completed task ${task.id}.`], {
+		return await formatTaskCallResult(await loadTaskDetail(this.core, task), [`Completed task ${task.id}.`], {
 			filePathOverride: completedFilePath,
 		});
 	}
@@ -525,7 +525,7 @@ export class TaskHandlers {
 		}
 
 		const refreshed = (await this.core.getTask(task.id)) ?? task;
-		return await formatTaskCallResult(refreshed);
+		return await formatTaskCallResult(await loadTaskDetail(this.core, refreshed));
 	}
 
 	async editTask(args: TaskEditRequest): Promise<CallToolResult> {
@@ -540,7 +540,7 @@ export class TaskHandlers {
 				updateInput.milestone = await this.resolveMilestoneInput(updateInput.milestone);
 			}
 			const updatedTask = await this.core.editTaskOrDraft(args.id, updateInput);
-			return await formatTaskCallResult(updatedTask);
+			return await formatTaskCallResult(await loadTaskDetail(this.core, updatedTask));
 		} catch (error) {
 			if (isTaskLockError(error)) {
 				throw new BacklogToolError(error.message, "OPERATION_FAILED");

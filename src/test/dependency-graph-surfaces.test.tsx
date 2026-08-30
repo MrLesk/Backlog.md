@@ -38,11 +38,13 @@ describe("TUI dependency graph section", () => {
 		expect(body).toContain("   └─ BACK-4 - Later [To Do]");
 	});
 
-	it("keeps the editable dependencies line above the derived section", () => {
+	it("replaces the raw dependency ID list and sits directly above the description", () => {
 		const body = detailBody(selected, true);
 
-		expect(body).toContain("{bold}Dependencies:{/bold} BACK-1, BACK-404");
-		expect(body.indexOf("Dependencies:")).toBeLessThan(body.indexOf("Depends on"));
+		// Same relative position as the canonical CLI plain output.
+		expect(body).not.toContain("Dependencies:");
+		expect(body.indexOf("Dependency Graph")).toBeLessThan(body.indexOf("Description"));
+		expect(body.indexOf("Details")).toBeLessThan(body.indexOf("Dependency Graph"));
 	});
 
 	it("colors finished and unresolved nodes without changing the shared wording", () => {

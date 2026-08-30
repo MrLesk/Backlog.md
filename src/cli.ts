@@ -1977,7 +1977,7 @@ addHelpSchema(taskCmd.command("create [title]"), {
 			});
 
 			if (usePlainOutput) {
-				console.log(formatTaskPlainText(task, { filePathOverride: filePath }));
+				console.log(formatTaskPlainText(await loadTaskDetail(core, task), { filePathOverride: filePath }));
 				return;
 			}
 
@@ -3311,7 +3311,7 @@ async function runEditCommand(target: EditCommandTarget, taskId: string | undefi
 
 	const usePlainOutput = isPlainRequested(options);
 	if (usePlainOutput) {
-		console.log(formatTaskPlainText(updatedTask));
+		console.log(formatTaskPlainText(await loadTaskDetail(core, updatedTask)));
 		return;
 	}
 
@@ -3794,7 +3794,7 @@ async function viewDraftById(core: Core, taskId: string, options?: { plain?: boo
 		}
 		const usePlainOutput = isPlainRequested(options) || shouldAutoPlain;
 		if (usePlainOutput) {
-			console.log(formatTaskPlainText(draft));
+			console.log(formatTaskPlainText(await loadTaskDetail(core, draft)));
 			return;
 		}
 		await viewTaskEnhanced(draft, { startWithDetailFocus: true, core });

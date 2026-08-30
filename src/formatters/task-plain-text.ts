@@ -1,4 +1,4 @@
-import { type TaskDetail, taskDependencyGraph } from "../core/task-detail.ts";
+import type { TaskDetail } from "../core/task-detail.ts";
 import type { Task } from "../types/index.ts";
 import type { ChecklistItem } from "../ui/checklist.ts";
 import { transformCodePathsPlain } from "../ui/code-path.ts";
@@ -75,9 +75,8 @@ function formatCommentHeader(
 	return parts.join(" - ");
 }
 
-export function formatTaskPlainText(task: Task | TaskDetail, options: TaskPlainTextOptions = {}): string {
+export function formatTaskPlainText(task: TaskDetail, options: TaskPlainTextOptions = {}): string {
 	const lines: string[] = [];
-	const graph = taskDependencyGraph(task);
 	const filePath = options.filePathOverride ?? task.filePath;
 
 	if (filePath) {
@@ -147,12 +146,6 @@ export function formatTaskPlainText(task: Task | TaskDetail, options: TaskPlainT
 		}
 	}
 
-	// The Dependency Graph below says everything this line would, and more, so task detail drops it.
-	// A write confirmation carries no graph, so it still echoes the dependencies that were just set.
-	if (task.dependencies?.length && !graph) {
-		lines.push(`Dependencies: ${task.dependencies.join(", ")}`);
-	}
-
 	if (task.references?.length) {
 		lines.push(`References: ${task.references.join(", ")}`);
 	}
@@ -161,8 +154,8 @@ export function formatTaskPlainText(task: Task | TaskDetail, options: TaskPlainT
 		lines.push(`Documentation: ${task.documentation.join(", ")}`);
 	}
 
-	// Present only on a task detail read, and it replaces the raw dependency ID list above.
-	const graphLines = graph ? formatDependencyGraphLines(graph) : [];
+	// Every plain task output is a detail read, so this replaces the raw dependency ID list entirely.
+	const graphLines = formatDependencyGraphLines(task.dependencyGraph);
 	if (graphLines.length > 0) {
 		lines.push("");
 		lines.push("Dependency Graph:");

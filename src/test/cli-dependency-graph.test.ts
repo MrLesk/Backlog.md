@@ -68,20 +68,26 @@ describe("CLI dependency graph", () => {
 		]);
 	});
 
-	it("replaces the raw dependency ID list with the graph, and keeps it on write confirmations", async () => {
+	it("renders view, create, and edit through the one plain serializer", async () => {
 		await addTask("task-1", "Foundation");
 		await addTask("task-2", "Selected", ["task-1"]);
 
-		// The graph says everything the ID list would, so task detail does not repeat it.
+		// The graph says everything the raw ID list would, so no plain output repeats it.
 		const viewed = (await runCli(["task", "view", "2", "--plain"])).stdout.toString();
-		expect(viewed).not.toContain("Dependencies:");
+		expect(viewed).not.toContain("Dependencies: ");
 		expect(viewed).toContain("Dependency Graph:");
 		expect(viewed.indexOf("Dependency Graph:")).toBeLessThan(viewed.indexOf("Description:"));
 
-		// A write confirmation carries no graph, so it still echoes what was just set.
+		// A write confirmation is the same serializer, so it renders the identical layout.
 		const edited = (await runCli(["task", "edit", "2", "--plain", "-l", "graph"])).stdout.toString();
-		expect(edited).toContain("Dependencies: task-1");
-		expect(edited).not.toContain("Dependency Graph:");
+		expect(edited).not.toContain("Dependencies: ");
+		expect(edited).toContain("Dependency Graph:");
+		expect(edited).toContain("└─ TASK-1 - Foundation [To Do]");
+		expect(edited.indexOf("Dependency Graph:")).toBeLessThan(edited.indexOf("Description:"));
+
+		const created = (await runCli(["task", "create", "Third", "--dep", "task-1", "--plain"])).stdout.toString();
+		expect(created).toContain("Dependency Graph:");
+		expect(created).toContain("└─ TASK-1 - Foundation [To Do]");
 	});
 
 	it("renders modified files with the plan and notes rather than in the header block", async () => {
@@ -234,10 +240,11 @@ describe("CLI dependency graph", () => {
 			expect(Object.keys(entry.data)).not.toContain("dependencies");
 		}
 
-		// The edit confirmation reuses the detail formatter, and must not grow a derived section.
+		// Only the compact machine-readable payloads must stay unchanged; the plain confirmation is
+		// deliberately the same detail layout as task view.
 		const edited = await runCli(["task", "edit", "2", "--plain", "-l", "graph"]);
 		expect(edited.exitCode).toBe(0);
-		expect(edited.stdout.toString()).not.toContain("Dependency Graph:");
+		expect(edited.stdout.toString()).toContain("Dependency Graph:");
 	});
 
 	it("keeps a wide and deep graph linear in the rendered output", async () => {

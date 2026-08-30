@@ -579,8 +579,8 @@ Task detail shows a read-only `Dependency Graph` section directly above the desc
 ID list, which it supersedes. `Depends on` is everything the task transitively depends on; `Dependents` is everything that
 transitively depends on it. A dependency edge points from the task that declares it to the task it depends on, so the task it
 points at blocks the task it comes from. Nesting shows the distance: outermost entries are direct, indented entries are
-transitive, and the heading counts both. A write confirmation such as `backlog task edit` carries no graph and still echoes
-`Dependencies:`, so you can see what was just set.
+transitive, and the heading counts both. Every plain task output uses this one layout, so `task create --plain`,
+`task edit --plain`, `task view --plain`, and the MCP task results all render identically.
 
 Every task appears once. `(cycle)` marks a relationship that points back into the branch above it and `(shown above)` marks a
 task already listed in the same section. `unknown task ID` means nothing visible claims that ID and `ambiguous task ID` means

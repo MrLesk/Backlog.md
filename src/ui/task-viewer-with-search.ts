@@ -4,7 +4,7 @@ import { stdout as output } from "node:process";
 import type { BoxInterface, LineInterface, ScreenInterface, ScrollableTextInterface } from "neo-neo-bblessed";
 import { box, line, scrollabletext } from "neo-neo-bblessed";
 import { type Core, createRuntimeCore } from "../core/backlog.ts";
-import { type TaskDetail, taskDependencyGraph, withDependencyGraph } from "../core/task-detail.ts";
+import { loadTaskDetail, type TaskDetail, taskDependencyGraph, withDependencyGraph } from "../core/task-detail.ts";
 import { formatDependencyGraphLines, formatDependencyNodeLabel } from "../formatters/dependency-graph-text.ts";
 import {
 	buildAcceptanceCriteriaItems,
@@ -255,7 +255,7 @@ export async function viewTaskEnhanced(
 	} = {},
 ): Promise<void> {
 	if (output.isTTY === false) {
-		console.log(formatTaskPlainText(task));
+		console.log(formatTaskPlainText(await loadTaskDetail(options.core ?? (await createRuntimeCore()), task)));
 		return;
 	}
 
@@ -1657,8 +1657,8 @@ export function generateDetailContent(
 		metadata.push(`{bold}Subtasks:{/bold} ${task.subtasks.length} task${task.subtasks.length > 1 ? "s" : ""}`);
 	}
 	if (task.dependencies?.length) {
-		metadata.push(`{bold}Dependencies:{/bold} ${task.dependencies.join(", ")}`);
-		// Readiness only earns a line when dependencies exist; otherwise the status already says it.
+		// The Dependency Graph section below names the same dependencies and resolves them, so the
+		// raw ID list is not repeated here. Readiness stays: it is a verdict, not a restatement.
 		if (readinessGraph) {
 			const readiness = getTaskReadiness(task, readinessGraph);
 			if (readiness.isReady) {
@@ -1676,6 +1676,19 @@ export function generateDetailContent(
 
 	bodyContent.push(metadata.join("\n"));
 	bodyContent.push("");
+
+	// Directly below the details block and above the description, the same relative position the
+	// canonical CLI plain output uses. This builder is not shared with the plain formatter, so the
+	// order is kept deliberately in step rather than inherited.
+	const dependencyGraph = taskDependencyGraph(task);
+	const dependencyGraphLines = dependencyGraph
+		? formatDependencyGraphLines(dependencyGraph, { formatLabel: formatDependencyNodeTuiLabel })
+		: [];
+	if (dependencyGraphLines.length > 0) {
+		bodyContent.push(formatHeading("Dependency Graph", 2));
+		bodyContent.push(dependencyGraphLines.join("\n"));
+		bodyContent.push("");
+	}
 
 	bodyContent.push(formatHeading("Description", 2));
 	const descriptionText = task.description?.trim();
@@ -1753,18 +1766,6 @@ export function generateDetailContent(
 		bodyContent.push("{gray-fg}No Definition of Done items defined{/}");
 	}
 	bodyContent.push("");
-
-	// Present only on a task detail read. It sits below the Definition of Done with the rest of the
-	// context you read before starting work, so the description and the checklists stay at the top.
-	const dependencyGraph = taskDependencyGraph(task);
-	const dependencyGraphLines = dependencyGraph
-		? formatDependencyGraphLines(dependencyGraph, { formatLabel: formatDependencyNodeTuiLabel })
-		: [];
-	if (dependencyGraphLines.length > 0) {
-		bodyContent.push(formatHeading("Dependency Graph", 2));
-		bodyContent.push(dependencyGraphLines.join("\n"));
-		bodyContent.push("");
-	}
 
 	const implementationPlan = task.implementationPlan?.trim();
 	if (implementationPlan) {
