@@ -343,16 +343,6 @@ const Board: React.FC<BoardProps> = ({
     return () => document.removeEventListener('keydown', handleKeyDown);
   }, [selectedTaskIds.length, clearSelection]);
 
-  // A card hidden by a filter is no longer part of what the user sees, so it must not ride along
-  // in a batch move. Pruning here keeps the selection equal to the visible cards.
-  useEffect(() => {
-    const visibleIds = new Set(filteredTasks.map((task) => task.id));
-    setSelectedTaskIds((previous) => {
-      const next = previous.filter((taskId) => visibleIds.has(taskId));
-      return next.length === previous.length ? previous : next;
-    });
-    setSelectionAnchorId((previous) => (previous && visibleIds.has(previous) ? previous : null));
-  }, [filteredTasks]);
 
   // targetMilestone is only supplied by a drop into a milestone lane; the toolbar moves the
   // selection between columns and leaves every task's milestone alone.
@@ -620,6 +610,28 @@ const Board: React.FC<BoardProps> = ({
       [laneKey]: !prev[laneKey],
     }));
   };
+
+  // A card hidden by a filter or a collapsed lane is no longer part of what the user sees, so it
+  // must not ride along in a batch move. Pruning here keeps the selection equal to the visible cards.
+  useEffect(() => {
+    const visibleIds = new Set(filteredTasks.map((task) => task.id));
+    if (laneMode === 'milestone') {
+      for (const lane of lanes) {
+        if (!isLaneCollapsed(lane.key, lane.milestone)) continue;
+        const statusMap = displayTasksByLane.get(lane.key);
+        if (!statusMap) continue;
+        for (const laneTasks of statusMap.values()) {
+          for (const task of laneTasks) visibleIds.delete(task.id);
+        }
+      }
+    }
+    setSelectedTaskIds((previous) => {
+      const next = previous.filter((taskId) => visibleIds.has(taskId));
+      return next.length === previous.length ? previous : next;
+    });
+    setSelectionAnchorId((previous) => (previous && visibleIds.has(previous) ? previous : null));
+    // biome-ignore lint/correctness/useExhaustiveDependencies: isLaneCollapsed is a plain render-scope helper; its inputs are listed.
+  }, [filteredTasks, laneMode, lanes, displayTasksByLane, collapsedLanes, milestoneFilter, canonicalMilestoneFilter]);
 
   // Dynamic layout using flexbox:
   // - Columns are flex items with equal growth (flex-1) to divide space evenly

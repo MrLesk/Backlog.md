@@ -666,6 +666,30 @@ describe("Web board batch move", () => {
 		}
 	});
 
+	it("drops a lane's cards from the selection when the lane collapses", async () => {
+		const container = renderMilestoneBoard([
+			TASKS[0] as Task,
+			{ ...TASKS[1], milestone: MILESTONE.title } as Task,
+			{ ...TASKS[2], milestone: MILESTONE.title } as Task,
+		]);
+		await clickCard(getCard(container, "TASK-1"), { ctrlKey: true });
+		await clickCard(getCard(container, "TASK-3"), { ctrlKey: true });
+		expect(container.textContent).toContain("2 selected");
+
+		// Collapsing the milestone lane hides TASK-3, so it must not ride along in the next move.
+		const laneHeader = Array.from(container.querySelectorAll("button")).find((button) =>
+			button.textContent?.includes(MILESTONE.title),
+		) as HTMLButtonElement;
+		expect(laneHeader).toBeTruthy();
+		await act(async () => {
+			laneHeader.dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
+			await Promise.resolve();
+		});
+
+		expect(container.textContent).toContain("1 selected");
+		expect(selectedCardIds(container)).toEqual(["TASK-1"]);
+	});
+
 	it("hides the insertion indicator during a batch drag", async () => {
 		const container = renderBoard();
 		await clickCard(getCard(container, "TASK-1"), { ctrlKey: true });
