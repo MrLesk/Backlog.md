@@ -512,8 +512,10 @@ const renderApp = async (
 		await act(async () => options.beforeInitialStatus?.(container as HTMLElement));
 	}
 	await act(async () => operation.settle("initial status"));
+	// Runs outside act so the callback can wrap its own act-based waits and then
+	// observe flushed DOM state.
 	if (options.afterInitialStatus) {
-		await act(async () => options.afterInitialStatus?.(container as HTMLElement));
+		await options.afterInitialStatus(container as HTMLElement);
 	}
 	await act(async () => operation.settle("initial search"));
 	if (controlledTimer) {
@@ -615,6 +617,17 @@ const assertState = (predicate: () => boolean, message: string) => {
 	expect(predicate(), message).toBe(true);
 };
 
+// The header indexing indicator appears 250ms after a loading message arrives and
+// fades out 200ms after it clears; these waits let real timers cross those windows.
+const waitForIndicatorAppearance = () =>
+	act(async () => {
+		await new Promise((resolve) => setTimeout(resolve, 350));
+	});
+const waitForIndicatorExit = () =>
+	act(async () => {
+		await new Promise((resolve) => setTimeout(resolve, 300));
+	});
+
 afterEach(async () => {
 	const fetchErrors: Error[] = [];
 	controlledTimerCleanup?.();
@@ -659,7 +672,8 @@ describe("task detail routes", () => {
 				getAppDataWebSocket().deliver(JSON.stringify({ type: "loading", message: phase }));
 				await Promise.resolve();
 			},
-			afterInitialStatus: (rendered) => {
+			afterInitialStatus: async (rendered) => {
+				await waitForIndicatorAppearance();
 				observedWhileSearchPending = rendered.textContent?.includes(phase) ?? false;
 			},
 		});
@@ -704,6 +718,7 @@ describe("task detail routes", () => {
 			dataSocket.deliver(JSON.stringify({ type: "loading", message: phase }));
 			await Promise.resolve();
 		});
+		await waitForIndicatorAppearance();
 		expect(container.textContent).toContain(phase);
 
 		const reconciliation = new FetchOperation("passive shared retry completion", [
@@ -717,6 +732,7 @@ describe("task detail routes", () => {
 		await act(async () => reconciliation.settle("passive config", "passive search"));
 		reconciliation.finish();
 
+		await waitForIndicatorExit();
 		expect(container.textContent).not.toContain(phase);
 		expect(container.querySelector("[aria-label='Loading tasks']")).toBeNull();
 		expect(container.textContent).toContain(tasks[0]?.title ?? "");
@@ -757,6 +773,7 @@ describe("task detail routes", () => {
 			dataSocket.deliver(JSON.stringify({ type: "loading", message: phase }));
 			await Promise.resolve();
 		});
+		await waitForIndicatorAppearance();
 		expect(container.textContent).toContain(phase);
 
 		const recovery = new FetchOperation("protocol-only socket close recovery", []);
@@ -769,6 +786,24 @@ describe("task detail routes", () => {
 		expect(container.querySelector("[aria-label='Loading tasks']")).toBeNull();
 		expect(container.textContent).toContain(tasks[0]?.title ?? "");
 		recovery.finish();
+	});
+
+	it("clears a stale terminal error and shows cached content when indexing restarts", async () => {
+		const container = await renderApp("/board?lane=none");
+		const dataSocket = getAppDataWebSocket();
+		await act(async () => {
+			dataSocket.deliver(JSON.stringify({ type: "error", message: "corpus failed" }));
+			await Promise.resolve();
+		});
+		expect(container.textContent).toContain("Failed to load tasks");
+
+		await act(async () => {
+			dataSocket.deliver(JSON.stringify({ type: "loading", message: "Loading tasks from local branches..." }));
+			await Promise.resolve();
+		});
+		expect(container.textContent).not.toContain("Failed to load tasks");
+		expect(container.querySelector("[aria-label='Loading tasks']")).toBeNull();
+		expect(container.textContent).toContain(tasks[0]?.title ?? "");
 	});
 
 	it("preserves a terminal shared error when the data socket closes", async () => {

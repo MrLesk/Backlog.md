@@ -183,6 +183,21 @@
         animation: slide-in-down 0.3s ease-out;
     }
 
+    /* Branch indexing indicator: hairline segment sweeping along the header border */
+    @keyframes indexing-sweep {
+        from {
+            transform: translateX(-100%);
+        }
+
+        to {
+            transform: translateX(250%);
+        }
+    }
+
+    .animate-indexing-sweep {
+        animation: indexing-sweep 1.4s ease-in-out infinite;
+    }
+
     /* Avoid forcing internal editor heights; use component props instead */
 
     /* Fix for long content in markdown preview - scope to preview containers only */
