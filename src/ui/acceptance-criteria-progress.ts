@@ -10,6 +10,15 @@ function isInProgress(status: string): boolean {
 	return status.trim().toLowerCase() === "in progress";
 }
 
+/** Format a " (ac: checked/total)" suffix for plain and MCP task list lines; empty without criteria. */
+export function formatAcceptanceCriteriaSummarySuffix(task: Task): string {
+	const criteria = task.acceptanceCriteriaItems ?? [];
+	if (criteria.length === 0) return "";
+
+	const checked = criteria.filter((criterion) => criterion.checked).length;
+	return ` (ac: ${checked}/${criteria.length})`;
+}
+
 /** Format live acceptance-criteria completion for one-line TUI task summaries. */
 export function formatAcceptanceCriteriaProgress(task: Task, availableWidth = Number.POSITIVE_INFINITY): string {
 	const criteria = task.acceptanceCriteriaItems ?? [];
