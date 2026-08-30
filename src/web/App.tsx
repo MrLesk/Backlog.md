@@ -213,6 +213,7 @@ function AppContent() {
   const previousOnlineRef = useRef<boolean | null>(null);
   const hasBeenRunningRef = useRef(false);
   const loadAllDataRequestRef = useRef(0);
+  const hasLoadedDataRef = useRef(false);
   const pendingDataRequestRef = useRef<number | null>(null);
   const protocolOnlyLoadingRef = useRef(false);
   const location = useLocation();
@@ -307,7 +308,9 @@ function AppContent() {
 	protocolOnlyLoadingRef.current = false;
 		pendingDataRequestRef.current = requestId;
 		try {
-			setIsLoading(true);
+			// Show the blocking skeleton only before the first successful load; later
+			// refreshes keep the current content on screen and update it in place.
+			if (!hasLoadedDataRef.current) setIsLoading(true);
 			setLoadError(null);
       const shellDataPromise = Promise.all([
         apiClient.fetchStatuses(),
@@ -340,6 +343,7 @@ function AppContent() {
       const archivedKeys = new Set(collectArchivedMilestoneKeys(archivedMilestonesData, milestonesData));
       const milestoneAliases = buildMilestoneAliasMap(milestonesData, archivedMilestonesData);
       const { tasks: tasksList } = applySearchResults(searchResults, archivedKeys, milestoneAliases);
+      hasLoadedDataRef.current = true;
 
       setMilestones(
         collectMilestoneIds(tasksList, milestonesData, archivedMilestonesData).filter(
@@ -584,8 +588,12 @@ function AppContent() {
 	  const loadingState = parseBrowserLoadingState(event.data);
 	  if (loadingState?.type === 'loading') {
 		if (pendingDataRequestRef.current === null) protocolOnlyLoadingRef.current = true;
-		setIsLoading(true);
-		setLoadError(null);
+		// Once content is on screen it stays interactive; the header indexing
+		// indicator (driven by loadingMessage) is the only loading signal.
+		if (!hasLoadedDataRef.current) {
+			setIsLoading(true);
+			setLoadError(null);
+		}
 		setLoadingMessage(loadingState.message);
 	  } else if (loadingState?.type === 'loaded') {
 		const shouldRefresh = protocolOnlyLoadingRef.current && pendingDataRequestRef.current === null;
@@ -681,7 +689,6 @@ function AppContent() {
       milestoneEntities={milestoneEntities}
       archivedMilestones={archivedMilestones}
       isLoading={isLoading}
-      loadingMessage={loadingMessage}
       loadError={loadError}
       hideEmptyColumns={config?.hideEmptyColumns ?? false}
       dateFormat={config?.dateFormat}
