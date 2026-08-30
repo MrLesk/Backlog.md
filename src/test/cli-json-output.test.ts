@@ -106,6 +106,8 @@ describe("CLI JSON output", () => {
 					parentTaskId: null,
 					acceptanceCriteriaCompleted: 1,
 					acceptanceCriteriaCount: 1,
+					references: ["https://example.com/issue"],
+					modifiedFiles: ["src/cli.ts"],
 					ordinal: 1000,
 					createdAt: "2026-07-14T09:30:00Z",
 					updatedAt: "2026-07-14T10:45:00Z",
@@ -116,6 +118,28 @@ describe("CLI JSON output", () => {
 		expect(result.stdout.toString()).not.toContain("rawContent");
 		expect(result.stdout.toString()).not.toContain("secret-branch");
 		expect(result.stdout.toString()).not.toContain("onStatusChange");
+	});
+
+	it("emits empty reference and modified-file arrays for tasks without them", async () => {
+		const core = new Core(TEST_DIR);
+		await core.createTask(
+			{
+				id: "TASK-3",
+				title: "Bare task",
+				status: "To Do",
+				assignee: [],
+				createdDate: "2026-07-15 08:00",
+				labels: [],
+				dependencies: [],
+				rawContent: "",
+			},
+			false,
+		);
+		const result = await runCli(["task", "list", "--json"]);
+		expect(result.exitCode).toBe(0);
+		const bare = JSON.parse(result.stdout.toString()).tasks.find((t: { id: string }) => t.id === "TASK-3");
+		expect(bare.references).toEqual([]);
+		expect(bare.modifiedFiles).toEqual([]);
 	});
 
 	it("returns a compact versioned decision-list envelope", async () => {
