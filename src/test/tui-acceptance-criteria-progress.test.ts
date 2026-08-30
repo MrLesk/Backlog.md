@@ -31,10 +31,27 @@ describe("TUI acceptance-criteria progress", () => {
 	it("renders the exact wide and constrained bars from live checklist state", () => {
 		const task = makeTask();
 
-		expect(formatAcceptanceCriteriaProgress(task, 40)).toBe("[██████░░░░] 4/7");
-		expect(formatAcceptanceCriteriaProgress(task, 39)).toBe("[███░░] 4/7");
+		expect(formatAcceptanceCriteriaProgress(task, 40)).toBe("[######----] 4/7");
+		expect(formatAcceptanceCriteriaProgress(task, 39)).toBe("[###--] 4/7");
 		if (task.acceptanceCriteriaItems?.[4]) task.acceptanceCriteriaItems[4].checked = true;
-		expect(formatAcceptanceCriteriaProgress(task, 40)).toBe("[███████░░░] 5/7");
+		expect(formatAcceptanceCriteriaProgress(task, 40)).toBe("[#######---] 5/7");
+	});
+
+	it("emits only ASCII bar characters so terminals without Block Element glyphs stay legible", () => {
+		// blessed only ACS-routes DEC Special Graphics; U+2588/U+2591 would render
+		// as blank cells on fonts without Block Elements and as "?" without UTF-8.
+		for (const [total, checked, width] of [
+			[7, 4, 40],
+			[7, 4, 39],
+			[10, 0, 40],
+			[3, 3, 20],
+		] as const) {
+			const bar = formatAcceptanceCriteriaProgress(
+				makeTask({ acceptanceCriteriaItems: makeCriteria(total, checked) }),
+				width,
+			);
+			expect(bar).toMatch(/^\[[#-]*\] \d+\/\d+$/);
+		}
 	});
 
 	it("omits progress when criteria are absent or the task is not in progress", () => {
@@ -48,12 +65,12 @@ describe("TUI acceptance-criteria progress", () => {
 		const progress = formatAcceptanceCriteriaProgress(task, 40);
 		const listItem = stripBlessedFgTags(formatTaskViewerListItem(task, 40));
 
-		expect(progress).toBe("[██████████] 2/2");
+		expect(progress).toBe("[##########] 2/2");
 		expect(progress).not.toContain("AC");
 		expect(progress).not.toContain("%");
 		expect(progress).not.toContain("{");
 		expect(task.status).toBe("In Progress");
-		expect(listItem).toContain("◒ [██████████] 2/2");
+		expect(listItem).toContain("◒ [##########] 2/2");
 		expect(listItem).not.toContain("✔");
 	});
 
@@ -61,7 +78,7 @@ describe("TUI acceptance-criteria progress", () => {
 		const task = makeTask({ status: " IN PROGRESS " });
 		const listItem = stripBlessedFgTags(formatTaskViewerListItem(task, 40));
 
-		expect(listItem).toContain("◒ [██████░░░░] 4/7");
+		expect(listItem).toContain("◒ [######----] 4/7");
 	});
 
 	it("reuses the same responsive indicator in board cards and task-list summaries", () => {
@@ -70,8 +87,8 @@ describe("TUI acceptance-criteria progress", () => {
 		const compactBoardCard = stripBlessedFgTags(formatTaskListItem(task, false, 20));
 		const compactListItem = stripBlessedFgTags(formatTaskViewerListItem(task, 20));
 
-		expect(wideBoardCard).toContain("[██████░░░░] 4/7 {bold}BACK-551{/bold}");
-		expect(compactBoardCard).toContain("[███░░] 4/7 {bold}BACK-551{/bold}");
-		expect(compactListItem).toContain("◒ [███░░] 4/7 {bold}BACK-551{/bold}");
+		expect(wideBoardCard).toContain("[######----] 4/7 {bold}BACK-551{/bold}");
+		expect(compactBoardCard).toContain("[###--] 4/7 {bold}BACK-551{/bold}");
+		expect(compactListItem).toContain("◒ [###--] 4/7 {bold}BACK-551{/bold}");
 	});
 });
