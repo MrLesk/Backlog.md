@@ -45,18 +45,34 @@ const renderBoard = (
 	extra: {
 		onTasksUpdated?: (tasks: Task[], requestTask: Task) => void;
 		onRefreshData?: () => Promise<void>;
+		tasks?: Task[];
+		filterPriority?: string;
 	} = {},
 ): HTMLElement => {
 	setupDom();
 	const container = document.getElementById("root");
 	expect(container).toBeTruthy();
 	activeRoot = createRoot(container as HTMLElement);
+	rerenderBoard(onEditTask, extra);
+	return container as HTMLElement;
+};
+
+/** Render again on the live root, the way the app re-renders when a filter changes. */
+const rerenderBoard = (
+	onEditTask: (task: Task) => void = () => {},
+	extra: {
+		onTasksUpdated?: (tasks: Task[], requestTask: Task) => void;
+		onRefreshData?: () => Promise<void>;
+		tasks?: Task[];
+		filterPriority?: string;
+	} = {},
+) => {
 	act(() => {
 		activeRoot?.render(
 			<Board
 				onEditTask={onEditTask}
 				onNewTask={() => {}}
-				tasks={TASKS}
+				tasks={extra.tasks ?? TASKS}
 				statuses={STATUSES}
 				isLoading={false}
 				milestones={[]}
@@ -67,10 +83,10 @@ const renderBoard = (
 				onLaneChange={() => {}}
 				onTasksUpdated={extra.onTasksUpdated}
 				onRefreshData={extra.onRefreshData}
+				filterPriority={extra.filterPriority}
 			/>,
 		);
 	});
-	return container as HTMLElement;
 };
 
 // A lane with no tasks is hidden, so the milestone lane needs a card of its own to exist at all.
@@ -451,6 +467,52 @@ describe("Web board batch move", () => {
 			expect(window.location.href).toBe(locationBefore);
 			// The drop changed nothing, so the selection is still there to drag somewhere else.
 			expect(selectedCardIds(container)).toEqual(["TASK-1", "TASK-2"]);
+		} finally {
+			apiClient.moveTasks = originalMoveTasks;
+		}
+	});
+
+	it("skips read-only cross-branch cards in a shift-range", async () => {
+		const container = renderBoard(() => {}, {
+			tasks: [TASKS[0] as Task, { ...TASKS[1], branch: "feature-x" } as Task, TASKS[2] as Task],
+		});
+		await clickCard(getCard(container, "TASK-1"), { ctrlKey: true });
+		await clickCard(getCard(container, "TASK-3"), { shiftKey: true });
+
+		expect(selectedCardIds(container)).toEqual(["TASK-1", "TASK-3"]);
+	});
+
+	it("prunes the selection to the cards a filter leaves visible", async () => {
+		const originalMoveTasks = apiClient.moveTasks.bind(apiClient);
+		const calls: MoveTasksPayload[] = [];
+		apiClient.moveTasks = async (payload) => {
+			calls.push(payload);
+			return { success: true, tasks: [], changedTasks: [], failures: [] };
+		};
+
+		try {
+			const tasks = [
+				TASKS[0] as Task,
+				{ ...TASKS[1], priority: "high" } as Task,
+				{ ...TASKS[2], priority: "high" } as Task,
+			];
+			const container = renderBoard(() => {}, { tasks });
+			await clickCard(getCard(container, "TASK-1"), { ctrlKey: true });
+			await clickCard(getCard(container, "TASK-2"), { ctrlKey: true });
+			await clickCard(getCard(container, "TASK-3"), { ctrlKey: true });
+
+			// The priority filter hides TASK-1, so it must drop out of the selection instead of riding
+			// along invisibly in the next batch move.
+			rerenderBoard(() => {}, { tasks, filterPriority: "high" });
+			expect(selectedCardIds(container).sort()).toEqual(["TASK-2", "TASK-3"]);
+
+			await act(async () => {
+				dispatchDrop(getColumn(container, "Done"), { "text/plain": "TASK-2", "text/status": "To Do" });
+				await Promise.resolve();
+			});
+
+			expect(calls).toHaveLength(1);
+			expect(calls[0]?.taskIds.sort()).toEqual(["TASK-2", "TASK-3"]);
 		} finally {
 			apiClient.moveTasks = originalMoveTasks;
 		}

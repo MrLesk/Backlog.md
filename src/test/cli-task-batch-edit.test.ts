@@ -180,4 +180,15 @@ describe("task edit with several task IDs", () => {
 		expect(lines).toHaveLength(1);
 		expect((await new Core(TEST_DIR).filesystem.loadTask("task-1"))?.status).toBe("Done");
 	});
+
+	it("keeps a bare number and an explicitly prefixed ID distinct", async () => {
+		// A bare "1" means TASK-1, so it must not swallow JIRA-1 (or the other way round): the
+		// prefixed ID stays in the batch and reports its own failure.
+		const result = await $`bun ${CLI_PATH} task edit 1 JIRA-1 -s Done`.cwd(TEST_DIR).nothrow().quiet();
+
+		expect(result.exitCode).not.toBe(0);
+		const output = `${result.stdout.toString()}${result.stderr.toString()}`;
+		expect(output).toContain("JIRA-1");
+		expect((await new Core(TEST_DIR).filesystem.loadTask("task-1"))?.status).toBe("Done");
+	});
 });

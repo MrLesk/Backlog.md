@@ -127,6 +127,98 @@ describe("Core.moveTasksToStatus", () => {
 		expect((await core.filesystem.loadTask("task-1"))?.ordinal).toBe(1000);
 	});
 
+	it("keeps an already-in-status task in place in a mixed batch", async () => {
+		await createTasks([
+			["task-1", "To Do", 1000],
+			["task-2", "In Progress", 500],
+			["task-3", "In Progress", 1500],
+		]);
+
+		const result = await core.moveTasksToStatus({
+			taskIds: ["task-1", "task-2"],
+			targetStatus: "In Progress",
+			autoCommit: false,
+		});
+
+		expect(result.failures).toHaveLength(0);
+		// task-2 already lives in the column, so nothing about it moves.
+		expect((await core.filesystem.loadTask("task-2"))?.ordinal).toBe(500);
+		expect(result.changedTasks.map((task) => task.id)).toEqual(["TASK-1"]);
+		expect((await core.filesystem.loadTask("task-1"))?.ordinal ?? 0).toBeGreaterThan(1500);
+	});
+
+	it("applies a named lane to an already-in-status task without touching its ordinal", async () => {
+		await createTasks([["task-1", "In Progress", 500]]);
+
+		const result = await core.moveTasksToStatus({
+			taskIds: ["task-1"],
+			targetStatus: "In Progress",
+			targetMilestone: "Release 1",
+			autoCommit: false,
+		});
+
+		expect(result.failures).toHaveLength(0);
+		const task = await core.filesystem.loadTask("task-1");
+		expect(task?.milestone).toBe("Release 1");
+		expect(task?.ordinal).toBe(500);
+	});
+
+	it("appends after ordinal-less tasks the way the board renders them", async () => {
+		await createTasks([
+			["task-1", "To Do", 1000],
+			["task-3", "In Progress", 1000],
+			["task-4", "In Progress"],
+		]);
+
+		await core.moveTasksToStatus({
+			taskIds: ["task-1"],
+			targetStatus: "In Progress",
+			autoCommit: false,
+		});
+
+		// task-4 had no ordinal and rendered last, so the appended task lands after it.
+		const withoutOrdinal = await core.filesystem.loadTask("task-4");
+		const appended = await core.filesystem.loadTask("task-1");
+		expect(withoutOrdinal?.ordinal ?? 0).toBeGreaterThan(1000);
+		expect(appended?.ordinal ?? 0).toBeGreaterThan(withoutOrdinal?.ordinal ?? 0);
+	});
+
+	it("treats a non-finite ordinal as missing instead of poisoning the append", async () => {
+		await createTasks([
+			["task-1", "To Do", 1000],
+			["task-3", "In Progress", 1000],
+			["task-4", "In Progress", 2000],
+		]);
+		const corrupt = await core.filesystem.loadTask("task-4");
+		const rawPath = corrupt?.filePath ?? "";
+		const raw = await Bun.file(rawPath).text();
+		await Bun.write(rawPath, raw.replace(/^ordinal: .*$/m, "ordinal: not-a-number"));
+
+		await core.moveTasksToStatus({
+			taskIds: ["task-1"],
+			targetStatus: "In Progress",
+			autoCommit: false,
+		});
+
+		const appended = await core.filesystem.loadTask("task-1");
+		expect(Number.isFinite(appended?.ordinal)).toBe(true);
+		expect(appended?.ordinal ?? 0).toBeGreaterThan(1000);
+	});
+
+	it("collapses leading-zero spellings of the same task", async () => {
+		await createTasks([["task-1", "To Do", 1000]]);
+
+		const result = await core.moveTasksToStatus({
+			taskIds: ["task-1", "TASK-01"],
+			targetStatus: "Done",
+			autoCommit: false,
+		});
+
+		expect(result.failures).toHaveLength(0);
+		expect(result.movedTasks).toHaveLength(1);
+		expect(result.changedTasks).toHaveLength(1);
+	});
+
 	it("rejects an empty target status", async () => {
 		await createTasks([["task-1", "To Do", 1000]]);
 

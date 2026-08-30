@@ -364,7 +364,14 @@ const TaskColumn: React.FC<TaskColumnProps> = ({
                         : -1;
                       if (shiftKey && onSelectTaskRange && anchorIndex !== -1) {
                         const [from, to] = anchorIndex < index ? [anchorIndex, index] : [index, anchorIndex];
-                        onSelectTaskRange(tasks.slice(from, to + 1).map((candidate) => candidate.id));
+                        // Read-only cross-branch cards cannot move, so the range skips them the same
+                        // way a direct click on one does.
+                        onSelectTaskRange(
+                          tasks
+                            .slice(from, to + 1)
+                            .filter((candidate) => !candidate.branch)
+                            .map((candidate) => candidate.id)
+                        );
                         return;
                       }
                       onToggleTaskSelection(task.id);

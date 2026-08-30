@@ -337,6 +337,17 @@ const Board: React.FC<BoardProps> = ({
     return () => document.removeEventListener('keydown', handleKeyDown);
   }, [selectedTaskIds.length, clearSelection]);
 
+  // A card hidden by a filter is no longer part of what the user sees, so it must not ride along
+  // in a batch move. Pruning here keeps the selection equal to the visible cards.
+  useEffect(() => {
+    const visibleIds = new Set(filteredTasks.map((task) => task.id));
+    setSelectedTaskIds((previous) => {
+      const next = previous.filter((taskId) => visibleIds.has(taskId));
+      return next.length === previous.length ? previous : next;
+    });
+    setSelectionAnchorId((previous) => (previous && visibleIds.has(previous) ? previous : null));
+  }, [filteredTasks]);
+
   // targetMilestone is only supplied by a drop into a milestone lane; the toolbar moves the
   // selection between columns and leaves every task's milestone alone.
   const handleBatchMove = async (targetStatus: string, targetMilestone?: string | null) => {

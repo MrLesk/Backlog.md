@@ -2970,12 +2970,13 @@ const draftEditTarget: EditCommandTarget = {
 
 async function runEditCommand(target: EditCommandTarget, requestedIds: string[] | undefined, options: OptionValues) {
 	// Listing the same task twice is a slip, not a request to edit it twice, so identities that
-	// compare equal collapse to the first spelling the user typed.
+	// compare equal collapse to the first spelling the user typed. Canonical identity keeps a bare
+	// number on the default prefix, so "7" cannot swallow an explicit "JIRA-7".
 	const taskIds: string[] = [];
 	for (const value of requestedIds ?? []) {
 		const trimmed = String(value).trim();
 		if (!trimmed) continue;
-		if (taskIds.some((seen) => taskIdsEqual(seen, trimmed))) continue;
+		if (taskIds.some((seen) => canonicalTaskId(seen) === canonicalTaskId(trimmed))) continue;
 		taskIds.push(trimmed);
 	}
 	const taskId = taskIds[0];

@@ -2725,7 +2725,9 @@ export class Core {
 		for (const rawId of taskIds) {
 			const trimmed = String(rawId || "").trim();
 			if (!trimmed) continue;
-			const key = normalizeTaskId(trimmed);
+			// Canonical identity collapses cosmetic spellings such as leading zeros, so TASK-1 and
+			// TASK-01 cannot both survive and write the same task twice.
+			const key = canonicalTaskId(trimmed);
 			if (seen.has(key)) continue;
 			seen.add(key);
 			requestedIds.push(trimmed);
@@ -2927,23 +2929,23 @@ export class Core {
 			// the board previewed them instead of appending to the end.
 			const seenOrdered = new Set<string>();
 			for (const id of params.orderedTaskIds) {
-				const key = normalizeTaskId(id);
+				const key = canonicalTaskId(id);
 				if (seenOrdered.has(key)) throw new Error(`Duplicate task ID in orderedTaskIds: ${id}`);
 				seenOrdered.add(key);
 			}
 			for (const task of tasksToMove) {
-				if (!seenOrdered.has(normalizeTaskId(task.id))) {
+				if (!seenOrdered.has(canonicalTaskId(task.id))) {
 					throw new Error("orderedTaskIds must include every task being moved");
 				}
 			}
 
-			const movedByKey = new Map(tasksToMove.map((task) => [normalizeTaskId(task.id), task]));
+			const movedByKey = new Map(tasksToMove.map((task) => [canonicalTaskId(task.id), task]));
 			// A task that failed to resolve is not moving, so it keeps its place and stays out of the
 			// target column's ordering.
-			const failedKeys = new Set(failures.map((failure) => normalizeTaskId(failure.taskId)));
+			const failedKeys = new Set(failures.map((failure) => canonicalTaskId(failure.taskId)));
 			const rows: Array<{ task: Task; moved: boolean }> = [];
 			for (const id of params.orderedTaskIds) {
-				const key = normalizeTaskId(id);
+				const key = canonicalTaskId(id);
 				if (failedKeys.has(key)) continue;
 				const movedTask = movedByKey.get(key);
 				if (movedTask) {
@@ -3010,27 +3012,56 @@ export class Core {
 				);
 			});
 		} else {
-			// The batch appends to the end of the target column, so only the moved tasks get a new
-			// ordinal. Tasks already in the column keep theirs and stay out of the write set.
-			const columnTasks = sortByOrdinal(
-				store.getTasks({ status: targetStatus }).filter((task) => !movedIds.has(task.id)),
-			);
-			const lastOrdinal = columnTasks.reduce((highest, task) => Math.max(highest, task.ordinal ?? 0), 0);
+			// A task already in the target column is not moving, so it keeps its place and ordinal;
+			// only a named lane still applies to it. Everything else appends after the column as
+			// rendered.
+			const stayingIds = new Set(tasksToMove.filter((task) => task.status === targetStatus).map((task) => task.id));
+			const arriving = tasksToMove.filter((task) => !stayingIds.has(task.id));
 
-			movedTasks = tasksToMove.map((task, index) => ({
-				...applyMove(task),
-				ordinal: lastOrdinal + defaultStep * (index + 1),
-			}));
-
-			changedTasks = movedTasks.filter((task, index) => {
-				const original = tasksToMove[index];
-				if (!original) return true;
-				return (
-					original.status !== task.status ||
-					(original.ordinal ?? null) !== task.ordinal ||
-					(original.milestone ?? "") !== (task.milestone ?? "")
+			if (arriving.length === 0) {
+				movedTasks = tasksToMove.map((task) => applyMove(task));
+				changedTasks = movedTasks.filter((task, index) => {
+					const original = tasksToMove[index];
+					if (!original) return true;
+					return original.status !== task.status || (original.milestone ?? "") !== (task.milestone ?? "");
+				});
+			} else {
+				// Ordinal-less column tasks render after ordinal-bearing ones, so they get materialized
+				// ordinals rather than letting the appended tasks slot in above them, and a non-finite
+				// ordinal from a corrupt file counts as missing instead of poisoning the column.
+				const sanitizeOrdinal = (task: Task): Task =>
+					task.ordinal === undefined || Number.isFinite(task.ordinal) ? task : { ...task, ordinal: undefined };
+				const columnTasks = sortByOrdinal(
+					store
+						.getTasks({ status: targetStatus })
+						.filter((task) => !movedIds.has(task.id) || stayingIds.has(task.id))
+						.map(sanitizeOrdinal),
 				);
-			});
+				const tasksInOrder: Task[] = [
+					...columnTasks.map((task) => (stayingIds.has(task.id) ? applyMove(task) : task)),
+					...arriving.map((task) => ({ ...applyMove(task), ordinal: undefined })),
+				];
+				const resolutionUpdates = resolveOrdinalConflicts(tasksInOrder, { defaultStep, startOrdinal: defaultStep });
+				const updatesMap = new Map(tasksInOrder.map((task) => [task.id, task]));
+				for (const update of resolutionUpdates) {
+					updatesMap.set(update.id, update);
+				}
+
+				const originalMap = new Map([
+					...store.getTasks({ status: targetStatus }).map((task) => [task.id, task] as const),
+					...tasksToMove.map((task) => [task.id, task] as const),
+				]);
+				movedTasks = tasksToMove.map((task) => updatesMap.get(task.id) ?? applyMove(task));
+				changedTasks = Array.from(updatesMap.values()).filter((task) => {
+					const original = originalMap.get(task.id);
+					if (!original) return true;
+					return (
+						(original.status ?? "") !== (task.status ?? "") ||
+						(original.ordinal ?? null) !== (task.ordinal ?? null) ||
+						(original.milestone ?? "") !== (task.milestone ?? "")
+					);
+				});
+			}
 		}
 
 		if (changedTasks.length > 0) {

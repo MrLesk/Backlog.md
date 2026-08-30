@@ -517,6 +517,8 @@ export async function renderBoardTui(
 			targetIndex: number;
 		};
 		let moveOp: MoveOperation | null = null;
+		// A second Enter while the confirm is writing must not start a second move.
+		let movePending = false;
 
 		const footerBox = box({
 			parent: screen,
@@ -1608,7 +1610,7 @@ export async function renderBoardTui(
 		});
 
 		const performTaskMove = async () => {
-			if (!moveOp) return;
+			if (!moveOp || movePending) return;
 
 			// A lone task dropped back on its original spot changes nothing, so just exit move mode
 			const noChange =
@@ -1622,6 +1624,7 @@ export async function renderBoardTui(
 				return;
 			}
 
+			movePending = true;
 			try {
 				const core = await getCore();
 				const config = await core.fs.loadConfig();
@@ -1685,6 +1688,8 @@ export async function renderBoardTui(
 				}
 				moveOp = null;
 				renderView();
+			} finally {
+				movePending = false;
 			}
 		};
 		const cancelMove = () => {
