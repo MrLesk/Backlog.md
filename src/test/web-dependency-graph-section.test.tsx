@@ -27,10 +27,10 @@ function payloadFor(rootId: string, tasks: Task[], completedTasks: Task[] = []):
 	return buildDependencyGraph(root, { tasks, completedTasks, statuses: STATUSES });
 }
 
-function render(payload: DependencyGraph): string {
+function render(payload: DependencyGraph, at = "/tasks"): string {
 	setupDom();
 	return renderToString(
-		<MemoryRouter>
+		<MemoryRouter initialEntries={[at]}>
 			<DependencyGraphSection graph={payload} />
 		</MemoryRouter>,
 	);
@@ -73,8 +73,8 @@ describe("Web dependency graph section", () => {
 	it("links every resolved node and labels it for assistive technology", () => {
 		const html = render(payloadFor("TASK-2", corpus));
 
-		expect(html).toContain('href="/tasks/TASK-1"');
-		expect(html).toContain('href="/tasks/TASK-3"');
+		expect(html).toContain('href="/tasks/TASK-1/foundation"');
+		expect(html).toContain('href="/tasks/TASK-3/follow-up"');
 		expect(html).toContain('aria-label="Open TASK-1 - Foundation"');
 		expect(html).toContain('aria-label="Depends on (2)"');
 		expect(html).toContain('aria-label="Dependents (2)"');
@@ -86,11 +86,11 @@ describe("Web dependency graph section", () => {
 
 		expect(html).toContain("Completed");
 		expect(html).toContain("Unknown ID");
-		expect(html).not.toContain('href="/tasks/TASK-404"');
+		expect(html).not.toContain('href="/tasks/TASK-404');
 
 		const ambiguousHtml = render(payloadFor("TASK-6", [...duplicated, makeTask("TASK-6", "Root", ["TASK-5"])]));
 		expect(ambiguousHtml).toContain("Ambiguous ID");
-		expect(ambiguousHtml).not.toContain('href="/tasks/TASK-5"');
+		expect(ambiguousHtml).not.toContain('href="/tasks/TASK-5');
 	});
 
 	it("marks a cycle and a repeated node instead of drawing them again", () => {
@@ -110,6 +110,16 @@ describe("Web dependency graph section", () => {
 		expect(html).toContain("Shown above");
 		// The shared node is placed twice but expanded once, so its subtree is never repeated.
 		expect(html.split('data-dependency-node="TASK-1"').length - 1).toBe(2);
+	});
+
+	it("keeps a link on the page the reader is already on", () => {
+		// Opening a dependency from the board must not switch the reader to the task list.
+		const onBoard = render(payloadFor("TASK-2", corpus), "/board/TASK-2/selected");
+		expect(onBoard).toContain('href="/board/TASK-1/foundation"');
+		expect(onBoard).not.toContain('href="/tasks/');
+
+		const onList = render(payloadFor("TASK-2", corpus), "/tasks/TASK-2/selected");
+		expect(onList).toContain('href="/tasks/TASK-1/foundation"');
 	});
 
 	it("renders nothing for a task with no dependencies and no dependents", () => {

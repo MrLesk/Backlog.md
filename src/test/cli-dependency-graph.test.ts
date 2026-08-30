@@ -27,8 +27,13 @@ function graphSection(stdout: string): string[] {
 	const lines = stdout.split("\n");
 	const start = lines.indexOf("Dependency Graph:");
 	if (start === -1) return [];
-	const end = lines.indexOf("Description:", start);
-	return lines.slice(start + 2, end === -1 ? undefined : end - 1);
+	// Everything after the heading and its rule, up to whatever section comes next. The direction
+	// headings carry counts in parentheses, so they never look like a top-level section heading.
+	const body = lines.slice(start + 2);
+	const next = body.findIndex((line) => /^[A-Z][A-Za-z ]+:$/.test(line));
+	const section = next === -1 ? body : body.slice(0, next);
+	while (section.length > 0 && section[section.length - 1] === "") section.pop();
+	return section;
 }
 
 describe("CLI dependency graph", () => {

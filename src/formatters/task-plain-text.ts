@@ -162,16 +162,6 @@ export function formatTaskPlainText(task: Task | TaskDetail, options: TaskPlainT
 		lines.push(`Modified files: ${task.modifiedFiles.join(", ")}`);
 	}
 
-	// Present only on a task detail read, and kept below the editable Dependencies line above it.
-	const graph = taskDependencyGraph(task);
-	const graphLines = graph ? formatDependencyGraphLines(graph) : [];
-	if (graphLines.length > 0) {
-		lines.push("");
-		lines.push("Dependency Graph:");
-		lines.push("-".repeat(50));
-		lines.push(...graphLines);
-	}
-
 	lines.push("");
 	lines.push("Description:");
 	lines.push("-".repeat(50));
@@ -198,6 +188,17 @@ export function formatTaskPlainText(task: Task | TaskDetail, options: TaskPlainT
 		lines.push("No Definition of Done items defined");
 	}
 	lines.push("");
+
+	// Present only on a task detail read. It sits below the Definition of Done with the rest of the
+	// context you read before starting work, so the description and the checklists stay at the top.
+	const graph = taskDependencyGraph(task);
+	const graphLines = graph ? formatDependencyGraphLines(graph) : [];
+	if (graphLines.length > 0) {
+		lines.push("Dependency Graph:");
+		lines.push("-".repeat(50));
+		lines.push(...graphLines);
+		lines.push("");
+	}
 
 	const implementationPlan = task.implementationPlan?.trim();
 	if (implementationPlan) {

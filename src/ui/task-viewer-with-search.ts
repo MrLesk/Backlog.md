@@ -1677,17 +1677,6 @@ export function generateDetailContent(
 	bodyContent.push(metadata.join("\n"));
 	bodyContent.push("");
 
-	// Present only on a task detail read, so it stays below the editable Dependencies line.
-	const dependencyGraph = taskDependencyGraph(task);
-	const dependencyGraphLines = dependencyGraph
-		? formatDependencyGraphLines(dependencyGraph, { formatLabel: formatDependencyNodeTuiLabel })
-		: [];
-	if (dependencyGraphLines.length > 0) {
-		bodyContent.push(formatHeading("Dependency Graph", 2));
-		bodyContent.push(dependencyGraphLines.join("\n"));
-		bodyContent.push("");
-	}
-
 	bodyContent.push(formatHeading("Description", 2));
 	const descriptionText = task.description?.trim();
 	const descriptionContent = descriptionText
@@ -1764,6 +1753,18 @@ export function generateDetailContent(
 		bodyContent.push("{gray-fg}No Definition of Done items defined{/}");
 	}
 	bodyContent.push("");
+
+	// Present only on a task detail read. It sits below the Definition of Done with the rest of the
+	// context you read before starting work, so the description and the checklists stay at the top.
+	const dependencyGraph = taskDependencyGraph(task);
+	const dependencyGraphLines = dependencyGraph
+		? formatDependencyGraphLines(dependencyGraph, { formatLabel: formatDependencyNodeTuiLabel })
+		: [];
+	if (dependencyGraphLines.length > 0) {
+		bodyContent.push(formatHeading("Dependency Graph", 2));
+		bodyContent.push(dependencyGraphLines.join("\n"));
+		bodyContent.push("");
+	}
 
 	const implementationPlan = task.implementationPlan?.trim();
 	if (implementationPlan) {

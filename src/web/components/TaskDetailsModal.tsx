@@ -1388,13 +1388,6 @@ export const TaskDetailsModal: React.FC<Props> = ({
             </section>
           )}
 
-          {dependencyGraph && dependencyGraph.nodes.length > 1 && (
-            <section className="rounded-lg border border-gray-200 bg-white p-4 dark:border-gray-700 dark:bg-gray-800">
-              <SectionHeader title="Dependency Graph" />
-              <DependencyGraphSection graph={dependencyGraph} />
-            </section>
-          )}
-
           {/* References */}
           <div className="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-4">
             <SectionHeader title="References" />
@@ -1633,6 +1626,13 @@ export const TaskDetailsModal: React.FC<Props> = ({
               />
             )}
           </div>
+
+          {dependencyGraph && dependencyGraph.nodes.length > 1 && (
+            <section className="rounded-lg border border-gray-200 bg-white p-4 dark:border-gray-700 dark:bg-gray-800">
+              <SectionHeader title="Dependency Graph" />
+              <DependencyGraphSection graph={dependencyGraph} />
+            </section>
+          )}
 
           {/* Implementation Plan */}
           <div className="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-4">

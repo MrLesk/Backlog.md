@@ -1,5 +1,5 @@
 import type React from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useLocation } from 'react-router-dom';
 import {
   buildDependencyTree,
   type DependencyDirection,
@@ -9,6 +9,18 @@ import {
   depthInDirection,
   nodesInDirection,
 } from '../../utils/dependency-graph.ts';
+import { createUrlPath } from '../utils/urlHelpers';
+
+/**
+ * Keep an in-app task link on the page the reader is already on: opening a dependency from the
+ * board should stay on the board rather than jumping to the task list. A deep link from outside
+ * still resolves, because both routes open the same task.
+ */
+function useTaskHref(): (id: string, title: string | null) => string {
+  const location = useLocation();
+  const basePath = location.pathname.startsWith('/board') ? '/board' : '/tasks';
+  return (id, title) => `${createUrlPath(basePath, id, title ?? '')}${location.search}`;
+}
 
 
 const DIRECTIONS: Array<{ direction: DependencyDirection; heading: string }> = [
@@ -54,6 +66,7 @@ const REPEAT_LABELS: Record<NonNullable<DependencyTreeNode['repeat']>, string> =
 
 const NodeRow: React.FC<{ entry: DependencyTreeNode; direction: DependencyDirection }> = ({ entry, direction }) => {
   const { node } = entry;
+  const taskHref = useTaskHref();
   const label = `${node.id}${node.title ? ` - ${node.title}` : ''}`;
 
   return (
@@ -65,7 +78,7 @@ const NodeRow: React.FC<{ entry: DependencyTreeNode; direction: DependencyDirect
     >
       {node.state === 'resolved' ? (
         <Link
-          to={`/tasks/${node.id}`}
+          to={taskHref(node.id, node.title)}
           className="min-w-0 break-words text-sm text-gray-900 hover:underline focus:outline-none focus:ring-2 focus:ring-blue-500 dark:text-gray-100"
           aria-label={`Open ${label}`}
         >
