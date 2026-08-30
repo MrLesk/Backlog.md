@@ -1628,6 +1628,9 @@ export class Core {
 		// assignee replaces it entirely, and an explicit empty list means "unassigned".
 		const resolvedAssignees =
 			input.assignee === undefined ? (normalizeStringList(config?.defaultAssignee) ?? []) : normalizedAssignees;
+		// New tasks and drafts pick up the project's configured defaultReporter; there is no
+		// per-task override surface yet (see backlog.md#941), so this is the sole write path.
+		const resolvedReporter = config?.defaultReporter || undefined;
 		const autoCommitEnabled = await this.shouldAutoCommit(autoCommit);
 
 		const { task, write } = await this.withCreateLock(async () => {
@@ -1648,6 +1651,7 @@ export class Core {
 				modifiedFiles: normalizedModifiedFiles,
 				rawContent: input.rawContent ?? "",
 				createdDate,
+				...(resolvedReporter && { reporter: resolvedReporter }),
 				...(dueDate && { dueDate }),
 				...(parentTaskId && { parentTaskId }),
 				...(priority && { priority }),
