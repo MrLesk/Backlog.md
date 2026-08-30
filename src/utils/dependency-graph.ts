@@ -1,4 +1,3 @@
-import type { Core } from "../core/backlog.ts";
 import type { Task } from "../types/index.ts";
 import { canonicalTaskId } from "./task-id.ts";
 import { createTaskRecordIndex } from "./task-record-index.ts";
@@ -202,21 +201,6 @@ export function buildDependencyGraph(
 			.map((edge) => ({ from: idByKey.get(edge.fromKey) ?? edge.fromKey, to: idByKey.get(edge.toKey) ?? edge.toKey }))
 			.sort((a, b) => compareTaskIds(a.from, b.from) || compareTaskIds(a.to, b.to)),
 	};
-}
-
-/**
- * Build the graph for one task the way the canonical task detail sees the project: the current
- * checkout plus the completed corpus, matching what `backlog task view` already resolves against.
- * Cross-branch records are excluded here for the same reason task lookups exclude them, so a
- * surface that does show cross-branch tasks passes its own corpus to `buildDependencyGraph`.
- */
-export async function loadTaskDependencyGraph(core: Core, task: Task): Promise<DependencyGraph> {
-	const [tasks, completedTasks, config] = await Promise.all([
-		core.queryTasks({ includeCrossBranch: false }),
-		core.filesystem.listCompletedTasks(),
-		core.filesystem.loadConfig(),
-	]);
-	return buildDependencyGraph(task, { tasks, completedTasks, statuses: config?.statuses });
 }
 
 export interface DependencyTreeNode {

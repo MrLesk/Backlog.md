@@ -1,4 +1,5 @@
 import { isAbsolute, join, relative } from "node:path";
+import type { TaskDetail } from "../core/task-detail.ts";
 import type { Decision, Document, SearchResult, Task } from "../types/index.ts";
 import { isLocalEditableTask } from "../types/index.ts";
 import type { DependencyGraph } from "../utils/dependency-graph.ts";
@@ -37,10 +38,22 @@ type TaskCommentJson = {
 	author: string | null;
 };
 
+/** The normalized dependency context: an explicit root, every reached node, and directed edges. */
+type DependencyGraphJson = {
+	root: string;
+	nodes: DependencyGraph["nodes"];
+	edges: DependencyGraph["edges"];
+};
+
 type TaskDetailsJson = TaskSummaryJson & {
 	path: string | null;
 	description: string | null;
 	dependencies: string[];
+	/**
+	 * Derived from the whole visible corpus at read time. `dependencies` above it stays the task's
+	 * own list of direct dependency IDs, unchanged.
+	 */
+	dependencyGraph: DependencyGraphJson;
 	references: string[];
 	documentation: string[];
 	modifiedFiles: string[];
@@ -133,12 +146,17 @@ function toChecklistJson(items: Task["acceptanceCriteriaItems"]): ChecklistItemJ
 		.map(({ index, text, checked }) => ({ index, text, checked }));
 }
 
-function toTaskDetailsJson(task: Task, projectRoot: string): TaskDetailsJson {
+function toTaskDetailsJson(task: TaskDetail, projectRoot: string): TaskDetailsJson {
 	return {
 		...toTaskSummaryJson(task),
 		path: toProjectRelativePath(projectRoot, task.filePath),
 		description: nullableDescription(task.description),
 		dependencies: task.dependencies ?? [],
+		dependencyGraph: {
+			root: task.dependencyGraph.rootId,
+			nodes: task.dependencyGraph.nodes,
+			edges: task.dependencyGraph.edges,
+		},
 		references: task.references ?? [],
 		documentation: task.documentation ?? [],
 		modifiedFiles: task.modifiedFiles ?? [],
@@ -185,27 +203,11 @@ export function taskListJson(tasks: Task[]) {
 	return { schemaVersion: 1, kind: "task-list" as const, tasks: tasks.map(toTaskSummaryJson) };
 }
 
-type DependencyGraphJson = {
-	root: string;
-	nodes: DependencyGraph["nodes"];
-	edges: DependencyGraph["edges"];
-};
-
-/**
- * The dependency context, normalized. It sits beside `task` rather than inside it because it is
- * derived from the whole visible corpus, while `task.dependencies` stays the task's own editable
- * list of direct dependency IDs, unchanged.
- */
-function toDependencyGraphJson(graph: DependencyGraph): DependencyGraphJson {
-	return { root: graph.rootId, nodes: graph.nodes, edges: graph.edges };
-}
-
-export function taskViewJson(task: Task, projectRoot: string, dependencyGraph: DependencyGraph) {
+export function taskViewJson(task: TaskDetail, projectRoot: string) {
 	return {
 		schemaVersion: 1,
 		kind: "task-view" as const,
 		task: toTaskDetailsJson(task, projectRoot),
-		dependencyGraph: toDependencyGraphJson(dependencyGraph),
 	};
 }
 

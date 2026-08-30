@@ -1,7 +1,8 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { isLocalEditableTask, type AcceptanceCriterion, type Milestone, type Task, type TaskComment } from "../../types";
+import { type TaskDetail, taskDependencyGraph } from "../../core/task-detail";
 import Modal from "./Modal";
-import { ApiError, apiClient, NetworkError, type DependencyGraphPayload } from "../lib/api";
+import { ApiError, apiClient, NetworkError } from "../lib/api";
 import { useTheme } from "../contexts/ThemeContext";
 import MDEditor from "@uiw/react-md-editor";
 import AcceptanceCriteriaEditor from "./AcceptanceCriteriaEditor";
@@ -21,7 +22,7 @@ import { isTerminalStatus } from "../../utils/terminal-status.ts";
 import { createUrlPath } from "../utils/urlHelpers";
 
 interface Props {
-  task?: Task; // Optional for create mode
+  task?: Task | TaskDetail; // Optional for create mode
   isOpen: boolean;
   onClose: () => void;
   onSaved?: () => Promise<void> | void; // refresh callback
@@ -125,7 +126,7 @@ const buildTaskDetailsFormState = ({
   defaultDefinitionOfDone,
   createModeAssignee,
 }: {
-  task?: Task;
+  task?: Task | TaskDetail;
   isCreateMode: boolean;
   isDraftMode?: boolean;
   availableStatuses?: string[];
@@ -433,7 +434,7 @@ export const TaskDetailsModal: React.FC<Props> = ({
     let cancelled = false;
     Promise.all(unresolvedDependencyKey.split(",").map((id) => apiClient.fetchTask(id).catch(() => null))).then(
       (results) => {
-        if (!cancelled) setOffBoardDependencies(results.filter((result): result is Task => Boolean(result)));
+        if (!cancelled) setOffBoardDependencies(results.filter((result): result is TaskDetail => Boolean(result)));
       },
     );
     return () => {
@@ -441,29 +442,8 @@ export const TaskDetailsModal: React.FC<Props> = ({
     };
   }, [isOpen, unresolvedDependencyKey]);
 
-  // The dependency graph is derived from the whole visible corpus, which the browser does not hold,
-  // so it is resolved on the server and fetched on demand for the task that is actually open.
-  const [dependencyGraph, setDependencyGraph] = useState<DependencyGraphPayload | null>(null);
-  const dependencyGraphTaskId = isOpen ? (task?.id ?? null) : null;
-  // Editing the direct dependencies saves immediately, so the derived graph is resolved again.
-  const dependencyGraphKey = dependencies.join(",");
-  useEffect(() => {
-    setDependencyGraph(null);
-    if (!dependencyGraphTaskId) return;
-    let cancelled = false;
-    apiClient
-      .fetchTaskDependencyGraph(dependencyGraphTaskId)
-      .then((graph) => {
-        // A derived section must never be the reason the detail view fails to render.
-        if (!cancelled) setDependencyGraph(Array.isArray(graph?.nodes) ? graph : null);
-      })
-      .catch(() => {
-        if (!cancelled) setDependencyGraph(null);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [dependencyGraphTaskId, dependencyGraphKey]);
+  // Derived at read time and delivered with the task itself, so there is nothing to fetch here.
+  const dependencyGraph = taskDependencyGraph(task);
 
   // Dependency validation stays local-only (see BACK-623), so the picker must only suggest what a
   // save can accept: a cross-branch task is rejected, and so is a canonically ambiguous ID that more

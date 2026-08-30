@@ -4,6 +4,7 @@ import { stdout as output } from "node:process";
 import type { BoxInterface, LineInterface, ScreenInterface, ScrollableTextInterface } from "neo-neo-bblessed";
 import { box, line, scrollabletext } from "neo-neo-bblessed";
 import { type Core, createRuntimeCore } from "../core/backlog.ts";
+import { type TaskDetail, taskDependencyGraph, withDependencyGraph } from "../core/task-detail.ts";
 import { formatDependencyGraphLines, formatDependencyNodeLabel } from "../formatters/dependency-graph-text.ts";
 import {
 	buildAcceptanceCriteriaItems,
@@ -13,7 +14,7 @@ import {
 } from "../formatters/task-plain-text.ts";
 import type { LabelMatchMode, Milestone, Task } from "../types/index.ts";
 import { copyToClipboard } from "../utils/clipboard.ts";
-import { buildDependencyGraph, type DependencyGraph, type DependencyGraphNode } from "../utils/dependency-graph.ts";
+import type { DependencyGraphNode } from "../utils/dependency-graph.ts";
 import { areLabelSelectionsEqual, collectAvailableLabels } from "../utils/label-filter.ts";
 import {
 	createMilestoneFilterValueResolver,
@@ -1125,11 +1126,10 @@ export async function viewTaskEnhanced(
 		screen.title = formatTuiTitle(`Task ${currentSelectedTask.id} - ${currentSelectedTask.title}`, projectName);
 
 		const dependencyCorpus = resolveDependencyCorpus();
-		const detailContent = generateDetailContent(currentSelectedTask, {
+		const detailContent = generateDetailContent(withDependencyGraph(currentSelectedTask, dependencyCorpus), {
 			resolveMilestoneLabel,
 			dateFormat,
 			readinessGraph: createReadinessGraph(dependencyCorpus),
-			dependencyGraph: buildDependencyGraph(currentSelectedTask, dependencyCorpus),
 			configuredProjects,
 		});
 
@@ -1591,15 +1591,14 @@ export interface TaskDetailContentOptions {
 	 * is what keeps board cards and the quick-look popup the size they already are.
 	 */
 	readinessGraph?: ReadinessGraph;
-	dependencyGraph?: DependencyGraph;
 	configuredProjects?: string[];
 }
 
 export function generateDetailContent(
-	task: Task,
+	task: Task | TaskDetail,
 	options: TaskDetailContentOptions = {},
 ): { headerContent: string[]; bodyContent: string[] } {
-	const { resolveMilestoneLabel, dateFormat, readinessGraph, dependencyGraph, configuredProjects } = options;
+	const { resolveMilestoneLabel, dateFormat, readinessGraph, configuredProjects } = options;
 	const headerContent = [
 		` ${wrapStatusColor(formatStatusWithIcon(task.status), getStatusColor(task.status))} {bold}{blue-fg}${task.id}{/blue-fg}{/bold} - ${task.title}`,
 	];
@@ -1678,7 +1677,8 @@ export function generateDetailContent(
 	bodyContent.push(metadata.join("\n"));
 	bodyContent.push("");
 
-	// Derived from the whole visible corpus, so it stays below the editable Dependencies line.
+	// Present only on a task detail read, so it stays below the editable Dependencies line.
+	const dependencyGraph = taskDependencyGraph(task);
 	const dependencyGraphLines = dependencyGraph
 		? formatDependencyGraphLines(dependencyGraph, { formatLabel: formatDependencyNodeTuiLabel })
 		: [];

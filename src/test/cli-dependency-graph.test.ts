@@ -123,7 +123,7 @@ describe("CLI dependency graph", () => {
 		expect(graphSection(stdout)).toEqual(["Depends on (1 direct, 1 total):", "└─ task-404 - unknown task ID"]);
 
 		const json = JSON.parse((await runCli(["task", "view", "1", "--json"])).stdout.toString());
-		expect(json.dependencyGraph.nodes.at(-1)).toMatchObject({ state: "missing", title: null, completed: false });
+		expect(json.task.dependencyGraph.nodes.at(-1)).toMatchObject({ state: "missing", title: null, completed: false });
 	});
 
 	it("reports an ambiguous dependency identity explicitly and never picks a record", async () => {
@@ -136,7 +136,7 @@ describe("CLI dependency graph", () => {
 		expect(graphSection(stdout)).toEqual(["Depends on (1 direct, 1 total):", "└─ TASK-1 - ambiguous task ID"]);
 
 		const json = JSON.parse((await runCli(["task", "view", "2", "--json"])).stdout.toString());
-		expect(json.dependencyGraph.nodes.at(-1)).toMatchObject({ state: "ambiguous", title: null, completed: false });
+		expect(json.task.dependencyGraph.nodes.at(-1)).toMatchObject({ state: "ambiguous", title: null, completed: false });
 	});
 
 	it("omits the section for a task with no dependencies and no dependents", async () => {
@@ -157,8 +157,8 @@ describe("CLI dependency graph", () => {
 			expect(output.schemaVersion).toBe(1);
 			expect(output.kind).toBe("task-view");
 			expect(output.task.dependencies).toEqual(["task-1"]);
-			expect(output.dependencyGraph.root).toBe("TASK-2");
-			expect(output.dependencyGraph.nodes).toEqual([
+			expect(output.task.dependencyGraph.root).toBe("TASK-2");
+			expect(output.task.dependencyGraph.nodes).toEqual([
 				{
 					id: "TASK-2",
 					title: "Selected",
@@ -187,7 +187,7 @@ describe("CLI dependency graph", () => {
 					dependentDepth: 1,
 				},
 			]);
-			expect(output.dependencyGraph.edges).toEqual([
+			expect(output.task.dependencyGraph.edges).toEqual([
 				{ from: "TASK-2", to: "TASK-1" },
 				{ from: "TASK-3", to: "TASK-2" },
 			]);

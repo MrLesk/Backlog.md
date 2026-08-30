@@ -3,31 +3,31 @@ import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { $ } from "bun";
 import { Core } from "../core/backlog.ts";
+import type { TaskDetail } from "../core/task-detail.ts";
 import { FileSystem } from "../file-system/operations.ts";
 import { BacklogServer } from "../server/index.ts";
-import type { DependencyGraph } from "../utils/dependency-graph.ts";
+import type { Task } from "../types/index.ts";
 import { createUniqueTestDir, safeCleanup, withTimeout } from "./test-utils.ts";
 
-type GraphPayload = { root: string; nodes: DependencyGraph["nodes"]; edges: DependencyGraph["edges"] };
-type GraphServerHandlers = {
-	handleGetTaskDependencyGraph(taskId: string): Promise<Response>;
+type DetailServerHandlers = {
 	handleGetTask(taskId: string): Promise<Response>;
+	handleListTasks(request: Request): Promise<Response>;
 };
 
-describe("BacklogServer task dependency graph endpoint", () => {
+describe("BacklogServer task detail dependency graph", () => {
 	let testDir: string;
 	let server: BacklogServer | null;
-	let handlers: GraphServerHandlers;
+	let handlers: DetailServerHandlers;
 	let core: Core;
 
 	beforeEach(async () => {
-		testDir = createUniqueTestDir("server-dependency-graph");
+		testDir = createUniqueTestDir("server-task-detail-graph");
 		await mkdir(testDir, { recursive: true });
 		await $`git init -b main`.cwd(testDir).quiet();
 		const filesystem = new FileSystem(testDir);
 		await filesystem.ensureBacklogStructure();
 		await filesystem.saveConfig({
-			projectName: "Dependency graph endpoint",
+			projectName: "Task detail graph",
 			statuses: ["To Do", "In Progress", "Done"],
 			labels: [],
 			milestones: [],
@@ -38,7 +38,7 @@ describe("BacklogServer task dependency graph endpoint", () => {
 		});
 		core = new Core(testDir);
 		server = new BacklogServer(testDir);
-		handlers = server as unknown as GraphServerHandlers;
+		handlers = server as unknown as DetailServerHandlers;
 	});
 
 	afterEach(async () => {
@@ -54,38 +54,47 @@ describe("BacklogServer task dependency graph endpoint", () => {
 		);
 	};
 
-	const graphFor = async (taskId: string): Promise<GraphPayload> => {
-		const response = await withTimeout(
-			handlers.handleGetTaskDependencyGraph(taskId),
-			"dependency graph endpoint",
-			5_000,
-		);
+	const detailFor = async (taskId: string): Promise<TaskDetail> => {
+		const response = await withTimeout(handlers.handleGetTask(taskId), "task detail", 5_000);
 		expect(response.status).toBe(200);
-		return (await response.json()) as GraphPayload;
+		return (await response.json()) as TaskDetail;
 	};
 
-	it("serves the root, nodes, and directed edges for one task", async () => {
+	it("delivers the graph as a property of the task detail, in one response", async () => {
 		await addTask("task-1", "Foundation");
 		await addTask("task-2", "Selected", ["task-1"]);
 		await addTask("task-3", "Follow up", ["task-2"]);
 
-		const graph = await graphFor("task-2");
-		expect(graph.root).toBe("TASK-2");
-		expect(graph.nodes.map((node) => node.id)).toEqual(["TASK-2", "TASK-1", "TASK-3"]);
-		expect(graph.edges).toEqual([
+		const detail = await detailFor("task-2");
+		// The record's own editable list is untouched, and the derived graph rides along with it.
+		expect(detail.dependencies).toEqual(["task-1"]);
+		expect(detail.dependencyGraph.rootId).toBe("TASK-2");
+		expect(detail.dependencyGraph.nodes.map((node) => node.id)).toEqual(["TASK-2", "TASK-1", "TASK-3"]);
+		expect(detail.dependencyGraph.edges).toEqual([
 			{ from: "TASK-2", to: "TASK-1" },
 			{ from: "TASK-3", to: "TASK-2" },
 		]);
 	});
 
-	it("keeps the task record itself free of derived graph data", async () => {
+	it("does not serve a standalone dependency-graph surface any more", async () => {
+		// The graph belongs to the detail read; a second endpoint would be a second way to get it.
+		expect((server as unknown as Record<string, unknown>).handleGetTaskDependencyGraph).toBeUndefined();
+	});
+
+	it("keeps the compact list free of the graph", async () => {
 		await addTask("task-1", "Foundation");
 		await addTask("task-2", "Selected", ["task-1"]);
 
-		const response = await withTimeout(handlers.handleGetTask("task-2"), "task endpoint", 5_000);
-		const task = (await response.json()) as Record<string, unknown>;
-		expect(task.dependencies).toEqual(["task-1"]);
-		expect(task.dependencyGraph).toBeUndefined();
+		const response = await withTimeout(
+			handlers.handleListTasks(new Request("http://localhost/api/tasks")),
+			"task list",
+			5_000,
+		);
+		const tasks = (await response.json()) as Task[];
+		expect(tasks.length).toBeGreaterThan(0);
+		for (const task of tasks) {
+			expect((task as Partial<TaskDetail>).dependencyGraph).toBeUndefined();
+		}
 	});
 
 	it("reports unresolved identities instead of guessing", async () => {
@@ -94,8 +103,8 @@ describe("BacklogServer task dependency graph endpoint", () => {
 		const original = join(testDir, "backlog", "tasks", "task-1 - Contested.md");
 		await writeFile(join(testDir, "backlog", "tasks", "task-01 - Contested-copy.md"), await readFile(original));
 
-		const graph = await graphFor("task-2");
-		expect(graph.nodes.map((node) => [node.id, node.state])).toEqual([
+		const detail = await detailFor("task-2");
+		expect(detail.dependencyGraph.nodes.map((node) => [node.id, node.state])).toEqual([
 			["TASK-2", "resolved"],
 			["TASK-1", "ambiguous"],
 			["task-404", "missing"],
@@ -107,13 +116,8 @@ describe("BacklogServer task dependency graph endpoint", () => {
 		const original = join(testDir, "backlog", "tasks", "task-1 - Contested.md");
 		await writeFile(join(testDir, "backlog", "tasks", "task-01 - Contested-copy.md"), await readFile(original));
 
-		const ambiguous = await withTimeout(handlers.handleGetTaskDependencyGraph("task-1"), "ambiguous", 5_000);
-		expect(ambiguous.status).toBe(409);
-
-		const invalid = await withTimeout(handlers.handleGetTaskDependencyGraph("nope!"), "invalid", 5_000);
-		expect(invalid.status).toBe(400);
-
-		const missing = await withTimeout(handlers.handleGetTaskDependencyGraph("task-777"), "missing", 5_000);
-		expect(missing.status).toBe(404);
+		expect((await withTimeout(handlers.handleGetTask("task-1"), "ambiguous", 5_000)).status).toBe(409);
+		expect((await withTimeout(handlers.handleGetTask("nope!"), "invalid", 5_000)).status).toBe(400);
+		expect((await withTimeout(handlers.handleGetTask("task-777"), "missing", 5_000)).status).toBe(404);
 	});
 });

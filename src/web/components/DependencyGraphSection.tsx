@@ -3,12 +3,13 @@ import { Link } from 'react-router-dom';
 import {
   buildDependencyTree,
   type DependencyDirection,
+  type DependencyGraph,
   type DependencyGraphNode,
   type DependencyTreeNode,
   depthInDirection,
   nodesInDirection,
 } from '../../utils/dependency-graph.ts';
-import type { DependencyGraphPayload } from '../lib/api';
+
 
 const DIRECTIONS: Array<{ direction: DependencyDirection; heading: string }> = [
   { direction: 'dependencies', heading: 'Depends on' },
@@ -106,8 +107,8 @@ const TreeList: React.FC<{ entries: DependencyTreeNode[]; direction: DependencyD
  * real structure a screen reader can announce rather than by drawn characters. Each node appears
  * once; a diamond or a cycle is marked instead of repeated.
  */
-export const DependencyGraphSection: React.FC<{ graph: DependencyGraphPayload }> = ({ graph }) => {
-  const resolved = { rootId: graph.root, nodes: graph.nodes, edges: graph.edges };
+export const DependencyGraphSection: React.FC<{ graph: DependencyGraph }> = ({ graph }) => {
+  const resolved = graph;
 
   const sections = DIRECTIONS.map(({ direction, heading }) => {
     const reached = nodesInDirection(resolved, direction);

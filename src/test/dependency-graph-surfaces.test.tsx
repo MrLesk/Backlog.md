@@ -1,7 +1,7 @@
 import { describe, expect, it } from "bun:test";
 import type { Task } from "../types/index.ts";
+import { withDependencyGraph } from "../core/task-detail.ts";
 import { generateDetailContent } from "../ui/task-viewer-with-search.ts";
-import { buildDependencyGraph } from "../utils/dependency-graph.ts";
 
 const STATUSES = ["To Do", "In Progress", "Done"] as const;
 
@@ -16,11 +16,13 @@ const CORPUS = [
 	makeTask("BACK-4", "Later", ["BACK-3"]),
 ];
 
-function detailBody(task: Task, withGraph: boolean): string {
-	const dependencyGraph = withGraph
-		? buildDependencyGraph(task, { tasks: CORPUS, statuses: STATUSES })
-		: undefined;
-	return generateDetailContent(task, { dependencyGraph }).bodyContent.join("\n");
+// A detail read hands the viewer a task that already carries its graph; every other caller hands it
+// a plain record. The viewer only renders what it was given.
+function detailBody(task: Task, asDetail: boolean): string {
+	const given = asDetail
+		? withDependencyGraph(task, { tasks: CORPUS, completedTasks: [], statuses: STATUSES })
+		: task;
+	return generateDetailContent(given).bodyContent.join("\n");
 }
 
 describe("TUI dependency graph section", () => {
@@ -58,10 +60,8 @@ describe("TUI dependency graph section", () => {
 
 	it("omits the section for a task with no dependencies and no dependents", () => {
 		const isolated = makeTask("BACK-9", "Alone");
-		const graph = buildDependencyGraph(isolated, { tasks: [isolated], statuses: STATUSES });
+		const detail = withDependencyGraph(isolated, { tasks: [isolated], completedTasks: [], statuses: STATUSES });
 
-		expect(generateDetailContent(isolated, { dependencyGraph: graph }).bodyContent.join("\n")).not.toContain(
-			"Dependency Graph",
-		);
+		expect(generateDetailContent(detail).bodyContent.join("\n")).not.toContain("Dependency Graph");
 	});
 });

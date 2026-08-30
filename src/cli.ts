@@ -24,6 +24,7 @@ import { DEFAULT_DIRECTORIES, DEFAULT_FILES, DEFAULT_STATUSES } from "./constant
 import { type DuplicateRepairPlan, findLocalDuplicateTaskIds } from "./core/duplicate-task-repair.ts";
 import { initializeProject } from "./core/init.ts";
 import { buildMilestoneBuckets, collectArchivedMilestoneKeys, milestoneKey } from "./core/milestones.ts";
+import { loadTaskDetail } from "./core/task-detail.ts";
 import { isConfigValueError } from "./file-system/operations.ts";
 import { decisionListJson, printJson, searchJson, taskListJson, taskViewJson } from "./formatters/json-output.ts";
 import { formatTaskPlainText } from "./formatters/task-plain-text.ts";
@@ -66,7 +67,6 @@ import { scrollableViewer } from "./ui/tui.ts";
 import { type AgentSelectionValue, processAgentSelection } from "./utils/agent-selection.ts";
 import { normalizeProjectBacklogDirectory } from "./utils/backlog-directory.ts";
 import { launchBrowser } from "./utils/browser-launch.ts";
-import { loadTaskDependencyGraph } from "./utils/dependency-graph.ts";
 import {
 	type ContentIdentityReport,
 	type DraftIdentityFindings,
@@ -3590,12 +3590,12 @@ addHelpSchema(taskCmd.command("view <taskId>"), {
 
 		// Plain text output for non-interactive environments
 		if (outputMode === "json") {
-			printJson(taskViewJson(task, cwd, await loadTaskDependencyGraph(core, task)));
+			printJson(taskViewJson(await loadTaskDetail(core, task), cwd));
 			return;
 		}
 
 		if (outputMode === "plain") {
-			console.log(formatTaskPlainText(task, { dependencyGraph: await loadTaskDependencyGraph(core, task) }));
+			console.log(formatTaskPlainText(await loadTaskDetail(core, task)));
 			return;
 		}
 
@@ -3766,12 +3766,12 @@ taskCmd
 
 		// Plain text output for non-interactive environments
 		if (outputMode === "json") {
-			printJson(taskViewJson(task, cwd, await loadTaskDependencyGraph(core, task)));
+			printJson(taskViewJson(await loadTaskDetail(core, task), cwd));
 			return;
 		}
 
 		if (outputMode === "plain") {
-			console.log(formatTaskPlainText(task, { dependencyGraph: await loadTaskDependencyGraph(core, task) }));
+			console.log(formatTaskPlainText(await loadTaskDetail(core, task)));
 			return;
 		}
 

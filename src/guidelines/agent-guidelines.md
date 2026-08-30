@@ -586,8 +586,8 @@ more than one record does; neither counts as satisfied, and the graph stops ther
 `backlog doctor` when one appears. The graph sees what task detail sees: the current checkout plus completed tasks, and the
 configured cross-branch corpus in the browser. Archived tasks are not resurrected.
 
-With `--json`, the same information is a `dependencyGraph` object beside `task`, with `root`, `nodes`, and directed `edges`.
-`task.dependencies` still holds only the task's own direct dependency IDs.
+With `--json`, the same information is `task.dependencyGraph`, with `root`, `nodes`, and directed `edges`. It is derived at
+read time and never stored in the Markdown file. `task.dependencies` still holds only the task's own direct dependency IDs.
 
 ### Multi‑line Input (Description/Plan/Notes/Comments/Final Summary)
 

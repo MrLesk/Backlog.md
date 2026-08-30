@@ -3,9 +3,11 @@ import { JSDOM } from "jsdom";
 import { renderToString } from "react-dom/server";
 import { MemoryRouter } from "react-router-dom";
 import type { Task } from "../types/index.ts";
-import { buildDependencyGraph } from "../utils/dependency-graph.ts";
+import { buildDependencyGraph, type DependencyGraph } from "../utils/dependency-graph.ts";
+import { withDependencyGraph } from "../core/task-detail.ts";
 import { DependencyGraphSection } from "../web/components/DependencyGraphSection";
-import type { DependencyGraphPayload } from "../web/lib/api";
+import { TaskDetailsModal } from "../web/components/TaskDetailsModal";
+import { ThemeProvider } from "../web/contexts/ThemeContext";
 
 const STATUSES = ["To Do", "In Progress", "Done"] as const;
 
@@ -19,14 +21,13 @@ function makeTask(id: string, title: string, dependencies: string[] = [], status
 	return { id, title, status, assignee: [], createdDate: "2026-01-01", labels: [], dependencies };
 }
 
-function payloadFor(rootId: string, tasks: Task[], completedTasks: Task[] = []): DependencyGraphPayload {
+function payloadFor(rootId: string, tasks: Task[], completedTasks: Task[] = []): DependencyGraph {
 	const root = [...tasks, ...completedTasks].find((candidate) => candidate.id === rootId);
 	if (!root) throw new Error(`missing root ${rootId}`);
-	const graph = buildDependencyGraph(root, { tasks, completedTasks, statuses: STATUSES });
-	return { root: graph.rootId, nodes: graph.nodes, edges: graph.edges };
+	return buildDependencyGraph(root, { tasks, completedTasks, statuses: STATUSES });
 }
 
-function render(payload: DependencyGraphPayload): string {
+function render(payload: DependencyGraph): string {
 	setupDom();
 	return renderToString(
 		<MemoryRouter>
@@ -113,5 +114,73 @@ describe("Web dependency graph section", () => {
 
 	it("renders nothing for a task with no dependencies and no dependents", () => {
 		expect(render(payloadFor("TASK-1", [makeTask("TASK-1", "Alone")]))).toBe("");
+	});
+});
+
+describe("Web task details modal dependency graph", () => {
+	const corpus = [
+		makeTask("TASK-1", "Foundation", [], "Done"),
+		makeTask("TASK-2", "Selected", ["TASK-1", "TASK-404"]),
+		makeTask("TASK-3", "Follow up", ["TASK-2"]),
+	];
+
+	function renderModal(task: Task) {
+		setupDom();
+		if (!globalThis.window.matchMedia) {
+			globalThis.window.matchMedia = (() => ({
+				matches: false,
+				media: "",
+				onchange: null,
+				addListener: () => {},
+				removeListener: () => {},
+				addEventListener: () => {},
+				removeEventListener: () => {},
+				dispatchEvent: () => false,
+			})) as unknown as typeof window.matchMedia;
+		}
+		globalThis.localStorage = globalThis.window.localStorage;
+		const requests: string[] = [];
+		const previousFetch = globalThis.fetch;
+		globalThis.fetch = (async (input: RequestInfo | URL) => {
+			requests.push(typeof input === "string" ? input : input.toString());
+			return new Response("[]", { headers: { "Content-Type": "application/json" } });
+		}) as typeof fetch;
+		try {
+			const html = renderToString(
+				<MemoryRouter>
+					<ThemeProvider>
+						<TaskDetailsModal
+							task={task}
+							isOpen={true}
+							onClose={() => {}}
+							availableTasks={corpus}
+							availableStatuses={[...STATUSES]}
+						/>
+					</ThemeProvider>
+				</MemoryRouter>,
+			);
+			return { html, requests };
+		} finally {
+			globalThis.fetch = previousFetch;
+		}
+	}
+
+	it("renders the graph straight from the task it was given, with no request of its own", () => {
+		const selected = corpus[1] as Task;
+		const detail = withDependencyGraph(selected, { tasks: corpus, completedTasks: [], statuses: STATUSES });
+
+		const { html, requests } = renderModal(detail);
+
+		expect(html).toContain("Dependency Graph");
+		expect(html).toContain("Depends on");
+		expect(html).toContain("Dependents");
+		expect(html).toContain('href="/tasks/TASK-1"');
+		// The graph arrives with the task, so opening it costs no extra round trip at all.
+		expect(requests.filter((url) => url.includes("dependency-graph"))).toEqual([]);
+	});
+
+	it("shows no graph section for a plain task record", () => {
+		const { html } = renderModal(corpus[1] as Task);
+		expect(html).not.toContain("Dependency Graph");
 	});
 });

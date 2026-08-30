@@ -1,5 +1,6 @@
 import type { DuplicateRepairPlan, DuplicateRepairResult } from "../../core/duplicate-task-repair.ts";
 import type { TaskStatistics } from "../../core/statistics.ts";
+import type { TaskDetail } from "../../core/task-detail.ts";
 import type {
 	BacklogConfig,
 	Decision,
@@ -11,16 +12,8 @@ import type {
 	Task,
 	TaskStatus,
 } from "../../types/index.ts";
-import type { DependencyGraph } from "../../utils/dependency-graph.ts";
 
 const API_BASE = "/api";
-
-/** The dependency graph as the API serves it: an explicit root plus nodes and directed edges. */
-export type DependencyGraphPayload = {
-	root: string;
-	nodes: DependencyGraph["nodes"];
-	edges: DependencyGraph["edges"];
-};
 
 export interface ReorderTaskPayload {
 	taskId: string;
@@ -284,13 +277,9 @@ export class ApiClient {
 		return this.fetchJson<SearchResult[]>(url);
 	}
 
-	async fetchTask(id: string): Promise<Task> {
-		return this.fetchJson<Task>(`${API_BASE}/task/${encodeURIComponent(id)}`);
-	}
-
-	/** The dependency context for one task, resolved on the server and fetched only when it is shown. */
-	async fetchTaskDependencyGraph(id: string): Promise<DependencyGraphPayload> {
-		return this.fetchJson<DependencyGraphPayload>(`${API_BASE}/tasks/${encodeURIComponent(id)}/dependency-graph`);
+	/** Reads one task through the detail path, so the response already carries its dependency graph. */
+	async fetchTask(id: string): Promise<TaskDetail> {
+		return this.fetchJson<TaskDetail>(`${API_BASE}/task/${encodeURIComponent(id)}`);
 	}
 
 	async createTask(task: Omit<Task, "id" | "createdDate">): Promise<Task> {

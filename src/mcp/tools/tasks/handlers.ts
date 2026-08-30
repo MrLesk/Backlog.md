@@ -1,6 +1,7 @@
 import { basename, join } from "node:path";
 import { DEFAULT_STATUSES } from "../../../constants/index.ts";
 import { findLocalDuplicateTaskIds } from "../../../core/duplicate-task-repair.ts";
+import { loadTaskDetail } from "../../../core/task-detail.ts";
 import { isCreateLockError, isTaskLockError } from "../../../file-system/operations.ts";
 import {
 	isLocalEditableTask,
@@ -9,7 +10,6 @@ import {
 	type TaskListFilter,
 } from "../../../types/index.ts";
 import type { TaskEditArgs, TaskEditRequest } from "../../../types/task-edit-args.ts";
-import { loadTaskDependencyGraph } from "../../../utils/dependency-graph.ts";
 import { formatDuplicateTaskIdWarning } from "../../../utils/duplicate-detection.ts";
 import {
 	createMilestoneFilterValueResolver,
@@ -440,11 +440,9 @@ export class TaskHandlers {
 		if (!task) {
 			throw new BacklogToolError(`Task not found: ${args.id}`, "TASK_NOT_FOUND");
 		}
-		// Task detail is the only MCP result that carries the graph, and it carries exactly the one
-		// the canonical CLI defines. The edit and lifecycle confirmations stay as short as they were.
-		return await formatTaskCallResult(task, [], {
-			dependencyGraph: await loadTaskDependencyGraph(this.core, task),
-		});
+		// Task detail is the only MCP result read through the detail path, so it is the only one that
+		// carries the graph. The edit and lifecycle confirmations stay as short as they were.
+		return await formatTaskCallResult(await loadTaskDetail(this.core, task));
 	}
 
 	async archiveTask(args: { id: string }): Promise<CallToolResult> {
