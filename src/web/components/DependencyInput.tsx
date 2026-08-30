@@ -1,9 +1,24 @@
 import React, { useState, useRef, useEffect, useMemo, type KeyboardEvent } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useLocation } from 'react-router-dom';
 import { type Task } from '../../types';
 import { buildTaskIdIndex, resolveTaskReference } from '../utils/task-id-links';
 
 const CHIP_LABEL_CLASS = 'truncate max-w-[16rem] sm:max-w-[20rem] md:max-w-[24rem]';
+
+// Chip links open the task detail in place, mirroring App's handleEditTask base-path
+// derivation: stay on the board when reading from it, otherwise use the canonical
+// /tasks route (which also keeps external deep links working). Kept as a subcomponent
+// so the router context is only required where a link actually renders, and so PR
+// #960's useTaskHref hook can replace the derivation once it lands.
+const TaskChipLink: React.FC<{ taskId: string; display: string }> = ({ taskId, display }) => {
+  const location = useLocation();
+  const taskBasePath = location.pathname.startsWith('/board') ? '/board' : '/tasks';
+  return (
+    <Link to={`${taskBasePath}/${taskId}`} className={`${CHIP_LABEL_CLASS} hover:underline`} title={display}>
+      {display}
+    </Link>
+  );
+};
 
 interface DependencyInputProps {
   value: string[];
@@ -128,13 +143,7 @@ const DependencyInput: React.FC<DependencyInputProps> = ({ value, onChange, avai
                   className="inline-flex items-center gap-1 px-2 py-0.5 text-sm bg-blue-100 dark:bg-blue-900/50 text-blue-800 dark:text-blue-200 rounded-md transition-colors duration-200 min-w-0 max-w-full"
                 >
                   {dependency ? (
-                    <Link
-                      to={`/tasks/${dependency.id}`}
-                      className={`${CHIP_LABEL_CLASS} hover:underline`}
-                      title={display}
-                    >
-                      {display}
-                    </Link>
+                    <TaskChipLink taskId={dependency.id} display={display} />
                   ) : (
                     <span className={CHIP_LABEL_CLASS} title={display}>{display}</span>
                   )}
