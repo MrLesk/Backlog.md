@@ -83,6 +83,9 @@ const Board: React.FC<BoardProps> = ({
   const [updateError, setUpdateError] = useState<string | null>(null);
   const [selectedTaskIds, setSelectedTaskIds] = useState<string[]>([]);
   const [selectionAnchorId, setSelectionAnchorId] = useState<string | null>(null);
+  // True while a drag that moves the whole selection is in flight, so every selected card can
+  // carry the same dragging treatment as the grabbed one.
+  const [isSelectionDragging, setIsSelectionDragging] = useState(false);
   const [batchMoveStatus, setBatchMoveStatus] = useState<string>('');
   const [dragSourceStatus, setDragSourceStatus] = useState<string | null>(null);
   const [dragSourceLane, setDragSourceLane] = useState<string | null>(null);
@@ -307,6 +310,9 @@ const Board: React.FC<BoardProps> = ({
   const clearSelection = React.useCallback(() => {
     setSelectedTaskIds([]);
     setSelectionAnchorId(null);
+    // A completed batch drop can unmount the grabbed card before its dragend fires, so the
+    // selection-drag state resets here rather than trusting that event.
+    setIsSelectionDragging(false);
   }, []);
 
   const toggleTaskSelection = React.useCallback((taskId: string) => {
@@ -614,6 +620,8 @@ const Board: React.FC<BoardProps> = ({
     onToggleTaskSelection: toggleTaskSelection,
     onSelectTaskRange: selectTaskRange,
     onBatchMove: handleBatchMove,
+    isSelectionDragging,
+    onSelectionDragChange: setIsSelectionDragging,
   };
 
   return (

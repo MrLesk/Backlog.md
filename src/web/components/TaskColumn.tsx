@@ -27,6 +27,8 @@ interface TaskColumnProps {
   onToggleTaskSelection?: (taskId: string) => void;
   onSelectTaskRange?: (taskIds: string[]) => void;
   onBatchMove?: (targetStatus: string, targetMilestone?: string | null) => void;
+  isSelectionDragging?: boolean;
+  onSelectionDragChange?: (active: boolean) => void;
 }
 
 type CreatedDateSortDirection = 'asc' | 'desc';
@@ -79,6 +81,8 @@ const TaskColumn: React.FC<TaskColumnProps> = ({
   onToggleTaskSelection,
   onSelectTaskRange,
   onBatchMove,
+  isSelectionDragging,
+  onSelectionDragChange,
 }) => {
   const [isDragOver, setIsDragOver] = React.useState(false);
   const [draggedTaskId, setDraggedTaskId] = React.useState<string | null>(null);
@@ -356,6 +360,8 @@ const TaskColumn: React.FC<TaskColumnProps> = ({
               onEdit={onEditTask}
               isSelected={selectedTaskIds?.includes(task.id) ?? false}
               selectionCount={selectedTaskIds?.length ?? 0}
+              isSelectionDragging={isSelectionDragging}
+              onSelectionDragChange={onSelectionDragChange}
               onSelect={
                 onToggleTaskSelection
                   ? ({ shiftKey }) => {

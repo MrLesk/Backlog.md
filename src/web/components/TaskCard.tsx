@@ -20,6 +20,8 @@ interface TaskCardProps {
   isSelected?: boolean;
   selectionCount?: number;
   onSelect?: (event: { shiftKey: boolean }) => void;
+  isSelectionDragging?: boolean;
+  onSelectionDragChange?: (active: boolean) => void;
 }
 
 // Dragging a selected card moves the whole selection, so the drag image has to show it. Stacking
@@ -70,6 +72,8 @@ const TaskCard: React.FC<TaskCardProps> = ({
   isSelected = false,
   selectionCount = 0,
   onSelect,
+  isSelectionDragging = false,
+  onSelectionDragChange,
 }) => {
   const [isDragging, setIsDragging] = React.useState(false);
   const [showBranchTooltip, setShowBranchTooltip] = React.useState(false);
@@ -106,12 +110,17 @@ const TaskCard: React.FC<TaskCardProps> = ({
     if (joinsSelection) onSelect?.({ shiftKey: false });
     const batchCount = isSelected ? selectionCount : joinsSelection ? selectionCount + 1 : 1;
 
-    if (batchCount > 1 && typeof e.dataTransfer.setDragImage === 'function') {
-      const ghost = buildSelectionDragImage(e.currentTarget as HTMLElement, batchCount);
-      document.body.appendChild(ghost);
-      e.dataTransfer.setDragImage(ghost, 16, 16);
-      // The browser snapshots the element during setDragImage, so it only has to survive this tick.
-      setTimeout(() => ghost.remove(), 0);
+    if (batchCount > 1) {
+      // The whole selection moves with this drag, so every selected card on the board carries the
+      // same dragging treatment as the grabbed one.
+      onSelectionDragChange?.(true);
+      if (typeof e.dataTransfer.setDragImage === 'function') {
+        const ghost = buildSelectionDragImage(e.currentTarget as HTMLElement, batchCount);
+        document.body.appendChild(ghost);
+        e.dataTransfer.setDragImage(ghost, 16, 16);
+        // The browser snapshots the element during setDragImage, so it only has to survive this tick.
+        setTimeout(() => ghost.remove(), 0);
+      }
     }
 
     setIsDragging(true);
@@ -120,6 +129,7 @@ const TaskCard: React.FC<TaskCardProps> = ({
 
   const handleDragEnd = () => {
     setIsDragging(false);
+    onSelectionDragChange?.(false);
     onDragEnd?.();
   };
 
@@ -185,7 +195,7 @@ const TaskCard: React.FC<TaskCardProps> = ({
             ? 'opacity-75 cursor-not-allowed border-dashed' 
             : 'cursor-pointer hover:shadow-md dark:hover:shadow-lg hover:border-stone-500 dark:hover:border-stone-400'
         } ${getPriorityClass(task.priority)} ${
-          isDragging ? 'opacity-50 transform rotate-2 scale-105' : ''
+          isDragging || (isSelected && isSelectionDragging) ? 'opacity-50 transform rotate-2 scale-105' : ''
         } ${
           isSelected
             ? 'ring-2 ring-blue-500 dark:ring-blue-400 border-blue-500 dark:border-blue-400 bg-blue-50 dark:bg-blue-900/30'

@@ -184,6 +184,13 @@ const dispatchDragOver = async (target: HTMLElement) => {
 	});
 };
 
+const dispatchDragEnd = async (card: HTMLElement) => {
+	await act(async () => {
+		card.dispatchEvent(new window.Event("dragend", { bubbles: true, cancelable: true }));
+		await Promise.resolve();
+	});
+};
+
 const getColumn = (container: HTMLElement, status: string): HTMLElement => {
 	const heading = Array.from(container.querySelectorAll("h3")).find((element) => element.textContent === status);
 	const column = heading?.closest(".rounded-lg");
@@ -701,6 +708,22 @@ describe("Web board batch move", () => {
 		expect(dragImages).toHaveLength(1);
 		expect((dragImages[0]?.element as HTMLElement).lastElementChild?.textContent).toBe("3");
 		expect(selectedCardIds(container).sort()).toEqual(["TASK-1", "TASK-2", "TASK-3"]);
+	});
+
+	it("shows the dragging treatment on every selected card during a selection drag", async () => {
+		const container = renderBoard();
+		await clickCard(getCard(container, "TASK-1"), { ctrlKey: true });
+		await clickCard(getCard(container, "TASK-2"), { ctrlKey: true });
+
+		await dispatchDragStart(getCard(container, "TASK-1"));
+
+		// The companion carries the grabbed card's dragging treatment; unselected cards stay inert.
+		expect(getCard(container, "TASK-2").className).toContain("opacity-50");
+		expect(getCard(container, "TASK-3").className).not.toContain("opacity-50");
+
+		await dispatchDragEnd(getCard(container, "TASK-1"));
+		expect(getCard(container, "TASK-1").className).not.toContain("opacity-50");
+		expect(getCard(container, "TASK-2").className).not.toContain("opacity-50");
 	});
 
 	it("leaves the drag image alone when a single card is dragged", async () => {
