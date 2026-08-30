@@ -10,6 +10,7 @@ import { getProjectValues, matchesProjectFilter } from '../../utils/project-conf
 import { getTaskTypeValues, matchesTaskTypeFilter } from '../../utils/task-type-config';
 import { resolveTaskById } from '../../utils/task-id';
 import TaskColumn from './TaskColumn';
+import { BoardLoadingSkeleton } from './BoardLoadingSkeleton';
 import CleanupModal from './CleanupModal';
 import LabelFilterDropdown from './LabelFilterDropdown';
 import { SuccessToast } from './SuccessToast';
@@ -827,17 +828,7 @@ const Board: React.FC<BoardProps> = ({
           )}
         </div>
       ) : isLoading ? (
-        <div className="rounded-lg border border-gray-200 bg-gray-50 px-6 py-10 dark:border-gray-700 dark:bg-gray-800/30" role="status" aria-label="Loading tasks">
-          <div className="mx-auto flex max-w-xl items-center justify-center gap-3 text-gray-600 dark:text-gray-300">
-            <span className="h-5 w-5 animate-spin rounded-full border-2 border-gray-300 border-t-blue-500 dark:border-gray-600 dark:border-t-blue-400" aria-hidden="true" />
-            {loadingMessage && <p>{loadingMessage}</p>}
-          </div>
-          <div className="mx-auto mt-6 grid max-w-3xl grid-cols-3 gap-4" aria-hidden="true">
-            {[0, 1, 2].map((column) => (
-              <div key={column} className="h-24 animate-pulse rounded-lg bg-gray-200/70 dark:bg-gray-700/60" />
-            ))}
-          </div>
-        </div>
+        <BoardLoadingSkeleton message={loadingMessage} columnCount={statuses.length} />
       ) : laneMode === 'milestone' ? (
         <div className="space-y-6">
           {visibleLanes.map((lane) => {
