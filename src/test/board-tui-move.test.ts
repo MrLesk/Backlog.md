@@ -73,7 +73,7 @@ let TEST_DIR: string;
 let core: Core;
 
 beforeEach(async () => {
-	TEST_DIR = await mkdtemp(join(tmpdir(), "board-tui-batch-move-"));
+	TEST_DIR = await mkdtemp(join(tmpdir(), "board-tui-move-"));
 	core = new Core(TEST_DIR);
 	await initializeTestProject(core, "Board Batch Move");
 	await core.createTask(createTask("TASK-1", "To Do", 1000), false);
@@ -128,66 +128,63 @@ async function withBoard(
 	}
 }
 
-const markedRows = (rows: string[]) => rows.filter((row) => row.includes("●"));
-
-describe("TUI board batch move", () => {
-	it("marks the task the ghost stands on with M and unmarks it on a second press", async () => {
-		await withBoard(({ screen, rows, footer }) => {
+describe("TUI board single-task mover", () => {
+	it("enters move mode on M and shows the single-mover footer", async () => {
+		await withBoard(({ screen, footer }) => {
 			pressKey(screen, "m");
 			expect(footer()).toContain("MOVE MODE");
-			expect(footer()).toContain("Mark task below");
-
-			pressKey(screen, "m");
-			expect(markedRows(rows())).toHaveLength(1);
-			expect(footer()).toContain("MOVE 2 TASKS");
-
-			pressKey(screen, "m");
-			expect(markedRows(rows())).toHaveLength(0);
-			expect(footer()).toContain("MOVE MODE");
+			expect(footer()).toContain("[Enter/M]");
 
 			pressKey(screen, "escape");
+			expect(footer()).not.toContain("MOVE MODE");
 		});
 	});
 
-	it("clears the marks and exits move mode on Escape", async () => {
-		await withBoard(({ screen, rows, footer }) => {
+	it("moves only the selected task and confirms with Enter", async () => {
+		await withBoard(async ({ screen, footer, quit }) => {
 			pressKey(screen, "m");
-			pressKey(screen, "m");
-			expect(markedRows(rows())).toHaveLength(1);
-
-			pressKey(screen, "escape");
-			expect(markedRows(rows())).toHaveLength(0);
-			expect(footer()).not.toContain("MOVE");
-		});
-	});
-
-	it("moves every marked task to the column the ghost lands in", async () => {
-		await withBoard(async ({ screen, footer, rows, quit }) => {
-			pressKey(screen, "m");
-			pressKey(screen, "m");
-			expect(footer()).toContain("MOVE 2 TASKS");
+			expect(footer()).toContain("MOVE MODE");
 
 			pressKey(screen, "right");
 			pressKey(screen, "enter");
 			await retry(async () => {
-				const first = await core.filesystem.loadTask("TASK-1");
-				const second = await core.filesystem.loadTask("TASK-2");
-				if (first?.status !== "In Progress" || second?.status !== "In Progress") {
-					throw new Error("batch move not persisted yet");
-				}
+				const moved = await core.filesystem.loadTask("TASK-1");
+				if (moved?.status !== "In Progress") throw new Error("move not persisted yet");
 			});
 
-			// The anchor keeps the previewed spot and the marked task lines up right behind it.
-			const first = await core.filesystem.loadTask("TASK-1");
-			const second = await core.filesystem.loadTask("TASK-2");
-			expect(first?.ordinal ?? 0).toBeLessThan(second?.ordinal ?? 0);
+			expect((await core.filesystem.loadTask("TASK-2"))?.status).toBe("To Do");
 			expect((await core.filesystem.loadTask("TASK-3"))?.status).toBe("To Do");
-			expect(markedRows(rows())).toHaveLength(0);
 			await quit();
 		});
 	});
 
-	it("blocks marking behind the same filter guard as a single move", async () => {
+	it("confirms with M exactly like Enter", async () => {
+		await withBoard(async ({ screen, quit }) => {
+			pressKey(screen, "m");
+			pressKey(screen, "right");
+			pressKey(screen, "m");
+			await retry(async () => {
+				const moved = await core.filesystem.loadTask("TASK-1");
+				if (moved?.status !== "In Progress") throw new Error("move not persisted yet");
+			});
+
+			expect((await core.filesystem.loadTask("TASK-2"))?.status).toBe("To Do");
+			await quit();
+		});
+	});
+
+	it("cancels the move on Escape without persisting anything", async () => {
+		await withBoard(async ({ screen, quit }) => {
+			pressKey(screen, "m");
+			pressKey(screen, "right");
+			pressKey(screen, "escape");
+
+			expect((await core.filesystem.loadTask("TASK-1"))?.status).toBe("To Do");
+			await quit();
+		});
+	});
+
+	it("blocks move mode behind active filters", async () => {
 		await withBoard(
 			({ screen, footer }) => {
 				pressKey(screen, "m");
@@ -202,43 +199,6 @@ describe("TUI board batch move", () => {
 				milestoneFilter: "",
 			},
 		);
-	});
-
-	it("keeps the single-task move flow as the one-task case", async () => {
-		await withBoard(async ({ screen, footer, quit }) => {
-			pressKey(screen, "m");
-			expect(footer()).toContain("MOVE MODE");
-
-			pressKey(screen, "right");
-			pressKey(screen, "enter");
-			await retry(async () => {
-				const moved = await core.filesystem.loadTask("TASK-1");
-				if (moved?.status !== "In Progress") throw new Error("move not persisted yet");
-			});
-
-			expect((await core.filesystem.loadTask("TASK-2"))?.status).toBe("To Do");
-			await quit();
-		});
-	});
-
-	it("reports the tasks it could not move", async () => {
-		await withBoard(async ({ screen, footer, quit }) => {
-			pressKey(screen, "m");
-			pressKey(screen, "m");
-
-			// Deleting the file behind the marked task makes the move fail for that task only.
-			await core.archiveTask("TASK-2", false);
-
-			pressKey(screen, "right");
-			pressKey(screen, "enter");
-
-			await retry(async () => {
-				if (!footer().includes("failed 1")) throw new Error("failure not reported yet");
-			});
-			expect(footer()).toContain("TASK-2");
-			expect((await core.filesystem.loadTask("TASK-1"))?.status).toBe("In Progress");
-			await quit();
-		});
 	});
 
 	it("documents the move key in the help popup", () => {

@@ -5,7 +5,7 @@ status: In Progress
 assignee:
   - '@claude'
 created_date: '2026-08-29 18:57'
-updated_date: '2026-08-30 16:12'
+updated_date: '2026-08-30 17:26'
 labels:
   - cli
   - tui
@@ -29,11 +29,11 @@ Note: this record was restored after the original file was lost while uncommitte
 <!-- AC:BEGIN -->
 - [ ] #1 CLI `task edit` with multiple IDs and a status flag updates every listed task via the existing single-task edit path, reporting per-task failures without aborting the batch
 - [ ] #2 CLI `task edit` with multiple IDs and no batch-applicable flags fails with a clear error instead of silently opening the wizard for only the first ID
-- [ ] #3 Web board and TUI batch moves route through one shared core method; batch drag in the milestone view applies the same milestone semantics as single-task drag
+- [ ] #3 Web board batch moves route through the shared core method (moveTasksToStatus); batch drag in the milestone view applies the same milestone semantics as single-task drag. TUI batch selection was split out to BACK-661 after the maintainer rejected the m-key recruitment flow; the TUI keeps main's single-task mover
 - [ ] #4 Ambiguous or unresolvable task IDs in a batch fail closed as per-task errors; no task is guessed
 - [ ] #5 Id-resolution and cross-branch guard logic is shared between reorderTask and moveTasksToStatus rather than duplicated
 - [ ] #6 Unrelated formatting churn is removed from the diff
-- [ ] #7 Automated tests cover CLI batch edit, per-task failure reporting, web and TUI batch moves, and the milestone-lane case
+- [ ] #7 Automated tests cover CLI batch edit, per-task failure reporting, web batch moves, and the milestone-lane case
 <!-- AC:END -->
 
 ## Implementation Plan
@@ -64,4 +64,8 @@ Rework round 2 (maintainer QA feedback), on pr/batch-move-tasks:
 - Web ghost: badge now counts the set that actually moves; a ctrl/cmd-press-drag on a not-yet-selected card joins the selection at dragstart (the click never completes in that gesture), fixing the selection-minus-dragged badge and the drop moving one card short. Stack depth follows the count.
 
 Thread-triage round (head bd4ba137): board-move dedup and CLI batch dedup now use canonical task identity (leading zeros collapse, bare numbers keep the default prefix); shift-range skips cross-branch cards; selection prunes to filter-visible cards; append places arriving tasks after the column as rendered with non-finite ordinals treated as missing; already-in-status tasks keep their ordinal in a mixed batch (named lane still applies); double-Enter guard on the TUI confirm. Regression tests added for each.
+
+Maintainer re-test follow-up (head 551323e7): during a selection drag, every selected card now carries the grabbed card's existing isDragging treatment (opacity/rotate/scale) via a board-level selection-drag flag; cleared on dragend and on selection clear. jsdom test pins companion styling on dragstart and its removal on dragend.
+
+Maintainer decision: the TUI multi-mark flow is rejected (overloading m collides with within-column reordering) and split to successor task BACK-661 (maintainer-designed shift-arrow recruitment). The branch now ships CLI batch edit + web multi-select (no-op guards, drag ghost, selection-drag styling) + core moveTasksToStatus with orderedTaskIds placement (used by the web API and the upcoming BACK-661 TUI design). src/ui/board.ts is back to main's single-task mover except a standalone double-Enter movePending guard; TUI tests rewritten as board-tui-move.test.ts asserting main's single-mover semantics.
 <!-- SECTION:NOTES:END -->
