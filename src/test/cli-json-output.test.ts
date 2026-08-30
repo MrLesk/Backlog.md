@@ -106,6 +106,8 @@ describe("CLI JSON output", () => {
 					parentTaskId: null,
 					acceptanceCriteriaCompleted: 1,
 					acceptanceCriteriaCount: 1,
+					references: ["https://example.com/issue"],
+					modifiedFiles: ["src/cli.ts"],
 					ordinal: 1000,
 					createdAt: "2026-07-14T09:30:00Z",
 					updatedAt: "2026-07-14T10:45:00Z",
