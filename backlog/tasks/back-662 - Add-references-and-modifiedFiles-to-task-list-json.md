@@ -1,9 +1,11 @@
 ---
 id: BACK-662
 title: Add references and modifiedFiles to task list --json
-status: To Do
-assignee: []
+status: Done
+assignee:
+  - '@claude'
 created_date: '2026-08-30 19:00'
+updated_date: '2026-08-30 19:06'
 labels:
   - cli
 dependencies: []
@@ -29,3 +31,15 @@ External tools consuming `backlog task list --json` need each task's references 
 - [ ] #2 bun run check . passes when formatting/linting touched
 - [ ] #3 bun test (or scoped test) passes
 <!-- DOD:END -->
+
+## Implementation Plan
+
+<!-- SECTION:PLAN:BEGIN -->
+Add references and modifiedFiles to TaskSummaryJson (shared by list and search task rows), remove the duplicate declarations from TaskDetailsJson, populate in toTaskSummaryJson, update the list test and CLI-INSTRUCTIONS field enumeration.
+<!-- SECTION:PLAN:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+Implemented in json-output.ts by moving the two fields into the shared summary projection; view payload content unchanged. Docs updated. Empty case covered by a dedicated assertion on a task without references or modified files.
+<!-- SECTION:NOTES:END -->
