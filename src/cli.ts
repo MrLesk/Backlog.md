@@ -60,6 +60,7 @@ import {
 	type TaskUpdateInput,
 } from "./types/index.ts";
 import type { TaskEditArgs } from "./types/task-edit-args.ts";
+import { formatAcceptanceCriteriaSummarySuffix } from "./ui/acceptance-criteria-progress.ts";
 import { genericSelectList } from "./ui/components/generic-list.ts";
 import { createLoadingScreen } from "./ui/loading.ts";
 import { viewTaskEnhanced } from "./ui/task-viewer-with-search.ts";
@@ -306,8 +307,9 @@ function formatPlainTaskListRow(task: Task, options: { includeStatus?: boolean }
 	const priorityIndicator = task.priority ? `[${task.priority.toUpperCase()}] ` : "";
 	const typeIndicator = task.type ? `[${task.type}] ` : "";
 	const statusIndicator = options.includeStatus && task.status ? ` (${task.status})` : "";
+	const acceptanceCriteria = formatAcceptanceCriteriaSummarySuffix(task);
 	const dueDate = task.dueDate ? ` (due ${formatUtcDateForDisplay(task.dueDate, { appendUtcLabel: true })})` : "";
-	return `  ${priorityIndicator}${typeIndicator}${task.id} - ${task.title}${statusIndicator}${dueDate}`;
+	return `  ${priorityIndicator}${typeIndicator}${task.id} - ${task.title}${statusIndicator}${acceptanceCriteria}${dueDate}`;
 }
 
 async function normalizeCliStatusList(core: Core, values: string[], optionName: string): Promise<string[] | null> {
@@ -587,6 +589,50 @@ function hasEditFieldFlags(options: Record<string, unknown>): boolean {
 			options.clearDocs ||
 			options.modifiedFile !== undefined,
 	);
+}
+
+/**
+ * Flags whose value cannot mean the same thing across a batch. A title, a body section, or a
+ * 1-based checklist index belongs to one task, so `task edit` rejects them once the user passes
+ * more than one task ID rather than writing the same value over every task.
+ */
+const PER_TASK_ONLY_EDIT_FLAGS: ReadonlyArray<{ option: string; flag: string }> = [
+	{ option: "title", flag: "--title" },
+	{ option: "description", flag: "--description" },
+	{ option: "desc", flag: "--desc" },
+	{ option: "plan", flag: "--plan" },
+	{ option: "appendPlan", flag: "--append-plan" },
+	{ option: "notes", flag: "--notes" },
+	{ option: "appendNotes", flag: "--append-notes" },
+	{ option: "finalSummary", flag: "--final-summary" },
+	{ option: "appendFinalSummary", flag: "--append-final-summary" },
+	{ option: "clearFinalSummary", flag: "--clear-final-summary" },
+	{ option: "comment", flag: "--comment" },
+	{ option: "commentAuthor", flag: "--comment-author" },
+	{ option: "ordinal", flag: "--ordinal" },
+	{ option: "modifiedFile", flag: "--modified-file" },
+	{ option: "removeAc", flag: "--remove-ac" },
+	{ option: "checkAc", flag: "--check-ac" },
+	{ option: "uncheckAc", flag: "--uncheck-ac" },
+	{ option: "removeDod", flag: "--remove-dod" },
+	{ option: "checkDod", flag: "--check-dod" },
+	{ option: "uncheckDod", flag: "--uncheck-dod" },
+	// Acceptance criteria and Definition of Done are task-specific body sections like the plan and
+	// notes above: replacing, clearing, or adding to them across a batch erases or duplicates
+	// content that differs per task.
+	{ option: "acceptanceCriteria", flag: "--acceptance-criteria" },
+	{ option: "clearAc", flag: "--clear-ac" },
+	{ option: "ac", flag: "--ac" },
+	{ option: "dod", flag: "--dod" },
+];
+
+function findPerTaskOnlyFlag(options: Record<string, unknown>): string | null {
+	for (const { option, flag } of PER_TASK_ONLY_EDIT_FLAGS) {
+		if (options[option] !== undefined) {
+			return `Cannot use ${flag} with more than one task ID. ${flag} applies to one task only. Run backlog task edit once per task.`;
+		}
+	}
+	return null;
 }
 
 /**
@@ -2933,11 +2979,42 @@ const draftEditTarget: EditCommandTarget = {
 	notFoundMessage: (id) => `Draft ${id} not found.`,
 };
 
-async function runEditCommand(target: EditCommandTarget, taskId: string | undefined, options: OptionValues) {
+async function runEditCommand(target: EditCommandTarget, requestedIds: string[] | undefined, options: OptionValues) {
+	// Listing the same task twice is a slip, not a request to edit it twice, so identities that
+	// compare equal collapse to the first spelling the user typed. Canonical identity keeps a bare
+	// number on the default prefix, so "7" cannot swallow an explicit "JIRA-7".
+	const taskIds: string[] = [];
+	for (const value of requestedIds ?? []) {
+		const trimmed = String(value).trim();
+		if (!trimmed) continue;
+		if (taskIds.some((seen) => canonicalTaskId(seen) === canonicalTaskId(trimmed))) continue;
+		taskIds.push(trimmed);
+	}
+	const taskId = taskIds[0];
 	const shouldUseWizard = hasInteractiveTTY && !hasEditFieldFlags(options);
 	if (!shouldUseWizard && !taskId) {
 		printMissingRequiredArgument("taskId");
 		return;
+	}
+
+	if (taskIds.length > 1) {
+		// These two guards run whether or not a terminal is attached: a batch means the same value is
+		// written to every listed task, so a batch the CLI cannot apply must fail the same way in a
+		// script and in a terminal rather than quietly becoming a wizard over the first ID.
+		// --plain only chooses an output shape, so it never counts as a change to apply.
+		if (!hasEditFieldFlags({ ...options, plain: undefined })) {
+			console.error(
+				`Cannot edit ${taskIds.length} ${target.pluralLabel} without any field flag. Pass the change to apply to every ${target.label.toLowerCase()}, for example --status "In Progress", or edit one ${target.label.toLowerCase()} at a time to use the interactive editor.`,
+			);
+			process.exitCode = 1;
+			return;
+		}
+		const perTaskFlagError = findPerTaskOnlyFlag(options);
+		if (perTaskFlagError) {
+			console.error(perTaskFlagError);
+			process.exitCode = 1;
+			return;
+		}
 	}
 
 	const cwd = await requireProjectRoot();
@@ -2994,10 +3071,32 @@ async function runEditCommand(target: EditCommandTarget, taskId: string | undefi
 		return;
 	}
 
-	const existingTask = await target.resolve(core, taskId ?? "");
+	// Resolve every listed ID first so an unresolvable or ambiguous ID is reported as its own failure
+	// instead of aborting the tasks that did resolve. A single ID keeps the original one-error output.
+	const resolvedTasks: Task[] = [];
+	const editFailures: Array<{ taskId: string; message: string }> = [];
+	for (const requestedId of taskIds) {
+		try {
+			const loaded = await target.resolve(core, requestedId);
+			// Under a custom prefix, a bare number is an alias the pre-resolution dedup cannot see
+			// ("7" and "BACK-7"), so the resolved identity is the last line of defense against
+			// editing the same task twice.
+			if (loaded && resolvedTasks.some((seen) => seen.id === loaded.id)) continue;
+			if (loaded) resolvedTasks.push(loaded);
+			else editFailures.push({ taskId: requestedId, message: target.notFoundMessage(requestedId) });
+		} catch (error) {
+			editFailures.push({
+				taskId: requestedId,
+				message: formatTaskEditError(error, requestedId, target.label.toLowerCase()),
+			});
+		}
+	}
 
+	const existingTask = resolvedTasks[0];
 	if (!existingTask) {
-		console.error(target.notFoundMessage(taskId ?? ""));
+		for (const failure of editFailures) {
+			console.error(failure.message);
+		}
 		process.exitCode = 1;
 		return;
 	}
@@ -3299,23 +3398,43 @@ async function runEditCommand(target: EditCommandTarget, taskId: string | undefi
 		editArgs.definitionOfDoneUncheck = uncheckDod;
 	}
 
-	let updatedTask: Task;
-	try {
-		const updateInput = buildTaskUpdateInput(editArgs);
-		updatedTask = await target.update(core, existingTask, updateInput);
-	} catch (error) {
-		console.error(formatTaskEditError(error, existingTask.id, target.label.toLowerCase()));
+	if (taskIds.length === 1) {
+		let updatedTask: Task;
+		try {
+			updatedTask = await target.update(core, existingTask, buildTaskUpdateInput(editArgs));
+		} catch (error) {
+			console.error(formatTaskEditError(error, existingTask.id, target.label.toLowerCase()));
+			process.exitCode = 1;
+			return;
+		}
+
+		if (isPlainRequested(options)) {
+			console.log(formatTaskPlainText(await loadTaskDetail(core, updatedTask)));
+			return;
+		}
+
+		console.log(`Updated ${target.label.toLowerCase()} ${updatedTask.id}`);
+		return;
+	}
+
+	// A batch writes the same change to independent files, so one failure must not stop the rest.
+	// The outcome of each task is the useful output here, so a batch reports one line per task
+	// rather than repeating a full task body for every ID.
+	for (const task of resolvedTasks) {
+		try {
+			const updated = await target.update(core, task, buildTaskUpdateInput(editArgs));
+			console.log(`Updated ${target.label.toLowerCase()} ${updated.id}`);
+		} catch (error) {
+			editFailures.push({ taskId: task.id, message: formatTaskEditError(error, task.id, target.label.toLowerCase()) });
+		}
+	}
+
+	for (const failure of editFailures) {
+		console.error(`Failed to update ${failure.taskId}: ${failure.message}`);
+	}
+	if (editFailures.length > 0) {
 		process.exitCode = 1;
-		return;
 	}
-
-	const usePlainOutput = isPlainRequested(options);
-	if (usePlainOutput) {
-		console.log(formatTaskPlainText(await loadTaskDetail(core, updatedTask)));
-		return;
-	}
-
-	console.log(`Updated ${target.label.toLowerCase()} ${updatedTask.id}`);
 }
 
 function addEditFieldOptions(cmd: Command) {
@@ -3465,9 +3584,14 @@ function addEditFieldOptions(cmd: Command) {
 		.option("--clear-docs", "remove all documentation (cannot combine with --doc)");
 }
 
-const taskEditCommand = addHelpSchema(taskCmd.command("edit [taskId]"), {
+const taskEditCommand = addHelpSchema(taskCmd.command("edit [taskIds...]"), {
 	required: [
-		{ name: "taskId", type: "Task ID", description: "Task to update; prompted when omitted in interactive mode" },
+		{
+			name: "taskIds",
+			type: "Task IDs",
+			description:
+				"Tasks to update; prompted when omitted in interactive mode. Several IDs apply the same shared-field change to every task",
+		},
 	],
 	optional: [
 		{ name: "title", type: "String", description: "Replacement task title" },
@@ -3550,10 +3674,11 @@ const taskEditCommand = addHelpSchema(taskCmd.command("edit [taskId]"), {
 		'backlog task edit {{TASK_ID:1}} --status "<active status>" -a @sara',
 		`backlog task edit {{TASK_ID:1}} --type ${TASK_TYPE_EXAMPLE}`,
 		"backlog task edit {{TASK_ID:1}} --check-ac 1",
+		'backlog task edit {{TASK_ID:1}} {{TASK_ID:2}} --status "<active status>"',
 	],
 }).description("edit an existing task");
-addEditFieldOptions(taskEditCommand).action(async (taskId: string | undefined, options) => {
-	await runEditCommand(taskEditTarget, taskId, options);
+addEditFieldOptions(taskEditCommand).action(async (taskIds: string[] | undefined, options) => {
+	await runEditCommand(taskEditTarget, taskIds, options);
 });
 
 // Note: Implementation notes appending is handled via `task edit --append-notes` only.
@@ -3967,7 +4092,7 @@ const draftEditCommand = addHelpSchema(draftCmd.command("edit [taskId]"), {
 	examples: ['backlog draft edit DRAFT-1 -t "Renamed draft"', "backlog draft edit DRAFT-1 --check-ac 1"],
 }).description("edit an existing draft");
 addEditFieldOptions(draftEditCommand).action(async (taskId: string | undefined, options) => {
-	await runEditCommand(draftEditTarget, taskId, options);
+	await runEditCommand(draftEditTarget, taskId ? [taskId] : [], options);
 });
 
 draftCmd

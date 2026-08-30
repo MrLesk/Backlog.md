@@ -10,6 +10,7 @@ import {
 	type TaskListFilter,
 } from "../../../types/index.ts";
 import type { TaskEditArgs, TaskEditRequest } from "../../../types/task-edit-args.ts";
+import { formatAcceptanceCriteriaSummarySuffix } from "../../../ui/acceptance-criteria-progress.ts";
 import { formatDuplicateTaskIdWarning } from "../../../utils/duplicate-detection.ts";
 import {
 	createMilestoneFilterValueResolver,
@@ -107,8 +108,9 @@ export class TaskHandlers {
 		const projectIndicator = task.project ? `[${task.project}] ` : "";
 		const status = task.status || (task.source === "completed" ? "Done" : "");
 		const statusText = options.includeStatus && status ? ` (${status})` : "";
+		const acceptanceCriteria = formatAcceptanceCriteriaSummarySuffix(task);
 		const dueDate = task.dueDate ? ` (due ${formatUtcDateForDisplay(task.dueDate, { appendUtcLabel: true })})` : "";
-		return `  ${priorityIndicator}${typeIndicator}${projectIndicator}${task.id} - ${task.title}${statusText}${dueDate}`;
+		return `  ${priorityIndicator}${typeIndicator}${projectIndicator}${task.id} - ${task.title}${statusText}${acceptanceCriteria}${dueDate}`;
 	}
 
 	private async loadTaskOrThrow(id: string): Promise<Task> {

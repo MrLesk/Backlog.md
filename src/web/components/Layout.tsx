@@ -41,13 +41,12 @@ export default function Layout({
 				docs={docs}
 				decisions={decisions}
 				isLoading={isLoading}
-				loadingMessage={loadingMessage}
 				error={error}
 				onRetry={onRefreshData}
 				onRefreshData={onRefreshData}
 			/>
 			<div className="flex-1 flex flex-col min-h-0 min-w-0">
-				<Navigation projectName={projectName} />
+				<Navigation projectName={projectName} loadingMessage={loadingMessage} />
 				<DuplicateIdWarning plan={duplicateRepairPlan} onRepaired={onRefreshData} />
 				<main className="flex-1 min-h-0 min-w-0 overflow-y-auto overflow-x-hidden">
 					<Outlet context={{ tasks, docs, decisions, isLoading, onRefreshData }} />

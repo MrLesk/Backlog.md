@@ -6,8 +6,24 @@ const WIDE_PROGRESS_MIN_WIDTH = 40;
 const WIDE_PROGRESS_CELLS = 10;
 const COMPACT_PROGRESS_CELLS = 5;
 
+// Plain ASCII on purpose: blessed only guarantees glyph fallback for DEC Special
+// Graphics (box drawing), so Block Elements like U+2588/U+2591 render as blank
+// cells when the terminal font lacks them and as "?" without a UTF-8 locale.
+// ASCII stays below "~" and bypasses every charset translation.
+const FILLED_CELL = "#";
+const EMPTY_CELL = "-";
+
 function isInProgress(status: string): boolean {
 	return status.trim().toLowerCase() === "in progress";
+}
+
+/** Format a " (ac: checked/total)" suffix for plain and MCP task list lines; empty without criteria. */
+export function formatAcceptanceCriteriaSummarySuffix(task: Task): string {
+	const criteria = task.acceptanceCriteriaItems ?? [];
+	if (criteria.length === 0) return "";
+
+	const checked = criteria.filter((criterion) => criterion.checked).length;
+	return ` (ac: ${checked}/${criteria.length})`;
 }
 
 /** Format live acceptance-criteria completion for one-line TUI task summaries. */
@@ -19,5 +35,5 @@ export function formatAcceptanceCriteriaProgress(task: Task, availableWidth = Nu
 	const cells = availableWidth >= WIDE_PROGRESS_MIN_WIDTH ? WIDE_PROGRESS_CELLS : COMPACT_PROGRESS_CELLS;
 	const filled = Math.round((checked / criteria.length) * cells);
 
-	return `[${"█".repeat(filled)}${"░".repeat(cells - filled)}] ${checked}/${criteria.length}`;
+	return `[${FILLED_CELL.repeat(filled)}${EMPTY_CELL.repeat(cells - filled)}] ${checked}/${criteria.length}`;
 }

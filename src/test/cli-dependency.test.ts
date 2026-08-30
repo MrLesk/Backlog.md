@@ -188,6 +188,20 @@ describe("CLI dependency options", () => {
 		expect(result.stdout.toString()).toContain("--clear-deps");
 	});
 
+	it("accepts a completed task as a dependency at create and edit time", async () => {
+		await $`bun ${CLI_PATH} task create "Done predecessor" -s Done`.cwd(testDir).quiet();
+		await $`bun ${CLI_PATH} task complete 1`.cwd(testDir).quiet();
+
+		const created = await $`bun ${CLI_PATH} task create "Dependent task" --dep TASK-1`.cwd(testDir).quiet().nothrow();
+		expect(created.exitCode).toBe(0);
+		expect((await core.filesystem.loadTask("TASK-2"))?.dependencies).toEqual(["TASK-1"]);
+
+		await $`bun ${CLI_PATH} task create "Other target"`.cwd(testDir).quiet();
+		const edited = await $`bun ${CLI_PATH} task edit 2 --depends-on TASK-1,TASK-3`.cwd(testDir).quiet().nothrow();
+		expect(edited.exitCode).toBe(0);
+		expect((await core.filesystem.loadTask("TASK-2"))?.dependencies).toEqual(["TASK-1", "TASK-3"]);
+	});
+
 	it("rejects a dependency that does not exist", async () => {
 		const result = await $`bun ${CLI_PATH} task create "Dependent task" --dep TASK-999`.cwd(testDir).quiet().nothrow();
 

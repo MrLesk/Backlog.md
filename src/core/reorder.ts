@@ -48,6 +48,53 @@ export function calculateNewOrdinal(options: CalculateNewOrdinalOptions): Calcul
 	return { ordinal: candidate, requiresRebalance };
 }
 
+export interface CalculateBlockOrdinalsOptions {
+	previous?: Pick<Task, "id" | "ordinal"> | null;
+	next?: Pick<Task, "id" | "ordinal"> | null;
+	count: number;
+	defaultStep?: number;
+}
+
+export interface CalculateBlockOrdinalsResult {
+	ordinals: number[];
+	requiresRebalance: boolean;
+}
+
+/**
+ * Ordinals for a contiguous block of tasks landing between two neighbors. Generalizes
+ * {@link calculateNewOrdinal}: a count of 1 yields the same midpoint/step placement, and a gap too
+ * tight for the block reports `requiresRebalance` so the caller can renumber the column instead.
+ */
+export function calculateBlockOrdinals(options: CalculateBlockOrdinalsOptions): CalculateBlockOrdinalsResult {
+	const { previous, next, count, defaultStep = DEFAULT_ORDINAL_STEP } = options;
+	const prevOrdinal = previous?.ordinal;
+	const nextOrdinal = next?.ordinal;
+	const positions = Array.from({ length: count }, (_, index) => index + 1);
+
+	if (nextOrdinal === undefined) {
+		const base = prevOrdinal ?? 0;
+		const ordinals = positions.map((position) => base + defaultStep * position);
+		return { ordinals, requiresRebalance: !ordinals.every(Number.isFinite) };
+	}
+
+	const base = prevOrdinal ?? 0;
+	const gap = nextOrdinal - base;
+	if (gap <= EPSILON) {
+		return { ordinals: positions.map((position) => base + defaultStep * position), requiresRebalance: true };
+	}
+
+	const stepSize = gap / (count + 1);
+	const ordinals = positions.map((position) => base + stepSize * position);
+	const requiresRebalance = ordinals.some(
+		(ordinal) =>
+			!Number.isFinite(ordinal) ||
+			ordinal <= base + EPSILON ||
+			ordinal >= nextOrdinal - EPSILON ||
+			(prevOrdinal === undefined && ordinal <= 0),
+	);
+	return { ordinals, requiresRebalance };
+}
+
 export interface ResolveOrdinalConflictsOptions {
 	defaultStep?: number;
 	startOrdinal?: number;

@@ -170,6 +170,36 @@ describe("MCP task tools (MVP)", () => {
 		expect(editText).not.toContain("Dependencies: ");
 	});
 
+	it("shows acceptance criteria progress in task_list only for tasks with criteria", async () => {
+		await mcpServer.testInterface.callTool({
+			params: {
+				name: "task_create",
+				arguments: {
+					title: "Task with criteria",
+					acceptanceCriteria: ["First criterion", "Second criterion", "Third criterion"],
+				},
+			},
+		});
+		await mcpServer.testInterface.callTool({
+			params: {
+				name: "task_edit",
+				arguments: { id: "TASK-1", acceptanceCriteriaCheck: [1] },
+			},
+		});
+		await mcpServer.testInterface.callTool({
+			params: { name: "task_create", arguments: { title: "Task without criteria" } },
+		});
+
+		const listResult = await mcpServer.testInterface.callTool({
+			params: { name: "task_list", arguments: {} },
+		});
+
+		const listText = getText(listResult.content);
+		expect(listText).toContain("TASK-1 - Task with criteria (ac: 1/3)");
+		expect(listText).toContain("TASK-2 - Task without criteria");
+		expect(listText).not.toContain("Task without criteria (ac:");
+	});
+
 	it("creates, reports, edits, and clears dueDate", async () => {
 		const tools = await mcpServer.testInterface.listTools();
 		const toolByName = new Map(tools.tools.map((tool) => [tool.name, tool]));

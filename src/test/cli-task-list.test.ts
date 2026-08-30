@@ -137,6 +137,48 @@ describe("CLI Integration", () => {
 			expect(out).not.toContain("TASK-1");
 		});
 
+		it("should show acceptance criteria progress only for tasks with criteria", async () => {
+			const core = new Core(TEST_DIR);
+
+			await core.createTask(
+				{
+					id: "task-1",
+					title: "Task With Criteria",
+					status: "To Do",
+					assignee: [],
+					createdDate: "2025-06-08",
+					labels: [],
+					dependencies: [],
+					rawContent: "Task with acceptance criteria",
+					acceptanceCriteriaItems: [
+						{ index: 1, text: "First criterion", checked: true },
+						{ index: 2, text: "Second criterion", checked: false },
+						{ index: 3, text: "Third criterion", checked: false },
+					],
+				},
+				false,
+			);
+			await core.createTask(
+				{
+					id: "task-2",
+					title: "Task Without Criteria",
+					status: "To Do",
+					assignee: [],
+					createdDate: "2025-06-08",
+					labels: [],
+					dependencies: [],
+					rawContent: "Task without acceptance criteria",
+				},
+				false,
+			);
+
+			const result = await $`bun ${CLI_PATH} task list --plain`.cwd(TEST_DIR).quiet();
+			const out = result.stdout.toString();
+			expect(out).toContain("TASK-1 - Task With Criteria (ac: 1/3)");
+			expect(out).toContain("TASK-2 - Task Without Criteria");
+			expect(out).not.toContain("Task Without Criteria (ac:");
+		});
+
 		it("should filter tasks by status case-insensitively", async () => {
 			const core = new Core(TEST_DIR);
 

@@ -13,6 +13,7 @@ import {
 import { type GitBranchTip, type GitIndexEntry, GitOperations } from "../git/operations.ts";
 import { parseFrontmatter } from "../markdown/frontmatter.ts";
 import { parseTask } from "../markdown/parser.ts";
+import { assertSectionInputHasNoMarkerLines } from "../markdown/structured-sections.ts";
 import {
 	type AcceptanceCriterion,
 	type BacklogConfig,
@@ -91,6 +92,7 @@ import {
 	taskIdsEqual,
 } from "../utils/task-path.ts";
 import { applyTaskFilters, createTaskSearchIndex } from "../utils/task-search.ts";
+import { sortByOrdinal } from "../utils/task-sorting.ts";
 import { attachSubtaskSummaries } from "../utils/task-subtasks.ts";
 import { formatValidTaskTypeValues, resolveTaskTypeValue } from "../utils/task-type-config.ts";
 import { upsertTaskUpdatedDate } from "../utils/task-updated-date.ts";
@@ -105,7 +107,12 @@ import {
 	previewDuplicateTaskIdRepair,
 } from "./duplicate-task-repair.ts";
 import { migrateDraftPrefixes, needsDraftPrefixMigration } from "./prefix-migration.ts";
-import { calculateNewOrdinal, DEFAULT_ORDINAL_STEP, resolveOrdinalConflicts } from "./reorder.ts";
+import {
+	calculateBlockOrdinals,
+	calculateNewOrdinal,
+	DEFAULT_ORDINAL_STEP,
+	resolveOrdinalConflicts,
+} from "./reorder.ts";
 import { SearchService } from "./search-service.ts";
 import { TaskIdentityIndex, type TaskIdentityRecord } from "./task-identity-index.ts";
 import {
@@ -269,6 +276,54 @@ function formatMissingDependenciesError(invalid: string[]): Error {
 	return new Error(
 		`The following dependencies do not exist: ${invalid.join(", ")}. Please create these tasks first or verify the IDs. ${LOCAL_TASK_LOOKUP_HINT}`,
 	);
+}
+
+/**
+ * A board move rewrites the task file, so a task that belongs to another branch can only be moved
+ * from that branch. Returns the reason to report, or null when the task is local and writable.
+ */
+function crossBranchMoveReason(task: Task, verb: "reordered" | "moved"): string | null {
+	if (!task.branch) return null;
+	return `Task ${task.id} exists in branch "${task.branch}" and cannot be ${verb} from the current branch. Switch to that branch to modify it.`;
+}
+
+/**
+ * Normalize the milestone a board move targets. A named lane stores its trimmed name, while the
+ * board's no-milestone lane arrives as null or a blank string and clears the field.
+ */
+function normalizeTargetMilestone(targetMilestone: string | null | undefined): string | undefined {
+	if (typeof targetMilestone !== "string") return undefined;
+	const trimmed = targetMilestone.trim();
+	return trimmed.length > 0 ? trimmed : undefined;
+}
+
+/**
+ * Structured-section input that contains its own sentinel marker as a whole
+ * line is rejected before any write: wrapping it would nest markers and hide
+ * the stored content from every reader (GitHub issue #932).
+ */
+function assertSectionInputsSafe(input: {
+	description?: string;
+	implementationPlan?: string;
+	implementationNotes?: string;
+	finalSummary?: string;
+	appendImplementationPlan?: string[];
+	appendImplementationNotes?: string[];
+	appendFinalSummary?: string[];
+}): void {
+	assertSectionInputHasNoMarkerLines(input.description, "description");
+	assertSectionInputHasNoMarkerLines(input.implementationPlan, "implementationPlan");
+	assertSectionInputHasNoMarkerLines(input.implementationNotes, "implementationNotes");
+	assertSectionInputHasNoMarkerLines(input.finalSummary, "finalSummary");
+	for (const value of input.appendImplementationPlan ?? []) {
+		assertSectionInputHasNoMarkerLines(value, "implementationPlan");
+	}
+	for (const value of input.appendImplementationNotes ?? []) {
+		assertSectionInputHasNoMarkerLines(value, "implementationNotes");
+	}
+	for (const value of input.appendFinalSummary ?? []) {
+		assertSectionInputHasNoMarkerLines(value, "finalSummary");
+	}
 }
 
 export class Core {
@@ -1563,6 +1618,7 @@ export class Core {
 		if (!input.title || input.title.trim().length === 0) {
 			throw new Error("Title is required to create a task.");
 		}
+		assertSectionInputsSafe(input);
 
 		// Determine if this is a draft BEFORE generating the ID
 		const requestedStatus = input.status?.trim();
@@ -1785,6 +1841,7 @@ export class Core {
 		input: TaskUpdateInput,
 		statusResolver: (status: string) => Promise<string>,
 	): Promise<{ task: Task; mutated: boolean }> {
+		assertSectionInputsSafe(input);
 		let mutated = false;
 
 		const applyStringField = (
@@ -2679,6 +2736,49 @@ export class Core {
 		}
 	}
 
+	/**
+	 * Resolve the task ids of a board move against a freshly refreshed content store.
+	 *
+	 * Ids are trimmed and de-duplicated by normalized identity while keeping the caller's spelling so
+	 * messages echo what was asked for. An identity that matches more than one file fails closed with
+	 * the ambiguity error instead of picking a winner. An id the store does not know comes back as
+	 * `task: null` with no error, because a gap means different things to different callers.
+	 *
+	 * The failure semantics stay with the callers on purpose: {@link reorderTask} raises the first
+	 * problem and writes all or nothing, while {@link moveTasksToStatus} reports problems per task and
+	 * moves the tasks that did resolve.
+	 */
+	private async resolveTasksForBoardMove(taskIds: readonly string[]): Promise<{
+		store: ContentStore;
+		resolutions: Array<{ taskId: string; task: Task | null; ambiguity: AmbiguousTaskIdError | null }>;
+	}> {
+		const requestedIds: string[] = [];
+		const seen = new Set<string>();
+		for (const rawId of taskIds) {
+			const trimmed = String(rawId || "").trim();
+			if (!trimmed) continue;
+			// Canonical identity collapses cosmetic spellings such as leading zeros, so TASK-1 and
+			// TASK-01 cannot both survive and write the same task twice.
+			const key = canonicalTaskId(trimmed);
+			if (seen.has(key)) continue;
+			seen.add(key);
+			requestedIds.push(trimmed);
+		}
+
+		const store = await this.getContentStore();
+		await store.refreshTasks();
+
+		const resolutions = requestedIds.map((taskId) => {
+			const resolution = store.resolveTaskForMutation(normalizeTaskId(taskId));
+			if (resolution.status === "ambiguous") {
+				return { taskId, task: null, ambiguity: new AmbiguousTaskIdError(taskId, resolution.candidates) };
+			}
+			return { taskId, task: resolution.status === "found" ? resolution.task : null, ambiguity: null };
+		});
+
+		return { store, resolutions };
+	}
+
 	async reorderTask(params: {
 		taskId: string;
 		targetStatus: string;
@@ -2700,6 +2800,8 @@ export class Core {
 			throw new Error("orderedTaskIds must include the task being moved");
 		}
 
+		// A repeated id means the caller sent a corrupt ordering, so reject it rather than let the
+		// shared resolver quietly drop it and reorder the column into an order nobody asked for.
 		const seen = new Set<string>();
 		for (const id of orderedTaskIds) {
 			if (seen.has(id)) {
@@ -2708,16 +2810,13 @@ export class Core {
 			seen.add(id);
 		}
 
-		const store = await this.getContentStore();
-		await store.refreshTasks();
-		const loadedTasks = orderedTaskIds.map((id) => {
-			const resolution = store.resolveTaskForMutation(id);
-			if (resolution.status === "ambiguous") throw new AmbiguousTaskIdError(id, resolution.candidates);
-			return resolution.status === "found" ? resolution.task : null;
-		});
+		const { resolutions } = await this.resolveTasksForBoardMove(orderedTaskIds);
+		for (const resolution of resolutions) {
+			if (resolution.ambiguity) throw resolution.ambiguity;
+		}
 
-		// Filter out any tasks that couldn't be loaded (may have been moved/deleted)
-		const validTasks = loadedTasks.filter((t): t is Task => t !== null);
+		// Tasks that couldn't be loaded (may have been moved/deleted) drop out of the ordering
+		const validTasks = resolutions.map((resolution) => resolution.task).filter((t): t is Task => t !== null);
 
 		// Verify the moved task itself exists
 		const movedTask = validTasks.find((t) => t.id === taskId);
@@ -2726,19 +2825,13 @@ export class Core {
 		}
 
 		// Reject reordering tasks from other branches - they can only be modified in their source branch
-		if (movedTask.branch) {
-			throw new Error(
-				`Task ${taskId} exists in branch "${movedTask.branch}" and cannot be reordered from the current branch. Switch to that branch to modify it.`,
-			);
+		const crossBranchReason = crossBranchMoveReason(movedTask, "reordered");
+		if (crossBranchReason) {
+			throw new Error(crossBranchReason);
 		}
 
 		const hasTargetMilestone = params.targetMilestone !== undefined;
-		const normalizedTargetMilestone =
-			params.targetMilestone === null
-				? undefined
-				: typeof params.targetMilestone === "string" && params.targetMilestone.trim().length > 0
-					? params.targetMilestone.trim()
-					: undefined;
+		const normalizedTargetMilestone = normalizeTargetMilestone(params.targetMilestone);
 
 		// Calculate target index within the valid tasks list
 		const validOrderedIds = orderedTaskIds.filter((id) => validTasks.some((t) => t.id === id));
@@ -2800,6 +2893,227 @@ export class Core {
 
 		const updatedTask = updatesMap.get(taskId) ?? updatedMoved;
 		return { updatedTask, changedTasks };
+	}
+
+	/**
+	 * Move a set of tasks into a status column, reporting problems per task instead of aborting the
+	 * batch. Without `orderedTaskIds` the moved tasks append to the end of the column. With it, the
+	 * caller names the column's final order and the moved tasks land exactly there, seeded with
+	 * block ordinals the way {@link reorderTask} places a single task.
+	 */
+	async moveTasksToStatus(params: {
+		taskIds: string[];
+		targetStatus: string;
+		orderedTaskIds?: string[];
+		targetMilestone?: string | null;
+		commitMessage?: string;
+		autoCommit?: boolean;
+		defaultStep?: number;
+	}): Promise<{ movedTasks: Task[]; changedTasks: Task[]; failures: Array<{ taskId: string; reason: string }> }> {
+		const targetStatus = String(params.targetStatus || "").trim();
+		if (!targetStatus) throw new Error("targetStatus is required");
+		const defaultStep = params.defaultStep ?? DEFAULT_ORDINAL_STEP;
+
+		const { store, resolutions } = await this.resolveTasksForBoardMove(params.taskIds);
+		if (resolutions.length === 0) throw new Error("taskIds must include at least one task");
+
+		const failures: Array<{ taskId: string; reason: string }> = [];
+		const tasksToMove: Task[] = [];
+		for (const { taskId, task, ambiguity } of resolutions) {
+			if (ambiguity) {
+				failures.push({ taskId, reason: ambiguity.message });
+				continue;
+			}
+			if (!task) {
+				failures.push({ taskId, reason: `Task ${taskId} not found.` });
+				continue;
+			}
+			const crossBranchReason = crossBranchMoveReason(task, "moved");
+			if (crossBranchReason) {
+				failures.push({ taskId, reason: crossBranchReason });
+				continue;
+			}
+			tasksToMove.push(task);
+		}
+
+		if (tasksToMove.length === 0) {
+			return { movedTasks: [], changedTasks: [], failures };
+		}
+
+		// A drop into a milestone lane means the lane as much as the column, so the batch carries the
+		// same milestone semantics as a single-task reorder: the field is only touched when the caller
+		// names a lane, and the board's no-milestone lane clears it.
+		const hasTargetMilestone = params.targetMilestone !== undefined;
+		const normalizedTargetMilestone = normalizeTargetMilestone(params.targetMilestone);
+
+		const movedIds = new Set(tasksToMove.map((task) => task.id));
+		const applyMove = (task: Task): Task => ({
+			...task,
+			status: targetStatus,
+			...(hasTargetMilestone ? { milestone: normalizedTargetMilestone } : {}),
+		});
+
+		let movedTasks: Task[];
+		let changedTasks: Task[];
+
+		if (params.orderedTaskIds) {
+			// The caller names the target column's final order, so the moved tasks land exactly where
+			// the board previewed them instead of appending to the end.
+			const seenOrdered = new Set<string>();
+			for (const id of params.orderedTaskIds) {
+				const key = canonicalTaskId(id);
+				if (seenOrdered.has(key)) throw new Error(`Duplicate task ID in orderedTaskIds: ${id}`);
+				seenOrdered.add(key);
+			}
+			for (const task of tasksToMove) {
+				if (!seenOrdered.has(canonicalTaskId(task.id))) {
+					throw new Error("orderedTaskIds must include every task being moved");
+				}
+			}
+
+			const movedByKey = new Map(tasksToMove.map((task) => [canonicalTaskId(task.id), task]));
+			// A task that failed to resolve is not moving, so it keeps its place and stays out of the
+			// target column's ordering.
+			const failedKeys = new Set(failures.map((failure) => canonicalTaskId(failure.taskId)));
+			const rows: Array<{ task: Task; moved: boolean }> = [];
+			for (const id of params.orderedTaskIds) {
+				const key = canonicalTaskId(id);
+				if (failedKeys.has(key)) continue;
+				const movedTask = movedByKey.get(key);
+				if (movedTask) {
+					rows.push({ task: movedTask, moved: true });
+					continue;
+				}
+				const resolution = store.resolveTaskForMutation(key);
+				if (resolution.status === "ambiguous") throw new AmbiguousTaskIdError(id, resolution.candidates);
+				// Tasks that couldn't be loaded (may have been moved/deleted) drop out of the ordering
+				if (resolution.status === "found") rows.push({ task: resolution.task, moved: false });
+			}
+
+			// Seed each run of moved tasks with block ordinals between its unmoved neighbors, exactly
+			// as a single-task reorder seeds its midpoint, then let conflict resolution settle the rest.
+			let requiresRebalance = false;
+			const tasksInOrder: Task[] = [];
+			for (let index = 0; index < rows.length; ) {
+				const row = rows[index];
+				if (!row) break;
+				if (!row.moved) {
+					tasksInOrder.push(row.task);
+					index += 1;
+					continue;
+				}
+				let runEnd = index;
+				while (runEnd < rows.length && rows[runEnd]?.moved) runEnd += 1;
+				const block = calculateBlockOrdinals({
+					previous: index > 0 ? (rows[index - 1]?.task ?? null) : null,
+					next: rows[runEnd]?.task ?? null,
+					count: runEnd - index,
+					defaultStep,
+				});
+				requiresRebalance = requiresRebalance || block.requiresRebalance;
+				for (let offset = index; offset < runEnd; offset += 1) {
+					const movedRow = rows[offset];
+					if (!movedRow) continue;
+					tasksInOrder.push({ ...applyMove(movedRow.task), ordinal: block.ordinals[offset - index] });
+				}
+				index = runEnd;
+			}
+
+			const resolutionUpdates = resolveOrdinalConflicts(tasksInOrder, {
+				defaultStep,
+				startOrdinal: defaultStep,
+				forceSequential: requiresRebalance,
+			});
+			const updatesMap = new Map(tasksInOrder.map((task) => [task.id, task]));
+			for (const update of resolutionUpdates) {
+				updatesMap.set(update.id, update);
+			}
+
+			const originalMap = new Map([
+				...rows.map(({ task }) => [task.id, task] as const),
+				...tasksToMove.map((task) => [task.id, task] as const),
+			]);
+			movedTasks = tasksToMove.map((task) => updatesMap.get(task.id) ?? applyMove(task));
+			changedTasks = Array.from(updatesMap.values()).filter((task) => {
+				const original = originalMap.get(task.id);
+				if (!original) return true;
+				return (
+					(original.status ?? "") !== (task.status ?? "") ||
+					(original.ordinal ?? null) !== (task.ordinal ?? null) ||
+					(original.milestone ?? "") !== (task.milestone ?? "")
+				);
+			});
+		} else {
+			// A task already in the target column is not moving, so it keeps its place and ordinal;
+			// only a named lane still applies to it. Everything else appends after the column as
+			// rendered.
+			const stayingIds = new Set(tasksToMove.filter((task) => task.status === targetStatus).map((task) => task.id));
+			const arriving = tasksToMove.filter((task) => !stayingIds.has(task.id));
+
+			if (arriving.length === 0) {
+				movedTasks = tasksToMove.map((task) => applyMove(task));
+				changedTasks = movedTasks.filter((task, index) => {
+					const original = tasksToMove[index];
+					if (!original) return true;
+					return original.status !== task.status || (original.milestone ?? "") !== (task.milestone ?? "");
+				});
+			} else {
+				// Ordinal-less column tasks render after ordinal-bearing ones, so they get materialized
+				// ordinals rather than letting the appended tasks slot in above them, and a non-finite
+				// ordinal from a corrupt file counts as missing instead of poisoning the column.
+				// A named lane scopes the ordering to that lane: a drop into Milestone A must not
+				// renumber cards that only share the status in other lanes. Staying tasks remain in
+				// scope regardless, because a named lane still has to be applied to them.
+				const sanitizeOrdinal = (task: Task): Task =>
+					task.ordinal === undefined || Number.isFinite(task.ordinal) ? task : { ...task, ordinal: undefined };
+				const inTargetLane = (task: Task): boolean =>
+					!hasTargetMilestone || (task.milestone?.trim() || "") === (normalizedTargetMilestone ?? "");
+				const columnTasks = sortByOrdinal(
+					store
+						.getTasks({ status: targetStatus })
+						.filter((task) => (stayingIds.has(task.id) ? true : !movedIds.has(task.id) && inTargetLane(task)))
+						.map(sanitizeOrdinal),
+				);
+				const tasksInOrder: Task[] = [
+					...columnTasks.map((task) => (stayingIds.has(task.id) ? applyMove(task) : task)),
+					...arriving.map((task) => ({ ...applyMove(task), ordinal: undefined })),
+				];
+				const resolutionUpdates = resolveOrdinalConflicts(tasksInOrder, { defaultStep, startOrdinal: defaultStep });
+				const updatesMap = new Map(tasksInOrder.map((task) => [task.id, task]));
+				for (const update of resolutionUpdates) {
+					updatesMap.set(update.id, update);
+				}
+
+				const originalMap = new Map([
+					...store.getTasks({ status: targetStatus }).map((task) => [task.id, task] as const),
+					...tasksToMove.map((task) => [task.id, task] as const),
+				]);
+				movedTasks = tasksToMove.map((task) => updatesMap.get(task.id) ?? applyMove(task));
+				changedTasks = Array.from(updatesMap.values()).filter((task) => {
+					const original = originalMap.get(task.id);
+					if (!original) return true;
+					return (
+						(original.status ?? "") !== (task.status ?? "") ||
+						(original.ordinal ?? null) !== (task.ordinal ?? null) ||
+						(original.milestone ?? "") !== (task.milestone ?? "")
+					);
+				});
+			}
+		}
+
+		// A cross-branch card can constrain the ordering, but writing it here would create a local
+		// copy of a task the board treats as read-only. It keeps its file untouched on its own branch.
+		changedTasks = changedTasks.filter((task) => !task.branch);
+
+		if (changedTasks.length > 0) {
+			await this.updateTasksBulk(
+				changedTasks,
+				params.commitMessage ?? `Move ${changedTasks.length} tasks to ${targetStatus}`,
+				params.autoCommit,
+			);
+		}
+
+		return { movedTasks, changedTasks, failures };
 	}
 
 	async archiveTask(taskId: string, autoCommit?: boolean, options: TaskReadOptions = {}): Promise<boolean> {

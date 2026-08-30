@@ -37,6 +37,11 @@ function resolveUniqueDependency(dependency: string, matches: Task[]): string | 
 /**
  * Validate that all dependencies exist in the working copy.
  *
+ * The corpus spans working-copy tasks, drafts, completed, and archived records: Done is the normal
+ * end state of a predecessor, so a task whose target moved to completed/ or the archive must keep a
+ * valid, editable dependency list. Only validation resolves these targets; readiness and graph
+ * semantics are unchanged.
+ *
  * Inputs are matched by task identity, so bare numeric IDs resolve under any configured prefix, and
  * identity fails closed exactly as it does for the task a command targets. That takes two checks,
  * mirroring the identity index itself: the corpus answers whether the input names more than one
@@ -58,11 +63,13 @@ export async function validateDependencies(
 	if (dependencies.length === 0) {
 		return { valid, invalid };
 	}
-	const [tasks, drafts] = await Promise.all([
+	const [tasks, drafts, completed, archived] = await Promise.all([
 		core.queryTasks({ includeCrossBranch: false }),
 		core.filesystem.listDrafts(),
+		core.filesystem.listCompletedTasks(),
+		core.filesystem.listArchivedTasks(),
 	]);
-	const known = [...tasks, ...drafts];
+	const known = [...tasks, ...drafts, ...completed, ...archived];
 	for (const dependency of dependencies) {
 		const resolved = resolveUniqueDependency(
 			dependency,
@@ -73,7 +80,8 @@ export async function validateDependencies(
 			continue;
 		}
 		// Called for its ambiguity check: it raises AmbiguousTaskIdError when several working-copy
-		// files claim this ID. Drafts resolve to null here and keep their own local-only lookup.
+		// files (active or completed) claim this ID. Drafts and archived tasks resolve to null here
+		// and rely on the corpus check above.
 		await core.loadTaskById(resolved, { includeCrossBranch: false });
 		// Equivalent spellings of one task (1 and BACK-1) must not persist twice.
 		if (!valid.some((existing) => taskIdsEqual(existing, resolved))) {

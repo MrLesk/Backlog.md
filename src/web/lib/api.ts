@@ -22,6 +22,19 @@ export interface ReorderTaskPayload {
 	targetMilestone?: string | null;
 }
 
+export interface MoveTasksPayload {
+	taskIds: string[];
+	targetStatus: string;
+	targetMilestone?: string | null;
+}
+
+export interface MoveTasksResult {
+	success: boolean;
+	tasks: Task[];
+	changedTasks: Task[];
+	failures: Array<{ taskId: string; reason: string }>;
+}
+
 export type TaskUpdateRequest = Omit<Partial<Task>, "milestone" | "dueDate" | "project"> & {
 	milestone?: string | null;
 	dueDate?: string | null;
@@ -298,6 +311,13 @@ export class ApiClient {
 
 	async reorderTask(payload: ReorderTaskPayload): Promise<{ success: boolean; task: Task; changedTasks: Task[] }> {
 		return this.fetchJson<{ success: boolean; task: Task; changedTasks: Task[] }>(`${API_BASE}/tasks/reorder`, {
+			method: "POST",
+			body: JSON.stringify(payload),
+		});
+	}
+
+	async moveTasks(payload: MoveTasksPayload): Promise<MoveTasksResult> {
+		return this.fetchJson<MoveTasksResult>(`${API_BASE}/tasks/move`, {
 			method: "POST",
 			body: JSON.stringify(payload),
 		});

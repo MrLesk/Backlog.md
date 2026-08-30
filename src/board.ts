@@ -124,9 +124,9 @@ Project: ${projectName}
 			}
 		}
 
-		// Build final list with subtasks nested under parents
+		// Build final list depth-first so subtasks of subtasks stay under their parent
 		const result: Task[] = [];
-		for (const t of top) {
+		const pushWithChildren = (t: Task) => {
 			result.push(t);
 			const subs = children.get(t.id) || [];
 			subs.sort((a, b) => {
@@ -134,7 +134,12 @@ Project: ${projectName}
 				const idB = Number.parseInt(b.id.replace("task-", ""), 10);
 				return idA - idB; // Subtasks in ascending order
 			});
-			result.push(...subs);
+			for (const sub of subs) {
+				pushWithChildren(sub);
+			}
+		};
+		for (const t of top) {
+			pushWithChildren(t);
 		}
 
 		return result;

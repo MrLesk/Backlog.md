@@ -4,7 +4,7 @@ title: Add `backlog task dependencies` command with TUI and plain graph views
 status: To Do
 assignee: []
 created_date: '2026-08-29 17:53'
-updated_date: '2026-08-29 17:57'
+updated_date: '2026-08-30 12:44'
 labels:
   - cli
   - tui
@@ -34,6 +34,7 @@ Visual direction (maintainer-suggested, not binding): borrow the ASCII visual la
 - [ ] #4 Missing references, ambiguous identities, and cycles are rendered explicitly and fail closed; the view never invents edges or reports unresolved relationships as resolved
 - [ ] #5 CLI help and shipped agent instructions document the command, its flags, and edge-direction semantics
 - [ ] #6 Automated tests cover chains, branches, diamonds, cycles, and unresolved IDs across TUI snapshot or render checks, plain, json, and MCP outputs
+- [ ] #7 Tasks shown in the TUI graph are mouse-clickable: clicking one switches the view to that task, alongside the keyboard navigation
 <!-- AC:END -->
 
 ## Definition of Done
