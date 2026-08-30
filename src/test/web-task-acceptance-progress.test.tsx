@@ -76,6 +76,26 @@ const renderList = (task: Task): HTMLElement => {
 const getProgress = (container: HTMLElement): HTMLElement | null =>
 	container.querySelector("[data-acceptance-criteria-progress]");
 
+const RING_CIRCUMFERENCE = 2 * Math.PI * 5;
+
+const expectRing = (progress: HTMLElement | null, checked: number, total: number) => {
+	const svg = progress?.querySelector("svg");
+	expect(svg).toBeTruthy();
+	const circles = svg?.querySelectorAll("circle");
+	if (checked === 0) {
+		expect(circles?.length).toBe(1);
+	} else {
+		expect(circles?.length).toBe(2);
+		expect(circles?.[1]?.getAttribute("stroke-dasharray")).toBe(
+			`${(checked / total) * RING_CIRCUMFERENCE} ${RING_CIRCUMFERENCE}`,
+		);
+	}
+	expect(progress?.textContent).toBe(`${checked}/${total}`);
+	expect(progress?.textContent).not.toContain("█");
+	expect(progress?.textContent).not.toContain("░");
+	expect(progress?.textContent).not.toContain("[");
+};
+
 afterEach(() => {
 	if (activeRoot) {
 		act(() => {
@@ -88,16 +108,24 @@ afterEach(() => {
 });
 
 describe("browser task acceptance criteria progress", () => {
-	it("renders partial progress with five cells on a board card", () => {
+	it("renders a partial progress ring at card density on a board card", () => {
 		const container = renderCard(createTask({ acceptanceCriteriaItems: createCriteria(4, 7) }));
 		const progress = getProgress(container);
 
 		expect(progress).toBeTruthy();
-		expect(progress?.dataset.cellCount).toBe("5");
-		expect(progress?.children[0]?.textContent).toBe("[███░░]");
-		expect(progress?.children[1]?.textContent).toBe("4/7");
+		expect(progress?.dataset.density).toBe("card");
+		expect(progress?.querySelector("svg")?.getAttribute("class")).toContain("h-3 w-3");
+		expectRing(progress, 4, 7);
 		expect(progress?.textContent).not.toContain("%");
 		expect(progress?.textContent).not.toContain("Acceptance criteria");
+	});
+
+	it("renders only the ring track when no criteria are checked", () => {
+		const container = renderCard(createTask({ acceptanceCriteriaItems: createCriteria(0, 4) }));
+		const progress = getProgress(container);
+
+		expect(progress).toBeTruthy();
+		expectRing(progress, 0, 4);
 	});
 
 	it("includes card progress in the accessible name", () => {
@@ -113,14 +141,14 @@ describe("browser task acceptance criteria progress", () => {
 		expect(getProgress(container)).toBeNull();
 	});
 
-	it("renders ten-cell partial progress in the wide list summary", () => {
+	it("renders a partial progress ring at list density in the wide list summary", () => {
 		const container = renderList(createTask({ acceptanceCriteriaItems: createCriteria(4, 7) }));
 		const progress = getProgress(container);
 
 		expect(progress).toBeTruthy();
-		expect(progress?.dataset.cellCount).toBe("10");
-		expect(progress?.children[0]?.textContent).toBe("[██████░░░░]");
-		expect(progress?.children[1]?.textContent).toBe("4/7");
+		expect(progress?.dataset.density).toBe("list");
+		expect(progress?.querySelector("svg")?.getAttribute("class")).toContain("h-3.5 w-3.5");
+		expectRing(progress, 4, 7);
 	});
 
 	it("keeps an all-checked task visibly In Progress in the wide list summary", () => {
@@ -129,17 +157,15 @@ describe("browser task acceptance criteria progress", () => {
 		const statusCell = container.querySelector("tbody tr td:nth-child(3)");
 
 		expect(progress).toBeTruthy();
-		expect(progress?.dataset.cellCount).toBe("10");
-		expect(progress?.children[0]?.textContent).toBe("[██████████]");
-		expect(progress?.children[1]?.textContent).toBe("3/3");
+		expect(progress?.dataset.density).toBe("list");
+		expectRing(progress, 3, 3);
 		expect(progress?.className).toContain("text-blue-600");
 		expect(statusCell?.textContent?.trim()).toBe("In Progress");
 	});
 
 	it("derives progress again when the task criteria change", () => {
 		const container = renderCard(createTask({ acceptanceCriteriaItems: createCriteria(2, 5) }));
-		expect(getProgress(container)?.children[0]?.textContent).toBe("[██░░░]");
-		expect(getProgress(container)?.children[1]?.textContent).toBe("2/5");
+		expectRing(getProgress(container), 2, 5);
 
 		act(() => {
 			activeRoot?.render(
@@ -151,7 +177,6 @@ describe("browser task acceptance criteria progress", () => {
 			);
 		});
 
-		expect(getProgress(container)?.children[0]?.textContent).toBe("[████░]");
-		expect(getProgress(container)?.children[1]?.textContent).toBe("4/5");
+		expectRing(getProgress(container), 4, 5);
 	});
 });

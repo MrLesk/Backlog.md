@@ -910,7 +910,7 @@ const TaskList: React.FC<TaskListProps> = ({
 														</span>
 													)}
 												</div>
-												<AcceptanceCriteriaProgress task={task} cells={10} className="mt-1" />
+												<AcceptanceCriteriaProgress task={task} density="list" className="mt-1" />
 												{task.dueDate && (
 													<div className="mt-1 text-xs text-gray-500 dark:text-gray-400 whitespace-nowrap">
 														Due (UTC): {formatStoredUtcDateForDisplay(task.dueDate, dateFormat)}
