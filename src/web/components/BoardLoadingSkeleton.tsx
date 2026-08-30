@@ -18,16 +18,11 @@ export function BoardLoadingSkeleton({ message, columnCount }: BoardLoadingSkele
 				<div className="flex flex-row flex-nowrap gap-4 w-full">
 					{Array.from({ length: columns }, (_, column) => (
 						<div key={column} className="flex-1 min-w-[16rem]">
-							<div className="rounded-lg p-4 min-h-96 bg-white border border-gray-200 shadow-sm dark:bg-gray-800 dark:border-gray-700 transition-colors duration-200">
-								<div className="mb-4 h-5 w-24 animate-pulse rounded-md bg-gray-100 motion-reduce:animate-none dark:bg-gray-700/50" />
-								<div className="space-y-3">
-									{[0, 1, 2].map((card) => (
-										<div
-											key={card}
-											className="h-20 animate-pulse rounded-lg bg-gray-100 motion-reduce:animate-none dark:bg-gray-700/50"
-										/>
-									))}
-								</div>
+							{/* min-h-24 is the floor every real column has (TaskColumn), so the board
+							    only ever grows from here - it never contracts, even on empty projects. */}
+							<div className="rounded-lg p-4 min-h-24 bg-white border border-gray-200 shadow-sm dark:bg-gray-800 dark:border-gray-700 transition-colors duration-200">
+								<div className="mb-3 h-4 w-24 animate-pulse rounded-md bg-gray-100 motion-reduce:animate-none dark:bg-gray-700/50" />
+								<div className="h-8 animate-pulse rounded-lg bg-gray-100 motion-reduce:animate-none dark:bg-gray-700/50" />
 							</div>
 						</div>
 					))}

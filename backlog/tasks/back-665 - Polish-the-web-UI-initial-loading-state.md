@@ -5,7 +5,7 @@ status: In Progress
 assignee:
   - '@claude'
 created_date: '2026-08-30 21:48'
-updated_date: '2026-08-30 22:15'
+updated_date: '2026-08-30 22:20'
 labels:
   - web
   - enhancement
@@ -53,4 +53,6 @@ Root cause found: rounded-full is deliberately excluded from the compiled Tailwi
 AC2 verification probe: exercising the live tasks-updated broadcast.
 
 AC1 evidence: browser verification on the dev server, light and dark - skeleton shows ghost columns matching real board geometry plus a compact circular ring (rounded-circle; the dead rounded-full class is gone from the loading path); loaded columns replace ghosts in place. AC2 evidence: live probe - after first load, two tasks-updated WebSocket broadcasts (triggered by CLI edits) refreshed the app with no [aria-label='Loading tasks'] element ever mounting and the board staying visible. AC3: jsdom tests pass; maintainer visual pass pending, so AC3 stays unchecked and the task stays In Progress.
+
+Review fix (Codex, PR #977): BoardLoadingSkeleton now takes columnCount and Board passes statuses.length once fetchStatuses has populated, so boards with two or four-plus statuses mount without a column-count/width jump; 3 stays as the pre-config fallback. jsdom tests extended for 5, 2, and 0 (fallback) statuses - 5 pass. Pushed fast-forward as bd1be48a.
 <!-- SECTION:NOTES:END -->

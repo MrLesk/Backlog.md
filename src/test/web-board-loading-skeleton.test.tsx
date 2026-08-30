@@ -85,6 +85,17 @@ describe("BoardLoadingSkeleton", () => {
 		expect(ghosts?.querySelectorAll(".animate-pulse").length).toBeGreaterThan(0);
 	});
 
+	it("keeps ghost columns at the real column floor height so the board never contracts", () => {
+		const container = setupDom();
+		renderSkeleton(container, null);
+
+		// Every real column has at least min-h-24 (TaskColumn's empty floor); taller
+		// ghosts would contract to 6rem on an empty project when loading completes.
+		const ghosts = container.querySelector('[aria-hidden="true"].overflow-x-auto');
+		expect(ghosts?.querySelectorAll(".min-h-24").length).toBe(3);
+		expect(container.innerHTML).not.toContain("min-h-96");
+	});
+
 	it("matches the configured status count so the real board mounts without a column jump", () => {
 		const container = setupDom();
 		renderSkeleton(container, null, 5);
