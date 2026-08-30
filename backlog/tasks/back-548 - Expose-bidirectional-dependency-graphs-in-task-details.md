@@ -5,7 +5,7 @@ status: In Progress
 assignee:
   - '@claude'
 created_date: '2026-07-16 21:38'
-updated_date: '2026-08-30 12:20'
+updated_date: '2026-08-30 12:37'
 labels:
   - cli
   - tui
@@ -96,4 +96,14 @@ Ordering: the dependency graph now sits below the Definition of Done on all thre
 Navigation: reproduced and attributed rather than assumed. Board and task-list clicks are correct and untouched by this branch, and a board card opens at /board/<id>/<slug> without leaving the board. The defect is in task links inside the modal, which hardcode /tasks/<id> and so switch the reader from the Kanban Board to the All Tasks page. origin/main already ships that exact line in DependencyInput.tsx for the sidebar dependency chips, so the root cause predates this branch and is left for a separate task. This branch no longer adds new instances: the graph links build their href from the page the reader is already on, mirroring handleEditTask base-path logic. Verified live that a graph link from /board/TASK-12/selected now goes to /board/TASK-3/formatter-update and that a deep link to /tasks/TASK-3 still resolves; a jsdom test pins both.
 
 Validation: bunx tsc --noEmit passed, bun run check . passed, bun test 2612 pass / 7 skip / 3 fail where the 3 are the pre-existing blessed emoji-width tests. One CI job (lint-and-unit-test on ubuntu) failed once on the MCP task_search cross-branch tripwire test; that test passed 5 of 5 locally and macOS and Windows passed, main carries commit af42e9e4 specifically hardening the same tripwire, and a rerun of the job went green, so it was a flake rather than a regression.
+
+Maintainer QA round three, CLI plain layout.
+
+The dependency graph now renders directly above Description in plain output and replaces the raw Dependencies ID list, which said strictly less than the graph. Modified files moved out of the header block down beside Implementation Plan and Implementation Notes, the things that change while the task is in progress. JSON is untouched: task.dependencies remains the editable direct list alongside task.dependencyGraph.
+
+One judgement call worth the maintainer overruling if he disagrees. formatTaskPlainText also renders write confirmations for backlog task edit and every MCP task_edit and lifecycle result, and those carry no dependency graph. Removing the Dependencies field unconditionally would have left a dependency edit with nothing echoing what it had just set, which is a real loss on a write confirmation. So the field is dropped exactly where the graph replaces it and kept where there is no graph: task view shows no Dependencies line, task edit --plain still shows Dependencies: TASK-1. The three existing MCP confirmation assertions pass unchanged, which is the evidence that the confirmation contract held.
+
+The TUI builds its detail from generateDetailContent, a separate section builder from the plain formatter, so it did not inherit the CLI move and was deliberately not hand-reordered. The TUI keeps its metadata Dependencies and Readiness lines and renders the graph below Definition of Done. The web modal is unchanged and approved as-is.
+
+Validation: bunx tsc --noEmit passed, bun run check . passed, full bun test 2612 pass / 7 skip / 4 fail, where 3 are the pre-existing blessed emoji-width tests and the fourth is the known-flaky MCP task_search cross-branch tripwire, which passed 5 of 5 in isolation and only trips under full-suite concurrency; main carries commit af42e9e4 hardening that same tripwire. PR #960 CI is green on macOS, Ubuntu, and Windows.
 <!-- SECTION:NOTES:END -->
