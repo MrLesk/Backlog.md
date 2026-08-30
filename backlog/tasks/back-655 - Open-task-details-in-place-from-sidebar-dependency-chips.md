@@ -5,7 +5,7 @@ status: Done
 assignee:
   - '@claude'
 created_date: '2026-08-30 12:21'
-updated_date: '2026-08-30 15:41'
+updated_date: '2026-08-30 15:49'
 labels:
   - web
   - bug
@@ -53,6 +53,8 @@ Consolidation note: PR #960 (unmerged) introduces a useTaskHref hook with this e
 Tests: extended src/test/web-dependency-input-links.test.tsx - chips rendered under /board link within /board (stay-on-board, AC #4), chips under /tasks keep /tasks hrefs, and the existing default-route tests pin the /tasks fallback.
 
 Refinement: the first cut called useLocation at DependencyInput's top level, which broke 53 existing TaskDetailsModal tests that render without a Router (previously safe because Link only mounts when a chip resolves). Moved the derivation into a local TaskChipLink subcomponent inside DependencyInput.tsx, so router context is only required exactly where a link renders - same contract as before. All previously failing web suites pass again; the 3 tui-emoji-width failures in the local run reproduce on a pristine origin/main worktree (environment-related, pre-existing, unrelated to this change).
+
+Review follow-up (Codex threads on PR #968), both confirmed real and fixed: (1) chip hrefs now carry the page's query string so URL-backed board/task-list filters (lane, milestone, status, assignee) survive opening a dependency - verified against BoardPage/TaskList useSearchParams and handleCloseModal returning to base+search; (2) TaskChipLink now fully mirrors handleEditTask's navigation: it replaces an already-open task route and carries the existing taskModalFrom state forward (or seeds it with base+search from a plain base page), so closing the opened dependency returns to the board instead of leaving the previous task in history. Kept as a Link (not onNavigateToTask) deliberately: the modal's unsaved-edits confirm intercepts a[href] links, and threading the callback through TaskDetailsModal would overlap PR #960. Tests: SSR test pins query preservation in the href; a client-render test clicks a chip on /board/BACK-20?lane=milestone and asserts the landing location, carried taskModalFrom, and that Back returns to /board (replace semantics).
 <!-- SECTION:NOTES:END -->
 
 ## Final Summary

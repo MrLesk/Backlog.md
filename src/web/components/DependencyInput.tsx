@@ -5,16 +5,36 @@ import { buildTaskIdIndex, resolveTaskReference } from '../utils/task-id-links';
 
 const CHIP_LABEL_CLASS = 'truncate max-w-[16rem] sm:max-w-[20rem] md:max-w-[24rem]';
 
-// Chip links open the task detail in place, mirroring App's handleEditTask base-path
-// derivation: stay on the board when reading from it, otherwise use the canonical
-// /tasks route (which also keeps external deep links working). Kept as a subcomponent
-// so the router context is only required where a link actually renders, and so PR
-// #960's useTaskHref hook can replace the derivation once it lands.
+// Chip links open the task detail in place, mirroring App's handleEditTask navigation:
+// stay on the board when reading from it (canonical /tasks everywhere else, which also
+// keeps external deep links working), carry the page's query string so URL-backed
+// filters survive, and replace an already-open task route while preserving its
+// original taskModalFrom return context so closing the target does not walk back
+// through this task. Kept as a subcomponent so the router context is only required
+// where a link actually renders, and so PR #960's useTaskHref hook can replace the
+// derivation once it lands.
 const TaskChipLink: React.FC<{ taskId: string; display: string }> = ({ taskId, display }) => {
   const location = useLocation();
-  const taskBasePath = location.pathname.startsWith('/board') ? '/board' : '/tasks';
+  const basePath = location.pathname.startsWith('/board')
+    ? '/board'
+    : location.pathname.startsWith('/tasks')
+      ? '/tasks'
+      : null;
+  const search = basePath ? location.search : '';
+  const isReplacingTaskRoute = basePath !== null && location.pathname.startsWith(`${basePath}/`);
+  const currentTaskModalFrom =
+    location.state && typeof location.state === 'object'
+      ? (location.state as { taskModalFrom?: string }).taskModalFrom
+      : undefined;
+  const taskModalFrom = isReplacingTaskRoute ? currentTaskModalFrom : basePath ? `${basePath}${search}` : undefined;
   return (
-    <Link to={`${taskBasePath}/${taskId}`} className={`${CHIP_LABEL_CLASS} hover:underline`} title={display}>
+    <Link
+      to={`${basePath ?? '/tasks'}/${taskId}${search}`}
+      replace={isReplacingTaskRoute}
+      state={taskModalFrom ? { taskModalFrom } : undefined}
+      className={`${CHIP_LABEL_CLASS} hover:underline`}
+      title={display}
+    >
       {display}
     </Link>
   );

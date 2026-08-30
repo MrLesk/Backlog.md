@@ -1,7 +1,9 @@
 import { describe, expect, it } from "bun:test";
 import { JSDOM } from "jsdom";
+import { act } from "react";
+import { createRoot } from "react-dom/client";
 import { renderToString } from "react-dom/server";
-import { MemoryRouter } from "react-router-dom";
+import { MemoryRouter, useLocation, useNavigate } from "react-router-dom";
 import type { Task } from "../types/index.ts";
 import DependencyInput from "../web/components/DependencyInput.tsx";
 
@@ -49,6 +51,76 @@ describe("DependencyInput dependency chips", () => {
 		const link = rendered.querySelector('a[href="/tasks/BACK-10"]');
 
 		expect(link).toBeTruthy();
+	});
+
+	it("carries the page's query string so URL-backed board filters survive", () => {
+		const rendered = renderChips(["BACK-10"], availableTasks, "/board/BACK-20?lane=milestone&milestone=v2");
+
+		// JSDOM's selector engine cannot match attribute values containing "&", so read the href directly.
+		expect(rendered.querySelector("a")?.getAttribute("href")).toBe("/board/BACK-10?lane=milestone&milestone=v2");
+	});
+
+	it("replaces an open task route and preserves its taskModalFrom return context", async () => {
+		const dom = new JSDOM("<!doctype html><html><body><div id='root'></div></body></html>", {
+			url: "http://localhost",
+		});
+		(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
+		globalThis.window = dom.window as unknown as Window & typeof globalThis;
+		globalThis.document = dom.window.document as Document;
+		globalThis.navigator = dom.window.navigator as Navigator;
+
+		const observed: { current: { pathname: string; search: string; state: unknown } | null } = { current: null };
+		const goBack: { current: (() => void) | null } = { current: null };
+		const LocationProbe = () => {
+			const location = useLocation();
+			const navigate = useNavigate();
+			observed.current = { pathname: location.pathname, search: location.search, state: location.state };
+			goBack.current = () => navigate(-1);
+			return null;
+		};
+
+		const container = document.getElementById("root") as HTMLElement;
+		const root = createRoot(container);
+		await act(async () => {
+			root.render(
+				<MemoryRouter
+					initialEntries={[
+						"/board?lane=milestone",
+						{ pathname: "/board/BACK-20", search: "?lane=milestone", state: { taskModalFrom: "/board?lane=milestone" } },
+					]}
+					initialIndex={1}
+				>
+					<DependencyInput value={["BACK-10"]} onChange={() => {}} availableTasks={availableTasks} />
+					<LocationProbe />
+				</MemoryRouter>,
+			);
+			await Promise.resolve();
+		});
+
+		const chip = container.querySelector('a[href="/board/BACK-10?lane=milestone"]') as HTMLAnchorElement | null;
+		expect(chip).toBeTruthy();
+		await act(async () => {
+			chip?.dispatchEvent(new dom.window.MouseEvent("click", { bubbles: true, cancelable: true, button: 0 }));
+			await Promise.resolve();
+		});
+
+		// The chip navigation lands on the dependency with the original return context intact.
+		expect(observed.current).toEqual({
+			pathname: "/board/BACK-10",
+			search: "?lane=milestone",
+			state: { taskModalFrom: "/board?lane=milestone" },
+		});
+
+		// It replaced the previous task route, so Back returns to the board, not the previous task.
+		await act(async () => {
+			goBack.current?.();
+			await Promise.resolve();
+		});
+		expect(observed.current).toEqual({ pathname: "/board", search: "?lane=milestone", state: null });
+
+		await act(async () => {
+			root.unmount();
+		});
 	});
 
 	it("resolves dependencies that differ in case or zero padding", () => {
