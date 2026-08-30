@@ -5,7 +5,7 @@ status: Done
 assignee:
   - '@claude'
 created_date: '2026-08-30 19:00'
-updated_date: '2026-08-30 19:06'
+updated_date: '2026-08-30 19:11'
 labels:
   - cli
 dependencies: []
@@ -20,16 +20,16 @@ External tools consuming `backlog task list --json` need each task's references 
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 Each task in `task list --json` includes references and modifiedFiles arrays (empty arrays when unset)
-- [ ] #2 task view --json output is unchanged
-- [ ] #3 Tests cover populated and empty cases
+- [x] #1 Each task in `task list --json` includes references and modifiedFiles arrays (empty arrays when unset)
+- [x] #2 task view --json output is unchanged
+- [x] #3 Tests cover populated and empty cases
 <!-- AC:END -->
 
 ## Definition of Done
 <!-- DOD:BEGIN -->
-- [ ] #1 bunx tsc --noEmit passes when TypeScript touched
-- [ ] #2 bun run check . passes when formatting/linting touched
-- [ ] #3 bun test (or scoped test) passes
+- [x] #1 bunx tsc --noEmit passes when TypeScript touched
+- [x] #2 bun run check . passes when formatting/linting touched
+- [x] #3 bun test (or scoped test) passes
 <!-- DOD:END -->
 
 ## Implementation Plan
@@ -43,3 +43,9 @@ Add references and modifiedFiles to TaskSummaryJson (shared by list and search t
 <!-- SECTION:NOTES:BEGIN -->
 Implemented in json-output.ts by moving the two fields into the shared summary projection; view payload content unchanged. Docs updated. Empty case covered by a dedicated assertion on a task without references or modified files.
 <!-- SECTION:NOTES:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+Added references and modifiedFiles to the shared task summary JSON projection (list and search task rows), removed the duplicate declarations from the details type, and updated CLI-INSTRUCTIONS.md. Verified with bunx tsc --noEmit, bun run check ., and src/test/cli-json-output.test.ts (15 tests: populated arrays pinned in the list envelope, empty arrays pinned for a bare task, view payload unchanged).
+<!-- SECTION:FINAL_SUMMARY:END -->
