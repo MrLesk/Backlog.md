@@ -5,7 +5,7 @@ status: In Progress
 assignee:
   - '@claude'
 created_date: '2026-07-16 21:38'
-updated_date: '2026-08-30 11:37'
+updated_date: '2026-08-30 12:20'
 labels:
   - cli
   - tui
@@ -88,4 +88,12 @@ Root cause of the double fetch the maintainer observed: the web app mounts insid
 Measured in the running browser afterwards: opening a task makes exactly one /api/task/<id> request and zero dependency-graph requests, on both the click and deep-link paths; the old endpoint returns 404; the graph survives a save without disappearing or looping. Validation: bunx tsc --noEmit passed, bun run check . passed, bun test 2611 pass / 7 skip / 3 fail where the 3 are the pre-existing blessed emoji-width tests, and PR #960 CI is green on macOS, Ubuntu, and Windows.
 
 Follow-up worth a decision: the modal still fetches completed dependencies by ID for the readiness badge, and those reads now also build a graph. The graph already carries each direct dependency title, status, and completed flag, so that fetch loop could be deleted and readiness derived from the graph, but that changes shipped BACK-546 behaviour so it was not folded in here.
+
+Maintainer QA round two.
+
+Ordering: the dependency graph now sits below the Definition of Done on all three surfaces, so description and the checklists stay at the top and the graph joins the context read before starting work. CLI plain order is Description, Acceptance Criteria, Definition of Done, Dependency Graph, Implementation Plan. The TUI and the web modal match. The web sidebar keeps its existing direct-dependencies picker and readiness badge untouched.
+
+Navigation: reproduced and attributed rather than assumed. Board and task-list clicks are correct and untouched by this branch, and a board card opens at /board/<id>/<slug> without leaving the board. The defect is in task links inside the modal, which hardcode /tasks/<id> and so switch the reader from the Kanban Board to the All Tasks page. origin/main already ships that exact line in DependencyInput.tsx for the sidebar dependency chips, so the root cause predates this branch and is left for a separate task. This branch no longer adds new instances: the graph links build their href from the page the reader is already on, mirroring handleEditTask base-path logic. Verified live that a graph link from /board/TASK-12/selected now goes to /board/TASK-3/formatter-update and that a deep link to /tasks/TASK-3 still resolves; a jsdom test pins both.
+
+Validation: bunx tsc --noEmit passed, bun run check . passed, bun test 2612 pass / 7 skip / 3 fail where the 3 are the pre-existing blessed emoji-width tests. One CI job (lint-and-unit-test on ubuntu) failed once on the MCP task_search cross-branch tripwire test; that test passed 5 of 5 locally and macOS and Windows passed, main carries commit af42e9e4 specifically hardening the same tripwire, and a rerun of the job went green, so it was a flake rather than a regression.
 <!-- SECTION:NOTES:END -->
