@@ -1636,14 +1636,6 @@ export class Core {
 		const normalizedModifiedFiles = normalizeStringList(input.modifiedFiles) ?? [];
 		const dueDate = normalizeUtcDateTime(input.dueDate, "Due date");
 
-		const { valid: validDependencies, invalid: invalidDependencies } = await validateDependencies(
-			normalizedDependencies,
-			this,
-		);
-		if (invalidDependencies.length > 0) {
-			throw formatMissingDependenciesError(invalidDependencies);
-		}
-
 		let status = "";
 		if (requestedStatus) {
 			if (isDraft) {
@@ -1691,6 +1683,25 @@ export class Core {
 				? await this.resolveParentTaskIdForCreate(requestedParentTaskId)
 				: undefined;
 			const id = await this.generateNextId(entityType, isDraft ? undefined : parentTaskId);
+			// Validated inside the create lock, against the allocated identity: a record can hold a
+			// dangling dependency on exactly this not-yet-existing ID, so materializing it with a
+			// dependency pointing back would store a cycle that no later edit could have created.
+			const { valid: validDependencies, invalid: invalidDependencies } = await validateDependencies(
+				normalizedDependencies,
+				this,
+				{
+					id,
+					title: input.title.trim(),
+					status: resolvedStatus,
+					assignee: [],
+					createdDate,
+					labels: [],
+					dependencies: [],
+				},
+			);
+			if (invalidDependencies.length > 0) {
+				throw formatMissingDependenciesError(invalidDependencies);
+			}
 			const ordinal = await this.resolveCreateOrdinal(input.ordinal, isDraft);
 			const task: Task = {
 				id,

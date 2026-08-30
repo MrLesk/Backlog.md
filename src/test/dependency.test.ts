@@ -483,6 +483,28 @@ describe("Self-referential and cyclic dependencies", () => {
 		expect((await core.filesystem.loadTask(first.id))?.dependencies ?? []).toEqual([]);
 	});
 
+	test("rejects a create whose allocated ID would close a cycle through a dangling reference", async () => {
+		// A dangling dependency on the next ID can only be stored out-of-band; materializing that ID
+		// with a dependency pointing back must not store the cycle.
+		await core.createTask(
+			{
+				id: "task-1",
+				title: "Dangling forward reference",
+				status: "To Do",
+				assignee: [],
+				createdDate: "2024-01-01",
+				labels: [],
+				dependencies: ["task-2"],
+			},
+			false,
+		);
+
+		await expect(core.createTaskFromInput({ title: "Closes the loop", dependencies: ["task-1"] })).rejects.toThrow(
+			"would create a cycle",
+		);
+		expect(await core.filesystem.loadTask("task-2")).toBeNull();
+	});
+
 	test("a stored self-dependency does not block adding an unrelated dependency", async () => {
 		const { task: other } = await core.createTaskFromInput({ title: "Other" });
 		const legacy: Task = {

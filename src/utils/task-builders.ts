@@ -53,10 +53,11 @@ function resolveUniqueDependency(dependency: string, matches: Task[]): string | 
  * branch would name a task no task command can show, and reaching for branches here would put a
  * remote fetch inside the task lock.
  *
- * When `target` names the task being edited, a dependency resolving to the target itself is
- * rejected in any spelling, and a dependency that would close a cycle through the existing graph
- * is rejected with the cycle path. The target is absent at create time, where neither defect can
- * occur: the new ID is not allocated yet, so no input can resolve to it and nothing depends on it.
+ * When `target` names the task being created or edited, a dependency resolving to the target
+ * itself is rejected in any spelling, and a dependency that would close a cycle through the
+ * existing graph is rejected with the cycle path. Creation passes the identity it just allocated,
+ * inside the create lock: no record can claim that ID, so the self check cannot fire, but a
+ * stored dangling reference to exactly that ID can close a cycle the moment it materializes.
  *
  * Returns the matched canonical IDs, deduplicated, plus the inputs that matched nothing.
  */
@@ -143,15 +144,16 @@ export interface DependencyDefects {
  * names them for human repair and changes nothing.
  *
  * Every record that can carry dependencies is checked as a root against the same corpus
- * validation resolves against, reusing the shared graph model per root. A cycle is reported once:
- * roots already named in a reported cycle are skipped, so rotations of one cycle do not repeat.
+ * validation resolves against, reusing the shared graph model per root. Each root contributes its
+ * shortest cycle, and cycles are deduplicated as rotations of one member sequence, so one cycle is
+ * one finding while distinct cycles sharing a task are all reported.
  */
 export async function findDependencyDefects(core: Core): Promise<DependencyDefects> {
 	const corpus = await loadDependencyCorpus(core);
 	const graphCorpus = dependencyGraphCorpus(corpus);
 	const selfDependencies: DependencyDefects["selfDependencies"] = [];
 	const cycles: string[][] = [];
-	const reported = new Set<string>();
+	const seen = new Set<string>();
 	for (const task of [...corpus.tasks, ...corpus.drafts, ...corpus.completed]) {
 		const dependencies = task.dependencies ?? [];
 		for (const dependency of dependencies) {
@@ -159,11 +161,20 @@ export async function findDependencyDefects(core: Core): Promise<DependencyDefec
 				selfDependencies.push({ taskId: task.id, dependency });
 			}
 		}
-		if (dependencies.length === 0 || reported.has(canonicalTaskId(task.id))) continue;
+		if (dependencies.length === 0) continue;
 		const cycle = findCycleThroughRoot(buildDependencyGraph(task, graphCorpus));
 		if (!cycle) continue;
+		// One cycle read from different roots is the same member sequence rotated; keying on the
+		// rotation that starts at the smallest canonical member collapses them.
+		const members = cycle.slice(0, -1).map((id) => canonicalTaskId(id));
+		let start = 0;
+		for (let index = 1; index < members.length; index++) {
+			if ((members[index] as string) < (members[start] as string)) start = index;
+		}
+		const key = [...members.slice(start), ...members.slice(0, start)].join(" ");
+		if (seen.has(key)) continue;
+		seen.add(key);
 		cycles.push(cycle);
-		for (const id of cycle) reported.add(canonicalTaskId(id));
 	}
 	return { selfDependencies, cycles };
 }

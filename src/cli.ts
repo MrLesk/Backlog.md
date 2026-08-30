@@ -493,12 +493,16 @@ function printDependencyDefectsReport(defects: DependencyDefects): void {
 			const spelling = finding.dependency === finding.taskId ? "" : ` (recorded as "${finding.dependency}")`;
 			console.log(`  - ${finding.taskId} depends on itself${spelling}`);
 		}
-		console.log("Remove each with 'backlog task edit <id> --remove-dep <id>'.");
+		console.log(
+			"Rewrite the task's dependencies without its own ID: 'backlog task edit <id> --dep <ids>' (or --clear-deps); edit the file directly for records under backlog/completed.",
+		);
 	}
 	if (defects.cycles.length > 0) {
 		console.log("\nDependency cycles (diagnostic only):");
 		for (const cycle of defects.cycles) console.log(`  - ${cycle.join(" -> ")}`);
-		console.log("Remove one dependency from each cycle with 'backlog task edit <id> --remove-dep <dep>'.");
+		console.log(
+			"Break each cycle by rewriting one task's dependencies: 'backlog task edit <id> --dep <ids>' (or --clear-deps); edit the file directly for records under backlog/completed.",
+		);
 	}
 }
 
@@ -5529,6 +5533,10 @@ addHelpSchema(program.command("doctor"), {
 			}
 			if (draftIdentityBroken) {
 				console.log("Draft identity findings remain diagnostic-only and still require manual review.");
+				process.exitCode = 1;
+			}
+			if (dependenciesBroken) {
+				console.log("Dependency findings remain diagnostic-only and still require manual repair.");
 				process.exitCode = 1;
 			}
 		} catch (error) {

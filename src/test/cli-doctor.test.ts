@@ -353,11 +353,15 @@ describe("dependency defects", () => {
 		);
 		await Bun.write(
 			join(core.filesystem.tasksDir, "task-3 - CycleA.md"),
-			serializeTask({ ...makeTask("TASK-3", "CycleA"), dependencies: ["TASK-4"] }),
+			serializeTask({ ...makeTask("TASK-3", "CycleA"), dependencies: ["TASK-4", "TASK-5"] }),
 		);
 		await Bun.write(
 			join(core.filesystem.tasksDir, "task-4 - CycleB.md"),
 			serializeTask({ ...makeTask("TASK-4", "CycleB"), dependencies: ["TASK-3"] }),
+		);
+		await Bun.write(
+			join(core.filesystem.tasksDir, "task-5 - CycleC.md"),
+			serializeTask({ ...makeTask("TASK-5", "CycleC"), dependencies: ["TASK-3"] }),
 		);
 
 		const result = await $`bun ${cliPath} doctor`.cwd(testDir).quiet().nothrow();
@@ -369,11 +373,28 @@ describe("dependency defects", () => {
 		expect(output).toContain("TASK-3 -> TASK-4 -> TASK-3");
 		// One cycle is one finding, not one per participating task.
 		expect(output).not.toContain("TASK-4 -> TASK-3 -> TASK-4");
+		// A distinct cycle sharing TASK-3 is still its own finding.
+		expect(output).toContain("TASK-5 -> TASK-3 -> TASK-5");
 		expect(output).not.toContain("No duplicate IDs, self-referential dependencies, or dependency cycles found.");
 
 		// Report-only: the defective files are untouched.
 		expect((await core.filesystem.loadTask("TASK-2"))?.dependencies).toEqual(["task-2"]);
-		expect((await core.filesystem.loadTask("TASK-3"))?.dependencies).toEqual(["TASK-4"]);
+		expect((await core.filesystem.loadTask("TASK-3"))?.dependencies).toEqual(["TASK-4", "TASK-5"]);
+	});
+
+	it("keeps a non-zero exit when duplicates are repaired but dependency findings remain", async () => {
+		await writeDuplicateTasks();
+		await Bun.write(
+			join(core.filesystem.tasksDir, "task-7 - Selfy.md"),
+			serializeTask({ ...makeTask("TASK-7", "Selfy"), dependencies: ["TASK-7"] }),
+		);
+
+		const result = await $`bun ${cliPath} doctor --fix --yes`.cwd(testDir).quiet().nothrow();
+		const output = `${result.stdout}${result.stderr}`;
+		expect(result.exitCode).toBe(1);
+		expect(output).toContain("Repaired 2 duplicate task files");
+		expect(output).toContain("Dependency findings remain diagnostic-only and still require manual repair.");
+		expect((await core.filesystem.loadTask("TASK-7"))?.dependencies).toEqual(["TASK-7"]);
 	});
 
 	it("refuses --fix for dependency findings instead of repairing them", async () => {
