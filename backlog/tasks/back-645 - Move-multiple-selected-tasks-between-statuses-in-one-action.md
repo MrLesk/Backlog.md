@@ -5,7 +5,7 @@ status: In Progress
 assignee:
   - '@claude'
 created_date: '2026-08-29 18:57'
-updated_date: '2026-08-30 19:38'
+updated_date: '2026-08-30 19:50'
 labels:
   - cli
   - tui
@@ -76,4 +76,6 @@ Codex thread round (head 2e39335f): lane-scoped append ordering (a drop into one
 Closing Codex round (head be6239da): the batch-drag insertion indicator is suppressed (a batch drop never honors a card-level position, so the UI no longer promises one) and --acceptance-criteria/--clear-ac/--ac/--dod joined the per-task-only guard for multi-ID edits, matching the existing plan/notes philosophy. Deferred, not fixed: honoring the drop position for batch drags (needs orderedTaskIds through the web move endpoint and a product decision on the blessed inert same-column drop) - natural BACK-661 companion.
 
 Terminal adjudication round (head 77e8ce6f): FIXED djEMu (--clear-final-summary joins the per-task-only batch guard, test added). REFUTED djCP8: a selected task already at the target status keeps its ordinal while the named lane is applied - that is the maintainer's explicit stay-put ruling from the mixed-batch round; switching cross-lane cards to append semantics would reverse it. REFUTED djCQA: an append can never render after an ordinal-less cross-branch card without writing that card, which the no-write rule forbids; the current deterministic outcome (arrivals carry ordinals, the read-only card stays last-rendered-by-absence) is the least-bad representable order and rejecting the whole move would break supported drops. DEFERRED djCP- (legacy ordinal-less cards materialize in ID order rather than the web renderer's date order) and djCQB (lane matching by trimmed string misses milestone aliases the board canonicalizes): both are the same client-knows-rendered-truth gap whose clean fix is passing the rendered destination ordering through the batch endpoint's orderedTaskIds - already recorded as the BACK-661-era positioned-batch-drop follow-up.
+
+Final code round (head f344d681): FIXED djmAz - the selection prune now also drops cards hidden by a collapsed milestone lane (same rendered-truth shape as the filter prune; test collapses a lane and sees the selection shrink), closing the no-silent-movement gap. DEFERRED wholesale per coordinator ruling: djmA1 (lane-major ordering for batch payloads - belongs to the positioned-batch-drop follow-up that passes rendered ordering through the move endpoint) and djmA2 (TUI input race while a slow single-mover write is in flight - pre-existing single-mover behavior, follow-up ledger). Any further review threads on this PR are deferred wholesale; the review-cycle cap is spent.
 <!-- SECTION:NOTES:END -->
