@@ -22,13 +22,16 @@ const setupDom = () => {
 	return activeDom.window.document.getElementById("root") as HTMLElement;
 };
 
-const renderSkeleton = (container: HTMLElement, message: string | null) => {
+const renderSkeleton = (container: HTMLElement, message: string | null, columnCount?: number) => {
 	if (!activeRoot) activeRoot = createRoot(container);
 	const root = activeRoot;
 	act(() => {
-		root.render(<BoardLoadingSkeleton message={message} />);
+		root.render(<BoardLoadingSkeleton message={message} columnCount={columnCount} />);
 	});
 };
+
+const countGhostColumns = (container: HTMLElement) =>
+	container.querySelector('[aria-hidden="true"].overflow-x-auto')?.querySelectorAll(".min-w-\\[16rem\\]").length;
 
 afterEach(() => {
 	if (activeRoot) {
@@ -80,5 +83,20 @@ describe("BoardLoadingSkeleton", () => {
 			expect(pulse.className).toContain("motion-reduce:animate-none");
 		}
 		expect(ghosts?.querySelectorAll(".animate-pulse").length).toBeGreaterThan(0);
+	});
+
+	it("matches the configured status count so the real board mounts without a column jump", () => {
+		const container = setupDom();
+		renderSkeleton(container, null, 5);
+		expect(countGhostColumns(container)).toBe(5);
+
+		renderSkeleton(container, null, 2);
+		expect(countGhostColumns(container)).toBe(2);
+	});
+
+	it("falls back to three ghost columns before the statuses are known", () => {
+		const container = setupDom();
+		renderSkeleton(container, null, 0);
+		expect(countGhostColumns(container)).toBe(3);
 	});
 });

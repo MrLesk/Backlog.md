@@ -828,7 +828,7 @@ const Board: React.FC<BoardProps> = ({
           )}
         </div>
       ) : isLoading ? (
-        <BoardLoadingSkeleton message={loadingMessage} />
+        <BoardLoadingSkeleton message={loadingMessage} columnCount={statuses.length} />
       ) : laneMode === 'milestone' ? (
         <div className="space-y-6">
           {visibleLanes.map((lane) => {

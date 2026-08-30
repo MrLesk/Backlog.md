@@ -1,5 +1,7 @@
 interface BoardLoadingSkeletonProps {
 	message?: string | null;
+	/** Ghost columns to render; pass the configured status count so the real board mounts without a width jump. */
+	columnCount?: number;
 }
 
 /**
@@ -8,12 +10,13 @@ interface BoardLoadingSkeletonProps {
  * plus a compact centered spinner matching the branch-indexing chip design.
  * Shown only before the first successful data load (see BACK-654).
  */
-export function BoardLoadingSkeleton({ message }: BoardLoadingSkeletonProps) {
+export function BoardLoadingSkeleton({ message, columnCount }: BoardLoadingSkeletonProps) {
+	const columns = columnCount && columnCount > 0 ? columnCount : 3;
 	return (
 		<div className="relative" role="status" aria-label="Loading tasks">
 			<div className="overflow-x-auto pb-2" aria-hidden="true">
 				<div className="flex flex-row flex-nowrap gap-4 w-full">
-					{[0, 1, 2].map((column) => (
+					{Array.from({ length: columns }, (_, column) => (
 						<div key={column} className="flex-1 min-w-[16rem]">
 							<div className="rounded-lg p-4 min-h-96 bg-white border border-gray-200 shadow-sm dark:bg-gray-800 dark:border-gray-700 transition-colors duration-200">
 								<div className="mb-4 h-5 w-24 animate-pulse rounded-md bg-gray-100 motion-reduce:animate-none dark:bg-gray-700/50" />
