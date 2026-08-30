@@ -95,11 +95,12 @@ async function withBoard(
 		quit: () => Promise<void>;
 	}) => Promise<void> | void,
 	filters?: BoardFilters,
+	boardTasks?: Task[],
 ): Promise<void> {
 	const descriptor = Object.getOwnPropertyDescriptor(process.stdout, "isTTY");
 	Object.defineProperty(process.stdout, "isTTY", { configurable: true, value: true });
 	const screen = createScreen({ smartCSR: false }) as ScreenInterface & EmittingWidget;
-	const tasks = [
+	const tasks = boardTasks ?? [
 		createTask("TASK-1", "To Do", 1000),
 		createTask("TASK-2", "To Do", 2000),
 		createTask("TASK-3", "To Do", 3000),
@@ -134,7 +135,7 @@ describe("TUI board single-task mover", () => {
 			pressKey(screen, "m");
 			expect(footer()).toContain("MOVE MODE");
 			expect(footer()).toContain("{cyan-fg}[Shift+↑↓]{/} Highlight");
-			expect(footer()).toContain("{cyan-fg}[M]{/} Select");
+			expect(footer()).toContain("{cyan-fg}[Shift+M]{/} Select");
 			expect(footer()).toContain("{cyan-fg}[Enter]{/} Confirm");
 
 			pressKey(screen, "escape");
@@ -354,6 +355,30 @@ describe("TUI board multi-select mover", () => {
 
 			pressKey(screen, "escape");
 		});
+	});
+
+	it("skips cross-branch tasks in the M-only fallback instead of dead-ending on them", async () => {
+		await withBoard(
+			({ screen, rows, footer }) => {
+				pressKey(screen, "m");
+				pressKey(screen, "S-m");
+
+				// The read-only TASK-2 cannot join the set, so the fallback recruits TASK-3.
+				expect(movingIds(rows())).toEqual(["TASK-1", "TASK-3"]);
+
+				// With every recruitable task in the set, the fallback reports the dead end.
+				pressKey(screen, "S-m");
+				expect(footer()).toContain("No task to select here");
+
+				pressKey(screen, "escape");
+			},
+			undefined,
+			[
+				createTask("TASK-1", "To Do", 1000),
+				{ ...createTask("TASK-2", "To Do", 2000), branch: "feature-x" },
+				createTask("TASK-3", "To Do", 3000),
+			],
+		);
 	});
 
 	it("freezes the move set and ignores Escape while the confirm write is in flight", async () => {

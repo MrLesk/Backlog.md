@@ -23,7 +23,7 @@ const BOARD_SHORTCUTS: Shortcut[] = [
 	{ key: "↑↓", desc: "Navigate tasks" },
 	{ key: "Enter", desc: "View task details" },
 	{ key: "E", desc: "Edit task" },
-	{ key: "M", desc: "Move tasks (M selects more in move mode)" },
+	{ key: "M", desc: "Move tasks (Shift+M selects more in move mode)" },
 	{ key: "C", desc: "Complete task" },
 	{ key: "A", desc: "Archive task" },
 	{ key: "Y", desc: "Yank (Copy) task ID" },

@@ -1080,7 +1080,7 @@ export async function renderBoardTui(
 			}
 			if (moveOp) {
 				setFooterContent(
-					" {green-fg}MOVE MODE{/} | {cyan-fg}[←→]{/} Change Column | {cyan-fg}[↑↓]{/} Reorder | {cyan-fg}[Shift+↑↓]{/} Highlight | {cyan-fg}[M]{/} Select | {cyan-fg}[Enter]{/} Confirm | {cyan-fg}[Esc]{/} Cancel",
+					" {green-fg}MOVE MODE{/} | {cyan-fg}[←→]{/} Change Column | {cyan-fg}[↑↓]{/} Reorder | {cyan-fg}[Shift+↑↓]{/} Highlight | {cyan-fg}[Shift+M]{/} Select | {cyan-fg}[Enter]{/} Confirm | {cyan-fg}[Esc]{/} Cancel",
 				);
 			} else {
 				const base = getBoardFooterContent({ hasProjects: configuredProjects.length > 0 });
@@ -1924,14 +1924,16 @@ export async function renderBoardTui(
 				const grabbedRow = rows.findIndex((task) => task.id === operation.taskId);
 				if (grabbedRow !== -1) {
 					const recruited = new Set(operation.selectedIds);
-					const nearestUnrecruited = (from: number, step: number): string | undefined => {
+					// Cross-branch tasks can never join the set, so the walk skips them the same
+					// way it skips recruits — a read-only neighbor must not dead-end the fallback.
+					const nearestRecruitable = (from: number, step: number): string | undefined => {
 						for (let index = from; index >= 0 && index < rows.length; index += step) {
-							const id = rows[index]?.id;
-							if (id && id !== operation.taskId && !recruited.has(id)) return id;
+							const row = rows[index];
+							if (row && row.id !== operation.taskId && !recruited.has(row.id) && !row.branch) return row.id;
 						}
 						return undefined;
 					};
-					candidateId = nearestUnrecruited(grabbedRow + 1, 1) ?? nearestUnrecruited(grabbedRow - 1, -1);
+					candidateId = nearestRecruitable(grabbedRow + 1, 1) ?? nearestRecruitable(grabbedRow - 1, -1);
 				}
 			}
 			const targetId = candidateId;
