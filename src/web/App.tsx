@@ -11,6 +11,7 @@ import Statistics from './components/Statistics';
 import MilestonesPage from './components/MilestonesPage';
 import TaskDetailsModal from './components/TaskDetailsModal';
 import InitializationScreen from './components/InitializationScreen';
+import LoadingSpinner from './components/LoadingSpinner';
 import { SuccessToast } from './components/SuccessToast';
 import { ThemeProvider } from './contexts/ThemeContext';
 import { TaskIdIndexProvider } from './contexts/TaskIdIndexContext';
@@ -686,8 +687,9 @@ function AppContent() {
   if (isInitialized === null) {
     return (
       <ThemeProvider>
-        <div className="min-h-screen flex items-center justify-center bg-gray-100 dark:bg-gray-900">
-          <div className="text-lg text-gray-600 dark:text-gray-300">Loading...</div>
+        <div className="min-h-screen flex items-center justify-center bg-gray-100 dark:bg-gray-900" role="status">
+          <LoadingSpinner size="md" text="" />
+          <span className="sr-only">Loading</span>
         </div>
       </ThemeProvider>
     );
