@@ -267,7 +267,7 @@ const TaskCard: React.FC<TaskCardProps> = ({
           {task.title}
         </h4>
 
-        <AcceptanceCriteriaProgress task={task} cells={5} className="mt-2" />
+        <AcceptanceCriteriaProgress task={task} density="card" className="mt-2" />
 
         {/* Labels - limit to 3 */}
         {task.labels.length > 0 && (
