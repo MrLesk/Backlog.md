@@ -461,6 +461,7 @@ export async function runUnifiedView(options: UnifiedViewOptions): Promise<void>
 					onFilterChange: (filters) => {
 						currentFilters = mergeUnifiedViewFilters(currentFilters, filters);
 					},
+					createTask: async (input) => createTaskFromBoard(options.core, input, taskUpdateCallbacks.onTaskAdded),
 					onTabPress,
 				}).then(() => {
 					// If user wants to exit, do it immediately

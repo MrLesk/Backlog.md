@@ -3599,7 +3599,15 @@ addHelpSchema(taskCmd.command("view <taskId>"), {
 		}
 
 		// Use enhanced task viewer with detail focus
-		await viewTaskEnhanced(task, { startWithDetailFocus: true, core, tasks: allTasks });
+		await viewTaskEnhanced(task, {
+			startWithDetailFocus: true,
+			core,
+			tasks: allTasks,
+			createTask: async (input) => {
+				const config = await core.filesystem.loadConfig();
+				return (await core.createTaskFromInput(input, config?.autoCommit ?? false)).task;
+			},
+		});
 	});
 
 addHelpSchema(taskCmd.command("archive <taskId>"), {
