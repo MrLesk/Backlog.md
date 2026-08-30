@@ -5,7 +5,7 @@ status: In Progress
 assignee:
   - '@claude'
 created_date: '2026-08-29 18:57'
-updated_date: '2026-08-30 18:03'
+updated_date: '2026-08-30 18:12'
 labels:
   - cli
   - tui
@@ -72,4 +72,6 @@ Maintainer decision: the TUI multi-mark flow is rejected (overloading m collides
 Verification for AC checks: full suite green on head f4f1ba61 (2670 tests, 0 fail) covering cli-task-batch-edit.test.ts (ACs 1-2), web-board-batch-move.test.tsx + server-move-tasks-endpoint.test.ts (AC 3 web scope, milestone lanes), core-move-tasks-to-status.test.ts (ACs 4-5, shared resolution and fail-closed per-task errors); web batch drop additionally verified live in Chromium earlier on this branch. AC 6 verified by diff review each round. TUI diff against main is exactly the 7-line movePending guard in src/ui/board.ts.
 
 Codex thread round (head 2e39335f): lane-scoped append ordering (a drop into one milestone lane no longer renumbers other lanes), cross-branch cards excluded from the batch write set (they order the column but are never persisted locally), web batch requests built in board order instead of click order, and CLI batch edit dedups on resolved identity so bare-number aliases under a custom prefix cannot save a task twice. The TUI marked-set thread is obsolete - that code was deleted with the BACK-661 split. Regression tests added for the three fixturable fixes.
+
+Closing Codex round (head be6239da): the batch-drag insertion indicator is suppressed (a batch drop never honors a card-level position, so the UI no longer promises one) and --acceptance-criteria/--clear-ac/--ac/--dod joined the per-task-only guard for multi-ID edits, matching the existing plan/notes philosophy. Deferred, not fixed: honoring the drop position for batch drags (needs orderedTaskIds through the web move endpoint and a product decision on the blessed inert same-column drop) - natural BACK-661 companion.
 <!-- SECTION:NOTES:END -->
