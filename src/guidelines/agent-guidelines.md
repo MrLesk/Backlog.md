@@ -163,6 +163,7 @@ PR-style summary of what was implemented.
 |-------------------------|----------------------------------------------------------|
 | Title                   | `backlog task edit 42 -t "New Title"`                    |
 | Status                  | `backlog task edit 42 -s "In Progress"`                  |
+| Status of several tasks | `backlog task edit 42 43 44 -s "In Progress"`            |
 | Assignee                | `backlog task edit 42 -a @sara`                          |
 | Labels                  | `backlog task edit 42 -l backend,api`                    |
 | Description             | `backlog task edit 42 -d "New description"`              |

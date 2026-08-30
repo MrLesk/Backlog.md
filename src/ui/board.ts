@@ -1584,8 +1584,10 @@ export async function renderBoardTui(
 			await openTaskEditor(task);
 		});
 
+		// A second Enter while the confirm is writing must not start a second move.
+		let movePending = false;
 		const performTaskMove = async () => {
-			if (!moveOp) return;
+			if (!moveOp || movePending) return;
 
 			// Check if any actual change occurred
 			const noChange = moveOp.targetStatus === moveOp.originalStatus && moveOp.targetIndex === moveOp.originalIndex;
@@ -1597,6 +1599,7 @@ export async function renderBoardTui(
 				return;
 			}
 
+			movePending = true;
 			try {
 				const core = await getCore();
 				const config = await core.fs.loadConfig();
@@ -1638,6 +1641,8 @@ export async function renderBoardTui(
 				}
 				moveOp = null;
 				renderView();
+			} finally {
+				movePending = false;
 			}
 		};
 		const cancelMove = () => {
