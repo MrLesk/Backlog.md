@@ -5,7 +5,7 @@ status: In Progress
 assignee:
   - '@claude'
 created_date: '2026-07-16 21:38'
-updated_date: '2026-08-30 12:37'
+updated_date: '2026-08-30 12:57'
 labels:
   - cli
   - tui
@@ -106,4 +106,14 @@ One judgement call worth the maintainer overruling if he disagrees. formatTaskPl
 The TUI builds its detail from generateDetailContent, a separate section builder from the plain formatter, so it did not inherit the CLI move and was deliberately not hand-reordered. The TUI keeps its metadata Dependencies and Readiness lines and renders the graph below Definition of Done. The web modal is unchanged and approved as-is.
 
 Validation: bunx tsc --noEmit passed, bun run check . passed, full bun test 2612 pass / 7 skip / 4 fail, where 3 are the pre-existing blessed emoji-width tests and the fourth is the known-flaky MCP task_search cross-branch tripwire, which passed 5 of 5 in isolation and only trips under full-suite concurrency; main carries commit af42e9e4 hardening that same tripwire. PR #960 CI is green on macOS, Ubuntu, and Windows.
+
+Maintainer QA round four: one plain serializer everywhere, and the TUI mirrors the CLI order.
+
+formatTaskPlainText now takes a TaskDetail rather than a Task. That single signature change enforces the rule structurally: plain task output cannot be produced without going through the core detail read, so task create --plain, task edit --plain, task view --plain, the non-TTY viewer fallback, and every MCP task result render byte-identical layout. The compiler enumerated all eight call sites and each now resolves its detail through loadTaskDetail. The conditional Dependencies echo is gone: there are no per-caller branches and no second formatter, and the raw dependency ID list no longer appears in any plain output.
+
+TUI: the Dependencies line is removed from the metadata block and the Dependency Graph now renders directly below the details block and above the description, the same relative position as the CLI. The Readiness line stays because it is a verdict rather than a restatement of the ID list. generateDetailContent still cannot share code with the plain formatter, since it emits blessed markup and also serves the board quick-look popup, so its order is kept deliberately in step and the code comment says so. The popup consequently no longer lists dependency IDs and gains no graph, so it stays compact and does not violate the no-expansion rule.
+
+MCP confirmation size, measured on real confirmations: a task with no dependencies and no dependents has no graph block at all and its confirmation is 623 bytes, slightly smaller than before since it lost the Dependencies line. A task with 3 dependencies adds a 321 byte 8 line block for a 972 byte confirmation. A hub task with 1 dependency and 7 dependents adds a 574 byte 15 line block for a 1232 byte confirmation. Growth is roughly one line per related task plus three, replacing one line. The honest ceiling is that a task with 50 dependents would add about 50 lines to every task_edit confirmation, which is worth knowing if agent token budgets are tight.
+
+Validation: bunx tsc --noEmit passed, bun run check . passed, full bun test 2613 pass / 7 skip / 3 fail where all 3 are the pre-existing blessed emoji-width tests. PR #960 CI green on macOS, Ubuntu, and Windows.
 <!-- SECTION:NOTES:END -->
