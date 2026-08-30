@@ -5,7 +5,7 @@ status: Done
 assignee:
   - '@claude'
 created_date: '2026-08-30 11:55'
-updated_date: '2026-08-30 15:51'
+updated_date: '2026-08-30 19:40'
 labels:
   - web
   - enhancement
@@ -65,6 +65,8 @@ Implementation steps:
 Implemented on tasks/back-654-indexing-indicator: new BranchIndexingIndicator (header chip reusing the active-nav blue pill + 12px spinner ring, hairline indexing-sweep bar on the header's bottom border, 250ms delayed appear, 200ms fade-out, motion-reduce fallbacks). Navigation/Layout wire the WS loading message to it; SideNavigation's LoadingPhase is now a pure skeleton and App no longer passes the raw sentence to the board. App.tsx gates the blocking skeleton on first-load only (hasLoadedDataRef) so loaded content stays mounted and interactive during later indexing. Verified live in the browser against this repo's 119 local branches: dark-theme chip visible during cold indexing; warm restart completes fast with no flash or residue (light theme). tsc, biome, and the new jsdom tests (4) pass; full suite running.
 
 Full-suite triage: 3 tui-emoji-width failures were the worktree's stale node_modules (neo-neo-bblessed 1.0.9 vs locked 1.0.10; bun i fixed, bun.lock unchanged). The remaining 3 were web-task-detail-deeplink reconciliation tests observing the removed raw phase sentence; they now observe the indicator (its sr-only text carries the full server message) by waiting out the 250ms appear / 200ms exit windows, with renderApp's afterInitialStatus hook moved outside act so callbacks can observe flushed DOM. All 29 deeplink tests pass; final full suite running.
+
+PR #971 review round: both Codex threads were real. (1) App.tsx now clears loadError on every WS loading frame (only setIsLoading stays first-load gated), so a passive client that had cached content plus a stale terminal error shows its content again when another browser's retry starts indexing; regression test added (clears a stale terminal error and shows cached content when indexing restarts). (2) The chip label is hidden below the sm breakpoint (icon-only pill, sr-only message intact) so narrow headers do not overflow; verified at 375px that the remaining header crowding pre-exists with the chip unmounted. Scoped tests 38 pass, tsc and biome clean. Head 83dab5ba.
 <!-- SECTION:NOTES:END -->
 
 ## Final Summary
