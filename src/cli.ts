@@ -59,6 +59,7 @@ import {
 	type TaskUpdateInput,
 } from "./types/index.ts";
 import type { TaskEditArgs } from "./types/task-edit-args.ts";
+import { formatAcceptanceCriteriaSummarySuffix } from "./ui/acceptance-criteria-progress.ts";
 import { genericSelectList } from "./ui/components/generic-list.ts";
 import { createLoadingScreen } from "./ui/loading.ts";
 import { viewTaskEnhanced } from "./ui/task-viewer-with-search.ts";
@@ -305,8 +306,9 @@ function formatPlainTaskListRow(task: Task, options: { includeStatus?: boolean }
 	const priorityIndicator = task.priority ? `[${task.priority.toUpperCase()}] ` : "";
 	const typeIndicator = task.type ? `[${task.type}] ` : "";
 	const statusIndicator = options.includeStatus && task.status ? ` (${task.status})` : "";
+	const acceptanceCriteria = formatAcceptanceCriteriaSummarySuffix(task);
 	const dueDate = task.dueDate ? ` (due ${formatUtcDateForDisplay(task.dueDate, { appendUtcLabel: true })})` : "";
-	return `  ${priorityIndicator}${typeIndicator}${task.id} - ${task.title}${statusIndicator}${dueDate}`;
+	return `  ${priorityIndicator}${typeIndicator}${task.id} - ${task.title}${statusIndicator}${acceptanceCriteria}${dueDate}`;
 }
 
 async function normalizeCliStatusList(core: Core, values: string[], optionName: string): Promise<string[] | null> {

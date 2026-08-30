@@ -5,7 +5,7 @@ status: In Progress
 assignee:
   - '@claude'
 created_date: '2026-08-29 18:57'
-updated_date: '2026-08-30 15:22'
+updated_date: '2026-08-30 16:12'
 labels:
   - cli
   - tui
@@ -62,4 +62,6 @@ Rework round 2 (maintainer QA feedback), on pr/batch-move-tasks:
 - Core: moveTasksToStatus accepts optional orderedTaskIds; block ordinal seeding via calculateBlockOrdinals in core/reorder.ts (count=1 matches calculateNewOrdinal's midpoint math); append semantics unchanged when the param is absent.
 - Web no-op root cause: card-level dragover early-returned when hovering the dragged card itself, leaving dropPosition null, so handleDrop fell back to append-to-end - an in-place release both fired a reorder and moved the card to the bottom. Fixed with a 'self' dropPosition that resolves to the card's current spot and trips the existing isOrderUnchanged guard. Verified live in Chromium: in-place release (single and batch) sends no request; real drags send exactly one.
 - Web ghost: badge now counts the set that actually moves; a ctrl/cmd-press-drag on a not-yet-selected card joins the selection at dragstart (the click never completes in that gesture), fixing the selection-minus-dragged badge and the drop moving one card short. Stack depth follows the count.
+
+Thread-triage round (head bd4ba137): board-move dedup and CLI batch dedup now use canonical task identity (leading zeros collapse, bare numbers keep the default prefix); shift-range skips cross-branch cards; selection prunes to filter-visible cards; append places arriving tasks after the column as rendered with non-finite ordinals treated as missing; already-in-status tasks keep their ordinal in a mixed batch (named lane still applies); double-Enter guard on the TUI confirm. Regression tests added for each.
 <!-- SECTION:NOTES:END -->
