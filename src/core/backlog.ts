@@ -106,7 +106,12 @@ import {
 	previewDuplicateTaskIdRepair,
 } from "./duplicate-task-repair.ts";
 import { migrateDraftPrefixes, needsDraftPrefixMigration } from "./prefix-migration.ts";
-import { calculateNewOrdinal, DEFAULT_ORDINAL_STEP, resolveOrdinalConflicts } from "./reorder.ts";
+import {
+	calculateBlockOrdinals,
+	calculateNewOrdinal,
+	DEFAULT_ORDINAL_STEP,
+	resolveOrdinalConflicts,
+} from "./reorder.ts";
 import { SearchService } from "./search-service.ts";
 import { TaskIdentityIndex, type TaskIdentityRecord } from "./task-identity-index.ts";
 import {
@@ -2856,9 +2861,16 @@ export class Core {
 		return { updatedTask, changedTasks };
 	}
 
+	/**
+	 * Move a set of tasks into a status column, reporting problems per task instead of aborting the
+	 * batch. Without `orderedTaskIds` the moved tasks append to the end of the column. With it, the
+	 * caller names the column's final order and the moved tasks land exactly there, seeded with
+	 * block ordinals the way {@link reorderTask} places a single task.
+	 */
 	async moveTasksToStatus(params: {
 		taskIds: string[];
 		targetStatus: string;
+		orderedTaskIds?: string[];
 		targetMilestone?: string | null;
 		commitMessage?: string;
 		autoCommit?: boolean;
@@ -2900,30 +2912,126 @@ export class Core {
 		const hasTargetMilestone = params.targetMilestone !== undefined;
 		const normalizedTargetMilestone = normalizeTargetMilestone(params.targetMilestone);
 
-		// The batch appends to the end of the target column, so only the moved tasks get a new
-		// ordinal. Tasks already in the column keep theirs and stay out of the write set.
 		const movedIds = new Set(tasksToMove.map((task) => task.id));
-		const columnTasks = sortByOrdinal(
-			store.getTasks({ status: targetStatus }).filter((task) => !movedIds.has(task.id)),
-		);
-		const lastOrdinal = columnTasks.reduce((highest, task) => Math.max(highest, task.ordinal ?? 0), 0);
-
-		const movedTasks = tasksToMove.map((task, index) => ({
+		const applyMove = (task: Task): Task => ({
 			...task,
 			status: targetStatus,
 			...(hasTargetMilestone ? { milestone: normalizedTargetMilestone } : {}),
-			ordinal: lastOrdinal + defaultStep * (index + 1),
-		}));
-
-		const changedTasks = movedTasks.filter((task, index) => {
-			const original = tasksToMove[index];
-			if (!original) return true;
-			return (
-				original.status !== task.status ||
-				(original.ordinal ?? null) !== task.ordinal ||
-				(original.milestone ?? "") !== (task.milestone ?? "")
-			);
 		});
+
+		let movedTasks: Task[];
+		let changedTasks: Task[];
+
+		if (params.orderedTaskIds) {
+			// The caller names the target column's final order, so the moved tasks land exactly where
+			// the board previewed them instead of appending to the end.
+			const seenOrdered = new Set<string>();
+			for (const id of params.orderedTaskIds) {
+				const key = normalizeTaskId(id);
+				if (seenOrdered.has(key)) throw new Error(`Duplicate task ID in orderedTaskIds: ${id}`);
+				seenOrdered.add(key);
+			}
+			for (const task of tasksToMove) {
+				if (!seenOrdered.has(normalizeTaskId(task.id))) {
+					throw new Error("orderedTaskIds must include every task being moved");
+				}
+			}
+
+			const movedByKey = new Map(tasksToMove.map((task) => [normalizeTaskId(task.id), task]));
+			// A task that failed to resolve is not moving, so it keeps its place and stays out of the
+			// target column's ordering.
+			const failedKeys = new Set(failures.map((failure) => normalizeTaskId(failure.taskId)));
+			const rows: Array<{ task: Task; moved: boolean }> = [];
+			for (const id of params.orderedTaskIds) {
+				const key = normalizeTaskId(id);
+				if (failedKeys.has(key)) continue;
+				const movedTask = movedByKey.get(key);
+				if (movedTask) {
+					rows.push({ task: movedTask, moved: true });
+					continue;
+				}
+				const resolution = store.resolveTaskForMutation(key);
+				if (resolution.status === "ambiguous") throw new AmbiguousTaskIdError(id, resolution.candidates);
+				// Tasks that couldn't be loaded (may have been moved/deleted) drop out of the ordering
+				if (resolution.status === "found") rows.push({ task: resolution.task, moved: false });
+			}
+
+			// Seed each run of moved tasks with block ordinals between its unmoved neighbors, exactly
+			// as a single-task reorder seeds its midpoint, then let conflict resolution settle the rest.
+			let requiresRebalance = false;
+			const tasksInOrder: Task[] = [];
+			for (let index = 0; index < rows.length; ) {
+				const row = rows[index];
+				if (!row) break;
+				if (!row.moved) {
+					tasksInOrder.push(row.task);
+					index += 1;
+					continue;
+				}
+				let runEnd = index;
+				while (runEnd < rows.length && rows[runEnd]?.moved) runEnd += 1;
+				const block = calculateBlockOrdinals({
+					previous: index > 0 ? (rows[index - 1]?.task ?? null) : null,
+					next: rows[runEnd]?.task ?? null,
+					count: runEnd - index,
+					defaultStep,
+				});
+				requiresRebalance = requiresRebalance || block.requiresRebalance;
+				for (let offset = index; offset < runEnd; offset += 1) {
+					const movedRow = rows[offset];
+					if (!movedRow) continue;
+					tasksInOrder.push({ ...applyMove(movedRow.task), ordinal: block.ordinals[offset - index] });
+				}
+				index = runEnd;
+			}
+
+			const resolutionUpdates = resolveOrdinalConflicts(tasksInOrder, {
+				defaultStep,
+				startOrdinal: defaultStep,
+				forceSequential: requiresRebalance,
+			});
+			const updatesMap = new Map(tasksInOrder.map((task) => [task.id, task]));
+			for (const update of resolutionUpdates) {
+				updatesMap.set(update.id, update);
+			}
+
+			const originalMap = new Map([
+				...rows.map(({ task }) => [task.id, task] as const),
+				...tasksToMove.map((task) => [task.id, task] as const),
+			]);
+			movedTasks = tasksToMove.map((task) => updatesMap.get(task.id) ?? applyMove(task));
+			changedTasks = Array.from(updatesMap.values()).filter((task) => {
+				const original = originalMap.get(task.id);
+				if (!original) return true;
+				return (
+					(original.status ?? "") !== (task.status ?? "") ||
+					(original.ordinal ?? null) !== (task.ordinal ?? null) ||
+					(original.milestone ?? "") !== (task.milestone ?? "")
+				);
+			});
+		} else {
+			// The batch appends to the end of the target column, so only the moved tasks get a new
+			// ordinal. Tasks already in the column keep theirs and stay out of the write set.
+			const columnTasks = sortByOrdinal(
+				store.getTasks({ status: targetStatus }).filter((task) => !movedIds.has(task.id)),
+			);
+			const lastOrdinal = columnTasks.reduce((highest, task) => Math.max(highest, task.ordinal ?? 0), 0);
+
+			movedTasks = tasksToMove.map((task, index) => ({
+				...applyMove(task),
+				ordinal: lastOrdinal + defaultStep * (index + 1),
+			}));
+
+			changedTasks = movedTasks.filter((task, index) => {
+				const original = tasksToMove[index];
+				if (!original) return true;
+				return (
+					original.status !== task.status ||
+					(original.ordinal ?? null) !== task.ordinal ||
+					(original.milestone ?? "") !== (task.milestone ?? "")
+				);
+			});
+		}
 
 		if (changedTasks.length > 0) {
 			await this.updateTasksBulk(

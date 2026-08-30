@@ -22,20 +22,23 @@ interface TaskCardProps {
   onSelect?: (event: { shiftKey: boolean }) => void;
 }
 
-// Dragging a selected card moves the whole selection, so the drag image has to show it. Stacking two
-// empty cards behind a copy of the dragged one, plus the count, keeps the board's own card styling.
+// Dragging a selected card moves the whole selection, so the drag image has to show it. Stacking
+// empty cards (up to two) behind a copy of the dragged one, plus the count of every task that will
+// move, keeps the board's own card styling.
 const buildSelectionDragImage = (source: HTMLElement, count: number): HTMLElement => {
   const width = source.offsetWidth;
   const height = source.offsetHeight;
   const layer = (offset: number) => `position:absolute;top:${offset}px;left:${offset}px;width:${width}px;height:${height}px;margin:0;`;
 
+  const behind = Math.min(count - 1, 2);
+  const spread = 6 * behind;
   const ghost = document.createElement('div');
-  ghost.style.cssText = `position:fixed;top:-1000px;left:-1000px;width:${width + 12}px;height:${height + 12}px;pointer-events:none;`;
+  ghost.style.cssText = `position:fixed;top:-1000px;left:-1000px;width:${width + spread}px;height:${height + spread}px;pointer-events:none;`;
 
-  for (const offset of [12, 6]) {
+  for (let depth = behind; depth >= 1; depth -= 1) {
     const shell = document.createElement('div');
     shell.className = source.className;
-    shell.style.cssText = layer(offset);
+    shell.style.cssText = layer(6 * depth);
     ghost.appendChild(shell);
   }
 
@@ -96,8 +99,15 @@ const TaskCard: React.FC<TaskCardProps> = ({
     }
     e.dataTransfer.effectAllowed = 'move';
 
-    if (isSelected && selectionCount > 1 && typeof e.dataTransfer.setDragImage === 'function') {
-      const ghost = buildSelectionDragImage(e.currentTarget as HTMLElement, selectionCount);
+    // A modifier-press that turns straight into a drag never completes the click, so the selection
+    // would miss the very card being dragged and both the badge and the drop would come up one
+    // short. Joining the selection here keeps them in agreement with what the user grabbed.
+    const joinsSelection = !isSelected && selectionCount > 0 && (e.ctrlKey || e.metaKey) && Boolean(onSelect);
+    if (joinsSelection) onSelect?.({ shiftKey: false });
+    const batchCount = isSelected ? selectionCount : joinsSelection ? selectionCount + 1 : 1;
+
+    if (batchCount > 1 && typeof e.dataTransfer.setDragImage === 'function') {
+      const ghost = buildSelectionDragImage(e.currentTarget as HTMLElement, batchCount);
       document.body.appendChild(ghost);
       e.dataTransfer.setDragImage(ghost, 16, 16);
       // The browser snapshots the element during setDragImage, so it only has to survive this tick.

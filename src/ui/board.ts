@@ -180,7 +180,7 @@ export function formatTaskListItem(
 		return `{magenta-fg}► ${content}{/}`;
 	}
 	if (isMarked) {
-		return `{cyan-fg}●{/} ${isCrossBranch ? `{gray-fg}${content}{/}` : content}`;
+		return `{magenta-fg}●{/} ${isCrossBranch ? `{gray-fg}${content}{/}` : content}`;
 	}
 	if (isCrossBranch) {
 		return `{gray-fg}${content}{/}`;
@@ -507,18 +507,16 @@ export async function renderBoardTui(
 			return sharedFilters.limit !== undefined ? filteredTasks.slice(0, sharedFilters.limit) : filteredTasks;
 		};
 
-		// Move mode state
+		// Move mode state. The whole marked set moves together: the first id is the anchor that
+		// travels with the cursor as the ghost, the rest stay marked in place until Enter confirms.
 		type MoveOperation = {
-			taskId: string;
+			taskIds: string[];
 			originalStatus: string;
 			originalIndex: number;
 			targetStatus: string;
 			targetIndex: number;
 		};
 		let moveOp: MoveOperation | null = null;
-		// Marked tasks move together. An empty set leaves every key on its single-task behavior.
-		let markedTaskIds = new Set<string>();
-		let batchMoveTargetStatus: string | null = null;
 
 		const footerBox = box({
 			parent: screen,
@@ -599,11 +597,11 @@ export async function renderBoardTui(
 			const availableWidth = Math.max(1, Math.floor(getTerminalWidth() / columnCount) - 4);
 			return buildRenderedTaskListItems(
 				tasks,
-				moveOp?.taskId,
+				moveOp?.taskIds[0],
 				availableWidth,
 				options?.dateFormat,
 				configuredProjects,
-				markedTaskIds,
+				moveOp ? new Set(moveOp.taskIds.slice(1)) : undefined,
 			);
 		};
 
@@ -784,9 +782,11 @@ export async function renderBoardTui(
 				return prepareBoardColumns(allTasks, currentStatuses);
 			}
 
-			// 1. Filter out the moving task from the source
-			const tasksWithoutMoving = allTasks.filter((t) => t.id !== operation.taskId);
-			const movingTask = allTasks.find((t) => t.id === operation.taskId);
+			// 1. Filter out the anchor task from the source. Marked companions stay in place until the
+			// move is confirmed, so the ghost alone shows where the whole set will land.
+			const anchorId = operation.taskIds[0];
+			const tasksWithoutMoving = allTasks.filter((t) => t.id !== anchorId);
+			const movingTask = allTasks.find((t) => t.id === anchorId);
 
 			if (!movingTask) {
 				return prepareBoardColumns(allTasks, currentStatuses);
@@ -1019,17 +1019,13 @@ export async function renderBoardTui(
 				return;
 			}
 			if (moveOp) {
+				const label = moveOp.taskIds.length > 1 ? `MOVE ${moveOp.taskIds.length} TASKS` : "MOVE MODE";
 				setFooterContent(
-					" {green-fg}MOVE MODE{/} | {cyan-fg}[←→]{/} Change Column | {cyan-fg}[↑↓]{/} Reorder | {cyan-fg}[Enter/M]{/} Confirm | {cyan-fg}[Esc]{/} Cancel",
-				);
-			} else if (batchMoveTargetStatus) {
-				setFooterContent(
-					` {green-fg}BATCH MOVE ${markedTaskIds.size} tasks{/} | {cyan-fg}[←→]{/} Column: ${batchMoveTargetStatus} | {cyan-fg}[Enter/M]{/} Confirm | {cyan-fg}[Esc]{/} Cancel`,
+					` {green-fg}${label}{/} | {cyan-fg}[←→]{/} Change Column | {cyan-fg}[↑↓]{/} Reorder | {cyan-fg}[M]{/} Mark task below | {cyan-fg}[Enter]{/} Confirm | {cyan-fg}[Esc]{/} Cancel`,
 				);
 			} else {
 				const base = getBoardFooterContent({ hasProjects: configuredProjects.length > 0 });
-				const filtered = hasActiveSharedFilters() ? `${base} | {yellow-fg}Filtered{/}` : base;
-				setFooterContent(markedTaskIds.size > 0 ? `${filtered} | {cyan-fg}${markedTaskIds.size} marked{/}` : filtered);
+				setFooterContent(hasActiveSharedFilters() ? `${base} | {yellow-fg}Filtered{/}` : base);
 			}
 			syncBoardAreaLayout();
 		};
@@ -1069,8 +1065,8 @@ export async function renderBoardTui(
 				}
 				const dataForColumns = filterVisibleColumns(projectedData, hideEmptyColumns, Boolean(moveOp));
 
-				// If we are moving, we want to select the moving task
-				const selectedId = preferredTaskId ?? (moveOp ? moveOp.taskId : getSelectedTaskId());
+				// If we are moving, we want to select the anchor task
+				const selectedId = preferredTaskId ?? (moveOp ? moveOp.taskIds[0] : getSelectedTaskId());
 
 				if (dataForColumns.length === 0) {
 					const fallbackStatus = currentStatuses[0] ?? "No Status";
@@ -1246,22 +1242,8 @@ export async function renderBoardTui(
 			void openFilterPicker("milestone");
 		});
 
-		const shiftBatchMoveTarget = (offset: number) => {
-			if (!batchMoveTargetStatus) return;
-			const index = currentStatuses.indexOf(batchMoveTargetStatus);
-			const next = currentStatuses[index + offset];
-			if (!next) return;
-			batchMoveTargetStatus = next;
-			updateFooter();
-			screen.render();
-		};
-
 		screen.key(["left", "h"], () => {
 			if (popupOpen || filterPopupOpen || modalOpen || currentFocus === "filters") return;
-			if (batchMoveTargetStatus) {
-				shiftBatchMoveTarget(-1);
-				return;
-			}
 			if (moveOp) {
 				const currentStatusIndex = currentStatuses.indexOf(moveOp.targetStatus);
 				if (currentStatusIndex > 0) {
@@ -1281,10 +1263,6 @@ export async function renderBoardTui(
 
 		screen.key(["right", "l"], () => {
 			if (popupOpen || filterPopupOpen || modalOpen || currentFocus === "filters") return;
-			if (batchMoveTargetStatus) {
-				shiftBatchMoveTarget(1);
-				return;
-			}
 			if (moveOp) {
 				const currentStatusIndex = currentStatuses.indexOf(moveOp.targetStatus);
 				if (currentStatusIndex < currentStatuses.length - 1) {
@@ -1609,11 +1587,6 @@ export async function renderBoardTui(
 				return;
 			}
 
-			if (batchMoveTargetStatus) {
-				await performBatchMove();
-				return;
-			}
-
 			const column = columns[currentCol];
 			if (!column) return;
 			const idx = column.list.selected ?? 0;
@@ -1637,11 +1610,13 @@ export async function renderBoardTui(
 		const performTaskMove = async () => {
 			if (!moveOp) return;
 
-			// Check if any actual change occurred
-			const noChange = moveOp.targetStatus === moveOp.originalStatus && moveOp.targetIndex === moveOp.originalIndex;
+			// A lone task dropped back on its original spot changes nothing, so just exit move mode
+			const noChange =
+				moveOp.taskIds.length === 1 &&
+				moveOp.targetStatus === moveOp.originalStatus &&
+				moveOp.targetIndex === moveOp.originalIndex;
 
 			if (noChange) {
-				// No change, just exit move mode
 				moveOp = null;
 				renderView();
 				return;
@@ -1661,11 +1636,25 @@ export async function renderBoardTui(
 					return;
 				}
 
-				const orderedTaskIds = targetColumn.tasks.map((task) => task.id);
+				// The whole marked set lands where the ghost stands: the anchor keeps the previewed
+				// spot and the rest of the set slots in behind it in board order.
+				const anchorId = moveOp.taskIds[0] ?? "";
+				const markedSet = new Set(moveOp.taskIds);
+				const companions: string[] = [];
+				for (const column of projectedData) {
+					for (const task of column.tasks) {
+						if (task.id !== anchorId && markedSet.has(task.id)) companions.push(task.id);
+					}
+				}
+				const orderedTaskIds: string[] = [];
+				for (const task of targetColumn.tasks) {
+					if (task.id !== anchorId && markedSet.has(task.id)) continue;
+					orderedTaskIds.push(task.id);
+					if (task.id === anchorId) orderedTaskIds.push(...companions);
+				}
 
-				// Persist the move using core API
-				const { updatedTask, changedTasks } = await core.reorderTask({
-					taskId: moveOp.taskId,
+				const { movedTasks, changedTasks, failures } = await core.moveTasksToStatus({
+					taskIds: [anchorId, ...companions],
 					targetStatus: moveOp.targetStatus,
 					orderedTaskIds,
 					autoCommit: config?.autoCommit ?? false,
@@ -1673,7 +1662,9 @@ export async function renderBoardTui(
 
 				// Update local state with all changed tasks (includes ordinal updates)
 				const changedTasksMap = new Map(changedTasks.map((t) => [t.id, t]));
-				changedTasksMap.set(updatedTask.id, updatedTask);
+				for (const task of movedTasks) {
+					if (!changedTasksMap.has(task.id)) changedTasksMap.set(task.id, task);
+				}
 				currentTasks = currentTasks.map((t) => changedTasksMap.get(t.id) ?? t);
 
 				// Exit move mode
@@ -1681,6 +1672,12 @@ export async function renderBoardTui(
 
 				// Render with updated local state
 				renderView();
+
+				if (failures.length > 0) {
+					showTransientFooter(
+						` {red-fg}Moved ${movedTasks.length}, failed ${failures.length}: ${failures.map((failure) => failure.taskId).join(", ")}{/}`,
+					);
+				}
 			} catch (error) {
 				// On error, cancel the move and restore original position
 				if (process.env.DEBUG) {
@@ -1693,74 +1690,16 @@ export async function renderBoardTui(
 		const cancelMove = () => {
 			if (!moveOp) return;
 
-			// Exit move mode - pure state reset
+			// Exit move mode and drop every mark - pure state reset
 			moveOp = null;
 
 			renderView();
 		};
 
-		const clearMarks = () => {
-			markedTaskIds = new Set();
-			batchMoveTargetStatus = null;
-			renderView();
-			updateFooter();
-			screen.render();
-		};
-
-		const performBatchMove = async () => {
-			const targetStatus = batchMoveTargetStatus;
-			if (!targetStatus || markedTaskIds.size === 0) return;
-
-			const taskIds = Array.from(markedTaskIds);
-			try {
-				const core = await getCore();
-				const config = await core.fs.loadConfig();
-				const { movedTasks, failures } = await core.moveTasksToStatus({
-					taskIds,
-					targetStatus,
-					autoCommit: config?.autoCommit ?? false,
-				});
-
-				const movedById = new Map(movedTasks.map((task) => [task.id, task]));
-				// Feed the batch through the shared update funnel so the board and any open popup
-				// refresh the same way a watcher update would.
-				updateBoard(
-					currentTasks.map((task) => movedById.get(task.id) ?? task),
-					[],
-				);
-				clearMarks();
-
-				if (failures.length > 0) {
-					showTransientFooter(
-						` {red-fg}Moved ${movedTasks.length}, failed ${failures.length}: ${failures.map((failure) => failure.taskId).join(", ")}{/}`,
-					);
-					return;
-				}
-				showTransientFooter(` {green-fg}Moved ${movedTasks.length} tasks to ${targetStatus}{/}`);
-			} catch (error) {
-				clearMarks();
-				showTransientFooter(
-					` {red-fg}Batch move failed: ${error instanceof Error ? error.message : "Unknown error"}{/}`,
-				);
-			}
-		};
-
-		screen.key(["m", "M", "S-m"], async () => {
+		screen.key(["m", "M", "S-m"], () => {
 			if (popupOpen || filterPopupOpen || modalOpen || currentFocus === "filters") return;
 			if (hasMoveBlockingSharedFilters()) {
 				showTransientFooter(" {yellow-fg}Clear filters before moving tasks.{/}");
-				return;
-			}
-
-			if (markedTaskIds.size > 0 && !moveOp) {
-				if (batchMoveTargetStatus) {
-					await performBatchMove();
-					return;
-				}
-				batchMoveTargetStatus = columns[currentCol]?.status ?? currentStatuses[0] ?? null;
-				renderView();
-				updateFooter();
-				screen.render();
 				return;
 			}
 
@@ -1779,7 +1718,7 @@ export async function renderBoardTui(
 
 				// Enter move mode - store original position for cancel
 				moveOp = {
-					taskId: task.id,
+					taskIds: [task.id],
 					originalStatus: column.status,
 					originalIndex: taskIndex,
 					targetStatus: column.status,
@@ -1787,30 +1726,29 @@ export async function renderBoardTui(
 				};
 
 				renderView();
-			} else {
-				// Confirm move (same as Enter in move mode)
-				await performTaskMove();
-			}
-		});
-
-		screen.key(["space"], () => {
-			if (popupOpen || filterPopupOpen || modalOpen || currentFocus === "filters" || moveOp) return;
-			if (batchMoveTargetStatus) return;
-			const column = columns[currentCol];
-			if (!column) return;
-			const task = column.tasks[column.list.selected ?? 0];
-			if (!task) return;
-			if (task.branch) {
-				showTransientFooter(` {red-fg}Cannot move task from branch "${task.branch}".{/}`);
 				return;
 			}
 
-			const nextMarks = new Set(markedTaskIds);
-			if (!nextMarks.delete(task.id)) nextMarks.add(task.id);
-			markedTaskIds = nextMarks;
+			// In move mode, m marks the task whose spot the ghost occupies (shown directly below
+			// it); pressing m on an already-marked task unmarks it.
+			const projectedData = getProjectedColumns(getFilteredTasks(), moveOp);
+			const targetColumn = projectedData.find((c) => c.status === moveOp?.targetStatus);
+			const anchorId = moveOp.taskIds[0];
+			const anchorRow = targetColumn ? targetColumn.tasks.findIndex((task) => task.id === anchorId) : -1;
+			const candidate = anchorRow >= 0 ? targetColumn?.tasks[anchorRow + 1] : undefined;
+			if (!candidate) return;
+			if (candidate.branch) {
+				showTransientFooter(` {red-fg}Cannot move task from branch "${candidate.branch}".{/}`);
+				return;
+			}
+
+			moveOp = {
+				...moveOp,
+				taskIds: moveOp.taskIds.includes(candidate.id)
+					? moveOp.taskIds.filter((id) => id !== candidate.id)
+					: [...moveOp.taskIds, candidate.id],
+			};
 			renderView();
-			updateFooter();
-			screen.render();
 		});
 
 		screen.key(["tab"], async () => {
@@ -1996,11 +1934,6 @@ export async function renderBoardTui(
 			// In move mode, ESC cancels and restores original position
 			if (moveOp) {
 				cancelMove();
-				return;
-			}
-
-			if (markedTaskIds.size > 0 || batchMoveTargetStatus) {
-				clearMarks();
 				return;
 			}
 

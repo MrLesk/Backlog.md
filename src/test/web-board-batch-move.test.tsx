@@ -76,7 +76,7 @@ const renderBoard = (
 // A lane with no tasks is hidden, so the milestone lane needs a card of its own to exist at all.
 const MILESTONE_TASKS = [TASKS[0], TASKS[1], { ...TASKS[2], milestone: MILESTONE.title }] as Task[];
 
-const renderMilestoneBoard = (): HTMLElement => {
+const renderMilestoneBoard = (tasks: Task[] = MILESTONE_TASKS): HTMLElement => {
 	setupDom();
 	const container = document.getElementById("root");
 	expect(container).toBeTruthy();
@@ -86,7 +86,7 @@ const renderMilestoneBoard = (): HTMLElement => {
 			<Board
 				onEditTask={() => {}}
 				onNewTask={() => {}}
-				tasks={MILESTONE_TASKS}
+				tasks={tasks}
 				statuses={STATUSES}
 				isLoading={false}
 				milestones={[MILESTONE.title]}
@@ -139,6 +139,7 @@ const dispatchDrop = (target: HTMLElement, data: Record<string, string>) => {
 
 const dispatchDragStart = async (
 	card: HTMLElement,
+	modifiers: { ctrlKey?: boolean; metaKey?: boolean } = {},
 ): Promise<Array<{ element: HTMLElement; x: number; y: number }>> => {
 	const dragImages: Array<{ element: HTMLElement; x: number; y: number }> = [];
 	const event = new window.Event("dragstart", { bubbles: true, cancelable: true });
@@ -150,11 +151,21 @@ const dispatchDragStart = async (
 			setDragImage: (element: HTMLElement, x: number, y: number) => dragImages.push({ element, x, y }),
 		},
 	});
+	for (const [key, value] of Object.entries(modifiers)) {
+		Object.defineProperty(event, key, { value });
+	}
 	await act(async () => {
 		card.dispatchEvent(event);
 		await Promise.resolve();
 	});
 	return dragImages;
+};
+
+const dispatchDragOver = async (target: HTMLElement) => {
+	await act(async () => {
+		target.dispatchEvent(new window.Event("dragover", { bubbles: true, cancelable: true }));
+		await Promise.resolve();
+	});
 };
 
 const getColumn = (container: HTMLElement, status: string): HTMLElement => {
@@ -445,6 +456,85 @@ describe("Web board batch move", () => {
 		}
 	});
 
+	it("keeps a single card lifted and released in place a pure no-op", async () => {
+		const originalReorderTask = apiClient.reorderTask.bind(apiClient);
+		const calls: unknown[] = [];
+		apiClient.reorderTask = async (payload) => {
+			calls.push(payload);
+			return { success: true, task: TASKS[0] as Task, changedTasks: [] };
+		};
+
+		try {
+			const container = renderBoard();
+			const card = getCard(container, "TASK-1");
+			await dispatchDragStart(card);
+			// Releasing over the lifted card itself must not read as "append to the end".
+			await dispatchDragOver(card);
+			await act(async () => {
+				dispatchDrop(getColumn(container, "To Do"), { "text/plain": "TASK-1", "text/status": "To Do" });
+				await Promise.resolve();
+			});
+
+			expect(calls).toEqual([]);
+		} finally {
+			apiClient.reorderTask = originalReorderTask;
+		}
+	});
+
+	it("still appends a card dropped on the empty space below a column", async () => {
+		const originalReorderTask = apiClient.reorderTask.bind(apiClient);
+		const calls: Array<{ taskId: string; orderedTaskIds?: string[] }> = [];
+		apiClient.reorderTask = async (payload) => {
+			calls.push(payload);
+			return { success: true, task: TASKS[0] as Task, changedTasks: [] };
+		};
+
+		try {
+			const container = renderBoard();
+			await dispatchDragStart(getCard(container, "TASK-1"));
+			await act(async () => {
+				dispatchDrop(getColumn(container, "To Do"), { "text/plain": "TASK-1", "text/status": "To Do" });
+				await Promise.resolve();
+			});
+
+			expect(calls).toHaveLength(1);
+			expect(calls[0]?.orderedTaskIds).toEqual(["TASK-2", "TASK-3", "TASK-1"]);
+		} finally {
+			apiClient.reorderTask = originalReorderTask;
+		}
+	});
+
+	it("keeps an in-place release inside a milestone lane a pure no-op", async () => {
+		const originalReorderTask = apiClient.reorderTask.bind(apiClient);
+		const calls: unknown[] = [];
+		apiClient.reorderTask = async (payload) => {
+			calls.push(payload);
+			return { success: true, task: TASKS[0] as Task, changedTasks: [] };
+		};
+
+		try {
+			const container = renderMilestoneBoard([
+				TASKS[0] as Task,
+				{ ...TASKS[1], milestone: MILESTONE.title } as Task,
+				{ ...TASKS[2], milestone: MILESTONE.title } as Task,
+			]);
+			const card = getCard(container, "TASK-2");
+			await dispatchDragStart(card);
+			await dispatchDragOver(card);
+			await act(async () => {
+				dispatchDrop(getLaneColumn(container, "Release 1", "To Do"), {
+					"text/plain": "TASK-2",
+					"text/status": "To Do",
+				});
+				await Promise.resolve();
+			});
+
+			expect(calls).toEqual([]);
+		} finally {
+			apiClient.reorderTask = originalReorderTask;
+		}
+	});
+
 	it("does nothing when the toolbar moves the selection to the status it already has", async () => {
 		const originalMoveTasks = apiClient.moveTasks.bind(apiClient);
 		const calls: MoveTasksPayload[] = [];
@@ -516,10 +606,39 @@ describe("Web board batch move", () => {
 
 		expect(dragImages).toHaveLength(1);
 		const ghost = dragImages[0]?.element as HTMLElement;
-		// Two cards stacked behind a copy of the dragged card, plus the count.
-		expect(ghost.children).toHaveLength(4);
+		// One card stacked behind a copy of the dragged card, plus the count of both.
+		expect(ghost.children).toHaveLength(3);
 		expect(ghost.lastElementChild?.textContent).toBe("2");
 		expect(ghost.textContent).toContain("TASK-1");
+	});
+
+	it("counts every selected card in the drag image badge", async () => {
+		const container = renderBoard();
+		await clickCard(getCard(container, "TASK-1"), { ctrlKey: true });
+		await clickCard(getCard(container, "TASK-2"), { ctrlKey: true });
+		await clickCard(getCard(container, "TASK-3"), { ctrlKey: true });
+
+		const dragImages = await dispatchDragStart(getCard(container, "TASK-2"));
+
+		expect(dragImages).toHaveLength(1);
+		const ghost = dragImages[0]?.element as HTMLElement;
+		// Two cards stacked behind a copy of the dragged card, plus the count of all three.
+		expect(ghost.children).toHaveLength(4);
+		expect(ghost.lastElementChild?.textContent).toBe("3");
+	});
+
+	it("pulls a modifier-press-dragged card into the selection so the badge matches the drop", async () => {
+		const container = renderBoard();
+		await clickCard(getCard(container, "TASK-1"), { ctrlKey: true });
+		await clickCard(getCard(container, "TASK-2"), { ctrlKey: true });
+
+		// A ctrl/cmd press that turns straight into a drag never completes the click, so the third
+		// card would otherwise be missing from both the badge and the move.
+		const dragImages = await dispatchDragStart(getCard(container, "TASK-3"), { metaKey: true });
+
+		expect(dragImages).toHaveLength(1);
+		expect((dragImages[0]?.element as HTMLElement).lastElementChild?.textContent).toBe("3");
+		expect(selectedCardIds(container).sort()).toEqual(["TASK-1", "TASK-2", "TASK-3"]);
 	});
 
 	it("leaves the drag image alone when a single card is dragged", async () => {
@@ -527,6 +646,15 @@ describe("Web board batch move", () => {
 		await clickCard(getCard(container, "TASK-1"), { ctrlKey: true });
 
 		expect(await dispatchDragStart(getCard(container, "TASK-1"))).toEqual([]);
+	});
+
+	it("leaves the drag image and selection alone on an unmodified drag of an unselected card", async () => {
+		const container = renderBoard();
+		await clickCard(getCard(container, "TASK-1"), { ctrlKey: true });
+		await clickCard(getCard(container, "TASK-2"), { ctrlKey: true });
+
+		expect(await dispatchDragStart(getCard(container, "TASK-3"))).toEqual([]);
+		expect(selectedCardIds(container).sort()).toEqual(["TASK-1", "TASK-2"]);
 	});
 
 	it("reports the tasks that failed to move", async () => {

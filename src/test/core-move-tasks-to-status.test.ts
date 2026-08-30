@@ -284,4 +284,136 @@ describe("Core.moveTasksToStatus", () => {
 			expect(batch.failures).toHaveLength(0);
 		});
 	});
+
+	describe("ordered placement", () => {
+		it("lands the block exactly where orderedTaskIds names, between untouched neighbors", async () => {
+			await createTasks([
+				["task-1", "To Do", 1000],
+				["task-2", "To Do", 2000],
+				["task-3", "In Progress", 1000],
+				["task-4", "In Progress", 2000],
+			]);
+
+			const result = await core.moveTasksToStatus({
+				taskIds: ["task-1", "task-2"],
+				targetStatus: "In Progress",
+				orderedTaskIds: ["TASK-3", "TASK-1", "TASK-2", "TASK-4"],
+				autoCommit: false,
+			});
+
+			expect(result.failures).toHaveLength(0);
+			const first = await core.filesystem.loadTask("task-1");
+			const second = await core.filesystem.loadTask("task-2");
+			expect(first?.status).toBe("In Progress");
+			expect(second?.status).toBe("In Progress");
+			expect(first?.ordinal ?? 0).toBeGreaterThan(1000);
+			expect(second?.ordinal ?? 0).toBeLessThan(2000);
+			expect(first?.ordinal ?? 0).toBeLessThan(second?.ordinal ?? 0);
+			// The neighbors keep their ordinals and stay out of the write set.
+			expect((await core.filesystem.loadTask("task-3"))?.ordinal).toBe(1000);
+			expect((await core.filesystem.loadTask("task-4"))?.ordinal).toBe(2000);
+			expect(result.changedTasks.map((task) => task.id).sort()).toEqual(["TASK-1", "TASK-2"]);
+		});
+
+		it("places a single task at the reorderTask midpoint", async () => {
+			await createTasks([
+				["task-1", "To Do", 1000],
+				["task-3", "In Progress", 1000],
+				["task-4", "In Progress", 2000],
+			]);
+
+			await core.moveTasksToStatus({
+				taskIds: ["task-1"],
+				targetStatus: "In Progress",
+				orderedTaskIds: ["TASK-3", "TASK-1", "TASK-4"],
+				autoCommit: false,
+			});
+
+			expect((await core.filesystem.loadTask("task-1"))?.ordinal).toBe(1500);
+		});
+
+		it("writes nothing when the ordering already matches the column", async () => {
+			await createTasks([
+				["task-1", "To Do", 1000],
+				["task-2", "To Do", 2000],
+				["task-3", "To Do", 3000],
+			]);
+
+			const result = await core.moveTasksToStatus({
+				taskIds: ["task-1", "task-2"],
+				targetStatus: "To Do",
+				orderedTaskIds: ["TASK-1", "TASK-2", "TASK-3"],
+				autoCommit: false,
+			});
+
+			expect(result.failures).toHaveLength(0);
+			expect(result.changedTasks).toHaveLength(0);
+		});
+
+		it("renumbers the column when the target gap cannot hold the block", async () => {
+			await createTasks([
+				["task-1", "To Do", 1000],
+				["task-2", "To Do", 2000],
+				["task-3", "In Progress", 1000],
+				["task-4", "In Progress", 1000],
+			]);
+
+			await core.moveTasksToStatus({
+				taskIds: ["task-1", "task-2"],
+				targetStatus: "In Progress",
+				orderedTaskIds: ["TASK-3", "TASK-1", "TASK-2", "TASK-4"],
+				autoCommit: false,
+			});
+
+			const ordinals = await Promise.all(
+				["task-3", "task-1", "task-2", "task-4"].map(async (id) => (await core.filesystem.loadTask(id))?.ordinal ?? 0),
+			);
+			expect(ordinals).toEqual([...ordinals].sort((a, b) => a - b));
+			expect(new Set(ordinals).size).toBe(4);
+		});
+
+		it("rejects an ordering that repeats or omits a moved task", async () => {
+			await createTasks([
+				["task-1", "To Do", 1000],
+				["task-2", "To Do", 2000],
+			]);
+
+			await expect(
+				core.moveTasksToStatus({
+					taskIds: ["task-1"],
+					targetStatus: "Done",
+					orderedTaskIds: ["TASK-1", "task-1"],
+					autoCommit: false,
+				}),
+			).rejects.toThrow(/duplicate/i);
+
+			await expect(
+				core.moveTasksToStatus({
+					taskIds: ["task-1", "task-2"],
+					targetStatus: "Done",
+					orderedTaskIds: ["TASK-1"],
+					autoCommit: false,
+				}),
+			).rejects.toThrow(/must include every task/i);
+		});
+
+		it("keeps the placement while reporting the tasks that could not move", async () => {
+			await createTasks([
+				["task-1", "To Do", 1000],
+				["task-3", "In Progress", 1000],
+				["task-4", "In Progress", 2000],
+			]);
+
+			const result = await core.moveTasksToStatus({
+				taskIds: ["task-1", "task-9"],
+				targetStatus: "In Progress",
+				orderedTaskIds: ["TASK-3", "TASK-1", "TASK-9", "TASK-4"],
+				autoCommit: false,
+			});
+
+			expect(result.failures).toEqual([{ taskId: "task-9", reason: "Task task-9 not found." }]);
+			expect(result.movedTasks.map((task) => task.id)).toEqual(["TASK-1"]);
+			expect((await core.filesystem.loadTask("task-1"))?.ordinal).toBe(1500);
+		});
+	});
 });

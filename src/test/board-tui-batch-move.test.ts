@@ -128,41 +128,46 @@ async function withBoard(
 	}
 }
 
+const markedRows = (rows: string[]) => rows.filter((row) => row.includes("●"));
+
 describe("TUI board batch move", () => {
-	it("marks the task under the cursor with Space and unmarks it on a second press", async () => {
+	it("marks the task the ghost stands on with M and unmarks it on a second press", async () => {
 		await withBoard(({ screen, rows, footer }) => {
-			pressKey(screen, "space");
-			expect(rows().filter((row) => row.startsWith("●"))).toHaveLength(1);
-			expect(footer()).toContain("1 marked");
-
-			pressKey(screen, "space");
-			expect(rows().filter((row) => row.startsWith("●"))).toHaveLength(0);
-			expect(footer()).not.toContain("marked");
-		});
-	});
-
-	it("clears the mark set on Escape", async () => {
-		await withBoard(({ screen, rows }) => {
-			pressKey(screen, "space");
-			expect(rows().filter((row) => row.startsWith("●"))).toHaveLength(1);
-
-			pressKey(screen, "escape");
-			expect(rows().filter((row) => row.startsWith("●"))).toHaveLength(0);
-		});
-	});
-
-	it("moves every marked task to the chosen column", async () => {
-		await withBoard(async ({ screen, footer, rows, quit }) => {
-			pressKey(screen, "space");
-			pressKey(screen, "down");
-			pressKey(screen, "space");
+			pressKey(screen, "m");
+			expect(footer()).toContain("MOVE MODE");
+			expect(footer()).toContain("Mark task below");
 
 			pressKey(screen, "m");
-			expect(footer()).toContain("BATCH MOVE 2 tasks");
+			expect(markedRows(rows())).toHaveLength(1);
+			expect(footer()).toContain("MOVE 2 TASKS");
+
+			pressKey(screen, "m");
+			expect(markedRows(rows())).toHaveLength(0);
+			expect(footer()).toContain("MOVE MODE");
+
+			pressKey(screen, "escape");
+		});
+	});
+
+	it("clears the marks and exits move mode on Escape", async () => {
+		await withBoard(({ screen, rows, footer }) => {
+			pressKey(screen, "m");
+			pressKey(screen, "m");
+			expect(markedRows(rows())).toHaveLength(1);
+
+			pressKey(screen, "escape");
+			expect(markedRows(rows())).toHaveLength(0);
+			expect(footer()).not.toContain("MOVE");
+		});
+	});
+
+	it("moves every marked task to the column the ghost lands in", async () => {
+		await withBoard(async ({ screen, footer, rows, quit }) => {
+			pressKey(screen, "m");
+			pressKey(screen, "m");
+			expect(footer()).toContain("MOVE 2 TASKS");
 
 			pressKey(screen, "right");
-			expect(footer()).toContain("In Progress");
-
 			pressKey(screen, "enter");
 			await retry(async () => {
 				const first = await core.filesystem.loadTask("TASK-1");
@@ -172,20 +177,23 @@ describe("TUI board batch move", () => {
 				}
 			});
 
+			// The anchor keeps the previewed spot and the marked task lines up right behind it.
+			const first = await core.filesystem.loadTask("TASK-1");
+			const second = await core.filesystem.loadTask("TASK-2");
+			expect(first?.ordinal ?? 0).toBeLessThan(second?.ordinal ?? 0);
 			expect((await core.filesystem.loadTask("TASK-3"))?.status).toBe("To Do");
-			expect(rows().filter((row) => row.startsWith("●"))).toHaveLength(0);
+			expect(markedRows(rows())).toHaveLength(0);
 			await quit();
 		});
 	});
 
-	it("blocks a batch move behind the same filter guard as a single move", async () => {
+	it("blocks marking behind the same filter guard as a single move", async () => {
 		await withBoard(
 			({ screen, footer }) => {
-				pressKey(screen, "space");
 				pressKey(screen, "m");
 
 				expect(footer()).toContain("Clear filters before moving tasks");
-				expect(footer()).not.toContain("BATCH MOVE");
+				expect(footer()).not.toContain("MOVE MODE");
 			},
 			{
 				searchQuery: "",
@@ -196,37 +204,46 @@ describe("TUI board batch move", () => {
 		);
 	});
 
-	it("keeps the single-task move behavior when nothing is marked", async () => {
-		await withBoard(({ screen, footer }) => {
+	it("keeps the single-task move flow as the one-task case", async () => {
+		await withBoard(async ({ screen, footer, quit }) => {
 			pressKey(screen, "m");
 			expect(footer()).toContain("MOVE MODE");
-			expect(footer()).not.toContain("BATCH MOVE");
 
-			pressKey(screen, "escape");
+			pressKey(screen, "right");
+			pressKey(screen, "enter");
+			await retry(async () => {
+				const moved = await core.filesystem.loadTask("TASK-1");
+				if (moved?.status !== "In Progress") throw new Error("move not persisted yet");
+			});
+
+			expect((await core.filesystem.loadTask("TASK-2"))?.status).toBe("To Do");
+			await quit();
 		});
 	});
 
 	it("reports the tasks it could not move", async () => {
 		await withBoard(async ({ screen, footer, quit }) => {
-			pressKey(screen, "space");
+			pressKey(screen, "m");
+			pressKey(screen, "m");
 
 			// Deleting the file behind the marked task makes the move fail for that task only.
-			await core.archiveTask("TASK-1", false);
+			await core.archiveTask("TASK-2", false);
 
-			pressKey(screen, "m");
 			pressKey(screen, "right");
 			pressKey(screen, "enter");
 
 			await retry(async () => {
 				if (!footer().includes("failed 1")) throw new Error("failure not reported yet");
 			});
-			expect(footer()).toContain("TASK-1");
+			expect(footer()).toContain("TASK-2");
+			expect((await core.filesystem.loadTask("TASK-1"))?.status).toBe("In Progress");
 			await quit();
 		});
 	});
 
-	it("documents the mark key in the help popup", () => {
+	it("documents the move key in the help popup", () => {
 		const keys = getHelpShortcuts("board").map((shortcut) => shortcut.key);
-		expect(keys).toContain("Space/M");
+		expect(keys).toContain("M");
+		expect(keys).not.toContain("Space/M");
 	});
 });

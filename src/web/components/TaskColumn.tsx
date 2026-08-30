@@ -82,7 +82,7 @@ const TaskColumn: React.FC<TaskColumnProps> = ({
 }) => {
   const [isDragOver, setIsDragOver] = React.useState(false);
   const [draggedTaskId, setDraggedTaskId] = React.useState<string | null>(null);
-  const [dropPosition, setDropPosition] = React.useState<{ index: number; position: 'before' | 'after' } | null>(null);
+  const [dropPosition, setDropPosition] = React.useState<{ index: number; position: 'before' | 'after' | 'self' } | null>(null);
   const [showMenu, setShowMenu] = React.useState(false);
   const menuRef = React.useRef<HTMLDivElement>(null);
   const columnActionsId = React.useId();
@@ -170,8 +170,10 @@ const TaskColumn: React.FC<TaskColumnProps> = ({
 
     let insertIndex = columnWithoutDropped.length;
     if (dropPosition) {
+      // 'self' resolves to the card's own spot, so releasing a lifted card in place falls through
+      // to the unchanged-order guard below instead of appending it to the end of the column.
       const { index, position } = dropPosition;
-      const baseIndex = position === 'before' ? index : index + 1;
+      const baseIndex = position === 'after' ? index + 1 : index;
       let count = 0;
       for (let i = 0; i < Math.min(baseIndex, tasks.length); i += 1) {
         if (tasks[i]?.id === droppedTaskId) {
@@ -320,8 +322,16 @@ const TaskColumn: React.FC<TaskColumnProps> = ({
             key={task.id} 
             className="relative"
             onDragOver={(e) => {
-              if (!onTaskReorder || !draggedTaskId || draggedTaskId === task.id) return;
-              
+              if (!onTaskReorder || !draggedTaskId) return;
+
+              // Hovering the lifted card itself previews "stay in place": no indicator, and the
+              // drop resolves to the card's current position instead of the end of the column.
+              if (draggedTaskId === task.id) {
+                e.preventDefault();
+                setDropPosition({ index, position: 'self' });
+                return;
+              }
+
               e.preventDefault();
               const rect = e.currentTarget.getBoundingClientRect();
               const y = e.clientY - rect.top;
