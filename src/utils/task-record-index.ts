@@ -48,10 +48,30 @@ export function createTaskRecordIndex(options: {
 	const byIdentity = new Map<string, TaskRecord | "ambiguous">();
 
 	const add = (task: Task, completedRecord: boolean) => {
+		const key = canonicalTaskId(task.id);
+		const existing = byIdentity.get(key);
+
+		// One file can arrive twice: `task view <completed-id>` hands the viewer the record to display
+		// while the viewer separately loads the completed corpus. That is the same record listed
+		// twice, not two records claiming one identity, and poisoning it would throw away the
+		// completion evidence the corpus location carries. Two *different* files claiming one
+		// identity still poison it, which is the collision worth failing closed on.
+		if (
+			existing !== undefined &&
+			existing !== "ambiguous" &&
+			task.filePath &&
+			existing.task.filePath === task.filePath
+		) {
+			if (completedRecord) {
+				existing.task = task;
+				existing.completedRecord = true;
+			}
+			return;
+		}
+
 		const record: TaskRecord = { task, completedRecord };
 		records.push(record);
-		const key = canonicalTaskId(task.id);
-		byIdentity.set(key, byIdentity.has(key) ? "ambiguous" : record);
+		byIdentity.set(key, existing === undefined ? record : "ambiguous");
 	};
 	for (const task of options.tasks) add(task, false);
 	for (const task of options.completedTasks ?? []) add(task, true);

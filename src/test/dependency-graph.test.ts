@@ -7,6 +7,7 @@ import {
 	type DependencyGraph,
 	nodesInDirection,
 } from "../utils/dependency-graph.ts";
+import { createReadinessGraph, getTaskReadiness } from "../utils/readiness.ts";
 
 const STATUSES = ["To Do", "In Progress", "Done"] as const;
 
@@ -202,6 +203,46 @@ describe("buildDependencyGraph", () => {
 		expect(graph.edges).toHaveLength(599);
 		expect(nodesInDirection(graph, "dependencies")).toHaveLength(399);
 		expect(nodesInDirection(graph, "dependents")).toHaveLength(200);
+	});
+
+	it("keeps one file supplied twice resolved, with its completion evidence", () => {
+		// `task view <completed-id>` hands the viewer the completed record to display while the viewer
+		// also loads the completed corpus, so the same file arrives in both lists. Poisoning that
+		// identity would lose the completion evidence and could show a stale non-terminal status.
+		const completed = task("task-1", [], { status: "In Progress", filePath: "/p/backlog/completed/task-1 - Done.md" });
+		const dependent = task("task-2", ["task-1"], { filePath: "/p/backlog/tasks/task-2 - Next.md" });
+		const graph = buildDependencyGraph(completed, {
+			tasks: [dependent, completed],
+			completedTasks: [completed],
+			statuses: STATUSES,
+		});
+
+		const root = graph.nodes.find((node) => node.id === "task-1");
+		expect(root).toMatchObject({ state: "resolved", completed: true });
+		expect(nodeIds(graph, "dependents")).toEqual(["task-2"]);
+
+		const readinessGraph = createReadinessGraph({
+			tasks: [dependent, completed],
+			completedTasks: [completed],
+			statuses: STATUSES,
+		});
+		// The dependent resolves it as satisfied rather than as an ambiguous identity.
+		expect(getTaskReadiness(dependent, readinessGraph)).toMatchObject({ isReady: true, missingDependencies: [] });
+		// And the completed record keeps its completion evidence, so it is neither ready nor blocked.
+		// Losing it makes an already-finished task render a readiness verdict in the detail view.
+		expect(readinessGraph.isCompletedRecord("task-1")).toBe(true);
+		expect(getTaskReadiness(completed, readinessGraph)).toMatchObject({ isReady: false, isBlocked: false });
+	});
+
+	it("still fails closed when two different files claim one identity", () => {
+		const first = task("task-1", [], { filePath: "/p/backlog/tasks/task-1 - Alpha.md" });
+		const second = task("TASK-01", [], { filePath: "/p/backlog/tasks/task-01 - Beta.md" });
+		const graph = buildDependencyGraph(task("task-2", ["task-1"]), {
+			tasks: [task("task-2", ["task-1"]), first, second],
+			statuses: STATUSES,
+		});
+
+		expect(graph.nodes.find((node) => node.state === "ambiguous")?.id).toBe("TASK-1");
 	});
 
 	it("resolves a root that is not part of the supplied corpus", () => {

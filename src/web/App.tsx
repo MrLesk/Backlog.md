@@ -456,7 +456,15 @@ function AppContent() {
           : null;
 
     if (!basePath) {
+      // Pages without a task route (milestones, statistics) open the modal directly, so they must
+      // read the detail themselves. Otherwise they would show the compact list record, silently
+      // without its dependency graph, while the board and the task list show the full detail.
       openTaskModal(task);
+      void apiClient
+        .fetchTask(task.id)
+        // Upgrade in place, so a modal the reader already closed is never reopened.
+        .then((detail) => setEditingTask((current) => (current && current.id === detail.id ? detail : current)))
+        .catch(() => {});
       return;
     }
 

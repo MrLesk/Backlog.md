@@ -1302,6 +1302,21 @@ describe("task detail routes", () => {
 		expect(container.querySelector("[role='dialog']")).toBeNull();
 	});
 
+	it("reads the task detail when a page without a task route opens the modal", async () => {
+		const container = await renderApp("/milestones");
+		// Milestones has no task route, so it opens the modal directly. It must still read the detail,
+		// or the modal would show the compact list record with no dependency graph.
+		const row = Array.from(container.querySelectorAll("div[draggable]")).find((element) =>
+			element.textContent?.includes("BACK-101"),
+		);
+		expect(row).toBeTruthy();
+		await click(row as HTMLElement, [expectFetch("milestone task detail", "/api/task/BACK-101")]);
+		assertState(
+			() => window.location.pathname === "/milestones" && Boolean(container.querySelector("[role='dialog']")),
+			"milestone task modal without a page change",
+		);
+	});
+
 	it("archives a routed task with a single history close", async () => {
 		const container = await renderApp("/milestones");
 		const allTasksLink = Array.from(container.querySelectorAll("a")).find(
