@@ -788,6 +788,24 @@ describe("task detail routes", () => {
 		recovery.finish();
 	});
 
+	it("clears a stale terminal error and shows cached content when indexing restarts", async () => {
+		const container = await renderApp("/board?lane=none");
+		const dataSocket = getAppDataWebSocket();
+		await act(async () => {
+			dataSocket.deliver(JSON.stringify({ type: "error", message: "corpus failed" }));
+			await Promise.resolve();
+		});
+		expect(container.textContent).toContain("Failed to load tasks");
+
+		await act(async () => {
+			dataSocket.deliver(JSON.stringify({ type: "loading", message: "Loading tasks from local branches..." }));
+			await Promise.resolve();
+		});
+		expect(container.textContent).not.toContain("Failed to load tasks");
+		expect(container.querySelector("[aria-label='Loading tasks']")).toBeNull();
+		expect(container.textContent).toContain(tasks[0]?.title ?? "");
+	});
+
 	it("preserves a terminal shared error when the data socket closes", async () => {
 		const container = await renderApp("/board?lane=none");
 		const dataSocket = getAppDataWebSocket();

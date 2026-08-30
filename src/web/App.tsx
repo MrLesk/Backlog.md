@@ -589,11 +589,11 @@ function AppContent() {
 	  if (loadingState?.type === 'loading') {
 		if (pendingDataRequestRef.current === null) protocolOnlyLoadingRef.current = true;
 		// Once content is on screen it stays interactive; the header indexing
-		// indicator (driven by loadingMessage) is the only loading signal.
-		if (!hasLoadedDataRef.current) {
-			setIsLoading(true);
-			setLoadError(null);
-		}
+		// indicator (driven by loadingMessage) is the only loading signal. A new
+		// loading attempt always clears a stale terminal error, so a passive
+		// client shows its cached content instead of the obsolete failure.
+		if (!hasLoadedDataRef.current) setIsLoading(true);
+		setLoadError(null);
 		setLoadingMessage(loadingState.message);
 	  } else if (loadingState?.type === 'loaded') {
 		const shouldRefresh = protocolOnlyLoadingRef.current && pendingDataRequestRef.current === null;

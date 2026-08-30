@@ -57,7 +57,9 @@ export function BranchIndexingIndicator({
 					className="h-3 w-3 shrink-0 animate-spin rounded-circle border-2 border-blue-200 border-t-blue-600 motion-reduce:animate-none dark:border-blue-400/30 dark:border-t-blue-400"
 					aria-hidden="true"
 				/>
-				<span aria-hidden="true">Indexing branches</span>
+				<span aria-hidden="true" className="hidden sm:inline">
+					Indexing branches
+				</span>
 				<span className="sr-only">{detail ?? "Indexing branches"}</span>
 			</div>
 			<div
