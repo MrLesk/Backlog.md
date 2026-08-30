@@ -1,11 +1,11 @@
 ---
 id: BACK-654
 title: Polish the cross-branch indexing loading indicator in the web UI
-status: In Progress
+status: Done
 assignee:
   - '@claude'
 created_date: '2026-08-30 11:55'
-updated_date: '2026-08-30 15:46'
+updated_date: '2026-08-30 15:51'
 labels:
   - web
   - enhancement
@@ -21,16 +21,16 @@ While the web UI indexes other local branches it shows a spinner with the text "
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 The cross-branch indexing state is shown with a polished, design-consistent indicator instead of the current spinner-plus-sentence
-- [ ] #2 Already-loaded content stays fully interactive while indexing runs
-- [ ] #3 The indicator disappears cleanly when indexing completes, including the fast-completion case without flicker
+- [x] #1 The cross-branch indexing state is shown with a polished, design-consistent indicator instead of the current spinner-plus-sentence
+- [x] #2 Already-loaded content stays fully interactive while indexing runs
+- [x] #3 The indicator disappears cleanly when indexing completes, including the fast-completion case without flicker
 <!-- AC:END -->
 
 ## Definition of Done
 <!-- DOD:BEGIN -->
-- [ ] #1 bunx tsc --noEmit passes when TypeScript touched
-- [ ] #2 bun run check . passes when formatting/linting touched
-- [ ] #3 bun test (or scoped test) passes
+- [x] #1 bunx tsc --noEmit passes when TypeScript touched
+- [x] #2 bun run check . passes when formatting/linting touched
+- [x] #3 bun test (or scoped test) passes
 <!-- DOD:END -->
 
 ## Implementation Plan
@@ -66,3 +66,9 @@ Implemented on tasks/back-654-indexing-indicator: new BranchIndexingIndicator (h
 
 Full-suite triage: 3 tui-emoji-width failures were the worktree's stale node_modules (neo-neo-bblessed 1.0.9 vs locked 1.0.10; bun i fixed, bun.lock unchanged). The remaining 3 were web-task-detail-deeplink reconciliation tests observing the removed raw phase sentence; they now observe the indicator (its sr-only text carries the full server message) by waiting out the 250ms appear / 200ms exit windows, with renderApp's afterInitialStatus hook moved outside act so callbacks can observe flushed DOM. All 29 deeplink tests pass; final full suite running.
 <!-- SECTION:NOTES:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+Replaced the spinner-plus-sentence cross-branch indexing treatment with a shell-level indicator in the top header: a compact status chip (active-nav blue pill tokens, 12px spinner ring, label 'Indexing branches', full server progress message as tooltip and sr-only text on role=status) plus a 2px gradient sweep along the header's bottom border (motion-reduce aware). The indicator mounts only after the indexing state persists 250ms and fades out 200ms on completion, so fast completions never flash (verified live: warm-cache restart showed no flash or residue; cold start against ~120 local branches showed the chip in dark theme). App.tsx now gates the blocking skeleton on first load only (hasLoadedDataRef), so already-loaded content stays mounted and interactive during mid-session indexing, and the raw sentence was removed from the sidebar (LoadingPhase is a pure skeleton) and the board (App no longer passes loadingMessage; Board.tsx untouched to avoid PR #945/#960 overlap). Verified with bunx tsc --noEmit, bun run check ., and the full bun test suite (2571 pass / 0 fail) including new jsdom coverage in web-branch-indexing-indicator.test.tsx for delayed appearance, announced message, fast-completion no-flash, clean fade-out unmount, and message replacement. PR #971; maintainer visual pass on the final look (esp. light-theme chip and whether the sweep bar stays) still pending.
+<!-- SECTION:FINAL_SUMMARY:END -->
