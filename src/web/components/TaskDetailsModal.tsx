@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { isLocalEditableTask, type AcceptanceCriterion, type Milestone, type Task, type TaskComment } from "../../types";
+import { type TaskDetail, taskDependencyGraph } from "../../core/task-detail";
 import Modal from "./Modal";
 import { ApiError, apiClient, NetworkError } from "../lib/api";
 import { useTheme } from "../contexts/ThemeContext";
@@ -8,6 +9,7 @@ import AcceptanceCriteriaEditor from "./AcceptanceCriteriaEditor";
 import MermaidMarkdown from './MermaidMarkdown';
 import ChipInput from "./ChipInput";
 import DependencyInput from "./DependencyInput";
+import { DependencyGraphSection } from "./DependencyGraphSection";
 import { formatStoredUtcDateForDisplay } from "../utils/date-display";
 import { getPriorityOptions } from "../../utils/priority-config";
 import { getProjectValues, resolveProjectValue } from "../../utils/project-config";
@@ -20,7 +22,7 @@ import { isTerminalStatus } from "../../utils/terminal-status.ts";
 import { createUrlPath } from "../utils/urlHelpers";
 
 interface Props {
-  task?: Task; // Optional for create mode
+  task?: Task | TaskDetail; // Optional for create mode
   isOpen: boolean;
   onClose: () => void;
   onSaved?: () => Promise<void> | void; // refresh callback
@@ -124,7 +126,7 @@ const buildTaskDetailsFormState = ({
   defaultDefinitionOfDone,
   createModeAssignee,
 }: {
-  task?: Task;
+  task?: Task | TaskDetail;
   isCreateMode: boolean;
   isDraftMode?: boolean;
   availableStatuses?: string[];
@@ -432,13 +434,16 @@ export const TaskDetailsModal: React.FC<Props> = ({
     let cancelled = false;
     Promise.all(unresolvedDependencyKey.split(",").map((id) => apiClient.fetchTask(id).catch(() => null))).then(
       (results) => {
-        if (!cancelled) setOffBoardDependencies(results.filter((result): result is Task => Boolean(result)));
+        if (!cancelled) setOffBoardDependencies(results.filter((result): result is TaskDetail => Boolean(result)));
       },
     );
     return () => {
       cancelled = true;
     };
   }, [isOpen, unresolvedDependencyKey]);
+
+  // Derived at read time and delivered with the task itself, so there is nothing to fetch here.
+  const dependencyGraph = taskDependencyGraph(task);
 
   // Dependency validation stays local-only (see BACK-623), so the picker must only suggest what a
   // save can accept: a cross-branch task is rejected, and so is a canonically ambiguous ID that more
@@ -1621,6 +1626,13 @@ export const TaskDetailsModal: React.FC<Props> = ({
               />
             )}
           </div>
+
+          {dependencyGraph && dependencyGraph.nodes.length > 1 && (
+            <section className="rounded-lg border border-gray-200 bg-white p-4 dark:border-gray-700 dark:bg-gray-800">
+              <SectionHeader title="Dependency Graph" />
+              <DependencyGraphSection graph={dependencyGraph} />
+            </section>
+          )}
 
           {/* Implementation Plan */}
           <div className="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-4">

@@ -137,6 +137,39 @@ describe("MCP task tools (MVP)", () => {
 		expect(searchText).not.toContain("Implementation Plan:");
 	});
 
+	it("renders every task result through the one plain serializer", async () => {
+		const create = async (title: string, dependencies?: string[]) =>
+			await mcpServer.testInterface.callTool({
+				params: { name: "task_create", arguments: { title, ...(dependencies ? { dependencies } : {}) } },
+			});
+		await create("Foundation");
+		await create("Selected", ["TASK-1"]);
+		await create("Follow up", ["TASK-2"]);
+
+		const viewText = getText(
+			(await mcpServer.testInterface.callTool({ params: { name: "task_view", arguments: { id: "TASK-2" } } })).content,
+		);
+		// Exactly the section the canonical CLI renders, from the same shared model.
+		expect(viewText).toContain("Dependency Graph:");
+		expect(viewText).toContain("Depends on (1 direct, 1 total):");
+		expect(viewText).toContain("└─ TASK-1 - Foundation [To Do]");
+		expect(viewText).toContain("Dependents (1 direct, 1 total):");
+		expect(viewText).toContain("└─ TASK-3 - Follow up [To Do]");
+
+		// A write confirmation is the same serializer, so it reads exactly like task detail.
+		const editText = getText(
+			(
+				await mcpServer.testInterface.callTool({
+					params: { name: "task_edit", arguments: { id: "TASK-2", priority: "high" } },
+				})
+			).content,
+		);
+		expect(editText).toContain("TASK-2");
+		expect(editText).toContain("Dependency Graph:");
+		expect(editText).toContain("Depends on (1 direct, 1 total):");
+		expect(editText).not.toContain("Dependencies: ");
+	});
+
 	it("shows acceptance criteria progress in task_list only for tasks with criteria", async () => {
 		await mcpServer.testInterface.callTool({
 			params: {
@@ -987,7 +1020,8 @@ describe("MCP task tools (MVP)", () => {
 		const editText = getText(editResult.content);
 		expect(editText).toContain("Status: ◒ In Progress");
 		expect(editText).toContain("Labels: docs");
-		expect(editText).toContain("Dependencies: TASK-2");
+		expect(editText).toContain("Dependency Graph:");
+		expect(editText).toContain("TASK-2");
 		expect(editText).toContain("Implementation Plan:");
 		expect(editText).toContain("Implementation Notes:");
 		expect(editText).toContain("#1 Plan documented");
@@ -1077,7 +1111,8 @@ describe("MCP task tools (MVP)", () => {
 			},
 		});
 
-		expect(getText(blankEdit.content)).toContain("Dependencies: TASK-1");
+		expect(getText(blankEdit.content)).toContain("Dependency Graph:");
+		expect(getText(blankEdit.content)).toContain("TASK-1");
 		expect((await mcpServer.getTask("task-2"))?.dependencies).toEqual(["TASK-1"]);
 
 		const clearEdit = await mcpServer.testInterface.callTool({
@@ -1090,7 +1125,7 @@ describe("MCP task tools (MVP)", () => {
 			},
 		});
 
-		expect(getText(clearEdit.content)).not.toContain("Dependencies:");
+		expect(getText(clearEdit.content)).not.toContain("Depends on (");
 		expect((await mcpServer.getTask("task-2"))?.dependencies).toEqual([]);
 	});
 

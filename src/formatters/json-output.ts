@@ -1,6 +1,8 @@
 import { isAbsolute, join, relative } from "node:path";
+import type { TaskDetail } from "../core/task-detail.ts";
 import type { Decision, Document, SearchResult, Task } from "../types/index.ts";
 import { isLocalEditableTask } from "../types/index.ts";
+import type { DependencyGraph } from "../utils/dependency-graph.ts";
 import { sortByTaskId } from "../utils/task-sorting.ts";
 
 type TaskSummaryJson = {
@@ -38,10 +40,22 @@ type TaskCommentJson = {
 	author: string | null;
 };
 
+/** The normalized dependency context: an explicit root, every reached node, and directed edges. */
+type DependencyGraphJson = {
+	root: string;
+	nodes: DependencyGraph["nodes"];
+	edges: DependencyGraph["edges"];
+};
+
 type TaskDetailsJson = TaskSummaryJson & {
 	path: string | null;
 	description: string | null;
 	dependencies: string[];
+	/**
+	 * Derived from the whole visible corpus at read time. `dependencies` above it stays the task's
+	 * own list of direct dependency IDs, unchanged.
+	 */
+	dependencyGraph: DependencyGraphJson;
 	documentation: string[];
 	subtasks: Array<{ id: string; title: string }>;
 	acceptanceCriteria: ChecklistItemJson[];
@@ -134,12 +148,17 @@ function toChecklistJson(items: Task["acceptanceCriteriaItems"]): ChecklistItemJ
 		.map(({ index, text, checked }) => ({ index, text, checked }));
 }
 
-function toTaskDetailsJson(task: Task, projectRoot: string): TaskDetailsJson {
+function toTaskDetailsJson(task: TaskDetail, projectRoot: string): TaskDetailsJson {
 	return {
 		...toTaskSummaryJson(task),
 		path: toProjectRelativePath(projectRoot, task.filePath),
 		description: nullableDescription(task.description),
 		dependencies: task.dependencies ?? [],
+		dependencyGraph: {
+			root: task.dependencyGraph.rootId,
+			nodes: task.dependencyGraph.nodes,
+			edges: task.dependencyGraph.edges,
+		},
 		documentation: task.documentation ?? [],
 		subtasks: sortByTaskId(task.subtaskSummaries ?? []),
 		acceptanceCriteria: toChecklistJson(task.acceptanceCriteriaItems),
@@ -184,8 +203,12 @@ export function taskListJson(tasks: Task[]) {
 	return { schemaVersion: 1, kind: "task-list" as const, tasks: tasks.map(toTaskSummaryJson) };
 }
 
-export function taskViewJson(task: Task, projectRoot: string) {
-	return { schemaVersion: 1, kind: "task-view" as const, task: toTaskDetailsJson(task, projectRoot) };
+export function taskViewJson(task: TaskDetail, projectRoot: string) {
+	return {
+		schemaVersion: 1,
+		kind: "task-view" as const,
+		task: toTaskDetailsJson(task, projectRoot),
+	};
 }
 
 export function decisionListJson(decisions: Decision[]) {

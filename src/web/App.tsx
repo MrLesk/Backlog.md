@@ -26,6 +26,7 @@ import {
 	type TaskSearchResult,
 } from '../types';
 import { ApiError, apiClient } from './lib/api';
+import { type TaskDetail, taskDependencyGraph } from '../core/task-detail';
 import type { DuplicateRepairPlan } from '../core/duplicate-task-repair';
 import { isValidTaskId } from '../utils/task-id';
 import { useHealthCheckContext } from './contexts/HealthCheckContext';
@@ -182,7 +183,9 @@ const canonicalizeMilestone = (value: string | null | undefined, aliasMap?: Map<
 
 function AppContent() {
   const [showModal, setShowModal] = useState(false);
-  const [editingTask, setEditingTask] = useState<Task | null>(null);
+  const [editingTask, setEditingTask] = useState<Task | TaskDetail | null>(null);
+  // The list record the open task was last synced from, so re-syncing cannot loop.
+  const syncedTaskRecordRef = useRef<Task | null>(null);
   const [isDraftMode, setIsDraftMode] = useState(false);
   const [statuses, setStatuses] = useState<string[]>([]);
   const [availableLabels, setAvailableLabels] = useState<string[]>([]);
@@ -457,7 +460,15 @@ function AppContent() {
           : null;
 
     if (!basePath) {
+      // Pages without a task route (milestones, statistics) open the modal directly, so they must
+      // read the detail themselves. Otherwise they would show the compact list record, silently
+      // without its dependency graph, while the board and the task list show the full detail.
       openTaskModal(task);
+      void apiClient
+        .fetchTask(task.id)
+        // Upgrade in place, so a modal the reader already closed is never reopened.
+        .then((detail) => setEditingTask((current) => (current && current.id === detail.id ? detail : current)))
+        .catch(() => {});
       return;
     }
 
@@ -572,11 +583,26 @@ function AppContent() {
   // Sync editingTask with refreshed tasks data to prevent stale state
   // This fixes the bug where acceptance criteria disappears after save (GitHub #467)
   useEffect(() => {
-    if (editingTask && showModal) {
-      const updatedTask = tasks.find(t => t.id === editingTask.id);
-      if (updatedTask && updatedTask !== editingTask) {
-        setEditingTask(updatedTask);
-      }
+    if (!editingTask || !showModal) {
+      syncedTaskRecordRef.current = null;
+      return;
+    }
+    const updatedTask = tasks.find(t => t.id === editingTask.id);
+    if (!updatedTask || updatedTask === syncedTaskRecordRef.current) return;
+    const previousRecord = syncedTaskRecordRef.current;
+    syncedTaskRecordRef.current = updatedTask;
+    // The list carries stored records; the detail read carries the relationships derived from the
+    // whole corpus. Refreshing from the list must not drop them, or the graph would disappear the
+    // first time anything is saved.
+    const derived = taskDependencyGraph(editingTask);
+    setEditingTask(derived ? { ...updatedTask, dependencyGraph: derived } : updatedTask);
+    // Editing this task's own dependencies moves the graph, so read the detail again for a fresh
+    // one. Nothing else changes it, so nothing else pays for a request.
+    if (previousRecord && previousRecord.dependencies.join(',') !== updatedTask.dependencies.join(',')) {
+      void apiClient
+        .fetchTask(updatedTask.id)
+        .then(detail => setEditingTask(current => (current && current.id === detail.id ? detail : current)))
+        .catch(() => {});
     }
   }, [tasks, editingTask, showModal]);
 

@@ -24,6 +24,7 @@ import { DEFAULT_DIRECTORIES, DEFAULT_FILES, DEFAULT_STATUSES } from "./constant
 import { type DuplicateRepairPlan, findLocalDuplicateTaskIds } from "./core/duplicate-task-repair.ts";
 import { initializeProject } from "./core/init.ts";
 import { buildMilestoneBuckets, collectArchivedMilestoneKeys, milestoneKey } from "./core/milestones.ts";
+import { loadTaskDetail } from "./core/task-detail.ts";
 import { isConfigValueError } from "./file-system/operations.ts";
 import { decisionListJson, printJson, searchJson, taskListJson, taskViewJson } from "./formatters/json-output.ts";
 import { formatTaskPlainText } from "./formatters/task-plain-text.ts";
@@ -2022,7 +2023,7 @@ addHelpSchema(taskCmd.command("create [title]"), {
 			});
 
 			if (usePlainOutput) {
-				console.log(formatTaskPlainText(task, { filePathOverride: filePath }));
+				console.log(formatTaskPlainText(await loadTaskDetail(core, task), { filePathOverride: filePath }));
 				return;
 			}
 
@@ -3408,7 +3409,7 @@ async function runEditCommand(target: EditCommandTarget, requestedIds: string[] 
 		}
 
 		if (isPlainRequested(options)) {
-			console.log(formatTaskPlainText(updatedTask));
+			console.log(formatTaskPlainText(await loadTaskDetail(core, updatedTask)));
 			return;
 		}
 
@@ -3714,12 +3715,12 @@ addHelpSchema(taskCmd.command("view <taskId>"), {
 
 		// Plain text output for non-interactive environments
 		if (outputMode === "json") {
-			printJson(taskViewJson(task, cwd));
+			printJson(taskViewJson(await loadTaskDetail(core, task), cwd));
 			return;
 		}
 
 		if (outputMode === "plain") {
-			console.log(formatTaskPlainText(task));
+			console.log(formatTaskPlainText(await loadTaskDetail(core, task)));
 			return;
 		}
 
@@ -3890,12 +3891,12 @@ taskCmd
 
 		// Plain text output for non-interactive environments
 		if (outputMode === "json") {
-			printJson(taskViewJson(task, cwd));
+			printJson(taskViewJson(await loadTaskDetail(core, task), cwd));
 			return;
 		}
 
 		if (outputMode === "plain") {
-			console.log(formatTaskPlainText(task));
+			console.log(formatTaskPlainText(await loadTaskDetail(core, task)));
 			return;
 		}
 
@@ -3918,7 +3919,7 @@ async function viewDraftById(core: Core, taskId: string, options?: { plain?: boo
 		}
 		const usePlainOutput = isPlainRequested(options) || shouldAutoPlain;
 		if (usePlainOutput) {
-			console.log(formatTaskPlainText(draft));
+			console.log(formatTaskPlainText(await loadTaskDetail(core, draft)));
 			return;
 		}
 		await viewTaskEnhanced(draft, { startWithDetailFocus: true, core });

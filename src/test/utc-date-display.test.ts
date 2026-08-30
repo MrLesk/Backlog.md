@@ -1,4 +1,5 @@
 import { describe, expect, it } from "bun:test";
+import { withDependencyGraph } from "../core/task-detail.ts";
 import { formatTaskPlainText } from "../formatters/task-plain-text.ts";
 import type { Task } from "../types/index.ts";
 import { formatUtcDateForDisplay } from "../utils/utc-date-display.ts";
@@ -83,7 +84,9 @@ describe("UTC date display", () => {
 			],
 		};
 
-		const output = formatTaskPlainText(task);
+		const output = formatTaskPlainText(
+			withDependencyGraph(task, { tasks: [task], completedTasks: [], statuses: undefined }),
+		);
 
 		expect(output).toContain("Created: 2026-06-07 (UTC)");
 		expect(output).toContain("Updated: 2026-06-07 21:54 (UTC)");

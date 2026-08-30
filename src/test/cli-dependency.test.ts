@@ -49,8 +49,11 @@ describe("CLI dependency options", () => {
 		expect(edited.stdout.toString()).toContain("Task TASK-3 - Dependent task");
 		expect((await core.filesystem.loadTask("TASK-3"))?.dependencies).toEqual(["TASK-1", "TASK-2"]);
 
+		// Task detail shows the resolved graph instead of repeating the raw ID list.
 		const viewed = await $`bun ${CLI_PATH} task view 3 --plain`.cwd(testDir).quiet();
-		expect(viewed.stdout.toString()).toContain("Dependencies: TASK-1, TASK-2");
+		expect(viewed.stdout.toString()).toContain("Dependency Graph:");
+		expect(viewed.stdout.toString()).toContain("TASK-1");
+		expect(viewed.stdout.toString()).toContain("TASK-2");
 	});
 
 	it("accumulates repeated dependency flags", async () => {

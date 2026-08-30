@@ -7,6 +7,7 @@ import type { ContentStore } from "../core/content-store.ts";
 import { initializeProject } from "../core/init.ts";
 import type { SearchService } from "../core/search-service.ts";
 import { getTaskStatistics } from "../core/statistics.ts";
+import { loadTaskDetail } from "../core/task-detail.ts";
 import { isCreateLockError, isTaskLockError } from "../file-system/operations.ts";
 import { BacklogToolError } from "../mcp/errors/mcp-errors.ts";
 import { MilestoneHandlers } from "../mcp/tools/milestones/handlers.ts";
@@ -1008,12 +1009,16 @@ export class BacklogServer {
 		}
 	}
 
-	private async handleGetTask(taskId: string): Promise<Response> {
+	/**
+	 * Resolve the one task a detail read is about, or the response that explains why it could not be
+	 * resolved. Shared so every detail endpoint fails closed on an ambiguous ID the same way.
+	 */
+	private async resolveDetailTask(taskId: string): Promise<Task | Response> {
 		if (!isValidTaskId(taskId)) return Response.json({ error: `Invalid task ID: ${taskId}` }, { status: 400 });
 		if (isDraftId(taskId)) {
 			try {
 				const draft = await this.core.filesystem.loadDraft(taskId);
-				return draft ? Response.json(draft) : Response.json({ error: `Task ${taskId} not found` }, { status: 404 });
+				return draft ?? Response.json({ error: `Task ${taskId} not found` }, { status: 404 });
 			} catch (error) {
 				if (isAmbiguousIdError(error)) {
 					return Response.json({ error: error.message }, { status: 409 });
@@ -1031,11 +1036,18 @@ export class BacklogServer {
 				: error.message;
 			return Response.json({ error: message }, { status: 409 });
 		}
-		if (resolvedTask) {
-			return Response.json(resolvedTask);
-		}
+		return resolvedTask ?? Response.json({ error: `Task ${taskId} not found` }, { status: 404 });
+	}
 
-		return Response.json({ error: `Task ${taskId} not found` }, { status: 404 });
+	/**
+	 * One task, as a detail read returns it: the record plus the relationships derived at read time,
+	 * so the browser gets the dependency graph in the same response that opens the task.
+	 */
+	private async handleGetTask(taskId: string): Promise<Response> {
+		const resolved = await this.resolveDetailTask(taskId);
+		if (resolved instanceof Response) return resolved;
+		await this.ensureServicesReady();
+		return Response.json(await loadTaskDetail(this.core, resolved, { includeCrossBranch: true }));
 	}
 
 	private async handleUpdateTask(req: Request, taskId: string): Promise<Response> {
