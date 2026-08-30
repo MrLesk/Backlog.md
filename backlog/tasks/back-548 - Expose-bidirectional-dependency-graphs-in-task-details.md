@@ -5,7 +5,7 @@ status: In Progress
 assignee:
   - '@claude'
 created_date: '2026-07-16 21:38'
-updated_date: '2026-08-29 23:49'
+updated_date: '2026-08-30 11:37'
 labels:
   - cli
   - tui
@@ -76,4 +76,16 @@ Validation: bunx tsc --noEmit passed; bun run check . passed; full bun test run:
 Rendered QA used a fixture with a five-deep chain, a diamond, a cycle, a completed dependency, an archived target, a dangling cross-branch reference, and an identity two files claim. CLI output was inspected for each case. The TUI was rendered through a real pty at 150x50 and 24x80; the section renders correctly at both, and at 24x80 long node lines wrap exactly as the existing Readiness line already does in that pane. The browser was driven live: the accessibility tree shows region, heading, and nested list/listitem with links for resolved nodes and plain text for unresolved ones, clicking a node navigates and re-resolves the graph, and a 375px viewport produces no horizontal page overflow.
 
 AC #10 is left unchecked on purpose. Screenshots returned blank in this environment, so the browser evidence is accessibility-tree and DOM level and the TUI evidence is a decoded pty transcript. Pixel-level visual review of the TUI colours and the modal badge weights still needs the maintainer.
+
+Reshaped on the maintainer ruling that the dependency graph is a property of the task detail, not something each interface acquires.
+
+src/core/task-detail.ts is now the single detail read path: loadTaskCorpus is the one corpus loader (readiness shares it), and TaskDetail = Task & { dependencyGraph } makes the field required on the detail type instead of optional on Task, so a detail read cannot forget to populate it and the compact list, search, and board projections cannot pick it up by accident. The graph is derived at read time and never written to the Markdown record.
+
+Deleted: the standalone web dependency-graph endpoint and route, its client method and payload type, the modal state/effect/fetch that consumed it, the CLI-side loadTaskDependencyGraph duplicate corpus load, the dependencyGraph options on the plain-text formatter and the TUI detail options, and the corpus triple-load inside loadReadinessGraph. JSON moved dependencyGraph from beside task onto task itself; CLI-INSTRUCTIONS.md and the agent guidance were updated to match.
+
+Root cause of the double fetch the maintainer observed: the web app mounts inside React.StrictMode and the served bundle is a development React build, so React deliberately runs a mount effect, cleans it up, and runs it again. The modal graph fetch lived in such an effect and its cancelled flag only discarded the second response, not the second request. Neither effect dependency changed between the two calls, so only deliberate double-invocation can explain it. Folding the graph into the detail payload removes the effect, so the duplication is gone structurally rather than masked by a cache.
+
+Measured in the running browser afterwards: opening a task makes exactly one /api/task/<id> request and zero dependency-graph requests, on both the click and deep-link paths; the old endpoint returns 404; the graph survives a save without disappearing or looping. Validation: bunx tsc --noEmit passed, bun run check . passed, bun test 2611 pass / 7 skip / 3 fail where the 3 are the pre-existing blessed emoji-width tests, and PR #960 CI is green on macOS, Ubuntu, and Windows.
+
+Follow-up worth a decision: the modal still fetches completed dependencies by ID for the readiness badge, and those reads now also build a graph. The graph already carries each direct dependency title, status, and completed flag, so that fetch loop could be deleted and readiness derived from the graph, but that changes shipped BACK-546 behaviour so it was not folded in here.
 <!-- SECTION:NOTES:END -->
