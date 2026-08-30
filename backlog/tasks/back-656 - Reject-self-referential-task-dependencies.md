@@ -1,10 +1,11 @@
 ---
 id: BACK-656
 title: Reject self-referential and cyclic task dependencies
-status: To Do
-assignee: []
+status: Done
+assignee:
+  - '@Claude'
 created_date: '2026-08-30 12:30'
-updated_date: '2026-08-30 12:44'
+updated_date: '2026-08-30 22:21'
 labels:
   - cli
   - mcp
@@ -22,17 +23,39 @@ A task can currently depend on itself: `backlog task edit TASK-1 --dep TASK-1` s
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 Creating or editing a task with itself as a dependency fails with a clear error on CLI, MCP, and web
-- [ ] #2 Alias forms of the same identity (case, zero-padding) are rejected the same way
-- [ ] #3 backlog doctor reports an existing self-dependency
-- [ ] #4 Tests cover direct and alias-form self-dependencies across the shared validation path
-- [ ] #5 Adding a dependency that would close a cycle through the existing graph is rejected with an error naming the cycle path
-- [ ] #6 Cycle detection reuses the shared dependency-graph model; no second traversal is introduced
+- [x] #1 Creating or editing a task with itself as a dependency fails with a clear error on CLI, MCP, and web
+- [x] #2 Alias forms of the same identity (case, zero-padding) are rejected the same way
+- [x] #3 backlog doctor reports an existing self-dependency
+- [x] #4 Tests cover direct and alias-form self-dependencies across the shared validation path
+- [x] #5 Adding a dependency that would close a cycle through the existing graph is rejected with an error naming the cycle path
+- [x] #6 Cycle detection reuses the shared dependency-graph model; no second traversal is introduced
 <!-- AC:END -->
 
 ## Definition of Done
 <!-- DOD:BEGIN -->
-- [ ] #1 bunx tsc --noEmit passes when TypeScript touched
-- [ ] #2 bun run check . passes when formatting/linting touched
-- [ ] #3 bun test (or scoped test) passes
+- [x] #1 bunx tsc --noEmit passes when TypeScript touched
+- [x] #2 bun run check . passes when formatting/linting touched
+- [x] #3 bun test (or scoped test) passes
 <!-- DOD:END -->
+
+## Implementation Plan
+
+<!-- SECTION:PLAN:BEGIN -->
+1. Extend validateDependencies (src/utils/task-builders.ts) with an optional target task: reject any dependency whose resolved identity equals the target (taskIdsEqual catches case/zero-padding aliases) with a clear self-dependency error.
+2. Cycle detection reuses BACK-548 graph model: build buildDependencyGraph({...target, dependencies: valid}) over the same corpus validation already loads (tasks+drafts+archived as tasks, completed as completedTasks); add findCycleThroughRoot(graph) in src/utils/dependency-graph.ts that walks the already-built graph edges (BFS, resolved nodes only) and returns the shortest cycle path through the root. No second corpus traversal.
+3. Pass the task under edit from applyTaskUpdateInput's two validateDependencies calls (covers CLI, MCP, web, and draft edits via the shared core owner). Create passes no target: the new ID is unallocated so a self/cyclic dep cannot resolve there.
+4. backlog doctor: load the same corpus via a shared helper, report existing self-dependencies and cycles (deduped by rotation) in doctor's existing report style, report-only, exit 1; update the doctor help schema text.
+5. Tests: direct + alias-form self-deps at the shared validation path, two-node and multi-hop cycle rejection asserting the named path, doctor report coverage, and a surface check that the error copy reaches server/CLI. Run tsc, biome, bun test.
+<!-- SECTION:PLAN:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+Validation owner: validateDependencies (src/utils/task-builders.ts) now takes the task being edited as an optional target. Each resolved dependency is compared with taskIdsEqual, so task-1/TASK-001/case aliases of the target are rejected as self-dependencies. Cycle detection reuses the BACK-548 graph model: the validated dependencies become the target's edges in one buildDependencyGraph call over the same corpus validation already loads (tasks+drafts+archived, completed), and the new findCycleThroughRoot (src/utils/dependency-graph.ts) walks only the already-built graph edges (BFS, resolved nodes only) to return the shortest cycle path - no second corpus traversal. Every new cycle must run through the edited task because all added edges leave it, so per-edit checking is complete; pre-existing cycles elsewhere never block unrelated edits, and a stored legacy self-dependency is ignored by the cycle finder (tested) and left to doctor. Create passes no target: the new ID is unallocated, so no input can resolve to it and nothing depends on it. CLI, MCP, and web all inherit through createTaskFromInput/updateTaskFromInput/applyTaskUpdateInput (draft edits included). backlog doctor gains findDependencyDefects: report-only findings for stored self-dependencies (with recorded spelling) and cycles (deduped by membership, one line per cycle), doctor exit 1, --fix refuses them as not automatically repairable; all-clear copy extended. Verified: bunx tsc --noEmit clean, bun run check . clean, full bun test 2736 pass with only the 3 pre-existing tui-emoji-width failures that also fail on a clean origin/main tree; live CLI check confirmed exit 1, error copy, and no file written for both defects, and doctor reporting a hand-written legacy self-dep.
+<!-- SECTION:NOTES:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+Dependency validation (validateDependencies, the single shared owner) now rejects a dependency resolving to the task being edited itself - alias spellings included - and any dependency that would close a cycle, with an error naming the full cycle path (e.g. TASK-1 -> TASK-3 -> TASK-2 -> TASK-1). Cycle detection reuses the BACK-548 dependency-graph model via one buildDependencyGraph call plus a new findCycleThroughRoot walk over the built graph; no second traversal. CLI, MCP, and web inherit through the shared core edit path. backlog doctor reports existing self-dependencies and cycles report-only in its established style. Verified with core, MCP, server, and doctor tests (full suite green apart from 3 pre-existing environment-only failures), tsc, biome, and a live CLI walkthrough.
+<!-- SECTION:FINAL_SUMMARY:END -->

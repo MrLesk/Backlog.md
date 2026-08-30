@@ -428,3 +428,75 @@ describe("Task Dependencies", () => {
 });
 
 import { initializeTestProject } from "./test-utils.ts";
+
+describe("Self-referential and cyclic dependencies", () => {
+	let tempDir: string;
+	let core: Core;
+
+	beforeEach(async () => {
+		tempDir = mkdtempSync(join(tmpdir(), "backlog-dependency-cycle-test-"));
+		await $`git init -b main`.cwd(tempDir).quiet();
+		core = new Core(tempDir);
+		await initializeTestProject(core, "test-project");
+	});
+
+	afterEach(() => {
+		rmSync(tempDir, { recursive: true, force: true });
+	});
+
+	test("rejects a task depending on itself, in its own spelling and in alias forms", async () => {
+		const { task } = await core.createTaskFromInput({ title: "Self" });
+		const match = task.id.match(/^(.+)-0*(\d+)$/);
+		expect(match).not.toBeNull();
+		if (!match) return;
+		const [, prefix, digits] = match;
+		const aliases = [task.id, task.id.toLowerCase(), task.id.toUpperCase(), `${prefix}-00${digits}`];
+		for (const alias of aliases) {
+			await expect(core.updateTaskFromInput(task.id, { dependencies: [alias] }, false)).rejects.toThrow(
+				"cannot depend on itself",
+			);
+			await expect(core.updateTaskFromInput(task.id, { addDependencies: [alias] }, false)).rejects.toThrow(
+				"cannot depend on itself",
+			);
+		}
+		expect((await core.filesystem.loadTask(task.id))?.dependencies ?? []).toEqual([]);
+	});
+
+	test("rejects a dependency that closes a two-task cycle, naming the path", async () => {
+		const { task: first } = await core.createTaskFromInput({ title: "First" });
+		const { task: second } = await core.createTaskFromInput({ title: "Second", dependencies: [first.id] });
+
+		await expect(core.updateTaskFromInput(first.id, { addDependencies: [second.id] }, false)).rejects.toThrow(
+			`These dependencies would create a cycle: ${first.id} -> ${second.id} -> ${first.id}`,
+		);
+		expect((await core.filesystem.loadTask(first.id))?.dependencies ?? []).toEqual([]);
+	});
+
+	test("rejects a dependency that closes a multi-hop cycle, naming the full path", async () => {
+		const { task: first } = await core.createTaskFromInput({ title: "First" });
+		const { task: second } = await core.createTaskFromInput({ title: "Second", dependencies: [first.id] });
+		const { task: third } = await core.createTaskFromInput({ title: "Third", dependencies: [second.id] });
+
+		await expect(core.updateTaskFromInput(first.id, { dependencies: [third.id] }, false)).rejects.toThrow(
+			`These dependencies would create a cycle: ${first.id} -> ${third.id} -> ${second.id} -> ${first.id}`,
+		);
+		expect((await core.filesystem.loadTask(first.id))?.dependencies ?? []).toEqual([]);
+	});
+
+	test("a stored self-dependency does not block adding an unrelated dependency", async () => {
+		const { task: other } = await core.createTaskFromInput({ title: "Other" });
+		const legacy: Task = {
+			id: "task-9",
+			title: "Legacy self-dependent",
+			status: "To Do",
+			assignee: [],
+			createdDate: "2024-01-01",
+			labels: [],
+			dependencies: ["task-9"],
+		};
+		await core.createTask(legacy, false);
+
+		await core.updateTaskFromInput(legacy.id, { addDependencies: [other.id] }, false);
+		expect((await core.filesystem.loadTask(legacy.id))?.dependencies).toEqual(["task-9", other.id]);
+	});
+});

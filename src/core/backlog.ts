@@ -1991,7 +1991,7 @@ export class Core {
 
 			if (input.dependencies !== undefined) {
 				const normalized = parseDelimitedStringList(input.dependencies) ?? [];
-				const { valid, invalid } = await validateDependencies(normalized, this);
+				const { valid, invalid } = await validateDependencies(normalized, this, task);
 				if (invalid.length > 0) {
 					throw formatMissingDependenciesError(invalid);
 				}
@@ -2003,7 +2003,7 @@ export class Core {
 
 			if (input.addDependencies && input.addDependencies.length > 0) {
 				const additions = parseDelimitedStringList(input.addDependencies) ?? [];
-				const { valid, invalid } = await validateDependencies(additions, this);
+				const { valid, invalid } = await validateDependencies(additions, this, task);
 				if (invalid.length > 0) {
 					throw formatMissingDependenciesError(invalid);
 				}

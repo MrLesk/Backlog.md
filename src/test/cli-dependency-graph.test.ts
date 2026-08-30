@@ -116,9 +116,10 @@ describe("CLI dependency graph", () => {
 	});
 
 	it("terminates a cycle instead of repeating it", async () => {
-		await addTask("task-1", "Selected");
+		// Validation refuses to create a cycle, so store one directly as the legacy defect
+		// `backlog doctor` reports; the graph must still render it honestly.
+		await addTask("task-1", "Selected", ["task-2"]);
 		await addTask("task-2", "Second", ["task-1"]);
-		await runCli(["task", "edit", "1", "--dep", "task-2"]);
 
 		const lines = graphSection((await runCli(["task", "view", "1", "--plain"])).stdout.toString());
 		expect(lines).toEqual([

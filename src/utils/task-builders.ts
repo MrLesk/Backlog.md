@@ -1,5 +1,6 @@
 import type { Core } from "../core/backlog.ts";
 import type { AcceptanceCriterion, Task } from "../types/index.ts";
+import { buildDependencyGraph, findCycleThroughRoot } from "./dependency-graph.ts";
 import { AmbiguousIdError } from "./entity-id.ts";
 import { AmbiguousTaskIdError, canonicalTaskId, taskIdsEqual } from "./task-path.ts";
 
@@ -52,24 +53,25 @@ function resolveUniqueDependency(dependency: string, matches: Task[]): string | 
  * branch would name a task no task command can show, and reaching for branches here would put a
  * remote fetch inside the task lock.
  *
+ * When `target` names the task being edited, a dependency resolving to the target itself is
+ * rejected in any spelling, and a dependency that would close a cycle through the existing graph
+ * is rejected with the cycle path. The target is absent at create time, where neither defect can
+ * occur: the new ID is not allocated yet, so no input can resolve to it and nothing depends on it.
+ *
  * Returns the matched canonical IDs, deduplicated, plus the inputs that matched nothing.
  */
 export async function validateDependencies(
 	dependencies: string[],
 	core: Core,
+	target?: Task,
 ): Promise<{ valid: string[]; invalid: string[] }> {
 	const valid: string[] = [];
 	const invalid: string[] = [];
 	if (dependencies.length === 0) {
 		return { valid, invalid };
 	}
-	const [tasks, drafts, completed, archived] = await Promise.all([
-		core.queryTasks({ includeCrossBranch: false }),
-		core.filesystem.listDrafts(),
-		core.filesystem.listCompletedTasks(),
-		core.filesystem.listArchivedTasks(),
-	]);
-	const known = [...tasks, ...drafts, ...completed, ...archived];
+	const corpus = await loadDependencyCorpus(core);
+	const known = [...corpus.tasks, ...corpus.drafts, ...corpus.completed, ...corpus.archived];
 	for (const dependency of dependencies) {
 		const resolved = resolveUniqueDependency(
 			dependency,
@@ -78,6 +80,9 @@ export async function validateDependencies(
 		if (resolved === null) {
 			invalid.push(dependency);
 			continue;
+		}
+		if (target && taskIdsEqual(resolved, target.id)) {
+			throw new Error(`Task ${target.id} cannot depend on itself ("${dependency.trim()}" names this task).`);
 		}
 		// Called for its ambiguity check: it raises AmbiguousTaskIdError when several working-copy
 		// files (active or completed) claim this ID. Drafts and archived tasks resolve to null here
@@ -88,7 +93,79 @@ export async function validateDependencies(
 			valid.push(resolved);
 		}
 	}
+	// Every new cycle must run through the target, because the edges being added all leave it. The
+	// graph is built once with the validated dependencies as the target's edges, so cycle detection
+	// reuses the shared dependency-graph model instead of traversing the corpus a second time.
+	if (target && valid.length > 0) {
+		const cycle = findCycleThroughRoot(
+			buildDependencyGraph({ ...target, dependencies: valid }, dependencyGraphCorpus(corpus)),
+		);
+		if (cycle) {
+			throw new Error(`These dependencies would create a cycle: ${cycle.join(" -> ")}`);
+		}
+	}
 	return { valid, invalid };
+}
+
+/** The records dependency validation and `backlog doctor` resolve dependencies against. */
+interface DependencyCorpus {
+	tasks: Task[];
+	drafts: Task[];
+	completed: Task[];
+	archived: Task[];
+}
+
+async function loadDependencyCorpus(core: Core): Promise<DependencyCorpus> {
+	const [tasks, drafts, completed, archived] = await Promise.all([
+		core.queryTasks({ includeCrossBranch: false }),
+		core.filesystem.listDrafts(),
+		core.filesystem.listCompletedTasks(),
+		core.filesystem.listArchivedTasks(),
+	]);
+	return { tasks, drafts, completed, archived };
+}
+
+/** Arrange the corpus for the dependency graph, whose only split is completed versus not. */
+function dependencyGraphCorpus(corpus: DependencyCorpus): { tasks: Task[]; completedTasks: Task[] } {
+	return { tasks: [...corpus.tasks, ...corpus.drafts, ...corpus.archived], completedTasks: corpus.completed };
+}
+
+export interface DependencyDefects {
+	/** Tasks that list themselves as a dependency, with the spelling the file records. */
+	selfDependencies: Array<{ taskId: string; dependency: string }>;
+	/** Each detected cycle as a dependency path, opening and closing on the same task. */
+	cycles: string[][];
+}
+
+/**
+ * Report the self-dependencies and dependency cycles already stored in the project, for
+ * `backlog doctor`. Validation refuses to create these, so any found here predate it; the report
+ * names them for human repair and changes nothing.
+ *
+ * Every record that can carry dependencies is checked as a root against the same corpus
+ * validation resolves against, reusing the shared graph model per root. A cycle is reported once:
+ * roots already named in a reported cycle are skipped, so rotations of one cycle do not repeat.
+ */
+export async function findDependencyDefects(core: Core): Promise<DependencyDefects> {
+	const corpus = await loadDependencyCorpus(core);
+	const graphCorpus = dependencyGraphCorpus(corpus);
+	const selfDependencies: DependencyDefects["selfDependencies"] = [];
+	const cycles: string[][] = [];
+	const reported = new Set<string>();
+	for (const task of [...corpus.tasks, ...corpus.drafts, ...corpus.completed]) {
+		const dependencies = task.dependencies ?? [];
+		for (const dependency of dependencies) {
+			if (taskIdsEqual(dependency, task.id)) {
+				selfDependencies.push({ taskId: task.id, dependency });
+			}
+		}
+		if (dependencies.length === 0 || reported.has(canonicalTaskId(task.id))) continue;
+		const cycle = findCycleThroughRoot(buildDependencyGraph(task, graphCorpus));
+		if (!cycle) continue;
+		cycles.push(cycle);
+		for (const id of cycle) reported.add(canonicalTaskId(id));
+	}
+	return { selfDependencies, cycles };
 }
 
 /**

@@ -105,6 +105,8 @@ import { getTaskReadiness, loadReadinessGraph } from "./utils/readiness.ts";
 import { resolveRuntimeCwd } from "./utils/runtime-cwd.ts";
 import { formatValidStatuses, getCanonicalStatus, getCanonicalStatuses, getValidStatuses } from "./utils/status.ts";
 import {
+	type DependencyDefects,
+	findDependencyDefects,
 	parseClearableStringList,
 	parseDelimitedStringList,
 	parsePositiveIndexList,
@@ -481,6 +483,22 @@ function printDraftIdentityReport(findings: DraftIdentityFindings): void {
 		console.log("\nUnreadable draft files or directories:");
 		for (const path of findings.unreadable) console.log(`  - ${path}`);
 		console.log("Repair the YAML/frontmatter or file permissions; identity could not be checked for these drafts.");
+	}
+}
+
+function printDependencyDefectsReport(defects: DependencyDefects): void {
+	if (defects.selfDependencies.length > 0) {
+		console.log("\nSelf-referential dependencies (diagnostic only):");
+		for (const finding of defects.selfDependencies) {
+			const spelling = finding.dependency === finding.taskId ? "" : ` (recorded as "${finding.dependency}")`;
+			console.log(`  - ${finding.taskId} depends on itself${spelling}`);
+		}
+		console.log("Remove each with 'backlog task edit <id> --remove-dep <id>'.");
+	}
+	if (defects.cycles.length > 0) {
+		console.log("\nDependency cycles (diagnostic only):");
+		for (const cycle of defects.cycles) console.log(`  - ${cycle.join(" -> ")}`);
+		console.log("Remove one dependency from each cycle with 'backlog task edit <id> --remove-dep <dep>'.");
 	}
 }
 
@@ -5392,10 +5410,12 @@ addHelpSchema(program.command("doctor"), {
 	writes:
 		"With --fix, atomically renames duplicate task files and updates only their frontmatter IDs; ambiguous references are reported for human review",
 	output:
-		"Duplicate-ID diagnosis for tasks, documents, decisions, and drafts, a deterministic task repair preview, and a reference-review report",
+		"Duplicate-ID diagnosis for tasks, documents, decisions, and drafts, a deterministic task repair preview, a reference-review report, and a report of self-referential and cyclic task dependencies",
 	examples: ["backlog doctor", "backlog doctor --fix", "backlog doctor --fix --yes"],
 })
-	.description("diagnose duplicate task, document, and decision IDs and safely repair duplicate task IDs")
+	.description(
+		"diagnose duplicate task, document, and decision IDs, report self-referential and cyclic dependencies, and safely repair duplicate task IDs",
+	)
 	.option("--fix", "apply the displayed duplicate task ID repair")
 	.option("--yes", "confirm --fix without prompting")
 	.action(async (options: { fix?: boolean; yes?: boolean }) => {
@@ -5430,14 +5450,17 @@ addHelpSchema(program.command("doctor"), {
 			const contentIdentityBroken = hasContentIdentityIssues(contentIdentity);
 			const draftIdentity = await core.filesystem.diagnoseDraftIdentity();
 			const draftIdentityBroken = hasDraftIdentityFindings(draftIdentity);
+			const dependencyDefects = await findDependencyDefects(core);
+			const dependenciesBroken = dependencyDefects.selfDependencies.length > 0 || dependencyDefects.cycles.length > 0;
 			if (
 				plan.groups.length === 0 &&
 				plan.crossBranchFindings.length === 0 &&
 				!contentIdentityBroken &&
-				!draftIdentityBroken
+				!draftIdentityBroken &&
+				!dependenciesBroken
 			) {
 				if (!reservedTaskPrefix) {
-					console.log("No duplicate task, document, decision, or draft IDs found.");
+					console.log("No duplicate IDs, self-referential dependencies, or dependency cycles found.");
 				}
 				return;
 			}
@@ -5445,6 +5468,7 @@ addHelpSchema(program.command("doctor"), {
 			printDuplicateRepairPlan(plan);
 			printContentIdentityReport(contentIdentity);
 			printDraftIdentityReport(draftIdentity);
+			printDependencyDefectsReport(dependencyDefects);
 			if (!options.fix) {
 				if (plan.groups.length > 0 && plan.repairable) {
 					console.log("\nRun 'backlog doctor --fix' to apply this repair after reviewing the preview.");
