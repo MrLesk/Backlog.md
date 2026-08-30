@@ -337,18 +337,45 @@ describe("TUI board multi-select mover", () => {
 		});
 	});
 
-	it("recruits the task below the grabbed row with M when no highlight is active", async () => {
-		await withBoard(({ screen, rows }) => {
+	it("recruits successive unrecruited tasks with M alone when no highlight is active", async () => {
+		await withBoard(({ screen, rows, footer }) => {
 			pressKey(screen, "m");
 			pressKey(screen, "S-m");
-
 			expect(movingIds(rows())).toEqual(["TASK-1", "TASK-2"]);
 
-			// A second M toggles the same task back out.
+			// The fallback advances past already-recruited neighbors, so repeated M keeps
+			// growing the set instead of toggling the first recruit back off.
 			pressKey(screen, "S-m");
-			expect(movingIds(rows())).toEqual(["TASK-1"]);
+			expect(movingIds(rows())).toEqual(["TASK-1", "TASK-2", "TASK-3"]);
+
+			// With the whole column recruited there is nothing left to point at.
+			pressKey(screen, "S-m");
+			expect(footer()).toContain("No task to select here");
 
 			pressKey(screen, "escape");
+		});
+	});
+
+	it("freezes the move set and ignores Escape while the confirm write is in flight", async () => {
+		await withBoard(async ({ screen, quit }) => {
+			pressKey(screen, "m");
+			pressKey(screen, "S-down");
+			pressKey(screen, "S-m");
+			pressKey(screen, "right");
+			pressKey(screen, "right");
+			pressKey(screen, "enter");
+			// The write is now awaiting the core; late recruitment and a late Escape must
+			// neither change the confirmed set nor make the move look canceled.
+			pressKey(screen, "S-m");
+			pressKey(screen, "escape");
+
+			await retry(async () => {
+				const moved = await core.filesystem.loadTask("TASK-1");
+				if (moved?.status !== "In Progress") throw new Error("set move not persisted yet");
+			});
+			expect((await core.filesystem.loadTask("TASK-2"))?.status).toBe("In Progress");
+			expect((await core.filesystem.loadTask("TASK-3"))?.status).toBe("To Do");
+			await quit();
 		});
 	});
 

@@ -1306,6 +1306,7 @@ export async function renderBoardTui(
 		screen.key(["left", "h"], () => {
 			if (popupOpen || filterPopupOpen || modalOpen || currentFocus === "filters") return;
 			if (moveOp) {
+				if (movePending) return;
 				if (collapseHighlight()) return;
 				const currentStatusIndex = currentStatuses.indexOf(moveOp.targetStatus);
 				if (currentStatusIndex > 0) {
@@ -1326,6 +1327,7 @@ export async function renderBoardTui(
 		screen.key(["right", "l"], () => {
 			if (popupOpen || filterPopupOpen || modalOpen || currentFocus === "filters") return;
 			if (moveOp) {
+				if (movePending) return;
 				if (collapseHighlight()) return;
 				const currentStatusIndex = currentStatuses.indexOf(moveOp.targetStatus);
 				if (currentStatusIndex < currentStatuses.length - 1) {
@@ -1348,6 +1350,7 @@ export async function renderBoardTui(
 
 			const column = columns[currentCol];
 			if (moveOp) {
+				if (movePending) return;
 				if (collapseHighlight()) return;
 				if (direction === "up") {
 					if (moveOp.targetIndex > 0) {
@@ -1810,7 +1813,9 @@ export async function renderBoardTui(
 			}
 		};
 		const cancelMove = () => {
-			if (!moveOp) return;
+			// Once the confirm write is in flight the move can no longer be called off, so a
+			// late Escape must not make the board look canceled while the write still lands.
+			if (!moveOp || movePending) return;
 
 			// Exit move mode - pure state reset
 			moveOp = null;
@@ -1857,7 +1862,8 @@ export async function renderBoardTui(
 		 */
 		const walkRecruitHighlight = (direction: "up" | "down") => {
 			if (popupOpen || filterPopupOpen || modalOpen || currentFocus === "filters") return;
-			if (!moveOp) return;
+			// The move set and target freeze once the confirm write is in flight.
+			if (!moveOp || movePending) return;
 			const operation = moveOp;
 
 			// While the preview shows the collapsed block, the ghost index counts a column
@@ -1897,11 +1903,16 @@ export async function renderBoardTui(
 		/**
 		 * M toggles a task in or out of the move set. It acts on the recruitment highlight
 		 * when one is active; without one (terminals where shift-arrows never arrive), it
-		 * acts on the task on the row directly below the grabbed task, or above at the
-		 * bottom of a column, so the flow stays fully usable with plain arrows and M alone.
+		 * recruits the nearest unrecruited task below the grabbed row (above at the bottom
+		 * of a column). The fallback skips tasks already in the set — the collapsed block
+		 * keeps recruits adjacent to the grabbed task, so pointing at the nearest neighbor
+		 * would only ever toggle the first recruit off — which keeps repeated M presses
+		 * growing the set and the flow fully usable with plain arrows and M alone;
+		 * un-recruiting needs the shift-arrow highlight or Esc.
 		 */
 		const toggleRecruitSelection = () => {
-			if (!moveOp) return;
+			// The move set and target freeze once the confirm write is in flight.
+			if (!moveOp || movePending) return;
 			const operation = moveOp;
 
 			let candidateId: string | undefined;
@@ -1911,7 +1922,17 @@ export async function renderBoardTui(
 				const column = columns.find((candidate) => candidate.status === operation.targetStatus);
 				const rows = column?.tasks ?? [];
 				const grabbedRow = rows.findIndex((task) => task.id === operation.taskId);
-				candidateId = grabbedRow === -1 ? undefined : (rows[grabbedRow + 1] ?? rows[grabbedRow - 1])?.id;
+				if (grabbedRow !== -1) {
+					const recruited = new Set(operation.selectedIds);
+					const nearestUnrecruited = (from: number, step: number): string | undefined => {
+						for (let index = from; index >= 0 && index < rows.length; index += step) {
+							const id = rows[index]?.id;
+							if (id && id !== operation.taskId && !recruited.has(id)) return id;
+						}
+						return undefined;
+					};
+					candidateId = nearestUnrecruited(grabbedRow + 1, 1) ?? nearestUnrecruited(grabbedRow - 1, -1);
+				}
 			}
 			const targetId = candidateId;
 			if (!targetId || targetId === operation.taskId) {

@@ -42,7 +42,7 @@ function buildSpawnCommand(cliArgs: string[]): string {
 
 describe("interactive board multi-select move", () => {
 	itInteractive(
-		"recruits a second task through a real pty with xterm shift-arrows",
+		"walks the highlight with real xterm shift-arrows and recruits the task the fallback cannot reach",
 		async () => {
 			const testDir = createUniqueTestDir("board-multi-move");
 			await mkdir(testDir, { recursive: true });
@@ -105,10 +105,19 @@ expect {
 	timeout { exit 92 }
 }
 send "\\033\\[1;2B"
+send "\\033\\[1;2B"
+# The buffer pointer sits past the initial render, so "Bystander Task" can only
+# reappear when the highlight bar redraws the third row - proof the shift-arrow
+# walk itself ran. The M fallback (which targets the row below the grabbed task)
+# could never produce this: it would recruit "Recruited Task" instead.
+expect {
+	-re {Bystander Task} {}
+	timeout { exit 93 }
+}
 send "M"
 expect {
-	-re {►[^\\n]*Recruited Task} {}
-	timeout { exit 93 }
+	-re {►[^\\n]*Bystander Task} {}
+	timeout { exit 94 }
 }
 send "\\033"
 # A pause keeps ESC + q from being read back as one Meta-q chord.
@@ -138,8 +147,11 @@ exit 0
 				}
 				if (exitCode === 93) {
 					throw new Error(
-						`Shift+Down followed by M never marked the recruited task with ►.\nTranscript: ${transcriptPath}`,
+						`Shift+Down never walked the highlight to the third task, so shift-arrow parsing is broken.\nTranscript: ${transcriptPath}`,
 					);
+				}
+				if (exitCode === 94) {
+					throw new Error(`M never marked the highlighted third task with ►.\nTranscript: ${transcriptPath}`);
 				}
 				if (exitCode !== 0) {
 					throw new Error(`Interactive board move failed with ${exitCode}.\nSTDOUT:\n${stdout}\nSTDERR:\n${stderr}`);
