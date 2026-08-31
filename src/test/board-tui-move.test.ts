@@ -93,20 +93,39 @@ async function withBoard(
 		rows: () => string[];
 		footer: () => string;
 		quit: () => Promise<void>;
+		/** Publish a watcher-style task update to the board, as live sync would. */
+		update: (nextTasks: Task[]) => void;
+		/** How many times the Tab handoff ran (only counted with options.trackTabHandoff). */
+		tabHandoffs: () => number;
 	}) => Promise<void> | void,
-	filters?: BoardFilters,
-	boardTasks?: Task[],
+	options?: { filters?: BoardFilters; tasks?: Task[]; trackTabHandoff?: boolean },
 ): Promise<void> {
 	const descriptor = Object.getOwnPropertyDescriptor(process.stdout, "isTTY");
 	Object.defineProperty(process.stdout, "isTTY", { configurable: true, value: true });
 	const screen = createScreen({ smartCSR: false }) as ScreenInterface & EmittingWidget;
-	const tasks = boardTasks ?? [
+	const tasks = options?.tasks ?? [
 		createTask("TASK-1", "To Do", 1000),
 		createTask("TASK-2", "To Do", 2000),
 		createTask("TASK-3", "To Do", 3000),
 	];
+	let pushUpdate: ((nextTasks: Task[], nextStatuses: string[]) => void) | undefined;
+	let tabHandoffs = 0;
 	try {
-		const boardPromise = renderBoardTui(tasks, STATUSES, "horizontal", 20, { screen, core, filters });
+		const boardPromise = renderBoardTui(tasks, STATUSES, "horizontal", 20, {
+			screen,
+			core,
+			filters: options?.filters,
+			subscribeUpdates: (updateFn) => {
+				pushUpdate = updateFn;
+			},
+			...(options?.trackTabHandoff
+				? {
+						onTabPress: async () => {
+							tabHandoffs += 1;
+						},
+					}
+				: {}),
+		});
 		await Bun.sleep(20);
 		let closed = false;
 		const quit = async () => {
@@ -120,6 +139,8 @@ async function withBoard(
 			rows: () => renderedRows(screen as unknown as TreeWidget),
 			footer: () => footerText(screen as unknown as TreeWidget),
 			quit,
+			update: (nextTasks) => pushUpdate?.(nextTasks, []),
+			tabHandoffs: () => tabHandoffs,
 		});
 		await quit();
 	} finally {
@@ -196,10 +217,12 @@ describe("TUI board single-task mover", () => {
 				expect(footer()).not.toContain("MOVE MODE");
 			},
 			{
-				searchQuery: "",
-				priorityFilter: "high",
-				labelFilter: [],
-				milestoneFilter: "",
+				filters: {
+					searchQuery: "",
+					priorityFilter: "high",
+					labelFilter: [],
+					milestoneFilter: "",
+				},
 			},
 		);
 	});
@@ -378,12 +401,13 @@ describe("TUI board multi-select mover", () => {
 
 				pressKey(screen, "escape");
 			},
-			undefined,
-			[
-				createTask("TASK-1", "To Do", 1000),
-				{ ...createTask("TASK-2", "To Do", 2000), branch: "feature-x" },
-				createTask("TASK-3", "To Do", 3000),
-			],
+			{
+				tasks: [
+					createTask("TASK-1", "To Do", 1000),
+					{ ...createTask("TASK-2", "To Do", 2000), branch: "feature-x" },
+					createTask("TASK-3", "To Do", 3000),
+				],
+			},
 		);
 	});
 
@@ -415,12 +439,13 @@ describe("TUI board multi-select mover", () => {
 				});
 				await quit();
 			},
-			undefined,
-			[
-				createTask("TASK-1", "To Do", 1000),
-				createTask("TASK-2", "To Do", 2000),
-				createTask("TASK-3", "In Progress", 1000),
-			],
+			{
+				tasks: [
+					createTask("TASK-1", "To Do", 1000),
+					createTask("TASK-2", "To Do", 2000),
+					createTask("TASK-3", "In Progress", 1000),
+				],
+			},
 		);
 	});
 
@@ -446,6 +471,64 @@ describe("TUI board multi-select mover", () => {
 			expect((await core.filesystem.loadTask("TASK-1"))?.status).toBe("In Progress");
 			expect((await core.filesystem.loadTask("TASK-2"))?.status).toBe("In Progress");
 		});
+	});
+
+	it("persists the confirmed placement even when a watcher update lands mid-write", async () => {
+		await withBoard(async ({ screen, update, quit }) => {
+			pressKey(screen, "m");
+			pressKey(screen, "S-down");
+			pressKey(screen, "S-m");
+			pressKey(screen, "right");
+			pressKey(screen, "right");
+			pressKey(screen, "enter");
+
+			// The write is being prepared; a watcher update now reorders To Do so the block
+			// would project as [TASK-2, TASK-1]. It must repaint the board but never change
+			// the batch the user confirmed.
+			update([
+				createTask("TASK-1", "To Do", 2500),
+				createTask("TASK-2", "To Do", 2000),
+				createTask("TASK-3", "To Do", 3000),
+			]);
+
+			await quit();
+			const first = await core.filesystem.loadTask("TASK-1");
+			const second = await core.filesystem.loadTask("TASK-2");
+			expect(first?.status).toBe("In Progress");
+			expect(second?.status).toBe("In Progress");
+			expect((first?.ordinal ?? Number.NaN) < (second?.ordinal ?? Number.NaN)).toBe(true);
+		});
+	});
+
+	it("runs exactly one teardown when quit and Tab race a pending write", async () => {
+		await withBoard(
+			async ({ screen, quit, tabHandoffs }) => {
+				// Slow the batch write down so the exit requests provably race it.
+				const originalMove = core.moveTasksToStatus.bind(core);
+				core.moveTasksToStatus = (async (params: Parameters<Core["moveTasksToStatus"]>[0]) => {
+					await Bun.sleep(150);
+					return originalMove(params);
+				}) as Core["moveTasksToStatus"];
+
+				pressKey(screen, "m");
+				pressKey(screen, "S-down");
+				pressKey(screen, "S-m");
+				pressKey(screen, "right");
+				pressKey(screen, "right");
+				pressKey(screen, "enter");
+
+				// q starts the close, which waits for the write; the Tab pressed during that
+				// wait must join the same close instead of running its view-switch handoff.
+				pressKey(screen, "q");
+				pressKey(screen, "tab");
+				await quit();
+
+				expect(tabHandoffs()).toBe(0);
+				expect((await core.filesystem.loadTask("TASK-1"))?.status).toBe("In Progress");
+				expect((await core.filesystem.loadTask("TASK-2"))?.status).toBe("In Progress");
+			},
+			{ trackTabHandoff: true },
+		);
 	});
 
 	it("freezes the move set and ignores Escape while the confirm write is in flight", async () => {

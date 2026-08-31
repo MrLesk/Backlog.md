@@ -1102,18 +1102,27 @@ export async function renderBoardTui(
 			}, durationMs);
 		};
 
-		/** Tear the board down, optionally handing off to another view before resolving. */
-		const closeBoard = async (beforeResolve?: () => Promise<unknown>) => {
-			// A Shift+H write can still be in flight, and the caller may exit the process
-			// as soon as the board resolves, which would drop the setting.
-			if (pendingSettingWrite) await pendingSettingWrite;
-			// Same for a confirmed move: quitting right after Enter must not let the
-			// process exit before the write the user confirmed has persisted.
-			if (pendingMoveWrite) await pendingMoveWrite;
-			clearFooterTimer();
-			screen.destroy();
-			await beforeResolve?.();
-			resolve();
+		/**
+		 * Tear the board down, optionally handing off to another view before resolving.
+		 * First request wins: while a pending write delays the close, further exit actions
+		 * (e.g. Tab then q) join the same closing promise instead of running a second
+		 * teardown or replacing the first request's handoff.
+		 */
+		let closingBoard: Promise<void> | null = null;
+		const closeBoard = (beforeResolve?: () => Promise<unknown>): Promise<void> => {
+			closingBoard ??= (async () => {
+				// A Shift+H write can still be in flight, and the caller may exit the process
+				// as soon as the board resolves, which would drop the setting.
+				if (pendingSettingWrite) await pendingSettingWrite;
+				// Same for a confirmed move: quitting right after Enter must not let the
+				// process exit before the write the user confirmed has persisted.
+				if (pendingMoveWrite) await pendingMoveWrite;
+				clearFooterTimer();
+				screen.destroy();
+				await beforeResolve?.();
+				resolve();
+			})();
+			return closingBoard;
 		};
 
 		const renderView = (preferredTaskId?: string) => {
@@ -1697,37 +1706,41 @@ export async function renderBoardTui(
 			if (!moveOp || movePending) return;
 			const operation = moveOp;
 
+			// Snapshot the confirmed placement synchronously, before any await: a watcher
+			// update replacing currentTasks while the write is being prepared must affect
+			// the board, never the batch the user confirmed.
+			const projectedData = getProjectedColumns(currentTasks, operation);
+			const targetColumn = projectedData.find((c) => c.status === operation.targetStatus);
+
+			if (!targetColumn) {
+				moveOp = null;
+				renderView();
+				return;
+			}
+
+			const orderedTaskIds = targetColumn.tasks.map((task) => task.id);
+			const taskIds = getMoveSetIds(operation);
+			const targetStatus = operation.targetStatus;
+
+			// No-op guard: the set already sits exactly where the preview lands it.
+			const realColumn = prepareBoardColumns(currentTasks, currentStatuses).find(
+				(c) => c.status === operation.targetStatus,
+			);
+			const realIds = (realColumn?.tasks ?? []).map((task) => task.id);
+			if (realIds.length === orderedTaskIds.length && realIds.every((id, index) => id === orderedTaskIds[index])) {
+				moveOp = null;
+				renderView();
+				return;
+			}
+
 			const settleMoveWrite = beginMoveWrite();
 			try {
 				const core = await getCore();
 				const config = await core.fs.loadConfig();
 
-				// Get the final state from the projection
-				const projectedData = getProjectedColumns(currentTasks, operation);
-				const targetColumn = projectedData.find((c) => c.status === operation.targetStatus);
-
-				if (!targetColumn) {
-					moveOp = null;
-					renderView();
-					return;
-				}
-
-				const orderedTaskIds = targetColumn.tasks.map((task) => task.id);
-
-				// No-op guard: the set already sits exactly where the preview lands it.
-				const realColumn = prepareBoardColumns(currentTasks, currentStatuses).find(
-					(c) => c.status === operation.targetStatus,
-				);
-				const realIds = (realColumn?.tasks ?? []).map((task) => task.id);
-				if (realIds.length === orderedTaskIds.length && realIds.every((id, index) => id === orderedTaskIds[index])) {
-					moveOp = null;
-					renderView();
-					return;
-				}
-
 				const { movedTasks, changedTasks, failures } = await core.moveTasksToStatus({
-					taskIds: getMoveSetIds(operation),
-					targetStatus: operation.targetStatus,
+					taskIds,
+					targetStatus,
 					orderedTaskIds,
 					autoCommit: config?.autoCommit ?? false,
 				});
@@ -1783,27 +1796,31 @@ export async function renderBoardTui(
 				return;
 			}
 
+			// Snapshot the confirmed placement synchronously, before any await: a watcher
+			// update replacing currentTasks while the write is being prepared must affect
+			// the board, never the move the user confirmed.
+			const projectedData = getProjectedColumns(currentTasks, moveOp);
+			const targetColumn = projectedData.find((c) => c.status === moveOp?.targetStatus);
+
+			if (!targetColumn) {
+				moveOp = null;
+				renderView();
+				return;
+			}
+
+			const orderedTaskIds = targetColumn.tasks.map((task) => task.id);
+			const taskId = moveOp.taskId;
+			const targetStatus = moveOp.targetStatus;
+
 			const settleMoveWrite = beginMoveWrite();
 			try {
 				const core = await getCore();
 				const config = await core.fs.loadConfig();
 
-				// Get the final state from the projection
-				const projectedData = getProjectedColumns(currentTasks, moveOp);
-				const targetColumn = projectedData.find((c) => c.status === moveOp?.targetStatus);
-
-				if (!targetColumn) {
-					moveOp = null;
-					renderView();
-					return;
-				}
-
-				const orderedTaskIds = targetColumn.tasks.map((task) => task.id);
-
 				// Persist the move using core API
 				const { updatedTask, changedTasks } = await core.reorderTask({
-					taskId: moveOp.taskId,
-					targetStatus: moveOp.targetStatus,
+					taskId,
+					targetStatus,
 					orderedTaskIds,
 					autoCommit: config?.autoCommit ?? false,
 				});
