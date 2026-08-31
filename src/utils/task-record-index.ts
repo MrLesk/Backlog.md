@@ -42,10 +42,15 @@ export function createTaskRecordIndex(options: {
 	tasks: Task[];
 	completedTasks?: Task[];
 	statuses?: readonly string[];
+	ambiguousIds?: ReadonlySet<string>;
 }): TaskRecordIndex {
 	const statuses = options.statuses?.length ? options.statuses : DEFAULT_STATUSES;
 	const records: TaskRecord[] = [];
 	const byIdentity = new Map<string, TaskRecord | "ambiguous">();
+	// A corpus can be handed collisions it cannot show: a loader that resolves each identity to one
+	// record leaves a contested ID looking singly claimed here. Seeding those keys keeps the read
+	// failing closed on the collision its source saw rather than on the records that reached us.
+	for (const id of options.ambiguousIds ?? []) byIdentity.set(canonicalTaskId(id), "ambiguous");
 
 	const add = (task: Task, completedRecord: boolean) => {
 		const key = canonicalTaskId(task.id);

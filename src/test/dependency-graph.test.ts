@@ -137,6 +137,20 @@ describe("buildDependencyGraph", () => {
 		expect(nodeIds(graph, "dependencies")).toEqual(["TASK-2"]);
 	});
 
+	it("reports a collision the corpus carries but cannot show in its records", () => {
+		// A loader that resolves each identity to one record hands over a corpus where a contested ID
+		// looks singly claimed. The collision travels beside the records, and the read fails closed on
+		// it rather than on how many claimants survived the loader.
+		const graph = buildDependencyGraph(task("task-1", ["task-2"]), {
+			tasks: [task("task-1", ["task-2"]), task("task-2", ["task-3"]), task("task-3")],
+			statuses: STATUSES,
+			ambiguousIds: new Set(["TASK-2"]),
+		});
+
+		expect(graph.nodes.find((node) => node.id === "TASK-2")?.state).toBe("ambiguous");
+		expect(nodeIds(graph, "dependencies")).toEqual(["TASK-2"]);
+	});
+
 	it("keeps an ambiguous identity a leaf even when reverse edges leave it", () => {
 		// One duplicate record behind the ambiguous identity declares a dependency on task-3, which is
 		// itself a dependent of the root, so the shared edge set carries an edge leaving the ambiguous

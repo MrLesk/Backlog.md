@@ -46,6 +46,7 @@ export function createReadinessGraph(options: {
 	tasks: Task[];
 	completedTasks?: Task[];
 	statuses?: readonly string[];
+	ambiguousIds?: ReadonlySet<string>;
 }): ReadinessGraph {
 	const index = createTaskRecordIndex(options);
 

@@ -167,6 +167,30 @@ describe("Core shared task corpus regressions", () => {
 		expect(dependency?.completed).toBe(true);
 	});
 
+	it("keeps a branch completed file claiming a local completed ID ambiguous", async () => {
+		await writeTask(core.filesystem.tasksDir, "task-2 - Root.md", {
+			...task("TASK-2", "Root task"),
+			dependencies: ["TASK-1"],
+		});
+		await writeTask(core.filesystem.completedDir, "task-1 - Completed here.md", task("TASK-1", "Local", "Done"));
+		await commit("Add root task and local completed dependency", recentCommitDate(2));
+		await $`git switch -c feature-colliding-completed`.cwd(testDir).quiet();
+		await writeTask(
+			core.filesystem.completedDir,
+			"task-1 - Completed elsewhere.md",
+			task("TASK-1", "Branch claimant", "Done"),
+		);
+		await commit("Claim the same completed ID with another file", recentCommitDate(1));
+		await $`git switch main`.cwd(testDir).quiet();
+
+		const corpus = await loadTaskCorpus(core, { includeCrossBranch: true });
+		const root = corpus.tasks.find((candidate) => candidate.id === "TASK-2");
+		expect(root).toBeDefined();
+		const graph = buildDependencyGraph(root as Task, corpus);
+		const dependency = graph.nodes.find((candidate) => candidate.id === "TASK-1");
+		expect(dependency?.state).toBe("ambiguous");
+	});
+
 	it("refreshes warm cross-branch duplicate findings after branch addition and deletion", async () => {
 		const mainTaskPath = await writeTask(core.filesystem.tasksDir, "task-1 - Main.md", task("TASK-1", "Main task"));
 		await commit("Add main task", recentCommitDate(2));

@@ -80,7 +80,12 @@ export function nodesInDirection(graph: DependencyGraph, direction: DependencyDi
  */
 export function buildDependencyGraph(
 	root: Task,
-	options: { tasks: Task[]; completedTasks?: Task[]; statuses?: readonly string[] },
+	options: {
+		tasks: Task[];
+		completedTasks?: Task[];
+		statuses?: readonly string[];
+		ambiguousIds?: ReadonlySet<string>;
+	},
 ): DependencyGraph {
 	const index = createTaskRecordIndex(options);
 	const rootKey = canonicalTaskId(root.id);
