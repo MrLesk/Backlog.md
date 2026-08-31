@@ -1,11 +1,11 @@
 ---
 id: BACK-649
 title: Single-source task search config and filters in core
-status: In Progress
+status: Done
 assignee:
   - '@claude'
 created_date: '2026-08-29 21:04'
-updated_date: '2026-08-29 22:15'
+updated_date: '2026-08-31 21:02'
 labels:
   - cli
   - mcp

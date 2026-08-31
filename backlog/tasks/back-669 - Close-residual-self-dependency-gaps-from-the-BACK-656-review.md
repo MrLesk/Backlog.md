@@ -1,11 +1,11 @@
 ---
 id: BACK-669
 title: Close residual self-dependency gaps from the BACK-656 review
-status: In Progress
+status: Done
 assignee:
   - '@Claude'
 created_date: '2026-08-31 00:26'
-updated_date: '2026-08-31 01:16'
+updated_date: '2026-08-31 21:02'
 labels:
   - cli
   - bug

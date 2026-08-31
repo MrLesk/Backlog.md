@@ -1,11 +1,11 @@
 ---
 id: BACK-664
 title: Read the Backlog overview once per conversation instead of per request
-status: In Progress
+status: Done
 assignee:
   - '@claude'
 created_date: '2026-08-30 20:59'
-updated_date: '2026-08-30 21:00'
+updated_date: '2026-08-31 21:02'
 labels:
   - cli
   - enhancement
