@@ -4,6 +4,7 @@ import { StrictMode, act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import type { DuplicateRepairPlan } from "../core/duplicate-task-repair.ts";
 import type { SearchResult, Task } from "../types/index.ts";
+import { buildDependencyGraph } from "../utils/dependency-graph.ts";
 import { isValidTaskId, resolveTaskById } from "../utils/task-id.ts";
 import App from "../web/App.tsx";
 import { HealthCheckProvider } from "../web/contexts/HealthCheckContext.tsx";
@@ -962,6 +963,68 @@ describe("task detail routes", () => {
 			() => window.location.pathname === "/board" && container.querySelector("[role='dialog']") === null,
 			"Back to the canonical board",
 		);
+	});
+
+	it("fetches a graph-linked task exactly once, without a redundant sync refetch", async () => {
+		const foundation: Task = {
+			id: "BACK-201",
+			title: "Graph foundation",
+			status: "To Do",
+			assignee: [],
+			labels: [],
+			dependencies: [],
+			createdDate: "2026-07-10",
+		};
+		const follower: Task = {
+			id: "BACK-202",
+			title: "Graph follower",
+			status: "To Do",
+			assignee: [],
+			labels: [],
+			dependencies: ["BACK-201"],
+			createdDate: "2026-07-10",
+		};
+		const corpus = { tasks: [foundation, follower], completedTasks: [], statuses: defaultConfig.statuses };
+		// The /api/task fixtures are details carrying their graphs; the search results stay plain
+		// list records, exactly as the real endpoints answer.
+		const detailFoundation = Object.assign({}, foundation, {
+			dependencyGraph: buildDependencyGraph(foundation, corpus),
+		});
+		const detailFollower = Object.assign({}, follower, { dependencyGraph: buildDependencyGraph(follower, corpus) });
+		tasks.push(detailFoundation, detailFollower);
+		const addedResults: SearchResult[] = [
+			{ type: "task", task: foundation, score: 1 },
+			{ type: "task", task: follower, score: 1 },
+		];
+		searchResults.push(...addedResults);
+
+		try {
+			const container = await renderApp("/board/BACK-201");
+			const link = container.querySelector('a[aria-label="Open BACK-202 - Graph follower"]');
+			expect(link).toBeTruthy();
+
+			const operation = new FetchOperation("graph link navigation", [
+				expectFetch("linked task", "/api/task/BACK-202"),
+			]);
+			await act(async () => {
+				(link as HTMLElement).dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
+				await Promise.resolve();
+			});
+			await act(async () => operation.settle("linked task"));
+			// Give a redundant modal-sync refetch every chance to fire before counting requests. The
+			// sync effect compares the previous task's record against the newly opened one; only
+			// matching task IDs may trigger a follow-up detail read.
+			await act(async () => {
+				await new Promise((resolve) => setTimeout(resolve, 25));
+			});
+			operation.finish();
+			const detailFetches = operation.calls.filter((call) => call.url.startsWith("/api/task/"));
+			expect(detailFetches.map((call) => call.url)).toEqual(["/api/task/BACK-202"]);
+		} finally {
+			tasks.splice(tasks.indexOf(detailFoundation), 1);
+			tasks.splice(tasks.indexOf(detailFollower), 1);
+			for (const result of addedResults) searchResults.splice(searchResults.indexOf(result), 1);
+		}
 	});
 
 	it("preserves a type filter through board task Back, Forward, and close navigation", async () => {

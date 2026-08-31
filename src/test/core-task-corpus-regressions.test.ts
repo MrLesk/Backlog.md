@@ -3,8 +3,10 @@ import { mkdir, unlink } from "node:fs/promises";
 import { join } from "node:path";
 import { $ } from "bun";
 import { Core } from "../core/backlog.ts";
+import { loadTaskCorpus } from "../core/task-detail.ts";
 import { serializeTask } from "../markdown/serializer.ts";
 import type { Task } from "../types/index.ts";
+import { buildDependencyGraph } from "../utils/dependency-graph.ts";
 import { createUniqueTestDir, getPlatformTimeout, safeCleanup, waitUntil } from "./test-utils.ts";
 
 let testDir: string;
@@ -137,6 +139,32 @@ describe("Core shared task corpus regressions", () => {
 				.getTaskCorpusSnapshot()
 				.branchStateEntries?.find((entry) => entry.id === "TASK-1" && entry.type === "completed")?.task?.title,
 		).toBe("After ref move");
+	});
+
+	it("resolves a dependency completed only on another branch as completed in the cross-branch corpus", async () => {
+		await writeTask(core.filesystem.tasksDir, "task-2 - Root.md", {
+			...task("TASK-2", "Root task"),
+			dependencies: ["TASK-1"],
+		});
+		await commit("Add root task", recentCommitDate(2));
+		await $`git switch -c feature-completed-dependency`.cwd(testDir).quiet();
+		await writeTask(
+			core.filesystem.completedDir,
+			"task-1 - Completed elsewhere.md",
+			task("TASK-1", "Completed elsewhere", "Done"),
+		);
+		await commit("Complete dependency on branch", recentCommitDate(1));
+		await $`git switch main`.cwd(testDir).quiet();
+
+		const corpus = await loadTaskCorpus(core, { includeCrossBranch: true });
+		expect(corpus.completedTasks.some((candidate) => candidate.id === "TASK-1")).toBe(true);
+
+		const root = corpus.tasks.find((candidate) => candidate.id === "TASK-2");
+		expect(root).toBeDefined();
+		const graph = buildDependencyGraph(root as Task, corpus);
+		const dependency = graph.nodes.find((candidate) => candidate.id === "TASK-1");
+		expect(dependency?.state).toBe("resolved");
+		expect(dependency?.completed).toBe(true);
 	});
 
 	it("refreshes warm cross-branch duplicate findings after branch addition and deletion", async () => {

@@ -160,8 +160,8 @@ export function buildDependencyGraph(
 		neighbours: (key: string) => Array<{ key: string; reference: string }>,
 	) => {
 		const queue: Array<{ key: string; depth: number }> = [{ key: rootKey, depth: 0 }];
-		while (queue.length > 0) {
-			const current = queue.shift();
+		for (let cursor = 0; cursor < queue.length; cursor++) {
+			const current = queue[cursor];
 			if (!current) break;
 			const entry = entries.get(current.key);
 			// Unresolved identities are never walked through: their edges cannot be attributed.
@@ -225,8 +225,8 @@ export function findCycleThroughRoot(graph: DependencyGraph): string[] | null {
 	// the root closes the shortest cycle and the parent chain names its path.
 	const parents = new Map<string, string>();
 	const queue = [graph.rootId];
-	while (queue.length > 0) {
-		const currentId = queue.shift();
+	for (let cursor = 0; cursor < queue.length; cursor++) {
+		const currentId = queue[cursor];
 		if (currentId === undefined) break;
 		if (nodesById.get(currentId)?.state !== "resolved") continue;
 		for (const nextId of dependenciesById.get(currentId) ?? []) {
@@ -280,33 +280,43 @@ export function buildDependencyTree(graph: DependencyGraph, direction: Dependenc
 	const expanded = new Set<string>([graph.rootId]);
 	const branch = new Set<string>([graph.rootId]);
 
-	const expand = (id: string): DependencyTreeNode[] => {
-		const result: DependencyTreeNode[] = [];
-		for (const childId of children.get(id) ?? []) {
-			const node = nodesById.get(childId);
-			if (!node) continue;
-			if (branch.has(childId)) {
-				result.push({ node, children: [], repeat: "cycle" });
-				continue;
-			}
-			if (expanded.has(childId)) {
-				result.push({ node, children: [], repeat: "repeat" });
-				continue;
-			}
-			expanded.add(childId);
-			// An unresolved identity is reported, never traversed through. The reverse traversal can
-			// contribute edges leaving an ambiguous identity to the shared edge set, so the tree must
-			// refuse to follow them rather than trust the traversals to have kept them out.
-			if (node.state !== "resolved") {
-				result.push({ node, children: [], repeat: null });
-				continue;
-			}
-			branch.add(childId);
-			result.push({ node, children: expand(childId), repeat: null });
-			branch.delete(childId);
+	// Depth-first with an explicit stack, so a pathological dependency chain cannot exhaust the call
+	// stack. Each frame expands one node's children into that node's `children` array.
+	const roots: DependencyTreeNode[] = [];
+	const stack: Array<{ id: string; childIds: string[]; position: number; into: DependencyTreeNode[] }> = [
+		{ id: graph.rootId, childIds: children.get(graph.rootId) ?? [], position: 0, into: roots },
+	];
+	while (stack.length > 0) {
+		const frame = stack[stack.length - 1];
+		const childId = frame?.childIds[frame.position];
+		if (!frame || childId === undefined) {
+			stack.pop();
+			if (frame) branch.delete(frame.id);
+			continue;
 		}
-		return result;
-	};
-
-	return expand(graph.rootId);
+		frame.position += 1;
+		const node = nodesById.get(childId);
+		if (!node) continue;
+		if (branch.has(childId)) {
+			frame.into.push({ node, children: [], repeat: "cycle" });
+			continue;
+		}
+		if (expanded.has(childId)) {
+			frame.into.push({ node, children: [], repeat: "repeat" });
+			continue;
+		}
+		expanded.add(childId);
+		// An unresolved identity is reported, never traversed through. The reverse traversal can
+		// contribute edges leaving an ambiguous identity to the shared edge set, so the tree must
+		// refuse to follow them rather than trust the traversals to have kept them out.
+		if (node.state !== "resolved") {
+			frame.into.push({ node, children: [], repeat: null });
+			continue;
+		}
+		branch.add(childId);
+		const treeNode: DependencyTreeNode = { node, children: [], repeat: null };
+		frame.into.push(treeNode);
+		stack.push({ id: childId, childIds: children.get(childId) ?? [], position: 0, into: treeNode.children });
+	}
+	return roots;
 }

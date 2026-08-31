@@ -307,4 +307,19 @@ describe("dependency graph text", () => {
 	it("renders nothing for a task with no dependencies and no dependents", () => {
 		expect(formatDependencyGraphLines(graphFor("task-1", [task("task-1")]))).toEqual([]);
 	});
+
+	it("renders a pathologically deep dependency chain without recursing", () => {
+		// Deep enough that a recursive tree walk or formatter would be at risk on a small stack,
+		// while the quadratic indentation the rendered lines inherently carry stays affordable.
+		const depth = 2500;
+		const chain = Array.from({ length: depth }, (_, position) =>
+			task(`task-${position + 1}`, position === 0 ? [] : [`task-${position}`]),
+		);
+
+		const lines = formatDependencyGraphSection(graphFor(`task-${depth}`, chain), "dependencies");
+		expect(lines.length).toBe(depth);
+		expect(lines[0]).toBe(`Depends on (1 direct, ${depth - 1} total):`);
+		expect(lines[1]).toBe(`└─ task-${depth - 1} - Title task-${depth - 1} [To Do]`);
+		expect(lines[depth - 1]).toBe(`${"   ".repeat(depth - 2)}└─ task-1 - Title task-1 [To Do]`);
+	});
 });

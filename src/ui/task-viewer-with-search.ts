@@ -192,6 +192,38 @@ export function resolveTaskListSelection<T>(
 }
 
 /**
+ * Merge the unfiltered readiness snapshot with the live display copies into the corpus the
+ * dependency graph and readiness resolve against.
+ *
+ * Live copies win over the snapshot so status edits made in this session count. The merge works on
+ * claimant groups rather than single records: an identity that either side holds more than once
+ * keeps every claimant, so the shared record index still reports it ambiguous exactly as the CLI
+ * does, instead of this merge quietly electing a winner.
+ */
+export function mergeDependencyCorpusTasks(snapshot: Task[], liveTasks: Task[]): Task[] {
+	const groupById = (tasks: Task[]) => {
+		const groups = new Map<string, Task[]>();
+		for (const task of tasks) {
+			const key = canonicalTaskId(task.id);
+			const group = groups.get(key);
+			if (group) group.push(task);
+			else groups.set(key, [task]);
+		}
+		return groups;
+	};
+
+	const groups = groupById(snapshot);
+	for (const [key, liveClaimants] of groupById(liveTasks)) {
+		const snapshotClaimants = groups.get(key);
+		// A live copy cannot be attributed to either claimant of a contested identity, so the
+		// snapshot's ambiguity stands until the view reloads.
+		if (snapshotClaimants && snapshotClaimants.length > 1) continue;
+		groups.set(key, liveClaimants);
+	}
+	return [...groups.values()].flat();
+}
+
+/**
  * Display task details with search/filter header UI
  */
 /**
@@ -339,10 +371,7 @@ export async function viewTaskEnhanced(
 	const resolveDependencyCorpus = () => {
 		let tasks = allTasks;
 		if (readinessSnapshot) {
-			// Live display copies win over the snapshot so status edits in this session count.
-			const byId = new Map(readinessSnapshot.map((task) => [canonicalTaskId(task.id), task]));
-			for (const task of allTasks) byId.set(canonicalTaskId(task.id), task);
-			tasks = [...byId.values()];
+			tasks = mergeDependencyCorpusTasks(readinessSnapshot, allTasks);
 		}
 		return { tasks, completedTasks: readinessCompletedTasks, statuses };
 	};

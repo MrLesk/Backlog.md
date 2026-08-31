@@ -40,9 +40,19 @@ export async function loadTaskCorpus(
 
 	const storeTasks = await core.queryTasks({ includeCrossBranch: true });
 	const workingCopyIds = new Set(workingCopyTasks.map((task) => canonicalTaskId(task.id)));
+
+	// The cross-branch store's task list excludes completed records, so an identity that only exists
+	// as a completed record on some branch would otherwise read as missing here. Its identity index
+	// still knows those records; add the ones the local completed corpus does not already hold.
+	const localCompletedIds = new Set(completedTasks.map((task) => canonicalTaskId(task.id)));
+	const identityIndex = (await core.getContentStore()).getTaskCorpusSnapshot().identityIndex;
+	const crossBranchCompleted = (identityIndex?.getTasks(true) ?? []).filter(
+		(task) => task.source === "completed" && !localCompletedIds.has(canonicalTaskId(task.id)),
+	);
+
 	return {
 		tasks: [...workingCopyTasks, ...storeTasks.filter((task) => !workingCopyIds.has(canonicalTaskId(task.id)))],
-		completedTasks,
+		completedTasks: [...completedTasks, ...crossBranchCompleted],
 		statuses,
 	};
 }

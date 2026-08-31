@@ -52,18 +52,35 @@ export type DependencyGraphEntry = {
 	node: DependencyGraphNode | null;
 };
 
+type TreeFrame = { children: DependencyTreeNode[]; position: number; prefix: string };
+
 function appendTreeEntries(
 	children: DependencyTreeNode[],
-	prefix: string,
 	entries: DependencyGraphEntry[],
 	formatLabel: (node: DependencyGraphNode) => string,
 ): void {
-	children.forEach((child, position) => {
-		const last = position === children.length - 1;
+	// Depth-first with an explicit stack, so a pathological dependency chain cannot exhaust the call
+	// stack. Each level still extends the parent prefix by one fixed segment, which is the same
+	// per-line indentation the rendered output itself carries.
+	const stack: TreeFrame[] = [{ children, position: 0, prefix: "" }];
+	while (stack.length > 0) {
+		const frame = stack[stack.length - 1];
+		const child = frame?.children[frame.position];
+		if (!frame || !child) {
+			stack.pop();
+			continue;
+		}
+		frame.position += 1;
+		const last = frame.position === frame.children.length;
 		const suffix = child.repeat ? REPEAT_SUFFIXES[child.repeat] : "";
-		entries.push({ text: `${prefix}${last ? "└─ " : "├─ "}${formatLabel(child.node)}${suffix}`, node: child.node });
-		appendTreeEntries(child.children, `${prefix}${last ? "   " : "│  "}`, entries, formatLabel);
-	});
+		entries.push({
+			text: `${frame.prefix}${last ? "└─ " : "├─ "}${formatLabel(child.node)}${suffix}`,
+			node: child.node,
+		});
+		if (child.children.length > 0) {
+			stack.push({ children: child.children, position: 0, prefix: `${frame.prefix}${last ? "   " : "│  "}` });
+		}
+	}
 }
 
 function formatSectionEntries(
@@ -78,12 +95,7 @@ function formatSectionEntries(
 	const entries: DependencyGraphEntry[] = [
 		{ text: `${DIRECTION_HEADINGS[direction]} (${direct} direct, ${reached.length} total):`, node: null },
 	];
-	appendTreeEntries(
-		buildDependencyTree(graph, direction),
-		"",
-		entries,
-		options.formatLabel ?? formatDependencyNodeLabel,
-	);
+	appendTreeEntries(buildDependencyTree(graph, direction), entries, options.formatLabel ?? formatDependencyNodeLabel);
 	return entries;
 }
 
