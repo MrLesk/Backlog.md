@@ -1107,6 +1107,9 @@ export async function renderBoardTui(
 			// A Shift+H write can still be in flight, and the caller may exit the process
 			// as soon as the board resolves, which would drop the setting.
 			if (pendingSettingWrite) await pendingSettingWrite;
+			// Same for a confirmed move: quitting right after Enter must not let the
+			// process exit before the write the user confirmed has persisted.
+			if (pendingMoveWrite) await pendingMoveWrite;
 			clearFooterTimer();
 			screen.destroy();
 			await beforeResolve?.();
@@ -1676,20 +1679,25 @@ export async function renderBoardTui(
 
 		// A second Enter while the confirm is writing must not start a second move.
 		let movePending = false;
+		// The confirmed write in flight; closeBoard awaits it (like pendingSettingWrite)
+		// because the caller may process.exit as soon as the board resolves.
+		let pendingMoveWrite: Promise<void> | null = null;
+		/** Mark a confirm write as in flight; the returned settle runs in its finally. */
+		const beginMoveWrite = (): (() => void) => {
+			movePending = true;
+			let settle: () => void = () => {};
+			pendingMoveWrite = new Promise<void>((resolve) => {
+				settle = resolve;
+			});
+			return settle;
+		};
 
 		/** Confirm a move with recruited tasks: the whole set lands as one block at the preview position. */
 		const performSetMove = async () => {
 			if (!moveOp || movePending) return;
 			const operation = moveOp;
 
-			// Collapse an active highlight first so the confirmed order matches the block preview.
-			if (operation.highlightTaskId) {
-				updateMoveSelection(operation, () => {
-					operation.highlightTaskId = null;
-				});
-			}
-
-			movePending = true;
+			const settleMoveWrite = beginMoveWrite();
 			try {
 				const core = await getCore();
 				const config = await core.fs.loadConfig();
@@ -1745,11 +1753,20 @@ export async function renderBoardTui(
 				renderView();
 			} finally {
 				movePending = false;
+				settleMoveWrite();
 			}
 		};
 
 		const performTaskMove = async () => {
 			if (!moveOp || movePending) return;
+
+			// A confirm while the recruitment highlight is active first collapses it and
+			// renders the block preview, so the user always sees the exact order that a
+			// second confirm will persist - the projection is the single source of truth.
+			if (moveOp.selectedIds.length > 0 && moveOp.highlightTaskId) {
+				collapseHighlight();
+				return;
+			}
 
 			if (moveOp.selectedIds.length > 0) {
 				await performSetMove();
@@ -1766,7 +1783,7 @@ export async function renderBoardTui(
 				return;
 			}
 
-			movePending = true;
+			const settleMoveWrite = beginMoveWrite();
 			try {
 				const core = await getCore();
 				const config = await core.fs.loadConfig();
@@ -1810,6 +1827,7 @@ export async function renderBoardTui(
 				renderView();
 			} finally {
 				movePending = false;
+				settleMoveWrite();
 			}
 		};
 		const cancelMove = () => {

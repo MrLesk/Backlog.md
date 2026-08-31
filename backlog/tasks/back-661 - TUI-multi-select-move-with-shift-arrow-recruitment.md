@@ -5,7 +5,7 @@ status: Done
 assignee:
   - '@claude'
 created_date: '2026-08-30 17:23'
-updated_date: '2026-08-30 23:21'
+updated_date: '2026-08-30 23:53'
 labels:
   - tui
   - enhancement
@@ -65,6 +65,8 @@ Key-by-key behavior shipped:
 Validation: bunx tsc --noEmit clean; bun run check . clean; full bun test 2741 pass / 0 fail. src/test/board-tui-move.test.ts drives recruit, toggle-off, reorder-after-recruit, block bounds, cross-column confirm, adjacency-collapse confirm with highlight active, per-task failure footer, M-fallback recruit/unrecruit, and cancel through the existing keyboard harness. New pty capture src/test/board-tui-multi-move-pty.test.ts (expect, RUN_INTERACTIVE_TUI_TESTS=1) sends the raw ESC[1;2B shift-arrow plus M through a real pty and asserts the ► recruit marker renders; it needed an explicit stty size (sizeless pty under bun test) and a UTF-8 LANG (blessed downgrades ► to ? otherwise). Wired into scripts/run-tui-interactive-tests.sh.
 
 Codex review round on PR #980 (commit afb1b770): (1) dkqCe fixed - all move-mode mutations (arrows, Shift-arrows, M) and cancelMove freeze while movePending is true, so the confirmed set/target cannot change during the in-flight write and a late Esc cannot fake a cancel; regression test added. (2) dkqCg fixed - the no-highlight M fallback now recruits the nearest unrecruited task below the grabbed row (above at the bottom), skipping set members, so repeated M grows the set past the collapsed block; fallback is recruit-only (un-recruit via shift-arrow highlight or Esc); harness test recruits the whole column M-only. (3) dkqCi refuted - parent-child re-nesting after confirm is the board's pre-existing display rule with exact single-mover parity (reorderTask + buildColumnTasks on main behave the same); ordinals persist adjacent as previewed; no change. (4) dkqCl fixed - pty test now asserts the highlight walk itself (third-row redraw) before M and recruits the task the fallback cannot reach, with distinct exit codes. Verified: tsc, biome, 15 harness + 1 pty tests and 63 board-suite tests green.
+
+Closing Codex round on PR #980 (commit fea7a829): (1) dk2BZ fixed - the move-mode footer labels the selection chord [Shift+M] and the help entry says Shift+M selects more in move mode; a bare M would, under the table's own uppercase-means-unshifted convention, point users at plain m, which confirms instead. (2) dk2Bc fixed - the M-only fallback walk now skips cross-branch read-only tasks like it skips recruits, so a read-only neighbor cannot dead-end recruitment; the explicit refusal stays for highlighted selections. Tests: footer label pinned, new harness test with a cross-branch neighbor (recruits past it, reports the dead end when nothing recruitable remains). tsc, biome, 16 harness + 1 pty tests green. Per coordinator: any further Codex feedback after this round is deferred wholesale.
 <!-- SECTION:NOTES:END -->
 
 ## Final Summary

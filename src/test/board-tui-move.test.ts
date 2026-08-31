@@ -298,14 +298,20 @@ describe("TUI board multi-select mover", () => {
 		});
 	});
 
-	it("lands non-adjacent recruits adjacent on Enter while the highlight is still active", async () => {
-		await withBoard(async ({ screen, quit }) => {
+	it("previews the collapsed block on Enter while the highlight is active and persists on the second Enter", async () => {
+		await withBoard(async ({ screen, rows, quit }) => {
 			pressKey(screen, "m");
 			pressKey(screen, "S-down");
 			pressKey(screen, "S-down");
 			pressKey(screen, "S-m");
-			pressKey(screen, "enter");
 
+			// The first Enter only collapses and renders the block preview - the user must
+			// see the exact order before anything persists.
+			pressKey(screen, "enter");
+			expect(rowIds(rows())).toEqual(["TASK-1", "TASK-3", "TASK-2"]);
+			expect((await core.filesystem.loadTask("TASK-3"))?.ordinal).toBe(3000);
+
+			pressKey(screen, "enter");
 			await retry(async () => {
 				const first = await core.filesystem.loadTask("TASK-1");
 				const second = await core.filesystem.loadTask("TASK-2");
@@ -379,6 +385,67 @@ describe("TUI board multi-select mover", () => {
 				createTask("TASK-3", "To Do", 3000),
 			],
 		);
+	});
+
+	it("persists cross-column recruits in exactly the order rendered by the collapse preview", async () => {
+		await withBoard(
+			async ({ screen, rows, quit }) => {
+				// Grab the In Progress task, walk its ghost to the top of To Do, recruit TASK-1.
+				pressKey(screen, "right");
+				pressKey(screen, "m");
+				pressKey(screen, "left");
+				pressKey(screen, "S-down");
+				pressKey(screen, "S-m");
+
+				// First Enter renders the collapsed block; whatever it shows is what persists.
+				pressKey(screen, "enter");
+				const previewed = rowIds(rows());
+				expect(previewed.slice(0, 2).sort()).toEqual(["TASK-1", "TASK-3"]);
+
+				pressKey(screen, "enter");
+				await retry(async () => {
+					const first = await core.filesystem.loadTask(previewed[0] ?? "");
+					const second = await core.filesystem.loadTask(previewed[1] ?? "");
+					const third = await core.filesystem.loadTask("TASK-2");
+					const a = first?.ordinal ?? Number.NaN;
+					const b = second?.ordinal ?? Number.NaN;
+					const c = third?.ordinal ?? Number.NaN;
+					// The persisted column order must be exactly the previewed one.
+					if (!(a < b && b < c)) throw new Error("cross-column order not persisted yet");
+				});
+				await quit();
+			},
+			undefined,
+			[
+				createTask("TASK-1", "To Do", 1000),
+				createTask("TASK-2", "To Do", 2000),
+				createTask("TASK-3", "In Progress", 1000),
+			],
+		);
+	});
+
+	it("keeps the board alive on quit until the confirmed write has persisted", async () => {
+		await withBoard(async ({ screen, quit }) => {
+			// Slow the batch write down so quit provably races it.
+			const originalMove = core.moveTasksToStatus.bind(core);
+			core.moveTasksToStatus = (async (params: Parameters<Core["moveTasksToStatus"]>[0]) => {
+				await Bun.sleep(150);
+				return originalMove(params);
+			}) as Core["moveTasksToStatus"];
+
+			pressKey(screen, "m");
+			pressKey(screen, "S-down");
+			pressKey(screen, "S-m");
+			pressKey(screen, "right");
+			pressKey(screen, "right");
+			pressKey(screen, "enter");
+			// Quit immediately: the board must not resolve (the CLI would process.exit)
+			// until the write the user confirmed has landed.
+			await quit();
+
+			expect((await core.filesystem.loadTask("TASK-1"))?.status).toBe("In Progress");
+			expect((await core.filesystem.loadTask("TASK-2"))?.status).toBe("In Progress");
+		});
 	});
 
 	it("freezes the move set and ignores Escape while the confirm write is in flight", async () => {
