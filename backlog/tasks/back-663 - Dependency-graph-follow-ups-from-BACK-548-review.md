@@ -1,11 +1,11 @@
 ---
 id: BACK-663
 title: Dependency graph follow-ups from BACK-548 review
-status: In Progress
+status: Done
 assignee:
   - '@claude'
 created_date: '2026-08-30 19:38'
-updated_date: '2026-08-31 20:56'
+updated_date: '2026-08-31 21:01'
 labels:
   - cli
   - tui
