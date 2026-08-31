@@ -55,9 +55,12 @@ function resolveUniqueDependency(dependency: string, matches: Task[]): string | 
  *
  * When `target` names the task being created or edited, a dependency resolving to the target
  * itself is rejected in any spelling, and a dependency that would close a cycle through the
- * existing graph is rejected with the cycle path. Creation passes the identity it just allocated,
- * inside the create lock: no record can claim that ID, so the self check cannot fire, but a
- * stored dangling reference to exactly that ID can close a cycle the moment it materializes.
+ * existing graph is rejected with the cycle path. An unresolved input is also checked against the
+ * target before being reported as missing: creation, promotion, and demotion validate against an
+ * identity allocated moments ago, which no corpus record claims, so a dangling reference to
+ * exactly that ID would become a self-dependency the moment the record is written under it.
+ * Resolution runs first so an input that names an existing record keeps naming it - a bare number
+ * resolves to the draft or task that already claims it, not to the identity being allocated.
  *
  * Returns the matched canonical IDs, deduplicated, plus the inputs that matched nothing.
  */
@@ -79,6 +82,11 @@ export async function validateDependencies(
 			known.filter((candidate) => taskIdsEqual(dependency, candidate.id)),
 		);
 		if (resolved === null) {
+			// The corpus cannot resolve a reference to the target's freshly allocated ID, so the raw
+			// input is checked against the target before the reference is reported as missing.
+			if (target && taskIdsEqual(dependency, target.id)) {
+				throw new Error(`Task ${target.id} cannot depend on itself ("${dependency.trim()}" names this task).`);
+			}
 			invalid.push(dependency);
 			continue;
 		}
