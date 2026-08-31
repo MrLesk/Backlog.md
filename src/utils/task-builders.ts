@@ -98,11 +98,28 @@ export async function validateDependencies(
 	// graph is built once with the validated dependencies as the target's edges, so cycle detection
 	// reuses the shared dependency-graph model instead of traversing the corpus a second time.
 	if (target && valid.length > 0) {
-		const cycle = findCycleThroughRoot(
-			buildDependencyGraph({ ...target, dependencies: valid }, dependencyGraphCorpus(corpus)),
+		// The proposed list supersedes the target's stored one, so the stored record leaves the
+		// corpus: its old outgoing edges would otherwise re-enter through the graph's reverse
+		// traversal and let an existing cycle veto its own repair.
+		const graphCorpus = dependencyGraphCorpus(corpus);
+		const graph = buildDependencyGraph(
+			{ ...target, dependencies: valid },
+			{
+				tasks: graphCorpus.tasks.filter((task) => !taskIdsEqual(task.id, target.id)),
+				completedTasks: graphCorpus.completedTasks.filter((task) => !taskIdsEqual(task.id, target.id)),
+			},
 		);
+		const cycle = findCycleThroughRoot(graph);
 		if (cycle) {
 			throw new Error(`These dependencies would create a cycle: ${cycle.join(" -> ")}`);
+		}
+		// The graph never walks through an ambiguous identity, so a return path behind one cannot
+		// be seen. Whatever it hides stays unverifiable, so the mutation fails closed on it.
+		const ambiguous = graph.nodes.find((node) => node.state === "ambiguous" && node.dependencyDepth !== null);
+		if (ambiguous) {
+			throw new Error(
+				`Cannot verify the dependencies stay acyclic: more than one record claims ${ambiguous.id}. Run 'backlog doctor' to repair duplicate IDs first.`,
+			);
 		}
 	}
 	return { valid, invalid };

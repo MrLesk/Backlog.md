@@ -2582,6 +2582,11 @@ export class Core {
 
 			const { promotedTask, savedPath } = await this.withCreateLock(async () => {
 				const newTaskId = await this.generateNextId(EntityType.Task, draft.parentTaskId);
+				// Same guard as creation: a stored dangling reference can name exactly this allocated
+				// ID, so the record's dependencies are re-validated against its final identity. Only
+				// the self/cycle guard matters here; stored entries that no longer resolve are legacy
+				// defects doctor reports, so the stored list itself is written unchanged.
+				await validateDependencies(draft.dependencies ?? [], this, { ...draft, id: newTaskId });
 				const draftPath = current.filePath;
 
 				const promotedTask: Task = {
@@ -2646,6 +2651,9 @@ export class Core {
 
 			const { demotedDraft, savedPath } = await this.withCreateLock(async () => {
 				const newDraftId = await this.generateNextId(EntityType.Draft);
+				// Mirrors promotion: the allocated draft ID can be named by a stored dangling
+				// reference, so the demoted record must not materialize a cycle through it.
+				await validateDependencies(current.dependencies ?? [], this, { ...current, id: newDraftId });
 				const taskPath = current.filePath;
 
 				const demotedDraft: Task = {
