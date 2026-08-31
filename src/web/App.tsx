@@ -227,6 +227,13 @@ function AppContent() {
   const loadAllDataRequestRef = useRef(0);
   const hasLoadedDataRef = useRef(false);
   const pendingDataRequestRef = useRef<number | null>(null);
+  // Scope of the in-flight data request (only meaningful while
+  // pendingDataRequestRef is set): 0 tasks, 1 with milestones, 2 full load. A
+  // newer, narrower refresh supersedes the in-flight request through the shared
+  // counter, so it must adopt at least this scope or the wider data is lost.
+  const pendingScopeRankRef = useRef(0);
+  const loadErrorRef = useRef<Error | null>(null);
+  const duplicateRepairPlanRef = useRef<DuplicateRepairPlan | null>(null);
   const protocolOnlyLoadingRef = useRef(false);
   const location = useLocation();
   const navigate = useNavigate();
@@ -329,16 +336,27 @@ function AppContent() {
     );
   }, []);
 
+  const applyLoadError = useCallback((error: Error | null) => {
+    loadErrorRef.current = error;
+    setLoadError(error);
+  }, []);
+
+  const applyDuplicateRepairPlan = useCallback((plan: DuplicateRepairPlan | null) => {
+    duplicateRepairPlanRef.current = plan;
+    setDuplicateRepairPlan(plan);
+  }, []);
+
   const loadAllData = useCallback(async () => {
     const requestId = loadAllDataRequestRef.current + 1;
     loadAllDataRequestRef.current = requestId;
 	protocolOnlyLoadingRef.current = false;
 		pendingDataRequestRef.current = requestId;
+		pendingScopeRankRef.current = 2;
 		try {
 			// Show the blocking skeleton only before the first successful load; later
 			// refreshes keep the current content on screen and update it in place.
 			if (!hasLoadedDataRef.current) setIsLoading(true);
-			setLoadError(null);
+			applyLoadError(null);
       const shellDataPromise = Promise.all([
         apiClient.fetchStatuses(),
         apiClient.fetchConfig(),
@@ -380,14 +398,14 @@ function AppContent() {
         ),
       );
       void apiClient.fetchDuplicateTaskRepairPlan().then((duplicatePlan) => {
-        if (loadAllDataRequestRef.current === requestId) setDuplicateRepairPlan(duplicatePlan);
+        if (loadAllDataRequestRef.current === requestId) applyDuplicateRepairPlan(duplicatePlan);
       }).catch(() => {
-        if (loadAllDataRequestRef.current === requestId) setDuplicateRepairPlan(null);
+        if (loadAllDataRequestRef.current === requestId) applyDuplicateRepairPlan(null);
       });
     } catch (error) {
       if (loadAllDataRequestRef.current === requestId) {
         console.error('Failed to load data:', error);
-        setLoadError(error instanceof Error ? error : new Error('Failed to load data'));
+        applyLoadError(error instanceof Error ? error : new Error('Failed to load data'));
       }
     } finally {
       if (loadAllDataRequestRef.current === requestId) {
@@ -396,7 +414,7 @@ function AppContent() {
         setLoadingMessage(null);
       }
     }
-  }, [applySearchResults, applyMilestoneIds]);
+  }, [applySearchResults, applyMilestoneIds, applyLoadError, applyDuplicateRepairPlan]);
 
   React.useEffect(() => {
     // Only load data when initialized
@@ -595,27 +613,40 @@ function AppContent() {
   // the change was milestone-scoped) and reconciles it into the store in place;
   // statuses and config have their own "config-updated" broadcast, and the
   // duplicate repair plan (a filesystem rescan) refreshes in the background only
-  // when the set of task IDs changed. Anything that cannot be applied
-  // incrementally falls back to the full load.
+  // when it could have changed. Anything that cannot be applied incrementally
+  // falls back to the full load.
   const refreshTasksData = useCallback(async (includeMilestones: boolean) => {
-    if (!hasLoadedDataRef.current) {
+    // A never-completed or failed load leaves state an incremental refresh
+    // cannot patch (the failed resources would never be requested again), so
+    // both cases go through the full loader.
+    if (!hasLoadedDataRef.current || loadErrorRef.current) {
       await loadAllData();
       return;
     }
+    // Superseding an in-flight request discards its responses through the
+    // shared counter, so this refresh must adopt at least that request's scope
+    // or a concurrent config/milestone reload would be lost.
+    const supersededRank = pendingDataRequestRef.current !== null ? pendingScopeRankRef.current : -1;
+    if (supersededRank >= 2) {
+      await loadAllData();
+      return;
+    }
+    const withMilestones = includeMilestones || supersededRank >= 1;
     const requestId = loadAllDataRequestRef.current + 1;
     loadAllDataRequestRef.current = requestId;
     protocolOnlyLoadingRef.current = false;
     pendingDataRequestRef.current = requestId;
+    pendingScopeRankRef.current = withMilestones ? 1 : 0;
     try {
       const [milestonesData, archivedMilestonesData, searchResults] = await Promise.all([
-        includeMilestones ? apiClient.fetchMilestones() : milestoneEntitiesRef.current,
-        includeMilestones ? apiClient.fetchArchivedMilestones() : archivedMilestonesRef.current,
+        withMilestones ? apiClient.fetchMilestones() : milestoneEntitiesRef.current,
+        withMilestones ? apiClient.fetchArchivedMilestones() : archivedMilestonesRef.current,
         apiClient.search(),
       ]);
       if (loadAllDataRequestRef.current !== requestId) {
         return;
       }
-      if (includeMilestones) {
+      if (withMilestones) {
         milestoneEntitiesRef.current = milestonesData;
         archivedMilestonesRef.current = archivedMilestonesData;
         setMilestoneEntities(milestonesData);
@@ -635,13 +666,17 @@ function AppContent() {
           (milestone) => !archivedKeys.has(milestoneKey(milestone)),
         ),
       );
-      setLoadError(null);
-      // Duplicate IDs can only appear or disappear when the set of task IDs
-      // changes (an external file arriving, a repair renaming tasks), so edits
-      // and reorders skip the plan's filesystem rescan.
-      if (idSignature(tasksList) !== previousIdSignature) {
+      // In the healthy steady state (an empty plan on record), duplicate IDs can
+      // only appear when the set of task IDs changes, so edits and reorders skip
+      // the plan's filesystem rescan. While duplicates exist their plan
+      // fingerprint also covers content and references, and a still-null plan
+      // means the initial read has not landed (or was superseded), so both keep
+      // refreshing until the corpus is clean again.
+      const plan = duplicateRepairPlanRef.current;
+      const planUnsettled = plan === null || plan.groups.length > 0 || plan.crossBranchFindings.length > 0;
+      if (planUnsettled || idSignature(tasksList) !== previousIdSignature) {
         void apiClient.fetchDuplicateTaskRepairPlan().then((duplicatePlan) => {
-          if (loadAllDataRequestRef.current === requestId) setDuplicateRepairPlan(duplicatePlan);
+          if (loadAllDataRequestRef.current === requestId) applyDuplicateRepairPlan(duplicatePlan);
         }).catch(() => {});
       }
     } catch {
@@ -654,7 +689,7 @@ function AppContent() {
         pendingDataRequestRef.current = null;
       }
     }
-  }, [applySearchResults, applyMilestoneIds, loadAllData]);
+  }, [applySearchResults, applyMilestoneIds, applyDuplicateRepairPlan, loadAllData]);
 
   const refreshData = useCallback(async () => {
     await refreshTasksData(false);
@@ -722,7 +757,7 @@ function AppContent() {
 		// loading attempt always clears a stale terminal error, so a passive
 		// client shows its cached content instead of the obsolete failure.
 		if (!hasLoadedDataRef.current) setIsLoading(true);
-		setLoadError(null);
+		applyLoadError(null);
 		setLoadingMessage(loadingState.message);
 	  } else if (loadingState?.type === 'loaded') {
 		const shouldRefresh = protocolOnlyLoadingRef.current && pendingDataRequestRef.current === null;
@@ -735,7 +770,7 @@ function AppContent() {
 		protocolOnlyLoadingRef.current = false;
 		setIsLoading(false);
 		setLoadingMessage(null);
-		setLoadError(new Error(loadingState.message));
+		applyLoadError(new Error(loadingState.message));
       } else if (event.data === "tasks-updated") {
         void refreshData();
       } else if (event.data === "milestones-updated") {
@@ -754,7 +789,7 @@ function AppContent() {
 		disposed = true;
 		ws.close();
 	};
-  }, [refreshData, refreshMilestoneData, fullRefreshData, loadAllData]);
+  }, [refreshData, refreshMilestoneData, fullRefreshData, loadAllData, applyLoadError]);
 
   const handleSubmitTask = async (taskData: Partial<Task>) => {
     // Don't catch errors here - let TaskDetailsModal handle them

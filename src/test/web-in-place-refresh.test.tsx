@@ -41,7 +41,9 @@ const emptyDuplicatePlan = (): DuplicateRepairPlan => ({
 
 let tasks: Task[] = [];
 let milestones: Milestone[] = [];
+let duplicatePlan: DuplicateRepairPlan = emptyDuplicatePlan();
 let failNextSearch = false;
+let configHold: Promise<void> | null = null;
 let requestLog: string[] = [];
 
 let activeRoot: Root | null = null;
@@ -99,7 +101,10 @@ const json = (data: unknown, status = 200) => Response.json(data, { status });
 const respond = async (url: URL): Promise<Response> => {
 	if (url.pathname === "/api/status") return json({ initialized: true, projectPath: "/tmp/project" });
 	if (url.pathname === "/api/statuses") return json(defaultConfig.statuses);
-	if (url.pathname === "/api/config") return json(defaultConfig);
+	if (url.pathname === "/api/config") {
+		if (configHold) await configHold;
+		return json(defaultConfig);
+	}
 	if (url.pathname === "/api/search") {
 		if (failNextSearch) {
 			failNextSearch = false;
@@ -111,7 +116,7 @@ const respond = async (url: URL): Promise<Response> => {
 	}
 	if (url.pathname === "/api/milestones") return json(milestones);
 	if (url.pathname === "/api/milestones/archived") return json([]);
-	if (url.pathname === "/api/tasks/duplicates") return json(emptyDuplicatePlan());
+	if (url.pathname === "/api/tasks/duplicates") return json(duplicatePlan);
 	if (url.pathname === "/api/version") return json({ version: "test" });
 	return json([]);
 };
@@ -221,7 +226,9 @@ afterEach(() => {
 	activeDom = null;
 	tasks = [];
 	milestones = [];
+	duplicatePlan = emptyDuplicatePlan();
 	failNextSearch = false;
+	configHold = null;
 	requestLog = [];
 });
 
@@ -324,6 +331,89 @@ describe("in-place data refresh", () => {
 		await settle();
 
 		expect(requestedPaths()).toEqual(["/api/milestones", "/api/milestones/archived", "/api/search"]);
+	});
+
+	it("keeps refreshing the repair plan while duplicates exist, even for same-ID edits", async () => {
+		tasks = [makeTask("TASK-1", "Colliding card", "To Do")];
+		duplicatePlan = {
+			...emptyDuplicatePlan(),
+			groups: [
+				{
+					id: "TASK-1",
+					tasks: [
+						{ ...(tasks[0] as Task), filePath: "backlog/tasks/task-1 - A.md" } as Task,
+						{ ...(tasks[0] as Task), title: "Duplicate", filePath: "backlog/tasks/task-01 - B.md" } as Task,
+					],
+				},
+			],
+			repairable: true,
+			fingerprint: "live-plan",
+		} as DuplicateRepairPlan;
+		await renderBoard();
+
+		// Editing a colliding task changes the plan's fingerprint without
+		// changing the ID set, so the plan must be refetched anyway.
+		tasks = [makeTask("TASK-1", "Colliding card edited", "To Do")];
+		await act(async () => {
+			getAppDataWebSocket().deliver("tasks-updated");
+		});
+		await settle();
+
+		expect(requestedPaths()).toEqual(["/api/search", "/api/tasks/duplicates"]);
+	});
+
+	it("routes the next refresh through the full loader while a load error stands", async () => {
+		tasks = [makeTask("TASK-1", "Error-state card", "To Do")];
+		const container = await renderBoard();
+
+		await act(async () => {
+			getAppDataWebSocket().deliver(JSON.stringify({ type: "error", message: "corpus failed" }));
+		});
+		await settle();
+		expect(container.textContent).toContain("corpus failed");
+
+		requestLog = [];
+		await act(async () => {
+			getAppDataWebSocket().deliver("tasks-updated");
+		});
+		await settle();
+
+		// The standing error means state may be arbitrarily stale, so the retry
+		// is the full loader, which also clears the error on success.
+		expect(requestedPaths()).toEqual([
+			"/api/config",
+			"/api/milestones",
+			"/api/milestones/archived",
+			"/api/search",
+			"/api/statuses",
+			"/api/tasks/duplicates",
+		]);
+		expect(container.textContent).not.toContain("corpus failed");
+	});
+
+	it("adopts the scope of an in-flight full refresh instead of superseding it", async () => {
+		tasks = [makeTask("TASK-1", "Race card", "To Do")];
+		await renderBoard();
+
+		let releaseConfig = () => {};
+		configHold = new Promise<void>((resolve) => {
+			releaseConfig = resolve;
+		});
+		await act(async () => {
+			getAppDataWebSocket().deliver("config-updated");
+		});
+		// A tasks-updated arriving while the full reload is still waiting on
+		// config supersedes it through the request counter, so it must run the
+		// full loader itself instead of a search-only refresh on stale config.
+		await act(async () => {
+			getAppDataWebSocket().deliver("tasks-updated");
+		});
+		configHold = null;
+		releaseConfig();
+		await settle();
+
+		expect(requestLog.filter((path) => path === "/api/config").length).toBe(2);
+		expect(requestLog.filter((path) => path === "/api/search").length).toBe(2);
 	});
 
 	it("falls back to the full reload when the incremental refresh fails", async () => {

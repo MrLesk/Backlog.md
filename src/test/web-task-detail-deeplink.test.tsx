@@ -1456,18 +1456,19 @@ describe("task detail routes", () => {
 			operationRef: initialLoadRef,
 		});
 		const dataSocket = assertHealthSocketDoesNotShadowDataSocket();
-		// The incremental refresh leaves the ID set unchanged, so it does not
-		// refetch the plan; it still bumps the request counter, which is what
-		// invalidates the stale plan response below.
+		// The initial plan read has not landed yet, so the incremental refresh
+		// fetches a replacement plan; bumping the request counter is what
+		// invalidates the stale initial response below.
 		const newerLoad = new FetchOperation("newer data load", [
 			expectFetch("newer search", "/api/search"),
+			expectFetch("newer duplicate plan", "/api/tasks/duplicates"),
 		]);
 		await act(async () => {
 			dataSocket.deliver("tasks-updated");
 			await Promise.resolve();
 		});
 		await act(async () => {
-			await newerLoad.settle("newer search");
+			await newerLoad.settle("newer search", "newer duplicate plan");
 		});
 		newerLoad.finish();
 		assertState(() => container.textContent?.includes(tasks[0]?.title ?? "") ?? false, "newer data load");
