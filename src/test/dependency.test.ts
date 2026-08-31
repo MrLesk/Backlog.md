@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { $ } from "bun";
 import { Core } from "../core/backlog.ts";
 import type { Task } from "../types/index.ts";
+import { taskIdsEqual } from "../utils/task-path.ts";
 
 describe("Task Dependencies", () => {
 	let tempDir: string;
@@ -428,3 +429,200 @@ describe("Task Dependencies", () => {
 });
 
 import { initializeTestProject } from "./test-utils.ts";
+
+describe("Self-referential and cyclic dependencies", () => {
+	let tempDir: string;
+	let core: Core;
+
+	beforeEach(async () => {
+		tempDir = mkdtempSync(join(tmpdir(), "backlog-dependency-cycle-test-"));
+		await $`git init -b main`.cwd(tempDir).quiet();
+		core = new Core(tempDir);
+		await initializeTestProject(core, "test-project");
+	});
+
+	afterEach(() => {
+		rmSync(tempDir, { recursive: true, force: true });
+	});
+
+	test("rejects a task depending on itself, in its own spelling and in alias forms", async () => {
+		const { task } = await core.createTaskFromInput({ title: "Self" });
+		const match = task.id.match(/^(.+)-0*(\d+)$/);
+		expect(match).not.toBeNull();
+		if (!match) return;
+		const [, prefix, digits] = match;
+		const aliases = [task.id, task.id.toLowerCase(), task.id.toUpperCase(), `${prefix}-00${digits}`];
+		for (const alias of aliases) {
+			await expect(core.updateTaskFromInput(task.id, { dependencies: [alias] }, false)).rejects.toThrow(
+				"cannot depend on itself",
+			);
+			await expect(core.updateTaskFromInput(task.id, { addDependencies: [alias] }, false)).rejects.toThrow(
+				"cannot depend on itself",
+			);
+		}
+		expect((await core.filesystem.loadTask(task.id))?.dependencies ?? []).toEqual([]);
+	});
+
+	test("rejects a dependency that closes a two-task cycle, naming the path", async () => {
+		const { task: first } = await core.createTaskFromInput({ title: "First" });
+		const { task: second } = await core.createTaskFromInput({ title: "Second", dependencies: [first.id] });
+
+		await expect(core.updateTaskFromInput(first.id, { addDependencies: [second.id] }, false)).rejects.toThrow(
+			`These dependencies would create a cycle: ${first.id} -> ${second.id} -> ${first.id}`,
+		);
+		expect((await core.filesystem.loadTask(first.id))?.dependencies ?? []).toEqual([]);
+	});
+
+	test("rejects a dependency that closes a multi-hop cycle, naming the full path", async () => {
+		const { task: first } = await core.createTaskFromInput({ title: "First" });
+		const { task: second } = await core.createTaskFromInput({ title: "Second", dependencies: [first.id] });
+		const { task: third } = await core.createTaskFromInput({ title: "Third", dependencies: [second.id] });
+
+		await expect(core.updateTaskFromInput(first.id, { dependencies: [third.id] }, false)).rejects.toThrow(
+			`These dependencies would create a cycle: ${first.id} -> ${third.id} -> ${second.id} -> ${first.id}`,
+		);
+		expect((await core.filesystem.loadTask(first.id))?.dependencies ?? []).toEqual([]);
+	});
+
+	test("rejects a create whose allocated ID would close a cycle through a dangling reference", async () => {
+		// A dangling dependency on the next ID can only be stored out-of-band; materializing that ID
+		// with a dependency pointing back must not store the cycle.
+		await core.createTask(
+			{
+				id: "task-1",
+				title: "Dangling forward reference",
+				status: "To Do",
+				assignee: [],
+				createdDate: "2024-01-01",
+				labels: [],
+				dependencies: ["task-2"],
+			},
+			false,
+		);
+
+		await expect(core.createTaskFromInput({ title: "Closes the loop", dependencies: ["task-1"] })).rejects.toThrow(
+			"would create a cycle",
+		);
+		expect(await core.filesystem.loadTask("task-2")).toBeNull();
+	});
+
+	test("repairing a stored cycle by replacing the dependency list succeeds", async () => {
+		const legacy = (id: string, dependencies: string[]): Task => ({
+			id,
+			title: `Legacy ${id}`,
+			status: "To Do",
+			assignee: [],
+			createdDate: "2024-01-01",
+			labels: [],
+			dependencies,
+		});
+		await core.createTask(legacy("task-1", ["task-2"]), false);
+		await core.createTask(legacy("task-2", ["task-1"]), false);
+		const { task: other } = await core.createTaskFromInput({ title: "Clean target" });
+
+		// The stored record's own outgoing edges must not veto the repair that removes them.
+		await core.updateTaskFromInput("task-1", { dependencies: [other.id] }, false);
+		expect((await core.filesystem.loadTask("task-1"))?.dependencies).toEqual([other.id]);
+
+		// A proposed list that is itself cyclic stays rejected.
+		await expect(core.updateTaskFromInput("task-1", { dependencies: ["task-2"] }, false)).rejects.toThrow(
+			"would create a cycle",
+		);
+	});
+
+	test("fails closed when a forward path crosses an ambiguous identity", async () => {
+		const record = (id: string, title: string, dependencies: string[]): Task => ({
+			id,
+			title,
+			status: "To Do",
+			assignee: [],
+			createdDate: "2024-01-01",
+			labels: [],
+			dependencies,
+		});
+		await core.createTask(record("task-1", "Root", []), false);
+		await core.createTask(record("task-2", "Middle", ["task-3"]), false);
+		// Two records claim TASK-3 across stores: one completed, one active. The graph refuses to
+		// traverse the contested identity, so the return path behind it must fail the edit closed.
+		await core.createTask({ ...record("task-3", "Contested", ["task-1"]), status: "Done" }, false);
+		expect(await core.completeTask("task-3", false)).toBe(true);
+		const completed = (await core.filesystem.listCompletedTasks()).find((task) => taskIdsEqual(task.id, "task-3"));
+		expect(completed?.filePath).toBeDefined();
+		if (!completed?.filePath) return;
+		await Bun.write(
+			join(tempDir, "backlog", "tasks", "task-3 - Contested twin.md"),
+			await Bun.file(completed.filePath).text(),
+		);
+
+		await expect(core.updateTaskFromInput("task-1", { dependencies: ["task-2"] }, false)).rejects.toThrow(
+			"more than one record claims",
+		);
+		expect((await core.filesystem.loadTask("task-1"))?.dependencies ?? []).toEqual([]);
+	});
+
+	test("rejects a promotion whose allocated ID would close a cycle through a dangling reference", async () => {
+		await core.createTask(
+			{
+				id: "task-1",
+				title: "Dangling forward reference",
+				status: "To Do",
+				assignee: [],
+				createdDate: "2024-01-01",
+				labels: [],
+				dependencies: ["task-2"],
+			},
+			false,
+		);
+		const { task: draft } = await core.createTaskFromInput(
+			{ title: "Promotes into the loop", status: "Draft", dependencies: ["task-1"] },
+			false,
+		);
+
+		await expect(core.editTaskOrDraft(draft.id, { status: "To Do" })).rejects.toThrow("would create a cycle");
+		expect(await core.filesystem.loadDraft(draft.id)).not.toBeNull();
+		expect(await core.filesystem.loadTask("task-2")).toBeNull();
+	});
+
+	test("rejects a demotion whose allocated draft ID would close a cycle through a dangling reference", async () => {
+		await core.createTaskFromInput({ title: "Existing draft", status: "Draft" }, false);
+		await core.createTask(
+			{
+				id: "task-1",
+				title: "Dangling draft reference",
+				status: "To Do",
+				assignee: [],
+				createdDate: "2024-01-01",
+				labels: [],
+				dependencies: ["draft-2"],
+			},
+			false,
+		);
+		const { task: demotee } = await core.createTaskFromInput({
+			title: "Demotes into the loop",
+			dependencies: ["task-1"],
+		});
+
+		await expect(core.updateTaskFromInput(demotee.id, { status: "Draft" }, false)).rejects.toThrow(
+			"would create a cycle",
+		);
+		expect(await core.filesystem.loadTask(demotee.id)).not.toBeNull();
+		expect(await core.filesystem.loadDraft("draft-2")).toBeNull();
+	});
+
+	test("a stored self-dependency does not block adding an unrelated dependency", async () => {
+		const { task: other } = await core.createTaskFromInput({ title: "Other" });
+		const legacy: Task = {
+			id: "task-9",
+			title: "Legacy self-dependent",
+			status: "To Do",
+			assignee: [],
+			createdDate: "2024-01-01",
+			labels: [],
+			dependencies: ["task-9"],
+		};
+		await core.createTask(legacy, false);
+
+		await core.updateTaskFromInput(legacy.id, { addDependencies: [other.id] }, false);
+		expect((await core.filesystem.loadTask(legacy.id))?.dependencies).toEqual(["task-9", other.id]);
+	});
+});

@@ -1636,14 +1636,6 @@ export class Core {
 		const normalizedModifiedFiles = normalizeStringList(input.modifiedFiles) ?? [];
 		const dueDate = normalizeUtcDateTime(input.dueDate, "Due date");
 
-		const { valid: validDependencies, invalid: invalidDependencies } = await validateDependencies(
-			normalizedDependencies,
-			this,
-		);
-		if (invalidDependencies.length > 0) {
-			throw formatMissingDependenciesError(invalidDependencies);
-		}
-
 		let status = "";
 		if (requestedStatus) {
 			if (isDraft) {
@@ -1691,6 +1683,25 @@ export class Core {
 				? await this.resolveParentTaskIdForCreate(requestedParentTaskId)
 				: undefined;
 			const id = await this.generateNextId(entityType, isDraft ? undefined : parentTaskId);
+			// Validated inside the create lock, against the allocated identity: a record can hold a
+			// dangling dependency on exactly this not-yet-existing ID, so materializing it with a
+			// dependency pointing back would store a cycle that no later edit could have created.
+			const { valid: validDependencies, invalid: invalidDependencies } = await validateDependencies(
+				normalizedDependencies,
+				this,
+				{
+					id,
+					title: input.title.trim(),
+					status: resolvedStatus,
+					assignee: [],
+					createdDate,
+					labels: [],
+					dependencies: [],
+				},
+			);
+			if (invalidDependencies.length > 0) {
+				throw formatMissingDependenciesError(invalidDependencies);
+			}
 			const ordinal = await this.resolveCreateOrdinal(input.ordinal, isDraft);
 			const task: Task = {
 				id,
@@ -1991,7 +2002,7 @@ export class Core {
 
 			if (input.dependencies !== undefined) {
 				const normalized = parseDelimitedStringList(input.dependencies) ?? [];
-				const { valid, invalid } = await validateDependencies(normalized, this);
+				const { valid, invalid } = await validateDependencies(normalized, this, task);
 				if (invalid.length > 0) {
 					throw formatMissingDependenciesError(invalid);
 				}
@@ -2003,7 +2014,7 @@ export class Core {
 
 			if (input.addDependencies && input.addDependencies.length > 0) {
 				const additions = parseDelimitedStringList(input.addDependencies) ?? [];
-				const { valid, invalid } = await validateDependencies(additions, this);
+				const { valid, invalid } = await validateDependencies(additions, this, task);
 				if (invalid.length > 0) {
 					throw formatMissingDependenciesError(invalid);
 				}
@@ -2571,6 +2582,11 @@ export class Core {
 
 			const { promotedTask, savedPath } = await this.withCreateLock(async () => {
 				const newTaskId = await this.generateNextId(EntityType.Task, draft.parentTaskId);
+				// Same guard as creation: a stored dangling reference can name exactly this allocated
+				// ID, so the record's dependencies are re-validated against its final identity. Only
+				// the self/cycle guard matters here; stored entries that no longer resolve are legacy
+				// defects doctor reports, so the stored list itself is written unchanged.
+				await validateDependencies(draft.dependencies ?? [], this, { ...draft, id: newTaskId });
 				const draftPath = current.filePath;
 
 				const promotedTask: Task = {
@@ -2635,6 +2651,9 @@ export class Core {
 
 			const { demotedDraft, savedPath } = await this.withCreateLock(async () => {
 				const newDraftId = await this.generateNextId(EntityType.Draft);
+				// Mirrors promotion: the allocated draft ID can be named by a stored dangling
+				// reference, so the demoted record must not materialize a cycle through it.
+				await validateDependencies(current.dependencies ?? [], this, { ...current, id: newDraftId });
 				const taskPath = current.filePath;
 
 				const demotedDraft: Task = {

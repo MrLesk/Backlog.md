@@ -203,6 +203,52 @@ export function buildDependencyGraph(
 	};
 }
 
+/**
+ * The shortest dependency path that leaves the root and returns to it, as node IDs with the root at
+ * both ends, or null when no dependency of the root leads back to it.
+ *
+ * This walks the edges the graph already resolved instead of traversing the corpus again, and it
+ * follows the graph's own rule that unresolved identities are never walked through. The root's
+ * stored self-edge is ignored here: a direct self-dependency is its own defect with its own
+ * report, and it must not masquerade as a cycle closed by some other dependency.
+ */
+export function findCycleThroughRoot(graph: DependencyGraph): string[] | null {
+	const nodesById = new Map(graph.nodes.map((node) => [node.id, node]));
+	const dependenciesById = new Map<string, string[]>();
+	for (const edge of graph.edges) {
+		const existing = dependenciesById.get(edge.from);
+		if (existing) existing.push(edge.to);
+		else dependenciesById.set(edge.from, [edge.to]);
+	}
+
+	// Breadth-first from the root along dependency edges, so the first edge found pointing back at
+	// the root closes the shortest cycle and the parent chain names its path.
+	const parents = new Map<string, string>();
+	const queue = [graph.rootId];
+	while (queue.length > 0) {
+		const currentId = queue.shift();
+		if (currentId === undefined) break;
+		if (nodesById.get(currentId)?.state !== "resolved") continue;
+		for (const nextId of dependenciesById.get(currentId) ?? []) {
+			if (nextId === graph.rootId) {
+				if (currentId === graph.rootId) continue;
+				const reversed = [currentId];
+				let cursor: string | undefined = currentId;
+				while (cursor !== undefined && cursor !== graph.rootId) {
+					cursor = parents.get(cursor);
+					if (cursor !== undefined) reversed.push(cursor);
+				}
+				return [...reversed.reverse(), graph.rootId];
+			}
+			if (!parents.has(nextId)) {
+				parents.set(nextId, currentId);
+				queue.push(nextId);
+			}
+		}
+	}
+	return null;
+}
+
 export interface DependencyTreeNode {
 	node: DependencyGraphNode;
 	children: DependencyTreeNode[];

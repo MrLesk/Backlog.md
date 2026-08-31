@@ -1044,6 +1044,34 @@ describe("MCP task tools (MVP)", () => {
 		expect(criteriaText).toContain("- [ ] #2 Agents can follow instructions end-to-end");
 	});
 
+	it("rejects self-referential and cyclic dependencies through task_edit", async () => {
+		await mcpServer.testInterface.callTool({
+			params: { name: "task_create", arguments: { title: "First" } },
+		});
+		await mcpServer.testInterface.callTool({
+			params: { name: "task_create", arguments: { title: "Second", dependencies: ["TASK-1"] } },
+		});
+
+		const selfResult = await mcpServer.testInterface.callTool({
+			params: { name: "task_edit", arguments: { id: "TASK-1", dependencies: ["task-1"] } },
+		});
+		expect(selfResult.isError).toBe(true);
+		expect(getText(selfResult.content)).toContain("cannot depend on itself");
+
+		const cycleResult = await mcpServer.testInterface.callTool({
+			params: { name: "task_edit", arguments: { id: "TASK-1", dependencies: ["TASK-2"] } },
+		});
+		expect(cycleResult.isError).toBe(true);
+		expect(getText(cycleResult.content)).toContain(
+			"These dependencies would create a cycle: TASK-1 -> TASK-2 -> TASK-1",
+		);
+
+		const view = await mcpServer.testInterface.callTool({
+			params: { name: "task_view", arguments: { id: "TASK-1" } },
+		});
+		expect(getText(view.content)).not.toContain("Dependencies:");
+	});
+
 	it("does not clear labels from blank-only task_edit label arrays", async () => {
 		await mcpServer.testInterface.callTool({
 			params: {
