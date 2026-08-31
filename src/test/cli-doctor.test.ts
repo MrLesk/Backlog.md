@@ -397,6 +397,22 @@ describe("dependency defects", () => {
 		expect((await core.filesystem.loadTask("TASK-7"))?.dependencies).toEqual(["TASK-7"]);
 	});
 
+	it("exits zero when the duplicate repair itself resolves the dependency finding", async () => {
+		await writeDuplicateTasks();
+		// Beta depends on its own duplicate ID; renaming Beta re-points the reference at Alpha.
+		await Bun.write(
+			join(core.filesystem.tasksDir, "task-01 - Beta.md"),
+			serializeTask({ ...makeTask("TASK-01", "Beta"), dependencies: ["TASK-01"] }),
+		);
+
+		const result = await $`bun ${cliPath} doctor --fix --yes`.cwd(testDir).quiet().nothrow();
+		const output = `${result.stdout}${result.stderr}`;
+		expect(result.exitCode).toBe(0);
+		expect(output).toContain("Repaired 2 duplicate task files");
+		expect(output).toContain("TASK-01 depends on itself");
+		expect(output).not.toContain("Dependency findings remain diagnostic-only");
+	});
+
 	it("refuses --fix for dependency findings instead of repairing them", async () => {
 		await Bun.write(
 			join(core.filesystem.tasksDir, "task-2 - Selfy.md"),

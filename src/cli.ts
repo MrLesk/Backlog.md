@@ -5535,7 +5535,10 @@ addHelpSchema(program.command("doctor"), {
 				console.log("Draft identity findings remain diagnostic-only and still require manual review.");
 				process.exitCode = 1;
 			}
-			if (dependenciesBroken) {
+			// Diagnosed again after the repair: renaming a duplicate can itself resolve a dependency
+			// finding, so the final status must reflect the repaired corpus, not the preview snapshot.
+			const remainingDependencyDefects = await findDependencyDefects(core);
+			if (remainingDependencyDefects.selfDependencies.length > 0 || remainingDependencyDefects.cycles.length > 0) {
 				console.log("Dependency findings remain diagnostic-only and still require manual repair.");
 				process.exitCode = 1;
 			}

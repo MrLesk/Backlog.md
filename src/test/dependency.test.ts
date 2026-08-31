@@ -609,6 +609,45 @@ describe("Self-referential and cyclic dependencies", () => {
 		expect(await core.filesystem.loadDraft("draft-2")).toBeNull();
 	});
 
+	test("rejects a promotion whose dangling reference equals the allocated task ID", async () => {
+		// The reference resolves to nothing, so only the pre-resolution target check can catch it;
+		// writing the record under the allocated ID would store a direct self-dependency.
+		await core.filesystem.saveDraft({
+			id: "draft-1",
+			title: "Dangling reference to the next task ID",
+			status: "Draft",
+			assignee: [],
+			createdDate: "2024-01-01",
+			labels: [],
+			dependencies: ["task-1"],
+		});
+
+		await expect(core.editTaskOrDraft("draft-1", { status: "To Do" })).rejects.toThrow("cannot depend on itself");
+		expect(await core.filesystem.loadDraft("draft-1")).not.toBeNull();
+		expect(await core.filesystem.loadTask("task-1")).toBeNull();
+	});
+
+	test("rejects a demotion whose dangling reference equals the allocated draft ID", async () => {
+		await core.createTask(
+			{
+				id: "task-1",
+				title: "Dangling reference to the next draft ID",
+				status: "To Do",
+				assignee: [],
+				createdDate: "2024-01-01",
+				labels: [],
+				dependencies: ["draft-1"],
+			},
+			false,
+		);
+
+		await expect(core.updateTaskFromInput("task-1", { status: "Draft" }, false)).rejects.toThrow(
+			"cannot depend on itself",
+		);
+		expect(await core.filesystem.loadTask("task-1")).not.toBeNull();
+		expect(await core.filesystem.loadDraft("draft-1")).toBeNull();
+	});
+
 	test("a stored self-dependency does not block adding an unrelated dependency", async () => {
 		const { task: other } = await core.createTaskFromInput({ title: "Other" });
 		const legacy: Task = {
