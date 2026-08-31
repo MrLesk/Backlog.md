@@ -413,6 +413,23 @@ describe("dependency defects", () => {
 		expect(output).not.toContain("Dependency findings remain diagnostic-only");
 	});
 
+	it("prints the dependency defect the repair itself materializes", async () => {
+		await writeDuplicateTasks();
+		// Beta's dangling reference names the ID the repair allocates to Beta, so the defect exists
+		// only in the repaired corpus; the post-repair report must name it.
+		await Bun.write(
+			join(core.filesystem.tasksDir, "task-01 - Beta.md"),
+			serializeTask({ ...makeTask("TASK-01", "Beta"), dependencies: ["TASK-2"] }),
+		);
+
+		const result = await $`bun ${cliPath} doctor --fix --yes`.cwd(testDir).quiet().nothrow();
+		const output = `${result.stdout}${result.stderr}`;
+		expect(result.exitCode).toBe(1);
+		expect(output).toContain("Repaired 2 duplicate task files");
+		expect(output).toContain("TASK-2 depends on itself");
+		expect(output).toContain("Dependency findings remain diagnostic-only and still require manual repair.");
+	});
+
 	it("refuses --fix for dependency findings instead of repairing them", async () => {
 		await Bun.write(
 			join(core.filesystem.tasksDir, "task-2 - Selfy.md"),

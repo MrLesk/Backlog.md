@@ -609,6 +609,15 @@ describe("Self-referential and cyclic dependencies", () => {
 		expect(await core.filesystem.loadDraft("draft-2")).toBeNull();
 	});
 
+	test("a bare-number dependency resolves to the existing draft, not the allocated task ID", async () => {
+		const { task: draft } = await core.createTaskFromInput({ title: "Existing draft", status: "Draft" }, false);
+
+		// With no tasks yet, creation allocates task-1; bare 1 must keep naming the record that
+		// already claims it instead of being rejected as a self-dependency on the allocated ID.
+		const { task } = await core.createTaskFromInput({ title: "Depends on the draft", dependencies: ["1"] }, false);
+		expect(task.dependencies).toEqual([draft.id]);
+	});
+
 	test("rejects a promotion whose dangling reference equals the allocated task ID", async () => {
 		// The reference resolves to nothing, so only the pre-resolution target check can catch it;
 		// writing the record under the allocated ID would store a direct self-dependency.
