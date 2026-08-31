@@ -5,7 +5,7 @@ status: In Progress
 assignee:
   - '@claude'
 created_date: '2026-08-30 19:38'
-updated_date: '2026-08-31 20:26'
+updated_date: '2026-08-31 20:56'
 labels:
   - cli
   - tui
@@ -66,6 +66,12 @@ Disposition per review item:
 7. ACCEPTED AS BEHAVIOR - Open modal dependents list staleness when another client edits a different task. The modal refetches its detail when the open task's own dependencies change (item 6 keeps that precise); refreshing on every corpus broadcast while a modal is open would cost one detail request per external change for a display-only list that corrects on reopen or on any edit to the open task. Under the no-new-subscription-machinery and simplicity-first rules this stays as designed.
 
 Validation: bunx tsc --noEmit clean, bun run check . clean, bun run test full suite 2811 pass / 0 fail.
+
+Final Summary:
+--------------------------------------------------
+Dispositioned all seven PR #960 follow-ups: fixed items 1-4 and 6 (iterative tree walks in the formatter and tree builder, cursor-based BFS, fail-closed claimant-group merge for the filtered TUI corpus, cross-branch completed records joining the web graph corpus, and a matching-task-ID guard before the web modal sync compares dependency lists), and closed items 5 and 7 as accepted behavior with reasoned notes (the existing task watcher already covers most TUI snapshot staleness; per-broadcast modal refetches are disproportionate for a display-only dependents list). Verified with focused new tests - deep-chain rendering, ambiguous-claimant merge, cross-branch completed resolution, and single-fetch graph-link navigation (the latter two shown to fail without the fixes) - plus bunx tsc --noEmit, bun run check ., and the full bun run test suite (2811 pass, 0 fail).
+
+Review follow-up (Codex P1 on the item-4 fix): joining cross-branch completed records deduplicated by canonical ID, so a branch file claiming a locally-completed ID was dropped and the identity read as resolved instead of ambiguous. Deriving the collision from the merged records is unsound in general - the identity index resolves each identity to at most one record and emits none when its newest record is archived or unparseable - so ambiguity is now taken from the index itself: TaskIdentityIndex.getContestedIds() reports the IDs more than one live identity claims, loadTaskCorpus carries them on TaskCorpus.ambiguousIds, and createTaskRecordIndex seeds those keys as ambiguous, which covers readiness and the dependency graph together. The merge went back to plain ID deduplication. Two tests, each verified to fail without its mechanism: a branch completed file colliding with a local completed record, and a corpus carrying a collision its records cannot show. Full suite 2805 pass, 8 skip, 0 fail.
 <!-- SECTION:NOTES:END -->
 
 ## Final Summary
