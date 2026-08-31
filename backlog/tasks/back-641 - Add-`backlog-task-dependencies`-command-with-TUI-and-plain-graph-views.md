@@ -1,11 +1,11 @@
 ---
 id: BACK-641
 title: Add `backlog task dependencies` command with TUI and plain graph views
-status: In Progress
+status: Done
 assignee:
   - '@claude'
 created_date: '2026-08-29 17:53'
-updated_date: '2026-08-31 19:57'
+updated_date: '2026-08-31 20:04'
 labels:
   - cli
   - tui
