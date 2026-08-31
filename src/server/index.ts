@@ -242,6 +242,7 @@ export class BacklogServer {
 	private browserLoadingState: BrowserLoadingState = { type: "loading", message: null };
 	private unsubscribeContentStore?: () => void;
 	private taskBroadcastTimer?: ReturnType<typeof setTimeout>;
+	private pendingDataBroadcastScope: "tasks" | "milestones" = "tasks";
 	private storeReadyBroadcasted = false;
 
 	constructor(projectPath: string) {
@@ -294,13 +295,13 @@ export class BacklogServer {
 						this.storeReadyBroadcasted = true;
 						return;
 					}
-					this.broadcastTasksUpdated();
+					this.broadcastDataUpdated();
 					return;
 				}
 
 				// Broadcast for tasks/documents/decisions so clients refresh caches/search
 				this.storeReadyBroadcasted = true;
-				this.broadcastTasksUpdated();
+				this.broadcastDataUpdated();
 			});
 		}
 
@@ -329,13 +330,18 @@ export class BacklogServer {
 		return this.server?.port ?? null;
 	}
 
-	private broadcastTasksUpdated() {
+	private broadcastDataUpdated(scope: "tasks" | "milestones" = "tasks") {
+		// Milestone changes widen the message so clients also refetch milestone
+		// entities; the debounce keeps the widest scope seen in the window.
+		if (scope === "milestones") this.pendingDataBroadcastScope = "milestones";
 		if (this.taskBroadcastTimer) clearTimeout(this.taskBroadcastTimer);
 		this.taskBroadcastTimer = setTimeout(() => {
 			this.taskBroadcastTimer = undefined;
+			const message = this.pendingDataBroadcastScope === "milestones" ? "milestones-updated" : "tasks-updated";
+			this.pendingDataBroadcastScope = "tasks";
 			for (const ws of this.sockets) {
 				try {
-					ws.send("tasks-updated");
+					ws.send(message);
 				} catch {}
 			}
 		}, 75);
@@ -1207,7 +1213,7 @@ export class BacklogServer {
 			}
 
 			// Notify listeners to refresh
-			this.broadcastTasksUpdated();
+			this.broadcastDataUpdated();
 			return Response.json({ success: true });
 		} catch (error) {
 			const message = error instanceof Error ? error.message : "Failed to complete task";
@@ -1225,7 +1231,7 @@ export class BacklogServer {
 				return Response.json({ error: "Task not found" }, { status: 404 });
 			}
 
-			this.broadcastTasksUpdated();
+			this.broadcastDataUpdated();
 			return Response.json({ success: true });
 		} catch (error) {
 			const message = error instanceof Error ? error.message : "Failed to demote task";
@@ -1234,7 +1240,7 @@ export class BacklogServer {
 				typeof error === "object" && error !== null && (error as { demotionState?: unknown }).demotionState;
 			const knownDemotionState = demotionState === "moved" || demotionState === "partial" ? demotionState : undefined;
 			if (knownDemotionState) {
-				this.broadcastTasksUpdated();
+				this.broadcastDataUpdated();
 			}
 			if (!conflict) {
 				console.error("Error demoting task:", error);
@@ -1648,6 +1654,7 @@ export class BacklogServer {
 			}
 
 			const milestone = await this.core.filesystem.createMilestone(title, body.description, dueDate.value ?? undefined);
+			this.broadcastDataUpdated("milestones");
 			return Response.json(milestone, { status: 201 });
 		} catch (error) {
 			console.error("Error creating milestone:", error);
@@ -1677,7 +1684,7 @@ export class BacklogServer {
 			const milestone =
 				(await this.core.filesystem.loadMilestone(sourceMilestone?.id ?? milestoneId)) ??
 				(await this.core.filesystem.loadMilestone(title));
-			this.broadcastTasksUpdated();
+			this.broadcastDataUpdated("milestones");
 			return Response.json({
 				success: true,
 				milestone: milestone ?? null,
@@ -1709,7 +1716,7 @@ export class BacklogServer {
 				taskHandling,
 				reassignTo,
 			});
-			this.broadcastTasksUpdated();
+			this.broadcastDataUpdated("milestones");
 			return Response.json({
 				success: true,
 				message: this.getMilestoneMutationMessage(result),
@@ -1725,7 +1732,7 @@ export class BacklogServer {
 			if (!result.success) {
 				return Response.json({ error: "Milestone not found" }, { status: 404 });
 			}
-			this.broadcastTasksUpdated();
+			this.broadcastDataUpdated("milestones");
 			return Response.json({ success: true, milestone: result.milestone ?? null });
 		} catch (error) {
 			const message = error instanceof Error ? error.message : "Failed to archive milestone";
@@ -1926,7 +1933,7 @@ export class BacklogServer {
 			}
 
 			// Notify listeners to refresh
-			this.broadcastTasksUpdated();
+			this.broadcastDataUpdated();
 
 			return Response.json({
 				success: true,

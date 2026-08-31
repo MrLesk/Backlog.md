@@ -741,8 +741,9 @@ describe("task detail routes", () => {
 	it("does not duplicate an active data request when shared loading completes", async () => {
 		await renderApp("/board?lane=none");
 		const dataSocket = getAppDataWebSocket();
+		// A tasks-updated broadcast triggers the incremental refresh, which only
+		// refetches the search corpus.
 		const activeRefresh = new FetchOperation("active refresh during shared completion", [
-			expectFetch("active config", "/api/config"),
 			expectFetch("active search", "/api/search", { manual: true }),
 		]);
 
@@ -760,7 +761,7 @@ describe("task detail routes", () => {
 
 		await act(async () => {
 			activeRefresh.respond("active search", json(searchResults));
-			await activeRefresh.settle("active config", "active search");
+			await activeRefresh.settle("active search");
 		});
 		activeRefresh.finish();
 	});
@@ -861,9 +862,10 @@ describe("task detail routes", () => {
 		);
 		reorder.finish();
 
+		// The reconciliation edits an existing task, so the ID set is unchanged
+		// and the duplicate repair plan is not refetched.
 		const reconciliation = new FetchOperation("newer WebSocket reconciliation", [
 			expectFetch("newer search", "/api/search", { manual: true }),
-			expectFetch("newer duplicate plan", "/api/tasks/duplicates"),
 		]);
 		await act(async () => {
 			dataSocket.deliver("tasks-updated");
@@ -879,7 +881,7 @@ describe("task detail routes", () => {
 					{ type: "task", task: externallyEditedTask, score: 1 } satisfies SearchResult,
 				]),
 			);
-			await reconciliation.settle("newer search", "newer duplicate plan");
+			await reconciliation.settle("newer search");
 		});
 		reconciliation.finish();
 		expect(container.textContent).toContain(externallyEditedTask.title);
@@ -1047,8 +1049,9 @@ describe("task detail routes", () => {
 		});
 		staleRefresh.finish();
 
+		// The newer refresh rides a tasks-updated broadcast, so it is incremental
+		// and leaves config alone; the stale full refresh must still lose.
 		const newerRefresh = new FetchOperation("newer task refresh", [
-			expectFetch("newer config", "/api/config"),
 			expectFetch("newer search", "/api/search", { manual: true }),
 		]);
 		await act(async () => {
@@ -1060,7 +1063,7 @@ describe("task detail routes", () => {
 				"newer search",
 				json([{ type: "task", task: customerTask, score: 1 } satisfies SearchResult]),
 			);
-			await newerRefresh.settle("newer config", "newer search");
+			await newerRefresh.settle("newer search");
 		});
 		newerRefresh.finish();
 
@@ -1453,6 +1456,9 @@ describe("task detail routes", () => {
 			operationRef: initialLoadRef,
 		});
 		const dataSocket = assertHealthSocketDoesNotShadowDataSocket();
+		// The initial plan read has not landed yet, so the incremental refresh
+		// fetches a replacement plan; bumping the request counter is what
+		// invalidates the stale initial response below.
 		const newerLoad = new FetchOperation("newer data load", [
 			expectFetch("newer search", "/api/search"),
 			expectFetch("newer duplicate plan", "/api/tasks/duplicates"),
