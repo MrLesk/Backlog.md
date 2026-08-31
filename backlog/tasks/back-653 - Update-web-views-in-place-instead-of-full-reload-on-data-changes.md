@@ -5,7 +5,7 @@ status: Done
 assignee:
   - '@Claude'
 created_date: '2026-08-29 22:03'
-updated_date: '2026-08-30 23:57'
+updated_date: '2026-08-31 00:32'
 labels:
   - web
   - bug
@@ -52,6 +52,8 @@ Every server file-watcher broadcast ("tasks-updated") makes the web app call ref
 Implemented: server broadcastDataUpdated(scope) keeps 'tasks-updated' for store/task events and sends 'milestones-updated' from milestone endpoints (create now broadcasts too). Client refreshTasksData refetches only /api/search (plus milestone entities on milestone scope) and reconciles tasks/docs/decisions in place via reconcileById (identity-preserving deep-equal); duplicates plan refetch is gated on the task ID multiset changing; full loadAllData remains for initial load, config-updated, indexing loaded/reconnect, and incremental failure fallback. Measured on a live server (6-task board, drop TASK-1 into In Progress): before = reorder POST + 6-request burst (statuses, config, milestones, archived, search, duplicates); after = reorder POST + 1 background search reconcile. External file edit/status change: 1 search request, view updates in place. Milestone create: 3 requests (milestones, archived, search).
 
 Deeplink suite (web-task-detail-deeplink) updated: 4 scenarios pinned the old full-burst expectations (config on tasks-updated, duplicates plan on same-ID reconciliations); now pin the incremental behavior, 31/31 pass. Full suite: 2748 pass / 2 fail (mcp-tasks task_search + server-statistics reconcile, both known full-suite-concurrency flakes, both pass isolated 43/43). tsc and biome clean.
+
+Review round (PR #981, three Codex P2 threads, all accepted as genuine): (1) duplicates-plan gate widened - while a plan is null (initial read pending/superseded) or non-empty (duplicates exist), every incremental refresh refetches it, so same-ID edits keep the repair fingerprint fresh; the ID-multiset gate applies only in the healthy empty-plan steady state. (2) refreshTasksData escalates to the full loader whenever a load error stands (loadErrorRef), so the error retry and any broadcast during an error state re-request the failed resources. (3) A narrower refresh that supersedes an in-flight wider request now adopts its scope (pendingScopeRankRef: tasks < milestones < full), so a tasks-updated arriving during a config-updated reload runs the full loader instead of stranding stale config. Pinned by three new jsdom tests (9/9), deeplink 31/31, tsc+biome clean. Commit 113d4abc.
 <!-- SECTION:NOTES:END -->
 
 ## Final Summary
