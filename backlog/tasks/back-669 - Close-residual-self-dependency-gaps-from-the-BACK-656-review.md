@@ -5,7 +5,7 @@ status: In Progress
 assignee:
   - '@Claude'
 created_date: '2026-08-31 00:26'
-updated_date: '2026-08-31 00:43'
+updated_date: '2026-08-31 01:16'
 labels:
   - cli
   - bug
@@ -48,6 +48,8 @@ Two residual defects deferred at PR #978 merge, both small: (1) a legacy draft c
 Moved the self-dependency check in validateDependencies ahead of corpus resolution, comparing the raw input to target.id with taskIdsEqual (the same predicate the corpus filter uses, so it subsumes the removed post-resolution check). doctor --fix now re-runs findDependencyDefects after repairDuplicateTaskIds and gates the final dependency message/exit on the repaired corpus. Tests: promotion and demotion with a dangling ref equal to the allocated ID are rejected and write nothing; doctor --fix exits 0 when the rename resolves the self-dependency. tsc, biome, and the two touched test files are green; full suite running.
 
 Full suite: only pre-existing tui-emoji-width failures remain locally; they fail identically on unmodified origin/main and the diff does not touch src/tui. PR: https://github.com/MrLesk/Backlog.md/pull/982
+
+Review round (Codex on PR #982): reordered validateDependencies so unique corpus resolution runs before the raw-target self check, restoring bare-number resolution to existing records (bare 1 -> DRAFT-1 during TASK-1 creation) while still rejecting dangling refs equal to the allocated ID; doctor --fix now prints the post-repair defects report before the findings-remain line. New tests for both; tsc/biome green, dependency+doctor suites 52/52, adjacent dependency suites 76/76. Head 50772df2.
 <!-- SECTION:NOTES:END -->
 
 ## Final Summary
