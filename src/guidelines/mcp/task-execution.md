@@ -10,6 +10,7 @@
 2. **Confirm eligibility and scope** - Verify the task is eligible to start, its dependencies permit work, and it remains within the requested scope
    - `task_view` carries the same `Dependency Graph` section the CLI defines: `Depends on` is what this task transitively waits on, `Dependents` is what transitively waits on it, outermost entries are direct and indented entries are transitive
    - `unknown task ID` and `ambiguous task ID` are unresolved identities, never satisfied dependencies. The graph stops at one rather than guessing, so treat that branch as unknown
+   - `task_dependencies` returns the same graph on its own when you only need the dependency context
 3. **Mark task as In Progress** via `task_edit` with status "In Progress"
 4. **Assign to yourself** via `task_edit` with assignee field
 5. **Research the current system** - Inspect relevant code, tests, conventions, and recent changes rather than relying on an approach proposed when the task was created

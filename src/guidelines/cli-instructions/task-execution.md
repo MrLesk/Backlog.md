@@ -14,6 +14,8 @@ Before writing code for non-trivial work:
      `Dependents` is what transitively waits on it. Outermost entries are direct, indented entries are transitive.
    - `unknown task ID` and `ambiguous task ID` are unresolved identities, never satisfied dependencies. The graph stops
      at one instead of guessing, so treat that branch as unknown and run `backlog doctor` before relying on it.
+   - `backlog task dependencies {{TASK_ID:123}} --plain` prints the same graph on its own when you only need the
+     dependency context; `--json` returns the normalized graph (root, nodes, edges).
 3. Mark it in progress and assign yourself:
    - Inspect accepted statuses if needed: `backlog task edit {{TASK_ID:123}} --help`
    - `backlog task edit {{TASK_ID:123}} -s "<active status>" -a @your-name`

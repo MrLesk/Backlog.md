@@ -148,17 +148,17 @@ function toChecklistJson(items: Task["acceptanceCriteriaItems"]): ChecklistItemJ
 		.map(({ index, text, checked }) => ({ index, text, checked }));
 }
 
+function toDependencyGraphJson(graph: DependencyGraph): DependencyGraphJson {
+	return { root: graph.rootId, nodes: graph.nodes, edges: graph.edges };
+}
+
 function toTaskDetailsJson(task: TaskDetail, projectRoot: string): TaskDetailsJson {
 	return {
 		...toTaskSummaryJson(task),
 		path: toProjectRelativePath(projectRoot, task.filePath),
 		description: nullableDescription(task.description),
 		dependencies: task.dependencies ?? [],
-		dependencyGraph: {
-			root: task.dependencyGraph.rootId,
-			nodes: task.dependencyGraph.nodes,
-			edges: task.dependencyGraph.edges,
-		},
+		dependencyGraph: toDependencyGraphJson(task.dependencyGraph),
 		documentation: task.documentation ?? [],
 		subtasks: sortByTaskId(task.subtaskSummaries ?? []),
 		acceptanceCriteria: toChecklistJson(task.acceptanceCriteriaItems),
@@ -208,6 +208,15 @@ export function taskViewJson(task: TaskDetail, projectRoot: string) {
 		schemaVersion: 1,
 		kind: "task-view" as const,
 		task: toTaskDetailsJson(task, projectRoot),
+	};
+}
+
+/** The normalized graph on its own, for the dedicated dependencies read. */
+export function taskDependenciesJson(task: TaskDetail) {
+	return {
+		schemaVersion: 1,
+		kind: "task-dependencies" as const,
+		dependencyGraph: toDependencyGraphJson(task.dependencyGraph),
 	};
 }
 
