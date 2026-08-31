@@ -5,7 +5,7 @@ import type { BoxInterface, LineInterface, ScreenInterface, ScrollableTextInterf
 import { box, line, scrollabletext } from "neo-neo-bblessed";
 import { type Core, createRuntimeCore } from "../core/backlog.ts";
 import { loadTaskDetail, type TaskDetail, taskDependencyGraph, withDependencyGraph } from "../core/task-detail.ts";
-import { formatDependencyGraphLines, formatDependencyNodeLabel } from "../formatters/dependency-graph-text.ts";
+import { formatDependencyGraphLines } from "../formatters/dependency-graph-text.ts";
 import {
 	buildAcceptanceCriteriaItems,
 	buildDefinitionOfDoneItems,
@@ -14,7 +14,6 @@ import {
 } from "../formatters/task-plain-text.ts";
 import type { LabelMatchMode, Milestone, Task } from "../types/index.ts";
 import { copyToClipboard } from "../utils/clipboard.ts";
-import type { DependencyGraphNode } from "../utils/dependency-graph.ts";
 import { areLabelSelectionsEqual, collectAvailableLabels } from "../utils/label-filter.ts";
 import {
 	createMilestoneFilterValueResolver,
@@ -48,6 +47,7 @@ import {
 import { openMultiSelectFilterPopup, openSingleSelectFilterPopup } from "./components/filter-popup.ts";
 import { type BoundaryNavigationKey, createGenericList, type GenericList } from "./components/generic-list.ts";
 import { openHelpPopup } from "./components/help-popup.ts";
+import { formatDependencyNodeTuiLabel } from "./dependencies-tui.ts";
 import { formatFooterContent, getTaskListFooterContent } from "./footer-content.ts";
 import { formatHeading } from "./heading.ts";
 import { createLoadingScreen } from "./loading.ts";
@@ -1568,22 +1568,6 @@ export async function viewTaskEnhanced(
 			resolve();
 		});
 	});
-}
-
-/** Blessed reads `{...}` as style tags, so a stored title's braces must render as characters. */
-function escapeBlessedTags(text: string): string {
-	return text.replace(/[{}]/g, (brace) => (brace === "{" ? "{open}" : "{close}"));
-}
-
-/**
- * The shared node label, colored for the terminal. Unresolved identities are called out, finished
- * work recedes, and the wording itself stays the one every surface uses.
- */
-function formatDependencyNodeTuiLabel(node: DependencyGraphNode): string {
-	const label = escapeBlessedTags(formatDependencyNodeLabel(node));
-	if (node.state !== "resolved") return `{yellow-fg}${label}{/}`;
-	if (node.completed) return `{gray-fg}${label}{/}`;
-	return label;
 }
 
 export interface TaskDetailContentOptions {

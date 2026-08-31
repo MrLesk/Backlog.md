@@ -45,18 +45,46 @@ export type DependencyGraphTextOptions = {
 	formatLabel?: (node: DependencyGraphNode) => string;
 };
 
-function appendTreeLines(
+/** One rendered line of the graph, keeping hold of the node it names for interactive surfaces. */
+export type DependencyGraphEntry = {
+	text: string;
+	/** The node this line names, or null for headings and blank separators. */
+	node: DependencyGraphNode | null;
+};
+
+function appendTreeEntries(
 	children: DependencyTreeNode[],
 	prefix: string,
-	lines: string[],
+	entries: DependencyGraphEntry[],
 	formatLabel: (node: DependencyGraphNode) => string,
 ): void {
 	children.forEach((child, position) => {
 		const last = position === children.length - 1;
 		const suffix = child.repeat ? REPEAT_SUFFIXES[child.repeat] : "";
-		lines.push(`${prefix}${last ? "└─ " : "├─ "}${formatLabel(child.node)}${suffix}`);
-		appendTreeLines(child.children, `${prefix}${last ? "   " : "│  "}`, lines, formatLabel);
+		entries.push({ text: `${prefix}${last ? "└─ " : "├─ "}${formatLabel(child.node)}${suffix}`, node: child.node });
+		appendTreeEntries(child.children, `${prefix}${last ? "   " : "│  "}`, entries, formatLabel);
 	});
+}
+
+function formatSectionEntries(
+	graph: DependencyGraph,
+	direction: DependencyDirection,
+	options: DependencyGraphTextOptions,
+): DependencyGraphEntry[] {
+	const reached = nodesInDirection(graph, direction);
+	if (reached.length === 0) return [];
+
+	const direct = reached.filter((node) => depthInDirection(node, direction) === 1).length;
+	const entries: DependencyGraphEntry[] = [
+		{ text: `${DIRECTION_HEADINGS[direction]} (${direct} direct, ${reached.length} total):`, node: null },
+	];
+	appendTreeEntries(
+		buildDependencyTree(graph, direction),
+		"",
+		entries,
+		options.formatLabel ?? formatDependencyNodeLabel,
+	);
+	return entries;
 }
 
 /** One direction of the graph as text, or no lines at all when nothing was reached that way. */
@@ -65,21 +93,23 @@ export function formatDependencyGraphSection(
 	direction: DependencyDirection,
 	options: DependencyGraphTextOptions = {},
 ): string[] {
-	const reached = nodesInDirection(graph, direction);
-	if (reached.length === 0) return [];
+	return formatSectionEntries(graph, direction, options).map((entry) => entry.text);
+}
 
-	const direct = reached.filter((node) => depthInDirection(node, direction) === 1).length;
-	const lines = [`${DIRECTION_HEADINGS[direction]} (${direct} direct, ${reached.length} total):`];
-	appendTreeLines(buildDependencyTree(graph, direction), "", lines, options.formatLabel ?? formatDependencyNodeLabel);
-	return lines;
+/** Both directions as entries, each kept separate, or no entries at all for an isolated task. */
+export function formatDependencyGraphEntries(
+	graph: DependencyGraph,
+	options: DependencyGraphTextOptions = {},
+): DependencyGraphEntry[] {
+	const sections = [
+		formatSectionEntries(graph, "dependencies", options),
+		formatSectionEntries(graph, "dependents", options),
+	].filter((section) => section.length > 0);
+
+	return sections.flatMap((section, position) => (position === 0 ? section : [{ text: "", node: null }, ...section]));
 }
 
 /** Both directions as text, each kept separate, or no lines at all for an isolated task. */
 export function formatDependencyGraphLines(graph: DependencyGraph, options: DependencyGraphTextOptions = {}): string[] {
-	const sections = [
-		formatDependencyGraphSection(graph, "dependencies", options),
-		formatDependencyGraphSection(graph, "dependents", options),
-	].filter((section) => section.length > 0);
-
-	return sections.flatMap((section, position) => (position === 0 ? section : ["", ...section]));
+	return formatDependencyGraphEntries(graph, options).map((entry) => entry.text);
 }

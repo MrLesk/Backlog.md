@@ -3,6 +3,7 @@ import { DEFAULT_STATUSES } from "../../../constants/index.ts";
 import { findLocalDuplicateTaskIds } from "../../../core/duplicate-task-repair.ts";
 import { loadTaskDetail } from "../../../core/task-detail.ts";
 import { isCreateLockError, isTaskLockError } from "../../../file-system/operations.ts";
+import { formatTaskDependenciesPlainText } from "../../../formatters/task-plain-text.ts";
 import {
 	isLocalEditableTask,
 	type SearchPriorityFilter,
@@ -445,6 +446,23 @@ export class TaskHandlers {
 		// Task detail is the only MCP result read through the detail path, so it is the only one that
 		// carries the graph. The edit and lifecycle confirmations stay as short as they were.
 		return await formatTaskCallResult(await loadTaskDetail(this.core, task));
+	}
+
+	/** The dedicated dependency-graph read, rendered by the same serializer as the CLI --plain output. */
+	async taskDependencies(args: { id: string }): Promise<CallToolResult> {
+		const draft = await this.core.filesystem.loadDraft(args.id);
+		const task = draft ?? (await this.core.getTaskWithSubtasks(args.id));
+		if (!task) {
+			throw new BacklogToolError(`Task not found: ${args.id}`, "TASK_NOT_FOUND");
+		}
+		return {
+			content: [
+				{
+					type: "text",
+					text: formatTaskDependenciesPlainText(await loadTaskDetail(this.core, task)),
+				},
+			],
+		};
 	}
 
 	async archiveTask(args: { id: string }): Promise<CallToolResult> {

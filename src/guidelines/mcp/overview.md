@@ -55,6 +55,7 @@ Backlog tracks **commitments** (what will be built). Use your judgment to distin
 - `task_list` — list tasks with optional filtering by status, configured task type, configured project, assignee (or `unassigned: true`), milestone, labels, search, `ready: true` for unblocked tasks, or limit
 - `task_search` — search tasks by title and description, or filter by configured task type, configured project, and project-root-relative `modifiedFiles` path substrings
 - `task_view` — read full task context (description, plan, notes, comments, final summary, acceptance criteria, Definition of Done)
+- `task_dependencies` — read only a task's dependency graph: `Depends on` is what it transitively waits on, `Dependents` is what transitively waits on it
 - `definition_of_done_defaults_get` — read project-level Definition of Done defaults from config
 - `definition_of_done_defaults_upsert` — replace project-level Definition of Done defaults in config
 - `document_list` — list documents, including type, path, timestamps, and tags
