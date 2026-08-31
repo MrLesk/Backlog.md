@@ -93,19 +93,39 @@ async function withBoard(
 		rows: () => string[];
 		footer: () => string;
 		quit: () => Promise<void>;
+		/** Publish a watcher-style task update to the board, as live sync would. */
+		update: (nextTasks: Task[]) => void;
+		/** How many times the Tab handoff ran (only counted with options.trackTabHandoff). */
+		tabHandoffs: () => number;
 	}) => Promise<void> | void,
-	filters?: BoardFilters,
+	options?: { filters?: BoardFilters; tasks?: Task[]; trackTabHandoff?: boolean },
 ): Promise<void> {
 	const descriptor = Object.getOwnPropertyDescriptor(process.stdout, "isTTY");
 	Object.defineProperty(process.stdout, "isTTY", { configurable: true, value: true });
 	const screen = createScreen({ smartCSR: false }) as ScreenInterface & EmittingWidget;
-	const tasks = [
+	const tasks = options?.tasks ?? [
 		createTask("TASK-1", "To Do", 1000),
 		createTask("TASK-2", "To Do", 2000),
 		createTask("TASK-3", "To Do", 3000),
 	];
+	let pushUpdate: ((nextTasks: Task[], nextStatuses: string[]) => void) | undefined;
+	let tabHandoffs = 0;
 	try {
-		const boardPromise = renderBoardTui(tasks, STATUSES, "horizontal", 20, { screen, core, filters });
+		const boardPromise = renderBoardTui(tasks, STATUSES, "horizontal", 20, {
+			screen,
+			core,
+			filters: options?.filters,
+			subscribeUpdates: (updateFn) => {
+				pushUpdate = updateFn;
+			},
+			...(options?.trackTabHandoff
+				? {
+						onTabPress: async () => {
+							tabHandoffs += 1;
+						},
+					}
+				: {}),
+		});
 		await Bun.sleep(20);
 		let closed = false;
 		const quit = async () => {
@@ -119,6 +139,8 @@ async function withBoard(
 			rows: () => renderedRows(screen as unknown as TreeWidget),
 			footer: () => footerText(screen as unknown as TreeWidget),
 			quit,
+			update: (nextTasks) => pushUpdate?.(nextTasks, []),
+			tabHandoffs: () => tabHandoffs,
 		});
 		await quit();
 	} finally {
@@ -129,11 +151,13 @@ async function withBoard(
 }
 
 describe("TUI board single-task mover", () => {
-	it("enters move mode on M and shows the single-mover footer", async () => {
+	it("enters move mode on M and shows the move-mode footer", async () => {
 		await withBoard(({ screen, footer }) => {
 			pressKey(screen, "m");
 			expect(footer()).toContain("MOVE MODE");
-			expect(footer()).toContain("[Enter/M]");
+			expect(footer()).toContain("{cyan-fg}[Shift+↑↓]{/} Highlight");
+			expect(footer()).toContain("{cyan-fg}[Shift+M]{/} Select");
+			expect(footer()).toContain("{cyan-fg}[Enter]{/} Confirm");
 
 			pressKey(screen, "escape");
 			expect(footer()).not.toContain("MOVE MODE");
@@ -193,10 +217,12 @@ describe("TUI board single-task mover", () => {
 				expect(footer()).not.toContain("MOVE MODE");
 			},
 			{
-				searchQuery: "",
-				priorityFilter: "high",
-				labelFilter: [],
-				milestoneFilter: "",
+				filters: {
+					searchQuery: "",
+					priorityFilter: "high",
+					labelFilter: [],
+					milestoneFilter: "",
+				},
 			},
 		);
 	});
@@ -205,5 +231,351 @@ describe("TUI board single-task mover", () => {
 		const keys = getHelpShortcuts("board").map((shortcut) => shortcut.key);
 		expect(keys).toContain("M");
 		expect(keys).not.toContain("Space/M");
+	});
+});
+
+describe("TUI board multi-select mover", () => {
+	/** Task ids of the rendered board rows, in render order. */
+	const rowIds = (rows: string[]): string[] =>
+		rows.map((row) => row.match(/TASK-\d+/)?.[0]).filter((id): id is string => Boolean(id));
+	/** Task ids of the rows carrying the ► moving-set indicator. */
+	const movingIds = (rows: string[]): string[] => rowIds(rows.filter((row) => row.includes("►")));
+
+	it("walks the highlight with Shift+Down without moving the grabbed task", async () => {
+		await withBoard(({ screen, rows }) => {
+			pressKey(screen, "m");
+			pressKey(screen, "S-down");
+			pressKey(screen, "S-down");
+
+			// The board order is untouched while the highlight walks; only the grabbed task is marked.
+			expect(rowIds(rows())).toEqual(["TASK-1", "TASK-2", "TASK-3"]);
+			expect(movingIds(rows())).toEqual(["TASK-1"]);
+
+			pressKey(screen, "escape");
+		});
+	});
+
+	it("toggles the highlighted task in and out of the selection with M", async () => {
+		await withBoard(({ screen, rows }) => {
+			pressKey(screen, "m");
+			pressKey(screen, "S-down");
+			pressKey(screen, "S-m");
+
+			// Recruited tasks pick up the existing ► indicator and stay in place until Enter.
+			expect(movingIds(rows())).toEqual(["TASK-1", "TASK-2"]);
+			expect(rowIds(rows())).toEqual(["TASK-1", "TASK-2", "TASK-3"]);
+
+			pressKey(screen, "S-m");
+			expect(movingIds(rows())).toEqual(["TASK-1"]);
+
+			pressKey(screen, "escape");
+		});
+	});
+
+	it("collapses non-adjacent recruits into a block and reorders the whole set with plain arrows", async () => {
+		await withBoard(({ screen, rows }) => {
+			pressKey(screen, "m");
+			pressKey(screen, "S-down");
+			pressKey(screen, "S-down");
+			pressKey(screen, "S-m");
+			expect(movingIds(rows())).toEqual(["TASK-1", "TASK-3"]);
+			expect(rowIds(rows())).toEqual(["TASK-1", "TASK-2", "TASK-3"]);
+
+			// The first plain arrow collapses the highlight: the preview now shows the whole
+			// set landing adjacent at the target position.
+			pressKey(screen, "down");
+			expect(rowIds(rows())).toEqual(["TASK-1", "TASK-3", "TASK-2"]);
+
+			// The next arrows reorder the whole set as one block.
+			pressKey(screen, "down");
+			expect(rowIds(rows())).toEqual(["TASK-2", "TASK-1", "TASK-3"]);
+
+			// The block stops at the end of the column.
+			pressKey(screen, "down");
+			expect(rowIds(rows())).toEqual(["TASK-2", "TASK-1", "TASK-3"]);
+
+			pressKey(screen, "escape");
+		});
+	});
+
+	it("moves the whole set across columns on Enter", async () => {
+		await withBoard(async ({ screen, quit }) => {
+			pressKey(screen, "m");
+			pressKey(screen, "S-down");
+			pressKey(screen, "S-m");
+			// First plain arrow collapses the highlight, the second changes the column.
+			pressKey(screen, "right");
+			pressKey(screen, "right");
+			pressKey(screen, "enter");
+
+			await retry(async () => {
+				const moved = await core.filesystem.loadTask("TASK-1");
+				if (moved?.status !== "In Progress") throw new Error("set move not persisted yet");
+			});
+			const companion = await core.filesystem.loadTask("TASK-2");
+			expect(companion?.status).toBe("In Progress");
+			const first = await core.filesystem.loadTask("TASK-1");
+			expect((first?.ordinal ?? 0) < (companion?.ordinal ?? 0)).toBe(true);
+			expect((await core.filesystem.loadTask("TASK-3"))?.status).toBe("To Do");
+			await quit();
+		});
+	});
+
+	it("previews the collapsed block on Enter while the highlight is active and persists on the second Enter", async () => {
+		await withBoard(async ({ screen, rows, quit }) => {
+			pressKey(screen, "m");
+			pressKey(screen, "S-down");
+			pressKey(screen, "S-down");
+			pressKey(screen, "S-m");
+
+			// The first Enter only collapses and renders the block preview - the user must
+			// see the exact order before anything persists.
+			pressKey(screen, "enter");
+			expect(rowIds(rows())).toEqual(["TASK-1", "TASK-3", "TASK-2"]);
+			expect((await core.filesystem.loadTask("TASK-3"))?.ordinal).toBe(3000);
+
+			pressKey(screen, "enter");
+			await retry(async () => {
+				const first = await core.filesystem.loadTask("TASK-1");
+				const second = await core.filesystem.loadTask("TASK-2");
+				const third = await core.filesystem.loadTask("TASK-3");
+				const ordinalOf = (task: Task | null) => task?.ordinal ?? Number.NaN;
+				// The set [TASK-1, TASK-3] collapses adjacent at the grabbed task's position.
+				if (!(ordinalOf(first) < ordinalOf(third) && ordinalOf(third) < ordinalOf(second))) {
+					throw new Error("adjacency collapse not persisted yet");
+				}
+			});
+			expect((await core.filesystem.loadTask("TASK-1"))?.status).toBe("To Do");
+			expect((await core.filesystem.loadTask("TASK-3"))?.status).toBe("To Do");
+			await quit();
+		});
+	});
+
+	it("cancels a recruited move on Escape without persisting anything", async () => {
+		await withBoard(async ({ screen, rows, quit }) => {
+			pressKey(screen, "m");
+			pressKey(screen, "S-down");
+			pressKey(screen, "S-m");
+			pressKey(screen, "right");
+			pressKey(screen, "right");
+			pressKey(screen, "escape");
+
+			expect(movingIds(rows())).toEqual([]);
+			expect((await core.filesystem.loadTask("TASK-1"))?.status).toBe("To Do");
+			expect((await core.filesystem.loadTask("TASK-2"))?.status).toBe("To Do");
+			await quit();
+		});
+	});
+
+	it("recruits successive unrecruited tasks with M alone when no highlight is active", async () => {
+		await withBoard(({ screen, rows, footer }) => {
+			pressKey(screen, "m");
+			pressKey(screen, "S-m");
+			expect(movingIds(rows())).toEqual(["TASK-1", "TASK-2"]);
+
+			// The fallback advances past already-recruited neighbors, so repeated M keeps
+			// growing the set instead of toggling the first recruit back off.
+			pressKey(screen, "S-m");
+			expect(movingIds(rows())).toEqual(["TASK-1", "TASK-2", "TASK-3"]);
+
+			// With the whole column recruited there is nothing left to point at.
+			pressKey(screen, "S-m");
+			expect(footer()).toContain("No task to select here");
+
+			pressKey(screen, "escape");
+		});
+	});
+
+	it("skips cross-branch tasks in the M-only fallback instead of dead-ending on them", async () => {
+		await withBoard(
+			({ screen, rows, footer }) => {
+				pressKey(screen, "m");
+				pressKey(screen, "S-m");
+
+				// The read-only TASK-2 cannot join the set, so the fallback recruits TASK-3.
+				expect(movingIds(rows())).toEqual(["TASK-1", "TASK-3"]);
+
+				// With every recruitable task in the set, the fallback reports the dead end.
+				pressKey(screen, "S-m");
+				expect(footer()).toContain("No task to select here");
+
+				pressKey(screen, "escape");
+			},
+			{
+				tasks: [
+					createTask("TASK-1", "To Do", 1000),
+					{ ...createTask("TASK-2", "To Do", 2000), branch: "feature-x" },
+					createTask("TASK-3", "To Do", 3000),
+				],
+			},
+		);
+	});
+
+	it("persists cross-column recruits in exactly the order rendered by the collapse preview", async () => {
+		await withBoard(
+			async ({ screen, rows, quit }) => {
+				// Grab the In Progress task, walk its ghost to the top of To Do, recruit TASK-1.
+				pressKey(screen, "right");
+				pressKey(screen, "m");
+				pressKey(screen, "left");
+				pressKey(screen, "S-down");
+				pressKey(screen, "S-m");
+
+				// First Enter renders the collapsed block; whatever it shows is what persists.
+				pressKey(screen, "enter");
+				const previewed = rowIds(rows());
+				expect(previewed.slice(0, 2).sort()).toEqual(["TASK-1", "TASK-3"]);
+
+				pressKey(screen, "enter");
+				await retry(async () => {
+					const first = await core.filesystem.loadTask(previewed[0] ?? "");
+					const second = await core.filesystem.loadTask(previewed[1] ?? "");
+					const third = await core.filesystem.loadTask("TASK-2");
+					const a = first?.ordinal ?? Number.NaN;
+					const b = second?.ordinal ?? Number.NaN;
+					const c = third?.ordinal ?? Number.NaN;
+					// The persisted column order must be exactly the previewed one.
+					if (!(a < b && b < c)) throw new Error("cross-column order not persisted yet");
+				});
+				await quit();
+			},
+			{
+				tasks: [
+					createTask("TASK-1", "To Do", 1000),
+					createTask("TASK-2", "To Do", 2000),
+					createTask("TASK-3", "In Progress", 1000),
+				],
+			},
+		);
+	});
+
+	it("keeps the board alive on quit until the confirmed write has persisted", async () => {
+		await withBoard(async ({ screen, quit }) => {
+			// Slow the batch write down so quit provably races it.
+			const originalMove = core.moveTasksToStatus.bind(core);
+			core.moveTasksToStatus = (async (params: Parameters<Core["moveTasksToStatus"]>[0]) => {
+				await Bun.sleep(150);
+				return originalMove(params);
+			}) as Core["moveTasksToStatus"];
+
+			pressKey(screen, "m");
+			pressKey(screen, "S-down");
+			pressKey(screen, "S-m");
+			pressKey(screen, "right");
+			pressKey(screen, "right");
+			pressKey(screen, "enter");
+			// Quit immediately: the board must not resolve (the CLI would process.exit)
+			// until the write the user confirmed has landed.
+			await quit();
+
+			expect((await core.filesystem.loadTask("TASK-1"))?.status).toBe("In Progress");
+			expect((await core.filesystem.loadTask("TASK-2"))?.status).toBe("In Progress");
+		});
+	});
+
+	it("persists the confirmed placement even when a watcher update lands mid-write", async () => {
+		await withBoard(async ({ screen, update, quit }) => {
+			pressKey(screen, "m");
+			pressKey(screen, "S-down");
+			pressKey(screen, "S-m");
+			pressKey(screen, "right");
+			pressKey(screen, "right");
+			pressKey(screen, "enter");
+
+			// The write is being prepared; a watcher update now reorders To Do so the block
+			// would project as [TASK-2, TASK-1]. It must repaint the board but never change
+			// the batch the user confirmed.
+			update([
+				createTask("TASK-1", "To Do", 2500),
+				createTask("TASK-2", "To Do", 2000),
+				createTask("TASK-3", "To Do", 3000),
+			]);
+
+			await quit();
+			const first = await core.filesystem.loadTask("TASK-1");
+			const second = await core.filesystem.loadTask("TASK-2");
+			expect(first?.status).toBe("In Progress");
+			expect(second?.status).toBe("In Progress");
+			expect((first?.ordinal ?? Number.NaN) < (second?.ordinal ?? Number.NaN)).toBe(true);
+		});
+	});
+
+	it("runs exactly one teardown when quit and Tab race a pending write", async () => {
+		await withBoard(
+			async ({ screen, quit, tabHandoffs }) => {
+				// Slow the batch write down so the exit requests provably race it.
+				const originalMove = core.moveTasksToStatus.bind(core);
+				core.moveTasksToStatus = (async (params: Parameters<Core["moveTasksToStatus"]>[0]) => {
+					await Bun.sleep(150);
+					return originalMove(params);
+				}) as Core["moveTasksToStatus"];
+
+				pressKey(screen, "m");
+				pressKey(screen, "S-down");
+				pressKey(screen, "S-m");
+				pressKey(screen, "right");
+				pressKey(screen, "right");
+				pressKey(screen, "enter");
+
+				// q starts the close, which waits for the write; the Tab pressed during that
+				// wait must join the same close instead of running its view-switch handoff.
+				pressKey(screen, "q");
+				pressKey(screen, "tab");
+				await quit();
+
+				expect(tabHandoffs()).toBe(0);
+				expect((await core.filesystem.loadTask("TASK-1"))?.status).toBe("In Progress");
+				expect((await core.filesystem.loadTask("TASK-2"))?.status).toBe("In Progress");
+			},
+			{ trackTabHandoff: true },
+		);
+	});
+
+	it("freezes the move set and ignores Escape while the confirm write is in flight", async () => {
+		await withBoard(async ({ screen, quit }) => {
+			pressKey(screen, "m");
+			pressKey(screen, "S-down");
+			pressKey(screen, "S-m");
+			pressKey(screen, "right");
+			pressKey(screen, "right");
+			pressKey(screen, "enter");
+			// The write is now awaiting the core; late recruitment and a late Escape must
+			// neither change the confirmed set nor make the move look canceled.
+			pressKey(screen, "S-m");
+			pressKey(screen, "escape");
+
+			await retry(async () => {
+				const moved = await core.filesystem.loadTask("TASK-1");
+				if (moved?.status !== "In Progress") throw new Error("set move not persisted yet");
+			});
+			expect((await core.filesystem.loadTask("TASK-2"))?.status).toBe("In Progress");
+			expect((await core.filesystem.loadTask("TASK-3"))?.status).toBe("To Do");
+			await quit();
+		});
+	});
+
+	it("reports per-task failures in the transient footer and still moves the rest", async () => {
+		await withBoard(async ({ screen, footer, quit }) => {
+			pressKey(screen, "m");
+			pressKey(screen, "S-down");
+			pressKey(screen, "S-m");
+
+			// Remove the recruited task's file behind the board's back so its move fails.
+			const recruited = await core.filesystem.loadTask("TASK-2");
+			if (!recruited?.filePath) throw new Error("expected TASK-2 to have a file path");
+			await rm(recruited.filePath, { force: true });
+
+			pressKey(screen, "right");
+			pressKey(screen, "right");
+			pressKey(screen, "enter");
+
+			await retry(async () => {
+				const moved = await core.filesystem.loadTask("TASK-1");
+				if (moved?.status !== "In Progress") throw new Error("partial move not persisted yet");
+			});
+			expect(footer()).toContain("Could not move 1 of the selected tasks");
+			expect(footer()).toContain("TASK-2");
+			await quit();
+		});
 	});
 });

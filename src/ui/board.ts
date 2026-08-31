@@ -186,13 +186,13 @@ export function formatTaskListItem(
 
 function buildRenderedTaskListItems(
 	tasks: Task[],
-	movingTaskId?: string,
+	movingTaskIds?: ReadonlySet<string>,
 	availableWidth = Number.POSITIVE_INFINITY,
 	dateFormat?: string,
 	configuredProjects?: string[],
 ): { rich: string[]; plain: string[] } {
 	const rich = tasks.map((task) =>
-		formatTaskListItem(task, movingTaskId === task.id, availableWidth, dateFormat, configuredProjects),
+		formatTaskListItem(task, movingTaskIds?.has(task.id) ?? false, availableWidth, dateFormat, configuredProjects),
 	);
 	return {
 		rich,
@@ -502,8 +502,74 @@ export async function renderBoardTui(
 			originalIndex: number;
 			targetStatus: string;
 			targetIndex: number;
+			/** Tasks recruited into the move set with M; never contains the grabbed task. */
+			selectedIds: string[];
+			/**
+			 * Recruitment highlight walked with Shift+Up/Down. While set, recruited tasks stay
+			 * in place and the preview shows only the grabbed task's ghost; a plain arrow
+			 * collapses it back to the ghost and previews the whole set as one block.
+			 */
+			highlightTaskId: string | null;
 		};
 		let moveOp: MoveOperation | null = null;
+
+		/** Every task the operation moves on confirm: the grabbed task plus the recruited set. */
+		const getMoveSetIds = (operation: MoveOperation): string[] => [operation.taskId, ...operation.selectedIds];
+
+		/**
+		 * Tasks removed from their columns by the current preview. While the recruitment
+		 * highlight is active only the grabbed task lifts out; once it collapses the whole
+		 * set previews as a block at the target position.
+		 */
+		const getPreviewMovingIds = (operation: MoveOperation): string[] =>
+			operation.highlightTaskId ? [operation.taskId] : getMoveSetIds(operation);
+
+		/**
+		 * Re-anchor an insertion index when the set of lifted-out tasks changes: the index
+		 * follows the first task at or below it that both views share, so the ghost stays
+		 * visually put when recruits collapse into or pop out of the preview.
+		 */
+		const mapInsertionIndex = (fromBase: string[], toBase: string[], index: number): number => {
+			for (let i = Math.max(0, index); i < fromBase.length; i++) {
+				const anchor = fromBase[i];
+				if (anchor === undefined) break;
+				const position = toBase.indexOf(anchor);
+				if (position !== -1) return position;
+			}
+			return toBase.length;
+		};
+
+		/** The target column's real task ids minus `excludeIds`: the base the ghost inserts into. */
+		const getInsertionBase = (targetStatus: string, excludeIds: string[]): string[] => {
+			const excluded = new Set(excludeIds);
+			const column = prepareBoardColumns(getFilteredTasks(), currentStatuses).find(
+				(candidate) => candidate.status === targetStatus,
+			);
+			return (column?.tasks ?? []).filter((task) => !excluded.has(task.id)).map((task) => task.id);
+		};
+
+		/** Mutate the move selection/highlight while keeping targetIndex anchored to the same spot. */
+		const updateMoveSelection = (operation: MoveOperation, mutate: () => void): void => {
+			const before = getInsertionBase(operation.targetStatus, getPreviewMovingIds(operation));
+			mutate();
+			const after = getInsertionBase(operation.targetStatus, getPreviewMovingIds(operation));
+			operation.targetIndex = mapInsertionIndex(before, after, operation.targetIndex);
+		};
+
+		/**
+		 * A plain arrow while the recruitment highlight is active collapses it back to the
+		 * ghost, switching the preview to the whole set landing as one block. Returns true
+		 * when the keypress was consumed by the collapse.
+		 */
+		const collapseHighlight = (): boolean => {
+			if (!moveOp?.highlightTaskId) return false;
+			const operation = moveOp;
+			updateMoveSelection(operation, () => {
+				operation.highlightTaskId = null;
+			});
+			renderView();
+			return true;
+		};
 
 		const footerBox = box({
 			parent: screen,
@@ -582,7 +648,13 @@ export async function renderBoardTui(
 		const getFormattedItems = (tasks: Task[]) => {
 			const columnCount = Math.max(1, currentColumnsData.length);
 			const availableWidth = Math.max(1, Math.floor(getTerminalWidth() / columnCount) - 4);
-			return buildRenderedTaskListItems(tasks, moveOp?.taskId, availableWidth, options?.dateFormat, configuredProjects);
+			return buildRenderedTaskListItems(
+				tasks,
+				moveOp ? new Set(getMoveSetIds(moveOp)) : undefined,
+				availableWidth,
+				options?.dateFormat,
+				configuredProjects,
+			);
 		};
 
 		const createColumnViews = (data: ColumnData[]) => {
@@ -762,26 +834,36 @@ export async function renderBoardTui(
 				return prepareBoardColumns(allTasks, currentStatuses);
 			}
 
-			// 1. Filter out the moving task from the source
-			const tasksWithoutMoving = allTasks.filter((t) => t.id !== operation.taskId);
 			const movingTask = allTasks.find((t) => t.id === operation.taskId);
-
 			if (!movingTask) {
 				return prepareBoardColumns(allTasks, currentStatuses);
 			}
 
-			// 2. Prepare columns without the moving task
-			const columns = prepareBoardColumns(tasksWithoutMoving, currentStatuses);
+			// 1. Lift the previewed tasks out of their columns, keeping board display order
+			//    so a collapsed set lands as one block in the order it appears on the board.
+			const movingIds = new Set(getPreviewMovingIds(operation));
+			const blockTasks: Task[] = [];
+			for (const column of prepareBoardColumns(allTasks, currentStatuses)) {
+				for (const task of column.tasks) {
+					if (movingIds.has(task.id)) blockTasks.push(task);
+				}
+			}
 
-			// 3. Insert the moving task into the target column at the target index
+			// 2. Prepare columns without the moving tasks
+			const columns = prepareBoardColumns(
+				allTasks.filter((t) => !movingIds.has(t.id)),
+				currentStatuses,
+			);
+
+			// 3. Insert the moving block into the target column at the target index
 			const targetColumn = columns.find((c) => c.status === operation.targetStatus);
 			if (targetColumn) {
-				// Create a "ghost" task with updated status
-				const ghostTask = { ...movingTask, status: operation.targetStatus };
+				// Create "ghost" tasks with updated status
+				const ghostTasks = blockTasks.map((task) => ({ ...task, status: operation.targetStatus }));
 
 				// Clamp index to valid bounds
 				const safeIndex = Math.max(0, Math.min(operation.targetIndex, targetColumn.tasks.length));
-				targetColumn.tasks.splice(safeIndex, 0, ghostTask);
+				targetColumn.tasks.splice(safeIndex, 0, ...ghostTasks);
 			}
 
 			return columns;
@@ -998,7 +1080,7 @@ export async function renderBoardTui(
 			}
 			if (moveOp) {
 				setFooterContent(
-					" {green-fg}MOVE MODE{/} | {cyan-fg}[←→]{/} Change Column | {cyan-fg}[↑↓]{/} Reorder | {cyan-fg}[Enter/M]{/} Confirm | {cyan-fg}[Esc]{/} Cancel",
+					" {green-fg}MOVE MODE{/} | {cyan-fg}[←→]{/} Change Column | {cyan-fg}[↑↓]{/} Reorder | {cyan-fg}[Shift+↑↓]{/} Highlight | {cyan-fg}[Shift+M]{/} Select | {cyan-fg}[Enter]{/} Confirm | {cyan-fg}[Esc]{/} Cancel",
 				);
 			} else {
 				const base = getBoardFooterContent({ hasProjects: configuredProjects.length > 0 });
@@ -1020,15 +1102,27 @@ export async function renderBoardTui(
 			}, durationMs);
 		};
 
-		/** Tear the board down, optionally handing off to another view before resolving. */
-		const closeBoard = async (beforeResolve?: () => Promise<unknown>) => {
-			// A Shift+H write can still be in flight, and the caller may exit the process
-			// as soon as the board resolves, which would drop the setting.
-			if (pendingSettingWrite) await pendingSettingWrite;
-			clearFooterTimer();
-			screen.destroy();
-			await beforeResolve?.();
-			resolve();
+		/**
+		 * Tear the board down, optionally handing off to another view before resolving.
+		 * First request wins: while a pending write delays the close, further exit actions
+		 * (e.g. Tab then q) join the same closing promise instead of running a second
+		 * teardown or replacing the first request's handoff.
+		 */
+		let closingBoard: Promise<void> | null = null;
+		const closeBoard = (beforeResolve?: () => Promise<unknown>): Promise<void> => {
+			closingBoard ??= (async () => {
+				// A Shift+H write can still be in flight, and the caller may exit the process
+				// as soon as the board resolves, which would drop the setting.
+				if (pendingSettingWrite) await pendingSettingWrite;
+				// Same for a confirmed move: quitting right after Enter must not let the
+				// process exit before the write the user confirmed has persisted.
+				if (pendingMoveWrite) await pendingMoveWrite;
+				clearFooterTimer();
+				screen.destroy();
+				await beforeResolve?.();
+				resolve();
+			})();
+			return closingBoard;
 		};
 
 		const renderView = (preferredTaskId?: string) => {
@@ -1042,8 +1136,10 @@ export async function renderBoardTui(
 				}
 				const dataForColumns = filterVisibleColumns(projectedData, hideEmptyColumns, Boolean(moveOp));
 
-				// If we are moving, we want to select the moving task
-				const selectedId = preferredTaskId ?? (moveOp ? moveOp.taskId : getSelectedTaskId());
+				// If we are moving, we want to select the recruitment highlight when it is
+				// active, and the moving task's ghost otherwise
+				const selectedId =
+					preferredTaskId ?? (moveOp ? (moveOp.highlightTaskId ?? moveOp.taskId) : getSelectedTaskId());
 
 				if (dataForColumns.length === 0) {
 					const fallbackStatus = currentStatuses[0] ?? "No Status";
@@ -1222,6 +1318,8 @@ export async function renderBoardTui(
 		screen.key(["left", "h"], () => {
 			if (popupOpen || filterPopupOpen || modalOpen || currentFocus === "filters") return;
 			if (moveOp) {
+				if (movePending) return;
+				if (collapseHighlight()) return;
 				const currentStatusIndex = currentStatuses.indexOf(moveOp.targetStatus);
 				if (currentStatusIndex > 0) {
 					const prevStatus = currentStatuses[currentStatusIndex - 1];
@@ -1241,6 +1339,8 @@ export async function renderBoardTui(
 		screen.key(["right", "l"], () => {
 			if (popupOpen || filterPopupOpen || modalOpen || currentFocus === "filters") return;
 			if (moveOp) {
+				if (movePending) return;
+				if (collapseHighlight()) return;
 				const currentStatusIndex = currentStatuses.indexOf(moveOp.targetStatus);
 				if (currentStatusIndex < currentStatuses.length - 1) {
 					const nextStatus = currentStatuses[currentStatusIndex + 1];
@@ -1262,6 +1362,8 @@ export async function renderBoardTui(
 
 			const column = columns[currentCol];
 			if (moveOp) {
+				if (movePending) return;
+				if (collapseHighlight()) return;
 				if (direction === "up") {
 					if (moveOp.targetIndex > 0) {
 						moveOp.targetIndex--;
@@ -1270,8 +1372,8 @@ export async function renderBoardTui(
 					return;
 				}
 				// We need to check the projected length to know if we can move down
-				// The current rendered column has the correct length including the ghost task
-				if (column && moveOp.targetIndex < column.tasks.length - 1) {
+				// The current rendered column has the correct length including the ghost block
+				if (column && moveOp.targetIndex < column.tasks.length - getPreviewMovingIds(moveOp).length) {
 					moveOp.targetIndex++;
 					renderView();
 				}
@@ -1586,8 +1688,103 @@ export async function renderBoardTui(
 
 		// A second Enter while the confirm is writing must not start a second move.
 		let movePending = false;
+		// The confirmed write in flight; closeBoard awaits it (like pendingSettingWrite)
+		// because the caller may process.exit as soon as the board resolves.
+		let pendingMoveWrite: Promise<void> | null = null;
+		/** Mark a confirm write as in flight; the returned settle runs in its finally. */
+		const beginMoveWrite = (): (() => void) => {
+			movePending = true;
+			let settle: () => void = () => {};
+			pendingMoveWrite = new Promise<void>((resolve) => {
+				settle = resolve;
+			});
+			return settle;
+		};
+
+		/** Confirm a move with recruited tasks: the whole set lands as one block at the preview position. */
+		const performSetMove = async () => {
+			if (!moveOp || movePending) return;
+			const operation = moveOp;
+
+			// Snapshot the confirmed placement synchronously, before any await: a watcher
+			// update replacing currentTasks while the write is being prepared must affect
+			// the board, never the batch the user confirmed.
+			const projectedData = getProjectedColumns(currentTasks, operation);
+			const targetColumn = projectedData.find((c) => c.status === operation.targetStatus);
+
+			if (!targetColumn) {
+				moveOp = null;
+				renderView();
+				return;
+			}
+
+			const orderedTaskIds = targetColumn.tasks.map((task) => task.id);
+			const taskIds = getMoveSetIds(operation);
+			const targetStatus = operation.targetStatus;
+
+			// No-op guard: the set already sits exactly where the preview lands it.
+			const realColumn = prepareBoardColumns(currentTasks, currentStatuses).find(
+				(c) => c.status === operation.targetStatus,
+			);
+			const realIds = (realColumn?.tasks ?? []).map((task) => task.id);
+			if (realIds.length === orderedTaskIds.length && realIds.every((id, index) => id === orderedTaskIds[index])) {
+				moveOp = null;
+				renderView();
+				return;
+			}
+
+			const settleMoveWrite = beginMoveWrite();
+			try {
+				const core = await getCore();
+				const config = await core.fs.loadConfig();
+
+				const { movedTasks, changedTasks, failures } = await core.moveTasksToStatus({
+					taskIds,
+					targetStatus,
+					orderedTaskIds,
+					autoCommit: config?.autoCommit ?? false,
+				});
+
+				// Update local state with all moved and changed tasks (includes ordinal updates)
+				const changedTasksMap = new Map(changedTasks.map((t) => [t.id, t]));
+				for (const task of movedTasks) changedTasksMap.set(task.id, task);
+				currentTasks = currentTasks.map((t) => changedTasksMap.get(t.id) ?? t);
+
+				moveOp = null;
+				renderView();
+
+				if (failures.length > 0) {
+					const details = failures.map((failure) => `${failure.taskId}: ${failure.reason}`).join("; ");
+					showTransientFooter(` {red-fg}Could not move ${failures.length} of the selected tasks — ${details}{/}`, 6000);
+				}
+			} catch (error) {
+				// On error, cancel the move and restore original positions
+				if (process.env.DEBUG) {
+					console.error("Move failed:", error);
+				}
+				moveOp = null;
+				renderView();
+			} finally {
+				movePending = false;
+				settleMoveWrite();
+			}
+		};
+
 		const performTaskMove = async () => {
 			if (!moveOp || movePending) return;
+
+			// A confirm while the recruitment highlight is active first collapses it and
+			// renders the block preview, so the user always sees the exact order that a
+			// second confirm will persist - the projection is the single source of truth.
+			if (moveOp.selectedIds.length > 0 && moveOp.highlightTaskId) {
+				collapseHighlight();
+				return;
+			}
+
+			if (moveOp.selectedIds.length > 0) {
+				await performSetMove();
+				return;
+			}
 
 			// Check if any actual change occurred
 			const noChange = moveOp.targetStatus === moveOp.originalStatus && moveOp.targetIndex === moveOp.originalIndex;
@@ -1599,27 +1796,31 @@ export async function renderBoardTui(
 				return;
 			}
 
-			movePending = true;
+			// Snapshot the confirmed placement synchronously, before any await: a watcher
+			// update replacing currentTasks while the write is being prepared must affect
+			// the board, never the move the user confirmed.
+			const projectedData = getProjectedColumns(currentTasks, moveOp);
+			const targetColumn = projectedData.find((c) => c.status === moveOp?.targetStatus);
+
+			if (!targetColumn) {
+				moveOp = null;
+				renderView();
+				return;
+			}
+
+			const orderedTaskIds = targetColumn.tasks.map((task) => task.id);
+			const taskId = moveOp.taskId;
+			const targetStatus = moveOp.targetStatus;
+
+			const settleMoveWrite = beginMoveWrite();
 			try {
 				const core = await getCore();
 				const config = await core.fs.loadConfig();
 
-				// Get the final state from the projection
-				const projectedData = getProjectedColumns(currentTasks, moveOp);
-				const targetColumn = projectedData.find((c) => c.status === moveOp?.targetStatus);
-
-				if (!targetColumn) {
-					moveOp = null;
-					renderView();
-					return;
-				}
-
-				const orderedTaskIds = targetColumn.tasks.map((task) => task.id);
-
 				// Persist the move using core API
 				const { updatedTask, changedTasks } = await core.reorderTask({
-					taskId: moveOp.taskId,
-					targetStatus: moveOp.targetStatus,
+					taskId,
+					targetStatus,
 					orderedTaskIds,
 					autoCommit: config?.autoCommit ?? false,
 				});
@@ -1643,10 +1844,13 @@ export async function renderBoardTui(
 				renderView();
 			} finally {
 				movePending = false;
+				settleMoveWrite();
 			}
 		};
 		const cancelMove = () => {
-			if (!moveOp) return;
+			// Once the confirm write is in flight the move can no longer be called off, so a
+			// late Escape must not make the board look canceled while the write still lands.
+			if (!moveOp || movePending) return;
 
 			// Exit move mode - pure state reset
 			moveOp = null;
@@ -1654,39 +1858,156 @@ export async function renderBoardTui(
 			renderView();
 		};
 
-		screen.key(["m", "M", "S-m"], async () => {
-			if (popupOpen || filterPopupOpen || modalOpen || currentFocus === "filters") return;
+		const enterMoveMode = () => {
 			if (hasMoveBlockingSharedFilters()) {
 				showTransientFooter(" {yellow-fg}Clear filters before moving tasks.{/}");
 				return;
 			}
 
-			if (!moveOp) {
-				const column = columns[currentCol];
-				if (!column) return;
-				const taskIndex = column.list.selected ?? 0;
-				const task = column.tasks[taskIndex];
-				if (!task) return;
+			const column = columns[currentCol];
+			if (!column) return;
+			const taskIndex = column.list.selected ?? 0;
+			const task = column.tasks[taskIndex];
+			if (!task) return;
 
-				// Prevent move mode for cross-branch tasks
-				if (task.branch) {
-					showTransientFooter(` {red-fg}Cannot move task from branch "${task.branch}".{/}`);
-					return;
+			// Prevent move mode for cross-branch tasks
+			if (task.branch) {
+				showTransientFooter(` {red-fg}Cannot move task from branch "${task.branch}".{/}`);
+				return;
+			}
+
+			// Enter move mode - store original position for cancel
+			moveOp = {
+				taskId: task.id,
+				originalStatus: column.status,
+				originalIndex: taskIndex,
+				targetStatus: column.status,
+				targetIndex: taskIndex,
+				selectedIds: [],
+				highlightTaskId: null,
+			};
+
+			renderView();
+		};
+
+		/**
+		 * Shift+Up/Down walk the recruitment highlight through the target column's tasks
+		 * without moving the grabbed task. While the highlight is active, recruited tasks
+		 * stay in their original places and the preview shows only the grabbed task's ghost.
+		 */
+		const walkRecruitHighlight = (direction: "up" | "down") => {
+			if (popupOpen || filterPopupOpen || modalOpen || currentFocus === "filters") return;
+			// The move set and target freeze once the confirm write is in flight.
+			if (!moveOp || movePending) return;
+			const operation = moveOp;
+
+			// While the preview shows the collapsed block, the ghost index counts a column
+			// without the whole set; re-anchor it against the recruitment view (recruits back
+			// in place) before walking. Committed only if the walk actually highlights a task.
+			const recruitIndex =
+				!operation.highlightTaskId && operation.selectedIds.length > 0
+					? mapInsertionIndex(
+							getInsertionBase(operation.targetStatus, getMoveSetIds(operation)),
+							getInsertionBase(operation.targetStatus, [operation.taskId]),
+							operation.targetIndex,
+						)
+					: operation.targetIndex;
+
+			// Recruitment-view rows of the target column: the column without the grabbed task,
+			// with its ghost spliced back in at the target position.
+			const rows = getInsertionBase(operation.targetStatus, [operation.taskId]);
+			const ghostIndex = Math.max(0, Math.min(recruitIndex, rows.length));
+			rows.splice(ghostIndex, 0, operation.taskId);
+
+			const from = operation.highlightTaskId ? rows.indexOf(operation.highlightTaskId) : ghostIndex;
+			const step = direction === "down" ? 1 : -1;
+			let next = (from === -1 ? ghostIndex : from) + step;
+			// The ghost row is the grabbed task itself; the highlight walks past it.
+			while (rows[next] === operation.taskId) next += step;
+			const nextId = rows[next];
+			if (nextId === undefined) return;
+
+			operation.highlightTaskId = nextId;
+			operation.targetIndex = recruitIndex;
+			renderView();
+		};
+
+		screen.key(["S-up"], () => walkRecruitHighlight("up"));
+		screen.key(["S-down"], () => walkRecruitHighlight("down"));
+
+		/**
+		 * M toggles a task in or out of the move set. It acts on the recruitment highlight
+		 * when one is active; without one (terminals where shift-arrows never arrive), it
+		 * recruits the nearest unrecruited task below the grabbed row (above at the bottom
+		 * of a column). The fallback skips tasks already in the set — the collapsed block
+		 * keeps recruits adjacent to the grabbed task, so pointing at the nearest neighbor
+		 * would only ever toggle the first recruit off — which keeps repeated M presses
+		 * growing the set and the flow fully usable with plain arrows and M alone;
+		 * un-recruiting needs the shift-arrow highlight or Esc.
+		 */
+		const toggleRecruitSelection = () => {
+			// The move set and target freeze once the confirm write is in flight.
+			if (!moveOp || movePending) return;
+			const operation = moveOp;
+
+			let candidateId: string | undefined;
+			if (operation.highlightTaskId) {
+				candidateId = operation.highlightTaskId;
+			} else {
+				const column = columns.find((candidate) => candidate.status === operation.targetStatus);
+				const rows = column?.tasks ?? [];
+				const grabbedRow = rows.findIndex((task) => task.id === operation.taskId);
+				if (grabbedRow !== -1) {
+					const recruited = new Set(operation.selectedIds);
+					// Cross-branch tasks can never join the set, so the walk skips them the same
+					// way it skips recruits — a read-only neighbor must not dead-end the fallback.
+					const nearestRecruitable = (from: number, step: number): string | undefined => {
+						for (let index = from; index >= 0 && index < rows.length; index += step) {
+							const row = rows[index];
+							if (row && row.id !== operation.taskId && !recruited.has(row.id) && !row.branch) return row.id;
+						}
+						return undefined;
+					};
+					candidateId = nearestRecruitable(grabbedRow + 1, 1) ?? nearestRecruitable(grabbedRow - 1, -1);
 				}
+			}
+			const targetId = candidateId;
+			if (!targetId || targetId === operation.taskId) {
+				showTransientFooter(" {yellow-fg}No task to select here.{/}");
+				return;
+			}
 
-				// Enter move mode - store original position for cancel
-				moveOp = {
-					taskId: task.id,
-					originalStatus: column.status,
-					originalIndex: taskIndex,
-					targetStatus: column.status,
-					targetIndex: taskIndex,
-				};
+			// Cross-branch tasks cannot move, so they cannot be recruited either
+			const targetTask = currentTasks.find((task) => task.id === targetId);
+			if (targetTask?.branch) {
+				showTransientFooter(` {red-fg}Cannot move task from branch "${targetTask.branch}".{/}`);
+				return;
+			}
 
-				renderView();
+			updateMoveSelection(operation, () => {
+				operation.selectedIds = operation.selectedIds.includes(targetId)
+					? operation.selectedIds.filter((id) => id !== targetId)
+					: [...operation.selectedIds, targetId];
+			});
+			renderView();
+		};
+
+		screen.key(["m"], async () => {
+			if (popupOpen || filterPopupOpen || modalOpen || currentFocus === "filters") return;
+			if (!moveOp) {
+				enterMoveMode();
 			} else {
 				// Confirm move (same as Enter in move mode)
 				await performTaskMove();
+			}
+		});
+
+		screen.key(["M", "S-m"], () => {
+			if (popupOpen || filterPopupOpen || modalOpen || currentFocus === "filters") return;
+			if (!moveOp) {
+				enterMoveMode();
+			} else {
+				toggleRecruitSelection();
 			}
 		});
 
