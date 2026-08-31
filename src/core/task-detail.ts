@@ -12,6 +12,11 @@ export interface TaskCorpus {
 	tasks: Task[];
 	completedTasks: Task[];
 	statuses: readonly string[] | undefined;
+	/**
+	 * Identities the store knows more than one file claims. Reads fail closed on these whatever the
+	 * merge below kept, so a collision is never answered with whichever record happened to survive.
+	 */
+	ambiguousIds?: ReadonlySet<string>;
 }
 
 /**
@@ -40,10 +45,25 @@ export async function loadTaskCorpus(
 
 	const storeTasks = await core.queryTasks({ includeCrossBranch: true });
 	const workingCopyIds = new Set(workingCopyTasks.map((task) => canonicalTaskId(task.id)));
+
+	// The cross-branch store's task list excludes completed records, so an identity that only exists
+	// as a completed record on some branch would otherwise read as missing here. Its identity index
+	// still knows those records; add the ones the local completed corpus does not already cover.
+	const identityIndex = (await core.getContentStore()).getTaskCorpusSnapshot().identityIndex;
+	const localCompletedIds = new Set(completedTasks.map((task) => canonicalTaskId(task.id)));
+	const crossBranchCompleted = (identityIndex?.getTasks(true) ?? []).filter(
+		(task) => task.source === "completed" && !localCompletedIds.has(canonicalTaskId(task.id)),
+	);
+
 	return {
 		tasks: [...workingCopyTasks, ...storeTasks.filter((task) => !workingCopyIds.has(canonicalTaskId(task.id)))],
-		completedTasks,
+		completedTasks: [...completedTasks, ...crossBranchCompleted],
 		statuses,
+		// Both merges above resolve an ID the working copy also holds to the local record, which is
+		// the right answer for an identity only one file claims and a guess for one several do. The
+		// index knows which is which, so the collisions travel with the corpus rather than being
+		// re-derived from the records that survived the merge.
+		ambiguousIds: identityIndex?.getContestedIds(),
 	};
 }
 

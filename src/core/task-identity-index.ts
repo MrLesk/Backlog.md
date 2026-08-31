@@ -294,6 +294,21 @@ export class TaskIdentityIndex {
 			.join("\n");
 	}
 
+	/**
+	 * The canonical IDs more than one live identity claims, the same collision `resolveForRead`
+	 * reports. A corpus built from selected records cannot re-derive this: selection keeps one record
+	 * per identity and skips identities whose newest record is archived or failed to parse, so a
+	 * claimant can be missing from the corpus while still contesting the ID here.
+	 */
+	getContestedIds(): Set<string> {
+		const contested = new Set<string>();
+		for (const group of this.groups.values()) {
+			const claimants = [...group.identities.values()].filter((identity) => liveRecords(identity).length > 0);
+			if (claimants.length > 1) contested.add(group.id);
+		}
+		return contested;
+	}
+
 	getOccupiedIds(): string[] {
 		const ids = new Set<string>();
 		for (const group of this.groups.values()) {

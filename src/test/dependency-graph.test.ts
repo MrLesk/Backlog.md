@@ -137,6 +137,20 @@ describe("buildDependencyGraph", () => {
 		expect(nodeIds(graph, "dependencies")).toEqual(["TASK-2"]);
 	});
 
+	it("reports a collision the corpus carries but cannot show in its records", () => {
+		// A loader that resolves each identity to one record hands over a corpus where a contested ID
+		// looks singly claimed. The collision travels beside the records, and the read fails closed on
+		// it rather than on how many claimants survived the loader.
+		const graph = buildDependencyGraph(task("task-1", ["task-2"]), {
+			tasks: [task("task-1", ["task-2"]), task("task-2", ["task-3"]), task("task-3")],
+			statuses: STATUSES,
+			ambiguousIds: new Set(["TASK-2"]),
+		});
+
+		expect(graph.nodes.find((node) => node.id === "TASK-2")?.state).toBe("ambiguous");
+		expect(nodeIds(graph, "dependencies")).toEqual(["TASK-2"]);
+	});
+
 	it("keeps an ambiguous identity a leaf even when reverse edges leave it", () => {
 		// One duplicate record behind the ambiguous identity declares a dependency on task-3, which is
 		// itself a dependent of the root, so the shared edge set carries an edge leaving the ambiguous
@@ -306,5 +320,20 @@ describe("dependency graph text", () => {
 
 	it("renders nothing for a task with no dependencies and no dependents", () => {
 		expect(formatDependencyGraphLines(graphFor("task-1", [task("task-1")]))).toEqual([]);
+	});
+
+	it("renders a pathologically deep dependency chain without recursing", () => {
+		// Deep enough that a recursive tree walk or formatter would be at risk on a small stack,
+		// while the quadratic indentation the rendered lines inherently carry stays affordable.
+		const depth = 2500;
+		const chain = Array.from({ length: depth }, (_, position) =>
+			task(`task-${position + 1}`, position === 0 ? [] : [`task-${position}`]),
+		);
+
+		const lines = formatDependencyGraphSection(graphFor(`task-${depth}`, chain), "dependencies");
+		expect(lines.length).toBe(depth);
+		expect(lines[0]).toBe(`Depends on (1 direct, ${depth - 1} total):`);
+		expect(lines[1]).toBe(`└─ task-${depth - 1} - Title task-${depth - 1} [To Do]`);
+		expect(lines[depth - 1]).toBe(`${"   ".repeat(depth - 2)}└─ task-1 - Title task-1 [To Do]`);
 	});
 });

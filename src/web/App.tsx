@@ -735,8 +735,14 @@ function AppContent() {
     const derived = taskDependencyGraph(editingTask);
     setEditingTask(derived ? { ...updatedTask, dependencyGraph: derived } : updatedTask);
     // Editing this task's own dependencies moves the graph, so read the detail again for a fresh
-    // one. Nothing else changes it, so nothing else pays for a request.
-    if (previousRecord && previousRecord.dependencies.join(',') !== updatedTask.dependencies.join(',')) {
+    // one. Nothing else changes it, so nothing else pays for a request. The previous record must
+    // describe the same task: after graph-link navigation it names the task the modal came from,
+    // and comparing dependency lists across different tasks would trigger a redundant fetch.
+    if (
+      previousRecord &&
+      previousRecord.id === updatedTask.id &&
+      previousRecord.dependencies.join(',') !== updatedTask.dependencies.join(',')
+    ) {
       void apiClient
         .fetchTask(updatedTask.id)
         .then(detail => setEditingTask(current => (current && current.id === detail.id ? detail : current)))

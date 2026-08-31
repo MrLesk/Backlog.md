@@ -1,7 +1,7 @@
 import { describe, expect, it } from "bun:test";
 import type { Task } from "../types/index.ts";
 import { withDependencyGraph } from "../core/task-detail.ts";
-import { generateDetailContent } from "../ui/task-viewer-with-search.ts";
+import { generateDetailContent, mergeDependencyCorpusTasks } from "../ui/task-viewer-with-search.ts";
 
 const STATUSES = ["To Do", "In Progress", "Done"] as const;
 
@@ -75,5 +75,37 @@ describe("TUI dependency graph section", () => {
 		const detail = withDependencyGraph(isolated, { tasks: [isolated], completedTasks: [], statuses: STATUSES });
 
 		expect(generateDetailContent(detail).bodyContent.join("\n")).not.toContain("Dependency Graph");
+	});
+});
+
+describe("filtered TUI dependency corpus merge", () => {
+	it("lets a live display copy win over the snapshot for a uniquely claimed identity", () => {
+		const snapshotTask = makeTask("BACK-1", "Foundation", [], "To Do");
+		const outOfView = makeTask("BACK-2", "Elsewhere", ["BACK-1"]);
+		const liveEdit = makeTask("BACK-1", "Foundation", [], "Done");
+
+		const merged = mergeDependencyCorpusTasks([snapshotTask, outOfView], [liveEdit]);
+
+		expect(merged).toHaveLength(2);
+		expect(merged.find((task) => task.id === "BACK-1")?.status).toBe("Done");
+		expect(merged.find((task) => task.id === "BACK-2")).toBe(outOfView);
+	});
+
+	it("keeps every claimant of a contested identity so the graph fails closed like the CLI", () => {
+		const claimantA = makeTask("BACK-1", "First claimant", [], "Done");
+		const claimantB = makeTask("BACK-1", "Second claimant");
+		const root = makeTask("BACK-2", "Selected", ["BACK-1"]);
+
+		const merged = mergeDependencyCorpusTasks([claimantA, claimantB, root], [root, claimantA]);
+		expect(merged.filter((task) => task.id === "BACK-1")).toHaveLength(2);
+
+		// The exact corpus the filtered viewer resolves, run through the shared graph: the contested
+		// identity must be reported ambiguous, never silently collapsed to one claimant.
+		const graph = withDependencyGraph(root, {
+			tasks: merged,
+			completedTasks: [],
+			statuses: STATUSES,
+		}).dependencyGraph;
+		expect(graph.nodes.find((node) => node.id === "BACK-1")?.state).toBe("ambiguous");
 	});
 });
