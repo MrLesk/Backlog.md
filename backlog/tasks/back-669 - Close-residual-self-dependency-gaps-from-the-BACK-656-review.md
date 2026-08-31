@@ -5,7 +5,7 @@ status: In Progress
 assignee:
   - '@Claude'
 created_date: '2026-08-31 00:26'
-updated_date: '2026-08-31 00:32'
+updated_date: '2026-08-31 00:43'
 labels:
   - cli
   - bug
@@ -21,16 +21,16 @@ Two residual defects deferred at PR #978 merge, both small: (1) a legacy draft c
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 Promoting or demoting a record with a dangling reference equal to the allocated ID is rejected; no self-dependency can be written
-- [ ] #2 doctor --fix exit status reflects the post-repair corpus
-- [ ] #3 Tests cover both scenarios
+- [x] #1 Promoting or demoting a record with a dangling reference equal to the allocated ID is rejected; no self-dependency can be written
+- [x] #2 doctor --fix exit status reflects the post-repair corpus
+- [x] #3 Tests cover both scenarios
 <!-- AC:END -->
 
 ## Definition of Done
 <!-- DOD:BEGIN -->
-- [ ] #1 bunx tsc --noEmit passes when TypeScript touched
-- [ ] #2 bun run check . passes when formatting/linting touched
-- [ ] #3 bun test (or scoped test) passes
+- [x] #1 bunx tsc --noEmit passes when TypeScript touched
+- [x] #2 bun run check . passes when formatting/linting touched
+- [x] #3 bun test (or scoped test) passes
 <!-- DOD:END -->
 
 ## Implementation Plan
@@ -46,4 +46,12 @@ Two residual defects deferred at PR #978 merge, both small: (1) a legacy draft c
 
 <!-- SECTION:NOTES:BEGIN -->
 Moved the self-dependency check in validateDependencies ahead of corpus resolution, comparing the raw input to target.id with taskIdsEqual (the same predicate the corpus filter uses, so it subsumes the removed post-resolution check). doctor --fix now re-runs findDependencyDefects after repairDuplicateTaskIds and gates the final dependency message/exit on the repaired corpus. Tests: promotion and demotion with a dangling ref equal to the allocated ID are rejected and write nothing; doctor --fix exits 0 when the rename resolves the self-dependency. tsc, biome, and the two touched test files are green; full suite running.
+
+Full suite: only pre-existing tui-emoji-width failures remain locally; they fail identically on unmodified origin/main and the diff does not touch src/tui. PR: https://github.com/MrLesk/Backlog.md/pull/982
 <!-- SECTION:NOTES:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+Moved the self-dependency check in validateDependencies ahead of corpus resolution (raw input vs target via taskIdsEqual, subsuming the old post-resolution check), so promotion/demotion of a record carrying a dangling reference equal to the freshly allocated ID now fails closed instead of writing a self-dependency. doctor --fix re-runs findDependencyDefects after repairDuplicateTaskIds so its exit reflects the repaired corpus. Verified with new tests (promotion and demotion rejection cases in src/test/dependency.test.ts; doctor --fix exit-0 case in src/test/cli-doctor.test.ts), bunx tsc --noEmit, bun run check ., and bun test. Delivered as PR #982 (unmerged).
+<!-- SECTION:FINAL_SUMMARY:END -->
