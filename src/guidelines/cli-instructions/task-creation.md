@@ -60,7 +60,7 @@ Write tasks so a future agent can act on them without prior conversation context
 Include:
 
 - A clear title.
-- A description explaining the outcome and why it matters.
+- A description that captures why the task exists: the problem, trigger, or user need behind it, plus any context a future agent cannot recover from the code. The acceptance criteria already state what will be true when the work is done — do not restate them here.
 - Acceptance criteria that are specific, testable, and independent.
 - References or documentation when they are needed for implementation.
 - Dependencies when work must happen in order.
@@ -76,11 +76,14 @@ Examples:
 
 ```bash
 backlog task create "Add project search" \
-  -d "Users can search tasks, docs, and decisions from one CLI command." \
+  -d "Finding anything means running three separate commands, and matches in the ones you skip are missed silently. One search command covers tasks, docs, and decisions." \
   --ac "Search returns matching tasks by title and description" \
   --ac "Search supports --plain output" \
   --ac "Tests cover task, document, and decision results"
 ```
+
+Too thin: `-d "Users can search tasks, docs, and decisions from one CLI command."` states the change but not the need,
+so a future agent cannot weigh scope or alternatives.
 
 ```bash
 backlog task create "Add settings docs" \

@@ -115,6 +115,15 @@ describe("CLI Integration", () => {
 			expect(overview).not.toContain("backlog://workflow/");
 			expect(taskCreation).toContain("## Task Creation Guide");
 			expect(taskCreation).toContain('backlog task create "Add project search"');
+			expect(taskCreation).toContain(
+				"- A description that captures why the task exists: the problem, trigger, or user need behind it, plus any context a future agent cannot recover from the code. The acceptance criteria already state what will be true when the work is done — do not restate them here.",
+			);
+			expect(taskCreation).toContain(
+				'-d "Finding anything means running three separate commands, and matches in the ones you skip are missed silently. One search command covers tasks, docs, and decisions."',
+			);
+			expect(taskCreation).toContain(
+				'Too thin: `-d "Users can search tasks, docs, and decisions from one CLI command."` states the change but not the need,\nso a future agent cannot weigh scope or alternatives.',
+			);
 			expect(taskCreation).toContain('backlog search "desktop app" --plain');
 			expect(taskCreation).toContain(
 				'backlog task list --search "desktop app" --labels frontend,bug --limit 20 --plain',

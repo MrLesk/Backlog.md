@@ -36,7 +36,7 @@ If the work requires multiple tasks, proceed to choose the appropriate task stru
 - Dependencies must explicitly state what the other task provides (e.g., output, schema, artifact)
 - Use the `references` field for external references such as GitHub issues, PRs, tickets, or URLs
 - Use the `documentation` field for design docs, API specs, manuals, or other reference materials that help understand the task context
-- Only include minimal local code context in the description when omitting it would make the task ambiguous or unsafe for a future implementer
+- Only include minimal local code context in the description when omitting it would make the task ambiguous or unsafe for a future implementer; this limits code detail, not the reason the work is needed
 
 ### Step 3: Choose task structure
 
@@ -71,7 +71,9 @@ Create all tasks in the same session to maintain consistency and context.
 
 ### Step 5: Create task(s) with proper scope
 
-**Title and description**: Explain desired outcome and user value (the WHY). Keep the description focused on outcome and essential handoff context.
+**Title and description**: The description must capture why the task exists (the WHY): the problem, trigger, or user value behind it, plus any context a future agent cannot recover from the code. Acceptance criteria already state what will be true when the work is done, so do not restate them in the description. Keeping the description focused means leaving out implementation detail, not leaving out the why.
+- Example `description`: "Finding anything means running three separate commands, and matches in the ones you skip are missed silently. One search command covers tasks, docs, and decisions."
+- Too thin: "Users can search tasks, docs, and decisions from one CLI command." states the change but not the need, so a future agent cannot weigh scope or alternatives
 
 **Acceptance criteria**: `acceptanceCriteria` is an array of strings; each item should be specific, testable, and independent (the WHAT)
 - Keep each checklist item atomic (e.g., "Display saves when user presses Ctrl+S")
@@ -87,7 +89,7 @@ Create all tasks in the same session to maintain consistency and context.
 - Use `disableDefinitionOfDoneDefaults` to skip project defaults for this task when needed
 - Do **not** duplicate project defaults into `definitionOfDoneAdd` unless you are intentionally customizing this task
 
-**Never embed implementation details** in title, description, or acceptance criteria
+**Never embed implementation details** in title, description, or acceptance criteria — this excludes how the work will be built, not why it is needed
 
 **Record dependencies** using `task_edit` for task ordering
 
