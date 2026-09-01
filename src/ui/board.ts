@@ -139,7 +139,7 @@ function buildColumnTasks(status: string, items: Task[], byId: Map<string, Task>
 	return ordered;
 }
 
-function prepareBoardColumns(tasks: Task[], statuses: string[]): ColumnData[] {
+export function prepareBoardColumns(tasks: Task[], statuses: string[]): ColumnData[] {
 	const { orderedStatuses, groupedTasks } = buildKanbanStatusGroups(tasks, statuses);
 	const byId = new Map<string, Task>(tasks.map((task) => [task.id, task]));
 
