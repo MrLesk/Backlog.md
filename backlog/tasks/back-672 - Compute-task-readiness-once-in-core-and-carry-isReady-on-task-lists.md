@@ -5,7 +5,7 @@ status: In Progress
 assignee:
   - '@claude'
 created_date: '2026-09-01 17:04'
-updated_date: '2026-09-01 19:01'
+updated_date: '2026-09-01 19:22'
 labels: []
 dependencies: []
 ordinal: 304000
@@ -117,6 +117,21 @@ Tests, each verified red before its fix and green after:
 That test file plants globals (a fake WebSocket above all) and now restores every one of them, after an earlier run leaked the stub into the suites that open real sockets.
 
 Rendered verification of the P1 case: with the modal open on a task whose only dependency is TASK-9 and no such record anywhere, writing backlog/completed/task-9 flips the badge from 'Unknown dependency TASK-9' to 'Ready to start' while the modal stays open, with nothing in the browser's corpus changing. Request cost measured in the page: zero detail reads over six idle seconds, exactly one for one unrelated file change, no console errors.
+
+Review round 3 (Codex on PR #986):
+
+1. P2 regression, draft readiness. openDraftModal handed the modal the drafts-page list record and never read the detail, so the badge the old modal-side derivation showed for drafts was gone. openDraftModal now reads the draft's detail through readOpenTaskDetail, the same sequenced path every other detail read uses; GET /api/task/DRAFT-1 already returns a core-derived verdict for drafts (verified against a live server: readiness isReady false, blockingDependencies [TASK-1]). Drafts are not in the task corpus the modal syncs against, so this read is what supplies their verdict.
+
+2. P2, cross-branch search readiness. Premise verified and answered without a behaviour change; see the corpus note below.
+
+3. P2, routed detail reads bypassed the ordering. Every detail read now goes through readTaskDetail, which takes the ticket and reports whether its answer still counts; the route loader consumes it and keeps its own route-staleness guard, and closing the modal retires the ticket so a read left in flight cannot reopen or overwrite whatever is opened next.
+
+Tests, red before their fix and green after:
+- src/test/web-app-open-detail-refresh.test.tsx 'reads the detail of a draft opened from the drafts page' mounts the app on /drafts and clicks the draft: pre-fix it times out with no badge at all.
+- Same file, 'drops a detail read left in flight when the modal is closed and reopened': pre-fix the stale answer reinstates 'Unknown dependency TASK-9' over the reopened modal's 'Ready to start'.
+Full suite 2819 pass / 8 skip / 0 fail, and the run leaves no stray files or globals behind (the harness restores every global it plants).
+
+Corpus note for finding 2, with evidence. backlog search does read the cross-branch ContentStore: on a two-branch probe the store snapshot and the search results both contain a task that exists only on the other branch (source local-branch, branch other) while loadTaskCorpus(core) does not. But the rows search --json publishes are local-editable records only (searchJson filters with isLocalEditableTask), and for an identity the working copy holds the store resolves to the local record - TASK-1 was reported To Do although branch other has it Done. The corpora therefore differ in exactly one case: a dependency resolvable only on another branch. Measured on that probe, local corpus gives TASK-4 isReady false, cross-branch gives true. Two things make aligning search alone the wrong fix: the CLI refuses to create such a dependency at all ('The following dependencies do not exist: TASK-3. ... Task lookups read only the local working copy; use backlog browser to see tasks from other branches'), and task view --json reports the same false for the hand-written case, so search --json agrees with the rest of the CLI today. Making search's readiness cross-branch would make it disagree with task view --json and task list --json for the same task, which is the divergence this task exists to remove; making all CLI readiness cross-branch is a policy change against the standing CLI local-only read decision and the documented BACK-601 gap 3. Left unchanged and raised for Alex.
 <!-- SECTION:NOTES:END -->
 
 ## Final Summary

@@ -113,7 +113,18 @@ function setupDom(url: string): { container: HTMLElement; sockets: FakeSocket[] 
 function stubApi(handlers: {
 	search: () => SearchResult[];
 	fetchTask: (id: string) => Promise<TaskDetail>;
+	/** The drafts page reads this endpoint directly rather than through the API client. */
+	drafts?: () => Task[];
 }) {
+	if (handlers.drafts) {
+		const drafts = handlers.drafts;
+		assignGlobals({
+			fetch: async (input: RequestInfo | URL) =>
+				String(input).includes("/api/drafts")
+					? new Response(JSON.stringify(drafts()), { headers: { "content-type": "application/json" } })
+					: new Response("{}", { headers: { "content-type": "application/json" } }),
+		});
+	}
 	const originals = {
 		checkStatus: apiClient.checkStatus.bind(apiClient),
 		fetchStatuses: apiClient.fetchStatuses.bind(apiClient),
@@ -275,6 +286,129 @@ describe("open task detail across refreshes", () => {
 		});
 		await settle(3);
 
+		expect(container.textContent).toContain("Ready to start");
+		expect(container.textContent).not.toContain("Unknown dependency TASK-9");
+	});
+
+	it("reads the detail of a draft opened from the drafts page", async () => {
+		const blocker = makeTask("TASK-1", "In Progress");
+		const draft: Task = { ...makeTask("DRAFT-1", "Draft", ["TASK-1"]), title: "Draft with dependency" };
+		const requestedIds: string[] = [];
+
+		const { container } = setupDom("http://localhost/drafts");
+		stubApi({
+			search: () => [{ type: "task", score: null, task: blocker }],
+			drafts: () => [draft],
+			fetchTask: async (id) => {
+				requestedIds.push(id);
+				return toTaskDetail(draft, { tasks: [blocker, draft], completedTasks: [], statuses });
+			},
+		});
+
+		activeRoot = createRoot(container);
+		await act(async () => {
+			activeRoot?.render(
+				<HealthCheckProvider>
+					<App />
+				</HealthCheckProvider>,
+			);
+			await Promise.resolve();
+		});
+		await waitForText(container, "Draft with dependency");
+
+		const row = Array.from(container.querySelectorAll("div.cursor-pointer")).find((element) =>
+			element.textContent?.includes("Draft with dependency"),
+		);
+		expect(row).toBeTruthy();
+		await act(async () => {
+			row?.dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
+			await Promise.resolve();
+		});
+
+		// Drafts are not part of the task corpus the modal syncs against, so without a detail read
+		// there is no verdict to render at all.
+		await waitForText(container, "Blocked by TASK-1");
+		expect(requestedIds).toContain("DRAFT-1");
+	});
+
+	it("drops a detail read left in flight when the modal is closed and reopened", async () => {
+		const dependent = makeTask("TASK-2", "To Do", ["TASK-9"]);
+		const blockedDetail = toTaskDetail(dependent, { tasks: [dependent], completedTasks: [], statuses });
+		const readyDetail = toTaskDetail(dependent, {
+			tasks: [dependent],
+			completedTasks: [makeTask("TASK-9", "Done")],
+			statuses,
+		});
+
+		const pending: Array<(detail: TaskDetail) => void> = [];
+		let opened = false;
+		const { container, sockets } = setupDom("http://localhost/tasks/TASK-2");
+		stubApi({
+			search: () => [{ type: "task", score: null, task: dependent }],
+			fetchTask: async () => {
+				if (!opened) {
+					opened = true;
+					return blockedDetail;
+				}
+				return await new Promise<TaskDetail>((resolve) => pending.push(resolve));
+			},
+		});
+
+		activeRoot = createRoot(container);
+		await act(async () => {
+			activeRoot?.render(
+				<HealthCheckProvider>
+					<App />
+				</HealthCheckProvider>,
+			);
+			await Promise.resolve();
+		});
+		await waitForText(container, "Unknown dependency TASK-9");
+
+		// A refresh leaves a read in flight, and the reader closes the modal before it answers.
+		await act(async () => {
+			for (const socket of sockets) socket.onmessage?.({ data: "tasks-updated" });
+			await Promise.resolve();
+		});
+		await settle(2);
+		const staleRead = pending[pending.length - 1];
+		expect(staleRead).toBeTruthy();
+
+		const close = Array.from(container.querySelectorAll("button")).find(
+			(button) => button.getAttribute("aria-label") === "Close modal" || button.textContent?.trim() === "×",
+		);
+		expect(close).toBeTruthy();
+		await act(async () => {
+			close?.dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
+			await Promise.resolve();
+		});
+		await settle(2);
+
+		// Reopening from the list goes through the task route, which is the read whose answer counts.
+		const reopen = Array.from(container.querySelectorAll("button")).find((button) =>
+			button.getAttribute("aria-label")?.startsWith("Open TASK-2"),
+		);
+		expect(reopen).toBeTruthy();
+		await act(async () => {
+			reopen?.dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
+			await Promise.resolve();
+		});
+		await settle(2);
+		const routedRead = pending[pending.length - 1];
+		expect(routedRead).not.toBe(staleRead);
+
+		await act(async () => {
+			routedRead?.(readyDetail);
+			await Promise.resolve();
+		});
+		await waitForText(container, "Ready to start");
+
+		// The read from before the modal closed answers last, and must not land on the reopened one.
+		await act(async () => {
+			staleRead?.(blockedDetail);
+			await Promise.resolve();
+		});
+		await settle(3);
 		expect(container.textContent).toContain("Ready to start");
 		expect(container.textContent).not.toContain("Unknown dependency TASK-9");
 	});

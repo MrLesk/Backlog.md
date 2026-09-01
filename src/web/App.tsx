@@ -491,17 +491,34 @@ function AppContent() {
   // Read one task's detail into the open modal. Every read takes a ticket, and a response is
   // applied only while it is still the newest one asked for: two reads in flight otherwise land in
   // whatever order the network returns them and an older verdict can overwrite a newer one.
-  const readOpenTaskDetail = useCallback((taskId: string) => {
-    const requestId = detailReadRef.current + 1;
-    detailReadRef.current = requestId;
-    void apiClient
-      .fetchTask(taskId)
-      .then(detail => {
-        if (detailReadRef.current !== requestId) return;
-        setEditingTask(current => (current && current.id === detail.id ? detail : current));
-      })
-      .catch(() => {});
+  // Every detail read of an open task goes through here: it takes a ticket, and its answer counts
+  // only while it is still the newest one asked for. Reads otherwise land in whatever order the
+  // network returns them and an older verdict can overwrite a newer one, or reopen a closed modal.
+  // Resolves to null when a newer read (or closing the modal) has already superseded this one.
+  const readTaskDetail = useCallback(async (taskId: string): Promise<TaskDetail | null> => {
+    const ticket = detailReadRef.current + 1;
+    detailReadRef.current = ticket;
+    try {
+      const detail = await apiClient.fetchTask(taskId);
+      return detailReadRef.current === ticket ? detail : null;
+    } catch (error) {
+      // A superseded read's failure is not this modal's problem either.
+      if (detailReadRef.current !== ticket) return null;
+      throw error;
+    }
   }, []);
+
+  const readOpenTaskDetail = useCallback(
+    (taskId: string) => {
+      void readTaskDetail(taskId)
+        .then(detail => {
+          if (!detail) return;
+          setEditingTask(current => (current && current.id === detail.id ? detail : current));
+        })
+        .catch(() => {});
+    },
+    [readTaskDetail],
+  );
 
   const openTaskModal = useCallback((task: Task) => {
     setEditingTask(task);
@@ -509,14 +526,23 @@ function AppContent() {
     setShowModal(true);
   }, []);
 
-  const openDraftModal = useCallback((draft: Task) => {
-    setEditingTask(draft);
-    setIsDraftMode(true);
-    setShowModal(true);
-  }, []);
+  const openDraftModal = useCallback(
+    (draft: Task) => {
+      setEditingTask(draft);
+      setIsDraftMode(true);
+      setShowModal(true);
+      // A draft is opened from its own list, which carries stored records only. Its readiness and
+      // dependency graph come from a detail read like every other task's, through the same order.
+      readOpenTaskDetail(draft.id);
+    },
+    [readOpenTaskDetail],
+  );
 
   const clearTaskModal = useCallback(() => {
     isTaskRouteModalRef.current = false;
+    // Whatever is still in flight was read for a modal that is gone. Retiring the ticket keeps it
+    // from reopening this task or landing on whichever one is opened next.
+    detailReadRef.current += 1;
     setShowModal(false);
     setEditingTask(null);
     setIsDraftMode(false);
@@ -592,8 +618,8 @@ function AppContent() {
 
     const loadTaskFromRoute = async () => {
       try {
-        const task = await apiClient.fetchTask(routeTaskId);
-        if (taskRouteRequestRef.current !== requestId) {
+        const task = await readTaskDetail(routeTaskId);
+        if (!task || taskRouteRequestRef.current !== requestId) {
           return;
         }
         isTaskRouteModalRef.current = true;
@@ -626,7 +652,16 @@ function AppContent() {
         taskRouteRequestRef.current += 1;
       }
     };
-  }, [clearTaskModal, isInitialized, location.search, navigate, openTaskModal, routeBasePath, routeTaskId]);
+  }, [
+    clearTaskModal,
+    isInitialized,
+    location.search,
+    navigate,
+    openTaskModal,
+    readTaskDetail,
+    routeBasePath,
+    routeTaskId,
+  ]);
 
   useEffect(() => {
     if (taskRouteError) {
