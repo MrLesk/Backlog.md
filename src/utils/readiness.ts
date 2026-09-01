@@ -1,5 +1,3 @@
-import type { Core } from "../core/backlog.ts";
-import { loadTaskCorpus } from "../core/task-detail.ts";
 import type { Task } from "../types/index.ts";
 import { createTaskRecordIndex } from "./task-record-index.ts";
 import { isTerminalStatus } from "./terminal-status.ts";
@@ -120,14 +118,4 @@ export function formatReadinessBlockers(readiness: TaskReadiness): string {
 		reasons.push(`Unknown ${noun} ${readiness.missingDependencies.join(", ")}`);
 	}
 	return reasons.join("; ");
-}
-
-/**
- * Build the readiness graph for a one-shot command from the shared corpus: the whole local task
- * corpus plus the completed one, never the list being displayed. `--status "To Do" --ready` must
- * still see the completed dependencies it needs to answer the question, and `--assignee` must not
- * hide someone else's blocking task.
- */
-export async function loadReadinessGraph(core: Core): Promise<ReadinessGraph> {
-	return createReadinessGraph(await loadTaskCorpus(core));
 }

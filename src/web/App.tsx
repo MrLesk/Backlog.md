@@ -27,7 +27,7 @@ import {
 	type TaskSearchResult,
 } from '../types';
 import { ApiError, apiClient } from './lib/api';
-import { type TaskDetail, taskDependencyGraph } from '../core/task-detail';
+import { type TaskDetail, taskDependencyGraph, taskReadiness } from '../core/task-detail';
 import type { DuplicateRepairPlan } from '../core/duplicate-task-repair';
 import { isValidTaskId } from '../utils/task-id';
 import { useHealthCheckContext } from './contexts/HealthCheckContext';
@@ -727,22 +727,25 @@ function AppContent() {
     }
     const updatedTask = tasks.find(t => t.id === editingTask.id);
     if (!updatedTask || updatedTask === syncedTaskRecordRef.current) return;
-    const previousRecord = syncedTaskRecordRef.current;
     syncedTaskRecordRef.current = updatedTask;
-    // The list carries stored records; the detail read carries the relationships derived from the
-    // whole corpus. Refreshing from the list must not drop them, or the graph would disappear the
-    // first time anything is saved.
-    const derived = taskDependencyGraph(editingTask);
-    setEditingTask(derived ? { ...updatedTask, dependencyGraph: derived } : updatedTask);
-    // Editing this task's own dependencies moves the graph, so read the detail again for a fresh
-    // one. Nothing else changes it, so nothing else pays for a request. The previous record must
-    // describe the same task: after graph-link navigation it names the task the modal came from,
-    // and comparing dependency lists across different tasks would trigger a redundant fetch.
-    if (
-      previousRecord &&
-      previousRecord.id === updatedTask.id &&
-      previousRecord.dependencies.join(',') !== updatedTask.dependencies.join(',')
-    ) {
+    // The list carries stored records; the detail read carries the fields derived from the whole
+    // corpus. Refreshing from the list must not drop them, or the graph would disappear the first
+    // time anything is saved. Readiness answers for this task's own dependencies and status, so
+    // once the refreshed record moved either it no longer describes it: it is dropped rather than
+    // shown while the detail is read again.
+    const derivedChanged =
+      editingTask.status !== updatedTask.status ||
+      editingTask.dependencies.join(',') !== updatedTask.dependencies.join(',');
+    const derivedGraph = taskDependencyGraph(editingTask);
+    const derivedReadiness = derivedChanged ? undefined : taskReadiness(editingTask);
+    setEditingTask({
+      ...updatedTask,
+      ...(derivedGraph ? { dependencyGraph: derivedGraph } : {}),
+      ...(derivedReadiness ? { readiness: derivedReadiness } : {}),
+    });
+    // Editing this task's own dependencies or status moves both derived fields, so read the detail
+    // again for fresh ones. Nothing else changes them, so nothing else pays for a request.
+    if (derivedChanged) {
       void apiClient
         .fetchTask(updatedTask.id)
         .then(detail => setEditingTask(current => (current && current.id === detail.id ? detail : current)))

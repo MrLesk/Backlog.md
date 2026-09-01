@@ -24,7 +24,7 @@ import { DEFAULT_DIRECTORIES, DEFAULT_FILES, DEFAULT_STATUSES } from "./constant
 import { type DuplicateRepairPlan, findLocalDuplicateTaskIds } from "./core/duplicate-task-repair.ts";
 import { initializeProject } from "./core/init.ts";
 import { buildMilestoneBuckets, collectArchivedMilestoneKeys, milestoneKey } from "./core/milestones.ts";
-import { loadTaskDetail } from "./core/task-detail.ts";
+import { loadTaskDetail, loadTaskListItems } from "./core/task-detail.ts";
 import { isConfigValueError } from "./file-system/operations.ts";
 import {
 	decisionListJson,
@@ -109,7 +109,6 @@ import {
 	resolveProjectValues,
 } from "./utils/project-config.ts";
 import { type ReadOutputMode, resolveReadOutputMode } from "./utils/read-output-mode.ts";
-import { getTaskReadiness, loadReadinessGraph } from "./utils/readiness.ts";
 import { resolveRuntimeCwd } from "./utils/runtime-cwd.ts";
 import { formatValidStatuses, getCanonicalStatus, getCanonicalStatuses, getValidStatuses } from "./utils/status.ts";
 import {
@@ -2264,7 +2263,13 @@ addHelpSchema(program.command("search [query]"), {
 		});
 
 		if (outputMode === "json") {
-			printJson(searchJson(searchResults, cwd, core.filesystem.docsDir));
+			// Task results carry the same readiness verdict `task list --json` publishes, derived in
+			// one pass over the corpus for the results being printed.
+			const searchedTasks = searchResults.filter(isTaskSearchResult).map((result) => result.task);
+			const readyTaskIds = new Set(
+				(await loadTaskListItems(core, searchedTasks)).filter((item) => item.isReady).map((item) => item.id),
+			);
+			printJson(searchJson(searchResults, cwd, core.filesystem.docsDir, readyTaskIds));
 			cleanup();
 			return;
 		}
@@ -2723,8 +2728,9 @@ addHelpSchema(taskCmd.command("list"), {
 			const config = await core.filesystem.loadConfig();
 
 			if (options.ready) {
-				const readinessGraph = await loadReadinessGraph(core);
-				tasks = tasks.filter((task) => getTaskReadiness(task, readinessGraph).isReady);
+				// Readiness resolves against the whole corpus, never the list being displayed: the
+				// filters above hide tasks, and the dependencies they hid still decide the verdict.
+				tasks = (await loadTaskListItems(core, tasks)).filter((task) => task.isReady);
 			}
 
 			let sortedTasks = tasks;
@@ -2749,7 +2755,10 @@ addHelpSchema(taskCmd.command("list"), {
 			const displayTasks = taskLimit !== undefined ? filtered.slice(0, taskLimit) : filtered;
 
 			if (outputMode === "json") {
-				printJson(taskListJson(displayTasks));
+				// The one list read that publishes readiness, so it is the one that loads the completed
+				// corpus: the plain and interactive paths below read exactly what they read before.
+				// One pass over the rows being printed, no lookup per row.
+				printJson(taskListJson(await loadTaskListItems(core, displayTasks)));
 				cleanup();
 				return;
 			}

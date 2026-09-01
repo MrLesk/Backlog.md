@@ -112,6 +112,8 @@ describe("CLI JSON output", () => {
 					createdAt: "2026-07-14T09:30:00Z",
 					updatedAt: "2026-07-14T10:45:00Z",
 					dueDate: "2026-08-10T14:30:00Z",
+					// TASK-2 is not a task anything can resolve, so the verdict fails closed.
+					isReady: false,
 				},
 			],
 		});
@@ -177,6 +179,14 @@ describe("CLI JSON output", () => {
 			expect(output.task.path).toMatch(/^backlog\/tasks\/task-1 - JSON-task\.md$/);
 			expect(output.task.description).toBe("Machine-readable output");
 			expect(output.task.dependencies).toEqual(["TASK-2"]);
+			// The summary verdict and the detail explanation behind it, from the same derivation.
+			expect(output.task.isReady).toBe(false);
+			expect(output.task.readiness).toEqual({
+				isReady: false,
+				isBlocked: true,
+				blockingDependencies: [],
+				missingDependencies: ["TASK-2"],
+			});
 			expect(output.task.acceptanceCriteriaCompleted).toBe(1);
 			expect(output.task.acceptanceCriteriaCount).toBe(1);
 			expect(output.task.acceptanceCriteria).toEqual([{ index: 1, text: "Produces JSON", checked: true }]);
@@ -230,6 +240,8 @@ describe("CLI JSON output", () => {
 		expect(output.results[0].data.id).toBe("TASK-1");
 		expect(output.results[0].data.acceptanceCriteriaCompleted).toBe(1);
 		expect(output.results[0].data.acceptanceCriteriaCount).toBe(1);
+		// Task results carry the same verdict the task list publishes.
+		expect(output.results[0].data.isReady).toBe(false);
 		expect(output.results[1].data).toEqual({
 			id: "doc-1",
 			title: "JSON guide",
