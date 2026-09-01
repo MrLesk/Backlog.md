@@ -1,11 +1,11 @@
 ---
 id: BACK-676
 title: Make agent task descriptions carry the why
-status: In Progress
+status: Done
 assignee:
   - '@claude'
 created_date: '2026-09-01 19:38'
-updated_date: '2026-09-01 20:09'
+updated_date: '2026-09-01 20:22'
 labels: []
 dependencies: []
 ordinal: 308000
