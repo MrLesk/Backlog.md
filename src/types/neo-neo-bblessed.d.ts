@@ -1,5 +1,6 @@
 declare module "neo-neo-bblessed" {
 	export interface ProgramInterface {
+		destroy(): void;
 		disableMouse(): void;
 		enableMouse(): void;
 		hideCursor(): void;
