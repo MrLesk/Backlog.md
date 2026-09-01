@@ -3,13 +3,12 @@ import { JSDOM } from "jsdom";
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { MemoryRouter } from "react-router-dom";
-import { type TaskDetail, taskReadiness, toTaskDetail } from "../core/task-detail.ts";
+import { type TaskDetail, toTaskDetail } from "../core/task-detail.ts";
 import type { Task } from "../types/index.ts";
 import { TaskDetailsModal } from "../web/components/TaskDetailsModal";
 import { apiClient } from "../web/lib/api.ts";
 import { TaskIdIndexProvider } from "../web/contexts/TaskIdIndexContext.tsx";
 import { ThemeProvider } from "../web/contexts/ThemeContext";
-import { readinessInputs, syncOpenTaskDetail } from "../web/utils/task-detail-sync.ts";
 
 const statuses = ["To Do", "In Progress", "Done"];
 
@@ -78,80 +77,13 @@ afterEach(() => {
 	activeDom = null;
 });
 
-describe("open task detail readiness while the corpus moves underneath it", () => {
-	it("updates the modal badge when a dependency is completed out of band", async () => {
-		const blocker = makeTask("BACK-1", "In Progress");
-		const dependent = makeTask("BACK-2", "To Do", ["BACK-1"]);
-		const corpus = [blocker, dependent];
-
-		setupDom();
-		const container = document.getElementById("root") as HTMLElement;
-		activeRoot = createRoot(container);
-
-		// The browser renders the detail read it was handed, exactly as it arrives from the server.
-		const render = async (task: Task | TaskDetail, availableTasks: Task[]) => {
-			await act(async () => {
-				activeRoot?.render(
-					<MemoryRouter initialEntries={[`/tasks/${task.id}`]}>
-						<ThemeProvider>
-							<TaskIdIndexProvider tasks={availableTasks}>
-								<TaskDetailsModal
-									task={task}
-									availableTasks={availableTasks}
-									availableStatuses={statuses}
-									isOpen={true}
-									onClose={() => {}}
-								/>
-							</TaskIdIndexProvider>
-						</ThemeProvider>
-					</MemoryRouter>,
-				);
-				await Promise.resolve();
-			});
-		};
-
-		const openDetail = detailOf(dependent, corpus);
-		await render(openDetail, corpus);
-		expect(container.textContent).toContain("Blocked by BACK-1");
-
-		// The list refresh that follows the modal opening changes nothing, and records what the
-		// verdict on screen was read against.
-		const firstSync = syncOpenTaskDetail({
-			open: openDetail,
-			refreshed: dependent,
-			corpus,
-			previous: null,
-			version: 1,
-		});
-		expect(firstSync.rereadDetail).toBe(false);
-		expect(taskReadiness(firstSync.task)).toEqual(openDetail.readiness);
-
-		// The blocker is completed somewhere else. This task's own record is untouched, and the list
-		// reconcile hands back the very same object for it, which is exactly what used to leave the
-		// badge stale forever.
-		const completedBlocker = makeTask("BACK-1", "Done");
-		const refreshedCorpus = [completedBlocker, dependent];
-		const secondSync = syncOpenTaskDetail({
-			open: firstSync.task,
-			refreshed: dependent,
-			corpus: refreshedCorpus,
-			previous: { record: dependent, inputs: firstSync.readinessInputs, version: 2 },
-			version: 2,
-		});
-
-		// The unchanged record must not be mistaken for an unchanged verdict.
-		expect(secondSync.changed).toBe(true);
-		expect(secondSync.rereadDetail).toBe(true);
-		// Dropped rather than shown: the modal never claims the task is blocked by finished work.
-		expect(taskReadiness(secondSync.task)).toBeUndefined();
-		await render(secondSync.task, refreshedCorpus);
-		expect(container.textContent).not.toContain("Blocked by BACK-1");
-
-		// And the detail read the sync asked for delivers the verdict that replaces it.
-		await render(detailOf(dependent, refreshedCorpus), refreshedCorpus);
-		expect(container.textContent).toContain("Ready to start");
-	});
-
+/**
+ * The verdict a detail read delivered describes the record it was read for. The modal shows it only
+ * while the status and dependencies on screen still match that record, so an optimistic edit - or
+ * one whose save failed and left the shown status ahead of the record - never stands next to a
+ * verdict about what it replaced.
+ */
+describe("task readiness badge against an optimistic edit", () => {
 	it("hides the verdict while an optimistic status edit is ahead of the record", async () => {
 		const blocker = makeTask("BACK-1", "In Progress");
 		const dependent = makeTask("BACK-2", "To Do", ["BACK-1"]);
@@ -205,38 +137,4 @@ describe("open task detail readiness while the corpus moves underneath it", () =
 		}
 	});
 
-	it("keeps the verdict and asks for no read when nothing readiness depends on moved", async () => {
-		const blocker = makeTask("BACK-1", "In Progress");
-		const dependent = makeTask("BACK-2", "To Do", ["BACK-1"]);
-		const corpus = [blocker, dependent];
-		const openDetail = detailOf(dependent, corpus);
-
-		// A title edit elsewhere in the corpus, and a label edit on the task itself.
-		const renamedBlocker = { ...blocker, title: "Renamed" };
-		const relabelled = { ...dependent, labels: ["web"] };
-		const synced = syncOpenTaskDetail({
-			open: openDetail,
-			refreshed: relabelled,
-			corpus: [renamedBlocker, relabelled],
-			previous: { record: dependent, inputs: readinessInputs(dependent, corpus), version: 7 },
-			version: 7,
-		});
-
-		// The record itself changed, so the modal takes the new one, but the verdict still holds and
-		// no detail read is asked for.
-		expect(synced.changed).toBe(true);
-		expect(synced.rereadDetail).toBe(false);
-		expect(taskReadiness(synced.task)).toEqual(openDetail.readiness);
-		expect(synced.task.labels).toEqual(["web"]);
-
-		// And a refresh that changed nothing at all is a no-op the modal never re-renders for.
-		const unchanged = syncOpenTaskDetail({
-			open: openDetail,
-			refreshed: dependent,
-			corpus,
-			previous: { record: dependent, inputs: readinessInputs(dependent, corpus), version: 7 },
-			version: 7,
-		});
-		expect(unchanged.changed).toBe(false);
-	});
 });

@@ -676,6 +676,51 @@ describe("CLI Integration", () => {
 			expect(out).not.toContain("TASK-3 - Depends On Nothing Known");
 		});
 
+		it("reads no task corpus when the filters matched no task", async () => {
+			const core = new Core(TEST_DIR);
+			const createdDate = new Date().toISOString().slice(0, 10);
+			await core.createTask(
+				{
+					id: "task-1",
+					title: "Only Task",
+					status: "To Do",
+					assignee: [],
+					labels: [],
+					dependencies: [],
+					createdDate,
+					rawContent: "",
+				},
+				false,
+			);
+			// A completed record that cannot be parsed is re-read and re-logged under DEBUG on every
+			// load of the completed corpus, so these counts are the corpus reads one command makes.
+			await mkdir(join(TEST_DIR, "backlog", "completed"), { recursive: true });
+			await writeFile(
+				join(TEST_DIR, "backlog", "completed", "task-99 - Broken.md"),
+				"---\nid: TASK-99\ntitle: [unclosed\nstatus: Done\n---\n\nbroken\n",
+			);
+			const corpusReads = async (args: string[]) => {
+				const result = await $`bun ${[CLI_PATH, "task", "list", ...args]}`
+					.cwd(TEST_DIR)
+					.env({ ...process.env, DEBUG: "1" })
+					.quiet();
+				expect(result.exitCode).toBe(0);
+				return {
+					stdout: result.stdout.toString(),
+					reads: result.stderr
+						.toString()
+						.split("\n")
+						.filter((line) => line.startsWith("Failed to parse completed task file")).length,
+				};
+			};
+
+			const empty = await corpusReads(["--json", "--assignee", "@nobody"]);
+			const baseline = await corpusReads(["--plain", "--assignee", "@nobody"]);
+			expect(JSON.parse(empty.stdout).tasks).toEqual([]);
+			// Nothing will carry a verdict, so nothing loads the corpus it would come from.
+			expect(empty.reads).toBe(baseline.reads);
+		});
+
 		it("serializes --ready --json from the readiness pass the filter used", async () => {
 			const core = new Core(TEST_DIR);
 			const createdDate = new Date().toISOString().slice(0, 10);

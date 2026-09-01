@@ -5,7 +5,7 @@ status: In Progress
 assignee:
   - '@claude'
 created_date: '2026-09-01 17:04'
-updated_date: '2026-09-01 19:22'
+updated_date: '2026-09-01 19:51'
 labels: []
 dependencies: []
 ordinal: 304000
@@ -132,6 +132,24 @@ Tests, red before their fix and green after:
 Full suite 2819 pass / 8 skip / 0 fail, and the run leaves no stray files or globals behind (the harness restores every global it plants).
 
 Corpus note for finding 2, with evidence. backlog search does read the cross-branch ContentStore: on a two-branch probe the store snapshot and the search results both contain a task that exists only on the other branch (source local-branch, branch other) while loadTaskCorpus(core) does not. But the rows search --json publishes are local-editable records only (searchJson filters with isLocalEditableTask), and for an identity the working copy holds the store resolves to the local record - TASK-1 was reported To Do although branch other has it Done. The corpora therefore differ in exactly one case: a dependency resolvable only on another branch. Measured on that probe, local corpus gives TASK-4 isReady false, cross-branch gives true. Two things make aligning search alone the wrong fix: the CLI refuses to create such a dependency at all ('The following dependencies do not exist: TASK-3. ... Task lookups read only the local working copy; use backlog browser to see tasks from other branches'), and task view --json reports the same false for the hand-written case, so search --json agrees with the rest of the CLI today. Making search's readiness cross-branch would make it disagree with task view --json and task list --json for the same task, which is the divergence this task exists to remove; making all CLI readiness cross-branch is a policy change against the standing CLI local-only read decision and the documented BACK-601 gap 3. Left unchanged and raised for Alex.
+
+Review round 4 (Codex on PR #986, with an independent design review): the web detail-read path was rebuilt around one invariant instead of gaining a fourth guard.
+
+Structure. The modal is one discriminated state: closed, create, or detail carrying { session, id, isDraft, fromRoute, value }. Every entry path - a clicked task, a routed task, a draft, a graph link - opens a new session before any read starts. One effect keyed by (session, id, dataVersion) performs exactly one fetchTask; its cleanup retires that read, and a response is applied only while the state is still a detail with the same session and id. showModal, editingTask and isDraftMode are now projections of that one value, so the render tree is unchanged.
+
+Why the races are gone rather than handled: an older task's read cannot answer for a newer one because navigation establishes the new session before the response arrives and the response names the old one; out-of-order responses cannot land because starting a newer key cleans up the older effect; closing retires everything in flight; and a refresh is one authoritative re-read, which is what covers records the browser never receives (completed corpus, terminal status, contested identities) and drafts, which are not in the task corpus at all. Nothing consults tasks.find any more: search records are no longer merged into a detail, because the detail endpoint is authoritative.
+
+Deleted: src/web/utils/task-detail-sync.ts and its import, syncedTaskRecordRef, detailReadRef, openDetailKeyRef, dataVersionRef, taskRouteRequestRef, isTaskRouteModalRef, both reader helpers, the ticket retirement in clearTaskModal, the route loader's fetch and its counters, and the corpus-merging sync effect. The two unit tests of the deleted merge helper went with it; the file was renamed to web-task-readiness-badge.test.tsx keeping the optimistic-status test.
+
+Deviations from the reviewed design, all deliberate: (1) the detail case carries fromRoute so a failed first read reports back through the route - it replaces isTaskRouteModalRef, so it is a net deletion; (2) no loading state - showModal is create or a detail that has a value, so a routed task appears when its first read lands exactly as before, rather than inventing loading UI in a closing round; (3) a modalRef mirror lets the route effect skip re-opening the session it already opened for the same route id without taking the state as a dependency.
+
+CLI: task list derives readiness only when there are rows to describe, so an empty result set reads no corpus. --limit 0 is unreachable - --limit is validated as a positive integer and rejected before any read.
+
+Tests, red against 59f585ae and green now: 'keeps the routed task on screen when an older task's refresh read answers late' (pre-fix the modal never shows the routed task at all) and 're-reads an open draft when the data refreshes' (pre-fix the draft badge never updates). 'reads no task corpus when the filters matched no task' counts completed-corpus reads for an empty filter result. Every earlier regression test still passes unchanged. Full suite 2820 pass / 8 skip / 0 fail.
+
+Rendered verification: routed open, blocker completed out of band (badge flips), close and reopen another task, draft opened from the Drafts page, blocker reopened while the draft modal is open (draft badge flips), inline status edit persisted; no console errors, and zero detail reads while idle.
+
+Known limitation, recorded rather than machined around: freshness depends on a refresh signal arriving. If none does, or if the newest detail read fails, the last successful detail stays on screen.
 <!-- SECTION:NOTES:END -->
 
 ## Final Summary

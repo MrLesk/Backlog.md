@@ -2757,13 +2757,16 @@ addHelpSchema(taskCmd.command("list"), {
 
 			// Readiness needs the completed corpus, so only the reads that use it pay for one: --ready
 			// filters on the verdict and --json publishes it. Both read it once, from the same pass, so
-			// a row selected as ready can never be serialized from a second, later verdict.
-			const readinessRows = options.ready || outputMode === "json" ? await loadTaskListItems(core, tasks) : null;
+			// a row selected as ready can never be serialized from a second, later verdict. A read that
+			// matched nothing describes nothing, so it reads no corpus at all.
+			const derivesReadiness = Boolean(options.ready) || outputMode === "json";
+			const readinessRows = derivesReadiness && tasks.length > 0 ? await loadTaskListItems(core, tasks) : null;
 
 			let filtered: Task[];
 			let displayTasks: Task[];
-			if (readinessRows) {
-				const rows = options.ready ? readinessRows.filter((row) => row.isReady) : readinessRows;
+			if (derivesReadiness) {
+				const projected = readinessRows ?? [];
+				const rows = options.ready ? projected.filter((row) => row.isReady) : projected;
 				const narrowed = narrowForDisplay(rows);
 				if (outputMode === "json") {
 					printJson(taskListJson(narrowed.display));

@@ -28,7 +28,6 @@ import {
 } from '../types';
 import { ApiError, apiClient } from './lib/api';
 import type { TaskDetail } from '../core/task-detail';
-import { type SyncedTaskRecord, syncOpenTaskDetail } from './utils/task-detail-sync';
 import type { DuplicateRepairPlan } from '../core/duplicate-task-repair';
 import { isValidTaskId } from '../utils/task-id';
 import { useHealthCheckContext } from './contexts/HealthCheckContext';
@@ -184,20 +183,59 @@ const canonicalizeMilestone = (value: string | null | undefined, aliasMap?: Map<
   return normalized;
 };
 
+/**
+ * What the task modal is showing, as one value.
+ *
+ * A detail entry carries the session it was opened in, the record it is open on, and whatever has
+ * been read for it. Every entry path - a clicked task, a routed task, a draft, a graph link -
+ * starts a new session before any read begins, and a detail response may change the modal only
+ * while its session and id are still the ones on screen. There is no ticket to take, nothing to
+ * reconcile against the task list, and a response belonging to a modal the reader has left cannot
+ * land on the one they are looking at.
+ */
+type TaskModalState =
+  | { kind: 'closed' }
+  | { kind: 'create'; isDraft: boolean }
+  | {
+      kind: 'detail';
+      session: number;
+      id: string;
+      isDraft: boolean;
+      /** Opened by the task route, so a failed first read reports back through it. */
+      fromRoute: boolean;
+      value: Task | TaskDetail | null;
+    };
+
 function AppContent() {
-  const [showModal, setShowModal] = useState(false);
-  const [editingTask, setEditingTask] = useState<Task | TaskDetail | null>(null);
-  // The list record the open task was last synced from, so re-syncing cannot loop.
-  // The list record last folded into the open modal, with the readiness inputs and the refresh it
-  // was read against, so a dependency that changes out of band is noticed even though this task's
-  // own record did not move.
-  const syncedTaskRecordRef = useRef<SyncedTaskRecord | null>(null);
+  const [modal, setModal] = useState<TaskModalState>({ kind: 'closed' });
+  // Each entry into the modal takes the next session number, so a response can name the modal it
+  // was read for.
+  const modalSessionRef = useRef(0);
+  const modalRef = useRef<TaskModalState>(modal);
+  modalRef.current = modal;
   // Advanced by every completed data refresh, whether or not the records visibly changed.
   const [dataVersion, setDataVersion] = useState(0);
-  // Ordering for detail reads of the open task: only the newest response may be applied, so two
-  // reads in flight cannot land out of order and leave an older verdict on screen.
-  const detailReadRef = useRef(0);
-  const [isDraftMode, setIsDraftMode] = useState(false);
+
+  const openDetailModal = useCallback(
+    (id: string, options: { isDraft?: boolean; fromRoute?: boolean; record?: Task | TaskDetail } = {}) => {
+      modalSessionRef.current += 1;
+      setModal({
+        kind: 'detail',
+        session: modalSessionRef.current,
+        id,
+        isDraft: options.isDraft ?? false,
+        fromRoute: options.fromRoute ?? false,
+        value: options.record ?? null,
+      });
+    },
+    [],
+  );
+
+  // What the rest of the app reads. A detail modal is on screen once it has a record to show: a
+  // routed task therefore appears when its first read lands, exactly as it did before.
+  const editingTask = modal.kind === 'detail' ? modal.value : null;
+  const showModal = modal.kind === 'create' || (modal.kind === 'detail' && modal.value !== null);
+  const isDraftMode = modal.kind === 'closed' ? false : modal.isDraft;
   const [statuses, setStatuses] = useState<string[]>([]);
   const [availableLabels, setAvailableLabels] = useState<string[]>([]);
   const [projectName, setProjectName] = useState<string>('');
@@ -250,8 +288,6 @@ function AppContent() {
   const tasksRoute = useMatch('/tasks/:id');
   const boardRouteWithTitle = useMatch('/board/:id/:title');
   const boardRoute = useMatch('/board/:id');
-  const taskRouteRequestRef = useRef(0);
-  const isTaskRouteModalRef = useRef(false);
   const taskRouteAlertRef = useRef<HTMLDivElement | null>(null);
   const routeTaskId =
     tasksRouteWithTitle?.params.id ??
@@ -476,76 +512,30 @@ function AppContent() {
   }, [isOnline]);
 
   const handleNewTask = () => {
-    setEditingTask(null);
-    setIsDraftMode(false);
-    setShowModal(true);
+    setModal({ kind: 'create', isDraft: false });
   };
 
   const handleNewDraft = () => {
     // Create a draft task (same as new task but with status 'Draft')
-    setEditingTask(null);
-    setIsDraftMode(true);
-    setShowModal(true);
+    setModal({ kind: 'create', isDraft: true });
   };
 
-  // Read one task's detail into the open modal. Every read takes a ticket, and a response is
-  // applied only while it is still the newest one asked for: two reads in flight otherwise land in
-  // whatever order the network returns them and an older verdict can overwrite a newer one.
-  // Every detail read of an open task goes through here: it takes a ticket, and its answer counts
-  // only while it is still the newest one asked for. Reads otherwise land in whatever order the
-  // network returns them and an older verdict can overwrite a newer one, or reopen a closed modal.
-  // Resolves to null when a newer read (or closing the modal) has already superseded this one.
-  const readTaskDetail = useCallback(async (taskId: string): Promise<TaskDetail | null> => {
-    const ticket = detailReadRef.current + 1;
-    detailReadRef.current = ticket;
-    try {
-      const detail = await apiClient.fetchTask(taskId);
-      return detailReadRef.current === ticket ? detail : null;
-    } catch (error) {
-      // A superseded read's failure is not this modal's problem either.
-      if (detailReadRef.current !== ticket) return null;
-      throw error;
-    }
-  }, []);
-
-  const readOpenTaskDetail = useCallback(
-    (taskId: string) => {
-      void readTaskDetail(taskId)
-        .then(detail => {
-          if (!detail) return;
-          setEditingTask(current => (current && current.id === detail.id ? detail : current));
-        })
-        .catch(() => {});
+  const openTaskModal = useCallback(
+    (task: Task) => {
+      openDetailModal(task.id, { record: task });
     },
-    [readTaskDetail],
+    [openDetailModal],
   );
-
-  const openTaskModal = useCallback((task: Task) => {
-    setEditingTask(task);
-    setIsDraftMode(false);
-    setShowModal(true);
-  }, []);
 
   const openDraftModal = useCallback(
     (draft: Task) => {
-      setEditingTask(draft);
-      setIsDraftMode(true);
-      setShowModal(true);
-      // A draft is opened from its own list, which carries stored records only. Its readiness and
-      // dependency graph come from a detail read like every other task's, through the same order.
-      readOpenTaskDetail(draft.id);
+      openDetailModal(draft.id, { record: draft, isDraft: true });
     },
-    [readOpenTaskDetail],
+    [openDetailModal],
   );
 
   const clearTaskModal = useCallback(() => {
-    isTaskRouteModalRef.current = false;
-    // Whatever is still in flight was read for a modal that is gone. Retiring the ticket keeps it
-    // from reopening this task or landing on whichever one is opened next.
-    detailReadRef.current += 1;
-    setShowModal(false);
-    setEditingTask(null);
-    setIsDraftMode(false);
+    setModal({ kind: 'closed' });
   }, []);
 
   const handleEditTask = useCallback((task: Task) => {
@@ -560,10 +550,8 @@ function AppContent() {
       // Pages without a task route (milestones, statistics) open the modal directly, so they must
       // read the detail themselves. Otherwise they would show the compact list record, silently
       // without its dependency graph, while the board and the task list show the full detail.
+      // Opened with the list record; the detail reader below upgrades it in place.
       openTaskModal(task);
-      // Upgrade in place, so a modal the reader already closed is never reopened, and through the
-      // same ordering as every other detail read of the open task.
-      readOpenTaskDetail(task.id);
       return;
     }
 
@@ -579,7 +567,6 @@ function AppContent() {
     location.search,
     navigate,
     openTaskModal,
-    readOpenTaskDetail,
     routeBasePath,
     routeNavigationState.taskModalFrom,
     routeTaskId,
@@ -596,12 +583,13 @@ function AppContent() {
     }
   };
 
+  // The task route says which task is open; the reader below is what reads it. Opening the session
+  // here rather than after a response is what stops an older task's read from answering for this
+  // one: from this moment the modal names a different session.
   useEffect(() => {
-    const requestId = taskRouteRequestRef.current + 1;
-    taskRouteRequestRef.current = requestId;
-
+    const current = modalRef.current;
     if (!routeTaskId || !routeBasePath || isInitialized !== true) {
-      if (!routeTaskId && isTaskRouteModalRef.current) {
+      if (!routeTaskId && current.kind === 'detail' && current.fromRoute) {
         clearTaskModal();
       }
       return;
@@ -616,52 +604,13 @@ function AppContent() {
       return;
     }
 
-    const loadTaskFromRoute = async () => {
-      try {
-        const task = await readTaskDetail(routeTaskId);
-        if (!task || taskRouteRequestRef.current !== requestId) {
-          return;
-        }
-        isTaskRouteModalRef.current = true;
-        openTaskModal(task);
-      } catch (error) {
-        if (taskRouteRequestRef.current !== requestId) {
-          return;
-        }
-
-        clearTaskModal();
-        const message =
-          error instanceof ApiError && error.status === 409
-            ? `Task "${routeTaskId}" is ambiguous. Repair duplicate task IDs before opening this link.`
-            : error instanceof ApiError && error.status === 400
-              ? `"${routeTaskId}" is not a valid task ID.`
-              : error instanceof ApiError && error.status === 404
-                ? `Task "${routeTaskId}" was not found.`
-                : `Task "${routeTaskId}" could not be opened. Try again.`;
-        navigate(`${routeBasePath}${location.search}`, {
-          replace: true,
-          state: { taskRouteError: message } satisfies TaskRouteNavigationState,
-        });
-      }
-    };
-
-    void loadTaskFromRoute();
-
-    return () => {
-      if (taskRouteRequestRef.current === requestId) {
-        taskRouteRequestRef.current += 1;
-      }
-    };
-  }, [
-    clearTaskModal,
-    isInitialized,
-    location.search,
-    navigate,
-    openTaskModal,
-    readTaskDetail,
-    routeBasePath,
-    routeTaskId,
-  ]);
+    // Re-running for an unrelated reason (a filter in the query string, say) must not restart the
+    // task the route already opened.
+    if (current.kind === 'detail' && current.fromRoute && current.id === routeTaskId) {
+      return;
+    }
+    openDetailModal(routeTaskId, { fromRoute: true });
+  }, [clearTaskModal, isInitialized, location.search, navigate, openDetailModal, routeBasePath, routeTaskId]);
 
   useEffect(() => {
     if (taskRouteError) {
@@ -779,32 +728,75 @@ function AppContent() {
 		setTasks(next);
 	}, []);
 
-  // Sync editingTask with refreshed tasks data to prevent stale state
-  // This fixes the bug where acceptance criteria disappears after save (GitHub #467)
+  /**
+   * A detail read that could not be shown. A session that has nothing on screen yet cannot stay
+   * open, and one opened from a link says why on the way back. A later read failing leaves what is
+   * already on screen alone: the last successful read is better than an empty modal.
+   */
+  const reportDetailReadFailure = useCallback(
+    (taskId: string, error: unknown, fromRoute: boolean) => {
+      clearTaskModal();
+      if (!fromRoute || !routeBasePath) return;
+      const message =
+        error instanceof ApiError && error.status === 409
+          ? `Task "${taskId}" is ambiguous. Repair duplicate task IDs before opening this link.`
+          : error instanceof ApiError && error.status === 400
+            ? `"${taskId}" is not a valid task ID.`
+            : error instanceof ApiError && error.status === 404
+              ? `Task "${taskId}" was not found.`
+              : `Task "${taskId}" could not be opened. Try again.`;
+      navigate(`${routeBasePath}${location.search}`, {
+        replace: true,
+        state: { taskRouteError: message } satisfies TaskRouteNavigationState,
+      });
+    },
+    [clearTaskModal, location.search, navigate, routeBasePath],
+  );
+  const reportDetailReadFailureRef = useRef(reportDetailReadFailure);
   useEffect(() => {
-    if (!editingTask || !showModal) {
-      syncedTaskRecordRef.current = null;
-      return;
-    }
-    const updatedTask = tasks.find(t => t.id === editingTask.id);
-    if (!updatedTask) return;
-    const synced = syncOpenTaskDetail({
-      open: editingTask,
-      refreshed: updatedTask,
-      corpus: tasks,
-      previous: syncedTaskRecordRef.current,
-      version: dataVersion,
-    });
-    // Nothing to apply: the same record, the same refresh, and the records its readiness answers
-    // about did not move. This is also what keeps the state update below from looping.
-    if (!synced.changed) return;
-    syncedTaskRecordRef.current = { record: updatedTask, inputs: synced.readinessInputs, version: dataVersion };
-    setEditingTask(synced.task);
-    // One read of this task, never one per dependency.
-    if (synced.rereadDetail) {
-      readOpenTaskDetail(updatedTask.id);
-    }
-  }, [tasks, editingTask, showModal, dataVersion, readOpenTaskDetail]);
+    reportDetailReadFailureRef.current = reportDetailReadFailure;
+  }, [reportDetailReadFailure]);
+
+  /**
+   * The one rule for detail reads: the modal shows the read for (session, task id, refresh
+   * generation), and a response may change it only while that key is still what the modal is
+   * waiting for. Each entry path opens a session before any read starts, every refresh generation
+   * reads once, and React's cleanup retires the read a newer key replaced.
+   *
+   * Navigating to another task, closing the modal, a refresh arriving, a task opened from a page
+   * without a task route, and a draft opened from its own list are the same event under that rule,
+   * so none of them can answer for another. Nothing here consults the task list, which is why a
+   * draft - never part of that corpus - refreshes like everything else, and why a dependency
+   * completing somewhere the browser cannot see still reaches the modal: the refresh generation
+   * advances, and the detail read is authoritative about what changed.
+   */
+  const detailSession = modal.kind === 'detail' ? modal.session : null;
+  const detailId = modal.kind === 'detail' ? modal.id : null;
+  useEffect(() => {
+    if (detailSession === null || detailId === null) return;
+    let active = true;
+    void apiClient
+      .fetchTask(detailId)
+      .then(detail => {
+        if (!active) return;
+        setModal(current =>
+          current.kind === 'detail' && current.session === detailSession && current.id === detailId
+            ? { ...current, value: detail }
+            : current,
+        );
+      })
+      .catch(error => {
+        if (!active) return;
+        const current = modalRef.current;
+        if (current.kind !== 'detail' || current.session !== detailSession || current.id !== detailId) return;
+        if (current.value !== null) return;
+        reportDetailReadFailureRef.current(detailId, error, current.fromRoute);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [detailSession, detailId, dataVersion]);
 
   useEffect(() => {
     const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";

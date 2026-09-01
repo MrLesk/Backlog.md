@@ -155,13 +155,16 @@ const settle = async (rounds = 6) => {
 	}
 };
 
-const waitForText = async (container: HTMLElement, text: string) => {
+const waitFor = async (describe: string, predicate: () => boolean) => {
 	for (let attempt = 0; attempt < 40; attempt += 1) {
-		if (container.textContent?.includes(text)) return;
+		if (predicate()) return;
 		await settle(1);
 	}
-	throw new Error(`Timed out waiting for ${JSON.stringify(text)}`);
+	throw new Error(`Timed out waiting for ${describe}`);
 };
+
+const waitForText = async (container: HTMLElement, text: string) =>
+	await waitFor(JSON.stringify(text), () => Boolean(container.textContent?.includes(text)));
 
 afterEach(() => {
 	if (activeRoot) {
@@ -411,5 +414,130 @@ describe("open task detail across refreshes", () => {
 		await settle(3);
 		expect(container.textContent).toContain("Ready to start");
 		expect(container.textContent).not.toContain("Unknown dependency TASK-9");
+	});
+
+	it("keeps the routed task on screen when an older task's refresh read answers late", async () => {
+		const alpha = { ...makeTask("TASK-1", "To Do", ["TASK-9"]), title: "Alpha task" };
+		const beta = { ...makeTask("TASK-2", "To Do"), title: "Beta task" };
+		const detailFor = (task: Task) => toTaskDetail(task, { tasks: [alpha, beta], completedTasks: [], statuses });
+
+		// Only the read that opens the modal answers immediately; every later read is held open so
+		// the test decides the order they come back in.
+		const pending = new Map<string, Array<(detail: TaskDetail) => void>>();
+		let openingRead = true;
+		const { container, sockets } = setupDom("http://localhost/tasks/TASK-1");
+		stubApi({
+			search: () => [
+				{ type: "task", score: null, task: alpha },
+				{ type: "task", score: null, task: beta },
+			],
+			fetchTask: async (id) => {
+				if (openingRead) {
+					openingRead = false;
+					return detailFor(alpha);
+				}
+				return await new Promise<TaskDetail>((resolve) => {
+					const queue = pending.get(id) ?? [];
+					queue.push(resolve);
+					pending.set(id, queue);
+				});
+			},
+		});
+
+		activeRoot = createRoot(container);
+		await act(async () => {
+			activeRoot?.render(
+				<HealthCheckProvider>
+					<App />
+				</HealthCheckProvider>,
+			);
+			await Promise.resolve();
+		});
+		const dialogText = () => container.querySelector("[role='dialog']")?.textContent ?? "";
+		await waitForText(container, "Alpha task");
+		expect(dialogText()).toContain("Alpha task");
+
+		// The reader navigates to another task, leaving that route's read in flight...
+		const openBeta = Array.from(container.querySelectorAll("button")).find((button) =>
+			button.getAttribute("aria-label")?.startsWith("Open TASK-2"),
+		);
+		expect(openBeta).toBeTruthy();
+		await act(async () => {
+			openBeta?.dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
+			await Promise.resolve();
+		});
+		await settle(2);
+		expect(pending.get(beta.id)?.length).toBeGreaterThan(0);
+
+		// ...and a refresh arrives while it is, which starts a read of the task still on screen.
+		await act(async () => {
+			for (const socket of sockets) socket.onmessage?.({ data: "tasks-updated" });
+			await Promise.resolve();
+		});
+		await settle(2);
+		expect(pending.get(alpha.id)?.length).toBeGreaterThan(0);
+
+		// Answer the reads of the task the route now names.
+		const answer = async (id: string, task: Task) => {
+			await act(async () => {
+				for (const resolve of pending.get(id) ?? []) resolve(detailFor(task));
+				await Promise.resolve();
+			});
+			await settle(2);
+		};
+		await answer(beta.id, beta);
+		await waitFor("the modal to show the routed task", () => dialogText().includes("Beta task"));
+
+		// The reads of the task left behind answer last. The URL says TASK-2, so the modal has to.
+		await answer(alpha.id, alpha);
+		expect(dialogText()).toContain("Beta task");
+		expect(dialogText()).not.toContain("Alpha task");
+	});
+
+	it("re-reads an open draft when the data refreshes", async () => {
+		const blocker = makeTask("TASK-1", "In Progress");
+		const draft: Task = { ...makeTask("DRAFT-1", "Draft", ["TASK-1"]), title: "Draft with dependency" };
+		let blockerCompleted = false;
+
+		const { container, sockets } = setupDom("http://localhost/drafts");
+		stubApi({
+			search: () => [{ type: "task", score: null, task: blocker }],
+			drafts: () => [draft],
+			fetchTask: async () =>
+				toTaskDetail(draft, {
+					tasks: blockerCompleted ? [draft] : [blocker, draft],
+					completedTasks: blockerCompleted ? [makeTask("TASK-1", "Done")] : [],
+					statuses,
+				}),
+		});
+
+		activeRoot = createRoot(container);
+		await act(async () => {
+			activeRoot?.render(
+				<HealthCheckProvider>
+					<App />
+				</HealthCheckProvider>,
+			);
+			await Promise.resolve();
+		});
+		await waitForText(container, "Draft with dependency");
+		const row = Array.from(container.querySelectorAll("div.cursor-pointer")).find((element) =>
+			element.textContent?.includes("Draft with dependency"),
+		);
+		await act(async () => {
+			row?.dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
+			await Promise.resolve();
+		});
+		await waitForText(container, "Blocked by TASK-1");
+
+		// The blocker is completed elsewhere. A draft is not in the task corpus the modal syncs
+		// against, so nothing about the refresh names it: the read has to follow the refresh itself.
+		blockerCompleted = true;
+		await act(async () => {
+			for (const socket of sockets) socket.onmessage?.({ data: "tasks-updated" });
+			await Promise.resolve();
+		});
+		await waitForText(container, "Ready to start");
+		expect(container.textContent).not.toContain("Blocked by TASK-1");
 	});
 });
