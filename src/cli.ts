@@ -2268,8 +2268,11 @@ addHelpSchema(program.command("search [query]"), {
 			// pass over the corpus for the results being printed. The projected rows are consumed in
 			// result order rather than looked up by ID, so two files claiming one ID keep the verdict
 			// derived for their own record instead of inheriting the other claimant's. A search that
-			// matched no task reads no corpus: there is nothing for a verdict to describe.
-			const searchedTasks = searchResults.flatMap((result) => (isTaskSearchResult(result) ? [result.task] : []));
+			// matched no task the formatter will emit reads no corpus: there is nothing for a verdict to
+			// describe. `searchJson` drops non-local results, so a cross-branch-only match is no match here.
+			const searchedTasks = searchResults.flatMap((result) =>
+				isTaskSearchResult(result) && isLocalEditableTask(result.task) ? [result.task] : [],
+			);
 			const projectedTaskRows = (searchedTasks.length > 0 ? await loadTaskListItems(core, searchedTasks) : [])[
 				Symbol.iterator
 			]();
@@ -2279,6 +2282,9 @@ addHelpSchema(program.command("search [query]"), {
 					projectedResults.push(result);
 					continue;
 				}
+				// `searchJson` drops non-local results, so they are neither projected nor emitted; skipping
+				// them here keeps each remaining result aligned with the row derived for it.
+				if (!isLocalEditableTask(result.task)) continue;
 				const projected = projectedTaskRows.next();
 				// One row per task result, in order, so this never runs out.
 				if (projected.done) break;
