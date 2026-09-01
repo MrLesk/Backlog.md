@@ -10,7 +10,7 @@
 import { stdout as output } from "node:process";
 import { box, list } from "neo-neo-bblessed";
 import type { Core } from "../core/backlog.ts";
-import { loadTaskCorpus, loadTaskDetail, withDependencyGraph } from "../core/task-detail.ts";
+import { loadTaskCorpus, loadTaskDetail, toTaskDetail } from "../core/task-detail.ts";
 import { formatDependencyGraphEntries, formatDependencyNodeLabel } from "../formatters/dependency-graph-text.ts";
 import { formatTaskDependenciesPlainText } from "../formatters/task-plain-text.ts";
 import type { Task } from "../types/index.ts";
@@ -55,7 +55,7 @@ export async function runTaskDependenciesTui(core: Core, root: Task): Promise<vo
 
 	const [corpus, config] = await Promise.all([loadTaskCorpus(core), core.filesystem.loadConfig()]);
 	const index = createTaskRecordIndex(corpus);
-	const rootDetail = withDependencyGraph(root, corpus);
+	const rootDetail = toTaskDetail(root, corpus);
 	if (formatDependencyGraphEntries(rootDetail.dependencyGraph).length === 0) {
 		console.log(formatTaskDependenciesPlainText(rootDetail));
 		return;
@@ -133,7 +133,7 @@ export async function runTaskDependenciesTui(core: Core, root: Task): Promise<vo
 
 		const renderGraph = (task: Task) => {
 			current = task;
-			const detail = withDependencyGraph(task, corpus);
+			const detail = toTaskDetail(task, corpus);
 			const entries = formatDependencyGraphEntries(detail.dependencyGraph, {
 				formatLabel: formatDependencyNodeTuiLabel,
 			});

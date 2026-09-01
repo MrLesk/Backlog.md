@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
-import { mkdir } from "node:fs/promises";
+import { mkdir, writeFile } from "node:fs/promises";
+import { join } from "node:path";
 import { $ } from "bun";
 import { Core } from "../index.ts";
 import { getTestCliPath } from "./test-cli.ts";
@@ -112,6 +113,8 @@ describe("CLI JSON output", () => {
 					createdAt: "2026-07-14T09:30:00Z",
 					updatedAt: "2026-07-14T10:45:00Z",
 					dueDate: "2026-08-10T14:30:00Z",
+					// TASK-2 is not a task anything can resolve, so the verdict fails closed.
+					isReady: false,
 				},
 			],
 		});
@@ -177,6 +180,14 @@ describe("CLI JSON output", () => {
 			expect(output.task.path).toMatch(/^backlog\/tasks\/task-1 - JSON-task\.md$/);
 			expect(output.task.description).toBe("Machine-readable output");
 			expect(output.task.dependencies).toEqual(["TASK-2"]);
+			// The summary verdict and the detail explanation behind it, from the same derivation.
+			expect(output.task.isReady).toBe(false);
+			expect(output.task.readiness).toEqual({
+				isReady: false,
+				isBlocked: true,
+				blockingDependencies: [],
+				missingDependencies: ["TASK-2"],
+			});
 			expect(output.task.acceptanceCriteriaCompleted).toBe(1);
 			expect(output.task.acceptanceCriteriaCount).toBe(1);
 			expect(output.task.acceptanceCriteria).toEqual([{ index: 1, text: "Produces JSON", checked: true }]);
@@ -230,6 +241,8 @@ describe("CLI JSON output", () => {
 		expect(output.results[0].data.id).toBe("TASK-1");
 		expect(output.results[0].data.acceptanceCriteriaCompleted).toBe(1);
 		expect(output.results[0].data.acceptanceCriteriaCount).toBe(1);
+		// Task results carry the same verdict the task list publishes.
+		expect(output.results[0].data.isReady).toBe(false);
 		expect(output.results[1].data).toEqual({
 			id: "doc-1",
 			title: "JSON guide",
@@ -316,6 +329,36 @@ describe("CLI JSON output", () => {
 		expect(progressById(taskResults.map((result: { data: Record<string, unknown> }) => result.data))).toEqual(
 			expectedProgress,
 		);
+	});
+
+	it("reads no task corpus for a search that matched no task", async () => {
+		// A completed record that cannot be parsed is never cached, so it is re-read and re-logged
+		// under DEBUG on every load of the completed corpus. Counting those lines counts the corpus
+		// reads one command makes.
+		await writeFile(
+			join(TEST_DIR, "backlog", "completed", "task-99 - Broken.md"),
+			"---\nid: TASK-99\ntitle: [unclosed\nstatus: Done\n---\n\nbroken\n",
+		);
+		const corpusReads = async (args: string[]) => {
+			const result = await $`bun ${[CLI_PATH, ...args]}`
+				.cwd(TEST_DIR)
+				.env({ ...process.env, DEBUG: "1" })
+				.quiet();
+			expect(result.exitCode).toBe(0);
+			return {
+				stdout: result.stdout.toString(),
+				reads: result.stderr
+					.toString()
+					.split("\n")
+					.filter((line) => line.startsWith("Failed to parse completed task file")).length,
+			};
+		};
+
+		const asJson = await corpusReads(["search", "JSON", "--type", "document", "--json"]);
+		const asPlain = await corpusReads(["search", "JSON", "--type", "document", "--plain"]);
+		expect(JSON.parse(asJson.stdout).results.every((entry: { type: string }) => entry.type === "document")).toBe(true);
+		// Nothing in that payload carries readiness, so nothing loads the corpus it comes from.
+		expect(asJson.reads).toBe(asPlain.reads);
 	});
 
 	it("uses the configured project-relative docs directory in search paths", async () => {

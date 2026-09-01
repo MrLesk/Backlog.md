@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { isLocalEditableTask, type AcceptanceCriterion, type Milestone, type Task, type TaskComment } from "../../types";
-import { type TaskDetail, taskDependencyGraph } from "../../core/task-detail";
+import { type TaskDetail, taskDependencyGraph, taskReadiness } from "../../core/task-detail";
 import Modal from "./Modal";
 import { ApiError, apiClient, NetworkError } from "../lib/api";
 import { useTheme } from "../contexts/ThemeContext";
@@ -14,8 +14,7 @@ import { formatStoredUtcDateForDisplay } from "../utils/date-display";
 import { getPriorityOptions } from "../../utils/priority-config";
 import { getProjectValues, resolveProjectValue } from "../../utils/project-config";
 import { getTaskTypeValues, resolveTaskTypeValue } from "../../utils/task-type-config";
-import { createReadinessGraph, formatReadinessBlockers, getTaskReadiness } from "../../utils/readiness";
-import { canonicalTaskId } from "../../utils/task-id.ts";
+import { formatReadinessBlockers } from "../../utils/readiness";
 import { buildTaskIdIndex, resolveTaskReference } from "../utils/task-id-links";
 import { findDirectSubtasks, findParentTask, summarizeSubtaskProgress } from "../../utils/task-subtasks.ts";
 import { isTerminalStatus } from "../../utils/terminal-status.ts";
@@ -416,34 +415,22 @@ export const TaskDetailsModal: React.FC<Props> = ({
   const milestoneSelectionValue = resolveMilestoneToId(milestone);
   const hasMilestoneSelection = (milestoneEntities ?? []).some((milestoneEntity) => milestoneEntity.id === milestoneSelectionValue);
 
-  // Dependencies that already left the board corpus (completed tasks) are fetched by ID so the
-  // browser resolves the same task graph the CLI does instead of calling them unknown.
-  // Keyed on a string because availableTasks and dependencies are new arrays on every render.
-  const unresolvedDependencyKey = useMemo(() => {
-    const known = new Set(availableTasks.map((candidate) => canonicalTaskId(candidate.id)));
-    return dependencies
-      .filter((id) => !known.has(canonicalTaskId(id)))
-      .join(",");
-  }, [availableTasks, dependencies]);
-  const [offBoardDependencies, setOffBoardDependencies] = useState<Task[]>([]);
-  useEffect(() => {
-    if (!isOpen || unresolvedDependencyKey === "") {
-      setOffBoardDependencies((current) => (current.length === 0 ? current : []));
-      return;
-    }
-    let cancelled = false;
-    Promise.all(unresolvedDependencyKey.split(",").map((id) => apiClient.fetchTask(id).catch(() => null))).then(
-      (results) => {
-        if (!cancelled) setOffBoardDependencies(results.filter((result): result is TaskDetail => Boolean(result)));
-      },
-    );
-    return () => {
-      cancelled = true;
-    };
-  }, [isOpen, unresolvedDependencyKey]);
-
-  // Derived at read time and delivered with the task itself, so there is nothing to fetch here.
+  // Both derived at read time and delivered with the task itself, so there is nothing to resolve
+  // or fetch here: the verdict the modal shows is the one every other surface shows.
   const dependencyGraph = taskDependencyGraph(task);
+  const readiness = taskReadiness(task);
+  // The verdict answers for the status and the dependencies it was read with, and it belongs to the
+  // Dependencies card, so it is shown only while all of that still describes what is on screen. An
+  // optimistic edit that has not come back yet - including one whose save failed and left the shown
+  // status ahead of the record - shows no badge rather than a claim about what it replaced.
+  const shownReadiness =
+    readiness &&
+    (readiness.isReady || readiness.isBlocked) &&
+    dependencies.length > 0 &&
+    dependencies.join(",") === (task?.dependencies ?? []).join(",") &&
+    status === (task?.status ?? "")
+      ? readiness
+      : null;
 
   // Dependency validation stays local-only (see BACK-623), so the picker must only suggest what a
   // save can accept: a cross-branch task is rejected, and so is a canonically ambiguous ID that more
@@ -454,25 +441,6 @@ export const TaskDetailsModal: React.FC<Props> = ({
     const index = buildTaskIdIndex(local);
     return local.filter((candidate) => resolveTaskReference(index, candidate.id) === candidate);
   }, [availableTasks]);
-
-  // Dependency readiness, derived at render time from the dependencies and status currently shown,
-  // so an inline edit is reflected immediately instead of waiting for a refresh.
-  // Only meaningful while dependencies exist and the task has not been completed.
-  const readiness = useMemo(() => {
-    if (!task || dependencies.length === 0) return null;
-    // Records resolved outside the board corpus come from backlog/completed, where the record's
-    // location is the completion evidence rather than its status string. That applies to the open
-    // task itself as well: a direct link can open a completed task whose historical status is no
-    // longer the configured terminal one.
-    const offBoard = [...offBoardDependencies, ...(task.source === "completed" ? [task] : [])];
-    const graph = createReadinessGraph({
-      tasks: [...availableTasks, ...offBoard.filter((entry) => entry.source !== "completed")],
-      completedTasks: offBoard.filter((entry) => entry.source === "completed"),
-      statuses: availableStatuses,
-    });
-    const result = getTaskReadiness({ ...task, dependencies, status }, graph);
-    return result.isReady || result.isBlocked ? result : null;
-  }, [task, dependencies, status, availableTasks, offBoardDependencies, availableStatuses]);
 
   // Hierarchy is derived from the shared corpus rather than the task payload: the single-task
   // API does not carry parent/subtask fields, while the list the modal already receives does.
@@ -1952,16 +1920,16 @@ export const TaskDetailsModal: React.FC<Props> = ({
               label=""
               disabled={isFromOtherBranch}
             />
-            {readiness && (
+            {shownReadiness && (
               <div
                 className={`mt-2 flex items-start gap-1.5 rounded-md px-2 py-1.5 text-xs font-medium ${
-                  readiness.isReady
+                  shownReadiness.isReady
                     ? 'bg-emerald-50 dark:bg-emerald-900/30 text-emerald-800 dark:text-emerald-300'
                     : 'bg-amber-50 dark:bg-amber-900/30 text-amber-800 dark:text-amber-300'
                 }`}
               >
-                <span aria-hidden="true">{readiness.isReady ? '✓' : '⏳'}</span>
-                <span>{readiness.isReady ? 'Ready to start' : formatReadinessBlockers(readiness)}</span>
+                <span aria-hidden="true">{shownReadiness.isReady ? '✓' : '⏳'}</span>
+                <span>{shownReadiness.isReady ? 'Ready to start' : formatReadinessBlockers(shownReadiness)}</span>
               </div>
             )}
           </div>

@@ -1,5 +1,6 @@
 import type { Task } from "../types/index.ts";
 import { buildDependencyGraph, type DependencyGraph } from "../utils/dependency-graph.ts";
+import { createReadinessGraph, getTaskReadiness, type TaskReadiness } from "../utils/readiness.ts";
 import { canonicalTaskId } from "../utils/task-id.ts";
 import type { Core } from "./backlog.ts";
 
@@ -68,20 +69,48 @@ export async function loadTaskCorpus(
 }
 
 /**
+ * A task as a list, search, or board read returns it: the stored record plus the one readiness
+ * verdict a list renders. The blockers behind the verdict belong to the detail read, so a list of
+ * any size stays the size it already was.
+ */
+export type TaskListItem = Task & { isReady: boolean };
+
+/**
  * A task as a detail read returns it: the stored record plus the relationships derived from the
  * corpus around it. The derived fields exist only in the read; they are never written back to the
- * Markdown record, and the compact list, search, and board projections return plain `Task`s so they
+ * Markdown record, and edit confirmations and other non-detail output return plain `Task`s so they
  * cannot pick them up by accident.
  *
  * Surfaces receive this already built and only render it. A function that returns a `TaskDetail`
- * cannot forget to populate the field, which is why the field is required here rather than optional
+ * cannot forget to populate the fields, which is why they are required here rather than optional
  * on `Task`.
  */
-export type TaskDetail = Task & { dependencyGraph: DependencyGraph };
+export type TaskDetail = Task & { dependencyGraph: DependencyGraph; readiness: TaskReadiness };
 
-/** Attach the derived relationships using a corpus the caller already holds. */
-export function withDependencyGraph(task: Task, corpus: TaskCorpus): TaskDetail {
-	return { ...task, dependencyGraph: buildDependencyGraph(task, corpus) };
+/**
+ * Attach the derived relationships using a corpus the caller already holds.
+ *
+ * Readiness and the dependency graph are answered from the same corpus in the same call, so the
+ * two can never describe different records of the same project.
+ */
+export function toTaskDetail(task: Task, corpus: TaskCorpus): TaskDetail {
+	return {
+		...task,
+		dependencyGraph: buildDependencyGraph(task, corpus),
+		readiness: getTaskReadiness(task, createReadinessGraph(corpus)),
+	};
+}
+
+/**
+ * Attach readiness to a whole list in one pass over the corpus.
+ *
+ * The index is built once and every task answers from it, so a list interface never resolves
+ * dependencies per row. The corpus is the whole project, never the list: `--status` and
+ * `--assignee` narrow what is displayed, and readiness must still see the dependencies they hid.
+ */
+export function withReadiness(tasks: readonly Task[], corpus: TaskCorpus): TaskListItem[] {
+	const graph = createReadinessGraph(corpus);
+	return tasks.map((task) => ({ ...task, isReady: getTaskReadiness(task, graph).isReady }));
 }
 
 /** Load the corpus and attach the derived relationships, for a surface that reads per detail view. */
@@ -90,7 +119,22 @@ export async function loadTaskDetail(
 	task: Task,
 	options: { includeCrossBranch: boolean } = { includeCrossBranch: false },
 ): Promise<TaskDetail> {
-	return withDependencyGraph(task, await loadTaskCorpus(core, options));
+	return toTaskDetail(task, await loadTaskCorpus(core, options));
+}
+
+/**
+ * Load the corpus and attach readiness to a list, for a surface that renders or filters it.
+ *
+ * Readiness needs the completed corpus to tell a finished dependency from an unfinished one, which
+ * a plain list read does not load. Call this only where the verdict is rendered or filtered on, so
+ * output that never mentions readiness keeps reading exactly what it reads today.
+ */
+export async function loadTaskListItems(
+	core: Core,
+	tasks: readonly Task[],
+	options: { includeCrossBranch: boolean } = { includeCrossBranch: false },
+): Promise<TaskListItem[]> {
+	return withReadiness(tasks, await loadTaskCorpus(core, options));
 }
 
 /**
@@ -99,4 +143,9 @@ export async function loadTaskDetail(
  */
 export function taskDependencyGraph(task: Task | TaskDetail | null | undefined): DependencyGraph | undefined {
 	return (task as Partial<TaskDetail> | null | undefined)?.dependencyGraph;
+}
+
+/** The readiness of whatever a renderer was handed, on the same terms as the dependency graph. */
+export function taskReadiness(task: Task | TaskDetail | null | undefined): TaskReadiness | undefined {
+	return (task as Partial<TaskDetail> | null | undefined)?.readiness;
 }
