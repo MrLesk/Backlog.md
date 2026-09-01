@@ -1,9 +1,11 @@
 ---
 id: BACK-673
 title: Clean dependency references when archiving or demoting a task
-status: To Do
-assignee: []
+status: In Progress
+assignee:
+  - '@claude'
 created_date: '2026-09-01 17:11'
+updated_date: '2026-09-01 17:54'
 labels: []
 dependencies: []
 ordinal: 305000
@@ -27,17 +29,56 @@ Not in scope: whether archived or demoted IDs should stop being recycled by the 
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 Archiving a task removes its ID from the dependencies of every referencing task in both the working copy and the completed corpus
-- [ ] #2 Demoting a task to a draft performs the same reference cleanup, so no dependent is left pointing at the vacated ID
-- [ ] #3 Both operations report which tasks had a reference removed instead of changing them silently
-- [ ] #4 Completing a task never removes references to it from other tasks
-- [ ] #5 The cleanup lives in core and applies to every surface that archives or demotes, with no per-surface duplication
-- [ ] #6 A regression test reproduces the misbinding end to end: reference the task, archive or demote it, allocate the freed ID to a new task, and assert no dependent silently resolves to the new task
+- [x] #1 Archiving a task removes its ID from the dependencies of every referencing task in both the working copy and the completed corpus
+- [x] #2 Demoting a task to a draft performs the same reference cleanup, so no dependent is left pointing at the vacated ID
+- [x] #3 Both operations report which tasks had a reference removed instead of changing them silently
+- [x] #4 Completing a task never removes references to it from other tasks
+- [x] #5 The cleanup lives in core and applies to every surface that archives or demotes, with no per-surface duplication
+- [x] #6 A regression test reproduces the misbinding end to end: reference the task, archive or demote it, allocate the freed ID to a new task, and assert no dependent silently resolves to the new task
 <!-- AC:END -->
 
 ## Definition of Done
 <!-- DOD:BEGIN -->
-- [ ] #1 bunx tsc --noEmit passes when TypeScript touched
-- [ ] #2 bun run check . passes when formatting/linting touched
-- [ ] #3 bun test (or scoped test) passes
+- [x] #1 bunx tsc --noEmit passes when TypeScript touched
+- [x] #2 bun run check . passes when formatting/linting touched
+- [x] #3 bun test (or scoped test) passes
 <!-- DOD:END -->
+
+## Implementation Plan
+
+<!-- SECTION:PLAN:BEGIN -->
+1. Generalize the existing archive sanitizer in core (sanitizeArchivedTaskLinks) into one vacated-id cleanup that scans the active working copy AND the completed corpus for dependencies/references naming the id, and returns the sanitized records plus the ids that changed.
+2. Write active dependents through the existing writeTasksBulk path (content-store batching preserved) and completed dependents through fs.saveTask (filePath is preserved, so it rewrites in place) - completed records must not go through updateTask, which would treat them as new and fire the onStatusChange callback.
+3. archiveTask: compute the cleanup before locking, then hold withTaskLocks over the archived task plus every dependent (active and completed) across the move and the writes, exactly as archive does today. Return { success, cleanedTaskIds } instead of a bare boolean.
+4. demoteTask: same shape - compute cleanup, hold withTaskLocks over the task plus dependents around fs.demoteTask (which takes the create lock inside; task-lock-then-create-lock order matches the existing demote paths). Return { success, cleanedTaskIds }.
+5. demoteTaskWithUpdates (the 'task edit -s Draft' demotion) runs the same shared cleanup inside its lock span so no surface can demote without it.
+6. completeTask stays untouched: a completed dependency is meaningful for readiness.
+7. Surfaces report the result from core, no per-surface cleanup: CLI archive/demote print one terse line, TUI appends to its existing transient footer, MCP adds one result line, the web DELETE/demote endpoints return the cleaned ids and App.tsx reuses the existing SuccessToast flow.
+8. Tests: end-to-end misbinding regression (reference, archive/demote, allocate the freed id to a new task, assert the dependent does not resolve to it), completed-corpus cleanup, demote cleanup, report output, and complete NOT cleaning. Update the existing dependency test that asserts the completed corpus is left alone.
+9. Gates: bunx tsc --noEmit, bun run check ., bun run test.
+<!-- SECTION:PLAN:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+Core: replaced the archive-only sanitizer with one shared cleanup for any operation that vacates a task ID.
+
+- collectVacatedIdCleanup(id) scans the active working copy AND the completed corpus for dependencies/references naming the ID and returns the sanitized records per corpus; writeVacatedIdCleanup writes them and returns the changed IDs plus file paths. sanitizeArchivedTaskLinks was renamed sanitizeVacatedTaskLinks and is now reached only through these two.
+- Active dependents keep going through writeTasksBulk (content-store batching, updatedDate handling unchanged). Completed dependents are rewritten in place with fs.saveTask (filePath is preserved) instead of updateTask: updateTask looks the record up in the active corpus, would not find it, and would treat the write as a brand-new task whose status changed, firing the onStatusChange callback. The in-process ContentStore is refreshed with transitionTask(id, updated), the same call completion uses.
+- archiveTask and demoteTask now return { success, cleanedTaskIds } instead of a bare boolean. demoteTaskWithUpdates (the 'task edit -s Draft' demotion) runs the same cleanup, so no surface can demote without it.
+- completeTask is untouched: a completed dependency stays resolvable and readiness needs it.
+
+Locking: the cleanup set is computed before the lock, then archiveTask, demoteTask and demoteTaskWithUpdates all hold fs.withTaskLocks over the vacated task plus every dependent (active and completed) for the whole move+write span. withTaskLocks sorts by ID, and the create lock is always taken inside the task locks, so ordering matches every other multi-file mutation and cannot deadlock. commitWrittenFile gained an optional trailing list of also-written paths so the demote commit covers the cleaned files, exactly as the archive commit already did.
+
+Surfaces only display: formatDependencyCleanupMessage in utils/dependency-graph.ts is the single wording ('Removed references to TASK-5 from TASK-2, TASK-3'). CLI archive/demote print it as a second line; the TUI board and task viewer show it in the existing transient footer via formatTaskArchivedMessage; MCP adds it as a summary line above the task body; the web DELETE/demote endpoints return cleanedTaskIds and App.tsx shows it through the existing SuccessToast flow (archive directly, demote via a new onDependencyCleanup prop on TaskDetailsModal).
+
+Deliberate boundaries: drafts are not scanned (they are neither corpus, and an existing test pins that archive leaves them alone); parentTaskId is not rewritten (existing behavior); demote removes references instead of rewriting them to DRAFT-N, per the task decision; ID recycling is unchanged. 'backlog task edit <id> -s Draft' performs the cleanup but prints only 'Updated task DRAFT-N' - the cleanup report rides on the dedicated archive/demote commands, because threading it through the generic edit command would change editTaskOrDraft/updateTaskFromInput return shapes across CLI, server and MCP.
+<!-- SECTION:NOTES:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+Archiving or demoting a task now removes every stored reference to the ID it vacates, across the active working copy and the completed corpus, through one cleanup in core that both operations and every surface inherit. Both report the records they changed instead of doing it silently; completing a task still changes nothing, because a completed dependency stays resolvable.
+
+Verified with src/test/vacated-task-references.test.ts: the end-to-end misbinding regression references a task, archives (and separately demotes) it, lets the allocator hand the freed ID to a new task, and asserts the dependent resolves to nothing rather than to the unrelated task - checked through the dependency graph, not just the stored list. It also covers completed-corpus references, the edit-to-Draft demotion path, the CLI report lines for archive and demote (including staying quiet when nothing referenced the task), and complete leaving references intact. Existing tests in dependency.test.ts and references.test.ts that pinned the completed corpus as untouched were updated to the corrected behavior. bunx tsc --noEmit, bun run check ., and the full bun run test suite (2812 pass, 8 skip, 0 fail) are green.
+<!-- SECTION:FINAL_SUMMARY:END -->

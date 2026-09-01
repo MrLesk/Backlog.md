@@ -26,6 +26,7 @@ import {
 	type Task,
 	type TaskSearchResult,
 } from '../types';
+import { formatDependencyCleanupMessage } from '../utils/dependency-graph';
 import { ApiError, apiClient } from './lib/api';
 import { type TaskDetail, taskDependencyGraph } from '../core/task-detail';
 import type { DuplicateRepairPlan } from '../core/duplicate-task-repair';
@@ -200,6 +201,7 @@ function AppContent() {
   const [archivedMilestones, setArchivedMilestones] = useState<Milestone[]>([]);
   const [showSuccessToast, setShowSuccessToast] = useState(false);
   const [taskConfirmation, setTaskConfirmation] = useState<{task: Task, isDraft: boolean} | null>(null);
+  const [dependencyCleanupNotice, setDependencyCleanupNotice] = useState<string | null>(null);
   
   // Initialization state
   const [isInitialized, setIsInitialized] = useState<boolean | null>(null);
@@ -820,11 +822,23 @@ function AppContent() {
     await refreshData();
   };
 
+  // Archiving and demoting vacate the task ID, so any dependent that referenced it was changed
+  // too. Report that the same way a created task is confirmed instead of changing files silently.
+  const reportDependencyCleanup = (taskId: string, cleanedTaskIds: string[]) => {
+    const message = formatDependencyCleanupMessage(taskId, cleanedTaskIds);
+    if (!message) return;
+    setDependencyCleanupNotice(message);
+    setTimeout(() => {
+      setDependencyCleanupNotice(null);
+    }, 4000);
+  };
+
   const handleArchiveTask = async (taskId: string) => {
     try {
-      await apiClient.archiveTask(taskId);
+      const { cleanedTaskIds } = await apiClient.archiveTask(taskId);
       handleCloseModal();
       await refreshData();
+      reportDependencyCleanup(taskId, cleanedTaskIds);
     } catch (error) {
       console.error('Failed to archive task:', error);
     }
@@ -993,6 +1007,7 @@ function AppContent() {
         onSaved={refreshData}
         onSubmit={handleSubmitTask}
         onArchive={editingTask ? () => handleArchiveTask(editingTask.id) : undefined}
+        onDependencyCleanup={reportDependencyCleanup}
         availableStatuses={isDraftMode ? ['Draft', ...statuses] : statuses}
         availableTasks={tasks}
         onNavigateToTask={handleEditTask}
@@ -1007,6 +1022,13 @@ function AppContent() {
         defaultAssignee={config?.defaultAssignee}
         dateFormat={config?.dateFormat}
       />
+
+      {dependencyCleanupNotice && (
+        <SuccessToast
+          message={dependencyCleanupNotice}
+          onDismiss={() => setDependencyCleanupNotice(null)}
+        />
+      )}
 
       {/* Task Creation Confirmation Toast */}
       {taskConfirmation && (

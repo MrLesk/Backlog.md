@@ -28,6 +28,7 @@ interface Props {
   onSaved?: () => Promise<void> | void; // refresh callback
   onSubmit?: (taskData: Partial<Task>) => Promise<void>; // For creating new tasks
   onArchive?: () => Promise<void> | void; // For archiving tasks
+  onDependencyCleanup?: (taskId: string, cleanedTaskIds: string[]) => void; // Reports records that lost a reference
   availableStatuses?: string[]; // Available statuses for new tasks
   availableTasks?: Task[]; // Shared task corpus for dependency selection
   onNavigateToTask?: (task: Task) => void; // Opens another task, preserving close/back context
@@ -196,6 +197,7 @@ export const TaskDetailsModal: React.FC<Props> = ({
   onSaved,
   onSubmit,
   onArchive,
+  onDependencyCleanup,
   availableStatuses = EMPTY_STATUSES,
   availableTasks = EMPTY_TASKS,
   onNavigateToTask,
@@ -1098,8 +1100,9 @@ export const TaskDetailsModal: React.FC<Props> = ({
 		setDemoting(true);
 		setError(null);
 		try {
-			await apiClient.demoteTask(task.id);
+			const { cleanedTaskIds } = await apiClient.demoteTask(task.id);
 			if (!isCurrentRequest()) return;
+			onDependencyCleanup?.(task.id, cleanedTaskIds);
 			try {
 				window.dispatchEvent(new window.Event("drafts-updated"));
 				if (onSaved) await onSaved();

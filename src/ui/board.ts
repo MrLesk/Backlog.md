@@ -32,7 +32,11 @@ import { openTaskComposer, type TaskComposerOptions } from "./components/task-co
 import { formatFooterContent, getBoardFooterContent } from "./footer-content.ts";
 import { formatProjectBadge } from "./project.ts";
 import { getStatusIcon } from "./status-icon.ts";
-import { completeTaskFromTui, formatTaskCompletionBlockedMessage } from "./task-lifecycle.ts";
+import {
+	completeTaskFromTui,
+	formatTaskArchivedMessage,
+	formatTaskCompletionBlockedMessage,
+} from "./task-lifecycle.ts";
 import { formatTaskTypeBadge } from "./task-type.ts";
 import {
 	createTaskPopup,
@@ -1608,11 +1612,11 @@ export async function renderBoardTui(
 					try {
 						const core = await getCore();
 						const config = await core.fs.loadConfig();
-						const success = await core.archiveTask(task.id, config?.autoCommit ?? false);
+						const { success, cleanedTaskIds } = await core.archiveTask(task.id, config?.autoCommit ?? false);
 
 						if (success) {
 							currentTasks = currentTasks.filter((t) => t.id !== task.id);
-							showTransientFooter(` {green-fg}Archived ${task.id}{/}`);
+							showTransientFooter(` {green-fg}${formatTaskArchivedMessage(task.id, cleanedTaskIds)}{/}`);
 							closeOpenPopup();
 							renderView();
 						} else {
@@ -2122,11 +2126,11 @@ export async function renderBoardTui(
 				try {
 					const core = await getCore();
 					const config = await core.fs.loadConfig();
-					const success = await core.archiveTask(task.id, config?.autoCommit ?? false);
+					const { success, cleanedTaskIds } = await core.archiveTask(task.id, config?.autoCommit ?? false);
 
 					if (success) {
 						currentTasks = currentTasks.filter((t) => t.id !== task.id);
-						showTransientFooter(` {green-fg}Archived ${task.id}{/}`);
+						showTransientFooter(` {green-fg}${formatTaskArchivedMessage(task.id, cleanedTaskIds)}{/}`);
 						renderView();
 					} else {
 						showTransientFooter(` {red-fg}Failed to archive ${task.id}{/}`);

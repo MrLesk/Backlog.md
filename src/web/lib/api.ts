@@ -35,6 +35,12 @@ export interface MoveTasksResult {
 	failures: Array<{ taskId: string; reason: string }>;
 }
 
+/** Archiving and demoting vacate a task ID: `cleanedTaskIds` names the records that lost a reference to it. */
+export interface TaskVacancyResponse {
+	success: boolean;
+	cleanedTaskIds: string[];
+}
+
 export type TaskUpdateRequest = Omit<Partial<Task>, "milestone" | "dueDate" | "project"> & {
 	milestone?: string | null;
 	dueDate?: string | null;
@@ -323,8 +329,8 @@ export class ApiClient {
 		});
 	}
 
-	async archiveTask(id: string): Promise<void> {
-		await this.fetchWithRetry(`${API_BASE}/tasks/${id}`, {
+	async archiveTask(id: string): Promise<TaskVacancyResponse> {
+		return this.fetchJson<TaskVacancyResponse>(`${API_BASE}/tasks/${id}`, {
 			method: "DELETE",
 		});
 	}
@@ -335,10 +341,11 @@ export class ApiClient {
 		});
 	}
 
-	async demoteTask(id: string): Promise<void> {
-		await this.fetchWithoutRetry(`${API_BASE}/tasks/${encodeURIComponent(id)}/demote`, {
+	async demoteTask(id: string): Promise<TaskVacancyResponse> {
+		const response = await this.fetchWithoutRetry(`${API_BASE}/tasks/${encodeURIComponent(id)}/demote`, {
 			method: "POST",
 		});
+		return response.json();
 	}
 
 	async getCleanupPreview(age: number): Promise<{

@@ -93,7 +93,7 @@ describe("draft/task lifecycle auto-commit scoping", () => {
 		await seedUnrelatedDirtyState();
 
 		const ok = await core.demoteTask(task.id, true);
-		expect(ok).toBe(true);
+		expect(ok.success).toBe(true);
 
 		expect(await (await core.getGitOps()).getLastCommitMessage()).toContain("backlog: Demote task");
 		const committed = await committedFilesOfLastCommit();

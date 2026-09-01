@@ -144,6 +144,7 @@ describe("Web task demotion", () => {
 		const originalDemoteTask = apiClient.demoteTask.bind(apiClient);
 		apiClient.demoteTask = async () => {
 			apiCalls += 1;
+			return { success: true, cleanedTaskIds: [] };
 		};
 		window.confirm = () => false;
 
@@ -162,6 +163,7 @@ describe("Web task demotion", () => {
 		const originalDemoteTask = apiClient.demoteTask.bind(apiClient);
 		apiClient.demoteTask = async (id) => {
 			events.push(`api:${id}`);
+			return { success: true, cleanedTaskIds: [] };
 		};
 		window.confirm = () => true;
 		window.addEventListener("drafts-updated", () => events.push("drafts"), { once: true });
@@ -221,6 +223,7 @@ describe("Web task demotion", () => {
 		apiClient.demoteTask = async () => {
 			markStarted?.();
 			await requestRelease;
+			return { success: true, cleanedTaskIds: [] };
 		};
 		window.confirm = () => true;
 		const onDraftsUpdated = () => draftEvents++;

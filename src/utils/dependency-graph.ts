@@ -325,3 +325,16 @@ export function buildDependencyTree(graph: DependencyGraph, direction: Dependenc
 	}
 	return roots;
 }
+
+/**
+ * One line naming the records that lost a stored reference when a task ID was vacated by
+ * archiving or demoting. Every surface says it in the same words, and says nothing when the
+ * operation changed no other record.
+ */
+export function formatDependencyCleanupMessage(
+	vacatedTaskId: string,
+	cleanedTaskIds: readonly string[],
+): string | null {
+	if (cleanedTaskIds.length === 0) return null;
+	return `Removed references to ${vacatedTaskId} from ${cleanedTaskIds.join(", ")}`;
+}

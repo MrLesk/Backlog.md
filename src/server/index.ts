@@ -1192,11 +1192,11 @@ export class BacklogServer {
 
 	private async handleDeleteTask(taskId: string): Promise<Response> {
 		try {
-			const success = await this.core.archiveTask(taskId);
+			const { success, cleanedTaskIds } = await this.core.archiveTask(taskId);
 			if (!success) {
 				return Response.json({ error: "Task not found" }, { status: 404 });
 			}
-			return Response.json({ success: true });
+			return Response.json({ success: true, cleanedTaskIds });
 		} catch (error) {
 			if (isAmbiguousTaskIdError(error)) {
 				return Response.json({ error: error.message }, { status: 409 });
@@ -1226,13 +1226,13 @@ export class BacklogServer {
 
 	private async handleDemoteTask(taskId: string): Promise<Response> {
 		try {
-			const success = await this.core.demoteTask(taskId);
+			const { success, cleanedTaskIds } = await this.core.demoteTask(taskId);
 			if (!success) {
 				return Response.json({ error: "Task not found" }, { status: 404 });
 			}
 
 			this.broadcastDataUpdated();
-			return Response.json({ success: true });
+			return Response.json({ success: true, cleanedTaskIds });
 		} catch (error) {
 			const message = error instanceof Error ? error.message : "Failed to demote task";
 			const conflict = isAmbiguousTaskIdError(error) || isCreateLockError(error) || isTaskLockError(error);
