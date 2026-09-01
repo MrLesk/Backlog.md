@@ -1,11 +1,11 @@
 ---
 id: BACK-672
 title: Compute task readiness once in core and carry isReady on task lists
-status: In Progress
+status: Done
 assignee:
   - '@claude'
 created_date: '2026-09-01 17:04'
-updated_date: '2026-09-01 19:51'
+updated_date: '2026-09-01 20:09'
 labels: []
 dependencies: []
 ordinal: 304000
