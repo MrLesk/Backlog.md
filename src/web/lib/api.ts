@@ -35,6 +35,42 @@ export interface MoveTasksResult {
 	failures: Array<{ taskId: string; reason: string }>;
 }
 
+/**
+ * Read the marker the server forwards when a mutation failed after the record had already moved.
+ * The view converges on what happened instead of offering a retry of a move that already ran.
+ */
+function readMovedFailureData(error: unknown): Record<string, unknown> | null {
+	if (
+		!(error instanceof ApiError) ||
+		error.status === undefined ||
+		error.status < 500 ||
+		typeof error.data !== "object" ||
+		error.data === null
+	) {
+		return null;
+	}
+	return error.data as Record<string, unknown>;
+}
+
+export function readMovedFailureState(
+	error: unknown,
+	key: "archiveState" | "demotionState",
+): "moved" | "partial" | null {
+	const state = readMovedFailureData(error)?.[key];
+	return state === "moved" || state === "partial" ? state : null;
+}
+
+export function readDemotionFailureCause(error: unknown): "cleanup" | "commit" | null {
+	const cause = readMovedFailureData(error)?.demotionFailureCause;
+	return cause === "cleanup" || cause === "commit" ? cause : null;
+}
+
+/** Archiving and demoting vacate a task ID: `cleanedTaskIds` names the records that lost a reference to it. */
+export interface TaskVacancyResponse {
+	success: boolean;
+	cleanedTaskIds: string[];
+}
+
 export type TaskUpdateRequest = Omit<Partial<Task>, "milestone" | "dueDate" | "project"> & {
 	milestone?: string | null;
 	dueDate?: string | null;
@@ -323,10 +359,13 @@ export class ApiClient {
 		});
 	}
 
-	async archiveTask(id: string): Promise<void> {
-		await this.fetchWithRetry(`${API_BASE}/tasks/${id}`, {
+	// Not retried, for the same reason demote is not: the second attempt would target a task the
+	// first attempt already archived, and its "not found" would replace the real outcome.
+	async archiveTask(id: string): Promise<TaskVacancyResponse> {
+		const response = await this.fetchWithoutRetry(`${API_BASE}/tasks/${id}`, {
 			method: "DELETE",
 		});
+		return response.json();
 	}
 
 	async completeTask(id: string): Promise<void> {
@@ -335,10 +374,11 @@ export class ApiClient {
 		});
 	}
 
-	async demoteTask(id: string): Promise<void> {
-		await this.fetchWithoutRetry(`${API_BASE}/tasks/${encodeURIComponent(id)}/demote`, {
+	async demoteTask(id: string): Promise<TaskVacancyResponse> {
+		const response = await this.fetchWithoutRetry(`${API_BASE}/tasks/${encodeURIComponent(id)}/demote`, {
 			method: "POST",
 		});
+		return response.json();
 	}
 
 	async getCleanupPreview(age: number): Promise<{

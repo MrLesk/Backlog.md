@@ -463,6 +463,38 @@ export class ContentStore {
 		this.publishTaskChange();
 	}
 
+	/**
+	 * Republish one record that stays in the completed corpus, keyed by its file path.
+	 *
+	 * Not {@link transitionTask}: that one clears an identity out of both corpora, which is right
+	 * for a record that just left the active one, but here it would also evict a *different* file
+	 * claiming the same ID. A contested identity must stay contested - dissolving it would let a
+	 * later read report one of the claimants as simply missing - so this touches only the entries
+	 * holding this path, including the active copy the shared save publication writes for any file.
+	 */
+	refreshCompletedTask(task: Task): void {
+		if (!this.canPublishContent()) return;
+		const filePath = task.filePath;
+		if (!filePath) return;
+
+		const activeTasks = this.activeTasks.filter((candidate) => candidate.filePath !== filePath);
+		const completedTasks = this.completedTasks.filter((candidate) => candidate.filePath !== filePath);
+		completedTasks.push({ ...task, source: "completed" });
+
+		const normalizedId = normalizeTaskId(task.id);
+		this.nextContentItemGeneration("tasks", normalizedId);
+		this.nextContentItemVersion("tasks", normalizedId, this.currentRoot());
+		this.activeTasks = activeTasks;
+		this.completedTasks = completedTasks;
+		if (this.taskIdentityIndex) {
+			this.taskIdentityIndex = this.taskIdentityIndex.withWorkingCopyCorpus(this.activeTasks, this.completedTasks);
+			this.replaceVisibleTasks(this.taskIdentityIndex.getTasks(false));
+		} else {
+			this.replaceVisibleTasks(this.activeTasks);
+		}
+		this.publishTaskChange();
+	}
+
 	getDocuments(): Document[] {
 		if (!this.initialized) {
 			throw new Error("ContentStore not initialized. Call ensureInitialized() first.");

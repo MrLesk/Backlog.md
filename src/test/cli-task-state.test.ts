@@ -46,7 +46,7 @@ describe("CLI Integration", () => {
 			);
 
 			// Archive the task
-			const success = await core.archiveTask("task-1", false);
+			const { success } = await core.archiveTask("task-1", false);
 			expect(success).toBe(true);
 
 			// Verify task is no longer in tasks directory
@@ -62,7 +62,7 @@ describe("CLI Integration", () => {
 		it("should handle archiving non-existent task", async () => {
 			const core = new Core(TEST_DIR);
 
-			const success = await core.archiveTask("task-999", false);
+			const { success } = await core.archiveTask("task-999", false);
 			expect(success).toBe(false);
 		});
 
@@ -173,7 +173,7 @@ describe("CLI Integration", () => {
 			);
 
 			// Demote the task
-			const success = await core.demoteTask("task-2", false);
+			const { success } = await core.demoteTask("task-2", false);
 			expect(success).toBe(true);
 
 			// Verify task is no longer in tasks directory
@@ -260,7 +260,7 @@ describe("CLI Integration", () => {
 		it("should handle demoting non-existent task", async () => {
 			const core = new Core(TEST_DIR);
 
-			const success = await core.demoteTask("task-999", false);
+			const { success } = await core.demoteTask("task-999", false);
 			expect(success).toBe(false);
 		});
 
@@ -289,7 +289,7 @@ describe("CLI Integration", () => {
 				false,
 			);
 
-			const success = await core.archiveTask("task-5", true); // autoCommit = true
+			const { success } = await core.archiveTask("task-5", true); // autoCommit = true
 			expect(success).toBe(true);
 
 			// Verify operation completed successfully

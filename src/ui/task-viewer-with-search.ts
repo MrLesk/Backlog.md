@@ -56,7 +56,11 @@ import { formatHeading } from "./heading.ts";
 import { createLoadingScreen } from "./loading.ts";
 import { formatProjectBadge } from "./project.ts";
 import { formatStatusWithIcon, getStatusColor, getStatusIcon, wrapStatusColor } from "./status-icon.ts";
-import { completeTaskFromTui, formatTaskCompletionBlockedMessage } from "./task-lifecycle.ts";
+import {
+	completeTaskFromTui,
+	formatTaskArchivedMessage,
+	formatTaskCompletionBlockedMessage,
+} from "./task-lifecycle.ts";
 import { formatTaskTypeBadge } from "./task-type.ts";
 import { addScrollKeys, createScreen, formatTuiTitle } from "./tui.ts";
 
@@ -1372,13 +1376,8 @@ export async function viewTaskEnhanced(
 
 		try {
 			const config = action === "archive" ? await core.fs.loadConfig() : null;
-			const result =
-				action === "complete"
-					? await completeTaskFromTui(core, task)
-					: {
-							success: await core.archiveTask(task.id, config?.autoCommit ?? false),
-							reason: "failed" as const,
-						};
+			const archived = action === "archive" ? await core.archiveTask(task.id, config?.autoCommit ?? false) : undefined;
+			const result = archived ? { ...archived, reason: "failed" as const } : await completeTaskFromTui(core, task);
 
 			if (result.success) {
 				// The record just left the active corpus, so drop it from the readiness graph. A
@@ -1389,8 +1388,8 @@ export async function viewTaskEnhanced(
 					readinessCompletedTasks.push(task);
 				}
 				removeTaskFromCurrentView(task.id);
-				const label = action === "complete" ? "Completed" : "Archived";
-				showTransientHelp(` {green-fg}${label} ${task.id}{/}`);
+				const message = archived ? formatTaskArchivedMessage(task.id, archived.cleanedTaskIds) : `Completed ${task.id}`;
+				showTransientHelp(` {green-fg}${message}{/}`);
 			} else if (action === "complete" && result.reason === "not-terminal") {
 				showTransientHelp(` {red-fg}${formatTaskCompletionBlockedMessage(task.id, result.terminalStatus)}{/}`);
 			} else {

@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { isLocalEditableTask, type AcceptanceCriterion, type Milestone, type Task, type TaskComment } from "../../types";
 import { type TaskDetail, taskDependencyGraph, taskReadiness } from "../../core/task-detail";
 import Modal from "./Modal";
-import { ApiError, apiClient, NetworkError } from "../lib/api";
+import { apiClient, NetworkError, readDemotionFailureCause, readMovedFailureState } from "../lib/api";
 import { useTheme } from "../contexts/ThemeContext";
 import MDEditor from "@uiw/react-md-editor";
 import AcceptanceCriteriaEditor from "./AcceptanceCriteriaEditor";
@@ -27,6 +27,7 @@ interface Props {
   onSaved?: () => Promise<void> | void; // refresh callback
   onSubmit?: (taskData: Partial<Task>) => Promise<void>; // For creating new tasks
   onArchive?: () => Promise<void> | void; // For archiving tasks
+  onDependencyCleanup?: (taskId: string, cleanedTaskIds: string[]) => void; // Reports records that lost a reference
   availableStatuses?: string[]; // Available statuses for new tasks
   availableTasks?: Task[]; // Shared task corpus for dependency selection
   onNavigateToTask?: (task: Task) => void; // Opens another task, preserving close/back context
@@ -91,20 +92,6 @@ const EMPTY_TASKS: Task[] = [];
 const containsCommentDelimiterLine = (value: string): boolean => /^\s*---\s*$/m.test(value.replace(/\r\n/g, "\n"));
 
 const areJsonEqual = (first: unknown, second: unknown): boolean => JSON.stringify(first) === JSON.stringify(second);
-
-const getDemotionFailureState = (error: unknown): "moved" | "partial" | null => {
-	if (
-		!(error instanceof ApiError) ||
-		error.status === undefined ||
-		error.status < 500 ||
-		typeof error.data !== "object" ||
-		error.data === null
-	) {
-		return null;
-	}
-	const state = (error.data as { demotionState?: unknown }).demotionState;
-	return state === "moved" || state === "partial" ? state : null;
-};
 
 const isEditableKeyboardTarget = (target: EventTarget | null): boolean =>
   target instanceof Element &&
@@ -195,6 +182,7 @@ export const TaskDetailsModal: React.FC<Props> = ({
   onSaved,
   onSubmit,
   onArchive,
+  onDependencyCleanup,
   availableStatuses = EMPTY_STATUSES,
   availableTasks = EMPTY_TASKS,
   onNavigateToTask,
@@ -1066,8 +1054,9 @@ export const TaskDetailsModal: React.FC<Props> = ({
 		setDemoting(true);
 		setError(null);
 		try {
-			await apiClient.demoteTask(task.id);
+			const { cleanedTaskIds } = await apiClient.demoteTask(task.id);
 			if (!isCurrentRequest()) return;
+			onDependencyCleanup?.(task.id, cleanedTaskIds);
 			try {
 				window.dispatchEvent(new window.Event("drafts-updated"));
 				if (onSaved) await onSaved();
@@ -1081,11 +1070,16 @@ export const TaskDetailsModal: React.FC<Props> = ({
 			onClose();
 		} catch (err) {
 			if (!isCurrentRequest()) return;
-			const demotionFailureState = getDemotionFailureState(err);
+			const demotionFailureState = readMovedFailureState(err, "demotionState");
 			if (demotionFailureState) {
+				const demotionFailureCause = readDemotionFailureCause(err);
 				const message =
 					demotionFailureState === "moved"
-						? "The task was moved to drafts, but recording the Git commit failed. The view was refreshed; verify the draft before retrying."
+						? demotionFailureCause === "cleanup"
+							? "The task was moved to drafts, but removing references from dependent tasks failed. Some dependent tasks may still reference it. The view was refreshed; check those tasks before retrying."
+							: demotionFailureCause === "commit"
+								? "The task was moved to drafts, but recording the Git commit failed. The view was refreshed; verify the draft before retrying."
+								: "The task was moved to drafts, but a later step failed. The view was refreshed; verify the draft and dependent tasks before retrying."
 						: "The demotion encountered a filesystem failure and may have left both task and draft copies. The view was refreshed; inspect them before retrying.";
 				await finishWithRefreshWarning(message);
 				return;

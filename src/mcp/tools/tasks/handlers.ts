@@ -1,5 +1,6 @@
 import { basename, join } from "node:path";
 import { DEFAULT_STATUSES } from "../../../constants/index.ts";
+import type { VacatedTaskResult } from "../../../core/backlog.ts";
 import { findLocalDuplicateTaskIds } from "../../../core/duplicate-task-repair.ts";
 import { loadTaskDetail, loadTaskListItems } from "../../../core/task-detail.ts";
 import { isCreateLockError, isTaskLockError } from "../../../file-system/operations.ts";
@@ -12,6 +13,7 @@ import {
 } from "../../../types/index.ts";
 import type { TaskEditArgs, TaskEditRequest } from "../../../types/task-edit-args.ts";
 import { formatAcceptanceCriteriaSummarySuffix } from "../../../ui/acceptance-criteria-progress.ts";
+import { formatDependencyCleanupMessage } from "../../../utils/dependency-graph.ts";
 import { formatDuplicateTaskIdWarning } from "../../../utils/duplicate-detection.ts";
 import {
 	createMilestoneFilterValueResolver,
@@ -493,13 +495,17 @@ export class TaskHandlers {
 			);
 		}
 
-		const success = await this.core.archiveTask(task.id);
+		const { success, cleanedTaskIds } = await this.core.archiveTask(task.id);
 		if (!success) {
 			throw new BacklogToolError(`Failed to archive task: ${args.id}`, "OPERATION_FAILED");
 		}
 
 		const refreshed = (await this.core.getTask(task.id)) ?? task;
-		return await formatTaskCallResult(await loadTaskDetail(this.core, refreshed));
+		const cleanupMessage = formatDependencyCleanupMessage(task.id, cleanedTaskIds);
+		return await formatTaskCallResult(
+			await loadTaskDetail(this.core, refreshed),
+			cleanupMessage ? [`${cleanupMessage}.`] : undefined,
+		);
 	}
 
 	async completeTask(args: { id: string }): Promise<CallToolResult> {
@@ -533,21 +539,25 @@ export class TaskHandlers {
 
 	async demoteTask(args: { id: string }): Promise<CallToolResult> {
 		const task = await this.loadTaskOrThrow(args.id);
-		let success: boolean;
+		let demotion: VacatedTaskResult;
 		try {
-			success = await this.core.demoteTask(task.id, false);
+			demotion = await this.core.demoteTask(task.id, false);
 		} catch (error) {
 			if (isCreateLockError(error)) {
 				throw new BacklogToolError(error.message, "OPERATION_FAILED");
 			}
 			throw error;
 		}
-		if (!success) {
+		if (!demotion.success) {
 			throw new BacklogToolError(`Failed to demote task: ${args.id}`, "OPERATION_FAILED");
 		}
 
 		const refreshed = (await this.core.getTask(task.id)) ?? task;
-		return await formatTaskCallResult(await loadTaskDetail(this.core, refreshed));
+		const cleanupMessage = formatDependencyCleanupMessage(task.id, demotion.cleanedTaskIds);
+		return await formatTaskCallResult(
+			await loadTaskDetail(this.core, refreshed),
+			cleanupMessage ? [`${cleanupMessage}.`] : undefined,
+		);
 	}
 
 	async editTask(args: TaskEditRequest): Promise<CallToolResult> {
@@ -561,8 +571,12 @@ export class TaskHandlers {
 			if (typeof updateInput.milestone === "string") {
 				updateInput.milestone = await this.resolveMilestoneInput(updateInput.milestone);
 			}
-			const updatedTask = await this.core.editTaskOrDraft(args.id, updateInput);
-			return await formatTaskCallResult(await loadTaskDetail(this.core, updatedTask));
+			const { task: updatedTask, cleanedTaskIds } = await this.core.editTaskOrDraft(args.id, updateInput);
+			const cleanupMessage = formatDependencyCleanupMessage(args.id, cleanedTaskIds);
+			return await formatTaskCallResult(
+				await loadTaskDetail(this.core, updatedTask),
+				cleanupMessage ? [`${cleanupMessage}.`] : undefined,
+			);
 		} catch (error) {
 			if (isTaskLockError(error)) {
 				throw new BacklogToolError(error.message, "OPERATION_FAILED");

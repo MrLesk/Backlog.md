@@ -77,6 +77,7 @@ import { scrollableViewer } from "./ui/tui.ts";
 import { type AgentSelectionValue, processAgentSelection } from "./utils/agent-selection.ts";
 import { normalizeProjectBacklogDirectory } from "./utils/backlog-directory.ts";
 import { launchBrowser } from "./utils/browser-launch.ts";
+import { formatDependencyCleanupMessage } from "./utils/dependency-graph.ts";
 import {
 	type ContentIdentityReport,
 	type DraftIdentityFindings,
@@ -3866,9 +3867,13 @@ addHelpSchema(taskCmd.command("archive <taskId>"), {
 			return;
 		}
 
-		const success = await core.archiveTask(task.id, undefined, { includeCrossBranch: false });
+		const { success, cleanedTaskIds } = await core.archiveTask(task.id, undefined, { includeCrossBranch: false });
 		if (success) {
 			console.log(`Archived task ${task.id}`);
+			const cleanupMessage = formatDependencyCleanupMessage(task.id, cleanedTaskIds);
+			if (cleanupMessage) {
+				console.log(cleanupMessage);
+			}
 		} else {
 			console.error(`Failed to archive task: ${task.id}`);
 			process.exitCode = 1;
@@ -3944,8 +3949,13 @@ taskCmd
 		const core = new Core(cwd);
 		try {
 			const task = await core.loadTaskById(taskId, { includeCrossBranch: false });
-			if (task && (await core.demoteTask(task.id, undefined, { includeCrossBranch: false }))) {
+			const demotion = task ? await core.demoteTask(task.id, undefined, { includeCrossBranch: false }) : null;
+			if (task && demotion?.success) {
 				console.log(`Demoted task ${task.id}`);
+				const cleanupMessage = formatDependencyCleanupMessage(task.id, demotion.cleanedTaskIds);
+				if (cleanupMessage) {
+					console.log(cleanupMessage);
+				}
 			} else {
 				console.error(`Task ${taskId} not found. ${LOCAL_TASK_LOOKUP_HINT}`);
 				process.exitCode = 1;

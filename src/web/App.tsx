@@ -26,7 +26,8 @@ import {
 	type Task,
 	type TaskSearchResult,
 } from '../types';
-import { ApiError, apiClient } from './lib/api';
+import { formatDependencyCleanupMessage } from '../utils/dependency-graph';
+import { ApiError, apiClient, readMovedFailureState } from './lib/api';
 import type { TaskDetail } from '../core/task-detail';
 import type { DuplicateRepairPlan } from '../core/duplicate-task-repair';
 import { isValidTaskId } from '../utils/task-id';
@@ -247,6 +248,8 @@ function AppContent() {
   const [archivedMilestones, setArchivedMilestones] = useState<Milestone[]>([]);
   const [showSuccessToast, setShowSuccessToast] = useState(false);
   const [taskConfirmation, setTaskConfirmation] = useState<{task: Task, isDraft: boolean} | null>(null);
+  const [dependencyCleanupNotice, setDependencyCleanupNotice] = useState<string | null>(null);
+  const dependencyCleanupTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   
   // Initialization state
   const [isInitialized, setIsInitialized] = useState<boolean | null>(null);
@@ -868,13 +871,45 @@ function AppContent() {
     await refreshData();
   };
 
+  // Archiving and demoting vacate the task ID, so any dependent that referenced it was changed
+  // too. Report that the same way a created task is confirmed instead of changing files silently.
+  // The ID list arrives over the wire, so a response that omits it reports nothing rather than
+  // throwing in the middle of the flow that was about to close the dialog.
+  const reportDependencyCleanup = (taskId: string, cleanedTaskIds: string[] | undefined) => {
+    const message = formatDependencyCleanupMessage(taskId, cleanedTaskIds ?? []);
+    if (!message) return;
+    // A second cleanup within the display window must not inherit the first one's expiry, or the
+    // pending timeout clears a notice the reader has only just been shown.
+    if (dependencyCleanupTimer.current) clearTimeout(dependencyCleanupTimer.current);
+    setDependencyCleanupNotice(message);
+    dependencyCleanupTimer.current = setTimeout(() => {
+      dependencyCleanupTimer.current = null;
+      setDependencyCleanupNotice(null);
+    }, 4000);
+  };
+
   const handleArchiveTask = async (taskId: string) => {
     try {
-      await apiClient.archiveTask(taskId);
+      const { cleanedTaskIds } = await apiClient.archiveTask(taskId);
+      // Record what the archive changed before anything that can fail or be superseded, the way
+      // the demotion flow already does: other tasks were rewritten, and that is not the refresh's
+      // news to lose.
+      reportDependencyCleanup(taskId, cleanedTaskIds);
       handleCloseModal();
       await refreshData();
     } catch (error) {
       console.error('Failed to archive task:', error);
+      // The task reached the archive and something after it failed. Close and refresh so the view
+      // shows what happened, and say so: a dialog left open on an archived task invites a retry.
+      if (readMovedFailureState(error, 'archiveState')) {
+        handleCloseModal();
+        try {
+          window.alert('The task was archived, but cleanup failed and references may be stale. Check the tasks that referenced it before retrying.');
+        } catch {
+          // A blocked dialog must not take the refresh down with it.
+        }
+        await refreshData();
+      }
     }
   };
 
@@ -1041,6 +1076,7 @@ function AppContent() {
         onSaved={refreshData}
         onSubmit={handleSubmitTask}
         onArchive={editingTask ? () => handleArchiveTask(editingTask.id) : undefined}
+        onDependencyCleanup={reportDependencyCleanup}
         availableStatuses={isDraftMode ? ['Draft', ...statuses] : statuses}
         availableTasks={tasks}
         onNavigateToTask={handleEditTask}
@@ -1055,6 +1091,13 @@ function AppContent() {
         defaultAssignee={config?.defaultAssignee}
         dateFormat={config?.dateFormat}
       />
+
+      {dependencyCleanupNotice && (
+        <SuccessToast
+          message={dependencyCleanupNotice}
+          onDismiss={() => setDependencyCleanupNotice(null)}
+        />
+      )}
 
       {/* Task Creation Confirmation Toast */}
       {taskConfirmation && (

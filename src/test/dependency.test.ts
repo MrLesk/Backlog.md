@@ -222,7 +222,7 @@ describe("Task Dependencies", () => {
 		expect(loadedTask?.dependencies).toEqual([]);
 	});
 
-	test("should sanitize archived task dependencies on active tasks only", async () => {
+	test("should sanitize archived task dependencies across the working copy and the completed corpus", async () => {
 		const archivedTarget: Task = {
 			id: "task-1",
 			title: "Archive target",
@@ -253,7 +253,7 @@ describe("Task Dependencies", () => {
 			createdDate: "2024-01-01",
 			labels: [],
 			dependencies: ["task-1"],
-			description: "Completed task should stay unchanged",
+			description: "A completed record still resolves the ID, so it is cleaned too",
 		};
 
 		const childTask: Task = {
@@ -275,7 +275,8 @@ describe("Task Dependencies", () => {
 		await core.completeTask("task-3", false);
 
 		const archived = await core.archiveTask("task-1", false);
-		expect(archived).toBe(true);
+		expect(archived.success).toBe(true);
+		expect(archived.cleanedTaskIds).toEqual(["TASK-2", "TASK-4", "TASK-3"]);
 
 		const updatedActive = await core.filesystem.loadTask("task-2");
 		const updatedChild = await core.filesystem.loadTask("task-4");
@@ -285,7 +286,7 @@ describe("Task Dependencies", () => {
 		expect(updatedActive?.dependencies).toEqual([]);
 		expect(updatedChild?.dependencies).toEqual([]);
 		expect(updatedChild?.parentTaskId).toBe("TASK-1");
-		expect(completed?.dependencies).toEqual(["task-1"]);
+		expect(completed?.dependencies).toEqual([]);
 	});
 
 	test("should sanitize archive links when archiving by numeric id with custom task prefix", async () => {
@@ -306,7 +307,7 @@ describe("Task Dependencies", () => {
 		});
 
 		const archived = await core.archiveTask("1", false);
-		expect(archived).toBe(true);
+		expect(archived.success).toBe(true);
 
 		const updatedDependent = await core.filesystem.loadTask(dependentTask.id);
 		expect(updatedDependent?.dependencies).toEqual([]);
@@ -331,7 +332,7 @@ describe("Task Dependencies", () => {
 		const { task: predecessor } = await core.createTaskFromInput({ title: "Archived predecessor" });
 		// Keep an active task with a higher ID so the allocator does not reuse the archived ID.
 		const { task: edited } = await core.createTaskFromInput({ title: "Edited after archive" });
-		expect(await core.archiveTask(predecessor.id, false)).toBe(true);
+		expect((await core.archiveTask(predecessor.id, false)).success).toBe(true);
 
 		const { task: created } = await core.createTaskFromInput({
 			title: "Created after archive",
