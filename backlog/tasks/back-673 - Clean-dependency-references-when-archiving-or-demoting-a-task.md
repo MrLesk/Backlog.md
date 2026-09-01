@@ -5,7 +5,7 @@ status: In Progress
 assignee:
   - '@claude'
 created_date: '2026-09-01 17:11'
-updated_date: '2026-09-01 19:20'
+updated_date: '2026-09-01 19:53'
 labels: []
 dependencies: []
 ordinal: 305000
@@ -94,6 +94,10 @@ Residual window, plainly: a task that starts referencing the ID after the final 
 3. Archive notice ordering (src/web/App.tsx). handleArchiveTask records the notice immediately after the archive response, before handleCloseModal and refreshData, matching what the demote flow already does. The report no longer depends on the refresh completing.
 
 New src/test/web-dependency-cleanup-notice.test.tsx drives the real App through the task list and the details modal in JSDOM. Both tests fail on the pre-fix App.tsx (verified by stashing it): the first times out waiting for the notice while the refresh is held open, the second shows no notice at all once the first timer fires. The second test takes control of the 4000 ms timeout only, so it fires the first notice's expiry deterministically instead of waiting on wall-clock time.
+
+Follow-up found while fixing finding 3: reporting the notice before closing the modal exposed a robustness hole in the round-1 web code. cleanedTaskIds is destructured from the archive response, so a response that omits it (the deeplink test's generic mock returns an array) made formatDependencyCleanupMessage throw - previously harmless because it happened after the modal had closed and the refresh had run, but with the report moved first it wedged the dialog open and timed out the existing 'archives a routed task with a single history close' test, which then cascaded through every later JSDOM file in the process. reportDependencyCleanup now treats the list as wire data and reports nothing when it is absent. All 266 web tests pass in 6s.
+
+Gate results: bunx tsc --noEmit and bun run check . clean; bun run test 2819 pass / 8 skip / 1 fail, the one failure being 'BacklogServer statistics endpoint > reconciles a selected backlog root before reading its statistics', which passes in isolation and also flaked in an earlier round before any of these changes. Another run of the same tree failed a different single MCP test that likewise passes in isolation - the machine was running a second worktree's suite concurrently for part of this session.
 <!-- SECTION:NOTES:END -->
 
 ## Final Summary
