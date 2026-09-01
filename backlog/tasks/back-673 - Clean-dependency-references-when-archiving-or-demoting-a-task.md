@@ -1,11 +1,11 @@
 ---
 id: BACK-673
 title: Clean dependency references when archiving or demoting a task
-status: In Progress
+status: Done
 assignee:
   - '@codex'
 created_date: '2026-09-01 17:11'
-updated_date: '2026-09-01 21:56'
+updated_date: '2026-09-01 22:03'
 labels: []
 dependencies: []
 ordinal: 305000
