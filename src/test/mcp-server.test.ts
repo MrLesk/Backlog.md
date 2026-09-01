@@ -174,6 +174,30 @@ describe("McpServer bootstrap", () => {
 		);
 	});
 
+	it("task creation guide demonstrates a description that carries the why", () => {
+		TEST_DIR = createUniqueTestDir("mcp-server-guides");
+
+		expect(MCP_TASK_CREATION_GUIDE).toContain(
+			"The description must capture why the task exists (the WHY): the problem, trigger, or user value behind it, plus any context a future agent cannot recover from the code.",
+		);
+		expect(MCP_TASK_CREATION_GUIDE).toContain(
+			"Acceptance criteria already state what will be true when the work is done, so do not restate them in the description.",
+		);
+		expect(MCP_TASK_CREATION_GUIDE).toContain(
+			"Keeping the description focused means leaving out implementation detail, not leaving out the why.",
+		);
+		expect(MCP_TASK_CREATION_GUIDE).toContain(
+			'- Example `description`: "Finding anything means running three separate commands, and matches in the ones you skip are missed silently. One search command covers tasks, docs, and decisions."',
+		);
+		expect(MCP_TASK_CREATION_GUIDE).toContain(
+			'- Too thin: "Users can search tasks, docs, and decisions from one CLI command." states the change but not the need, so a future agent cannot weigh scope or alternatives',
+		);
+		expect(MCP_TASK_CREATION_GUIDE).toContain("this limits code detail, not the reason the work is needed");
+		expect(MCP_TASK_CREATION_GUIDE).toContain(
+			"**Never embed implementation details** in title, description, or acceptance criteria — this excludes how the work will be built, not why it is needed",
+		);
+	});
+
 	it("legacy MCP guides preserve just-in-time planning parity with the canonical CLI lifecycle", () => {
 		TEST_DIR = createUniqueTestDir("mcp-server-guides");
 
