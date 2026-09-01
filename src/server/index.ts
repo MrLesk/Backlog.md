@@ -74,6 +74,12 @@ function readMovedState(error: unknown, key: "archiveState" | "demotionState"): 
 	return state === "moved" || state === "partial" ? state : undefined;
 }
 
+function readDemotionFailureCause(error: unknown): "cleanup" | "commit" | undefined {
+	const cause =
+		typeof error === "object" && error !== null ? (error as Record<string, unknown>).demotionFailureCause : undefined;
+	return cause === "cleanup" || cause === "commit" ? cause : undefined;
+}
+
 function parseDueDatePayload(value: unknown, clearable: boolean): DueDatePayloadResult {
 	if (value === undefined) return { ok: true, value: undefined };
 	if (value === null) {
@@ -1190,7 +1196,7 @@ export class BacklogServer {
 		try {
 			// editTaskOrDraft keeps a draft a draft, or promotes it when a real status is requested.
 			const updatedTask = isDraftId(taskId)
-				? await this.core.editTaskOrDraft(taskId, updateInput)
+				? (await this.core.editTaskOrDraft(taskId, updateInput)).task
 				: await this.core.updateTaskFromInput(taskId, updateInput);
 			return Response.json(updatedTask);
 		} catch (error) {
@@ -1200,7 +1206,11 @@ export class BacklogServer {
 			const demotionState = readMovedState(error, "demotionState");
 			if (demotionState) {
 				this.broadcastDataUpdated();
-				return Response.json({ error: message, demotionState }, { status: 500 });
+				const demotionFailureCause = readDemotionFailureCause(error);
+				return Response.json(
+					{ error: message, demotionState, ...(demotionFailureCause ? { demotionFailureCause } : {}) },
+					{ status: 500 },
+				);
 			}
 			const conflict = isAmbiguousIdError(error) || isAmbiguousTaskIdError(error) || isTaskLockError(error);
 			return Response.json({ error: message }, { status: conflict ? 409 : 400 });
@@ -1264,6 +1274,7 @@ export class BacklogServer {
 			const message = error instanceof Error ? error.message : "Failed to demote task";
 			const conflict = isAmbiguousTaskIdError(error) || isCreateLockError(error) || isTaskLockError(error);
 			const knownDemotionState = readMovedState(error, "demotionState");
+			const demotionFailureCause = readDemotionFailureCause(error);
 			if (knownDemotionState) {
 				this.broadcastDataUpdated();
 			}
@@ -1272,7 +1283,11 @@ export class BacklogServer {
 			}
 			const status = knownDemotionState ? 500 : conflict ? 409 : 500;
 			return Response.json(
-				{ error: message, ...(knownDemotionState ? { demotionState: knownDemotionState } : {}) },
+				{
+					error: message,
+					...(knownDemotionState ? { demotionState: knownDemotionState } : {}),
+					...(demotionFailureCause ? { demotionFailureCause } : {}),
+				},
 				{ status },
 			);
 		}

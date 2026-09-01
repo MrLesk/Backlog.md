@@ -231,9 +231,16 @@ const VACATED_ID_CLEANUP_LOCK_ATTEMPTS = 5;
  * the project is actually in instead of an error that reads as "nothing happened" and invites a
  * retry of a mutation that already ran.
  */
-function markRecordAlreadyMoved(error: unknown, state: "archiveState" | "demotionState"): Error {
+function markRecordAlreadyMoved(
+	error: unknown,
+	state: "archiveState" | "demotionState",
+	demotionFailureCause?: "cleanup" | "commit",
+): Error {
 	const failure = error instanceof Error ? error : new Error(String(error));
 	(failure as Error & Record<string, unknown>)[state] = "moved";
+	if (state === "demotionState" && demotionFailureCause) {
+		(failure as Error & Record<string, unknown>).demotionFailureCause = demotionFailureCause;
+	}
 	return failure;
 }
 
@@ -243,6 +250,11 @@ function markRecordAlreadyMoved(error: unknown, state: "archiveState" | "demotio
  */
 export interface VacatedTaskResult {
 	success: boolean;
+	cleanedTaskIds: string[];
+}
+
+interface TaskEditResult {
+	task: Task;
 	cleanedTaskIds: string[];
 }
 
@@ -904,13 +916,15 @@ export class Core {
 		let candidates = vacatedIdCleanupTargets(await this.collectVacatedIdCleanup(vacatedTaskId));
 
 		for (let attempt = 0; attempt < VACATED_ID_CLEANUP_LOCK_ATTEMPTS; attempt++) {
-			const locked = new Set(candidates.map((task) => canonicalTaskId(task.id)));
+			// Use the same identity relation as the corpus scan. In particular, a bare ID and the
+			// configured-prefix spelling it resolves against must not cause pointless widening.
+			const coversLock = (task: Task) => candidates.some((candidate) => taskIdsEqual(candidate.id, task.id));
 			const outcome = await this.fs.withTaskLocks(
 				[target, ...candidates],
 				async (): Promise<{ value: T } | { widened: Task[] }> => {
 					const cleanup = await this.collectVacatedIdCleanup(vacatedTaskId);
 					const targets = vacatedIdCleanupTargets(cleanup);
-					if (targets.some((task) => !locked.has(canonicalTaskId(task.id)))) {
+					if (targets.some((task) => !coversLock(task))) {
 						return { widened: targets };
 					}
 					return { value: await run(cleanup) };
@@ -2553,7 +2567,7 @@ export class Core {
 		const requestedStatus = input.status?.trim().toLowerCase();
 		if (requestedStatus === "draft") {
 			// demoteTaskWithUpdates takes the task lock itself, so it must not be nested here.
-			return await this.demoteTaskWithUpdates(task, input, autoCommit, options);
+			return (await this.demoteTaskWithUpdates(task, input, autoCommit, options)).task;
 		}
 
 		// Fail fast when another process is mid-edit, and re-read inside the lock so the whole
@@ -2641,20 +2655,27 @@ export class Core {
 		input: TaskUpdateInput,
 		autoCommit?: boolean,
 		options: TaskReadOptions = {},
-	): Promise<Task> {
+	): Promise<TaskEditResult> {
 		const resolvedDraft = await this.fs.resolveDraftReference(taskId);
 		if (resolvedDraft) {
 			const requestedStatus = input.status?.trim();
 			const wantsDraft = requestedStatus?.toLowerCase() === "draft";
 			if (requestedStatus && !wantsDraft) {
-				return await this.promoteDraftWithUpdates(resolvedDraft, input, autoCommit);
+				return {
+					task: await this.promoteDraftWithUpdates(resolvedDraft, input, autoCommit),
+					cleanedTaskIds: [],
+				};
 			}
-			return await this.updateDraftFromInput(resolvedDraft, input, autoCommit);
+			return { task: await this.updateDraftFromInput(resolvedDraft, input, autoCommit), cleanedTaskIds: [] };
 		}
 
-		// updateTaskFromInput already demotes when the requested status is Draft, resolves the id
-		// against the task store (so ambiguous ids still fail closed) and reports a missing task.
-		return await this.updateTaskFromInput(taskId, input, autoCommit, options);
+		if (input.status?.trim().toLowerCase() === "draft") {
+			const task = await this.loadTaskForMutation(taskId, options);
+			if (!task) throw new Error(`Task not found: ${taskId}`);
+			return await this.demoteTaskWithUpdates(task, input, autoCommit, options);
+		}
+
+		return { task: await this.updateTaskFromInput(taskId, input, autoCommit, options), cleanedTaskIds: [] };
 	}
 
 	private async promoteDraftWithUpdates(
@@ -2739,7 +2760,7 @@ export class Core {
 		input: TaskUpdateInput,
 		autoCommit?: boolean,
 		options: TaskReadOptions = {},
-	): Promise<Task> {
+	): Promise<TaskEditResult> {
 		// Editing a task into the Draft status vacates its ID just as `task demote` does, so it
 		// runs the same cleanup rather than leaving dependents pointing at the freed ID.
 		return await this.withVacatedIdCleanup(task, task.id, async (cleanup) => {
@@ -2788,9 +2809,17 @@ export class Core {
 
 			// The draft is written and the task file is gone, so anything failing from here reports
 			// the demotion as done, the way the dedicated demote command does.
+			let cleanedTaskIds: string[] = [];
+			let cleanedPaths: string[] = [];
 			try {
-				const { filePaths: cleanedPaths } = await this.writeVacatedIdCleanup(cleanup);
+				const written = await this.writeVacatedIdCleanup(cleanup);
+				cleanedTaskIds = written.cleanedTaskIds;
+				cleanedPaths = written.filePaths;
+			} catch (error) {
+				throw markRecordAlreadyMoved(error, "demotionState", "cleanup");
+			}
 
+			try {
 				if (await this.shouldAutoCommit(autoCommit)) {
 					const previousPaths = current.filePath ? [current.filePath] : [];
 					await this.commitWrittenFile(
@@ -2801,10 +2830,13 @@ export class Core {
 					);
 				}
 			} catch (error) {
-				throw markRecordAlreadyMoved(error, "demotionState");
+				throw markRecordAlreadyMoved(error, "demotionState", "commit");
 			}
 
-			return (await this.fs.loadDraft(demotedDraft.id)) ?? { ...demotedDraft, filePath: savedPath };
+			return {
+				task: (await this.fs.loadDraft(demotedDraft.id)) ?? { ...demotedDraft, filePath: savedPath },
+				cleanedTaskIds,
+			};
 		});
 	}
 
@@ -3541,9 +3573,13 @@ export class Core {
 				demotion.moved = movedPaths[0];
 				if (success) {
 					this.contentStore?.transitionTask(task.id);
-					const written = await this.writeVacatedIdCleanup(cleanup);
-					demotion.cleanedTaskIds = written.cleanedTaskIds;
-					demotion.cleanedPaths = written.filePaths;
+					try {
+						const written = await this.writeVacatedIdCleanup(cleanup);
+						demotion.cleanedTaskIds = written.cleanedTaskIds;
+						demotion.cleanedPaths = written.filePaths;
+					} catch (error) {
+						throw markRecordAlreadyMoved(error, "demotionState", "cleanup");
+					}
 				}
 				return demotion;
 			});
@@ -3568,7 +3604,7 @@ export class Core {
 					);
 				}
 			} catch (error) {
-				throw markRecordAlreadyMoved(error, "demotionState");
+				throw markRecordAlreadyMoved(error, "demotionState", "commit");
 			}
 		}
 

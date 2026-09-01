@@ -5,7 +5,7 @@ import { createRoot, type Root } from "react-dom/client";
 import type { Task } from "../types/index.ts";
 import { TaskDetailsModal } from "../web/components/TaskDetailsModal.tsx";
 import { ThemeProvider } from "../web/contexts/ThemeContext.tsx";
-import { apiClient } from "../web/lib/api.ts";
+import { ApiError, apiClient } from "../web/lib/api.ts";
 
 let root: Root | null = null;
 let dom: JSDOM | null = null;
@@ -201,6 +201,34 @@ describe("Web task demotion", () => {
 			expect(closeCalls).toBe(0);
 			expect(findDemoteButton(container)?.disabled).toBe(false);
 			expect(container.querySelector("[role='alert']")?.textContent).toContain("Demotion failed");
+		} finally {
+			apiClient.demoteTask = originalDemoteTask;
+		}
+	});
+
+	it("points to stale dependent references when cleanup fails after demotion", async () => {
+		const container = setupDom();
+		let alertMessage = "";
+		let closeCalls = 0;
+		const originalDemoteTask = apiClient.demoteTask.bind(apiClient);
+		apiClient.demoteTask = async () => {
+			throw new ApiError("dependent file is not writable", 500, "Internal Server Error", {
+				demotionState: "moved",
+				demotionFailureCause: "cleanup",
+			});
+		};
+		window.confirm = () => true;
+		window.alert = (message) => {
+			alertMessage = String(message);
+		};
+
+		try {
+			await renderModal(localTask, { onClose: () => closeCalls++ });
+			await click(findDemoteButton(container) as HTMLButtonElement);
+			await waitFor(() => closeCalls === 1);
+
+			expect(alertMessage).toContain("dependent tasks may still reference it");
+			expect(alertMessage).not.toContain("Git commit");
 		} finally {
 			apiClient.demoteTask = originalDemoteTask;
 		}

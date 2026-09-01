@@ -569,8 +569,12 @@ export class TaskHandlers {
 			if (typeof updateInput.milestone === "string") {
 				updateInput.milestone = await this.resolveMilestoneInput(updateInput.milestone);
 			}
-			const updatedTask = await this.core.editTaskOrDraft(args.id, updateInput);
-			return await formatTaskCallResult(await loadTaskDetail(this.core, updatedTask));
+			const { task: updatedTask, cleanedTaskIds } = await this.core.editTaskOrDraft(args.id, updateInput);
+			const cleanupMessage = formatDependencyCleanupMessage(args.id, cleanedTaskIds);
+			return await formatTaskCallResult(
+				await loadTaskDetail(this.core, updatedTask),
+				cleanupMessage ? [`${cleanupMessage}.`] : undefined,
+			);
 		} catch (error) {
 			if (isTaskLockError(error)) {
 				throw new BacklogToolError(error.message, "OPERATION_FAILED");

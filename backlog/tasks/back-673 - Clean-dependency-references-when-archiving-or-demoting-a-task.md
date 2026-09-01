@@ -3,9 +3,9 @@ id: BACK-673
 title: Clean dependency references when archiving or demoting a task
 status: In Progress
 assignee:
-  - '@claude'
+  - '@codex'
 created_date: '2026-09-01 17:11'
-updated_date: '2026-09-01 20:34'
+updated_date: '2026-09-01 21:21'
 labels: []
 dependencies: []
 ordinal: 305000
@@ -56,6 +56,16 @@ Not in scope: whether archived or demoted IDs should stop being recycled by the 
 7. Surfaces report the result from core, no per-surface cleanup: CLI archive/demote print one terse line, TUI appends to its existing transient footer, MCP adds one result line, the web DELETE/demote endpoints return the cleaned ids and App.tsx reuses the existing SuccessToast flow.
 8. Tests: end-to-end misbinding regression (reference, archive/demote, allocate the freed id to a new task, assert the dependent does not resolve to it), completed-corpus cleanup, demote cleanup, report output, and complete NOT cleaning. Update the existing dependency test that asserts the completed corpus is left alone.
 9. Gates: bunx tsc --noEmit, bun run check ., bun run test.
+
+10. Canonicalize task lock keys, multi-lock deduplication, and ordering while leaving draft locking unchanged; compare cleanup lock coverage with taskIdsEqual.
+
+11. Return task-edit cleanup metadata from the shared edit path and include the cleanup report in MCP task_edit output.
+
+12. Mark post-demotion cleanup and commit failures with distinct causes and show accurate recovery guidance in the task modal.
+
+13. Notify users of an already-moved archive before attempting the refresh.
+
+14. Add one pre-fix regression test per finding, then run targeted tests, type-check, Biome, and the full suite.
 <!-- SECTION:PLAN:END -->
 
 ## Implementation Notes
@@ -120,12 +130,16 @@ Final round (PR 987, three findings):
 Web helper consolidation: readMovedFailureState in src/web/lib/api.ts is now the single reader for the marker, used by App's archive handler and by TaskDetailsModal's demotion handler.
 
 Pre-fix evidence: the three new tests fail on the previous commit (verified by stashing the source files) - the contested-identity dependent aborts with AmbiguousTaskIdError, and the injected cleanup write failure leaves archiveState and demotionState undefined on the archive and edit-to-Draft paths. The failures are injected by replacing FileSystem.saveTask for one task ID, so they are deterministic and carry no filesystem permission behaviour that could differ on CI. Gates on a quiet machine: bunx tsc --noEmit and bun run check . clean, bun run test 2825 pass / 8 skip / 0 fail, statistics endpoint included.
+
+Follow-up lock-key round: re-verified all production task-lock callers. They are vacated-ID cleanup, single-task update, and bulk update; none relies on equivalent spellings taking different locks. Task lock files, multi-lock deduplication, and ordering now use canonical task identity. Draft locks remain separately namespaced with unchanged identity rules. Cleanup lock coverage now uses taskIdsEqual, matching the scan.
+
+MCP task_edit now receives cleanedTaskIds from editTaskOrDraft and reports dependent cleanup on edit-to-Draft. Post-move demotion failures carry cleanup versus commit cause through the server so the task modal gives the right recovery guidance. Archive recovery warns before refresh.
+
+Four new regressions failed on the pre-fix tree and pass after the fixes. Changed test files: 38 pass / 0 fail; non-network atomic task-lock tests: 9 pass / 0 fail. bunx tsc --noEmit and bun run check . pass. The required bun run test command was attempted, but this managed sandbox blocks localhost listeners with EPERM and cannot write the worktree's external Git common lock directory; watcher tests also time out here, so a trustworthy full-suite total could not be produced in this environment.
 <!-- SECTION:NOTES:END -->
 
 ## Final Summary
 
 <!-- SECTION:FINAL_SUMMARY:BEGIN -->
-Archiving or demoting a task now removes every stored reference to the ID it vacates, across the active working copy and the completed corpus, through one cleanup in core that both operations and every surface inherit. Both report the records they changed instead of doing it silently; completing a task still changes nothing, because a completed dependency stays resolvable.
-
-Verified with src/test/vacated-task-references.test.ts: the end-to-end misbinding regression references a task, archives (and separately demotes) it, lets the allocator hand the freed ID to a new task, and asserts the dependent resolves to nothing rather than to the unrelated task - checked through the dependency graph, not just the stored list. It also covers completed-corpus references, the edit-to-Draft demotion path, the CLI report lines for archive and demote (including staying quiet when nothing referenced the task), and complete leaving references intact. Existing tests in dependency.test.ts and references.test.ts that pinned the completed corpus as untouched were updated to the corrected behavior. bunx tsc --noEmit, bun run check ., and the full bun run test suite (2812 pass, 8 skip, 0 fail) are green.
+The vacated-ID cleanup now uses canonical task lock keys across active and completed spellings, reports cleanup from MCP task_edit demotions, distinguishes cleanup from commit failures in web recovery guidance, and warns about an already-archived task before refreshing. Four deterministic regressions fail on the pre-fix tree and all changed test files pass (38 pass, 0 fail); the non-network atomic lock tests pass (9 pass, 0 fail), and TypeScript plus Biome are clean. The managed sandbox blocks localhost listeners, external Git-common-directory writes, and filesystem watcher delivery, so the full suite and requested local commit must be completed in an unrestricted worktree before merge.
 <!-- SECTION:FINAL_SUMMARY:END -->

@@ -39,10 +39,7 @@ export interface MoveTasksResult {
  * Read the marker the server forwards when a mutation failed after the record had already moved.
  * The view converges on what happened instead of offering a retry of a move that already ran.
  */
-export function readMovedFailureState(
-	error: unknown,
-	key: "archiveState" | "demotionState",
-): "moved" | "partial" | null {
+function readMovedFailureData(error: unknown): Record<string, unknown> | null {
 	if (
 		!(error instanceof ApiError) ||
 		error.status === undefined ||
@@ -52,8 +49,20 @@ export function readMovedFailureState(
 	) {
 		return null;
 	}
-	const state = (error.data as Record<string, unknown>)[key];
+	return error.data as Record<string, unknown>;
+}
+
+export function readMovedFailureState(
+	error: unknown,
+	key: "archiveState" | "demotionState",
+): "moved" | "partial" | null {
+	const state = readMovedFailureData(error)?.[key];
 	return state === "moved" || state === "partial" ? state : null;
+}
+
+export function readDemotionFailureCause(error: unknown): "cleanup" | "commit" | null {
+	const cause = readMovedFailureData(error)?.demotionFailureCause;
+	return cause === "cleanup" || cause === "commit" ? cause : null;
 }
 
 /** Archiving and demoting vacate a task ID: `cleanedTaskIds` names the records that lost a reference to it. */

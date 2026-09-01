@@ -30,6 +30,7 @@ import { normalizeStatusSet, statusMatchesSet } from "../utils/status-filter.ts"
 import { withoutVacatedTaskLinks } from "../utils/task-links.ts";
 import {
 	AmbiguousTaskIdError,
+	canonicalTaskId,
 	draftIdsMatchLoosely,
 	extractDraftIdFromFilename,
 	findDuplicateDraftFilenameGroups,
@@ -676,7 +677,11 @@ export class FileSystem {
 		filePath: string,
 		fn: () => Promise<T>,
 	): Promise<T> {
-		const lockKey = entityId
+		// Task IDs have several equivalent stored spellings (for example TASK-2, task-02 and
+		// bare 2). They must all contend on one lock. Draft identity is separate and deliberately
+		// keeps its existing rule inside the draft namespace.
+		const lockIdentity = scope === "task" ? canonicalTaskId(entityId) : entityId;
+		const lockKey = lockIdentity
 			.trim()
 			.toLowerCase()
 			.replace(/[^a-z0-9._-]+/g, "-")
@@ -697,9 +702,9 @@ export class FileSystem {
 	 * orders and deadlocking each other.
 	 */
 	async withTaskLocks<T>(tasks: Array<Pick<Task, "id" | "filePath">>, fn: () => Promise<T>): Promise<T> {
-		const uniqueTasks = Array.from(new Map(tasks.map((task) => [task.id.trim().toLowerCase(), task])).values()).sort(
-			(left, right) => left.id.localeCompare(right.id),
-		);
+		const uniqueTasks = Array.from(new Map(tasks.map((task) => [canonicalTaskId(task.id), task])).entries())
+			.sort(([leftId], [rightId]) => leftId.localeCompare(rightId))
+			.map(([, task]) => task);
 
 		const acquire = async (index: number): Promise<T> => {
 			const task = uniqueTasks[index];

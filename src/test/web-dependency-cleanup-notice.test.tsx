@@ -52,6 +52,9 @@ let tasks: Task[] = [];
 let cleanedTaskIds: Record<string, string[]> = {};
 /** Held open to keep a refresh in flight while the test inspects the page. */
 let searchHold: Promise<void> | null = null;
+let reportArchiveMoved = false;
+let failRefreshSearch = false;
+let archiveRecoveryEvents: string[] = [];
 
 let activeRoot: Root | null = null;
 let activeDom: JSDOM | null = null;
@@ -98,6 +101,10 @@ const respond = async (url: URL, init?: RequestInit): Promise<Response> => {
 	if (url.pathname === "/api/statuses") return json(defaultConfig.statuses);
 	if (url.pathname === "/api/config") return json(defaultConfig);
 	if (url.pathname === "/api/search") {
+		if (failRefreshSearch) {
+			archiveRecoveryEvents.push("refresh");
+			throw new Error("Search network failure");
+		}
 		if (searchHold) await searchHold;
 		return json(tasks.map((task) => ({ type: "task", task, score: 1 })) satisfies SearchResult[]);
 	}
@@ -112,6 +119,12 @@ const respond = async (url: URL, init?: RequestInit): Promise<Response> => {
 	if (url.pathname.startsWith("/api/tasks/") && init?.method === "DELETE") {
 		const id = decodeURIComponent(url.pathname.slice("/api/tasks/".length));
 		tasks = tasks.filter((task) => task.id !== id);
+		if (reportArchiveMoved) {
+			return json(
+				{ error: "dependent cleanup failed", archiveState: "moved" },
+				500,
+			);
+		}
 		return json({ success: true, cleanedTaskIds: cleanedTaskIds[id] ?? [] });
 	}
 	return json([]);
@@ -271,6 +284,9 @@ afterEach(() => {
 	tasks = [];
 	cleanedTaskIds = {};
 	searchHold = null;
+	reportArchiveMoved = false;
+	failRefreshSearch = false;
+	archiveRecoveryEvents = [];
 	noticeTimers = [];
 });
 
@@ -327,5 +343,29 @@ describe("dependency cleanup notice", () => {
 		});
 
 		expect(container.textContent).toContain("Removed references to TASK-2 from TASK-4");
+	});
+
+	it("warns that an archive moved before starting a refresh that can fail", async () => {
+		tasks = [makeTask("TASK-1", "Archive target")];
+		const container = await renderTaskList();
+		reportArchiveMoved = true;
+		failRefreshSearch = true;
+		let alertMessage = "";
+		window.alert = (message) => {
+			archiveRecoveryEvents.push("alert");
+			alertMessage = String(message);
+		};
+		const originalConsoleError = console.error;
+		console.error = () => {};
+
+		try {
+			await archiveFromModal(container, "Archive target");
+			await waitFor(() => archiveRecoveryEvents.includes("alert"), "archive recovery warning");
+		} finally {
+			console.error = originalConsoleError;
+		}
+
+		expect(alertMessage).toContain("references may be stale");
+		expect(archiveRecoveryEvents[0]).toBe("alert");
 	});
 });
