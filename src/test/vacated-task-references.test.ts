@@ -1,8 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import { mkdir } from "node:fs/promises";
+import { join } from "node:path";
 import { $ } from "bun";
 import { Core } from "../core/backlog.ts";
 import { loadTaskDetail } from "../core/task-detail.ts";
+import { serializeTask } from "../markdown/serializer.ts";
 import type { Task } from "../types/index.ts";
 import { taskIdsEqual } from "../utils/task-id.ts";
 import { getTestCliPath } from "./test-cli.ts";
@@ -275,6 +277,60 @@ describe("references to a vacated task ID", () => {
 		const demoted = await core.editTaskOrDraft(target.id, { status: "Draft" }, false);
 		expect(demoted.id.startsWith("DRAFT-")).toBe(true);
 		expect(demoted.references ?? []).toEqual(["docs/notes.md"]);
+	});
+
+	it("cleans a zero-padded reference and does not let it rebind to the reissued ID", async () => {
+		const { task: dependent } = await core.createTaskFromInput({ title: "Padded reference holder" });
+		const { task: target } = await core.createTaskFromInput({ title: "Demote target" });
+		// One identity, spelled with padding. Everything else in the product treats TASK-01 and
+		// TASK-1 as the same task, so the cleanup has to as well.
+		const paddedSpelling = target.id.replace(/(\d+)$/, (digits) => `0${digits}`);
+		await core.updateTaskFromInput(dependent.id, { references: [paddedSpelling] }, false);
+		expect((await core.filesystem.loadTask(dependent.id))?.references).toEqual([paddedSpelling]);
+
+		const demotion = await core.demoteTask(target.id, false);
+		expect(demotion.success).toBe(true);
+		expect(demotion.cleanedTaskIds).toEqual([dependent.id]);
+
+		// The freed ID goes to the next task created, which the padded reference must not name.
+		const { task: unrelated } = await core.createTaskFromInput({ title: "Totally unrelated new task" });
+		expect(taskIdsEqual(unrelated.id, target.id)).toBe(true);
+
+		const updated = await core.filesystem.loadTask(dependent.id);
+		expect(updated?.references ?? []).toEqual([]);
+		expect((updated?.references ?? []).some((reference) => taskIdsEqual(reference, unrelated.id))).toBe(false);
+	});
+
+	it("leaves a contested identity contested when it cleans a completed record", async () => {
+		const { task: target } = await core.createTaskFromInput({ title: "Archive target" });
+		const { task: completedDependent } = await core.createTaskFromInput({ title: "Completed dependent" });
+		await core.updateTaskFromInput(completedDependent.id, { dependencies: [target.id] }, false);
+		expect(await core.completeTask(completedDependent.id, false)).toBe(true);
+
+		// A second file claims the completed record's identity from the active corpus: the conflict
+		// `backlog doctor` exists to surface, which an unrelated cleanup must not dissolve.
+		const duplicatePath = join(core.filesystem.tasksDir, "task-02 - Active duplicate.md");
+		await Bun.write(
+			duplicatePath,
+			serializeTask({ ...completedDependent, id: "TASK-02", title: "Active duplicate", dependencies: [] }),
+		);
+
+		// The store was initialized before that file existed, so give it the corpus that holds both
+		// claimants rather than asserting against a snapshot that never saw the conflict.
+		const store = await core.getContentStore();
+		await store.refreshTasks();
+		expect(store.getTaskCorpusSnapshot().activeTasks.some((task) => task.filePath === duplicatePath)).toBe(true);
+
+		expect((await core.archiveTask(target.id, false)).success).toBe(true);
+
+		const snapshot = store.getTaskCorpusSnapshot();
+		expect(
+			snapshot.activeTasks.filter((task) => taskIdsEqual(task.id, completedDependent.id)).map((t) => t.filePath),
+		).toEqual([duplicatePath]);
+		// ...and the completed record was still cleaned.
+		expect(
+			snapshot.completedTasks.find((task) => taskIdsEqual(task.id, completedDependent.id))?.dependencies ?? [],
+		).toEqual([]);
 	});
 
 	it("reports the cleaned tasks from the archive and demote commands", async () => {

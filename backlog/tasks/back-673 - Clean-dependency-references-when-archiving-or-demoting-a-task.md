@@ -5,7 +5,7 @@ status: In Progress
 assignee:
   - '@claude'
 created_date: '2026-09-01 17:11'
-updated_date: '2026-09-01 19:53'
+updated_date: '2026-09-01 20:14'
 labels: []
 dependencies: []
 ordinal: 305000
@@ -98,6 +98,16 @@ New src/test/web-dependency-cleanup-notice.test.tsx drives the real App through 
 Follow-up found while fixing finding 3: reporting the notice before closing the modal exposed a robustness hole in the round-1 web code. cleanedTaskIds is destructured from the archive response, so a response that omits it (the deeplink test's generic mock returns an array) made formatDependencyCleanupMessage throw - previously harmless because it happened after the modal had closed and the refresh had run, but with the report moved first it wedged the dialog open and timed out the existing 'archives a routed task with a single history close' test, which then cascaded through every later JSDOM file in the process. reportDependencyCleanup now treats the list as wire data and reports nothing when it is absent. All 266 web tests pass in 6s.
 
 Gate results: bunx tsc --noEmit and bun run check . clean; bun run test 2819 pass / 8 skip / 1 fail, the one failure being 'BacklogServer statistics endpoint > reconciles a selected backlog root before reading its statistics', which passes in isolation and also flaked in an earlier round before any of these changes. Another run of the same tree failed a different single MCP test that likewise passes in isolation - the machine was running a second worktree's suite concurrently for part of this session.
+
+Fail-closed round (PR 987, two findings):
+
+1. Completed cleanup dissolved contested identities (src/core/backlog.ts, src/core/content-store.ts). writeVacatedIdCleanup refreshed the rewritten completed record with transitionTask(id, record), which filters BOTH store corpora by taskIdsEqual and re-adds only the completed copy - so cleaning a completed record evicted an active file claiming the same ID, and later in-process reads stopped seeing the conflict. The refresh is now ContentStore.refreshCompletedTask(task), scoped to the record's file path: it replaces that path's entry in the completed corpus and drops that same path from the active one (the shared saveTask publication writes every file as an active record), leaving any other claimant of the ID exactly where it was. transitionTask keeps its identity-wide semantics for archive, complete and demote, where the record really did leave the active corpus.
+
+2. Reference cleanup compared spellings, not identities (src/utils/task-links.ts). isExactTaskReference ended in a normalizeTaskId string comparison, so a reference written TASK-01 against a target stored as TASK-1 was left in place while the dependency list holding the same identity was cleaned. It now keeps both prefix guards - a bare number, a doc, draft or decision ID still never matches a task - and compares with taskIdsEqual, the same identity the dependency filter and task resolution use. The existing references test still pins that '1', 'JIRA-1', 'task-12', a URL and a path containing the ID all survive.
+
+Other literal comparisons in the cleanup path: checked, none left. collectVacatedIdCleanup filters with taskIdsEqual, withVacatedIdCleanup builds its lock-coverage set with canonicalTaskId, withoutVacatedTaskLinks now uses taskIdsEqual for both lists, and stringArraysEqual only detects whether a list changed. One literal comparison exists just outside it: FileSystem.withTaskLocks dedupes and derives its lock key from the ID spelling lowercased, so two spellings of one identity would key two lock files. It is not a misbinding risk here - the lock protects a file path and every spelling in this path comes from one normalized read - and changing it would touch shared locking, so it is left alone and recorded here.
+
+Both tests fail on the pre-fix tree (verified by stashing the three source files): the padded-reference test reports cleanedTaskIds [] instead of [TASK-1] and leaves the reference to rebind once the allocator reissues the ID, and the contested-identity test finds the active duplicate's path gone from the store's active corpus. Full gates green on a quiet machine: bunx tsc --noEmit, bun run check ., bun run test 2822 pass / 8 skip / 0 fail.
 <!-- SECTION:NOTES:END -->
 
 ## Final Summary

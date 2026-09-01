@@ -929,10 +929,12 @@ export class Core {
 		const filePaths = cleanup.active.length > 0 ? await this.writeTasksBulk(cleanup.active) : [];
 		for (const task of cleanup.completed) {
 			const updated = { ...task, updatedDate: new Date().toISOString().slice(0, 16).replace("T", " ") };
-			filePaths.push(await this.fs.saveTask(updated));
-			// The record stays completed, with the reference gone. Keep any in-process ContentStore
-			// in sync the way completion does, so a reader does not serve the stale reference.
-			this.contentStore?.transitionTask(updated.id, updated);
+			const savedPath = await this.fs.saveTask(updated);
+			filePaths.push(savedPath);
+			// The record stays completed, with the reference gone. Refresh exactly this file in any
+			// in-process ContentStore: a record elsewhere claiming the same ID is a conflict this
+			// cleanup has no business dissolving.
+			this.contentStore?.refreshCompletedTask({ ...updated, filePath: savedPath });
 		}
 		return { cleanedTaskIds: vacatedIdCleanupTargets(cleanup).map((task) => task.id), filePaths };
 	}

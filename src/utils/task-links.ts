@@ -1,11 +1,16 @@
 import type { Task } from "../types/index.ts";
 import { extractAnyPrefix } from "./prefix-config.ts";
 import { stringArraysEqual } from "./task-builders.ts";
-import { normalizeTaskId, taskIdsEqual } from "./task-id.ts";
+import { taskIdsEqual } from "./task-id.ts";
 
 /**
  * True when the reference names exactly this task rather than merely containing its ID: a URL or a
  * file path that mentions TASK-1 is not a reference to TASK-1.
+ *
+ * Both sides must carry a prefix, and the same one, so a bare number or a doc, draft or decision ID
+ * never matches a task. Past that guard the comparison is the project's task-ID identity, not the
+ * spelling: TASK-01 and TASK-1 are one task everywhere else, so a reference written either way is a
+ * reference to the same record.
  */
 export function isExactTaskReference(reference: string, taskId: string): boolean {
 	const trimmed = reference.trim();
@@ -20,7 +25,7 @@ export function isExactTaskReference(reference: string, taskId: string): boolean
 	if (taskPrefix.toLowerCase() !== referencePrefix.toLowerCase()) {
 		return false;
 	}
-	return normalizeTaskId(trimmed, taskPrefix).toLowerCase() === normalizeTaskId(taskId, taskPrefix).toLowerCase();
+	return taskIdsEqual(trimmed, taskId);
 }
 
 /**
