@@ -1,11 +1,11 @@
 ---
 id: BACK-674
 title: Sort the TUI list view through the shared task ID comparator
-status: In Progress
+status: Done
 assignee:
   - '@claude'
 created_date: '2026-09-01 17:16'
-updated_date: '2026-09-01 17:44'
+updated_date: '2026-09-01 17:52'
 labels: []
 dependencies: []
 ordinal: 306000
