@@ -5,7 +5,7 @@ status: In Progress
 assignee:
   - '@claude'
 created_date: '2026-09-01 19:38'
-updated_date: '2026-09-01 19:53'
+updated_date: '2026-09-01 20:09'
 labels: []
 dependencies: []
 ordinal: 308000
@@ -65,6 +65,8 @@ Scope: agent-guidelines.md and project-manager-backlog.md already frame the desc
 No existing test asserted on the changed strings, so new assertions were added to pin the wording: src/test/cli-guidance.test.ts (rendered 'backlog instructions task-creation' output) and src/test/mcp-server.test.ts (new case over MCP_TASK_CREATION_GUIDE).
 
 Also replaced the outcome-only example description in src/guidelines/project-manager-backlog.md and its byte-identical mirror .claude/agents/project-manager-backlog.md (maintainer asked for it while the PR was open). The old value, 'Implement a secure authentication system to allow users to register and login', restated the title as an instruction and carried no need; the new one names the problem (anyone with the URL reaches every page, so the app cannot be shared outside the team) before what changes. The example exists to demonstrate CLI syntax rather than description quality, but by this task's own thesis it was the weakest example shipped. Its comma-separated --ac form was left as is, since that is what the surrounding text is demonstrating.
+
+Review follow-up: the first version of the project-manager example invented its rationale. The quoted user request was only 'Create a task to add user authentication', so a description asserting that every page is publicly reachable taught agents to fabricate a why when none was given - the opposite of the intent. The example now carries the reason in the user's own words and the description reflects only what was said.
 <!-- SECTION:NOTES:END -->
 
 ## Final Summary
