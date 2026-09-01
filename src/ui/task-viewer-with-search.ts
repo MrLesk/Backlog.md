@@ -4,7 +4,15 @@ import { stdout as output } from "node:process";
 import type { BoxInterface, LineInterface, ScreenInterface, ScrollableTextInterface } from "neo-neo-bblessed";
 import { box, line, scrollabletext } from "neo-neo-bblessed";
 import { type Core, createRuntimeCore } from "../core/backlog.ts";
-import { loadTaskDetail, type TaskDetail, taskDependencyGraph, withDependencyGraph } from "../core/task-detail.ts";
+import {
+	loadTaskDetail,
+	type TaskCorpus,
+	type TaskDetail,
+	taskDependencyGraph,
+	taskReadiness,
+	toTaskDetail,
+	withReadiness,
+} from "../core/task-detail.ts";
 import { formatDependencyGraphLines } from "../formatters/dependency-graph-text.ts";
 import {
 	buildAcceptanceCriteriaItems,
@@ -24,12 +32,7 @@ import {
 import { hasAnyPrefix } from "../utils/prefix-config.ts";
 import { formatPriorityLabel, getPriorityOptions, normalizePriorityValue } from "../utils/priority-config.ts";
 import { getProjectValues, resolveProjectValues } from "../utils/project-config.ts";
-import {
-	createReadinessGraph,
-	formatReadinessBlockers,
-	getTaskReadiness,
-	type ReadinessGraph,
-} from "../utils/readiness.ts";
+import { formatReadinessBlockers } from "../utils/readiness.ts";
 import { canonicalTaskId, taskIdsEqual } from "../utils/task-id.ts";
 import { applyTaskFilters, createTaskSearchIndex } from "../utils/task-search.ts";
 import { attachSubtaskSummaries } from "../utils/task-subtasks.ts";
@@ -372,14 +375,13 @@ export async function viewTaskEnhanced(
 	const readinessCompletedTasks = [...completedTasks];
 	// The corpus that both readiness and the dependency graph resolve against, so the two never
 	// disagree about which records this view can see.
-	const resolveDependencyCorpus = () => {
+	const resolveDependencyCorpus = (): TaskCorpus => {
 		let tasks = allTasks;
 		if (readinessSnapshot) {
 			tasks = mergeDependencyCorpusTasks(readinessSnapshot, allTasks);
 		}
 		return { tasks, completedTasks: readinessCompletedTasks, statuses };
 	};
-	const buildReadinessGraph = () => createReadinessGraph(resolveDependencyCorpus());
 
 	// State for filtering - normalize filters to match configured values
 	let searchQuery = options.searchQuery || "";
@@ -825,11 +827,15 @@ export async function viewTaskEnhanced(
 				labelMatch,
 				milestone: milestoneFilter || undefined,
 				resolveMilestoneLabel,
-				ready: options.readyFilter ? buildReadinessGraph() : undefined,
 			},
 			taskSearchIndex,
 		);
-		filteredTasks = taskLimit !== undefined ? nextFilteredTasks.slice(0, taskLimit) : nextFilteredTasks;
+		// Readiness is derived over the filtered list in one pass against the whole corpus, so a
+		// dependency the other filters hid still decides the verdict.
+		const readyFilteredTasks = options.readyFilter
+			? withReadiness(nextFilteredTasks, resolveDependencyCorpus()).filter((task) => task.isReady)
+			: nextFilteredTasks;
+		filteredTasks = taskLimit !== undefined ? readyFilteredTasks.slice(0, taskLimit) : readyFilteredTasks;
 
 		// Update the task list label
 		if (taskListPane.setLabel) {
@@ -1158,11 +1164,9 @@ export async function viewTaskEnhanced(
 
 		screen.title = formatTuiTitle(`Task ${currentSelectedTask.id} - ${currentSelectedTask.title}`, projectName);
 
-		const dependencyCorpus = resolveDependencyCorpus();
-		const detailContent = generateDetailContent(withDependencyGraph(currentSelectedTask, dependencyCorpus), {
+		const detailContent = generateDetailContent(toTaskDetail(currentSelectedTask, resolveDependencyCorpus()), {
 			resolveMilestoneLabel,
 			dateFormat,
-			readinessGraph: createReadinessGraph(dependencyCorpus),
 			configuredProjects,
 		});
 
@@ -1601,13 +1605,6 @@ export async function viewTaskEnhanced(
 export interface TaskDetailContentOptions {
 	resolveMilestoneLabel?: (milestone: string) => string;
 	dateFormat?: string;
-	/**
-	 * Readiness is rendered only when the caller can supply the task graph to resolve dependencies
-	 * against. Callers without one (the board quick-look popup) get no readiness line rather than a
-	 * wrong one derived from an empty graph. The dependency graph section works the same way, which
-	 * is what keeps board cards and the quick-look popup the size they already are.
-	 */
-	readinessGraph?: ReadinessGraph;
 	configuredProjects?: string[];
 }
 
@@ -1615,7 +1612,7 @@ export function generateDetailContent(
 	task: Task | TaskDetail,
 	options: TaskDetailContentOptions = {},
 ): { headerContent: string[]; bodyContent: string[] } {
-	const { resolveMilestoneLabel, dateFormat, readinessGraph, configuredProjects } = options;
+	const { resolveMilestoneLabel, dateFormat, configuredProjects } = options;
 	const headerContent = [
 		` ${wrapStatusColor(formatStatusWithIcon(task.status), getStatusColor(task.status))} {bold}{blue-fg}${task.id}{/blue-fg}{/bold} - ${task.title}`,
 	];
@@ -1676,8 +1673,10 @@ export function generateDetailContent(
 	if (task.dependencies?.length) {
 		// The Dependency Graph section below names the same dependencies and resolves them, so the
 		// raw ID list is not repeated here. Readiness stays: it is a verdict, not a restatement.
-		if (readinessGraph) {
-			const readiness = getTaskReadiness(task, readinessGraph);
+		// It is rendered only when the caller was handed a detail read that carries it: a caller
+		// without one (the board quick-look popup) gets no readiness line rather than a guess.
+		const readiness = taskReadiness(task);
+		if (readiness) {
 			if (readiness.isReady) {
 				metadata.push("{bold}Readiness:{/bold} {green-fg}✓ Ready to start{/}");
 			} else if (readiness.isBlocked) {

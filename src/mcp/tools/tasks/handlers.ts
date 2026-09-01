@@ -2,7 +2,7 @@ import { basename, join } from "node:path";
 import { DEFAULT_STATUSES } from "../../../constants/index.ts";
 import type { VacatedTaskResult } from "../../../core/backlog.ts";
 import { findLocalDuplicateTaskIds } from "../../../core/duplicate-task-repair.ts";
-import { loadTaskDetail } from "../../../core/task-detail.ts";
+import { loadTaskDetail, loadTaskListItems } from "../../../core/task-detail.ts";
 import { isCreateLockError, isTaskLockError } from "../../../file-system/operations.ts";
 import { formatTaskDependenciesPlainText } from "../../../formatters/task-plain-text.ts";
 import {
@@ -20,7 +20,6 @@ import {
 	type MilestoneFilterValueResolver,
 } from "../../../utils/milestone-filter.ts";
 import { resolveMilestoneInputForStorage } from "../../../utils/milestone-storage.ts";
-import { getTaskReadiness, loadReadinessGraph } from "../../../utils/readiness.ts";
 import { buildTaskUpdateInput } from "../../../utils/task-edit-builder.ts";
 import { applyTaskFilters, createTaskSearchIndex } from "../../../utils/task-search.ts";
 import { sortByOrdinalAndPriority } from "../../../utils/task-sorting.ts";
@@ -182,7 +181,7 @@ export class TaskHandlers {
 		const config = await this.core.filesystem.loadConfig();
 		const priorities = config?.priorities;
 		if (this.isDraftStatus(args.status)) {
-			const drafts = applyTaskFilters(await this.core.filesystem.listDrafts(), {
+			let drafts = applyTaskFilters(await this.core.filesystem.listDrafts(), {
 				query: args.search,
 				// Searching drafts has always narrowed to the literal "Draft" status; listing them has not.
 				status: args.search || args.type?.length || args.project?.length ? "Draft" : undefined,
@@ -194,8 +193,10 @@ export class TaskHandlers {
 				resolveMilestoneLabel: args.milestone ? await this.createMilestoneFilterValueResolver() : undefined,
 				labels: args.labels,
 				labelMatch: "all",
-				ready: args.ready ? await loadReadinessGraph(this.core) : undefined,
 			});
+			if (args.ready) {
+				drafts = (await loadTaskListItems(this.core, drafts)).filter((draft) => draft.isReady);
+			}
 
 			if (drafts.length === 0) {
 				return {
@@ -258,8 +259,9 @@ export class TaskHandlers {
 		});
 
 		if (args.ready) {
-			const readinessGraph = await loadReadinessGraph(this.core);
-			tasks = tasks.filter((task) => getTaskReadiness(task, readinessGraph).isReady);
+			// The same shared verdict `task list --ready` filters on, resolved against the whole
+			// corpus rather than the tasks the filters above left.
+			tasks = (await loadTaskListItems(this.core, tasks)).filter((task) => task.isReady);
 		}
 
 		const filteredByLabels = tasks.filter((task) => isLocalEditableTask(task));

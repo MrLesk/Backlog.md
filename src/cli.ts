@@ -24,11 +24,12 @@ import { DEFAULT_DIRECTORIES, DEFAULT_FILES, DEFAULT_STATUSES } from "./constant
 import { type DuplicateRepairPlan, findLocalDuplicateTaskIds } from "./core/duplicate-task-repair.ts";
 import { initializeProject } from "./core/init.ts";
 import { buildMilestoneBuckets, collectArchivedMilestoneKeys, milestoneKey } from "./core/milestones.ts";
-import { loadTaskDetail } from "./core/task-detail.ts";
+import { loadTaskDetail, loadTaskListItems } from "./core/task-detail.ts";
 import { isConfigValueError } from "./file-system/operations.ts";
 import {
 	decisionListJson,
 	printJson,
+	type SearchResultInput,
 	searchJson,
 	taskDependenciesJson,
 	taskListJson,
@@ -110,7 +111,6 @@ import {
 	resolveProjectValues,
 } from "./utils/project-config.ts";
 import { type ReadOutputMode, resolveReadOutputMode } from "./utils/read-output-mode.ts";
-import { getTaskReadiness, loadReadinessGraph } from "./utils/readiness.ts";
 import { resolveRuntimeCwd } from "./utils/runtime-cwd.ts";
 import { formatValidStatuses, getCanonicalStatus, getCanonicalStatuses, getValidStatuses } from "./utils/status.ts";
 import {
@@ -2265,7 +2265,33 @@ addHelpSchema(program.command("search [query]"), {
 		});
 
 		if (outputMode === "json") {
-			printJson(searchJson(searchResults, cwd, core.filesystem.docsDir));
+			// Task results carry the same readiness verdict `task list --json` publishes, derived in one
+			// pass over the corpus for the results being printed. The projected rows are consumed in
+			// result order rather than looked up by ID, so two files claiming one ID keep the verdict
+			// derived for their own record instead of inheriting the other claimant's. A search that
+			// matched no task the formatter will emit reads no corpus: there is nothing for a verdict to
+			// describe. `searchJson` drops non-local results, so a cross-branch-only match is no match here.
+			const searchedTasks = searchResults.flatMap((result) =>
+				isTaskSearchResult(result) && isLocalEditableTask(result.task) ? [result.task] : [],
+			);
+			const projectedTaskRows = (searchedTasks.length > 0 ? await loadTaskListItems(core, searchedTasks) : [])[
+				Symbol.iterator
+			]();
+			const projectedResults: SearchResultInput[] = [];
+			for (const result of searchResults) {
+				if (!isTaskSearchResult(result)) {
+					projectedResults.push(result);
+					continue;
+				}
+				// `searchJson` drops non-local results, so they are neither projected nor emitted; skipping
+				// them here keeps each remaining result aligned with the row derived for it.
+				if (!isLocalEditableTask(result.task)) continue;
+				const projected = projectedTaskRows.next();
+				// One row per task result, in order, so this never runs out.
+				if (projected.done) break;
+				projectedResults.push({ ...result, task: projected.value });
+			}
+			printJson(searchJson(projectedResults, cwd, core.filesystem.docsDir));
 			cleanup();
 			return;
 		}
@@ -2716,43 +2742,50 @@ addHelpSchema(taskCmd.command("list"), {
 				baseFilters.parentTaskId = resolvedParentId;
 			}
 
-			let tasks = await core.queryTasks({
+			const tasks = await core.queryTasks({
 				query: searchQuery || undefined,
 				filters: Object.keys(baseFilters).length > 0 ? baseFilters : undefined,
 				includeCrossBranch: false,
 			});
 			const config = await core.filesystem.loadConfig();
 
-			if (options.ready) {
-				const readinessGraph = await loadReadinessGraph(core);
-				tasks = tasks.filter((task) => getTaskReadiness(task, readinessGraph).isReady);
-			}
+			// Ordering, the parent narrowing and the limit are the same whatever the rows carry, so the
+			// readiness projection below travels through them instead of being derived twice.
+			const parentFilter = resolvedParentId;
+			// The sort field was validated above, before any task was read.
+			const sortField = options.sort ? options.sort.toLowerCase() : "priority";
+			const narrowForDisplay = <T extends Task>(rows: T[]): { filtered: T[]; display: T[] } => {
+				const sorted = sortTasks(rows, sortField, config?.priorities);
+				const narrowed = parentFilter
+					? sorted.filter((task) => task.parentTaskId && taskIdsEqual(parentFilter, task.parentTaskId))
+					: sorted;
+				return { filtered: narrowed, display: taskLimit !== undefined ? narrowed.slice(0, taskLimit) : narrowed };
+			};
 
-			let sortedTasks = tasks;
-			if (options.sort) {
-				const sortField = options.sort.toLowerCase();
-				if (!TASK_SORT_FIELDS.includes(sortField)) {
-					console.error(`Invalid sort field: ${options.sort}. Valid values are: ${TASK_SORT_FIELD_LIST}`);
-					process.exitCode = 1;
+			// Readiness needs the completed corpus, so only the reads that use it pay for one: --ready
+			// filters on the verdict and --json publishes it. Both read it once, from the same pass, so
+			// a row selected as ready can never be serialized from a second, later verdict. A read that
+			// matched nothing describes nothing, so it reads no corpus at all.
+			const derivesReadiness = Boolean(options.ready) || outputMode === "json";
+			const readinessRows = derivesReadiness && tasks.length > 0 ? await loadTaskListItems(core, tasks) : null;
+
+			let filtered: Task[];
+			let displayTasks: Task[];
+			if (derivesReadiness) {
+				const projected = readinessRows ?? [];
+				const rows = options.ready ? projected.filter((row) => row.isReady) : projected;
+				const narrowed = narrowForDisplay(rows);
+				if (outputMode === "json") {
+					printJson(taskListJson(narrowed.display));
 					cleanup();
 					return;
 				}
-				sortedTasks = sortTasks(tasks, sortField, config?.priorities);
+				filtered = narrowed.filtered;
+				displayTasks = narrowed.display;
 			} else {
-				sortedTasks = sortTasks(tasks, "priority", config?.priorities);
-			}
-
-			let filtered = sortedTasks;
-			if (resolvedParentId) {
-				const parent = resolvedParentId;
-				filtered = filtered.filter((task) => task.parentTaskId && taskIdsEqual(parent, task.parentTaskId));
-			}
-			const displayTasks = taskLimit !== undefined ? filtered.slice(0, taskLimit) : filtered;
-
-			if (outputMode === "json") {
-				printJson(taskListJson(displayTasks));
-				cleanup();
-				return;
+				const narrowed = narrowForDisplay(tasks);
+				filtered = narrowed.filtered;
+				displayTasks = narrowed.display;
 			}
 
 			if (filtered.length === 0) {

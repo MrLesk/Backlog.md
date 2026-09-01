@@ -1,6 +1,6 @@
 import { describe, expect, it } from "bun:test";
 import type { Task } from "../types/index.ts";
-import { withDependencyGraph } from "../core/task-detail.ts";
+import { toTaskDetail } from "../core/task-detail.ts";
 import { generateDetailContent, mergeDependencyCorpusTasks } from "../ui/task-viewer-with-search.ts";
 
 const STATUSES = ["To Do", "In Progress", "Done"] as const;
@@ -20,7 +20,7 @@ const CORPUS = [
 // a plain record. The viewer only renders what it was given.
 function detailBody(task: Task, asDetail: boolean): string {
 	const given = asDetail
-		? withDependencyGraph(task, { tasks: CORPUS, completedTasks: [], statuses: STATUSES })
+		? toTaskDetail(task, { tasks: CORPUS, completedTasks: [], statuses: STATUSES })
 		: task;
 	return generateDetailContent(given).bodyContent.join("\n");
 }
@@ -57,7 +57,7 @@ describe("TUI dependency graph section", () => {
 	it("renders a title containing blessed tag syntax as literal characters", () => {
 		const styled = makeTask("BACK-7", "Style {red-fg}accent{/} braces");
 		const root = makeTask("BACK-8", "Root", ["BACK-7"]);
-		const detail = withDependencyGraph(root, { tasks: [root, styled], completedTasks: [], statuses: STATUSES });
+		const detail = toTaskDetail(root, { tasks: [root, styled], completedTasks: [], statuses: STATUSES });
 		const body = generateDetailContent(detail).bodyContent.join("\n");
 
 		expect(body).toContain("BACK-7 - Style {open}red-fg{close}accent{open}/{close} braces [To Do]");
@@ -72,7 +72,7 @@ describe("TUI dependency graph section", () => {
 
 	it("omits the section for a task with no dependencies and no dependents", () => {
 		const isolated = makeTask("BACK-9", "Alone");
-		const detail = withDependencyGraph(isolated, { tasks: [isolated], completedTasks: [], statuses: STATUSES });
+		const detail = toTaskDetail(isolated, { tasks: [isolated], completedTasks: [], statuses: STATUSES });
 
 		expect(generateDetailContent(detail).bodyContent.join("\n")).not.toContain("Dependency Graph");
 	});
@@ -101,7 +101,7 @@ describe("filtered TUI dependency corpus merge", () => {
 
 		// The exact corpus the filtered viewer resolves, run through the shared graph: the contested
 		// identity must be reported ambiguous, never silently collapsed to one claimant.
-		const graph = withDependencyGraph(root, {
+		const graph = toTaskDetail(root, {
 			tasks: merged,
 			completedTasks: [],
 			statuses: STATUSES,

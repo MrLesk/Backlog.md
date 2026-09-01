@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { $ } from "bun";
-import { withDependencyGraph } from "../core/task-detail.ts";
+import { toTaskDetail } from "../core/task-detail.ts";
 import { formatDependencyGraphEntries } from "../formatters/dependency-graph-text.ts";
 import { Core } from "../index.ts";
 import { McpServer } from "../mcp/server.ts";
@@ -202,7 +202,7 @@ describe("dependency graph entries for the interactive view", () => {
 			makeTask("TASK-2", "Selected", ["TASK-1", "TASK-404"]),
 			makeTask("TASK-3", "Follow up", ["TASK-2"]),
 		];
-		const detail = withDependencyGraph(corpus[1] as Task, { tasks: corpus, completedTasks: [], statuses: STATUSES });
+		const detail = toTaskDetail(corpus[1] as Task, { tasks: corpus, completedTasks: [], statuses: STATUSES });
 		const entries = formatDependencyGraphEntries(detail.dependencyGraph);
 
 		expect(entries.map((entry) => [entry.text, entry.node?.id ?? null])).toEqual([
@@ -220,14 +220,14 @@ describe("dependency graph entries for the interactive view", () => {
 	it("colors the TUI labels and escapes blessed tags without changing the shared wording", () => {
 		const styled = makeTask("TASK-7", "Style {red-fg}accent{/} braces");
 		const root = makeTask("TASK-8", "Root", ["TASK-7"]);
-		const detail = withDependencyGraph(root, { tasks: [root, styled], completedTasks: [], statuses: STATUSES });
+		const detail = toTaskDetail(root, { tasks: [root, styled], completedTasks: [], statuses: STATUSES });
 		const entries = formatDependencyGraphEntries(detail.dependencyGraph, {
 			formatLabel: formatDependencyNodeTuiLabel,
 		});
 
 		expect(entries[1]?.text).toContain("TASK-7 - Style {open}red-fg{close}accent{open}/{close} braces [To Do]");
 
-		const missing = withDependencyGraph(makeTask("TASK-9", "Root", ["TASK-404"]), {
+		const missing = toTaskDetail(makeTask("TASK-9", "Root", ["TASK-404"]), {
 			tasks: [],
 			completedTasks: [],
 			statuses: STATUSES,

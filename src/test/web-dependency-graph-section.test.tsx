@@ -4,7 +4,7 @@ import { renderToString } from "react-dom/server";
 import { MemoryRouter } from "react-router-dom";
 import type { Task } from "../types/index.ts";
 import { buildDependencyGraph, type DependencyGraph } from "../utils/dependency-graph.ts";
-import { withDependencyGraph } from "../core/task-detail.ts";
+import { toTaskDetail } from "../core/task-detail.ts";
 import { DependencyGraphSection } from "../web/components/DependencyGraphSection";
 import { TaskDetailsModal } from "../web/components/TaskDetailsModal";
 import { ThemeProvider } from "../web/contexts/ThemeContext";
@@ -177,7 +177,7 @@ describe("Web task details modal dependency graph", () => {
 
 	it("renders the graph straight from the task it was given, with no request of its own", () => {
 		const selected = corpus[1] as Task;
-		const detail = withDependencyGraph(selected, { tasks: corpus, completedTasks: [], statuses: STATUSES });
+		const detail = toTaskDetail(selected, { tasks: corpus, completedTasks: [], statuses: STATUSES });
 
 		const { html, requests } = renderModal(detail);
 

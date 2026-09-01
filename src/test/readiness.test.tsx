@@ -2,6 +2,7 @@ import { describe, expect, it } from "bun:test";
 import { JSDOM } from "jsdom";
 import { renderToString } from "react-dom/server";
 import { MemoryRouter } from "react-router-dom";
+import { type TaskCorpus, toTaskDetail, withReadiness } from "../core/task-detail.ts";
 import type { Task } from "../types/index.ts";
 import { generateDetailContent } from "../ui/task-viewer-with-search.ts";
 import { createReadinessGraph, formatReadinessBlockers, getTaskReadiness } from "../utils/readiness.ts";
@@ -25,9 +26,21 @@ function makeTask(id: string, status: string, dependencies: string[] = []): Task
 	};
 }
 
+/** An active-only corpus with the default statuses. */
+function corpusOf(tasks: Task[], graphStatuses: readonly string[] = statuses): TaskCorpus {
+	return { tasks, completedTasks: [], statuses: graphStatuses };
+}
+
 /** Readiness against an active-only corpus with the default statuses. */
 function graphOf(tasks: Task[], graphStatuses: readonly string[] = statuses) {
 	return createReadinessGraph({ tasks, statuses: graphStatuses });
+}
+
+/** The ready rows of a display list, resolved against the corpus the surface can see. */
+function readyIds(displayed: Task[], corpus: Task[]): string[] {
+	return withReadiness(displayed, corpusOf(corpus))
+		.filter((row) => row.isReady)
+		.map((row) => row.id);
 }
 
 function readinessOf(task: Task, tasks: Task[], graphStatuses: readonly string[] = statuses) {
@@ -181,23 +194,30 @@ describe("getTaskReadiness", () => {
 	});
 });
 
-describe("applyTaskFilters with readiness filter integration", () => {
-	it("filters candidates correctly when ready: true is requested", () => {
+describe("withReadiness list projection", () => {
+	it("carries the verdict on every row and filters the ready ones", () => {
 		const doneDep = makeTask("BACK-1", "Done");
 		const blockedTask = makeTask("BACK-2", "To Do", ["BACK-3"]);
 		const inProgDep = makeTask("BACK-3", "In Progress");
 		const readyTask = makeTask("BACK-4", "To Do", ["BACK-1"]);
 
 		const allTasks = [doneDep, blockedTask, inProgDep, readyTask];
-		const graph = graphOf(allTasks);
+		const rows = withReadiness(allTasks, corpusOf(allTasks));
 
-		// BACK-3 (In Progress, no deps) and BACK-4 (To Do, dependency BACK-1 is Done) can be worked on
-		const readyFiltered = applyTaskFilters(allTasks, { ready: graph });
-		expect(readyFiltered.map((t) => t.id)).toEqual(["BACK-3", "BACK-4"]);
+		// Every row answers, including the ones a --ready filter would drop: BACK-1 is finished,
+		// BACK-2 waits on unfinished BACK-3, and BACK-3 and BACK-4 can be worked on now.
+		expect(rows.map((row) => [row.id, row.isReady])).toEqual([
+			["BACK-1", false],
+			["BACK-2", false],
+			["BACK-3", true],
+			["BACK-4", true],
+		]);
 
-		// Combine ready filter with status filter
-		const readyToDoFiltered = applyTaskFilters(allTasks, { ready: graph, status: "To Do" });
-		expect(readyToDoFiltered.map((t) => t.id)).toEqual(["BACK-4"]);
+		expect(readyIds(allTasks, allTasks)).toEqual(["BACK-3", "BACK-4"]);
+
+		// The other filters still narrow the list the projection is taken over.
+		const toDo = applyTaskFilters(allTasks, { status: "To Do" });
+		expect(readyIds(toDo, allTasks)).toEqual(["BACK-4"]);
 	});
 
 	it("keeps readiness verdicts independent of the filters that narrowed the display list", () => {
@@ -211,21 +231,21 @@ describe("applyTaskFilters with readiness filter integration", () => {
 		const displayCandidates = [readyTask, blockedTask];
 		const fullCorpus = [completedDep, unfinishedDep, readyTask, blockedTask];
 
-		expect(applyTaskFilters(displayCandidates, { ready: graphOf(fullCorpus) }).map((t) => t.id)).toEqual(["BACK-3"]);
+		expect(readyIds(displayCandidates, fullCorpus)).toEqual(["BACK-3"]);
 
 		// Resolving against the narrowed list instead loses both verdicts and fails closed.
-		expect(applyTaskFilters(displayCandidates, { ready: graphOf(displayCandidates) })).toEqual([]);
+		expect(readyIds(displayCandidates, displayCandidates)).toEqual([]);
 	});
 
-	it("stays linear when filtering a large dependent corpus", () => {
-		// The graph index is built once per filter pass. Rebuilding it per candidate made this
-		// quadratic and took seconds at this size.
+	it("stays linear over a large dependent corpus", () => {
+		// The graph index is built once per pass. Rebuilding it per row made this quadratic and
+		// took seconds at this size.
 		const dependency = makeTask("BACK-0", "Done");
 		const dependents = Array.from({ length: 2000 }, (_, index) => makeTask(`BACK-${index + 1}`, "To Do", ["BACK-0"]));
 		const corpus = [dependency, ...dependents];
 
 		const startedAt = performance.now();
-		const ready = applyTaskFilters(corpus, { ready: graphOf(corpus) });
+		const ready = readyIds(corpus, corpus);
 		const elapsedMs = performance.now() - startedAt;
 
 		expect(ready).toHaveLength(dependents.length);
@@ -244,7 +264,7 @@ describe("rendered readiness guidance", () => {
 		const graph = [doneDep, inProgDep, readyTask, blockedTask, unknownDepTask, noDepsTask];
 
 		const detailBody = (task: Task) =>
-			generateDetailContent(task, { readinessGraph: graphOf(graph) }).bodyContent.join("\n");
+			generateDetailContent(toTaskDetail(task, corpusOf(graph))).bodyContent.join("\n");
 
 		expect(detailBody(readyTask)).toContain("Readiness:");
 		expect(detailBody(readyTask)).toContain("✓ Ready to start");
@@ -257,8 +277,8 @@ describe("rendered readiness guidance", () => {
 		expect(detailBody(noDepsTask)).not.toContain("Readiness:");
 		expect(detailBody(doneDep)).not.toContain("Readiness:");
 
-		// Callers without a task graph (the board quick-look popup) get no readiness claim at all
-		// rather than one derived from an empty graph.
+		// Callers handed a stored record rather than a detail read (the board quick-look popup) get
+		// no readiness claim at all rather than one derived from an empty graph.
 		expect(generateDetailContent(blockedTask).bodyContent.join("\n")).not.toContain("Readiness:");
 	});
 
@@ -291,13 +311,15 @@ describe("rendered readiness guidance", () => {
 		const noDepsTask = makeTask("BACK-6", "To Do");
 		const availableTasks = [doneDep, inProgDep, readyTask, blockedTask, unknownDepTask, noDepsTask];
 
-		const renderModal = (task: Task) =>
+		// The modal renders the detail read it was handed, exactly as the browser receives it from
+		// GET /api/task/:id, so the badge can only say what core derived.
+		const renderModal = (task: Task, completedTasks: Task[] = []) =>
 			renderToString(
 				<MemoryRouter initialEntries={[`/tasks/${task.id}`]}>
 					<ThemeProvider>
 						<TaskIdIndexProvider tasks={availableTasks}>
 							<TaskDetailsModal
-								task={task}
+								task={toTaskDetail(task, { tasks: availableTasks, completedTasks, statuses })}
 								availableTasks={availableTasks}
 								availableStatuses={statuses}
 								isOpen={true}
@@ -323,6 +345,6 @@ describe("rendered readiness guidance", () => {
 			...makeTask("BACK-7", "Shipped", ["BACK-1"]),
 			source: "completed",
 		};
-		expect(renderModal(routedCompletedTask)).not.toContain("Ready to start");
+		expect(renderModal(routedCompletedTask, [routedCompletedTask])).not.toContain("Ready to start");
 	});
 });
