@@ -39,7 +39,7 @@ When a user asks you to create a task, here's exactly what you should do:
 **User**: "Create a task to add user authentication"
 **You should run**: 
 ```bash
-backlog task create "Add user authentication system" -d "Implement a secure authentication system to allow users to register and login" --ac "Users can register with email and password,Users can login with valid credentials,Invalid login attempts show appropriate error messages" -l authentication,backend
+backlog task create "Add user authentication system" -d "Anyone with the URL can reach every page, so the app cannot be shared outside the team. Accounts gate access and let work be attributed to a person." --ac "Users can register with email and password,Users can login with valid credentials,Invalid login attempts show appropriate error messages" -l authentication,backend
 ```
 
 **NOT**: `/create-task "Add user authentication"` ❌ (This is wrong - slash commands don't exist)

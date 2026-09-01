@@ -5,7 +5,7 @@ status: In Progress
 assignee:
   - '@claude'
 created_date: '2026-09-01 19:38'
-updated_date: '2026-09-01 19:50'
+updated_date: '2026-09-01 19:53'
 labels: []
 dependencies: []
 ordinal: 308000
@@ -63,6 +63,8 @@ MCP guide (src/guidelines/mcp/task-creation.md):
 Scope: agent-guidelines.md and project-manager-backlog.md already frame the description as 'the why' and contain no competing example description, so they were left unchanged. project-manager-backlog.md's inline CLI-syntax example ('Implement a secure authentication system to allow users to register and login') is outcome-only, but it exists to demonstrate command syntax rather than description quality, and rewriting it is outside this task's acceptance criteria.
 
 No existing test asserted on the changed strings, so new assertions were added to pin the wording: src/test/cli-guidance.test.ts (rendered 'backlog instructions task-creation' output) and src/test/mcp-server.test.ts (new case over MCP_TASK_CREATION_GUIDE).
+
+Also replaced the outcome-only example description in src/guidelines/project-manager-backlog.md and its byte-identical mirror .claude/agents/project-manager-backlog.md (maintainer asked for it while the PR was open). The old value, 'Implement a secure authentication system to allow users to register and login', restated the title as an instruction and carried no need; the new one names the problem (anyone with the URL reaches every page, so the app cannot be shared outside the team) before what changes. The example exists to demonstrate CLI syntax rather than description quality, but by this task's own thesis it was the weakest example shipped. Its comma-separated --ac form was left as is, since that is what the surrounding text is demonstrating.
 <!-- SECTION:NOTES:END -->
 
 ## Final Summary
