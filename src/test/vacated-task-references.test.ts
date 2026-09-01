@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import { mkdir } from "node:fs/promises";
-import { join } from "node:path";
+import { basename, join } from "node:path";
 import { $ } from "bun";
 import { Core } from "../core/backlog.ts";
 import { loadTaskDetail } from "../core/task-detail.ts";
@@ -331,6 +331,84 @@ describe("references to a vacated task ID", () => {
 		expect(
 			snapshot.completedTasks.find((task) => taskIdsEqual(task.id, completedDependent.id))?.dependencies ?? [],
 		).toEqual([]);
+	});
+
+	it("cleans a dependent whose identity is contested by a completed record", async () => {
+		const { task: target } = await core.createTaskFromInput({ title: "Archive target" });
+		const { task: dependent } = await core.createTaskFromInput({ title: "Active dependent" });
+		await core.updateTaskFromInput(dependent.id, { dependencies: [target.id] }, false);
+
+		// A completed record claims the dependent's identity, so resolving it by ID is ambiguous.
+		// The cleanup already chose the file, so it must write that file rather than ask again.
+		const completedPath = join(core.filesystem.completedDir, "task-02 - Completed collision.md");
+		await Bun.write(
+			completedPath,
+			serializeTask({ ...dependent, id: "TASK-02", title: "Completed collision", dependencies: [] }),
+		);
+
+		const archived = await core.archiveTask(target.id, false);
+		expect(archived.success).toBe(true);
+		expect(archived.cleanedTaskIds).toEqual([dependent.id]);
+
+		const updated = await core.filesystem.listTasks();
+		expect(updated.find((task) => task.filePath === dependent.filePath)?.dependencies ?? []).toEqual([]);
+	});
+
+	it("reports an archive whose cleanup write failed as already moved", async () => {
+		const { task: dependent } = await core.createTaskFromInput({ title: "Dependent" });
+		const { task: target } = await core.createTaskFromInput({ title: "Archive target" });
+		await core.updateTaskFromInput(dependent.id, { dependencies: [target.id] }, false);
+
+		const filesystem = core.filesystem;
+		const originalSaveTask = filesystem.saveTask.bind(filesystem);
+		filesystem.saveTask = async (task) => {
+			if (taskIdsEqual(task.id, dependent.id)) {
+				throw new Error("dependent file is not writable");
+			}
+			return await originalSaveTask(task);
+		};
+
+		let failure: unknown;
+		try {
+			await core.archiveTask(target.id, false);
+		} catch (error) {
+			failure = error;
+		} finally {
+			filesystem.saveTask = originalSaveTask;
+		}
+
+		// The task is in the archive, so the caller must not be told to try again.
+		expect((failure as { archiveState?: string } | undefined)?.archiveState).toBe("moved");
+		expect(await core.filesystem.loadTask(target.id)).toBeNull();
+		expect(await Bun.file(join(core.filesystem.archiveTasksDir, basename(target.filePath ?? ""))).exists()).toBe(true);
+	});
+
+	it("reports an edit into the Draft status whose cleanup write failed as already moved", async () => {
+		const { task: dependent } = await core.createTaskFromInput({ title: "Dependent" });
+		const { task: target } = await core.createTaskFromInput({ title: "Edited into a draft" });
+		await core.updateTaskFromInput(dependent.id, { dependencies: [target.id] }, false);
+
+		const filesystem = core.filesystem;
+		const originalSaveTask = filesystem.saveTask.bind(filesystem);
+		filesystem.saveTask = async (task) => {
+			if (taskIdsEqual(task.id, dependent.id)) {
+				throw new Error("dependent file is not writable");
+			}
+			return await originalSaveTask(task);
+		};
+
+		let failure: unknown;
+		try {
+			await core.editTaskOrDraft(target.id, { status: "Draft" }, false);
+		} catch (error) {
+			failure = error;
+		} finally {
+			filesystem.saveTask = originalSaveTask;
+		}
+
+		expect((failure as { demotionState?: string } | undefined)?.demotionState).toBe("moved");
+		expect(await core.filesystem.loadTask(target.id)).toBeNull();
+		expect(await core.filesystem.listDrafts()).toHaveLength(1);
 	});
 
 	it("reports the cleaned tasks from the archive and demote commands", async () => {

@@ -227,6 +227,17 @@ function sanitizeVacatedTaskLinks(tasks: Task[], vacatedTaskId: string): Task[] 
 const VACATED_ID_CLEANUP_LOCK_ATTEMPTS = 5;
 
 /**
+ * Tag a failure that happened after the record had already been moved, so callers report the state
+ * the project is actually in instead of an error that reads as "nothing happened" and invites a
+ * retry of a mutation that already ran.
+ */
+function markRecordAlreadyMoved(error: unknown, state: "archiveState" | "demotionState"): Error {
+	const failure = error instanceof Error ? error : new Error(String(error));
+	(failure as Error & Record<string, unknown>)[state] = "moved";
+	return failure;
+}
+
+/**
  * Outcome of an operation that vacates a task ID. `cleanedTaskIds` names the records that lost a
  * stored reference to it, so every surface can report the change instead of making it silently.
  */
@@ -918,24 +929,38 @@ export class Core {
 	 * Write the sanitized records. Callers hold the task locks for every one of them, taken with
 	 * the operation's own lock so the mutation is one span.
 	 *
-	 * A completed record is rewritten in place rather than through {@link updateTask}: that path
-	 * looks the task up in the active corpus, would not find it, and would treat the write as a
-	 * brand-new task whose status just changed.
+	 * Every record is written to the path it was selected from, never through {@link updateTask}:
+	 * that path re-resolves the record by ID, which throws on a contested identity and would fail
+	 * the cleanup after the target had already been vacated. The scan already chose the exact files,
+	 * and a completed record must not go through {@link updateTask} anyway - it would not be found
+	 * in the active corpus and the write would look like a brand-new task whose status just changed.
 	 */
 	private async writeVacatedIdCleanup(cleanup: VacatedIdCleanup): Promise<{
 		cleanedTaskIds: string[];
 		filePaths: string[];
 	}> {
-		const filePaths = cleanup.active.length > 0 ? await this.writeTasksBulk(cleanup.active) : [];
-		for (const task of cleanup.completed) {
-			const updated = { ...task, updatedDate: new Date().toISOString().slice(0, 16).replace("T", " ") };
-			const savedPath = await this.fs.saveTask(updated);
-			filePaths.push(savedPath);
-			// The record stays completed, with the reference gone. Refresh exactly this file in any
-			// in-process ContentStore: a record elsewhere claiming the same ID is a conflict this
-			// cleanup has no business dissolving.
-			this.contentStore?.refreshCompletedTask({ ...updated, filePath: savedPath });
-		}
+		const filePaths: string[] = [];
+		const updatedDate = new Date().toISOString().slice(0, 16).replace("T", " ");
+		const writeAll = async () => {
+			for (const task of cleanup.active) {
+				const updated = { ...task, updatedDate };
+				const savedPath = await this.fs.saveTask(updated);
+				filePaths.push(savedPath);
+				this.contentStore?.upsertTask({ ...updated, filePath: savedPath });
+			}
+			for (const task of cleanup.completed) {
+				const updated = { ...task, updatedDate };
+				const savedPath = await this.fs.saveTask(updated);
+				filePaths.push(savedPath);
+				// The record stays completed, with the reference gone. Refresh exactly this file in any
+				// in-process ContentStore: a record elsewhere claiming the same ID is a conflict this
+				// cleanup has no business dissolving.
+				this.contentStore?.refreshCompletedTask({ ...updated, filePath: savedPath });
+			}
+		};
+		// One notification for the whole cleanup, as the bulk writer does for a batch of edits.
+		if (this.contentStore) await this.contentStore.batchTaskUpdates(writeAll);
+		else await writeAll();
 		return { cleanedTaskIds: vacatedIdCleanupTargets(cleanup).map((task) => task.id), filePaths };
 	}
 
@@ -2761,16 +2786,22 @@ export class Core {
 				return { demotedDraft, savedPath };
 			});
 
-			const { filePaths: cleanedPaths } = await this.writeVacatedIdCleanup(cleanup);
+			// The draft is written and the task file is gone, so anything failing from here reports
+			// the demotion as done, the way the dedicated demote command does.
+			try {
+				const { filePaths: cleanedPaths } = await this.writeVacatedIdCleanup(cleanup);
 
-			if (await this.shouldAutoCommit(autoCommit)) {
-				const previousPaths = current.filePath ? [current.filePath] : [];
-				await this.commitWrittenFile(
-					`backlog: Demote task ${normalizeTaskId(current.id)}`,
-					previousPaths,
-					savedPath,
-					cleanedPaths,
-				);
+				if (await this.shouldAutoCommit(autoCommit)) {
+					const previousPaths = current.filePath ? [current.filePath] : [];
+					await this.commitWrittenFile(
+						`backlog: Demote task ${normalizeTaskId(current.id)}`,
+						previousPaths,
+						savedPath,
+						cleanedPaths,
+					);
+				}
+			} catch (error) {
+				throw markRecordAlreadyMoved(error, "demotionState");
 			}
 
 			return (await this.fs.loadDraft(demotedDraft.id)) ?? { ...demotedDraft, filePath: savedPath };
@@ -3255,19 +3286,25 @@ export class Core {
 			}
 			this.contentStore?.transitionTask(normalizedTaskId);
 
-			const { cleanedTaskIds, filePaths } = await this.writeVacatedIdCleanup(cleanup);
+			// The file is in the archive from here on. A cleanup write or a commit that fails after
+			// this point says so, rather than letting a caller retry an archive that already ran.
+			try {
+				const { cleanedTaskIds, filePaths } = await this.writeVacatedIdCleanup(cleanup);
 
-			if (await this.shouldAutoCommit(autoCommit)) {
-				// Stage the file move for proper Git tracking
-				const repoRoot = await this.git.stageFileMove(fromPath, toPath);
-				const commitPaths = [fromPath, toPath, ...filePaths];
-				for (const cleanedPath of filePaths) {
-					await this.git.addFile(cleanedPath);
+				if (await this.shouldAutoCommit(autoCommit)) {
+					// Stage the file move for proper Git tracking
+					const repoRoot = await this.git.stageFileMove(fromPath, toPath);
+					const commitPaths = [fromPath, toPath, ...filePaths];
+					for (const cleanedPath of filePaths) {
+						await this.git.addFile(cleanedPath);
+					}
+					await this.git.commitFiles(`backlog: Archive task ${normalizedTaskId}`, commitPaths, repoRoot);
 				}
-				await this.git.commitFiles(`backlog: Archive task ${normalizedTaskId}`, commitPaths, repoRoot);
-			}
 
-			return { success: true, cleanedTaskIds };
+				return { success: true, cleanedTaskIds };
+			} catch (error) {
+				throw markRecordAlreadyMoved(error, "archiveState");
+			}
 		});
 	}
 
@@ -3514,9 +3551,7 @@ export class Core {
 			// The lock wrapper can fail while releasing after the move completed. Keep
 			// the mutation outcome visible to the Web API and other clients.
 			if (demotion.success && demotion.moved) {
-				const failure = error instanceof Error ? error : new Error(String(error));
-				(failure as Error & { demotionState?: string }).demotionState = "moved";
-				throw failure;
+				throw markRecordAlreadyMoved(error, "demotionState");
 			}
 			throw error;
 		}
@@ -3533,9 +3568,7 @@ export class Core {
 					);
 				}
 			} catch (error) {
-				const failure = error instanceof Error ? error : new Error(String(error));
-				(failure as Error & { demotionState?: string }).demotionState = "moved";
-				throw failure;
+				throw markRecordAlreadyMoved(error, "demotionState");
 			}
 		}
 

@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { isLocalEditableTask, type AcceptanceCriterion, type Milestone, type Task, type TaskComment } from "../../types";
 import { type TaskDetail, taskDependencyGraph } from "../../core/task-detail";
 import Modal from "./Modal";
-import { ApiError, apiClient, NetworkError } from "../lib/api";
+import { apiClient, NetworkError, readMovedFailureState } from "../lib/api";
 import { useTheme } from "../contexts/ThemeContext";
 import MDEditor from "@uiw/react-md-editor";
 import AcceptanceCriteriaEditor from "./AcceptanceCriteriaEditor";
@@ -94,19 +94,8 @@ const containsCommentDelimiterLine = (value: string): boolean => /^\s*---\s*$/m.
 
 const areJsonEqual = (first: unknown, second: unknown): boolean => JSON.stringify(first) === JSON.stringify(second);
 
-const getDemotionFailureState = (error: unknown): "moved" | "partial" | null => {
-	if (
-		!(error instanceof ApiError) ||
-		error.status === undefined ||
-		error.status < 500 ||
-		typeof error.data !== "object" ||
-		error.data === null
-	) {
-		return null;
-	}
-	const state = (error.data as { demotionState?: unknown }).demotionState;
-	return state === "moved" || state === "partial" ? state : null;
-};
+const getDemotionFailureState = (error: unknown): "moved" | "partial" | null =>
+	readMovedFailureState(error, "demotionState");
 
 const isEditableKeyboardTarget = (target: EventTarget | null): boolean =>
   target instanceof Element &&

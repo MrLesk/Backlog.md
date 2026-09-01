@@ -35,6 +35,27 @@ export interface MoveTasksResult {
 	failures: Array<{ taskId: string; reason: string }>;
 }
 
+/**
+ * Read the marker the server forwards when a mutation failed after the record had already moved.
+ * The view converges on what happened instead of offering a retry of a move that already ran.
+ */
+export function readMovedFailureState(
+	error: unknown,
+	key: "archiveState" | "demotionState",
+): "moved" | "partial" | null {
+	if (
+		!(error instanceof ApiError) ||
+		error.status === undefined ||
+		error.status < 500 ||
+		typeof error.data !== "object" ||
+		error.data === null
+	) {
+		return null;
+	}
+	const state = (error.data as Record<string, unknown>)[key];
+	return state === "moved" || state === "partial" ? state : null;
+}
+
 /** Archiving and demoting vacate a task ID: `cleanedTaskIds` names the records that lost a reference to it. */
 export interface TaskVacancyResponse {
 	success: boolean;
@@ -329,10 +350,13 @@ export class ApiClient {
 		});
 	}
 
+	// Not retried, for the same reason demote is not: the second attempt would target a task the
+	// first attempt already archived, and its "not found" would replace the real outcome.
 	async archiveTask(id: string): Promise<TaskVacancyResponse> {
-		return this.fetchJson<TaskVacancyResponse>(`${API_BASE}/tasks/${id}`, {
+		const response = await this.fetchWithoutRetry(`${API_BASE}/tasks/${id}`, {
 			method: "DELETE",
 		});
+		return response.json();
 	}
 
 	async completeTask(id: string): Promise<void> {

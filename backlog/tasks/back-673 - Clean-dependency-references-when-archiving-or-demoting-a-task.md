@@ -5,7 +5,7 @@ status: In Progress
 assignee:
   - '@claude'
 created_date: '2026-09-01 17:11'
-updated_date: '2026-09-01 20:14'
+updated_date: '2026-09-01 20:34'
 labels: []
 dependencies: []
 ordinal: 305000
@@ -108,6 +108,18 @@ Fail-closed round (PR 987, two findings):
 Other literal comparisons in the cleanup path: checked, none left. collectVacatedIdCleanup filters with taskIdsEqual, withVacatedIdCleanup builds its lock-coverage set with canonicalTaskId, withoutVacatedTaskLinks now uses taskIdsEqual for both lists, and stringArraysEqual only detects whether a list changed. One literal comparison exists just outside it: FileSystem.withTaskLocks dedupes and derives its lock key from the ID spelling lowercased, so two spellings of one identity would key two lock files. It is not a misbinding risk here - the lock protects a file path and every spelling in this path comes from one normalized read - and changing it would touch shared locking, so it is left alone and recorded here.
 
 Both tests fail on the pre-fix tree (verified by stashing the three source files): the padded-reference test reports cleanedTaskIds [] instead of [TASK-1] and leaves the reference to rebind once the allocator reissues the ID, and the contested-identity test finds the active duplicate's path gone from the store's active corpus. Full gates green on a quiet machine: bunx tsc --noEmit, bun run check ., bun run test 2822 pass / 8 skip / 0 fail.
+
+Final round (PR 987, three findings):
+
+1. Cleanup wrote active dependents through updateTask, which re-resolves the record with fs.loadTask and throws AmbiguousTaskIdError when another file claims the same normalized ID. Because archive and demote vacate the target before the cleanup runs, that failed the operation after the ID was already free. writeVacatedIdCleanup now writes every record - active and completed - to the path the scan selected, with fs.saveTask (which preserves filePath and skips ID resolution), sets updatedDate itself, publishes each record explicitly (upsertTask for active, refreshCompletedTask for completed) and wraps the loop in batchTaskUpdates so the whole cleanup still notifies once. Pre-fix the new test failed with 'AmbiguousTaskIdError: Task ID TASK-2 is ambiguous; 2 files match' raised from updateTask inside writeVacatedIdCleanup.
+
+2. Archive had no moved signal. Chose the signal over rolling the move back. Reasons: demote already established this shape in round 2, so archive matching it keeps one meaning across the two operations rather than two recovery stories; a rollback would restore the target while leaving the dependents the cleanup already rewrote, so a live task would be missing references that were removed on its behalf - a second inconsistency traded for the first; and the rollback move can itself fail, which needs its own report. The moved state is also the truthful one: the file really is in the archive, and a stale reference to an archived ID renders as an unknown task ID rather than binding to anything. archiveTask now wraps everything after the successful move and tags the failure archiveState 'moved' through the shared markRecordAlreadyMoved helper (demoteTask's two inline tags now use it too). The server's DELETE handler reports it, broadcasts a refresh, and the web client closes the dialog, refreshes and says what happened. apiClient.archiveTask also stops retrying, exactly as demote does not retry: a retried DELETE would target the task the first attempt archived and its 404 would replace the real outcome.
+
+3. task edit <id> -s Draft had the same gap: the draft was saved and the task file unlinked, then a failing cleanup escaped as an ordinary error. demoteTaskWithUpdates now tags demotionState 'moved' for anything after the create-lock block, and the server's PUT handler reports it and broadcasts, matching the demote endpoint. The web edit surface cannot reach this path (Draft is not offered as a status for a task), so no client change was needed there.
+
+Web helper consolidation: readMovedFailureState in src/web/lib/api.ts is now the single reader for the marker, used by App's archive handler and by TaskDetailsModal's demotion handler.
+
+Pre-fix evidence: the three new tests fail on the previous commit (verified by stashing the source files) - the contested-identity dependent aborts with AmbiguousTaskIdError, and the injected cleanup write failure leaves archiveState and demotionState undefined on the archive and edit-to-Draft paths. The failures are injected by replacing FileSystem.saveTask for one task ID, so they are deterministic and carry no filesystem permission behaviour that could differ on CI. Gates on a quiet machine: bunx tsc --noEmit and bun run check . clean, bun run test 2825 pass / 8 skip / 0 fail, statistics endpoint included.
 <!-- SECTION:NOTES:END -->
 
 ## Final Summary

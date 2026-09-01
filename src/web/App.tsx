@@ -27,7 +27,7 @@ import {
 	type TaskSearchResult,
 } from '../types';
 import { formatDependencyCleanupMessage } from '../utils/dependency-graph';
-import { ApiError, apiClient } from './lib/api';
+import { ApiError, apiClient, readMovedFailureState } from './lib/api';
 import { type TaskDetail, taskDependencyGraph } from '../core/task-detail';
 import type { DuplicateRepairPlan } from '../core/duplicate-task-repair';
 import { isValidTaskId } from '../utils/task-id';
@@ -851,6 +851,17 @@ function AppContent() {
       await refreshData();
     } catch (error) {
       console.error('Failed to archive task:', error);
+      // The task reached the archive and something after it failed. Close and refresh so the view
+      // shows what happened, and say so: a dialog left open on an archived task invites a retry.
+      if (readMovedFailureState(error, 'archiveState')) {
+        handleCloseModal();
+        await refreshData();
+        try {
+          window.alert('The task was archived, but the cleanup that follows it failed. The view was refreshed; check the tasks that referenced it before retrying.');
+        } catch {
+          // A blocked dialog must not take the refresh down with it.
+        }
+      }
     }
   };
 
