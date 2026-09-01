@@ -188,10 +188,15 @@ function AppContent() {
   const [showModal, setShowModal] = useState(false);
   const [editingTask, setEditingTask] = useState<Task | TaskDetail | null>(null);
   // The list record the open task was last synced from, so re-syncing cannot loop.
-  // The list record last folded into the open modal, with the readiness inputs it was read
-  // against, so a dependency that changes out of band is noticed even though this task's own
-  // record did not move.
+  // The list record last folded into the open modal, with the readiness inputs and the refresh it
+  // was read against, so a dependency that changes out of band is noticed even though this task's
+  // own record did not move.
   const syncedTaskRecordRef = useRef<SyncedTaskRecord | null>(null);
+  // Advanced by every completed data refresh, whether or not the records visibly changed.
+  const [dataVersion, setDataVersion] = useState(0);
+  // Ordering for detail reads of the open task: only the newest response may be applied, so two
+  // reads in flight cannot land out of order and leave an older verdict on screen.
+  const detailReadRef = useRef(0);
   const [isDraftMode, setIsDraftMode] = useState(false);
   const [statuses, setStatuses] = useState<string[]>([]);
   const [availableLabels, setAvailableLabels] = useState<string[]>([]);
@@ -330,6 +335,9 @@ function AppContent() {
     const nextDecisions = reconcileById(decisionsRef.current, decisionsList);
     decisionsRef.current = nextDecisions;
     setDecisions(nextDecisions);
+    // Reconciling can be a no-op for every visible record and still follow a change the browser
+    // never receives, so the refresh itself is what an open task detail reacts to.
+    setDataVersion(version => version + 1);
 
     return { tasks: nextTasks };
   }, []);
@@ -480,6 +488,21 @@ function AppContent() {
     setShowModal(true);
   };
 
+  // Read one task's detail into the open modal. Every read takes a ticket, and a response is
+  // applied only while it is still the newest one asked for: two reads in flight otherwise land in
+  // whatever order the network returns them and an older verdict can overwrite a newer one.
+  const readOpenTaskDetail = useCallback((taskId: string) => {
+    const requestId = detailReadRef.current + 1;
+    detailReadRef.current = requestId;
+    void apiClient
+      .fetchTask(taskId)
+      .then(detail => {
+        if (detailReadRef.current !== requestId) return;
+        setEditingTask(current => (current && current.id === detail.id ? detail : current));
+      })
+      .catch(() => {});
+  }, []);
+
   const openTaskModal = useCallback((task: Task) => {
     setEditingTask(task);
     setIsDraftMode(false);
@@ -512,11 +535,9 @@ function AppContent() {
       // read the detail themselves. Otherwise they would show the compact list record, silently
       // without its dependency graph, while the board and the task list show the full detail.
       openTaskModal(task);
-      void apiClient
-        .fetchTask(task.id)
-        // Upgrade in place, so a modal the reader already closed is never reopened.
-        .then((detail) => setEditingTask((current) => (current && current.id === detail.id ? detail : current)))
-        .catch(() => {});
+      // Upgrade in place, so a modal the reader already closed is never reopened, and through the
+      // same ordering as every other detail read of the open task.
+      readOpenTaskDetail(task.id);
       return;
     }
 
@@ -532,6 +553,7 @@ function AppContent() {
     location.search,
     navigate,
     openTaskModal,
+    readOpenTaskDetail,
     routeBasePath,
     routeNavigationState.taskModalFrom,
     routeTaskId,
@@ -736,22 +758,18 @@ function AppContent() {
       refreshed: updatedTask,
       corpus: tasks,
       previous: syncedTaskRecordRef.current,
+      version: dataVersion,
     });
-    // The refresh left this task's record and everything its readiness answers about untouched, so
-    // there is nothing to apply. This is also what keeps the state update below from looping.
+    // Nothing to apply: the same record, the same refresh, and the records its readiness answers
+    // about did not move. This is also what keeps the state update below from looping.
     if (!synced.changed) return;
-    syncedTaskRecordRef.current = { record: updatedTask, inputs: synced.readinessInputs };
+    syncedTaskRecordRef.current = { record: updatedTask, inputs: synced.readinessInputs, version: dataVersion };
     setEditingTask(synced.task);
-    // The verdict moved: this task's own status or dependencies changed, or one of the records it
-    // depends on did. Nothing else changes it, so nothing else pays for a request, and it is one
-    // read of this task rather than one per dependency.
+    // One read of this task, never one per dependency.
     if (synced.rereadDetail) {
-      void apiClient
-        .fetchTask(updatedTask.id)
-        .then(detail => setEditingTask(current => (current && current.id === detail.id ? detail : current)))
-        .catch(() => {});
+      readOpenTaskDetail(updatedTask.id);
     }
-  }, [tasks, editingTask, showModal]);
+  }, [tasks, editingTask, showModal, dataVersion, readOpenTaskDetail]);
 
   useEffect(() => {
     const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";

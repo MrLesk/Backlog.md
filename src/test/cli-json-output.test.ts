@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
-import { mkdir } from "node:fs/promises";
+import { mkdir, writeFile } from "node:fs/promises";
+import { join } from "node:path";
 import { $ } from "bun";
 import { Core } from "../index.ts";
 import { getTestCliPath } from "./test-cli.ts";
@@ -328,6 +329,36 @@ describe("CLI JSON output", () => {
 		expect(progressById(taskResults.map((result: { data: Record<string, unknown> }) => result.data))).toEqual(
 			expectedProgress,
 		);
+	});
+
+	it("reads no task corpus for a search that matched no task", async () => {
+		// A completed record that cannot be parsed is never cached, so it is re-read and re-logged
+		// under DEBUG on every load of the completed corpus. Counting those lines counts the corpus
+		// reads one command makes.
+		await writeFile(
+			join(TEST_DIR, "backlog", "completed", "task-99 - Broken.md"),
+			"---\nid: TASK-99\ntitle: [unclosed\nstatus: Done\n---\n\nbroken\n",
+		);
+		const corpusReads = async (args: string[]) => {
+			const result = await $`bun ${[CLI_PATH, ...args]}`
+				.cwd(TEST_DIR)
+				.env({ ...process.env, DEBUG: "1" })
+				.quiet();
+			expect(result.exitCode).toBe(0);
+			return {
+				stdout: result.stdout.toString(),
+				reads: result.stderr
+					.toString()
+					.split("\n")
+					.filter((line) => line.startsWith("Failed to parse completed task file")).length,
+			};
+		};
+
+		const asJson = await corpusReads(["search", "JSON", "--type", "document", "--json"]);
+		const asPlain = await corpusReads(["search", "JSON", "--type", "document", "--plain"]);
+		expect(JSON.parse(asJson.stdout).results.every((entry: { type: string }) => entry.type === "document")).toBe(true);
+		// Nothing in that payload carries readiness, so nothing loads the corpus it comes from.
+		expect(asJson.reads).toBe(asPlain.reads);
 	});
 
 	it("uses the configured project-relative docs directory in search paths", async () => {

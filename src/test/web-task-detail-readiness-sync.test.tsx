@@ -6,6 +6,7 @@ import { MemoryRouter } from "react-router-dom";
 import { type TaskDetail, taskReadiness, toTaskDetail } from "../core/task-detail.ts";
 import type { Task } from "../types/index.ts";
 import { TaskDetailsModal } from "../web/components/TaskDetailsModal";
+import { apiClient } from "../web/lib/api.ts";
 import { TaskIdIndexProvider } from "../web/contexts/TaskIdIndexContext.tsx";
 import { ThemeProvider } from "../web/contexts/ThemeContext";
 import { readinessInputs, syncOpenTaskDetail } from "../web/utils/task-detail-sync.ts";
@@ -44,6 +45,7 @@ const setupDom = () => {
 	globalThis.HTMLElement = activeDom.window.HTMLElement;
 	globalThis.HTMLInputElement = activeDom.window.HTMLInputElement;
 	globalThis.HTMLTextAreaElement = activeDom.window.HTMLTextAreaElement;
+	globalThis.HTMLSelectElement = activeDom.window.HTMLSelectElement;
 	globalThis.requestAnimationFrame = (callback: FrameRequestCallback) => window.setTimeout(callback, 0);
 	globalThis.cancelAnimationFrame = (handle: number) => window.clearTimeout(handle);
 	window.matchMedia = () =>
@@ -119,6 +121,7 @@ describe("open task detail readiness while the corpus moves underneath it", () =
 			refreshed: dependent,
 			corpus,
 			previous: null,
+			version: 1,
 		});
 		expect(firstSync.rereadDetail).toBe(false);
 		expect(taskReadiness(firstSync.task)).toEqual(openDetail.readiness);
@@ -132,7 +135,8 @@ describe("open task detail readiness while the corpus moves underneath it", () =
 			open: firstSync.task,
 			refreshed: dependent,
 			corpus: refreshedCorpus,
-			previous: { record: dependent, inputs: firstSync.readinessInputs },
+			previous: { record: dependent, inputs: firstSync.readinessInputs, version: 2 },
+			version: 2,
 		});
 
 		// The unchanged record must not be mistaken for an unchanged verdict.
@@ -148,6 +152,59 @@ describe("open task detail readiness while the corpus moves underneath it", () =
 		expect(container.textContent).toContain("Ready to start");
 	});
 
+	it("hides the verdict while an optimistic status edit is ahead of the record", async () => {
+		const blocker = makeTask("BACK-1", "In Progress");
+		const dependent = makeTask("BACK-2", "To Do", ["BACK-1"]);
+		const corpus = [blocker, dependent];
+		const openDetail = detailOf(dependent, corpus);
+
+		setupDom();
+		const container = document.getElementById("root") as HTMLElement;
+		activeRoot = createRoot(container);
+		await act(async () => {
+			activeRoot?.render(
+				<MemoryRouter initialEntries={[`/tasks/${dependent.id}`]}>
+					<ThemeProvider>
+						<TaskIdIndexProvider tasks={corpus}>
+							<TaskDetailsModal
+								task={openDetail}
+								availableTasks={corpus}
+								availableStatuses={statuses}
+								isOpen={true}
+								onClose={() => {}}
+							/>
+						</TaskIdIndexProvider>
+					</ThemeProvider>
+				</MemoryRouter>,
+			);
+			await Promise.resolve();
+		});
+		expect(container.textContent).toContain("Blocked by BACK-1");
+
+		// The save is left in flight, which is also what a failed one leaves behind: the shown status
+		// stays ahead of the record the verdict was read for.
+		const originalUpdateTask = apiClient.updateTask.bind(apiClient);
+		apiClient.updateTask = () => new Promise(() => {});
+		try {
+			const select = Array.from(container.querySelectorAll("select")).find((element) =>
+				Array.from(element.options).some((option) => option.value === "Done"),
+			);
+			expect(select).toBeTruthy();
+			await act(async () => {
+				const valueSetter = Object.getOwnPropertyDescriptor(window.HTMLSelectElement.prototype, "value")?.set;
+				valueSetter?.call(select, "Done");
+				select?.dispatchEvent(new window.Event("change", { bubbles: true }));
+				await Promise.resolve();
+			});
+
+			// A finished task is neither ready nor blocked, so the carried verdict must not stand.
+			expect(container.textContent).not.toContain("Blocked by BACK-1");
+			expect(container.textContent).not.toContain("Ready to start");
+		} finally {
+			apiClient.updateTask = originalUpdateTask;
+		}
+	});
+
 	it("keeps the verdict and asks for no read when nothing readiness depends on moved", async () => {
 		const blocker = makeTask("BACK-1", "In Progress");
 		const dependent = makeTask("BACK-2", "To Do", ["BACK-1"]);
@@ -161,7 +218,8 @@ describe("open task detail readiness while the corpus moves underneath it", () =
 			open: openDetail,
 			refreshed: relabelled,
 			corpus: [renamedBlocker, relabelled],
-			previous: { record: dependent, inputs: readinessInputs(dependent, corpus) },
+			previous: { record: dependent, inputs: readinessInputs(dependent, corpus), version: 7 },
+			version: 7,
 		});
 
 		// The record itself changed, so the modal takes the new one, but the verdict still holds and
@@ -176,7 +234,8 @@ describe("open task detail readiness while the corpus moves underneath it", () =
 			open: openDetail,
 			refreshed: dependent,
 			corpus,
-			previous: { record: dependent, inputs: readinessInputs(dependent, corpus) },
+			previous: { record: dependent, inputs: readinessInputs(dependent, corpus), version: 7 },
+			version: 7,
 		});
 		expect(unchanged.changed).toBe(false);
 	});

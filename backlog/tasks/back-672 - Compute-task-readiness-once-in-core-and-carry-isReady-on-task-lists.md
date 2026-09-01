@@ -5,7 +5,7 @@ status: In Progress
 assignee:
   - '@claude'
 created_date: '2026-09-01 17:04'
-updated_date: '2026-09-01 18:18'
+updated_date: '2026-09-01 19:01'
 labels: []
 dependencies: []
 ordinal: 304000
@@ -98,6 +98,25 @@ Rendered re-verification on a disposable project with the modal open on a blocke
 Correction to the earlier performance note: every task list command already reads the completed corpus once, in printDuplicateIntegrityWarning -> findLocalDuplicateTaskIds, which predates this task. Measured with DEBUG read counting: --plain 1 read (unchanged), --json 2, --plain --ready 2, --ready --json 3 before this fix and 2 after. So readiness adds at most one corpus read, only where the verdict is filtered on or published, and the plain path adds none.
 
 Owner decision recorded: isReady is deliberately NOT added to GET /api/search (the browser's board and task-list corpus) ahead of the web ready-filter UI. AC #2 stays unchecked for that half.
+
+Review round 2 (Codex on PR #986), four findings fixed:
+
+1. P1, the refresh fingerprint could not see every readiness input. The detail read derives readiness from the completed corpus, the configured terminal status and the store's contested identities, none of which reach the browser, so a dependency filed as completed work (or a terminal-status config change) moved the verdict with nothing visible changing. The open task's detail is now re-read on every data refresh: applySearchResults advances a refresh generation, syncOpenTaskDetail treats a generation it has not read for as a reason to re-read, and the visible fingerprint is now only what decides whether the badge on screen is already known wrong and has to go immediately. Still one read of the open task, never one per dependency; idle costs nothing.
+
+2. P2, detail reads could land out of order. Every read of the open task now goes through readOpenTaskDetail, which takes a ticket and applies a response only while it is still the newest one asked for. The upgrade-in-place read from the pages without a task route goes through the same path, so it cannot race a refresh read either.
+
+3. P2, search --json loaded the whole corpus for a search that matched no task. It now derives readiness only when there is at least one task result.
+
+4. P2, the modal showed a carried verdict against an optimistic status. The badge now requires the shown status to match the record the verdict was read for, exactly as it already required for dependencies, so an in-flight or failed inline status change shows no badge instead of a contradictory one.
+
+Tests, each verified red before its fix and green after:
+- src/test/web-app-open-detail-refresh.test.tsx mounts the real App over jsdom with a stubbed API and socket. 're-reads the detail on a refresh that changed nothing the browser can see' files a completed record for a dependency that never appears in the corpus: pre-fix it times out with 'Unknown dependency TASK-9' still on screen. 'ignores a detail read that a newer one has already overtaken' holds two reads open and answers newest-first: pre-fix the stale answer overwrites and the modal falls back to 'Unknown dependency TASK-9'.
+- src/test/cli-json-output.test.ts 'reads no task corpus for a search that matched no task' counts completed-corpus reads for a document-only search: pre-fix 3 against the plain baseline of 2, post-fix equal.
+- src/test/web-task-detail-readiness-sync.test.tsx 'hides the verdict while an optimistic status edit is ahead of the record' drives the status select with the save left in flight: pre-fix the modal still renders 'Blocked by BACK-1' next to a Done status.
+
+That test file plants globals (a fake WebSocket above all) and now restores every one of them, after an earlier run leaked the stub into the suites that open real sockets.
+
+Rendered verification of the P1 case: with the modal open on a task whose only dependency is TASK-9 and no such record anywhere, writing backlog/completed/task-9 flips the badge from 'Unknown dependency TASK-9' to 'Ready to start' while the modal stays open, with nothing in the browser's corpus changing. Request cost measured in the page: zero detail reads over six idle seconds, exactly one for one unrelated file change, no console errors.
 <!-- SECTION:NOTES:END -->
 
 ## Final Summary

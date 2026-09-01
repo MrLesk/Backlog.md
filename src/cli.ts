@@ -2267,13 +2267,12 @@ addHelpSchema(program.command("search [query]"), {
 			// Task results carry the same readiness verdict `task list --json` publishes, derived in one
 			// pass over the corpus for the results being printed. The projected rows are consumed in
 			// result order rather than looked up by ID, so two files claiming one ID keep the verdict
-			// derived for their own record instead of inheriting the other claimant's.
-			const projectedTaskRows = (
-				await loadTaskListItems(
-					core,
-					searchResults.flatMap((result) => (isTaskSearchResult(result) ? [result.task] : [])),
-				)
-			)[Symbol.iterator]();
+			// derived for their own record instead of inheriting the other claimant's. A search that
+			// matched no task reads no corpus: there is nothing for a verdict to describe.
+			const searchedTasks = searchResults.flatMap((result) => (isTaskSearchResult(result) ? [result.task] : []));
+			const projectedTaskRows = (searchedTasks.length > 0 ? await loadTaskListItems(core, searchedTasks) : [])[
+				Symbol.iterator
+			]();
 			const projectedResults: SearchResultInput[] = [];
 			for (const result of searchResults) {
 				if (!isTaskSearchResult(result)) {

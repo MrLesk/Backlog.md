@@ -419,14 +419,16 @@ export const TaskDetailsModal: React.FC<Props> = ({
   // or fetch here: the verdict the modal shows is the one every other surface shows.
   const dependencyGraph = taskDependencyGraph(task);
   const readiness = taskReadiness(task);
-  // The verdict answers for the dependencies it was read with, and it belongs to the Dependencies
-  // card, so it is shown only while both still describe what is on screen. An inline edit that has
-  // not come back yet shows no badge rather than a claim about the dependencies it replaced.
+  // The verdict answers for the status and the dependencies it was read with, and it belongs to the
+  // Dependencies card, so it is shown only while all of that still describes what is on screen. An
+  // optimistic edit that has not come back yet - including one whose save failed and left the shown
+  // status ahead of the record - shows no badge rather than a claim about what it replaced.
   const shownReadiness =
     readiness &&
     (readiness.isReady || readiness.isBlocked) &&
     dependencies.length > 0 &&
-    dependencies.join(",") === (task?.dependencies ?? []).join(",")
+    dependencies.join(",") === (task?.dependencies ?? []).join(",") &&
+    status === (task?.status ?? "")
       ? readiness
       : null;
 

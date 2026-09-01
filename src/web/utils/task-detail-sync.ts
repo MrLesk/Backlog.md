@@ -37,6 +37,8 @@ export interface SyncedTaskRecord {
 	record: Task;
 	/** The readiness inputs that record was read against. */
 	inputs: string;
+	/** The refresh generation it was applied at. */
+	version: number;
 }
 
 export interface OpenTaskDetailSync {
@@ -62,6 +64,12 @@ export interface OpenTaskDetailSync {
  * A refresh that changes a dependency leaves this task's own record untouched, and the list
  * reconcile hands back the very same object for it. That is why the corpus decides here and record
  * identity alone does not: the modal on a blocked task has to notice its blocker completing.
+ *
+ * The corpus is not the whole story either. The detail read derives readiness from records the
+ * browser never receives: the completed corpus, the configured terminal status, and the identities
+ * the store knows are contested. None of those show up in a search result, so every refresh is a
+ * reason to read this one task's detail again, and the visible fingerprint only decides whether the
+ * verdict on screen is already known to be wrong and has to go now.
  */
 export function syncOpenTaskDetail(options: {
 	/** The record the modal currently shows, carrying whatever the last detail read derived. */
@@ -72,18 +80,26 @@ export function syncOpenTaskDetail(options: {
 	corpus: readonly Task[];
 	/** What the previous sync applied, or null when this modal has not synced yet. */
 	previous: SyncedTaskRecord | null;
+	/** The current refresh generation: every completed data refresh advances it. */
+	version: number;
 }): OpenTaskDetailSync {
-	const { open, refreshed, corpus, previous } = options;
+	const { open, refreshed, corpus, previous, version } = options;
 	const inputs = readinessInputs(refreshed, corpus);
 	// A previous sync only speaks for the task it synced: after graph-link navigation it names the
 	// task the modal came from, and its fingerprint says nothing about this one.
-	const previousInputs = previous && previous.record.id === refreshed.id ? previous.inputs : null;
+	const previousForTask = previous && previous.record.id === refreshed.id ? previous : null;
 	// Without a recorded fingerprint the open record is the only baseline there is, which still
 	// catches an inline edit to this task's own status or dependencies.
-	const rereadDetail = (previousInputs ?? readinessInputs(open, corpus)) !== inputs;
+	const inputsMoved = (previousForTask?.inputs ?? readinessInputs(open, corpus)) !== inputs;
+	// A refresh this modal has not read the detail for yet may carry a change the corpus cannot
+	// show. The first sync of a task is exempt: whatever opened it read the detail already.
+	const refreshedSinceRead = previousForTask !== null && previousForTask.version !== version;
 
 	const dependencyGraph = taskDependencyGraph(open);
-	const readiness = rereadDetail ? undefined : taskReadiness(open);
+	// Kept while the fresh detail is read, unless it is already known not to describe this record:
+	// a badge that flickers on every refresh is worse than one that is a round trip behind.
+	const readiness = inputsMoved ? undefined : taskReadiness(open);
+	const rereadDetail = inputsMoved || refreshedSinceRead;
 	return {
 		task: {
 			...refreshed,
