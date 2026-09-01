@@ -71,7 +71,7 @@ Create all tasks in the same session to maintain consistency and context.
 
 ### Step 5: Create task(s) with proper scope
 
-**Title and description**: The description must capture why the task exists (the WHY): the problem, trigger, or user value behind it, plus any context a future agent cannot recover from the code. Acceptance criteria already state what will be true when the work is done, so do not restate them in the description. Keeping the description focused means leaving out implementation detail, not leaving out the why.
+**Title and description**: The title states the intended outcome in one line, without implementation detail. The description must capture why the task exists (the WHY): the problem, trigger, or user value behind it, plus any context a future agent cannot recover from the code. Acceptance criteria already state what will be true when the work is done, so do not restate them in the description. Keeping the description focused means leaving out implementation detail, not leaving out the why.
 - Example `description`: "Finding anything means running three separate commands, and matches in the ones you skip are missed silently. One search command covers tasks, docs, and decisions."
 - Too thin: "Users can search tasks, docs, and decisions from one CLI command." states the change but not the need, so a future agent cannot weigh scope or alternatives
 
