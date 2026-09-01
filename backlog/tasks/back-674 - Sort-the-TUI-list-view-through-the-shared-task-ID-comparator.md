@@ -5,7 +5,7 @@ status: In Progress
 assignee:
   - '@claude'
 created_date: '2026-09-01 17:16'
-updated_date: '2026-09-01 17:40'
+updated_date: '2026-09-01 17:44'
 labels: []
 dependencies: []
 ordinal: 306000
@@ -71,6 +71,8 @@ Validation: bunx tsc --noEmit clean, bun run check . clean, bun run test green a
 Also observed: backlog board export reads the same corpus, so exported markdown boards now list subtasks numerically too. Verified on the reproduction project.
 
 PR: https://github.com/MrLesk/Backlog.md/pull/985
+
+Accepted behavior (maintainer decision, 2026-09-01): a task created while the TUI list view is open still appends to the bottom rather than landing in sort position. The view is deliberately ignorant of ordering — callers hand it an already-sorted corpus, so honoring the active order on insert would mean threading sort state into the view and risks clobbering --sort and the priority default. The placement corrects itself when the view is reopened. Do not 'fix' this without an explicit decision.
 <!-- SECTION:NOTES:END -->
 
 ## Final Summary
