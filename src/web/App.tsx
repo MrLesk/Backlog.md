@@ -202,6 +202,7 @@ function AppContent() {
   const [showSuccessToast, setShowSuccessToast] = useState(false);
   const [taskConfirmation, setTaskConfirmation] = useState<{task: Task, isDraft: boolean} | null>(null);
   const [dependencyCleanupNotice, setDependencyCleanupNotice] = useState<string | null>(null);
+  const dependencyCleanupTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   
   // Initialization state
   const [isInitialized, setIsInitialized] = useState<boolean | null>(null);
@@ -824,11 +825,17 @@ function AppContent() {
 
   // Archiving and demoting vacate the task ID, so any dependent that referenced it was changed
   // too. Report that the same way a created task is confirmed instead of changing files silently.
-  const reportDependencyCleanup = (taskId: string, cleanedTaskIds: string[]) => {
-    const message = formatDependencyCleanupMessage(taskId, cleanedTaskIds);
+  // The ID list arrives over the wire, so a response that omits it reports nothing rather than
+  // throwing in the middle of the flow that was about to close the dialog.
+  const reportDependencyCleanup = (taskId: string, cleanedTaskIds: string[] | undefined) => {
+    const message = formatDependencyCleanupMessage(taskId, cleanedTaskIds ?? []);
     if (!message) return;
+    // A second cleanup within the display window must not inherit the first one's expiry, or the
+    // pending timeout clears a notice the reader has only just been shown.
+    if (dependencyCleanupTimer.current) clearTimeout(dependencyCleanupTimer.current);
     setDependencyCleanupNotice(message);
-    setTimeout(() => {
+    dependencyCleanupTimer.current = setTimeout(() => {
+      dependencyCleanupTimer.current = null;
       setDependencyCleanupNotice(null);
     }, 4000);
   };
@@ -836,9 +843,12 @@ function AppContent() {
   const handleArchiveTask = async (taskId: string) => {
     try {
       const { cleanedTaskIds } = await apiClient.archiveTask(taskId);
+      // Record what the archive changed before anything that can fail or be superseded, the way
+      // the demotion flow already does: other tasks were rewritten, and that is not the refresh's
+      // news to lose.
+      reportDependencyCleanup(taskId, cleanedTaskIds);
       handleCloseModal();
       await refreshData();
-      reportDependencyCleanup(taskId, cleanedTaskIds);
     } catch (error) {
       console.error('Failed to archive task:', error);
     }

@@ -5,7 +5,7 @@ status: In Progress
 assignee:
   - '@claude'
 created_date: '2026-09-01 17:11'
-updated_date: '2026-09-01 18:19'
+updated_date: '2026-09-01 19:20'
 labels: []
 dependencies: []
 ordinal: 305000
@@ -82,6 +82,18 @@ Review round (PR 987, four findings):
 4. Demoted record kept its own vacated ID (P2). A record whose links named its own ID was excluded from cleanup as 'self', so demotion copied that link into the new draft. isExactTaskReference and the sanitizer moved to src/utils/task-links.ts (withoutVacatedTaskLinks), now shared by the corpus cleanup in core and by both demote paths, which sanitize the record while building the draft.
 
 Six new tests in src/test/vacated-task-references.test.ts. Five fail on the pre-fix commit (verified by stashing the source fixes and running the new file against 6a4fb75c): stale-snapshot overwrite, missed late dependent, missing demotionState, and the self-reference on both demote paths. The concurrency tests are deterministic - no sleeps and no racing threads: interleaveAtLockAcquisition patches filesystem.withTaskLocks to run one edit through a second Core instance at the exact moment the operation asks for its locks, which is the window the scan used to be taken in.
+
+Closing review round (PR 987, three findings):
+
+1. Ordering as a narrowing for the locked-rescan race - evaluated and NOT adopted. The premise holds for demote but not for archive, and archive is the path the bug report came from. Checked on the shipped CLI in a scratch project: after 'task archive TASK-1', 'task edit TASK-2 --dep TASK-1' still succeeds, because validateDependencies resolves against tasks + drafts + completed + archived (src/utils/task-builders.ts) and an archived ID is deliberately a valid dependency target - src/test/dependency.test.ts pins that with 'accepts an archived task as a dependency at create and edit time'. So vacating before the scan narrows nothing for archive. After 'task demote TASK-1' the same edit does fail ('The following dependencies do not exist: TASK-1'), so ordering would narrow the window for the two demote paths only. Adopting it there alone would: give up the all-or-nothing shape (today a contended dependent aborts the operation before anything moves; with the reorder the record would already be demoted when the lock error surfaces), split one shared cleanup into two orderings for three callers, and require locking a dependent discovered only after the irreversible step - re-opening the lost-update hole fixed in the previous round unless more machinery is added after the point of no return. Not worth it for a narrowing that covers one of three paths, so the current order stands and the residual is documented on Core.withVacatedIdCleanup.
+
+Residual window, plainly: a task that starts referencing the ID after the final in-lock scan is not locked and keeps its reference. It cannot be locked, because it was not a dependent when the set was fixed, and closing it would need a corpus-wide write lock, which is disproportionate here and would contend with the create/allocation lock. The stale reference is not silent - the graph renders it as an unknown task ID - until the allocator hands the number out again, at which point it rebinds. Not recycling vacated IDs is the only complete fix and is explicitly out of scope for this task.
+
+2. Cleanup notice timer (src/web/App.tsx). reportDependencyCleanup now keeps its timeout in a ref and cancels the pending one before showing a new notice, so a second cleanup within the four-second window is no longer cut short by the first notice's expiry.
+
+3. Archive notice ordering (src/web/App.tsx). handleArchiveTask records the notice immediately after the archive response, before handleCloseModal and refreshData, matching what the demote flow already does. The report no longer depends on the refresh completing.
+
+New src/test/web-dependency-cleanup-notice.test.tsx drives the real App through the task list and the details modal in JSDOM. Both tests fail on the pre-fix App.tsx (verified by stashing it): the first times out waiting for the notice while the refresh is held open, the second shows no notice at all once the first timer fires. The second test takes control of the 4000 ms timeout only, so it fires the first notice's expiry deterministically instead of waiting on wall-clock time.
 <!-- SECTION:NOTES:END -->
 
 ## Final Summary
