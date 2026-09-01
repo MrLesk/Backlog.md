@@ -4,7 +4,6 @@ import { basename, join } from "node:path";
 import { $ } from "bun";
 import { Core } from "../core/backlog.ts";
 import { loadTaskDetail } from "../core/task-detail.ts";
-import { isTaskLockError } from "../file-system/operations.ts";
 import { serializeTask } from "../markdown/serializer.ts";
 import type { Task } from "../types/index.ts";
 import { taskIdsEqual } from "../utils/task-id.ts";
@@ -200,70 +199,6 @@ describe("references to a vacated task ID", () => {
 		const updated = await core.filesystem.loadTask(late.id);
 		expect(updated?.dependencies ?? []).toEqual([]);
 		expect(await dependencyTitles(updated)).toEqual([]);
-	});
-
-	it("keeps concurrent archive cleanups serialized when a bare-ID dependent completes under the lock", async () => {
-		const { task: firstTarget } = await core.createTaskFromInput({ title: "First archive target" });
-		const { task: dependent } = await core.createTaskFromInput({ title: "Dependent with a bare stored ID" });
-		const { task: secondTarget } = await core.createTaskFromInput({ title: "Second archive target" });
-		await core.updateTaskFromInput(dependent.id, { dependencies: [firstTarget.id, secondTarget.id] }, false);
-
-		const dependentWithLinks = await core.filesystem.loadTask(dependent.id);
-		if (!dependentWithLinks?.filePath) throw new Error("Expected the dependent task file");
-		await Bun.write(dependentWithLinks.filePath, serializeTask({ ...dependentWithLinks, id: "2" }));
-
-		// The first scan sees active TASK-2. Once its locks are held, completion moves the same
-		// record into the completed corpus, where the locked rescan reads its stored ID as bare "2".
-		// The second archive is injected just before the first cleanup writes that completed record.
-		const firstArchiver = new Core(testDir);
-		const completer = new Core(testDir);
-		const secondArchiver = new Core(testDir);
-		const filesystem = firstArchiver.filesystem;
-		const originalWithTaskLocks = filesystem.withTaskLocks.bind(filesystem);
-		const originalSaveTask = filesystem.saveTask.bind(filesystem);
-		let completedUnderLock = false;
-		let injectedSecondArchive = false;
-		let concurrentArchiveFailure: unknown;
-
-		filesystem.withTaskLocks = async (tasks, run) =>
-			await originalWithTaskLocks(tasks, async () => {
-				if (!completedUnderLock) {
-					completedUnderLock = true;
-					expect(await completer.completeTask(dependent.id, false)).toBe(true);
-				}
-				return await run();
-			});
-		filesystem.saveTask = async (task) => {
-			if (!injectedSecondArchive && taskIdsEqual(task.id, dependent.id)) {
-				injectedSecondArchive = true;
-				try {
-					expect((await secondArchiver.archiveTask(secondTarget.id, false)).success).toBe(true);
-				} catch (error) {
-					concurrentArchiveFailure = error;
-				}
-			}
-			return await originalSaveTask(task);
-		};
-
-		try {
-			expect((await firstArchiver.archiveTask(firstTarget.id, false)).success).toBe(true);
-		} finally {
-			filesystem.withTaskLocks = originalWithTaskLocks;
-			filesystem.saveTask = originalSaveTask;
-		}
-
-		// With one canonical lock, the concurrent attempt fails fast and can be retried after the
-		// first archive releases it. With spelling-based locks it succeeds in the middle, and the
-		// first archive then restores the second target from its older cleanup snapshot.
-		if (concurrentArchiveFailure) {
-			expect(isTaskLockError(concurrentArchiveFailure)).toBe(true);
-			expect((await new Core(testDir).archiveTask(secondTarget.id, false)).success).toBe(true);
-		}
-
-		const completedDependent = (await new Core(testDir).filesystem.listCompletedTasks()).find((task) =>
-			taskIdsEqual(task.id, dependent.id),
-		);
-		expect(completedDependent?.dependencies ?? []).toEqual([]);
 	});
 
 	it("reports a demotion whose cleanup write failed as already moved", async () => {

@@ -5,7 +5,7 @@ status: In Progress
 assignee:
   - '@codex'
 created_date: '2026-09-01 17:11'
-updated_date: '2026-09-01 21:21'
+updated_date: '2026-09-01 21:56'
 labels: []
 dependencies: []
 ordinal: 305000
@@ -136,6 +136,8 @@ Follow-up lock-key round: re-verified all production task-lock callers. They are
 MCP task_edit now receives cleanedTaskIds from editTaskOrDraft and reports dependent cleanup on edit-to-Draft. Post-move demotion failures carry cleanup versus commit cause through the server so the task modal gives the right recovery guidance. Archive recovery warns before refresh.
 
 Four new regressions failed on the pre-fix tree and pass after the fixes. Changed test files: 38 pass / 0 fail; non-network atomic task-lock tests: 9 pass / 0 fail. bunx tsc --noEmit and bun run check . pass. The required bun run test command was attempted, but this managed sandbox blocks localhost listeners with EPERM and cannot write the worktree's external Git common lock directory; watcher tests also time out here, so a trustworthy full-suite total could not be produced in this environment.
+
+Scope cut (maintainer steer, 2026-09-01): the shared task-lock keying change was removed. Canonicalizing lock keys in FileSystem.withEntityFileLock and withTaskLocks changed behavior for every caller of task locking in order to close a multi-process interleaving that needs a task stored as a bare number, completed mid-operation, with a second archive running concurrently. That is disproportionate for a local single-user tool, and this branch showed full-suite instability that main does not. What remains is what the reported bug needs: references cleaned on archive, demote and edit-to-Draft across the working copy and the completed corpus, written by path, reported to the user, with canonical taskIdsEqual comparison so padded spellings like TASK-01 are matched. Known limitation, also noted on Core.withVacatedIdCleanup: the coverage check and the acquired lock key can disagree for equivalent-but-differently-spelled IDs under concurrent mutation, so that interleaving can still leave a stale reference. It renders as an unknown task ID rather than binding to anything until the allocator reissues the number.
 <!-- SECTION:NOTES:END -->
 
 ## Final Summary
