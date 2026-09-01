@@ -5,7 +5,7 @@ status: In Progress
 assignee:
   - '@claude'
 created_date: '2026-09-01 17:16'
-updated_date: '2026-09-01 17:28'
+updated_date: '2026-09-01 17:40'
 labels: []
 dependencies: []
 ordinal: 306000
@@ -25,17 +25,17 @@ The reporter also asked for a configurable and persisted sort order. That is out
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 The TUI list view orders tasks by the shared task ID comparator, so TASK-1.9 precedes TASK-1.10 and subtask ordering matches the board
-- [ ] #2 Ordering comes from the existing shared comparator with no new sorting implementation added
-- [ ] #3 Board, TUI list, CLI plain and JSON, and the web task list all agree on subtask ordering for the same corpus
-- [ ] #4 A regression test covers double-digit subtask ordering (at least 1.2 through 1.11) on the affected surface
+- [x] #1 The TUI list view orders tasks by the shared task ID comparator, so TASK-1.9 precedes TASK-1.10 and subtask ordering matches the board
+- [x] #2 Ordering comes from the existing shared comparator with no new sorting implementation added
+- [x] #3 Board, TUI list, CLI plain and JSON, and the web task list all agree on subtask ordering for the same corpus
+- [x] #4 A regression test covers double-digit subtask ordering (at least 1.2 through 1.11) on the affected surface
 <!-- AC:END -->
 
 ## Definition of Done
 <!-- DOD:BEGIN -->
-- [ ] #1 bunx tsc --noEmit passes when TypeScript touched
-- [ ] #2 bun run check . passes when formatting/linting touched
-- [ ] #3 bun test (or scoped test) passes
+- [x] #1 bunx tsc --noEmit passes when TypeScript touched
+- [x] #2 bun run check . passes when formatting/linting touched
+- [x] #3 bun test (or scoped test) passes
 <!-- DOD:END -->
 
 ## Implementation Plan
@@ -65,4 +65,16 @@ Change: getTasks() now sorts groups with the shared compareTaskIds, so the dupli
 Tests: new src/test/subtask-ordering-consistency.test.ts builds TASK-1 with subtasks 1.1-1.11 (created in reverse) plus TASK-2 and TASK-11, and asserts the board corpus, every corpus reader, the TUI board columns, the comparator the web list sorts by, and CLI plain and JSON all produce one identical ID order. Added a TaskIdentityIndex unit test for the changed line. Both fail on the pre-fix comparator (verified by reverting it) and pass after. src/ui/board.ts exports prepareBoardColumns so the board assertion reads real board columns instead of re-deriving them.
 
 Out of scope as directed: no configurable or persisted sort order (task list --sort already exists).
+
+Validation: bunx tsc --noEmit clean, bun run check . clean, bun run test green at 2810 pass / 8 skip / 0 fail across 281 files. An earlier run of the same commit reported one failure while three agents' suites ran concurrently on this machine; re-running the full suite on the same tree was green, and the eight files that could be sensitive to corpus ordering (core, board-loading, core-task-corpus-regressions, shared-branch-task-loader, content-store, readme-board, board, no-remote-preflight) pass on their own, so it was a timing flake rather than this change.
+
+Also observed: backlog board export reads the same corpus, so exported markdown boards now list subtasks numerically too. Verified on the reproduction project.
+
+PR: https://github.com/MrLesk/Backlog.md/pull/985
 <!-- SECTION:NOTES:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+Fixed the alphabetical subtask ordering reported in issue #953. The divergence was not in the TUI list view itself but in TaskIdentityIndex.getTasks(), which ordered identity groups with left.id.localeCompare(right.id); ContentStore masked it by re-sorting, while Core.loadTasks() (the corpus 'backlog board' hands to the unified view) returned that alphabetical order straight into the TUI task list, which renders its array as given. getTasks() now uses the shared compareTaskIds, removing the duplicate comparator instead of adding a sort, and leaving board ordinal ordering, task list --sort and its priority default, and the web list's descending default untouched. Verified by reproducing on a scratch project across every surface, by src/test/subtask-ordering-consistency.test.ts (subtasks 1.1-1.11 plus two-digit top-level ids; board corpus, corpus readers, TUI board columns, the web list comparator, and CLI plain and JSON all assert one identical order) and a TaskIdentityIndex unit test, both confirmed to fail against the old comparator, with tsc, biome, and the full suite green.
+<!-- SECTION:FINAL_SUMMARY:END -->
