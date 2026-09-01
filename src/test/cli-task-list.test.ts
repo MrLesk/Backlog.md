@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
-import { mkdir } from "node:fs/promises";
+import { mkdir, writeFile } from "node:fs/promises";
+import { join } from "node:path";
 import { $ } from "bun";
 import { Core } from "../index.ts";
 import { getTestCliPath } from "./test-cli.ts";
@@ -673,6 +674,75 @@ describe("CLI Integration", () => {
 			expect(out).toContain("TASK-2 - Depends On Completed");
 			// An unresolvable dependency fails closed instead of being treated as satisfied.
 			expect(out).not.toContain("TASK-3 - Depends On Nothing Known");
+		});
+
+		it("serializes --ready --json from the readiness pass the filter used", async () => {
+			const core = new Core(TEST_DIR);
+			const createdDate = new Date().toISOString().slice(0, 10);
+			await core.createTask(
+				{
+					id: "task-1",
+					title: "Ready Work",
+					status: "To Do",
+					assignee: [],
+					labels: [],
+					dependencies: [],
+					createdDate,
+					rawContent: "",
+				},
+				false,
+			);
+			await core.createTask(
+				{
+					id: "task-2",
+					title: "Blocked Work",
+					status: "To Do",
+					assignee: [],
+					labels: [],
+					dependencies: ["task-1"],
+					createdDate,
+					rawContent: "",
+				},
+				false,
+			);
+
+			// A completed record that cannot be parsed is never cached, so it is re-read and re-logged
+			// under DEBUG every time the completed corpus is loaded. Counting those lines counts the
+			// corpus reads one command makes, which is the difference between deriving readiness once
+			// and deriving it again to serialize the same rows.
+			await mkdir(join(TEST_DIR, "backlog", "completed"), { recursive: true });
+			await writeFile(
+				join(TEST_DIR, "backlog", "completed", "task-99 - Broken.md"),
+				"---\nid: TASK-99\ntitle: [unclosed\nstatus: Done\n---\n\nbroken\n",
+			);
+
+			const runCounting = async (args: string[]) => {
+				const result = await $`bun ${[CLI_PATH, "task", "list", ...args]}`
+					.cwd(TEST_DIR)
+					.env({ ...process.env, DEBUG: "1" })
+					.quiet();
+				expect(result.exitCode).toBe(0);
+				return {
+					stdout: result.stdout.toString(),
+					corpusReads: result.stderr
+						.toString()
+						.split("\n")
+						.filter((line) => line.startsWith("Failed to parse completed task file")).length,
+				};
+			};
+
+			const plainReady = await runCounting(["--plain", "--ready"]);
+			const jsonReady = await runCounting(["--json", "--ready"]);
+
+			// Publishing the verdict must not cost a second read of the corpus it came from.
+			expect(jsonReady.corpusReads).toBe(plainReady.corpusReads);
+
+			const rows = JSON.parse(jsonReady.stdout).tasks as Array<{ id: string; isReady: boolean }>;
+			expect(rows.map((row) => row.id)).toEqual(["TASK-1"]);
+			// Every serialized row is one the filter selected, with the verdict that selected it.
+			expect(rows.every((row) => row.isReady)).toBe(true);
+			expect(plainReady.stdout).toContain("TASK-1 - Ready Work");
+			expect(plainReady.stdout).not.toContain("TASK-2 - Blocked Work");
 		});
 
 		it("should keep --ready verdicts correct when display filters hide the dependencies", async () => {

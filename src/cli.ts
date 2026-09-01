@@ -29,6 +29,7 @@ import { isConfigValueError } from "./file-system/operations.ts";
 import {
 	decisionListJson,
 	printJson,
+	type SearchResultInput,
 	searchJson,
 	taskDependenciesJson,
 	taskListJson,
@@ -2263,13 +2264,28 @@ addHelpSchema(program.command("search [query]"), {
 		});
 
 		if (outputMode === "json") {
-			// Task results carry the same readiness verdict `task list --json` publishes, derived in
-			// one pass over the corpus for the results being printed.
-			const searchedTasks = searchResults.filter(isTaskSearchResult).map((result) => result.task);
-			const readyTaskIds = new Set(
-				(await loadTaskListItems(core, searchedTasks)).filter((item) => item.isReady).map((item) => item.id),
-			);
-			printJson(searchJson(searchResults, cwd, core.filesystem.docsDir, readyTaskIds));
+			// Task results carry the same readiness verdict `task list --json` publishes, derived in one
+			// pass over the corpus for the results being printed. The projected rows are consumed in
+			// result order rather than looked up by ID, so two files claiming one ID keep the verdict
+			// derived for their own record instead of inheriting the other claimant's.
+			const projectedTaskRows = (
+				await loadTaskListItems(
+					core,
+					searchResults.flatMap((result) => (isTaskSearchResult(result) ? [result.task] : [])),
+				)
+			)[Symbol.iterator]();
+			const projectedResults: SearchResultInput[] = [];
+			for (const result of searchResults) {
+				if (!isTaskSearchResult(result)) {
+					projectedResults.push(result);
+					continue;
+				}
+				const projected = projectedTaskRows.next();
+				// One row per task result, in order, so this never runs out.
+				if (projected.done) break;
+				projectedResults.push({ ...result, task: projected.value });
+			}
+			printJson(searchJson(projectedResults, cwd, core.filesystem.docsDir));
 			cleanup();
 			return;
 		}
@@ -2720,47 +2736,47 @@ addHelpSchema(taskCmd.command("list"), {
 				baseFilters.parentTaskId = resolvedParentId;
 			}
 
-			let tasks = await core.queryTasks({
+			const tasks = await core.queryTasks({
 				query: searchQuery || undefined,
 				filters: Object.keys(baseFilters).length > 0 ? baseFilters : undefined,
 				includeCrossBranch: false,
 			});
 			const config = await core.filesystem.loadConfig();
 
-			if (options.ready) {
-				// Readiness resolves against the whole corpus, never the list being displayed: the
-				// filters above hide tasks, and the dependencies they hid still decide the verdict.
-				tasks = (await loadTaskListItems(core, tasks)).filter((task) => task.isReady);
-			}
+			// Ordering, the parent narrowing and the limit are the same whatever the rows carry, so the
+			// readiness projection below travels through them instead of being derived twice.
+			const parentFilter = resolvedParentId;
+			// The sort field was validated above, before any task was read.
+			const sortField = options.sort ? options.sort.toLowerCase() : "priority";
+			const narrowForDisplay = <T extends Task>(rows: T[]): { filtered: T[]; display: T[] } => {
+				const sorted = sortTasks(rows, sortField, config?.priorities);
+				const narrowed = parentFilter
+					? sorted.filter((task) => task.parentTaskId && taskIdsEqual(parentFilter, task.parentTaskId))
+					: sorted;
+				return { filtered: narrowed, display: taskLimit !== undefined ? narrowed.slice(0, taskLimit) : narrowed };
+			};
 
-			let sortedTasks = tasks;
-			if (options.sort) {
-				const sortField = options.sort.toLowerCase();
-				if (!TASK_SORT_FIELDS.includes(sortField)) {
-					console.error(`Invalid sort field: ${options.sort}. Valid values are: ${TASK_SORT_FIELD_LIST}`);
-					process.exitCode = 1;
+			// Readiness needs the completed corpus, so only the reads that use it pay for one: --ready
+			// filters on the verdict and --json publishes it. Both read it once, from the same pass, so
+			// a row selected as ready can never be serialized from a second, later verdict.
+			const readinessRows = options.ready || outputMode === "json" ? await loadTaskListItems(core, tasks) : null;
+
+			let filtered: Task[];
+			let displayTasks: Task[];
+			if (readinessRows) {
+				const rows = options.ready ? readinessRows.filter((row) => row.isReady) : readinessRows;
+				const narrowed = narrowForDisplay(rows);
+				if (outputMode === "json") {
+					printJson(taskListJson(narrowed.display));
 					cleanup();
 					return;
 				}
-				sortedTasks = sortTasks(tasks, sortField, config?.priorities);
+				filtered = narrowed.filtered;
+				displayTasks = narrowed.display;
 			} else {
-				sortedTasks = sortTasks(tasks, "priority", config?.priorities);
-			}
-
-			let filtered = sortedTasks;
-			if (resolvedParentId) {
-				const parent = resolvedParentId;
-				filtered = filtered.filter((task) => task.parentTaskId && taskIdsEqual(parent, task.parentTaskId));
-			}
-			const displayTasks = taskLimit !== undefined ? filtered.slice(0, taskLimit) : filtered;
-
-			if (outputMode === "json") {
-				// The one list read that publishes readiness, so it is the one that loads the completed
-				// corpus: the plain and interactive paths below read exactly what they read before.
-				// One pass over the rows being printed, no lookup per row.
-				printJson(taskListJson(await loadTaskListItems(core, displayTasks)));
-				cleanup();
-				return;
+				const narrowed = narrowForDisplay(tasks);
+				filtered = narrowed.filtered;
+				displayTasks = narrowed.display;
 			}
 
 			if (filtered.length === 0) {

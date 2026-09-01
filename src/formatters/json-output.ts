@@ -1,6 +1,13 @@
 import { isAbsolute, join, relative } from "node:path";
 import type { TaskDetail, TaskListItem } from "../core/task-detail.ts";
-import type { Decision, Document, SearchResult, Task } from "../types/index.ts";
+import type {
+	Decision,
+	DecisionSearchResult,
+	Document,
+	DocumentSearchResult,
+	Task,
+	TaskSearchResult,
+} from "../types/index.ts";
 import { isLocalEditableTask } from "../types/index.ts";
 import type { DependencyGraph } from "../utils/dependency-graph.ts";
 import type { TaskReadiness } from "../utils/readiness.ts";
@@ -235,23 +242,24 @@ export function decisionListJson(decisions: Decision[]) {
 }
 
 /**
- * `readyTaskIds` carries the readiness verdicts the caller derived in one pass over the corpus, so
- * task results answer the same question `task list --json` answers without resolving anything here.
+ * A search result set whose task records already carry readiness.
+ *
+ * The verdict travels on the record inside each result rather than being looked up by ID: two files
+ * can claim one ID with different dependencies, and each claimant has to keep its own answer.
  */
-export function searchJson(
-	results: SearchResult[],
-	projectRoot: string,
-	docsDir: string,
-	readyTaskIds: ReadonlySet<string>,
-) {
+export type SearchResultInput =
+	| DocumentSearchResult
+	| DecisionSearchResult
+	| (Omit<TaskSearchResult, "task"> & {
+			task: TaskListItem;
+	  });
+
+export function searchJson(results: SearchResultInput[], projectRoot: string, docsDir: string) {
 	const publicResults: SearchResultJson[] = [];
 	for (const result of results) {
 		if (result.type === "task") {
 			if (isLocalEditableTask(result.task)) {
-				publicResults.push({
-					type: "task",
-					data: toTaskSummaryJson({ ...result.task, isReady: readyTaskIds.has(result.task.id) }),
-				});
+				publicResults.push({ type: "task", data: toTaskSummaryJson(result.task) });
 			}
 			continue;
 		}

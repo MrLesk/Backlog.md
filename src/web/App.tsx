@@ -27,7 +27,8 @@ import {
 	type TaskSearchResult,
 } from '../types';
 import { ApiError, apiClient } from './lib/api';
-import { type TaskDetail, taskDependencyGraph, taskReadiness } from '../core/task-detail';
+import type { TaskDetail } from '../core/task-detail';
+import { type SyncedTaskRecord, syncOpenTaskDetail } from './utils/task-detail-sync';
 import type { DuplicateRepairPlan } from '../core/duplicate-task-repair';
 import { isValidTaskId } from '../utils/task-id';
 import { useHealthCheckContext } from './contexts/HealthCheckContext';
@@ -187,7 +188,10 @@ function AppContent() {
   const [showModal, setShowModal] = useState(false);
   const [editingTask, setEditingTask] = useState<Task | TaskDetail | null>(null);
   // The list record the open task was last synced from, so re-syncing cannot loop.
-  const syncedTaskRecordRef = useRef<Task | null>(null);
+  // The list record last folded into the open modal, with the readiness inputs it was read
+  // against, so a dependency that changes out of band is noticed even though this task's own
+  // record did not move.
+  const syncedTaskRecordRef = useRef<SyncedTaskRecord | null>(null);
   const [isDraftMode, setIsDraftMode] = useState(false);
   const [statuses, setStatuses] = useState<string[]>([]);
   const [availableLabels, setAvailableLabels] = useState<string[]>([]);
@@ -726,26 +730,22 @@ function AppContent() {
       return;
     }
     const updatedTask = tasks.find(t => t.id === editingTask.id);
-    if (!updatedTask || updatedTask === syncedTaskRecordRef.current) return;
-    syncedTaskRecordRef.current = updatedTask;
-    // The list carries stored records; the detail read carries the fields derived from the whole
-    // corpus. Refreshing from the list must not drop them, or the graph would disappear the first
-    // time anything is saved. Readiness answers for this task's own dependencies and status, so
-    // once the refreshed record moved either it no longer describes it: it is dropped rather than
-    // shown while the detail is read again.
-    const derivedChanged =
-      editingTask.status !== updatedTask.status ||
-      editingTask.dependencies.join(',') !== updatedTask.dependencies.join(',');
-    const derivedGraph = taskDependencyGraph(editingTask);
-    const derivedReadiness = derivedChanged ? undefined : taskReadiness(editingTask);
-    setEditingTask({
-      ...updatedTask,
-      ...(derivedGraph ? { dependencyGraph: derivedGraph } : {}),
-      ...(derivedReadiness ? { readiness: derivedReadiness } : {}),
+    if (!updatedTask) return;
+    const synced = syncOpenTaskDetail({
+      open: editingTask,
+      refreshed: updatedTask,
+      corpus: tasks,
+      previous: syncedTaskRecordRef.current,
     });
-    // Editing this task's own dependencies or status moves both derived fields, so read the detail
-    // again for fresh ones. Nothing else changes them, so nothing else pays for a request.
-    if (derivedChanged) {
+    // The refresh left this task's record and everything its readiness answers about untouched, so
+    // there is nothing to apply. This is also what keeps the state update below from looping.
+    if (!synced.changed) return;
+    syncedTaskRecordRef.current = { record: updatedTask, inputs: synced.readinessInputs };
+    setEditingTask(synced.task);
+    // The verdict moved: this task's own status or dependencies changed, or one of the records it
+    // depends on did. Nothing else changes it, so nothing else pays for a request, and it is one
+    // read of this task rather than one per dependency.
+    if (synced.rereadDetail) {
       void apiClient
         .fetchTask(updatedTask.id)
         .then(detail => setEditingTask(current => (current && current.id === detail.id ? detail : current)))

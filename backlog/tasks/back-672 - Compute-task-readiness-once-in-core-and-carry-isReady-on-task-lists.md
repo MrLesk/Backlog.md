@@ -5,7 +5,7 @@ status: In Progress
 assignee:
   - '@claude'
 created_date: '2026-09-01 17:04'
-updated_date: '2026-09-01 17:49'
+updated_date: '2026-09-01 18:18'
 labels: []
 dependencies: []
 ordinal: 304000
@@ -79,6 +79,25 @@ Verification: bunx tsc --noEmit clean; bun run check . clean; bun run test 2809 
 Rendered browser QA on a disposable project (completed dependency, unfinished chain, unknown dependency): TASK-3 shows 'Ready to start' with its dependency living in backlog/completed (the case the deleted off-board fetch used to handle), TASK-4 shows 'Blocked by TASK-2', TASK-5 shows 'Unknown dependency TASK-404', no console errors. Liveness re-checked: changing the open task's status to Done inline removes the badge and changing it back restores 'Blocked by TASK-2'; adding a dependency out of band while the modal is open refreshes the badge to 'Blocked by TASK-3'. A dependency completed elsewhere while a modal stays open refreshes when the detail is read again, the same staleness the dependency graph already has.
 
 AC #2 left unchecked: the CLI task list and search JSON projections, the MCP list and the interactive list all carry or filter on the single-pass isReady, but the browser's board and task-list corpus (GET /api/search) does not, for the reason recorded above. Everything else in that criterion holds; the remaining half is a one-line addition to that endpoint whenever the web ready filter renders it, and it needs a product call on paying the per-request cost before anything displays it.
+
+Review round 1 (Codex on PR #986), three findings fixed:
+
+1. P1 regression in the browser (src/web/App.tsx, new src/web/utils/task-detail-sync.ts). The first sync only compared the open task's own status and dependency IDs, so a dependency completing or being reopened elsewhere left the badge stale indefinitely - the browser used to catch that by recomputing from the board corpus. The whole decision now lives in syncOpenTaskDetail: it fingerprints what readiness actually answers about (this task's status and dependency list, plus every corpus record claiming one of those dependency IDs), drops the verdict and asks for one detail re-read when that moves, and keeps the dependency graph in place so it never flickers. It also replaces the effect's record-identity early return, which was the real blocker: the list reconcile preserves object identity for unchanged records, so a refresh that only changed the dependency never reached the comparison at all. One request for the task, never one per dependency.
+
+2. P2 in task list (src/cli.ts). --ready --json derived readiness twice: once to filter and once to serialize, doubling the completed-corpus read and letting a concurrent write between them publish isReady:false for a row the filter selected as ready. Ordering, the parent narrowing and the limit moved into one narrowForDisplay helper so the single projection travels through to the payload.
+
+3. P2 in search --json (src/cli.ts, src/formatters/json-output.ts). The verdicts were rejoined to results by task ID, so with two files claiming one ID one claimant being ready marked every result with that ID ready - fail-open on exactly the identity case this project fails closed on. searchJson now takes results whose records already carry readiness, consumed in result order, so each claimant keeps its own verdict.
+
+Tests, each verified failing before its fix and passing after:
+- src/test/web-task-detail-readiness-sync.test.tsx (jsdom): a dependency completed out of band while the record itself keeps identity - pre-fix rule reports changed:false and the modal keeps rendering 'Blocked by BACK-1'; post-fix the verdict is dropped, a re-read is requested, and the fresh detail renders 'Ready to start'. Second case pins that unrelated edits keep the verdict and ask for no read.
+- src/test/cli-task-list.test.ts 'serializes --ready --json from the readiness pass the filter used': counts completed-corpus reads (an unparsable completed record logs once per read under DEBUG) - pre-fix 3 vs 2 for --plain --ready, post-fix equal.
+- src/test/readiness-surface-agreement.test.ts 'search JSON readiness for a contested identity': two records claiming one ID, one blocked and one ready - pre-fix both serialize as ready, post-fix each keeps its own verdict.
+
+Rendered re-verification on a disposable project with the modal open on a blocked task: completing its blocker from the CLI flips the badge to 'Ready to start' within a refresh, reopening it flips back to 'Blocked by TASK-1', inline status edits still drop and restore it, no console errors.
+
+Correction to the earlier performance note: every task list command already reads the completed corpus once, in printDuplicateIntegrityWarning -> findLocalDuplicateTaskIds, which predates this task. Measured with DEBUG read counting: --plain 1 read (unchanged), --json 2, --plain --ready 2, --ready --json 3 before this fix and 2 after. So readiness adds at most one corpus read, only where the verdict is filtered on or published, and the plain path adds none.
+
+Owner decision recorded: isReady is deliberately NOT added to GET /api/search (the browser's board and task-list corpus) ahead of the web ready-filter UI. AC #2 stays unchecked for that half.
 <!-- SECTION:NOTES:END -->
 
 ## Final Summary

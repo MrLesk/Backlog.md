@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { $ } from "bun";
 import { Core } from "../core/backlog.ts";
 import { type TaskCorpus, type TaskDetail, toTaskDetail, withReadiness } from "../core/task-detail.ts";
+import { searchJson } from "../formatters/json-output.ts";
 import { McpServer } from "../mcp/server.ts";
 import { registerTaskTools } from "../mcp/tools/tasks/index.ts";
 import { BacklogServer } from "../server/index.ts";
@@ -239,5 +240,48 @@ describe("readiness agreement across surfaces", () => {
 		const corpus = await tuiCorpus();
 		const contestedDependent = withReadiness(corpus.tasks, corpus).find((row) => row.id === "TASK-8");
 		expect(contestedDependent?.isReady).toBe(false);
+	});
+});
+
+/**
+ * Two files can claim one task ID, which is a repairable state the product supports rather than an
+ * impossible one. The readiness a result publishes therefore has to be the verdict derived for that
+ * result's own record: joining verdicts back by ID lets one claimant's answer stand in for the
+ * other's, and the fail-open direction of that is a task reported ready because its namesake is.
+ */
+describe("search JSON readiness for a contested identity", () => {
+	it("keeps each claimant's own verdict", () => {
+		const createdDate = new Date().toISOString().slice(0, 10);
+		const makeRecord = (id: string, title: string, dependencies: string[] = []) => ({
+			id,
+			title,
+			status: "To Do",
+			assignee: [],
+			labels: [],
+			dependencies,
+			createdDate,
+			rawContent: "",
+		});
+
+		const blocker = makeRecord("TASK-1", "Unfinished blocker");
+		const blockedClaimant = makeRecord("TASK-2", "Contested claimant", ["TASK-1"]);
+		const readyClaimant = makeRecord("TASK-2", "Contested copy");
+		const rows = withReadiness([blockedClaimant, readyClaimant], {
+			tasks: [blocker, blockedClaimant, readyClaimant],
+			completedTasks: [],
+			statuses: ["To Do", "In Progress", "Done"],
+		});
+		// The two claimants genuinely differ: one waits on unfinished work, the other on nothing.
+		expect(rows.map((row) => row.isReady)).toEqual([false, true]);
+
+		const payload = searchJson(
+			rows.map((task) => ({ type: "task" as const, score: null, task })),
+			"/project",
+			"docs",
+		);
+		expect(payload.results.map((result) => (result.type === "task" ? result.data.isReady : null))).toEqual([
+			false,
+			true,
+		]);
 	});
 });
