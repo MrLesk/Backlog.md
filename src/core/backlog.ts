@@ -54,7 +54,6 @@ import { createMilestoneFilterValueResolver } from "../utils/milestone-filter.ts
 import {
 	buildGlobPattern,
 	buildIdRegex,
-	extractAnyPrefix,
 	generateNextId as generateNextPrefixedId,
 	generateNextSubtaskId,
 	getPrefixForType,
@@ -80,6 +79,7 @@ import {
 	stringArraysEqual,
 	validateDependencies,
 } from "../utils/task-builders.ts";
+import { withoutVacatedTaskLinks } from "../utils/task-links.ts";
 import {
 	AmbiguousTaskIdError,
 	canonicalTaskId,
@@ -216,6 +216,15 @@ type VacatedIdCleanup = {
 function vacatedIdCleanupTargets(cleanup: VacatedIdCleanup): Task[] {
 	return [...cleanup.active, ...cleanup.completed];
 }
+
+function sanitizeVacatedTaskLinks(tasks: Task[], vacatedTaskId: string): Task[] {
+	return tasks
+		.map((task) => withoutVacatedTaskLinks(task, vacatedTaskId))
+		.filter((task): task is Task => task !== null);
+}
+
+/** How many times a vacating operation re-takes its locks before giving up on a stable set. */
+const VACATED_ID_CLEANUP_LOCK_ATTEMPTS = 5;
 
 /**
  * Outcome of an operation that vacates a task ID. `cleanedTaskIds` names the records that lost a
@@ -835,50 +844,6 @@ export class Core {
 		return canonical;
 	}
 
-	private isExactTaskReference(reference: string, taskId: string): boolean {
-		const trimmed = reference.trim();
-		if (!trimmed) {
-			return false;
-		}
-		const taskPrefix = extractAnyPrefix(taskId);
-		const referencePrefix = extractAnyPrefix(trimmed);
-		if (!taskPrefix || !referencePrefix) {
-			return false;
-		}
-		if (taskPrefix.toLowerCase() !== referencePrefix.toLowerCase()) {
-			return false;
-		}
-		return normalizeTaskId(trimmed, taskPrefix).toLowerCase() === normalizeTaskId(taskId, taskPrefix).toLowerCase();
-	}
-
-	private sanitizeVacatedTaskLinks(tasks: Task[], vacatedTaskId: string): Task[] {
-		const changedTasks: Task[] = [];
-
-		for (const task of tasks) {
-			const dependencies = task.dependencies ?? [];
-			const references = task.references ?? [];
-
-			const sanitizedDependencies = dependencies.filter((dependency) => !taskIdsEqual(dependency, vacatedTaskId));
-			const sanitizedReferences = references.filter(
-				(reference) => !this.isExactTaskReference(reference, vacatedTaskId),
-			);
-
-			const dependenciesChanged = !stringArraysEqual(dependencies, sanitizedDependencies);
-			const referencesChanged = !stringArraysEqual(references, sanitizedReferences);
-			if (!dependenciesChanged && !referencesChanged) {
-				continue;
-			}
-
-			changedTasks.push({
-				...task,
-				dependencies: sanitizedDependencies,
-				references: sanitizedReferences,
-			});
-		}
-
-		return changedTasks;
-	}
-
 	/**
 	 * Collect the records that name a task ID which archiving or demoting is about to vacate.
 	 *
@@ -893,9 +858,52 @@ export class Core {
 		const [activeTasks, completedTasks] = await Promise.all([this.fs.listTasks(), this.fs.listCompletedTasks()]);
 		const others = (tasks: Task[]) => tasks.filter((task) => !taskIdsEqual(task.id, vacatedTaskId));
 		return {
-			active: this.sanitizeVacatedTaskLinks(others(activeTasks), vacatedTaskId),
-			completed: this.sanitizeVacatedTaskLinks(others(completedTasks), vacatedTaskId),
+			active: sanitizeVacatedTaskLinks(others(activeTasks), vacatedTaskId),
+			completed: sanitizeVacatedTaskLinks(others(completedTasks), vacatedTaskId),
 		};
+	}
+
+	/**
+	 * Run a vacating operation while holding the record's lock and the lock of every task that
+	 * references the ID it is about to free.
+	 *
+	 * The set cannot be known without reading the corpus, and a set read before the locks are held
+	 * is only a guess: a dependent edited in that window would be rewritten from the pre-edit
+	 * snapshot, losing that edit, and a task that started referencing the ID in that window would
+	 * not be locked and would keep the reference the operation exists to remove. So the scan is
+	 * repeated inside the locks, and a scan naming a task the held locks do not cover releases
+	 * them and runs again over the wider set. Widening only ever adds tasks, and the locks are
+	 * always taken through {@link FileSystem.withTaskLocks}, which sorts them, so retrying
+	 * cannot deadlock against another operation. `run` therefore only ever sees a set that was
+	 * read, and is locked, as one consistent state.
+	 */
+	private async withVacatedIdCleanup<T>(
+		target: Pick<Task, "id" | "filePath">,
+		vacatedTaskId: string,
+		run: (cleanup: VacatedIdCleanup) => Promise<T>,
+	): Promise<T> {
+		let candidates = vacatedIdCleanupTargets(await this.collectVacatedIdCleanup(vacatedTaskId));
+
+		for (let attempt = 0; attempt < VACATED_ID_CLEANUP_LOCK_ATTEMPTS; attempt++) {
+			const locked = new Set(candidates.map((task) => canonicalTaskId(task.id)));
+			const outcome = await this.fs.withTaskLocks(
+				[target, ...candidates],
+				async (): Promise<{ value: T } | { widened: Task[] }> => {
+					const cleanup = await this.collectVacatedIdCleanup(vacatedTaskId);
+					const targets = vacatedIdCleanupTargets(cleanup);
+					if (targets.some((task) => !locked.has(canonicalTaskId(task.id)))) {
+						return { widened: targets };
+					}
+					return { value: await run(cleanup) };
+				},
+			);
+			if ("value" in outcome) return outcome.value;
+			candidates = outcome.widened;
+		}
+
+		throw new Error(
+			`Could not take a stable set of task locks to clean references to ${vacatedTaskId}. Retry once the tasks referencing it stop changing.`,
+		);
 	}
 
 	/**
@@ -2699,8 +2707,7 @@ export class Core {
 	): Promise<Task> {
 		// Editing a task into the Draft status vacates its ID just as `task demote` does, so it
 		// runs the same cleanup rather than leaving dependents pointing at the freed ID.
-		const cleanup = await this.collectVacatedIdCleanup(task.id);
-		return await this.fs.withTaskLocks([task, ...vacatedIdCleanupTargets(cleanup)], async () => {
+		return await this.withVacatedIdCleanup(task, task.id, async (cleanup) => {
 			const current = await this.loadTaskForMutation(task.id, options);
 			if (!current) {
 				throw new Error(`Task not found: ${task.id}`);
@@ -2713,15 +2720,19 @@ export class Core {
 				return this.requireCanonicalStatus(status);
 			});
 
+			// The record keeps its own links under the new draft identity, so a link naming the task
+			// ID it is vacating would rebind to whatever task is allocated that ID next.
+			const vacating = withoutVacatedTaskLinks(current, current.id) ?? current;
+
 			const { demotedDraft, savedPath } = await this.withCreateLock(async () => {
 				const newDraftId = await this.generateNextId(EntityType.Draft);
 				// Mirrors promotion: the allocated draft ID can be named by a stored dangling
 				// reference, so the demoted record must not materialize a cycle through it.
-				await validateDependencies(current.dependencies ?? [], this, { ...current, id: newDraftId });
+				await validateDependencies(vacating.dependencies ?? [], this, { ...vacating, id: newDraftId });
 				const taskPath = current.filePath;
 
 				const demotedDraft: Task = {
-					...current,
+					...vacating,
 					id: newDraftId,
 					status: "Draft",
 					filePath: undefined,
@@ -2806,7 +2817,11 @@ export class Core {
 		const filePaths: string[] = [];
 		const updateAll = async () => {
 			for (const task of tasks) {
-				filePaths.push(await this.updateTask(task, false));
+				const filePath = await this.updateTask(task, false);
+				filePaths.push(filePath);
+				// Keep an in-process ContentStore serving what was just written: without this the
+				// server, MCP and TUI keep reading the pre-write copy until a watcher refresh lands.
+				this.contentStore?.upsertTask({ ...task, filePath });
 			}
 		};
 		if (this.contentStore) await this.contentStore.batchTaskUpdates(updateAll);
@@ -3222,9 +3237,7 @@ export class Core {
 		const fromPath = taskPath;
 		const toPath = join(await this.fs.getArchiveTasksDir(), taskFilename);
 
-		const cleanup = await this.collectVacatedIdCleanup(normalizedTaskId);
-
-		return await this.fs.withTaskLocks([taskToArchive, ...vacatedIdCleanupTargets(cleanup)], async () => {
+		return await this.withVacatedIdCleanup(taskToArchive, normalizedTaskId, async (cleanup) => {
 			try {
 				await moveFile(fromPath, toPath);
 			} catch {
@@ -3457,13 +3470,10 @@ export class Core {
 	async demoteTask(taskId: string, autoCommit?: boolean, options: TaskReadOptions = {}): Promise<VacatedTaskResult> {
 		const task = await this.loadTaskForMutation(taskId, options);
 		if (!task) return { success: false, cleanedTaskIds: [] };
-		// The demoted record is renamed to a draft identity, so the task ID it leaves behind is
-		// vacated exactly like an archived one.
-		const cleanup = await this.collectVacatedIdCleanup(task.id);
 		// Direct demotion is a read-modify-write too. Hold the task lock across the
 		// filesystem read and move so an in-flight task update cannot recreate the
-		// active file after this operation has written the draft. The dependents are locked in
-		// the same span, so nobody can add a reference to the ID between the scan and the move.
+		// active file after this operation has written the draft. The record demoted here also
+		// vacates its task ID, so the dependents are locked and cleaned in the same span.
 		const demotion = {
 			success: false,
 			moved: undefined as { previousPath: string; savedPath: string } | undefined,
@@ -3472,19 +3482,22 @@ export class Core {
 		};
 		let result: typeof demotion;
 		try {
-			result = await this.fs.withTaskLocks([task, ...vacatedIdCleanupTargets(cleanup)], async () => {
+			result = await this.withVacatedIdCleanup(task, task.id, async (cleanup) => {
 				const movedPaths: Array<{ previousPath: string; savedPath: string }> = [];
 				const success = await this.fs.demoteTask(task.id, (previousPath, savedPath) => {
 					movedPaths.push({ previousPath, savedPath });
 				});
+				// Record the move before anything that can fail after it. A cleanup write that
+				// throws must still report the demotion as "moved", or a client is told the task
+				// is untouched and retries a demotion that already happened.
+				demotion.success = success;
+				demotion.moved = movedPaths[0];
 				if (success) {
 					this.contentStore?.transitionTask(task.id);
 					const written = await this.writeVacatedIdCleanup(cleanup);
 					demotion.cleanedTaskIds = written.cleanedTaskIds;
 					demotion.cleanedPaths = written.filePaths;
 				}
-				demotion.success = success;
-				demotion.moved = movedPaths[0];
 				return demotion;
 			});
 		} catch (error) {

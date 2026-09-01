@@ -27,6 +27,7 @@ import {
 } from "../utils/prefix-config.ts";
 import { matchesProjectFilter } from "../utils/project-config.ts";
 import { normalizeStatusSet, statusMatchesSet } from "../utils/status-filter.ts";
+import { withoutVacatedTaskLinks } from "../utils/task-links.ts";
 import {
 	AmbiguousTaskIdError,
 	draftIdsMatchLoosely,
@@ -1223,9 +1224,11 @@ export class FileSystem {
 			const config = await this.loadConfig();
 			const newDraftId = generateNextId(existingIds, "draft", config?.zeroPaddedIds);
 
-			// Update task with new draft ID and save as draft
+			// Update task with new draft ID and save as draft. The record's own links are cleaned of
+			// the task ID it vacates here: carried into the draft, such a link would rebind to
+			// whatever task is allocated that ID next.
 			const demotedDraft: Task = {
-				...task,
+				...(withoutVacatedTaskLinks(task, task.id) ?? task),
 				id: newDraftId,
 				filePath: undefined, // Will be set by saveDraft
 			};

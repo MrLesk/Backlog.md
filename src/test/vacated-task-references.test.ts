@@ -33,6 +33,27 @@ describe("references to a vacated task ID", () => {
 	const loadCompleted = async (taskId: string) =>
 		(await core.filesystem.listCompletedTasks()).find((task) => taskIdsEqual(task.id, taskId));
 
+	/**
+	 * Run `interleave` once, at the exact moment the operation asks for its task locks. The cleanup
+	 * set is scanned before that call, so this reproduces the window between the scan and the locks
+	 * without sleeping on or racing against anything.
+	 */
+	const interleaveAtLockAcquisition = (interleave: () => Promise<void>) => {
+		const filesystem = core.filesystem;
+		const original = filesystem.withTaskLocks.bind(filesystem);
+		let injected = false;
+		filesystem.withTaskLocks = async (tasks, run) => {
+			if (!injected) {
+				injected = true;
+				await interleave();
+			}
+			return await original(tasks, run);
+		};
+		return () => {
+			filesystem.withTaskLocks = original;
+		};
+	};
+
 	/** What the dependency graph actually resolves the stored references to. */
 	const dependencyTitles = async (task: Task | undefined | null) => {
 		if (!task) return null;
@@ -127,6 +148,133 @@ describe("references to a vacated task ID", () => {
 
 		expect((await core.filesystem.loadTask(dependent.id))?.dependencies).toEqual([predecessor.id]);
 		expect((await loadCompleted(completedDependent.id))?.dependencies).toEqual([predecessor.id]);
+	});
+
+	it("keeps an edit made between the cleanup scan and the locks", async () => {
+		const { task: dependent } = await core.createTaskFromInput({ title: "Dependent" });
+		const { task: target } = await core.createTaskFromInput({ title: "Archive target" });
+		await core.updateTaskFromInput(dependent.id, { dependencies: [target.id] }, false);
+
+		const editor = new Core(testDir);
+		const restore = interleaveAtLockAcquisition(async () => {
+			await editor.updateTaskFromInput(dependent.id, { title: "Renamed while archiving" }, false);
+		});
+
+		try {
+			const archived = await core.archiveTask(target.id, false);
+			expect(archived.success).toBe(true);
+			expect(archived.cleanedTaskIds).toEqual([dependent.id]);
+		} finally {
+			restore();
+		}
+
+		// A snapshot taken before the locks would have rewritten the file from pre-edit content.
+		const updated = await core.filesystem.loadTask(dependent.id);
+		expect(updated?.title).toBe("Renamed while archiving");
+		expect(updated?.dependencies ?? []).toEqual([]);
+	});
+
+	it("cleans a dependent that starts referencing the ID between the scan and the locks", async () => {
+		const { task: late } = await core.createTaskFromInput({ title: "Late dependent" });
+		const { task: target } = await core.createTaskFromInput({ title: "Archive target" });
+
+		const editor = new Core(testDir);
+		const restore = interleaveAtLockAcquisition(async () => {
+			await editor.updateTaskFromInput(late.id, { dependencies: [target.id] }, false);
+		});
+
+		try {
+			const archived = await core.archiveTask(target.id, false);
+			expect(archived.success).toBe(true);
+			expect(archived.cleanedTaskIds).toEqual([late.id]);
+		} finally {
+			restore();
+		}
+
+		const { task: unrelated } = await core.createTaskFromInput({ title: "Totally unrelated new task" });
+		expect(taskIdsEqual(unrelated.id, target.id)).toBe(true);
+
+		const updated = await core.filesystem.loadTask(late.id);
+		expect(updated?.dependencies ?? []).toEqual([]);
+		expect(await dependencyTitles(updated)).toEqual([]);
+	});
+
+	it("reports a demotion whose cleanup write failed as already moved", async () => {
+		const { task: dependent } = await core.createTaskFromInput({ title: "Dependent" });
+		const { task: target } = await core.createTaskFromInput({ title: "Demote target" });
+		await core.updateTaskFromInput(dependent.id, { dependencies: [target.id] }, false);
+
+		const filesystem = core.filesystem;
+		const originalSaveTask = filesystem.saveTask.bind(filesystem);
+		filesystem.saveTask = async (task) => {
+			if (taskIdsEqual(task.id, dependent.id)) {
+				throw new Error("dependent file is not writable");
+			}
+			return await originalSaveTask(task);
+		};
+
+		let failure: unknown;
+		try {
+			await core.demoteTask(target.id, false);
+		} catch (error) {
+			failure = error;
+		} finally {
+			filesystem.saveTask = originalSaveTask;
+		}
+
+		// The record is already a draft, so the caller must not be told the demotion did not happen.
+		expect((failure as { demotionState?: string } | undefined)?.demotionState).toBe("moved");
+		expect(await core.filesystem.loadTask(target.id)).toBeNull();
+		expect(await core.filesystem.listDrafts()).toHaveLength(1);
+	});
+
+	it("serves the cleaned records from the content store as soon as the archive returns", async () => {
+		const { task: activeDependent } = await core.createTaskFromInput({ title: "Active dependent" });
+		const { task: completedDependent } = await core.createTaskFromInput({ title: "Completed dependent" });
+		const { task: target } = await core.createTaskFromInput({ title: "Archive target" });
+		await core.updateTaskFromInput(activeDependent.id, { dependencies: [target.id] }, false);
+		await core.updateTaskFromInput(completedDependent.id, { dependencies: [target.id] }, false);
+		expect(await core.completeTask(completedDependent.id, false)).toBe(true);
+
+		const store = await core.getContentStore();
+		expect(store.getTasks().find((task) => taskIdsEqual(task.id, activeDependent.id))?.dependencies).toEqual([
+			target.id,
+		]);
+
+		expect((await core.archiveTask(target.id, false)).success).toBe(true);
+
+		// A reader served from the store must not still see the reference the archive removed.
+		expect(store.getTasks().find((task) => taskIdsEqual(task.id, activeDependent.id))?.dependencies ?? []).toEqual([]);
+		const snapshot = store.getTaskCorpusSnapshot();
+		expect(snapshot.completedTasks.find((task) => taskIdsEqual(task.id, completedDependent.id))?.dependencies).toEqual(
+			[],
+		);
+		// Rewriting the completed file must not republish it as an active task.
+		expect(store.getTasks().some((task) => taskIdsEqual(task.id, completedDependent.id))).toBe(false);
+	});
+
+	it("removes the vacated ID from the demoted record's own references", async () => {
+		const { task: target } = await core.createTaskFromInput({ title: "Self-referencing target" });
+		await core.updateTaskFromInput(target.id, { references: [target.id, "docs/notes.md"] }, false);
+
+		expect((await core.demoteTask(target.id, false)).success).toBe(true);
+
+		const drafts = await core.filesystem.listDrafts();
+		expect(drafts).toHaveLength(1);
+		expect(drafts[0]?.references ?? []).toEqual(["docs/notes.md"]);
+
+		// The freed ID goes to the next task, which the draft must not have started naming.
+		const { task: unrelated } = await core.createTaskFromInput({ title: "Totally unrelated new task" });
+		expect(taskIdsEqual(unrelated.id, target.id)).toBe(true);
+	});
+
+	it("removes the vacated ID from a record demoted by an edit into the Draft status", async () => {
+		const { task: target } = await core.createTaskFromInput({ title: "Self-referencing target" });
+		await core.updateTaskFromInput(target.id, { references: [target.id, "docs/notes.md"] }, false);
+
+		const demoted = await core.editTaskOrDraft(target.id, { status: "Draft" }, false);
+		expect(demoted.id.startsWith("DRAFT-")).toBe(true);
+		expect(demoted.references ?? []).toEqual(["docs/notes.md"]);
 	});
 
 	it("reports the cleaned tasks from the archive and demote commands", async () => {

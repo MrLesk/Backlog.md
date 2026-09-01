@@ -5,7 +5,7 @@ status: In Progress
 assignee:
   - '@claude'
 created_date: '2026-09-01 17:11'
-updated_date: '2026-09-01 17:54'
+updated_date: '2026-09-01 18:19'
 labels: []
 dependencies: []
 ordinal: 305000
@@ -73,6 +73,15 @@ Locking: the cleanup set is computed before the lock, then archiveTask, demoteTa
 Surfaces only display: formatDependencyCleanupMessage in utils/dependency-graph.ts is the single wording ('Removed references to TASK-5 from TASK-2, TASK-3'). CLI archive/demote print it as a second line; the TUI board and task viewer show it in the existing transient footer via formatTaskArchivedMessage; MCP adds it as a summary line above the task body; the web DELETE/demote endpoints return cleanedTaskIds and App.tsx shows it through the existing SuccessToast flow (archive directly, demote via a new onDependencyCleanup prop on TaskDetailsModal).
 
 Deliberate boundaries: drafts are not scanned (they are neither corpus, and an existing test pins that archive leaves them alone); parentTaskId is not rewritten (existing behavior); demote removes references instead of rewriting them to DRAFT-N, per the task decision; ID recycling is unchanged. 'backlog task edit <id> -s Draft' performs the cleanup but prints only 'Updated task DRAFT-N' - the cleanup report rides on the dedicated archive/demote commands, because threading it through the generic edit command would change editTaskOrDraft/updateTaskFromInput return shapes across CLI, server and MCP.
+
+Review round (PR 987, four findings):
+
+1. Cleanup snapshot taken outside the locks (P1). collectVacatedIdCleanup ran before withTaskLocks, so a dependent edited in that window was rewritten from the pre-edit snapshot (lost update) and a task that started referencing the ID in that window was never locked and kept the reference. New Core.withVacatedIdCleanup(target, vacatedId, run) takes the locks, re-scans the corpus inside them, and if the fresh scan names a task the held locks do not cover it releases, widens the set and runs again (bounded at 5 attempts); run only ever sees a set that was read and locked as one state. archiveTask, demoteTask and demoteTaskWithUpdates all go through it.
+2. Move outcome recorded after cleanup could fail (P2). demoteTask now assigns demotion.success/moved immediately after fs.demoteTask returns, before the content-store transition and the cleanup writes, so a cleanup write that throws still surfaces demotionState 'moved' and the web handler refreshes instead of inviting a retry of a demotion that already happened.
+3. Cleaned active dependents not published (P2). writeTasksBulk now upserts each written task into an initialized ContentStore. Note for the record: the store also patches filesystem.saveTask and publishes writes itself, so the plain path was already correct and no non-contrived test fails without this line; the explicit publish removes the dependency on that patch being installed and on updateTaskFromDisk's reconcile not bailing out on a stale watcher epoch.
+4. Demoted record kept its own vacated ID (P2). A record whose links named its own ID was excluded from cleanup as 'self', so demotion copied that link into the new draft. isExactTaskReference and the sanitizer moved to src/utils/task-links.ts (withoutVacatedTaskLinks), now shared by the corpus cleanup in core and by both demote paths, which sanitize the record while building the draft.
+
+Six new tests in src/test/vacated-task-references.test.ts. Five fail on the pre-fix commit (verified by stashing the source fixes and running the new file against 6a4fb75c): stale-snapshot overwrite, missed late dependent, missing demotionState, and the self-reference on both demote paths. The concurrency tests are deterministic - no sleeps and no racing threads: interleaveAtLockAcquisition patches filesystem.withTaskLocks to run one edit through a second Core instance at the exact moment the operation asks for its locks, which is the window the scan used to be taken in.
 <!-- SECTION:NOTES:END -->
 
 ## Final Summary
