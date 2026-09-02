@@ -79,17 +79,31 @@ export function parseStoredUtcDate(dateStr: string): Date | null {
 	return null;
 }
 
-/** Renders an instant as `yyyy-mm-dd hh:mm` wall-clock time in the given (or runtime) timezone. */
-function toLocalCanonical(date: Date, timeZone?: string): string | null {
-	const parts = new Intl.DateTimeFormat("en-US", {
-		timeZone,
+// Building a formatter costs far more than using one, and a task list renders a date per row.
+// Keyed by the resolved zone, so a cached formatter is never reused after the runtime zone changes.
+const localFormatters = new Map<string, Intl.DateTimeFormat>();
+
+function localFormatterFor(timeZone: string | undefined): Intl.DateTimeFormat {
+	const zone = timeZone ?? Intl.DateTimeFormat().resolvedOptions().timeZone;
+	const cached = localFormatters.get(zone);
+	if (cached) return cached;
+
+	const formatter = new Intl.DateTimeFormat("en-US", {
+		timeZone: zone,
 		year: "numeric",
 		month: "2-digit",
 		day: "2-digit",
 		hour: "2-digit",
 		minute: "2-digit",
 		hourCycle: "h23",
-	}).formatToParts(date);
+	});
+	localFormatters.set(zone, formatter);
+	return formatter;
+}
+
+/** Renders an instant as `yyyy-mm-dd hh:mm` wall-clock time in the given (or runtime) timezone. */
+function toLocalCanonical(date: Date, timeZone?: string): string | null {
+	const parts = localFormatterFor(timeZone).formatToParts(date);
 
 	const part = (type: Intl.DateTimeFormatPartTypes) => parts.find((candidate) => candidate.type === type)?.value;
 	const year = part("year");
@@ -148,23 +162,31 @@ export function formatStoredDateForCompactDisplay(
 ): StoredDateDisplay {
 	const canonicalUtc = formatUtcDateForDisplay(dateStr);
 	if (!canonicalUtc) return { text: "—" };
-
-	const parsed = parseStoredUtcDate(canonicalUtc);
-	if (!parsed) return { text: canonicalUtc };
+	if (!parseStoredUtcDate(canonicalUtc)) return { text: canonicalUtc };
 
 	const local = localCanonicalOf(canonicalUtc, options.timeZone);
 	const title = local ? utcTitleOf(canonicalUtc, options.dateFormat) : undefined;
 
-	const diffDays = Math.floor((now.getTime() - parsed.getTime()) / (1000 * 60 * 60 * 24));
-	if (diffDays >= 0 && diffDays < 7) {
+	// "today" and "yesterday" name calendar days, so compare the days the viewer actually reads:
+	// a value less than 24 hours old can still belong to the previous local day.
+	const localDate = (local ?? canonicalUtc).slice(0, 10);
+	const todayLocal = toLocalCanonical(now, options.timeZone)?.slice(0, 10);
+	const diffDays = todayLocal ? calendarDaysBetween(localDate, todayLocal) : null;
+
+	if (diffDays !== null && diffDays >= 0 && diffDays < 7) {
 		if (diffDays === 0) return { text: "today", title };
 		if (diffDays === 1) return { text: "yesterday", title };
 		return { text: `${diffDays}d ago`, title };
 	}
 
 	// Absolute fallback stays compact: the date portion only, in the viewer's timezone.
-	return {
-		text: formatUtcDateForDisplay((local ?? canonicalUtc).slice(0, 10), { dateFormat: options.dateFormat }),
-		title,
-	};
+	return { text: formatUtcDateForDisplay(localDate, { dateFormat: options.dateFormat }), title };
+}
+
+/** Whole calendar days from `earlier` to `later`, both `yyyy-mm-dd` read in the same timezone. */
+function calendarDaysBetween(earlier: string, later: string): number | null {
+	const from = parseStoredUtcDate(earlier);
+	const to = parseStoredUtcDate(later);
+	if (!from || !to) return null;
+	return Math.round((to.getTime() - from.getTime()) / (1000 * 60 * 60 * 24));
 }

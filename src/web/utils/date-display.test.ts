@@ -121,6 +121,33 @@ describe("formatStoredDateForCompactDisplay", () => {
 		).toBe("11/02/2026");
 	});
 
+	it("names the day by the viewer's calendar, not by elapsed hours", () => {
+		// 17:00 on Feb 20 in Los Angeles. The stored value is 19 hours old but fell on Feb 19 locally.
+		const lateEvening = new Date(Date.UTC(2026, 1, 21, 1, 0, 0));
+		expect(formatStoredDateForCompactDisplay("2026-02-20 06:00", { timeZone: LOS_ANGELES }, lateEvening).text).toBe(
+			"yesterday",
+		);
+
+		// The same trap the other way round the globe: 01:00 on Feb 22 in Tokyo, 6 hours after a Feb 21 stamp.
+		const pastMidnight = new Date(Date.UTC(2026, 1, 21, 16, 0, 0));
+		expect(formatStoredDateForCompactDisplay("2026-02-21 10:00", { timeZone: TOKYO }, pastMidnight).text).toBe(
+			"yesterday",
+		);
+
+		// A UTC viewer reads calendar days too: 19 hours earlier is still the previous day.
+		expect(formatStoredDateForCompactDisplay("2026-02-20 06:00", { timeZone: "UTC" }, lateEvening).text).toBe(
+			"yesterday",
+		);
+	});
+
+	it("counts older values in whole local days", () => {
+		const lateEvening = new Date(Date.UTC(2026, 1, 21, 1, 0, 0));
+		// Locally Feb 17 against a local today of Feb 20.
+		expect(formatStoredDateForCompactDisplay("2026-02-18 06:00", { timeZone: LOS_ANGELES }, lateEvening).text).toBe(
+			"3d ago",
+		);
+	});
+
 	it("handles missing and invalid values gracefully", () => {
 		expect(formatStoredDateForCompactDisplay("", { timeZone: TOKYO }, now)).toEqual({ text: "—" });
 		expect(formatStoredDateForCompactDisplay("not-a-date", { timeZone: TOKYO }, now)).toEqual({ text: "not-a-date" });
