@@ -1,11 +1,11 @@
 ---
 id: BACK-670
 title: Remove the standalone task dependencies command and its TUI
-status: In Progress
+status: Done
 assignee:
   - '@claude'
 created_date: '2026-09-01 06:27'
-updated_date: '2026-09-02 18:44'
+updated_date: '2026-09-02 18:49'
 labels: []
 dependencies: []
 ordinal: 302000
