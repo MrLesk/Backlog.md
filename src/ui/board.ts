@@ -22,7 +22,6 @@ import { compareTaskIds } from "../utils/task-sorting.ts";
 import { getTaskTypeValues, resolveTaskTypeValues } from "../utils/task-type-config.ts";
 import { taskContentSignature } from "../utils/task-watcher.ts";
 import { formatUtcDateForDisplay } from "../utils/utc-date-display.ts";
-import { formatAcceptanceCriteriaProgressColumn } from "./acceptance-criteria-progress.ts";
 import { openConfirmPopup } from "./components/confirm-popup.ts";
 import { createFilterHeader, type FilterHeader, type FilterState } from "./components/filter-header.ts";
 import { openMultiSelectFilterPopup, openSingleSelectFilterPopup } from "./components/filter-popup.ts";
@@ -37,6 +36,7 @@ import {
 	formatTaskArchivedMessage,
 	formatTaskCompletionBlockedMessage,
 } from "./task-lifecycle.ts";
+import { createTaskRowPrefix, type TaskRowPrefix } from "./task-row-prefix.ts";
 import { formatTaskTypeBadge } from "./task-type.ts";
 import {
 	createTaskPopup,
@@ -159,6 +159,9 @@ export function formatTaskListItem(
 	isMoving = false,
 	dateFormat?: string,
 	configuredProjects?: string[],
+	// Board columns already name the status, so the prefix here is progress alone. Rendering a
+	// lone row aligns it against itself.
+	formatPrefix: TaskRowPrefix = createTaskRowPrefix([task], { showStatus: false }),
 ): string {
 	const assignee = task.assignee?.[0]
 		? ` {cyan-fg}${task.assignee[0].startsWith("@") ? task.assignee[0] : `@${task.assignee[0]}`}{/}`
@@ -171,19 +174,19 @@ export function formatTaskListItem(
 	const project = projectBadge ? ` ${projectBadge}` : "";
 	const isCrossBranch = Boolean((task as Task & { branch?: string }).branch);
 	const branch = isCrossBranch ? ` {green-fg}(${(task as Task & { branch?: string }).branch}){/}` : "";
-	// The reserved column stays outside the row-level color tags: its own {/} would close
-	// them, and keeping it there also holds the leftmost column still while a task moves.
-	const progress = formatAcceptanceCriteriaProgressColumn(task);
+	// The prefix stays outside the row-level color tags: its own {/} would close them, and
+	// keeping it there also holds the reserved columns still while a task moves.
+	const prefix = formatPrefix(task);
 
 	// Cross-branch tasks are dimmed to indicate read-only status
 	const content = `{bold}${task.id}{/bold}${type}${project}${dueDate} - ${task.title}${assignee}${labels}${branch}`;
 	if (isMoving) {
-		return `${progress}{magenta-fg}► ${content}{/}`;
+		return `${prefix}{magenta-fg}► ${content}{/}`;
 	}
 	if (isCrossBranch) {
-		return `${progress}{gray-fg}${content}{/}`;
+		return `${prefix}{gray-fg}${content}{/}`;
 	}
-	return `${progress}${content}`;
+	return `${prefix}${content}`;
 }
 
 function buildRenderedTaskListItems(
@@ -192,8 +195,9 @@ function buildRenderedTaskListItems(
 	dateFormat?: string,
 	configuredProjects?: string[],
 ): { rich: string[]; plain: string[] } {
+	const formatPrefix = createTaskRowPrefix(tasks, { showStatus: false });
 	const rich = tasks.map((task) =>
-		formatTaskListItem(task, movingTaskIds?.has(task.id) ?? false, dateFormat, configuredProjects),
+		formatTaskListItem(task, movingTaskIds?.has(task.id) ?? false, dateFormat, configuredProjects, formatPrefix),
 	);
 	return {
 		rich,

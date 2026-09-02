@@ -1,12 +1,6 @@
 import type { Task } from "../types/index.ts";
 import { wrapStatusColor } from "./status-icon.ts";
 
-// Every row reserves this column so task ids line up whether or not the row shows
-// progress. It holds "● 99/99" plus the separator before the id, which covers any
-// checklist a person can review; a longer count pushes its own row right rather than
-// losing a digit.
-const PROGRESS_COLUMN_WIDTH = 8;
-
 function isInProgress(status: string): boolean {
 	return status.trim().toLowerCase() === "in progress";
 }
@@ -48,22 +42,19 @@ export function formatAcceptanceCriteriaSummarySuffix(task: Task): string {
 }
 
 /**
- * Format the acceptance-criteria column that precedes the task id in one-line TUI summaries.
+ * Format live acceptance-criteria completion for one-line TUI task summaries: a pie glyph
+ * and the checked/total count for In Progress tasks with criteria, empty for every other
+ * row. createTaskRowPrefix reserves the column this occupies.
  *
- * In Progress tasks with criteria get a pie glyph and their live checked/total count; every
- * other row gets the same width in blanks so ids stay aligned down the list. The glyph is
- * wrapped in a deliberate blessed color tag and no task-derived text enters the column, so
- * callers can embed the result in tag-parsed content without escaping.
+ * The glyph is wrapped in a deliberate blessed color tag and no task-derived text enters
+ * the cell, so callers can embed the result in tag-parsed content without escaping.
  */
-export function formatAcceptanceCriteriaProgressColumn(task: Task): string {
+export function formatAcceptanceCriteriaProgress(task: Task): string {
 	const criteria = task.acceptanceCriteriaItems ?? [];
-	if (!isInProgress(task.status) || criteria.length === 0) return " ".repeat(PROGRESS_COLUMN_WIDTH);
+	if (!isInProgress(task.status) || criteria.length === 0) return "";
 
 	const checked = criteria.filter((criterion) => criterion.checked).length;
-	const glyph = pieGlyph(checked, criteria.length);
-	const count = `${checked}/${criteria.length}`;
-	// Pad on the rendered text, not the tagged string, and always keep one separator column.
-	const padding = " ".repeat(Math.max(1, PROGRESS_COLUMN_WIDTH - `${glyph} ${count}`.length));
+	const color = completionColor(checked, criteria.length);
 
-	return `${wrapStatusColor(glyph, completionColor(checked, criteria.length))} ${count}${padding}`;
+	return `${wrapStatusColor(pieGlyph(checked, criteria.length), color)} ${checked}/${criteria.length}`;
 }

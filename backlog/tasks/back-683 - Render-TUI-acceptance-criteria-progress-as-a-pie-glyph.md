@@ -5,7 +5,7 @@ status: In Progress
 assignee:
   - '@claude'
 created_date: '2026-09-02 21:40'
-updated_date: '2026-09-02 22:38'
+updated_date: '2026-09-02 23:00'
 labels: []
 dependencies: []
 ordinal: 315000
@@ -59,10 +59,24 @@ The reserved column is emitted before the row-level color tags on both surfaces.
 In the task list the status segment is now always the single-cell icon. It previously swapped between the icon and 'icon + status word', which is variable width, so ids could not line up. Flagged in the PR for review since it removes the status word from rows that are not In Progress.
 
 Verified in a real PTY at 150x40 with expect (board and task list): the five glyphs render single-cell and every task id lines up, including a 10/13 row and rows with no criteria. blessed only degrades non-ASCII to '?' when the locale is not UTF-8 (Tput.detectUnicode), which already applies to the shipped ◒ ○ ✔ status icons, so the pies introduce no new exposure. neo-neo-bblessed unicode.strWidth reports 1 for all five, same as the ● already in use, and no Block Elements are used.
+
+Review follow-up (Codex findings on PR #996), both resolved by one change rather than two patches.
+
+Finding 1 (custom statuses): dropping the status word from the task list made every status outside the six getStatusStyle entries render as the same default ○ and color. Reproduced before the fix: 'Ready', 'Waiting', 'Blocked on review' and 'To Do' all rendered the identical row '○         BACK-1 - Title'. The word is load-bearing, so the list shows icon + status word on every row again, unconditionally.
+
+Finding 2 (three-digit counts): the fixed 8-column reserve overflowed for larger checklists. Reproduced before the fix: 10/100 needed 9 cells and 100/100 needed 10, so those ids sat at columns 9 and 10 while every other row sat at 8.
+
+Both come from a fixed constant, so the constant is gone. New src/ui/task-row-prefix.ts builds the prefix per render: a status segment (task list only; board columns already name the status) then the progress cell, each padded to the widest of its kind across the rows actually being rendered. Ids line up, custom statuses keep their label, three-digit counts fit, and a render pays only for columns something on it fills. A board column where no row has criteria now has no gutter at all, and a list with only single-digit counts spends nothing on the three-digit case. Widths are measured with the same neo-neo-bblessed unicode.strWidth the layout uses, not string length, so a non-ASCII status label pads correctly.
+
+acceptance-criteria-progress.ts is back to formatAcceptanceCriteriaProgress(task) returning the bare tagged cell or an empty string; all reservation lives in the prefix builder. The prefix is still emitted before the row-level move/dim tags, so the highlight and cross-branch dim survive the whole row.
+
+The board formatter and the task-list formatter take the prefix builder as a last parameter, defaulting to a single-row builder so standalone calls still render sensibly. The task list rebuilds it wherever filteredTasks is assigned, so the render stays O(n).
+
+Verified: 13 tests in src/test/tui-acceptance-criteria-progress.test.ts, including a render mixing custom statuses, 100/100, 10/100 and rows without progress that asserts one id column for all of them, a test that Ready and Waiting stay distinguishable, a test that an all-queued board column spends zero prefix width, and cell-width checks on the composed prefix. PTY QA at 150x40 on a project configured with To Do / Ready / In Progress / Waiting / Done and a 100-criterion task. bunx tsc --noEmit and bun run check . pass; bun run test is 2860 pass / 8 skip / 1 fail, matching a clean origin/main baseline run (2859 / 8 / 1) that fails the same ContentStore test.
 <!-- SECTION:NOTES:END -->
 
 ## Final Summary
 
 <!-- SECTION:FINAL_SUMMARY:BEGIN -->
-Replaced the TUI's ASCII acceptance-criteria bar with a single pie glyph plus the live checked/total count (○ ◔ ◑ ◕ ●, green/yellow/red unchanged), and made the indicator a fixed 8-column field present on every row so task ids line up on the board and in the task list. The wide/compact variants and their availableWidth plumbing are gone. Verified with 12 rewritten unit tests covering each glyph threshold, the color at each threshold, id alignment between rows with and without progress, and single-cell width via neo-neo-bblessed unicode.strWidth; plus real PTY renders of board and task list at 150x40 under a UTF-8 locale. Plain and MCP output are untouched (cli-task-list and mcp-tasks tests pass unchanged). bunx tsc --noEmit and bun run check . pass; bun run test is 2859 pass / 1 fail, the failure being a load-dependent local flake that passes in isolation and lands on a different unrelated test each run. PR #996.
+Replaced the TUI's ASCII acceptance-criteria bar with a single pie glyph plus the live checked/total count (○ ◔ ◑ ◕ ●, green/yellow/red unchanged), and moved column reservation into src/ui/task-row-prefix.ts, which sizes the status and progress columns per render from the rows actually on screen. Task ids line up on the board and in the task list, custom status labels are preserved, counts of any length fit, and a render pays only for columns something on it fills. The prefix is emitted before the row-level move and cross-branch tags so those colors survive the whole row. Verified with 13 unit tests covering the glyph thresholds, the color at each threshold, id alignment across custom statuses / three-digit counts / rows without progress, zero prefix width for an all-queued board column, and cell widths on the composed prefix; plus PTY renders at 150x40 with a five-status workflow and a 100-criterion task. Plain and MCP output untouched. bunx tsc --noEmit and bun run check . pass; bun run test is 2860/8/1, matching a clean origin/main baseline that fails the same ContentStore flake. PR #996.
 <!-- SECTION:FINAL_SUMMARY:END -->
