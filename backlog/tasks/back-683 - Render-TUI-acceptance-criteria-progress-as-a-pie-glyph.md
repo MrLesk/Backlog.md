@@ -5,7 +5,7 @@ status: In Progress
 assignee:
   - '@claude'
 created_date: '2026-09-02 21:40'
-updated_date: '2026-09-02 22:27'
+updated_date: '2026-09-02 22:38'
 labels: []
 dependencies: []
 ordinal: 315000
@@ -21,18 +21,18 @@ Replace the bar with a single pie glyph from the same Unicode block as the shape
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 In Progress rows with criteria show a pie glyph (○ ◔ ◑ ◕ ●) and the checked/total count instead of the ASCII bar, on the board and in the task list
-- [ ] #2 The glyph keeps the existing color semantics: green when all criteria are checked, yellow when underway, red when a third or fewer are checked
-- [ ] #3 Task IDs align across rows because the indicator column is reserved on rows without progress
-- [ ] #4 The glyphs render at the correct width in the TUI, verified with the existing width test infrastructure, and no Block Elements are introduced
-- [ ] #5 Plain and MCP list output are unchanged
+- [x] #1 In Progress rows with criteria show a pie glyph (○ ◔ ◑ ◕ ●) and the checked/total count instead of the ASCII bar, on the board and in the task list
+- [x] #2 The glyph keeps the existing color semantics: green when all criteria are checked, yellow when underway, red when a third or fewer are checked
+- [x] #3 Task IDs align across rows because the indicator column is reserved on rows without progress
+- [x] #4 The glyphs render at the correct width in the TUI, verified with the existing width test infrastructure, and no Block Elements are introduced
+- [x] #5 Plain and MCP list output are unchanged
 <!-- AC:END -->
 
 ## Definition of Done
 <!-- DOD:BEGIN -->
-- [ ] #1 bunx tsc --noEmit passes when TypeScript touched
-- [ ] #2 bun run check . passes when formatting/linting touched
-- [ ] #3 bun test (or scoped test) passes
+- [x] #1 bunx tsc --noEmit passes when TypeScript touched
+- [x] #2 bun run check . passes when formatting/linting touched
+- [x] #3 bun test (or scoped test) passes
 <!-- DOD:END -->
 
 ## Implementation Plan
@@ -60,3 +60,9 @@ In the task list the status segment is now always the single-cell icon. It previ
 
 Verified in a real PTY at 150x40 with expect (board and task list): the five glyphs render single-cell and every task id lines up, including a 10/13 row and rows with no criteria. blessed only degrades non-ASCII to '?' when the locale is not UTF-8 (Tput.detectUnicode), which already applies to the shipped ◒ ○ ✔ status icons, so the pies introduce no new exposure. neo-neo-bblessed unicode.strWidth reports 1 for all five, same as the ● already in use, and no Block Elements are used.
 <!-- SECTION:NOTES:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+Replaced the TUI's ASCII acceptance-criteria bar with a single pie glyph plus the live checked/total count (○ ◔ ◑ ◕ ●, green/yellow/red unchanged), and made the indicator a fixed 8-column field present on every row so task ids line up on the board and in the task list. The wide/compact variants and their availableWidth plumbing are gone. Verified with 12 rewritten unit tests covering each glyph threshold, the color at each threshold, id alignment between rows with and without progress, and single-cell width via neo-neo-bblessed unicode.strWidth; plus real PTY renders of board and task list at 150x40 under a UTF-8 locale. Plain and MCP output are untouched (cli-task-list and mcp-tasks tests pass unchanged). bunx tsc --noEmit and bun run check . pass; bun run test is 2859 pass / 1 fail, the failure being a load-dependent local flake that passes in isolation and lands on a different unrelated test each run. PR #996.
+<!-- SECTION:FINAL_SUMMARY:END -->
