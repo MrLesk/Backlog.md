@@ -118,7 +118,7 @@ describe("Web task type UI", () => {
 
 	it("displays and clears a task due date through the edit form", async () => {
 		const container = setupDom();
-		const task = createTask({ dueDate: "2026-08-10 14:30" });
+		const task = createTask({ dueDate: "2026-08-10" });
 		const receivedUpdates: TaskUpdateRequest[] = [];
 		apiClient.updateTask = async (_taskId, updates) => {
 			receivedUpdates.push(updates);
@@ -134,7 +134,8 @@ describe("Web task type UI", () => {
 			);
 			await Promise.resolve();
 		});
-		expect(container.textContent).toContain("Due: 2026-08-10 23:30");
+		// The viewer is nine hours ahead of UTC, and the due date does not care: it names a day.
+		expect(container.textContent).toContain("Due: 2026-08-10");
 		// The stored created_date is date-only: it has no time to convert and must not shift a day.
 		expect(container.textContent).toContain("Created: 2026-07-09");
 
@@ -147,8 +148,8 @@ describe("Web task type UI", () => {
 			await Promise.resolve();
 		});
 
-		const dueDateInput = container.querySelector('input[type="datetime-local"]') as HTMLInputElement | null;
-		expect(dueDateInput?.value).toBe("2026-08-10T14:30");
+		const dueDateInput = container.querySelector('input[type="date"]') as HTMLInputElement | null;
+		expect(dueDateInput?.value).toBe("2026-08-10");
 		await setInputValue(dueDateInput as HTMLInputElement, "");
 		const saveButton = Array.from(container.querySelectorAll("button")).find(
 			(button) => button.textContent?.trim() === "Save",
@@ -187,7 +188,7 @@ describe("Web task type UI", () => {
 		const untypedHtml = renderToString(<TaskCard task={createTask()} onUpdate={() => {}} onEdit={() => {}} />);
 		const datedHtml = renderToString(
 			<TaskCard
-				task={createTask({ dueDate: "2026-08-10 14:30" })}
+				task={createTask({ dueDate: "2026-08-10" })}
 				onUpdate={() => {}}
 				onEdit={() => {}}
 				dateFormat="dd/mm/yyyy hh:mm"
@@ -203,7 +204,9 @@ describe("Web task type UI", () => {
 		expect(docsHtml).toContain("bg-cyan-100");
 		expect(untypedHtml).not.toContain("data-task-type");
 		expect(datedHtml).toContain("Due: ");
-		expect(datedHtml).toContain('title="10/08/2026 14:30 (UTC)">10/08/2026 23:30<');
+		// The configured format rearranges the day; there is no time to show and nothing to hover.
+		expect(datedHtml).toContain(">10/08/2026<");
+		expect(datedHtml).not.toContain("(UTC)");
 	});
 
 	it("creates a task with a configured custom type and defaults to untyped", async () => {
@@ -237,11 +240,11 @@ describe("Web task type UI", () => {
 		]);
 
 		const titleInput = container.querySelector("input[placeholder='Enter task title']") as HTMLInputElement | null;
-		const dueDateInput = container.querySelector('input[type="datetime-local"]') as HTMLInputElement | null;
+		const dueDateInput = container.querySelector('input[type="date"]') as HTMLInputElement | null;
 		expect(titleInput).toBeTruthy();
 		expect(dueDateInput).toBeTruthy();
 		await setInputValue(titleInput as HTMLInputElement, "Customer interview");
-		await setInputValue(dueDateInput as HTMLInputElement, "2026-08-11T09:45");
+		await setInputValue(dueDateInput as HTMLInputElement, "2026-08-11");
 		await setSelectValue(typeSelect as HTMLSelectElement, "Customer Request");
 
 		const createButton = Array.from(container.querySelectorAll("button")).find(
@@ -256,7 +259,7 @@ describe("Web task type UI", () => {
 
 		expect(submitted?.title).toBe("Customer interview");
 		expect(submitted?.type).toBe("Customer Request");
-		expect(submitted?.dueDate).toBe("2026-08-11T09:45");
+		expect(submitted?.dueDate).toBe("2026-08-11");
 		// A blank assignee field is omitted so the configured defaultAssignee still applies;
 		// an explicit empty list means "unassigned" everywhere else.
 		expect(submitted && "assignee" in submitted).toBe(false);
@@ -478,3 +481,102 @@ describe("Web task type UI", () => {
 		expect(savedCalls).toBe(1);
 	});
 });
+
+// A due date names a day, so two viewers on opposite sides of the date line -- 22 hours apart --
+// must read and write exactly the same value. Before this, the day moved with the viewer.
+for (const timeZone of ["Pacific/Kiritimati", "America/Los_Angeles"]) {
+	describe(`Web due dates in ${timeZone}`, () => {
+		pinTimeZone(timeZone);
+
+		it("renders the stored day and returns it unchanged through an open-and-save cycle", async () => {
+			const container = setupDom();
+			const task = createTask({ dueDate: "2026-09-05", createdDate: "2026-09-04 22:00" });
+			const receivedUpdates: TaskUpdateRequest[] = [];
+			apiClient.updateTask = async (_taskId, updates) => {
+				receivedUpdates.push(updates);
+				return task;
+			};
+
+			activeRoot = createRoot(container);
+			await act(async () => {
+				activeRoot?.render(
+					<ThemeProvider>
+						<TaskDetailsModal task={task} isOpen onClose={() => {}} />
+					</ThemeProvider>,
+				);
+				await Promise.resolve();
+			});
+			expect(container.textContent).toContain("Due: 2026-09-05");
+			// The created timestamp is a genuine instant and still moves with the viewer, so this
+			// asserts the two kinds of value stayed apart rather than that nothing converts at all.
+			expect(container.textContent).not.toContain("Created: 2026-09-04 22:00");
+
+			const dueSpan = Array.from(container.querySelectorAll("span")).find(
+				(element) => element.textContent === "2026-09-05",
+			);
+			expect(dueSpan?.getAttribute("title")).toBeNull();
+
+			const editButton = Array.from(container.querySelectorAll("button")).find(
+				(button) => button.textContent?.trim() === "Edit",
+			);
+			await act(async () => {
+				editButton?.dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
+				await Promise.resolve();
+			});
+
+			const dueDateInput = container.querySelector('input[type="date"]') as HTMLInputElement | null;
+			expect(dueDateInput?.value).toBe("2026-09-05");
+
+			const saveButton = Array.from(container.querySelectorAll("button")).find(
+				(button) => button.textContent?.trim() === "Save",
+			);
+			await act(async () => {
+				saveButton?.dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
+				await Promise.resolve();
+			});
+			await waitFor(() => receivedUpdates.length === 1);
+			expect(receivedUpdates[0]?.dueDate).toBe("2026-09-05");
+		});
+
+		it("stores the day the user picks", async () => {
+			const container = setupDom();
+			const task = createTask({ dueDate: "2026-09-05" });
+			const receivedUpdates: TaskUpdateRequest[] = [];
+			apiClient.updateTask = async (_taskId, updates) => {
+				receivedUpdates.push(updates);
+				return task;
+			};
+
+			activeRoot = createRoot(container);
+			await act(async () => {
+				activeRoot?.render(
+					<ThemeProvider>
+						<TaskDetailsModal task={task} isOpen onClose={() => {}} />
+					</ThemeProvider>,
+				);
+				await Promise.resolve();
+			});
+
+			const editButton = Array.from(container.querySelectorAll("button")).find(
+				(button) => button.textContent?.trim() === "Edit",
+			);
+			await act(async () => {
+				editButton?.dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
+				await Promise.resolve();
+			});
+
+			const dueDateInput = container.querySelector('input[type="date"]') as HTMLInputElement | null;
+			await setInputValue(dueDateInput as HTMLInputElement, "2026-09-06");
+
+			const saveButton = Array.from(container.querySelectorAll("button")).find(
+				(button) => button.textContent?.trim() === "Save",
+			);
+			await act(async () => {
+				saveButton?.dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
+				await Promise.resolve();
+			});
+			await waitFor(() => receivedUpdates.length === 1);
+			expect(receivedUpdates[0]?.dueDate).toBe("2026-09-06");
+		});
+	});
+}

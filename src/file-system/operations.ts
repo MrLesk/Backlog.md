@@ -15,6 +15,7 @@ import {
 import { findDecisionById } from "../utils/decision-id.ts";
 import { documentIdsEqual, findDocumentById, normalizeDocumentId } from "../utils/document-id.ts";
 import { normalizeDocumentRelativePath, normalizeDocumentSubPath } from "../utils/document-path.ts";
+import { normalizeDueDate } from "../utils/due-date.ts";
 import type { DraftIdentityFindings } from "../utils/duplicate-detection.ts";
 import { AmbiguousIdError, isAmbiguousIdError } from "../utils/entity-id.ts";
 import {
@@ -41,7 +42,6 @@ import {
 } from "../utils/task-path.ts";
 import { sortByTaskId } from "../utils/task-sorting.ts";
 import { matchesTaskTypeFilter } from "../utils/task-type-config.ts";
-import { normalizeUtcDateTime } from "../utils/utc-datetime.ts";
 
 // Interface for task path resolution context
 interface TaskPathContext {
@@ -1839,7 +1839,7 @@ ${rawContent.trim()}
 	}
 
 	async createMilestone(title: string, description?: string, dueDate?: string): Promise<Milestone> {
-		const normalizedDueDate = normalizeUtcDateTime(dueDate, "Due date");
+		const normalizedDueDate = normalizeDueDate(dueDate, "Due date");
 		return await this.withCreateLock(async () => {
 			const milestonesDir = await this.getMilestonesDir();
 
@@ -1918,7 +1918,7 @@ ${description || `Milestone: ${title}`}`,
 			return { success: false };
 		}
 
-		const normalizedDueDate = dueDate === null ? undefined : normalizeUtcDateTime(dueDate, "Due date");
+		const normalizedDueDate = dueDate === null ? undefined : normalizeDueDate(dueDate, "Due date");
 		let sourcePath: string | undefined;
 		let targetPath: string | undefined;
 		let movedFile = false;

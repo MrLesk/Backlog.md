@@ -317,7 +317,7 @@ function formatPlainTaskListRow(task: Task, options: { includeStatus?: boolean }
 	const typeIndicator = task.type ? `[${task.type}] ` : "";
 	const statusIndicator = options.includeStatus && task.status ? ` (${task.status})` : "";
 	const acceptanceCriteria = formatAcceptanceCriteriaSummarySuffix(task);
-	const dueDate = task.dueDate ? ` (due ${formatUtcDateForDisplay(task.dueDate, { appendUtcLabel: true })})` : "";
+	const dueDate = task.dueDate ? ` (due ${formatUtcDateForDisplay(task.dueDate)})` : "";
 	return `  ${priorityIndicator}${typeIndicator}${task.id} - ${task.title}${statusIndicator}${acceptanceCriteria}${dueDate}`;
 }
 
@@ -1873,7 +1873,7 @@ addHelpSchema(taskCmd.command("create [title]"), {
 		{ name: "priority", type: priorityType, description: "Task priority" },
 		{ name: "type", type: taskType, description: "Task type; case-insensitive" },
 		{ name: "project", type: projectType, description: "Task project; case-insensitive" },
-		{ name: "due-date", type: "UTC datetime", description: "Optional due date and time" },
+		{ name: "due-date", type: "date", description: "Optional due date (YYYY-MM-DD)" },
 		{ name: "acceptanceCriteria", type: "Markdown list item text", description: "Repeat --ac for multiple criteria" },
 		{ name: "ordinal", type: "Integer", description: "Non-negative manual ordering value" },
 		{ name: "parent", type: "Task ID", description: "Existing parent task for subtasks; not a milestone ID" },
@@ -1910,7 +1910,7 @@ addHelpSchema(taskCmd.command("create [title]"), {
 	.option("--priority <priority>", "set task priority (configured priorities)")
 	.option("--type <type>", "set task type (configured task types)")
 	.option("--project <project>", "set task project (configured projects)")
-	.option("--due-date <datetime>", "set due date as a UTC datetime")
+	.option("--due-date <date>", "set due date (YYYY-MM-DD)")
 	.option("--plain", "use plain text output after creating")
 	.option("--ac <criteria>", "add acceptance criteria (can be used multiple times)", createMultiValueAccumulator())
 	.option(
@@ -3518,7 +3518,7 @@ function addEditFieldOptions(cmd: Command) {
 		.option("--priority <priority>", "set task priority (configured priorities)")
 		.option("--type <type>", "set task type (configured task types; pass an empty value to clear)")
 		.option("--project <project>", "set task project (configured projects; pass an empty value to clear)")
-		.option("--due-date <datetime>", "set due date as a UTC datetime")
+		.option("--due-date <date>", "set due date (YYYY-MM-DD)")
 		.option("--clear-due-date", "clear task due date")
 		.option("--ordinal <number>", "set task ordinal for custom ordering")
 		.option("-m, --milestone <milestone>", "assign task to milestone by ID or title")
@@ -3665,7 +3665,7 @@ const taskEditCommand = addHelpSchema(taskCmd.command("edit [taskIds...]"), {
 			type: projectType,
 			description: "Replacement task project; case-insensitive; pass an empty value to clear",
 		},
-		{ name: "due-date", type: "UTC datetime", description: "Set the task due date and time" },
+		{ name: "due-date", type: "date", description: "Set the task due date (YYYY-MM-DD)" },
 		{ name: "clear-due-date", type: "Boolean", description: "Clear the task due date" },
 		{
 			name: "assignee",
@@ -4112,7 +4112,7 @@ const draftEditCommand = addHelpSchema(draftCmd.command("edit [taskId]"), {
 			type: projectType,
 			description: "Replacement task project; case-insensitive; pass an empty value to clear",
 		},
-		{ name: "due-date", type: "UTC datetime", description: "Set the due date and time" },
+		{ name: "due-date", type: "date", description: "Set the due date (YYYY-MM-DD)" },
 		{ name: "clear-due-date", type: "Boolean", description: "Clear the due date" },
 		{
 			name: "assignee",
@@ -4270,9 +4270,7 @@ addHelpSchema(milestoneCmd.command("list"), {
 			const milestone = [...milestones, ...archivedMilestones].find(
 				(candidate) => milestoneKey(candidate.id) === milestoneKey(id),
 			);
-			const dueDate = milestone?.dueDate
-				? `, due ${formatUtcDateForDisplay(milestone.dueDate, { appendUtcLabel: true })}`
-				: "";
+			const dueDate = milestone?.dueDate ? `, due ${formatUtcDateForDisplay(milestone.dueDate)}` : "";
 			return `  ${id}: ${label} (${bucket.doneCount}/${bucket.total} done${dueDate})`;
 		};
 
@@ -4302,7 +4300,7 @@ addHelpSchema(milestoneCmd.command("add <name>"), {
 	required: [{ name: "name", type: "String", description: "Milestone name/title, trimmed before storage" }],
 	optional: [
 		{ name: "description", type: "Markdown", description: "Optional milestone description" },
-		{ name: "due-date", type: "UTC datetime", description: "Optional milestone due date and time" },
+		{ name: "due-date", type: "date", description: "Optional milestone due date (YYYY-MM-DD)" },
 	],
 	writes: "Creates a milestone markdown file in the active milestones directory",
 	output: "Created milestone title and ID",
@@ -4310,7 +4308,7 @@ addHelpSchema(milestoneCmd.command("add <name>"), {
 })
 	.description("add a milestone file")
 	.option("-d, --description <text>", "milestone description")
-	.option("--due-date <datetime>", "set due date as a UTC datetime")
+	.option("--due-date <date>", "set due date (YYYY-MM-DD)")
 	.action(async (name: string, options: { description?: string; dueDate?: string }) => {
 		await runMilestoneMutation((handlers) =>
 			handlers.addMilestone({ name, description: options.description, dueDate: options.dueDate }),
@@ -4329,7 +4327,7 @@ addHelpSchema(milestoneCmd.command("rename <from> <to>"), {
 			type: "Boolean",
 			description: "Update local task milestone references; default true, disable with --no-update-tasks",
 		},
-		{ name: "due-date", type: "UTC datetime", description: "Set the milestone due date and time" },
+		{ name: "due-date", type: "date", description: "Set the milestone due date (YYYY-MM-DD)" },
 		{ name: "clear-due-date", type: "Boolean", description: "Clear the milestone due date" },
 	],
 	writes: "Renames the milestone file and, by default, updates matching local task milestone values",
@@ -4341,7 +4339,7 @@ addHelpSchema(milestoneCmd.command("rename <from> <to>"), {
 })
 	.description("rename a milestone file and update local tasks by default")
 	.option("--no-update-tasks", "do not update local tasks that reference the milestone")
-	.option("--due-date <datetime>", "set due date as a UTC datetime")
+	.option("--due-date <date>", "set due date (YYYY-MM-DD)")
 	.option("--clear-due-date", "clear milestone due date")
 	.action(
 		async (from: string, to: string, options: { updateTasks?: boolean; dueDate?: string; clearDueDate?: boolean }) => {

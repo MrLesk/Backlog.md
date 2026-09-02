@@ -1,8 +1,8 @@
 import { rename as moveFile } from "node:fs/promises";
 import type { Core } from "../../../core/backlog.ts";
 import type { Milestone, Task } from "../../../types/index.ts";
+import { normalizeDueDate } from "../../../utils/due-date.ts";
 import { formatUtcDateForDisplay } from "../../../utils/utc-date-display.ts";
-import { normalizeUtcDateTime } from "../../../utils/utc-datetime.ts";
 import { BacklogToolError } from "../../errors/mcp-errors.ts";
 import type { CallToolResult } from "../../types.ts";
 import {
@@ -325,9 +325,7 @@ export class MilestoneHandlers {
 
 		const blocks: string[] = [];
 		const milestoneLines = fileMilestones.map((m) =>
-			m.dueDate
-				? `${m.id}: ${m.title} (due ${formatUtcDateForDisplay(m.dueDate, { appendUtcLabel: true })})`
-				: `${m.id}: ${m.title}`,
+			m.dueDate ? `${m.id}: ${m.title} (due ${formatUtcDateForDisplay(m.dueDate)})` : `${m.id}: ${m.title}`,
 		);
 		blocks.push(formatListBlock(`Milestones (${fileMilestones.length}):`, milestoneLines));
 		blocks.push(formatListBlock(`Milestones found on tasks without files (${unconfigured.length}):`, unconfigured));
@@ -355,7 +353,7 @@ export class MilestoneHandlers {
 		}
 		let dueDate: string | undefined;
 		try {
-			dueDate = normalizeUtcDateTime(args.dueDate, "Due date");
+			dueDate = normalizeDueDate(args.dueDate, "Due date");
 		} catch (error) {
 			throw new BacklogToolError(error instanceof Error ? error.message : String(error), "VALIDATION_ERROR");
 		}
@@ -389,7 +387,7 @@ export class MilestoneHandlers {
 			content: [
 				{
 					type: "text",
-					text: `Created milestone "${milestone.title}" (${milestone.id}).${milestone.dueDate ? `\nDue: ${formatUtcDateForDisplay(milestone.dueDate, { appendUtcLabel: true })}` : ""}`,
+					text: `Created milestone "${milestone.title}" (${milestone.id}).${milestone.dueDate ? `\nDue: ${formatUtcDateForDisplay(milestone.dueDate)}` : ""}`,
 				},
 			],
 		};
@@ -415,7 +413,7 @@ export class MilestoneHandlers {
 					? sourceMilestone.dueDate
 					: args.dueDate === null
 						? undefined
-						: normalizeUtcDateTime(args.dueDate, "Due date");
+						: normalizeDueDate(args.dueDate, "Due date");
 		} catch (error) {
 			throw new BacklogToolError(error instanceof Error ? error.message : String(error), "VALIDATION_ERROR");
 		}
@@ -538,7 +536,7 @@ export class MilestoneHandlers {
 		if (dueDateChanged) {
 			summaryLines.push(
 				renamedMilestone.dueDate
-					? `Due: ${formatUtcDateForDisplay(renamedMilestone.dueDate, { appendUtcLabel: true })}`
+					? `Due: ${formatUtcDateForDisplay(renamedMilestone.dueDate)}`
 					: "Cleared milestone due date.",
 			);
 		}

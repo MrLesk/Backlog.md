@@ -165,9 +165,7 @@ export function formatTaskListItem(
 		? ` {cyan-fg}${task.assignee[0].startsWith("@") ? task.assignee[0] : `@${task.assignee[0]}`}{/}`
 		: "";
 	const labels = task.labels?.length ? ` {yellow-fg}[${task.labels.join(", ")}]{/}` : "";
-	const dueDate = task.dueDate
-		? ` {gray-fg}(due ${formatUtcDateForDisplay(task.dueDate, { dateFormat, appendUtcLabel: true })}){/}`
-		: "";
+	const dueDate = task.dueDate ? ` {gray-fg}(due ${formatUtcDateForDisplay(task.dueDate, { dateFormat })}){/}` : "";
 	const typeBadge = formatTaskTypeBadge(task.type);
 	const type = typeBadge ? ` ${typeBadge}` : "";
 	const projectBadge = formatProjectBadge(task.project, configuredProjects);

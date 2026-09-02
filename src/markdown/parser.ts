@@ -1,6 +1,6 @@
 import type { AcceptanceCriterion, Decision, Document, Milestone, ParsedMarkdown, Task } from "../types/index.ts";
+import { normalizeDueDate } from "../utils/due-date.ts";
 import { normalizePriorityValue } from "../utils/priority-config.ts";
-import { normalizeUtcDateTime } from "../utils/utc-datetime.ts";
 import { parseFrontmatter } from "./frontmatter.ts";
 import {
 	AcceptanceCriteriaManager,
@@ -187,7 +187,7 @@ export function parseTask(content: string): Task {
 		reporter: frontmatter.reporter ? String(frontmatter.reporter) : undefined,
 		createdDate: normalizeDate(frontmatter.created_date),
 		updatedDate: frontmatter.updated_date ? normalizeDate(frontmatter.updated_date) : undefined,
-		dueDate: normalizeUtcDateTime(frontmatter.due_date, "due_date"),
+		dueDate: normalizeDueDate(frontmatter.due_date, "due_date"),
 		labels: Array.isArray(frontmatter.labels) ? frontmatter.labels.map(String) : [],
 		milestone: frontmatter.milestone ? String(frontmatter.milestone) : undefined,
 		dependencies: Array.isArray(frontmatter.dependencies) ? frontmatter.dependencies.map(String) : [],
@@ -248,7 +248,7 @@ export function parseMilestone(content: string): Milestone {
 	return {
 		id: String(frontmatter.id || ""),
 		title: String(frontmatter.title || ""),
-		dueDate: normalizeUtcDateTime(frontmatter.due_date, "due_date"),
+		dueDate: normalizeDueDate(frontmatter.due_date, "due_date"),
 		description: extractSection(rawContent, "Description") || "",
 		rawContent,
 	};

@@ -64,7 +64,7 @@ const renderTaskList = (): HTMLElement => {
 						createTask({
 							id: "task-101",
 							title: "Fit the task table",
-							dueDate: "2026-08-10 14:30",
+							dueDate: "2026-08-10",
 							labels: ["ui"],
 							assignee: ["@alex"],
 						}),
@@ -115,11 +115,12 @@ describe("TaskList table width budget", () => {
 
 		expect(headers).toEqual(EXPECTED_HEADERS);
 		expect(container.querySelectorAll("tbody tr td")).toHaveLength(EXPECTED_HEADERS.length);
-		expect(container.textContent).toContain("Due: 2026-08-10 23:30");
-		const renderedDue = Array.from(container.querySelectorAll("span[title]")).find(
-			(element) => element.textContent === "2026-08-10 23:30",
+		// The viewer is nine hours ahead of UTC; a due date names a day and does not move with it.
+		expect(container.textContent).toContain("Due: 2026-08-10");
+		const renderedDue = Array.from(container.querySelectorAll("span")).find(
+			(element) => element.textContent === "2026-08-10",
 		);
-		expect(renderedDue?.getAttribute("title")).toBe("2026-08-10 14:30 (UTC)");
+		expect(renderedDue?.getAttribute("title")).toBeNull();
 	});
 
 	it("leaves Title as the only flexible column", () => {

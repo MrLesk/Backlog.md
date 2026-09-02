@@ -137,7 +137,7 @@ const buildTaskDetailsFormState = ({
   references: task?.references || [],
   modifiedFiles: task?.modifiedFiles || [],
   milestone: task?.milestone || "",
-  dueDate: task?.dueDate?.replace(" ", "T") || "",
+  dueDate: task?.dueDate || "",
 });
 
 const SectionHeader: React.FC<{ title: string; right?: React.ReactNode }> = ({ title, right }) => (
@@ -395,7 +395,7 @@ export const TaskDetailsModal: React.FC<Props> = ({
   const [references, setReferences] = useState<string[]>(task?.references || []);
   const [modifiedFiles, setModifiedFiles] = useState<string[]>(task?.modifiedFiles || []);
   const [milestone, setMilestone] = useState<string>(task?.milestone || "");
-  const [dueDate, setDueDate] = useState<string>(task?.dueDate?.replace(" ", "T") || "");
+  const [dueDate, setDueDate] = useState<string>(task?.dueDate || "");
   const canonicalTypeSelection = resolveTaskTypeValue(taskType, typeOptions);
   const typeSelectionValue = canonicalTypeSelection ?? taskType;
   const canonicalProjectSelection = resolveProjectValue(project, projectOptions);
@@ -454,7 +454,7 @@ export const TaskDetailsModal: React.FC<Props> = ({
     plan: task?.implementationPlan || "",
     notes: task?.implementationNotes || "",
     finalSummary: task?.finalSummary || "",
-    dueDate: task?.dueDate?.replace(" ", "T") || "",
+    dueDate: task?.dueDate || "",
     criteria: JSON.stringify(task?.acceptanceCriteriaItems || []),
     definitionOfDone: JSON.stringify(task?.definitionOfDoneItems || (isCreateMode ? defaultDefinitionOfDone : [])),
   }), [task, defaultDefinitionOfDone, isCreateMode]);
@@ -696,7 +696,7 @@ export const TaskDetailsModal: React.FC<Props> = ({
       setCommentBody("");
       setCommentAuthor("");
       setFinalSummary(task?.finalSummary || "");
-      setDueDate(task?.dueDate?.replace(" ", "T") || "");
+      setDueDate(task?.dueDate || "");
       setCriteria(task?.acceptanceCriteriaItems || []);
       setDefinitionOfDone(task?.definitionOfDoneItems || []);
       setMode("preview");
@@ -1739,9 +1739,9 @@ export const TaskDetailsModal: React.FC<Props> = ({
 	          )}
           {mode !== "preview" && (
             <div className="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-3">
-              <SectionHeader title="Due (UTC)" />
+              <SectionHeader title="Due" />
               <input
-                type="datetime-local"
+                type="date"
                 value={dueDate}
                 onChange={(event) => setDueDate(event.target.value)}
                 className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md text-sm bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400 focus:border-transparent"

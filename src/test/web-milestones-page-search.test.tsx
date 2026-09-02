@@ -25,7 +25,7 @@ const milestoneEntities: Milestone[] = [
 	{
 		id: "m-1",
 		title: "Release 1",
-		dueDate: "2026-09-01 12:00",
+		dueDate: "2026-09-01",
 		description: "Milestone: Release 1",
 		rawContent: "## Description\n\nMilestone: Release 1",
 	},
@@ -184,13 +184,16 @@ describe("Web milestones page search", () => {
 		expect(text).toContain("Due:");
 	});
 
-	it("uses the configured date format for milestone due dates and keeps UTC on hover", () => {
+	it("uses the configured date format for milestone due dates without a UTC hover", () => {
 		const container = renderPage(baseTasks, { dateFormat: "dd/mm/yyyy hh:mm" });
-		expect(container.textContent).toContain("Due: 01/09/2026 21:00");
-		const renderedDue = Array.from(container.querySelectorAll("span[title]")).find(
-			(element) => element.textContent === "01/09/2026 21:00",
+		// The viewer is pinned to UTC+9. A due date names a day, so it is neither converted nor
+		// given a time by the format's time part.
+		expect(container.textContent).toContain("Due: 01/09/2026");
+		const renderedDue = Array.from(container.querySelectorAll("span")).find(
+			(element) => element.textContent === "01/09/2026",
 		);
-		expect(renderedDue?.getAttribute("title")).toBe("01/09/2026 12:00 (UTC)");
+		expect(renderedDue).toBeTruthy();
+		expect(renderedDue?.getAttribute("title")).toBeNull();
 	});
 
 	it("searching one milestone still renders other milestone sections", () => {
@@ -319,13 +322,14 @@ describe("Web milestones page search", () => {
 		expect(input).toBeTruthy();
 		setInputValue(input as HTMLInputElement, "Release 1.1");
 		const dueDateInput = container.querySelector("#edit-milestone-due-date") as HTMLInputElement | null;
-		expect(dueDateInput?.value).toBe("2026-09-01T12:00");
-		setInputValue(dueDateInput as HTMLInputElement, "2026-09-02T13:30");
+		expect(dueDateInput?.type).toBe("date");
+		expect(dueDateInput?.value).toBe("2026-09-01");
+		setInputValue(dueDateInput as HTMLInputElement, "2026-09-02");
 		await submitForm(input?.closest("form") as HTMLFormElement);
 
 		expect(updateArgs?.[0]).toBe("m-1");
 		expect(updateArgs?.[1]).toBe("Release 1.1");
-		expect(updateArgs?.[2]).toBe("2026-09-02T13:30");
+		expect(updateArgs?.[2]).toBe("2026-09-02");
 		expect(refreshCount).toBe(1);
 	});
 

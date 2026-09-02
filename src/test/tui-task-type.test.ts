@@ -37,8 +37,8 @@ describe("TUI task type display", () => {
 	});
 
 	it("shows due dates on board task cards", () => {
-		const task = createTask({ dueDate: "2026-08-10 14:30" });
-		expect(formatTaskListItem(task)).toContain("due 2026-08-10 14:30 (UTC)");
+		const task = createTask({ dueDate: "2026-08-10" });
+		expect(formatTaskListItem(task)).toContain("due 2026-08-10)");
 	});
 
 	it("shows the type field in task details and hides it for untyped tasks", async () => {

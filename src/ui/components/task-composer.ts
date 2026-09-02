@@ -2,10 +2,10 @@ import type { BoxInterface, ScreenInterface, TextboxInterface } from "neo-neo-bb
 import { box, textarea, textbox } from "neo-neo-bblessed";
 import { DEFAULT_STATUSES } from "../../constants/index.ts";
 import type { Task, TaskCreateInput } from "../../types/index.ts";
+import { normalizeDueDate } from "../../utils/due-date.ts";
 import { getPriorityOptions } from "../../utils/priority-config.ts";
 import { getProjectValues } from "../../utils/project-config.ts";
 import { getTaskTypeValues } from "../../utils/task-type-config.ts";
-import { normalizeUtcDateTime } from "../../utils/utc-datetime.ts";
 import {
 	createPopupChrome,
 	createScrollableViewport,
@@ -338,7 +338,7 @@ export function toTaskCreateInput(values: TaskComposerValues): TaskCreateInput {
 	const title = values.title.trim();
 	if (!title) throw new Error("Title is required.");
 	const description = values.description.trim();
-	const dueDate = normalizeUtcDateTime(values.dueDate, "Due date");
+	const dueDate = normalizeDueDate(values.dueDate, "Due date");
 	return {
 		title,
 		status: values.status,
@@ -471,7 +471,7 @@ export async function openTaskComposer(options: TaskComposerOptions): Promise<Ta
 			right: 1,
 			height: 3,
 			border: { type: "line" },
-			label: " Due (UTC) ",
+			label: " Due ",
 			keys: true,
 			mouse: true,
 			inputOnFocus: false,
