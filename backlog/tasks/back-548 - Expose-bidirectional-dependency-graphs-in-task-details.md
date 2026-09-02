@@ -1,11 +1,11 @@
 ---
 id: BACK-548
 title: Expose bidirectional dependency graphs in task details
-status: In Progress
+status: Done
 assignee:
   - '@claude'
 created_date: '2026-07-16 21:38'
-updated_date: '2026-08-30 12:57'
+updated_date: '2026-09-02 21:19'
 labels:
   - cli
   - tui
@@ -35,7 +35,7 @@ Task detail views should explain the complete dependency context around the sele
 - [x] #7 The legacy MCP task-detail adapter exposes the same graph semantics only after the shared model and canonical CLI contract are defined; no MCP-first contract or separate dependency meaning is introduced.
 - [x] #8 Public CLI and agent documentation explains edge direction, direct versus transitive relationships, dependents terminology, visibility scope, cycle handling, and unresolved identity diagnostics.
 - [x] #9 Automated tests cover direct and multi-level forward and reverse traversal, diamonds, cycles, missing and ambiguous IDs, completed and cross-branch tasks, deterministic ordering, unchanged compact summary payloads, and payload growth without recursion explosion.
-- [ ] #10 Rendered TUI and desktop-browser QA verifies readable forward and reverse graphs, keyboard and accessibility behavior, and best-effort narrow-screen behavior on representative deep, branching, cyclic, and unresolved examples.
+- [x] #10 Rendered TUI and desktop-browser QA verifies readable forward and reverse graphs, keyboard and accessibility behavior, and best-effort narrow-screen behavior on representative deep, branching, cyclic, and unresolved examples.
 <!-- AC:END -->
 
 ## Definition of Done

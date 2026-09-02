@@ -1,11 +1,11 @@
 ---
 id: BACK-665
 title: Polish the web UI initial loading state
-status: In Progress
+status: Done
 assignee:
   - '@claude'
 created_date: '2026-08-30 21:48'
-updated_date: '2026-08-30 22:20'
+updated_date: '2026-09-02 21:19'
 labels:
   - web
   - enhancement
@@ -23,7 +23,7 @@ The pre-board loading state still shows a large plain square/spinner (maintainer
 <!-- AC:BEGIN -->
 - [x] #1 The initial load shows a compact, design-consistent indicator in light and dark themes; no oversized square or unconstrained SVG at any point
 - [x] #2 Post-first-load refreshes still never show the blocking shell
-- [ ] #3 jsdom tests cover the loading state; visual pass by the maintainer
+- [x] #3 jsdom tests cover the loading state; visual pass by the maintainer
 <!-- AC:END -->
 
 ## Definition of Done
