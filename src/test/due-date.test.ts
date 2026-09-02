@@ -24,6 +24,19 @@ describe("date-only due date model", () => {
 		expect(normalizeDueDate("2026-08-10T14:30")).toBe("2026-08-10");
 		expect(normalizeDueDate("2026-08-10T16:30:45+02:00")).toBe("2026-08-10");
 		expect(normalizeDueDate("2026-08-10T14:30:59.999Z")).toBe("2026-08-10");
+		expect(normalizeDueDate("2026-08-10T14:30-0800")).toBe("2026-08-10");
+	});
+
+	it("rejects a legacy timestamp whose time or offset is out of range", () => {
+		// Tolerating a real timestamp is the point; turning malformed input into an apparently
+		// valid due date is not, and the CLI, MCP and web API all reach this.
+		expect(() => normalizeDueDate("2026-08-10T99:99", "Due date")).toThrow("YYYY-MM-DD");
+		expect(() => normalizeDueDate("2026-08-10T14:30:60Z", "Due date")).toThrow("YYYY-MM-DD");
+		expect(() => normalizeDueDate("2026-08-10T14:30+99:99", "Due date")).toThrow("YYYY-MM-DD");
+		expect(() => normalizeDueDate("2026-08-10T14:30+15:00", "Due date")).toThrow("YYYY-MM-DD");
+		// +14:00 is the largest real offset, and only on the hour.
+		expect(normalizeDueDate("2026-08-10T14:30+14:00", "Due date")).toBe("2026-08-10");
+		expect(() => normalizeDueDate("2026-08-10T14:30+14:30", "Due date")).toThrow("YYYY-MM-DD");
 	});
 
 	it("rejects values that name no calendar day", () => {
