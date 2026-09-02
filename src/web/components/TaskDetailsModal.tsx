@@ -10,7 +10,7 @@ import MermaidMarkdown from './MermaidMarkdown';
 import ChipInput from "./ChipInput";
 import DependencyInput from "./DependencyInput";
 import { DependencyGraphSection } from "./DependencyGraphSection";
-import { formatStoredUtcDateForDisplay } from "../utils/date-display";
+import StoredDate from "./StoredDate";
 import { getPriorityOptions } from "../../utils/priority-config";
 import { getProjectValues, resolveProjectValue } from "../../utils/project-config";
 import { getTaskTypeValues, resolveTaskTypeValue } from "../../utils/task-type-config";
@@ -1655,7 +1655,7 @@ export const TaskDetailsModal: React.FC<Props> = ({
                       <div className="mb-2 flex flex-wrap items-center gap-2 text-xs text-gray-500 dark:text-gray-400">
                         <span className="font-semibold text-gray-700 dark:text-gray-200">#{comment.index}</span>
                         {comment.author ? <span>{comment.author}</span> : null}
-                        {comment.createdDate ? <span>{formatStoredUtcDateForDisplay(comment.createdDate, dateFormat)}</span> : null}
+                        {comment.createdDate ? <StoredDate value={comment.createdDate} dateFormat={dateFormat} /> : null}
                       </div>
                       <div className="prose prose-sm !max-w-none wmde-markdown" data-color-mode={theme}>
                         <MermaidMarkdown source={comment.body} />
@@ -1728,12 +1728,12 @@ export const TaskDetailsModal: React.FC<Props> = ({
           {/* Dates */}
 	          {task && (
 	            <div className="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-3 text-xs text-gray-600 dark:text-gray-300 space-y-1">
-	              <div><span className="font-semibold text-gray-800 dark:text-gray-100">Created:</span> <span className="text-gray-700 dark:text-gray-200">{formatStoredUtcDateForDisplay(task.createdDate, dateFormat)}</span></div>
+	              <div><span className="font-semibold text-gray-800 dark:text-gray-100">Created:</span> <StoredDate value={task.createdDate} dateFormat={dateFormat} className="text-gray-700 dark:text-gray-200" /></div>
 	              {task.updatedDate && (
-	                <div><span className="font-semibold text-gray-800 dark:text-gray-100">Updated:</span> <span className="text-gray-700 dark:text-gray-200">{formatStoredUtcDateForDisplay(task.updatedDate, dateFormat)}</span></div>
+	                <div><span className="font-semibold text-gray-800 dark:text-gray-100">Updated:</span> <StoredDate value={task.updatedDate} dateFormat={dateFormat} className="text-gray-700 dark:text-gray-200" /></div>
 	              )}
 	              {task.dueDate && mode === "preview" && (
-	                <div><span className="font-semibold text-gray-800 dark:text-gray-100">Due (UTC):</span> <span className="text-gray-700 dark:text-gray-200">{formatStoredUtcDateForDisplay(task.dueDate, dateFormat)}</span></div>
+	                <div><span className="font-semibold text-gray-800 dark:text-gray-100">Due:</span> <StoredDate value={task.dueDate} dateFormat={dateFormat} className="text-gray-700 dark:text-gray-200" /></div>
 	              )}
 	            </div>
 	          )}

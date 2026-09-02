@@ -7,6 +7,7 @@ import type { Milestone, Task } from "../types/index.ts";
 import { createTaskSearchIndex } from "../utils/task-search.ts";
 import MilestonesPage from "../web/components/MilestonesPage.tsx";
 import { apiClient } from "../web/lib/api.ts";
+import { pinTimeZone } from "./pin-timezone.ts";
 import { setNativeInputValue } from "./react-dom-input.ts";
 
 const createTask = (overrides: Partial<Task>): Task => ({
@@ -161,6 +162,9 @@ afterEach(() => {
 });
 
 describe("Web milestones page search", () => {
+	// The browser renders stored timestamps in the viewer's timezone, so pin one.
+	pinTimeZone("Asia/Tokyo");
+
 	it("renders a keyboard-focusable search input near the header", () => {
 		const container = renderPage();
 		expect(container.textContent).toContain("Milestones");
@@ -177,12 +181,16 @@ describe("Web milestones page search", () => {
 		const text = container.textContent ?? "";
 
 		expect(text.indexOf("Release 1")).toBeLessThan(text.indexOf("Release 2"));
-		expect(text).toContain("Due (UTC):");
+		expect(text).toContain("Due:");
 	});
 
-	it("uses the configured date format for milestone due dates", () => {
+	it("uses the configured date format for milestone due dates and keeps UTC on hover", () => {
 		const container = renderPage(baseTasks, { dateFormat: "dd/mm/yyyy hh:mm" });
-		expect(container.textContent).toContain("Due (UTC): 01/09/2026 12:00");
+		expect(container.textContent).toContain("Due: 01/09/2026 21:00");
+		const renderedDue = Array.from(container.querySelectorAll("span[title]")).find(
+			(element) => element.textContent === "01/09/2026 21:00",
+		);
+		expect(renderedDue?.getAttribute("title")).toBe("01/09/2026 12:00 (UTC)");
 	});
 
 	it("searching one milestone still renders other milestone sections", () => {
