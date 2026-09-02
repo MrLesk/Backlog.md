@@ -228,15 +228,6 @@ export function taskViewJson(task: TaskDetail, projectRoot: string) {
 	};
 }
 
-/** The normalized graph on its own, for the dedicated dependencies read. */
-export function taskDependenciesJson(task: TaskDetail) {
-	return {
-		schemaVersion: 1,
-		kind: "task-dependencies" as const,
-		dependencyGraph: toDependencyGraphJson(task.dependencyGraph),
-	};
-}
-
 export function decisionListJson(decisions: Decision[]) {
 	return { schemaVersion: 1, kind: "decision-list" as const, decisions: decisions.map(toDecisionSummaryJson) };
 }

@@ -10,7 +10,7 @@ import {
 import { createSimpleValidatedTool } from "../../validation/tool-wrapper.ts";
 import type { TaskCreateArgs, TaskEditRequest, TaskListArgs, TaskSearchArgs } from "./handlers.ts";
 import { TaskHandlers } from "./handlers.ts";
-import { taskArchiveSchema, taskCompleteSchema, taskDependenciesSchema, taskViewSchema } from "./schemas.ts";
+import { taskArchiveSchema, taskCompleteSchema, taskViewSchema } from "./schemas.ts";
 
 export function registerTaskTools(server: McpServer, config: BacklogConfig): void {
 	const handlers = new TaskHandlers(server);
@@ -77,18 +77,6 @@ export function registerTaskTools(server: McpServer, config: BacklogConfig): voi
 		async (input) => handlers.viewTask(input as { id: string }),
 	);
 
-	const taskDependenciesTool: McpToolHandler = createSimpleValidatedTool(
-		{
-			name: "task_dependencies",
-			description:
-				"View a Backlog.md task's dependency graph: what it transitively depends on (Depends on) and what transitively depends on it (Dependents); outermost entries are direct, indented entries are transitive, unresolved task IDs are reported and never followed",
-			inputSchema: taskDependenciesSchema,
-			annotations: { title: "View Task Dependencies", readOnlyHint: true, destructiveHint: false },
-		},
-		taskDependenciesSchema,
-		async (input) => handlers.taskDependencies(input as { id: string }),
-	);
-
 	const archiveTaskTool: McpToolHandler = createSimpleValidatedTool(
 		{
 			name: "task_archive",
@@ -116,7 +104,6 @@ export function registerTaskTools(server: McpServer, config: BacklogConfig): voi
 	server.addTool(searchTaskTool);
 	server.addTool(editTaskTool);
 	server.addTool(viewTaskTool);
-	server.addTool(taskDependenciesTool);
 	server.addTool(archiveTaskTool);
 	server.addTool(completeTaskTool);
 }
@@ -125,7 +112,6 @@ export type { TaskCreateArgs, TaskEditArgs, TaskListArgs, TaskSearchArgs } from 
 export {
 	taskArchiveSchema,
 	taskCompleteSchema,
-	taskDependenciesSchema,
 	taskListSchema,
 	taskSearchSchema,
 	taskViewSchema,
