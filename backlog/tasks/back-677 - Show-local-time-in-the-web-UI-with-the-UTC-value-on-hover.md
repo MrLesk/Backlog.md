@@ -5,7 +5,7 @@ status: In Progress
 assignee:
   - '@claude'
 created_date: '2026-09-02 17:01'
-updated_date: '2026-09-02 17:26'
+updated_date: '2026-09-02 17:31'
 labels: []
 dependencies: []
 ordinal: 309000
@@ -71,6 +71,8 @@ Tests: src/web/utils/date-display.test.ts now passes an explicit timeZone to eve
 Validation: bunx tsc --noEmit and bun run check . pass. Full bun run test on this branch: 2852 pass, 8 skip, 1 fail. The single failure is in src/test/content-store.test.ts, which also fails on an unmodified origin/main worktree (2849 pass, 8 skip, 1 fail, different test in the same suite, same 'Unhandled error between tests' with a git posix_spawn ENOENT); both pass when that file runs on its own, so it is a pre-existing flake in that suite and not caused by this change. CI on the PR: lint-and-unit-test passes on macOS and Windows (confirming process.env.TZ pinning works on Windows too), compile-and-smoke-test passes on all three platforms, CodeQL and nix-package pass. The four date-related test files were also rerun under TZ=UTC, TZ=America/Los_Angeles and TZ=Pacific/Kiritimati and pass unchanged.
 
 Manual verification in the running web UI with the browser in Europe/Vienna: BACK-677's stored '2026-09-02 17:01' rendered as '2026-09-02 19:01' with title '2026-09-02 17:01 (UTC)'; the task list's compact column rendered 'today'/'yesterday' with the canonical UTC value on hover; BACK-208's date-only created_date '2025-07-26' rendered unchanged with no title. CLI plain output for the same tasks still prints 'Created: 2025-07-26 (UTC)' and 'Created: 2026-09-02 17:01 (UTC)', and the diff against origin/main touches no file under src/utils/utc-date-display.ts, src/cli.ts, src/ui, src/formatters or src/mcp.
+
+All 10 CI checks on PR 992 pass, including lint-and-unit-test (ubuntu-latest), which runs the full behavioural profile plus the interactive TUI pass. The content-store failure seen locally does not reproduce there, confirming it as a local environment flake.
 <!-- SECTION:NOTES:END -->
 
 ## Final Summary
