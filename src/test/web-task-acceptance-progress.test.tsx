@@ -76,6 +76,13 @@ const renderList = (task: Task): HTMLElement => {
 const getProgress = (container: HTMLElement): HTMLElement | null =>
 	container.querySelector("[data-acceptance-criteria-progress]");
 
+// The header row is the metadata line that precedes the card title.
+const getHeaderRow = (container: HTMLElement): HTMLElement => {
+	const header = container.querySelector("h4")?.previousElementSibling as HTMLElement | null;
+	expect(header?.className).toContain("justify-between");
+	return header as HTMLElement;
+};
+
 const RING_CIRCUMFERENCE = 2 * Math.PI * 5;
 
 const expectRing = (progress: HTMLElement | null, checked: number, total: number) => {
@@ -139,6 +146,49 @@ describe("browser task acceptance criteria progress", () => {
 		const container = renderCard(createTask({ acceptanceCriteriaItems: [] }));
 
 		expect(getProgress(container)).toBeNull();
+	});
+
+	it("renders the card ring in the header row beside the priority badge", () => {
+		const container = renderCard(createTask({ priority: "high", acceptanceCriteriaItems: createCriteria(4, 7) }));
+		const header = getHeaderRow(container);
+		const progress = getProgress(container);
+
+		expect(container.querySelectorAll("[data-acceptance-criteria-progress]").length).toBe(1);
+		expect(header.contains(progress)).toBe(true);
+		expectRing(progress, 4, 7);
+
+		// The ring joins the priority badge in a group that never shrinks the id side of the header,
+		// and the badge stays flush right so it sits where cards without progress already put it.
+		const rightGroup = header.lastElementChild as HTMLElement;
+		expect(rightGroup.className).toContain("shrink-0");
+		expect(rightGroup.contains(progress)).toBe(true);
+		expect(rightGroup.lastElementChild?.textContent).toBe("High");
+	});
+
+	it("renders the card ring in the header row when the task has no priority", () => {
+		const container = renderCard(createTask({ acceptanceCriteriaItems: createCriteria(2, 3) }));
+		const header = getHeaderRow(container);
+		const progress = getProgress(container);
+
+		expect(header.contains(progress)).toBe(true);
+		expect(header.textContent).toBe("task-12/3");
+	});
+
+	it("keeps the priority badge alone in the header row when the task has no progress", () => {
+		const container = renderCard(createTask({ status: "To Do", priority: "medium" }));
+		const header = getHeaderRow(container);
+
+		expect(getProgress(container)).toBeNull();
+		expect(header.textContent).toBe("task-1Med");
+	});
+
+	it("renders nothing beside the id when the task has neither progress nor priority", () => {
+		const container = renderCard(createTask({ status: "To Do" }));
+		const header = getHeaderRow(container);
+
+		expect(getProgress(container)).toBeNull();
+		expect(header.children.length).toBe(1);
+		expect(header.textContent).toBe("task-1");
 	});
 
 	it("renders a partial progress ring at list density in the wide list summary", () => {

@@ -174,6 +174,8 @@ const TaskCard: React.FC<TaskCardProps> = ({
     }
   };
 
+  const priorityBadge = getPriorityBadge(task.priority);
+
   return (
     <div className="relative">
       {/* Branch tooltip when trying to drag cross-branch task */}
@@ -248,14 +250,16 @@ const TaskCard: React.FC<TaskCardProps> = ({
             <TaskTypeBadge type={task.type} availableTypes={availableTypes} className="min-w-0" />
             <ProjectBadge project={task.project} availableProjects={availableProjects} className="min-w-0" />
           </div>
-          {(() => {
-            const badge = getPriorityBadge(task.priority);
-            return badge ? (
-              <span className={`px-1.5 py-0.5 text-[10px] font-semibold rounded ${badge.bg} ${badge.text} transition-colors duration-200`}>
-                {badge.label}
-              </span>
-            ) : null;
-          })()}
+          {(acceptanceCriteriaProgress || priorityBadge) && (
+            <div className="flex shrink-0 items-center gap-2">
+              <AcceptanceCriteriaProgress task={task} density="card" />
+              {priorityBadge && (
+                <span className={`px-1.5 py-0.5 text-[10px] font-semibold rounded ${priorityBadge.bg} ${priorityBadge.text} transition-colors duration-200`}>
+                  {priorityBadge.label}
+                </span>
+              )}
+            </div>
+          )}
         </div>
 
         {/* Title */}
@@ -266,8 +270,6 @@ const TaskCard: React.FC<TaskCardProps> = ({
         }`}>
           {task.title}
         </h4>
-
-        <AcceptanceCriteriaProgress task={task} density="card" className="mt-2" />
 
         {/* Labels - limit to 3 */}
         {task.labels.length > 0 && (
