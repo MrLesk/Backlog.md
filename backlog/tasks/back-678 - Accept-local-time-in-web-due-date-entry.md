@@ -4,7 +4,7 @@ title: Make due date a date-only string everywhere
 status: To Do
 assignee: []
 created_date: '2026-09-02 18:26'
-updated_date: '2026-09-02 18:42'
+updated_date: '2026-09-02 19:47'
 labels: []
 dependencies: []
 ordinal: 310000
@@ -36,3 +36,9 @@ Make the due date a plain date string: stored as YYYY-MM-DD, entered as a day, d
 - [ ] #2 bun run check . passes when formatting/linting touched
 - [ ] #3 bun test (or scoped test) passes
 <!-- DOD:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+Maintainer decision (2026-09-02): the JSON envelope keeps schemaVersion 1 even though dueDate changes shape from an RFC 3339 instant to a date-only string. The JSON surface is young and dueDate is optional and rare, so bumping would spend a version break across every payload and field for one optional value, and any consumer checking schemaVersion === 1 would break everywhere at once rather than on the field that changed. A date-only string is also trivially parseable by anything that previously read an instant. The change belongs in the release notes, and a future bump to this surface absorbs it.
+<!-- SECTION:NOTES:END -->
