@@ -8,6 +8,7 @@ import TaskCard from "../web/components/TaskCard.tsx";
 import { TaskDetailsModal } from "../web/components/TaskDetailsModal.tsx";
 import { ThemeProvider } from "../web/contexts/ThemeContext.tsx";
 import { apiClient, type TaskUpdateRequest } from "../web/lib/api.ts";
+import { pinTimeZone } from "./pin-timezone.ts";
 import { setNativeInputValue } from "./react-dom-input.ts";
 
 const createTask = (overrides: Partial<Task> = {}): Task => ({
@@ -112,6 +113,9 @@ afterEach(() => {
 });
 
 describe("Web task type UI", () => {
+	// The browser renders stored timestamps in the viewer's timezone, so pin one.
+	pinTimeZone("Asia/Tokyo");
+
 	it("displays and clears a task due date through the edit form", async () => {
 		const container = setupDom();
 		const task = createTask({ dueDate: "2026-08-10 14:30" });
@@ -130,7 +134,9 @@ describe("Web task type UI", () => {
 			);
 			await Promise.resolve();
 		});
-		expect(container.textContent).toContain("Due (UTC):");
+		expect(container.textContent).toContain("Due: 2026-08-10 23:30");
+		// The stored created_date is date-only: it has no time to convert and must not shift a day.
+		expect(container.textContent).toContain("Created: 2026-07-09");
 
 		const editButton = Array.from(container.querySelectorAll("button")).find(
 			(button) => button.textContent?.trim() === "Edit",
@@ -196,8 +202,8 @@ describe("Web task type UI", () => {
 		expect(customHtml).toContain("bg-blue-100");
 		expect(docsHtml).toContain("bg-cyan-100");
 		expect(untypedHtml).not.toContain("data-task-type");
-		expect(datedHtml).toContain("Due (UTC):");
-		expect(datedHtml).toContain("10/08/2026 14:30");
+		expect(datedHtml).toContain("Due: ");
+		expect(datedHtml).toContain('title="10/08/2026 14:30 (UTC)">10/08/2026 23:30<');
 	});
 
 	it("creates a task with a configured custom type and defaults to untyped", async () => {

@@ -11,11 +11,7 @@ import { collectAvailableLabels } from "../../utils/label-filter.ts";
 import { compareTaskIds, compareTaskIdsDescending } from "../../utils/task-sorting.ts";
 import { isTerminalStatus } from "../../utils/terminal-status.ts";
 import { collectArchivedMilestoneKeys, getMilestoneLabel, milestoneKey } from "../utils/milestones";
-import {
-	formatStoredUtcDateForCompactDisplay,
-	formatStoredUtcDateForDisplay,
-	parseStoredUtcDate,
-} from "../utils/date-display";
+import { parseStoredUtcDate } from "../utils/date-display";
 import {
 	formatPriorityLabel,
 	getPriorityOptions,
@@ -23,6 +19,7 @@ import {
 	resolvePriorityValue,
 } from "../../utils/priority-config.ts";
 import CleanupModal from "./CleanupModal";
+import StoredDate from "./StoredDate";
 import AcceptanceCriteriaProgress from "./AcceptanceCriteriaProgress";
 import LabelFilterDropdown from "./LabelFilterDropdown";
 import { SuccessToast } from "./SuccessToast";
@@ -868,7 +865,6 @@ const TaskList: React.FC<TaskListProps> = ({
 									const visibleAssignees = task.assignee.slice(0, 2);
 									const assigneeOverflow = Math.max(task.assignee.length - visibleAssignees.length, 0);
 									const milestoneLabel = task.milestone ? getMilestoneLabel(task.milestone, milestoneEntities) : "—";
-									const createdLabel = formatStoredUtcDateForCompactDisplay(task.createdDate ?? "", dateFormat);
 
 									return (
 										<tr
@@ -913,7 +909,7 @@ const TaskList: React.FC<TaskListProps> = ({
 												<AcceptanceCriteriaProgress task={task} density="list" className="mt-1" />
 												{task.dueDate && (
 													<div className="mt-1 text-xs text-gray-500 dark:text-gray-400 whitespace-nowrap">
-														Due (UTC): {formatStoredUtcDateForDisplay(task.dueDate, dateFormat)}
+														Due: <StoredDate value={task.dueDate} dateFormat={dateFormat} />
 													</div>
 												)}
 											</td>
@@ -980,7 +976,7 @@ const TaskList: React.FC<TaskListProps> = ({
 												{milestoneLabel}
 											</td>
 											<td className="px-3 py-2.5 text-xs text-gray-500 dark:text-gray-400 whitespace-nowrap">
-												{createdLabel}
+												<StoredDate value={task.createdDate} dateFormat={dateFormat} compact />
 											</td>
 										</tr>
 									);

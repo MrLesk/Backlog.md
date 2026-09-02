@@ -1,9 +1,11 @@
 ---
 id: BACK-677
 title: Show local time in the web UI with the UTC value on hover
-status: To Do
-assignee: []
+status: In Progress
+assignee:
+  - '@claude'
 created_date: '2026-09-02 17:01'
+updated_date: '2026-09-02 17:17'
 labels: []
 dependencies: []
 ordinal: 309000
@@ -36,3 +38,33 @@ One correctness trap: many stored dates are date-only, such as created_date '202
 - [ ] #2 bun run check . passes when formatting/linting touched
 - [ ] #3 bun test (or scoped test) passes
 <!-- DOD:END -->
+
+## Implementation Plan
+
+<!-- SECTION:PLAN:BEGIN -->
+1. Add one shared web helper in src/web/utils/date-display.ts: formatStoredDateForDisplay(value, { dateFormat, timeZone }) returning { text, title? }. It parses the stored value explicitly as UTC (parseStoredUtcDate), converts to the viewer timezone via Intl.DateTimeFormat with an optional explicit timeZone, then reuses formatUtcDateForDisplay to arrange the local wall-clock value with the configured dateFormat. title is the canonical UTC value with the (UTC) marker.
+2. Date-only stored values (yyyy-mm-dd) and unparsable values are returned unchanged with no title, so no day shift and no misleading hover.
+3. Add a tiny StoredDate component so every web call site renders <span title={utc}>{local}</span> identically instead of converting per component.
+4. Route every web stored-date render through it: TaskDetailsModal (Created/Updated/Due/comment dates), TaskList (compact created + Due), TaskCard (Due), DraftsList, Statistics, MilestonesPage (Due), DocumentationDetail, DecisionDetail, CleanupModal.
+5. Make the compact list label share the same helper so its absolute fallback and hover match.
+6. Rename the visible 'Due (UTC):' display labels to 'Due:' since the value is no longer UTC; the due-date input labels stay 'Due (UTC)' because entry semantics are unchanged.
+7. Leave src/utils/utc-date-display.ts callers for CLI, TUI, MCP and plain output untouched, so those surfaces keep appendUtcLabel UTC output.
+8. Tests: extend src/web/utils/date-display.test.ts with an explicit timeZone argument (no reliance on the runner timezone) covering a non-UTC timestamp, a date-only value, and the dateFormat interaction; set process.env.TZ explicitly in any component test that asserts a rendered timestamp.
+9. Gates: bunx tsc --noEmit, bun run check ., bun run test.
+<!-- SECTION:PLAN:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+Added one shared web helper in src/web/utils/date-display.ts. formatStoredDateForDisplay(value, { dateFormat, timeZone }) returns { text, title? }: text is the stored instant rendered in the viewer's timezone, title is the canonical stored value with the (UTC) marker for the title attribute. formatStoredDateForCompactDisplay returns the same shape for dense lists. Conversion goes through parseStoredUtcDate (explicit UTC parsing, never Date's local parsing of '2026-07-16 21:49') and Intl.DateTimeFormat with hourCycle h23; the resulting local wall-clock string is then arranged by the existing formatUtcDateForDisplay, so the configured dateFormat still governs both the visible value and the hover.
+
+Date-only stored values such as created_date '2025-07-26' never reach the conversion: localCanonicalOf returns null when the canonical value has no time, so the value renders unchanged and carries no title that would claim a time the record does not have. Unparsable values fall back to the previous passthrough behaviour.
+
+Added src/web/components/StoredDate.tsx, a one-line component rendering <span title={utc}>{local}</span>, and routed every web stored-date render through it: TaskDetailsModal (Created, Updated, Due, comment dates), TaskList (compact Created column and Due), TaskCard (Due), DraftsList (Created, Updated), Statistics, MilestonesPage (Due), DocumentationDetail (Created), DecisionDetail (Date), CleanupModal (preview dates). No component converts on its own any more; CleanupModal's and Statistics' local formatDate helpers were deleted.
+
+Deliberate label change: the visible 'Due (UTC):' labels became 'Due:' because the displayed value is no longer UTC and the UTC value is on hover. The due-date entry fields keep their 'Due (UTC)' labels: entry semantics are unchanged, the input still takes and stores a UTC value.
+
+Not changed: src/utils/utc-date-display.ts and every CLI, TUI, MCP and plain-output caller still pass appendUtcLabel and print UTC. TaskCard's relative age label ('3w ago') is timezone-independent and was left alone.
+
+Tests: src/web/utils/date-display.test.ts now passes an explicit timeZone to every case (Asia/Tokyo, America/Los_Angeles, UTC), so nothing depends on the runner's timezone; it covers a non-UTC timestamp, the local-midnight rollover, a date-only value left unconverted with no title, and dateFormat applied to both the local value and the UTC hover. Component tests that assert rendered timestamps pin the timezone through the new src/test/pin-timezone.ts helper (beforeAll/afterAll, restoring the previously resolved zone because bun shares one process across test files): web-task-list-table-width, web-milestones-page-search and web-task-types now render under Asia/Tokyo and assert both the local text and the UTC title, plus a date-only created_date that must not shift. Verified the suite is timezone-independent by rerunning those files under TZ=UTC, America/Los_Angeles and Pacific/Kiritimati.
+<!-- SECTION:NOTES:END -->

@@ -2,7 +2,7 @@ import React from 'react';
 import { type Task } from '../../types';
 import { formatPriorityLabel } from '../../utils/priority-config';
 import AcceptanceCriteriaProgress, { getAcceptanceCriteriaProgressCounts } from './AcceptanceCriteriaProgress';
-import { formatStoredUtcDateForDisplay } from '../utils/date-display';
+import StoredDate from './StoredDate';
 import ProjectBadge from './ProjectBadge';
 import TaskTypeBadge from './TaskTypeBadge';
 
@@ -291,7 +291,7 @@ const TaskCard: React.FC<TaskCardProps> = ({
         {/* Footer with date */}
         <div className="flex flex-wrap items-center justify-between gap-x-2 gap-y-1 text-[10px] text-gray-400 dark:text-gray-500 mt-2 pt-1.5 border-t border-gray-100 dark:border-gray-600/50 transition-colors duration-200">
           <span>{formatRelativeDate(task.createdDate)}</span>
-          {task.dueDate && <span>Due (UTC): {formatStoredUtcDateForDisplay(task.dueDate, dateFormat)}</span>}
+          {task.dueDate && <span>Due: <StoredDate value={task.dueDate} dateFormat={dateFormat} /></span>}
           {task.assignee.length > 0 && (
             <span className="truncate max-w-[80px]" title={task.assignee.join(', ')}>
               {task.assignee[0]}

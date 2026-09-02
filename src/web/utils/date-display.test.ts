@@ -1,9 +1,9 @@
 import { describe, expect, it } from "bun:test";
-import {
-	formatStoredUtcDateForCompactDisplay,
-	formatStoredUtcDateForDisplay,
-	parseStoredUtcDate,
-} from "./date-display";
+import { formatStoredDateForCompactDisplay, formatStoredDateForDisplay, parseStoredUtcDate } from "./date-display";
+
+// Every case passes an explicit timeZone so results never depend on the machine running the tests.
+const TOKYO = "Asia/Tokyo"; // UTC+9, no DST
+const LOS_ANGELES = "America/Los_Angeles"; // UTC-8/-7
 
 describe("parseStoredUtcDate", () => {
 	it("parses stored UTC datetime strings", () => {
@@ -24,51 +24,105 @@ describe("parseStoredUtcDate", () => {
 	});
 });
 
-describe("formatStoredUtcDateForDisplay", () => {
-	it("renders datetime values as stored (UTC), not in the browser locale", () => {
-		expect(formatStoredUtcDateForDisplay("2026-02-09 06:01")).toBe("2026-02-09 06:01");
+describe("formatStoredDateForDisplay", () => {
+	it("renders stored timestamps in the viewer's timezone", () => {
+		expect(formatStoredDateForDisplay("2026-02-09 06:01", { timeZone: TOKYO })).toEqual({
+			text: "2026-02-09 15:01",
+			title: "2026-02-09 06:01 (UTC)",
+		});
+		expect(formatStoredDateForDisplay("2026-02-09 06:01", { timeZone: LOS_ANGELES })).toEqual({
+			text: "2026-02-08 22:01",
+			title: "2026-02-09 06:01 (UTC)",
+		});
 	});
 
-	it("renders date-only values as stored", () => {
-		expect(formatStoredUtcDateForDisplay("2026-02-09")).toBe("2026-02-09");
+	it("keeps the same instant when the viewer is in UTC", () => {
+		expect(formatStoredDateForDisplay("2026-02-09 06:01", { timeZone: "UTC" })).toEqual({
+			text: "2026-02-09 06:01",
+			title: "2026-02-09 06:01 (UTC)",
+		});
 	});
 
-	it("applies a custom display format when provided", () => {
-		expect(formatStoredUtcDateForDisplay("2026-02-09 06:01", "dd/mm/yyyy")).toBe("09/02/2026 06:01");
-		expect(formatStoredUtcDateForDisplay("2026-02-09", "mm/dd/yyyy")).toBe("02/09/2026");
+	it("renders midnight without rolling the local hour to 24", () => {
+		expect(formatStoredDateForDisplay("2026-02-09 15:00", { timeZone: TOKYO })).toEqual({
+			text: "2026-02-10 00:00",
+			title: "2026-02-09 15:00 (UTC)",
+		});
+	});
+
+	it("leaves date-only values unconverted and without a misleading hover", () => {
+		expect(formatStoredDateForDisplay("2026-02-09", { timeZone: TOKYO })).toEqual({ text: "2026-02-09" });
+		expect(formatStoredDateForDisplay("2026-02-09", { timeZone: LOS_ANGELES })).toEqual({ text: "2026-02-09" });
+	});
+
+	it("applies the configured date format to both the local value and the UTC hover", () => {
+		expect(formatStoredDateForDisplay("2026-02-09 06:01", { dateFormat: "dd/mm/yyyy", timeZone: TOKYO })).toEqual({
+			text: "09/02/2026 15:01",
+			title: "09/02/2026 06:01 (UTC)",
+		});
+		expect(
+			formatStoredDateForDisplay("2026-02-09 06:01", { dateFormat: "mm/dd/yyyy hh:mm", timeZone: LOS_ANGELES }),
+		).toEqual({
+			text: "02/08/2026 22:01",
+			title: "02/09/2026 06:01 (UTC)",
+		});
+		expect(formatStoredDateForDisplay("2026-02-09", { dateFormat: "mm/dd/yyyy", timeZone: LOS_ANGELES })).toEqual({
+			text: "02/09/2026",
+		});
 	});
 
 	it("falls back to canonical output for invalid formats", () => {
-		expect(formatStoredUtcDateForDisplay("2026-02-09 06:01", "banana")).toBe("2026-02-09 06:01");
+		expect(formatStoredDateForDisplay("2026-02-09 06:01", { dateFormat: "banana", timeZone: "UTC" })).toEqual({
+			text: "2026-02-09 06:01",
+			title: "2026-02-09 06:01 (UTC)",
+		});
 	});
 
-	it("falls back to original value when parsing fails", () => {
-		expect(formatStoredUtcDateForDisplay("not-a-date")).toBe("not-a-date");
-		expect(formatStoredUtcDateForDisplay("not-a-date", "dd/mm/yyyy")).toBe("not-a-date");
+	it("falls back to the original value when parsing fails", () => {
+		expect(formatStoredDateForDisplay("not-a-date", { timeZone: TOKYO })).toEqual({ text: "not-a-date" });
+		expect(formatStoredDateForDisplay("not-a-date", { dateFormat: "dd/mm/yyyy", timeZone: TOKYO })).toEqual({
+			text: "not-a-date",
+		});
+		expect(formatStoredDateForDisplay(undefined, { timeZone: TOKYO })).toEqual({ text: "" });
 	});
 });
 
-describe("formatStoredUtcDateForCompactDisplay", () => {
+describe("formatStoredDateForCompactDisplay", () => {
 	const now = new Date(Date.UTC(2026, 1, 21, 12, 0, 0));
 
 	it("formats recent values as relative days", () => {
-		expect(formatStoredUtcDateForCompactDisplay("2026-02-21", undefined, now)).toBe("today");
-		expect(formatStoredUtcDateForCompactDisplay("2026-02-20", undefined, now)).toBe("yesterday");
-		expect(formatStoredUtcDateForCompactDisplay("2026-02-18", undefined, now)).toBe("3d ago");
+		expect(formatStoredDateForCompactDisplay("2026-02-21", { timeZone: TOKYO }, now).text).toBe("today");
+		expect(formatStoredDateForCompactDisplay("2026-02-20", { timeZone: TOKYO }, now).text).toBe("yesterday");
+		expect(formatStoredDateForCompactDisplay("2026-02-18", { timeZone: TOKYO }, now).text).toBe("3d ago");
 	});
 
-	it("formats older values as a compact date", () => {
-		expect(formatStoredUtcDateForCompactDisplay("2026-02-10", undefined, now)).toBe("2026-02-10");
-		expect(formatStoredUtcDateForCompactDisplay("2026-02-10 06:01", undefined, now)).toBe("2026-02-10");
+	it("keeps the canonical UTC value on hover for relative timestamps", () => {
+		expect(formatStoredDateForCompactDisplay("2026-02-21 06:01", { timeZone: TOKYO }, now)).toEqual({
+			text: "today",
+			title: "2026-02-21 06:01 (UTC)",
+		});
+		expect(formatStoredDateForCompactDisplay("2026-02-21", { timeZone: TOKYO }, now).title).toBeUndefined();
+	});
+
+	it("formats older values as a compact date in the viewer's timezone", () => {
+		expect(formatStoredDateForCompactDisplay("2026-02-10", { timeZone: LOS_ANGELES }, now).text).toBe("2026-02-10");
+		expect(formatStoredDateForCompactDisplay("2026-02-10 06:01", { timeZone: LOS_ANGELES }, now).text).toBe(
+			"2026-02-09",
+		);
+		expect(formatStoredDateForCompactDisplay("2026-02-10 06:01", { timeZone: TOKYO }, now).text).toBe("2026-02-10");
 	});
 
 	it("applies a custom display format to the compact date fallback", () => {
-		expect(formatStoredUtcDateForCompactDisplay("2026-02-10", "dd/mm/yyyy", now)).toBe("10/02/2026");
-		expect(formatStoredUtcDateForCompactDisplay("2026-02-10 06:01", "dd/mm/yyyy", now)).toBe("10/02/2026");
+		expect(
+			formatStoredDateForCompactDisplay("2026-02-10", { dateFormat: "dd/mm/yyyy", timeZone: TOKYO }, now).text,
+		).toBe("10/02/2026");
+		expect(
+			formatStoredDateForCompactDisplay("2026-02-10 20:01", { dateFormat: "dd/mm/yyyy", timeZone: TOKYO }, now).text,
+		).toBe("11/02/2026");
 	});
 
 	it("handles missing and invalid values gracefully", () => {
-		expect(formatStoredUtcDateForCompactDisplay("", undefined, now)).toBe("—");
-		expect(formatStoredUtcDateForCompactDisplay("not-a-date", undefined, now)).toBe("not-a-date");
+		expect(formatStoredDateForCompactDisplay("", { timeZone: TOKYO }, now)).toEqual({ text: "—" });
+		expect(formatStoredDateForCompactDisplay("not-a-date", { timeZone: TOKYO }, now)).toEqual({ text: "not-a-date" });
 	});
 });

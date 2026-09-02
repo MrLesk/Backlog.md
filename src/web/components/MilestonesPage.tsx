@@ -6,7 +6,7 @@ import { type Milestone, type MilestoneBucket, type Task } from "../../types";
 import { createTaskSearchIndex } from "../../utils/task-search";
 import MilestoneTaskRow from "./MilestoneTaskRow";
 import Modal from "./Modal";
-import { formatStoredUtcDateForDisplay } from "../utils/date-display";
+import StoredDate from "./StoredDate";
 
 type RemoveTaskHandling = "clear" | "reassign";
 
@@ -503,7 +503,7 @@ const MilestonesPage: React.FC<MilestonesPageProps> = ({
 							<h3 className="text-base font-semibold text-gray-900 dark:text-gray-100 truncate">{bucket.label}</h3>
 							{milestoneEntity?.dueDate && (
 								<p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-									Due (UTC): {formatStoredUtcDateForDisplay(milestoneEntity.dueDate, dateFormat)}
+									Due: <StoredDate value={milestoneEntity.dueDate} dateFormat={dateFormat} />
 								</p>
 							)}
 						</div>
