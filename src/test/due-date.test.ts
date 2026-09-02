@@ -235,7 +235,8 @@ describe("due dates under a quoted frontmatter key", () => {
 	// value as written can yield the 5th: no reading of a Date could pass by accident.
 	pinTimeZone("America/Los_Angeles");
 
-	const keys = ["due_date", '"due_date"', "'due_date'"];
+	// YAML permits whitespace before the colon, so each spelling is also tested in that form.
+	const keys = ["due_date", '"due_date"', "'due_date'", "due_date ", '"due_date" '];
 	const taskWith = (line: string) => `---
 id: TASK-1
 title: Legacy timestamp
