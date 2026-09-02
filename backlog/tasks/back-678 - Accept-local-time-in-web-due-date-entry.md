@@ -5,7 +5,7 @@ status: In Progress
 assignee:
   - '@claude'
 created_date: '2026-09-02 18:26'
-updated_date: '2026-09-02 19:08'
+updated_date: '2026-09-02 20:28'
 labels: []
 dependencies: []
 ordinal: 310000
@@ -60,6 +60,8 @@ Legacy tolerance lives at the model boundary. normalizeDueDate accepts a day fol
 Surfaces: web inputs are type=date labelled Due, and their state holds the stored string with nothing to translate; the TUI composer field is labelled Due; CLI --due-date is <date> with YYYY-MM-DD help; MCP schemas ask for a date instead of rejecting date-only values; and the (UTC) suffix is gone from every due-date render (CLI, board, task viewer, plain text, MCP task and milestone handlers). Created and updated timestamps were not touched and keep BACK-677 local rendering with UTC hover.
 
 Validation: bunx tsc --noEmit and bun run check . pass. Full suite 2859 pass / 8 skip with one cross-file flake per run (a different test each time: content-store, then board-tui-move); both pass in isolation, neither references due dates, and the known content-store flake also fails on unmodified main locally.
+
+Maintainer decision (2026-09-02): the JSON envelope keeps schemaVersion 1 even though dueDate changes shape from an RFC 3339 instant to a date-only string. The JSON surface is young and dueDate is optional and rare, so bumping would spend a version break across every payload and field for one optional value, and any consumer checking schemaVersion === 1 would break everywhere at once rather than on the field that changed. A date-only string is also trivially parseable by anything that previously read an instant. The change belongs in the release notes, and a future bump to this surface absorbs it.
 <!-- SECTION:NOTES:END -->
 
 ## Final Summary
