@@ -7,6 +7,7 @@ import { parseMilestone, parseTask } from "../markdown/parser.ts";
 import { serializeTask } from "../markdown/serializer.ts";
 import type { Task } from "../types/index.ts";
 import { normalizeDueDate } from "../utils/due-date.ts";
+import { pinTimeZone } from "./pin-timezone.ts";
 import { createUniqueTestDir, initializeTestProject, safeCleanup } from "./test-utils.ts";
 
 describe("date-only due date model", () => {
@@ -201,5 +202,49 @@ Invalid release
 		);
 
 		expect((await core.filesystem.listMilestones()).map((milestone) => milestone.title)).toEqual(["Valid release"]);
+	});
+});
+
+// A quoted key slips past the frontmatter preprocessing that quotes due_date values, so YAML
+// resolves the unquoted timestamp to a real Date. Such a record is perfectly valid and must not
+// fail to parse: a throw here drops the whole task or milestone out of every listing.
+describe("due dates that reach the parser as a YAML Date", () => {
+	// UTC midnight reads as the previous day here, so a local-calendar reading would shift it.
+	pinTimeZone("America/Los_Angeles");
+
+	it("keeps the day of a task whose due_date parsed as a Date", () => {
+		const task = parseTask(`---
+id: TASK-1
+title: Quoted due date key
+status: To Do
+assignee: []
+created_date: 2026-08-01
+"due_date": 2026-08-10
+labels: []
+dependencies: []
+---
+`);
+		expect(task.dueDate).toBe("2026-08-10");
+	});
+
+	it("keeps the day of a milestone whose due_date parsed as a Date", () => {
+		const milestone = parseMilestone(`---
+id: m-1
+title: Release
+"due_date": 2026-08-10
+---
+`);
+		expect(milestone.dueDate).toBe("2026-08-10");
+	});
+
+	it("takes the UTC day of a Date carrying a time", () => {
+		expect(normalizeDueDate(new Date("2026-08-10T14:30:00Z"))).toBe("2026-08-10");
+		// 23:30 on the 10th in UTC+2 is still the 10th in UTC, and must not read as the 9th here.
+		expect(normalizeDueDate(new Date("2026-08-10T23:30:00+02:00"))).toBe("2026-08-10");
+		expect(normalizeDueDate(new Date(Date.UTC(2026, 7, 10)))).toBe("2026-08-10");
+	});
+
+	it("rejects a Date that names no instant", () => {
+		expect(() => normalizeDueDate(new Date("nonsense"), "Due date")).toThrow("YYYY-MM-DD");
 	});
 });

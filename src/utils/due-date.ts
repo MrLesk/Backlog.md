@@ -14,6 +14,13 @@ function invalidDueDate(fieldName: string): Error {
 	return new Error(`${fieldName} must be a date in YYYY-MM-DD format (for example, 2026-08-10).`);
 }
 
+/** The day a Date falls on in UTC, the timezone stored dates are written in. */
+function utcCalendarDay(value: Date, fieldName: string): string {
+	if (Number.isNaN(value.getTime())) throw invalidDueDate(fieldName);
+	const pad = (part: number, length = 2) => String(part).padStart(length, "0");
+	return `${pad(value.getUTCFullYear(), 4)}-${pad(value.getUTCMonth() + 1)}-${pad(value.getUTCDate())}`;
+}
+
 function isRealCalendarDay(year: number, month: number, day: number): boolean {
 	const value = new Date(0);
 	value.setUTCFullYear(year, month - 1, day);
@@ -29,7 +36,11 @@ function isRealCalendarDay(year: number, month: number, day: number): boolean {
 export function normalizeDueDate(value: unknown, fieldName = "Due date"): string | undefined {
 	if (value === undefined || value === null) return undefined;
 
-	const input = String(value).trim();
+	// A key spelling that slips past frontmatter preprocessing -- a quoted `"due_date":` -- leaves
+	// YAML to resolve the unquoted timestamp, handing us a real Date. Stringifying that gives a
+	// locale timestamp the pattern below rejects, and the whole record would then fail to parse and
+	// drop out of every listing. Read the day off it instead, and validate it like any other value.
+	const input = value instanceof Date ? utcCalendarDay(value, fieldName) : String(value).trim();
 	if (!input) return undefined;
 
 	const match = input.match(DUE_DATE_PATTERN);
