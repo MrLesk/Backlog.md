@@ -1,11 +1,11 @@
 ---
 id: BACK-677
 title: Show local time in the web UI with the UTC value on hover
-status: In Progress
+status: Done
 assignee:
   - '@claude'
 created_date: '2026-09-02 17:01'
-updated_date: '2026-09-02 17:47'
+updated_date: '2026-09-02 17:55'
 labels: []
 dependencies: []
 ordinal: 309000
