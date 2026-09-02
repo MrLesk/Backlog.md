@@ -1,11 +1,11 @@
 ---
 id: BACK-678
 title: Make due date a date-only string everywhere
-status: In Progress
+status: Done
 assignee:
   - '@claude'
 created_date: '2026-09-02 18:26'
-updated_date: '2026-09-02 20:28'
+updated_date: '2026-09-02 20:33'
 labels: []
 dependencies: []
 ordinal: 310000
