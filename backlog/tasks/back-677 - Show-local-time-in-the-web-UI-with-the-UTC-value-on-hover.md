@@ -5,7 +5,7 @@ status: In Progress
 assignee:
   - '@claude'
 created_date: '2026-09-02 17:01'
-updated_date: '2026-09-02 17:31'
+updated_date: '2026-09-02 17:47'
 labels: []
 dependencies: []
 ordinal: 309000
@@ -73,6 +73,16 @@ Validation: bunx tsc --noEmit and bun run check . pass. Full bun run test on thi
 Manual verification in the running web UI with the browser in Europe/Vienna: BACK-677's stored '2026-09-02 17:01' rendered as '2026-09-02 19:01' with title '2026-09-02 17:01 (UTC)'; the task list's compact column rendered 'today'/'yesterday' with the canonical UTC value on hover; BACK-208's date-only created_date '2025-07-26' rendered unchanged with no title. CLI plain output for the same tasks still prints 'Created: 2025-07-26 (UTC)' and 'Created: 2026-09-02 17:01 (UTC)', and the diff against origin/main touches no file under src/utils/utc-date-display.ts, src/cli.ts, src/ui, src/formatters or src/mcp.
 
 All 10 CI checks on PR 992 pass, including lint-and-unit-test (ubuntu-latest), which runs the full behavioural profile plus the interactive TUI pass. The content-store failure seen locally does not reproduce there, confirming it as a local environment flake.
+
+Review fixes from PR 992 (Codex findings):
+
+1. Pinned the timezone in src/test/web-board-filters.test.tsx, the one remaining test asserting a rendered stored date without a pin. Pre-fix evidence: TZ=Asia/Tokyo bun test src/test/web-board-filters.test.tsx failed with 'Timed out after 4000ms waiting for () => (container.textContent ?? "").includes("09/02/2026 06:01")' because the cleanup preview now renders 15:01 locally. It now pins Asia/Tokyo and asserts both the local text '09/02/2026 15:01' and the title '09/02/2026 06:01 (UTC)'. Swept every test file for assertions on rendered stored dates, relative labels and date-only renders; this was the only unpinned one, the other three were already pinned.
+
+2. Cached the Intl.DateTimeFormat instances in a module-level Map instead of constructing one per StoredDate render. The key is the resolved zone (timeZone ?? Intl.DateTimeFormat().resolvedOptions().timeZone), so a cached formatter is never reused after the runtime zone changes, which is what pinTimeZone does mid-process. Measured: constructing per call was 30.2us/op, reusing a cached formatter is 0.75us/op, and resolving the default zone first costs 1.3us/op; a full formatStoredDateForDisplay render is now 2.42us. Verified the cache follows a runtime zone change: UTC 06:01, Tokyo 15:01, Los Angeles 08 22:01, back to UTC 06:01.
+
+3. The compact label now compares calendar days in the viewer's timezone instead of elapsed hours. Pre-fix evidence: at now=2026-02-21T01:00Z in America/Los_Angeles a stored '2026-02-20 06:00' is locally Feb 19 against a local today of Feb 20, and the 19-hour gap returned 'today' instead of 'yesterday'; the same slip made a Feb 18 stamp read '2d ago' instead of '3d ago'. Both are covered by new tests that failed before the change, alongside a Tokyo case crossing local midnight the other way and a UTC case, since the elapsed-hours bug was not limited to non-UTC viewers.
+
+Gates after the fixes: bunx tsc --noEmit and bun run check . clean; full bun run test 2854 pass, 8 skip, 1 fail (the same pre-existing content-store flake, which still passes in isolation at 67/67). The five date-related test files pass under TZ=UTC, Asia/Tokyo, America/Los_Angeles, Pacific/Kiritimati and Europe/Vienna.
 <!-- SECTION:NOTES:END -->
 
 ## Final Summary
