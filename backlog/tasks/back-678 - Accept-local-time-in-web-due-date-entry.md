@@ -1,9 +1,10 @@
 ---
 id: BACK-678
-title: Accept local time in web due-date entry
+title: 'Treat due dates as calendar days, not instants'
 status: To Do
 assignee: []
 created_date: '2026-09-02 18:26'
+updated_date: '2026-09-02 18:40'
 labels: []
 dependencies: []
 ordinal: 310000
@@ -12,21 +13,20 @@ ordinal: 310000
 ## Description
 
 <!-- SECTION:DESCRIPTION:BEGIN -->
-BACK-677 made the web display timestamps in the viewer's timezone with the stored UTC value on hover, but left the write path alone: due-date inputs are still labelled 'Due (UTC)' and still interpret what you type as UTC. So you type 14:30, the card then shows 16:30, and the hover explains why. Each half is correct and the pair is confusing, and it is the only place in the web where the user has to think in UTC.
+A due date is a day, not a timestamp: a task due on the 5th is due on the 5th in every timezone. BACK-677 (PR #992) treated it as an instant and routed it through the local-time conversion built for created and updated timestamps, so a due date can now render as a different calendar day for a viewer whose offset crosses midnight, and the entry field still asks for a UTC datetime. That conversion is wrong and shipped today.
 
-Make entry match display: the field takes local time, the value is converted to UTC on save, and the label drops the UTC qualifier because the user is no longer being asked for UTC. Storage stays canonical UTC and the CLI, TUI and MCP keep taking UTC, exactly as they keep displaying it.
+Stop converting due dates for display: render the stored calendar day as-is, with no timezone shift and no UTC hover, the same treatment date-only values already get. Created and updated timestamps are genuine instants and keep the local rendering BACK-677 added.
 
-Two traps. Opening a task and saving it without touching the due date must store the same instant it had, not one shifted by the offset, so the local value shown in the field has to convert back to the same UTC value it came from. And a due date recorded without a time must stay date-only rather than acquiring one through a timezone conversion, matching the display rule BACK-677 established.
+Entry should follow the same idea rather than asking for a UTC datetime, so the value a user picks is the day they mean. Storage stays canonical, CLI and MCP behavior is a separate question that is not part of this task.
 <!-- SECTION:DESCRIPTION:END -->
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 Due-date entry in the web interprets what the user types as local time and stores the corresponding UTC value
-- [ ] #2 Opening a task and saving without editing the due date leaves the stored instant unchanged
-- [ ] #3 A date-only due date stays date-only through an open-and-save cycle, with no time acquired from conversion
-- [ ] #4 Entry labels no longer say UTC, since the field no longer asks for it
-- [ ] #5 CLI, TUI and MCP due-date entry are unchanged and still take UTC
-- [ ] #6 Tests cover the round trip in a non-UTC timezone, the date-only case, and that the stored value is UTC
+- [ ] #1 A due date renders as its stored calendar day in the web, unchanged by the viewer timezone and with no UTC hover
+- [ ] #2 Due-date entry in the web asks for a day rather than a UTC datetime, and the day a user picks is the day that is stored
+- [ ] #3 A due date that already carries a time in storage still renders as its calendar day rather than shifting or being dropped
+- [ ] #4 Created and updated timestamps keep the local rendering with UTC hover introduced by BACK-677
+- [ ] #5 Tests pin a timezone whose offset would shift the day and assert the due date does not move, including through an open-and-save cycle
 <!-- AC:END -->
 
 ## Definition of Done
