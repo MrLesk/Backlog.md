@@ -1,5 +1,10 @@
 import { describe, expect, it } from "bun:test";
-import { formatDependencyGraphLines, formatDependencyGraphSection } from "../formatters/dependency-graph-text.ts";
+import {
+	formatDependencyGraphEntries,
+	formatDependencyGraphLines,
+	formatDependencyGraphSection,
+	formatDependencyNodeTuiLabel,
+} from "../formatters/dependency-graph-text.ts";
 import type { Task } from "../types/index.ts";
 import {
 	buildDependencyGraph,
@@ -335,5 +340,35 @@ describe("dependency graph text", () => {
 		expect(lines[0]).toBe(`Depends on (1 direct, ${depth - 1} total):`);
 		expect(lines[1]).toBe(`└─ task-${depth - 1} - Title task-${depth - 1} [To Do]`);
 		expect(lines[depth - 1]).toBe(`${"   ".repeat(depth - 2)}└─ task-1 - Title task-1 [To Do]`);
+	});
+	it("pairs every task line with its node and leaves headings and separators unattached", () => {
+		const graph = graphFor(
+			"task-2",
+			[task("task-2", ["task-1", "task-404"]), task("task-3", ["task-2"])],
+			[task("task-1")],
+		);
+		const entries = formatDependencyGraphEntries(graph);
+
+		expect(entries.map((entry) => [entry.text, entry.node?.id ?? null])).toEqual([
+			["Depends on (2 direct, 2 total):", null],
+			["├─ task-1 - Title task-1 [completed]", "task-1"],
+			["└─ task-404 - unknown task ID", "task-404"],
+			["", null],
+			["Dependents (1 direct, 1 total):", null],
+			["└─ task-3 - Title task-3 [To Do]", "task-3"],
+		]);
+		// Unresolved nodes carry their state so a surface can refuse to follow them.
+		expect(entries[2]?.node?.state).toBe("missing");
+	});
+
+	it("colors the TUI label and escapes blessed tags without changing the shared wording", () => {
+		const graph = graphFor("task-8", [
+			task("task-8", ["task-7", "task-404"]),
+			task("task-7", [], { title: "Style {red-fg}accent{/} braces" }),
+		]);
+		const entries = formatDependencyGraphEntries(graph, { formatLabel: formatDependencyNodeTuiLabel });
+
+		expect(entries[1]?.text).toContain("task-7 - Style {open}red-fg{close}accent{open}/{close} braces [To Do]");
+		expect(entries[2]?.text).toContain("{yellow-fg}task-404 - unknown task ID{/}");
 	});
 });

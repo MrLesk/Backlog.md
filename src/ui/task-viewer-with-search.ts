@@ -13,7 +13,7 @@ import {
 	toTaskDetail,
 	withReadiness,
 } from "../core/task-detail.ts";
-import { formatDependencyGraphLines } from "../formatters/dependency-graph-text.ts";
+import { formatDependencyGraphLines, formatDependencyNodeTuiLabel } from "../formatters/dependency-graph-text.ts";
 import {
 	buildAcceptanceCriteriaItems,
 	buildDefinitionOfDoneItems,
@@ -50,7 +50,6 @@ import {
 import { openMultiSelectFilterPopup, openSingleSelectFilterPopup } from "./components/filter-popup.ts";
 import { type BoundaryNavigationKey, createGenericList, type GenericList } from "./components/generic-list.ts";
 import { openHelpPopup } from "./components/help-popup.ts";
-import { formatDependencyNodeTuiLabel } from "./dependencies-tui.ts";
 import { formatFooterContent, getTaskListFooterContent } from "./footer-content.ts";
 import { formatHeading } from "./heading.ts";
 import { createLoadingScreen } from "./loading.ts";

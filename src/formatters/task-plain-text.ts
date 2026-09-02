@@ -82,18 +82,6 @@ function formatDependencyGraphBlock(task: TaskDetail): string[] {
 	return ["", "Dependency Graph:", "-".repeat(50), ...graphLines];
 }
 
-/**
- * The dedicated dependencies read: the same graph block task detail renders, without the rest of
- * the record, or one line saying so when the task has no dependencies in either direction.
- */
-export function formatTaskDependenciesPlainText(task: TaskDetail): string {
-	const block = formatDependencyGraphBlock(task);
-	if (block.length === 0) {
-		return `Task ${task.id} - ${task.title} has no dependencies and no dependents.`;
-	}
-	return [`Task ${task.id} - ${task.title}`, ...block].join("\n");
-}
-
 export function formatTaskPlainText(task: TaskDetail, options: TaskPlainTextOptions = {}): string {
 	const lines: string[] = [];
 	const filePath = options.filePathOverride ?? task.filePath;

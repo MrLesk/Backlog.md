@@ -31,11 +31,10 @@ import {
 	printJson,
 	type SearchResultInput,
 	searchJson,
-	taskDependenciesJson,
 	taskListJson,
 	taskViewJson,
 } from "./formatters/json-output.ts";
-import { formatTaskDependenciesPlainText, formatTaskPlainText } from "./formatters/task-plain-text.ts";
+import { formatTaskPlainText } from "./formatters/task-plain-text.ts";
 import {
 	type AgentInstructionFile,
 	addAgentInstructions,
@@ -70,7 +69,6 @@ import {
 import type { TaskEditArgs } from "./types/task-edit-args.ts";
 import { formatAcceptanceCriteriaSummarySuffix } from "./ui/acceptance-criteria-progress.ts";
 import { genericSelectList } from "./ui/components/generic-list.ts";
-import { runTaskDependenciesTui } from "./ui/dependencies-tui.ts";
 import { createLoadingScreen } from "./ui/loading.ts";
 import { viewTaskEnhanced } from "./ui/task-viewer-with-search.ts";
 import { scrollableViewer } from "./ui/tui.ts";
@@ -1847,7 +1845,7 @@ function getTaskReadOutputMode(options: { json?: boolean; plain?: boolean }): Re
 }
 
 taskCmd.hook("preSubcommand", (command, subcommand) => {
-	if (command.opts().json && !["list", "view", "dependencies"].includes(subcommand.name())) {
+	if (command.opts().json && !["list", "view"].includes(subcommand.name())) {
 		command.error("error: unknown option '--json'", { code: "commander.unknownOption", exitCode: 1 });
 	}
 });
@@ -3790,46 +3788,6 @@ addHelpSchema(taskCmd.command("view <taskId>"), {
 
 		// Use enhanced task viewer with detail focus
 		await viewTaskEnhanced(task, { startWithDetailFocus: true, core, tasks: allTasks });
-	});
-
-addHelpSchema(taskCmd.command("dependencies <taskId>"), {
-	reads:
-		"The task's dependency graph: everything it transitively depends on (Depends on) and everything that transitively depends on it (Dependents)",
-	required: [{ name: "taskId", type: "Task ID", description: "Task whose dependency graph to display" }],
-	optional: [
-		{ name: "plain", type: "Boolean", description: "Use text output instead of interactive UI" },
-		{ name: "json", type: "Boolean", description: "Use versioned machine-readable JSON output" },
-	],
-	output:
-		"Interactive dependency graph view, the task-view graph block with --plain, or the normalized graph (root, nodes, edges) with --json; outermost entries are direct, indented entries are transitive, unresolved IDs are reported and never followed",
-	examples: ["backlog task dependencies {{TASK_ID:1}} --plain", "backlog task dependencies {{TASK_ID:1}} --json"],
-})
-	.description("display the dependency graph of a task")
-	.option("--plain", "use plain text output instead of interactive UI")
-	.option("--json", "print versioned machine-readable JSON output")
-	.action(async (taskId: string, options) => {
-		const outputMode = getTaskReadOutputMode(options);
-		if (!outputMode) return;
-		const cwd = await requireProjectRoot();
-		const core = new Core(cwd);
-		const task = await core.getTaskWithSubtasks(taskId, await core.fs.listTasks(), { includeCrossBranch: false });
-		if (!task) {
-			console.error(`Task ${taskId} not found. ${LOCAL_TASK_LOOKUP_HINT}`);
-			process.exitCode = 1;
-			return;
-		}
-
-		if (outputMode === "json") {
-			printJson(taskDependenciesJson(await loadTaskDetail(core, task)));
-			return;
-		}
-
-		if (outputMode === "plain") {
-			console.log(formatTaskDependenciesPlainText(await loadTaskDetail(core, task)));
-			return;
-		}
-
-		await runTaskDependenciesTui(core, task);
 	});
 
 addHelpSchema(taskCmd.command("archive <taskId>"), {

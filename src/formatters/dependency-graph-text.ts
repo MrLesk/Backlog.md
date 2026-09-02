@@ -35,6 +35,22 @@ export function formatDependencyNodeLabel(node: DependencyGraphNode): string {
 	return title ? `${node.id} - ${title}${suffix}` : `${node.id}${suffix}`;
 }
 
+/** Blessed reads `{...}` as style tags, so a stored title's braces must render as characters. */
+function escapeBlessedTags(text: string): string {
+	return text.replace(/[{}]/g, (brace) => (brace === "{" ? "{open}" : "{close}"));
+}
+
+/**
+ * The same node label, colored for the terminal. Unresolved identities are called out, finished
+ * work recedes, and the wording itself stays the one every surface uses.
+ */
+export function formatDependencyNodeTuiLabel(node: DependencyGraphNode): string {
+	const label = escapeBlessedTags(formatDependencyNodeLabel(node));
+	if (node.state !== "resolved") return `{yellow-fg}${label}{/}`;
+	if (node.completed) return `{gray-fg}${label}{/}`;
+	return label;
+}
+
 const REPEAT_SUFFIXES: Record<NonNullable<DependencyTreeNode["repeat"]>, string> = {
 	cycle: " (cycle)",
 	repeat: " (shown above)",

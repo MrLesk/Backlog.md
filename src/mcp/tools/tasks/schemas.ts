@@ -18,19 +18,6 @@ export const taskViewSchema: JsonSchema = {
 	additionalProperties: false,
 };
 
-export const taskDependenciesSchema: JsonSchema = {
-	type: "object",
-	properties: {
-		id: {
-			type: "string",
-			minLength: 1,
-			maxLength: 50,
-		},
-	},
-	required: ["id"],
-	additionalProperties: false,
-};
-
 export const taskArchiveSchema: JsonSchema = {
 	type: "object",
 	properties: {
