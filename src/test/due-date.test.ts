@@ -208,34 +208,11 @@ Invalid release
 // A quoted key slips past the frontmatter preprocessing that quotes due_date values, so YAML
 // resolves the unquoted timestamp to a real Date. Such a record is perfectly valid and must not
 // fail to parse: a throw here drops the whole task or milestone out of every listing.
-describe("due dates that reach the parser as a YAML Date", () => {
+// Frontmatter no longer delivers a Date, but the normalizer still accepts unknown, so a Date
+// reaching it must yield a day rather than a stringified locale timestamp the pattern rejects.
+describe("due dates given as a Date value", () => {
 	// UTC midnight reads as the previous day here, so a local-calendar reading would shift it.
 	pinTimeZone("America/Los_Angeles");
-
-	it("keeps the day of a task whose due_date parsed as a Date", () => {
-		const task = parseTask(`---
-id: TASK-1
-title: Quoted due date key
-status: To Do
-assignee: []
-created_date: 2026-08-01
-"due_date": 2026-08-10
-labels: []
-dependencies: []
----
-`);
-		expect(task.dueDate).toBe("2026-08-10");
-	});
-
-	it("keeps the day of a milestone whose due_date parsed as a Date", () => {
-		const milestone = parseMilestone(`---
-id: m-1
-title: Release
-"due_date": 2026-08-10
----
-`);
-		expect(milestone.dueDate).toBe("2026-08-10");
-	});
 
 	it("takes the UTC day of a Date carrying a time", () => {
 		expect(normalizeDueDate(new Date("2026-08-10T14:30:00Z"))).toBe("2026-08-10");
@@ -246,5 +223,50 @@ title: Release
 
 	it("rejects a Date that names no instant", () => {
 		expect(() => normalizeDueDate(new Date("nonsense"), "Due date")).toThrow("YYYY-MM-DD");
+	});
+});
+
+// preprocessFrontmatter quotes due_date values so YAML hands the parser a string. A quoted key
+// slipped past it, leaving js-yaml to resolve the timestamp to an instant -- and once it is a Date
+// the written offset is gone, so the same stored value meant different days depending on how its
+// key happened to be spelled, and saving the record persisted the shifted one.
+describe("due dates under a quoted frontmatter key", () => {
+	// This instant falls on the 4th in UTC and on the 4th locally here, so only preserving the
+	// value as written can yield the 5th: no reading of a Date could pass by accident.
+	pinTimeZone("America/Los_Angeles");
+
+	const keys = ["due_date", '"due_date"', "'due_date'"];
+	const taskWith = (line: string) => `---
+id: TASK-1
+title: Legacy timestamp
+status: To Do
+assignee: []
+created_date: 2026-08-01
+${line}
+labels: []
+dependencies: []
+---
+`;
+	const milestoneWith = (line: string) => `---
+id: m-1
+title: Release
+${line}
+---
+`;
+
+	it("reads the written day however the due_date key is spelled", () => {
+		for (const key of keys) {
+			const line = `${key}: 2026-09-05T00:30:00+14:00`;
+			expect(parseTask(taskWith(line)).dueDate).toBe("2026-09-05");
+			expect(parseMilestone(milestoneWith(line)).dueDate).toBe("2026-09-05");
+		}
+	});
+
+	it("reads a bare day however the due_date key is spelled", () => {
+		for (const key of keys) {
+			const line = `${key}: 2026-08-10`;
+			expect(parseTask(taskWith(line)).dueDate).toBe("2026-08-10");
+			expect(parseMilestone(milestoneWith(line)).dueDate).toBe("2026-08-10");
+		}
 	});
 });

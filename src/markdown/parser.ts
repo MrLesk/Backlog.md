@@ -41,7 +41,10 @@ function preprocessFrontmatter(frontmatter: string): string {
 	return frontmatter
 		.split(/\r?\n/) // Handle both Windows (\r\n) and Unix (\n) line endings
 		.map((line) => {
-			const dueDateMatch = line.match(/^(\s*due_date:\s*)(.*)$/);
+			// The key spelling matters: an unquoted timestamp left for YAML to resolve comes back as a
+			// Date with its written offset already discarded, so a due date read under a quoted key
+			// would land on a different day than the same value read under a bare one.
+			const dueDateMatch = line.match(/^(\s*(?:due_date|"due_date"|'due_date'):\s*)(.*)$/);
 			if (dueDateMatch) {
 				const prefix = dueDateMatch[1] ?? "";
 				const raw = dueDateMatch[2] ?? "";
