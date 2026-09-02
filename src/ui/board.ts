@@ -22,7 +22,7 @@ import { compareTaskIds } from "../utils/task-sorting.ts";
 import { getTaskTypeValues, resolveTaskTypeValues } from "../utils/task-type-config.ts";
 import { taskContentSignature } from "../utils/task-watcher.ts";
 import { formatUtcDateForDisplay } from "../utils/utc-date-display.ts";
-import { formatAcceptanceCriteriaProgress } from "./acceptance-criteria-progress.ts";
+import { formatAcceptanceCriteriaProgressColumn } from "./acceptance-criteria-progress.ts";
 import { openConfirmPopup } from "./components/confirm-popup.ts";
 import { createFilterHeader, type FilterHeader, type FilterState } from "./components/filter-header.ts";
 import { openMultiSelectFilterPopup, openSingleSelectFilterPopup } from "./components/filter-popup.ts";
@@ -157,7 +157,6 @@ export function prepareBoardColumns(tasks: Task[], statuses: string[]): ColumnDa
 export function formatTaskListItem(
 	task: Task,
 	isMoving = false,
-	availableWidth = Number.POSITIVE_INFINITY,
 	dateFormat?: string,
 	configuredProjects?: string[],
 ): string {
@@ -172,29 +171,29 @@ export function formatTaskListItem(
 	const project = projectBadge ? ` ${projectBadge}` : "";
 	const isCrossBranch = Boolean((task as Task & { branch?: string }).branch);
 	const branch = isCrossBranch ? ` {green-fg}(${(task as Task & { branch?: string }).branch}){/}` : "";
-	const progress = formatAcceptanceCriteriaProgress(task, availableWidth);
-	const progressPrefix = progress ? `${progress} ` : "";
+	// The reserved column stays outside the row-level color tags: its own {/} would close
+	// them, and keeping it there also holds the leftmost column still while a task moves.
+	const progress = formatAcceptanceCriteriaProgressColumn(task);
 
 	// Cross-branch tasks are dimmed to indicate read-only status
-	const content = `${progressPrefix}{bold}${task.id}{/bold}${type}${project}${dueDate} - ${task.title}${assignee}${labels}${branch}`;
+	const content = `{bold}${task.id}{/bold}${type}${project}${dueDate} - ${task.title}${assignee}${labels}${branch}`;
 	if (isMoving) {
-		return `{magenta-fg}► ${content}{/}`;
+		return `${progress}{magenta-fg}► ${content}{/}`;
 	}
 	if (isCrossBranch) {
-		return `{gray-fg}${content}{/}`;
+		return `${progress}{gray-fg}${content}{/}`;
 	}
-	return content;
+	return `${progress}${content}`;
 }
 
 function buildRenderedTaskListItems(
 	tasks: Task[],
 	movingTaskIds?: ReadonlySet<string>,
-	availableWidth = Number.POSITIVE_INFINITY,
 	dateFormat?: string,
 	configuredProjects?: string[],
 ): { rich: string[]; plain: string[] } {
 	const rich = tasks.map((task) =>
-		formatTaskListItem(task, movingTaskIds?.has(task.id) ?? false, availableWidth, dateFormat, configuredProjects),
+		formatTaskListItem(task, movingTaskIds?.has(task.id) ?? false, dateFormat, configuredProjects),
 	);
 	return {
 		rich,
@@ -647,17 +646,13 @@ export async function renderBoardTui(
 			syncColumnSelectionDisplay(column, active);
 		};
 
-		const getFormattedItems = (tasks: Task[]) => {
-			const columnCount = Math.max(1, currentColumnsData.length);
-			const availableWidth = Math.max(1, Math.floor(getTerminalWidth() / columnCount) - 4);
-			return buildRenderedTaskListItems(
+		const getFormattedItems = (tasks: Task[]) =>
+			buildRenderedTaskListItems(
 				tasks,
 				moveOp ? new Set(getMoveSetIds(moveOp)) : undefined,
-				availableWidth,
 				options?.dateFormat,
 				configuredProjects,
 			);
-		};
 
 		const createColumnViews = (data: ColumnData[]) => {
 			clearColumns();

@@ -37,7 +37,7 @@ import { canonicalTaskId, taskIdsEqual } from "../utils/task-id.ts";
 import { applyTaskFilters, createTaskSearchIndex } from "../utils/task-search.ts";
 import { attachSubtaskSummaries } from "../utils/task-subtasks.ts";
 import { getTaskTypeValues, resolveTaskTypeValues } from "../utils/task-type-config.ts";
-import { formatAcceptanceCriteriaProgress } from "./acceptance-criteria-progress.ts";
+import { formatAcceptanceCriteriaProgressColumn } from "./acceptance-criteria-progress.ts";
 import { formatChecklistItem } from "./checklist.ts";
 import { transformCodePaths } from "./code-path.ts";
 import { openConfirmPopup } from "./components/confirm-popup.ts";
@@ -76,16 +76,12 @@ function getPriorityDisplay(priority?: string): string {
 	}
 }
 
-export function formatTaskViewerListItem(
-	task: Task,
-	availableWidth = Number.POSITIVE_INFINITY,
-	dateFormat?: string,
-	configuredProjects?: string[],
-): string {
-	const progress = formatAcceptanceCriteriaProgress(task, availableWidth);
-	// The compact status icon keeps task identity visible beside the progress indicator. Its
-	// shape still distinguishes active work from the terminal-status checkmark.
-	const status = progress ? getStatusIcon(task.status) : formatStatusWithIcon(task.status);
+export function formatTaskViewerListItem(task: Task, dateFormat?: string, configuredProjects?: string[]): string {
+	const progress = formatAcceptanceCriteriaProgressColumn(task);
+	// The status icon stays a single cell so it and the reserved progress column form a
+	// fixed-width prefix and task ids line up down the list. Its shape still distinguishes
+	// active work from the terminal-status checkmark.
+	const status = getStatusIcon(task.status);
 	const statusColor = getStatusColor(task.status);
 	const assigneeText = task.assignee?.length
 		? ` {cyan-fg}${task.assignee[0]?.startsWith("@") ? task.assignee[0] : `@${task.assignee[0]}`}{/}`
@@ -99,10 +95,12 @@ export function formatTaskViewerListItem(
 	const dueDateText = task.dueDate ? ` {gray-fg}(due ${formatDateForDisplay(task.dueDate, { dateFormat })}){/}` : "";
 	const isCrossBranch = Boolean((task as Task & { branch?: string }).branch);
 	const branchText = isCrossBranch ? ` {green-fg}(${(task as Task & { branch?: string }).branch}){/}` : "";
-	const progressText = progress ? ` ${progress}` : "";
 
-	const content = `${wrapStatusColor(status, statusColor)}${progressText} {bold}${task.id}{/bold}${typeText}${projectText}${dueDateText} - ${task.title}${priorityText}${assigneeText}${labelsText}${branchText}`;
-	return isCrossBranch ? `{gray-fg}${content}{/}` : content;
+	// The status icon and the reserved column keep their own color tags, whose {/} would
+	// close the cross-branch dim, so the dim starts at the task id.
+	const prefix = `${wrapStatusColor(status, statusColor)} ${progress}`;
+	const content = `{bold}${task.id}{/bold}${typeText}${projectText}${dueDateText} - ${task.title}${priorityText}${assigneeText}${labelsText}${branchText}`;
+	return `${prefix}${isCrossBranch ? `{gray-fg}${content}{/}` : content}`;
 }
 
 export function buildTaskViewerMilestoneFilterModel(
@@ -729,10 +727,6 @@ export async function viewTaskEnhanced(
 		return typeof screen.width === "number" ? screen.width : 80;
 	}
 
-	function getTaskListSummaryWidth(): number {
-		return Math.max(1, Math.floor(getTerminalWidth() * 0.4) - 4);
-	}
-
 	function syncPaneLayout() {
 		const headerHeight = filterHeader.getHeight();
 		const helpHeight = typeof helpBar.height === "number" ? helpBar.height : 1;
@@ -987,8 +981,7 @@ export async function viewTaskEnhanced(
 			left: 1,
 			width: "100%-4",
 			height: "100%-3",
-			itemRenderer: (task: Task) =>
-				formatTaskViewerListItem(task, getTaskListSummaryWidth(), dateFormat, configuredProjects),
+			itemRenderer: (task: Task) => formatTaskViewerListItem(task, dateFormat, configuredProjects),
 			onSelect: (selected: Task | Task[]) => {
 				const selectedTask = Array.isArray(selected) ? selected[0] : selected;
 				void applySelection(selectedTask || null);
