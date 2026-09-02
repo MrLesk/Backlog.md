@@ -213,16 +213,16 @@ describe("MCP task tools (MVP)", () => {
 		const createResult = await mcpServer.testInterface.callTool({
 			params: {
 				name: "task_create",
-				arguments: { title: "Due task", dueDate: "2026-08-10T16:30+02:00" },
+				arguments: { title: "Due task", dueDate: "2026-08-10" },
 			},
 		});
-		expect(getText(createResult.content)).toContain("Due: 2026-08-10 14:30 (UTC)");
-		expect((await mcpServer.getTask("task-1"))?.dueDate).toBe("2026-08-10 14:30");
+		expect(getText(createResult.content)).toContain("Due: 2026-08-10");
+		expect((await mcpServer.getTask("task-1"))?.dueDate).toBe("2026-08-10");
 
 		const listResult = await mcpServer.testInterface.callTool({
 			params: { name: "task_list", arguments: {} },
 		});
-		expect(getText(listResult.content)).toContain("due 2026-08-10 14:30 (UTC)");
+		expect(getText(listResult.content)).toContain("due 2026-08-10)");
 
 		const editResult = await mcpServer.testInterface.callTool({
 			params: { name: "task_edit", arguments: { id: "task-1", dueDate: null } },
@@ -231,10 +231,10 @@ describe("MCP task tools (MVP)", () => {
 		expect((await mcpServer.getTask("task-1"))?.dueDate).toBeUndefined();
 
 		const invalidResult = await mcpServer.testInterface.callTool({
-			params: { name: "task_edit", arguments: { id: "task-1", dueDate: "2026-08-10" } },
+			params: { name: "task_edit", arguments: { id: "task-1", dueDate: "10/08/2026" } },
 		});
 		expect(invalidResult.isError).toBe(true);
-		expect(getText(invalidResult.content)).toContain("Date-only values are not supported");
+		expect(getText(invalidResult.content)).toContain("YYYY-MM-DD");
 	});
 
 	it("adapts duplicate diagnosis to the canonical CLI without agent repair prompts", async () => {

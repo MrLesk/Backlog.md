@@ -21,6 +21,7 @@ import {
 } from "../types/index.ts";
 import { launchBrowser } from "../utils/browser-launch.ts";
 import type { BrowserLoadingState } from "../utils/browser-loading-state.ts";
+import { normalizeDueDate } from "../utils/due-date.ts";
 import { isAmbiguousIdError } from "../utils/entity-id.ts";
 import { resolveMilestoneInputForStorage } from "../utils/milestone-storage.ts";
 import { DRAFT_PREFIX, extractAnyPrefix, getTaskPrefixError } from "../utils/prefix-config.ts";
@@ -34,7 +35,6 @@ import {
 import { formatValidStatuses, getCanonicalStatuses, getValidStatuses } from "../utils/status.ts";
 import { isValidTaskId } from "../utils/task-id.ts";
 import { isAmbiguousTaskIdError, LOCAL_TASK_LOOKUP_HINT } from "../utils/task-path.ts";
-import { normalizeUtcDateTime } from "../utils/utc-datetime.ts";
 import { getVersion } from "../utils/version.ts";
 
 // Regex pattern to match any prefix (letters followed by dash)
@@ -89,7 +89,7 @@ function parseDueDatePayload(value: unknown, clearable: boolean): DueDatePayload
 		return { ok: false, error: `Due date must be a string${clearable ? " or null" : ""}.` };
 	}
 	try {
-		return { ok: true, value: normalizeUtcDateTime(value, "Due date") };
+		return { ok: true, value: normalizeDueDate(value, "Due date") };
 	} catch (error) {
 		return { ok: false, error: error instanceof Error ? error.message : String(error) };
 	}

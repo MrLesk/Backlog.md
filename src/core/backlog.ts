@@ -41,6 +41,7 @@ import {
 	normalizeDocumentRelativePath,
 	normalizeDocumentSubPath,
 } from "../utils/document-path.ts";
+import { normalizeDueDate } from "../utils/due-date.ts";
 import {
 	type ContentIdentityReport,
 	type DraftIdentityFindings,
@@ -97,7 +98,6 @@ import { attachSubtaskSummaries } from "../utils/task-subtasks.ts";
 import { formatValidTaskTypeValues, resolveTaskTypeValue } from "../utils/task-type-config.ts";
 import { upsertTaskUpdatedDate } from "../utils/task-updated-date.ts";
 import { isTerminalStatus } from "../utils/terminal-status.ts";
-import { normalizeUtcDateTime } from "../utils/utc-datetime.ts";
 import { migrateConfig, needsMigration } from "./config-migration.ts";
 import { ContentStore, type TaskCorpusSnapshot } from "./content-store.ts";
 import {
@@ -1752,7 +1752,7 @@ export class Core {
 		const normalizedReferences = normalizeStringList(input.references) ?? [];
 		const normalizedDocumentation = normalizeStringList(input.documentation) ?? [];
 		const normalizedModifiedFiles = normalizeStringList(input.modifiedFiles) ?? [];
-		const dueDate = normalizeUtcDateTime(input.dueDate, "Due date");
+		const dueDate = normalizeDueDate(input.dueDate, "Due date");
 
 		let status = "";
 		if (requestedStatus) {
@@ -2003,7 +2003,7 @@ export class Core {
 		});
 
 		if (input.dueDate !== undefined) {
-			const dueDate = input.dueDate === null ? undefined : normalizeUtcDateTime(input.dueDate, "Due date");
+			const dueDate = input.dueDate === null ? undefined : normalizeDueDate(input.dueDate, "Due date");
 			if (task.dueDate !== dueDate) {
 				if (dueDate) task.dueDate = dueDate;
 				else delete task.dueDate;

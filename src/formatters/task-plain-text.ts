@@ -125,7 +125,8 @@ export function formatTaskPlainText(task: TaskDetail, options: TaskPlainTextOpti
 		lines.push(`Updated: ${formatDateForDisplay(task.updatedDate, plainDateDisplayOptions)}`);
 	}
 	if (task.dueDate) {
-		lines.push(`Due: ${formatDateForDisplay(task.dueDate, plainDateDisplayOptions)}`);
+		// A due date is a plain day: no time to mark UTC, and no timezone meaning to explain.
+		lines.push(`Due: ${formatDateForDisplay(task.dueDate)}`);
 	}
 
 	if (task.labels?.length) {

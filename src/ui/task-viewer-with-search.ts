@@ -96,9 +96,7 @@ export function formatTaskViewerListItem(
 	const projectBadge = formatProjectBadge(task.project, configuredProjects);
 	const projectText = projectBadge ? ` ${projectBadge}` : "";
 	const priorityText = getPriorityDisplay(task.priority);
-	const dueDateText = task.dueDate
-		? ` {gray-fg}(due ${formatDateForDisplay(task.dueDate, { dateFormat, appendUtcLabel: true })}){/}`
-		: "";
+	const dueDateText = task.dueDate ? ` {gray-fg}(due ${formatDateForDisplay(task.dueDate, { dateFormat })}){/}` : "";
 	const isCrossBranch = Boolean((task as Task & { branch?: string }).branch);
 	const branchText = isCrossBranch ? ` {green-fg}(${(task as Task & { branch?: string }).branch}){/}` : "";
 	const progressText = progress ? ` ${progress}` : "";
@@ -1634,7 +1632,7 @@ export function generateDetailContent(
 		metadata.push(`{bold}Updated:{/bold} ${formatDateForDisplay(task.updatedDate, { dateFormat })}`);
 	}
 	if (task.dueDate) {
-		metadata.push(`{bold}Due:{/bold} ${formatDateForDisplay(task.dueDate, { dateFormat, appendUtcLabel: true })}`);
+		metadata.push(`{bold}Due:{/bold} ${formatDateForDisplay(task.dueDate, { dateFormat })}`);
 	}
 	if (task.priority) {
 		const priorityDisplay = getPriorityDisplay(task.priority);

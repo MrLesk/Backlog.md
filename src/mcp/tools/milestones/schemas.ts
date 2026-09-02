@@ -24,7 +24,7 @@ export const milestoneAddSchema: JsonSchema = {
 		dueDate: {
 			type: "string",
 			maxLength: 64,
-			description: "Optional UTC milestone due datetime; date-only values are rejected",
+			description: "Optional milestone due date such as 2026-08-10; a due date names a day and carries no time",
 		},
 	},
 	required: ["name"],
@@ -54,7 +54,7 @@ export const milestoneRenameSchema: JsonSchema = {
 		dueDate: {
 			type: ["string", "null"],
 			maxLength: 64,
-			description: "Set the UTC milestone due datetime, or pass null to clear it",
+			description: "Set the milestone due date such as 2026-08-10, or pass null to clear it",
 		},
 	},
 	required: ["from", "to"],

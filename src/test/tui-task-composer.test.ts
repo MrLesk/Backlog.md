@@ -243,7 +243,7 @@ describe("TUI task composer model", () => {
 				type: "Feature",
 				priority: "urgent",
 				project: "",
-				dueDate: "2026-08-10T16:30+02:00",
+				dueDate: "2026-08-10",
 			}),
 		).toEqual({
 			title: "Capture intent",
@@ -251,7 +251,7 @@ describe("TUI task composer model", () => {
 			status: "Review",
 			type: "Feature",
 			priority: "urgent",
-			dueDate: "2026-08-10 14:30",
+			dueDate: "2026-08-10",
 		});
 
 		expect(
@@ -298,10 +298,10 @@ describe("TUI task composer model", () => {
 		expect(withProjects.actionsTop).toBe(withoutProjects.actionsTop + 1);
 	});
 
-	it("rejects date-only due dates before persistence", async () => {
+	it("rejects a due date that names no calendar day before persistence", async () => {
 		const controller = new TaskComposerController(["To Do", "Done"]);
 		controller.values.title = "Invalid due date";
-		controller.values.dueDate = "2026-08-10";
+		controller.values.dueDate = "10/08/2026";
 		let calls = 0;
 
 		expect(
@@ -311,7 +311,7 @@ describe("TUI task composer model", () => {
 			}),
 		).toBeNull();
 		expect(calls).toBe(0);
-		expect(controller.error).toContain("Date-only values are not supported");
+		expect(controller.error).toContain("YYYY-MM-DD");
 	});
 
 	it("fits shipped selector content at 100x30 and 80x24, then stacks details at 50x18", () => {
@@ -1234,7 +1234,7 @@ describe("TUI task composer interaction", () => {
 			const widgets = collectWidgets(screen as unknown as { children?: unknown[] });
 			const title = widgets.find((widget) => widget.options?.label === " Title ");
 			const description = widgets.find((widget) => widget.options?.label === " Description ");
-			const dueDate = widgets.find((widget) => widget.options?.label === " Due (UTC) ");
+			const dueDate = widgets.find((widget) => widget.options?.label === " Due ");
 			const status = widgets.find((widget) => widget.content === "Status: To Do ▼");
 
 			clickWidget(description);
@@ -1535,7 +1535,7 @@ describe("TUI task composer interaction", () => {
 			// Tab walks the whole order forward and wraps back to the title.
 			for (const expected of [
 				" Description ",
-				" Due (UTC) ",
+				" Due ",
 				undefined,
 				undefined,
 				undefined,
@@ -1556,7 +1556,7 @@ describe("TUI task composer interaction", () => {
 				expect(eventScreen.focused?.content).toBe(expected);
 			}
 			pressKey(eventScreen.focused, "S-tab", "\t");
-			expect(eventScreen.focused?.options?.label).toBe(" Due (UTC) ");
+			expect(eventScreen.focused?.options?.label).toBe(" Due ");
 			pressKey(eventScreen.focused, "S-tab", "\t");
 			expect(eventScreen.focused?.options?.label).toBe(" Description ");
 			pressKey(eventScreen.focused, "S-tab", "\t");
@@ -1566,7 +1566,7 @@ describe("TUI task composer interaction", () => {
 			pressKey(eventScreen.focused, "down");
 			expect(eventScreen.focused?.options?.label).toBe(" Description ");
 			pressKey(eventScreen.focused, "down");
-			expect(eventScreen.focused?.options?.label).toBe(" Due (UTC) ");
+			expect(eventScreen.focused?.options?.label).toBe(" Due ");
 			pressKey(eventScreen.focused, "down");
 			expect(eventScreen.focused?.content).toBe("Status: To Do ▼");
 			expect(eventScreen.focused?.style).toMatchObject({ inverse: true, bold: true });
@@ -1666,7 +1666,7 @@ describe("TUI task composer interaction", () => {
 			expect(eventScreen.focused?.options?.label).toBe(" Description ");
 			expect(eventScreen.focused?.getCursor?.().y).toBe(0);
 			pressKey(eventScreen.focused, "down");
-			expect(eventScreen.focused?.options?.label).toBe(" Due (UTC) ");
+			expect(eventScreen.focused?.options?.label).toBe(" Due ");
 			pressKey(eventScreen.focused, "down");
 			expect(eventScreen.focused?.content).toBe("Status: To Do ▼");
 

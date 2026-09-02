@@ -110,7 +110,7 @@ export class TaskHandlers {
 		const status = task.status || (task.source === "completed" ? "Done" : "");
 		const statusText = options.includeStatus && status ? ` (${status})` : "";
 		const acceptanceCriteria = formatAcceptanceCriteriaSummarySuffix(task);
-		const dueDate = task.dueDate ? ` (due ${formatUtcDateForDisplay(task.dueDate, { appendUtcLabel: true })})` : "";
+		const dueDate = task.dueDate ? ` (due ${formatUtcDateForDisplay(task.dueDate)})` : "";
 		return `  ${priorityIndicator}${typeIndicator}${projectIndicator}${task.id} - ${task.title}${statusText}${acceptanceCriteria}${dueDate}`;
 	}
 

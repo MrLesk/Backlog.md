@@ -1,6 +1,6 @@
 import type { AcceptanceCriterion, Decision, Document, Milestone, ParsedMarkdown, Task } from "../types/index.ts";
+import { normalizeDueDate } from "../utils/due-date.ts";
 import { normalizePriorityValue } from "../utils/priority-config.ts";
-import { normalizeUtcDateTime } from "../utils/utc-datetime.ts";
 import { parseFrontmatter } from "./frontmatter.ts";
 import {
 	AcceptanceCriteriaManager,
@@ -41,7 +41,10 @@ function preprocessFrontmatter(frontmatter: string): string {
 	return frontmatter
 		.split(/\r?\n/) // Handle both Windows (\r\n) and Unix (\n) line endings
 		.map((line) => {
-			const dueDateMatch = line.match(/^(\s*due_date:\s*)(.*)$/);
+			// The key spelling matters: an unquoted timestamp left for YAML to resolve comes back as a
+			// Date with its written offset already discarded, so a due date read under a quoted key
+			// would land on a different day than the same value read under a bare one.
+			const dueDateMatch = line.match(/^(\s*(?:due_date|"due_date"|'due_date')\s*:\s*)(.*)$/);
 			if (dueDateMatch) {
 				const prefix = dueDateMatch[1] ?? "";
 				const raw = dueDateMatch[2] ?? "";
@@ -187,7 +190,7 @@ export function parseTask(content: string): Task {
 		reporter: frontmatter.reporter ? String(frontmatter.reporter) : undefined,
 		createdDate: normalizeDate(frontmatter.created_date),
 		updatedDate: frontmatter.updated_date ? normalizeDate(frontmatter.updated_date) : undefined,
-		dueDate: normalizeUtcDateTime(frontmatter.due_date, "due_date"),
+		dueDate: normalizeDueDate(frontmatter.due_date, "due_date"),
 		labels: Array.isArray(frontmatter.labels) ? frontmatter.labels.map(String) : [],
 		milestone: frontmatter.milestone ? String(frontmatter.milestone) : undefined,
 		dependencies: Array.isArray(frontmatter.dependencies) ? frontmatter.dependencies.map(String) : [],
@@ -248,7 +251,7 @@ export function parseMilestone(content: string): Milestone {
 	return {
 		id: String(frontmatter.id || ""),
 		title: String(frontmatter.title || ""),
-		dueDate: normalizeUtcDateTime(frontmatter.due_date, "due_date"),
+		dueDate: normalizeDueDate(frontmatter.due_date, "due_date"),
 		description: extractSection(rawContent, "Description") || "",
 		rawContent,
 	};

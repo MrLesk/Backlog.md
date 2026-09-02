@@ -51,8 +51,11 @@ describe("formatStoredDateForDisplay", () => {
 	});
 
 	it("leaves date-only values unconverted and without a misleading hover", () => {
-		expect(formatStoredDateForDisplay("2026-02-09", { timeZone: TOKYO })).toEqual({ text: "2026-02-09" });
-		expect(formatStoredDateForDisplay("2026-02-09", { timeZone: LOS_ANGELES })).toEqual({ text: "2026-02-09" });
+		// The path due dates take: a value that names a day must read the same everywhere, so the
+		// extremes of the offset range are covered as well as the ordinary ones.
+		for (const timeZone of [TOKYO, LOS_ANGELES, "Pacific/Kiritimati", "UTC"]) {
+			expect(formatStoredDateForDisplay("2026-02-09", { timeZone })).toEqual({ text: "2026-02-09" });
+		}
 	});
 
 	it("applies the configured date format to both the local value and the UTC hover", () => {
