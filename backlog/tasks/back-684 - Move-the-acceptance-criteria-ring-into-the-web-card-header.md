@@ -1,11 +1,11 @@
 ---
 id: BACK-684
 title: Move the acceptance-criteria ring into the web card header
-status: In Progress
+status: Done
 assignee:
   - '@claude'
 created_date: '2026-09-02 21:40'
-updated_date: '2026-09-02 22:07'
+updated_date: '2026-09-02 22:17'
 labels: []
 dependencies: []
 ordinal: 316000
