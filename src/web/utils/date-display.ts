@@ -121,8 +121,13 @@ export function formatStoredDateForDisplay(
 
 	return {
 		text: formatUtcDateForDisplay(local, { dateFormat: options.dateFormat }),
-		title: formatUtcDateForDisplay(canonicalUtc, { dateFormat: options.dateFormat, appendUtcLabel: true }),
+		title: utcTitleOf(canonicalUtc, options.dateFormat),
 	};
+}
+
+/** The hover value: the canonical stored value, arranged by the configured format, marked UTC. */
+function utcTitleOf(canonicalUtc: string, dateFormat?: string): string {
+	return formatUtcDateForDisplay(canonicalUtc, { dateFormat, appendUtcLabel: true });
 }
 
 /** Local rendering of a canonical UTC value, or null when there is no time to convert. */
@@ -148,9 +153,7 @@ export function formatStoredDateForCompactDisplay(
 	if (!parsed) return { text: canonicalUtc };
 
 	const local = localCanonicalOf(canonicalUtc, options.timeZone);
-	const title = local
-		? formatUtcDateForDisplay(canonicalUtc, { dateFormat: options.dateFormat, appendUtcLabel: true })
-		: undefined;
+	const title = local ? utcTitleOf(canonicalUtc, options.dateFormat) : undefined;
 
 	const diffDays = Math.floor((now.getTime() - parsed.getTime()) / (1000 * 60 * 60 * 24));
 	if (diffDays >= 0 && diffDays < 7) {
