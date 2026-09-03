@@ -3,7 +3,7 @@ set -euo pipefail
 
 REPO_PATH="${REPO_PATH:-/workspace}"
 PORT="${PORT:-8765}"
-TRANSPORT="${TRANSPORT:-sse}"
+TRANSPORT="${TRANSPORT:-streamableHttp}"
 
 if [ ! -d "$REPO_PATH/.git" ] && [ ! -d "$REPO_PATH/backlog" ]; then
 	echo "Warning: $REPO_PATH doesn't look like a git repo or an initialized Backlog.md project (no .git or backlog/ found)." >&2
