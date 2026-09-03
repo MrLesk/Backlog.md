@@ -150,6 +150,7 @@ const CONFIG_GET_KEYS = [
 	"definitionOfDone",
 	"dateFormat",
 	"maxColumnWidth",
+	"taskListPaneWidth",
 	"defaultPort",
 	"autoOpenBrowser",
 	"remoteOperations",
@@ -168,6 +169,7 @@ const CONFIG_SET_KEYS = [
 	"defaultStatus",
 	"dateFormat",
 	"maxColumnWidth",
+	"taskListPaneWidth",
 	"autoOpenBrowser",
 	"defaultPort",
 	"remoteOperations",
@@ -4969,7 +4971,7 @@ agentsCmd
 
 // Config command group
 const CONFIG_AVAILABLE_KEYS =
-	"Available keys: defaultEditor, projectName, defaultAssignee, defaultStatus, statuses, labels, priorities, types, projects, milestones, definitionOfDone, dateFormat, maxColumnWidth, defaultPort, autoOpenBrowser, hideEmptyColumns, remoteOperations, autoCommit, filesystemOnly, bypassGitHooks, zeroPaddedIds, checkActiveBranches, activeBranchDays";
+	"Available keys: defaultEditor, projectName, defaultAssignee, defaultStatus, statuses, labels, priorities, types, projects, milestones, definitionOfDone, dateFormat, maxColumnWidth, taskListPaneWidth, defaultPort, autoOpenBrowser, hideEmptyColumns, remoteOperations, autoCommit, filesystemOnly, bypassGitHooks, zeroPaddedIds, checkActiveBranches, activeBranchDays";
 
 const configCmd = addHelpSchema(program.command("config"), {
 	reads: "Project Backlog.md configuration",
@@ -5131,6 +5133,9 @@ addHelpSchema(configCmd.command("get <key>"), {
 				case "maxColumnWidth":
 					console.log(config.maxColumnWidth?.toString() || "");
 					break;
+				case "taskListPaneWidth":
+					console.log(config.taskListPaneWidth?.toString() || "");
+					break;
 				case "defaultPort":
 					console.log(config.defaultPort?.toString() || "");
 					break;
@@ -5234,6 +5239,15 @@ addHelpSchema(configCmd.command("set <key> <value>"), {
 						process.exit(1);
 					}
 					config.maxColumnWidth = width;
+					break;
+				}
+				case "taskListPaneWidth": {
+					const paneWidth = Number.parseInt(value, 10);
+					if (Number.isNaN(paneWidth) || paneWidth < 10 || paneWidth > 90) {
+						console.error("taskListPaneWidth must be a percentage between 10 and 90");
+						process.exit(1);
+					}
+					config.taskListPaneWidth = paneWidth;
 					break;
 				}
 				case "autoOpenBrowser": {
@@ -5436,6 +5450,7 @@ addHelpSchema(configCmd.command("list"), {
 			console.log(`  definitionOfDone: [${(config.definitionOfDone ?? []).join(", ")}]`);
 			console.log(`  dateFormat: ${config.dateFormat}`);
 			console.log(`  maxColumnWidth: ${config.maxColumnWidth || "(not set)"}`);
+			console.log(`  taskListPaneWidth: ${config.taskListPaneWidth ?? "(not set)"}`);
 			console.log(`  autoOpenBrowser: ${config.autoOpenBrowser ?? "(not set)"}`);
 			console.log(`  hideEmptyColumns: ${config.hideEmptyColumns ?? "(not set)"}`);
 			console.log(`  defaultPort: ${config.defaultPort ?? "(not set)"}`);

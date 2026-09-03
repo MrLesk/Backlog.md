@@ -2124,6 +2124,9 @@ ${description || `Milestone: ${title}`}`,
 				case "max_column_width":
 					config.maxColumnWidth = Number.parseInt(value, 10);
 					break;
+				case "task_list_pane_width":
+					config.taskListPaneWidth = Number.parseInt(value, 10);
+					break;
 				case "default_editor":
 					config.defaultEditor = value.replace(/["']/g, "");
 					break;
@@ -2186,6 +2189,7 @@ ${description || `Milestone: ${title}`}`,
 			defaultStatus: config.defaultStatus,
 			dateFormat: config.dateFormat || "yyyy-mm-dd",
 			maxColumnWidth: config.maxColumnWidth,
+			taskListPaneWidth: config.taskListPaneWidth,
 			defaultEditor: config.defaultEditor,
 			autoOpenBrowser: config.autoOpenBrowser,
 			hideEmptyColumns: config.hideEmptyColumns,
@@ -2226,6 +2230,7 @@ ${description || `Milestone: ${title}`}`,
 				: []),
 			`date_format: ${config.dateFormat}`,
 			...(config.maxColumnWidth ? [`max_column_width: ${config.maxColumnWidth}`] : []),
+			...(typeof config.taskListPaneWidth === "number" ? [`task_list_pane_width: ${config.taskListPaneWidth}`] : []),
 			...(config.defaultEditor ? [`default_editor: "${config.defaultEditor}"`] : []),
 			...(typeof config.autoOpenBrowser === "boolean" ? [`auto_open_browser: ${config.autoOpenBrowser}`] : []),
 			...(typeof config.hideEmptyColumns === "boolean" ? [`hide_empty_columns: ${config.hideEmptyColumns}`] : []),
