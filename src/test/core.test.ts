@@ -1402,6 +1402,39 @@ describe("Core", () => {
 			const { task } = await core.createTaskFromInput({ title: "No default assignee" }, false);
 			expect(task.assignee).toEqual([]);
 		});
+
+		// createTaskFromInput is the shared create path for every surface (CLI, wizard, TUI, Web, MCP),
+		// so applying defaultReporter here is what keeps the surfaces consistent. There is no
+		// per-task reporter override surface yet, so unlike defaultAssignee this is a one-way default.
+		it("should apply defaultReporter to tasks and drafts created without one", async () => {
+			await initializeTestProject(core, "Default Reporter Project");
+			const config = await core.filesystem.loadConfig();
+			if (!config) throw new Error("Expected config");
+			config.defaultReporter = "@dana";
+			await core.filesystem.saveConfig(config);
+
+			const { task } = await core.createTaskFromInput({ title: "Inherits default reporter" }, false);
+			expect(task.reporter).toBe("@dana");
+
+			const loadedTask = await core.filesystem.loadTask(task.id);
+			expect(loadedTask?.reporter).toBe("@dana");
+
+			const { task: draft } = await core.createTaskFromInput(
+				{ title: "Draft inherits default reporter", status: "Draft" },
+				false,
+			);
+			expect(draft.reporter).toBe("@dana");
+		});
+
+		it("should leave new tasks without a reporter when defaultReporter is unset", async () => {
+			await initializeTestProject(core, "No Default Reporter Project");
+
+			const { task } = await core.createTaskFromInput({ title: "No default reporter" }, false);
+			expect(task.reporter).toBeUndefined();
+
+			const loadedTask = await core.filesystem.loadTask(task.id);
+			expect(loadedTask?.reporter).toBeUndefined();
+		});
 	});
 
 	describe("directory accessor integration", () => {
