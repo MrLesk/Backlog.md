@@ -1845,7 +1845,7 @@ function getTaskReadOutputMode(options: { json?: boolean; plain?: boolean }): Re
 }
 
 taskCmd.hook("preSubcommand", (command, subcommand) => {
-	if (command.opts().json && !["list", "view"].includes(subcommand.name())) {
+	if (command.opts().json && !["list", "view", "claims"].includes(subcommand.name())) {
 		command.error("error: unknown option '--json'", { code: "commander.unknownOption", exitCode: 1 });
 	}
 });
@@ -2064,6 +2064,199 @@ addHelpSchema(taskCmd.command("create [title]"), {
 
 			console.log(`Created task ${task.id}`);
 			console.log(`File: ${filePath}`);
+		} catch (error) {
+			console.error(error instanceof Error ? error.message : String(error));
+			process.exitCode = 1;
+		}
+	});
+
+async function resolveCoordinationOwner(core: Core, owner?: string): Promise<string> {
+	return owner?.trim() || (await core.git.getUserIdentity());
+}
+
+taskCmd
+	.command("claim <taskId>")
+	.description("atomically claim a task on the Git remote")
+	.option("--owner <owner>", "claim owner; defaults to Git user email or name")
+	.option("--lease-hours <hours>", "claim lease duration", "8")
+	.option("--renew", "renew an active claim owned by the caller")
+	.option("--remote <remote>", "Git remote", "origin")
+	.action(async (taskId: string, options) => {
+		const cwd = await requireProjectRoot();
+		const core = new Core(cwd);
+		const task = await core.loadTaskById(taskId, { includeCrossBranch: false });
+		if (!task) {
+			console.error(`Task ${taskId} not found. ${LOCAL_TASK_LOOKUP_HINT}`);
+			process.exitCode = 1;
+			return;
+		}
+		const leaseHours = Number(options.leaseHours);
+		if (!Number.isFinite(leaseHours) || leaseHours <= 0) {
+			console.error("--lease-hours must be a positive number.");
+			process.exitCode = 1;
+			return;
+		}
+		try {
+			const owner = await resolveCoordinationOwner(core, options.owner);
+			const claim = await core.git.claimTask(task.id, owner, {
+				remote: options.remote,
+				leaseMs: leaseHours * 60 * 60 * 1000,
+				branch: await core.git.getCurrentBranch(),
+				renew: Boolean(options.renew),
+			});
+			console.log(`Claimed ${task.id} for ${owner} until ${claim.state.leaseUntil}.`);
+		} catch (error) {
+			console.error(error instanceof Error ? error.message : String(error));
+			process.exitCode = 1;
+		}
+	});
+
+taskCmd
+	.command("release <taskId>")
+	.description("release a task claim only when owned by the caller")
+	.option("--owner <owner>", "claim owner; defaults to Git user email or name")
+	.option("--remote <remote>", "Git remote", "origin")
+	.action(async (taskId: string, options) => {
+		const cwd = await requireProjectRoot();
+		const core = new Core(cwd);
+		try {
+			const owner = await resolveCoordinationOwner(core, options.owner);
+			await core.git.releaseTask(taskId, owner, options.remote);
+			console.log(`Released ${taskId}.`);
+		} catch (error) {
+			console.error(error instanceof Error ? error.message : String(error));
+			process.exitCode = 1;
+		}
+	});
+
+taskCmd
+	.command("start <taskId>")
+	.description("claim, assign, and move a task to the active status")
+	.option("--owner <owner>", "claim owner; defaults to Git user email or name")
+	.option("--status <status>", "active task status", "In Progress")
+	.option("--lease-hours <hours>", "claim lease duration", "8")
+	.option("--remote <remote>", "Git remote", "origin")
+	.action(async (taskId: string, options) => {
+		const cwd = await requireProjectRoot();
+		const core = new Core(cwd);
+		const task = await core.loadTaskById(taskId, { includeCrossBranch: false });
+		if (!task) {
+			console.error(`Task ${taskId} not found. ${LOCAL_TASK_LOOKUP_HINT}`);
+			process.exitCode = 1;
+			return;
+		}
+		const canonicalStatus = await getCanonicalStatus(String(options.status), core);
+		if (!canonicalStatus) {
+			console.error(`Invalid status: ${options.status}.`);
+			process.exitCode = 1;
+			return;
+		}
+		const leaseHours = Number(options.leaseHours);
+		if (!Number.isFinite(leaseHours) || leaseHours <= 0) {
+			console.error("--lease-hours must be a positive number.");
+			process.exitCode = 1;
+			return;
+		}
+		let owner = "";
+		try {
+			owner = await resolveCoordinationOwner(core, options.owner);
+			await core.git.claimTask(task.id, owner, {
+				remote: options.remote,
+				leaseMs: leaseHours * 60 * 60 * 1000,
+				branch: await core.git.getCurrentBranch(),
+			});
+			const updated = await core.updateTaskFromInput(task.id, {
+				status: canonicalStatus,
+				assignee: [owner.startsWith("@") ? owner : `@${owner}`],
+			});
+			const current = await core.git.readTaskCoordination(task.id, options.remote);
+			if (current) {
+				await core.git.publishTaskCoordination(
+					{ ...current.state, status: updated.status, assignee: updated.assignee },
+					current.objectId,
+					options.remote,
+				);
+			}
+			console.log(`Started ${task.id}: claimed by ${owner}, assigned, and moved to ${updated.status}.`);
+		} catch (error) {
+			console.error(error instanceof Error ? error.message : String(error));
+			process.exitCode = 1;
+		}
+	});
+
+taskCmd
+	.command("publish <taskId>")
+	.description("publish local status and assignees as transient remote coordination state")
+	.option("--remote <remote>", "Git remote", "origin")
+	.action(async (taskId: string, options) => {
+		const cwd = await requireProjectRoot();
+		const core = new Core(cwd);
+		const task = await core.loadTaskById(taskId, { includeCrossBranch: false });
+		if (!task) {
+			console.error(`Task ${taskId} not found. ${LOCAL_TASK_LOOKUP_HINT}`);
+			process.exitCode = 1;
+			return;
+		}
+		try {
+			const current = await core.git.readTaskCoordination(task.id, options.remote);
+			const published = await core.git.publishTaskCoordination(
+				{
+					taskId: task.id,
+					owner: current?.state.owner,
+					branch: current?.state.branch,
+					claimedAt: current?.state.claimedAt,
+					leaseUntil: current?.state.leaseUntil,
+					status: task.status,
+					assignee: task.assignee,
+				},
+				current?.objectId ?? null,
+				options.remote,
+			);
+			console.log(`Published ${task.id} coordination revision ${published.state.revision}.`);
+		} catch (error) {
+			console.error(error instanceof Error ? error.message : String(error));
+			process.exitCode = 1;
+		}
+	});
+
+taskCmd
+	.command("claims")
+	.description("list remote task coordination state")
+	.option("--remote <remote>", "Git remote", "origin")
+	.option("--json", "print JSON output")
+	.action(async (options, command) => {
+		const commandOptions =
+			typeof command?.opts === "function"
+				? command.opts()
+				: typeof options?.opts === "function"
+					? options.opts()
+					: options;
+		const useJson = Boolean(commandOptions.json || taskCmd.opts().json);
+		const cwd = await requireProjectRoot();
+		const core = new Core(cwd);
+		try {
+			const entries = await core.git.listTaskCoordination(commandOptions.remote);
+			if (useJson) {
+				console.log(
+					JSON.stringify(
+						entries.map((entry) => entry.state),
+						null,
+						2,
+					),
+				);
+				return;
+			}
+			if (entries.length === 0) {
+				console.log("No remote task coordination state found.");
+				return;
+			}
+			for (const { state } of entries) {
+				console.log(
+					[state.taskId, state.status, state.owner ? `owner ${state.owner}` : undefined, state.leaseUntil]
+						.filter(Boolean)
+						.join(" | "),
+				);
+			}
 		} catch (error) {
 			console.error(error instanceof Error ? error.message : String(error));
 			process.exitCode = 1;

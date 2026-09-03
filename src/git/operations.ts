@@ -25,6 +25,34 @@ export interface GitIndexEntry {
 	stage: number;
 }
 
+export interface TaskCoordinationState {
+	version: 1;
+	taskId: string;
+	owner?: string;
+	status?: string;
+	assignee?: string[];
+	branch?: string;
+	claimedAt?: string;
+	leaseUntil?: string;
+	updatedAt: string;
+	revision: number;
+}
+
+export interface TaskCoordinationEntry {
+	objectId: string;
+	state: TaskCoordinationState;
+}
+
+export class TaskCoordinationConflictError extends Error {
+	constructor(
+		message: string,
+		readonly current?: TaskCoordinationEntry,
+	) {
+		super(message);
+		this.name = "TaskCoordinationConflictError";
+	}
+}
+
 function indexEntriesEqual(left: readonly GitIndexEntry[], right: readonly GitIndexEntry[]): boolean {
 	return (
 		left.length === right.length &&
@@ -582,6 +610,183 @@ export class GitOperations {
 			if (this.fetches.get(remote) === fetch) {
 				this.fetches.delete(remote);
 			}
+		}
+	}
+
+	async readTaskCoordination(taskId: string, remote = "origin"): Promise<TaskCoordinationEntry | null> {
+		await this.assertTaskCoordinationAvailable(remote);
+		const ref = this.taskCoordinationRef(taskId);
+		const { stdout } = await this.execGit(["ls-remote", "--refs", remote, ref], {
+			readOnly: true,
+			timeoutMs: FETCH_TIMEOUT_MS,
+			env: { GIT_TERMINAL_PROMPT: "0", GCM_INTERACTIVE: "Never" },
+		});
+		const objectId = stdout.trim().split(/\s+/, 1)[0];
+		if (!objectId) return null;
+
+		await this.execGit(["fetch", "--quiet", "--no-write-fetch-head", remote, ref], {
+			timeoutMs: FETCH_TIMEOUT_MS,
+			env: { GIT_TERMINAL_PROMPT: "0", GCM_INTERACTIVE: "Never" },
+		});
+		const { stdout: content } = await this.execGit(["cat-file", "blob", objectId], { readOnly: true });
+		const state = this.parseTaskCoordinationState(content, taskId);
+		return { objectId, state };
+	}
+
+	async claimTask(
+		taskId: string,
+		owner: string,
+		options: { remote?: string; leaseMs?: number; branch?: string; now?: Date; renew?: boolean } = {},
+	): Promise<TaskCoordinationEntry> {
+		const remote = options.remote ?? "origin";
+		const now = options.now ?? new Date();
+		const current = await this.readTaskCoordination(taskId, remote);
+		const activeLease = current?.state.leaseUntil && Date.parse(current.state.leaseUntil) > now.getTime();
+		if (activeLease && (!options.renew || current.state.owner !== owner)) {
+			throw new TaskCoordinationConflictError(
+				`${taskId} is already claimed by ${current.state.owner ?? "another user"} until ${current.state.leaseUntil}.`,
+				current,
+			);
+		}
+
+		const state: TaskCoordinationState = {
+			version: 1,
+			taskId,
+			owner,
+			branch: options.branch,
+			claimedAt: options.renew ? (current?.state.claimedAt ?? now.toISOString()) : now.toISOString(),
+			leaseUntil: new Date(now.getTime() + (options.leaseMs ?? 8 * 60 * 60 * 1000)).toISOString(),
+			updatedAt: now.toISOString(),
+			revision: (current?.state.revision ?? 0) + 1,
+		};
+		return await this.writeTaskCoordination(state, current?.objectId ?? null, remote);
+	}
+
+	async publishTaskCoordination(
+		state: Omit<TaskCoordinationState, "version" | "updatedAt" | "revision">,
+		expectedObjectId: string | null,
+		remote = "origin",
+	): Promise<TaskCoordinationEntry> {
+		const current = expectedObjectId ? await this.readTaskCoordination(state.taskId, remote) : null;
+		const next: TaskCoordinationState = {
+			...state,
+			version: 1,
+			updatedAt: new Date().toISOString(),
+			revision: (current?.state.revision ?? 0) + 1,
+		};
+		return await this.writeTaskCoordination(next, expectedObjectId, remote);
+	}
+
+	async listTaskCoordination(remote = "origin"): Promise<TaskCoordinationEntry[]> {
+		await this.assertTaskCoordinationAvailable(remote);
+		const { stdout } = await this.execGit(["ls-remote", "--refs", remote, "refs/backlog/tasks/*"], {
+			readOnly: true,
+			timeoutMs: FETCH_TIMEOUT_MS,
+			env: { GIT_TERMINAL_PROMPT: "0", GCM_INTERACTIVE: "Never" },
+		});
+		const taskIds = stdout
+			.split("\n")
+			.map((line) => line.trim().split(/\s+/, 2)[1]?.slice("refs/backlog/tasks/".length))
+			.filter((taskId): taskId is string => Boolean(taskId));
+		return (await Promise.all(taskIds.map((taskId) => this.readTaskCoordination(taskId, remote)))).filter(
+			(entry): entry is TaskCoordinationEntry => entry !== null,
+		);
+	}
+
+	async getUserIdentity(): Promise<string> {
+		for (const key of ["user.email", "user.name"]) {
+			const { stdout } = await this.execGit(["config", "--get", key], {
+				readOnly: true,
+				acceptedExitCodes: [1],
+			});
+			if (stdout.trim()) return stdout.trim();
+		}
+		throw new Error("Task coordination needs an owner. Configure git user.email or pass --owner.");
+	}
+
+	async releaseTask(taskId: string, owner: string, remote = "origin"): Promise<void> {
+		const current = await this.readTaskCoordination(taskId, remote);
+		if (!current) return;
+		if (current.state.owner !== owner) {
+			throw new TaskCoordinationConflictError(
+				`${taskId} is claimed by ${current.state.owner ?? "another user"}; ${owner} cannot release it.`,
+				current,
+			);
+		}
+		const ref = this.taskCoordinationRef(taskId);
+		try {
+			await this.execGit(["push", "--quiet", remote, `:${ref}`, `--force-with-lease=${ref}:${current.objectId}`], {
+				timeoutMs: FETCH_TIMEOUT_MS,
+				env: { GIT_TERMINAL_PROMPT: "0", GCM_INTERACTIVE: "Never" },
+			});
+		} catch {
+			throw new TaskCoordinationConflictError(`${taskId} changed remotely and was not released.`, current);
+		}
+	}
+
+	private async writeTaskCoordination(
+		state: TaskCoordinationState,
+		expectedObjectId: string | null,
+		remote: string,
+	): Promise<TaskCoordinationEntry> {
+		await this.assertTaskCoordinationAvailable(remote);
+		const ref = this.taskCoordinationRef(state.taskId);
+		const content = `${JSON.stringify(state)}\n`;
+		const { stdout } = await this.execGit(["hash-object", "-w", "--stdin"], { input: content });
+		const objectId = stdout.trim();
+		try {
+			await this.execGit(
+				["push", "--quiet", remote, `${objectId}:${ref}`, `--force-with-lease=${ref}:${expectedObjectId ?? ""}`],
+				{
+					timeoutMs: FETCH_TIMEOUT_MS,
+					env: { GIT_TERMINAL_PROMPT: "0", GCM_INTERACTIVE: "Never" },
+				},
+			);
+		} catch {
+			const current = await this.readTaskCoordination(state.taskId, remote).catch(() => null);
+			throw new TaskCoordinationConflictError(
+				`${state.taskId} changed remotely; refresh and retry.`,
+				current ?? undefined,
+			);
+		}
+		return { objectId, state };
+	}
+
+	private taskCoordinationRef(taskId: string): string {
+		const normalized = taskId.trim();
+		if (!/^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(normalized)) {
+			throw new Error(`Invalid task ID for coordination: ${taskId}`);
+		}
+		return `refs/backlog/tasks/${normalized}`;
+	}
+
+	private parseTaskCoordinationState(content: string, taskId: string): TaskCoordinationState {
+		let value: unknown;
+		try {
+			value = JSON.parse(content);
+		} catch {
+			throw new Error(`Remote coordination state for ${taskId} is not valid JSON.`);
+		}
+		if (
+			typeof value !== "object" ||
+			value === null ||
+			(value as Partial<TaskCoordinationState>).version !== 1 ||
+			(value as Partial<TaskCoordinationState>).taskId !== taskId ||
+			typeof (value as Partial<TaskCoordinationState>).updatedAt !== "string" ||
+			!Number.isInteger((value as Partial<TaskCoordinationState>).revision)
+		) {
+			throw new Error(`Remote coordination state for ${taskId} has an unsupported shape.`);
+		}
+		return value as TaskCoordinationState;
+	}
+
+	private async assertTaskCoordinationAvailable(remote: string): Promise<void> {
+		await this.loadConfigIfNeeded();
+		if (this.config?.remoteOperations === false) {
+			throw new Error("Task coordination requires remoteOperations to be enabled.");
+		}
+		if (!(await this.isRepository()) || !(await this.hasRemote(remote))) {
+			throw new Error(`Task coordination requires a configured Git remote named '${remote}'.`);
 		}
 	}
 
