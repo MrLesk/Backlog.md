@@ -1,0 +1,28 @@
+# One service per repo you want to expose over remote MCP. To add another
+# repo, copy a service block, point `volumes` at the new repo's path on the
+# host, and give it its own PORT (must be unique per service).
+services:
+  backlog-mcp-example:
+    build: .
+    volumes:
+      # Replace with the absolute path to the git repo on the host whose
+      # backlog/ folder you want this MCP endpoint to serve.
+      - /host/path/to/repo:/workspace
+    environment:
+      - PORT=8765
+      # - TRANSPORT=streamableHttp   # alternative to the default "sse"
+      # - GIT_AUTHOR_NAME=Backlog MCP
+      # - GIT_AUTHOR_EMAIL=backlog-mcp@localhost
+    ports:
+      - "8765:8765"
+    restart: unless-stopped
+
+  # backlog-mcp-another-repo:
+  #   build: .
+  #   volumes:
+  #     - /host/path/to/another-repo:/workspace
+  #   environment:
+  #     - PORT=8766
+  #   ports:
+  #     - "8766:8766"
+  #   restart: unless-stopped
