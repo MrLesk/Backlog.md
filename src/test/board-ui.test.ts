@@ -1,7 +1,7 @@
 import { describe, expect, it } from "bun:test";
 import type { Task } from "../types/index.ts";
 import type { ColumnData } from "../ui/board.ts";
-import { hasMoveBlockingBoardFilters, shouldRebuildColumns } from "../ui/board.ts";
+import { BOARD_ENTER_KEYS, hasMoveBlockingBoardFilters, shouldRebuildColumns } from "../ui/board.ts";
 
 // Helper to create a minimal valid Task for testing
 const createTestTask = (id: string, title: string, status: string): Task => ({
@@ -76,6 +76,14 @@ describe("Board TUI Logic", () => {
 			expect(hasMoveBlockingBoardFilters({ ...baseFilters, typeFilter: ["bug"] })).toBe(true);
 			expect(hasMoveBlockingBoardFilters({ ...baseFilters, projectFilter: ["web"] })).toBe(true);
 			expect(hasMoveBlockingBoardFilters({ ...baseFilters, labelFilter: ["bug"] })).toBe(true);
+		});
+	});
+
+	describe("BOARD_ENTER_KEYS", () => {
+		it("binds both blessed names for the Enter key", () => {
+			// Terminals sending a carriage return are named "return"; only a linefeed is named "enter".
+			expect(BOARD_ENTER_KEYS).toContain("enter");
+			expect(BOARD_ENTER_KEYS).toContain("return");
 		});
 	});
 });
