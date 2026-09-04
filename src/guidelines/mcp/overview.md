@@ -67,7 +67,7 @@ Backlog tracks **commitments** (what will be built). Use your judgment to distin
 - DoD is not acceptance criteria: acceptance criteria define scope/behavior, while DoD tracks completion hygiene
 - Comments are for discussion and review notes; Implementation Notes are for execution progress; Final Summary is the PR-style completion summary. Comment bodies may contain Markdown, but standalone `---` lines are reserved as comment delimiters.
 - `task_complete` — move a Done task to the completed folder (periodic cleanup, not immediate)
-- `task_archive` — archive a task that should not be completed (duplicate, canceled, invalid). Note: archived task IDs can be reused by new tasks (soft delete behavior).
+- `task_archive` — archive a task that should not be completed (duplicate, canceled, invalid). Archived task IDs remain reserved and are not reused by new tasks.
 
 **Document path rules:** document paths are relative to the docs directory. Use `path` values like `guides/setup`; absolute paths and `..` traversal are rejected.
 

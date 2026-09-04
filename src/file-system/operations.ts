@@ -20,6 +20,7 @@ import type { DraftIdentityFindings } from "../utils/duplicate-detection.ts";
 import { AmbiguousIdError, isAmbiguousIdError } from "../utils/entity-id.ts";
 import {
 	buildGlobPattern,
+	buildIdRegex,
 	extractAnyPrefix,
 	filenameMatchesId,
 	generateNextId,
@@ -1068,6 +1069,35 @@ export class FileSystem {
 		return sortByTaskId(tasks);
 	}
 
+	/** Archived filenames and parsed IDs both remain reserved, even if a file is malformed. */
+	async listOccupiedArchivedTaskIds(): Promise<string[]> {
+		const archiveTasksDir = await this.getArchiveTasksDir();
+		const config = await this.loadConfig();
+		const prefix = config?.prefixes?.task ?? "task";
+		const idRegex = buildIdRegex(prefix);
+		let files: string[];
+		try {
+			files = await Array.fromAsync(new Bun.Glob("*.md").scan({ cwd: archiveTasksDir, followSymlinks: true }));
+		} catch (error) {
+			if ((error as NodeJS.ErrnoException).code === "ENOENT") return [];
+			throw error;
+		}
+		const ids = new Set<string>();
+		for (const file of files) {
+			const match = file.match(idRegex);
+			if (!match?.[1]) continue;
+			ids.add(normalizeId(match[1], prefix));
+			// Parsing failure cannot release the ID already claimed by the filename.
+			const content = await Bun.file(join(archiveTasksDir, file)).text();
+			try {
+				ids.add(parseTask(content).id);
+			} catch {
+				// Retain the filename reservation for malformed archived records.
+			}
+		}
+		return [...ids];
+	}
+
 	async archiveTask(taskId: string): Promise<boolean> {
 		try {
 			const tasksDir = await this.getTasksDir();
@@ -1171,10 +1201,12 @@ export class FileSystem {
 				const taskPrefix = config?.prefixes?.task ?? "task";
 
 				// Get existing task IDs to generate next ID
-				// Include both active and completed tasks to prevent ID collisions
-				const existingTasks = await this.listTasks();
-				const completedTasks = await this.listCompletedTasks();
-				const existingIds = [...existingTasks, ...completedTasks].map((t) => t.id);
+				const [existingTasks, completedTasks, archivedIds] = await Promise.all([
+					this.listTasks(),
+					this.listCompletedTasks(),
+					this.listOccupiedArchivedTaskIds(),
+				]);
+				const existingIds = [...existingTasks, ...completedTasks].map((t) => t.id).concat(archivedIds);
 
 				// Generate new task ID
 				const newTaskId = generateNextId(existingIds, taskPrefix, config?.zeroPaddedIds);

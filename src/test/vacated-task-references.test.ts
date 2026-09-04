@@ -75,9 +75,9 @@ describe("references to a vacated task ID", () => {
 		expect(archived.success).toBe(true);
 		expect(archived.cleanedTaskIds).toEqual([dependent.id]);
 
-		// The archived ID is free again, so the next task is allocated exactly the vacated slot.
+		// The archived identity stays reserved even after its live dependency edges are cleaned.
 		const { task: unrelated } = await core.createTaskFromInput({ title: "Totally unrelated new task" });
-		expect(taskIdsEqual(unrelated.id, target.id)).toBe(true);
+		expect(taskIdsEqual(unrelated.id, target.id)).toBe(false);
 
 		const completedDependent = await loadCompleted(dependent.id);
 		expect(completedDependent?.dependencies ?? []).toEqual([]);
@@ -194,7 +194,7 @@ describe("references to a vacated task ID", () => {
 		}
 
 		const { task: unrelated } = await core.createTaskFromInput({ title: "Totally unrelated new task" });
-		expect(taskIdsEqual(unrelated.id, target.id)).toBe(true);
+		expect(taskIdsEqual(unrelated.id, target.id)).toBe(false);
 
 		const updated = await core.filesystem.loadTask(late.id);
 		expect(updated?.dependencies ?? []).toEqual([]);

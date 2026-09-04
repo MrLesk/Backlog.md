@@ -1492,7 +1492,7 @@ export class Core {
 	 * @returns The next available ID (e.g., "task-42", "draft-5", "doc-3")
 	 *
 	 * Folder scanning by type:
-	 * - Task: /tasks, /completed, cross-branch (if enabled), remote (if enabled)
+	 * - Task: /tasks, /completed, /archive/tasks, cross-branch (if enabled), remote (if enabled)
 	 * - Draft: /drafts only
 	 * - Document: /documents only
 	 * - Decision: /decisions only
@@ -1514,10 +1514,8 @@ export class Core {
 	}
 
 	/**
-	 * Gets all task IDs that are in use (active or completed) across all branches.
-	 * Respects cross-branch config settings. Archived IDs are excluded (can be reused).
-	 *
-	 * This is used for ID generation to determine the next available ID.
+	 * Reads task identity reservations from other worktrees, including archives.
+	 * Uncommitted records share the same namespace as the current checkout.
 	 */
 	private async loadWorktreeTaskStateEntries(taskPrefix: string): Promise<BranchTaskStateEntry[]> {
 		const [repoRoot, worktreeRoots] = await Promise.all([this.git.getRepositoryRoot(), this.git.listWorktreePaths()]);
@@ -1548,17 +1546,21 @@ export class Core {
 	): Promise<BranchTaskStateEntry[]> {
 		const idRegex = buildIdRegex(taskPrefix);
 		const globPattern = buildGlobPattern(taskPrefix.toLowerCase());
-		const directories: Array<{ path: string; type: "task" | "completed" }> = [
+		const directories: Array<{ path: string; type: "task" | "completed" | "archived" }> = [
 			{ path: join(projectRoot, backlogDir, DEFAULT_DIRECTORIES.TASKS), type: "task" },
 			{ path: join(projectRoot, backlogDir, DEFAULT_DIRECTORIES.COMPLETED), type: "completed" },
+			{ path: join(projectRoot, backlogDir, DEFAULT_DIRECTORIES.ARCHIVE_TASKS), type: "archived" },
 		];
 		const entries: BranchTaskStateEntry[] = [];
 
 		for (const { path, type } of directories) {
 			let files: string[];
 			try {
-				files = await Array.fromAsync(new Bun.Glob(globPattern).scan({ cwd: path, followSymlinks: true }));
-			} catch {
+				files = await Array.fromAsync(
+					new Bun.Glob(type === "archived" ? "*.md" : globPattern).scan({ cwd: path, followSymlinks: true }),
+				);
+			} catch (error) {
+				if (type === "archived" && (error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
 				continue;
 			}
 
@@ -1575,13 +1577,27 @@ export class Core {
 					path: filePath,
 					lastModified: stats?.mtime ?? new Date(0),
 				});
+				if (type === "archived") {
+					const content = await Bun.file(filePath).text();
+					try {
+						entries.push({
+							id: parseTask(content).id,
+							type,
+							branch: `worktree:${worktreeRoot}`,
+							path: filePath,
+							lastModified: stats?.mtime ?? new Date(0),
+						});
+					} catch {
+						// The filename still reserves the identity of an unparsable archive.
+					}
+				}
 			}
 		}
 
 		return entries;
 	}
 
-	private async getActiveAndCompletedTaskIds(): Promise<string[]> {
+	private async getOccupiedTaskIds(): Promise<string[]> {
 		const snapshot = await this.loadTasksWithStableBranchSnapshot({
 			includeCompleted: false,
 			visibleCompleted: false,
@@ -1594,12 +1610,20 @@ export class Core {
 
 		// Same-repository worktrees share the task ID namespace even before their
 		// task files are committed, so include their filesystem state for allocation.
-		const worktreeEntries = await this.loadWorktreeTaskStateEntries(taskPrefix);
+		const [worktreeEntries, archivedIds] = await Promise.all([
+			this.loadWorktreeTaskStateEntries(taskPrefix),
+			this.fs.listOccupiedArchivedTaskIds(),
+		]);
 		const occupiedIds = new Set(snapshot.identityIndex.getOccupiedIds());
 		for (const task of completedTasks) occupiedIds.add(task.id);
-		for (const entry of worktreeEntries) {
-			if (entry.type === "task" || entry.type === "completed") occupiedIds.add(entry.id);
+		for (const id of archivedIds) occupiedIds.add(id);
+		// Reserve archived branch identities without changing which records are
+		// visible or how historical lifecycle states resolve in normal task reads.
+		for (const entry of snapshot.branchStateEntries ?? []) {
+			occupiedIds.add(entry.id);
+			if (entry.task) occupiedIds.add(entry.task.id);
 		}
+		for (const entry of worktreeEntries) occupiedIds.add(entry.id);
 		return [...occupiedIds];
 	}
 
@@ -1607,15 +1631,14 @@ export class Core {
 	 * Gets all existing IDs for a given entity type.
 	 * Used internally by generateNextId to determine the next available ID.
 	 *
-	 * Note: Archived tasks are intentionally excluded - archived IDs can be reused.
-	 * This makes archive act as a soft delete for ID purposes.
+	 * Archived task IDs remain occupied: archiving hides a task from active
+	 * views, but must not make historical references identify a new task.
 	 */
 	private async getExistingIdsForType(type: EntityType): Promise<string[]> {
 		switch (type) {
 			case EntityType.Task: {
-				// Get active + completed task IDs from all branches (respects config)
-				// Archived IDs are excluded - they can be reused (soft delete behavior)
-				return this.getActiveAndCompletedTaskIds();
+				// Preserve active, completed, and archived task identities (respects config).
+				return this.getOccupiedTaskIds();
 			}
 			case EntityType.Draft: {
 				// Occupancy includes filename-derived ids: an unparsable file still reserves its
