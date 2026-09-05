@@ -1,4 +1,5 @@
-import { mkdir, rename, stat, unlink } from "node:fs/promises";
+import { constants } from "node:fs";
+import { copyFile, mkdir, rename, stat, unlink } from "node:fs/promises";
 import { basename, dirname, isAbsolute, join, resolve } from "node:path";
 import lockfile from "proper-lockfile";
 import { DEFAULT_DIRECTORIES, DEFAULT_FILES, DEFAULT_STATUSES, FALLBACK_STATUS } from "../constants/index.ts";
@@ -20,6 +21,7 @@ import type { DraftIdentityFindings } from "../utils/duplicate-detection.ts";
 import { AmbiguousIdError, isAmbiguousIdError } from "../utils/entity-id.ts";
 import {
 	buildGlobPattern,
+	buildIdRegex,
 	extractAnyPrefix,
 	filenameMatchesId,
 	generateNextId,
@@ -1068,6 +1070,35 @@ export class FileSystem {
 		return sortByTaskId(tasks);
 	}
 
+	/** Archived filenames and parsed IDs both remain reserved, even if a file is malformed. */
+	async listOccupiedArchivedTaskIds(): Promise<string[]> {
+		const archiveTasksDir = await this.getArchiveTasksDir();
+		const config = await this.loadConfig();
+		const prefix = config?.prefixes?.task ?? "task";
+		const idRegex = buildIdRegex(prefix);
+		let files: string[];
+		try {
+			files = await Array.fromAsync(new Bun.Glob("*.md").scan({ cwd: archiveTasksDir, followSymlinks: true }));
+		} catch (error) {
+			if ((error as NodeJS.ErrnoException).code === "ENOENT") return [];
+			throw error;
+		}
+		const ids = new Set<string>();
+		for (const file of files) {
+			const match = file.match(idRegex);
+			if (match?.[1]) ids.add(normalizeId(match[1], prefix));
+			// A renamed file may still carry an ID. Parse independently of its filename;
+			// parsing failure cannot release an ID already claimed by the filename.
+			const content = await Bun.file(join(archiveTasksDir, file)).text();
+			try {
+				ids.add(parseTask(content).id);
+			} catch {
+				// Retain the filename reservation for malformed archived records.
+			}
+		}
+		return [...ids];
+	}
+
 	async archiveTask(taskId: string): Promise<boolean> {
 		try {
 			const tasksDir = await this.getTasksDir();
@@ -1171,10 +1202,12 @@ export class FileSystem {
 				const taskPrefix = config?.prefixes?.task ?? "task";
 
 				// Get existing task IDs to generate next ID
-				// Include both active and completed tasks to prevent ID collisions
-				const existingTasks = await this.listTasks();
-				const completedTasks = await this.listCompletedTasks();
-				const existingIds = [...existingTasks, ...completedTasks].map((t) => t.id);
+				const [existingTasks, completedTasks, archivedIds] = await Promise.all([
+					this.listTasks(),
+					this.listCompletedTasks(),
+					this.listOccupiedArchivedTaskIds(),
+				]);
+				const existingIds = [...existingTasks, ...completedTasks].map((t) => t.id).concat(archivedIds);
 
 				// Generate new task ID
 				const newTaskId = generateNextId(existingIds, taskPrefix, config?.zeroPaddedIds);
@@ -1207,7 +1240,55 @@ export class FileSystem {
 		}
 	}
 
-	async demoteTask(taskId: string, onMoved?: (fromPath: string, toPath: string) => void): Promise<boolean> {
+	/** Persist a draft while retaining the original task as a durable ID reservation.
+	 * Callers hold the task and creation locks across this operation.
+	 */
+	async saveDemotedTask(task: Task, demotedDraft: Task): Promise<{ savedPath: string; archivedPath: string }> {
+		if (!task.filePath) throw new Error(`Task ${task.id} has no source path to preserve.`);
+		const config = await this.loadConfig();
+		const prefix = config?.prefixes?.task ?? "task";
+		const filenameId = basename(task.filePath).match(buildIdRegex(prefix))?.[1];
+		const identities = [task.id, ...(filenameId ? [normalizeId(filenameId, prefix)] : [])];
+		const occupiedArchiveIds = await this.listOccupiedArchivedTaskIds();
+		if (occupiedArchiveIds.some((id) => identities.some((identity) => taskIdsEqual(id, identity)))) {
+			throw new Error(`Cannot demote ${task.id}: its task identity is already present in the archive.`);
+		}
+
+		const archivedPath = join(await this.getArchiveTasksDir(), basename(task.filePath));
+		await this.ensureDirectoryExists(dirname(archivedPath));
+		const savedPath = await this.saveDraft(demotedDraft);
+		let archiveWritten = false;
+		try {
+			// Reserve the original bytes before removing the task. Exclusive creation must never
+			// overwrite historical evidence, including a destination created after the scan.
+			await copyFile(task.filePath, archivedPath, constants.COPYFILE_EXCL);
+			archiveWritten = true;
+			await unlink(task.filePath);
+		} catch (error) {
+			// The original task has not been removed. Roll back only files written by this call.
+			let cleanupFailure: unknown;
+			for (const path of [savedPath, ...(archiveWritten ? [archivedPath] : [])]) {
+				try {
+					await unlink(path);
+				} catch (cleanupError) {
+					if ((cleanupError as NodeJS.ErrnoException).code !== "ENOENT") cleanupFailure ??= cleanupError;
+				}
+			}
+			if (cleanupFailure) {
+				const failure = error instanceof Error ? error : new Error(String(error));
+				(failure as Error & { demotionState?: string }).demotionState = "partial";
+				failure.cause = cleanupFailure;
+				throw failure;
+			}
+			throw error;
+		}
+		return { savedPath, archivedPath };
+	}
+
+	async demoteTask(
+		taskId: string,
+		onMoved?: (fromPath: string, toPath: string, archivedPath: string) => void,
+	): Promise<boolean> {
 		return await this.withCreateLock(async () => {
 			// Load the task. A missing task is the only false result; filesystem failures must reach
 			// callers so the Web API can distinguish an operational failure from a 404.
@@ -1224,33 +1305,15 @@ export class FileSystem {
 			const config = await this.loadConfig();
 			const newDraftId = generateNextId(existingIds, "draft", config?.zeroPaddedIds);
 
-			// Update task with new draft ID and save as draft. The record's own links are cleaned of
-			// the task ID it vacates here: carried into the draft, such a link would rebind to
-			// whatever task is allocated that ID next.
+			// Keep the existing dependency-cleanup behavior as the task leaves the active corpus.
 			const demotedDraft: Task = {
 				...(withoutVacatedTaskLinks(task, task.id) ?? task),
 				id: newDraftId,
 				filePath: undefined, // Will be set by saveDraft
 			};
 
-			const savedPath = await this.saveDraft(demotedDraft);
-
-			// Delete old task file. If that fails, remove the newly written draft so a retry cannot
-			// encounter two copies of the task.
-			try {
-				await unlink(task.filePath);
-			} catch (error) {
-				try {
-					await unlink(savedPath);
-				} catch (cleanupError) {
-					const failure = error instanceof Error ? error : new Error(String(error));
-					(failure as Error & { demotionState?: string }).demotionState = "partial";
-					failure.cause = cleanupError;
-					throw failure;
-				}
-				throw error;
-			}
-			onMoved?.(task.filePath, savedPath);
+			const { savedPath, archivedPath } = await this.saveDemotedTask(task, demotedDraft);
+			onMoved?.(task.filePath, savedPath, archivedPath);
 
 			return true;
 		});

@@ -26,6 +26,9 @@ export interface TaskCorpusSnapshot {
 	completedTasks: Task[];
 	identityIndex?: TaskIdentityIndex;
 	branchStateEntries?: BranchTaskStateEntry[];
+	/** False means branch reservations are incomplete and cannot justify ID allocation. */
+	branchLoadComplete?: boolean;
+	archivedBranchIds?: string[];
 	config?: BacklogConfig | null;
 }
 
@@ -119,6 +122,8 @@ export class ContentStore {
 	private taskIdentityIndex?: TaskIdentityIndex;
 	private branchTaskStateEntries: BranchTaskStateEntry[] = [];
 	private taskCorpusConfig: BacklogConfig | null | undefined;
+	private branchLoadComplete: boolean | undefined;
+	private archivedBranchIds: string[] = [];
 	private cachedDocuments: Document[] = [];
 	private cachedDecisions: Decision[] = [];
 
@@ -344,6 +349,8 @@ export class ContentStore {
 			completedTasks: this.completedTasks.slice(),
 			identityIndex: this.taskIdentityIndex,
 			branchStateEntries: this.branchTaskStateEntries.slice(),
+			branchLoadComplete: this.branchLoadComplete,
+			archivedBranchIds: this.archivedBranchIds.slice(),
 			config: this.taskCorpusConfig,
 		};
 	}
@@ -1359,6 +1366,8 @@ export class ContentStore {
 		this.taskIdentityIndex = corpus.identityIndex;
 		this.branchTaskStateEntries = corpus.branchStateEntries?.slice() ?? [];
 		this.taskCorpusConfig = corpus.config;
+		this.branchLoadComplete = corpus.branchLoadComplete;
+		this.archivedBranchIds = corpus.archivedBranchIds?.slice() ?? [];
 		this.replaceVisibleTasks(visibleTasks);
 	}
 
@@ -1638,6 +1647,8 @@ export class ContentStore {
 				this.hasTaskListChanged(this.activeTasks, reconciledCorpus.activeTasks) ||
 				this.hasTaskListChanged(this.completedTasks, reconciledCorpus.completedTasks) ||
 				this.hasBranchTaskStateChanged(reconciledCorpus.branchStateEntries ?? []) ||
+				this.branchLoadComplete !== reconciledCorpus.branchLoadComplete ||
+				JSON.stringify(this.archivedBranchIds) !== JSON.stringify(reconciledCorpus.archivedBranchIds ?? []) ||
 				JSON.stringify(this.taskCorpusConfig) !== JSON.stringify(reconciledCorpus.config);
 			if (!visibleChanged && !identityChanged && !corpusChanged) return false;
 			this.installTaskCorpus(reconciledCorpus, merged);

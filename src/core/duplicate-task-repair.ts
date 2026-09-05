@@ -378,12 +378,13 @@ export async function previewDuplicateTaskIdRepair(
 	const crossBranchFindings = options.includeBranches ? await findCrossBranchDuplicateTaskIds(core, snapshot) : [];
 	const blockedReasons: string[] = [];
 	const changes: DuplicateRepairChange[] = [];
-	const [activeTasks, completedTasks, config] = await Promise.all([
+	const [activeTasks, completedTasks, config, occupiedIds] = await Promise.all([
 		snapshot ? Promise.resolve(snapshot.activeTasks) : core.filesystem.listTasks(),
 		snapshot ? Promise.resolve(snapshot.completedTasks) : core.filesystem.listCompletedTasks(),
 		core.filesystem.loadConfig(),
+		groups.length > 0 ? core.getOccupiedTaskIds(snapshot) : Promise.resolve([]),
 	]);
-	const existingIds = [...activeTasks, ...completedTasks].map((task) => task.id);
+	const existingIds = [...activeTasks, ...completedTasks].map((task) => task.id).concat(occupiedIds);
 	const plannedIds: string[] = [];
 
 	for (const group of groups) {
