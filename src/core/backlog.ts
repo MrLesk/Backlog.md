@@ -1566,17 +1566,19 @@ export class Core {
 
 			for (const file of files) {
 				const match = file.match(idRegex);
-				if (!match?.[1]) continue;
+				if (!match?.[1] && type !== "archived") continue;
 
 				const filePath = join(path, file);
 				const stats = await stat(filePath).catch(() => null);
-				entries.push({
-					id: normalizeId(match[1], taskPrefix),
-					type,
-					branch: `worktree:${worktreeRoot}`,
-					path: filePath,
-					lastModified: stats?.mtime ?? new Date(0),
-				});
+				if (match?.[1]) {
+					entries.push({
+						id: normalizeId(match[1], taskPrefix),
+						type,
+						branch: `worktree:${worktreeRoot}`,
+						path: filePath,
+						lastModified: stats?.mtime ?? new Date(0),
+					});
+				}
 				if (type === "archived") {
 					const content = await Bun.file(filePath).text();
 					try {
@@ -1608,6 +1610,11 @@ export class Core {
 				visibleCompleted: false,
 				forceRemoteRefresh: true,
 			}));
+		if (corpus.branchLoadComplete === false) {
+			throw new Error(
+				"Cannot allocate a task ID while branch identity reservations are incomplete; retry after restoring branch reads",
+			);
+		}
 		const completedTasks = corpus.completedTasks;
 		const config = corpus.config;
 		const taskPrefix = config?.prefixes?.task ?? "task";
@@ -1622,6 +1629,7 @@ export class Core {
 		const occupiedIds = new Set(corpus.identityIndex.getOccupiedIds());
 		for (const task of completedTasks) occupiedIds.add(task.id);
 		for (const id of archivedIds) occupiedIds.add(id);
+		for (const id of corpus.archivedBranchIds ?? []) occupiedIds.add(id);
 		// Reserve archived branch identities without changing which records are
 		// visible or how historical lifecycle states resolve in normal task reads.
 		for (const entry of corpus.branchStateEntries ?? []) {
@@ -3918,13 +3926,20 @@ export class Core {
 		git = this.git,
 	): Promise<Array<Task & { lastModified?: Date; branch?: string }>> {
 		const tasks = await filesystem.listTasks();
-		return await Promise.all(
+		const withMetadata = await Promise.all(
 			tasks.map(async (task) => {
 				const filePath = task.filePath ?? (await getTaskPath(task.id, { filesystem }));
 
 				if (filePath) {
 					const bunFile = Bun.file(filePath);
-					const stats = await bunFile.stat();
+					const stats = await bunFile.stat().catch((error: NodeJS.ErrnoException) => {
+						// A concurrent archive/demotion may remove a task after listTasks
+						// captured its content. Omit that vanished active record; other
+						// filesystem failures must still abort the read.
+						if (error.code === "ENOENT") return null;
+						throw error;
+					});
+					if (!stats) return null;
 					return {
 						...task,
 						lastModified: new Date(stats.mtime),
@@ -3937,6 +3952,7 @@ export class Core {
 				return task;
 			}),
 		);
+		return withMetadata.filter((task) => task !== null);
 	}
 
 	/**
@@ -4340,6 +4356,7 @@ export class Core {
 		// Load tasks from remote branches and other local branches in parallel
 		// Skip entirely when cross-branch scanning is disabled
 		const branchStateEntries: BranchTaskStateEntry[] = [];
+		const archivedBranchIds: string[] = [];
 		let branchLoadComplete = true;
 
 		let backlogDir: string | null = null;
@@ -4356,6 +4373,7 @@ export class Core {
 				snapshotBefore.currentBranch,
 			);
 			branchStateEntries.push(...branchLoad.entries);
+			archivedBranchIds.push(...branchLoad.archivedIds);
 			branchLoadComplete = branchLoad.complete;
 			if (projectChanged()) return await retryForCurrentProject();
 		}
@@ -4418,6 +4436,8 @@ export class Core {
 			completedTasks,
 			identityIndex,
 			branchStateEntries,
+			archivedBranchIds,
+			branchLoadComplete,
 			config,
 		};
 	}

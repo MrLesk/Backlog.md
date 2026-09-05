@@ -1086,9 +1086,9 @@ export class FileSystem {
 		const ids = new Set<string>();
 		for (const file of files) {
 			const match = file.match(idRegex);
-			if (!match?.[1]) continue;
-			ids.add(normalizeId(match[1], prefix));
-			// Parsing failure cannot release the ID already claimed by the filename.
+			if (match?.[1]) ids.add(normalizeId(match[1], prefix));
+			// A renamed file may still carry an ID. Parse independently of its filename;
+			// parsing failure cannot release an ID already claimed by the filename.
 			const content = await Bun.file(join(archiveTasksDir, file)).text();
 			try {
 				ids.add(parseTask(content).id);

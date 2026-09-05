@@ -13,6 +13,7 @@ import type { GitBranchTip, GitOperations } from "../git/operations.ts";
 import { parseTask } from "../markdown/parser.ts";
 import type { BacklogConfig, Task } from "../types/index.ts";
 import { extractAnyPrefix } from "../utils/prefix-config.ts";
+import { isValidTaskId } from "../utils/task-id.ts";
 import {
 	canonicalTaskId,
 	extractTaskIdFromFilename,
@@ -44,6 +45,8 @@ export interface BranchTaskStateEntry {
 
 export interface BranchTaskLoadResult {
 	entries: BranchTaskStateEntry[];
+	/** Allocation reservations only; do not participate in lifecycle winner selection. */
+	archivedIds: string[];
 	/** False when at least one branch index or selected task payload could not be read. */
 	complete: boolean;
 }
@@ -101,7 +104,8 @@ interface HydrationCandidate {
 }
 
 interface CachedTaskTreeEntry {
-	id: string;
+	id: string | null;
+	archivedId?: string;
 	path: string;
 	type: TaskDirectoryType | null;
 	lastModified: number;
@@ -367,7 +371,7 @@ export class BranchTaskLoader {
 		currentBranch?: string,
 	): Promise<BranchTaskLoadResult> {
 		const branchRefs = await this.getPinnedBranchRefs(tips, userConfig, currentBranch);
-		if (branchRefs.length === 0) return { entries: [], complete: true };
+		if (branchRefs.length === 0) return { entries: [], archivedIds: [], complete: true };
 
 		const remoteCount = branchRefs.filter((branch) => branch.source === "remote").length;
 		const localCount = branchRefs.length - remoteCount;
@@ -377,6 +381,7 @@ export class BranchTaskLoader {
 		const prefix = userConfig?.prefixes?.task ?? DEFAULT_TASK_PREFIX;
 		const historyCutoff = getBranchHistoryCutoff(userConfig?.activeBranchDays ?? 30);
 		const stateEntries: BranchTaskStateEntry[] = [];
+		const archivedIds = new Set<string>();
 		const remoteIndex = new Map<string, RemoteIndexEntry[]>();
 		const localIndex = new Map<string, RemoteIndexEntry[]>();
 		const queue = [...branchRefs];
@@ -391,6 +396,8 @@ export class BranchTaskLoader {
 					const tree = await this.loadCommitIndex(branchRef.commit, backlogDir, prefix, historyCutoff);
 					const index = branchRef.source === "remote" ? remoteIndex : localIndex;
 					for (const cached of tree) {
+						if (cached.archivedId) archivedIds.add(cached.archivedId);
+						if (!cached.id) continue;
 						const lastModified = new Date(cached.lastModified);
 						const entry: RemoteIndexEntry = {
 							id: cached.id,
@@ -467,6 +474,7 @@ export class BranchTaskLoader {
 		]);
 		return {
 			entries: stateEntries,
+			archivedIds: [...archivedIds].sort(),
 			complete: complete && hydrationResults.every(Boolean),
 		};
 	}
@@ -525,18 +533,30 @@ export class BranchTaskLoader {
 			const files = await this.git.listFilesInTree(commit, backlogDir);
 			if (files.length === 0) return [];
 			const lastModified = await this.git.getBranchLastModifiedMap(commit, backlogDir, historyCutoff);
-			return files.flatMap((path) => {
-				const id = extractConfiguredTaskId(path, prefix);
-				if (!id) return [];
-				return [
-					{
-						id,
-						path,
-						type: getTaskTypeFromPath(path, backlogDir),
-						lastModified: (lastModified.get(path) ?? new Date(0)).getTime(),
-					},
-				];
-			});
+			const entries: CachedTaskTreeEntry[] = [];
+			for (const path of files) {
+				const type = getTaskTypeFromPath(path, backlogDir);
+				const filenameId = extractConfiguredTaskId(path, prefix);
+				let archivedId: string | undefined;
+				if (type === "archived" && path.endsWith(".md")) {
+					// Archive identity also survives a renamed file or frontmatter/filename
+					// disagreement. Reuse the immutable blob cache; read errors invalidate
+					// this branch index, while malformed Markdown keeps its filename ID.
+					const task = await this.loadCachedTask(commit, path);
+					if (task && isValidTaskId(task.id) && extractAnyPrefix(task.id)?.toLowerCase() === prefix.toLowerCase()) {
+						archivedId = task.id;
+					}
+				}
+				if (!filenameId && !archivedId) continue;
+				entries.push({
+					id: filenameId,
+					archivedId,
+					path,
+					type,
+					lastModified: (lastModified.get(path) ?? new Date(0)).getTime(),
+				});
+			}
+			return entries;
 		})();
 		this.commitIndexCache.set(key, promise);
 		try {
