@@ -424,8 +424,8 @@ Invalid content`,
 			const promoted = await filesystem.promoteDraft("draft-1");
 			expect(promoted).toBe(true);
 
-			const promotedTask = await filesystem.loadTask("task-1");
-			expect(promotedTask?.id).toBe("TASK-1");
+			const promotedTask = await filesystem.loadTask("task-2");
+			expect(promotedTask?.id).toBe("TASK-2");
 			expect(promotedTask?.status).toBe("In Progress");
 		});
 

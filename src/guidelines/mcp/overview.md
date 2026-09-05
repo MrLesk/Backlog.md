@@ -69,6 +69,10 @@ Backlog tracks **commitments** (what will be built). Use your judgment to distin
 - `task_complete` — move a Done task to the completed folder (periodic cleanup, not immediate)
 - `task_archive` — archive a task that should not be completed (duplicate, canceled, invalid). Archived task IDs remain reserved and are not reused by new tasks.
 
+Demoting a task into Draft preserves its original record in `archive/tasks`.
+The separately numbered draft may be edited, promoted, or archived without
+releasing the original task ID.
+
 **Document path rules:** document paths are relative to the docs directory. Use `path` values like `guides/setup`; absolute paths and `..` traversal are rejected.
 
 **Always operate through MCP tools. Never edit markdown files directly so relationships, metadata, and history stay consistent.**

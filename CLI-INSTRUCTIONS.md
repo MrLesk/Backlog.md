@@ -393,3 +393,10 @@ Archived tasks remain outside active views, but their task IDs stay reserved. Ne
 tasks and promoted drafts allocate beyond archived IDs; archiving a child also
 reserves its subtask number. This prevents a historical task link from silently
 referring to a different task later. Existing duplicate IDs are not renumbered.
+
+Demoting a task also preserves its original record in `archive/tasks` while
+creating a separately numbered draft. Editing into Draft through supported
+interfaces uses the same behavior. The old task ID stays reserved through later
+draft edits, promotion, and archival. Duplicate repair allocates from the same
+reserved-ID set. IDs lost to demotion before this behavior was installed cannot
+be reconstructed safely from draft numbers alone.

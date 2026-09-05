@@ -1597,16 +1597,21 @@ export class Core {
 		return entries;
 	}
 
-	private async getOccupiedTaskIds(): Promise<string[]> {
-		const snapshot = await this.loadTasksWithStableBranchSnapshot({
-			includeCompleted: false,
-			visibleCompleted: false,
-			forceRemoteRefresh: true,
-		});
-		const completedTasks = snapshot.completedTasks;
-		const config = snapshot.config;
+	/** Shared identity reservations for normal allocation and duplicate-repair allocation. */
+	async getOccupiedTaskIds(snapshot?: TaskCorpusSnapshot): Promise<string[]> {
+		// A repair preview must allocate against the same corpus that supplied its duplicate
+		// groups. Applying that preview rebuilds it under the create lock with fresh branch refs.
+		const corpus =
+			snapshot ??
+			(await this.loadTasksWithStableBranchSnapshot({
+				includeCompleted: false,
+				visibleCompleted: false,
+				forceRemoteRefresh: true,
+			}));
+		const completedTasks = corpus.completedTasks;
+		const config = corpus.config;
 		const taskPrefix = config?.prefixes?.task ?? "task";
-		if (!snapshot.identityIndex) throw new Error("Task corpus identity index was not initialized");
+		if (!corpus.identityIndex) throw new Error("Task corpus identity index was not initialized");
 
 		// Same-repository worktrees share the task ID namespace even before their
 		// task files are committed, so include their filesystem state for allocation.
@@ -1614,12 +1619,12 @@ export class Core {
 			this.loadWorktreeTaskStateEntries(taskPrefix),
 			this.fs.listOccupiedArchivedTaskIds(),
 		]);
-		const occupiedIds = new Set(snapshot.identityIndex.getOccupiedIds());
+		const occupiedIds = new Set(corpus.identityIndex.getOccupiedIds());
 		for (const task of completedTasks) occupiedIds.add(task.id);
 		for (const id of archivedIds) occupiedIds.add(id);
 		// Reserve archived branch identities without changing which records are
 		// visible or how historical lifecycle states resolve in normal task reads.
-		for (const entry of snapshot.branchStateEntries ?? []) {
+		for (const entry of corpus.branchStateEntries ?? []) {
 			occupiedIds.add(entry.id);
 			if (entry.task) occupiedIds.add(entry.task.id);
 		}
@@ -2784,8 +2789,7 @@ export class Core {
 		autoCommit?: boolean,
 		options: TaskReadOptions = {},
 	): Promise<TaskEditResult> {
-		// Editing a task into the Draft status vacates its ID just as `task demote` does, so it
-		// runs the same cleanup rather than leaving dependents pointing at the freed ID.
+		// Editing into Draft uses the same history preservation and dependency cleanup as demote.
 		return await this.withVacatedIdCleanup(task, task.id, async (cleanup) => {
 			const current = await this.loadTaskForMutation(task.id, options);
 			if (!current) {
@@ -2799,17 +2803,14 @@ export class Core {
 				return this.requireCanonicalStatus(status);
 			});
 
-			// The record keeps its own links under the new draft identity, so a link naming the task
-			// ID it is vacating would rebind to whatever task is allocated that ID next.
+			// Preserve existing cleanup of links to the original identity as it leaves active work.
 			const vacating = withoutVacatedTaskLinks(current, current.id) ?? current;
 
-			const { demotedDraft, savedPath } = await this.withCreateLock(async () => {
+			const { demotedDraft, savedPath, archivedPath } = await this.withCreateLock(async () => {
 				const newDraftId = await this.generateNextId(EntityType.Draft);
 				// Mirrors promotion: the allocated draft ID can be named by a stored dangling
 				// reference, so the demoted record must not materialize a cycle through it.
 				await validateDependencies(vacating.dependencies ?? [], this, { ...vacating, id: newDraftId });
-				const taskPath = current.filePath;
-
 				const demotedDraft: Task = {
 					...vacating,
 					id: newDraftId,
@@ -2821,13 +2822,8 @@ export class Core {
 				};
 
 				normalizeAssignee(demotedDraft);
-				const savedPath = await this.fs.saveDraft(demotedDraft);
-
-				if (taskPath) {
-					await unlink(taskPath);
-				}
-
-				return { demotedDraft, savedPath };
+				const { savedPath, archivedPath } = await this.fs.saveDemotedTask(current, demotedDraft);
+				return { demotedDraft, savedPath, archivedPath };
 			});
 
 			// The draft is written and the task file is gone, so anything failing from here reports
@@ -2849,7 +2845,7 @@ export class Core {
 						`backlog: Demote task ${normalizeTaskId(current.id)}`,
 						previousPaths,
 						savedPath,
-						cleanedPaths,
+						[archivedPath, ...cleanedPaths],
 					);
 				}
 			} catch (error) {
@@ -3578,16 +3574,16 @@ export class Core {
 		// vacates its task ID, so the dependents are locked and cleaned in the same span.
 		const demotion = {
 			success: false,
-			moved: undefined as { previousPath: string; savedPath: string } | undefined,
+			moved: undefined as { previousPath: string; savedPath: string; archivedPath: string } | undefined,
 			cleanedTaskIds: [] as string[],
 			cleanedPaths: [] as string[],
 		};
 		let result: typeof demotion;
 		try {
 			result = await this.withVacatedIdCleanup(task, task.id, async (cleanup) => {
-				const movedPaths: Array<{ previousPath: string; savedPath: string }> = [];
-				const success = await this.fs.demoteTask(task.id, (previousPath, savedPath) => {
-					movedPaths.push({ previousPath, savedPath });
+				const movedPaths: Array<{ previousPath: string; savedPath: string; archivedPath: string }> = [];
+				const success = await this.fs.demoteTask(task.id, (previousPath, savedPath, archivedPath) => {
+					movedPaths.push({ previousPath, savedPath, archivedPath });
 				});
 				// Record the move before anything that can fail after it. A cleanup write that
 				// throws must still report the demotion as "moved", or a client is told the task
@@ -3619,12 +3615,10 @@ export class Core {
 		if (success && moved) {
 			try {
 				if (await this.shouldAutoCommit(autoCommit)) {
-					await this.commitWrittenFile(
-						`backlog: Demote task ${task.id}`,
-						[moved.previousPath],
-						moved.savedPath,
-						cleanedPaths,
-					);
+					await this.commitWrittenFile(`backlog: Demote task ${task.id}`, [moved.previousPath], moved.savedPath, [
+						moved.archivedPath,
+						...cleanedPaths,
+					]);
 				}
 			} catch (error) {
 				throw markRecordAlreadyMoved(error, "demotionState", "commit");

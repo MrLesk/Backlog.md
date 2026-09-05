@@ -11,10 +11,9 @@ import { getTestCliPath } from "./test-cli.ts";
 import { createUniqueTestDir, initializeFilesystemTestProject, safeCleanup } from "./test-utils.ts";
 
 /**
- * Archiving and demoting both hand a task ID back to the allocator. A reference left behind stops
- * meaning what it said the moment the next created task is given that ID: it resolves to an
- * unrelated task instead of failing closed. Completion is the deliberate exception - a completed
- * dependency is exactly what readiness reads.
+ * Archiving and demoting preserve task IDs while removing tasks from active work. Keep their
+ * dependency-cleanup behavior so active dependents do not retain obsolete workflow blockers.
+ * Completion is the deliberate exception: a completed dependency is exactly what readiness reads.
  */
 describe("references to a vacated task ID", () => {
 	const cliPath = getTestCliPath();
@@ -94,7 +93,7 @@ describe("references to a vacated task ID", () => {
 		expect(demotion.cleanedTaskIds).toEqual([dependent.id]);
 
 		const { task: unrelated } = await core.createTaskFromInput({ title: "Totally unrelated new task" });
-		expect(taskIdsEqual(unrelated.id, target.id)).toBe(true);
+		expect(taskIdsEqual(unrelated.id, target.id)).toBe(false);
 
 		// The reference is removed, not rewritten to the draft the record became.
 		const drafts = await core.filesystem.listDrafts();
@@ -266,9 +265,9 @@ describe("references to a vacated task ID", () => {
 		expect(drafts).toHaveLength(1);
 		expect(drafts[0]?.references ?? []).toEqual(["docs/notes.md"]);
 
-		// The freed ID goes to the next task, which the draft must not have started naming.
+		// The original identity stays reserved after the draft's own references are cleaned.
 		const { task: unrelated } = await core.createTaskFromInput({ title: "Totally unrelated new task" });
-		expect(taskIdsEqual(unrelated.id, target.id)).toBe(true);
+		expect(taskIdsEqual(unrelated.id, target.id)).toBe(false);
 	});
 
 	it("removes the vacated ID from a record demoted by an edit into the Draft status", async () => {
@@ -280,7 +279,7 @@ describe("references to a vacated task ID", () => {
 		expect(demoted.references ?? []).toEqual(["docs/notes.md"]);
 	});
 
-	it("cleans a zero-padded reference and does not let it rebind to the reissued ID", async () => {
+	it("cleans a zero-padded reference while keeping the original ID reserved", async () => {
 		const { task: dependent } = await core.createTaskFromInput({ title: "Padded reference holder" });
 		const { task: target } = await core.createTaskFromInput({ title: "Demote target" });
 		// One identity, spelled with padding. Everything else in the product treats TASK-01 and
@@ -293,9 +292,9 @@ describe("references to a vacated task ID", () => {
 		expect(demotion.success).toBe(true);
 		expect(demotion.cleanedTaskIds).toEqual([dependent.id]);
 
-		// The freed ID goes to the next task created, which the padded reference must not name.
+		// Padding does not release the original identity to the next created task.
 		const { task: unrelated } = await core.createTaskFromInput({ title: "Totally unrelated new task" });
-		expect(taskIdsEqual(unrelated.id, target.id)).toBe(true);
+		expect(taskIdsEqual(unrelated.id, target.id)).toBe(false);
 
 		const updated = await core.filesystem.loadTask(dependent.id);
 		expect(updated?.references ?? []).toEqual([]);
