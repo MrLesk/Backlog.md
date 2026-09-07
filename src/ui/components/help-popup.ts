@@ -34,6 +34,7 @@ const BOARD_SHORTCUTS: Shortcut[] = [
 
 const TASK_LIST_SHORTCUTS: Shortcut[] = [
 	{ key: "Tab", desc: "Switch View (Kanban/List)" },
+	{ key: "N", desc: "Create a task" },
 	{ key: "/", desc: "Search tasks" },
 	{ key: "S", desc: "Filter by Status" },
 	{ key: "T", desc: "Filter by Type" },
