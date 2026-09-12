@@ -35,6 +35,8 @@ const PLATFORM_CONTRACT_FILES = [
 	"src/test/terminal-status.test.ts",
 
 	// Network and stdio lifecycle boundaries.
+	"src/test/cli-json-watch.test.ts",
+	"src/test/watch-json.test.ts",
 	"src/test/mcp-server.test.ts",
 	"src/test/mcp-stdio-exit.test.ts",
 	"src/test/server-browser-open.test.ts",
