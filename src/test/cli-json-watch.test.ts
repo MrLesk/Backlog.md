@@ -202,7 +202,9 @@ describe("CLI JSON watch", () => {
 			reader.releaseLock();
 			child.kill("SIGTERM");
 			await waitUntil(() => child.exitCode !== null, "watch termination with unread output", 5000);
-			expect(await child.exited).toBe(143);
+			const exitCode = await child.exited;
+			// Windows terminates the process directly rather than delivering a POSIX signal.
+			if (process.platform !== "win32") expect(exitCode).toBe(143);
 			expect(await new Response(child.stderr).text()).toBe("");
 		} finally {
 			if (child.exitCode === null) child.kill("SIGKILL");
