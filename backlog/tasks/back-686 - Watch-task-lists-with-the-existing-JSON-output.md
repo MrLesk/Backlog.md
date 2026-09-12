@@ -1,11 +1,11 @@
 ---
 id: BACK-686
 title: Watch task lists with the existing JSON output
-status: In Progress
+status: Done
 assignee:
   - '@codex'
 created_date: '2026-09-12 11:22'
-updated_date: '2026-09-12 11:36'
+updated_date: '2026-09-12 11:39'
 labels: []
 dependencies: []
 references:
@@ -66,6 +66,8 @@ Validation: 71 tests passed across cli-json-output, cli-json-watch, watch-json, 
 PR #1015: added both watch test files to the macOS/Windows platform CI profile. The shutdown test checks termination on Windows without assuming a POSIX exit code. The 12 watch tests, type check and Biome check pass locally.
 
 Windows platform CI exposed a timeout in the large unread-pipe termination test. Investigating using the subprocess exit promise rather than polling exitCode, which does not actively await child termination.
+
+Windows CI passed after the shutdown test actively awaited child.exited rather than polling exitCode. Both watch suites now run on Linux, macOS and Windows. Codex reviewed the implementation without major findings; PR #1015 contains the review and CI results.
 <!-- SECTION:NOTES:END -->
 
 ## Final Summary
