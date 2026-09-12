@@ -19,12 +19,27 @@ export function getStatusFieldEnumValues(config: Pick<BacklogConfig, "statuses">
 /**
  * Generates a status field schema with dynamic enum values sourced from config.
  */
-export function generateStatusFieldSchema(config: BacklogConfig): JsonSchema {
+export function generateStatusFieldSchema(
+	config: BacklogConfig,
+	includeDefault = true,
+	allowSchemaPlaceholder = false,
+	includeConfiguredDefaultInEnum = includeDefault,
+): JsonSchema {
 	const configuredStatuses =
 		config.statuses && config.statuses.length > 0 ? [...config.statuses] : [...DEFAULT_STATUSES];
 	const normalizedStatuses = configuredStatuses.map((status) => status.trim());
 	const enumStatuses = getStatusFieldEnumValues(config);
-	const defaultStatus = normalizedStatuses[0] ?? DEFAULT_STATUSES[0];
+	// Creation uses the configured defaultStatus, which may intentionally differ
+	// from the first entry in the display/validation status list.
+	const configuredDefault = config.defaultStatus?.trim();
+	if (
+		includeConfiguredDefaultInEnum &&
+		configuredDefault &&
+		!enumStatuses.some((status) => status.toLowerCase() === configuredDefault.toLowerCase())
+	) {
+		enumStatuses.push(configuredDefault);
+	}
+	const defaultStatus = configuredDefault || normalizedStatuses[0] || DEFAULT_STATUSES[0];
 
 	return {
 		type: "string",
@@ -32,7 +47,8 @@ export function generateStatusFieldSchema(config: BacklogConfig): JsonSchema {
 		enum: enumStatuses,
 		enumCaseInsensitive: true,
 		enumNormalizeWhitespace: true,
-		default: defaultStatus,
+		...(allowSchemaPlaceholder ? { allowSchemaPlaceholder: true, schemaPlaceholderField: "status" } : {}),
+		...(includeDefault ? { default: defaultStatus } : {}),
 		description: `Status value (case-insensitive). Valid values: ${enumStatuses.join(", ")}`,
 	};
 }
@@ -119,7 +135,10 @@ export function generateTaskListSchema(config: Pick<BacklogConfig, "types" | "pr
 /**
  * Generates a priority field schema with dynamic enum values sourced from config.
  */
-function generatePriorityFieldSchema(config: Pick<BacklogConfig, "priorities">): JsonSchema {
+function generatePriorityFieldSchema(
+	config: Pick<BacklogConfig, "priorities">,
+	allowSchemaPlaceholder = false,
+): JsonSchema {
 	const priorities = getPriorityLabels(config);
 
 	return {
@@ -127,6 +146,7 @@ function generatePriorityFieldSchema(config: Pick<BacklogConfig, "priorities">):
 		maxLength: 50,
 		enum: priorities,
 		enumCaseInsensitive: true,
+		...(allowSchemaPlaceholder ? { allowSchemaPlaceholder: true, schemaPlaceholderField: "priority" } : {}),
 		description: `Optional task priority (case-insensitive). Valid values: ${priorities.join(", ")}`,
 	};
 }
@@ -136,7 +156,10 @@ function generatePriorityFieldSchema(config: Pick<BacklogConfig, "priorities">):
  * Unlike priority and type, projects has no default set, so callers must omit this
  * field from generated tool schemas entirely when no projects are configured.
  */
-function generateProjectFieldSchema(config: Pick<BacklogConfig, "projects">): JsonSchema {
+function generateProjectFieldSchema(
+	config: Pick<BacklogConfig, "projects">,
+	allowSchemaPlaceholder = false,
+): JsonSchema {
 	const projects = getProjectValues(config);
 
 	return {
@@ -144,6 +167,7 @@ function generateProjectFieldSchema(config: Pick<BacklogConfig, "projects">): Js
 		maxLength: 50,
 		enum: projects,
 		enumCaseInsensitive: true,
+		...(allowSchemaPlaceholder ? { allowSchemaPlaceholder: true, schemaPlaceholderField: "project" } : {}),
 		description: `Optional task project (case-insensitive). Valid values: ${projects.join(", ")}`,
 	};
 }
@@ -293,11 +317,11 @@ export function generateTaskEditSchema(config: BacklogConfig): JsonSchema {
 				type: "string",
 				maxLength: 10000,
 			},
-			status: generateStatusFieldSchema(config),
+			status: generateStatusFieldSchema(config, false, true, false),
 			dueDate: generateDueDateFieldSchema("Set the task due date, or pass null to clear it.", true),
-			priority: generatePriorityFieldSchema(config),
-			type: generateTypeFieldSchema(config),
-			...(getProjectValues(config).length > 0 ? { project: generateProjectFieldSchema(config) } : {}),
+			priority: generatePriorityFieldSchema(config, true),
+			type: { ...generateTypeFieldSchema(config), allowSchemaPlaceholder: true, schemaPlaceholderField: "type" },
+			...(getProjectValues(config).length > 0 ? { project: generateProjectFieldSchema(config, true) } : {}),
 			ordinal: {
 				type: "number",
 				minimum: 0,

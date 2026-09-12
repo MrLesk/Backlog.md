@@ -18,6 +18,9 @@ export interface JsonSchema {
 	preserveWhitespace?: boolean;
 	description?: string;
 	default?: unknown;
+	/** Treat TypeScript-style schema echoes as omitted for this field. */
+	allowSchemaPlaceholder?: boolean;
+	schemaPlaceholderField?: string;
 }
 
 /**
@@ -119,6 +122,13 @@ function validateField(
 			const sanitizedString = shouldPreserveWhitespace
 				? sanitizeStringPreserveWhitespace(value)
 				: sanitizeString(value);
+			if (
+				schema.allowSchemaPlaceholder &&
+				schema.schemaPlaceholderField === fieldName &&
+				isEnumSchemaPlaceholder(sanitizedString, fieldName)
+			) {
+				return { isValid: true, errors: [] };
+			}
 			let sanitizedResult = sanitizedString;
 
 			// Length validation
@@ -215,6 +225,11 @@ function validateField(
 	}
 
 	return { isValid: errors.length === 0, errors, sanitizedValue: value };
+}
+
+function isEnumSchemaPlaceholder(value: string, fieldName: string): boolean {
+	const escapedField = fieldName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+	return new RegExp(`^${escapedField}\\?(?::\\s*.*)?$`, "u").test(value);
 }
 
 /**
