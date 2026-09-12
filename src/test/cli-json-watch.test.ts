@@ -196,19 +196,24 @@ describe("CLI JSON watch", () => {
 			stdout: "pipe",
 			stderr: "pipe",
 		});
+		let exited = false;
+		const exit = child.exited.then((code) => {
+			exited = true;
+			return code;
+		});
 		try {
 			const reader = child.stdout.getReader();
 			await reader.read();
 			reader.releaseLock();
 			child.kill("SIGTERM");
-			await waitUntil(() => child.exitCode !== null, "watch termination with unread output", 5000);
-			const exitCode = await child.exited;
+			await waitUntil(() => exited, "watch termination with unread output", 5000);
+			const exitCode = await exit;
 			// Windows terminates the process directly rather than delivering a POSIX signal.
 			if (process.platform !== "win32") expect(exitCode).toBe(143);
 			expect(await new Response(child.stderr).text()).toBe("");
 		} finally {
-			if (child.exitCode === null) child.kill("SIGKILL");
-			await child.exited;
+			if (!exited) child.kill("SIGKILL");
+			await exit;
 		}
 	});
 
