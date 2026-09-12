@@ -263,6 +263,10 @@ export function searchJson(results: SearchResultInput[], projectRoot: string, do
 	return { schemaVersion: 1, kind: "search" as const, results: publicResults };
 }
 
+export function formatJson(value: unknown): string {
+	return `${JSON.stringify(value, null, 2)}\n`;
+}
+
 export function printJson(value: unknown): void {
-	process.stdout.write(`${JSON.stringify(value, null, 2)}\n`);
+	process.stdout.write(formatJson(value));
 }
