@@ -47,6 +47,12 @@ Running `backlog config` with no arguments launches the interactive advanced wiz
 
 > **Note**: Set `remoteOperations: false` to work offline. This disables git fetch operations and loads tasks from local branches only, useful when working without network connectivity.
 
+### Remote task coordination
+
+When remote operations are enabled, Backlog can use blob-backed refs under `refs/backlog/tasks/*` for transient task coordination. These refs provide atomic claims, leases, and a live status/assignee overlay without adding commits to `main` or feature-branch history. Markdown task files remain the durable source of truth.
+
+Use `backlog task start BACK-123` to claim, assign, and move a task to the active status as one workflow. Use `backlog task claim`, `backlog task release`, `backlog task publish`, and `backlog task claims` for the individual operations. Claiming fails closed when the configured Git remote cannot be reached. Set `remoteOperations: false` to disable all remote coordination.
+
 > **Git Control**: By default, `autoCommit` is set to `false`, giving you full control over your git history. Task operations will modify files but won't automatically commit changes. Set `autoCommit: true` if you prefer automatic commits for each task operation.
 
 > **Git Hooks**: If you have pre-commit hooks (like conventional commits or linters) that interfere with backlog.md's automated commits, set `bypassGitHooks: true` to skip them using the `--no-verify` flag.
