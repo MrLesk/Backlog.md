@@ -19,6 +19,10 @@ Avoid broad unfiltered listing when the project may have many tasks. Use `--stat
 
 Use `backlog task view {{TASK_ID:123}} --plain` to read full context for likely matches.
 
+Archived task and subtask IDs remain reserved. Demoting a task preserves the
+original record in `archive/tasks` and creates a separately numbered draft;
+later draft edits, promotion, or archival do not release the old task ID.
+
 ### Step 2: Assess Scope Before Creating Tasks
 
 Decide whether the request is:

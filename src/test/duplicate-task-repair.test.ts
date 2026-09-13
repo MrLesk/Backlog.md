@@ -168,6 +168,31 @@ describe("duplicate task diagnosis", () => {
 });
 
 describe("duplicate task repair", () => {
+	it("rechecks branch reservations before applying a preview made from a cached corpus", async () => {
+		await $`git init -b main`.cwd(testDir).quiet();
+		const config = await core.filesystem.loadConfig();
+		if (!config) throw new Error("Missing test config");
+		await core.filesystem.saveConfig({ ...config, checkActiveBranches: true });
+		const alphaPath = await writeTask(core.filesystem.tasksDir, "task-1 - Alpha.md", makeTask("TASK-1", "Alpha"));
+		const betaPath = await writeTask(core.filesystem.tasksDir, "task-01 - Beta.md", makeTask("TASK-01", "Beta"));
+		await $`git add .`.cwd(testDir).quiet();
+		await $`git commit -m "Duplicate tasks before branch reservation"`.cwd(testDir).quiet();
+		const originals = await Promise.all([alphaPath, betaPath].map((path) => Bun.file(path).text()));
+		const plan = await core.previewDuplicateTaskIdRepair();
+		expect(plan.changes[0]?.newId).toBe("TASK-2");
+
+		await $`git switch -c retired-history`.cwd(testDir).quiet();
+		await writeTask(core.filesystem.archiveTasksDir, "task-2 - Retired.md", makeTask("TASK-2", "Retired"));
+		await $`git add .`.cwd(testDir).quiet();
+		await $`git commit -m "Reserve the proposed repair ID on another branch"`.cwd(testDir).quiet();
+		await $`git switch main`.cwd(testDir).quiet();
+
+		await expect(core.repairDuplicateTaskIds(plan.fingerprint)).rejects.toThrow("changed after the preview");
+		expect(await Promise.all([alphaPath, betaPath].map((path) => Bun.file(path).text()))).toEqual(originals);
+		const refreshed = await core.previewDuplicateTaskIdRepair({ includeBranches: true });
+		expect(refreshed.changes[0]?.newId).toBe("TASK-3");
+	});
+
 	it("preserves dotted subtask identity with parent-aware allocation", async () => {
 		await writeTask(core.filesystem.tasksDir, "task-1 - Parent.md", makeTask("TASK-1", "Parent"));
 		await writeTask(core.filesystem.tasksDir, "task-1.1 - Plain.md", {
