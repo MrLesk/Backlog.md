@@ -10,6 +10,7 @@ import { DEFAULT_STATUSES } from "../../constants/index.ts";
 import { collectAvailableLabels } from "../../utils/label-filter.ts";
 import { compareTaskIds, compareTaskIdsDescending } from "../../utils/task-sorting.ts";
 import { isTerminalStatus } from "../../utils/terminal-status.ts";
+import { getProjectValues, matchesProjectFilter, resolveProjectValue } from "../../utils/project-config.ts";
 import { collectArchivedMilestoneKeys, getMilestoneLabel, milestoneKey } from "../utils/milestones";
 import { parseStoredUtcDate } from "../utils/date-display";
 import {
@@ -22,6 +23,7 @@ import CleanupModal from "./CleanupModal";
 import StoredDate from "./StoredDate";
 import AcceptanceCriteriaProgress from "./AcceptanceCriteriaProgress";
 import LabelFilterDropdown from "./LabelFilterDropdown";
+import ProjectBadge from "./ProjectBadge";
 import { SuccessToast } from "./SuccessToast";
 
 interface TaskListProps {
@@ -32,6 +34,7 @@ interface TaskListProps {
 	availableLabels: string[];
 	availableMilestones: string[];
 	availablePriorities?: string[];
+	availableProjects?: string[];
 	milestoneEntities: Milestone[];
 	archivedMilestones: Milestone[];
 	onRefreshData?: () => Promise<void>;
@@ -39,7 +42,7 @@ interface TaskListProps {
 	isLoading?: boolean;
 }
 
-type TaskSortColumn = "id" | "title" | "status" | "priority" | "ordinal" | "milestone" | "created";
+type TaskSortColumn = "id" | "title" | "status" | "priority" | "ordinal" | "project" | "milestone" | "created";
 type SortDirection = "asc" | "desc";
 
 // Column widths in rem, in render order: ID, Title, Status, Priority, Ordinal, Labels,
@@ -47,13 +50,17 @@ type SortDirection = "asc" | "desc";
 // label and its cell content; Title is the one flexible column (null) and absorbs whatever
 // the content area has left, so the table fits a laptop viewport instead of overflowing it.
 const TASK_COLUMN_WIDTHS_REM: readonly (number | null)[] = [6, null, 6.5, 6.5, 6, 8, 6.5, 8, 6];
+// The Project column only renders when projects are configured, just before Milestone.
+const TASK_COLUMN_WIDTHS_WITH_PROJECT_REM: readonly (number | null)[] = [
+	...TASK_COLUMN_WIDTHS_REM.slice(0, 7),
+	6,
+	...TASK_COLUMN_WIDTHS_REM.slice(7),
+];
 
 // Below this the table scrolls horizontally rather than crushing the columns.
 const TASK_TITLE_MIN_WIDTH_REM = 12;
-const TASK_TABLE_MIN_WIDTH_REM = TASK_COLUMN_WIDTHS_REM.reduce<number>(
-	(total, width) => total + (width ?? TASK_TITLE_MIN_WIDTH_REM),
-	0,
-);
+const getTableMinWidthRem = (widths: readonly (number | null)[]): number =>
+	widths.reduce<number>((total, width) => total + (width ?? TASK_TITLE_MIN_WIDTH_REM), 0);
 
 function compareTaskIdsAscending(a: Task, b: Task): number {
 	return compareTaskIds(a.id, b.id);
@@ -118,6 +125,7 @@ const TaskList: React.FC<TaskListProps> = ({
 	availableLabels,
 	availableMilestones,
 	availablePriorities,
+	availableProjects,
 	milestoneEntities,
 	archivedMilestones,
 	onRefreshData,
@@ -142,6 +150,9 @@ const TaskList: React.FC<TaskListProps> = ({
 	const [priorityFilter, setPriorityFilter] = useState<string>(() =>
 		isLoading ? "" : (resolvePriorityValue(searchParams.get("priority"), availablePriorities) ?? ""),
 	);
+	const [projectFilter, setProjectFilter] = useState<string>(() =>
+		isLoading ? "" : (resolveProjectValue(searchParams.get("project"), availableProjects) ?? ""),
+	);
 	const [milestoneFilter, setMilestoneFilter] = useState(() => searchParams.get("milestone") ?? "");
 	const initialLabelParams = useMemo(() => {
 		const labels = [...searchParams.getAll("label"), ...searchParams.getAll("labels")];
@@ -160,6 +171,9 @@ const TaskList: React.FC<TaskListProps> = ({
 		() => [{ label: "All priorities", value: "" }, ...getPriorityOptions(availablePriorities)],
 		[availablePriorities],
 	);
+	const projectOptions = useMemo(() => getProjectValues(availableProjects), [availableProjects]);
+	const columnWidthsRem = projectOptions.length > 0 ? TASK_COLUMN_WIDTHS_WITH_PROJECT_REM : TASK_COLUMN_WIDTHS_REM;
+	const tableMinWidthRem = getTableMinWidthRem(columnWidthsRem);
 	const tableHeaderScrollRef = useRef<HTMLDivElement | null>(null);
 	const tableBodyScrollRef = useRef<HTMLDivElement | null>(null);
 	const isSyncingTableScrollRef = useRef(false);
@@ -310,6 +324,7 @@ const TaskList: React.FC<TaskListProps> = ({
 		statusFilter.length > 0 ||
 			excludedStatusFilter.length > 0 ||
 			priorityFilter ||
+			projectFilter ||
 			labelFilter.length > 0 ||
 			milestoneFilter,
 	);
@@ -327,6 +342,8 @@ const TaskList: React.FC<TaskListProps> = ({
 			.filter((status) => status.length > 0);
 		const rawParamPriority = searchParams.get("priority") ?? "";
 		const paramPriority = resolvePriorityValue(rawParamPriority, availablePriorities) ?? "";
+		const rawParamProject = searchParams.get("project") ?? "";
+		const paramProject = resolveProjectValue(rawParamProject, availableProjects) ?? "";
 		const paramMilestone = searchParams.get("milestone") ?? "";
 		const paramLabels = [...searchParams.getAll("label"), ...searchParams.getAll("labels")];
 		const labelsCsv = searchParams.get("labels");
@@ -341,13 +358,18 @@ const TaskList: React.FC<TaskListProps> = ({
 		if (!areEqualStringArrays(normalizedExcludedStatuses, excludedStatusFilter)) {
 			setExcludedStatusFilter(normalizedExcludedStatuses);
 		}
-		if (!isLoading && rawParamPriority !== paramPriority) {
+		if (!isLoading && (rawParamPriority !== paramPriority || rawParamProject !== paramProject)) {
 			setSearchParams(
 				(params) => {
 					if (paramPriority) {
 						params.set("priority", paramPriority);
 					} else {
 						params.delete("priority");
+					}
+					if (paramProject) {
+						params.set("project", paramProject);
+					} else {
+						params.delete("project");
 					}
 					return params;
 				},
@@ -357,13 +379,16 @@ const TaskList: React.FC<TaskListProps> = ({
 		if (!isLoading && paramPriority !== priorityFilter) {
 			setPriorityFilter(paramPriority);
 		}
+		if (!isLoading && paramProject !== projectFilter) {
+			setProjectFilter(paramProject);
+		}
 		if (paramMilestone !== milestoneFilter) {
 			setMilestoneFilter(paramMilestone);
 		}
 		if (!areEqualStringArrays(normalizedLabels, labelFilter)) {
 			setLabelFilter(normalizedLabels);
 		}
-	}, [availablePriorities, isLoading, searchParams, setSearchParams, statusOptions]);
+	}, [availablePriorities, availableProjects, isLoading, searchParams, setSearchParams, statusOptions]);
 
 	useEffect(() => {
 		if (!hasActiveFilters) {
@@ -373,10 +398,11 @@ const TaskList: React.FC<TaskListProps> = ({
 	}, [hasActiveFilters, sortedBaseTasks]);
 
 	useEffect(() => {
-		const filterByMilestone = (list: Task[]): Task[] => {
+		const filterLocally = (list: Task[]): Task[] => {
 			const normalized = canonicalizeMilestone(milestoneFilter);
-			if (!normalized) return list;
-			return list.filter((task) => {
+			const projectFiltered = list.filter((task) => matchesProjectFilter(task.project, projectFilter));
+			if (!normalized) return projectFiltered;
+			return projectFiltered.filter((task) => {
 				const canonicalTaskMilestone = canonicalizeMilestone(task.milestone);
 				const taskKey = milestoneKey(canonicalTaskMilestone);
 				const normalizedTaskMilestone = taskKey && archivedMilestoneKeys.has(taskKey) ? "" : canonicalTaskMilestone;
@@ -401,9 +427,9 @@ const TaskList: React.FC<TaskListProps> = ({
 		setError(null);
 
 		const fetchFilteredTasks = async () => {
-			// If only milestone filter is active, filter locally to avoid an extra request
+			// If only milestone or project filters are active, filter locally to avoid an extra request
 			if (!shouldUseApi) {
-				setDisplayTasks(filterByMilestone(sortedBaseTasks));
+				setDisplayTasks(filterLocally(sortedBaseTasks));
 				return;
 			}
 			try {
@@ -418,7 +444,7 @@ const TaskList: React.FC<TaskListProps> = ({
 					return;
 				}
 				const taskResults = results.filter((result): result is TaskSearchResult => result.type === "task");
-				const filtered = filterByMilestone(taskResults.map((result) => result.task));
+				const filtered = filterLocally(taskResults.map((result) => result.task));
 				setDisplayTasks(sortTasksByIdDescending(filtered));
 			} catch (err) {
 				console.error("Failed to apply task filters:", err);
@@ -442,6 +468,7 @@ const TaskList: React.FC<TaskListProps> = ({
 		labelFilter,
 		tasks,
 		milestoneFilter,
+		projectFilter,
 		sortedBaseTasks,
 		milestoneAliasToCanonical,
 		archivedMilestoneKeys,
@@ -453,6 +480,7 @@ const TaskList: React.FC<TaskListProps> = ({
 		nextPriority: string,
 		nextLabels: string[],
 		nextMilestone: string,
+		nextProject: string,
 	) => {
 		const params = new URLSearchParams();
 		for (const status of nextStatuses) {
@@ -476,44 +504,53 @@ const TaskList: React.FC<TaskListProps> = ({
 		if (nextMilestone) {
 			params.set("milestone", nextMilestone);
 		}
+		if (nextProject) {
+			params.set("project", nextProject);
+		}
 		setSearchParams(params, { replace: true });
 	};
 
 	const handleStatusChange = (next: string[]) => {
 		const normalized = normalizeStatusFilters(next, statusOptions);
 		setStatusFilter(normalized);
-		syncUrl(normalized, excludedStatusFilter, priorityFilter, labelFilter, milestoneFilter);
+		syncUrl(normalized, excludedStatusFilter, priorityFilter, labelFilter, milestoneFilter, projectFilter);
 	};
 
 	const handleExcludeStatusChange = (next: string[]) => {
 		const normalized = next.map((status) => status.trim()).filter((status) => status.length > 0);
 		setExcludedStatusFilter(normalized);
-		syncUrl(statusFilter, normalized, priorityFilter, labelFilter, milestoneFilter);
+		syncUrl(statusFilter, normalized, priorityFilter, labelFilter, milestoneFilter, projectFilter);
 	};
 
 	const handlePriorityChange = (value: string) => {
 		setPriorityFilter(value);
-		syncUrl(statusFilter, excludedStatusFilter, value, labelFilter, milestoneFilter);
+		syncUrl(statusFilter, excludedStatusFilter, value, labelFilter, milestoneFilter, projectFilter);
 	};
 
 	const handleLabelChange = (next: string[]) => {
 		const normalized = next.map((label) => label.trim()).filter((label) => label.length > 0);
 		setLabelFilter(normalized);
-		syncUrl(statusFilter, excludedStatusFilter, priorityFilter, normalized, milestoneFilter);
+		syncUrl(statusFilter, excludedStatusFilter, priorityFilter, normalized, milestoneFilter, projectFilter);
 	};
 
 	const handleMilestoneChange = (value: string) => {
 		setMilestoneFilter(value);
-		syncUrl(statusFilter, excludedStatusFilter, priorityFilter, labelFilter, value);
+		syncUrl(statusFilter, excludedStatusFilter, priorityFilter, labelFilter, value, projectFilter);
+	};
+
+	const handleProjectChange = (value: string) => {
+		setProjectFilter(value);
+		syncUrl(statusFilter, excludedStatusFilter, priorityFilter, labelFilter, milestoneFilter, value);
 	};
 
 	const handleClearFilters = () => {
 		setStatusFilter([]);
 		setExcludedStatusFilter([]);
 		setPriorityFilter("");
+		setProjectFilter("");
 		setLabelFilter([]);
 		setMilestoneFilter("");
-		syncUrl([], [], "", [], "");
+		syncUrl([], [], "", [], "", "");
 		setDisplayTasks(sortedBaseTasks);
 		setError(null);
 	};
@@ -605,7 +642,7 @@ const TaskList: React.FC<TaskListProps> = ({
 
 	const renderColumnGroup = () => (
 		<colgroup>
-			{TASK_COLUMN_WIDTHS_REM.map((width, index) => (
+			{columnWidthsRem.map((width, index) => (
 				// biome-ignore lint/suspicious/noArrayIndexKey: the column order is static
 				<col key={index} style={width === null ? undefined : { width: `${width}rem` }} />
 			))}
@@ -649,6 +686,10 @@ const TaskList: React.FC<TaskListProps> = ({
 					} else if (typeof bOrd === "number") {
 						result = 1;
 					}
+					break;
+				}
+				case "project": {
+					result = withDirection(compareText(a.project ?? "", b.project ?? ""));
 					break;
 				}
 				case "milestone": {
@@ -757,6 +798,22 @@ const TaskList: React.FC<TaskListProps> = ({
 							))}
 						</select>
 
+						{projectOptions.length > 0 && (
+							<select
+								aria-label="Filter tasks by project"
+								value={projectFilter}
+								onChange={(event) => handleProjectChange(event.target.value)}
+								className="min-w-[140px] h-10 py-2 px-3 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-stone-500 dark:focus:ring-stone-400 transition-colors duration-200"
+							>
+								<option value="">All projects</option>
+								{projectOptions.map((project) => (
+									<option key={project} value={project}>
+										{project}
+									</option>
+								))}
+							</select>
+						)}
+
 						<select
 							value={milestoneFilter}
 							onChange={(event) => handleMilestoneChange(event.target.value)}
@@ -836,7 +893,7 @@ const TaskList: React.FC<TaskListProps> = ({
 				<div className="rounded-lg border border-gray-200 dark:border-gray-700 overflow-hidden">
 					<div className="sticky top-0 z-10 border-b border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-700/95 backdrop-blur supports-[backdrop-filter]:bg-gray-50/90 supports-[backdrop-filter]:dark:bg-gray-700/85">
 						<div ref={tableHeaderScrollRef} className="overflow-x-auto" style={{ overflowY: "hidden" }}>
-							<table className="w-full table-fixed border-collapse" style={{ minWidth: `${TASK_TABLE_MIN_WIDTH_REM}rem` }}>
+							<table className="w-full table-fixed border-collapse" style={{ minWidth: `${tableMinWidthRem}rem` }}>
 								{renderColumnGroup()}
 								<thead>
 									<tr className="text-left text-xs font-medium uppercase tracking-wider text-gray-500 dark:text-gray-300">
@@ -847,6 +904,7 @@ const TaskList: React.FC<TaskListProps> = ({
 										{renderSortableHeader("Ordinal", "ordinal")}
 										<th className="px-3 py-2">Labels</th>
 										<th className="px-3 py-2">Assignee</th>
+										{projectOptions.length > 0 && renderSortableHeader("Project", "project")}
 										{renderSortableHeader("Milestone", "milestone")}
 										{renderSortableHeader("Created", "created")}
 									</tr>
@@ -855,7 +913,7 @@ const TaskList: React.FC<TaskListProps> = ({
 						</div>
 					</div>
 					<div ref={tableBodyScrollRef} className="overflow-x-auto" style={{ overflowY: "hidden" }}>
-						<table className="w-full table-fixed border-collapse" style={{ minWidth: `${TASK_TABLE_MIN_WIDTH_REM}rem` }}>
+						<table className="w-full table-fixed border-collapse" style={{ minWidth: `${tableMinWidthRem}rem` }}>
 							{renderColumnGroup()}
 							<tbody className="divide-y divide-gray-200 dark:divide-gray-700">
 								{sortedDisplayTasks.map((task) => {
@@ -972,6 +1030,15 @@ const TaskList: React.FC<TaskListProps> = ({
 													<span className="text-xs text-gray-300 dark:text-gray-600">—</span>
 												)}
 											</td>
+											{projectOptions.length > 0 && (
+												<td className="px-3 py-2.5">
+													{task.project ? (
+														<ProjectBadge project={task.project} availableProjects={projectOptions} />
+													) : (
+														<span className="text-xs text-gray-300 dark:text-gray-600">—</span>
+													)}
+												</td>
+											)}
 											<td className="px-3 py-2.5 text-xs text-gray-600 dark:text-gray-300 truncate" title={milestoneLabel}>
 												{milestoneLabel}
 											</td>
