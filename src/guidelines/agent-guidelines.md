@@ -572,6 +572,8 @@ backlog search --modified-file src/server/api.ts --plain
 | Add references   | `backlog task edit 42 --add-ref src/api.ts --add-ref https://github.com/issue/123` |
 | Remove references | `backlog task edit 42 --remove-ref src/api.ts` |
 | Replace documentation | `backlog task edit 42 --doc https://design-docs.example.com --doc docs/spec.md` |
+| Add documentation | `backlog task edit 42 --add-doc docs/spec.md --add-doc docs/api.md` |
+| Remove documentation | `backlog task edit 42 --remove-doc docs/spec.md` |
 | Set modified files | `backlog task edit 42 --modified-file src/api.ts --modified-file src/ui.ts` |
 
 ### Dependency Graph in Task Detail

@@ -616,6 +616,8 @@ function hasEditFieldFlags(options: Record<string, unknown>): boolean {
 			options.removeRef !== undefined ||
 			options.clearRefs ||
 			options.doc !== undefined ||
+			options.addDoc !== undefined ||
+			options.removeDoc !== undefined ||
 			options.clearDocs ||
 			options.modifiedFile !== undefined,
 	);
@@ -775,6 +777,22 @@ function validateTaskListFlags(
 			clearFlag: clearFlag("--clear-docs"),
 			subject: "documentation",
 			emptyClears: supportsClearFlags,
+		}) ??
+		validateClearableListInput({
+			rawValues: toStringArray(options.addDoc),
+			cleared: Boolean(options.clearDocs),
+			isBlank: isBlankListValue,
+			setterFlags: "--add-doc",
+			clearFlag: clearFlag("--clear-docs"),
+			subject: "documentation",
+		}) ??
+		validateClearableListInput({
+			rawValues: toStringArray(options.removeDoc),
+			cleared: Boolean(options.clearDocs),
+			isBlank: isBlankListValue,
+			setterFlags: "--remove-doc",
+			clearFlag: clearFlag("--clear-docs"),
+			subject: "documentation",
 		})
 	);
 }
@@ -3411,6 +3429,14 @@ async function runEditCommand(target: EditCommandTarget, requestedIds: string[] 
 		process.exitCode = 1;
 		return;
 	}
+
+	if (options.doc !== undefined && (options.addDoc !== undefined || options.removeDoc !== undefined)) {
+		console.error(
+			"Cannot combine --doc with --add-doc or --remove-doc. Use --doc a,b for the final full documentation set, or use add/remove flags without --doc.",
+		);
+		process.exitCode = 1;
+		return;
+	}
 	// These three read as clearable lists: an absent flag keeps the current list, and an explicit
 	// empty value produces [], which the assignments below apply as the same clear as --clear-deps.
 	const dependencyValues = parseClearableStringList([
@@ -3422,6 +3448,8 @@ async function runEditCommand(target: EditCommandTarget, requestedIds: string[] 
 	const addReferenceValues = parseDelimitedStringList(options.addRef) ?? [];
 	const removeReferenceValues = parseDelimitedStringList(options.removeRef) ?? [];
 	const normalizedDocumentation = parseClearableStringList(options.doc);
+	const addDocumentationValues = parseDelimitedStringList(options.addDoc) ?? [];
+	const removeDocumentationValues = parseDelimitedStringList(options.removeDoc) ?? [];
 	const normalizedModifiedFiles = parseDelimitedStringList(options.modifiedFile);
 
 	const planAppendValues = toStringArray(options.appendPlan);
@@ -3494,6 +3522,12 @@ async function runEditCommand(target: EditCommandTarget, requestedIds: string[] 
 		editArgs.documentation = normalizedDocumentation;
 	} else if (options.clearDocs) {
 		editArgs.documentation = [];
+	}
+	if (addDocumentationValues.length > 0) {
+		editArgs.addDocumentation = addDocumentationValues;
+	}
+	if (removeDocumentationValues.length > 0) {
+		editArgs.removeDocumentation = removeDocumentationValues;
 	}
 	if (normalizedModifiedFiles && normalizedModifiedFiles.length > 0) {
 		editArgs.modifiedFiles = normalizedModifiedFiles;
@@ -3732,13 +3766,20 @@ function addEditFieldOptions(cmd: Command) {
 		)
 		.option(
 			"--doc <documentation>",
-			'set documentation (can be used multiple times); pass "" to clear it',
-			(value, previous) => {
-				const soFar = Array.isArray(previous) ? previous : previous ? [previous] : [];
-				return [...soFar, value];
-			},
+			'replace all documentation (comma-separated or repeatable; cannot combine with --add-doc/--remove-doc); pass "" to clear it',
+			createMultiValueAccumulator(),
 		)
-		.option("--clear-docs", "remove all documentation (cannot combine with --doc)");
+		.option(
+			"--add-doc <documentation>",
+			"add documentation without replacing existing documentation (comma-separated or repeatable)",
+			createMultiValueAccumulator(),
+		)
+		.option(
+			"--remove-doc <documentation>",
+			"remove documentation without replacing others (comma-separated or repeatable)",
+			createMultiValueAccumulator(),
+		)
+		.option("--clear-docs", "remove all documentation (cannot combine with --doc/--add-doc/--remove-doc)");
 }
 
 const taskEditCommand = addHelpSchema(taskCmd.command("edit [taskIds...]"), {
@@ -3808,9 +3849,19 @@ const taskEditCommand = addHelpSchema(taskCmd.command("edit [taskIds...]"), {
 			description: "Remove all references; cannot combine with --ref, --add-ref, or --remove-ref",
 		},
 		{
+			name: "add-doc",
+			type: "Comma-separated strings",
+			description: "Add documentation; repeat --add-doc or use doc1,doc2",
+		},
+		{
+			name: "remove-doc",
+			type: "Comma-separated strings",
+			description: "Remove documentation; repeat --remove-doc or use doc1,doc2",
+		},
+		{
 			name: "clear-docs",
 			type: "Boolean",
-			description: "Remove all documentation; cannot combine with --doc",
+			description: "Remove all documentation; cannot combine with --doc, --add-doc, or --remove-doc",
 		},
 		{ name: "plan", type: "Markdown", description: "Replacement implementation plan" },
 		{
@@ -4242,7 +4293,9 @@ const draftEditCommand = addHelpSchema(draftCmd.command("edit [taskId]"), {
 		{ name: "add-ref", type: "Comma-separated strings", description: "Add references; repeatable" },
 		{ name: "remove-ref", type: "Comma-separated strings", description: "Remove references; repeatable" },
 		{ name: "clear-refs", type: "Boolean", description: "Remove all references" },
-		{ name: "doc", type: "Comma-separated strings", description: 'Set documentation; pass "" to clear' },
+		{ name: "doc", type: "Comma-separated strings", description: 'Replace all documentation; pass "" to clear' },
+		{ name: "add-doc", type: "Comma-separated strings", description: "Add documentation; repeatable" },
+		{ name: "remove-doc", type: "Comma-separated strings", description: "Remove documentation; repeatable" },
 		{ name: "modified-file", type: "Comma-separated strings", description: "Set modified file paths; repeatable" },
 		{ name: "clear-docs", type: "Boolean", description: "Remove all documentation" },
 		{ name: "plain", type: "Boolean", description: "Use plain text output after editing" },
