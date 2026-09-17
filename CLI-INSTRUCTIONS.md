@@ -58,6 +58,8 @@ Humans and agents can run `backlog instructions` for workflow guides and `backlo
 | Create (all options) | `backlog task create "Feature" -d "Description" -a @sara -s "To Do" -l auth --priority high --ac "Must work" --notes "Initial setup done" --dep task-1 --ref src/api.ts --doc docs/spec.md -p 14` |
 | List tasks  | `backlog task list [-s <status>] [-a <assignee>] [-p <parent>] [--labels <labels>] [--search <query>] [--limit <n>]` |
 | List filtered | `backlog task list --labels frontend,bug --search "login" --limit 10 --plain` |
+| List in windows | `backlog task list --max-count 20 --skip 20 --plain` |
+| Count tasks | `backlog task list --status "To Do" --count` |
 | List as JSON | `backlog task list --status "To Do" --json` |
 | Watch as JSON | `backlog task list --json --watch` |
 | List by parent | `backlog task list --parent 42` or `backlog task list -p task-42` |
@@ -87,6 +89,18 @@ Humans and agents can run `backlog instructions` for workflow guides and `backlo
 | Set due date | `backlog task edit 7 --due-date 2026-08-10` |
 | Clear due date | `backlog task edit 7 --clear-due-date` |
 | Archive     | `backlog task archive 7`                             |
+
+### Paging long lists
+
+`task list`, `search`, `draft list`, `milestone list`, `doc list`, `doc search`, and `decision list` print every match by default. `--max-count <n>` prints at most `n` items and `--skip <n>` leaves out the first `n`, as in `git log`. Both apply after filtering, sorting, and `--limit`, in the order the output prints: `task list` groups by status unless `--sort priority` prints one flat list, plain `search` prints tasks, then documents, then decisions, and `milestone list` prints active milestones before completed ones. Ties are broken by ID (documents by title and then path), so consecutive windows of an unchanged backlog join into the complete output without overlapping or leaving items out. `search --json` windows its results in relevance order. The options print text instead of opening an interactive view.
+
+Output cut by a window ends with the shown range, the total, and the command that prints the following items:
+
+```text
+Showing 21-40 of 57 items. Next: backlog task list --status 'To Do' --max-count 20 --skip 40
+```
+
+The last window has no `Next:` part, and a `--skip` past the end prints only `Showing 0 of 57 items.` Output that is not cut has no footer. `--count` prints only the number of items the same command would list, as `grep --count` does; it cannot be combined with `--json`. There are no short forms because `-m` already means `--milestone`. `--limit` keeps its behavior: it silently shortens the list before any window applies.
 
 Task comments are append-only discussion entries with optional author labels. Use comments for review questions and collaboration notes; use implementation notes for execution progress and final summary for PR-ready completion notes. Comment bodies may contain Markdown, but standalone `---` lines are reserved as comment delimiters.
 
@@ -130,6 +144,8 @@ Task view also carries `dependencyGraph`, a property of the task detail that is 
 `readiness` explains the `isReady` field above it and comes from the same derivation. It contains `isReady`, `isBlocked`, `blockingDependencies` (dependencies that resolved to unfinished tasks), and `missingDependencies` (dependency IDs no single visible task claims). Both lists fail closed: an unknown or ambiguous dependency blocks instead of being treated as satisfied.
 
 Search keeps relevance order and discriminates every result with `type` and `data`. Task data uses the compact task fields. Document data contains `id`, `title`, `type`, `path`, `tags`, `createdAt`, and `updatedAt`. Decision data contains `id`, `title`, `status`, and `date`. Search scores are not part of the version 1 public contract.
+
+When `--max-count` or `--skip` cuts a `task list`, `search`, or `decision list` result, the envelope also contains `total`, the number of items before the window, and `nextSkip`, the `--skip` value for the following items or `null` when none follow. Output that is not cut has neither field.
 
 Absent scalar fields are `null`, and absent collections are `[]`. Date-only values remain `YYYY-MM-DD`; UTC date-times use RFC 3339. Internal fields, absolute paths, raw Markdown source objects, branch metadata, and search implementation details are not exposed.
 
@@ -226,6 +242,7 @@ Find tasks, documents, and decisions across your entire backlog with fuzzy searc
 | Plain text output  | `backlog search "feature" --plain` (for scripts/AI) |
 | JSON output        | `backlog search "feature" --json` (for structured integrations) |
 | Find by modified file | `backlog search --modified-file src/path.ts --plain` |
+| Page results       | `backlog search "api" --max-count 20 --skip 20 --plain` |
 
 **Search features:**
 - **Fuzzy matching** -- finds "authentication" when searching for "auth"

@@ -10,6 +10,7 @@ import type {
 } from "../types/index.ts";
 import { isLocalEditableTask } from "../types/index.ts";
 import type { DependencyGraph } from "../utils/dependency-graph.ts";
+import type { ListPage } from "../utils/list-window.ts";
 import type { TaskReadiness } from "../utils/readiness.ts";
 import { sortByTaskId } from "../utils/task-sorting.ts";
 
@@ -216,8 +217,13 @@ function toDecisionSummaryJson(decision: Decision): DecisionSummaryJson {
 	};
 }
 
-export function taskListJson(tasks: TaskListItem[]) {
-	return { schemaVersion: 1, kind: "task-list" as const, tasks: tasks.map(toTaskSummaryJson) };
+/** A list cut by `--skip` or `--max-count` reports how many items matched and where the next window starts. */
+function cutListJson(page: ListPage<unknown> | undefined): { total?: number; nextSkip?: number | null } {
+	return page?.cut ? { total: page.total, nextSkip: page.nextSkip } : {};
+}
+
+export function taskListJson(tasks: TaskListItem[], page?: ListPage<unknown>) {
+	return { schemaVersion: 1, kind: "task-list" as const, tasks: tasks.map(toTaskSummaryJson), ...cutListJson(page) };
 }
 
 export function taskViewJson(task: TaskDetail, projectRoot: string) {
@@ -228,8 +234,13 @@ export function taskViewJson(task: TaskDetail, projectRoot: string) {
 	};
 }
 
-export function decisionListJson(decisions: Decision[]) {
-	return { schemaVersion: 1, kind: "decision-list" as const, decisions: decisions.map(toDecisionSummaryJson) };
+export function decisionListJson(decisions: Decision[], page?: ListPage<unknown>) {
+	return {
+		schemaVersion: 1,
+		kind: "decision-list" as const,
+		decisions: decisions.map(toDecisionSummaryJson),
+		...cutListJson(page),
+	};
 }
 
 /**
@@ -245,7 +256,12 @@ export type SearchResultInput =
 			task: TaskListItem;
 	  });
 
-export function searchJson(results: SearchResultInput[], projectRoot: string, docsDir: string) {
+export function searchJson(
+	results: SearchResultInput[],
+	projectRoot: string,
+	docsDir: string,
+	page?: ListPage<unknown>,
+) {
 	const publicResults: SearchResultJson[] = [];
 	for (const result of results) {
 		if (result.type === "task") {
@@ -260,7 +276,7 @@ export function searchJson(results: SearchResultInput[], projectRoot: string, do
 		}
 		publicResults.push({ type: "decision", data: toDecisionSummaryJson(result.decision) });
 	}
-	return { schemaVersion: 1, kind: "search" as const, results: publicResults };
+	return { schemaVersion: 1, kind: "search" as const, results: publicResults, ...cutListJson(page) };
 }
 
 export function formatJson(value: unknown): string {

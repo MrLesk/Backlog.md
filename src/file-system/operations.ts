@@ -1621,8 +1621,8 @@ export class FileSystem {
 				}
 			}
 
-			// Stable sort by title for UI/CLI listing
-			return docs.sort((a, b) => a.title.localeCompare(b.title));
+			// Sort by title for UI/CLI listing; the path breaks title ties so paged CLI windows never overlap.
+			return docs.sort((a, b) => a.title.localeCompare(b.title) || (a.path ?? "").localeCompare(b.path ?? ""));
 		} catch (error) {
 			recordUnreadableDirectory(error, unreadable);
 			return [];

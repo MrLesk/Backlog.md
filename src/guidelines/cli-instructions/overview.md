@@ -25,6 +25,8 @@ Search and read before changing anything:
 - `backlog task list --search "login" --labels frontend,bug --limit 20 --plain`
 - `backlog task view {{TASK_ID:123}} --plain`
 
+Lists print every match by default. To read a long list in windows, add `--max-count <n>` and `--skip <n>` to `task list`, `search`, `draft list`, `milestone list`, `doc list`, `doc search`, or `decision list`. Windows apply after filtering, sorting, and `--limit`, in the order the output prints, so consecutive windows of an unchanged backlog join into the complete output. Output cut by a window ends with `Showing <first>-<last> of <total> items. Next: <command>`; run that command for the following items. The last window has no `Next:` part, and a `--skip` past the end prints `Showing 0 of <total> items.` `--count` prints only the number of items the same command would list; it cannot be combined with `--json`. With `--json`, a cut list adds `total` and `nextSkip` (`null` after the last window).
+
 Use `--json` instead of `--plain` on `task list`, `task view`, `task <id>`, or `search` when a script needs stable versioned fields. Do not combine the two flags. For a live task list, use `backlog task list --json --watch`: it emits the same complete, pretty-printed JSON response initially and whenever the result changes. Read successive JSON values and replace the previous list with each response; do not parse individual lines. Filters and local task scope are unchanged. Intermediate edits may be coalesced; restart for a fresh snapshot.
 
 ### Detailed Guides
