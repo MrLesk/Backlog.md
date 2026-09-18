@@ -22,6 +22,12 @@ export type ListWindow = {
 	forcesText: boolean;
 	/** The typed arguments, repeated with a new `--skip` in the command for the following items. */
 	commandArgs: readonly string[];
+	/**
+	 * Flags of the running command and its parents whose next argument is their value, even when it
+	 * reads `--skip` or `--`. Not handled: a parent flag, such as `--plain` of `task`, typed between a
+	 * value flag and its value.
+	 */
+	valueFlags: ReadonlySet<string>;
 };
 
 export type ListPage<T> = {
@@ -67,12 +73,28 @@ export function parsePositiveIntegerOption(value: unknown, optionName: string, h
 	return Number.parseInt(rawValue, 10);
 }
 
-/** Reads the window options, or reports why they are invalid and returns null. */
+/** The command's full name, such as `backlog task list`, and the flags it reads a value after. */
+function describeCommand(command: Command): { name: string; valueFlags: Set<string> } {
+	const names: string[] = [];
+	const valueFlags = new Set<string>();
+	for (let current: Command | null = command; current; current = current.parent) {
+		names.unshift(current.name());
+		const flags = current.options.filter((option) => option.required).flatMap((option) => [option.long, option.short]);
+		for (const flag of flags) {
+			if (flag) valueFlags.add(flag);
+		}
+	}
+	return { name: names.join(" "), valueFlags };
+}
+
+/** Reads the window options of the running command, or reports why they are invalid and returns null. */
 export function parseListWindow(
 	options: ListWindowOptions,
-	helpCommand: string,
+	command: Command,
 	commandArgs: readonly string[],
 ): ListWindow | null {
+	const { name, valueFlags } = describeCommand(command);
+	const helpCommand = `${name} --help`;
 	if (options.count && options.json) {
 		return reportInvalidOption("--count cannot be combined with --json.", helpCommand);
 	}
@@ -92,6 +114,7 @@ export function parseListWindow(
 		count: Boolean(options.count),
 		forcesText: Boolean(options.count) || maxCount !== undefined || skip !== undefined,
 		commandArgs,
+		valueFlags,
 	};
 }
 
@@ -112,43 +135,61 @@ function quoteShellArgument(argument: string): string {
 	return /^[\w@+:,./-]+$/.test(argument) ? argument : `'${argument.replaceAll("'", "'\\''")}'`;
 }
 
-/** The typed command with its `--skip` value replaced, so running it prints the following items. */
-export function nextPageCommand(args: readonly string[], nextSkip: number): string {
+/**
+ * The typed command with its `--skip` value replaced, so running it prints the following items.
+ * Option values stay as typed, and the new `--skip` goes before a `--` that ends the options.
+ */
+export function nextPageCommand(window: ListWindow, nextSkip: number): string {
+	const args = window.commandArgs;
 	const kept: string[] = [];
+	let afterSeparator: readonly string[] = [];
 	for (let index = 0; index < args.length; index++) {
 		const argument = args[index] ?? "";
+		if (argument === "--") {
+			afterSeparator = args.slice(index);
+			break;
+		}
 		if (argument === "--skip") {
 			index++;
 			continue;
 		}
 		if (argument.startsWith("--skip=")) continue;
 		kept.push(argument);
+		if (window.valueFlags.has(argument) && index + 1 < args.length) {
+			index++;
+			kept.push(args[index] ?? "");
+		}
 	}
-	return ["backlog", ...kept, "--skip", String(nextSkip)].map(quoteShellArgument).join(" ");
+	return ["backlog", ...kept, "--skip", String(nextSkip), ...afterSeparator].map(quoteShellArgument).join(" ");
 }
 
 /** Names the printed range, the total, and the command for the following items; null for a complete list. */
-export function formatListWindowFooter(page: ListPage<unknown>, args: readonly string[]): string | null {
+export function formatListWindowFooter(page: ListPage<unknown>, window: ListWindow): string | null {
 	if (!page.cut) return null;
 	const shown = page.items.length;
 	const range = shown > 0 ? `${page.skip + 1}-${page.skip + shown}` : "0";
 	const summary = `Showing ${range} of ${page.total} items.`;
-	return page.nextSkip === null ? summary : `${summary} Next: ${nextPageCommand(args, page.nextSkip)}`;
+	return page.nextSkip === null ? summary : `${summary} Next: ${nextPageCommand(window, page.nextSkip)}`;
 }
 
 /**
  * Prints one window of a list as text: `--count` prints only its size, and a cut list ends with the
  * footer. `printItems` also runs for an empty list so the command can say that nothing matched.
  */
-export function printListWindow<T>(items: readonly T[], window: ListWindow, printItems: (items: T[]) => void): void {
+export function printListWindow<T>(
+	items: readonly T[],
+	window: ListWindow,
+	printItems: (items: T[], page: ListPage<T>) => void,
+): void {
 	const page = selectListWindow(items, window);
 	if (window.count) {
-		console.log(page.items.length);
+		// A string, because Bun colors a logged number when color is forced.
+		console.log(String(page.items.length));
 		return;
 	}
 	if (page.items.length > 0 || page.total === 0) {
-		printItems(page.items);
+		printItems(page.items, page);
 	}
-	const footer = formatListWindowFooter(page, window.commandArgs);
+	const footer = formatListWindowFooter(page, window);
 	if (footer) console.log(footer);
 }

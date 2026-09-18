@@ -872,15 +872,11 @@ function getReadOutputMode(options: { json?: boolean; plain?: boolean }): ReadOu
  */
 function resolveListOutput(
 	options: ListWindowOptions & ReadOutputOptions,
-	helpCommand: string,
+	command: Command,
 ): { outputMode: ReadOutputMode; listWindow: ListWindow } | null {
 	const readOutputMode = getReadOutputMode(options);
 	if (!readOutputMode) return null;
-	const listWindow = parseListWindow(
-		{ ...options, json: readOutputMode === "json" },
-		helpCommand,
-		process.argv.slice(2),
-	);
+	const listWindow = parseListWindow({ ...options, json: readOutputMode === "json" }, command, process.argv.slice(2));
 	if (!listWindow) return null;
 	const outputMode = readOutputMode === "interactive" && listWindow.forcesText ? "plain" : readOutputMode;
 	return { outputMode, listWindow };
@@ -2182,7 +2178,7 @@ addListWindowOptions(searchCommand)
 	.option("--plain", "print plain text output instead of interactive UI")
 	.option("--json", "print versioned machine-readable JSON output")
 	.action(async (query: string | undefined, options) => {
-		const listOutput = resolveListOutput(options, "backlog search --help");
+		const listOutput = resolveListOutput(options, searchCommand);
 		if (!listOutput) return;
 		const { outputMode, listWindow } = listOutput;
 		const cwd = await requireProjectRoot();
@@ -2601,7 +2597,7 @@ async function runTaskList(
 	emitJson: (value: ReturnType<typeof taskListJson>) => void = printJson,
 ) {
 	// The read options merge in `--json` and `--plain` given to the parent `task` command.
-	const listOutput = resolveListOutput({ ...options, ...taskReadOptions(options) }, "backlog task list --help");
+	const listOutput = resolveListOutput({ ...options, ...taskReadOptions(options) }, taskListCommand);
 	if (!listOutput) return;
 	const { outputMode, listWindow } = listOutput;
 	const cwd = await requireProjectRoot();
@@ -4101,15 +4097,14 @@ async function viewDraftById(core: Core, taskId: string, options?: { plain?: boo
 
 const draftCmd = program.command("draft");
 
-addListWindowOptions(
-	draftCmd
-		.command("list")
-		.description("list all drafts")
-		.option("--sort <field>", `sort drafts by field (${TASK_SORT_FIELD_LIST})`),
-)
+const draftListCommand = draftCmd
+	.command("list")
+	.description("list all drafts")
+	.option("--sort <field>", `sort drafts by field (${TASK_SORT_FIELD_LIST})`);
+addListWindowOptions(draftListCommand)
 	.option("--plain", "use plain text output")
 	.action(async (options: ListWindowOptions & { plain?: boolean; sort?: string }) => {
-		const listOutput = resolveListOutput({ ...options, plain: isPlainRequested(options) }, "backlog draft list --help");
+		const listOutput = resolveListOutput({ ...options, plain: isPlainRequested(options) }, draftListCommand);
 		if (!listOutput) return;
 		const { outputMode, listWindow } = listOutput;
 		// Default to priority sorting to match web UI behavior
@@ -4339,7 +4334,7 @@ const milestoneListCommand = addHelpSchema(milestoneCmd.command("list"), {
 addListWindowOptions(milestoneListCommand)
 	.option("--plain", "use plain text output")
 	.action(async (options: ListWindowOptions & { showCompleted?: boolean; plain?: boolean }) => {
-		const listOutput = resolveListOutput(options, "backlog milestone list --help");
+		const listOutput = resolveListOutput(options, milestoneListCommand);
 		if (!listOutput) return;
 		// Milestones have no interactive view, so every output mode prints text.
 		const { listWindow } = listOutput;
@@ -4371,27 +4366,28 @@ addListWindowOptions(milestoneListCommand)
 		};
 
 		const showCompleted = Boolean(options.showCompleted || process.argv.includes("--show-completed"));
-		// Section headings keep their full counts; each section lists only its milestones in this window.
-		printListWindow(showCompleted ? [...active, ...completed] : active, listWindow, (listed) => {
-			console.log(`Active milestones (${active.length}):`);
-			if (active.length === 0) {
-				console.log("  (none)");
-			} else {
-				for (const bucket of listed.filter((candidate) => !candidate.isCompleted)) {
-					console.log(formatBucket(bucket));
-				}
+		const listedMilestones = showCompleted ? [...active, ...completed] : active;
+		// A cut window prints the sections it lists milestones from, with their full counts. A section
+		// that lists none prints where it falls: Active in the first window, Completed in the last.
+		printListWindow(listedMilestones, listWindow, (listed, page) => {
+			const listedActive = listed.filter((bucket) => !bucket.isCompleted);
+			const listedCompleted = listed.filter((bucket) => bucket.isCompleted);
+			const listsCompleted = showCompleted && completed.length > 0;
+			const sections: string[] = [];
+			if (!page.cut || listedActive.length > 0 || (active.length === 0 && page.skip === 0)) {
+				const activeRows = active.length === 0 ? ["  (none)"] : listedActive.map(formatBucket);
+				sections.push([`Active milestones (${active.length}):`, ...activeRows].join("\n"));
 			}
-
-			console.log(`\nCompleted milestones (${completed.length}):`);
-			if (completed.length === 0) {
-				console.log("  (none)");
-			} else if (showCompleted) {
-				for (const bucket of listed.filter((candidate) => candidate.isCompleted)) {
-					console.log(formatBucket(bucket));
-				}
-			} else {
-				console.log("  (collapsed, use --show-completed to list)");
+			if (!page.cut || listedCompleted.length > 0 || (!listsCompleted && page.nextSkip === null)) {
+				const completedRows =
+					completed.length === 0
+						? ["  (none)"]
+						: showCompleted
+							? listedCompleted.map(formatBucket)
+							: ["  (collapsed, use --show-completed to list)"];
+				sections.push([`Completed milestones (${completed.length}):`, ...completedRows].join("\n"));
 			}
+			console.log(sections.join("\n\n"));
 		});
 	});
 
@@ -4808,7 +4804,7 @@ const docListCommand = addHelpSchema(docCmd.command("list"), {
 addListWindowOptions(docListCommand)
 	.option("--plain", "use plain text output instead of interactive UI")
 	.action(async (options) => {
-		const listOutput = resolveListOutput({ ...options, plain: isPlainRequested(options) }, "backlog doc list --help");
+		const listOutput = resolveListOutput({ ...options, plain: isPlainRequested(options) }, docListCommand);
 		if (!listOutput) return;
 		const { outputMode, listWindow } = listOutput;
 		const cwd = await requireProjectRoot();
@@ -4878,7 +4874,7 @@ addListWindowOptions(docSearchCommand)
 		if (limit === null) {
 			return;
 		}
-		const listOutput = resolveListOutput(options, "backlog doc search --help");
+		const listOutput = resolveListOutput(options, docSearchCommand);
 		if (!listOutput) return;
 		// Document search always prints text.
 		const { listWindow } = listOutput;
@@ -4990,7 +4986,7 @@ addListWindowOptions(decisionListCommand)
 	.option("--plain", "use plain text output")
 	.option("--json", "print versioned machine-readable JSON output")
 	.action(async (options) => {
-		const listOutput = resolveListOutput(options, "backlog decision list --help");
+		const listOutput = resolveListOutput(options, decisionListCommand);
 		if (!listOutput) return;
 		const { outputMode, listWindow } = listOutput;
 		const cwd = await requireProjectRoot();
