@@ -1,21 +1,29 @@
 import { describe, expect, it, spyOn } from "bun:test";
 import { Command } from "commander";
 import {
+	addListWindowOptions,
 	formatListWindowFooter,
 	type ListPage,
 	type ListWindow,
+	milestoneSectionsInWindow,
 	nextPageCommand,
 	parseListWindow,
 	selectListWindow,
 } from "../utils/list-window.ts";
 
-function windowOf(skip: number, maxCount?: number, commandArgs: string[] = []): ListWindow {
-	return { skip, maxCount, count: false, forcesText: true, commandArgs, valueFlags: new Set(["--search"]) };
+/** `backlog task list` with the window options and one option that reads a value, `--search`. */
+function taskListCommand(): Command {
+	return addListWindowOptions(new Command("backlog").command("task").command("list").option("--search <query>"));
 }
 
-/** `backlog task list` with one option that reads a value, so its help hint and value flags come from Commander. */
-function taskListCommand(): Command {
-	return new Command("backlog").command("task").command("list").option("--search <query>").option("--plain");
+function windowOf(skip: number, maxCount?: number, commandArgs: string[] = []): ListWindow {
+	const window = parseListWindow(
+		{ skip: String(skip), maxCount: maxCount === undefined ? undefined : String(maxCount) },
+		taskListCommand(),
+		commandArgs,
+	);
+	if (!window) throw new Error("invalid test window");
+	return window;
 }
 
 describe("list windows", () => {
@@ -91,24 +99,6 @@ describe("list windows", () => {
 		);
 	});
 
-	it("reads value flags and the help hint from the running command", () => {
-		const errors = spyOn(console, "error").mockImplementation(() => {});
-		const previousExitCode = process.exitCode;
-		try {
-			const window = parseListWindow({ maxCount: "1" }, taskListCommand(), ["task", "list", "--search", "--skip"]);
-			expect(window?.valueFlags).toEqual(new Set(["--search"]));
-			expect(nextPageCommand(window as ListWindow, 1)).toBe("backlog task list --search --skip --skip 1");
-
-			expect(parseListWindow({ skip: "x" }, taskListCommand(), [])).toBeNull();
-			expect(errors).toHaveBeenLastCalledWith(
-				"--skip must be a non-negative integer (0 or greater). Try 'backlog task list --help' for options.",
-			);
-		} finally {
-			errors.mockRestore();
-			process.exitCode = previousExitCode;
-		}
-	});
-
 	it("accepts a positive max-count, a non-negative skip, and count without JSON", () => {
 		const args = ["task", "list"];
 		expect(parseListWindow({}, taskListCommand(), args)).toMatchObject({
@@ -128,6 +118,29 @@ describe("list windows", () => {
 			count: true,
 			forcesText: true,
 		});
+	});
+
+	it("prints each milestone section once, where it falls", () => {
+		const active = { isCompleted: false };
+		const completed = { isCompleted: true };
+		const sections = (items: { isCompleted: boolean }[], skip: number, maxCount: number, listsCompleted: boolean) => {
+			const activeCount = items.filter((item) => !item.isCompleted).length;
+			return milestoneSectionsInWindow(selectListWindow(items, windowOf(skip, maxCount)), activeCount, listsCompleted);
+		};
+
+		// Two active and one listed completed milestone, one per window.
+		const listed = [active, active, completed];
+		expect(sections(listed, 0, 1, true)).toEqual({ active: true, completed: false });
+		expect(sections(listed, 1, 1, true)).toEqual({ active: true, completed: false });
+		expect(sections(listed, 2, 1, true)).toEqual({ active: false, completed: true });
+		// Completed milestones collapsed: their section follows the last active milestone.
+		expect(sections([active, active], 0, 1, false)).toEqual({ active: true, completed: false });
+		expect(sections([active, active], 1, 1, false)).toEqual({ active: true, completed: true });
+		// No active milestones: the empty Active section opens the first window only.
+		expect(sections([completed, completed], 0, 1, true)).toEqual({ active: true, completed: true });
+		expect(sections([completed, completed], 1, 1, true)).toEqual({ active: false, completed: true });
+		// No milestones at all: the single window prints both empty sections, whatever it skips.
+		expect(sections([], 3, 1, false)).toEqual({ active: true, completed: true });
 	});
 
 	it("rejects invalid window values and count with JSON", () => {

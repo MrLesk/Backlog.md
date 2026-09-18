@@ -5,7 +5,7 @@ status: Done
 assignee:
   - '@claude'
 created_date: '2026-09-16 20:43'
-updated_date: '2026-09-18 18:11'
+updated_date: '2026-09-18 23:14'
 labels: []
 dependencies: []
 modified_files:
@@ -62,6 +62,15 @@ Review round (Codex and Grok cold reviews):
 11. milestone list: a cut window prints only the sections it has milestones from; uncut output is unchanged.
 12. Docs: state that task list --json windows its flat tasks array in sort order, not status groups.
 13. Regression tests for each fix; run bunx tsc --noEmit, bun run check . and bun run test.
+
+Simplicity round (cold junior-maintainer review):
+14. Move the milestone section decision into a pure function with unit tests, including the no-active case; drop the redundant !page.cut.
+15. Pass options directly to parseListWindow; let the task list printer check its own window and narrowForDisplay return only the display list.
+16. One helper for search results in printed order, shared by the action, printSearchResults and searchJson.
+17. One shared constant for the footer sentence in the help output strings.
+18. Build unit-test windows through parseListWindow and delete the test that restates its input; read value flags from the command's own options.
+19. Docs: each list has a stable order (search by score then corpus order; milestones do not break ties by ID).
+20. Run bunx tsc --noEmit, bun run check . and bun run test.
 <!-- SECTION:PLAN:END -->
 
 ## Implementation Notes
@@ -83,6 +92,9 @@ Validation: bunx tsc --noEmit and bun run check . pass; paging and guidance suit
 
 Cold review follow-up: without --show-completed, cut milestone windows had lost the collapsed Completed section, so windows no longer joined into the complete output (a regression from the milestone fix). printListWindow now passes the page to printItems; milestone list uses page.cut, prints a section that lists no milestones where it falls (Active with (none) in the first window, Completed with (none) or the collapsed note in the last), and builds both sections' rows the same way. The valueFlags comment names the unhandled case of a parent flag (such as --plain of task) typed between a value flag and its value; operands became afterSeparator; the unit test command declares --search alone. The milestone CLI test now also joins the windows of milestone list without --show-completed (fails without the fix).
 Validation: bunx tsc --noEmit and bun run check . pass; list-window and cli-list-window suites pass (20 tests); full bun run test: 2887 pass, 8 skip, 5 fail, all in src/test/board-tui-move.test.ts. Under the current machine load (load average about 75) that file fails 4 to 7 of 20 tests alone both on this branch and on unmodified origin/main; earlier in this round it passed 20/20 alone. No board or TUI code changed.
+
+Simplicity round (cold junior-maintainer review, no defects): the milestone section decision moved into milestoneSectionsInWindow (list-window.ts), a pure function of the page, the active count and whether completed milestones are listed; its unit test covers the no-active and empty-list cases. The redundant !page.cut is gone; an empty list keeps printing both sections for any --skip through an explicit first-window check (skip 0 or total 0). resolveListOutput passes options straight to parseListWindow. The task list printer checks its own window, narrowForDisplay returns only the display list, and the filtered/let pair is gone. searchResultsInPrintedOrder is the one place for the local-task filter and the plain type order; printSearchResults prints results given in that order (one heading per type) and searchJson no longer filters. LIST_WINDOW_OUTPUT_HELP holds the footer sentence of the six help outputs. Unit tests build windows through parseListWindow with a Commander task list command; the test that restated the declared value flags is deleted. Value flags come from the running command's own options only; the comment names the unhandled parent-flag case. CLI-INSTRUCTIONS.md names each list's stable order. The two functions Biome's cognitive complexity rule flagged on main among the changed code (the milestone callback and the old printSearchResults) are no longer flagged.
+Validation: bunx tsc --noEmit and bun run check . pass; list-window, cli-list-window, guidance, readiness agreement and nine related CLI suites pass; full bun run test: 2888 pass, 8 skip, 4 fail (three src/test/board-tui-move.test.ts timing races and one src/test/mcp-tasks.test.ts git-spy count under load); both files pass alone (79/79).
 <!-- SECTION:NOTES:END -->
 
 ## Final Summary
@@ -91,4 +103,6 @@ Validation: bunx tsc --noEmit and bun run check . pass; list-window and cli-list
 Added grep and git log style paging to every CLI listing command: task list, search, draft list, milestone list, doc list, doc search and decision list accept --max-count <n>, --skip <n> and --count (long options only). Windows apply after filtering, sorting and --limit, in the order the output prints, so consecutive windows join into the complete output. Cut plain output ends with 'Showing <first>-<last> of <total> items. Next: backlog ... --skip <n>'; complete output is unchanged. JSON for task list, search and decision list adds total and nextSkip only when cut. --count prints the number of items the command would list and rejects --json. Window and count options print text instead of opening the TUI. Documents with equal titles are ordered by path. One shared module (src/utils/list-window.ts) and one cli.ts entry helper (resolveListOutput) serve all seven commands; help schemas, the overview and task-creation guides and CLI-INSTRUCTIONS.md document the options. Verified with bunx tsc --noEmit, bun run check ., new unit and CLI tests (including following real Next commands across grouped task and mixed search output), 172 passing related CLI tests, and a full bun run test (2886 pass; the only 2 failures are existing board-tui-move timing races that pass alone).
 
 Review round (Codex, Grok and a follow-up cold review): the Next command now keeps option values that read --skip or -- and puts the new --skip before a -- separator, using the value-taking options of the running command and its parents; --count prints a plain integer even when color is forced; a cut milestone window prints the sections it lists milestones from, and a section without listed milestones (none, or collapsed without --show-completed) prints where it falls, Active in the first window and Completed in the last, so windows join into the complete output; CLI-INSTRUCTIONS.md now states that task list --json windows its flat tasks array rather than status groups. Verified with regression tests that fail on the unfixed code (except the JSON order test, which pins the documented behavior), bunx tsc --noEmit, bun run check . and full bun run test runs whose only failures were board-tui-move timing races (also failing on unmodified origin/main under the same machine load) and, in one run, a leaked web App error in content-store tests that pass alone.
+
+Simplicity round: moved the milestone section rule into a tested pure function, shared one helper for search result order and one footer help sentence, removed the task list filtered/display pair and the redundant window checks, built unit-test windows through parseListWindow, and stated each list's stable order in CLI-INSTRUCTIONS.md, verified with bunx tsc --noEmit, bun run check . and a full bun run test whose only failures were known timing flakes that pass alone.
 <!-- SECTION:FINAL_SUMMARY:END -->

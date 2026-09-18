@@ -54,7 +54,6 @@ import type { CallToolResult } from "./mcp/types.ts";
 import {
 	type BacklogConfig,
 	type Decision,
-	type DecisionSearchResult,
 	DOCUMENT_TYPE_VALUES,
 	type Document as DocType,
 	type DocumentSearchResult,
@@ -91,8 +90,10 @@ import { generateNextDecisionId } from "./utils/id-generators.ts";
 import {
 	addListWindowOptions,
 	LIST_WINDOW_HELP_FIELDS,
+	LIST_WINDOW_OUTPUT_HELP,
 	type ListWindow,
 	type ListWindowOptions,
+	milestoneSectionsInWindow,
 	parseListWindow,
 	parsePositiveIntegerOption,
 	printListWindow,
@@ -876,7 +877,7 @@ function resolveListOutput(
 ): { outputMode: ReadOutputMode; listWindow: ListWindow } | null {
 	const readOutputMode = getReadOutputMode(options);
 	if (!readOutputMode) return null;
-	const listWindow = parseListWindow({ ...options, json: readOutputMode === "json" }, command, process.argv.slice(2));
+	const listWindow = parseListWindow(options, command, process.argv.slice(2));
 	if (!listWindow) return null;
 	const outputMode = readOutputMode === "interactive" && listWindow.forcesText ? "plain" : readOutputMode;
 	return { outputMode, listWindow };
@@ -2135,8 +2136,7 @@ const searchCommand = addHelpSchema(program.command("search [query]"), {
 		{ name: "plain", type: "Boolean", description: "Use text output instead of interactive UI" },
 		{ name: "json", type: "Boolean", description: "Use versioned machine-readable JSON output" },
 	],
-	output:
-		"Interactive search UI, plain text with --plain, or versioned JSON with --json. Output cut by --max-count or --skip ends with the shown range, the total, and the command for the next results; JSON adds total and nextSkip",
+	output: `Interactive search UI, plain text with --plain, or versioned JSON with --json. ${LIST_WINDOW_OUTPUT_HELP}; JSON adds total and nextSkip`,
 	examples: [
 		'backlog search "auth" --plain',
 		'backlog search "auth" --json',
@@ -2292,20 +2292,13 @@ addListWindowOptions(searchCommand)
 		});
 
 		if (outputMode !== "interactive") {
-			// Both outputs leave out results from other branches, so the window counts only printable ones.
-			const printable = searchResults.filter(
-				(result) => !isTaskSearchResult(result) || isLocalEditableTask(result.task),
-			);
+			const printed = searchResultsInPrintedOrder(searchResults, outputMode);
 			if (outputMode === "plain") {
-				// Plain output groups results by type, so its windows are cut in that printed order.
-				const printedOrder = (["task", "document", "decision"] as const).flatMap((type) =>
-					printable.filter((result) => result.type === type),
-				);
-				printListWindow(printedOrder, listWindow, printSearchResults);
+				printListWindow(printed, listWindow, printSearchResults);
 				cleanup();
 				return;
 			}
-			const page = selectListWindow(printable, listWindow);
+			const page = selectListWindow(printed, listWindow);
 			printJson(searchJson(await projectSearchTaskRows(core, page.items), cwd, core.filesystem.docsDir, page));
 			cleanup();
 			return;
@@ -2320,7 +2313,7 @@ addListWindowOptions(searchCommand)
 
 		// If no tasks exist at all, show plain text results
 		if (allTasks.length === 0) {
-			printSearchResults(searchResults);
+			printSearchResults(searchResultsInPrintedOrder(searchResults, "plain"));
 			cleanup();
 			return;
 		}
@@ -2332,7 +2325,7 @@ addListWindowOptions(searchCommand)
 		const requiresPrefilteredTaskSet = Boolean(modifiedFileFilters?.length);
 		const interactiveTasks = requiresPrefilteredTaskSet ? searchResultTasks : allTasks;
 		if (interactiveTasks.length === 0) {
-			printSearchResults(searchResults);
+			printSearchResults(searchResultsInPrintedOrder(searchResults, "plain"));
 			cleanup();
 			return;
 		}
@@ -2431,73 +2424,43 @@ function buildSearchFilterDescription(filters: {
 	return parts.join(" • ");
 }
 
+/** Plain search output groups results by type, in this order and under these headings. */
+const SEARCH_RESULT_TYPES = ["task", "document", "decision"] as const;
+const SEARCH_RESULT_HEADINGS: Record<SearchResultType, string> = {
+	task: "Tasks:",
+	document: "Documents:",
+	decision: "Decisions:",
+};
+
+/**
+ * Search results as the output lists them: tasks from other branches are left out, plain text groups
+ * the results by type, and JSON keeps relevance order.
+ */
+function searchResultsInPrintedOrder(results: SearchResult[], outputMode: "plain" | "json"): SearchResult[] {
+	const printable = results.filter((result) => !isTaskSearchResult(result) || isLocalEditableTask(result.task));
+	if (outputMode === "json") return printable;
+	return SEARCH_RESULT_TYPES.flatMap((type) => printable.filter((result) => result.type === type));
+}
+
+function formatSearchResultRow(result: SearchResult): string {
+	const scoreText = formatScore(result.score);
+	if (result.type === "task") {
+		const { task } = result;
+		const statusText = task.status ? ` (${task.status})` : "";
+		const priorityText = task.priority ? ` [${task.priority.toUpperCase()}]` : "";
+		return `  ${task.id} - ${task.title}${statusText}${priorityText}${scoreText}`;
+	}
+	const { id, title } = result.type === "document" ? result.document : result.decision;
+	return `  ${id} - ${title}${scoreText}`;
+}
+
+/** Prints search results given in plain printed order, under one heading per result type. */
 function printSearchResults(results: SearchResult[]): void {
-	if (results.length === 0) {
-		console.log("No results found.");
-		return;
-	}
-
-	const tasks: TaskSearchResult[] = [];
-	const documents: DocumentSearchResult[] = [];
-	const decisions: DecisionSearchResult[] = [];
-
-	for (const result of results) {
-		if (result.type === "task") {
-			tasks.push(result);
-			continue;
-		}
-		if (result.type === "document") {
-			documents.push(result);
-			continue;
-		}
-		decisions.push(result);
-	}
-
-	const localTasks = tasks.filter((t) => isLocalEditableTask(t.task));
-
-	let printed = false;
-
-	if (localTasks.length > 0) {
-		console.log("Tasks:");
-		for (const taskResult of localTasks) {
-			const { task } = taskResult;
-			const scoreText = formatScore(taskResult.score);
-			const statusText = task.status ? ` (${task.status})` : "";
-			const priorityText = task.priority ? ` [${task.priority.toUpperCase()}]` : "";
-			console.log(`  ${task.id} - ${task.title}${statusText}${priorityText}${scoreText}`);
-		}
-		printed = true;
-	}
-
-	if (documents.length > 0) {
-		if (printed) {
-			console.log("");
-		}
-		console.log("Documents:");
-		for (const documentResult of documents) {
-			const { document } = documentResult;
-			const scoreText = formatScore(documentResult.score);
-			console.log(`  ${document.id} - ${document.title}${scoreText}`);
-		}
-		printed = true;
-	}
-
-	if (decisions.length > 0) {
-		if (printed) {
-			console.log("");
-		}
-		console.log("Decisions:");
-		for (const decisionResult of decisions) {
-			const { decision } = decisionResult;
-			const scoreText = formatScore(decisionResult.score);
-			console.log(`  ${decision.id} - ${decision.title}${scoreText}`);
-		}
-		printed = true;
-	}
-
-	if (!printed) {
-		console.log("No results found.");
-	}
+	const sections = SEARCH_RESULT_TYPES.flatMap((type) => {
+		const group = results.filter((result) => result.type === type);
+		return group.length > 0 ? [[SEARCH_RESULT_HEADINGS[type], ...group.map(formatSearchResultRow)].join("\n")] : [];
+	});
+	console.log(sections.length > 0 ? sections.join("\n\n") : "No results found.");
 }
 
 function formatScore(score: number | null): string {
@@ -2738,12 +2701,12 @@ async function runTaskList(
 		const parentFilter = resolvedParentId;
 		// The sort field was validated above, before any task was read.
 		const sortField = options.sort ? options.sort.toLowerCase() : "priority";
-		const narrowForDisplay = <T extends Task>(rows: T[]): { filtered: T[]; display: T[] } => {
+		const narrowForDisplay = <T extends Task>(rows: T[]): T[] => {
 			const sorted = sortTasks(rows, sortField, config?.priorities);
 			const narrowed = parentFilter
 				? sorted.filter((task) => task.parentTaskId && taskIdsEqual(parentFilter, task.parentTaskId))
 				: sorted;
-			return { filtered: narrowed, display: taskLimit !== undefined ? narrowed.slice(0, taskLimit) : narrowed };
+			return taskLimit !== undefined ? narrowed.slice(0, taskLimit) : narrowed;
 		};
 
 		// Readiness needs the completed corpus, so only the reads that use it pay for one: --ready
@@ -2751,27 +2714,15 @@ async function runTaskList(
 		// a row selected as ready can never be serialized from a second, later verdict. A read that
 		// matched nothing describes nothing, so it reads no corpus at all.
 		const derivesReadiness = Boolean(options.ready) || outputMode === "json";
-		const readinessRows = derivesReadiness && tasks.length > 0 ? await loadTaskListItems(core, tasks) : null;
-
-		let filtered: Task[];
-		let displayTasks: Task[];
-		if (derivesReadiness) {
-			const projected = readinessRows ?? [];
-			const rows = options.ready ? projected.filter((row) => row.isReady) : projected;
-			const narrowed = narrowForDisplay(rows);
-			if (outputMode === "json") {
-				const page = selectListWindow(narrowed.display, listWindow);
-				emitJson(taskListJson(page.items, page));
-				cleanup();
-				return;
-			}
-			filtered = narrowed.filtered;
-			displayTasks = narrowed.display;
-		} else {
-			const narrowed = narrowForDisplay(tasks);
-			filtered = narrowed.filtered;
-			displayTasks = narrowed.display;
+		const readinessRows = derivesReadiness && tasks.length > 0 ? await loadTaskListItems(core, tasks) : [];
+		const readyRows = options.ready ? readinessRows.filter((row) => row.isReady) : readinessRows;
+		if (outputMode === "json") {
+			const page = selectListWindow(narrowForDisplay(readyRows), listWindow);
+			emitJson(taskListJson(page.items, page));
+			cleanup();
+			return;
 		}
+		const displayTasks = narrowForDisplay(options.ready ? readyRows : tasks);
 
 		// The window follows the printed order, so an explicit priority sort prints one flat list and
 		// every other listing is cut after grouping by status.
@@ -2781,7 +2732,7 @@ async function runTaskList(
 			? displayTasks
 			: groupTasksByStatus(displayTasks, statuses).flatMap((group) => group.tasks);
 		printListWindow(printedTasks, listWindow, (windowTasks) => {
-			if (filtered.length === 0) {
+			if (windowTasks.length === 0) {
 				if (resolvedParentId) {
 					console.log(`No child tasks found for parent task ${parentDisplayId}.`);
 				} else {
@@ -2990,8 +2941,7 @@ const taskListCommand = addHelpSchema(taskCmd.command("list"), {
 			description: "Requires --json; emit an initial full list and changed replacements until stopped",
 		},
 	],
-	output:
-		"Interactive task list, plain text with --plain, or versioned JSON with --json. Output cut by --max-count or --skip ends with the shown range, the total, and the command for the next tasks; JSON adds total and nextSkip. With --json --watch, successive complete JSON values use the same formatting; replace the previous list with each value. Restart for a fresh snapshot; intermediate edits may be coalesced.",
+	output: `Interactive task list, plain text with --plain, or versioned JSON with --json. ${LIST_WINDOW_OUTPUT_HELP}; JSON adds total and nextSkip. With --json --watch, successive complete JSON values use the same formatting; replace the previous list with each value. Restart for a fresh snapshot; intermediate edits may be coalesced.`,
 	examples: [
 		'backlog task list --status "<todo status>" --plain',
 		"backlog task list --ready --plain",
@@ -4325,8 +4275,7 @@ const milestoneListCommand = addHelpSchema(milestoneCmd.command("list"), {
 		...LIST_WINDOW_HELP_FIELDS,
 		{ name: "plain", type: "Boolean", description: "Use text output instead of interactive UI" },
 	],
-	output:
-		"Milestone list with completion status; active milestones come first, then completed ones with --show-completed. Output cut by --max-count or --skip ends with the shown range, the total, and the command for the next milestones",
+	output: `Milestone list with completion status; active milestones come first, then completed ones with --show-completed. ${LIST_WINDOW_OUTPUT_HELP}`,
 	examples: ["backlog milestone list --plain", "backlog milestone list --show-completed --max-count 10 --plain"],
 })
 	.description("list milestones with completion status")
@@ -4367,23 +4316,21 @@ addListWindowOptions(milestoneListCommand)
 
 		const showCompleted = Boolean(options.showCompleted || process.argv.includes("--show-completed"));
 		const listedMilestones = showCompleted ? [...active, ...completed] : active;
-		// A cut window prints the sections it lists milestones from, with their full counts. A section
-		// that lists none prints where it falls: Active in the first window, Completed in the last.
+		// Section headings keep their full counts.
 		printListWindow(listedMilestones, listWindow, (listed, page) => {
-			const listedActive = listed.filter((bucket) => !bucket.isCompleted);
-			const listedCompleted = listed.filter((bucket) => bucket.isCompleted);
-			const listsCompleted = showCompleted && completed.length > 0;
+			const prints = milestoneSectionsInWindow(page, active.length, showCompleted && completed.length > 0);
 			const sections: string[] = [];
-			if (!page.cut || listedActive.length > 0 || (active.length === 0 && page.skip === 0)) {
-				const activeRows = active.length === 0 ? ["  (none)"] : listedActive.map(formatBucket);
+			if (prints.active) {
+				const activeRows =
+					active.length === 0 ? ["  (none)"] : listed.filter((bucket) => !bucket.isCompleted).map(formatBucket);
 				sections.push([`Active milestones (${active.length}):`, ...activeRows].join("\n"));
 			}
-			if (!page.cut || listedCompleted.length > 0 || (!listsCompleted && page.nextSkip === null)) {
+			if (prints.completed) {
 				const completedRows =
 					completed.length === 0
 						? ["  (none)"]
 						: showCompleted
-							? listedCompleted.map(formatBucket)
+							? listed.filter((bucket) => bucket.isCompleted).map(formatBucket)
 							: ["  (collapsed, use --show-completed to list)"];
 				sections.push([`Completed milestones (${completed.length}):`, ...completedRows].join("\n"));
 			}
@@ -4797,8 +4744,7 @@ const docListCommand = addHelpSchema(docCmd.command("list"), {
 		...LIST_WINDOW_HELP_FIELDS,
 		{ name: "plain", type: "Boolean", description: "Use text output instead of interactive UI" },
 	],
-	output:
-		"Document list with IDs, titles, types, paths, and tags, ordered by title. Output cut by --max-count or --skip ends with the shown range, the total, and the command for the next documents",
+	output: `Document list with IDs, titles, types, paths, and tags, ordered by title. ${LIST_WINDOW_OUTPUT_HELP}`,
 	examples: ["backlog doc list --plain", "backlog doc list --max-count 20 --plain"],
 });
 addListWindowOptions(docListCommand)
@@ -4847,8 +4793,7 @@ const docSearchCommand = addHelpSchema(docCmd.command("search <query>"), {
 		},
 		...LIST_WINDOW_HELP_FIELDS,
 	],
-	output:
-		"Plain text Documents list with id, title, path, type, tags, score, and a follow-up doc view command. Output cut by --max-count or --skip ends with the shown range, the total, and the command for the next documents",
+	output: `Plain text Documents list with id, title, path, type, tags, score, and a follow-up doc view command. ${LIST_WINDOW_OUTPUT_HELP}`,
 	examples: [
 		'backlog doc search "architecture"',
 		'backlog doc search "runbook" --limit 5',
@@ -4978,8 +4923,7 @@ const decisionListCommand = addHelpSchema(decisionCmd.command("list"), {
 		{ name: "plain", type: "Boolean", description: "Use plain text output, which is the default for this command" },
 		{ name: "json", type: "Boolean", description: "Use versioned machine-readable JSON output" },
 	],
-	output:
-		"Decision list with IDs, titles, and statuses, ordered by ID; versioned JSON with --json. Output cut by --max-count or --skip ends with the shown range, the total, and the command for the next decisions; JSON adds total and nextSkip",
+	output: `Decision list with IDs, titles, and statuses, ordered by ID; versioned JSON with --json. ${LIST_WINDOW_OUTPUT_HELP}; JSON adds total and nextSkip`,
 	examples: ["backlog decision list --plain", "backlog decision list --json", "backlog decision list --max-count 20"],
 }).description("list decisions");
 addListWindowOptions(decisionListCommand)
