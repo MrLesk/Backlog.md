@@ -1,19 +1,6 @@
 import type { Task } from "../types/index.ts";
 import { wrapStatusColor } from "./status-icon.ts";
 
-// A compact indicator leaves the task id and title most of the row; the color of the
-// filled run carries the completion signal that the dropped cells used to spell out.
-const WIDE_PROGRESS_MIN_WIDTH = 40;
-const WIDE_PROGRESS_CELLS = 5;
-const COMPACT_PROGRESS_CELLS = 3;
-
-// Plain ASCII on purpose: blessed only guarantees glyph fallback for DEC Special
-// Graphics (box drawing), so Block Elements like U+2588/U+2591 render as blank
-// cells when the terminal font lacks them and as "?" without a UTF-8 locale.
-// ASCII stays below "~" and bypasses every charset translation.
-const FILLED_CELL = "#";
-const EMPTY_CELL = "-";
-
 function isInProgress(status: string): boolean {
 	return status.trim().toLowerCase() === "in progress";
 }
@@ -27,6 +14,24 @@ function completionColor(checked: number, total: number): string {
 	return checked / total <= 1 / 3 ? "red" : "yellow";
 }
 
+/**
+ * One pie glyph mirrors the web's progress ring in a single cell, leaving the task id and
+ * title the rest of the row. These live in the Geometric Shapes block the TUI already
+ * renders (● ○ ◒ in status-icon.ts), unlike Block Elements such as U+2588/U+2591, which
+ * blessed cannot ACS-route and which blank out on fonts that lack them.
+ *
+ * The empty and full pies are reserved for the exact counts, so a nearly finished task never
+ * reads as complete and a barely started one never reads as untouched.
+ */
+function pieGlyph(checked: number, total: number): string {
+	if (checked === 0) return "○";
+	if (checked === total) return "●";
+	const ratio = checked / total;
+	if (ratio <= 1 / 3) return "◔";
+	if (ratio <= 2 / 3) return "◑";
+	return "◕";
+}
+
 /** Format a " (ac: checked/total)" suffix for plain and MCP task list lines; empty without criteria. */
 export function formatAcceptanceCriteriaSummarySuffix(task: Task): string {
 	const criteria = task.acceptanceCriteriaItems ?? [];
@@ -37,24 +42,19 @@ export function formatAcceptanceCriteriaSummarySuffix(task: Task): string {
 }
 
 /**
- * Format live acceptance-criteria completion for one-line TUI task summaries.
+ * Format live acceptance-criteria completion for one-line TUI task summaries: a pie glyph
+ * and the checked/total count for In Progress tasks with criteria, empty for every other
+ * row. createTaskRowPrefix reserves the column this occupies.
  *
- * The filled run is wrapped in a deliberate blessed color tag; no task-derived text
- * enters the bar, so callers embed the result in tag-parsed content without escaping.
+ * The glyph is wrapped in a deliberate blessed color tag and no task-derived text enters
+ * the cell, so callers can embed the result in tag-parsed content without escaping.
  */
-export function formatAcceptanceCriteriaProgress(task: Task, availableWidth = Number.POSITIVE_INFINITY): string {
+export function formatAcceptanceCriteriaProgress(task: Task): string {
 	const criteria = task.acceptanceCriteriaItems ?? [];
 	if (!isInProgress(task.status) || criteria.length === 0) return "";
 
 	const checked = criteria.filter((criterion) => criterion.checked).length;
-	const cells = availableWidth >= WIDE_PROGRESS_MIN_WIDTH ? WIDE_PROGRESS_CELLS : COMPACT_PROGRESS_CELLS;
-	// Clamp rounding so any progress shows at least one cell and unfinished work never fills the bar.
-	let filled = Math.round((checked / criteria.length) * cells);
-	if (checked > 0 && filled === 0) filled = 1;
-	if (checked < criteria.length && filled === cells) filled = cells - 1;
+	const color = completionColor(checked, criteria.length);
 
-	const filledRun =
-		filled > 0 ? wrapStatusColor(FILLED_CELL.repeat(filled), completionColor(checked, criteria.length)) : "";
-
-	return `[${filledRun}${EMPTY_CELL.repeat(cells - filled)}] ${checked}/${criteria.length}`;
+	return `${wrapStatusColor(pieGlyph(checked, criteria.length), color)} ${checked}/${criteria.length}`;
 }

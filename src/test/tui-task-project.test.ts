@@ -34,8 +34,8 @@ describe("TUI task project display", () => {
 	});
 
 	it("shows the project badge on board task cards", () => {
-		const projected = formatTaskListItem(createTask({ project: "Web" }), false, undefined, undefined, ["Web"]);
-		const unprojected = formatTaskListItem(createTask(), false, undefined, undefined, ["Web"]);
+		const projected = formatTaskListItem(createTask({ project: "Web" }), false, undefined, ["Web"]);
+		const unprojected = formatTaskListItem(createTask(), false, undefined, ["Web"]);
 		const unconfigured = formatTaskListItem(createTask({ project: "Web" }));
 
 		expect(projected).toContain("{blue-fg}[Web]{/}");
