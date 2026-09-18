@@ -597,10 +597,12 @@ export class GitOperations {
 	}
 
 	private async fetchRemote(remote: string): Promise<void> {
-		// Preflight: skip if repository has no remotes configured
-		const hasRemotes = await this.hasAnyRemote();
-		if (!hasRemotes) {
-			// No remotes configured; silently skip fetch. A consolidated warning is shown during init if applicable.
+		// Preflight: skip if the requested remote is not configured. Checking for any remote is not
+		// enough: a repository whose only remote is named e.g. "upstream" would still run
+		// `git fetch origin` and fail with exit code 128 on every task read.
+		const hasRequestedRemote = await this.hasRemote(remote);
+		if (!hasRequestedRemote) {
+			// Silently skip fetch. A consolidated warning is shown during init if applicable.
 			return;
 		}
 
