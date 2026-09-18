@@ -83,6 +83,8 @@ export interface Task {
 	// Metadata fields
 	lastModified?: Date;
 	source?: "local" | "remote" | "completed" | "local-branch";
+	/** Derived readiness verdict indicating if the task can be started now (read-time only, never stored) */
+	isReady?: boolean;
 	/** Optional per-task callback command to run on status change (overrides global config) */
 	onStatusChange?: string;
 }
@@ -276,6 +278,7 @@ export interface SearchFilters {
 	/** Defaults to "any"; callers passing an explicitly typed label list use "all". */
 	labelMatch?: LabelMatchMode;
 	modifiedFiles?: string | string[];
+	ready?: boolean;
 }
 
 export interface SearchOptions {
