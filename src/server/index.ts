@@ -875,6 +875,7 @@ export class BacklogServer {
 				assignee?: string | string[];
 				labels?: string | string[];
 				modifiedFiles?: string | string[];
+				ready?: boolean;
 			} = {};
 
 			if (statusParams.length === 1) {
@@ -954,6 +955,11 @@ export class BacklogServer {
 					filters.modifiedFiles =
 						normalizedModifiedFiles.length === 1 ? normalizedModifiedFiles[0] : normalizedModifiedFiles;
 				}
+			}
+
+			const readyParam = url.searchParams.get("ready");
+			if (readyParam !== null) {
+				filters.ready = readyParam === "true" || readyParam === "1";
 			}
 
 			const servicesWereReady = this.servicesInitialized;
