@@ -5,7 +5,7 @@ import { DEFAULT_STATUSES, DEFAULT_TASK_TYPES } from "../constants/index.ts";
 import { serializeTask } from "../markdown/serializer.ts";
 import { McpServer } from "../mcp/server.ts";
 import { registerTaskTools } from "../mcp/tools/tasks/index.ts";
-import type { JsonSchema } from "../mcp/validation/validators.ts";
+import { type JsonSchema, validateInput } from "../mcp/validation/validators.ts";
 import type { Task } from "../types/index.ts";
 import {
 	commitSamePathBranchTaskVariant,
@@ -836,9 +836,48 @@ describe("MCP task tools (MVP)", () => {
 		expect(createStatusSchema?.enumNormalizeWhitespace).toBe(true);
 
 		expect(editStatusSchema?.enum).toEqual(expectedStatuses);
-		expect(editStatusSchema?.default).toBe(normalizedStatuses[0] ?? DEFAULT_STATUSES[0]);
+		expect(editStatusSchema?.default).toBeUndefined();
 		expect(editStatusSchema?.enumCaseInsensitive).toBe(true);
 		expect(editStatusSchema?.enumNormalizeWhitespace).toBe(true);
+	});
+
+	it("advertises and applies a configured create default outside editable statuses", async () => {
+		const config = await loadConfig(mcpServer);
+		config.statuses = ["To Do", "Done"];
+		config.defaultStatus = "Custom Status";
+		await mcpServer.filesystem.saveConfig(config);
+		const customServer = new McpServer(TEST_DIR, "Test instructions");
+		registerTaskTools(customServer, config);
+
+		const tools = await customServer.testInterface.listTools();
+		const toolByName = new Map(tools.tools.map((tool) => [tool.name, tool]));
+		const createSchema = toolByName.get("task_create")?.inputSchema as JsonSchema;
+		const editSchema = toolByName.get("task_edit")?.inputSchema as JsonSchema;
+		const createStatus = createSchema.properties?.status;
+		expect(createStatus?.default).toBe("Custom Status");
+		expect(createStatus?.enum).toContain("Custom Status");
+		expect(validateInput({ title: "custom default" }, createSchema).isValid).toBe(true);
+		expect(validateInput({ id: "TASK-1", status: "Custom Status" }, editSchema).isValid).toBe(false);
+
+		const createResult = await customServer.testInterface.callTool({
+			params: { name: "task_create", arguments: { title: "Uses custom default" } },
+		});
+		expect(createResult.isError).not.toBe(true);
+		const created = await customServer.filesystem.loadTask("task-1");
+		expect(created?.status).toBe("Custom Status");
+	});
+
+	it("treats task_edit enum placeholders as omitted without accepting invalid values", async () => {
+		const tools = await mcpServer.testInterface.listTools();
+		const editSchema = tools.tools.find((tool) => tool.name === "task_edit")?.inputSchema as JsonSchema;
+		const placeholderResult = validateInput(
+			{ id: "TASK-1", status: "status?", priority: "priority?", type: "type?" },
+			editSchema,
+		);
+		expect(placeholderResult.isValid).toBe(true);
+		expect(placeholderResult.sanitizedData).toEqual({ id: "TASK-1" });
+		const invalidResult = validateInput({ id: "TASK-1", status: "not-a-status" }, editSchema);
+		expect(invalidResult.isValid).toBe(false);
 	});
 
 	it("exposes configured priority enums and accepts custom priority values", async () => {
@@ -1720,5 +1759,139 @@ describe("MCP task tools (MVP)", () => {
 		}
 		if (primaryError !== undefined) throw primaryError;
 		if (cleanupError !== undefined) throw cleanupError;
+	});
+
+	it("filters schema placeholders and preserves all task sections during comment-only task_edit", async () => {
+		// 1. Create a task with full metadata and body sections
+		await mcpServer.testInterface.callTool({
+			params: {
+				name: "task_create",
+				arguments: {
+					title: "Task with rich sections",
+					modifiedFiles: ["src/initial.ts", "src/secondary.ts"],
+					description: "Original detailed description",
+					status: "In Progress",
+					priority: "high",
+					assignee: ["@souljedi"],
+					labels: ["backend", "mcp"],
+					acceptanceCriteria: ["Criterion 1", "Criterion 2"],
+					finalSummary: "Initial summary draft",
+				},
+			},
+		});
+
+		const preExistingComment = await mcpServer.testInterface.callTool({
+			params: { name: "task_edit", arguments: { id: "task-1", commentsAppend: ["Existing review note"] } },
+		});
+		expect(preExistingComment.isError).toBeFalsy();
+
+		// Add implementation plan and notes
+		await mcpServer.testInterface.callTool({
+			params: {
+				name: "task_edit",
+				arguments: {
+					id: "task-1",
+					planSet: "Step 1: Planning\nStep 2: Execution",
+					notesSet: "Important implementation note",
+				},
+			},
+		});
+
+		// 2. Perform a comment-only edit simulating an AI agent passing TypeScript schema placeholders
+		const editResult = await mcpServer.testInterface.callTool({
+			params: {
+				name: "task_edit",
+				arguments: {
+					id: "task-1",
+					commentsAppend: [
+						"planSet?: string",
+						"acceptanceCriteriaSet?[]",
+						"commentsAppend?[]: string[]",
+						"commentAuthor?:",
+						"Actual review comment: LGTM!",
+					],
+					commentAuthor: "commentAuthor?:",
+					status: "status?",
+					priority: "priority?",
+					type: "type?",
+					planSet: "planSet?",
+					notesSet: "notesSet?",
+					description: "description?",
+					modifiedFiles: [],
+				},
+			},
+		});
+
+		expect(editResult.isError).toBeFalsy();
+		const editText = getText(editResult.content);
+
+		// AC #1: Exactly one comment with no malformed field-name entries
+		expect(editText).toContain("Comments:");
+		expect(editText).toContain("Actual review comment: LGTM!");
+		expect(editText).not.toContain("planSet?: string");
+		expect(editText).not.toContain("acceptanceCriteriaSet?[]");
+		expect(editText).not.toContain("commentsAppend?[]: string[]");
+		expect(editText).not.toContain("commentAuthor?:");
+
+		// AC #2: Comment-only updates preserve description, plan, notes, acceptance criteria, status, and final summary
+		const loadedTask = await mcpServer.filesystem.loadTask("task-1");
+		expect(loadedTask).not.toBeNull();
+		expect(loadedTask?.title).toBe("Task with rich sections");
+		expect(loadedTask?.description).toBe("Original detailed description");
+		expect(loadedTask?.status).toBe("In Progress");
+		expect(loadedTask?.priority).toBe("high");
+		expect(loadedTask?.assignee).toEqual(["@souljedi"]);
+		expect(loadedTask?.labels).toEqual(["backend", "mcp"]);
+		expect(loadedTask?.implementationPlan).toBe("Step 1: Planning\nStep 2: Execution");
+		expect(loadedTask?.implementationNotes).toBe("Important implementation note");
+		expect(loadedTask?.finalSummary).toBe("Initial summary draft");
+		expect(loadedTask?.acceptanceCriteriaItems?.map((ac) => ac.text)).toEqual(["Criterion 1", "Criterion 2"]);
+
+		// The pre-existing comment remains and exactly one real comment is appended.
+		expect(loadedTask?.comments?.length).toBe(2);
+		expect(loadedTask?.comments?.[0]?.body).toBe("Existing review note");
+		expect(loadedTask?.comments?.[1]?.body).toBe("Actual review comment: LGTM!");
+		expect(loadedTask?.comments?.[1]?.author).toBeUndefined();
+		expect(loadedTask?.modifiedFiles).toEqual([]);
+
+		// AC #4: Verify task markdown remains structurally valid
+		const taskPath = loadedTask?.filePath;
+		expect(taskPath).toBeDefined();
+		if (taskPath) {
+			const rawContent = await Bun.file(taskPath).text();
+			expect(rawContent).toContain(
+				"## Description\n\n<!-- SECTION:DESCRIPTION:BEGIN -->\nOriginal detailed description\n<!-- SECTION:DESCRIPTION:END -->",
+			);
+			expect(rawContent).toContain(
+				"## Acceptance Criteria\n<!-- AC:BEGIN -->\n- [ ] #1 Criterion 1\n- [ ] #2 Criterion 2\n<!-- AC:END -->",
+			);
+			expect(rawContent).toContain(
+				"## Implementation Plan\n\n<!-- SECTION:PLAN:BEGIN -->\nStep 1: Planning\nStep 2: Execution\n<!-- SECTION:PLAN:END -->",
+			);
+			expect(rawContent).toContain(
+				"## Implementation Notes\n\n<!-- SECTION:NOTES:BEGIN -->\nImportant implementation note\n<!-- SECTION:NOTES:END -->",
+			);
+			expect(rawContent).toContain(
+				"## Final Summary\n\n<!-- SECTION:FINAL_SUMMARY:BEGIN -->\nInitial summary draft\n<!-- SECTION:FINAL_SUMMARY:END -->",
+			);
+			expect(rawContent).toContain("## Comments\n\n<!-- COMMENTS:BEGIN -->");
+			expect(rawContent).toContain("Actual review comment: LGTM!");
+			expect(rawContent).not.toContain("planSet?: string");
+		}
+	});
+
+	it("treats blank-only modifiedFiles as a no-op", async () => {
+		await mcpServer.testInterface.callTool({
+			params: {
+				name: "task_create",
+				arguments: { title: "Modified files blank input", modifiedFiles: ["src/kept.ts"] },
+			},
+		});
+		const result = await mcpServer.testInterface.callTool({
+			params: { name: "task_edit", arguments: { id: "task-1", modifiedFiles: [" ", "\t"] } },
+		});
+		expect(result.isError).toBeFalsy();
+		const task = await mcpServer.filesystem.loadTask("task-1");
+		expect(task?.modifiedFiles).toEqual(["src/kept.ts"]);
 	});
 });
