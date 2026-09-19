@@ -51,6 +51,9 @@ export type ColumnData = {
 	tasks: Task[];
 };
 
+// blessed names a carriage return "return" and only a linefeed "enter", so both must be bound.
+export const BOARD_ENTER_KEYS = ["enter", "return"];
+
 type BoardSharedFilters = {
 	searchQuery: string;
 	excludeStatus?: string[];
@@ -1659,7 +1662,7 @@ export async function renderBoardTui(
 			await syncOpenPopup();
 		};
 
-		screen.key(["enter"], async () => {
+		screen.key(BOARD_ENTER_KEYS, async () => {
 			if (popupOpen || filterPopupOpen || modalOpen || currentFocus === "filters") return;
 
 			// In move mode, Enter confirms the move
