@@ -2,15 +2,15 @@ import { type FSWatcher, watch } from "node:fs";
 import type { Writable } from "node:stream";
 import { setTimeout as delay } from "node:timers/promises";
 
-/**
- * Returns a check for whether the process that started this one has exited: the parent, and also the launcher's parent
- * when the npm launcher is the parent. POSIX reparents orphans; Windows does not, so the PIDs are probed as well.
- */
-function observeStarter(): () => boolean {
-	const parent = process.ppid;
-	const [launcher, launcherParent] = (process.env.BACKLOG_LAUNCHER ?? "").split(":").map(Number);
-	const starters = launcher === parent ? [parent, launcherParent] : [parent];
-	return () => process.ppid !== parent || !starters.every(isRunning);
+// The process that started this one: the parent, and also the launcher's parent when the npm launcher is the parent.
+// Captured when the CLI loads, before parsing and project lookup, so a starter that exits during setup still counts.
+const parent = process.ppid;
+const [launcher, launcherParent] = (process.env.BACKLOG_LAUNCHER ?? "").split(":").map(Number);
+const starters = launcher === parent ? [parent, launcherParent] : [parent];
+
+/** POSIX reparents orphans; Windows does not, so the PIDs are probed as well. */
+function starterExited(): boolean {
+	return process.ppid !== parent || !starters.every(isRunning);
 }
 
 /** Only a process that no longer exists counts as ended; unknown PIDs and other errors never end the watch. */
@@ -38,7 +38,6 @@ export async function watchJson(
 	let wake: (() => void) | undefined;
 	let previous: string | undefined;
 	let timer: ReturnType<typeof setInterval> | undefined;
-	const starterExited = observeStarter();
 
 	const refresh = () => {
 		pending = true;

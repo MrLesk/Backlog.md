@@ -5,7 +5,7 @@ status: Done
 assignee:
   - '@claude'
 created_date: '2026-09-23 19:31'
-updated_date: '2026-09-23 21:18'
+updated_date: '2026-09-23 21:34'
 labels: []
 dependencies: []
 references:
@@ -19,6 +19,8 @@ modified_files:
   - src/cli.ts
   - src/guidelines/cli-instructions/overview.md
   - CLI-INSTRUCTIONS.md
+  - src/test/test-utils.ts
+  - src/test/cli-launcher.test.ts
 type: bug
 ordinal: 318000
 ---
@@ -82,6 +84,8 @@ Manual e2e on macOS (bun run build; launcher dir = scripts/cli.cjs + scripts/res
 - Stale BACKLOG_LAUNCHER values (unrelated PIDs, garbage) do not end a directly started watch.
 
 Validation: bunx tsc --noEmit and bun run check . pass. bun test --timeout=10000 src/test/cli-json-watch.test.ts src/test/watch-json.test.ts src/test/cli-launcher.test.ts: 20 pass; cli-json-watch also passes against the CI-style bundle (BACKLOG_TEST_CLI_BUNDLE). With the liveness check disabled, both new tests fail (timeout waiting for the watch to exit) and leave no processes behind. Full bun run test on this Mac at normal load: 2893 pass, 8 skip, 1 fail (board-tui-move.test.ts, unrelated TUI flake that passes 3 of 3 alone). Later full runs were stopped because other sessions pushed the load average to 80-97 and caused timeouts across unrelated files; CI is the clean full-suite check. Test runs under load leaked unrelated fixture files into the worktree backlog; they were deleted and not committed.
+
+Review follow-up: the starter is now captured when watch-json.ts loads at CLI startup, before parsing and project lookup; with a starter that exits 0.12 s after spawning, the PR-head build leaked the watch and the new build ends it (exits within about 0.08 s of process start, before the CLI modules load, still escape). Launcher fixture shared with cli-launcher tests via createLauncherInstall. Known limit: on Windows npm installs the launcher runs through the backlog.cmd shim, so the launcher's parent is cmd.exe and the watch follows it, as in the npx case.
 <!-- SECTION:NOTES:END -->
 
 ## Final Summary

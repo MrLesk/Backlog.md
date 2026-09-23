@@ -5,6 +5,7 @@ import { Core } from "../index.ts";
 import type { Task } from "../types/index.ts";
 import { getTestCliPath } from "./test-cli.ts";
 import {
+	createLauncherInstall,
 	createUniqueTestDir,
 	getPlatformTimeout,
 	initializeFilesystemTestProject,
@@ -13,8 +14,6 @@ import {
 	waitUntil,
 	withTimeout,
 } from "./test-utils.ts";
-
-const { getCandidatePackageNames } = require("../../scripts/resolveBinary.cjs");
 
 const CLI = getTestCliPath();
 const WATCH = ["task", "list", "--json", "--watch"];
@@ -48,30 +47,18 @@ function startWatchFrom(command: string[]) {
 	);
 }
 
-/** An npm launcher install whose platform binary is this Bun, so the launched binary runs the CLI path it is given. */
-async function createLauncher(): Promise<string> {
-	const launcher = join(directory, "launcher");
-	const packageDir = join(launcher, "node_modules", getCandidatePackageNames()[0]);
-	await mkdir(packageDir, { recursive: true });
-	await copyFile(process.execPath, join(packageDir, isWindows() ? "backlog.exe" : "backlog"));
-	for (const file of ["cli.cjs", "resolveBinary.cjs"]) {
-		await copyFile(join(import.meta.dir, "..", "..", "scripts", file), join(launcher, file));
-	}
-	return join(launcher, "cli.cjs");
-}
-
-function follow(process: Bun.Subprocess<"ignore", "pipe", "pipe">): {
+function follow(child: Bun.Subprocess<"ignore", "pipe", "pipe">): {
 	process: Bun.Subprocess<"ignore", "pipe", "pipe">;
 	snapshots: string[];
 	stderr: Promise<string>;
 	reading: Promise<void>;
 } {
 	const snapshots: string[] = [];
-	const stderr = new Response(process.stderr).text();
+	const stderr = new Response(child.stderr).text();
 	const reading = (async () => {
 		const decoder = new TextDecoder();
 		let buffer = "";
-		for await (const chunk of process.stdout) {
+		for await (const chunk of child.stdout) {
 			buffer += decoder.decode(chunk, { stream: true });
 			// The existing pretty-printed envelope ends with an unindented closing brace.
 			let end = buffer.indexOf("\n}\n");
@@ -82,7 +69,7 @@ function follow(process: Bun.Subprocess<"ignore", "pipe", "pipe">): {
 			}
 		}
 	})();
-	const result = { process, snapshots, stderr, reading };
+	const result = { process: child, snapshots, stderr, reading };
 	processes.push(result);
 	return result;
 }
@@ -290,7 +277,11 @@ describe("CLI JSON watch", () => {
 	});
 
 	it("ends with the launcher when the process that started the npm launcher is killed", async () => {
-		await expectWatchToEndWithItsStarter(["node", await createLauncher(), CLI, ...WATCH]);
+		// The platform binary is this Bun, so the launched binary runs the CLI path it is given.
+		const launcher = await createLauncherInstall(join(directory, "launcher"), (path) =>
+			copyFile(process.execPath, path),
+		);
+		await expectWatchToEndWithItsStarter(["node", launcher, CLI, ...WATCH]);
 	});
 
 	it("requires JSON and rejects invalid options without writing a snapshot", async () => {
