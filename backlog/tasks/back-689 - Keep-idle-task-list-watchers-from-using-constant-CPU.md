@@ -5,7 +5,7 @@ status: Done
 assignee:
   - '@claude'
 created_date: '2026-09-23 19:35'
-updated_date: '2026-09-23 21:47'
+updated_date: '2026-09-23 22:10'
 labels: []
 dependencies: []
 references:
@@ -13,6 +13,7 @@ references:
 modified_files:
   - src/commands/watch-json.ts
   - src/test/watch-json.test.ts
+  - src/cli.ts
 type: bug
 ordinal: 319000
 ---
@@ -82,6 +83,20 @@ Measured with 'bun run build' binaries side by side under load average 30-40 (fi
 The new test covers symlinked files and directories and two cycles. With the cb6e5e21 code under Bun 1.3.14 it hangs. tsc, Biome and the watch tests (14 pass) pass under Bun 1.4.1 and 1.3.14. The symlink test is skipped on Windows, where creating symlinks needs extra privileges.
 
 Re-review fixes: per-entry stat and readdir errors (self or mutual links, unreadable subdirectories) now count that entry by name instead of turning the whole signature into one error string. The directory-link test uses junctions so it also runs on Windows; only the file-link, looping-link and chmod test is skipped there. Checks pass under Bun 1.4.1 and the pinned 1.3.14 (23 tests across watch-json, cli-json-watch and cli-launcher).
+
+Final reshape after review (Codex threads on 9b27e4c9: aliased directories, large linked trees under docs/): the repair signature no longer walks backlog/. It stats exactly the inputs of the canonical task-list read, one level deep, following symlinks like the loaders (readdirSync lists a linked directory through its link; statSync follows linked files; missing, dangling or looping entries count by name). No recursion, realpath set or loop handling remains.
+
+What runTaskList (src/cli.ts:2558) reads, all local:
+- tasks/ and completed/: duplicate check src/cli.ts:2568 -> src/core/duplicate-task-repair.ts:97; queryTasks src/cli.ts:2692 -> src/core/backlog.ts:1011; readiness src/cli.ts:2716 -> src/core/task-detail.ts:36-40; --parent src/cli.ts:2682 -> src/core/backlog.ts:1136-1140. Loader globs: src/file-system/operations.ts:957 (tasks) and :1016 (completed), single level with followSymlinks.
+- milestones/ and archive/milestones/ with --milestone: src/core/backlog.ts:991-996 -> src/file-system/operations.ts:1796.
+- The config file: src/cli.ts:2697, src/core/task-detail.ts:39 -> src/file-system/operations.ts:2024 (resolvedConfigPath).
+The list is built once in src/cli.ts from the FileSystem getters the loaders use (tasksDir, completedDir, milestonesDir, archiveMilestonesDir, configFilePath). Milestones are always included; they are few files, and unchanged output is suppressed.
+
+Notifications stay unchanged (backlog/ recursive plus the config directory). fs.watch on a path that does not exist throws at startup, and empty directories such as completed/ or archive/milestones/ are often missing in fresh clones. The recursive backlog watch still sees them when they appear, and it costs nothing while idle.
+
+Measurements, bun run build binaries side by side, 60 s idle after startup, load average 7-10: copy of groma3's backlog: main 21.71 s (36.2%), fix 0.38 s (0.63%). Two-loop tree: main 21.08 s (35.1%), fix 0.40 s (0.67%). In both, main and the fix emitted a first list (fix at 1.03 s and 0.53 s) and exited 0.12 s after SIGTERM. Symlinked tasks dir and symlinked task file, edited at their targets with 0 backlog notifications: fix updated after 1.06 s and 0.95 s (main 1.05 s and 0.94 s), and both final lists matched one-shot --json. A symlinked completed/ uses the same path. tsc, Biome and 23 tests across watch-json, cli-json-watch and cli-launcher pass on Bun 1.3.14 and 1.4.1.
+
+Correction: the readiness call is at src/cli.ts:2717, not 2716.
 <!-- SECTION:NOTES:END -->
 
 ## Final Summary

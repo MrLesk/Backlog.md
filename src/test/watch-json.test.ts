@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
-import { chmod, mkdir, rm, symlink, utimes, writeFile } from "node:fs/promises";
+import { mkdir, rm, symlink, utimes, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { Writable } from "node:stream";
 import { filesSignature, watchJson } from "../commands/watch-json.ts";
@@ -38,6 +38,7 @@ describe("JSON watch lifecycle", () => {
 		let release: (() => void) | undefined;
 		watching = watchJson(
 			[directory],
+			[directory],
 			async () => {
 				const captured = state;
 				if (++calls === 1)
@@ -62,6 +63,7 @@ describe("JSON watch lifecycle", () => {
 		let reads = 0;
 		watching = watchJson(
 			[directory],
+			[directory],
 			async () => {
 				reads++;
 				return "snapshot";
@@ -76,83 +78,74 @@ describe("JSON watch lifecycle", () => {
 		expect(writes).toEqual(["snapshot"]);
 	});
 
-	it("reconciles with a stat signature that changes only with the watched files", async () => {
-		const scopes = [{ directory, recursive: true }];
+	it("compares the read's files and directory entries one level deep", async () => {
 		const tasks = join(directory, "tasks");
 		const task = join(tasks, "task.md");
+		const config = join(directory, "config.yml");
+		const docs = join(directory, "docs");
 		const kept = new Date(2000, 0, 1);
 		await mkdir(tasks);
+		await mkdir(docs);
 		await writeFile(task, "one");
+		await writeFile(config, "one");
 		await utimes(task, kept, kept);
-		const initial = filesSignature(scopes);
-		expect(filesSignature(scopes)).toBe(initial);
+		// Not an input: a link cycle or a large linked tree under docs is never scanned.
+		await symlink(directory, join(docs, "loop"), "junction");
+		const inputs = [tasks, join(directory, "completed"), config];
+		const initial = filesSignature(inputs);
+		expect(filesSignature(inputs)).toBe(initial);
+		await writeFile(join(docs, "doc.md"), "changed");
+		expect(filesSignature(inputs)).toBe(initial);
 
 		// A same-size replacement that keeps the modification time is revealed by the change time.
 		// The pause outlasts coarse filesystem clocks.
 		await Bun.sleep(50);
 		await writeFile(task, "two");
 		await utimes(task, kept, kept);
-		const edited = filesSignature(scopes);
+		const edited = filesSignature(inputs);
 		expect(edited).not.toBe(initial);
 
 		await writeFile(join(tasks, "other.md"), "new");
-		expect(filesSignature(scopes)).not.toBe(edited);
-		// Removal restores the signature even though the directory's own time moved.
+		expect(filesSignature(inputs)).not.toBe(edited);
 		await rm(join(tasks, "other.md"));
-		expect(filesSignature(scopes)).toBe(edited);
-		// Like its notifications, a non-recursive scope ignores nested files.
-		expect(filesSignature([{ directory, recursive: false }])).not.toContain("task.md");
+		expect(filesSignature(inputs)).toBe(edited);
+		// A directory that did not exist yet, and a file input.
+		await mkdir(join(directory, "completed"));
+		await writeFile(join(directory, "completed", "done.md"), "done");
+		const created = filesSignature(inputs);
+		expect(created).not.toBe(edited);
+		await writeFile(config, "changed");
+		expect(filesSignature(inputs)).not.toBe(created);
 	});
 
-	it("follows linked directories and enters each directory once", async () => {
-		const backlog = join(directory, "backlog");
+	it("follows a linked task directory", async () => {
 		const outside = join(directory, "outside");
-		await mkdir(backlog);
+		const tasks = join(directory, "tasks");
 		await mkdir(outside);
 		await writeFile(join(outside, "task.md"), "one");
 		// Junctions link directories on Windows without extra privileges; elsewhere they are symlinks.
-		await symlink(outside, join(backlog, "tasks"), "junction");
-		// Two cycles made recursive scans walk every path of links up to the system limit.
-		await symlink(backlog, join(backlog, "a"), "junction");
-		await symlink(backlog, join(backlog, "b"), "junction");
-		const scopes = [{ directory: backlog, recursive: true }];
-		const initial = filesSignature(scopes);
-		expect(initial).toContain("tasks/task.md");
-		// Entries start their lines; the first line is the scope's own path.
-		expect(initial).not.toContain("\na/");
+		await symlink(outside, tasks, "junction");
+		const initial = filesSignature([tasks]);
+		expect(initial).toContain("task.md\0");
 		// An edit inside the link target, where notifications on the backlog do not reach.
 		await writeFile(join(outside, "task.md"), "changed");
-		expect(filesSignature(scopes)).not.toBe(initial);
+		expect(filesSignature([tasks])).not.toBe(initial);
 	});
 
 	// Creating file symlinks on Windows needs extra privileges.
-	it.skipIf(process.platform === "win32")("counts linked files and skips entries it cannot read", async () => {
+	it.skipIf(process.platform === "win32")("follows linked task files and counts broken links by name", async () => {
 		const outside = join(directory, "outside.txt");
-		const task = join(directory, "task.md");
-		const locked = join(directory, "locked");
 		await writeFile(outside, "one");
-		await writeFile(task, "one");
-		await symlink(outside, join(directory, "linked.md"));
-		await symlink("self", join(directory, "self"));
-		await symlink("q", join(directory, "p"));
-		await symlink("p", join(directory, "q"));
-		await mkdir(locked);
-		await chmod(locked, 0o000);
-		try {
-			const scopes = [{ directory, recursive: true }];
-			const initial = filesSignature(scopes);
-			// Looping links count by name, and the pass never falls back to a constant error.
-			expect(initial.startsWith(directory)).toBe(true);
-			expect(initial.split("\n")).toEqual(expect.arrayContaining(["self", "p", "q"]));
-			// Size changes keep these edits visible under coarse filesystem clocks.
-			await writeFile(outside, "changed");
-			const linked = filesSignature(scopes);
-			expect(linked).not.toBe(initial);
-			await writeFile(task, "changed");
-			expect(filesSignature(scopes)).not.toBe(linked);
-		} finally {
-			await chmod(locked, 0o755);
-		}
+		await mkdir(join(directory, "tasks"));
+		const tasks = join(directory, "tasks");
+		await symlink(outside, join(tasks, "linked.md"));
+		await symlink("self", join(tasks, "self"));
+		await symlink("missing", join(tasks, "dangling"));
+		const initial = filesSignature([tasks]);
+		expect(initial.split("\n")).toEqual([tasks, "dangling", expect.stringContaining("linked.md\0"), "self"]);
+		// A size change keeps this edit visible under coarse filesystem clocks.
+		await writeFile(outside, "changed");
+		expect(filesSignature([tasks])).not.toBe(initial);
 	});
 
 	it("does not queue snapshots behind a slow writer and catches up to the latest state", async () => {
@@ -168,6 +161,7 @@ describe("JSON watch lifecycle", () => {
 		let state = "initial";
 		let reads = 0;
 		watching = watchJson(
+			[directory],
 			[directory],
 			async () => {
 				reads++;
@@ -196,7 +190,7 @@ describe("JSON watch lifecycle", () => {
 			},
 		});
 		const before = process.listenerCount("SIGTERM");
-		watching = watchJson([directory], async () => "snapshot", output);
+		watching = watchJson([directory], [directory], async () => "snapshot", output);
 		await waitUntil(() => started, "blocked write");
 		output.destroy();
 		await watching;
@@ -211,7 +205,7 @@ describe("JSON watch lifecycle", () => {
 					callback(Object.assign(new Error(code), { code }));
 				},
 			});
-			const promise = watchJson([directory], async () => "snapshot", output);
+			const promise = watchJson([directory], [directory], async () => "snapshot", output);
 			if (code === "EPIPE") await promise;
 			else await expect(promise).rejects.toThrow("EIO");
 		}
@@ -222,6 +216,7 @@ describe("JSON watch lifecycle", () => {
 		output = collect(writes);
 		await expect(
 			watchJson(
+				[directory],
 				[directory],
 				async () => {
 					throw new Error("read failed");
