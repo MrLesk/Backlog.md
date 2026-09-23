@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
-import { mkdir, rm, utimes, writeFile } from "node:fs/promises";
+import { mkdir, rm, symlink, utimes, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { Writable } from "node:stream";
 import { filesSignature, watchJson } from "../commands/watch-json.ts";
@@ -80,14 +80,18 @@ describe("JSON watch lifecycle", () => {
 		const scopes = [{ directory, recursive: true }];
 		const tasks = join(directory, "tasks");
 		const task = join(tasks, "task.md");
+		const kept = new Date(2000, 0, 1);
 		await mkdir(tasks);
 		await writeFile(task, "one");
+		await utimes(task, kept, kept);
 		const initial = filesSignature(scopes);
 		expect(filesSignature(scopes)).toBe(initial);
 
-		// An edit that keeps the size is revealed by the modification time alone.
+		// A same-size replacement that keeps the modification time is revealed by the change time.
+		// The pause outlasts coarse filesystem clocks.
+		await Bun.sleep(50);
 		await writeFile(task, "two");
-		await utimes(task, new Date(2000, 0, 1), new Date(2000, 0, 1));
+		await utimes(task, kept, kept);
 		const edited = filesSignature(scopes);
 		expect(edited).not.toBe(initial);
 
@@ -98,6 +102,30 @@ describe("JSON watch lifecycle", () => {
 		expect(filesSignature(scopes)).toBe(edited);
 		// Like its notifications, a non-recursive scope ignores nested files.
 		expect(filesSignature([{ directory, recursive: false }])).not.toContain("task.md");
+	});
+
+	// Creating symlinks on Windows needs extra privileges.
+	it.skipIf(process.platform === "win32")("follows symlinks and enters each directory once", async () => {
+		const backlog = join(directory, "backlog");
+		const outside = join(directory, "outside");
+		await mkdir(backlog);
+		await mkdir(outside);
+		await writeFile(join(outside, "task.md"), "one");
+		await symlink(outside, join(backlog, "tasks"));
+		await symlink(join(outside, "task.md"), join(backlog, "linked.md"));
+		// Two cycles made recursive scans walk every path of links up to the system limit.
+		await symlink(".", join(backlog, "a"));
+		await symlink(".", join(backlog, "b"));
+		const scopes = [{ directory: backlog, recursive: true }];
+		const initial = filesSignature(scopes);
+		expect(initial).toContain("tasks/task.md");
+		expect(initial).toContain("linked.md");
+		// Entries start their lines; the first line is the scope's own path.
+		expect(initial).not.toContain("\na/");
+		expect(initial).not.toContain("ELOOP");
+		// An edit inside the link target, where notifications on the backlog do not reach.
+		await writeFile(join(outside, "task.md"), "changed");
+		expect(filesSignature(scopes)).not.toBe(initial);
 	});
 
 	it("does not queue snapshots behind a slow writer and catches up to the latest state", async () => {

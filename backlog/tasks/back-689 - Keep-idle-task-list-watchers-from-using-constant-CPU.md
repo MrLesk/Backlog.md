@@ -5,7 +5,7 @@ status: Done
 assignee:
   - '@claude'
 created_date: '2026-09-23 19:35'
-updated_date: '2026-09-23 20:43'
+updated_date: '2026-09-23 21:36'
 labels: []
 dependencies: []
 references:
@@ -70,6 +70,16 @@ Simplification pass: inlined the scope type, reduced the error fallback to Strin
 Validation: bunx tsc --noEmit and bun run check . pass. bun test --timeout=10000 src/test/watch-json.test.ts src/test/cli-json-watch.test.ts: 13 pass. The new idle test fails on main's timer (3 reads instead of 1). bun run test: first run 2892 pass, 8 skip, 1 fail; a rerun under load average 70-98 from other processes on this Mac hit 10 s timeouts in unrelated subprocess-heavy files (cli-list-window, cli-refs-docs, acceptance-criteria, server-statistics-endpoint). Those 4 files then passed with bun test --timeout=60000 (88 pass, 0 fail). None of them use --watch.
 
 Open tradeoff: the remaining idle cost is the 1 s stat pass, roughly 1% per ~800 files under backlog/ on macOS. Raising the reconciliation interval would divide it but also slow repair when notifications are missed. The interval was left at 1 s so behavior matches BACK-686.
+
+Review follow-up (PR #1036): the first signature used recursive readdirSync, which follows directory symlinks with no cycle check. With symlink loops under backlog/ (copy of groma3's backlog), one loop cost ~21-25 ms per pass instead of ~4 ms, and two loops never finished: the cb6e5e21 binary emitted no list and ignored SIGTERM. Main was unaffected because its task loaders glob single directories. Bun.Glob with followSymlinks looked cycle-safe under Bun 1.4.1 but walks loops to the link limit under Bun 1.3.14, the pinned release/CI runtime that 'bun run build' uses. The signature now walks each real directory once (keyed by realpath), follows symlinked files and directories, skips dotfiles like the loaders, and records ctime next to size and mtime, so a copy that preserves mtime (cp -p) still differs.
+
+Measured with 'bun run build' binaries side by side under load average 30-40 (first list; CPU between 10 s and 70 s; exit after SIGTERM):
+- One loop: main 7.09 s, 13.80 s (23%), 0.91 s. Fix 7.44 s, 0.57 s (0.95%), 0.12 s.
+- Two loops: main 3.11 s, 15.69 s (26%), 0.56 s. Fix 2.89 s, 0.54 s (0.90%), 0.13 s.
+- Static copy of groma3's backlog, no loops: main 13.45 s (22%). Fix 0.53 s (0.88%).
+- Symlinked tasks dir and symlinked task file, edited at their targets: the backlog watcher saw 0 notifications. The fix updated after 0.98 s both times (main 0.90/0.96 s), and both final lists matched one-shot --json.
+
+The new test covers symlinked files and directories and two cycles. With the cb6e5e21 code under Bun 1.3.14 it hangs. tsc, Biome and the watch tests (14 pass) pass under Bun 1.4.1 and 1.3.14. The symlink test is skipped on Windows, where creating symlinks needs extra privileges.
 <!-- SECTION:NOTES:END -->
 
 ## Final Summary

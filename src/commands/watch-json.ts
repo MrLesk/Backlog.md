@@ -1,4 +1,4 @@
-import { type FSWatcher, readdirSync, statSync, watch } from "node:fs";
+import { type FSWatcher, readdirSync, realpathSync, statSync, watch } from "node:fs";
 import { join } from "node:path";
 import type { Writable } from "node:stream";
 import { setTimeout as delay } from "node:timers/promises";
@@ -26,23 +26,33 @@ function isRunning(pid: number | undefined): boolean {
 }
 
 /**
- * Entry names plus file sizes and modification times: a stat pass that detects changes a
- * notification missed, far cheaper than a full read. Entry names already cover directory times.
+ * File names, sizes and change times: a stat pass that detects changes a notification missed, far
+ * cheaper than a full read. Like the task loaders, it follows symlinks and skips dotfiles. Each real
+ * directory is entered once, so link cycles end without walking to the system's link limit.
  */
 export function filesSignature(scopes: { directory: string; recursive: boolean }[]): string {
+	const lines: string[] = [];
+	const entered = new Set<string>();
+	const walk = (directory: string, prefix: string, recursive: boolean) => {
+		entered.add(realpathSync(directory));
+		for (const name of readdirSync(directory).sort()) {
+			if (name.startsWith(".")) continue;
+			const path = join(directory, name);
+			// Files removed mid-pass and dangling links count by name only. The ctime also moves when a
+			// copy keeps the mtime.
+			const stats = statSync(path, { throwIfNoEntry: false });
+			if (!stats) lines.push(prefix + name);
+			else if (!stats.isDirectory()) {
+				lines.push(`${prefix}${name}\0${stats.size}\0${stats.mtimeMs}\0${stats.ctimeMs}`);
+			} else if (recursive && !entered.has(realpathSync(path))) walk(path, `${prefix}${name}/`, true);
+		}
+	};
 	try {
-		return scopes
-			.map(({ directory, recursive }) =>
-				readdirSync(directory, { recursive, encoding: "utf8" })
-					.sort()
-					.map((name) => {
-						// Entries removed mid-pass and dangling links count by name only.
-						const stats = statSync(join(directory, name), { throwIfNoEntry: false });
-						return !stats || stats.isDirectory() ? name : `${name}\0${stats.size}\0${stats.mtimeMs}`;
-					})
-					.join("\n"),
-			)
-			.join("\n\n");
+		for (const { directory, recursive } of scopes) {
+			lines.push(directory);
+			walk(directory, "", recursive);
+		}
+		return lines.join("\n");
 	} catch (error) {
 		// A missing or unreadable directory compares by its error until it can be read again.
 		return String(error);
