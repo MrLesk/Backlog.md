@@ -1,4 +1,5 @@
-import { type FSWatcher, watch } from "node:fs";
+import { type FSWatcher, readdirSync, statSync, watch } from "node:fs";
+import { join } from "node:path";
 import type { Writable } from "node:stream";
 import { setTimeout as delay } from "node:timers/promises";
 
@@ -24,7 +25,31 @@ function isRunning(pid: number | undefined): boolean {
 	}
 }
 
-/** Stream the canonical read's bytes. Notifications are hints; periodic reads repair missed events. */
+/**
+ * Entry names plus file sizes and modification times: a stat pass that detects changes a
+ * notification missed, far cheaper than a full read. Entry names already cover directory times.
+ */
+export function filesSignature(scopes: { directory: string; recursive: boolean }[]): string {
+	try {
+		return scopes
+			.map(({ directory, recursive }) =>
+				readdirSync(directory, { recursive, encoding: "utf8" })
+					.sort()
+					.map((name) => {
+						// Entries removed mid-pass and dangling links count by name only.
+						const stats = statSync(join(directory, name), { throwIfNoEntry: false });
+						return !stats || stats.isDirectory() ? name : `${name}\0${stats.size}\0${stats.mtimeMs}`;
+					})
+					.join("\n"),
+			)
+			.join("\n\n");
+	} catch (error) {
+		// A missing or unreadable directory compares by its error until it can be read again.
+		return String(error);
+	}
+}
+
+/** Stream the canonical read's bytes. Notifications are hints; a periodic stat pass repairs missed events. */
 export async function watchJson(
 	directories: string[],
 	read: () => Promise<string | undefined>,
@@ -33,6 +58,8 @@ export async function watchJson(
 	const controller = new AbortController();
 	const { signal } = controller;
 	const watchers: FSWatcher[] = [];
+	const scopes = [...new Set(directories)].map((directory, index) => ({ directory, recursive: index === 0 }));
+	let seen: string | undefined;
 	let failure: Error | undefined;
 	let pending = true;
 	let wake: (() => void) | undefined;
@@ -88,15 +115,21 @@ export async function watchJson(
 	output.on("close", stop);
 	try {
 		// Register before reading so changes during startup always schedule another pass.
-		for (const directory of new Set(directories)) {
-			const watcher = watch(directory, { recursive: directory === directories[0] }, refresh);
+		for (const { directory, recursive } of scopes) {
+			const watcher = watch(directory, { recursive }, refresh);
 			watcher.on("error", fail);
 			watchers.push(watcher);
 		}
-		// A killed starter cannot stop the watch, so end with it like a termination request.
-		timer = setInterval(() => (starterExited() ? onTerminate() : refresh()), 1000);
+		// A killed starter cannot stop the watch, so end with it like a termination request. A full read
+		// can be expensive in large projects, so an idle watch otherwise only compares stats.
+		timer = setInterval(() => {
+			if (starterExited()) onTerminate();
+			else if (filesSignature(scopes) !== seen) refresh();
+		}, 1000);
 		while (!signal.aborted) {
 			pending = false;
+			// Taken before reading: a change during the read differs from it and schedules another pass.
+			seen = filesSignature(scopes);
 			const value = await read();
 			// The CLI already explained validation failures on stderr. Never emit an empty
 			// replacement when no successful JSON response was produced.

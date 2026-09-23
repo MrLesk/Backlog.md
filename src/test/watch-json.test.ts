@@ -1,8 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
-import { mkdir, writeFile } from "node:fs/promises";
+import { mkdir, rm, utimes, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { Writable } from "node:stream";
-import { watchJson } from "../commands/watch-json.ts";
+import { filesSignature, watchJson } from "../commands/watch-json.ts";
 import { createUniqueTestDir, safeCleanup, waitUntil } from "./test-utils.ts";
 
 let directory: string;
@@ -56,16 +56,48 @@ describe("JSON watch lifecycle", () => {
 		expect(writes).toEqual(["initial", "updated"]);
 	});
 
-	it("reconciles without a filesystem notification and suppresses unchanged results", async () => {
+	it("does not repeat the read while nothing changes", async () => {
 		const writes: string[] = [];
 		output = collect(writes);
-		let state = "initial";
-		watching = watchJson([directory], async () => state, output);
+		let reads = 0;
+		watching = watchJson(
+			[directory],
+			async () => {
+				reads++;
+				return "snapshot";
+			},
+			output,
+		);
 		await waitUntil(() => writes.length === 1, "initial output");
-		state = "changed without notification";
-		await waitUntil(() => writes.length === 2, "reconciled output", 3000);
-		await Bun.sleep(1200);
-		expect(writes).toEqual(["initial", state]);
+		const settled = reads;
+		// Spans more than two reconciliation passes.
+		await Bun.sleep(2500);
+		expect(reads).toBe(settled);
+		expect(writes).toEqual(["snapshot"]);
+	});
+
+	it("reconciles with a stat signature that changes only with the watched files", async () => {
+		const scopes = [{ directory, recursive: true }];
+		const tasks = join(directory, "tasks");
+		const task = join(tasks, "task.md");
+		await mkdir(tasks);
+		await writeFile(task, "one");
+		const initial = filesSignature(scopes);
+		expect(filesSignature(scopes)).toBe(initial);
+
+		// An edit that keeps the size is revealed by the modification time alone.
+		await writeFile(task, "two");
+		await utimes(task, new Date(2000, 0, 1), new Date(2000, 0, 1));
+		const edited = filesSignature(scopes);
+		expect(edited).not.toBe(initial);
+
+		await writeFile(join(tasks, "other.md"), "new");
+		expect(filesSignature(scopes)).not.toBe(edited);
+		// Removal restores the signature even though the directory's own time moved.
+		await rm(join(tasks, "other.md"));
+		expect(filesSignature(scopes)).toBe(edited);
+		// Like its notifications, a non-recursive scope ignores nested files.
+		expect(filesSignature([{ directory, recursive: false }])).not.toContain("task.md");
 	});
 
 	it("does not queue snapshots behind a slow writer and catches up to the latest state", async () => {
