@@ -3006,7 +3006,17 @@ addListWindowOptions(taskListCommand)
 		}
 		const cwd = await requireProjectRoot();
 		const filesystem = new Core(cwd).filesystem;
-		await watchJson([filesystem.backlogDir, dirname(filesystem.configFilePath)], async () => {
+		// Notifications cover the whole backlog, including directories created later. The periodic stat
+		// pass covers only what the list reads: tasks, completed tasks for readiness, milestones for
+		// --milestone, and the config.
+		const inputs = [
+			filesystem.tasksDir,
+			filesystem.completedDir,
+			filesystem.milestonesDir,
+			filesystem.archiveMilestonesDir,
+			filesystem.configFilePath,
+		];
+		await watchJson([filesystem.backlogDir, dirname(filesystem.configFilePath)], inputs, async () => {
 			let result: string | undefined;
 			await runTaskList(options, (value) => {
 				result = formatJson(value);
