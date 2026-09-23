@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
-import { mkdir, rm, symlink, utimes, writeFile } from "node:fs/promises";
+import { chmod, mkdir, rm, symlink, utimes, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { Writable } from "node:stream";
 import { filesSignature, watchJson } from "../commands/watch-json.ts";
@@ -104,28 +104,55 @@ describe("JSON watch lifecycle", () => {
 		expect(filesSignature([{ directory, recursive: false }])).not.toContain("task.md");
 	});
 
-	// Creating symlinks on Windows needs extra privileges.
-	it.skipIf(process.platform === "win32")("follows symlinks and enters each directory once", async () => {
+	it("follows linked directories and enters each directory once", async () => {
 		const backlog = join(directory, "backlog");
 		const outside = join(directory, "outside");
 		await mkdir(backlog);
 		await mkdir(outside);
 		await writeFile(join(outside, "task.md"), "one");
-		await symlink(outside, join(backlog, "tasks"));
-		await symlink(join(outside, "task.md"), join(backlog, "linked.md"));
+		// Junctions link directories on Windows without extra privileges; elsewhere they are symlinks.
+		await symlink(outside, join(backlog, "tasks"), "junction");
 		// Two cycles made recursive scans walk every path of links up to the system limit.
-		await symlink(".", join(backlog, "a"));
-		await symlink(".", join(backlog, "b"));
+		await symlink(backlog, join(backlog, "a"), "junction");
+		await symlink(backlog, join(backlog, "b"), "junction");
 		const scopes = [{ directory: backlog, recursive: true }];
 		const initial = filesSignature(scopes);
 		expect(initial).toContain("tasks/task.md");
-		expect(initial).toContain("linked.md");
 		// Entries start their lines; the first line is the scope's own path.
 		expect(initial).not.toContain("\na/");
-		expect(initial).not.toContain("ELOOP");
 		// An edit inside the link target, where notifications on the backlog do not reach.
 		await writeFile(join(outside, "task.md"), "changed");
 		expect(filesSignature(scopes)).not.toBe(initial);
+	});
+
+	// Creating file symlinks on Windows needs extra privileges.
+	it.skipIf(process.platform === "win32")("counts linked files and skips entries it cannot read", async () => {
+		const outside = join(directory, "outside.txt");
+		const task = join(directory, "task.md");
+		const locked = join(directory, "locked");
+		await writeFile(outside, "one");
+		await writeFile(task, "one");
+		await symlink(outside, join(directory, "linked.md"));
+		await symlink("self", join(directory, "self"));
+		await symlink("q", join(directory, "p"));
+		await symlink("p", join(directory, "q"));
+		await mkdir(locked);
+		await chmod(locked, 0o000);
+		try {
+			const scopes = [{ directory, recursive: true }];
+			const initial = filesSignature(scopes);
+			// Looping links count by name, and the pass never falls back to a constant error.
+			expect(initial.startsWith(directory)).toBe(true);
+			expect(initial.split("\n")).toEqual(expect.arrayContaining(["self", "p", "q"]));
+			// Size changes keep these edits visible under coarse filesystem clocks.
+			await writeFile(outside, "changed");
+			const linked = filesSignature(scopes);
+			expect(linked).not.toBe(initial);
+			await writeFile(task, "changed");
+			expect(filesSignature(scopes)).not.toBe(linked);
+		} finally {
+			await chmod(locked, 0o755);
+		}
 	});
 
 	it("does not queue snapshots behind a slow writer and catches up to the latest state", async () => {

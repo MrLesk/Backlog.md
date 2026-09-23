@@ -5,7 +5,7 @@ status: Done
 assignee:
   - '@claude'
 created_date: '2026-09-23 19:35'
-updated_date: '2026-09-23 21:36'
+updated_date: '2026-09-23 21:47'
 labels: []
 dependencies: []
 references:
@@ -80,6 +80,8 @@ Measured with 'bun run build' binaries side by side under load average 30-40 (fi
 - Symlinked tasks dir and symlinked task file, edited at their targets: the backlog watcher saw 0 notifications. The fix updated after 0.98 s both times (main 0.90/0.96 s), and both final lists matched one-shot --json.
 
 The new test covers symlinked files and directories and two cycles. With the cb6e5e21 code under Bun 1.3.14 it hangs. tsc, Biome and the watch tests (14 pass) pass under Bun 1.4.1 and 1.3.14. The symlink test is skipped on Windows, where creating symlinks needs extra privileges.
+
+Re-review fixes: per-entry stat and readdir errors (self or mutual links, unreadable subdirectories) now count that entry by name instead of turning the whole signature into one error string. The directory-link test uses junctions so it also runs on Windows; only the file-link, looping-link and chmod test is skipped there. Checks pass under Bun 1.4.1 and the pinned 1.3.14 (23 tests across watch-json, cli-json-watch and cli-launcher).
 <!-- SECTION:NOTES:END -->
 
 ## Final Summary

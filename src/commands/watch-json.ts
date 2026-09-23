@@ -38,13 +38,17 @@ export function filesSignature(scopes: { directory: string; recursive: boolean }
 		for (const name of readdirSync(directory).sort()) {
 			if (name.startsWith(".")) continue;
 			const path = join(directory, name);
-			// Files removed mid-pass and dangling links count by name only. The ctime also moves when a
-			// copy keeps the mtime.
-			const stats = statSync(path, { throwIfNoEntry: false });
-			if (!stats) lines.push(prefix + name);
-			else if (!stats.isDirectory()) {
-				lines.push(`${prefix}${name}\0${stats.size}\0${stats.mtimeMs}\0${stats.ctimeMs}`);
-			} else if (recursive && !entered.has(realpathSync(path))) walk(path, `${prefix}${name}/`, true);
+			try {
+				// The ctime also moves when a copy keeps the mtime.
+				const stats = statSync(path);
+				if (!stats.isDirectory()) {
+					lines.push(`${prefix}${name}\0${stats.size}\0${stats.mtimeMs}\0${stats.ctimeMs}`);
+				} else if (recursive && !entered.has(realpathSync(path))) walk(path, `${prefix}${name}/`, true);
+			} catch {
+				// Entries the loaders skip (removed mid-pass, dangling or looping links, unreadable
+				// directories) count by name only, so the rest of the scope still compares.
+				lines.push(prefix + name);
+			}
 		}
 	};
 	try {
@@ -54,7 +58,7 @@ export function filesSignature(scopes: { directory: string; recursive: boolean }
 		}
 		return lines.join("\n");
 	} catch (error) {
-		// A missing or unreadable directory compares by its error until it can be read again.
+		// A missing or unreadable scope compares by its error until it can be read again.
 		return String(error);
 	}
 }
