@@ -2938,7 +2938,8 @@ const taskListCommand = addHelpSchema(taskCmd.command("list"), {
 		{
 			name: "watch",
 			type: "Boolean",
-			description: "Requires --json; emit an initial full list and changed replacements until stopped",
+			description:
+				"Requires --json; emit an initial full list and changed replacements until stopped or the process that started it ends",
 		},
 	],
 	output: `Interactive task list, plain text with --plain, or versioned JSON with --json. ${LIST_WINDOW_OUTPUT_HELP}; JSON adds total and nextSkip. With --json --watch, successive complete JSON values use the same formatting; replace the previous list with each value. Restart for a fresh snapshot; intermediate edits may be coalesced.`,

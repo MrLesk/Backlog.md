@@ -2,6 +2,28 @@ import { type FSWatcher, watch } from "node:fs";
 import type { Writable } from "node:stream";
 import { setTimeout as delay } from "node:timers/promises";
 
+/**
+ * Returns a check for whether the process that started this one has exited: the parent, and also the launcher's parent
+ * when the npm launcher is the parent. POSIX reparents orphans; Windows does not, so the PIDs are probed as well.
+ */
+function observeStarter(): () => boolean {
+	const parent = process.ppid;
+	const [launcher, launcherParent] = (process.env.BACKLOG_LAUNCHER ?? "").split(":").map(Number);
+	const starters = launcher === parent ? [parent, launcherParent] : [parent];
+	return () => process.ppid !== parent || !starters.every(isRunning);
+}
+
+/** Only a process that no longer exists counts as ended; unknown PIDs and other errors never end the watch. */
+function isRunning(pid: number | undefined): boolean {
+	if (!pid || pid < 1) return true;
+	try {
+		process.kill(pid, 0);
+		return true;
+	} catch (error) {
+		return (error as NodeJS.ErrnoException).code !== "ESRCH";
+	}
+}
+
 /** Stream the canonical read's bytes. Notifications are hints; periodic reads repair missed events. */
 export async function watchJson(
 	directories: string[],
@@ -16,6 +38,7 @@ export async function watchJson(
 	let wake: (() => void) | undefined;
 	let previous: string | undefined;
 	let timer: ReturnType<typeof setInterval> | undefined;
+	const starterExited = observeStarter();
 
 	const refresh = () => {
 		pending = true;
@@ -71,7 +94,8 @@ export async function watchJson(
 			watcher.on("error", fail);
 			watchers.push(watcher);
 		}
-		timer = setInterval(refresh, 1000);
+		// A killed starter cannot stop the watch, so end with it like a termination request.
+		timer = setInterval(() => (starterExited() ? onTerminate() : refresh()), 1000);
 		while (!signal.aborted) {
 			pending = false;
 			const value = await read();

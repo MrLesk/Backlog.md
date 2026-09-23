@@ -125,7 +125,7 @@ backlog task list --json --watch | jq --unbuffered -c '.tasks'
 
 Each response replaces the subscriber's previous list, including an empty `tasks` array. Filters, sorting, limits, and local editable task scope are unchanged; completed storage, archives, drafts, and other branches are not added to the list. Dependency and configuration changes can update derived fields or which tasks match. Unchanged results are suppressed, and rapid edits or slow consumers may coalesce intermediate states. The command reconciles periodically as well as on file notifications; this is a current-state subscription, not an edit history. Restart it to receive a fresh full list.
 
-`--watch` requires `--json` and cannot be combined with `--plain`. Stop it with Ctrl+C or terminate the process; closing the output pipe also stops it. A failure after earlier responses writes a diagnostic to stderr and exits nonzero without emitting a replacement for that failed read.
+`--watch` requires `--json` and cannot be combined with `--plain`. Stop it with Ctrl+C or terminate the process; closing the output pipe also stops it. It also ends when the process that started it ends. A failure after earlier responses writes a diagnostic to stderr and exits nonzero without emitting a replacement for that failed read.
 
 Each successful response is one pretty-printed JSON document followed by a newline. The top-level contract is versioned and identifies the command result:
 
