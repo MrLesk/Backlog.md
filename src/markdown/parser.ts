@@ -257,10 +257,10 @@ export function parseMilestone(content: string): Milestone {
 	};
 }
 
-function extractSection(content: string, sectionTitle: string): string | undefined {
+export function extractSection(content: string, sectionTitle: string): string | undefined {
 	// Normalize to LF for reliable matching across platforms
 	const src = content.replace(/\r\n/g, "\n");
-	const regex = new RegExp(`## ${sectionTitle}\\s*\\n([\\s\\S]*?)(?=\\n## |$)`, "i");
+	const regex = new RegExp(`(?:^|\\n)## ${sectionTitle}[\\t ]*(?=\\n|$)([\\s\\S]*?)(?=\\n## |$)`, "i");
 	const match = src.match(regex);
 	return match?.[1]?.trim();
 }
