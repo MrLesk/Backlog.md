@@ -22,7 +22,7 @@ describe("Task ID Generation with Archives", () => {
 		await rm(testDir, { recursive: true, force: true });
 	});
 
-	it("should reuse IDs from archived tasks (soft delete behavior)", async () => {
+	it("preserves IDs when all tasks are archived", async () => {
 		// Create tasks 1-5
 		await core.createTaskFromInput({ title: "Task 1" }, false);
 		await core.createTaskFromInput({ title: "Task 2" }, false);
@@ -41,23 +41,23 @@ describe("Task ID Generation with Archives", () => {
 		const activeTasks = await core.fs.listTasks();
 		expect(activeTasks.length).toBe(0);
 
-		// Create new task - should be TASK-1 (archived IDs can be reused)
+		// A new task advances beyond the archived high-water mark.
 		const result = await core.createTaskFromInput({ title: "Task After Archive" }, false);
-		expect(result.task.id).toBe("TASK-1");
+		expect(result.task.id).toBe("TASK-6");
 
 		// Verify the task was created with correct ID
-		const newTask = await core.getTask("task-1");
+		const newTask = await core.getTask("task-6");
 		expect(newTask).not.toBeNull();
 		expect(newTask?.title).toBe("Task After Archive");
 	});
 
-	it("should consider completed tasks but not archived tasks for ID generation", async () => {
+	it("considers active, completed, and archived tasks for ID generation", async () => {
 		// Create tasks 1-3
 		await core.createTaskFromInput({ title: "Task 1", status: "Todo" }, false);
 		await core.createTaskFromInput({ title: "Task 2", status: "Done" }, false);
 		await core.createTaskFromInput({ title: "Task 3", status: "Todo" }, false);
 
-		// Archive task-1 (its ID can be reused)
+		// Archive task-1 (its ID remains reserved)
 		await core.archiveTask("task-1", false);
 
 		// Complete task-2 (moves to completed directory, ID cannot be reused)
@@ -69,7 +69,7 @@ describe("Task ID Generation with Archives", () => {
 		expect(activeTasks[0]?.id).toBe("TASK-3");
 
 		// Create new task - should be TASK-4 (max of active 3 + completed 2 is 3, so next is 4)
-		// Note: archived TASK-1 is NOT considered, so its ID could be reused if 2 and 3 weren't taken
+		// Archived TASK-1 also remains reserved.
 		const result = await core.createTaskFromInput({ title: "Task 4" }, false);
 		expect(result.task.id).toBe("TASK-4");
 
@@ -98,16 +98,16 @@ describe("Task ID Generation with Archives", () => {
 		await core.archiveTask("task-1.1", false);
 		await core.archiveTask("task-1.2", false);
 
-		// Create new parent task - should be TASK-1 (reusing archived parent ID)
+		// The new parent has a distinct ID from the archived family.
 		const newParent = await core.createTaskFromInput({ title: "New Parent" }, false);
-		expect(newParent.task.id).toBe("TASK-1");
+		expect(newParent.task.id).toBe("TASK-2");
 
-		// Create subtask of new parent (TASK-1) - should be TASK-1.1 (reusing archived subtask ID)
-		const newSubtask = await core.createTaskFromInput({ title: "New Subtask", parentTaskId: "task-1" }, false);
-		expect(newSubtask.task.id).toBe("TASK-1.1");
+		// The new child belongs to the new parent, not the archived family.
+		const newSubtask = await core.createTaskFromInput({ title: "New Subtask", parentTaskId: newParent.task.id }, false);
+		expect(newSubtask.task.id).toBe("TASK-2.1");
 	});
 
-	it("should work with zero-padded IDs and reuse archived IDs", async () => {
+	it("preserves zero padding while advancing beyond archived IDs", async () => {
 		// Update config to use zero-padded IDs
 		const config = await core.fs.loadConfig();
 		if (config) {
@@ -122,9 +122,9 @@ describe("Task ID Generation with Archives", () => {
 
 		await core.archiveTask("task-001", false);
 
-		// Create new task - should reuse archived ID (TASK-001)
+		// The next padded task ID remains distinct from the archive.
 		const result = await core.createTaskFromInput({ title: "Task 2" }, false);
-		expect(result.task.id).toBe("TASK-001");
+		expect(result.task.id).toBe("TASK-002");
 	});
 
 	it("should detect existing subtasks with different casing (legacy data)", async () => {

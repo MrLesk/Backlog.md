@@ -124,7 +124,7 @@ Loaded after retrying the failed history query.`;
 			{ name: "origin/feature/retry", commit: featureCommit, current: false },
 		];
 
-		expect(await loader.load(tips, config, [], false)).toEqual({ entries: [], complete: false });
+		expect(await loader.load(tips, config, [], false)).toEqual({ entries: [], archivedIds: [], complete: false });
 		const result = await loader.load(tips, config, [], false);
 		const entries = result.entries;
 

@@ -3954,6 +3954,7 @@ addHelpSchema(taskCmd.command("complete <taskId>"), {
 taskCmd
 	.command("demote <taskId>")
 	.description("move task back to drafts")
+	.addHelpText("after", "\nThe original task is preserved in archive/tasks so its ID remains reserved.\n")
 	.action(async (taskId: string) => {
 		const cwd = await requireProjectRoot();
 		const core = new Core(cwd);

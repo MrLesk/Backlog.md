@@ -215,6 +215,30 @@ describe("atomic task creation", () => {
 		expect(drafts.map((draft) => draft.title)).toEqual(["Task A", "Task B"]);
 	});
 
+	it("omits a task demoted after the task snapshot but before metadata is read", async () => {
+		const writer = new Core(testDir);
+		await writer.createTaskFromInput({ title: "Task A" }, false);
+		await writer.createTaskFromInput({ title: "Task B" }, false);
+		const reader = new Core(testDir);
+		const listTasks = reader.fs.listTasks.bind(reader.fs);
+		reader.fs.listTasks = async (...args) => {
+			const snapshot = await listTasks(...args);
+			reader.fs.listTasks = listTasks;
+			expect((await writer.demoteTask("TASK-1", false)).success).toBe(true);
+			return snapshot;
+		};
+		try {
+			const tasks = await reader.listTasksWithMetadata();
+			expect(tasks.map((task) => task.id)).toEqual(["TASK-2"]);
+			expect((await writer.fs.listDrafts()).map((draft) => draft.id)).toEqual(["DRAFT-1"]);
+			expect((await writer.fs.listArchivedTasks()).map((task) => task.id)).toEqual(["TASK-1"]);
+		} finally {
+			reader.fs.listTasks = listTasks;
+			reader.disposeContentStore();
+			writer.disposeContentStore();
+		}
+	});
+
 	it("assigns unique ids when two milestone creations race", async () => {
 		const first = new Core(testDir);
 		const second = new Core(testDir);
