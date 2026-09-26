@@ -257,6 +257,47 @@ describe("SearchService", () => {
 		expect(filtered.map((result) => result.task.id)).toStrictEqual(["TASK-1"]);
 	});
 
+	it("filters tasks by readiness and exposes isReady on search results", async () => {
+		const dependentTask: Task = {
+			...baseTask,
+			id: "task-2",
+			title: "Dependent task",
+			dependencies: ["TASK-1"],
+		};
+
+		await filesystem.saveTask(baseTask);
+		await filesystem.saveTask(dependentTask);
+
+		await search.ensureInitialized();
+
+		const allTasks = search
+			.search({
+				types: ["task"],
+			})
+			.filter(isTaskResult);
+
+		const baseResult = allTasks.find((r) => r.task.id === "TASK-1");
+		const dependentResult = allTasks.find((r) => r.task.id === "TASK-2");
+		expect(baseResult?.task.isReady).toBe(true);
+		expect(dependentResult?.task.isReady).toBe(false);
+
+		const readyTasks = search
+			.search({
+				types: ["task"],
+				filters: { ready: true },
+			})
+			.filter(isTaskResult);
+		expect(readyTasks.map((r) => r.task.id)).toStrictEqual(["TASK-1"]);
+
+		const notReadyTasks = search
+			.search({
+				types: ["task"],
+				filters: { ready: false },
+			})
+			.filter(isTaskResult);
+		expect(notReadyTasks.map((r) => r.task.id)).toStrictEqual(["TASK-2"]);
+	});
+
 	it("refreshes the index when content changes", async () => {
 		await filesystem.saveTask(baseTask);
 		await search.ensureInitialized();
