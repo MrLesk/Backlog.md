@@ -33,6 +33,7 @@ function makePlan(overrides: Partial<DuplicateRepairPlan> = {}): DuplicateRepair
 				],
 			},
 		],
+		archivedGroups: [],
 		crossBranchFindings: [],
 		changes: [
 			{
@@ -104,6 +105,33 @@ afterEach(() => {
 });
 
 describe("DuplicateIdWarning", () => {
+	it("shows archive collisions without offering automatic repair", () => {
+		const archivedGroup = {
+			id: "TASK-1",
+			tasks: [
+				makeTask("TASK-1", "Active", "backlog/tasks/task-1 - Active.md"),
+				makeTask("TASK-01", "Archived", "backlog/archive/tasks/task-01 - Archived.md"),
+			],
+		};
+		const container = renderWarning(
+			makePlan({ groups: [], archivedGroups: [archivedGroup], changes: [], repairable: false }),
+		);
+
+		expect(container.textContent).toContain("archived task IDs");
+		expect(container.textContent).not.toContain("Review repair");
+	});
+
+	it("shows archive collisions alongside repairable active collisions", () => {
+		const archivedGroup = {
+			id: "TASK-1",
+			tasks: [makeTask("TASK-1", "Archived", "backlog/archive/tasks/task-1 - Archived.md")],
+		};
+		const container = renderWarning(makePlan({ archivedGroups: [archivedGroup] }));
+
+		expect(container.textContent).toContain("Archived collisions: 1 group requires manual review");
+		expect(container.textContent).toContain("Review repair");
+	});
+
 	it("uses a compact human repair action and removes copy/prompt language", async () => {
 		const container = renderWarning();
 		expect(container.textContent).toContain("Duplicate task IDs");

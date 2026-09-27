@@ -51,6 +51,22 @@ describe("Task ID Generation with Archives", () => {
 		expect(newTask?.title).toBe("Task After Archive");
 	});
 
+	it("should reserve archived IDs when configured", async () => {
+		const config = await core.fs.loadConfig();
+		if (!config) throw new Error("Expected config to be loaded");
+		await core.fs.saveConfig({ ...config, reserveArchivedIds: true });
+
+		for (let id = 1; id <= 5; id += 1) {
+			await core.createTaskFromInput({ title: `Task ${id}` }, false);
+		}
+		for (let id = 1; id <= 5; id += 1) {
+			await core.archiveTask(`task-${id}`, false);
+		}
+
+		const result = await core.createTaskFromInput({ title: "Task After Archive" }, false);
+		expect(result.task.id).toBe("TASK-6");
+	});
+
 	it("should consider completed tasks but not archived tasks for ID generation", async () => {
 		// Create tasks 1-3
 		await core.createTaskFromInput({ title: "Task 1", status: "Todo" }, false);

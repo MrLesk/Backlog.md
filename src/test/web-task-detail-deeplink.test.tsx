@@ -86,6 +86,7 @@ const originalNode = globalThis.Node;
 
 const emptyDuplicatePlan = (): DuplicateRepairPlan => ({
 	groups: [],
+	archivedGroups: [],
 	crossBranchFindings: [],
 	changes: [],
 	references: [],

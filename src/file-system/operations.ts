@@ -2158,6 +2158,9 @@ ${description || `Milestone: ${title}`}`,
 				case "active_branch_days":
 					config.activeBranchDays = Number.parseInt(value, 10);
 					break;
+				case "reserve_archived_ids":
+					config.reserveArchivedIds = value.toLowerCase() === "true";
+					break;
 				case "onStatusChange":
 				case "on_status_change":
 					// Remove surrounding quotes if present, but preserve inner content
@@ -2197,6 +2200,7 @@ ${description || `Milestone: ${title}`}`,
 			bypassGitHooks: config.bypassGitHooks,
 			checkActiveBranches: config.checkActiveBranches,
 			activeBranchDays: config.activeBranchDays,
+			reserveArchivedIds: config.reserveArchivedIds,
 			onStatusChange: config.onStatusChange,
 			prefixes: config.prefixes,
 			backlogDirectory: config.backlogDirectory,
@@ -2239,6 +2243,7 @@ ${description || `Milestone: ${title}`}`,
 				? [`check_active_branches: ${config.checkActiveBranches}`]
 				: []),
 			...(typeof config.activeBranchDays === "number" ? [`active_branch_days: ${config.activeBranchDays}`] : []),
+			...(typeof config.reserveArchivedIds === "boolean" ? [`reserve_archived_ids: ${config.reserveArchivedIds}`] : []),
 			...(config.onStatusChange ? [`onStatusChange: '${config.onStatusChange}'`] : []),
 			...(config.prefixes?.task ? [`task_prefix: "${config.prefixes.task}"`] : []),
 			...(config.backlogDirectory ? [`backlog_directory: "${config.backlogDirectory}"`] : []),

@@ -30,6 +30,7 @@ const defaultConfig = {
 
 const emptyDuplicatePlan = (): DuplicateRepairPlan => ({
 	groups: [],
+	archivedGroups: [],
 	crossBranchFindings: [],
 	changes: [],
 	references: [],

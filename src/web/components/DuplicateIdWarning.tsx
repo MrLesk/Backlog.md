@@ -11,9 +11,12 @@ export function DuplicateIdWarning({ plan, onRepaired }: DuplicateIdWarningProps
 	const [dismissed, setDismissed] = useState(false);
 	const [isRepairOpen, setIsRepairOpen] = useState(false);
 
-	if (!plan || !Array.isArray(plan.groups) || plan.groups.length === 0 || dismissed) return null;
+	if (!plan || dismissed) return null;
+	const groups = Array.isArray(plan.groups) ? plan.groups : [];
+	const archivedGroups = Array.isArray(plan.archivedGroups) ? plan.archivedGroups : [];
+	if (groups.length === 0 && archivedGroups.length === 0) return null;
 
-	const duplicateTaskCount = plan.groups.reduce((count, group) => count + group.tasks.length, 0);
+	const duplicateTaskCount = groups.reduce((count, group) => count + group.tasks.length, 0);
 
 	return (
 		<>
@@ -31,17 +34,30 @@ export function DuplicateIdWarning({ plan, onRepaired }: DuplicateIdWarningProps
 							/>
 						</svg>
 						<p className="truncate text-sm">
-							<span className="font-semibold">Duplicate task IDs:</span> {plan.groups.length} {plan.groups.length === 1 ? "group" : "groups"} across {duplicateTaskCount} files. Some tasks may be hidden.
+							{groups.length > 0 ? (
+								<>
+									<span className="font-semibold">Duplicate task IDs:</span> {groups.length} {groups.length === 1 ? "group" : "groups"} across {duplicateTaskCount} files. Some tasks may be hidden.
+									{archivedGroups.length > 0 && (
+										<> Archived collisions: {archivedGroups.length} {archivedGroups.length === 1 ? "group requires" : "groups require"} manual review.</>
+									)}
+								</>
+							) : (
+								<>
+									<span className="font-semibold">Duplicate archived task IDs:</span> {archivedGroups.length} {archivedGroups.length === 1 ? "group requires" : "groups require"} manual review.
+								</>
+							)}
 						</p>
 					</div>
 					<div className="ml-auto flex shrink-0 items-center gap-2">
-						<button
-							type="button"
-							onClick={() => setIsRepairOpen(true)}
-							className="rounded-md bg-amber-700 px-3 py-1.5 text-xs font-semibold text-white hover:bg-amber-800 focus:outline-none focus:ring-2 focus:ring-amber-500 focus:ring-offset-2 focus:ring-offset-amber-50 dark:bg-amber-500 dark:text-amber-950 dark:hover:bg-amber-400"
-						>
-							Review repair
-						</button>
+						{groups.length > 0 && (
+							<button
+								type="button"
+								onClick={() => setIsRepairOpen(true)}
+								className="rounded-md bg-amber-700 px-3 py-1.5 text-xs font-semibold text-white hover:bg-amber-800 focus:outline-none focus:ring-2 focus:ring-amber-500 focus:ring-offset-2 focus:ring-offset-amber-50 dark:bg-amber-500 dark:text-amber-950 dark:hover:bg-amber-400"
+							>
+								Review repair
+							</button>
+						)}
 						<button
 							type="button"
 							onClick={() => setDismissed(true)}
@@ -53,12 +69,14 @@ export function DuplicateIdWarning({ plan, onRepaired }: DuplicateIdWarningProps
 					</div>
 				</div>
 			</section>
-			<DuplicateIdRepairModal
-				isOpen={isRepairOpen}
-				plan={plan}
-				onClose={() => setIsRepairOpen(false)}
-				onRepaired={onRepaired}
-			/>
+			{groups.length > 0 && (
+				<DuplicateIdRepairModal
+					isOpen={isRepairOpen}
+					plan={plan}
+					onClose={() => setIsRepairOpen(false)}
+					onRepaired={onRepaired}
+				/>
+			)}
 		</>
 	);
 }

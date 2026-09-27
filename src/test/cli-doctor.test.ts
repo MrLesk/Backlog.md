@@ -111,6 +111,22 @@ describe("backlog doctor", () => {
 		expect((await core.previewDuplicateTaskIdRepair()).groups).toEqual([]);
 	});
 
+	it("reports duplicate IDs spanning active and archived tasks as diagnostic-only", async () => {
+		await removeDuplicateTasks();
+		await Bun.write(
+			join(core.filesystem.archiveTasksDir, "task-01 - Archived.md"),
+			serializeTask(makeTask("TASK-01", "Archived")),
+		);
+
+		const result = await $`bun ${cliPath} doctor`.cwd(testDir).quiet().nothrow();
+		const output = `${result.stdout}${result.stderr}`;
+		expect(result.exitCode).toBe(1);
+		expect(output).toContain("Duplicate task IDs including archived tasks (diagnostic only):");
+		expect(output).toContain("backlog/tasks/task-1 - Alpha.md");
+		expect(output).toContain("backlog/archive/tasks/task-01 - Archived.md");
+		expect(output).toContain("Archived task files are not changed automatically");
+	});
+
 	it("keeps a non-zero exit when repairable task duplicates are fixed but draft findings remain", async () => {
 		const draftsDir = await core.filesystem.getDraftsDir();
 		await Bun.write(

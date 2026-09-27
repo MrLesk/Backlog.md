@@ -686,7 +686,8 @@ function AppContent() {
       // means the initial read has not landed (or was superseded), so both keep
       // refreshing until the corpus is clean again.
       const plan = duplicateRepairPlanRef.current;
-      const planUnsettled = plan === null || plan.groups.length > 0 || plan.crossBranchFindings.length > 0;
+      const planUnsettled =
+        plan === null || plan.groups.length > 0 || plan.archivedGroups.length > 0 || plan.crossBranchFindings.length > 0;
       if (planUnsettled || idSignature(tasksList) !== previousIdSignature) {
         void apiClient.fetchDuplicateTaskRepairPlan().then((duplicatePlan) => {
           if (loadAllDataRequestRef.current === requestId) applyDuplicateRepairPlan(duplicatePlan);

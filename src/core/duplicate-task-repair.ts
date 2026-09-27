@@ -40,6 +40,7 @@ export interface CrossBranchDuplicateFinding {
 
 export interface DuplicateRepairPlan {
 	groups: DuplicateGroup[];
+	archivedGroups: DuplicateGroup[];
 	crossBranchFindings: CrossBranchDuplicateFinding[];
 	changes: DuplicateRepairChange[];
 	references: DuplicateReferenceReview[];
@@ -99,6 +100,30 @@ export async function findLocalDuplicateTaskIds(core: Core, snapshot?: TaskCorpu
 		...activeTasks.map((task) => withLocation(task, "active", core.filesystem.rootDir)),
 		...completedTasks.map((task) => withLocation(task, "completed", core.filesystem.rootDir)),
 	]);
+}
+
+export async function findArchivedDuplicateTaskIds(
+	core: Core,
+	snapshot?: TaskCorpusSnapshot,
+): Promise<DuplicateGroup[]> {
+	const [activeTasks, completedTasks, archivedTasks] = await Promise.all([
+		snapshot ? Promise.resolve(snapshot.activeTasks) : core.filesystem.listTasks(),
+		snapshot ? Promise.resolve(snapshot.completedTasks) : core.filesystem.listCompletedTasks(),
+		core.filesystem.listArchivedTasks(),
+	]);
+	const archivedPaths = new Set(
+		archivedTasks.flatMap((task) =>
+			task.filePath ? [normalizeRelativePath(core.filesystem.rootDir, task.filePath)] : [],
+		),
+	);
+	return detectDuplicateTaskIds([
+		...activeTasks.map((task) => withLocation(task, "active", core.filesystem.rootDir)),
+		...completedTasks.map((task) => withLocation(task, "completed", core.filesystem.rootDir)),
+		...archivedTasks.map((task) => ({
+			...task,
+			filePath: task.filePath ? normalizeRelativePath(core.filesystem.rootDir, task.filePath) : undefined,
+		})),
+	]).filter((group) => group.tasks.some((task) => task.filePath !== undefined && archivedPaths.has(task.filePath)));
 }
 
 function logicalBranchTaskPath(path: string, id: string): string {
@@ -374,7 +399,10 @@ export async function previewDuplicateTaskIdRepair(
 	options: { includeBranches?: boolean } = {},
 	snapshot?: TaskCorpusSnapshot,
 ): Promise<DuplicateRepairPlan> {
-	const groups = await findLocalDuplicateTaskIds(core, snapshot);
+	const [groups, archivedGroups] = await Promise.all([
+		findLocalDuplicateTaskIds(core, snapshot),
+		findArchivedDuplicateTaskIds(core, snapshot),
+	]);
 	const crossBranchFindings = options.includeBranches ? await findCrossBranchDuplicateTaskIds(core, snapshot) : [];
 	const blockedReasons: string[] = [];
 	const changes: DuplicateRepairChange[] = [];
@@ -463,12 +491,17 @@ export async function previewDuplicateTaskIdRepair(
 	const fingerprint = sha256(
 		JSON.stringify({
 			groups: groups.map((group) => ({ id: group.id, paths: group.tasks.map((task) => task.filePath) })),
+			archivedGroups: archivedGroups.map((group) => ({
+				id: group.id,
+				paths: group.tasks.map((task) => task.filePath),
+			})),
 			changes,
 			referenceScan,
 		}),
 	);
 	return {
 		groups,
+		archivedGroups,
 		crossBranchFindings,
 		changes,
 		references: referenceScan.references,

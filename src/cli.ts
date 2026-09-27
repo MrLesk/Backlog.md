@@ -172,6 +172,7 @@ const CONFIG_GET_KEYS = [
 	"zeroPaddedIds",
 	"checkActiveBranches",
 	"activeBranchDays",
+	"reserveArchivedIds",
 ] as const;
 
 const CONFIG_SET_KEYS = [
@@ -190,6 +191,7 @@ const CONFIG_SET_KEYS = [
 	"zeroPaddedIds",
 	"checkActiveBranches",
 	"activeBranchDays",
+	"reserveArchivedIds",
 ] as const;
 
 function normalizeIntegrationOption(value: string): IntegrationMode | null {
@@ -421,6 +423,14 @@ function printDuplicateRepairPlan(plan: DuplicateRepairPlan): void {
 			}
 		}
 		console.log("Switch to the affected branches and reconcile these paths; Backlog.md will not edit another branch.");
+	}
+	if (plan.archivedGroups.length > 0) {
+		console.log("\nDuplicate task IDs including archived tasks (diagnostic only):");
+		for (const group of plan.archivedGroups) {
+			console.log(`  ${group.id}:`);
+			for (const task of group.tasks) console.log(`    - ${task.filePath ?? task.title}`);
+		}
+		console.log("Archived task files are not changed automatically; reconcile these IDs manually.");
 	}
 	if (plan.groups.length > 0) {
 		if (plan.references.length > 0) {
@@ -5038,7 +5048,7 @@ agentsCmd
 
 // Config command group
 const CONFIG_AVAILABLE_KEYS =
-	"Available keys: defaultEditor, projectName, defaultAssignee, defaultStatus, statuses, labels, priorities, types, projects, milestones, definitionOfDone, dateFormat, maxColumnWidth, defaultPort, autoOpenBrowser, hideEmptyColumns, remoteOperations, autoCommit, filesystemOnly, bypassGitHooks, zeroPaddedIds, checkActiveBranches, activeBranchDays";
+	"Available keys: defaultEditor, projectName, defaultAssignee, defaultStatus, statuses, labels, priorities, types, projects, milestones, definitionOfDone, dateFormat, maxColumnWidth, defaultPort, autoOpenBrowser, hideEmptyColumns, remoteOperations, autoCommit, filesystemOnly, bypassGitHooks, zeroPaddedIds, checkActiveBranches, activeBranchDays, reserveArchivedIds";
 
 const configCmd = addHelpSchema(program.command("config"), {
 	reads: "Project Backlog.md configuration",
@@ -5229,6 +5239,9 @@ addHelpSchema(configCmd.command("get <key>"), {
 					break;
 				case "activeBranchDays":
 					console.log(config.activeBranchDays?.toString() || "30");
+					break;
+				case "reserveArchivedIds":
+					console.log(config.reserveArchivedIds?.toString() || "false");
 					break;
 				default:
 					console.error(`Unknown config key: ${key}`);
@@ -5421,6 +5434,18 @@ addHelpSchema(configCmd.command("set <key> <value>"), {
 					config.activeBranchDays = days;
 					break;
 				}
+				case "reserveArchivedIds": {
+					const boolValue = value.toLowerCase();
+					if (boolValue === "true" || boolValue === "1" || boolValue === "yes") {
+						config.reserveArchivedIds = true;
+					} else if (boolValue === "false" || boolValue === "0" || boolValue === "no") {
+						config.reserveArchivedIds = false;
+					} else {
+						console.error("reserveArchivedIds must be true or false");
+						process.exit(1);
+					}
+					break;
+				}
 				case "statuses":
 				case "labels":
 				case "types":
@@ -5516,6 +5541,7 @@ addHelpSchema(configCmd.command("list"), {
 			console.log(`  taskPrefix: ${config.prefixes?.task || "task"} (read-only)`);
 			console.log(`  checkActiveBranches: ${config.checkActiveBranches ?? "true"}`);
 			console.log(`  activeBranchDays: ${config.activeBranchDays ?? "30"}`);
+			console.log(`  reserveArchivedIds: ${config.reserveArchivedIds ?? "false"}`);
 		} catch (err) {
 			reportCommandFailure("Failed to list config values", err);
 		}
@@ -5574,6 +5600,7 @@ addHelpSchema(program.command("doctor"), {
 			const dependenciesBroken = dependencyDefects.selfDependencies.length > 0 || dependencyDefects.cycles.length > 0;
 			if (
 				plan.groups.length === 0 &&
+				plan.archivedGroups.length === 0 &&
 				plan.crossBranchFindings.length === 0 &&
 				!contentIdentityBroken &&
 				!draftIdentityBroken &&
@@ -5641,6 +5668,10 @@ addHelpSchema(program.command("doctor"), {
 			console.log("Verification passed: no duplicate active/completed task IDs remain.");
 			if (plan.crossBranchFindings.length > 0) {
 				console.log("Cross-branch findings remain diagnostic-only and still require branch-by-branch review.");
+				process.exitCode = 1;
+			}
+			if (plan.archivedGroups.length > 0) {
+				console.log("Archived task duplicate findings remain diagnostic-only and still require manual review.");
 				process.exitCode = 1;
 			}
 			if (contentIdentityBroken) {

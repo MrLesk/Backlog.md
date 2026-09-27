@@ -13,6 +13,7 @@ For getting started and the interactive wizard overview, see [README.md](README.
 | Bypass git hooks | `backlog config set bypassGitHooks true` |
 | Enable cross-branch check | `backlog config set checkActiveBranches true` |
 | Set active branch days | `backlog config set activeBranchDays 30` |
+| Reserve archived task IDs | `backlog config set reserveArchivedIds true` |
 | Set default assignees | `backlog config set defaultAssignee "@alice,@bob"` |
 
 Running `backlog config` with no arguments launches the interactive advanced wizard, including guided Definition of Done defaults editing (add/remove/reorder/clear).
@@ -38,6 +39,7 @@ Running `backlog config` with no arguments launches the interactive advanced wiz
 | `zeroPaddedIds`   | Pad all IDs (tasks, docs, etc.) with leading zeros | `(disabled)`  |
 | `checkActiveBranches` | Check task states across active branches for accuracy | `true` |
 | `activeBranchDays` | How many days a branch is considered active | `30` |
+| `reserveArchivedIds` | Keep archived task IDs occupied during allocation | `false` |
 | `onStatusChange`  | Shell command to run on status change | `(disabled)` |
 | `backlog_directory` | Project-relative backlog folder, chosen at `backlog init` and read from `backlog.config.yml` in the project root | `backlog` |
 
@@ -52,6 +54,8 @@ Running `backlog config` with no arguments launches the interactive advanced wiz
 > **Git Hooks**: If you have pre-commit hooks (like conventional commits or linters) that interfere with backlog.md's automated commits, set `bypassGitHooks: true` to skip them using the `--no-verify` flag.
 
 > **Performance**: Cross-branch checking ensures accurate task tracking across all active branches but may impact performance on large repositories. You can disable it by setting `checkActiveBranches: false` for maximum speed, or adjust `activeBranchDays` to control how far back to look for branch activity (lower values = better performance).
+
+> **Archived Task IDs**: Set `reserveArchivedIds` to `true` when task IDs must never be reused after archival. The saved YAML key is `reserve_archived_ids`. Task allocation then includes `archive/tasks/` when selecting the next ID. `backlog doctor` always reports duplicate IDs that span active, completed, and archived task files; archived files remain diagnostic-only and require manual reconciliation.
 
 > **Status Change Callbacks**: Set `onStatusChange` to run a shell command whenever a task's status changes. Available variables: `$TASK_ID`, `$OLD_STATUS`, `$NEW_STATUS`, `$TASK_TITLE`. Per-task override via `onStatusChange` in task frontmatter. Example: `'if [ "$NEW_STATUS" = "In Progress" ]; then claude "Task $TASK_ID ($TASK_TITLE) has been assigned to you. Please implement it." & fi'`
 

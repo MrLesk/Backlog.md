@@ -180,6 +180,19 @@ describe("Config commands", () => {
 		expect(listOutput).toContain("hideEmptyColumns: true");
 	});
 
+	it("round-trips reserveArchivedIds through config get/set/list", async () => {
+		const defaultGet = await $`bun ${CLI_PATH} config get reserveArchivedIds`.cwd(TEST_DIR).text();
+		expect(defaultGet.trim()).toBe("false");
+
+		await $`bun ${CLI_PATH} config set reserveArchivedIds true`.cwd(TEST_DIR).quiet();
+
+		const afterSet = await $`bun ${CLI_PATH} config get reserveArchivedIds`.cwd(TEST_DIR).text();
+		expect(afterSet.trim()).toBe("true");
+
+		const listOutput = await $`bun ${CLI_PATH} config list`.cwd(TEST_DIR).text();
+		expect(listOutput).toContain("reserveArchivedIds: true");
+	});
+
 	it("parses block-style YAML sequences identically to inline arrays for list keys", () => {
 		const inline = core.filesystem.parseConfig(
 			'project_name: "P"\nstatuses: ["To Do", "Done"]\nlabels: ["a", "b"]\ntypes: ["bug", "epic"]\npriorities: ["Critical", "Low"]\n',

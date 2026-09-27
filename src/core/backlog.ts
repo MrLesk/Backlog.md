@@ -1492,7 +1492,7 @@ export class Core {
 	 * @returns The next available ID (e.g., "task-42", "draft-5", "doc-3")
 	 *
 	 * Folder scanning by type:
-	 * - Task: /tasks, /completed, cross-branch (if enabled), remote (if enabled)
+	 * - Task: /tasks, /completed, cross-branch (if enabled), remote (if enabled), and /archive/tasks when configured
 	 * - Draft: /drafts only
 	 * - Document: /documents only
 	 * - Decision: /decisions only
@@ -1514,8 +1514,8 @@ export class Core {
 	}
 
 	/**
-	 * Gets all task IDs that are in use (active or completed) across all branches.
-	 * Respects cross-branch config settings. Archived IDs are excluded (can be reused).
+	 * Gets all task IDs that are in use across all branches.
+	 * Respects cross-branch settings and optionally reserves archived IDs.
 	 *
 	 * This is used for ID generation to determine the next available ID.
 	 */
@@ -1600,6 +1600,9 @@ export class Core {
 		for (const entry of worktreeEntries) {
 			if (entry.type === "task" || entry.type === "completed") occupiedIds.add(entry.id);
 		}
+		if (config?.reserveArchivedIds) {
+			for (const task of await this.fs.listArchivedTasks()) occupiedIds.add(task.id);
+		}
 		return [...occupiedIds];
 	}
 
@@ -1607,14 +1610,12 @@ export class Core {
 	 * Gets all existing IDs for a given entity type.
 	 * Used internally by generateNextId to determine the next available ID.
 	 *
-	 * Note: Archived tasks are intentionally excluded - archived IDs can be reused.
-	 * This makes archive act as a soft delete for ID purposes.
+	 * Archived task IDs are included only when reserveArchivedIds is enabled.
 	 */
 	private async getExistingIdsForType(type: EntityType): Promise<string[]> {
 		switch (type) {
 			case EntityType.Task: {
-				// Get active + completed task IDs from all branches (respects config)
-				// Archived IDs are excluded - they can be reused (soft delete behavior)
+				// Get occupied task IDs from all branches and, when configured, the archive.
 				return this.getActiveAndCompletedTaskIds();
 			}
 			case EntityType.Draft: {
