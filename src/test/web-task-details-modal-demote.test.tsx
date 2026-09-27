@@ -5,7 +5,7 @@ import { createRoot, type Root } from "react-dom/client";
 import type { Task } from "../types/index.ts";
 import { TaskDetailsModal } from "../web/components/TaskDetailsModal.tsx";
 import { ThemeProvider } from "../web/contexts/ThemeContext.tsx";
-import { apiClient } from "../web/lib/api.ts";
+import { ApiError, apiClient } from "../web/lib/api.ts";
 
 let root: Root | null = null;
 let dom: JSDOM | null = null;
@@ -144,6 +144,7 @@ describe("Web task demotion", () => {
 		const originalDemoteTask = apiClient.demoteTask.bind(apiClient);
 		apiClient.demoteTask = async () => {
 			apiCalls += 1;
+			return { success: true, cleanedTaskIds: [] };
 		};
 		window.confirm = () => false;
 
@@ -162,6 +163,7 @@ describe("Web task demotion", () => {
 		const originalDemoteTask = apiClient.demoteTask.bind(apiClient);
 		apiClient.demoteTask = async (id) => {
 			events.push(`api:${id}`);
+			return { success: true, cleanedTaskIds: [] };
 		};
 		window.confirm = () => true;
 		window.addEventListener("drafts-updated", () => events.push("drafts"), { once: true });
@@ -204,6 +206,34 @@ describe("Web task demotion", () => {
 		}
 	});
 
+	it("points to stale dependent references when cleanup fails after demotion", async () => {
+		const container = setupDom();
+		let alertMessage = "";
+		let closeCalls = 0;
+		const originalDemoteTask = apiClient.demoteTask.bind(apiClient);
+		apiClient.demoteTask = async () => {
+			throw new ApiError("dependent file is not writable", 500, "Internal Server Error", {
+				demotionState: "moved",
+				demotionFailureCause: "cleanup",
+			});
+		};
+		window.confirm = () => true;
+		window.alert = (message) => {
+			alertMessage = String(message);
+		};
+
+		try {
+			await renderModal(localTask, { onClose: () => closeCalls++ });
+			await click(findDemoteButton(container) as HTMLButtonElement);
+			await waitFor(() => closeCalls === 1);
+
+			expect(alertMessage).toContain("dependent tasks may still reference it");
+			expect(alertMessage).not.toContain("Git commit");
+		} finally {
+			apiClient.demoteTask = originalDemoteTask;
+		}
+	});
+
 	it("ignores a deferred demotion after the modal closes and reopens for another task", async () => {
 		const container = setupDom();
 		let resolveRequest: (() => void) | undefined;
@@ -221,6 +251,7 @@ describe("Web task demotion", () => {
 		apiClient.demoteTask = async () => {
 			markStarted?.();
 			await requestRelease;
+			return { success: true, cleanedTaskIds: [] };
 		};
 		window.confirm = () => true;
 		const onDraftsUpdated = () => draftEvents++;

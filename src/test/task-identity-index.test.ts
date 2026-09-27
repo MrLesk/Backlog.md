@@ -8,9 +8,9 @@ const context = {
 	backlogDirectory: "backlog",
 };
 
-function task(title: string): Task {
+function task(title: string, id = "BACK-1"): Task {
 	return {
-		id: "BACK-1",
+		id,
 		title,
 		status: "To Do",
 		assignee: [],
@@ -92,6 +92,22 @@ describe("TaskIdentityIndex", () => {
 
 		expect(index([branchA, branchB]).getTasks()[0]?.title).toBe("Branch A");
 		expect(index([branchB, branchA]).getTasks()[0]?.title).toBe("Branch A");
+	});
+
+	it("orders tasks by numeric id segments so BACK-1.2 precedes BACK-1.11", () => {
+		const ids = Array.from({ length: 11 }, (_, position) => `BACK-1.${position + 1}`);
+		const records: TaskIdentityRecord[] = [...ids].reverse().map((id) => ({
+			id,
+			type: "task",
+			branch: "local",
+			path: `backlog/tasks/${id.toLowerCase()} - Subtask.md`,
+			lastModified: new Date("2026-08-01T10:00:00Z"),
+			task: task(`Subtask ${id}`, id),
+		}));
+
+		const ordered = index(records).getTasks();
+
+		expect(ordered.map((entry) => entry.id)).toEqual(ids);
 	});
 
 	it("hides and frees an identity when every record is archived", () => {

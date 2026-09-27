@@ -242,6 +242,23 @@ describe("CLI task ID resolution with a custom ID prefix", () => {
 		expect((await core.filesystem.loadTask("BACK-3"))?.dependencies).toEqual(["BACK-1"]);
 	});
 
+	it("edits a task once when a bare number and the prefixed ID alias it in one batch", async () => {
+		const core = await initCustomPrefixProject();
+		await createTask(core, "BACK-1", "Target task");
+
+		// "1" only becomes BACK-1 at resolution time, so the batch must collapse on the resolved
+		// identity instead of saving the same task twice.
+		const result = await $`bun ${CLI_PATH} task edit 1 BACK-1 -s Done`.cwd(TEST_DIR).nothrow().quiet();
+
+		expect(result.exitCode).toBe(0);
+		const updates = result.stdout
+			.toString()
+			.split("\n")
+			.filter((line) => line.includes("Updated task"));
+		expect(updates).toHaveLength(1);
+		expect((await core.filesystem.loadTask("BACK-1"))?.status).toBe("Done");
+	});
+
 	it("fails closed when a dependency ID matches two files claiming one identity", async () => {
 		const core = await initCustomPrefixProject();
 		await createTask(core, "BACK-1", "Target task");

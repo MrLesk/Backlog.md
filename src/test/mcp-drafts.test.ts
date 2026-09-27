@@ -136,6 +136,24 @@ describe("MCP draft support via task tools", () => {
 		expect(taskFile).toBeNull();
 	});
 
+	it("reports dependent cleanup when task_edit demotes a task", async () => {
+		await mcpServer.testInterface.callTool({
+			params: { name: "task_create", arguments: { title: "Demotion target" } },
+		});
+		await mcpServer.testInterface.callTool({
+			params: {
+				name: "task_create",
+				arguments: { title: "Dependent", dependencies: ["TASK-1"] },
+			},
+		});
+
+		const result = await mcpServer.testInterface.callTool({
+			params: { name: "task_edit", arguments: { id: "TASK-1", status: "Draft" } },
+		});
+
+		expect(getText(result.content)).toContain("Removed references to TASK-1 from TASK-2.");
+	});
+
 	it("task_edit status promotion fails fast under a held draft lock", async () => {
 		await mcpServer.testInterface.callTool({
 			params: {

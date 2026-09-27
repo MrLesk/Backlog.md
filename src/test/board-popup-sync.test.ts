@@ -188,20 +188,33 @@ describe("board task popup stays in sync with live task state", () => {
 			pressKey(focused(), "c");
 			await Bun.sleep(30);
 			const dialog = focused();
-			expect(text()).toContain("as completed?");
+			expect(text()).toContain("to completed?");
 
 			// An external edit lands while the user is still answering the dialog.
 			await publishTasks([createTask({ title: "Renamed by CLI", description: "UPDATED-BODY" }), OTHER_TASK]);
 
 			// The dialog must keep both the screen and the keyboard until it is answered.
-			expect(text()).toContain("as completed?");
+			expect(text()).toContain("to completed?");
 			expect(focused()).toBe(dialog);
 
 			// Answering it still works, and the deferred refresh lands afterwards.
 			pressKey(focused(), "escape");
 			await Bun.sleep(40);
-			expect(text()).not.toContain("as completed?");
+			expect(text()).not.toContain("to completed?");
 			expect(popupBody()?.getContent?.()).toContain("UPDATED-BODY");
+		});
+	});
+
+	it("explains archive purpose and incoming link removal before confirmation", async () => {
+		await withBoardPopup({}, async ({ text, focused, popupBody }) => {
+			pressKey(focused(), "a");
+			await Bun.sleep(30);
+			expect(text()).toContain("Canceled, duplicate, or invalid work.");
+			expect(text()).toContain("Removes incoming task links.");
+			pressKey(focused(), "escape");
+			await Bun.sleep(30);
+			expect(popupBody()).toBeDefined();
+			expect(text()).not.toContain("Removes incoming task links.");
 		});
 	});
 

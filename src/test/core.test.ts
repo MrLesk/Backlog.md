@@ -273,7 +273,7 @@ describe("Core", () => {
 				});
 			});
 
-			expect(await core.archiveTask(sampleTask.id, false)).toBe(true);
+			expect((await core.archiveTask(sampleTask.id, false)).success).toBe(true);
 			unsubscribe();
 
 			expect(observed[0]).toEqual({ read: "not-found", mutation: "not-found", active: [], completed: [] });
@@ -294,7 +294,7 @@ describe("Core", () => {
 			await Bun.write(taskPath, serializeTask({ ...sampleTask, id: "TASK-1" }));
 			await core.getContentStore();
 
-			expect(await core.archiveTask("TASK-1", false)).toBe(true);
+			expect((await core.archiveTask("TASK-1", false)).success).toBe(true);
 			expect(await Bun.file(taskPath).exists()).toBe(false);
 			expect(await Bun.file(join(core.filesystem.archiveTasksDir, "task-999 - Exact-path.md")).exists()).toBe(true);
 		});
@@ -326,7 +326,7 @@ describe("Core", () => {
 			await core.createTask(sampleTask, true);
 
 			const archived = await core.archiveTask("task-1", true);
-			expect(archived).toBe(true);
+			expect(archived.success).toBe(true);
 
 			const lastCommit = await core.gitOps.getLastCommitMessage();
 			expect(lastCommit).toContain("backlog: Archive task TASK-1");
@@ -345,7 +345,7 @@ describe("Core", () => {
 
 			try {
 				const demoted = await core.demoteTask("task-1", true);
-				expect(demoted).toBe(true);
+				expect(demoted.success).toBe(true);
 
 				const commit = await commitCalled;
 				expect(commit.message).toContain("backlog: Demote task TASK-1");
@@ -928,7 +928,7 @@ describe("Core", () => {
 
 		it("should return false when archiving non-existent task", async () => {
 			const archived = await core.archiveTask("non-existent", true);
-			expect(archived).toBe(false);
+			expect(archived.success).toBe(false);
 		});
 
 		it("should apply default status when task has empty status", async () => {
@@ -1424,9 +1424,12 @@ describe("Core", () => {
 				false,
 			);
 			expect(draft.reporter).toBe("@dana");
+
+			const loadedDraft = await core.filesystem.loadDraft(draft.id);
+			expect(loadedDraft?.reporter).toBe("@dana");
 		});
 
-		it("should leave new tasks without a reporter when defaultReporter is unset", async () => {
+		it("should leave new tasks and drafts without a reporter when defaultReporter is unset", async () => {
 			await initializeTestProject(core, "No Default Reporter Project");
 
 			const { task } = await core.createTaskFromInput({ title: "No default reporter" }, false);
@@ -1434,6 +1437,15 @@ describe("Core", () => {
 
 			const loadedTask = await core.filesystem.loadTask(task.id);
 			expect(loadedTask?.reporter).toBeUndefined();
+
+			const { task: draft } = await core.createTaskFromInput(
+				{ title: "Draft without a default reporter", status: "Draft" },
+				false,
+			);
+			expect(draft.reporter).toBeUndefined();
+
+			const loadedDraft = await core.filesystem.loadDraft(draft.id);
+			expect(loadedDraft?.reporter).toBeUndefined();
 		});
 	});
 

@@ -148,7 +148,7 @@ describe("Task References", () => {
 	});
 
 	describe("Archive cleanup", () => {
-		it("removes only exact-ID references from active tasks when archiving", async () => {
+		it("removes only exact-ID references when archiving, in the working copy and the completed corpus", async () => {
 			const { task: archiveTarget } = await core.createTaskFromInput({
 				title: "Archive target",
 			});
@@ -175,7 +175,7 @@ describe("Task References", () => {
 			await core.completeTask(completedTask.id, false);
 
 			const archived = await core.archiveTask(archiveTarget.id, false);
-			expect(archived).toBe(true);
+			expect(archived.success).toBe(true);
 
 			const updatedActive = await core.loadTaskById(activeTask.id);
 			const completedTasks = await core.filesystem.listCompletedTasks();
@@ -189,7 +189,9 @@ describe("Task References", () => {
 				"JIRA-1",
 				"task-12",
 			]);
-			expect(updatedCompleted?.references).toEqual(["task-1", "https://example.com/tasks/task-1"]);
+			// The completed corpus is cleaned too: the archived ID is free for reallocation, so a
+			// reference kept there would rebind to whatever task is created next.
+			expect(updatedCompleted?.references).toEqual(["https://example.com/tasks/task-1"]);
 		});
 	});
 });

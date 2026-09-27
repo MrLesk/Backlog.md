@@ -22,6 +22,13 @@ interface TaskColumnProps {
   availableTypes?: string[];
   availableProjects?: string[];
   dateFormat?: string;
+  selectedTaskIds?: string[];
+  selectionAnchorId?: string | null;
+  onToggleTaskSelection?: (taskId: string) => void;
+  onSelectTaskRange?: (taskIds: string[]) => void;
+  onBatchMove?: (targetStatus: string, targetMilestone?: string | null) => void;
+  isSelectionDragging?: boolean;
+  onSelectionDragChange?: (active: boolean) => void;
 }
 
 type CreatedDateSortDirection = 'asc' | 'desc';
@@ -69,10 +76,17 @@ const TaskColumn: React.FC<TaskColumnProps> = ({
   availableTypes,
   availableProjects,
   dateFormat,
+  selectedTaskIds,
+  selectionAnchorId,
+  onToggleTaskSelection,
+  onSelectTaskRange,
+  onBatchMove,
+  isSelectionDragging,
+  onSelectionDragChange,
 }) => {
   const [isDragOver, setIsDragOver] = React.useState(false);
   const [draggedTaskId, setDraggedTaskId] = React.useState<string | null>(null);
-  const [dropPosition, setDropPosition] = React.useState<{ index: number; position: 'before' | 'after' } | null>(null);
+  const [dropPosition, setDropPosition] = React.useState<{ index: number; position: 'before' | 'after' | 'self' } | null>(null);
   const [showMenu, setShowMenu] = React.useState(false);
   const menuRef = React.useRef<HTMLDivElement>(null);
   const columnActionsId = React.useId();
@@ -143,7 +157,15 @@ const TaskColumn: React.FC<TaskColumnProps> = ({
     const sourceStatus = e.dataTransfer.getData('text/status');
     
     if (!droppedTaskId) return;
-    
+
+    // Dragging one card of a selection moves the whole selection, so the drop skips reordering.
+    // The lane travels with the column exactly as it does for a single-card drop below, so a batch
+    // dropped into a milestone lane lands in that milestone too.
+    if (onBatchMove && selectedTaskIds && selectedTaskIds.length > 1 && selectedTaskIds.includes(droppedTaskId)) {
+      onBatchMove(title, targetMilestone);
+      return;
+    }
+
     if (!onTaskReorder) {
       return;
     }
@@ -152,8 +174,10 @@ const TaskColumn: React.FC<TaskColumnProps> = ({
 
     let insertIndex = columnWithoutDropped.length;
     if (dropPosition) {
+      // 'self' resolves to the card's own spot, so releasing a lifted card in place falls through
+      // to the unchanged-order guard below instead of appending it to the end of the column.
       const { index, position } = dropPosition;
-      const baseIndex = position === 'before' ? index : index + 1;
+      const baseIndex = position === 'after' ? index + 1 : index;
       let count = 0;
       for (let i = 0; i < Math.min(baseIndex, tasks.length); i += 1) {
         if (tasks[i]?.id === droppedTaskId) {
@@ -302,8 +326,21 @@ const TaskColumn: React.FC<TaskColumnProps> = ({
             key={task.id} 
             className="relative"
             onDragOver={(e) => {
-              if (!onTaskReorder || !draggedTaskId || draggedTaskId === task.id) return;
-              
+              if (!onTaskReorder || !draggedTaskId) return;
+
+              // A drag that moves the whole selection ignores the drop position (a same-column
+              // batch drop is inert, a cross-column one appends), so no insertion indicator is
+              // shown that the drop would not honor.
+              if (selectedTaskIds && selectedTaskIds.length > 1 && selectedTaskIds.includes(draggedTaskId)) return;
+
+              // Hovering the lifted card itself previews "stay in place": no indicator, and the
+              // drop resolves to the card's current position instead of the end of the column.
+              if (draggedTaskId === task.id) {
+                e.preventDefault();
+                setDropPosition({ index, position: 'self' });
+                return;
+              }
+
               e.preventDefault();
               const rect = e.currentTarget.getBoundingClientRect();
               const y = e.clientY - rect.top;
@@ -326,6 +363,32 @@ const TaskColumn: React.FC<TaskColumnProps> = ({
               task={task}
               onUpdate={onTaskUpdate}
               onEdit={onEditTask}
+              isSelected={selectedTaskIds?.includes(task.id) ?? false}
+              selectionCount={selectedTaskIds?.length ?? 0}
+              isSelectionDragging={isSelectionDragging}
+              onSelectionDragChange={onSelectionDragChange}
+              onSelect={
+                onToggleTaskSelection
+                  ? ({ shiftKey }) => {
+                      const anchorIndex = selectionAnchorId
+                        ? tasks.findIndex((candidate) => candidate.id === selectionAnchorId)
+                        : -1;
+                      if (shiftKey && onSelectTaskRange && anchorIndex !== -1) {
+                        const [from, to] = anchorIndex < index ? [anchorIndex, index] : [index, anchorIndex];
+                        // Read-only cross-branch cards cannot move, so the range skips them the same
+                        // way a direct click on one does.
+                        onSelectTaskRange(
+                          tasks
+                            .slice(from, to + 1)
+                            .filter((candidate) => !candidate.branch)
+                            .map((candidate) => candidate.id)
+                        );
+                        return;
+                      }
+                      onToggleTaskSelection(task.id);
+                    }
+                  : undefined
+              }
               onDragStart={() => {
                 setDraggedTaskId(task.id);
                 onDragStart?.({ status: title, laneId: laneId ?? null });

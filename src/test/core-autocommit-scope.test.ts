@@ -100,7 +100,7 @@ describe("core auto-commit scoping", () => {
 		const { task } = await core.createTaskFromInput({ title: "Archive task", status: "To Do", description: "d" }, true);
 		await seedUnrelatedDirtyState();
 
-		expect(await core.archiveTask(task.id, true)).toBe(true);
+		expect((await core.archiveTask(task.id, true)).success).toBe(true);
 
 		await expectOwnedCommit("backlog/tasks/", "backlog/archive/tasks/");
 	});

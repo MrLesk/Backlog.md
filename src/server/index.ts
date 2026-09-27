@@ -2,11 +2,12 @@ import net from "node:net";
 import { dirname, isAbsolute, join } from "node:path";
 import type { Server, ServerWebSocket } from "bun";
 import { DEFAULT_STATUSES } from "../constants/index.ts";
-import { Core } from "../core/backlog.ts";
+import { Core, TaskArchiveStatusError } from "../core/backlog.ts";
 import type { ContentStore } from "../core/content-store.ts";
 import { initializeProject } from "../core/init.ts";
 import type { SearchService } from "../core/search-service.ts";
 import { getTaskStatistics } from "../core/statistics.ts";
+import { loadTaskDetail } from "../core/task-detail.ts";
 import { isCreateLockError, isTaskLockError } from "../file-system/operations.ts";
 import { BacklogToolError } from "../mcp/errors/mcp-errors.ts";
 import { MilestoneHandlers } from "../mcp/tools/milestones/handlers.ts";
@@ -20,6 +21,7 @@ import {
 } from "../types/index.ts";
 import { launchBrowser } from "../utils/browser-launch.ts";
 import type { BrowserLoadingState } from "../utils/browser-loading-state.ts";
+import { normalizeDueDate } from "../utils/due-date.ts";
 import { isAmbiguousIdError } from "../utils/entity-id.ts";
 import { resolveMilestoneInputForStorage } from "../utils/milestone-storage.ts";
 import { DRAFT_PREFIX, extractAnyPrefix, getTaskPrefixError } from "../utils/prefix-config.ts";
@@ -33,7 +35,6 @@ import {
 import { formatValidStatuses, getCanonicalStatuses, getValidStatuses } from "../utils/status.ts";
 import { isValidTaskId } from "../utils/task-id.ts";
 import { isAmbiguousTaskIdError, LOCAL_TASK_LOOKUP_HINT } from "../utils/task-path.ts";
-import { normalizeUtcDateTime } from "../utils/utc-datetime.ts";
 import { getVersion } from "../utils/version.ts";
 
 // Regex pattern to match any prefix (letters followed by dash)
@@ -63,6 +64,22 @@ function formatErrorForWeb(message: string): string {
 
 type DueDatePayloadResult = { ok: true; value: string | null | undefined } | { ok: false; error: string };
 
+/**
+ * Read the marker core attaches when a mutation failed after the record had already moved. The
+ * response carries it so a client refreshes and reports what happened instead of retrying a move
+ * that already took place.
+ */
+function readMovedState(error: unknown, key: "archiveState" | "demotionState"): "moved" | "partial" | undefined {
+	const state = typeof error === "object" && error !== null ? (error as Record<string, unknown>)[key] : undefined;
+	return state === "moved" || state === "partial" ? state : undefined;
+}
+
+function readDemotionFailureCause(error: unknown): "cleanup" | "commit" | undefined {
+	const cause =
+		typeof error === "object" && error !== null ? (error as Record<string, unknown>).demotionFailureCause : undefined;
+	return cause === "cleanup" || cause === "commit" ? cause : undefined;
+}
+
 function parseDueDatePayload(value: unknown, clearable: boolean): DueDatePayloadResult {
 	if (value === undefined) return { ok: true, value: undefined };
 	if (value === null) {
@@ -72,7 +89,7 @@ function parseDueDatePayload(value: unknown, clearable: boolean): DueDatePayload
 		return { ok: false, error: `Due date must be a string${clearable ? " or null" : ""}.` };
 	}
 	try {
-		return { ok: true, value: normalizeUtcDateTime(value, "Due date") };
+		return { ok: true, value: normalizeDueDate(value, "Due date") };
 	} catch (error) {
 		return { ok: false, error: error instanceof Error ? error.message : String(error) };
 	}
@@ -241,6 +258,7 @@ export class BacklogServer {
 	private browserLoadingState: BrowserLoadingState = { type: "loading", message: null };
 	private unsubscribeContentStore?: () => void;
 	private taskBroadcastTimer?: ReturnType<typeof setTimeout>;
+	private pendingDataBroadcastScope: "tasks" | "milestones" = "tasks";
 	private storeReadyBroadcasted = false;
 
 	constructor(projectPath: string) {
@@ -293,13 +311,13 @@ export class BacklogServer {
 						this.storeReadyBroadcasted = true;
 						return;
 					}
-					this.broadcastTasksUpdated();
+					this.broadcastDataUpdated();
 					return;
 				}
 
 				// Broadcast for tasks/documents/decisions so clients refresh caches/search
 				this.storeReadyBroadcasted = true;
-				this.broadcastTasksUpdated();
+				this.broadcastDataUpdated();
 			});
 		}
 
@@ -328,13 +346,18 @@ export class BacklogServer {
 		return this.server?.port ?? null;
 	}
 
-	private broadcastTasksUpdated() {
+	private broadcastDataUpdated(scope: "tasks" | "milestones" = "tasks") {
+		// Milestone changes widen the message so clients also refetch milestone
+		// entities; the debounce keeps the widest scope seen in the window.
+		if (scope === "milestones") this.pendingDataBroadcastScope = "milestones";
 		if (this.taskBroadcastTimer) clearTimeout(this.taskBroadcastTimer);
 		this.taskBroadcastTimer = setTimeout(() => {
 			this.taskBroadcastTimer = undefined;
+			const message = this.pendingDataBroadcastScope === "milestones" ? "milestones-updated" : "tasks-updated";
+			this.pendingDataBroadcastScope = "tasks";
 			for (const ws of this.sockets) {
 				try {
-					ws.send("tasks-updated");
+					ws.send(message);
 				} catch {}
 			}
 		}, 75);
@@ -470,6 +493,9 @@ export class BacklogServer {
 					},
 					"/api/tasks/reorder": {
 						POST: async (req: Request) => await this.handleReorderTask(req),
+					},
+					"/api/tasks/move": {
+						POST: async (req: Request) => await this.handleMoveTasks(req),
 					},
 					"/api/tasks/cleanup": {
 						GET: async (req: Request) => await this.handleCleanupPreview(req),
@@ -1005,12 +1031,16 @@ export class BacklogServer {
 		}
 	}
 
-	private async handleGetTask(taskId: string): Promise<Response> {
+	/**
+	 * Resolve the one task a detail read is about, or the response that explains why it could not be
+	 * resolved. Shared so every detail endpoint fails closed on an ambiguous ID the same way.
+	 */
+	private async resolveDetailTask(taskId: string): Promise<Task | Response> {
 		if (!isValidTaskId(taskId)) return Response.json({ error: `Invalid task ID: ${taskId}` }, { status: 400 });
 		if (isDraftId(taskId)) {
 			try {
 				const draft = await this.core.filesystem.loadDraft(taskId);
-				return draft ? Response.json(draft) : Response.json({ error: `Task ${taskId} not found` }, { status: 404 });
+				return draft ?? Response.json({ error: `Task ${taskId} not found` }, { status: 404 });
 			} catch (error) {
 				if (isAmbiguousIdError(error)) {
 					return Response.json({ error: error.message }, { status: 409 });
@@ -1028,11 +1058,18 @@ export class BacklogServer {
 				: error.message;
 			return Response.json({ error: message }, { status: 409 });
 		}
-		if (resolvedTask) {
-			return Response.json(resolvedTask);
-		}
+		return resolvedTask ?? Response.json({ error: `Task ${taskId} not found` }, { status: 404 });
+	}
 
-		return Response.json({ error: `Task ${taskId} not found` }, { status: 404 });
+	/**
+	 * One task, as a detail read returns it: the record plus the relationships derived at read time,
+	 * so the browser gets the dependency graph in the same response that opens the task.
+	 */
+	private async handleGetTask(taskId: string): Promise<Response> {
+		const resolved = await this.resolveDetailTask(taskId);
+		if (resolved instanceof Response) return resolved;
+		await this.ensureServicesReady();
+		return Response.json(await loadTaskDetail(this.core, resolved, { includeCrossBranch: true }));
 	}
 
 	private async handleUpdateTask(req: Request, taskId: string): Promise<Response> {
@@ -1159,11 +1196,22 @@ export class BacklogServer {
 		try {
 			// editTaskOrDraft keeps a draft a draft, or promotes it when a real status is requested.
 			const updatedTask = isDraftId(taskId)
-				? await this.core.editTaskOrDraft(taskId, updateInput)
+				? (await this.core.editTaskOrDraft(taskId, updateInput)).task
 				: await this.core.updateTaskFromInput(taskId, updateInput);
 			return Response.json(updatedTask);
 		} catch (error) {
 			const message = formatErrorForWeb(error instanceof Error ? error.message : "Failed to update task");
+			// Editing a task into the Draft status demotes it, so the same "already moved" report the
+			// demote endpoint makes applies here: refresh, and do not invite a retry.
+			const demotionState = readMovedState(error, "demotionState");
+			if (demotionState) {
+				this.broadcastDataUpdated();
+				const demotionFailureCause = readDemotionFailureCause(error);
+				return Response.json(
+					{ error: message, demotionState, ...(demotionFailureCause ? { demotionFailureCause } : {}) },
+					{ status: 500 },
+				);
+			}
 			const conflict = isAmbiguousIdError(error) || isAmbiguousTaskIdError(error) || isTaskLockError(error);
 			return Response.json({ error: message }, { status: conflict ? 409 : 400 });
 		}
@@ -1171,12 +1219,25 @@ export class BacklogServer {
 
 	private async handleDeleteTask(taskId: string): Promise<Response> {
 		try {
-			const success = await this.core.archiveTask(taskId);
+			const { success, cleanedTaskIds } = await this.core.archiveTask(taskId);
 			if (!success) {
 				return Response.json({ error: "Task not found" }, { status: 404 });
 			}
-			return Response.json({ success: true });
+			this.broadcastDataUpdated();
+			return Response.json({ success: true, cleanedTaskIds });
 		} catch (error) {
+			if (error instanceof TaskArchiveStatusError) {
+				return Response.json({ error: error.message }, { status: 400 });
+			}
+			// The task reached the archive and something after that failed. Say so, and refresh:
+			// a client told only "error" would offer to archive a task that is already archived.
+			const archiveState = readMovedState(error, "archiveState");
+			if (archiveState) {
+				this.broadcastDataUpdated();
+				const message = error instanceof Error ? error.message : "Failed to archive task";
+				console.error("Error archiving task after it moved:", error);
+				return Response.json({ error: message, archiveState }, { status: 500 });
+			}
 			if (isAmbiguousTaskIdError(error)) {
 				return Response.json({ error: error.message }, { status: 409 });
 			}
@@ -1192,7 +1253,7 @@ export class BacklogServer {
 			}
 
 			// Notify listeners to refresh
-			this.broadcastTasksUpdated();
+			this.broadcastDataUpdated();
 			return Response.json({ success: true });
 		} catch (error) {
 			const message = error instanceof Error ? error.message : "Failed to complete task";
@@ -1205,28 +1266,31 @@ export class BacklogServer {
 
 	private async handleDemoteTask(taskId: string): Promise<Response> {
 		try {
-			const success = await this.core.demoteTask(taskId);
+			const { success, cleanedTaskIds } = await this.core.demoteTask(taskId);
 			if (!success) {
 				return Response.json({ error: "Task not found" }, { status: 404 });
 			}
 
-			this.broadcastTasksUpdated();
-			return Response.json({ success: true });
+			this.broadcastDataUpdated();
+			return Response.json({ success: true, cleanedTaskIds });
 		} catch (error) {
 			const message = error instanceof Error ? error.message : "Failed to demote task";
 			const conflict = isAmbiguousTaskIdError(error) || isCreateLockError(error) || isTaskLockError(error);
-			const demotionState =
-				typeof error === "object" && error !== null && (error as { demotionState?: unknown }).demotionState;
-			const knownDemotionState = demotionState === "moved" || demotionState === "partial" ? demotionState : undefined;
+			const knownDemotionState = readMovedState(error, "demotionState");
+			const demotionFailureCause = readDemotionFailureCause(error);
 			if (knownDemotionState) {
-				this.broadcastTasksUpdated();
+				this.broadcastDataUpdated();
 			}
 			if (!conflict) {
 				console.error("Error demoting task:", error);
 			}
 			const status = knownDemotionState ? 500 : conflict ? 409 : 500;
 			return Response.json(
-				{ error: message, ...(knownDemotionState ? { demotionState: knownDemotionState } : {}) },
+				{
+					error: message,
+					...(knownDemotionState ? { demotionState: knownDemotionState } : {}),
+					...(demotionFailureCause ? { demotionFailureCause } : {}),
+				},
 				{ status },
 			);
 		}
@@ -1633,6 +1697,7 @@ export class BacklogServer {
 			}
 
 			const milestone = await this.core.filesystem.createMilestone(title, body.description, dueDate.value ?? undefined);
+			this.broadcastDataUpdated("milestones");
 			return Response.json(milestone, { status: 201 });
 		} catch (error) {
 			console.error("Error creating milestone:", error);
@@ -1662,7 +1727,7 @@ export class BacklogServer {
 			const milestone =
 				(await this.core.filesystem.loadMilestone(sourceMilestone?.id ?? milestoneId)) ??
 				(await this.core.filesystem.loadMilestone(title));
-			this.broadcastTasksUpdated();
+			this.broadcastDataUpdated("milestones");
 			return Response.json({
 				success: true,
 				milestone: milestone ?? null,
@@ -1694,7 +1759,7 @@ export class BacklogServer {
 				taskHandling,
 				reassignTo,
 			});
-			this.broadcastTasksUpdated();
+			this.broadcastDataUpdated("milestones");
 			return Response.json({
 				success: true,
 				message: this.getMilestoneMutationMessage(result),
@@ -1710,7 +1775,7 @@ export class BacklogServer {
 			if (!result.success) {
 				return Response.json({ error: "Milestone not found" }, { status: 404 });
 			}
-			this.broadcastTasksUpdated();
+			this.broadcastDataUpdated("milestones");
 			return Response.json({ success: true, milestone: result.milestone ?? null });
 		} catch (error) {
 			const message = error instanceof Error ? error.message : "Failed to archive milestone";
@@ -1771,6 +1836,42 @@ export class BacklogServer {
 				console.error("Error reordering task:", error);
 			}
 			return Response.json({ error: message }, { status });
+		}
+	}
+
+	private async handleMoveTasks(req: Request): Promise<Response> {
+		try {
+			const body = await req.json();
+			const taskIds = Array.isArray(body.taskIds) ? body.taskIds.filter((id: unknown) => typeof id === "string") : [];
+			const targetStatus = typeof body.targetStatus === "string" ? body.targetStatus : "";
+			// Same shape as the reorder endpoint: a string names a lane, null is the no-milestone lane,
+			// and an absent field leaves each task's milestone alone.
+			const targetMilestone =
+				typeof body.targetMilestone === "string"
+					? body.targetMilestone
+					: body.targetMilestone === null
+						? null
+						: undefined;
+
+			if (taskIds.length === 0 || !targetStatus) {
+				return Response.json({ error: "Missing required fields: taskIds and targetStatus" }, { status: 400 });
+			}
+
+			const { movedTasks, changedTasks, failures } = await this.core.moveTasksToStatus({
+				taskIds,
+				targetStatus,
+				targetMilestone,
+				commitMessage: `Move ${taskIds.length} tasks to ${targetStatus}`,
+			});
+
+			return Response.json({ success: failures.length === 0, tasks: movedTasks, changedTasks, failures });
+		} catch (error) {
+			const message = error instanceof Error ? error.message : "Failed to move tasks";
+			const isValidationError = message.includes("required");
+			if (!isValidationError) {
+				console.error("Error moving tasks:", error);
+			}
+			return Response.json({ error: message }, { status: isValidationError ? 400 : 500 });
 		}
 	}
 
@@ -1875,7 +1976,7 @@ export class BacklogServer {
 			}
 
 			// Notify listeners to refresh
-			this.broadcastTasksUpdated();
+			this.broadcastDataUpdated();
 
 			return Response.json({
 				success: true,

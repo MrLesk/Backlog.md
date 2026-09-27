@@ -58,7 +58,7 @@ Backlog.md itself. The full task ledger lives in this repo's [backlog folder](ba
 
 * ✅ **Acceptance criteria & Definition of Done** -- verifiable scope per task, plus a reusable DoD checklist for every new task
 
-* 🎯 **Milestones & dependencies** -- structure bigger efforts and make execution order reviewable
+* 🎯 **Milestones & dependencies** -- structure bigger efforts and make execution order reviewable, with task detail showing what a task waits on and what waits on it
 
 * 📊 **Terminal Kanban** -- `backlog board` paints a live board in your shell; `backlog board export` creates shareable markdown reports
 
@@ -152,6 +152,8 @@ After running `backlog init`, agents should start by running `backlog instructio
 > [!NOTE]
 > **Review checkpoint #3:** review the code, run tests, check linting, and verify the results match your expectations.
 
+Mark verified work Done (or the configured final status). During periodic cleanup, use `backlog task complete` to move it off the board while preserving its record and dependency links. Use `backlog task archive` for canceled, duplicate, or invalid work; it removes incoming dependencies and task references.
+
 If the output is not good enough: clear the plan/notes/final summary, refine the task description and acceptance criteria, and run the task again in a fresh session.
 
 ---
@@ -178,7 +180,7 @@ backlog browser
 
 You can switch between AI-assisted and manual workflows at any time; both operate on the same Markdown task files. Just prefer Backlog.md commands (CLI/MCP/Web) over hand-editing task files, so field types and metadata stay consistent.
 
-Read commands support stable, versioned JSON for scripts and integrations. Use `--json` with `task list`, `task view`, the `task <id>` shorthand, and `search`. JSON mode is noninteractive and keeps successful stdout machine-readable.
+Read commands support stable, versioned JSON for scripts and integrations. Use `--json` with `task list`, `task view`, the `task <id>` shorthand, and `search`. JSON mode is noninteractive and keeps successful stdout machine-readable. Add `--watch` to `task list --json` for an initial full list followed by changed full replacements, using the exact same JSON format. Read successive complete JSON values; each response replaces the previous list.
 
 **Learn more:** [CLI reference](CLI-INSTRUCTIONS.md) | [Advanced configuration](ADVANCED-CONFIG.md)
 
@@ -202,6 +204,7 @@ backlog browser --no-open
 
 **Features:**
 - Interactive Kanban board with drag-and-drop
+- Multi-select cards to move several tasks to one column
 - Task creation and editing with forms
 - Interactive acceptance criteria editor with checklists
 - Real-time updates across all views

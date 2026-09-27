@@ -5,6 +5,7 @@ import { createRoot, type Root } from "react-dom/client";
 import { MemoryRouter } from "react-router-dom";
 import type { Task } from "../types/index.ts";
 import TaskList from "../web/components/TaskList.tsx";
+import { pinTimeZone } from "./pin-timezone.ts";
 
 // jsdom performs no layout, so these tests cannot show that the rendered table fits a
 // viewport or that no scrollbar appears. They pin the width budget the browser then has
@@ -63,7 +64,7 @@ const renderTaskList = (): HTMLElement => {
 						createTask({
 							id: "task-101",
 							title: "Fit the task table",
-							dueDate: "2026-08-10 14:30",
+							dueDate: "2026-08-10",
 							labels: ["ui"],
 							assignee: ["@alex"],
 						}),
@@ -103,6 +104,9 @@ afterEach(() => {
 });
 
 describe("TaskList table width budget", () => {
+	// The browser renders stored timestamps in the viewer's timezone, so pin one.
+	pinTimeZone("Asia/Tokyo");
+
 	it("renders every column", () => {
 		const container = renderTaskList();
 		const headers = Array.from(container.querySelectorAll("thead th")).map(
@@ -111,7 +115,12 @@ describe("TaskList table width budget", () => {
 
 		expect(headers).toEqual(EXPECTED_HEADERS);
 		expect(container.querySelectorAll("tbody tr td")).toHaveLength(EXPECTED_HEADERS.length);
-		expect(container.textContent).toContain("Due (UTC): 2026-08-10 14:30");
+		// The viewer is nine hours ahead of UTC; a due date names a day and does not move with it.
+		expect(container.textContent).toContain("Due: 2026-08-10");
+		const renderedDue = Array.from(container.querySelectorAll("span")).find(
+			(element) => element.textContent === "2026-08-10",
+		);
+		expect(renderedDue?.getAttribute("title")).toBeNull();
 	});
 
 	it("leaves Title as the only flexible column", () => {

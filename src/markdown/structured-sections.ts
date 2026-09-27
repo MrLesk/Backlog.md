@@ -314,7 +314,9 @@ interface ChecklistSentinelResolution {
 }
 
 function tokenizeKnownSentinels(content: string): SentinelToken[] {
-	const markerRegex = /<!-- (SECTION:[A-Z][A-Z0-9_]*|COMMENTS|COMMENT|AC|DOD):(BEGIN|END) -->/g;
+	// Anchored to whole lines: content that merely mentions a marker inline must
+	// never count as a structural sentinel (GitHub issue #932).
+	const markerRegex = /^<!-- (SECTION:[A-Z][A-Z0-9_]*|COMMENTS|COMMENT|AC|DOD):(BEGIN|END) -->[\t ]*$/gm;
 	const tokens: SentinelToken[] = [];
 	for (const match of content.matchAll(markerRegex)) {
 		const start = match.index ?? 0;
@@ -423,29 +425,16 @@ function findSectionEndIndex(content: string, title: string): number | undefined
 		return findChecklistSectionRanges(content, DEFINITION_OF_DONE_DEFINITION)[0]?.end;
 	}
 	const sentinelRanges = resolveKnownSentinelRanges(tokenizeKnownSentinels(content));
-	let sentinelMatch: RegExpExecArray | null = null;
 	if (normalizedTitle.toLowerCase() === COMMENTS_TITLE.toLowerCase()) {
-		sentinelMatch = findMatchOutsideRanges(commentsSentinelRegex(), content, sentinelRanges) ?? null;
-	} else {
-		const keyEntry = Object.entries(SECTION_CONFIG).find(
-			([, config]) => config.title.toLowerCase() === normalizedTitle.toLowerCase(),
-		);
-		if (keyEntry) {
-			const key = keyEntry[0] as StructuredSectionKey;
-			sentinelMatch =
-				findMatchOutsideRanges(
-					new RegExp(
-						`## ${escapeForRegex(getConfig(key).title)}\\s*\\n${escapeForRegex(getBeginMarker(key))}\\s*\\n([\\s\\S]*?)${escapeForRegex(getEndMarker(key))}`,
-						"i",
-					),
-					content,
-					sentinelRanges,
-				) ?? null;
+		const sentinelMatch = findMatchOutsideRanges(commentsSentinelRegex(), content, sentinelRanges);
+		if (sentinelMatch) {
+			return sentinelMatch.index + sentinelMatch[0].length;
 		}
-	}
-
-	if (sentinelMatch) {
-		return sentinelMatch.index + sentinelMatch[0].length;
+	} else {
+		const block = findSentinelBlockForTitle(content, normalizedTitle, sentinelRanges);
+		if (block) {
+			return block.end;
+		}
 	}
 
 	const legacyRegex =
@@ -459,6 +448,19 @@ function findSectionEndIndex(content: string, title: string): number | undefined
 	return undefined;
 }
 
+function findSentinelBlockForTitle(
+	content: string,
+	normalizedTitle: string,
+	maskedRanges: TextRange[],
+): SentinelBlock | undefined {
+	const keyEntry = Object.entries(SECTION_CONFIG).find(
+		([, config]) => config.title.toLowerCase() === normalizedTitle.toLowerCase(),
+	);
+	if (!keyEntry) return undefined;
+	const key = keyEntry[0] as StructuredSectionKey;
+	return findSentinelBlocks(content, key).find((candidate) => !isIndexWithinRanges(candidate.start, maskedRanges));
+}
+
 function findSectionStartIndex(content: string, title: string): number | undefined {
 	const normalizedTitle = title.trim();
 	if (normalizedTitle.toLowerCase() === ACCEPTANCE_CRITERIA_TITLE.toLowerCase()) {
@@ -468,29 +470,16 @@ function findSectionStartIndex(content: string, title: string): number | undefin
 		return findChecklistSectionRanges(content, DEFINITION_OF_DONE_DEFINITION)[0]?.start;
 	}
 	const sentinelRanges = resolveKnownSentinelRanges(tokenizeKnownSentinels(content));
-	let sentinelMatch: RegExpExecArray | null = null;
 	if (normalizedTitle.toLowerCase() === COMMENTS_TITLE.toLowerCase()) {
-		sentinelMatch = findMatchOutsideRanges(commentsSentinelRegex(), content, sentinelRanges) ?? null;
-	} else {
-		const keyEntry = Object.entries(SECTION_CONFIG).find(
-			([, config]) => config.title.toLowerCase() === normalizedTitle.toLowerCase(),
-		);
-		if (keyEntry) {
-			const key = keyEntry[0] as StructuredSectionKey;
-			sentinelMatch =
-				findMatchOutsideRanges(
-					new RegExp(
-						`(\\n|^)## ${escapeForRegex(getConfig(key).title)}\\s*\\n${escapeForRegex(getBeginMarker(key))}\\s*\\n([\\s\\S]*?)${escapeForRegex(getEndMarker(key))}`,
-						"i",
-					),
-					content,
-					sentinelRanges,
-				) ?? null;
+		const sentinelMatch = findMatchOutsideRanges(commentsSentinelRegex(), content, sentinelRanges);
+		if (sentinelMatch) {
+			return sentinelMatch.index;
 		}
-	}
-
-	if (sentinelMatch) {
-		return sentinelMatch.index;
+	} else {
+		const block = findSentinelBlockForTitle(content, normalizedTitle, sentinelRanges);
+		if (block) {
+			return block.start;
+		}
 	}
 
 	const legacyRegex =
@@ -501,11 +490,77 @@ function findSectionStartIndex(content: string, title: string): number | undefin
 	return legacyMatch?.index;
 }
 
-function sentinelBlockRegex(key: StructuredSectionKey): RegExp {
-	const { title } = getConfig(key);
-	const begin = escapeForRegex(getBeginMarker(key));
-	const end = escapeForRegex(getEndMarker(key));
-	return new RegExp(`## ${escapeForRegex(title)}\\s*\\n${begin}\\s*\\n([\\s\\S]*?)${end}`, "i");
+interface SentinelBlock {
+	start: number;
+	bodyStart: number;
+	bodyEnd: number;
+	end: number;
+}
+
+/**
+ * Locates `## Title` + BEGIN...END sentinel blocks for a structured section.
+ * Markers count only as whole lines (trailing whitespace tolerated), so a body
+ * that merely mentions a marker inline can never terminate the block early.
+ * Same-family BEGIN lines inside the block are depth-counted, so a file whose
+ * markers were nested by pre-fix writes still resolves to one block containing
+ * its full interior instead of hiding everything after the first END line.
+ */
+function findSentinelBlocks(content: string, key: StructuredSectionKey): SentinelBlock[] {
+	const heading = `## ${getConfig(key).title}`.toLowerCase();
+	const begin = getBeginMarker(key);
+	const end = getEndMarker(key);
+	const lines = content.split("\n");
+	let offset = 0;
+	const offsets = lines.map((line) => {
+		const start = offset;
+		offset += line.length + 1;
+		return start;
+	});
+	const blocks: SentinelBlock[] = [];
+	for (let index = 0; index < lines.length; index += 1) {
+		if ((lines[index] ?? "").trimEnd().toLowerCase() !== heading) continue;
+		let beginIndex = index + 1;
+		while (beginIndex < lines.length && (lines[beginIndex] ?? "").trim() === "") beginIndex += 1;
+		if ((lines[beginIndex] ?? "").trimEnd() !== begin) continue;
+		let depth = 1;
+		let endIndex = beginIndex + 1;
+		while (endIndex < lines.length) {
+			const candidate = (lines[endIndex] ?? "").trimEnd();
+			if (candidate === begin) depth += 1;
+			else if (candidate === end) {
+				depth -= 1;
+				if (depth === 0) break;
+			}
+			endIndex += 1;
+		}
+		if (depth !== 0) continue;
+		blocks.push({
+			start: offsets[index] ?? 0,
+			bodyStart: Math.min((offsets[beginIndex] ?? 0) + (lines[beginIndex] ?? "").length + 1, content.length),
+			bodyEnd: offsets[endIndex] ?? content.length,
+			end: (offsets[endIndex] ?? 0) + (lines[endIndex] ?? "").length,
+		});
+		index = endIndex;
+	}
+	return blocks;
+}
+
+/**
+ * Rejects section input that contains the target section's own sentinel marker
+ * as a whole line: wrapping such a payload would nest markers and hide content
+ * from every reader. Inline mentions and other sections' markers stay legal.
+ */
+export function assertSectionInputHasNoMarkerLines(value: string | undefined, key: StructuredSectionKey): void {
+	if (typeof value !== "string" || value.length === 0) return;
+	const begin = getBeginMarker(key);
+	const end = getEndMarker(key);
+	for (const line of value.replace(/\r\n/g, "\n").split("\n")) {
+		const trimmed = line.trimEnd();
+		if (trimmed !== begin && trimmed !== end) continue;
+		throw new Error(
+			`${getConfig(key).title} content cannot contain the reserved marker line "${trimmed}". Indent it with a space to include it as literal text.`,
+		);
+	}
 }
 
 interface SectionRange {
@@ -549,10 +604,8 @@ function findMatchOutsideRanges(
 function getStructuredSectionRanges(content: string): SectionRange[] {
 	const ranges: SectionRange[] = [];
 	for (const key of SECTION_INSERTION_ORDER) {
-		const sentinelRegex = new RegExp(sentinelBlockRegex(key).source, "gi");
-		for (const match of content.matchAll(sentinelRegex)) {
-			const index = match.index ?? 0;
-			ranges.push({ key, start: index, end: index + match[0].length, kind: "sentinel" });
+		for (const block of findSentinelBlocks(content, key)) {
+			ranges.push({ key, start: block.start, end: block.end, kind: "sentinel" });
 		}
 
 		const legacyRegex = legacySectionRegex(getConfig(key).title, "gi");
@@ -666,18 +719,12 @@ function findChecklistSectionRanges(
 }
 
 function stripSectionInstances(content: string, key: StructuredSectionKey): string {
-	const beginEsc = escapeForRegex(getBeginMarker(key));
-	const endEsc = escapeForRegex(getEndMarker(key));
-	const { title } = getConfig(key);
-
 	let stripped = content;
-	const sentinelRegex = new RegExp(
-		`(\n|^)## ${escapeForRegex(title)}\\s*\\n${beginEsc}\\s*\\n([\\s\\S]*?)${endEsc}(?:\\s*\n|$)`,
-		"gi",
-	);
-	stripped = stripped.replace(sentinelRegex, "\n");
+	for (const block of findSentinelBlocks(content, key).sort((left, right) => right.start - left.start)) {
+		stripped = `${stripped.slice(0, block.start)}${stripped.slice(block.end)}`;
+	}
 
-	const legacyRegex = legacySectionRegex(title, "gi");
+	const legacyRegex = legacySectionRegex(getConfig(key).title, "gi");
 	stripped = stripped.replace(legacyRegex, "\n");
 
 	return collapseBlankLines(stripped).trimEnd();
@@ -722,9 +769,9 @@ function appendBlock(content: string, block: string): string {
 export function extractStructuredSection(content: string, key: StructuredSectionKey): string | undefined {
 	const src = content.replace(/\r\n/g, "\n");
 	const otherRanges = getStructuredSectionRanges(src).filter((range) => range.key !== key);
-	const sentinelMatch = findMatchOutsideRanges(sentinelBlockRegex(key), src, otherRanges);
-	if (sentinelMatch?.[1]) {
-		return sentinelMatch[1].trim() || undefined;
+	const block = findSentinelBlocks(src, key).find((candidate) => !isIndexWithinRanges(candidate.start, otherRanges));
+	if (block) {
+		return src.slice(block.bodyStart, block.bodyEnd).trim() || undefined;
 	}
 	const legacyMatch = findMatchOutsideRanges(sectionHeaderRegex(key), src, otherRanges);
 	return legacyMatch?.[1]?.trim() || undefined;

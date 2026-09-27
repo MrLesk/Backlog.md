@@ -19,7 +19,6 @@ import {
 import { matchesModifiedFileFilters, normalizeModifiedFileFilters } from "./modified-files.ts";
 import { normalizePriorityValue } from "./priority-config.ts";
 import { matchesProjectFilter } from "./project-config.ts";
-import { getTaskReadiness, type ReadinessGraph } from "./readiness.ts";
 import { normalizeStatusSet, statusMatchesSet } from "./status-filter.ts";
 import { taskIdsEqual } from "./task-id.ts";
 import { createTaskIdSearchVariants } from "./task-id-search.ts";
@@ -50,11 +49,6 @@ export interface TaskFilterOptions {
 	parentTaskId?: string;
 	milestone?: string;
 	resolveMilestoneLabel?: (milestone: string) => string;
-	/**
-	 * When set, keep only tasks that are ready according to this graph. The graph carries the full
-	 * task corpus, so readiness never depends on which tasks survived the other filters.
-	 */
-	ready?: ReadinessGraph;
 }
 
 export interface TaskSearchIndex {
@@ -218,11 +212,6 @@ export function createTaskFilterMatcher(options: TaskFilterOptions, corpus: Task
 						.toLowerCase() === milestone,
 			);
 		}
-	}
-
-	if (options.ready) {
-		const graph = options.ready;
-		checks.push((task) => getTaskReadiness(task, graph).isReady);
 	}
 
 	return (task) => checks.every((check) => check(task));

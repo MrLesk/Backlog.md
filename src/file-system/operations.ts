@@ -3,7 +3,13 @@ import { basename, dirname, isAbsolute, join, resolve } from "node:path";
 import lockfile from "proper-lockfile";
 import { DEFAULT_DIRECTORIES, DEFAULT_FILES, DEFAULT_STATUSES, FALLBACK_STATUS } from "../constants/index.ts";
 import { parseFrontmatter } from "../markdown/frontmatter.ts";
-import { parseDecision, parseDocument, parseMilestone, parseTask } from "../markdown/parser.ts";
+import {
+	parseDecision,
+	parseDocument,
+	parseMilestone,
+	parseTask,
+	TaskDependenciesParseError,
+} from "../markdown/parser.ts";
 import { serializeDecision, serializeDocument, serializeTask } from "../markdown/serializer.ts";
 import type { BacklogConfig, Decision, Document, Milestone, Task, TaskListFilter } from "../types/index.ts";
 import type { BacklogConfigSource } from "../utils/backlog-directory.ts";
@@ -15,6 +21,7 @@ import {
 import { findDecisionById } from "../utils/decision-id.ts";
 import { documentIdsEqual, findDocumentById, normalizeDocumentId } from "../utils/document-id.ts";
 import { normalizeDocumentRelativePath, normalizeDocumentSubPath } from "../utils/document-path.ts";
+import { normalizeDueDate } from "../utils/due-date.ts";
 import type { DraftIdentityFindings } from "../utils/duplicate-detection.ts";
 import { AmbiguousIdError, isAmbiguousIdError } from "../utils/entity-id.ts";
 import {
@@ -27,6 +34,7 @@ import {
 } from "../utils/prefix-config.ts";
 import { matchesProjectFilter } from "../utils/project-config.ts";
 import { normalizeStatusSet, statusMatchesSet } from "../utils/status-filter.ts";
+import { withoutVacatedTaskLinks } from "../utils/task-links.ts";
 import {
 	AmbiguousTaskIdError,
 	draftIdsMatchLoosely,
@@ -40,7 +48,6 @@ import {
 } from "../utils/task-path.ts";
 import { sortByTaskId } from "../utils/task-sorting.ts";
 import { matchesTaskTypeFilter } from "../utils/task-type-config.ts";
-import { normalizeUtcDateTime } from "../utils/utc-datetime.ts";
 
 // Interface for task path resolution context
 interface TaskPathContext {
@@ -784,7 +791,8 @@ export class FileSystem {
 		if (shouldPreservePath) {
 			try {
 				existingTask = parseTask(await Bun.file(filepath).text());
-			} catch {
+			} catch (error) {
+				if (error instanceof TaskDependenciesParseError) throw error;
 				existingTask = null;
 			}
 		}
@@ -849,7 +857,7 @@ export class FileSystem {
 			const task = normalizeTaskIdentity(parseTask(content));
 			return { ...task, filePath: filepath };
 		} catch (error) {
-			if (isAmbiguousTaskIdError(error)) throw error;
+			if (isAmbiguousTaskIdError(error) || error instanceof TaskDependenciesParseError) throw error;
 			return null;
 		}
 	}
@@ -1223,9 +1231,11 @@ export class FileSystem {
 			const config = await this.loadConfig();
 			const newDraftId = generateNextId(existingIds, "draft", config?.zeroPaddedIds);
 
-			// Update task with new draft ID and save as draft
+			// Update task with new draft ID and save as draft. The record's own links are cleaned of
+			// the task ID it vacates here: carried into the draft, such a link would rebind to
+			// whatever task is allocated that ID next.
 			const demotedDraft: Task = {
-				...task,
+				...(withoutVacatedTaskLinks(task, task.id) ?? task),
 				id: newDraftId,
 				filePath: undefined, // Will be set by saveDraft
 			};
@@ -1260,6 +1270,7 @@ export class FileSystem {
 		// Normalize the draft ID to uppercase before serialization
 		const normalizedTask = { ...task, id: draftId };
 		const content = serializeTask(normalizedTask);
+		await this.ensureDirectoryExists(dirname(filepath));
 
 		// Remove every existing draft file whose numeric identity matches the saved id but
 		// whose filename differs (title change, zero-padding drift): a save must converge
@@ -1287,7 +1298,6 @@ export class FileSystem {
 			}
 		}
 
-		await this.ensureDirectoryExists(dirname(filepath));
 		await Bun.write(filepath, content);
 		return filepath;
 	}
@@ -1477,6 +1487,7 @@ export class FileSystem {
 		const decisionsDir = await this.getDecisionsDir();
 		const filepath = join(decisionsDir, filename);
 		const content = serializeDecision(decision);
+		await this.ensureDirectoryExists(dirname(filepath));
 
 		const matches = await Array.fromAsync(
 			new Bun.Glob("decision-*.md").scan({ cwd: decisionsDir, followSymlinks: true }),
@@ -1494,7 +1505,6 @@ export class FileSystem {
 			}
 		}
 
-		await this.ensureDirectoryExists(dirname(filepath));
 		await Bun.write(filepath, content);
 
 		return { filepath, removedFilepaths };
@@ -1618,8 +1628,8 @@ export class FileSystem {
 				}
 			}
 
-			// Stable sort by title for UI/CLI listing
-			return docs.sort((a, b) => a.title.localeCompare(b.title));
+			// Sort by title for UI/CLI listing; the path breaks title ties so paged CLI windows never overlap.
+			return docs.sort((a, b) => a.title.localeCompare(b.title) || (a.path ?? "").localeCompare(b.path ?? ""));
 		} catch (error) {
 			recordUnreadableDirectory(error, unreadable);
 			return [];
@@ -1836,7 +1846,7 @@ ${rawContent.trim()}
 	}
 
 	async createMilestone(title: string, description?: string, dueDate?: string): Promise<Milestone> {
-		const normalizedDueDate = normalizeUtcDateTime(dueDate, "Due date");
+		const normalizedDueDate = normalizeDueDate(dueDate, "Due date");
 		return await this.withCreateLock(async () => {
 			const milestonesDir = await this.getMilestonesDir();
 
@@ -1915,7 +1925,7 @@ ${description || `Milestone: ${title}`}`,
 			return { success: false };
 		}
 
-		const normalizedDueDate = dueDate === null ? undefined : normalizeUtcDateTime(dueDate, "Due date");
+		const normalizedDueDate = dueDate === null ? undefined : normalizeDueDate(dueDate, "Due date");
 		let sourcePath: string | undefined;
 		let targetPath: string | undefined;
 		let movedFile = false;

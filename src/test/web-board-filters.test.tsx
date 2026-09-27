@@ -6,6 +6,7 @@ import { BrowserRouter } from "react-router-dom";
 import type { Task } from "../types/index.ts";
 import BoardPage from "../web/components/BoardPage.tsx";
 import { apiClient } from "../web/lib/api.ts";
+import { pinTimeZone } from "./pin-timezone.ts";
 
 const createTask = (overrides: Partial<Task>): Task => ({
 	id: "task-1",
@@ -264,6 +265,9 @@ afterEach(() => {
 });
 
 describe("Web board filters", () => {
+	// The cleanup preview renders stored timestamps in the viewer's timezone, so pin one.
+	pinTimeZone("Asia/Tokyo");
+
 	it("publishes every returned reorder task without a foreground refresh", async () => {
 		const originalReorderTask = apiClient.reorderTask.bind(apiClient);
 		const sourceTask = tasks[0];
@@ -540,8 +544,12 @@ describe("Web board filters", () => {
 			expect(oneDayButton).toBeTruthy();
 			await clickElement(oneDayButton as Element);
 
-			await waitFor(() => (container.textContent ?? "").includes("09/02/2026 06:01"));
+			await waitFor(() => (container.textContent ?? "").includes("09/02/2026 15:01"));
 			expect(container.textContent).not.toContain("2026-02-09 06:01");
+			const renderedDate = Array.from(container.querySelectorAll("span[title]")).find(
+				(element) => element.textContent === "09/02/2026 15:01",
+			);
+			expect(renderedDate?.getAttribute("title")).toBe("09/02/2026 06:01 (UTC)");
 		} finally {
 			apiClient.getCleanupPreview = originalGetCleanupPreview;
 		}

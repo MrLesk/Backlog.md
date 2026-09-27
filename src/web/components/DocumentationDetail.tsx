@@ -9,7 +9,7 @@ import ErrorBoundary from '../components/ErrorBoundary';
 import {SuccessToast} from './SuccessToast';
 import { useTheme } from '../contexts/ThemeContext';
 import { sanitizeUrlTitle } from '../utils/urlHelpers';
-import { formatStoredUtcDateForDisplay } from '../utils/date-display';
+import StoredDate from './StoredDate';
 
 // Custom MDEditor wrapper for proper height handling
 const MarkdownEditor = memo(function MarkdownEditor({
@@ -363,7 +363,7 @@ export default function DocumentationDetail({docs, onRefreshData, dateFormat}: D
                                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
                                                       d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/>
                                             </svg>
-                                            <span>Created: {formatStoredUtcDateForDisplay(document.createdDate, dateFormat)}</span>
+                                            <span>Created: <StoredDate value={document.createdDate} dateFormat={dateFormat} /></span>
                                         </div>
                                     )}
                                 </div>

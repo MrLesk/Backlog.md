@@ -5,6 +5,16 @@ import type { BoxInterface, LineInterface, ScreenInterface, ScrollableTextInterf
 import { box, line, scrollabletext } from "neo-neo-bblessed";
 import { type Core, createRuntimeCore } from "../core/backlog.ts";
 import {
+	loadTaskDetail,
+	type TaskCorpus,
+	type TaskDetail,
+	taskDependencyGraph,
+	taskReadiness,
+	toTaskDetail,
+	withReadiness,
+} from "../core/task-detail.ts";
+import { formatDependencyGraphLines, formatDependencyNodeTuiLabel } from "../formatters/dependency-graph-text.ts";
+import {
 	buildAcceptanceCriteriaItems,
 	buildDefinitionOfDoneItems,
 	formatDateForDisplay,
@@ -22,12 +32,7 @@ import {
 import { hasAnyPrefix } from "../utils/prefix-config.ts";
 import { formatPriorityLabel, getPriorityOptions, normalizePriorityValue } from "../utils/priority-config.ts";
 import { getProjectValues, resolveProjectValues } from "../utils/project-config.ts";
-import {
-	createReadinessGraph,
-	formatReadinessBlockers,
-	getTaskReadiness,
-	type ReadinessGraph,
-} from "../utils/readiness.ts";
+import { formatReadinessBlockers } from "../utils/readiness.ts";
 import { canonicalTaskId, taskIdsEqual } from "../utils/task-id.ts";
 import { applyTaskFilters, createTaskSearchIndex } from "../utils/task-search.ts";
 import { attachSubtaskSummaries } from "../utils/task-subtasks.ts";
@@ -50,7 +55,11 @@ import { formatHeading } from "./heading.ts";
 import { createLoadingScreen } from "./loading.ts";
 import { formatProjectBadge } from "./project.ts";
 import { formatStatusWithIcon, getStatusColor, getStatusIcon, wrapStatusColor } from "./status-icon.ts";
-import { completeTaskFromTui, formatTaskCompletionBlockedMessage } from "./task-lifecycle.ts";
+import {
+	completeTaskFromTui,
+	formatTaskArchivedMessage,
+	formatTaskCompletionBlockedMessage,
+} from "./task-lifecycle.ts";
 import { formatTaskTypeBadge } from "./task-type.ts";
 import { addScrollKeys, createScreen, formatTuiTitle } from "./tui.ts";
 
@@ -87,9 +96,7 @@ export function formatTaskViewerListItem(
 	const projectBadge = formatProjectBadge(task.project, configuredProjects);
 	const projectText = projectBadge ? ` ${projectBadge}` : "";
 	const priorityText = getPriorityDisplay(task.priority);
-	const dueDateText = task.dueDate
-		? ` {gray-fg}(due ${formatDateForDisplay(task.dueDate, { dateFormat, appendUtcLabel: true })}){/}`
-		: "";
+	const dueDateText = task.dueDate ? ` {gray-fg}(due ${formatDateForDisplay(task.dueDate, { dateFormat })}){/}` : "";
 	const isCrossBranch = Boolean((task as Task & { branch?: string }).branch);
 	const branchText = isCrossBranch ? ` {green-fg}(${(task as Task & { branch?: string }).branch}){/}` : "";
 	const progressText = progress ? ` ${progress}` : "";
@@ -189,6 +196,38 @@ export function resolveTaskListSelection<T>(
 }
 
 /**
+ * Merge the unfiltered readiness snapshot with the live display copies into the corpus the
+ * dependency graph and readiness resolve against.
+ *
+ * Live copies win over the snapshot so status edits made in this session count. The merge works on
+ * claimant groups rather than single records: an identity that either side holds more than once
+ * keeps every claimant, so the shared record index still reports it ambiguous exactly as the CLI
+ * does, instead of this merge quietly electing a winner.
+ */
+export function mergeDependencyCorpusTasks(snapshot: Task[], liveTasks: Task[]): Task[] {
+	const groupById = (tasks: Task[]) => {
+		const groups = new Map<string, Task[]>();
+		for (const task of tasks) {
+			const key = canonicalTaskId(task.id);
+			const group = groups.get(key);
+			if (group) group.push(task);
+			else groups.set(key, [task]);
+		}
+		return groups;
+	};
+
+	const groups = groupById(snapshot);
+	for (const [key, liveClaimants] of groupById(liveTasks)) {
+		const snapshotClaimants = groups.get(key);
+		// A live copy cannot be attributed to either claimant of a contested identity, so the
+		// snapshot's ambiguity stands until the view reloads.
+		if (snapshotClaimants && snapshotClaimants.length > 1) continue;
+		groups.set(key, liveClaimants);
+	}
+	return [...groups.values()].flat();
+}
+
+/**
  * Display task details with search/filter header UI
  */
 /**
@@ -252,7 +291,7 @@ export async function viewTaskEnhanced(
 	} = {},
 ): Promise<void> {
 	if (output.isTTY === false) {
-		console.log(formatTaskPlainText(task));
+		console.log(formatTaskPlainText(await loadTaskDetail(options.core ?? (await createRuntimeCore()), task)));
 		return;
 	}
 
@@ -331,15 +370,14 @@ export async function viewTaskEnhanced(
 	// mutable because completing a task from this view moves it between them.
 	let readinessSnapshot = options.readinessTasks ? [...options.readinessTasks] : null;
 	const readinessCompletedTasks = [...completedTasks];
-	const buildReadinessGraph = () => {
+	// The corpus that both readiness and the dependency graph resolve against, so the two never
+	// disagree about which records this view can see.
+	const resolveDependencyCorpus = (): TaskCorpus => {
 		let tasks = allTasks;
 		if (readinessSnapshot) {
-			// Live display copies win over the snapshot so status edits in this session count.
-			const byId = new Map(readinessSnapshot.map((task) => [canonicalTaskId(task.id), task]));
-			for (const task of allTasks) byId.set(canonicalTaskId(task.id), task);
-			tasks = [...byId.values()];
+			tasks = mergeDependencyCorpusTasks(readinessSnapshot, allTasks);
 		}
-		return createReadinessGraph({ tasks, completedTasks: readinessCompletedTasks, statuses });
+		return { tasks, completedTasks: readinessCompletedTasks, statuses };
 	};
 
 	// State for filtering - normalize filters to match configured values
@@ -786,11 +824,15 @@ export async function viewTaskEnhanced(
 				labelMatch,
 				milestone: milestoneFilter || undefined,
 				resolveMilestoneLabel,
-				ready: options.readyFilter ? buildReadinessGraph() : undefined,
 			},
 			taskSearchIndex,
 		);
-		filteredTasks = taskLimit !== undefined ? nextFilteredTasks.slice(0, taskLimit) : nextFilteredTasks;
+		// Readiness is derived over the filtered list in one pass against the whole corpus, so a
+		// dependency the other filters hid still decides the verdict.
+		const readyFilteredTasks = options.readyFilter
+			? withReadiness(nextFilteredTasks, resolveDependencyCorpus()).filter((task) => task.isReady)
+			: nextFilteredTasks;
+		filteredTasks = taskLimit !== undefined ? readyFilteredTasks.slice(0, taskLimit) : readyFilteredTasks;
 
 		// Update the task list label
 		if (taskListPane.setLabel) {
@@ -1119,13 +1161,11 @@ export async function viewTaskEnhanced(
 
 		screen.title = formatTuiTitle(`Task ${currentSelectedTask.id} - ${currentSelectedTask.title}`, projectName);
 
-		const detailContent = generateDetailContent(
-			currentSelectedTask,
+		const detailContent = generateDetailContent(toTaskDetail(currentSelectedTask, resolveDependencyCorpus()), {
 			resolveMilestoneLabel,
 			dateFormat,
-			buildReadinessGraph(),
 			configuredProjects,
-		);
+		});
 
 		// Calculate header height based on content and available width
 		const detailPaneWidth = typeof detailPane.width === "number" ? detailPane.width : 60;
@@ -1319,11 +1359,11 @@ export async function viewTaskEnhanced(
 		const confirmed = await runWithModalGuard(() =>
 			openConfirmPopup({
 				screen,
-				title: action === "complete" ? "Complete Task" : "Archive Task",
+				title: action === "complete" ? "Move to Completed" : "Archive Task",
 				message:
 					action === "complete"
-						? `Mark task {bold}${task.id}{/bold} as completed?\n{gray-fg}${task.title}{/}`
-						: `Archive task {bold}${task.id}{/bold}?\n{gray-fg}${task.title}{/}`,
+						? `Move {bold}${task.id}{/bold} to completed?\nRemoves from board; keeps record\nand dependency links.`
+						: `Archive {bold}${task.id}{/bold}?\nCanceled, duplicate, or invalid work.\nRemoves incoming task links.`,
 			}),
 		);
 
@@ -1333,25 +1373,20 @@ export async function viewTaskEnhanced(
 
 		try {
 			const config = action === "archive" ? await core.fs.loadConfig() : null;
-			const result =
-				action === "complete"
-					? await completeTaskFromTui(core, task)
-					: {
-							success: await core.archiveTask(task.id, config?.autoCommit ?? false),
-							reason: "failed" as const,
-						};
+			const archived = action === "archive" ? await core.archiveTask(task.id, config?.autoCommit ?? false) : undefined;
+			const result = archived ? { ...archived, reason: "failed" as const } : await completeTaskFromTui(core, task);
 
 			if (result.success) {
-				// The record just left the active corpus, so drop it from the readiness graph. A
-				// completed one is re-added as completion evidence; an archived one is simply gone, and
-				// its dependents honestly report it as an unresolvable dependency from now on.
+				// Drop the record from the active graph; completed work remains completion evidence.
 				readinessSnapshot = readinessSnapshot?.filter((candidate) => !taskIdsEqual(candidate.id, task.id)) ?? null;
 				if (action === "complete") {
 					readinessCompletedTasks.push(task);
 				}
 				removeTaskFromCurrentView(task.id);
-				const label = action === "complete" ? "Completed" : "Archived";
-				showTransientHelp(` {green-fg}${label} ${task.id}{/}`);
+				const message = archived
+					? formatTaskArchivedMessage(task.id, archived.cleanedTaskIds)
+					: `Moved ${task.id} to completed`;
+				showTransientHelp(` {green-fg}${message}{/}`);
 			} else if (action === "complete" && result.reason === "not-terminal") {
 				showTransientHelp(` {red-fg}${formatTaskCompletionBlockedMessage(task.id, result.terminalStatus)}{/}`);
 			} else {
@@ -1564,16 +1599,17 @@ export async function viewTaskEnhanced(
 	});
 }
 
+export interface TaskDetailContentOptions {
+	resolveMilestoneLabel?: (milestone: string) => string;
+	dateFormat?: string;
+	configuredProjects?: string[];
+}
+
 export function generateDetailContent(
-	task: Task,
-	resolveMilestoneLabel?: (milestone: string) => string,
-	dateFormat?: string,
-	// Readiness is rendered only when the caller can supply the task graph to resolve dependencies
-	// against. Callers without one (the board quick-look popup) get no readiness line rather than a
-	// wrong one derived from an empty graph.
-	readinessGraph?: ReadinessGraph,
-	configuredProjects?: string[],
+	task: Task | TaskDetail,
+	options: TaskDetailContentOptions = {},
 ): { headerContent: string[]; bodyContent: string[] } {
+	const { resolveMilestoneLabel, dateFormat, configuredProjects } = options;
 	const headerContent = [
 		` ${wrapStatusColor(formatStatusWithIcon(task.status), getStatusColor(task.status))} {bold}{blue-fg}${task.id}{/blue-fg}{/bold} - ${task.title}`,
 	];
@@ -1596,7 +1632,7 @@ export function generateDetailContent(
 		metadata.push(`{bold}Updated:{/bold} ${formatDateForDisplay(task.updatedDate, { dateFormat })}`);
 	}
 	if (task.dueDate) {
-		metadata.push(`{bold}Due:{/bold} ${formatDateForDisplay(task.dueDate, { dateFormat, appendUtcLabel: true })}`);
+		metadata.push(`{bold}Due:{/bold} ${formatDateForDisplay(task.dueDate, { dateFormat })}`);
 	}
 	if (task.priority) {
 		const priorityDisplay = getPriorityDisplay(task.priority);
@@ -1632,10 +1668,12 @@ export function generateDetailContent(
 		metadata.push(`{bold}Subtasks:{/bold} ${task.subtasks.length} task${task.subtasks.length > 1 ? "s" : ""}`);
 	}
 	if (task.dependencies?.length) {
-		metadata.push(`{bold}Dependencies:{/bold} ${task.dependencies.join(", ")}`);
-		// Readiness only earns a line when dependencies exist; otherwise the status already says it.
-		if (readinessGraph) {
-			const readiness = getTaskReadiness(task, readinessGraph);
+		// The Dependency Graph section below names the same dependencies and resolves them, so the
+		// raw ID list is not repeated here. Readiness stays: it is a verdict, not a restatement.
+		// It is rendered only when the caller was handed a detail read that carries it: a caller
+		// without one (the board quick-look popup) gets no readiness line rather than a guess.
+		const readiness = taskReadiness(task);
+		if (readiness) {
 			if (readiness.isReady) {
 				metadata.push("{bold}Readiness:{/bold} {green-fg}✓ Ready to start{/}");
 			} else if (readiness.isBlocked) {
@@ -1651,6 +1689,19 @@ export function generateDetailContent(
 
 	bodyContent.push(metadata.join("\n"));
 	bodyContent.push("");
+
+	// Directly below the details block and above the description, the same relative position the
+	// canonical CLI plain output uses. This builder is not shared with the plain formatter, so the
+	// order is kept deliberately in step rather than inherited.
+	const dependencyGraph = taskDependencyGraph(task);
+	const dependencyGraphLines = dependencyGraph
+		? formatDependencyGraphLines(dependencyGraph, { formatLabel: formatDependencyNodeTuiLabel })
+		: [];
+	if (dependencyGraphLines.length > 0) {
+		bodyContent.push(formatHeading("Dependency Graph", 2));
+		bodyContent.push(dependencyGraphLines.join("\n"));
+		bodyContent.push("");
+	}
 
 	bodyContent.push(formatHeading("Description", 2));
 	const descriptionText = task.description?.trim();
@@ -1808,13 +1859,11 @@ export async function createTaskPopup(
 
 	popup.setFront?.();
 
-	const { headerContent, bodyContent } = generateDetailContent(
-		task,
+	const { headerContent, bodyContent } = generateDetailContent(task, {
 		resolveMilestoneLabel,
 		dateFormat,
-		undefined,
 		configuredProjects,
-	);
+	});
 
 	// Calculate header height based on content and available width
 	const popupWidth = typeof popup.width === "number" ? popup.width : 80;

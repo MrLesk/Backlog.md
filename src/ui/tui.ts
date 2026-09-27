@@ -134,6 +134,34 @@ function writeTerminalControl(program: ProgramInterface, sequence: string): void
 	program.write(program.tmux ? `\x1bPtmux;\x1b${sequence.replaceAll("\x1b\\", "\x07")}\x1b\\` : sequence);
 }
 
+/**
+ * Keep blessed's shared stdin listeners alive while a TUI session replaces one screen with another.
+ *
+ * Destroying the last program pauses stdin. Bun on Windows cannot reliably resume delivery after
+ * that transition, so unified views retain one otherwise idle program until the whole session exits.
+ */
+export function keepTuiInputAlive(
+	sessionInput: NodeJS.ReadStream = input,
+	sessionOutput: NodeJS.WriteStream = output,
+): () => void {
+	const program: ProgramInterface = createProgram({
+		tput: false,
+		input: sessionInput,
+		output: sessionOutput,
+	});
+	let released = false;
+
+	const release = () => {
+		if (released) return;
+		released = true;
+		process.removeListener("exit", release);
+		program.destroy();
+	};
+
+	process.once("exit", release);
+	return release;
+}
+
 export function createScreen(options: Partial<ScreenOptions> = {}): ScreenInterface {
 	const program: ProgramInterface = createProgram({ tput: false });
 

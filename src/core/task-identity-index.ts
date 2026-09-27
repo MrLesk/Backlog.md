@@ -1,6 +1,7 @@
 import { isAbsolute, relative } from "node:path";
 import type { Task } from "../types/index.ts";
 import { canonicalTaskId, taskIdsEqual } from "../utils/task-path.ts";
+import { compareTaskIds } from "../utils/task-sorting.ts";
 import type { TaskDirectoryType } from "./cross-branch-tasks.ts";
 
 export interface TaskIdentityRecord {
@@ -235,7 +236,10 @@ export class TaskIdentityIndex {
 
 	getTasks(includeCompleted = false): Task[] {
 		const tasks: Task[] = [];
-		const groups = [...this.groups.values()].sort((left, right) => left.id.localeCompare(right.id));
+		// Task ids are hierarchical numbers, so the shared comparator decides their order here.
+		// Comparing them as strings puts task-1.10 before task-1.2 for every consumer that
+		// renders this corpus without re-sorting it, which is what the board's task list does.
+		const groups = [...this.groups.values()].sort((left, right) => compareTaskIds(left.id, right.id));
 		for (const group of groups) {
 			const identities = [...group.identities.values()].sort((left, right) => left.path.localeCompare(right.path));
 			for (const identity of identities) {
@@ -292,6 +296,21 @@ export class TaskIdentityIndex {
 			)
 			.sort((left, right) => left.localeCompare(right))
 			.join("\n");
+	}
+
+	/**
+	 * The canonical IDs more than one live identity claims, the same collision `resolveForRead`
+	 * reports. A corpus built from selected records cannot re-derive this: selection keeps one record
+	 * per identity and skips identities whose newest record is archived or failed to parse, so a
+	 * claimant can be missing from the corpus while still contesting the ID here.
+	 */
+	getContestedIds(): Set<string> {
+		const contested = new Set<string>();
+		for (const group of this.groups.values()) {
+			const claimants = [...group.identities.values()].filter((identity) => liveRecords(identity).length > 0);
+			if (claimants.length > 1) contested.add(group.id);
+		}
+		return contested;
 	}
 
 	getOccupiedIds(): string[] {

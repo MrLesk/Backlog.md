@@ -44,7 +44,7 @@ Humans and agents can run `backlog instructions` for workflow guides and `backlo
 | Create with status | `backlog task create "Feature" -s "In Progress"`    |
 | Create with labels | `backlog task create "Feature" -l auth,backend`     |
 | Create with priority | `backlog task create "Feature" --priority high`     |
-| Create with due date | `backlog task create "Feature" --due-date "2026-08-10 14:30"` |
+| Create with due date | `backlog task create "Feature" --due-date 2026-08-10` |
 | Create with plan | `backlog task create "Feature" --plan "1. Research\n2. Implement"`     |
 | Create with AC | `backlog task create "Feature" --ac "Must work,Must be tested"` |
 | Add DoD items on create | `backlog task create "Feature" --dod "Run tests"` |
@@ -58,7 +58,10 @@ Humans and agents can run `backlog instructions` for workflow guides and `backlo
 | Create (all options) | `backlog task create "Feature" -d "Description" -a @sara -s "To Do" -l auth --priority high --ac "Must work" --notes "Initial setup done" --dep task-1 --ref src/api.ts --doc docs/spec.md -p 14` |
 | List tasks  | `backlog task list [-s <status>] [-a <assignee>] [-p <parent>] [--labels <labels>] [--search <query>] [--limit <n>]` |
 | List filtered | `backlog task list --labels frontend,bug --search "login" --limit 10 --plain` |
+| List in windows | `backlog task list --max-count 20 --skip 20 --plain` |
+| Count tasks | `backlog task list --status "To Do" --count` |
 | List as JSON | `backlog task list --status "To Do" --json` |
+| Watch as JSON | `backlog task list --json --watch` |
 | List by parent | `backlog task list --parent 42` or `backlog task list -p task-42` |
 | View detail | `backlog task 7` (interactive UI, press 'E' to edit in editor) |
 | View (AI mode) | `backlog task 7 --plain`                           |
@@ -83,13 +86,28 @@ Humans and agents can run `backlog instructions` for workflow guides and `backlo
 | Append final summary | `backlog task edit 7 --append-final-summary "More details"` |
 | Clear final summary | `backlog task edit 7 --clear-final-summary` |
 | Add deps    | `backlog task edit 7 --dep task-1 --dep task-2`     |
-| Set due date | `backlog task edit 7 --due-date "2026-08-10 14:30"` |
+| Set due date | `backlog task edit 7 --due-date 2026-08-10` |
 | Clear due date | `backlog task edit 7 --clear-due-date` |
-| Archive     | `backlog task archive 7`                             |
+| Complete    | `backlog task complete 7` (move finished work to completed storage) |
+| Archive     | `backlog task archive 7` (canceled, duplicate, or invalid work) |
+
+Mark finished work Done (or the configured final status). During periodic cleanup, use Complete to move it off the board while preserving its record and dependency links. Archive removes incoming dependencies and task references.
+
+### Paging long lists
+
+`task list`, `search`, `draft list`, `milestone list`, `doc list`, `doc search`, and `decision list` print every match by default. `--max-count <n>` prints at most `n` items and `--skip <n>` leaves out the first `n`, as in `git log`. Both apply after filtering, sorting, and `--limit`, in the order the output prints: `task list` groups by status unless `--sort priority` prints one flat list, plain `search` prints tasks, then documents, then decisions, and `milestone list` prints active milestones before completed ones. Each list has a stable order: tasks, drafts, and decisions break ties by ID, documents sort by title and then path, search results by score and then corpus order, and milestones follow their files and then the tasks that name them. So consecutive windows of an unchanged backlog join into the complete output without overlapping or leaving items out. With `--json`, `task list` windows its flat `tasks` array in sort order without status groups and `search` windows its results in relevance order, so read all windows of a list in one output mode. The options print text instead of opening an interactive view.
+
+Output cut by a window ends with the shown range, the total, and the command that prints the following items:
+
+```text
+Showing 21-40 of 57 items. Next: backlog task list --status 'To Do' --max-count 20 --skip 40
+```
+
+The last window has no `Next:` part, and a `--skip` past the end prints only `Showing 0 of 57 items.` Output that is not cut has no footer. `--count` prints only the number of items the same command would list, as `grep --count` does; it cannot be combined with `--json`. There are no short forms because `-m` already means `--milestone`. `--limit` keeps its behavior: it silently shortens the list before any window applies.
 
 Task comments are append-only discussion entries with optional author labels. Use comments for review questions and collaboration notes; use implementation notes for execution progress and final summary for PR-ready completion notes. Comment bodies may contain Markdown, but standalone `---` lines are reserved as comment delimiters.
 
-Task and milestone due dates are UTC datetimes stored at minute precision. Use `YYYY-MM-DD HH:mm` or an ISO datetime with an explicit offset; date-only values are rejected.
+Task and milestone due dates are calendar days stored as `YYYY-MM-DD`. Use a plain date such as `2026-08-10`; a due date carries no time and no timezone.
 
 ### Stable JSON output
 
@@ -102,6 +120,16 @@ backlog task BACK-7 --json
 backlog search "authentication" --json | jq '.results[] | [.type, .data.id]'
 ```
 
+Use `backlog task list --json --watch` to receive the full matching list immediately, then a full replacement whenever its JSON result changes. Every response uses exactly the same fields, envelope, indentation, and trailing newline as `task list --json`. Read successive complete JSON values, not individual lines or the whole stream as one document. For example:
+
+```bash
+backlog task list --json --watch | jq --unbuffered -c '.tasks'
+```
+
+Each response replaces the subscriber's previous list, including an empty `tasks` array. Filters, sorting, limits, and local editable task scope are unchanged; completed storage, archives, drafts, and other branches are not added to the list. Dependency and configuration changes can update derived fields or which tasks match. Unchanged results are suppressed, and rapid edits or slow consumers may coalesce intermediate states. The command reconciles periodically as well as on file notifications; this is a current-state subscription, not an edit history. Restart it to receive a fresh full list.
+
+`--watch` requires `--json` and cannot be combined with `--plain`. Stop it with Ctrl+C or terminate the process; closing the output pipe also stops it. It also ends when the process that started it ends. A failure after earlier responses writes a diagnostic to stderr and exits nonzero without emitting a replacement for that failed read.
+
 Each successful response is one pretty-printed JSON document followed by a newline. The top-level contract is versioned and identifies the command result:
 
 | Command | Envelope |
@@ -110,15 +138,21 @@ Each successful response is one pretty-printed JSON document followed by a newli
 | `task view <id> --json` and `task <id> --json` | `{ "schemaVersion": 1, "kind": "task-view", "task": {...} }` |
 | `search [query] --json` | `{ "schemaVersion": 1, "kind": "search", "results": [...] }` |
 
-Task list and task search results use these compact fields: `id`, `title`, `status`, `type`, `priority`, `project`, `assignees`, `reporter`, `labels`, `milestone`, `parentTaskId`, `acceptanceCriteriaCompleted`, `acceptanceCriteriaCount`, `ordinal`, `createdAt`, `updatedAt`, and `dueDate`. `acceptanceCriteriaCompleted` is the number of checked acceptance criteria and `acceptanceCriteriaCount` is the total; both are `0` when the task has no acceptance criteria. `project` reports the task's `project:` frontmatter and is `null` when the task has none. Setting or filtering by it requires a `projects:` list in the project config.
+Task list and task search results use these compact fields: `id`, `title`, `status`, `type`, `priority`, `project`, `assignees`, `reporter`, `labels`, `milestone`, `parentTaskId`, `acceptanceCriteriaCompleted`, `acceptanceCriteriaCount`, `references`, `modifiedFiles`, `ordinal`, `createdAt`, `updatedAt`, `dueDate`, and `isReady`. `acceptanceCriteriaCompleted` is the number of checked acceptance criteria and `acceptanceCriteriaCount` is the total; both are `0` when the task has no acceptance criteria. `project` reports the task's `project:` frontmatter and is `null` when the task has none. Setting or filtering by it requires a `projects:` list in the project config. `isReady` is derived from the whole visible corpus at read time and never stored: it is `true` when the task is unfinished and every dependency it names resolved to a completed task, and `false` for a finished task or one whose dependencies are unfinished, unknown, or ambiguous. It is the same verdict `task list --ready` filters on.
 
-Task view includes the same progress counts alongside the full checklist and adds `path`, `description`, `dependencies`, `references`, `documentation`, `modifiedFiles`, `subtasks`, `acceptanceCriteria`, `definitionOfDone`, `implementationPlan`, `implementationNotes`, `comments`, and `finalSummary`. `path` is relative to the project root. Checklist entries contain `index`, `text`, and `checked`. Comment entries contain `index`, `body`, `createdAt`, and `author`.
+Task view includes the same progress counts alongside the full checklist and adds `path`, `description`, `dependencies`, `dependencyGraph`, `readiness`, `references`, `documentation`, `modifiedFiles`, `subtasks`, `acceptanceCriteria`, `definitionOfDone`, `implementationPlan`, `implementationNotes`, `comments`, and `finalSummary`. `path` is relative to the project root. Checklist entries contain `index`, `text`, and `checked`. Comment entries contain `index`, `body`, `createdAt`, and `author`.
+
+Task view also carries `dependencyGraph`, a property of the task detail that is derived from the whole visible corpus at read time and never stored in the Markdown file. `task.dependencies` stays the task's own list of direct dependency IDs, unchanged. `task.dependencyGraph` contains `root` (the selected task's ID), `nodes`, and `edges`. Each edge is `{ "from": ..., "to": ... }` and always points from the task that declares the dependency to the task it depends on, so `to` blocks `from`. Each node contains `id`, `title`, `status`, `state`, `completed`, `dependencyDepth`, and `dependentDepth`. The two depths are the shortest hop counts from the root: `0` is the root itself, `1` is a direct relationship, anything higher is transitive, and `null` means the node is not reachable in that direction. Nodes are listed root first and then by task ID, edges by `from` and then `to`. See "Dependency Management" for what the graph covers and how it reports identities it cannot resolve.
+
+`readiness` explains the `isReady` field above it and comes from the same derivation. It contains `isReady`, `isBlocked`, `blockingDependencies` (dependencies that resolved to unfinished tasks), and `missingDependencies` (dependency IDs no single visible task claims). Both lists fail closed: an unknown or ambiguous dependency blocks instead of being treated as satisfied.
 
 Search keeps relevance order and discriminates every result with `type` and `data`. Task data uses the compact task fields. Document data contains `id`, `title`, `type`, `path`, `tags`, `createdAt`, and `updatedAt`. Decision data contains `id`, `title`, `status`, and `date`. Search scores are not part of the version 1 public contract.
 
+When `--max-count` or `--skip` cuts a `task list`, `search`, or `decision list` result, the envelope also contains `total`, the number of items before the window, and `nextSkip`, the `--skip` value for the following items or `null` when none follow. Output that is not cut has neither field.
+
 Absent scalar fields are `null`, and absent collections are `[]`. Date-only values remain `YYYY-MM-DD`; UTC date-times use RFC 3339. Internal fields, absolute paths, raw Markdown source objects, branch metadata, and search implementation details are not exposed.
 
-`--json` and `--plain` are mutually exclusive. Explicit JSON mode is always noninteractive, including in a terminal. Without `--json`, existing interactive, explicit plain, and automatic non-TTY plain behavior is unchanged. Errors leave stdout empty, write a concise message to stderr, and exit nonzero. Version 1 may gain backward-compatible fields, but removing, renaming, retyping, or changing documented field semantics requires a new `schemaVersion`.
+`--json` and `--plain` are mutually exclusive. Explicit JSON mode is always noninteractive, including in a terminal. Without `--json`, existing interactive, explicit plain, and automatic non-TTY plain behavior is unchanged. One-shot errors leave stdout empty, write a concise message to stderr, and exit nonzero. Version 1 may gain backward-compatible fields, but removing, renaming, retyping, or changing documented field semantics requires a new `schemaVersion`.
 
 ### Multi-line input (description/plan/notes/comments/final summary)
 
@@ -186,9 +220,9 @@ Milestones are managed through milestone files. Use CLI commands instead of edit
 | List completed milestones too | `backlog milestone list --show-completed --plain` |
 | Add milestone | `backlog milestone add "Release 1.0"` |
 | Add with description | `backlog milestone add "Beta" --description "Beta scope"` |
-| Add with due date | `backlog milestone add "Beta" --due-date "2026-08-10 14:30"` |
+| Add with due date | `backlog milestone add "Beta" --due-date 2026-08-10` |
 | Rename and update tasks | `backlog milestone rename "Release 1.0" "Release 2.0"` |
-| Set due date without renaming | `backlog milestone rename "Release 1.0" "Release 1.0" --due-date "2026-08-10 14:30"` |
+| Set due date without renaming | `backlog milestone rename "Release 1.0" "Release 1.0" --due-date 2026-08-10` |
 | Clear due date | `backlog milestone rename "Release 1.0" "Release 1.0" --clear-due-date` |
 | Rename without task updates | `backlog milestone rename m-1 "Release 2.0" --no-update-tasks` |
 | Remove and clear task milestones | `backlog milestone remove "Release 1.0"` |
@@ -211,6 +245,7 @@ Find tasks, documents, and decisions across your entire backlog with fuzzy searc
 | Plain text output  | `backlog search "feature" --plain` (for scripts/AI) |
 | JSON output        | `backlog search "feature" --json` (for structured integrations) |
 | Find by modified file | `backlog search --modified-file src/path.ts --plain` |
+| Page results       | `backlog search "api" --max-count 20 --skip 20 --plain` |
 
 **Search features:**
 - **Fuzzy matching** -- finds "authentication" when searching for "auth"
@@ -242,6 +277,31 @@ Manage task dependencies to express execution order:
 - **Automatic validation**: verifies that referenced dependency tasks exist
 - **Flexible formats**: Use `task-1`, `1`, or comma-separated lists like `1,2,3`
 - **Completion tracking**: See which dependencies are blocking task progress
+
+### Dependency graph in task detail
+
+Task detail shows the whole dependency context around the selected task, under `Dependency Graph`, directly above the description. It is derived and read-only, and it replaces the raw `Dependencies:` ID list in plain output: the graph names the same direct dependencies and resolves their titles, status, and everything behind them.
+
+Every plain task output uses this one layout, so `task create --plain`, `task edit --plain`, `task view --plain`, and the MCP task results all render identically. `--json` is unaffected: `task.dependencies` remains the editable direct list alongside `task.dependencyGraph`.
+
+```text
+Dependency Graph:
+--------------------------------------------------
+Depends on (1 direct, 2 total):
+└─ BACK-2 - Parser rewrite [In Progress]
+   └─ BACK-1 - Token schema [completed]
+
+Dependents (2 direct, 2 total):
+├─ BACK-8 - Migration guide [To Do]
+└─ BACK-9 - Release checklist [To Do]
+```
+
+- **Edge direction.** A dependency edge points from the task that declares it to the task it depends on, so the task it points at blocks the task it comes from.
+- **Direct versus transitive.** `Depends on` lists everything the selected task transitively depends on; `Dependents` lists everything that transitively depends on it. Nesting shows the distance: the outermost entries are direct relationships and everything indented below them is transitive. The heading counts both, as `N direct, M total`.
+- **Dependents.** "Dependents" means the tasks this one blocks. It is the reverse of the task's own dependency list, and nothing on it is editable from here; change it on the task that declares it.
+- **Visibility.** The graph resolves against exactly what task detail can already see: the current checkout plus completed tasks for the CLI, TUI, and MCP, and the configured cross-branch corpus in the browser. Archiving a task takes it out of every one of those, so an archived ID stops resolving instead of coming back.
+- **Cycles and repeats.** Every task appears once. A relationship that points back into the branch above it is marked `(cycle)`, and a task already shown elsewhere in the same section is marked `(shown above)` rather than being expanded again.
+- **Unresolved identities.** `unknown task ID` means no visible task claims that ID. `ambiguous task ID` means more than one record claims it, so nothing is chosen. Neither is ever treated as satisfied, and the graph never traverses past one, so anything behind it is left out rather than reported as resolved. Diagnose and repair duplicate IDs with `backlog doctor` before trusting a graph that reports one.
 
 ## Board Operations
 
