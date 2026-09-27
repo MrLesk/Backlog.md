@@ -1078,6 +1078,21 @@ export class BacklogServer {
 		if (!dueDate.ok) return Response.json({ error: dueDate.error }, { status: 400 });
 
 		const updateInput: TaskUpdateInput = {};
+		for (const [field, inputField] of [
+			["definitionOfDoneRemove", "removeDefinitionOfDone"],
+			["definitionOfDoneCheck", "checkDefinitionOfDone"],
+			["definitionOfDoneUncheck", "uncheckDefinitionOfDone"],
+		] as const) {
+			if (!(field in updates)) continue;
+			const indices = updates[field];
+			if (
+				!Array.isArray(indices) ||
+				indices.some((value: unknown) => typeof value !== "number" || !Number.isFinite(value))
+			) {
+				return Response.json({ error: `${field} must be an array of finite numbers.` }, { status: 400 });
+			}
+			updateInput[inputField] = indices;
+		}
 
 		if ("title" in updates && typeof updates.title === "string") {
 			updateInput.title = updates.title;
@@ -1173,24 +1188,6 @@ export class BacklogServer {
 			updateInput.addDefinitionOfDone = updates.definitionOfDoneAdd
 				.map((item: unknown) => ({ text: String(item ?? "").trim(), checked: false }))
 				.filter((item: { text: string }) => item.text.length > 0);
-		}
-
-		if ("definitionOfDoneRemove" in updates && Array.isArray(updates.definitionOfDoneRemove)) {
-			updateInput.removeDefinitionOfDone = updates.definitionOfDoneRemove.filter(
-				(value: unknown) => typeof value === "number" && Number.isFinite(value),
-			);
-		}
-
-		if ("definitionOfDoneCheck" in updates && Array.isArray(updates.definitionOfDoneCheck)) {
-			updateInput.checkDefinitionOfDone = updates.definitionOfDoneCheck.filter(
-				(value: unknown) => typeof value === "number" && Number.isFinite(value),
-			);
-		}
-
-		if ("definitionOfDoneUncheck" in updates && Array.isArray(updates.definitionOfDoneUncheck)) {
-			updateInput.uncheckDefinitionOfDone = updates.definitionOfDoneUncheck.filter(
-				(value: unknown) => typeof value === "number" && Number.isFinite(value),
-			);
 		}
 
 		try {
