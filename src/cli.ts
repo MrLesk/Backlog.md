@@ -2546,12 +2546,13 @@ function groupTasksByStatus(tasks: Task[], statuses: string[]): Array<{ status: 
 }
 
 function printTasksGroupedByStatus(tasks: Task[], statuses: string[]): void {
+	// Use the stdout stream, as JSON output does, so pending pipe writes keep the CLI alive.
 	for (const group of groupTasksByStatus(tasks, statuses)) {
-		console.log(`${group.status || "No Status"}:`);
+		process.stdout.write(`${group.status || "No Status"}:\n`);
 		for (const task of group.tasks) {
-			console.log(formatPlainTaskListRow(task));
+			process.stdout.write(`${formatPlainTaskListRow(task)}\n`);
 		}
-		console.log();
+		process.stdout.write("\n");
 	}
 }
 
@@ -2734,16 +2735,16 @@ async function runTaskList(
 		printListWindow(printedTasks, listWindow, (windowTasks) => {
 			if (windowTasks.length === 0) {
 				if (resolvedParentId) {
-					console.log(`No child tasks found for parent task ${parentDisplayId}.`);
+					process.stdout.write(`No child tasks found for parent task ${parentDisplayId}.\n`);
 				} else {
-					console.log("No tasks found.");
+					process.stdout.write("No tasks found.\n");
 				}
 				return;
 			}
 			if (flatPriorityList) {
-				console.log("Tasks (sorted by priority):");
+				process.stdout.write("Tasks (sorted by priority):\n");
 				for (const t of windowTasks) {
-					console.log(formatPlainTaskListRow(t, { includeStatus: true }));
+					process.stdout.write(`${formatPlainTaskListRow(t, { includeStatus: true })}\n`);
 				}
 				return;
 			}

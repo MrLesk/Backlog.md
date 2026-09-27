@@ -202,13 +202,12 @@ export function printListWindow<T>(
 ): void {
 	const page = selectListWindow(items, window);
 	if (window.count) {
-		// A string, because Bun colors a logged number when color is forced.
-		console.log(String(page.items.length));
+		process.stdout.write(`${page.items.length}\n`);
 		return;
 	}
 	if (page.items.length > 0 || page.total === 0) {
 		printItems(page.items, page);
 	}
 	const footer = formatListWindowFooter(page, window);
-	if (footer) console.log(footer);
+	if (footer) process.stdout.write(`${footer}\n`);
 }
