@@ -1008,7 +1008,7 @@ program
 addHelpSchema(program.command("init [projectName]"), {
 	required: [],
 	optional: [
-		{ name: "projectName", type: "String", description: "Project name; defaults to current directory name" },
+		{ name: "projectName", type: "String", description: "Project name; prompted when omitted" },
 		{
 			name: "--integration-mode",
 			type: `${choiceType(["cli", "mcp", "none"])} (default: cli)`,
@@ -1090,6 +1090,12 @@ addHelpSchema(program.command("init [projectName]"), {
 				let filesystemOnly = options.git === false;
 
 				if (!isRepo && !filesystemOnly) {
+					if (!hasInteractiveTTY) {
+						abortInitialization(
+							"No Git repository found and no interactive terminal is available. Run `git init` first, pass --no-git, or rerun in an interactive terminal to choose.",
+						);
+						return;
+					}
 					const repositoryMode = await clack.select({
 						message: "No git repository found. How should Backlog.md initialize this project?",
 						initialValue: "git",
@@ -1185,6 +1191,12 @@ addHelpSchema(program.command("init [projectName]"), {
 				// Get project name
 				let name = projectName;
 				if (!name) {
+					if (!hasInteractiveTTY) {
+						abortInitialization(
+							'Project name is required when no interactive terminal is available. Supply it with `backlog init "My Project" --defaults`.',
+						);
+						return;
+					}
 					const defaultName = existingConfig?.projectName || "";
 					const promptMessage = isReInitialization && defaultName ? `Project name (${defaultName}):` : "Project name:";
 					const enteredName = await clack.text({
@@ -1212,6 +1224,13 @@ addHelpSchema(program.command("init [projectName]"), {
 						abortInitialization();
 						return;
 					}
+				}
+
+				if (!isNonInteractive && !hasInteractiveTTY) {
+					abortInitialization(
+						"Initialization needs an interactive terminal for setup choices. Pass --defaults to use default settings.",
+					);
+					return;
 				}
 
 				let backlogDirectory: string | undefined;
