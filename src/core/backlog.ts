@@ -13,7 +13,7 @@ import {
 import { type GitBranchTip, type GitIndexEntry, GitOperations } from "../git/operations.ts";
 import { parseFrontmatter } from "../markdown/frontmatter.ts";
 import { parseTask } from "../markdown/parser.ts";
-import { assertSectionInputHasNoMarkerLines } from "../markdown/structured-sections.ts";
+import { assertSectionInputHasNoMarkerLines, assertValidChecklistMarks } from "../markdown/structured-sections.ts";
 import {
 	type AcceptanceCriterion,
 	type BacklogConfig,
@@ -1994,6 +1994,21 @@ export class Core {
 		statusResolver: (status: string) => Promise<string>,
 	): Promise<{ task: Task; mutated: boolean }> {
 		assertSectionInputsSafe(input);
+		if (
+			input.acceptanceCriteria !== undefined ||
+			input.removeAcceptanceCriteria?.length ||
+			input.checkAcceptanceCriteria?.length ||
+			input.uncheckAcceptanceCriteria?.length
+		) {
+			assertValidChecklistMarks(task.rawContent ?? "", "AC");
+		}
+		if (
+			input.removeDefinitionOfDone?.length ||
+			input.checkDefinitionOfDone?.length ||
+			input.uncheckDefinitionOfDone?.length
+		) {
+			assertValidChecklistMarks(task.rawContent ?? "", "DOD");
+		}
 		let mutated = false;
 
 		const applyStringField = (
@@ -3675,6 +3690,7 @@ export class Core {
 		if (!task) {
 			throw new Error(`Task not found: ${taskId}`);
 		}
+		assertValidChecklistMarks(task.rawContent ?? "", "AC");
 
 		let list = Array.isArray(task.acceptanceCriteriaItems) ? [...task.acceptanceCriteriaItems] : [];
 		const removed: number[] = [];
@@ -3719,6 +3735,7 @@ export class Core {
 		if (!task) {
 			throw new Error(`Task not found: ${taskId}`);
 		}
+		assertValidChecklistMarks(task.rawContent ?? "", "AC");
 
 		let list = Array.isArray(task.acceptanceCriteriaItems) ? [...task.acceptanceCriteriaItems] : [];
 		const updated: number[] = [];

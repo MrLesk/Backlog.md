@@ -1053,6 +1053,44 @@ function parseAllChecklistItems(content: string, definition: ChecklistSectionDef
 	return marked.length > 0 ? marked : legacy;
 }
 
+export function assertValidChecklistMarks(content: string, family: "AC" | "DOD"): void {
+	const definition = family === "AC" ? ACCEPTANCE_CRITERIA_DEFINITION : DEFINITION_OF_DONE_DEFINITION;
+	const src = content.replace(/\r\n/g, "\n");
+	const resolution = resolveChecklistSentinels(src, definition);
+	const ranges = findChecklistSectionRanges(src, definition, resolution);
+	if (ranges.length === 0) return;
+	let fence: FenceSpec | undefined;
+	let htmlBlock: HtmlBlockState | undefined;
+	const containerColumns: number[] = [];
+	let offset = 0;
+
+	for (const line of src.split("\n")) {
+		const start = offset;
+		offset += line.length + 1;
+		if (isIndexWithinRanges(start, resolution.foreignRanges)) continue;
+		if (fence) {
+			if (closesFence(line, fence, containerColumns)) fence = undefined;
+			continue;
+		}
+		if (htmlBlock) {
+			if (htmlBlock.endRegex?.test(line) || (htmlBlock.endsOnBlankLine && line.trim() === "")) {
+				htmlBlock = undefined;
+			}
+			continue;
+		}
+		updateListContainers(line, containerColumns);
+		fence = matchFenceOpener(line, containerColumns);
+		if (fence) continue;
+		htmlBlock = matchHtmlBlockStart(line, containerColumns);
+		if (htmlBlock || !isIndexWithinRanges(start, ranges)) continue;
+
+		const match = /^- \[([^\]\r\n])\] (.+)$/.exec(line);
+		if (match && match[1] !== " " && match[1] !== "x") {
+			throw new Error(`Invalid ${definition.title} checkbox mark in row "${line}". Use [ ] or [x].`);
+		}
+	}
+}
+
 function migrateChecklistToStableFormat(content: string, definition: ChecklistSectionDefinition): string {
 	const { text: src } = normalizeToLF(content);
 	const resolution = resolveChecklistSentinels(src, definition);
@@ -1361,6 +1399,7 @@ export class AcceptanceCriteriaManager {
 	}
 
 	static removeCriterionByIndex(content: string, index: number): string {
+		assertValidChecklistMarks(content, "AC");
 		const criteria = AcceptanceCriteriaManager.parseAllCriteria(content);
 		const filtered = criteria.filter((c) => c.index !== index);
 		if (filtered.length === criteria.length) {
@@ -1371,6 +1410,7 @@ export class AcceptanceCriteriaManager {
 	}
 
 	static checkCriterionByIndex(content: string, index: number, checked: boolean): string {
+		assertValidChecklistMarks(content, "AC");
 		const criteria = AcceptanceCriteriaManager.parseAllCriteria(content);
 		const criterion = criteria.find((c) => c.index === index);
 		if (!criterion) {
@@ -1418,6 +1458,7 @@ export class DefinitionOfDoneManager {
 	}
 
 	static removeCriterionByIndex(content: string, index: number): string {
+		assertValidChecklistMarks(content, "DOD");
 		const criteria = DefinitionOfDoneManager.parseAllCriteria(content);
 		const filtered = criteria.filter((c) => c.index !== index);
 		if (filtered.length === criteria.length) {
@@ -1428,6 +1469,7 @@ export class DefinitionOfDoneManager {
 	}
 
 	static checkCriterionByIndex(content: string, index: number, checked: boolean): string {
+		assertValidChecklistMarks(content, "DOD");
 		const criteria = DefinitionOfDoneManager.parseAllCriteria(content);
 		const criterion = criteria.find((c) => c.index === index);
 		if (!criterion) {
