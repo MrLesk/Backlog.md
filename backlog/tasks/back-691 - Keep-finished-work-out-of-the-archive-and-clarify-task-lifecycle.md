@@ -5,7 +5,7 @@ status: Done
 assignee:
   - '@codex-lifecycle'
 created_date: '2026-09-27 21:48'
-updated_date: '2026-09-27 21:59'
+updated_date: '2026-09-27 22:04'
 labels: []
 dependencies: []
 modified_files:
@@ -69,6 +69,8 @@ The CLI and MCP reject archiving finished tasks, but the browser archive endpoin
 4. Run TypeScript and Biome, review and simplify the diff, record evidence and modified files, and leave the task In Progress for coordinator review.
 
 5. After coordinator review, mark the verified task Done, commit its scoped files and task record, and push shared main.
+
+6. First correction cycle: restore concise discoverability of --max-count, --skip, and --count in the shipped CLI overview, verify the existing list-window guide test and CLI guidance, then finalize and push only the overview and this task record.
 <!-- SECTION:PLAN:END -->
 
 ## Implementation Notes
@@ -87,10 +89,12 @@ Guidance word counts (before -> after): CLI overview 557 -> 285; CLI finalizatio
 Subtraction review: one shared eligibility guard, one typed error reused by adapters, no new lock architecture or helper layer. No unresolved product choices. Left In Progress for coordinator review; no commit, push, or public action.
 
 Coordinator contextual architecture review accepted the implementation exactly as written, with no blockers or advisory changes. Approved finalization: mark Done, then commit and push only this task scope.
+
+First correction cycle: broader related testing found that the shortened CLI overview lost discoverability of --max-count, --skip, and --count. Restored one 23-word sentence that also points readers to the printed Next command and command help. Existing cli-list-window guidance test passes (1 test, 7 assertions); all cli-guidance tests pass (16 tests, 242 assertions). Scoped git diff --check passes. No test changes or runtime changes. Updated word counts: CLI overview 557 -> 308; combined five guides 2,952 -> 1,720 (42% shorter).
 <!-- SECTION:NOTES:END -->
 
 ## Final Summary
 
 <!-- SECTION:FINAL_SUMMARY:BEGIN -->
-Core now rejects archiving finished tasks inside the existing task lock, preserving records and incoming links. CLI and MCP use the shared rule; browser and TUI receive the same rejection. Help, confirmations, and lifecycle guides distinguish Done, periodic Complete cleanup, and Archive for canceled, duplicate, or invalid work. Guidance is 43% shorter. Verified with 165 focused tests, 20 final UI tests, TypeScript, Biome, and a deterministic lock-race regression. Contextual architecture review passed without changes.
+Core now rejects archiving finished tasks inside the existing task lock, preserving records and incoming links. CLI and MCP use the shared rule; browser and TUI receive the same rejection. Help, confirmations, and lifecycle guides distinguish Done, periodic Complete cleanup, and Archive for canceled, duplicate, or invalid work. Guidance is 42% shorter and retains list-pagination discoverability. Verified with 165 focused tests, 20 final UI tests, TypeScript, Biome, and a deterministic lock-race regression; the narrow overview correction also passes the existing list-window guide test and all 16 CLI guidance tests. Contextual architecture review passed without changes.
 <!-- SECTION:FINAL_SUMMARY:END -->
