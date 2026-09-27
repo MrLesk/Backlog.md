@@ -1263,6 +1263,7 @@ export class FileSystem {
 		// Normalize the draft ID to uppercase before serialization
 		const normalizedTask = { ...task, id: draftId };
 		const content = serializeTask(normalizedTask);
+		await this.ensureDirectoryExists(dirname(filepath));
 
 		// Remove every existing draft file whose numeric identity matches the saved id but
 		// whose filename differs (title change, zero-padding drift): a save must converge
@@ -1290,7 +1291,6 @@ export class FileSystem {
 			}
 		}
 
-		await this.ensureDirectoryExists(dirname(filepath));
 		await Bun.write(filepath, content);
 		return filepath;
 	}
@@ -1480,6 +1480,7 @@ export class FileSystem {
 		const decisionsDir = await this.getDecisionsDir();
 		const filepath = join(decisionsDir, filename);
 		const content = serializeDecision(decision);
+		await this.ensureDirectoryExists(dirname(filepath));
 
 		const matches = await Array.fromAsync(
 			new Bun.Glob("decision-*.md").scan({ cwd: decisionsDir, followSymlinks: true }),
@@ -1497,7 +1498,6 @@ export class FileSystem {
 			}
 		}
 
-		await this.ensureDirectoryExists(dirname(filepath));
 		await Bun.write(filepath, content);
 
 		return { filepath, removedFilepaths };

@@ -1,4 +1,4 @@
-import { rename as moveFile, readFile, stat, unlink, writeFile } from "node:fs/promises";
+import { mkdir, rename as moveFile, readFile, stat, unlink, writeFile } from "node:fs/promises";
 import { basename, dirname, isAbsolute, join, relative } from "node:path";
 import { DEFAULT_DIRECTORIES, DEFAULT_STATUSES, FALLBACK_STATUS } from "../constants/index.ts";
 import {
@@ -3312,6 +3312,7 @@ export class Core {
 
 		return await this.withVacatedIdCleanup(taskToArchive, normalizedTaskId, async (cleanup) => {
 			try {
+				await mkdir(dirname(toPath), { recursive: true });
 				await moveFile(fromPath, toPath);
 			} catch {
 				return { success: false, cleanedTaskIds: [] };
@@ -3431,6 +3432,7 @@ export class Core {
 		const toPath = join(completedDir, taskFilename);
 
 		try {
+			await mkdir(dirname(toPath), { recursive: true });
 			await moveFile(fromPath, toPath);
 		} catch {
 			return false;
