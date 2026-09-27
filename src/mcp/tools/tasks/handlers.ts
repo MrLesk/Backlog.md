@@ -1,6 +1,6 @@
 import { basename, join } from "node:path";
 import { DEFAULT_STATUSES } from "../../../constants/index.ts";
-import type { VacatedTaskResult } from "../../../core/backlog.ts";
+import { TaskArchiveStatusError, type VacatedTaskResult } from "../../../core/backlog.ts";
 import { findLocalDuplicateTaskIds } from "../../../core/duplicate-task-repair.ts";
 import { loadTaskDetail, loadTaskListItems } from "../../../core/task-detail.ts";
 import { isCreateLockError, isTaskLockError } from "../../../file-system/operations.ts";
@@ -468,16 +468,16 @@ export class TaskHandlers {
 			throw new BacklogToolError(`Cannot archive task from another branch: ${task.id}`, "VALIDATION_ERROR");
 		}
 
-		const statuses = await this.getConfiguredStatuses();
-		const terminalStatus = getTerminalStatus(statuses) ?? "Done";
-		if (isTerminalStatus(task.status, statuses)) {
-			throw new BacklogToolError(
-				`Task ${task.id} is ${terminalStatus}. ${terminalStatus} tasks should be completed (moved to the completed folder), not archived. Use task_complete instead.`,
-				"VALIDATION_ERROR",
-			);
+		let archived: VacatedTaskResult;
+		try {
+			archived = await this.core.archiveTask(task.id);
+		} catch (error) {
+			if (error instanceof TaskArchiveStatusError) {
+				throw new BacklogToolError(`${error.message} In MCP, use task_complete.`, "VALIDATION_ERROR");
+			}
+			throw error;
 		}
-
-		const { success, cleanedTaskIds } = await this.core.archiveTask(task.id);
+		const { success, cleanedTaskIds } = archived;
 		if (!success) {
 			throw new BacklogToolError(`Failed to archive task: ${args.id}`, "OPERATION_FAILED");
 		}

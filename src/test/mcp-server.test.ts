@@ -154,12 +154,12 @@ describe("McpServer bootstrap", () => {
 			"Do not check acceptance criteria, write the final summary, or move the task to Done from this guide alone",
 		);
 		expect(MCP_TASK_EXECUTION_GUIDE).toContain("verify each acceptance criterion with objective evidence");
-		expect(MCP_TASK_FINALIZATION_GUIDE).toContain("Run objective verification before checking acceptance criteria");
+		expect(MCP_TASK_FINALIZATION_GUIDE).toContain("Check only proven items");
 		expect(MCP_TASK_FINALIZATION_GUIDE).toContain(
-			"For UI or interactive work, exercise the behavior through a browser, DOM script, test runner, or documented manual interaction result.",
+			"For UI or interactive work, exercise the behavior through a browser, DOM script, test runner, or documented manual interaction.",
 		);
 		expect(MCP_TASK_FINALIZATION_GUIDE).toContain(
-			"Do not check acceptance criteria from code presence, grep output, or implementation intent alone.",
+			"Code presence, grep output, and implementation intent are not verification evidence.",
 		);
 	});
 

@@ -3845,11 +3845,11 @@ addHelpSchema(taskCmd.command("view <taskId>"), {
 addHelpSchema(taskCmd.command("archive <taskId>"), {
 	required: [{ name: "taskId", type: "Task ID", description: "Task to archive" }],
 	optional: [],
-	writes: "Moves a task that should not be completed into the archive",
+	writes: "Archives canceled, duplicate, or invalid work and removes incoming dependencies and task references",
 	output: "Archive confirmation text",
 	examples: ["backlog task archive {{TASK_ID:1}}"],
 })
-	.description("archive a task")
+	.description("archive canceled, duplicate, or invalid work")
 	.action(async (taskId: string) => {
 		const cwd = await requireProjectRoot();
 		const core = new Core(cwd);
@@ -3862,17 +3862,6 @@ addHelpSchema(taskCmd.command("archive <taskId>"), {
 
 		if (!isLocalEditableTask(task)) {
 			console.error(`Cannot archive task from another branch: ${task.id}`);
-			process.exitCode = 1;
-			return;
-		}
-
-		const config = await core.filesystem.loadConfig();
-		const statuses = config?.statuses ?? [...DEFAULT_STATUSES];
-		const terminalStatus = getTerminalStatus(statuses) ?? "Done";
-		if (isTerminalStatus(task.status, statuses)) {
-			console.error(
-				`Task ${task.id} is ${terminalStatus}. ${terminalStatus} tasks should be completed, not archived. Use: backlog task complete ${task.id}`,
-			);
 			process.exitCode = 1;
 			return;
 		}
@@ -3900,15 +3889,11 @@ addHelpSchema(taskCmd.command("complete <taskId>"), {
 	],
 	optional: [],
 	writes:
-		"WARNING: This is a cleanup procedure. It moves a terminal-status task to completed, removes it from the active Kanban board, and should only be used for cleanup/archive purposes.",
+		"During periodic cleanup, moves a finished task in the configured final status off the board to completed storage, preserving its record and dependency links.",
 	output: "Completion cleanup confirmation and completed file path",
 	examples: ["backlog task complete {{TASK_ID:1}}"],
 })
-	.description("cleanup/archive a terminal-status task into completed")
-	.addHelpText(
-		"before",
-		"\nWarning: This is a cleanup procedure. It will make the task disappear from the active Kanban board and should only be used for cleanup/archive purposes.\n",
-	)
+	.description("move a finished task to completed storage during cleanup")
 	.action(async (taskId: string) => {
 		const cwd = await requireProjectRoot();
 		const core = new Core(cwd);

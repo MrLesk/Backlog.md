@@ -97,7 +97,7 @@ import { sortByOrdinal } from "../utils/task-sorting.ts";
 import { attachSubtaskSummaries } from "../utils/task-subtasks.ts";
 import { formatValidTaskTypeValues, resolveTaskTypeValue } from "../utils/task-type-config.ts";
 import { upsertTaskUpdatedDate } from "../utils/task-updated-date.ts";
-import { isTerminalStatus } from "../utils/terminal-status.ts";
+import { getTerminalStatus, isTerminalStatus } from "../utils/terminal-status.ts";
 import { migrateConfig, needsMigration } from "./config-migration.ts";
 import { ContentStore, type TaskCorpusSnapshot } from "./content-store.ts";
 import {
@@ -374,6 +374,15 @@ function assertSectionInputsSafe(input: {
 	}
 	for (const value of input.appendFinalSummary ?? []) {
 		assertSectionInputHasNoMarkerLines(value, "finalSummary");
+	}
+}
+
+export class TaskArchiveStatusError extends Error {
+	constructor(taskId: string, terminalStatus: string) {
+		super(
+			`Task ${taskId} is ${terminalStatus}. Use Complete to move finished work to completed storage and preserve its links. Use: backlog task complete ${taskId}`,
+		);
+		this.name = "TaskArchiveStatusError";
 	}
 }
 
@@ -3301,16 +3310,23 @@ export class Core {
 		}
 		const normalizedTaskId = taskToArchive.id;
 
-		// Get paths before moving the file
-		const taskPath = taskToArchive.filePath ?? (await getTaskPath(normalizedTaskId, this));
-		const taskFilename = taskPath ? basename(taskPath) : null;
-
-		if (!taskPath || !taskFilename) return { success: false, cleanedTaskIds: [] };
-
-		const fromPath = taskPath;
-		const toPath = join(await this.fs.getArchiveTasksDir(), taskFilename);
-
 		return await this.withVacatedIdCleanup(taskToArchive, normalizedTaskId, async (cleanup) => {
+			// A concurrent edit may have finished the work before this lock was acquired.
+			const current = await this.loadTaskForMutation(normalizedTaskId, options);
+			if (!current) return { success: false, cleanedTaskIds: [] };
+			const config = await this.fs.loadConfig();
+			const statuses = config?.statuses ?? [...DEFAULT_STATUSES];
+			if (isTerminalStatus(current.status, statuses)) {
+				throw new TaskArchiveStatusError(current.id, getTerminalStatus(statuses) ?? "Done");
+			}
+
+			const taskPath = current.filePath ?? (await getTaskPath(normalizedTaskId, this));
+			const taskFilename = taskPath ? basename(taskPath) : null;
+			if (!taskPath || !taskFilename) return { success: false, cleanedTaskIds: [] };
+
+			const fromPath = taskPath;
+			const toPath = join(await this.fs.getArchiveTasksDir(), taskFilename);
+
 			try {
 				await mkdir(dirname(toPath), { recursive: true });
 				await moveFile(fromPath, toPath);

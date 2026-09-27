@@ -88,7 +88,10 @@ Humans and agents can run `backlog instructions` for workflow guides and `backlo
 | Add deps    | `backlog task edit 7 --dep task-1 --dep task-2`     |
 | Set due date | `backlog task edit 7 --due-date 2026-08-10` |
 | Clear due date | `backlog task edit 7 --clear-due-date` |
-| Archive     | `backlog task archive 7`                             |
+| Complete    | `backlog task complete 7` (move finished work to completed storage) |
+| Archive     | `backlog task archive 7` (canceled, duplicate, or invalid work) |
+
+Mark finished work Done (or the configured final status). During periodic cleanup, use Complete to move it off the board while preserving its record and dependency links. Archive removes incoming dependencies and task references.
 
 ### Paging long lists
 

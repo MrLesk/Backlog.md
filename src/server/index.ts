@@ -2,7 +2,7 @@ import net from "node:net";
 import { dirname, isAbsolute, join } from "node:path";
 import type { Server, ServerWebSocket } from "bun";
 import { DEFAULT_STATUSES } from "../constants/index.ts";
-import { Core } from "../core/backlog.ts";
+import { Core, TaskArchiveStatusError } from "../core/backlog.ts";
 import type { ContentStore } from "../core/content-store.ts";
 import { initializeProject } from "../core/init.ts";
 import type { SearchService } from "../core/search-service.ts";
@@ -1226,6 +1226,9 @@ export class BacklogServer {
 			this.broadcastDataUpdated();
 			return Response.json({ success: true, cleanedTaskIds });
 		} catch (error) {
+			if (error instanceof TaskArchiveStatusError) {
+				return Response.json({ error: error.message }, { status: 400 });
+			}
 			// The task reached the archive and something after that failed. Say so, and refresh:
 			// a client told only "error" would offer to archive a task that is already archived.
 			const archiveState = readMovedState(error, "archiveState");

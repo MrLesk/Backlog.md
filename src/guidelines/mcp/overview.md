@@ -1,56 +1,26 @@
 ## Backlog.md Overview (MCP)
 
-This project uses Backlog.md to track features, bugs, and structured work as tasks.
+Backlog.md tracks committed work: what will be built, fixed, or changed.
 
 ### When to Use Backlog
 
-**Create a task if the work requires planning or decision-making:**
+Create a task when work requires planning, decisions, or handoff notes. Skip task creation for questions, exploration, and obvious mechanical edits.
 
-Ask yourself: "Do I need to think about HOW to do this?"
-- **YES** → Search for existing task first, create if needed
-- **NO** → Just do it (the change is trivial/mechanical)
+Search first with `task_search` or `task_list`, then read matching work with `task_view`. Use the existing task, or follow the creation guide if none fits. Tasks must include enough context for someone without the current conversation to start work.
 
-**Examples of work that needs tasks:**
-- "Fix the authentication bug" → need to investigate, understand root cause, choose fix
-- "Add error handling to the API" → need to decide what errors, how to handle them
-- "Refactor UserService" → need to plan new structure, migration path
+### Required Guides
 
-**Examples of work that doesn't need tasks:**
-- "Fix typo in README" → obvious mechanical change
-- "Update version number to 2.0" → straightforward edit
-- "Add missing semicolon" → clear what to do
+Read the matching resource before taking these actions; this overview does not replace it:
 
-**Always skip tasks for:**
-- Questions and informational requests
-- Reading/exploring/explaining code, issues, or concepts
+- `backlog://workflow/task-creation` — before creating or splitting tasks
+- `backlog://workflow/task-execution` — before planning, changing status or assignee, adding notes, or implementing
+- `backlog://workflow/task-finalization` — before checking acceptance criteria, writing final summaries, or marking work finished
 
-### Typical Workflow
+### Task Lifecycle
 
-When the user requests non-trivial work:
-1. **Search first:** Use `task_search` or `task_list` (with status filters) - work might already be tracked
-2. **If found:** Work on the existing task. Check task-execution workflow to know how to proceed
-3. **If not found:** Create task(s) based on scope (single task or present breakdown for approval). Check task-creation workflow for details
-4. **Execute:** Follow task-execution guidelines
-
-Searching first avoids duplicate tasks and helps you understand existing context.
-
-### Detailed Guidance (Required)
-
-**Read the matching resource below before creating, executing, or finalizing tasks — do not act from this overview alone.** The overview only tells you when to act; these resources define the required procedure, and skipping them produces inconsistent tasks and metadata.
-
-- **Creating tasks** → `backlog://workflow/task-creation` - Scope assessment, acceptance criteria, parent/subtasks structure
-- **Planning & executing work** → `backlog://workflow/task-execution` - Planning workflow, implementation discipline, scope changes
-- **Finalizing tasks** → `backlog://workflow/task-finalization` - Definition of Done, finalization checklist, next steps
-
-### Core Principle
-
-Backlog tracks **commitments** (what will be built). Use your judgment to distinguish between "help me understand X" (no tracking) vs "add feature Y" (track in Backlog).
-
-**Execution Model:** Tasks are executed by independent AI agents in separate sessions. Each agent only sees its assigned task, not prior conversation history, so tasks must include enough context for a developer with no prior knowledge to start immediately.
+Mark finished work Done (or the configured final status). Leave it on the board until periodic cleanup with `task_complete`. Use `task_archive` only for canceled, duplicate, or invalid work.
 
 ### MCP Tools Quick Reference
-
-**Note:** "Done" tasks stay in the Done column until periodic cleanup moves them to the completed folder. Don't use `task_complete` immediately after finishing—it's for batch cleanup, not per-task workflow.
 
 - `task_list` — list tasks with optional filtering by status, configured task type, configured project, assignee (or `unassigned: true`), milestone, labels, search, `ready: true` for unblocked tasks, or limit
 - `task_search` — search tasks by title and description, or filter by configured task type, configured project, and project-root-relative `modifiedFiles` path substrings
@@ -66,8 +36,8 @@ Backlog tracks **commitments** (what will be built). Use your judgment to distin
 - `task_edit` — update task metadata, status, plan, notes, comments (`commentsAppend` with optional `commentAuthor`), final summary, acceptance criteria, task-level Definition of Done (`definitionOfDoneAdd/Remove/Check/Uncheck`) for **exceptional** per-task updates, and dependencies
 - DoD is not acceptance criteria: acceptance criteria define scope/behavior, while DoD tracks completion hygiene
 - Comments are for discussion and review notes; Implementation Notes are for execution progress; Final Summary is the PR-style completion summary. Comment bodies may contain Markdown, but standalone `---` lines are reserved as comment delimiters.
-- `task_complete` — move a Done task to the completed folder (periodic cleanup, not immediate)
-- `task_archive` — archive a task that should not be completed (duplicate, canceled, invalid). Note: archived task IDs can be reused by new tasks (soft delete behavior).
+- `task_complete` — move finished work off the board to completed storage during periodic cleanup; preserves its record and dependency links
+- `task_archive` — archive canceled, duplicate, or invalid work; removes incoming dependencies and task references. Archived task IDs can be reused.
 
 **Document path rules:** document paths are relative to the docs directory. Use `path` values like `guides/setup`; absolute paths and `..` traversal are rejected.
 
