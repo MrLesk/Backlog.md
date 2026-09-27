@@ -483,6 +483,156 @@ await import(${JSON.stringify(pathToFileURL(cliPath).href)});
 		});
 	});
 
+	for (const target of ["task", "draft"] as const) {
+		describe(`${target} edit with --add-doc and --remove-doc`, () => {
+			const id = target === "task" ? "TASK-1" : "DRAFT-1";
+			async function createTaskWithDocumentation() {
+				const draftOption = target === "draft" ? ["--draft"] : [];
+				await $`bun ${cliPath} task create "Feature" --description "Keep this body" --doc seed:a --doc seed:b --ref ref-a ${draftOption}`
+					.cwd(TEST_DIR)
+					.quiet();
+			}
+
+			async function loadTask() {
+				const filesystem = new Core(TEST_DIR).filesystem;
+				return target === "task" ? filesystem.loadTask(id) : filesystem.loadDraft(id);
+			}
+
+			async function loadDocumentation() {
+				return (await loadTask())?.documentation;
+			}
+
+			it("adds documentation without replacing existing entries and skips duplicates", async () => {
+				await createTaskWithDocumentation();
+
+				const result =
+					await $`bun ${cliPath} ${target} edit ${id} --add-doc added:c --add-doc seed:a --add-doc added:c --plain`
+						.cwd(TEST_DIR)
+						.quiet();
+
+				expect(result.exitCode).toBe(0);
+				expect(result.stdout.toString()).toContain("Documentation: seed:a, seed:b, added:c");
+				expect(await loadDocumentation()).toEqual(["seed:a", "seed:b", "added:c"]);
+			});
+
+			it("removes documentation by value and leaves unrelated entries unchanged", async () => {
+				await createTaskWithDocumentation();
+
+				const result = await $`bun ${cliPath} ${target} edit ${id} --remove-doc seed:a --remove-doc missing:x --plain`
+					.cwd(TEST_DIR)
+					.quiet();
+
+				expect(result.exitCode).toBe(0);
+				expect(await loadDocumentation()).toEqual(["seed:b"]);
+				const task = await loadTask();
+				expect(task?.references).toEqual(["ref-a"]);
+				expect(task?.description).toBe("Keep this body");
+			});
+
+			it("accepts comma-separated values for both flags", async () => {
+				await createTaskWithDocumentation();
+
+				const added = await $`bun ${cliPath} ${target} edit ${id} --add-doc "added:c,added:d" --plain`
+					.cwd(TEST_DIR)
+					.quiet();
+				expect(added.exitCode).toBe(0);
+				expect(await loadDocumentation()).toEqual(["seed:a", "seed:b", "added:c", "added:d"]);
+
+				const removed = await $`bun ${cliPath} ${target} edit ${id} --remove-doc "seed:a,added:d"`
+					.cwd(TEST_DIR)
+					.quiet();
+				expect(removed.exitCode).toBe(0);
+				expect(await loadDocumentation()).toEqual(["seed:b", "added:c"]);
+			});
+
+			it("removes a documentation entry that is added in the same command", async () => {
+				// Pins the shared model order used by MCP task_edit: additions apply first, then removals.
+				await createTaskWithDocumentation();
+
+				const result = await $`bun ${cliPath} ${target} edit ${id} --add-doc same:x --remove-doc same:x --plain`
+					.cwd(TEST_DIR)
+					.quiet();
+
+				expect(result.exitCode).toBe(0);
+				expect(await loadDocumentation()).toEqual(["seed:a", "seed:b"]);
+			});
+
+			it("adds documentation in an interactive terminal", async () => {
+				await createTaskWithDocumentation();
+
+				const result = await runCliWithInteractiveTty(TEST_DIR, [target, "edit", id, "--add-doc", "added:c"]);
+
+				expect(result.exitCode).toBe(0);
+				expect(result.stdout.toString()).toContain(`Updated ${target} ${id}`);
+				expect(await loadDocumentation()).toEqual(["seed:a", "seed:b", "added:c"]);
+			});
+
+			it("removes documentation in an interactive terminal", async () => {
+				await createTaskWithDocumentation();
+
+				const result = await runCliWithInteractiveTty(TEST_DIR, [target, "edit", id, "--remove-doc", "seed:a"]);
+
+				expect(result.exitCode).toBe(0);
+				expect(result.stdout.toString()).toContain(`Updated ${target} ${id}`);
+				expect(await loadDocumentation()).toEqual(["seed:b"]);
+			});
+
+			it.each([
+				"--add-doc",
+				"--remove-doc",
+			])("rejects invalid %s edits without changing any file bytes", async (flag) => {
+				await createTaskWithDocumentation();
+				const task = await loadTask();
+				if (!task?.filePath) throw new Error("expected task or draft file path");
+				const before = await Bun.file(task.filePath).bytes();
+				const emptyError = `Cannot use an empty value with ${flag}. Use --clear-docs to remove all documentation.`;
+				const replacementError = "Cannot combine --doc with --add-doc or --remove-doc";
+				const invalidEdits: Array<[string[], string]> = [
+					[[flag, ""], emptyError],
+					[[flag, "   "], emptyError],
+					[[flag, ", ,"], emptyError],
+					[[flag, "seed:a", flag, ""], emptyError],
+					[["--clear-docs", flag, "seed:a"], `Cannot combine --clear-docs with ${flag}`],
+					[["--doc", "only:c", flag, "seed:a"], replacementError],
+					[["--doc", "", flag, "seed:a"], replacementError],
+				];
+				for (const [args, error] of invalidEdits) {
+					const result = await $`bun ${cliPath} ${target} edit ${id} ${args}`.cwd(TEST_DIR).quiet().nothrow();
+					expect(result.exitCode).toBe(1);
+					expect(result.stderr.toString()).toContain(error);
+					expect(result.stdout.toString()).not.toContain(`Updated ${target}`);
+					expect(await Bun.file(task.filePath).bytes()).toEqual(before);
+				}
+			});
+
+			it("keeps --doc as the replace-all operation", async () => {
+				await createTaskWithDocumentation();
+
+				const result = await $`bun ${cliPath} ${target} edit ${id} --doc only:c --plain`.cwd(TEST_DIR).quiet();
+
+				expect(result.exitCode).toBe(0);
+				expect(await loadDocumentation()).toEqual(["only:c"]);
+			});
+
+			it.each([["--doc", ""], ["--clear-docs"]])("keeps %s as a clear operation", async (...args) => {
+				await createTaskWithDocumentation();
+				const result = await $`bun ${cliPath} ${target} edit ${id} ${args} --plain`.cwd(TEST_DIR).quiet();
+				expect(result.exitCode).toBe(0);
+				expect(await loadDocumentation()).toEqual([]);
+			});
+
+			it("documents replacement, addition, and removal in edit help", async () => {
+				const result = await $`bun ${cliPath} ${target} edit --help`.cwd(TEST_DIR).quiet();
+
+				const out = result.stdout.toString();
+				expect(out).toContain("--add-doc");
+				expect(out).toContain("--remove-doc");
+				expect(out).toContain("replace all documentation");
+				expect(out).toContain("comma-separated or repeatable");
+			});
+		});
+	}
+
 	describe("persistence in markdown files", () => {
 		it("persists references in task markdown file", async () => {
 			await $`bun ${cliPath} task create "Feature" --ref https://example.com --ref src/index.ts`.cwd(TEST_DIR).quiet();
