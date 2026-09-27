@@ -140,4 +140,37 @@ describe("task ID allocation across git worktrees", () => {
 		const mainTask = await mainCore.createTaskFromInput({ title: "Main task" }, false);
 		expect(mainTask.task.id).toBe("OPS-2");
 	});
+
+	it("reserves archived IDs from sibling worktrees when configured", async () => {
+		testDir = createUniqueTestDir("worktree-archive-id");
+		const mainRepo = await createRepository(testDir, "Worktree Archive ID Test");
+		const mainCore = new Core(mainRepo);
+		const config = await mainCore.fs.loadConfig();
+		if (!config) throw new Error("Expected initialized config");
+		await mainCore.fs.saveConfig({ ...config, reserveArchivedIds: true });
+		const repoRoot = await mainCore.gitOps.stageBacklogDirectory(mainCore.filesystem.backlogDirName);
+		await mainCore.gitOps.commitChanges("test: reserve archived IDs", repoRoot);
+
+		const sibling = await addWorktree(mainRepo, testDir, "feature-archive");
+		const siblingCore = new Core(sibling);
+		await siblingCore.createTaskFromInput({ title: "Archived sibling task" }, false);
+		await siblingCore.archiveTask("task-1", false);
+
+		const mainTask = await mainCore.createTaskFromInput({ title: "Main task" }, false);
+		expect(mainTask.task.id).toBe("TASK-2");
+	});
+
+	it("reuses archived IDs from sibling worktrees by default", async () => {
+		testDir = createUniqueTestDir("worktree-archive-reuse");
+		const mainRepo = await createRepository(testDir, "Worktree Archive Reuse Test");
+		const sibling = await addWorktree(mainRepo, testDir, "feature-archive-reuse");
+
+		const siblingCore = new Core(sibling);
+		await siblingCore.createTaskFromInput({ title: "Archived sibling task" }, false);
+		await siblingCore.archiveTask("task-1", false);
+
+		const mainCore = new Core(mainRepo);
+		const mainTask = await mainCore.createTaskFromInput({ title: "Main task" }, false);
+		expect(mainTask.task.id).toBe("TASK-1");
+	});
 });

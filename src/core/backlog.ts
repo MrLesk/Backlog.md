@@ -1519,7 +1519,10 @@ export class Core {
 	 *
 	 * This is used for ID generation to determine the next available ID.
 	 */
-	private async loadWorktreeTaskStateEntries(taskPrefix: string): Promise<BranchTaskStateEntry[]> {
+	private async loadWorktreeTaskStateEntries(
+		taskPrefix: string,
+		reserveArchivedIds: boolean,
+	): Promise<BranchTaskStateEntry[]> {
 		const [repoRoot, worktreeRoots] = await Promise.all([this.git.getRepositoryRoot(), this.git.listWorktreePaths()]);
 		if (!repoRoot || worktreeRoots.length === 0) {
 			return [];
@@ -1534,7 +1537,15 @@ export class Core {
 		const entries: BranchTaskStateEntry[] = [];
 		for (const worktreeRoot of worktreeRoots) {
 			const projectRoot = projectRelativePath ? join(worktreeRoot, projectRelativePath) : worktreeRoot;
-			entries.push(...(await this.loadTaskStateEntriesFromWorktree(projectRoot, backlogDir, taskPrefix, worktreeRoot)));
+			entries.push(
+				...(await this.loadTaskStateEntriesFromWorktree(
+					projectRoot,
+					backlogDir,
+					taskPrefix,
+					worktreeRoot,
+					reserveArchivedIds,
+				)),
+			);
 		}
 
 		return entries;
@@ -1545,12 +1556,16 @@ export class Core {
 		backlogDir: string,
 		taskPrefix: string,
 		worktreeRoot: string,
+		reserveArchivedIds: boolean,
 	): Promise<BranchTaskStateEntry[]> {
 		const idRegex = buildIdRegex(taskPrefix);
 		const globPattern = buildGlobPattern(taskPrefix.toLowerCase());
-		const directories: Array<{ path: string; type: "task" | "completed" }> = [
+		const directories: Array<{ path: string; type: BranchTaskStateEntry["type"] }> = [
 			{ path: join(projectRoot, backlogDir, DEFAULT_DIRECTORIES.TASKS), type: "task" },
 			{ path: join(projectRoot, backlogDir, DEFAULT_DIRECTORIES.COMPLETED), type: "completed" },
+			...(reserveArchivedIds
+				? [{ path: join(projectRoot, backlogDir, DEFAULT_DIRECTORIES.ARCHIVE_TASKS), type: "archived" as const }]
+				: []),
 		];
 		const entries: BranchTaskStateEntry[] = [];
 
@@ -1594,14 +1609,12 @@ export class Core {
 
 		// Same-repository worktrees share the task ID namespace even before their
 		// task files are committed, so include their filesystem state for allocation.
-		const worktreeEntries = await this.loadWorktreeTaskStateEntries(taskPrefix);
+		const worktreeEntries = await this.loadWorktreeTaskStateEntries(taskPrefix, config?.reserveArchivedIds === true);
 		const occupiedIds = new Set(snapshot.identityIndex.getOccupiedIds());
 		for (const task of completedTasks) occupiedIds.add(task.id);
-		for (const entry of worktreeEntries) {
-			if (entry.type === "task" || entry.type === "completed") occupiedIds.add(entry.id);
-		}
+		for (const entry of worktreeEntries) occupiedIds.add(entry.id);
 		if (config?.reserveArchivedIds) {
-			for (const task of await this.fs.listArchivedTasks()) occupiedIds.add(task.id);
+			for (const id of await this.fs.listOccupiedArchivedTaskFileIds()) occupiedIds.add(id);
 		}
 		return [...occupiedIds];
 	}

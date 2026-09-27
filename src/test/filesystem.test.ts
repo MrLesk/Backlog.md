@@ -500,6 +500,31 @@ Invalid content`,
 			expect(promotedTask?.title).toBe(sampleDraft.title);
 		});
 
+		it("reserves archived task IDs when promoting a draft through FileSystem", async () => {
+			const config: BacklogConfig = {
+				projectName: "Archive reservation project",
+				statuses: ["To Do", "In Progress", "Done"],
+				labels: [],
+				milestones: [],
+				dateFormat: "yyyy-MM-dd",
+				reserveArchivedIds: true,
+			};
+			await filesystem.saveConfig(config);
+			await Bun.write(join(filesystem.archiveTasksDir, "task-1 - Archived.md"), "unreadable archived task\n");
+			await filesystem.saveDraft(sampleDraft);
+
+			expect(await filesystem.promoteDraft("draft-1")).toBe(true);
+			expect(await filesystem.loadTask("task-2")).not.toBeNull();
+		});
+
+		it("reuses archived task IDs when promoting a draft by default", async () => {
+			await Bun.write(join(filesystem.archiveTasksDir, "task-1 - Archived.md"), "unreadable archived task\n");
+			await filesystem.saveDraft(sampleDraft);
+
+			expect(await filesystem.promoteDraft("draft-1")).toBe(true);
+			expect(await filesystem.loadTask("task-1")).not.toBeNull();
+		});
+
 		it("should archive a draft", async () => {
 			await filesystem.saveDraft(sampleDraft);
 

@@ -67,6 +67,16 @@ describe("Task ID Generation with Archives", () => {
 		expect(result.task.id).toBe("TASK-6");
 	});
 
+	it("should reserve filename IDs from malformed archived tasks when configured", async () => {
+		const config = await core.fs.loadConfig();
+		if (!config) throw new Error("Expected config to be loaded");
+		await core.fs.saveConfig({ ...config, reserveArchivedIds: true });
+		await Bun.write(join(core.fs.archiveTasksDir, "task-5 - Malformed.md"), "not valid task frontmatter\n");
+
+		const result = await core.createTaskFromInput({ title: "Task After Malformed Archive" }, false);
+		expect(result.task.id).toBe("TASK-6");
+	});
+
 	it("should consider completed tasks but not archived tasks for ID generation", async () => {
 		// Create tasks 1-3
 		await core.createTaskFromInput({ title: "Task 1", status: "Todo" }, false);

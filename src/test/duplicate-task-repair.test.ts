@@ -168,6 +168,41 @@ describe("duplicate task diagnosis", () => {
 });
 
 describe("duplicate task repair", () => {
+	it("reserves archived IDs for top-level and dotted repair allocation when configured", async () => {
+		const config = await core.filesystem.loadConfig();
+		if (!config) throw new Error("Missing test config");
+		await core.filesystem.saveConfig({ ...config, reserveArchivedIds: true });
+
+		await writeTask(core.filesystem.tasksDir, "task-1 - Alpha.md", makeTask("TASK-1", "Alpha"));
+		await writeTask(core.filesystem.tasksDir, "task-01 - Beta.md", makeTask("TASK-01", "Beta"));
+		await writeTask(core.filesystem.archiveTasksDir, "task-4 - Archived.md", makeTask("TASK-4", "Archived"));
+		await writeTask(core.filesystem.tasksDir, "task-3 - Parent.md", makeTask("TASK-3", "Parent"));
+		await writeTask(core.filesystem.tasksDir, "task-3.1 - Child.md", {
+			...makeTask("TASK-3.1", "Child"),
+			parentTaskId: "TASK-3",
+		});
+		await writeTask(core.filesystem.tasksDir, "task-3.01 - Child twin.md", {
+			...makeTask("TASK-3.01", "Child twin"),
+			parentTaskId: "TASK-3",
+		});
+		await writeTask(core.filesystem.archiveTasksDir, "task-3.2 - Archived child.md", {
+			...makeTask("TASK-3.2", "Archived child"),
+			parentTaskId: "TASK-3",
+		});
+
+		const plan = await core.previewDuplicateTaskIdRepair();
+		expect(plan.changes.map((change) => change.newId)).toEqual(["TASK-5", "TASK-3.3"]);
+	});
+
+	it("keeps archived IDs reusable for repair allocation by default", async () => {
+		await writeTask(core.filesystem.tasksDir, "task-1 - Alpha.md", makeTask("TASK-1", "Alpha"));
+		await writeTask(core.filesystem.tasksDir, "task-01 - Beta.md", makeTask("TASK-01", "Beta"));
+		await writeTask(core.filesystem.archiveTasksDir, "task-2 - Archived.md", makeTask("TASK-2", "Archived"));
+
+		const plan = await core.previewDuplicateTaskIdRepair();
+		expect(plan.changes[0]?.newId).toBe("TASK-2");
+	});
+
 	it("preserves dotted subtask identity with parent-aware allocation", async () => {
 		await writeTask(core.filesystem.tasksDir, "task-1 - Parent.md", makeTask("TASK-1", "Parent"));
 		await writeTask(core.filesystem.tasksDir, "task-1.1 - Plain.md", {

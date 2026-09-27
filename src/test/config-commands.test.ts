@@ -193,6 +193,15 @@ describe("Config commands", () => {
 		expect(listOutput).toContain("reserveArchivedIds: true");
 	});
 
+	it("parses inline YAML comments on reserve_archived_ids booleans", () => {
+		expect(
+			core.filesystem.parseConfig("project_name: P\nreserve_archived_ids: true # keep history\n").reserveArchivedIds,
+		).toBe(true);
+		expect(
+			core.filesystem.parseConfig("project_name: P\nreserve_archived_ids: false # allow reuse\n").reserveArchivedIds,
+		).toBe(false);
+	});
+
 	it("parses block-style YAML sequences identically to inline arrays for list keys", () => {
 		const inline = core.filesystem.parseConfig(
 			'project_name: "P"\nstatuses: ["To Do", "Done"]\nlabels: ["a", "b"]\ntypes: ["bug", "epic"]\npriorities: ["Critical", "Low"]\n',

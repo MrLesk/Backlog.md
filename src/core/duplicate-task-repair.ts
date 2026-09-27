@@ -412,6 +412,9 @@ export async function previewDuplicateTaskIdRepair(
 		core.filesystem.loadConfig(),
 	]);
 	const existingIds = [...activeTasks, ...completedTasks].map((task) => task.id);
+	if (config?.reserveArchivedIds) {
+		existingIds.push(...(await core.filesystem.listOccupiedArchivedTaskFileIds()));
+	}
 	const plannedIds: string[] = [];
 
 	for (const group of groups) {

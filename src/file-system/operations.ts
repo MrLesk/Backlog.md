@@ -20,6 +20,7 @@ import type { DraftIdentityFindings } from "../utils/duplicate-detection.ts";
 import { AmbiguousIdError, isAmbiguousIdError } from "../utils/entity-id.ts";
 import {
 	buildGlobPattern,
+	buildIdRegex,
 	extractAnyPrefix,
 	filenameMatchesId,
 	generateNextId,
@@ -223,6 +224,30 @@ function parseConfigListValue(content: string, key: ConfigListKey, configPath: s
 		return assignee ? [assignee] : [];
 	}
 	throw configTypeError(configPath, key, parsed);
+}
+
+/** Parse a boolean-valued config key as YAML so comments and spacing follow YAML semantics. */
+function parseConfigBooleanValue(content: string, key: string, configPath: string): boolean | undefined {
+	const block = extractConfigKeyYaml(content, key);
+	if (block === undefined) return undefined;
+
+	const fromBlock = readYamlKey(block, key);
+	let parsed: unknown;
+	if ("value" in fromBlock) {
+		parsed = fromBlock.value;
+	} else {
+		const fromDocument = readYamlKey(content, key);
+		if (!("value" in fromDocument)) throw configSyntaxError(configPath, key, fromBlock.error);
+		parsed = fromDocument.value;
+	}
+	if (parsed === null || parsed === undefined) return undefined;
+	if (typeof parsed === "boolean") return parsed;
+	throw configValueError(
+		configPath,
+		key,
+		`expected a boolean, got ${describeConfigValue(parsed)}`,
+		"Set the key to true or false, then run the command again.",
+	);
 }
 
 const DEFAULT_CREATE_LOCK_TIMEOUT_MS = 30_000;
@@ -1068,6 +1093,28 @@ export class FileSystem {
 		return sortByTaskId(tasks);
 	}
 
+	/** Archived task identities occupied on disk, including files whose content cannot be parsed. */
+	async listOccupiedArchivedTaskFileIds(): Promise<string[]> {
+		const config = await this.loadConfig();
+		const taskPrefix = config?.prefixes?.task ?? "task";
+		const idRegex = buildIdRegex(taskPrefix);
+		let filenames: string[];
+		try {
+			filenames = await Array.fromAsync(
+				new Bun.Glob(buildGlobPattern(taskPrefix.toLowerCase())).scan({
+					cwd: await this.getArchiveTasksDir(),
+					followSymlinks: true,
+				}),
+			);
+		} catch {
+			return [];
+		}
+		return filenames.flatMap((filename) => {
+			const body = filename.match(idRegex)?.[1];
+			return body ? [normalizeId(body, taskPrefix)] : [];
+		});
+	}
+
 	async archiveTask(taskId: string): Promise<boolean> {
 		try {
 			const tasksDir = await this.getTasksDir();
@@ -1175,6 +1222,9 @@ export class FileSystem {
 				const existingTasks = await this.listTasks();
 				const completedTasks = await this.listCompletedTasks();
 				const existingIds = [...existingTasks, ...completedTasks].map((t) => t.id);
+				if (config?.reserveArchivedIds) {
+					existingIds.push(...(await this.listOccupiedArchivedTaskFileIds()));
+				}
 
 				// Generate new task ID
 				const newTaskId = generateNextId(existingIds, taskPrefix, config?.zeroPaddedIds);
@@ -2091,6 +2141,7 @@ ${description || `Milestone: ${title}`}`,
 		config.priorities = parseListValue("priorities");
 		config.projects = parseListValue("projects");
 		config.defaultAssignee = parseListValue("default_assignee");
+		const parsedReserveArchivedIds = parseConfigBooleanValue(content, "reserve_archived_ids", this.resolvedConfigPath);
 		const lines = content.split("\n");
 
 		for (const line of lines) {
@@ -2159,7 +2210,7 @@ ${description || `Milestone: ${title}`}`,
 					config.activeBranchDays = Number.parseInt(value, 10);
 					break;
 				case "reserve_archived_ids":
-					config.reserveArchivedIds = value.toLowerCase() === "true";
+					config.reserveArchivedIds = parsedReserveArchivedIds;
 					break;
 				case "onStatusChange":
 				case "on_status_change":
