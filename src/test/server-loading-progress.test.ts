@@ -126,21 +126,40 @@ describe("browser corpus loading progress", () => {
 	it("publishes a distinct failure and retries the same shared initialization", async () => {
 		let loadCalls = 0;
 		let failFirstLoad = true;
+		let signalFirstLoadStarted: () => void = () => {};
+		let releaseFirstFailure: () => void = () => {};
+		const firstLoadStarted = new Promise<void>((resolve) => {
+			signalFirstLoadStarted = resolve;
+		});
+		const heldFailure = new Promise<void>((resolve) => {
+			releaseFirstFailure = resolve;
+		});
 		server = new BacklogServer(testDir);
 		internals(server).core.loadTasks = async (progressCallback) => {
 			loadCalls += 1;
-			progressCallback?.(failFirstLoad ? "Checking active branches..." : "Loading local tasks...");
 			if (failFirstLoad) {
 				failFirstLoad = false;
+				signalFirstLoadStarted();
+				await heldFailure;
+				progressCallback?.("Checking active branches...");
 				throw new Error("corpus failed");
 			}
+			progressCallback?.("Loading local tasks...");
 			return [];
 		};
 		await server.start(0, false);
 		const port = server.getPort() ?? 0;
 
+		// With no socket connected yet, this fetch is the only trigger of the shared
+		// initialization, so awaiting firstLoadStarted proves the response is bound to
+		// the failing attempt before anything else can start a retry.
 		const firstResponsePromise = fetch(`http://127.0.0.1:${port}/api/search`);
+		await firstLoadStarted;
 		const client = await openSocket(port);
+		// The initial state message proves the server registered the socket, so it will
+		// receive the failure states published once the held failure is released.
+		await waitForState(client.states, { type: "loading", message: null });
+		releaseFirstFailure();
 		const firstResponse = await firstResponsePromise;
 		expect(firstResponse.status).toBe(500);
 		await waitForState(client.states, { type: "loading", message: "Checking active branches..." });

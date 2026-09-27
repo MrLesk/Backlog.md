@@ -31,10 +31,48 @@ describe("TUI acceptance-criteria progress", () => {
 	it("renders the exact wide and constrained bars from live checklist state", () => {
 		const task = makeTask();
 
-		expect(formatAcceptanceCriteriaProgress(task, 40)).toBe("[██████░░░░] 4/7");
-		expect(formatAcceptanceCriteriaProgress(task, 39)).toBe("[███░░] 4/7");
+		expect(formatAcceptanceCriteriaProgress(task, 40)).toBe("[{yellow-fg}###{/}--] 4/7");
+		expect(formatAcceptanceCriteriaProgress(task, 39)).toBe("[{yellow-fg}##{/}-] 4/7");
 		if (task.acceptanceCriteriaItems?.[4]) task.acceptanceCriteriaItems[4].checked = true;
-		expect(formatAcceptanceCriteriaProgress(task, 40)).toBe("[███████░░░] 5/7");
+		expect(formatAcceptanceCriteriaProgress(task, 40)).toBe("[{yellow-fg}####{/}-] 5/7");
+	});
+
+	it("colors the filled run by completion ratio using the TUI's red/yellow/green semantics", () => {
+		const bar = (total: number, checked: number) =>
+			formatAcceptanceCriteriaProgress(makeTask({ acceptanceCriteriaItems: makeCriteria(total, checked) }), 40);
+
+		expect(bar(3, 1)).toBe("[{red-fg}##{/}---] 1/3");
+		expect(bar(7, 4)).toBe("[{yellow-fg}###{/}--] 4/7");
+		expect(bar(2, 2)).toBe("[{green-fg}#####{/}] 2/2");
+		// Nothing checked leaves nothing to color: an all-empty bar carries no tag.
+		expect(bar(4, 0)).toBe("[-----] 0/4");
+	});
+
+	it("never rounds progress to an empty bar or unfinished work to a full one", () => {
+		const bar = (total: number, checked: number, width: number) =>
+			formatAcceptanceCriteriaProgress(makeTask({ acceptanceCriteriaItems: makeCriteria(total, checked) }), width);
+
+		expect(bar(20, 1, 40)).toBe("[{red-fg}#{/}----] 1/20");
+		expect(bar(20, 19, 40)).toBe("[{yellow-fg}####{/}-] 19/20");
+		expect(bar(10, 1, 20)).toBe("[{red-fg}#{/}--] 1/10");
+		expect(bar(10, 9, 20)).toBe("[{yellow-fg}##{/}-] 9/10");
+	});
+
+	it("emits only ASCII bar characters so terminals without Block Element glyphs stay legible", () => {
+		// blessed only ACS-routes DEC Special Graphics; U+2588/U+2591 would render
+		// as blank cells on fonts without Block Elements and as "?" without UTF-8.
+		for (const [total, checked, width] of [
+			[7, 4, 40],
+			[7, 4, 39],
+			[10, 0, 40],
+			[3, 3, 20],
+		] as const) {
+			const bar = formatAcceptanceCriteriaProgress(
+				makeTask({ acceptanceCriteriaItems: makeCriteria(total, checked) }),
+				width,
+			);
+			expect(stripBlessedFgTags(bar)).toMatch(/^\[[#-]*\] \d+\/\d+$/);
+		}
 	});
 
 	it("omits progress when criteria are absent or the task is not in progress", () => {
@@ -48,12 +86,11 @@ describe("TUI acceptance-criteria progress", () => {
 		const progress = formatAcceptanceCriteriaProgress(task, 40);
 		const listItem = stripBlessedFgTags(formatTaskViewerListItem(task, 40));
 
-		expect(progress).toBe("[██████████] 2/2");
+		expect(stripBlessedFgTags(progress)).toBe("[#####] 2/2");
 		expect(progress).not.toContain("AC");
 		expect(progress).not.toContain("%");
-		expect(progress).not.toContain("{");
 		expect(task.status).toBe("In Progress");
-		expect(listItem).toContain("◒ [██████████] 2/2");
+		expect(listItem).toContain("◒ [#####] 2/2");
 		expect(listItem).not.toContain("✔");
 	});
 
@@ -61,17 +98,17 @@ describe("TUI acceptance-criteria progress", () => {
 		const task = makeTask({ status: " IN PROGRESS " });
 		const listItem = stripBlessedFgTags(formatTaskViewerListItem(task, 40));
 
-		expect(listItem).toContain("◒ [██████░░░░] 4/7");
+		expect(listItem).toContain("◒ [###--] 4/7");
 	});
 
 	it("reuses the same responsive indicator in board cards and task-list summaries", () => {
 		const task = makeTask();
-		const wideBoardCard = stripBlessedFgTags(formatTaskListItem(task, false, 40));
+		const wideBoardCard = formatTaskListItem(task, false, 40);
 		const compactBoardCard = stripBlessedFgTags(formatTaskListItem(task, false, 20));
 		const compactListItem = stripBlessedFgTags(formatTaskViewerListItem(task, 20));
 
-		expect(wideBoardCard).toContain("[██████░░░░] 4/7 {bold}BACK-551{/bold}");
-		expect(compactBoardCard).toContain("[███░░] 4/7 {bold}BACK-551{/bold}");
-		expect(compactListItem).toContain("◒ [███░░] 4/7 {bold}BACK-551{/bold}");
+		expect(wideBoardCard).toContain("[{yellow-fg}###{/}--] 4/7 {bold}BACK-551{/bold}");
+		expect(compactBoardCard).toContain("[##-] 4/7 {bold}BACK-551{/bold}");
+		expect(compactListItem).toContain("◒ [##-] 4/7 {bold}BACK-551{/bold}");
 	});
 });

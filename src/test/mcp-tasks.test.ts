@@ -137,6 +137,69 @@ describe("MCP task tools (MVP)", () => {
 		expect(searchText).not.toContain("Implementation Plan:");
 	});
 
+	it("renders every task result through the one plain serializer", async () => {
+		const create = async (title: string, dependencies?: string[]) =>
+			await mcpServer.testInterface.callTool({
+				params: { name: "task_create", arguments: { title, ...(dependencies ? { dependencies } : {}) } },
+			});
+		await create("Foundation");
+		await create("Selected", ["TASK-1"]);
+		await create("Follow up", ["TASK-2"]);
+
+		const viewText = getText(
+			(await mcpServer.testInterface.callTool({ params: { name: "task_view", arguments: { id: "TASK-2" } } })).content,
+		);
+		// Exactly the section the canonical CLI renders, from the same shared model.
+		expect(viewText).toContain("Dependency Graph:");
+		expect(viewText).toContain("Depends on (1 direct, 1 total):");
+		expect(viewText).toContain("└─ TASK-1 - Foundation [To Do]");
+		expect(viewText).toContain("Dependents (1 direct, 1 total):");
+		expect(viewText).toContain("└─ TASK-3 - Follow up [To Do]");
+
+		// A write confirmation is the same serializer, so it reads exactly like task detail.
+		const editText = getText(
+			(
+				await mcpServer.testInterface.callTool({
+					params: { name: "task_edit", arguments: { id: "TASK-2", priority: "high" } },
+				})
+			).content,
+		);
+		expect(editText).toContain("TASK-2");
+		expect(editText).toContain("Dependency Graph:");
+		expect(editText).toContain("Depends on (1 direct, 1 total):");
+		expect(editText).not.toContain("Dependencies: ");
+	});
+
+	it("shows acceptance criteria progress in task_list only for tasks with criteria", async () => {
+		await mcpServer.testInterface.callTool({
+			params: {
+				name: "task_create",
+				arguments: {
+					title: "Task with criteria",
+					acceptanceCriteria: ["First criterion", "Second criterion", "Third criterion"],
+				},
+			},
+		});
+		await mcpServer.testInterface.callTool({
+			params: {
+				name: "task_edit",
+				arguments: { id: "TASK-1", acceptanceCriteriaCheck: [1] },
+			},
+		});
+		await mcpServer.testInterface.callTool({
+			params: { name: "task_create", arguments: { title: "Task without criteria" } },
+		});
+
+		const listResult = await mcpServer.testInterface.callTool({
+			params: { name: "task_list", arguments: {} },
+		});
+
+		const listText = getText(listResult.content);
+		expect(listText).toContain("TASK-1 - Task with criteria (ac: 1/3)");
+		expect(listText).toContain("TASK-2 - Task without criteria");
+		expect(listText).not.toContain("Task without criteria (ac:");
+	});
+
 	it("creates, reports, edits, and clears dueDate", async () => {
 		const tools = await mcpServer.testInterface.listTools();
 		const toolByName = new Map(tools.tools.map((tool) => [tool.name, tool]));
@@ -150,16 +213,16 @@ describe("MCP task tools (MVP)", () => {
 		const createResult = await mcpServer.testInterface.callTool({
 			params: {
 				name: "task_create",
-				arguments: { title: "Due task", dueDate: "2026-08-10T16:30+02:00" },
+				arguments: { title: "Due task", dueDate: "2026-08-10" },
 			},
 		});
-		expect(getText(createResult.content)).toContain("Due: 2026-08-10 14:30 (UTC)");
-		expect((await mcpServer.getTask("task-1"))?.dueDate).toBe("2026-08-10 14:30");
+		expect(getText(createResult.content)).toContain("Due: 2026-08-10");
+		expect((await mcpServer.getTask("task-1"))?.dueDate).toBe("2026-08-10");
 
 		const listResult = await mcpServer.testInterface.callTool({
 			params: { name: "task_list", arguments: {} },
 		});
-		expect(getText(listResult.content)).toContain("due 2026-08-10 14:30 (UTC)");
+		expect(getText(listResult.content)).toContain("due 2026-08-10)");
 
 		const editResult = await mcpServer.testInterface.callTool({
 			params: { name: "task_edit", arguments: { id: "task-1", dueDate: null } },
@@ -168,10 +231,10 @@ describe("MCP task tools (MVP)", () => {
 		expect((await mcpServer.getTask("task-1"))?.dueDate).toBeUndefined();
 
 		const invalidResult = await mcpServer.testInterface.callTool({
-			params: { name: "task_edit", arguments: { id: "task-1", dueDate: "2026-08-10" } },
+			params: { name: "task_edit", arguments: { id: "task-1", dueDate: "10/08/2026" } },
 		});
 		expect(invalidResult.isError).toBe(true);
-		expect(getText(invalidResult.content)).toContain("Date-only values are not supported");
+		expect(getText(invalidResult.content)).toContain("YYYY-MM-DD");
 	});
 
 	it("adapts duplicate diagnosis to the canonical CLI without agent repair prompts", async () => {
@@ -957,7 +1020,8 @@ describe("MCP task tools (MVP)", () => {
 		const editText = getText(editResult.content);
 		expect(editText).toContain("Status: ◒ In Progress");
 		expect(editText).toContain("Labels: docs");
-		expect(editText).toContain("Dependencies: TASK-2");
+		expect(editText).toContain("Dependency Graph:");
+		expect(editText).toContain("TASK-2");
 		expect(editText).toContain("Implementation Plan:");
 		expect(editText).toContain("Implementation Notes:");
 		expect(editText).toContain("#1 Plan documented");
@@ -978,6 +1042,34 @@ describe("MCP task tools (MVP)", () => {
 		const criteriaText = getText(criteriaUpdate.content);
 		expect(criteriaText).toContain("- [x] #1 Plan documented");
 		expect(criteriaText).toContain("- [ ] #2 Agents can follow instructions end-to-end");
+	});
+
+	it("rejects self-referential and cyclic dependencies through task_edit", async () => {
+		await mcpServer.testInterface.callTool({
+			params: { name: "task_create", arguments: { title: "First" } },
+		});
+		await mcpServer.testInterface.callTool({
+			params: { name: "task_create", arguments: { title: "Second", dependencies: ["TASK-1"] } },
+		});
+
+		const selfResult = await mcpServer.testInterface.callTool({
+			params: { name: "task_edit", arguments: { id: "TASK-1", dependencies: ["task-1"] } },
+		});
+		expect(selfResult.isError).toBe(true);
+		expect(getText(selfResult.content)).toContain("cannot depend on itself");
+
+		const cycleResult = await mcpServer.testInterface.callTool({
+			params: { name: "task_edit", arguments: { id: "TASK-1", dependencies: ["TASK-2"] } },
+		});
+		expect(cycleResult.isError).toBe(true);
+		expect(getText(cycleResult.content)).toContain(
+			"These dependencies would create a cycle: TASK-1 -> TASK-2 -> TASK-1",
+		);
+
+		const view = await mcpServer.testInterface.callTool({
+			params: { name: "task_view", arguments: { id: "TASK-1" } },
+		});
+		expect(getText(view.content)).not.toContain("Dependencies:");
 	});
 
 	it("does not clear labels from blank-only task_edit label arrays", async () => {
@@ -1047,7 +1139,8 @@ describe("MCP task tools (MVP)", () => {
 			},
 		});
 
-		expect(getText(blankEdit.content)).toContain("Dependencies: TASK-1");
+		expect(getText(blankEdit.content)).toContain("Dependency Graph:");
+		expect(getText(blankEdit.content)).toContain("TASK-1");
 		expect((await mcpServer.getTask("task-2"))?.dependencies).toEqual(["TASK-1"]);
 
 		const clearEdit = await mcpServer.testInterface.callTool({
@@ -1060,7 +1153,7 @@ describe("MCP task tools (MVP)", () => {
 			},
 		});
 
-		expect(getText(clearEdit.content)).not.toContain("Dependencies:");
+		expect(getText(clearEdit.content)).not.toContain("Depends on (");
 		expect((await mcpServer.getTask("task-2"))?.dependencies).toEqual([]);
 	});
 

@@ -4,6 +4,7 @@ import { StrictMode, act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import type { DuplicateRepairPlan } from "../core/duplicate-task-repair.ts";
 import type { SearchResult, Task } from "../types/index.ts";
+import { buildDependencyGraph } from "../utils/dependency-graph.ts";
 import { isValidTaskId, resolveTaskById } from "../utils/task-id.ts";
 import App from "../web/App.tsx";
 import { HealthCheckProvider } from "../web/contexts/HealthCheckContext.tsx";
@@ -512,8 +513,10 @@ const renderApp = async (
 		await act(async () => options.beforeInitialStatus?.(container as HTMLElement));
 	}
 	await act(async () => operation.settle("initial status"));
+	// Runs outside act so the callback can wrap its own act-based waits and then
+	// observe flushed DOM state.
 	if (options.afterInitialStatus) {
-		await act(async () => options.afterInitialStatus?.(container as HTMLElement));
+		await options.afterInitialStatus(container as HTMLElement);
 	}
 	await act(async () => operation.settle("initial search"));
 	if (controlledTimer) {
@@ -615,6 +618,17 @@ const assertState = (predicate: () => boolean, message: string) => {
 	expect(predicate(), message).toBe(true);
 };
 
+// The header indexing indicator appears 250ms after a loading message arrives and
+// fades out 200ms after it clears; these waits let real timers cross those windows.
+const waitForIndicatorAppearance = () =>
+	act(async () => {
+		await new Promise((resolve) => setTimeout(resolve, 350));
+	});
+const waitForIndicatorExit = () =>
+	act(async () => {
+		await new Promise((resolve) => setTimeout(resolve, 300));
+	});
+
 afterEach(async () => {
 	const fetchErrors: Error[] = [];
 	controlledTimerCleanup?.();
@@ -659,7 +673,8 @@ describe("task detail routes", () => {
 				getAppDataWebSocket().deliver(JSON.stringify({ type: "loading", message: phase }));
 				await Promise.resolve();
 			},
-			afterInitialStatus: (rendered) => {
+			afterInitialStatus: async (rendered) => {
+				await waitForIndicatorAppearance();
 				observedWhileSearchPending = rendered.textContent?.includes(phase) ?? false;
 			},
 		});
@@ -704,6 +719,7 @@ describe("task detail routes", () => {
 			dataSocket.deliver(JSON.stringify({ type: "loading", message: phase }));
 			await Promise.resolve();
 		});
+		await waitForIndicatorAppearance();
 		expect(container.textContent).toContain(phase);
 
 		const reconciliation = new FetchOperation("passive shared retry completion", [
@@ -717,6 +733,7 @@ describe("task detail routes", () => {
 		await act(async () => reconciliation.settle("passive config", "passive search"));
 		reconciliation.finish();
 
+		await waitForIndicatorExit();
 		expect(container.textContent).not.toContain(phase);
 		expect(container.querySelector("[aria-label='Loading tasks']")).toBeNull();
 		expect(container.textContent).toContain(tasks[0]?.title ?? "");
@@ -725,8 +742,9 @@ describe("task detail routes", () => {
 	it("does not duplicate an active data request when shared loading completes", async () => {
 		await renderApp("/board?lane=none");
 		const dataSocket = getAppDataWebSocket();
+		// A tasks-updated broadcast triggers the incremental refresh, which only
+		// refetches the search corpus.
 		const activeRefresh = new FetchOperation("active refresh during shared completion", [
-			expectFetch("active config", "/api/config"),
 			expectFetch("active search", "/api/search", { manual: true }),
 		]);
 
@@ -744,7 +762,7 @@ describe("task detail routes", () => {
 
 		await act(async () => {
 			activeRefresh.respond("active search", json(searchResults));
-			await activeRefresh.settle("active config", "active search");
+			await activeRefresh.settle("active search");
 		});
 		activeRefresh.finish();
 	});
@@ -757,6 +775,7 @@ describe("task detail routes", () => {
 			dataSocket.deliver(JSON.stringify({ type: "loading", message: phase }));
 			await Promise.resolve();
 		});
+		await waitForIndicatorAppearance();
 		expect(container.textContent).toContain(phase);
 
 		const recovery = new FetchOperation("protocol-only socket close recovery", []);
@@ -769,6 +788,24 @@ describe("task detail routes", () => {
 		expect(container.querySelector("[aria-label='Loading tasks']")).toBeNull();
 		expect(container.textContent).toContain(tasks[0]?.title ?? "");
 		recovery.finish();
+	});
+
+	it("clears a stale terminal error and shows cached content when indexing restarts", async () => {
+		const container = await renderApp("/board?lane=none");
+		const dataSocket = getAppDataWebSocket();
+		await act(async () => {
+			dataSocket.deliver(JSON.stringify({ type: "error", message: "corpus failed" }));
+			await Promise.resolve();
+		});
+		expect(container.textContent).toContain("Failed to load tasks");
+
+		await act(async () => {
+			dataSocket.deliver(JSON.stringify({ type: "loading", message: "Loading tasks from local branches..." }));
+			await Promise.resolve();
+		});
+		expect(container.textContent).not.toContain("Failed to load tasks");
+		expect(container.querySelector("[aria-label='Loading tasks']")).toBeNull();
+		expect(container.textContent).toContain(tasks[0]?.title ?? "");
 	});
 
 	it("preserves a terminal shared error when the data socket closes", async () => {
@@ -826,9 +863,10 @@ describe("task detail routes", () => {
 		);
 		reorder.finish();
 
+		// The reconciliation edits an existing task, so the ID set is unchanged
+		// and the duplicate repair plan is not refetched.
 		const reconciliation = new FetchOperation("newer WebSocket reconciliation", [
 			expectFetch("newer search", "/api/search", { manual: true }),
-			expectFetch("newer duplicate plan", "/api/tasks/duplicates"),
 		]);
 		await act(async () => {
 			dataSocket.deliver("tasks-updated");
@@ -844,7 +882,7 @@ describe("task detail routes", () => {
 					{ type: "task", task: externallyEditedTask, score: 1 } satisfies SearchResult,
 				]),
 			);
-			await reconciliation.settle("newer search", "newer duplicate plan");
+			await reconciliation.settle("newer search");
 		});
 		reconciliation.finish();
 		expect(container.textContent).toContain(externallyEditedTask.title);
@@ -925,6 +963,68 @@ describe("task detail routes", () => {
 			() => window.location.pathname === "/board" && container.querySelector("[role='dialog']") === null,
 			"Back to the canonical board",
 		);
+	});
+
+	it("fetches a graph-linked task exactly once, without a redundant sync refetch", async () => {
+		const foundation: Task = {
+			id: "BACK-201",
+			title: "Graph foundation",
+			status: "To Do",
+			assignee: [],
+			labels: [],
+			dependencies: [],
+			createdDate: "2026-07-10",
+		};
+		const follower: Task = {
+			id: "BACK-202",
+			title: "Graph follower",
+			status: "To Do",
+			assignee: [],
+			labels: [],
+			dependencies: ["BACK-201"],
+			createdDate: "2026-07-10",
+		};
+		const corpus = { tasks: [foundation, follower], completedTasks: [], statuses: defaultConfig.statuses };
+		// The /api/task fixtures are details carrying their graphs; the search results stay plain
+		// list records, exactly as the real endpoints answer.
+		const detailFoundation = Object.assign({}, foundation, {
+			dependencyGraph: buildDependencyGraph(foundation, corpus),
+		});
+		const detailFollower = Object.assign({}, follower, { dependencyGraph: buildDependencyGraph(follower, corpus) });
+		tasks.push(detailFoundation, detailFollower);
+		const addedResults: SearchResult[] = [
+			{ type: "task", task: foundation, score: 1 },
+			{ type: "task", task: follower, score: 1 },
+		];
+		searchResults.push(...addedResults);
+
+		try {
+			const container = await renderApp("/board/BACK-201");
+			const link = container.querySelector('a[aria-label="Open BACK-202 - Graph follower"]');
+			expect(link).toBeTruthy();
+
+			const operation = new FetchOperation("graph link navigation", [
+				expectFetch("linked task", "/api/task/BACK-202"),
+			]);
+			await act(async () => {
+				(link as HTMLElement).dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
+				await Promise.resolve();
+			});
+			await act(async () => operation.settle("linked task"));
+			// Give a redundant modal-sync refetch every chance to fire before counting requests. The
+			// sync effect compares the previous task's record against the newly opened one; only
+			// matching task IDs may trigger a follow-up detail read.
+			await act(async () => {
+				await new Promise((resolve) => setTimeout(resolve, 25));
+			});
+			operation.finish();
+			const detailFetches = operation.calls.filter((call) => call.url.startsWith("/api/task/"));
+			expect(detailFetches.map((call) => call.url)).toEqual(["/api/task/BACK-202"]);
+		} finally {
+			tasks.splice(tasks.indexOf(detailFoundation), 1);
+			tasks.splice(tasks.indexOf(detailFollower), 1);
+			for (const result of addedResults) searchResults.splice(searchResults.indexOf(result), 1);
+		}
 	});
 
 	it("preserves a type filter through board task Back, Forward, and close navigation", async () => {
@@ -1012,8 +1112,9 @@ describe("task detail routes", () => {
 		});
 		staleRefresh.finish();
 
+		// The newer refresh rides a tasks-updated broadcast, so it is incremental
+		// and leaves config alone; the stale full refresh must still lose.
 		const newerRefresh = new FetchOperation("newer task refresh", [
-			expectFetch("newer config", "/api/config"),
 			expectFetch("newer search", "/api/search", { manual: true }),
 		]);
 		await act(async () => {
@@ -1025,7 +1126,7 @@ describe("task detail routes", () => {
 				"newer search",
 				json([{ type: "task", task: customerTask, score: 1 } satisfies SearchResult]),
 			);
-			await newerRefresh.settle("newer config", "newer search");
+			await newerRefresh.settle("newer search");
 		});
 		newerRefresh.finish();
 
@@ -1302,6 +1403,21 @@ describe("task detail routes", () => {
 		expect(container.querySelector("[role='dialog']")).toBeNull();
 	});
 
+	it("reads the task detail when a page without a task route opens the modal", async () => {
+		const container = await renderApp("/milestones");
+		// Milestones has no task route, so it opens the modal directly. It must still read the detail,
+		// or the modal would show the compact list record with no dependency graph.
+		const row = Array.from(container.querySelectorAll("div[draggable]")).find((element) =>
+			element.textContent?.includes("BACK-101"),
+		);
+		expect(row).toBeTruthy();
+		await click(row as HTMLElement, [expectFetch("milestone task detail", "/api/task/BACK-101")]);
+		assertState(
+			() => window.location.pathname === "/milestones" && Boolean(container.querySelector("[role='dialog']")),
+			"milestone task modal without a page change",
+		);
+	});
+
 	it("archives a routed task with a single history close", async () => {
 		const container = await renderApp("/milestones");
 		const allTasksLink = Array.from(container.querySelectorAll("a")).find(
@@ -1403,6 +1519,9 @@ describe("task detail routes", () => {
 			operationRef: initialLoadRef,
 		});
 		const dataSocket = assertHealthSocketDoesNotShadowDataSocket();
+		// The initial plan read has not landed yet, so the incremental refresh
+		// fetches a replacement plan; bumping the request counter is what
+		// invalidates the stale initial response below.
 		const newerLoad = new FetchOperation("newer data load", [
 			expectFetch("newer search", "/api/search"),
 			expectFetch("newer duplicate plan", "/api/tasks/duplicates"),

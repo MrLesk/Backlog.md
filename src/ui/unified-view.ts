@@ -14,6 +14,7 @@ import { type TaskWatcherCallbacks, watchTasks } from "../utils/task-watcher.ts"
 import { renderBoardTui } from "./board.ts";
 import { createLoadingScreen } from "./loading.ts";
 import { buildTaskViewerMilestoneFilterModel, viewTaskEnhanced } from "./task-viewer-with-search.ts";
+import { keepTuiInputAlive } from "./tui.ts";
 import { type ViewState, ViewSwitcher, type ViewType } from "./view-switcher.ts";
 
 export interface UnifiedViewOptions {
@@ -291,6 +292,7 @@ export async function createTaskFromBoard(
  * Main unified view controller that handles Tab switching between views
  */
 export async function runUnifiedView(options: UnifiedViewOptions): Promise<void> {
+	const releaseTuiInput = keepTuiInputAlive();
 	try {
 		const {
 			tasks: loadedTasks,
@@ -391,7 +393,6 @@ export async function runUnifiedView(options: UnifiedViewOptions): Promise<void>
 		});
 
 		process.on("exit", () => configWatcher.stop());
-
 		// Function to show task view
 		const showTaskView = async (): Promise<ViewResult> => {
 			const availableTasks = tasks.filter((t) => t.id && t.id.trim() !== "" && hasAnyPrefix(t.id));
@@ -580,5 +581,7 @@ export async function runUnifiedView(options: UnifiedViewOptions): Promise<void>
 	} catch (error) {
 		console.error(error instanceof Error ? error.message : error);
 		process.exit(1);
+	} finally {
+		releaseTuiInput();
 	}
 }

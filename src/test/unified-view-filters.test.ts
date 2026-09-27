@@ -1,4 +1,5 @@
 import { describe, expect, it } from "bun:test";
+import { withReadiness } from "../core/task-detail.ts";
 import type { Task } from "../types/index.ts";
 import {
 	createKanbanSharedFilters,
@@ -8,7 +9,6 @@ import {
 	type UnifiedViewFilters,
 } from "../ui/unified-view.ts";
 import { NO_MILESTONE_FILTER_VALUE } from "../utils/milestone-filter.ts";
-import { createReadinessGraph } from "../utils/readiness.ts";
 import { applyTaskFilters } from "../utils/task-search.ts";
 
 describe("unified view filter state", () => {
@@ -615,9 +615,11 @@ describe("unified view filter state", () => {
 		};
 
 		const displayCandidates = [activeTask];
-		const readyFiltered = applyTaskFilters(displayCandidates, {
-			ready: createReadinessGraph({ tasks: [activeTask], completedTasks: [completedDep] }),
-		});
+		const readyFiltered = withReadiness(displayCandidates, {
+			tasks: [activeTask],
+			completedTasks: [completedDep],
+			statuses: undefined,
+		}).filter((task) => task.isReady);
 
 		expect(readyFiltered.map((task) => task.id)).toEqual(["task-2"]);
 	});

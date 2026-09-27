@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import Modal from './Modal';
 import { apiClient } from '../lib/api';
-import { formatStoredUtcDateForDisplay } from '../utils/date-display';
+import StoredDate from './StoredDate';
 
 interface CleanupModalProps {
 	isOpen: boolean;
@@ -86,11 +86,6 @@ const CleanupModal: React.FC<CleanupModalProps> = ({ isOpen, onClose, onSuccess,
 		onClose();
 	};
 
-	const formatDate = (dateStr?: string) => {
-		if (!dateStr) return '';
-		return formatStoredUtcDateForDisplay(dateStr, dateFormat);
-	};
-
 	return (
 		<Modal isOpen={isOpen} onClose={handleClose} title="Clean Up Completed Tasks" maxWidthClass="max-w-3xl">
 			<div className="space-y-6">
@@ -156,7 +151,7 @@ const CleanupModal: React.FC<CleanupModalProps> = ({ isOpen, onClose, onSuccess,
 															{task.title}
 														</p>
 														<p className="text-xs text-gray-500 dark:text-gray-400">
-															{task.id} • {formatDate(task.updatedDate || task.createdDate)}
+															{task.id} • <StoredDate value={task.updatedDate || task.createdDate} dateFormat={dateFormat} />
 														</p>
 													</div>
 												</div>

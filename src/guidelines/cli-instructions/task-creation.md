@@ -15,7 +15,7 @@ Recommended CLI commands:
 - `backlog task list --type {{TASK_TYPE:1}} --plain`
 - `backlog task list --search "desktop app" --labels frontend,bug --limit 20 --plain`
 
-Avoid broad unfiltered listing when the project may have many tasks. Use `--status`, `--exclude-status`, `--type`, `--project`, `--assignee`, `--unassigned`, `--parent`, `--priority`, `--labels`, `--search`, or `--limit` where applicable. Repeat `--exclude-status` or pass comma-separated configured statuses to exclude multiple states. Repeat `--type` or pass comma-separated configured task types to include multiple types. Repeat `--project` or pass comma-separated configured projects to include multiple projects.
+Avoid broad unfiltered listing when the project may have many tasks. Use `--status`, `--exclude-status`, `--type`, `--project`, `--assignee`, `--unassigned`, `--parent`, `--priority`, `--labels`, `--search`, or `--limit` where applicable. Check the size with `--count`, and read a long list in windows with `--max-count` and `--skip`; cut output ends with the command for the next window. Repeat `--exclude-status` or pass comma-separated configured statuses to exclude multiple states. Repeat `--type` or pass comma-separated configured task types to include multiple types. Repeat `--project` or pass comma-separated configured projects to include multiple projects.
 
 Use `backlog task view {{TASK_ID:123}} --plain` to read full context for likely matches.
 
@@ -60,7 +60,7 @@ Write tasks so a future agent can act on them without prior conversation context
 Include:
 
 - A clear title.
-- A description explaining the outcome and why it matters.
+- A description that captures why the task exists: the problem, trigger, or user need behind it, plus any context a future agent cannot recover from the code. The acceptance criteria already state what will be true when the work is done — do not restate them here.
 - Acceptance criteria that are specific, testable, and independent.
 - References or documentation when they are needed for implementation.
 - Dependencies when work must happen in order.
@@ -76,11 +76,14 @@ Examples:
 
 ```bash
 backlog task create "Add project search" \
-  -d "Users can search tasks, docs, and decisions from one CLI command." \
+  -d "Finding anything means running three separate commands, and matches in the ones you skip are missed silently. One search command covers tasks, docs, and decisions." \
   --ac "Search returns matching tasks by title and description" \
   --ac "Search supports --plain output" \
   --ac "Tests cover task, document, and decision results"
 ```
+
+Too thin: `-d "Users can search tasks, docs, and decisions from one CLI command."` states the change but not the need,
+so a future agent cannot weigh scope or alternatives.
 
 ```bash
 backlog task create "Add settings docs" \

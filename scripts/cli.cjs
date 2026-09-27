@@ -86,6 +86,8 @@ function main() {
 		child = spawn(binaryPath, cleanedArgs, {
 			stdio: "inherit",
 			windowsHide: true,
+			// Internal: lets a watch end when the process that started this launcher ends.
+			env: { ...process.env, BACKLOG_LAUNCHER: `${process.pid}:${process.ppid}` },
 		});
 	} catch (error) {
 		handleSpawnError(binaryPath, error);

@@ -1,5 +1,6 @@
 import type { DuplicateRepairPlan, DuplicateRepairResult } from "../../core/duplicate-task-repair.ts";
 import type { TaskStatistics } from "../../core/statistics.ts";
+import type { TaskDetail } from "../../core/task-detail.ts";
 import type {
 	BacklogConfig,
 	Decision,
@@ -19,6 +20,55 @@ export interface ReorderTaskPayload {
 	targetStatus: string;
 	orderedTaskIds: string[];
 	targetMilestone?: string | null;
+}
+
+export interface MoveTasksPayload {
+	taskIds: string[];
+	targetStatus: string;
+	targetMilestone?: string | null;
+}
+
+export interface MoveTasksResult {
+	success: boolean;
+	tasks: Task[];
+	changedTasks: Task[];
+	failures: Array<{ taskId: string; reason: string }>;
+}
+
+/**
+ * Read the marker the server forwards when a mutation failed after the record had already moved.
+ * The view converges on what happened instead of offering a retry of a move that already ran.
+ */
+function readMovedFailureData(error: unknown): Record<string, unknown> | null {
+	if (
+		!(error instanceof ApiError) ||
+		error.status === undefined ||
+		error.status < 500 ||
+		typeof error.data !== "object" ||
+		error.data === null
+	) {
+		return null;
+	}
+	return error.data as Record<string, unknown>;
+}
+
+export function readMovedFailureState(
+	error: unknown,
+	key: "archiveState" | "demotionState",
+): "moved" | "partial" | null {
+	const state = readMovedFailureData(error)?.[key];
+	return state === "moved" || state === "partial" ? state : null;
+}
+
+export function readDemotionFailureCause(error: unknown): "cleanup" | "commit" | null {
+	const cause = readMovedFailureData(error)?.demotionFailureCause;
+	return cause === "cleanup" || cause === "commit" ? cause : null;
+}
+
+/** Archiving and demoting vacate a task ID: `cleanedTaskIds` names the records that lost a reference to it. */
+export interface TaskVacancyResponse {
+	success: boolean;
+	cleanedTaskIds: string[];
 }
 
 export type TaskUpdateRequest = Omit<Partial<Task>, "milestone" | "dueDate" | "project"> & {
@@ -276,8 +326,9 @@ export class ApiClient {
 		return this.fetchJson<SearchResult[]>(url);
 	}
 
-	async fetchTask(id: string): Promise<Task> {
-		return this.fetchJson<Task>(`${API_BASE}/task/${encodeURIComponent(id)}`);
+	/** Reads one task through the detail path, so the response already carries its dependency graph. */
+	async fetchTask(id: string): Promise<TaskDetail> {
+		return this.fetchJson<TaskDetail>(`${API_BASE}/task/${encodeURIComponent(id)}`);
 	}
 
 	async createTask(task: Omit<Task, "id" | "createdDate">): Promise<Task> {
@@ -301,10 +352,20 @@ export class ApiClient {
 		});
 	}
 
-	async archiveTask(id: string): Promise<void> {
-		await this.fetchWithRetry(`${API_BASE}/tasks/${id}`, {
+	async moveTasks(payload: MoveTasksPayload): Promise<MoveTasksResult> {
+		return this.fetchJson<MoveTasksResult>(`${API_BASE}/tasks/move`, {
+			method: "POST",
+			body: JSON.stringify(payload),
+		});
+	}
+
+	// Not retried, for the same reason demote is not: the second attempt would target a task the
+	// first attempt already archived, and its "not found" would replace the real outcome.
+	async archiveTask(id: string): Promise<TaskVacancyResponse> {
+		const response = await this.fetchWithoutRetry(`${API_BASE}/tasks/${id}`, {
 			method: "DELETE",
 		});
+		return response.json();
 	}
 
 	async completeTask(id: string): Promise<void> {
@@ -313,10 +374,11 @@ export class ApiClient {
 		});
 	}
 
-	async demoteTask(id: string): Promise<void> {
-		await this.fetchWithoutRetry(`${API_BASE}/tasks/${encodeURIComponent(id)}/demote`, {
+	async demoteTask(id: string): Promise<TaskVacancyResponse> {
+		const response = await this.fetchWithoutRetry(`${API_BASE}/tasks/${encodeURIComponent(id)}/demote`, {
 			method: "POST",
 		});
+		return response.json();
 	}
 
 	async getCleanupPreview(age: number): Promise<{

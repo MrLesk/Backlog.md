@@ -80,7 +80,7 @@ export function registerTaskTools(server: McpServer, config: BacklogConfig): voi
 	const archiveTaskTool: McpToolHandler = createSimpleValidatedTool(
 		{
 			name: "task_archive",
-			description: "Archive a Backlog.md task",
+			description: "Archive canceled, duplicate, or invalid work; removes incoming dependencies and task references",
 			inputSchema: taskArchiveSchema,
 			annotations: { title: "Archive Task", destructiveHint: true },
 		},
@@ -91,7 +91,8 @@ export function registerTaskTools(server: McpServer, config: BacklogConfig): voi
 	const completeTaskTool: McpToolHandler = createSimpleValidatedTool(
 		{
 			name: "task_complete",
-			description: "Complete a Backlog.md task (move it to the completed folder)",
+			description:
+				"Move a finished task in the configured final status off the board to completed storage during periodic cleanup; preserves its record and dependency links",
 			inputSchema: taskCompleteSchema,
 			annotations: { title: "Complete Task", destructiveHint: true },
 		},
@@ -109,4 +110,10 @@ export function registerTaskTools(server: McpServer, config: BacklogConfig): voi
 }
 
 export type { TaskCreateArgs, TaskEditArgs, TaskListArgs, TaskSearchArgs } from "./handlers.ts";
-export { taskArchiveSchema, taskCompleteSchema, taskListSchema, taskSearchSchema, taskViewSchema } from "./schemas.ts";
+export {
+	taskArchiveSchema,
+	taskCompleteSchema,
+	taskListSchema,
+	taskSearchSchema,
+	taskViewSchema,
+} from "./schemas.ts";

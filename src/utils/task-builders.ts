@@ -1,5 +1,6 @@
 import type { Core } from "../core/backlog.ts";
 import type { AcceptanceCriterion, Task } from "../types/index.ts";
+import { buildDependencyGraph, findCycleThroughRoot } from "./dependency-graph.ts";
 import { AmbiguousIdError } from "./entity-id.ts";
 import { AmbiguousTaskIdError, canonicalTaskId, taskIdsEqual } from "./task-path.ts";
 
@@ -37,6 +38,11 @@ function resolveUniqueDependency(dependency: string, matches: Task[]): string | 
 /**
  * Validate that all dependencies exist in the working copy.
  *
+ * The corpus spans working-copy tasks, drafts, completed, and archived records: Done is the normal
+ * end state of a predecessor, so a task whose target moved to completed/ or the archive must keep a
+ * valid, editable dependency list. Only validation resolves these targets; readiness and graph
+ * semantics are unchanged.
+ *
  * Inputs are matched by task identity, so bare numeric IDs resolve under any configured prefix, and
  * identity fails closed exactly as it does for the task a command targets. That takes two checks,
  * mirroring the identity index itself: the corpus answers whether the input names more than one
@@ -47,40 +53,155 @@ function resolveUniqueDependency(dependency: string, matches: Task[]): string | 
  * branch would name a task no task command can show, and reaching for branches here would put a
  * remote fetch inside the task lock.
  *
+ * When `target` names the task being created or edited, a dependency resolving to the target
+ * itself is rejected in any spelling, and a dependency that would close a cycle through the
+ * existing graph is rejected with the cycle path. An unresolved input is also checked against the
+ * target before being reported as missing: creation, promotion, and demotion validate against an
+ * identity allocated moments ago, which no corpus record claims, so a dangling reference to
+ * exactly that ID would become a self-dependency the moment the record is written under it.
+ * Resolution runs first so an input that names an existing record keeps naming it - a bare number
+ * resolves to the draft or task that already claims it, not to the identity being allocated.
+ *
  * Returns the matched canonical IDs, deduplicated, plus the inputs that matched nothing.
  */
 export async function validateDependencies(
 	dependencies: string[],
 	core: Core,
+	target?: Task,
 ): Promise<{ valid: string[]; invalid: string[] }> {
 	const valid: string[] = [];
 	const invalid: string[] = [];
 	if (dependencies.length === 0) {
 		return { valid, invalid };
 	}
-	const [tasks, drafts] = await Promise.all([
-		core.queryTasks({ includeCrossBranch: false }),
-		core.filesystem.listDrafts(),
-	]);
-	const known = [...tasks, ...drafts];
+	const corpus = await loadDependencyCorpus(core);
+	const known = [...corpus.tasks, ...corpus.drafts, ...corpus.completed, ...corpus.archived];
 	for (const dependency of dependencies) {
 		const resolved = resolveUniqueDependency(
 			dependency,
 			known.filter((candidate) => taskIdsEqual(dependency, candidate.id)),
 		);
 		if (resolved === null) {
+			// The corpus cannot resolve a reference to the target's freshly allocated ID, so the raw
+			// input is checked against the target before the reference is reported as missing.
+			if (target && taskIdsEqual(dependency, target.id)) {
+				throw new Error(`Task ${target.id} cannot depend on itself ("${dependency.trim()}" names this task).`);
+			}
 			invalid.push(dependency);
 			continue;
 		}
+		if (target && taskIdsEqual(resolved, target.id)) {
+			throw new Error(`Task ${target.id} cannot depend on itself ("${dependency.trim()}" names this task).`);
+		}
 		// Called for its ambiguity check: it raises AmbiguousTaskIdError when several working-copy
-		// files claim this ID. Drafts resolve to null here and keep their own local-only lookup.
+		// files (active or completed) claim this ID. Drafts and archived tasks resolve to null here
+		// and rely on the corpus check above.
 		await core.loadTaskById(resolved, { includeCrossBranch: false });
 		// Equivalent spellings of one task (1 and BACK-1) must not persist twice.
 		if (!valid.some((existing) => taskIdsEqual(existing, resolved))) {
 			valid.push(resolved);
 		}
 	}
+	// Every new cycle must run through the target, because the edges being added all leave it. The
+	// graph is built once with the validated dependencies as the target's edges, so cycle detection
+	// reuses the shared dependency-graph model instead of traversing the corpus a second time.
+	if (target && valid.length > 0) {
+		// The proposed list supersedes the target's stored one, so the stored record leaves the
+		// corpus: its old outgoing edges would otherwise re-enter through the graph's reverse
+		// traversal and let an existing cycle veto its own repair.
+		const graphCorpus = dependencyGraphCorpus(corpus);
+		const graph = buildDependencyGraph(
+			{ ...target, dependencies: valid },
+			{
+				tasks: graphCorpus.tasks.filter((task) => !taskIdsEqual(task.id, target.id)),
+				completedTasks: graphCorpus.completedTasks.filter((task) => !taskIdsEqual(task.id, target.id)),
+			},
+		);
+		const cycle = findCycleThroughRoot(graph);
+		if (cycle) {
+			throw new Error(`These dependencies would create a cycle: ${cycle.join(" -> ")}`);
+		}
+		// The graph never walks through an ambiguous identity, so a return path behind one cannot
+		// be seen. Whatever it hides stays unverifiable, so the mutation fails closed on it.
+		const ambiguous = graph.nodes.find((node) => node.state === "ambiguous" && node.dependencyDepth !== null);
+		if (ambiguous) {
+			throw new Error(
+				`Cannot verify the dependencies stay acyclic: more than one record claims ${ambiguous.id}. Run 'backlog doctor' to repair duplicate IDs first.`,
+			);
+		}
+	}
 	return { valid, invalid };
+}
+
+/** The records dependency validation and `backlog doctor` resolve dependencies against. */
+interface DependencyCorpus {
+	tasks: Task[];
+	drafts: Task[];
+	completed: Task[];
+	archived: Task[];
+}
+
+async function loadDependencyCorpus(core: Core): Promise<DependencyCorpus> {
+	const [tasks, drafts, completed, archived] = await Promise.all([
+		core.queryTasks({ includeCrossBranch: false }),
+		core.filesystem.listDrafts(),
+		core.filesystem.listCompletedTasks(),
+		core.filesystem.listArchivedTasks(),
+	]);
+	return { tasks, drafts, completed, archived };
+}
+
+/** Arrange the corpus for the dependency graph, whose only split is completed versus not. */
+function dependencyGraphCorpus(corpus: DependencyCorpus): { tasks: Task[]; completedTasks: Task[] } {
+	return { tasks: [...corpus.tasks, ...corpus.drafts, ...corpus.archived], completedTasks: corpus.completed };
+}
+
+export interface DependencyDefects {
+	/** Tasks that list themselves as a dependency, with the spelling the file records. */
+	selfDependencies: Array<{ taskId: string; dependency: string }>;
+	/** Each detected cycle as a dependency path, opening and closing on the same task. */
+	cycles: string[][];
+}
+
+/**
+ * Report the self-dependencies and dependency cycles already stored in the project, for
+ * `backlog doctor`. Validation refuses to create these, so any found here predate it; the report
+ * names them for human repair and changes nothing.
+ *
+ * Every record that can carry dependencies is checked as a root against the same corpus
+ * validation resolves against, reusing the shared graph model per root. Each root contributes its
+ * shortest cycle, and cycles are deduplicated as rotations of one member sequence, so one cycle is
+ * one finding while distinct cycles sharing a task are all reported.
+ */
+export async function findDependencyDefects(core: Core): Promise<DependencyDefects> {
+	const corpus = await loadDependencyCorpus(core);
+	const graphCorpus = dependencyGraphCorpus(corpus);
+	const selfDependencies: DependencyDefects["selfDependencies"] = [];
+	const cycles: string[][] = [];
+	const seen = new Set<string>();
+	for (const task of [...corpus.tasks, ...corpus.drafts, ...corpus.completed]) {
+		const dependencies = task.dependencies ?? [];
+		for (const dependency of dependencies) {
+			if (taskIdsEqual(dependency, task.id)) {
+				selfDependencies.push({ taskId: task.id, dependency });
+			}
+		}
+		if (dependencies.length === 0) continue;
+		const cycle = findCycleThroughRoot(buildDependencyGraph(task, graphCorpus));
+		if (!cycle) continue;
+		// One cycle read from different roots is the same member sequence rotated; keying on the
+		// rotation that starts at the smallest canonical member collapses them.
+		const members = cycle.slice(0, -1).map((id) => canonicalTaskId(id));
+		let start = 0;
+		for (let index = 1; index < members.length; index++) {
+			if ((members[index] as string) < (members[start] as string)) start = index;
+		}
+		const key = [...members.slice(start), ...members.slice(0, start)].join(" ");
+		if (seen.has(key)) continue;
+		seen.add(key);
+		cycles.push(cycle);
+	}
+	return { selfDependencies, cycles };
 }
 
 /**

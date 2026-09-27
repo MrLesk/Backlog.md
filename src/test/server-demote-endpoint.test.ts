@@ -67,7 +67,7 @@ describe("BacklogServer demote endpoint", () => {
 		const response = await fetch(`http://127.0.0.1:${serverPort}/api/tasks/TASK-1/demote`, { method: "POST" });
 
 		expect(response.status).toBe(200);
-		expect(await response.json()).toEqual({ success: true });
+		expect(await response.json()).toEqual({ success: true, cleanedTaskIds: [] });
 		expect(await core.filesystem.loadTask("TASK-1")).toBeNull();
 
 		const drafts = await core.filesystem.listDrafts();

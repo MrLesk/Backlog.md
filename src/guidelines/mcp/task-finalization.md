@@ -1,60 +1,20 @@
 ## Task Finalization Guide
 
-### Finalization Workflow
+Use this guide when implementation is complete and ready for review.
 
-1. **Review all acceptance criteria and Definition of Done items** - Use `task_view` to see current status and identify what evidence each unchecked item needs.
-2. **Run objective verification before checking acceptance criteria** - Use automated tests, command output, scripted UI checks, or explicit manual verification of the behavior. For UI or interactive work, exercise the behavior through a browser, DOM script, test runner, or documented manual interaction result. Do not check acceptance criteria from code presence, grep output, or implementation intent alone.
-3. **Check only proven acceptance criteria and Definition of Done items** - Use `task_edit` with `acceptanceCriteriaCheck` and `definitionOfDoneCheck/Uncheck` as needed.
-4. **Run the Definition of Done checklist** (see below)
-5. **Write the Final Summary** - Use `task_edit` (`finalSummary` field) to capture a PR-style summary of what changed and why. Avoid one-line summaries unless the change is trivial; include tests and key scope for reviewers.
-6. **Confirm the implementation plan is captured and current** - Update the plan in Backlog if the executed approach deviated
-7. **Update task status** - Set status to "Done" via `task_edit`
-8. **Propose next steps** - Never autonomously create or start new tasks
+1. Read the task with `task_view`. Identify evidence for every acceptance criterion and Definition of Done item.
+2. Run relevant tests and checks. For UI or interactive work, exercise the behavior through a browser, DOM script, test runner, or documented manual interaction. Code presence, grep output, and implementation intent are not verification evidence.
+3. Check only proven items with `task_edit` (`acceptanceCriteriaCheck`, `definitionOfDoneCheck/Uncheck`). Resolve failures before finishing.
+4. Confirm the recorded plan matches the final solution (`planSet/planAppend`) and required documentation/configuration updates are complete. Keep useful decisions and validation results in implementation notes (`notesAppend`); use comments for review questions (`commentsAppend`).
+5. Write a concise `finalSummary` explaining what changed, why, verification results, and relevant risks or follow-ups. Complete any required user review before marking work finished.
+6. Mark verified work Done, or the configured final status, with `task_edit`.
 
-**Note:** Tasks stay in "Done" status until periodic cleanup. Moving to the completed folder (`task_complete` or CLI cleanup) is a batch operation run occasionally, not part of finishing each task.
+### Task Lifecycle
 
-**Important:** Do not use `task_archive` for completed work. Archive is only for tasks that should not be completed (duplicate, canceled, invalid).
+Leave finished tasks on the board until periodic cleanup. `task_complete` moves them to completed storage while preserving their record and dependency links.
 
-### Definition of Done Checklist
+Use `task_archive` only for canceled, duplicate, or invalid work. Archiving removes incoming dependencies and task references.
 
-- Implementation plan exists in the task record (`task_edit` planSet/planAppend) and reflects the final solution
-- Acceptance criteria are all checked via `task_edit` (acceptanceCriteriaCheck field) only after objective verification evidence proves the behavior
-- Definition of Done items are all checked via `task_edit` (definitionOfDoneCheck field)
-- Automated and relevant manual tests pass; no new warnings or regressions introduced
-- Documentation or configuration updates completed when required
-- Implementation notes capture progress during work via `task_edit` (notesAppend field)
-- Final Summary captures the PR-style completion summary via `task_edit` (`finalSummary` field). Include what changed, why, tests run, and any risks/follow-ups when relevant.
-- Status transitions to "Done" via `task_edit`
+### Follow-up Work
 
-### After Finalization
-
-**Never autonomously create or start new tasks.** Instead:
-
-- **If follow-up work is needed**: Present the idea to the user and ask whether to create a follow-up task
-- **If this was a subtask**:
-  - Check if user explicitly told you to work on "parent task and all subtasks"
-    - If YES: Proceed directly to the next subtask without asking
-    - If NO: Ask user: "Subtask X is complete. Should I proceed with subtask Y, or would you like to review first?"
-- **If all subtasks in a series are complete**: Update parent task status if appropriate, then ask user what to do next
-
-### Working with Subtasks
-
-- When finalizing a subtask, check all its acceptance criteria individually
-- Update subtask status to "Done" via `task_edit`
-- Document subtask-specific outcomes in the subtask's notes
-- Only update parent task status when ALL subtasks are complete (or when explicitly instructed)
-
-### Comments vs Implementation Notes vs Final Summary
-
-Comments are for task discussion, review questions, and collaboration notes. Implementation notes are for progress logging during execution (decisions, blockers, learnings). The Final Summary is for the PR-style completion summary when the task is done.
-
-Use `task_edit` (notesAppend field) to record:
-- Implementation decisions and rationale
-- Blockers encountered and how they were resolved
-- Technical debt or future improvements identified
-- Testing approach and results
-
-These notes help future developers (including AI agents) understand the context.
-Do not repeat the same information that is clearly understandable from the code.
-
-Use `task_edit` (`finalSummary`) to write a structured PR-style summary that highlights the key points of the implementation.
+Do not create or start follow-up tasks without user approval. For subtasks, verify each separately and finish the parent only when all are complete, unless instructed otherwise. Continue to the next subtask only when the user already assigned the full series; otherwise ask first.

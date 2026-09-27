@@ -154,12 +154,12 @@ describe("McpServer bootstrap", () => {
 			"Do not check acceptance criteria, write the final summary, or move the task to Done from this guide alone",
 		);
 		expect(MCP_TASK_EXECUTION_GUIDE).toContain("verify each acceptance criterion with objective evidence");
-		expect(MCP_TASK_FINALIZATION_GUIDE).toContain("Run objective verification before checking acceptance criteria");
+		expect(MCP_TASK_FINALIZATION_GUIDE).toContain("Check only proven items");
 		expect(MCP_TASK_FINALIZATION_GUIDE).toContain(
-			"For UI or interactive work, exercise the behavior through a browser, DOM script, test runner, or documented manual interaction result.",
+			"For UI or interactive work, exercise the behavior through a browser, DOM script, test runner, or documented manual interaction.",
 		);
 		expect(MCP_TASK_FINALIZATION_GUIDE).toContain(
-			"Do not check acceptance criteria from code presence, grep output, or implementation intent alone.",
+			"Code presence, grep output, and implementation intent are not verification evidence.",
 		);
 	});
 
@@ -171,6 +171,30 @@ describe("McpServer bootstrap", () => {
 		);
 		expect(MCP_TASK_CREATION_GUIDE).toContain(
 			"Do not pass milestone IDs such as `m-0` as `parentTaskId`; assign a task to a milestone with the `milestone` field.",
+		);
+	});
+
+	it("task creation guide demonstrates a description that carries the why", () => {
+		TEST_DIR = createUniqueTestDir("mcp-server-guides");
+
+		expect(MCP_TASK_CREATION_GUIDE).toContain(
+			"The description must capture why the task exists (the WHY): the problem, trigger, or user value behind it, plus any context a future agent cannot recover from the code.",
+		);
+		expect(MCP_TASK_CREATION_GUIDE).toContain(
+			"Acceptance criteria already state what will be true when the work is done, so do not restate them in the description.",
+		);
+		expect(MCP_TASK_CREATION_GUIDE).toContain(
+			"Keeping the description focused means leaving out implementation detail, not leaving out the why.",
+		);
+		expect(MCP_TASK_CREATION_GUIDE).toContain(
+			'- Example `description`: "Finding anything means running three separate commands, and matches in the ones you skip are missed silently. One search command covers tasks, docs, and decisions."',
+		);
+		expect(MCP_TASK_CREATION_GUIDE).toContain(
+			'- Too thin: "Users can search tasks, docs, and decisions from one CLI command." states the change but not the need, so a future agent cannot weigh scope or alternatives',
+		);
+		expect(MCP_TASK_CREATION_GUIDE).toContain("this limits code detail, not the reason the work is needed");
+		expect(MCP_TASK_CREATION_GUIDE).toContain(
+			"**Never embed implementation details** in title, description, or acceptance criteria — this excludes how the work will be built, not why it is needed",
 		);
 	});
 

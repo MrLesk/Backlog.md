@@ -3,11 +3,11 @@ import * as clack from "@clack/prompts";
 import picocolors from "picocolors";
 import { DEFAULT_STATUSES } from "../constants/index.ts";
 import type { AcceptanceCriterion, Task, TaskCreateInput, TaskUpdateInput } from "../types/index.ts";
+import { normalizeDueDate } from "../utils/due-date.ts";
 import { getPriorityOptions, normalizePriorityValue } from "../utils/priority-config.ts";
 import { getProjectValues, resolveProjectValue } from "../utils/project-config.ts";
 import { normalizeStringList } from "../utils/task-builders.ts";
 import { getTaskTypeValues, resolveTaskTypeValue } from "../utils/task-type-config.ts";
-import { normalizeUtcDateTime } from "../utils/utc-datetime.ts";
 
 interface TaskWizardValues {
 	title: string;
@@ -483,10 +483,10 @@ async function runTaskWizardValues(params: {
 			{
 				type: "text",
 				name: "dueDate",
-				message: "Due date (UTC datetime; blank for none)",
+				message: "Due date (YYYY-MM-DD; blank for none)",
 				validate: (value) => {
 					try {
-						normalizeUtcDateTime(value, "Due date");
+						normalizeDueDate(value, "Due date");
 						return undefined;
 					} catch (error) {
 						return error instanceof Error ? error.message : "Invalid due date.";
@@ -601,7 +601,7 @@ async function runTaskWizardValues(params: {
 			priority: normalizePriorityValue(values.priority) ?? "",
 			type: resolveTaskTypeValue(values.type, params.types) ?? values.type.trim(),
 			project: resolveProjectValue(values.project, params.projects) ?? values.project.trim(),
-			dueDate: normalizeUtcDateTime(values.dueDate, "Due date") ?? "",
+			dueDate: normalizeDueDate(values.dueDate, "Due date") ?? "",
 			assignee: values.assignee,
 			labels: values.labels,
 			acceptanceCriteria: values.acceptanceCriteria,
@@ -696,7 +696,7 @@ export async function runTaskCreateWizard(
 	const parsedType = type.length > 0 ? type : undefined;
 	const project = values.project.trim();
 	const parsedProject = project.length > 0 ? project : undefined;
-	const dueDate = normalizeUtcDateTime(values.dueDate, "Due date");
+	const dueDate = normalizeDueDate(values.dueDate, "Due date");
 	const assignee = parseListInput(values.assignee);
 	const labels = parseListInput(values.labels);
 	const references = parseListInput(values.references);

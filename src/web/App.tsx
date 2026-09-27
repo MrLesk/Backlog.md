@@ -11,6 +11,7 @@ import Statistics from './components/Statistics';
 import MilestonesPage from './components/MilestonesPage';
 import TaskDetailsModal from './components/TaskDetailsModal';
 import InitializationScreen from './components/InitializationScreen';
+import LoadingSpinner from './components/LoadingSpinner';
 import { SuccessToast } from './components/SuccessToast';
 import { ThemeProvider } from './contexts/ThemeContext';
 import { TaskIdIndexProvider } from './contexts/TaskIdIndexContext';
@@ -25,7 +26,9 @@ import {
 	type Task,
 	type TaskSearchResult,
 } from '../types';
-import { ApiError, apiClient } from './lib/api';
+import { formatDependencyCleanupMessage } from '../utils/dependency-graph';
+import { ApiError, apiClient, readMovedFailureState } from './lib/api';
+import type { TaskDetail } from '../core/task-detail';
 import type { DuplicateRepairPlan } from '../core/duplicate-task-repair';
 import { isValidTaskId } from '../utils/task-id';
 import { useHealthCheckContext } from './contexts/HealthCheckContext';
@@ -35,6 +38,7 @@ import { getProjectValues } from '../utils/project-config';
 import { getTaskTypeValues } from '../utils/task-type-config';
 import { createUrlPath } from './utils/urlHelpers';
 import { filterKanbanTasks } from './utils/kanban-tasks';
+import { reconcileById } from './utils/reconcile';
 import { parseBrowserLoadingState } from '../utils/browser-loading-state';
 
 type TaskRouteNavigationState = {
@@ -180,10 +184,59 @@ const canonicalizeMilestone = (value: string | null | undefined, aliasMap?: Map<
   return normalized;
 };
 
+/**
+ * What the task modal is showing, as one value.
+ *
+ * A detail entry carries the session it was opened in, the record it is open on, and whatever has
+ * been read for it. Every entry path - a clicked task, a routed task, a draft, a graph link -
+ * starts a new session before any read begins, and a detail response may change the modal only
+ * while its session and id are still the ones on screen. There is no ticket to take, nothing to
+ * reconcile against the task list, and a response belonging to a modal the reader has left cannot
+ * land on the one they are looking at.
+ */
+type TaskModalState =
+  | { kind: 'closed' }
+  | { kind: 'create'; isDraft: boolean }
+  | {
+      kind: 'detail';
+      session: number;
+      id: string;
+      isDraft: boolean;
+      /** Opened by the task route, so a failed first read reports back through it. */
+      fromRoute: boolean;
+      value: Task | TaskDetail | null;
+    };
+
 function AppContent() {
-  const [showModal, setShowModal] = useState(false);
-  const [editingTask, setEditingTask] = useState<Task | null>(null);
-  const [isDraftMode, setIsDraftMode] = useState(false);
+  const [modal, setModal] = useState<TaskModalState>({ kind: 'closed' });
+  // Each entry into the modal takes the next session number, so a response can name the modal it
+  // was read for.
+  const modalSessionRef = useRef(0);
+  const modalRef = useRef<TaskModalState>(modal);
+  modalRef.current = modal;
+  // Advanced by every completed data refresh, whether or not the records visibly changed.
+  const [dataVersion, setDataVersion] = useState(0);
+
+  const openDetailModal = useCallback(
+    (id: string, options: { isDraft?: boolean; fromRoute?: boolean; record?: Task | TaskDetail } = {}) => {
+      modalSessionRef.current += 1;
+      setModal({
+        kind: 'detail',
+        session: modalSessionRef.current,
+        id,
+        isDraft: options.isDraft ?? false,
+        fromRoute: options.fromRoute ?? false,
+        value: options.record ?? null,
+      });
+    },
+    [],
+  );
+
+  // What the rest of the app reads. A detail modal is on screen once it has a record to show: a
+  // routed task therefore appears when its first read lands, exactly as it did before.
+  const editingTask = modal.kind === 'detail' ? modal.value : null;
+  const showModal = modal.kind === 'create' || (modal.kind === 'detail' && modal.value !== null);
+  const isDraftMode = modal.kind === 'closed' ? false : modal.isDraft;
   const [statuses, setStatuses] = useState<string[]>([]);
   const [availableLabels, setAvailableLabels] = useState<string[]>([]);
   const [projectName, setProjectName] = useState<string>('');
@@ -195,6 +248,8 @@ function AppContent() {
   const [archivedMilestones, setArchivedMilestones] = useState<Milestone[]>([]);
   const [showSuccessToast, setShowSuccessToast] = useState(false);
   const [taskConfirmation, setTaskConfirmation] = useState<{task: Task, isDraft: boolean} | null>(null);
+  const [dependencyCleanupNotice, setDependencyCleanupNotice] = useState<string | null>(null);
+  const dependencyCleanupTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   
   // Initialization state
   const [isInitialized, setIsInitialized] = useState<boolean | null>(null);
@@ -204,6 +259,13 @@ function AppContent() {
   const kanbanTasks = React.useMemo(() => filterKanbanTasks(tasks), [tasks]);
   const [docs, setDocs] = useState<Document[]>([]);
   const [decisions, setDecisions] = useState<Decision[]>([]);
+  // Mirrors of the store lists, so refreshes can reconcile in place without
+  // resubscribing the WebSocket effect to every state change.
+  const tasksRef = useRef<Task[]>([]);
+  const docsRef = useRef<Document[]>([]);
+  const decisionsRef = useRef<Decision[]>([]);
+  const milestoneEntitiesRef = useRef<Milestone[]>([]);
+  const archivedMilestonesRef = useRef<Milestone[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [loadingMessage, setLoadingMessage] = useState<string | null>(null);
   const [loadError, setLoadError] = useState<Error | null>(null);
@@ -213,7 +275,15 @@ function AppContent() {
   const previousOnlineRef = useRef<boolean | null>(null);
   const hasBeenRunningRef = useRef(false);
   const loadAllDataRequestRef = useRef(0);
+  const hasLoadedDataRef = useRef(false);
   const pendingDataRequestRef = useRef<number | null>(null);
+  // Scope of the in-flight data request (only meaningful while
+  // pendingDataRequestRef is set): 0 tasks, 1 with milestones, 2 full load. A
+  // newer, narrower refresh supersedes the in-flight request through the shared
+  // counter, so it must adopt at least this scope or the wider data is lost.
+  const pendingScopeRankRef = useRef(0);
+  const loadErrorRef = useRef<Error | null>(null);
+  const duplicateRepairPlanRef = useRef<DuplicateRepairPlan | null>(null);
   const protocolOnlyLoadingRef = useRef(false);
   const location = useLocation();
   const navigate = useNavigate();
@@ -221,8 +291,6 @@ function AppContent() {
   const tasksRoute = useMatch('/tasks/:id');
   const boardRouteWithTitle = useMatch('/board/:id/:title');
   const boardRoute = useMatch('/board/:id');
-  const taskRouteRequestRef = useRef(0);
-  const isTaskRouteModalRef = useRef(false);
   const taskRouteAlertRef = useRef<HTMLDivElement | null>(null);
   const routeTaskId =
     tasksRouteWithTitle?.params.id ??
@@ -294,11 +362,39 @@ function AppContent() {
     const docsList = documentResults.map((result) => result.document);
     const decisionsList = decisionResults.map((result) => result.decision);
 
-    setTasks(normalizedTasks);
-    setDocs(docsList);
-    setDecisions(decisionsList);
+    // Reconcile instead of replacing: unchanged records keep their identity, so
+    // views re-render only for real changes and a refresh that merely echoes an
+    // already-applied update (e.g. after a surgical drag update) is a no-op.
+    const nextTasks = reconcileById(tasksRef.current, normalizedTasks);
+    tasksRef.current = nextTasks;
+    setTasks(nextTasks);
+    const nextDocs = reconcileById(docsRef.current, docsList);
+    docsRef.current = nextDocs;
+    setDocs(nextDocs);
+    const nextDecisions = reconcileById(decisionsRef.current, decisionsList);
+    decisionsRef.current = nextDecisions;
+    setDecisions(nextDecisions);
+    // Reconciling can be a no-op for every visible record and still follow a change the browser
+    // never receives, so the refresh itself is what an open task detail reacts to.
+    setDataVersion(version => version + 1);
 
-    return { tasks: normalizedTasks, docs: docsList, decisions: decisionsList };
+    return { tasks: nextTasks };
+  }, []);
+
+  const applyMilestoneIds = useCallback((next: string[]) => {
+    setMilestones((current) =>
+      next.length === current.length && next.every((id, index) => id === current[index]) ? current : next,
+    );
+  }, []);
+
+  const applyLoadError = useCallback((error: Error | null) => {
+    loadErrorRef.current = error;
+    setLoadError(error);
+  }, []);
+
+  const applyDuplicateRepairPlan = useCallback((plan: DuplicateRepairPlan | null) => {
+    duplicateRepairPlanRef.current = plan;
+    setDuplicateRepairPlan(plan);
   }, []);
 
   const loadAllData = useCallback(async () => {
@@ -306,9 +402,12 @@ function AppContent() {
     loadAllDataRequestRef.current = requestId;
 	protocolOnlyLoadingRef.current = false;
 		pendingDataRequestRef.current = requestId;
+		pendingScopeRankRef.current = 2;
 		try {
-			setIsLoading(true);
-			setLoadError(null);
+			// Show the blocking skeleton only before the first successful load; later
+			// refreshes keep the current content on screen and update it in place.
+			if (!hasLoadedDataRef.current) setIsLoading(true);
+			applyLoadError(null);
       const shellDataPromise = Promise.all([
         apiClient.fetchStatuses(),
         apiClient.fetchConfig(),
@@ -328,6 +427,8 @@ function AppContent() {
       setProjectName(configData.projectName);
       setAvailableLabels(configData.labels || []);
       setConfig(configData);
+      milestoneEntitiesRef.current = milestonesData;
+      archivedMilestonesRef.current = archivedMilestonesData;
       setMilestoneEntities(milestonesData);
       setArchivedMilestones(archivedMilestonesData);
 
@@ -340,21 +441,22 @@ function AppContent() {
       const archivedKeys = new Set(collectArchivedMilestoneKeys(archivedMilestonesData, milestonesData));
       const milestoneAliases = buildMilestoneAliasMap(milestonesData, archivedMilestonesData);
       const { tasks: tasksList } = applySearchResults(searchResults, archivedKeys, milestoneAliases);
+      hasLoadedDataRef.current = true;
 
-      setMilestones(
+      applyMilestoneIds(
         collectMilestoneIds(tasksList, milestonesData, archivedMilestonesData).filter(
           (milestone) => !archivedKeys.has(milestoneKey(milestone)),
         ),
       );
       void apiClient.fetchDuplicateTaskRepairPlan().then((duplicatePlan) => {
-        if (loadAllDataRequestRef.current === requestId) setDuplicateRepairPlan(duplicatePlan);
+        if (loadAllDataRequestRef.current === requestId) applyDuplicateRepairPlan(duplicatePlan);
       }).catch(() => {
-        if (loadAllDataRequestRef.current === requestId) setDuplicateRepairPlan(null);
+        if (loadAllDataRequestRef.current === requestId) applyDuplicateRepairPlan(null);
       });
     } catch (error) {
       if (loadAllDataRequestRef.current === requestId) {
         console.error('Failed to load data:', error);
-        setLoadError(error instanceof Error ? error : new Error('Failed to load data'));
+        applyLoadError(error instanceof Error ? error : new Error('Failed to load data'));
       }
     } finally {
       if (loadAllDataRequestRef.current === requestId) {
@@ -363,7 +465,7 @@ function AppContent() {
         setLoadingMessage(null);
       }
     }
-  }, [applySearchResults]);
+  }, [applySearchResults, applyMilestoneIds, applyLoadError, applyDuplicateRepairPlan]);
 
   React.useEffect(() => {
     // Only load data when initialized
@@ -413,35 +515,30 @@ function AppContent() {
   }, [isOnline]);
 
   const handleNewTask = () => {
-    setEditingTask(null);
-    setIsDraftMode(false);
-    setShowModal(true);
+    setModal({ kind: 'create', isDraft: false });
   };
 
   const handleNewDraft = () => {
     // Create a draft task (same as new task but with status 'Draft')
-    setEditingTask(null);
-    setIsDraftMode(true);
-    setShowModal(true);
+    setModal({ kind: 'create', isDraft: true });
   };
 
-  const openTaskModal = useCallback((task: Task) => {
-    setEditingTask(task);
-    setIsDraftMode(false);
-    setShowModal(true);
-  }, []);
+  const openTaskModal = useCallback(
+    (task: Task) => {
+      openDetailModal(task.id, { record: task });
+    },
+    [openDetailModal],
+  );
 
-  const openDraftModal = useCallback((draft: Task) => {
-    setEditingTask(draft);
-    setIsDraftMode(true);
-    setShowModal(true);
-  }, []);
+  const openDraftModal = useCallback(
+    (draft: Task) => {
+      openDetailModal(draft.id, { record: draft, isDraft: true });
+    },
+    [openDetailModal],
+  );
 
   const clearTaskModal = useCallback(() => {
-    isTaskRouteModalRef.current = false;
-    setShowModal(false);
-    setEditingTask(null);
-    setIsDraftMode(false);
+    setModal({ kind: 'closed' });
   }, []);
 
   const handleEditTask = useCallback((task: Task) => {
@@ -453,6 +550,10 @@ function AppContent() {
           : null;
 
     if (!basePath) {
+      // Pages without a task route (milestones, statistics) open the modal directly, so they must
+      // read the detail themselves. Otherwise they would show the compact list record, silently
+      // without its dependency graph, while the board and the task list show the full detail.
+      // Opened with the list record; the detail reader below upgrades it in place.
       openTaskModal(task);
       return;
     }
@@ -485,12 +586,13 @@ function AppContent() {
     }
   };
 
+  // The task route says which task is open; the reader below is what reads it. Opening the session
+  // here rather than after a response is what stops an older task's read from answering for this
+  // one: from this moment the modal names a different session.
   useEffect(() => {
-    const requestId = taskRouteRequestRef.current + 1;
-    taskRouteRequestRef.current = requestId;
-
+    const current = modalRef.current;
     if (!routeTaskId || !routeBasePath || isInitialized !== true) {
-      if (!routeTaskId && isTaskRouteModalRef.current) {
+      if (!routeTaskId && current.kind === 'detail' && current.fromRoute) {
         clearTaskModal();
       }
       return;
@@ -505,43 +607,13 @@ function AppContent() {
       return;
     }
 
-    const loadTaskFromRoute = async () => {
-      try {
-        const task = await apiClient.fetchTask(routeTaskId);
-        if (taskRouteRequestRef.current !== requestId) {
-          return;
-        }
-        isTaskRouteModalRef.current = true;
-        openTaskModal(task);
-      } catch (error) {
-        if (taskRouteRequestRef.current !== requestId) {
-          return;
-        }
-
-        clearTaskModal();
-        const message =
-          error instanceof ApiError && error.status === 409
-            ? `Task "${routeTaskId}" is ambiguous. Repair duplicate task IDs before opening this link.`
-            : error instanceof ApiError && error.status === 400
-              ? `"${routeTaskId}" is not a valid task ID.`
-              : error instanceof ApiError && error.status === 404
-                ? `Task "${routeTaskId}" was not found.`
-                : `Task "${routeTaskId}" could not be opened. Try again.`;
-        navigate(`${routeBasePath}${location.search}`, {
-          replace: true,
-          state: { taskRouteError: message } satisfies TaskRouteNavigationState,
-        });
-      }
-    };
-
-    void loadTaskFromRoute();
-
-    return () => {
-      if (taskRouteRequestRef.current === requestId) {
-        taskRouteRequestRef.current += 1;
-      }
-    };
-  }, [clearTaskModal, isInitialized, location.search, navigate, openTaskModal, routeBasePath, routeTaskId]);
+    // Re-running for an unrelated reason (a filter in the query string, say) must not restart the
+    // task the route already opened.
+    if (current.kind === 'detail' && current.fromRoute && current.id === routeTaskId) {
+      return;
+    }
+    openDetailModal(routeTaskId, { fromRoute: true });
+  }, [clearTaskModal, isInitialized, location.search, navigate, openDetailModal, routeBasePath, routeTaskId]);
 
   useEffect(() => {
     if (taskRouteError) {
@@ -549,32 +621,185 @@ function AppContent() {
     }
   }, [taskRouteError]);
 
+  // Incremental refresh: the single-card reorder path's surgical store update,
+  // generalized. Refetches only the search corpus (plus milestone entities when
+  // the change was milestone-scoped) and reconciles it into the store in place;
+  // statuses and config have their own "config-updated" broadcast, and the
+  // duplicate repair plan (a filesystem rescan) refreshes in the background only
+  // when it could have changed. Anything that cannot be applied incrementally
+  // falls back to the full load.
+  const refreshTasksData = useCallback(async (includeMilestones: boolean) => {
+    // A never-completed or failed load leaves state an incremental refresh
+    // cannot patch (the failed resources would never be requested again), so
+    // both cases go through the full loader.
+    if (!hasLoadedDataRef.current || loadErrorRef.current) {
+      await loadAllData();
+      return;
+    }
+    // Superseding an in-flight request discards its responses through the
+    // shared counter, so this refresh must adopt at least that request's scope
+    // or a concurrent config/milestone reload would be lost.
+    const supersededRank = pendingDataRequestRef.current !== null ? pendingScopeRankRef.current : -1;
+    if (supersededRank >= 2) {
+      await loadAllData();
+      return;
+    }
+    const withMilestones = includeMilestones || supersededRank >= 1;
+    const requestId = loadAllDataRequestRef.current + 1;
+    loadAllDataRequestRef.current = requestId;
+    protocolOnlyLoadingRef.current = false;
+    pendingDataRequestRef.current = requestId;
+    pendingScopeRankRef.current = withMilestones ? 1 : 0;
+    try {
+      const [milestonesData, archivedMilestonesData, searchResults] = await Promise.all([
+        withMilestones ? apiClient.fetchMilestones() : milestoneEntitiesRef.current,
+        withMilestones ? apiClient.fetchArchivedMilestones() : archivedMilestonesRef.current,
+        apiClient.search(),
+      ]);
+      if (loadAllDataRequestRef.current !== requestId) {
+        return;
+      }
+      if (withMilestones) {
+        milestoneEntitiesRef.current = milestonesData;
+        archivedMilestonesRef.current = archivedMilestonesData;
+        setMilestoneEntities(milestonesData);
+        setArchivedMilestones(archivedMilestonesData);
+      }
+      const archivedKeys = new Set(collectArchivedMilestoneKeys(archivedMilestonesData, milestonesData));
+      const milestoneAliases = buildMilestoneAliasMap(milestonesData, archivedMilestonesData);
+      const idSignature = (list: Task[]) =>
+        list
+          .map((task) => task.id)
+          .sort()
+          .join("\n");
+      const previousIdSignature = idSignature(tasksRef.current);
+      const { tasks: tasksList } = applySearchResults(searchResults, archivedKeys, milestoneAliases);
+      applyMilestoneIds(
+        collectMilestoneIds(tasksList, milestonesData, archivedMilestonesData).filter(
+          (milestone) => !archivedKeys.has(milestoneKey(milestone)),
+        ),
+      );
+      // In the healthy steady state (an empty plan on record), duplicate IDs can
+      // only appear when the set of task IDs changes, so edits and reorders skip
+      // the plan's filesystem rescan. While duplicates exist their plan
+      // fingerprint also covers content and references, and a still-null plan
+      // means the initial read has not landed (or was superseded), so both keep
+      // refreshing until the corpus is clean again.
+      const plan = duplicateRepairPlanRef.current;
+      const planUnsettled = plan === null || plan.groups.length > 0 || plan.crossBranchFindings.length > 0;
+      if (planUnsettled || idSignature(tasksList) !== previousIdSignature) {
+        void apiClient.fetchDuplicateTaskRepairPlan().then((duplicatePlan) => {
+          if (loadAllDataRequestRef.current === requestId) applyDuplicateRepairPlan(duplicatePlan);
+        }).catch(() => {});
+      }
+    } catch {
+      if (loadAllDataRequestRef.current !== requestId) {
+        return;
+      }
+      await loadAllData();
+    } finally {
+      if (loadAllDataRequestRef.current === requestId) {
+        pendingDataRequestRef.current = null;
+      }
+    }
+  }, [applySearchResults, applyMilestoneIds, applyDuplicateRepairPlan, loadAllData]);
+
   const refreshData = useCallback(async () => {
-    await loadAllData();
-    // Drafts are loaded by the drafts page, not by loadAllData, and creating, editing, promoting or
+    await refreshTasksData(false);
+    // Drafts are loaded by the drafts page, not by this refresh, and creating, editing, promoting or
     // demoting a task can change them, so tell that page to reload whenever the rest of the data does.
+    window.dispatchEvent(new Event('drafts-updated'));
+  }, [refreshTasksData]);
+
+  const refreshMilestoneData = useCallback(async () => {
+    await refreshTasksData(true);
+    window.dispatchEvent(new Event('drafts-updated'));
+  }, [refreshTasksData]);
+
+  const fullRefreshData = useCallback(async () => {
+    await loadAllData();
     window.dispatchEvent(new Event('drafts-updated'));
   }, [loadAllData]);
 
 	const applyReorderedTasks = useCallback((updatedTasks: Task[], requestTask: Task) => {
-		setTasks((current) => {
-			const currentRequest = current.find((task) => task.id === requestTask.id);
-			if (currentRequest !== requestTask) return current;
-			const updatesById = new Map(updatedTasks.map((task) => [task.id, task]));
-			return current.map((task) => updatesById.get(task.id) ?? task);
-		});
+		const current = tasksRef.current;
+		const currentRequest = current.find((task) => task.id === requestTask.id);
+		if (currentRequest !== requestTask) return;
+		const updatesById = new Map(updatedTasks.map((task) => [task.id, task]));
+		const next = current.map((task) => updatesById.get(task.id) ?? task);
+		tasksRef.current = next;
+		setTasks(next);
 	}, []);
 
-  // Sync editingTask with refreshed tasks data to prevent stale state
-  // This fixes the bug where acceptance criteria disappears after save (GitHub #467)
+  /**
+   * A detail read that could not be shown. A session that has nothing on screen yet cannot stay
+   * open, and one opened from a link says why on the way back. A later read failing leaves what is
+   * already on screen alone: the last successful read is better than an empty modal.
+   */
+  const reportDetailReadFailure = useCallback(
+    (taskId: string, error: unknown, fromRoute: boolean) => {
+      clearTaskModal();
+      if (!fromRoute || !routeBasePath) return;
+      const message =
+        error instanceof ApiError && error.status === 409
+          ? `Task "${taskId}" is ambiguous. Repair duplicate task IDs before opening this link.`
+          : error instanceof ApiError && error.status === 400
+            ? `"${taskId}" is not a valid task ID.`
+            : error instanceof ApiError && error.status === 404
+              ? `Task "${taskId}" was not found.`
+              : `Task "${taskId}" could not be opened. Try again.`;
+      navigate(`${routeBasePath}${location.search}`, {
+        replace: true,
+        state: { taskRouteError: message } satisfies TaskRouteNavigationState,
+      });
+    },
+    [clearTaskModal, location.search, navigate, routeBasePath],
+  );
+  const reportDetailReadFailureRef = useRef(reportDetailReadFailure);
   useEffect(() => {
-    if (editingTask && showModal) {
-      const updatedTask = tasks.find(t => t.id === editingTask.id);
-      if (updatedTask && updatedTask !== editingTask) {
-        setEditingTask(updatedTask);
-      }
-    }
-  }, [tasks, editingTask, showModal]);
+    reportDetailReadFailureRef.current = reportDetailReadFailure;
+  }, [reportDetailReadFailure]);
+
+  /**
+   * The one rule for detail reads: the modal shows the read for (session, task id, refresh
+   * generation), and a response may change it only while that key is still what the modal is
+   * waiting for. Each entry path opens a session before any read starts, every refresh generation
+   * reads once, and React's cleanup retires the read a newer key replaced.
+   *
+   * Navigating to another task, closing the modal, a refresh arriving, a task opened from a page
+   * without a task route, and a draft opened from its own list are the same event under that rule,
+   * so none of them can answer for another. Nothing here consults the task list, which is why a
+   * draft - never part of that corpus - refreshes like everything else, and why a dependency
+   * completing somewhere the browser cannot see still reaches the modal: the refresh generation
+   * advances, and the detail read is authoritative about what changed.
+   */
+  const detailSession = modal.kind === 'detail' ? modal.session : null;
+  const detailId = modal.kind === 'detail' ? modal.id : null;
+  useEffect(() => {
+    if (detailSession === null || detailId === null) return;
+    let active = true;
+    void apiClient
+      .fetchTask(detailId)
+      .then(detail => {
+        if (!active) return;
+        setModal(current =>
+          current.kind === 'detail' && current.session === detailSession && current.id === detailId
+            ? { ...current, value: detail }
+            : current,
+        );
+      })
+      .catch(error => {
+        if (!active) return;
+        const current = modalRef.current;
+        if (current.kind !== 'detail' || current.session !== detailSession || current.id !== detailId) return;
+        if (current.value !== null) return;
+        reportDetailReadFailureRef.current(detailId, error, current.fromRoute);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [detailSession, detailId, dataVersion]);
 
   useEffect(() => {
     const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
@@ -584,21 +809,29 @@ function AppContent() {
 	  const loadingState = parseBrowserLoadingState(event.data);
 	  if (loadingState?.type === 'loading') {
 		if (pendingDataRequestRef.current === null) protocolOnlyLoadingRef.current = true;
-		setIsLoading(true);
-		setLoadError(null);
+		// Once content is on screen it stays interactive; the header indexing
+		// indicator (driven by loadingMessage) is the only loading signal. A new
+		// loading attempt always clears a stale terminal error, so a passive
+		// client shows its cached content instead of the obsolete failure.
+		if (!hasLoadedDataRef.current) setIsLoading(true);
+		applyLoadError(null);
 		setLoadingMessage(loadingState.message);
 	  } else if (loadingState?.type === 'loaded') {
 		const shouldRefresh = protocolOnlyLoadingRef.current && pendingDataRequestRef.current === null;
 		protocolOnlyLoadingRef.current = false;
 		setLoadingMessage(null);
-		if (shouldRefresh) void refreshData();
+		// Indexing can surface cross-branch data (including duplicate findings)
+		// that an incremental reconcile would miss, so reload everything.
+		if (shouldRefresh) void fullRefreshData();
 	  } else if (loadingState?.type === 'error') {
 		protocolOnlyLoadingRef.current = false;
 		setIsLoading(false);
 		setLoadingMessage(null);
-		setLoadError(new Error(loadingState.message));
+		applyLoadError(new Error(loadingState.message));
       } else if (event.data === "tasks-updated") {
-        refreshData();
+        void refreshData();
+      } else if (event.data === "milestones-updated") {
+        void refreshMilestoneData();
       } else if (event.data === "config-updated") {
         // Reload statuses when config changes
         loadAllData();
@@ -607,13 +840,13 @@ function AppContent() {
 	ws.onclose = () => {
 		if (disposed || !protocolOnlyLoadingRef.current || pendingDataRequestRef.current !== null) return;
 		protocolOnlyLoadingRef.current = false;
-		void refreshData();
+		void fullRefreshData();
 	};
 	return () => {
 		disposed = true;
 		ws.close();
 	};
-  }, [refreshData, loadAllData]);
+  }, [refreshData, refreshMilestoneData, fullRefreshData, loadAllData, applyLoadError]);
 
   const handleSubmitTask = async (taskData: Partial<Task>) => {
     // Don't catch errors here - let TaskDetailsModal handle them
@@ -638,13 +871,45 @@ function AppContent() {
     await refreshData();
   };
 
+  // Archiving and demoting vacate the task ID, so any dependent that referenced it was changed
+  // too. Report that the same way a created task is confirmed instead of changing files silently.
+  // The ID list arrives over the wire, so a response that omits it reports nothing rather than
+  // throwing in the middle of the flow that was about to close the dialog.
+  const reportDependencyCleanup = (taskId: string, cleanedTaskIds: string[] | undefined) => {
+    const message = formatDependencyCleanupMessage(taskId, cleanedTaskIds ?? []);
+    if (!message) return;
+    // A second cleanup within the display window must not inherit the first one's expiry, or the
+    // pending timeout clears a notice the reader has only just been shown.
+    if (dependencyCleanupTimer.current) clearTimeout(dependencyCleanupTimer.current);
+    setDependencyCleanupNotice(message);
+    dependencyCleanupTimer.current = setTimeout(() => {
+      dependencyCleanupTimer.current = null;
+      setDependencyCleanupNotice(null);
+    }, 4000);
+  };
+
   const handleArchiveTask = async (taskId: string) => {
     try {
-      await apiClient.archiveTask(taskId);
+      const { cleanedTaskIds } = await apiClient.archiveTask(taskId);
+      // Record what the archive changed before anything that can fail or be superseded, the way
+      // the demotion flow already does: other tasks were rewritten, and that is not the refresh's
+      // news to lose.
+      reportDependencyCleanup(taskId, cleanedTaskIds);
       handleCloseModal();
       await refreshData();
     } catch (error) {
       console.error('Failed to archive task:', error);
+      // The task reached the archive and something after it failed. Close and refresh so the view
+      // shows what happened, and say so: a dialog left open on an archived task invites a retry.
+      if (readMovedFailureState(error, 'archiveState')) {
+        handleCloseModal();
+        try {
+          window.alert('The task was archived, but cleanup failed and references may be stale. Check the tasks that referenced it before retrying.');
+        } catch {
+          // A blocked dialog must not take the refresh down with it.
+        }
+        await refreshData();
+      }
     }
   };
 
@@ -652,8 +917,9 @@ function AppContent() {
   if (isInitialized === null) {
     return (
       <ThemeProvider>
-        <div className="min-h-screen flex items-center justify-center bg-gray-100 dark:bg-gray-900">
-          <div className="text-lg text-gray-600 dark:text-gray-300">Loading...</div>
+        <div className="min-h-screen flex items-center justify-center bg-gray-100 dark:bg-gray-900" role="status">
+          <LoadingSpinner size="md" text="" />
+          <span className="sr-only">Loading</span>
         </div>
       </ThemeProvider>
     );
@@ -681,7 +947,6 @@ function AppContent() {
       milestoneEntities={milestoneEntities}
       archivedMilestones={archivedMilestones}
       isLoading={isLoading}
-      loadingMessage={loadingMessage}
       loadError={loadError}
       hideEmptyColumns={config?.hideEmptyColumns ?? false}
       dateFormat={config?.dateFormat}
@@ -769,7 +1034,7 @@ function AppContent() {
                 milestoneEntities={milestoneEntities}
                 archivedMilestones={archivedMilestones}
                 onEditTask={handleEditTask}
-                onRefreshData={refreshData}
+                onRefreshData={refreshMilestoneData}
                 dateFormat={config?.dateFormat}
               />
             }
@@ -811,6 +1076,7 @@ function AppContent() {
         onSaved={refreshData}
         onSubmit={handleSubmitTask}
         onArchive={editingTask ? () => handleArchiveTask(editingTask.id) : undefined}
+        onDependencyCleanup={reportDependencyCleanup}
         availableStatuses={isDraftMode ? ['Draft', ...statuses] : statuses}
         availableTasks={tasks}
         onNavigateToTask={handleEditTask}
@@ -825,6 +1091,13 @@ function AppContent() {
         defaultAssignee={config?.defaultAssignee}
         dateFormat={config?.dateFormat}
       />
+
+      {dependencyCleanupNotice && (
+        <SuccessToast
+          message={dependencyCleanupNotice}
+          onDismiss={() => setDependencyCleanupNotice(null)}
+        />
+      )}
 
       {/* Task Creation Confirmation Toast */}
       {taskConfirmation && (
