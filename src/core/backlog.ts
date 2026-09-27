@@ -1107,7 +1107,16 @@ export class Core {
 			if (identityResolution.status === "ambiguous") {
 				throw new AmbiguousTaskIdError(taskId, identityResolution.candidates);
 			}
-			return identityResolution.status === "found" ? identityResolution.task : null;
+			if (identityResolution.status === "found") return identityResolution.task;
+			// Diagnose a file skipped during loading without bypassing the identity index's result.
+			try {
+				await filesystem.loadTask(taskId);
+			} catch (error) {
+				if (projectChanged()) continue;
+				throw error;
+			}
+			if (projectChanged()) continue;
+			return null;
 		}
 	}
 
@@ -1173,7 +1182,10 @@ export class Core {
 		const index = await this.buildWorkingCopyTaskIndex(activeTasks);
 		const resolution = forMutation ? index.resolveForMutation(taskId) : index.resolveForRead(taskId);
 		if (resolution.status === "ambiguous") throw new AmbiguousTaskIdError(taskId, resolution.candidates);
-		return resolution.status === "found" ? { ...resolution.task } : null;
+		if (resolution.status === "found") return { ...resolution.task };
+		// Lists skip damaged files; an explicit lookup must still report why its task cannot load.
+		await this.fs.loadTask(taskId);
+		return null;
 	}
 
 	private async loadTaskForMutation(taskId: string, options: TaskReadOptions = {}): Promise<Task | null> {
@@ -1184,7 +1196,9 @@ export class Core {
 		await store.refreshTasks();
 		const resolution = store.resolveTaskForMutation(taskId);
 		if (resolution.status === "ambiguous") throw new AmbiguousTaskIdError(taskId, resolution.candidates);
-		return resolution.status === "found" ? { ...resolution.task } : null;
+		if (resolution.status === "found") return { ...resolution.task };
+		await this.fs.loadTask(taskId);
+		return null;
 	}
 
 	async getTaskContent(taskId: string): Promise<string | null> {
