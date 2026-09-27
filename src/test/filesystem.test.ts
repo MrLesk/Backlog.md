@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, spyOn } from "bun:test";
 import * as fsPromises from "node:fs/promises";
-import { mkdir, readdir, rename, stat } from "node:fs/promises";
+import { chmod, mkdir, readdir, rename, stat } from "node:fs/promises";
 import { join } from "node:path";
 import { FileSystem } from "../file-system/operations.ts";
 import { serializeTask } from "../markdown/serializer.ts";
@@ -290,6 +290,15 @@ Invalid content`,
 			// Check that file exists in archive
 			const archiveFiles = await readdir(join(TEST_DIR, "backlog", "archive", "tasks"));
 			expect(archiveFiles.some((f) => f.startsWith("task-1"))).toBe(true);
+		});
+
+		it("surfaces archive scan failures while determining occupied task IDs", async () => {
+			await chmod(filesystem.archiveTasksDir, 0o000);
+			try {
+				await expect(filesystem.listOccupiedArchivedTaskFileIds()).rejects.toMatchObject({ code: "EACCES" });
+			} finally {
+				await chmod(filesystem.archiveTasksDir, 0o775);
+			}
 		});
 
 		it("should demote a task to drafts with new draft- ID", async () => {

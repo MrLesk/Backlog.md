@@ -1106,8 +1106,9 @@ export class FileSystem {
 					followSymlinks: true,
 				}),
 			);
-		} catch {
-			return [];
+		} catch (error) {
+			if ((error as NodeJS.ErrnoException).code === "ENOENT") return [];
+			throw error;
 		}
 		return filenames.flatMap((filename) => {
 			const body = filename.match(idRegex)?.[1];
