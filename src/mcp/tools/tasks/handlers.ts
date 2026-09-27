@@ -1,6 +1,8 @@
 import { basename, join } from "node:path";
 import { DEFAULT_STATUSES } from "../../../constants/index.ts";
+import { TaskArchiveStatusError, type VacatedTaskResult } from "../../../core/backlog.ts";
 import { findLocalDuplicateTaskIds } from "../../../core/duplicate-task-repair.ts";
+import { loadTaskDetail, loadTaskListItems } from "../../../core/task-detail.ts";
 import { isCreateLockError, isTaskLockError } from "../../../file-system/operations.ts";
 import {
 	isLocalEditableTask,
@@ -9,13 +11,14 @@ import {
 	type TaskListFilter,
 } from "../../../types/index.ts";
 import type { TaskEditArgs, TaskEditRequest } from "../../../types/task-edit-args.ts";
+import { formatAcceptanceCriteriaSummarySuffix } from "../../../ui/acceptance-criteria-progress.ts";
+import { formatDependencyCleanupMessage } from "../../../utils/dependency-graph.ts";
 import { formatDuplicateTaskIdWarning } from "../../../utils/duplicate-detection.ts";
 import {
 	createMilestoneFilterValueResolver,
 	type MilestoneFilterValueResolver,
 } from "../../../utils/milestone-filter.ts";
 import { resolveMilestoneInputForStorage } from "../../../utils/milestone-storage.ts";
-import { getTaskReadiness, loadReadinessGraph } from "../../../utils/readiness.ts";
 import { buildTaskUpdateInput } from "../../../utils/task-edit-builder.ts";
 import { applyTaskFilters, createTaskSearchIndex } from "../../../utils/task-search.ts";
 import { sortByOrdinalAndPriority } from "../../../utils/task-sorting.ts";
@@ -106,8 +109,9 @@ export class TaskHandlers {
 		const projectIndicator = task.project ? `[${task.project}] ` : "";
 		const status = task.status || (task.source === "completed" ? "Done" : "");
 		const statusText = options.includeStatus && status ? ` (${status})` : "";
-		const dueDate = task.dueDate ? ` (due ${formatUtcDateForDisplay(task.dueDate, { appendUtcLabel: true })})` : "";
-		return `  ${priorityIndicator}${typeIndicator}${projectIndicator}${task.id} - ${task.title}${statusText}${dueDate}`;
+		const acceptanceCriteria = formatAcceptanceCriteriaSummarySuffix(task);
+		const dueDate = task.dueDate ? ` (due ${formatUtcDateForDisplay(task.dueDate)})` : "";
+		return `  ${priorityIndicator}${typeIndicator}${projectIndicator}${task.id} - ${task.title}${statusText}${acceptanceCriteria}${dueDate}`;
 	}
 
 	private async loadTaskOrThrow(id: string): Promise<Task> {
@@ -157,7 +161,7 @@ export class TaskHandlers {
 				disableDefinitionOfDoneDefaults: args.disableDefinitionOfDoneDefaults,
 			});
 
-			return await formatTaskCallResult(createdTask);
+			return await formatTaskCallResult(await loadTaskDetail(this.core, createdTask));
 		} catch (error) {
 			if (isCreateLockError(error)) {
 				throw new BacklogToolError(error.message, "OPERATION_FAILED");
@@ -176,7 +180,7 @@ export class TaskHandlers {
 		const config = await this.core.filesystem.loadConfig();
 		const priorities = config?.priorities;
 		if (this.isDraftStatus(args.status)) {
-			const drafts = applyTaskFilters(await this.core.filesystem.listDrafts(), {
+			let drafts = applyTaskFilters(await this.core.filesystem.listDrafts(), {
 				query: args.search,
 				// Searching drafts has always narrowed to the literal "Draft" status; listing them has not.
 				status: args.search || args.type?.length || args.project?.length ? "Draft" : undefined,
@@ -188,8 +192,10 @@ export class TaskHandlers {
 				resolveMilestoneLabel: args.milestone ? await this.createMilestoneFilterValueResolver() : undefined,
 				labels: args.labels,
 				labelMatch: "all",
-				ready: args.ready ? await loadReadinessGraph(this.core) : undefined,
 			});
+			if (args.ready) {
+				drafts = (await loadTaskListItems(this.core, drafts)).filter((draft) => draft.isReady);
+			}
 
 			if (drafts.length === 0) {
 				return {
@@ -252,8 +258,9 @@ export class TaskHandlers {
 		});
 
 		if (args.ready) {
-			const readinessGraph = await loadReadinessGraph(this.core);
-			tasks = tasks.filter((task) => getTaskReadiness(task, readinessGraph).isReady);
+			// The same shared verdict `task list --ready` filters on, resolved against the whole
+			// corpus rather than the tasks the filters above left.
+			tasks = (await loadTaskListItems(this.core, tasks)).filter((task) => task.isReady);
 		}
 
 		const filteredByLabels = tasks.filter((task) => isLocalEditableTask(task));
@@ -432,14 +439,16 @@ export class TaskHandlers {
 	async viewTask(args: { id: string }): Promise<CallToolResult> {
 		const draft = await this.core.filesystem.loadDraft(args.id);
 		if (draft) {
-			return await formatTaskCallResult(draft);
+			return await formatTaskCallResult(await loadTaskDetail(this.core, draft));
 		}
 
 		const task = await this.core.getTaskWithSubtasks(args.id);
 		if (!task) {
 			throw new BacklogToolError(`Task not found: ${args.id}`, "TASK_NOT_FOUND");
 		}
-		return await formatTaskCallResult(task);
+		// Task detail is the only MCP result read through the detail path, so it is the only one that
+		// carries the graph. The edit and lifecycle confirmations stay as short as they were.
+		return await formatTaskCallResult(await loadTaskDetail(this.core, task));
 	}
 
 	async archiveTask(args: { id: string }): Promise<CallToolResult> {
@@ -450,7 +459,7 @@ export class TaskHandlers {
 				throw new BacklogToolError(`Failed to archive task: ${args.id}`, "OPERATION_FAILED");
 			}
 
-			return await formatTaskCallResult(draft, [`Archived draft ${draft.id}.`]);
+			return await formatTaskCallResult(await loadTaskDetail(this.core, draft), [`Archived draft ${draft.id}.`]);
 		}
 
 		const task = await this.loadTaskOrThrow(args.id);
@@ -459,22 +468,26 @@ export class TaskHandlers {
 			throw new BacklogToolError(`Cannot archive task from another branch: ${task.id}`, "VALIDATION_ERROR");
 		}
 
-		const statuses = await this.getConfiguredStatuses();
-		const terminalStatus = getTerminalStatus(statuses) ?? "Done";
-		if (isTerminalStatus(task.status, statuses)) {
-			throw new BacklogToolError(
-				`Task ${task.id} is ${terminalStatus}. ${terminalStatus} tasks should be completed (moved to the completed folder), not archived. Use task_complete instead.`,
-				"VALIDATION_ERROR",
-			);
+		let archived: VacatedTaskResult;
+		try {
+			archived = await this.core.archiveTask(task.id);
+		} catch (error) {
+			if (error instanceof TaskArchiveStatusError) {
+				throw new BacklogToolError(`${error.message} In MCP, use task_complete.`, "VALIDATION_ERROR");
+			}
+			throw error;
 		}
-
-		const success = await this.core.archiveTask(task.id);
+		const { success, cleanedTaskIds } = archived;
 		if (!success) {
 			throw new BacklogToolError(`Failed to archive task: ${args.id}`, "OPERATION_FAILED");
 		}
 
 		const refreshed = (await this.core.getTask(task.id)) ?? task;
-		return await formatTaskCallResult(refreshed);
+		const cleanupMessage = formatDependencyCleanupMessage(task.id, cleanedTaskIds);
+		return await formatTaskCallResult(
+			await loadTaskDetail(this.core, refreshed),
+			cleanupMessage ? [`${cleanupMessage}.`] : undefined,
+		);
 	}
 
 	async completeTask(args: { id: string }): Promise<CallToolResult> {
@@ -501,28 +514,32 @@ export class TaskHandlers {
 			throw new BacklogToolError(`Failed to complete task: ${args.id}`, "OPERATION_FAILED");
 		}
 
-		return await formatTaskCallResult(task, [`Completed task ${task.id}.`], {
+		return await formatTaskCallResult(await loadTaskDetail(this.core, task), [`Completed task ${task.id}.`], {
 			filePathOverride: completedFilePath,
 		});
 	}
 
 	async demoteTask(args: { id: string }): Promise<CallToolResult> {
 		const task = await this.loadTaskOrThrow(args.id);
-		let success: boolean;
+		let demotion: VacatedTaskResult;
 		try {
-			success = await this.core.demoteTask(task.id, false);
+			demotion = await this.core.demoteTask(task.id, false);
 		} catch (error) {
 			if (isCreateLockError(error)) {
 				throw new BacklogToolError(error.message, "OPERATION_FAILED");
 			}
 			throw error;
 		}
-		if (!success) {
+		if (!demotion.success) {
 			throw new BacklogToolError(`Failed to demote task: ${args.id}`, "OPERATION_FAILED");
 		}
 
 		const refreshed = (await this.core.getTask(task.id)) ?? task;
-		return await formatTaskCallResult(refreshed);
+		const cleanupMessage = formatDependencyCleanupMessage(task.id, demotion.cleanedTaskIds);
+		return await formatTaskCallResult(
+			await loadTaskDetail(this.core, refreshed),
+			cleanupMessage ? [`${cleanupMessage}.`] : undefined,
+		);
 	}
 
 	async editTask(args: TaskEditRequest): Promise<CallToolResult> {
@@ -536,8 +553,12 @@ export class TaskHandlers {
 			if (typeof updateInput.milestone === "string") {
 				updateInput.milestone = await this.resolveMilestoneInput(updateInput.milestone);
 			}
-			const updatedTask = await this.core.editTaskOrDraft(args.id, updateInput);
-			return await formatTaskCallResult(updatedTask);
+			const { task: updatedTask, cleanedTaskIds } = await this.core.editTaskOrDraft(args.id, updateInput);
+			const cleanupMessage = formatDependencyCleanupMessage(args.id, cleanedTaskIds);
+			return await formatTaskCallResult(
+				await loadTaskDetail(this.core, updatedTask),
+				cleanupMessage ? [`${cleanupMessage}.`] : undefined,
+			);
 		} catch (error) {
 			if (isTaskLockError(error)) {
 				throw new BacklogToolError(error.message, "OPERATION_FAILED");

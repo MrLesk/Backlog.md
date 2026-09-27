@@ -1,23 +1,12 @@
 ## Backlog.md Overview (CLI)
 
-This project uses Backlog.md to track features, bugs, and structured work as tasks.
+Backlog.md tracks committed work: what will be built, fixed, or changed.
 
 ### When to Use Backlog
 
-Create a task when the work requires planning, decisions, or handoff notes.
+Create a task when work requires planning, decisions, or handoff notes. Search for an existing task first. Skip task creation for questions, exploration, and obvious mechanical edits.
 
-Ask: "Do I need to think about HOW to do this?"
-
-- Yes: search for an existing task first, then create one if needed.
-- No: do the small mechanical change directly.
-
-Create tasks for work like bug fixes that need investigation, feature work, API changes, refactors, or anything that should be reviewed as a commitment. Skip task creation for questions, explanations, quick lookups, and obvious mechanical edits.
-
-### Start Every Request Here
-
-Use this overview to decide what to read or run next.
-
-Search and read before changing anything:
+### Find and Read Work
 
 - `backlog search "query" --plain`
 - `backlog task list --status "<todo status>" --plain`
@@ -25,23 +14,24 @@ Search and read before changing anything:
 - `backlog task list --search "login" --labels frontend,bug --limit 20 --plain`
 - `backlog task view {{TASK_ID:123}} --plain`
 
-Use `--json` instead of `--plain` on `task list`, `task view`, `task <id>`, or `search` when a script needs stable versioned fields. Do not combine the two flags.
+For long lists, use `--max-count` and `--skip`, follow the printed `Next` command, or use `--count` for the total; command help covers the details.
 
-### Detailed Guides
+For scripts, `task list`, `task view`, `task <id>`, and `search` accept versioned `--json` output instead of `--plain`. `task list --json --watch` emits complete replacement responses; read successive JSON values, not individual lines. Filters and local scope are unchanged; intermediate edits may be coalesced. Restart for a fresh snapshot.
 
-**Required: read the matching guide below before creating, executing, or finalizing tasks. Do not rely on this overview alone for these actions.** The overview only tells you when to act; the guides define the required procedure, and skipping them produces inconsistent tasks and metadata.
+### Required Guides
 
-- `backlog instructions task-creation`
-  -> Read before creating tasks: how to search, scope, and create tasks
-- `backlog instructions task-execution`
-  -> Read before planning or updating task work: how to plan, update, and work through tasks
-- `backlog instructions task-finalization`
-  -> Read before finishing tasks: how to verify, summarize, and finish tasks
+Read the matching guide before taking these actions; this overview does not replace it:
 
-Use `backlog <command> --help` before unfamiliar operations. Command help includes input fields, read/write behavior, output shape, and examples.
+- `backlog instructions task-creation` — before creating or splitting tasks
+- `backlog instructions task-execution` — before planning, changing status or assignee, adding notes, or implementing
+- `backlog instructions task-finalization` — before checking acceptance criteria, writing final summaries, or marking work finished
 
-### Core Principle
+Use `backlog <command> --help` before unfamiliar operations. Help describes fields, output, and examples.
 
-Backlog tracks committed work: what will be built, fixed, or changed. Use the CLI for Backlog changes so metadata, file names, relationships, and history stay consistent.
+### Task Lifecycle
 
-Important: Do not edit Backlog task, draft, document, decision, or milestone markdown files directly. Use Backlog commands so automatic metadata stays complete.
+Mark finished work Done (or the configured final status). During periodic cleanup, use Complete (`backlog task complete {{TASK_ID:123}}`) to move it off the board while preserving its record and dependency links.
+
+Use Archive (`backlog task archive {{TASK_ID:123}}`) for canceled, duplicate, or invalid work. Archiving removes incoming dependencies and task references.
+
+Use the CLI for Backlog changes. Never edit task, draft, document, decision, or milestone markdown files directly; commands preserve metadata, relationships, and history.

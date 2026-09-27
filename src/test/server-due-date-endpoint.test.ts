@@ -63,7 +63,7 @@ describe("BacklogServer due date endpoints", () => {
 			handlers.handleCreateTask(
 				jsonRequest("/api/tasks", "POST", {
 					title: "Web due task",
-					dueDate: "2026-08-10T16:30+02:00",
+					dueDate: "2026-08-10",
 				}),
 			),
 			"server task creation",
@@ -71,10 +71,10 @@ describe("BacklogServer due date endpoints", () => {
 		);
 		expect(createdResponse.status).toBe(201);
 		const created = (await createdResponse.json()) as Task;
-		expect(created.dueDate).toBe("2026-08-10 14:30");
+		expect(created.dueDate).toBe("2026-08-10");
 
 		const viewed = (await (await handlers.handleGetTask(created.id)).json()) as Task;
-		expect(viewed.dueDate).toBe("2026-08-10 14:30");
+		expect(viewed.dueDate).toBe("2026-08-10");
 
 		const clearedResponse = await handlers.handleUpdateTask(
 			jsonRequest(`/api/tasks/${created.id}`, "PUT", { dueDate: null }),
@@ -84,11 +84,11 @@ describe("BacklogServer due date endpoints", () => {
 		expect(((await clearedResponse.json()) as Task).dueDate).toBeUndefined();
 
 		const invalidResponse = await handlers.handleUpdateTask(
-			jsonRequest(`/api/tasks/${created.id}`, "PUT", { dueDate: "2026-08-10" }),
+			jsonRequest(`/api/tasks/${created.id}`, "PUT", { dueDate: "10/08/2026" }),
 			created.id,
 		);
 		expect(invalidResponse.status).toBe(400);
-		expect(await invalidResponse.text()).toContain("Date-only values are not supported");
+		expect(await invalidResponse.text()).toContain("YYYY-MM-DD");
 		const invalidUpdateType = await handlers.handleUpdateTask(
 			jsonRequest(`/api/tasks/${created.id}`, "PUT", { dueDate: false }),
 			created.id,
@@ -106,7 +106,7 @@ describe("BacklogServer due date endpoints", () => {
 			handlers.handleCreateMilestone(
 				jsonRequest("/api/milestones", "POST", {
 					title: "Web release",
-					dueDate: "2026-09-01T14:00+02:00",
+					dueDate: "2026-09-01",
 				}),
 			),
 			"server milestone creation",
@@ -114,21 +114,21 @@ describe("BacklogServer due date endpoints", () => {
 		);
 		expect(createdResponse.status).toBe(201);
 		const created = (await createdResponse.json()) as Milestone;
-		expect(created.dueDate).toBe("2026-09-01 12:00");
+		expect(created.dueDate).toBe("2026-09-01");
 
 		const listed = (await (await handlers.handleListMilestones()).json()) as Milestone[];
-		expect(listed[0]?.dueDate).toBe("2026-09-01 12:00");
+		expect(listed[0]?.dueDate).toBe("2026-09-01");
 
 		const updatedResponse = await handlers.handleUpdateMilestone(
 			jsonRequest(`/api/milestones/${created.id}`, "PUT", {
 				title: created.title,
-				dueDate: "2026-09-02T13:30Z",
+				dueDate: "2026-09-02",
 			}),
 			created.id,
 		);
 		expect(updatedResponse.status).toBe(200);
 		const updated = (await updatedResponse.json()) as { milestone?: Milestone };
-		expect(updated.milestone?.dueDate).toBe("2026-09-02 13:30");
+		expect(updated.milestone?.dueDate).toBe("2026-09-02");
 
 		const clearedResponse = await handlers.handleUpdateMilestone(
 			jsonRequest(`/api/milestones/${created.id}`, "PUT", {
@@ -164,7 +164,7 @@ describe("BacklogServer due date endpoints", () => {
 		console.error = () => {};
 		try {
 			const response = await handlers.handleCreateMilestone(
-				jsonRequest("/api/milestones", "POST", { title: "Internal failure", dueDate: "2026-09-01T12:00Z" }),
+				jsonRequest("/api/milestones", "POST", { title: "Internal failure", dueDate: "2026-09-01" }),
 			);
 			expect(response.status).toBe(500);
 			expect(await response.json()).toEqual({ error: "Failed to create milestone" });

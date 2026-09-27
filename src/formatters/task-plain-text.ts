@@ -1,3 +1,4 @@
+import type { TaskDetail } from "../core/task-detail.ts";
 import type { Task } from "../types/index.ts";
 import type { ChecklistItem } from "../ui/checklist.ts";
 import { transformCodePathsPlain } from "../ui/code-path.ts";
@@ -5,6 +6,7 @@ import { formatStatusWithIcon } from "../ui/status-icon.ts";
 import { formatPriorityLabel } from "../utils/priority-config.ts";
 import { sortByTaskId } from "../utils/task-sorting.ts";
 import { formatUtcDateForDisplay, type UtcDateDisplayOptions } from "../utils/utc-date-display.ts";
+import { formatDependencyGraphLines } from "./dependency-graph-text.ts";
 
 export type TaskPlainTextOptions = {
 	filePathOverride?: string;
@@ -73,7 +75,14 @@ function formatCommentHeader(
 	return parts.join(" - ");
 }
 
-export function formatTaskPlainText(task: Task, options: TaskPlainTextOptions = {}): string {
+/** The graph block task detail renders, with its heading, or no lines at all for an isolated task. */
+function formatDependencyGraphBlock(task: TaskDetail): string[] {
+	const graphLines = formatDependencyGraphLines(task.dependencyGraph);
+	if (graphLines.length === 0) return [];
+	return ["", "Dependency Graph:", "-".repeat(50), ...graphLines];
+}
+
+export function formatTaskPlainText(task: TaskDetail, options: TaskPlainTextOptions = {}): string {
 	const lines: string[] = [];
 	const filePath = options.filePathOverride ?? task.filePath;
 
@@ -116,7 +125,8 @@ export function formatTaskPlainText(task: Task, options: TaskPlainTextOptions = 
 		lines.push(`Updated: ${formatDateForDisplay(task.updatedDate, plainDateDisplayOptions)}`);
 	}
 	if (task.dueDate) {
-		lines.push(`Due: ${formatDateForDisplay(task.dueDate, plainDateDisplayOptions)}`);
+		// A due date is a plain day: no time to mark UTC, and no timezone meaning to explain.
+		lines.push(`Due: ${formatDateForDisplay(task.dueDate)}`);
 	}
 
 	if (task.labels?.length) {
@@ -144,10 +154,6 @@ export function formatTaskPlainText(task: Task, options: TaskPlainTextOptions = 
 		}
 	}
 
-	if (task.dependencies?.length) {
-		lines.push(`Dependencies: ${task.dependencies.join(", ")}`);
-	}
-
 	if (task.references?.length) {
 		lines.push(`References: ${task.references.join(", ")}`);
 	}
@@ -156,9 +162,8 @@ export function formatTaskPlainText(task: Task, options: TaskPlainTextOptions = 
 		lines.push(`Documentation: ${task.documentation.join(", ")}`);
 	}
 
-	if (task.modifiedFiles?.length) {
-		lines.push(`Modified files: ${task.modifiedFiles.join(", ")}`);
-	}
+	// Every plain task output is a detail read, so this replaces the raw dependency ID list entirely.
+	lines.push(...formatDependencyGraphBlock(task));
 
 	lines.push("");
 	lines.push("Description:");
@@ -200,6 +205,13 @@ export function formatTaskPlainText(task: Task, options: TaskPlainTextOptions = 
 		lines.push("Implementation Notes:");
 		lines.push("-".repeat(50));
 		lines.push(transformCodePathsPlain(implementationNotes));
+		lines.push("");
+	}
+
+	// Records what the work touched, so it belongs with the plan and the notes rather than with the
+	// metadata you read before starting.
+	if (task.modifiedFiles?.length) {
+		lines.push(`Modified files: ${task.modifiedFiles.join(", ")}`);
 		lines.push("");
 	}
 

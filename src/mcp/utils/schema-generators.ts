@@ -152,7 +152,7 @@ function generateDueDateFieldSchema(description: string, clearable = false): Jso
 	return {
 		type: clearable ? ["string", "null"] : "string",
 		maxLength: 64,
-		description: `${description} Use a UTC datetime such as 2026-08-10 14:30 or an ISO datetime with an explicit offset. Date-only values are rejected.`,
+		description: `${description} Use a date such as 2026-08-10. A due date names a day and carries no time.`,
 	};
 }
 
@@ -173,7 +173,7 @@ export function generateTaskCreateSchema(config: BacklogConfig): JsonSchema {
 				maxLength: 10000,
 			},
 			status: generateStatusFieldSchema(config),
-			dueDate: generateDueDateFieldSchema("Optional task due date and time."),
+			dueDate: generateDueDateFieldSchema("Optional task due date."),
 			priority: generatePriorityFieldSchema(config),
 			type: generateTypeFieldSchema(config),
 			...(getProjectValues(config).length > 0 ? { project: generateProjectFieldSchema(config) } : {}),
@@ -294,7 +294,7 @@ export function generateTaskEditSchema(config: BacklogConfig): JsonSchema {
 				maxLength: 10000,
 			},
 			status: generateStatusFieldSchema(config),
-			dueDate: generateDueDateFieldSchema("Set the task due date and time, or pass null to clear it.", true),
+			dueDate: generateDueDateFieldSchema("Set the task due date, or pass null to clear it.", true),
 			priority: generatePriorityFieldSchema(config),
 			type: generateTypeFieldSchema(config),
 			...(getProjectValues(config).length > 0 ? { project: generateProjectFieldSchema(config) } : {}),

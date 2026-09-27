@@ -4,13 +4,18 @@ import { $ } from "bun";
 import { Core } from "../core/backlog.ts";
 import { ContentStore } from "../core/content-store.ts";
 import { SearchService } from "../core/search-service.ts";
+import { withReadiness } from "../core/task-detail.ts";
 import { FileSystem } from "../file-system/operations.ts";
 import { McpServer } from "../mcp/server.ts";
 import { registerTaskTools } from "../mcp/tools/tasks/index.ts";
 import type { Task, TaskSearchResult } from "../types/index.ts";
 import { NO_MILESTONE_FILTER_VALUE } from "../utils/milestone-filter.ts";
-import { createReadinessGraph } from "../utils/readiness.ts";
-import { applyTaskFilters, buildTaskSearchBodyText, createTaskSearchIndex } from "../utils/task-search.ts";
+import {
+	applyTaskFilters,
+	buildTaskSearchBodyText,
+	createTaskSearchIndex,
+	type TaskFilterOptions,
+} from "../utils/task-search.ts";
 import { getTestCliPath } from "./test-cli.ts";
 import { createUniqueTestDir, initializeFilesystemTestProject, safeCleanup } from "./test-utils.ts";
 
@@ -196,10 +201,16 @@ describe("filters mean the same thing with and without a query", () => {
 	});
 
 	it("keeps dependency readiness meaning the same with and without a query", () => {
-		const ready = createReadinessGraph({ tasks: milestoneTasks, statuses: ["To Do", "In Progress", "Done"] });
+		// Readiness is no longer a filter predicate: it is derived over whatever the other filters
+		// left, against the whole corpus. A query must not change which rows come back ready.
+		const corpus = { tasks: milestoneTasks, completedTasks: [], statuses: ["To Do", "In Progress", "Done"] };
+		const readyIds = (options: TaskFilterOptions) =>
+			withReadiness(applyTaskFilters(milestoneTasks, options), corpus)
+				.filter((row) => row.isReady)
+				.map((row) => row.id);
 		// task-11 depends on an unfinished task-10, so it is the one readiness must drop.
-		expect(taskIds(applyTaskFilters(milestoneTasks, { ready }))).toEqual(["task-10", "task-12"]);
-		expect(taskIds(applyTaskFilters(milestoneTasks, { ready, query }))).toEqual(["task-10", "task-12"]);
+		expect(readyIds({})).toEqual(["task-10", "task-12"]);
+		expect(readyIds({ query })).toEqual(["task-10", "task-12"]);
 	});
 });
 

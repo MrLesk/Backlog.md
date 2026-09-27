@@ -6,7 +6,7 @@ import { type Milestone, type MilestoneBucket, type Task } from "../../types";
 import { createTaskSearchIndex } from "../../utils/task-search";
 import MilestoneTaskRow from "./MilestoneTaskRow";
 import Modal from "./Modal";
-import { formatStoredUtcDateForDisplay } from "../utils/date-display";
+import StoredDate from "./StoredDate";
 
 type RemoveTaskHandling = "clear" | "reassign";
 
@@ -297,7 +297,7 @@ const MilestonesPage: React.FC<MilestonesPageProps> = ({
 		setEditingBucket(bucket);
 		setEditMilestoneName(bucket.label || bucket.milestone);
 		const milestone = milestoneEntities.find((candidate) => milestoneKey(candidate.id) === milestoneKey(bucket.milestone));
-		setEditMilestoneDueDate(milestone?.dueDate?.replace(" ", "T") ?? "");
+		setEditMilestoneDueDate(milestone?.dueDate ?? "");
 		setModalError(null);
 		setError(null);
 		setSuccess(null);
@@ -503,7 +503,7 @@ const MilestonesPage: React.FC<MilestonesPageProps> = ({
 							<h3 className="text-base font-semibold text-gray-900 dark:text-gray-100 truncate">{bucket.label}</h3>
 							{milestoneEntity?.dueDate && (
 								<p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-									Due (UTC): {formatStoredUtcDateForDisplay(milestoneEntity.dueDate, dateFormat)}
+									Due: <StoredDate value={milestoneEntity.dueDate} dateFormat={dateFormat} />
 								</p>
 							)}
 						</div>
@@ -909,11 +909,11 @@ const MilestonesPage: React.FC<MilestonesPageProps> = ({
 					</div>
 					<div className="space-y-2">
 						<label htmlFor="new-milestone-due-date" className="text-sm font-medium text-gray-900 dark:text-gray-100">
-							Due (UTC)
+							Due
 						</label>
 						<input
 							id="new-milestone-due-date"
-							type="datetime-local"
+							type="date"
 							value={newMilestoneDueDate}
 							onChange={(event) => setNewMilestoneDueDate(event.target.value)}
 							className="w-full rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 px-3 py-2 text-sm text-gray-900 dark:text-gray-100 focus:border-transparent focus:outline-none focus:ring-2 focus:ring-blue-500"
@@ -960,11 +960,11 @@ const MilestonesPage: React.FC<MilestonesPageProps> = ({
 					</div>
 					<div className="space-y-2">
 						<label htmlFor="edit-milestone-due-date" className="text-sm font-medium text-gray-900 dark:text-gray-100">
-							Due (UTC)
+							Due
 						</label>
 						<input
 							id="edit-milestone-due-date"
-							type="datetime-local"
+							type="date"
 							value={editMilestoneDueDate}
 							onChange={(event) => setEditMilestoneDueDate(event.target.value)}
 							className="w-full rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 px-3 py-2 text-sm text-gray-900 dark:text-gray-100 focus:border-transparent focus:outline-none focus:ring-2 focus:ring-blue-500"

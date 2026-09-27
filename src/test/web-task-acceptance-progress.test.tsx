@@ -76,6 +76,33 @@ const renderList = (task: Task): HTMLElement => {
 const getProgress = (container: HTMLElement): HTMLElement | null =>
 	container.querySelector("[data-acceptance-criteria-progress]");
 
+// The header row is the metadata line that precedes the card title.
+const getHeaderRow = (container: HTMLElement): HTMLElement => {
+	const header = container.querySelector("h4")?.previousElementSibling as HTMLElement | null;
+	expect(header?.className).toContain("justify-between");
+	return header as HTMLElement;
+};
+
+const RING_CIRCUMFERENCE = 2 * Math.PI * 5;
+
+const expectRing = (progress: HTMLElement | null, checked: number, total: number) => {
+	const svg = progress?.querySelector("svg");
+	expect(svg).toBeTruthy();
+	const circles = svg?.querySelectorAll("circle");
+	if (checked === 0) {
+		expect(circles?.length).toBe(1);
+	} else {
+		expect(circles?.length).toBe(2);
+		expect(circles?.[1]?.getAttribute("stroke-dasharray")).toBe(
+			`${(checked / total) * RING_CIRCUMFERENCE} ${RING_CIRCUMFERENCE}`,
+		);
+	}
+	expect(progress?.textContent).toBe(`${checked}/${total}`);
+	expect(progress?.textContent).not.toContain("█");
+	expect(progress?.textContent).not.toContain("░");
+	expect(progress?.textContent).not.toContain("[");
+};
+
 afterEach(() => {
 	if (activeRoot) {
 		act(() => {
@@ -88,16 +115,24 @@ afterEach(() => {
 });
 
 describe("browser task acceptance criteria progress", () => {
-	it("renders partial progress with five cells on a board card", () => {
+	it("renders a partial progress ring at card density on a board card", () => {
 		const container = renderCard(createTask({ acceptanceCriteriaItems: createCriteria(4, 7) }));
 		const progress = getProgress(container);
 
 		expect(progress).toBeTruthy();
-		expect(progress?.dataset.cellCount).toBe("5");
-		expect(progress?.children[0]?.textContent).toBe("[███░░]");
-		expect(progress?.children[1]?.textContent).toBe("4/7");
+		expect(progress?.dataset.density).toBe("card");
+		expect(progress?.querySelector("svg")?.getAttribute("class")).toContain("h-3 w-3");
+		expectRing(progress, 4, 7);
 		expect(progress?.textContent).not.toContain("%");
 		expect(progress?.textContent).not.toContain("Acceptance criteria");
+	});
+
+	it("renders only the ring track when no criteria are checked", () => {
+		const container = renderCard(createTask({ acceptanceCriteriaItems: createCriteria(0, 4) }));
+		const progress = getProgress(container);
+
+		expect(progress).toBeTruthy();
+		expectRing(progress, 0, 4);
 	});
 
 	it("includes card progress in the accessible name", () => {
@@ -113,14 +148,57 @@ describe("browser task acceptance criteria progress", () => {
 		expect(getProgress(container)).toBeNull();
 	});
 
-	it("renders ten-cell partial progress in the wide list summary", () => {
+	it("renders the card ring in the header row beside the priority badge", () => {
+		const container = renderCard(createTask({ priority: "high", acceptanceCriteriaItems: createCriteria(4, 7) }));
+		const header = getHeaderRow(container);
+		const progress = getProgress(container);
+
+		expect(container.querySelectorAll("[data-acceptance-criteria-progress]").length).toBe(1);
+		expect(header.contains(progress)).toBe(true);
+		expectRing(progress, 4, 7);
+
+		// The ring joins the priority badge in a group that never shrinks the id side of the header,
+		// and the badge stays flush right so it sits where cards without progress already put it.
+		const rightGroup = header.lastElementChild as HTMLElement;
+		expect(rightGroup.className).toContain("shrink-0");
+		expect(rightGroup.contains(progress)).toBe(true);
+		expect(rightGroup.lastElementChild?.textContent).toBe("High");
+	});
+
+	it("renders the card ring in the header row when the task has no priority", () => {
+		const container = renderCard(createTask({ acceptanceCriteriaItems: createCriteria(2, 3) }));
+		const header = getHeaderRow(container);
+		const progress = getProgress(container);
+
+		expect(header.contains(progress)).toBe(true);
+		expect(header.textContent).toBe("task-12/3");
+	});
+
+	it("keeps the priority badge alone in the header row when the task has no progress", () => {
+		const container = renderCard(createTask({ status: "To Do", priority: "medium" }));
+		const header = getHeaderRow(container);
+
+		expect(getProgress(container)).toBeNull();
+		expect(header.textContent).toBe("task-1Med");
+	});
+
+	it("renders nothing beside the id when the task has neither progress nor priority", () => {
+		const container = renderCard(createTask({ status: "To Do" }));
+		const header = getHeaderRow(container);
+
+		expect(getProgress(container)).toBeNull();
+		expect(header.children.length).toBe(1);
+		expect(header.textContent).toBe("task-1");
+	});
+
+	it("renders a partial progress ring at list density in the wide list summary", () => {
 		const container = renderList(createTask({ acceptanceCriteriaItems: createCriteria(4, 7) }));
 		const progress = getProgress(container);
 
 		expect(progress).toBeTruthy();
-		expect(progress?.dataset.cellCount).toBe("10");
-		expect(progress?.children[0]?.textContent).toBe("[██████░░░░]");
-		expect(progress?.children[1]?.textContent).toBe("4/7");
+		expect(progress?.dataset.density).toBe("list");
+		expect(progress?.querySelector("svg")?.getAttribute("class")).toContain("h-3.5 w-3.5");
+		expectRing(progress, 4, 7);
 	});
 
 	it("keeps an all-checked task visibly In Progress in the wide list summary", () => {
@@ -129,17 +207,15 @@ describe("browser task acceptance criteria progress", () => {
 		const statusCell = container.querySelector("tbody tr td:nth-child(3)");
 
 		expect(progress).toBeTruthy();
-		expect(progress?.dataset.cellCount).toBe("10");
-		expect(progress?.children[0]?.textContent).toBe("[██████████]");
-		expect(progress?.children[1]?.textContent).toBe("3/3");
+		expect(progress?.dataset.density).toBe("list");
+		expectRing(progress, 3, 3);
 		expect(progress?.className).toContain("text-blue-600");
 		expect(statusCell?.textContent?.trim()).toBe("In Progress");
 	});
 
 	it("derives progress again when the task criteria change", () => {
 		const container = renderCard(createTask({ acceptanceCriteriaItems: createCriteria(2, 5) }));
-		expect(getProgress(container)?.children[0]?.textContent).toBe("[██░░░]");
-		expect(getProgress(container)?.children[1]?.textContent).toBe("2/5");
+		expectRing(getProgress(container), 2, 5);
 
 		act(() => {
 			activeRoot?.render(
@@ -151,7 +227,6 @@ describe("browser task acceptance criteria progress", () => {
 			);
 		});
 
-		expect(getProgress(container)?.children[0]?.textContent).toBe("[████░]");
-		expect(getProgress(container)?.children[1]?.textContent).toBe("4/5");
+		expectRing(getProgress(container), 4, 5);
 	});
 });

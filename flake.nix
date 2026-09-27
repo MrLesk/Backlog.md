@@ -31,7 +31,11 @@
             overlays = [ bun2nix.overlays.default ];
           };
           standardBun = pkgs.bun;
-          avx2BunArchive = standardBun.passthru.sources.x86_64-linux;
+          avx2BunArchive = pkgs.fetchurl {
+            # Pin an AVX2-only control independently of the packaged Bun runtime.
+            url = "https://github.com/oven-sh/bun/releases/download/bun-v1.3.13/bun-linux-x64.zip";
+            hash = "sha256-ecB3H6i5LDOq5B4VoODTB+qZ0OLwAxfHHGxTI3p44lo=";
+          };
           packageJson = builtins.fromJSON (builtins.readFile ./package.json);
           bunDeps = pkgs.bun2nix.fetchBunDeps {
             bunNix = ./bun.nix;

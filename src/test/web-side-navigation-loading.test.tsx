@@ -16,7 +16,7 @@ globalThis.localStorage = {
 	},
 } as Storage;
 
-const renderNavigation = (isLoading: boolean, taskCount: number, error?: Error, loadingMessage?: string): string =>
+const renderNavigation = (isLoading: boolean, taskCount: number, error?: Error): string =>
 	renderToString(
 		<MemoryRouter>
 			<SideNavigation
@@ -24,7 +24,6 @@ const renderNavigation = (isLoading: boolean, taskCount: number, error?: Error, 
 				docs={[]}
 				decisions={[]}
 				isLoading={isLoading}
-				loadingMessage={loadingMessage}
 				error={error}
 				onRetry={async () => {}}
 				onRefreshData={async () => {}}
@@ -32,7 +31,7 @@ const renderNavigation = (isLoading: boolean, taskCount: number, error?: Error, 
 		</MemoryRouter>,
 	);
 
-const renderBoard = (isLoading: boolean, error?: Error, loadingMessage?: string): string =>
+const renderBoard = (isLoading: boolean, error?: Error): string =>
 	renderToString(
 		<MemoryRouter>
 			<BoardPage
@@ -45,7 +44,6 @@ const renderBoard = (isLoading: boolean, error?: Error, loadingMessage?: string)
 				milestoneEntities={[]}
 				archivedMilestones={[]}
 				isLoading={isLoading}
-				loadingMessage={loadingMessage}
 				loadError={error}
 				onRefreshData={async () => {}}
 			/>
@@ -54,14 +52,13 @@ const renderBoard = (isLoading: boolean, error?: Error, loadingMessage?: string)
 
 describe("SideNavigation task loading", () => {
 	it("keeps navigation mounted while only the task count is loading", () => {
-		const phase = "Loading tasks from 7 local branches...";
-		const loading = renderNavigation(true, 0, undefined, phase);
+		const loading = renderNavigation(true, 0);
 		expect(loading).toContain("Kanban Board");
 		expect(loading).toContain("All Tasks");
 		expect(loading).toContain('aria-label="Loading task count"');
 		expect(loading).toContain('aria-label="Loading document count"');
 		expect(loading).toContain('aria-label="Loading decision count"');
-		expect(loading).toContain(phase);
+		expect(loading).toContain('aria-label="Loading content"');
 		expect(loading).not.toContain("No documents");
 		expect(loading).not.toContain("No decisions");
 
@@ -99,16 +96,14 @@ describe("SideNavigation task loading", () => {
 	});
 
 	it("keeps Kanban loading, loaded-empty, and error states distinct", () => {
-		const phase = "Applying latest task states from branch scans...";
-		const loading = renderBoard(true, undefined, phase);
+		const loading = renderBoard(true);
 		expect(loading).toContain("Kanban Board");
-		expect(loading).toContain(phase);
 		expect(loading).toContain('role="status"');
 		expect(loading).not.toContain("Empty");
 
 		const loadedEmpty = renderBoard(false);
 		expect(loadedEmpty).toContain("Empty");
-		expect(loadedEmpty).not.toContain(phase);
+		expect(loadedEmpty).not.toContain('aria-label="Loading tasks"');
 
 		const failed = renderBoard(false, new Error("corpus failed"));
 		expect(failed).toContain("Failed to load tasks");

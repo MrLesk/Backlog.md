@@ -4,7 +4,7 @@ import type { TaskStatistics } from '../../core/statistics';
 import type { Task } from '../../types';
 import { formatPriorityLabel } from '../../utils/priority-config';
 import LoadingSpinner from './LoadingSpinner';
-import { formatStoredUtcDateForDisplay } from '../utils/date-display';
+import StoredDate from './StoredDate';
 
 interface StatisticsData extends Omit<TaskStatistics, 'statusCounts' | 'priorityCounts'> {
 	statusCounts: Record<string, number>;
@@ -136,8 +136,6 @@ const Statistics: React.FC<StatisticsProps> = ({
 	}
 
 	const TaskPreview = ({ task, showDate, onClick }: { task: Task; showDate: 'created' | 'updated'; onClick?: () => void }) => {
-		const formatDate = (dateStr: string) => formatStoredUtcDateForDisplay(dateStr, dateFormat);
-
 		const displayDate = showDate === 'created' ? task.createdDate : task.updatedDate || task.createdDate;
 
 		return (
@@ -152,7 +150,7 @@ const Statistics: React.FC<StatisticsProps> = ({
 				<div className="flex-1 min-w-0">
 					<p className="font-medium text-gray-900 dark:text-gray-100 truncate">{task.title}</p>
 					<p className="text-sm text-gray-500 dark:text-gray-400">
-						{task.id} • {showDate === 'created' ? 'Created' : 'Updated'} {formatDate(displayDate)}
+						{task.id} • {showDate === 'created' ? 'Created' : 'Updated'} <StoredDate value={displayDate} dateFormat={dateFormat} />
 					</p>
 				</div>
 			</div>

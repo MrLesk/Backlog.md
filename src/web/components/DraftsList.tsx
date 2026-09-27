@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { type Task } from '../../types';
-import { formatStoredUtcDateForDisplay } from '../utils/date-display';
+import StoredDate from './StoredDate';
 import { formatPriorityLabel } from '../../utils/priority-config';
 
 interface DraftsListProps {
@@ -148,9 +148,9 @@ const DraftsList: React.FC<DraftsListProps> = ({ onEditTask, onNewDraft, dateFor
                     </div>
                     <div className="flex items-center space-x-4 text-sm text-gray-500 dark:text-gray-400 mb-2">
                       <span>{draft.id}</span>
-                      <span>Created: {formatStoredUtcDateForDisplay(draft.createdDate, dateFormat)}</span>
+                      <span>Created: <StoredDate value={draft.createdDate} dateFormat={dateFormat} /></span>
                       {draft.updatedDate && (
-                        <span>Updated: {formatStoredUtcDateForDisplay(draft.updatedDate, dateFormat)}</span>
+                        <span>Updated: <StoredDate value={draft.updatedDate} dateFormat={dateFormat} /></span>
                       )}
                     </div>
                     {draft.assignee && draft.assignee.length > 0 && (

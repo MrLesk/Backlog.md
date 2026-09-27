@@ -1,31 +1,34 @@
+import { DEFAULT_STATUSES } from "../../constants/index.ts";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { isLocalEditableTask, type AcceptanceCriterion, type Milestone, type Task, type TaskComment } from "../../types";
+import { type TaskDetail, taskDependencyGraph, taskReadiness } from "../../core/task-detail";
 import Modal from "./Modal";
-import { ApiError, apiClient, NetworkError } from "../lib/api";
+import { apiClient, NetworkError, readDemotionFailureCause, readMovedFailureState } from "../lib/api";
 import { useTheme } from "../contexts/ThemeContext";
 import MDEditor from "@uiw/react-md-editor";
 import AcceptanceCriteriaEditor from "./AcceptanceCriteriaEditor";
 import MermaidMarkdown from './MermaidMarkdown';
 import ChipInput from "./ChipInput";
 import DependencyInput from "./DependencyInput";
-import { formatStoredUtcDateForDisplay } from "../utils/date-display";
+import { DependencyGraphSection } from "./DependencyGraphSection";
+import StoredDate from "./StoredDate";
 import { getPriorityOptions } from "../../utils/priority-config";
 import { getProjectValues, resolveProjectValue } from "../../utils/project-config";
 import { getTaskTypeValues, resolveTaskTypeValue } from "../../utils/task-type-config";
-import { createReadinessGraph, formatReadinessBlockers, getTaskReadiness } from "../../utils/readiness";
-import { canonicalTaskId } from "../../utils/task-id.ts";
+import { formatReadinessBlockers } from "../../utils/readiness";
 import { buildTaskIdIndex, resolveTaskReference } from "../utils/task-id-links";
 import { findDirectSubtasks, findParentTask, summarizeSubtaskProgress } from "../../utils/task-subtasks.ts";
 import { isTerminalStatus } from "../../utils/terminal-status.ts";
 import { createUrlPath } from "../utils/urlHelpers";
 
 interface Props {
-  task?: Task; // Optional for create mode
+  task?: Task | TaskDetail; // Optional for create mode
   isOpen: boolean;
   onClose: () => void;
   onSaved?: () => Promise<void> | void; // refresh callback
   onSubmit?: (taskData: Partial<Task>) => Promise<void>; // For creating new tasks
   onArchive?: () => Promise<void> | void; // For archiving tasks
+  onDependencyCleanup?: (taskId: string, cleanedTaskIds: string[]) => void; // Reports records that lost a reference
   availableStatuses?: string[]; // Available statuses for new tasks
   availableTasks?: Task[]; // Shared task corpus for dependency selection
   onNavigateToTask?: (task: Task) => void; // Opens another task, preserving close/back context
@@ -91,20 +94,6 @@ const containsCommentDelimiterLine = (value: string): boolean => /^\s*---\s*$/m.
 
 const areJsonEqual = (first: unknown, second: unknown): boolean => JSON.stringify(first) === JSON.stringify(second);
 
-const getDemotionFailureState = (error: unknown): "moved" | "partial" | null => {
-	if (
-		!(error instanceof ApiError) ||
-		error.status === undefined ||
-		error.status < 500 ||
-		typeof error.data !== "object" ||
-		error.data === null
-	) {
-		return null;
-	}
-	const state = (error.data as { demotionState?: unknown }).demotionState;
-	return state === "moved" || state === "partial" ? state : null;
-};
-
 const isEditableKeyboardTarget = (target: EventTarget | null): boolean =>
   target instanceof Element &&
   target.closest('input, textarea, select, [contenteditable]:not([contenteditable="false"])') !== null;
@@ -124,7 +113,7 @@ const buildTaskDetailsFormState = ({
   defaultDefinitionOfDone,
   createModeAssignee,
 }: {
-  task?: Task;
+  task?: Task | TaskDetail;
   isCreateMode: boolean;
   isDraftMode?: boolean;
   availableStatuses?: string[];
@@ -149,7 +138,7 @@ const buildTaskDetailsFormState = ({
   references: task?.references || [],
   modifiedFiles: task?.modifiedFiles || [],
   milestone: task?.milestone || "",
-  dueDate: task?.dueDate?.replace(" ", "T") || "",
+  dueDate: task?.dueDate || "",
 });
 
 const SectionHeader: React.FC<{ title: string; right?: React.ReactNode }> = ({ title, right }) => (
@@ -194,6 +183,7 @@ export const TaskDetailsModal: React.FC<Props> = ({
   onSaved,
   onSubmit,
   onArchive,
+  onDependencyCleanup,
   availableStatuses = EMPTY_STATUSES,
   availableTasks = EMPTY_TASKS,
   onNavigateToTask,
@@ -406,7 +396,7 @@ export const TaskDetailsModal: React.FC<Props> = ({
   const [references, setReferences] = useState<string[]>(task?.references || []);
   const [modifiedFiles, setModifiedFiles] = useState<string[]>(task?.modifiedFiles || []);
   const [milestone, setMilestone] = useState<string>(task?.milestone || "");
-  const [dueDate, setDueDate] = useState<string>(task?.dueDate?.replace(" ", "T") || "");
+  const [dueDate, setDueDate] = useState<string>(task?.dueDate || "");
   const canonicalTypeSelection = resolveTaskTypeValue(taskType, typeOptions);
   const typeSelectionValue = canonicalTypeSelection ?? taskType;
   const canonicalProjectSelection = resolveProjectValue(project, projectOptions);
@@ -414,31 +404,22 @@ export const TaskDetailsModal: React.FC<Props> = ({
   const milestoneSelectionValue = resolveMilestoneToId(milestone);
   const hasMilestoneSelection = (milestoneEntities ?? []).some((milestoneEntity) => milestoneEntity.id === milestoneSelectionValue);
 
-  // Dependencies that already left the board corpus (completed tasks) are fetched by ID so the
-  // browser resolves the same task graph the CLI does instead of calling them unknown.
-  // Keyed on a string because availableTasks and dependencies are new arrays on every render.
-  const unresolvedDependencyKey = useMemo(() => {
-    const known = new Set(availableTasks.map((candidate) => canonicalTaskId(candidate.id)));
-    return dependencies
-      .filter((id) => !known.has(canonicalTaskId(id)))
-      .join(",");
-  }, [availableTasks, dependencies]);
-  const [offBoardDependencies, setOffBoardDependencies] = useState<Task[]>([]);
-  useEffect(() => {
-    if (!isOpen || unresolvedDependencyKey === "") {
-      setOffBoardDependencies((current) => (current.length === 0 ? current : []));
-      return;
-    }
-    let cancelled = false;
-    Promise.all(unresolvedDependencyKey.split(",").map((id) => apiClient.fetchTask(id).catch(() => null))).then(
-      (results) => {
-        if (!cancelled) setOffBoardDependencies(results.filter((result): result is Task => Boolean(result)));
-      },
-    );
-    return () => {
-      cancelled = true;
-    };
-  }, [isOpen, unresolvedDependencyKey]);
+  // Both derived at read time and delivered with the task itself, so there is nothing to resolve
+  // or fetch here: the verdict the modal shows is the one every other surface shows.
+  const dependencyGraph = taskDependencyGraph(task);
+  const readiness = taskReadiness(task);
+  // The verdict answers for the status and the dependencies it was read with, and it belongs to the
+  // Dependencies card, so it is shown only while all of that still describes what is on screen. An
+  // optimistic edit that has not come back yet - including one whose save failed and left the shown
+  // status ahead of the record - shows no badge rather than a claim about what it replaced.
+  const shownReadiness =
+    readiness &&
+    (readiness.isReady || readiness.isBlocked) &&
+    dependencies.length > 0 &&
+    dependencies.join(",") === (task?.dependencies ?? []).join(",") &&
+    status === (task?.status ?? "")
+      ? readiness
+      : null;
 
   // Dependency validation stays local-only (see BACK-623), so the picker must only suggest what a
   // save can accept: a cross-branch task is rejected, and so is a canonically ambiguous ID that more
@@ -449,25 +430,6 @@ export const TaskDetailsModal: React.FC<Props> = ({
     const index = buildTaskIdIndex(local);
     return local.filter((candidate) => resolveTaskReference(index, candidate.id) === candidate);
   }, [availableTasks]);
-
-  // Dependency readiness, derived at render time from the dependencies and status currently shown,
-  // so an inline edit is reflected immediately instead of waiting for a refresh.
-  // Only meaningful while dependencies exist and the task has not been completed.
-  const readiness = useMemo(() => {
-    if (!task || dependencies.length === 0) return null;
-    // Records resolved outside the board corpus come from backlog/completed, where the record's
-    // location is the completion evidence rather than its status string. That applies to the open
-    // task itself as well: a direct link can open a completed task whose historical status is no
-    // longer the configured terminal one.
-    const offBoard = [...offBoardDependencies, ...(task.source === "completed" ? [task] : [])];
-    const graph = createReadinessGraph({
-      tasks: [...availableTasks, ...offBoard.filter((entry) => entry.source !== "completed")],
-      completedTasks: offBoard.filter((entry) => entry.source === "completed"),
-      statuses: availableStatuses,
-    });
-    const result = getTaskReadiness({ ...task, dependencies, status }, graph);
-    return result.isReady || result.isBlocked ? result : null;
-  }, [task, dependencies, status, availableTasks, offBoardDependencies, availableStatuses]);
 
   // Hierarchy is derived from the shared corpus rather than the task payload: the single-task
   // API does not carry parent/subtask fields, while the list the modal already receives does.
@@ -493,7 +455,7 @@ export const TaskDetailsModal: React.FC<Props> = ({
     plan: task?.implementationPlan || "",
     notes: task?.implementationNotes || "",
     finalSummary: task?.finalSummary || "",
-    dueDate: task?.dueDate?.replace(" ", "T") || "",
+    dueDate: task?.dueDate || "",
     criteria: JSON.stringify(task?.acceptanceCriteriaItems || []),
     definitionOfDone: JSON.stringify(task?.definitionOfDoneItems || (isCreateMode ? defaultDefinitionOfDone : [])),
   }), [task, defaultDefinitionOfDone, isCreateMode]);
@@ -548,7 +510,7 @@ export const TaskDetailsModal: React.FC<Props> = ({
         e.stopPropagation();
         setMode("edit");
       }
-      if (isDoneStatus && (e.key.toLowerCase() === "c") && !e.metaKey && !e.ctrlKey && !e.altKey) {
+      if (isFinalStatus && (e.key.toLowerCase() === "c") && !e.metaKey && !e.ctrlKey && !e.altKey) {
         e.preventDefault();
         e.stopPropagation();
         void handleComplete();
@@ -556,7 +518,7 @@ export const TaskDetailsModal: React.FC<Props> = ({
     };
     window.addEventListener("keydown", onKey, { capture: true });
     return () => window.removeEventListener("keydown", onKey, { capture: true } as any);
-  }, [mode, title, description, plan, notes, finalSummary, criteria, definitionOfDone, status]);
+  }, [mode, title, description, plan, notes, finalSummary, criteria, definitionOfDone, status, availableStatuses]);
 
   // Reset local state when task changes or modal opens
   useEffect(() => {
@@ -735,7 +697,7 @@ export const TaskDetailsModal: React.FC<Props> = ({
       setCommentBody("");
       setCommentAuthor("");
       setFinalSummary(task?.finalSummary || "");
-      setDueDate(task?.dueDate?.replace(" ", "T") || "");
+      setDueDate(task?.dueDate || "");
       setCriteria(task?.acceptanceCriteriaItems || []);
       setDefinitionOfDone(task?.definitionOfDoneItems || []);
       setMode("preview");
@@ -1057,7 +1019,7 @@ export const TaskDetailsModal: React.FC<Props> = ({
 	const handleComplete = async () => {
 		if (demoting) return;
 		if (!task) return;
-		if (!window.confirm("Complete this task? It will be moved to the completed folder.")) return;
+		if (!window.confirm("Move this task off the board to completed storage? Its record and dependency links will be preserved.")) return;
 		try {
 			await apiClient.completeTask(task.id);
 			if (onSaved) await onSaved();
@@ -1093,8 +1055,9 @@ export const TaskDetailsModal: React.FC<Props> = ({
 		setDemoting(true);
 		setError(null);
 		try {
-			await apiClient.demoteTask(task.id);
+			const { cleanedTaskIds } = await apiClient.demoteTask(task.id);
 			if (!isCurrentRequest()) return;
+			onDependencyCleanup?.(task.id, cleanedTaskIds);
 			try {
 				window.dispatchEvent(new window.Event("drafts-updated"));
 				if (onSaved) await onSaved();
@@ -1108,11 +1071,16 @@ export const TaskDetailsModal: React.FC<Props> = ({
 			onClose();
 		} catch (err) {
 			if (!isCurrentRequest()) return;
-			const demotionFailureState = getDemotionFailureState(err);
+			const demotionFailureState = readMovedFailureState(err, "demotionState");
 			if (demotionFailureState) {
+				const demotionFailureCause = readDemotionFailureCause(err);
 				const message =
 					demotionFailureState === "moved"
-						? "The task was moved to drafts, but recording the Git commit failed. The view was refreshed; verify the draft before retrying."
+						? demotionFailureCause === "cleanup"
+							? "The task was moved to drafts, but removing references from dependent tasks failed. Some dependent tasks may still reference it. The view was refreshed; check those tasks before retrying."
+							: demotionFailureCause === "commit"
+								? "The task was moved to drafts, but recording the Git commit failed. The view was refreshed; verify the draft before retrying."
+								: "The task was moved to drafts, but a later step failed. The view was refreshed; verify the draft and dependent tasks before retrying."
 						: "The demotion encountered a filesystem failure and may have left both task and draft copies. The view was refreshed; inspect them before retrying.";
 				await finishWithRefreshWarning(message);
 				return;
@@ -1135,7 +1103,7 @@ export const TaskDetailsModal: React.FC<Props> = ({
   const handleArchive = async () => {
     if (demoting) return;
     if (!task || !onArchive) return;
-    if (!window.confirm(`Are you sure you want to archive "${task.title}"? This will move the task to the archive folder.`)) return;
+    if (!window.confirm(`Archive "${task.title}"? Use Archive for canceled, duplicate, or invalid work. Incoming dependencies and task references will be removed.`)) return;
     await onArchive();
   };
 
@@ -1143,7 +1111,7 @@ export const TaskDetailsModal: React.FC<Props> = ({
   const totalCount = (criteria || []).length;
   const definitionCheckedCount = (definitionOfDone || []).filter((c) => c.checked).length;
   const definitionTotalCount = (definitionOfDone || []).length;
-	const isDoneStatus = (status || "").toLowerCase().includes("done");
+	const isFinalStatus = isTerminalStatus(status, availableStatuses.length ? availableStatuses : DEFAULT_STATUSES);
 	const canDemote = Boolean(
 		task && !isDraftMode && !isOpenDraft && isLocalEditableTask(task) && task.source !== "completed" && !isFromOtherBranch,
 	);
@@ -1169,15 +1137,15 @@ export const TaskDetailsModal: React.FC<Props> = ({
       disableEscapeClose={mode === "edit" || mode === "create" || demoting}
       actions={
 		<div className="flex flex-nowrap items-center justify-end gap-2">
-		          {isDoneStatus && mode === "preview" && !isCreateMode && !isFromOtherBranch && (
+		          {isFinalStatus && mode === "preview" && !isCreateMode && !isFromOtherBranch && (
 		            <button
 		              onClick={handleComplete}
 		              disabled={demoting}
 		              className="inline-flex items-center px-3 py-2 sm:px-4 rounded-lg text-sm font-medium text-white bg-emerald-600 dark:bg-emerald-700 hover:bg-emerald-700 dark:hover:bg-emerald-800 focus:outline-none focus:ring-2 focus:ring-emerald-500 dark:focus:ring-emerald-400 focus:ring-offset-2 dark:focus:ring-offset-gray-900 transition-colors duration-200"
-		              title="Move to completed folder (removes from board)"
+		              title="Move off the board, preserving the record and dependency links"
 		            >
 		              <span className="sm:hidden">Complete</span>
-		              <span className="hidden sm:inline">Mark as completed</span>
+		              <span className="hidden sm:inline">Move to completed</span>
 		            </button>
 		          )}
 		          {canDemote && mode === "preview" && (
@@ -1622,6 +1590,13 @@ export const TaskDetailsModal: React.FC<Props> = ({
             )}
           </div>
 
+          {dependencyGraph && dependencyGraph.nodes.length > 1 && (
+            <section className="rounded-lg border border-gray-200 bg-white p-4 dark:border-gray-700 dark:bg-gray-800">
+              <SectionHeader title="Dependency Graph" />
+              <DependencyGraphSection graph={dependencyGraph} />
+            </section>
+          )}
+
           {/* Implementation Plan */}
           <div className="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-4">
             <SectionHeader title="Implementation Plan" />
@@ -1681,7 +1656,7 @@ export const TaskDetailsModal: React.FC<Props> = ({
                       <div className="mb-2 flex flex-wrap items-center gap-2 text-xs text-gray-500 dark:text-gray-400">
                         <span className="font-semibold text-gray-700 dark:text-gray-200">#{comment.index}</span>
                         {comment.author ? <span>{comment.author}</span> : null}
-                        {comment.createdDate ? <span>{formatStoredUtcDateForDisplay(comment.createdDate, dateFormat)}</span> : null}
+                        {comment.createdDate ? <StoredDate value={comment.createdDate} dateFormat={dateFormat} /> : null}
                       </div>
                       <div className="prose prose-sm !max-w-none wmde-markdown" data-color-mode={theme}>
                         <MermaidMarkdown source={comment.body} />
@@ -1754,20 +1729,20 @@ export const TaskDetailsModal: React.FC<Props> = ({
           {/* Dates */}
 	          {task && (
 	            <div className="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-3 text-xs text-gray-600 dark:text-gray-300 space-y-1">
-	              <div><span className="font-semibold text-gray-800 dark:text-gray-100">Created:</span> <span className="text-gray-700 dark:text-gray-200">{formatStoredUtcDateForDisplay(task.createdDate, dateFormat)}</span></div>
+	              <div><span className="font-semibold text-gray-800 dark:text-gray-100">Created:</span> <StoredDate value={task.createdDate} dateFormat={dateFormat} className="text-gray-700 dark:text-gray-200" /></div>
 	              {task.updatedDate && (
-	                <div><span className="font-semibold text-gray-800 dark:text-gray-100">Updated:</span> <span className="text-gray-700 dark:text-gray-200">{formatStoredUtcDateForDisplay(task.updatedDate, dateFormat)}</span></div>
+	                <div><span className="font-semibold text-gray-800 dark:text-gray-100">Updated:</span> <StoredDate value={task.updatedDate} dateFormat={dateFormat} className="text-gray-700 dark:text-gray-200" /></div>
 	              )}
 	              {task.dueDate && mode === "preview" && (
-	                <div><span className="font-semibold text-gray-800 dark:text-gray-100">Due (UTC):</span> <span className="text-gray-700 dark:text-gray-200">{formatStoredUtcDateForDisplay(task.dueDate, dateFormat)}</span></div>
+	                <div><span className="font-semibold text-gray-800 dark:text-gray-100">Due:</span> <StoredDate value={task.dueDate} dateFormat={dateFormat} className="text-gray-700 dark:text-gray-200" /></div>
 	              )}
 	            </div>
 	          )}
           {mode !== "preview" && (
             <div className="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-3">
-              <SectionHeader title="Due (UTC)" />
+              <SectionHeader title="Due" />
               <input
-                type="datetime-local"
+                type="date"
                 value={dueDate}
                 onChange={(event) => setDueDate(event.target.value)}
                 className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md text-sm bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400 focus:border-transparent"
@@ -1940,16 +1915,16 @@ export const TaskDetailsModal: React.FC<Props> = ({
               label=""
               disabled={isFromOtherBranch}
             />
-            {readiness && (
+            {shownReadiness && (
               <div
                 className={`mt-2 flex items-start gap-1.5 rounded-md px-2 py-1.5 text-xs font-medium ${
-                  readiness.isReady
+                  shownReadiness.isReady
                     ? 'bg-emerald-50 dark:bg-emerald-900/30 text-emerald-800 dark:text-emerald-300'
                     : 'bg-amber-50 dark:bg-amber-900/30 text-amber-800 dark:text-amber-300'
                 }`}
               >
-                <span aria-hidden="true">{readiness.isReady ? '✓' : '⏳'}</span>
-                <span>{readiness.isReady ? 'Ready to start' : formatReadinessBlockers(readiness)}</span>
+                <span aria-hidden="true">{shownReadiness.isReady ? '✓' : '⏳'}</span>
+                <span>{shownReadiness.isReady ? 'Ready to start' : formatReadinessBlockers(shownReadiness)}</span>
               </div>
             )}
           </div>
@@ -1959,6 +1934,7 @@ export const TaskDetailsModal: React.FC<Props> = ({
 		            <div className="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-3">
 		              <button
 		                onClick={handleArchive}
+		                title="Archive canceled, duplicate, or invalid work"
 		                disabled={demoting}
 		                className="w-full inline-flex items-center justify-center px-4 py-2 bg-red-500 dark:bg-red-600 text-white text-sm font-medium rounded-md hover:bg-red-600 dark:hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 dark:focus:ring-offset-gray-800 focus:ring-red-400 dark:focus:ring-red-500 transition-colors duration-200"
 		              >

@@ -52,8 +52,8 @@ installed application all select that baseline runtime on x86_64 Linux. The
 Nix install check executes the packaged CLI natively and under QEMU's Ivy
 Bridge CPU model. JSC's JIT is disabled only for the emulated check because it
 is not reliable under QEMU user mode; normal packaged execution keeps JIT
-enabled. A negative control verifies that the same emulated CPU rejects
-Nixpkgs' normal AVX2 Bun runtime before accepting the baseline runtime.
+enabled. A negative control verifies that the same emulated CPU rejects a
+pinned AVX2-only Bun archive before accepting the baseline runtime.
 
 ## MCP Development Setup
 

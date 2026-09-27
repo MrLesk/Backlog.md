@@ -13,7 +13,9 @@ import { applyTaskFilters, createTaskSearchIndex } from "../utils/task-search.ts
 import { type TaskWatcherCallbacks, watchTasks } from "../utils/task-watcher.ts";
 import { renderBoardTui } from "./board.ts";
 import { createLoadingScreen } from "./loading.ts";
+import { createTaskFromTui, upsertTask } from "./task-lifecycle.ts";
 import { buildTaskViewerMilestoneFilterModel, viewTaskEnhanced } from "./task-viewer-with-search.ts";
+import { keepTuiInputAlive } from "./tui.ts";
 import { type ViewState, ViewSwitcher, type ViewType } from "./view-switcher.ts";
 
 export interface UnifiedViewOptions {
@@ -76,10 +78,7 @@ export interface UnifiedTaskState {
 
 export function applyUnifiedTaskUpdate(state: UnifiedTaskState, update: UnifiedTaskUpdate): UnifiedTaskState {
 	if (update.type === "upsert") {
-		const index = state.tasks.findIndex((task) => task.id === update.task.id);
-		const tasks = [...state.tasks];
-		if (index === -1) tasks.push(update.task);
-		else tasks[index] = update.task;
+		const tasks = upsertTask(state.tasks, update.task);
 		return {
 			tasks,
 			selectedTask: state.selectedTask?.id === update.task.id ? update.task : state.selectedTask,
@@ -276,21 +275,11 @@ export function getEmptyUnifiedViewMessage(initialView: ViewType, parentTaskId?:
 	return initialView === "kanban" ? null : "No tasks found.";
 }
 
-export async function createTaskFromBoard(
-	core: Core,
-	input: TaskCreateInput,
-	onCreated?: (task: Task) => Promise<void> | void,
-): Promise<Task> {
-	const config = await core.filesystem.loadConfig();
-	const task = (await core.createTaskFromInput(input, config?.autoCommit ?? false)).task;
-	if (task.status.trim().toLowerCase() !== "draft") await onCreated?.(task);
-	return task;
-}
-
 /**
  * Main unified view controller that handles Tab switching between views
  */
 export async function runUnifiedView(options: UnifiedViewOptions): Promise<void> {
+	const releaseTuiInput = keepTuiInputAlive();
 	try {
 		const {
 			tasks: loadedTasks,
@@ -371,6 +360,8 @@ export async function runUnifiedView(options: UnifiedViewOptions): Promise<void>
 				emitTaskListUpdate();
 			},
 		);
+		const createTask = (input: TaskCreateInput) =>
+			createTaskFromTui(options.core, input, taskUpdateCallbacks.onTaskAdded);
 		let isInitialLoad = true; // Track if this is the first view load
 
 		// Create view switcher (without problematic onViewChange callback)
@@ -391,7 +382,6 @@ export async function runUnifiedView(options: UnifiedViewOptions): Promise<void>
 		});
 
 		process.on("exit", () => configWatcher.stop());
-
 		// Function to show task view
 		const showTaskView = async (): Promise<ViewResult> => {
 			const availableTasks = tasks.filter((t) => t.id && t.id.trim() !== "" && hasAnyPrefix(t.id));
@@ -461,7 +451,7 @@ export async function runUnifiedView(options: UnifiedViewOptions): Promise<void>
 					onFilterChange: (filters) => {
 						currentFilters = mergeUnifiedViewFilters(currentFilters, filters);
 					},
-					createTask: async (input) => createTaskFromBoard(options.core, input, taskUpdateCallbacks.onTaskAdded),
+					createTask,
 					onTabPress,
 				}).then(() => {
 					// If user wants to exit, do it immediately
@@ -529,7 +519,7 @@ export async function runUnifiedView(options: UnifiedViewOptions): Promise<void>
 					types: config?.types,
 					projects: config?.projects,
 					hideEmptyColumns: config?.hideEmptyColumns ?? false,
-					createTask: async (input) => createTaskFromBoard(options.core, input, taskUpdateCallbacks.onTaskAdded),
+					createTask,
 				}).then(() => {
 					// If user wants to exit, do it immediately
 					if (result === "exit") {
@@ -581,5 +571,7 @@ export async function runUnifiedView(options: UnifiedViewOptions): Promise<void>
 	} catch (error) {
 		console.error(error instanceof Error ? error.message : error);
 		process.exit(1);
+	} finally {
+		releaseTuiInput();
 	}
 }

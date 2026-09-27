@@ -1,13 +1,15 @@
 import React from 'react';
+import { BranchIndexingIndicator } from './BranchIndexingIndicator';
 import ThemeToggle from './ThemeToggle';
 
 interface NavigationProps {
     projectName: string;
+    loadingMessage?: string | null;
 }
 
-const Navigation: React.FC<NavigationProps> = ({projectName}) => {
+const Navigation: React.FC<NavigationProps> = ({projectName, loadingMessage}) => {
     return (
-        <nav className="px-8 h-18 border-b border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 transition-colors duration-200">
+        <nav className="relative px-8 h-18 border-b border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 transition-colors duration-200">
             <div className="h-full flex items-center justify-between">
                 <div className="flex items-center gap-2">
                     <h1 className="text-xl font-bold text-gray-900 dark:text-gray-100">{projectName || 'Loading...'}</h1>
@@ -21,7 +23,10 @@ const Navigation: React.FC<NavigationProps> = ({projectName}) => {
                         Backlog.md
                     </a>
                 </div>
-                <ThemeToggle />
+                <div className="flex items-center gap-3">
+                    <BranchIndexingIndicator message={loadingMessage} />
+                    <ThemeToggle />
+                </div>
             </div>
         </nav>
     );

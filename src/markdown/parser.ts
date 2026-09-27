@@ -1,6 +1,6 @@
 import type { AcceptanceCriterion, Decision, Document, Milestone, ParsedMarkdown, Task } from "../types/index.ts";
+import { normalizeDueDate } from "../utils/due-date.ts";
 import { normalizePriorityValue } from "../utils/priority-config.ts";
-import { normalizeUtcDateTime } from "../utils/utc-datetime.ts";
 import { parseFrontmatter } from "./frontmatter.ts";
 import {
 	AcceptanceCriteriaManager,
@@ -41,7 +41,10 @@ function preprocessFrontmatter(frontmatter: string): string {
 	return frontmatter
 		.split(/\r?\n/) // Handle both Windows (\r\n) and Unix (\n) line endings
 		.map((line) => {
-			const dueDateMatch = line.match(/^(\s*due_date:\s*)(.*)$/);
+			// The key spelling matters: an unquoted timestamp left for YAML to resolve comes back as a
+			// Date with its written offset already discarded, so a due date read under a quoted key
+			// would land on a different day than the same value read under a bare one.
+			const dueDateMatch = line.match(/^(\s*(?:due_date|"due_date"|'due_date')\s*:\s*)(.*)$/);
 			if (dueDateMatch) {
 				const prefix = dueDateMatch[1] ?? "";
 				const raw = dueDateMatch[2] ?? "";
@@ -159,8 +162,30 @@ export function parseMarkdown(content: string): ParsedMarkdown {
 	};
 }
 
+export class TaskDependenciesParseError extends Error {
+	constructor(taskId: string, entryIndex?: number) {
+		const location = entryIndex === undefined ? "the field" : `entry ${entryIndex + 1}`;
+		super(
+			`Invalid dependencies in task ${taskId || "(missing id)"}: ${location} contains a mapping or nested list. Use a list of task IDs in the task Markdown.`,
+		);
+		this.name = "TaskDependenciesParseError";
+	}
+}
+
+function isStructuredDependency(value: unknown): boolean {
+	return Array.isArray(value) || Object.prototype.toString.call(value) === "[object Object]";
+}
+
 export function parseTask(content: string): Task {
 	const { frontmatter, content: rawContent } = parseMarkdown(content);
+	const id = String(frontmatter.id || "");
+	const dependencies = frontmatter.dependencies;
+	if (Array.isArray(dependencies)) {
+		const invalidIndex = dependencies.findIndex(isStructuredDependency);
+		if (invalidIndex !== -1) throw new TaskDependenciesParseError(id, invalidIndex);
+	} else if (isStructuredDependency(dependencies)) {
+		throw new TaskDependenciesParseError(id);
+	}
 
 	const priority = normalizePriorityValue(frontmatter.priority ? String(frontmatter.priority) : undefined);
 
@@ -176,7 +201,7 @@ export function parseTask(content: string): Task {
 	const finalSummarySection = extractStructuredSection(rawContent, STRUCTURED_SECTION_KEYS.finalSummary) || undefined;
 
 	return {
-		id: String(frontmatter.id || ""),
+		id,
 		title: String(frontmatter.title || ""),
 		status: String(frontmatter.status || ""),
 		assignee: Array.isArray(frontmatter.assignee)
@@ -187,10 +212,10 @@ export function parseTask(content: string): Task {
 		reporter: frontmatter.reporter ? String(frontmatter.reporter) : undefined,
 		createdDate: normalizeDate(frontmatter.created_date),
 		updatedDate: frontmatter.updated_date ? normalizeDate(frontmatter.updated_date) : undefined,
-		dueDate: normalizeUtcDateTime(frontmatter.due_date, "due_date"),
+		dueDate: normalizeDueDate(frontmatter.due_date, "due_date"),
 		labels: Array.isArray(frontmatter.labels) ? frontmatter.labels.map(String) : [],
 		milestone: frontmatter.milestone ? String(frontmatter.milestone) : undefined,
-		dependencies: Array.isArray(frontmatter.dependencies) ? frontmatter.dependencies.map(String) : [],
+		dependencies: Array.isArray(dependencies) ? dependencies.map(String) : [],
 		references: Array.isArray(frontmatter.references) ? frontmatter.references.map(String) : [],
 		documentation: Array.isArray(frontmatter.documentation) ? frontmatter.documentation.map(String) : [],
 		modifiedFiles: Array.isArray(frontmatter.modified_files) ? frontmatter.modified_files.map(String) : [],
@@ -248,7 +273,7 @@ export function parseMilestone(content: string): Milestone {
 	return {
 		id: String(frontmatter.id || ""),
 		title: String(frontmatter.title || ""),
-		dueDate: normalizeUtcDateTime(frontmatter.due_date, "due_date"),
+		dueDate: normalizeDueDate(frontmatter.due_date, "due_date"),
 		description: extractSection(rawContent, "Description") || "",
 		rawContent,
 	};
