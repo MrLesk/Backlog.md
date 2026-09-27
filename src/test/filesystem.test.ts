@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, spyOn } from "bun:test";
 import * as fsPromises from "node:fs/promises";
-import { chmod, mkdir, readdir, rename, stat } from "node:fs/promises";
+import { mkdir, readdir, rename, stat } from "node:fs/promises";
 import { join } from "node:path";
 import { FileSystem } from "../file-system/operations.ts";
 import { serializeTask } from "../markdown/serializer.ts";
@@ -292,12 +292,18 @@ Invalid content`,
 			expect(archiveFiles.some((f) => f.startsWith("task-1"))).toBe(true);
 		});
 
-		it("surfaces archive scan failures while determining occupied task IDs", async () => {
-			await chmod(filesystem.archiveTasksDir, 0o000);
+		it("ignores a missing archive directory but surfaces other archive scan failures", async () => {
+			const getArchiveTasksDir = spyOn(filesystem, "getArchiveTasksDir");
 			try {
-				await expect(filesystem.listOccupiedArchivedTaskFileIds()).rejects.toMatchObject({ code: "EACCES" });
+				getArchiveTasksDir.mockResolvedValue(join(TEST_DIR, "missing-archive"));
+				expect(await filesystem.listOccupiedArchivedTaskFileIds()).toEqual([]);
+
+				const regularFile = join(TEST_DIR, "not-an-archive-directory");
+				await Bun.write(regularFile, "not a directory");
+				getArchiveTasksDir.mockResolvedValue(regularFile);
+				await expect(filesystem.listOccupiedArchivedTaskFileIds()).rejects.toMatchObject({ code: "ENOTDIR" });
 			} finally {
-				await chmod(filesystem.archiveTasksDir, 0o775);
+				getArchiveTasksDir.mockRestore();
 			}
 		});
 
