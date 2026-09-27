@@ -965,6 +965,7 @@ function AppContent() {
       availableLabels={availableLabels}
       availableMilestones={milestones}
       availablePriorities={config?.priorities}
+      availableProjects={availableProjects}
       milestoneEntities={milestoneEntities}
       archivedMilestones={archivedMilestones}
       onRefreshData={refreshData}
