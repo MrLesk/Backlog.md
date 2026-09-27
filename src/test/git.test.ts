@@ -238,13 +238,13 @@ wait "$child_pid"
 				  }
 				| undefined;
 			const internals = git as unknown as {
-				hasAnyRemote: () => Promise<boolean>;
+				hasRemote: (remote?: string) => Promise<boolean>;
 				execGit: (
 					args: string[],
 					options?: { env?: Record<string, string>; timeoutMs?: number },
 				) => Promise<{ stdout: string; stderr: string }>;
 			};
-			internals.hasAnyRemote = async () => {
+			internals.hasRemote = async () => {
 				remoteChecks += 1;
 				return true;
 			};
@@ -291,9 +291,9 @@ wait "$child_pid"
 				};
 			});
 			const internals = git as unknown as {
-				hasAnyRemote: () => Promise<boolean>;
+				hasRemote: (remote?: string) => Promise<boolean>;
 			};
-			internals.hasAnyRemote = async () => {
+			internals.hasRemote = async () => {
 				remoteChecks += 1;
 				return true;
 			};
@@ -316,10 +316,10 @@ wait "$child_pid"
 				return { ...TEST_CONFIG, remoteOperations: true };
 			});
 			const internals = git as unknown as {
-				hasAnyRemote: () => Promise<boolean>;
+				hasRemote: (remote?: string) => Promise<boolean>;
 				execGit: () => Promise<{ stdout: string; stderr: string }>;
 			};
-			internals.hasAnyRemote = async () => true;
+			internals.hasRemote = async () => true;
 			internals.execGit = async () => {
 				fetchCalls += 1;
 				return { stdout: "", stderr: "" };
@@ -341,10 +341,10 @@ wait "$child_pid"
 				remoteOperations: true,
 			});
 			const internals = git as unknown as {
-				hasAnyRemote: () => Promise<boolean>;
+				hasRemote: (remote?: string) => Promise<boolean>;
 				execGit: () => Promise<{ stdout: string; stderr: string }>;
 			};
-			internals.hasAnyRemote = async () => true;
+			internals.hasRemote = async () => true;
 			internals.execGit = async () => {
 				throw new Error("Git command timeout after 10000ms");
 			};

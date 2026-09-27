@@ -69,12 +69,12 @@ describe("Offline Mode Configuration", () => {
 
 			let capturedArgs: string[] = [];
 			const internals = gitOps as unknown as {
-				hasAnyRemote: () => Promise<boolean>;
+				hasRemote: (remote?: string) => Promise<boolean>;
 				execGit: (args: string[]) => Promise<{ stdout: string; stderr: string }>;
 			};
-			const originalHasAnyRemote = internals.hasAnyRemote;
+			const originalHasRemote = internals.hasRemote;
 			const originalExecGit = internals.execGit;
-			internals.hasAnyRemote = async () => true;
+			internals.hasRemote = async () => true;
 			internals.execGit = async (args: string[]) => {
 				capturedArgs = args;
 				return { stdout: "", stderr: "" };
@@ -84,7 +84,7 @@ describe("Offline Mode Configuration", () => {
 				await gitOps.fetch();
 				expect(capturedArgs).toEqual(["fetch", "origin", "--prune", "--quiet"]);
 			} finally {
-				internals.hasAnyRemote = originalHasAnyRemote;
+				internals.hasRemote = originalHasRemote;
 				internals.execGit = originalExecGit;
 			}
 		});
