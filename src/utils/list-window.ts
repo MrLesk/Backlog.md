@@ -22,6 +22,12 @@ export type ListWindow = {
 	forcesText: boolean;
 	/** The typed arguments, repeated with a new `--skip` in the command for the following items. */
 	commandArgs: readonly string[];
+	/**
+	 * Flags of the running command whose next argument is their value, even when it reads `--skip` or
+	 * `--`. Not handled: Commander takes parent flags such as `--plain` of `task` out of the arguments
+	 * wherever they appear, so in `--search --plain --skip` the search value `--skip` is rebuilt wrongly.
+	 */
+	valueFlags: ReadonlySet<string>;
 };
 
 export type ListPage<T> = {
@@ -33,6 +39,10 @@ export type ListPage<T> = {
 	/** True when the window leaves out any item of the list. */
 	cut: boolean;
 };
+
+/** The help output sentence for the footer of a cut list. */
+export const LIST_WINDOW_OUTPUT_HELP =
+	"Output cut by --max-count or --skip ends with the shown range, the total, and the command for the next items";
 
 export const LIST_WINDOW_HELP_FIELDS: HelpField[] = [
 	{
@@ -67,12 +77,22 @@ export function parsePositiveIntegerOption(value: unknown, optionName: string, h
 	return Number.parseInt(rawValue, 10);
 }
 
-/** Reads the window options, or reports why they are invalid and returns null. */
+/** The command's full name, such as `backlog task list`. */
+function commandName(command: Command): string {
+	const names: string[] = [];
+	for (let current: Command | null = command; current; current = current.parent) {
+		names.unshift(current.name());
+	}
+	return names.join(" ");
+}
+
+/** Reads the window options of the running command, or reports why they are invalid and returns null. */
 export function parseListWindow(
 	options: ListWindowOptions,
-	helpCommand: string,
+	command: Command,
 	commandArgs: readonly string[],
 ): ListWindow | null {
+	const helpCommand = `${commandName(command)} --help`;
 	if (options.count && options.json) {
 		return reportInvalidOption("--count cannot be combined with --json.", helpCommand);
 	}
@@ -92,6 +112,11 @@ export function parseListWindow(
 		count: Boolean(options.count),
 		forcesText: Boolean(options.count) || maxCount !== undefined || skip !== undefined,
 		commandArgs,
+		valueFlags: new Set(
+			command.options
+				.filter((option) => option.required)
+				.flatMap((option) => [option.long, option.short].filter((flag): flag is string => flag !== undefined)),
+		),
 	};
 }
 
@@ -108,47 +133,81 @@ export function selectListWindow<T>(items: readonly T[], window: ListWindow): Li
 	};
 }
 
+/**
+ * Which `milestone list` sections one window prints. A section prints in every window that lists its
+ * milestones. A section that lists none prints once, where it falls: Active in the first window and
+ * Completed in the last. An empty list has a single window, which prints both.
+ */
+export function milestoneSectionsInWindow(
+	page: ListPage<{ isCompleted: boolean }>,
+	activeCount: number,
+	listsCompleted: boolean,
+): { active: boolean; completed: boolean } {
+	const firstWindow = page.skip === 0 || page.total === 0;
+	return {
+		active: page.items.some((item) => !item.isCompleted) || (activeCount === 0 && firstWindow),
+		completed: page.items.some((item) => item.isCompleted) || (!listsCompleted && page.nextSkip === null),
+	};
+}
+
 function quoteShellArgument(argument: string): string {
 	return /^[\w@+:,./-]+$/.test(argument) ? argument : `'${argument.replaceAll("'", "'\\''")}'`;
 }
 
-/** The typed command with its `--skip` value replaced, so running it prints the following items. */
-export function nextPageCommand(args: readonly string[], nextSkip: number): string {
+/**
+ * The typed command with its `--skip` value replaced, so running it prints the following items.
+ * Option values stay as typed, and the new `--skip` goes before a `--` that ends the options.
+ */
+export function nextPageCommand(window: ListWindow, nextSkip: number): string {
+	const args = window.commandArgs;
 	const kept: string[] = [];
+	let afterSeparator: readonly string[] = [];
 	for (let index = 0; index < args.length; index++) {
 		const argument = args[index] ?? "";
+		if (argument === "--") {
+			afterSeparator = args.slice(index);
+			break;
+		}
 		if (argument === "--skip") {
 			index++;
 			continue;
 		}
 		if (argument.startsWith("--skip=")) continue;
 		kept.push(argument);
+		if (window.valueFlags.has(argument) && index + 1 < args.length) {
+			index++;
+			kept.push(args[index] ?? "");
+		}
 	}
-	return ["backlog", ...kept, "--skip", String(nextSkip)].map(quoteShellArgument).join(" ");
+	return ["backlog", ...kept, "--skip", String(nextSkip), ...afterSeparator].map(quoteShellArgument).join(" ");
 }
 
 /** Names the printed range, the total, and the command for the following items; null for a complete list. */
-export function formatListWindowFooter(page: ListPage<unknown>, args: readonly string[]): string | null {
+export function formatListWindowFooter(page: ListPage<unknown>, window: ListWindow): string | null {
 	if (!page.cut) return null;
 	const shown = page.items.length;
 	const range = shown > 0 ? `${page.skip + 1}-${page.skip + shown}` : "0";
 	const summary = `Showing ${range} of ${page.total} items.`;
-	return page.nextSkip === null ? summary : `${summary} Next: ${nextPageCommand(args, page.nextSkip)}`;
+	return page.nextSkip === null ? summary : `${summary} Next: ${nextPageCommand(window, page.nextSkip)}`;
 }
 
 /**
  * Prints one window of a list as text: `--count` prints only its size, and a cut list ends with the
  * footer. `printItems` also runs for an empty list so the command can say that nothing matched.
  */
-export function printListWindow<T>(items: readonly T[], window: ListWindow, printItems: (items: T[]) => void): void {
+export function printListWindow<T>(
+	items: readonly T[],
+	window: ListWindow,
+	printItems: (items: T[], page: ListPage<T>) => void,
+): void {
 	const page = selectListWindow(items, window);
 	if (window.count) {
-		console.log(page.items.length);
+		process.stdout.write(`${page.items.length}\n`);
 		return;
 	}
 	if (page.items.length > 0 || page.total === 0) {
-		printItems(page.items);
+		printItems(page.items, page);
 	}
-	const footer = formatListWindowFooter(page, window.commandArgs);
-	if (footer) console.log(footer);
+	const footer = formatListWindowFooter(page, window);
+	if (footer) process.stdout.write(`${footer}\n`);
 }

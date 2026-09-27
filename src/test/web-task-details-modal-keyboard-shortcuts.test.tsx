@@ -57,7 +57,11 @@ const setupDom = () => {
 	htmlElementPrototype.detachEvent = () => {};
 };
 
-const mountModal = async (modalTask: Task = task, isOpen = true): Promise<HTMLElement> => {
+const mountModal = async (
+	modalTask: Task = task,
+	isOpen = true,
+	props: { availableStatuses?: string[]; onArchive?: () => void } = {},
+): Promise<HTMLElement> => {
 	setupDom();
 	const container = document.getElementById("root");
 	expect(container).toBeTruthy();
@@ -65,7 +69,7 @@ const mountModal = async (modalTask: Task = task, isOpen = true): Promise<HTMLEl
 	await act(async () => {
 		activeRoot?.render(
 			<ThemeProvider>
-				<TaskDetailsModal task={modalTask} isOpen={isOpen} onClose={() => {}} />
+				<TaskDetailsModal task={modalTask} isOpen={isOpen} onClose={() => {}} {...props} />
 			</ThemeProvider>,
 		);
 		await Promise.resolve();
@@ -178,15 +182,20 @@ describe("Web task popup keyboard shortcuts", () => {
 		expect(findButton(container, "Edit")).toBeTruthy();
 	});
 
-	it("keeps c completion active outside editable controls", async () => {
+	it.each(["Done", "Closed"])("keeps completion active for the configured final status %s", async (status) => {
 		const originalCompleteTask = apiClient.completeTask.bind(apiClient);
 		const completedTaskIds: string[] = [];
 		apiClient.completeTask = async (taskId) => {
 			completedTaskIds.push(taskId);
 		};
 		try {
-			const container = await mountModal({ ...task, status: "Done" });
-			window.confirm = () => true;
+			const container = await mountModal({ ...task, status }, true, { availableStatuses: ["To Do", status] });
+			expect(findButton(container, "Move to completed")).toBeTruthy();
+			window.confirm = (message) => {
+				expect(message).toContain("off the board to completed storage");
+				expect(message).toContain("record and dependency links will be preserved");
+				return true;
+			};
 			const dialog = container.querySelector("[role='dialog']");
 			expect(dialog).toBeTruthy();
 
@@ -198,6 +207,36 @@ describe("Web task popup keyboard shortcuts", () => {
 		} finally {
 			apiClient.completeTask = originalCompleteTask;
 		}
+	});
+
+	it("does not offer completion for a nonfinal status containing Done", async () => {
+		const container = await mountModal({ ...task, status: "Not Done" }, true, {
+			availableStatuses: ["Not Done", "Closed"],
+		});
+		expect(findButton(container, "Move to completed")).toBeUndefined();
+		const event = await press(container.querySelector("[role='dialog']") as Element, "c");
+		expect(event.defaultPrevented).toBe(false);
+	});
+
+	it("explains archive purpose and link removal before running the action", async () => {
+		let archives = 0;
+		const container = await mountModal(task, true, {
+			onArchive: () => {
+				archives += 1;
+			},
+		});
+		const archive = findButton(container, "Archive Task");
+		expect(archive).toBeTruthy();
+		window.confirm = (message) => {
+			expect(message).toContain("canceled, duplicate, or invalid work");
+			expect(message).toContain("Incoming dependencies and task references will be removed");
+			return false;
+		};
+		await click(archive as HTMLButtonElement);
+		expect(archives).toBe(0);
+		window.confirm = () => true;
+		await click(archive as HTMLButtonElement);
+		expect(archives).toBe(1);
 	});
 
 	it("keeps e and E shortcuts active outside editable controls", async () => {

@@ -8,7 +8,6 @@ import type {
 	Task,
 	TaskSearchResult,
 } from "../types/index.ts";
-import { isLocalEditableTask } from "../types/index.ts";
 import type { DependencyGraph } from "../utils/dependency-graph.ts";
 import type { ListPage } from "../utils/list-window.ts";
 import type { TaskReadiness } from "../utils/readiness.ts";
@@ -256,6 +255,7 @@ export type SearchResultInput =
 			task: TaskListItem;
 	  });
 
+/** The search envelope for results the CLI already narrowed to printable ones, without tasks from other branches. */
 export function searchJson(
 	results: SearchResultInput[],
 	projectRoot: string,
@@ -265,9 +265,7 @@ export function searchJson(
 	const publicResults: SearchResultJson[] = [];
 	for (const result of results) {
 		if (result.type === "task") {
-			if (isLocalEditableTask(result.task)) {
-				publicResults.push({ type: "task", data: toTaskSummaryJson(result.task) });
-			}
+			publicResults.push({ type: "task", data: toTaskSummaryJson(result.task) });
 			continue;
 		}
 		if (result.type === "document") {

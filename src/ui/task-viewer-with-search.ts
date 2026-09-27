@@ -1359,11 +1359,11 @@ export async function viewTaskEnhanced(
 		const confirmed = await runWithModalGuard(() =>
 			openConfirmPopup({
 				screen,
-				title: action === "complete" ? "Complete Task" : "Archive Task",
+				title: action === "complete" ? "Move to Completed" : "Archive Task",
 				message:
 					action === "complete"
-						? `Mark task {bold}${task.id}{/bold} as completed?\n{gray-fg}${task.title}{/}`
-						: `Archive task {bold}${task.id}{/bold}?\n{gray-fg}${task.title}{/}`,
+						? `Move {bold}${task.id}{/bold} to completed?\nRemoves from board; keeps record\nand dependency links.`
+						: `Archive {bold}${task.id}{/bold}?\nCanceled, duplicate, or invalid work.\nRemoves incoming task links.`,
 			}),
 		);
 
@@ -1377,15 +1377,15 @@ export async function viewTaskEnhanced(
 			const result = archived ? { ...archived, reason: "failed" as const } : await completeTaskFromTui(core, task);
 
 			if (result.success) {
-				// The record just left the active corpus, so drop it from the readiness graph. A
-				// completed one is re-added as completion evidence; an archived one is simply gone, and
-				// its dependents honestly report it as an unresolvable dependency from now on.
+				// Drop the record from the active graph; completed work remains completion evidence.
 				readinessSnapshot = readinessSnapshot?.filter((candidate) => !taskIdsEqual(candidate.id, task.id)) ?? null;
 				if (action === "complete") {
 					readinessCompletedTasks.push(task);
 				}
 				removeTaskFromCurrentView(task.id);
-				const message = archived ? formatTaskArchivedMessage(task.id, archived.cleanedTaskIds) : `Completed ${task.id}`;
+				const message = archived
+					? formatTaskArchivedMessage(task.id, archived.cleanedTaskIds)
+					: `Moved ${task.id} to completed`;
 				showTransientHelp(` {green-fg}${message}{/}`);
 			} else if (action === "complete" && result.reason === "not-terminal") {
 				showTransientHelp(` {red-fg}${formatTaskCompletionBlockedMessage(task.id, result.terminalStatus)}{/}`);

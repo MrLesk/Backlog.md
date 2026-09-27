@@ -67,6 +67,10 @@ Humans and agents can run `backlog instructions` for workflow guides and `backlo
 | View (AI mode) | `backlog task 7 --plain`                           |
 | View as JSON | `backlog task 7 --json` |
 | Edit        | `backlog task edit 7 -a @sara -l auth,backend`       |
+| Replace documentation | `backlog task edit 7 --doc docs/spec.md --doc docs/api.md` |
+| Add documentation | `backlog task edit 7 --add-doc docs/spec.md --add-doc docs/api.md` |
+| Remove documentation | `backlog task edit 7 --remove-doc docs/spec.md` |
+| Clear documentation | `backlog task edit 7 --clear-docs` |
 | Add plan    | `backlog task edit 7 --plan "Implementation approach"`    |
 | Add AC      | `backlog task edit 7 --ac "New criterion" --ac "Another one"` |
 | Add DoD     | `backlog task edit 7 --dod "Ship notes"` |
@@ -88,11 +92,14 @@ Humans and agents can run `backlog instructions` for workflow guides and `backlo
 | Add deps    | `backlog task edit 7 --dep task-1 --dep task-2`     |
 | Set due date | `backlog task edit 7 --due-date 2026-08-10` |
 | Clear due date | `backlog task edit 7 --clear-due-date` |
-| Archive     | `backlog task archive 7`                             |
+| Complete    | `backlog task complete 7` (move finished work to completed storage) |
+| Archive     | `backlog task archive 7` (canceled, duplicate, or invalid work) |
+
+Mark finished work Done (or the configured final status). During periodic cleanup, use Complete to move it off the board while preserving its record and dependency links. Archive removes incoming dependencies and task references.
 
 ### Paging long lists
 
-`task list`, `search`, `draft list`, `milestone list`, `doc list`, `doc search`, and `decision list` print every match by default. `--max-count <n>` prints at most `n` items and `--skip <n>` leaves out the first `n`, as in `git log`. Both apply after filtering, sorting, and `--limit`, in the order the output prints: `task list` groups by status unless `--sort priority` prints one flat list, plain `search` prints tasks, then documents, then decisions, and `milestone list` prints active milestones before completed ones. Ties are broken by ID (documents by title and then path), so consecutive windows of an unchanged backlog join into the complete output without overlapping or leaving items out. `search --json` windows its results in relevance order. The options print text instead of opening an interactive view.
+`task list`, `search`, `draft list`, `milestone list`, `doc list`, `doc search`, and `decision list` print every match by default. `--max-count <n>` prints at most `n` items and `--skip <n>` leaves out the first `n`, as in `git log`. Both apply after filtering, sorting, and `--limit`, in the order the output prints: `task list` groups by status unless `--sort priority` prints one flat list, plain `search` prints tasks, then documents, then decisions, and `milestone list` prints active milestones before completed ones. Each list has a stable order: tasks, drafts, and decisions break ties by ID, documents sort by title and then path, search results by score and then corpus order, and milestones follow their files and then the tasks that name them. So consecutive windows of an unchanged backlog join into the complete output without overlapping or leaving items out. With `--json`, `task list` windows its flat `tasks` array in sort order without status groups and `search` windows its results in relevance order, so read all windows of a list in one output mode. The options print text instead of opening an interactive view.
 
 Output cut by a window ends with the shown range, the total, and the command that prints the following items:
 
@@ -125,7 +132,7 @@ backlog task list --json --watch | jq --unbuffered -c '.tasks'
 
 Each response replaces the subscriber's previous list, including an empty `tasks` array. Filters, sorting, limits, and local editable task scope are unchanged; completed storage, archives, drafts, and other branches are not added to the list. Dependency and configuration changes can update derived fields or which tasks match. Unchanged results are suppressed, and rapid edits or slow consumers may coalesce intermediate states. The command reconciles periodically as well as on file notifications; this is a current-state subscription, not an edit history. Restart it to receive a fresh full list.
 
-`--watch` requires `--json` and cannot be combined with `--plain`. Stop it with Ctrl+C or terminate the process; closing the output pipe also stops it. A failure after earlier responses writes a diagnostic to stderr and exits nonzero without emitting a replacement for that failed read.
+`--watch` requires `--json` and cannot be combined with `--plain`. Stop it with Ctrl+C or terminate the process; closing the output pipe also stops it. It also ends when the process that started it ends. A failure after earlier responses writes a diagnostic to stderr and exits nonzero without emitting a replacement for that failed read.
 
 Each successful response is one pretty-printed JSON document followed by a newline. The top-level contract is versioned and identifies the command result:
 

@@ -51,6 +51,13 @@ describe("MCP task_complete", () => {
 				},
 			},
 		});
+		const dependent = await server.testInterface.callTool({
+			params: {
+				name: "task_create",
+				arguments: { title: "Dependent", dependencies: ["TASK-1"], references: ["TASK-1"] },
+			},
+		});
+		expect(dependent.isError).toBeUndefined();
 
 		const archiveAttempt = await server.testInterface.callTool({
 			params: {
@@ -59,7 +66,12 @@ describe("MCP task_complete", () => {
 			},
 		});
 		expect(archiveAttempt.isError).toBe(true);
+		expect(archiveAttempt.structuredContent?.code).toBe("VALIDATION_ERROR");
 		expect(getText(archiveAttempt.content)).toContain("task_complete");
+		expect((await server.filesystem.loadTask("TASK-1"))?.status).toBe("Done");
+		expect((await server.filesystem.loadTask("TASK-2"))?.dependencies).toEqual(["TASK-1"]);
+		expect((await server.filesystem.loadTask("TASK-2"))?.references).toEqual(["TASK-1"]);
+		expect(await server.filesystem.listArchivedTasks()).toEqual([]);
 
 		const complete = await server.testInterface.callTool({
 			params: {
@@ -77,6 +89,7 @@ describe("MCP task_complete", () => {
 			new Bun.Glob("task-1*.md").scan({ cwd: server.filesystem.completedDir, followSymlinks: true }),
 		);
 		expect(completedFiles.length).toBe(1);
+		expect((await server.filesystem.loadTask("TASK-2"))?.dependencies).toEqual(["TASK-1"]);
 	});
 
 	it("refuses to complete tasks that are not Done", async () => {

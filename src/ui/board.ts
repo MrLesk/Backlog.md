@@ -1564,8 +1564,8 @@ export async function renderBoardTui(
 				const confirmed = await runWithModalGuard(() =>
 					openConfirmPopup({
 						screen,
-						title: "Complete Task",
-						message: `Mark task {bold}${task.id}{/bold} as completed?\n{gray-fg}${task.title}{/}`,
+						title: "Move to Completed",
+						message: `Move {bold}${task.id}{/bold} to completed?\nRemoves from board; keeps record\nand dependency links.`,
 					}),
 				);
 
@@ -1576,7 +1576,7 @@ export async function renderBoardTui(
 
 						if (result.success) {
 							currentTasks = currentTasks.filter((t) => t.id !== task.id);
-							showTransientFooter(` {green-fg}Completed ${task.id}{/}`);
+							showTransientFooter(` {green-fg}Moved ${task.id} to completed{/}`);
 							closeOpenPopup();
 							renderView();
 						} else if (result.reason === "not-terminal") {
@@ -1602,7 +1602,7 @@ export async function renderBoardTui(
 					openConfirmPopup({
 						screen,
 						title: "Archive Task",
-						message: `Archive task {bold}${task.id}{/bold}?\n{gray-fg}${task.title}{/}`,
+						message: `Archive {bold}${task.id}{/bold}?\nCanceled, duplicate, or invalid work.\nRemoves incoming task links.`,
 					}),
 				);
 
@@ -2072,8 +2072,8 @@ export async function renderBoardTui(
 			const confirmed = await runWithModalGuard(() =>
 				openConfirmPopup({
 					screen,
-					title: "Complete Task",
-					message: `Mark task {bold}${task.id}{/bold} as completed?\n{gray-fg}${task.title}{/}`,
+					title: "Move to Completed",
+					message: `Move {bold}${task.id}{/bold} to completed?\nRemoves from board; keeps record\nand dependency links.`,
 				}),
 			);
 
@@ -2084,7 +2084,7 @@ export async function renderBoardTui(
 
 					if (result.success) {
 						currentTasks = currentTasks.filter((t) => t.id !== task.id);
-						showTransientFooter(` {green-fg}Completed ${task.id}{/}`);
+						showTransientFooter(` {green-fg}Moved ${task.id} to completed{/}`);
 						renderView();
 					} else if (result.reason === "not-terminal") {
 						showTransientFooter(` {red-fg}${formatTaskCompletionBlockedMessage(task.id, result.terminalStatus)}{/}`);
@@ -2116,7 +2116,7 @@ export async function renderBoardTui(
 				openConfirmPopup({
 					screen,
 					title: "Archive Task",
-					message: `Archive task {bold}${task.id}{/bold}?\n{gray-fg}${task.title}{/}`,
+					message: `Archive {bold}${task.id}{/bold}?\nCanceled, duplicate, or invalid work.\nRemoves incoming task links.`,
 				}),
 			);
 

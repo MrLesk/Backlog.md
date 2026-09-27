@@ -19,8 +19,12 @@ const buildTask = (partial: Partial<Task> & Pick<Task, "id" | "title">): Task =>
 	...partial,
 });
 
-async function runCli(args: string[]) {
-	const result = await $`bun ${[CLI_PATH, ...args]}`.cwd(TEST_DIR).nothrow().quiet();
+async function runCli(args: string[], env: Record<string, string> = {}) {
+	const result = await $`bun ${[CLI_PATH, ...args]}`
+		.cwd(TEST_DIR)
+		.env({ ...process.env, ...env })
+		.nothrow()
+		.quiet();
 	return { exitCode: result.exitCode, stdout: result.stdout.toString(), stderr: result.stderr.toString() };
 }
 
@@ -77,6 +81,8 @@ describe("CLI list windows", () => {
 				buildTask({
 					id: `task-${index}`,
 					title: `Window task ${index}`,
+					// Searching for `--skip` finds tasks with an option value that reads like the skip option.
+					description: "Read in windows with --skip.",
 					status: index === 2 ? "In Progress" : "To Do",
 				}),
 				false,
@@ -177,10 +183,32 @@ describe("CLI list windows", () => {
 		expect(limitedWindow.stdout).toContain("Showing 1-3 of 4 items.");
 	});
 
+	it("windows the flat JSON task array, not the plain status groups", async () => {
+		const complete = (await runJson(["task", "list"])).tasks.map((task: { id: string }) => task.id);
+		const window = (await runJson(["task", "list", "--max-count", "2", "--skip", "1"])).tasks;
+
+		expect(window.map((task: { id: string }) => task.id)).toEqual(complete.slice(1, 3));
+	});
+
+	it("keeps option values and a -- separator in the next command", async () => {
+		const searched = ["task", "list", "--search", "--skip", "--plain"];
+		const complete = await runCli(searched);
+		expect(idsIn(complete.stdout, /TASK-\d+/g).length).toBeGreaterThan(2);
+		expect(joinGroupedWindows(await followWindows([...searched, "--max-count", "2"]))).toEqual(
+			printedLines(complete.stdout),
+		);
+
+		const separated = await followWindows(["doc", "list", "--max-count", "1", "--"]);
+		expect(separated[0]).toContain("Next: backlog doc list --max-count 1 --skip 1 --");
+		expect(joinGroupedWindows(separated)).toEqual(printedLines((await runCli(["doc", "list", "--plain"])).stdout));
+	});
+
 	it("prints only the number of listed items with --count", async () => {
 		expect((await runCli(["task", "list", "--count"])).stdout).toBe("5\n");
 		expect((await runCli(["task", "list", "--status", "To Do", "--count"])).stdout).toBe("3\n");
 		expect((await runCli(["task", "list", "--count", "--skip", "4"])).stdout).toBe("1\n");
+		// Bun colors a logged number when color is forced, which would break `$(backlog ... --count)`.
+		expect((await runCli(["task", "list", "--count"], { FORCE_COLOR: "1" })).stdout).toBe("5\n");
 
 		const withJson = await runCli(["task", "list", "--count", "--json"]);
 		expect(withJson.exitCode).toBe(1);
@@ -248,6 +276,15 @@ describe("CLI list windows", () => {
 		const completedWindow = await runCli(["milestone", "list", "--show-completed", "--max-count", "1", "--skip", "2"]);
 		expect(idsIn(completedWindow.stdout, /m-\d+:/g)).toEqual(["m-2:"]);
 		expect(completedWindow.stdout).toContain("Showing 3-3 of 3 items.");
+		// Windows print each section once, where it falls, so they join into the complete output.
+		for (const args of [
+			["milestone", "list", "--show-completed"],
+			["milestone", "list"],
+		]) {
+			const milestones = await runCli(args);
+			const milestoneWindows = await followWindows([...args, "--max-count", "1"]);
+			expect(joinGroupedWindows(milestoneWindows)).toEqual(printedLines(milestones.stdout));
+		}
 		expect((await runCli(["milestone", "list", "--count"])).stdout).toBe("2\n");
 		expect((await runCli(["milestone", "list", "--show-completed", "--count"])).stdout).toBe("3\n");
 	});
