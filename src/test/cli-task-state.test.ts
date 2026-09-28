@@ -35,10 +35,10 @@ describe("CLI Integration", () => {
 				{
 					id: "task-1",
 					title: "Archive Test Task",
-					status: "Done",
+					status: "To Do",
 					assignee: [],
 					createdDate: "2025-06-08",
-					labels: ["completed"],
+					labels: ["canceled"],
 					dependencies: [],
 					rawContent: "Task ready for archiving",
 				},
@@ -279,7 +279,7 @@ describe("CLI Integration", () => {
 				{
 					id: "task-5",
 					title: "Commit Archive Test",
-					status: "Done",
+					status: "To Do",
 					assignee: [],
 					createdDate: "2025-06-08",
 					labels: [],

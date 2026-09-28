@@ -2,7 +2,7 @@ import net from "node:net";
 import { dirname, isAbsolute, join } from "node:path";
 import type { Server, ServerWebSocket } from "bun";
 import { DEFAULT_STATUSES } from "../constants/index.ts";
-import { Core } from "../core/backlog.ts";
+import { Core, TaskArchiveStatusError } from "../core/backlog.ts";
 import type { ContentStore } from "../core/content-store.ts";
 import { initializeProject } from "../core/init.ts";
 import type { SearchService } from "../core/search-service.ts";
@@ -1078,6 +1078,21 @@ export class BacklogServer {
 		if (!dueDate.ok) return Response.json({ error: dueDate.error }, { status: 400 });
 
 		const updateInput: TaskUpdateInput = {};
+		for (const [field, inputField] of [
+			["definitionOfDoneRemove", "removeDefinitionOfDone"],
+			["definitionOfDoneCheck", "checkDefinitionOfDone"],
+			["definitionOfDoneUncheck", "uncheckDefinitionOfDone"],
+		] as const) {
+			if (!(field in updates)) continue;
+			const indices = updates[field];
+			if (
+				!Array.isArray(indices) ||
+				indices.some((value: unknown) => typeof value !== "number" || !Number.isFinite(value))
+			) {
+				return Response.json({ error: `${field} must be an array of finite numbers.` }, { status: 400 });
+			}
+			updateInput[inputField] = indices;
+		}
 
 		if ("title" in updates && typeof updates.title === "string") {
 			updateInput.title = updates.title;
@@ -1175,24 +1190,6 @@ export class BacklogServer {
 				.filter((item: { text: string }) => item.text.length > 0);
 		}
 
-		if ("definitionOfDoneRemove" in updates && Array.isArray(updates.definitionOfDoneRemove)) {
-			updateInput.removeDefinitionOfDone = updates.definitionOfDoneRemove.filter(
-				(value: unknown) => typeof value === "number" && Number.isFinite(value),
-			);
-		}
-
-		if ("definitionOfDoneCheck" in updates && Array.isArray(updates.definitionOfDoneCheck)) {
-			updateInput.checkDefinitionOfDone = updates.definitionOfDoneCheck.filter(
-				(value: unknown) => typeof value === "number" && Number.isFinite(value),
-			);
-		}
-
-		if ("definitionOfDoneUncheck" in updates && Array.isArray(updates.definitionOfDoneUncheck)) {
-			updateInput.uncheckDefinitionOfDone = updates.definitionOfDoneUncheck.filter(
-				(value: unknown) => typeof value === "number" && Number.isFinite(value),
-			);
-		}
-
 		try {
 			// editTaskOrDraft keeps a draft a draft, or promotes it when a real status is requested.
 			const updatedTask = isDraftId(taskId)
@@ -1226,6 +1223,9 @@ export class BacklogServer {
 			this.broadcastDataUpdated();
 			return Response.json({ success: true, cleanedTaskIds });
 		} catch (error) {
+			if (error instanceof TaskArchiveStatusError) {
+				return Response.json({ error: error.message }, { status: 400 });
+			}
 			// The task reached the archive and something after that failed. Say so, and refresh:
 			// a client told only "error" would offer to archive a task that is already archived.
 			const archiveState = readMovedState(error, "archiveState");

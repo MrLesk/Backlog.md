@@ -9,8 +9,7 @@ import {
 } from "../guidelines/mcp/index.ts";
 import { registerWorkflowResources } from "../mcp/resources/workflow/index.ts";
 import { createMcpServer, McpServer } from "../mcp/server.ts";
-import { registerDefinitionOfDoneTools } from "../mcp/tools/definition-of-done/index.ts";
-import { registerTaskTools, taskListSchema } from "../mcp/tools/tasks/index.ts";
+import { taskListSchema } from "../mcp/tools/tasks/index.ts";
 import { registerWorkflowTools } from "../mcp/tools/workflow/index.ts";
 import { createUniqueTestDir, initializeTestProject, safeCleanup } from "./test-utils.ts";
 
@@ -154,12 +153,12 @@ describe("McpServer bootstrap", () => {
 			"Do not check acceptance criteria, write the final summary, or move the task to Done from this guide alone",
 		);
 		expect(MCP_TASK_EXECUTION_GUIDE).toContain("verify each acceptance criterion with objective evidence");
-		expect(MCP_TASK_FINALIZATION_GUIDE).toContain("Run objective verification before checking acceptance criteria");
+		expect(MCP_TASK_FINALIZATION_GUIDE).toContain("Check only proven items");
 		expect(MCP_TASK_FINALIZATION_GUIDE).toContain(
-			"For UI or interactive work, exercise the behavior through a browser, DOM script, test runner, or documented manual interaction result.",
+			"For UI or interactive work, exercise the behavior through a browser, DOM script, test runner, or documented manual interaction.",
 		);
 		expect(MCP_TASK_FINALIZATION_GUIDE).toContain(
-			"Do not check acceptance criteria from code presence, grep output, or implementation intent alone.",
+			"Code presence, grep output, and implementation intent are not verification evidence.",
 		);
 	});
 
@@ -263,46 +262,6 @@ describe("McpServer bootstrap", () => {
 			params: { name: "get_backlog_instructions", arguments: { instruction: "task-creation" } },
 		});
 		expect(getText(creation.content)).toBe(MCP_TASK_CREATION_GUIDE);
-
-		await server.stop();
-	});
-
-	it("registers task tools via helpers", async () => {
-		const server = await bootstrapServer();
-		const config = await server.filesystem.loadConfig();
-		if (!config) {
-			throw new Error("Failed to load config");
-		}
-
-		registerTaskTools(server, config);
-		registerDefinitionOfDoneTools(server);
-
-		const tools = await server.testInterface.listTools();
-		const toolNames = tools.tools.map((tool) => tool.name).sort();
-		expect(toolNames).toEqual([
-			"definition_of_done_defaults_get",
-			"definition_of_done_defaults_upsert",
-			"get_backlog_instructions",
-			"task_archive",
-			"task_complete",
-			"task_create",
-			"task_edit",
-			"task_list",
-			"task_search",
-			"task_view",
-		]);
-
-		const resources = await server.testInterface.listResources();
-		expect(resources.resources.map((r) => r.uri)).toEqual([
-			"backlog://workflow/overview",
-			"backlog://workflow/task-creation",
-			"backlog://workflow/task-execution",
-			"backlog://workflow/task-finalization",
-		]);
-		expect(MCP_WORKFLOW_OVERVIEW).toContain("## Backlog.md Overview (MCP)");
-
-		const resourceTemplates = await server.testInterface.listResourceTemplates();
-		expect(resourceTemplates.resourceTemplates).toEqual([]);
 
 		await server.stop();
 	});

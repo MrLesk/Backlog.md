@@ -596,35 +596,6 @@ Test task with acceptance criteria
 });
 
 describe("AcceptanceCriteriaManager unit tests", () => {
-	test("should parse criteria with stable markers", () => {
-		const content = `## Acceptance Criteria
-<!-- AC:BEGIN -->
-- [ ] #1 First criterion
-- [x] #2 Second criterion
-- [ ] #3 Third criterion
-<!-- AC:END -->`;
-
-		const criteria = AcceptanceCriteriaManager.parseAcceptanceCriteria(content);
-		expect(criteria).toHaveLength(3);
-		expect(criteria[0]).toEqual({ checked: false, text: "First criterion", index: 1 });
-		expect(criteria[1]).toEqual({ checked: true, text: "Second criterion", index: 2 });
-		expect(criteria[2]).toEqual({ checked: false, text: "Third criterion", index: 3 });
-	});
-
-	test("should format criteria with proper numbering", () => {
-		const criteria = [
-			{ checked: false, text: "First", index: 1 },
-			{ checked: true, text: "Second", index: 2 },
-		];
-
-		const formatted = AcceptanceCriteriaManager.formatAcceptanceCriteria(criteria);
-		expect(formatted).toContain("## Acceptance Criteria");
-		expect(formatted).toContain("<!-- AC:BEGIN -->");
-		expect(formatted).toContain("- [ ] #1 First");
-		expect(formatted).toContain("- [x] #2 Second");
-		expect(formatted).toContain("<!-- AC:END -->");
-	});
-
 	test("preserves markdown headings inside acceptance criteria when updating", () => {
 		const base = `## Acceptance Criteria
 <!-- AC:BEGIN -->

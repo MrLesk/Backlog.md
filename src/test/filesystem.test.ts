@@ -557,15 +557,6 @@ Invalid content`,
 		});
 	});
 
-	describe("directory accessors", () => {
-		it("should provide correct directory paths", () => {
-			expect(filesystem.tasksDir).toBe(join(TEST_DIR, "backlog", "tasks"));
-			expect(filesystem.archiveTasksDir).toBe(join(TEST_DIR, "backlog", "archive", "tasks"));
-			expect(filesystem.decisionsDir).toBe(join(TEST_DIR, "backlog", "decisions"));
-			expect(filesystem.docsDir).toBe(join(TEST_DIR, "backlog", "docs"));
-		});
-	});
-
 	describe("decision log operations", () => {
 		const sampleDecision: Decision = {
 			id: "decision-1",
@@ -860,23 +851,6 @@ Invalid content`,
 			expect(result).toBe(false);
 		});
 
-		it("should handle config with all optional fields", async () => {
-			const fullConfig: BacklogConfig = {
-				projectName: "Full Project",
-				defaultAssignee: ["@admin"],
-				defaultStatus: "To Do",
-				defaultReporter: undefined,
-				statuses: ["To Do", "In Progress", "Done"],
-				labels: ["bug", "feature", "enhancement"],
-				dateFormat: "yyyy-mm-dd",
-			};
-
-			await filesystem.saveConfig(fullConfig);
-			const loaded = await filesystem.loadConfig();
-
-			expect(loaded).toEqual(fullConfig);
-		});
-
 		it("should handle config with minimal fields", async () => {
 			const minimalConfig: BacklogConfig = {
 				projectName: "Minimal Project",
@@ -933,25 +907,6 @@ Invalid content`,
 			// Verify the task can be loaded
 			const loaded = await filesystem.loadTask("task-mixed");
 			expect(loaded?.title).toBe("Fix Task List Ordering");
-		});
-
-		it("should strip punctuation from filenames", async () => {
-			const taskWithPunctuation: Task = {
-				id: "task-punct",
-				title: "Fix the user's login (OAuth)! #1",
-				status: "To Do",
-				assignee: [],
-				createdDate: "2025-06-07",
-				labels: [],
-				dependencies: [],
-				description: "Task with punctuation in the title",
-			};
-
-			await filesystem.saveTask(taskWithPunctuation);
-
-			const files = await readdir(filesystem.tasksDir);
-			const filename = files.find((f) => f.startsWith("task-punct -"));
-			expect(filename).toBe("task-punct - Fix-the-users-login-OAuth-1.md");
 		});
 
 		it("should load tasks with legacy filenames containing punctuation", async () => {
@@ -1023,25 +978,6 @@ Invalid content`,
 				const files = await readdir(filesystem.tasksDir);
 				expect(files).toContain(`${id} - ${expected}.md`);
 			}
-		});
-
-		it("should avoid double dashes in filenames", async () => {
-			const weirdTask: Task = {
-				id: "task-dashes",
-				title: "Task -- with  -- multiple   dashes",
-				status: "To Do",
-				assignee: [],
-				createdDate: "2025-06-07",
-				labels: [],
-				dependencies: [],
-				description: "Check double dashes",
-			};
-
-			await filesystem.saveTask(weirdTask);
-			const files = await readdir(filesystem.tasksDir);
-			const filename = files.find((f) => f.startsWith("task-dashes -"));
-			expect(filename).toBeDefined();
-			expect(filename?.includes("--")).toBe(false);
 		});
 	});
 

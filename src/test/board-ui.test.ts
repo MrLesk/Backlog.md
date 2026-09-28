@@ -52,7 +52,7 @@ describe("Board TUI Logic", () => {
 			const task2 = createTestTask("2", "t2", "ToDo");
 
 			const current: ColumnData[] = [{ status: "ToDo", tasks: [task1, task2] }];
-			const next: ColumnData[] = [{ status: "ToDo", tasks: [task1, task2] }];
+			const next: ColumnData[] = [{ status: "ToDo", tasks: [{ ...task1 }, { ...task2 }] }];
 			expect(shouldRebuildColumns(current, next)).toBe(false);
 		});
 	});

@@ -116,4 +116,35 @@ describe("BacklogServer cleanup endpoints", () => {
 		const completedTasks = await core.filesystem.listCompletedTasks();
 		expect(completedTasks.map((task) => task.id)).toEqual(["TASK-1"]);
 	});
+
+	it("rejects archiving final-status work and preserves its record and incoming links", async () => {
+		await core.updateTaskFromInput("TASK-2", { dependencies: ["TASK-1"], references: ["TASK-1"] }, false);
+		const response = await fetch(`http://127.0.0.1:${serverPort}/api/tasks/TASK-1`, { method: "DELETE" });
+		expect(response.status).toBe(400);
+		const result = (await response.json()) as { error: string };
+		expect(result.error).toContain("Task TASK-1 is Closed. Use Complete");
+		expect((await core.filesystem.loadTask("TASK-1"))?.status).toBe("Closed");
+		const dependent = await core.filesystem.loadTask("TASK-2");
+		expect(dependent?.dependencies).toEqual(["TASK-1"]);
+		expect(dependent?.references).toEqual(["TASK-1"]);
+		expect(await core.filesystem.listArchivedTasks()).toEqual([]);
+
+		await fetchJson("/api/tasks/TASK-1/complete", { method: "POST" });
+		expect(await core.filesystem.loadTask("TASK-1")).toBeNull();
+		expect((await core.filesystem.listCompletedTasks()).map((task) => task.id)).toEqual(["TASK-1"]);
+		expect((await core.filesystem.loadTask("TASK-2"))?.dependencies).toEqual(["TASK-1"]);
+	});
+
+	it("archives nonfinal work and cleans incoming links", async () => {
+		await core.updateTaskFromInput("TASK-1", { dependencies: ["TASK-2"], references: ["TASK-2"] }, false);
+		const result = await fetchJson<{ success: boolean; cleanedTaskIds: string[] }>("/api/tasks/TASK-2", {
+			method: "DELETE",
+		});
+		expect(result).toEqual({ success: true, cleanedTaskIds: ["TASK-1"] });
+		expect(await core.filesystem.loadTask("TASK-2")).toBeNull();
+		expect((await core.filesystem.listArchivedTasks()).map((task) => task.id)).toEqual(["TASK-2"]);
+		const dependent = await core.filesystem.loadTask("TASK-1");
+		expect(dependent?.dependencies).toEqual([]);
+		expect(dependent?.references).toEqual([]);
+	});
 });

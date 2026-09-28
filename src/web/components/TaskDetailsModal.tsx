@@ -1,3 +1,4 @@
+import { DEFAULT_STATUSES } from "../../constants/index.ts";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { isLocalEditableTask, type AcceptanceCriterion, type Milestone, type Task, type TaskComment } from "../../types";
 import { type TaskDetail, taskDependencyGraph, taskReadiness } from "../../core/task-detail";
@@ -509,7 +510,7 @@ export const TaskDetailsModal: React.FC<Props> = ({
         e.stopPropagation();
         setMode("edit");
       }
-      if (isDoneStatus && (e.key.toLowerCase() === "c") && !e.metaKey && !e.ctrlKey && !e.altKey) {
+      if (isFinalStatus && (e.key.toLowerCase() === "c") && !e.metaKey && !e.ctrlKey && !e.altKey) {
         e.preventDefault();
         e.stopPropagation();
         void handleComplete();
@@ -517,7 +518,7 @@ export const TaskDetailsModal: React.FC<Props> = ({
     };
     window.addEventListener("keydown", onKey, { capture: true });
     return () => window.removeEventListener("keydown", onKey, { capture: true } as any);
-  }, [mode, title, description, plan, notes, finalSummary, criteria, definitionOfDone, status]);
+  }, [mode, title, description, plan, notes, finalSummary, criteria, definitionOfDone, status, availableStatuses]);
 
   // Reset local state when task changes or modal opens
   useEffect(() => {
@@ -1018,7 +1019,7 @@ export const TaskDetailsModal: React.FC<Props> = ({
 	const handleComplete = async () => {
 		if (demoting) return;
 		if (!task) return;
-		if (!window.confirm("Complete this task? It will be moved to the completed folder.")) return;
+		if (!window.confirm("Move this task off the board to completed storage? Its record and dependency links will be preserved.")) return;
 		try {
 			await apiClient.completeTask(task.id);
 			if (onSaved) await onSaved();
@@ -1102,7 +1103,7 @@ export const TaskDetailsModal: React.FC<Props> = ({
   const handleArchive = async () => {
     if (demoting) return;
     if (!task || !onArchive) return;
-    if (!window.confirm(`Are you sure you want to archive "${task.title}"? This will move the task to the archive folder.`)) return;
+    if (!window.confirm(`Archive "${task.title}"? Use Archive for canceled, duplicate, or invalid work. Incoming dependencies and task references will be removed.`)) return;
     await onArchive();
   };
 
@@ -1110,7 +1111,7 @@ export const TaskDetailsModal: React.FC<Props> = ({
   const totalCount = (criteria || []).length;
   const definitionCheckedCount = (definitionOfDone || []).filter((c) => c.checked).length;
   const definitionTotalCount = (definitionOfDone || []).length;
-	const isDoneStatus = (status || "").toLowerCase().includes("done");
+	const isFinalStatus = isTerminalStatus(status, availableStatuses.length ? availableStatuses : DEFAULT_STATUSES);
 	const canDemote = Boolean(
 		task && !isDraftMode && !isOpenDraft && isLocalEditableTask(task) && task.source !== "completed" && !isFromOtherBranch,
 	);
@@ -1136,15 +1137,15 @@ export const TaskDetailsModal: React.FC<Props> = ({
       disableEscapeClose={mode === "edit" || mode === "create" || demoting}
       actions={
 		<div className="flex flex-nowrap items-center justify-end gap-2">
-		          {isDoneStatus && mode === "preview" && !isCreateMode && !isFromOtherBranch && (
+		          {isFinalStatus && mode === "preview" && !isCreateMode && !isFromOtherBranch && (
 		            <button
 		              onClick={handleComplete}
 		              disabled={demoting}
 		              className="inline-flex items-center px-3 py-2 sm:px-4 rounded-lg text-sm font-medium text-white bg-emerald-600 dark:bg-emerald-700 hover:bg-emerald-700 dark:hover:bg-emerald-800 focus:outline-none focus:ring-2 focus:ring-emerald-500 dark:focus:ring-emerald-400 focus:ring-offset-2 dark:focus:ring-offset-gray-900 transition-colors duration-200"
-		              title="Move to completed folder (removes from board)"
+		              title="Move off the board, preserving the record and dependency links"
 		            >
 		              <span className="sm:hidden">Complete</span>
-		              <span className="hidden sm:inline">Mark as completed</span>
+		              <span className="hidden sm:inline">Move to completed</span>
 		            </button>
 		          )}
 		          {canDemote && mode === "preview" && (
@@ -1933,6 +1934,7 @@ export const TaskDetailsModal: React.FC<Props> = ({
 		            <div className="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-3">
 		              <button
 		                onClick={handleArchive}
+		                title="Archive canceled, duplicate, or invalid work"
 		                disabled={demoting}
 		                className="w-full inline-flex items-center justify-center px-4 py-2 bg-red-500 dark:bg-red-600 text-white text-sm font-medium rounded-md hover:bg-red-600 dark:hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 dark:focus:ring-offset-gray-800 focus:ring-red-400 dark:focus:ring-red-500 transition-colors duration-200"
 		              >

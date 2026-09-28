@@ -3,7 +3,13 @@ import { basename, dirname, isAbsolute, join, resolve } from "node:path";
 import lockfile from "proper-lockfile";
 import { DEFAULT_DIRECTORIES, DEFAULT_FILES, DEFAULT_STATUSES, FALLBACK_STATUS } from "../constants/index.ts";
 import { parseFrontmatter } from "../markdown/frontmatter.ts";
-import { parseDecision, parseDocument, parseMilestone, parseTask } from "../markdown/parser.ts";
+import {
+	parseDecision,
+	parseDocument,
+	parseMilestone,
+	parseTask,
+	TaskDependenciesParseError,
+} from "../markdown/parser.ts";
 import { serializeDecision, serializeDocument, serializeTask } from "../markdown/serializer.ts";
 import type { BacklogConfig, Decision, Document, Milestone, Task, TaskListFilter } from "../types/index.ts";
 import type { BacklogConfigSource } from "../utils/backlog-directory.ts";
@@ -785,7 +791,8 @@ export class FileSystem {
 		if (shouldPreservePath) {
 			try {
 				existingTask = parseTask(await Bun.file(filepath).text());
-			} catch {
+			} catch (error) {
+				if (error instanceof TaskDependenciesParseError) throw error;
 				existingTask = null;
 			}
 		}
@@ -850,7 +857,7 @@ export class FileSystem {
 			const task = normalizeTaskIdentity(parseTask(content));
 			return { ...task, filePath: filepath };
 		} catch (error) {
-			if (isAmbiguousTaskIdError(error)) throw error;
+			if (isAmbiguousTaskIdError(error) || error instanceof TaskDependenciesParseError) throw error;
 			return null;
 		}
 	}
@@ -1263,6 +1270,7 @@ export class FileSystem {
 		// Normalize the draft ID to uppercase before serialization
 		const normalizedTask = { ...task, id: draftId };
 		const content = serializeTask(normalizedTask);
+		await this.ensureDirectoryExists(dirname(filepath));
 
 		// Remove every existing draft file whose numeric identity matches the saved id but
 		// whose filename differs (title change, zero-padding drift): a save must converge
@@ -1290,7 +1298,6 @@ export class FileSystem {
 			}
 		}
 
-		await this.ensureDirectoryExists(dirname(filepath));
 		await Bun.write(filepath, content);
 		return filepath;
 	}
@@ -1480,6 +1487,7 @@ export class FileSystem {
 		const decisionsDir = await this.getDecisionsDir();
 		const filepath = join(decisionsDir, filename);
 		const content = serializeDecision(decision);
+		await this.ensureDirectoryExists(dirname(filepath));
 
 		const matches = await Array.fromAsync(
 			new Bun.Glob("decision-*.md").scan({ cwd: decisionsDir, followSymlinks: true }),
@@ -1497,7 +1505,6 @@ export class FileSystem {
 			}
 		}
 
-		await this.ensureDirectoryExists(dirname(filepath));
 		await Bun.write(filepath, content);
 
 		return { filepath, removedFilepaths };
@@ -1621,8 +1628,8 @@ export class FileSystem {
 				}
 			}
 
-			// Stable sort by title for UI/CLI listing
-			return docs.sort((a, b) => a.title.localeCompare(b.title));
+			// Sort by title for UI/CLI listing; the path breaks title ties so paged CLI windows never overlap.
+			return docs.sort((a, b) => a.title.localeCompare(b.title) || (a.path ?? "").localeCompare(b.path ?? ""));
 		} catch (error) {
 			recordUnreadableDirectory(error, unreadable);
 			return [];

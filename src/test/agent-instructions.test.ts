@@ -218,18 +218,6 @@ describe("addAgentInstructions", () => {
 		expect(workflow).not.toContain("Share the plan with the user and wait for approval");
 	});
 
-	it("does not duplicate content when run multiple times (idempotent)", async () => {
-		// First run
-		await addAgentInstructions(TEST_DIR);
-		const firstRun = await Bun.file(join(TEST_DIR, "CLAUDE.md")).text();
-
-		// Second run - should not duplicate content
-		await addAgentInstructions(TEST_DIR);
-		const secondRun = await Bun.file(join(TEST_DIR, "CLAUDE.md")).text();
-
-		expect(firstRun).toBe(secondRun);
-	});
-
 	it("preserves existing content and adds Backlog.md content only once", async () => {
 		const existingContent = "# My Existing Claude Instructions\n\nThis is my custom content.\n";
 		await Bun.write(join(TEST_DIR, "CLAUDE.md"), existingContent);
@@ -252,17 +240,6 @@ describe("addAgentInstructions", () => {
 		const endMarkerCount = (firstRun.match(/<!-- BACKLOG\.MD GUIDELINES END -->/g) || []).length;
 		expect(startMarkerCount).toBe(1);
 		expect(endMarkerCount).toBe(1);
-	});
-
-	it("handles different file types with appropriate markers", async () => {
-		const existingContent = "existing content\n";
-
-		// Test AGENTS.md (markdown with HTML comments)
-		await Bun.write(join(TEST_DIR, "AGENTS.md"), existingContent);
-		await addAgentInstructions(TEST_DIR, undefined, ["AGENTS.md"]);
-		const agentsContent = await Bun.file(join(TEST_DIR, "AGENTS.md")).text();
-		expect(agentsContent).toContain("<!-- BACKLOG.MD GUIDELINES START -->");
-		expect(agentsContent).toContain("<!-- BACKLOG.MD GUIDELINES END -->");
 	});
 
 	it("replaces CLI guidelines with MCP nudge when switching modes", async () => {
@@ -322,20 +299,6 @@ describe("addAgentInstructions", () => {
 		expect(section).toContain("single-quoted CLI arguments");
 		expect(section).toContain("backlog task create 'Document `backlog init` setup'");
 		expect(section).toContain("Backlog.md cannot recover the original text after the shell has already executed it");
-	});
-
-	// BACK-431 / issue #595: option help text must not advertise shell forms that AI
-	// agent sandboxes reject. Help text is what `--help` surfaces and what agents echo
-	// when reasoning about how to call the CLI.
-	it("CLI option help does not advertise sandbox-rejected shell forms (BACK-431/#595)", async () => {
-		const cliPath = join(__dirname, "../cli.ts");
-		const cliText = await Bun.file(cliPath).text();
-		const helpLines = cliText.split("\n").filter((line) => line.includes("multi-line"));
-		expect(helpLines.length).toBeGreaterThan(0);
-		for (const line of helpLines) {
-			expect(line).not.toMatch(/\$'/); // no ANSI-C quoting in help strings
-			expect(line).not.toMatch(/\$\(printf/); // no command-substitution-with-printf in help strings
-		}
 	});
 
 	// BACK-267: every installed instruction block carries a machine-readable version

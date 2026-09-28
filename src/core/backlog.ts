@@ -1,4 +1,4 @@
-import { rename as moveFile, readFile, stat, unlink, writeFile } from "node:fs/promises";
+import { mkdir, rename as moveFile, readFile, stat, unlink, writeFile } from "node:fs/promises";
 import { basename, dirname, isAbsolute, join, relative } from "node:path";
 import { DEFAULT_DIRECTORIES, DEFAULT_STATUSES, FALLBACK_STATUS } from "../constants/index.ts";
 import {
@@ -13,7 +13,7 @@ import {
 import { type GitBranchTip, type GitIndexEntry, GitOperations } from "../git/operations.ts";
 import { parseFrontmatter } from "../markdown/frontmatter.ts";
 import { extractSection, parseTask } from "../markdown/parser.ts";
-import { assertSectionInputHasNoMarkerLines } from "../markdown/structured-sections.ts";
+import { assertSectionInputHasNoMarkerLines, assertValidChecklistMarks } from "../markdown/structured-sections.ts";
 import {
 	type AcceptanceCriterion,
 	type BacklogConfig,
@@ -97,7 +97,7 @@ import { sortByOrdinal } from "../utils/task-sorting.ts";
 import { attachSubtaskSummaries } from "../utils/task-subtasks.ts";
 import { formatValidTaskTypeValues, resolveTaskTypeValue } from "../utils/task-type-config.ts";
 import { upsertTaskUpdatedDate } from "../utils/task-updated-date.ts";
-import { isTerminalStatus } from "../utils/terminal-status.ts";
+import { getTerminalStatus, isTerminalStatus } from "../utils/terminal-status.ts";
 import { migrateConfig, needsMigration } from "./config-migration.ts";
 import { ContentStore, type TaskCorpusSnapshot } from "./content-store.ts";
 import {
@@ -374,6 +374,15 @@ function assertSectionInputsSafe(input: {
 	}
 	for (const value of input.appendFinalSummary ?? []) {
 		assertSectionInputHasNoMarkerLines(value, "finalSummary");
+	}
+}
+
+export class TaskArchiveStatusError extends Error {
+	constructor(taskId: string, terminalStatus: string) {
+		super(
+			`Task ${taskId} is ${terminalStatus}. Use Complete to move finished work to completed storage and preserve its links. Use: backlog task complete ${taskId}`,
+		);
+		this.name = "TaskArchiveStatusError";
 	}
 }
 
@@ -1098,7 +1107,16 @@ export class Core {
 			if (identityResolution.status === "ambiguous") {
 				throw new AmbiguousTaskIdError(taskId, identityResolution.candidates);
 			}
-			return identityResolution.status === "found" ? identityResolution.task : null;
+			if (identityResolution.status === "found") return identityResolution.task;
+			// Diagnose a file skipped during loading without bypassing the identity index's result.
+			try {
+				await filesystem.loadTask(taskId);
+			} catch (error) {
+				if (projectChanged()) continue;
+				throw error;
+			}
+			if (projectChanged()) continue;
+			return null;
 		}
 	}
 
@@ -1164,7 +1182,10 @@ export class Core {
 		const index = await this.buildWorkingCopyTaskIndex(activeTasks);
 		const resolution = forMutation ? index.resolveForMutation(taskId) : index.resolveForRead(taskId);
 		if (resolution.status === "ambiguous") throw new AmbiguousTaskIdError(taskId, resolution.candidates);
-		return resolution.status === "found" ? { ...resolution.task } : null;
+		if (resolution.status === "found") return { ...resolution.task };
+		// Lists skip damaged files; an explicit lookup must still report why its task cannot load.
+		await this.fs.loadTask(taskId);
+		return null;
 	}
 
 	private async loadTaskForMutation(taskId: string, options: TaskReadOptions = {}): Promise<Task | null> {
@@ -1175,7 +1196,9 @@ export class Core {
 		await store.refreshTasks();
 		const resolution = store.resolveTaskForMutation(taskId);
 		if (resolution.status === "ambiguous") throw new AmbiguousTaskIdError(taskId, resolution.candidates);
-		return resolution.status === "found" ? { ...resolution.task } : null;
+		if (resolution.status === "found") return { ...resolution.task };
+		await this.fs.loadTask(taskId);
+		return null;
 	}
 
 	async getTaskContent(taskId: string): Promise<string | null> {
@@ -1971,6 +1994,21 @@ export class Core {
 		statusResolver: (status: string) => Promise<string>,
 	): Promise<{ task: Task; mutated: boolean }> {
 		assertSectionInputsSafe(input);
+		if (
+			input.acceptanceCriteria !== undefined ||
+			input.removeAcceptanceCriteria?.length ||
+			input.checkAcceptanceCriteria?.length ||
+			input.uncheckAcceptanceCriteria?.length
+		) {
+			assertValidChecklistMarks(task.rawContent ?? "", "AC");
+		}
+		if (
+			input.removeDefinitionOfDone?.length ||
+			input.checkDefinitionOfDone?.length ||
+			input.uncheckDefinitionOfDone?.length
+		) {
+			assertValidChecklistMarks(task.rawContent ?? "", "DOD");
+		}
 		let mutated = false;
 
 		const applyStringField = (
@@ -3301,17 +3339,25 @@ export class Core {
 		}
 		const normalizedTaskId = taskToArchive.id;
 
-		// Get paths before moving the file
-		const taskPath = taskToArchive.filePath ?? (await getTaskPath(normalizedTaskId, this));
-		const taskFilename = taskPath ? basename(taskPath) : null;
-
-		if (!taskPath || !taskFilename) return { success: false, cleanedTaskIds: [] };
-
-		const fromPath = taskPath;
-		const toPath = join(await this.fs.getArchiveTasksDir(), taskFilename);
-
 		return await this.withVacatedIdCleanup(taskToArchive, normalizedTaskId, async (cleanup) => {
+			// A concurrent edit may have finished the work before this lock was acquired.
+			const current = await this.loadTaskForMutation(normalizedTaskId, options);
+			if (!current) return { success: false, cleanedTaskIds: [] };
+			const config = await this.fs.loadConfig();
+			const statuses = config?.statuses ?? [...DEFAULT_STATUSES];
+			if (isTerminalStatus(current.status, statuses)) {
+				throw new TaskArchiveStatusError(current.id, getTerminalStatus(statuses) ?? "Done");
+			}
+
+			const taskPath = current.filePath ?? (await getTaskPath(normalizedTaskId, this));
+			const taskFilename = taskPath ? basename(taskPath) : null;
+			if (!taskPath || !taskFilename) return { success: false, cleanedTaskIds: [] };
+
+			const fromPath = taskPath;
+			const toPath = join(await this.fs.getArchiveTasksDir(), taskFilename);
+
 			try {
+				await mkdir(dirname(toPath), { recursive: true });
 				await moveFile(fromPath, toPath);
 			} catch {
 				return { success: false, cleanedTaskIds: [] };
@@ -3431,6 +3477,7 @@ export class Core {
 		const toPath = join(completedDir, taskFilename);
 
 		try {
+			await mkdir(dirname(toPath), { recursive: true });
 			await moveFile(fromPath, toPath);
 		} catch {
 			return false;
@@ -3643,6 +3690,7 @@ export class Core {
 		if (!task) {
 			throw new Error(`Task not found: ${taskId}`);
 		}
+		assertValidChecklistMarks(task.rawContent ?? "", "AC");
 
 		let list = Array.isArray(task.acceptanceCriteriaItems) ? [...task.acceptanceCriteriaItems] : [];
 		const removed: number[] = [];
@@ -3687,6 +3735,7 @@ export class Core {
 		if (!task) {
 			throw new Error(`Task not found: ${taskId}`);
 		}
+		assertValidChecklistMarks(task.rawContent ?? "", "AC");
 
 		let list = Array.isArray(task.acceptanceCriteriaItems) ? [...task.acceptanceCriteriaItems] : [];
 		const updated: number[] = [];

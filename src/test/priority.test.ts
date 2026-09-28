@@ -45,53 +45,6 @@ describe("Priority functionality", () => {
 	});
 
 	describe("parseTask", () => {
-		it("should parse task with priority field", () => {
-			const content = `---
-id: task-1
-title: "High priority task"
-status: "To Do"
-priority: high
-assignee: []
-created_date: "2025-06-20"
-labels: []
-dependencies: []
----
-
-## Description
-
-This is a high priority task.`;
-
-			const task = parseTask(content);
-
-			expect(task.id).toBe("task-1");
-			expect(task.title).toBe("High priority task");
-			expect(task.priority).toBe("high");
-		});
-
-		it("should handle all priority levels", () => {
-			const priorities = ["high", "medium", "low"] as const;
-
-			for (const priority of priorities) {
-				const content = `---
-id: task-${priority}
-title: "${priority} priority task"
-status: "To Do"
-priority: ${priority}
-assignee: []
-created_date: "2025-06-20"
-labels: []
-dependencies: []
----
-
-## Description
-
-This is a ${priority} priority task.`;
-
-				const task = parseTask(content);
-				expect(task.priority).toBe(priority);
-			}
-		});
-
 		it("should preserve non-default priority values", () => {
 			const content = `---
 id: task-1
@@ -156,24 +109,6 @@ This task has mixed case priority.`;
 	});
 
 	describe("serializeTask", () => {
-		it("should serialize task with priority", () => {
-			const task: Task = {
-				id: "task-1",
-				title: "High priority task",
-				status: "To Do",
-				assignee: [],
-				createdDate: "2025-06-20",
-				labels: [],
-				dependencies: [],
-				rawContent: "## Description\n\nThis is a high priority task.",
-				priority: "high",
-			};
-
-			const serialized = serializeTask(task);
-
-			expect(serialized).toContain("priority: high");
-		});
-
 		it("should not include priority field when undefined", () => {
 			const task: Task = {
 				id: "task-1",

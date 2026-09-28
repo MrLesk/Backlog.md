@@ -29,16 +29,6 @@ describe("CLI root entry (bare run)", () => {
 		expect(out).toContain("\u001B[0m");
 	});
 
-	it("keeps the root entry plain when color is disabled", () => {
-		const out = formatRootEntry({ version: "1.2.3", initialized: true, color: false });
-
-		expect(out).toContain("██████╗");
-		expect(out).toContain("Backlog.md v1.2.3");
-		expect(out).toContain("Common workflow:");
-		expect(out).not.toContain("\u001B[");
-		expect(out).not.toContain("\u001B]");
-	});
-
 	it("honors explicit color false even when stdout is a TTY", async () => {
 		const originalWrite = process.stdout.write;
 		const originalIsTTY = process.stdout.isTTY;

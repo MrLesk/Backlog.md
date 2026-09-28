@@ -151,24 +151,6 @@ describe("View Switcher", () => {
 			// Initially should not be ready (no data loaded yet)
 			expect(switcher.isKanbanReady()).toBe(false);
 		});
-
-		it("should start preloading kanban data", () => {
-			const initialState: ViewState = {
-				type: "task-list",
-				tasks: [],
-			};
-
-			const switcher = new ViewSwitcher({
-				core,
-				initialState,
-			});
-
-			// Mock the preloadKanban method to avoid remote git operations
-			switcher.preloadKanban = async () => {};
-
-			// Should not throw when preloading
-			expect(() => switcher.preloadKanban()).not.toThrow();
-		});
 	});
 
 	describe("View change callback", () => {

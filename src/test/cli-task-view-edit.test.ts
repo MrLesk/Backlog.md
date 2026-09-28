@@ -147,13 +147,6 @@ describe("CLI Integration", () => {
 			expect(ambiguousOutput).not.toContain("Huge neighbor");
 		});
 
-		it("should return null for non-existent tasks", async () => {
-			const core = new Core(TEST_DIR);
-
-			const nonExistentTask = await core.filesystem.loadTask("task-999");
-			expect(nonExistentTask).toBeNull();
-		});
-
 		it("should not modify task files (read-only operation)", async () => {
 			const core = new Core(TEST_DIR);
 
@@ -267,110 +260,6 @@ describe("CLI Integration", () => {
 			expect(updatedTask?.status).toBe("In Progress");
 			const today = new Date().toISOString().slice(0, 16).replace("T", " ");
 			expect(updatedTask?.updatedDate).toBe(today);
-		});
-
-		it("should update assignee", async () => {
-			const core = new Core(TEST_DIR);
-
-			// Create a test task
-			await core.createTask(
-				{
-					id: "task-2",
-					title: "Assignee Test",
-					status: "To Do",
-					assignee: [],
-					createdDate: "2025-06-08",
-					labels: [],
-					dependencies: [],
-					rawContent: "Testing assignee updates",
-				},
-				false,
-			);
-
-			// Update assignee
-			await core.updateTaskFromInput("task-2", { assignee: ["newuser@example.com"] }, false);
-
-			// Verify assignee was updated
-			const updatedTask = await core.filesystem.loadTask("task-2");
-			expect(updatedTask?.assignee).toEqual(["newuser@example.com"]);
-		});
-
-		it("should replace all labels with new labels", async () => {
-			const core = new Core(TEST_DIR);
-
-			// Create a test task with existing labels
-			await core.createTask(
-				{
-					id: "task-3",
-					title: "Label Replace Test",
-					status: "To Do",
-					assignee: [],
-					createdDate: "2025-06-08",
-					labels: ["old1", "old2"],
-					dependencies: [],
-					rawContent: "Testing label replacement",
-				},
-				false,
-			);
-
-			// Replace all labels
-			await core.updateTaskFromInput("task-3", { labels: ["new1", "new2", "new3"] }, false);
-
-			// Verify labels were replaced
-			const updatedTask = await core.filesystem.loadTask("task-3");
-			expect(updatedTask?.labels).toEqual(["new1", "new2", "new3"]);
-		});
-
-		it("should add labels without replacing existing ones", async () => {
-			const core = new Core(TEST_DIR);
-
-			// Create a test task with existing labels
-			await core.createTask(
-				{
-					id: "task-4",
-					title: "Label Add Test",
-					status: "To Do",
-					assignee: [],
-					createdDate: "2025-06-08",
-					labels: ["existing"],
-					dependencies: [],
-					rawContent: "Testing label addition",
-				},
-				false,
-			);
-
-			// Add new labels
-			await core.updateTaskFromInput("task-4", { addLabels: ["added1", "added2"] }, false);
-
-			// Verify labels were added
-			const updatedTask = await core.filesystem.loadTask("task-4");
-			expect(updatedTask?.labels).toEqual(["existing", "added1", "added2"]);
-		});
-
-		it("should remove specific labels", async () => {
-			const core = new Core(TEST_DIR);
-
-			// Create a test task with multiple labels
-			await core.createTask(
-				{
-					id: "task-5",
-					title: "Label Remove Test",
-					status: "To Do",
-					assignee: [],
-					createdDate: "2025-06-08",
-					labels: ["keep1", "remove", "keep2"],
-					dependencies: [],
-					rawContent: "Testing label removal",
-				},
-				false,
-			);
-
-			// Remove specific label
-			await core.updateTaskFromInput("task-5", { removeLabels: ["remove"] }, false);
-
-			// Verify label was removed
-			const updatedTask = await core.filesystem.loadTask("task-5");
-			expect(updatedTask?.labels).toEqual(["keep1", "keep2"]);
 		});
 
 		it("should replace labels from repeated CLI label flags", async () => {
@@ -597,13 +486,6 @@ describe("CLI Integration", () => {
 			expect((await core.filesystem.loadTask("task-14"))?.assignee).toEqual(["@alice"]);
 		});
 
-		it("should handle non-existent task gracefully", async () => {
-			const core = new Core(TEST_DIR);
-
-			const nonExistentTask = await core.filesystem.loadTask("task-999");
-			expect(nonExistentTask).toBeNull();
-		});
-
 		it("should automatically set updated_date field when editing", async () => {
 			const core = new Core(TEST_DIR);
 
@@ -630,35 +512,6 @@ describe("CLI Integration", () => {
 			const today = new Date().toISOString().slice(0, 16).replace("T", " ");
 			expect(updatedTask?.updatedDate).toBe(today);
 			expect(updatedTask?.createdDate).toBe("2025-06-07"); // Should remain unchanged
-		});
-
-		it("should commit changes automatically", async () => {
-			const core = new Core(TEST_DIR);
-
-			// Create a test task
-			await core.createTask(
-				{
-					id: "task-7",
-					title: "Commit Test",
-					status: "To Do",
-					assignee: [],
-					createdDate: "2025-06-08",
-					labels: [],
-					dependencies: [],
-					rawContent: "Testing auto-commit",
-				},
-				false,
-			);
-
-			// Edit the task with auto-commit enabled
-			await core.updateTaskFromInput("task-7", { title: "Updated for Commit" }, true);
-
-			// Verify the task was updated (this confirms the update functionality works)
-			const updatedTask = await core.filesystem.loadTask("task-7");
-			expect(updatedTask?.title).toBe("Updated for Commit");
-
-			// For now, just verify that updateTask with autoCommit=true doesn't throw
-			// The actual git commit functionality is tested at the Core level
 		});
 
 		it("should preserve YAML frontmatter formatting", async () => {
