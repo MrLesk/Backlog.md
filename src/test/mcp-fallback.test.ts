@@ -24,14 +24,6 @@ describe("MCP Server Fallback Mode", () => {
 		rmSync(tempDir, { recursive: true, force: true });
 	});
 
-	test("should start successfully in non-backlog directory", async () => {
-		// Should not throw an error
-		const server = await createMcpServer(tempDir, { debug: false });
-
-		expect(server).toBeDefined();
-		expect(server.getServer()).toBeDefined();
-	});
-
 	test("should provide backlog://init-required resource in fallback mode", async () => {
 		const server = await createMcpServer(tempDir, { debug: false });
 

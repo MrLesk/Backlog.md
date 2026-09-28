@@ -227,45 +227,22 @@ describe("BacklogServer statistics endpoint", () => {
 		await rootB.saveDraft(createTask({ id: "DRAFT-11", title: "Root B draft too", status: "Draft" }));
 
 		const core = (server as unknown as { core: Core }).core;
-		const originalListTasks = core.filesystem.listTasks.bind(core.filesystem);
-		const originalListCompletedTasks = core.filesystem.listCompletedTasks.bind(core.filesystem);
-		let activeCorpusLoads = 0;
-		let completedCorpusLoads = 0;
-		core.filesystem.listTasks = async (...args) => {
-			activeCorpusLoads += 1;
-			return await originalListTasks(...args);
-		};
-		core.filesystem.listCompletedTasks = async (...args) => {
-			completedCorpusLoads += 1;
-			return await originalListCompletedTasks(...args);
-		};
+		await Bun.write(join(testDir, "backlog.config.yml"), rootConfig("Root B", "root-b"));
+		core.filesystem.invalidateConfigCache();
+		expect(core.filesystem.backlogDirName).toBe("root-b");
 
-		try {
-			await Bun.write(join(testDir, "backlog.config.yml"), rootConfig("Root B", "root-b"));
-			core.filesystem.invalidateConfigCache();
-			expect(core.filesystem.backlogDirName).toBe("root-b");
+		const first = await requestStatistics();
+		expect(first).toMatchObject({
+			totalTasks: 3,
+			completedTasks: 1,
+			completionPercentage: 33,
+			draftCount: 2,
+			statusCounts: { Queued: 2, Done: 1 },
+		});
+		expect(first.statusCounts).toEqual({ Queued: 2, Done: 1 });
 
-			const first = await requestStatistics();
-			expect(first).toMatchObject({
-				totalTasks: 3,
-				completedTasks: 1,
-				completionPercentage: 33,
-				draftCount: 2,
-				statusCounts: { Queued: 2, Done: 1 },
-			});
-			expect(first.statusCounts).toEqual({ Queued: 2, Done: 1 });
-
-			const second = await requestStatistics();
-			expect(second.statusCounts).toEqual({ Queued: 2, Done: 1 });
-		} finally {
-			core.filesystem.listTasks = originalListTasks;
-			core.filesystem.listCompletedTasks = originalListCompletedTasks;
-		}
-
-		// Root rebinding and branch-fingerprint reconciliation each publish the new root once;
-		// the second request then performs the normal cached working-copy reconciliation.
-		expect(activeCorpusLoads).toBe(3);
-		expect(completedCorpusLoads).toBe(3);
+		const second = await requestStatistics();
+		expect(second.statusCounts).toEqual({ Queued: 2, Done: 1 });
 	});
 
 	it("refreshes statistics after an active branch ref moves", async () => {

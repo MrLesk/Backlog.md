@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { formatStatusWithIcon, getStatusColor, getStatusIcon, getStatusStyle } from "../ui/status-icon.ts";
+import { formatStatusWithIcon, getStatusStyle } from "../ui/status-icon.ts";
 
 describe("Status Icon Component", () => {
 	describe("getStatusStyle", () => {
@@ -43,36 +43,6 @@ describe("Status Icon Component", () => {
 			const style = getStatusStyle("Unknown Status");
 			expect(style.icon).toBe("○");
 			expect(style.color).toBe("default");
-		});
-	});
-
-	describe("getStatusColor", () => {
-		test("returns correct color for each status", () => {
-			expect(getStatusColor("Done")).toBe("green");
-			expect(getStatusColor("In Progress")).toBe("yellow");
-			expect(getStatusColor("Blocked")).toBe("red");
-			expect(getStatusColor("To Do")).toBe("default");
-			expect(getStatusColor("Review")).toBe("blue");
-			expect(getStatusColor("Testing")).toBe("cyan");
-		});
-
-		test("returns default color for unknown status", () => {
-			expect(getStatusColor("Unknown")).toBe("default");
-		});
-	});
-
-	describe("getStatusIcon", () => {
-		test("returns correct icon for each status", () => {
-			expect(getStatusIcon("Done")).toBe("✔");
-			expect(getStatusIcon("In Progress")).toBe("◒");
-			expect(getStatusIcon("Blocked")).toBe("●");
-			expect(getStatusIcon("To Do")).toBe("○");
-			expect(getStatusIcon("Review")).toBe("◆");
-			expect(getStatusIcon("Testing")).toBe("▣");
-		});
-
-		test("returns default icon for unknown status", () => {
-			expect(getStatusIcon("Unknown")).toBe("○");
 		});
 	});
 

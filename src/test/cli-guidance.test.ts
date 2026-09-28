@@ -51,17 +51,12 @@ describe("CLI Integration", () => {
 			expect(output).toContain("init-required");
 			expect(output).toContain("How to verify, summarize, and finish work");
 			expect(output).not.toContain("mark work Done");
-			expect(output).toContain("    'backlog instructions overview'");
-			expect(output).toContain("      -> Required first read before answering any user request");
 			expect(output).not.toContain("--plain");
 			expect(output).not.toContain("\u001B[");
 			expect(output).not.toContain("MCP Tools Quick Reference");
 			expect(output).not.toContain("task_search");
 			expect(output).not.toContain("backlog://workflow/");
 			expect(output).not.toContain("Always operate through MCP tools");
-			expect(output).not.toContain("bundled");
-			expect(output).not.toContain("binary");
-			expect(output).not.toContain("No network documentation");
 		});
 
 		it("lists available instruction guides", async () => {

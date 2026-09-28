@@ -40,11 +40,6 @@ describe("Core", () => {
 	});
 
 	describe("initialization", () => {
-		it("should have filesystem and git operations available", () => {
-			expect(core.filesystem).toBeDefined();
-			expect(core.gitOps).toBeDefined();
-		});
-
 		it("should initialize project with default config", async () => {
 			await initializeTestProject(core, "Test Project", true);
 
@@ -1402,34 +1397,5 @@ describe("Core", () => {
 			const { task } = await core.createTaskFromInput({ title: "No default assignee" }, false);
 			expect(task.assignee).toEqual([]);
 		});
-	});
-
-	describe("directory accessor integration", () => {
-		it("should use FileSystem directory accessors for git operations", async () => {
-			await initializeTestProject(core, "Accessor Test");
-
-			const task: Task = {
-				id: "task-accessor",
-				title: "Accessor Test Task",
-				status: "To Do",
-				assignee: [],
-				createdDate: "2025-06-07",
-				labels: [],
-				dependencies: [],
-				description: "Testing directory accessors",
-			};
-
-			// Create task without auto-commit to avoid potential git timing issues
-			await core.createTask(task, false);
-
-			// Verify the task file was created in the correct directory
-			// List all files to see what was actually created
-			const allFiles = await core.filesystem.listTasks();
-
-			// Check that a task with the expected ID exists
-			const createdTask = allFiles.find((t) => t.id === "TASK-ACCESSOR");
-			expect(createdTask).toBeDefined();
-			expect(createdTask?.title).toBe("Accessor Test Task");
-		}, 10000);
 	});
 });

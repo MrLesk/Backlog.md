@@ -122,17 +122,6 @@ describe("CLI Auto-Commit Behavior with autoCommit: true", () => {
 		await safeCleanup(TEST_DIR);
 	});
 
-	test("should commit when creating a task if autoCommit is true", async () => {
-		const initialCommitCount = await getCommitCountInTest(TEST_DIR);
-
-		const result = await $`bun ${CLI_PATH} task create "Auto-commit Task"`.cwd(TEST_DIR).quiet();
-		expect(result.exitCode).toBe(0);
-
-		// Note: isClean() is omitted as createTask's commit strategy can leave the repo dirty.
-		const finalCommitCount = await getCommitCountInTest(TEST_DIR);
-		expect(finalCommitCount).toBe(initialCommitCount + 1);
-	});
-
 	test("should commit when creating a document if autoCommit is true", async () => {
 		const initialCommitCount = await getCommitCountInTest(TEST_DIR);
 

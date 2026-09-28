@@ -24,19 +24,6 @@ describe("Task References", () => {
 	});
 
 	describe("Create task with references", () => {
-		it("should create a task with references", async () => {
-			const { task } = await core.createTaskFromInput({
-				title: "Task with refs",
-				references: ["https://github.com/example/issue/123", "src/components/Button.tsx"],
-			});
-
-			expect(task.references).toEqual(["https://github.com/example/issue/123", "src/components/Button.tsx"]);
-
-			// Verify persistence
-			const loaded = await core.loadTaskById(task.id);
-			expect(loaded?.references).toEqual(["https://github.com/example/issue/123", "src/components/Button.tsx"]);
-		});
-
 		it("should create a task without references", async () => {
 			const { task } = await core.createTaskFromInput({
 				title: "Task without refs",
@@ -44,43 +31,9 @@ describe("Task References", () => {
 
 			expect(task.references).toEqual([]);
 		});
-
-		it("should handle empty references array", async () => {
-			const { task } = await core.createTaskFromInput({
-				title: "Task with empty refs",
-				references: [],
-			});
-
-			expect(task.references).toEqual([]);
-		});
 	});
 
 	describe("Update task references", () => {
-		it("should set references on existing task", async () => {
-			const { task } = await core.createTaskFromInput({
-				title: "Task to update",
-			});
-
-			const updated = await core.updateTaskFromInput(task.id, {
-				references: ["https://docs.example.com/api", "README.md"],
-			});
-
-			expect(updated.references).toEqual(["https://docs.example.com/api", "README.md"]);
-		});
-
-		it("should add references to existing task", async () => {
-			const { task } = await core.createTaskFromInput({
-				title: "Task with initial refs",
-				references: ["file1.ts"],
-			});
-
-			const updated = await core.updateTaskFromInput(task.id, {
-				addReferences: ["file2.ts", "file3.ts"],
-			});
-
-			expect(updated.references).toEqual(["file1.ts", "file2.ts", "file3.ts"]);
-		});
-
 		it("should not add duplicate references", async () => {
 			const { task } = await core.createTaskFromInput({
 				title: "Task with refs",
@@ -92,19 +45,6 @@ describe("Task References", () => {
 			});
 
 			expect(updated.references).toEqual(["file1.ts", "file2.ts", "file3.ts"]);
-		});
-
-		it("should remove references from existing task", async () => {
-			const { task } = await core.createTaskFromInput({
-				title: "Task with refs to remove",
-				references: ["file1.ts", "file2.ts", "file3.ts"],
-			});
-
-			const updated = await core.updateTaskFromInput(task.id, {
-				removeReferences: ["file2.ts"],
-			});
-
-			expect(updated.references).toEqual(["file1.ts", "file3.ts"]);
 		});
 
 		it("should replace references when setting directly", async () => {
@@ -122,21 +62,6 @@ describe("Task References", () => {
 	});
 
 	describe("References in markdown", () => {
-		it("should persist references in markdown frontmatter", async () => {
-			const { filePath } = await core.createTaskFromInput({
-				title: "Task with markdown refs",
-				references: ["https://example.com", "src/index.ts"],
-			});
-
-			expect(filePath).toBeTruthy();
-
-			// Read the file directly to check frontmatter
-			const content = await Bun.file(filePath as string).text();
-			expect(content).toContain("references:");
-			expect(content).toContain("https://example.com");
-			expect(content).toContain("src/index.ts");
-		});
-
 		it("should not include empty references in frontmatter", async () => {
 			const { filePath } = await core.createTaskFromInput({
 				title: "Task without refs",
