@@ -337,6 +337,8 @@ export interface BacklogConfig {
 	defaultStatus?: string;
 	dateFormat: string;
 	maxColumnWidth?: number;
+	/** Width of the task-list pane in the TUI list view, as a percentage of the terminal width (10-90). Defaults to 40. */
+	taskListPaneWidth?: number;
 	taskResolutionStrategy?: "most_recent" | "most_progressed";
 	defaultEditor?: string;
 	autoOpenBrowser?: boolean;
