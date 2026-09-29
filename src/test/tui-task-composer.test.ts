@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { $ } from "bun";
 import { Core } from "../core/backlog.ts";
 import type { Task, TaskCreateInput } from "../types/index.ts";
-import { getCreatedTaskBoardOutcome, renderBoardTui, upsertBoardTask } from "../ui/board.ts";
+import { renderBoardTui } from "../ui/board.ts";
 import { openSingleSelectFilterPopup } from "../ui/components/filter-popup.ts";
 import type { CaretLines } from "../ui/components/task-composer.ts";
 import {
@@ -23,6 +23,7 @@ import {
 	TaskComposerController,
 	toTaskCreateInput,
 } from "../ui/components/task-composer.ts";
+import { getCreatedTaskOutcome, upsertTask } from "../ui/task-lifecycle.ts";
 import { createScreen } from "../ui/tui.ts";
 import { watchTasks } from "../utils/task-watcher.ts";
 import { initializeTestProject, retry, withTimeout } from "./test-utils.ts";
@@ -1106,9 +1107,9 @@ describe("TUI task composer canonical persistence", () => {
 			const created = await controller.create(async (input) => (await core.createTaskFromInput(input, false)).task);
 			expect(created).not.toBeNull();
 
-			const optimistic = upsertBoardTask([], created as Task);
+			const optimistic = upsertTask([], created as Task);
 			const watched = await withTimeout(added, "TUI composer watcher delivery", 3000);
-			const reconciled = upsertBoardTask(optimistic, watched);
+			const reconciled = upsertTask(optimistic, watched);
 			expect(reconciled.map((candidate) => candidate.id)).toEqual(["TASK-1"]);
 		} finally {
 			watcher.stop();
@@ -2154,12 +2155,12 @@ describe("TUI task composer interaction", () => {
 describe("TUI task creation board outcome", () => {
 	it("focuses a visible created task and updates watcher duplicates in place", () => {
 		const created = task();
-		const tasks = upsertBoardTask([], created);
-		const updated = upsertBoardTask(tasks, { ...created, title: "Watcher copy" });
+		const tasks = upsertTask([], created);
+		const updated = upsertTask(tasks, { ...created, title: "Watcher copy" });
 
 		expect(updated).toHaveLength(1);
 		expect(updated[0]?.title).toBe("Watcher copy");
-		expect(getCreatedTaskBoardOutcome(created, true)).toEqual({
+		expect(getCreatedTaskOutcome(created, true, "board")).toEqual({
 			focusTaskId: "TASK-1",
 			message: "Created TASK-1.",
 			tone: "green",
@@ -2167,11 +2168,11 @@ describe("TUI task creation board outcome", () => {
 	});
 
 	it("explains why drafts and filtered tasks cannot be focused", () => {
-		expect(getCreatedTaskBoardOutcome(task({ id: "DRAFT-1", status: "Draft" }), false)).toEqual({
+		expect(getCreatedTaskOutcome(task({ id: "DRAFT-1", status: "Draft" }), false, "board")).toEqual({
 			message: "Created DRAFT-1 as a draft. Drafts are not shown on the task board.",
 			tone: "yellow",
 		});
-		expect(getCreatedTaskBoardOutcome(task(), false)).toEqual({
+		expect(getCreatedTaskOutcome(task(), false, "board")).toEqual({
 			message: "Created TASK-1, but it is hidden by the current board filters.",
 			tone: "yellow",
 		});

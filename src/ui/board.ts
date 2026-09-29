@@ -34,8 +34,11 @@ import { formatProjectBadge } from "./project.ts";
 import { getStatusIcon } from "./status-icon.ts";
 import {
 	completeTaskFromTui,
+	createTaskFromTui,
 	formatTaskArchivedMessage,
 	formatTaskCompletionBlockedMessage,
+	getCreatedTaskOutcome,
+	upsertTask,
 } from "./task-lifecycle.ts";
 import { formatTaskTypeBadge } from "./task-type.ts";
 import {
@@ -244,36 +247,9 @@ export function shouldRebuildColumns(current: ColumnData[], next: ColumnData[]):
 	return false;
 }
 
-export function upsertBoardTask(tasks: readonly Task[], task: Task): Task[] {
-	const existingIndex = tasks.findIndex((candidate) => candidate.id === task.id);
-	if (existingIndex === -1) return [...tasks, task];
-	const next = [...tasks];
-	next[existingIndex] = task;
-	return next;
-}
-
 function areBoardTaskCollectionsEqual(current: readonly Task[], next: readonly Task[]): boolean {
 	if (current.length !== next.length) return false;
 	return current.every((task, index) => JSON.stringify(task) === JSON.stringify(next[index]));
-}
-
-export function getCreatedTaskBoardOutcome(
-	task: Task,
-	visible: boolean,
-): { focusTaskId?: string; message: string; tone: "green" | "yellow" } {
-	if (task.status.trim().toLowerCase() === "draft") {
-		return {
-			message: `Created ${task.id} as a draft. Drafts are not shown on the task board.`,
-			tone: "yellow",
-		};
-	}
-	if (!visible) {
-		return {
-			message: `Created ${task.id}, but it is hidden by the current board filters.`,
-			tone: "yellow",
-		};
-	}
-	return { focusTaskId: task.id, message: `Created ${task.id}.`, tone: "green" };
 }
 
 /**
@@ -1252,9 +1228,7 @@ export async function renderBoardTui(
 						projects: options?.projects,
 						persist: async (input) => {
 							if (options?.createTask) return options.createTask(input);
-							const core = await getCore();
-							const config = await core.fs.loadConfig();
-							return (await core.createTaskFromInput(input, config?.autoCommit ?? false)).task;
+							return createTaskFromTui(await getCore(), input);
 						},
 					}),
 				);
@@ -1280,9 +1254,9 @@ export async function renderBoardTui(
 			}
 
 			const draft = task.status.trim().toLowerCase() === "draft";
-			if (!draft) currentTasks = upsertBoardTask(currentTasks, task);
+			if (!draft) currentTasks = upsertTask(currentTasks, task);
 			const visible = !draft && getFilteredTasks().some((candidate) => candidate.id === task.id);
-			const outcome = getCreatedTaskBoardOutcome(task, visible);
+			const outcome = getCreatedTaskOutcome(task, visible, "board");
 			showTransientFooter(` {${outcome.tone}-fg}${outcome.message}{/}`, 6000, false);
 			renderView(outcome.focusTaskId);
 		});
