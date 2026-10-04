@@ -1570,11 +1570,13 @@ export async function renderBoardTui(
 			contentArea.key(["y", "Y"], async () => {
 				await runWithModalGuard(async () => {
 					const core = await getCore();
+					const repositoryRoot = await core.git.getRepositoryRoot();
 					await openTaskYankPopup({
 						screen,
 						task,
 						projectRoot: core.fs.rootDir,
-						repositoryRoot: await core.git.getRepositoryRoot(),
+						repositoryRoot,
+						githubUrl: task.filePath ? await core.git.getGitHubFileUrl(task.filePath, repositoryRoot) : null,
 						onFeedback: (message, success) => showTransientFooter(` {${success ? "green" : "red"}-fg}${message}{/}`),
 					});
 				});
@@ -2006,11 +2008,13 @@ export async function renderBoardTui(
 
 			await runWithModalGuard(async () => {
 				const core = await getCore();
+				const repositoryRoot = await core.git.getRepositoryRoot();
 				await openTaskYankPopup({
 					screen,
 					task,
 					projectRoot: core.fs.rootDir,
-					repositoryRoot: await core.git.getRepositoryRoot(),
+					repositoryRoot,
+					githubUrl: task.filePath ? await core.git.getGitHubFileUrl(task.filePath, repositoryRoot) : null,
 					onFeedback: (message, success) => showTransientFooter(` {${success ? "green" : "red"}-fg}${message}{/}`),
 				});
 			});
