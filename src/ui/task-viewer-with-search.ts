@@ -1463,11 +1463,13 @@ export async function viewTaskEnhanced(
 		const task = getCurrentShortcutTask();
 		if (!task) return;
 		await runWithModalGuard(async () => {
+			const repositoryRoot = await core.git.getRepositoryRoot();
 			await openTaskYankPopup({
 				screen,
 				task,
 				projectRoot: core.fs.rootDir,
-				repositoryRoot: await core.git.getRepositoryRoot(),
+				repositoryRoot,
+				githubUrl: task.filePath ? await core.git.getGitHubFileUrl(task.filePath, repositoryRoot) : null,
 				onFeedback: (message, success) => showTransientHelp(` {${success ? "green" : "red"}-fg}${message}{/}`),
 			});
 		});

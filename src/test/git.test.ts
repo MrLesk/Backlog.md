@@ -63,6 +63,22 @@ describe("Git Operations", () => {
 		});
 	});
 
+	describe("getGitHubFileUrl", () => {
+		it("combines the origin remote, current branch, and repository-relative file path", async () => {
+			const git = new GitOperations("/repo");
+			const internals = git as unknown as {
+				getCurrentBranch: () => Promise<string>;
+				getRemoteUrl: (remoteName: string) => Promise<string | null>;
+			};
+			internals.getCurrentBranch = async () => "tasks/back-707";
+			internals.getRemoteUrl = async (remoteName) => (remoteName === "origin" ? "git@github.com:org/repo.git" : null);
+
+			await expect(git.getGitHubFileUrl("/repo/backlog/tasks/back-7 - Task.md", "/repo")).resolves.toBe(
+				"https://github.com/org/repo/blob/tasks/back-707/backlog/tasks/back-7%20-%20Task.md",
+			);
+		});
+	});
+
 	describe("isRepository", () => {
 		it("coalesces concurrent checks and reuses positive results per directory", async () => {
 			const git = new GitOperations(process.cwd());

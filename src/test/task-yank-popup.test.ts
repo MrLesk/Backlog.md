@@ -93,6 +93,62 @@ describe("task yank popup", () => {
 		}
 	});
 
+	it("copies a supplied GitHub URL", async () => {
+		const screen = createScreen({ smartCSR: false });
+		const copied: string[] = [];
+		try {
+			const popup = openTaskYankPopup({
+				screen,
+				task: createTask("/workspace/repo/backlog/tasks/back-7 - Task.md"),
+				projectRoot: "/workspace/repo",
+				repositoryRoot: "/workspace/repo",
+				githubUrl: "https://github.com/example/project/blob/feature/task/backlog/tasks/back-7%20-%20Task.md",
+				copy: async (value) => {
+					copied.push(value);
+					return true;
+				},
+				onFeedback: () => {},
+			});
+			await settlePopup();
+
+			pressKey((screen as unknown as { focused?: TestWidget }).focused, "g");
+			await popup;
+
+			expect(copied).toEqual([
+				"https://github.com/example/project/blob/feature/task/backlog/tasks/back-7%20-%20Task.md",
+			]);
+		} finally {
+			screen.destroy();
+		}
+	});
+
+	it("omits the GitHub URL choice when it is unavailable", async () => {
+		const screen = createScreen({ smartCSR: false });
+		const copied: string[] = [];
+		try {
+			const popup = openTaskYankPopup({
+				screen,
+				task: createTask("/workspace/repo/backlog/tasks/back-7 - Task.md"),
+				projectRoot: "/workspace/repo",
+				repositoryRoot: "/workspace/repo",
+				copy: async (value) => {
+					copied.push(value);
+					return true;
+				},
+				onFeedback: () => {},
+			});
+			await settlePopup();
+
+			pressKey((screen as unknown as { focused?: TestWidget }).focused, "g");
+			await settlePopup();
+			expect(copied).toEqual([]);
+			pressKey((screen as unknown as { focused?: TestWidget }).focused, "escape", "\x1b");
+			await popup;
+		} finally {
+			screen.destroy();
+		}
+	});
+
 	it("reports missing paths and clipboard failures", async () => {
 		const screen = createScreen({ smartCSR: false });
 		const feedback: Array<{ message: string; success: boolean }> = [];

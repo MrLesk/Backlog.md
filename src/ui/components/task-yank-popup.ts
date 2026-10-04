@@ -5,7 +5,7 @@ import type { Task } from "../../types/index.ts";
 import { copyToClipboard } from "../../utils/clipboard.ts";
 import { createPopupChrome } from "./filter-popup.ts";
 
-type YankTarget = "id" | "relative" | "absolute";
+type YankTarget = "id" | "relative" | "absolute" | "github";
 
 const YANK_TARGETS: Array<{ key: string; target: YankTarget; label: string }> = [
 	{ key: "Y", target: "id", label: "Task ID" },
@@ -18,9 +18,13 @@ export async function openTaskYankPopup(options: {
 	task: Task;
 	projectRoot: string;
 	repositoryRoot: string | null;
+	githubUrl?: string | null;
 	onFeedback: (message: string, success: boolean) => void;
 	copy?: (text: string) => Promise<boolean>;
 }): Promise<void> {
+	const targets = options.githubUrl
+		? [...YANK_TARGETS, { key: "G", target: "github" as const, label: "GitHub URL" }]
+		: YANK_TARGETS;
 	return new Promise<void>((resolvePopup) => {
 		let settled = false;
 		const { popup, close } = createPopupChrome({
@@ -44,7 +48,7 @@ export async function openTaskYankPopup(options: {
 			left: 0,
 			width: "100%",
 			height: "100%",
-			items: YANK_TARGETS.map(({ key, label }) => `{cyan-fg}[${key}]{/} ${label}`),
+			items: targets.map(({ key, label }) => `{cyan-fg}[${key}]{/} ${label}`),
 			selected: 0,
 			keys: true,
 			mouse: true,
@@ -69,7 +73,14 @@ export async function openTaskYankPopup(options: {
 					);
 				} else {
 					const success = await (options.copy ?? copyToClipboard)(value);
-					const label = target === "id" ? value : target === "relative" ? "repository-relative path" : "absolute path";
+					const label =
+						target === "id"
+							? value
+							: target === "relative"
+								? "repository-relative path"
+								: target === "absolute"
+									? "absolute path"
+									: "GitHub URL";
 					options.onFeedback(success ? `Copied ${label} to clipboard` : "Failed to copy to clipboard", success);
 				}
 			}
@@ -85,7 +96,7 @@ export async function openTaskYankPopup(options: {
 			return false;
 		};
 		const chooseSelected = () => {
-			const target = YANK_TARGETS[picker.selected ?? 0]?.target;
+			const target = targets[picker.selected ?? 0]?.target;
 			if (target) void finish(target);
 			return false;
 		};
@@ -96,11 +107,12 @@ export async function openTaskYankPopup(options: {
 		picker.on("select", (...args: unknown[]) => {
 			const index =
 				typeof args[1] === "number" ? args[1] : typeof args[0] === "number" ? args[0] : (picker.selected ?? 0);
-			const target = YANK_TARGETS[index]?.target;
+			const target = targets[index]?.target;
 			if (target) void finish(target);
 		});
 		function getYankValue(target: YankTarget): string | null {
 			if (target === "id") return options.task.id;
+			if (target === "github") return options.githubUrl ?? null;
 			if (!options.task.filePath) return null;
 			const taskPath = resolve(options.projectRoot, options.task.filePath);
 			if (target === "absolute") return taskPath;
@@ -108,7 +120,7 @@ export async function openTaskYankPopup(options: {
 			return relative(options.repositoryRoot, taskPath);
 		}
 
-		for (const { key, target } of YANK_TARGETS) {
+		for (const { key, target } of targets) {
 			picker.key([key.toLowerCase(), key], () => choose(target));
 		}
 		picker.key(["enter"], chooseSelected);
@@ -120,7 +132,7 @@ export async function openTaskYankPopup(options: {
 			return false;
 		});
 		picker.key(["j"], () => {
-			picker.select(Math.min(YANK_TARGETS.length - 1, (picker.selected ?? 0) + 1));
+			picker.select(Math.min(targets.length - 1, (picker.selected ?? 0) + 1));
 			options.screen.render();
 			return false;
 		});
