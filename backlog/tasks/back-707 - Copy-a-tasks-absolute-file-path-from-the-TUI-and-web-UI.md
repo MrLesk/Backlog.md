@@ -5,7 +5,7 @@ status: In Progress
 assignee:
   - '@codex'
 created_date: '2026-10-04 09:03'
-updated_date: '2026-10-04 11:22'
+updated_date: '2026-10-04 12:43'
 labels: []
 dependencies: []
 references:
@@ -54,4 +54,6 @@ When working across repositories that each have their own backlog, task IDs alon
 Implemented a shared TUI copy-reference chooser for the board, board task detail popup, and task list/detail pane. Y opens the chooser; Y/R/A copy the task ID, repository-relative path, or absolute path. The chooser runs under the existing modal guards, and help/footer text now describes it. Added coverage for all copy choices, cancellation, missing-path and clipboard failure feedback, and shortcut isolation. Validation: bunx tsc --noEmit passed; targeted Biome check passed. Tests were added but not run.
 
 Follow-up: added a conditional GitHub URL choice bound to G. It derives the link from origin, the local current branch, and the task path relative to the repository root; it is omitted when origin is not a supported github.com URL, the branch is unnamed, or the task path is outside the repository. GitHub branch/path separators are preserved while individual path segments are URL-encoded. Added URL builder and chooser coverage. TypeScript and Biome checks pass; tests remain unrun.
+
+Final implementation: commits ca5ad1c9 (TUI yank chooser for task ID, repository-relative path, and machine-local absolute path) and dec91699 (conditional GitHub URL for the current branch). Validation: bunx tsc --noEmit and bun run check . passed; focused tests passed (31 tests across task-yank-popup.test.ts, github-file-url.test.ts, and git.test.ts). Full bun run test completed with 2,889 passed, 8 skipped, 1 failed, and 1 error; the reported failures were in unrelated TUI watcher/server API tests. Contribution review: task branch and both commit subjects follow the repository naming rules; the PR remains to be opened with a reference to BACK-707.
 <!-- SECTION:NOTES:END -->
