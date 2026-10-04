@@ -21,6 +21,17 @@ function helpFilterKeys(context: "board" | "task-list", hasProjects = false): st
 }
 
 describe("TUI footer filter hint", () => {
+	it("advertises the task reference yank menu in both TUI views", () => {
+		expect(getBoardFooterContent()).toContain("[Y]{/} Yank menu");
+		expect(getTaskListFooterContent()).toContain("[Y]{/} Yank menu");
+		expect(getHelpShortcuts("board").find((shortcut) => shortcut.key === "Y")?.desc).toBe(
+			"Open task reference yank menu",
+		);
+		expect(getHelpShortcuts("task-list").find((shortcut) => shortcut.key === "Y")?.desc).toBe(
+			"Open task reference yank menu",
+		);
+	});
+
 	// The board has no status filter (its columns are the statuses) and uses F for labels
 	// because L navigates columns there. Both views list the letters in filter-header order:
 	// status, type, project, priority, milestone, labels.

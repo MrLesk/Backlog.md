@@ -8,7 +8,6 @@ import {
 } from "../board.ts";
 import { type Core, createRuntimeCore } from "../core/backlog.ts";
 import type { LabelMatchMode, Milestone, Task, TaskCreateInput } from "../types/index.ts";
-import { copyToClipboard } from "../utils/clipboard.ts";
 import { areLabelSelectionsEqual, collectAvailableLabels } from "../utils/label-filter.ts";
 import {
 	createMilestoneFilterValueResolver,
@@ -29,6 +28,7 @@ import { openMultiSelectFilterPopup, openSingleSelectFilterPopup } from "./compo
 import type { BoundaryNavigationKey } from "./components/generic-list.ts";
 import { openHelpPopup } from "./components/help-popup.ts";
 import { openTaskComposer, type TaskComposerOptions } from "./components/task-composer.ts";
+import { openTaskYankPopup } from "./components/task-yank-popup.ts";
 import { formatFooterContent, getBoardFooterContent } from "./footer-content.ts";
 import { formatProjectBadge } from "./project.ts";
 import { getStatusIcon } from "./status-icon.ts";
@@ -1547,12 +1547,16 @@ export async function renderBoardTui(
 			});
 
 			contentArea.key(["y", "Y"], async () => {
-				const success = await copyToClipboard(task.id);
-				if (success) {
-					showTransientFooter(` {green-fg}Copied ${task.id} to clipboard{/}`);
-				} else {
-					showTransientFooter(" {red-fg}Failed to copy to clipboard{/}");
-				}
+				await runWithModalGuard(async () => {
+					const core = await getCore();
+					await openTaskYankPopup({
+						screen,
+						task,
+						projectRoot: core.fs.rootDir,
+						repositoryRoot: await core.git.getRepositoryRoot(),
+						onFeedback: (message, success) => showTransientFooter(` {${success ? "green" : "red"}-fg}${message}{/}`),
+					});
+				});
 			});
 
 			contentArea.key(["c", "C"], async () => {
@@ -2048,12 +2052,16 @@ export async function renderBoardTui(
 			const task = column.tasks[idx];
 			if (!task) return;
 
-			const success = await copyToClipboard(task.id);
-			if (success) {
-				showTransientFooter(` {green-fg}Copied ${task.id} to clipboard{/}`);
-			} else {
-				showTransientFooter(" {red-fg}Failed to copy to clipboard{/}");
-			}
+			await runWithModalGuard(async () => {
+				const core = await getCore();
+				await openTaskYankPopup({
+					screen,
+					task,
+					projectRoot: core.fs.rootDir,
+					repositoryRoot: await core.git.getRepositoryRoot(),
+					onFeedback: (message, success) => showTransientFooter(` {${success ? "green" : "red"}-fg}${message}{/}`),
+				});
+			});
 		});
 
 		screen.key(["c", "C"], async () => {
