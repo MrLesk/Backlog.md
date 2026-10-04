@@ -135,6 +135,116 @@ export function deletionEnd(value: string, caretIndex: number): number {
 	return caretIndex + (pairedForward ? 2 : 1);
 }
 
+type ComposerInput = TextboxInterface & {
+	_listener?: (ch: string, key: { name?: string }) => void;
+	_clines?: { length: number; real?: string[]; rtof?: number[]; fake?: string[] };
+	getCursor?: () => { x: number; y: number };
+	setCursor?: (x: number, y: number) => void;
+	setScroll?: (offset: number) => void;
+	strWidth?: (value: string) => number;
+	_updateCursor?: () => void;
+};
+
+/**
+ * Take over text editing in a composer input. The widgets mix display-cell cursor offsets
+ * with UTF-16 slicing, and their deletion behavior also differs between textbox and textarea.
+ * Owning insertion and deletion keeps every mutation on a code-point boundary.
+ *
+ * `isOnFirstLine` / `isOnLastLine` report where the caret was when the current key arrived,
+ * so a multi-line input can hand Up/Down to the neighbouring field at its edges.
+ */
+export function ownComposerTextEditing(
+	widget: TextboxInterface,
+	options: { screen: ScreenInterface; onChange: () => void; onKeypress: () => void },
+): { isOnFirstLine: () => boolean; isOnLastLine: () => boolean } {
+	const input = widget as ComposerInput;
+	const readCaretLines = (value: string): CaretLines => ({
+		real: input._clines?.real ?? [value],
+		rtof: input._clines?.rtof ?? [0],
+		fakeCount: input._clines?.fake?.length ?? 1,
+		displayWidth: input.strWidth?.bind(input),
+	});
+
+	const setTextAtCaret = (value: string, caret: number) => {
+		// Changing a line can invalidate the widget's current negative row offset. Park the
+		// caret on the last line first, which is valid for any replacement value.
+		input.setCursor?.(0, 0);
+		input.setValue(value);
+		options.onChange();
+		const lines = readCaretLines(value);
+		const cursor = cursorFromCaretIndex(value, caret, lines);
+		input.setCursor?.(cursor.x, cursor.y);
+		// setValue() scrolls to the last line while the caret is parked at (0, 0). Restore
+		// the caret's line so an edit near the top of a long text stays visible.
+		input.setScroll?.(Math.max(0, lines.real.length - 1 + cursor.y));
+		input._updateCursor?.();
+		options.screen.render();
+	};
+
+	const caretIndex = (value: string) =>
+		caretIndexFromCursor(value, input.getCursor?.() ?? { x: 0, y: 0 }, readCaretLines(value));
+
+	const insertText = (inserted: string) => {
+		const value = input.getValue();
+		const caret = caretIndex(value);
+		setTextAtCaret(value.slice(0, caret) + inserted + value.slice(caret), caret + inserted.length);
+	};
+
+	const deleteText = (unit: "char" | "word" | "forward") => {
+		const value = input.getValue();
+		const caret = caretIndex(value);
+		const start = unit === "forward" ? caret : deletionStart(value, caret, unit);
+		const end = unit === "forward" ? deletionEnd(value, caret) : caret;
+		if (start >= end) return;
+		setTextAtCaret(value.slice(0, start) + value.slice(end), start);
+	};
+
+	const ownedInputKeys = new Set(["tab", "backspace", "delete"]);
+	const isTextInsertion = (ch: string): boolean => {
+		if (!ch) return false;
+		if (ch.length > 1) return true;
+		const code = ch.charCodeAt(0);
+		return code > 0x1f && code !== 0x7f;
+	};
+	const listener = input._listener?.bind(input);
+	if (listener) {
+		input._listener = (ch, key) => {
+			if ((key.name && ownedInputKeys.has(key.name)) || ch === "\t") return;
+			if (isTextInsertion(ch)) {
+				insertText(ch);
+				return;
+			}
+			listener(ch, key);
+		};
+	}
+
+	let cursorBeforeKey: { y: number; lines: number } | null = null;
+	input.on("keypress", () => {
+		cursorBeforeKey = {
+			y: input.getCursor?.().y ?? 0,
+			lines: Math.max(1, input._clines?.length ?? input.getValue().split("\n").length),
+		};
+		options.onKeypress();
+	});
+	input.key(["backspace"], () => {
+		deleteText("char");
+		return false;
+	});
+	input.key(["delete"], () => {
+		deleteText("forward");
+		return false;
+	});
+	input.key(["C-w"], () => {
+		deleteText("word");
+		return false;
+	});
+
+	return {
+		isOnFirstLine: () => cursorBeforeKey !== null && cursorBeforeKey.y <= -(cursorBeforeKey.lines - 1),
+		isOnLastLine: () => cursorBeforeKey?.y === 0,
+	};
+}
+
 export type TaskComposerValues = {
 	title: string;
 	description: string;
@@ -838,118 +948,28 @@ export async function openTaskComposer(options: TaskComposerOptions): Promise<Ta
 			});
 		}
 
-		type ComposerInput = TextboxInterface & {
-			_listener?: (ch: string, key: { name?: string }) => void;
-			_clines?: { length: number; real?: string[]; rtof?: number[]; fake?: string[] };
-			getCursor?: () => { x: number; y: number };
-			setCursor?: (x: number, y: number) => void;
-			setScroll?: (offset: number) => void;
-			strWidth?: (value: string) => number;
-			_updateCursor?: () => void;
-		};
-		const readCaretLines = (input: ComposerInput, value: string): CaretLines => ({
-			real: input._clines?.real ?? [value],
-			rtof: input._clines?.rtof ?? [0],
-			fakeCount: input._clines?.fake?.length ?? 1,
-			displayWidth: input.strWidth?.bind(input),
-		});
-
-		const setTextAtCaret = (input: ComposerInput, value: string, caret: number) => {
-			// Changing a line can invalidate the widget's current negative row offset. Park the
-			// caret on the last line first, which is valid for any replacement value.
-			input.setCursor?.(0, 0);
-			input.setValue(value);
-			syncInputs();
-			const lines = readCaretLines(input, value);
-			const cursor = cursorFromCaretIndex(value, caret, lines);
-			input.setCursor?.(cursor.x, cursor.y);
-			// setValue() scrolls to the last line while the caret is parked at (0, 0). Restore
-			// the caret's line so an edit near the top of a long description stays visible.
-			input.setScroll?.(Math.max(0, lines.real.length - 1 + cursor.y));
-			input._updateCursor?.();
-			options.screen.render();
-		};
-
-		const insertText = (input: ComposerInput, inserted: string) => {
-			const value = input.getValue();
-			const cursor = input.getCursor?.() ?? { x: 0, y: 0 };
-			const caret = caretIndexFromCursor(value, cursor, readCaretLines(input, value));
-			setTextAtCaret(input, value.slice(0, caret) + inserted + value.slice(caret), caret + inserted.length);
-		};
-
-		const deleteText = (input: ComposerInput, unit: "char" | "word" | "forward") => {
-			const value = input.getValue();
-			const cursor = input.getCursor?.() ?? { x: 0, y: 0 };
-			const caret = caretIndexFromCursor(value, cursor, readCaretLines(input, value));
-			const start = unit === "forward" ? caret : deletionStart(value, caret, unit);
-			const end = unit === "forward" ? deletionEnd(value, caret) : caret;
-			if (start >= end) return;
-			setTextAtCaret(input, value.slice(0, start) + value.slice(end), start);
-		};
-
-		/**
-		 * Text changes the composer implements itself. The widgets mix display-cell cursor offsets
-		 * with UTF-16 slicing, and their deletion behavior also differs between textbox and textarea.
-		 * Owning both paths keeps every mutation on a code-point boundary.
-		 */
-		const ownedInputKeys = new Set(["tab", "backspace", "delete"]);
-		const isTextInsertion = (ch: string): boolean => {
-			if (!ch) return false;
-			if (ch.length > 1) return true;
-			const code = ch.charCodeAt(0);
-			return code > 0x1f && code !== 0x7f;
-		};
-		const ownInputKeys = (input: ComposerInput) => {
-			const listener = input._listener?.bind(input);
-			if (!listener) return;
-			input._listener = (ch, key) => {
-				if ((key.name && ownedInputKeys.has(key.name)) || ch === "\t") return;
-				if (isTextInsertion(ch)) {
-					insertText(input, ch);
-					return;
-				}
-				listener(ch, key);
-			};
-		};
-		ownInputKeys(titleInput as ComposerInput);
-		ownInputKeys(descriptionInput as ComposerInput);
-		ownInputKeys(dueDateInput as ComposerInput);
-
-		let cursorBeforeKey: { y: number; lines: number } | null = null;
-		for (const input of [titleInput, descriptionInput, dueDateInput] as ComposerInput[]) {
-			input.on("keypress", () => {
-				cursorBeforeKey = {
-					y: input.getCursor?.().y ?? 0,
-					lines: Math.max(1, input._clines?.length ?? input.getValue().split("\n").length),
-				};
+		const textEditing = {
+			screen: options.screen,
+			onChange: syncInputs,
+			onKeypress: () => {
 				controller.error = "";
 				errorBox.setContent("");
-			});
-			input.key(["backspace"], () => {
-				deleteText(input, "char");
-				return false;
-			});
-			input.key(["delete"], () => {
-				deleteText(input, "forward");
-				return false;
-			});
-			input.key(["C-w"], () => {
-				deleteText(input, "word");
-				return false;
-			});
-		}
+			},
+		};
+		ownComposerTextEditing(titleInput, textEditing);
+		const descriptionEditing = ownComposerTextEditing(descriptionInput, textEditing);
+		ownComposerTextEditing(dueDateInput, textEditing);
 		titleInput.key(["down"], () => {
 			focusField("description");
 			return false;
 		});
 		titleInput.on("submit", () => focusField("description"));
 		descriptionInput.key(["up"], () => {
-			const cursor = cursorBeforeKey;
-			if (cursor && cursor.y <= -(cursor.lines - 1)) focusField("title");
+			if (descriptionEditing.isOnFirstLine()) focusField("title");
 			return false;
 		});
 		descriptionInput.key(["down"], () => {
-			if (cursorBeforeKey?.y === 0) focusField("dueDate");
+			if (descriptionEditing.isOnLastLine()) focusField("dueDate");
 			return false;
 		});
 		dueDateInput.key(["up"], () => {

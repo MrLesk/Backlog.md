@@ -32,6 +32,7 @@ import { openTaskComposer, type TaskComposerOptions } from "./components/task-co
 import { formatFooterContent, getBoardFooterContent } from "./footer-content.ts";
 import { formatProjectBadge } from "./project.ts";
 import { getStatusIcon } from "./status-icon.ts";
+import { commentOnTaskFromTui } from "./task-comment.ts";
 import {
 	completeTaskFromTui,
 	formatTaskArchivedMessage,
@@ -1518,6 +1519,24 @@ export async function renderBoardTui(
 			}
 		};
 
+		const openTaskCommenter = async (task: Task) => {
+			let message = "";
+			const core = await getCore();
+			const updatedTask = await runWithModalGuard(() =>
+				commentOnTaskFromTui(core, screen, task, (text) => {
+					message = text;
+				}),
+			);
+			if (updatedTask) {
+				updateBoard(
+					currentTasks.map((existingTask) => (existingTask.id === task.id ? updatedTask : existingTask)),
+					[],
+				);
+			}
+			renderView();
+			if (message) showTransientFooter(message);
+		};
+
 		const openTaskPopup = async (task: Task): Promise<void> => {
 			popupOpen = true;
 
@@ -1544,6 +1563,10 @@ export async function renderBoardTui(
 
 			contentArea.key(["e", "E", "S-e"], async () => {
 				await openTaskEditor(task);
+			});
+
+			contentArea.key(["o", "O"], async () => {
+				await openTaskCommenter(task);
 			});
 
 			contentArea.key(["y", "Y"], async () => {
@@ -1686,6 +1709,17 @@ export async function renderBoardTui(
 			const task = column.tasks[idx];
 			if (!task) return;
 			await openTaskEditor(task);
+		});
+
+		screen.key(["o", "O"], async () => {
+			if (popupOpen || filterPopupOpen || modalOpen || currentFocus === "filters") return;
+			const column = columns[currentCol];
+			if (!column) return;
+			const idx = column.list.selected ?? 0;
+			if (idx < 0 || idx >= column.tasks.length) return;
+			const task = column.tasks[idx];
+			if (!task) return;
+			await openTaskCommenter(task);
 		});
 
 		// A second Enter while the confirm is writing must not start a second move.
