@@ -73,46 +73,6 @@ Backlog.md itself. The full task ledger lives in this repo's [backlog folder](ba
 
 ---
 
-## 🗺️ Backlog.md + Groma.md
-
-Backlog.md keeps the spec, the plan and the code reviewable. [Groma.md](https://groma.md) adds the
-architecture: it scans your repository into a C4 map that you or your coding agent curate, stored next
-to your code as an [Open Knowledge Format 0.2](https://github.com/GoogleCloudPlatform/open-knowledge-format/blob/main/SPEC.md)
-bundle. It reads your Backlog.md tasks, so the two work well together:
-
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="./.github/groma-map-dark.webp">
-  <img src="./.github/groma-map-light.webp" alt="Backlog.md's own architecture in Groma.md: Backlog.md tasks pinned to the components they touch, with one task selected and its acceptance criteria open" width="100%">
-</picture>
-
-* 📍 **Tasks on the map** -- every task is pinned to the components it touches, so you see where the work lands in your system, not only in a list
-
-* 👀 **Who is doing what** -- with several agents at work, the map shows where each one is busy
-
-* 🔍 **Review a task by its architecture** -- select a task to highlight the components it touches and inspect its changes without leaving the map
-
-* 📦 **Open Knowledge Format 0.2** -- one Markdown document per element, so the map stays portable and readable without Groma.md
-
-* 📝 **Still plain files** -- both run locally, need no account, and keep everything as Markdown in your repo
-
-Groma.md is a separate install, and Backlog.md works fine without it. To add the map to a repo that
-already uses Backlog.md:
-
-```bash
-npm i -g groma.md
-groma web
-```
-
-Backlog.md uses it on itself: every push to main updates its map, and every pull request gets a comment
-showing what it changes in the architecture.
-
-👉 **[Get started at groma.md](https://groma.md)**
-
-🗺️ **[Explore Backlog.md's own architecture, live](https://mrlesk.github.io/Backlog.md/architecture/auto/)**
-
-
----
-
 ## <img src="./.github/5-minute-tour-256.png" alt="Getting started" width="28" height="28" align="center"> Getting started
 
 ```bash
@@ -159,6 +119,9 @@ The init wizard will ask how you want to connect AI tools:
 For Cursor with CLI instructions, select AGENTS.md or pass `--agent-instructions cursor`; both use the same AGENTS.md target. Backlog.md preserves existing AGENTS.md content and does not migrate or remove unrelated user-managed `.cursor/rules` files.
 
 Everything is stored as human-readable Markdown in a project-local backlog folder such as `backlog/`, `.backlog/`, or a custom project-relative path configured through `backlog.config.yml` (e.g. `backlog_directory: my-backlog`). Task IDs use a configurable prefix (`backlog init --task-prefix`): the default produces `TASK-1`-style IDs, while this repository uses `back`, so examples below show `BACK-1`-style IDs. Git is optional: `backlog init --no-git` creates a filesystem-only project.
+
+> [!TIP]
+> **Want an architecture diagram of your repo, kept up to date automatically?** See the [Backlog.md + Groma.md integration](#groma-md) below.
 
 ---
 
@@ -221,6 +184,47 @@ You can switch between AI-assisted and manual workflows at any time; both operat
 Read commands support stable, versioned JSON for scripts and integrations. Use `--json` with `task list`, `task view`, the `task <id>` shorthand, and `search`. JSON mode is noninteractive and keeps successful stdout machine-readable. Add `--watch` to `task list --json` for an initial full list followed by changed full replacements, using the exact same JSON format. Read successive complete JSON values; each response replaces the previous list.
 
 **Learn more:** [CLI reference](CLI-INSTRUCTIONS.md) | [Advanced configuration](ADVANCED-CONFIG.md)
+
+---
+
+<a id="groma-md"></a>
+
+## 🗺️ Backlog.md + Groma.md
+
+Backlog.md keeps the spec, the plan and the code reviewable. [Groma.md](https://groma.md) adds the
+architecture: it scans your repository into a C4 map that you or your coding agent curate, stored next
+to your code as an [Open Knowledge Format 0.2](https://github.com/GoogleCloudPlatform/open-knowledge-format/blob/main/SPEC.md)
+bundle. It reads your Backlog.md tasks, so the two work well together:
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="./.github/groma-map-dark.webp">
+  <img src="./.github/groma-map-light.webp" alt="Backlog.md's own architecture in Groma.md: Backlog.md tasks pinned to the components they touch, with one task selected and its acceptance criteria open" width="100%">
+</picture>
+
+* 📍 **Tasks on the map** -- every task is pinned to the components it touches, so you see where the work lands in your system, not only in a list
+
+* 👀 **Who is doing what** -- with several agents at work, the map shows where each one is busy
+
+* 🔍 **Review a task by its architecture** -- select a task to highlight the components it touches and inspect its changes without leaving the map
+
+* 📦 **Open Knowledge Format 0.2** -- one Markdown document per element, so the map stays portable and readable without Groma.md
+
+* 📝 **Still plain files** -- both run locally, need no account, and keep everything as Markdown in your repo
+
+Groma.md is a separate install, and Backlog.md works fine without it. To add the map to a repo that
+already uses Backlog.md:
+
+```bash
+npm i -g groma.md
+groma web
+```
+
+Backlog.md uses it on itself: every push to main updates its map, and every pull request gets a comment
+showing what it changes in the architecture.
+
+👉 **[Get started at groma.md](https://groma.md)**
+
+🗺️ **[Explore Backlog.md's own architecture, live](https://mrlesk.github.io/Backlog.md/architecture/auto/)**
 
 ---
 
