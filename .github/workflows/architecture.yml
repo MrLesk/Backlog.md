@@ -1,0 +1,200 @@
+name: Groma architecture
+
+# Publishes Backlog.md's groma.md architecture map to GitHub Pages, with a before/after comparison for
+# every open pull request, and keeps one comment on each pull request linking to its comparison.
+# The same setup as the groma.md repository's own architecture workflow, on the released Action.
+#
+#   /architecture/auto/          the current map of main
+#   /comparison/pr-<n>/auto/     what pull request <n> changes in the architecture
+#
+# Needs Settings -> Pages -> Source: GitHub Actions.
+
+on:
+  push:
+    branches: [main]
+  # Runs main's copy of this workflow. Pull request code is only read, never executed.
+  pull_request_target:
+    types: [opened, synchronize, reopened, closed]
+  workflow_dispatch:
+    inputs:
+      pull-request:
+        description: Reviewed PR number to include (0 compares same-repository PRs only)
+        type: number
+        default: 0
+
+permissions:
+  contents: read
+  pages: read
+
+env:
+  GROMA_THEME: auto
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  # Each deploy replaces the site, so every run rebuilds the map and all open comparisons.
+  # Fork comparisons need a reviewed PR number for this run.
+  pulls:
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: read
+    outputs:
+      open: ${{ steps.open.outputs.pulls }}
+    steps:
+      - name: List open pull requests
+        id: open
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REVIEWED_PR: ${{ inputs.pull-request || 0 }}
+        run: |
+          pulls=$(gh api --paginate "repos/$GITHUB_REPOSITORY/pulls?state=open" \
+            | jq --arg repo "$GITHUB_REPOSITORY" --argjson reviewed "$REVIEWED_PR" \
+              '[.[] | select(.head.repo.full_name == $repo or .number == $reviewed) |
+                {number, head: .head.sha, base: .base.sha}]' | jq -cs 'add // []')
+          echo "pulls=$pulls" >> "$GITHUB_OUTPUT"
+
+  compare:
+    name: 'Compare PR #${{ matrix.pull.number }}'
+    needs: pulls
+    if: needs.pulls.outputs.open != '[]'
+    continue-on-error: true
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        pull: ${{ fromJSON(needs.pulls.outputs.open) }}
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          ref: ${{ matrix.pull.base }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Find the merge base
+        id: commits
+        env:
+          BASE: ${{ matrix.pull.base }}
+          HEAD: ${{ matrix.pull.head }}
+        # Keep the trusted base checked out; export reads the PR commit from Git.
+        run: |
+          git fetch --no-tags origin "$HEAD"
+          echo "from=$(git merge-base "$BASE" "$HEAD")" >> "$GITHUB_OUTPUT"
+
+      - uses: MrLesk/groma.md-action@v1
+        id: map
+        with:
+          groma-version: '0.6.6'
+          output: groma-comparison
+          theme: ${{ env.GROMA_THEME }}
+          from: ${{ steps.commits.outputs.from }}
+          revision: ${{ matrix.pull.head }}
+
+      - name: Place the comparison at /comparison/pr-<n>/
+        env:
+          NUMBER: ${{ matrix.pull.number }}
+          MAP: ${{ steps.map.outputs.directory }}
+        run: |
+          mkdir -p "preview/comparison/pr-$NUMBER"
+          mv "$MAP" "preview/comparison/pr-$NUMBER/$GROMA_THEME"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: groma-comparison-${{ matrix.pull.number }}
+          path: preview
+          retention-days: 1
+
+  build:
+    needs: [pulls, compare]
+    # A failed comparison leaves out that pull request; the map still publishes.
+    if: ${{ !cancelled() }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7.0.1
+
+      - name: Build the current architecture map
+        uses: MrLesk/groma.md-action@v1
+        with:
+          groma-version: '0.6.6'
+          output: site
+          theme: ${{ env.GROMA_THEME }}
+
+      - name: Add the pull request comparisons
+        if: needs.compare.result == 'success' || needs.compare.result == 'failure'
+        uses: actions/download-artifact@v4
+        with:
+          pattern: groma-comparison-*
+          merge-multiple: true
+          path: ./site
+
+      - uses: actions/upload-pages-artifact@v5.0.0
+        with:
+          path: ./site
+
+  deploy:
+    needs: build
+    if: ${{ !cancelled() && needs.build.result == 'success' }}
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    outputs:
+      page_url: ${{ steps.deployment.outputs.page_url }}
+    environment:
+      name: github-pages
+      url: ${{ steps.map-url.outputs.url }}
+    steps:
+      - name: Publish architecture website
+        id: deployment
+        uses: actions/deploy-pages@v5.0.1
+
+      - name: Link to the architecture map
+        id: map-url
+        env:
+          PAGE_URL: ${{ steps.deployment.outputs.page_url }}
+        run: echo "url=${PAGE_URL%/}/architecture/$GROMA_THEME/" >> "$GITHUB_OUTPUT"
+
+  # One comment per pull request, in the same format as the groma.md Action's own comment.
+  comment:
+    needs: [compare, deploy]
+    if: ${{ !cancelled() && needs.deploy.result == 'success' && needs.compare.result != 'skipped' }}
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: groma-comparison-*
+          merge-multiple: true
+          path: previews
+
+      - name: Update each pull request comment
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PAGE_URL: ${{ needs.deploy.outputs.page_url }}
+        run: |
+          shopt -s nullglob
+          marker='<!-- groma-comparison -->'
+          for summary in previews/comparison/pr-*/"$GROMA_THEME"/comparison.json; do
+            number=${summary#previews/comparison/pr-}
+            number=${number%%/*}
+            body=$(jq -r --arg marker "$marker" --arg repo "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY" \
+              --arg url "${PAGE_URL%/}/comparison/pr-$number/$GROMA_THEME/" '
+              def row($name; $count): "| \($name) | \($count.added) | \($count.modified) | \($count.removed) |";
+              [$marker, "### Groma architecture comparison", "",
+                "| Changes | Added | Modified | Removed |", "| --- | ---: | ---: | ---: |",
+                row("Components"; .components), row("Relationships"; .relationships), "",
+                "[Open before / after comparison](\($url)?revision=\(.revision)&from=\(.from))", "",
+                "Compared [\(.from[0:7])](\($repo)/commit/\(.from)) (merge base) → [\(.revision[0:7])](\($repo)/commit/\(.revision))."]
+              | join("\n")' "$summary")
+            id=$(gh api --paginate "repos/$GITHUB_REPOSITORY/issues/$number/comments" \
+              --jq ".[] | select(.user.login == \"github-actions[bot]\" and (.body | startswith(\"$marker\"))) | .id" | head -n 1)
+            if [ -z "$id" ]; then
+              gh api "repos/$GITHUB_REPOSITORY/issues/$number/comments" -f body="$body" > /dev/null
+            elif [ "$(gh api "repos/$GITHUB_REPOSITORY/issues/comments/$id" --jq .body)" != "$body" ]; then
+              gh api -X PATCH "repos/$GITHUB_REPOSITORY/issues/comments/$id" -f body="$body" > /dev/null
+            fi
+          done
