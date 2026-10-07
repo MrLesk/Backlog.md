@@ -73,6 +73,46 @@ Backlog.md itself. The full task ledger lives in this repo's [backlog folder](ba
 
 ---
 
+## 🗺️ Backlog.md + Groma.md
+
+Backlog.md keeps the spec, the plan and the code reviewable. [Groma.md](https://groma.md) adds the
+architecture: it scans your repository into a C4 map that you or your coding agent curate, stored next
+to your code as an [Open Knowledge Format 0.2](https://github.com/GoogleCloudPlatform/open-knowledge-format/blob/main/SPEC.md)
+bundle. It reads your Backlog.md tasks, so the two work well together:
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="./.github/groma-map-dark.webp">
+  <img src="./.github/groma-map-light.webp" alt="Backlog.md's own architecture in Groma.md: Backlog.md tasks pinned to the components they touch, with one task selected and its acceptance criteria open" width="100%">
+</picture>
+
+* 📍 **Tasks on the map** -- every task is pinned to the components it touches, so you see where the work lands in your system, not only in a list
+
+* 👀 **Who is doing what** -- with several agents at work, the map shows where each one is busy
+
+* 🔍 **Review a task by its architecture** -- select a task to highlight the components it touches and inspect its changes without leaving the map
+
+* 📦 **Open Knowledge Format 0.2** -- one Markdown document per element, so the map stays portable and readable without Groma.md
+
+* 📝 **Still plain files** -- both run locally, need no account, and keep everything as Markdown in your repo
+
+Groma.md is a separate install, and Backlog.md works fine without it. To add the map to a repo that
+already uses Backlog.md:
+
+```bash
+npm i -g groma.md
+groma web
+```
+
+Backlog.md uses it on itself: every push to main updates its map, and every pull request gets a comment
+showing what it changes in the architecture.
+
+👉 **[Get started at groma.md](https://groma.md)**
+
+🗺️ **[Explore Backlog.md's own architecture, live](https://mrlesk.github.io/Backlog.md/architecture/auto/)**
+
+
+---
+
 ## <img src="./.github/5-minute-tour-256.png" alt="Getting started" width="28" height="28" align="center"> Getting started
 
 ```bash
@@ -90,9 +130,7 @@ backlog init "Personal Planning" --no-git
 ```
 
 > [!TIP]
-> **Running one-off with `npx`?** This tool's npm package is named `backlog.md`, so use the full name: `npx backlog.md init "My Project"`, `npx backlog.md board`.
-> Without an install, `npx backlog` resolves to an unrelated third-party npm package — not this tool.
-> (With `backlog.md` installed as a project dependency, `npx backlog` runs the local binary as usual.)
+> **Trying it without installing?** Use the full package name: `npx backlog.md init "My Project"`, `npx backlog.md board`.
 
 ### Run with Nix
 
