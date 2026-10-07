@@ -4,8 +4,12 @@ title: Reconcile local-vs-cross-branch gaps in the web API client and task searc
 status: To Do
 assignee: []
 created_date: '2026-08-10 07:14'
+updated_date: '2026-10-07 12:46'
 labels: []
 dependencies: []
+references:
+  - src/web/lib/api.ts
+  - src/core/search-service.ts
 priority: low
 ordinal: 267000
 ---

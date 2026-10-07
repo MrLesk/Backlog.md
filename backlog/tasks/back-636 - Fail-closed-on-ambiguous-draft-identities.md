@@ -5,11 +5,13 @@ status: In Progress
 assignee:
   - '@grok'
 created_date: '2026-08-15 14:00'
-updated_date: '2026-08-26 18:56'
+updated_date: '2026-10-07 12:46'
 labels: []
 dependencies: []
 references:
   - 'https://github.com/MrLesk/Backlog.md/pull/940'
+  - src/file-system/operations.ts
+  - src/utils/task-path.ts
 priority: medium
 ordinal: 271000
 ---

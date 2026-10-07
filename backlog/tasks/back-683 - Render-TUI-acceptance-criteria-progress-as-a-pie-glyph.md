@@ -4,8 +4,11 @@ title: Render TUI acceptance-criteria progress as a pie glyph
 status: To Do
 assignee: []
 created_date: '2026-09-02 21:40'
+updated_date: '2026-10-07 12:46'
 labels: []
 dependencies: []
+references:
+  - src/ui/acceptance-criteria-progress.ts
 ordinal: 315000
 ---
 
