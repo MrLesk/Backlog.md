@@ -11,7 +11,10 @@ type TestWidget = {
 	getScrollHeight?: () => number;
 	height?: number;
 	options?: { label?: string };
+	style?: { bg?: string };
 	type?: string;
+	aleft?: number;
+	width?: number;
 };
 
 function collectWidgets(root: { children?: unknown[] }): TestWidget[] {
@@ -63,9 +66,35 @@ describe("help popup shortcuts", () => {
 			const count = getHelpShortcuts(context).length;
 			// 4 rows of chrome (borders, top spacer, help line) leave one row per shortcut.
 			expect(getHelpPopupHeight(count, 40) - 4).toBe(count);
-			expect(getHelpPopupHeight(count, 24) - 4).toBe(count);
+			// At 24 rows the popup keeps a row of margin above and below and scrolls the rest.
+			expect(getHelpPopupHeight(count, 24)).toBe(Math.min(count + 4, 22));
 			for (const screenHeight of [4, 6, 10, 14, 18, 24, 30]) {
 				expect(getHelpPopupHeight(count, screenHeight)).toBeLessThanOrEqual(screenHeight);
+			}
+		}
+	});
+
+	it("keeps the backdrop centred on the popup for odd and even popup heights", async () => {
+		for (const height of [27, 28]) {
+			const screen = createScreen({ smartCSR: false });
+			Object.defineProperty(screen, "width", { configurable: true, value: 100, writable: true });
+			Object.defineProperty(screen, "height", { configurable: true, value: height, writable: true });
+			try {
+				const result = openHelpPopup(screen);
+				await settleHelpPopup();
+				const widgets = collectWidgets(screen as unknown as { children?: unknown[] });
+				const popup = widgets.find((widget) => widget.options?.label === " Keyboard Shortcuts ");
+				const backdrop = widgets.find((widget) => widget.style?.bg === "gray" && !widget.options?.label);
+				expect(popup?.height).toBe(getHelpShortcuts("board").length + 4);
+				// One row of backdrop above and below the frame, two columns either side.
+				expect(backdrop?.atop).toBe((popup?.atop ?? 0) - 1);
+				expect((backdrop?.atop ?? 0) + (backdrop?.height ?? 0)).toBe((popup?.atop ?? 0) + (popup?.height ?? 0) + 1);
+				expect(backdrop?.aleft).toBe((popup?.aleft ?? 0) - 2);
+
+				pressKey((screen as unknown as { focused?: TestWidget }).focused, "escape", "\x1b");
+				await result;
+			} finally {
+				screen.destroy();
 			}
 		}
 	});
@@ -102,7 +131,7 @@ describe("help popup shortcuts", () => {
 			for (let index = 0; index <= shortMaxOffset; index += 1) pressKey(mutableScreen.focused, "down");
 			expect(viewport?.childBase).toBe(shortMaxOffset);
 
-			mutableScreen.height = 24;
+			mutableScreen.height = 40;
 			mutableScreen.emit("resize");
 			widgets = collectWidgets(screen as unknown as { children?: unknown[] });
 			const expandedViewport = widgets.find((widget) => widget.type === "scrollable-box");

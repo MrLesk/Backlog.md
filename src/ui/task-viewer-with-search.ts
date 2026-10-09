@@ -55,6 +55,7 @@ import { formatHeading } from "./heading.ts";
 import { createLoadingScreen } from "./loading.ts";
 import { formatProjectBadge } from "./project.ts";
 import { formatStatusWithIcon, getStatusColor, getStatusIcon, wrapStatusColor } from "./status-icon.ts";
+import { commentOnTaskFromTui } from "./task-comment.ts";
 import {
 	completeTaskFromTui,
 	formatTaskArchivedMessage,
@@ -1240,7 +1241,7 @@ export async function viewTaskEnhanced(
 			}
 		} else if (currentFocus === "detail") {
 			content =
-				" {cyan-fg}[Tab]{/} View | {cyan-fg}[←]{/} List | {cyan-fg}[↑↓]{/} Scroll | {cyan-fg}[E]{/} Edit | {cyan-fg}[Y]{/} Yank | {cyan-fg}[?]{/} Help | {cyan-fg}[q]{/} Quit";
+				" {cyan-fg}[Tab]{/} View | {cyan-fg}[←]{/} List | {cyan-fg}[↑↓]{/} Scroll | {cyan-fg}[E]{/} Edit | {cyan-fg}[O]{/} Comment | {cyan-fg}[Y]{/} Yank | {cyan-fg}[?]{/} Help | {cyan-fg}[q]{/} Quit";
 		} else {
 			// Task list help
 			content = getTaskListFooterContent({ hasProjects: configuredProjects.length > 0 });
@@ -1249,6 +1250,37 @@ export async function viewTaskEnhanced(
 		setHelpBarContent(content);
 		screen.render();
 	}
+
+	const applyUpdatedTask = (updatedTask: Task) => {
+		// Reconcile by file identity first: with task_prefix="draft" a task and a draft can
+		// share one id, so an id match alone may target the wrong record.
+		const index = allTasks.findIndex(
+			(taskItem) =>
+				(updatedTask.filePath !== undefined &&
+					taskItem.filePath !== undefined &&
+					taskItem.filePath === updatedTask.filePath) ||
+				taskItem.id === updatedTask.id,
+		);
+		if (index >= 0) {
+			allTasks[index] = updatedTask;
+		}
+		const enhancedTask = enrichTask(updatedTask) ?? updatedTask;
+		currentSelectedTask = enhancedTask;
+		options.onTaskChange?.(enhancedTask);
+		taskSearchIndex = createTaskSearchIndex(allTasks);
+	};
+
+	const commentOnCurrentTask = async () => {
+		if (filterPopupOpen || currentFocus === "filters" || noResultsMessage) {
+			return;
+		}
+		const task = currentSelectedTask;
+		const updatedTask = await runWithModalGuard(() => commentOnTaskFromTui(core, screen, task, showTransientHelp));
+		if (updatedTask) {
+			applyUpdatedTask(updatedTask);
+			applyFilters();
+		}
+	};
 
 	const openCurrentTaskInEditor = async () => {
 		if (filterPopupOpen || currentFocus === "filters" || noResultsMessage) {
@@ -1289,22 +1321,7 @@ export async function viewTaskEnhanced(
 			}
 
 			if (result.task) {
-				// Reconcile by file identity first: with task_prefix="draft" a task and a draft can
-				// share one id, so an id match alone may target the wrong record.
-				const index = allTasks.findIndex(
-					(taskItem) =>
-						(result.task?.filePath !== undefined &&
-							taskItem.filePath !== undefined &&
-							taskItem.filePath === result.task.filePath) ||
-						taskItem.id === result.task?.id,
-				);
-				if (index >= 0) {
-					allTasks[index] = result.task;
-				}
-				const enhancedTask = enrichTask(result.task) ?? result.task;
-				currentSelectedTask = enhancedTask;
-				options.onTaskChange?.(enhancedTask);
-				taskSearchIndex = createTaskSearchIndex(allTasks);
+				applyUpdatedTask(result.task);
 			}
 
 			applyFilters();
@@ -1456,6 +1473,11 @@ export async function viewTaskEnhanced(
 	screen.key(["e", "E", "S-e"], () => {
 		if (modalOpen) return;
 		void openCurrentTaskInEditor();
+	});
+
+	screen.key(["o", "O"], () => {
+		if (modalOpen) return;
+		void commentOnCurrentTask();
 	});
 
 	screen.key(["y", "Y"], async () => {
