@@ -21,7 +21,6 @@ import {
 	formatTaskPlainText,
 } from "../formatters/task-plain-text.ts";
 import type { LabelMatchMode, Milestone, Task } from "../types/index.ts";
-import { copyToClipboard } from "../utils/clipboard.ts";
 import { areLabelSelectionsEqual, collectAvailableLabels } from "../utils/label-filter.ts";
 import {
 	createMilestoneFilterValueResolver,
@@ -50,6 +49,7 @@ import {
 import { openMultiSelectFilterPopup, openSingleSelectFilterPopup } from "./components/filter-popup.ts";
 import { type BoundaryNavigationKey, createGenericList, type GenericList } from "./components/generic-list.ts";
 import { openHelpPopup } from "./components/help-popup.ts";
+import { openTaskYankPopup } from "./components/task-yank-popup.ts";
 import { formatFooterContent, getTaskListFooterContent } from "./footer-content.ts";
 import { formatHeading } from "./heading.ts";
 import { createLoadingScreen } from "./loading.ts";
@@ -1240,7 +1240,7 @@ export async function viewTaskEnhanced(
 			}
 		} else if (currentFocus === "detail") {
 			content =
-				" {cyan-fg}[Tab]{/} View | {cyan-fg}[←]{/} List | {cyan-fg}[↑↓]{/} Scroll | {cyan-fg}[E]{/} Edit | {cyan-fg}[Y]{/} Yank | {cyan-fg}[?]{/} Help | {cyan-fg}[q]{/} Quit";
+				" {cyan-fg}[Tab]{/} View | {cyan-fg}[←]{/} List | {cyan-fg}[↑↓]{/} Scroll | {cyan-fg}[E]{/} Edit | {cyan-fg}[Y]{/} Yank menu | {cyan-fg}[?]{/} Help | {cyan-fg}[q]{/} Quit";
 		} else {
 			// Task list help
 			content = getTaskListFooterContent({ hasProjects: configuredProjects.length > 0 });
@@ -1462,12 +1462,17 @@ export async function viewTaskEnhanced(
 		if (modalOpen || filterPopupOpen || currentFocus === "filters") return;
 		const task = getCurrentShortcutTask();
 		if (!task) return;
-		const success = await copyToClipboard(task.id);
-		if (success) {
-			showTransientHelp(` {green-fg}Copied ${task.id} to clipboard{/}`);
-		} else {
-			showTransientHelp(" {red-fg}Failed to copy to clipboard{/}");
-		}
+		await runWithModalGuard(async () => {
+			const repositoryRoot = await core.git.getRepositoryRoot();
+			await openTaskYankPopup({
+				screen,
+				task,
+				projectRoot: core.fs.rootDir,
+				repositoryRoot,
+				githubUrl: task.filePath ? await core.git.getGitHubFileUrl(task.filePath, repositoryRoot) : null,
+				onFeedback: (message, success) => showTransientHelp(` {${success ? "green" : "red"}-fg}${message}{/}`),
+			});
+		});
 	});
 
 	screen.key(["c", "C"], async () => {

@@ -26,7 +26,7 @@ const BOARD_SHORTCUTS: Shortcut[] = [
 	{ key: "M", desc: "Move tasks (Shift+M selects more in move mode)" },
 	{ key: "C", desc: "Complete task" },
 	{ key: "A", desc: "Archive task" },
-	{ key: "Y", desc: "Yank (Copy) task ID" },
+	{ key: "Y", desc: "Open task reference yank menu" },
 	{ key: "H", desc: "Hide/show empty columns" },
 	{ key: "?", desc: "Show this help menu" },
 	{ key: "q/Esc", desc: "Quit / Close" },
@@ -47,7 +47,7 @@ const TASK_LIST_SHORTCUTS: Shortcut[] = [
 	{ key: "E", desc: "Edit task" },
 	{ key: "C", desc: "Complete task" },
 	{ key: "A", desc: "Archive task" },
-	{ key: "Y", desc: "Yank (Copy) task ID" },
+	{ key: "Y", desc: "Open task reference yank menu" },
 	{ key: "?", desc: "Show this help menu" },
 	{ key: "q/Esc", desc: "Quit / Close" },
 ];

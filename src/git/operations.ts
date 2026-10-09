@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import { basename, dirname, isAbsolute, join, relative, resolve } from "node:path";
 import { $ } from "bun";
 import type { BacklogConfig } from "../types/index.ts";
+import { buildGitHubFileUrl } from "../utils/github-file-url.ts";
 
 type GitPathContext = {
 	repoRoot: string;
@@ -537,6 +538,23 @@ export class GitOperations {
 
 	async getRepositoryRoot(cwd = this.projectRoot): Promise<string | null> {
 		return await this.resolveRepoRoot(cwd);
+	}
+
+	async getGitHubFileUrl(filePath: string, repositoryRoot: string | null): Promise<string | null> {
+		if (!repositoryRoot) return null;
+		const [branch, remoteUrl] = await Promise.all([this.getCurrentBranch(), this.getRemoteUrl("origin")]);
+		if (!remoteUrl) return null;
+		const repositoryRelativePath = relative(repositoryRoot, resolve(this.projectRoot, filePath));
+		return buildGitHubFileUrl(remoteUrl, branch, repositoryRelativePath);
+	}
+
+	private async getRemoteUrl(remoteName: string): Promise<string | null> {
+		try {
+			const { stdout } = await this.execGit(["config", "--get", `remote.${remoteName}.url`], { readOnly: true });
+			return stdout.trim() || null;
+		} catch {
+			return null;
+		}
 	}
 
 	async listWorktreePaths(): Promise<string[]> {
