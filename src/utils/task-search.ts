@@ -49,6 +49,7 @@ export interface TaskFilterOptions {
 	parentTaskId?: string;
 	milestone?: string;
 	resolveMilestoneLabel?: (milestone: string) => string;
+	ready?: boolean;
 }
 
 export interface TaskSearchIndex {
@@ -212,6 +213,10 @@ export function createTaskFilterMatcher(options: TaskFilterOptions, corpus: Task
 						.toLowerCase() === milestone,
 			);
 		}
+	}
+
+	if (options.ready !== undefined) {
+		checks.push((task) => Boolean(task.isReady) === options.ready);
 	}
 
 	return (task) => checks.every((check) => check(task));
