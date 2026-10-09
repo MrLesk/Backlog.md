@@ -67,6 +67,10 @@ Humans and agents can run `backlog instructions` for workflow guides and `backlo
 | View (AI mode) | `backlog task 7 --plain`                           |
 | View as JSON | `backlog task 7 --json` |
 | Edit        | `backlog task edit 7 -a @sara -l auth,backend`       |
+| Replace documentation | `backlog task edit 7 --doc docs/spec.md --doc docs/api.md` |
+| Add documentation | `backlog task edit 7 --add-doc docs/spec.md --add-doc docs/api.md` |
+| Remove documentation | `backlog task edit 7 --remove-doc docs/spec.md` |
+| Clear documentation | `backlog task edit 7 --clear-docs` |
 | Add plan    | `backlog task edit 7 --plan "Implementation approach"`    |
 | Add AC      | `backlog task edit 7 --ac "New criterion" --ac "Another one"` |
 | Add DoD     | `backlog task edit 7 --dod "Ship notes"` |
