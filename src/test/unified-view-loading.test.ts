@@ -3,8 +3,8 @@ import { join } from "node:path";
 import { Core } from "../core/backlog.ts";
 import { serializeTask } from "../markdown/serializer.ts";
 import type { Task } from "../types/index.ts";
+import { createTaskFromTui } from "../ui/task-lifecycle.ts";
 import {
-	createTaskFromBoard,
 	createUnifiedTaskUpdateCallbacks,
 	getDuplicateTaskStartupWarning,
 	getEmptyUnifiedViewMessage,
@@ -106,9 +106,9 @@ describe("loadTasksForUnifiedView", () => {
 			},
 		} as unknown as Core;
 
-		await createTaskFromBoard(boardCore, { title: "First" });
+		await createTaskFromTui(boardCore, { title: "First" });
 		currentAutoCommit = true;
-		await createTaskFromBoard(boardCore, { title: "Second" });
+		await createTaskFromTui(boardCore, { title: "Second" });
 
 		expect(observedAutoCommit).toEqual([false, true]);
 	});
@@ -135,7 +135,7 @@ describe("loadTasksForUnifiedView", () => {
 			createTaskFromInput: async () => ({ task: created }),
 		} as unknown as Core;
 
-		const result = await createTaskFromBoard(boardCore, { title: created.title }, callbacks.onTaskAdded);
+		const result = await createTaskFromTui(boardCore, { title: created.title }, callbacks.onTaskAdded);
 
 		expect(result).toBe(created);
 		expect(state.tasks).toEqual([created]);

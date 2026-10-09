@@ -20,7 +20,7 @@ import {
 	formatDateForDisplay,
 	formatTaskPlainText,
 } from "../formatters/task-plain-text.ts";
-import type { LabelMatchMode, Milestone, Task } from "../types/index.ts";
+import type { LabelMatchMode, Milestone, Task, TaskCreateInput } from "../types/index.ts";
 import { copyToClipboard } from "../utils/clipboard.ts";
 import { areLabelSelectionsEqual, collectAvailableLabels } from "../utils/label-filter.ts";
 import {
@@ -50,6 +50,7 @@ import {
 import { openMultiSelectFilterPopup, openSingleSelectFilterPopup } from "./components/filter-popup.ts";
 import { type BoundaryNavigationKey, createGenericList, type GenericList } from "./components/generic-list.ts";
 import { openHelpPopup } from "./components/help-popup.ts";
+import { openTaskComposer, type TaskComposerOptions } from "./components/task-composer.ts";
 import { formatFooterContent, getTaskListFooterContent } from "./footer-content.ts";
 import { formatHeading } from "./heading.ts";
 import { createLoadingScreen } from "./loading.ts";
@@ -57,8 +58,11 @@ import { formatProjectBadge } from "./project.ts";
 import { formatStatusWithIcon, getStatusColor, getStatusIcon, wrapStatusColor } from "./status-icon.ts";
 import {
 	completeTaskFromTui,
+	createTaskFromTui,
 	formatTaskArchivedMessage,
 	formatTaskCompletionBlockedMessage,
+	getCreatedTaskOutcome,
+	upsertTask,
 } from "./task-lifecycle.ts";
 import { formatTaskTypeBadge } from "./task-type.ts";
 import { addScrollKeys, createScreen, formatTuiTitle } from "./tui.ts";
@@ -288,6 +292,9 @@ export async function viewTaskEnhanced(
 			labelMatch?: LabelMatchMode;
 			milestoneFilter: string;
 		}) => void;
+		screen?: ScreenInterface;
+		createTask?: (input: TaskCreateInput) => Promise<Task>;
+		taskComposer?: (options: TaskComposerOptions) => Promise<Task | null>;
 	} = {},
 ): Promise<void> {
 	if (output.isTTY === false) {
@@ -437,7 +444,7 @@ export async function viewTaskEnhanced(
 	let noResultsMessage: string | null = null;
 
 	const screenTitle = formatTuiTitle(options.title || "Tasks", projectName);
-	const screen = createScreen({ title: screenTitle });
+	const screen = options.screen ?? createScreen({ title: screenTitle });
 
 	// Main container
 	const container = box({
@@ -450,6 +457,13 @@ export async function viewTaskEnhanced(
 	let currentFocus: "filters" | "list" | "detail" = "list";
 	let filterPopupOpen = false;
 	let modalOpen = false;
+	// While the task composer is open, a watcher-driven subscribeUpdates call must not rebuild
+	// the task list out from under it (or race the composer's own persisted task into a
+	// duplicate); the data is still applied, but the render is queued and flushed once the
+	// composer closes. Mirrors board.ts's taskCreationOpen/taskCreationPendingUpdate guard.
+	let taskCreationOpen = false;
+	let taskCreationPendingUpdate = false;
+	let pendingCreatedTaskId: string | undefined;
 	let pendingSearchWrap: PendingSearchWrap = null;
 	let filterExitPane: PaneFocus = "list";
 
@@ -789,6 +803,11 @@ export async function viewTaskEnhanced(
 		descriptionBox.focus();
 		updateHelpBar();
 		screen.render();
+	}
+
+	function focusPane(pane: PaneFocus): void {
+		if (pane === "list") focusTaskList();
+		else focusDetailPane();
 	}
 
 	// Helper to notify filter changes
@@ -1458,6 +1477,63 @@ export async function viewTaskEnhanced(
 		void openCurrentTaskInEditor();
 	});
 
+	screen.key(["n", "N", "S-n"], async () => {
+		if (modalOpen || filterPopupOpen || currentFocus === "filters") return;
+		const previousFocus = currentFocus;
+		taskCreationOpen = true;
+		let createdTask: Task | null = null;
+		let creationError: unknown;
+		let hadPendingUpdate = false;
+		try {
+			createdTask = await runWithModalGuard(() =>
+				(options.taskComposer ?? openTaskComposer)({
+					screen,
+					statuses,
+					types: configuredTaskTypes,
+					priorities: priorityOptions.map((priority) => priority.value),
+					projects: configuredProjects,
+					persist: options.createTask ?? ((input) => createTaskFromTui(core, input)),
+				}),
+			);
+		} catch (error) {
+			creationError = error;
+		} finally {
+			taskCreationOpen = false;
+			hadPendingUpdate = taskCreationPendingUpdate;
+			taskCreationPendingUpdate = false;
+		}
+
+		if (!createdTask) {
+			if (hadPendingUpdate) applyFilters();
+			focusPane(previousFocus);
+			if (creationError) {
+				const message = creationError instanceof Error ? creationError.message : "Unknown error";
+				showTransientHelp(` {red-fg}Error opening task composer: ${message}{/}`, 3000);
+			}
+			return;
+		}
+
+		const draft = createdTask.status.trim().toLowerCase() === "draft";
+		if (!draft) {
+			// The watcher may have delivered this task before the composer closed.
+			allTasks = upsertTask(allTasks, createdTask);
+			taskSearchIndex = createTaskSearchIndex(allTasks);
+			pendingCreatedTaskId = createdTask.id;
+		}
+		// Rebuild before restoring focus: the old detail pane otherwise schedules focus
+		// onto its replacement and can steal it from the newly selected task.
+		currentFocus = "list";
+		applyFilters();
+		const visible = !draft && filteredTasks.some((candidate) => candidate.id === createdTask.id);
+		const outcome = getCreatedTaskOutcome(createdTask, visible, "list");
+		if (outcome.focusTaskId) {
+			focusTaskList(filteredTasks.findIndex((candidate) => candidate.id === outcome.focusTaskId));
+		} else {
+			focusPane(previousFocus);
+		}
+		showTransientHelp(` {${outcome.tone}-fg}${outcome.message}{/}`);
+	});
+
 	screen.key(["y", "Y"], async () => {
 		if (modalOpen || filterPopupOpen || currentFocus === "filters") return;
 		const task = getCurrentShortcutTask();
@@ -1552,6 +1628,8 @@ export async function viewTaskEnhanced(
 		taskList = createTaskList();
 	}
 	options.subscribeUpdates?.((nextTasks, nextStatuses, nextLabels, nextSelectedTask) => {
+		const reconcilesCreation = nextTasks.some((candidate) => candidate.id === pendingCreatedTaskId);
+		const previousFocus = currentFocus;
 		allTasks = nextTasks;
 		statuses = nextStatuses;
 		labels = nextLabels;
@@ -1567,7 +1645,15 @@ export async function viewTaskEnhanced(
 			currentSelectedTask = enrichTask(currentTask) ?? currentTask;
 			if (currentSelectedTask.id !== previousTaskId) options.onTaskChange?.(currentSelectedTask);
 		}
+		if (taskCreationOpen) {
+			taskCreationPendingUpdate = true;
+			return;
+		}
 		applyFilters();
+		if (reconcilesCreation) {
+			pendingCreatedTaskId = undefined;
+			if (previousFocus !== "filters" && !modalOpen && !filterPopupOpen) focusPane(previousFocus);
+		}
 	});
 	refreshDetailPane();
 
