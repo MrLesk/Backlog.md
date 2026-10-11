@@ -1,11 +1,11 @@
 ---
 id: BACK-730
 title: Add task delete for archived tasks
-status: In Progress
+status: Done
 assignee:
   - '@claude'
 created_date: '2026-10-11 13:02'
-updated_date: '2026-10-11 19:14'
+updated_date: '2026-10-11 20:16'
 labels:
   - enhancement
 dependencies:
@@ -57,21 +57,21 @@ Depends on BACK-719: delete acts on the archive that task leaves in place, where
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 `backlog task delete <id>` on an archived task exits zero and permanently removes that task from the project, so `backlog task view <id>` no longer finds it.
-- [ ] #2 `backlog task delete <id>` on a task that is not archived exits non-zero with an error saying the task must be archived first, and leaves the task unchanged.
-- [ ] #3 `backlog task delete <id>` runs without a prompt and offers no confirmation flag.
-- [ ] #4 Deleting an archived task releases its ID, so the ID is no longer reserved and can be assigned to a newly created task.
-- [ ] #5 Delete removes incoming dependencies and references to the deleted task from other tasks, and its output names the tasks that were changed.
-- [ ] #6 Delete is refused while subtask records of the task still exist: it exits non-zero with an error that says so, and leaves the task and its subtasks unchanged.
-- [ ] #7 The MCP server offers the same delete operation with the same rules as the CLI.
-- [ ] #8 Command help and the shipped instruction guides (`backlog instructions`) describe the two-step archive-then-delete deletion.
+- [x] #1 `backlog task delete <id>` on an archived task exits zero and permanently removes that task from the project, so `backlog task view <id>` no longer finds it.
+- [x] #2 `backlog task delete <id>` on a task that is not archived exits non-zero with an error saying the task must be archived first, and leaves the task unchanged.
+- [x] #3 `backlog task delete <id>` runs without a prompt and offers no confirmation flag.
+- [x] #4 Deleting an archived task releases its ID, so the ID is no longer reserved and can be assigned to a newly created task.
+- [x] #5 Delete removes incoming dependencies and references to the deleted task from other tasks, and its output names the tasks that were changed.
+- [x] #6 Delete is refused while subtask records of the task still exist: it exits non-zero with an error that says so, and leaves the task and its subtasks unchanged.
+- [x] #7 The MCP server offers the same delete operation with the same rules as the CLI.
+- [x] #8 Command help and the shipped instruction guides (`backlog instructions`) describe the two-step archive-then-delete deletion.
 <!-- AC:END -->
 
 ## Definition of Done
 <!-- DOD:BEGIN -->
-- [ ] #1 bunx tsc --noEmit passes when TypeScript touched
-- [ ] #2 bun run check . passes when formatting/linting touched
-- [ ] #3 bun test (or scoped test) passes
+- [x] #1 bunx tsc --noEmit passes when TypeScript touched
+- [x] #2 bun run check . passes when formatting/linting touched
+- [x] #3 bun test (or scoped test) passes
 <!-- DOD:END -->
 
 ## Implementation Plan
@@ -114,4 +114,28 @@ Choices taken conservatively and listed for review: a subtask is a task on the b
 Verification: `bunx tsc --noEmit` clean; `bun run check .` clean (434 files); scoped tests pass (cli-task-delete, mcp-tasks, mcp-server, cli-guidance, cli-task-state, vacated-task-references: 112 pass, 0 fail). A scripted end-to-end run against a binary built from this layer covered every acceptance criterion through the CLI and through MCP over stdio in private mktemp projects, including the ambiguous-ID refusal and a symlinked archived file.
 
 Review round: delete resolves a task that exists only on another branch, on its board or in its archive, to the same typed refusal as archive (TaskOnOtherBranchError through the shared refuseTaskOnOtherBranch); MCP reports it like every other TaskRefusedError, and the CLI, which reads the working copy only, keeps its not-found line with the hint. The typed delete refusals extend TaskRefusedError, the MCP handler runs through runLifecycleOperation, and an unknown ID reads 'Task X not found.' on both interfaces. Help and the CLI and MCP guides now say that references held by drafts are not changed, because the cleanup covers tasks only.
+
+Third review round: an ID that several records claim on another branch fails closed as ambiguous for delete too, through the shared refuseTaskOnOtherBranch; a test calls Core.deleteTask directly for that case. Every acceptance criterion was re-run end to end against a binary built from this layer's tip (CLI and MCP over stdio) in private mktemp projects.
 <!-- SECTION:NOTES:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+`backlog task delete <id>` permanently removes an archived task and releases its ID. Archiving keeps the ID since BACK-719, so delete is the explicit second step for work that should leave no record (issue #1064).
+
+What changed
+- One core operation, `Core.deleteTask`. It only acts on an archived task: a task on the board is refused with "Task X is not archived. A task must be archived before it can be deleted.", and a task that exists only on another branch is refused as read-only. An ID that more than one record claims fails closed as ambiguous.
+- Delete is refused while a task on the board or in the archive names the task as its parent, because subtask IDs are built on the ID that would be released.
+- Delete removes the dependencies and references other tasks hold to the task, on the board and in the archive, through the existing vacated-ID cleanup, and reports the changed tasks. The referencing tasks are written first and the file is removed last, so a failure leaves the task in the archive and the delete can be run again. References held by drafts are not changed.
+- A symlinked archived task is removed as a link; the file it points to stays. Auto-commit commits the removal together with the cleaned tasks.
+- `backlog task delete <taskId>` has no options and no prompt, because archiving is the confirming step. The MCP server offers the same operation as `task_delete` with the same rules. The TUI and the browser get no delete control.
+- Help, the CLI and MCP guides, README and CLI-INSTRUCTIONS describe deleting as archive first, then delete.
+
+Verification
+- `bunx tsc --noEmit` and `bun run check .` are clean; the scoped tests pass, including src/test/cli-task-delete.test.ts, which drives the CLI for every acceptance criterion, and the MCP tests for `task_delete`.
+- A scripted end-to-end run against a binary built from this layer covered every acceptance criterion through the CLI and through MCP over stdio.
+
+Choices to confirm
+- A subtask is a task on the board or in the archive whose parent field names the task. A draft that was demoted from a subtask, and a dotted ID without a parent field, do not block the delete.
+- Drafts keep dependencies and references to a deleted task, because the cleanup covers tasks only.
+<!-- SECTION:FINAL_SUMMARY:END -->
