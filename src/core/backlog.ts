@@ -3507,8 +3507,11 @@ export class Core {
 		if (await this.shouldAutoCommit(autoCommit)) {
 			try {
 				await this.git.addFiles(deleted.filePaths);
-				// A file that was never committed has no removal to stage.
-				await this.git.addFile(deleted.removedPath).catch(() => {});
+				// Only a file Git tracks has a removal to stage. Asking first, rather than ignoring a
+				// failed `git add`, keeps a real staging failure from passing as "nothing to commit".
+				if ((await this.git.getIndexEntries(deleted.removedPath)).length > 0) {
+					await this.git.addFile(deleted.removedPath);
+				}
 				await this.git.commitFiles(`backlog: Delete task ${task.id}`, [deleted.removedPath, ...deleted.filePaths]);
 			} catch (error) {
 				const reason = error instanceof Error ? error.message : String(error);

@@ -193,6 +193,9 @@ describe("backlog task delete", () => {
 });
 
 describe("backlog task delete with auto-commit", () => {
+	const base = { status: "To Do", assignee: [], createdDate: "2025-01-01", labels: [] };
+	const lastCommit = async () => (await $`git log -1 --format=%s`.cwd(TEST_DIR).text()).trim();
+
 	beforeEach(async () => {
 		TEST_DIR = await createTestDirOutsideRepository("test-cli-task-delete-commit");
 		await $`git init -b main`.cwd(TEST_DIR).quiet();
@@ -205,7 +208,6 @@ describe("backlog task delete with auto-commit", () => {
 		await core.filesystem.saveConfig({ ...config, autoCommit: true });
 
 		// The project as one commit: an archived task and a board task that depends on it.
-		const base = { status: "To Do", assignee: [], createdDate: "2025-01-01", labels: [] };
 		await core.createTask({ ...base, id: "task-1", title: "Target", dependencies: [] }, false);
 		await core.createTask({ ...base, id: "task-2", title: "Depends on the target", dependencies: ["task-1"] }, false);
 		expect(await core.archiveTask("task-1", false)).toBe(true);
@@ -222,12 +224,45 @@ describe("backlog task delete with auto-commit", () => {
 
 		expect(deleted.exitCode).toBe(0);
 		expect(deleted.stdout).toContain("Removed references to TASK-1 from TASK-2");
-		expect((await $`git log -1 --format=%s`.cwd(TEST_DIR).text()).trim()).toBe("backlog: Delete task TASK-1");
+		expect(await lastCommit()).toBe("backlog: Delete task TASK-1");
 		const committed = (await $`git show --name-status --format= HEAD`.cwd(TEST_DIR).text()).trim().split("\n").sort();
 		expect(committed).toEqual([
 			"D\tbacklog/archive/tasks/task-1 - Target.md",
 			"M\tbacklog/tasks/task-2 - Depends-on-the-target.md",
 		]);
 		expect((await $`git status --porcelain`.cwd(TEST_DIR).text()).trim()).toBe("");
+	});
+
+	it("says the commit failed when the removal cannot be staged, and does not report success", async () => {
+		// Nothing refers to TASK-3, so removing its committed file is the only change there is to stage.
+		const core = new Core(TEST_DIR);
+		await core.createTask({ ...base, id: "task-3", title: "Unreferenced", dependencies: [] }, false);
+		expect(await core.archiveTask("task-3", false)).toBe(true);
+		await $`git add -A`.cwd(TEST_DIR).quiet();
+		await $`git commit -m "Archive an unreferenced task"`.cwd(TEST_DIR).quiet();
+		// Another Git process holds the index, so nothing can be staged.
+		await Bun.write(join(TEST_DIR, ".git", "index.lock"), "");
+
+		const deleted = await task("delete", "3");
+
+		expect(deleted.exitCode).toBe(1);
+		expect(deleted.stderr).toContain("Task TASK-3 was deleted, but committing the change failed");
+		expect(deleted.stderr).toContain("index.lock");
+		expect(deleted.stdout).not.toContain("Deleted task");
+		expect(await taskFiles("archive/tasks")).toEqual(["task-1 - Target.md"]);
+		expect(await lastCommit()).toBe("Archive an unreferenced task");
+	});
+
+	it("deletes an archived task that was never committed without a commit", async () => {
+		const core = new Core(TEST_DIR);
+		await core.createTask({ ...base, id: "task-3", title: "Never committed", dependencies: [] }, false);
+		expect(await core.archiveTask("task-3", false)).toBe(true);
+
+		const deleted = await task("delete", "3");
+
+		expect(deleted.exitCode).toBe(0);
+		expect(deleted.stdout).toBe("Deleted task TASK-3\n");
+		expect(await taskFiles("archive/tasks")).toEqual(["task-1 - Target.md"]);
+		expect(await lastCommit()).toBe("Set up the project");
 	});
 });

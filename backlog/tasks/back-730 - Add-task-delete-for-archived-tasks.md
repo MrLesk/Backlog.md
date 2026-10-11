@@ -5,7 +5,7 @@ status: Done
 assignee:
   - '@claude'
 created_date: '2026-10-11 13:02'
-updated_date: '2026-10-11 20:16'
+updated_date: '2026-10-11 21:30'
 labels:
   - enhancement
 dependencies:
@@ -116,6 +116,14 @@ Verification: `bunx tsc --noEmit` clean; `bun run check .` clean (434 files); sc
 Review round: delete resolves a task that exists only on another branch, on its board or in its archive, to the same typed refusal as archive (TaskOnOtherBranchError through the shared refuseTaskOnOtherBranch); MCP reports it like every other TaskRefusedError, and the CLI, which reads the working copy only, keeps its not-found line with the hint. The typed delete refusals extend TaskRefusedError, the MCP handler runs through runLifecycleOperation, and an unknown ID reads 'Task X not found.' on both interfaces. Help and the CLI and MCP guides now say that references held by drafts are not changed, because the cleanup covers tasks only.
 
 Third review round: an ID that several records claim on another branch fails closed as ambiguous for delete too, through the shared refuseTaskOnOtherBranch; a test calls Core.deleteTask directly for that case. Every acceptance criterion was re-run end to end against a binary built from this layer's tip (CLI and MCP over stdio) in private mktemp projects.
+
+Review fix after the pull request was opened (one finding of the automated review on #1095, verified).
+
+Delete no longer reports success when the removal could not be staged. With auto-commit on, `deleteTask` staged the removed file with a catch that ignored every error, because `git add` of a missing file that was never committed fails. The same catch hid real failures: with the repository index held by another process the removal was not staged, the commit step found nothing staged and returned, and `backlog task delete` printed "Deleted task" and exited 0 while nothing was committed. The removal is now staged only when the path has an entry in the index (`getIndexEntries`, the helper the commit code already uses), and a staging error reaches the existing failure path: "Task X was deleted, but committing the change failed: <reason>", exit code 1. A task file that was never committed is still deleted without a commit and without an error.
+
+Tests in src/test/cli-task-delete.test.ts, in a repository outside this one: with `.git/index.lock` present, deleting an archived and committed task that nothing refers to exits 1 with that message, prints no "Deleted task", leaves no file on disk and adds no commit (before the fix this test fails with exit code 0); deleting an archived task that was never committed exits 0 and adds no commit. End to end against the built CLI with the index lock present: before the fix exit 0 and "Deleted task TASK-1" with the removal left uncommitted; after it exit 1 and the message with Git's lock error.
+
+Verification: `bunx tsc --noEmit` and `bun run check .` are clean; the scoped tests pass.
 <!-- SECTION:NOTES:END -->
 
 ## Final Summary
