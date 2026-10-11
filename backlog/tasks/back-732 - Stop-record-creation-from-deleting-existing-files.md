@@ -5,7 +5,7 @@ status: In Progress
 assignee:
   - '@claude'
 created_date: '2026-10-11 19:07'
-updated_date: '2026-10-11 20:16'
+updated_date: '2026-10-11 20:25'
 labels:
   - bug
 dependencies: []
@@ -49,19 +49,19 @@ Settled during plan review: whether, in the copied-file case, create moves on to
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 With a file named for the next free number that carries the ID of another record in its frontmatter (for example `task-2 - Copied-task.md` containing `id: TASK-1`), `backlog task create` leaves that file in place with its content unchanged.
-- [ ] #2 `backlog doc create` and `backlog decision create` leave the equivalent document and decision files in place with their content unchanged.
-- [ ] #3 With a decision whose frontmatter ID is written as `DECISION-1`, `backlog decision create` does not hand out number 1 again and the existing file is still present afterwards. The same holds for a document stored as `DOC-1` and `backlog doc create`.
+- [x] #1 With a file named for the next free number that carries the ID of another record in its frontmatter (for example `task-2 - Copied-task.md` containing `id: TASK-1`), `backlog task create` leaves that file in place with its content unchanged.
+- [x] #2 `backlog doc create` and `backlog decision create` leave the equivalent document and decision files in place with their content unchanged.
+- [x] #3 With a decision whose frontmatter ID is written as `DECISION-1`, `backlog decision create` does not hand out number 1 again and the existing file is still present afterwards. The same holds for a document stored as `DOC-1` and `backlog doc create`.
 - [ ] #4 After any `task create`, `doc create` or `decision create` that exits 0, every file that existed before the command is still present with unchanged content, and the ID the command reports belongs to a file that did not exist before.
-- [ ] #5 If a create refuses to proceed because of a conflicting file, it exits non-zero, names that file and writes nothing.
-- [ ] #6 Tests cover the copied-file case for tasks, documents and decisions and the upper-case ID case for documents and decisions.
+- [x] #5 If a create refuses to proceed because of a conflicting file, it exits non-zero, names that file and writes nothing.
+- [x] #6 Tests cover the copied-file case for tasks, documents and decisions and the upper-case ID case for documents and decisions.
 <!-- AC:END -->
 
 ## Definition of Done
 <!-- DOD:BEGIN -->
-- [ ] #1 bunx tsc --noEmit passes when TypeScript touched
-- [ ] #2 bun run check . passes when formatting/linting touched
-- [ ] #3 bun test (or scoped test) passes
+- [x] #1 bunx tsc --noEmit passes when TypeScript touched
+- [x] #2 bun run check . passes when formatting/linting touched
+- [x] #3 bun test (or scoped test) passes
 <!-- DOD:END -->
 
 ## Implementation Plan
@@ -135,3 +135,27 @@ Review follow-up
 - The comment on `writeRecordFile` names the three save functions that use it and says drafts do not.
 - Seen while testing, not changed: a decision with empty sections gets its section headings repeated when it is updated through `updateDecisionFromContent`. Same on origin/main.
 <!-- SECTION:NOTES:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+Creating a task, document or decision no longer deletes, replaces or overwrites an existing file, and never reuses a number that a local file name or a stored ID already carries, in any letter case.
+
+What changed
+- Allocation: `extractIdFromFilename` in src/utils/prefix-config.ts says which ID a file name claims, and `generateNextId` reads the number in any letter case. The task allocator always reads this project's own tasks and completed folders by name. The document and decision allocators count every local file name, including files that cannot be parsed.
+- Saving: one private helper, `writeRecordFile` in src/file-system/operations.ts, writes the file for `saveTask`, `saveDocument` and `saveDecision`. It rewrites or moves only the file the record was loaded from and creates a new record's file only if the path is free. The three clean-ups that matched other files by name are removed.
+- A stray file on the next number is skipped. Create refuses, with exit code 1, the file named and nothing changed, only when the new file's own path is already taken.
+
+Verification
+- 16 new CLI tests in src/test/cli-create-preserves-existing-files.test.ts, with projects outside the repository. All 16 fail on the sources of main.
+- The scoped test files, `bunx tsc --noEmit` and `bun run check .` pass. One test in config-commands.test.ts fails the same way on main.
+
+Open point
+- Acceptance criterion 4 holds for tasks, documents and decisions. It is left unchecked because `backlog task create --draft` is also a `task create`: draft saving is unchanged, and a draft create still overwrites a draft file whose name differs from the new one only in letter case on a case-insensitive file system.
+
+Follow-ups
+- Updates share the save step, so BACK-600 acceptance criteria 1 and 2 are covered here. Its doctor finding remains.
+- A retitle checks the target and renames in two steps until updates take a lock (BACK-736).
+- Task and decision files whose names start in upper case are not counted by the allocator. That can give two files one number but cannot lose a file.
+- Not verified on Windows.
+<!-- SECTION:FINAL_SUMMARY:END -->
