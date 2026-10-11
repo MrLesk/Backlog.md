@@ -4,8 +4,10 @@ title: Keep plain and JSON search inside the checkout
 status: To Do
 assignee: []
 created_date: '2026-10-11 20:02'
+updated_date: '2026-10-11 20:36'
 labels: []
-dependencies: []
+dependencies:
+  - BACK-719
 references:
   - src/cli.ts
   - src/core/search-service.ts

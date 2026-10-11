@@ -4,8 +4,10 @@ title: Remove cross-branch loading code that nothing calls
 status: To Do
 assignee: []
 created_date: '2026-10-11 20:02'
+updated_date: '2026-10-11 20:36'
 labels: []
-dependencies: []
+dependencies:
+  - BACK-719
 references:
   - src/core/cross-branch-tasks.ts
   - src/git/operations.ts
