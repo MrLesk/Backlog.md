@@ -1938,9 +1938,12 @@ export class Core {
 	}
 
 	/**
-	 * The stored board record a write is about to replace, resolved the way every mutation resolves
-	 * its target: an archived task and an ambiguous ID both throw, and null means no record claims
-	 * the ID.
+	 * The stored board record a write is about to replace. An archived task throws. An ID the loaded
+	 * store cannot settle (it is unknown or ambiguous there, or no store is loaded) is resolved
+	 * against the working copy, where a collision throws and null means no record claims the ID.
+	 *
+	 * Unlike `loadTaskForMutation`, this never initializes or refreshes the store: it runs inside the
+	 * task lock and once per task in bulk writes, so it only reads what is already loaded.
 	 */
 	private async loadStoredTaskForWrite(taskId: string): Promise<Task | null> {
 		if (this.contentStore?.isInitialized()) {

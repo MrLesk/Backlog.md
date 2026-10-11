@@ -725,7 +725,7 @@ describe("CLI Integration", () => {
 			const baseline = await listCountingArchiveReads(["--plain", "--assignee", "@nobody"]);
 			const withVerdicts = await listCountingArchiveReads(["--json"]);
 			expect(JSON.parse(empty.stdout).tasks).toEqual([]);
-			// Nothing will carry a verdict, so nothing loads the corpus it would come from.
+			// Nothing will carry a verdict, so the corpus gets no read beyond the identity index's own.
 			expect(empty.archiveReads).toBe(baseline.archiveReads);
 			// The counter does count: rows that carry a verdict cost a read the empty result did not.
 			expect(withVerdicts.archiveReads).toBeGreaterThan(empty.archiveReads);

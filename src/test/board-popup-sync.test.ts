@@ -255,6 +255,21 @@ describe("board task popup stays in sync with live task state", () => {
 		);
 	});
 
+	it("words the edit key's refusal of a read-only task like the archive key's", async () => {
+		const fromBranch = createTask({ source: "local-branch", branch: "feature" });
+		await withBoardPopup(
+			{
+				tasks: [fromBranch, OTHER_TASK],
+				editTaskInTui: async () => ({ changed: false, task: fromBranch, reason: "read_only" }),
+			},
+			async ({ text, focused }) => {
+				pressKey(focused(), "e");
+				await waitUntil(() => text().includes("Task is read-only in branch feature."), "the read-only line");
+				expect(text()).not.toContain("Cannot edit task");
+			},
+		);
+	});
+
 	it("restores focus to a real column when the board loses columns as the task disappears", async () => {
 		// hideEmptyColumns drops the Done lane once its only task is gone, so the column the
 		// popup was opened from no longer exists when focus has to go somewhere.

@@ -46,6 +46,7 @@ export function formatArchiveNotice(task: Task, result: TuiArchiveResult): strin
 	if (result.archived) return ` {green-fg}Archived ${task.id}{/}`;
 	if (result.reason === "read_only") return formatReadOnlyNotice(task);
 	if (result.reason === "cancelled") return null;
+	// Core refused or failed after the view's snapshot went stale, so its own reason is shown.
 	return result.error
 		? ` {red-fg}Error archiving task: ${result.error}{/}`
 		: ` {red-fg}Failed to archive ${task.id}{/}`;

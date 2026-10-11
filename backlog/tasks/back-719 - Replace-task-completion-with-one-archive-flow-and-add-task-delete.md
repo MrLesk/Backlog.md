@@ -1,11 +1,11 @@
 ---
 id: BACK-719
 title: Replace task completion with one archive flow
-status: In Progress
+status: Done
 assignee:
   - '@claude'
 created_date: '2026-10-11 10:42'
-updated_date: '2026-10-11 15:04'
+updated_date: '2026-10-11 15:17'
 labels:
   - bug
 dependencies: []
@@ -149,18 +149,18 @@ Settled for this task: archiving never rewrites other tasks, and an archived dep
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 `backlog task complete` is no longer an available operation: it is absent from `backlog task --help`, and running it exits non-zero without changing any task.
-- [ ] #2 `backlog task archive <id>` succeeds for a task in any status, including the configured final status.
-- [ ] #3 Archiving preserves the task ID: the archived task keeps its ID, and a task created afterwards is not assigned that ID.
-- [ ] #4 The TUI, browser, and MCP follow the same rule as the CLI: no separate complete action remains, and archive applies to a task in any status and preserves its ID.
-- [ ] #5 Command help and the shipped instruction guides (`backlog instructions`) describe the single archive flow and no longer direct users to a complete command.
+- [x] #1 `backlog task complete` is no longer an available operation: it is absent from `backlog task --help`, and running it exits non-zero without changing any task.
+- [x] #2 `backlog task archive <id>` succeeds for a task in any status, including the configured final status.
+- [x] #3 Archiving preserves the task ID: the archived task keeps its ID, and a task created afterwards is not assigned that ID.
+- [x] #4 The TUI, browser, and MCP follow the same rule as the CLI: no separate complete action remains, and archive applies to a task in any status and preserves its ID.
+- [x] #5 Command help and the shipped instruction guides (`backlog instructions`) describe the single archive flow and no longer direct users to a complete command.
 <!-- AC:END -->
 
 ## Definition of Done
 <!-- DOD:BEGIN -->
-- [ ] #1 bunx tsc --noEmit passes when TypeScript touched
-- [ ] #2 bun run check . passes when formatting/linting touched
-- [ ] #3 bun test (or scoped test) passes
+- [x] #1 bunx tsc --noEmit passes when TypeScript touched
+- [x] #2 bun run check . passes when formatting/linting touched
+- [x] #3 bun test (or scoped test) passes
 <!-- DOD:END -->
 
 ## Implementation Plan
@@ -237,4 +237,29 @@ Tests: the two corpus-read counters in cli-task-list count the line the archived
 Verification of the round: `bunx tsc --noEmit` clean; `bun run check .` clean (433 files); `bun run test` 2908 pass, 8 skip, 0 fail across 291 files, still exiting 1 because of the unchanged list-window file. One earlier full run had a single failure in the unchanged test "ContentStore > publishes watched distinct-path local creation with the refreshed branch collision identity", which waits 3 seconds for a file-watcher event; that file passed alone 4 times out of 4 and the next full run was clean. A pseudo-terminal run of the rebuilt binary showed A on an archived task printing "Task is read-only." with no confirmation, while the board row, board popup and task list archive keys still ask and archive.
 
 Left unchanged and listed for review: the board's E key says "Cannot edit task from branch X." for a task from another branch while the task list says "Task is read-only in branch X."; the Groma descriptions of backlog-folder, task-details, file-storage, terminal-widgets, core and mcp-tools still mention completed storage or `task_complete` and wait for a curation pass.
+
+Close-out after the second review: `loadStoredTaskForWrite` documents what it resolves where and why it never initializes or refreshes the store; the board's E key shows the shared read-only line ("Task is read-only in branch X."), the same one the A key and the task list show; two comments were made precise. Every acceptance criterion was re-run end to end against a binary built from the branch tip (CLI, MCP over stdio, HTTP) in a private mktemp project.
 <!-- SECTION:NOTES:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+Completion is removed and Archive is the one way to take a task off the board (issue #1064, a deliberate breaking change).
+
+What changed
+- `backlog task archive <id>` works in every status, including the final one. The archived task keeps its ID, its record and every link other tasks hold to it, no other task is rewritten, and the ID is never handed out again (working copy, sibling worktrees and scanned branches).
+- `backlog task complete`, the MCP `task_complete` tool, the HTTP complete route, the web "Move to completed" button and the TUI C key are gone. `backlog cleanup` keeps its name and archives.
+- Archived tasks are read-only everywhere through one core rule and one error ("Task X is archived. Archived tasks are read-only."). Task detail and MCP search output mark them as archived; the web modal and the TUI show the read-only banner and refuse edit and archive keys before asking anything.
+- Finished means the final status only. An archived dependency satisfies its dependents only when it is in the final status, and statistics count board tasks plus archived tasks in the final status.
+- Existing data: a leftover `completed/` folder is read as part of the archive. `backlog doctor` reports it and `--fix` moves it into `archive/tasks` without changing IDs or replacing files; an ID that two records claim is reported and repaired there, and fails closed until then.
+- Help, README, CLI-INSTRUCTIONS and the shipped CLI and MCP guides describe the single archive flow.
+
+Verification
+- `bunx tsc --noEmit` and `bun run check .` are clean; `bun run test` gives 2,909 pass, 8 skip, 0 fail (the command still exits 1 because of the unchanged list-window test file, as on main).
+- A scripted end-to-end run of every acceptance criterion against the built CLI (CLI, MCP over stdio, HTTP), a pseudo-terminal run of the TUI keys, and a browser session of the web controls.
+
+Follow-ups and risks
+- Scripts or agents that call `task complete` or `task_complete` must switch to archive.
+- Deleting an archived task is BACK-730, restoring one is BACK-731, and the non-interactive cleanup failure is BACK-720.
+- Left for review: the Groma descriptions of backlog-folder, task-details, file-storage, terminal-widgets, core and mcp-tools still mention completed storage or `task_complete`; `backlog doctor` exits 0 when a leftover `completed/` folder is its only report.
+<!-- SECTION:FINAL_SUMMARY:END -->

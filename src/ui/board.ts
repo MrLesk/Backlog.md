@@ -32,7 +32,7 @@ import { openTaskComposer, type TaskComposerOptions } from "./components/task-co
 import { formatFooterContent, getBoardFooterContent } from "./footer-content.ts";
 import { formatProjectBadge } from "./project.ts";
 import { getStatusIcon } from "./status-icon.ts";
-import { archiveTaskFromTui, formatArchiveNotice } from "./task-lifecycle.ts";
+import { archiveTaskFromTui, formatArchiveNotice, formatReadOnlyNotice } from "./task-lifecycle.ts";
 import { formatTaskTypeBadge } from "./task-type.ts";
 import {
 	createTaskPopup,
@@ -1462,8 +1462,7 @@ export async function renderBoardTui(
 				const core = await getCore();
 				const result = await core.editTaskInTui(task.id, screen, task);
 				if (result.reason === "read_only") {
-					const branchInfo = result.task?.branch ? ` from branch "${result.task.branch}"` : "";
-					showTransientFooter(` {red-fg}Cannot edit task${branchInfo}.{/}`);
+					showTransientFooter(formatReadOnlyNotice(result.task ?? task));
 					return;
 				}
 				if (result.reason === "editor_failed") {
