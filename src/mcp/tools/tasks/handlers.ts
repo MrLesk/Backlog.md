@@ -21,7 +21,7 @@ import {
 import { resolveMilestoneInputForStorage } from "../../../utils/milestone-storage.ts";
 import { buildTaskUpdateInput } from "../../../utils/task-edit-builder.ts";
 import { applyTaskFilters, createTaskSearchIndex } from "../../../utils/task-search.ts";
-import { sortByOrdinalAndPriority } from "../../../utils/task-sorting.ts";
+import { sectionTasks, sortTasks } from "../../../utils/task-sorting.ts";
 import { getTerminalStatus, isTerminalStatus } from "../../../utils/terminal-status.ts";
 import { formatUtcDateForDisplay } from "../../../utils/utc-date-display.ts";
 import { BacklogToolError } from "../../errors/mcp-errors.ts";
@@ -208,7 +208,7 @@ export class TaskHandlers {
 				};
 			}
 
-			let sortedDrafts = sortByOrdinalAndPriority(drafts, priorities);
+			let sortedDrafts = sortTasks(drafts, undefined, priorities);
 			if (typeof args.limit === "number" && args.limit >= 0) {
 				sortedDrafts = sortedDrafts.slice(0, args.limit);
 			}
@@ -276,42 +276,26 @@ export class TaskHandlers {
 			};
 		}
 
-		const statuses = config?.statuses ?? [];
-
-		const canonicalByLower = new Map<string, string>();
-		for (const status of statuses) {
-			canonicalByLower.set(status.toLowerCase(), status);
-		}
-
-		const grouped = new Map<string, Task[]>();
-		for (const task of filteredByLabels) {
-			const rawStatus = (task.status ?? "").trim();
-			const canonicalStatus = canonicalByLower.get(rawStatus.toLowerCase()) ?? rawStatus;
-			const bucketKey = canonicalStatus || "";
-			const existing = grouped.get(bucketKey) ?? [];
-			existing.push(task);
-			grouped.set(bucketKey, existing);
-		}
-
-		const orderedStatuses = [
-			...statuses.filter((status) => grouped.has(status)),
-			...Array.from(grouped.keys()).filter((status) => !statuses.includes(status)),
-		];
+		// The list has no sort option, so it is in the default order of a task list and always in
+		// status sections. `limit` counts rows in the order the sections print them.
+		const sections = sectionTasks(
+			sortTasks(filteredByLabels, undefined, priorities),
+			undefined,
+			config?.statuses ?? [],
+		);
 
 		const contentItems: Array<{ type: "text"; text: string }> = [];
 		let remaining = typeof args.limit === "number" && args.limit >= 0 ? args.limit : undefined;
-		for (const status of orderedStatuses) {
-			const bucket = grouped.get(status) ?? [];
-			const sortedBucket = sortByOrdinalAndPriority(bucket, priorities);
-			const limitedBucket = remaining !== undefined ? sortedBucket.slice(0, remaining) : sortedBucket;
+		for (const section of sections) {
+			const limitedTasks = remaining !== undefined ? section.tasks.slice(0, remaining) : section.tasks;
 			if (remaining !== undefined) {
-				remaining -= limitedBucket.length;
+				remaining -= limitedTasks.length;
 			}
-			if (limitedBucket.length === 0) {
+			if (limitedTasks.length === 0) {
 				continue;
 			}
-			const sectionLines: string[] = [`${status || "No Status"}:`];
-			for (const task of limitedBucket) {
+			const sectionLines: string[] = [`${section.status || "No Status"}:`];
+			for (const task of limitedTasks) {
 				sectionLines.push(this.formatTaskSummaryLine(task));
 			}
 			contentItems.push({
