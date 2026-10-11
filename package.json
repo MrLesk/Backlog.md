@@ -56,7 +56,7 @@
     "format": "biome format --write .",
     "lint": "biome lint --write .",
     "check": "biome check .",
-    "check:types": "bunx tsc --noEmit",
+    "check:types": "bun --check",
     "prepare": "husky",
     "build": "bun scripts/build.ts",
     "cli": "bun src/cli.ts",

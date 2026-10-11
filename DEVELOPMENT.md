@@ -14,6 +14,16 @@ Run tests:
 bun run test
 ```
 
+Type-check with Bun's built-in checker:
+
+```bash
+bun run check:types
+```
+
+The script reads `tsconfig.json` and runs `bun --check`. Use that flag for a
+direct check: `bun check` runs the repository's Biome script with the same name.
+TypeScript stays installed for editor support.
+
 Format and lint:
 
 ```bash
