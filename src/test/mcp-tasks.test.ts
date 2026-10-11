@@ -351,7 +351,7 @@ describe("MCP task tools (MVP)", () => {
 			expect(view.isError).not.toBe(true);
 			expect(getText(view.content)).toContain(`Task TASK-${id} - ${title}`);
 
-			for (const operation of ["task_archive", "task_delete"]) {
+			for (const operation of ["task_archive", "task_delete", "task_restore"]) {
 				const refused = await call(operation, { id: `task-${id}` });
 				expect(refused.isError).toBe(true);
 				expect(getText(refused.content)).toBe(

@@ -5,7 +5,7 @@ status: In Progress
 assignee:
   - '@claude'
 created_date: '2026-10-11 13:02'
-updated_date: '2026-10-11 16:17'
+updated_date: '2026-10-11 19:16'
 labels:
   - enhancement
 dependencies:
@@ -109,4 +109,6 @@ Guides and docs: the CLI and MCP overview and finalization guides, the MCP tool 
 Tests: src/test/cli-task-restore.test.ts drives the CLI for every acceptance criterion plus restore on a board task and an unknown ID, an ambiguous ID, an existing board file with the same name, a leftover `completed/` folder, absolute and relative symlinked archived files, and auto-commit; src/test/mcp-tasks.test.ts drives `task_restore`; the MCP tool list, the MCP guides, the CLI help and guides and the doctor advice are asserted. The restore tests keep their projects outside the repository.
 
 Verification: `bunx tsc --noEmit` clean; `bun run check .` clean (435 files); scoped tests pass (cli-task-restore, cli-task-delete, cli-doctor, mcp-tasks, mcp-server, cli-guidance, tui-task-lifecycle, server-cleanup-endpoint, cli-task-state, core, archived-task-folders: 223 pass, 0 fail). A scripted end-to-end run against a binary built from this layer covered every acceptance criterion through the CLI and through MCP over stdio in private mktemp projects.
+
+Review round: TaskNotArchivedError takes the operation (delete or restore) and holds both sentences itself. Archive and restore move the task file through one private helper, moveTaskFile, which uses the shared no-replace move and throws the typed TaskFileExistsError for either direction ('...cannot be archived: the archive already has a file named...' or '...cannot be restored: the board already has a file named...'). Restore resolves a task that exists only on another branch to the same typed refusal as archive and delete. All typed refusals extend TaskRefusedError, so the MCP restore handler is the same three lines as delete, and its tool is declared beside the delete tool above the registration block. commitFailedAfter documents when to use it and when to tag the error instead.
 <!-- SECTION:NOTES:END -->
