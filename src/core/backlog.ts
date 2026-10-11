@@ -1236,12 +1236,17 @@ export class Core {
 	/**
 	 * Called when a lifecycle operation finds no record for an ID in the working copy. If the
 	 * cross-branch read still finds the task, on the board or in the archive of another branch, it is
-	 * read-only here and the caller is told that instead of "not found". A caller that reads the
-	 * working copy only (the CLI) never asks.
+	 * read-only here and the caller is told that instead of "not found". An ID that several records
+	 * claim across branches fails closed as ambiguous, as it does for a read.
+	 *
+	 * A caller that reads the working copy only (the CLI) never asks. `task edit` does not ask
+	 * either: it reports such a task as not found. The store is read as it is, without a refresh,
+	 * because every caller has just loaded or refreshed it to look for the working-copy record.
 	 */
 	private async refuseTaskOnOtherBranch(taskId: string, options: TaskReadOptions): Promise<void> {
 		if (options.includeCrossBranch === false) return;
 		const resolution = (await this.getContentStore()).resolveTaskForRead(taskId);
+		if (resolution.status === "ambiguous") throw new AmbiguousTaskIdError(taskId, resolution.candidates);
 		if (resolution.status === "found") {
 			throw new TaskOnOtherBranchError(resolution.task.id, resolution.task.branch);
 		}

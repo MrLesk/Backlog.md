@@ -1244,7 +1244,7 @@ export class BacklogServer {
 		try {
 			const { success, cleanedTaskIds } = await this.core.demoteTask(taskId);
 			if (!success) {
-				return Response.json({ error: "Task not found" }, { status: 404 });
+				return Response.json({ error: taskNotFoundMessage(taskId) }, { status: 404 });
 			}
 
 			this.broadcastDataUpdated();

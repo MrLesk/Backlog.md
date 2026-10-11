@@ -53,6 +53,8 @@ let cleanedTaskIds: Record<string, string[]> = {};
 /** Held open to keep a refresh in flight while the test inspects the page. */
 let searchHold: Promise<void> | null = null;
 let reportArchiveMoved = false;
+/** When set, the archive endpoint refuses with this message, as core does for a task it will not archive. */
+let archiveRefusal: string | null = null;
 let failRefreshSearch = false;
 let archiveRecoveryEvents: string[] = [];
 
@@ -121,6 +123,9 @@ const respond = async (url: URL, init?: RequestInit): Promise<Response> => {
 	const lifecycleRoute = init?.method === "POST" ? url.pathname.match(/^\/api\/tasks\/([^/]+)\/(archive|demote)$/) : null;
 	if (lifecycleRoute) {
 		const id = decodeURIComponent(lifecycleRoute[1] ?? "");
+		if (lifecycleRoute[2] === "archive" && archiveRefusal) {
+			return json({ error: archiveRefusal }, 400);
+		}
 		tasks = tasks.filter((task) => task.id !== id);
 		if (lifecycleRoute[2] === "demote") {
 			return json({ success: true, cleanedTaskIds: cleanedTaskIds[id] ?? [] });
@@ -305,6 +310,7 @@ afterEach(() => {
 	cleanedTaskIds = {};
 	searchHold = null;
 	reportArchiveMoved = false;
+	archiveRefusal = null;
 	failRefreshSearch = false;
 	archiveRecoveryEvents = [];
 	noticeTimers = [];
@@ -377,6 +383,30 @@ describe("dependency cleanup notice", () => {
 		expect(container.textContent).not.toContain("Archive target");
 		expect(container.textContent).toContain("Dependent one");
 		expect(container.textContent).not.toContain("Removed references");
+	});
+
+	it("shows core's refusal in the task dialog when the archive endpoint answers 400", async () => {
+		tasks = [makeTask("TASK-1", "Archive target")];
+		const container = await renderTaskList();
+		archiveRefusal =
+			"Task TASK-1 cannot be archived: the archive already has a file named task-1 - Archive-target.md.";
+		const originalConsoleError = console.error;
+		console.error = () => {};
+
+		try {
+			await openTaskModal(container, "Archive target");
+			await click(findButton(container, (text) => text.includes("Archive Task")));
+			await waitFor(
+				() => container.querySelector("[role='dialog'] [role='alert']")?.textContent === archiveRefusal,
+				"the refusal in the dialog's alert",
+			);
+		} finally {
+			console.error = originalConsoleError;
+		}
+
+		// Nothing was archived, so the dialog stays open on the task the refusal is about.
+		expect(container.querySelector("[role='dialog']")?.textContent).toContain("Archive target");
+		expect(tasks.map((task) => task.id)).toEqual(["TASK-1"]);
 	});
 
 	it("warns that an archive moved before starting a refresh that can fail", async () => {

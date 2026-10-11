@@ -1086,7 +1086,12 @@ export const TaskDetailsModal: React.FC<Props> = ({
     if (demoting) return;
     if (!task || !onArchive) return;
     if (!window.confirm(`Archive "${task.title}"? It moves off the board. Its ID, record, dependencies, and references are kept.`)) return;
-    await onArchive();
+    setError(null);
+    try {
+      await onArchive();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    }
   };
 
   const checkedCount = (criteria || []).filter((c) => c.checked).length;

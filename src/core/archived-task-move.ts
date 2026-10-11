@@ -51,7 +51,11 @@ export async function previewArchivedTaskMove(core: Core): Promise<ArchivedTaskM
 	return plan;
 }
 
-/** `link` answers with one of these when the filesystem has no hard links or the folders are on two filesystems. */
+/**
+ * `link` answers with one of these when the filesystem has no hard links or the folders are on two
+ * filesystems. EPERM is in the list because that is how FAT and some network filesystems say "no
+ * hard links"; when it is a real permission problem, the copy fails for the same reason.
+ */
 const HARD_LINK_UNAVAILABLE = new Set(["EXDEV", "EPERM", "ENOTSUP", "EOPNOTSUPP"]);
 
 /**
@@ -59,10 +63,15 @@ const HARD_LINK_UNAVAILABLE = new Set(["EXDEV", "EPERM", "ENOTSUP", "EOPNOTSUPP"
  * task file move goes through this function: archiving, and the `doctor` move of a leftover folder.
  * It fails with EEXIST when the target name is taken, and then nothing has changed.
  *
+ * Demotion is not a move: it rewrites the task into a new draft file.
+ *
  * A regular file is hard-linked under its new name and the old name is removed. Where a hard link
- * is not possible, an exclusive copy keeps the same promise. A symbolic link is recreated rather
- * than followed, so the task stays a link to the same file; a relative link is rewritten, because
- * the path it stores is resolved from the directory the link itself lives in.
+ * is not possible, an exclusive copy keeps the same promise. If that copy stops halfway, the source
+ * is still in place; a partial target, if the runtime leaves one, blocks the next move under that
+ * name rather than being removed here, because this function cannot tell it from a file it did not
+ * create. A symbolic link is recreated rather than followed, so the task stays a link to the same
+ * file; a relative link is rewritten, because the path it stores is resolved from the directory the
+ * link itself lives in.
  *
  * `linkFile` exists so a test can stand in for a filesystem without hard links.
  */

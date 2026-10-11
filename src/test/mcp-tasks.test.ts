@@ -326,6 +326,13 @@ describe("MCP task tools (MVP)", () => {
 			join(mcpServer.filesystem.archiveTasksDir, "task-3 - Archived-on-the-feature-branch.md"),
 			serializeTask({ ...base, id: "TASK-3", title: "Archived on the feature branch" }),
 		);
+		// Two files on that branch claim TASK-4.
+		for (const name of ["task-4 - First-claimant.md", "task-04 - Second-claimant.md"]) {
+			await Bun.write(
+				join(mcpServer.filesystem.tasksDir, name),
+				serializeTask({ ...base, id: name.startsWith("task-04") ? "TASK-04" : "TASK-4", title: name }),
+			);
+		}
 		await $`git add .`.cwd(TEST_DIR).quiet();
 		await $`git commit -m "Add the feature tasks"`.cwd(TEST_DIR).quiet();
 		await $`git switch main`.cwd(TEST_DIR).quiet();
@@ -352,6 +359,12 @@ describe("MCP task tools (MVP)", () => {
 		const unknown = await call("task_archive", { id: "task-9" });
 		expect(unknown.isError).toBe(true);
 		expect(getText(unknown.content)).toBe("Task task-9 not found.");
+
+		// An ID that two records claim on the other branch fails closed instead of reading as missing.
+		const contested = await call("task_archive", { id: "task-4" });
+		expect(contested.isError).toBe(true);
+		expect(getText(contested.content)).toContain("is ambiguous");
+		await expect(mcpServer.archiveTask("task-4")).rejects.toThrow("is ambiguous");
 
 		expect((await mcpServer.filesystem.listTasks()).map((task) => task.id)).toEqual(["TASK-1"]);
 		expect(await mcpServer.filesystem.listArchivedTasks()).toEqual([]);

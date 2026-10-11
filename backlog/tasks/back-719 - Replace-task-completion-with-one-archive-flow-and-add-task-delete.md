@@ -5,7 +5,7 @@ status: Done
 assignee:
   - '@claude'
 created_date: '2026-10-11 10:42'
-updated_date: '2026-10-11 19:40'
+updated_date: '2026-10-11 20:15'
 labels:
   - bug
 dependencies: []
@@ -132,6 +132,7 @@ modified_files:
   - src/test/task-read-only.test.ts
   - src/completions/command-structure.ts
   - src/completions/helper.test.ts
+  - src/test/server-demote-endpoint.test.ts
 priority: high
 type: bug
 ordinal: 337000
@@ -249,6 +250,8 @@ Adapter audit for the one-function ruling: the TUI archive helper no longer read
 Second review round on the rulings. (1) Another branch: `Core.archiveTask` throws the typed `TaskOnOtherBranchError` when the ID has no record in the working copy and the cross-branch store knows it as a task on another branch (`refuseTaskOnOtherBranch`). All typed refusals now extend `TaskRefusedError`, which MCP reports as a validation error and HTTP as 400 with core's message, so both treat the other-branch refusal exactly like the archived one. The CLI reads the working copy only and keeps "Task X not found." with its hint. `task edit` is unchanged. A bare false from `archiveTask` now means only that no record claims the ID, and CLI, MCP, HTTP and TUI word it with one shared sentence, `taskNotFoundMessage` ("Task X not found."). (2) Staging: `backlog cleanup` no longer stages moved files or prints a commit hint; its summary reports what core archived. (3) One move primitive: `Core.archiveTask` moves with `moveWithoutReplacing`, like the `doctor` mover, and throws `TaskFileExistsError` when the archive already has a file of that name, changing nothing. Where a hard link is not possible (no hard links on the filesystem, or two filesystems) the primitive makes an exclusive copy instead, so archiving keeps working where a rename worked. (4) The removal notice comment says that `--json` is answered by the task-level check first.
 
 Test fixture note from the second review round: the MCP search tripwire test ("includes archived tasks in task_search results and marks them as archived") now writes its fixture straight to disk. It used to archive through MCP and then dispose the content store, and a file-watcher reconciliation that was already in flight could still look up the repository root inside the tripwire window. The link-then-unlink move made that window wider (2 failures in 8 runs of the scoped set, against 0 in 8 before the change); a probe showed the lookup coming from the store's task watcher, not from task_search. With the fixture on disk no store exists in that test and 10 runs in a row were clean.
+
+Third review round: the browser shows core's archive refusals. handleArchiveTask in src/web/App.tsx rethrows after its moved-state handling, and the task dialog's handleArchive shows the message in its existing alert, as demote does. A DOM test drives the app against a 400 from the archive endpoint; it timed out before the fix and passes after. refuseTaskOnOtherBranch fails closed as ambiguous when several records claim the ID across branches, and its comment says that task edit does not ask this question and why the store is read without a refresh. The move primitive's comment covers the halfway state of the copy fallback, why a permission error is in the fallback list, and that demotion is not a move. The HTTP demote handler uses the shared not-found sentence.
 <!-- SECTION:NOTES:END -->
 
 ## Final Summary

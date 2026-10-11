@@ -905,7 +905,10 @@ function AppContent() {
           // A blocked dialog must not take the refresh down with it.
         }
         await refreshData();
+        return;
       }
+      // Any other failure is core's answer about the task the dialog still shows; the dialog reports it.
+      throw error;
     }
   };
 
