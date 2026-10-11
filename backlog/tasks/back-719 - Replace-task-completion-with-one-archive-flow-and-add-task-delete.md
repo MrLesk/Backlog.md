@@ -5,7 +5,7 @@ status: Done
 assignee:
   - '@claude'
 created_date: '2026-10-11 10:42'
-updated_date: '2026-10-11 16:03'
+updated_date: '2026-10-11 16:22'
 labels:
   - bug
 dependencies: []
@@ -243,6 +243,8 @@ Left unchanged and listed for review: the board's E key says "Cannot edit task f
 Close-out after the second review: `loadStoredTaskForWrite` documents what it resolves where and why it never initializes or refreshes the store; the board's E key shows the shared read-only line ("Task is read-only in branch X."), the same one the A key and the task list show; two comments were made precise. Every acceptance criterion was re-run end to end against a binary built from the branch tip (CLI, MCP over stdio, HTTP) in a private mktemp project.
 
 Maintainer rulings applied after the reviews. (1) `backlog task complete` is answered by a removal notice: a hidden entry under `task` that accepts whatever follows its name, prints "backlog task complete was removed. Use backlog task archive <id>." and exits 1. It is not an alias, changes nothing, and is absent from `backlog task --help` and from shell completion (the completion structure now offers only the commands help lists). The removed MCP tool keeps the protocol's unknown-tool error. (2) One function for every interface: the CLI and MCP archive adapters no longer gate on the working copy with their own "another branch" message, core decides; cleanup runs through one core operation, `Core.archiveTerminalStatusTasksByAge`, in both `backlog cleanup` and the browser's cleanup endpoint, and the CLI counts finished tasks with the same core selector instead of its own status filter. The TUI asks the shared `isReadOnlyTask` predicate before it opens the confirmation and then calls `Core.archiveTask`; the browser hides the control with the same predicate. Left in the CLI adapter and listed for review: `backlog cleanup` stages the moved files for Git when auto-commit is off, which the browser's cleanup does not do.
+
+Adapter audit for the one-function ruling: the TUI archive helper no longer reads the auto-commit setting itself; it calls Core.archiveTask and core decides whether the move is committed, as it does for the CLI, MCP and HTTP.
 <!-- SECTION:NOTES:END -->
 
 ## Final Summary

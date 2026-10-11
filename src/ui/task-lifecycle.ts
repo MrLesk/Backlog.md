@@ -20,8 +20,8 @@ export interface TuiArchiveResult {
 
 /**
  * Run the archive key for one task. A read-only task is refused before `confirm` is called, so a
- * view asks its question only when core will accept the answer. Auto-commit follows the project
- * setting.
+ * view asks its question only when core will accept the answer. The archive itself, including
+ * whether it is committed, is core's.
  */
 export async function archiveTaskFromTui(
 	core: Core,
@@ -33,8 +33,7 @@ export async function archiveTaskFromTui(
 		return { archived: false, reason: "cancelled" };
 	}
 	try {
-		const config = await core.fs.loadConfig();
-		const archived = await core.archiveTask(task.id, config?.autoCommit ?? false);
+		const archived = await core.archiveTask(task.id);
 		return archived ? { archived } : { archived, reason: "failed" };
 	} catch (error) {
 		return { archived: false, reason: "failed", error: error instanceof Error ? error.message : "Unknown error" };
