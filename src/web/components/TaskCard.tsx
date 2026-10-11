@@ -290,9 +290,15 @@ const TaskCard: React.FC<TaskCardProps> = ({
           </div>
         )}
 
-        {/* Footer with date */}
+        {/* Footer with dates and assignee */}
         <div className="flex flex-wrap items-center justify-between gap-x-2 gap-y-1 text-[10px] text-gray-400 dark:text-gray-500 mt-2 pt-1.5 border-t border-gray-100 dark:border-gray-600/50 transition-colors duration-200">
-          <span>{formatRelativeDate(task.createdDate)}</span>
+          {/* Grouped so the updated date sits beside the created date on every card, whatever else the footer shows.
+              The group uses the same gaps as the footer row (gap-x-2 gap-y-1), so change the two together.
+              A new labelled relative date belongs inside this group. */}
+          <span className="flex flex-wrap gap-x-2 gap-y-1">
+            <span>{formatRelativeDate(task.createdDate)}</span>
+            {task.updatedDate && <span>Updated: {formatRelativeDate(task.updatedDate)}</span>}
+          </span>
           {task.dueDate && <span>Due: <StoredDate value={task.dueDate} dateFormat={dateFormat} /></span>}
           {task.assignee.length > 0 && (
             <span className="truncate max-w-[80px]" title={task.assignee.join(', ')}>
