@@ -435,11 +435,6 @@ export class TaskHandlers {
 		}
 
 		const task = await this.loadTaskOrThrow(args.id);
-
-		if (!isWorkingCopyTask(task)) {
-			throw new BacklogToolError(`Cannot archive task from another branch: ${task.id}`, "VALIDATION_ERROR");
-		}
-
 		let archived: boolean;
 		try {
 			archived = await this.core.archiveTask(task.id);

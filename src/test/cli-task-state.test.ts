@@ -101,7 +101,7 @@ describe("CLI Integration", () => {
 			expect(created.stdout.toString()).toContain("Task TASK-6 - After archive");
 		});
 
-		it("no longer offers a complete command", async () => {
+		it("answers the removed complete command with one line that names archive, and changes nothing", async () => {
 			const core = new Core(TEST_DIR);
 
 			await core.createTask(
@@ -119,9 +119,14 @@ describe("CLI Integration", () => {
 			);
 			const before = await Bun.file((await core.filesystem.loadTask("task-3"))?.filePath ?? "").text();
 
-			const result = await $`bun ${CLI_PATH} task complete task-3`.cwd(TEST_DIR).nothrow().quiet();
+			// Whatever follows the name, the answer is the notice: it is not a command with arguments.
+			for (const args of [["task-3"], [], ["task-3", "--plain"], ["--help"]]) {
+				const result = await $`bun ${[CLI_PATH, "task", "complete", ...args]}`.cwd(TEST_DIR).nothrow().quiet();
 
-			expect(result.exitCode).not.toBe(0);
+				expect(result.exitCode).toBe(1);
+				expect(result.stderr.toString()).toBe("backlog task complete was removed. Use backlog task archive <id>.\n");
+				expect(result.stdout.toString()).toBe("");
+			}
 			const task = await core.filesystem.loadTask("task-3");
 			expect(task?.status).toBe("Done");
 			expect(await Bun.file(task?.filePath ?? "").text()).toBe(before);

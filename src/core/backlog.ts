@@ -3453,6 +3453,10 @@ export class Core {
 		return result;
 	}
 
+	/**
+	 * The board tasks cleanup would archive: tasks in the final status whose last change is older
+	 * than the given number of days. An age of 0 selects every finished task.
+	 */
 	async getTerminalStatusTasksByAge(olderThanDays: number): Promise<Task[]> {
 		const tasks = await this.fs.listTasks();
 		const config = await this.fs.loadConfig();
@@ -3470,6 +3474,27 @@ export class Core {
 			const date = new Date(taskDate);
 			return date < cutoffDate;
 		});
+	}
+
+	/**
+	 * Cleanup, as `backlog cleanup` and the browser's cleanup both run it: archive every task
+	 * {@link getTerminalStatusTasksByAge} selects for the age. A task that cannot be archived is
+	 * reported with the reason and does not stop the others.
+	 */
+	async archiveTerminalStatusTasksByAge(
+		olderThanDays: number,
+	): Promise<{ archivedTaskIds: string[]; failures: Array<{ taskId: string; reason: string }> }> {
+		const archivedTaskIds: string[] = [];
+		const failures: Array<{ taskId: string; reason: string }> = [];
+		for (const task of await this.getTerminalStatusTasksByAge(olderThanDays)) {
+			try {
+				if (await this.archiveTask(task.id)) archivedTaskIds.push(task.id);
+				else failures.push({ taskId: task.id, reason: "the task file could not be moved" });
+			} catch (error) {
+				failures.push({ taskId: task.id, reason: error instanceof Error ? error.message : String(error) });
+			}
+		}
+		return { archivedTaskIds, failures };
 	}
 
 	async archiveDraft(draftId: string, autoCommit?: boolean): Promise<boolean> {

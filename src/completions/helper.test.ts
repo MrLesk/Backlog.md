@@ -120,4 +120,16 @@ describe("parseCompletionContext", () => {
 
 		expect(completions).toEqual(["pwsh"]);
 	});
+
+	test("offers the commands help lists and never a hidden one", async () => {
+		const program = new Command("backlog");
+		const task = program.command("task");
+		task.command("archive <taskId>");
+		task.command("complete", { hidden: true });
+		program.command("internal", { hidden: true });
+
+		expect(await getCompletions(program, "backlog ", 8)).toEqual(["task"]);
+		expect(await getCompletions(program, "backlog task ", 13)).toEqual(["archive"]);
+		expect(await getCompletions(program, "backlog task comp", 17)).toEqual([]);
+	});
 });

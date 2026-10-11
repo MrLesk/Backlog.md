@@ -3,6 +3,7 @@ import { mkdir, stat } from "node:fs/promises";
 import { join } from "node:path";
 import { $ } from "bun";
 import { Core } from "../core/backlog.ts";
+import { serializeTask } from "../markdown/serializer.ts";
 import type { Task } from "../types/index.ts";
 import { createUniqueTestDir, initializeTestProject, safeCleanup } from "./test-utils.ts";
 
@@ -290,6 +291,50 @@ describe("Cleanup functionality", () => {
 
 			const recentTasks = await core.getTerminalStatusTasksByAge(0);
 			expect(recentTasks).toHaveLength(1); // updatedDate makes it recent
+		});
+	});
+
+	describe("archiveTerminalStatusTasksByAge", () => {
+		const daysAgo = (days: number): string => {
+			const date = new Date();
+			date.setDate(date.getDate() - days);
+			return date.toISOString().split("T")[0] as string;
+		};
+		const finished = (id: string, title: string, days: number): Task => ({
+			...sampleTask,
+			id,
+			title,
+			createdDate: daysAgo(days),
+			updatedDate: daysAgo(days),
+		});
+
+		it("archives the tasks the age selects and leaves the rest on the board", async () => {
+			await core.createTask(finished("task-1", "Old finished", 7), false);
+			await core.createTask(finished("task-2", "Recent finished", 1), false);
+			await core.createTask({ ...finished("task-3", "Old unfinished", 7), status: "In Progress" }, false);
+
+			const result = await core.archiveTerminalStatusTasksByAge(3);
+
+			expect(result).toEqual({ archivedTaskIds: ["TASK-1"], failures: [] });
+			expect((await core.filesystem.listTasks()).map((task) => task.id)).toEqual(["TASK-2", "TASK-3"]);
+			expect((await core.filesystem.listArchivedTasks()).map((task) => task.id)).toEqual(["TASK-1"]);
+		});
+
+		it("reports a task that cannot be archived with the reason and still archives the others", async () => {
+			await core.createTask(finished("task-1", "Contested", 7), false);
+			await core.createTask(finished("task-2", "Old finished", 7), false);
+			// A second record claims TASK-1, so archiving it fails closed.
+			await Bun.write(
+				join(core.filesystem.archiveTasksDir, "task-01 - Other claimant.md"),
+				serializeTask({ ...finished("TASK-01", "Other claimant", 30) }),
+			);
+
+			const result = await core.archiveTerminalStatusTasksByAge(3);
+
+			expect(result.archivedTaskIds).toEqual(["TASK-2"]);
+			expect(result.failures.map((failure) => failure.taskId)).toEqual(["TASK-1"]);
+			expect(result.failures[0]?.reason).toContain("ambiguous");
+			expect((await core.filesystem.listTasks()).map((task) => task.id)).toEqual(["TASK-1"]);
 		});
 	});
 

@@ -1924,9 +1924,10 @@ export class BacklogServer {
 				return Response.json({ error: "Invalid age parameter" }, { status: 400 });
 			}
 
-			const tasksToCleanup = await this.core.getTerminalStatusTasksByAge(ageInDays);
+			const { archivedTaskIds, failures } = await this.core.archiveTerminalStatusTasksByAge(ageInDays);
+			const totalCount = archivedTaskIds.length + failures.length;
 
-			if (tasksToCleanup.length === 0) {
+			if (totalCount === 0) {
 				return Response.json({
 					success: true,
 					movedCount: 0,
@@ -1934,21 +1935,8 @@ export class BacklogServer {
 				});
 			}
 
-			let successCount = 0;
-			const failedTasks: string[] = [];
-
-			for (const task of tasksToCleanup) {
-				try {
-					const success = await this.core.archiveTask(task.id);
-					if (success) {
-						successCount++;
-					} else {
-						failedTasks.push(task.id);
-					}
-				} catch (error) {
-					console.error(`Failed to archive task ${task.id}:`, error);
-					failedTasks.push(task.id);
-				}
+			for (const failure of failures) {
+				console.error(`Failed to archive task ${failure.taskId}: ${failure.reason}`);
 			}
 
 			// Notify listeners to refresh
@@ -1956,10 +1944,10 @@ export class BacklogServer {
 
 			return Response.json({
 				success: true,
-				movedCount: successCount,
-				totalCount: tasksToCleanup.length,
-				failedTasks: failedTasks.length > 0 ? failedTasks : undefined,
-				message: `Archived ${successCount} of ${tasksToCleanup.length} tasks`,
+				movedCount: archivedTaskIds.length,
+				totalCount,
+				failedTasks: failures.length > 0 ? failures.map((failure) => failure.taskId) : undefined,
+				message: `Archived ${archivedTaskIds.length} of ${totalCount} tasks`,
 			});
 		} catch (error) {
 			console.error("Error executing cleanup:", error);

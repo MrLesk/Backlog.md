@@ -144,7 +144,7 @@ import {
 } from "./utils/task-path.ts";
 import { sectionTasks, sortTasks, TASK_SORT_FIELDS } from "./utils/task-sorting.ts";
 import { formatValidTaskTypeValues, getTaskTypeValues, resolveTaskTypeValues } from "./utils/task-type-config.ts";
-import { getTerminalStatus, isTerminalStatus } from "./utils/terminal-status.ts";
+import { getTerminalStatus } from "./utils/terminal-status.ts";
 import { formatUtcDateForDisplay } from "./utils/utc-date-display.ts";
 import { getVersion } from "./utils/version.ts";
 
@@ -3874,18 +3874,24 @@ addHelpSchema(taskCmd.command("archive <taskId>"), {
 			return;
 		}
 
-		if (!isWorkingCopyTask(task)) {
-			console.error(`Cannot archive task from another branch: ${task.id}`);
-			process.exitCode = 1;
-			return;
-		}
-
 		if (await core.archiveTask(task.id, undefined, { includeCrossBranch: false })) {
 			console.log(`Archived task ${task.id}`);
 		} else {
 			console.error(`Failed to archive task: ${task.id}`);
 			process.exitCode = 1;
 		}
+	});
+
+// A removal notice, not a command: `task complete` was replaced by `task archive`. The entry only
+// answers people and scripts that still call it. It is hidden from help and completion, accepts
+// whatever follows its name, changes nothing and exits non-zero.
+taskCmd
+	.command("complete [ignored...]", { hidden: true })
+	.allowUnknownOption()
+	.helpOption(false)
+	.action(() => {
+		console.error("backlog task complete was removed. Use backlog task archive <id>.");
+		process.exitCode = 1;
 	});
 
 taskCmd
@@ -5664,8 +5670,7 @@ addHelpSchema(program.command("cleanup"), {
 				return;
 			}
 
-			const tasks = await core.queryTasks();
-			const terminalStatusTasks = tasks.filter((task) => isTerminalStatus(task.status, statuses));
+			const terminalStatusTasks = await core.getTerminalStatusTasksByAge(0);
 
 			if (terminalStatusTasks.length === 0) {
 				console.log(`No ${terminalStatus} tasks found to clean up.`);
@@ -5727,46 +5732,33 @@ addHelpSchema(program.command("cleanup"), {
 				return;
 			}
 
-			let successCount = 0;
 			const shouldAutoCommit = config.autoCommit ?? false;
 
 			console.log("Archiving tasks...");
-			const movedTasks: Array<{ fromPath: string; toPath: string; taskId: string }> = [];
-
-			for (const task of tasksToArchive) {
-				const fromPath = task.filePath ?? (await core.getTask(task.id))?.filePath ?? null;
-
-				if (!fromPath) {
-					console.error(`Failed to locate file for task ${task.id}`);
-					continue;
-				}
-
-				const taskFilename = basename(fromPath);
-				const toPath = join(core.filesystem.archiveTasksDir, taskFilename);
-
-				const success = await core.archiveTask(task.id);
-				if (success) {
-					successCount++;
-					movedTasks.push({ fromPath, toPath, taskId: task.id });
-				} else {
-					console.error(`Failed to archive task ${task.id}`);
-				}
+			const { archivedTaskIds, failures } = await core.archiveTerminalStatusTasksByAge(selectedAge);
+			for (const failure of failures) {
+				console.error(`Failed to archive task ${failure.taskId}: ${failure.reason}`);
 			}
+			const successCount = archivedTaskIds.length;
 
 			// If autoCommit is disabled, stage the moves so Git recognizes them
 			const hasGitRepository = await core.gitOps.isRepository();
 			if (successCount > 0 && !shouldAutoCommit && hasGitRepository) {
 				console.log("Staging file moves for Git...");
-				for (const { fromPath, toPath } of movedTasks) {
+				for (const task of tasksToArchive) {
+					if (!task.filePath || !archivedTaskIds.includes(task.id)) continue;
 					try {
-						await core.gitOps.stageFileMove(fromPath, toPath);
+						await core.gitOps.stageFileMove(
+							task.filePath,
+							join(core.filesystem.archiveTasksDir, basename(task.filePath)),
+						);
 					} catch (error) {
 						console.warn(`Warning: Could not stage move for Git: ${error}`);
 					}
 				}
 			}
 
-			console.log(`Successfully archived ${successCount} of ${tasksToArchive.length} tasks.`);
+			console.log(`Successfully archived ${successCount} of ${successCount + failures.length} tasks.`);
 			if (successCount > 0 && !shouldAutoCommit && hasGitRepository) {
 				console.log("Files have been staged. To commit: git commit -m 'cleanup: Archive finished tasks'");
 			}

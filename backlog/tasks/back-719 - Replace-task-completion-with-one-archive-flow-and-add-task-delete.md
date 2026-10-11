@@ -5,7 +5,7 @@ status: Done
 assignee:
   - '@claude'
 created_date: '2026-10-11 10:42'
-updated_date: '2026-10-11 15:17'
+updated_date: '2026-10-11 16:03'
 labels:
   - bug
 dependencies: []
@@ -130,6 +130,8 @@ modified_files:
   - src/test/web-dependency-cleanup-notice.test.tsx
   - src/test/no-remote-preflight.test.ts
   - src/test/task-read-only.test.ts
+  - src/completions/command-structure.ts
+  - src/completions/helper.test.ts
 priority: high
 type: bug
 ordinal: 337000
@@ -149,7 +151,7 @@ Settled for this task: archiving never rewrites other tasks, and an archived dep
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [x] #1 `backlog task complete` is no longer an available operation: it is absent from `backlog task --help`, and running it exits non-zero without changing any task.
+- [x] #1 `backlog task complete` is no longer an available operation: it is absent from `backlog task --help`, and running it exits non-zero with one line saying the command was removed and to use `backlog task archive <id>`, without changing any task.
 - [x] #2 `backlog task archive <id>` succeeds for a task in any status, including the configured final status.
 - [x] #3 Archiving preserves the task ID: the archived task keeps its ID, and a task created afterwards is not assigned that ID.
 - [x] #4 The TUI, browser, and MCP follow the same rule as the CLI: no separate complete action remains, and archive applies to a task in any status and preserves its ID.
@@ -239,6 +241,8 @@ Verification of the round: `bunx tsc --noEmit` clean; `bun run check .` clean (4
 Left unchanged and listed for review: the board's E key says "Cannot edit task from branch X." for a task from another branch while the task list says "Task is read-only in branch X."; the Groma descriptions of backlog-folder, task-details, file-storage, terminal-widgets, core and mcp-tools still mention completed storage or `task_complete` and wait for a curation pass.
 
 Close-out after the second review: `loadStoredTaskForWrite` documents what it resolves where and why it never initializes or refreshes the store; the board's E key shows the shared read-only line ("Task is read-only in branch X."), the same one the A key and the task list show; two comments were made precise. Every acceptance criterion was re-run end to end against a binary built from the branch tip (CLI, MCP over stdio, HTTP) in a private mktemp project.
+
+Maintainer rulings applied after the reviews. (1) `backlog task complete` is answered by a removal notice: a hidden entry under `task` that accepts whatever follows its name, prints "backlog task complete was removed. Use backlog task archive <id>." and exits 1. It is not an alias, changes nothing, and is absent from `backlog task --help` and from shell completion (the completion structure now offers only the commands help lists). The removed MCP tool keeps the protocol's unknown-tool error. (2) One function for every interface: the CLI and MCP archive adapters no longer gate on the working copy with their own "another branch" message, core decides; cleanup runs through one core operation, `Core.archiveTerminalStatusTasksByAge`, in both `backlog cleanup` and the browser's cleanup endpoint, and the CLI counts finished tasks with the same core selector instead of its own status filter. The TUI asks the shared `isReadOnlyTask` predicate before it opens the confirmation and then calls `Core.archiveTask`; the browser hides the control with the same predicate. Left in the CLI adapter and listed for review: `backlog cleanup` stages the moved files for Git when auto-commit is off, which the browser's cleanup does not do.
 <!-- SECTION:NOTES:END -->
 
 ## Final Summary
@@ -248,14 +252,15 @@ Completion is removed and Archive is the one way to take a task off the board (i
 
 What changed
 - `backlog task archive <id>` works in every status, including the final one. The archived task keeps its ID, its record and every link other tasks hold to it, no other task is rewritten, and the ID is never handed out again (working copy, sibling worktrees and scanned branches).
-- `backlog task complete`, the MCP `task_complete` tool, the HTTP complete route, the web "Move to completed" button and the TUI C key are gone. `backlog cleanup` keeps its name and archives.
+- `backlog task complete`, the MCP `task_complete` tool, the HTTP complete route, the web "Move to completed" button and the TUI C key are gone. Running `backlog task complete` exits non-zero with one line saying the command was removed and to use `backlog task archive <id>`; it is not an alias, archives nothing and is absent from help and shell completion. `backlog cleanup` keeps its name and archives.
+- Every interface runs the same core function: archive is `Core.archiveTask` for the CLI, MCP, HTTP and TUI, and cleanup is `Core.archiveTerminalStatusTasksByAge` for the CLI and the browser. No adapter decides what may be archived.
 - Archived tasks are read-only everywhere through one core rule and one error ("Task X is archived. Archived tasks are read-only."). Task detail and MCP search output mark them as archived; the web modal and the TUI show the read-only banner and refuse edit and archive keys before asking anything.
 - Finished means the final status only. An archived dependency satisfies its dependents only when it is in the final status, and statistics count board tasks plus archived tasks in the final status.
 - Existing data: a leftover `completed/` folder is read as part of the archive. `backlog doctor` reports it and `--fix` moves it into `archive/tasks` without changing IDs or replacing files; an ID that two records claim is reported and repaired there, and fails closed until then.
 - Help, README, CLI-INSTRUCTIONS and the shipped CLI and MCP guides describe the single archive flow.
 
 Verification
-- `bunx tsc --noEmit` and `bun run check .` are clean; `bun run test` gives 2,909 pass, 8 skip, 0 fail (the command still exits 1 because of the unchanged list-window test file, as on main).
+- `bunx tsc --noEmit` and `bun run check .` are clean; `bun run test` has no failing test (the command still exits 1 because of the unchanged list-window test file, as on main).
 - A scripted end-to-end run of every acceptance criterion against the built CLI (CLI, MCP over stdio, HTTP), a pseudo-terminal run of the TUI keys, and a browser session of the web controls.
 
 Follow-ups and risks
