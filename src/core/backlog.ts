@@ -3527,24 +3527,42 @@ export class Core {
 	}
 
 	/**
-	 * Cleanup, as `backlog cleanup` and the browser's cleanup both run it: archive every task
-	 * {@link getTerminalStatusTasksByAge} selects for the age. A task that cannot be archived is
-	 * reported with the reason and does not stop the others.
+	 * Cleanup, as `backlog cleanup` and the browser's cleanup both run it: archive the tasks the
+	 * caller selected with {@link getTerminalStatusTasksByAge}. Only those IDs are archived, so a
+	 * task that became eligible after the selection was shown stays on the board.
+	 *
+	 * Each task is read again first. One that has left the board or the final status since it was
+	 * selected is skipped with the reason. One that cannot be archived is a failure with the reason.
+	 * Neither stops the others.
 	 */
-	async archiveTerminalStatusTasksByAge(
-		olderThanDays: number,
-	): Promise<{ archivedTaskIds: string[]; failures: Array<{ taskId: string; reason: string }> }> {
+	async archiveTerminalStatusTasks(taskIds: string[]): Promise<{
+		archivedTaskIds: string[];
+		skipped: Array<{ taskId: string; reason: string }>;
+		failures: Array<{ taskId: string; reason: string }>;
+	}> {
+		const config = await this.fs.loadConfig();
+		const statuses = config?.statuses ?? [...DEFAULT_STATUSES];
 		const archivedTaskIds: string[] = [];
+		const skipped: Array<{ taskId: string; reason: string }> = [];
 		const failures: Array<{ taskId: string; reason: string }> = [];
-		for (const task of await this.getTerminalStatusTasksByAge(olderThanDays)) {
+		const leftTheBoard = "it is no longer on the board";
+		for (const taskId of taskIds) {
 			try {
-				if (await this.archiveTask(task.id)) archivedTaskIds.push(task.id);
-				else failures.push({ taskId: task.id, reason: "the task is no longer on the board" });
+				const task = await this.fs.loadTask(taskId);
+				if (!task) {
+					skipped.push({ taskId, reason: leftTheBoard });
+				} else if (!isTerminalStatus(task.status, statuses)) {
+					skipped.push({ taskId, reason: `its status is now ${task.status}` });
+				} else if (await this.archiveTask(taskId)) {
+					archivedTaskIds.push(taskId);
+				} else {
+					skipped.push({ taskId, reason: leftTheBoard });
+				}
 			} catch (error) {
-				failures.push({ taskId: task.id, reason: error instanceof Error ? error.message : String(error) });
+				failures.push({ taskId, reason: error instanceof Error ? error.message : String(error) });
 			}
 		}
-		return { archivedTaskIds, failures };
+		return { archivedTaskIds, skipped, failures };
 	}
 
 	async archiveDraft(draftId: string, autoCommit?: boolean): Promise<boolean> {

@@ -294,7 +294,7 @@ describe("Cleanup functionality", () => {
 		});
 	});
 
-	describe("archiveTerminalStatusTasksByAge", () => {
+	describe("archiveTerminalStatusTasks", () => {
 		const daysAgo = (days: number): string => {
 			const date = new Date();
 			date.setDate(date.getDate() - days);
@@ -307,34 +307,77 @@ describe("Cleanup functionality", () => {
 			createdDate: daysAgo(days),
 			updatedDate: daysAgo(days),
 		});
+		/** What a caller shows the user before it asks for confirmation. */
+		const selectOlderThan = async (days: number) =>
+			(await core.getTerminalStatusTasksByAge(days)).map((task) => task.id);
+		const boardIds = async () => (await core.filesystem.listTasks()).map((task) => task.id);
+		const archivedIds = async () => (await core.filesystem.listArchivedTasks()).map((task) => task.id);
 
-		it("archives the tasks the age selects and leaves the rest on the board", async () => {
+		it("archives the selected tasks and leaves the rest on the board", async () => {
 			await core.createTask(finished("task-1", "Old finished", 7), false);
 			await core.createTask(finished("task-2", "Recent finished", 1), false);
 			await core.createTask({ ...finished("task-3", "Old unfinished", 7), status: "In Progress" }, false);
 
-			const result = await core.archiveTerminalStatusTasksByAge(3);
+			const result = await core.archiveTerminalStatusTasks(await selectOlderThan(3));
 
-			expect(result).toEqual({ archivedTaskIds: ["TASK-1"], failures: [] });
-			expect((await core.filesystem.listTasks()).map((task) => task.id)).toEqual(["TASK-2", "TASK-3"]);
-			expect((await core.filesystem.listArchivedTasks()).map((task) => task.id)).toEqual(["TASK-1"]);
+			expect(result).toEqual({ archivedTaskIds: ["TASK-1"], skipped: [], failures: [] });
+			expect(await boardIds()).toEqual(["TASK-2", "TASK-3"]);
+			expect(await archivedIds()).toEqual(["TASK-1"]);
+		});
+
+		it("does not archive a task that became eligible after the selection", async () => {
+			await core.createTask(finished("task-1", "Shown and confirmed", 7), false);
+			const selected = await selectOlderThan(3);
+			// A second finished task of the same age appears while the confirmation is open.
+			await core.createTask(finished("task-2", "Appeared later", 7), false);
+			expect(await selectOlderThan(3)).toEqual(["TASK-1", "TASK-2"]);
+
+			const result = await core.archiveTerminalStatusTasks(selected);
+
+			expect(result).toEqual({ archivedTaskIds: ["TASK-1"], skipped: [], failures: [] });
+			expect(await boardIds()).toEqual(["TASK-2"]);
+			expect(await archivedIds()).toEqual(["TASK-1"]);
+		});
+
+		it("skips a selected task that has left the final status or the board, with the reason", async () => {
+			await core.createTask(finished("task-1", "Reopened", 7), false);
+			await core.createTask(finished("task-2", "Archived meanwhile", 7), false);
+			await core.createTask(finished("task-3", "Still finished", 7), false);
+			const selected = await selectOlderThan(3);
+			await core.updateTaskFromInput("task-1", { status: "In Progress" }, false);
+			await core.archiveTask("task-2", false);
+
+			const result = await core.archiveTerminalStatusTasks(selected);
+
+			expect(result).toEqual({
+				archivedTaskIds: ["TASK-3"],
+				skipped: [
+					{ taskId: "TASK-1", reason: "its status is now In Progress" },
+					{ taskId: "TASK-2", reason: "it is no longer on the board" },
+				],
+				failures: [],
+			});
+			expect(await boardIds()).toEqual(["TASK-1"]);
+			expect(await archivedIds()).toEqual(["TASK-2", "TASK-3"]);
 		});
 
 		it("reports a task that cannot be archived with the reason and still archives the others", async () => {
 			await core.createTask(finished("task-1", "Contested", 7), false);
 			await core.createTask(finished("task-2", "Old finished", 7), false);
+			const selected = await selectOlderThan(3);
 			// A second record claims TASK-1, so archiving it fails closed.
 			await Bun.write(
 				join(core.filesystem.archiveTasksDir, "task-01 - Other claimant.md"),
 				serializeTask({ ...finished("TASK-01", "Other claimant", 30) }),
 			);
 
-			const result = await core.archiveTerminalStatusTasksByAge(3);
+			const result = await core.archiveTerminalStatusTasks(selected);
 
 			expect(result.archivedTaskIds).toEqual(["TASK-2"]);
+			expect(result.skipped).toEqual([]);
 			expect(result.failures.map((failure) => failure.taskId)).toEqual(["TASK-1"]);
 			expect(result.failures[0]?.reason).toContain("ambiguous");
-			expect((await core.filesystem.listTasks()).map((task) => task.id)).toEqual(["TASK-1"]);
+			expect(await boardIds()).toEqual(["TASK-1"]);
 		});
 	});
 

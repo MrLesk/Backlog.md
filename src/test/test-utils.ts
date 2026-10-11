@@ -179,10 +179,6 @@ export async function retry<T>(fn: () => Promise<T>, maxAttempts = 3, delay = 10
 	throw lastError || new Error("Retry failed");
 }
 
-/**
- * Windows-safe directory cleanup with retry logic
- * Windows can have file locking issues that prevent immediate deletion
- */
 /** Move a task file into the archive folder directly, for a test that has a FileSystem but no Core. */
 export async function archiveTaskFile(filesystem: FileSystem, taskId: string): Promise<boolean> {
 	const task = await filesystem.loadTask(taskId);
@@ -192,6 +188,10 @@ export async function archiveTaskFile(filesystem: FileSystem, taskId: string): P
 	return true;
 }
 
+/**
+ * Windows-safe directory cleanup with retry logic
+ * Windows can have file locking issues that prevent immediate deletion
+ */
 export async function safeCleanup(dir: string): Promise<void> {
 	await retry(
 		async () => {

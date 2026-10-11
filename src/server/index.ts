@@ -1923,8 +1923,9 @@ export class BacklogServer {
 				return Response.json({ error: "Invalid age parameter" }, { status: 400 });
 			}
 
-			const { archivedTaskIds, failures } = await this.core.archiveTerminalStatusTasksByAge(ageInDays);
-			const totalCount = archivedTaskIds.length + failures.length;
+			// The browser sends an age, so this request selects the tasks and archives exactly those.
+			const tasksToCleanup = await this.core.getTerminalStatusTasksByAge(ageInDays);
+			const totalCount = tasksToCleanup.length;
 
 			if (totalCount === 0) {
 				return Response.json({
@@ -1934,6 +1935,12 @@ export class BacklogServer {
 				});
 			}
 
+			const { archivedTaskIds, skipped, failures } = await this.core.archiveTerminalStatusTasks(
+				tasksToCleanup.map((task) => task.id),
+			);
+			for (const { taskId, reason } of skipped) {
+				console.error(`Skipped task ${taskId}: ${reason}`);
+			}
 			for (const failure of failures) {
 				console.error(`Failed to archive task ${failure.taskId}: ${failure.reason}`);
 			}

@@ -1,4 +1,4 @@
-import { constants, copyFile, lstat, mkdir, readlink, realpath, symlink, unlink } from "node:fs/promises";
+import { copyFile, lstat, mkdir, open, readlink, realpath, symlink, unlink } from "node:fs/promises";
 import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { buildGlobPattern } from "../utils/prefix-config.ts";
 import type { Core } from "./backlog.ts";
@@ -58,29 +58,41 @@ export async function previewArchivedTaskMove(core: Core): Promise<ArchivedTaskM
  */
 const HARD_LINK_UNAVAILABLE = new Set(["EXDEV", "EPERM", "ENOTSUP", "EOPNOTSUPP"]);
 
+/** The file operations a move is made of. A test passes its own to stand in for one that fails. */
+export interface MoveFileOperations {
+	link: (sourcePath: string, targetPath: string) => Promise<void>;
+	copyFile: (sourcePath: string, targetPath: string) => Promise<void>;
+	unlink: (path: string) => Promise<void>;
+}
+
 /**
  * Move one task file to another folder without ever replacing a file that is already there. Every
  * task file move goes through this function: archiving, and the `doctor` move of a leftover folder.
- * It fails with EEXIST when the target name is taken, and then nothing has changed.
+ * It fails with EEXIST when the target name is taken.
  *
  * Demotion is not a move: it rewrites the task into a new draft file.
  *
- * A regular file is hard-linked under its new name and the old name is removed. Where a hard link
- * is not possible, an exclusive copy keeps the same promise. If that copy stops halfway, the source
- * is still in place; a partial target, if the runtime leaves one, blocks the next move under that
- * name rather than being removed here, because this function cannot tell it from a file it did not
- * create. A symbolic link is recreated rather than followed, so the task stays a link to the same
- * file; a relative link is rewritten, because the path it stores is resolved from the directory the
- * link itself lives in.
+ * The task is one file before the move and one file after it, also when the move fails: the target
+ * is created first, under a name that was free, and the source is removed last. If anything fails
+ * in between, the target is removed again and the source is still the task. Two files for one task
+ * would make every read of its ID ambiguous.
  *
- * `linkFile` exists so a test can stand in for a filesystem without hard links.
+ * A regular file is hard-linked under its new name. Where a hard link is not possible, the name is
+ * claimed with an empty file first and the content is copied into it. A symbolic link is recreated
+ * rather than followed, so the task stays a link to the same file; a relative link is rewritten,
+ * because the path it stores is resolved from the directory the link itself lives in.
  */
 export async function moveWithoutReplacing(
 	sourcePath: string,
 	targetPath: string,
-	linkFile: (sourcePath: string, targetPath: string) => Promise<void> = installFileNoReplace,
+	operations: Partial<MoveFileOperations> = {},
 ): Promise<void> {
-	if ((await lstat(sourcePath)).isSymbolicLink()) {
+	const files: MoveFileOperations = { link: installFileNoReplace, copyFile, unlink, ...operations };
+	const source = await lstat(sourcePath);
+	let contentMissing = false;
+
+	// Each of these creates the target or fails with EEXIST because the name is taken.
+	if (source.isSymbolicLink()) {
 		const linkTarget = await readlink(sourcePath);
 		const sourceDirectory = await realpath(dirname(sourcePath));
 		const targetDirectory = await realpath(dirname(targetPath));
@@ -90,13 +102,23 @@ export async function moveWithoutReplacing(
 		);
 	} else {
 		try {
-			await linkFile(sourcePath, targetPath);
+			await files.link(sourcePath, targetPath);
 		} catch (error) {
 			if (!HARD_LINK_UNAVAILABLE.has((error as NodeJS.ErrnoException).code ?? "")) throw error;
-			await copyFile(sourcePath, targetPath, constants.COPYFILE_EXCL);
+			await (await open(targetPath, "wx", source.mode & 0o777)).close();
+			contentMissing = true;
 		}
 	}
-	await unlink(sourcePath);
+
+	// The target exists and this call created it, so the name is this call's own to remove.
+	try {
+		if (contentMissing) await files.copyFile(sourcePath, targetPath);
+		await files.unlink(sourcePath);
+	} catch (error) {
+		// The failure above is the one to report, also when the target cannot be removed either.
+		await files.unlink(targetPath).catch(() => {});
+		throw error;
+	}
 }
 
 /**

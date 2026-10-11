@@ -5728,13 +5728,17 @@ addHelpSchema(program.command("cleanup"), {
 			}
 
 			console.log("Archiving tasks...");
-			const { archivedTaskIds, failures } = await core.archiveTerminalStatusTasksByAge(selectedAge);
+			// Only the tasks that were just shown and confirmed, not whatever matches the age by now.
+			const { archivedTaskIds, skipped, failures } = await core.archiveTerminalStatusTasks(
+				tasksToArchive.map((task) => task.id),
+			);
+			for (const { taskId, reason } of skipped) {
+				console.log(`Skipped task ${taskId}: ${reason}`);
+			}
 			for (const failure of failures) {
 				console.error(`Failed to archive task ${failure.taskId}: ${failure.reason}`);
 			}
-			console.log(
-				`Successfully archived ${archivedTaskIds.length} of ${archivedTaskIds.length + failures.length} tasks.`,
-			);
+			console.log(`Successfully archived ${archivedTaskIds.length} of ${tasksToArchive.length} tasks.`);
 		} catch (err) {
 			reportCommandFailure("Failed to run cleanup", err);
 		}

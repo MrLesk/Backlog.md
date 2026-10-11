@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
-import { lstat, mkdir, readdir, readlink, symlink } from "node:fs/promises";
+import { lstat, mkdir, readdir, readlink, symlink, unlink } from "node:fs/promises";
 import { join } from "node:path";
 import { moveArchivedTasks, moveWithoutReplacing, previewArchivedTaskMove } from "../core/archived-task-move.ts";
 import { Core } from "../core/backlog.ts";
@@ -262,25 +262,29 @@ describe("archived task folders", () => {
 
 describe("moving a task file without replacing", () => {
 	let directory: string;
-	const withoutHardLinks = async () => {
-		throw Object.assign(new Error("cross-device link not permitted"), { code: "EXDEV" });
+	let source: string;
+	let target: string;
+	const withoutHardLinks = {
+		link: async () => {
+			throw Object.assign(new Error("cross-device link not permitted"), { code: "EXDEV" });
+		},
 	};
+	const targetFolder = async () => await readdir(join(directory, "to"));
 
 	beforeEach(async () => {
 		directory = createUniqueTestDir("move-without-replacing");
 		await mkdir(join(directory, "from"), { recursive: true });
 		await mkdir(join(directory, "to"), { recursive: true });
-		await Bun.write(join(directory, "from", "task-1 - Moved.md"), "moved content");
+		source = join(directory, "from", "task-1 - Moved.md");
+		target = join(directory, "to", "task-1 - Moved.md");
+		await Bun.write(source, "moved content");
 	});
 
 	afterEach(async () => {
 		await safeCleanup(directory);
 	});
 
-	it("copies exclusively where a hard link is not possible", async () => {
-		const source = join(directory, "from", "task-1 - Moved.md");
-		const target = join(directory, "to", "task-1 - Moved.md");
-
+	it("copies under a name it claimed first where a hard link is not possible", async () => {
 		await moveWithoutReplacing(source, target, withoutHardLinks);
 
 		expect(await Bun.file(target).text()).toBe("moved content");
@@ -288,14 +292,49 @@ describe("moving a task file without replacing", () => {
 	});
 
 	it("keeps both files when the target name is taken, with or without hard links", async () => {
-		const source = join(directory, "from", "task-1 - Moved.md");
-		const target = join(directory, "to", "task-1 - Moved.md");
 		await Bun.write(target, "already there");
 
 		await expect(moveWithoutReplacing(source, target)).rejects.toMatchObject({ code: "EEXIST" });
 		await expect(moveWithoutReplacing(source, target, withoutHardLinks)).rejects.toMatchObject({ code: "EEXIST" });
 
 		expect(await Bun.file(target).text()).toBe("already there");
+		expect(await Bun.file(source).text()).toBe("moved content");
+	});
+
+	it.each([
+		["a hard link", {}],
+		["a copy", withoutHardLinks],
+	])("leaves one file, the source, when the source cannot be removed after %s", async (_name, operations) => {
+		const removalError = Object.assign(new Error("permission denied"), { code: "EACCES" });
+		let targetWasCreated = false;
+		const failToRemoveSource = async (path: string) => {
+			if (path !== source) return await unlink(path);
+			targetWasCreated = (await Bun.file(target).text()) === "moved content";
+			throw removalError;
+		};
+
+		await expect(moveWithoutReplacing(source, target, { ...operations, unlink: failToRemoveSource })).rejects.toBe(
+			removalError,
+		);
+
+		// The removal failed after the move had produced a complete second file, and that file is gone.
+		expect(targetWasCreated).toBe(true);
+		expect(await targetFolder()).toEqual([]);
+		expect(await Bun.file(source).text()).toBe("moved content");
+	});
+
+	it("removes a half-written target when the copy fails", async () => {
+		const copyError = Object.assign(new Error("no space left on device"), { code: "ENOSPC" });
+		const failHalfway = async (_sourcePath: string, targetPath: string) => {
+			await Bun.write(targetPath, "moved con");
+			throw copyError;
+		};
+
+		await expect(moveWithoutReplacing(source, target, { ...withoutHardLinks, copyFile: failHalfway })).rejects.toBe(
+			copyError,
+		);
+
+		expect(await targetFolder()).toEqual([]);
 		expect(await Bun.file(source).text()).toBe("moved content");
 	});
 });
