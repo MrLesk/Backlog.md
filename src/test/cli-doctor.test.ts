@@ -27,7 +27,7 @@ function makeTask(id: string, title: string): Task {
 
 async function removeDuplicateTasks(): Promise<void> {
 	await unlink(join(core.filesystem.tasksDir, "task-01 - Beta.md"));
-	await unlink(join(core.filesystem.completedDir, "task-001 - Gamma.md"));
+	await unlink(join(core.filesystem.archiveTasksDir, "task-001 - Gamma.md"));
 }
 
 async function writeDocument(relativePath: string, id: string, title: string): Promise<void> {
@@ -60,7 +60,7 @@ async function writeDuplicateTasks(): Promise<void> {
 	await Bun.write(join(core.filesystem.tasksDir, "task-1 - Alpha.md"), serializeTask(makeTask("TASK-1", "Alpha")));
 	await Bun.write(join(core.filesystem.tasksDir, "task-01 - Beta.md"), serializeTask(makeTask("TASK-01", "Beta")));
 	await Bun.write(
-		join(core.filesystem.completedDir, "task-001 - Gamma.md"),
+		join(core.filesystem.archiveTasksDir, "task-001 - Gamma.md"),
 		serializeTask(makeTask("TASK-001", "Gamma")),
 	);
 }
@@ -96,7 +96,7 @@ describe("backlog doctor", () => {
 		expect(result.exitCode).toBe(1);
 		expect(output).toContain("Repair preview (no files changed)");
 		expect(output).toContain("backlog/tasks/task-01 - Beta.md");
-		expect(output).toContain("backlog/completed/task-001 - Gamma.md");
+		expect(output).toContain("backlog/archive/tasks/task-001 - Gamma.md");
 		expect(output).toContain("References requiring human review");
 		expect(output.toLowerCase()).not.toContain("copy repair instructions");
 		expect(output.toLowerCase()).not.toContain("agent");
@@ -251,7 +251,7 @@ describe("backlog doctor", () => {
 	it("does not auto-repair duplicates when the task prefix is reserved", async () => {
 		await unlink(join(core.filesystem.tasksDir, "task-1 - Alpha.md"));
 		await unlink(join(core.filesystem.tasksDir, "task-01 - Beta.md"));
-		await unlink(join(core.filesystem.completedDir, "task-001 - Gamma.md"));
+		await unlink(join(core.filesystem.archiveTasksDir, "task-001 - Gamma.md"));
 		const config = await core.filesystem.loadConfig();
 		if (!config) throw new Error("Missing test config");
 		config.prefixes = { task: "draft" };
@@ -281,7 +281,7 @@ describe("backlog doctor", () => {
 	it("does not fail task list solely because the task prefix is reserved", async () => {
 		await unlink(join(core.filesystem.tasksDir, "task-1 - Alpha.md"));
 		await unlink(join(core.filesystem.tasksDir, "task-01 - Beta.md"));
-		await unlink(join(core.filesystem.completedDir, "task-001 - Gamma.md"));
+		await unlink(join(core.filesystem.archiveTasksDir, "task-001 - Gamma.md"));
 		const config = await core.filesystem.loadConfig();
 		if (!config) throw new Error("Missing test config");
 		config.prefixes = { task: "draft" };
@@ -292,6 +292,85 @@ describe("backlog doctor", () => {
 		const output = `${result.stdout}${result.stderr}`;
 		expect(result.exitCode).toBe(0);
 		expect(output).toContain("Hello");
+	});
+});
+
+describe("archived tasks stored outside the archive folder", () => {
+	const completedFolder = () => join(core.filesystem.backlogDir, "completed");
+
+	async function writeCompletedTask(fileName: string, task: Task): Promise<string> {
+		await mkdir(completedFolder(), { recursive: true });
+		const path = join(completedFolder(), fileName);
+		await Bun.write(path, serializeTask({ ...task, status: "Done" }));
+		return path;
+	}
+
+	it("reports them without failing, then moves them with --fix --yes and keeps names and IDs", async () => {
+		await removeDuplicateTasks();
+		const source = await writeCompletedTask("task-7 - Finished.md", makeTask("TASK-7", "Finished"));
+		const content = await Bun.file(source).text();
+
+		const preview = await $`bun ${cliPath} doctor`.cwd(testDir).quiet().nothrow();
+		const previewOutput = `${preview.stdout}${preview.stderr}`;
+		expect(preview.exitCode).toBe(0);
+		expect(previewOutput).toContain("No duplicate IDs, self-referential dependencies, or dependency cycles found.");
+		expect(previewOutput).toContain("1 archived task file stored outside backlog/archive/tasks:");
+		expect(previewOutput).toContain("backlog/completed/task-7 - Finished.md");
+		expect(previewOutput).toContain(
+			"'backlog doctor --fix' moves them into backlog/archive/tasks. File names and task IDs stay the same.",
+		);
+		expect(await Bun.file(source).exists()).toBe(true);
+
+		const fixed = await $`bun ${cliPath} doctor --fix --yes`.cwd(testDir).quiet().nothrow();
+		expect(fixed.exitCode).toBe(0);
+		expect(`${fixed.stdout}`).toContain("Moved 1 archived task file into backlog/archive/tasks.");
+		expect(await Bun.file(source).exists()).toBe(false);
+		expect(await Bun.file(join(core.filesystem.archiveTasksDir, "task-7 - Finished.md")).text()).toBe(content);
+		expect((await core.filesystem.listArchivedTasks()).map((task) => task.id)).toEqual(["TASK-7"]);
+
+		const after = await $`bun ${cliPath} doctor`.cwd(testDir).quiet().nothrow();
+		expect(after.exitCode).toBe(0);
+		expect(`${after.stdout}`).not.toContain("stored outside");
+	});
+
+	it("repairs duplicate IDs first, keeps the ID on the completed-folder record, then moves it", async () => {
+		// The board's TASK-1 group from the fixture, plus one ID claimed in both archived folders
+		// under the same file name.
+		const fileName = "task-41 - Same-name.md";
+		await Bun.write(join(core.filesystem.archiveTasksDir, fileName), serializeTask(makeTask("TASK-41", "Stale copy")));
+		await writeCompletedTask(fileName, makeTask("TASK-41", "Finished work"));
+
+		const preview = await $`bun ${cliPath} doctor`.cwd(testDir).quiet().nothrow();
+		const previewOutput = `${preview.stdout}${preview.stderr}`;
+		expect(preview.exitCode).toBe(1);
+		expect(previewOutput).toContain(`backlog/archive/tasks/${fileName}\n    TASK-41 -> TASK-`);
+		expect(previewOutput).toContain("1 archived task file cannot be moved because backlog/archive/tasks already has");
+
+		const fixed = await $`bun ${cliPath} doctor --fix --yes`.cwd(testDir).quiet().nothrow();
+		const fixedOutput = `${fixed.stdout}${fixed.stderr}`;
+		expect(fixed.exitCode).toBe(0);
+		expect(fixedOutput).toContain("Repaired 3 duplicate task files.");
+		expect(fixedOutput).toContain("Moved 1 archived task file into backlog/archive/tasks.");
+		expect(await readdir(completedFolder())).toEqual([]);
+		expect((await core.getTask("TASK-41"))?.title).toBe("Finished work");
+		expect((await core.previewDuplicateTaskIdRepair()).groups).toEqual([]);
+	});
+
+	it("leaves a file in place when the archive folder has another task under the same file name", async () => {
+		await removeDuplicateTasks();
+		const fileName = "task-5 - Same-name.md";
+		const inArchive = join(core.filesystem.archiveTasksDir, fileName);
+		await Bun.write(inArchive, serializeTask(makeTask("TASK-50", "Different task, same file name")));
+		const inCompleted = await writeCompletedTask(fileName, makeTask("TASK-5", "Finished"));
+		const before = [await Bun.file(inArchive).text(), await Bun.file(inCompleted).text()];
+
+		const fixed = await $`bun ${cliPath} doctor --fix --yes`.cwd(testDir).quiet().nothrow();
+		const output = `${fixed.stdout}${fixed.stderr}`;
+
+		expect(fixed.exitCode).toBe(1);
+		expect(output).toContain(`backlog/completed/${fileName}`);
+		expect(output).toContain("Rename or remove one file of each pair by hand.");
+		expect([await Bun.file(inArchive).text(), await Bun.file(inCompleted).text()]).toEqual(before);
 	});
 });
 
@@ -336,7 +415,7 @@ describe("CLI collision safety", () => {
 		expect(result.exitCode).toBe(1);
 		expect(output).toContain("duplicate task ID");
 		expect(output).toContain("backlog/tasks/task-1 - Alpha.md");
-		expect(output).toContain("backlog/completed/task-001 - Gamma.md");
+		expect(output).toContain("backlog/archive/tasks/task-001 - Gamma.md");
 		expect(await Bun.file(outputPath).text()).toBe("sentinel board content");
 	});
 });

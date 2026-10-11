@@ -586,8 +586,9 @@ transitive, and the heading counts both. Every plain task output uses this one l
 Every task appears once. `(cycle)` marks a relationship that points back into the branch above it and `(shown above)` marks a
 task already listed in the same section. `unknown task ID` means nothing visible claims that ID and `ambiguous task ID` means
 more than one record does; neither counts as satisfied, and the graph stops there rather than guessing what lies behind it. Run
-`backlog doctor` when one appears. The graph sees what task detail sees: the current checkout plus completed tasks, and the
-configured cross-branch corpus in the browser. Archived tasks are not resurrected.
+`backlog doctor` when one appears. The graph sees what task detail sees: the current checkout including archived tasks, and
+the configured cross-branch corpus in the browser. An archived task keeps its ID, so a dependency on it keeps resolving; it
+reads as completed only when it is in the final status.
 
 With `--json`, the same information is `task.dependencyGraph`, with `root`, `nodes`, and directed `edges`. It is derived at
 read time and never stored in the Markdown file. `task.dependencies` still holds only the task's own direct dependency IDs.

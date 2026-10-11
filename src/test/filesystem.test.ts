@@ -153,22 +153,6 @@ describe("FileSystem", () => {
 			expect((await filesystem.loadTask("back-1-extra"))?.title).toBe("Longer sibling");
 		});
 
-		it("does not archive a longer legacy sibling for a shorter numeric ID", async () => {
-			await filesystem.saveTask({ ...sampleTask, id: "BACK-1-EXTRA", title: "Longer sibling" });
-
-			expect(await filesystem.archiveTask("BACK-1")).toBe(false);
-			expect((await filesystem.loadTask("BACK-1-EXTRA"))?.title).toBe("Longer sibling");
-			expect(await readdir(filesystem.archiveTasksDir)).toHaveLength(0);
-		});
-
-		it("does not complete a longer legacy sibling for a shorter numeric ID", async () => {
-			await filesystem.saveTask({ ...sampleTask, id: "BACK-1-EXTRA", title: "Longer sibling" });
-
-			expect(await filesystem.completeTask("BACK-1")).toBe(false);
-			expect((await filesystem.loadTask("BACK-1-EXTRA"))?.title).toBe("Longer sibling");
-			expect(await readdir(filesystem.completedDir)).toHaveLength(0);
-		});
-
 		it("does not delete a longer legacy sibling during numeric save cleanup", async () => {
 			await filesystem.saveTask({ ...sampleTask, id: "BACK-1-EXTRA", title: "Longer sibling" });
 			await filesystem.saveTask({ ...sampleTask, id: "BACK-1", title: "Numeric target" });
@@ -276,20 +260,6 @@ Invalid content`,
 
 			const combinedFiltered = await filesystem.listTasks({ status: "to do", assignee: "bob" });
 			expect(combinedFiltered.map((t) => t.id)).toEqual(["TASK-3"]); // IDs normalized to uppercase
-		});
-
-		it("should archive a task", async () => {
-			await filesystem.saveTask(sampleTask);
-
-			const archived = await filesystem.archiveTask("task-1");
-			expect(archived).toBe(true);
-
-			const task = await filesystem.loadTask("task-1");
-			expect(task).toBeNull();
-
-			// Check that file exists in archive
-			const archiveFiles = await readdir(join(TEST_DIR, "backlog", "archive", "tasks"));
-			expect(archiveFiles.some((f) => f.startsWith("task-1"))).toBe(true);
 		});
 
 		it("should demote a task to drafts with new draft- ID", async () => {
@@ -484,9 +454,9 @@ Invalid content`,
 			expect(activeTasks.length).toBe(0);
 
 			// Verify completed task exists
-			const completedTasks = await filesystem.listCompletedTasks();
-			expect(completedTasks.length).toBe(1);
-			expect(completedTasks[0]?.id).toBe("TASK-1");
+			const archivedTasks = await filesystem.listArchivedTasks();
+			expect(archivedTasks.length).toBe(1);
+			expect(archivedTasks[0]?.id).toBe("TASK-1");
 
 			// Create and promote a draft
 			await filesystem.saveDraft(sampleDraft);
@@ -846,11 +816,6 @@ Invalid content`,
 		it("should return empty array when listing tasks in empty directory", async () => {
 			const tasks = await filesystem.listTasks();
 			expect(tasks).toEqual([]);
-		});
-
-		it("should return false when archiving non-existent task", async () => {
-			const result = await filesystem.archiveTask("non-existent");
-			expect(result).toBe(false);
 		});
 
 		it("should handle config with minimal fields", async () => {

@@ -667,7 +667,7 @@ describe("CLI Integration", () => {
 				},
 				false,
 			);
-			expect(await core.completeTask("task-1", false)).toBe(true);
+			expect(await core.archiveTask("task-1", false)).toBe(true);
 
 			const result = await $`bun ${CLI_PATH} task list --plain --ready`.cwd(TEST_DIR).quiet();
 			const out = result.stdout.toString();

@@ -1,5 +1,6 @@
 import type { Task } from "../types/index.ts";
 import { getPriorityValues, normalizePriorityValue } from "../utils/priority-config.ts";
+import { isTerminalStatus } from "../utils/terminal-status.ts";
 
 export interface TaskStatistics {
 	statusCounts: Map<string, number>;
@@ -18,6 +19,15 @@ export interface TaskStatistics {
 		staleTasks: Task[];
 		blockedTasks: Task[];
 	};
+}
+
+/**
+ * The tasks statistics count: every task on the board, plus archived tasks in the final status.
+ * Archived work in any other status was set aside rather than finished, so it counts as neither
+ * open nor done.
+ */
+export function selectStatisticsTasks(tasks: Task[], statuses: readonly string[]): Task[] {
+	return tasks.filter((task) => task.source !== "archived" || isTerminalStatus(task.status, statuses));
 }
 
 /**

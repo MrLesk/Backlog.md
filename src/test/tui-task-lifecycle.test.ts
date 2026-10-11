@@ -3,7 +3,7 @@ import { mkdir } from "node:fs/promises";
 import { $ } from "bun";
 import { Core } from "../core/backlog.ts";
 import type { Task } from "../types/index.ts";
-import { completeTaskFromTui, formatTaskCompletionBlockedMessage } from "../ui/task-lifecycle.ts";
+import { archiveTaskFromTui, formatArchiveConfirmation } from "../ui/task-lifecycle.ts";
 import { createUniqueTestDir, initializeTestProject, safeCleanup } from "./test-utils.ts";
 
 let TEST_DIR: string;
@@ -38,59 +38,32 @@ describe("TUI task lifecycle", () => {
 		await safeCleanup(TEST_DIR);
 	});
 
-	it("does not move non-terminal tasks to completed", async () => {
+	it("archives a task in any status and keeps its ID and status", async () => {
 		await createTask({ id: "task-1", title: "Open task", status: "To Do" });
-		const task = await core.filesystem.loadTask("task-1");
-		expect(task).not.toBeNull();
+		await createTask({ id: "task-2", title: "Done task", status: "Done" });
 
-		const result = await completeTaskFromTui(core, task as Task);
-
-		expect(result).toEqual({ success: false, reason: "not-terminal", terminalStatus: "Done" });
-		expect(formatTaskCompletionBlockedMessage("TASK-1", "Done")).toBe(
-			'Task TASK-1 is not Done. Set status to "Done" before completing it.',
-		);
-		expect((await core.filesystem.loadTask("task-1"))?.status).toBe("To Do");
-		expect(await core.filesystem.listCompletedTasks()).toHaveLength(0);
-	});
-
-	it("moves terminal tasks to completed", async () => {
-		await createTask({ id: "task-1", title: "Done task", status: "Done" });
-		const task = await core.filesystem.loadTask("task-1");
-		expect(task).not.toBeNull();
-
-		const result = await completeTaskFromTui(core, task as Task);
-
-		expect(result).toEqual({ success: true });
-		expect(await core.filesystem.loadTask("task-1")).toBeNull();
-		const completedTasks = await core.filesystem.listCompletedTasks();
-		expect(completedTasks).toHaveLength(1);
-		expect(completedTasks[0]?.status).toBe("Done");
-	});
-
-	it("uses the configured terminal status", async () => {
-		const config = await core.filesystem.loadConfig();
-		if (!config) {
-			throw new Error("Expected test project config to exist");
+		for (const id of ["task-1", "task-2"]) {
+			const task = await core.filesystem.loadTask(id);
+			expect(task).not.toBeNull();
+			expect(await archiveTaskFromTui(core, task as Task)).toBe(true);
+			expect(await core.filesystem.loadTask(id)).toBeNull();
 		}
-		await core.filesystem.saveConfig({
-			...config,
-			statuses: ["To Do", "Review", "Closed"],
-			defaultStatus: "To Do",
-		});
 
-		await createTask({ id: "task-1", title: "Review task", status: "Review" });
-		const reviewTask = await core.filesystem.loadTask("task-1");
-		expect(reviewTask).not.toBeNull();
-		expect(await completeTaskFromTui(core, reviewTask as Task)).toEqual({
-			success: false,
-			reason: "not-terminal",
-			terminalStatus: "Closed",
-		});
+		const archivedTasks = await core.filesystem.listArchivedTasks();
+		expect(archivedTasks.map((task) => [task.id, task.status])).toEqual([
+			["TASK-1", "To Do"],
+			["TASK-2", "Done"],
+		]);
+	});
 
-		await createTask({ id: "task-2", title: "Closed task", status: "Closed" });
-		const closedTask = await core.filesystem.loadTask("task-2");
-		expect(closedTask).not.toBeNull();
-		expect(await completeTaskFromTui(core, closedTask as Task)).toEqual({ success: true });
-		expect((await core.filesystem.listCompletedTasks()).map((task) => task.id)).toEqual(["TASK-2"]);
+	it("asks one three-line question that fits the confirm popup", () => {
+		const lines = formatArchiveConfirmation("TASK-1").split("\n");
+
+		expect(lines).toEqual([
+			"Archive {bold}TASK-1{/bold}?",
+			"Moves it off the board and keeps",
+			"its ID, record, and links.",
+		]);
+		expect(Math.max(...lines.map((line) => line.length))).toBeLessThanOrEqual(37);
 	});
 });

@@ -1,6 +1,4 @@
-import { basename, join } from "node:path";
-import { DEFAULT_STATUSES } from "../../../constants/index.ts";
-import { TaskArchiveStatusError, type VacatedTaskResult } from "../../../core/backlog.ts";
+import { TaskArchivedError, type VacatedTaskResult } from "../../../core/backlog.ts";
 import { findLocalDuplicateTaskIds } from "../../../core/duplicate-task-repair.ts";
 import { loadTaskDetail, loadTaskListItems } from "../../../core/task-detail.ts";
 import { isCreateLockError, isTaskLockError } from "../../../file-system/operations.ts";
@@ -22,7 +20,6 @@ import { resolveMilestoneInputForStorage } from "../../../utils/milestone-storag
 import { buildTaskUpdateInput } from "../../../utils/task-edit-builder.ts";
 import { applyTaskFilters, createTaskSearchIndex } from "../../../utils/task-search.ts";
 import { sectionTasks, sortTasks } from "../../../utils/task-sorting.ts";
-import { getTerminalStatus, isTerminalStatus } from "../../../utils/terminal-status.ts";
 import { formatUtcDateForDisplay } from "../../../utils/utc-date-display.ts";
 import { BacklogToolError } from "../../errors/mcp-errors.ts";
 import type { McpServer } from "../../server.ts";
@@ -94,11 +91,6 @@ export class TaskHandlers {
 		return createMilestoneFilterValueResolver([...activeMilestones, ...archivedMilestones]);
 	}
 
-	private async getConfiguredStatuses(): Promise<string[]> {
-		const config = await this.core.filesystem.loadConfig();
-		return config?.statuses ?? [...DEFAULT_STATUSES];
-	}
-
 	private isDraftStatus(status?: string | null): boolean {
 		return (status ?? "").trim().toLowerCase() === "draft";
 	}
@@ -107,8 +99,9 @@ export class TaskHandlers {
 		const priorityIndicator = task.priority ? `[${task.priority.toUpperCase()}] ` : "";
 		const typeIndicator = task.type ? `[${task.type}] ` : "";
 		const projectIndicator = task.project ? `[${task.project}] ` : "";
-		const status = task.status || (task.source === "completed" ? "Done" : "");
-		const statusText = options.includeStatus && status ? ` (${status})` : "";
+		// An archived task is off the board whatever its status says, so its line says so.
+		const statusParts = [task.status, task.source === "archived" ? "archived" : ""].filter(Boolean);
+		const statusText = options.includeStatus && statusParts.length > 0 ? ` (${statusParts.join(", ")})` : "";
 		const acceptanceCriteria = formatAcceptanceCriteriaSummarySuffix(task);
 		const dueDate = task.dueDate ? ` (due ${formatUtcDateForDisplay(task.dueDate)})` : "";
 		return `  ${priorityIndicator}${typeIndicator}${projectIndicator}${task.id} - ${task.title}${statusText}${acceptanceCriteria}${dueDate}`;
@@ -452,55 +445,21 @@ export class TaskHandlers {
 			throw new BacklogToolError(`Cannot archive task from another branch: ${task.id}`, "VALIDATION_ERROR");
 		}
 
-		let archived: VacatedTaskResult;
+		let archived: boolean;
 		try {
 			archived = await this.core.archiveTask(task.id);
 		} catch (error) {
-			if (error instanceof TaskArchiveStatusError) {
-				throw new BacklogToolError(`${error.message} In MCP, use task_complete.`, "VALIDATION_ERROR");
+			if (error instanceof TaskArchivedError) {
+				throw new BacklogToolError(error.message, "VALIDATION_ERROR");
 			}
 			throw error;
 		}
-		const { success, cleanedTaskIds } = archived;
-		if (!success) {
+		if (!archived) {
 			throw new BacklogToolError(`Failed to archive task: ${args.id}`, "OPERATION_FAILED");
 		}
 
 		const refreshed = (await this.core.getTask(task.id)) ?? task;
-		const cleanupMessage = formatDependencyCleanupMessage(task.id, cleanedTaskIds);
-		return await formatTaskCallResult(
-			await loadTaskDetail(this.core, refreshed),
-			cleanupMessage ? [`${cleanupMessage}.`] : undefined,
-		);
-	}
-
-	async completeTask(args: { id: string }): Promise<CallToolResult> {
-		const task = await this.loadTaskOrThrow(args.id);
-
-		if (!isLocalEditableTask(task)) {
-			throw new BacklogToolError(`Cannot complete task from another branch: ${task.id}`, "VALIDATION_ERROR");
-		}
-
-		const statuses = await this.getConfiguredStatuses();
-		const terminalStatus = getTerminalStatus(statuses) ?? "Done";
-		if (!isTerminalStatus(task.status, statuses)) {
-			throw new BacklogToolError(
-				`Task ${task.id} is not ${terminalStatus}. Set status to "${terminalStatus}" with task_edit before completing it.`,
-				"VALIDATION_ERROR",
-			);
-		}
-
-		const filePath = task.filePath ?? null;
-		const completedFilePath = filePath ? join(this.core.filesystem.completedDir, basename(filePath)) : undefined;
-
-		const success = await this.core.completeTask(task.id);
-		if (!success) {
-			throw new BacklogToolError(`Failed to complete task: ${args.id}`, "OPERATION_FAILED");
-		}
-
-		return await formatTaskCallResult(await loadTaskDetail(this.core, task), [`Completed task ${task.id}.`], {
-			filePathOverride: completedFilePath,
-		});
+		return await formatTaskCallResult(await loadTaskDetail(this.core, refreshed), [`Archived task ${task.id}.`]);
 	}
 
 	async demoteTask(args: { id: string }): Promise<CallToolResult> {

@@ -156,7 +156,7 @@ describe("loadTasksForUnifiedView", () => {
 		});
 		await Bun.write(join(core.filesystem.tasksDir, "task-1 - Active.md"), serializeTask(makeTask("TASK-1", "Active")));
 		await Bun.write(
-			join(core.filesystem.completedDir, "task-01 - Completed.md"),
+			join(core.filesystem.archiveTasksDir, "task-01 - Completed.md"),
 			serializeTask(makeTask("TASK-01", "Completed")),
 		);
 

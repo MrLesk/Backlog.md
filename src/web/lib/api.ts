@@ -65,7 +65,7 @@ export function readDemotionFailureCause(error: unknown): "cleanup" | "commit" |
 	return cause === "cleanup" || cause === "commit" ? cause : null;
 }
 
-/** Archiving and demoting vacate a task ID: `cleanedTaskIds` names the records that lost a reference to it. */
+/** Demoting vacates a task ID: `cleanedTaskIds` names the records that lost a reference to it. */
 export interface TaskVacancyResponse {
 	success: boolean;
 	cleanedTaskIds: string[];
@@ -361,15 +361,8 @@ export class ApiClient {
 
 	// Not retried, for the same reason demote is not: the second attempt would target a task the
 	// first attempt already archived, and its "not found" would replace the real outcome.
-	async archiveTask(id: string): Promise<TaskVacancyResponse> {
-		const response = await this.fetchWithoutRetry(`${API_BASE}/tasks/${id}`, {
-			method: "DELETE",
-		});
-		return response.json();
-	}
-
-	async completeTask(id: string): Promise<void> {
-		await this.fetchWithRetry(`${API_BASE}/tasks/${id}/complete`, {
+	async archiveTask(id: string): Promise<void> {
+		await this.fetchWithoutRetry(`${API_BASE}/tasks/${encodeURIComponent(id)}/archive`, {
 			method: "POST",
 		});
 	}

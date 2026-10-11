@@ -529,7 +529,7 @@ const TaskList: React.FC<TaskListProps> = ({
 
 	const handleCleanupSuccess = async (movedCount: number) => {
 		setShowCleanupModal(false);
-		setCleanupSuccessMessage(`Successfully moved ${movedCount} task${movedCount !== 1 ? 's' : ''} to completed folder`);
+		setCleanupSuccessMessage(`Successfully archived ${movedCount} task${movedCount !== 1 ? 's' : ''}`);
 
 		// Refresh the data - existing effects will handle re-filtering automatically
 		if (onRefreshData) {

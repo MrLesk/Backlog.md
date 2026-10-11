@@ -153,7 +153,7 @@ After running `backlog init`, agents should start by running `backlog instructio
 > [!NOTE]
 > **Review checkpoint #3:** review the code, run tests, check linting, and verify the results match your expectations.
 
-Mark verified work Done (or the configured final status). During periodic cleanup, use `backlog task complete` to move it off the board while preserving its record and dependency links. Use `backlog task archive` for canceled, duplicate, or invalid work; it removes incoming dependencies and task references.
+Mark verified work Done (or the configured final status). During periodic cleanup, `backlog task archive` moves it off the board; the same command takes canceled, duplicate, or invalid work off the board at any time. An archived task keeps its ID, record, and dependency links, stays readable with `backlog task view`, and is read-only.
 
 If the output is not good enough: clear the plan/notes/final summary, refine the task description and acceptance criteria, and run the task again in a fresh session.
 

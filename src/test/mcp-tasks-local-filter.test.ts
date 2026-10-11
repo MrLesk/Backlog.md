@@ -33,7 +33,7 @@ const completedTask: Task = {
 	createdDate: "2025-12-03",
 	labels: [],
 	dependencies: [],
-	source: "completed",
+	source: "archived",
 };
 
 describe("MCP task tools local filtering", () => {
@@ -58,7 +58,7 @@ describe("MCP task tools local filtering", () => {
 
 	it("searches active and completed working-copy tasks without loading branches", async () => {
 		let crossBranchLoads = 0;
-		let includeCompleted = false;
+		let includeArchived = false;
 		const laterActiveTask = { ...localTask, id: "task-20" };
 		const earlierCompletedTask = { ...completedTask, id: "task-1" };
 		const handlers = new TaskHandlers({
@@ -67,7 +67,7 @@ describe("MCP task tools local filtering", () => {
 				return [localTask, remoteTask];
 			},
 			loadWorkingCopyTasks: async (requestedIncludeCompleted = false) => {
-				includeCompleted = requestedIncludeCompleted;
+				includeArchived = requestedIncludeCompleted;
 				return [earlierCompletedTask, laterActiveTask];
 			},
 		} as unknown as McpServer);
@@ -90,6 +90,6 @@ describe("MCP task tools local filtering", () => {
 		expect(limitedText).toContain("task-1 - Completed task");
 		expect(limitedText).not.toContain("task-20 - Local task");
 		expect(crossBranchLoads).toBe(0);
-		expect(includeCompleted).toBe(true);
+		expect(includeArchived).toBe(true);
 	});
 });

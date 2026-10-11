@@ -1,6 +1,11 @@
 import { mkdir, rename as moveFile, readFile, stat, unlink } from "node:fs/promises";
 import { basename, dirname, isAbsolute, join, relative } from "node:path";
-import { DEFAULT_DIRECTORIES, DEFAULT_STATUSES, FALLBACK_STATUS } from "../constants/index.ts";
+import {
+	ARCHIVED_TASK_DIRECTORIES,
+	DEFAULT_DIRECTORIES,
+	DEFAULT_STATUSES,
+	FALLBACK_STATUS,
+} from "../constants/index.ts";
 import {
 	type DraftFileReference,
 	DraftIdentityError,
@@ -96,7 +101,7 @@ import { sortByOrdinal } from "../utils/task-sorting.ts";
 import { attachSubtaskSummaries } from "../utils/task-subtasks.ts";
 import { formatValidTaskTypeValues, resolveTaskTypeValue } from "../utils/task-type-config.ts";
 import { upsertTaskUpdatedDate } from "../utils/task-updated-date.ts";
-import { getTerminalStatus, isTerminalStatus } from "../utils/terminal-status.ts";
+import { isTerminalStatus } from "../utils/terminal-status.ts";
 import { migrateConfig, needsMigration } from "./config-migration.ts";
 import { ContentStore, type TaskCorpusSnapshot } from "./content-store.ts";
 import {
@@ -113,6 +118,7 @@ import {
 	resolveOrdinalConflicts,
 } from "./reorder.ts";
 import { SearchService } from "./search-service.ts";
+import { selectStatisticsTasks } from "./statistics.ts";
 import { TaskIdentityIndex, type TaskIdentityRecord } from "./task-identity-index.ts";
 import {
 	BranchTaskLoader,
@@ -163,8 +169,8 @@ const REMOTE_REF_REFRESH_INTERVAL_MS = 60_000;
 interface TaskCorpusLoadOptions {
 	progressCallback?: (msg: string) => void;
 	abortSignal?: AbortSignal;
-	includeCompleted?: boolean;
-	visibleCompleted?: boolean;
+	includeArchived?: boolean;
+	visibleArchived?: boolean;
 	/** Set only by the ContentStore corpus loader, whose result becomes the shared cross-branch state. */
 	publishSharedState?: boolean;
 	/** Set by task ID allocation, which cannot trust the coalesced remote-refresh window. */
@@ -209,11 +215,11 @@ export interface TuiTaskEditResult {
 /** Sanitized copies of the records that referenced a task ID being vacated, by corpus. */
 type VacatedIdCleanup = {
 	active: Task[];
-	completed: Task[];
+	archived: Task[];
 };
 
 function vacatedIdCleanupTargets(cleanup: VacatedIdCleanup): Task[] {
-	return [...cleanup.active, ...cleanup.completed];
+	return [...cleanup.active, ...cleanup.archived];
 }
 
 function sanitizeVacatedTaskLinks(tasks: Task[], vacatedTaskId: string): Task[] {
@@ -337,6 +343,11 @@ function crossBranchMoveReason(task: Task, verb: "reordered" | "moved"): string 
 	return `Task ${task.id} exists in branch "${task.branch}" and cannot be ${verb} from the current branch. Switch to that branch to modify it.`;
 }
 
+/** A task the TUI can show but must not open in an editor: one from another branch, or an archived one. */
+function isReadOnlyInTui(task: Task): boolean {
+	return !isLocalEditableTask(task) || Boolean(task.branch) || task.source === "archived";
+}
+
 /**
  * Normalize the milestone a board move targets. A named lane stores its trimmed name, while the
  * board's no-milestone lane arrives as null or a blank string and clears the field.
@@ -376,12 +387,11 @@ function assertSectionInputsSafe(input: {
 	}
 }
 
-export class TaskArchiveStatusError extends Error {
-	constructor(taskId: string, terminalStatus: string) {
-		super(
-			`Task ${taskId} is ${terminalStatus}. Use Complete to move finished work to completed storage and preserve its links. Use: backlog task complete ${taskId}`,
-		);
-		this.name = "TaskArchiveStatusError";
+/** A mutation targeted a task that exists only in the archive, where tasks are read-only. */
+export class TaskArchivedError extends Error {
+	constructor(taskId: string) {
+		super(`Task ${taskId} is archived. Archived tasks are read-only.`);
+		this.name = "TaskArchivedError";
 	}
 }
 
@@ -415,7 +425,7 @@ export class Core {
 
 	private async buildTaskIdentityIndex(
 		localTasks: Array<Task & { lastModified?: Date }>,
-		completedTasks: Task[],
+		archivedTasks: Task[],
 		branchRecords: BranchTaskStateEntry[],
 		statuses: string[],
 		resolutionStrategy: "most_recent" | "most_progressed",
@@ -435,14 +445,14 @@ export class Core {
 				workingCopy: true,
 			});
 		}
-		for (const task of completedTasks) {
+		for (const task of archivedTasks) {
 			records.push({
 				id: task.id,
-				type: "completed",
+				type: "archived",
 				branch: "local",
-				path: task.filePath ?? join(filesystem.completedDir, task.id),
+				path: task.filePath ?? join(filesystem.archiveTasksDir, task.id),
 				lastModified: task.lastModified ?? (task.updatedDate ? new Date(task.updatedDate) : new Date(0)),
-				task: { ...task, source: "completed" },
+				task: { ...task, source: "archived" },
 				workingCopy: true,
 			});
 		}
@@ -876,21 +886,20 @@ export class Core {
 	}
 
 	/**
-	 * Collect the records that name a task ID which archiving or demoting is about to vacate.
+	 * Collect the records that name a task ID which demoting is about to vacate.
 	 *
-	 * Both operations free the numeric slot for the allocator, so a reference left behind stops
-	 * meaning what it said: once the ID is handed to the next created task, the stale reference
-	 * silently resolves to an unrelated task instead of failing closed. The scan covers the active
-	 * working copy and the completed corpus, because a completed record is still read by the
-	 * dependency graph. Drafts keep their references: they are not part of either corpus, and
-	 * archive has never touched them.
+	 * Demotion frees the numeric slot for the allocator, so a reference left behind stops meaning
+	 * what it said: once the ID is handed to the next created task, the stale reference silently
+	 * resolves to an unrelated task instead of failing closed. The scan covers the active working
+	 * copy and the archived corpus, because an archived record is still read by the dependency
+	 * graph. Drafts keep their references: they are not part of either corpus.
 	 */
 	private async collectVacatedIdCleanup(vacatedTaskId: string): Promise<VacatedIdCleanup> {
-		const [activeTasks, completedTasks] = await Promise.all([this.fs.listTasks(), this.fs.listCompletedTasks()]);
+		const [activeTasks, archivedTasks] = await Promise.all([this.fs.listTasks(), this.fs.listArchivedTasks()]);
 		const others = (tasks: Task[]) => tasks.filter((task) => !taskIdsEqual(task.id, vacatedTaskId));
 		return {
 			active: sanitizeVacatedTaskLinks(others(activeTasks), vacatedTaskId),
-			completed: sanitizeVacatedTaskLinks(others(completedTasks), vacatedTaskId),
+			archived: sanitizeVacatedTaskLinks(others(archivedTasks), vacatedTaskId),
 		};
 	}
 
@@ -910,9 +919,7 @@ export class Core {
 	 *
 	 * What this does not close: a task that starts referencing the ID after that final in-lock
 	 * scan cannot be locked, because it was not yet a dependent when the set was fixed, so it
-	 * keeps its reference. Locking cannot close that on its own without a corpus-wide write lock,
-	 * and vacating before the scan does not close it either: an archived ID still resolves as a
-	 * dependency target by design, so the write that adds it is still accepted after the move.
+	 * keeps its reference. Locking cannot close that on its own without a corpus-wide write lock.
 	 * The stale reference that results is not silent - it renders as an unknown task ID until the
 	 * allocator hands the number out again.
 	 */
@@ -954,7 +961,7 @@ export class Core {
 	 * Every record is written to the path it was selected from, never through {@link updateTask}:
 	 * that path re-resolves the record by ID, which throws on a contested identity and would fail
 	 * the cleanup after the target had already been vacated. The scan already chose the exact files,
-	 * and a completed record must not go through {@link updateTask} anyway - it would not be found
+	 * and an archived record must not go through {@link updateTask} anyway - it would not be found
 	 * in the active corpus and the write would look like a brand-new task whose status just changed.
 	 */
 	private async writeVacatedIdCleanup(cleanup: VacatedIdCleanup): Promise<{
@@ -970,14 +977,14 @@ export class Core {
 				filePaths.push(savedPath);
 				this.contentStore?.upsertTask({ ...updated, filePath: savedPath });
 			}
-			for (const task of cleanup.completed) {
+			for (const task of cleanup.archived) {
 				const updated = { ...task, updatedDate };
 				const savedPath = await this.fs.saveTask(updated);
 				filePaths.push(savedPath);
-				// The record stays completed, with the reference gone. Refresh exactly this file in any
+				// The record stays archived, with the reference gone. Refresh exactly this file in any
 				// in-process ContentStore: a record elsewhere claiming the same ID is a conflict this
 				// cleanup has no business dissolving.
-				this.contentStore?.refreshCompletedTask({ ...updated, filePath: savedPath });
+				this.contentStore?.refreshArchivedTask({ ...updated, filePath: savedPath });
 			}
 		};
 		// One notification for the whole cleanup, as the bulk writer does for a batch of edits.
@@ -1150,9 +1157,9 @@ export class Core {
 		while (true) {
 			const filesystem = this.fs;
 			const backlogRoot = filesystem.backlogDir;
-			const [localTasks, completedTasks, config] = await Promise.all([
+			const [localTasks, archivedTasks, config] = await Promise.all([
 				suppliedActiveTasks ? Promise.resolve(suppliedActiveTasks) : filesystem.listTasks(),
-				filesystem.listCompletedTasks(),
+				filesystem.listArchivedTasks(),
 				filesystem.loadConfig(),
 			]);
 			if (this.fs !== filesystem || backlogRoot !== filesystem.backlogDir) {
@@ -1161,7 +1168,7 @@ export class Core {
 			}
 			const index = await this.buildTaskIdentityIndex(
 				localTasks,
-				completedTasks,
+				archivedTasks,
 				[],
 				config?.statuses ?? [...DEFAULT_STATUSES],
 				config?.taskResolutionStrategy ?? "most_progressed",
@@ -1173,20 +1180,25 @@ export class Core {
 		}
 	}
 
-	async loadWorkingCopyTasks(includeCompleted = false): Promise<Task[]> {
-		return (await this.buildWorkingCopyTaskIndex()).getTasks(includeCompleted);
+	async loadWorkingCopyTasks(includeArchived = false): Promise<Task[]> {
+		return (await this.buildWorkingCopyTaskIndex()).getTasks(includeArchived);
 	}
 
 	private async loadWorkingCopyTask(taskId: string, forMutation: boolean, activeTasks?: Task[]): Promise<Task | null> {
 		const index = await this.buildWorkingCopyTaskIndex(activeTasks);
 		const resolution = forMutation ? index.resolveForMutation(taskId) : index.resolveForRead(taskId);
 		if (resolution.status === "ambiguous") throw new AmbiguousTaskIdError(taskId, resolution.candidates);
+		if (resolution.status === "archived") throw new TaskArchivedError(resolution.task.id);
 		if (resolution.status === "found") return { ...resolution.task };
 		// Lists skip damaged files; an explicit lookup must still report why its task cannot load.
 		await this.fs.loadTask(taskId);
 		return null;
 	}
 
+	/**
+	 * Load the task a mutation targets. Only a task on the board can be changed: an ambiguous ID
+	 * and an archived task both throw, and null means no working-copy record claims the ID.
+	 */
 	private async loadTaskForMutation(taskId: string, options: TaskReadOptions = {}): Promise<Task | null> {
 		if (options.includeCrossBranch === false) {
 			return await this.loadWorkingCopyTask(taskId, true);
@@ -1195,6 +1207,7 @@ export class Core {
 		await store.refreshTasks();
 		const resolution = store.resolveTaskForMutation(taskId);
 		if (resolution.status === "ambiguous") throw new AmbiguousTaskIdError(taskId, resolution.candidates);
+		if (resolution.status === "archived") throw new TaskArchivedError(resolution.task.id);
 		if (resolution.status === "found") return { ...resolution.task };
 		await this.fs.loadTask(taskId);
 		return null;
@@ -1514,7 +1527,7 @@ export class Core {
 	 * @returns The next available ID (e.g., "task-42", "draft-5", "doc-3")
 	 *
 	 * Folder scanning by type:
-	 * - Task: /tasks, /completed, cross-branch (if enabled), remote (if enabled)
+	 * - Task: /tasks and the archived task directories, cross-branch (if enabled), remote (if enabled)
 	 * - Draft: /drafts only
 	 * - Document: /documents only
 	 * - Decision: /decisions only
@@ -1577,9 +1590,12 @@ export class Core {
 		worktreeRoot: string,
 	): Promise<BranchTaskStateEntry[]> {
 		const globPattern = buildGlobPattern(taskPrefix.toLowerCase());
-		const directories: Array<{ path: string; type: "task" | "completed" }> = [
+		const directories: Array<{ path: string; type: "task" | "archived" }> = [
 			{ path: join(projectRoot, backlogDir, DEFAULT_DIRECTORIES.TASKS), type: "task" },
-			{ path: join(projectRoot, backlogDir, DEFAULT_DIRECTORIES.COMPLETED), type: "completed" },
+			...ARCHIVED_TASK_DIRECTORIES.map((directory) => ({
+				path: join(projectRoot, backlogDir, directory),
+				type: "archived" as const,
+			})),
 		];
 		const entries: BranchTaskStateEntry[] = [];
 
@@ -1611,18 +1627,17 @@ export class Core {
 	}
 
 	/**
-	 * Gets all task IDs that are in use (active or completed) across all branches.
-	 * Respects cross-branch config settings. Archived IDs are excluded (can be reused).
-	 *
-	 * This is used for ID generation to determine the next available ID.
+	 * Every task ID that is taken: tasks on the board and archived tasks, in the working copy, in
+	 * sibling worktrees and (when cross-branch checks are enabled) in the scanned branches. An
+	 * archived task keeps its ID, so allocation never hands that ID out again.
 	 */
-	private async getActiveAndCompletedTaskIds(): Promise<string[]> {
+	private async getOccupiedTaskIds(): Promise<string[]> {
 		const snapshot = await this.loadTasksWithStableBranchSnapshot({
-			includeCompleted: false,
-			visibleCompleted: false,
+			includeArchived: false,
+			visibleArchived: false,
 			forceRemoteRefresh: true,
 		});
-		const completedTasks = snapshot.completedTasks;
+		const archivedTasks = snapshot.archivedTasks;
 		const config = snapshot.config;
 		const taskPrefix = config?.prefixes?.task ?? "task";
 		if (!snapshot.identityIndex) throw new Error("Task corpus identity index was not initialized");
@@ -1631,26 +1646,19 @@ export class Core {
 		// name claims it, in this project or in a worktree of the same repository.
 		const fileNameEntries = await this.loadTaskFileNameEntries(taskPrefix);
 		const occupiedIds = new Set(snapshot.identityIndex.getOccupiedIds());
-		for (const task of completedTasks) occupiedIds.add(task.id);
-		for (const entry of fileNameEntries) {
-			if (entry.type === "task" || entry.type === "completed") occupiedIds.add(entry.id);
-		}
+		for (const task of archivedTasks) occupiedIds.add(task.id);
+		for (const entry of fileNameEntries) occupiedIds.add(entry.id);
 		return [...occupiedIds];
 	}
 
 	/**
 	 * Gets all existing IDs for a given entity type.
 	 * Used internally by generateNextId to determine the next available ID.
-	 *
-	 * Note: Archived tasks are intentionally excluded - archived IDs can be reused.
-	 * This makes archive act as a soft delete for ID purposes.
 	 */
 	private async getExistingIdsForType(type: EntityType): Promise<string[]> {
 		switch (type) {
 			case EntityType.Task: {
-				// Get active + completed task IDs from all branches (respects config)
-				// Archived IDs are excluded - they can be reused (soft delete behavior)
-				return this.getActiveAndCompletedTaskIds();
+				return this.getOccupiedTaskIds();
 			}
 			case EntityType.Draft: {
 				return this.fs.listOccupiedDraftIds();
@@ -3318,57 +3326,41 @@ export class Core {
 		return { movedTasks, changedTasks, failures };
 	}
 
-	async archiveTask(taskId: string, autoCommit?: boolean, options: TaskReadOptions = {}): Promise<VacatedTaskResult> {
-		const taskToArchive = await this.loadTaskForMutation(taskId, options);
-		if (!taskToArchive) {
-			return { success: false, cleanedTaskIds: [] };
-		}
-		const normalizedTaskId = taskToArchive.id;
+	/**
+	 * Move a task off the board into the archive. Any status can be archived. The record keeps its
+	 * ID, its status and every link other tasks hold to it, and no other record is rewritten.
+	 */
+	async archiveTask(taskId: string, autoCommit?: boolean, options: TaskReadOptions = {}): Promise<boolean> {
+		const task = await this.loadTaskForMutation(taskId, options);
+		if (!task) return false;
 
-		return await this.withVacatedIdCleanup(taskToArchive, normalizedTaskId, async (cleanup) => {
-			// A concurrent edit may have finished the work before this lock was acquired.
-			const current = await this.loadTaskForMutation(normalizedTaskId, options);
-			if (!current) return { success: false, cleanedTaskIds: [] };
-			const config = await this.fs.loadConfig();
-			const statuses = config?.statuses ?? [...DEFAULT_STATUSES];
-			if (isTerminalStatus(current.status, statuses)) {
-				throw new TaskArchiveStatusError(current.id, getTerminalStatus(statuses) ?? "Done");
-			}
-
-			const taskPath = current.filePath ?? (await getTaskPath(normalizedTaskId, this));
-			const taskFilename = taskPath ? basename(taskPath) : null;
-			if (!taskPath || !taskFilename) return { success: false, cleanedTaskIds: [] };
-
-			const fromPath = taskPath;
-			const toPath = join(await this.fs.getArchiveTasksDir(), taskFilename);
+		return await this.fs.withTaskLock(task, async () => {
+			// A concurrent archive or demotion may have moved the record before this lock was acquired.
+			const current = await this.loadTaskForMutation(task.id, options);
+			const fromPath = current?.filePath;
+			if (!current || !fromPath) return false;
+			const toPath = join(await this.fs.getArchiveTasksDir(), basename(fromPath));
 
 			try {
 				await mkdir(dirname(toPath), { recursive: true });
 				await moveFile(fromPath, toPath);
 			} catch {
-				return { success: false, cleanedTaskIds: [] };
+				return false;
 			}
-			this.contentStore?.transitionTask(normalizedTaskId);
+			this.contentStore?.transitionTask(current.id, { ...current, filePath: toPath, source: "archived" });
 
-			// The file is in the archive from here on. A cleanup write or a commit that fails after
-			// this point says so, rather than letting a caller retry an archive that already ran.
+			// The file is in the archive from here on. A commit that fails after this point says so,
+			// rather than letting a caller retry an archive that already ran.
 			try {
-				const { cleanedTaskIds, filePaths } = await this.writeVacatedIdCleanup(cleanup);
-
 				if (await this.shouldAutoCommit(autoCommit)) {
 					// Stage the file move for proper Git tracking
 					const repoRoot = await this.git.stageFileMove(fromPath, toPath);
-					const commitPaths = [fromPath, toPath, ...filePaths];
-					for (const cleanedPath of filePaths) {
-						await this.git.addFile(cleanedPath);
-					}
-					await this.git.commitFiles(`backlog: Archive task ${normalizedTaskId}`, commitPaths, repoRoot);
+					await this.git.commitFiles(`backlog: Archive task ${current.id}`, [fromPath, toPath], repoRoot);
 				}
-
-				return { success: true, cleanedTaskIds };
 			} catch (error) {
 				throw markRecordAlreadyMoved(error, "archiveState");
 			}
+			return true;
 		});
 	}
 
@@ -3447,36 +3439,6 @@ export class Core {
 		}
 
 		return result;
-	}
-
-	async completeTask(taskId: string, autoCommit?: boolean, options: TaskReadOptions = {}): Promise<boolean> {
-		const task = await this.loadTaskForMutation(taskId, options);
-		if (!task) return false;
-		// Get paths before moving the file
-		const completedDir = this.fs.completedDir;
-		const taskPath = task.filePath ?? (await getTaskPath(task.id, this));
-		const taskFilename = taskPath ? basename(taskPath) : null;
-
-		if (!taskPath || !taskFilename) return false;
-
-		const fromPath = taskPath;
-		const toPath = join(completedDir, taskFilename);
-
-		try {
-			await mkdir(dirname(toPath), { recursive: true });
-			await moveFile(fromPath, toPath);
-		} catch {
-			return false;
-		}
-		this.contentStore?.transitionTask(task.id, { ...task, filePath: toPath, source: "completed" });
-
-		if (await this.shouldAutoCommit(autoCommit)) {
-			// Stage the file move for proper Git tracking
-			const repoRoot = await this.git.stageFileMove(fromPath, toPath);
-			await this.git.commitFiles(`backlog: Complete task ${task.id}`, [fromPath, toPath], repoRoot);
-		}
-
-		return true;
 	}
 
 	async getTerminalStatusTasksByAge(olderThanDays: number): Promise<Task[]> {
@@ -3960,7 +3922,7 @@ export class Core {
 	async editTaskInTui(taskId: string, screen: BlessedScreen, selectedTask?: Task): Promise<TuiTaskEditResult> {
 		const contextualTask = selectedTask && taskIdsEqual(selectedTask.id, taskId) ? selectedTask : undefined;
 
-		if (contextualTask && (!isLocalEditableTask(contextualTask) || contextualTask.branch)) {
+		if (contextualTask && isReadOnlyInTui(contextualTask)) {
 			return { changed: false, task: contextualTask, reason: "read_only" };
 		}
 
@@ -3978,7 +3940,7 @@ export class Core {
 		if (!resolvedTask) {
 			return { changed: false, reason: "not_found" };
 		}
-		if (!isLocalEditableTask(resolvedTask) || resolvedTask.branch) {
+		if (isReadOnlyInTui(resolvedTask)) {
 			return { changed: false, task: resolvedTask, reason: "read_only" };
 		}
 
@@ -4221,7 +4183,7 @@ export class Core {
 		const statuses = (config?.statuses || DEFAULT_STATUSES) as string[];
 		const priorities = config?.priorities ?? [];
 		if (!snapshot.identityIndex) throw new Error("Task corpus identity index was not initialized");
-		const tasks = snapshot.identityIndex.getTasks(true);
+		const tasks = selectStatisticsTasks(snapshot.identityIndex.getTasks(true), statuses);
 
 		// Load drafts
 		progressCallback?.("Loading drafts...");
@@ -4237,13 +4199,13 @@ export class Core {
 	async loadTasks(
 		progressCallback?: (msg: string) => void,
 		abortSignal?: AbortSignal,
-		options?: { includeCompleted?: boolean },
+		options?: { includeArchived?: boolean },
 	): Promise<Task[]> {
 		return (
 			await this.loadTasksWithStableBranchSnapshot({
 				progressCallback,
 				abortSignal,
-				includeCompleted: options?.includeCompleted,
+				includeArchived: options?.includeArchived,
 			})
 		).tasks;
 	}
@@ -4254,8 +4216,8 @@ export class Core {
 	): Promise<TaskCorpusSnapshot> {
 		return await this.loadTasksWithStableBranchSnapshot({
 			progressCallback,
-			includeCompleted: true,
-			visibleCompleted: false,
+			includeArchived: true,
+			visibleArchived: false,
 			publishSharedState: options?.publishSharedState,
 		});
 	}
@@ -4270,14 +4232,14 @@ export class Core {
 		options?: { publish?: boolean },
 	): Promise<TaskCorpusSnapshot> {
 		if (Object.hasOwn(this, "loadTasks")) {
-			const [activeTasks, completedTasks, config] = await Promise.all([
+			const [activeTasks, archivedTasks, config] = await Promise.all([
 				this.loadTasks(progressCallback),
-				this.fs.listCompletedTasks(),
+				this.fs.listArchivedTasks(),
 				this.fs.loadConfig(),
 			]);
 			const identityIndex = await this.buildTaskIdentityIndex(
 				activeTasks,
-				completedTasks,
+				archivedTasks,
 				[],
 				config?.statuses ?? [...DEFAULT_STATUSES],
 				config?.taskResolutionStrategy ?? "most_progressed",
@@ -4285,7 +4247,7 @@ export class Core {
 			return {
 				tasks: identityIndex.getTasks(false),
 				activeTasks,
-				completedTasks,
+				archivedTasks,
 				identityIndex,
 				branchStateEntries: [],
 				config,
@@ -4337,7 +4299,7 @@ export class Core {
 		if (projectChanged()) return await retryForCurrentProject();
 		const statuses = config?.statuses || [...DEFAULT_STATUSES];
 		const resolutionStrategy = config?.taskResolutionStrategy || "most_progressed";
-		const includeCompleted = options.includeCompleted ?? false;
+		const includeArchived = options.includeArchived ?? false;
 		const shouldLoadBranches = config?.checkActiveBranches !== false && config?.filesystemOnly !== true;
 
 		// Check for cancellation
@@ -4346,9 +4308,9 @@ export class Core {
 		}
 
 		// Load local filesystem tasks first (needed for optimization)
-		const [localTasks, completedTasks] = await Promise.all([
+		const [localTasks, archivedTasks] = await Promise.all([
 			this.listTasksWithMetadata(false, filesystem, git),
-			filesystem.listCompletedTasks(),
+			filesystem.listArchivedTasks(),
 		]);
 		if (projectChanged()) return await retryForCurrentProject();
 
@@ -4370,7 +4332,7 @@ export class Core {
 				snapshotBefore.branchTips,
 				config,
 				localTasks,
-				includeCompleted,
+				includeArchived,
 				backlogDir,
 				progressCallback,
 				snapshotBefore.currentBranch,
@@ -4395,7 +4357,7 @@ export class Core {
 		}
 		const identityIndex = await this.buildTaskIdentityIndex(
 			localTasks,
-			completedTasks,
+			archivedTasks,
 			branchStateEntries,
 			statuses,
 			resolutionStrategy,
@@ -4404,7 +4366,7 @@ export class Core {
 			git,
 		);
 		if (projectChanged()) return await retryForCurrentProject();
-		const filteredTasks = identityIndex.getTasks(options.visibleCompleted ?? includeCompleted);
+		const filteredTasks = identityIndex.getTasks(options.visibleArchived ?? includeArchived);
 
 		// This read must begin after this scan finishes. Reusing an unrelated
 		// in-flight pre-scan snapshot could otherwise publish a generation that
@@ -4435,7 +4397,7 @@ export class Core {
 		return {
 			tasks: filteredTasks,
 			activeTasks: localTasks,
-			completedTasks,
+			archivedTasks,
 			identityIndex,
 			branchStateEntries,
 			config,

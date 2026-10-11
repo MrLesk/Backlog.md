@@ -113,38 +113,59 @@ describe("BacklogServer cleanup endpoints", () => {
 		const activeTasks = await core.filesystem.listTasks();
 		expect(activeTasks.map((task) => task.id)).toEqual(["TASK-2"]);
 
-		const completedTasks = await core.filesystem.listCompletedTasks();
-		expect(completedTasks.map((task) => task.id)).toEqual(["TASK-1"]);
+		const archivedTasks = await core.filesystem.listArchivedTasks();
+		expect(archivedTasks.map((task) => task.id)).toEqual(["TASK-1"]);
 	});
 
-	it("rejects archiving final-status work and preserves its record and incoming links", async () => {
+	it("archives final-status work, keeps its ID and status, and preserves incoming links", async () => {
 		await core.updateTaskFromInput("TASK-2", { dependencies: ["TASK-1"], references: ["TASK-1"] }, false);
-		const response = await fetch(`http://127.0.0.1:${serverPort}/api/tasks/TASK-1`, { method: "DELETE" });
-		expect(response.status).toBe(400);
-		const result = (await response.json()) as { error: string };
-		expect(result.error).toContain("Task TASK-1 is Closed. Use Complete");
-		expect((await core.filesystem.loadTask("TASK-1"))?.status).toBe("Closed");
+
+		const result = await fetchJson<{ success: boolean }>("/api/tasks/TASK-1/archive", { method: "POST" });
+
+		expect(result).toEqual({ success: true });
+		expect(await core.filesystem.loadTask("TASK-1")).toBeNull();
+		expect((await core.filesystem.listArchivedTasks()).map((task) => [task.id, task.status])).toEqual([
+			["TASK-1", "Closed"],
+		]);
 		const dependent = await core.filesystem.loadTask("TASK-2");
 		expect(dependent?.dependencies).toEqual(["TASK-1"]);
 		expect(dependent?.references).toEqual(["TASK-1"]);
-		expect(await core.filesystem.listArchivedTasks()).toEqual([]);
-
-		await fetchJson("/api/tasks/TASK-1/complete", { method: "POST" });
-		expect(await core.filesystem.loadTask("TASK-1")).toBeNull();
-		expect((await core.filesystem.listCompletedTasks()).map((task) => task.id)).toEqual(["TASK-1"]);
-		expect((await core.filesystem.loadTask("TASK-2"))?.dependencies).toEqual(["TASK-1"]);
 	});
 
-	it("archives nonfinal work and cleans incoming links", async () => {
+	it("archives nonfinal work without rewriting the tasks that link to it", async () => {
 		await core.updateTaskFromInput("TASK-1", { dependencies: ["TASK-2"], references: ["TASK-2"] }, false);
-		const result = await fetchJson<{ success: boolean; cleanedTaskIds: string[] }>("/api/tasks/TASK-2", {
-			method: "DELETE",
-		});
-		expect(result).toEqual({ success: true, cleanedTaskIds: ["TASK-1"] });
+
+		const result = await fetchJson<{ success: boolean }>("/api/tasks/TASK-2/archive", { method: "POST" });
+
+		expect(result).toEqual({ success: true });
 		expect(await core.filesystem.loadTask("TASK-2")).toBeNull();
 		expect((await core.filesystem.listArchivedTasks()).map((task) => task.id)).toEqual(["TASK-2"]);
 		const dependent = await core.filesystem.loadTask("TASK-1");
-		expect(dependent?.dependencies).toEqual([]);
-		expect(dependent?.references).toEqual([]);
+		expect(dependent?.dependencies).toEqual(["TASK-2"]);
+		expect(dependent?.references).toEqual(["TASK-2"]);
+	});
+
+	it("refuses to archive or edit an archived task and has no complete or delete route", async () => {
+		await fetchJson("/api/tasks/TASK-1/archive", { method: "POST" });
+
+		const again = await fetch(`http://127.0.0.1:${serverPort}/api/tasks/TASK-1/archive`, { method: "POST" });
+		expect(again.status).toBe(400);
+		expect(((await again.json()) as { error: string }).error).toBe(
+			"Task TASK-1 is archived. Archived tasks are read-only.",
+		);
+
+		const edit = await fetch(`http://127.0.0.1:${serverPort}/api/tasks/TASK-1`, {
+			method: "PUT",
+			headers: { "Content-Type": "application/json" },
+			body: JSON.stringify({ title: "Must not change" }),
+		});
+		expect(edit.status).toBe(400);
+		expect(((await edit.json()) as { error: string }).error).toContain("Task TASK-1 is archived.");
+
+		const complete = await fetch(`http://127.0.0.1:${serverPort}/api/tasks/TASK-2/complete`, { method: "POST" });
+		expect(complete.ok).toBe(false);
+		const remove = await fetch(`http://127.0.0.1:${serverPort}/api/tasks/TASK-2`, { method: "DELETE" });
+		expect(remove.ok).toBe(false);
+		expect((await core.filesystem.loadTask("TASK-2"))?.status).toBe("Done");
 	});
 });

@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import { utimes } from "node:fs/promises";
 import { join } from "node:path";
 import { $ } from "bun";
-import { Core } from "../core/backlog.ts";
+import { Core, TaskArchivedError } from "../core/backlog.ts";
 import { serializeTask } from "../markdown/serializer.ts";
 import type { Document, Task } from "../types/index.ts";
 import { AmbiguousTaskIdError } from "../utils/task-path.ts";
@@ -120,7 +120,7 @@ describe("Core", () => {
 				.quiet();
 
 			await $`git switch -c ${`${type}-task-variant`}`.cwd(TEST_DIR).quiet();
-			const destinationDir = type === "archived" ? core.filesystem.archiveTasksDir : core.filesystem.completedDir;
+			const destinationDir = type === "archived" ? core.filesystem.archiveTasksDir : core.filesystem.archiveTasksDir;
 			const destinationPath = join(destinationDir, "back-1 - Local-task-version.md");
 			await $`git mv -- ${taskPath} ${destinationPath}`.cwd(TEST_DIR).quiet();
 			const lifecycleDate = recentCommitDate(1);
@@ -173,39 +173,43 @@ describe("Core", () => {
 			expect(lastCommit.length).toBeGreaterThan(0);
 		});
 
-		it("reads a completed-only task while keeping it unavailable to mutations", async () => {
+		it("reads an archived task while keeping it read-only", async () => {
 			await core.createTask(sampleTask, false);
-			expect(await core.filesystem.completeTask(sampleTask.id)).toBe(true);
+			expect(await core.archiveTask(sampleTask.id, false)).toBe(true);
 
-			const completed = await core.getTask(sampleTask.id);
+			const archived = await core.getTask(sampleTask.id);
 
-			expect(completed?.id).toBe("TASK-1");
-			expect(completed?.source).toBe("completed");
-			await expect(core.updateTaskFromInput(sampleTask.id, { title: "Must not change" }, false)).rejects.toThrow(
-				"Task not found",
+			expect(archived?.id).toBe("TASK-1");
+			expect(archived?.source).toBe("archived");
+			await expect(core.updateTaskFromInput(sampleTask.id, { title: "Must not change" }, false)).rejects.toBeInstanceOf(
+				TaskArchivedError,
 			);
+			await expect(core.archiveTask(sampleTask.id, false)).rejects.toThrow(
+				"Task TASK-1 is archived. Archived tasks are read-only.",
+			);
+			expect(await Bun.file(archived?.filePath ?? "").text()).not.toContain("Must not change");
 		});
 
-		it("refreshes one coherent active and completed identity snapshot before mutation", async () => {
+		it("refreshes one coherent active and archived identity snapshot before mutation", async () => {
 			await core.createTask(sampleTask, false);
 			await core.getContentStore();
 
 			const activePath = (await core.filesystem.loadTask(sampleTask.id))?.filePath;
 			if (!activePath) throw new Error("Expected active task path");
-			const completedPath = join(core.filesystem.completedDir, "task-01 - Completed collision.md");
-			await Bun.write(completedPath, serializeTask({ ...sampleTask, id: "TASK-01", title: "Completed collision" }));
+			const archivedPath = join(core.filesystem.archiveTasksDir, "task-01 - Archived collision.md");
+			await Bun.write(archivedPath, serializeTask({ ...sampleTask, id: "TASK-01", title: "Archived collision" }));
 
 			const originalListTasks = core.filesystem.listTasks.bind(core.filesystem);
-			const originalListCompletedTasks = core.filesystem.listCompletedTasks.bind(core.filesystem);
+			const originalListArchivedTasks = core.filesystem.listArchivedTasks.bind(core.filesystem);
 			let activeLoads = 0;
-			let completedLoads = 0;
+			let archivedLoads = 0;
 			core.filesystem.listTasks = async (...args) => {
 				activeLoads += 1;
 				return await originalListTasks(...args);
 			};
-			core.filesystem.listCompletedTasks = async (...args) => {
-				completedLoads += 1;
-				return await originalListCompletedTasks(...args);
+			core.filesystem.listArchivedTasks = async (...args) => {
+				archivedLoads += 1;
+				return await originalListArchivedTasks(...args);
 			};
 
 			try {
@@ -214,49 +218,18 @@ describe("Core", () => {
 				).rejects.toBeInstanceOf(AmbiguousTaskIdError);
 			} finally {
 				core.filesystem.listTasks = originalListTasks;
-				core.filesystem.listCompletedTasks = originalListCompletedTasks;
+				core.filesystem.listArchivedTasks = originalListArchivedTasks;
 			}
 
 			expect(activeLoads).toBe(1);
-			expect(completedLoads).toBe(1);
+			expect(archivedLoads).toBe(1);
 			expect(await Bun.file(activePath).text()).not.toContain("Must not change");
-		});
-
-		it("publishes completed lifecycle identity state atomically", async () => {
-			await core.createTask(sampleTask, false);
-			const store = await core.getContentStore();
-			const observed: Array<{
-				read: string;
-				mutation: string;
-				active: string[];
-				completed: string[];
-			}> = [];
-			const unsubscribe = store.subscribe((event) => {
-				if (event.type !== "tasks") return;
-				const snapshot = store.getTaskCorpusSnapshot();
-				observed.push({
-					read: store.resolveTaskForRead(sampleTask.id).status,
-					mutation: store.resolveTaskForMutation(sampleTask.id).status,
-					active: snapshot.activeTasks.map((task) => task.id),
-					completed: snapshot.completedTasks.map((task) => task.id),
-				});
-			});
-
-			expect(await core.completeTask(sampleTask.id, false)).toBe(true);
-			unsubscribe();
-
-			expect(observed[0]).toEqual({
-				read: "found",
-				mutation: "not-found",
-				active: [],
-				completed: ["TASK-1"],
-			});
 		});
 
 		it("publishes archived lifecycle identity state atomically", async () => {
 			await core.createTask(sampleTask, false);
 			const store = await core.getContentStore();
-			const observed: Array<{ read: string; mutation: string; active: string[]; completed: string[] }> = [];
+			const observed: Array<{ read: string; mutation: string; active: string[]; archived: string[] }> = [];
 			const unsubscribe = store.subscribe((event) => {
 				if (event.type !== "tasks") return;
 				const snapshot = store.getTaskCorpusSnapshot();
@@ -264,24 +237,14 @@ describe("Core", () => {
 					read: store.resolveTaskForRead(sampleTask.id).status,
 					mutation: store.resolveTaskForMutation(sampleTask.id).status,
 					active: snapshot.activeTasks.map((task) => task.id),
-					completed: snapshot.completedTasks.map((task) => task.id),
+					archived: snapshot.archivedTasks.map((task) => task.id),
 				});
 			});
 
-			expect((await core.archiveTask(sampleTask.id, false)).success).toBe(true);
+			expect(await core.archiveTask(sampleTask.id, false)).toBe(true);
 			unsubscribe();
 
-			expect(observed[0]).toEqual({ read: "not-found", mutation: "not-found", active: [], completed: [] });
-		});
-
-		it("completes the exact resolved path when the frontmatter ID differs from the filename", async () => {
-			const taskPath = join(core.filesystem.tasksDir, "task-999 - Exact-path.md");
-			await Bun.write(taskPath, serializeTask({ ...sampleTask, id: "TASK-1", status: "Done" }));
-			await core.getContentStore();
-
-			expect(await core.completeTask("TASK-1", false)).toBe(true);
-			expect(await Bun.file(taskPath).exists()).toBe(false);
-			expect(await Bun.file(join(core.filesystem.completedDir, "task-999 - Exact-path.md")).exists()).toBe(true);
+			expect(observed[0]).toEqual({ read: "found", mutation: "archived", active: [], archived: ["TASK-1"] });
 		});
 
 		it("archives the exact resolved path when the frontmatter ID differs from the filename", async () => {
@@ -289,7 +252,7 @@ describe("Core", () => {
 			await Bun.write(taskPath, serializeTask({ ...sampleTask, id: "TASK-1" }));
 			await core.getContentStore();
 
-			expect((await core.archiveTask("TASK-1", false)).success).toBe(true);
+			expect(await core.archiveTask("TASK-1", false)).toBe(true);
 			expect(await Bun.file(taskPath).exists()).toBe(false);
 			expect(await Bun.file(join(core.filesystem.archiveTasksDir, "task-999 - Exact-path.md")).exists()).toBe(true);
 		});
@@ -320,8 +283,7 @@ describe("Core", () => {
 		it("should archive task with auto-commit", async () => {
 			await core.createTask(sampleTask, true);
 
-			const archived = await core.archiveTask("task-1", true);
-			expect(archived.success).toBe(true);
+			expect(await core.archiveTask("task-1", true)).toBe(true);
 
 			const lastCommit = await core.gitOps.getLastCommitMessage();
 			expect(lastCommit).toContain("backlog: Archive task TASK-1");
@@ -523,7 +485,7 @@ describe("Core", () => {
 			await $`git switch main`.cwd(TEST_DIR).quiet();
 			await $`git switch -c exact-id-completed`.cwd(TEST_DIR).quiet();
 			await Bun.write(
-				join(core.filesystem.completedDir, "back-1 - Completed-branch-identity.md"),
+				join(core.filesystem.archiveTasksDir, "back-1 - Completed-branch-identity.md"),
 				serializeTask({
 					...sampleTask,
 					id: "BACK-1",
@@ -535,7 +497,7 @@ describe("Core", () => {
 			await $`git commit -m "Add completed branch identity"`.cwd(TEST_DIR).quiet();
 			await $`git switch main`.cwd(TEST_DIR).quiet();
 
-			const included = await core.loadTasks(undefined, undefined, { includeCompleted: true });
+			const included = await core.loadTasks(undefined, undefined, { includeArchived: true });
 			expect(included.map((task) => task.title).sort()).toEqual([
 				"Active branch identity",
 				"Completed branch identity",
@@ -669,7 +631,7 @@ describe("Core", () => {
 				id: "TASK-1",
 				title: "Active identity",
 			});
-			const completedPath = join(core.filesystem.completedDir, "task-001 - Completed-identity.md");
+			const completedPath = join(core.filesystem.archiveTasksDir, "task-001 - Completed-identity.md");
 			await Bun.write(
 				completedPath,
 				serializeTask({
@@ -680,7 +642,7 @@ describe("Core", () => {
 				}),
 			);
 
-			const tasks = await core.loadTasks(undefined, undefined, { includeCompleted: true });
+			const tasks = await core.loadTasks(undefined, undefined, { includeArchived: true });
 			expect(tasks.map((task) => task.title).sort()).toEqual(["Active identity", "Completed identity"]);
 			expect((await core.loadTasks()).map((task) => task.title)).toEqual(["Active identity"]);
 			const statisticsTasks = (await core.loadAllTasksForStatistics()).tasks;
@@ -743,7 +705,7 @@ describe("Core", () => {
 		it("keeps the working-copy task active when a branch completes the same padded identity path", async () => {
 			await commitPaddedTaskLifecycleVariant("completed");
 
-			const tasks = await core.loadTasks(undefined, undefined, { includeCompleted: true });
+			const tasks = await core.loadTasks(undefined, undefined, { includeArchived: true });
 			const task = tasks.find((candidate) => candidate.id === "BACK-1" || candidate.id === "BACK-001");
 			expect(task?.id).toBe("BACK-1");
 			expect(task?.source).toBe("local");
@@ -922,8 +884,7 @@ describe("Core", () => {
 		});
 
 		it("should return false when archiving non-existent task", async () => {
-			const archived = await core.archiveTask("non-existent", true);
-			expect(archived.success).toBe(false);
+			expect(await core.archiveTask("non-existent", true)).toBe(false);
 		});
 
 		it("should apply default status when task has empty status", async () => {

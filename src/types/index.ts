@@ -82,7 +82,7 @@ export interface Task {
 	filePath?: string;
 	// Metadata fields
 	lastModified?: Date;
-	source?: "local" | "remote" | "completed" | "local-branch";
+	source?: "local" | "remote" | "archived" | "local-branch";
 	/** Optional per-task callback command to run on status change (overrides global config) */
 	onStatusChange?: string;
 }
@@ -106,10 +106,11 @@ export interface MilestoneSummary {
 }
 
 /**
- * Check if a task is locally editable (not from a remote or other local branch)
+ * Check if a task belongs to the local working copy (not read from a remote or other local branch).
+ * Archived tasks are local as well; core refuses to change them because they are read-only.
  */
 export function isLocalEditableTask(task: Task): boolean {
-	return task.source === undefined || task.source === "local" || task.source === "completed";
+	return task.source === undefined || task.source === "local" || task.source === "archived";
 }
 
 export interface TaskCreateInput {

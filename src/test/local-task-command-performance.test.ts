@@ -132,11 +132,11 @@ describe("local task command performance boundaries", () => {
 		}
 	});
 
-	it("archives, completes, and demotes working-copy tasks without loading branches", async () => {
+	it("archives and demotes working-copy tasks without loading branches", async () => {
 		const tripwires = installCrossBranchTripwires(core);
 		try {
-			expect((await core.archiveTask("TASK-1", false, { includeCrossBranch: false })).success).toBe(true);
-			expect(await core.completeTask("TASK-1.1", false, { includeCrossBranch: false })).toBe(true);
+			expect(await core.archiveTask("TASK-1", false, { includeCrossBranch: false })).toBe(true);
+			expect(await core.archiveTask("TASK-1.1", false, { includeCrossBranch: false })).toBe(true);
 			expect((await core.demoteTask("TASK-2", false, { includeCrossBranch: false })).success).toBe(true);
 			tripwires.expectUntouched();
 		} finally {
@@ -164,7 +164,6 @@ describe("local task command performance boundaries", () => {
 			.nothrow()
 			.quiet();
 		const archive = await $`bun ${CLI_PATH} task archive TASK-99`.cwd(testDir).nothrow().quiet();
-		const complete = await $`bun ${CLI_PATH} task complete TASK-99`.cwd(testDir).nothrow().quiet();
 		const demote = await $`bun ${CLI_PATH} task demote TASK-99`.cwd(testDir).nothrow().quiet();
 		const parentFilter = await $`bun ${CLI_PATH} task list --parent TASK-99 --plain`.cwd(testDir).nothrow().quiet();
 		const parentCreate = await $`bun ${CLI_PATH} task create ${"Child of a branch task"} --parent TASK-99`
@@ -180,21 +179,11 @@ describe("local task command performance boundaries", () => {
 			`${result.stdout.toString()}${result.stderr.toString()}`;
 		// Every local miss names the working copy as the corpus it searched, so a task parked on
 		// another branch reads as scope rather than as a missing task.
-		for (const result of [
-			view,
-			shorthand,
-			edit,
-			archive,
-			complete,
-			demote,
-			parentFilter,
-			parentCreate,
-			dependencyEdit,
-		]) {
+		for (const result of [view, shorthand, edit, archive, demote, parentFilter, parentCreate, dependencyEdit]) {
 			expect(result.exitCode).not.toBe(0);
 			expect(outputOf(result)).toContain(LOCAL_TASK_LOOKUP_HINT);
 		}
-		for (const result of [view, shorthand, edit, archive, complete, demote]) {
+		for (const result of [view, shorthand, edit, archive, demote]) {
 			expect(outputOf(result)).toContain("Task TASK-99 not found.");
 		}
 		for (const result of [parentFilter, parentCreate]) {
@@ -246,7 +235,7 @@ describe("local task command performance boundaries", () => {
 
 	it("fails closed on ambiguous parent and dependency identities without loading branches", async () => {
 		await Bun.write(
-			join(core.filesystem.completedDir, "task-02 - Completed-collision.md"),
+			join(core.filesystem.archiveTasksDir, "task-02 - Completed-collision.md"),
 			serializeTask({
 				...parentTask,
 				id: "TASK-02",
@@ -290,7 +279,7 @@ describe("local task command performance boundaries", () => {
 
 	it("fails closed on a working-copy active/completed identity collision without loading branches", async () => {
 		await Bun.write(
-			join(core.filesystem.completedDir, "task-01 - Completed-collision.md"),
+			join(core.filesystem.archiveTasksDir, "task-01 - Completed-collision.md"),
 			serializeTask({
 				...parentTask,
 				id: "TASK-01",
@@ -314,7 +303,7 @@ describe("local task command performance boundaries", () => {
 			await expect(core.archiveTask(parentTask.id, false, { includeCrossBranch: false })).rejects.toBeInstanceOf(
 				AmbiguousTaskIdError,
 			);
-			await expect(core.completeTask(parentTask.id, false, { includeCrossBranch: false })).rejects.toBeInstanceOf(
+			await expect(core.archiveTask(parentTask.id, false, { includeCrossBranch: false })).rejects.toBeInstanceOf(
 				AmbiguousTaskIdError,
 			);
 			await expect(core.demoteTask(parentTask.id, false, { includeCrossBranch: false })).rejects.toBeInstanceOf(

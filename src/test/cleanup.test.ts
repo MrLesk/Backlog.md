@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
-import { mkdir } from "node:fs/promises";
+import { mkdir, stat } from "node:fs/promises";
 import { join } from "node:path";
 import { $ } from "bun";
 import { Core } from "../core/backlog.ts";
@@ -40,12 +40,14 @@ describe("Cleanup functionality", () => {
 	});
 
 	describe("Core functionality", () => {
-		it("should create completed directory in backlog structure", async () => {
+		it("creates the archive folder, and no completed folder, in the backlog structure", async () => {
 			await core.filesystem.ensureBacklogStructure();
-			expect(core.filesystem.completedDir).toBe(join(TEST_DIR, "backlog", "completed"));
+			expect(core.filesystem.archiveTasksDir).toBe(join(TEST_DIR, "backlog", "archive", "tasks"));
+			expect((await stat(core.filesystem.archiveTasksDir)).isDirectory()).toBe(true);
+			expect(await stat(join(TEST_DIR, "backlog", "completed")).catch(() => null)).toBeNull();
 		});
 
-		it("should move Done task to completed folder", async () => {
+		it("should move a Done task into the archive", async () => {
 			// Create a task
 			await core.createTask(sampleTask, false);
 
@@ -54,22 +56,21 @@ describe("Cleanup functionality", () => {
 			expect(activeTasks).toHaveLength(1);
 			expect(activeTasks[0]?.id).toBe("TASK-1");
 
-			// Move to completed
-			const success = await core.completeTask("task-1", false);
+			const success = await core.archiveTask("task-1", false);
 			expect(success).toBe(true);
 
 			// Verify task is no longer in active tasks
 			const activeTasksAfter = await core.filesystem.listTasks();
 			expect(activeTasksAfter).toHaveLength(0);
 
-			// Verify task is in completed tasks
-			const completedTasks = await core.filesystem.listCompletedTasks();
-			expect(completedTasks).toHaveLength(1);
-			expect(completedTasks[0]?.id).toBe("TASK-1");
-			expect(completedTasks[0]?.title).toBe("Test Task");
+			// Verify task is in the archive, with its ID
+			const archivedTasks = await core.filesystem.listArchivedTasks();
+			expect(archivedTasks).toHaveLength(1);
+			expect(archivedTasks[0]?.id).toBe("TASK-1");
+			expect(archivedTasks[0]?.title).toBe("Test Task");
 		});
 
-		it("allows core completion callers to move active tasks into completed", async () => {
+		it("archives a task that is not in the final status", async () => {
 			await core.createTask(
 				{
 					...sampleTask,
@@ -80,14 +81,14 @@ describe("Cleanup functionality", () => {
 				false,
 			);
 
-			const success = await core.completeTask("task-2", false);
+			const success = await core.archiveTask("task-2", false);
 			expect(success).toBe(true);
 			expect(await core.filesystem.loadTask("task-2")).toBeNull();
 
-			const completedTasks = await core.filesystem.listCompletedTasks();
-			expect(completedTasks).toHaveLength(1);
-			expect(completedTasks[0]?.id).toBe("TASK-2");
-			expect(completedTasks[0]?.status).toBe("Not Done");
+			const archivedTasks = await core.filesystem.listArchivedTasks();
+			expect(archivedTasks).toHaveLength(1);
+			expect(archivedTasks[0]?.id).toBe("TASK-2");
+			expect(archivedTasks[0]?.status).toBe("Not Done");
 		});
 	});
 
@@ -294,13 +295,13 @@ describe("Cleanup functionality", () => {
 
 	describe("Error handling", () => {
 		it("should handle non-existent task gracefully", async () => {
-			const success = await core.completeTask("non-existent", false);
+			const success = await core.archiveTask("non-existent", false);
 			expect(success).toBe(false);
 		});
 
-		it("should return empty array for listCompletedTasks when no completed tasks exist", async () => {
-			const completedTasks = await core.filesystem.listCompletedTasks();
-			expect(completedTasks).toHaveLength(0);
+		it("should return empty array for listArchivedTasks when no archived tasks exist", async () => {
+			const archivedTasks = await core.filesystem.listArchivedTasks();
+			expect(archivedTasks).toHaveLength(0);
 		});
 	});
 });

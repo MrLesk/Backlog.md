@@ -32,11 +32,7 @@ import { openTaskComposer, type TaskComposerOptions } from "./components/task-co
 import { formatFooterContent, getBoardFooterContent } from "./footer-content.ts";
 import { formatProjectBadge } from "./project.ts";
 import { getStatusIcon } from "./status-icon.ts";
-import {
-	completeTaskFromTui,
-	formatTaskArchivedMessage,
-	formatTaskCompletionBlockedMessage,
-} from "./task-lifecycle.ts";
+import { archiveTaskFromTui, formatArchiveConfirmation } from "./task-lifecycle.ts";
 import { formatTaskTypeBadge } from "./task-type.ts";
 import {
 	createTaskPopup,
@@ -1567,43 +1563,6 @@ export async function renderBoardTui(
 				}
 			});
 
-			contentArea.key(["c", "C"], async () => {
-				if (task.branch) {
-					showTransientFooter(` {red-fg}Cannot complete task from branch "${task.branch}".{/}`);
-					return;
-				}
-
-				const confirmed = await runWithModalGuard(() =>
-					openConfirmPopup({
-						screen,
-						title: "Move to Completed",
-						message: `Move {bold}${task.id}{/bold} to completed?\nRemoves from board; keeps record\nand dependency links.`,
-					}),
-				);
-
-				if (confirmed) {
-					try {
-						const core = await getCore();
-						const result = await completeTaskFromTui(core, task);
-
-						if (result.success) {
-							currentTasks = currentTasks.filter((t) => t.id !== task.id);
-							showTransientFooter(` {green-fg}Moved ${task.id} to completed{/}`);
-							closeOpenPopup();
-							renderView();
-						} else if (result.reason === "not-terminal") {
-							showTransientFooter(` {red-fg}${formatTaskCompletionBlockedMessage(task.id, result.terminalStatus)}{/}`);
-						} else {
-							showTransientFooter(` {red-fg}Failed to complete ${task.id}{/}`);
-						}
-					} catch (error) {
-						showTransientFooter(
-							` {red-fg}Error completing task: ${error instanceof Error ? error.message : "Unknown error"}{/}`,
-						);
-					}
-				}
-			});
-
 			contentArea.key(["a", "A"], async () => {
 				if (task.branch) {
 					showTransientFooter(` {red-fg}Cannot archive task from branch "${task.branch}".{/}`);
@@ -1611,22 +1570,14 @@ export async function renderBoardTui(
 				}
 
 				const confirmed = await runWithModalGuard(() =>
-					openConfirmPopup({
-						screen,
-						title: "Archive Task",
-						message: `Archive {bold}${task.id}{/bold}?\nCanceled, duplicate, or invalid work.\nRemoves incoming task links.`,
-					}),
+					openConfirmPopup({ screen, title: "Archive Task", message: formatArchiveConfirmation(task.id) }),
 				);
 
 				if (confirmed) {
 					try {
-						const core = await getCore();
-						const config = await core.fs.loadConfig();
-						const { success, cleanedTaskIds } = await core.archiveTask(task.id, config?.autoCommit ?? false);
-
-						if (success) {
+						if (await archiveTaskFromTui(await getCore(), task)) {
 							currentTasks = currentTasks.filter((t) => t.id !== task.id);
-							showTransientFooter(` {green-fg}${formatTaskArchivedMessage(task.id, cleanedTaskIds)}{/}`);
+							showTransientFooter(` {green-fg}Archived ${task.id}{/}`);
 							closeOpenPopup();
 							renderView();
 						} else {
@@ -2068,49 +2019,6 @@ export async function renderBoardTui(
 			}
 		});
 
-		screen.key(["c", "C"], async () => {
-			if (popupOpen || filterPopupOpen || modalOpen || currentFocus === "filters" || moveOp) return;
-			const column = columns[currentCol];
-			if (!column) return;
-			const idx = column.list.selected ?? 0;
-			const task = column.tasks[idx];
-			if (!task) return;
-
-			if (task.branch) {
-				showTransientFooter(` {red-fg}Cannot complete task from branch "${task.branch}".{/}`);
-				return;
-			}
-
-			const confirmed = await runWithModalGuard(() =>
-				openConfirmPopup({
-					screen,
-					title: "Move to Completed",
-					message: `Move {bold}${task.id}{/bold} to completed?\nRemoves from board; keeps record\nand dependency links.`,
-				}),
-			);
-
-			if (confirmed) {
-				try {
-					const core = await getCore();
-					const result = await completeTaskFromTui(core, task);
-
-					if (result.success) {
-						currentTasks = currentTasks.filter((t) => t.id !== task.id);
-						showTransientFooter(` {green-fg}Moved ${task.id} to completed{/}`);
-						renderView();
-					} else if (result.reason === "not-terminal") {
-						showTransientFooter(` {red-fg}${formatTaskCompletionBlockedMessage(task.id, result.terminalStatus)}{/}`);
-					} else {
-						showTransientFooter(` {red-fg}Failed to complete ${task.id}{/}`);
-					}
-				} catch (error) {
-					showTransientFooter(
-						` {red-fg}Error completing task: ${error instanceof Error ? error.message : "Unknown error"}{/}`,
-					);
-				}
-			}
-		});
-
 		screen.key(["a", "A"], async () => {
 			if (popupOpen || filterPopupOpen || modalOpen || currentFocus === "filters" || moveOp) return;
 			const column = columns[currentCol];
@@ -2125,22 +2033,14 @@ export async function renderBoardTui(
 			}
 
 			const confirmed = await runWithModalGuard(() =>
-				openConfirmPopup({
-					screen,
-					title: "Archive Task",
-					message: `Archive {bold}${task.id}{/bold}?\nCanceled, duplicate, or invalid work.\nRemoves incoming task links.`,
-				}),
+				openConfirmPopup({ screen, title: "Archive Task", message: formatArchiveConfirmation(task.id) }),
 			);
 
 			if (confirmed) {
 				try {
-					const core = await getCore();
-					const config = await core.fs.loadConfig();
-					const { success, cleanedTaskIds } = await core.archiveTask(task.id, config?.autoCommit ?? false);
-
-					if (success) {
+					if (await archiveTaskFromTui(await getCore(), task)) {
 						currentTasks = currentTasks.filter((t) => t.id !== task.id);
-						showTransientFooter(` {green-fg}${formatTaskArchivedMessage(task.id, cleanedTaskIds)}{/}`);
+						showTransientFooter(` {green-fg}Archived ${task.id}{/}`);
 						renderView();
 					} else {
 						showTransientFooter(` {red-fg}Failed to archive ${task.id}{/}`);

@@ -11,7 +11,8 @@ export { canonicalTaskId, normalizeTaskId, taskIdsEqual } from "./task-id.ts";
 interface TaskPathContext {
 	filesystem: {
 		tasksDir: string;
-		completedDir?: string;
+		/** Directories archived tasks are read from; omit to resolve against active tasks only. */
+		archivedTaskDirs?: string[];
 	};
 }
 
@@ -79,12 +80,14 @@ export function extractTaskIdFromFilename(filename: string): string | null {
  * For numeric-only IDs, automatically detects the prefix from existing files.
  */
 export async function getTaskPath(taskId: string, core?: Core | TaskPathContext): Promise<string | null> {
-	const coreInstance = core || (await createRuntimeCore());
-	const activeMatches = await findMatchingTaskPaths(coreInstance.filesystem.tasksDir, taskId);
-	const completedMatches = coreInstance.filesystem.completedDir
-		? await findMatchingTaskPaths(coreInstance.filesystem.completedDir, taskId)
-		: [];
-	const allMatches = [...activeMatches, ...completedMatches];
+	const filesystem = (core ?? (await createRuntimeCore())).filesystem;
+	const archivedTaskDirs =
+		"getArchivedTaskDirs" in filesystem ? await filesystem.getArchivedTaskDirs() : (filesystem.archivedTaskDirs ?? []);
+	const activeMatches = await findMatchingTaskPaths(filesystem.tasksDir, taskId);
+	const archivedMatches = (
+		await Promise.all(archivedTaskDirs.map((directory) => findMatchingTaskPaths(directory, taskId)))
+	).flat();
+	const allMatches = [...activeMatches, ...archivedMatches];
 	if (allMatches.length > 1) {
 		throw new AmbiguousTaskIdError(taskId, allMatches);
 	}

@@ -13,7 +13,7 @@ import type { Task } from "../src/types/index.ts";
 const DEFAULTS = {
 	iterations: 3,
 	localTasks: 80,
-	completedTasks: 20,
+	archivedTasks: 20,
 	branches: 6,
 	tasksPerBranch: 12,
 } as const;
@@ -21,7 +21,7 @@ const DEFAULTS = {
 const SEMANTIC_OPERATIONS = [
 	"configLoads",
 	"localTaskScans",
-	"completedTaskScans",
+	"archivedTaskScans",
 	"repositoryChecks",
 	"remoteFetches",
 	"branchTipSnapshots",
@@ -41,7 +41,7 @@ type SurfaceName = "core.loadTasks" | "mcp.taskSearch" | "web.taskList";
 interface Options {
 	iterations: number;
 	localTasks: number;
-	completedTasks: number;
+	archivedTasks: number;
 	branches: number;
 	tasksPerBranch: number;
 	output: OutputFormat;
@@ -125,7 +125,7 @@ Options:
   --json                  Emit machine-readable JSON instead of a table
   --iterations <count>    Samples per cold/warm case (default: ${DEFAULTS.iterations})
   --local-tasks <count>   Active tasks in the working copy (default: ${DEFAULTS.localTasks})
-  --completed-tasks <n>   Completed tasks in the working copy (default: ${DEFAULTS.completedTasks})
+  --archived-tasks <n>   Archived tasks in the working copy (default: ${DEFAULTS.archivedTasks})
   --branches <count>      Local branches mirrored to a local bare remote (default: ${DEFAULTS.branches})
   --tasks-per-branch <n>  Changed or branch-only tasks per branch (default: ${DEFAULTS.tasksPerBranch})
   -h, --help              Show this help`;
@@ -154,8 +154,8 @@ function parseOptions(argv: string[]): Options | null {
 			case "--local-tasks":
 				options.localTasks = parsePositiveInteger(argument, argv[++index]);
 				break;
-			case "--completed-tasks":
-				options.completedTasks = parsePositiveInteger(argument, argv[++index]);
+			case "--archived-tasks":
+				options.archivedTasks = parsePositiveInteger(argument, argv[++index]);
 				break;
 			case "--branches":
 				options.branches = parsePositiveInteger(argument, argv[++index]);
@@ -264,9 +264,12 @@ async function populateCorpus(root: string, options: Options): Promise<Corpus> {
 			await writeTask(setupCore.filesystem.tasksDir, benchmarkTask(index, `Benchmark local task ${index}`)),
 		);
 	}
-	for (let index = 1; index <= options.completedTasks; index += 1) {
+	for (let index = 1; index <= options.archivedTasks; index += 1) {
 		const id = options.localTasks + index;
-		await writeTask(setupCore.filesystem.completedDir, benchmarkTask(id, `Benchmark completed task ${index}`, "Done"));
+		await writeTask(
+			setupCore.filesystem.archiveTasksDir,
+			benchmarkTask(id, `Benchmark archived task ${index}`, "Done"),
+		);
 	}
 
 	await runProcess(["git", "add", "."], projectRoot);
@@ -291,7 +294,7 @@ async function populateCorpus(root: string, options: Options): Promise<Corpus> {
 		}
 
 		for (let taskIndex = 1; taskIndex <= branchOnlyCount; taskIndex += 1) {
-			const id = options.localTasks + options.completedTasks + (branchIndex - 1) * branchOnlyCount + taskIndex;
+			const id = options.localTasks + options.archivedTasks + (branchIndex - 1) * branchOnlyCount + taskIndex;
 			await writeTask(
 				setupCore.filesystem.tasksDir,
 				benchmarkTask(id, `Benchmark branch ${branchIndex} task ${taskIndex}`, "In Progress"),
@@ -311,35 +314,35 @@ async function populateCorpus(root: string, options: Options): Promise<Corpus> {
 	setupCore.disposeContentStore();
 
 	const activeTaskIds = Array.from({ length: options.localTasks }, (_, index) => `TASK-${index + 1}`);
-	const completedTaskIds = Array.from(
-		{ length: options.completedTasks },
+	const archivedTaskIds = Array.from(
+		{ length: options.archivedTasks },
 		(_, index) => `TASK-${options.localTasks + index + 1}`,
 	);
 	const branchOnlyTaskIds = Array.from(
 		{ length: options.branches * branchOnlyCount },
-		(_, index) => `TASK-${options.localTasks + options.completedTasks + index + 1}`,
+		(_, index) => `TASK-${options.localTasks + options.archivedTasks + index + 1}`,
 	);
 	const localSentinel = activeTaskIds[0] as string;
-	const completedSentinel = completedTaskIds.at(-1) as string;
+	const archivedSentinel = archivedTaskIds.at(-1) as string;
 	const branchSentinel = branchOnlyTaskIds[0] as string;
 	return {
 		root,
 		projectRoot,
 		expectedResults: {
 			"core.loadTasks": {
-				taskIds: [...activeTaskIds, ...completedTaskIds, ...branchOnlyTaskIds],
-				requiredTaskIds: [localSentinel, completedSentinel, branchSentinel],
+				taskIds: [...activeTaskIds, ...archivedTaskIds, ...branchOnlyTaskIds],
+				requiredTaskIds: [localSentinel, archivedSentinel, branchSentinel],
 				forbiddenTaskIds: [],
 			},
 			"mcp.taskSearch": {
-				taskIds: [...activeTaskIds, ...completedTaskIds],
-				requiredTaskIds: [localSentinel, completedSentinel],
+				taskIds: [...activeTaskIds, ...archivedTaskIds],
+				requiredTaskIds: [localSentinel, archivedSentinel],
 				forbiddenTaskIds: [branchSentinel],
 			},
 			"web.taskList": {
 				taskIds: [...activeTaskIds, ...branchOnlyTaskIds],
 				requiredTaskIds: [localSentinel, branchSentinel],
-				forbiddenTaskIds: [completedSentinel],
+				forbiddenTaskIds: [archivedSentinel],
 			},
 		},
 	};
@@ -366,7 +369,7 @@ function instrumentCore(core: Core): Instrumentation {
 	};
 	wrap(core.filesystem, "loadConfig", "configLoads");
 	wrap(core.filesystem, "listTasks", "localTaskScans");
-	wrap(core.filesystem, "listCompletedTasks", "completedTaskScans");
+	wrap(core.filesystem, "listArchivedTasks", "archivedTaskScans");
 	wrap(core.gitOps, "fetch", "remoteFetches");
 	wrap(core.gitOps, "listRecentBranchTips", "branchTipSnapshots");
 	wrap(core.gitOps, "listRecentRemoteBranches", "remoteBranchEnumerations");
@@ -465,7 +468,7 @@ function coreSurface(projectRoot: string): BenchmarkSurface {
 	const instrumentation = instrumentCore(core);
 	return {
 		async operation() {
-			return taskOperationResult(await core.loadTasks(undefined, undefined, { includeCompleted: true }));
+			return taskOperationResult(await core.loadTasks(undefined, undefined, { includeArchived: true }));
 		},
 		instrumentation,
 		async dispose() {
@@ -698,7 +701,7 @@ function printTable(options: Options, results: BenchmarkResult[]): void {
 		headers.map((header) => row[header]?.padEnd(widths[header] as number)).join("  ");
 
 	console.log(
-		`Corpus: ${options.localTasks} active + ${options.completedTasks} completed, ${options.branches} branches x ${options.tasksPerBranch} variants`,
+		`Corpus: ${options.localTasks} active + ${options.archivedTasks} archived, ${options.branches} branches x ${options.tasksPerBranch} variants`,
 	);
 	console.log("Cold = fresh in-process surface; warm = repeated read after one unmeasured initialization.");
 	console.log(render(Object.fromEntries(headers.map((header) => [header, header]))));
@@ -735,7 +738,7 @@ async function main(): Promise<void> {
 			},
 			corpus: {
 				activeTasks: options.localTasks,
-				completedTasks: options.completedTasks,
+				archivedTasks: options.archivedTasks,
 				branches: options.branches,
 				tasksPerBranch: options.tasksPerBranch,
 			},

@@ -274,6 +274,43 @@ describe("MCP task tools (MVP)", () => {
 		expect(getText(viewResult.content)).toContain("is ambiguous");
 	});
 
+	it("archives a task in any status, keeps its ID, and then treats it as read-only", async () => {
+		const call = async (name: string, args: Record<string, unknown>) =>
+			await mcpServer.testInterface.callTool({ params: { name, arguments: args } });
+		await call("task_create", { title: "Finished work", status: "Done" });
+		await call("task_create", { title: "Set aside work" });
+
+		for (const id of ["task-1", "task-2"]) {
+			const archived = await call("task_archive", { id });
+			expect(archived.isError).not.toBe(true);
+			expect(getText(archived.content)).toContain(`Archived task ${id.toUpperCase()}.`);
+		}
+
+		const view = getText((await call("task_view", { id: "task-1" })).content);
+		expect(view).toContain("Task TASK-1 - Finished work");
+		expect(view).toContain("Status: ✔ Done (archived)");
+		expect((await mcpServer.filesystem.listArchivedTasks()).map((task) => [task.id, task.status])).toEqual([
+			["TASK-1", "Done"],
+			["TASK-2", "To Do"],
+		]);
+
+		// Both archived IDs stay taken, including the highest one.
+		expect(getText((await call("task_create", { title: "Next work" })).content)).toContain("Task TASK-3 - Next work");
+
+		for (const [name, args] of [
+			["task_edit", { id: "task-2", notesAppend: ["late note"] }],
+			["task_archive", { id: "task-2" }],
+		] as const) {
+			const refused = await call(name, args);
+			expect(refused.isError).toBe(true);
+			expect(getText(refused.content)).toContain("Task TASK-2 is archived. Archived tasks are read-only.");
+		}
+
+		const toolNames = (await mcpServer.testInterface.listTools()).tools.map((tool) => tool.name);
+		expect(toolNames).toContain("task_archive");
+		expect(toolNames.filter((name) => name.includes("complete"))).toEqual([]);
+	});
+
 	it("archives the local task when merge policy selects a same-path padded ID variant", async () => {
 		await enableGitTestProject();
 		const config = await loadConfig(mcpServer);
@@ -709,7 +746,7 @@ describe("MCP task tools (MVP)", () => {
 		expect(draftText).not.toContain("DRAFT-1 - Assigned Draft");
 	});
 
-	it("includes completed tasks in task_search results and excludes archived tasks", async () => {
+	it("includes archived tasks in task_search results and marks them as archived", async () => {
 		await mcpServer.testInterface.callTool({
 			params: {
 				name: "task_create",
@@ -723,7 +760,7 @@ describe("MCP task tools (MVP)", () => {
 			params: {
 				name: "task_create",
 				arguments: {
-					title: "Completed task",
+					title: "Finished task",
 					status: "Done",
 				},
 			},
@@ -731,7 +768,7 @@ describe("MCP task tools (MVP)", () => {
 
 		await mcpServer.testInterface.callTool({
 			params: {
-				name: "task_complete",
+				name: "task_archive",
 				arguments: {
 					id: "task-2",
 				},
@@ -742,7 +779,7 @@ describe("MCP task tools (MVP)", () => {
 			params: {
 				name: "task_create",
 				arguments: {
-					title: "Archived task",
+					title: "Set aside task",
 				},
 			},
 		});
@@ -774,7 +811,7 @@ describe("MCP task tools (MVP)", () => {
 			for (const searchResult of searchResults) {
 				expect(searchResult.isError).not.toBe(true);
 				expect(getText(searchResult.content)).toBe(
-					"Tasks:\n  TASK-1 - Active task (To Do)\n  TASK-2 - Completed task (Done)",
+					"Tasks:\n  TASK-1 - Active task (To Do)\n  TASK-2 - Finished task (Done, archived)\n  TASK-3 - Set aside task (To Do, archived)",
 				);
 			}
 
@@ -783,14 +820,13 @@ describe("MCP task tools (MVP)", () => {
 			});
 			expect(limitedResult.isError).not.toBe(true);
 			expect(getText(limitedResult.content)).toBe("Tasks:\n  TASK-1 - Active task (To Do)");
-			expect(getText(limitedResult.content)).not.toContain("TASK-3 - Archived task");
 			tripwires.expectUntouched();
 		} finally {
 			tripwires.restore();
 		}
 	});
 
-	it("searches one active lifecycle identity when the same path is also completed", async () => {
+	it("searches one active lifecycle identity when the same path is also archived", async () => {
 		const activeTask: Task = {
 			id: "TASK-1",
 			title: "Active lifecycle identity",
@@ -802,8 +838,8 @@ describe("MCP task tools (MVP)", () => {
 		};
 		const activePath = await mcpServer.filesystem.saveTask(activeTask);
 		await Bun.write(
-			join(mcpServer.filesystem.completedDir, basename(activePath)),
-			serializeTask({ ...activeTask, title: "Completed lifecycle identity", status: "Done" }),
+			join(mcpServer.filesystem.archiveTasksDir, basename(activePath)),
+			serializeTask({ ...activeTask, title: "Archived lifecycle identity", status: "Done" }),
 		);
 
 		const searchResult = await mcpServer.testInterface.callTool({

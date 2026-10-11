@@ -53,7 +53,7 @@ describe("ContentStore", () => {
 	const branchSnapshotLoader = (branchPaths: string | string[]): (() => Promise<TaskCorpusSnapshot>) => {
 		return async () => {
 			const activeTasks = await filesystem.listTasks();
-			const completedTasks = await filesystem.listCompletedTasks();
+			const archivedTasks = await filesystem.listArchivedTasks();
 			const paths = Array.isArray(branchPaths) ? branchPaths : [branchPaths];
 			const branchTasks = paths.map((branchPath, index) => ({
 				...sampleTask,
@@ -80,11 +80,11 @@ describe("ContentStore", () => {
 					task,
 					workingCopy: true,
 				})),
-				...completedTasks.map((task) => ({
+				...archivedTasks.map((task) => ({
 					id: task.id,
-					type: "completed" as const,
+					type: "archived" as const,
 					branch: "local",
-					path: task.filePath ?? join(filesystem.completedDir, task.id),
+					path: task.filePath ?? join(filesystem.archiveTasksDir, task.id),
 					lastModified: new Date("2026-08-01T11:00:00Z"),
 					task,
 					workingCopy: true,
@@ -99,7 +99,7 @@ describe("ContentStore", () => {
 			return {
 				tasks: identityIndex.getTasks(false),
 				activeTasks,
-				completedTasks,
+				archivedTasks,
 				identityIndex,
 			};
 		};
@@ -485,14 +485,14 @@ describe("ContentStore", () => {
 		store.transitionTask(current.id, {
 			...current,
 			status: "Done",
-			filePath: join(filesystem.completedDir, basename(current.filePath ?? "task-1.md")),
+			filePath: join(filesystem.archiveTasksDir, basename(current.filePath ?? "task-1.md")),
 		});
 		expect(store.getTasks()).toEqual([]);
 		gate.release();
 		await refresh;
 
 		expect(store.getTasks()).toEqual([]);
-		expect(store.getTaskCorpusSnapshot().completedTasks.map((task) => task.status)).toEqual(["Done"]);
+		expect(store.getTaskCorpusSnapshot().archivedTasks.map((task) => task.status)).toEqual(["Done"]);
 	});
 
 	it("preserves duplicate working-copy identities across a local corpus refresh", async () => {
@@ -526,7 +526,7 @@ describe("ContentStore", () => {
 
 		expect(store.resolveTaskForMutation(sampleTask.id).status).toBe("found");
 		await Bun.write(
-			join(core.fs.completedDir, "task-01 - Completed collision.md"),
+			join(core.fs.archiveTasksDir, "task-01 - Completed collision.md"),
 			serializeTask({ ...sampleTask, id: "TASK-01", title: "Completed collision" }),
 		);
 
@@ -863,7 +863,7 @@ describe("ContentStore", () => {
 			return {
 				tasks: identityIndex.getTasks(false),
 				activeTasks: [sampleTask],
-				completedTasks: [],
+				archivedTasks: [],
 				identityIndex,
 			};
 		};

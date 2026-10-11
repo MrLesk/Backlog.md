@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Core } from "../core/backlog.ts";
@@ -22,7 +22,7 @@ describe("Task ID Generation with Archives", () => {
 		await rm(testDir, { recursive: true, force: true });
 	});
 
-	it("should reuse IDs from archived tasks (soft delete behavior)", async () => {
+	it("keeps the IDs of archived tasks reserved", async () => {
 		// Create tasks 1-5
 		await core.createTaskFromInput({ title: "Task 1" }, false);
 		await core.createTaskFromInput({ title: "Task 2" }, false);
@@ -41,48 +41,57 @@ describe("Task ID Generation with Archives", () => {
 		const activeTasks = await core.fs.listTasks();
 		expect(activeTasks.length).toBe(0);
 
-		// Create new task - should be TASK-1 (archived IDs can be reused)
+		// The board is empty, yet every archived task still holds its ID.
 		const result = await core.createTaskFromInput({ title: "Task After Archive" }, false);
-		expect(result.task.id).toBe("TASK-1");
+		expect(result.task.id).toBe("TASK-6");
 
-		// Verify the task was created with correct ID
-		const newTask = await core.getTask("task-1");
-		expect(newTask).not.toBeNull();
-		expect(newTask?.title).toBe("Task After Archive");
+		// The archived task is still the one its ID names.
+		const archivedTask = await core.getTask("task-1");
+		expect(archivedTask?.title).toBe("Task 1");
+		expect(archivedTask?.source).toBe("archived");
 	});
 
-	it("should consider completed tasks but not archived tasks for ID generation", async () => {
-		// Create tasks 1-3
-		await core.createTaskFromInput({ title: "Task 1", status: "Todo" }, false);
-		await core.createTaskFromInput({ title: "Task 2", status: "Done" }, false);
-		await core.createTaskFromInput({ title: "Task 3", status: "Todo" }, false);
+	it("reserves an archived ID whatever status the task was archived in", async () => {
+		await core.createTaskFromInput({ title: "Task 1", status: "To Do" }, false);
+		await core.createTaskFromInput({ title: "Task 2", status: "In Progress" }, false);
+		await core.createTaskFromInput({ title: "Task 3", status: "Done" }, false);
 
-		// Archive task-1 (its ID can be reused)
-		await core.archiveTask("task-1", false);
+		// Archive from the top down, so each archived task is the highest ID when it leaves the board.
+		for (const id of ["task-3", "task-2", "task-1"]) {
+			expect(await core.archiveTask(id, false)).toBe(true);
+		}
 
-		// Complete task-2 (moves to completed directory, ID cannot be reused)
-		await core.completeTask("task-2", false);
-
-		// Keep task-3 active
-		const activeTasks = await core.fs.listTasks();
-		expect(activeTasks.length).toBe(1);
-		expect(activeTasks[0]?.id).toBe("TASK-3");
-
-		// Create new task - should be TASK-4 (max of active 3 + completed 2 is 3, so next is 4)
-		// Note: archived TASK-1 is NOT considered, so its ID could be reused if 2 and 3 weren't taken
 		const result = await core.createTaskFromInput({ title: "Task 4" }, false);
 		expect(result.task.id).toBe("TASK-4");
 
-		// Verify archived task still exists
 		const archivedTasks = await core.fs.listArchivedTasks();
-		expect(archivedTasks.some((t) => t.id === "TASK-1")).toBe(true);
-
-		// Verify completed task still exists
-		const completedTasks = await core.fs.listCompletedTasks();
-		expect(completedTasks.some((t) => t.id === "TASK-2")).toBe(true);
+		expect(archivedTasks.map((task) => [task.id, task.status])).toEqual([
+			["TASK-1", "To Do"],
+			["TASK-2", "In Progress"],
+			["TASK-3", "Done"],
+		]);
 	});
 
-	it("should handle subtasks correctly with archived parents", async () => {
+	it("reserves the IDs of archived tasks stored in a completed folder", async () => {
+		const leftoverDirectory = join(core.fs.backlogDir, "completed");
+		await mkdir(leftoverDirectory, { recursive: true });
+		const leftoverTask: Task = {
+			id: "TASK-7",
+			title: "Finished before the archive folder held finished work",
+			status: "Done",
+			assignee: [],
+			createdDate: "2025-01-01",
+			labels: [],
+			dependencies: [],
+		};
+		await Bun.write(join(leftoverDirectory, "task-7 - Finished-earlier.md"), serializeTask(leftoverTask));
+
+		const result = await core.createTaskFromInput({ title: "New task" }, false);
+		expect(result.task.id).toBe("TASK-8");
+		expect((await core.getTask("task-7"))?.source).toBe("archived");
+	});
+
+	it("keeps archived parent and subtask IDs reserved", async () => {
 		// Create parent task-1
 		await core.createTaskFromInput({ title: "Parent Task" }, false);
 
@@ -98,16 +107,16 @@ describe("Task ID Generation with Archives", () => {
 		await core.archiveTask("task-1.1", false);
 		await core.archiveTask("task-1.2", false);
 
-		// Create new parent task - should be TASK-1 (reusing archived parent ID)
+		// A new parent gets the next top-level ID.
 		const newParent = await core.createTaskFromInput({ title: "New Parent" }, false);
-		expect(newParent.task.id).toBe("TASK-1");
+		expect(newParent.task.id).toBe("TASK-2");
 
-		// Create subtask of new parent (TASK-1) - should be TASK-1.1 (reusing archived subtask ID)
+		// A new subtask of the archived parent continues after its archived subtasks.
 		const newSubtask = await core.createTaskFromInput({ title: "New Subtask", parentTaskId: "task-1" }, false);
-		expect(newSubtask.task.id).toBe("TASK-1.1");
+		expect(newSubtask.task.id).toBe("TASK-1.3");
 	});
 
-	it("should work with zero-padded IDs and reuse archived IDs", async () => {
+	it("keeps zero-padded archived IDs reserved", async () => {
 		// Update config to use zero-padded IDs
 		const config = await core.fs.loadConfig();
 		if (config) {
@@ -122,9 +131,8 @@ describe("Task ID Generation with Archives", () => {
 
 		await core.archiveTask("task-001", false);
 
-		// Create new task - should reuse archived ID (TASK-001)
 		const result = await core.createTaskFromInput({ title: "Task 2" }, false);
-		expect(result.task.id).toBe("TASK-001");
+		expect(result.task.id).toBe("TASK-002");
 	});
 
 	it("should detect existing subtasks with different casing (legacy data)", async () => {

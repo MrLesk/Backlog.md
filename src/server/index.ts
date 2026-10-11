@@ -2,11 +2,11 @@ import net from "node:net";
 import { dirname, isAbsolute, join } from "node:path";
 import type { Server, ServerWebSocket } from "bun";
 import { DEFAULT_STATUSES } from "../constants/index.ts";
-import { Core, TaskArchiveStatusError } from "../core/backlog.ts";
+import { Core, TaskArchivedError } from "../core/backlog.ts";
 import type { ContentStore } from "../core/content-store.ts";
 import { initializeProject } from "../core/init.ts";
 import type { SearchService } from "../core/search-service.ts";
-import { getTaskStatistics } from "../core/statistics.ts";
+import { getTaskStatistics, selectStatisticsTasks } from "../core/statistics.ts";
 import { loadTaskDetail } from "../core/task-detail.ts";
 import { isCreateLockError, isTaskLockError } from "../file-system/operations.ts";
 import { BacklogToolError } from "../mcp/errors/mcp-errors.ts";
@@ -430,10 +430,9 @@ export class BacklogServer {
 					"/api/tasks/:id": {
 						GET: async (req: Request & { params: { id: string } }) => await this.handleGetTask(req.params.id),
 						PUT: async (req: Request & { params: { id: string } }) => await this.handleUpdateTask(req, req.params.id),
-						DELETE: async (req: Request & { params: { id: string } }) => await this.handleDeleteTask(req.params.id),
 					},
-					"/api/tasks/:id/complete": {
-						POST: async (req: Request & { params: { id: string } }) => await this.handleCompleteTask(req.params.id),
+					"/api/tasks/:id/archive": {
+						POST: async (req: Request & { params: { id: string } }) => await this.handleArchiveTask(req.params.id),
 					},
 					"/api/tasks/:id/demote": {
 						POST: async (req: Request & { params: { id: string } }) => await this.handleDemoteTask(req.params.id),
@@ -1214,19 +1213,18 @@ export class BacklogServer {
 		}
 	}
 
-	private async handleDeleteTask(taskId: string): Promise<Response> {
+	private async handleArchiveTask(taskId: string): Promise<Response> {
 		try {
-			const { success, cleanedTaskIds } = await this.core.archiveTask(taskId);
-			if (!success) {
+			if (!(await this.core.archiveTask(taskId))) {
 				return Response.json({ error: "Task not found" }, { status: 404 });
 			}
 			this.broadcastDataUpdated();
-			return Response.json({ success: true, cleanedTaskIds });
+			return Response.json({ success: true });
 		} catch (error) {
-			if (error instanceof TaskArchiveStatusError) {
+			if (error instanceof TaskArchivedError) {
 				return Response.json({ error: error.message }, { status: 400 });
 			}
-			// The task reached the archive and something after that failed. Say so, and refresh:
+			// The task reached the archive and the commit after that failed. Say so, and refresh:
 			// a client told only "error" would offer to archive a task that is already archived.
 			const archiveState = readMovedState(error, "archiveState");
 			if (archiveState) {
@@ -1239,25 +1237,6 @@ export class BacklogServer {
 				return Response.json({ error: error.message }, { status: 409 });
 			}
 			throw error;
-		}
-	}
-
-	private async handleCompleteTask(taskId: string): Promise<Response> {
-		try {
-			const success = await this.core.completeTask(taskId);
-			if (!success) {
-				return Response.json({ error: "Task not found" }, { status: 404 });
-			}
-
-			// Notify listeners to refresh
-			this.broadcastDataUpdated();
-			return Response.json({ success: true });
-		} catch (error) {
-			const message = error instanceof Error ? error.message : "Failed to complete task";
-			if (!isAmbiguousTaskIdError(error)) {
-				console.error("Error completing task:", error);
-			}
-			return Response.json({ error: message }, { status: isAmbiguousTaskIdError(error) ? 409 : 500 });
 		}
 	}
 
@@ -1954,20 +1933,19 @@ export class BacklogServer {
 				});
 			}
 
-			// Move tasks to completed folder
 			let successCount = 0;
 			const failedTasks: string[] = [];
 
 			for (const task of tasksToCleanup) {
 				try {
-					const success = await this.core.completeTask(task.id);
+					const success = await this.core.archiveTask(task.id);
 					if (success) {
 						successCount++;
 					} else {
 						failedTasks.push(task.id);
 					}
 				} catch (error) {
-					console.error(`Failed to complete task ${task.id}:`, error);
+					console.error(`Failed to archive task ${task.id}:`, error);
 					failedTasks.push(task.id);
 				}
 			}
@@ -1980,7 +1958,7 @@ export class BacklogServer {
 				movedCount: successCount,
 				totalCount: tasksToCleanup.length,
 				failedTasks: failedTasks.length > 0 ? failedTasks : undefined,
-				message: `Moved ${successCount} of ${tasksToCleanup.length} tasks to completed folder`,
+				message: `Archived ${successCount} of ${tasksToCleanup.length} tasks`,
 			});
 		} catch (error) {
 			console.error("Error executing cleanup:", error);
@@ -1997,9 +1975,9 @@ export class BacklogServer {
 			if (servicesWereReady) await this.core.refreshTasksForTaskRead();
 			const corpus = store.getTaskCorpusSnapshot();
 			const corpusConfig = corpus.config ?? currentConfig;
-			const tasks = corpus.identityIndex?.getTasks(true) ?? [...corpus.activeTasks, ...corpus.completedTasks];
 			const drafts = await this.core.filesystem.listDrafts();
 			const statuses = (corpusConfig?.statuses || DEFAULT_STATUSES) as string[];
+			const tasks = selectStatisticsTasks(corpus.identityIndex?.getTasks(true) ?? corpus.activeTasks, statuses);
 			const priorities = currentConfig?.priorities ?? corpusConfig?.priorities ?? [];
 
 			// Calculate statistics using the exact same function as CLI

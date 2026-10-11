@@ -185,36 +185,44 @@ describe("board task popup stays in sync with live task state", () => {
 
 	it("defers the rebuild while a confirmation dialog is stacked on the popup", async () => {
 		await withBoardPopup({}, async ({ publishTasks, popupBody, text, focused }) => {
-			pressKey(focused(), "c");
+			pressKey(focused(), "a");
 			await Bun.sleep(30);
 			const dialog = focused();
-			expect(text()).toContain("to completed?");
+			expect(text()).toContain("Moves it off the board");
 
 			// An external edit lands while the user is still answering the dialog.
 			await publishTasks([createTask({ title: "Renamed by CLI", description: "UPDATED-BODY" }), OTHER_TASK]);
 
 			// The dialog must keep both the screen and the keyboard until it is answered.
-			expect(text()).toContain("to completed?");
+			expect(text()).toContain("Moves it off the board");
 			expect(focused()).toBe(dialog);
 
 			// Answering it still works, and the deferred refresh lands afterwards.
 			pressKey(focused(), "escape");
 			await Bun.sleep(40);
-			expect(text()).not.toContain("to completed?");
+			expect(text()).not.toContain("Moves it off the board");
 			expect(popupBody()?.getContent?.()).toContain("UPDATED-BODY");
 		});
 	});
 
-	it("explains archive purpose and incoming link removal before confirmation", async () => {
+	it("says what archive keeps before confirmation, and no longer binds a complete key", async () => {
 		await withBoardPopup({}, async ({ text, focused, popupBody }) => {
+			// The footer names the keys that exist, and C opens nothing.
+			expect(text()).toContain("Edit/Move/Arch");
+			expect(text()).not.toContain("Comp");
+			pressKey(focused(), "c");
+			await Bun.sleep(30);
+			expect(text()).not.toContain("Moves it off the board");
+			expect(text()).not.toContain("completed");
+
 			pressKey(focused(), "a");
 			await Bun.sleep(30);
-			expect(text()).toContain("Canceled, duplicate, or invalid work.");
-			expect(text()).toContain("Removes incoming task links.");
+			expect(text()).toContain("Moves it off the board and keeps");
+			expect(text()).toContain("its ID, record, and links.");
 			pressKey(focused(), "escape");
 			await Bun.sleep(30);
 			expect(popupBody()).toBeDefined();
-			expect(text()).not.toContain("Removes incoming task links.");
+			expect(text()).not.toContain("Moves it off the board");
 		});
 	});
 

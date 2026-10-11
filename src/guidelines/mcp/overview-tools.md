@@ -16,14 +16,13 @@ These are the same guides exposed at `backlog://workflow/...`. Omit `instruction
 
 ### Task Lifecycle
 
-Mark finished work Done (or the configured final status). Leave it on the board until periodic cleanup with `task_complete`. Use `task_archive` only for canceled, duplicate, or invalid work.
+Mark finished work Done (or the configured final status) and leave it on the board until periodic cleanup. `task_archive` moves a task in any status off the board: finished work during cleanup, and canceled, duplicate, or invalid work at any time.
 
 ### MCP Tools Quick Reference
 
 - `get_backlog_instructions`
 - `task_list`, `task_search`, `task_view`, `task_create`, `task_edit`
-- `task_complete` — move finished work off the board to completed storage during periodic cleanup; preserves its record and dependency links
-- `task_archive` — archive canceled, duplicate, or invalid work; removes incoming dependencies and task references. Archived task IDs can be reused.
+- `task_archive` — move a task in any status off the board into the archive; keeps its ID, record, dependencies, and references. Archived tasks are read-only, stay viewable with `task_view`, and are marked `archived` in `task_search` results. A dependency on an archived task counts as satisfied only when that task is in the final status.
 - `task_list` and `task_search` accept configured task types with OR semantics; `task_search` also accepts `modifiedFiles` for case-insensitive substring filtering against project-root-relative modified file paths
 - `task_list` and `task_search` also accept configured `project` values with OR semantics for monorepo-style backlogs; the field is absent from both tool schemas when no `projects:` list is configured
 - `task_edit` accepts `commentsAppend` and optional `commentAuthor` to append task discussion or review comments

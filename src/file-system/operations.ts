@@ -1,7 +1,13 @@
-import { lstat, mkdir, rename, stat, unlink, writeFile } from "node:fs/promises";
+import { lstat, mkdir, realpath, rename, stat, unlink, writeFile } from "node:fs/promises";
 import { basename, dirname, isAbsolute, join, resolve } from "node:path";
 import lockfile from "proper-lockfile";
-import { DEFAULT_DIRECTORIES, DEFAULT_FILES, DEFAULT_STATUSES, FALLBACK_STATUS } from "../constants/index.ts";
+import {
+	ARCHIVED_TASK_DIRECTORIES,
+	DEFAULT_DIRECTORIES,
+	DEFAULT_FILES,
+	DEFAULT_STATUSES,
+	FALLBACK_STATUS,
+} from "../constants/index.ts";
 import { parseFrontmatter } from "../markdown/frontmatter.ts";
 import {
 	parseDecision,
@@ -41,7 +47,6 @@ import {
 	draftIdsMatchLoosely,
 	extractDraftIdFromFilename,
 	findDuplicateDraftFilenameGroups,
-	getTaskFilename,
 	getTaskPath,
 	isAmbiguousTaskIdError,
 	normalizeTaskIdentity,
@@ -54,7 +59,7 @@ import { matchesTaskTypeFilter } from "../utils/task-type-config.ts";
 interface TaskPathContext {
 	filesystem: {
 		tasksDir: string;
-		completedDir?: string;
+		archivedTaskDirs?: string[];
 	};
 }
 
@@ -390,10 +395,6 @@ export class FileSystem {
 	get tasksDir(): string {
 		return join(this.resolvedBacklogDir, DEFAULT_DIRECTORIES.TASKS);
 	}
-	get completedDir(): string {
-		return join(this.resolvedBacklogDir, DEFAULT_DIRECTORIES.COMPLETED);
-	}
-
 	get archiveTasksDir(): string {
 		return join(this.resolvedBacklogDir, DEFAULT_DIRECTORIES.ARCHIVE_TASKS);
 	}
@@ -540,9 +541,25 @@ export class FileSystem {
 		return join(backlogDir, DEFAULT_DIRECTORIES.MILESTONES);
 	}
 
-	private async getCompletedDir(): Promise<string> {
+	/**
+	 * The directories archived tasks are read from, each real directory once.
+	 *
+	 * A directory that does not exist has nothing to read. Two entries that resolve to the same
+	 * real directory (one linked to the other) are read once, so a link between them can neither
+	 * report every archived task as a duplicate nor send a reader around a symlink cycle.
+	 */
+	async getArchivedTaskDirs(): Promise<string[]> {
 		const backlogDir = await this.getBacklogDir();
-		return join(backlogDir, DEFAULT_DIRECTORIES.COMPLETED);
+		const directories: string[] = [];
+		const realDirectories = new Set<string>();
+		for (const relativeDirectory of ARCHIVED_TASK_DIRECTORIES) {
+			const directory = join(backlogDir, relativeDirectory);
+			const realDirectory = await realpath(directory).catch(() => null);
+			if (realDirectory === null || realDirectories.has(realDirectory)) continue;
+			realDirectories.add(realDirectory);
+			directories.push(directory);
+		}
+		return directories;
 	}
 
 	async ensureBacklogStructure(): Promise<void> {
@@ -551,7 +568,6 @@ export class FileSystem {
 			backlogDir,
 			join(backlogDir, DEFAULT_DIRECTORIES.TASKS),
 			join(backlogDir, DEFAULT_DIRECTORIES.DRAFTS),
-			join(backlogDir, DEFAULT_DIRECTORIES.COMPLETED),
 			join(backlogDir, DEFAULT_DIRECTORIES.ARCHIVE_TASKS),
 			join(backlogDir, DEFAULT_DIRECTORIES.ARCHIVE_DRAFTS),
 			join(backlogDir, DEFAULT_DIRECTORIES.MILESTONES),
@@ -903,8 +919,8 @@ export class FileSystem {
 	async loadTask(taskId: string): Promise<Task | null> {
 		try {
 			const tasksDir = await this.getTasksDir();
-			const [activeTasks, completedTasks] = await Promise.all([this.listTasks(), this.listCompletedTasks()]);
-			const identityMatches = [...activeTasks, ...completedTasks].filter((task) => taskIdsEqual(taskId, task.id));
+			const [activeTasks, archivedTasks] = await Promise.all([this.listTasks(), this.listArchivedTasks()]);
+			const identityMatches = [...activeTasks, ...archivedTasks].filter((task) => taskIdsEqual(taskId, task.id));
 			if (identityMatches.length > 1) {
 				throw new AmbiguousTaskIdError(
 					taskId,
@@ -915,7 +931,7 @@ export class FileSystem {
 			if (activeMatch?.filePath) return activeMatch;
 			if (identityMatches.length === 1) return null;
 
-			const core = { filesystem: { tasksDir, completedDir: this.completedDir } };
+			const core = { filesystem: { tasksDir, archivedTaskDirs: await this.getArchivedTaskDirs() } };
 			const filepath = await getTaskPath(taskId, core as TaskPathContext);
 
 			if (!filepath) return null;
@@ -1071,44 +1087,16 @@ export class FileSystem {
 		return sortByTaskId(tasks);
 	}
 
-	async listCompletedTasks(): Promise<Task[]> {
-		const cacheEpoch = this.taskParseCacheEpoch;
-		let completedDir: string;
-		try {
-			completedDir = await this.getCompletedDir();
-		} catch (_error) {
-			return [];
-		}
-
-		// Get configured task prefix
-		const config = await this.loadConfig();
-		const taskPrefix = (config?.prefixes?.task ?? "task").toLowerCase();
-		const globPattern = buildGlobPattern(taskPrefix);
-
-		let taskFiles: string[];
-		try {
-			taskFiles = await Array.fromAsync(new Bun.Glob(globPattern).scan({ cwd: completedDir, followSymlinks: true }));
-		} catch (_error) {
-			return [];
-		}
-
-		const tasks = await this.readTaskFiles(
-			completedDir,
-			taskFiles,
-			{
-				normalizeIdentity: false,
-				debugLabel: "completed task file",
-			},
-			cacheEpoch,
-		);
-
-		return sortByTaskId(tasks);
-	}
-
+	/**
+	 * Every archived task in the working copy. This is the one place archived tasks are loaded:
+	 * whatever needs archived tasks calls it, so they all see the same directories. Code that needs
+	 * only the file names, such as the task ID step, lists those directories itself and loads nothing.
+	 */
 	async listArchivedTasks(): Promise<Task[]> {
-		let archiveTasksDir: string;
+		const cacheEpoch = this.taskParseCacheEpoch;
+		let archivedTaskDirs: string[];
 		try {
-			archiveTasksDir = await this.getArchiveTasksDir();
+			archivedTaskDirs = await this.getArchivedTaskDirs();
 		} catch (_error) {
 			return [];
 		}
@@ -1117,79 +1105,26 @@ export class FileSystem {
 		const config = await this.loadConfig();
 		const taskPrefix = (config?.prefixes?.task ?? "task").toLowerCase();
 		const globPattern = buildGlobPattern(taskPrefix);
-
-		let taskFiles: string[];
-		try {
-			taskFiles = await Array.fromAsync(new Bun.Glob(globPattern).scan({ cwd: archiveTasksDir, followSymlinks: true }));
-		} catch (_error) {
-			return [];
-		}
 
 		const tasks: Task[] = [];
-		for (const file of taskFiles) {
-			const filepath = join(archiveTasksDir, file);
+		for (const directory of archivedTaskDirs) {
+			let taskFiles: string[];
 			try {
-				const content = await Bun.file(filepath).text();
-				const task = parseTask(content);
-				tasks.push({ ...task, filePath: filepath });
-			} catch (error) {
-				if (process.env.DEBUG) {
-					console.error(`Failed to parse archived task file ${filepath}`, error);
-				}
+				taskFiles = await Array.fromAsync(new Bun.Glob(globPattern).scan({ cwd: directory, followSymlinks: true }));
+			} catch (_error) {
+				continue;
 			}
+			tasks.push(
+				...(await this.readTaskFiles(
+					directory,
+					taskFiles,
+					{ normalizeIdentity: false, debugLabel: "archived task file" },
+					cacheEpoch,
+				)),
+			);
 		}
 
 		return sortByTaskId(tasks);
-	}
-
-	async archiveTask(taskId: string): Promise<boolean> {
-		try {
-			const tasksDir = await this.getTasksDir();
-			const archiveTasksDir = await this.getArchiveTasksDir();
-			const core = { filesystem: { tasksDir, completedDir: this.completedDir } };
-			const sourcePath = await getTaskPath(taskId, core as TaskPathContext);
-			const taskFile = await getTaskFilename(taskId, core as TaskPathContext);
-
-			if (!sourcePath || !taskFile) return false;
-
-			const targetPath = join(archiveTasksDir, taskFile);
-
-			// Ensure target directory exists
-			await this.ensureDirectoryExists(dirname(targetPath));
-
-			// Use rename for proper Git move detection
-			await rename(sourcePath, targetPath);
-
-			return true;
-		} catch (error) {
-			if (isAmbiguousTaskIdError(error)) throw error;
-			return false;
-		}
-	}
-
-	async completeTask(taskId: string): Promise<boolean> {
-		try {
-			const tasksDir = await this.getTasksDir();
-			const completedDir = await this.getCompletedDir();
-			const core = { filesystem: { tasksDir, completedDir } };
-			const sourcePath = await getTaskPath(taskId, core as TaskPathContext);
-			const taskFile = await getTaskFilename(taskId, core as TaskPathContext);
-
-			if (!sourcePath || !taskFile) return false;
-
-			const targetPath = join(completedDir, taskFile);
-
-			// Ensure target directory exists
-			await this.ensureDirectoryExists(dirname(targetPath));
-
-			// Use rename for proper Git move detection
-			await rename(sourcePath, targetPath);
-
-			return true;
-		} catch (error) {
-			if (isAmbiguousTaskIdError(error)) throw error;
-			return false;
-		}
 	}
 
 	async archiveDraft(draftId: string): Promise<{ sourcePath: string; targetPath: string } | null> {
@@ -1245,10 +1180,10 @@ export class FileSystem {
 				const taskPrefix = config?.prefixes?.task ?? "task";
 
 				// Get existing task IDs to generate next ID
-				// Include both active and completed tasks to prevent ID collisions
+				// Include both active and archived tasks to prevent ID collisions
 				const existingTasks = await this.listTasks();
-				const completedTasks = await this.listCompletedTasks();
-				const existingIds = [...existingTasks, ...completedTasks].map((t) => t.id);
+				const archivedTasks = await this.listArchivedTasks();
+				const existingIds = [...existingTasks, ...archivedTasks].map((t) => t.id);
 
 				// Generate new task ID
 				const newTaskId = generateNextId(existingIds, taskPrefix, config?.zeroPaddedIds);

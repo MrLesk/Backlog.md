@@ -88,10 +88,11 @@ Humans and agents can run `backlog instructions` for workflow guides and `backlo
 | Add deps    | `backlog task edit 7 --dep task-1 --dep task-2`     |
 | Set due date | `backlog task edit 7 --due-date 2026-08-10` |
 | Clear due date | `backlog task edit 7 --clear-due-date` |
-| Complete    | `backlog task complete 7` (move finished work to completed storage) |
-| Archive     | `backlog task archive 7` (canceled, duplicate, or invalid work) |
+| Archive     | `backlog task archive 7` (move a task in any status off the board) |
 
-Mark finished work Done (or the configured final status). During periodic cleanup, use Complete to move it off the board while preserving its record and dependency links. Archive removes incoming dependencies and task references.
+Mark finished work Done (or the configured final status). During periodic cleanup, Archive moves it off the board; Archive also takes canceled, duplicate, or invalid work off the board at any time. An archived task keeps its ID, its record, and every dependency and reference to it. It stays readable with `backlog task view`, where its status line ends in `(archived)`, and it is read-only. A dependency on an archived task counts as satisfied only when that task is in the final status.
+
+Projects that still hold tasks in a `completed` folder keep working: those tasks are read as archived tasks. `backlog doctor` reports them, and `backlog doctor --fix` moves them into `archive/tasks` without changing file names or IDs. If two records claim one task ID, `backlog doctor` reports the pair and `--fix` gives one of them a new ID; a task on the board always keeps its ID.
 
 ### Task list order
 
@@ -130,7 +131,7 @@ Use `backlog task list --json --watch` to receive the full matching list immedia
 backlog task list --json --watch | jq --unbuffered -c '.tasks'
 ```
 
-Each response replaces the subscriber's previous list, including an empty `tasks` array. Filters, sorting, limits, and local editable task scope are unchanged; completed storage, archives, drafts, and other branches are not added to the list. Dependency and configuration changes can update derived fields or which tasks match. Unchanged results are suppressed, and rapid edits or slow consumers may coalesce intermediate states. The command reconciles periodically as well as on file notifications; this is a current-state subscription, not an edit history. Restart it to receive a fresh full list.
+Each response replaces the subscriber's previous list, including an empty `tasks` array. Filters, sorting, limits, and local editable task scope are unchanged; archived tasks, drafts, and other branches are not added to the list. Dependency and configuration changes can update derived fields or which tasks match. Unchanged results are suppressed, and rapid edits or slow consumers may coalesce intermediate states. The command reconciles periodically as well as on file notifications; this is a current-state subscription, not an edit history. Restart it to receive a fresh full list.
 
 `--watch` requires `--json` and cannot be combined with `--plain`. Stop it with Ctrl+C or terminate the process; closing the output pipe also stops it. It also ends when the process that started it ends. A failure after earlier responses writes a diagnostic to stderr and exits nonzero without emitting a replacement for that failed read.
 
@@ -303,7 +304,7 @@ Dependents (2 direct, 2 total):
 - **Edge direction.** A dependency edge points from the task that declares it to the task it depends on, so the task it points at blocks the task it comes from.
 - **Direct versus transitive.** `Depends on` lists everything the selected task transitively depends on; `Dependents` lists everything that transitively depends on it. Nesting shows the distance: the outermost entries are direct relationships and everything indented below them is transitive. The heading counts both, as `N direct, M total`.
 - **Dependents.** "Dependents" means the tasks this one blocks. It is the reverse of the task's own dependency list, and nothing on it is editable from here; change it on the task that declares it.
-- **Visibility.** The graph resolves against exactly what task detail can already see: the current checkout plus completed tasks for the CLI, TUI, and MCP, and the configured cross-branch corpus in the browser. Archiving a task takes it out of every one of those, so an archived ID stops resolving instead of coming back.
+- **Visibility.** The graph resolves against exactly what task detail can already see: the current checkout including archived tasks for the CLI, TUI, and MCP, and the configured cross-branch corpus in the browser. An archived task keeps its ID, so a dependency on it keeps resolving; it reads as `[completed]` only when it is in the final status and keeps blocking otherwise.
 - **Cycles and repeats.** Every task appears once. A relationship that points back into the branch above it is marked `(cycle)`, and a task already shown elsewhere in the same section is marked `(shown above)` rather than being expanded again.
 - **Unresolved identities.** `unknown task ID` means no visible task claims that ID. `ambiguous task ID` means more than one record claims it, so nothing is chosen. Neither is ever treated as satisfied, and the graph never traverses past one, so anything behind it is left out rather than reported as resolved. Diagnose and repair duplicate IDs with `backlog doctor` before trusting a graph that reports one.
 
@@ -366,7 +367,7 @@ To keep the Web UI running in the background with auto-start on boot, see [Runni
 
 | Action      | Example                                                                                      |
 |-------------|----------------------------------------------------------------------------------------------|
-| Cleanup done tasks | `backlog cleanup` (move old completed tasks to completed folder to cleanup the kanban board) |
+| Cleanup done tasks | `backlog cleanup` (archive old finished tasks to clean up the kanban board) |
 
 Full help: `backlog --help`
 

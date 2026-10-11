@@ -6,7 +6,7 @@ import type { ContentStore } from "../core/content-store.ts";
 import { FileSystem } from "../file-system/operations.ts";
 import { BacklogServer } from "../server/index.ts";
 import type { Task } from "../types/index.ts";
-import { createUniqueTestDir, safeCleanup } from "./test-utils.ts";
+import { archiveTaskFile, createUniqueTestDir, safeCleanup } from "./test-utils.ts";
 
 let testDir: string;
 let filesystem: FileSystem;
@@ -113,7 +113,7 @@ describe("BacklogServer statistics endpoint", () => {
 
 		await filesystem.saveTask(createTask({ priority: "Urgent" }));
 		await filesystem.saveTask(createTask({ id: "TASK-2", title: "Completed task", status: "Done", priority: "Low" }));
-		expect(await filesystem.completeTask("TASK-2")).toBe(true);
+		expect(await archiveTaskFile(filesystem, "TASK-2")).toBe(true);
 		await filesystem.saveDraft(createTask({ id: "DRAFT-1", title: "Draft task", status: "Draft" }));
 
 		await startStatisticsServer();
@@ -134,7 +134,7 @@ describe("BacklogServer statistics endpoint", () => {
 		if (!server) throw new Error("Server not started");
 		const core = (server as unknown as { core: Core }).core;
 		const originalListTasks = core.filesystem.listTasks.bind(core.filesystem);
-		const originalListCompletedTasks = core.filesystem.listCompletedTasks.bind(core.filesystem);
+		const originalListCompletedTasks = core.filesystem.listArchivedTasks.bind(core.filesystem);
 		const originalStatisticsLoader = core.loadAllTasksForStatistics;
 		let activeCorpusLoads = 0;
 		let completedCorpusLoads = 0;
@@ -144,7 +144,7 @@ describe("BacklogServer statistics endpoint", () => {
 			activeCorpusLoads += 1;
 			return await originalListTasks(...args);
 		};
-		core.filesystem.listCompletedTasks = async (...args) => {
+		core.filesystem.listArchivedTasks = async (...args) => {
 			completedCorpusLoads += 1;
 			return await originalListCompletedTasks(...args);
 		};
@@ -168,7 +168,7 @@ describe("BacklogServer statistics endpoint", () => {
 			expect(second).toMatchObject({ totalTasks: 2, completedTasks: 1, draftCount: 1 });
 		} finally {
 			core.filesystem.listTasks = originalListTasks;
-			core.filesystem.listCompletedTasks = originalListCompletedTasks;
+			core.filesystem.listArchivedTasks = originalListCompletedTasks;
 			core.loadAllTasksForStatistics = originalStatisticsLoader;
 		}
 
@@ -222,7 +222,7 @@ describe("BacklogServer statistics endpoint", () => {
 		await rootB.saveTask(createTask({ id: "TASK-10", title: "Root B queued", status: "Queued" }));
 		await rootB.saveTask(createTask({ id: "TASK-11", title: "Root B queued too", status: "Queued" }));
 		await rootB.saveTask(createTask({ id: "TASK-12", title: "Root B done", status: "Done" }));
-		expect(await rootB.completeTask("TASK-12")).toBe(true);
+		expect(await archiveTaskFile(rootB, "TASK-12")).toBe(true);
 		await rootB.saveDraft(createTask({ id: "DRAFT-10", title: "Root B draft", status: "Draft" }));
 		await rootB.saveDraft(createTask({ id: "DRAFT-11", title: "Root B draft too", status: "Draft" }));
 

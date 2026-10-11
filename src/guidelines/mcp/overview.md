@@ -18,7 +18,7 @@ Read the matching resource before taking these actions; this overview does not r
 
 ### Task Lifecycle
 
-Mark finished work Done (or the configured final status). Leave it on the board until periodic cleanup with `task_complete`. Use `task_archive` only for canceled, duplicate, or invalid work.
+Mark finished work Done (or the configured final status) and leave it on the board until periodic cleanup. `task_archive` moves a task in any status off the board: finished work during cleanup, and canceled, duplicate, or invalid work at any time.
 
 ### MCP Tools Quick Reference
 
@@ -36,8 +36,7 @@ Mark finished work Done (or the configured final status). Leave it on the board 
 - `task_edit` — update task metadata, status, plan, notes, comments (`commentsAppend` with optional `commentAuthor`), final summary, acceptance criteria, task-level Definition of Done (`definitionOfDoneAdd/Remove/Check/Uncheck`) for **exceptional** per-task updates, and dependencies
 - DoD is not acceptance criteria: acceptance criteria define scope/behavior, while DoD tracks completion hygiene
 - Comments are for discussion and review notes; Implementation Notes are for execution progress; Final Summary is the PR-style completion summary. Comment bodies may contain Markdown, but standalone `---` lines are reserved as comment delimiters.
-- `task_complete` — move finished work off the board to completed storage during periodic cleanup; preserves its record and dependency links
-- `task_archive` — archive canceled, duplicate, or invalid work; removes incoming dependencies and task references. Archived task IDs can be reused.
+- `task_archive` — move a task in any status off the board into the archive; keeps its ID, record, dependencies, and references. Archived tasks are read-only, stay viewable with `task_view`, and are marked `archived` in `task_search` results. A dependency on an archived task counts as satisfied only when that task is in the final status.
 
 **Document path rules:** document paths are relative to the docs directory. Use `path` values like `guides/setup`; absolute paths and `..` traversal are rejected.
 

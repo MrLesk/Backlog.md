@@ -332,11 +332,11 @@ describe("CLI JSON output", () => {
 	});
 
 	it("reads no task corpus for a search that matched no task", async () => {
-		// A completed record that cannot be parsed is never cached, so it is re-read and re-logged
-		// under DEBUG on every load of the completed corpus. Counting those lines counts the corpus
+		// An archived record that cannot be parsed is never cached, so it is re-read and re-logged
+		// under DEBUG on every load of the archived corpus. Counting those lines counts the corpus
 		// reads one command makes.
 		await writeFile(
-			join(TEST_DIR, "backlog", "completed", "task-99 - Broken.md"),
+			join(TEST_DIR, "backlog", "archive", "tasks", "task-99 - Broken.md"),
 			"---\nid: TASK-99\ntitle: [unclosed\nstatus: Done\n---\n\nbroken\n",
 		);
 		const corpusReads = async (args: string[]) => {
@@ -350,7 +350,7 @@ describe("CLI JSON output", () => {
 				reads: result.stderr
 					.toString()
 					.split("\n")
-					.filter((line) => line.startsWith("Failed to parse completed task file")).length,
+					.filter((line) => line.startsWith("Failed to parse archived task file")).length,
 			};
 		};
 
