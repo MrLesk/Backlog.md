@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
-import { appendFile, chmod, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { appendFile, chmod, mkdir, mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { $ } from "bun";
@@ -963,22 +963,23 @@ describe("TUI task composer canonical persistence", () => {
 		}
 	});
 
-	it("restores pre-existing bytes when a failed create temporarily reuses their path", async () => {
-		await initializeGitRepository(testDir);
+	it("refuses to create a task over a file that appears at its path after the ID is chosen", async () => {
 		const preExistingPath = join(testDir, "backlog", "tasks", "task-1 - Preexisting.md");
-		const preExistingContent = "This is not a parseable task and must be restored.\n";
+		const preExistingContent = "This is not a parseable task and must stay as it is.\n";
 
 		await afterNextIdGenerated(
 			async (id) => {
 				expect(id).toBe("TASK-1");
 				await writeFile(preExistingPath, preExistingContent);
-				await installFailingHook(testDir);
 			},
-			async () => await expect(core.createTaskFromInput({ title: "Preexisting" }, true)).rejects.toThrow(),
+			async () =>
+				await expect(core.createTaskFromInput({ title: "Preexisting" }, false)).rejects.toThrow(
+					"task-1 - Preexisting.md: another file already exists at that path",
+				),
 		);
 
 		expect(await readFile(preExistingPath, "utf8")).toBe(preExistingContent);
-		expect((await $`git diff --cached --name-only`.cwd(testDir).text()).trim()).toBe("");
+		expect(await readdir(join(testDir, "backlog", "tasks"))).toEqual(["task-1 - Preexisting.md"]);
 	});
 
 	for (const status of ["To Do", "Draft"] as const) {

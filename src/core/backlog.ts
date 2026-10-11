@@ -54,7 +54,7 @@ import { generateNextDecisionId, generateNextDocId } from "../utils/id-generator
 import { createMilestoneFilterValueResolver } from "../utils/milestone-filter.ts";
 import {
 	buildGlobPattern,
-	buildIdRegex,
+	extractIdFromFilename,
 	generateNextId as generateNextPrefixedId,
 	generateNextSubtaskId,
 	getPrefixForType,
@@ -1539,27 +1539,31 @@ export class Core {
 	}
 
 	/**
-	 * Gets all task IDs that are in use (active or completed) across all branches.
-	 * Respects cross-branch config settings. Archived IDs are excluded (can be reused).
-	 *
-	 * This is used for ID generation to determine the next available ID.
+	 * Task files found by name in this project's folder and, inside a Git repository, in the same
+	 * folder of every other worktree. A file reserves the number in its name whatever its
+	 * frontmatter says, and worktrees share the task ID namespace before their files are committed.
 	 */
-	private async loadWorktreeTaskStateEntries(taskPrefix: string): Promise<BranchTaskStateEntry[]> {
-		const [repoRoot, worktreeRoots] = await Promise.all([this.git.getRepositoryRoot(), this.git.listWorktreePaths()]);
-		if (!repoRoot || worktreeRoots.length === 0) {
-			return [];
-		}
-
-		const projectRelativePath = relative(repoRoot, this.fs.rootDir);
-		if (projectRelativePath.startsWith("..") || isAbsolute(projectRelativePath)) {
-			return [];
-		}
-
+	private async loadTaskFileNameEntries(taskPrefix: string): Promise<BranchTaskStateEntry[]> {
 		const backlogDir = await this.getBacklogDirectoryName();
-		const entries: BranchTaskStateEntry[] = [];
+		const projectRoot = this.fs.rootDir;
+		// This project is always read: outside a Git repository there is no worktree list to find it in.
+		const entries = await this.loadTaskStateEntriesFromWorktree(projectRoot, backlogDir, taskPrefix, projectRoot);
+
+		const [repoRoot, worktreeRoots] = await Promise.all([this.git.getRepositoryRoot(), this.git.listWorktreePaths()]);
+		if (!repoRoot) {
+			return entries;
+		}
+		const projectRelativePath = relative(repoRoot, projectRoot);
+		if (projectRelativePath.startsWith("..") || isAbsolute(projectRelativePath)) {
+			return entries;
+		}
+
 		for (const worktreeRoot of worktreeRoots) {
-			const projectRoot = projectRelativePath ? join(worktreeRoot, projectRelativePath) : worktreeRoot;
-			entries.push(...(await this.loadTaskStateEntriesFromWorktree(projectRoot, backlogDir, taskPrefix, worktreeRoot)));
+			const worktreeProjectRoot = projectRelativePath ? join(worktreeRoot, projectRelativePath) : worktreeRoot;
+			if (worktreeProjectRoot === projectRoot) continue;
+			entries.push(
+				...(await this.loadTaskStateEntriesFromWorktree(worktreeProjectRoot, backlogDir, taskPrefix, worktreeRoot)),
+			);
 		}
 
 		return entries;
@@ -1571,7 +1575,6 @@ export class Core {
 		taskPrefix: string,
 		worktreeRoot: string,
 	): Promise<BranchTaskStateEntry[]> {
-		const idRegex = buildIdRegex(taskPrefix);
 		const globPattern = buildGlobPattern(taskPrefix.toLowerCase());
 		const directories: Array<{ path: string; type: "task" | "completed" }> = [
 			{ path: join(projectRoot, backlogDir, DEFAULT_DIRECTORIES.TASKS), type: "task" },
@@ -1588,13 +1591,13 @@ export class Core {
 			}
 
 			for (const file of files) {
-				const match = file.match(idRegex);
-				if (!match?.[1]) continue;
+				const id = extractIdFromFilename(file, taskPrefix);
+				if (!id) continue;
 
 				const filePath = join(path, file);
 				const stats = await stat(filePath).catch(() => null);
 				entries.push({
-					id: normalizeId(match[1], taskPrefix),
+					id,
 					type,
 					branch: `worktree:${worktreeRoot}`,
 					path: filePath,
@@ -1606,6 +1609,12 @@ export class Core {
 		return entries;
 	}
 
+	/**
+	 * Gets all task IDs that are in use (active or completed) across all branches.
+	 * Respects cross-branch config settings. Archived IDs are excluded (can be reused).
+	 *
+	 * This is used for ID generation to determine the next available ID.
+	 */
 	private async getActiveAndCompletedTaskIds(): Promise<string[]> {
 		const snapshot = await this.loadTasksWithStableBranchSnapshot({
 			includeCompleted: false,
@@ -1617,12 +1626,12 @@ export class Core {
 		const taskPrefix = config?.prefixes?.task ?? "task";
 		if (!snapshot.identityIndex) throw new Error("Task corpus identity index was not initialized");
 
-		// Same-repository worktrees share the task ID namespace even before their
-		// task files are committed, so include their filesystem state for allocation.
-		const worktreeEntries = await this.loadWorktreeTaskStateEntries(taskPrefix);
+		// The identity index holds the IDs stored in frontmatter. A number is also taken when a file
+		// name claims it, in this project or in a worktree of the same repository.
+		const fileNameEntries = await this.loadTaskFileNameEntries(taskPrefix);
 		const occupiedIds = new Set(snapshot.identityIndex.getOccupiedIds());
 		for (const task of completedTasks) occupiedIds.add(task.id);
-		for (const entry of worktreeEntries) {
+		for (const entry of fileNameEntries) {
 			if (entry.type === "task" || entry.type === "completed") occupiedIds.add(entry.id);
 		}
 		return [...occupiedIds];

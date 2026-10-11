@@ -1,4 +1,4 @@
-import { mkdir, rename, stat, unlink } from "node:fs/promises";
+import { lstat, mkdir, rename, stat, unlink, writeFile } from "node:fs/promises";
 import { basename, dirname, isAbsolute, join, resolve } from "node:path";
 import lockfile from "proper-lockfile";
 import { DEFAULT_DIRECTORIES, DEFAULT_FILES, DEFAULT_STATUSES, FALLBACK_STATUS } from "../constants/index.ts";
@@ -19,7 +19,7 @@ import {
 	resolveBacklogDirectoryFromRootConfig,
 } from "../utils/backlog-directory.ts";
 import { findDecisionById } from "../utils/decision-id.ts";
-import { documentIdsEqual, findDocumentById, normalizeDocumentId } from "../utils/document-id.ts";
+import { findDocumentById, normalizeDocumentId } from "../utils/document-id.ts";
 import { normalizeDocumentRelativePath, normalizeDocumentSubPath } from "../utils/document-path.ts";
 import { normalizeDueDate } from "../utils/due-date.ts";
 import type { DraftIdentityFindings } from "../utils/duplicate-detection.ts";
@@ -277,6 +277,32 @@ function taskLockError(message: string, cause?: unknown): Error {
 function recordUnreadableDirectory(error: unknown, unreadable?: string[]): void {
 	if ((error as NodeJS.ErrnoException | undefined)?.code === "ENOENT") return;
 	unreadable?.push("");
+}
+
+/** The failure a save reports when the file it would write is taken by another file. */
+function pathTakenError(path: string): Error {
+	return new Error(
+		`Cannot write ${path}: another file already exists at that path. Nothing was changed. Move or rename the existing file, then try again.`,
+	);
+}
+
+/**
+ * Whether `path` holds a file other than the one at `ownPath`. Two different paths can name one
+ * file, for example when they differ only in letter case on a case-insensitive file system, so
+ * the files are compared by identity and not by name. Links are compared as links, not followed.
+ */
+async function isTakenByAnotherFile(path: string, ownPath: string): Promise<boolean> {
+	const identify = async (filePath: string) => {
+		try {
+			return await lstat(filePath, { bigint: true });
+		} catch (error) {
+			if ((error as NodeJS.ErrnoException).code === "ENOENT") return null;
+			throw error;
+		}
+	};
+	const [taken, own] = await Promise.all([identify(path), identify(ownPath)]);
+	if (!taken) return false;
+	return !own || taken.dev !== own.dev || taken.ino !== own.ino;
 }
 
 export function isCreateLockError(error: unknown): error is Error {
@@ -782,9 +808,8 @@ export class FileSystem {
 	}
 
 	async saveTask(task: Task): Promise<string> {
-		const { id: taskId, filename, filePath: filepath } = await this.resolveTaskWriteTarget(task);
+		const { id: taskId, filePath: filepath } = await this.resolveTaskWriteTarget(task);
 		const prefix = extractAnyPrefix(taskId) ?? "task";
-		const tasksDir = await this.getTasksDir();
 		const shouldPreservePath = typeof task.filePath === "string" && task.filePath.trim().length > 0;
 		let existingTask: Task | null = null;
 
@@ -814,23 +839,54 @@ export class FileSystem {
 		};
 		const content = serializeTask(normalizedTask);
 
-		if (!shouldPreservePath) {
-			// Delete any existing task files with the same ID but different filenames
+		await this.writeRecordFile(filepath, content, shouldPreservePath ? filepath : undefined);
+		return filepath;
+	}
+
+	/**
+	 * Writes the file of a task, document or decision. Every save of those records ends here, and
+	 * the only existing file it may replace is the one the record was loaded from. No other file is
+	 * removed, renamed or overwritten, whatever its name or its frontmatter says.
+	 *
+	 * - Loaded from `targetPath`: the file is rewritten in place.
+	 * - Loaded from another path: the file moves to `targetPath`, as after a title change. The
+	 *   previous path is returned.
+	 * - Not loaded from a file (`loadedFromPath` undefined): the record is new and gets a new file.
+	 *
+	 * In the last two cases the target must be free. If another file is there the save fails and
+	 * changes nothing.
+	 */
+	private async writeRecordFile(
+		targetPath: string,
+		content: string,
+		loadedFromPath: string | undefined,
+	): Promise<string | undefined> {
+		await this.ensureDirectoryExists(dirname(targetPath));
+
+		if (!loadedFromPath) {
 			try {
-				const core = { filesystem: { tasksDir } };
-				const existingPath = await getTaskPath(taskId, core as TaskPathContext);
-				if (existingPath && !existingPath.endsWith(filename)) {
-					await unlink(existingPath);
-				}
+				// "wx" fails when anything exists at the path, so checking and writing are one step.
+				await writeFile(targetPath, content, { flag: "wx" });
 			} catch (error) {
-				if (isAmbiguousTaskIdError(error)) throw error;
-				// Ignore errors if no existing files found
+				if ((error as NodeJS.ErrnoException).code === "EEXIST") throw pathTakenError(targetPath);
+				throw error;
 			}
+			return undefined;
 		}
 
-		await this.ensureDirectoryExists(dirname(filepath));
-		await Bun.write(filepath, content);
-		return filepath;
+		let movedFrom: string | undefined;
+		if (loadedFromPath !== targetPath) {
+			if (await isTakenByAnotherFile(targetPath, loadedFromPath)) throw pathTakenError(targetPath);
+			try {
+				await rename(loadedFromPath, targetPath);
+				movedFrom = loadedFromPath;
+			} catch (error) {
+				// The record's file is already gone, so there is nothing to move and the target is free.
+				if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+			}
+		}
+		await Bun.write(targetPath, content);
+		return movedFrom;
 	}
 
 	async loadTask(taskId: string): Promise<Task | null> {
@@ -1486,28 +1542,11 @@ export class FileSystem {
 		const filename = `decision-${normalizedId} - ${this.sanitizeFilename(decision.title)}.md`;
 		const decisionsDir = await this.getDecisionsDir();
 		const filepath = join(decisionsDir, filename);
-		const content = serializeDecision(decision);
-		await this.ensureDirectoryExists(dirname(filepath));
+		const loadedFromPath = decision.path ? join(decisionsDir, decision.path) : undefined;
 
-		const matches = await Array.fromAsync(
-			new Bun.Glob("decision-*.md").scan({ cwd: decisionsDir, followSymlinks: true }),
-		);
-		const removedFilepaths: string[] = [];
-		for (const match of matches) {
-			if (match === filename) continue;
-			if (!match.startsWith(`decision-${normalizedId} -`)) continue;
-			try {
-				const matchPath = join(decisionsDir, match);
-				await unlink(matchPath);
-				removedFilepaths.push(matchPath);
-			} catch {
-				// Ignore cleanup errors
-			}
-		}
+		const movedFrom = await this.writeRecordFile(filepath, serializeDecision(decision), loadedFromPath);
 
-		await Bun.write(filepath, content);
-
-		return { filepath, removedFilepaths };
+		return { filepath, removedFilepaths: movedFrom ? [movedFrom] : [] };
 	}
 
 	async loadDecision(decisionId: string): Promise<Decision | null> {
@@ -1523,58 +1562,14 @@ export class FileSystem {
 		const normalizedSubPath = normalizeDocumentSubPath(subPath);
 		const relativePath = normalizedSubPath ? `${normalizedSubPath}/${filename}` : filename;
 		const filepath = join(docsDir, ...relativePath.split("/"));
-		const content = serializeDocument(document);
+		const loadedFromPath = document.path
+			? join(docsDir, ...normalizeDocumentRelativePath(document.path).split("/"))
+			: undefined;
 
-		await this.ensureDirectoryExists(dirname(filepath));
-
-		const glob = new Bun.Glob("**/doc-*.md");
-		const existingMatches = (await Array.fromAsync(glob.scan({ cwd: docsDir, followSymlinks: true }))).map((relative) =>
-			normalizeDocumentRelativePath(relative),
-		);
-		const matchesForId = existingMatches.filter((relative) => {
-			const base = relative.split("/").pop() || relative;
-			const [candidateId] = base.split(" - ");
-			if (!candidateId) return false;
-			return documentIdsEqual(canonicalId, candidateId);
-		});
-
-		let sourceRelativePath = document.path ? normalizeDocumentRelativePath(document.path) : undefined;
-		if (!sourceRelativePath && matchesForId.length > 0) {
-			sourceRelativePath = normalizeDocumentRelativePath(matchesForId[0] ?? "");
-		}
-
-		const removedFilepaths: string[] = [];
-		if (sourceRelativePath && sourceRelativePath !== relativePath) {
-			const sourcePath = join(docsDir, ...sourceRelativePath.split("/"));
-			try {
-				await this.ensureDirectoryExists(dirname(filepath));
-				await rename(sourcePath, filepath);
-				removedFilepaths.push(sourcePath);
-			} catch (error) {
-				const code = (error as NodeJS.ErrnoException | undefined)?.code;
-				if (code !== "ENOENT") {
-					throw error;
-				}
-			}
-		}
-
-		for (const match of matchesForId) {
-			const matchPath = join(docsDir, ...normalizeDocumentRelativePath(match).split("/"));
-			if (matchPath === filepath) {
-				continue;
-			}
-			try {
-				await unlink(matchPath);
-				removedFilepaths.push(matchPath);
-			} catch {
-				// Ignore cleanup errors - file may have been removed already
-			}
-		}
-
-		await Bun.write(filepath, content);
+		const movedFrom = await this.writeRecordFile(filepath, serializeDocument(document), loadedFromPath);
 
 		document.path = relativePath;
-		return { relativePath, removedFilepaths };
+		return { relativePath, removedFilepaths: movedFrom ? [movedFrom] : [] };
 	}
 
 	/** Lists decisions, skipping files that cannot be read or parsed and collecting their paths in `unreadable`. */

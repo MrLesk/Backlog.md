@@ -608,7 +608,7 @@ Invalid content`,
 			expect(loaded?.alternatives).toBe("Considered JavaScript");
 		});
 
-		it("should remove legacy decision filenames when resaving", async () => {
+		it("should rename a legacy decision filename when the loaded decision is resaved", async () => {
 			const legacyDecision: Decision = {
 				...sampleDecision,
 				id: "decision-legacy",
@@ -625,7 +625,9 @@ Invalid content`,
 			const legacyFilename = "decision-legacy - Legacy-Decision-(OAuth)!.md";
 			await rename(join(filesystem.decisionsDir, sanitized as string), join(filesystem.decisionsDir, legacyFilename));
 
-			await filesystem.saveDecision({ ...legacyDecision, decision: "Updated decision" });
+			const stored = await filesystem.loadDecision("decision-legacy");
+			expect(stored?.path).toBe(legacyFilename);
+			await filesystem.saveDecision({ ...(stored as Decision), decision: "Updated decision" });
 
 			const finalFiles = await readdir(filesystem.decisionsDir);
 			expect(finalFiles).toEqual(["decision-legacy - Legacy-Decision-OAuth.md"]);

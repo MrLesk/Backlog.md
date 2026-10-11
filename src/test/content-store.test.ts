@@ -422,7 +422,7 @@ describe("ContentStore", () => {
 		store.dispose();
 		const core = new Core(TEST_DIR);
 		await core.fs.ensureBacklogStructure();
-		await core.fs.saveTask({ ...sampleTask, type: "bug" });
+		const filePath = await core.fs.saveTask({ ...sampleTask, type: "bug" });
 
 		const heldInitialLoad = createDeferredGate();
 		core.loadTasks = async () => {
@@ -434,7 +434,7 @@ describe("ContentStore", () => {
 
 		const storePromise = core.getContentStore();
 		await withTimeout(heldInitialLoad.started, "held Core initialization");
-		await core.updateTask({ ...sampleTask, type: "feature", rawContent: "## Description\nNew content" });
+		await core.updateTask({ ...sampleTask, filePath, type: "feature", rawContent: "## Description\nNew content" });
 		heldInitialLoad.release();
 		store = await storePromise;
 
@@ -678,9 +678,9 @@ describe("ContentStore", () => {
 	});
 
 	it("keeps persisted task, document, and decision writes that complete during initialization", async () => {
-		await filesystem.saveTask({ ...sampleTask, title: "Old task" });
-		await filesystem.saveDocument({ ...sampleDocument, title: "Old document" });
-		await filesystem.saveDecision({ ...sampleDecision, title: "Old decision" });
+		const taskPath = await filesystem.saveTask({ ...sampleTask, title: "Old task" });
+		const { relativePath: documentPath } = await filesystem.saveDocument({ ...sampleDocument, title: "Old document" });
+		const { filepath: decisionPath } = await filesystem.saveDecision({ ...sampleDecision, title: "Old decision" });
 		store.dispose();
 
 		const initialTaskLoad = createDeferredGate();
@@ -721,9 +721,9 @@ describe("ContentStore", () => {
 			withTimeout(initialDocumentLoad.started, "initial document snapshot"),
 			withTimeout(initialDecisionLoad.started, "initial decision snapshot"),
 		]);
-		await filesystem.saveTask({ ...sampleTask, title: "New task" });
-		await filesystem.saveDocument({ ...sampleDocument, title: "New document" });
-		await filesystem.saveDecision({ ...sampleDecision, title: "New decision" });
+		await filesystem.saveTask({ ...sampleTask, title: "New task", filePath: taskPath });
+		await filesystem.saveDocument({ ...sampleDocument, title: "New document", path: documentPath });
+		await filesystem.saveDecision({ ...sampleDecision, title: "New decision", path: basename(decisionPath) });
 		const persistedTask = await filesystem.loadTask(sampleTask.id);
 		if (persistedTask) {
 			store.upsertTask(persistedTask);
@@ -742,7 +742,7 @@ describe("ContentStore", () => {
 	});
 
 	it("keeps a same-root persisted write that spans initial watcher setup", async () => {
-		await filesystem.saveTask({ ...sampleTask, title: "Old task" });
+		const taskPath = await filesystem.saveTask({ ...sampleTask, title: "Old task" });
 		store.dispose();
 
 		const persistedWrite = createDeferredGate();
@@ -768,7 +768,7 @@ describe("ContentStore", () => {
 
 		const initialization = store.ensureInitialized();
 		await withTimeout(heldInitialLoad.started, "held initial task load");
-		const saving = filesystem.saveTask({ ...sampleTask, title: "Persisted newer" });
+		const saving = filesystem.saveTask({ ...sampleTask, title: "Persisted newer", filePath: taskPath });
 		await withTimeout(persistedWrite.started, "persisted initialization-spanning write");
 		heldInitialLoad.release();
 		await initialization;
@@ -781,14 +781,14 @@ describe("ContentStore", () => {
 	});
 
 	it("emits task updates when underlying files change", async () => {
-		await filesystem.saveTask(sampleTask);
+		const filePath = await filesystem.saveTask(sampleTask);
 		await store.ensureInitialized();
 
 		const waitForUpdate = waitForEventWithTimeout(store, (event) => {
 			return event.type === "tasks" && event.tasks.some((task) => task.title === "Updated Task");
 		});
 
-		await filesystem.saveTask({ ...sampleTask, title: "Updated Task" });
+		await filesystem.saveTask({ ...sampleTask, title: "Updated Task", filePath });
 		await waitForUpdate;
 
 		const tasks = store.getTasks();
@@ -798,7 +798,7 @@ describe("ContentStore", () => {
 	it("does not let an older task refresh overwrite a newer persisted upsert", async () => {
 		store.dispose();
 		const saveTaskToDisk = filesystem.saveTask.bind(filesystem);
-		await saveTaskToDisk({ ...sampleTask, type: "bug" });
+		const filePath = await saveTaskToDisk({ ...sampleTask, type: "bug" });
 
 		let nextLoadGate: DeferredGate | null = null;
 		store = new ContentStore(filesystem, async () => {
@@ -820,7 +820,7 @@ describe("ContentStore", () => {
 		const heldOldRefresh = (store as unknown as { refreshTasksFromDisk: () => Promise<void> }).refreshTasksFromDisk();
 		await withTimeout(heldOldLoad.started, "old task refresh");
 
-		await saveTaskToDisk({ ...sampleTask, type: "feature" });
+		await saveTaskToDisk({ ...sampleTask, type: "feature", filePath });
 		const persistedTask = await filesystem.loadTask(sampleTask.id);
 		expect(persistedTask?.type).toBe("feature");
 		store.upsertTask(persistedTask as Task);
@@ -1028,7 +1028,7 @@ describe("ContentStore", () => {
 		const saveTaskToDisk = filesystem.saveTask.bind(filesystem);
 		const firstTask: Task = { ...sampleTask, title: "Task 1 old" };
 		const secondTask: Task = { ...sampleTask, id: "task-2", title: "Task 2 old" };
-		await Promise.all([saveTaskToDisk(firstTask), saveTaskToDisk(secondTask)]);
+		const [firstPath, secondPath] = await Promise.all([saveTaskToDisk(firstTask), saveTaskToDisk(secondTask)]);
 
 		let nextLoadGate: DeferredGate | null = null;
 		store = new ContentStore(filesystem, async () => {
@@ -1043,13 +1043,13 @@ describe("ContentStore", () => {
 		});
 		await store.ensureInitialized();
 
-		await saveTaskToDisk({ ...firstTask, title: "Task 1 external new" });
+		await saveTaskToDisk({ ...firstTask, title: "Task 1 external new", filePath: firstPath });
 		const heldOldLoad = createDeferredGate();
 		nextLoadGate = heldOldLoad;
 		const refresh = (store as unknown as { refreshTasksFromDisk: () => Promise<void> }).refreshTasksFromDisk();
 		await withTimeout(heldOldLoad.started, "full task refresh");
 
-		await saveTaskToDisk({ ...secondTask, title: "Task 2 upsert new" });
+		await saveTaskToDisk({ ...secondTask, title: "Task 2 upsert new", filePath: secondPath });
 		const persistedSecondTask = await filesystem.loadTask(secondTask.id);
 		if (!persistedSecondTask) {
 			throw new Error("Expected the persisted second task");
@@ -1068,11 +1068,11 @@ describe("ContentStore", () => {
 		store.dispose();
 		const saveTaskToDisk = filesystem.saveTask.bind(filesystem);
 		const secondTask: Task = { ...sampleTask, id: "task-2", title: "Second task" };
-		await Promise.all([saveTaskToDisk({ ...sampleTask, type: "bug" }), saveTaskToDisk(secondTask)]);
+		const [filePath] = await Promise.all([saveTaskToDisk({ ...sampleTask, type: "bug" }), saveTaskToDisk(secondTask)]);
 		store = new ContentStore(filesystem);
 		await store.ensureInitialized();
 
-		await saveTaskToDisk({ ...sampleTask, type: "feature" });
+		await saveTaskToDisk({ ...sampleTask, type: "feature", filePath });
 		const originalLoadTask = filesystem.loadTask.bind(filesystem);
 		const heldTaskLoad = createDeferredGate();
 		filesystem.loadTask = async (taskId: string) => {
@@ -1104,7 +1104,7 @@ describe("ContentStore", () => {
 	it("reloads a same-root config snapshot invalidated by a newer task upsert", async () => {
 		store.dispose();
 		const saveTaskToDisk = filesystem.saveTask.bind(filesystem);
-		await saveTaskToDisk({ ...sampleTask, type: "bug" });
+		const filePath = await saveTaskToDisk({ ...sampleTask, type: "bug" });
 		const config: BacklogConfig = {
 			projectName: "Content generation fixture",
 			statuses: ["To Do", "Done"],
@@ -1139,7 +1139,7 @@ describe("ContentStore", () => {
 		).handleConfigChanged(config);
 		await withTimeout(heldConfigLoad.started, "same-root config task snapshot");
 
-		await saveTaskToDisk({ ...sampleTask, type: "feature" });
+		await saveTaskToDisk({ ...sampleTask, type: "feature", filePath });
 		const persistedTask = await filesystem.loadTask(sampleTask.id);
 		if (!persistedTask) {
 			throw new Error("Expected the persisted task after the config snapshot started");
@@ -1156,7 +1156,7 @@ describe("ContentStore", () => {
 		const saveTaskToDisk = filesystem.saveTask.bind(filesystem);
 		const saveDocumentToDisk = filesystem.saveDocument.bind(filesystem);
 		const saveDecisionToDisk = filesystem.saveDecision.bind(filesystem);
-		await Promise.all([
+		const [taskPath, { relativePath: documentPath }, { filepath: decisionPath }] = await Promise.all([
 			saveTaskToDisk({ ...sampleTask, title: "Task A" }),
 			saveDocumentToDisk({ ...sampleDocument, title: "Document A" }),
 			saveDecisionToDisk({ ...sampleDecision, title: "Decision A" }),
@@ -1218,9 +1218,9 @@ describe("ContentStore", () => {
 		]);
 
 		await Promise.all([
-			saveTaskToDisk({ ...sampleTask, title: "Task B" }),
-			saveDocumentToDisk({ ...sampleDocument, title: "Document B" }),
-			saveDecisionToDisk({ ...sampleDecision, title: "Decision B" }),
+			saveTaskToDisk({ ...sampleTask, title: "Task B", filePath: taskPath }),
+			saveDocumentToDisk({ ...sampleDocument, title: "Document B", path: documentPath }),
+			saveDecisionToDisk({ ...sampleDecision, title: "Decision B", path: basename(decisionPath) }),
 		]);
 		await Promise.all([
 			refreshes.refreshTasksFromDisk(),
@@ -1349,9 +1349,9 @@ describe("ContentStore", () => {
 
 			const writer = new FileSystem(TEST_DIR);
 			await Promise.all([
-				writer.saveTask({ ...sampleTask, status: "In Progress" }),
-				writer.saveDocument({ ...sampleDocument, type: "specification" }),
-				writer.saveDecision({ ...sampleDecision, status: "accepted" }),
+				writer.saveTask({ ...task, status: "In Progress" }),
+				writer.saveDocument({ ...document, type: "specification" }),
+				writer.saveDecision({ ...decision, status: "accepted" }),
 			]);
 
 			await waitUntil(
@@ -1527,9 +1527,9 @@ describe("ContentStore", () => {
 
 			const writer = new FileSystem(TEST_DIR);
 			await Promise.all([
-				writer.saveTask({ ...sampleTask, status: "In Progress" }),
-				writer.saveDocument({ ...sampleDocument, type: "specification" }),
-				writer.saveDecision({ ...sampleDecision, status: "accepted" }),
+				writer.saveTask({ ...task, status: "In Progress" }),
+				writer.saveDocument({ ...document, type: "specification" }),
+				writer.saveDecision({ ...decision, status: "accepted" }),
 			]);
 
 			for (const callback of timerCallbacks) callback();
@@ -2569,7 +2569,7 @@ describe("ContentStore", () => {
 		await rootA.ensureBacklogStructure();
 		await rootB.ensureBacklogStructure();
 		await rootA.saveTask({ ...sampleTask, title: "Root A" });
-		await rootB.saveTask({ ...sampleTask, title: "Root B old" });
+		const rootBTaskPath = await rootB.saveTask({ ...sampleTask, title: "Root B old" });
 
 		filesystem = fixtureFilesystem(TEST_DIR, "root-a");
 		let nextTaskLoad: DeferredGate | null = null;
@@ -2607,7 +2607,7 @@ describe("ContentStore", () => {
 		await withTimeout(heldRootBLoad.started, "held target-root snapshot");
 		(store as unknown as { stopRootWatchers: () => void }).stopRootWatchers();
 
-		await rootB.saveTask({ ...sampleTask, title: "Root B persisted newer" });
+		await rootB.saveTask({ ...sampleTask, title: "Root B persisted newer", filePath: rootBTaskPath });
 		const persistedRootBTask = await rootB.loadTask(sampleTask.id);
 		if (!persistedRootBTask) {
 			throw new Error("Expected the persisted target-root task");

@@ -2,7 +2,7 @@ import { basename, join } from "node:path";
 import { type Core, createRuntimeCore } from "../core/backlog.ts";
 import type { Task } from "../types/index.ts";
 import { AmbiguousIdError } from "./entity-id.ts";
-import { buildFilenameIdRegex, buildGlobPattern, escapeRegex, extractAnyPrefix, normalizeId } from "./prefix-config.ts";
+import { buildGlobPattern, escapeRegex, extractAnyPrefix, extractIdFromFilename } from "./prefix-config.ts";
 import { canonicalTaskId, normalizeTaskId, taskIdsEqual } from "./task-id.ts";
 
 export { canonicalTaskId, normalizeTaskId, taskIdsEqual } from "./task-id.ts";
@@ -118,13 +118,6 @@ async function findMatchingTaskPaths(directory: string, taskId: string): Promise
 const DEFAULT_DRAFT_PREFIX = "draft";
 
 /**
- * Normalize a draft ID by ensuring the draft prefix is present (uppercase).
- */
-function normalizeDraftId(draftId: string): string {
-	return normalizeId(draftId, DEFAULT_DRAFT_PREFIX);
-}
-
-/**
  * Checks if an input ID matches a filename loosely for drafts.
  * Loose means case-insensitive with leading zeros ignored, the same rule
  * used to collect filename-derived draft identity candidates.
@@ -139,10 +132,7 @@ export function draftIdsMatchLoosely(inputId: string, filename: string): boolean
  * Extracts the draft ID from a filename.
  */
 export function extractDraftIdFromFilename(filename: string): string | null {
-	const regex = buildFilenameIdRegex(DEFAULT_DRAFT_PREFIX);
-	const match = filename.match(regex);
-	if (!match?.[1]) return null;
-	return normalizeDraftId(`${DEFAULT_DRAFT_PREFIX}-${match[1]}`);
+	return extractIdFromFilename(filename, DEFAULT_DRAFT_PREFIX);
 }
 
 /**

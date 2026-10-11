@@ -907,6 +907,8 @@ describe("shared immutable branch task loading", () => {
 						createdDate: "2026-08-10",
 						labels: [],
 						dependencies: [],
+						// The second pass saves the task again, back to the file it already has.
+						filePath: (await setup.fs.loadTask("TASK-1"))?.filePath,
 					});
 				}
 
