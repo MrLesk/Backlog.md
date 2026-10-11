@@ -1386,9 +1386,11 @@ addHelpSchema(program.command("init [projectName]"), {
 					result.bypassGitHooks = parseBoolean(options.bypassGitHooks, result.bypassGitHooks ?? false);
 					const paddingValue = parseNumber(options.zeroPaddedIds, result.zeroPaddedIds ?? 0);
 					result.zeroPaddedIds = paddingValue > 0 ? paddingValue : undefined;
+					// Only a project that has no config yet takes its editor from the environment. An existing
+					// project keeps its own choice, including no editor, unless --default-editor is passed.
 					result.defaultEditor =
 						options.defaultEditor ??
-						(existingConfig?.defaultEditor || process.env.EDITOR || process.env.VISUAL || undefined);
+						(existingConfig ? existingConfig.defaultEditor : process.env.EDITOR || process.env.VISUAL || undefined);
 					result.defaultPort = parseNumber(options.webPort, result.defaultPort ?? 6420);
 					result.autoOpenBrowser = parseBoolean(options.autoOpenBrowser, result.autoOpenBrowser ?? true);
 					return result;
