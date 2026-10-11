@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import { lstat, mkdir, readdir, readlink, symlink } from "node:fs/promises";
 import { join } from "node:path";
-import { moveArchivedTasks, previewArchivedTaskMove } from "../core/archived-task-move.ts";
+import { moveArchivedTasks, moveWithoutReplacing, previewArchivedTaskMove } from "../core/archived-task-move.ts";
 import { Core } from "../core/backlog.ts";
 import { serializeTask } from "../markdown/serializer.ts";
 import type { Task } from "../types/index.ts";
@@ -257,5 +257,45 @@ describe("archived task folders", () => {
 			expect((await core.getTask("task-41"))?.title).toBe("Finished work");
 			expect((await core.getTask("task-42"))?.title).toBe("Stale copy");
 		});
+	});
+});
+
+describe("moving a task file without replacing", () => {
+	let directory: string;
+	const withoutHardLinks = async () => {
+		throw Object.assign(new Error("cross-device link not permitted"), { code: "EXDEV" });
+	};
+
+	beforeEach(async () => {
+		directory = createUniqueTestDir("move-without-replacing");
+		await mkdir(join(directory, "from"), { recursive: true });
+		await mkdir(join(directory, "to"), { recursive: true });
+		await Bun.write(join(directory, "from", "task-1 - Moved.md"), "moved content");
+	});
+
+	afterEach(async () => {
+		await safeCleanup(directory);
+	});
+
+	it("copies exclusively where a hard link is not possible", async () => {
+		const source = join(directory, "from", "task-1 - Moved.md");
+		const target = join(directory, "to", "task-1 - Moved.md");
+
+		await moveWithoutReplacing(source, target, withoutHardLinks);
+
+		expect(await Bun.file(target).text()).toBe("moved content");
+		expect(await Bun.file(source).exists()).toBe(false);
+	});
+
+	it("keeps both files when the target name is taken, with or without hard links", async () => {
+		const source = join(directory, "from", "task-1 - Moved.md");
+		const target = join(directory, "to", "task-1 - Moved.md");
+		await Bun.write(target, "already there");
+
+		await expect(moveWithoutReplacing(source, target)).rejects.toMatchObject({ code: "EEXIST" });
+		await expect(moveWithoutReplacing(source, target, withoutHardLinks)).rejects.toMatchObject({ code: "EEXIST" });
+
+		expect(await Bun.file(target).text()).toBe("already there");
+		expect(await Bun.file(source).text()).toBe("moved content");
 	});
 });

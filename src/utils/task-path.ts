@@ -34,6 +34,14 @@ export function normalizeTaskIdentity(task: Task): Task {
 }
 
 /**
+ * The sentence every interface uses when no record claims a task ID. The CLI, which reads the
+ * working copy only, appends {@link LOCAL_TASK_LOOKUP_HINT}.
+ */
+export function taskNotFoundMessage(taskId: string): string {
+	return `Task ${taskId} not found.`;
+}
+
+/**
  * Appended to a task not-found message produced by a working-copy lookup.
  *
  * Task lookups deliberately stay local, so a miss is not proof the ID is unused. The hint is a

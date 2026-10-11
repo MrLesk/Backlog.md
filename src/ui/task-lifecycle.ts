@@ -1,5 +1,6 @@
 import type { Core } from "../core/backlog.ts";
 import { isReadOnlyTask, type Task } from "../types/index.ts";
+import { taskNotFoundMessage } from "../utils/task-path.ts";
 
 /** The archive confirmation every TUI view shows. Three short lines, to fit the confirm popup. */
 export function formatArchiveConfirmation(taskId: string): string {
@@ -48,5 +49,5 @@ export function formatArchiveNotice(task: Task, result: TuiArchiveResult): strin
 	// Core refused or failed after the view's snapshot went stale, so its own reason is shown.
 	return result.error
 		? ` {red-fg}Error archiving task: ${result.error}{/}`
-		: ` {red-fg}Failed to archive ${task.id}{/}`;
+		: ` {red-fg}${taskNotFoundMessage(task.id)}{/}`;
 }

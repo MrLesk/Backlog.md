@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-import { basename, dirname, isAbsolute, join } from "node:path";
+import { dirname, isAbsolute, join } from "node:path";
 import { stdin as input } from "node:process";
 import { createInterface } from "node:readline/promises";
 import * as clack from "@clack/prompts";
@@ -141,6 +141,7 @@ import {
 	isAmbiguousTaskIdError,
 	LOCAL_TASK_LOOKUP_HINT,
 	taskIdsEqual,
+	taskNotFoundMessage,
 } from "./utils/task-path.ts";
 import { sectionTasks, sortTasks, TASK_SORT_FIELDS } from "./utils/task-sorting.ts";
 import { formatValidTaskTypeValues, getTaskTypeValues, resolveTaskTypeValues } from "./utils/task-type-config.ts";
@@ -3868,23 +3869,18 @@ addHelpSchema(taskCmd.command("archive <taskId>"), {
 		const cwd = await requireProjectRoot();
 		const core = new Core(cwd);
 		const task = await core.loadTaskById(taskId, { includeCrossBranch: false });
-		if (!task) {
-			console.error(`Task ${taskId} not found. ${LOCAL_TASK_LOOKUP_HINT}`);
+		if (!task || !(await core.archiveTask(task.id, undefined, { includeCrossBranch: false }))) {
+			console.error(`${taskNotFoundMessage(taskId)} ${LOCAL_TASK_LOOKUP_HINT}`);
 			process.exitCode = 1;
 			return;
 		}
-
-		if (await core.archiveTask(task.id, undefined, { includeCrossBranch: false })) {
-			console.log(`Archived task ${task.id}`);
-		} else {
-			console.error(`Failed to archive task: ${task.id}`);
-			process.exitCode = 1;
-		}
+		console.log(`Archived task ${task.id}`);
 	});
 
 // A removal notice, not a command: `task complete` was replaced by `task archive`. The entry only
 // answers people and scripts that still call it. It is hidden from help and completion, accepts
-// whatever follows its name, changes nothing and exits non-zero.
+// whatever follows its name, changes nothing and exits non-zero. With `--json` the task-level
+// check above answers first, so that call gets the parser's "unknown option" message instead.
 taskCmd
 	.command("complete [ignored...]", { hidden: true })
 	.allowUnknownOption()
@@ -5661,7 +5657,6 @@ addHelpSchema(program.command("cleanup"), {
 				console.error("No backlog project found. Initialize one first with: backlog init");
 				process.exit(1);
 			}
-			core.gitOps.setConfig(config);
 
 			const statuses = config.statuses ?? [...DEFAULT_STATUSES];
 			const terminalStatus = getTerminalStatus(statuses);
@@ -5732,36 +5727,14 @@ addHelpSchema(program.command("cleanup"), {
 				return;
 			}
 
-			const shouldAutoCommit = config.autoCommit ?? false;
-
 			console.log("Archiving tasks...");
 			const { archivedTaskIds, failures } = await core.archiveTerminalStatusTasksByAge(selectedAge);
 			for (const failure of failures) {
 				console.error(`Failed to archive task ${failure.taskId}: ${failure.reason}`);
 			}
-			const successCount = archivedTaskIds.length;
-
-			// If autoCommit is disabled, stage the moves so Git recognizes them
-			const hasGitRepository = await core.gitOps.isRepository();
-			if (successCount > 0 && !shouldAutoCommit && hasGitRepository) {
-				console.log("Staging file moves for Git...");
-				for (const task of tasksToArchive) {
-					if (!task.filePath || !archivedTaskIds.includes(task.id)) continue;
-					try {
-						await core.gitOps.stageFileMove(
-							task.filePath,
-							join(core.filesystem.archiveTasksDir, basename(task.filePath)),
-						);
-					} catch (error) {
-						console.warn(`Warning: Could not stage move for Git: ${error}`);
-					}
-				}
-			}
-
-			console.log(`Successfully archived ${successCount} of ${successCount + failures.length} tasks.`);
-			if (successCount > 0 && !shouldAutoCommit && hasGitRepository) {
-				console.log("Files have been staged. To commit: git commit -m 'cleanup: Archive finished tasks'");
-			}
+			console.log(
+				`Successfully archived ${archivedTaskIds.length} of ${archivedTaskIds.length + failures.length} tasks.`,
+			);
 		} catch (err) {
 			reportCommandFailure("Failed to run cleanup", err);
 		}

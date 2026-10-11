@@ -1,4 +1,4 @@
-import { TaskArchivedError, type VacatedTaskResult } from "../../../core/backlog.ts";
+import { TaskRefusedError, type VacatedTaskResult } from "../../../core/backlog.ts";
 import { findLocalDuplicateTaskIds } from "../../../core/duplicate-task-repair.ts";
 import { loadTaskDetail, loadTaskListItems } from "../../../core/task-detail.ts";
 import { isCreateLockError, isTaskLockError } from "../../../file-system/operations.ts";
@@ -13,6 +13,7 @@ import {
 } from "../../../utils/milestone-filter.ts";
 import { resolveMilestoneInputForStorage } from "../../../utils/milestone-storage.ts";
 import { buildTaskUpdateInput } from "../../../utils/task-edit-builder.ts";
+import { taskNotFoundMessage } from "../../../utils/task-path.ts";
 import { applyTaskFilters, createTaskSearchIndex } from "../../../utils/task-search.ts";
 import { sectionTasks, sortTasks } from "../../../utils/task-sorting.ts";
 import { formatUtcDateForDisplay } from "../../../utils/utc-date-display.ts";
@@ -105,9 +106,21 @@ export class TaskHandlers {
 	private async loadTaskOrThrow(id: string): Promise<Task> {
 		const task = await this.core.getTask(id);
 		if (!task) {
-			throw new BacklogToolError(`Task not found: ${id}`, "TASK_NOT_FOUND");
+			throw new BacklogToolError(taskNotFoundMessage(id), "TASK_NOT_FOUND");
 		}
 		return task;
+	}
+
+	/** Run a core lifecycle operation. A refusal from core is the caller's answer, in core's words. */
+	private async runLifecycleOperation<T>(operation: () => Promise<T>): Promise<T> {
+		try {
+			return await operation();
+		} catch (error) {
+			if (error instanceof TaskRefusedError) {
+				throw new BacklogToolError(error.message, "VALIDATION_ERROR");
+			}
+			throw error;
+		}
 	}
 
 	async createTask(args: TaskCreateArgs): Promise<CallToolResult> {
@@ -416,7 +429,7 @@ export class TaskHandlers {
 
 		const task = await this.core.getTaskWithSubtasks(args.id);
 		if (!task) {
-			throw new BacklogToolError(`Task not found: ${args.id}`, "TASK_NOT_FOUND");
+			throw new BacklogToolError(taskNotFoundMessage(args.id), "TASK_NOT_FOUND");
 		}
 		// Task detail is the only MCP result read through the detail path, so it is the only one that
 		// carries the graph. The edit and lifecycle confirmations stay as short as they were.
@@ -435,17 +448,8 @@ export class TaskHandlers {
 		}
 
 		const task = await this.loadTaskOrThrow(args.id);
-		let archived: boolean;
-		try {
-			archived = await this.core.archiveTask(task.id);
-		} catch (error) {
-			if (error instanceof TaskArchivedError) {
-				throw new BacklogToolError(error.message, "VALIDATION_ERROR");
-			}
-			throw error;
-		}
-		if (!archived) {
-			throw new BacklogToolError(`Failed to archive task: ${args.id}`, "OPERATION_FAILED");
+		if (!(await this.runLifecycleOperation(() => this.core.archiveTask(task.id)))) {
+			throw new BacklogToolError(taskNotFoundMessage(args.id), "TASK_NOT_FOUND");
 		}
 
 		const refreshed = (await this.core.getTask(task.id)) ?? task;

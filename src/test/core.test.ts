@@ -1,8 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import { mkdir, utimes } from "node:fs/promises";
-import { join } from "node:path";
+import { basename, join } from "node:path";
 import { $ } from "bun";
-import { Core, TaskArchivedError } from "../core/backlog.ts";
+import { Core, TaskArchivedError, TaskFileExistsError } from "../core/backlog.ts";
 import { serializeTask } from "../markdown/serializer.ts";
 import type { Document, Task } from "../types/index.ts";
 import { AmbiguousTaskIdError } from "../utils/task-path.ts";
@@ -213,6 +213,26 @@ describe("Core", () => {
 
 			expect(await Bun.file(archived.filePath).text()).toBe(before);
 			expect(await writer.filesystem.listTasks()).toEqual([]);
+		});
+
+		it("refuses to archive over an archive file of the same name and changes nothing", async () => {
+			await core.createTask(sampleTask, false);
+			const boardPath = (await core.filesystem.loadTask(sampleTask.id))?.filePath;
+			if (!boardPath) throw new Error("Expected the board task file");
+			// Same file name, another task: the frontmatter gives it a different ID.
+			const archivePath = join(core.filesystem.archiveTasksDir, basename(boardPath));
+			await Bun.write(archivePath, serializeTask({ ...sampleTask, id: "TASK-9", title: "Already archived" }));
+			const [boardBefore, archiveBefore] = [await Bun.file(boardPath).text(), await Bun.file(archivePath).text()];
+
+			const refused = core.archiveTask(sampleTask.id, false);
+
+			await expect(refused).rejects.toBeInstanceOf(TaskFileExistsError);
+			await expect(refused).rejects.toThrow(
+				`Task TASK-1 cannot be archived: the archive already has a file named ${basename(boardPath)}.`,
+			);
+			expect(await Bun.file(boardPath).text()).toBe(boardBefore);
+			expect(await Bun.file(archivePath).text()).toBe(archiveBefore);
+			expect((await core.filesystem.loadTask(sampleTask.id))?.id).toBe("TASK-1");
 		});
 
 		it("refreshes one coherent active and archived identity snapshot before mutation", async () => {

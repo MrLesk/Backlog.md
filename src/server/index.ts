@@ -2,7 +2,7 @@ import net from "node:net";
 import { dirname, isAbsolute, join } from "node:path";
 import type { Server, ServerWebSocket } from "bun";
 import { DEFAULT_STATUSES } from "../constants/index.ts";
-import { Core, TaskArchivedError } from "../core/backlog.ts";
+import { Core, TaskRefusedError } from "../core/backlog.ts";
 import type { ContentStore } from "../core/content-store.ts";
 import { initializeProject } from "../core/init.ts";
 import type { SearchService } from "../core/search-service.ts";
@@ -34,7 +34,7 @@ import {
 } from "../utils/project-config.ts";
 import { formatValidStatuses, getCanonicalStatuses, getValidStatuses } from "../utils/status.ts";
 import { isValidTaskId } from "../utils/task-id.ts";
-import { isAmbiguousTaskIdError, LOCAL_TASK_LOOKUP_HINT } from "../utils/task-path.ts";
+import { isAmbiguousTaskIdError, LOCAL_TASK_LOOKUP_HINT, taskNotFoundMessage } from "../utils/task-path.ts";
 import { getVersion } from "../utils/version.ts";
 
 // Regex pattern to match any prefix (letters followed by dash)
@@ -1215,14 +1215,13 @@ export class BacklogServer {
 
 	private async handleArchiveTask(taskId: string): Promise<Response> {
 		try {
-			// false does not only mean missing: core also returns it when the file could not be moved.
 			if (!(await this.core.archiveTask(taskId))) {
-				return Response.json({ error: "Task not found" }, { status: 404 });
+				return Response.json({ error: taskNotFoundMessage(taskId) }, { status: 404 });
 			}
 			this.broadcastDataUpdated();
 			return Response.json({ success: true });
 		} catch (error) {
-			if (error instanceof TaskArchivedError) {
+			if (error instanceof TaskRefusedError) {
 				return Response.json({ error: error.message }, { status: 400 });
 			}
 			// The task reached the archive and the commit after that failed. Say so, and refresh:

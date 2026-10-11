@@ -103,6 +103,7 @@ import { attachSubtaskSummaries } from "../utils/task-subtasks.ts";
 import { formatValidTaskTypeValues, resolveTaskTypeValue } from "../utils/task-type-config.ts";
 import { upsertTaskUpdatedDate } from "../utils/task-updated-date.ts";
 import { isTerminalStatus } from "../utils/terminal-status.ts";
+import { moveWithoutReplacing } from "./archived-task-move.ts";
 import { migrateConfig, needsMigration } from "./config-migration.ts";
 import { ContentStore, type TaskCorpusSnapshot } from "./content-store.ts";
 import {
@@ -383,11 +384,34 @@ function assertSectionInputsSafe(input: {
 	}
 }
 
+/**
+ * Core refused a task operation because of the state the task is in. The message is the answer
+ * for the caller, so every interface reports it as it is.
+ */
+export class TaskRefusedError extends Error {}
+
 /** A mutation targeted a task that exists only in the archive, where tasks are read-only. */
-export class TaskArchivedError extends Error {
+export class TaskArchivedError extends TaskRefusedError {
 	constructor(taskId: string) {
 		super(`Task ${taskId} is archived. Archived tasks are read-only.`);
 		this.name = "TaskArchivedError";
+	}
+}
+
+/** A lifecycle operation targeted a task that exists only on another branch; it is read-only here. */
+export class TaskOnOtherBranchError extends TaskRefusedError {
+	constructor(taskId: string, branch: string | undefined) {
+		const where = branch ? `on branch "${branch}"` : "on another branch";
+		super(`Task ${taskId} exists only ${where} and is read-only here. Switch to that branch to change it.`);
+		this.name = "TaskOnOtherBranchError";
+	}
+}
+
+/** Archiving found a file with the task file's name already in the archive. Nothing was changed. */
+export class TaskFileExistsError extends TaskRefusedError {
+	constructor(taskId: string, fileName: string) {
+		super(`Task ${taskId} cannot be archived: the archive already has a file named ${fileName}.`);
+		this.name = "TaskFileExistsError";
 	}
 }
 
@@ -1207,6 +1231,20 @@ export class Core {
 		if (resolution.status === "found") return { ...resolution.task };
 		await this.fs.loadTask(taskId);
 		return null;
+	}
+
+	/**
+	 * Called when a lifecycle operation finds no record for an ID in the working copy. If the
+	 * cross-branch read still finds the task, on the board or in the archive of another branch, it is
+	 * read-only here and the caller is told that instead of "not found". A caller that reads the
+	 * working copy only (the CLI) never asks.
+	 */
+	private async refuseTaskOnOtherBranch(taskId: string, options: TaskReadOptions): Promise<void> {
+		if (options.includeCrossBranch === false) return;
+		const resolution = (await this.getContentStore()).resolveTaskForRead(taskId);
+		if (resolution.status === "found") {
+			throw new TaskOnOtherBranchError(resolution.task.id, resolution.task.branch);
+		}
 	}
 
 	async getTaskContent(taskId: string): Promise<string | null> {
@@ -3341,10 +3379,16 @@ export class Core {
 	/**
 	 * Move a task off the board into the archive. Any status can be archived. The record keeps its
 	 * ID, its status and every link other tasks hold to it, and no other record is rewritten.
+	 *
+	 * Returns false when no record claims the ID. Every refusal is a `TaskRefusedError`: the task is
+	 * archived already, it exists only on another branch, or the archive has a file of its name.
 	 */
 	async archiveTask(taskId: string, autoCommit?: boolean, options: TaskReadOptions = {}): Promise<boolean> {
 		const task = await this.loadTaskForMutation(taskId, options);
-		if (!task) return false;
+		if (!task) {
+			await this.refuseTaskOnOtherBranch(taskId, options);
+			return false;
+		}
 
 		return await this.fs.withTaskLock(task, async () => {
 			// A concurrent archive or demotion may have moved the record before this lock was acquired.
@@ -3353,11 +3397,12 @@ export class Core {
 			if (!current || !fromPath) return false;
 			const toPath = join(await this.fs.getArchiveTasksDir(), basename(fromPath));
 
+			await mkdir(dirname(toPath), { recursive: true });
 			try {
-				await mkdir(dirname(toPath), { recursive: true });
-				await moveFile(fromPath, toPath);
-			} catch {
-				return false;
+				await moveWithoutReplacing(fromPath, toPath);
+			} catch (error) {
+				if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
+				throw new TaskFileExistsError(current.id, basename(toPath));
 			}
 			this.contentStore?.transitionTask(current.id, { ...current, filePath: toPath, source: "archived" });
 
@@ -3489,7 +3534,7 @@ export class Core {
 		for (const task of await this.getTerminalStatusTasksByAge(olderThanDays)) {
 			try {
 				if (await this.archiveTask(task.id)) archivedTaskIds.push(task.id);
-				else failures.push({ taskId: task.id, reason: "the task file could not be moved" });
+				else failures.push({ taskId: task.id, reason: "the task is no longer on the board" });
 			} catch (error) {
 				failures.push({ taskId: task.id, reason: error instanceof Error ? error.message : String(error) });
 			}

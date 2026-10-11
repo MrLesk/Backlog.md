@@ -8,6 +8,7 @@ import { registerTaskTools } from "../mcp/tools/tasks/index.ts";
 import type { JsonSchema } from "../mcp/validation/validators.ts";
 import type { Task } from "../types/index.ts";
 import {
+	archiveTaskFile,
 	commitSamePathBranchTaskVariant,
 	createUniqueTestDir,
 	initializeFilesystemTestProject,
@@ -309,6 +310,51 @@ describe("MCP task tools (MVP)", () => {
 		const toolNames = (await mcpServer.testInterface.listTools()).tools.map((tool) => tool.name);
 		expect(toolNames).toContain("task_archive");
 		expect(toolNames.filter((name) => name.includes("complete"))).toEqual([]);
+	});
+
+	it("answers an archive of a task that exists only on another branch with core's read-only refusal", async () => {
+		await enableGitTestProject();
+		const config = await loadConfig(mcpServer);
+		await mcpServer.filesystem.saveConfig({ ...config, checkActiveBranches: true, remoteOperations: false });
+		const base = { status: "To Do", assignee: [], createdDate: "2026-08-01", labels: [], dependencies: [] };
+		await mcpServer.filesystem.saveTask({ ...base, id: "TASK-1", title: "On the board" });
+		await $`git add .`.cwd(TEST_DIR).quiet();
+		await $`git commit -m "Add the board task"`.cwd(TEST_DIR).quiet();
+		await $`git switch -c feature`.cwd(TEST_DIR).quiet();
+		await mcpServer.filesystem.saveTask({ ...base, id: "TASK-2", title: "Only on the feature branch" });
+		await Bun.write(
+			join(mcpServer.filesystem.archiveTasksDir, "task-3 - Archived-on-the-feature-branch.md"),
+			serializeTask({ ...base, id: "TASK-3", title: "Archived on the feature branch" }),
+		);
+		await $`git add .`.cwd(TEST_DIR).quiet();
+		await $`git commit -m "Add the feature tasks"`.cwd(TEST_DIR).quiet();
+		await $`git switch main`.cwd(TEST_DIR).quiet();
+		const call = async (name: string, args: Record<string, unknown>) =>
+			await mcpServer.testInterface.callTool({ params: { name, arguments: args } });
+
+		// Both tasks are visible from here, on the other branch's board and in its archive, so
+		// "not found" would contradict what task_view just showed.
+		for (const [id, title] of [
+			["2", "Only on the feature branch"],
+			["3", "Archived on the feature branch"],
+		]) {
+			const view = await call("task_view", { id: `task-${id}` });
+			expect(view.isError).not.toBe(true);
+			expect(getText(view.content)).toContain(`Task TASK-${id} - ${title}`);
+
+			const archive = await call("task_archive", { id: `task-${id}` });
+			expect(archive.isError).toBe(true);
+			expect(getText(archive.content)).toBe(
+				`Task TASK-${id} exists only on branch "feature" and is read-only here. Switch to that branch to change it.`,
+			);
+		}
+
+		const unknown = await call("task_archive", { id: "task-9" });
+		expect(unknown.isError).toBe(true);
+		expect(getText(unknown.content)).toBe("Task task-9 not found.");
+
+		expect((await mcpServer.filesystem.listTasks()).map((task) => task.id)).toEqual(["TASK-1"]);
+		expect(await mcpServer.filesystem.listArchivedTasks()).toEqual([]);
 	});
 
 	it("archives the local task when merge policy selects a same-path padded ID variant", async () => {
@@ -747,55 +793,14 @@ describe("MCP task tools (MVP)", () => {
 	});
 
 	it("includes archived tasks in task_search results and marks them as archived", async () => {
-		await mcpServer.testInterface.callTool({
-			params: {
-				name: "task_create",
-				arguments: {
-					title: "Active task",
-				},
-			},
-		});
-
-		await mcpServer.testInterface.callTool({
-			params: {
-				name: "task_create",
-				arguments: {
-					title: "Finished task",
-					status: "Done",
-				},
-			},
-		});
-
-		await mcpServer.testInterface.callTool({
-			params: {
-				name: "task_archive",
-				arguments: {
-					id: "task-2",
-				},
-			},
-		});
-
-		await mcpServer.testInterface.callTool({
-			params: {
-				name: "task_create",
-				arguments: {
-					title: "Set aside task",
-				},
-			},
-		});
-
-		await mcpServer.testInterface.callTool({
-			params: {
-				name: "task_archive",
-				arguments: {
-					id: "task-3",
-				},
-			},
-		});
-
-		// The setup mutations above moved task files; dispose the content store so
-		// pending fs-watcher reconciles can't fire inside the tripwire window.
-		mcpServer.disposeContentStore();
+		// The fixture is written straight to disk, so no content store and no file watcher exist
+		// whose reconciliation could cross the branch-loading boundary inside the tripwire window.
+		const base = { assignee: [], createdDate: "2026-08-01", labels: [], dependencies: [] };
+		await mcpServer.filesystem.saveTask({ ...base, id: "TASK-1", title: "Active task", status: "To Do" });
+		await mcpServer.filesystem.saveTask({ ...base, id: "TASK-2", title: "Finished task", status: "Done" });
+		await mcpServer.filesystem.saveTask({ ...base, id: "TASK-3", title: "Set aside task", status: "To Do" });
+		expect(await archiveTaskFile(mcpServer.filesystem, "TASK-2")).toBe(true);
+		expect(await archiveTaskFile(mcpServer.filesystem, "TASK-3")).toBe(true);
 
 		const tripwires = installCrossBranchTripwires(mcpServer);
 		try {

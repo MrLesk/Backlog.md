@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
-import { mkdir } from "node:fs/promises";
+import { mkdir, unlink } from "node:fs/promises";
 import { $ } from "bun";
 import { Core } from "../core/backlog.ts";
 import type { Task } from "../types/index.ts";
@@ -130,6 +130,17 @@ describe("TUI task lifecycle", () => {
 		expect(formatArchiveNotice(stale, result)).toBe(
 			" {red-fg}Error archiving task: Task TASK-1 is archived. Archived tasks are read-only.{/}",
 		);
+	});
+
+	it("says the task was not found when it left the working copy after the view loaded it", async () => {
+		await createTask({ id: "task-1", title: "Removed elsewhere", status: "To Do" });
+		const stale = (await core.filesystem.loadTask("task-1")) as Task;
+		await unlink(stale.filePath as string);
+
+		const result = await archiveTaskFromTui(core, stale, confirmWith(true).confirm);
+
+		expect(result).toEqual({ archived: false, reason: "failed" });
+		expect(formatArchiveNotice(stale, result)).toBe(" {red-fg}Task TASK-1 not found.{/}");
 	});
 
 	it("marks an archived task read-only in the detail view", async () => {

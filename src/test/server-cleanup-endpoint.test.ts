@@ -1,6 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import { mkdir } from "node:fs/promises";
+import { basename, join } from "node:path";
+import { $ } from "bun";
 import { Core } from "../core/backlog.ts";
+import { serializeTask } from "../markdown/serializer.ts";
 import { BacklogServer } from "../server/index.ts";
 import type { Task } from "../types/index.ts";
 import { createUniqueTestDir, retry, safeCleanup } from "./test-utils.ts";
@@ -167,5 +170,89 @@ describe("BacklogServer cleanup endpoints", () => {
 		const remove = await fetch(`http://127.0.0.1:${serverPort}/api/tasks/TASK-2`, { method: "DELETE" });
 		expect(remove.ok).toBe(false);
 		expect((await core.filesystem.loadTask("TASK-2"))?.status).toBe("Done");
+	});
+
+	it("answers an unknown ID with the shared not-found sentence", async () => {
+		const unknown = await fetch(`http://127.0.0.1:${serverPort}/api/tasks/TASK-9/archive`, { method: "POST" });
+
+		expect(unknown.status).toBe(404);
+		expect(await unknown.json()).toEqual({ error: "Task TASK-9 not found." });
+	});
+
+	it("refuses to archive over an archive file of the same name and changes nothing", async () => {
+		const boardPath = (await core.filesystem.loadTask("TASK-2"))?.filePath;
+		if (!boardPath) throw new Error("Expected the board task file");
+		const archivePath = join(core.filesystem.archiveTasksDir, basename(boardPath));
+		await mkdir(core.filesystem.archiveTasksDir, { recursive: true });
+		await Bun.write(archivePath, serializeTask(makeTask({ id: "TASK-9", title: "Already archived" })));
+		const archiveBefore = await Bun.file(archivePath).text();
+
+		const refused = await fetch(`http://127.0.0.1:${serverPort}/api/tasks/TASK-2/archive`, { method: "POST" });
+
+		expect(refused.status).toBe(400);
+		expect(await refused.json()).toEqual({
+			error: `Task TASK-2 cannot be archived: the archive already has a file named ${basename(boardPath)}.`,
+		});
+		expect(await Bun.file(boardPath).exists()).toBe(true);
+		expect(await Bun.file(archivePath).text()).toBe(archiveBefore);
+	});
+});
+
+describe("BacklogServer archive endpoint and a task on another branch", () => {
+	beforeEach(async () => {
+		TEST_DIR = createUniqueTestDir("server-archive-other-branch");
+		await mkdir(TEST_DIR, { recursive: true });
+		await $`git init -b main`.cwd(TEST_DIR).quiet();
+		await $`git config user.name "Test User"`.cwd(TEST_DIR).quiet();
+		await $`git config user.email test@example.com`.cwd(TEST_DIR).quiet();
+		core = new Core(TEST_DIR);
+		await core.filesystem.ensureBacklogStructure();
+		await core.filesystem.saveConfig({
+			projectName: "Server Archive",
+			statuses: ["To Do", "In Progress", "Done"],
+			labels: [],
+			milestones: [],
+			dateFormat: "YYYY-MM-DD",
+			checkActiveBranches: true,
+			remoteOperations: false,
+		});
+		await core.createTask(makeTask({ id: "task-1", title: "On the board" }), false);
+		await $`git add .`.cwd(TEST_DIR).quiet();
+		await $`git commit -m "Add the board task"`.cwd(TEST_DIR).quiet();
+		await $`git switch -c feature`.cwd(TEST_DIR).quiet();
+		await core.createTask(makeTask({ id: "task-2", title: "Only on the feature branch" }), false);
+		await $`git add .`.cwd(TEST_DIR).quiet();
+		await $`git commit -m "Add the feature task"`.cwd(TEST_DIR).quiet();
+		await $`git switch main`.cwd(TEST_DIR).quiet();
+
+		server = new BacklogServer(TEST_DIR);
+		await server.start(0, false);
+		serverPort = server.getPort() ?? 0;
+		await retry(async () => {
+			await fetchJson<unknown>("/api/tasks");
+		});
+	});
+
+	afterEach(async () => {
+		if (server) {
+			await server.stop();
+			server = null;
+		}
+		await safeCleanup(TEST_DIR);
+	});
+
+	it("answers with core's read-only refusal, as it does for an archived task", async () => {
+		// The browser shows the task, so "not found" would contradict the board.
+		const listed = await fetchJson<Array<{ id: string; branch?: string }>>("/api/tasks");
+		expect(listed.find((task) => task.id === "TASK-2")?.branch).toBe("feature");
+
+		const refused = await fetch(`http://127.0.0.1:${serverPort}/api/tasks/TASK-2/archive`, { method: "POST" });
+
+		expect(refused.status).toBe(400);
+		expect(await refused.json()).toEqual({
+			error: 'Task TASK-2 exists only on branch "feature" and is read-only here. Switch to that branch to change it.',
+		});
+		expect((await core.filesystem.listTasks()).map((task) => task.id)).toEqual(["TASK-1"]);
+		expect(await core.filesystem.listArchivedTasks()).toEqual([]);
 	});
 });

@@ -1,4 +1,4 @@
-import { lstat, mkdir, readlink, realpath, symlink, unlink } from "node:fs/promises";
+import { constants, copyFile, lstat, mkdir, readlink, realpath, symlink, unlink } from "node:fs/promises";
 import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { buildGlobPattern } from "../utils/prefix-config.ts";
 import type { Core } from "./backlog.ts";
@@ -51,15 +51,26 @@ export async function previewArchivedTaskMove(core: Core): Promise<ArchivedTaskM
 	return plan;
 }
 
+/** `link` answers with one of these when the filesystem has no hard links or the folders are on two filesystems. */
+const HARD_LINK_UNAVAILABLE = new Set(["EXDEV", "EPERM", "ENOTSUP", "EOPNOTSUPP"]);
+
 /**
- * Move one file to a new directory without ever replacing a file that is already there: both
- * the hard link and `symlink` fail when the target name is taken.
+ * Move one task file to another folder without ever replacing a file that is already there. Every
+ * task file move goes through this function: archiving, and the `doctor` move of a leftover folder.
+ * It fails with EEXIST when the target name is taken, and then nothing has changed.
  *
- * A symbolic link is recreated rather than followed, so the task stays a link to the same file.
- * A relative link is rewritten, because the path it stores is resolved from the directory the
- * link itself lives in.
+ * A regular file is hard-linked under its new name and the old name is removed. Where a hard link
+ * is not possible, an exclusive copy keeps the same promise. A symbolic link is recreated rather
+ * than followed, so the task stays a link to the same file; a relative link is rewritten, because
+ * the path it stores is resolved from the directory the link itself lives in.
+ *
+ * `linkFile` exists so a test can stand in for a filesystem without hard links.
  */
-async function moveWithoutReplacing(sourcePath: string, targetPath: string): Promise<void> {
+export async function moveWithoutReplacing(
+	sourcePath: string,
+	targetPath: string,
+	linkFile: (sourcePath: string, targetPath: string) => Promise<void> = installFileNoReplace,
+): Promise<void> {
 	if ((await lstat(sourcePath)).isSymbolicLink()) {
 		const linkTarget = await readlink(sourcePath);
 		const sourceDirectory = await realpath(dirname(sourcePath));
@@ -69,7 +80,12 @@ async function moveWithoutReplacing(sourcePath: string, targetPath: string): Pro
 			targetPath,
 		);
 	} else {
-		await installFileNoReplace(sourcePath, targetPath);
+		try {
+			await linkFile(sourcePath, targetPath);
+		} catch (error) {
+			if (!HARD_LINK_UNAVAILABLE.has((error as NodeJS.ErrnoException).code ?? "")) throw error;
+			await copyFile(sourcePath, targetPath, constants.COPYFILE_EXCL);
+		}
 	}
 	await unlink(sourcePath);
 }
