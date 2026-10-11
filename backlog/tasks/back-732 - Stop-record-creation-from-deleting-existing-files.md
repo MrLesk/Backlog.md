@@ -5,7 +5,7 @@ status: In Progress
 assignee:
   - '@claude'
 created_date: '2026-10-11 19:07'
-updated_date: '2026-10-11 19:52'
+updated_date: '2026-10-11 20:16'
 labels:
   - bug
 dependencies: []
@@ -25,6 +25,7 @@ modified_files:
   - src/test/server-tasks-spa-fallback.test.ts
   - src/test/duplicate-task-repair.test.ts
   - src/test/tui-task-composer.test.ts
+  - src/core/content-store.ts
 priority: high
 type: bug
 ordinal: 350000
@@ -126,4 +127,11 @@ For review
 - Two decision creates that race to the same number and title: one now fails with the refusal where before it silently replaced the other's file. Different titles still leave two files with one ID until BACK-734.
 - Draft saving is unchanged. Draft creation already counted file names and was not affected by either scenario.
 - A folder link inside docs that points back into docs makes every document reachable through two paths, so reads report the ID as ambiguous and `doc create` exits 1 after writing its file. This is the existing listing behavior and is not changed here.
+
+Review follow-up
+- Task create no longer looks up or reads a file to restore. The backup and restore in `createTaskFromInput` stay for drafts only: `saveDraft` still overwrites its target and removes superseded draft files by name, and removing the backup makes the two draft variants of the restore tests in tui-task-composer.test.ts fail. Deleting it completely needs draft saving to follow the same rule first.
+- `saveDecision` strips the ID prefix with `extractIdBody`, in any letter case. A decision stored as `DECISION-1` keeps a `decision-1 - ...` file name when retitled; new test in cli-create-preserves-existing-files.test.ts.
+- `saveDocument` and `saveDecision` return `movedFrom`, the previous path when the save moved the file, in place of `removedFilepaths`.
+- The comment on `writeRecordFile` names the three save functions that use it and says drafts do not.
+- Seen while testing, not changed: a decision with empty sections gets its section headings repeated when it is updated through `updateDecisionFromContent`. Same on origin/main.
 <!-- SECTION:NOTES:END -->

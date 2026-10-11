@@ -81,6 +81,16 @@ async function readFolder(dir: string): Promise<Record<string, string>> {
 	return files;
 }
 
+/** Creates record 1 titled "First" and rewrites its stored ID in upper case, as a hand edit would. */
+async function createFirstWithUpperCaseId(kind: RecordKind): Promise<void> {
+	await backlog(...kind.createCommand, "First");
+	const firstPath = join(recordsDir(kind), fileName(kind, 1, "First"));
+	const upperCaseId = `id: ${kind.storedId(1).toUpperCase()}\n`;
+	const content = (await readFile(firstPath, "utf8")).replace(`id: ${kind.storedId(1)}\n`, upperCaseId);
+	expect(content).toContain(upperCaseId);
+	await writeFile(firstPath, content);
+}
+
 beforeEach(async () => {
 	TEST_DIR = await createTestDirOutsideRepository("test-cli-create-preserves");
 	OUTSIDE_DIR = await createTestDirOutsideRepository("test-cli-create-preserves-outside");
@@ -166,13 +176,9 @@ describe("creating a record never removes or replaces an existing file", () => {
 
 	for (const kind of [DOCUMENT, DECISION]) {
 		it(`${kind.label}: counts a stored ID written in upper case`, async () => {
-			await backlog(...kind.createCommand, "First");
+			await createFirstWithUpperCaseId(kind);
 			const dir = recordsDir(kind);
-			const firstPath = join(dir, fileName(kind, 1, "First"));
-			const upperCaseId = `id: ${kind.storedId(1).toUpperCase()}\n`;
-			await writeFile(firstPath, (await readFile(firstPath, "utf8")).replace(`id: ${kind.storedId(1)}\n`, upperCaseId));
 			const before = await readFolder(dir);
-			expect(before[fileName(kind, 1, "First")]).toContain(upperCaseId);
 
 			const created = await backlog(...kind.createCommand, "Second");
 
@@ -237,6 +243,17 @@ describe("a title change moves only the file the record was loaded from", () => 
 		expect(await readFolder(recordsDir(DECISION))).toEqual({
 			[fileName(DECISION, 1, "Other")]: other,
 			[fileName(DECISION, 1, "Renamed")]: expect.stringContaining("title: Renamed\n"),
+		});
+	});
+
+	it("decision: keeps the usual file name when the stored ID is written in upper case", async () => {
+		await createFirstWithUpperCaseId(DECISION);
+
+		await new Core(TEST_DIR).updateDecisionFromContent("decision-1", "---\ntitle: Retitled\n---\n", false);
+
+		// The one file is still named decision-1 and the stored ID stays as it was written.
+		expect(await readFolder(recordsDir(DECISION))).toEqual({
+			[fileName(DECISION, 1, "Retitled")]: expect.stringContaining("id: DECISION-1\ntitle: Retitled\n"),
 		});
 	});
 });

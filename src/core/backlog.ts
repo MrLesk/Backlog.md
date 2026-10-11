@@ -150,6 +150,7 @@ interface BlessedScreen {
 interface CreatedTaskWrite {
 	filePath: string;
 	createdContent: Buffer;
+	/** The file a draft save replaced and what it held; always null for a task. */
 	previousPath: string | null;
 	previousContent: Buffer | null;
 	previousIndexEntries?: GitIndexEntry[];
@@ -1885,11 +1886,12 @@ export class Core {
 				...(definitionOfDoneItems && definitionOfDoneItems.length > 0 && { definitionOfDoneItems }),
 			};
 
-			const resolvedPreviousPath = isDraft
-				? await this.fs.resolveDraftFilePath(task.id)
-				: await getTaskPath(task.id, this);
+			// Only a draft save can replace a file: it overwrites its target and removes a superseded
+			// draft file by name. That file is kept so a failed create can put it back. A task save never
+			// replaces a file, so a task create has nothing to keep.
+			const resolvedPreviousPath = isDraft ? await this.fs.resolveDraftFilePath(task.id) : null;
 			const targetPath = await this.fs.getTaskWritePath(task, isDraft);
-			const targetContent = await this.readFileIfPresent(targetPath);
+			const targetContent = isDraft ? await this.readFileIfPresent(targetPath) : null;
 			const previousPath = targetContent ? targetPath : resolvedPreviousPath;
 			const previousContent = targetContent ?? (await this.readFileIfPresent(resolvedPreviousPath));
 			const previousIndexEntries = autoCommitEnabled ? await this.git.getIndexEntries(targetPath) : undefined;
@@ -3814,10 +3816,10 @@ export class Core {
 	}
 
 	async createDecision(decision: Decision, autoCommit?: boolean): Promise<void> {
-		const { filepath, removedFilepaths } = await this.fs.saveDecision(decision);
+		const { filepath, movedFrom } = await this.fs.saveDecision(decision);
 
 		if (await this.shouldAutoCommit(autoCommit)) {
-			await this.commitWrittenFile(`backlog: Add decision ${decision.id}`, removedFilepaths, filepath);
+			await this.commitWrittenFile(`backlog: Add decision ${decision.id}`, movedFrom ? [movedFrom] : [], filepath);
 		}
 	}
 
@@ -3869,13 +3871,13 @@ export class Core {
 	}
 
 	async createDocument(doc: Document, autoCommit?: boolean, subPath = ""): Promise<void> {
-		const { relativePath, removedFilepaths } = await this.fs.saveDocument(doc, normalizeDocumentSubPath(subPath));
+		const { relativePath, movedFrom } = await this.fs.saveDocument(doc, normalizeDocumentSubPath(subPath));
 		doc.path = relativePath;
 
 		if (await this.shouldAutoCommit(autoCommit)) {
 			const docsDir = this.fs.docsDir;
 			const absolutePath = join(docsDir, ...relativePath.split("/"));
-			await this.commitWrittenFile(`backlog: Add document ${doc.id}`, removedFilepaths, absolutePath);
+			await this.commitWrittenFile(`backlog: Add document ${doc.id}`, movedFrom ? [movedFrom] : [], absolutePath);
 		}
 	}
 

@@ -27,6 +27,7 @@ import { AmbiguousIdError, isAmbiguousIdError } from "../utils/entity-id.ts";
 import {
 	buildGlobPattern,
 	extractAnyPrefix,
+	extractIdBody,
 	filenameMatchesId,
 	generateNextId,
 	idForFilename,
@@ -844,9 +845,12 @@ export class FileSystem {
 	}
 
 	/**
-	 * Writes the file of a task, document or decision. Every save of those records ends here, and
-	 * the only existing file it may replace is the one the record was loaded from. No other file is
-	 * removed, renamed or overwritten, whatever its name or its frontmatter says.
+	 * Writes the file for `saveTask`, `saveDocument` and `saveDecision`. The only existing file it
+	 * may replace is the one the record was loaded from. No other file is removed, renamed or
+	 * overwritten, whatever its name or its frontmatter says.
+	 *
+	 * Drafts do not go through here: `saveDraft` writes its own file and still removes superseded
+	 * draft files by name.
 	 *
 	 * - Loaded from `targetPath`: the file is rewritten in place.
 	 * - Loaded from another path: the file moves to `targetPath`, as after a title change. The
@@ -1536,17 +1540,17 @@ export class FileSystem {
 	}
 
 	// Decision log operations
-	async saveDecision(decision: Decision): Promise<{ filepath: string; removedFilepaths: string[] }> {
-		// Normalize ID - remove "decision-" prefix if present
-		const normalizedId = decision.id.replace(/^decision-/, "");
-		const filename = `decision-${normalizedId} - ${this.sanitizeFilename(decision.title)}.md`;
+	/** Saves a decision. `movedFrom` is the previous path of its file when the save renamed it. */
+	async saveDecision(decision: Decision): Promise<{ filepath: string; movedFrom: string | undefined }> {
+		// The file name always starts with a lower-case "decision-", whatever letter case the stored ID uses.
+		const filename = `decision-${extractIdBody(decision.id, "decision")} - ${this.sanitizeFilename(decision.title)}.md`;
 		const decisionsDir = await this.getDecisionsDir();
 		const filepath = join(decisionsDir, filename);
 		const loadedFromPath = decision.path ? join(decisionsDir, decision.path) : undefined;
 
 		const movedFrom = await this.writeRecordFile(filepath, serializeDecision(decision), loadedFromPath);
 
-		return { filepath, removedFilepaths: movedFrom ? [movedFrom] : [] };
+		return { filepath, movedFrom };
 	}
 
 	async loadDecision(decisionId: string): Promise<Decision | null> {
@@ -1554,7 +1558,11 @@ export class FileSystem {
 	}
 
 	// Document operations
-	async saveDocument(document: Document, subPath = ""): Promise<{ relativePath: string; removedFilepaths: string[] }> {
+	/** Saves a document. `movedFrom` is the previous path of its file when the save renamed or moved it. */
+	async saveDocument(
+		document: Document,
+		subPath = "",
+	): Promise<{ relativePath: string; movedFrom: string | undefined }> {
 		const docsDir = await this.getDocsDir();
 		const canonicalId = normalizeDocumentId(document.id);
 		document.id = canonicalId;
@@ -1569,7 +1577,7 @@ export class FileSystem {
 		const movedFrom = await this.writeRecordFile(filepath, serializeDocument(document), loadedFromPath);
 
 		document.path = relativePath;
-		return { relativePath, removedFilepaths: movedFrom ? [movedFrom] : [] };
+		return { relativePath, movedFrom };
 	}
 
 	/** Lists decisions, skipping files that cannot be read or parsed and collecting their paths in `unreadable`. */
