@@ -4,6 +4,7 @@ title: Store decision content in marked sections with one update path
 status: To Do
 assignee: []
 created_date: '2026-10-11 19:08'
+updated_date: '2026-10-11 19:24'
 labels:
   - bug
 dependencies:
@@ -24,7 +25,7 @@ ordinal: 355000
 <!-- SECTION:DESCRIPTION:BEGIN -->
 A decision file has no reliable way to be changed. The only write path is `PUT /api/decisions/:id`, which the web UI uses. It takes the whole body as text, reads it back into the sections it knows and rebuilds the file from those, so anything else is lost while the response says `{"success":true}`. Issue #1065 shows two cases: a body with an extra `## Revisit trigger` section is saved without that section, and a JSON body is written into the file literally. Issues #1008 and #1010 report related section reading defects on the same path (a `###` subheading cutting a section short, and an empty section returning the next heading). Those are fixed under BACK-693 in pull request #1018, and this task builds on that section reader.
 
-The maintainer's ruling on issue #1065 is that decisions follow the task model. A decision keeps its four sections, Context, Decision, Consequences and Alternatives, and the content of each is delimited by marker comments the way task sections are, for example `<!-- SECTION:CONTEXT:BEGIN -->` and `<!-- SECTION:CONTEXT:END -->` under `## Context`. The task section code is reused for this, not copied. Every decision update goes through one core function that all interfaces call, and the HTTP write endpoint changes from a text body to JSON in one release, with no period in which both are accepted. Decision status stays free-form.
+The maintainer's ruling on issue #1065 is that decisions follow the task model. A decision keeps its four sections, Context, Decision, Consequences and Alternatives, and the content of each is delimited by marker comments the way task sections are, for example `<!-- SECTION:CONTEXT:BEGIN -->` and `<!-- SECTION:CONTEXT:END -->` under `## Context`. The task section code is reused for this, not copied. Every decision update goes through one core function that all interfaces call, and the HTTP write endpoint changes from a text body to JSON in one release, with no period in which both are accepted. This task does not change which status values are accepted; that is BACK-745.
 
 Existing decision files have no markers. On the first write of such a file each known section is wrapped where it stands: marker lines are added, every original line stays in its original order, and nothing moves. Text outside the four sections, such as a preamble or other level-two sections like `## References`, is kept as it is on this and every later write. That text cannot be edited through a command or the web editor, which matches how tasks treat text outside their managed sections.
 

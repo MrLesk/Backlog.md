@@ -4,6 +4,7 @@ title: Add superseded_by and updated_date to decisions
 status: To Do
 assignee: []
 created_date: '2026-10-11 19:09'
+updated_date: '2026-10-11 19:24'
 labels:
   - enhancement
 dependencies:
@@ -23,7 +24,7 @@ When a decision is replaced by a newer one, nothing in the old record points to 
 
 The maintainer's ruling on issue #1065 is that unknown frontmatter keys keep being dropped for every record type, and that decisions gain two known keys. `superseded_by` holds the ID of the one decision that replaces this one; it is set with `--superseded-by <id>` on `backlog decision edit` and shown by `backlog decision list`. `updated_date` records when the decision last changed, as tasks and documents already record on every edit; decisions become editable with this work and had no such key. No other keys are added, and nothing is added for documents.
 
-Setting the link does not change the status. Status stays free-form and is set with `-s`, in the same command if wanted. Whether and how a link can be removed again is settled during plan review.
+Setting the link does not change the status. The status is set with `-s`, in the same command if wanted; the values it accepts are covered by BACK-745. Whether and how a link can be removed again is settled during plan review.
 
 Depends on BACK-737 (the core decision update that every interface uses) and BACK-727 (which adds `backlog decision edit`).
 <!-- SECTION:DESCRIPTION:END -->

@@ -4,6 +4,7 @@ title: Add decision view and section flags to decision create and edit
 status: To Do
 assignee: []
 created_date: '2026-10-11 19:09'
+updated_date: '2026-10-11 19:24'
 labels:
   - enhancement
 dependencies:
@@ -22,7 +23,7 @@ ordinal: 357000
 <!-- SECTION:DESCRIPTION:BEGIN -->
 The CLI can create a decision with a title and a status and can list decisions, and that is all. `backlog decision create` always produces empty Context, Decision and Consequences sections, no command fills them in afterwards, and no command prints a single decision. The shipped guidance tells users not to edit decision files by hand, so the supported workflow ends with a permanently empty record, and the only way to write content is the HTTP endpoint behind the web UI, which is not a documented interface (issue #920). Issue #1065 shows that people depend on that endpoint for lack of a command.
 
-The maintainer's ruling on issue #1065 is that decisions follow the task commands: `view`, `create` with content, and `edit`, with one flag per section as `backlog task create` and `backlog task edit` have for theirs. The flags are `--context`, `--decision`, `--consequences` and `--alternatives`. Each replaces one section; there are no append variants. The title can be changed from the CLI too, because the web editor may change it and both go through the same core function. The CLI adds no logic of its own. Decision status stays free-form, and decisions get no MCP tools.
+The maintainer's ruling on issue #1065 is that decisions follow the task commands: `view`, `create` with content, and `edit`, with one flag per section as `backlog task create` and `backlog task edit` have for theirs. The flags are `--context`, `--decision`, `--consequences` and `--alternatives`. Each replaces one section; there are no append variants. The title can be changed from the CLI too, because the web editor may change it and both go through the same core function. The CLI adds no logic of its own. Decisions get no MCP tools. Which status values are accepted is covered by BACK-745, not by this task.
 
 Depends on BACK-737 (marked sections and the shared core update), BACK-727 (which adds `backlog decision edit` with `-s`) and BACK-738 (the `superseded_by` and `updated_date` keys that `decision view` shows).
 <!-- SECTION:DESCRIPTION:END -->
