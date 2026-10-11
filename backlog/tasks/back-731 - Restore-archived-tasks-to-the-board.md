@@ -1,11 +1,11 @@
 ---
 id: BACK-731
 title: Restore archived tasks to the board
-status: In Progress
+status: Done
 assignee:
   - '@claude'
 created_date: '2026-10-11 13:02'
-updated_date: '2026-10-11 19:16'
+updated_date: '2026-10-11 20:17'
 labels:
   - enhancement
 dependencies:
@@ -57,18 +57,18 @@ Depends on BACK-730: the lifecycle change is delivered in order, first the singl
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 `backlog task restore <id>` on an archived task exits zero and moves the task back to the board with the same ID.
-- [ ] #2 A restored task behaves like any other task on the board: `backlog task list` shows it and `backlog task edit <id>` changes it.
-- [ ] #3 Archived tasks stay read-only: `backlog task edit <id>` on an archived task exits non-zero, leaves the task unchanged, and prints a message that names the restore command instead of reporting that the task was not found.
-- [ ] #4 The MCP server offers the same operation.
-- [ ] #5 Command help and the shipped instruction guides (`backlog instructions`) describe how to bring archived work back to the board.
+- [x] #1 `backlog task restore <id>` on an archived task exits zero and moves the task back to the board with the same ID.
+- [x] #2 A restored task behaves like any other task on the board: `backlog task list` shows it and `backlog task edit <id>` changes it.
+- [x] #3 Archived tasks stay read-only: `backlog task edit <id>` on an archived task exits non-zero, leaves the task unchanged, and prints a message that names the restore command instead of reporting that the task was not found.
+- [x] #4 The MCP server offers the same operation.
+- [x] #5 Command help and the shipped instruction guides (`backlog instructions`) describe how to bring archived work back to the board.
 <!-- AC:END -->
 
 ## Definition of Done
 <!-- DOD:BEGIN -->
-- [ ] #1 bunx tsc --noEmit passes when TypeScript touched
-- [ ] #2 bun run check . passes when formatting/linting touched
-- [ ] #3 bun test (or scoped test) passes
+- [x] #1 bunx tsc --noEmit passes when TypeScript touched
+- [x] #2 bun run check . passes when formatting/linting touched
+- [x] #3 bun test (or scoped test) passes
 <!-- DOD:END -->
 
 ## Implementation Plan
@@ -111,4 +111,28 @@ Tests: src/test/cli-task-restore.test.ts drives the CLI for every acceptance cri
 Verification: `bunx tsc --noEmit` clean; `bun run check .` clean (435 files); scoped tests pass (cli-task-restore, cli-task-delete, cli-doctor, mcp-tasks, mcp-server, cli-guidance, tui-task-lifecycle, server-cleanup-endpoint, cli-task-state, core, archived-task-folders: 223 pass, 0 fail). A scripted end-to-end run against a binary built from this layer covered every acceptance criterion through the CLI and through MCP over stdio in private mktemp projects.
 
 Review round: TaskNotArchivedError takes the operation (delete or restore) and holds both sentences itself. Archive and restore move the task file through one private helper, moveTaskFile, which uses the shared no-replace move and throws the typed TaskFileExistsError for either direction ('...cannot be archived: the archive already has a file named...' or '...cannot be restored: the board already has a file named...'). Restore resolves a task that exists only on another branch to the same typed refusal as archive and delete. All typed refusals extend TaskRefusedError, so the MCP restore handler is the same three lines as delete, and its tool is declared beside the delete tool above the registration block. commitFailedAfter documents when to use it and when to tag the error instead.
+
+Third review round: an ID that several records claim on another branch fails closed as ambiguous for restore too; a test calls Core.restoreTask directly for that case. Every acceptance criterion was re-run end to end against a binary built from this layer's tip (CLI and MCP over stdio) in private mktemp projects.
 <!-- SECTION:NOTES:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+`backlog task restore <id>` moves an archived task back to the board with the same ID and the status it had. Archived tasks stay read-only, and the message a refused change gets now names the restore command, so archived work is no longer a dead end (issue #1064).
+
+What changed
+- One core operation, `Core.restoreTask`. It moves the file from the folder it is archived in (`archive/tasks` or a leftover `completed/`) to the tasks folder under the same name and does not rewrite it. A task that is already on the board is refused with "Task X is not archived. It is already on the board.", a task that exists only on another branch is refused as read-only, and an ID that more than one record claims fails closed as ambiguous.
+- Archive and restore move the task file through one helper built on the shared no-replace move. A file of the same name in the destination is never replaced; the operation is refused with a typed error and changes nothing. A symlinked task file stays a link to the same target.
+- `TaskArchivedError`, the one message every interface shows when a change targets an archived task, reads "Task X is archived. Archived tasks are read-only. Restore it to the board first: backlog task restore X".
+- `backlog task restore <taskId>` has no options. The MCP server offers the same operation as `task_restore`. The TUI and the browser get no restore control.
+- `backlog doctor` tells users to restore an archived task before rewriting its dependencies, instead of editing the file directly.
+- Help, the CLI and MCP guides, README and CLI-INSTRUCTIONS say how archived work comes back to the board.
+
+Verification
+- `bunx tsc --noEmit` and `bun run check .` are clean; the scoped tests pass, including src/test/cli-task-restore.test.ts, which drives the CLI for every acceptance criterion, and the MCP tests for `task_restore`.
+- A scripted end-to-end run against a binary built from this layer covered every acceptance criterion through the CLI and through MCP over stdio.
+
+Choices to confirm
+- The MCP `task_restore` tool is included, as ruled by the maintainer.
+- The archived message names the CLI command on every interface, including MCP and HTTP.
+<!-- SECTION:FINAL_SUMMARY:END -->

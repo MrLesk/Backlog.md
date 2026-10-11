@@ -370,6 +370,7 @@ describe("MCP task tools (MVP)", () => {
 		expect(getText(contested.content)).toContain("is ambiguous");
 		await expect(mcpServer.archiveTask("task-4")).rejects.toThrow("is ambiguous");
 		await expect(mcpServer.deleteTask("task-4")).rejects.toThrow("is ambiguous");
+		await expect(mcpServer.restoreTask("task-4")).rejects.toThrow("is ambiguous");
 
 		expect((await mcpServer.filesystem.listTasks()).map((task) => task.id)).toEqual(["TASK-1"]);
 		expect(await mcpServer.filesystem.listArchivedTasks()).toEqual([]);
