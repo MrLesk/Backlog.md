@@ -25,6 +25,17 @@ const createTask = (overrides: Partial<Task> = {}): Task => ({
 	...overrides,
 });
 
+// A project's configured statuses, with a custom one between the defaults.
+const STATUSES = ["To Do", "In Progress", "Awaiting test", "Done"];
+
+// The ring does not depend on status. Each case names a position in STATUSES and has its own
+// count, so the expected numbers can only come from that task's criteria.
+const statusCases: [position: string, status: string, checked: number, total: number][] = [
+	["first", "To Do", 0, 3],
+	["custom middle", "Awaiting test", 4, 6],
+	["final", "Done", 5, 5],
+];
+
 let activeRoot: Root | null = null;
 let activeDom: JSDOM | null = null;
 
@@ -59,7 +70,7 @@ const renderList = (task: Task): HTMLElement => {
 			<MemoryRouter>
 				<TaskList
 					tasks={[task]}
-					availableStatuses={["To Do", "In Progress", "Done"]}
+					availableStatuses={STATUSES}
 					availableLabels={[]}
 					availableMilestones={[]}
 					milestoneEntities={[]}
@@ -142,7 +153,13 @@ describe("browser task acceptance criteria progress", () => {
 		expect(card?.getAttribute("aria-label")).toBe("Open task-1: Task summary. Acceptance criteria progress: 4 of 7");
 	});
 
-	it("does not render progress for an In Progress task without criteria", () => {
+	it.each(statusCases)("renders the card ring in the %s status (%s)", (_position, status, checked, total) => {
+		const container = renderCard(createTask({ status, acceptanceCriteriaItems: createCriteria(checked, total) }));
+
+		expectRing(getProgress(container), checked, total);
+	});
+
+	it("does not render progress on a card for a task without criteria", () => {
 		const container = renderCard(createTask({ acceptanceCriteriaItems: [] }));
 
 		expect(getProgress(container)).toBeNull();
@@ -174,16 +191,16 @@ describe("browser task acceptance criteria progress", () => {
 		expect(header.textContent).toBe("task-12/3");
 	});
 
-	it("keeps the priority badge alone in the header row when the task has no progress", () => {
-		const container = renderCard(createTask({ status: "To Do", priority: "medium" }));
+	it("keeps the priority badge alone in the header row when the task has no criteria", () => {
+		const container = renderCard(createTask({ priority: "medium" }));
 		const header = getHeaderRow(container);
 
 		expect(getProgress(container)).toBeNull();
 		expect(header.textContent).toBe("task-1Med");
 	});
 
-	it("renders nothing beside the id when the task has neither progress nor priority", () => {
-		const container = renderCard(createTask({ status: "To Do" }));
+	it("renders nothing beside the id when the task has neither criteria nor priority", () => {
+		const container = renderCard(createTask());
 		const header = getHeaderRow(container);
 
 		expect(getProgress(container)).toBeNull();
@@ -211,6 +228,20 @@ describe("browser task acceptance criteria progress", () => {
 		expectRing(progress, 3, 3);
 		expect(progress?.className).toContain("text-blue-600");
 		expect(statusCell?.textContent?.trim()).toBe("In Progress");
+	});
+
+	it.each(statusCases)("renders the list ring in the %s status (%s)", (_position, status, checked, total) => {
+		const container = renderList(createTask({ status, acceptanceCriteriaItems: createCriteria(checked, total) }));
+
+		expectRing(getProgress(container), checked, total);
+		expect(container.querySelector("tbody tr td:nth-child(3)")?.textContent?.trim()).toBe(status);
+	});
+
+	it("does not render progress in the list for a task without criteria", () => {
+		const container = renderList(createTask({ acceptanceCriteriaItems: [] }));
+
+		expect(container.querySelector("tbody tr")).toBeTruthy();
+		expect(getProgress(container)).toBeNull();
 	});
 
 	it("derives progress again when the task criteria change", () => {
