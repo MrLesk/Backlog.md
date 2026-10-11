@@ -5,7 +5,7 @@ status: Done
 assignee:
   - '@claude'
 created_date: '2026-10-11 10:42'
-updated_date: '2026-10-11 21:17'
+updated_date: '2026-10-11 21:41'
 labels:
   - bug
 dependencies:
@@ -79,13 +79,13 @@ Review round: the message is now true in every combination, 'Cleanup needs an in
 
 Third review round: the pseudo-terminal test helper uses the suite's platform timeout instead of a fixed five seconds. Every acceptance criterion was re-run end to end against a binary built from this layer's tip: stdin from /dev/null, answers piped in and output captured all exit 1 with the message and change nothing, and a pseudo-terminal run asks both questions, archives on yes and leaves everything on no.
 
-CI fix for the Linux runner: the pseudo-terminal case of src/test/cli-cleanup-input.test.ts timed out on ubuntu-latest (7.0 s, `timedOut` true) while macOS passed.
+CI fix for the Linux runner: the pseudo-terminal case of src/test/cli-cleanup-input.test.ts timed out on ubuntu-latest (7.0 s, `timedOut` true). The macOS and Windows jobs did not run it: they run the platform profile of scripts/run-ci-tests.ts, a fixed list of files that contains neither this test nor src/test/append-implementation-plan.test.ts, so the Ubuntu job is the only one that runs the pseudo-terminal cases. On a Mac the test passed locally.
 
 Cause: the test helper ran the CLI through the `script` utility with /dev/null as script's own input and counted on that to end cleanup's first question. Nothing ends a question in a terminal nobody types into; on macOS the run only ended by accident. When its input ends, `script` types one Ctrl-D into the terminal. On macOS the prompt, which reads the terminal in raw mode, receives that byte (4), and a Ctrl-D at the prompt makes the command exit 0. On Linux the Ctrl-D arrives while the terminal is still in line mode, where the kernel turns it into an end-of-file marker; once the prompt switches the terminal to raw mode that marker is delivered as a NUL byte (0), which the prompt ignores. Cleanup drew its question correctly and then waited until the helper's 5 s timeout stopped it; util-linux `script` sleeps 2 s before it kills its child, which is the 7.0 s in the log. Reproduced in an Ubuntu 24.04 container with the runner's versions (util-linux 2.39.3, Bun 1.3.14): the same assertion failed after 7,025 ms. Probes on both systems showed a raw-mode reader under `script` receiving byte 4 on macOS and byte 0 on Linux, and cleanup's prompt exiting on byte 4 and ignoring byte 0 on both.
 
 Fix: `runCliInPseudoTerminal` in src/test/test-utils.ts uses Bun's own pseudo-terminal (the `terminal` option of `Bun.spawn`) instead of `script`, `stty` and a shell line, so macOS and Linux run the same code, and it takes an optional answer: keys to type once a given text has been drawn. The cleanup test types Escape once the age question has been drawn, so cleanup ends by itself through its own cancel path, and the test also asserts 'Cleanup cancelled.', exit code 0 and that nothing was archived. The timeout stays only as a guard for a command that hangs. src/test/append-implementation-plan.test.ts shares the helper and was not exposed to the problem: its command asks nothing and exits by itself (it passed on the same Linux run in 305 ms); it passes with the new helper.
 
-Verification: both test files pass in the Ubuntu 24.04 container with Bun 1.3.14 (the pseudo-terminal case in about 240 ms) and on macOS with Bun 1.3.14 and 1.4.3; 60 runs of both files, six at a time, had no failure on either system. With the terminal check inverted, all three cleanup cases fail, the pseudo-terminal one at once and not by timeout. `bunx tsc --noEmit` and `bun run check .` are clean. Not verified: an x86-64 Linux machine (the container is arm64) and the GitHub runners themselves.
+Verification: both test files pass in the Ubuntu 24.04 container with Bun 1.3.14 (the pseudo-terminal case in about 240 ms) and on macOS with Bun 1.3.14 and 1.4.3; 60 runs of both files, six at a time, had no failure on either system, and ten runs with the Ubuntu job's flags (`--parallel=2 --isolate --timeout=10000 --max-concurrency=2`) had none in a Linux container. With the terminal check inverted, all three cleanup cases fail, the pseudo-terminal one at once and not by timeout. `bunx tsc --noEmit` and `bun run check .` are clean. Not verified: an x86-64 Linux machine (the container is arm64) and the GitHub runners themselves.
 <!-- SECTION:NOTES:END -->
 
 ## Final Summary
