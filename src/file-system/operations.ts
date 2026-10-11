@@ -1259,7 +1259,9 @@ export class FileSystem {
 					...draft,
 					id: newTaskId,
 					status: promotedStatus,
-					filePath: undefined, // Will be set by saveTask
+					// The path must be cleared so the save writes a new file. Left set, the save would take
+					// over the source file, and removing the source afterwards would delete the only copy.
+					filePath: undefined,
 				};
 
 				await this.saveTask(promotedTask);
@@ -1295,7 +1297,9 @@ export class FileSystem {
 			const demotedDraft: Task = {
 				...(withoutVacatedTaskLinks(task, task.id) ?? task),
 				id: newDraftId,
-				filePath: undefined, // Will be set by saveDraft
+				// The path must be cleared so the save writes a new file. Left set, the save would take
+				// over the source file, and removing the source afterwards would delete the only copy.
+				filePath: undefined,
 			};
 
 			const savedPath = await this.saveDraft(demotedDraft);

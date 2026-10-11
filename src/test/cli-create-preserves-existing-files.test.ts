@@ -420,4 +420,26 @@ describe("moving a record between tasks and drafts leaves every other file alone
 		expect(await readlink(takenPath)).toBe(missingTarget);
 		expect(await readdir(OUTSIDE_DIR)).toEqual([]);
 	});
+
+	itIfSymlinks("promote: refuses when the new task's path is taken and leaves the draft where it is", async () => {
+		await backlog(...DRAFT.createCommand, "Idea");
+		const draftPath = join(recordsDir(DRAFT), fileName(DRAFT, 1, "Idea"));
+		const draft = await readFile(draftPath, "utf8");
+		const tasksDir = recordsDir(TASK);
+		await mkdir(tasksDir, { recursive: true });
+		const takenPath = join(tasksDir, fileName(TASK, 1, "Idea"));
+		const missingTarget = await takePathWithLinkToMissingFile(takenPath);
+
+		const refused = await backlog("draft", "promote", "1");
+
+		expect(refused.exitCode).toBe(1);
+		expect(refused.stderr).toContain(join("backlog", "tasks", fileName(TASK, 1, "Idea")));
+		expect(refused.stderr).toContain("already exists");
+		expect(refused.stderr).not.toContain("not found");
+		expect(refused.stdout).toBe("");
+		expect(await readFile(draftPath, "utf8")).toBe(draft);
+		expect(await readdir(tasksDir)).toEqual([fileName(TASK, 1, "Idea")]);
+		expect(await readlink(takenPath)).toBe(missingTarget);
+		expect(await readdir(OUTSIDE_DIR)).toEqual([]);
+	});
 });

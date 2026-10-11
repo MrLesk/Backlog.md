@@ -1,11 +1,11 @@
 ---
 id: BACK-732
 title: Stop record creation from deleting existing files
-status: In Progress
+status: Done
 assignee:
   - '@claude'
 created_date: '2026-10-11 19:07'
-updated_date: '2026-10-11 20:42'
+updated_date: '2026-10-11 20:56'
 labels:
   - bug
 dependencies: []
@@ -107,6 +107,10 @@ Extension: drafts follow the same rule, so all four record kinds share one write
 9. Draft allocation: one FileSystem method returns the occupied draft IDs, which are the stored ID of every draft that can be read plus the ID each draft file name claims. Draft create, demote and the draft prefix migration all use it.
 10. Delete the previous-file backup and restore in `createTaskFromInput` and `rollbackCreatedTask`; keep the Git index rollback. Rewrite the restore tests in tui-task-composer.test.ts to assert the refusal for tasks and drafts.
 11. CLI tests for drafts, demote and promote in cli-create-preserves-existing-files.test.ts; pass the stored path in existing tests that re-save hand-built drafts.
+
+12. Promote reports a failure with its own message: remove the catch-all in `Core.promoteDraft`, so "not found" means only that no draft file was found. At each place that clears `filePath` for a demote or a promote, say why it must be cleared.
+
+Steps 7 to 11 supersede the earlier line that listed draft saving as out of scope. Still out of scope: concurrent decision creation (BACK-734), merging the allocators (BACK-735), doctor, and the archive move.
 <!-- SECTION:PLAN:END -->
 
 ## Implementation Notes
@@ -155,6 +159,16 @@ Drafts follow the same rule (maintainer ruling: one behavior for tasks, drafts, 
 Seen while testing, not changed
 - `draft promote` reports any failed write, including a refused one, as "Draft not found". The draft is left in place.
 - Archiving a task or a draft can replace a file of the same name already in the archive folder. Same on main, same for tasks and drafts.
+
+Last review items
+- `Core.promoteDraft` no longer turns every failure into "not found". The catch-all is removed, so `false` means only that no draft file was found and any other failure reaches the caller with its own message. `backlog draft promote` now prints the refusal when the new task's path is taken and leaves the draft in place; the HTTP endpoint answers 500 "Failed to promote draft" and logs the message. New CLI test in cli-create-preserves-existing-files.test.ts (32 tests, 25 fail on the sources of main).
+- The five places where a task becomes a draft or a draft becomes a task now say why `filePath` is cleared: left set, the save would take over the source file and removing the source afterwards would delete the only copy.
+
+Left alone, listed as known gaps in the pull request text
+- The one-time draft prefix migration swallows a refused save and still marks itself done.
+- Demoting through an edit has no compensating clean-up if removing the task file fails, unlike `task demote`.
+- Archiving can replace a file of the same name in the archive folder.
+- A task, draft or decision file whose name starts in upper case is not counted by the allocator.
 <!-- SECTION:NOTES:END -->
 
 ## Final Summary
@@ -165,17 +179,18 @@ Creating a task, draft, document or decision no longer deletes, replaces or over
 What changed
 - Allocation: `extractIdFromFilename` in src/utils/prefix-config.ts says which ID a file name claims, and `generateNextId` reads the number in any letter case. The task allocator always reads this project's own tasks and completed folders by name. The document and decision allocators count every local file name, including files that cannot be parsed. Draft allocation uses one method, `listOccupiedDraftIds`, for create, demote and the prefix migration.
 - Saving: one private helper, `writeRecordFile` in src/file-system/operations.ts, writes the file for `saveTask`, `saveDraft`, `saveDocument` and `saveDecision`. It rewrites or moves only the file the record was loaded from and creates a new record's file only if the path is free. The four clean-ups that matched other files by name are removed.
-- A stray file on the next number is skipped. Create refuses, with exit code 1, the file named and nothing changed, only when the new file's own path is already taken.
+- A stray file on the next number is skipped. Create, demote and promote refuse, with exit code 1, the file named and nothing changed, only when the new file's own path is already taken.
 - The task create flow no longer backs up and restores a previous file, because a create can no longer replace one. The Git index rollback stays.
+- `draft promote` reports a failure with its own message; "not found" now means only that no draft file was found.
 
 Verification
-- 31 CLI tests in src/test/cli-create-preserves-existing-files.test.ts, with projects outside the repository. 24 fail on the sources of main; the other 7 cover draft and task cases that main already handled.
+- 32 CLI tests in src/test/cli-create-preserves-existing-files.test.ts, with projects outside the repository. 25 fail on the sources of main; the other 7 cover draft and task cases that main already handled.
 - The scoped test files, `bunx tsc --noEmit` and `bun run check .` pass. One test in config-commands.test.ts fails the same way on main.
 
 Follow-ups
 - Updates share the save step, so BACK-600 acceptance criteria 1 and 2 are covered here. Its doctor finding remains.
 - A retitle checks the target and renames in two steps until updates take a lock (BACK-736).
 - Task, draft and decision files whose names start in upper case are not counted by the allocator. That can give two files one number but cannot lose a file.
-- `draft promote` reports a refused write as "Draft not found". Archiving can replace a file of the same name in the archive folder. Both are unchanged.
+- The one-time draft prefix migration swallows a refused save and still marks itself done. Demoting through an edit has no compensating clean-up if removing the task file fails. Archiving can replace a file of the same name in the archive folder. All three are unchanged.
 - Not verified on Windows.
 <!-- SECTION:FINAL_SUMMARY:END -->

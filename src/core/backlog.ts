@@ -7,7 +7,6 @@ import {
 	DraftParseError,
 	FileSystem,
 	isConfigValueError,
-	isCreateLockError,
 	newTaskLockError,
 } from "../file-system/operations.ts";
 import { type GitBranchTip, type GitIndexEntry, GitOperations } from "../git/operations.ts";
@@ -2735,6 +2734,8 @@ export class Core {
 					...draft,
 					id: newTaskId,
 					status: canonicalStatus,
+					// The path must be cleared so the save writes a new file. Left set, the save would take
+					// over the source file, and removing the source afterwards would delete the only copy.
 					filePath: undefined,
 					...(mutated || draft.status !== canonicalStatus
 						? { updatedDate: new Date().toISOString().slice(0, 16).replace("T", " ") }
@@ -2808,6 +2809,8 @@ export class Core {
 					...vacating,
 					id: newDraftId,
 					status: "Draft",
+					// The path must be cleared so the save writes a new file. Left set, the save would take
+					// over the source file, and removing the source afterwards would delete the only copy.
 					filePath: undefined,
 					...(mutated || current.status !== "Draft"
 						? { updatedDate: new Date().toISOString().slice(0, 16).replace("T", " ") }
@@ -3519,46 +3522,41 @@ export class Core {
 		// Hold the draft lock across the read-unlink span so a concurrent edit cannot be omitted
 		// from the promoted task or leave both records on disk. Draft lock first, create lock
 		// second: nothing acquires them in the opposite order, so this cannot deadlock.
+		// "false" means there is no draft to promote: no file, or a file that cannot be read as a
+		// draft. Every other failure, such as a write that is refused because the new task's path is
+		// taken, reaches the caller with its own message.
 		return await this.fs.withDraftLock({ filePath: sourcePath, canonicalId }, async () => {
-			let moved: { previousPath: string; savedPath: string } | null = null;
-			try {
-				moved = await this.withCreateLock(async () => {
-					const draft = await this.fs.loadDraftFromFile(sourcePath);
-					if (!draft) return null;
+			const moved = await this.withCreateLock(async () => {
+				const draft = await this.fs.loadDraftFromFile(sourcePath);
+				if (!draft) return null;
 
-					const config = await this.fs.loadConfig();
-					const newTaskId = await this.generateNextId(EntityType.Task, draft.parentTaskId);
-					const promotedStatus =
-						!draft.status || draft.status.trim().toLowerCase() === "draft"
-							? config?.defaultStatus || FALLBACK_STATUS
-							: draft.status;
+				const config = await this.fs.loadConfig();
+				const newTaskId = await this.generateNextId(EntityType.Task, draft.parentTaskId);
+				const promotedStatus =
+					!draft.status || draft.status.trim().toLowerCase() === "draft"
+						? config?.defaultStatus || FALLBACK_STATUS
+						: draft.status;
 
-					const promotedTask: Task = {
-						...draft,
-						id: newTaskId,
-						status: promotedStatus,
-						filePath: undefined,
-					};
+				const promotedTask: Task = {
+					...draft,
+					id: newTaskId,
+					status: promotedStatus,
+					// The path must be cleared so the save writes a new file. Left set, the save would take
+					// over the source file, and removing the source afterwards would delete the only copy.
+					filePath: undefined,
+				};
 
-					normalizeAssignee(promotedTask);
-					const savedPath = await this.fs.saveTask(promotedTask);
-					await unlink(sourcePath);
+				normalizeAssignee(promotedTask);
+				const savedPath = await this.fs.saveTask(promotedTask);
+				await unlink(sourcePath);
 
-					const savedTask = await this.fs.loadTask(promotedTask.id);
-					if (this.contentStore && savedTask) {
-						this.contentStore.upsertTask(savedTask);
-					}
-
-					return { previousPath: sourcePath, savedPath };
-				});
-			} catch (error) {
-				// A missing draft is the only thing "false" may mean here; a config value Backlog refuses to
-				// read must not be reported as a draft that does not exist.
-				if (isCreateLockError(error) || isConfigValueError(error)) {
-					throw error;
+				const savedTask = await this.fs.loadTask(promotedTask.id);
+				if (this.contentStore && savedTask) {
+					this.contentStore.upsertTask(savedTask);
 				}
-				return false;
-			}
+
+				return { previousPath: sourcePath, savedPath };
+			});
 
 			if (moved && (await this.shouldAutoCommit(autoCommit))) {
 				await this.commitWrittenFile(
