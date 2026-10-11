@@ -3893,7 +3893,7 @@ addHelpSchema(taskCmd.command("delete <taskId>"), {
 	required: [{ name: "taskId", type: "Task ID", description: "Archived task to delete" }],
 	optional: [],
 	writes:
-		"Permanently removes an archived task and releases its ID. Dependencies and references that other tasks hold to it are removed. A task must be archived first (backlog task archive), and a task whose subtasks still exist is not deleted. There is no prompt.",
+		"Permanently removes an archived task and releases its ID. Dependencies and references that other tasks hold to it are removed. References held by drafts are not changed: the cleanup covers tasks only. A task must be archived first (backlog task archive), and a task whose subtasks still exist is not deleted. There is no prompt.",
 	output: "Delete confirmation text, followed by the tasks that lost a dependency or reference",
 	examples: ["backlog task archive {{TASK_ID:1}}", "backlog task delete {{TASK_ID:1}}"],
 })

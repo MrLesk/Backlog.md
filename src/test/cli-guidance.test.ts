@@ -384,6 +384,7 @@ describe("CLI Integration", () => {
 			expect(deleteHelp).toContain("taskId: Task ID - Archived task to delete");
 			expect(deleteHelp).toContain("A task must be archived first (backlog task archive)");
 			expect(deleteHelp).toContain("There is no prompt.");
+			expect(deleteHelp).toContain("References held by drafts are not changed: the cleanup covers tasks only.");
 			for (const absentCommand of ["complete", "restore"]) {
 				expect(taskHelp).not.toContain(absentCommand);
 			}

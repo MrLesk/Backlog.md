@@ -5,7 +5,7 @@ status: In Progress
 assignee:
   - '@claude'
 created_date: '2026-10-11 13:02'
-updated_date: '2026-10-11 16:09'
+updated_date: '2026-10-11 19:14'
 labels:
   - enhancement
 dependencies:
@@ -112,4 +112,6 @@ Tests: src/test/cli-task-delete.test.ts drives the CLI for every acceptance crit
 Choices taken conservatively and listed for review: a subtask is a task on the board or in the archive whose parent field names the task, the relation every surface shows; a draft that was demoted from a subtask and a dotted ID without a parent field do not block the delete. A task that exists only on another branch reports "not found", because delete reads the working copy only.
 
 Verification: `bunx tsc --noEmit` clean; `bun run check .` clean (434 files); scoped tests pass (cli-task-delete, mcp-tasks, mcp-server, cli-guidance, cli-task-state, vacated-task-references: 112 pass, 0 fail). A scripted end-to-end run against a binary built from this layer covered every acceptance criterion through the CLI and through MCP over stdio in private mktemp projects, including the ambiguous-ID refusal and a symlinked archived file.
+
+Review round: delete resolves a task that exists only on another branch, on its board or in its archive, to the same typed refusal as archive (TaskOnOtherBranchError through the shared refuseTaskOnOtherBranch); MCP reports it like every other TaskRefusedError, and the CLI, which reads the working copy only, keeps its not-found line with the hint. The typed delete refusals extend TaskRefusedError, the MCP handler runs through runLifecycleOperation, and an unknown ID reads 'Task X not found.' on both interfaces. Help and the CLI and MCP guides now say that references held by drafts are not changed, because the cleanup covers tasks only.
 <!-- SECTION:NOTES:END -->

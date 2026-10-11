@@ -312,7 +312,7 @@ describe("MCP task tools (MVP)", () => {
 		expect(toolNames.filter((name) => name.includes("complete"))).toEqual([]);
 	});
 
-	it("answers an archive of a task that exists only on another branch with core's read-only refusal", async () => {
+	it("answers a lifecycle call on a task that exists only on another branch with core's read-only refusal", async () => {
 		await enableGitTestProject();
 		const config = await loadConfig(mcpServer);
 		await mcpServer.filesystem.saveConfig({ ...config, checkActiveBranches: true, remoteOperations: false });
@@ -349,11 +349,13 @@ describe("MCP task tools (MVP)", () => {
 			expect(view.isError).not.toBe(true);
 			expect(getText(view.content)).toContain(`Task TASK-${id} - ${title}`);
 
-			const archive = await call("task_archive", { id: `task-${id}` });
-			expect(archive.isError).toBe(true);
-			expect(getText(archive.content)).toBe(
-				`Task TASK-${id} exists only on branch "feature" and is read-only here. Switch to that branch to change it.`,
-			);
+			for (const operation of ["task_archive", "task_delete"]) {
+				const refused = await call(operation, { id: `task-${id}` });
+				expect(refused.isError).toBe(true);
+				expect(getText(refused.content)).toBe(
+					`Task TASK-${id} exists only on branch "feature" and is read-only here. Switch to that branch to change it.`,
+				);
+			}
 		}
 
 		const unknown = await call("task_archive", { id: "task-9" });

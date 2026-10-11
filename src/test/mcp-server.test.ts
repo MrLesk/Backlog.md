@@ -169,6 +169,7 @@ describe("McpServer bootstrap", () => {
 			expect(guide).toContain("- `task_delete` — permanently delete an archived task and release its ID.");
 			expect(guide).toContain("Deleting takes two steps: `task_archive`, then `task_delete`.");
 			expect(guide).toContain("names the tasks it changed");
+			expect(guide).toContain("References held by drafts are not changed: the cleanup covers tasks only.");
 		}
 		expect(MCP_TASK_FINALIZATION_GUIDE).toContain("archive it and then call `task_delete`");
 	});
