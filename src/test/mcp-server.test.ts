@@ -182,6 +182,18 @@ describe("McpServer bootstrap", () => {
 		);
 	});
 
+	it("workflow guides say how archived work comes back to the board", () => {
+		TEST_DIR = createUniqueTestDir("mcp-server-guides");
+
+		for (const guide of [MCP_WORKFLOW_OVERVIEW, MCP_WORKFLOW_OVERVIEW_TOOLS]) {
+			expect(guide).toContain(
+				"- `task_restore` — move an archived task back to the board with the same ID and the status it had.",
+			);
+			expect(guide).toContain("Restore a task before changing it: `task_edit` on an archived task fails.");
+		}
+		expect(MCP_TASK_FINALIZATION_GUIDE).toContain("bring it back to the board with `task_restore`");
+	});
+
 	it("task creation guide keeps parent task IDs distinct from milestone IDs", () => {
 		TEST_DIR = createUniqueTestDir("mcp-server-guides");
 
@@ -307,6 +319,7 @@ describe("McpServer bootstrap", () => {
 			"task_view",
 			"task_archive",
 			"task_delete",
+			"task_restore",
 			"milestone_list",
 			"milestone_add",
 			"milestone_rename",

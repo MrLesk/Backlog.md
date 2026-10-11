@@ -221,7 +221,7 @@ describe("BacklogServer cleanup endpoints", () => {
 		const again = await fetch(`http://127.0.0.1:${serverPort}/api/tasks/TASK-1/archive`, { method: "POST" });
 		expect(again.status).toBe(400);
 		expect(((await again.json()) as { error: string }).error).toBe(
-			"Task TASK-1 is archived. Archived tasks are read-only.",
+			"Task TASK-1 is archived. Archived tasks are read-only. Restore it to the board first: backlog task restore TASK-1",
 		);
 
 		const edit = await fetch(`http://127.0.0.1:${serverPort}/api/tasks/TASK-1`, {

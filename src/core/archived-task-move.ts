@@ -101,8 +101,8 @@ export interface MoveFileOperations {
 
 /**
  * Move one task file to another folder without ever replacing a file that is already there. Every
- * move of a task file between folders goes through this function: archiving, and the `doctor` move
- * of a leftover folder. It fails with EEXIST when the target name is taken.
+ * move of a task file between folders goes through this function: archiving, restoring, and the
+ * `doctor` move of a leftover folder. It fails with EEXIST when the target name is taken.
  *
  * Demotion is not a move: it rewrites the task into a new draft file.
  *

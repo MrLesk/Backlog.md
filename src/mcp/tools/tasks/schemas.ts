@@ -31,8 +31,9 @@ export const taskArchiveSchema: JsonSchema = {
 	additionalProperties: false,
 };
 
-/** Delete takes the same input as archive: the ID of one task. */
+/** Delete and restore take the same input as archive: the ID of one task. */
 export const taskDeleteSchema: JsonSchema = taskArchiveSchema;
+export const taskRestoreSchema: JsonSchema = taskArchiveSchema;
 
 export const taskDemoteSchema: JsonSchema = {
 	type: "object",

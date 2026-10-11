@@ -514,6 +514,28 @@ describe("dependency defects", () => {
 		expect((await core.filesystem.loadTask("TASK-3"))?.dependencies).toEqual(["TASK-4", "TASK-5"]);
 	});
 
+	it("points at restore for a dependency defect on an archived task, and following the advice clears it", async () => {
+		await Bun.write(
+			join(core.filesystem.archiveTasksDir, "task-2 - Archived-selfy.md"),
+			serializeTask({ ...makeTask("TASK-2", "Archived selfy"), dependencies: ["TASK-2"] }),
+		);
+
+		const report = await $`bun ${cliPath} doctor`.cwd(testDir).quiet().nothrow();
+		const output = `${report.stdout}${report.stderr}`;
+		expect(report.exitCode).toBe(1);
+		expect(output).toContain("TASK-2 depends on itself");
+		expect(output).toContain(
+			"'backlog task edit <id> --dep <ids>' (or --clear-deps). Restore an archived task first: 'backlog task restore <id>'.",
+		);
+		expect(output).not.toContain("edit the file directly");
+
+		expect(await core.restoreTask("task-2")).toBe(true);
+		await core.updateTaskFromInput("task-2", { dependencies: [] }, false);
+		const clean = await $`bun ${cliPath} doctor`.cwd(testDir).quiet().nothrow();
+		expect(clean.exitCode).toBe(0);
+		expect(`${clean.stdout}${clean.stderr}`).not.toContain("depends on itself");
+	});
+
 	it("keeps a non-zero exit when duplicates are repaired but dependency findings remain", async () => {
 		await writeDuplicateTasks();
 		await Bun.write(

@@ -542,14 +542,14 @@ function printDependencyDefectsReport(defects: DependencyDefects): void {
 			console.log(`  - ${finding.taskId} depends on itself${spelling}`);
 		}
 		console.log(
-			"Rewrite the task's dependencies without its own ID: 'backlog task edit <id> --dep <ids>' (or --clear-deps); edit the file directly for archived tasks.",
+			"Rewrite the task's dependencies without its own ID: 'backlog task edit <id> --dep <ids>' (or --clear-deps). Restore an archived task first: 'backlog task restore <id>'.",
 		);
 	}
 	if (defects.cycles.length > 0) {
 		console.log("\nDependency cycles (diagnostic only):");
 		for (const cycle of defects.cycles) console.log(`  - ${cycle.join(" -> ")}`);
 		console.log(
-			"Break each cycle by rewriting one task's dependencies: 'backlog task edit <id> --dep <ids>' (or --clear-deps); edit the file directly for archived tasks.",
+			"Break each cycle by rewriting one task's dependencies: 'backlog task edit <id> --dep <ids>' (or --clear-deps). Restore an archived task first: 'backlog task restore <id>'.",
 		);
 	}
 }
@@ -3917,6 +3917,27 @@ addHelpSchema(taskCmd.command("delete <taskId>"), {
 		}
 	});
 
+addHelpSchema(taskCmd.command("restore <taskId>"), {
+	required: [{ name: "taskId", type: "Task ID", description: "Archived task to restore" }],
+	optional: [],
+	writes:
+		"Moves an archived task back to the board with the same ID and the status it had. Archived tasks are read-only, so restore a task before editing it. A task that is already on the board is left as it is.",
+	output: "Restore confirmation text",
+	examples: ["backlog task restore {{TASK_ID:1}}"],
+})
+	.description("move an archived task back to the board, keeping its ID and status")
+	.action(async (taskId: string) => {
+		const cwd = await requireProjectRoot();
+		const core = new Core(cwd);
+		const task = await core.loadTaskById(taskId, { includeCrossBranch: false });
+		if (!task || !(await core.restoreTask(task.id, undefined, { includeCrossBranch: false }))) {
+			console.error(`${taskNotFoundMessage(taskId)} ${LOCAL_TASK_LOOKUP_HINT}`);
+			process.exitCode = 1;
+			return;
+		}
+		console.log(`Restored task ${task.id}`);
+	});
+
 // A removal notice, not a command: `task complete` was replaced by `task archive`. The entry only
 // answers people and scripts that still call it. It is hidden from help and completion, accepts
 // whatever follows its name, changes nothing and exits non-zero. With `--json` the task-level
@@ -3966,7 +3987,7 @@ taskCmd
 		const core = new Core(cwd);
 
 		// Don't handle commands that should be handled by specific command handlers
-		const reservedCommands = ["create", "list", "edit", "view", "archive", "delete", "demote"];
+		const reservedCommands = ["create", "list", "edit", "view", "archive", "delete", "restore", "demote"];
 		if (taskId && reservedCommands.includes(taskId)) {
 			console.error(`Unknown command: ${taskId}`);
 			taskCmd.help();
