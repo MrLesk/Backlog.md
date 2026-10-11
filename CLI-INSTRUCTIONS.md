@@ -347,6 +347,7 @@ To keep the Web UI running in the background with auto-start on boot, see [Runni
 |-------------|------------------------------------------------------|
 | Create decision | `backlog decision create "Use PostgreSQL for primary database"` |
 | Create with status | `backlog decision create "Migrate to TypeScript" -s proposed` |
+| Change status | `backlog decision edit decision-1 -s superseded` (the status is free-form; the rest of the decision file stays as it is) |
 
 ## Agent Instructions
 

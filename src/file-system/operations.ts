@@ -1,11 +1,13 @@
-import { mkdir, rename, stat, unlink } from "node:fs/promises";
+import { mkdir, readFile, rename, stat, unlink } from "node:fs/promises";
 import { basename, dirname, isAbsolute, join, resolve } from "node:path";
+import { isDeepStrictEqual } from "node:util";
 import lockfile from "proper-lockfile";
 import { DEFAULT_DIRECTORIES, DEFAULT_FILES, DEFAULT_STATUSES, FALLBACK_STATUS } from "../constants/index.ts";
-import { parseFrontmatter } from "../markdown/frontmatter.ts";
+import { parseFrontmatter, stringifyFrontmatter } from "../markdown/frontmatter.ts";
 import {
 	parseDecision,
 	parseDocument,
+	parseMarkdown,
 	parseMilestone,
 	parseTask,
 	TaskDependenciesParseError,
@@ -318,6 +320,50 @@ export class DraftIdentityError extends Error {
 			`Draft file ${filename} declares frontmatter id ${frontmatterId}, which does not match its filename id ${filenameId ?? "(unreadable)"}. Fix the frontmatter id or rename the file so they agree, then rerun the edit.`,
 		);
 		this.name = "DraftIdentityError";
+	}
+}
+
+/**
+ * Returns a decision file's text with its frontmatter status set to `status`, or null when that
+ * cannot be done without changing anything else.
+ *
+ * The text is edited as text and never parsed and written back out: `serializeDecision` writes
+ * only the frontmatter keys and sections it knows, so it would drop every other key and section.
+ * Only the status entry is replaced: the `status:` line and the indented lines that continue its
+ * value. Every other line stays as it is, with its own line ending.
+ */
+function replaceDecisionStatus(content: string, status: string): string | null {
+	// Split after each line break, so joining the lines again restores every untouched byte.
+	const lines = content.split(/(?<=\n)/);
+	// The frontmatter ends at the first later line that starts with `---`, as it does for the reader,
+	// so nothing below can touch the body. A file without that line needs no return of its own:
+	// closingIndex is then -1, no index is below -1, so no status line is found and the edit is refused.
+	const closingIndex = lines.findIndex((line, index) => index > 0 && line.startsWith("---"));
+	const statusIndex = lines.findIndex((line, index) => index < closingIndex && /^status\s*:/.test(line));
+	if (statusIndex === -1) return null;
+
+	// A long or multi-line status continues on indented lines, which belong to the entry.
+	let entryEnd = statusIndex + 1;
+	while (entryEnd < closingIndex && /^[ \t]/.test(lines[entryEnd] ?? "")) entryEnd++;
+
+	// The new entry is spelled by the serializer `decision create` uses, so both write a status the
+	// same way. The serializer returns a whole frontmatter block; the entry sits between its two
+	// `---` lines. `trimEnd` is required: the serializer puts a blank line after the closing `---`,
+	// and `slice(1, -1)` drops exactly the two `---` lines only once that blank line is gone. Without
+	// `trimEnd` the closing `---` would be written into the file as part of the entry, and the
+	// read-back check below would not notice when the status is the last frontmatter key.
+	const entry = stringifyFrontmatter("", { status }).trimEnd().split("\n").slice(1, -1);
+	const newline = lines[0]?.endsWith("\r\n") ? "\r\n" : "\n";
+	lines.splice(statusIndex, entryEnd - statusIndex, ...entry.map((line) => line + newline));
+	const updated = lines.join("");
+
+	// Read the result the way decisions are read. The frontmatter must hold the new status and be
+	// otherwise what it was; anything else means it is written in a form this edit does not handle.
+	try {
+		const expected = { ...parseMarkdown(content).frontmatter, status };
+		return isDeepStrictEqual(parseMarkdown(updated).frontmatter, expected) ? updated : null;
+	} catch {
+		return null;
 	}
 }
 
@@ -1512,6 +1558,32 @@ export class FileSystem {
 
 	async loadDecision(decisionId: string): Promise<Decision | null> {
 		return findDecisionById(await this.listDecisions(), decisionId);
+	}
+
+	/**
+	 * Replaces the status line of one decision and leaves the rest of its file as it is. Returns the
+	 * decision's ID and file path, or null when no decision has this ID. Throws when several files
+	 * claim the ID, and when the status cannot be replaced without changing other content; nothing is
+	 * written then.
+	 */
+	async updateDecisionStatus(decisionId: string, status: string): Promise<{ id: string; filepath: string } | null> {
+		const decision = await this.loadDecision(decisionId);
+		if (!decision?.path) return null;
+		const filepath = join(await this.getDecisionsDir(), decision.path);
+
+		// Bun.file().text() drops a leading byte-order mark, and decoding invalid UTF-8 is lossy.
+		// Read the bytes, and only edit text that writes back to exactly the bytes that were read.
+		const bytes = await readFile(filepath);
+		const content = bytes.toString("utf8");
+		const updated = bytes.equals(Buffer.from(content, "utf8")) ? replaceDecisionStatus(content, status) : null;
+		if (updated === null) {
+			throw new Error(
+				`Cannot change the status of ${decision.id} without changing other content in ${filepath}. Make sure the file is UTF-8 text and its frontmatter has one plain "status: value" line, then try again.`,
+			);
+		}
+
+		await Bun.write(filepath, updated);
+		return { id: decision.id, filepath };
 	}
 
 	// Document operations

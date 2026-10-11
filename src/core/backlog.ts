@@ -3857,6 +3857,24 @@ export class Core {
 		return decision;
 	}
 
+	/**
+	 * Changes the status of an existing decision and leaves the rest of its file as it is. Returns the
+	 * decision's ID. Throws when no decision has the given ID, and passes on the errors storage raises
+	 * when several files claim the ID or the status cannot be replaced safely, so callers only need to
+	 * report the message.
+	 */
+	async updateDecisionStatus(decisionId: string, status: string, autoCommit?: boolean): Promise<string> {
+		const updated = await this.fs.updateDecisionStatus(decisionId, status);
+		if (!updated) {
+			throw new Error(`Decision ${decisionId} not found`);
+		}
+
+		if (await this.shouldAutoCommit(autoCommit)) {
+			await this.commitWrittenFile(`backlog: Update decision ${updated.id}`, [], updated.filepath);
+		}
+		return updated.id;
+	}
+
 	async createDocument(doc: Document, autoCommit?: boolean, subPath = ""): Promise<void> {
 		const { relativePath, removedFilepaths } = await this.fs.saveDocument(doc, normalizeDocumentSubPath(subPath));
 		doc.path = relativePath;
