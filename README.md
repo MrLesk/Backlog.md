@@ -107,9 +107,11 @@ nix profile install github:MrLesk/Backlog.md#backlog-md
 ```
 
 The Nix flake supports `x86_64-linux`, `aarch64-linux`, and
-`aarch64-darwin`. The x86_64 Linux package uses Bun's baseline runtime so it
-also works on pre-AVX2 processors with AVX support. Intel macOS users can use
-the npm, Bun, or Homebrew installation instead.
+`aarch64-darwin`. The x86_64 Linux package uses
+[Bun's unified x64 runtime](https://bun.com/docs/installation#cpu-requirements),
+with an SSE4.2 minimum and automatic CPU-specific paths. Pre-AVX2 compatibility
+is checked under Ivy Bridge emulation. Intel macOS users can use the npm, Bun,
+or Homebrew installation instead.
 
 The init wizard will ask how you want to connect AI tools:
 - **CLI instructions** (recommended): creates a short instruction file that tells agents to run `backlog instructions overview`.

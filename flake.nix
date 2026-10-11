@@ -52,8 +52,8 @@
                   hash = "sha256-76mBPaXtckI7+Ef5FujSxHwNd2rdlyNUAmp14Q2pqiE=";
                 };
                 x86_64-linux = pkgs.fetchurl {
-                  url = "https://github.com/oven-sh/bun/releases/download/bun-v1.4.3/bun-linux-x64-baseline.zip";
-                  hash = "sha256-H8LtrIQxApCeOhvh2NmALMYHHPB05n6IIx9P/g+LOXs=";
+                  url = "https://github.com/oven-sh/bun/releases/download/bun-v1.4.3/bun-linux-x64.zip";
+                  hash = "sha256-PnMFKNiXdfA/h/BcBnh8TfQJnQo38/JS57gpyyOBbhg=";
                 };
               };
             };
