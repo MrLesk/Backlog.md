@@ -373,7 +373,7 @@ To keep the Web UI running in the background with auto-start on boot, see [Runni
 
 | Action      | Example                                                                                      |
 |-------------|----------------------------------------------------------------------------------------------|
-| Cleanup done tasks | `backlog cleanup` (archive old finished tasks to clean up the kanban board) |
+| Cleanup done tasks | `backlog cleanup` (archive old finished tasks to clean up the kanban board; asks for an age, so it needs an interactive terminal) |
 
 Full help: `backlog --help`
 

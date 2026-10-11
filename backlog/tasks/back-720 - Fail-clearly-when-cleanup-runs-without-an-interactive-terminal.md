@@ -1,15 +1,22 @@
 ---
 id: BACK-720
 title: Fail clearly when cleanup runs without an interactive terminal
-status: To Do
-assignee: []
+status: In Progress
+assignee:
+  - '@claude'
 created_date: '2026-10-11 10:42'
+updated_date: '2026-10-11 16:21'
 labels:
   - bug
 dependencies:
   - BACK-719
 references:
   - 'https://github.com/MrLesk/Backlog.md/issues/1060'
+  - commands
+modified_files:
+  - CLI-INSTRUCTIONS.md
+  - src/cli.ts
+  - src/test/cli-cleanup-input.test.ts
 type: bug
 ordinal: 338000
 ---
@@ -17,11 +24,11 @@ ordinal: 338000
 ## Description
 
 <!-- SECTION:DESCRIPTION:BEGIN -->
-`backlog cleanup` is prompt-only. When stdin is not a terminal, for example in a script or with input redirected from /dev/null, it still draws the age picker, exits 0, and moves nothing, so a caller cannot tell the no-op from a success (issue #1060, reproduced on 1.53.0).
+`backlog cleanup` is prompt-only. When stdin is not a terminal, for example in a script or with input redirected from /dev/null, it still draws the age picker, exits 0, and archives nothing, so a caller cannot tell the no-op from a success (issue #1060, reproduced on 1.53.0).
 
 A non-interactive age option such as `--older-than` is requested in the same issue and is not part of this task.
 
-Depends on BACK-719: that task changes the storage behavior cleanup relies on, so this fix is made against the lifecycle it leaves in place.
+Depends on BACK-719: since that task, cleanup archives finished tasks instead of moving them to completed storage, and this fix is made against that behavior.
 <!-- SECTION:DESCRIPTION:END -->
 
 ## Acceptance Criteria
@@ -38,3 +45,31 @@ Depends on BACK-719: that task changes the storage behavior cleanup relies on, s
 - [ ] #2 bun run check . passes when formatting/linting touched
 - [ ] #3 bun test (or scoped test) passes
 <!-- DOD:END -->
+
+## Implementation Plan
+
+<!-- SECTION:PLAN:BEGIN -->
+Layer 4 of the stack (branch tasks/back-720-cleanup-non-tty on top of BACK-731).
+
+1. CLI (src/cli.ts): at the start of the `cleanup` action, before anything is read or drawn, stop when there is no interactive terminal. Reuse what BACK-698 did for `init`: the existing `hasInteractiveTTY` check (stdin and stdout are both terminals), a `clack.cancel` line with a clear message, and exit code 1. No prompt is drawn and no task is read or archived. The interactive path is not touched. No non-interactive age option is added.
+
+2. Help and docs: the `cleanup` help says it needs an interactive terminal; CLI-INSTRUCTIONS marks the command as interactive.
+
+3. Tests through the public CLI (src/test/cli-cleanup-input.test.ts, project outside the repository): with stdin closed and with answers piped into stdin the command exits 1, prints the message, draws no prompt and leaves the finished task on the board; with a terminal reported on both ends it still draws the age prompt and does not print the message.
+
+4. Verification: scoped tests, `bunx tsc --noEmit`, `bun run check .`, `bun run test` once at the top of the stack, a scripted end-to-end run of every acceptance criterion against a binary built from this layer in a private mktemp project, and the interactive cleanup in a pseudo-terminal.
+<!-- SECTION:PLAN:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+Implemented on tasks/back-720-cleanup-non-tty, stacked on BACK-731. The description was corrected through the CLI: cleanup archives since BACK-719, it no longer moves tasks to completed storage.
+
+CLI: the `cleanup` action starts with the check `init` already uses since BACK-698: when `hasInteractiveTTY` is false (stdin and stdout are not both terminals) it prints one `clack.cancel` line, "Cleanup needs an interactive terminal to ask which tasks to archive. Run `backlog cleanup` in a terminal.", sets exit code 1 and returns before any task is read, any prompt is drawn or anything is archived. The interactive path is unchanged. No non-interactive age option was added. The `cleanup` help and CLI-INSTRUCTIONS say that the command needs an interactive terminal.
+
+Tests: src/test/cli-cleanup-input.test.ts runs the CLI with stdin closed and with answers piped into stdin (exit 1, the message, no prompt, the finished task still on the board) and in a pseudo-terminal through `script`, the way src/test/append-implementation-plan.test.ts does, where the age question is still drawn and the message is absent. The project is created outside the repository.
+
+Choices taken conservatively and listed for review: the check is the existing both-ends check, so `backlog cleanup` with a terminal on stdin and its output redirected also fails with the message instead of drawing prompts into a file; the message goes through `clack.cancel` to stdout, as the `init` failures do.
+
+Verification: `bunx tsc --noEmit` clean; `bun run check .` clean; scoped tests pass. A scripted end-to-end run against a binary built from this layer showed `backlog cleanup </dev/null`, piped answers and captured output all exiting 1 with the message, no prompt and unchanged task files, and a pseudo-terminal run showed the interactive cleanup asking both questions, archiving on yes and leaving everything on no.
+<!-- SECTION:NOTES:END -->
