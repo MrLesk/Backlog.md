@@ -1,11 +1,11 @@
 ---
 id: BACK-720
 title: Fail clearly when cleanup runs without an interactive terminal
-status: In Progress
+status: Done
 assignee:
   - '@claude'
 created_date: '2026-10-11 10:42'
-updated_date: '2026-10-11 19:18'
+updated_date: '2026-10-11 20:18'
 labels:
   - bug
 dependencies:
@@ -35,17 +35,17 @@ Depends on BACK-719: since that task, cleanup archives finished tasks instead of
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 With stdin not a TTY (for example `backlog cleanup </dev/null`), the command exits non-zero.
-- [ ] #2 In that case it prints a clear message saying that cleanup needs an interactive terminal, and draws no prompt.
-- [ ] #3 In that case no task is moved or changed.
-- [ ] #4 In an interactive terminal, cleanup prompts and behaves as it did before this change.
+- [x] #1 With stdin not a TTY (for example `backlog cleanup </dev/null`), the command exits non-zero.
+- [x] #2 In that case it prints a clear message saying that cleanup needs an interactive terminal, and draws no prompt.
+- [x] #3 In that case no task is moved or changed.
+- [x] #4 In an interactive terminal, cleanup prompts and behaves as it did before this change.
 <!-- AC:END -->
 
 ## Definition of Done
 <!-- DOD:BEGIN -->
-- [ ] #1 bunx tsc --noEmit passes when TypeScript touched
-- [ ] #2 bun run check . passes when formatting/linting touched
-- [ ] #3 bun test (or scoped test) passes
+- [x] #1 bunx tsc --noEmit passes when TypeScript touched
+- [x] #2 bun run check . passes when formatting/linting touched
+- [x] #3 bun test (or scoped test) passes
 <!-- DOD:END -->
 
 ## Implementation Plan
@@ -76,4 +76,25 @@ Choices taken conservatively and listed for review: the check is the existing bo
 Verification: `bunx tsc --noEmit` clean; `bun run check .` clean; scoped tests pass. A scripted end-to-end run against a binary built from this layer showed `backlog cleanup </dev/null`, piped answers and captured output all exiting 1 with the message, no prompt and unchanged task files, and a pseudo-terminal run showed the interactive cleanup asking both questions, archiving on yes and leaving everything on no.
 
 Review round: the message is now true in every combination, 'Cleanup needs an interactive terminal for both its input and its output, because it asks which tasks to archive. Nothing was archived.', and the help and CLI-INSTRUCTIONS say the same. The test that used to be titled 'stdin is closed' says that stdin is redirected from /dev/null. The pseudo-terminal helper moved into src/test/test-utils.ts (runCliInPseudoTerminal, with a sized terminal) and both this test and src/test/append-implementation-plan.test.ts use it.
+
+Third review round: the pseudo-terminal test helper uses the suite's platform timeout instead of a fixed five seconds. Every acceptance criterion was re-run end to end against a binary built from this layer's tip: stdin from /dev/null, answers piped in and output captured all exit 1 with the message and change nothing, and a pseudo-terminal run asks both questions, archives on yes and leaves everything on no.
 <!-- SECTION:NOTES:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+`backlog cleanup` no longer pretends to succeed when nobody can answer its prompts. Without an interactive terminal it used to draw the age picker, exit 0 and archive nothing, so a script could not tell the no-op from a success (issue #1060).
+
+What changed
+- The `cleanup` action starts with the check `init` uses since BACK-698: unless its input and its output are both a terminal, it prints "Cleanup needs an interactive terminal for both its input and its output, because it asks which tasks to archive. Nothing was archived.", exits 1, and returns before any task is read, any prompt is drawn or anything is archived.
+- In an interactive terminal cleanup prompts and archives exactly as before.
+- The `cleanup` help and CLI-INSTRUCTIONS say that the command needs an interactive terminal. No non-interactive age option was added; that request from the same issue is not part of this task.
+
+Verification
+- `bunx tsc --noEmit` and `bun run check .` are clean; the scoped tests pass. src/test/cli-cleanup-input.test.ts runs the CLI with stdin redirected from /dev/null and with answers piped in (exit 1, the message, no prompt, the finished task still on the board) and in a pseudo-terminal, where the age question is still drawn.
+- A scripted end-to-end run against a binary built from this layer showed the same, and a pseudo-terminal run showed the interactive cleanup asking both questions, archiving on yes and leaving everything in place on no.
+
+Choices to confirm
+- The check needs a terminal on both ends, like `init`. With a terminal on stdin and the output redirected, cleanup now fails with the message instead of drawing its prompts into a file.
+- The message goes to stdout through the prompt library's cancel line, as the `init` failures do.
+<!-- SECTION:FINAL_SUMMARY:END -->
