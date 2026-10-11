@@ -188,41 +188,51 @@ export async function archiveTaskFile(filesystem: FileSystem, taskId: string): P
 	return true;
 }
 
-/** The `script` utility, which runs a command in a pseudo-terminal; null where there is none (Windows). */
-export const PSEUDO_TERMINAL_SCRIPT = process.platform === "win32" ? null : Bun.which("script");
+/** Bun can run a command in a pseudo-terminal everywhere except Windows. */
+export const HAS_PSEUDO_TERMINAL = process.platform !== "win32";
 
 /**
- * Run the CLI in a pseudo-terminal that nobody types into, so the command sees a terminal on both
- * its input and its output. The terminal gets a size first: a fresh pseudo-terminal has none, and
- * a prompt would wrap after every character.
+ * Run the CLI in a pseudo-terminal, so the command sees a terminal on both its input and its output.
+ *
+ * Nobody types into this terminal, and nothing else ends a question asked in one. A command that
+ * asks a question therefore needs `answer`: the keys to type once the question has been drawn.
+ * Without it the run would last until the timeout, which is only there for a command that hangs.
  */
 export async function runCliInPseudoTerminal(
 	cliPath: string,
 	args: string[],
 	cwd: string,
+	answer?: { question: string; keys: string },
 ): Promise<{ exitCode: number; output: string; timedOut: boolean }> {
-	if (!PSEUDO_TERMINAL_SCRIPT) {
-		throw new Error("script is required for pseudo-terminal tests");
-	}
-	const quote = (value: string) => `'${value.replaceAll("'", `'\\''`)}'`;
-	const sized = `stty cols 120 rows 40 && exec ${[process.execPath, cliPath, ...args].map(quote).join(" ")}`;
-	const inTerminal =
-		process.platform === "darwin"
-			? [PSEUDO_TERMINAL_SCRIPT, "-q", "/dev/null", "sh", "-c", sized]
-			: [PSEUDO_TERMINAL_SCRIPT, "-q", "-e", "-c", sized, "/dev/null"];
-	const child = Bun.spawn(inTerminal, { cwd, stdin: "ignore", stdout: "pipe", stderr: "pipe" });
+	const decoder = new TextDecoder();
+	const terminalClosed = Promise.withResolvers<void>();
+	let output = "";
+	let answered = false;
+	const child = Bun.spawn([process.execPath, cliPath, ...args], {
+		cwd,
+		terminal: {
+			cols: 120,
+			rows: 40,
+			data(terminal, chunk) {
+				output += decoder.decode(chunk, { stream: true });
+				if (answer && !answered && output.includes(answer.question)) {
+					answered = true;
+					terminal.write(answer.keys);
+				}
+			},
+			// The terminal closes once the command has exited and everything it drew has been read.
+			exit: () => terminalClosed.resolve(),
+		},
+	});
 	let timedOut = false;
 	const timeout = setTimeout(() => {
 		timedOut = true;
 		child.kill();
 	}, getPlatformTimeout());
-	const [exitCode, stdout, stderr] = await Promise.all([
-		child.exited,
-		new Response(child.stdout).text(),
-		new Response(child.stderr).text(),
-	]);
+	const [exitCode] = await Promise.all([child.exited, terminalClosed.promise]);
 	clearTimeout(timeout);
-	return { exitCode, output: `${stdout}${stderr}`, timedOut };
+	child.terminal?.close();
+	return { exitCode, output, timedOut };
 }
 
 /**

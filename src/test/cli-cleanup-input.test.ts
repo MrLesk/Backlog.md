@@ -5,17 +5,18 @@ import { Core } from "../core/backlog.ts";
 import { getTestCliPath } from "./test-cli.ts";
 import {
 	createTestDirOutsideRepository,
+	HAS_PSEUDO_TERMINAL,
 	initializeFilesystemTestProject,
-	PSEUDO_TERMINAL_SCRIPT,
 	runCliInPseudoTerminal,
 	safeCleanup,
 	withTimeout,
 } from "./test-utils.ts";
 
 const CLI_PATH = getTestCliPath();
-const itPty = PSEUDO_TERMINAL_SCRIPT ? it : it.skip;
+const itPty = HAS_PSEUDO_TERMINAL ? it : it.skip;
 const TERMINAL_NOTICE = "Cleanup needs an interactive terminal";
 const AGE_QUESTION = "Archive tasks if they are older than:";
+const ESCAPE = "\x1b";
 
 let testDir: string;
 
@@ -90,14 +91,19 @@ describe("backlog cleanup and the terminal it needs", () => {
 	});
 
 	itPty("still asks its first question in an interactive terminal", async () => {
-		// Nobody types into this terminal, so the first question ends when its input closes.
-		const result = await runCliInPseudoTerminal(CLI_PATH, ["cleanup"], testDir);
+		// Escape cancels the question once it has been drawn, so cleanup ends by itself.
+		const result = await runCliInPseudoTerminal(CLI_PATH, ["cleanup"], testDir, {
+			question: AGE_QUESTION,
+			keys: ESCAPE,
+		});
 
 		expect(result.timedOut).toBe(false);
 		expect(result.output).not.toContain(TERMINAL_NOTICE);
 		expect(result.output).toContain("Found 1 tasks marked as Done.");
 		expect(result.output).toContain(AGE_QUESTION);
-		// Nobody answered, so nothing was archived.
+		expect(result.output).toContain("Cleanup cancelled.");
+		expect(result.exitCode).toBe(0);
+		// The question was cancelled, so nothing was archived.
 		expect(await folders()).toEqual({ tasks: ["task-1 - Old-finished.md"], archive: [] });
 	});
 });

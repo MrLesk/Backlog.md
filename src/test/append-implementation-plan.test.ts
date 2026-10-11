@@ -6,15 +6,15 @@ import { extractStructuredSection } from "../markdown/structured-sections.ts";
 import { getTestCliPath } from "./test-cli.ts";
 import {
 	createUniqueTestDir,
+	HAS_PSEUDO_TERMINAL,
 	initializeFilesystemTestProject,
-	PSEUDO_TERMINAL_SCRIPT,
 	runCliInPseudoTerminal,
 	safeCleanup,
 } from "./test-utils.ts";
 
 let TEST_DIR: string;
 const CLI_PATH = getTestCliPath();
-const itPty = PSEUDO_TERMINAL_SCRIPT ? it : it.skip;
+const itPty = HAS_PSEUDO_TERMINAL ? it : it.skip;
 
 describe("Append Implementation Plan via task edit --append-plan", () => {
 	beforeEach(async () => {
