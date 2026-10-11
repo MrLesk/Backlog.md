@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 
+import { readFile } from "node:fs/promises";
 import { basename, dirname, isAbsolute, join } from "node:path";
 import { stdin as input } from "node:process";
 import { createInterface } from "node:readline/promises";
@@ -300,7 +301,7 @@ function formatTaskEditError(error: unknown, taskId: string, commandKind = "task
 		message.startsWith("Malformed Acceptance Criteria markers:") ||
 		message.startsWith("Malformed Definition of Done markers:")
 	) {
-		return `${message}\nThe edit was not applied. Run 'backlog ${commandKind} view ${taskId} --plain' to locate the ${commandKind} file, repair or remove the malformed marker block in that Markdown file, then rerun the edit.`;
+		return `${message}\nRun 'backlog ${commandKind} view ${taskId} --plain' to locate the ${commandKind} file, repair or remove the malformed marker block in that Markdown file, then rerun the edit.`;
 	}
 	if (message.startsWith("Invalid index:")) {
 		return `${message} Try 'backlog ${commandKind} edit ${taskId} --help' for index options.`;
@@ -1890,7 +1891,8 @@ function getTaskReadOutputMode(options: ReadOutputOptions): ReadOutputMode | nul
 
 taskCmd.hook("preSubcommand", (command, subcommand) => {
 	if (command.opts().json && !["list", "view"].includes(subcommand.name())) {
-		command.error("error: unknown option '--json'", { code: "commander.unknownOption", exitCode: 1 });
+		// Reported by the subcommand, like any other option it does not accept.
+		subcommand.error("error: unknown option '--json'", { code: "commander.unknownOption", exitCode: 1 });
 	}
 });
 
@@ -3113,7 +3115,64 @@ const draftEditTarget: EditCommandTarget = {
 	notFoundMessage: (id) => `Draft ${id} not found.`,
 };
 
+/**
+ * Printed after the reason when `task edit` or `draft edit` fails and no update took effect.
+ * `runEditCommand` prints it for a failure of the edit itself, `configureEditCommand` for anything
+ * Commander rejects before the edit runs.
+ */
+const NO_CHANGES_APPLIED = "No changes were applied.";
+
+/**
+ * Runs `task edit` or `draft edit` and says when a failed edit applied nothing. The edit of a task
+ * is all-or-nothing, so the sentence follows the reason for every failure, whatever rejected the
+ * edit. Two rules in `performEdit` keep that true:
+ *
+ * - A failure prints its reason and sets `process.exitCode`, as the existing ones do, or throws. It
+ *   must not call `process.exit()`: the process would end before the sentence is printed. The one
+ *   exception is `requireProjectRoot`, which exits when there is no project to edit.
+ * - `target.update` is the only way to write. A write made any other way is not tracked, so the
+ *   sentence would follow a failure although a file changed.
+ *
+ * The sentence is checked, not assumed. An update can fail after saving its file, as when the
+ * auto-commit fails, and with several IDs some can be updated before another fails. So every
+ * update goes through the tracked call below, and one that succeeded or changed its file
+ * suppresses the sentence.
+ */
 async function runEditCommand(target: EditCommandTarget, requestedIds: string[] | undefined, options: OptionValues) {
+	const read = (filePath: string | undefined) => (filePath ? readFile(filePath).catch(() => null) : null);
+	let changesMayBeApplied = false;
+	const trackedTarget: EditCommandTarget = {
+		...target,
+		async update(core, existing, input) {
+			const before = await read(existing.filePath);
+			try {
+				const updated = await target.update(core, existing, input);
+				changesMayBeApplied = true;
+				return updated;
+			} catch (error) {
+				const after = await read(existing.filePath);
+				// A file that cannot be read counts as changed, so the sentence is never a guess.
+				if (!before || !after || !before.equals(after)) {
+					changesMayBeApplied = true;
+				}
+				throw error;
+			}
+		},
+	};
+
+	try {
+		await performEdit(trackedTarget, requestedIds, options);
+	} catch (error) {
+		console.error(error instanceof Error ? error.message : String(error));
+		process.exitCode = 1;
+	}
+	// Every failure ends with a failing exit code, set by the edit itself or by the catch above.
+	if (process.exitCode && !changesMayBeApplied) {
+		console.error(NO_CHANGES_APPLIED);
+	}
+}
+
+async function performEdit(target: EditCommandTarget, requestedIds: string[] | undefined, options: OptionValues) {
 	// Listing the same task twice is a slip, not a request to edit it twice, so identities that
 	// compare equal collapse to the first spelling the user typed. Canonical identity keeps a bare
 	// number on the default prefix, so "7" cannot swallow an explicit "JIRA-7".
@@ -3571,7 +3630,12 @@ async function runEditCommand(target: EditCommandTarget, requestedIds: string[] 
 	}
 }
 
-function addEditFieldOptions(cmd: Command) {
+/** Gives `task edit` and `draft edit` the field options they share and their error output. */
+function configureEditCommand(cmd: Command) {
+	// Whatever Commander rejects itself, such as an unknown option, a missing option value or excess
+	// arguments, is rejected before the action runs and so before anything is written. Its error
+	// output therefore carries the same sentence.
+	cmd.configureOutput({ outputError: (text, write) => write(`${text}${NO_CHANGES_APPLIED}\n`) });
 	return cmd
 		.option("-t, --title <title>")
 		.option("-d, --description <text>", "task description")
@@ -3811,7 +3875,7 @@ const taskEditCommand = addHelpSchema(taskCmd.command("edit [taskIds...]"), {
 		'backlog task edit {{TASK_ID:1}} {{TASK_ID:2}} --status "<active status>"',
 	],
 }).description("edit an existing task");
-addEditFieldOptions(taskEditCommand).action(async (taskIds: string[] | undefined, options) => {
+configureEditCommand(taskEditCommand).action(async (taskIds: string[] | undefined, options) => {
 	await runEditCommand(taskEditTarget, taskIds, options);
 });
 
@@ -4212,7 +4276,7 @@ const draftEditCommand = addHelpSchema(draftCmd.command("edit [taskId]"), {
 	output: "Updated draft details; use --plain for text output",
 	examples: ['backlog draft edit DRAFT-1 -t "Renamed draft"', "backlog draft edit DRAFT-1 --check-ac 1"],
 }).description("edit an existing draft");
-addEditFieldOptions(draftEditCommand).action(async (taskId: string | undefined, options) => {
+configureEditCommand(draftEditCommand).action(async (taskId: string | undefined, options) => {
 	await runEditCommand(draftEditTarget, taskId ? [taskId] : [], options);
 });
 
