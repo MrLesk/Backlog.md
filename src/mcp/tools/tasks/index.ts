@@ -10,7 +10,7 @@ import {
 import { createSimpleValidatedTool } from "../../validation/tool-wrapper.ts";
 import type { TaskCreateArgs, TaskEditRequest, TaskListArgs, TaskSearchArgs } from "./handlers.ts";
 import { TaskHandlers } from "./handlers.ts";
-import { taskArchiveSchema, taskViewSchema } from "./schemas.ts";
+import { taskArchiveSchema, taskDeleteSchema, taskViewSchema } from "./schemas.ts";
 
 export function registerTaskTools(server: McpServer, config: BacklogConfig): void {
 	const handlers = new TaskHandlers(server);
@@ -89,12 +89,25 @@ export function registerTaskTools(server: McpServer, config: BacklogConfig): voi
 		async (input) => handlers.archiveTask(input as { id: string }),
 	);
 
+	const deleteTaskTool: McpToolHandler = createSimpleValidatedTool(
+		{
+			name: "task_delete",
+			description:
+				"Permanently delete an archived task and release its ID; removes the dependencies and references other tasks hold to it. The task must be archived first (task_archive) and must have no subtasks",
+			inputSchema: taskDeleteSchema,
+			annotations: { title: "Delete Task", destructiveHint: true },
+		},
+		taskDeleteSchema,
+		async (input) => handlers.deleteTask(input as { id: string }),
+	);
+
 	server.addTool(createTaskTool);
 	server.addTool(listTaskTool);
 	server.addTool(searchTaskTool);
 	server.addTool(editTaskTool);
 	server.addTool(viewTaskTool);
 	server.addTool(archiveTaskTool);
+	server.addTool(deleteTaskTool);
 }
 
 export type { TaskCreateArgs, TaskEditArgs, TaskListArgs, TaskSearchArgs } from "./handlers.ts";

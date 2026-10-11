@@ -99,7 +99,7 @@ import {
 } from "../utils/task-path.ts";
 import { applyTaskFilters, createTaskSearchIndex } from "../utils/task-search.ts";
 import { sortByOrdinal } from "../utils/task-sorting.ts";
-import { attachSubtaskSummaries } from "../utils/task-subtasks.ts";
+import { attachSubtaskSummaries, findDirectSubtasks } from "../utils/task-subtasks.ts";
 import { formatValidTaskTypeValues, resolveTaskTypeValue } from "../utils/task-type-config.ts";
 import { upsertTaskUpdatedDate } from "../utils/task-updated-date.ts";
 import { isTerminalStatus } from "../utils/terminal-status.ts";
@@ -431,6 +431,22 @@ export class TaskFileExistsError extends TaskRefusedError {
 	constructor(taskId: string, fileName: string) {
 		super(`Task ${taskId} cannot be archived: the archive already has a file named ${fileName}.`);
 		this.name = "TaskFileExistsError";
+	}
+}
+
+/** Delete targeted a task that is still on the board; archiving is the step that comes first. */
+export class TaskNotArchivedError extends TaskRefusedError {
+	constructor(taskId: string) {
+		super(`Task ${taskId} is not archived. A task must be archived before it can be deleted.`);
+		this.name = "TaskNotArchivedError";
+	}
+}
+
+/** Delete targeted a task whose subtasks still exist; their IDs are built on the ID it would release. */
+export class TaskHasSubtasksError extends TaskRefusedError {
+	constructor(taskId: string, subtaskIds: string[]) {
+		super(`Task ${taskId} cannot be deleted while its subtasks exist: ${subtaskIds.join(", ")}.`);
+		this.name = "TaskHasSubtasksError";
 	}
 }
 
@@ -925,9 +941,9 @@ export class Core {
 	}
 
 	/**
-	 * Collect the records that name a task ID which demoting is about to vacate.
+	 * Collect the records that name a task ID which demoting or deleting is about to vacate.
 	 *
-	 * Demotion frees the numeric slot for the allocator, so a reference left behind stops meaning
+	 * Both free the numeric slot for the allocator, so a reference left behind stops meaning
 	 * what it said: once the ID is handed to the next created task, the stale reference silently
 	 * resolves to an unrelated task instead of failing closed. The scan covers the active working
 	 * copy and the archived corpus, because an archived record is still read by the dependency
@@ -1269,6 +1285,18 @@ export class Core {
 		if (resolution.status === "found") {
 			throw new TaskOnOtherBranchError(resolution.task.id, resolution.task.branch);
 		}
+	}
+
+	/**
+	 * Load the archived task that delete targets, from the working copy. A task on the board throws
+	 * `TaskNotArchivedError`, a task that exists only on another branch throws
+	 * `TaskOnOtherBranchError`, an ambiguous ID throws, and null means no record claims the ID.
+	 */
+	private async loadArchivedTask(taskId: string, options: TaskReadOptions): Promise<Task | null> {
+		const task = await this.loadWorkingCopyTask(taskId, false);
+		if (!task) await this.refuseTaskOnOtherBranch(taskId, options);
+		if (task && task.source !== "archived") throw new TaskNotArchivedError(task.id);
+		return task;
 	}
 
 	async getTaskContent(taskId: string): Promise<string | null> {
@@ -3440,6 +3468,54 @@ export class Core {
 			}
 			return true;
 		});
+	}
+
+	/**
+	 * Permanently remove an archived task. The ID stops being reserved, so the dependencies and
+	 * references other tasks hold to it are removed in the same locked span and reported.
+	 *
+	 * Returns `success: false` when no record claims the ID. Every refusal is a `TaskRefusedError`:
+	 * the task is on the board, it exists only on another branch, or a task on the board or in the
+	 * archive names it as its parent. The referencing records are written before the file is
+	 * removed, so a failure leaves the task in the archive and the delete can simply be run again.
+	 */
+	async deleteTask(taskId: string, autoCommit?: boolean, options: TaskReadOptions = {}): Promise<VacatedTaskResult> {
+		const task = await this.loadArchivedTask(taskId, options);
+		if (!task) return { success: false, cleanedTaskIds: [] };
+
+		const deleted = await this.withVacatedIdCleanup(task, task.id, async (cleanup) => {
+			// Another process may have deleted the record before these locks were held.
+			const current = await this.loadArchivedTask(task.id, options);
+			if (!current?.filePath) return null;
+			const [activeTasks, archivedTasks] = await Promise.all([this.fs.listTasks(), this.fs.listArchivedTasks()]);
+			const subtasks = findDirectSubtasks(current, [...activeTasks, ...archivedTasks]);
+			if (subtasks.length > 0) {
+				throw new TaskHasSubtasksError(
+					current.id,
+					subtasks.map((subtask) => subtask.id),
+				);
+			}
+
+			const written = await this.writeVacatedIdCleanup(cleanup);
+			// unlink removes a symlinked task file as a link; the file it points to is left alone.
+			await unlink(current.filePath);
+			this.contentStore?.transitionTask(current.id);
+			return { removedPath: current.filePath, ...written };
+		});
+		if (!deleted) return { success: false, cleanedTaskIds: [] };
+
+		if (await this.shouldAutoCommit(autoCommit)) {
+			try {
+				await this.git.addFiles(deleted.filePaths);
+				// A file that was never committed has no removal to stage.
+				await this.git.addFile(deleted.removedPath).catch(() => {});
+				await this.git.commitFiles(`backlog: Delete task ${task.id}`, [deleted.removedPath, ...deleted.filePaths]);
+			} catch (error) {
+				const reason = error instanceof Error ? error.message : String(error);
+				throw new Error(`Task ${task.id} was deleted, but committing the change failed: ${reason}`);
+			}
+		}
+		return { success: true, cleanedTaskIds: deleted.cleanedTaskIds };
 	}
 
 	async archiveMilestone(

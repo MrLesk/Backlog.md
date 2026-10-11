@@ -326,7 +326,7 @@ export function buildDependencyTree(graph: DependencyGraph, direction: Dependenc
 }
 
 /**
- * One line naming the records that lost a stored reference when demoting vacated a task ID.
+ * One line naming the records that lost a stored reference when a task ID was vacated.
  * Every surface says it in the same words, and says nothing when the operation changed no other
  * record.
  */

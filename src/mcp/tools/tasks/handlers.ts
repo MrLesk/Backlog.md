@@ -456,6 +456,18 @@ export class TaskHandlers {
 		return await formatTaskCallResult(await loadTaskDetail(this.core, refreshed), [`Archived task ${task.id}.`]);
 	}
 
+	async deleteTask(args: { id: string }): Promise<CallToolResult> {
+		const task = await this.loadTaskOrThrow(args.id);
+		const deletion = await this.runLifecycleOperation(() => this.core.deleteTask(task.id));
+		if (!deletion.success) {
+			throw new BacklogToolError(taskNotFoundMessage(args.id), "TASK_NOT_FOUND");
+		}
+
+		const cleanupMessage = formatDependencyCleanupMessage(task.id, deletion.cleanedTaskIds);
+		const lines = [`Deleted task ${task.id}.`, ...(cleanupMessage ? [`${cleanupMessage}.`] : [])];
+		return { content: [{ type: "text", text: lines.join("\n") }] };
+	}
+
 	async demoteTask(args: { id: string }): Promise<CallToolResult> {
 		const task = await this.loadTaskOrThrow(args.id);
 		let demotion: VacatedTaskResult;
