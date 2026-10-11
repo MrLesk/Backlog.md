@@ -5,7 +5,7 @@ status: In Progress
 assignee:
   - '@claude'
 created_date: '2026-10-11 10:42'
-updated_date: '2026-10-11 16:21'
+updated_date: '2026-10-11 19:18'
 labels:
   - bug
 dependencies:
@@ -17,6 +17,8 @@ modified_files:
   - CLI-INSTRUCTIONS.md
   - src/cli.ts
   - src/test/cli-cleanup-input.test.ts
+  - src/test/append-implementation-plan.test.ts
+  - src/test/test-utils.ts
 type: bug
 ordinal: 338000
 ---
@@ -72,4 +74,6 @@ Tests: src/test/cli-cleanup-input.test.ts runs the CLI with stdin closed and wit
 Choices taken conservatively and listed for review: the check is the existing both-ends check, so `backlog cleanup` with a terminal on stdin and its output redirected also fails with the message instead of drawing prompts into a file; the message goes through `clack.cancel` to stdout, as the `init` failures do.
 
 Verification: `bunx tsc --noEmit` clean; `bun run check .` clean; scoped tests pass. A scripted end-to-end run against a binary built from this layer showed `backlog cleanup </dev/null`, piped answers and captured output all exiting 1 with the message, no prompt and unchanged task files, and a pseudo-terminal run showed the interactive cleanup asking both questions, archiving on yes and leaving everything on no.
+
+Review round: the message is now true in every combination, 'Cleanup needs an interactive terminal for both its input and its output, because it asks which tasks to archive. Nothing was archived.', and the help and CLI-INSTRUCTIONS say the same. The test that used to be titled 'stdin is closed' says that stdin is redirected from /dev/null. The pseudo-terminal helper moved into src/test/test-utils.ts (runCliInPseudoTerminal, with a sized terminal) and both this test and src/test/append-implementation-plan.test.ts use it.
 <!-- SECTION:NOTES:END -->

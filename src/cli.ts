@@ -5704,16 +5704,16 @@ addHelpSchema(program.command("cleanup"), {
 	optional: [],
 	writes: "Archives the selected terminal-status tasks: moves them off the board into the archive, keeping their IDs",
 	output:
-		"Interactive cleanup summary. The command asks for an age and a confirmation, so it needs an interactive terminal; without one it exits non-zero and archives nothing",
+		"Interactive cleanup summary. The command asks for an age and a confirmation, so it needs an interactive terminal for both its input and its output; without that it exits non-zero and archives nothing",
 	examples: ["backlog cleanup"],
 })
 	.description("archive tasks in the final status that are older than a chosen age")
 	.action(async () => {
-		// Cleanup asks two questions. Without a terminal nobody can answer them, and exiting 0 after
-		// archiving nothing would read as success.
+		// Cleanup asks two questions. Unless its input and its output are both a terminal nobody can
+		// answer them, and exiting 0 after archiving nothing would read as success.
 		if (!hasInteractiveTTY) {
 			clack.cancel(
-				"Cleanup needs an interactive terminal to ask which tasks to archive. Run `backlog cleanup` in a terminal.",
+				"Cleanup needs an interactive terminal for both its input and its output, because it asks which tasks to archive. Nothing was archived.",
 			);
 			process.exitCode = 1;
 			return;

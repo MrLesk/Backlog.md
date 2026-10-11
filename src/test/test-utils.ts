@@ -188,6 +188,43 @@ export async function archiveTaskFile(filesystem: FileSystem, taskId: string): P
 	return true;
 }
 
+/** The `script` utility, which runs a command in a pseudo-terminal; null where there is none (Windows). */
+export const PSEUDO_TERMINAL_SCRIPT = process.platform === "win32" ? null : Bun.which("script");
+
+/**
+ * Run the CLI in a pseudo-terminal that nobody types into, so the command sees a terminal on both
+ * its input and its output. The terminal gets a size first: a fresh pseudo-terminal has none, and
+ * a prompt would wrap after every character.
+ */
+export async function runCliInPseudoTerminal(
+	cliPath: string,
+	args: string[],
+	cwd: string,
+): Promise<{ exitCode: number; output: string; timedOut: boolean }> {
+	if (!PSEUDO_TERMINAL_SCRIPT) {
+		throw new Error("script is required for pseudo-terminal tests");
+	}
+	const quote = (value: string) => `'${value.replaceAll("'", `'\\''`)}'`;
+	const sized = `stty cols 120 rows 40 && exec ${[process.execPath, cliPath, ...args].map(quote).join(" ")}`;
+	const inTerminal =
+		process.platform === "darwin"
+			? [PSEUDO_TERMINAL_SCRIPT, "-q", "/dev/null", "sh", "-c", sized]
+			: [PSEUDO_TERMINAL_SCRIPT, "-q", "-e", "-c", sized, "/dev/null"];
+	const child = Bun.spawn(inTerminal, { cwd, stdin: "ignore", stdout: "pipe", stderr: "pipe" });
+	let timedOut = false;
+	const timeout = setTimeout(() => {
+		timedOut = true;
+		child.kill();
+	}, 5_000);
+	const [exitCode, stdout, stderr] = await Promise.all([
+		child.exited,
+		new Response(child.stdout).text(),
+		new Response(child.stderr).text(),
+	]);
+	clearTimeout(timeout);
+	return { exitCode, output: `${stdout}${stderr}`, timedOut };
+}
+
 /**
  * Windows-safe directory cleanup with retry logic
  * Windows can have file locking issues that prevent immediate deletion

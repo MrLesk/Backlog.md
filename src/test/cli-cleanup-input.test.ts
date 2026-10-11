@@ -6,20 +6,27 @@ import { getTestCliPath } from "./test-cli.ts";
 import {
 	createTestDirOutsideRepository,
 	initializeFilesystemTestProject,
+	PSEUDO_TERMINAL_SCRIPT,
+	runCliInPseudoTerminal,
 	safeCleanup,
 	withTimeout,
 } from "./test-utils.ts";
 
 const CLI_PATH = getTestCliPath();
-const SCRIPT_PATH = Bun.which("script");
-const itPty = process.platform === "win32" || !SCRIPT_PATH ? it.skip : it;
+const itPty = PSEUDO_TERMINAL_SCRIPT ? it : it.skip;
 const TERMINAL_NOTICE = "Cleanup needs an interactive terminal";
 const AGE_QUESTION = "Archive tasks if they are older than:";
 
 let testDir: string;
 
-async function collect(command: string[], stdin: "ignore" | Blob): Promise<{ exitCode: number; output: string }> {
-	const child = Bun.spawn(command, { cwd: testDir, stdin, stdout: "pipe", stderr: "pipe" });
+/** `backlog cleanup` the way a script runs it: no terminal, and whatever the script feeds to stdin. */
+async function cleanupWithoutTerminal(stdin: "ignore" | Blob): Promise<{ exitCode: number; output: string }> {
+	const child = Bun.spawn([process.execPath, CLI_PATH, "cleanup"], {
+		cwd: testDir,
+		stdin,
+		stdout: "pipe",
+		stderr: "pipe",
+	});
 	try {
 		const [exitCode, stdout, stderr] = await withTimeout(
 			Promise.all([child.exited, new Response(child.stdout).text(), new Response(child.stderr).text()]),
@@ -31,26 +38,6 @@ async function collect(command: string[], stdin: "ignore" | Blob): Promise<{ exi
 		if (child.exitCode === null) child.kill("SIGKILL");
 		await child.exited;
 	}
-}
-
-/** `backlog cleanup` the way a script runs it: no terminal, and whatever the script feeds to stdin. */
-async function cleanupWithoutTerminal(stdin: "ignore" | Blob) {
-	return await collect([process.execPath, CLI_PATH, "cleanup"], stdin);
-}
-
-/**
- * `backlog cleanup` in a pseudo-terminal that nobody types into: the command sees a terminal on
- * both ends, and its first question ends when the terminal's input closes.
- */
-async function cleanupInUnattendedTerminal() {
-	const quoted = [process.execPath, CLI_PATH, "cleanup"].map((part) => `'${part.replaceAll("'", `'\\''`)}'`);
-	// A fresh pseudo-terminal has no size, and the prompt would wrap after every character.
-	const sized = `stty cols 120 rows 40 && exec ${quoted.join(" ")}`;
-	const inTerminal =
-		process.platform === "darwin"
-			? [SCRIPT_PATH as string, "-q", "/dev/null", "sh", "-c", sized]
-			: [SCRIPT_PATH as string, "-q", "-e", "-c", sized, "/dev/null"];
-	return await collect(inTerminal, "ignore");
 }
 
 async function folders(): Promise<{ tasks: string[]; archive: string[] }> {
@@ -88,14 +75,14 @@ describe("backlog cleanup and the terminal it needs", () => {
 	});
 
 	it.each([
-		["stdin is closed", "ignore" as const],
+		["stdin is redirected from /dev/null", "ignore" as const],
 		["the answers are piped into stdin", new Blob(["\ny\n"])],
 	])("exits non-zero, says why, draws no prompt and archives nothing when %s", async (_name, stdin) => {
 		const result = await cleanupWithoutTerminal(stdin);
 
 		expect(result.exitCode).toBe(1);
 		expect(result.output).toContain(
-			"Cleanup needs an interactive terminal to ask which tasks to archive. Run `backlog cleanup` in a terminal.",
+			"Cleanup needs an interactive terminal for both its input and its output, because it asks which tasks to archive. Nothing was archived.",
 		);
 		expect(result.output).not.toContain(AGE_QUESTION);
 		expect(result.output).not.toContain("Found 1 tasks");
@@ -103,8 +90,10 @@ describe("backlog cleanup and the terminal it needs", () => {
 	});
 
 	itPty("still asks its first question in an interactive terminal", async () => {
-		const result = await cleanupInUnattendedTerminal();
+		// Nobody types into this terminal, so the first question ends when its input closes.
+		const result = await runCliInPseudoTerminal(CLI_PATH, ["cleanup"], testDir);
 
+		expect(result.timedOut).toBe(false);
 		expect(result.output).not.toContain(TERMINAL_NOTICE);
 		expect(result.output).toContain("Found 1 tasks marked as Done.");
 		expect(result.output).toContain(AGE_QUESTION);
