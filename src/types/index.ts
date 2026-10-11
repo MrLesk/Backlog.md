@@ -106,11 +106,20 @@ export interface MilestoneSummary {
 }
 
 /**
- * Check if a task belongs to the local working copy (not read from a remote or other local branch).
- * Archived tasks are local as well; core refuses to change them because they are read-only.
+ * Check if a task record comes from the local working copy, on the board or in the archive, rather
+ * than from a remote or another local branch. It says where the record lives, not whether it can
+ * be changed; see {@link isReadOnlyTask} for that.
  */
-export function isLocalEditableTask(task: Task): boolean {
+export function isWorkingCopyTask(task: Task): boolean {
 	return task.source === undefined || task.source === "local" || task.source === "archived";
+}
+
+/**
+ * Check if a task can be shown but not changed here: it belongs to another branch, or it is
+ * archived. Every surface asks this one question before it offers or attempts a change.
+ */
+export function isReadOnlyTask(task: Task): boolean {
+	return !isWorkingCopyTask(task) || Boolean(task.branch) || task.source === "archived";
 }
 
 export interface TaskCreateInput {

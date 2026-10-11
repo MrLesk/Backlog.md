@@ -191,15 +191,23 @@ describe("Web task popup keyboard shortcuts", () => {
 		expect(event.defaultPrevented).toBe(false);
 	});
 
-	it("shows an archived task read-only: no edit, archive or demote control and no edit shortcut", async () => {
+	it.each([
+		["an archived task", { status: "Done", source: "archived" } as const, "Read-only: This task is archived."],
+		[
+			"a task from another branch",
+			{ source: "local-branch", branch: "feature" } as const,
+			"Read-only: This task exists in the feature branch. Switch to that branch to edit it.",
+		],
+	])("shows %s read-only: one banner, no edit, archive or demote control, no edit shortcut", async (_name, overrides, banner) => {
 		let archives = 0;
-		const container = await mountModal({ ...task, status: "Done", source: "archived" }, true, {
+		const container = await mountModal({ ...task, ...overrides }, true, {
 			onArchive: () => {
 				archives += 1;
 			},
 		});
 
-		expect(container.textContent).toContain("Read-only: This task is archived.");
+		expect(container.textContent).toContain(banner);
+		expect(container.textContent?.split("Read-only:")).toHaveLength(2);
 		expect(container.textContent).not.toContain("Toggle to update");
 		expect(findButton(container, "Edit")).toBeUndefined();
 		expect(findButton(container, "Archive Task")).toBeUndefined();

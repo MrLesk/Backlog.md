@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { isLocalEditableTask, type AcceptanceCriterion, type Milestone, type Task, type TaskComment } from "../../types";
+import { isReadOnlyTask, isWorkingCopyTask, type AcceptanceCriterion, type Milestone, type Task, type TaskComment } from "../../types";
 import { type TaskDetail, taskDependencyGraph, taskReadiness } from "../../core/task-detail";
 import Modal from "./Modal";
 import { apiClient, NetworkError, readDemotionFailureCause, readMovedFailureState } from "../lib/api";
@@ -199,10 +199,8 @@ export const TaskDetailsModal: React.FC<Props> = ({
 }) => {
   const { theme } = useTheme();
   const isCreateMode = !task;
-  const isFromOtherBranch = Boolean(task?.branch);
-  const isArchived = task?.source === "archived";
   // A task from another branch or in the archive is shown but cannot be changed here.
-  const isReadOnly = isFromOtherBranch || isArchived;
+  const isReadOnly = task ? isReadOnlyTask(task) : false;
   // Promoting a draft replaces it with a new task ID, which the Drafts page does through its own
   // Promote action, so the popup shows the draft status without turning the field into a second one.
   const isOpenDraft = (task?.status ?? "").trim().toLowerCase() === "draft";
@@ -428,7 +426,7 @@ export const TaskDetailsModal: React.FC<Props> = ({
   // than one local file claims. The index drops those collisions already, so a task survives only
   // when it is the one its own canonical ID resolves to.
   const localAvailableTasks = useMemo(() => {
-    const local = availableTasks.filter(isLocalEditableTask);
+    const local = availableTasks.filter(isWorkingCopyTask);
     const index = buildTaskIdIndex(local);
     return local.filter((candidate) => resolveTaskReference(index, candidate.id) === candidate);
   }, [availableTasks]);
@@ -507,7 +505,7 @@ export const TaskDetailsModal: React.FC<Props> = ({
       if (mode !== "preview" || isEditableKeyboardTarget(e.target)) {
         return;
       }
-      if (!isArchived && e.key.toLowerCase() === "e" && !e.metaKey && !e.ctrlKey && !e.altKey) {
+      if (!isReadOnly && e.key.toLowerCase() === "e" && !e.metaKey && !e.ctrlKey && !e.altKey) {
         e.preventDefault();
         e.stopPropagation();
         setMode("edit");
@@ -515,7 +513,7 @@ export const TaskDetailsModal: React.FC<Props> = ({
     };
     window.addEventListener("keydown", onKey, { capture: true });
     return () => window.removeEventListener("keydown", onKey, { capture: true } as any);
-  }, [mode, title, description, plan, notes, finalSummary, criteria, definitionOfDone, status, availableStatuses, isArchived]);
+  }, [mode, title, description, plan, notes, finalSummary, criteria, definitionOfDone, status, availableStatuses, isReadOnly]);
 
   // Reset local state when task changes or modal opens
   useEffect(() => {
@@ -1095,9 +1093,7 @@ export const TaskDetailsModal: React.FC<Props> = ({
   const totalCount = (criteria || []).length;
   const definitionCheckedCount = (definitionOfDone || []).filter((c) => c.checked).length;
   const definitionTotalCount = (definitionOfDone || []).length;
-	const canDemote = Boolean(
-		task && !isDraftMode && !isOpenDraft && isLocalEditableTask(task) && !isReadOnly,
-	);
+	const canDemote = Boolean(task && !isDraftMode && !isOpenDraft && !isReadOnly);
   const comments = displayComments;
 
   const displayId = task?.id ?? "";
@@ -1182,19 +1178,19 @@ export const TaskDetailsModal: React.FC<Props> = ({
       )}
 
 		<fieldset disabled={demoting} className="contents" aria-busy={demoting}>
-      {isArchived && (
-        <div className="mb-4 px-4 py-3 bg-amber-50 dark:bg-amber-900/30 border border-amber-200 dark:border-amber-700 rounded-lg text-amber-800 dark:text-amber-200">
-          <span className="font-medium">Read-only:</span> This task is archived.
-        </div>
-      )}
-      {/* Cross-branch task indicator */}
-      {isFromOtherBranch && (
+      {/* One banner for every read-only task; only the reason differs. */}
+      {isReadOnly && (
         <div className="mb-4 flex items-center gap-2 px-4 py-3 bg-amber-50 dark:bg-amber-900/30 border border-amber-200 dark:border-amber-700 rounded-lg text-amber-800 dark:text-amber-200">
           <svg className="w-5 h-5 flex-shrink-0 text-amber-600 dark:text-amber-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
           </svg>
           <div className="flex-1">
-            <span className="font-medium">Read-only:</span> This task exists in the <span className="font-semibold">{task?.branch}</span> branch. Switch to that branch to edit it.
+            <span className="font-medium">Read-only:</span>{" "}
+            {task?.branch ? (
+              <>This task exists in the <span className="font-semibold">{task.branch}</span> branch. Switch to that branch to edit it.</>
+            ) : (
+              "This task is archived."
+            )}
           </div>
         </div>
       )}

@@ -32,7 +32,7 @@ import { openTaskComposer, type TaskComposerOptions } from "./components/task-co
 import { formatFooterContent, getBoardFooterContent } from "./footer-content.ts";
 import { formatProjectBadge } from "./project.ts";
 import { getStatusIcon } from "./status-icon.ts";
-import { archiveTaskFromTui, formatArchiveConfirmation } from "./task-lifecycle.ts";
+import { archiveTaskFromTui, formatArchiveNotice } from "./task-lifecycle.ts";
 import { formatTaskTypeBadge } from "./task-type.ts";
 import {
 	createTaskPopup,
@@ -1519,6 +1519,21 @@ export async function renderBoardTui(
 			}
 		};
 
+		/** The archive key, pressed on a column row or inside the task popup. */
+		const archiveFromBoard = async (task: Task): Promise<void> => {
+			const result = await archiveTaskFromTui(await getCore(), task, (popup) =>
+				runWithModalGuard(() => openConfirmPopup({ screen, ...popup })),
+			);
+			if (result.archived) {
+				currentTasks = currentTasks.filter((t) => t.id !== task.id);
+				// The task's own popup has nothing left to show.
+				if (openPopup?.taskId === task.id) closeOpenPopup();
+				renderView();
+			}
+			const notice = formatArchiveNotice(task, result);
+			if (notice) showTransientFooter(notice);
+		};
+
 		const openTaskPopup = async (task: Task): Promise<void> => {
 			popupOpen = true;
 
@@ -1564,31 +1579,7 @@ export async function renderBoardTui(
 			});
 
 			contentArea.key(["a", "A"], async () => {
-				if (task.branch) {
-					showTransientFooter(` {red-fg}Cannot archive task from branch "${task.branch}".{/}`);
-					return;
-				}
-
-				const confirmed = await runWithModalGuard(() =>
-					openConfirmPopup({ screen, title: "Archive Task", message: formatArchiveConfirmation(task.id) }),
-				);
-
-				if (confirmed) {
-					try {
-						if (await archiveTaskFromTui(await getCore(), task)) {
-							currentTasks = currentTasks.filter((t) => t.id !== task.id);
-							showTransientFooter(` {green-fg}Archived ${task.id}{/}`);
-							closeOpenPopup();
-							renderView();
-						} else {
-							showTransientFooter(` {red-fg}Failed to archive ${task.id}{/}`);
-						}
-					} catch (error) {
-						showTransientFooter(
-							` {red-fg}Error archiving task: ${error instanceof Error ? error.message : "Unknown error"}{/}`,
-						);
-					}
-				}
+				await archiveFromBoard(task);
 			});
 
 			screen.render();
@@ -2027,30 +2018,7 @@ export async function renderBoardTui(
 			const task = column.tasks[idx];
 			if (!task) return;
 
-			if (task.branch) {
-				showTransientFooter(` {red-fg}Cannot archive task from branch "${task.branch}".{/}`);
-				return;
-			}
-
-			const confirmed = await runWithModalGuard(() =>
-				openConfirmPopup({ screen, title: "Archive Task", message: formatArchiveConfirmation(task.id) }),
-			);
-
-			if (confirmed) {
-				try {
-					if (await archiveTaskFromTui(await getCore(), task)) {
-						currentTasks = currentTasks.filter((t) => t.id !== task.id);
-						showTransientFooter(` {green-fg}Archived ${task.id}{/}`);
-						renderView();
-					} else {
-						showTransientFooter(` {red-fg}Failed to archive ${task.id}{/}`);
-					}
-				} catch (error) {
-					showTransientFooter(
-						` {red-fg}Error archiving task: ${error instanceof Error ? error.message : "Unknown error"}{/}`,
-					);
-				}
-			}
+			await archiveFromBoard(task);
 		});
 
 		const toggleHideEmptyColumns = async () => {

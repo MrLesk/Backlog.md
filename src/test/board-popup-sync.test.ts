@@ -4,7 +4,7 @@ import type { Core, TuiTaskEditResult } from "../core/backlog.ts";
 import type { Task } from "../types/index.ts";
 import { renderBoardTui } from "../ui/board.ts";
 import { createScreen } from "../ui/tui.ts";
-import { withTimeout } from "./test-utils.ts";
+import { waitUntil, withTimeout } from "./test-utils.ts";
 
 type EmittingWidget = {
 	emit: (event: string, ch?: string, key?: { name: string; full: string; shift?: boolean }) => boolean;
@@ -224,6 +224,35 @@ describe("board task popup stays in sync with live task state", () => {
 			expect(popupBody()).toBeDefined();
 			expect(text()).not.toContain("Moves it off the board");
 		});
+	});
+
+	it.each([
+		[
+			"a task from another branch",
+			{ source: "local-branch", branch: "feature" } as const,
+			"Task is read-only in branch feature.",
+		],
+		["an archived task", { source: "archived" } as const, "Task is read-only."],
+	])("refuses the archive key on %s without asking, in the popup and on the column", async (_name, overrides, line) => {
+		await withBoardPopup(
+			{ tasks: [createTask(overrides), OTHER_TASK] },
+			async ({ screen, text, focused, popupBody }) => {
+				pressKey(focused(), "a");
+				// The refusal is the first thing the key does, so once its line shows no question was asked.
+				await waitUntil(() => text().includes(line), "the read-only line from the popup");
+				expect(text()).not.toContain("Moves it off the board");
+				expect(popupBody()).toBeDefined();
+
+				pressKey(focused(), "escape");
+				await waitUntil(() => popupBody() === undefined, "the popup to close");
+				// Y replaces the footer line, so the next read-only line can only come from the column key.
+				pressKey(screen, "y");
+				await waitUntil(() => !text().includes(line), "the footer to change");
+				pressKey(screen, "a");
+				await waitUntil(() => text().includes(line), "the read-only line from the column");
+				expect(text()).not.toContain("Moves it off the board");
+			},
+		);
 	});
 
 	it("restores focus to a real column when the board loses columns as the task disappears", async () => {

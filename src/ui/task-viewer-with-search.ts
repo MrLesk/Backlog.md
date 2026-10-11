@@ -57,7 +57,7 @@ import { createLoadingScreen } from "./loading.ts";
 import { formatPriorityMarker } from "./priority-marker.ts";
 import { formatProjectBadge } from "./project.ts";
 import { formatStatusWithIcon, getStatusColor, getStatusIcon, wrapStatusColor } from "./status-icon.ts";
-import { archiveTaskFromTui, formatArchiveConfirmation } from "./task-lifecycle.ts";
+import { archiveTaskFromTui, formatArchiveNotice, formatReadOnlyNotice } from "./task-lifecycle.ts";
 import { formatTaskTypeBadge } from "./task-type.ts";
 import { addScrollKeys, createScreen, formatTuiTitle } from "./tui.ts";
 
@@ -1288,8 +1288,7 @@ export async function viewTaskEnhanced(
 		try {
 			const result = await core.editTaskInTui(selectedTask.id, screen, selectedTask);
 			if (result.reason === "read_only") {
-				const branchInfo = result.task?.branch ? ` in branch ${result.task.branch}` : "";
-				showTransientHelp(` {red-fg}Task is read-only${branchInfo}.{/}`);
+				showTransientHelp(formatReadOnlyNotice(result.task ?? selectedTask));
 				return;
 			}
 			if (result.reason === "editor_failed") {
@@ -1379,35 +1378,18 @@ export async function viewTaskEnhanced(
 	};
 
 	const archiveCurrentTask = async (task: Task) => {
-		if (task.branch) {
-			showTransientHelp(` {red-fg}Cannot archive task from branch "${task.branch}".{/}`);
-			return;
-		}
-
-		const confirmed = await runWithModalGuard(() =>
-			openConfirmPopup({ screen, title: "Archive Task", message: formatArchiveConfirmation(task.id) }),
+		const result = await archiveTaskFromTui(core, task, (popup) =>
+			runWithModalGuard(() => openConfirmPopup({ screen, ...popup })),
 		);
-
-		if (!confirmed) {
-			return;
+		if (result.archived) {
+			// The record leaves the active graph and joins the archived one, where the tasks that
+			// depend on it keep resolving it.
+			readinessSnapshot = readinessSnapshot?.filter((candidate) => !taskIdsEqual(candidate.id, task.id)) ?? null;
+			readinessArchivedTasks.push(task);
+			removeTaskFromCurrentView(task.id);
 		}
-
-		try {
-			if (await archiveTaskFromTui(core, task)) {
-				// The record leaves the active graph and joins the archived one, where the tasks that
-				// depend on it keep resolving it.
-				readinessSnapshot = readinessSnapshot?.filter((candidate) => !taskIdsEqual(candidate.id, task.id)) ?? null;
-				readinessArchivedTasks.push(task);
-				removeTaskFromCurrentView(task.id);
-				showTransientHelp(` {green-fg}Archived ${task.id}{/}`);
-			} else {
-				showTransientHelp(` {red-fg}Failed to archive ${task.id}{/}`);
-			}
-		} catch (error) {
-			showTransientHelp(
-				` {red-fg}Error archiving task: ${error instanceof Error ? error.message : "Unknown error"}{/}`,
-			);
-		}
+		const notice = formatArchiveNotice(task, result);
+		if (notice) showTransientHelp(notice);
 	};
 
 	// Handle resize

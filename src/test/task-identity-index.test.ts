@@ -147,7 +147,7 @@ describe("TaskIdentityIndex", () => {
 		]);
 
 		expect(identityIndex.resolveForRead("7")).toMatchObject({ status: "found", task: { source: "archived" } });
-		expect(identityIndex.resolveForMutation("7")).toMatchObject({ status: "archived", task: { id: "BACK-7" } });
+		expect(identityIndex.resolveForMutation("7")).toEqual({ status: "archived", taskId: "BACK-7" });
 		expect(identityIndex.getTasks(true).map((entry) => entry.id)).toEqual(["BACK-7"]);
 	});
 });

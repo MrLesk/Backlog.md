@@ -1215,6 +1215,7 @@ export class BacklogServer {
 
 	private async handleArchiveTask(taskId: string): Promise<Response> {
 		try {
+			// false does not only mean missing: core also returns it when the file could not be moved.
 			if (!(await this.core.archiveTask(taskId))) {
 				return Response.json({ error: "Task not found" }, { status: 404 });
 			}

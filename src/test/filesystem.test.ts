@@ -46,7 +46,6 @@ describe("FileSystem", () => {
 				join(projectDir, "backlog"),
 				join(projectDir, "backlog", "tasks"),
 				join(projectDir, "backlog", "drafts"),
-				join(projectDir, "backlog", "completed"),
 				join(projectDir, "backlog", "archive", "tasks"),
 				join(projectDir, "backlog", "archive", "drafts"),
 				join(projectDir, "backlog", "milestones"),
@@ -431,40 +430,28 @@ Invalid content`,
 			expect(promotedTask?.title).toBe(sampleDraft.title);
 		});
 
-		it("should not reuse completed task IDs when promoting draft", async () => {
-			// Create a completed task directly in the completed directory
-			// This simulates a task that was created and completed before the draft
-			const completedDir = join(TEST_DIR, "backlog", "completed");
-			await mkdir(completedDir, { recursive: true });
-
-			const completedTask: Task = {
+		it("should not reuse an archived task ID when promoting a draft", async () => {
+			// The only task was archived before the draft was written, so the board is empty.
+			const archivedTask: Task = {
 				id: "TASK-1",
-				title: "Completed Task",
+				title: "Archived Task",
 				status: "Done",
 				assignee: [],
 				createdDate: "2025-01-01",
 				labels: [],
 				dependencies: [],
 			};
-			const content = serializeTask(completedTask);
-			await Bun.write(join(completedDir, "task-1 - Completed Task.md"), content);
+			await Bun.write(join(filesystem.archiveTasksDir, "task-1 - Archived Task.md"), serializeTask(archivedTask));
 
-			// Verify no active tasks exist
-			const activeTasks = await filesystem.listTasks();
-			expect(activeTasks.length).toBe(0);
-
-			// Verify completed task exists
-			const archivedTasks = await filesystem.listArchivedTasks();
-			expect(archivedTasks.length).toBe(1);
-			expect(archivedTasks[0]?.id).toBe("TASK-1");
+			expect(await filesystem.listTasks()).toEqual([]);
+			expect((await filesystem.listArchivedTasks()).map((task) => task.id)).toEqual(["TASK-1"]);
 
 			// Create and promote a draft
 			await filesystem.saveDraft(sampleDraft);
 			const promoted = await filesystem.promoteDraft("draft-1");
 			expect(promoted).toBe(true);
 
-			// BUG: Currently returns TASK-1 because promoteDraft only checks active tasks
-			// Expected: Should return TASK-2 to avoid collision with completed task
+			// The archived task still owns TASK-1, so the promoted draft takes the next ID.
 			const promotedTask = await filesystem.loadTask("task-2");
 			expect(promotedTask?.id).toBe("TASK-2");
 			expect(promotedTask?.title).toBe(sampleDraft.title);

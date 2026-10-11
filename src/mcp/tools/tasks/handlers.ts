@@ -2,12 +2,7 @@ import { TaskArchivedError, type VacatedTaskResult } from "../../../core/backlog
 import { findLocalDuplicateTaskIds } from "../../../core/duplicate-task-repair.ts";
 import { loadTaskDetail, loadTaskListItems } from "../../../core/task-detail.ts";
 import { isCreateLockError, isTaskLockError } from "../../../file-system/operations.ts";
-import {
-	isLocalEditableTask,
-	type SearchPriorityFilter,
-	type Task,
-	type TaskListFilter,
-} from "../../../types/index.ts";
+import { isWorkingCopyTask, type SearchPriorityFilter, type Task, type TaskListFilter } from "../../../types/index.ts";
 import type { TaskEditArgs, TaskEditRequest } from "../../../types/task-edit-args.ts";
 import { formatAcceptanceCriteriaSummarySuffix } from "../../../ui/acceptance-criteria-progress.ts";
 import { formatDependencyCleanupMessage } from "../../../utils/dependency-graph.ts";
@@ -256,7 +251,7 @@ export class TaskHandlers {
 			tasks = (await loadTaskListItems(this.core, tasks)).filter((task) => task.isReady);
 		}
 
-		const filteredByLabels = tasks.filter((task) => isLocalEditableTask(task));
+		const filteredByLabels = tasks.filter((task) => isWorkingCopyTask(task));
 
 		if (filteredByLabels.length === 0) {
 			return {
@@ -386,7 +381,7 @@ export class TaskHandlers {
 			taskMatches = taskMatches.slice(0, args.limit);
 		}
 
-		const taskResults = taskMatches.filter((task) => isLocalEditableTask(task));
+		const taskResults = taskMatches.filter((task) => isWorkingCopyTask(task));
 		if (taskResults.length === 0) {
 			return {
 				content: [
@@ -441,7 +436,7 @@ export class TaskHandlers {
 
 		const task = await this.loadTaskOrThrow(args.id);
 
-		if (!isLocalEditableTask(task)) {
+		if (!isWorkingCopyTask(task)) {
 			throw new BacklogToolError(`Cannot archive task from another branch: ${task.id}`, "VALIDATION_ERROR");
 		}
 

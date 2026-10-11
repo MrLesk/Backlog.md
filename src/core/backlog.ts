@@ -28,7 +28,8 @@ import {
 	type DocumentType,
 	type DocumentUpdateInput,
 	EntityType,
-	isLocalEditableTask,
+	isReadOnlyTask,
+	isWorkingCopyTask,
 	type Milestone,
 	type SearchFilters,
 	type Task,
@@ -341,11 +342,6 @@ function formatMissingDependenciesError(invalid: string[]): Error {
 function crossBranchMoveReason(task: Task, verb: "reordered" | "moved"): string | null {
 	if (!task.branch) return null;
 	return `Task ${task.id} exists in branch "${task.branch}" and cannot be ${verb} from the current branch. Switch to that branch to modify it.`;
-}
-
-/** A task the TUI can show but must not open in an editor: one from another branch, or an archived one. */
-function isReadOnlyInTui(task: Task): boolean {
-	return !isLocalEditableTask(task) || Boolean(task.branch) || task.source === "archived";
 }
 
 /**
@@ -832,8 +828,8 @@ export class Core {
 		}
 	}
 
-	private filterLocalEditableTasks(tasks: Task[]): Task[] {
-		return tasks.filter(isLocalEditableTask);
+	private filterWorkingCopyTasks(tasks: Task[]): Task[] {
+		return tasks.filter(isWorkingCopyTask);
 	}
 
 	private async requireCanonicalStatus(status: string): Promise<string> {
@@ -1014,7 +1010,7 @@ export class Core {
 				const resolveMilestoneLabel = milestoneResolverPromise ? await milestoneResolverPromise : undefined;
 				let filtered = filters ? applyTaskFilters(collection, { ...filters, resolveMilestoneLabel }) : [...collection];
 				if (!includeCrossBranch) {
-					filtered = this.filterLocalEditableTasks(filtered);
+					filtered = this.filterWorkingCopyTasks(filtered);
 				}
 				if (typeof limit === "number" && limit >= 0) {
 					return filtered.slice(0, limit);
@@ -1188,7 +1184,7 @@ export class Core {
 		const index = await this.buildWorkingCopyTaskIndex(activeTasks);
 		const resolution = forMutation ? index.resolveForMutation(taskId) : index.resolveForRead(taskId);
 		if (resolution.status === "ambiguous") throw new AmbiguousTaskIdError(taskId, resolution.candidates);
-		if (resolution.status === "archived") throw new TaskArchivedError(resolution.task.id);
+		if (resolution.status === "archived") throw new TaskArchivedError(resolution.taskId);
 		if (resolution.status === "found") return { ...resolution.task };
 		// Lists skip damaged files; an explicit lookup must still report why its task cannot load.
 		await this.fs.loadTask(taskId);
@@ -1207,7 +1203,7 @@ export class Core {
 		await store.refreshTasks();
 		const resolution = store.resolveTaskForMutation(taskId);
 		if (resolution.status === "ambiguous") throw new AmbiguousTaskIdError(taskId, resolution.candidates);
-		if (resolution.status === "archived") throw new TaskArchivedError(resolution.task.id);
+		if (resolution.status === "archived") throw new TaskArchivedError(resolution.taskId);
 		if (resolution.status === "found") return { ...resolution.task };
 		await this.fs.loadTask(taskId);
 		return null;
@@ -1637,7 +1633,6 @@ export class Core {
 			visibleArchived: false,
 			forceRemoteRefresh: true,
 		});
-		const archivedTasks = snapshot.archivedTasks;
 		const config = snapshot.config;
 		const taskPrefix = config?.prefixes?.task ?? "task";
 		if (!snapshot.identityIndex) throw new Error("Task corpus identity index was not initialized");
@@ -1646,7 +1641,6 @@ export class Core {
 		// name claims it, in this project or in a worktree of the same repository.
 		const fileNameEntries = await this.loadTaskFileNameEntries(taskPrefix);
 		const occupiedIds = new Set(snapshot.identityIndex.getOccupiedIds());
-		for (const task of archivedTasks) occupiedIds.add(task.id);
 		for (const entry of fileNameEntries) occupiedIds.add(entry.id);
 		return [...occupiedIds];
 	}
@@ -1943,14 +1937,29 @@ export class Core {
 		return filepath;
 	}
 
+	/**
+	 * The stored board record a write is about to replace, resolved the way every mutation resolves
+	 * its target: an archived task and an ambiguous ID both throw, and null means no record claims
+	 * the ID.
+	 */
+	private async loadStoredTaskForWrite(taskId: string): Promise<Task | null> {
+		if (this.contentStore?.isInitialized()) {
+			const resolution = this.contentStore.resolveTaskForMutation(taskId);
+			if (resolution.status === "archived") throw new TaskArchivedError(resolution.taskId);
+			if (resolution.status === "found") return resolution.task;
+		}
+		return await this.loadWorkingCopyTask(taskId, true);
+	}
+
+	/**
+	 * Write a task that lives on the board. The check is made against the stored record, not the
+	 * object the caller holds, so an archived task cannot be written through this method either.
+	 */
 	async updateTask(task: Task, autoCommit?: boolean): Promise<string> {
 		normalizeAssignee(task);
 
-		// Load original task to detect status changes for callbacks
-		const cachedResolution = this.contentStore?.isInitialized()
-			? this.contentStore.resolveTaskForMutation(task.id)
-			: undefined;
-		const originalTask = cachedResolution?.status === "found" ? cachedResolution.task : await this.fs.loadTask(task.id);
+		// The stored record also tells whether the status changed, for the status callback.
+		const originalTask = await this.loadStoredTaskForWrite(task.id);
 		const oldStatus = originalTask?.status ?? "";
 		const newStatus = task.status ?? "";
 		const statusChanged = oldStatus !== newStatus;
@@ -3922,7 +3931,7 @@ export class Core {
 	async editTaskInTui(taskId: string, screen: BlessedScreen, selectedTask?: Task): Promise<TuiTaskEditResult> {
 		const contextualTask = selectedTask && taskIdsEqual(selectedTask.id, taskId) ? selectedTask : undefined;
 
-		if (contextualTask && isReadOnlyInTui(contextualTask)) {
+		if (contextualTask && isReadOnlyTask(contextualTask)) {
 			return { changed: false, task: contextualTask, reason: "read_only" };
 		}
 
@@ -3940,7 +3949,7 @@ export class Core {
 		if (!resolvedTask) {
 			return { changed: false, reason: "not_found" };
 		}
-		if (isReadOnlyInTui(resolvedTask)) {
+		if (isReadOnlyTask(resolvedTask)) {
 			return { changed: false, task: resolvedTask, reason: "read_only" };
 		}
 

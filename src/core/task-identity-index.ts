@@ -36,8 +36,11 @@ export type TaskIdentityResolution =
 	| { status: "ambiguous"; candidates: string[] }
 	| { status: "not-found" };
 
-/** A mutation can also land on a task that exists only in the archive, which is read-only. */
-export type TaskMutationResolution = TaskIdentityResolution | { status: "archived"; task: Task };
+/**
+ * A mutation can also land on a task that exists only in the archive, which is read-only. That
+ * outcome carries the ID alone, so no caller can take it for a task it may write.
+ */
+export type TaskMutationResolution = TaskIdentityResolution | { status: "archived"; taskId: string };
 
 function toPosixPath(path: string): string {
 	return path.replaceAll("\\", "/").replace(/^\.\//, "");
@@ -290,7 +293,7 @@ export class TaskIdentityIndex {
 		const active = workingRecords.find((record) => record.type === "task")?.task;
 		if (active) return { status: "found", task: { ...active, source: "local" } };
 		const archived = workingRecords.find((record) => record.type === "archived")?.task;
-		return archived ? { status: "archived", task: { ...archived, source: "archived" } } : { status: "not-found" };
+		return archived ? { status: "archived", taskId: archived.id } : { status: "not-found" };
 	}
 
 	getFingerprint(): string {

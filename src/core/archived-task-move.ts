@@ -1,8 +1,8 @@
-import { link, lstat, mkdir, readlink, realpath, symlink, unlink } from "node:fs/promises";
+import { lstat, mkdir, readlink, realpath, symlink, unlink } from "node:fs/promises";
 import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { buildGlobPattern } from "../utils/prefix-config.ts";
 import type { Core } from "./backlog.ts";
-import { findLocalDuplicateTaskIds } from "./duplicate-task-repair.ts";
+import { findLocalDuplicateTaskIds, installFileNoReplace } from "./duplicate-task-repair.ts";
 
 /**
  * Archived task files stored outside the archive folder and what moving them into it would do.
@@ -53,7 +53,7 @@ export async function previewArchivedTaskMove(core: Core): Promise<ArchivedTaskM
 
 /**
  * Move one file to a new directory without ever replacing a file that is already there: both
- * `link` and `symlink` fail when the target name is taken.
+ * the hard link and `symlink` fail when the target name is taken.
  *
  * A symbolic link is recreated rather than followed, so the task stays a link to the same file.
  * A relative link is rewritten, because the path it stores is resolved from the directory the
@@ -69,7 +69,7 @@ async function moveWithoutReplacing(sourcePath: string, targetPath: string): Pro
 			targetPath,
 		);
 	} else {
-		await link(sourcePath, targetPath);
+		await installFileNoReplace(sourcePath, targetPath);
 	}
 	await unlink(sourcePath);
 }

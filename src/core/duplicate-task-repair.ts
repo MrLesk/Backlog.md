@@ -503,11 +503,12 @@ async function removeIfPresent(path: string): Promise<void> {
 	}
 }
 
-/** @internal Installs a staged file without replacing an existing destination. */
-export async function installFileNoReplace(stagedPath: string, targetPath: string): Promise<void> {
-	// Staged and target files share a directory, so a hard link atomically claims
-	// the destination name and fails with EEXIST if an external writer won.
-	await link(stagedPath, targetPath);
+/** @internal Installs a file under a new name without replacing an existing destination. */
+export async function installFileNoReplace(sourcePath: string, targetPath: string): Promise<void> {
+	// A hard link atomically claims the destination name and fails with EEXIST if an external
+	// writer won. Repair stages its files in the target's directory, so its links stay on one
+	// filesystem.
+	await link(sourcePath, targetPath);
 }
 
 interface InstalledRepairFile {

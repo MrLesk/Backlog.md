@@ -5,7 +5,7 @@ status: In Progress
 assignee:
   - '@claude'
 created_date: '2026-10-11 10:42'
-updated_date: '2026-10-11 14:18'
+updated_date: '2026-10-11 15:04'
 labels:
   - bug
 dependencies: []
@@ -128,6 +128,8 @@ modified_files:
   - src/test/archived-task-folders.test.ts
   - src/test/task-identity-index.test.ts
   - src/test/web-dependency-cleanup-notice.test.tsx
+  - src/test/no-remote-preflight.test.ts
+  - src/test/task-read-only.test.ts
 priority: high
 type: bug
 ordinal: 337000
@@ -219,4 +221,20 @@ Choices taken conservatively and listed for review: `backlog doctor` exits 0 whe
 Verification: `bunx tsc --noEmit` clean; `bun run check .` clean (432 files); `bun run test` 2892 pass, 8 skip, 0 fail across 290 files. The command still exits 1 because the unchanged src/test/list-window.test.ts leaves `process.exitCode` set (that file alone gives 8 pass, 0 fail, exit 1 on an export of origin/main too). An end-to-end script against a binary built from this branch covered every acceptance criterion in private mktemp projects (CLI, MCP over stdio, HTTP), including a leftover `completed/` folder, the doctor preview and `--fix`, and an archived record colliding with a board ID. The TUI was driven in a pseudo-terminal (board, task list, archived task detail) and the browser UI was exercised against the built binary (archive a Done and a To Do task, archived task opened read-only, readiness of dependents, cleanup modal copy, statistics).
 
 Test changes: src/test/mcp-task-complete.test.ts deleted; vacated-task-references, id-generation, cleanup, server-cleanup-endpoint, cli-task-state, tui-task-lifecycle, cli-guidance and web-dependency-cleanup-notice rewritten for the new rules; src/test/archived-task-folders.test.ts added for the archived reader, the mover and collision repair with symlinked files, symlinked folders and link cycles; worktree and branch ID reservation added to worktree-task-id-allocation; the remaining suites only rename the completed corpus to the archived corpus.
+
+Review round on layer 1 (second commit on the same branch, same message).
+
+Read-only rule in one place: `isReadOnlyTask` in src/types (a task from another branch, or an archived task) is the predicate behind core's TUI edit path, the web modal and the TUI archive key. `isLocalEditableTask` is renamed `isWorkingCopyTask`, because it says where a record lives and not whether it can change (9 call sites, 4 imports, no behavior change).
+
+TUI archive key: `archiveTaskFromTui` in src/ui/task-lifecycle.ts refuses a read-only task before it calls the view's confirm callback and returns a reason (`read_only`, `cancelled`, `failed`); `formatArchiveNotice` turns the result into the footer line. The board row key, the board popup key and the task list key call those two and keep only their own view update. A read-only task shows "Task is read-only." (plus " in branch X" for another branch), the same line the task list's E key shows.
+
+No bypass: `Core.updateTask` resolves the stored record through the mutation resolver before it writes and throws `TaskArchivedError` for an archived record, with or without a loaded content store. The archived outcome of `TaskMutationResolution` carries only `taskId`. The four acceptance-criteria helpers on Core (add, remove, check, list) have no production caller and were left as they are.
+
+Smaller changes: the archived-task mover uses `installFileNoReplace` for regular files; the redundant archived loop in `getOccupiedTaskIds` is gone (the identity index already lists archived records as occupied, and the id-generation suite passes without it); the doctor description names the archived move; the HTTP archive handler notes that `false` from core does not only mean missing; the web E shortcut and the read-only banner follow the one read-only flag, with one banner block whose reason text varies; the cleanup modal lost the two sentences that restated its label.
+
+Tests: the two corpus-read counters in cli-task-list count the line the archived reader logs, and each has a positive control; both were confirmed to fail when the corpus is read for an empty result or read a second time for JSON. New cases cover the archive key on an archived task and on a task from another branch (in the helper and through the board's two key handlers), the archived banner in the TUI detail content, `Core.updateTask` on an archived record, the read-only predicate, and the web modal's read-only state for both reasons. Test names and fixtures that still said "completed" for archived data were renamed.
+
+Verification of the round: `bunx tsc --noEmit` clean; `bun run check .` clean (433 files); `bun run test` 2908 pass, 8 skip, 0 fail across 291 files, still exiting 1 because of the unchanged list-window file. One earlier full run had a single failure in the unchanged test "ContentStore > publishes watched distinct-path local creation with the refreshed branch collision identity", which waits 3 seconds for a file-watcher event; that file passed alone 4 times out of 4 and the next full run was clean. A pseudo-terminal run of the rebuilt binary showed A on an archived task printing "Task is read-only." with no confirmation, while the board row, board popup and task list archive keys still ask and archive.
+
+Left unchanged and listed for review: the board's E key says "Cannot edit task from branch X." for a task from another branch while the task list says "Task is read-only in branch X."; the Groma descriptions of backlog-folder, task-details, file-storage, terminal-widgets, core and mcp-tools still mention completed storage or `task_complete` and wait for a curation pass.
 <!-- SECTION:NOTES:END -->

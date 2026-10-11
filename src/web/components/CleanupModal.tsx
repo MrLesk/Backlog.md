@@ -110,9 +110,6 @@ const CleanupModal: React.FC<CleanupModalProps> = ({ isOpen, onClose, onSuccess,
 								</button>
 							))}
 						</div>
-						<p className="mt-2 text-xs text-gray-500 dark:text-gray-400">
-							Tasks will be moved to the archive and removed from the board
-						</p>
 					</div>
 
 				{/* Error Message */}
@@ -177,7 +174,6 @@ const CleanupModal: React.FC<CleanupModalProps> = ({ isOpen, onClose, onSuccess,
 						</h3>
 							<p className="text-sm text-amber-700 dark:text-amber-300">
 								Are you sure you want to archive {previewCount} task{previewCount !== 1 ? 's' : ''}?
-								These tasks will be moved to the archive and removed from the board.
 							</p>
 						</div>
 					)}

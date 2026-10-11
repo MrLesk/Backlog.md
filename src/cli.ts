@@ -58,7 +58,7 @@ import {
 	DOCUMENT_TYPE_VALUES,
 	type Document as DocType,
 	type DocumentSearchResult,
-	isLocalEditableTask,
+	isWorkingCopyTask,
 	type Milestone,
 	type SearchPriorityFilter,
 	type SearchResult,
@@ -2484,7 +2484,7 @@ const SEARCH_RESULT_HEADINGS: Record<SearchResultType, string> = {
  * the results by type, and JSON keeps relevance order.
  */
 function searchResultsInPrintedOrder(results: SearchResult[], outputMode: "plain" | "json"): SearchResult[] {
-	const printable = results.filter((result) => !isTaskSearchResult(result) || isLocalEditableTask(result.task));
+	const printable = results.filter((result) => !isTaskSearchResult(result) || isWorkingCopyTask(result.task));
 	if (outputMode === "json") return printable;
 	return SEARCH_RESULT_TYPES.flatMap((type) => printable.filter((result) => result.type === type));
 }
@@ -3874,7 +3874,7 @@ addHelpSchema(taskCmd.command("archive <taskId>"), {
 			return;
 		}
 
-		if (!isLocalEditableTask(task)) {
+		if (!isWorkingCopyTask(task)) {
 			console.error(`Cannot archive task from another branch: ${task.id}`);
 			process.exitCode = 1;
 			return;
@@ -5477,7 +5477,7 @@ addHelpSchema(program.command("doctor"), {
 	examples: ["backlog doctor", "backlog doctor --fix", "backlog doctor --fix --yes"],
 })
 	.description(
-		"diagnose duplicate task, document, and decision IDs, report self-referential and cyclic dependencies, and safely repair duplicate task IDs",
+		"diagnose duplicate task, document, and decision IDs, report self-referential and cyclic dependencies, safely repair duplicate task IDs, and move archived tasks into the archive folder",
 	)
 	.option("--fix", "apply the displayed duplicate task ID repair and archived task move")
 	.option("--yes", "confirm --fix without prompting")

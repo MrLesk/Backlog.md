@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
-import { utimes } from "node:fs/promises";
+import { mkdir, utimes } from "node:fs/promises";
 import { join } from "node:path";
 import { $ } from "bun";
 import { Core, TaskArchivedError } from "../core/backlog.ts";
@@ -78,7 +78,11 @@ describe("Core", () => {
 			await initializeTestProject(core, "Test Project");
 		});
 
-		async function commitPaddedTaskLifecycleVariant(type: "archived" | "completed"): Promise<void> {
+		/**
+		 * Commits BACK-1 on main, a progressed zero-padded variant of it on one branch, and on a second
+		 * branch the same file archived into `archiveDirectory`.
+		 */
+		async function commitPaddedTaskArchivedOnBranch(archiveDirectory: string): Promise<void> {
 			const config = await core.filesystem.loadConfig();
 			if (!config) {
 				throw new Error("Expected config to be loaded");
@@ -119,12 +123,12 @@ describe("Core", () => {
 				.cwd(TEST_DIR)
 				.quiet();
 
-			await $`git switch -c ${`${type}-task-variant`}`.cwd(TEST_DIR).quiet();
-			const destinationDir = type === "archived" ? core.filesystem.archiveTasksDir : core.filesystem.archiveTasksDir;
-			const destinationPath = join(destinationDir, "back-1 - Local-task-version.md");
+			await $`git switch -c archived-task-variant`.cwd(TEST_DIR).quiet();
+			await mkdir(archiveDirectory, { recursive: true });
+			const destinationPath = join(archiveDirectory, "back-1 - Local-task-version.md");
 			await $`git mv -- ${taskPath} ${destinationPath}`.cwd(TEST_DIR).quiet();
-			const lifecycleDate = recentCommitDate(1);
-			await $`GIT_AUTHOR_DATE="${lifecycleDate}" GIT_COMMITTER_DATE="${lifecycleDate}" git commit -m ${`${type} padded task variant`}`
+			const archiveDate = recentCommitDate(1);
+			await $`GIT_AUTHOR_DATE="${archiveDate}" GIT_COMMITTER_DATE="${archiveDate}" git commit -m "Archive padded task variant"`
 				.cwd(TEST_DIR)
 				.quiet();
 
@@ -188,6 +192,27 @@ describe("Core", () => {
 				"Task TASK-1 is archived. Archived tasks are read-only.",
 			);
 			expect(await Bun.file(archived?.filePath ?? "").text()).not.toContain("Must not change");
+		});
+
+		it.each([
+			["before the content store is loaded", false],
+			["with the content store loaded", true],
+		])("refuses an archived task handed straight to updateTask, %s", async (_name, loadStore) => {
+			await core.createTask(sampleTask, false);
+			expect(await core.archiveTask(sampleTask.id, false)).toBe(true);
+			// A caller that already holds the archived record and skips every lookup.
+			const writer = new Core(TEST_DIR);
+			if (loadStore) await writer.getContentStore();
+			const [archived] = await writer.filesystem.listArchivedTasks();
+			if (!archived?.filePath) throw new Error("Expected the archived task file");
+			const before = await Bun.file(archived.filePath).text();
+
+			await expect(writer.updateTask({ ...archived, title: "Must not change" }, false)).rejects.toBeInstanceOf(
+				TaskArchivedError,
+			);
+
+			expect(await Bun.file(archived.filePath).text()).toBe(before);
+			expect(await writer.filesystem.listTasks()).toEqual([]);
 		});
 
 		it("refreshes one coherent active and archived identity snapshot before mutation", async () => {
@@ -693,7 +718,7 @@ describe("Core", () => {
 		});
 
 		it("keeps the working-copy task active when a branch archives the same padded identity path", async () => {
-			await commitPaddedTaskLifecycleVariant("archived");
+			await commitPaddedTaskArchivedOnBranch(core.filesystem.archiveTasksDir);
 
 			const tasks = await core.loadTasks();
 			const task = tasks.find((candidate) => candidate.id === "BACK-1" || candidate.id === "BACK-001");
@@ -702,8 +727,8 @@ describe("Core", () => {
 			expect(await core.generateNextId()).toBe("BACK-2");
 		});
 
-		it("keeps the working-copy task active when a branch completes the same padded identity path", async () => {
-			await commitPaddedTaskLifecycleVariant("completed");
+		it("keeps the working-copy task active when a branch archived it into a leftover completed folder", async () => {
+			await commitPaddedTaskArchivedOnBranch(join(core.filesystem.backlogDir, "completed"));
 
 			const tasks = await core.loadTasks(undefined, undefined, { includeArchived: true });
 			const task = tasks.find((candidate) => candidate.id === "BACK-1" || candidate.id === "BACK-001");

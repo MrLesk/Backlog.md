@@ -112,7 +112,7 @@ describe("BacklogServer statistics endpoint", () => {
 		});
 
 		await filesystem.saveTask(createTask({ priority: "Urgent" }));
-		await filesystem.saveTask(createTask({ id: "TASK-2", title: "Completed task", status: "Done", priority: "Low" }));
+		await filesystem.saveTask(createTask({ id: "TASK-2", title: "Archived task", status: "Done", priority: "Low" }));
 		expect(await archiveTaskFile(filesystem, "TASK-2")).toBe(true);
 		await filesystem.saveDraft(createTask({ id: "DRAFT-1", title: "Draft task", status: "Draft" }));
 
@@ -134,10 +134,10 @@ describe("BacklogServer statistics endpoint", () => {
 		if (!server) throw new Error("Server not started");
 		const core = (server as unknown as { core: Core }).core;
 		const originalListTasks = core.filesystem.listTasks.bind(core.filesystem);
-		const originalListCompletedTasks = core.filesystem.listArchivedTasks.bind(core.filesystem);
+		const originalListArchivedTasks = core.filesystem.listArchivedTasks.bind(core.filesystem);
 		const originalStatisticsLoader = core.loadAllTasksForStatistics;
 		let activeCorpusLoads = 0;
-		let completedCorpusLoads = 0;
+		let archivedCorpusLoads = 0;
 		let legacyStatisticsLoads = 0;
 
 		core.filesystem.listTasks = async (...args) => {
@@ -145,8 +145,8 @@ describe("BacklogServer statistics endpoint", () => {
 			return await originalListTasks(...args);
 		};
 		core.filesystem.listArchivedTasks = async (...args) => {
-			completedCorpusLoads += 1;
-			return await originalListCompletedTasks(...args);
+			archivedCorpusLoads += 1;
+			return await originalListArchivedTasks(...args);
 		};
 		core.loadAllTasksForStatistics = async (progressCallback) => {
 			legacyStatisticsLoads += 1;
@@ -168,14 +168,14 @@ describe("BacklogServer statistics endpoint", () => {
 			expect(second).toMatchObject({ totalTasks: 2, completedTasks: 1, draftCount: 1 });
 		} finally {
 			core.filesystem.listTasks = originalListTasks;
-			core.filesystem.listArchivedTasks = originalListCompletedTasks;
+			core.filesystem.listArchivedTasks = originalListArchivedTasks;
 			core.loadAllTasksForStatistics = originalStatisticsLoader;
 		}
 
 		// The second warm request performs one exact-content working-copy reconciliation.
 		// Branch state remains in the initialized ContentStore and the legacy global loader is unused.
 		expect(activeCorpusLoads).toBe(2);
-		expect(completedCorpusLoads).toBe(2);
+		expect(archivedCorpusLoads).toBe(2);
 		expect(legacyStatisticsLoads).toBe(0);
 	});
 
