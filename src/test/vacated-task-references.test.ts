@@ -65,37 +65,39 @@ describe("references to a vacated task ID", () => {
 			.map((node) => `${node.id} - ${node.title ?? node.state}`);
 	};
 
-	it.each([
-		"Done",
-		"Closed",
-	])("rejects archiving %s work without changing records or incoming links", async (status) => {
-		const config = await core.filesystem.loadConfig();
-		if (!config) throw new Error("Missing test config");
-		await core.filesystem.saveConfig({ ...config, statuses: ["To Do", "In Progress", status] });
-		const { task: target } = await core.createTaskFromInput({ title: "Finished work", status });
-		const { task: active } = await core.createTaskFromInput({
-			title: "Active dependent",
-			dependencies: [target.id],
-			references: [target.id],
-		});
-		const { task: completed } = await core.createTaskFromInput({
-			title: "Completed dependent",
-			status,
-			dependencies: [target.id],
-			references: [target.id],
-		});
-		expect(await core.completeTask(completed.id, false)).toBe(true);
-		const completedRecord = await loadCompleted(completed.id);
-		const paths = [target.filePath, active.filePath, completedRecord?.filePath];
-		const before = await Promise.all(paths.map((path) => Bun.file(path as string).text()));
+	it.each(["Done", "Closed"])(
+		"rejects archiving %s work without changing records or incoming links",
+		async (status) => {
+			const config = await core.filesystem.loadConfig();
+			if (!config) throw new Error("Missing test config");
+			await core.filesystem.saveConfig({ ...config, statuses: ["To Do", "In Progress", status] });
+			const { task: target } = await core.createTaskFromInput({ title: "Finished work", status });
+			const { task: active } = await core.createTaskFromInput({
+				title: "Active dependent",
+				dependencies: [target.id],
+				references: [target.id],
+			});
+			const { task: completed } = await core.createTaskFromInput({
+				title: "Completed dependent",
+				status,
+				dependencies: [target.id],
+				references: [target.id],
+			});
+			expect(await core.completeTask(completed.id, false)).toBe(true);
+			const completedRecord = await loadCompleted(completed.id);
+			const paths = [target.filePath, active.filePath, completedRecord?.filePath];
+			const before = await Promise.all(paths.map((path) => Bun.file(path as string).text()));
 
-		await expect(core.archiveTask(target.id, false)).rejects.toThrow(`Task ${target.id} is ${status}. Use Complete`);
+			await expect(core.archiveTask(target.id, false)).rejects.toThrow(`Task ${target.id} is ${status}. Use Complete`);
 
-		expect(await Promise.all(paths.map((path) => Bun.file(path as string).text()))).toEqual(before);
-		expect(await core.filesystem.listArchivedTasks()).toEqual([]);
-		expect(await dependencyTitles(await core.filesystem.loadTask(active.id))).toEqual([`${target.id} - Finished work`]);
-		expect(await dependencyTitles(await loadCompleted(completed.id))).toEqual([`${target.id} - Finished work`]);
-	});
+			expect(await Promise.all(paths.map((path) => Bun.file(path as string).text()))).toEqual(before);
+			expect(await core.filesystem.listArchivedTasks()).toEqual([]);
+			expect(await dependencyTitles(await core.filesystem.loadTask(active.id))).toEqual([
+				`${target.id} - Finished work`,
+			]);
+			expect(await dependencyTitles(await loadCompleted(completed.id))).toEqual([`${target.id} - Finished work`]);
+		},
+	);
 
 	it("does not let an archived ID rebind a completed dependent to the next created task", async () => {
 		const { task: dependent } = await core.createTaskFromInput({ title: "Completed dependent" });
