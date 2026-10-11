@@ -5,7 +5,7 @@ status: In Progress
 assignee:
   - '@claude'
 created_date: '2026-10-11 19:07'
-updated_date: '2026-10-11 20:25'
+updated_date: '2026-10-11 20:42'
 labels:
   - bug
 dependencies: []
@@ -26,6 +26,7 @@ modified_files:
   - src/test/duplicate-task-repair.test.ts
   - src/test/tui-task-composer.test.ts
   - src/core/content-store.ts
+  - src/core/prefix-migration.ts
 priority: high
 type: bug
 ordinal: 350000
@@ -52,7 +53,7 @@ Settled during plan review: whether, in the copied-file case, create moves on to
 - [x] #1 With a file named for the next free number that carries the ID of another record in its frontmatter (for example `task-2 - Copied-task.md` containing `id: TASK-1`), `backlog task create` leaves that file in place with its content unchanged.
 - [x] #2 `backlog doc create` and `backlog decision create` leave the equivalent document and decision files in place with their content unchanged.
 - [x] #3 With a decision whose frontmatter ID is written as `DECISION-1`, `backlog decision create` does not hand out number 1 again and the existing file is still present afterwards. The same holds for a document stored as `DOC-1` and `backlog doc create`.
-- [ ] #4 After any `task create`, `doc create` or `decision create` that exits 0, every file that existed before the command is still present with unchanged content, and the ID the command reports belongs to a file that did not exist before.
+- [x] #4 After any `task create`, `doc create` or `decision create` that exits 0, every file that existed before the command is still present with unchanged content, and the ID the command reports belongs to a file that did not exist before.
 - [x] #5 If a create refuses to proceed because of a conflicting file, it exits non-zero, names that file and writes nothing.
 - [x] #6 Tests cover the copied-file case for tasks, documents and decisions and the upper-case ID case for documents and decisions.
 <!-- AC:END -->
@@ -98,6 +99,14 @@ Plan
 Overlap to confirm in review: creation and update share the save step, so step 4 also stops an update from removing or overwriting a file other than the one the record was loaded from. That covers BACK-600 acceptance criteria 1 and 2; its doctor finding and tests stay with BACK-600. No update caller changes.
 
 Out of scope and left alone: draft saving, concurrent decision creation (BACK-734), merging the allocators (BACK-735), doctor.
+
+Extension: drafts follow the same rule, so all four record kinds share one write rule
+
+7. `saveDraft` writes through `writeRecordFile`. A draft loaded from a file rewrites that file or moves it when its name changes; a new draft's file is created only if the path is free. Delete the clean-up in `saveDraft` that removed other draft files by name.
+8. Draft save callers: draft create, demote and the draft prefix migration save a new draft with a newly allocated number and no stored path; `draft edit` passes the path it loaded from. Demote and promote remove the source record's own file by the path it was loaded from; that already holds and stays.
+9. Draft allocation: one FileSystem method returns the occupied draft IDs, which are the stored ID of every draft that can be read plus the ID each draft file name claims. Draft create, demote and the draft prefix migration all use it.
+10. Delete the previous-file backup and restore in `createTaskFromInput` and `rollbackCreatedTask`; keep the Git index rollback. Rewrite the restore tests in tui-task-composer.test.ts to assert the refusal for tasks and drafts.
+11. CLI tests for drafts, demote and promote in cli-create-preserves-existing-files.test.ts; pass the stored path in existing tests that re-save hand-built drafts.
 <!-- SECTION:PLAN:END -->
 
 ## Implementation Notes
@@ -134,28 +143,39 @@ Review follow-up
 - `saveDocument` and `saveDecision` return `movedFrom`, the previous path when the save moved the file, in place of `removedFilepaths`.
 - The comment on `writeRecordFile` names the three save functions that use it and says drafts do not.
 - Seen while testing, not changed: a decision with empty sections gets its section headings repeated when it is updated through `updateDecisionFromContent`. Same on origin/main.
+
+Drafts follow the same rule (maintainer ruling: one behavior for tasks, drafts, documents and decisions)
+- `saveDraft` writes through `writeRecordFile`, like the other three saves. A draft loaded from a file rewrites that file or moves it when its name changes; a new draft's file is created only if the path is free. The clean-up in `saveDraft` that removed other draft files by name is deleted.
+- Draft save callers. New draft with a newly allocated number and no stored path: `task create --draft`, `draft create`, demote (`task demote`, an edit to status Draft), the draft prefix migration. Update with the path it was loaded from: `draft edit` and the edit paths behind MCP and HTTP. Demote and promote remove the source record's own file by the path it was loaded from; no name match is involved.
+- Draft allocation: `listOccupiedDraftIds` returns the stored ID of every draft that can be read plus the ID each draft file name claims. Draft create, demote and the prefix migration use it. Before, one unreadable draft file made the allocator ignore every stored draft ID.
+- Create flow in src/core/backlog.ts: the previous-file backup and restore is deleted (`previousPath`, `previousContent`, the lookups in `createTaskFromInput`, the three restore branches in `rollbackCreatedTask`). The Git index rollback stays. A create now adds one file or fails before writing.
+- Tests: cli-create-preserves-existing-files.test.ts has 31 tests covering all four kinds, retitles, demote and promote. 24 fail on the sources of main; the other 7 cover draft and task cases that main already handled. The restore tests in tui-task-composer.test.ts are rewritten as four refusal tests (task and draft); all four fail on main.
+- Acceptance criterion 4 now holds for every create command, including `task create --draft`.
+
+Seen while testing, not changed
+- `draft promote` reports any failed write, including a refused one, as "Draft not found". The draft is left in place.
+- Archiving a task or a draft can replace a file of the same name already in the archive folder. Same on main, same for tasks and drafts.
 <!-- SECTION:NOTES:END -->
 
 ## Final Summary
 
 <!-- SECTION:FINAL_SUMMARY:BEGIN -->
-Creating a task, document or decision no longer deletes, replaces or overwrites an existing file, and never reuses a number that a local file name or a stored ID already carries, in any letter case.
+Creating a task, draft, document or decision no longer deletes, replaces or overwrites an existing file, and never reuses a number that a local file name or a stored ID already carries, in any letter case.
 
 What changed
-- Allocation: `extractIdFromFilename` in src/utils/prefix-config.ts says which ID a file name claims, and `generateNextId` reads the number in any letter case. The task allocator always reads this project's own tasks and completed folders by name. The document and decision allocators count every local file name, including files that cannot be parsed.
-- Saving: one private helper, `writeRecordFile` in src/file-system/operations.ts, writes the file for `saveTask`, `saveDocument` and `saveDecision`. It rewrites or moves only the file the record was loaded from and creates a new record's file only if the path is free. The three clean-ups that matched other files by name are removed.
+- Allocation: `extractIdFromFilename` in src/utils/prefix-config.ts says which ID a file name claims, and `generateNextId` reads the number in any letter case. The task allocator always reads this project's own tasks and completed folders by name. The document and decision allocators count every local file name, including files that cannot be parsed. Draft allocation uses one method, `listOccupiedDraftIds`, for create, demote and the prefix migration.
+- Saving: one private helper, `writeRecordFile` in src/file-system/operations.ts, writes the file for `saveTask`, `saveDraft`, `saveDocument` and `saveDecision`. It rewrites or moves only the file the record was loaded from and creates a new record's file only if the path is free. The four clean-ups that matched other files by name are removed.
 - A stray file on the next number is skipped. Create refuses, with exit code 1, the file named and nothing changed, only when the new file's own path is already taken.
+- The task create flow no longer backs up and restores a previous file, because a create can no longer replace one. The Git index rollback stays.
 
 Verification
-- 16 new CLI tests in src/test/cli-create-preserves-existing-files.test.ts, with projects outside the repository. All 16 fail on the sources of main.
+- 31 CLI tests in src/test/cli-create-preserves-existing-files.test.ts, with projects outside the repository. 24 fail on the sources of main; the other 7 cover draft and task cases that main already handled.
 - The scoped test files, `bunx tsc --noEmit` and `bun run check .` pass. One test in config-commands.test.ts fails the same way on main.
-
-Open point
-- Acceptance criterion 4 holds for tasks, documents and decisions. It is left unchecked because `backlog task create --draft` is also a `task create`: draft saving is unchanged, and a draft create still overwrites a draft file whose name differs from the new one only in letter case on a case-insensitive file system.
 
 Follow-ups
 - Updates share the save step, so BACK-600 acceptance criteria 1 and 2 are covered here. Its doctor finding remains.
 - A retitle checks the target and renames in two steps until updates take a lock (BACK-736).
-- Task and decision files whose names start in upper case are not counted by the allocator. That can give two files one number but cannot lose a file.
+- Task, draft and decision files whose names start in upper case are not counted by the allocator. That can give two files one number but cannot lose a file.
+- `draft promote` reports a refused write as "Draft not found". Archiving can replace a file of the same name in the archive folder. Both are unchanged.
 - Not verified on Windows.
 <!-- SECTION:FINAL_SUMMARY:END -->

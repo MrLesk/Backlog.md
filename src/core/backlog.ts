@@ -1,4 +1,4 @@
-import { mkdir, rename as moveFile, readFile, stat, unlink, writeFile } from "node:fs/promises";
+import { mkdir, rename as moveFile, readFile, stat, unlink } from "node:fs/promises";
 import { basename, dirname, isAbsolute, join, relative } from "node:path";
 import { DEFAULT_DIRECTORIES, DEFAULT_STATUSES, FALLBACK_STATUS } from "../constants/index.ts";
 import {
@@ -150,9 +150,6 @@ interface BlessedScreen {
 interface CreatedTaskWrite {
 	filePath: string;
 	createdContent: Buffer;
-	/** The file a draft save replaced and what it held; always null for a task. */
-	previousPath: string | null;
-	previousContent: Buffer | null;
 	previousIndexEntries?: GitIndexEntry[];
 	generatedIndexEntries?: GitIndexEntry[];
 }
@@ -1653,10 +1650,7 @@ export class Core {
 				return this.getActiveAndCompletedTaskIds();
 			}
 			case EntityType.Draft: {
-				// Occupancy includes filename-derived ids: an unparsable file still reserves its
-				// numeric id, so allocation can never reuse what it cannot parse.
-				const [drafts, occupiedFileIds] = await Promise.all([this.fs.listDrafts(), this.fs.listOccupiedDraftFileIds()]);
-				return [...drafts.map((d) => d.id), ...occupiedFileIds];
+				return this.fs.listOccupiedDraftIds();
 			}
 			case EntityType.Document: {
 				const documents = await this.fs.listDocuments();
@@ -1710,8 +1704,7 @@ export class Core {
 		return savedTask;
 	}
 
-	private async readFileIfPresent(filePath: string | null): Promise<Buffer | null> {
-		if (!filePath) return null;
+	private async readFileIfPresent(filePath: string): Promise<Buffer | null> {
 		try {
 			return await readFile(filePath);
 		} catch (error) {
@@ -1730,34 +1723,16 @@ export class Core {
 			);
 		}
 
+		// A create adds one new file and touches no other, so undoing it means removing that file.
+		// A file that no longer holds what the create wrote is left for the user.
 		const currentContent = await this.readFileIfPresent(write.filePath);
 		const stillOwnsCreatedPath = currentContent?.equals(write.createdContent) ?? false;
 		let workingPathRestored = false;
 		if (currentContent === null) {
-			if (write.previousPath === write.filePath && write.previousContent) {
-				try {
-					await writeFile(write.filePath, write.previousContent, { flag: "wx" });
-					workingPathRestored = true;
-				} catch (error) {
-					if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
-				}
-			} else {
-				workingPathRestored = true;
-			}
-		} else if (stillOwnsCreatedPath && indexRestored) {
-			if (write.previousPath === write.filePath && write.previousContent) {
-				await writeFile(write.filePath, write.previousContent);
-			} else {
-				await unlink(write.filePath);
-			}
 			workingPathRestored = true;
-		}
-
-		if (write.previousPath && write.previousPath !== write.filePath && write.previousContent) {
-			const currentPreviousContent = await this.readFileIfPresent(write.previousPath);
-			if (currentPreviousContent === null) {
-				await writeFile(write.previousPath, write.previousContent);
-			}
+		} else if (stillOwnsCreatedPath && indexRestored) {
+			await unlink(write.filePath);
+			workingPathRestored = true;
 		}
 
 		if (this.contentStore) {
@@ -1886,22 +1861,13 @@ export class Core {
 				...(definitionOfDoneItems && definitionOfDoneItems.length > 0 && { definitionOfDoneItems }),
 			};
 
-			// Only a draft save can replace a file: it overwrites its target and removes a superseded
-			// draft file by name. That file is kept so a failed create can put it back. A task save never
-			// replaces a file, so a task create has nothing to keep.
-			const resolvedPreviousPath = isDraft ? await this.fs.resolveDraftFilePath(task.id) : null;
 			const targetPath = await this.fs.getTaskWritePath(task, isDraft);
-			const targetContent = isDraft ? await this.readFileIfPresent(targetPath) : null;
-			const previousPath = targetContent ? targetPath : resolvedPreviousPath;
-			const previousContent = targetContent ?? (await this.readFileIfPresent(resolvedPreviousPath));
 			const previousIndexEntries = autoCommitEnabled ? await this.git.getIndexEntries(targetPath) : undefined;
 			const filePath = await this.writePreparedTask(task, isDraft);
 			const createdContent = await readFile(filePath);
 			const write: CreatedTaskWrite = {
 				filePath,
 				createdContent,
-				previousPath,
-				previousContent,
 				previousIndexEntries,
 			};
 			return {

@@ -791,17 +791,23 @@ export class FileSystem {
 	}
 
 	// Task operations
+	/**
+	 * Where a task or draft is written. `loadedFromPath` is the file the record was loaded from,
+	 * if any. A task stays at that path. A draft is always named after its ID and title, so a
+	 * title change gives it a new path.
+	 */
 	private async resolveTaskWriteTarget(
 		task: Task,
 		isDraft = false,
-	): Promise<{ id: string; filename: string; filePath: string }> {
+	): Promise<{ id: string; filePath: string; loadedFromPath: string | undefined }> {
 		let prefix = isDraft ? "draft" : extractAnyPrefix(task.id);
 		if (!prefix) prefix = (await this.loadConfig())?.prefixes?.task ?? "task";
 		const id = normalizeId(task.id, prefix);
 		const filename = `${idForFilename(id)} - ${this.sanitizeFilename(task.title)}.md`;
 		const directory = isDraft ? await this.getDraftsDir() : await this.getTasksDir();
-		const preservesPath = !isDraft && typeof task.filePath === "string" && task.filePath.trim().length > 0;
-		return { id, filename, filePath: preservesPath ? (task.filePath as string) : join(directory, filename) };
+		const namedPath = join(directory, filename);
+		const loadedFromPath = task.filePath?.trim() ? task.filePath : undefined;
+		return { id, filePath: isDraft ? namedPath : (loadedFromPath ?? namedPath), loadedFromPath };
 	}
 
 	async getTaskWritePath(task: Task, isDraft = false): Promise<string> {
@@ -809,12 +815,11 @@ export class FileSystem {
 	}
 
 	async saveTask(task: Task): Promise<string> {
-		const { id: taskId, filePath: filepath } = await this.resolveTaskWriteTarget(task);
+		const { id: taskId, filePath: filepath, loadedFromPath } = await this.resolveTaskWriteTarget(task);
 		const prefix = extractAnyPrefix(taskId) ?? "task";
-		const shouldPreservePath = typeof task.filePath === "string" && task.filePath.trim().length > 0;
 		let existingTask: Task | null = null;
 
-		if (shouldPreservePath) {
+		if (loadedFromPath) {
 			try {
 				existingTask = parseTask(await Bun.file(filepath).text());
 			} catch (error) {
@@ -840,17 +845,15 @@ export class FileSystem {
 		};
 		const content = serializeTask(normalizedTask);
 
-		await this.writeRecordFile(filepath, content, shouldPreservePath ? filepath : undefined);
+		await this.writeRecordFile(filepath, content, loadedFromPath);
 		return filepath;
 	}
 
 	/**
-	 * Writes the file for `saveTask`, `saveDocument` and `saveDecision`. The only existing file it
-	 * may replace is the one the record was loaded from. No other file is removed, renamed or
-	 * overwritten, whatever its name or its frontmatter says.
-	 *
-	 * Drafts do not go through here: `saveDraft` writes its own file and still removes superseded
-	 * draft files by name.
+	 * Writes the file for `saveTask`, `saveDraft`, `saveDocument` and `saveDecision`: every save of
+	 * a record ends here. The only existing file it may replace is the one the record was loaded
+	 * from. No other file is removed, renamed or overwritten, whatever its name or its frontmatter
+	 * says.
 	 *
 	 * - Loaded from `targetPath`: the file is rewritten in place.
 	 * - Loaded from another path: the file moves to `targetPath`, as after a title change. The
@@ -1281,15 +1284,10 @@ export class FileSystem {
 			const task = await this.loadTask(taskId);
 			if (!task?.filePath) return false;
 
-			// Get existing draft IDs to generate next ID
-			// Draft prefix is always "draft" (not configurable like task prefix)
-			// Occupancy includes filename-derived ids: an unparsable file still reserves its id.
-			const [existingDrafts, occupiedFileIds] = await Promise.all([this.listDrafts(), this.listOccupiedDraftFileIds()]);
-			const existingIds = [...existingDrafts.map((d) => d.id), ...occupiedFileIds];
-
 			// Generate new draft ID
+			// Draft prefix is always "draft" (not configurable like task prefix)
 			const config = await this.loadConfig();
-			const newDraftId = generateNextId(existingIds, "draft", config?.zeroPaddedIds);
+			const newDraftId = generateNextId(await this.listOccupiedDraftIds(), "draft", config?.zeroPaddedIds);
 
 			// Update task with new draft ID and save as draft. The record's own links are cleaned of
 			// the task ID it vacates here: carried into the draft, such a link would rebind to
@@ -1325,40 +1323,11 @@ export class FileSystem {
 
 	// Draft operations
 	async saveDraft(task: Task): Promise<string> {
-		const { id: draftId, filename, filePath: filepath } = await this.resolveTaskWriteTarget(task, true);
-		const draftsDir = await this.getDraftsDir();
+		const { id: draftId, filePath: filepath, loadedFromPath } = await this.resolveTaskWriteTarget(task, true);
 		// Normalize the draft ID to uppercase before serialization
-		const normalizedTask = { ...task, id: draftId };
-		const content = serializeTask(normalizedTask);
-		await this.ensureDirectoryExists(dirname(filepath));
+		const content = serializeTask({ ...task, id: draftId });
 
-		// Remove every existing draft file whose numeric identity matches the saved id but
-		// whose filename differs (title change, zero-padding drift): a save must converge
-		// to one file instead of breeding duplicates that future edits report as ambiguous.
-		// A candidate that fails to parse is never deleted: its identity was not validated,
-		// and its content may be a real draft only its filename proclaims. A candidate that
-		// cannot be removed aborts the save: writing past it would mint a duplicate identity.
-		const filenameId = idForFilename(draftId);
-		const existingFiles = await Array.fromAsync(
-			new Bun.Glob(buildGlobPattern("draft")).scan({ cwd: draftsDir, followSymlinks: true }),
-		);
-		for (const existingFile of existingFiles.filter(
-			(f) => f !== filename && (filenameMatchesId(f, filenameId) || draftIdsMatchLoosely(draftId, f)),
-		)) {
-			const candidatePath = join(draftsDir, existingFile);
-			if (!(await this.loadDraftFromFile(candidatePath))) continue;
-			try {
-				await unlink(candidatePath);
-			} catch (error) {
-				throw new Error(
-					`Could not remove superseded draft file ${existingFile} while saving ${filename}: ${
-						error instanceof Error ? error.message : String(error)
-					}. No changes were written; resolve the file conflict, then retry.`,
-				);
-			}
-		}
-
-		await Bun.write(filepath, content);
+		await this.writeRecordFile(filepath, content, loadedFromPath);
 		return filepath;
 	}
 
@@ -1487,12 +1456,14 @@ export class FileSystem {
 	}
 
 	/**
-	 * Numeric draft identities occupied on disk, derived from filenames: files that fail to
-	 * parse still reserve their id against future allocation.
+	 * Every draft ID in use: the stored ID of each draft that can be read and the ID each draft
+	 * file claims through its name. A file that cannot be parsed still reserves the number in its
+	 * name, and does not hide the stored IDs of the files that can be read.
 	 */
-	async listOccupiedDraftFileIds(): Promise<string[]> {
-		const filenames = await this.listDraftFilenames();
-		return filenames.map(extractDraftIdFromFilename).filter((id): id is string => id !== null);
+	async listOccupiedDraftIds(): Promise<string[]> {
+		const [drafts, filenames] = await Promise.all([this.listHealthyDrafts(), this.listDraftFilenames()]);
+		const idsFromFileNames = filenames.map(extractDraftIdFromFilename).filter((id): id is string => id !== null);
+		return [...drafts.map((draft) => draft.id), ...idsFromFileNames];
 	}
 
 	async listDraftFilenames(unreadable?: string[]): Promise<string[]> {

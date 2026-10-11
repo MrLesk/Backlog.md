@@ -48,8 +48,7 @@ export async function migrateDraftPrefixes(fs: FileSystem): Promise<void> {
 	}
 
 	// Get existing draft IDs to generate unique new IDs
-	const existingDrafts = await fs.listDrafts();
-	const existingDraftIds = existingDrafts.map((d) => d.id);
+	const existingDraftIds = await fs.listOccupiedDraftIds();
 
 	// Migrate each task-*.md file
 	for (const file of taskFiles) {
