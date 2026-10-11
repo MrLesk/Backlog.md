@@ -6,7 +6,7 @@ import { Core } from "../index.ts";
 import { serializeTask } from "../markdown/serializer.ts";
 import { getTestCliPath } from "./test-cli.ts";
 import {
-	createUniqueTestDir,
+	createTestDirOutsideRepository,
 	initializeFilesystemTestProject,
 	initializeTestProject,
 	safeCleanup,
@@ -27,8 +27,7 @@ async function taskFiles(folder: "tasks" | "archive/tasks"): Promise<string[]> {
 
 describe("backlog task delete", () => {
 	beforeEach(async () => {
-		TEST_DIR = createUniqueTestDir("test-cli-task-delete");
-		await mkdir(TEST_DIR, { recursive: true });
+		TEST_DIR = await createTestDirOutsideRepository("test-cli-task-delete");
 		await initializeFilesystemTestProject(new Core(TEST_DIR), "Delete Test Project");
 	});
 
@@ -195,8 +194,7 @@ describe("backlog task delete", () => {
 
 describe("backlog task delete with auto-commit", () => {
 	beforeEach(async () => {
-		TEST_DIR = createUniqueTestDir("test-cli-task-delete-commit");
-		await mkdir(TEST_DIR, { recursive: true });
+		TEST_DIR = await createTestDirOutsideRepository("test-cli-task-delete-commit");
 		await $`git init -b main`.cwd(TEST_DIR).quiet();
 		await $`git config user.name "Test User"`.cwd(TEST_DIR).quiet();
 		await $`git config user.email test@example.com`.cwd(TEST_DIR).quiet();

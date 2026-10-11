@@ -5,7 +5,7 @@ status: In Progress
 assignee:
   - '@claude'
 created_date: '2026-10-11 13:02'
-updated_date: '2026-10-11 15:38'
+updated_date: '2026-10-11 16:09'
 labels:
   - enhancement
 dependencies:
@@ -33,6 +33,11 @@ modified_files:
   - src/guidelines/mcp/overview-tools.md
   - src/guidelines/mcp/overview.md
   - src/guidelines/mcp/task-finalization.md
+  - src/test/cli-guidance.test.ts
+  - src/test/cli-task-delete.test.ts
+  - src/test/mcp-server.test.ts
+  - src/test/mcp-tasks.test.ts
+  - src/test/test-utils.ts
 priority: high
 type: enhancement
 ordinal: 348000
@@ -90,3 +95,21 @@ Layer 2 of the stack (branch tasks/back-730-task-delete on top of BACK-719). Res
 
 6. Verification: scoped tests, `bunx tsc --noEmit`, `bun run check .`, and a scripted end-to-end run of every acceptance criterion against a binary built from this layer in a private mktemp project.
 <!-- SECTION:PLAN:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+Implemented on tasks/back-730-task-delete, stacked on BACK-719. Restore (BACK-731) is not started and nothing here names it.
+
+Core: `Core.deleteTask(taskId, autoCommit?)` is the one operation. It resolves the ID against the working copy with the read resolver layer 1 uses (`loadWorkingCopyTask`), so an ID that two records claim fails closed as ambiguous. A task on the board throws `TaskNotArchivedError` ("Task X is not archived. A task must be archived before it can be deleted.") and an unknown ID returns `success: false`. The delete runs inside the existing `withVacatedIdCleanup`, which locks the record and every task that references it. Inside the locks it re-reads the record, throws `TaskHasSubtasksError` while a task on the board or in the archive names it as parent (`findDirectSubtasks`), writes the cleaned referencing records, and removes the file last with `unlink`, so a failure leaves the task in the archive and the delete can be run again. A symlinked task file is removed as a link; its target stays. The ID is released because the record leaves the identity corpus. The result is the existing `VacatedTaskResult`, reported with the existing `formatDependencyCleanupMessage` line. Auto-commit follows the project setting and commits the removal together with the cleaned tasks.
+
+Adapters: `backlog task delete <taskId>` has no options and no prompt and is built like `task archive`: resolve the ID locally for the confirmation line, call core, print "Deleted task X" and the cleanup line; typed errors reach the CLI's top-level handler. The MCP `task_delete` tool takes the same one-ID input as `task_archive`, calls the same core operation and translates the two typed refusals. Neither adapter checks eligibility itself.
+
+Guides and docs: the CLI and MCP overview and finalization guides, the MCP tool reference, agent-guidelines, the project-manager guideline, README and CLI-INSTRUCTIONS describe deleting as archive first, then delete, and say that delete releases the ID and removes incoming links.
+
+Tests: src/test/cli-task-delete.test.ts drives the CLI for every acceptance criterion plus an ambiguous ID, a symlinked archived file and auto-commit; src/test/mcp-tasks.test.ts drives `task_delete` through the same rules; the MCP tool list, the MCP guides and the CLI help and guides are asserted. The delete tests keep their projects outside the repository (`createTestDirOutsideRepository`): the CLI finds its project by walking up from the working directory, and under a machine load above 200 a CLI process that outlived its timed-out test directory under the repository's tmp/ resolved the repository's own backlog, created a stray task and deleted one archived record there. Both were reverted before anything was committed.
+
+Choices taken conservatively and listed for review: a subtask is a task on the board or in the archive whose parent field names the task, the relation every surface shows; a draft that was demoted from a subtask and a dotted ID without a parent field do not block the delete. A task that exists only on another branch reports "not found", because delete reads the working copy only.
+
+Verification: `bunx tsc --noEmit` clean; `bun run check .` clean (434 files); scoped tests pass (cli-task-delete, mcp-tasks, mcp-server, cli-guidance, cli-task-state, vacated-task-references: 112 pass, 0 fail). A scripted end-to-end run against a binary built from this layer covered every acceptance criterion through the CLI and through MCP over stdio in private mktemp projects, including the ambiguous-ID refusal and a symlinked archived file.
+<!-- SECTION:NOTES:END -->

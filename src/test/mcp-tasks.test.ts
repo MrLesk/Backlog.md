@@ -370,6 +370,61 @@ describe("MCP task tools (MVP)", () => {
 		expect(await mcpServer.filesystem.listArchivedTasks()).toEqual([]);
 	});
 
+	it("deletes an archived task under the same rules as the CLI", async () => {
+		const call = async (name: string, args: Record<string, unknown>) =>
+			await mcpServer.testInterface.callTool({ params: { name, arguments: args } });
+		await call("task_create", { title: "Target" });
+		await call("task_create", { title: "Dependent", dependencies: ["task-1"] });
+		await call("task_create", { title: "Parent" });
+		await call("task_create", { title: "Child", parentTaskId: "task-3" });
+
+		const notArchived = await call("task_delete", { id: "task-1" });
+		expect(notArchived.isError).toBe(true);
+		expect(getText(notArchived.content)).toContain(
+			"Task TASK-1 is not archived. A task must be archived before it can be deleted.",
+		);
+		expect((await mcpServer.filesystem.loadTask("task-1"))?.title).toBe("Target");
+
+		await call("task_archive", { id: "task-3" });
+		const withSubtasks = await call("task_delete", { id: "task-3" });
+		expect(withSubtasks.isError).toBe(true);
+		expect(getText(withSubtasks.content)).toContain(
+			"Task TASK-3 cannot be deleted while its subtasks exist: TASK-3.1.",
+		);
+		expect((await mcpServer.filesystem.listArchivedTasks()).map((task) => task.id)).toEqual(["TASK-3"]);
+
+		await call("task_archive", { id: "task-1" });
+		const deleted = await call("task_delete", { id: "task-1" });
+		expect(deleted.isError).not.toBe(true);
+		expect(getText(deleted.content)).toBe("Deleted task TASK-1.\nRemoved references to TASK-1 from TASK-2.");
+		expect((await mcpServer.filesystem.loadTask("task-2"))?.dependencies).toEqual([]);
+		for (const name of ["task_view", "task_delete"]) {
+			const gone = await call(name, { id: "task-1" });
+			expect(gone.isError).toBe(true);
+			expect(getText(gone.content)).toContain("Task task-1 not found.");
+		}
+
+		// The deleted ID is released: the highest ID is handed out again once its task is deleted.
+		expect(getText((await call("task_create", { title: "Last" })).content)).toContain("Task TASK-4 - Last");
+		await call("task_archive", { id: "task-4" });
+		expect(getText((await call("task_create", { title: "While archived" })).content)).toContain("Task TASK-5 - ");
+		await call("task_archive", { id: "task-5" });
+		await call("task_delete", { id: "task-5" });
+		await call("task_delete", { id: "task-4" });
+		expect(getText((await call("task_create", { title: "After delete" })).content)).toContain(
+			"Task TASK-4 - After delete",
+		);
+
+		const tools = (await mcpServer.testInterface.listTools()).tools;
+		const deleteTool = tools.find((tool) => tool.name === "task_delete");
+		// One task ID and nothing else: no confirmation argument.
+		expect(deleteTool?.inputSchema).toMatchObject({
+			properties: { id: { type: "string" } },
+			required: ["id"],
+			additionalProperties: false,
+		});
+	});
+
 	it("archives the local task when merge policy selects a same-path padded ID variant", async () => {
 		await enableGitTestProject();
 		const config = await loadConfig(mcpServer);
