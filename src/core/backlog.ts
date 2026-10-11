@@ -124,6 +124,8 @@ import {
 
 interface BlessedScreen {
 	program: {
+		/** True while the terminal is reporting mouse events to the program. */
+		mouseEnabled?: boolean;
 		disableMouse(): void;
 		enableMouse(): void;
 		hideCursor(): void;
@@ -4179,6 +4181,10 @@ export class Core {
 
 		const program = screen.program;
 
+		// screen.leave() turns mouse reporting off and screen.enter() does not turn it back on, so
+		// remember whether it was on and restore it once the editor has closed.
+		const mouseWasEnabled = program.mouseEnabled === true;
+
 		// Leave alternate screen buffer FIRST
 		screen.leave();
 
@@ -4209,6 +4215,9 @@ export class Core {
 			}
 			// Re-enter alternate screen buffer
 			screen.enter();
+			if (mouseWasEnabled) {
+				program.enableMouse();
+			}
 			// Restore application cursor mode
 			if (typeof program.put?.keypad_xmit === "function") {
 				program.put.keypad_xmit();
