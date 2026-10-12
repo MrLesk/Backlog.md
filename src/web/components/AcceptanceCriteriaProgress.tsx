@@ -3,7 +3,6 @@ import type { Task } from "../../types";
 interface AcceptanceCriteriaProgressProps {
 	task: Pick<Task, "acceptanceCriteriaItems">;
 	density: "card" | "list";
-	className?: string;
 }
 
 /**
@@ -25,11 +24,7 @@ export function getAcceptanceCriteriaProgressCounts(
 const RING_RADIUS = 5;
 const RING_CIRCUMFERENCE = 2 * Math.PI * RING_RADIUS;
 
-export default function AcceptanceCriteriaProgress({
-	task,
-	density,
-	className = "",
-}: AcceptanceCriteriaProgressProps) {
+export default function AcceptanceCriteriaProgress({ task, density }: AcceptanceCriteriaProgressProps) {
 	const progress = getAcceptanceCriteriaProgressCounts(task);
 	if (!progress) return null;
 
@@ -37,7 +32,7 @@ export default function AcceptanceCriteriaProgress({
 
 	return (
 		<span
-			className={`inline-flex items-center gap-1 whitespace-nowrap text-[10px] font-medium tabular-nums text-blue-600 dark:text-blue-300 ${className}`}
+			className="inline-flex items-center gap-1 whitespace-nowrap text-[10px] font-medium tabular-nums text-blue-600 dark:text-blue-300"
 			data-acceptance-criteria-progress
 			data-density={density}
 			role="progressbar"

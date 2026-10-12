@@ -20,7 +20,7 @@ import {
 } from "../../utils/priority-config.ts";
 import CleanupModal from "./CleanupModal";
 import StoredDate from "./StoredDate";
-import AcceptanceCriteriaProgress from "./AcceptanceCriteriaProgress";
+import AcceptanceCriteriaProgress, { getAcceptanceCriteriaProgressCounts } from "./AcceptanceCriteriaProgress";
 import LabelFilterDropdown from "./LabelFilterDropdown";
 import { SuccessToast } from "./SuccessToast";
 
@@ -680,6 +680,9 @@ const TaskList: React.FC<TaskListProps> = ({
 	}, [availablePriorities, displayTasks, milestoneEntities, sortColumn, sortDirection]);
 
 	const currentCount = sortedDisplayTasks.length;
+	// The ring sits in a slot before the title. While any visible row has a ring, every row
+	// gets the slot so titles line up; a list without rings keeps its titles flush left.
+	const showProgressSlot = sortedDisplayTasks.some((task) => getAcceptanceCriteriaProgressCounts(task) !== null);
 
 	useEffect(() => {
 		const headerEl = tableHeaderScrollRef.current;
@@ -881,6 +884,12 @@ const TaskList: React.FC<TaskListProps> = ({
 											</td>
 											<td className="px-3 py-2.5">
 												<div className="flex items-center gap-2 min-w-0">
+													{showProgressSlot && (
+														// min-w-12 fits counts up to 99/99, so the slot is one width down the list.
+														<span className="flex min-w-12 shrink-0">
+															<AcceptanceCriteriaProgress task={task} density="list" />
+														</span>
+													)}
 													<button
 														type="button"
 														onClick={(event) => {
@@ -906,7 +915,6 @@ const TaskList: React.FC<TaskListProps> = ({
 														</span>
 													)}
 												</div>
-												<AcceptanceCriteriaProgress task={task} density="list" className="mt-1" />
 												{task.dueDate && (
 													<div className="mt-1 text-xs text-gray-500 dark:text-gray-400 whitespace-nowrap">
 														Due: <StoredDate value={task.dueDate} dateFormat={dateFormat} />
