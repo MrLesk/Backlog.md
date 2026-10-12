@@ -769,6 +769,21 @@ export class FileSystem {
 		return await acquire(0);
 	}
 
+	/** Draft counterpart of {@link withTaskLocks}: every draft lock is held, in a stable order, before `fn` runs. */
+	async withDraftLocks<T>(references: DraftFileReference[], fn: () => Promise<T>): Promise<T> {
+		const ordered = Array.from(new Map(references.map((reference) => [reference.filePath, reference])).values()).sort(
+			(left, right) => left.canonicalId.localeCompare(right.canonicalId),
+		);
+
+		const acquire = async (index: number): Promise<T> => {
+			const reference = ordered[index];
+			if (!reference) return await fn();
+			return await this.withDraftLock(reference, async () => await acquire(index + 1));
+		};
+
+		return await acquire(0);
+	}
+
 	private async withLockTarget<T>(
 		targetPath: string,
 		lockDir: string,

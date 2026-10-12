@@ -170,13 +170,15 @@ describe("McpServer bootstrap", () => {
 				"- `task_delete` — permanently delete an archived task and release its ID once no other branch or worktree still holds the task.",
 			);
 			expect(guide).toContain("Deleting takes two steps: `task_archive`, then `task_delete`.");
-			expect(guide).toContain("names the tasks it changed");
-			expect(guide).toContain("References held by drafts are not changed: the cleanup covers tasks only.");
+			expect(guide).toContain(
+				"It removes the dependencies and references other tasks and drafts hold to the task and names the tasks and drafts it changed.",
+			);
+			expect(guide).not.toContain("held by drafts");
 			expect(guide).toContain("or whose subtasks still exist as tasks or as drafts, is not deleted.");
 		}
 		expect(MCP_TASK_FINALIZATION_GUIDE).toContain("archive it and then call `task_delete`");
 		expect(MCP_TASK_FINALIZATION_GUIDE).toContain(
-			"Delete releases the ID once no other branch or worktree still holds the task",
+			"Delete releases the ID once no other branch or worktree still holds the task, and removes the links other tasks and drafts hold to the task",
 		);
 	});
 

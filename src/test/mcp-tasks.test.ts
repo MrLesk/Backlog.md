@@ -380,6 +380,7 @@ describe("MCP task tools (MVP)", () => {
 		await call("task_create", { title: "Dependent", dependencies: ["task-1"] });
 		await call("task_create", { title: "Parent" });
 		await call("task_create", { title: "Child", parentTaskId: "task-3" });
+		await call("task_create", { title: "Draft dependent", status: "Draft", dependencies: ["task-1"] });
 
 		const notArchived = await call("task_delete", { id: "task-1" });
 		expect(notArchived.isError).toBe(true);
@@ -399,8 +400,10 @@ describe("MCP task tools (MVP)", () => {
 		await call("task_archive", { id: "task-1" });
 		const deleted = await call("task_delete", { id: "task-1" });
 		expect(deleted.isError).not.toBe(true);
-		expect(getText(deleted.content)).toBe("Deleted task TASK-1.\nRemoved references to TASK-1 from TASK-2.");
+		// The cleaned draft is named with the cleaned task, in the same line.
+		expect(getText(deleted.content)).toBe("Deleted task TASK-1.\nRemoved references to TASK-1 from TASK-2, DRAFT-1.");
 		expect((await mcpServer.filesystem.loadTask("task-2"))?.dependencies).toEqual([]);
+		expect((await mcpServer.filesystem.loadDraft("draft-1"))?.dependencies).toEqual([]);
 		for (const name of ["task_view", "task_delete"]) {
 			const gone = await call(name, { id: "task-1" });
 			expect(gone.isError).toBe(true);
@@ -421,6 +424,9 @@ describe("MCP task tools (MVP)", () => {
 		const tools = (await mcpServer.testInterface.listTools()).tools;
 		const deleteTool = tools.find((tool) => tool.name === "task_delete");
 		expect(deleteTool?.description).toContain("release its ID once no other branch or worktree still holds the task");
+		expect(deleteTool?.description).toContain(
+			"removes the dependencies and references other tasks and drafts hold to it",
+		);
 		expect(deleteTool?.description).toContain("must have no subtasks, as tasks or as drafts");
 		// One task ID and nothing else: no confirmation argument.
 		expect(deleteTool?.inputSchema).toMatchObject({

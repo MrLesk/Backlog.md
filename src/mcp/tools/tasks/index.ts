@@ -93,7 +93,7 @@ export function registerTaskTools(server: McpServer, config: BacklogConfig): voi
 		{
 			name: "task_delete",
 			description:
-				"Permanently delete an archived task and release its ID once no other branch or worktree still holds the task; removes the dependencies and references other tasks hold to it. The task must be archived first (task_archive) and must have no subtasks, as tasks or as drafts",
+				"Permanently delete an archived task and release its ID once no other branch or worktree still holds the task; removes the dependencies and references other tasks and drafts hold to it. The task must be archived first (task_archive) and must have no subtasks, as tasks or as drafts",
 			inputSchema: taskDeleteSchema,
 			annotations: { title: "Delete Task", destructiveHint: true },
 		},

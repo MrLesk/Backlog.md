@@ -214,14 +214,22 @@ export interface TuiTaskEditResult {
 	reason?: TuiTaskEditFailureReason;
 }
 
-/** Sanitized copies of the records that referenced a task ID being vacated, by corpus. */
+/**
+ * Sanitized copies of the records that referenced a task ID being vacated, by corpus. A draft
+ * carries the ID its file name gives it, which is the identity its lock and its save use.
+ */
 type VacatedIdCleanup = {
 	active: Task[];
 	archived: Task[];
+	drafts: Array<Task & { filePath: string }>;
 };
 
-function vacatedIdCleanupTargets(cleanup: VacatedIdCleanup): Task[] {
+function vacatedIdCleanupTasks(cleanup: VacatedIdCleanup): Task[] {
 	return [...cleanup.active, ...cleanup.archived];
+}
+
+function vacatedIdCleanupTargets(cleanup: VacatedIdCleanup): Task[] {
+	return [...vacatedIdCleanupTasks(cleanup), ...cleanup.drafts];
 }
 
 function sanitizeVacatedTaskLinks(tasks: Task[], vacatedTaskId: string): Task[] {
@@ -253,7 +261,8 @@ function markRecordAlreadyMoved(
 
 /**
  * Outcome of an operation that vacates a task ID. `cleanedTaskIds` names the records that lost a
- * stored reference to it, so every surface can report the change instead of making it silently.
+ * stored reference to it, tasks and drafts alike, so every surface can report the change instead
+ * of making it silently.
  */
 export interface VacatedTaskResult {
 	success: boolean;
@@ -950,30 +959,47 @@ export class Core {
 	 * what it said: once the ID is handed to the next created task, the stale reference silently
 	 * resolves to an unrelated task instead of failing closed. The scan covers the active working
 	 * copy and the archived corpus, because an archived record is still read by the dependency
-	 * graph. Drafts keep their references: they are not part of either corpus.
+	 * graph, and the drafts, because a draft keeps its links when it is promoted.
+	 *
+	 * A draft is included only when its ID resolves to exactly the file it was read from, which is
+	 * what a draft edit requires too. A draft whose file is damaged, or whose ID another file also
+	 * claims, is left as it is: a draft edit refuses such a draft, and so does this cleanup.
 	 */
 	private async collectVacatedIdCleanup(vacatedTaskId: string): Promise<VacatedIdCleanup> {
-		const [activeTasks, archivedTasks] = await Promise.all([this.fs.listTasks(), this.fs.listArchivedTasks()]);
+		const [activeTasks, archivedTasks, drafts] = await Promise.all([
+			this.fs.listTasks(),
+			this.fs.listArchivedTasks(),
+			this.fs.listHealthyDrafts(),
+		]);
 		const others = (tasks: Task[]) => tasks.filter((task) => !taskIdsEqual(task.id, vacatedTaskId));
+		const cleanedDrafts: VacatedIdCleanup["drafts"] = [];
+		for (const draft of sanitizeVacatedTaskLinks(drafts, vacatedTaskId)) {
+			const reference = await this.fs.resolveDraftReference(draft.id).catch(() => null);
+			if (reference && reference.filePath === draft.filePath) {
+				cleanedDrafts.push({ ...draft, id: reference.canonicalId, filePath: reference.filePath });
+			}
+		}
 		return {
 			active: sanitizeVacatedTaskLinks(others(activeTasks), vacatedTaskId),
 			archived: sanitizeVacatedTaskLinks(others(archivedTasks), vacatedTaskId),
+			drafts: cleanedDrafts,
 		};
 	}
 
 	/**
-	 * Run a vacating operation while holding the record's lock and the lock of every task that
-	 * references the ID it is about to free.
+	 * Run a vacating operation while holding the record's lock and the lock of every task and
+	 * draft that references the ID it is about to free.
 	 *
 	 * The set cannot be known without reading the corpus, and a set read before the locks are held
 	 * is only a guess: a dependent edited in that window would be rewritten from the pre-edit
 	 * snapshot, losing that edit, and a task that started referencing the ID in that window would
 	 * not be locked and would keep the reference the operation exists to remove. So the scan is
-	 * repeated inside the locks, and a scan naming a task the held locks do not cover releases
-	 * them and runs again over the wider set. Widening only ever adds tasks, and the locks are
-	 * always taken through {@link FileSystem.withTaskLocks}, which sorts them, so retrying
-	 * cannot deadlock against another operation. `run` therefore only ever sees a set that was
-	 * read, and is locked, as one consistent state.
+	 * repeated inside the locks, and a scan naming a record the held locks do not cover releases
+	 * them and runs again over the wider set. Widening only ever adds records, and the locks are
+	 * always taken through {@link FileSystem.withTaskLocks} and then
+	 * {@link FileSystem.withDraftLocks}, which sort them, so retrying cannot deadlock against
+	 * another operation. `run` therefore only ever sees a set that was read, and is locked, as one
+	 * consistent state.
 	 *
 	 * What this does not close: a task that starts referencing the ID after that final in-lock
 	 * scan cannot be locked, because it was not yet a dependent when the set was fixed, so it
@@ -986,41 +1012,53 @@ export class Core {
 		vacatedTaskId: string,
 		run: (cleanup: VacatedIdCleanup) => Promise<T>,
 	): Promise<T> {
-		let candidates = vacatedIdCleanupTargets(await this.collectVacatedIdCleanup(vacatedTaskId));
+		let candidates = await this.collectVacatedIdCleanup(vacatedTaskId);
 
 		for (let attempt = 0; attempt < VACATED_ID_CLEANUP_LOCK_ATTEMPTS; attempt++) {
+			const lockedTasks = vacatedIdCleanupTasks(candidates);
+			const lockedDrafts = candidates.drafts;
 			// Use the same identity relation as the corpus scan. In particular, a bare ID and the
 			// configured-prefix spelling it resolves against must not cause pointless widening.
-			const coversLock = (task: Task) => candidates.some((candidate) => taskIdsEqual(candidate.id, task.id));
-			const outcome = await this.fs.withTaskLocks(
-				[target, ...candidates],
-				async (): Promise<{ value: T } | { widened: Task[] }> => {
-					const cleanup = await this.collectVacatedIdCleanup(vacatedTaskId);
-					const targets = vacatedIdCleanupTargets(cleanup);
-					if (targets.some((task) => !coversLock(task))) {
-						return { widened: targets };
-					}
-					return { value: await run(cleanup) };
-				},
+			const coversTask = (task: Task) => lockedTasks.some((candidate) => taskIdsEqual(candidate.id, task.id));
+			// A draft is locked as a file, so it is covered when its file is.
+			const coversDraft = (draft: Task) => lockedDrafts.some((candidate) => candidate.filePath === draft.filePath);
+			// Task locks first, then draft locks, each kind in a sorted order, on every attempt.
+			const outcome = await this.fs.withTaskLocks([target, ...lockedTasks], () =>
+				this.fs.withDraftLocks(
+					lockedDrafts.map((draft) => ({ filePath: draft.filePath, canonicalId: draft.id })),
+					async (): Promise<{ value: T } | { widened: VacatedIdCleanup }> => {
+						const cleanup = await this.collectVacatedIdCleanup(vacatedTaskId);
+						if (!vacatedIdCleanupTasks(cleanup).every(coversTask) || !cleanup.drafts.every(coversDraft)) {
+							return { widened: cleanup };
+						}
+						return { value: await run(cleanup) };
+					},
+				),
 			);
 			if ("value" in outcome) return outcome.value;
 			candidates = outcome.widened;
 		}
 
 		throw new Error(
-			`Could not take a stable set of task locks to clean references to ${vacatedTaskId}. Retry once the tasks referencing it stop changing.`,
+			`Could not take a stable set of locks to clean references to ${vacatedTaskId}. Retry once the tasks and drafts referencing it stop changing.`,
 		);
 	}
 
 	/**
-	 * Write the sanitized records. Callers hold the task locks for every one of them, taken with
-	 * the operation's own lock so the mutation is one span.
+	 * Write the sanitized records. Callers hold the locks for every one of them, taken with the
+	 * operation's own lock so the mutation is one span.
 	 *
-	 * Every record is written to the path it was selected from, never through {@link updateTask}:
+	 * Every task is written to the path it was selected from, never through {@link updateTask}:
 	 * that path re-resolves the record by ID, which throws on a contested identity and would fail
 	 * the cleanup after the target had already been vacated. The scan already chose the exact files,
 	 * and an archived record must not go through {@link updateTask} anyway - it would not be found
 	 * in the active corpus and the write would look like a brand-new task whose status just changed.
+	 *
+	 * A draft goes through the save every draft update uses, which names the file after the draft's
+	 * ID and title. A draft whose file was named otherwise is therefore saved under the new name.
+	 *
+	 * `filePaths` is every path the cleanup changed, for a commit: the files it wrote, and the old
+	 * path of a draft it saved under a new name.
 	 */
 	private async writeVacatedIdCleanup(cleanup: VacatedIdCleanup): Promise<{
 		cleanedTaskIds: string[];
@@ -1044,11 +1082,27 @@ export class Core {
 				// cleanup has no business dissolving.
 				this.contentStore?.refreshArchivedTask({ ...updated, filePath: savedPath });
 			}
+			for (const draft of cleanup.drafts) {
+				const savedPath = await this.fs.saveDraft({ ...draft, updatedDate });
+				filePaths.push(savedPath);
+				if (draft.filePath !== savedPath) filePaths.push(draft.filePath);
+			}
 		};
 		// One notification for the whole cleanup, as the bulk writer does for a batch of edits.
 		if (this.contentStore) await this.contentStore.batchTaskUpdates(writeAll);
 		else await writeAll();
-		return { cleanedTaskIds: vacatedIdCleanupTargets(cleanup).map((task) => task.id), filePaths };
+		return { cleanedTaskIds: vacatedIdCleanupTargets(cleanup).map((record) => record.id), filePaths };
+	}
+
+	/**
+	 * Stage a path an operation wrote or removed. A removed file has a removal to stage only when
+	 * Git tracks it; asking first, rather than ignoring a failed `git add`, keeps a real staging
+	 * failure from passing as "nothing to commit".
+	 */
+	private async stageChangedPath(path: string): Promise<void> {
+		const removed = !(await Bun.file(path).exists());
+		if (removed && (await this.git.getIndexEntries(path)).length === 0) return;
+		await this.git.addFile(path);
 	}
 
 	async queryTasks(options: TaskQueryOptions = {}): Promise<Task[]> {
@@ -3475,7 +3529,7 @@ export class Core {
 
 	/**
 	 * Permanently remove an archived task. The ID stops being reserved, so the dependencies and
-	 * references other tasks hold to it are removed in the same locked span and reported.
+	 * references other tasks and drafts hold to it are removed in the same locked span and reported.
 	 *
 	 * Returns `success: false` when no record claims the ID. Every refusal is a `TaskRefusedError`:
 	 * the task is on the board, it exists only on another branch, or a task on the board, a task in
@@ -3516,13 +3570,9 @@ export class Core {
 
 		if (await this.shouldAutoCommit(autoCommit)) {
 			try {
-				await this.git.addFiles(deleted.filePaths);
-				// Only a file Git tracks has a removal to stage. Asking first, rather than ignoring a
-				// failed `git add`, keeps a real staging failure from passing as "nothing to commit".
-				if ((await this.git.getIndexEntries(deleted.removedPath)).length > 0) {
-					await this.git.addFile(deleted.removedPath);
-				}
-				await this.git.commitFiles(`backlog: Delete task ${task.id}`, [deleted.removedPath, ...deleted.filePaths]);
+				const changedPaths = [deleted.removedPath, ...deleted.filePaths];
+				for (const path of changedPaths) await this.stageChangedPath(path);
+				await this.git.commitFiles(`backlog: Delete task ${task.id}`, changedPaths);
 			} catch (error) {
 				const reason = error instanceof Error ? error.message : String(error);
 				throw new Error(`Task ${task.id} was deleted, but committing the change failed: ${reason}`);
@@ -3928,26 +3978,27 @@ export class Core {
 
 	/**
 	 * Stage and commit a single written file, scoped to exactly the paths this write touched
-	 * (the new file, plus any previous paths it replaced). Never sweeps in unrelated dirty state.
+	 * (the new file, plus any previous paths it replaced, plus the other paths the same operation
+	 * changed). Never sweeps in unrelated dirty state.
 	 */
 	private async commitWrittenFile(
 		message: string,
 		previousPaths: string[],
 		newPath: string,
-		alsoWrittenPaths: string[] = [],
+		alsoChangedPaths: string[] = [],
 	): Promise<void> {
-		for (const writtenPath of alsoWrittenPaths) {
-			await this.git.addFile(writtenPath);
+		for (const changedPath of alsoChangedPaths) {
+			await this.stageChangedPath(changedPath);
 		}
 		if (previousPaths.length > 0) {
 			let repoRoot: string | null = null;
 			for (const previousPath of previousPaths) {
 				repoRoot = await this.git.stageFileMove(previousPath, newPath);
 			}
-			await this.git.commitFiles(message, [...previousPaths, newPath, ...alsoWrittenPaths], repoRoot);
+			await this.git.commitFiles(message, [...previousPaths, newPath, ...alsoChangedPaths], repoRoot);
 		} else {
 			await this.git.addFile(newPath);
-			await this.git.commitFiles(message, [newPath, ...alsoWrittenPaths]);
+			await this.git.commitFiles(message, [newPath, ...alsoChangedPaths]);
 		}
 	}
 

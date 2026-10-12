@@ -299,6 +299,38 @@ describe("backlog task delete with auto-commit", () => {
 		expect((await $`git status --porcelain`.cwd(TEST_DIR).text()).trim()).toBe("");
 	});
 
+	it("commits a draft it cleaned, also when the save gives the draft file a new name", async () => {
+		// DRAFT-1 depends on TASK-1, and its file is not named after its title.
+		const core = new Core(TEST_DIR);
+		const savedPath = await core.filesystem.saveDraft({
+			...base,
+			id: "draft-1",
+			title: "Linked draft",
+			status: "Draft",
+			dependencies: ["TASK-1"],
+		});
+		await rename(savedPath, join(TEST_DIR, "backlog", "drafts", "draft-1 - Old-title.md"));
+		await $`git add -A`.cwd(TEST_DIR).quiet();
+		await $`git commit -m "Add a draft"`.cwd(TEST_DIR).quiet();
+
+		const deleted = await task("delete", "1");
+
+		expect(deleted.exitCode).toBe(0);
+		expect(deleted.stdout).toBe("Deleted task TASK-1\nRemoved references to TASK-1 from TASK-2, DRAFT-1\n");
+		expect(await lastCommit()).toBe("backlog: Delete task TASK-1");
+		const committed = (await $`git show --name-status --no-renames --format= HEAD`.cwd(TEST_DIR).text())
+			.trim()
+			.split("\n")
+			.sort();
+		expect(committed).toEqual([
+			"A\tbacklog/drafts/draft-1 - Linked-draft.md",
+			"D\tbacklog/archive/tasks/task-1 - Target.md",
+			"D\tbacklog/drafts/draft-1 - Old-title.md",
+			"M\tbacklog/tasks/task-2 - Depends-on-the-target.md",
+		]);
+		expect((await $`git status --porcelain`.cwd(TEST_DIR).text()).trim()).toBe("");
+	});
+
 	it("says the commit failed when the removal cannot be staged, and does not report success", async () => {
 		// Nothing refers to TASK-3, so removing its committed file is the only change there is to stage.
 		const core = new Core(TEST_DIR);

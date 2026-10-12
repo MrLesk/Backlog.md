@@ -5,7 +5,7 @@ status: Done
 assignee:
   - '@claude'
 created_date: '2026-10-11 13:02'
-updated_date: '2026-10-12 05:39'
+updated_date: '2026-10-12 06:16'
 labels:
   - enhancement
 dependencies:
@@ -38,6 +38,9 @@ modified_files:
   - src/test/mcp-server.test.ts
   - src/test/mcp-tasks.test.ts
   - src/test/test-utils.ts
+  - src/file-system/operations.ts
+  - src/test/vacated-task-references.test.ts
+  - src/test/cli-released-id-draft-links.test.ts
 priority: high
 type: enhancement
 ordinal: 348000
@@ -132,6 +135,27 @@ A draft that still names the task as its parent blocks the delete, like a subtas
 The ID release is qualified everywhere it is stated: the ID is released once no other branch or worktree still holds the task. Changed sentences: the `task delete` description and help, the `task_delete` tool description, the CLI and MCP overview and task-finalization guides, README and CLI-INSTRUCTIONS. Behavior did not change. The tests that pin these sentences (src/test/cli-guidance.test.ts, src/test/mcp-server.test.ts, src/test/mcp-tasks.test.ts) now require the qualified wording.
 
 Verification: `bunx tsc --noEmit` and `bun run check .` are clean; the scoped tests pass.
+
+Maintainer ruling: the cleanup that runs when a task ID is released also covers drafts.
+
+A draft that depended on or referred to a task kept that link when the task was deleted or demoted, and once the ID was handed to the next created task the draft pointed at that unrelated task. The shared vacated-ID cleanup in `Core` (`collectVacatedIdCleanup`, `withVacatedIdCleanup`, `writeVacatedIdCleanup`) now handles drafts next to board and archived tasks, for every operation that uses it: `deleteTask`, `demoteTask`, and an edit into the Draft status. There is no separate draft pass.
+
+- Scan: the drafts are read with the tasks, and the same link rule applies (`withoutVacatedTaskLinks`), so a URL that merely contains the ID is not a link.
+- Locks: the draft locks are taken with the operation's task locks, tasks first and then drafts, each kind sorted (`FileSystem.withDraftLocks`, the draft counterpart of `withTaskLocks`). They are the locks a draft edit takes, so the two exclude each other. The scan is repeated inside the locks and widens as before. A draft that another process is editing, or that was renamed between the scan and the locks, makes the operation fail before anything changed, as a task in that state does.
+- Write: a draft is saved through `FileSystem.saveDraft`, the save every draft update uses, bound to the ID its file name gives it. That save names the file after the draft's ID and title, so a draft file that was named otherwise is saved under the new name; the old path is returned with the written paths and its removal is staged when Git tracks it (`stageChangedPath`, which also replaces the inline check delete had).
+- Result: `cleanedTaskIds` names the cleaned drafts with the cleaned tasks. `backlog task delete`, `backlog task demote`, the MCP tools and the HTTP demote response report them through the existing "Removed references to X from ..." line and field; no adapter changed.
+- A draft whose ID does not resolve to exactly the file it was read from is left as it is: a damaged file, a file whose name and frontmatter disagree, or an ID that two draft files claim. A draft edit refuses these too, saving one would remove the other claimant, and `backlog doctor` reports them.
+- A draft that names the task as its parent still blocks the delete; this change is about dependencies and references only.
+
+Demote: the only change is that a draft holding a link is cleaned and named in the output. Everything else about demote is the same, and its existing tests pass unchanged.
+
+The change is in this layer and not in BACK-719: the delete operation and every sentence that had to change live here, and the shared cleanup's code is the same in both layers, so nothing made the lower layer the only clean place.
+
+Wording: the sentence "References held by drafts are not changed: the cleanup covers tasks only." is gone from the `task delete` help, the CLI and MCP overview guides and CLI-INSTRUCTIONS; those places, the `task_delete` tool description and the two task-finalization guides now say that the links other tasks and drafts hold are removed, and that the changed tasks and drafts are named.
+
+Tests: src/test/cli-released-id-draft-links.test.ts drives the CLI for delete and for demote: a draft with a dependency on and a reference to the task has neither afterwards, the output names the draft, a draft whose only link is a URL containing the ID is byte for byte unchanged, and the task created next receives the released ID without the draft linking to it. Both cases fail on the previous tip (816d0c8b). src/test/vacated-task-references.test.ts covers the locking for drafts (an edit between the scan and the locks is kept, a draft that starts linking in that window is cleaned, a renamed or locked draft fails the operation with nothing changed, a contested draft ID is left alone). src/test/cli-task-delete.test.ts checks that auto-commit commits a cleaned draft, including one whose file gets a new name, and leaves a clean working tree. The MCP delete test names the cleaned draft, and the tests that pinned the old sentences pin the new ones.
+
+Verification: `bunx tsc --noEmit` and `bun run check .` are clean; the scoped tests pass (25 files). End to end against the built CLI, for delete and for demote: before, the draft still listed TASK-1 as a dependency and a reference after the ID had been reused; after, both are gone, the URL stays, and the command prints "Removed references to TASK-1 from DRAFT-1".
 <!-- SECTION:NOTES:END -->
 
 ## Final Summary
@@ -142,7 +166,7 @@ Verification: `bunx tsc --noEmit` and `bun run check .` are clean; the scoped te
 What changed
 - One core operation, `Core.deleteTask`. It only acts on an archived task: a task on the board is refused with "Task X is not archived. A task must be archived before it can be deleted.", and a task that exists only on another branch is refused as read-only. An ID that more than one record claims fails closed as ambiguous.
 - Delete is refused while a task on the board, a task in the archive or a draft names the task as its parent, because subtask IDs are built on the ID that would be released and a demoted subtask is promoted back to such an ID. The refusal lists those tasks and drafts.
-- Delete removes the dependencies and references other tasks hold to the task, on the board and in the archive, through the existing vacated-ID cleanup, and reports the changed tasks. The referencing tasks are written first and the file is removed last, so a failure leaves the task in the archive and the delete can be run again. References held by drafts are not changed.
+- Delete removes the dependencies and references that tasks on the board, tasks in the archive and drafts hold to the task, through the shared vacated-ID cleanup, and reports the changed tasks and drafts. The referencing records are written first and the file is removed last, so a failure leaves the task in the archive and the delete can be run again. Demote uses the same cleanup, so it cleans and reports drafts in the same way; nothing else about demote changed.
 - A symlinked archived task is removed as a link; the file it points to stays. Auto-commit commits the removal together with the cleaned tasks; when the removal cannot be staged or committed, the command says that the task was deleted but the commit failed and exits non-zero.
 - `backlog task delete <taskId>` has no options and no prompt, because archiving is the confirming step. The MCP server offers the same operation as `task_delete` with the same rules. The TUI and the browser get no delete control.
 - Help, the CLI and MCP guides, README and CLI-INSTRUCTIONS describe deleting as archive first, then delete, and say that the ID is released once no other branch or worktree still holds the task.
@@ -153,5 +177,5 @@ Verification
 
 Choices to confirm
 - The subtask check follows the parent field only. A dotted ID without a parent field does not block the delete.
-- Drafts keep dependencies and references to a deleted task, because the cleanup covers tasks only.
+- A draft that a draft edit would refuse (a damaged file, a file whose name and frontmatter disagree, or an ID two draft files claim) is not rewritten by the cleanup and keeps its links. `backlog doctor` reports such drafts.
 <!-- SECTION:FINAL_SUMMARY:END -->
