@@ -278,6 +278,7 @@ describe("CLI list windows", () => {
 		expect(draftWindow.drafts.map((draft: { id: string }) => draft.id)).toEqual(["DRAFT-2", "DRAFT-3"]);
 		const draftsFirst = await runJson(["draft", "list", "--max-count", "1"]);
 		expect(draftsFirst).toMatchObject({ total: 3, nextSkip: 1 });
+		expect(await runJson(["draft", "list", "--skip", "99"])).toMatchObject({ drafts: [], total: 3, nextSkip: null });
 		const completeDrafts = await runJson(["draft", "list"]);
 		expect(completeDrafts).not.toHaveProperty("total");
 		expect(completeDrafts.drafts).toHaveLength(3);

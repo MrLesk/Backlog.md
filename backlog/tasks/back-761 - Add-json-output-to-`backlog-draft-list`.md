@@ -5,7 +5,7 @@ status: Done
 assignee:
   - '@claude'
 created_date: '2026-10-12 00:37'
-updated_date: '2026-10-12 00:52'
+updated_date: '2026-10-12 01:27'
 labels: []
 dependencies: []
 references:
@@ -49,6 +49,8 @@ Scripts and agents that triage drafts must parse `draft list --plain` text, beca
 
 <!-- SECTION:NOTES:BEGIN -->
 Drafts reuse loadTaskListItems, so each draft carries isReady computed like task list (draft dependencies are a known follow-up in BACK-601). Validation: bunx tsc --noEmit and bun run check . pass; cli-json-output and cli-list-window pass (29); full suite 2877 pass, 1 fail in config-commands "reads the config key at column 0", which fails identically without these changes.
+
+Adversarial review (opencode2, deepseek-flash): draft isReady is derived against tasks only (draft-to-draft dependencies read false); documented in CLI-INSTRUCTIONS.md and left for maintainer decision. Added tests for a blocked draft and --skip past the end.
 <!-- SECTION:NOTES:END -->
 
 ## Final Summary
