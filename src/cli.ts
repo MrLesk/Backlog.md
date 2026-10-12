@@ -3137,6 +3137,10 @@ const NO_CHANGES_APPLIED = "No changes were applied.";
  * auto-commit fails, and with several IDs some can be updated before another fails. So every
  * update goes through the tracked call below, and one that succeeded or changed its file
  * suppresses the sentence.
+ *
+ * Known limit: the before and after comparison runs outside core's task lock, so another process
+ * writing the same task at that moment can suppress the sentence, which is the safe direction
+ * because the sentence is only ever withheld and never printed after a write.
  */
 async function runEditCommand(target: EditCommandTarget, requestedIds: string[] | undefined, options: OptionValues) {
 	const read = (filePath: string | undefined) => (filePath ? readFile(filePath).catch(() => null) : null);
