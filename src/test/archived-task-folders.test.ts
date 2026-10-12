@@ -143,6 +143,8 @@ describe("archived task folders", () => {
 				// An ordinary folder inside the backlog directory is not a linked source.
 				linkedSources: [],
 			});
+			// And an ordinary archive folder is not a linked destination.
+			expect(preview.linkedDestination).toBeUndefined();
 			expect((await readdir(completedFolder)).sort()).toEqual(["task-2 - Finished.md", "task-3 - Also-finished.md"]);
 
 			const moved = await moveArchivedTasks(core);
@@ -216,6 +218,43 @@ describe("archived task folders", () => {
 
 			expect(preview.moves.map((move) => move.sourcePath)).toEqual(["backlog/completed/task-6 - Behind-a-link.md"]);
 			expect(preview.linkedSources).toEqual([]);
+		});
+
+		it("names the real archive folder when it is a link to a directory outside the backlog directory", async () => {
+			const outside = join(testDir, "shared-archive");
+			await mkdir(outside, { recursive: true });
+			await safeCleanup(archiveFolder);
+			await symlink(outside, archiveFolder, "junction");
+			await writeTask(completedFolder, "task-6 - Finished.md", makeTask("TASK-6", "Finished"));
+
+			const preview = await previewArchivedTaskMove(core);
+
+			expect(preview.linkedDestination).toEqual({
+				directory: "backlog/archive/tasks",
+				realDirectory: await realpath(outside),
+			});
+			expect(preview.linkedSources).toEqual([]);
+
+			// What is moved is the same: the file goes into the archive folder, through the link.
+			const moved = await moveArchivedTasks(core);
+			expect(moved.moves.map((move) => move.targetPath)).toEqual(["backlog/archive/tasks/task-6 - Finished.md"]);
+			expect(await readdir(outside)).toEqual(["task-6 - Finished.md"]);
+			expect(await archivedIds()).toEqual(["TASK-6"]);
+			// Nothing is left to move, so there is no folder to name any more.
+			expect((await previewArchivedTaskMove(core)).linkedDestination).toBeUndefined();
+		});
+
+		it("does not name an archive folder that is a link to a directory inside the backlog directory", async () => {
+			const inside = join(core.filesystem.backlogDir, "kept-archive");
+			await mkdir(inside, { recursive: true });
+			await safeCleanup(archiveFolder);
+			await symlink(inside, archiveFolder, "junction");
+			await writeTask(completedFolder, "task-6 - Finished.md", makeTask("TASK-6", "Finished"));
+
+			const preview = await previewArchivedTaskMove(core);
+
+			expect(preview.moves).toHaveLength(1);
+			expect(preview.linkedDestination).toBeUndefined();
 		});
 
 		itWithFileSymlinks("keeps a linked task file a link to the same file", async () => {

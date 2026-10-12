@@ -369,6 +369,21 @@ describe("archived tasks stored outside the archive folder", () => {
 				reportEnd,
 			]);
 		});
+
+		it("names the real archive folder when it is a link to one outside the backlog directory", async () => {
+			await removeDuplicateTasks();
+			const outside = join(testDir, "shared-archive");
+			await mkdir(outside, { recursive: true });
+			await safeCleanup(core.filesystem.archiveTasksDir);
+			await symlink(outside, core.filesystem.archiveTasksDir, "junction");
+			await writeCompletedTask(fileName, makeTask("TASK-7", "Finished"));
+
+			expect(await reportLines()).toEqual([
+				...reportStart,
+				`backlog/archive/tasks is a link to ${await realpath(outside)}, outside the backlog directory. The files are moved into that folder.`,
+				reportEnd,
+			]);
+		});
 	});
 
 	it("repairs duplicate IDs first, keeps the ID on the completed-folder record, then moves it", async () => {

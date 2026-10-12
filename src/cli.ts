@@ -460,6 +460,12 @@ function printArchivedTaskMovePlan(plan: ArchivedTaskMovePlan, duplicateIdsPendi
 				`${directory} is a link to ${realDirectory}, outside the backlog directory. The files are moved out of that folder.`,
 			);
 		}
+		if (plan.linkedDestination) {
+			const { directory, realDirectory } = plan.linkedDestination;
+			console.log(
+				`${directory} is a link to ${realDirectory}, outside the backlog directory. The files are moved into that folder.`,
+			);
+		}
 		console.log(
 			duplicateIdsPending
 				? `They are moved into ${plan.archiveDirectory} once the duplicate task IDs above are repaired. File names and task IDs stay the same.`
