@@ -29,6 +29,7 @@ import { loadTaskDetail, loadTaskListItems } from "./core/task-detail.ts";
 import { isConfigValueError } from "./file-system/operations.ts";
 import {
 	decisionListJson,
+	draftListJson,
 	formatJson,
 	printJson,
 	type SearchResultInput,
@@ -4063,13 +4064,25 @@ async function viewDraftById(core: Core, taskId: string, options?: { plain?: boo
 
 const draftCmd = program.command("draft");
 
-const draftListCommand = draftCmd
-	.command("list")
+const draftListCommand = addHelpSchema(draftCmd.command("list"), {
+	reads: "Drafts under the configured drafts directory",
+	writes: "None; this is a read-only command",
+	required: [],
+	optional: [
+		{ name: "sort", type: "String", description: `Sort drafts by field (${TASK_SORT_FIELD_LIST})` },
+		...LIST_WINDOW_HELP_FIELDS,
+		{ name: "plain", type: "Boolean", description: "Use plain text output" },
+		{ name: "json", type: "Boolean", description: "Use versioned machine-readable JSON output" },
+	],
+	output: `Interactive draft list, plain text with --plain, or versioned JSON with --json. ${LIST_WINDOW_OUTPUT_HELP}; JSON adds total and nextSkip`,
+	examples: ["backlog draft list --plain", "backlog draft list --json", "backlog draft list --sort id --max-count 20"],
+})
 	.description("list all drafts")
 	.option("--sort <field>", `sort drafts by field (${TASK_SORT_FIELD_LIST})`);
 addListWindowOptions(draftListCommand)
 	.option("--plain", "use plain text output")
-	.action(async (options: ListWindowOptions & { plain?: boolean; sort?: string }) => {
+	.option("--json", "print versioned machine-readable JSON output")
+	.action(async (options: ListWindowOptions & { plain?: boolean; json?: boolean; sort?: string }) => {
 		const listOutput = resolveListOutput({ ...options, plain: isPlainRequested(options) }, draftListCommand);
 		if (!listOutput) return;
 		const { outputMode, listWindow } = listOutput;
@@ -4086,6 +4099,13 @@ addListWindowOptions(draftListCommand)
 		const drafts = await core.filesystem.listDrafts();
 		const config = await core.filesystem.loadConfig();
 		const sortedDrafts = sortTasks(drafts, sortField, config?.priorities);
+
+		if (outputMode === "json") {
+			const rows = sortedDrafts.length > 0 ? await loadTaskListItems(core, sortedDrafts) : [];
+			const page = selectListWindow(rows, listWindow);
+			printJson(draftListJson(page.items, page));
+			return;
+		}
 
 		if (outputMode !== "interactive" || sortedDrafts.length === 0) {
 			// Plain text output for non-interactive environments

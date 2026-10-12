@@ -225,6 +225,10 @@ export function taskListJson(tasks: TaskListItem[], page?: ListPage<unknown>) {
 	return { schemaVersion: 1, kind: "task-list" as const, tasks: tasks.map(toTaskSummaryJson), ...cutListJson(page) };
 }
 
+export function draftListJson(drafts: TaskListItem[], page?: ListPage<unknown>) {
+	return { schemaVersion: 1, kind: "draft-list" as const, drafts: drafts.map(toTaskSummaryJson), ...cutListJson(page) };
+}
+
 export function taskViewJson(task: TaskDetail, projectRoot: string) {
 	return {
 		schemaVersion: 1,

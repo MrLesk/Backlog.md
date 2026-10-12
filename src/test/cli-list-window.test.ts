@@ -273,6 +273,19 @@ describe("CLI list windows", () => {
 		expect(drafts.stdout).not.toContain("Next:");
 		expect((await runCli(["draft", "list", "--count"])).stdout).toBe("3\n");
 
+		const draftWindow = await runJson(["draft", "list", "--max-count", "2", "--skip", "1"]);
+		expect(draftWindow).toMatchObject({ kind: "draft-list", total: 3, nextSkip: null });
+		expect(draftWindow.drafts.map((draft: { id: string }) => draft.id)).toEqual(["DRAFT-2", "DRAFT-3"]);
+		const draftsFirst = await runJson(["draft", "list", "--max-count", "1"]);
+		expect(draftsFirst).toMatchObject({ total: 3, nextSkip: 1 });
+		const completeDrafts = await runJson(["draft", "list"]);
+		expect(completeDrafts).not.toHaveProperty("total");
+		expect(completeDrafts.drafts).toHaveLength(3);
+		const draftsWithCount = await runCli(["draft", "list", "--count", "--json"]);
+		expect(draftsWithCount.exitCode).toBe(1);
+		expect(draftsWithCount.stdout).toBe("");
+		expect(draftsWithCount.stderr).toContain("--count cannot be combined with --json.");
+
 		const completedWindow = await runCli(["milestone", "list", "--show-completed", "--max-count", "1", "--skip", "2"]);
 		expect(idsIn(completedWindow.stdout, /m-\d+:/g)).toEqual(["m-2:"]);
 		expect(completedWindow.stdout).toContain("Showing 3-3 of 3 items.");
