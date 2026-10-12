@@ -5,7 +5,7 @@ status: Done
 assignee:
   - '@claude'
 created_date: '2026-10-11 19:07'
-updated_date: '2026-10-11 20:56'
+updated_date: '2026-10-12 06:06'
 labels:
   - bug
 dependencies: []
@@ -27,6 +27,7 @@ modified_files:
   - src/test/tui-task-composer.test.ts
   - src/core/content-store.ts
   - src/core/prefix-migration.ts
+  - src/test/prefix-migration.test.ts
 priority: high
 type: bug
 ordinal: 350000
@@ -169,6 +170,12 @@ Left alone, listed as known gaps in the pull request text
 - Demoting through an edit has no compensating clean-up if removing the task file fails, unlike `task demote`.
 - Archiving can replace a file of the same name in the archive folder.
 - A task, draft or decision file whose name starts in upper case is not counted by the allocator.
+
+Follow-up after publication: the draft prefix migration no longer hides a file it could not convert
+- `migrateDraftPrefixes` in src/core/prefix-migration.ts records the prefixes only when every legacy `task-*.md` file in the drafts folder was converted. If a file is refused or fails, the files already converted stay converted, that file stays where it is, the config is left as it was so the migration runs again next time, and the error thrown names each such file with the reason (for a taken path, the write helper's message).
+- If the legacy file cannot be removed after its draft was written, the new draft is removed again. Otherwise every later run would write another copy. Checked by hand on macOS with a locked file; there is no portable way to test it.
+- How the message reaches the user: like every other migration failure, the error is thrown out of `ensureConfigMigrated`. The CLI runs that at start-up and ignores every error from it, so nothing is printed on the command line today. Printing it would be a change to that start-up block, not to the migration.
+- New test in src/test/prefix-migration.test.ts: two legacy files, the draft path of one taken by a link with a missing target. It fails on main and on the previous branch tip.
 <!-- SECTION:NOTES:END -->
 
 ## Final Summary
@@ -181,16 +188,18 @@ What changed
 - Saving: one private helper, `writeRecordFile` in src/file-system/operations.ts, writes the file for `saveTask`, `saveDraft`, `saveDocument` and `saveDecision`. It rewrites or moves only the file the record was loaded from and creates a new record's file only if the path is free. The four clean-ups that matched other files by name are removed.
 - A stray file on the next number is skipped. Create, demote and promote refuse, with exit code 1, the file named and nothing changed, only when the new file's own path is already taken.
 - The task create flow no longer backs up and restores a previous file, because a create can no longer replace one. The Git index rollback stays.
-- `draft promote` reports a failure with its own message; "not found" now means only that no draft file was found.
+- `draft promote` reports a failure with its own message; "not found" now means only that there is no draft to promote.
+- The one-time draft prefix migration records the prefixes only when every legacy file was converted. A file it could not convert stays where it is and is tried again on the next run.
 
 Verification
-- 32 CLI tests in src/test/cli-create-preserves-existing-files.test.ts, with projects outside the repository. 25 fail on the sources of main; the other 7 cover draft and task cases that main already handled.
+- 32 CLI tests in src/test/cli-create-preserves-existing-files.test.ts, with projects outside the repository. 25 fail on the sources of main; the other 7 cover draft and task cases that main already handled. One new test in src/test/prefix-migration.test.ts covers the migration; it fails on main.
 - The scoped test files, `bunx tsc --noEmit` and `bun run check .` pass. One test in config-commands.test.ts fails the same way on main.
 
 Follow-ups
 - Updates share the save step, so BACK-600 acceptance criteria 1 and 2 are covered here. Its doctor finding remains.
 - A retitle checks the target and renames in two steps until updates take a lock (BACK-736).
 - Task, draft and decision files whose names start in upper case are not counted by the allocator. That can give two files one number but cannot lose a file.
-- The one-time draft prefix migration swallows a refused save and still marks itself done. Demoting through an edit has no compensating clean-up if removing the task file fails. Archiving can replace a file of the same name in the archive folder. All three are unchanged.
+- The CLI ignores every migration error at start-up, so the message naming a legacy draft file that could not be converted is not printed on the command line.
+- Demoting through an edit has no compensating clean-up if removing the task file fails. Archiving can replace a file of the same name in the archive folder. Both are unchanged.
 - Not verified on Windows.
 <!-- SECTION:FINAL_SUMMARY:END -->
