@@ -442,7 +442,10 @@ export class TaskNotArchivedError extends TaskRefusedError {
 	}
 }
 
-/** Delete targeted a task whose subtasks still exist; their IDs are built on the ID it would release. */
+/**
+ * Delete targeted a task that tasks or drafts still name as their parent. A subtask's ID is built
+ * on the ID the delete would release, and promoting such a draft gives it an ID built on it too.
+ */
 export class TaskHasSubtasksError extends TaskRefusedError {
 	constructor(taskId: string, subtaskIds: string[]) {
 		super(`Task ${taskId} cannot be deleted while its subtasks exist: ${subtaskIds.join(", ")}.`);
@@ -3475,9 +3478,10 @@ export class Core {
 	 * references other tasks hold to it are removed in the same locked span and reported.
 	 *
 	 * Returns `success: false` when no record claims the ID. Every refusal is a `TaskRefusedError`:
-	 * the task is on the board, it exists only on another branch, or a task on the board or in the
-	 * archive names it as its parent. The referencing records are written before the file is
-	 * removed, so a failure leaves the task in the archive and the delete can simply be run again.
+	 * the task is on the board, it exists only on another branch, or a task on the board, a task in
+	 * the archive or a draft names it as its parent. The referencing records are written before the
+	 * file is removed, so a failure leaves the task in the archive and the delete can simply be run
+	 * again.
 	 */
 	async deleteTask(taskId: string, autoCommit?: boolean, options: TaskReadOptions = {}): Promise<VacatedTaskResult> {
 		const task = await this.loadArchivedTask(taskId, options);
@@ -3487,8 +3491,14 @@ export class Core {
 			// Another process may have deleted the record before these locks were held.
 			const current = await this.loadArchivedTask(task.id, options);
 			if (!current?.filePath) return null;
-			const [activeTasks, archivedTasks] = await Promise.all([this.fs.listTasks(), this.fs.listArchivedTasks()]);
-			const subtasks = findDirectSubtasks(current, [...activeTasks, ...archivedTasks]);
+			// A subtask that was demoted is a draft that still names this task as its parent. Drafts are
+			// read file by file, as the link cleanup reads them: one damaged draft must not hide the rest.
+			const [activeTasks, archivedTasks, drafts] = await Promise.all([
+				this.fs.listTasks(),
+				this.fs.listArchivedTasks(),
+				this.fs.listHealthyDrafts(),
+			]);
+			const subtasks = findDirectSubtasks(current, [...activeTasks, ...archivedTasks, ...drafts]);
 			if (subtasks.length > 0) {
 				throw new TaskHasSubtasksError(
 					current.id,

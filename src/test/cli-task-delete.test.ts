@@ -21,7 +21,7 @@ async function task(...args: string[]): Promise<{ exitCode: number; stdout: stri
 	return { exitCode: result.exitCode, stdout: result.stdout.toString(), stderr: result.stderr.toString() };
 }
 
-async function taskFiles(folder: "tasks" | "archive/tasks"): Promise<string[]> {
+async function taskFiles(folder: "tasks" | "archive/tasks" | "drafts"): Promise<string[]> {
 	return (await readdir(join(TEST_DIR, "backlog", folder))).sort();
 }
 
@@ -145,6 +145,72 @@ describe("backlog task delete", () => {
 		expect((await task("delete", "1.1")).exitCode).toBe(0);
 		expect((await task("delete", "1")).exitCode).toBe(0);
 		expect(await taskFiles("archive/tasks")).toEqual([]);
+	});
+
+	describe("with a subtask that was demoted to a draft", () => {
+		const draftPath = () => join(TEST_DIR, "backlog", "drafts", "draft-1 - Child.md");
+
+		beforeEach(async () => {
+			await task("create", "Parent");
+			await task("create", "Child", "-p", "1");
+			await task("demote", "1.1");
+			await task("archive", "1");
+			// The draft still names the archived task as its parent.
+			expect(await Bun.file(draftPath()).text()).toContain("parent_task_id: TASK-1");
+		});
+
+		it("is refused, names the draft and changes nothing, until the draft's task is deleted", async () => {
+			const draftBefore = await Bun.file(draftPath()).text();
+
+			const refused = await task("delete", "1");
+
+			expect(refused.exitCode).toBe(1);
+			expect(refused.stderr).toContain("Task TASK-1 cannot be deleted while its subtasks exist: DRAFT-1.");
+			expect(refused.stdout).not.toContain("Deleted task");
+			expect(await taskFiles("archive/tasks")).toEqual(["task-1 - Parent.md"]);
+			expect(await taskFiles("drafts")).toEqual(["draft-1 - Child.md"]);
+			expect(await Bun.file(draftPath()).text()).toBe(draftBefore);
+
+			// The draft becomes a task again; once that task is archived and deleted, the parent can go.
+			expect((await $`bun ${[CLI_PATH, "draft", "promote", "1"]}`.cwd(TEST_DIR).nothrow().quiet()).exitCode).toBe(0);
+			expect(await taskFiles("tasks")).toEqual(["task-1.1 - Child.md"]);
+			expect((await task("delete", "1")).exitCode).toBe(1);
+			await task("archive", "1.1");
+			expect((await task("delete", "1.1")).exitCode).toBe(0);
+			expect((await task("delete", "1")).stdout).toBe("Deleted task TASK-1\n");
+			expect(await taskFiles("archive/tasks")).toEqual([]);
+		});
+
+		it("is still refused and names the draft when another draft cannot be read", async () => {
+			// Reading this draft fails, which must not hide the demoted subtask next to it.
+			const damagedPath = join(TEST_DIR, "backlog", "drafts", "draft-2 - Bad.md");
+			await Bun.write(damagedPath, "---\nid: DRAFT-2\ntitle: Bad\ndependencies:\n  - { nested: true }\n---\n");
+			const draftBefore = await Bun.file(draftPath()).text();
+
+			const refused = await task("delete", "1");
+
+			expect(refused.exitCode).toBe(1);
+			expect(refused.stderr).toContain("Task TASK-1 cannot be deleted while its subtasks exist: DRAFT-1.");
+			expect(refused.stdout).not.toContain("Deleted task");
+			expect(await taskFiles("archive/tasks")).toEqual(["task-1 - Parent.md"]);
+			expect(await taskFiles("drafts")).toEqual(["draft-1 - Child.md", "draft-2 - Bad.md"]);
+			expect(await Bun.file(draftPath()).text()).toBe(draftBefore);
+		});
+
+		it("succeeds once the draft no longer names the task as its parent", async () => {
+			const filesystem = new Core(TEST_DIR).filesystem;
+			const draft = await filesystem.loadDraft("draft-1");
+			if (!draft) throw new Error("Expected the demoted draft");
+			await filesystem.saveDraft({ ...draft, parentTaskId: undefined });
+			expect(await Bun.file(draftPath()).text()).not.toContain("parent_task_id");
+
+			const deleted = await task("delete", "1");
+
+			expect(deleted.exitCode).toBe(0);
+			expect(deleted.stdout).toBe("Deleted task TASK-1\n");
+			expect(await taskFiles("archive/tasks")).toEqual([]);
+			expect(await taskFiles("drafts")).toEqual(["draft-1 - Child.md"]);
+		});
 	});
 
 	it("fails closed when more than one record claims the ID", async () => {

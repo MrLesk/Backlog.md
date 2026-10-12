@@ -271,7 +271,8 @@ describe("CLI Integration", () => {
 				expect(guide).toMatch(/keep(s|ing) (its|their) ID/);
 				// Deleting is described as archive first, then delete.
 				expect(guide).toMatch(/archive it(,| and) then (run|delete it with) `backlog task delete/);
-				expect(guide).toMatch(/releases (its|the) ID/);
+				// The ID is not free while another branch or worktree still has the task.
+				expect(guide).toMatch(/releases (its|the) ID once no other branch or worktree still holds the task/);
 				for (const absentCommand of ["task complete", "task restore"]) {
 					expect(guide).not.toContain(absentCommand);
 				}
@@ -379,10 +380,14 @@ describe("CLI Integration", () => {
 			expect(archiveHelp).toContain("no other task is changed");
 			expect(taskHelp).toContain("archive <taskId>");
 			expect(taskHelp).toContain("delete <taskId>");
-			expect(taskHelp.replace(/\s+/g, " ")).toContain("permanently delete an archived task and release its ID");
+			expect(taskHelp.replace(/\s+/g, " ")).toContain(
+				"permanently delete an archived task and release its ID once no other branch or worktree still holds the task",
+			);
 			const deleteHelp = await $`bun ${CLI_PATH} task delete --help`.cwd(TEST_DIR).text();
 			expect(deleteHelp).toContain("taskId: Task ID - Archived task to delete");
+			expect(deleteHelp).toContain("Its ID is released once no other branch or worktree still holds the task.");
 			expect(deleteHelp).toContain("A task must be archived first (backlog task archive)");
+			expect(deleteHelp).toContain("a task whose subtasks still exist, as tasks or as drafts, is not deleted.");
 			expect(deleteHelp).toContain("There is no prompt.");
 			expect(deleteHelp).toContain("References held by drafts are not changed: the cleanup covers tasks only.");
 			for (const absentCommand of ["complete", "restore"]) {

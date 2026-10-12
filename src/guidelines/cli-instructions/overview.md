@@ -34,6 +34,6 @@ Mark finished work Done (or the configured final status) and leave it on the boa
 
 Archive (`backlog task archive {{TASK_ID:123}}`) moves a task in any status off the board: finished work during cleanup, and canceled, duplicate, or invalid work at any time. An archived task keeps its ID, its record, and every dependency and reference to it. It stays readable with `backlog task view` and is read-only. A dependency on an archived task counts as satisfied only when that task is in the final status.
 
-Deleting a task takes two steps: archive it, then run `backlog task delete {{TASK_ID:123}}`. Delete permanently removes the archived task and releases its ID. It removes the dependencies and references other tasks hold to it and names the tasks it changed. References held by drafts are not changed: the cleanup covers tasks only. A task whose subtasks still exist is not deleted.
+Deleting a task takes two steps: archive it, then run `backlog task delete {{TASK_ID:123}}`. Delete permanently removes the archived task and releases its ID once no other branch or worktree still holds the task. It removes the dependencies and references other tasks hold to it and names the tasks it changed. References held by drafts are not changed: the cleanup covers tasks only. A task whose subtasks still exist, as tasks or as drafts, is not deleted.
 
 Use the CLI for Backlog changes. Never edit task, draft, document, decision, or milestone markdown files directly; commands preserve metadata, relationships, and history.

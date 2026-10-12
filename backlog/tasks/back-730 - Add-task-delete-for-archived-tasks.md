@@ -5,7 +5,7 @@ status: Done
 assignee:
   - '@claude'
 created_date: '2026-10-11 13:02'
-updated_date: '2026-10-11 21:30'
+updated_date: '2026-10-12 05:39'
 labels:
   - enhancement
 dependencies:
@@ -124,26 +124,34 @@ Delete no longer reports success when the removal could not be staged. With auto
 Tests in src/test/cli-task-delete.test.ts, in a repository outside this one: with `.git/index.lock` present, deleting an archived and committed task that nothing refers to exits 1 with that message, prints no "Deleted task", leaves no file on disk and adds no commit (before the fix this test fails with exit code 0); deleting an archived task that was never committed exits 0 and adds no commit. End to end against the built CLI with the index lock present: before the fix exit 0 and "Deleted task TASK-1" with the removal left uncommitted; after it exit 1 and the message with Git's lock error.
 
 Verification: `bunx tsc --noEmit` and `bun run check .` are clean; the scoped tests pass.
+
+Two maintainer rulings applied.
+
+A draft that still names the task as its parent blocks the delete, like a subtask on the board or in the archive. A subtask that is demoted becomes a draft that keeps its parent field, and promoting it gives it a subtask ID built on the parent's ID again, so deleting the parent in between would release an ID that draft still depends on. `Core.deleteTask` reads the drafts together with the board and the archive and runs the one subtask check (`findDirectSubtasks`, the parent field) over all three; the refusal lists the draft's ID with the others: "Task TASK-1 cannot be deleted while its subtasks exist: DRAFT-1." The CLI and the MCP tool call the same function. Tests in src/test/cli-task-delete.test.ts: with a demoted subtask and the parent archived, delete exits 1, names the draft and changes neither file; after the draft is promoted, archived and deleted the parent is deleted; and once the draft's parent field is cleared the delete succeeds and the draft stays. With drafts left out of the check the refusal test fails with exit code 0. Help, the MCP tool description, the CLI and MCP overview guides and CLI-INSTRUCTIONS now say that a task whose subtasks still exist, as tasks or as drafts, is not deleted. A dotted ID without a parent field still does not block the delete.
+
+The ID release is qualified everywhere it is stated: the ID is released once no other branch or worktree still holds the task. Changed sentences: the `task delete` description and help, the `task_delete` tool description, the CLI and MCP overview and task-finalization guides, README and CLI-INSTRUCTIONS. Behavior did not change. The tests that pin these sentences (src/test/cli-guidance.test.ts, src/test/mcp-server.test.ts, src/test/mcp-tasks.test.ts) now require the qualified wording.
+
+Verification: `bunx tsc --noEmit` and `bun run check .` are clean; the scoped tests pass.
 <!-- SECTION:NOTES:END -->
 
 ## Final Summary
 
 <!-- SECTION:FINAL_SUMMARY:BEGIN -->
-`backlog task delete <id>` permanently removes an archived task and releases its ID. Archiving keeps the ID since BACK-719, so delete is the explicit second step for work that should leave no record (issue #1064).
+`backlog task delete <id>` permanently removes an archived task and releases its ID once no other branch or worktree still holds the task. Archiving keeps the ID since BACK-719, so delete is the explicit second step for work that should leave no record (issue #1064).
 
 What changed
 - One core operation, `Core.deleteTask`. It only acts on an archived task: a task on the board is refused with "Task X is not archived. A task must be archived before it can be deleted.", and a task that exists only on another branch is refused as read-only. An ID that more than one record claims fails closed as ambiguous.
-- Delete is refused while a task on the board or in the archive names the task as its parent, because subtask IDs are built on the ID that would be released.
+- Delete is refused while a task on the board, a task in the archive or a draft names the task as its parent, because subtask IDs are built on the ID that would be released and a demoted subtask is promoted back to such an ID. The refusal lists those tasks and drafts.
 - Delete removes the dependencies and references other tasks hold to the task, on the board and in the archive, through the existing vacated-ID cleanup, and reports the changed tasks. The referencing tasks are written first and the file is removed last, so a failure leaves the task in the archive and the delete can be run again. References held by drafts are not changed.
-- A symlinked archived task is removed as a link; the file it points to stays. Auto-commit commits the removal together with the cleaned tasks.
+- A symlinked archived task is removed as a link; the file it points to stays. Auto-commit commits the removal together with the cleaned tasks; when the removal cannot be staged or committed, the command says that the task was deleted but the commit failed and exits non-zero.
 - `backlog task delete <taskId>` has no options and no prompt, because archiving is the confirming step. The MCP server offers the same operation as `task_delete` with the same rules. The TUI and the browser get no delete control.
-- Help, the CLI and MCP guides, README and CLI-INSTRUCTIONS describe deleting as archive first, then delete.
+- Help, the CLI and MCP guides, README and CLI-INSTRUCTIONS describe deleting as archive first, then delete, and say that the ID is released once no other branch or worktree still holds the task.
 
 Verification
 - `bunx tsc --noEmit` and `bun run check .` are clean; the scoped tests pass, including src/test/cli-task-delete.test.ts, which drives the CLI for every acceptance criterion, and the MCP tests for `task_delete`.
 - A scripted end-to-end run against a binary built from this layer covered every acceptance criterion through the CLI and through MCP over stdio.
 
 Choices to confirm
-- A subtask is a task on the board or in the archive whose parent field names the task. A draft that was demoted from a subtask, and a dotted ID without a parent field, do not block the delete.
+- The subtask check follows the parent field only. A dotted ID without a parent field does not block the delete.
 - Drafts keep dependencies and references to a deleted task, because the cleanup covers tasks only.
 <!-- SECTION:FINAL_SUMMARY:END -->

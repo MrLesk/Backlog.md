@@ -420,6 +420,8 @@ describe("MCP task tools (MVP)", () => {
 
 		const tools = (await mcpServer.testInterface.listTools()).tools;
 		const deleteTool = tools.find((tool) => tool.name === "task_delete");
+		expect(deleteTool?.description).toContain("release its ID once no other branch or worktree still holds the task");
+		expect(deleteTool?.description).toContain("must have no subtasks, as tasks or as drafts");
 		// One task ID and nothing else: no confirmation argument.
 		expect(deleteTool?.inputSchema).toMatchObject({
 			properties: { id: { type: "string" } },

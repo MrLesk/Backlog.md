@@ -166,12 +166,18 @@ describe("McpServer bootstrap", () => {
 		TEST_DIR = createUniqueTestDir("mcp-server-guides");
 
 		for (const guide of [MCP_WORKFLOW_OVERVIEW, MCP_WORKFLOW_OVERVIEW_TOOLS]) {
-			expect(guide).toContain("- `task_delete` — permanently delete an archived task and release its ID.");
+			expect(guide).toContain(
+				"- `task_delete` — permanently delete an archived task and release its ID once no other branch or worktree still holds the task.",
+			);
 			expect(guide).toContain("Deleting takes two steps: `task_archive`, then `task_delete`.");
 			expect(guide).toContain("names the tasks it changed");
 			expect(guide).toContain("References held by drafts are not changed: the cleanup covers tasks only.");
+			expect(guide).toContain("or whose subtasks still exist as tasks or as drafts, is not deleted.");
 		}
 		expect(MCP_TASK_FINALIZATION_GUIDE).toContain("archive it and then call `task_delete`");
+		expect(MCP_TASK_FINALIZATION_GUIDE).toContain(
+			"Delete releases the ID once no other branch or worktree still holds the task",
+		);
 	});
 
 	it("task creation guide keeps parent task IDs distinct from milestone IDs", () => {
