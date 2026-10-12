@@ -5,7 +5,7 @@ status: Done
 assignee:
   - '@claude'
 created_date: '2026-10-11 10:43'
-updated_date: '2026-10-11 11:08'
+updated_date: '2026-10-12 06:09'
 labels:
   - enhancement
 dependencies: []
@@ -29,7 +29,7 @@ Tasks already record an updated date, and the board's task list response already
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [x] #1 Each web board card shows the task's last modified date next to the created date, in the same relative style, and distinguishable from the created date.
+- [x] #1 Each web board card shows the task's last modified date next to the created date, labelled so it is distinguishable from it. Both dates use the web UI's shared compact date style: today, yesterday or a number of days ago by local calendar day for a date less than a week old, an absolute date in the project's date format for an older date, and the full stored value on hover for a stored timestamp.
 - [x] #2 A card for a task with no updated date shows nothing for last modified.
 - [x] #3 No field is added to any API response; the card uses the updated date that the board's task list response already provides.
 <!-- AC:END -->
@@ -45,76 +45,90 @@ Tasks already record an updated date, and the board's task list response already
 
 <!-- SECTION:PLAN:BEGIN -->
 Research findings
-- The board card renders from the Task object the board already holds. The board loads it from GET /api/search (src/web/App.tsx:417 and :657, apiClient.search()), whose task results are the full Task (src/core/search-service.ts:244 `task: entity.task`). GET /api/tasks (handleListTasks, src/server/index.ts:810 `Response.json(tasks)`) returns the same full Task objects. Both carry `updatedDate` (parsed at src/markdown/parser.ts:214; `Task.updatedDate?: string` at src/types/index.ts:53). Checked against the running server: 82 of 120 tasks carry updatedDate in both responses, 38 have none. No API, fetch or loader change is needed.
-- Existing element being extended: the created date in the card footer row of src/web/components/TaskCard.tsx. It is a bare relative value from the card's own `formatRelativeDate` helper ("today", "yesterday", "2d ago", "3w ago", "3mo ago", "1y ago"), followed by an optional `Due: <date>` item and the first assignee. The created date has no hover/full-date affordance today.
-- Existing pattern being reused: the footer's labelled item (`Due: <date>`) for the wording form, and the row's own typography (text-[10px]), colour (text-gray-400 / dark:text-gray-500) and gaps (gap-x-2 gap-y-1), all inherited.
-- Wording: the web UI already names this field "Updated" (task detail "Updated:", drafts list "Updated:", statistics "Updated").
-- Layout check on the real board: adding the updated date as one more item of the justify-between footer row put it in a different place on each card (centre with an assignee, far right without one). Keeping it in one item together with the created date puts it in the same place on every card and still wraps item by item in narrow columns.
+- The board card renders from the Task object the board already holds. The board loads it from GET /api/search (src/web/App.tsx:417 and :657, apiClient.search()), whose task results are the full Task (src/core/search-service.ts:244 `task: entity.task`). GET /api/tasks (handleListTasks, src/server/index.ts:810 `Response.json(tasks)`) returns the same full Task objects. Both carry `updatedDate` (parsed at src/markdown/parser.ts:214; `Task.updatedDate?: string` at src/types/index.ts:53). No API, fetch or loader change is needed.
+- Existing element being extended: the created date in the card footer row of src/web/components/TaskCard.tsx, followed by an optional `Due: <date>` item and the first assignee.
+- Shared date renderer: `StoredDate` (src/web/components/StoredDate.tsx) in its compact form, backed by `formatStoredDateForCompactDisplay` in src/web/utils/date-display.ts. The All Tasks table uses it for its Created column. The card already receives the project's date format as its `dateFormat` prop for the due date (Board -> TaskColumn -> TaskCard), so nothing new has to be passed down.
+- Wording: the web UI already names this field "Updated" (task detail "Updated:", drafts list "Updated:", statistics "Updated"), and the footer's own labelled item has the form `Due: <date>`.
+- Layout check on a real board: adding the updated date as one more item of the justify-between footer row put it in a different place on each card (centre with an assignee, far right without one). Keeping it in one item together with the created date puts it in the same place on every card and still wraps item by item in narrow columns.
 
 Plan
-1. In TaskCard.tsx, wrap the created-date span in one footer item that also holds the conditional updated date: `<span className="flex flex-wrap gap-x-2 gap-y-1">` containing the existing created span and `{task.updatedDate && <span>Updated: {formatRelativeDate(task.updatedDate)}</span>}`. Same helper, same gaps as the row, no new props, no new component. A task without updatedDate shows exactly what it shows today.
-2. Do not add a hover/full date: the created date beside it exposes none, and the task says to mirror the created date. Report this as an open design choice (the issue asked for the full date on hover).
-3. Add src/test/web-task-card-dates.test.tsx: render TaskCard and assert on rendered text. A task whose updated date is derived from the test clock as two days ago shows "Updated: 2d ago" beside the created value; a task with no updated date shows only the created value and no "Updated" text. No calendar dates are hardcoded.
-4. Verify: bun test --timeout=10000 on the new test file and the existing card test files, bunx tsc --noEmit, bun run check ., then the real board in a browser at a normal column width and at narrow ones, in light and dark themes.
-5. Simplify pass, record modified files and implementation notes, commit locally. No push, no PR.
+1. TaskCard.tsx: one footer item, `<span className="flex flex-wrap gap-x-2 gap-y-1">`, holds the created date and the optional `Updated:` date. Both are rendered by `<StoredDate value={...} dateFormat={dateFormat} compact />`. The item repeats the row's gaps and inherits its typography and colour. A task without updatedDate shows only the created date.
+2. Delete the card's own `formatRelativeDate` (nothing else uses it), so the card has no date formatting of its own.
+3. src/test/web-task-card-dates.test.tsx: pin a time zone and derive every stored date from the test clock. Cover today, yesterday across a local midnight, a few days ago and older than a week (absolute, configured format), each for both created and updated, plus a task with no updated date. Every case must fail if the card formats dates itself.
+4. Verify: each test file that renders the board or its cards on its own with bun test --timeout=10000, bunx tsc --noEmit, bun run check ., then a real browser against scratch projects outside the repository at the minimum and normal column widths, in light and dark themes, with footer wrap counts before and after.
+5. Simplify pass, record modified files and notes, commit locally.
 
-Out of scope (unchanged): API responses, TUI/CLI/MCP output, list and detail views, config, dependencies.
+History
+- The first version rendered both dates with the card's own relative formatter ("3w ago", no hover) and left the created date untouched. After pull request review the decision was to move both dates to the shared renderer. The created date changes too, on purpose, so the two dates stay in one style.
+
+Out of scope (unchanged): API responses, the card's accessible name, TUI/CLI/MCP output, list and detail views, config, dependencies.
 <!-- SECTION:PLAN:END -->
 
 ## Implementation Notes
 
 <!-- SECTION:NOTES:BEGIN -->
-Implemented on branch tasks/back-726-card-last-modified (local only, not pushed).
-
 What changed
-- src/web/components/TaskCard.tsx: the card footer's created date now shares one footer item with an optional `Updated: <relative>` value, rendered through the card's existing `formatRelativeDate` helper. The item reuses the footer row's own gaps (gap-x-2 gap-y-1) and inherits its typography and colour, so the two dates have an identical computed style (10px, weight 400, gray-400 in light, gray-500 in dark). A task without updatedDate renders only the created date, exactly as before. Footer comment updated to match what the row holds.
-- src/test/web-task-card-dates.test.tsx (new): renders TaskCard and asserts the rendered dates. Updated two days ago -> ["5d ago", "Updated: 2d ago"]; no updated date -> ["5d ago"] and no "Updated" text anywhere on the card. All stored dates are derived from the test clock. The first test fails against the unchanged card (checked by temporarily restoring the original file).
+- src/web/components/TaskCard.tsx: the footer's created date and the optional `Updated:` date share one footer item and are both rendered by the shared `StoredDate` component in its compact form, with the `dateFormat` prop the card already received for its due date. The item repeats the footer row's gaps (gap-x-2 gap-y-1) and inherits its typography and colour, so the two dates have an identical computed style (10px, weight 400, gray-400 in light, gray-500 in dark). A task without updatedDate shows only the created date.
+- Deleted from TaskCard.tsx: the card's own `formatRelativeDate` helper ("3w ago", "3mo ago", "1y ago", counted in elapsed 24 hour periods, no hover). Nothing else used it. The card now has no date formatting of its own, and the shared formatter in src/web/utils/date-display.ts is the only relative-date code left in src/web.
+- src/test/web-task-card-dates.test.tsx: renders the card in a pinned time zone (Asia/Tokyo) with stored dates derived from the test clock, and asserts each date's text and hover. Cases: today, late last night (yesterday by local day although less than 24 hours old), the past week counted in local days, older than a week (absolute local day in a configured dd/mm/yyyy format, hover keeping the stored UTC day), each for created and updated, plus a task with no updated date. All five cases fail against the card's old formatter (checked by temporarily restoring the previous card file).
+
+What users see
+- A date less than a week old reads today, yesterday or "Nd ago" by local calendar day. A task changed at 22:00 last night reads "yesterday" the next morning, where the old card formatter said "today".
+- An older date shows as an absolute date in the project's date format (date part only), where the created date used to read "3w ago", "3mo ago" or "1y ago". This changes the created date on every card, including cards with no updated date.
+- A stored timestamp shows its full stored value, marked (UTC), on hover. A date-only stored value has no time and gets no hover, as elsewhere in the web UI.
+- Example, task created three weeks ago and updated two days ago: before `3w ago` `Updated: 2d ago`; now `21/09/2026` `Updated: 2d ago` in a dd/mm/yyyy project (`2026-09-21` `Updated: 2d ago` in a yyyy-mm-dd project), with hovers `21/09/2026 06:05 (UTC)` and `10/10/2026 06:05 (UTC)`.
 
 Payload check (no API change)
-- The board loads tasks from GET /api/search (src/web/App.tsx:417, :657); its task results are the full Task (src/core/search-service.ts:244). GET /api/tasks (src/server/index.ts:810) returns the same objects. Against the running server both carried updatedDate for 82 of 120 tasks; the board then showed "Updated:" on exactly those 82 cards and on none of the other 38.
+- The board loads tasks from GET /api/search (src/web/App.tsx:417, :657); its task results are the full Task (src/core/search-service.ts:244). GET /api/tasks (src/server/index.ts:810) returns the same objects. The branch changes no server or API file. On the scratch copy used below the payload carried updatedDate for 70 of 105 tasks and the board showed "Updated:" on exactly those 70 cards.
 
 Why one grouped item instead of one more footer item
-- First attempt added the updated date as a sibling of the created date, like `Due:`. On the real board the row's justify-between put it in the centre on cards with an assignee and at the far right on cards without one, so the value jumped around while scanning a column. Grouping it with the created date keeps it in the same place on every card and still wraps item by item when a column is very narrow.
+- Added as a sibling of the created date, like `Due:`, the row's justify-between put the updated date in the centre on cards with an assignee and at the far right on cards without one. Grouped with the created date it sits in the same place on every card and still wraps item by item when a column is very narrow.
 
-Browser check (Chrome, real project board plus a scratch project with clock-relative dates, light and dark)
-- Normal width (1440px window, three columns, footer about 285px): every footer on the real board stays on one line; reads "1mo ago  Updated: 3d ago" at the left with the assignee at the right. Header, title, labels and progress ring do not move.
-- Minimum column width (16rem columns, footer 193px): one line when the two dates and the assignee fit, for example "3w ago  Updated: 2d ago  @alex-agent" (fits with under 1px to spare). Longer combinations wrap the assignee to a second footer line (17 of 120 cards on this board, all with assignee names of roughly 60px or more), the same way the footer already wraps for due dates. With a due date the footer becomes two tidy lines: dates above, due date and assignee below.
-- A card with both a due date and an assignee needs about 270-330px of footer, so at the 1440px three-column width the assignee wraps to a second line where it previously fit.
-- Milestone lanes in a 900px window (columns 123px, footer 94px): the footer stacks as "1mo ago" / "Updated: 3d ago" / "@grok", each phrase intact. "Updated: yesterday" is 0.4px wider than that footer and breaks after the colon (5 cards). The card header already overlaps at this width before this change.
+Footer wrapping, measured before and after the move to the shared renderer
+- Measured in a browser on a scratch copy of this repository's backlog folder outside the repository: 105 cards, 70 with an updated date, 69 with an assignee, 57 with both, none with a due date. Both measurements were taken on the same day.
+- Minimum column width (16rem columns, footer 193px): 9 of 105 footers wrapped before, 56 of 105 wrap now. In every case it is the assignee that moves to a second footer line; 56 of the 57 cards with both an updated date and an assignee do this (the exception reads `2026-08-15` `Updated: 5d ago` with a short assignee). The created and updated dates stay together on one line on all 70 cards; the widest pair is 177px.
+- Normal width (1440px window, three columns, footer 285px): 0 of 105 wrapped before, 0 wrap now.
+- A card with both a due date and an assignee still wraps the assignee to a second line at a normal width (seen on a scratch fixture at a 276px footer), as it did before the move.
+- Milestone lanes in a 900px window (columns 123px, footer 94px): 79 of 105 footers wrapped before, 82 wrap now. The two dates stack on separate lines on all 70 cards in both. New at this width: `Updated:` followed by an absolute date is about 108px wide, so it breaks after the colon on 62 cards, where none broke before on this copy. The card header already overlaps at this width without this task.
+
+Browser check
+- Built-in browser pane, viewer time zone Europe/Vienna, light and dark themes, on the scratch copy above (project format yyyy-mm-dd hh:mm) and on a two-column scratch fixture with dates relative to now (project format dd/mm/yyyy).
+- Fixture at a normal width: `21/09/2026` alone for a never modified task; `5d ago` `Updated: yesterday` for a task changed at 22:00 the night before, ten hours earlier; `21/09/2026` `Updated: 2d ago` with the assignee at the right on one line; `28/09/2026` `Updated: today`. At the minimum width the same card reads `21/09/2026` `Updated: 2d ago` with the assignee on a second line.
+- The ID, title, labels and progress ring do not move. Both themes show the same layout.
 
 Checks
-- bun test --timeout=10000 on the new file plus the eight existing test files that render board cards: 96 pass, 0 fail.
+- Each of the 15 test files that render the board or its cards run on its own with bun test --timeout=10000: 152 pass, 0 fail. src/web/utils/date-display.test.ts (the shared formatter): 17 pass.
 - bunx tsc --noEmit: exit 0. bun run check .: 431 files, no fixes.
+- Biome coverage: Biome's configured file set (`files.includes` in biome.json) covers `.ts` only, so neither changed `.tsx` file is linted or formatted by it. Running Biome on the two paths directly reports both as ignored. Their formatting was checked by reading them; bunx tsc --noEmit does cover both.
 
-Open design choices for review
-- Wording: "Updated:" (matches the task detail, drafts list and statistics wording, and the footer's own `Due:` form) rather than the issue's "Last modified", which is about 21px wider and would wrap the assignee on most 16rem cards.
-- No full date on hover: the created date beside it has none, and the task says to mirror it. The issue asked for one.
-- Not done, would change existing layout: anchoring the assignee to the right when it wraps (it wraps to the left today, with or without this change).
-
-Follow-up after review
-- Biome coverage: `bun run check .` passes, but Biome's configured file set (`files.includes` in biome.json) covers `.ts` only, so neither changed `.tsx` file (src/web/components/TaskCard.tsx, src/test/web-task-card-dates.test.tsx) is linted or formatted by it. Running Biome on the two paths directly reports both as ignored. Their formatting follows the surrounding files by hand; `bunx tsc --noEmit` does cover both.
-- Comment only: the comment above the dates group in TaskCard.tsx now says the group uses the same gaps as the footer row and that a new labelled relative date belongs inside the group. No markup or class change.
-- Re-ran after the comment change, with origin/main unchanged: 96 pass, 0 fail across the new test file and the eight existing files that render board cards; `bunx tsc --noEmit` exit 0; `bun run check .` 431 files, no fixes.
+Choices recorded
+- Wording: "Updated:" (matches the task detail, drafts list and statistics wording, and the footer's own `Due:` form) rather than the issue's "Last modified".
+- Not done, would change existing layout: anchoring the assignee to the right when it wraps (it wraps to the left, with or without this task), and keeping `Updated:` and its date on one line in very narrow lanes.
+- Not touched: the card's accessible name, which has never included the created or due date.
 <!-- SECTION:NOTES:END -->
 
 ## Final Summary
 
 <!-- SECTION:FINAL_SUMMARY:BEGIN -->
-Web board cards now show when a task was last updated, beside the created date and in the same relative style. A task modified two days ago shows its created value followed by `Updated: 2d ago` (for example `3w ago` `Updated: 2d ago`). A task that was never modified shows only the created value, as before.
+Web board cards now show when a task was last updated, beside the created date. Both dates are rendered by the web UI's shared compact date renderer, the one the All Tasks table uses for its Created column.
+
+What users see
+- A date less than a week old reads today, yesterday or a number of days ago, by local calendar day. An older date shows as an absolute date in the project's date format. A stored timestamp shows its full stored value on hover.
+- A task created three weeks ago and updated two days ago shows `21/09/2026` `Updated: 2d ago` in a dd/mm/yyyy project. A task that was never modified shows only its created date.
+- The created date changes on every card: it used to read "3w ago", "3mo ago" or "1y ago" from the card's own formatter and had no hover.
 
 What changed
-- src/web/components/TaskCard.tsx: the footer's created date and the optional updated date share one footer item. Both go through the card's existing relative-date helper and use the footer row's typography, colour and gaps.
-- src/test/web-task-card-dates.test.tsx: renders the card and asserts the dates it shows, with every date derived from the test clock.
+- src/web/components/TaskCard.tsx: the footer's created date and the optional `Updated:` date share one footer item and both go through `StoredDate` in its compact form, with the date format the card already received for its due date. The card's own `formatRelativeDate` helper is deleted, so the card has no date formatting of its own.
+- src/test/web-task-card-dates.test.tsx: renders the card in a pinned time zone with dates derived from the test clock and asserts each date's text and hover for today, yesterday across a local midnight, the past week, older than a week, and a task with no updated date.
 
 No API changed. The board reads GET /api/search, which already returns the full task including the updated date, as does GET /api/tasks.
 
 Verification
-- 96 tests pass across the new test file and the eight existing files that render board cards. The new "shows the updated date" test fails against the unchanged card.
+- 152 tests pass across the 15 test files that render the board or its cards, each run on its own. All five card date cases fail against the card's old formatter.
 - bunx tsc --noEmit exits 0. bun run check . passes, with the caveat that Biome's file set covers .ts only, so the two changed .tsx files are not linted or formatted by it.
-- Checked in Chrome on the real board and on a scratch project with clock-relative dates, in light and dark themes: "Updated:" appeared on exactly the 82 of 120 cards whose task has an updated date, in the same style as the created date, and the ID, title, labels and progress ring did not move.
+- Checked in a browser in light and dark themes on scratch projects outside the repository, at the minimum and normal column widths.
 
-Choices to confirm
-- The label is `Updated:`, not the issue's "Last modified". It matches the task detail, drafts list and statistics wording and is about 21px narrower.
-- No full date on hover, because the created date beside it has none.
-- Footer wrapping: at the minimum column width (16rem) 17 of 120 cards on the real board wrap the assignee to a second footer line. A card with both a due date and an assignee wraps the assignee at the normal three-column width (1440px window), where it previously fit on one line.
+Risks and choices to confirm
+- Footer wrapping at the minimum column width (16rem): on a scratch copy of this repository's backlog, 56 of 105 cards now wrap the assignee to a second footer line, up from 9 of 105 with the card's own formatter, because an absolute date is wider than "3w ago". The created and updated dates stay together on one line on every card. At a normal three-column width nothing wraps, except a card that has both a due date and an assignee.
+- The label is `Updated:`, not the issue's "Last modified". It matches the task detail, drafts list and statistics wording.
 <!-- SECTION:FINAL_SUMMARY:END -->
