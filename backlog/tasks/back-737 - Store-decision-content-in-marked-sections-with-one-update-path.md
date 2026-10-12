@@ -4,7 +4,7 @@ title: Store decision content in marked sections with one update path
 status: To Do
 assignee: []
 created_date: '2026-10-11 19:08'
-updated_date: '2026-10-11 19:24'
+updated_date: '2026-10-12 06:04'
 labels:
   - bug
 dependencies:
@@ -58,3 +58,13 @@ Depends on BACK-734 (one create function, which writes new decisions in the mark
 - [ ] #2 bun run check . passes when formatting/linting touched
 - [ ] #3 bun test (or scoped test) passes
 <!-- DOD:END -->
+
+## Comments
+
+<!-- COMMENTS:BEGIN -->
+author: @alex-agent
+created: 2026-10-12 06:04
+---
+Two review points raised on pull request #1088 (the held status edit) are to be settled in the shared decision update path built here, for every decision write: (1) resolve and validate the project config, including the auto-commit setting, before the file is written, so a config error cannot leave a half-applied change; (2) decide and state what auto-commit does when a decision file is a link to a target outside the repository, where staging the link commits nothing.
+---
+<!-- COMMENTS:END -->
