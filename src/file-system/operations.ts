@@ -542,24 +542,30 @@ export class FileSystem {
 	}
 
 	/**
-	 * The directories archived tasks are read from, each real directory once.
+	 * The directories archived tasks are read from, each real directory once, together with the
+	 * real directory each one resolves to.
 	 *
 	 * A directory that does not exist has nothing to read. Two entries that resolve to the same
 	 * real directory (one linked to the other) are read once, so a link between them can neither
 	 * report every archived task as a duplicate nor send a reader around a symlink cycle.
 	 */
-	async getArchivedTaskDirs(): Promise<string[]> {
+	async getArchivedTaskLocations(): Promise<Array<{ directory: string; realDirectory: string }>> {
 		const backlogDir = await this.getBacklogDir();
-		const directories: string[] = [];
+		const locations: Array<{ directory: string; realDirectory: string }> = [];
 		const realDirectories = new Set<string>();
 		for (const relativeDirectory of ARCHIVED_TASK_DIRECTORIES) {
 			const directory = join(backlogDir, relativeDirectory);
 			const realDirectory = await realpath(directory).catch(() => null);
 			if (realDirectory === null || realDirectories.has(realDirectory)) continue;
 			realDirectories.add(realDirectory);
-			directories.push(directory);
+			locations.push({ directory, realDirectory });
 		}
-		return directories;
+		return locations;
+	}
+
+	/** The directories of {@link getArchivedTaskLocations}, for readers that only need the paths. */
+	async getArchivedTaskDirs(): Promise<string[]> {
+		return (await this.getArchivedTaskLocations()).map((location) => location.directory);
 	}
 
 	async ensureBacklogStructure(): Promise<void> {

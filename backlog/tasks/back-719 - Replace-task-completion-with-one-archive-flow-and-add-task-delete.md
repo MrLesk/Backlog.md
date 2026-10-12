@@ -5,7 +5,7 @@ status: Done
 assignee:
   - '@claude'
 created_date: '2026-10-11 10:42'
-updated_date: '2026-10-11 21:26'
+updated_date: '2026-10-12 05:34'
 labels:
   - bug
 dependencies: []
@@ -262,6 +262,10 @@ A failed move leaves one file. In `moveWithoutReplacing`, when the source could 
 Also: the doc comment of `safeCleanup` in src/test/test-utils.ts sits on its function again; the archive test helper had been inserted between the two.
 
 Verification: `bunx tsc --noEmit` and `bun run check .` are clean; the scoped tests pass (14 files, 294 tests); the move and cleanup tests also pass on Linux (Debian container, Bun 1.3.14).
+
+Maintainer ruling on a linked `completed/` folder: it is still followed, and the move is disclosed. When the folder that `backlog doctor` would move files out of is a link to a directory outside the backlog directory, the report of a plain `backlog doctor`, which is also the preview shown before `--fix`, prints one more line under the file list: "backlog/completed is a link to <real directory>, outside the backlog directory. The files are moved out of that folder." The real directory is the one the archived-folder reader resolves: `FileSystem.getArchivedTaskLocations` returns each directory with the real directory it resolved, `getArchivedTaskDirs` maps from it, and the preview does not resolve the folder a second time. What is moved did not change, and a link to a directory inside the backlog directory is not named. Tests: src/test/cli-doctor.test.ts pins the whole report for an ordinary folder, which is unchanged, and for a linked folder, which has the extra line with the real path; src/test/archived-task-folders.test.ts covers the plan for a link to a directory outside and for one inside the backlog directory.
+
+Also decided by the maintainer and no longer open: a plain `backlog doctor` reports a leftover `completed/` folder and exits 0, and `--fix` moves it.
 <!-- SECTION:NOTES:END -->
 
 ## Final Summary
@@ -276,7 +280,7 @@ What changed
 - A task that exists only on another branch is refused by core with one message ("Task X exists only on branch \"b\" and is read-only here. Switch to that branch to change it."), which MCP and HTTP report exactly as they report the archived refusal; the CLI reads the working copy only and keeps its not-found line with the hint. An ID nobody claims reads "Task X not found." on every interface. Every task file move goes through one no-replace move, so archiving never overwrites a file already in the archive, and a move that fails leaves the task as one file where it was. With auto-commit off nothing is staged, by archive or by cleanup, on any interface.
 - Archived tasks are read-only everywhere through one core rule and one error ("Task X is archived. Archived tasks are read-only."). Task detail and MCP search output mark them as archived; the web modal and the TUI show the read-only banner and refuse edit and archive keys before asking anything.
 - Finished means the final status only. An archived dependency satisfies its dependents only when it is in the final status, and statistics count board tasks plus archived tasks in the final status.
-- Existing data: a leftover `completed/` folder is read as part of the archive. `backlog doctor` reports it and `--fix` moves it into `archive/tasks` without changing IDs or replacing files; an ID that two records claim is reported and repaired there, and fails closed until then.
+- Existing data: a leftover `completed/` folder is read as part of the archive. `backlog doctor` reports it and exits 0, and `--fix` moves it into `archive/tasks` without changing IDs or replacing files; when the folder is a link to a directory outside the backlog directory, the report names that real directory before anything is moved; an ID that two records claim is reported and repaired there, and fails closed until then.
 - Help, README, CLI-INSTRUCTIONS and the shipped CLI and MCP guides describe the single archive flow.
 
 Verification
@@ -286,5 +290,5 @@ Verification
 Follow-ups and risks
 - Scripts or agents that call `task complete` or `task_complete` must switch to archive.
 - Deleting an archived task is BACK-730, restoring one is BACK-731, and the non-interactive cleanup failure is BACK-720.
-- Left for review: the Groma descriptions of backlog-folder, task-details, file-storage, terminal-widgets, core and mcp-tools still mention completed storage or `task_complete`; `backlog doctor` exits 0 when a leftover `completed/` folder is its only report.
+- Left for review: the Groma descriptions of backlog-folder, task-details, file-storage, terminal-widgets, core and mcp-tools still mention completed storage or `task_complete`.
 <!-- SECTION:FINAL_SUMMARY:END -->

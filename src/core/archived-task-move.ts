@@ -15,26 +15,45 @@ export interface ArchivedTaskMovePlan {
 	moves: Array<{ sourcePath: string; targetPath: string }>;
 	/** Files that stay where they are because the archive folder already has a file with that name. */
 	blocked: string[];
+	/**
+	 * Folders with files to move that are links to a directory outside the backlog directory. The
+	 * move takes the files out of that directory, so whoever confirms it is shown where it is.
+	 * `realDirectory` is absolute.
+	 */
+	linkedSources: Array<{ directory: string; realDirectory: string }>;
 }
 
 function projectPath(core: Core, path: string): string {
 	return relative(core.filesystem.rootDir, path).split(sep).join("/");
 }
 
+function isOutside(directory: string, path: string): boolean {
+	const fromDirectory = relative(directory, path);
+	return fromDirectory === ".." || fromDirectory.startsWith(`..${sep}`) || isAbsolute(fromDirectory);
+}
+
 /**
  * List the archived task files that live outside the archive folder. Nothing is changed.
  *
  * The directories come from the same list every archived-task reader uses, so a folder that is
- * only a link to the archive folder is not a second place to move files from.
+ * only a link to the archive folder is not a second place to move files from. The real directory
+ * of a linked folder is the one that reader resolved; it is not resolved again here.
  */
 export async function previewArchivedTaskMove(core: Core): Promise<ArchivedTaskMovePlan> {
 	const archiveDirectory = core.filesystem.archiveTasksDir;
 	const config = await core.filesystem.loadConfig();
 	const pattern = buildGlobPattern((config?.prefixes?.task ?? "task").toLowerCase());
-	const plan: ArchivedTaskMovePlan = { archiveDirectory: projectPath(core, archiveDirectory), moves: [], blocked: [] };
+	const plan: ArchivedTaskMovePlan = {
+		archiveDirectory: projectPath(core, archiveDirectory),
+		moves: [],
+		blocked: [],
+		linkedSources: [],
+	};
+	const realBacklogDirectory = await realpath(core.filesystem.backlogDir);
 
-	for (const directory of await core.filesystem.getArchivedTaskDirs()) {
+	for (const { directory, realDirectory } of await core.filesystem.getArchivedTaskLocations()) {
 		if (directory === archiveDirectory) continue;
+		const movesBefore = plan.moves.length;
 		const files = await Array.fromAsync(new Bun.Glob(pattern).scan({ cwd: directory, followSymlinks: true }));
 		for (const file of files.sort((left, right) => left.localeCompare(right))) {
 			const sourcePath = projectPath(core, join(directory, file));
@@ -46,6 +65,9 @@ export async function previewArchivedTaskMove(core: Core): Promise<ArchivedTaskM
 			);
 			if (targetTaken) plan.blocked.push(sourcePath);
 			else plan.moves.push({ sourcePath, targetPath: projectPath(core, targetPath) });
+		}
+		if (plan.moves.length > movesBefore && isOutside(realBacklogDirectory, realDirectory)) {
+			plan.linkedSources.push({ directory: projectPath(core, directory), realDirectory });
 		}
 	}
 	return plan;
@@ -134,7 +156,7 @@ export async function moveArchivedTasks(core: Core): Promise<ArchivedTaskMovePla
 			throw new Error("Repair the duplicate task IDs before moving archived tasks into the archive folder.");
 		}
 		const plan = await previewArchivedTaskMove(core);
-		const moved: ArchivedTaskMovePlan = { archiveDirectory: plan.archiveDirectory, moves: [], blocked: plan.blocked };
+		const moved: ArchivedTaskMovePlan = { ...plan, moves: [] };
 		if (plan.moves.length === 0) return moved;
 
 		await mkdir(core.filesystem.archiveTasksDir, { recursive: true });

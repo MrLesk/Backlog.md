@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
-import { lstat, mkdir, readdir, readlink, symlink, unlink } from "node:fs/promises";
+import { lstat, mkdir, readdir, readlink, realpath, symlink, unlink } from "node:fs/promises";
 import { join } from "node:path";
 import { moveArchivedTasks, moveWithoutReplacing, previewArchivedTaskMove } from "../core/archived-task-move.ts";
 import { Core } from "../core/backlog.ts";
@@ -140,6 +140,8 @@ describe("archived task folders", () => {
 					},
 				],
 				blocked: [],
+				// An ordinary folder inside the backlog directory is not a linked source.
+				linkedSources: [],
 			});
 			expect((await readdir(completedFolder)).sort()).toEqual(["task-2 - Finished.md", "task-3 - Also-finished.md"]);
 
@@ -181,11 +183,18 @@ describe("archived task folders", () => {
 			await writeTask(outside, "task-6 - Behind-a-link.md", makeTask("TASK-6", "Behind a link"));
 			await symlink(outside, completedFolder, "junction");
 
+			// The preview names the real directory the files would be taken out of.
+			const linkedSources = [{ directory: "backlog/completed", realDirectory: await realpath(outside) }];
+			expect((await previewArchivedTaskMove(core)).linkedSources).toEqual(linkedSources);
+
 			const moved = await moveArchivedTasks(core);
 
 			expect(moved.moves.map((move) => move.targetPath)).toEqual(["backlog/archive/tasks/task-6 - Behind-a-link.md"]);
+			expect(moved.linkedSources).toEqual(linkedSources);
 			expect(await readdir(outside)).toEqual([]);
 			expect(await archivedIds()).toEqual(["TASK-6"]);
+			// Nothing is left to move, so there is no folder to name any more.
+			expect((await previewArchivedTaskMove(core)).linkedSources).toEqual([]);
 
 			// With the folders linked to each other there is one directory and nothing to move.
 			await safeCleanup(completedFolder);
@@ -194,7 +203,19 @@ describe("archived task folders", () => {
 				archiveDirectory: "backlog/archive/tasks",
 				moves: [],
 				blocked: [],
+				linkedSources: [],
 			});
+		});
+
+		it("does not name a completed folder that is a link to a directory inside the backlog directory", async () => {
+			const inside = join(core.filesystem.backlogDir, "old-completed");
+			await writeTask(inside, "task-6 - Behind-a-link.md", makeTask("TASK-6", "Behind a link"));
+			await symlink(inside, completedFolder, "junction");
+
+			const preview = await previewArchivedTaskMove(core);
+
+			expect(preview.moves.map((move) => move.sourcePath)).toEqual(["backlog/completed/task-6 - Behind-a-link.md"]);
+			expect(preview.linkedSources).toEqual([]);
 		});
 
 		itWithFileSymlinks("keeps a linked task file a link to the same file", async () => {
@@ -253,6 +274,7 @@ describe("archived task folders", () => {
 				archiveDirectory: "backlog/archive/tasks",
 				moves: [{ sourcePath: `backlog/completed/${fileName}`, targetPath: `backlog/archive/tasks/${fileName}` }],
 				blocked: [],
+				linkedSources: [],
 			});
 			expect((await core.getTask("task-41"))?.title).toBe("Finished work");
 			expect((await core.getTask("task-42"))?.title).toBe("Stale copy");

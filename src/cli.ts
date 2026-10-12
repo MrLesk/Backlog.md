@@ -455,6 +455,11 @@ function printArchivedTaskMovePlan(plan: ArchivedTaskMovePlan, duplicateIdsPendi
 		console.log(`\n${pluralizeFiles(plan.moves.length, "archived task")} stored outside ${plan.archiveDirectory}:`);
 		for (const move of plan.moves.slice(0, previewLimit)) console.log(`  ${move.sourcePath}`);
 		if (plan.moves.length > previewLimit) console.log(`  ... and ${plan.moves.length - previewLimit} more`);
+		for (const { directory, realDirectory } of plan.linkedSources) {
+			console.log(
+				`${directory} is a link to ${realDirectory}, outside the backlog directory. The files are moved out of that folder.`,
+			);
+		}
 		console.log(
 			duplicateIdsPending
 				? `They are moved into ${plan.archiveDirectory} once the duplicate task IDs above are repaired. File names and task IDs stay the same.`

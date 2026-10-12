@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
-import { chmod, mkdir, readdir, unlink } from "node:fs/promises";
+import { chmod, mkdir, readdir, realpath, symlink, unlink } from "node:fs/promises";
 import { join } from "node:path";
 import { $ } from "bun";
 import { Core } from "../core/backlog.ts";
@@ -331,6 +331,44 @@ describe("archived tasks stored outside the archive folder", () => {
 		const after = await $`bun ${cliPath} doctor`.cwd(testDir).quiet().nothrow();
 		expect(after.exitCode).toBe(0);
 		expect(`${after.stdout}`).not.toContain("stored outside");
+	});
+
+	describe("the report for one file in the completed folder", () => {
+		const fileName = "task-7 - Finished.md";
+		const reportStart = [
+			"No duplicate IDs, self-referential dependencies, or dependency cycles found.",
+			"",
+			"1 archived task file stored outside backlog/archive/tasks:",
+			`  backlog/completed/${fileName}`,
+		];
+		const reportEnd =
+			"'backlog doctor --fix' moves them into backlog/archive/tasks. File names and task IDs stay the same.";
+		const reportLines = async () => {
+			const report = await $`bun ${cliPath} doctor`.cwd(testDir).quiet().nothrow();
+			expect(report.exitCode).toBe(0);
+			return `${report.stdout}`.trimEnd().split("\n");
+		};
+
+		it("says nothing about links for an ordinary folder", async () => {
+			await removeDuplicateTasks();
+			await writeCompletedTask(fileName, makeTask("TASK-7", "Finished"));
+
+			expect(await reportLines()).toEqual([...reportStart, reportEnd]);
+		});
+
+		it("names the real directory when the folder is a link to one outside the backlog directory", async () => {
+			await removeDuplicateTasks();
+			const outside = join(testDir, "shared-completed");
+			await mkdir(outside, { recursive: true });
+			await Bun.write(join(outside, fileName), serializeTask({ ...makeTask("TASK-7", "Finished"), status: "Done" }));
+			await symlink(outside, completedFolder(), "junction");
+
+			expect(await reportLines()).toEqual([
+				...reportStart,
+				`backlog/completed is a link to ${await realpath(outside)}, outside the backlog directory. The files are moved out of that folder.`,
+				reportEnd,
+			]);
+		});
 	});
 
 	it("repairs duplicate IDs first, keeps the ID on the completed-folder record, then moves it", async () => {
