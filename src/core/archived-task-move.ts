@@ -101,10 +101,15 @@ export interface MoveFileOperations {
 
 /**
  * Move one task file to another folder without ever replacing a file that is already there. Every
- * task file move goes through this function: archiving, and the `doctor` move of a leftover folder.
- * It fails with EEXIST when the target name is taken.
+ * move of a task file between folders goes through this function: archiving, and the `doctor` move
+ * of a leftover folder. It fails with EEXIST when the target name is taken.
  *
  * Demotion is not a move: it rewrites the task into a new draft file.
+ *
+ * A title change does not come here either. A task file keeps its name, and the file of a draft,
+ * document or decision is renamed by `writeRecordFile` in `src/file-system/operations.ts`: a new
+ * name that differs only in letter case is the same file where the file system ignores letter case,
+ * and this function would refuse it as taken.
  *
  * The task is one file before the move and one file after it, also when the move fails: the target
  * is created first, under a name that was free, and the source is removed last. If anything fails

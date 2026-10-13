@@ -1672,11 +1672,7 @@ export class Core {
 	 * archived task keeps its ID, so allocation never hands that ID out again.
 	 */
 	private async getOccupiedTaskIds(): Promise<string[]> {
-		const snapshot = await this.loadTasksWithStableBranchSnapshot({
-			includeArchived: false,
-			visibleArchived: false,
-			forceRemoteRefresh: true,
-		});
+		const snapshot = await this.loadTasksWithStableBranchSnapshot({ forceRemoteRefresh: true });
 		const config = snapshot.config;
 		const taskPrefix = config?.prefixes?.task ?? "task";
 		if (!snapshot.identityIndex) throw new Error("Task corpus identity index was not initialized");
