@@ -91,6 +91,22 @@ describe("Task ID Generation with Archives", () => {
 		expect((await core.getTask("task-7"))?.source).toBe("archived");
 	});
 
+	it("reserves the number in an archived file's name when the file cannot be read as a task", async () => {
+		// This project is outside a Git repository, so no worktree list leads to these files.
+		await mkdir(core.fs.archiveTasksDir, { recursive: true });
+		await Bun.write(join(core.fs.archiveTasksDir, "task-5 - Damaged.md"), "not a task file");
+
+		const afterArchiveFolder = await core.createTaskFromInput({ title: "After the archive folder" }, false);
+		expect(afterArchiveFolder.task.id).toBe("TASK-6");
+
+		const leftoverDirectory = join(core.fs.backlogDir, "completed");
+		await mkdir(leftoverDirectory, { recursive: true });
+		await Bun.write(join(leftoverDirectory, "task-9 - Damaged.md"), "not a task file");
+
+		const afterLeftoverFolder = await core.createTaskFromInput({ title: "After the completed folder" }, false);
+		expect(afterLeftoverFolder.task.id).toBe("TASK-10");
+	});
+
 	it("keeps archived parent and subtask IDs reserved", async () => {
 		// Create parent task-1
 		await core.createTaskFromInput({ title: "Parent Task" }, false);

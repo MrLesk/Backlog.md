@@ -1588,9 +1588,10 @@ export class Core {
 	}
 
 	/**
-	 * Task files found by name in this project's folder and, inside a Git repository, in the same
-	 * folder of every other worktree. A file reserves the number in its name whatever its
-	 * frontmatter says, and worktrees share the task ID namespace before their files are committed.
+	 * Task files found by name in this project's tasks folder and archived task folders and, inside
+	 * a Git repository, in the same folders of every other worktree. A file reserves the number in
+	 * its name whatever its frontmatter says, and worktrees share the task ID namespace before their
+	 * files are committed.
 	 */
 	private async loadTaskFileNameEntries(taskPrefix: string): Promise<BranchTaskStateEntry[]> {
 		const backlogDir = await this.getBacklogDirectoryName();
