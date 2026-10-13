@@ -196,31 +196,15 @@ describe("CLI JSON output", () => {
 		const output = JSON.parse(result.stdout.toString());
 		expect(output.kind).toBe("draft-list");
 		expect(output.drafts.map((draft: { id: string }) => draft.id)).toEqual(["DRAFT-2", "DRAFT-1"]);
-		expect(output.drafts[0]).toMatchObject({ title: "High draft", status: "Draft", priority: "high", isReady: true });
+		expect(output.drafts[0]).toMatchObject({ title: "High draft", status: "Draft", priority: "high" });
+		// Readiness is derived against tasks only, so a draft entry never carries it.
+		for (const draft of output.drafts) expect(draft).not.toHaveProperty("isReady");
 		expect(result.stdout.toString()).not.toContain("secret body");
-
-		await core.filesystem.saveDraft({
-			id: "DRAFT-3",
-			title: "Blocked draft",
-			status: "Draft",
-			assignee: [],
-			labels: [],
-			dependencies: ["TASK-1"],
-			createdDate: "2026-08-08",
-			rawContent: "",
-		});
-		const blocked = JSON.parse((await runCli(["draft", "list", "--json", "--sort", "id"])).stdout.toString());
-		expect(blocked.drafts.map((draft: { id: string; isReady: boolean }) => [draft.id, draft.isReady])).toEqual([
-			["DRAFT-1", true],
-			["DRAFT-2", true],
-			["DRAFT-3", false],
-		]);
 
 		const byId = await runCli(["draft", "list", "--json", "--sort", "id"]);
 		expect(JSON.parse(byId.stdout.toString()).drafts.map((draft: { id: string }) => draft.id)).toEqual([
 			"DRAFT-1",
 			"DRAFT-2",
-			"DRAFT-3",
 		]);
 		const invalid = await runCli(["draft", "list", "--json", "--sort", "nope"]);
 		expect(invalid.exitCode).toBe(1);

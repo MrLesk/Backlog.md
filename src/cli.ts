@@ -4101,8 +4101,7 @@ addListWindowOptions(draftListCommand)
 		const sortedDrafts = sortTasks(drafts, sortField, config?.priorities);
 
 		if (outputMode === "json") {
-			const rows = sortedDrafts.length > 0 ? await loadTaskListItems(core, sortedDrafts) : [];
-			const page = selectListWindow(rows, listWindow);
+			const page = selectListWindow(sortedDrafts, listWindow);
 			printJson(draftListJson(page.items, page));
 			return;
 		}
