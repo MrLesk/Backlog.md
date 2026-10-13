@@ -324,7 +324,7 @@ describe("Draft Prefix Migration", () => {
 				}
 
 				await expect(migrateDraftPrefixes(filesystem)).rejects.toThrow(
-					/task-2 - Beta\.md: Cannot write .*another file already exists at that path/,
+					/task-2 - Beta\.md: Cannot write .*another file already exists at that path and was left unchanged/,
 				);
 
 				const afterFirstRun = await readdir(draftsDir);

@@ -1544,7 +1544,7 @@ export class Core {
 		const backlogDir = await this.getBacklogDirectoryName();
 		const projectRoot = this.fs.rootDir;
 		// This project is always read: outside a Git repository there is no worktree list to find it in.
-		const entries = await this.loadTaskStateEntriesFromWorktree(projectRoot, backlogDir, taskPrefix, projectRoot);
+		const entries = await this.loadTaskFileNameEntriesFromProject(projectRoot, backlogDir, taskPrefix, projectRoot);
 
 		const [repoRoot, worktreeRoots] = await Promise.all([this.git.getRepositoryRoot(), this.git.listWorktreePaths()]);
 		if (!repoRoot) {
@@ -1559,14 +1559,18 @@ export class Core {
 			const worktreeProjectRoot = projectRelativePath ? join(worktreeRoot, projectRelativePath) : worktreeRoot;
 			if (worktreeProjectRoot === projectRoot) continue;
 			entries.push(
-				...(await this.loadTaskStateEntriesFromWorktree(worktreeProjectRoot, backlogDir, taskPrefix, worktreeRoot)),
+				...(await this.loadTaskFileNameEntriesFromProject(worktreeProjectRoot, backlogDir, taskPrefix, worktreeRoot)),
 			);
 		}
 
 		return entries;
 	}
 
-	private async loadTaskStateEntriesFromWorktree(
+	/**
+	 * Task files found by name under one project root: this project, or the same project in another
+	 * worktree. `worktreeRoot` labels the entries with the place they were found in.
+	 */
+	private async loadTaskFileNameEntriesFromProject(
 		projectRoot: string,
 		backlogDir: string,
 		taskPrefix: string,

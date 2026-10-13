@@ -280,10 +280,14 @@ function recordUnreadableDirectory(error: unknown, unreadable?: string[]): void 
 	unreadable?.push("");
 }
 
-/** The failure a save reports when the file it would write is taken by another file. */
+/**
+ * The failure a save reports when the file it would write is taken by another file. The message
+ * speaks only about that file: a command that saves several records may have saved others before
+ * this save was refused.
+ */
 function pathTakenError(path: string): Error {
 	return new Error(
-		`Cannot write ${path}: another file already exists at that path. Nothing was changed. Move or rename the existing file, then try again.`,
+		`Cannot write ${path}: another file already exists at that path and was left unchanged. Move or rename the existing file, then try again.`,
 	);
 }
 
