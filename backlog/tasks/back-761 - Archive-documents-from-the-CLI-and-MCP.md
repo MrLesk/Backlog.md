@@ -4,7 +4,7 @@ title: Archive documents from the CLI and MCP
 status: To Do
 assignee: []
 created_date: '2026-10-13 18:46'
-updated_date: '2026-10-13 18:51'
+updated_date: '2026-10-13 19:35'
 labels:
   - enhancement
 dependencies:
@@ -39,7 +39,7 @@ Scope:
 
 Paths below use the default `backlog/` folder. A project with another backlog folder uses that folder.
 
-This is the first of four stacked tasks for issue #1101. Each is one branch and one pull request. This one builds on BACK-731 (pull request #1096, part of the task archive stack #1094 to #1097) and on BACK-732 (pull request #1099). Those are two separate branches off `main`, so this branch needs the code of both.
+This is the first of four stacked tasks for issue #1101. Each is one branch and one pull request. This one builds on the top of the task archive stack (BACK-720, pull request #1097). That stack is itself based on BACK-732 (pull request #1099), so this branch has the code of both: #1099, then #1094 to #1097, then this task.
 <!-- SECTION:DESCRIPTION:END -->
 
 ## Acceptance Criteria
