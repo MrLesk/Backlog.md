@@ -4,7 +4,7 @@ title: Delete and restore archived documents
 status: To Do
 assignee: []
 created_date: '2026-10-13 18:46'
-updated_date: '2026-10-13 18:49'
+updated_date: '2026-10-13 18:51'
 labels:
   - enhancement
 dependencies:
@@ -65,9 +65,9 @@ This is the second of four stacked tasks for issue #1101. Each is one branch and
 - [ ] #21 When the file was moved or removed but the commit fails, the command says that the document was restored or deleted and that committing the change failed, and exits non-zero.
 - [ ] #22 The MCP server offers the tools `document_restore` and `document_delete`. Each takes one document ID like `document_view`, rejects unknown fields (so there is no confirmation field), and returns a success message and the same refusal messages as the CLI. `document_delete` also returns the line of tasks and drafts.
 - [ ] #23 `backlog doc --help` lists `restore` and `delete`, and the help and help schema of each command describe it with an example.
-- [ ] #24 `CLI-INSTRUCTIONS.md`, `README.md`, the shipped guides (`backlog instructions` and the agent guidelines) and the MCP guides that list the document tools say that removing a document takes two steps, archive then delete, that delete asks no question and releases the ID, that tasks naming the file are printed and not changed, and how an archived document is restored.
-- [ ] #25 Each operation is one core function that the CLI command and the MCP tool both call. Neither holds a rule of its own, and restore reuses the file move that archive uses.
-- [ ] #26 Tests drive the CLI for every behavior above and the MCP tools for the same rules.
+- [ ] #24 Each operation is one core function that the CLI command and the MCP tool both call. Neither holds a rule of its own, and restore reuses the file move that archive uses.
+- [ ] #25 Tests drive the CLI for every behavior above and the MCP tools for the same rules.
+- [ ] #26 `CLI-INSTRUCTIONS.md`, the shipped guides (`backlog instructions` and the agent guidelines) and the MCP guides that list the document tools say that removing a document takes two steps, archive then delete, that delete asks no question and releases the ID, that tasks naming the file are printed and not changed, and how an archived document is restored.
 <!-- AC:END -->
 
 ## Definition of Done

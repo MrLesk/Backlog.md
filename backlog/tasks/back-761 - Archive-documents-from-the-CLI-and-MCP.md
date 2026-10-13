@@ -4,7 +4,7 @@ title: Archive documents from the CLI and MCP
 status: To Do
 assignee: []
 created_date: '2026-10-13 18:46'
-updated_date: '2026-10-13 18:48'
+updated_date: '2026-10-13 18:51'
 labels:
   - enhancement
 dependencies:
@@ -70,9 +70,9 @@ This is the first of four stacked tasks for issue #1101. Each is one branch and 
 - [ ] #24 When the file was moved but the commit fails, the command says that the document was archived and that committing the change failed, and exits non-zero.
 - [ ] #25 The MCP server offers the tool `document_archive`. It takes one document ID like `document_view`, rejects unknown fields, and returns a success message, the same line of tasks and drafts, and the same refusal messages as the CLI.
 - [ ] #26 `backlog doc --help` lists `archive`, and `backlog doc archive --help` with its help schema describes the command with an example.
-- [ ] #27 `CLI-INSTRUCTIONS.md`, `README.md`, the shipped guides (`backlog instructions` and the agent guidelines) and the MCP guides that list the document tools say how a document is archived: the file moves to `backlog/archive/docs/`, the ID stays reserved, the document stays viewable and is read-only, and tasks that name the file are printed and not changed.
-- [ ] #28 The CLI command and the MCP tool call one core function and hold no rule of their own. The file move is the never-replace move that task archive uses, reused and not copied.
-- [ ] #29 Tests drive the CLI for every behavior above and the MCP tool for the same rules.
+- [ ] #27 The CLI command and the MCP tool call one core function and hold no rule of their own. The file move is the never-replace move that task archive uses, reused and not copied.
+- [ ] #28 Tests drive the CLI for every behavior above and the MCP tool for the same rules.
+- [ ] #29 `CLI-INSTRUCTIONS.md`, the shipped guides (`backlog instructions` and the agent guidelines) and the MCP guides that list the document tools say how a document is archived: the file moves to `backlog/archive/docs/`, the ID stays reserved, the document stays viewable and is read-only, and tasks that name the file are printed and not changed.
 <!-- AC:END -->
 
 ## Definition of Done

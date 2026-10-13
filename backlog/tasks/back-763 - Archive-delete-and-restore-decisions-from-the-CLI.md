@@ -4,7 +4,7 @@ title: 'Archive, delete and restore decisions from the CLI'
 status: To Do
 assignee: []
 created_date: '2026-10-13 18:46'
-updated_date: '2026-10-13 18:49'
+updated_date: '2026-10-13 18:51'
 labels:
   - enhancement
 dependencies:
@@ -71,9 +71,9 @@ This is the third of four stacked tasks for issue #1101. Each is one branch and 
 - [ ] #25 When the file was moved or removed but the commit fails, the command says what was done and that committing the change failed, and exits non-zero.
 - [ ] #26 The MCP server gains no decision tool: its tool list contains no tool whose name starts with `decision_`.
 - [ ] #27 `backlog decision --help` lists `archive`, `restore` and `delete`, and the help and help schema of each command describe it with an example.
-- [ ] #28 `CLI-INSTRUCTIONS.md`, `README.md` and the shipped guides (`backlog instructions` and the agent guidelines) describe the three decision commands: archive then delete as the two steps of removing a decision, the reserved ID, the read-only state, and restore.
-- [ ] #29 Documents and decisions share one implementation of archive, delete and restore. The decision commands hold no rule of their own, and no second copy of the document code exists.
-- [ ] #30 Tests drive the CLI for every behavior above.
+- [ ] #28 Documents and decisions share one implementation of archive, delete and restore. The decision commands hold no rule of their own, and no second copy of the document code exists.
+- [ ] #29 Tests drive the CLI for every behavior above.
+- [ ] #30 `CLI-INSTRUCTIONS.md` and the shipped guides (`backlog instructions` and the agent guidelines) describe the three decision commands: archive then delete as the two steps of removing a decision, the reserved ID, the read-only state, and restore.
 <!-- AC:END -->
 
 ## Definition of Done
