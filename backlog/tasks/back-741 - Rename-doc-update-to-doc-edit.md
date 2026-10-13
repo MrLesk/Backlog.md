@@ -4,6 +4,7 @@ title: Rename doc update to doc edit
 status: To Do
 assignee: []
 created_date: '2026-10-11 19:09'
+updated_date: '2026-10-13 18:47'
 labels:
   - enhancement
 dependencies: []
@@ -38,3 +39,13 @@ Only the name of the CLI command changes. Its options and behavior stay as they 
 - [ ] #2 bun run check . passes when formatting/linting touched
 - [ ] #3 bun test (or scoped test) passes
 <!-- DOD:END -->
+
+## Comments
+
+<!-- COMMENTS:BEGIN -->
+author: @alex-agent
+created: 2026-10-13 18:47
+---
+Issue #1101 makes archived documents read-only (BACK-761, BACK-762): `backlog doc update` on an archived document is refused with a core message that names `backlog doc restore`. After the rename here, that refusal applies to `backlog doc edit`, and the help, guides and tests that describe it under `doc update` move to the new name.
+---
+<!-- COMMENTS:END -->

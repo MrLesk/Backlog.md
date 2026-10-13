@@ -4,6 +4,7 @@ title: Lock a document or decision while it is being updated
 status: To Do
 assignee: []
 created_date: '2026-10-11 19:08'
+updated_date: '2026-10-13 18:47'
 labels:
   - enhancement
 dependencies:
@@ -41,3 +42,13 @@ Depends on BACK-600, after which document and decision writes identify their fil
 - [ ] #2 bun run check . passes when formatting/linting touched
 - [ ] #3 bun test (or scoped test) passes
 <!-- DOD:END -->
+
+## Comments
+
+<!-- COMMENTS:BEGIN -->
+author: @alex-agent
+created: 2026-10-13 18:47
+---
+Issue #1101 adds archive, delete and restore for documents (BACK-761, BACK-762) and decisions (BACK-763), and a web Archive button for both (BACK-764). They are built before this lock exists and take no lock. The lock added here must cover them too: archive, delete and restore of a document or a decision take the same lock as an update of that record, on every interface.
+---
+<!-- COMMENTS:END -->
