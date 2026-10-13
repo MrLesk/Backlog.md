@@ -4,7 +4,7 @@ title: Add decision view and section flags to decision create and edit
 status: To Do
 assignee: []
 created_date: '2026-10-11 19:09'
-updated_date: '2026-10-11 19:24'
+updated_date: '2026-10-13 18:47'
 labels:
   - enhancement
 dependencies:
@@ -47,3 +47,13 @@ Depends on BACK-737 (marked sections and the shared core update), BACK-727 (whic
 - [ ] #2 bun run check . passes when formatting/linting touched
 - [ ] #3 bun test (or scoped test) passes
 <!-- DOD:END -->
+
+## Comments
+
+<!-- COMMENTS:BEGIN -->
+author: @alex-agent
+created: 2026-10-13 18:47
+---
+Issue #1101 adds `backlog decision archive`, `delete` and `restore` (BACK-763). Archived decisions live in `backlog/archive/decisions/`, and until this task adds `decision view` they cannot be read from the CLI. `decision view` must read archived decisions and mark them as archived, as `doc view` does for archived documents (BACK-761). `decision edit` on an archived decision is refused with the core read-only message that names `backlog decision restore`.
+---
+<!-- COMMENTS:END -->
