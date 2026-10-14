@@ -415,8 +415,8 @@ function assertSectionInputsSafe(input: {
 }
 
 /**
- * Core refused an operation because of the state the record is in: a task or a document. The
- * message is the answer for the caller, so every interface reports it as it is.
+ * Core refused an operation because of the state the record is in: a task, a document or a
+ * decision. The message is the answer for the caller, so every interface reports it as it is.
  */
 export class RecordRefusedError extends Error {}
 
