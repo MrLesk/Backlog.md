@@ -23,12 +23,7 @@ import { pickTaskForEditWizard, runTaskCreateWizard, runTaskEditWizard } from ".
 import { watchJson } from "./commands/watch-json.ts";
 import { DEFAULT_DIRECTORIES, DEFAULT_FILES, DEFAULT_STATUSES } from "./constants/index.ts";
 import { type ArchivedTaskMovePlan, moveArchivedTasks, previewArchivedTaskMove } from "./core/archived-task-move.ts";
-import {
-	CONTENT_RECORD_WORDS,
-	type ContentRecordChangeResult,
-	describeContentRecordChange,
-	formatCleanupResult,
-} from "./core/backlog.ts";
+import { CONTENT_RECORD_WORDS, describeContentRecordChange, formatCleanupResult } from "./core/backlog.ts";
 import { type DuplicateRepairPlan, findLocalDuplicateTaskIds } from "./core/duplicate-task-repair.ts";
 import { initializeProject } from "./core/init.ts";
 import { buildMilestoneBuckets, collectArchivedMilestoneKeys, milestoneKey } from "./core/milestones.ts";
@@ -4758,15 +4753,22 @@ addHelpSchema(docCmd.command("update <docId>"), {
 	});
 
 /**
- * What the archive, restore and delete commands of documents and decisions print: the lines core
- * describes for the change. `result` is null when no record of the kind claims the ID.
+ * The action of `doc archive|restore|delete` and `decision archive|restore|delete`: runs the core
+ * operation for the kind and prints the lines core describes for the change. An ID that no record
+ * of the kind claims is answered with the kind's not-found message.
  */
-function reportContentRecordChange(
+async function changeContentRecord(
 	kind: ContentRecordKind,
 	operation: "archive" | "restore" | "delete",
 	id: string,
-	result: ContentRecordChangeResult | null,
-): void {
+): Promise<void> {
+	const core = new Core(await requireProjectRoot());
+	const operations = {
+		archive: () => core.archiveContentRecord(kind, id),
+		restore: () => core.restoreContentRecord(kind, id),
+		delete: () => core.deleteContentRecord(kind, id),
+	};
+	const result = await operations[operation]();
 	if (!result) {
 		throw new Error(CONTENT_RECORD_WORDS[kind].notFound(id));
 	}
@@ -4784,10 +4786,7 @@ addHelpSchema(docCmd.command("archive <docId>"), {
 	examples: ["backlog doc archive doc-1"],
 })
 	.description("move a document into the archive, keeping its ID reserved")
-	.action(async (docId: string) => {
-		const core = new Core(await requireProjectRoot());
-		reportContentRecordChange("document", "archive", docId, await core.archiveContentRecord("document", docId));
-	});
+	.action((docId: string) => changeContentRecord("document", "archive", docId));
 
 addHelpSchema(docCmd.command("restore <docId>"), {
 	required: [{ name: "docId", type: "Document ID", description: "Archived document to restore" }],
@@ -4799,10 +4798,7 @@ addHelpSchema(docCmd.command("restore <docId>"), {
 	examples: ["backlog doc restore doc-1"],
 })
 	.description("move an archived document back to the docs folder")
-	.action(async (docId: string) => {
-		const core = new Core(await requireProjectRoot());
-		reportContentRecordChange("document", "restore", docId, await core.restoreContentRecord("document", docId));
-	});
+	.action((docId: string) => changeContentRecord("document", "restore", docId));
 
 addHelpSchema(docCmd.command("delete <docId>"), {
 	required: [{ name: "docId", type: "Document ID", description: "Archived document to delete" }],
@@ -4814,10 +4810,7 @@ addHelpSchema(docCmd.command("delete <docId>"), {
 	examples: ["backlog doc archive doc-1", "backlog doc delete doc-1"],
 })
 	.description("permanently delete an archived document, releasing its ID")
-	.action(async (docId: string) => {
-		const core = new Core(await requireProjectRoot());
-		reportContentRecordChange("document", "delete", docId, await core.deleteContentRecord("document", docId));
-	});
+	.action((docId: string) => changeContentRecord("document", "delete", docId));
 
 const docListCommand = addHelpSchema(docCmd.command("list"), {
 	reads: "Documents under the configured docs directory",
@@ -5005,15 +4998,7 @@ addHelpSchema(decisionCmd.command("archive <decisionId>"), {
 	examples: ["backlog decision archive decision-1"],
 })
 	.description("move a decision into the archive, keeping its ID reserved")
-	.action(async (decisionId: string) => {
-		const core = new Core(await requireProjectRoot());
-		reportContentRecordChange(
-			"decision",
-			"archive",
-			decisionId,
-			await core.archiveContentRecord("decision", decisionId),
-		);
-	});
+	.action((decisionId: string) => changeContentRecord("decision", "archive", decisionId));
 
 addHelpSchema(decisionCmd.command("restore <decisionId>"), {
 	required: [{ name: "decisionId", type: "Decision ID", description: "Archived decision to restore" }],
@@ -5025,15 +5010,7 @@ addHelpSchema(decisionCmd.command("restore <decisionId>"), {
 	examples: ["backlog decision restore decision-1"],
 })
 	.description("move an archived decision back to the decisions folder")
-	.action(async (decisionId: string) => {
-		const core = new Core(await requireProjectRoot());
-		reportContentRecordChange(
-			"decision",
-			"restore",
-			decisionId,
-			await core.restoreContentRecord("decision", decisionId),
-		);
-	});
+	.action((decisionId: string) => changeContentRecord("decision", "restore", decisionId));
 
 addHelpSchema(decisionCmd.command("delete <decisionId>"), {
 	required: [{ name: "decisionId", type: "Decision ID", description: "Archived decision to delete" }],
@@ -5045,10 +5022,7 @@ addHelpSchema(decisionCmd.command("delete <decisionId>"), {
 	examples: ["backlog decision archive decision-1", "backlog decision delete decision-1"],
 })
 	.description("permanently delete an archived decision, releasing its ID")
-	.action(async (decisionId: string) => {
-		const core = new Core(await requireProjectRoot());
-		reportContentRecordChange("decision", "delete", decisionId, await core.deleteContentRecord("decision", decisionId));
-	});
+	.action((decisionId: string) => changeContentRecord("decision", "delete", decisionId));
 
 const decisionListCommand = addHelpSchema(decisionCmd.command("list"), {
 	reads: "Decisions under the configured decisions directory",
