@@ -210,10 +210,15 @@ describe("CLI list windows", () => {
 		// Bun colors a logged number when color is forced, which would break `$(backlog ... --count)`.
 		expect((await runCli(["task", "list", "--count"], { FORCE_COLOR: "1" })).stdout).toBe("5\n");
 
-		const withJson = await runCli(["task", "list", "--count", "--json"]);
-		expect(withJson.exitCode).toBe(1);
-		expect(withJson.stdout).toBe("");
-		expect(withJson.stderr).toContain("--count cannot be combined with --json.");
+		for (const list of [
+			["task", "list"],
+			["draft", "list"],
+		]) {
+			const withJson = await runCli([...list, "--count", "--json"]);
+			expect(withJson.exitCode).toBe(1);
+			expect(withJson.stdout).toBe("");
+			expect(withJson.stderr).toContain("--count cannot be combined with --json.");
+		}
 	});
 
 	it("rejects invalid window values before printing", async () => {
@@ -282,10 +287,6 @@ describe("CLI list windows", () => {
 		const completeDrafts = await runJson(["draft", "list"]);
 		expect(completeDrafts).not.toHaveProperty("total");
 		expect(completeDrafts.drafts).toHaveLength(3);
-		const draftsWithCount = await runCli(["draft", "list", "--count", "--json"]);
-		expect(draftsWithCount.exitCode).toBe(1);
-		expect(draftsWithCount.stdout).toBe("");
-		expect(draftsWithCount.stderr).toContain("--count cannot be combined with --json.");
 
 		const completedWindow = await runCli(["milestone", "list", "--show-completed", "--max-count", "1", "--skip", "2"]);
 		expect(idsIn(completedWindow.stdout, /m-\d+:/g)).toEqual(["m-2:"]);
