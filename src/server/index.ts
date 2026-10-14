@@ -2,7 +2,7 @@ import net from "node:net";
 import { dirname, isAbsolute, join } from "node:path";
 import type { Server, ServerWebSocket } from "bun";
 import { DEFAULT_STATUSES } from "../constants/index.ts";
-import { Core, formatCleanupResult, TaskRefusedError } from "../core/backlog.ts";
+import { Core, formatCleanupResult, RecordRefusedError } from "../core/backlog.ts";
 import type { ContentStore } from "../core/content-store.ts";
 import { initializeProject } from "../core/init.ts";
 import type { SearchService } from "../core/search-service.ts";
@@ -1221,7 +1221,7 @@ export class BacklogServer {
 			this.broadcastDataUpdated();
 			return Response.json({ success: true });
 		} catch (error) {
-			if (error instanceof TaskRefusedError) {
+			if (error instanceof RecordRefusedError) {
 				return Response.json({ error: error.message }, { status: 400 });
 			}
 			// The task reached the archive and the commit after that failed. Say so, and refresh:
@@ -1385,6 +1385,10 @@ export class BacklogServer {
 			}
 			if (isAmbiguousIdError(error)) {
 				return Response.json({ error: error.message }, { status: 409 });
+			}
+			// Core refused the save, for example because the document is archived. Its message is the answer.
+			if (error instanceof RecordRefusedError) {
+				return Response.json({ error: error.message }, { status: 400 });
 			}
 			if (error instanceof Error) {
 				if (error.message.startsWith("Document not found")) {

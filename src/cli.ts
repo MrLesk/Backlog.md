@@ -79,6 +79,7 @@ import { type AgentSelectionValue, processAgentSelection } from "./utils/agent-s
 import { normalizeProjectBacklogDirectory } from "./utils/backlog-directory.ts";
 import { launchBrowser } from "./utils/browser-launch.ts";
 import { formatDependencyCleanupMessage } from "./utils/dependency-graph.ts";
+import { documentNotFoundMessage } from "./utils/document-id.ts";
 import {
 	type ContentIdentityReport,
 	type DraftIdentityFindings,
@@ -136,6 +137,7 @@ import {
 	toStringArray,
 } from "./utils/task-builders.ts";
 import { buildTaskUpdateInput } from "./utils/task-edit-builder.ts";
+import { formatDocumentationReferencesMessage } from "./utils/task-links.ts";
 import {
 	AmbiguousTaskIdError,
 	canonicalTaskId,
@@ -4732,7 +4734,7 @@ addHelpSchema(docCmd.command("update <docId>"), {
 		const core = new Core(cwd);
 		const existingDocument = await core.getDocument(docId);
 		if (!existingDocument) {
-			throw new Error(`Document not found: ${docId}`);
+			throw new Error(documentNotFoundMessage(docId));
 		}
 
 		const document = await core.updateDocumentFromInput({
@@ -4747,6 +4749,29 @@ addHelpSchema(docCmd.command("update <docId>"), {
 		console.log(`Updated document ${document.id}`);
 		if (document.path) {
 			console.log(`Path: ${core.filesystem.backlogDirName}/docs/${document.path}`);
+		}
+	});
+
+addHelpSchema(docCmd.command("archive <docId>"), {
+	required: [{ name: "docId", type: "Document ID", description: "Document to archive" }],
+	optional: [],
+	writes:
+		"Moves the document's file, unchanged, to the same relative path under backlog/archive/docs. Its ID stays reserved. The document stays viewable with doc view, becomes read-only, and leaves doc list and search. No task or draft is changed.",
+	output: "Archive confirmation text, followed by the tasks and drafts whose documentation list names the moved file",
+	examples: ["backlog doc archive doc-1"],
+})
+	.description("move a document into the archive, keeping its ID reserved")
+	.action(async (docId: string) => {
+		const cwd = await requireProjectRoot();
+		const core = new Core(cwd);
+		const archived = await core.archiveDocument(docId);
+		if (!archived) {
+			throw new Error(documentNotFoundMessage(docId));
+		}
+		console.log(`Archived document ${archived.documentId}`);
+		const referencesMessage = formatDocumentationReferencesMessage(archived.listedAsDocumentationBy);
+		if (referencesMessage) {
+			console.log(referencesMessage);
 		}
 	});
 
@@ -4787,7 +4812,7 @@ addListWindowOptions(docListCommand)
 			// Resolve through the same reader as `doc view`. Matching filenames against the id
 			// only found `<id> - <title>.md` at the top level, so documents written under the
 			// older title-only filenames, or in a subdirectory, opened as nothing.
-			const content = await core.getDocumentContent(selected.id);
+			const content = await core.getDocumentViewText(selected.id);
 			if (content !== null) {
 				await scrollableViewer(content);
 			}
@@ -4872,7 +4897,7 @@ addHelpSchema(docCmd.command("view <docId>"), {
 		const cwd = await requireProjectRoot();
 		const core = new Core(cwd);
 		try {
-			const content = await core.getDocumentContent(docId);
+			const content = await core.getDocumentViewText(docId);
 			if (content === null) {
 				console.error(`Document ${docId} not found.`);
 				return;

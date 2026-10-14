@@ -1025,7 +1025,12 @@ export class ContentStore {
 		);
 	}
 
-	private removeWatchedDocument(path: string): void {
+	/**
+	 * Takes the document stored at a docs-relative path out of the store, so lists and search stop
+	 * showing it. Called when its file left the docs folder: by the file watcher for a removed file,
+	 * and by core when it archives a document, so that change does not wait for a watcher event.
+	 */
+	removeDocument(path: string): void {
 		const existing = this.findWatchedDocumentByPath(path);
 		if (!existing || !this.dropWatchedDocument(existing)) return;
 		this.cachedDocuments = [...this.documents.values()].sort((a, b) => a.title.localeCompare(b.title));
@@ -1266,7 +1271,7 @@ export class ContentStore {
 					publish: (document) => {
 						strandedEquivalent = this.publishWatchedDocument(document, eventPath);
 					},
-					remove: () => this.removeWatchedDocument(eventPath),
+					remove: () => this.removeDocument(eventPath),
 				});
 				if (strandedEquivalent) await this.refreshDocumentsFromDisk(undefined, epoch);
 				return;
@@ -1274,7 +1279,7 @@ export class ContentStore {
 
 			await this.reconcileOrSchedule(`document:${id}`, epoch, async () => {
 				if (!(await Bun.file(absolutePath).exists())) {
-					this.removeWatchedDocument(eventPath);
+					this.removeDocument(eventPath);
 					return false;
 				}
 				try {

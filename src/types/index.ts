@@ -246,6 +246,11 @@ export interface Document {
 	name?: string;
 	path?: string;
 	lastModified?: string;
+	/**
+	 * True when the document's file is in the archive folder for documents. `path` is then relative
+	 * to that folder instead of the docs folder. An archived document can be viewed but not changed.
+	 */
+	archived?: boolean;
 }
 
 export interface DocumentCreateInput {

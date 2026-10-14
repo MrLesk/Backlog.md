@@ -1,4 +1,4 @@
-import { ChangeNotCommittedError, TaskRefusedError } from "../../core/backlog.ts";
+import { ChangeNotCommittedError, RecordRefusedError } from "../../core/backlog.ts";
 import { isAmbiguousIdError } from "../../utils/entity-id.ts";
 import { isAmbiguousTaskIdError } from "../../utils/task-path.ts";
 import type { CallToolResult } from "../types.ts";
@@ -20,7 +20,7 @@ export class BacklogToolError extends Error {
 /**
  * Run a core operation for a tool. Two outcomes are the caller's answer in core's words, so each
  * becomes a tool error that carries core's message unchanged:
- * - core refused the operation because of the state the task is in;
+ * - core refused the operation because of the state the record is in;
  * - core made the change and only the commit failed, which the caller must know before retrying.
  * Any other error is passed on.
  */
@@ -28,7 +28,7 @@ export async function runCoreOperation<T>(operation: () => Promise<T>): Promise<
 	try {
 		return await operation();
 	} catch (error) {
-		if (error instanceof TaskRefusedError) {
+		if (error instanceof RecordRefusedError) {
 			throw new BacklogToolError(error.message, "VALIDATION_ERROR");
 		}
 		if (error instanceof ChangeNotCommittedError) {

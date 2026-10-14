@@ -100,7 +100,7 @@ describe("blank entity IDs", () => {
 		);
 
 		expect(await core.getDocument("")).toBeNull();
-		expect(await core.getDocumentContent("")).toBeNull();
+		expect(await core.getDocumentViewText("")).toBeNull();
 		expect(core.filesystem.loadDocument("")).rejects.toThrow("Document not found");
 		expect(await core.filesystem.loadDecision("")).toBeNull();
 		expect(await core.filesystem.loadDecision("decision-")).toBeNull();
@@ -118,7 +118,11 @@ describe("ambiguous content identity", () => {
 		const error = await core.getDocument("doc-1").catch((caught: unknown) => caught);
 		expect(error).toBeInstanceOf(AmbiguousIdError);
 		expect((error as AmbiguousIdError).message).toContain("Document ID doc-1 is ambiguous; 2 files match:");
-		expect((error as AmbiguousIdError).candidates).toEqual(["doc-1 - Alpha.md", "nested/doc-01 - Beta.md"]);
+		// Each file is named from the project root, so its folder (docs or archive) is part of the name.
+		expect((error as AmbiguousIdError).candidates).toEqual([
+			"backlog/docs/doc-1 - Alpha.md",
+			"backlog/docs/nested/doc-01 - Beta.md",
+		]);
 		expect((error as AmbiguousIdError).message).toContain("backlog doctor");
 	});
 
