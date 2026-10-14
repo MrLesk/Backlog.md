@@ -35,6 +35,16 @@ const PAGES = [
 			path: "doc-1 - Retired-runbook.md",
 			...(archived ? { archived: true } : {}),
 		}),
+		otherDetailPath: "/documentation/2/current-runbook",
+		otherRecordPath: "/api/docs/doc-2",
+		otherRecord: (): Document => ({
+			id: "doc-2",
+			title: "Current runbook",
+			type: "other",
+			createdDate: "2026-01-01 00:00",
+			rawContent: "Current steps.",
+			path: "doc-2 - Current-runbook.md",
+		}),
 		render: (onRefreshData: () => Promise<void>) => (
 			<DocumentationDetail docs={[]} onRefreshData={onRefreshData} />
 		),
@@ -60,6 +70,18 @@ const PAGES = [
 			consequences: "",
 			rawContent: "Runbook steps.",
 			...(archived ? { archived: true } : {}),
+		}),
+		otherDetailPath: "/decisions/2/current-runbook",
+		otherRecordPath: "/api/decisions/decision-2",
+		otherRecord: (): Decision => ({
+			id: "decision-2",
+			title: "Current runbook",
+			date: "2026-01-01 00:00",
+			status: "accepted",
+			context: "",
+			decision: "",
+			consequences: "",
+			rawContent: "Current steps.",
 		}),
 		render: (onRefreshData: () => Promise<void>) => (
 			<DecisionDetail decisions={[]} onRefreshData={onRefreshData} />
@@ -145,6 +167,7 @@ async function open(
 			return json(answer.status, answer.body);
 		}
 		if (url.pathname === page.recordPath) return json(200, page.record(options.archived ?? false));
+		if (url.pathname === page.otherRecordPath) return json(200, page.otherRecord());
 		return json(404, { error: "Not found" });
 	}) as unknown as typeof globalThis.fetch;
 
@@ -253,6 +276,20 @@ describe.each([...PAGES])("the $kind page", (page) => {
 		expect(session.container.querySelector('[data-testid="list-page"]')).toBeNull();
 		// The button is back for a later try.
 		expect(buttonNamed(session.container, "Archive")?.disabled).toBe(false);
+	});
+
+	it("clears the refusal when the page shows another record", async () => {
+		const session = await open(page, { archive: { status: 400, body: { error: "Refused." } } });
+		await click(buttonNamed(session.container, "Archive"));
+		expect(session.container.querySelector('[role="alert"]')?.textContent).toBe("Refused.");
+
+		await act(async () => {
+			session.navigate(page.otherDetailPath);
+		});
+		await flush();
+
+		expect(session.container.textContent).toContain("Current runbook");
+		expect(session.container.querySelector('[role="alert"]')?.textContent).toBeUndefined();
 	});
 
 	it("says so in the sentence of the task Archive button and treats the record as archived when only the commit failed", async () => {

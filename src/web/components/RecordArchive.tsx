@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { apiClient, readMovedFailureState } from '../lib/api';
 
@@ -46,6 +46,11 @@ export function useRecordArchive(
 	const [archiveError, setArchiveError] = useState<string | null>(null);
 	// A ref as well as the state: two clicks in one render both see the state as it was.
 	const requestRunning = useRef(false);
+
+	// A refusal belongs to the record it was about, so it goes when the page shows another record.
+	useEffect(() => {
+		setArchiveError(null);
+	}, [record?.id]);
 
 	const archive = useCallback(async () => {
 		if (!record || requestRunning.current) return;
