@@ -253,6 +253,8 @@ export async function viewTaskEnhanced(
 	options: {
 		tasks?: Task[];
 		core?: Core;
+		/** Screen to draw on. Tests pass their own; by default the viewer creates one. */
+		screen?: ScreenInterface;
 		title?: string;
 		filterDescription?: string;
 		searchQuery?: string;
@@ -437,7 +439,7 @@ export async function viewTaskEnhanced(
 	let noResultsMessage: string | null = null;
 
 	const screenTitle = formatTuiTitle(options.title || "Tasks", projectName);
-	const screen = createScreen({ title: screenTitle });
+	const screen = options.screen ?? createScreen({ title: screenTitle });
 
 	// Main container
 	const container = box({
@@ -840,10 +842,7 @@ export async function viewTaskEnhanced(
 		}
 
 		if (filteredTasks.length === 0) {
-			if (taskList) {
-				taskList.destroy();
-				taskList = null;
-			}
+			replaceTaskList();
 			const activeFilters: string[] = [];
 			const trimmedQuery = searchQuery.trim();
 			if (trimmedQuery) {
@@ -890,12 +889,7 @@ export async function viewTaskEnhanced(
 		noResultsMessage = null;
 		hideListEmptyState();
 
-		if (taskList) {
-			taskList.destroy();
-			taskList = null;
-		}
-		const listController = createTaskList();
-		taskList = listController;
+		const listController = replaceTaskList();
 		if (listController) {
 			const forceFirst = requireInitialFilterSelection;
 			let desiredIndex = filteredTasks.findIndex((t) => t.id === currentSelectedTask.id);
@@ -970,13 +964,14 @@ export async function viewTaskEnhanced(
 		screen.render();
 	}
 
-	function createTaskList(): GenericList<Task> | null {
+	// To rebuild the list call replaceTaskList() instead: it also keeps focus and removes the list this replaces.
+	function createTaskList(): GenericList<Task> {
 		const initialIndex = Math.max(
 			0,
 			filteredTasks.findIndex((t) => t.id === currentSelectedTask.id),
 		);
 
-		taskList = createGenericList<Task>({
+		const list = createGenericList<Task>({
 			parent: taskListPane,
 			title: "",
 			items: filteredTasks,
@@ -1012,37 +1007,69 @@ export async function viewTaskEnhanced(
 		});
 
 		// Focus handler for task list
-		if (taskList) {
-			const listBox = taskList.getListBox();
-			listBox.on("focus", () => {
-				currentFocus = "list";
-				setActivePane("list");
-				screen.render();
-				updateHelpBar();
-			});
-			listBox.on("blur", () => {
-				setActivePane("none");
-				screen.render();
-			});
-			listBox.key(["right", "l"], () => {
-				focusDetailPane();
-				return false;
-			});
-		}
+		const listBox = list.getListBox();
+		listBox.on("focus", () => {
+			currentFocus = "list";
+			setActivePane("list");
+			screen.render();
+			updateHelpBar();
+		});
+		listBox.on("blur", () => {
+			setActivePane("none");
+			screen.render();
+		});
+		listBox.key(["right", "l"], () => {
+			focusDetailPane();
+			return false;
+		});
 
+		return list;
+	}
+
+	/**
+	 * Swaps the list widget for one built from the current `filteredTasks`, or for none when there
+	 * is nothing to list. Every list rebuild goes through here so the list keeps keyboard focus.
+	 *
+	 * blessed gives the focus of a destroyed widget to whichever widget held it before (the search
+	 * input, or nothing at all), never to the widget built in its place. So the replacement takes
+	 * focus first, through the same focusTaskList() every other path uses, and only then is the
+	 * old widget destroyed.
+	 */
+	function replaceTaskList(): GenericList<Task> | null {
+		const previousList = taskList;
+		const listHadFocus = previousList !== null && screen.focused === previousList.getListBox();
+		taskList = filteredTasks.length > 0 ? createTaskList() : null;
+		if (listHadFocus) {
+			// With no list left, focusTaskList() moves to the detail pane.
+			focusTaskList();
+		}
+		previousList?.destroy();
 		return taskList;
 	}
 
-	// Detail pane refresh function
+	// Detail pane widgets, replaced together by refreshDetailPane()
 	let headerDetailBox: BoxInterface | undefined;
 	let divider: LineInterface | undefined;
 	let descriptionBox: ScrollableTextInterface | undefined;
 
+	/**
+	 * Rebuilds the detail pane for the current selection. It keeps keyboard focus the same way
+	 * replaceTaskList() does: the new widgets take focus before the old ones are destroyed.
+	 */
 	function refreshDetailPane() {
-		if (headerDetailBox) headerDetailBox.destroy();
-		if (divider) divider.destroy();
-		if (descriptionBox) descriptionBox.destroy();
+		const previousWidgets = [headerDetailBox, divider, descriptionBox];
+		const detailHadFocus = descriptionBox !== undefined && screen.focused === descriptionBox;
+		buildDetailPane();
+		if (detailHadFocus) {
+			focusDetailPane();
+		}
+		for (const widget of previousWidgets) {
+			widget?.destroy();
+		}
+	}
 
+	// Call refreshDetailPane() instead: it also removes the widgets these replace.
+	function buildDetailPane() {
 		const configureDetailBox = (boxInstance: ScrollableTextInterface) => {
 			descriptionBox = boxInstance;
 			const scrollable = boxInstance as unknown as {
@@ -1116,9 +1143,6 @@ export async function viewTaskEnhanced(
 				focusTaskList();
 				return false;
 			});
-			if (currentFocus === "detail") {
-				setImmediate(() => boxInstance.focus());
-			}
 		};
 
 		if (noResultsMessage) {
