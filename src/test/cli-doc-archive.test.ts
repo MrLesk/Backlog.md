@@ -349,6 +349,27 @@ describe("backlog doc archive", () => {
 		}).toEqual(recordsBefore);
 	});
 
+	it("still names a draft when another draft cannot be read", async () => {
+		const name = await createDocument("API Guidelines");
+		const core = new Core(TEST_DIR);
+		const draft = await core.createTaskFromInput({
+			title: "Draft",
+			documentation: [`backlog/docs/${name}`],
+			status: "Draft",
+		});
+		expect(draft.task.id).toBe("DRAFT-1");
+		// Reading this draft fails, which must not hide the draft next to it.
+		await Bun.write(
+			join(TEST_DIR, "backlog", "drafts", "draft-2 - Bad.md"),
+			"---\nid: DRAFT-2\ntitle: Bad\ndependencies:\n  - { nested: true }\n---\n",
+		);
+
+		const archived = await backlog("doc", "archive", "doc-1");
+
+		expect(archived.exitCode).toBe(0);
+		expect(archived.stdout).toBe("Archived document doc-1\nStill listed as documentation by: DRAFT-1\n");
+	});
+
 	it("lists archive in doc help and describes the command with an example", async () => {
 		const docHelp = await backlog("doc", "--help");
 		expect(docHelp.stdout).toMatch(/^\s+archive <docId>\s+move a document into the archive/m);

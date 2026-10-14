@@ -4366,10 +4366,11 @@ export class Core {
 	 * `documentationEntryNamesFile` for the exact rule.
 	 */
 	private async listRecordsDocumenting(projectPath: string): Promise<string[]> {
+		// Drafts are read file by file: one damaged draft must not hide the drafts that name the file.
 		const [tasks, archivedTasks, drafts] = await Promise.all([
 			this.fs.listTasks(),
 			this.fs.listArchivedTasks(),
-			this.fs.listDrafts(),
+			this.fs.listHealthyDrafts(),
 		]);
 		const ids = [...tasks, ...archivedTasks, ...drafts]
 			.filter((record) => record.documentation?.some((entry) => documentationEntryNamesFile(entry, projectPath)))
