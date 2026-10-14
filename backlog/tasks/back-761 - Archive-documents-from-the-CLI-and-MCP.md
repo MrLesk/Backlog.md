@@ -5,12 +5,13 @@ status: In Progress
 assignee:
   - '@claude'
 created_date: '2026-10-13 18:46'
-updated_date: '2026-10-13 22:16'
+updated_date: '2026-10-14 04:43'
 labels:
   - enhancement
 dependencies:
   - BACK-731
   - BACK-732
+  - BACK-765
 references:
   - 'https://github.com/MrLesk/Backlog.md/issues/1101'
   - core
@@ -19,7 +20,6 @@ references:
   - file-storage
   - content-store
   - web-server
-  - git-operations
 modified_files:
   - src/constants/index.ts
   - src/types/index.ts
@@ -30,7 +30,6 @@ modified_files:
   - src/core/content-store.ts
   - src/server/index.ts
   - src/mcp/errors/mcp-errors.ts
-  - src/mcp/tools/tasks/handlers.ts
   - src/mcp/tools/documents/handlers.ts
   - src/mcp/tools/documents/schemas.ts
   - src/mcp/tools/documents/index.ts
@@ -51,9 +50,8 @@ modified_files:
   - src/test/server-document-archive.test.ts
   - src/test/document-archive.test.ts
   - src/core/archived-task-move.ts
-  - src/git/operations.ts
-  - src/test/cli-linked-record-commit.test.ts
   - src/test/commit-failure-after-change.test.ts
+  - src/test/linked-record-commit.test.ts
 priority: high
 type: enhancement
 ordinal: 382000
@@ -81,7 +79,7 @@ Scope:
 
 Paths below use the default `backlog/` folder. A project with another backlog folder uses that folder.
 
-This is the first of four stacked tasks for issue #1101. Each is one branch and one pull request. This one builds on the top of the task archive stack (BACK-720, pull request #1097). That stack is itself based on BACK-732 (pull request #1099), so this branch has the code of both: #1099, then #1094 to #1097, then this task.
+This is the first of four stacked tasks for issue #1101. Each is one branch and one pull request. This one builds on BACK-765, which stages moved linked record files as links and gives a failed commit after a move one message. BACK-765 builds on the top of the task archive stack (BACK-720, pull request #1097), which is itself based on BACK-732 (pull request #1099). The order is #1099, #1094 to #1097, BACK-765, then this task.
 <!-- SECTION:DESCRIPTION:END -->
 
 ## Acceptance Criteria
@@ -201,12 +199,18 @@ Commit failed after the change: `commitFailedAfter` became the error type `Chang
 Flaky watcher tests: src/test/content-store.test.ts fails now and then on tests that wait three seconds for a file event ("publishes watched same-path local creation as one branch-version identity", "publishes watched distinct-path local creation with the refreshed branch collision identity", "removes tasks, documents, and decisions when files are deleted"). Measured on unpacked copies of both trees, one process per run: base 5 of 60 runs failed, this branch 5 of 55, and this branch with the glob put back 1 of 20. The walk is not the cause.
 
 Final counts for the content-store watcher tests, one process per run: the base copy failed in 7 of 70 runs, this branch in 6 of 50 (worktree and copy), and this branch with the recursive glob put back in 1 of 20. The line above gave the counts before the last runs. Full suite after the review round: 3,106 pass, 8 skip, 0 fail across 302 files.
+
+Split after the second review. The Git staging rule for a moved file that is a link (changedFileLinkPath and withResolvedFolder in src/git/operations.ts), ChangeNotCommittedError with its use by task archive, restore and delete, and runCoreOperation moved to BACK-765 (branch tasks/back-765-linked-record-commits). This branch builds on it now and keeps the document work. Where the review-round notes above describe those three changes, they are BACK-765's.
+
+What stays here: document archive throws ChangeNotCommittedError; runCoreOperation catches RecordRefusedError (renamed here from TaskRefusedError) and the document tool handlers use it; the comments of ChangeNotCommittedError and moveWithoutReplacing speak of tasks and documents. src/test/cli-linked-record-commit.test.ts became src/test/linked-record-commit.test.ts in BACK-765, which drives the CLI and MCP with task files; this branch adds its document tests there (archive as a link with the target inside and outside the repository, an edit through a committed link, a document in a linked folder). src/test/commit-failure-after-change.test.ts comes from BACK-765 with the task cases; this branch adds backlog doc archive, document_archive and the core error for a document. The modified-file list no longer holds src/git/operations.ts, src/mcp/tools/tasks/handlers.ts and src/test/cli-linked-record-commit.test.ts, and holds src/test/linked-record-commit.test.ts.
+
+Checks after the split: bunx tsc --noEmit and bun run check . clean. One file at a time: linked-record-commit 15, commit-failure-after-change 10, cli-doc-archive 35, document-archive 37, mcp-document-archive 10, server-document-archive 3, mcp-server 15, content-identity 13, docs-recursive 3, no failures. bun run test: 3,117 pass, 8 skip, 1 fail across 302 files; the one failure is the content-store watcher test that fails now and then on the base too (publishes watched distinct-path local creation with the refreshed branch collision identity), and src/test/content-store.test.ts then passed on its own (67 pass). The end-to-end CLI and MCP scripts and the link probe were run again against a binary built from this branch, with the same results as before the split.
 <!-- SECTION:NOTES:END -->
 
 ## Final Summary
 
 <!-- SECTION:FINAL_SUMMARY:BEGIN -->
-`backlog doc archive <docId>` and the MCP tool `document_archive` move a document to `backlog/archive/docs/` under the same relative path. The archived document keeps its ID, stays viewable, is read-only, and leaves lists and search. This is the first step of the two-step removal ruled for issue #1101; delete and restore follow in BACK-762.
+`backlog doc archive <docId>` and the MCP tool `document_archive` move a document to `backlog/archive/docs/` under the same relative path. The archived document keeps its ID, stays viewable, is read-only, and leaves lists and search. This is the first step of the two-step removal ruled for issue #1101; delete and restore follow in BACK-762. The task builds on BACK-765, which commits a moved record file that is a link as the link and reports a commit that failed after archive, restore or delete in one sentence.
 
 What changed
 - One core operation, `Core.archiveDocument`, called by the CLI and by MCP. It moves the file unchanged with the never-replace move task archive uses, through the helper task archive and task restore share (now `moveRecordFile`). A file already at the destination is never replaced; the archive is refused and names that file.
@@ -216,19 +220,17 @@ What changed
 - `backlog doc view`, the interactive viewer and `document_view` show an archived document under the line "This document is archived and read-only.".
 - Archive changes no task and no draft. It prints the tasks, archived tasks and drafts whose `documentation` list names the moved file.
 - The document listing walks the folders itself. A folder inside the document folder is read under its own path and never through a link, and a folder outside it is read once. A link loop ends, a link no longer makes an ID ambiguous, and a document keeps the path of the folder it is really in.
-- A record file that is a symbolic link is committed as a link when it is archived or restored, for documents and for tasks, with the link target inside or outside the repository. An edit through a link that Git already has still commits the file the link points to.
-- A change whose commit failed is reported in one sentence by every interface: "<record> was <archived|restored|deleted>, but committing the change failed: <reason>". This is new for `backlog task archive` and for the MCP task tools.
+- With auto-commit on, a document file that is a link is committed as the link, with the link target inside or outside the repository, and a document archive whose commit fails says "Document X was archived, but committing the change failed: <reason>" on the CLI and through MCP.
 - Help, CLI-INSTRUCTIONS.md, the task-execution guide, the agent guidelines and the MCP guides describe archiving. No TUI control, no web control and no HTTP route is added.
 
 Verification
-- `bunx tsc --noEmit` and `bun run check .` are clean. `bun run test`: 3,106 pass, 8 skip, 0 fail across 302 files.
-- src/test/cli-doc-archive.test.ts drives the CLI for every acceptance criterion; the MCP, HTTP, core and storage tests cover the same rules. src/test/cli-linked-record-commit.test.ts and src/test/commit-failure-after-change.test.ts cover the two changes to shared code.
+- `bunx tsc --noEmit` and `bun run check .` are clean. `bun run test`: 3,117 pass, 8 skip, 1 fail across 302 files; the one failure is the content-store watcher test that fails now and then on the base too (publishes watched distinct-path local creation with the refreshed branch collision identity), and src/test/content-store.test.ts then passed on its own (67 pass).
+- src/test/cli-doc-archive.test.ts drives the CLI for every acceptance criterion; the MCP, HTTP, core and storage tests cover the same rules. src/test/linked-record-commit.test.ts and src/test/commit-failure-after-change.test.ts hold the document cases of the BACK-765 behavior.
 - A scripted end-to-end run against a binary built from this branch covered every acceptance criterion through the CLI and through MCP over stdio.
 
 Choices to confirm
 - The view line and its place above the document; the wording of the refusal for a taken destination, which names the file from the project root; the ambiguity message, which now names files from the project root.
 - The document listing changed for every reader: a link to a folder inside the docs folder is not followed, and a subfolder that cannot be read is reported.
-- A record file that is a link and is new or changed in Git is committed as the link. For a link that is not committed yet, the first change through Backlog commits the link and the next one the file it points to.
 - `document_archive` returns the confirmation and the line of tasks and drafts, not the document.
 
 Known gaps
