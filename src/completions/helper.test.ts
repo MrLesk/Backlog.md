@@ -1,5 +1,7 @@
-import { describe, expect, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { Command } from "commander";
+import { Core } from "../core/backlog.ts";
+import { createTestDirOutsideRepository, initializeFilesystemTestProject, safeCleanup } from "../test/test-utils.ts";
 import { getCompletions, parseCompletionContext } from "./helper.ts";
 
 describe("parseCompletionContext", () => {
@@ -131,5 +133,45 @@ describe("parseCompletionContext", () => {
 		expect(await getCompletions(program, "backlog ", 8)).toEqual(["task"]);
 		expect(await getCompletions(program, "backlog task ", 13)).toEqual(["archive"]);
 		expect(await getCompletions(program, "backlog task comp", 17)).toEqual([]);
+	});
+});
+
+describe("task ID completion", () => {
+	let projectDir: string;
+	const previousBacklogCwd = process.env.BACKLOG_CWD;
+
+	beforeEach(async () => {
+		projectDir = await createTestDirOutsideRepository("completion-task-ids");
+		const core = new Core(projectDir);
+		await initializeFilesystemTestProject(core, "Completion Test");
+		await core.createTaskFromInput({ title: "On the board" }, false);
+		await core.createTaskFromInput({ title: "In the archive" }, false);
+		expect(await core.archiveTask("task-2", false)).toBe(true);
+		// Completion finds its project the way every command does.
+		process.env.BACKLOG_CWD = projectDir;
+	});
+
+	afterEach(async () => {
+		if (previousBacklogCwd === undefined) delete process.env.BACKLOG_CWD;
+		else process.env.BACKLOG_CWD = previousBacklogCwd;
+		await safeCleanup(projectDir);
+	});
+
+	/** The task IDs offered after `backlog task <subcommand> `, without the flags offered next to them. */
+	async function taskIdsOfferedFor(subcommand: string): Promise<string[]> {
+		const program = new Command("backlog");
+		const task = program.command("task");
+		for (const name of ["edit", "archive", "restore", "delete"]) task.command(`${name} <taskId>`);
+		const line = `backlog task ${subcommand} `;
+		const completions = await getCompletions(program, line, line.length);
+		return completions.filter((completion) => !completion.startsWith("-"));
+	}
+
+	test.each(["restore", "delete"])("offers archived tasks for task %s", async (subcommand) => {
+		expect(await taskIdsOfferedFor(subcommand)).toEqual(["TASK-2"]);
+	});
+
+	test.each(["edit", "archive"])("offers tasks on the board for task %s", async (subcommand) => {
+		expect(await taskIdsOfferedFor(subcommand)).toEqual(["TASK-1"]);
 	});
 });
