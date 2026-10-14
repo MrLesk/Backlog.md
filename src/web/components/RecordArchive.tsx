@@ -11,14 +11,16 @@ import { apiClient, readMovedFailureState } from '../lib/api';
  * server's message when it refuses, and leaves the page when the record is archived.
  */
 
-/** What differs between the two pages. Each kind has its own route and its own CLI restore command. */
+/** What differs between the two pages: the noun, the list page, the CLI restore command and the route. */
 const ARCHIVABLE_PAGES = {
 	document: {
+		noun: 'document',
 		listPath: '/documentation',
 		restoreCommand: 'backlog doc restore',
 		archive: (id: string) => apiClient.archiveDoc(id),
 	},
 	decision: {
+		noun: 'decision',
 		listPath: '/decisions',
 		restoreCommand: 'backlog decision restore',
 		archive: (id: string) => apiClient.archiveDecision(id),
@@ -31,8 +33,8 @@ export type ArchivablePageKind = keyof typeof ARCHIVABLE_PAGES;
  * Archives the record a page shows. `archive` asks for confirmation, sends one request at a time,
  * and on success refreshes the app's data and goes to the list page of the kind. When the server
  * refuses, `archiveError` holds its message and the page stays on the record. When the record
- * moved and only the commit failed, the browser says so with the server's message and treats the
- * record as archived, as the task details view does.
+ * moved and only the commit failed, the browser says so in the short sentence the task details view
+ * uses for the same case and treats the record as archived, as that view does.
  */
 export function useRecordArchive(
 	kind: ArchivablePageKind,
@@ -58,16 +60,18 @@ export function useRecordArchive(
 			try {
 				await page.archive(record.id);
 			} catch (error) {
-				const message = error instanceof Error ? error.message : String(error);
 				if (!readMovedFailureState(error, 'archiveState')) {
 					// Refused: the record is where it was, and the server's message is the answer.
-					setArchiveError(message);
+					setArchiveError(error instanceof Error ? error.message : String(error));
 					return;
 				}
-				// The record reached the archive and only the commit failed. Say so, and leave the page:
-				// a page left open on an archived record invites a second archive.
+				// The record reached the archive and only the commit failed. Say so as the task details view
+				// does, and leave the page: a page left open on an archived record invites a second archive.
+				// The server logs the Git error.
 				try {
-					window.alert(message);
+					window.alert(
+						`The ${page.noun} was archived, but committing the change failed. Check the repository before retrying.`,
+					);
 				} catch {
 					// A blocked dialog must not keep the page on the archived record.
 				}

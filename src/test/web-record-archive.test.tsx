@@ -17,6 +17,7 @@ type ArchiveAnswer = { status: number; body: Record<string, unknown> } | "pendin
 const PAGES = [
 	{
 		kind: "document",
+		noun: "document",
 		detailPath: "/documentation/1/retired-runbook",
 		detailPattern: "/documentation/:id/:title",
 		newPath: "/documentation/new",
@@ -40,6 +41,7 @@ const PAGES = [
 	},
 	{
 		kind: "decision",
+		noun: "decision",
 		detailPath: "/decisions/1/retired-runbook",
 		detailPattern: "/decisions/:id/:title",
 		newPath: "/decisions/new",
@@ -253,15 +255,19 @@ describe.each([...PAGES])("the $kind page", (page) => {
 		expect(buttonNamed(session.container, "Archive")?.disabled).toBe(false);
 	});
 
-	it("says so and treats the record as archived when only the commit failed", async () => {
-		const message = "Archived, but committing the change failed: index.lock";
+	it("says so in the sentence of the task Archive button and treats the record as archived when only the commit failed", async () => {
 		const session = await open(page, {
-			archive: { status: 500, body: { error: message, archiveState: "moved" } },
+			archive: {
+				status: 500,
+				body: { error: "Archived, but committing the change failed: index.lock", archiveState: "moved" },
+			},
 		});
 
 		await click(buttonNamed(session.container, "Archive"));
 
-		expect(session.alerts).toEqual([message]);
+		expect(session.alerts).toEqual([
+			`The ${page.noun} was archived, but committing the change failed. Check the repository before retrying.`,
+		]);
 		expect(session.refreshes).toBe(1);
 		expect(session.container.querySelector('[data-testid="list-page"]')).toBeTruthy();
 	});
