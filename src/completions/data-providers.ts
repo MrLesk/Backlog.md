@@ -119,11 +119,21 @@ export async function getAssignees(): Promise<string[]> {
 }
 
 /**
- * Get all document IDs from the backlog
+ * Get the IDs of the documents in the docs folder
  */
 export async function getDocumentIds(): Promise<string[]> {
 	return await withCore(async (core) => {
 		const docs = await core.filesystem.listDocuments();
+		return docs.map((doc) => doc.id).sort();
+	}, []);
+}
+
+/**
+ * Get the IDs of the archived documents, for the commands that act only on the archive
+ */
+export async function getArchivedDocumentIds(): Promise<string[]> {
+	return await withCore(async (core) => {
+		const docs = await core.filesystem.listArchivedDocuments();
 		return docs.map((doc) => doc.id).sort();
 	}, []);
 }

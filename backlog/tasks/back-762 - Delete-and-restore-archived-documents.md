@@ -5,7 +5,7 @@ status: Done
 assignee:
   - '@claude'
 created_date: '2026-10-13 18:46'
-updated_date: '2026-10-14 05:28'
+updated_date: '2026-10-14 07:11'
 labels:
   - enhancement
 dependencies:
@@ -31,6 +31,8 @@ modified_files:
   - src/guidelines/mcp/overview.md
   - src/guidelines/mcp/overview-tools.md
   - src/mcp/README.md
+  - src/completions/helper.ts
+  - src/completions/data-providers.ts
   - src/test/cli-doc-archive.test.ts
   - src/test/mcp-server.test.ts
   - src/test/mcp-document-archive.test.ts
@@ -40,6 +42,7 @@ modified_files:
   - src/test/document-archive.test.ts
   - src/test/linked-record-commit.test.ts
   - src/test/commit-failure-after-change.test.ts
+  - src/completions/helper.test.ts
 priority: high
 type: enhancement
 ordinal: 383000
@@ -141,6 +144,8 @@ Checks: bunx tsc --noEmit and bun run check . clean. One file at a time: cli-doc
 Ruling on the released ID (coordinator, 2026-10-14): keep the document ID step as it is and state its behavior in the criterion. The document ID step moves to the task allocator in BACK-735, which gives documents the task rule; changing it here would do part of BACK-735 early and would free a number when a document file is removed by hand without a commit. The old criterion 10 was removed and added back reworded as criterion 26, so criteria 11 to 26 of the earlier list are now 10 to 25.
 
 Proof of criterion 26, src/test/cli-doc-restore-delete.test.ts: no Git repository, the full doc-5 and doc-6 sequence ("releases the ID, so the next created document receives it"); auto-commit on ("releases the ID of a deleted document when auto-commit is on"); auto-commit off with a committed document, reserved before the deletion is committed and given out again after it ("keeps the number of a committed document until its deletion is committed when auto-commit is off", added for this ruling); and src/test/mcp-document-restore-delete.test.ts "releases the ID of a deleted document for the next document_create" for a document that was never committed. All pass; cli-doc-restore-delete has 32 tests now.
+
+Shell completion: `backlog doc restore` and `backlog doc delete` complete the IDs of archived documents (new getArchivedDocumentIds on listArchivedDocuments); every other doc command still completes the documents in the docs folder. One condition in getArgumentCompletions names restore and delete of both tasks and documents, the one task restore and task delete already used. Decision commands complete no IDs, as before.
 <!-- SECTION:NOTES:END -->
 
 ## Final Summary
