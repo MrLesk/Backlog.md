@@ -5,7 +5,7 @@ status: In Progress
 assignee:
   - '@claude'
 created_date: '2026-10-13 18:46'
-updated_date: '2026-10-14 05:13'
+updated_date: '2026-10-14 05:17'
 labels:
   - enhancement
 dependencies:
@@ -80,23 +80,23 @@ This is the second of four stacked tasks for issue #1101. Each is one branch and
 - [x] #7 `backlog doc delete <docId>` on an archived document exits zero, prints `Deleted document <id>`, and removes the document's file from `backlog/archive/docs/`. Afterwards `backlog doc view <docId>` no longer finds the document.
 - [x] #8 `backlog doc delete <docId>` on a document that is not archived exits non-zero with a message saying a document must be archived before it can be deleted, and leaves the file unchanged.
 - [x] #9 `backlog doc delete` asks no question, also when its input is not a terminal, and offers no confirmation flag: `backlog doc delete <docId> --yes` fails with an unknown option error and deletes nothing.
-- [ ] #10 Delete releases the ID. With `doc-5` as the highest document number: after `backlog doc archive doc-5` a new document gets `doc-6`. After `doc-6` is archived and deleted and `doc-5` is deleted, the next `backlog doc create` assigns `doc-5` again.
-- [x] #11 The number of a deleted document stays reserved while another file in this checkout or a committed file on another branch still uses it.
-- [x] #12 After a successful delete the command prints one more line with the IDs of the tasks on the board, the archived tasks and the drafts of this checkout whose `documentation` list names the removed file, for example `Still listed as documentation by: TASK-2, DRAFT-1`. When none names the file, that line is not printed.
-- [x] #13 For delete, a `documentation` entry names the file when it is one of two paths written from the project root: the archive path the file was removed from (`backlog/archive/docs/...`) or the path the file had before it was archived (`backlog/docs/...`). As for archive, the entry also matches with `./` in front of the path or with `#` and a fragment after it, and a URL, an absolute path or a bare ID such as `doc-3` does not match.
-- [x] #14 Delete changes no task file and no draft file.
-- [x] #15 `backlog doc restore` and `backlog doc delete` for an ID that no document claims exit non-zero with a not found message and change nothing.
-- [x] #16 An ID claimed by more than one file, counting `backlog/docs/` and `backlog/archive/docs/` together, fails closed for restore and for delete: the command exits non-zero with the ambiguity message that lists each file with its folder, and nothing is moved or removed.
-- [x] #17 An archived document file that is a symbolic link is restored as a link to the same target.
-- [x] #18 Delete of an archived document file that is a symbolic link removes the link only. The file it points to is still in place and unchanged.
-- [x] #19 With auto-commit on (`auto_commit: true`), a successful restore makes one commit that holds the move of the file and nothing else, and a successful delete makes one commit that holds the removal of the file and nothing else.
-- [x] #20 With auto-commit off, restore and delete make no commit and add nothing to the Git index.
-- [x] #21 When the file was moved or removed but the commit fails, the command says that the document was restored or deleted and that committing the change failed, and exits non-zero.
-- [x] #22 The MCP server offers the tools `document_restore` and `document_delete`. Each takes one document ID like `document_view`, rejects unknown fields (so there is no confirmation field), and returns a success message and the same refusal messages as the CLI. `document_delete` also returns the line of tasks and drafts.
-- [x] #23 `backlog doc --help` lists `restore` and `delete`, and the help and help schema of each command describe it with an example.
-- [x] #24 Each operation is one core function that the CLI command and the MCP tool both call. Neither holds a rule of its own, and restore reuses the file move that archive uses.
-- [x] #25 Tests drive the CLI for every behavior above and the MCP tools for the same rules.
-- [x] #26 `CLI-INSTRUCTIONS.md`, the shipped guides (`backlog instructions` and the agent guidelines) and the MCP guides that list the document tools say that removing a document takes two steps, archive then delete, that delete asks no question and releases the ID, that tasks naming the file are printed and not changed, and how an archived document is restored.
+- [x] #10 The number of a deleted document stays reserved while another file in this checkout or a committed file on another branch still uses it.
+- [x] #11 After a successful delete the command prints one more line with the IDs of the tasks on the board, the archived tasks and the drafts of this checkout whose `documentation` list names the removed file, for example `Still listed as documentation by: TASK-2, DRAFT-1`. When none names the file, that line is not printed.
+- [x] #12 For delete, a `documentation` entry names the file when it is one of two paths written from the project root: the archive path the file was removed from (`backlog/archive/docs/...`) or the path the file had before it was archived (`backlog/docs/...`). As for archive, the entry also matches with `./` in front of the path or with `#` and a fragment after it, and a URL, an absolute path or a bare ID such as `doc-3` does not match.
+- [x] #13 Delete changes no task file and no draft file.
+- [x] #14 `backlog doc restore` and `backlog doc delete` for an ID that no document claims exit non-zero with a not found message and change nothing.
+- [x] #15 An ID claimed by more than one file, counting `backlog/docs/` and `backlog/archive/docs/` together, fails closed for restore and for delete: the command exits non-zero with the ambiguity message that lists each file with its folder, and nothing is moved or removed.
+- [x] #16 An archived document file that is a symbolic link is restored as a link to the same target.
+- [x] #17 Delete of an archived document file that is a symbolic link removes the link only. The file it points to is still in place and unchanged.
+- [x] #18 With auto-commit on (`auto_commit: true`), a successful restore makes one commit that holds the move of the file and nothing else, and a successful delete makes one commit that holds the removal of the file and nothing else.
+- [x] #19 With auto-commit off, restore and delete make no commit and add nothing to the Git index.
+- [x] #20 When the file was moved or removed but the commit fails, the command says that the document was restored or deleted and that committing the change failed, and exits non-zero.
+- [x] #21 The MCP server offers the tools `document_restore` and `document_delete`. Each takes one document ID like `document_view`, rejects unknown fields (so there is no confirmation field), and returns a success message and the same refusal messages as the CLI. `document_delete` also returns the line of tasks and drafts.
+- [x] #22 `backlog doc --help` lists `restore` and `delete`, and the help and help schema of each command describe it with an example.
+- [x] #23 Each operation is one core function that the CLI command and the MCP tool both call. Neither holds a rule of its own, and restore reuses the file move that archive uses.
+- [x] #24 Tests drive the CLI for every behavior above and the MCP tools for the same rules.
+- [x] #25 `CLI-INSTRUCTIONS.md`, the shipped guides (`backlog instructions` and the agent guidelines) and the MCP guides that list the document tools say that removing a document takes two steps, archive then delete, that delete asks no question and releases the ID, that tasks naming the file are printed and not changed, and how an archived document is restored.
+- [x] #26 Delete releases the ID once no file uses its number. With `doc-5` as the highest document number, after `backlog doc archive doc-5` a new document gets `doc-6`; after `doc-6` is archived and deleted and `doc-5` is deleted, the next `backlog doc create` assigns `doc-5` again when there is no Git repository, when auto-commit is on, or once the deletions are committed. With auto-commit off, the number of a committed document stays reserved until the deletion is committed, because the committed file still holds it.
 <!-- AC:END -->
 
 ## Definition of Done
@@ -137,6 +137,10 @@ ID release, criteria 10 and 11 against the generator as it is: generateNextDocId
 Tests: src/test/cli-doc-restore-delete.test.ts (31) and src/test/mcp-document-restore-delete.test.ts (9) are new. src/test/document-archive.test.ts adds the core functions, the content store and removeArchivedDocumentFile. src/test/linked-record-commit.test.ts commits archive, restore and delete of a linked document file (target inside and outside). src/test/commit-failure-after-change.test.ts adds doc restore and delete for the CLI and MCP. BACK-761 tests follow the new read-only message, tool list and guide wording. Four deliberate breaks (ID check, content store on restore, the path before the archive, removing the link target) each fail a test.
 
 Checks: bunx tsc --noEmit and bun run check . clean. One file at a time: cli-doc-restore-delete 31, mcp-document-restore-delete 9, document-archive 44, linked-record-commit 15, commit-failure-after-change 14, cli-doc-archive 35, mcp-document-archive 10, server-document-archive 3, mcp-server 16, content-store 67, docs-recursive 3, content-identity 13, no failures. bun run test: 3,169 pass, 8 skip, 0 fail across 304 files at commit 87743b47 (it exits 1 with no failing test, as on the base); the last commit changes two comments or descriptions and adds one MCP guide test, whose files then passed on their own. End-to-end CLI and MCP-over-stdio scripts ran against a binary built from this branch.
+
+Ruling on the released ID (coordinator, 2026-10-14): keep the document ID step as it is and state its behavior in the criterion. The document ID step moves to the task allocator in BACK-735, which gives documents the task rule; changing it here would do part of BACK-735 early and would free a number when a document file is removed by hand without a commit. The old criterion 10 was removed and added back reworded as criterion 26, so criteria 11 to 26 of the earlier list are now 10 to 25.
+
+Proof of criterion 26, src/test/cli-doc-restore-delete.test.ts: no Git repository, the full doc-5 and doc-6 sequence ("releases the ID, so the next created document receives it"); auto-commit on ("releases the ID of a deleted document when auto-commit is on"); auto-commit off with a committed document, reserved before the deletion is committed and given out again after it ("keeps the number of a committed document until its deletion is committed when auto-commit is off", added for this ruling); and src/test/mcp-document-restore-delete.test.ts "releases the ID of a deleted document for the next document_create" for a document that was never committed. All pass; cli-doc-restore-delete has 32 tests now.
 <!-- SECTION:NOTES:END -->
 
 ## Final Summary
@@ -153,11 +157,11 @@ What changed
 - Help, CLI-INSTRUCTIONS.md, the task-execution guide, the agent guidelines, the MCP guides and src/mcp/README.md describe restore and the two-step delete.
 
 Verification
-- bunx tsc --noEmit and bun run check . are clean. bun run test: 3,169 pass, 8 skip, 0 fail across 304 files at commit 87743b47 (it exits 1 with no failing test, as on the base); the last commit changes two comments or descriptions and adds one MCP guide test, whose files then passed on their own.
-- New CLI (31) and MCP (9) test files cover every criterion; core, link-commit and commit-failure tests cover the shared code. End-to-end runs against a built binary through the CLI and MCP over stdio.
+- bunx tsc --noEmit and bun run check . are clean. bun run test: 3,169 pass, 8 skip, 0 fail across 304 files at commit 87743b47 (it exits 1 with no failing test, as on the base). Later commits change a comment, a tool description and add two tests, whose files passed on their own.
+- New CLI (32) and MCP (9) test files cover every criterion; core, link-commit and commit-failure tests cover the shared code. End-to-end runs against a built binary through the CLI and MCP over stdio.
 
-Open point
-- Criterion 10 holds without Git and with auto-commit on. With auto-commit off and the document committed, the document ID step still counts the current branch's last commit, so the number is released only once the deletion is committed. Tasks release at once. The generator is unchanged pending a ruling, and criterion 10 is unchecked.
+Released ID
+- The document ID step is unchanged by ruling: it counts committed files on every branch, the current one included, so with auto-commit off the number of a committed document is released once the deletion is committed. Tasks release at once because their ID step does not read the current branch; BACK-735 aligns documents with tasks.
 
 Choices to confirm
 - Restore also prints the line of tasks and drafts that name the archive path the file left.
