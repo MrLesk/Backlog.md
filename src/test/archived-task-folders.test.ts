@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
-import { lstat, mkdir, readdir, readlink, realpath, symlink, unlink } from "node:fs/promises";
+import { chmod, lstat, mkdir, readdir, readlink, realpath, stat, symlink, unlink } from "node:fs/promises";
 import { join } from "node:path";
 import { moveArchivedTasks, moveWithoutReplacing, previewArchivedTaskMove } from "../core/archived-task-move.ts";
 import { Core } from "../core/backlog.ts";
@@ -350,6 +350,17 @@ describe("moving a task file without replacing", () => {
 
 		expect(await Bun.file(target).text()).toBe("moved content");
 		expect(await Bun.file(source).exists()).toBe(false);
+	});
+
+	// Windows has no POSIX file modes, and it refuses to remove a read-only source.
+	it.skipIf(process.platform === "win32")("copies a read-only file and keeps it read-only", async () => {
+		await chmod(source, 0o444);
+
+		await moveWithoutReplacing(source, target, withoutHardLinks);
+
+		expect(await Bun.file(target).text()).toBe("moved content");
+		expect(await Bun.file(source).exists()).toBe(false);
+		expect((await stat(target)).mode & 0o222).toBe(0);
 	});
 
 	it("keeps both files when the target name is taken, with or without hard links", async () => {

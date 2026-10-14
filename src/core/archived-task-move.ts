@@ -145,7 +145,8 @@ export async function moveWithoutReplacing(
 			await files.link(sourcePath, targetPath);
 		} catch (error) {
 			if (!HARD_LINK_UNAVAILABLE.has((error as NodeJS.ErrnoException).code ?? "")) throw error;
-			await (await open(targetPath, "wx", source.mode & 0o777)).close();
+			// Writable even for a read-only source, so the copy can fill it; copyFile then gives it the source's mode.
+			await (await open(targetPath, "wx", (source.mode & 0o777) | 0o200)).close();
 			contentMissing = true;
 		}
 	}
