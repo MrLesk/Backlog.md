@@ -1,11 +1,11 @@
 ---
 id: BACK-762
 title: Delete and restore archived documents
-status: In Progress
+status: Done
 assignee:
   - '@claude'
 created_date: '2026-10-13 18:46'
-updated_date: '2026-10-14 05:17'
+updated_date: '2026-10-14 05:28'
 labels:
   - enhancement
 dependencies:
