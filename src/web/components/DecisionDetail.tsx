@@ -10,6 +10,7 @@ import { SuccessToast } from './SuccessToast';
 import { useTheme } from '../contexts/ThemeContext';
 import { sanitizeUrlTitle } from '../utils/urlHelpers';
 import StoredDate from './StoredDate';
+import { ArchiveButton, ArchivedLabel, ArchiveRefusal, useRecordArchive } from './RecordArchive';
 
 // Utility function for ID transformations
 const stripIdPrefix = (id: string): string => {
@@ -88,6 +89,13 @@ export default function DecisionDetail({ decisions, onRefreshData, dateFormat }:
 	const [error, setError] = useState<Error | null>(null);
 	const [isNewDecision, setIsNewDecision] = useState(false);
 	const [showSaveSuccess, setShowSaveSuccess] = useState(false);
+	// An archived decision is read-only: it shows the Archived label and no Archive button.
+	const isArchived = decision?.archived === true;
+	const { archive, isArchiving, archiveError, dismissArchiveError } = useRecordArchive(
+		'decision',
+		decision && !isNewDecision ? { id: decision.id, title: decision.title } : null,
+		onRefreshData,
+	);
 
 	useEffect(() => {
 		if (id === 'new') {
@@ -284,6 +292,7 @@ export default function DecisionDetail({ decisions, onRefreshData, dateFormat }:
 								</h1>
 							)}
 							<div className="flex items-center space-x-6 text-sm text-gray-500 dark:text-gray-400 transition-colors duration-200">
+								{isArchived && <ArchivedLabel />}
 								<div className="flex items-center space-x-2">
 									<svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 										<path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a.997.997 0 01-1.414 0l-7-7A1.997 1.997 0 013 12V7a4 4 0 014-4z" />
@@ -331,6 +340,9 @@ export default function DecisionDetail({ decisions, onRefreshData, dateFormat }:
 										Edit
 								</button>
 							) : null}
+							{decision && !isNewDecision && !isEditing && !isArchived && (
+								<ArchiveButton onClick={archive} disabled={isArchiving} />
+							)}
 							{isEditing && (
 								<div className="flex items-center space-x-2">
 										<button
@@ -358,6 +370,7 @@ export default function DecisionDetail({ decisions, onRefreshData, dateFormat }:
 						</div>
 					</div>
 				</div>
+				{archiveError && <ArchiveRefusal message={archiveError} onDismiss={dismissArchiveError} />}
 			</div>
 
 			{/* Content Section */}

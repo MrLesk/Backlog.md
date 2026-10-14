@@ -10,6 +10,7 @@ import {SuccessToast} from './SuccessToast';
 import { useTheme } from '../contexts/ThemeContext';
 import { sanitizeUrlTitle } from '../utils/urlHelpers';
 import StoredDate from './StoredDate';
+import { ArchiveButton, ArchivedLabel, ArchiveRefusal, useRecordArchive } from './RecordArchive';
 
 // Custom MDEditor wrapper for proper height handling
 const MarkdownEditor = memo(function MarkdownEditor({
@@ -92,6 +93,13 @@ export default function DocumentationDetail({docs, onRefreshData, dateFormat}: D
     const [saveError, setSaveError] = useState<Error | null>(null);
     const [isNewDocument, setIsNewDocument] = useState(false);
     const [showSaveSuccess, setShowSaveSuccess] = useState(false);
+    // An archived document is read-only: it shows the Archived label and neither Edit nor Archive.
+    const isArchived = document?.archived === true;
+    const {archive, isArchiving, archiveError, dismissArchiveError} = useRecordArchive(
+        'document',
+        document && !isNewDocument ? {id: document.id, title: document.title} : null,
+        onRefreshData,
+    );
 
     useEffect(() => {
         if (id === 'new') {
@@ -333,6 +341,7 @@ export default function DocumentationDetail({docs, onRefreshData, dateFormat}: D
                                     </h1>
                                 )}
                                 <div className="flex items-center space-x-6 text-sm text-gray-500 dark:text-gray-400 transition-colors duration-200">
+                                    {isArchived && <ArchivedLabel />}
                                     <div className="flex items-center space-x-2">
                                         <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
@@ -369,7 +378,8 @@ export default function DocumentationDetail({docs, onRefreshData, dateFormat}: D
                                 </div>
                             </div>
                             <div className="flex items-center space-x-3 ml-6">
-                                {!isEditing ? (
+                                {isArchived ? null : !isEditing ? (
+                                    <>
                                     <button
                                         onClick={handleEdit}
                                         className="inline-flex items-center px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg text-sm font-medium text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400 focus:ring-offset-2 dark:focus:ring-offset-gray-900 transition-colors duration-200"
@@ -381,6 +391,10 @@ export default function DocumentationDetail({docs, onRefreshData, dateFormat}: D
                                         </svg>
                                         Edit
                                     </button>
+                                    {document && !isNewDocument && (
+                                        <ArchiveButton onClick={archive} disabled={isArchiving} />
+                                    )}
+                                    </>
                                 ) : (
                                     <div className="flex items-center space-x-2">
 	                                        <button
@@ -410,6 +424,7 @@ export default function DocumentationDetail({docs, onRefreshData, dateFormat}: D
                             </div>
                         </div>
                     </div>
+                    {archiveError && <ArchiveRefusal message={archiveError} onDismiss={dismissArchiveError} />}
                 </div>
 
                 {/* Content Section */}

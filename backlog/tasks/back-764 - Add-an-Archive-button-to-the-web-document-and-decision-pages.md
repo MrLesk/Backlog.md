@@ -1,16 +1,28 @@
 ---
 id: BACK-764
 title: Add an Archive button to the web document and decision pages
-status: To Do
-assignee: []
+status: In Progress
+assignee:
+  - '@claude'
 created_date: '2026-10-13 18:47'
-updated_date: '2026-10-13 18:49'
+updated_date: '2026-10-14 06:13'
 labels:
   - enhancement
 dependencies:
   - BACK-763
 references:
   - 'https://github.com/MrLesk/Backlog.md/issues/1101'
+  - core
+  - web-server
+modified_files:
+  - src/core/backlog.ts
+  - src/server/index.ts
+  - src/web/lib/api.ts
+  - src/web/components/RecordArchive.tsx
+  - src/web/components/DocumentationDetail.tsx
+  - src/web/components/DecisionDetail.tsx
+  - src/test/server-content-record-archive.test.ts
+  - src/test/web-record-archive.test.tsx
 priority: high
 type: enhancement
 ordinal: 385000
@@ -64,3 +76,14 @@ This is the last of four stacked tasks for issue #1101. Each is one branch and o
 - [ ] #2 bun run check . passes when formatting/linting touched
 - [ ] #3 bun test (or scoped test) passes
 <!-- DOD:END -->
+
+## Implementation Plan
+
+<!-- SECTION:PLAN:BEGIN -->
+1. Core: an archive whose commit fails after the move is tagged for the browser (markRecordAlreadyMoved, archiveState), as task archive is. Nothing else in core changes; the routes call archiveContentRecord with the kind.
+2. Server: POST /api/docs/<id>/archive and POST /api/decisions/<id>/archive share one thin handler that maps core's answer to HTTP the way the task archive route does: 404 with core's not-found message, 409 for an ambiguous ID, 400 with the message of any refusal, 500 with archiveState moved when only the commit failed, and a data broadcast after a move.
+3. Web: one shared module for both pages (the hook that confirms, sends one request at a time, refreshes and navigates, and the Archive button, the Archived label and the refusal alert). It extends the task Archive flow of the task details view: window.confirm, then the request, then on archiveState moved an alert and the record treated as archived. The API client gains archiveDoc and archiveDecision without retry.
+4. Pages: the document page and the decision page show Archive in the header in view mode for a saved record, hide it while editing, on the new page and for an archived record; an archived record shows the Archived label and no Edit. A refusal is shown with the server's message and the page stays.
+5. Tests: the two routes (success with the result on disk and in the lists, not found, ambiguous, refused, moved with a failed commit), and the two pages in JSDOM (visibility in each state, cancel, confirm with navigation, refusal, moved with a failed commit, one request at a time, archived record by URL).
+6. Check the running browser UI at desktop and narrow width, in light and dark theme, with the keyboard, and save screenshots to the scratchpad.
+<!-- SECTION:PLAN:END -->

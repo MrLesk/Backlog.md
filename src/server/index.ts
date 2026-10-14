@@ -2,7 +2,7 @@ import net from "node:net";
 import { dirname, isAbsolute, join } from "node:path";
 import type { Server, ServerWebSocket } from "bun";
 import { DEFAULT_STATUSES } from "../constants/index.ts";
-import { Core, formatCleanupResult, RecordRefusedError } from "../core/backlog.ts";
+import { CONTENT_RECORD_WORDS, Core, formatCleanupResult, RecordRefusedError } from "../core/backlog.ts";
 import type { ContentStore } from "../core/content-store.ts";
 import { initializeProject } from "../core/init.ts";
 import type { SearchService } from "../core/search-service.ts";
@@ -12,6 +12,7 @@ import { isCreateLockError, isTaskLockError } from "../file-system/operations.ts
 import { BacklogToolError } from "../mcp/errors/mcp-errors.ts";
 import { MilestoneHandlers } from "../mcp/tools/milestones/handlers.ts";
 import {
+	type ContentRecordKind,
 	DOCUMENT_TYPE_VALUES,
 	type Document,
 	type SearchPriorityFilter,
@@ -455,6 +456,10 @@ export class BacklogServer {
 						GET: async (req: Request & { params: { id: string } }) => await this.handleGetDoc(req.params.id),
 						PUT: async (req: Request & { params: { id: string } }) => await this.handleUpdateDoc(req, req.params.id),
 					},
+					"/api/docs/:id/archive": {
+						POST: async (req: Request & { params: { id: string } }) =>
+							await this.handleArchiveContentRecord("document", req.params.id),
+					},
 					"/api/decisions": {
 						GET: async () => await this.handleListDecisions(),
 						POST: async (req: Request) => await this.handleCreateDecision(req),
@@ -466,6 +471,10 @@ export class BacklogServer {
 						GET: async (req: Request & { params: { id: string } }) => await this.handleGetDecision(req.params.id),
 						PUT: async (req: Request & { params: { id: string } }) =>
 							await this.handleUpdateDecision(req, req.params.id),
+					},
+					"/api/decisions/:id/archive": {
+						POST: async (req: Request & { params: { id: string } }) =>
+							await this.handleArchiveContentRecord("decision", req.params.id),
 					},
 					"/api/drafts": {
 						GET: async () => await this.handleListDrafts(),
@@ -1210,6 +1219,37 @@ export class BacklogServer {
 			}
 			const conflict = isAmbiguousIdError(error) || isAmbiguousTaskIdError(error) || isTaskLockError(error);
 			return Response.json({ error: message }, { status: conflict ? 409 : 400 });
+		}
+	}
+
+	/**
+	 * POST /api/docs/<id>/archive and POST /api/decisions/<id>/archive: the archive the CLI runs, for
+	 * the Archive button of the document and decision pages. Core decides everything; this maps its
+	 * answer to HTTP the way the task archive route does: 404 when no record claims the ID, 409 for an
+	 * ambiguous ID, 400 with core's message for a refusal, and 500 with `archiveState` when the record
+	 * moved and only the commit failed, so the page treats it as archived.
+	 */
+	private async handleArchiveContentRecord(kind: ContentRecordKind, id: string): Promise<Response> {
+		try {
+			if (!(await this.core.archiveContentRecord(kind, id))) {
+				return Response.json({ error: CONTENT_RECORD_WORDS[kind].notFound(id) }, { status: 404 });
+			}
+			this.broadcastDataUpdated();
+			return Response.json({ success: true });
+		} catch (error) {
+			if (isAmbiguousIdError(error)) {
+				return Response.json({ error: error.message }, { status: 409 });
+			}
+			if (error instanceof RecordRefusedError) {
+				return Response.json({ error: error.message }, { status: 400 });
+			}
+			const archiveState = readMovedState(error, "archiveState");
+			if (archiveState) {
+				this.broadcastDataUpdated();
+				console.error(`Error archiving ${kind} after it moved:`, error);
+				return Response.json({ error: (error as Error).message, archiveState }, { status: 500 });
+			}
+			throw error;
 		}
 	}
 
