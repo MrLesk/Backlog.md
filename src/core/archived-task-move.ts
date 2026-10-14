@@ -114,7 +114,8 @@ export interface MoveFileOperations {
  * The task is one file before the move and one file after it, also when the move fails: the target
  * is created first, under a name that was free, and the source is removed last. If anything fails
  * in between, the target is removed again and the source is still the task. Two files for one task
- * would make every read of its ID ambiguous.
+ * would make every read of its ID ambiguous, so if the target cannot be removed either, the error
+ * names it as the file to delete by hand.
  *
  * A regular file is hard-linked under its new name. Where a hard link is not possible, the name is
  * claimed with an empty file first and the content is copied into it. A symbolic link is recreated
@@ -154,8 +155,17 @@ export async function moveWithoutReplacing(
 		if (contentMissing) await files.copyFile(sourcePath, targetPath);
 		await files.unlink(sourcePath);
 	} catch (error) {
-		// The failure above is the one to report, also when the target cannot be removed either.
-		await files.unlink(targetPath).catch(() => {});
+		// The failure above is the one to report. If the target cannot be removed either, two files
+		// are left for one task, so the report also names the target as the file to delete.
+		try {
+			await files.unlink(targetPath);
+		} catch {
+			const reason = error instanceof Error ? error.message : String(error);
+			throw new Error(
+				`${reason}\nThe second file this move created at ${targetPath} could not be removed. Delete that file by hand.`,
+				{ cause: error },
+			);
+		}
 		throw error;
 	}
 }

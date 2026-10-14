@@ -384,6 +384,25 @@ describe("moving a task file without replacing", () => {
 		expect(await Bun.file(source).text()).toBe("moved content");
 	});
 
+	it.each([
+		["a hard link", {}],
+		["a copy", withoutHardLinks],
+	])("names the second file when it cannot be removed either, after %s", async (_name, operations) => {
+		const removalError = Object.assign(new Error("permission denied"), { code: "EACCES" });
+		const failToRemove = async (path: string) => {
+			throw path === source ? removalError : new Error("read-only file system");
+		};
+
+		// The failed removal of the source is still what is reported; the file to delete is added to it.
+		await expect(moveWithoutReplacing(source, target, { ...operations, unlink: failToRemove })).rejects.toMatchObject({
+			message: `permission denied\nThe second file this move created at ${target} could not be removed. Delete that file by hand.`,
+			cause: removalError,
+		});
+
+		expect(await Bun.file(target).text()).toBe("moved content");
+		expect(await Bun.file(source).text()).toBe("moved content");
+	});
+
 	it("removes a half-written target when the copy fails", async () => {
 		const copyError = Object.assign(new Error("no space left on device"), { code: "ENOSPC" });
 		const failHalfway = async (_sourcePath: string, targetPath: string) => {
