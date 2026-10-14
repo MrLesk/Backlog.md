@@ -18,14 +18,23 @@ import {
 	TaskDependenciesParseError,
 } from "../markdown/parser.ts";
 import { serializeDecision, serializeDocument, serializeTask } from "../markdown/serializer.ts";
-import type { BacklogConfig, Decision, Document, Milestone, Task, TaskListFilter } from "../types/index.ts";
+import type {
+	BacklogConfig,
+	ContentRecord,
+	ContentRecordKind,
+	Decision,
+	Document,
+	Milestone,
+	Task,
+	TaskListFilter,
+} from "../types/index.ts";
 import type { BacklogConfigSource } from "../utils/backlog-directory.ts";
 import {
 	normalizeProjectBacklogDirectory,
 	resolveBacklogDirectory,
 	resolveBacklogDirectoryFromRootConfig,
 } from "../utils/backlog-directory.ts";
-import { findDecisionById } from "../utils/decision-id.ts";
+import { decisionIdsEqual, findDecisionById } from "../utils/decision-id.ts";
 import {
 	documentIdsEqual,
 	documentNotFoundMessage,
@@ -291,6 +300,18 @@ function recordUnreadableDirectory(error: unknown, unreadable?: string[]): void 
 	unreadable?.push("");
 }
 
+/**
+ * A decision's file name. Decisions are stored flat, so a path with a folder in it, or one that
+ * leaves the folder, is refused.
+ */
+function decisionFileName(decision: ContentRecord): string {
+	const name = decision.path ?? `${decision.id}.md`;
+	if (name === "" || name === "." || name === ".." || /[\\/]/.test(name)) {
+		throw new Error(`Decision path must be one file name in its folder: ${name}`);
+	}
+	return name;
+}
+
 /** Whether `path` is `directory` itself or lies inside it. Both are real paths, with links resolved. */
 function isWithinDirectory(directory: string, path: string): boolean {
 	return path === directory || path.startsWith(`${directory}${sep}`);
@@ -422,6 +443,10 @@ export class FileSystem {
 
 	get archiveDocsDir(): string {
 		return join(this.resolvedBacklogDir, DEFAULT_DIRECTORIES.ARCHIVE_DOCS);
+	}
+
+	get archiveDecisionsDir(): string {
+		return join(this.resolvedBacklogDir, DEFAULT_DIRECTORIES.ARCHIVE_DECISIONS);
 	}
 
 	get milestonesDir(): string {
@@ -1490,21 +1515,38 @@ export class FileSystem {
 	}
 
 	// Decision log operations
-	/** Saves a decision. `movedFrom` is the previous path of its file when the save renamed it. */
+	/**
+	 * Saves a decision in the decisions folder. `movedFrom` is the previous path of its file when the
+	 * save renamed it.
+	 *
+	 * An archived decision is refused here as well as by core, which answers the user. This save
+	 * writes in the decisions folder only, so it would leave the archived file where it is and write a
+	 * second file for the same ID.
+	 */
 	async saveDecision(decision: Decision): Promise<{ filepath: string; movedFrom: string | undefined }> {
+		if (decision.archived) {
+			throw new Error(`Cannot save decision ${decision.id}: it is archived, and archived decisions are read-only.`);
+		}
 		// The file name always starts with a lower-case "decision-", whatever letter case the stored ID uses.
 		const filename = `decision-${extractIdBody(decision.id, "decision")} - ${this.sanitizeFilename(decision.title)}.md`;
 		const decisionsDir = await this.getDecisionsDir();
 		const filepath = join(decisionsDir, filename);
-		const loadedFromPath = decision.path ? join(decisionsDir, decision.path) : undefined;
+		const loadedFromPath = decision.path ? this.contentRecordFilePath("decision", decision) : undefined;
 
 		const movedFrom = await this.writeRecordFile(filepath, serializeDecision(decision), loadedFromPath);
 
 		return { filepath, movedFrom };
 	}
 
+	/**
+	 * Loads a decision from the decisions folder by ID. The content store uses it to read back a
+	 * decision that changed. It does not look at the archive: to resolve an ID a user gave, call
+	 * `Core.getDecision`, which fails closed when an archived file claims the same ID.
+	 */
 	async loadDecision(decisionId: string): Promise<Decision | null> {
-		return findDecisionById(await this.listDecisions(), decisionId);
+		return findDecisionById(await this.listDecisions(), decisionId, (candidate) =>
+			this.contentRecordProjectPath("decision", candidate),
+		);
 	}
 
 	// Document operations
@@ -1530,7 +1572,7 @@ export class FileSystem {
 		const normalizedSubPath = normalizeDocumentSubPath(subPath);
 		const relativePath = normalizedSubPath ? `${normalizedSubPath}/${filename}` : filename;
 		const filepath = join(docsDir, ...relativePath.split("/"));
-		const loadedFromPath = document.path ? this.documentFilePath(document) : undefined;
+		const loadedFromPath = document.path ? this.contentRecordFilePath("document", document) : undefined;
 
 		const movedFrom = await this.writeRecordFile(filepath, serializeDocument(document), loadedFromPath);
 
@@ -1538,22 +1580,34 @@ export class FileSystem {
 		return { relativePath, movedFrom };
 	}
 
-	/** Lists decisions, skipping files that cannot be read or parsed and collecting their paths in `unreadable`. */
+	/**
+	 * Lists the decisions in the decisions folder, skipping files that cannot be read or parsed and
+	 * collecting their file names in `unreadable`. Archived decisions are not part of this list; see
+	 * {@link listArchivedDecisions}.
+	 */
 	async listDecisions(unreadable?: string[]): Promise<Decision[]> {
+		return await this.readDecisionsIn(this.decisionsDir, unreadable);
+	}
+
+	/** Lists the archived decisions, each marked `archived`. Their `path` is a file name in the archive. */
+	async listArchivedDecisions(unreadable?: string[]): Promise<Decision[]> {
+		const decisions = await this.readDecisionsIn(this.archiveDecisionsDir, unreadable);
+		return decisions.map((decision) => ({ ...decision, archived: true }));
+	}
+
+	/**
+	 * Reads the decision files directly inside `directory`. Decisions are stored flat, so no subfolder
+	 * is read. `path` on each decision is its file name.
+	 */
+	private async readDecisionsIn(directory: string, unreadable?: string[]): Promise<Decision[]> {
 		try {
-			const decisionsDir = await this.getDecisionsDir();
 			const decisionFiles = await Array.fromAsync(
-				new Bun.Glob("decision-*.md").scan({ cwd: decisionsDir, followSymlinks: true }),
+				new Bun.Glob("decision-*.md").scan({ cwd: directory, followSymlinks: true }),
 			);
 			const decisions: Decision[] = [];
 			for (const file of decisionFiles) {
-				// Filter out README files as they're just instruction files
-				if (file.toLowerCase().match(/^readme\.md$/i)) {
-					continue;
-				}
-				const filepath = join(decisionsDir, file);
 				try {
-					const content = await Bun.file(filepath).text();
+					const content = await Bun.file(join(directory, file)).text();
 					decisions.push({ ...parseDecision(content), path: file });
 				} catch {
 					// One malformed file must not hide every other decision from lookups.
@@ -1694,45 +1748,77 @@ export class FileSystem {
 	}
 
 	/**
-	 * The file of a listed document: under the docs folder, or under the archive folder for documents
-	 * when the document is archived. This is the one place that maps `archived` to a folder.
+	 * Where the files of one content record kind are stored and how a file is read back. This is the
+	 * one place that knows the folders of documents and decisions; a new kind is one more case here.
+	 * - `folder` and `archiveFolder`: where the record is, depending on `archived`.
+	 * - `relativePath`: the record's path under that folder. A document keeps its subfolders; a
+	 *   decision is stored flat, so its path is one file name.
+	 * - `storedId` and `idsEqual`: the ID a file of this kind claims, to check a file before removal.
 	 */
-	documentFilePath(document: Document): string {
-		const directory = document.archived ? this.archiveDocsDir : this.docsDir;
-		const relativePath = normalizeDocumentRelativePath(document.path ?? `${document.id}.md`);
-		return join(directory, ...relativePath.split("/"));
+	private contentRecordStorage(kind: ContentRecordKind) {
+		switch (kind) {
+			case "document":
+				return {
+					folder: this.docsDir,
+					archiveFolder: this.archiveDocsDir,
+					relativePath: (record: ContentRecord) => normalizeDocumentRelativePath(record.path ?? `${record.id}.md`),
+					storedId: (content: string) => parseDocument(content).id,
+					idsEqual: documentIdsEqual,
+				};
+			case "decision":
+				return {
+					folder: this.decisionsDir,
+					archiveFolder: this.archiveDecisionsDir,
+					relativePath: decisionFileName,
+					storedId: (content: string) => parseDecision(content).id,
+					idsEqual: decisionIdsEqual,
+				};
+		}
 	}
 
 	/**
-	 * The file of a listed document as a path from the project root with forward slashes, for example
-	 * `backlog/docs/guides/doc-3 - API-Guidelines.md`. Messages name a document's file this way, and
-	 * a task's `documentation` entry that names the file is written this way.
+	 * The file of a listed document or decision: in the folder of its kind, or in the archive folder
+	 * of its kind when it is archived. This is the one place that maps `archived` to a folder.
 	 */
-	documentProjectPath(document: Document): string {
-		return relative(this.projectRoot, this.documentFilePath(document)).split(sep).join("/");
+	contentRecordFilePath(kind: ContentRecordKind, record: ContentRecord): string {
+		const storage = this.contentRecordStorage(kind);
+		const folder = record.archived ? storage.archiveFolder : storage.folder;
+		return join(folder, ...storage.relativePath(record).split("/"));
 	}
 
 	/**
-	 * Removes the file of an archived document for `Core.deleteDocument`, and returns its path.
-	 * A file that is a symbolic link is removed as a link; the file it points to stays.
+	 * The file of a listed document or decision as a path from the project root with forward slashes,
+	 * for example `backlog/docs/guides/doc-3 - API-Guidelines.md`. Messages name a record's file this
+	 * way, and a task's `documentation` entry that names the file is written this way.
+	 */
+	contentRecordProjectPath(kind: ContentRecordKind, record: ContentRecord): string {
+		return relative(this.projectRoot, this.contentRecordFilePath(kind, record)).split(sep).join("/");
+	}
+
+	/**
+	 * Removes the file of an archived document or decision for `Core.deleteContentRecord`, and returns
+	 * its path. A file that is a symbolic link is removed as a link; the file it points to stays.
 	 *
 	 * Nothing but that file can be removed through this. It refuses, and removes nothing, when the
-	 * document is not archived and when the file at its path does not claim the document's ID, for
-	 * example because another file took its place after the document was listed. A path that climbs
-	 * out of the archive folder (`..`) or is absolute is refused by `documentFilePath` already.
+	 * record is not archived and when the file at its path does not claim the record's ID, for
+	 * example because another file took its place after the record was listed. A path that leaves the
+	 * archive folder (`..`, an absolute path, or a decision path with a folder in it) is refused by
+	 * `contentRecordFilePath` already.
 	 */
-	async removeArchivedDocumentFile(document: Document): Promise<string> {
-		const refuse = (reason: string) => new Error(`The file of document ${document.id} was not removed: ${reason}`);
-		if (!document.archived) throw refuse("the document is not archived.");
-		const filePath = this.documentFilePath(document);
+	async removeArchivedContentRecordFile(kind: ContentRecordKind, record: ContentRecord): Promise<string> {
+		const refuse = (reason: string) => new Error(`The file of ${kind} ${record.id} was not removed: ${reason}`);
+		if (!record.archived) throw refuse(`the ${kind} is not archived.`);
+		const storage = this.contentRecordStorage(kind);
+		const filePath = this.contentRecordFilePath(kind, record);
+		const projectPath = this.contentRecordProjectPath(kind, record);
 		let storedId: string;
 		try {
-			storedId = parseDocument(await Bun.file(filePath).text()).id;
+			storedId = storage.storedId(await Bun.file(filePath).text());
 		} catch {
-			throw refuse(`${this.documentProjectPath(document)} cannot be read as a document.`);
+			throw refuse(`${projectPath} cannot be read as a ${kind}.`);
 		}
-		if (!documentIdsEqual(storedId, document.id)) {
-			throw refuse(`${this.documentProjectPath(document)} is the file of ${storedId}.`);
+		if (!storage.idsEqual(storedId, record.id)) {
+			throw refuse(`${projectPath} is the file of ${storedId}.`);
 		}
 		await unlink(filePath);
 		return filePath;
@@ -1745,7 +1831,7 @@ export class FileSystem {
 	 */
 	async loadDocument(id: string): Promise<Document> {
 		const document = findDocumentById(await this.listDocuments(), id, (candidate) =>
-			this.documentProjectPath(candidate),
+			this.contentRecordProjectPath("document", candidate),
 		);
 		if (!document) {
 			throw new Error(documentNotFoundMessage(id));

@@ -26,6 +26,9 @@ function occupiedLocalIds(
  */
 const DOCUMENT_FOLDERS = [DEFAULT_DIRECTORIES.DOCS, DEFAULT_DIRECTORIES.ARCHIVE_DOCS] as const;
 
+/** The folders a decision file can be in. An archived decision keeps its ID, as a document does. */
+const DECISION_FOLDERS = [DEFAULT_DIRECTORIES.DECISIONS, DEFAULT_DIRECTORIES.ARCHIVE_DECISIONS] as const;
+
 /**
  * Generate the next available document ID by checking all branches and local documents, in the
  * docs folder and in the archive.
@@ -99,9 +102,12 @@ export async function generateNextDocId(core: Core): Promise<string> {
  */
 export async function generateNextDecisionId(core: Core): Promise<string> {
 	const config = await core.filesystem.loadConfig();
-	// Load local decisions
+	// Load local decisions, in the decisions folder and in the archive
 	const unreadableFiles: string[] = [];
-	const decisions = await core.filesystem.listDecisions(unreadableFiles);
+	const decisions = [
+		...(await core.filesystem.listDecisions(unreadableFiles)),
+		...(await core.filesystem.listArchivedDecisions(unreadableFiles)),
+	];
 	const allIds: string[] = [];
 
 	// Skip remote operations if disabled
@@ -126,7 +132,10 @@ export async function generateNextDecisionId(core: Core): Promise<string> {
 
 		// Load files from all branches in parallel
 		const branchFilePromises = branches.map(async (branch) => {
-			const files = await core.gitOps.listFilesInTree(branch, `${backlogDir}/decisions`);
+			const files: string[] = [];
+			for (const folder of DECISION_FOLDERS) {
+				files.push(...(await core.gitOps.listFilesInTree(branch, `${backlogDir}/${folder}`)));
+			}
 			return files
 				.map((file) => {
 					const match = file.match(/decision-(\d+)/);

@@ -788,6 +788,29 @@ backlog doc delete doc-1
 - Archiving or deleting a document changes no task. The command prints the tasks and drafts whose documentation list names the moved or removed file; update those entries yourself.
 - Prefer CLI, MCP, or Web document APIs over ad-hoc file writes so frontmatter and metadata remain valid.
 
+### Decision Management
+
+Decisions are records of choices, kept in `backlog/decisions/`. The CLI creates, lists, archives, restores, and deletes them; MCP has no decision tools.
+
+```bash
+# Create a decision and list the decisions
+backlog decision create "Use PostgreSQL" -s accepted
+backlog decision list --plain
+
+# Archive a decision that is no longer wanted (its file moves to backlog/archive/decisions/)
+backlog decision archive decision-1
+
+# Bring an archived decision back to backlog/decisions/ with the same ID
+backlog decision restore decision-1
+
+# Remove an archived decision for good; works only after archive and asks no question
+backlog decision delete decision-1
+```
+
+- Archiving keeps the ID reserved, so no new decision receives it. An archived decision leaves lists and search and is read-only until it is restored.
+- Removing a decision takes two steps: archive, then delete. Delete works only on an archived decision, asks no question, removes the file and releases the ID once no other file and no committed file on any branch uses the number.
+- Archiving or deleting a decision changes no task. The command prints the tasks and drafts whose documentation list names the moved or removed file; update those entries yourself.
+
 ### Task Operations
 
 | Action             | Command                                      |

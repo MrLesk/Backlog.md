@@ -35,7 +35,7 @@ describe("BacklogServer with an archived document", () => {
 			content: "Runbook steps nobody follows any more.",
 		});
 		await core.createDocumentFromInput({ title: "Current runbook", content: "Runbook steps in use." });
-		expect(await core.archiveDocument("doc-1")).not.toBeNull();
+		expect(await core.archiveContentRecord("document", "doc-1")).not.toBeNull();
 		archivedFile = join(TEST_DIR, "backlog", "archive", "docs", retired.path ?? "");
 
 		server = new BacklogServer(TEST_DIR);

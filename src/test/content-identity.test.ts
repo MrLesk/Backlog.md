@@ -133,7 +133,11 @@ describe("ambiguous content identity", () => {
 		const error = await core.filesystem.loadDecision("decision-1").catch((caught: unknown) => caught);
 		expect(error).toBeInstanceOf(AmbiguousIdError);
 		expect((error as AmbiguousIdError).message).toContain("Decision ID decision-1 is ambiguous; 2 files match:");
-		expect((error as AmbiguousIdError).candidates).toEqual(["decision-01 - Beta.md", "decision-1 - Alpha.md"]);
+		// Each file is named by its path from the project root, as for documents.
+		expect((error as AmbiguousIdError).candidates).toEqual([
+			"backlog/decisions/decision-01 - Beta.md",
+			"backlog/decisions/decision-1 - Alpha.md",
+		]);
 	});
 
 	it("still resolves unambiguous IDs", async () => {

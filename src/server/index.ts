@@ -1427,9 +1427,10 @@ export class BacklogServer {
 
 	private async handleGetDecision(decisionId: string): Promise<Response> {
 		try {
-			// Resolve from disk, not the content store: the store keys decisions by raw ID and would
-			// silently drop one of two files that share an ID before the ambiguity check could run.
-			const decision = await this.core.filesystem.loadDecision(decisionId);
+			// Resolve from disk through core, not the content store: the store keys decisions by raw ID
+			// and would silently drop one of two files that share an ID before the ambiguity check
+			// could run. Core searches the decisions folder and the archive together.
+			const decision = await this.core.getDecision(decisionId);
 
 			if (!decision) {
 				return Response.json({ error: "Decision not found" }, { status: 404 });
@@ -1466,6 +1467,10 @@ export class BacklogServer {
 		} catch (error) {
 			if (isAmbiguousIdError(error)) {
 				return Response.json({ error: error.message }, { status: 409 });
+			}
+			// Core refused the save, for example because the decision is archived. Its message is the answer.
+			if (error instanceof RecordRefusedError) {
+				return Response.json({ error: error.message }, { status: 400 });
 			}
 			if (error instanceof Error && error.message.includes("not found")) {
 				return Response.json({ error: "Decision not found" }, { status: 404 });

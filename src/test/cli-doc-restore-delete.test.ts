@@ -397,7 +397,7 @@ describe("backlog doc restore and delete in a Git repository", () => {
 		if (!config) throw new Error("Expected the project config");
 		await core.filesystem.saveConfig({ ...config, autoCommit, remoteOperations: false });
 		expect(await createDocument("API Guidelines", "guides")).toBe(NAME);
-		await core.archiveDocument("doc-1", false);
+		await core.archiveContentRecord("document", "doc-1", false);
 		await git("add", "-A");
 		await git("commit", "-m", "Set up the project");
 	}

@@ -364,6 +364,13 @@ To keep the Web UI running in the background with auto-start on boot, see [Runni
 |-------------|------------------------------------------------------|
 | Create decision | `backlog decision create "Use PostgreSQL for primary database"` |
 | Create with status | `backlog decision create "Migrate to TypeScript" -s proposed` |
+| Archive decision | `backlog decision archive decision-1` (move the decision to `backlog/archive/decisions/`; its ID stays reserved and it becomes read-only) |
+| Restore decision | `backlog decision restore decision-1` (move an archived decision back to `backlog/decisions/` with the same ID) |
+| Delete decision | `backlog decision delete decision-1` (archived decisions only; no prompt; removes the file and releases the ID) |
+
+- Use `backlog decision archive decision-1` to archive a decision that is no longer wanted. Its file moves unchanged, under the same name, to `backlog/archive/decisions/`, and its ID stays reserved, so no new decision receives it. An archived decision leaves `backlog decision list` and search and is read-only until it is restored. No command prints a single decision yet, so an archived decision is read by restoring it. Archiving changes no task: the command prints the tasks and drafts whose documentation list names the moved file.
+- Use `backlog decision restore decision-1` to bring an archived decision back to `backlog/decisions/` with the same ID. A file of that name already there is never replaced.
+- Removing a decision takes two steps: `backlog decision archive decision-1`, then `backlog decision delete decision-1`. Delete works only on an archived decision and asks no question. It removes the file from `backlog/archive/decisions/` (a file that is a symbolic link is removed as a link) and releases the ID once no other file and no committed file on any branch uses the number. Delete changes no task: it prints the tasks and drafts whose documentation list names the removed file, by its archive path or by the path it had before it was archived.
 
 ## Agent Instructions
 

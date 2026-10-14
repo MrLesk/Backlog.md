@@ -2,10 +2,10 @@ import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import { chmod, mkdir, readdir, readFile, rename, symlink, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import {
+	ContentRecordArchivedError,
+	ContentRecordFileExistsError,
+	ContentRecordNotArchivedError,
 	Core,
-	DocumentArchivedError,
-	DocumentFileExistsError,
-	DocumentNotArchivedError,
 	RecordRefusedError,
 } from "../core/backlog.ts";
 import { EntityType } from "../types/index.ts";
@@ -92,19 +92,19 @@ describe("archived documents in core and storage", () => {
 		const path = await createDocument("API Guidelines", "guides");
 		await core.createTaskFromInput({ title: "Names the file", documentation: [`backlog/docs/${path}`] });
 
-		expect(await core.archiveDocument("9")).toBeNull();
-		expect(await core.archiveDocument("doc-001")).toEqual({
-			documentId: "doc-1",
+		expect(await core.archiveContentRecord("document", "9")).toBeNull();
+		expect(await core.archiveContentRecord("document", "doc-001")).toEqual({
+			id: "doc-1",
 			listedAsDocumentationBy: ["TASK-1"],
 		});
 
-		const again = await core.archiveDocument("doc-1").catch((error: unknown) => error);
-		expect(again).toBeInstanceOf(DocumentArchivedError);
+		const again = await core.archiveContentRecord("document", "doc-1").catch((error: unknown) => error);
+		expect(again).toBeInstanceOf(ContentRecordArchivedError);
 		expect(again).toBeInstanceOf(RecordRefusedError);
 		const update = await core
 			.updateDocumentFromInput({ id: "doc-1", content: "New body" })
 			.catch((error: unknown) => error);
-		expect(update).toBeInstanceOf(DocumentArchivedError);
+		expect(update).toBeInstanceOf(ContentRecordArchivedError);
 		expect((update as Error).message).toBe((again as Error).message);
 	});
 
@@ -114,9 +114,9 @@ describe("archived documents in core and storage", () => {
 		await mkdir(archivePath(), { recursive: true });
 		await writeFile(archivePath(path), original.replace("id: doc-1", "id: doc-9"));
 
-		const refused = await core.archiveDocument("doc-1").catch((error: unknown) => error);
+		const refused = await core.archiveContentRecord("document", "doc-1").catch((error: unknown) => error);
 
-		expect(refused).toBeInstanceOf(DocumentFileExistsError);
+		expect(refused).toBeInstanceOf(ContentRecordFileExistsError);
 		expect(refused).toBeInstanceOf(RecordRefusedError);
 		expect(await readFile(docsPath(path), "utf8")).toBe(original);
 		expect(await readFile(archivePath(path), "utf8")).toContain("id: doc-9");
@@ -125,7 +125,7 @@ describe("archived documents in core and storage", () => {
 	it("lists archived documents apart from the documents in the docs folder", async () => {
 		await createDocument("Stays");
 		const archivedPath = await createDocument("Goes to the archive", "guides");
-		await core.archiveDocument("doc-2");
+		await core.archiveContentRecord("document", "doc-2");
 
 		expect((await core.filesystem.listDocuments()).map((document) => document.id)).toEqual(["doc-1"]);
 		const archived = await core.filesystem.listArchivedDocuments();
@@ -139,7 +139,7 @@ describe("archived documents in core and storage", () => {
 
 	it("never saves an archived document, so no second file can appear for its ID", async () => {
 		await createDocument("Read-only while archived");
-		await core.archiveDocument("doc-1");
+		await core.archiveContentRecord("document", "doc-1");
 		const archived = await core.getDocument("doc-1");
 		if (!archived) throw new Error("Expected the archived document");
 
@@ -156,7 +156,7 @@ describe("archived documents in core and storage", () => {
 	it("counts archived documents in the core ID allocator as well", async () => {
 		await createDocument("Stays");
 		await createDocument("Goes to the archive");
-		await core.archiveDocument("doc-2");
+		await core.archiveContentRecord("document", "doc-2");
 
 		// This allocator writes the prefix in upper case; the number is what the archive must reserve.
 		expect((await core.generateNextId(EntityType.Document)).toLowerCase()).toBe("doc-3");
@@ -169,7 +169,7 @@ describe("archived documents in core and storage", () => {
 		const store = await core.getContentStore();
 		expect(store.getDocuments().map((document) => document.id)).toEqual(["doc-2", "doc-1"]);
 
-		await core.archiveDocument("doc-2");
+		await core.archiveContentRecord("document", "doc-2");
 
 		expect(store.getDocuments().map((document) => document.id)).toEqual(["doc-1"]);
 	});
@@ -180,21 +180,27 @@ describe("archived documents in core and storage", () => {
 		await core.createTaskFromInput({ title: "Names the archive", documentation: [`backlog/archive/docs/${path}`] });
 
 		for (const operation of ["restore", "delete"] as const) {
-			const run = () => (operation === "restore" ? core.restoreDocument("doc-1") : core.deleteDocument("doc-1"));
+			const run = () =>
+				operation === "restore"
+					? core.restoreContentRecord("document", "doc-1")
+					: core.deleteContentRecord("document", "doc-1");
 			const refused = await run().catch((error: unknown) => error);
-			expect(refused).toBeInstanceOf(DocumentNotArchivedError);
+			expect(refused).toBeInstanceOf(ContentRecordNotArchivedError);
 			expect(refused).toBeInstanceOf(RecordRefusedError);
 		}
-		expect(await core.restoreDocument("9")).toBeNull();
-		expect(await core.deleteDocument("9")).toBeNull();
+		expect(await core.restoreContentRecord("document", "9")).toBeNull();
+		expect(await core.deleteContentRecord("document", "9")).toBeNull();
 
-		await core.archiveDocument("doc-1");
+		await core.archiveContentRecord("document", "doc-1");
 		// Restore names the records that list the archive path the file left.
-		expect(await core.restoreDocument("doc-001")).toEqual({ documentId: "doc-1", listedAsDocumentationBy: ["TASK-2"] });
-		await core.archiveDocument("doc-1");
+		expect(await core.restoreContentRecord("document", "doc-001")).toEqual({
+			id: "doc-1",
+			listedAsDocumentationBy: ["TASK-2"],
+		});
+		await core.archiveContentRecord("document", "doc-1");
 		// Delete names the records that list either path of the removed file.
-		expect(await core.deleteDocument("doc-1")).toEqual({
-			documentId: "doc-1",
+		expect(await core.deleteContentRecord("document", "doc-1")).toEqual({
+			id: "doc-1",
 			listedAsDocumentationBy: ["TASK-1", "TASK-2"],
 		});
 		expect(await core.getDocument("doc-1")).toBeNull();
@@ -203,24 +209,26 @@ describe("archived documents in core and storage", () => {
 	it("puts a restored document into an initialized content store without a file watcher", async () => {
 		await createDocument("Stays");
 		await createDocument("Comes back");
-		await core.archiveDocument("doc-2");
+		await core.archiveContentRecord("document", "doc-2");
 		// This Core runs no watchers, so only the restore operation itself can update the store.
 		const store = await core.getContentStore();
 		expect(store.getDocuments().map((document) => document.id)).toEqual(["doc-1"]);
 
-		await core.restoreDocument("doc-2");
+		await core.restoreContentRecord("document", "doc-2");
 
 		expect(store.getDocuments().map((document) => document.id)).toEqual(["doc-2", "doc-1"]);
 	});
 
-	describe("removeArchivedDocumentFile", () => {
+	describe("removeArchivedContentRecordFile", () => {
 		it("removes the file of an archived document and returns its path", async () => {
 			const path = await createDocument("Goes for good", "guides");
-			await core.archiveDocument("doc-1");
+			await core.archiveContentRecord("document", "doc-1");
 			const archived = await core.getDocument("doc-1");
 			if (!archived) throw new Error("Expected the archived document");
 
-			expect(await core.filesystem.removeArchivedDocumentFile(archived)).toBe(archivePath(...path.split("/")));
+			expect(await core.filesystem.removeArchivedContentRecordFile("document", archived)).toBe(
+				archivePath(...path.split("/")),
+			);
 			expect(await readdir(archivePath("guides"))).toEqual([]);
 		});
 
@@ -229,7 +237,7 @@ describe("archived documents in core and storage", () => {
 			const active = await core.getDocument("doc-1");
 			if (!active) throw new Error("Expected the document");
 
-			const refused = core.filesystem.removeArchivedDocumentFile(active);
+			const refused = core.filesystem.removeArchivedContentRecordFile("document", active);
 
 			await expect(refused).rejects.toThrow(
 				"The file of document doc-1 was not removed: the document is not archived.",
@@ -239,14 +247,14 @@ describe("archived documents in core and storage", () => {
 
 		it("refuses a file that another document took the place of, and removes nothing", async () => {
 			const path = await createDocument("Listed first");
-			await core.archiveDocument("doc-1");
+			await core.archiveContentRecord("document", "doc-1");
 			const archived = await core.getDocument("doc-1");
 			if (!archived) throw new Error("Expected the archived document");
 			// After the lookup another document's file is written to the same path.
 			const replacement = (await readFile(archivePath(path), "utf8")).replace("id: doc-1", "id: doc-4");
 			await writeFile(archivePath(path), replacement);
 
-			const refused = core.filesystem.removeArchivedDocumentFile(archived);
+			const refused = core.filesystem.removeArchivedContentRecordFile("document", archived);
 
 			await expect(refused).rejects.toThrow(`backlog/archive/docs/${path} is the file of doc-4.`);
 			expect(await readFile(archivePath(path), "utf8")).toBe(replacement);
@@ -257,12 +265,8 @@ describe("archived documents in core and storage", () => {
 			const outside = join(TEST_DIR, "backlog", "archive", "escape.md");
 			await writeFile(outside, "not a document");
 
-			const refused = core.filesystem.removeArchivedDocumentFile({
+			const refused = core.filesystem.removeArchivedContentRecordFile("document", {
 				id: "doc-1",
-				title: "Kept",
-				type: "other",
-				createdDate: "2026-10-14 00:00",
-				rawContent: "",
 				path: "../escape.md",
 				archived: true,
 			});
@@ -273,14 +277,14 @@ describe("archived documents in core and storage", () => {
 
 		it.skipIf(isWindows())("removes a link as a link and leaves the file it points to", async () => {
 			const path = await createDocument("Linked");
-			await core.archiveDocument("doc-1");
+			await core.archiveContentRecord("document", "doc-1");
 			const target = join(TEST_DIR, "kept.md");
 			await rename(archivePath(path), target);
 			await symlink(target, archivePath(path));
 			const archived = await core.getDocument("doc-1");
 			if (!archived) throw new Error("Expected the archived document");
 
-			await core.filesystem.removeArchivedDocumentFile(archived);
+			await core.filesystem.removeArchivedContentRecordFile("document", archived);
 
 			expect(await readdir(archivePath())).toEqual([]);
 			expect(await readFile(target, "utf8")).toContain("id: doc-1");
@@ -328,7 +332,7 @@ describe("archived documents in core and storage", () => {
 			const [listed] = documents;
 			if (!listed) throw new Error("Expected the document to be listed");
 			// The path a task's `documentation` entry and the archive destination are built from.
-			expect(core.filesystem.documentProjectPath(listed)).toBe(`backlog/docs/${path}`);
+			expect(core.filesystem.contentRecordProjectPath("document", listed)).toBe(`backlog/docs/${path}`);
 		},
 	);
 
@@ -424,7 +428,7 @@ describe("archived documents in core and storage", () => {
 		const before = await readdir(docsPath());
 
 		const lookup = await core.getDocument("doc-1").catch((error: unknown) => error);
-		const archive = await core.archiveDocument("doc-1").catch((error: unknown) => error);
+		const archive = await core.archiveContentRecord("document", "doc-1").catch((error: unknown) => error);
 
 		expect(lookup).toBeInstanceOf(AmbiguousIdError);
 		expect(archive).toBeInstanceOf(AmbiguousIdError);
@@ -434,7 +438,7 @@ describe("archived documents in core and storage", () => {
 	it.skipIf(isWindows())("does not list an archived document as active through a link into the archive", async () => {
 		await createDocument("Stays");
 		await createDocument("Goes to the archive");
-		await core.archiveDocument("doc-2");
+		await core.archiveContentRecord("document", "doc-2");
 		// A link in the docs folder that leads into the archive, and one in the archive that leads back.
 		await symlink(archivePath(), docsPath("old"));
 		await symlink(docsPath(), archivePath("current"));
@@ -454,7 +458,7 @@ describe("archived documents in core and storage", () => {
 			await mkdir(docsPath("_archive"));
 			await symlink(docsPath("_archive"), archivePath());
 
-			await core.archiveDocument("doc-2");
+			await core.archiveContentRecord("document", "doc-2");
 
 			expect(await readdir(docsPath("_archive"))).toEqual([archivedPath]);
 			expect((await core.filesystem.listDocuments()).map((document) => document.id)).toEqual(["doc-1"]);
@@ -468,7 +472,7 @@ describe("archived documents in core and storage", () => {
 		await symlink(docsPath(), archivePath());
 
 		const lookup = await core.getDocument("doc-1").catch((error: unknown) => error);
-		const archive = await core.archiveDocument("doc-1").catch((error: unknown) => error);
+		const archive = await core.archiveContentRecord("document", "doc-1").catch((error: unknown) => error);
 
 		// Every file is in the docs folder and in the archive, so no ID names one document.
 		expect(lookup).toBeInstanceOf(AmbiguousIdError);
