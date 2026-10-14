@@ -365,6 +365,8 @@ describe("McpServer bootstrap", () => {
 			"document_delete",
 			"document_search",
 		]);
+		// Decisions are archived, restored and deleted from the CLI only; MCP has no decision tool.
+		expect(tools.tools.filter((tool) => tool.name.startsWith("decision_"))).toEqual([]);
 
 		const resources = await server.testInterface.listResources();
 		expect(resources.resources.map((r) => r.uri)).toEqual([

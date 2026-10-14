@@ -202,37 +202,49 @@ describe.skipIf(isWindows())("auto-commit of record files reached through a symb
 		expect(await git("rev-parse", "HEAD")).toBe(head);
 	});
 
-	it.each(
-		TARGETS,
-	)("archives, restores and deletes a document as a link when its target is %s", async (_where, targetOf) => {
-		expect((await backlog("doc", "create", "Linked doc")).exitCode).toBe(0);
-		const name = "doc-1 - Linked-doc.md";
-		await replaceWithCommittedLink(join(TEST_DIR, "backlog", "docs", name), targetOf("doc.md"));
+	/** Documents and decisions go through the same archive, restore and delete; each kind is checked. */
+	const CONTENT_KINDS = [
+		{ noun: "document", command: "doc", folder: "docs", id: "doc-1", name: "doc-1 - Linked-record.md" },
+		{
+			noun: "decision",
+			command: "decision",
+			folder: "decisions",
+			id: "decision-1",
+			name: "decision-1 - Linked-record.md",
+		},
+	] as const;
 
-		const archived = await backlog("doc", "archive", "doc-1");
+	it.each(
+		CONTENT_KINDS.flatMap((kind) => TARGETS.map(([where, targetOf]) => [kind.noun, where, kind, targetOf] as const)),
+	)("archives, restores and deletes a %s as a link when its target is %s", async (_noun, _where, kind, targetOf) => {
+		const { noun, command, folder, id, name } = kind;
+		expect((await backlog(command, "create", "Linked record")).exitCode).toBe(0);
+		await replaceWithCommittedLink(join(TEST_DIR, "backlog", folder, name), targetOf("record.md"));
+
+		const archived = await backlog(command, "archive", id);
 
 		expect(archived.exitCode).toBe(0);
-		expect(archived.stdout).toBe("Archived document doc-1\n");
-		expect(await git("log", "-1", "--format=%s")).toBe("backlog: Archive document doc-1");
+		expect(archived.stdout).toBe(`Archived ${noun} ${id}\n`);
+		expect(await git("log", "-1", "--format=%s")).toBe(`backlog: Archive ${noun} ${id}`);
 		// The commit holds the link under its new path and the removal of the old one, nothing else.
-		expect(await lastCommit()).toEqual([`A\tbacklog/archive/docs/${name}`, `D\tbacklog/docs/${name}`]);
-		expect(await trackedMode(`backlog/archive/docs/${name}`)).toBe("120000");
+		expect(await lastCommit()).toEqual([`A\tbacklog/archive/${folder}/${name}`, `D\tbacklog/${folder}/${name}`]);
+		expect(await trackedMode(`backlog/archive/${folder}/${name}`)).toBe("120000");
 		expect(await git("status", "--porcelain")).toBe("");
-		expect((await lstat(join(TEST_DIR, "backlog", "archive", "docs", name))).isSymbolicLink()).toBe(true);
+		expect((await lstat(join(TEST_DIR, "backlog", "archive", folder, name))).isSymbolicLink()).toBe(true);
 
-		expect((await backlog("doc", "restore", "doc-1")).stdout).toBe("Restored document doc-1\n");
-		expect(await git("log", "-1", "--format=%s")).toBe("backlog: Restore document doc-1");
-		expect(await lastCommit()).toEqual([`A\tbacklog/docs/${name}`, `D\tbacklog/archive/docs/${name}`]);
-		expect(await trackedMode(`backlog/docs/${name}`)).toBe("120000");
+		expect((await backlog(command, "restore", id)).stdout).toBe(`Restored ${noun} ${id}\n`);
+		expect(await git("log", "-1", "--format=%s")).toBe(`backlog: Restore ${noun} ${id}`);
+		expect(await lastCommit()).toEqual([`A\tbacklog/${folder}/${name}`, `D\tbacklog/archive/${folder}/${name}`]);
+		expect(await trackedMode(`backlog/${folder}/${name}`)).toBe("120000");
 		expect(await git("status", "--porcelain")).toBe("");
 
-		expect((await backlog("doc", "archive", "doc-1")).exitCode).toBe(0);
-		expect((await backlog("doc", "delete", "doc-1")).stdout).toBe("Deleted document doc-1\n");
-		expect(await git("log", "-1", "--format=%s")).toBe("backlog: Delete document doc-1");
-		// Delete removes the link. The file it pointed to is not the document's to remove.
-		expect(await lastCommit()).toEqual([`D\tbacklog/archive/docs/${name}`]);
+		expect((await backlog(command, "archive", id)).exitCode).toBe(0);
+		expect((await backlog(command, "delete", id)).stdout).toBe(`Deleted ${noun} ${id}\n`);
+		expect(await git("log", "-1", "--format=%s")).toBe(`backlog: Delete ${noun} ${id}`);
+		// Delete removes the link. The file it pointed to is not the record's to remove.
+		expect(await lastCommit()).toEqual([`D\tbacklog/archive/${folder}/${name}`]);
 		expect(await git("status", "--porcelain")).toBe("");
-		expect((await lstat(targetOf("doc.md"))).isFile()).toBe(true);
+		expect((await lstat(targetOf("record.md"))).isFile()).toBe(true);
 	});
 
 	it("still commits the file a link points to when a document is edited through the link", async () => {

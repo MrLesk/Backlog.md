@@ -217,6 +217,9 @@ describe("archived documents in core and storage", () => {
 		await core.restoreContentRecord("document", "doc-2");
 
 		expect(store.getDocuments().map((document) => document.id)).toEqual(["doc-2", "doc-1"]);
+		// A restored document looks like one listed from the docs folder: it has no `archived` key.
+		const restored = store.getDocuments().find((document) => document.id === "doc-2");
+		expect(restored && "archived" in restored).toBe(false);
 	});
 
 	describe("removeArchivedContentRecordFile", () => {
