@@ -2746,14 +2746,12 @@ async function runTaskList(
 		}
 		const displayTasks = narrowForDisplay(options.ready ? readyRows : tasks);
 
-		// The window follows the printed order, so an explicit priority sort prints one flat list and
-		// every other listing is cut after grouping by status.
+		// The window is taken from the sorted list, as it is for JSON, so both formats select the same
+		// tasks. Only the selected tasks are then grouped by status for printing; an explicit priority
+		// sort prints them as one flat list instead.
 		const flatPriorityList = options.sort?.toLowerCase() === "priority";
 		const statuses = config?.statuses || [];
-		const printedTasks = flatPriorityList
-			? displayTasks
-			: groupTasksByStatus(displayTasks, statuses).flatMap((group) => group.tasks);
-		printListWindow(printedTasks, listWindow, (windowTasks) => {
+		printListWindow(displayTasks, listWindow, (windowTasks) => {
 			if (windowTasks.length === 0) {
 				if (resolvedParentId) {
 					process.stdout.write(`No child tasks found for parent task ${parentDisplayId}.\n`);
