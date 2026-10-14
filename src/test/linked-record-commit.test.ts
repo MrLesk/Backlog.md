@@ -86,7 +86,7 @@ async function replaceWithCommittedLink(recordPath: string, targetPath: string):
 	await git("commit", "-m", "Make the record file a link");
 }
 
-describe.skipIf(isWindows())("auto-commit of a record file that is a symbolic link", () => {
+describe.skipIf(isWindows())("auto-commit of record files reached through a symbolic link", () => {
 	beforeEach(async () => {
 		// Real paths, so a relative link from the project to the outside folder resolves on macOS too.
 		TEST_DIR = await realpath(await createTestDirOutsideRepository("test-linked-record"));
