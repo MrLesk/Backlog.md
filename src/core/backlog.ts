@@ -462,22 +462,41 @@ export class TaskNotArchivedError extends RecordRefusedError {
 
 /**
  * A change targeted a document that is in the archive, where documents are read-only: an update,
- * or archiving it a second time.
+ * or archiving it a second time. Restoring the document is the way to change it, so the message
+ * names the command.
  */
 export class DocumentArchivedError extends RecordRefusedError {
 	constructor(documentId: string) {
-		super(`Document ${documentId} is archived. Archived documents are read-only.`);
+		super(
+			`Document ${documentId} is archived. Archived documents are read-only. Restore it first: backlog doc restore ${documentId}`,
+		);
 		this.name = "DocumentArchivedError";
 	}
 }
 
+/** Restore or delete targeted a document that is not archived; both act on archived documents only. */
+export class DocumentNotArchivedError extends RecordRefusedError {
+	constructor(documentId: string, operation: "restore" | "delete") {
+		super(
+			operation === "delete"
+				? `Document ${documentId} is not archived. A document must be archived before it can be deleted.`
+				: `Document ${documentId} is not archived, so there is nothing to restore.`,
+		);
+		this.name = "DocumentNotArchivedError";
+	}
+}
+
 /**
- * Archive found a file already at the path the document's file would move to. Neither file was
- * moved or changed. `takenPath` is written from the project root.
+ * Archive or restore found a file already at the path the document's file would move to. Neither
+ * file was moved or changed. `takenPath` is written from the project root.
  */
 export class DocumentFileExistsError extends RecordRefusedError {
-	constructor(documentId: string, takenPath: string) {
-		super(`Document ${documentId} cannot be archived: the archive already has a file at ${takenPath}.`);
+	constructor(documentId: string, operation: "archive" | "restore", takenPath: string) {
+		super(
+			operation === "archive"
+				? `Document ${documentId} cannot be archived: the archive already has a file at ${takenPath}.`
+				: `Document ${documentId} cannot be restored: the docs folder already has a file at ${takenPath}.`,
+		);
 		this.name = "DocumentFileExistsError";
 	}
 }
@@ -486,20 +505,29 @@ export class DocumentFileExistsError extends RecordRefusedError {
 export const ARCHIVED_DOCUMENT_NOTICE = "This document is archived and read-only.";
 
 /**
- * Outcome of archiving a document. `listedAsDocumentationBy` holds the IDs of the tasks and drafts
- * whose `documentation` list names the file that was moved. Core changes none of them, so every
- * interface reports them and a person can update them.
+ * Outcome of archiving, restoring or deleting a document. `listedAsDocumentationBy` holds the IDs
+ * of the tasks and drafts whose `documentation` list names a path the file is no longer at: the
+ * path it left when it was archived or restored, and for a delete also the path it had before it
+ * was archived. Core changes none of them, so every interface reports them and a person can update
+ * them.
  */
-export interface DocumentArchiveResult {
+export interface DocumentChangeResult {
 	documentId: string;
 	listedAsDocumentationBy: string[];
 }
 
+/** The words for one document operation: the start of its commit message, and what was done. */
+const DOCUMENT_CHANGE_WORDS = {
+	archive: { commitVerb: "Archive", done: "archived" },
+	restore: { commitVerb: "Restore", done: "restored" },
+	delete: { commitVerb: "Delete", done: "deleted" },
+} as const;
+
 /**
  * A change is on disk and only its commit failed. The message says both, so nobody runs the change
- * again: "Task TASK-1 was archived, but committing the change failed: <reason>". Task archive,
- * restore and delete, and document archive, throw this one error for that case, and every
- * interface reports the message as it is.
+ * again: "Task TASK-1 was archived, but committing the change failed: <reason>". The archive,
+ * restore and delete operations of tasks and of documents throw this one error for that case, and
+ * every interface reports the message as it is.
  *
  * `change` is the part before the comma, for example `Task TASK-1 was archived`. Where the browser
  * calls the operation, core tags the error with `markRecordAlreadyMoved` as well, so that the page
@@ -4315,65 +4343,151 @@ export class Core {
 	}
 
 	/**
-	 * Move a document out of the docs folder into the archive, to the same relative path. The file is
-	 * moved as it is and not rewritten, so the document keeps its ID, and no task or draft is changed.
-	 * From then on the document can be viewed but not changed, and lists and search leave it out.
+	 * Move a document out of the docs folder into the archive, to the same relative path. From then
+	 * on the document can be viewed but not changed, and lists and search leave it out. See
+	 * {@link moveDocument} for what the move keeps and when it is refused.
+	 */
+	async archiveDocument(documentId: string, autoCommit?: boolean): Promise<DocumentChangeResult | null> {
+		return await this.moveDocument(documentId, "archive", autoCommit);
+	}
+
+	/**
+	 * Move an archived document back to the docs folder, to the same relative path it has in the
+	 * archive. It is then a document like any other. See {@link moveDocument}.
+	 */
+	async restoreDocument(documentId: string, autoCommit?: boolean): Promise<DocumentChangeResult | null> {
+		return await this.moveDocument(documentId, "restore", autoCommit);
+	}
+
+	/**
+	 * The one move behind archive and restore. `archive` moves the document's file from the docs
+	 * folder to the archive, `restore` moves it back; the relative path stays the same. The file is
+	 * moved as it is and not rewritten, so the document keeps its ID, and a file that is a symbolic
+	 * link stays a link to the same file. No task or draft is changed: the result names the ones
+	 * whose `documentation` list names the path the file left.
 	 *
 	 * Returns null when no document claims the ID. An ID that several files claim throws
 	 * `AmbiguousIdError`. Every refusal is a `RecordRefusedError` with nothing moved: the document is
-	 * archived already, or the archive has a file at the destination path.
+	 * already where the move would take it, or a file is already at the destination path.
 	 *
 	 * Documents have no update lock yet, so this takes none.
 	 */
-	async archiveDocument(documentId: string, autoCommit?: boolean): Promise<DocumentArchiveResult | null> {
-		const document = await this.getDocument(documentId);
+	private async moveDocument(
+		documentId: string,
+		direction: "archive" | "restore",
+		autoCommit?: boolean,
+	): Promise<DocumentChangeResult | null> {
+		const document = await this.loadDocumentForChange(documentId, direction);
 		if (!document) return null;
-		if (document.archived) throw new DocumentArchivedError(document.id);
 		// Everything that only reads comes before the move: a config or a task file that cannot be
-		// read then stops the command while the document is still in the docs folder.
+		// read then stops the command while the document is still where it was.
 		const commitMove = await this.shouldAutoCommit(autoCommit);
-		const listedAsDocumentationBy = await this.listRecordsDocumenting(this.fs.documentProjectPath(document));
+		const listedAsDocumentationBy = await this.listRecordsDocumenting([this.fs.documentProjectPath(document)]);
 
-		const archivedDocument: Document = { ...document, archived: true };
+		const movedDocument: Document = { ...document, archived: direction === "archive" };
 		const fromPath = this.fs.documentFilePath(document);
-		const toPath = this.fs.documentFilePath(archivedDocument);
+		const toPath = this.fs.documentFilePath(movedDocument);
 		await this.moveRecordFile(
 			fromPath,
 			toPath,
-			() => new DocumentFileExistsError(document.id, this.fs.documentProjectPath(archivedDocument)),
+			() => new DocumentFileExistsError(document.id, direction, this.fs.documentProjectPath(movedDocument)),
 		);
-		// Lists and search read the content store. Without this, a long-running server would show the
-		// document until its file watcher noticed the move.
-		if (document.path) this.contentStore?.removeDocument(document.path);
+		// Lists and search read the content store, which holds the documents of the docs folder.
+		// Without this, a long-running server would show the old state until its file watcher noticed.
+		if (direction === "archive") {
+			if (document.path) this.contentStore?.removeDocument(document.path);
+		} else {
+			this.contentStore?.addDocument(movedDocument);
+		}
 
 		if (commitMove) {
-			// The file is in the archive from here on. A commit that fails says so, so that nobody
-			// archives the document a second time.
+			// The file is moved from here on. A commit that fails says so, so that nobody runs the
+			// move a second time.
+			const words = DOCUMENT_CHANGE_WORDS[direction];
 			try {
 				const repoRoot = await this.git.stageFileMove(fromPath, toPath);
-				await this.git.commitFiles(`backlog: Archive document ${document.id}`, [fromPath, toPath], repoRoot);
+				await this.git.commitFiles(
+					`backlog: ${words.commitVerb} document ${document.id}`,
+					[fromPath, toPath],
+					repoRoot,
+				);
 			} catch (error) {
-				throw new ChangeNotCommittedError(`Document ${document.id} was archived`, error);
+				throw new ChangeNotCommittedError(`Document ${document.id} was ${words.done}`, error);
 			}
 		}
 		return { documentId: document.id, listedAsDocumentationBy };
 	}
 
 	/**
-	 * The IDs of the records of this checkout whose `documentation` list names the file at
-	 * `projectPath`: tasks on the board, then archived tasks, then drafts. Nothing is changed.
-	 * `documentation` holds free text, so only an entry that is this path counts; see
-	 * `documentationEntryNamesFile` for the exact rule.
+	 * Permanently remove an archived document. Its file is removed, and a file that is a symbolic
+	 * link is removed as a link; the file it points to stays. The ID is then free again, unless
+	 * another file of this checkout or a committed file on a branch still claims it. No task or
+	 * draft is changed: the result names the ones whose `documentation` list names the removed file,
+	 * by its path in the archive or by the path it had before it was archived.
+	 *
+	 * Returns null when no document claims the ID. An ID that several files claim throws
+	 * `AmbiguousIdError`. A document that is not archived is refused with `DocumentNotArchivedError`
+	 * and nothing is removed.
+	 *
+	 * Documents have no update lock yet, so this takes none.
 	 */
-	private async listRecordsDocumenting(projectPath: string): Promise<string[]> {
+	async deleteDocument(documentId: string, autoCommit?: boolean): Promise<DocumentChangeResult | null> {
+		const document = await this.loadDocumentForChange(documentId, "delete");
+		if (!document) return null;
+		// Everything that only reads comes before the removal, as for a move.
+		const commitRemoval = await this.shouldAutoCommit(autoCommit);
+		const listedAsDocumentationBy = await this.listRecordsDocumenting([
+			this.fs.documentProjectPath(document),
+			this.fs.documentProjectPath({ ...document, archived: false }),
+		]);
+
+		const removedPath = await this.fs.removeArchivedDocumentFile(document);
+
+		if (commitRemoval) {
+			const words = DOCUMENT_CHANGE_WORDS.delete;
+			try {
+				await this.stageChangedPath(removedPath);
+				await this.git.commitFiles(`backlog: ${words.commitVerb} document ${document.id}`, [removedPath]);
+			} catch (error) {
+				throw new ChangeNotCommittedError(`Document ${document.id} was ${words.done}`, error);
+			}
+		}
+		return { documentId: document.id, listedAsDocumentationBy };
+	}
+
+	/**
+	 * The document an ID names, for archive, restore or delete. Null when no document claims the ID.
+	 * A document in the wrong place for `operation` is refused here, so the three operations answer
+	 * with the same words: archive needs a document that is not archived, restore and delete need
+	 * an archived one.
+	 */
+	private async loadDocumentForChange(
+		documentId: string,
+		operation: "archive" | "restore" | "delete",
+	): Promise<Document | null> {
+		const document = await this.getDocument(documentId);
+		if (!document) return null;
+		if (operation === "archive" && document.archived) throw new DocumentArchivedError(document.id);
+		if (operation !== "archive" && !document.archived) throw new DocumentNotArchivedError(document.id, operation);
+		return document;
+	}
+
+	/**
+	 * The IDs of the records of this checkout whose `documentation` list names one of `projectPaths`:
+	 * tasks on the board, then archived tasks, then drafts. Nothing is changed. `documentation` holds
+	 * free text, so only an entry that is one of these paths counts; see `documentationEntryNamesFile`
+	 * for the exact rule.
+	 */
+	private async listRecordsDocumenting(projectPaths: readonly string[]): Promise<string[]> {
 		// Drafts are read file by file: one damaged draft must not hide the drafts that name the file.
 		const [tasks, archivedTasks, drafts] = await Promise.all([
 			this.fs.listTasks(),
 			this.fs.listArchivedTasks(),
 			this.fs.listHealthyDrafts(),
 		]);
+		const namesFile = (entry: string) => projectPaths.some((path) => documentationEntryNamesFile(entry, path));
 		const ids = [...tasks, ...archivedTasks, ...drafts]
-			.filter((record) => record.documentation?.some((entry) => documentationEntryNamesFile(entry, projectPath)))
+			.filter((record) => record.documentation?.some(namesFile))
 			.map((record) => record.id);
 		return [...new Set(ids)];
 	}

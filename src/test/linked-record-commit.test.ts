@@ -202,7 +202,9 @@ describe.skipIf(isWindows())("auto-commit of record files reached through a symb
 		expect(await git("rev-parse", "HEAD")).toBe(head);
 	});
 
-	it.each(TARGETS)("commits an archived document as a link when its target is %s", async (_where, targetOf) => {
+	it.each(
+		TARGETS,
+	)("archives, restores and deletes a document as a link when its target is %s", async (_where, targetOf) => {
 		expect((await backlog("doc", "create", "Linked doc")).exitCode).toBe(0);
 		const name = "doc-1 - Linked-doc.md";
 		await replaceWithCommittedLink(join(TEST_DIR, "backlog", "docs", name), targetOf("doc.md"));
@@ -217,6 +219,20 @@ describe.skipIf(isWindows())("auto-commit of record files reached through a symb
 		expect(await trackedMode(`backlog/archive/docs/${name}`)).toBe("120000");
 		expect(await git("status", "--porcelain")).toBe("");
 		expect((await lstat(join(TEST_DIR, "backlog", "archive", "docs", name))).isSymbolicLink()).toBe(true);
+
+		expect((await backlog("doc", "restore", "doc-1")).stdout).toBe("Restored document doc-1\n");
+		expect(await git("log", "-1", "--format=%s")).toBe("backlog: Restore document doc-1");
+		expect(await lastCommit()).toEqual([`A\tbacklog/docs/${name}`, `D\tbacklog/archive/docs/${name}`]);
+		expect(await trackedMode(`backlog/docs/${name}`)).toBe("120000");
+		expect(await git("status", "--porcelain")).toBe("");
+
+		expect((await backlog("doc", "archive", "doc-1")).exitCode).toBe(0);
+		expect((await backlog("doc", "delete", "doc-1")).stdout).toBe("Deleted document doc-1\n");
+		expect(await git("log", "-1", "--format=%s")).toBe("backlog: Delete document doc-1");
+		// Delete removes the link. The file it pointed to is not the document's to remove.
+		expect(await lastCommit()).toEqual([`D\tbacklog/archive/docs/${name}`]);
+		expect(await git("status", "--porcelain")).toBe("");
+		expect((await lstat(targetOf("doc.md"))).isFile()).toBe(true);
 	});
 
 	it("still commits the file a link points to when a document is edited through the link", async () => {

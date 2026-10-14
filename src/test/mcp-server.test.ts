@@ -201,7 +201,7 @@ describe("McpServer bootstrap", () => {
 			);
 			expect(guide).toContain("The ID stays reserved.");
 			expect(guide).toContain(
-				"An archived document leaves `document_list` and `document_search`, stays viewable with `document_view`, and is read-only: `document_update` on it fails.",
+				"An archived document leaves `document_list` and `document_search`, stays viewable with `document_view`, and is read-only: `document_update` on it fails until it is restored.",
 			);
 			expect(guide).toContain(
 				"No task is changed; the result names the tasks and drafts whose documentation list names the moved file.",
@@ -347,6 +347,8 @@ describe("McpServer bootstrap", () => {
 			"document_create",
 			"document_update",
 			"document_archive",
+			"document_restore",
+			"document_delete",
 			"document_search",
 		]);
 

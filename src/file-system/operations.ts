@@ -26,7 +26,12 @@ import {
 	resolveBacklogDirectoryFromRootConfig,
 } from "../utils/backlog-directory.ts";
 import { findDecisionById } from "../utils/decision-id.ts";
-import { documentNotFoundMessage, findDocumentById, normalizeDocumentId } from "../utils/document-id.ts";
+import {
+	documentIdsEqual,
+	documentNotFoundMessage,
+	findDocumentById,
+	normalizeDocumentId,
+} from "../utils/document-id.ts";
 import { normalizeDocumentRelativePath, normalizeDocumentSubPath } from "../utils/document-path.ts";
 import { normalizeDueDate } from "../utils/due-date.ts";
 import type { DraftIdentityFindings } from "../utils/duplicate-detection.ts";
@@ -1705,6 +1710,32 @@ export class FileSystem {
 	 */
 	documentProjectPath(document: Document): string {
 		return relative(this.projectRoot, this.documentFilePath(document)).split(sep).join("/");
+	}
+
+	/**
+	 * Removes the file of an archived document, as `Core.deleteDocument` does, and returns its path.
+	 * A file that is a symbolic link is removed as a link; the file it points to stays.
+	 *
+	 * Nothing but that file can be removed through this. It refuses, and removes nothing, when the
+	 * document is not archived and when the file at its path does not claim the document's ID, for
+	 * example because another file took its place after the document was listed. A path that climbs
+	 * out of the archive folder (`..`) or is absolute is refused by `documentFilePath` already.
+	 */
+	async removeArchivedDocumentFile(document: Document): Promise<string> {
+		const refuse = (reason: string) => new Error(`The file of document ${document.id} was not removed: ${reason}`);
+		if (!document.archived) throw refuse("the document is not archived.");
+		const filePath = this.documentFilePath(document);
+		let storedId: string;
+		try {
+			storedId = parseDocument(await Bun.file(filePath).text()).id;
+		} catch {
+			throw refuse(`${this.documentProjectPath(document)} cannot be read as a document.`);
+		}
+		if (!documentIdsEqual(storedId, document.id)) {
+			throw refuse(`${this.documentProjectPath(document)} is the file of ${storedId}.`);
+		}
+		await unlink(filePath);
+		return filePath;
 	}
 
 	/**

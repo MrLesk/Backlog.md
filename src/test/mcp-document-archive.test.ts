@@ -9,7 +9,8 @@ import { createTestDirOutsideRepository, initializeTestProject, safeCleanup } fr
 let TEST_DIR: string;
 let mcpServer: McpServer;
 
-const READ_ONLY_MESSAGE = "Document doc-1 is archived. Archived documents are read-only.";
+const READ_ONLY_MESSAGE =
+	"Document doc-1 is archived. Archived documents are read-only. Restore it first: backlog doc restore doc-1";
 const ARCHIVED_LINE = "This document is archived and read-only.";
 
 type ToolResult = { isError: boolean; text: string; code?: string };

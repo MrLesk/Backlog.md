@@ -1026,6 +1026,15 @@ export class ContentStore {
 	}
 
 	/**
+	 * Puts a document whose file just arrived in the docs folder into the store, so lists and search
+	 * show it at once. Core calls it when it restores a document, so that change does not wait for a
+	 * watcher event. When the event arrives, the watcher publishes the same file again.
+	 */
+	addDocument(document: Document): void {
+		this.publishWatchedDocument(document);
+	}
+
+	/**
 	 * Takes the document stored at a docs-relative path out of the store, so lists and search stop
 	 * showing it. Called when its file left the docs folder: by the file watcher for a removed file,
 	 * and by core when it archives a document, so that change does not wait for a watcher event.

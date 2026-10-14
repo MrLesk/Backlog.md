@@ -1,16 +1,45 @@
 ---
 id: BACK-762
 title: Delete and restore archived documents
-status: To Do
-assignee: []
+status: In Progress
+assignee:
+  - '@claude'
 created_date: '2026-10-13 18:46'
-updated_date: '2026-10-13 18:51'
+updated_date: '2026-10-14 05:01'
 labels:
   - enhancement
 dependencies:
   - BACK-761
 references:
   - 'https://github.com/MrLesk/Backlog.md/issues/1101'
+  - core
+  - commands
+  - mcp-tools
+  - file-storage
+  - content-store
+modified_files:
+  - src/core/backlog.ts
+  - src/file-system/operations.ts
+  - src/core/content-store.ts
+  - src/cli.ts
+  - src/mcp/tools/documents/schemas.ts
+  - src/mcp/tools/documents/handlers.ts
+  - src/mcp/tools/documents/index.ts
+  - CLI-INSTRUCTIONS.md
+  - src/guidelines/agent-guidelines.md
+  - src/guidelines/cli-instructions/task-execution.md
+  - src/guidelines/mcp/overview.md
+  - src/guidelines/mcp/overview-tools.md
+  - src/mcp/README.md
+  - src/test/cli-doc-archive.test.ts
+  - src/test/mcp-server.test.ts
+  - src/test/mcp-document-archive.test.ts
+  - src/test/server-document-archive.test.ts
+  - src/test/cli-doc-restore-delete.test.ts
+  - src/test/mcp-document-restore-delete.test.ts
+  - src/test/document-archive.test.ts
+  - src/test/linked-record-commit.test.ts
+  - src/test/commit-failure-after-change.test.ts
 priority: high
 type: enhancement
 ordinal: 383000
@@ -76,3 +105,16 @@ This is the second of four stacked tasks for issue #1101. Each is one branch and
 - [ ] #2 bun run check . passes when formatting/linting touched
 - [ ] #3 bun test (or scoped test) passes
 <!-- DOD:END -->
+
+## Implementation Plan
+
+<!-- SECTION:PLAN:BEGIN -->
+1. Core: one move with a direction. archiveDocument becomes a one-line call of a private moveDocument(documentId, direction), and restoreDocument is the other call; the lookup, the refusal, the reads before the move, the move through moveRecordFile, the content store and the commit live once in moveDocument. A shared lookup (loadDocumentForChange) gives archive, restore and delete the same not-found and wrong-state answers.
+2. Refusals: DocumentArchivedError names backlog doc restore <id>; DocumentNotArchivedError for restore and delete; DocumentFileExistsError takes the operation, so restore names the file already in the docs folder.
+3. Delete: deleteDocument(documentId) refuses a document that is not archived, reads the tasks and drafts that name either path of the file (archive path and the path before the archive), removes the file through FileSystem.removeArchivedDocumentFile, and commits the removal alone. That helper removes only the file of an archived document: it refuses a document that is not archived, a path outside the archive folder for documents and a file that no longer claims the document's ID, and removes a link as a link.
+4. Commit failure: restore and delete throw ChangeNotCommittedError with the task wording; widen its comment.
+5. Content store: a restored document is published at once (addDocument), as an archived one is removed at once.
+6. Adapters: backlog doc restore and backlog doc delete (no options, so --yes is unknown) and the MCP tools document_restore and document_delete with the input of document_view; one shared report of the confirmation and the line of tasks and drafts per interface.
+7. Guides: CLI-INSTRUCTIONS.md, the task-execution guide, agent guidelines, the two MCP overviews and src/mcp/README.md.
+8. Tests outside the repository: CLI for every criterion, MCP for the same rules, core and storage rules, link cases with auto-commit for a target inside and outside the repository, and the commit-failure sentence. Check criteria 10 and 11 against the document ID generator as it is.
+<!-- SECTION:PLAN:END -->

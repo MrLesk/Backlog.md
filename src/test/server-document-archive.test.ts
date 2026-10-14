@@ -67,7 +67,8 @@ describe("BacklogServer with an archived document", () => {
 		expect(response.status).toBe(400);
 		// The message `backlog doc update` prints for the same document.
 		expect(await response.json()).toEqual({
-			error: "Document doc-1 is archived. Archived documents are read-only.",
+			error:
+				"Document doc-1 is archived. Archived documents are read-only. Restore it first: backlog doc restore doc-1",
 		});
 		expect(await readFile(archivedFile, "utf8")).toBe(before);
 		expect(await readdir(join(TEST_DIR, "backlog", "docs"))).toEqual(["doc-2 - Current-runbook.md"]);
