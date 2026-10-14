@@ -180,6 +180,30 @@ describe("Config commands", () => {
 		expect(listOutput).toContain("hideEmptyColumns: true");
 	});
 
+	it("round-trips taskListPaneWidth through config get/set/list", async () => {
+		const defaultGet = await $`bun ${CLI_PATH} config get taskListPaneWidth`.cwd(TEST_DIR).text();
+		expect(defaultGet.trim()).toBe("");
+
+		await $`bun ${CLI_PATH} config set taskListPaneWidth 55`.cwd(TEST_DIR).quiet();
+
+		const afterSet = await $`bun ${CLI_PATH} config get taskListPaneWidth`.cwd(TEST_DIR).text();
+		expect(afterSet.trim()).toBe("55");
+
+		const listOutput = await $`bun ${CLI_PATH} config list`.cwd(TEST_DIR).text();
+		expect(listOutput).toContain("taskListPaneWidth: 55");
+
+		const reloaded = await new Core(TEST_DIR).filesystem.loadConfig();
+		expect(reloaded?.taskListPaneWidth).toBe(55);
+	});
+
+	it("rejects taskListPaneWidth values outside 10-90", async () => {
+		for (const value of ["5", "95", "abc"]) {
+			const result = await $`bun ${CLI_PATH} config set taskListPaneWidth ${value}`.cwd(TEST_DIR).nothrow().quiet();
+			expect(result.exitCode).not.toBe(0);
+			expect(result.stderr.toString()).toContain("taskListPaneWidth must be a percentage between 10 and 90");
+		}
+	});
+
 	it("parses block-style YAML sequences identically to inline arrays for list keys", () => {
 		const inline = core.filesystem.parseConfig(
 			'project_name: "P"\nstatuses: ["To Do", "Done"]\nlabels: ["a", "b"]\ntypes: ["bug", "epic"]\npriorities: ["Critical", "Low"]\n',

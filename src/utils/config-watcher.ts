@@ -27,7 +27,13 @@ const BOOLEAN_CONFIG_KEYS = new Set([
 	"check_active_branches",
 ]);
 const ARRAY_CONFIG_KEYS = new Set(["statuses", "labels", "types", "priorities"]);
-const INTEGER_CONFIG_KEYS = new Set(["max_column_width", "default_port", "zero_padded_ids", "active_branch_days"]);
+const INTEGER_CONFIG_KEYS = new Set([
+	"max_column_width",
+	"task_list_pane_width",
+	"default_port",
+	"zero_padded_ids",
+	"active_branch_days",
+]);
 const RECOGNIZED_CONFIG_KEYS = new Set([
 	"project_name",
 	"default_assignee",
@@ -71,6 +77,7 @@ function hasValidExplicitValues(content: string, config: BacklogConfig): boolean
 			const number = Number(value);
 			if (!/^\d+$/.test(value) || !Number.isSafeInteger(number)) return false;
 			if (key === "max_column_width" && number < 1) return false;
+			if (key === "task_list_pane_width" && (number < 10 || number > 90)) return false;
 			if (key === "default_port" && (number < 1 || number > 65_535)) return false;
 		}
 		if (key === "task_prefix" && !/^[a-zA-Z]+$/.test(value.replace(/['"]/g, ""))) return false;
