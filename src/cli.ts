@@ -4082,7 +4082,7 @@ const draftListCommand = addHelpSchema(draftCmd.command("list"), {
 addListWindowOptions(draftListCommand)
 	.option("--plain", "use plain text output")
 	.option("--json", "print versioned machine-readable JSON output")
-	.action(async (options: ListWindowOptions & { plain?: boolean; json?: boolean; sort?: string }) => {
+	.action(async (options: ListWindowOptions & { plain?: boolean; sort?: string }) => {
 		const listOutput = resolveListOutput({ ...options, plain: isPlainRequested(options) }, draftListCommand);
 		if (!listOutput) return;
 		const { outputMode, listWindow } = listOutput;

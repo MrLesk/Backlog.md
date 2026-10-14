@@ -13,7 +13,8 @@ import type { ListPage } from "../utils/list-window.ts";
 import type { TaskReadiness } from "../utils/readiness.ts";
 import { sortByTaskId } from "../utils/task-sorting.ts";
 
-type DraftSummaryJson = {
+/** The compact fields of a task-shaped list entry. Draft list entries use them as is; task entries add `isReady`. */
+type CompactTaskJson = {
 	id: string;
 	title: string;
 	status: string;
@@ -35,7 +36,7 @@ type DraftSummaryJson = {
 	dueDate: string | null;
 };
 
-type TaskSummaryJson = DraftSummaryJson & {
+type TaskSummaryJson = CompactTaskJson & {
 	/**
 	 * Derived from the whole visible corpus at read time, never stored: work can start now because
 	 * the task is unfinished and every dependency it names resolved to a completed task.
@@ -128,7 +129,7 @@ function normalizePublicDate(value: string | undefined): string | null {
 	return Number.isNaN(parsed.getTime()) ? value : parsed.toISOString().replace(/\.\d{3}Z$/, "Z");
 }
 
-function toDraftSummaryJson(task: Task): DraftSummaryJson {
+function toCompactTaskJson(task: Task): CompactTaskJson {
 	const acceptanceCriteria = task.acceptanceCriteriaItems ?? [];
 	return {
 		id: task.id,
@@ -154,7 +155,7 @@ function toDraftSummaryJson(task: Task): DraftSummaryJson {
 }
 
 function toTaskSummaryJson(task: TaskListItem): TaskSummaryJson {
-	return { ...toDraftSummaryJson(task), isReady: task.isReady };
+	return { ...toCompactTaskJson(task), isReady: task.isReady };
 }
 
 function toProjectRelativePath(projectRoot: string, filePath: string | undefined): string | null {
@@ -235,7 +236,7 @@ export function draftListJson(drafts: Task[], page?: ListPage<unknown>) {
 	return {
 		schemaVersion: 1,
 		kind: "draft-list" as const,
-		drafts: drafts.map(toDraftSummaryJson),
+		drafts: drafts.map(toCompactTaskJson),
 		...cutListJson(page),
 	};
 }

@@ -195,7 +195,10 @@ describe("CLI JSON output", () => {
 		expect(result.stderr.toString()).toBe("");
 		const output = JSON.parse(result.stdout.toString());
 		expect(output.kind).toBe("draft-list");
-		expect(output.drafts.map((draft: { id: string }) => draft.id)).toEqual(["DRAFT-2", "DRAFT-1"]);
+		const jsonIds = output.drafts.map((draft: { id: string }) => draft.id);
+		expect(jsonIds).toEqual(["DRAFT-2", "DRAFT-1"]);
+		const plain = await runCli(["draft", "list", "--plain"]);
+		expect(plain.stdout.toString().match(/DRAFT-\d+/g)).toEqual(jsonIds);
 		expect(output.drafts[0]).toMatchObject({ title: "High draft", status: "Draft", priority: "high" });
 		// Readiness is derived against tasks only, so a draft entry never carries it.
 		for (const draft of output.drafts) expect(draft).not.toHaveProperty("isReady");
