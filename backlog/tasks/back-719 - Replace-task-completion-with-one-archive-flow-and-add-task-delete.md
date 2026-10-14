@@ -5,7 +5,7 @@ status: Done
 assignee:
   - '@claude'
 created_date: '2026-10-11 10:42'
-updated_date: '2026-10-12 06:40'
+updated_date: '2026-10-14 18:06'
 labels:
   - bug
 dependencies: []
@@ -133,6 +133,7 @@ modified_files:
   - src/completions/command-structure.ts
   - src/completions/helper.test.ts
   - src/test/server-demote-endpoint.test.ts
+  - src/web/components/SuccessToast.tsx
 priority: high
 type: bug
 ordinal: 337000

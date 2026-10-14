@@ -6,7 +6,7 @@ import StoredDate from './StoredDate';
 interface CleanupModalProps {
 	isOpen: boolean;
 	onClose: () => void;
-	onSuccess: (movedCount: number) => void;
+	onSuccess: (message: string) => void;
 	dateFormat?: string;
 }
 
@@ -66,7 +66,7 @@ const CleanupModal: React.FC<CleanupModalProps> = ({ isOpen, onClose, onSuccess,
 			const result = await apiClient.executeCleanup(previewTasks.map((task) => task.id));
 
 			if (result.success) {
-				onSuccess(result.movedCount);
+				onSuccess(result.message);
 				handleClose();
 			} else {
 				setError(result.message || 'Cleanup failed');

@@ -153,13 +153,18 @@ describe("BacklogServer cleanup endpoints", () => {
 		const preview = await fetchJson<{ tasks: Array<{ id: string }> }>("/api/tasks/cleanup?age=3");
 		await core.updateTaskFromInput("TASK-1", { status: "To Do" }, false);
 
-		const result = await fetchJson<{ movedCount: number; totalCount: number }>("/api/tasks/cleanup/execute", {
-			method: "POST",
-			headers: { "Content-Type": "application/json" },
-			body: JSON.stringify({ taskIds: preview.tasks.map((task) => task.id) }),
-		});
+		const result = await fetchJson<{ movedCount: number; totalCount: number; message: string }>(
+			"/api/tasks/cleanup/execute",
+			{
+				method: "POST",
+				headers: { "Content-Type": "application/json" },
+				body: JSON.stringify({ taskIds: preview.tasks.map((task) => task.id) }),
+			},
+		);
 
 		expect(result).toMatchObject({ movedCount: 0, totalCount: 1 });
+		// The browser shows this message, so it names the skipped task and the reason as `backlog cleanup` does.
+		expect(result.message).toBe("Skipped task TASK-1: its status is now To Do\nSuccessfully archived 0 of 1 tasks.");
 		expect(await core.filesystem.listArchivedTasks()).toEqual([]);
 	});
 

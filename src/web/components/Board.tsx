@@ -435,9 +435,9 @@ const Board: React.FC<BoardProps> = ({
     }
   };
 
-  const handleCleanupSuccess = async (movedCount: number) => {
+  const handleCleanupSuccess = async (message: string) => {
     setShowCleanupModal(false);
-    setCleanupSuccessMessage(`Successfully archived ${movedCount} task${movedCount !== 1 ? 's' : ''}`);
+    setCleanupSuccessMessage(message);
 
     // Refresh data to reflect the changes
     if (onRefreshData) {

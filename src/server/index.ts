@@ -1926,12 +1926,15 @@ export class BacklogServer {
 			const totalCount = taskIds.length;
 
 			const { archivedTaskIds, skipped, failures } = await this.core.archiveTerminalStatusTasks(taskIds);
-			for (const { taskId, reason } of skipped) {
-				console.error(`Skipped task ${taskId}: ${reason}`);
-			}
 			for (const failure of failures) {
 				console.error(`Failed to archive task ${failure.taskId}: ${failure.reason}`);
 			}
+			// The lines `backlog cleanup` prints, so the browser shows why a previewed task was not archived.
+			const message = [
+				...skipped.map(({ taskId, reason }) => `Skipped task ${taskId}: ${reason}`),
+				...failures.map(({ taskId, reason }) => `Failed to archive task ${taskId}: ${reason}`),
+				`Successfully archived ${archivedTaskIds.length} of ${totalCount} tasks.`,
+			].join("\n");
 
 			// Notify listeners to refresh
 			this.broadcastDataUpdated();
@@ -1941,7 +1944,7 @@ export class BacklogServer {
 				movedCount: archivedTaskIds.length,
 				totalCount,
 				failedTasks: failures.length > 0 ? failures.map((failure) => failure.taskId) : undefined,
-				message: `Archived ${archivedTaskIds.length} of ${totalCount} tasks`,
+				message,
 			});
 		} catch (error) {
 			console.error("Error executing cleanup:", error);
