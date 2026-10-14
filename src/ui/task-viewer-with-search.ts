@@ -35,6 +35,7 @@ import { getProjectValues, resolveProjectValues } from "../utils/project-config.
 import { formatReadinessBlockers } from "../utils/readiness.ts";
 import { canonicalTaskId, taskIdsEqual } from "../utils/task-id.ts";
 import { applyTaskFilters, createTaskSearchIndex } from "../utils/task-search.ts";
+import { sectionTasks, sortTasks } from "../utils/task-sorting.ts";
 import { attachSubtaskSummaries } from "../utils/task-subtasks.ts";
 import { getTaskTypeValues, resolveTaskTypeValues } from "../utils/task-type-config.ts";
 import { formatAcceptanceCriteriaProgress } from "./acceptance-criteria-progress.ts";
@@ -53,6 +54,7 @@ import { openHelpPopup } from "./components/help-popup.ts";
 import { formatFooterContent, getTaskListFooterContent } from "./footer-content.ts";
 import { formatHeading } from "./heading.ts";
 import { createLoadingScreen } from "./loading.ts";
+import { formatPriorityMarker } from "./priority-marker.ts";
 import { formatProjectBadge } from "./project.ts";
 import { formatStatusWithIcon, getStatusColor, getStatusIcon, wrapStatusColor } from "./status-icon.ts";
 import {
@@ -63,24 +65,12 @@ import {
 import { formatTaskTypeBadge } from "./task-type.ts";
 import { addScrollKeys, createScreen, formatTuiTitle } from "./tui.ts";
 
-function getPriorityDisplay(priority?: string): string {
-	switch (normalizePriorityValue(priority)) {
-		case "high":
-			return " {red-fg}●{/}";
-		case "medium":
-			return " {yellow-fg}●{/}";
-		case "low":
-			return " {green-fg}●{/}";
-		default:
-			return "";
-	}
-}
-
 export function formatTaskViewerListItem(
 	task: Task,
 	availableWidth = Number.POSITIVE_INFINITY,
 	dateFormat?: string,
 	configuredProjects?: string[],
+	configuredPriorities?: readonly string[],
 ): string {
 	const progress = formatAcceptanceCriteriaProgress(task, availableWidth);
 	// The compact status icon keeps task identity visible beside the progress indicator. Its
@@ -95,13 +85,15 @@ export function formatTaskViewerListItem(
 	const typeText = typeBadge ? ` ${typeBadge}` : "";
 	const projectBadge = formatProjectBadge(task.project, configuredProjects);
 	const projectText = projectBadge ? ` ${projectBadge}` : "";
-	const priorityText = getPriorityDisplay(task.priority);
+	// The priority marker takes the place of the dash between ID and title, so it adds no columns
+	// and cannot push the title out of a narrow list.
+	const titleSeparator = formatPriorityMarker(task.priority, configuredPriorities) || "-";
 	const dueDateText = task.dueDate ? ` {gray-fg}(due ${formatDateForDisplay(task.dueDate, { dateFormat })}){/}` : "";
 	const isCrossBranch = Boolean((task as Task & { branch?: string }).branch);
 	const branchText = isCrossBranch ? ` {green-fg}(${(task as Task & { branch?: string }).branch}){/}` : "";
 	const progressText = progress ? ` ${progress}` : "";
 
-	const content = `${wrapStatusColor(status, statusColor)}${progressText} {bold}${task.id}{/bold}${typeText}${projectText}${dueDateText} - ${task.title}${priorityText}${assigneeText}${labelsText}${branchText}`;
+	const content = `${wrapStatusColor(status, statusColor)}${progressText} {bold}${task.id}{/bold}${typeText}${projectText}${dueDateText} ${titleSeparator} ${task.title}${assigneeText}${labelsText}${branchText}`;
 	return isCrossBranch ? `{gray-fg}${content}{/}` : content;
 }
 
@@ -270,6 +262,10 @@ export async function viewTaskEnhanced(
 		/** Unfiltered corpus for dependency readiness; defaults to the tasks being displayed. */
 		readinessTasks?: Task[];
 		limit?: number;
+		/** The `--sort` value the list was opened with. Without one the list is in the default order. */
+		sort?: string;
+		/** Start on the first listed row instead of on `task`, for a list opened without a chosen task. */
+		startOnFirstRow?: boolean;
 		startWithDetailFocus?: boolean;
 		startWithSearchFocus?: boolean;
 		startupWarning?: string;
@@ -363,6 +359,7 @@ export async function viewTaskEnhanced(
 	// One shared index over the loaded corpus, however that corpus arrived. Searching exactly the
 	// tasks this list renders is what keeps its results identical to the other surfaces'.
 	let taskSearchIndex = createTaskSearchIndex(allTasks);
+	const priorityOrder = priorityOptions.map((priority) => priority.value);
 
 	// Collect available labels from config, tasks, and CLI-provided filters.
 	availableLabels = collectAvailableLabels(allTasks, [...labels, ...(options.labelFilter ?? [])]);
@@ -404,16 +401,15 @@ export async function viewTaskEnhanced(
 	let milestoneFilter = options.milestoneFilter || "";
 	let labelMatch: LabelMatchMode = options.labelMatch ?? "any";
 	const taskLimit = options.limit;
-	let filteredTasks = [...allTasks];
 
 	if (options.labelFilter && options.labelFilter.length > 0) {
 		const availableSet = new Set(availableLabels.map((label) => label.toLowerCase()));
 		labelFilter = options.labelFilter.filter((label) => availableSet.has(label.toLowerCase()));
 	}
 
-	// Decides whether the first render goes through applyFilters(). Every filter that narrows the
-	// list has to be listed here, or the flag that set it silently does nothing until something
-	// else triggers a refilter.
+	// A list that opens narrowed starts on its first row, because `task` may not be among its
+	// rows. Every filter that narrows the list has to be listed here, or the first render keeps
+	// showing `task` although the filter left it out.
 	const filtersActive = Boolean(
 		searchQuery ||
 			statusFilter.length > 0 ||
@@ -426,7 +422,7 @@ export async function viewTaskEnhanced(
 			options.readyFilter ||
 			taskLimit !== undefined,
 	);
-	let requireInitialFilterSelection = filtersActive;
+	let startOnFirstRow = filtersActive || Boolean(options.startOnFirstRow);
 
 	const enrichTask = (candidate: Task | null): Task | null => {
 		if (!candidate) return null;
@@ -683,7 +679,9 @@ export async function viewTaskEnhanced(
 		height: `100%-${getHeaderHeight() + 1}`,
 		border: { type: "line" },
 		style: { border: { fg: "gray" } },
-		label: `\u00A0Tasks (${filteredTasks.length})\u00A0`,
+		// Every task is listed until a filter or a limit narrows the list; applyFilters() then sets
+		// the count of the rows that are left.
+		label: `\u00A0Tasks (${allTasks.length})\u00A0`,
 	});
 
 	// Detail pane - use right: 0 to ensure it extends to window edge
@@ -810,8 +808,9 @@ export async function viewTaskEnhanced(
 		}
 	}
 
-	// Function to apply filters and refresh the task list
-	function applyFilters() {
+	// The rows of the list: the tasks `task list --plain` prints for the same filters, sort and
+	// limit, in the order it prints them. Every render of the list takes its rows from here.
+	function listRows(): Task[] {
 		// An unset filter contributes no check, so this covers the no-filters case too.
 		const nextFilteredTasks = applyTaskFilters(
 			allTasks,
@@ -834,7 +833,16 @@ export async function viewTaskEnhanced(
 		const readyFilteredTasks = options.readyFilter
 			? withReadiness(nextFilteredTasks, resolveDependencyCorpus()).filter((task) => task.isReady)
 			: nextFilteredTasks;
-		filteredTasks = taskLimit !== undefined ? readyFilteredTasks.slice(0, taskLimit) : readyFilteredTasks;
+		// Sorted, cut by the limit, then section after section.
+		const sortedTasks = sortTasks(readyFilteredTasks, options.sort, priorityOrder);
+		const limitedTasks = taskLimit !== undefined ? sortedTasks.slice(0, taskLimit) : sortedTasks;
+		return sectionTasks(limitedTasks, options.sort, statuses).flatMap((section) => section.tasks);
+	}
+
+	// Recomputes the rows and refreshes the task list, keeping the selection on the same task. When
+	// that task is no longer among the rows, the selection moves to the first row.
+	function applyFilters() {
+		filteredTasks = listRows();
 
 		// Update the task list label
 		if (taskListPane.setLabel) {
@@ -891,7 +899,7 @@ export async function viewTaskEnhanced(
 
 		const listController = replaceTaskList();
 		if (listController) {
-			const forceFirst = requireInitialFilterSelection;
+			const forceFirst = startOnFirstRow;
 			let desiredIndex = filteredTasks.findIndex((t) => t.id === currentSelectedTask.id);
 			if (forceFirst || desiredIndex < 0) {
 				desiredIndex = 0;
@@ -906,7 +914,7 @@ export async function viewTaskEnhanced(
 			if (forceFirst || currentIndex !== desiredIndex) {
 				listController.setSelectedIndex(desiredIndex);
 			}
-			requireInitialFilterSelection = false;
+			startOnFirstRow = false;
 		}
 
 		// Ensure detail pane is refreshed when transitioning from no-results to results
@@ -983,7 +991,7 @@ export async function viewTaskEnhanced(
 			width: "100%-4",
 			height: "100%-3",
 			itemRenderer: (task: Task) =>
-				formatTaskViewerListItem(task, getTaskListSummaryWidth(), dateFormat, configuredProjects),
+				formatTaskViewerListItem(task, getTaskListSummaryWidth(), dateFormat, configuredProjects, priorityOrder),
 			onSelect: (selected: Task | Task[]) => {
 				const selectedTask = Array.isArray(selected) ? selected[0] : selected;
 				void applySelection(selectedTask || null);
@@ -1189,6 +1197,7 @@ export async function viewTaskEnhanced(
 			resolveMilestoneLabel,
 			dateFormat,
 			configuredProjects,
+			configuredPriorities: priorityOrder,
 		});
 
 		// Calculate header height based on content and available width
@@ -1569,8 +1578,13 @@ export async function viewTaskEnhanced(
 	// Initial setup
 	updateHelpBar();
 
-	// Apply filters first if any are set
-	if (filtersActive) {
+	// The rows the list shows. applyFilters() replaces them whenever the tasks or the filters change.
+	let filteredTasks = listRows();
+
+	// A list opened on a chosen task keeps showing that task's details even when the list has no
+	// rows (a draft opened in a project without tasks, for example). Otherwise it starts on its
+	// first row.
+	if (startOnFirstRow) {
 		applyFilters();
 	} else {
 		taskList = createTaskList();
@@ -1627,13 +1641,15 @@ export interface TaskDetailContentOptions {
 	resolveMilestoneLabel?: (milestone: string) => string;
 	dateFormat?: string;
 	configuredProjects?: string[];
+	/** The configured priorities, highest first. The priority marker takes its direction from them. */
+	configuredPriorities?: readonly string[];
 }
 
 export function generateDetailContent(
 	task: Task | TaskDetail,
 	options: TaskDetailContentOptions = {},
 ): { headerContent: string[]; bodyContent: string[] } {
-	const { resolveMilestoneLabel, dateFormat, configuredProjects } = options;
+	const { resolveMilestoneLabel, dateFormat, configuredProjects, configuredPriorities } = options;
 	const headerContent = [
 		` ${wrapStatusColor(formatStatusWithIcon(task.status), getStatusColor(task.status))} {bold}{blue-fg}${task.id}{/blue-fg}{/bold} - ${task.title}`,
 	];
@@ -1659,9 +1675,9 @@ export function generateDetailContent(
 		metadata.push(`{bold}Due:{/bold} ${formatDateForDisplay(task.dueDate, { dateFormat })}`);
 	}
 	if (task.priority) {
-		const priorityDisplay = getPriorityDisplay(task.priority);
+		const priorityMarker = formatPriorityMarker(task.priority, configuredPriorities);
 		const priorityText = formatPriorityLabel(task.priority);
-		metadata.push(`{bold}Priority:{/bold} ${priorityText}${priorityDisplay}`);
+		metadata.push(`{bold}Priority:{/bold} ${priorityText}${priorityMarker ? ` ${priorityMarker}` : ""}`);
 	}
 	if (task.type) {
 		metadata.push(`{bold}Type:{/bold} ${formatTaskTypeBadge(task.type)}`);
@@ -1847,6 +1863,7 @@ export async function createTaskPopup(
 	resolveMilestoneLabel?: (milestone: string) => string,
 	dateFormat?: string,
 	configuredProjects?: string[],
+	configuredPriorities?: readonly string[],
 ): Promise<{
 	background: BoxInterface;
 	popup: BoxInterface;
@@ -1887,6 +1904,7 @@ export async function createTaskPopup(
 		resolveMilestoneLabel,
 		dateFormat,
 		configuredProjects,
+		configuredPriorities,
 	});
 
 	// Calculate header height based on content and available width

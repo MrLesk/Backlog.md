@@ -141,7 +141,7 @@ import {
 	LOCAL_TASK_LOOKUP_HINT,
 	taskIdsEqual,
 } from "./utils/task-path.ts";
-import { sortTasks } from "./utils/task-sorting.ts";
+import { sectionTasks, sortTasks, TASK_SORT_FIELDS } from "./utils/task-sorting.ts";
 import { formatValidTaskTypeValues, getTaskTypeValues, resolveTaskTypeValues } from "./utils/task-type-config.ts";
 import { getTerminalStatus, isTerminalStatus } from "./utils/terminal-status.ts";
 import { formatUtcDateForDisplay } from "./utils/utc-date-display.ts";
@@ -240,7 +240,6 @@ const MCP_CLIENT_INSTRUCTION_MAP: Record<string, AgentInstructionFile> = {
 
 const DOCUMENT_SEARCH_QUERY_MAX_LENGTH = 200;
 const DOCUMENT_SEARCH_LIMIT_MAX = 100;
-const TASK_SORT_FIELDS = ["priority", "id", "ordinal"];
 const TASK_SORT_FIELD_LIST = TASK_SORT_FIELDS.join(", ");
 const TASK_TYPE_EXAMPLE = JSON.stringify(getCliTaskTypeValues()[0] ?? "<configured-type>");
 
@@ -2541,36 +2540,21 @@ function isDocumentSearchResult(result: SearchResult): result is DocumentSearchR
 }
 
 /**
- * Groups tasks the way plain `task list` prints them: configured statuses first, then any other
- * status, each group keeping the order of `tasks`.
+ * Prints the sections of a plain task list: each status under its heading, or the one section of
+ * a flat priority list under its own heading with the status on every row.
  */
-function groupTasksByStatus(tasks: Task[], statuses: string[]): Array<{ status: string; tasks: Task[] }> {
-	const canonicalByLower = new Map<string, string>();
-	for (const status of statuses) {
-		canonicalByLower.set(status.toLowerCase(), status);
-	}
-
-	const groups = new Map<string, Task[]>();
-	for (const task of tasks) {
-		const rawStatus = (task.status || "").trim();
-		const canonicalStatus = canonicalByLower.get(rawStatus.toLowerCase()) || rawStatus;
-		const list = groups.get(canonicalStatus) || [];
-		list.push(task);
-		groups.set(canonicalStatus, list);
-	}
-
-	const orderedStatuses = [
-		...statuses.filter((status) => groups.has(status)),
-		...Array.from(groups.keys()).filter((status) => !statuses.includes(status)),
-	];
-	return orderedStatuses.map((status) => ({ status, tasks: groups.get(status) ?? [] }));
-}
-
-function printTasksGroupedByStatus(tasks: Task[], statuses: string[]): void {
+function printTaskSections(tasks: Task[], sortField: string | undefined, statuses: string[]): void {
 	// Use the stdout stream, as JSON output does, so pending pipe writes keep the CLI alive.
-	for (const group of groupTasksByStatus(tasks, statuses)) {
-		process.stdout.write(`${group.status || "No Status"}:\n`);
-		for (const task of group.tasks) {
+	for (const section of sectionTasks(tasks, sortField, statuses)) {
+		if (section.status === null) {
+			process.stdout.write("Tasks (sorted by priority):\n");
+			for (const task of section.tasks) {
+				process.stdout.write(`${formatPlainTaskListRow(task, { includeStatus: true })}\n`);
+			}
+			continue;
+		}
+		process.stdout.write(`${section.status || "No Status"}:\n`);
+		for (const task of section.tasks) {
 			process.stdout.write(`${formatPlainTaskListRow(task)}\n`);
 		}
 		process.stdout.write("\n");
@@ -2721,10 +2705,10 @@ async function runTaskList(
 		// Ordering, the parent narrowing and the limit are the same whatever the rows carry, so the
 		// readiness projection below travels through them instead of being derived twice.
 		const parentFilter = resolvedParentId;
-		// The sort field was validated above, before any task was read.
-		const sortField = options.sort ? options.sort.toLowerCase() : "priority";
+		// The sort was validated above, before any task was read. Without one, sortTasks uses the
+		// default order of every task list.
 		const narrowForDisplay = <T extends Task>(rows: T[]): T[] => {
-			const sorted = sortTasks(rows, sortField, config?.priorities);
+			const sorted = sortTasks(rows, options.sort, config?.priorities);
 			const narrowed = parentFilter
 				? sorted.filter((task) => task.parentTaskId && taskIdsEqual(parentFilter, task.parentTaskId))
 				: sorted;
@@ -2747,9 +2731,7 @@ async function runTaskList(
 		const displayTasks = narrowForDisplay(options.ready ? readyRows : tasks);
 
 		// The window is taken from the sorted list, as it is for JSON, so both formats select the same
-		// tasks. Only the selected tasks are then grouped by status for printing; an explicit priority
-		// sort prints them as one flat list instead.
-		const flatPriorityList = options.sort?.toLowerCase() === "priority";
+		// tasks. Only the selected tasks are then split into the sections plain output prints.
 		const statuses = config?.statuses || [];
 		printListWindow(displayTasks, listWindow, (windowTasks) => {
 			if (windowTasks.length === 0) {
@@ -2760,14 +2742,7 @@ async function runTaskList(
 				}
 				return;
 			}
-			if (flatPriorityList) {
-				process.stdout.write("Tasks (sorted by priority):\n");
-				for (const t of windowTasks) {
-					process.stdout.write(`${formatPlainTaskListRow(t, { includeStatus: true })}\n`);
-				}
-				return;
-			}
-			printTasksGroupedByStatus(windowTasks, statuses);
+			printTaskSections(windowTasks, options.sort, statuses);
 		});
 		cleanup();
 		return;
@@ -2881,24 +2856,11 @@ async function runTaskList(
 				? await resolveParentFilterId(core, parentId, parentDisplayId ?? parentId)
 				: undefined;
 
-			let sortedTasks = tasks;
-			if (options.sort) {
-				const sortField = options.sort.toLowerCase();
-				if (!TASK_SORT_FIELDS.includes(sortField)) {
-					throw new Error(`Invalid sort field: ${options.sort}. Valid values are: ${TASK_SORT_FIELD_LIST}`);
-				}
-				sortedTasks = sortTasks(tasks, sortField, config?.priorities);
-			} else {
-				sortedTasks = sortTasks(tasks, "priority", config?.priorities);
-			}
-
-			let filtered = sortedTasks;
-			if (resolvedParentId) {
-				filtered = filtered.filter((task) => task.parentTaskId && taskIdsEqual(resolvedParentId, task.parentTaskId));
-			}
-
 			return {
-				tasks: filtered,
+				// The view orders these rows itself, from the sort in the filter below.
+				tasks: resolvedParentId
+					? tasks.filter((task) => task.parentTaskId && taskIdsEqual(resolvedParentId, task.parentTaskId))
+					: tasks,
 				statuses: config?.statuses || [],
 				// The filters above narrow what is displayed. Dependency readiness must still see
 				// every task, or a dependency assigned to someone else reads as unknown.
@@ -2951,7 +2913,11 @@ const taskListCommand = addHelpSchema(taskCmd.command("list"), {
 		{ name: "search", type: "String", description: "Search task title, description, notes, comments, and metadata" },
 		{ name: "ready", type: "Boolean", description: "Only show unblocked tasks with all dependencies completed" },
 		{ name: "limit", type: "Positive integer", description: "Maximum tasks to display after sorting" },
-		{ name: "sort", type: choiceType(TASK_SORT_FIELDS), description: "Task ordering before applying limit" },
+		{
+			name: "sort",
+			type: choiceType(TASK_SORT_FIELDS),
+			description: "Task order before limit and windows; without it: ordinal, then priority, then ID",
+		},
 		...LIST_WINDOW_HELP_FIELDS,
 		{ name: "plain", type: "Boolean", description: "Use text output instead of interactive UI" },
 		{ name: "json", type: "Boolean", description: "Use versioned machine-readable JSON output" },
@@ -3009,7 +2975,7 @@ const taskListCommand = addHelpSchema(taskCmd.command("list"), {
 	.option("--search <query>", "search task title, description, notes, comments, and metadata")
 	.option("--ready", "only show unblocked tasks with all dependencies completed")
 	.option("--limit <number>", "limit tasks displayed after sorting")
-	.option("--sort <field>", `sort tasks by field (${TASK_SORT_FIELD_LIST})`);
+	.option("--sort <field>", `sort tasks by field (${TASK_SORT_FIELD_LIST}); default: ordinal, then priority, then ID`);
 addListWindowOptions(taskListCommand)
 	.option("--plain", "use plain text output instead of interactive UI")
 	.option("--json", "print versioned machine-readable JSON output")
@@ -4073,7 +4039,7 @@ addListWindowOptions(draftListCommand)
 		const listOutput = resolveListOutput({ ...options, plain: isPlainRequested(options) }, draftListCommand);
 		if (!listOutput) return;
 		const { outputMode, listWindow } = listOutput;
-		// Default to priority sorting to match web UI behavior
+		// The draft list keeps its own default: drafts are sorted by priority unless --sort is given.
 		const sortField = options.sort ? options.sort.toLowerCase() : "priority";
 		if (!TASK_SORT_FIELDS.includes(sortField)) {
 			console.error(`Invalid sort field: ${options.sort}. Valid values are: ${TASK_SORT_FIELD_LIST}`);
@@ -4112,6 +4078,8 @@ addListWindowOptions(draftListCommand)
 			tasks: sortedDrafts,
 			filter: {
 				filterDescription: "All Drafts",
+				// The view orders its own rows, so it needs the sort this list was printed with.
+				sort: sortField,
 			},
 			title: "Drafts",
 		});

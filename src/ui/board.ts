@@ -18,7 +18,7 @@ import {
 import { getPriorityOptions } from "../utils/priority-config.ts";
 import { getProjectValues, resolveProjectValues } from "../utils/project-config.ts";
 import { applyTaskFilters, createTaskSearchIndex } from "../utils/task-search.ts";
-import { compareTaskIds } from "../utils/task-sorting.ts";
+import { compareTaskIds, sortTasks } from "../utils/task-sorting.ts";
 import { getTaskTypeValues, resolveTaskTypeValues } from "../utils/task-type-config.ts";
 import { taskContentSignature } from "../utils/task-watcher.ts";
 import { formatUtcDateForDisplay } from "../utils/utc-date-display.ts";
@@ -307,6 +307,8 @@ export async function renderBoardTui(
 		availableLabels?: string[];
 		availableMilestones?: string[];
 		priorities?: string[];
+		/** The `--sort` value of the task list this board was opened from. It orders the tasks a limit keeps. */
+		sort?: string;
 		types?: string[];
 		projects?: string[];
 		onFilterChange?: (filters: {
@@ -494,7 +496,10 @@ export async function renderBoardTui(
 					searchIndex,
 				);
 			}
-			return sharedFilters.limit !== undefined ? filteredTasks.slice(0, sharedFilters.limit) : filteredTasks;
+			// A limit keeps the tasks the task list shows for it: the first ones of the sorted list.
+			return sharedFilters.limit !== undefined
+				? sortTasks(filteredTasks, options?.sort, options?.priorities).slice(0, sharedFilters.limit)
+				: filteredTasks;
 		};
 
 		// Move mode state
@@ -1521,7 +1526,14 @@ export async function renderBoardTui(
 		const openTaskPopup = async (task: Task): Promise<void> => {
 			popupOpen = true;
 
-			const popup = await createTaskPopup(screen, task, resolveMilestoneLabel, options?.dateFormat, configuredProjects);
+			const popup = await createTaskPopup(
+				screen,
+				task,
+				resolveMilestoneLabel,
+				options?.dateFormat,
+				configuredProjects,
+				options?.priorities,
+			);
 			if (!popup) {
 				popupOpen = false;
 				openPopup = null;
