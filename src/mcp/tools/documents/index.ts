@@ -98,7 +98,7 @@ export function registerDocumentTools(server: McpServer, _config: BacklogConfig)
 		{
 			name: "document_delete",
 			description:
-				"Permanently delete an archived Backlog.md document; works only on archived documents and asks no question. Its ID is released. Tasks and drafts that list the file as documentation are named, not changed",
+				"Permanently delete an archived Backlog.md document; works only on archived documents and asks no question. Its ID is released once no other file and no committed file on any branch uses the number. Tasks and drafts that list the file as documentation are named, not changed",
 			inputSchema: documentDeleteSchema,
 			annotations: { title: "Delete Document", destructiveHint: true },
 		},

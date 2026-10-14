@@ -209,6 +209,20 @@ describe("McpServer bootstrap", () => {
 		}
 	});
 
+	it("workflow guides say how a document is restored and deleted", () => {
+		for (const guide of [MCP_WORKFLOW_OVERVIEW, MCP_WORKFLOW_OVERVIEW_TOOLS]) {
+			expect(guide).toContain(
+				"- `document_restore` moves an archived document's file back, unchanged, to the same relative path under `backlog/docs/`.",
+			);
+			expect(guide).toContain("Removing a document takes two steps: `document_archive`, then `document_delete`.");
+			expect(guide).toContain("Delete works only on an archived document and asks no question.");
+			expect(guide).toContain("releases its ID");
+			expect(guide).toContain(
+				"No task is changed; the result names the tasks and drafts whose documentation list names the removed file",
+			);
+		}
+	});
+
 	it("task creation guide keeps parent task IDs distinct from milestone IDs", () => {
 		TEST_DIR = createUniqueTestDir("mcp-server-guides");
 

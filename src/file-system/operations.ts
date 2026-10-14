@@ -1713,7 +1713,7 @@ export class FileSystem {
 	}
 
 	/**
-	 * Removes the file of an archived document, as `Core.deleteDocument` does, and returns its path.
+	 * Removes the file of an archived document for `Core.deleteDocument`, and returns its path.
 	 * A file that is a symbolic link is removed as a link; the file it points to stays.
 	 *
 	 * Nothing but that file can be removed through this. It refuses, and removes nothing, when the
