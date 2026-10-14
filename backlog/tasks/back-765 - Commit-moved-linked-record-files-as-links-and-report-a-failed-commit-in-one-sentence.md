@@ -3,11 +3,11 @@ id: BACK-765
 title: >-
   Commit moved linked record files as links and report a failed commit in one
   sentence
-status: In Progress
+status: Done
 assignee:
   - '@claude'
 created_date: '2026-10-14 04:13'
-updated_date: '2026-10-14 04:32'
+updated_date: '2026-10-14 04:44'
 labels:
   - bug
 dependencies:
