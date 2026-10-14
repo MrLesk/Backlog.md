@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it } from "bun:test";
 import { JSDOM } from "jsdom";
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
-import { MemoryRouter, Route, Routes } from "react-router-dom";
+import { MemoryRouter, type NavigateFunction, Route, Routes, useNavigate } from "react-router-dom";
 import type { Decision, Document } from "../types/index.ts";
 import DecisionDetail from "../web/components/DecisionDetail.tsx";
 import DocumentationDetail from "../web/components/DocumentationDetail.tsx";
@@ -74,6 +74,8 @@ interface Session {
 	refreshes: number;
 	confirmations: string[];
 	alerts: string[];
+	/** Moves the router inside the app, as a link would. */
+	navigate: NavigateFunction;
 	resolveArchive: (answer: { status: number; body: Record<string, unknown> }) => void;
 }
 
@@ -116,6 +118,7 @@ async function open(
 		refreshes: 0,
 		confirmations: [],
 		alerts: [],
+		navigate: () => {},
 		resolveArchive: () => {},
 	};
 	window.confirm = (message?: string) => {
@@ -151,6 +154,11 @@ async function open(
 		activeRoot?.render(
 			<ThemeProvider>
 				<MemoryRouter initialEntries={[options.path ?? page.detailPath]}>
+					<NavigateHandle
+						onNavigate={(navigate) => {
+							session.navigate = navigate;
+						}}
+					/>
 					<Routes>
 						<Route path={options.pattern ?? page.detailPattern} element={page.render(onRefreshData)} />
 						<Route path={page.listPath} element={<div data-testid="list-page">List</div>} />
@@ -161,6 +169,11 @@ async function open(
 	});
 	await flush();
 	return session;
+}
+
+function NavigateHandle({ onNavigate }: { onNavigate: (navigate: NavigateFunction) => void }) {
+	onNavigate(useNavigate());
+	return null;
 }
 
 const buttonNamed = (container: HTMLElement, label: string) =>
@@ -266,6 +279,24 @@ describe.each([...PAGES])("the $kind page", (page) => {
 		await act(async () => session.resolveArchive({ status: 200, body: { success: true } }));
 		await flush();
 		expect(session.container.querySelector('[data-testid="list-page"]')).toBeTruthy();
+	});
+
+	it("keeps an archived record out of edit mode when the URL asks for the editor", async () => {
+		const session = await open(page, { path: `${page.detailPath}?edit=true`, archived: true });
+		const expectReadOnly = () => {
+			expect(session.container.textContent).toContain("Archived");
+			expect(session.container.querySelector('input[type="text"]')).toBeNull();
+			expect(buttonNamed(session.container, "Save")).toBeUndefined();
+			expect(buttonNamed(session.container, "Cancel")).toBeUndefined();
+		};
+		expectReadOnly();
+
+		// The same record, already open, asked again: no new load runs.
+		await act(async () => {
+			session.navigate(`${page.detailPath}?edit=true`);
+		});
+		await flush();
+		expectReadOnly();
 	});
 
 	it("shows an archived record opened by its URL with the Archived label and neither Edit nor Archive", async () => {

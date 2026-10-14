@@ -85,12 +85,15 @@ export default function DecisionDetail({ decisions, onRefreshData, dateFormat }:
 	const [originalDecisionTitle, setOriginalDecisionTitle] = useState<string>('');
 	const [isLoading, setIsLoading] = useState(true);
 	const [isSaving, setIsSaving] = useState(false);
-	const [isEditing, setIsEditing] = useState(false);
+	const [editRequested, setEditRequested] = useState(false);
 	const [error, setError] = useState<Error | null>(null);
 	const [isNewDecision, setIsNewDecision] = useState(false);
 	const [showSaveSuccess, setShowSaveSuccess] = useState(false);
 	// An archived decision is read-only: it shows the Archived label and no Archive button.
 	const isArchived = decision?.archived === true;
+	// The editor opens on request (the Edit button, `?edit=true` in the URL, the new page), but never
+	// for an archived decision: the request can come before or after the record has loaded.
+	const isEditing = editRequested && !isArchived;
 	const { archive, isArchiving, archiveError, dismissArchiveError } = useRecordArchive(
 		'decision',
 		decision && !isNewDecision ? { id: decision.id, title: decision.title } : null,
@@ -101,7 +104,7 @@ export default function DecisionDetail({ decisions, onRefreshData, dateFormat }:
 		if (id === 'new') {
 			// Handle new decision creation
 			setIsNewDecision(true);
-			setIsEditing(true);
+			setEditRequested(true);
 			setIsLoading(false);
 			// Creating is unrelated to whatever failed to load before, so clear any load error.
 			// Otherwise a previous ambiguity notice keeps rendering instead of the create editor.
@@ -113,7 +116,7 @@ export default function DecisionDetail({ decisions, onRefreshData, dateFormat }:
 			setOriginalContent('');
 		} else if (id) {
 			setIsNewDecision(false);
-			setIsEditing(false); // Ensure we start in preview mode for existing decisions
+			setEditRequested(false); // Ensure we start in preview mode for existing decisions
 			loadDecisionContent();
 		}
 	}, [id, decisions]);
@@ -121,7 +124,7 @@ export default function DecisionDetail({ decisions, onRefreshData, dateFormat }:
 	// Check for edit query parameter to start in edit mode
 	useEffect(() => {
 		if (searchParams.get('edit') === 'true') {
-			setIsEditing(true);
+			setEditRequested(true);
 			// Remove the edit parameter from URL
 			setSearchParams(params => {
 				params.delete('edit');
@@ -192,7 +195,7 @@ export default function DecisionDetail({ decisions, onRefreshData, dateFormat }:
 				setShowSaveSuccess(true);
 				setTimeout(() => setShowSaveSuccess(false), 4000);
 				// Exit edit mode and navigate to the new decision
-				setIsEditing(false);
+				setEditRequested(false);
 				setIsNewDecision(false);
 				const newId = stripIdPrefix(decision.id);
 				navigate(`/decisions/${newId}/${sanitizeUrlTitle(decisionTitle)}`);
@@ -206,7 +209,7 @@ export default function DecisionDetail({ decisions, onRefreshData, dateFormat }:
 				setShowSaveSuccess(true);
 				setTimeout(() => setShowSaveSuccess(false), 4000);
 				// Exit edit mode and navigate to decision detail page (this will load in preview mode)
-				setIsEditing(false);
+				setEditRequested(false);
 				navigate(`/decisions/${id}/${sanitizeUrlTitle(decisionTitle)}`);
 			}
 		} catch (error) {
@@ -217,7 +220,7 @@ export default function DecisionDetail({ decisions, onRefreshData, dateFormat }:
 	};
 
 	const handleEdit = () => {
-		setIsEditing(true);
+		setEditRequested(true);
 	};
 
 	const handleCancelEdit = () => {
@@ -228,7 +231,7 @@ export default function DecisionDetail({ decisions, onRefreshData, dateFormat }:
 			// Revert changes for existing decisions
 			setContent(originalContent);
 			setDecisionTitle(originalDecisionTitle);
-			setIsEditing(false);
+			setEditRequested(false);
 		}
 	};
 

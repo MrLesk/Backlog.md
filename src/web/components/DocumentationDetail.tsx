@@ -88,13 +88,16 @@ export default function DocumentationDetail({docs, onRefreshData, dateFormat}: D
     const [originalDocPath, setOriginalDocPath] = useState<string>('');
     const [isLoading, setIsLoading] = useState(true);
     const [isSaving, setIsSaving] = useState(false);
-    const [isEditing, setIsEditing] = useState(false);
+    const [editRequested, setEditRequested] = useState(false);
     const [error, setError] = useState<Error | null>(null);
     const [saveError, setSaveError] = useState<Error | null>(null);
     const [isNewDocument, setIsNewDocument] = useState(false);
     const [showSaveSuccess, setShowSaveSuccess] = useState(false);
     // An archived document is read-only: it shows the Archived label and neither Edit nor Archive.
     const isArchived = document?.archived === true;
+    // The editor opens on request (the Edit button, `?edit=true` in the URL, the new page), but never
+    // for an archived document: the request can come before or after the record has loaded.
+    const isEditing = editRequested && !isArchived;
     const {archive, isArchiving, archiveError, dismissArchiveError} = useRecordArchive(
         'document',
         document && !isNewDocument ? {id: document.id, title: document.title} : null,
@@ -105,7 +108,7 @@ export default function DocumentationDetail({docs, onRefreshData, dateFormat}: D
         if (id === 'new') {
             // Handle new document creation
             setIsNewDocument(true);
-            setIsEditing(true);
+            setEditRequested(true);
             setIsLoading(false);
             // Creating is unrelated to whatever failed to load before, so clear any load error.
             // Otherwise a previous ambiguity notice keeps rendering instead of the create editor.
@@ -119,7 +122,7 @@ export default function DocumentationDetail({docs, onRefreshData, dateFormat}: D
             setOriginalContent('');
         } else if (id) {
             setIsNewDocument(false);
-            setIsEditing(false); // Ensure we start in preview mode for existing documents
+            setEditRequested(false); // Ensure we start in preview mode for existing documents
             loadDocContent();
         }
     }, [id, docs]);
@@ -127,7 +130,7 @@ export default function DocumentationDetail({docs, onRefreshData, dateFormat}: D
     // Check for edit query parameter to start in edit mode
     useEffect(() => {
         if (searchParams.get('edit') === 'true') {
-            setIsEditing(true);
+            setEditRequested(true);
             // Remove the edit parameter from URL
             setSearchParams(params => {
                 params.delete('edit');
@@ -208,7 +211,7 @@ export default function DocumentationDetail({docs, onRefreshData, dateFormat}: D
                 setShowSaveSuccess(true);
                 setTimeout(() => setShowSaveSuccess(false), 4000);
                 // Exit edit mode and navigate to the new document
-                setIsEditing(false);
+                setEditRequested(false);
                 setIsNewDocument(false);
                 setDocTitle(normalizedTitle);
                 setOriginalDocTitle(normalizedTitle);
@@ -250,7 +253,7 @@ export default function DocumentationDetail({docs, onRefreshData, dateFormat}: D
                 setShowSaveSuccess(true);
                 setTimeout(() => setShowSaveSuccess(false), 4000);
                 // Exit edit mode and navigate to document detail page (this will load in preview mode)
-                setIsEditing(false);
+                setEditRequested(false);
                 navigate(`/documentation/${id}/${sanitizeUrlTitle(normalizedTitle)}`);
             }
         } catch (err) {
@@ -263,7 +266,7 @@ export default function DocumentationDetail({docs, onRefreshData, dateFormat}: D
     }, [id, docTitle, docPath, originalDocPath, content, isNewDocument, onRefreshData, navigate, loadDocContent]);
 
     const handleEdit = () => {
-        setIsEditing(true);
+        setEditRequested(true);
     };
 
     const handleCancelEdit = () => {
@@ -275,7 +278,7 @@ export default function DocumentationDetail({docs, onRefreshData, dateFormat}: D
             setContent(originalContent);
             setDocTitle(originalDocTitle);
             setDocPath(originalDocPath);
-            setIsEditing(false);
+            setEditRequested(false);
         }
     };
 
