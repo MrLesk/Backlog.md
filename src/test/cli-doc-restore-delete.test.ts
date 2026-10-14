@@ -454,6 +454,19 @@ describe("backlog doc restore and delete in a Git repository", () => {
 		expect((await backlog("doc", "create", "Created after the delete")).stdout).toContain("Created document doc-1\n");
 	});
 
+	it("keeps the number of a committed document until its deletion is committed when auto-commit is off", async () => {
+		await setUpRepository(false);
+		expect((await backlog("doc", "delete", "doc-1")).exitCode).toBe(0);
+
+		// The last commit still holds the archived file, so the number stays taken.
+		expect((await backlog("doc", "create", "Created before the commit")).stdout).toContain("Created document doc-2\n");
+		await rm(docsPath("doc-2 - Created-before-the-commit.md"));
+		await git("add", "-A");
+		await git("commit", "-m", "Commit the deletion");
+
+		expect((await backlog("doc", "create", "Created after the commit")).stdout).toContain("Created document doc-1\n");
+	});
+
 	it("keeps the number reserved while a committed file on another branch still claims it", async () => {
 		await setUpRepository(true);
 		// Another branch still holds the archived file in its last commit.
