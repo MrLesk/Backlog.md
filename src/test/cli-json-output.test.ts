@@ -97,6 +97,7 @@ describe("CLI JSON output", () => {
 					id: "TASK-1",
 					title: "JSON task",
 					status: "In Progress",
+					archived: false,
 					type: "enhancement",
 					priority: "high",
 					project: null,
@@ -178,6 +179,7 @@ describe("CLI JSON output", () => {
 			expect(output.schemaVersion).toBe(1);
 			expect(output.kind).toBe("task-view");
 			expect(output.task.path).toMatch(/^backlog\/tasks\/task-1 - JSON-task\.md$/);
+			expect(output.task.archived).toBe(false);
 			expect(output.task.description).toBe("Machine-readable output");
 			expect(output.task.dependencies).toEqual(["TASK-2"]);
 			// The summary verdict and the detail explanation behind it, from the same derivation.
@@ -207,6 +209,18 @@ describe("CLI JSON output", () => {
 			expect(output.task.filePath).toBeUndefined();
 			expect(output.task.branch).toBeUndefined();
 		}
+	});
+
+	it("marks a task in the archive as archived in task view", async () => {
+		expect(await new Core(TEST_DIR).archiveTask("task-1", false)).toBe(true);
+
+		const result = await runCli(["task", "view", "1", "--json"]);
+
+		expect(result.exitCode).toBe(0);
+		const output = JSON.parse(result.stdout.toString());
+		expect(output.schemaVersion).toBe(1);
+		expect(output.task.archived).toBe(true);
+		expect(output.task.path).toMatch(/^backlog\/archive\/tasks\/task-1 - JSON-task\.md$/);
 	});
 
 	it("serializes an absent description as null and preserves Markdown verbatim", async () => {

@@ -17,6 +17,8 @@ type TaskSummaryJson = {
 	id: string;
 	title: string;
 	status: string;
+	/** True for a task in the archive, which is read-only; false for a task on the board. */
+	archived: boolean;
 	type: string | null;
 	priority: string | null;
 	project: string | null;
@@ -131,6 +133,7 @@ function toTaskSummaryJson(task: TaskListItem): TaskSummaryJson {
 		id: task.id,
 		title: task.title,
 		status: task.status,
+		archived: task.source === "archived",
 		type: nullable(task.type),
 		priority: nullable(task.priority),
 		project: nullable(task.project),
