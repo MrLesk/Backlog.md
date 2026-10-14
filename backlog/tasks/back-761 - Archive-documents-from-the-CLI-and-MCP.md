@@ -1,11 +1,11 @@
 ---
 id: BACK-761
 title: Archive documents from the CLI and MCP
-status: In Progress
+status: Done
 assignee:
   - '@claude'
 created_date: '2026-10-13 18:46'
-updated_date: '2026-10-14 04:43'
+updated_date: '2026-10-14 04:44'
 labels:
   - enhancement
 dependencies:
