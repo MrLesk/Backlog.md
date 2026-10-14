@@ -23,6 +23,7 @@ import { pickTaskForEditWizard, runTaskCreateWizard, runTaskEditWizard } from ".
 import { watchJson } from "./commands/watch-json.ts";
 import { DEFAULT_DIRECTORIES, DEFAULT_FILES, DEFAULT_STATUSES } from "./constants/index.ts";
 import { type ArchivedTaskMovePlan, moveArchivedTasks, previewArchivedTaskMove } from "./core/archived-task-move.ts";
+import { formatCleanupResult } from "./core/backlog.ts";
 import { type DuplicateRepairPlan, findLocalDuplicateTaskIds } from "./core/duplicate-task-repair.ts";
 import { initializeProject } from "./core/init.ts";
 import { buildMilestoneBuckets, collectArchivedMilestoneKeys, milestoneKey } from "./core/milestones.ts";
@@ -5740,16 +5741,11 @@ addHelpSchema(program.command("cleanup"), {
 
 			console.log("Archiving tasks...");
 			// Only the tasks that were just shown and confirmed, not whatever matches the age by now.
-			const { archivedTaskIds, skipped, failures } = await core.archiveTerminalStatusTasks(
-				tasksToArchive.map((task) => task.id),
-			);
-			for (const { taskId, reason } of skipped) {
-				console.log(`Skipped task ${taskId}: ${reason}`);
-			}
-			for (const failure of failures) {
-				console.error(`Failed to archive task ${failure.taskId}: ${failure.reason}`);
-			}
-			console.log(`Successfully archived ${archivedTaskIds.length} of ${tasksToArchive.length} tasks.`);
+			const result = await core.archiveTerminalStatusTasks(tasksToArchive.map((task) => task.id));
+			const lines = formatCleanupResult(result, tasksToArchive.length);
+			for (const line of lines.skipped) console.log(line);
+			for (const line of lines.failed) console.error(line);
+			console.log(lines.summary);
 		} catch (err) {
 			reportCommandFailure("Failed to run cleanup", err);
 		}

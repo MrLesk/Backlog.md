@@ -2,7 +2,7 @@ import net from "node:net";
 import { dirname, isAbsolute, join } from "node:path";
 import type { Server, ServerWebSocket } from "bun";
 import { DEFAULT_STATUSES } from "../constants/index.ts";
-import { Core, TaskRefusedError } from "../core/backlog.ts";
+import { Core, formatCleanupResult, TaskRefusedError } from "../core/backlog.ts";
 import type { ContentStore } from "../core/content-store.ts";
 import { initializeProject } from "../core/init.ts";
 import type { SearchService } from "../core/search-service.ts";
@@ -1925,26 +1925,19 @@ export class BacklogServer {
 			}
 			const totalCount = taskIds.length;
 
-			const { archivedTaskIds, skipped, failures } = await this.core.archiveTerminalStatusTasks(taskIds);
-			for (const failure of failures) {
-				console.error(`Failed to archive task ${failure.taskId}: ${failure.reason}`);
-			}
-			// The lines `backlog cleanup` prints, so the browser shows why a previewed task was not archived.
-			const message = [
-				...skipped.map(({ taskId, reason }) => `Skipped task ${taskId}: ${reason}`),
-				...failures.map(({ taskId, reason }) => `Failed to archive task ${taskId}: ${reason}`),
-				`Successfully archived ${archivedTaskIds.length} of ${totalCount} tasks.`,
-			].join("\n");
+			const result = await this.core.archiveTerminalStatusTasks(taskIds);
+			const lines = formatCleanupResult(result, totalCount);
+			for (const line of lines.failed) console.error(line);
 
 			// Notify listeners to refresh
 			this.broadcastDataUpdated();
 
 			return Response.json({
 				success: true,
-				movedCount: archivedTaskIds.length,
+				movedCount: result.archivedTaskIds.length,
 				totalCount,
-				failedTasks: failures.length > 0 ? failures.map((failure) => failure.taskId) : undefined,
-				message,
+				failedTasks: result.failures.length > 0 ? result.failures.map((failure) => failure.taskId) : undefined,
+				message: [...lines.skipped, ...lines.failed, lines.summary].join("\n"),
 			});
 		} catch (error) {
 			console.error("Error executing cleanup:", error);

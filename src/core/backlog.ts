@@ -260,6 +260,25 @@ export interface VacatedTaskResult {
 	cleanedTaskIds: string[];
 }
 
+/** What {@link Core.archiveTerminalStatusTasks} archived, skipped and could not archive. */
+export interface CleanupResult {
+	archivedTaskIds: string[];
+	skipped: Array<{ taskId: string; reason: string }>;
+	failures: Array<{ taskId: string; reason: string }>;
+}
+
+/** The lines both `backlog cleanup` and the browser's cleanup show for a cleanup result. */
+export function formatCleanupResult(
+	result: CleanupResult,
+	selectedCount: number,
+): { skipped: string[]; failed: string[]; summary: string } {
+	return {
+		skipped: result.skipped.map(({ taskId, reason }) => `Skipped task ${taskId}: ${reason}`),
+		failed: result.failures.map(({ taskId, reason }) => `Failed to archive task ${taskId}: ${reason}`),
+		summary: `Successfully archived ${result.archivedTaskIds.length} of ${selectedCount} tasks.`,
+	};
+}
+
 interface TaskEditResult {
 	task: Task;
 	cleanedTaskIds: string[];
@@ -3530,13 +3549,9 @@ export class Core {
 	 *
 	 * Each task is read again first. One that has left the board or the final status since it was
 	 * selected is skipped with the reason. One that cannot be archived is a failure with the reason.
-	 * Neither stops the others.
+	 * Neither stops the others. {@link formatCleanupResult} words the result for both callers.
 	 */
-	async archiveTerminalStatusTasks(taskIds: string[]): Promise<{
-		archivedTaskIds: string[];
-		skipped: Array<{ taskId: string; reason: string }>;
-		failures: Array<{ taskId: string; reason: string }>;
-	}> {
+	async archiveTerminalStatusTasks(taskIds: string[]): Promise<CleanupResult> {
 		const config = await this.fs.loadConfig();
 		const statuses = config?.statuses ?? [...DEFAULT_STATUSES];
 		const archivedTaskIds: string[] = [];

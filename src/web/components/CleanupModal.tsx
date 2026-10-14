@@ -65,7 +65,8 @@ const CleanupModal: React.FC<CleanupModalProps> = ({ isOpen, onClose, onSuccess,
 			// Only the tasks the preview showed, not whatever matches the age by now.
 			const result = await apiClient.executeCleanup(previewTasks.map((task) => task.id));
 
-			if (result.success) {
+			// A task that could not be archived is shown as an error, not in the success toast.
+			if (result.success && !result.failedTasks?.length) {
 				onSuccess(result.message);
 				handleClose();
 			} else {
@@ -116,7 +117,7 @@ const CleanupModal: React.FC<CleanupModalProps> = ({ isOpen, onClose, onSuccess,
 				{/* Error Message */}
 				{error && (
 					<div className="rounded-md bg-red-100 dark:bg-red-900/40 p-3">
-						<p className="text-sm text-red-700 dark:text-red-200">{error}</p>
+						<p className="text-sm text-red-700 dark:text-red-200 whitespace-pre-line">{error}</p>
 					</div>
 				)}
 

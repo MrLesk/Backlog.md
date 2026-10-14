@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import { mkdir, stat } from "node:fs/promises";
 import { join } from "node:path";
 import { $ } from "bun";
-import { Core } from "../core/backlog.ts";
+import { Core, formatCleanupResult } from "../core/backlog.ts";
 import { serializeTask } from "../markdown/serializer.ts";
 import type { Task } from "../types/index.ts";
 import { createUniqueTestDir, initializeTestProject, safeCleanup } from "./test-utils.ts";
@@ -378,6 +378,23 @@ describe("Cleanup functionality", () => {
 			expect(result.failures.map((failure) => failure.taskId)).toEqual(["TASK-1"]);
 			expect(result.failures[0]?.reason).toContain("ambiguous");
 			expect(await boardIds()).toEqual(["TASK-1"]);
+		});
+
+		it("words the result in the lines `backlog cleanup` and the browser both show", () => {
+			const lines = formatCleanupResult(
+				{
+					archivedTaskIds: ["TASK-3"],
+					skipped: [{ taskId: "TASK-1", reason: "its status is now In Progress" }],
+					failures: [{ taskId: "TASK-2", reason: "permission denied" }],
+				},
+				3,
+			);
+
+			expect(lines).toEqual({
+				skipped: ["Skipped task TASK-1: its status is now In Progress"],
+				failed: ["Failed to archive task TASK-2: permission denied"],
+				summary: "Successfully archived 1 of 3 tasks.",
+			});
 		});
 	});
 
