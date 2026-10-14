@@ -244,7 +244,7 @@ describe("backlog doc delete", () => {
 		expect(created.stdout).toContain("Created document doc-3\n");
 	});
 
-	it("names the tasks, archived tasks and drafts that list either path of the removed file", async () => {
+	it("names the tasks, archived tasks and drafts that list either path of the removed file, past a damaged draft", async () => {
 		const name = await createArchivedDocument("Referenced", "guides");
 		const archiveRelative = `backlog/archive/docs/guides/${name}`;
 		const docsRelative = `backlog/docs/guides/${name}`;
@@ -258,6 +258,11 @@ describe("backlog doc delete", () => {
 		await core.createTaskFromInput({ title: "Archived and naming it", documentation: [`./${archiveRelative}`] });
 		expect((await backlog("task", "archive", "7")).exitCode).toBe(0);
 		await core.createTaskFromInput({ title: "A draft", status: "Draft", documentation: [docsRelative] });
+		// Reading this draft fails, which must not hide the draft next to it.
+		await writeFile(
+			join(TEST_DIR, "backlog", "drafts", "draft-2 - Bad.md"),
+			"---\nid: DRAFT-2\ntitle: Bad\ndependencies:\n  - { nested: true }\n---\n",
+		);
 		const tasksBefore = await snapshot(join(TEST_DIR, "backlog", "tasks"));
 		const archivedTasksBefore = await snapshot(join(TEST_DIR, "backlog", "archive", "tasks"));
 		const draftsBefore = await snapshot(join(TEST_DIR, "backlog", "drafts"));
