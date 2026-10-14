@@ -3570,7 +3570,10 @@ export class Core {
 
 		if (await this.shouldAutoCommit(autoCommit)) {
 			try {
-				const changedPaths = [deleted.removedPath, ...deleted.filePaths];
+				// A task file keeps its name through the archive, so this is where the task was on the board.
+				// If the archive was never committed, Git still tracks the task there, so its removal is committed too.
+				const boardPath = join(this.fs.tasksDir, basename(deleted.removedPath));
+				const changedPaths = [deleted.removedPath, boardPath, ...deleted.filePaths];
 				for (const path of changedPaths) await this.stageChangedPath(path);
 				await this.git.commitFiles(`backlog: Delete task ${task.id}`, changedPaths);
 			} catch (error) {

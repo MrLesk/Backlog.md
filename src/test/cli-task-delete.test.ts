@@ -363,4 +363,24 @@ describe("backlog task delete with auto-commit", () => {
 		expect(await taskFiles("archive/tasks")).toEqual(["task-1 - Target.md"]);
 		expect(await lastCommit()).toBe("Set up the project");
 	});
+
+	it("commits the board file's removal when the archive was not committed", async () => {
+		// TASK-3 is committed on the board, then archived without a commit, so Git still has it in tasks/.
+		const core = new Core(TEST_DIR);
+		await core.createTask({ ...base, id: "task-3", title: "Archived without a commit", dependencies: [] }, false);
+		await $`git add -A`.cwd(TEST_DIR).quiet();
+		await $`git commit -m "Add a board task"`.cwd(TEST_DIR).quiet();
+		expect(await core.archiveTask("task-3", false)).toBe(true);
+
+		const deleted = await task("delete", "3");
+
+		expect(deleted.exitCode).toBe(0);
+		expect(await lastCommit()).toBe("backlog: Delete task TASK-3");
+		const committed = (await $`git show --name-status --format= HEAD`.cwd(TEST_DIR).text()).trim();
+		expect(committed).toBe("D\tbacklog/tasks/task-3 - Archived-without-a-commit.md");
+		expect((await $`git ls-tree -r --name-only HEAD backlog/tasks`.cwd(TEST_DIR).text()).trim()).toBe(
+			"backlog/tasks/task-2 - Depends-on-the-target.md",
+		);
+		expect((await $`git status --porcelain`.cwd(TEST_DIR).text()).trim()).toBe("");
+	});
 });
