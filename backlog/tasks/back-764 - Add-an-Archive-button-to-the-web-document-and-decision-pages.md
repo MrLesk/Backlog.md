@@ -1,11 +1,11 @@
 ---
 id: BACK-764
 title: Add an Archive button to the web document and decision pages
-status: In Progress
+status: Done
 assignee:
   - '@claude'
 created_date: '2026-10-13 18:47'
-updated_date: '2026-10-14 06:36'
+updated_date: '2026-10-14 06:55'
 labels:
   - enhancement
 dependencies:
@@ -102,16 +102,18 @@ Web: src/web/components/RecordArchive.tsx holds the hook and the three pieces (A
 Header wrap (base change, both pages): found in the browser check. The metadata row never wrapped, so its full width was the title column's minimum and the header buttons were pushed past main, which has overflow-x hidden. With Archive beside Edit, Archive was cut off at a 920px window with the sidebar open (right edge 988) while Edit alone fitted. The header row now wraps (gap-x-6 replaces ml-6 on the buttons) and the metadata row wraps (gap-x-6 gap-y-2 replaces space-x-6). Measured: the header needs 380px of main width with Archive, against 562px for Edit alone before. Where everything fits on one line the page is unchanged.
 
 Browser check (criterion 15), against a binary built from the branch in a mktemp project: 1280, 920 with the sidebar open, 768 and 375 wide; light and dark; Tab from the title reaches Archive with a focus ring and Enter archives (decision-1 left the sidebar, the page went to /decisions, commit 'backlog: Archive decision decision-1', R100). Refusal for doc-3 shows core's message; archived doc-2 and decision-2 by URL show the Archived label and no buttons; edit mode at 375 fits. The browser pane dismisses native dialogs on its own, so window.confirm was replaced by a function that records its text and answers yes; the native dialog's look was not seen. Screenshots: scratchpad/back-764/ (01 to 28). HTTP and CLI transcript: scratchpad/back-764/http-transcript.txt.
+
+Review fixes. A: `?edit=true` opened the editor of an archived record (the document page then showed it without Save or Cancel). Both pages now keep the request in `editRequested` and derive `isEditing = editRequested && !isArchived`. A line in the loader (the reviewer's suggestion) would miss a URL that asks again while the record is open, because no new load runs; the page test shows it, failing on that second request. B: the alert for a record that moved while only the commit failed is now the task button's short sentence with the record noun; the Git error stays in the server log.
 <!-- SECTION:NOTES:END -->
 
 ## Final Summary
 
 <!-- SECTION:FINAL_SUMMARY:BEGIN -->
-The document page and the decision page have an `Archive` button. It extends the Archive flow of the task details view: a native confirmation that names the title, says the record leaves the sidebar and search, and gives the CLI restore command; one request at a time, without retry; core's message shown under the header when the archive is refused, with the page staying; and a record that moved while only the commit failed treated as archived (alert with core's sentence, refresh, list page). An archived record opened by URL shows an `Archived` label and neither Edit nor Archive. The web has no delete or restore control and no route for them.
+The document page and the decision page have an `Archive` button. It extends the Archive flow of the task details view: a native confirmation that names the title, says the record leaves the sidebar and search, and gives the CLI restore command; one request at a time, without retry; core's message shown under the header when the archive is refused, with the page staying; and a record that moved while only the commit failed treated as archived, with the task button's sentence for that case ("The document was archived, but committing the change failed. Check the repository before retrying."), a refresh and the list page. An archived record opened by URL shows an `Archived` label and neither Edit nor Archive, and it never opens the editor, even when `?edit=true` asks for it. The web has no delete or restore control and no route for them.
 
 The server has two thin routes, `POST /api/docs/<id>/archive` and `POST /api/decisions/<id>/archive`, with one handler that calls `Core.archiveContentRecord` with the kind and maps its answer as the task archive route does (404, 409, 400 with core's message, 500 with `archiveState: "moved"`). Core changed in one place: the commit failure of an archive is tagged for the browser, as task archive's is. Both pages share `src/web/components/RecordArchive.tsx`.
 
-The browser check found that Archive was cut off at common window widths, because the header's metadata row never wrapped. The header row and the metadata row of both pages now wrap; where everything fits on one line, the page is unchanged.
+Base code of both pages changed in two places. The header row and its metadata row wrap, because Archive was cut off at common window widths. Edit mode is derived as `editRequested && !isArchived`, so no request (the Edit button, `?edit=true`, before or after the record loads) opens the editor of an archived record.
 
-Verification: `bunx tsc --noEmit` and `bun run check .` clean; `server-content-record-archive` 16 and `web-record-archive` 16 new tests pass, with the archive, server and web test files of the stack; `bun run test` 3,255 pass, 8 skip, 0 fail across 309 files (it exits 1 with no failing test, as on the base). Checked in the running browser against a built binary at 1280, 920, 768 and 375 pixels wide, in light and dark, with the keyboard (Tab to Archive, Enter archives). The native dialog itself could not be shown in the browser pane, which dismisses native dialogs; its text was recorded from the page.
+Verification: `bunx tsc --noEmit` and `bun run check .` clean; `web-record-archive` 18 and `server-content-record-archive` 16 tests pass, with the archive, server and web test files of the stack. The new edit-mode test fails on both pages without the derived value, and on the second request with a line in the loader instead. Checked in the running browser against a built binary at 1280, 920, 768 and 375 pixels wide, in light and dark, with the keyboard (Tab to Archive, Enter archives with the confirmation answering yes). The browser pane dismisses native dialogs, so the dialog itself was not seen; its text was recorded from the page.
 <!-- SECTION:FINAL_SUMMARY:END -->
