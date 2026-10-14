@@ -226,7 +226,7 @@ export interface Decision {
 	 * `archived` is set.
 	 */
 	path?: string;
-	/** True when the decision's file is in the archive folder for decisions. It can then not be changed. */
+	/** True when the decision's file is in the archive folder for decisions. An archived decision is read-only. */
 	archived?: boolean;
 }
 
