@@ -1,11 +1,11 @@
 ---
 id: BACK-763
 title: 'Archive, delete and restore decisions from the CLI'
-status: In Progress
+status: Done
 assignee:
   - '@claude'
 created_date: '2026-10-13 18:46'
-updated_date: '2026-10-14 06:06'
+updated_date: '2026-10-14 06:54'
 labels:
   - enhancement
 dependencies:
