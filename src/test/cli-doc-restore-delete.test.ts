@@ -472,6 +472,20 @@ describe("backlog doc restore and delete in a Git repository", () => {
 		expect((await backlog("doc", "create", "Created after the commit")).stdout).toContain("Created document doc-1\n");
 	});
 
+	it("keeps the number of a committed document when fetching from the remote fails", async () => {
+		await setUpRepository(false);
+		const core = new Core(TEST_DIR);
+		const config = await core.filesystem.loadConfig();
+		if (!config) throw new Error("Expected the project config");
+		await core.filesystem.saveConfig({ ...config, remoteOperations: true });
+		// A remote whose path does not exist, so every fetch fails.
+		await git("remote", "add", "origin", join(OUTSIDE_DIR, "missing-remote"));
+		expect((await backlog("doc", "delete", "doc-1")).exitCode).toBe(0);
+
+		// The last commit still holds the archived file, so the number stays taken.
+		expect((await backlog("doc", "create", "Created after the delete")).stdout).toContain("Created document doc-2\n");
+	});
+
 	it("keeps the number reserved while a committed file on another branch still claims it", async () => {
 		await setUpRepository(true);
 		// Another branch still holds the archived file in its last commit.

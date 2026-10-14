@@ -5,7 +5,7 @@ status: Done
 assignee:
   - '@claude'
 created_date: '2026-10-13 18:46'
-updated_date: '2026-10-14 07:11'
+updated_date: '2026-10-14 18:11'
 labels:
   - enhancement
 dependencies:
@@ -43,6 +43,7 @@ modified_files:
   - src/test/linked-record-commit.test.ts
   - src/test/commit-failure-after-change.test.ts
   - src/completions/helper.test.ts
+  - src/utils/id-generators.ts
 priority: high
 type: enhancement
 ordinal: 383000
