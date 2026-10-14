@@ -56,13 +56,14 @@ const CleanupModal: React.FC<CleanupModalProps> = ({ isOpen, onClose, onSuccess,
 	};
 
 	const handleExecuteCleanup = async () => {
-		if (selectedAge === null) return;
+		if (previewTasks.length === 0) return;
 
 		setIsExecuting(true);
 		setError(null);
 
 		try {
-			const result = await apiClient.executeCleanup(selectedAge);
+			// Only the tasks the preview showed, not whatever matches the age by now.
+			const result = await apiClient.executeCleanup(previewTasks.map((task) => task.id));
 
 			if (result.success) {
 				onSuccess(result.movedCount);

@@ -1912,32 +1912,20 @@ export class BacklogServer {
 
 	private async handleCleanupExecute(req: Request): Promise<Response> {
 		try {
-			const { age } = await req.json();
-
-			if (age === undefined || age === null) {
-				return Response.json({ error: "Missing age parameter" }, { status: 400 });
+			// The browser posts the IDs its preview showed, as `backlog cleanup` passes the IDs it listed,
+			// so a task that became eligible after the preview is not archived.
+			const body = (await req.json().catch(() => null)) as { taskIds?: unknown } | null;
+			const taskIds = body?.taskIds;
+			if (
+				!Array.isArray(taskIds) ||
+				taskIds.length === 0 ||
+				!taskIds.every((id): id is string => typeof id === "string" && id.trim() !== "")
+			) {
+				return Response.json({ error: "taskIds must be a non-empty list of task IDs" }, { status: 400 });
 			}
+			const totalCount = taskIds.length;
 
-			const ageInDays = Number.parseInt(age, 10);
-			if (Number.isNaN(ageInDays) || ageInDays < 0) {
-				return Response.json({ error: "Invalid age parameter" }, { status: 400 });
-			}
-
-			// The browser sends an age, so this request selects the tasks and archives exactly those.
-			const tasksToCleanup = await this.core.getTerminalStatusTasksByAge(ageInDays);
-			const totalCount = tasksToCleanup.length;
-
-			if (totalCount === 0) {
-				return Response.json({
-					success: true,
-					movedCount: 0,
-					message: "No tasks to clean up",
-				});
-			}
-
-			const { archivedTaskIds, skipped, failures } = await this.core.archiveTerminalStatusTasks(
-				tasksToCleanup.map((task) => task.id),
-			);
+			const { archivedTaskIds, skipped, failures } = await this.core.archiveTerminalStatusTasks(taskIds);
 			for (const { taskId, reason } of skipped) {
 				console.error(`Skipped task ${taskId}: ${reason}`);
 			}

@@ -106,7 +106,7 @@ describe("BacklogServer cleanup endpoints", () => {
 			{
 				method: "POST",
 				headers: { "Content-Type": "application/json" },
-				body: JSON.stringify({ age: 3 }),
+				body: JSON.stringify({ taskIds: preview.tasks.map((task) => task.id) }),
 			},
 		);
 		expect(result.success).toBe(true);
@@ -118,6 +118,68 @@ describe("BacklogServer cleanup endpoints", () => {
 
 		const archivedTasks = await core.filesystem.listArchivedTasks();
 		expect(archivedTasks.map((task) => task.id)).toEqual(["TASK-1"]);
+	});
+
+	it("archives only the tasks the preview showed", async () => {
+		const preview = await fetchJson<{ tasks: Array<{ id: string }> }>("/api/tasks/cleanup?age=3");
+		expect(preview.tasks.map((task) => task.id)).toEqual(["TASK-1"]);
+		// A task that became old enough and finished after the preview was shown.
+		const oldDate = new Date();
+		oldDate.setDate(oldDate.getDate() - 7);
+		const oldDateValue = oldDate.toISOString().split("T")[0] as string;
+		await core.createTask(
+			makeTask({
+				id: "task-3",
+				title: "Finished after the preview",
+				status: "Closed",
+				createdDate: oldDateValue,
+				updatedDate: oldDateValue,
+			}),
+			false,
+		);
+
+		const result = await fetchJson<{ movedCount: number; totalCount: number }>("/api/tasks/cleanup/execute", {
+			method: "POST",
+			headers: { "Content-Type": "application/json" },
+			body: JSON.stringify({ taskIds: preview.tasks.map((task) => task.id) }),
+		});
+
+		expect(result).toMatchObject({ movedCount: 1, totalCount: 1 });
+		expect((await core.filesystem.listArchivedTasks()).map((task) => task.id)).toEqual(["TASK-1"]);
+		expect((await core.filesystem.listTasks()).map((task) => task.id)).toEqual(["TASK-2", "TASK-3"]);
+	});
+
+	it("skips a previewed task that left the final status before the click", async () => {
+		const preview = await fetchJson<{ tasks: Array<{ id: string }> }>("/api/tasks/cleanup?age=3");
+		await core.updateTaskFromInput("TASK-1", { status: "To Do" }, false);
+
+		const result = await fetchJson<{ movedCount: number; totalCount: number }>("/api/tasks/cleanup/execute", {
+			method: "POST",
+			headers: { "Content-Type": "application/json" },
+			body: JSON.stringify({ taskIds: preview.tasks.map((task) => task.id) }),
+		});
+
+		expect(result).toMatchObject({ movedCount: 0, totalCount: 1 });
+		expect(await core.filesystem.listArchivedTasks()).toEqual([]);
+	});
+
+	it.each([
+		["no body", undefined],
+		["a body that is not JSON", "not json"],
+		["an age instead of task IDs", JSON.stringify({ age: 3 })],
+		["an empty list", JSON.stringify({ taskIds: [] })],
+		["a list with an entry that is not a task ID", JSON.stringify({ taskIds: ["TASK-1", 1] })],
+		["a list with an empty task ID", JSON.stringify({ taskIds: ["TASK-1", " "] })],
+	])("answers 400 to %s and archives nothing", async (_name, body) => {
+		const response = await fetch(`http://127.0.0.1:${serverPort}/api/tasks/cleanup/execute`, {
+			method: "POST",
+			headers: { "Content-Type": "application/json" },
+			body,
+		});
+
+		expect(response.status).toBe(400);
+		expect(await response.json()).toEqual({ error: "taskIds must be a non-empty list of task IDs" });
+		expect(await core.filesystem.listArchivedTasks()).toEqual([]);
 	});
 
 	it("archives final-status work, keeps its ID and status, and preserves incoming links", async () => {

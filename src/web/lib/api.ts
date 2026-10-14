@@ -384,8 +384,12 @@ export class ApiClient {
 		}>(`${API_BASE}/tasks/cleanup?age=${age}`);
 	}
 
+	/**
+	 * Archive the tasks a cleanup preview showed, and only those. The server skips a task that has left
+	 * the board or the final status since the preview.
+	 */
 	async executeCleanup(
-		age: number,
+		taskIds: string[],
 	): Promise<{ success: boolean; movedCount: number; totalCount: number; message: string; failedTasks?: string[] }> {
 		return this.fetchJson<{
 			success: boolean;
@@ -395,7 +399,7 @@ export class ApiClient {
 			failedTasks?: string[];
 		}>(`${API_BASE}/tasks/cleanup/execute`, {
 			method: "POST",
-			body: JSON.stringify({ age }),
+			body: JSON.stringify({ taskIds }),
 		});
 	}
 
