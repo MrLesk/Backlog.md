@@ -23,7 +23,7 @@ import { pickTaskForEditWizard, runTaskCreateWizard, runTaskEditWizard } from ".
 import { watchJson } from "./commands/watch-json.ts";
 import { DEFAULT_DIRECTORIES, DEFAULT_FILES, DEFAULT_STATUSES } from "./constants/index.ts";
 import { type ArchivedTaskMovePlan, moveArchivedTasks, previewArchivedTaskMove } from "./core/archived-task-move.ts";
-import { formatCleanupResult } from "./core/backlog.ts";
+import { type DocumentChangeResult, formatCleanupResult } from "./core/backlog.ts";
 import { type DuplicateRepairPlan, findLocalDuplicateTaskIds } from "./core/duplicate-task-repair.ts";
 import { initializeProject } from "./core/init.ts";
 import { buildMilestoneBuckets, collectArchivedMilestoneKeys, milestoneKey } from "./core/milestones.ts";
@@ -4752,6 +4752,26 @@ addHelpSchema(docCmd.command("update <docId>"), {
 		}
 	});
 
+/**
+ * What `doc archive`, `doc restore` and `doc delete` print: the confirmation, then the tasks and
+ * drafts whose documentation list names a path the file is no longer at. `result` is null when no
+ * document claims the ID.
+ */
+function reportDocumentChange(
+	docId: string,
+	done: "Archived" | "Restored" | "Deleted",
+	result: DocumentChangeResult | null,
+): void {
+	if (!result) {
+		throw new Error(documentNotFoundMessage(docId));
+	}
+	console.log(`${done} document ${result.documentId}`);
+	const referencesMessage = formatDocumentationReferencesMessage(result.listedAsDocumentationBy);
+	if (referencesMessage) {
+		console.log(referencesMessage);
+	}
+}
+
 addHelpSchema(docCmd.command("archive <docId>"), {
 	required: [{ name: "docId", type: "Document ID", description: "Document to archive" }],
 	optional: [],
@@ -4762,17 +4782,38 @@ addHelpSchema(docCmd.command("archive <docId>"), {
 })
 	.description("move a document into the archive, keeping its ID reserved")
 	.action(async (docId: string) => {
-		const cwd = await requireProjectRoot();
-		const core = new Core(cwd);
-		const archived = await core.archiveDocument(docId);
-		if (!archived) {
-			throw new Error(documentNotFoundMessage(docId));
-		}
-		console.log(`Archived document ${archived.documentId}`);
-		const referencesMessage = formatDocumentationReferencesMessage(archived.listedAsDocumentationBy);
-		if (referencesMessage) {
-			console.log(referencesMessage);
-		}
+		const core = new Core(await requireProjectRoot());
+		reportDocumentChange(docId, "Archived", await core.archiveDocument(docId));
+	});
+
+addHelpSchema(docCmd.command("restore <docId>"), {
+	required: [{ name: "docId", type: "Document ID", description: "Archived document to restore" }],
+	optional: [],
+	writes:
+		"Moves an archived document's file, unchanged, from backlog/archive/docs back to the same relative path under backlog/docs. It keeps its ID and can be listed, searched and updated again. A file already at that path is never replaced. No task or draft is changed.",
+	output:
+		"Restore confirmation text, followed by the tasks and drafts whose documentation list names the archive path the file left",
+	examples: ["backlog doc restore doc-1"],
+})
+	.description("move an archived document back to the docs folder")
+	.action(async (docId: string) => {
+		const core = new Core(await requireProjectRoot());
+		reportDocumentChange(docId, "Restored", await core.restoreDocument(docId));
+	});
+
+addHelpSchema(docCmd.command("delete <docId>"), {
+	required: [{ name: "docId", type: "Document ID", description: "Archived document to delete" }],
+	optional: [],
+	writes:
+		"Permanently removes an archived document's file from backlog/archive/docs; a file that is a symbolic link is removed as a link. A document must be archived first (backlog doc archive). There is no prompt. Its ID is released once no other file and no committed file on any branch still uses the number. No task or draft is changed.",
+	output:
+		"Delete confirmation text, followed by the tasks and drafts whose documentation list names the removed file, by its archive path or by the path it had before it was archived",
+	examples: ["backlog doc archive doc-1", "backlog doc delete doc-1"],
+})
+	.description("permanently delete an archived document, releasing its ID")
+	.action(async (docId: string) => {
+		const core = new Core(await requireProjectRoot());
+		reportDocumentChange(docId, "Deleted", await core.deleteDocument(docId));
 	});
 
 const docListCommand = addHelpSchema(docCmd.command("list"), {

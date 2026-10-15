@@ -42,18 +42,24 @@ export async function generateNextDocId(core: Core): Promise<string> {
 	];
 	const allIds: string[] = [];
 
+	// Skip remote operations if disabled
+	if (config?.remoteOperations === false) {
+		if (process.env.DEBUG) {
+			console.log("Remote operations disabled - generating ID from local documents only");
+		}
+	} else {
+		// A failed fetch must not skip the branch scan below, which still sees the local branches.
+		try {
+			await core.gitOps.fetch();
+		} catch (error) {
+			if (process.env.DEBUG) {
+				console.error("Could not fetch remote document IDs:", error);
+			}
+		}
+	}
+
 	try {
 		const backlogDir = core.filesystem.backlogDirName;
-
-		// Skip remote operations if disabled
-		if (config?.remoteOperations === false) {
-			if (process.env.DEBUG) {
-				console.log("Remote operations disabled - generating ID from local documents only");
-			}
-		} else {
-			await core.gitOps.fetch();
-		}
-
 		const branches = await core.gitOps.listAllBranches();
 
 		// Load files from all branches in parallel
@@ -75,9 +81,9 @@ export async function generateNextDocId(core: Core): Promise<string> {
 			allIds.push(...branchIds);
 		}
 	} catch (error) {
-		// Suppress errors for offline mode or other git issues
+		// Not a Git repository, or Git failed: the local files below still count.
 		if (process.env.DEBUG) {
-			console.error("Could not fetch remote document IDs:", error);
+			console.error("Could not read document IDs from branches:", error);
 		}
 	}
 
@@ -98,18 +104,24 @@ export async function generateNextDecisionId(core: Core): Promise<string> {
 	const decisions = await core.filesystem.listDecisions(unreadableFiles);
 	const allIds: string[] = [];
 
+	// Skip remote operations if disabled
+	if (config?.remoteOperations === false) {
+		if (process.env.DEBUG) {
+			console.log("Remote operations disabled - generating ID from local decisions only");
+		}
+	} else {
+		// A failed fetch must not skip the branch scan below, which still sees the local branches.
+		try {
+			await core.gitOps.fetch();
+		} catch (error) {
+			if (process.env.DEBUG) {
+				console.error("Could not fetch remote decision IDs:", error);
+			}
+		}
+	}
+
 	try {
 		const backlogDir = core.filesystem.backlogDirName;
-
-		// Skip remote operations if disabled
-		if (config?.remoteOperations === false) {
-			if (process.env.DEBUG) {
-				console.log("Remote operations disabled - generating ID from local decisions only");
-			}
-		} else {
-			await core.gitOps.fetch();
-		}
-
 		const branches = await core.gitOps.listAllBranches();
 
 		// Load files from all branches in parallel
@@ -128,9 +140,9 @@ export async function generateNextDecisionId(core: Core): Promise<string> {
 			allIds.push(...branchIds);
 		}
 	} catch (error) {
-		// Suppress errors for offline mode or other git issues
+		// Not a Git repository, or Git failed: the local files below still count.
 		if (process.env.DEBUG) {
-			console.error("Could not fetch remote decision IDs:", error);
+			console.error("Could not read decision IDs from branches:", error);
 		}
 	}
 

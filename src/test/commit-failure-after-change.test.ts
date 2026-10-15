@@ -39,11 +39,14 @@ beforeEach(async () => {
 	const config = await core.filesystem.loadConfig();
 	if (!config) throw new Error("Expected the project config");
 	await core.filesystem.saveConfig({ ...config, autoCommit: true, remoteOperations: false });
-	// One task on the board, one in the archive and one document, all committed.
+	// A task on the board and one in the archive, a document in the docs folder and one in the
+	// archive, all committed.
 	await core.createTaskFromInput({ title: "On the board" });
 	await core.createTaskFromInput({ title: "In the archive" });
 	expect(await core.archiveTask("TASK-2")).toBe(true);
 	await core.createDocumentFromInput({ title: "A document", content: "" });
+	await core.createDocumentFromInput({ title: "An archived document", content: "" });
+	expect(await core.archiveDocument("doc-2")).not.toBeNull();
 	await $`git add -A`.cwd(TEST_DIR).quiet();
 	await $`git commit -m "Set up the project"`.cwd(TEST_DIR).quiet().nothrow();
 });
@@ -58,6 +61,8 @@ describe("a change whose commit failed, on the CLI", () => {
 		[["task", "restore", "2"], "Task TASK-2 was restored"],
 		[["task", "delete", "2"], "Task TASK-2 was deleted"],
 		[["doc", "archive", "doc-1"], "Document doc-1 was archived"],
+		[["doc", "restore", "doc-2"], "Document doc-2 was restored"],
+		[["doc", "delete", "doc-2"], "Document doc-2 was deleted"],
 	])("backlog %j says %s and that committing failed", async (command, change) => {
 		await lockIndex();
 
@@ -92,6 +97,8 @@ describe("a change whose commit failed, through MCP", () => {
 		["task_restore", "task-2", "Task TASK-2 was restored"],
 		["task_delete", "task-2", "Task TASK-2 was deleted"],
 		["document_archive", "doc-1", "Document doc-1 was archived"],
+		["document_restore", "doc-2", "Document doc-2 was restored"],
+		["document_delete", "doc-2", "Document doc-2 was deleted"],
 	])("%s returns core's sentence instead of an unexpected error", async (tool, id, change) => {
 		await lockIndex();
 

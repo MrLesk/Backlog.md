@@ -136,17 +136,20 @@ describe("parseCompletionContext", () => {
 	});
 });
 
-describe("task ID completion", () => {
+describe("task and document ID completion", () => {
 	let projectDir: string;
 	const previousBacklogCwd = process.env.BACKLOG_CWD;
 
 	beforeEach(async () => {
-		projectDir = await createTestDirOutsideRepository("completion-task-ids");
+		projectDir = await createTestDirOutsideRepository("completion-record-ids");
 		const core = new Core(projectDir);
 		await initializeFilesystemTestProject(core, "Completion Test");
 		await core.createTaskFromInput({ title: "On the board" }, false);
 		await core.createTaskFromInput({ title: "In the archive" }, false);
 		expect(await core.archiveTask("task-2", false)).toBe(true);
+		await core.createDocumentFromInput({ title: "In the docs folder", content: "Body" }, false);
+		await core.createDocumentFromInput({ title: "In the archive", content: "Body" }, false);
+		expect(await core.archiveDocument("doc-2", false)).not.toBeNull();
 		// Completion finds its project the way every command does.
 		process.env.BACKLOG_CWD = projectDir;
 	});
@@ -157,21 +160,31 @@ describe("task ID completion", () => {
 		await safeCleanup(projectDir);
 	});
 
-	/** The task IDs offered after `backlog task <subcommand> `, without the flags offered next to them. */
-	async function taskIdsOfferedFor(subcommand: string): Promise<string[]> {
+	/** The IDs offered after `backlog <command> <subcommand> `, without the flags offered next to them. */
+	async function idsOfferedFor(command: "task" | "doc", subcommand: string): Promise<string[]> {
 		const program = new Command("backlog");
 		const task = program.command("task");
 		for (const name of ["edit", "archive", "restore", "delete"]) task.command(`${name} <taskId>`);
-		const line = `backlog task ${subcommand} `;
+		const doc = program.command("doc");
+		for (const name of ["view", "archive", "restore", "delete"]) doc.command(`${name} <docId>`);
+		const line = `backlog ${command} ${subcommand} `;
 		const completions = await getCompletions(program, line, line.length);
 		return completions.filter((completion) => !completion.startsWith("-"));
 	}
 
 	test.each(["restore", "delete"])("offers archived tasks for task %s", async (subcommand) => {
-		expect(await taskIdsOfferedFor(subcommand)).toEqual(["TASK-2"]);
+		expect(await idsOfferedFor("task", subcommand)).toEqual(["TASK-2"]);
 	});
 
 	test.each(["edit", "archive"])("offers tasks on the board for task %s", async (subcommand) => {
-		expect(await taskIdsOfferedFor(subcommand)).toEqual(["TASK-1"]);
+		expect(await idsOfferedFor("task", subcommand)).toEqual(["TASK-1"]);
+	});
+
+	test.each(["restore", "delete"])("offers archived documents for doc %s", async (subcommand) => {
+		expect(await idsOfferedFor("doc", subcommand)).toEqual(["doc-2"]);
+	});
+
+	test.each(["view", "archive"])("offers the documents in the docs folder for doc %s", async (subcommand) => {
+		expect(await idsOfferedFor("doc", subcommand)).toEqual(["doc-1"]);
 	});
 });

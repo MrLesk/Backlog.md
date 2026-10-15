@@ -1,3 +1,4 @@
+import type { DocumentChangeResult } from "../../../core/backlog.ts";
 import type { Document, DocumentSearchResult } from "../../../types/index.ts";
 import { documentNotFoundMessage } from "../../../utils/document-id.ts";
 import { isAmbiguousIdError } from "../../../utils/entity-id.ts";
@@ -118,9 +119,9 @@ export class DocumentHandlers {
 	}
 
 	/**
-	 * Run a core operation that changes a document: create, update and archive all go through here.
-	 * `runCoreOperation` reports a refusal, and a commit that failed after the change, in core's
-	 * words. An ambiguous ID keeps its own error. Any other failure is reported as
+	 * Run a core operation that changes a document: create, update, archive, restore and delete all
+	 * go through here. `runCoreOperation` reports a refusal, and a commit that failed after the
+	 * change, in core's words. An ambiguous ID keeps its own error. Any other failure is reported as
 	 * `<failure>: <reason>`.
 	 */
 	private async changeDocument<T>(failure: string, operation: () => Promise<T>): Promise<T> {
@@ -169,16 +170,35 @@ export class DocumentHandlers {
 	}
 
 	async archiveDocument(args: DocumentViewArgs): Promise<CallToolResult> {
-		const archived = await this.changeDocument("Failed to archive document", () => this.core.archiveDocument(args.id));
-		if (!archived) {
-			throw new BacklogToolError(documentNotFoundMessage(args.id), "DOCUMENT_NOT_FOUND");
-		}
+		const result = await this.changeDocument("Failed to archive document", () => this.core.archiveDocument(args.id));
+		return this.reportDocumentChange(args.id, "Archived", result);
+	}
 
-		const referencesMessage = formatDocumentationReferencesMessage(archived.listedAsDocumentationBy);
-		const lines = [
-			`Archived document ${archived.documentId}.`,
-			...(referencesMessage ? [`${referencesMessage}.`] : []),
-		];
+	async restoreDocument(args: DocumentViewArgs): Promise<CallToolResult> {
+		const result = await this.changeDocument("Failed to restore document", () => this.core.restoreDocument(args.id));
+		return this.reportDocumentChange(args.id, "Restored", result);
+	}
+
+	async deleteDocument(args: DocumentViewArgs): Promise<CallToolResult> {
+		const result = await this.changeDocument("Failed to delete document", () => this.core.deleteDocument(args.id));
+		return this.reportDocumentChange(args.id, "Deleted", result);
+	}
+
+	/**
+	 * What `document_archive`, `document_restore` and `document_delete` return: the confirmation,
+	 * then the tasks and drafts whose documentation list names a path the file is no longer at.
+	 * `result` is null when no document claims the ID.
+	 */
+	private reportDocumentChange(
+		id: string,
+		done: "Archived" | "Restored" | "Deleted",
+		result: DocumentChangeResult | null,
+	): CallToolResult {
+		if (!result) {
+			throw new BacklogToolError(documentNotFoundMessage(id), "DOCUMENT_NOT_FOUND");
+		}
+		const referencesMessage = formatDocumentationReferencesMessage(result.listedAsDocumentationBy);
+		const lines = [`${done} document ${result.documentId}.`, ...(referencesMessage ? [`${referencesMessage}.`] : [])];
 		return { content: [{ type: "text", text: lines.join("\n") }] };
 	}
 

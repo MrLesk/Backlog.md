@@ -7,6 +7,7 @@ import {
 	getTopLevelCommands,
 } from "./command-structure.ts";
 import {
+	getArchivedDocumentIds,
 	getArchivedTaskIds,
 	getAssignees,
 	getDocumentIds,
@@ -98,17 +99,18 @@ function filterCompletions(completions: string[], partial: string): string[] {
  */
 async function getArgumentCompletions(argumentName: string, context: CompletionContext): Promise<string[]> {
 	const lowerName = argumentName.toLowerCase();
+	// Restore and delete of tasks and documents accept only archived records, so they complete those.
+	// Every other command completes the tasks on the board and the documents in the docs folder.
+	const archivedOnly =
+		(context.command === "task" || context.command === "doc") &&
+		(context.subcommand === "restore" || context.subcommand === "delete");
 
 	// Match common patterns
 	if (lowerName.includes("taskid") || lowerName === "id") {
-		// Restore and delete accept only archived tasks, so they complete those. Every other command
-		// completes the tasks on the board.
-		return context.command === "task" && (context.subcommand === "restore" || context.subcommand === "delete")
-			? await getArchivedTaskIds()
-			: await getTaskIds();
+		return archivedOnly ? await getArchivedTaskIds() : await getTaskIds();
 	}
 	if (lowerName.includes("docid") || lowerName.includes("documentid")) {
-		return await getDocumentIds();
+		return archivedOnly ? await getArchivedDocumentIds() : await getDocumentIds();
 	}
 	if (lowerName.includes("title") || lowerName.includes("name")) {
 		return []; // Free-form text, no completions

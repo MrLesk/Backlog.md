@@ -1,7 +1,13 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import { chmod, mkdir, readdir, readFile, rename, symlink, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import { Core, DocumentArchivedError, DocumentFileExistsError, RecordRefusedError } from "../core/backlog.ts";
+import {
+	Core,
+	DocumentArchivedError,
+	DocumentFileExistsError,
+	DocumentNotArchivedError,
+	RecordRefusedError,
+} from "../core/backlog.ts";
 import { EntityType } from "../types/index.ts";
 import { AmbiguousIdError } from "../utils/entity-id.ts";
 import { documentationEntryNamesFile, formatDocumentationReferencesMessage } from "../utils/task-links.ts";
@@ -166,6 +172,119 @@ describe("archived documents in core and storage", () => {
 		await core.archiveDocument("doc-2");
 
 		expect(store.getDocuments().map((document) => document.id)).toEqual(["doc-1"]);
+	});
+
+	it("restores and deletes through one core function each, refusing with typed errors", async () => {
+		const path = await createDocument("API Guidelines", "guides");
+		await core.createTaskFromInput({ title: "Names the old path", documentation: [`backlog/docs/${path}`] });
+		await core.createTaskFromInput({ title: "Names the archive", documentation: [`backlog/archive/docs/${path}`] });
+
+		for (const operation of ["restore", "delete"] as const) {
+			const run = () => (operation === "restore" ? core.restoreDocument("doc-1") : core.deleteDocument("doc-1"));
+			const refused = await run().catch((error: unknown) => error);
+			expect(refused).toBeInstanceOf(DocumentNotArchivedError);
+			expect(refused).toBeInstanceOf(RecordRefusedError);
+		}
+		expect(await core.restoreDocument("9")).toBeNull();
+		expect(await core.deleteDocument("9")).toBeNull();
+
+		await core.archiveDocument("doc-1");
+		// Restore names the records that list the archive path the file left.
+		expect(await core.restoreDocument("doc-001")).toEqual({ documentId: "doc-1", listedAsDocumentationBy: ["TASK-2"] });
+		await core.archiveDocument("doc-1");
+		// Delete names the records that list either path of the removed file.
+		expect(await core.deleteDocument("doc-1")).toEqual({
+			documentId: "doc-1",
+			listedAsDocumentationBy: ["TASK-1", "TASK-2"],
+		});
+		expect(await core.getDocument("doc-1")).toBeNull();
+	});
+
+	it("puts a restored document into an initialized content store without a file watcher", async () => {
+		await createDocument("Stays");
+		await createDocument("Comes back");
+		await core.archiveDocument("doc-2");
+		// This Core runs no watchers, so only the restore operation itself can update the store.
+		const store = await core.getContentStore();
+		expect(store.getDocuments().map((document) => document.id)).toEqual(["doc-1"]);
+
+		await core.restoreDocument("doc-2");
+
+		expect(store.getDocuments().map((document) => document.id)).toEqual(["doc-2", "doc-1"]);
+	});
+
+	describe("removeArchivedDocumentFile", () => {
+		it("removes the file of an archived document and returns its path", async () => {
+			const path = await createDocument("Goes for good", "guides");
+			await core.archiveDocument("doc-1");
+			const archived = await core.getDocument("doc-1");
+			if (!archived) throw new Error("Expected the archived document");
+
+			expect(await core.filesystem.removeArchivedDocumentFile(archived)).toBe(archivePath(...path.split("/")));
+			expect(await readdir(archivePath("guides"))).toEqual([]);
+		});
+
+		it("refuses a document that is not archived and removes nothing", async () => {
+			const path = await createDocument("Active");
+			const active = await core.getDocument("doc-1");
+			if (!active) throw new Error("Expected the document");
+
+			const refused = core.filesystem.removeArchivedDocumentFile(active);
+
+			await expect(refused).rejects.toThrow(
+				"The file of document doc-1 was not removed: the document is not archived.",
+			);
+			expect(await readdir(docsPath())).toEqual([path]);
+		});
+
+		it("refuses a file that another document took the place of, and removes nothing", async () => {
+			const path = await createDocument("Listed first");
+			await core.archiveDocument("doc-1");
+			const archived = await core.getDocument("doc-1");
+			if (!archived) throw new Error("Expected the archived document");
+			// After the lookup another document's file is written to the same path.
+			const replacement = (await readFile(archivePath(path), "utf8")).replace("id: doc-1", "id: doc-4");
+			await writeFile(archivePath(path), replacement);
+
+			const refused = core.filesystem.removeArchivedDocumentFile(archived);
+
+			await expect(refused).rejects.toThrow(`backlog/archive/docs/${path} is the file of doc-4.`);
+			expect(await readFile(archivePath(path), "utf8")).toBe(replacement);
+		});
+
+		it("refuses a path that climbs out of the archive folder", async () => {
+			await createDocument("Kept");
+			const outside = join(TEST_DIR, "backlog", "archive", "escape.md");
+			await writeFile(outside, "not a document");
+
+			const refused = core.filesystem.removeArchivedDocumentFile({
+				id: "doc-1",
+				title: "Kept",
+				type: "other",
+				createdDate: "2026-10-14 00:00",
+				rawContent: "",
+				path: "../escape.md",
+				archived: true,
+			});
+
+			await expect(refused).rejects.toThrow("Document path cannot include traversal segments.");
+			expect(await readFile(outside, "utf8")).toBe("not a document");
+		});
+
+		it.skipIf(isWindows())("removes a link as a link and leaves the file it points to", async () => {
+			const path = await createDocument("Linked");
+			await core.archiveDocument("doc-1");
+			const target = join(TEST_DIR, "kept.md");
+			await rename(archivePath(path), target);
+			await symlink(target, archivePath(path));
+			const archived = await core.getDocument("doc-1");
+			if (!archived) throw new Error("Expected the archived document");
+
+			await core.filesystem.removeArchivedDocumentFile(archived);
+
+			expect(await readdir(archivePath())).toEqual([]);
+			expect(await readFile(target, "utf8")).toContain("id: doc-1");
+		});
 	});
 
 	it.skipIf(isWindows())("lists a file once when a folder link makes it reachable through more paths", async () => {

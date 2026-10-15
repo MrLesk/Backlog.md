@@ -19,7 +19,8 @@ let TEST_DIR: string;
 let OUTSIDE_DIR: string;
 const CLI_PATH = getTestCliPath();
 
-const READ_ONLY_MESSAGE = (id: string) => `Document ${id} is archived. Archived documents are read-only.`;
+const READ_ONLY_MESSAGE = (id: string) =>
+	`Document ${id} is archived. Archived documents are read-only. Restore it first: backlog doc restore ${id}`;
 const ARCHIVED_LINE = "This document is archived and read-only.";
 
 /** Run `backlog <args>` in the test project and return what a caller of the CLI sees. */
@@ -431,7 +432,7 @@ describe("backlog doc archive", () => {
 			expect(guide).toMatch(/stays viewable/);
 			expect(guide).toContain("read-only");
 			// Tasks that name the file are reported, never rewritten.
-			expect(guide).toMatch(/[Tt]asks and drafts whose documentation (list )?names the (moved )?file/);
+			expect(guide).toMatch(/[Tt]asks and drafts whose documentation (list )?names the (moved (or removed )?)?file/);
 			expect(guide).toMatch(/printed, not changed|changes no task/);
 		}
 	});

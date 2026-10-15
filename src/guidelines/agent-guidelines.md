@@ -735,7 +735,7 @@ Use Backlog.md public interfaces for document creation and updates so IDs, front
 
 #### CLI Usage
 
-The CLI supports creating, updating, listing, viewing, and archiving documents.
+The CLI supports creating, updating, listing, viewing, archiving, restoring, and deleting documents.
 
 ```bash
 # Create a new doc (saved under backlog/docs/ by default)
@@ -761,6 +761,12 @@ backlog doc view doc-1
 
 # Archive a doc that is no longer needed (its file moves to backlog/archive/docs/)
 backlog doc archive doc-1
+
+# Bring an archived doc back to backlog/docs/ with the same ID
+backlog doc restore doc-1
+
+# Remove an archived doc for good; works only after archive and asks no question
+backlog doc delete doc-1
 ```
 
 #### MCP / API Usage
@@ -768,6 +774,7 @@ backlog doc archive doc-1
 - Use `document_create` to create documents with title, content, optional type/tags, and optional docs-directory-relative path.
 - Use `document_update` to update document content, title, type, tags, or path while preserving document metadata.
 - Use `document_archive` to archive a document by ID. It follows the same rules as `backlog doc archive`.
+- Use `document_restore` and `document_delete` to restore or delete an archived document by ID. They follow the same rules as `backlog doc restore` and `backlog doc delete`.
 - Document responses include the persisted docs-relative file path so agents can reference the created file without scanning source internals.
 
 #### Key Rules
@@ -775,8 +782,10 @@ backlog doc archive doc-1
 - Document paths are relative to `backlog/docs/`; absolute paths and `..` traversal are rejected.
 - Supported document types are `readme`, `guide`, `specification`, and `other`.
 - Document IDs are global across the entire docs tree, including nested subfolders.
-- Archiving moves a document's file unchanged to the same relative path under `backlog/archive/docs/`. The ID stays reserved, so no new document receives it. An archived document leaves lists and search, stays viewable (`backlog doc view`, `document_view`), and is read-only: an update fails.
-- Archiving a document changes no task. The command prints the tasks and drafts whose documentation list names the moved file; update those entries yourself.
+- Archiving moves a document's file unchanged to the same relative path under `backlog/archive/docs/`. The ID stays reserved, so no new document receives it. An archived document leaves lists and search, stays viewable (`backlog doc view`, `document_view`), and is read-only: an update fails until it is restored.
+- Restoring moves the archived file back, unchanged, to the same relative path under `backlog/docs/`. The document keeps its ID and can be updated again.
+- Removing a document takes two steps: archive, then delete. Delete works only on an archived document, asks no question, removes the file and releases the ID once no other file and no committed file on any branch uses the number.
+- Archiving or deleting a document changes no task. The command prints the tasks and drafts whose documentation list names the moved or removed file; update those entries yourself.
 - Prefer CLI, MCP, or Web document APIs over ad-hoc file writes so frontmatter and metadata remain valid.
 
 ### Task Operations
