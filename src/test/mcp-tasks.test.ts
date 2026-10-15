@@ -436,6 +436,53 @@ describe("MCP task tools (MVP)", () => {
 		});
 	});
 
+	it.each(["commit", "lock release"])("reports an applied deletion when %s fails", async (failedStep) => {
+		await enableGitTestProject();
+		await $`git config user.name "Test User"`.cwd(TEST_DIR).quiet();
+		await $`git config user.email test@example.com`.cwd(TEST_DIR).quiet();
+		const call = async (name: string, args: Record<string, unknown>) =>
+			await mcpServer.testInterface.callTool({ params: { name, arguments: args } });
+		await call("task_create", { title: "Delete failure target" });
+		await call("task_archive", { id: "TASK-1" });
+		await $`git add -A`.cwd(TEST_DIR).quiet();
+		await $`git commit -m "Archive before deletion failure"`.cwd(TEST_DIR).quiet();
+		const config = await loadConfig(mcpServer);
+		await mcpServer.filesystem.saveConfig({ ...config, autoCommit: true });
+
+		const originalLock = mcpServer.filesystem.withCreateLock.bind(mcpServer.filesystem);
+		const failure =
+			failedStep === "commit"
+				? spyOn(mcpServer.gitOps, "commitFiles").mockRejectedValue(new Error("commit hook failed"))
+				: spyOn(mcpServer.filesystem, "withCreateLock").mockImplementation(async (run, options) => {
+						await originalLock(run, options);
+						throw new Error("allocator lock release failed");
+					});
+		try {
+			const result = await call("task_delete", { id: "TASK-1" });
+			expect(result.isError).toBe(true);
+			expect(result.structuredContent).toMatchObject({ code: "OPERATION_FAILED" });
+			expect(getText(result.content)).toBe(
+				failedStep === "commit"
+					? "Task TASK-1 was deleted, but committing the change failed: commit hook failed"
+					: "Task TASK-1 was deleted, but releasing deletion locks failed: allocator lock release failed",
+			);
+		} finally {
+			failure.mockRestore();
+		}
+
+		const view = await call("task_view", { id: "TASK-1" });
+		expect(view.isError).toBe(true);
+		expect(getText(view.content)).toBe("Task TASK-1 not found.");
+		expect((await $`git log -1 --format=%s`.cwd(TEST_DIR).text()).trim()).toBe(
+			failedStep === "commit" ? "Archive before deletion failure" : "backlog: Delete task TASK-1",
+		);
+		if (failedStep === "lock release") {
+			expect((await $`git show --name-status --format= HEAD`.cwd(TEST_DIR).text()).trim()).toBe(
+				"D\tbacklog/archive/tasks/task-1 - Delete-failure-target.md",
+			);
+		}
+	});
+
 	it("archives the local task when merge policy selects a same-path padded ID variant", async () => {
 		await enableGitTestProject();
 		const config = await loadConfig(mcpServer);

@@ -461,6 +461,9 @@ export class TaskHasSubtasksError extends TaskRefusedError {
 	}
 }
 
+/** Delete removed the file, but a later step failed. Every interface must report the applied deletion. */
+export class TaskDeletionAppliedError extends Error {}
+
 export class Core {
 	public fs: FileSystem;
 	public git: GitOperations;
@@ -3533,54 +3536,63 @@ export class Core {
 	 * Returns `success: false` when no record claims the ID. Every refusal is a `TaskRefusedError`:
 	 * the task is on the board, it exists only on another branch, or a task on the board, a task in
 	 * the archive or a draft names it as its parent. The referencing records are written before the
-	 * file is removed, so a failure leaves the task in the archive and the delete can simply be run
-	 * again.
+	 * file is removed. A failure after removal reports that deletion already happened.
 	 */
 	async deleteTask(taskId: string, autoCommit?: boolean, options: TaskReadOptions = {}): Promise<VacatedTaskResult> {
 		const task = await this.loadArchivedTask(taskId, options);
 		if (!task) return { success: false, cleanedTaskIds: [] };
+		const autoCommitEnabled = await this.shouldAutoCommit(autoCommit);
+		let deletionApplied = false;
+		let failureStep = "finishing the deletion";
 
-		const deleted = await this.withVacatedIdCleanup(task, task.id, async (cleanup) => {
-			// Another process may have deleted the record before these locks were held.
-			const current = await this.loadArchivedTask(task.id, options);
-			if (!current?.filePath) return null;
-			// A subtask that was demoted is a draft that still names this task as its parent. Drafts are
-			// read file by file, as the link cleanup reads them: one damaged draft must not hide the rest.
-			const [activeTasks, archivedTasks, drafts] = await Promise.all([
-				this.fs.listTasks(),
-				this.fs.listArchivedTasks(),
-				this.fs.listHealthyDrafts(),
-			]);
-			const subtasks = findDirectSubtasks(current, [...activeTasks, ...archivedTasks, ...drafts]);
-			if (subtasks.length > 0) {
-				throw new TaskHasSubtasksError(
-					current.id,
-					subtasks.map((subtask) => subtask.id),
-				);
-			}
+		try {
+			return await this.withVacatedIdCleanup(task, task.id, (cleanup) =>
+				// Take the allocator lock after task and draft locks, as demotion does. Keep it through
+				// the commit so a create cannot reuse the ID and matching board path while we stage it.
+				this.withCreateLock(async () => {
+					// Another process may have deleted the record before these locks were held.
+					const current = await this.loadArchivedTask(task.id, options);
+					if (!current?.filePath) return { success: false, cleanedTaskIds: [] };
+					// A subtask that was demoted is a draft that still names this task as its parent. Drafts are
+					// read file by file, as the link cleanup reads them: one damaged draft must not hide the rest.
+					const [activeTasks, archivedTasks, drafts] = await Promise.all([
+						this.fs.listTasks(),
+						this.fs.listArchivedTasks(),
+						this.fs.listHealthyDrafts(),
+					]);
+					const subtasks = findDirectSubtasks(current, [...activeTasks, ...archivedTasks, ...drafts]);
+					if (subtasks.length > 0) {
+						throw new TaskHasSubtasksError(
+							current.id,
+							subtasks.map((subtask) => subtask.id),
+						);
+					}
 
-			const written = await this.writeVacatedIdCleanup(cleanup);
-			// unlink removes a symlinked task file as a link; the file it points to is left alone.
-			await unlink(current.filePath);
-			this.contentStore?.transitionTask(current.id);
-			return { removedPath: current.filePath, ...written };
-		});
-		if (!deleted) return { success: false, cleanedTaskIds: [] };
+					const written = await this.writeVacatedIdCleanup(cleanup);
+					// unlink removes a symlinked task file as a link; the file it points to is left alone.
+					await unlink(current.filePath);
+					// Record the mutation before the content store, commit, or any lock release can fail.
+					deletionApplied = true;
+					this.contentStore?.transitionTask(current.id);
 
-		if (await this.shouldAutoCommit(autoCommit)) {
-			try {
-				// A task file keeps its name through the archive, so this is where the task was on the board.
-				// If the archive was never committed, Git still tracks the task there, so its removal is committed too.
-				const boardPath = join(this.fs.tasksDir, basename(deleted.removedPath));
-				const changedPaths = [deleted.removedPath, boardPath, ...deleted.filePaths];
-				for (const path of changedPaths) await this.stageChangedPath(path);
-				await this.git.commitFiles(`backlog: Delete task ${task.id}`, changedPaths);
-			} catch (error) {
-				const reason = error instanceof Error ? error.message : String(error);
-				throw new Error(`Task ${task.id} was deleted, but committing the change failed: ${reason}`);
-			}
+					if (autoCommitEnabled) {
+						failureStep = "committing the change";
+						// A task file keeps its name through the archive, so this is where the task was on the board.
+						// If the archive was never committed, Git still tracks the task there, so its removal is committed too.
+						const boardPath = join(this.fs.tasksDir, basename(current.filePath));
+						const changedPaths = [current.filePath, boardPath, ...written.filePaths];
+						for (const path of changedPaths) await this.stageChangedPath(path);
+						await this.git.commitFiles(`backlog: Delete task ${current.id}`, changedPaths);
+					}
+					failureStep = "releasing deletion locks";
+					return { success: true, cleanedTaskIds: written.cleanedTaskIds };
+				}),
+			);
+		} catch (error) {
+			if (!deletionApplied) throw error;
+			const reason = error instanceof Error ? error.message : String(error);
+			throw new TaskDeletionAppliedError(`Task ${task.id} was deleted, but ${failureStep} failed: ${reason}`);
 		}
-		return { success: true, cleanedTaskIds: deleted.cleanedTaskIds };
 	}
 
 	async archiveMilestone(

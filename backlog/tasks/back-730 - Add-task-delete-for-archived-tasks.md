@@ -3,9 +3,9 @@ id: BACK-730
 title: Add task delete for archived tasks
 status: Done
 assignee:
-  - '@claude'
+  - '@codex-730'
 created_date: '2026-10-11 13:02'
-updated_date: '2026-10-12 06:16'
+updated_date: '2026-10-15 20:57'
 labels:
   - enhancement
 dependencies:
@@ -16,6 +16,10 @@ references:
   - commands
   - mcp-tools
   - dependencies
+  - src/core/backlog.ts
+  - src/test/cli-task-delete.test.ts
+  - src/mcp/tools/tasks/handlers.ts
+  - src/test/mcp-tasks.test.ts
 modified_files:
   - src/core/backlog.ts
   - src/utils/dependency-graph.ts
@@ -80,23 +84,15 @@ Depends on BACK-719: delete acts on the archive that task leaves in place, where
 ## Implementation Plan
 
 <!-- SECTION:PLAN:BEGIN -->
-Layer 2 of the stack (branch tasks/back-730-task-delete on top of BACK-719). Restore is BACK-731 and is not named by any command, help text, guide or message here.
+Final solution on existing PR #1095, preserving its original commits and integrating BACK-719 at 647ecc1f548be38d719423667b92381b9eb4f8a7 through merge 76fc5d7a918f669838b8cdbe5b34e33289c34d29.
 
-1. Core (src/core/backlog.ts): one operation, `Core.deleteTask(taskId, autoCommit?)`.
-   - It resolves the ID against the working copy with the read resolver layer 1 already uses, so an ID that more than one record claims fails closed as ambiguous. A task on the board throws a typed `TaskNotArchivedError` ("must be archived first"); an unknown ID reports not found.
-   - It runs inside the existing vacated-ID cleanup (`withVacatedIdCleanup`), which locks the record and every task that references it. Inside the locks it re-reads the record, refuses with a typed `TaskHasSubtasksError` while a board or archived task names it as parent (the existing `findDirectSubtasks` relation), writes the cleaned referencing records first and removes the file last, so a failure leaves the task in place and the delete can be retried.
-   - The file is removed with `unlink`, which removes a symlinked task file as a link and leaves its target alone. The ID is released because the record leaves the identity corpus; no separate reservation list exists. Auto-commit follows the project setting like the other lifecycle operations.
-   - Returns the existing `VacatedTaskResult`, so the changed tasks are reported with the existing `formatDependencyCleanupMessage` line.
-
-2. CLI (src/cli.ts): `backlog task delete <taskId>` with no options and no prompt, built like `task archive` and `task demote`: resolve the ID locally, call core, print the confirmation and the cleanup line. Typed errors reach the existing top-level handler. Help schema describes archive-then-delete.
-
-3. MCP (src/mcp/tools/tasks/*): a `task_delete` tool with the same one-ID input as `task_archive`; the handler calls the same core operation and translates the two typed errors.
-
-4. Guides and docs (src/guidelines/cli-instructions/*, src/guidelines/mcp/*, src/guidelines/agent-guidelines.md, README.md, CLI-INSTRUCTIONS.md): deleting a task is two steps, archive then delete; delete releases the ID and removes incoming links.
-
-5. Tests through the public surfaces: CLI (delete archived, refuse board task, no flag and no prompt, ID reuse, links removed and reported, subtasks refuse, ambiguous ID fails closed, symlinked archived file leaves its target, auto-commit) and MCP (same rules through `task_delete`), plus the guide and tool-list expectations.
-
-6. Verification: scoped tests, `bunx tsc --noEmit`, `bun run check .`, and a scripted end-to-end run of every acceptance criterion against a binary built from this layer in a private mktemp project.
+1. Keep deleteTask in Core and retain the existing task, draft, then allocator/create lock order. Read shouldAutoCommit before mutation.
+2. Hold the allocator lock across unlink, staging and commit. Preserve the existing stageChangedPath and commitFiles path scoping, including archive without auto-commit followed by delete with auto-commit.
+3. Record successful unlink immediately, independently of the current failure step. Report applied deletion accurately for later commit or lock-release failure.
+4. Pass only the typed TaskDeletionAppliedError through the existing MCP lifecycle translator as OPERATION_FAILED. Keep successful commit and later release failure distinct.
+5. Prove the staging/commit race and applied-deletion errors with deterministic regressions and actual commit contents. Verify CLI/MCP delete, allocator, cleanup and auto-commit suites, canonical types, Biome, build and compiled smoke.
+6. Complete the subtraction pass and full-context architecture review. The review recommended KEEP without a blocker, new product decision, or worthwhile task-scoped simplification.
+7. Record objective evidence, mark verified work Done, commit only this task, and push its final reviewed head with protection against a changed remote head. Leave the parent unmerged and preserve unrelated branches.
 <!-- SECTION:PLAN:END -->
 
 ## Implementation Notes
@@ -156,26 +152,38 @@ Wording: the sentence "References held by drafts are not changed: the cleanup co
 Tests: src/test/cli-released-id-draft-links.test.ts drives the CLI for delete and for demote: a draft with a dependency on and a reference to the task has neither afterwards, the output names the draft, a draft whose only link is a URL containing the ID is byte for byte unchanged, and the task created next receives the released ID without the draft linking to it. Both cases fail on the previous tip (816d0c8b). src/test/vacated-task-references.test.ts covers the locking for drafts (an edit between the scan and the locks is kept, a draft that starts linking in that window is cleaned, a renamed or locked draft fails the operation with nothing changed, a contested draft ID is left alone). src/test/cli-task-delete.test.ts checks that auto-commit commits a cleaned draft, including one whose file gets a new name, and leaves a clean working tree. The MCP delete test names the cleaned draft, and the tests that pinned the old sentences pin the new ones.
 
 Verification: `bunx tsc --noEmit` and `bun run check .` are clean; the scoped tests pass (25 files). End to end against the built CLI, for delete and for demote: before, the draft still listed TASK-1 as a dependency and a reference after the ID had been reused; after, both are gone, the URL stays, and the command prints "Removed references to TASK-1 from DRAFT-1".
+
+2026-10-15: repaired the two verified review findings on PR #1095 after integrating exact BACK-719 parent 647ecc1f.
+
+Delete now reads shouldAutoCommit before mutation, takes the allocator/create lock inside the existing task and draft cleanup locks, and holds it across unlink, staging and commit. It sets deletionApplied immediately after unlink. A separate failure step preserves the difference between a commit failure and a release failure after a successful commit. Existing stageChangedPath and commitFiles still scope the commit.
+
+Compiled MCP smoke found that its generic error boundary hid the applied-deletion message. One TaskDeletionAppliedError in Core now passes through the existing lifecycle translator as OPERATION_FAILED. This narrow adapter repair is part of the approved CLI/MCP outcome. No general recovery layer was added.
+
+Seven new deterministic cases have failure-before/fix-after evidence: create attempts at staging and commit boundaries; task-lock release failure with auto-commit off and on; auto-commit settings read before mutation; MCP commit failure; and MCP allocator-lock release failure after a successful commit. The original staging case committed the concurrently recreated task as an R100 rename. The repaired case commits only the archived file removal, then allows the same ID and filename to be reused afterwards.
+
+Current acceptance evidence:
+1. cli-task-delete tests and compiled CLI/MCP smoke verify archived deletion and the subsequent not-found result.
+2. cli-task-delete and mcp-tasks tests verify active-task refusal and unchanged files.
+3. cli-task-delete verifies noninteractive deletion, help options, and rejection of confirmation flags.
+4. cli-task-delete, cli-released-id-draft-links, id-generation, atomic-task-create and worktree-task-id-allocation verify ID reuse and reservations; the new race tests verify the same ID/path stays unavailable until the delete commit finishes.
+5. CLI/MCP delete and released-ID draft tests verify task and draft link cleanup, reporting, preserved URL references, and scoped commit contents.
+6. CLI/MCP tests verify refusal while parent-linked subtasks remain on the board, in the archive, or as drafts; clearing the explicit parent relation permits deletion.
+7. mcp-tasks and compiled MCP over stdio verify the same deletion rules and useful applied-deletion errors.
+8. cli-guidance and mcp-server tests verify archive-then-delete help and shipped instructions.
+
+Verification used Bun 1.4.3 and Biome 2.5.15. All 18 selected suites completed: cli-task-delete, mcp-tasks, mcp-server, vacated-task-references, cli-released-id-draft-links, atomic-task-create, atomic-task-edit, id-generation, worktree-task-id-allocation, task-identity-index, task-id-resolution, core-autocommit-scope, task-autocommit-index-scope, draft-lifecycle-autocommit-scope, auto-commit, cli-task-state, cli-create-preserves-existing-files, and cli-guidance. The final affected CLI/MCP batch passed 78 tests; the allocator/cleanup/delete batch passed 113 tests. Existing atomic-edit HTTP tests required sandbox escalation to bind a local port; its remaining four cases then passed.
+
+The current canonical type check is bun run check:types (Bun built-in checker per DEVELOPMENT.md): no errors in 545 files. bun run check . passed on 442 files. bun run build and git diff --check passed. Compiled CLI and MCP smoke passed in a private temporary project, including archive with auto-commit off then delete with it on, task/draft cleanup, scoped commits, ID reuse, not-found results, and an applied-deletion staging failure message through MCP. One existing released-ID test needed only Biome formatting after the parent toolchain update.
+
+The task-scoped subtraction pass kept the existing owners and helpers, removed the old post-lock deletion-result staging block, and left only one empty typed error plus its existing adapter translation. Full-context architecture review recommended KEEP with no blocker or new decision. Alex authorized finalization and the protected push. No PR was remotely merged.
 <!-- SECTION:NOTES:END -->
 
 ## Final Summary
 
 <!-- SECTION:FINAL_SUMMARY:BEGIN -->
-`backlog task delete <id>` permanently removes an archived task and releases its ID once no other branch or worktree still holds the task. Archiving keeps the ID since BACK-719, so delete is the explicit second step for work that should leave no record (issue #1064).
+Added archive-then-delete task removal through the canonical CLI and MCP. Delete removes incoming task and draft links, reports changed records, refuses explicit parent-linked subtasks, and releases the ID once no branch or worktree still holds it. Linked task files keep their established link semantics.
 
-What changed
-- One core operation, `Core.deleteTask`. It only acts on an archived task: a task on the board is refused with "Task X is not archived. A task must be archived before it can be deleted.", and a task that exists only on another branch is refused as read-only. An ID that more than one record claims fails closed as ambiguous.
-- Delete is refused while a task on the board, a task in the archive or a draft names the task as its parent, because subtask IDs are built on the ID that would be released and a demoted subtask is promoted back to such an ID. The refusal lists those tasks and drafts.
-- Delete removes the dependencies and references that tasks on the board, tasks in the archive and drafts hold to the task, through the shared vacated-ID cleanup, and reports the changed tasks and drafts. The referencing records are written first and the file is removed last, so a failure leaves the task in the archive and the delete can be run again. Demote uses the same cleanup, so it cleans and reports drafts in the same way; nothing else about demote changed.
-- A symlinked archived task is removed as a link; the file it points to stays. Auto-commit commits the removal together with the cleaned tasks; when the removal cannot be staged or committed, the command says that the task was deleted but the commit failed and exits non-zero.
-- `backlog task delete <taskId>` has no options and no prompt, because archiving is the confirming step. The MCP server offers the same operation as `task_delete` with the same rules. The TUI and the browser get no delete control.
-- Help, the CLI and MCP guides, README and CLI-INSTRUCTIONS describe deleting as archive first, then delete, and say that the ID is released once no other branch or worktree still holds the task.
+The reviewed repair holds the allocator lock from before unlink through staging and commit, so a concurrent create cannot enter the delete commit. Deletion is recorded immediately after unlink. CLI and MCP errors say that deletion already happened and distinguish a failed commit from a later lock-release failure, including when the commit succeeded.
 
-Verification
-- `bunx tsc --noEmit` and `bun run check .` are clean; the scoped tests pass, including src/test/cli-task-delete.test.ts, which drives the CLI for every acceptance criterion, and the MCP tests for `task_delete`.
-- A scripted end-to-end run against a binary built from this layer covered every acceptance criterion through the CLI and through MCP over stdio.
-
-Choices to confirm
-- The subtask check follows the parent field only. A dotted ID without a parent field does not block the delete.
-- A draft that a draft edit would refuse (a damaged file, a file whose name and frontmatter disagree, or an ID two draft files claim) is not rewritten by the cleanup and keeps its links. `backlog doctor` reports such drafts.
+Seven new deterministic regressions passed after demonstrating the original failures. The 18 focused suites, canonical Bun type check, Biome, build, diff check, and compiled CLI/MCP smoke passed. The full-context architecture review recommended KEEP without a blocker or new product decision. Existing parent-field subtask rules and damaged-draft cleanup boundaries remain as documented.
 <!-- SECTION:FINAL_SUMMARY:END -->
