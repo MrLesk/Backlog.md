@@ -3,9 +3,9 @@ id: BACK-730
 title: Add task delete for archived tasks
 status: Done
 assignee:
-  - '@codex-730'
+  - '@codex-730-v2'
 created_date: '2026-10-11 13:02'
-updated_date: '2026-10-15 20:57'
+updated_date: '2026-10-15 21:45'
 labels:
   - enhancement
 dependencies:
@@ -20,6 +20,8 @@ references:
   - src/test/cli-task-delete.test.ts
   - src/mcp/tools/tasks/handlers.ts
   - src/test/mcp-tasks.test.ts
+  - src/file-system/operations.ts
+  - src/test/vacated-task-references.test.ts
 modified_files:
   - src/core/backlog.ts
   - src/utils/dependency-graph.ts
@@ -84,15 +86,16 @@ Depends on BACK-719: delete acts on the archive that task leaves in place, where
 ## Implementation Plan
 
 <!-- SECTION:PLAN:BEGIN -->
-Final solution on existing PR #1095, preserving its original commits and integrating BACK-719 at 647ecc1f548be38d719423667b92381b9eb4f8a7 through merge 76fc5d7a918f669838b8cdbe5b34e33289c34d29.
+Approved bounded locking revision on existing PR #1095, starting at exact head 5cdbc0a7f6444fcefe58168f23ea8c1ba7417bf7 and retaining exact BACK-719 parent 647ecc1f548be38d719423667b92381b9eb4f8a7. No newer main changes or restore feature are included.
 
-1. Keep deleteTask in Core and retain the existing task, draft, then allocator/create lock order. Read shouldAutoCommit before mutation.
-2. Hold the allocator lock across unlink, staging and commit. Preserve the existing stageChangedPath and commitFiles path scoping, including archive without auto-commit followed by delete with auto-commit.
-3. Record successful unlink immediately, independently of the current failure step. Report applied deletion accurately for later commit or lock-release failure.
-4. Pass only the typed TaskDeletionAppliedError through the existing MCP lifecycle translator as OPERATION_FAILED. Keep successful commit and later release failure distinct.
-5. Prove the staging/commit race and applied-deletion errors with deterministic regressions and actual commit contents. Verify CLI/MCP delete, allocator, cleanup and auto-commit suites, canonical types, Biome, build and compiled smoke.
-6. Complete the subtraction pass and full-context architecture review. The review recommended KEEP without a blocker, new product decision, or worthwhile task-scoped simplification.
-7. Record objective evidence, mark verified work Done, commit only this task, and push its final reviewed head with protection against a changed remote head. Leave the parent unmerged and preserve unrelated branches.
+1. Make withVacatedIdCleanup own the existing allocator/create lock after task and draft locks. Perform its final cleanup rescan inside that lock; if new candidates appear, release every lock and retry with the wider set.
+2. Remove the nested allocator spans in deleteTask, demoteTaskWithUpdates and FileSystem.demoteTask. Preserve current mutation, cleanup, commit and applied-error behavior, including delete holding allocator through unlink/staging/commit.
+3. Coordinate Core.archiveTask membership moves using its task lock followed by the same allocator lock. Reread the current ID under the locks and preserve byte-preserving, no-overwrite archive behavior. BACK-731 will separately integrate restore.
+4. Add deterministic actual-operation regressions for a create completing immediately before allocator acquisition and a child archive attempted between the two corpus enumerations. Prove cleaned links after ID reuse, parent refusal, and shared demote/edit-to-Draft behavior.
+5. Run focused cleanup/delete/MCP/allocator/archive/demotion and commit-scope suites, canonical Bun 1.4.3 types, Biome 2.5.15, build, diff check and compiled CLI/MCP smoke. Preserve all prior race/error regressions.
+6. Make a task-scoped subtraction pass and leave work In Progress for full-context read-only review. No task finalization, commit, push or public review actions in this implementation pass.
+
+7. After full-context KEEP review and Alex's finalization approval, record current AC/DoD evidence and summary, mark Done, commit the reviewed bounded revision, push with protection against remote head 5cdbc0a7, and return clean main without merging any PR.
 <!-- SECTION:PLAN:END -->
 
 ## Implementation Notes
@@ -176,14 +179,41 @@ Verification used Bun 1.4.3 and Biome 2.5.15. All 18 selected suites completed: 
 The current canonical type check is bun run check:types (Bun built-in checker per DEVELOPMENT.md): no errors in 545 files. bun run check . passed on 442 files. bun run build and git diff --check passed. Compiled CLI and MCP smoke passed in a private temporary project, including archive with auto-commit off then delete with it on, task/draft cleanup, scoped commits, ID reuse, not-found results, and an applied-deletion staging failure message through MCP. One existing released-ID test needed only Biome formatting after the parent toolchain update.
 
 The task-scoped subtraction pass kept the existing owners and helpers, removed the old post-lock deletion-result staging block, and left only one empty typed error plus its existing adapter translation. Full-context architecture review recommended KEEP with no blocker or new decision. Alex authorized finalization and the protected push. No PR was remotely merged.
+
+2026-10-15: Alex approved one bounded architecture revision after deterministic probes on 5cdbc0a7 confirmed two existing membership-coordination gaps (also present at original b8799436): PRRT_kwDOO2LIE86s93SG permits a CLI create after final cleanup scan but before allocator acquisition, leaving links that rebind after ID reuse; PRRT_kwDOO2LIE86s93ST permits a child archive between active/archive enumerations, allowing parent deletion. The repair moves final validation into the existing allocator boundary and coordinates archive membership moves there. Both boundaries remain approved: commands act on the current record by ID under its lock, and arbitrary relationship edits after the final scan retain the documented limitation. The file-instance identity request PRRT_kwDOO2LIE86s93Sb does not change behavior. Prior staging/commit and applied-deletion repairs remain intact. No new task or lock framework is needed.
+
+Bounded revision implemented and ready for full-context review (not finalized).
+
+withVacatedIdCleanup now owns the allocator lock after the sorted task and draft locks. Its final cleanup scan and the mutation callback run inside that allocator span. Discovering new task or draft candidates returns out of every lock wrapper before retrying. The three former inner allocator acquisitions in deleteTask, demoteTaskWithUpdates and FileSystem.demoteTask were removed; FileSystem.demoteTask is an internal move whose only production caller already owns these locks. Core.archiveTask now holds its task lock and then the allocator across reread, byte-preserving no-overwrite move, content-store publication and existing commit. Restore remains in BACK-731. ID-based rereads and the documented limit for arbitrary relationship edits outside the locked set remain unchanged.
+
+Four deterministic cases failed on the old source, then passed with this revision. A CLI create completing immediately before allocator acquisition left its links untouched before; now cleanup widens, removes both links, reports the late task, commits exactly the archived removal and changed task, and permits later ID reuse without rebinding. A real child archive between archive/active enumerations let deletion remove the parent before; now the archive attempt is excluded, parent deletion refuses, both records remain byte-identical, and archive then child deletion then parent deletion succeeds. Direct demote and edit-to-Draft each clean a late-created task and draft, preserve edits, and reuse the released task ID without stale links.
+
+Verification: 321 distinct tests in 21 selected suites passed: cli-task-delete, vacated-task-references, mcp-tasks, cli-released-id-draft-links, atomic-task-create, atomic-task-edit, id-generation, worktree-task-id-allocation, cli-task-state, draft-lifecycle-autocommit-scope, filesystem, task-identity-index, task-id-resolution, core-autocommit-scope, task-autocommit-index-scope, auto-commit, cli-guidance, mcp-server, archived-task-folders, references, cli-create-preserves-existing-files. Existing atomic-edit HTTP cases needed permission to bind local ports; raw FileSystem promotion fixtures needed permission to write the discovered repository allocator lock under .git. Both environment-only reruns passed; no code was changed for the sandbox. Bun 1.4.3 check:types passed on 545 files; Biome 2.5.15 passed on 442 files; build and git diff --check passed. The compiled CLI/MCP smoke in private temporary projects passed archive-off/delete-on commit scoping, task/draft cleanup, missing-task results, ID reuse and MCP applied-deletion staging errors.
+
+Subtraction pass: retained the one existing cleanup owner and lock system; removed nested allocator wrappers and their temporary return object, without adding helpers, lock flags or new state in production. No further source changes are planned. HEAD remains 5cdbc0a7, exact BACK-719 ancestry is preserved, and unrelated tasks/back-767-parallel-workflows remains a017677f. BACK-730 stays In Progress for read-only review. No finalization, commit, push or public review action was performed.
+
+Final verification and review for the approved bounded revision:
+AC1: cli-task-delete and compiled CLI/MCP smoke passed archived deletion and subsequent view-not-found.
+AC2: CLI/MCP tests passed active-task refusal with unchanged files.
+AC3: CLI tests passed noninteractive deletion, help options and rejection of confirmation flags.
+AC4: allocator/worktree/identity suites and four red-to-green races passed; later creates reuse the released ID, while staging/commit races keep it unavailable until delete finishes.
+AC5: CLI/MCP and released-ID draft tests passed task/draft link removal and reporting; the late-create regression proves exact scoped commit contents and no links to the replacement task.
+AC6: CLI/MCP tests passed refusal for explicit parent-linked active tasks, archived tasks and drafts; the child archive regression preserves both records and permits parent deletion only after its child is deleted.
+AC7: MCP suite and compiled stdio smoke passed the same delete rules, scoped commits and applied-deletion failures.
+AC8: cli-guidance and mcp-server suites passed archive-then-delete help and shipped instructions.
+DoD1: the current canonical type check is bun run check:types per DEVELOPMENT.md, replacing the legacy tsc command named by this older task item; Bun 1.4.3 passed on 545 files.
+DoD2: bun run check . passed with Biome 2.5.15 on 442 files.
+DoD3: 321 distinct tests across 21 selected suites passed, including the prior deletion race/error/MCP regressions. Sandbox-only local port and repository allocator-lock access failures were inspected and the affected cases passed with required access.
+Build, git diff --check and compiled CLI/MCP smoke passed. Four new deterministic regressions have failure-before/fix-after evidence. Source hashes match the reviewed files.
+Task-scoped subtraction and full-context architecture review both recommend KEEP. There is no blocker, new decision or further source change. Alex authorized finalization and the protected push. Both approved boundaries remain: commands reread the current ID under its lock; arbitrary relationship edits outside the locked set after the final scan retain their documented limitation. Restore coordination will be integrated in BACK-731. Parent and dependent merges remain held.
 <!-- SECTION:NOTES:END -->
 
 ## Final Summary
 
 <!-- SECTION:FINAL_SUMMARY:BEGIN -->
-Added archive-then-delete task removal through the canonical CLI and MCP. Delete removes incoming task and draft links, reports changed records, refuses explicit parent-linked subtasks, and releases the ID once no branch or worktree still holds it. Linked task files keep their established link semantics.
+Added archive-then-delete task removal through the canonical CLI and MCP. Delete removes incoming task and draft links, names changed records, refuses explicit parent-linked subtasks, and releases the ID once no branch or worktree still holds it.
 
-The reviewed repair holds the allocator lock from before unlink through staging and commit, so a concurrent create cannot enter the delete commit. Deletion is recorded immediately after unlink. CLI and MCP errors say that deletion already happened and distinguish a failed commit from a later lock-release failure, including when the commit succeeded.
+The shared cleanup now owns task, draft and allocator locks through final validation and mutation. Wider retries release every lock before reacquiring. Archive shares the allocator boundary, so a child cannot disappear between active/archive scans. Delete retains the allocator through unlink, scoped staging and commit, with accurate applied-deletion errors through CLI and MCP. Current-ID rereads and the documented late relationship-edit limit remain unchanged.
 
-Seven new deterministic regressions passed after demonstrating the original failures. The 18 focused suites, canonical Bun type check, Biome, build, diff check, and compiled CLI/MCP smoke passed. The full-context architecture review recommended KEEP without a blocker or new product decision. Existing parent-field subtask rules and damaged-draft cleanup boundaries remain as documented.
+Four new deterministic regressions failed before the revision and passed after it. All 321 tests in 21 selected suites, canonical Bun types, Biome, build, diff check and compiled CLI/MCP smoke passed. Subtraction and full-context architecture review recommended KEEP with no blocker or new decision. BACK-731 will integrate restore coordination.
 <!-- SECTION:FINAL_SUMMARY:END -->

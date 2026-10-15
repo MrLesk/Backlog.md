@@ -3,9 +3,9 @@ id: BACK-731
 title: Restore archived tasks to the board
 status: Done
 assignee:
-  - '@codex-731'
+  - '@codex-731-v2'
 created_date: '2026-10-11 13:02'
-updated_date: '2026-10-15 21:05'
+updated_date: '2026-10-15 21:53'
 labels:
   - enhancement
 dependencies:
@@ -16,6 +16,7 @@ references:
   - commands
   - mcp-tools
   - src/core/content-store.ts
+  - src/file-system/operations.ts
 modified_files:
   - src/cli.ts
   - src/core/archived-task-move.ts
@@ -41,6 +42,9 @@ modified_files:
   - src/test/cli-task-restore.test.ts
   - src/test/content-store.test.ts
   - src/core/content-store.ts
+  - src/file-system/operations.ts
+  - src/test/cli-task-delete.test.ts
+  - src/test/vacated-task-references.test.ts
 priority: high
 type: enhancement
 ordinal: 349000
@@ -77,14 +81,14 @@ Depends on BACK-730: the lifecycle change is delivered in order, first the singl
 ## Implementation Plan
 
 <!-- SECTION:PLAN:BEGIN -->
-Repair plan after approved architecture review (2026-10-15):
-1. Integrate exact repaired BACK-730 parent 5cdbc0a7 while retaining its deletion locks through commit, preflight, applied-change errors, MCP translation, and earlier archive/exclusive-create repairs.
-2. Make ContentStore.transitionTask accept the complete resulting active or archived task, or no task for removal. Clear the identity from both corpora, install the result in the correct corpus, rebuild identity/visible tasks, and publish once. Keep refreshArchivedTask path-based so contested identities remain contested.
-3. Replace restoreTask removal plus upsert with one transition carrying the restored local task. Keep existing archive/delete call semantics and accepted move, refusal, link, and commit behavior.
-4. Add a regression using Core.restoreTask with an initialized store. Check every published snapshot, active/archived membership, identity resolution, and one publication. Retain archive/delete and contested archived-file coverage.
-5. Run focused restore, content-store, identity/cache, read-only, delete/autocommit, and MCP checks with Bun 1.4.3 and Biome 2.5.15, canonical type/lint commands, build, and compiled CLI/MCP smoke. Review the task diff for simpler code and unrelated changes. Hold In Progress without final repair commit or push for a full-context architecture review.
+Approved membership correction plan (2026-10-15):
+1. Integrate exact revised BACK-730 parent 1fc5a50a, preserving task/draft/allocator order, final scan widening outside all wrappers, delete preflight/applied-change errors/commit scope, and demotion ownership. Resolve the shared Core conflict using the parent bodies plus the restore loader operation argument and existing moveTaskFile helper.
+2. Wrap canonical restore reread, move, complete ContentStore transition and scoped commit in the existing allocator boundary inside the task lock, matching archive without nested acquisition or a new locking layer. Keep path-based refreshArchivedTask, by-ID mutation semantics and the documented arbitrary late relationship-edit limit.
+3. Add one deterministic real Core restore/delete regression: freeze the active enumeration, attempt restoring an archived child before the archived enumeration, require parent refusal and retained records, then prove restore succeeds after the scan releases its boundary. Retain all existing parent race and deletion error tests.
+4. Verify the one-publication Core restore test; restore CLI; ContentStore/identity; archive/delete/autocommit/MCP suites; canonical type/lint/build and compiled CLI/MCP smoke with Bun 1.4.3 and Biome 2.5.15. Inspect failures before reruns.
+5. Review for subtraction and preserve this bounded scope. Hold stable code and evidence In Progress for full-context architecture review before final notes, Done, implementation commit or push.
 
-6. Architecture review accepted the repair unchanged. Record objective evidence, finalize the verified task, commit the reviewed files, and push the final head with an explicit remote-head lease.
+6. Full-context review accepted the stable implementation unchanged. After the complete 460-test proof, root authorized finalization, the reviewed merge/repair commit, an explicit remote-head-protected push, and return to clean main. Preserve reviewed source/test hashes through precommit.
 <!-- SECTION:PLAN:END -->
 
 ## Implementation Notes
@@ -117,14 +121,47 @@ Final repair verification (2026-10-15):
 - AC 5: cli-guidance, cli-doctor, and mcp-server tests verify help, shipped lifecycle guidance, and restore advice.
 - 358 tests passed across 21 focused suites, including content-store, restore, archive/delete, identity/cache, read-only, commit scope, vacated references, MCP, and exclusive creation. Bun 1.4.3; Biome 2.5.15. Canonical bun run check:types, bun run check ., and bun run build passed. The existing literal TypeScript Definition of Done also passed with the installed compiler via bunx --no-install tsc --noEmit.
 - Task-scoped subtraction and the full-context architecture review are complete: keep the repair, no blocker, no further simplification, and no new product decision.
+
+Reopened for the approved archive/restore membership correction (2026-10-15). Integrating exact revised BACK-730 parent 1fc5a50ac5073fd2d30b978f87e46018bf08df0c into existing BACK-731 head 5bb968fd399bb6561d6cc5a7035c734aa972c28d. The prior complete ContentStore publication repair remains required. The replacement-record review finding needs no code change: by-ID mutations reread the current ID and do not promise an original file instance. Hold In Progress for full-context architecture review; no final implementation commit or push yet.
+
+Integrated parent source into the shared Core conflict: preserved the exact revised delete body with only the restore-aware loadArchivedTask delete argument, kept parent allocator ownership and demotion changes, and retained the existing moveTaskFile owner for archive bytes. Restore coordination and deterministic proof are the remaining focused changes.
+
+Added the deterministic restore-direction eligibility regression in the existing CLI restore suite. It freezes the active snapshot, attempts real Core.restoreTask before the archived snapshot, checks real delete refusal/retained bytes and checks that restore succeeds afterward. Running it before the restore boundary change to verify that it reproduces the missed-child deletion.
+
+Corrected the race fixture before product changes: the second in-allocator enumeration belongs to the target reread, so that timing still let the later eligibility scan see the restored child. The deterministic attempt now targets the third in-allocator enumeration, the actual parent eligibility scan after final cleanup scan and target reread.
+
+The corrected eligibility-scan regression reproduced the bug before the change: Core.deleteTask resolved successfully while its existing archived child moved to the board between snapshots. Restore now takes the existing allocator inside its task lock and holds both across reread, shared moveTaskFile, complete transitionTask publication and scoped commit. The parent body and existing move/publication behavior are retained.
+
+Validation progress for the approved membership correction:
+- Bun 1.4.3 and Biome 2.5.15 confirmed. Canonical bun run check:types passed (546 files), bun run check . passed (443 files), build passed, and git diff --check is clean.
+- Compiled CLI smoke passed byte-preserving restore with the same ID/status/name, archived read-only advice, list/edit, help and overview. Compiled MCP stdio smoke passed task_restore tool discovery, restore and restored task_view. The first smoke fixture used an incompatible init option combination; it was corrected before rerunning, with no product change.
+- Confirmed by direct comparison that the exact parent delete body is retained apart from its two restore-aware loader operation arguments; FileSystem operations match exact parent 1fc5a50a.
+- The broad test run produced 281 passing tests across 18 complete files before reaching sandbox-denied doctor fixtures. Their repository tmp projects discover the shared .git allocator, and the denial explicitly named .git/backlog.md/locks/create. Stopped the sandboxed runner and all its child processes, checked for unexpected tracked side effects (none), and reran only affected doctor/local HTTP fixtures with required access: 50 passed, 0 failed. Exclusive-create/move checks separately passed 38 tests across 2 files. ContentStore and delete files not reached in the interrupted run are now running separately.
+- The contextual architecture review accepted the stable code unchanged: KEEP, no blocker, no further source simplification and no new product decision. Task remains In Progress pending complete proof and root authorization for finalization.
+
+Membership correction proof is complete and code remains stable for the review hold:
+- 460 distinct tests passed across 24 focused suites: 281 tests from 18 complete suites before the denied fixture run was stopped; all 23 delete tests; all 68 ContentStore tests; all 50 doctor/local-server tests; and 38 exclusive-create/move tests. The ContentStore watcher rerun required Git/remote-read access because the sandbox denied .git/FETCH_HEAD; it passed without source changes. Both denied test runners and their fixture children were stopped and verified exited.
+- Parent create/archive/demotion race tests, deletion commit/release/config failure cases, MCP OPERATION_FAILED translation, restore CLI/link/conflict/status behavior, identity/cache, scoped commits, and the real Core one-publication restore case passed. The new deterministic restore regression failed before the wrapper because delete succeeded after missing the moved child, then passed with parent refusal, byte-identical retained records and eventual restore success.
+- Canonical types, lint, build and compiled CLI/MCP smoke passed; installed bunx --no-install tsc --noEmit also passed. No unexpected tracked fixture side effects; git diff --check HEAD is clean.
+- Subtraction review found no justified further code change: preserve the existing private byte-move helper, one complete transitionTask publication and existing allocator owner; add only the restore wrapper and its one regression. No new public surface or locking framework.
+- Exact revised parent 1fc5a50ac5073fd2d30b978f87e46018bf08df0c remains pending in MERGE_HEAD over existing head 5bb968fd399bb6561d6cc5a7035c734aa972c28d. The integration is staged and focused repair/task notes remain unstaged. BACK-767 remains a017677fbb65daf954f9453b1320926d70604a25. Task stays In Progress, assigned @codex-731-v2, pending root authorization for finalization, final commit and protected push.
+
+Finalization evidence for the membership correction (2026-10-15):
+- AC 1: all CLI restore cases and the compiled CLI smoke passed same-ID, byte/status/name-preserving restore.
+- AC 2: CLI restore tests and compiled smoke passed normal list and edit after restore.
+- AC 3: CLI restore tests and compiled smoke passed archived edit refusal naming backlog task restore, with unchanged bytes.
+- AC 4: MCP task/server suites and compiled MCP stdio smoke passed task_restore and restored task_view.
+- AC 5: CLI guidance/doctor/MCP server suites and compiled help/overview smoke passed shipped restore guidance.
+- DoD 1: canonical bun run check:types and installed bunx --no-install tsc --noEmit passed. DoD 2: canonical bun run check . passed with Biome 2.5.15. DoD 3: 460 distinct tests across 24 focused suites passed, including the new restore eligibility regression and retained parent race/error proofs. Build and compiled CLI/MCP smoke passed with Bun 1.4.3. Sandbox-only fixture failures were inspected and affected suites passed with required access; no fixture side effects or post-review source changes.
+- Full-context review: KEEP, no blocker, no further source simplification and no new product decision. Root authorized the finalization, reviewed pending merge/repair commit and protected push after complete proof. All earlier feature commits and exact revised parent 1fc5a50ac5073fd2d30b978f87e46018bf08df0c are preserved.
 <!-- SECTION:NOTES:END -->
 
 ## Final Summary
 
 <!-- SECTION:FINAL_SUMMARY:BEGIN -->
-backlog task restore <id> returns an archived task to the board with the same ID, status, filename, and file bytes. Restored tasks can be listed and edited; archived edits remain refused with the restore command. Existing CLI and MCP restore behavior, move conflicts, linked-file handling, and scoped auto-commit behavior are preserved.
+backlog task restore <id> returns archived work to the board with the same ID, status, filename and bytes. Restored tasks can be listed and edited; archived edits name the restore command. CLI/MCP behavior, refusals, links and scoped auto-commit behavior are preserved.
 
-Restore now publishes one complete active state through ContentStore.transitionTask. Subscribers no longer receive a temporary snapshot where the restored task is absent. Archive/delete transitions and path-based archived refresh retain their separate meanings, including contested identity handling.
+Archive and restore now use the existing allocator boundary inside their task locks, so an existing child cannot move between the active and archived snapshots of a parent delete scan. Restore retains one complete ContentStore.transitionTask publication. The revised parent cleanup, widening, demotion and applied-deletion error behavior are preserved. By-ID mutations retain their current semantics and arbitrary late relationship edits retain their documented limit.
 
-Verified with a regression that reproduced two publications before the repair and one complete publication afterward; 358 focused tests across 21 suites; canonical type/lint/build checks; the installed tsc check; and compiled CLI/MCP smoke. The repaired parent deletion boundary and earlier archive/exclusive-create repairs are retained. Architecture review found no blocker or further simplification. Hosted PR checks remain separate from this local verification.
+Verified with a deterministic regression that failed before the restore boundary and passed afterward, 460 tests across 24 focused suites, canonical type/lint/build checks, installed tsc and compiled CLI/MCP smoke. Sandbox-only fixture failures passed on targeted access reruns. Contextual review accepted the bounded implementation unchanged; no further product choice or source change was required.
 <!-- SECTION:FINAL_SUMMARY:END -->
