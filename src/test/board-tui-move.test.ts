@@ -151,6 +151,19 @@ async function withBoard(
 }
 
 describe("TUI board single-task mover", () => {
+	it("keeps board shortcuts inactive while the task yank menu is open", async () => {
+		await withBoard(async ({ screen }) => {
+			pressKey(screen, "y");
+			await new Promise<void>((resolve) => setImmediate(resolve));
+			await new Promise<void>((resolve) => setImmediate(resolve));
+
+			pressKey(screen, "c");
+			pressKey((screen as unknown as { focused?: EmittingWidget }).focused ?? screen, "escape");
+
+			expect((await core.filesystem.loadTask("TASK-1"))?.status).toBe("To Do");
+		});
+	});
+
 	it("enters move mode on M and shows the move-mode footer", async () => {
 		await withBoard(({ screen, footer }) => {
 			pressKey(screen, "m");

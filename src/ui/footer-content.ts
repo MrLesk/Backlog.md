@@ -14,12 +14,12 @@ function filterKeys(before: string[], after: string[], hasProjects: boolean): st
 
 export function getBoardFooterContent(options: { hasProjects?: boolean } = {}): string {
 	const keys = filterKeys(["T"], ["P", "I", "F"], options.hasProjects ?? false);
-	return ` {cyan-fg}[Tab]{/} View | {cyan-fg}[N]{/} New | {cyan-fg}[/]{/} Search | {cyan-fg}[${keys}]{/} Filter | {cyan-fg}[←→/↑↓]{/} Nav | {cyan-fg}[Enter]{/} Details | {cyan-fg}[E/M/C/A]{/} Edit/Move/Comp/Arch | {cyan-fg}[Y]{/} Yank | {cyan-fg}[?]{/} Help | {cyan-fg}[q]{/} Quit`;
+	return ` {cyan-fg}[Tab]{/} View | {cyan-fg}[N]{/} New | {cyan-fg}[/]{/} Search | {cyan-fg}[${keys}]{/} Filter | {cyan-fg}[←→/↑↓]{/} Nav | {cyan-fg}[Enter]{/} Details | {cyan-fg}[E/M/C/A]{/} Edit/Move/Comp/Arch | {cyan-fg}[Y]{/} Yank menu | {cyan-fg}[?]{/} Help | {cyan-fg}[q]{/} Quit`;
 }
 
 export function getTaskListFooterContent(options: { hasProjects?: boolean } = {}): string {
 	const keys = filterKeys(["S", "T"], ["P", "I", "L"], options.hasProjects ?? false);
-	return ` {cyan-fg}[Tab]{/} View | {cyan-fg}[/]{/} Search | {cyan-fg}[${keys}]{/} Filter | {cyan-fg}[↑↓]{/} Nav | {cyan-fg}[E/C/A]{/} Edit/Comp/Arch | {cyan-fg}[Y]{/} Yank | {cyan-fg}[?]{/} Help | {cyan-fg}[q]{/} Quit`;
+	return ` {cyan-fg}[Tab]{/} View | {cyan-fg}[/]{/} Search | {cyan-fg}[${keys}]{/} Filter | {cyan-fg}[↑↓]{/} Nav | {cyan-fg}[E/C/A]{/} Edit/Comp/Arch | {cyan-fg}[Y]{/} Yank menu | {cyan-fg}[?]{/} Help | {cyan-fg}[q]{/} Quit`;
 }
 
 function visibleLength(value: string): number {
