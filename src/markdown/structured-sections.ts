@@ -239,8 +239,8 @@ function matchHtmlBlockStart(
 	const base = containerColumns.at(-1) ?? 0;
 	const relative = base > 0 && leadingSpaceCount(line) >= base ? line.slice(base) : line;
 	const type1Match = HTML_TYPE1_OPENING_REGEX.exec(relative);
-	if (type1Match) {
-		const endRegex = new RegExp(`</${type1Match[1]}>`, "i");
+	if (type1Match && relative[type1Match[0].length] !== "/") {
+		const endRegex = /<\/(?:script|pre|style|textarea)>/i;
 		return { endRegex, endsOnBlankLine: false, containerColumn: base };
 	}
 	if (HTML_COMMENT_OPENING_REGEX.test(relative)) {
@@ -257,7 +257,7 @@ function matchHtmlBlockStart(
 	}
 	if (
 		HTML_BLOCK_TAG_OPENING_REGEX.test(relative) ||
-		(allowCompleteTag && HTML_COMPLETE_TAG_LINE_REGEX.test(relative))
+		(allowCompleteTag && !type1Match && HTML_COMPLETE_TAG_LINE_REGEX.test(relative))
 	) {
 		return { endsOnBlankLine: true, containerColumn: base };
 	}

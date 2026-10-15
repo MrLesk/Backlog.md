@@ -5,7 +5,7 @@ status: Done
 assignee:
   - '@codex'
 created_date: '2026-10-15 20:59'
-updated_date: '2026-10-15 21:51'
+updated_date: '2026-10-15 21:56'
 labels: []
 dependencies: []
 references:
@@ -53,6 +53,8 @@ Issue #1110 shows that replacing a marker-less description, plan, notes or final
 5. Address Codex review: detect valid one-to-three-space heading indentation, route explicit plan/notes/description clears through the shared writer, and recognize quoted angle brackets in complete HTML tag lines. Add refusal and successful-clear regressions, validate the focused suite, resolve the review threads, and request a review of the final commit before merging.
 
 6. Address the second Codex review: track paragraph state before starting a custom-tag HTML block, recognize empty level-two headings as ambiguous, and parse block openers directly after list markers. Reuse the existing shared scan, test both refusal and valid fenced/HTML examples, and request another review of the final commit.
+
+7. Verify raw-text HTML block endings against CommonMark: any permitted closing raw-text tag ends the block, while a self-closing raw-text tag without intervening whitespace does not start one. Add refusal and valid-example coverage before the final review.
 <!-- SECTION:PLAN:END -->
 
 ## Implementation Notes
@@ -67,10 +69,12 @@ Full shared-process suite finished: 2964 pass, 13 skip, 8 fail, and 1 unhandled 
 Addressed all three Codex findings: indented level-two headings now trigger the ambiguity guard; planClear and notesClear preserve an explicit empty value so serialization actually clears or refuses; empty descriptions also reach the writer; complete custom HTML tag lines recognize quoted attribute values and reject malformed attributes. Fourteen additional regressions failed before the changes and now pass. Final scoped validation: 157 Markdown/CLI/section tests, 64 core tests and 39 MCP tests all pass in separate runs (260 total); type checks, Biome and compiled build pass. The separate runs avoid shared-process test interference. Simplification review kept the clear representation consistent with finalSummaryClear and reused existing serialization and scanning paths.
 
 Addressed the second Codex review: paragraph state prevents complete custom HTML tags from hiding real headings; empty ATX level-two headings now trigger refusal; block openers directly after list markers are recognized. The scan also ends fenced and HTML blocks when their list container ends, retains list context across blank lines, and applies the ordered-list paragraph-interruption rule. Reproduced an additional ordered-list/custom-tag data-loss case before fixing it. Added CLI/MCP byte-preservation and valid-example regressions, for 46 tests in the new regression file. Final validation: 165 focused section/CLI tests, 64 core tests, 39 MCP tests (268 total), type checks, Biome and build all pass. The solution reuses existing block state and helpers and adds no public API or parser dependency.
+
+Additional HTML verification found two data-loss gaps in the existing raw-text scan: a closing raw-text tag may end a different raw-text opening tag, and a directly self-closing raw-text tag does not start an HTML block. Both cases now refuse unsafe replacements. Added coverage for all raw-text tag pairs and whitespace distinctions, plus CLI/MCP byte preservation. Final validation: 167 focused section/CLI tests, 64 core tests and 39 MCP tests (270 total), type checks, Biome and compiled build pass. The regression file contains 48 tests. Final simplification review reuses the shared HTML block matcher; no new dependency or exported helper is needed.
 <!-- SECTION:NOTES:END -->
 
 ## Final Summary
 
 <!-- SECTION:FINAL_SUMMARY:BEGIN -->
-Protected ambiguous legacy structured sections across replacement and explicit clearing, with marker recovery instructions. Added 46 regressions for empty/indented headings, paragraph/list boundaries, fenced code, raw HTML, MCP clears, drafts and LF/CRLF byte preservation. Validated 268 targeted tests, type checks, lint and compiled build. Initial shared-process suite limitations remain documented; CI has passed the Linux full suite, Windows, builds and Nix on the earlier reviewed commit. Both Codex review rounds have fixes ready for a fresh review before merge.
+Protected ambiguous legacy structured sections across replacement and explicit clearing, with marker recovery instructions. Added 48 regressions for headings, paragraph/list boundaries, fenced code, raw HTML, MCP clears, drafts and LF/CRLF byte preservation. Validated 270 targeted tests, type checks, lint and compiled build. Initial shared-process suite limitations remain documented. All findings from the first two Codex rounds are fixed and resolved; the final head will receive another review before merge.
 <!-- SECTION:FINAL_SUMMARY:END -->

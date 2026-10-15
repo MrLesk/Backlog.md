@@ -170,6 +170,28 @@ describe("legacy structured section replacement (issue #1110)", () => {
 		}
 	});
 
+	it("ends raw-text HTML blocks at any permitted closing raw-text tag", () => {
+		for (const open of ["pre", "script", "style", "textarea"]) {
+			for (const close of ["pre", "script", "style", "textarea"]) {
+				const body = `<${open}>\nexample\n</${close}>\n${extraSection}`;
+				expect(() => updateTaskImplementationNotes(sectionBlock(sections[2], body), "New notes")).toThrow(
+					"## Verification",
+				);
+			}
+		}
+	});
+
+	it("does not start a raw-text HTML block at a directly self-closing tag", () => {
+		for (const tag of ["pre", "script", "style", "textarea"]) {
+			expect(() =>
+				updateTaskImplementationNotes(sectionBlock(sections[2], `<${tag}/>\n${extraSection}`), "New notes"),
+			).toThrow("## Verification");
+			expect(updateTaskImplementationNotes(sectionBlock(sections[2], `<${tag} />\n## Example`), "New notes")).toContain(
+				"New notes",
+			);
+		}
+	});
+
 	it("still refuses a real heading after a code or HTML example", () => {
 		for (const example of [
 			"```\n## Example\n```",
@@ -308,7 +330,12 @@ describe("legacy section refusals before persistence", () => {
 	});
 
 	it("CLI and MCP preserve bytes for paragraph-interrupting tags and empty headings", async () => {
-		for (const body of [`Old content\n<widget>\n${extraSection}`, "Old content\n##\nPROOF-LINE"]) {
+		for (const body of [
+			`Old content\n<widget>\n${extraSection}`,
+			"Old content\n##\nPROOF-LINE",
+			`<pre>\nexample\n</script>\n${extraSection}`,
+			`<pre/>\n${extraSection}`,
+		]) {
 			const original = taskMarkdown(sectionBlock(sections[2], body));
 			await Bun.write(taskPath, original);
 			const result =
