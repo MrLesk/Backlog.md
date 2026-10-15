@@ -718,14 +718,20 @@ function findChecklistSectionRanges(
 	return ranges.sort((left, right) => left.start - right.start);
 }
 
-function stripSectionInstances(content: string, key: StructuredSectionKey): string {
+function stripSectionInstances(content: string, key: StructuredSectionKey, nextBody: string): string {
 	let stripped = content;
 	for (const block of findSentinelBlocks(content, key).sort((left, right) => right.start - left.start)) {
 		stripped = `${stripped.slice(0, block.start)}${stripped.slice(block.end)}`;
 	}
 
 	const legacyRegex = legacySectionRegex(getConfig(key).title, "gi");
-	stripped = stripped.replace(legacyRegex, "\n");
+	const protectedRanges = resolveKnownSentinelRanges(tokenizeKnownSentinels(stripped));
+	stripped = stripped.replace(legacyRegex, (_: string, prefix: string, body: string, offset: number) => {
+		if (!isIndexWithinRanges(offset + prefix.length, protectedRanges)) {
+			assertLegacySectionReplacementSafe(key, body, nextBody);
+		}
+		return "\n";
+	});
 
 	return collapseBlankLines(stripped).trimEnd();
 }
@@ -786,12 +792,27 @@ export interface StructuredSectionValues {
 
 interface SectionValues extends StructuredSectionValues {}
 
+function assertLegacySectionReplacementSafe(key: StructuredSectionKey, body: string, nextBody: string): void {
+	// Unchanged bodies and appends retain every legacy heading. Replacements
+	// cannot tell an owned subheading from a separate, user-written section.
+	if (nextBody.startsWith(body.trim())) return;
+	for (const { line } of proseLines(body)) {
+		if (!/^##[\t ]+\S/.test(line)) continue;
+		const { title } = getConfig(key);
+		throw new Error(
+			`Cannot replace ${title} without section markers: "${line.trimEnd()}" may be a separate section. ` +
+				`In the Markdown file, put ${getBeginMarker(key)} after "## ${title}" and ` +
+				`${getEndMarker(key)} after the intended body, then retry.`,
+		);
+	}
+}
+
 export function updateStructuredSections(content: string, sections: SectionValues): string {
 	const { text: src, useCRLF } = normalizeToLF(content);
 
 	let working = src;
 	for (const key of SECTION_INSERTION_ORDER) {
-		working = stripSectionInstances(working, key);
+		working = stripSectionInstances(working, key, (sections[key] ?? "").replace(/\r\n/g, "\n").trim());
 	}
 	working = working.trim();
 
@@ -1053,21 +1074,16 @@ function parseAllChecklistItems(content: string, definition: ChecklistSectionDef
 	return marked.length > 0 ? marked : legacy;
 }
 
-export function assertValidChecklistMarks(content: string, family: "AC" | "DOD"): void {
-	const definition = family === "AC" ? ACCEPTANCE_CRITERIA_DEFINITION : DEFINITION_OF_DONE_DEFINITION;
-	const src = content.replace(/\r\n/g, "\n");
-	const resolution = resolveChecklistSentinels(src, definition);
-	const ranges = findChecklistSectionRanges(src, definition, resolution);
-	if (ranges.length === 0) return;
+function* proseLines(content: string, maskedRanges: TextRange[] = []): Generator<{ line: string; start: number }> {
 	let fence: FenceSpec | undefined;
 	let htmlBlock: HtmlBlockState | undefined;
 	const containerColumns: number[] = [];
 	let offset = 0;
 
-	for (const line of src.split("\n")) {
+	for (const line of content.split("\n")) {
 		const start = offset;
 		offset += line.length + 1;
-		if (isIndexWithinRanges(start, resolution.foreignRanges)) continue;
+		if (isIndexWithinRanges(start, maskedRanges)) continue;
 		if (fence) {
 			if (closesFence(line, fence, containerColumns)) fence = undefined;
 			continue;
@@ -1082,7 +1098,18 @@ export function assertValidChecklistMarks(content: string, family: "AC" | "DOD")
 		fence = matchFenceOpener(line, containerColumns);
 		if (fence) continue;
 		htmlBlock = matchHtmlBlockStart(line, containerColumns);
-		if (htmlBlock || !isIndexWithinRanges(start, ranges)) continue;
+		if (!htmlBlock) yield { line, start };
+	}
+}
+
+export function assertValidChecklistMarks(content: string, family: "AC" | "DOD"): void {
+	const definition = family === "AC" ? ACCEPTANCE_CRITERIA_DEFINITION : DEFINITION_OF_DONE_DEFINITION;
+	const src = content.replace(/\r\n/g, "\n");
+	const resolution = resolveChecklistSentinels(src, definition);
+	const ranges = findChecklistSectionRanges(src, definition, resolution);
+	if (ranges.length === 0) return;
+	for (const { line, start } of proseLines(src, resolution.foreignRanges)) {
+		if (!isIndexWithinRanges(start, ranges)) continue;
 
 		const match = /^- \[([^\]\r\n])\] (.+)$/.exec(line);
 		if (match && match[1] !== " " && match[1] !== "x") {

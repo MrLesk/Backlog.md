@@ -158,6 +158,31 @@ Absent scalar fields are `null`, and absent collections are `[]`. Date-only valu
 
 `--json` and `--plain` are mutually exclusive. Explicit JSON mode is always noninteractive, including in a terminal. Without `--json`, existing interactive, explicit plain, and automatic non-TTY plain behavior is unchanged. One-shot errors leave stdout empty, write a concise message to stderr, and exit nonzero. Version 1 may gain backward-compatible fields, but removing, renaming, retyping, or changing documented field semantics requires a new `schemaVersion`.
 
+### Replacing legacy sections without markers
+
+Replacing or clearing an old description, plan, notes, or final summary can be refused when it has no section markers
+and contains another `##` heading. That heading might belong to the section or start a separate section, so Backlog.md
+leaves the file unchanged instead of guessing. Unchanged content and appends remain supported.
+
+For this file-format repair, open the task or draft Markdown file in an editor and add the markers named in the error
+around the intended body. For example, to replace notes while preserving a separate Verification section:
+
+```markdown
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+Old notes
+<!-- SECTION:NOTES:END -->
+
+## Verification
+
+Evidence to keep
+```
+
+Put the end marker after any headings that belong to the notes, or before a heading that starts a separate section.
+Keep all existing content while adding the markers, then retry the edit. The other marker IDs are `DESCRIPTION`,
+`PLAN`, and `FINAL_SUMMARY`.
+
 ### Multi-line input (description/plan/notes/comments/final summary)
 
 The CLI preserves input literally — `\n` sequences are not auto-converted. Use one of the following forms (recommended order for AI agents):
