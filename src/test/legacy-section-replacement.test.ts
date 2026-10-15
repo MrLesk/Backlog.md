@@ -256,6 +256,22 @@ describe("legacy structured section replacement (issue #1110)", () => {
 		}
 	});
 
+	it("preserves safe sequential edits when legacy prose has extra blank lines", () => {
+		for (const section of sections) {
+			for (const gap of ["\n\n\n", "\n\n\n\n"]) {
+				const body = legacyBody.replaceAll("\n\n", gap);
+				const other = section.key === "description" ? sections[2] : sections[0];
+				const original = `${sectionBlock(section, body)}\n\n${sectionBlock(other, "Other content", true)}`;
+				const updated = other.update(original, "Updated content");
+				const appended = section.update(updated, `${body}\n\nAppended`);
+				expect(appended).toContain("PROOF-LINE");
+				expect(appended).toContain("Appended");
+				expect(appended).not.toContain(`<!-- SECTION:${section.marker}:BEGIN -->`);
+				expect(() => section.update(appended, "New content")).toThrow("## Verification");
+			}
+		}
+	});
+
 	it("still refuses a real heading after a code or HTML example", () => {
 		for (const example of [
 			"```\n## Example\n```",
@@ -440,7 +456,7 @@ describe("legacy section refusals before persistence", () => {
 			await Bun.write(
 				taskPath,
 				taskMarkdown(
-					`${sectionBlock(sections[0], "Old description", true)}\n\n${sectionBlock(sections[2], legacyBody)}`,
+					`${sectionBlock(sections[0], "Old description", true)}\n\n${sectionBlock(sections[2], legacyBody.replaceAll("\n\n", "\n\n\n"))}`,
 				),
 			);
 			const server = new McpServer(testDir, "Test instructions");

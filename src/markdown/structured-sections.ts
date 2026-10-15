@@ -803,12 +803,14 @@ function mustKeepLegacySection(key: StructuredSectionKey, body: string, nextBody
 	// CommonMark excludes these raw-text names from complete-tag HTML blocks.
 	// The parser accepts their self-closing forms, so mask the opening delimiter
 	// without changing offsets, lines, or any enclosing code/HTML block.
-	const markdown = body.replace(/^ {0,3}<(?:pre|script|style|textarea)\/>[\t ]*$/gim, (line) => line.replace("<", "x"));
+	const markdown = body.replace(/^ {0,3}<(?:pre|script|style|textarea)\/>[\t ]*$/gim, (line) =>
+		line.replaceAll("<", "x"),
+	);
 	const heading = fromMarkdown(markdown).children.find((node) => node.type === "heading" && node.depth === 2);
 	if (!heading) return false;
 	// Retaining the body is safe, but must not turn an uncertain legacy boundary
 	// into generated markers that would authorize a later destructive edit.
-	if (nextBody.startsWith(body.trim())) return true;
+	if (collapseBlankLines(nextBody).startsWith(collapseBlankLines(body.trim()))) return true;
 	const headingText = body.slice(heading.position?.start.offset, heading.position?.end.offset).split("\n")[0];
 	const { title } = getConfig(key);
 	throw new Error(

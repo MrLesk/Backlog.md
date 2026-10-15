@@ -5,7 +5,7 @@ status: Done
 assignee:
   - '@codex'
 created_date: '2026-10-15 20:59'
-updated_date: '2026-10-15 22:11'
+updated_date: '2026-10-15 22:15'
 labels: []
 dependencies: []
 references:
@@ -60,6 +60,8 @@ Issue #1110 shows that replacing a marker-less description, plan, notes or final
 7. Verify raw-text HTML block endings against CommonMark: any permitted closing raw-text tag ends the block, while a self-closing raw-text tag without intervening whitespace does not start one. Add refusal and valid-example coverage before the final review.
 
 8. Evaluate the latest Codex findings with regressions. Keep ambiguous legacy sections unmarked across unchanged edits and appends, so later replacements remain protected. Correct HTML delimiter, tab-column and blockquote handling, preferably by reusing a complete Markdown parser already available in the runtime. Reconcile recovery documentation with the CLI-only agent workflow. Validate, resolve each review thread and request review of the new head.
+
+9. Preserve safe unchanged/appended legacy sections when an earlier section rewrite normalizes existing extra blank lines. Compare retained bodies using the existing whitespace normalization, add direct and CLI/MCP sequential-edit regressions, and make the raw-tag delimiter mask explicit to avoid the CodeQL escaping warning. Review all findings from the running review before the final push.
 <!-- SECTION:PLAN:END -->
 
 ## Implementation Notes
@@ -80,10 +82,12 @@ Additional HTML verification found two data-loss gaps in the existing raw-text s
 The third review exposed valid Markdown cases and an append-then-replace data-loss path. Replaced the new custom prose scanner with mdast-util-from-markdown, already present through the browser Markdown stack, and declared its existing pinned version directly. The parser handles blockquotes, tab columns, exact HTML delimiters, Setext headings and prior review examples. A narrow offset-preserving mask covers the raw-text self-closing tag exclusion that both tested parsers miss. Ambiguous legacy sections now stay unmarked through appends and unrelated structured edits, preserving protection on later writes. Recovery instructions tell agents to ask the user for marker repair instead of editing record files. Eleven new/expanded regression cases failed before the changes.
 
 Final third-review validation: 174 focused Markdown/CLI/section tests, 64 core tests and 39 MCP tests (277 total) pass; the new file contains 55 regressions. Type checks, Biome, compiled build and compiled CLI/browser/MCP smoke checks pass. Regenerating bun.nix into a temporary file produces identical output. Final simplification replaces more than one hundred lines of new scanner state with the existing CommonMark parser and keeps checklist/whitespace scanners unchanged. CLI and MCP append-plus-unrelated-edit regressions verify that later replacement is refused with byte-identical files.
+
+A final sequential-edit check found that earlier section rewrites normalize extra blank lines before the guard compares an unchanged legacy body. Two regressions failed before normalizing both sides with the existing whitespace helper; they now pass, including CLI/MCP combined edits and later byte-identical refusal. Changed the exact single-delimiter mask to replaceAll to make its intent clear to CodeQL, without changing matched input behavior. Final validation: 175 focused tests, 64 core tests and 39 MCP tests (278 total), 56 new regressions, type checks, Biome, build and compiled CLI/browser/MCP smoke checks pass.
 <!-- SECTION:NOTES:END -->
 
 ## Final Summary
 
 <!-- SECTION:FINAL_SUMMARY:BEGIN -->
-Refuse ambiguous legacy section replacements and explicit clears before persistence across CLI and MCP. Keep ambiguous appends and unchanged sections unmarked so later replacements remain protected. Use the existing CommonMark parser for real top-level headings, preserve Markdown examples, and ask the user to repair marker ownership when necessary. Added 55 regressions and validated 277 related tests, type checks, Biome, build and compiled CLI/browser/MCP smoke checks. The Nix dependency file is unchanged. Initial shared-process suite limitations remain disclosed in the PR.
+Refuse ambiguous legacy section replacements and explicit clears before persistence across CLI and MCP. Keep ambiguous appends and unchanged sections unmarked so later replacements remain protected, including safe combined edits with extra blank lines. Use the existing CommonMark parser for real top-level headings, preserve Markdown examples, and ask the user to repair marker ownership when necessary. Added 56 regressions and validated 278 related tests, type checks, Biome, build and compiled CLI/browser/MCP smoke checks. The Nix dependency file is unchanged. Initial shared-process suite limitations remain disclosed in the PR.
 <!-- SECTION:FINAL_SUMMARY:END -->
