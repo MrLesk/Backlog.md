@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import { lstat, mkdir, readdir, readlink, realpath, rename, symlink } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { $ } from "bun";
+import { CREATE_LOCK_ERROR_MESSAGE } from "../file-system/operations.ts";
 import { Core } from "../index.ts";
 import { serializeTask } from "../markdown/serializer.ts";
 import { getTestCliPath } from "./test-cli.ts";
@@ -73,6 +74,76 @@ describe("backlog task restore", () => {
 		// It can be archived again, and its ID is still its own.
 		expect((await task("archive", "1")).exitCode).toBe(0);
 		expect((await task("create", "Next", "--plain")).stdout).toContain("Task TASK-2 - Next");
+	});
+
+	it("refuses parent deletion when its child tries to restore between corpus enumerations", async () => {
+		const core = new Core(TEST_DIR);
+		const { task: parent } = await core.createTaskFromInput({ title: "Parent" }, false);
+		const { task: child } = await core.createTaskFromInput({ title: "Child", parentTaskId: parent.id }, false);
+		await core.archiveTask(parent.id, false, { includeCrossBranch: false });
+		await core.archiveTask(child.id, false, { includeCrossBranch: false });
+		const parentPath = archivePath("task-1 - Parent.md");
+		const childPath = archivePath("task-1.1 - Child.md");
+		const parentBytes = await Bun.file(parentPath).text();
+		const childBytes = await Bun.file(childPath).text();
+		const restorer = new Core(TEST_DIR);
+		restorer.withCreateLock = (run) => restorer.filesystem.withCreateLock(run, { timeoutMs: 0 });
+		const originalLock = core.withCreateLock.bind(core);
+		const originalActive = core.filesystem.listTasks.bind(core.filesystem);
+		const originalArchived = core.filesystem.listArchivedTasks.bind(core.filesystem);
+		let inAllocator = false;
+		let activeCalls = 0;
+		let archivedCalls = 0;
+		let restoreError: unknown;
+		let activeReady!: () => void;
+		const activeSnapshotReady = new Promise<void>((resolve) => {
+			activeReady = resolve;
+		});
+		core.withCreateLock = (run) =>
+			originalLock(async () => {
+				inAllocator = true;
+				try {
+					return await run();
+				} finally {
+					inAllocator = false;
+				}
+			});
+		core.filesystem.listTasks = async (...args) => {
+			const snapshot = await originalActive(...args);
+			if (inAllocator && ++activeCalls === 3) activeReady();
+			return snapshot;
+		};
+		core.filesystem.listArchivedTasks = async () => {
+			if (inAllocator && ++archivedCalls === 3) {
+				await activeSnapshotReady;
+				// Active is fixed before this actual restore is attempted; archived is read after.
+				try {
+					await restorer.restoreTask(child.id, false, { includeCrossBranch: false });
+				} catch (error) {
+					restoreError = error;
+				}
+			}
+			return await originalArchived();
+		};
+
+		try {
+			await expect(core.deleteTask(parent.id, false, { includeCrossBranch: false })).rejects.toThrow(
+				`Task ${parent.id} cannot be deleted while its subtasks exist: ${child.id}`,
+			);
+		} finally {
+			core.withCreateLock = originalLock;
+			core.filesystem.listTasks = originalActive;
+			core.filesystem.listArchivedTasks = originalArchived;
+		}
+
+		expect((restoreError as Error)?.message).toContain(CREATE_LOCK_ERROR_MESSAGE);
+		expect(await Bun.file(parentPath).text()).toBe(parentBytes);
+		expect(await Bun.file(childPath).text()).toBe(childBytes);
+		expect(await taskFiles("tasks")).toEqual([]);
+		expect(await restorer.restoreTask(child.id, false, { includeCrossBranch: false })).toBe(true);
+		expect(await Bun.file(boardPath("task-1.1 - Child.md")).text()).toBe(childBytes);
+		expect(await Bun.file(childPath).exists()).toBe(false);
+		expect((await task("delete", parent.id)).stderr).toContain(child.id);
 	});
 
 	it("keeps an archived task read-only and names the restore command when it is edited", async () => {

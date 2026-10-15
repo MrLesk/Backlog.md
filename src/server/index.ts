@@ -6,7 +6,7 @@ import { Core, formatCleanupResult, TaskRefusedError } from "../core/backlog.ts"
 import type { ContentStore } from "../core/content-store.ts";
 import { initializeProject } from "../core/init.ts";
 import type { SearchService } from "../core/search-service.ts";
-import { getTaskStatistics, selectStatisticsTasks } from "../core/statistics.ts";
+import { getTaskStatistics } from "../core/statistics.ts";
 import { loadTaskDetail } from "../core/task-detail.ts";
 import { isCreateLockError, isTaskLockError } from "../file-system/operations.ts";
 import { BacklogToolError } from "../mcp/errors/mcp-errors.ts";
@@ -1956,7 +1956,7 @@ export class BacklogServer {
 			const corpusConfig = corpus.config ?? currentConfig;
 			const drafts = await this.core.filesystem.listDrafts();
 			const statuses = (corpusConfig?.statuses || DEFAULT_STATUSES) as string[];
-			const tasks = selectStatisticsTasks(corpus.identityIndex?.getTasks(true) ?? corpus.activeTasks, statuses);
+			const tasks = corpus.identityIndex?.getTasks(true) ?? corpus.activeTasks;
 			const priorities = currentConfig?.priorities ?? corpusConfig?.priorities ?? [];
 
 			// Calculate statistics using the exact same function as CLI

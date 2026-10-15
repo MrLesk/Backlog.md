@@ -200,7 +200,12 @@ describe("Web task popup keyboard shortcuts", () => {
 		],
 	])("shows %s read-only: one banner, no edit, archive or demote control, no edit shortcut", async (_name, overrides, banner) => {
 		let archives = 0;
-		const container = await mountModal({ ...task, ...overrides }, true, {
+		const container = await mountModal({
+			...task,
+			...overrides,
+			acceptanceCriteriaItems: [{ index: 1, text: "Acceptance criterion", checked: false }],
+			definitionOfDoneItems: [{ index: 1, text: "Done item", checked: true }],
+		}, true, {
 			onArchive: () => {
 				archives += 1;
 			},
@@ -216,6 +221,14 @@ describe("Web task popup keyboard shortcuts", () => {
 		expect(event.defaultPrevented).toBe(false);
 		expect(findButton(container, "Save")).toBeUndefined();
 		expect(archives).toBe(0);
+		const checkboxes = Array.from(container.querySelectorAll<HTMLInputElement>("input[type='checkbox']"));
+		expect(checkboxes).toHaveLength(2);
+		for (const checkbox of checkboxes) {
+			expect(checkbox.disabled).toBe(true);
+			const checked = checkbox.checked;
+			await act(async () => checkbox.click());
+			expect(checkbox.checked).toBe(checked);
+		}
 	});
 
 	it("says what archive keeps before running the action, in any status", async () => {

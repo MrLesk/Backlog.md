@@ -1,6 +1,6 @@
 ## Local Development
 
-> **Runtime requirement:** Use the Bun version pinned by CI and `@types/bun`. Bun 1.3.5 fixed the macOS websocket CPU regression tracked in [oven-sh/bun#23536](https://github.com/oven-sh/bun/issues/23536), so local development should stay on current Bun 1.3.x builds or newer rather than the old 1.2.23 workaround.
+> **Runtime requirement:** Use Bun 1.4.3, matching CI, release builds, and the Nix runtime.
 
 Run these commands to bootstrap the project:
 
@@ -14,6 +14,16 @@ Run tests:
 bun run test
 ```
 
+Type-check with Bun's built-in checker:
+
+```bash
+bun run check:types
+```
+
+The script reads `tsconfig.json` and runs `bun --check`. Use that flag for a
+direct check: `bun check` runs the repository's Biome script with the same name.
+TypeScript stays installed for editor support.
+
 Format and lint:
 
 ```bash
@@ -21,6 +31,15 @@ npx biome check .
 ```
 
 For contribution guidelines, see [CONTRIBUTING.md](CONTRIBUTING.md).
+
+## Standalone Builds
+
+`bun run build` produces a standalone executable with ESM bytecode. Bytecode
+reduces parsing work at startup, at the cost of a larger executable. Release
+builds use the same settings for every supported target.
+
+Set `BACKLOG_BUILD_OUTDIR` to emit JavaScript and browser assets instead. Nix
+and integration tests use this bundle path without bytecode compilation.
 
 ## Nix Packaging
 
@@ -45,15 +64,15 @@ Nix files.
 
 The flake is intentionally limited to `x86_64-linux`, `aarch64-linux`, and
 `aarch64-darwin`, which are the systems supported by the current Nixpkgs Bun
-package. On x86_64 Linux, the application runs with the matching official Bun
-baseline runtime to support processors that have AVX but not AVX2. Dependency
-installation, the non-compile bundle build, the development shell, and the
-installed application all select that baseline runtime on x86_64 Linux. The
-Nix install check executes the packaged CLI natively and under QEMU's Ivy
+package. On x86_64 Linux, the application runs with the official Bun 1.4.3
+unified x64 runtime. It requires SSE4.2 and selects CPU-specific paths at
+runtime. Dependency installation, the non-compile bundle build, the development
+shell, and the installed application all use that runtime.
+The Nix install check executes the packaged CLI natively and under QEMU's Ivy
 Bridge CPU model. JSC's JIT is disabled only for the emulated check because it
 is not reliable under QEMU user mode; normal packaged execution keeps JIT
 enabled. A negative control verifies that the same emulated CPU rejects a
-pinned AVX2-only Bun archive before accepting the baseline runtime.
+pinned AVX2-only Bun 1.3.13 archive before accepting the unified runtime.
 
 ## MCP Development Setup
 

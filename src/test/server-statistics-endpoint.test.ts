@@ -6,6 +6,7 @@ import type { ContentStore } from "../core/content-store.ts";
 import { FileSystem } from "../file-system/operations.ts";
 import { BacklogServer } from "../server/index.ts";
 import type { Task } from "../types/index.ts";
+import { getTestCliPath } from "./test-cli.ts";
 import { archiveTaskFile, createUniqueTestDir, safeCleanup } from "./test-utils.ts";
 
 let testDir: string;
@@ -177,6 +178,31 @@ describe("BacklogServer statistics endpoint", () => {
 		expect(activeCorpusLoads).toBe(2);
 		expect(archivedCorpusLoads).toBe(2);
 		expect(legacyStatisticsLoads).toBe(0);
+	});
+
+	it("keeps board work blocked by an unfinished archived dependency without counting that dependency", async () => {
+		await filesystem.saveTask(createTask({ id: "TASK-3", title: "Set aside", priority: "Urgent" }));
+		expect(await archiveTaskFile(filesystem, "TASK-3")).toBe(true);
+		const active = await filesystem.loadTask("TASK-1");
+		if (!active) throw new Error("Expected active task");
+		await filesystem.saveTask({ ...active, dependencies: ["TASK-3"] });
+
+		const stats = await requestStatistics();
+		expect(stats).toMatchObject({
+			totalTasks: 2,
+			completedTasks: 1,
+			completionPercentage: 50,
+			statusCounts: { "To Do": 1, "In Progress": 0, Done: 1 },
+			priorityCounts: { urgent: 1, low: 1 },
+			projectHealth: { blockedTasks: [expect.objectContaining({ id: "TASK-1", dependencies: ["TASK-3"] })] },
+		});
+
+		const overview = await $`bun ${getTestCliPath()} overview`.cwd(testDir).quiet().nothrow();
+		expect(overview.exitCode).toBe(0);
+		const output = overview.stdout.toString();
+		expect(output).toContain("Total Tasks: 2");
+		expect(output).toContain("Completion: 50%");
+		expect(output.split("Blocked Tasks (waiting on dependencies):")[1]?.trim()).toBe("TASK-1 - Statistics task");
 	});
 
 	it("uses fresh priorities without rebuilding the task corpus", async () => {

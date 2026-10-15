@@ -113,41 +113,45 @@ describe.skipIf(isWindows())("auto-commit of record files reached through a symb
 		INTERFACES.flatMap(([via, changeTask]) =>
 			TARGETS.map(([where, targetOf]) => [via, where, changeTask, targetOf] as const),
 		),
-	)("archives, restores and deletes a task as a link through %s when its target is %s", async (_via, _where, changeTask, targetOf) => {
-		await replaceWithCommittedLink(join(TEST_DIR, "backlog", "tasks", TASK_FILE), targetOf("task.md"));
+	)(
+		"archives, restores and deletes a task as a link through %s when its target is %s",
+		async (_via, _where, changeTask, targetOf) => {
+			await replaceWithCommittedLink(join(TEST_DIR, "backlog", "tasks", TASK_FILE), targetOf("task.md"));
 
-		expect(await changeTask("archive")).toEqual({ ok: true, error: "" });
-		expect(await git("log", "-1", "--format=%s")).toBe("backlog: Archive task TASK-1");
-		// The commit holds the link under its new path and the removal of the old one, nothing else.
-		expect(await lastCommit()).toEqual([`A\tbacklog/archive/tasks/${TASK_FILE}`, `D\tbacklog/tasks/${TASK_FILE}`]);
-		expect(await trackedMode(`backlog/archive/tasks/${TASK_FILE}`)).toBe("120000");
-		expect(await git("status", "--porcelain")).toBe("");
+			expect(await changeTask("archive")).toEqual({ ok: true, error: "" });
+			expect(await git("log", "-1", "--format=%s")).toBe("backlog: Archive task TASK-1");
+			// The commit holds the link under its new path and the removal of the old one, nothing else.
+			expect(await lastCommit()).toEqual([`A\tbacklog/archive/tasks/${TASK_FILE}`, `D\tbacklog/tasks/${TASK_FILE}`]);
+			expect(await trackedMode(`backlog/archive/tasks/${TASK_FILE}`)).toBe("120000");
+			expect(await git("status", "--porcelain")).toBe("");
 
-		expect(await changeTask("restore")).toEqual({ ok: true, error: "" });
-		expect(await git("log", "-1", "--format=%s")).toBe("backlog: Restore task TASK-1");
-		expect(await lastCommit()).toEqual([`A\tbacklog/tasks/${TASK_FILE}`, `D\tbacklog/archive/tasks/${TASK_FILE}`]);
-		expect(await trackedMode(`backlog/tasks/${TASK_FILE}`)).toBe("120000");
-		expect(await git("status", "--porcelain")).toBe("");
+			expect(await changeTask("restore")).toEqual({ ok: true, error: "" });
+			expect(await git("log", "-1", "--format=%s")).toBe("backlog: Restore task TASK-1");
+			expect(await lastCommit()).toEqual([`A\tbacklog/tasks/${TASK_FILE}`, `D\tbacklog/archive/tasks/${TASK_FILE}`]);
+			expect(await trackedMode(`backlog/tasks/${TASK_FILE}`)).toBe("120000");
+			expect(await git("status", "--porcelain")).toBe("");
 
-		expect(await changeTask("archive")).toEqual({ ok: true, error: "" });
-		expect(await changeTask("delete")).toEqual({ ok: true, error: "" });
-		expect(await git("log", "-1", "--format=%s")).toBe("backlog: Delete task TASK-1");
-		// Delete removes the link. The file it pointed to is not the task's to remove.
-		expect(await lastCommit()).toEqual([`D\tbacklog/archive/tasks/${TASK_FILE}`]);
-		expect(await git("status", "--porcelain")).toBe("");
-		expect((await lstat(targetOf("task.md"))).isFile()).toBe(true);
-	});
+			expect(await changeTask("archive")).toEqual({ ok: true, error: "" });
+			expect(await changeTask("delete")).toEqual({ ok: true, error: "" });
+			expect(await git("log", "-1", "--format=%s")).toBe("backlog: Delete task TASK-1");
+			// Delete removes the link. The file it pointed to is not the task's to remove.
+			expect(await lastCommit()).toEqual([`D\tbacklog/archive/tasks/${TASK_FILE}`]);
+			expect(await git("status", "--porcelain")).toBe("");
+			expect((await lstat(targetOf("task.md"))).isFile()).toBe(true);
+		},
+	);
 
-	it.each(
-		INTERFACES,
-	)("still commits the file a link points to when a task is edited through %s", async (_via, changeTask) => {
-		await replaceWithCommittedLink(join(TEST_DIR, "backlog", "tasks", TASK_FILE), join(TEST_DIR, "notes", "task.md"));
+	it.each(INTERFACES)(
+		"still commits the file a link points to when a task is edited through %s",
+		async (_via, changeTask) => {
+			await replaceWithCommittedLink(join(TEST_DIR, "backlog", "tasks", TASK_FILE), join(TEST_DIR, "notes", "task.md"));
 
-		// The link itself does not change. The edit lands in the file it points to.
-		expect(await changeTask("append-notes")).toEqual({ ok: true, error: "" });
-		expect(await lastCommit()).toEqual(["M\tnotes/task.md"]);
-		expect(await git("status", "--porcelain")).toBe("");
-	});
+			// The link itself does not change. The edit lands in the file it points to.
+			expect(await changeTask("append-notes")).toEqual({ ok: true, error: "" });
+			expect(await lastCommit()).toEqual(["M\tnotes/task.md"]);
+			expect(await git("status", "--porcelain")).toBe("");
+		},
+	);
 
 	it("commits only the link on the first edit through a link that is not committed yet", async () => {
 		// A known corner of the rule in GitOperations.changedFileLinkPath: the link is new, so the link
@@ -180,25 +184,26 @@ describe.skipIf(isWindows())("auto-commit of record files reached through a symb
 		expect(await git("diff", "--name-only")).toBe(`backlog/tasks/${TASK_FILE}`);
 	});
 
-	it.each(
-		INTERFACES,
-	)("says through %s that the commit failed when the archive folder leads outside the repository", async (_via, changeTask) => {
-		// backlog/archive/tasks is a link to a folder outside the repository. Git tracks the link, not
-		// the files behind it, so the file the archive moves there cannot be committed.
-		const archive = join(OUTSIDE_DIR, "archived-tasks");
-		await mkdir(archive);
-		await rm(join(TEST_DIR, "backlog", "archive", "tasks"), { recursive: true, force: true });
-		await symlink(archive, join(TEST_DIR, "backlog", "archive", "tasks"));
-		await git("add", "-A");
-		await git("commit", "-m", "Link the archive folder");
-		const head = await git("rev-parse", "HEAD");
+	it.each(INTERFACES)(
+		"says through %s that the commit failed when the archive folder leads outside the repository",
+		async (_via, changeTask) => {
+			// backlog/archive/tasks is a link to a folder outside the repository. Git tracks the link, not
+			// the files behind it, so the file the archive moves there cannot be committed.
+			const archive = join(OUTSIDE_DIR, "archived-tasks");
+			await mkdir(archive);
+			await rm(join(TEST_DIR, "backlog", "archive", "tasks"), { recursive: true, force: true });
+			await symlink(archive, join(TEST_DIR, "backlog", "archive", "tasks"));
+			await git("add", "-A");
+			await git("commit", "-m", "Link the archive folder");
+			const head = await git("rev-parse", "HEAD");
 
-		const archived = await changeTask("archive");
+			const archived = await changeTask("archive");
 
-		// The move is done and the interface does not pretend that it was committed.
-		expect(archived.ok).toBe(false);
-		expect(archived.error).toContain("Task TASK-1 was archived, but committing the change failed:");
-		expect(await readdir(archive)).toEqual([TASK_FILE]);
-		expect(await git("rev-parse", "HEAD")).toBe(head);
-	});
+			// The move is done and the interface does not pretend that it was committed.
+			expect(archived.ok).toBe(false);
+			expect(archived.error).toContain("Task TASK-1 was archived, but committing the change failed:");
+			expect(await readdir(archive)).toEqual([TASK_FILE]);
+			expect(await git("rev-parse", "HEAD")).toBe(head);
+		},
+	);
 });
