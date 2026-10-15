@@ -119,7 +119,8 @@ function extractConfigKeyYaml(content: string, key: string): string | undefined 
 			break;
 		}
 
-		collected.push(line);
+		// Keep legacy indented keys readable with Bun's stricter YAML parser.
+		collected.push(line.slice(Math.min(startIndent, indent)));
 	}
 
 	return collected.join("\n");
