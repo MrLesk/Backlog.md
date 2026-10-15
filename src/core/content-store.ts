@@ -437,14 +437,18 @@ export class ContentStore {
 		else this.notify("tasks");
 	}
 
-	transitionTask(taskId: string, archivedTask?: Task): void {
+	/** Publish the complete result of a lifecycle move, or remove the identity when no task remains. */
+	transitionTask(taskId: string, resultingTask?: Task): void {
 		const activeTasks = this.activeTasks.filter((task) => !taskIdsEqual(task.id, taskId));
 		const archivedTasks = this.archivedTasks.filter((task) => !taskIdsEqual(task.id, taskId));
-		if (archivedTask) archivedTasks.push({ ...archivedTask, source: "archived" });
+		if (resultingTask) {
+			const targetTasks = resultingTask.source === "archived" ? archivedTasks : activeTasks;
+			targetTasks.push(resultingTask);
+		}
 		if (
 			activeTasks.length === this.activeTasks.length &&
 			archivedTasks.length === this.archivedTasks.length &&
-			!archivedTask
+			!resultingTask
 		)
 			return;
 		const normalizedId = normalizeTaskId(taskId);
@@ -465,7 +469,7 @@ export class ContentStore {
 	 * Republish one record that stays in the archived corpus, keyed by its file path.
 	 *
 	 * Not {@link transitionTask}: that one clears an identity out of both corpora, which is right
-	 * for a record that just left the active one, but here it would also evict a *different* file
+	 * for archive, restore or removal, but here it would also evict a *different* file
 	 * claiming the same ID. A contested identity must stay contested - dissolving it would let a
 	 * later read report one of the claimants as simply missing - so this touches only the entries
 	 * holding this path, including the active copy the shared save publication writes for any file.

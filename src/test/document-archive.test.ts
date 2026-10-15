@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
-import { chmod, mkdir, readdir, readFile, symlink, writeFile } from "node:fs/promises";
+import { chmod, mkdir, readdir, readFile, rename, symlink, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { Core, DocumentArchivedError, DocumentFileExistsError, RecordRefusedError } from "../core/backlog.ts";
 import { EntityType } from "../types/index.ts";
@@ -298,19 +298,55 @@ describe("archived documents in core and storage", () => {
 		expect(locked).toBe("private/doc-2 - Locked-away.md");
 	});
 
-	it.skipIf(isWindows())("still fails closed for two different links to one document file", async () => {
-		const path = await createDocument("Linked twice");
-		// Two files in the docs folder that are different links to the same target.
-		await symlink(docsPath(path), docsPath("doc-1 - First-link.md"));
-		const before = await readdir(docsPath());
+	it.skipIf(isWindows()).each(["same store", "outside"])(
+		"still fails closed for two different file links to one target in %s",
+		async (where) => {
+			const outside = await createTestDirOutsideRepository("test-document-links-outside");
+			try {
+				const path = await createDocument("Linked twice");
+				const target = where === "outside" ? join(outside, path) : docsPath(path);
+				if (where === "outside") await rename(docsPath(path), target);
+				await symlink(target, docsPath("doc-1 - First-link.md"));
+				await symlink(target, docsPath("doc-1 - Second-link.md"));
+				const before = (await readdir(docsPath())).sort();
 
-		const lookup = await core.getDocument("doc-1").catch((error: unknown) => error);
-		const archive = await core.archiveDocument("doc-1").catch((error: unknown) => error);
+				expect((await core.filesystem.listDocuments()).map((document) => document.path).sort()).toEqual(before);
+				const lookup = await core.getDocument("doc-1").catch((error: unknown) => error);
+				const archive = await core.archiveDocument("doc-1").catch((error: unknown) => error);
 
-		expect(lookup).toBeInstanceOf(AmbiguousIdError);
-		expect(archive).toBeInstanceOf(AmbiguousIdError);
-		expect(await readdir(docsPath())).toEqual(before);
-	});
+				expect(lookup).toBeInstanceOf(AmbiguousIdError);
+				expect(archive).toBeInstanceOf(AmbiguousIdError);
+				expect((await readdir(docsPath())).sort()).toEqual(before);
+			} finally {
+				await safeCleanup(outside);
+			}
+		},
+	);
+
+	it.skipIf(isWindows()).each([false, true])(
+		"keeps store membership for a file link to an opposite-store document (archived: %s)",
+		async (archived) => {
+			const path = await createDocument("Linked across stores", "guides");
+			await mkdir(archivePath(), { recursive: true });
+			if (archived) await core.archiveDocument("doc-1");
+			const target = archived ? archivePath(path) : docsPath(path);
+			const link = archived ? docsPath("alias.md") : archivePath("alias.md");
+			await symlink(target, link);
+
+			expect((await core.filesystem.listDocuments()).map((document) => document.path)).toEqual(archived ? [] : [path]);
+			expect((await core.filesystem.listArchivedDocuments()).map((document) => document.path)).toEqual(
+				archived ? [path] : [],
+			);
+			expect(await core.getDocument("doc-001")).toMatchObject({ id: "doc-1", path });
+			expect((await core.getDocument("1"))?.archived).toBe(archived ? true : undefined);
+			expect((await core.diagnoseContentIdentity()).documents.duplicates).toEqual([]);
+			if (archived) {
+				await expect(core.updateDocumentFromInput({ id: "1", content: "Changed" })).rejects.toBeInstanceOf(
+					DocumentArchivedError,
+				);
+			}
+		},
+	);
 
 	it.skipIf(isWindows())("does not list an archived document as active through a link into the archive", async () => {
 		await createDocument("Stays");

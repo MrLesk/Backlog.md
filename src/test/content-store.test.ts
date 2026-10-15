@@ -12,7 +12,14 @@ import { parseTask } from "../markdown/parser.ts";
 import { serializeDocument, serializeTask } from "../markdown/serializer.ts";
 import type { BacklogConfig, Decision, Document, Task } from "../types/index.ts";
 import { normalizeTaskIdentity } from "../utils/task-path.ts";
-import { createUniqueTestDir, getPlatformTimeout, safeCleanup, sleep, waitUntil } from "./test-utils.ts";
+import {
+	createUniqueTestDir,
+	getPlatformTimeout,
+	initializeFilesystemTestProject,
+	safeCleanup,
+	sleep,
+	waitUntil,
+} from "./test-utils.ts";
 
 let TEST_DIR: string;
 
@@ -486,6 +493,7 @@ describe("ContentStore", () => {
 			...current,
 			status: "Done",
 			filePath: join(filesystem.archiveTasksDir, basename(current.filePath ?? "task-1.md")),
+			source: "archived",
 		});
 		expect(store.getTasks()).toEqual([]);
 		gate.release();
@@ -493,6 +501,48 @@ describe("ContentStore", () => {
 
 		expect(store.getTasks()).toEqual([]);
 		expect(store.getTaskCorpusSnapshot().archivedTasks.map((task) => task.status)).toEqual(["Done"]);
+	});
+
+	it("publishes one complete active state when Core restores an archived task", async () => {
+		store.dispose();
+		const core = new Core(TEST_DIR);
+		await initializeFilesystemTestProject(core, "Restore publication");
+		const boardPath = await core.fs.saveTask(sampleTask);
+		expect(await core.archiveTask(sampleTask.id, false, { includeCrossBranch: false })).toBe(true);
+		store = await core.getContentStore();
+		expect(store.resolveTaskForMutation(sampleTask.id).status).toBe("archived");
+
+		const publications: {
+			tasks: Task[];
+			snapshotTasks: Task[];
+			corpus: TaskCorpusSnapshot;
+			read: ReturnType<ContentStore["resolveTaskForRead"]>;
+			mutation: ReturnType<ContentStore["resolveTaskForMutation"]>;
+		}[] = [];
+		const unsubscribe = store.subscribe((event) => {
+			if (event.type !== "tasks") return;
+			publications.push({
+				tasks: event.tasks,
+				snapshotTasks: event.snapshot.tasks,
+				corpus: store.getTaskCorpusSnapshot(),
+				read: store.resolveTaskForRead(sampleTask.id),
+				mutation: store.resolveTaskForMutation(sampleTask.id),
+			});
+		});
+
+		expect(await core.restoreTask(sampleTask.id, false)).toBe(true);
+		unsubscribe();
+
+		expect(publications).toHaveLength(1);
+		for (const publication of publications) {
+			const restored = { id: "TASK-1", status: sampleTask.status, filePath: boardPath, source: "local" };
+			expect(publication.tasks).toEqual([expect.objectContaining(restored)]);
+			expect(publication.snapshotTasks).toEqual(publication.tasks);
+			expect(publication.corpus.activeTasks).toEqual(publication.tasks);
+			expect(publication.corpus.archivedTasks).toEqual([]);
+			expect(publication.read).toMatchObject({ status: "found", task: restored });
+			expect(publication.mutation).toMatchObject({ status: "found", task: restored });
+		}
 	});
 
 	it("preserves duplicate working-copy identities across a local corpus refresh", async () => {

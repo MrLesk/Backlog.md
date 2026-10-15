@@ -125,7 +125,8 @@ function extractConfigKeyYaml(content: string, key: string): string | undefined 
 			break;
 		}
 
-		collected.push(line);
+		// Keep legacy indented keys readable with Bun's stricter YAML parser.
+		collected.push(line.slice(Math.min(startIndent, indent)));
 	}
 
 	return collected.join("\n");
@@ -1249,50 +1250,49 @@ export class FileSystem {
 		}
 	}
 
+	// Core's vacated-ID cleanup owns the task, draft and allocator locks for this move and its cleanup.
 	async demoteTask(taskId: string, onMoved?: (fromPath: string, toPath: string) => void): Promise<boolean> {
-		return await this.withCreateLock(async () => {
-			// Load the task. A missing task is the only false result; filesystem failures must reach
-			// callers so the Web API can distinguish an operational failure from a 404.
-			const task = await this.loadTask(taskId);
-			if (!task?.filePath) return false;
+		// Load the task. A missing task is the only false result; filesystem failures must reach
+		// callers so the Web API can distinguish an operational failure from a 404.
+		const task = await this.loadTask(taskId);
+		if (!task?.filePath) return false;
 
-			// Generate new draft ID
-			// Draft prefix is always "draft" (not configurable like task prefix)
-			const config = await this.loadConfig();
-			const newDraftId = generateNextId(await this.listOccupiedDraftIds(), "draft", config?.zeroPaddedIds);
+		// Generate new draft ID
+		// Draft prefix is always "draft" (not configurable like task prefix)
+		const config = await this.loadConfig();
+		const newDraftId = generateNextId(await this.listOccupiedDraftIds(), "draft", config?.zeroPaddedIds);
 
-			// Update task with new draft ID and save as draft. The record's own links are cleaned of
-			// the task ID it vacates here: carried into the draft, such a link would rebind to
-			// whatever task is allocated that ID next.
-			const demotedDraft: Task = {
-				...(withoutVacatedTaskLinks(task, task.id) ?? task),
-				id: newDraftId,
-				// The path must be cleared so the save writes a new file. Left set, the save would take
-				// over the source file, and removing the source afterwards would delete the only copy.
-				filePath: undefined,
-			};
+		// Update task with new draft ID and save as draft. The record's own links are cleaned of
+		// the task ID it vacates here: carried into the draft, such a link would rebind to
+		// whatever task is allocated that ID next.
+		const demotedDraft: Task = {
+			...(withoutVacatedTaskLinks(task, task.id) ?? task),
+			id: newDraftId,
+			// The path must be cleared so the save writes a new file. Left set, the save would take
+			// over the source file, and removing the source afterwards would delete the only copy.
+			filePath: undefined,
+		};
 
-			const savedPath = await this.saveDraft(demotedDraft);
+		const savedPath = await this.saveDraft(demotedDraft);
 
-			// Delete old task file. If that fails, remove the newly written draft so a retry cannot
-			// encounter two copies of the task.
+		// Delete old task file. If that fails, remove the newly written draft so a retry cannot
+		// encounter two copies of the task.
+		try {
+			await unlink(task.filePath);
+		} catch (error) {
 			try {
-				await unlink(task.filePath);
-			} catch (error) {
-				try {
-					await unlink(savedPath);
-				} catch (cleanupError) {
-					const failure = error instanceof Error ? error : new Error(String(error));
-					(failure as Error & { demotionState?: string }).demotionState = "partial";
-					failure.cause = cleanupError;
-					throw failure;
-				}
-				throw error;
+				await unlink(savedPath);
+			} catch (cleanupError) {
+				const failure = error instanceof Error ? error : new Error(String(error));
+				(failure as Error & { demotionState?: string }).demotionState = "partial";
+				failure.cause = cleanupError;
+				throw failure;
 			}
-			onMoved?.(task.filePath, savedPath);
+			throw error;
+		}
+		onMoved?.(task.filePath, savedPath);
 
-			return true;
-		});
+		return true;
 	}
 
 	// Draft operations
@@ -1629,7 +1629,7 @@ export class FileSystem {
 	 * two links until a test timed out, but only inside the full test suite. In a fresh process the
 	 * same scan returns at once, so that is not the reason given here.)
 	 *
-	 * A folder inside `otherDocumentsDir` is left to the listing of that folder. A link that leads
+	 * A file or folder inside `otherDocumentsDir` is left to the listing of that folder. A link that leads
 	 * from one document folder into the other therefore changes nothing about which documents are
 	 * archived. No file is dropped from both listings this way: when the two folders are one folder,
 	 * or `directory` lies inside the other one, nothing is left out here.
@@ -1671,6 +1671,8 @@ export class FileSystem {
 				if (entry.name.startsWith(".")) continue;
 				const relativePath = relativeFolder ? `${relativeFolder}/${entry.name}` : entry.name;
 				const path = join(folder, entry.name);
+				const linkTarget = entry.isSymbolicLink() ? await realpath(path).catch(() => null) : null;
+				if (linkTarget && foreignDirectory && isWithinDirectory(foreignDirectory, linkTarget)) continue;
 				// A link counts as what it points to. A link whose target is missing is neither a file
 				// nor a folder.
 				const kind = entry.isSymbolicLink() ? await stat(path).catch(() => null) : entry;
@@ -1678,9 +1680,7 @@ export class FileSystem {
 					if (entry.name.endsWith(".md")) files.push(relativePath);
 				} else if (kind?.isDirectory()) {
 					const leadsInside =
-						entry.isSymbolicLink() &&
-						realDirectory !== null &&
-						isWithinDirectory(realDirectory, await realpath(path).catch(() => path));
+						entry.isSymbolicLink() && realDirectory !== null && isWithinDirectory(realDirectory, linkTarget ?? path);
 					if (!leadsInside) foldersToRead.push(relativePath);
 				}
 			}
