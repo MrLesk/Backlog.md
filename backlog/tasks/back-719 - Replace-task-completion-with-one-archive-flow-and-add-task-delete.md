@@ -1,11 +1,11 @@
 ---
 id: BACK-719
 title: Replace task completion with one archive flow
-status: In Progress
+status: Done
 assignee:
   - '@codex-719'
 created_date: '2026-10-11 10:42'
-updated_date: '2026-10-15 20:40'
+updated_date: '2026-10-15 20:48'
 labels:
   - bug
 dependencies: []
@@ -287,29 +287,26 @@ A folder that cannot be read (verified, not changed). The finding was that an ar
 Statistics and a custom final status (facts, not changed). `getTaskStatistics` in src/core/statistics.ts compares the status with the literal "Done" in five places (completed count, task age, stale tasks, blocked tasks and their dependencies). This stack did not touch that function; `main` has the same five literals. What this stack changed is the selection: `main` counts board tasks plus the tasks in `completed/`, this stack counts board tasks plus archived tasks in the final status. For a project with the statuses Open and Closed, one open task on the board and one Closed task taken off the board, `backlog overview` prints the same on `main` (after `task complete`) and on this stack (after `task archive`): Open 1, Closed 1, Total Tasks 2, Completion 0%. With the default statuses both print Completion 50%. So a custom final status was not counted as completed before this stack either, on or off the board.
 
 Verification: `bunx tsc --noEmit` and `bun run check .` are clean; the scoped tests pass (15 files, 367 tests).
+
+Approved PR repair completed (2026-10-15, @codex-719). Integrated current main b819e8bf, including merged BACK-732 creation safety and the Bun 1.4.3 toolchain. The four merge conflicts retained accepted archive behavior and main's creation safety; no later stack task was started.
+
+Three supported findings repaired in their existing owners: previewArchivedTaskMove resolves the intended destination through its nearest existing ancestor plus missing suffix using a private local helper; getArchivedTaskLocations remains existing-source enumeration. Both AC and DoD preview checkboxes use disabled={isReadOnly}, retaining core refusal. getTaskStatistics selects only counted records internally and resolves dependencies from the full identity corpus passed by both callers; the redundant selector export/imports are removed. The pre-existing literal Done behavior for custom final statuses is unchanged.
+
+Objective proof: the missing-child preview regression failed before the destination fix; the rendered DOM checkbox cases failed for archived and other-branch tasks before disabling the controls; the HTTP health case failed before the statistics fix. After repair, five focused suites passed (87 tests) and 21 integration suites passed (363 tests), covering CLI, MCP, HTTP, browser DOM, TUI archive helpers, archive ID allocation, atomic create/edit, and BACK-732 creation safety. The statistics endpoint regression also drives the CLI overview and verifies the active task remains blocked while the unfinished archived dependency is excluded from totals and priorities. Doctor tests cover the direct missing-child preview without mutation, existing-source enumeration, CLI disclosure, and the confirmed byte-preserving move. CLI startup creates archive subfolders before doctor runs, so the direct preview test supplies the missing-child regression proof.
+
+Verified runtime/tools: Bun 1.4.3 and Biome 2.5.15. Canonical bun run check:types passed (543 files); bun run check . passed (440 files); bun run build passed. The compiled binary smoke passed in isolated temporary projects for archive in every status, unchanged incoming record bytes, reserved IDs, archived read-only refusal, complete removal, blocked CLI overview, MCP over stdio, and linked-parent doctor disclosure/move. The initial sandbox doctor run could not finish its repair child processes; it was stopped and all five focused suites passed with required local process/HTTP access. No full-suite claim is made for this repair.
+
+Task-scoped subtraction pass: no added layer, public helper, flag, or unrelated behavior; archived read-source enumeration and literal Done checks unchanged. Two older archive test blocks were reformatted for integrated Biome. Full-context architecture review returned KEEP with no blocker, no new decision, and no further task-scoped simplification. Local BACK-767 remains preserved at a017677f. All five original AC items and all three DoD items remain supported by the current checks, DOM interactions, shipped CLI/MCP smoke, and existing lifecycle suites.
 <!-- SECTION:NOTES:END -->
 
 ## Final Summary
 
 <!-- SECTION:FINAL_SUMMARY:BEGIN -->
-Completion is removed and Archive is the one way to take a task off the board (issue #1064, a deliberate breaking change).
+Replaced Complete with one archive flow for CLI, MCP, browser and TUI. Archive accepts any task status, keeps the record, ID and incoming links, reserves archived IDs, and leaves archived records read-only. A final status alone satisfies dependencies. Cleanup archives; doctor reports and migrates leftover completed records.
 
-What changed
-- `backlog task archive <id>` works in every status, including the final one. The archived task keeps its ID, its record and every link other tasks hold to it, no other task is rewritten, and the ID is never handed out again (working copy, sibling worktrees and scanned branches).
-- `backlog task complete`, the MCP `task_complete` tool, the HTTP complete route, the web "Move to completed" button and the TUI C key are gone. Running `backlog task complete` exits non-zero with one line saying the command was removed and to use `backlog task archive <id>`; it is not an alias, archives nothing and is absent from help and shell completion. `backlog cleanup` keeps its name and archives.
-- Every interface runs the same core function: archive is `Core.archiveTask` for the CLI, MCP, HTTP and TUI, and cleanup is `Core.archiveTerminalStatusTasks` for the CLI and the browser, which archives exactly the tasks the caller selected and showed: a task that starts matching while the confirmation is open stays on the board, and a selected task that has left the board or the final status is skipped with the reason. The CLI, MCP and HTTP adapters hold no rule of their own. The TUI and the browser ask the shared read-only predicate before they offer the action, and core decides again when the action runs.
-- A task that exists only on another branch is refused by core with one message ("Task X exists only on branch \"b\" and is read-only here. Switch to that branch to change it."), which MCP and HTTP report exactly as they report the archived refusal; the CLI reads the working copy only and keeps its not-found line with the hint. An ID nobody claims reads "Task X not found." on every interface. Every task file move goes through one no-replace move, so archiving never overwrites a file already in the archive, and a move that fails leaves the task as one file where it was. With auto-commit off nothing is staged, by archive or by cleanup, on any interface.
-- Archived tasks are read-only everywhere through one core rule and one error ("Task X is archived. Archived tasks are read-only."). Task detail and MCP search output mark them as archived; the web modal and the TUI show the read-only banner and refuse edit and archive keys before asking anything.
-- Finished means the final status only. An archived dependency satisfies its dependents only when it is in the final status, and statistics count board tasks plus archived tasks in the final status.
-- Existing data: a leftover `completed/` folder is read as part of the archive. `backlog doctor` reports it and exits 0, and `--fix` moves it into `archive/tasks` without changing IDs or replacing files; when that folder, or the archive folder the files are moved into, is a link to a directory outside the backlog directory, the report names the real directory before anything is moved; an ID that two records claim is reported and repaired there, and fails closed until then.
-- Help, README, CLI-INSTRUCTIONS and the shipped CLI and MCP guides describe the single archive flow.
+Integrated current main and repaired the three accepted review findings: doctor discloses a linked destination even when its tasks child is missing; read-only AC and DoD checkboxes are disabled; statistics exclude unfinished archived work from aggregates while keeping active dependents blocked.
 
-Verification
-- `bunx tsc --noEmit` and `bun run check .` are clean; `bun run test` has no failing test (the command still exits 1 because of the unchanged list-window test file, as on main).
-- A scripted end-to-end run of every acceptance criterion against the built CLI (CLI, MCP over stdio, HTTP), a pseudo-terminal run of the TUI keys, and a browser session of the web controls.
+Validation: 87 focused tests, 363 integration tests, canonical Bun type check, Biome, build, and compiled CLI/MCP/doctor smoke passed. Rendered DOM tests exercise both read-only checkbox groups. Contextual architecture review returned KEEP without blockers; the subtraction pass found no extra task-scoped simplification.
 
-Follow-ups and risks
-- Scripts or agents that call `task complete` or `task_complete` must switch to archive.
-- Deleting an archived task is BACK-730, restoring one is BACK-731, and the non-interactive cleanup failure is BACK-720.
-- Left for review: the Groma descriptions of backlog-folder, task-details, file-storage, terminal-widgets, core and mcp-tools still mention completed storage or `task_complete`.
+The existing custom-final-status statistics limitation is unchanged. Delete, restore, later lifecycle layers, and architecture-description curation remain outside this task.
 <!-- SECTION:FINAL_SUMMARY:END -->

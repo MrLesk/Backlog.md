@@ -120,7 +120,6 @@ import {
 	resolveOrdinalConflicts,
 } from "./reorder.ts";
 import { SearchService } from "./search-service.ts";
-import { selectStatisticsTasks } from "./statistics.ts";
 import { TaskIdentityIndex, type TaskIdentityRecord } from "./task-identity-index.ts";
 import {
 	BranchTaskLoader,
@@ -4300,7 +4299,7 @@ export class Core {
 		const statuses = (config?.statuses || DEFAULT_STATUSES) as string[];
 		const priorities = config?.priorities ?? [];
 		if (!snapshot.identityIndex) throw new Error("Task corpus identity index was not initialized");
-		const tasks = selectStatisticsTasks(snapshot.identityIndex.getTasks(true), statuses);
+		const tasks = snapshot.identityIndex.getTasks(true);
 
 		// Load drafts
 		progressCallback?.("Loading drafts...");
