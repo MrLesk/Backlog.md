@@ -94,6 +94,46 @@ describe("TaskIdentityIndex", () => {
 		expect(index([branchB, branchA]).getTasks()[0]?.title).toBe("Branch A");
 	});
 
+	it("prefers a more progressed branch task over the working copy", () => {
+		const workingCopy: TaskIdentityRecord = {
+			id: "BACK-1",
+			type: "task",
+			branch: "local",
+			path: "backlog/tasks/back-1 - Shared.md",
+			lastModified: new Date("2026-08-01T10:00:00Z"),
+			task: { ...task("Working copy"), status: "To Do" },
+			workingCopy: true,
+		};
+		const branchRecord: TaskIdentityRecord = {
+			...workingCopy,
+			branch: "feature/progressed",
+			task: { ...task("Progressed branch"), status: "In Progress" },
+			workingCopy: false,
+		};
+
+		expect(index([workingCopy, branchRecord]).getTasks()[0]?.title).toBe("Progressed branch");
+	});
+
+	it("prefers the working copy when task progress is equal", () => {
+		const workingCopy: TaskIdentityRecord = {
+			id: "BACK-1",
+			type: "task",
+			branch: "local",
+			path: "backlog/tasks/back-1 - Shared.md",
+			lastModified: new Date("2026-08-01T10:00:00Z"),
+			task: task("Working copy"),
+			workingCopy: true,
+		};
+		const branchRecord: TaskIdentityRecord = {
+			...workingCopy,
+			branch: "feature/equal",
+			task: task("Branch copy"),
+			workingCopy: false,
+		};
+
+		expect(index([branchRecord, workingCopy]).getTasks()[0]?.title).toBe("Working copy");
+	});
+
 	it("orders tasks by numeric id segments so BACK-1.2 precedes BACK-1.11", () => {
 		const ids = Array.from({ length: 11 }, (_, position) => `BACK-1.${position + 1}`);
 		const records: TaskIdentityRecord[] = [...ids].reverse().map((id) => ({

@@ -128,13 +128,13 @@ function selectTaskRecord(
 ): TaskIdentityRecord | undefined {
 	const candidates = records.filter((record) => record.task);
 	return [...candidates].sort((left, right) => {
-		if (Boolean(left.workingCopy) !== Boolean(right.workingCopy)) {
-			return left.workingCopy ? -1 : 1;
-		}
 		if (strategy === "most_progressed") {
 			const leftRank = Math.max(0, statuses.indexOf(left.task?.status ?? ""));
 			const rightRank = Math.max(0, statuses.indexOf(right.task?.status ?? ""));
 			if (leftRank !== rightRank) return rightRank - leftRank;
+		}
+		if (Boolean(left.workingCopy) !== Boolean(right.workingCopy)) {
+			return left.workingCopy ? -1 : 1;
 		}
 		const timeDifference = right.lastModified.getTime() - left.lastModified.getTime();
 		if (timeDifference !== 0) return timeDifference;
