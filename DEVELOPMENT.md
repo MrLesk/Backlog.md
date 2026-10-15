@@ -22,6 +22,15 @@ npx biome check .
 
 For contribution guidelines, see [CONTRIBUTING.md](CONTRIBUTING.md).
 
+## Standalone Builds
+
+`bun run build` produces a standalone executable with ESM bytecode. Bytecode
+reduces parsing work at startup, at the cost of a larger executable. Release
+builds use the same settings for every supported target.
+
+Set `BACKLOG_BUILD_OUTDIR` to emit JavaScript and browser assets instead. Nix
+and integration tests use this bundle path without bytecode compilation.
+
 ## Nix Packaging
 
 The flake uses bun2nix v2 to turn the repository's `bun.lock` into an offline
