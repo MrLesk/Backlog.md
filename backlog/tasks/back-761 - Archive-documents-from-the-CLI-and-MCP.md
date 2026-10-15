@@ -3,9 +3,9 @@ id: BACK-761
 title: Archive documents from the CLI and MCP
 status: Done
 assignee:
-  - '@claude'
+  - '@codex-761'
 created_date: '2026-10-13 18:46'
-updated_date: '2026-10-14 04:44'
+updated_date: '2026-10-15 22:08'
 labels:
   - enhancement
 dependencies:
@@ -155,6 +155,10 @@ First of four stacked tasks for issue #1101 (branch tasks/back-761-archive-docum
 9. Verification: tsc, biome, the changed and related test files one at a time, the full suite, and a scripted end-to-end run of every acceptance criterion against a binary built from this branch (CLI and MCP over stdio) in private mktemp projects.
 
 10. Review round. (a) The folder walk no longer follows a link to a folder inside the document folder, so a document is listed under the folder it is really in whatever the link is called; a folder outside is still read once. (b) The shared Git helper stages a record file that is a link as the link when the link is new or changed in Git, so a moved link is committed; an unchanged link still stands for the file it points to, so an edit through it commits that file. (c) One error type, `ChangeNotCommittedError`, carries the sentence for a change whose commit failed, for task archive, restore and delete and for document archive, and `runCoreOperation` turns it into the MCP error. (d) The comment on the walk states the reason that holds for not using a glob.
+
+Approved repair refresh (2026-10-16): Merge exact repaired BACK-765 parent 986b3464df238e5795d35cb0f814e5edcb55d2d8 without rewriting existing commits. Preserve its bounded task/draft/allocator locking, shared move path, one content-store publication, and applied-deletion error mapping. Add red-to-green coverage for file links across active/archive document stores in both directions, while preserving distinct file links, folder rules, loops, ambiguity, archive/read-only behavior, ID reservation, source creation safety and linked commits. Reuse findDocumentFiles existing opposite-store membership check before including file links. Run affected document and inherited regression suites, canonical checks/build, and compiled CLI/MCP probes. Perform a subtraction pass and hold this task In Progress with stable code for the full-context architecture review before finalization, commit or push.
+
+Final review gate: full-context architecture review returned KEEP. Complete independent verification, record the proof, verify the existing acceptance criteria and DoD, then commit the reviewed merge and protected-push only this existing branch.
 <!-- SECTION:PLAN:END -->
 
 ## Implementation Notes
@@ -205,36 +209,33 @@ Split after the second review. The Git staging rule for a moved file that is a l
 What stays here: document archive throws ChangeNotCommittedError; runCoreOperation catches RecordRefusedError (renamed here from TaskRefusedError) and the document tool handlers use it; the comments of ChangeNotCommittedError and moveWithoutReplacing speak of tasks and documents. src/test/cli-linked-record-commit.test.ts became src/test/linked-record-commit.test.ts in BACK-765, which drives the CLI and MCP with task files; this branch adds its document tests there (archive as a link with the target inside and outside the repository, an edit through a committed link, a document in a linked folder). src/test/commit-failure-after-change.test.ts comes from BACK-765 with the task cases; this branch adds backlog doc archive, document_archive and the core error for a document. The modified-file list no longer holds src/git/operations.ts, src/mcp/tools/tasks/handlers.ts and src/test/cli-linked-record-commit.test.ts, and holds src/test/linked-record-commit.test.ts.
 
 Checks after the split: bunx tsc --noEmit and bun run check . clean. One file at a time: linked-record-commit 15, commit-failure-after-change 10, cli-doc-archive 35, document-archive 37, mcp-document-archive 10, server-document-archive 3, mcp-server 15, content-identity 13, docs-recursive 3, no failures. bun run test: 3,117 pass, 8 skip, 1 fail across 302 files; the one failure is the content-store watcher test that fails now and then on the base too (publishes watched distinct-path local creation with the refreshed branch collision identity), and src/test/content-store.test.ts then passed on its own (67 pass). The end-to-end CLI and MCP scripts and the link probe were run again against a binary built from this branch, with the same results as before the split.
+
+Approved repair refresh (2026-10-16): Integrated exact repaired BACK-765 parent 986b3464df238e5795d35cb0f814e5edcb55d2d8 as a merge without rewriting existing commits. Resolved three integration conflicts: task archive and restore keep the parent's complete task-to-allocator locking spans and one transitionTask publication, and use the existing shared moveRecordFile helper; runCoreOperation keeps RecordRefusedError, ChangeNotCommittedError and TaskDeletionAppliedError handling; linked-record tests keep the parent's task cases and this task's document cases.
+
+Repaired findDocumentFiles by resolving each symbolic-link target once and checking the existing foreignDirectory/isWithinDirectory authority before either file inclusion or folder traversal. An active-store file link into the archive cannot publish an archived document as active, and an archive-store file link into active docs cannot make it archived or falsely ambiguous. No target-based file deduplication was added. Existing folder shortcuts, shortest external-folder paths, loop termination, equal/nested-store behavior, distinct file links, real duplicate ambiguity and source creation protection are preserved.
+
+Red-to-green proof: the two new core store-membership cases failed in both directions before the repair, and the new CLI cross-store list/search/lookup case exposed the archived document in active output before the repair. All now pass. Strengthened the distinct-file-link regression for two separate links to the same same-store or external target; both remain listed and ambiguous. Test snapshots compare directory entries in sorted order because readdir order is not stable.
+
+Verification of the reviewed source/test bytes:
+- bun run check:types: no type errors in 553 files.
+- bun run check .: clean, 450 files.
+- bun run build: passed; built dist/backlog.
+- Affected document filesystem/Core/CLI/MCP/HTTP/identity/search/ID/link-commit suites: 364 pass, 0 fail across 22 files.
+- Inherited task/draft/allocator locking, applied-deletion, single-publication, archive/restore and content-store regressions: 227 pass, 0 fail across 10 files.
+- BACK-732 source creation safety, atomic task create and Core: 103 pass, 0 fail across 3 files.
+- Total: 694 pass, 0 fail across 35 files.
+- CLI interactive tests use env -u NO_COLOR TERM=xterm-256color. The inherited viewer test is unchanged; the shell's default TERM=dumb and NO_COLOR=1 suppress cursor gaps, which caused its first attempt to fail. It passes with normal terminal capabilities.
+- Compiled dist/backlog probes in isolated temporary projects passed through both CLI and MCP over stdio: archive and view ID aliases; reciprocal file links across stores; active list/search exclusion; archived read-only refusals; archived ID reservation; archive of a relative file link with the external target unchanged.
+- git diff --check and cached diff check are clean. Subtraction pass found no further layer or helper to remove: one existing store-boundary authority and one target resolution serve files and folders.
+Full-context architecture review returned KEEP with no new scope or required source changes. No document update lock was added; restore/delete and web archive controls remain later tasks.
 <!-- SECTION:NOTES:END -->
 
 ## Final Summary
 
 <!-- SECTION:FINAL_SUMMARY:BEGIN -->
-`backlog doc archive <docId>` and the MCP tool `document_archive` move a document to `backlog/archive/docs/` under the same relative path. The archived document keeps its ID, stays viewable, is read-only, and leaves lists and search. This is the first step of the two-step removal ruled for issue #1101; delete and restore follow in BACK-762. The task builds on BACK-765, which commits a moved record file that is a link as the link and reports a commit that failed after archive, restore or delete in one sentence.
+Documents can be archived through backlog doc archive and document_archive while keeping their IDs, view access, read-only protection and original file bytes. The repaired listing applies the existing opposite-store boundary to file links as well as folder links, so a link cannot make an archived document appear active or falsely ambiguous. Distinct file links and real duplicate IDs still fail closed, and folder paths and loops keep their existing rules.
 
-What changed
-- One core operation, `Core.archiveDocument`, called by the CLI and by MCP. It moves the file unchanged with the never-replace move task archive uses, through the helper task archive and task restore share (now `moveRecordFile`). A file already at the destination is never replaced; the archive is refused and names that file.
-- A document ID is resolved over the docs folder and the archive together. An ID that more than one file claims fails closed for archive, view and update, and the message names each file by its path from the project root. `backlog doctor` reports such an ID as a duplicate and names both files.
-- The archived ID stays reserved: by frontmatter ID, by the number in the file name, and in the committed files of other branches.
-- An archived document is read-only. `backlog doc update`, `document_update` and `PUT /api/docs/<id>` refuse it with "Document X is archived. Archived documents are read-only." and change no file.
-- `backlog doc view`, the interactive viewer and `document_view` show an archived document under the line "This document is archived and read-only.".
-- Archive changes no task and no draft. It prints the tasks, archived tasks and drafts whose `documentation` list names the moved file.
-- The document listing walks the folders itself. A folder inside the document folder is read under its own path and never through a link, and a folder outside it is read once. A link loop ends, a link no longer makes an ID ambiguous, and a document keeps the path of the folder it is really in.
-- With auto-commit on, a document file that is a link is committed as the link, with the link target inside or outside the repository, and a document archive whose commit fails says "Document X was archived, but committing the change failed: <reason>" on the CLI and through MCP.
-- Help, CLI-INSTRUCTIONS.md, the task-execution guide, the agent guidelines and the MCP guides describe archiving. No TUI control, no web control and no HTTP route is added.
+The branch includes the exact repaired BACK-765 parent without rewriting earlier commits. Task archive/restore locking spans, one content-store publication, applied-deletion error handling, source creation safety and linked-record commits remain intact.
 
-Verification
-- `bunx tsc --noEmit` and `bun run check .` are clean. `bun run test`: 3,117 pass, 8 skip, 1 fail across 302 files; the one failure is the content-store watcher test that fails now and then on the base too (publishes watched distinct-path local creation with the refreshed branch collision identity), and src/test/content-store.test.ts then passed on its own (67 pass).
-- src/test/cli-doc-archive.test.ts drives the CLI for every acceptance criterion; the MCP, HTTP, core and storage tests cover the same rules. src/test/linked-record-commit.test.ts and src/test/commit-failure-after-change.test.ts hold the document cases of the BACK-765 behavior.
-- A scripted end-to-end run against a binary built from this branch covered every acceptance criterion through the CLI and through MCP over stdio.
-
-Choices to confirm
-- The view line and its place above the document; the wording of the refusal for a taken destination, which names the file from the project root; the ambiguity message, which now names files from the project root.
-- The document listing changed for every reader: a link to a folder inside the docs folder is not followed, and a subfolder that cannot be read is reported.
-- `document_archive` returns the confirmation and the line of tasks and drafts, not the document.
-
-Known gaps
-- No update lock for documents (BACK-736). No restore or delete until BACK-762. The web page still offers Edit for an archived document opened by its URL; its save is refused.
-- With auto-commit on, a document inside a linked folder that leads outside the repository is moved and the commit then fails with the sentence above and exit 1, because Git cannot track a file beyond a link.
-- The watcher tests in src/test/content-store.test.ts fail now and then, on the base as often as on this branch.
+Verification: 694 tests pass across 35 affected files; canonical type, Biome and build checks pass. Compiled CLI and MCP stdio probes pass for archive/read-only/alias lookup, store links, ID reservation and unchanged external link targets. The unchanged interactive viewer test passes with normal terminal capabilities. Full-context architecture review: KEEP. Documents still have no update lock; restore/delete and web archive controls remain out of scope.
 <!-- SECTION:FINAL_SUMMARY:END -->

@@ -244,6 +244,37 @@ describe("archived task folders", () => {
 			expect((await previewArchivedTaskMove(core)).linkedDestination).toBeUndefined();
 		});
 
+		it("names the intended destination when the tasks child of a linked archive parent is missing", async () => {
+			const outside = join(testDir, "shared-archive");
+			await mkdir(outside, { recursive: true });
+			const archiveParent = join(core.filesystem.backlogDir, "archive");
+			await safeCleanup(archiveParent);
+			await symlink(outside, archiveParent, "junction");
+			const fileName = "task-6 - Finished.md";
+			const source = await writeTask(completedFolder, fileName, makeTask("TASK-6", "Finished"));
+			const content = await Bun.file(source).text();
+
+			const preview = await previewArchivedTaskMove(core);
+
+			expect(preview.linkedDestination).toEqual({
+				directory: "backlog/archive/tasks",
+				realDirectory: join(await realpath(outside), "tasks"),
+			});
+			expect(await readdir(outside)).toEqual([]);
+			expect(await Bun.file(source).text()).toBe(content);
+			// A future write destination is not an existing archived read source.
+			expect((await core.filesystem.getArchivedTaskLocations()).map(({ directory }) => directory)).toEqual([
+				completedFolder,
+			]);
+
+			const moved = await moveArchivedTasks(core);
+
+			expect(moved.moves).toEqual(preview.moves);
+			expect(await Bun.file(join(outside, "tasks", fileName)).text()).toBe(content);
+			expect(await Bun.file(source).exists()).toBe(false);
+			expect(await archivedIds()).toEqual(["TASK-6"]);
+		});
+
 		it("does not name an archive folder that is a link to a directory inside the backlog directory", async () => {
 			const inside = join(core.filesystem.backlogDir, "kept-archive");
 			await mkdir(inside, { recursive: true });

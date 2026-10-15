@@ -1,5 +1,5 @@
 import { copyFile, lstat, mkdir, open, readlink, realpath, symlink, unlink } from "node:fs/promises";
-import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
+import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { buildGlobPattern } from "../utils/prefix-config.ts";
 import type { Core } from "./backlog.ts";
 import { findLocalDuplicateTaskIds, installFileNoReplace } from "./duplicate-task-repair.ts";
@@ -22,7 +22,7 @@ export interface ArchivedTaskMovePlan {
 	 */
 	linkedSources: Array<{ directory: string; realDirectory: string }>;
 	/**
-	 * Set when there are files to move and the archive folder itself is a link to a directory
+	 * Set when there are files to move and the archive folder resolves to a directory
 	 * outside the backlog directory: the move puts the files into that directory.
 	 */
 	linkedDestination?: { directory: string; realDirectory: string };
@@ -37,12 +37,24 @@ function isOutside(directory: string, path: string): boolean {
 	return fromDirectory === ".." || fromDirectory.startsWith(`..${sep}`) || isAbsolute(fromDirectory);
 }
 
+/** Resolve a future folder through its nearest existing ancestor without creating anything. */
+async function resolveDestinationDirectory(directory: string): Promise<string> {
+	try {
+		return await realpath(directory);
+	} catch (error) {
+		if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+		const parent = dirname(directory);
+		if (parent === directory) throw error;
+		return join(await resolveDestinationDirectory(parent), basename(directory));
+	}
+}
+
 /**
  * List the archived task files that live outside the archive folder. Nothing is changed.
  *
  * The directories come from the same list every archived-task reader uses, so a folder that is
- * only a link to the archive folder is not a second place to move files from. The real directory
- * of a linked folder is the one that reader resolved; it is not resolved again here.
+ * only a link to the archive folder is not a second place to move files from. Each source's real
+ * directory is the one that reader resolved; the destination may not exist yet.
  */
 export async function previewArchivedTaskMove(core: Core): Promise<ArchivedTaskMovePlan> {
 	const archiveDirectory = core.filesystem.archiveTasksDir;
@@ -55,13 +67,9 @@ export async function previewArchivedTaskMove(core: Core): Promise<ArchivedTaskM
 		linkedSources: [],
 	};
 	const realBacklogDirectory = await realpath(core.filesystem.backlogDir);
-	let realArchiveDirectory: string | undefined;
 
 	for (const { directory, realDirectory } of await core.filesystem.getArchivedTaskLocations()) {
-		if (directory === archiveDirectory) {
-			realArchiveDirectory = realDirectory;
-			continue;
-		}
+		if (directory === archiveDirectory) continue;
 		const movesBefore = plan.moves.length;
 		const files = await Array.fromAsync(new Bun.Glob(pattern).scan({ cwd: directory, followSymlinks: true }));
 		for (const file of files.sort((left, right) => left.localeCompare(right))) {
@@ -79,8 +87,11 @@ export async function previewArchivedTaskMove(core: Core): Promise<ArchivedTaskM
 			plan.linkedSources.push({ directory: projectPath(core, directory), realDirectory });
 		}
 	}
-	if (plan.moves.length > 0 && realArchiveDirectory && isOutside(realBacklogDirectory, realArchiveDirectory)) {
-		plan.linkedDestination = { directory: plan.archiveDirectory, realDirectory: realArchiveDirectory };
+	if (plan.moves.length > 0) {
+		const realDirectory = await resolveDestinationDirectory(archiveDirectory);
+		if (isOutside(realBacklogDirectory, realDirectory)) {
+			plan.linkedDestination = { directory: plan.archiveDirectory, realDirectory };
+		}
 	}
 	return plan;
 }

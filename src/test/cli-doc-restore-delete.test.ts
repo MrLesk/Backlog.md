@@ -437,6 +437,48 @@ describe("backlog doc restore and delete in a Git repository", () => {
 		expect(await git("status", "--porcelain")).toBe("A  staged.txt\n?? untracked.txt");
 	});
 
+	it.each([false, true])(
+		"commits both record paths after an uncommitted archive (archive staged: %s)",
+		async (stageArchive) => {
+			await setUpRepository(false);
+			expect((await backlog("doc", "restore", "doc-1")).exitCode).toBe(0);
+			await writeFile(join(TEST_DIR, "unstaged.txt"), "original\n");
+			await git("add", "-A");
+			await git("commit", "-m", "Track the active document");
+			const activePath = `backlog/docs/guides/${NAME}`;
+			const archivedPath = `backlog/archive/docs/guides/${NAME}`;
+			const headBefore = await git("rev-parse", "HEAD");
+
+			expect((await backlog("doc", "archive", "doc-1")).exitCode).toBe(0);
+			expect(await git("rev-parse", "HEAD")).toBe(headBefore);
+			expect(await git("diff", "--cached", "--name-only")).toBe("");
+			if (stageArchive) await git("add", "--", activePath, archivedPath);
+			expect((await backlog("config", "set", "autoCommit", "true")).exitCode).toBe(0);
+			await startOtherWork();
+			await writeFile(join(TEST_DIR, "staged.txt"), "unstaged edit of staged work\n");
+			await writeFile(join(TEST_DIR, "unstaged.txt"), "user edit\n");
+			const unrelatedPaths = ["staged.txt", "unstaged.txt", "backlog/config.yml"];
+			const stagedBefore = await git("diff", "--cached", "--", ...unrelatedPaths);
+			const unstagedBefore = await git("diff", "--", ...unrelatedPaths);
+			const commitsBefore = Number(await git("rev-list", "--count", "HEAD"));
+
+			const deleted = await backlog("doc", "delete", "doc-1");
+
+			expect(deleted).toEqual({ exitCode: 0, stdout: "Deleted document doc-1\n", stderr: "" });
+			expect(Number(await git("rev-list", "--count", "HEAD"))).toBe(commitsBefore + 1);
+			expect(await git("ls-tree", "-r", "--name-only", "HEAD", "--", activePath, archivedPath)).toBe("");
+			expect(await git("show", "--name-status", "--format=", "HEAD")).toBe(`D\t${activePath}`);
+			expect(await git("diff", "--cached", "--", ...unrelatedPaths)).toBe(stagedBefore);
+			expect(await git("diff", "--", ...unrelatedPaths)).toBe(unstagedBefore);
+			expect(await readFile(join(TEST_DIR, "untracked.txt"), "utf8")).toBe("not staged\n");
+			expect(await exists(docsPath("guides", NAME))).toBe(false);
+			expect(await exists(archivePath("guides", NAME))).toBe(false);
+			expect((await backlog("doc", "create", "Created after mixed auto-commit")).stdout).toContain(
+				"Created document doc-1\n",
+			);
+		},
+	);
+
 	it("makes no commit and stages nothing for restore and delete when auto-commit is off", async () => {
 		await setUpRepository(false);
 		const head = await git("rev-parse", "HEAD");

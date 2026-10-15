@@ -63,6 +63,8 @@ async function initializeMermaid(mermaid: MermaidAPI): Promise<void> {
 			startOnLoad: false,
 			securityLevel: "strict",
 			theme: "default",
+			layout: "dagre",
+			look: "classic",
 		});
 	})();
 
