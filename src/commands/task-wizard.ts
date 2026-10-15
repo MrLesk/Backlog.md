@@ -317,6 +317,7 @@ const clackPromptRunner: TaskWizardPromptRunner = async (question) => {
 				}
 			},
 		});
+		let navigateBack = false;
 		let previousInput = question.initial ?? "";
 		textPrompt.on("key", (_key, keyInfo) => {
 			if (keyInfo.name !== "backspace") {
@@ -327,13 +328,14 @@ const clackPromptRunner: TaskWizardPromptRunner = async (question) => {
 			const isEmptyAfterKeypress = textPrompt.userInput.length === 0;
 			if (question.allowBackspaceNavigation && wasEmptyBeforeKeypress && isEmptyAfterKeypress) {
 				textPrompt.state = "submit";
-				textPrompt.value = WIZARD_BACKSPACE_NAVIGATION as unknown as string;
+				textPrompt.value = "";
+				navigateBack = true;
 				return;
 			}
 			previousInput = textPrompt.userInput;
 		});
 		const result = await textPrompt.prompt();
-		if (result === WIZARD_BACKSPACE_NAVIGATION) {
+		if (navigateBack) {
 			return { [WIZARD_NAVIGATION_KEY]: WIZARD_NAVIGATION_PREVIOUS };
 		}
 		if (clack.isCancel(result)) {

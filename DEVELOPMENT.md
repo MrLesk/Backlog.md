@@ -1,6 +1,6 @@
 ## Local Development
 
-> **Runtime requirement:** Use the Bun version pinned by CI and `@types/bun`. Bun 1.3.5 fixed the macOS websocket CPU regression tracked in [oven-sh/bun#23536](https://github.com/oven-sh/bun/issues/23536), so local development should stay on current Bun 1.3.x builds or newer rather than the old 1.2.23 workaround.
+> **Runtime requirement:** Use Bun 1.4.3, matching CI, release builds, and the Nix runtime.
 
 Run these commands to bootstrap the project:
 
