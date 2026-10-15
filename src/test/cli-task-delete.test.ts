@@ -239,6 +239,75 @@ describe("backlog task delete", () => {
 		expect(await Bun.file(boardClaimant).exists()).toBe(true);
 	});
 
+	it("refuses parent deletion when its child tries to archive between corpus enumerations", async () => {
+		const core = new Core(TEST_DIR);
+		const { task: parent } = await core.createTaskFromInput({ title: "Parent" }, false);
+		const { task: child } = await core.createTaskFromInput({ title: "Child", parentTaskId: parent.id }, false);
+		await core.archiveTask(parent.id, false, { includeCrossBranch: false });
+		const archivedParent = join(core.filesystem.archiveTasksDir, "task-1 - Parent.md");
+		const parentBytes = await Bun.file(archivedParent).text();
+		const childBytes = await Bun.file(child.filePath as string).text();
+		const archiver = new Core(TEST_DIR);
+		archiver.withCreateLock = (run) => archiver.filesystem.withCreateLock(run, { timeoutMs: 0 });
+		const originalLock = core.withCreateLock.bind(core);
+		const originalActive = core.filesystem.listTasks.bind(core.filesystem);
+		const originalArchived = core.filesystem.listArchivedTasks.bind(core.filesystem);
+		let inAllocator = false;
+		let activeCalls = 0;
+		let archivedCalls = 0;
+		let archiveError: unknown;
+		let archiveReady!: () => void;
+		const archiveSnapshotReady = new Promise<void>((resolve) => {
+			archiveReady = resolve;
+		});
+		core.withCreateLock = (run) =>
+			originalLock(async () => {
+				inAllocator = true;
+				try {
+					return await run();
+				} finally {
+					inAllocator = false;
+				}
+			});
+		core.filesystem.listArchivedTasks = async () => {
+			const snapshot = await originalArchived();
+			if (inAllocator && ++archivedCalls === 2) archiveReady();
+			return snapshot;
+		};
+		core.filesystem.listTasks = async (...args) => {
+			if (inAllocator && ++activeCalls === 2) {
+				await archiveSnapshotReady;
+				// The archived snapshot is fixed before this actual move is attempted; active is read after.
+				try {
+					await archiver.archiveTask(child.id, false, { includeCrossBranch: false });
+				} catch (error) {
+					archiveError = error;
+				}
+			}
+			return await originalActive(...args);
+		};
+
+		try {
+			await expect(core.deleteTask(parent.id, false, { includeCrossBranch: false })).rejects.toThrow(
+				`Task ${parent.id} cannot be deleted while its subtasks exist: ${child.id}`,
+			);
+		} finally {
+			core.withCreateLock = originalLock;
+			core.filesystem.listTasks = originalActive;
+			core.filesystem.listArchivedTasks = originalArchived;
+		}
+
+		expect((archiveError as Error)?.message).toContain(CREATE_LOCK_ERROR_MESSAGE);
+		expect(await Bun.file(archivedParent).text()).toBe(parentBytes);
+		expect(await Bun.file(child.filePath as string).text()).toBe(childBytes);
+		expect(await archiver.archiveTask(child.id, false, { includeCrossBranch: false })).toBe(true);
+		expect(await Bun.file(join(core.filesystem.archiveTasksDir, "task-1.1 - Child.md")).text()).toBe(childBytes);
+		expect((await task("delete", parent.id)).stderr).toContain(child.id);
+		expect((await task("delete", child.id)).exitCode).toBe(0);
+		expect((await task("delete", parent.id)).exitCode).toBe(0);
+		expect((await task("create", "Replacement", "--plain")).stdout).toContain(`Task ${parent.id} - Replacement`);
+	});
+
 	it("removes a symlinked archived task as a link and leaves the file it points to", async () => {
 		await task("create", "Linked record");
 		await task("archive", "1");
@@ -350,6 +419,43 @@ describe("backlog task delete with auto-commit", () => {
 		expect((await $`git ls-tree -r --name-only HEAD backlog/tasks`.cwd(TEST_DIR).text()).trim()).not.toContain(
 			"task-3 - Same-name.md",
 		);
+	});
+
+	it("cleans a CLI create completed just before allocator acquisition, before the ID can be reused", async () => {
+		const core = new Core(TEST_DIR);
+		const { task: target } = await core.createTaskFromInput({ title: "Late create target" }, false);
+		await core.archiveTask(target.id, false);
+		await $`git add -A`.cwd(TEST_DIR).quiet();
+		await $`git commit -m "Archive before late create"`.cwd(TEST_DIR).quiet();
+		const original = core.withCreateLock.bind(core);
+		let created = false;
+		core.withCreateLock = async (run) => {
+			if (!created) {
+				created = true;
+				const late = await task("create", "Late dependent", "-p", "TASK-2", "--dep", target.id, "--ref", target.id);
+				expect(late.exitCode).toBe(0);
+			}
+			return await original(run);
+		};
+
+		try {
+			expect(await core.deleteTask(target.id, true)).toEqual({ success: true, cleanedTaskIds: ["TASK-2.1"] });
+		} finally {
+			core.withCreateLock = original;
+		}
+
+		expect(await lastCommit()).toBe(`backlog: Delete task ${target.id}`);
+		expect((await $`git show --name-status --format= HEAD`.cwd(TEST_DIR).text()).trim().split("\n").sort()).toEqual([
+			"D\tbacklog/archive/tasks/task-3 - Late-create-target.md",
+			"M\tbacklog/tasks/task-2.1 - Late-dependent.md",
+		]);
+		expect((await $`git status --porcelain`.cwd(TEST_DIR).text()).trim()).toBe("");
+		const replacement = await task("create", "Unrelated replacement", "--plain");
+		expect(replacement.exitCode).toBe(0);
+		expect(replacement.stdout).toContain(`Task ${target.id} - Unrelated replacement`);
+		const late = await core.filesystem.loadTask("TASK-2.1");
+		expect(late?.dependencies ?? []).toEqual([]);
+		expect(late?.references ?? []).toEqual([]);
 	});
 
 	it.each([false, true])("reports deletion when releasing a lock fails, with auto-commit %s", async (autoCommit) => {

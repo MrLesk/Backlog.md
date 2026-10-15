@@ -999,15 +999,14 @@ export class Core {
 	 * repeated inside the locks, and a scan naming a record the held locks do not cover releases
 	 * them and runs again over the wider set. Widening only ever adds records, and the locks are
 	 * always taken through {@link FileSystem.withTaskLocks} and then
-	 * {@link FileSystem.withDraftLocks}, which sort them, so retrying cannot deadlock against
-	 * another operation. `run` therefore only ever sees a set that was read, and is locked, as one
-	 * consistent state.
+	 * {@link FileSystem.withDraftLocks}, which sort them. The allocator lock comes last and covers
+	 * the final scan and `run`, excluding creates and archive membership moves throughout that span.
+	 * Widening exits all three lock wrappers before retrying; it never takes more task or draft locks
+	 * while holding the allocator.
 	 *
-	 * What this does not close: a task that starts referencing the ID after that final in-lock
-	 * scan cannot be locked, because it was not yet a dependent when the set was fixed, so it
-	 * keeps its reference. Locking cannot close that on its own without a corpus-wide write lock.
-	 * The stale reference that results is not silent - it renders as an unknown task ID until the
-	 * allocator hands the number out again.
+	 * An arbitrary relationship edit to a record outside the locked set can still add a reference
+	 * after the final scan. Such edits do not take the allocator lock. The stale reference renders
+	 * as an unknown task ID until the allocator hands the number out again.
 	 */
 	private async withVacatedIdCleanup<T>(
 		target: Pick<Task, "id" | "filePath">,
@@ -1024,17 +1023,18 @@ export class Core {
 			const coversTask = (task: Task) => lockedTasks.some((candidate) => taskIdsEqual(candidate.id, task.id));
 			// A draft is locked as a file, so it is covered when its file is.
 			const coversDraft = (draft: Task) => lockedDrafts.some((candidate) => candidate.filePath === draft.filePath);
-			// Task locks first, then draft locks, each kind in a sorted order, on every attempt.
+			// Task locks first, then draft locks, then allocator, on every attempt.
 			const outcome = await this.fs.withTaskLocks([target, ...lockedTasks], () =>
 				this.fs.withDraftLocks(
 					lockedDrafts.map((draft) => ({ filePath: draft.filePath, canonicalId: draft.id })),
-					async (): Promise<{ value: T } | { widened: VacatedIdCleanup }> => {
-						const cleanup = await this.collectVacatedIdCleanup(vacatedTaskId);
-						if (!vacatedIdCleanupTasks(cleanup).every(coversTask) || !cleanup.drafts.every(coversDraft)) {
-							return { widened: cleanup };
-						}
-						return { value: await run(cleanup) };
-					},
+					() =>
+						this.withCreateLock(async (): Promise<{ value: T } | { widened: VacatedIdCleanup }> => {
+							const cleanup = await this.collectVacatedIdCleanup(vacatedTaskId);
+							if (!vacatedIdCleanupTasks(cleanup).every(coversTask) || !cleanup.drafts.every(coversDraft)) {
+								return { widened: cleanup };
+							}
+							return { value: await run(cleanup) };
+						}),
 				),
 			);
 			if ("value" in outcome) return outcome.value;
@@ -2940,9 +2940,8 @@ export class Core {
 	}
 
 	// Demotion is a read-modify-write of the task file too, reached from both updateTaskFromInput
-	// and editTaskOrDraft, so it takes the task lock here rather than at each caller. Waiting on
-	// the create lock below happens while the task lock is held; the order is always task lock
-	// then create lock, never the reverse, so the two cannot deadlock.
+	// and editTaskOrDraft. The shared cleanup takes task, draft and allocator locks for the whole
+	// mutation, so neither caller may take another lock around it.
 	private async demoteTaskWithUpdates(
 		task: Task,
 		input: TaskUpdateInput,
@@ -2968,34 +2967,31 @@ export class Core {
 			// ID it is vacating would rebind to whatever task is allocated that ID next.
 			const vacating = withoutVacatedTaskLinks(current, current.id) ?? current;
 
-			const { demotedDraft, savedPath } = await this.withCreateLock(async () => {
-				const newDraftId = await this.generateNextId(EntityType.Draft);
-				// Mirrors promotion: the allocated draft ID can be named by a stored dangling
-				// reference, so the demoted record must not materialize a cycle through it.
-				await validateDependencies(vacating.dependencies ?? [], this, { ...vacating, id: newDraftId });
-				const taskPath = current.filePath;
+			// withVacatedIdCleanup already holds the allocator while assigning the draft identity.
+			const newDraftId = await this.generateNextId(EntityType.Draft);
+			// Mirrors promotion: the allocated draft ID can be named by a stored dangling
+			// reference, so the demoted record must not materialize a cycle through it.
+			await validateDependencies(vacating.dependencies ?? [], this, { ...vacating, id: newDraftId });
+			const taskPath = current.filePath;
 
-				const demotedDraft: Task = {
-					...vacating,
-					id: newDraftId,
-					status: "Draft",
-					// The path must be cleared so the save writes a new file. Left set, the save would take
-					// over the source file, and removing the source afterwards would delete the only copy.
-					filePath: undefined,
-					...(mutated || current.status !== "Draft"
-						? { updatedDate: new Date().toISOString().slice(0, 16).replace("T", " ") }
-						: {}),
-				};
+			const demotedDraft: Task = {
+				...vacating,
+				id: newDraftId,
+				status: "Draft",
+				// The path must be cleared so the save writes a new file. Left set, the save would take
+				// over the source file, and removing the source afterwards would delete the only copy.
+				filePath: undefined,
+				...(mutated || current.status !== "Draft"
+					? { updatedDate: new Date().toISOString().slice(0, 16).replace("T", " ") }
+					: {}),
+			};
 
-				normalizeAssignee(demotedDraft);
-				const savedPath = await this.fs.saveDraft(demotedDraft);
+			normalizeAssignee(demotedDraft);
+			const savedPath = await this.fs.saveDraft(demotedDraft);
 
-				if (taskPath) {
-					await unlink(taskPath);
-				}
-
-				return { demotedDraft, savedPath };
-			});
+			if (taskPath) {
+				await unlink(taskPath);
+			}
 
 			// The draft is written and the task file is gone, so anything failing from here reports
 			// the demotion as done, the way the dedicated demote command does.
@@ -3498,35 +3494,39 @@ export class Core {
 			return false;
 		}
 
-		return await this.fs.withTaskLock(task, async () => {
-			// A concurrent archive or demotion may have moved the record before this lock was acquired.
-			const current = await this.loadTaskForMutation(task.id, options);
-			const fromPath = current?.filePath;
-			if (!current || !fromPath) return false;
-			const toPath = join(await this.fs.getArchiveTasksDir(), basename(fromPath));
+		return await this.fs.withTaskLock(task, () =>
+			this.withCreateLock(async () => {
+				// Membership moves share the allocator boundary with vacated-ID scans, so a child
+				// cannot disappear between their active and archived enumerations.
+				// A concurrent archive or demotion may have moved the record before this lock was acquired.
+				const current = await this.loadTaskForMutation(task.id, options);
+				const fromPath = current?.filePath;
+				if (!current || !fromPath) return false;
+				const toPath = join(await this.fs.getArchiveTasksDir(), basename(fromPath));
 
-			await mkdir(dirname(toPath), { recursive: true });
-			try {
-				await moveWithoutReplacing(fromPath, toPath);
-			} catch (error) {
-				if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
-				throw new TaskFileExistsError(current.id, basename(toPath));
-			}
-			this.contentStore?.transitionTask(current.id, { ...current, filePath: toPath, source: "archived" });
-
-			// The file is in the archive from here on. A commit that fails after this point says so,
-			// rather than letting a caller retry an archive that already ran.
-			try {
-				if (await this.shouldAutoCommit(autoCommit)) {
-					// Stage the file move for proper Git tracking
-					const repoRoot = await this.git.stageFileMove(fromPath, toPath);
-					await this.git.commitFiles(`backlog: Archive task ${current.id}`, [fromPath, toPath], repoRoot);
+				await mkdir(dirname(toPath), { recursive: true });
+				try {
+					await moveWithoutReplacing(fromPath, toPath);
+				} catch (error) {
+					if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
+					throw new TaskFileExistsError(current.id, basename(toPath));
 				}
-			} catch (error) {
-				throw markRecordAlreadyMoved(error, "archiveState");
-			}
-			return true;
-		});
+				this.contentStore?.transitionTask(current.id, { ...current, filePath: toPath, source: "archived" });
+
+				// The file is in the archive from here on. A commit that fails after this point says so,
+				// rather than letting a caller retry an archive that already ran.
+				try {
+					if (await this.shouldAutoCommit(autoCommit)) {
+						// Stage the file move for proper Git tracking
+						const repoRoot = await this.git.stageFileMove(fromPath, toPath);
+						await this.git.commitFiles(`backlog: Archive task ${current.id}`, [fromPath, toPath], repoRoot);
+					}
+				} catch (error) {
+					throw markRecordAlreadyMoved(error, "archiveState");
+				}
+				return true;
+			}),
+		);
 	}
 
 	/**
@@ -3546,48 +3546,46 @@ export class Core {
 		let failureStep = "finishing the deletion";
 
 		try {
-			return await this.withVacatedIdCleanup(task, task.id, (cleanup) =>
-				// Take the allocator lock after task and draft locks, as demotion does. Keep it through
-				// the commit so a create cannot reuse the ID and matching board path while we stage it.
-				this.withCreateLock(async () => {
-					// Another process may have deleted the record before these locks were held.
-					const current = await this.loadArchivedTask(task.id, options);
-					if (!current?.filePath) return { success: false, cleanedTaskIds: [] };
-					// A subtask that was demoted is a draft that still names this task as its parent. Drafts are
-					// read file by file, as the link cleanup reads them: one damaged draft must not hide the rest.
-					const [activeTasks, archivedTasks, drafts] = await Promise.all([
-						this.fs.listTasks(),
-						this.fs.listArchivedTasks(),
-						this.fs.listHealthyDrafts(),
-					]);
-					const subtasks = findDirectSubtasks(current, [...activeTasks, ...archivedTasks, ...drafts]);
-					if (subtasks.length > 0) {
-						throw new TaskHasSubtasksError(
-							current.id,
-							subtasks.map((subtask) => subtask.id),
-						);
-					}
+			return await this.withVacatedIdCleanup(task, task.id, async (cleanup) => {
+				// The cleanup owner holds the allocator through staging and commit, so a create
+				// cannot reuse the ID and matching board path before the deletion is committed.
+				// Another process may have deleted the record before these locks were held.
+				const current = await this.loadArchivedTask(task.id, options);
+				if (!current?.filePath) return { success: false, cleanedTaskIds: [] };
+				// A subtask that was demoted is a draft that still names this task as its parent. Drafts are
+				// read file by file, as the link cleanup reads them: one damaged draft must not hide the rest.
+				const [activeTasks, archivedTasks, drafts] = await Promise.all([
+					this.fs.listTasks(),
+					this.fs.listArchivedTasks(),
+					this.fs.listHealthyDrafts(),
+				]);
+				const subtasks = findDirectSubtasks(current, [...activeTasks, ...archivedTasks, ...drafts]);
+				if (subtasks.length > 0) {
+					throw new TaskHasSubtasksError(
+						current.id,
+						subtasks.map((subtask) => subtask.id),
+					);
+				}
 
-					const written = await this.writeVacatedIdCleanup(cleanup);
-					// unlink removes a symlinked task file as a link; the file it points to is left alone.
-					await unlink(current.filePath);
-					// Record the mutation before the content store, commit, or any lock release can fail.
-					deletionApplied = true;
-					this.contentStore?.transitionTask(current.id);
+				const written = await this.writeVacatedIdCleanup(cleanup);
+				// unlink removes a symlinked task file as a link; the file it points to is left alone.
+				await unlink(current.filePath);
+				// Record the mutation before the content store, commit, or any lock release can fail.
+				deletionApplied = true;
+				this.contentStore?.transitionTask(current.id);
 
-					if (autoCommitEnabled) {
-						failureStep = "committing the change";
-						// A task file keeps its name through the archive, so this is where the task was on the board.
-						// If the archive was never committed, Git still tracks the task there, so its removal is committed too.
-						const boardPath = join(this.fs.tasksDir, basename(current.filePath));
-						const changedPaths = [current.filePath, boardPath, ...written.filePaths];
-						for (const path of changedPaths) await this.stageChangedPath(path);
-						await this.git.commitFiles(`backlog: Delete task ${current.id}`, changedPaths);
-					}
-					failureStep = "releasing deletion locks";
-					return { success: true, cleanedTaskIds: written.cleanedTaskIds };
-				}),
-			);
+				if (autoCommitEnabled) {
+					failureStep = "committing the change";
+					// A task file keeps its name through the archive, so this is where the task was on the board.
+					// If the archive was never committed, Git still tracks the task there, so its removal is committed too.
+					const boardPath = join(this.fs.tasksDir, basename(current.filePath));
+					const changedPaths = [current.filePath, boardPath, ...written.filePaths];
+					for (const path of changedPaths) await this.stageChangedPath(path);
+					await this.git.commitFiles(`backlog: Delete task ${current.id}`, changedPaths);
+				}
+				failureStep = "releasing deletion locks";
+				return { success: true, cleanedTaskIds: written.cleanedTaskIds };
+			});
 		} catch (error) {
 			if (!deletionApplied) throw error;
 			const reason = error instanceof Error ? error.message : String(error);
