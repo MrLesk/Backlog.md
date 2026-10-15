@@ -19,7 +19,7 @@ export function getBoardFooterContent(options: { hasProjects?: boolean } = {}): 
 
 export function getTaskListFooterContent(options: { hasProjects?: boolean } = {}): string {
 	const keys = filterKeys(["S", "T"], ["P", "I", "L"], options.hasProjects ?? false);
-	return ` {cyan-fg}[Tab]{/} View | {cyan-fg}[/]{/} Search | {cyan-fg}[${keys}]{/} Filter | {cyan-fg}[↑↓]{/} Nav | {cyan-fg}[E/C/A]{/} Edit/Comp/Arch | {cyan-fg}[Y]{/} Yank | {cyan-fg}[?]{/} Help | {cyan-fg}[q]{/} Quit`;
+	return ` {cyan-fg}[Tab]{/} View | {cyan-fg}[N]{/} New | {cyan-fg}[/]{/} Search | {cyan-fg}[${keys}]{/} Filter | {cyan-fg}[↑↓]{/} Nav | {cyan-fg}[E/C/A]{/} Edit/Comp/Arch | {cyan-fg}[Y]{/} Yank | {cyan-fg}[?]{/} Help | {cyan-fg}[q]{/} Quit`;
 }
 
 function visibleLength(value: string): number {
