@@ -5,7 +5,7 @@ status: Done
 assignee:
   - '@codex-764'
 created_date: '2026-10-13 18:47'
-updated_date: '2026-10-15 22:58'
+updated_date: '2026-10-15 23:11'
 labels:
   - enhancement
 dependencies:
@@ -97,6 +97,10 @@ Repair plan approved by Alex (2026-10-16):
 3. Keep one shared useRecordArchive owner. Capture the submitted route identity and suppress late refusal/alert/navigation on another route, including after awaited global refresh. Keep one request at a time and refresh app data for completed archives.
 4. Add deterministic deferred-promise regressions for both pages covering stale loads, archive refusal/success/moved failures, and route change while refresh waits; preserve normal, alias, editor, new, and archived behavior.
 5. Run focused route/archive/server/lifecycle/Git/link/commit/lock and inherited legacy-section checks, canonical type/lint/build checks, compiled CLI/MCP smoke, and the running browser flow. Leave source and task In Progress for full-context final architecture review; do not finalize, commit the repair, push, comment publicly, or resolve review threads.
+
+Second route-repair round approved by Alex (2026-10-16): investigate current-head finding PRRT_kwDOO2LIE86s_81P. Add deterministic prefix-only invalid-route cases for fresh links and navigation from a loaded record on both pages; compare before the first route repair and current2ec0e373 before changing production code. If confirmed, make only the bounded loader correction so a null normalized identity clears old record state and ends loading in the existing missing/invalid-record presentation. Preserve all request-lifetime/archive ownership, aliases, new/read-only/editor behavior, inherited main/parent safety, and copy/layout. Run affected web/route/identity/API suites and relevant compiled HTTP/CLI/MCP checks plus canonical types/Biome/build. Leave source/task In Progress without commit or push for stable full-context review. Browser provider remains unavailable; do not retry it.
+
+Confirmed second-round correction: reuse the existing No document selected / No decision selected state for a nonempty route whose normalized identity is null. Run the shared loader reset before the null check and use finally to end loading; clear old title/path in that branch. Infinite loading was introduced by2ec0e373, while in-app stale-content retention also existed before. No generic404 UI, new copy, or loading layer.
 <!-- SECTION:PLAN:END -->
 
 ## Implementation Notes
@@ -127,6 +131,11 @@ Repair verification (2026-10-16), source held stable for full-context review:
 - Full-context architecture review from the coordinator is KEEP with no blocker or added scope. Final task status, summary, repair commit, and push remain on hold for coordinator authorization.
 
 Coordinator authorized finalization after stable KEEP review and completed checks, with the browser limitation above disclosed. Server81705 confirmed stopped; the browser provider is unavailable. Final reviewed source/test hashes and task modified-file attribution are unchanged. Final diff/type/Biome checks pass; the expected remote BACK-764 head59efc56bfa94c6a297115e1c6f5fdfdf1e656d80 and main230b9e7e17548e068d73e6f041522f04008bf80a were verified before protected publication.
+
+Second route-repair round (PRRT_kwDOO2LIE86s_81P): confirmed prefix-only invalid IDs return null from existing identity keys. The first repair returned before reset/finally, introducing infinite loading on fresh links. Separate baseline loading probes4/4 pass on59efc56b anddc0b70f3, while2ec0e373 fails both fresh-link cases. Stale record retention during in-app invalid navigation also existed before this repair; it is not claimed as newly introduced.
+The bounded fix moves the null check after shared loader resets inside try/finally, clears old title/path, and reuses the existing No document selected / No decision selected empty state for a non-new route with null identity. No new copy, markup, identity rule, loading layer, or HTTP behavior.
+Four table-driven cases cover both pages for fresh deep links and in-app navigation, old content/Archive/Edit removal, and recovery to a valid record and the new editor. Full new expectations fail4/4 on2ec0e373 and pass4/4 after the fix. All58 archive tests and115 affected web/identity/API/route/refresh tests pass. Canonical types, Biome, build, and diff checks pass. Rebuilt executable smoke:12 CLI calls,12 HTTP checks including both invalid deep-link SPA routes and invalid record/archive API404s, and6 MCP lifecycle/read-only calls pass. Temporary HTTP/MCP subprocesses are stopped. Evidence: /private/tmp/back-764-invalid-route-proof-tgek4q_p, /private/tmp/back-764-invalid-route-web.log, /private/tmp/back-764-invalid-compiled-smoke.json. Earlier unrelated integration/legacy/viewer proof remains valid and was not broadly repeated.
+Full-context final review is KEEP and the coordinator authorized finalization. Reviewed source/test hashes remain stable. Browser provider remains unavailable; there were no more browser retries. The prior material limitation remains: current controls/native confirmation observed, original width/theme/keyboard evidence carried for unchanged markup, fresh manual cancel/success navigation not completed after provider disconnect and covered by deterministic React/server tests.
 <!-- SECTION:NOTES:END -->
 
 ## Final Summary
@@ -141,4 +150,6 @@ Verification:54 archive React cases and98 combined web cases pass;623 inherited 
 Current browser proof observed the built binary showing live Archive/Edit controls and the correct native confirmation. Capturing its open native dialog stalled and disconnected the browser provider. A fresh manual cancel/success navigation flow was not completed; deterministic React/server tests cover it. Original width/theme/keyboard evidence carries because markup is unchanged. Temporary resources are stopped.
 
 The existing branch preserves the exact repaired BACK-763 parent and verified main230b9e7, including the separate BACK-768 legacy-section safety fix and already-merged BACK-767 workflow changes. Local BACK-767 remains untouched. Full-context final architecture review is KEEP. No PR merge, public comment, or review-thread resolution is part of this repair.
+
+Second route repair: prefix-only invalid IDs now finish the existing loader reset/finally path, clear old record data, and show the existing No document selected / No decision selected state. Fresh-link infinite loading was introduced by the first repair; stale content after invalid in-app navigation also existed earlier. Four new cases fail on the previous head and pass with this bounded correction, including recovery to a valid route and new editor. All58 archive cases and115 affected web/identity/API/route/refresh cases pass. Canonical types/Biome/build/diff checks pass; rebuilt smoke12 CLI,12 HTTP, and6 MCP calls pass, with all temporary processes stopped. Earlier stack proof and the exact browser limitation above remain valid. Final contextual review is KEEP.
 <!-- SECTION:FINAL_SUMMARY:END -->

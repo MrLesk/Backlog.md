@@ -140,14 +140,17 @@ export default function DecisionDetail({ decisions, onRefreshData, dateFormat }:
 	}, [searchParams, setSearchParams]);
 
 	const loadDecisionContent = async (isCurrent: () => boolean) => {
-		if (!routeIdentity) return;
-		
 		try {
 			setIsLoading(true);
 			setError(null);
 			setDecision(null);
 			setContent('');
 			setOriginalContent('');
+			if (!routeIdentity) {
+				setDecisionTitle('');
+				setOriginalDecisionTitle('');
+				return;
+			}
 			// Find decision from props using the same identity as the route.
 			const prefixedId = routeIdentity;
 			const decision = decisions.find(d => decisionIdKey(d.id) === routeIdentity);
@@ -259,7 +262,7 @@ export default function DecisionDetail({ decisions, onRefreshData, dateFormat }:
 		return colors[status.toLowerCase() as keyof typeof colors] || 'bg-gray-50 text-gray-700 border-gray-200';
 	};
 
-	if (!id) {
+	if (!id || (id !== 'new' && !routeIdentity)) {
 		return (
 			<div className="flex-1 flex items-center justify-center p-8">
 				<div className="text-center">

@@ -258,6 +258,30 @@ afterEach(() => {
 });
 
 describe.each([...PAGES])("the $kind page", (page) => {
+	it.each([
+		{ name: "fresh deep link", fromLoaded: false },
+		{ name: "navigation from a loaded record", fromLoaded: true },
+	])("finishes a prefix-only invalid route after $name", async ({ fromLoaded }) => {
+		const invalidId = page.kind === "document" ? "doc-" : "decision-";
+		const invalidPath = `${page.listPath}/${invalidId}`;
+		const session = await open(page, { path: fromLoaded ? page.detailPath : invalidPath });
+		if (fromLoaded) {
+			expect(session.container.textContent).toContain("Retired runbook");
+			await act(async () => session.navigate(`${invalidPath}/invalid-record`));
+		}
+		expect(session.container.textContent).not.toContain("Loading...");
+		expect(session.container.textContent).toContain(`No ${page.noun} selected`);
+		expect(session.container.textContent).not.toContain("Retired runbook");
+		expect(session.container.textContent).not.toContain("Runbook steps.");
+		expect(buttonNamed(session.container, "Archive")).toBeUndefined();
+		expect(buttonNamed(session.container, "Edit")).toBeUndefined();
+		await act(async () => session.navigate(page.detailPath));
+		expect(buttonNamed(session.container, "Archive")?.disabled).toBe(false);
+		await act(async () => session.navigate(page.newPath));
+		expect(buttonNamed(session.container, "Save")).toBeTruthy();
+		expect(buttonNamed(session.container, "Archive")).toBeUndefined();
+	});
+
 	const expectCurrentRecord = (session: Session) => {
 		expect(session.container.querySelector("h1")?.textContent).toBe("Current runbook");
 		expect(session.container.textContent).toContain("Current steps.");

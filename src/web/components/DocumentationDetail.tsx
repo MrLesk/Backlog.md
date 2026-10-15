@@ -146,14 +146,19 @@ export default function DocumentationDetail({docs, onRefreshData, dateFormat}: D
     }, [searchParams, setSearchParams]);
 
     const loadDocContent = useCallback(async (isCurrent: () => boolean) => {
-        if (!routeIdentity) return;
-
         try {
             setIsLoading(true);
             setError(null);
             setDocument(null);
             setContent('');
             setOriginalContent('');
+            if (!routeIdentity) {
+                setDocTitle('');
+                setOriginalDocTitle('');
+                setDocPath('');
+                setOriginalDocPath('');
+                return;
+            }
             // Find document from props using the same identity as the route.
             const prefixedId = routeIdentity;
             const doc = docs.find(d => documentIdKey(d.id) === routeIdentity);
@@ -296,7 +301,7 @@ export default function DocumentationDetail({docs, onRefreshData, dateFormat}: D
 
     const hasChanges = content !== originalContent || docTitle !== originalDocTitle || docPath !== originalDocPath;
 
-    if (!id) {
+    if (!id || (id !== 'new' && !routeIdentity)) {
         return (
             <div className="flex-1 flex items-center justify-center p-8">
                 <div className="text-center">
