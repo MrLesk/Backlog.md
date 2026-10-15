@@ -164,10 +164,24 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
-      - uses: actions/download-artifact@v8
+      - name: Download platform binary
+        id: binary
+        background: true
+        uses: actions/download-artifact@v8
         with:
           name: backlog-${{ matrix.target }}
         timeout-minutes: 15
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+      - name: Configure npm for trusted publishing
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm install -g npm@11.6.0
+          npm --version
+      - name: Wait for platform binary
+        wait: binary
       - name: Prepare package
         shell: bash
         run: |
@@ -202,15 +216,6 @@ jobs:
         shell: bash
         run: |
           chmod +x pkg/backlog
-      - uses: actions/setup-node@v6
-        with:
-          node-version: 24
-      - name: Configure npm for trusted publishing
-        shell: bash
-        run: |
-          set -euo pipefail
-          npm install -g npm@11.6.0
-          npm --version
       - name: Dry run platform publish
         run: |
           cd pkg
@@ -234,6 +239,7 @@ jobs:
           node-version: 24
           registry-url: https://registry.npmjs.org
       - name: Wait for platform package installability (Unix)
+        background: true
         if: ${{ matrix.os != 'windows-latest' }}
         shell: bash
         run: |
@@ -360,6 +366,8 @@ jobs:
           }
 
           throw "Timed out waiting for $PackageName@$Version."
+      - name: Wait for platform package checks
+        wait-all:
 
   install-sanity:
     name: install-sanity-${{ matrix.os }}
