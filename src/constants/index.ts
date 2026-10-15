@@ -18,6 +18,8 @@ export const DEFAULT_DIRECTORIES = {
 	ARCHIVE_DRAFTS: "archive/drafts",
 	/** Archived milestones directory */
 	ARCHIVE_MILESTONES: "archive/milestones",
+	/** Archived documents directory. A document keeps the relative path it had under the docs directory. */
+	ARCHIVE_DOCS: "archive/docs",
 	/** Documentation directory */
 	DOCS: "docs",
 	/** Decision logs directory */

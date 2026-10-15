@@ -1,4 +1,5 @@
 import { basename } from "node:path";
+import { DEFAULT_DIRECTORIES } from "../constants/index.ts";
 import type { Core } from "../index.ts";
 import { extractIdFromFilename, generateNextId } from "./prefix-config.ts";
 
@@ -20,7 +21,14 @@ function occupiedLocalIds(
 }
 
 /**
- * Generate the next available document ID by checking all branches and local documents
+ * The folders a document file can be in, relative to the backlog directory. An archived document
+ * keeps its ID, so both folders are read wherever document IDs are counted.
+ */
+const DOCUMENT_FOLDERS = [DEFAULT_DIRECTORIES.DOCS, DEFAULT_DIRECTORIES.ARCHIVE_DOCS] as const;
+
+/**
+ * Generate the next available document ID by checking all branches and local documents, in the
+ * docs folder and in the archive.
  * @param core Core instance for filesystem and git operations
  * @returns Promise<string> Next available document ID (e.g., "doc-001")
  */
@@ -28,7 +36,10 @@ export async function generateNextDocId(core: Core): Promise<string> {
 	const config = await core.filesystem.loadConfig();
 	// Load local documents
 	const unreadableFiles: string[] = [];
-	const docs = await core.filesystem.listDocuments(unreadableFiles);
+	const docs = [
+		...(await core.filesystem.listDocuments(unreadableFiles)),
+		...(await core.filesystem.listArchivedDocuments(unreadableFiles)),
+	];
 	const allIds: string[] = [];
 
 	try {
@@ -47,7 +58,10 @@ export async function generateNextDocId(core: Core): Promise<string> {
 
 		// Load files from all branches in parallel
 		const branchFilePromises = branches.map(async (branch) => {
-			const files = await core.gitOps.listFilesInTree(branch, `${backlogDir}/docs`);
+			const files: string[] = [];
+			for (const folder of DOCUMENT_FOLDERS) {
+				files.push(...(await core.gitOps.listFilesInTree(branch, `${backlogDir}/${folder}`)));
+			}
 			return files
 				.map((file) => {
 					const match = file.match(/doc-(\d+)/);

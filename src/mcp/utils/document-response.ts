@@ -1,3 +1,4 @@
+import { ARCHIVED_DOCUMENT_NOTICE } from "../../core/backlog.ts";
 import type { Document } from "../../types/index.ts";
 import { formatUtcDateForDisplay } from "../../utils/utc-date-display.ts";
 import type { CallToolResult } from "../types.ts";
@@ -11,6 +12,8 @@ function formatTags(tags?: string[]): string {
 
 function buildDocumentText(document: Document, options?: { includeContent?: boolean }): string {
 	const lines: string[] = [
+		// The same line the CLI prints above an archived document.
+		...(document.archived ? [ARCHIVED_DOCUMENT_NOTICE, ""] : []),
 		`Document ${document.id} - ${document.title}`,
 		`Type: ${document.type}`,
 		`Path: ${document.path ?? "(unknown)"}`,

@@ -1,18 +1,20 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
-import { writeFile } from "node:fs/promises";
+import { rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { $ } from "bun";
 import { ChangeNotCommittedError, Core } from "../core/backlog.ts";
 import { McpServer } from "../mcp/server.ts";
+import { registerDocumentTools } from "../mcp/tools/documents/index.ts";
 import { registerTaskTools } from "../mcp/tools/tasks/index.ts";
 import { BacklogServer } from "../server/index.ts";
 import { getTestCliPath } from "./test-cli.ts";
 import { createTestDirOutsideRepository, initializeTestProject, safeCleanup } from "./test-utils.ts";
 
 /**
- * A task change that is on disk while its commit failed is reported in one sentence, by every
- * interface: "Task <id> was <archived|restored|deleted>, but committing the change failed: <reason>".
- * Nobody is told that nothing happened, and nobody is told only that Git failed.
+ * A change that is on disk while its commit failed is reported in one sentence, by every interface
+ * and for tasks and documents alike: "<record> was <archived|restored|deleted>, but committing the
+ * change failed: <reason>". Nobody is told that nothing happened, and nobody is told only that Git
+ * failed.
  */
 let TEST_DIR: string;
 const CLI_PATH = getTestCliPath();
@@ -25,6 +27,7 @@ async function backlog(...args: string[]): Promise<{ exitCode: number; stdout: s
 
 /** Another Git process holds the index from here on, so nothing can be staged or committed. */
 const lockIndex = () => writeFile(join(TEST_DIR, ".git", "index.lock"), "");
+const unlockIndex = () => rm(join(TEST_DIR, ".git", "index.lock"), { force: true });
 
 beforeEach(async () => {
 	TEST_DIR = await createTestDirOutsideRepository("test-commit-failure");
@@ -36,10 +39,11 @@ beforeEach(async () => {
 	const config = await core.filesystem.loadConfig();
 	if (!config) throw new Error("Expected the project config");
 	await core.filesystem.saveConfig({ ...config, autoCommit: true, remoteOperations: false });
-	// One task on the board and one in the archive, both committed.
+	// One task on the board, one in the archive and one document, all committed.
 	await core.createTaskFromInput({ title: "On the board" });
 	await core.createTaskFromInput({ title: "In the archive" });
 	expect(await core.archiveTask("TASK-2")).toBe(true);
+	await core.createDocumentFromInput({ title: "A document", content: "" });
 	await $`git add -A`.cwd(TEST_DIR).quiet();
 	await $`git commit -m "Set up the project"`.cwd(TEST_DIR).quiet().nothrow();
 });
@@ -53,6 +57,7 @@ describe("a change whose commit failed, on the CLI", () => {
 		[["task", "archive", "1"], "Task TASK-1 was archived"],
 		[["task", "restore", "2"], "Task TASK-2 was restored"],
 		[["task", "delete", "2"], "Task TASK-2 was deleted"],
+		[["doc", "archive", "doc-1"], "Document doc-1 was archived"],
 	])("backlog %j says %s and that committing failed", async (command, change) => {
 		await lockIndex();
 
@@ -75,6 +80,7 @@ describe("a change whose commit failed, through MCP", () => {
 		if (!config) throw new Error("Expected the project config");
 		await mcpServer.ensureConfigLoaded();
 		registerTaskTools(mcpServer, config);
+		registerDocumentTools(mcpServer, config);
 	});
 
 	afterEach(async () => {
@@ -85,6 +91,7 @@ describe("a change whose commit failed, through MCP", () => {
 		["task_archive", "task-1", "Task TASK-1 was archived"],
 		["task_restore", "task-2", "Task TASK-2 was restored"],
 		["task_delete", "task-2", "Task TASK-2 was deleted"],
+		["document_archive", "doc-1", "Document doc-1 was archived"],
 	])("%s returns core's sentence instead of an unexpected error", async (tool, id, change) => {
 		await lockIndex();
 
@@ -108,6 +115,12 @@ describe("a change whose commit failed, in core and over HTTP", () => {
 		expect(archived).toBeInstanceOf(ChangeNotCommittedError);
 		expect((archived as Error).message).toStartWith(`Task TASK-1 was archived, ${COMMIT_FAILED}`);
 		expect((archived as { archiveState?: string }).archiveState).toBe("moved");
+
+		await unlockIndex();
+		await lockIndex();
+		const document = await core.archiveDocument("doc-1").catch((error: unknown) => error);
+		expect(document).toBeInstanceOf(ChangeNotCommittedError);
+		expect((document as Error).message).toStartWith(`Document doc-1 was archived, ${COMMIT_FAILED}`);
 	});
 
 	it("answers the task archive route with the same sentence and the moved state", async () => {

@@ -32,6 +32,7 @@ Humans and agents can run `backlog instructions` for workflow guides and `backlo
 - Use `backlog doc create "New Guide" -p guides` to create a document in a docs subdirectory. The created output includes the persisted docs-relative file path, such as `backlog/docs/guides/doc-1 - New-Guide.md`.
 - Use `backlog doc update doc-1 --content "Updated markdown"` to update document content. Add `--title`, `-t/--type`, `--tags`, or `-p/--path` to update metadata or move the document while preserving omitted fields.
 - Use `backlog doc search "query"` for scoped document search with plain text output that includes document IDs and follow-up `backlog doc view <docId>` commands. Use `--limit <number>` to cap results.
+- Use `backlog doc archive doc-1` to archive a document you no longer need. Its file moves unchanged to the same relative path under `backlog/archive/docs/`, and its ID stays reserved, so no new document receives it. An archived document leaves `backlog doc list` and search, stays viewable with `backlog doc view <docId>`, and is read-only: `backlog doc update` on it fails. Archiving changes no task. The command prints the tasks and drafts whose documentation list names the moved file, so you can update them.
 - Document paths are always relative to the docs directory. Absolute paths and traversal segments such as `..` are rejected.
 
 ## Task Management
@@ -378,6 +379,7 @@ To keep the Web UI running in the background with auto-start on boot, see [Runni
 | List docs | `backlog doc list` |
 | Search docs | `backlog doc search "architecture" --limit 5` |
 | View doc | `backlog doc view doc-1` |
+| Archive doc | `backlog doc archive doc-1` (move the document to `backlog/archive/docs/`; its ID stays reserved and it becomes read-only) |
 
 ## Decisions
 

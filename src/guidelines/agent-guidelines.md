@@ -735,7 +735,7 @@ Use Backlog.md public interfaces for document creation and updates so IDs, front
 
 #### CLI Usage
 
-The CLI supports creating, updating, listing, and viewing documents.
+The CLI supports creating, updating, listing, viewing, and archiving documents.
 
 ```bash
 # Create a new doc (saved under backlog/docs/ by default)
@@ -758,12 +758,16 @@ backlog doc list
 
 # View a specific doc
 backlog doc view doc-1
+
+# Archive a doc that is no longer needed (its file moves to backlog/archive/docs/)
+backlog doc archive doc-1
 ```
 
 #### MCP / API Usage
 
 - Use `document_create` to create documents with title, content, optional type/tags, and optional docs-directory-relative path.
 - Use `document_update` to update document content, title, type, tags, or path while preserving document metadata.
+- Use `document_archive` to archive a document by ID. It follows the same rules as `backlog doc archive`.
 - Document responses include the persisted docs-relative file path so agents can reference the created file without scanning source internals.
 
 #### Key Rules
@@ -771,6 +775,8 @@ backlog doc view doc-1
 - Document paths are relative to `backlog/docs/`; absolute paths and `..` traversal are rejected.
 - Supported document types are `readme`, `guide`, `specification`, and `other`.
 - Document IDs are global across the entire docs tree, including nested subfolders.
+- Archiving moves a document's file unchanged to the same relative path under `backlog/archive/docs/`. The ID stays reserved, so no new document receives it. An archived document leaves lists and search, stays viewable (`backlog doc view`, `document_view`), and is read-only: an update fails.
+- Archiving a document changes no task. The command prints the tasks and drafts whose documentation list names the moved file; update those entries yourself.
 - Prefer CLI, MCP, or Web document APIs over ad-hoc file writes so frontmatter and metadata remain valid.
 
 ### Task Operations

@@ -28,6 +28,9 @@ export const documentViewSchema: JsonSchema = {
 	additionalProperties: false,
 };
 
+/** Archive takes the same input as view: the ID of one document. */
+export const documentArchiveSchema: JsonSchema = documentViewSchema;
+
 export const documentCreateSchema: JsonSchema = {
 	type: "object",
 	properties: {

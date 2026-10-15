@@ -194,6 +194,21 @@ describe("McpServer bootstrap", () => {
 		expect(MCP_TASK_FINALIZATION_GUIDE).toContain("bring it back to the board with `task_restore`");
 	});
 
+	it("workflow guides say how a document is archived", () => {
+		for (const guide of [MCP_WORKFLOW_OVERVIEW, MCP_WORKFLOW_OVERVIEW_TOOLS]) {
+			expect(guide).toContain(
+				"- `document_archive` moves a document's file unchanged to the same relative path under `backlog/archive/docs/`.",
+			);
+			expect(guide).toContain("The ID stays reserved.");
+			expect(guide).toContain(
+				"An archived document leaves `document_list` and `document_search`, stays viewable with `document_view`, and is read-only: `document_update` on it fails.",
+			);
+			expect(guide).toContain(
+				"No task is changed; the result names the tasks and drafts whose documentation list names the moved file.",
+			);
+		}
+	});
+
 	it("task creation guide keeps parent task IDs distinct from milestone IDs", () => {
 		TEST_DIR = createUniqueTestDir("mcp-server-guides");
 
@@ -331,6 +346,7 @@ describe("McpServer bootstrap", () => {
 			"document_view",
 			"document_create",
 			"document_update",
+			"document_archive",
 			"document_search",
 		]);
 

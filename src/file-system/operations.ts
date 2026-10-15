@@ -1,5 +1,6 @@
-import { lstat, mkdir, realpath, rename, stat, unlink, writeFile } from "node:fs/promises";
-import { basename, dirname, isAbsolute, join, resolve } from "node:path";
+import type { Dirent } from "node:fs";
+import { lstat, mkdir, readdir, realpath, rename, stat, unlink, writeFile } from "node:fs/promises";
+import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import lockfile from "proper-lockfile";
 import {
 	ARCHIVED_TASK_DIRECTORIES,
@@ -25,7 +26,7 @@ import {
 	resolveBacklogDirectoryFromRootConfig,
 } from "../utils/backlog-directory.ts";
 import { findDecisionById } from "../utils/decision-id.ts";
-import { findDocumentById, normalizeDocumentId } from "../utils/document-id.ts";
+import { documentNotFoundMessage, findDocumentById, normalizeDocumentId } from "../utils/document-id.ts";
 import { normalizeDocumentRelativePath, normalizeDocumentSubPath } from "../utils/document-path.ts";
 import { normalizeDueDate } from "../utils/due-date.ts";
 import type { DraftIdentityFindings } from "../utils/duplicate-detection.ts";
@@ -286,6 +287,11 @@ function recordUnreadableDirectory(error: unknown, unreadable?: string[]): void 
 	unreadable?.push("");
 }
 
+/** Whether `path` is `directory` itself or lies inside it. Both are real paths, with links resolved. */
+function isWithinDirectory(directory: string, path: string): boolean {
+	return path === directory || path.startsWith(`${directory}${sep}`);
+}
+
 /**
  * The failure a save reports when the file it would write is taken by another file. The message
  * speaks only about that file: a command that saves several records may have saved others before
@@ -408,6 +414,10 @@ export class FileSystem {
 
 	get docsDir(): string {
 		return join(this.resolvedBacklogDir, DEFAULT_DIRECTORIES.DOCS);
+	}
+
+	get archiveDocsDir(): string {
+		return join(this.resolvedBacklogDir, DEFAULT_DIRECTORIES.ARCHIVE_DOCS);
 	}
 
 	get milestonesDir(): string {
@@ -1493,11 +1503,21 @@ export class FileSystem {
 	}
 
 	// Document operations
-	/** Saves a document. `movedFrom` is the previous path of its file when the save renamed or moved it. */
+	/**
+	 * Saves a document under the docs folder. `movedFrom` is the previous path of its file when the
+	 * save renamed or moved it.
+	 *
+	 * An archived document is refused here as well as by core, which answers the user. This save
+	 * writes under the docs folder only, so it would leave the archived file where it is and write a
+	 * second file for the same ID.
+	 */
 	async saveDocument(
 		document: Document,
 		subPath = "",
 	): Promise<{ relativePath: string; movedFrom: string | undefined }> {
+		if (document.archived) {
+			throw new Error(`Cannot save document ${document.id}: it is archived, and archived documents are read-only.`);
+		}
 		const docsDir = await this.getDocsDir();
 		const canonicalId = normalizeDocumentId(document.id);
 		document.id = canonicalId;
@@ -1505,9 +1525,7 @@ export class FileSystem {
 		const normalizedSubPath = normalizeDocumentSubPath(subPath);
 		const relativePath = normalizedSubPath ? `${normalizedSubPath}/${filename}` : filename;
 		const filepath = join(docsDir, ...relativePath.split("/"));
-		const loadedFromPath = document.path
-			? join(docsDir, ...normalizeDocumentRelativePath(document.path).split("/"))
-			: undefined;
+		const loadedFromPath = document.path ? this.documentFilePath(document) : undefined;
 
 		const movedFrom = await this.writeRecordFile(filepath, serializeDocument(document), loadedFromPath);
 
@@ -1544,40 +1562,162 @@ export class FileSystem {
 		}
 	}
 
-	/** Lists documents, skipping files that cannot be read or parsed and collecting their paths in `unreadable`. */
+	/**
+	 * Lists the documents in the docs folder, skipping files that cannot be read or parsed and
+	 * collecting their paths in `unreadable`. Archived documents are not part of this list; see
+	 * {@link listArchivedDocuments}.
+	 */
 	async listDocuments(unreadable?: string[]): Promise<Document[]> {
-		try {
-			const docsDir = await this.getDocsDir();
-			// Recursively include all markdown files under docs, excluding README.md variants
-			const glob = new Bun.Glob("**/*.md");
-			const docFiles = await Array.fromAsync(glob.scan({ cwd: docsDir, followSymlinks: true }));
-			const docs: Document[] = [];
-			for (const file of docFiles) {
-				const relativePath = normalizeDocumentRelativePath(file);
-				const base = relativePath.split("/").pop() || relativePath;
-				if (base.toLowerCase() === "readme.md") continue;
-				const filepath = join(docsDir, ...relativePath.split("/"));
-				try {
-					const content = await Bun.file(filepath).text();
-					docs.push({ ...parseDocument(content), path: relativePath });
-				} catch {
-					// One malformed file must not hide every other document from lookups.
-					unreadable?.push(relativePath);
-				}
-			}
-
-			// Sort by title for UI/CLI listing; the path breaks title ties so paged CLI windows never overlap.
-			return docs.sort((a, b) => a.title.localeCompare(b.title) || (a.path ?? "").localeCompare(b.path ?? ""));
-		} catch (error) {
-			recordUnreadableDirectory(error, unreadable);
-			return [];
-		}
+		return await this.readDocumentsUnder(this.docsDir, this.archiveDocsDir, unreadable);
 	}
 
+	/**
+	 * Lists the archived documents, each marked `archived`. `path` on a document and the paths
+	 * collected in `unreadable` are relative to the archive folder for documents.
+	 */
+	async listArchivedDocuments(unreadable?: string[]): Promise<Document[]> {
+		const documents = await this.readDocumentsUnder(this.archiveDocsDir, this.docsDir, unreadable);
+		return documents.map((document) => ({ ...document, archived: true }));
+	}
+
+	/**
+	 * Reads the documents stored under one of the two document folders. `path` on each document is
+	 * relative to `directory`. README files are instructions, not documents, and are left out.
+	 */
+	private async readDocumentsUnder(
+		directory: string,
+		otherDocumentsDir: string,
+		unreadable?: string[],
+	): Promise<Document[]> {
+		const docs: Document[] = [];
+		for (const relativePath of await this.findDocumentFiles(directory, otherDocumentsDir, unreadable)) {
+			if (basename(relativePath).toLowerCase() === "readme.md") continue;
+			try {
+				const content = await Bun.file(join(directory, ...relativePath.split("/"))).text();
+				docs.push({ ...parseDocument(content), path: relativePath });
+			} catch {
+				// One malformed file must not hide every other document from lookups.
+				unreadable?.push(relativePath);
+			}
+		}
+
+		// Sort by title for UI/CLI listing; the path breaks title ties so paged CLI windows never overlap.
+		return docs.sort((a, b) => a.title.localeCompare(b.title) || (a.path ?? "").localeCompare(b.path ?? ""));
+	}
+
+	/**
+	 * Finds the Markdown files under one of the two document folders, as paths relative to
+	 * `directory` with forward slashes. Hidden files and folders (a name that starts with a dot) are
+	 * not documents. A folder that cannot be read is collected in `unreadable`, as its relative path.
+	 *
+	 * The rule for folder links: a folder inside `directory` is read under its own path and never
+	 * through a link, and a folder outside it is read once.
+	 * - A link to a folder inside `directory` is not walked. This covers a shortcut such as
+	 *   `shortcut -> a/b/c` and a link that points back at `directory` or at one of its subfolders.
+	 *   The document keeps the path of the folder it is really in, which is the path its archive
+	 *   destination and a task's `documentation` entry are built from.
+	 * - A link to a folder outside `directory` is walked, because that is the only path to the files
+	 *   in it. When several links lead to one such folder it is read once, under the shortest path.
+	 *   The same set of folders already read ends a link to a folder above `directory`: the walk
+	 *   comes back to `directory` itself and does not read it again.
+	 * Two different files stay two files, also when both are links to the same target.
+	 *
+	 * A recursive glob with `followSymlinks` is not used for this, because it returns a file once for
+	 * every path that leads to it. One folder link back into the docs folder then lists every
+	 * document several times, each ID looks claimed by several files, and every lookup fails as
+	 * ambiguous. (While this walk was written, such a glob was also seen to keep following a loop of
+	 * two links until a test timed out, but only inside the full test suite. In a fresh process the
+	 * same scan returns at once, so that is not the reason given here.)
+	 *
+	 * A file or folder inside `otherDocumentsDir` is left to the listing of that folder. A link that leads
+	 * from one document folder into the other therefore changes nothing about which documents are
+	 * archived. No file is dropped from both listings this way: when the two folders are one folder,
+	 * or `directory` lies inside the other one, nothing is left out here.
+	 */
+	private async findDocumentFiles(
+		directory: string,
+		otherDocumentsDir: string,
+		unreadable?: string[],
+	): Promise<string[]> {
+		const realDirectory = await realpath(directory).catch(() => null);
+		const otherRealDirectory = await realpath(otherDocumentsDir).catch(() => null);
+		const foreignDirectory =
+			realDirectory && otherRealDirectory && !isWithinDirectory(otherRealDirectory, realDirectory)
+				? otherRealDirectory
+				: null;
+
+		const files: string[] = [];
+		const foldersRead = new Set<string>();
+		// A queue, so folders are read level by level and the shortest path to a folder comes first.
+		const foldersToRead = [""];
+		for (let next = 0; next < foldersToRead.length; next += 1) {
+			const relativeFolder = foldersToRead[next] ?? "";
+			const folder = join(directory, ...relativeFolder.split("/"));
+			let entries: Dirent[];
+			try {
+				const realFolder = await realpath(folder);
+				if (foldersRead.has(realFolder)) continue;
+				if (foreignDirectory && isWithinDirectory(foreignDirectory, realFolder)) continue;
+				foldersRead.add(realFolder);
+				entries = await readdir(folder, { withFileTypes: true });
+			} catch (error) {
+				// A folder that cannot be read is reported and never taken for an empty one. A folder
+				// that does not exist has nothing in it. The empty path stands for `directory` itself.
+				if ((error as NodeJS.ErrnoException).code !== "ENOENT") unreadable?.push(relativeFolder);
+				continue;
+			}
+			// Sorted, so that of two equally short paths to one folder the same one is taken every time.
+			for (const entry of entries.sort((left, right) => left.name.localeCompare(right.name))) {
+				if (entry.name.startsWith(".")) continue;
+				const relativePath = relativeFolder ? `${relativeFolder}/${entry.name}` : entry.name;
+				const path = join(folder, entry.name);
+				const linkTarget = entry.isSymbolicLink() ? await realpath(path).catch(() => null) : null;
+				if (linkTarget && foreignDirectory && isWithinDirectory(foreignDirectory, linkTarget)) continue;
+				// A link counts as what it points to. A link whose target is missing is neither a file
+				// nor a folder.
+				const kind = entry.isSymbolicLink() ? await stat(path).catch(() => null) : entry;
+				if (kind?.isFile()) {
+					if (entry.name.endsWith(".md")) files.push(relativePath);
+				} else if (kind?.isDirectory()) {
+					const leadsInside =
+						entry.isSymbolicLink() && realDirectory !== null && isWithinDirectory(realDirectory, linkTarget ?? path);
+					if (!leadsInside) foldersToRead.push(relativePath);
+				}
+			}
+		}
+		return files;
+	}
+
+	/**
+	 * The file of a listed document: under the docs folder, or under the archive folder for documents
+	 * when the document is archived. This is the one place that maps `archived` to a folder.
+	 */
+	documentFilePath(document: Document): string {
+		const directory = document.archived ? this.archiveDocsDir : this.docsDir;
+		const relativePath = normalizeDocumentRelativePath(document.path ?? `${document.id}.md`);
+		return join(directory, ...relativePath.split("/"));
+	}
+
+	/**
+	 * The file of a listed document as a path from the project root with forward slashes, for example
+	 * `backlog/docs/guides/doc-3 - API-Guidelines.md`. Messages name a document's file this way, and
+	 * a task's `documentation` entry that names the file is written this way.
+	 */
+	documentProjectPath(document: Document): string {
+		return relative(this.projectRoot, this.documentFilePath(document)).split(sep).join("/");
+	}
+
+	/**
+	 * Loads a document from the docs folder by ID. The content store uses it to read back a document
+	 * that was just saved. It does not look at the archive: to resolve an ID a user gave, call
+	 * `Core.getDocument`, which fails closed when an archived file claims the same ID.
+	 */
 	async loadDocument(id: string): Promise<Document> {
-		const document = findDocumentById(await this.listDocuments(), id);
+		const document = findDocumentById(await this.listDocuments(), id, (candidate) =>
+			this.documentProjectPath(candidate),
+		);
 		if (!document) {
-			throw new Error(`Document not found: ${id}`);
+			throw new Error(documentNotFoundMessage(id));
 		}
 		return document;
 	}

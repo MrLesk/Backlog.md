@@ -11,6 +11,7 @@ import type {
 } from "./handlers.ts";
 import { DocumentHandlers } from "./handlers.ts";
 import {
+	documentArchiveSchema,
 	documentCreateSchema,
 	documentListSchema,
 	documentSearchSchema,
@@ -67,6 +68,18 @@ export function registerDocumentTools(server: McpServer, _config: BacklogConfig)
 		async (input) => handlers.updateDocument(input as DocumentUpdateArgs),
 	);
 
+	const archiveDocumentTool: McpToolHandler = createSimpleValidatedTool(
+		{
+			name: "document_archive",
+			description:
+				"Move a Backlog.md document into the archive; keeps its ID reserved and its file unchanged. The document stays viewable, becomes read-only, and leaves lists and search. Tasks and drafts that list the file as documentation are named, not changed",
+			inputSchema: documentArchiveSchema,
+			annotations: { title: "Archive Document", destructiveHint: true },
+		},
+		documentArchiveSchema,
+		async (input) => handlers.archiveDocument(input as DocumentViewArgs),
+	);
+
 	const searchDocumentTool: McpToolHandler = createSimpleValidatedTool(
 		{
 			name: "document_search",
@@ -82,6 +95,7 @@ export function registerDocumentTools(server: McpServer, _config: BacklogConfig)
 	server.addTool(viewDocumentTool);
 	server.addTool(createDocumentTool);
 	server.addTool(updateDocumentTool);
+	server.addTool(archiveDocumentTool);
 	server.addTool(searchDocumentTool);
 }
 

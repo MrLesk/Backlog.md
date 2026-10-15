@@ -206,4 +206,56 @@ describe.skipIf(isWindows())("auto-commit of record files reached through a symb
 			expect(await git("rev-parse", "HEAD")).toBe(head);
 		},
 	);
+
+	it.each(TARGETS)("commits an archived document as a link when its target is %s", async (_where, targetOf) => {
+		expect((await backlog("doc", "create", "Linked doc")).exitCode).toBe(0);
+		const name = "doc-1 - Linked-doc.md";
+		await replaceWithCommittedLink(join(TEST_DIR, "backlog", "docs", name), targetOf("doc.md"));
+
+		const archived = await backlog("doc", "archive", "doc-1");
+
+		expect(archived.exitCode).toBe(0);
+		expect(archived.stdout).toBe("Archived document doc-1\n");
+		expect(await git("log", "-1", "--format=%s")).toBe("backlog: Archive document doc-1");
+		// The commit holds the link under its new path and the removal of the old one, nothing else.
+		expect(await lastCommit()).toEqual([`A\tbacklog/archive/docs/${name}`, `D\tbacklog/docs/${name}`]);
+		expect(await trackedMode(`backlog/archive/docs/${name}`)).toBe("120000");
+		expect(await git("status", "--porcelain")).toBe("");
+		expect((await lstat(join(TEST_DIR, "backlog", "archive", "docs", name))).isSymbolicLink()).toBe(true);
+	});
+
+	it("still commits the file a link points to when a document is edited through the link", async () => {
+		expect((await backlog("doc", "create", "Linked doc")).exitCode).toBe(0);
+		await replaceWithCommittedLink(
+			join(TEST_DIR, "backlog", "docs", "doc-1 - Linked-doc.md"),
+			join(TEST_DIR, "notes", "doc.md"),
+		);
+
+		// The link itself does not change. The edit lands in the file it points to.
+		expect((await backlog("doc", "update", "doc-1", "--content", "Edited through the link")).exitCode).toBe(0);
+		expect(await lastCommit()).toEqual(["M\tnotes/doc.md"]);
+		expect(await git("status", "--porcelain")).toBe("");
+	});
+
+	it("says that the commit failed for a document in a linked folder that Git cannot track", async () => {
+		// backlog/docs/shared is a link to a folder outside the repository. Git tracks the link, not
+		// the files behind it, so the file the archive moves was never in the repository.
+		const shared = join(OUTSIDE_DIR, "shared");
+		await mkdir(shared);
+		await symlink(shared, join(TEST_DIR, "backlog", "docs", "shared"));
+		await new Core(TEST_DIR).createDocumentFromInput({ title: "Shared guide", path: "shared", content: "" }, false);
+		await git("add", "-A");
+		await git("commit", "-m", "Add the linked folder");
+		const head = await git("rev-parse", "HEAD");
+
+		const archived = await backlog("doc", "archive", "doc-1");
+
+		// The move is done and the command does not pretend that it was committed.
+		expect(archived.exitCode).toBe(1);
+		expect(archived.stderr).toContain("Document doc-1 was archived, but committing the change failed:");
+		expect(archived.stdout).toBe("");
+		expect(await readdir(join(TEST_DIR, "backlog", "archive", "docs", "shared"))).toEqual(["doc-1 - Shared-guide.md"]);
+		expect(await readdir(shared)).toEqual([]);
+		expect(await git("rev-parse", "HEAD")).toBe(head);
+	});
 });
