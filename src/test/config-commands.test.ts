@@ -472,6 +472,10 @@ describe("Config commands", () => {
 
 		// Control: with no column-0 occurrence, an indented key is still the only value there is.
 		expect(core.filesystem.parseConfig('project_name: "P"\n\tstatuses: ["tabbed"]\n').statuses).toEqual(["tabbed"]);
+		expect(core.filesystem.parseConfig('project_name: "P"\n\tstatuses:\n\t  - Queued\n\t  - Done\n').statuses).toEqual([
+			"Queued",
+			"Done",
+		]);
 		expect(core.filesystem.parseConfig('project_name: "P"\n  statuses: ["spaced"]\n').statuses).toEqual(["spaced"]);
 	});
 

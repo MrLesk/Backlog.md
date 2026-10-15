@@ -8,6 +8,7 @@
 ### Development
 
 - `bun i` - Install dependencies
+- `bun run check:types` - Type-check code with Bun
 - `bun test` - Run tests
 - `bun run format` - Format code with Biome
 - `bun run lint` - Lint and auto-fix with Biome
@@ -35,7 +36,7 @@
 
 ## Code Standards
 
-- **Runtime**: Bun with TypeScript 5
+- **Runtime**: Bun with TypeScript
 - **Formatting**: Biome with tab indentation and double quotes
 - **Linting**: Biome recommended rules
 - **Testing**: Bun's built-in test runner
