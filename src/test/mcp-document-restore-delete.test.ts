@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
-import { lstat, mkdir, readdir, readFile, writeFile } from "node:fs/promises";
+import { lstat, mkdir, readdir, readFile, rmdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { $ } from "bun";
 import { McpServer } from "../mcp/server.ts";
@@ -216,9 +216,16 @@ describe("MCP document_restore and document_delete", () => {
 		expect(await git("status", "--porcelain")).toBe("");
 	});
 
-	it.each([false, true])(
-		"commits both record paths after an uncommitted archive (archive staged: %s)",
-		async (stageArchive) => {
+	it.each([
+		[false, 0],
+		[true, 0],
+		[false, 1],
+		[true, 1],
+		[false, 2],
+		[true, 2],
+	] as const)(
+		"commits both record paths after an uncommitted archive (archive staged: %s, removed parents: %s)",
+		async (stageArchive, removedParents) => {
 			await setAutoCommit(false);
 			const created = await call("document_create", {
 				title: "Mixed auto-commit",
@@ -238,6 +245,9 @@ describe("MCP document_restore and document_delete", () => {
 			expect(await git("rev-parse", "HEAD")).toBe(headBefore);
 			expect(await git("diff", "--cached", "--name-only")).toBe("");
 			if (stageArchive) await git("add", "--", activePath, archivedPath);
+			for (const folder of ["guides/http", "guides"].slice(0, removedParents)) {
+				await rmdir(docsPath(folder));
+			}
 			await setAutoCommit(true);
 			await writeFile(join(TEST_DIR, "staged.txt"), "staged by the user\n");
 			await git("add", "staged.txt");
