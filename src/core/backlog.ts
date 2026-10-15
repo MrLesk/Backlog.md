@@ -4576,7 +4576,10 @@ export class Core {
 					repoRoot,
 				);
 			} catch (error) {
-				throw contentRecordNotCommittedError(kind, direction, record.id, error);
+				const failure = contentRecordNotCommittedError(kind, direction, record.id, error);
+				// The browser archives documents and decisions, as it archives tasks. The tag tells it the
+				// record moved, so the page treats it as archived instead of offering the archive again.
+				throw direction === "archive" ? markRecordAlreadyMoved(failure, "archiveState") : failure;
 			}
 		}
 		return { id: record.id, listedAsDocumentationBy };

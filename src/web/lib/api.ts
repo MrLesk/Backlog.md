@@ -508,6 +508,16 @@ export class ApiClient {
 		return response.json();
 	}
 
+	// Archive is not retried, for the reason task archive is not: the second attempt would target a
+	// record the first attempt already archived, and its refusal would replace the real outcome.
+	async archiveDoc(id: string): Promise<void> {
+		await this.fetchWithoutRetry(`${API_BASE}/docs/${encodeURIComponent(id)}/archive`, { method: "POST" });
+	}
+
+	async archiveDecision(id: string): Promise<void> {
+		await this.fetchWithoutRetry(`${API_BASE}/decisions/${encodeURIComponent(id)}/archive`, { method: "POST" });
+	}
+
 	async fetchDecisions(): Promise<Decision[]> {
 		const response = await fetch(`${API_BASE}/decisions`);
 		if (!response.ok) {
