@@ -310,6 +310,41 @@ describe("backlog doc archive", () => {
 		}
 	});
 
+	it.skipIf(isWindows())("keeps file links across document stores out of lists and lookups", async () => {
+		const retired = await createDocument("Retired runbook");
+		const current = await createDocument("Current runbook");
+		expect((await backlog("doc", "archive", "1")).exitCode).toBe(0);
+		await symlink(archivePath(retired), docsPath("retired-alias.md"));
+		await symlink(docsPath(current), archivePath("current-alias.md"));
+		const before = await backlogSnapshot();
+
+		for (const args of [
+			["doc", "list", "--plain"],
+			["doc", "search", "runbook"],
+			["search", "runbook", "--plain"],
+		]) {
+			const output = await backlog(...args);
+			expect(output.exitCode).toBe(0);
+			expect(output.stdout).toContain("Current runbook");
+			expect(output.stdout).not.toContain("Retired runbook");
+		}
+		const archivedView = await backlog("doc", "view", "doc-001");
+		expect(archivedView.exitCode).toBe(0);
+		expect(archivedView.stdout).toContain(ARCHIVED_LINE);
+		const activeView = await backlog("doc", "view", "2");
+		expect(activeView.exitCode).toBe(0);
+		expect(activeView.stdout).not.toContain(ARCHIVED_LINE);
+		for (const args of [
+			["doc", "archive", "doc-1"],
+			["doc", "update", "1", "--content", "Changed"],
+		]) {
+			const refused = await backlog(...args);
+			expect(refused.exitCode).toBe(1);
+			expect(refused.stderr).toContain(READ_ONLY_MESSAGE("doc-1"));
+		}
+		expect(await backlogSnapshot()).toEqual(before);
+	});
+
 	it("prints the tasks and drafts whose documentation names the moved file and changes none of them", async () => {
 		const name = await createDocument("API Guidelines", "guides");
 		const path = `backlog/docs/guides/${name}`;

@@ -65,41 +65,43 @@ describe("references to an archived or vacated task ID", () => {
 			.map((node) => `${node.id} - ${node.title ?? node.state}`);
 	};
 
-	it.each([
-		"Done",
-		"Closed",
-	])("archives %s work without changing any other record, and its dependents become ready", async (status) => {
-		const config = await core.filesystem.loadConfig();
-		if (!config) throw new Error("Missing test config");
-		await core.filesystem.saveConfig({ ...config, statuses: ["To Do", "In Progress", status] });
-		const { task: target } = await core.createTaskFromInput({ title: "Finished work", status });
-		const { task: active } = await core.createTaskFromInput({
-			title: "Active dependent",
-			dependencies: [target.id],
-			references: [target.id],
-		});
-		const { task: archivedDependent } = await core.createTaskFromInput({
-			title: "Archived dependent",
-			status,
-			dependencies: [target.id],
-			references: [target.id],
-		});
-		expect(await core.archiveTask(archivedDependent.id, false)).toBe(true);
-		const paths = [active.filePath, (await loadArchived(archivedDependent.id))?.filePath];
-		const before = await Promise.all(paths.map((path) => Bun.file(path as string).text()));
+	it.each(["Done", "Closed"])(
+		"archives %s work without changing any other record, and its dependents become ready",
+		async (status) => {
+			const config = await core.filesystem.loadConfig();
+			if (!config) throw new Error("Missing test config");
+			await core.filesystem.saveConfig({ ...config, statuses: ["To Do", "In Progress", status] });
+			const { task: target } = await core.createTaskFromInput({ title: "Finished work", status });
+			const { task: active } = await core.createTaskFromInput({
+				title: "Active dependent",
+				dependencies: [target.id],
+				references: [target.id],
+			});
+			const { task: archivedDependent } = await core.createTaskFromInput({
+				title: "Archived dependent",
+				status,
+				dependencies: [target.id],
+				references: [target.id],
+			});
+			expect(await core.archiveTask(archivedDependent.id, false)).toBe(true);
+			const paths = [active.filePath, (await loadArchived(archivedDependent.id))?.filePath];
+			const before = await Promise.all(paths.map((path) => Bun.file(path as string).text()));
 
-		expect(await core.archiveTask(target.id, false)).toBe(true);
+			expect(await core.archiveTask(target.id, false)).toBe(true);
 
-		expect(await Promise.all(paths.map((path) => Bun.file(path as string).text()))).toEqual(before);
-		expect((await loadArchived(target.id))?.status).toBe(status);
-		const dependent = await core.filesystem.loadTask(active.id);
-		expect(await dependencyTitles(dependent)).toEqual([`${target.id} - Finished work`]);
-		expect(await dependencyTitles(await loadArchived(archivedDependent.id))).toEqual([`${target.id} - Finished work`]);
-		expect((await loadTaskDetail(core, dependent as Task)).readiness).toMatchObject({
-			isReady: true,
-			isBlocked: false,
-		});
-	});
+			expect(await Promise.all(paths.map((path) => Bun.file(path as string).text()))).toEqual(before);
+			expect((await loadArchived(target.id))?.status).toBe(status);
+			const dependent = await core.filesystem.loadTask(active.id);
+			expect(await dependencyTitles(dependent)).toEqual([`${target.id} - Finished work`]);
+			expect(await dependencyTitles(await loadArchived(archivedDependent.id))).toEqual([
+				`${target.id} - Finished work`,
+			]);
+			expect((await loadTaskDetail(core, dependent as Task)).readiness).toMatchObject({
+				isReady: true,
+				isBlocked: false,
+			});
+		},
+	);
 
 	it("archives unfinished work without rewriting its dependents, which stay blocked", async () => {
 		const { task: target } = await core.createTaskFromInput({ title: "Set aside" });
@@ -213,6 +215,63 @@ describe("references to an archived or vacated task ID", () => {
 		expect(updatedDependent?.dependencies ?? []).toEqual([]);
 		expect(updatedDependent?.references ?? []).toEqual([]);
 	});
+
+	it.each(["demote", "edit"])(
+		"cleans late-created task and draft links when %s acquires the allocator",
+		async (operation) => {
+			const { task: anchor } = await core.createTaskFromInput({ title: "Stable parent" }, false);
+			const { task: target } = await core.createTaskFromInput({ title: "Vacated target" }, false);
+			const creator = new Core(testDir);
+			const original = core.filesystem.withCreateLock.bind(core.filesystem);
+			let created = false;
+			core.filesystem.withCreateLock = async (run, options) => {
+				if (!created) {
+					created = true;
+					await creator.createTaskFromInput(
+						{
+							title: "Late task",
+							parentTaskId: anchor.id,
+							dependencies: [target.id],
+							references: [target.id],
+						},
+						false,
+					);
+					await creator.createTaskFromInput(
+						{
+							title: "Late draft",
+							status: "Draft",
+							dependencies: [target.id],
+							references: [target.id],
+						},
+						false,
+					);
+				}
+				return await original(run, options);
+			};
+
+			try {
+				const result =
+					operation === "demote"
+						? await core.demoteTask(target.id, false)
+						: await core.editTaskOrDraft(target.id, { status: "Draft", labels: ["edited"] }, false);
+				expect(result.cleanedTaskIds).toEqual([`${anchor.id}.1`, "DRAFT-1"]);
+			} finally {
+				core.filesystem.withCreateLock = original;
+				await creator.disposeContentStore();
+			}
+
+			expect((await core.createTaskFromInput({ title: "Unrelated replacement" }, false)).task.id).toBe(target.id);
+			const lateTask = await core.filesystem.loadTask(`${anchor.id}.1`);
+			expect(lateTask?.dependencies ?? []).toEqual([]);
+			expect(lateTask?.references ?? []).toEqual([]);
+			expect(await dependencyTitles(lateTask)).toEqual([]);
+			const drafts = await core.filesystem.listDrafts();
+			expect(drafts.map((draft) => draft.id)).toEqual(["DRAFT-1", "DRAFT-2"]);
+			expect(drafts[0]?.dependencies ?? []).toEqual([]);
+			expect(drafts[0]?.references ?? []).toEqual([]);
+			if (operation === "edit") expect(drafts[1]?.labels).toEqual(["edited"]);
+		},
+	);
 
 	it("removes demoted references from the archived corpus and the working copy alike", async () => {
 		const { task: activeDependent } = await core.createTaskFromInput({ title: "Active dependent" });

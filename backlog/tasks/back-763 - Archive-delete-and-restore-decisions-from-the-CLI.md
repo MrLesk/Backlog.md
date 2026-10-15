@@ -3,9 +3,9 @@ id: BACK-763
 title: 'Archive, delete and restore decisions from the CLI'
 status: Done
 assignee:
-  - '@claude'
+  - '@codex-763'
 created_date: '2026-10-13 18:46'
-updated_date: '2026-10-14 06:54'
+updated_date: '2026-10-15 22:21'
 labels:
   - enhancement
 dependencies:
@@ -17,30 +17,35 @@ references:
   - file-storage
   - content-store
   - web-server
-modified_files:
-  - src/types/index.ts
-  - src/constants/index.ts
-  - src/utils/decision-id.ts
-  - src/file-system/operations.ts
-  - src/core/content-store.ts
-  - src/utils/id-generators.ts
   - src/core/backlog.ts
-  - src/cli.ts
-  - src/mcp/tools/documents/handlers.ts
-  - src/server/index.ts
-  - src/test/server-document-archive.test.ts
+  - src/test/cli-decision-archive.test.ts
   - src/test/cli-doc-restore-delete.test.ts
-  - src/test/document-archive.test.ts
-  - src/test/commit-failure-after-change.test.ts
-  - src/test/content-identity.test.ts
+  - src/test/mcp-document-restore-delete.test.ts
+modified_files:
   - CLI-INSTRUCTIONS.md
+  - src/cli.ts
+  - src/completions/helper.test.ts
+  - src/constants/index.ts
+  - src/core/backlog.ts
+  - src/core/content-store.ts
+  - src/file-system/operations.ts
   - src/guidelines/agent-guidelines.md
   - src/guidelines/cli-instructions/task-execution.md
+  - src/mcp/tools/documents/handlers.ts
+  - src/server/index.ts
   - src/test/cli-decision-archive.test.ts
-  - src/test/server-decision-archive.test.ts
+  - src/test/cli-doc-restore-delete.test.ts
+  - src/test/commit-failure-after-change.test.ts
+  - src/test/content-identity.test.ts
   - src/test/decision-archive.test.ts
+  - src/test/document-archive.test.ts
   - src/test/linked-record-commit.test.ts
   - src/test/mcp-server.test.ts
+  - src/test/server-decision-archive.test.ts
+  - src/test/server-document-archive.test.ts
+  - src/types/index.ts
+  - src/utils/decision-id.ts
+  - src/utils/id-generators.ts
 priority: high
 type: enhancement
 ordinal: 384000
@@ -116,12 +121,11 @@ This is the third of four stacked tasks for issue #1101. Each is one branch and 
 ## Implementation Plan
 
 <!-- SECTION:PLAN:BEGIN -->
-1. One implementation for documents and decisions. A content record kind ("document" | "decision") supplies the lookup (Core.getDocument, the new Core.getDecision), the two folders and the file check (FileSystem.contentRecordFilePath, contentRecordProjectPath, removeArchivedContentRecordFile), the refusal words and the noun (one words table), and the store calls (ContentStore addDocument/removeDocument, the new addDecision/removeDecision). moveDocument, deleteDocument and loadDocumentForChange become moveContentRecord, deleteContentRecord and loadContentRecordForChange; archive, restore and delete are archiveContentRecord, restoreContentRecord and deleteContentRecord. The document error classes become ContentRecordArchivedError, ContentRecordNotArchivedError and ContentRecordFileExistsError. The CLI runs the archive, restore and delete commands of both kinds through one action that takes the kind; the MCP document handlers keep a document-only report helper, since MCP has document tools only; both print the lines core describes (describeContentRecordChange).
-2. Decisions are flat: listDecisions reads backlog/decisions only and listArchivedDecisions reads backlog/archive/decisions, through one reader with the existing flat pattern; no folder walk.
-3. Decisions get what documents have: Core.getDecision resolves an ID over both folders and names files from the project root when it is ambiguous; generateNextDecisionId and the core allocator count the archive (frontmatter, file name, other branches); doctor reports a duplicate across the two folders; archived decisions stay out of decision list (plain and --json), backlog search, GET /api/decisions and web search.
-4. Read-only: every way of changing a decision on this base refuses an archived one with the core message naming backlog decision restore <id>: Core.updateDecisionFromContent (the web save, 400) and FileSystem.saveDecision. No decision view and no MCP decision tool.
-5. CLI: backlog decision archive, restore and delete, with no options. Guides: CLI-INSTRUCTIONS.md, the task-execution guide and the agent guidelines.
-6. Tests outside the repository: a CLI test file for every criterion, core and storage rules, the web routes, the MCP tool list, link cases with auto-commit for a target inside and outside the repository, and the commit-failure sentence; the four cases of the released-ID rule.
+1. Merge repaired BACK-762 commit 285702c87d597529e532fee11093104f2ecf5e80 into the existing BACK-763 branch, preserving its original commits and shared document/decision lifecycle owner.
+2. Carry active-plus-archive path staging and scoped commit selection into deleteContentRecord for both kinds. Preserve existing links, ambiguity, allocator, locking, applied-delete errors, and publication behavior.
+3. Add a decision CLI regression for a committed active record archived without auto-commit, then deleted with auto-commit. Cover staged and unstaged archives, HEAD removal, ID reuse, and unrelated index/worktree preservation. Prove it fails with the original single-path owner.
+4. Run focused document and decision suites, inherited safety checks, type/lint/build checks, and compiled CLI/MCP isolated-project proofs. Review the implementation for simplification.
+5. After the completed full-context KEEP review and passing verification, finalize the task, commit the reviewed merge, protect the push against the expected remote commit, and return the shared checkout to unchanged main.
 <!-- SECTION:PLAN:END -->
 
 ## Implementation Notes
@@ -140,32 +144,32 @@ The released-ID criterion was reworded through the CLI as criterion 30, followin
 Tests: src/test/cli-decision-archive.test.ts (34), src/test/decision-archive.test.ts (10) and src/test/server-decision-archive.test.ts (3) are new. src/test/linked-record-commit.test.ts runs the link case for documents and decisions from one table; src/test/commit-failure-after-change.test.ts adds decision archive, restore and delete; src/test/mcp-server.test.ts asserts no decision_ tool; src/test/content-identity.test.ts expects decision candidates from the project root. Five deliberate breaks (archive left out of the ID step, the archive folder left out of the branch scan, the read-only refusal removed, doctor without the archive, the store left alone on archive) each fail a test.
 
 Checks: bunx tsc --noEmit and bun run check . clean. One file at a time: cli-decision-archive 34, decision-archive 10, server-decision-archive 3, linked-record-commit 17, commit-failure-after-change 17, mcp-server 16, document-archive 44, cli-doc-archive 35, cli-doc-restore-delete 32, mcp-document-archive 10, mcp-document-restore-delete 9, server-document-archive 3, content-identity 13, content-store 67, cli-doctor 34, filesystem 53, cli-doc-decision-board 20, server-search-endpoint 26, no failures. bun run test: 3,223 pass, 8 skip, 0 fail across 307 files (it exits 1 with no failing test, as on the base). An end-to-end run against a built binary covered the CLI, the web save and lists over HTTP, and the MCP tool list over stdio.
+
+Integration started from original BACK-763 7c641aed and exact repaired BACK-762 285702c8. Resolving three merge conflicts. First retain the original single-path shared deletion owner long enough to show that the new decision regression detects the reported mixed-auto-commit defect; then carry the parent two-path repair into that same owner.
+
+Preserved the parent opposite-store link membership and distinct-file ambiguity assertions in document-archive tests, translated to the existing shared ContentRecord API.
+
+Kept the BACK-763 table-driven document and decision linked-record Git tests while preserving inherited task-link coverage.
+
+Red proof: the two new decision mixed-auto-commit CLI cases failed on the original single-path generic deletion owner (0 pass, 2 fail). Both reported success but made no commit (expected count 4, actual 3). Carried the repaired parent behavior into the existing shared deleteContentRecord: derive activeRecord with withoutArchivedFlag, resolve its path using contentRecordFilePath, pre-read config/references, remove the archive file, then stage and commit the same [removedPath, activePath] list with existing subjects/errors.
+
+Biome 2.5.15 formatting applied to the changed decision CLI regression file after parent runtime/toolchain integration.
+
+Biome removed the extra blank line left by the linked-record merge conflict resolution.
+
+Progress proof: Bun 1.4.3; check:types (558 files), Biome 2.5.15 (455 files), and build pass. Six mixed-auto-commit regression cases pass across decision CLI, document CLI and document MCP. HTTP lifecycle/search: 32 pass. Inherited task lock-order, allocator, publication and applied-delete checks: 165 pass. CLI/completion/MCP stdio checks: 47 pass. The unchanged interactive document viewer failed with the default terminal environment; the complete document CLI archive suite passes (37 tests) with env -u NO_COLOR TERM=xterm-256color. Compiled-binary proof passed all six isolated-project cases; evidence /private/tmp/back-763-compiled-proof-BpO7CO/proof.json, script /tmp/back-763-compiled-proof.ts. Each case confirms both paths absent from HEAD, one scoped delete commit, ID reuse, and unrelated staged/unstaged/untracked work preserved; each MCP call starts after configuration is saved and confirms no decision_ tool.
+
+Review hold: the complete focused lifecycle/identity/link/Git/error batch finished with 404 pass and the one known terminal-environment viewer failure; the complete failed-file rerun with the required terminal environment passed all 37 tests. No test source workaround was applied. The source remains stable. Modified-file attribution is scoped to the final feature/integration diff against exact parent 285702c8; parent-only inherited history files are excluded. Task remains In Progress for full-context architecture review, with no commit or push.
+
+Full-context architecture review returned KEEP: no supported blocker, new decision, or source change. Acceptance evidence: the decision CLI suite proves lifecycle, ID forms, byte preservation, refusal/no-confirmation behavior, collisions, documentation reports, reservation/reuse, links, scoped Git commits, and help/guides (AC 1-15, 18-24, 26, 28-30). Core and HTTP suites prove read-only saves and filtered lists/search (AC 16-17); MCP tool-list/compiled stdio proof confirms no decision tools (AC 25); shared document/decision lifecycle code and both-kind regression/link suites prove AC 27. All acceptance criteria and DoD items are verified.
+Validation covered 405 focused lifecycle/identity/link/Git/error cases across 14 files (404 initial passes; one unchanged interactive viewer case failed with default terminal settings, then its complete 37-case file passed with env -u NO_COLOR TERM=xterm-256color), 165 inherited task safety cases, 32 HTTP cases, and 47 CLI/completion/real MCP stdio cases. No semantic test workaround. Red proof has 2 expected failures on the original single-path owner; the repaired six-case CLI/MCP regression has 6 passes. All six compiled-binary isolated-project cases pass. check:types (558 files), Biome 2.5.15 (455 files), and build pass on Bun 1.4.3.
+Subtraction pass: retained one existing lifecycle owner and the existing kind/path/subject/error helpers. One changedPaths array drives both staging and commit selection; no layer, lock, API shim, or exported path helper was added. Reviewed source/test diff against 285702c8 is /tmp/back-763-review.diff, SHA-256 af8a09f466888c0781807a00a55a9966abfcc6670f3c3ca685ed9bd10bf1034d. Compiled proof evidence is /private/tmp/back-763-compiled-proof-BpO7CO/proof.json. Final modified-file attribution contains the 24 feature/integration paths against the exact parent.
 <!-- SECTION:NOTES:END -->
 
 ## Final Summary
 
 <!-- SECTION:FINAL_SUMMARY:BEGIN -->
-`backlog decision archive`, `backlog decision restore` and `backlog decision delete` give decisions the two-step removal and the way back that documents have. Archived decisions live in `backlog/archive/decisions/`, keep their ID reserved, are read-only, and leave lists and search.
-
-What changed
-- One implementation for documents and decisions. archiveContentRecord, restoreContentRecord and deleteContentRecord take a content record kind; the kind supplies its lookup and store calls (Core.contentRecords), its words (CONTENT_RECORD_WORDS) and its storage (FileSystem.contentRecordStorage). The document commands and MCP tools call the same functions with "document", the decision commands with "decision". A third kind is one entry in each of the three places.
-- Decisions are read flat from their two folders. Core.getDecision resolves an ID over both, failing closed with files named from the project root. The ID step, the core allocator and doctor count the archive.
-- An archived decision is read-only: the web save answers 400 with "Decision X is archived. Archived decisions are read-only. Restore it first: backlog decision restore X", and the file save refuses it too.
-- Archived decisions leave decision list (plain and --json), backlog search, GET /api/decisions and web search. MCP gains no decision tool.
-- Help, CLI-INSTRUCTIONS.md, the task-execution guide and the agent guidelines describe the three commands.
-
-Verification
-- bunx tsc --noEmit and bun run check . are clean. bun run test: 3,223 pass, 8 skip, 0 fail across 307 files (it exits 1 with no failing test, as on the base).
-- New decision tests on the CLI (34), in core (10) and over HTTP (3); the link-commit, commit-failure and MCP tool-list tests cover decisions too. End-to-end run against a built binary through the CLI, HTTP and MCP over stdio.
-
-Released ID
-- Same rule as for documents (BACK-762 ruling): the decision ID step counts committed files on every branch, the current one included, so with auto-commit off the number of a committed decision is released once the deletion is committed. BACK-735 aligns documents and decisions with tasks.
-
-Choices to confirm
-- GET /api/decisions/<id> serves an archived decision marked archived, as documents are served; the page's save is refused.
-- The decision ambiguity message names files from the project root; the not-found message is "Decision not found: <id>".
-- Restore prints the line of tasks and drafts that name the archive path, as for documents.
-
-Known gaps
-- No command prints a single decision until BACK-739; an archived decision is read by restoring it. No update lock for decisions (BACK-736). The web page still offers Edit for an archived decision opened by URL; its save is refused (BACK-764). Not verified on Windows.
+Refreshed existing PR #1108 on repaired BACK-762 commit 285702c8 while preserving the original BACK-763 commits and shared document/decision lifecycle implementation.
+The shared deleteContentRecord stages and commits both the archived file path and its former active path. A record archived without a commit and then deleted with auto-commit enabled is removed from HEAD, and its ID is reusable when no other file or branch claims it. Existing link-only behavior, identity refusals, scoped commits, and inherited task safety remain intact.
+Verification: 405 focused lifecycle/identity/link/Git/error cases validated (the unchanged viewer file passes all 37 cases with the required terminal settings), plus 165 inherited safety, 32 HTTP, and 47 CLI/completion/MCP stdio cases. The new two-case decision regression fails on the old owner; all six repaired CLI/MCP cases and all six compiled-binary isolated-project proofs pass. Types, Biome, and build pass. Full-context review: KEEP, no blocker or new product decision. Windows was not verified.
 <!-- SECTION:FINAL_SUMMARY:END -->

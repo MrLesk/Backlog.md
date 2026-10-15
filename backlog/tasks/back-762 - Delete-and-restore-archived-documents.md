@@ -3,9 +3,9 @@ id: BACK-762
 title: Delete and restore archived documents
 status: Done
 assignee:
-  - '@claude'
+  - '@codex-762'
 created_date: '2026-10-13 18:46'
-updated_date: '2026-10-14 18:11'
+updated_date: '2026-10-15 22:36'
 labels:
   - enhancement
 dependencies:
@@ -17,33 +17,41 @@ references:
   - mcp-tools
   - file-storage
   - content-store
-modified_files:
   - src/core/backlog.ts
-  - src/file-system/operations.ts
-  - src/core/content-store.ts
-  - src/cli.ts
-  - src/mcp/tools/documents/schemas.ts
-  - src/mcp/tools/documents/handlers.ts
-  - src/mcp/tools/documents/index.ts
-  - CLI-INSTRUCTIONS.md
-  - src/guidelines/agent-guidelines.md
-  - src/guidelines/cli-instructions/task-execution.md
-  - src/guidelines/mcp/overview.md
-  - src/guidelines/mcp/overview-tools.md
-  - src/mcp/README.md
-  - src/completions/helper.ts
-  - src/completions/data-providers.ts
-  - src/test/cli-doc-archive.test.ts
-  - src/test/mcp-server.test.ts
-  - src/test/mcp-document-archive.test.ts
-  - src/test/server-document-archive.test.ts
   - src/test/cli-doc-restore-delete.test.ts
   - src/test/mcp-document-restore-delete.test.ts
+  - src/git/operations.ts
+  - src/test/git.test.ts
+modified_files:
+  - CLI-INSTRUCTIONS.md
+  - backlog/tasks/back-762 - Delete-and-restore-archived-documents.md
+  - src/cli.ts
+  - src/completions/data-providers.ts
+  - src/completions/helper.test.ts
+  - src/completions/helper.ts
+  - src/core/backlog.ts
+  - src/core/content-store.ts
+  - src/file-system/operations.ts
+  - src/guidelines/agent-guidelines.md
+  - src/guidelines/cli-instructions/task-execution.md
+  - src/guidelines/mcp/overview-tools.md
+  - src/guidelines/mcp/overview.md
+  - src/mcp/README.md
+  - src/mcp/tools/documents/handlers.ts
+  - src/mcp/tools/documents/index.ts
+  - src/mcp/tools/documents/schemas.ts
+  - src/test/cli-doc-archive.test.ts
+  - src/test/cli-doc-restore-delete.test.ts
+  - src/test/commit-failure-after-change.test.ts
   - src/test/document-archive.test.ts
   - src/test/linked-record-commit.test.ts
-  - src/test/commit-failure-after-change.test.ts
-  - src/completions/helper.test.ts
+  - src/test/mcp-document-archive.test.ts
+  - src/test/mcp-document-restore-delete.test.ts
+  - src/test/mcp-server.test.ts
+  - src/test/server-document-archive.test.ts
   - src/utils/id-generators.ts
+  - src/test/git.test.ts
+  - src/git/operations.ts
 priority: high
 type: enhancement
 ordinal: 383000
@@ -113,14 +121,12 @@ This is the second of four stacked tasks for issue #1101. Each is one branch and
 ## Implementation Plan
 
 <!-- SECTION:PLAN:BEGIN -->
-1. Core: one move with a direction. archiveDocument becomes a one-line call of a private moveDocument(documentId, direction), and restoreDocument is the other call; the lookup, the refusal, the reads before the move, the move through moveRecordFile, the content store and the commit live once in moveDocument. A shared lookup (loadDocumentForChange) gives archive, restore and delete the same not-found and wrong-state answers.
-2. Refusals: DocumentArchivedError names backlog doc restore <id>; DocumentNotArchivedError for restore and delete; DocumentFileExistsError takes the operation, so restore names the file already in the docs folder.
-3. Delete: deleteDocument(documentId) refuses a document that is not archived, reads the tasks and drafts that name either path of the file (archive path and the path before the archive), removes the file through FileSystem.removeArchivedDocumentFile, and commits the removal alone. That helper removes only the file of an archived document: it refuses a document that is not archived and a file that no longer claims the document's ID (a path with .. is already refused when documentFilePath builds it), and removes a link as a link.
-4. Commit failure: restore and delete throw ChangeNotCommittedError with the task wording; widen its comment.
-5. Content store: a restored document is published at once (addDocument), as an archived one is removed at once.
-6. Adapters: backlog doc restore and backlog doc delete (no options, so --yes is unknown) and the MCP tools document_restore and document_delete with the input of document_view; one shared report of the confirmation and the line of tasks and drafts per interface.
-7. Guides: CLI-INSTRUCTIONS.md, the task-execution guide, agent guidelines, the two MCP overviews and src/mcp/README.md.
-8. Tests outside the repository: CLI for every criterion, MCP for the same rules, core and storage rules, link cases with auto-commit for a target inside and outside the repository, and the commit-failure sentence. Check criteria 10 and 11 against the document ID generator as it is.
+1. Preserve the existing BACK-762 history and exact BACK-761 parent 9e8b06b9856a486c766cae8ea248e4907b102a6c.
+2. Keep Core.deleteDocument active and archived record paths in the one staging/scoped-commit owner.
+3. Resolve missing historical paths through the existing GitOperations helper: find the nearest existing real folder, reconstruct the suffix and retain that folder for repository discovery; share the result in path context and relative commit paths.
+4. Require every selected commit path to be addressable by getRelativePathForRepo before temporary index/commit work, removing the unresolved absolute fallback while preserving supported link behavior and applied-state errors.
+5. Verify CLI/MCP staged and unstaged archives with zero/one/several removed parents, historical index entries through ordinary/linked folders, and refusal of an unresolved selected path in one physical repository.
+6. Run the full affected 32-file suite, canonical checks and compiled CLI/MCP/external-folder probes. Complete the accepted source review, final record and protected existing-branch update.
 <!-- SECTION:PLAN:END -->
 
 ## Implementation Notes
@@ -147,32 +153,42 @@ Ruling on the released ID (coordinator, 2026-10-14): keep the document ID step a
 Proof of criterion 26, src/test/cli-doc-restore-delete.test.ts: no Git repository, the full doc-5 and doc-6 sequence ("releases the ID, so the next created document receives it"); auto-commit on ("releases the ID of a deleted document when auto-commit is on"); auto-commit off with a committed document, reserved before the deletion is committed and given out again after it ("keeps the number of a committed document until its deletion is committed when auto-commit is off", added for this ruling); and src/test/mcp-document-restore-delete.test.ts "releases the ID of a deleted document for the next document_create" for a document that was never committed. All pass; cli-doc-restore-delete has 32 tests now.
 
 Shell completion: `backlog doc restore` and `backlog doc delete` complete the IDs of archived documents (new getArchivedDocumentIds on listArchivedDocuments); every other doc command still completes the documents in the docs folder. One condition in getArgumentCompletions names restore and delete of both tasks and documents, the one task restore and task delete already used. Decision commands complete no IDs, as before.
+
+Refresh: exact parent BACK-761 9e8b06b9 merged cleanly with --no-commit --no-ff. Modified-file metadata includes the inherited integration changes; the bounded repair will be reviewed against that parent. No commit or push yet.
+
+Regression before repair: four real Git tests (CLI and MCP, each with archive unstaged and staged) fail because delete reports success without making a deletion commit. The repair derives active and archived record paths in Core.deleteDocument and selects/stages both through the existing path-scoped commit owner.
+
+Refresh verification (2026-10-16): 511 unique tests passed across 27 files. Document/commit/identity group: 192 tests across 11 files; its initial interactive viewer failure came from an omitted terminal environment, and the unchanged cli-doc-archive file then passed 37/37 with env -u NO_COLOR TERM=xterm-256color. Inherited task locking, publication, applied-deletion and draft lifecycle group: 241/241 across 11 files. Creation safety, document baseline, task documentation and completions: 78/78 across 5 files. All four new real-Git regression cases failed before the repair (no deletion commit) and passed after it. bun run check:types passed 555 files; bun run check . passed 452 files; bun run build and git diff --check passed. Biome 2.5.15 reformatted only two existing test blocks during integration.
+
+Compiled probes against dist/backlog passed in isolated temporary projects: byte-preserving nested document restore, archive with auto-commit off, enable auto-commit, delete through CLI and through a fresh MCP stdio session, one scoped deletion commit, neither record path left in HEAD, unchanged unrelated staged and unstaged content, and doc-1 reused. The first MCP probe changed config externally in a session with no initialized content store and retained cached autoCommit=false; the final bounded probe starts MCP after the setting is enabled. Config-watch behavior is outside this repair and source is unchanged for it.
+
+Criterion evidence: restore/refusal/byte/list/update rules and nested paths are covered by CLI restore/delete, MCP restore/delete and document-archive tests; link-only deletion safety by CLI link and linked-record-commit tests; documentation reports/no task edits by CLI and MCP tests; scoped commit/no-commit/applied commit failure by both regression cases and commit-failure-after-change tests; ID release and other-file/other-branch reservation by CLI Git cases and MCP create. Help, shipped guide wording and completion are tested. The canonical Bun type checker replaces the older tsc command named in this task DoD.
+
+Subtraction review: the repair adds no exported helper, lock, new abstraction or adapter rule. Both record paths stay in the one delete owner and existing stageChangedPath/commitFiles flow. Full-context architecture review returned KEEP with no new product choice. Coordinator authorized finalization and the protected existing-branch push after independent proof.
+
+Current-head review reproduction: at 285702c8 archive a committed nested document with auto-commit off, remove one or three empty active-path ancestors, enable auto-commit and delete. Delete reports success with no new commit; HEAD retains the record and next ID is doc-2. getIndexEntries returns no entry despite git ls-files still tracking it. GitOperations is byte-identical to eee13289; this is an incomplete existing repair, not a new contract. An existing folder link reproduces the same missing-parent lookup while its physical record path remains tracked. Coordinator approved the correction in the existing shared Git path owner. Modified-file metadata is now scoped to this task against exact parent 9e8b06b9, rather than unrelated inherited merge changes.
+
+Missing-parent regression proof before correction: the existing parents-present controls pass (4); all 12 added missing-parent cases fail across CLI, MCP and direct Git operations. Unstaged archives silently make no delete commit; staged archives report applied deletion with commit reconciliation failure. Direct Git index lookups return no entry for real tracked historical paths, including paths through an existing linked folder. The shared GitOperations resolver now reconstructs from the nearest real existing folder and keeps it as repository-discovery cwd; Core two-path scope is unchanged.
+
+Missing-parent correction preliminary proof: all 16 targeted real Git cases pass after 12 added cases failed before the correction. Canonical type checker passed 555 files, Biome passed 452 files and build passed. Four compiled probes (CLI and fresh MCP, each one or several removed active folders) pass byte-preserving restore, one scoped delete commit, no document paths left in HEAD, unchanged unrelated staged/unstaged content, and doc-1 reuse. Full-context review returned KEEP. Subtraction review keeps the one existing private path resolver; both Git path context and relative commit paths share its reconstructed path, and repository discovery uses the nearest existing real folder. Core two-path scope and existing changed-file-link rules are unchanged. Full affected-suite evidence remains in progress.
+
+Verification found one newly introduced regression and finalization was paused. The external-linked-folder archive test reports success after the ancestor correction, while immutable285702c8 reports the required already-archived commit failure and makes no commit. Real source-path context and relative path are null in both. commitFiles retained that unresolved absolute lexical path, then join(repoRoot, path) manufactured a synthetic in-repository path. The nearest-ancestor resolver made that synthetic empty path reconcile successfully. The coordinator approved removing this overbroad commitFiles fallback through the existing selected-path authority; no document-specific check or promised-behavior change.
+
+Final correction verification (2026-10-16): 643 tests passed across 32 files, 0 failures, 3,136 assertions, with env -u NO_COLOR TERM=xterm-256color and the CI 10-second test timeout. The suite covers Git/index/commit paths, ordinary and linked missing parents, document CLI/MCP/Core contracts, decisions baseline, scope, applied commit errors, inherited task locks/publication, creation safety, documentation and completions. Type checker passed 555 files, Biome passed 452 files, build and git diff --check passed. The selected-path unit proves an unresolved path in one physical repository fails with HEAD and the staged index unchanged; its fixture uses realpath as existing link fixtures do. This does not add a cross-repository atomicity promise or alias-root policy.
+
+The initial ancestor-only correction exposed the old commitFiles absolute-path fallback and failed the existing external-linked-folder archive case. Read-only immutable-before/working-after probes proved the regression. Removing that fallback restores the existing exit 1/no-commit/already-archived failure while the nearest-ancestor resolution fixes valid missing historical parents. The existing external-folder test is unchanged. The new guard test failed before the guard and now passes. No Core, lock, allocator, containment-policy or exported-API changes were added.
+
+Compiled dist/backlog probes passed CLI and fresh MCP deletion with one and several original folders removed: exactly one scoped deletion commit, no active/archive record in HEAD, byte-preserving restore, unchanged unrelated staged/unstaged content, and doc-1 reuse. A compiled external-linked-folder probe also restores the supported applied archive failure with no commit. Source probe before 285702c8 and final correction records remain in temporary proof files; no fixture changes were made in the repository.
+
+Final full-context review returned KEEP with no new product choice. Subtraction review keeps one shared private resolver and removes the unsafe fallback instead of adding another path owner. Modified-file metadata is scoped against exact parent 9e8b06b9. Reviewed source/test hashes remain GitOperations 25122826821748083420c7c88e646392ac852da4, git.test 1e51a00a96d411bb03bb5836138c74bb4f2f6afe, CLI 683a6990c3bc7667d2538f42fde62612306ad1ca and MCP abfd4eb2ea2ed320c9a70bf87ed28c294e30b831.
 <!-- SECTION:NOTES:END -->
 
 ## Final Summary
 
 <!-- SECTION:FINAL_SUMMARY:BEGIN -->
-`backlog doc restore <docId>` and `backlog doc delete <docId>`, and the MCP tools `document_restore` and `document_delete`, complete the two-step removal of documents ruled for issue #1101. Restore moves an archived document back to the same relative path under `backlog/docs/` with the same ID. Delete works only on an archived document, asks no question, removes its file and releases its ID.
+Document restore/delete is complete in the CLI and MCP. Restore preserves file bytes and IDs; archived-only delete removes file links without their targets, reports documentation references and keeps unrelated work unchanged.
 
-What changed
-- Restore is the archive move in the other direction: archiveDocument and restoreDocument are one-line calls of one moveDocument(documentId, direction). deleteDocument shares the lookup, the refusal and the records lookup. The CLI and MCP only call these.
-- FileSystem.removeArchivedDocumentFile removes only the file of an archived document and refuses anything else; a link is removed as a link.
-- The read-only message names `backlog doc restore <id>` on every interface. Restore and delete of a document that is not archived, a taken destination, an unknown ID and an ambiguous ID are refused with nothing changed.
-- Delete prints the tasks, archived tasks and drafts whose documentation names the removed file by its archive path or its path before the archive, and changes none of them.
-- Auto-commit makes one commit per restore or delete with nothing else in it, links included; a failed commit reports "Document X was restored (deleted), but committing the change failed".
-- Help, CLI-INSTRUCTIONS.md, the task-execution guide, the agent guidelines, the MCP guides and src/mcp/README.md describe restore and the two-step delete.
+Delete commits both the former active path and archived path, including when empty original folders were removed after an uncommitted archive. The shared Git path resolver now finds the nearest existing real folder and keeps its repository context. Selected commits reject unresolved paths before index/commit work, preserving the existing external-linked-folder failure behavior and truthful applied-state message.
 
-Verification
-- bunx tsc --noEmit and bun run check . are clean. bun run test: 3,169 pass, 8 skip, 0 fail across 304 files at commit 87743b47 (it exits 1 with no failing test, as on the base). Later commits change a comment, a tool description and add two tests, whose files passed on their own.
-- New CLI (32) and MCP (9) test files cover every criterion; core, link-commit and commit-failure tests cover the shared code. End-to-end runs against a built binary through the CLI and MCP over stdio.
-
-Released ID
-- The document ID step is unchanged by ruling: it counts committed files on every branch, the current one included, so with auto-commit off the number of a committed document is released once the deletion is committed. Tasks release at once because their ID step does not read the current branch; BACK-735 aligns documents with tasks.
-
-Choices to confirm
-- Restore also prints the line of tasks and drafts that name the archive path the file left.
-- The wording of the not-archived and taken-destination messages for restore.
-
-Known gaps
-- No update lock for documents (BACK-736). No TUI or web control. Not verified on Windows.
+Verified with 643 tests across 32 files, failing-before/passing-after missing-parent and selected-path regressions, canonical type/lint/build checks, and compiled CLI/MCP and external-folder probes. Full-context review accepted the bounded implementation. Existing claims on other files/branches remain respected; document update locks and config-cache behavior remain outside this task.
 <!-- SECTION:FINAL_SUMMARY:END -->

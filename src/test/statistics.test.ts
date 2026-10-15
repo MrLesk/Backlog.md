@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { getTaskStatistics, selectStatisticsTasks } from "../core/statistics.ts";
+import { getTaskStatistics } from "../core/statistics.ts";
 import type { Task } from "../types/index.ts";
 
 describe("getTaskStatistics", () => {
@@ -20,7 +20,7 @@ describe("getTaskStatistics", () => {
 
 	test("counts board tasks plus archived tasks in the final status", () => {
 		const tasks = [
-			createTask({ id: "task-1", status: "To Do" }),
+			createTask({ id: "task-1", status: "To Do", dependencies: ["task-4"] }),
 			createTask({ id: "task-2", status: "Done" }),
 			createTask({ id: "task-3", status: "Done", source: "archived" }),
 			// Set aside rather than finished: neither open work nor finished work.
@@ -28,14 +28,13 @@ describe("getTaskStatistics", () => {
 			createTask({ id: "task-5", status: "In Progress", source: "archived" }),
 		];
 
-		const counted = selectStatisticsTasks(tasks, statuses);
-		const stats = getTaskStatistics(counted, [], statuses);
-
-		expect(counted.map((task) => task.id)).toEqual(["task-1", "task-2", "task-3"]);
+		const stats = getTaskStatistics(tasks, [], statuses);
 		expect(stats.totalTasks).toBe(3);
 		expect(stats.completedTasks).toBe(2);
 		expect(stats.statusCounts.get("To Do")).toBe(1);
 		expect(stats.statusCounts.get("In Progress")).toBe(0);
+		expect(stats.projectHealth.blockedTasks.map((task) => task.id)).toEqual(["task-1"]);
+		expect(stats.projectHealth.staleTasks.map((task) => task.id)).toEqual(["task-1"]);
 	});
 
 	test("handles empty task list", () => {

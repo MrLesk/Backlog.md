@@ -1,6 +1,6 @@
 import { lstat, mkdtemp, realpath, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { basename, dirname, isAbsolute, join, relative, resolve } from "node:path";
+import { dirname, isAbsolute, join, relative, resolve } from "node:path";
 import { $ } from "bun";
 import type { BacklogConfig } from "../types/index.ts";
 
@@ -181,7 +181,10 @@ export class GitOperations {
 		const relativePaths: string[] = [];
 		for (const filePath of uniqueFilePaths) {
 			const relativePath = await this.getRelativePathForRepo(filePath, resolvedRepoRoot);
-			relativePaths.push(relativePath ?? filePath);
+			if (relativePath === null) {
+				throw new Error(`Cannot commit ${filePath}: the path cannot be addressed in repository ${resolvedRepoRoot}.`);
+			}
+			relativePaths.push(relativePath);
 		}
 		const uniqueRelativePaths = Array.from(new Set(relativePaths.filter((path) => path.length > 0)));
 		if (uniqueRelativePaths.length === 0) {
@@ -1203,16 +1206,15 @@ export class GitOperations {
 			return this.buildContext(resolvedPath);
 		}
 
-		const resolvedDir = await realpath(dirname(absolutePath)).catch(() => null);
-		if (!resolvedDir) return null;
-		const reconstructedPath = join(resolvedDir, basename(absolutePath));
-		return this.buildContext(reconstructedPath, resolvedDir);
+		const reconstructed = await this.withResolvedFolder(absolutePath);
+		if (!reconstructed) return null;
+		return this.buildContext(reconstructed.path, reconstructed.directory);
 	}
 
 	private async getRelativePathForRepo(targetPath: string, repoRoot: string): Promise<string | null> {
 		const absolutePath = isAbsolute(targetPath) ? targetPath : join(this.projectRoot, targetPath);
 		const resolvedPath = await this.resolveExistingPath(absolutePath);
-		const pathForRelative = resolvedPath ?? (await this.withResolvedFolder(absolutePath));
+		const pathForRelative = resolvedPath ?? (await this.withResolvedFolder(absolutePath))?.path;
 		if (!pathForRelative) return null;
 
 		const relativePath = this.normalizeGitPath(relative(repoRoot, pathForRelative));
@@ -1234,16 +1236,27 @@ export class GitOperations {
 		}
 	}
 
-	/** The path with its folder resolved and its last component kept as it is named. */
-	private async withResolvedFolder(absolutePath: string): Promise<string | null> {
-		const resolvedDir = await realpath(dirname(absolutePath)).catch(() => null);
-		if (!resolvedDir) return null;
-		return join(resolvedDir, basename(absolutePath));
+	/** Resolve the nearest existing folder and keep the missing suffix as it is named. */
+	private async withResolvedFolder(absolutePath: string): Promise<{ path: string; directory: string } | null> {
+		let folder = dirname(absolutePath);
+		while (true) {
+			try {
+				const directory = await realpath(folder);
+				return { path: join(directory, relative(folder, absolutePath)), directory };
+			} catch (error) {
+				if ((error as NodeJS.ErrnoException).code !== "ENOENT") return null;
+				// An existing dangling link cannot supply a real folder for the suffix.
+				if (await lstat(folder).catch(() => null)) return null;
+			}
+			const parent = dirname(folder);
+			if (parent === folder) return null;
+			folder = parent;
+		}
 	}
 
 	/**
 	 * The real location of an existing path, which is the path Git has to be given. Null when the
-	 * path does not exist; the caller then resolves the folder and keeps the name.
+	 * path does not exist; the caller then resolves the nearest existing folder and keeps the suffix.
 	 *
 	 * Every folder on the way is resolved. The backlog folder or one of its subfolders may be a link,
 	 * into this repository or into another one, and Git cannot stage a path beyond a link.
@@ -1278,7 +1291,7 @@ export class GitOperations {
 		// A link to a folder is resolved like any other folder on the way.
 		if ((await stat(absolutePath).catch(() => null))?.isDirectory()) return null;
 
-		const linkPath = await this.withResolvedFolder(absolutePath);
+		const linkPath = (await this.withResolvedFolder(absolutePath))?.path;
 		const repoRoot = linkPath ? await this.resolveRepoRoot(dirname(linkPath)) : null;
 		if (!linkPath || !repoRoot) return null;
 		try {
