@@ -1,4 +1,4 @@
-import { mkdir, rename, stat, unlink } from "node:fs/promises";
+import { lstat, mkdir, rename, stat, unlink, writeFile } from "node:fs/promises";
 import { basename, dirname, isAbsolute, join, resolve } from "node:path";
 import lockfile from "proper-lockfile";
 import { DEFAULT_DIRECTORIES, DEFAULT_FILES, DEFAULT_STATUSES, FALLBACK_STATUS } from "../constants/index.ts";
@@ -19,7 +19,7 @@ import {
 	resolveBacklogDirectoryFromRootConfig,
 } from "../utils/backlog-directory.ts";
 import { findDecisionById } from "../utils/decision-id.ts";
-import { documentIdsEqual, findDocumentById, normalizeDocumentId } from "../utils/document-id.ts";
+import { findDocumentById, normalizeDocumentId } from "../utils/document-id.ts";
 import { normalizeDocumentRelativePath, normalizeDocumentSubPath } from "../utils/document-path.ts";
 import { normalizeDueDate } from "../utils/due-date.ts";
 import type { DraftIdentityFindings } from "../utils/duplicate-detection.ts";
@@ -27,6 +27,7 @@ import { AmbiguousIdError, isAmbiguousIdError } from "../utils/entity-id.ts";
 import {
 	buildGlobPattern,
 	extractAnyPrefix,
+	extractIdBody,
 	filenameMatchesId,
 	generateNextId,
 	idForFilename,
@@ -278,6 +279,36 @@ function taskLockError(message: string, cause?: unknown): Error {
 function recordUnreadableDirectory(error: unknown, unreadable?: string[]): void {
 	if ((error as NodeJS.ErrnoException | undefined)?.code === "ENOENT") return;
 	unreadable?.push("");
+}
+
+/**
+ * The failure a save reports when the file it would write is taken by another file. The message
+ * speaks only about that file: a command that saves several records may have saved others before
+ * this save was refused.
+ */
+function pathTakenError(path: string): Error {
+	return new Error(
+		`Cannot write ${path}: another file already exists at that path and was left unchanged. Move or rename the existing file, then try again.`,
+	);
+}
+
+/**
+ * Whether `path` holds a file other than the one at `ownPath`. Two different paths can name one
+ * file, for example when they differ only in letter case on a case-insensitive file system, so
+ * the files are compared by identity and not by name. Links are compared as links, not followed.
+ */
+async function isTakenByAnotherFile(path: string, ownPath: string): Promise<boolean> {
+	const identify = async (filePath: string) => {
+		try {
+			return await lstat(filePath, { bigint: true });
+		} catch (error) {
+			if ((error as NodeJS.ErrnoException).code === "ENOENT") return null;
+			throw error;
+		}
+	};
+	const [taken, own] = await Promise.all([identify(path), identify(ownPath)]);
+	if (!taken) return false;
+	return !own || taken.dev !== own.dev || taken.ino !== own.ino;
 }
 
 export function isCreateLockError(error: unknown): error is Error {
@@ -765,17 +796,23 @@ export class FileSystem {
 	}
 
 	// Task operations
+	/**
+	 * Where a task or draft is written. `loadedFromPath` is the file the record was loaded from,
+	 * if any. A task stays at that path. A draft is always named after its ID and title, so a
+	 * title change gives it a new path.
+	 */
 	private async resolveTaskWriteTarget(
 		task: Task,
 		isDraft = false,
-	): Promise<{ id: string; filename: string; filePath: string }> {
+	): Promise<{ id: string; filePath: string; loadedFromPath: string | undefined }> {
 		let prefix = isDraft ? "draft" : extractAnyPrefix(task.id);
 		if (!prefix) prefix = (await this.loadConfig())?.prefixes?.task ?? "task";
 		const id = normalizeId(task.id, prefix);
 		const filename = `${idForFilename(id)} - ${this.sanitizeFilename(task.title)}.md`;
 		const directory = isDraft ? await this.getDraftsDir() : await this.getTasksDir();
-		const preservesPath = !isDraft && typeof task.filePath === "string" && task.filePath.trim().length > 0;
-		return { id, filename, filePath: preservesPath ? (task.filePath as string) : join(directory, filename) };
+		const namedPath = join(directory, filename);
+		const loadedFromPath = task.filePath?.trim() ? task.filePath : undefined;
+		return { id, filePath: isDraft ? namedPath : (loadedFromPath ?? namedPath), loadedFromPath };
 	}
 
 	async getTaskWritePath(task: Task, isDraft = false): Promise<string> {
@@ -783,13 +820,11 @@ export class FileSystem {
 	}
 
 	async saveTask(task: Task): Promise<string> {
-		const { id: taskId, filename, filePath: filepath } = await this.resolveTaskWriteTarget(task);
+		const { id: taskId, filePath: filepath, loadedFromPath } = await this.resolveTaskWriteTarget(task);
 		const prefix = extractAnyPrefix(taskId) ?? "task";
-		const tasksDir = await this.getTasksDir();
-		const shouldPreservePath = typeof task.filePath === "string" && task.filePath.trim().length > 0;
 		let existingTask: Task | null = null;
 
-		if (shouldPreservePath) {
+		if (loadedFromPath) {
 			try {
 				existingTask = parseTask(await Bun.file(filepath).text());
 			} catch (error) {
@@ -815,23 +850,55 @@ export class FileSystem {
 		};
 		const content = serializeTask(normalizedTask);
 
-		if (!shouldPreservePath) {
-			// Delete any existing task files with the same ID but different filenames
+		await this.writeRecordFile(filepath, content, loadedFromPath);
+		return filepath;
+	}
+
+	/**
+	 * Writes the file for `saveTask`, `saveDraft`, `saveDocument` and `saveDecision`: every save of
+	 * a record ends here. The only existing file it may replace is the one the record was loaded
+	 * from. No other file is removed, renamed or overwritten, whatever its name or its frontmatter
+	 * says.
+	 *
+	 * - Loaded from `targetPath`: the file is rewritten in place.
+	 * - Loaded from another path: the file moves to `targetPath`, as after a title change. The
+	 *   previous path is returned.
+	 * - Not loaded from a file (`loadedFromPath` undefined): the record is new and gets a new file.
+	 *
+	 * In the last two cases the target must be free. If another file is there the save fails and
+	 * changes nothing.
+	 */
+	private async writeRecordFile(
+		targetPath: string,
+		content: string,
+		loadedFromPath: string | undefined,
+	): Promise<string | undefined> {
+		await this.ensureDirectoryExists(dirname(targetPath));
+
+		if (!loadedFromPath) {
 			try {
-				const core = { filesystem: { tasksDir } };
-				const existingPath = await getTaskPath(taskId, core as TaskPathContext);
-				if (existingPath && !existingPath.endsWith(filename)) {
-					await unlink(existingPath);
-				}
+				// "wx" fails when anything exists at the path, so checking and writing are one step.
+				await writeFile(targetPath, content, { flag: "wx" });
 			} catch (error) {
-				if (isAmbiguousTaskIdError(error)) throw error;
-				// Ignore errors if no existing files found
+				if ((error as NodeJS.ErrnoException).code === "EEXIST") throw pathTakenError(targetPath);
+				throw error;
 			}
+			return undefined;
 		}
 
-		await this.ensureDirectoryExists(dirname(filepath));
-		await Bun.write(filepath, content);
-		return filepath;
+		let movedFrom: string | undefined;
+		if (loadedFromPath !== targetPath) {
+			if (await isTakenByAnotherFile(targetPath, loadedFromPath)) throw pathTakenError(targetPath);
+			try {
+				await rename(loadedFromPath, targetPath);
+				movedFrom = loadedFromPath;
+			} catch (error) {
+				// The record's file is already gone, so there is nothing to move and the target is free.
+				if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+			}
+		}
+		await Bun.write(targetPath, content);
+		return movedFrom;
 	}
 
 	async loadTask(taskId: string): Promise<Task | null> {
@@ -1197,7 +1264,9 @@ export class FileSystem {
 					...draft,
 					id: newTaskId,
 					status: promotedStatus,
-					filePath: undefined, // Will be set by saveTask
+					// The path must be cleared so the save writes a new file. Left set, the save would take
+					// over the source file, and removing the source afterwards would delete the only copy.
+					filePath: undefined,
 				};
 
 				await this.saveTask(promotedTask);
@@ -1222,15 +1291,10 @@ export class FileSystem {
 			const task = await this.loadTask(taskId);
 			if (!task?.filePath) return false;
 
-			// Get existing draft IDs to generate next ID
-			// Draft prefix is always "draft" (not configurable like task prefix)
-			// Occupancy includes filename-derived ids: an unparsable file still reserves its id.
-			const [existingDrafts, occupiedFileIds] = await Promise.all([this.listDrafts(), this.listOccupiedDraftFileIds()]);
-			const existingIds = [...existingDrafts.map((d) => d.id), ...occupiedFileIds];
-
 			// Generate new draft ID
+			// Draft prefix is always "draft" (not configurable like task prefix)
 			const config = await this.loadConfig();
-			const newDraftId = generateNextId(existingIds, "draft", config?.zeroPaddedIds);
+			const newDraftId = generateNextId(await this.listOccupiedDraftIds(), "draft", config?.zeroPaddedIds);
 
 			// Update task with new draft ID and save as draft. The record's own links are cleaned of
 			// the task ID it vacates here: carried into the draft, such a link would rebind to
@@ -1238,7 +1302,9 @@ export class FileSystem {
 			const demotedDraft: Task = {
 				...(withoutVacatedTaskLinks(task, task.id) ?? task),
 				id: newDraftId,
-				filePath: undefined, // Will be set by saveDraft
+				// The path must be cleared so the save writes a new file. Left set, the save would take
+				// over the source file, and removing the source afterwards would delete the only copy.
+				filePath: undefined,
 			};
 
 			const savedPath = await this.saveDraft(demotedDraft);
@@ -1266,40 +1332,11 @@ export class FileSystem {
 
 	// Draft operations
 	async saveDraft(task: Task): Promise<string> {
-		const { id: draftId, filename, filePath: filepath } = await this.resolveTaskWriteTarget(task, true);
-		const draftsDir = await this.getDraftsDir();
+		const { id: draftId, filePath: filepath, loadedFromPath } = await this.resolveTaskWriteTarget(task, true);
 		// Normalize the draft ID to uppercase before serialization
-		const normalizedTask = { ...task, id: draftId };
-		const content = serializeTask(normalizedTask);
-		await this.ensureDirectoryExists(dirname(filepath));
+		const content = serializeTask({ ...task, id: draftId });
 
-		// Remove every existing draft file whose numeric identity matches the saved id but
-		// whose filename differs (title change, zero-padding drift): a save must converge
-		// to one file instead of breeding duplicates that future edits report as ambiguous.
-		// A candidate that fails to parse is never deleted: its identity was not validated,
-		// and its content may be a real draft only its filename proclaims. A candidate that
-		// cannot be removed aborts the save: writing past it would mint a duplicate identity.
-		const filenameId = idForFilename(draftId);
-		const existingFiles = await Array.fromAsync(
-			new Bun.Glob(buildGlobPattern("draft")).scan({ cwd: draftsDir, followSymlinks: true }),
-		);
-		for (const existingFile of existingFiles.filter(
-			(f) => f !== filename && (filenameMatchesId(f, filenameId) || draftIdsMatchLoosely(draftId, f)),
-		)) {
-			const candidatePath = join(draftsDir, existingFile);
-			if (!(await this.loadDraftFromFile(candidatePath))) continue;
-			try {
-				await unlink(candidatePath);
-			} catch (error) {
-				throw new Error(
-					`Could not remove superseded draft file ${existingFile} while saving ${filename}: ${
-						error instanceof Error ? error.message : String(error)
-					}. No changes were written; resolve the file conflict, then retry.`,
-				);
-			}
-		}
-
-		await Bun.write(filepath, content);
+		await this.writeRecordFile(filepath, content, loadedFromPath);
 		return filepath;
 	}
 
@@ -1428,12 +1465,14 @@ export class FileSystem {
 	}
 
 	/**
-	 * Numeric draft identities occupied on disk, derived from filenames: files that fail to
-	 * parse still reserve their id against future allocation.
+	 * Every draft ID in use: the stored ID of each draft that can be read and the ID each draft
+	 * file claims through its name. A file that cannot be parsed still reserves the number in its
+	 * name, and does not hide the stored IDs of the files that can be read.
 	 */
-	async listOccupiedDraftFileIds(): Promise<string[]> {
-		const filenames = await this.listDraftFilenames();
-		return filenames.map(extractDraftIdFromFilename).filter((id): id is string => id !== null);
+	async listOccupiedDraftIds(): Promise<string[]> {
+		const [drafts, filenames] = await Promise.all([this.listHealthyDrafts(), this.listDraftFilenames()]);
+		const idsFromFileNames = filenames.map(extractDraftIdFromFilename).filter((id): id is string => id !== null);
+		return [...drafts.map((draft) => draft.id), ...idsFromFileNames];
 	}
 
 	async listDraftFilenames(unreadable?: string[]): Promise<string[]> {
@@ -1481,34 +1520,17 @@ export class FileSystem {
 	}
 
 	// Decision log operations
-	async saveDecision(decision: Decision): Promise<{ filepath: string; removedFilepaths: string[] }> {
-		// Normalize ID - remove "decision-" prefix if present
-		const normalizedId = decision.id.replace(/^decision-/, "");
-		const filename = `decision-${normalizedId} - ${this.sanitizeFilename(decision.title)}.md`;
+	/** Saves a decision. `movedFrom` is the previous path of its file when the save renamed it. */
+	async saveDecision(decision: Decision): Promise<{ filepath: string; movedFrom: string | undefined }> {
+		// The file name always starts with a lower-case "decision-", whatever letter case the stored ID uses.
+		const filename = `decision-${extractIdBody(decision.id, "decision")} - ${this.sanitizeFilename(decision.title)}.md`;
 		const decisionsDir = await this.getDecisionsDir();
 		const filepath = join(decisionsDir, filename);
-		const content = serializeDecision(decision);
-		await this.ensureDirectoryExists(dirname(filepath));
+		const loadedFromPath = decision.path ? join(decisionsDir, decision.path) : undefined;
 
-		const matches = await Array.fromAsync(
-			new Bun.Glob("decision-*.md").scan({ cwd: decisionsDir, followSymlinks: true }),
-		);
-		const removedFilepaths: string[] = [];
-		for (const match of matches) {
-			if (match === filename) continue;
-			if (!match.startsWith(`decision-${normalizedId} -`)) continue;
-			try {
-				const matchPath = join(decisionsDir, match);
-				await unlink(matchPath);
-				removedFilepaths.push(matchPath);
-			} catch {
-				// Ignore cleanup errors
-			}
-		}
+		const movedFrom = await this.writeRecordFile(filepath, serializeDecision(decision), loadedFromPath);
 
-		await Bun.write(filepath, content);
-
-		return { filepath, removedFilepaths };
+		return { filepath, movedFrom };
 	}
 
 	async loadDecision(decisionId: string): Promise<Decision | null> {
@@ -1516,7 +1538,11 @@ export class FileSystem {
 	}
 
 	// Document operations
-	async saveDocument(document: Document, subPath = ""): Promise<{ relativePath: string; removedFilepaths: string[] }> {
+	/** Saves a document. `movedFrom` is the previous path of its file when the save renamed or moved it. */
+	async saveDocument(
+		document: Document,
+		subPath = "",
+	): Promise<{ relativePath: string; movedFrom: string | undefined }> {
 		const docsDir = await this.getDocsDir();
 		const canonicalId = normalizeDocumentId(document.id);
 		document.id = canonicalId;
@@ -1524,58 +1550,14 @@ export class FileSystem {
 		const normalizedSubPath = normalizeDocumentSubPath(subPath);
 		const relativePath = normalizedSubPath ? `${normalizedSubPath}/${filename}` : filename;
 		const filepath = join(docsDir, ...relativePath.split("/"));
-		const content = serializeDocument(document);
+		const loadedFromPath = document.path
+			? join(docsDir, ...normalizeDocumentRelativePath(document.path).split("/"))
+			: undefined;
 
-		await this.ensureDirectoryExists(dirname(filepath));
-
-		const glob = new Bun.Glob("**/doc-*.md");
-		const existingMatches = (await Array.fromAsync(glob.scan({ cwd: docsDir, followSymlinks: true }))).map((relative) =>
-			normalizeDocumentRelativePath(relative),
-		);
-		const matchesForId = existingMatches.filter((relative) => {
-			const base = relative.split("/").pop() || relative;
-			const [candidateId] = base.split(" - ");
-			if (!candidateId) return false;
-			return documentIdsEqual(canonicalId, candidateId);
-		});
-
-		let sourceRelativePath = document.path ? normalizeDocumentRelativePath(document.path) : undefined;
-		if (!sourceRelativePath && matchesForId.length > 0) {
-			sourceRelativePath = normalizeDocumentRelativePath(matchesForId[0] ?? "");
-		}
-
-		const removedFilepaths: string[] = [];
-		if (sourceRelativePath && sourceRelativePath !== relativePath) {
-			const sourcePath = join(docsDir, ...sourceRelativePath.split("/"));
-			try {
-				await this.ensureDirectoryExists(dirname(filepath));
-				await rename(sourcePath, filepath);
-				removedFilepaths.push(sourcePath);
-			} catch (error) {
-				const code = (error as NodeJS.ErrnoException | undefined)?.code;
-				if (code !== "ENOENT") {
-					throw error;
-				}
-			}
-		}
-
-		for (const match of matchesForId) {
-			const matchPath = join(docsDir, ...normalizeDocumentRelativePath(match).split("/"));
-			if (matchPath === filepath) {
-				continue;
-			}
-			try {
-				await unlink(matchPath);
-				removedFilepaths.push(matchPath);
-			} catch {
-				// Ignore cleanup errors - file may have been removed already
-			}
-		}
-
-		await Bun.write(filepath, content);
+		const movedFrom = await this.writeRecordFile(filepath, serializeDocument(document), loadedFromPath);
 
 		document.path = relativePath;
-		return { relativePath, removedFilepaths };
+		return { relativePath, movedFrom };
 	}
 
 	/** Lists decisions, skipping files that cannot be read or parsed and collecting their paths in `unreadable`. */

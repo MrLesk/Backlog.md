@@ -125,14 +125,16 @@ describe("duplicate task diagnosis", () => {
 		await expect(core.filesystem.loadTask("TASK-1")).rejects.toBeInstanceOf(AmbiguousTaskIdError);
 	});
 
-	it("does not overwrite either file through the low-level save path when lookup is ambiguous", async () => {
+	it("does not overwrite or remove either file through the low-level save path", async () => {
 		const alphaPath = await writeTask(core.filesystem.tasksDir, "task-1 - Alpha.md", makeTask("TASK-1", "Alpha"));
 		const betaPath = await writeTask(core.filesystem.tasksDir, "task-01 - Beta.md", makeTask("TASK-01", "Beta"));
 		const before = await Promise.all([alphaPath, betaPath].map(async (path) => await Bun.file(path).text()));
 
-		await expect(core.filesystem.saveTask(makeTask("TASK-1", "Replacement"))).rejects.toBeInstanceOf(
-			AmbiguousTaskIdError,
-		);
+		// A task that was not loaded from a file is written as a new file; it never takes over a file
+		// that shares its ID.
+		const savedPath = await core.filesystem.saveTask(makeTask("TASK-1", "Replacement"));
+
+		expect(savedPath).toBe(join(core.filesystem.tasksDir, "task-1 - Replacement.md"));
 		expect(await Promise.all([alphaPath, betaPath].map(async (path) => await Bun.file(path).text()))).toEqual(before);
 	});
 

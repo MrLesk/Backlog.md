@@ -398,7 +398,8 @@ describe("BacklogServer task SPA fallback", () => {
 			server as unknown as { getContentStoreInstance: () => Promise<ContentStore> }
 		).getContentStoreInstance();
 		const originalGetTasks = contentStore.getTasks.bind(contentStore);
-		const liveTask = { ...routedTask, title: "Live current-worktree title" };
+		const storedTask = await filesystem.loadTask(routedTask.id);
+		const liveTask = { ...routedTask, filePath: storedTask?.filePath, title: "Live current-worktree title" };
 		await filesystem.saveTask(liveTask);
 		contentStore.getTasks = () => [{ ...routedTask, title: "Stale cached title" }];
 

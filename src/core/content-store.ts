@@ -1404,9 +1404,7 @@ export class ContentStore {
 			return result;
 		}) as FileSystem["saveDocument"];
 
-		this.filesystem.saveDecision = (async (
-			decision: Decision,
-		): Promise<{ filepath: string; removedFilepaths: string[] }> => {
+		this.filesystem.saveDecision = (async (decision: Decision) => {
 			const owner: PublicationOwner = { root: this.currentRoot() };
 			const result = await originalSaveDecision.call(this.filesystem, decision);
 			await this.handleDecisionWrite(decision.id, owner);

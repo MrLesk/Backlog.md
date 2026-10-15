@@ -1,4 +1,23 @@
+import { basename } from "node:path";
 import type { Core } from "../index.ts";
+import { extractIdFromFilename, generateNextId } from "./prefix-config.ts";
+
+/**
+ * The IDs that local record files occupy: the ID stored in each record's frontmatter and the ID
+ * each file claims through its name. A file whose frontmatter could not be read
+ * (`unreadableFiles`) still reserves the number in its name.
+ */
+function occupiedLocalIds(
+	records: Array<{ id: string; path?: string }>,
+	unreadableFiles: string[],
+	prefix: string,
+): string[] {
+	const filePaths = [...records.map((record) => record.path ?? ""), ...unreadableFiles];
+	const idsFromFileNames = filePaths
+		.map((filePath) => extractIdFromFilename(basename(filePath), prefix))
+		.filter((id): id is string => id !== null);
+	return [...records.map((record) => record.id), ...idsFromFileNames];
+}
 
 /**
  * Generate the next available document ID by checking all branches and local documents
@@ -8,7 +27,8 @@ import type { Core } from "../index.ts";
 export async function generateNextDocId(core: Core): Promise<string> {
 	const config = await core.filesystem.loadConfig();
 	// Load local documents
-	const docs = await core.filesystem.listDocuments();
+	const unreadableFiles: string[] = [];
+	const docs = await core.filesystem.listDocuments(unreadableFiles);
 	const allIds: string[] = [];
 
 	try {
@@ -47,30 +67,9 @@ export async function generateNextDocId(core: Core): Promise<string> {
 		}
 	}
 
-	// Add local document IDs
-	for (const doc of docs) {
-		allIds.push(doc.id);
-	}
+	allIds.push(...occupiedLocalIds(docs, unreadableFiles, "doc"));
 
-	// Find the highest numeric ID
-	let max = 0;
-	for (const id of allIds) {
-		const match = id.match(/^doc-(\d+)$/);
-		if (match) {
-			const num = Number.parseInt(match[1] || "0", 10);
-			if (num > max) max = num;
-		}
-	}
-
-	const nextIdNumber = max + 1;
-	const padding = config?.zeroPaddedIds;
-
-	if (padding && typeof padding === "number" && padding > 0) {
-		const paddedId = String(nextIdNumber).padStart(padding, "0");
-		return `doc-${paddedId}`;
-	}
-
-	return `doc-${nextIdNumber}`;
+	return generateNextId(allIds, "doc", config?.zeroPaddedIds).toLowerCase();
 }
 
 /**
@@ -81,7 +80,8 @@ export async function generateNextDocId(core: Core): Promise<string> {
 export async function generateNextDecisionId(core: Core): Promise<string> {
 	const config = await core.filesystem.loadConfig();
 	// Load local decisions
-	const decisions = await core.filesystem.listDecisions();
+	const unreadableFiles: string[] = [];
+	const decisions = await core.filesystem.listDecisions(unreadableFiles);
 	const allIds: string[] = [];
 
 	try {
@@ -120,28 +120,7 @@ export async function generateNextDecisionId(core: Core): Promise<string> {
 		}
 	}
 
-	// Add local decision IDs
-	for (const decision of decisions) {
-		allIds.push(decision.id);
-	}
+	allIds.push(...occupiedLocalIds(decisions, unreadableFiles, "decision"));
 
-	// Find the highest numeric ID
-	let max = 0;
-	for (const id of allIds) {
-		const match = id.match(/^decision-(\d+)$/);
-		if (match) {
-			const num = Number.parseInt(match[1] || "0", 10);
-			if (num > max) max = num;
-		}
-	}
-
-	const nextIdNumber = max + 1;
-	const padding = config?.zeroPaddedIds;
-
-	if (padding && typeof padding === "number" && padding > 0) {
-		const paddedId = String(nextIdNumber).padStart(padding, "0");
-		return `decision-${paddedId}`;
-	}
-
-	return `decision-${nextIdNumber}`;
+	return generateNextId(allIds, "decision", config?.zeroPaddedIds).toLowerCase();
 }

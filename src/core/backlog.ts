@@ -1,4 +1,4 @@
-import { mkdir, rename as moveFile, readFile, stat, unlink, writeFile } from "node:fs/promises";
+import { mkdir, rename as moveFile, readFile, stat, unlink } from "node:fs/promises";
 import { basename, dirname, isAbsolute, join, relative } from "node:path";
 import { DEFAULT_DIRECTORIES, DEFAULT_STATUSES, FALLBACK_STATUS } from "../constants/index.ts";
 import {
@@ -7,7 +7,6 @@ import {
 	DraftParseError,
 	FileSystem,
 	isConfigValueError,
-	isCreateLockError,
 	newTaskLockError,
 } from "../file-system/operations.ts";
 import { type GitBranchTip, type GitIndexEntry, GitOperations } from "../git/operations.ts";
@@ -54,7 +53,7 @@ import { generateNextDecisionId, generateNextDocId } from "../utils/id-generator
 import { createMilestoneFilterValueResolver } from "../utils/milestone-filter.ts";
 import {
 	buildGlobPattern,
-	buildIdRegex,
+	extractIdFromFilename,
 	generateNextId as generateNextPrefixedId,
 	generateNextSubtaskId,
 	getPrefixForType,
@@ -150,8 +149,6 @@ interface BlessedScreen {
 interface CreatedTaskWrite {
 	filePath: string;
 	createdContent: Buffer;
-	previousPath: string | null;
-	previousContent: Buffer | null;
 	previousIndexEntries?: GitIndexEntry[];
 	generatedIndexEntries?: GitIndexEntry[];
 }
@@ -1539,39 +1536,46 @@ export class Core {
 	}
 
 	/**
-	 * Gets all task IDs that are in use (active or completed) across all branches.
-	 * Respects cross-branch config settings. Archived IDs are excluded (can be reused).
-	 *
-	 * This is used for ID generation to determine the next available ID.
+	 * Task files found by name in this project's folder and, inside a Git repository, in the same
+	 * folder of every other worktree. A file reserves the number in its name whatever its
+	 * frontmatter says, and worktrees share the task ID namespace before their files are committed.
 	 */
-	private async loadWorktreeTaskStateEntries(taskPrefix: string): Promise<BranchTaskStateEntry[]> {
-		const [repoRoot, worktreeRoots] = await Promise.all([this.git.getRepositoryRoot(), this.git.listWorktreePaths()]);
-		if (!repoRoot || worktreeRoots.length === 0) {
-			return [];
-		}
-
-		const projectRelativePath = relative(repoRoot, this.fs.rootDir);
-		if (projectRelativePath.startsWith("..") || isAbsolute(projectRelativePath)) {
-			return [];
-		}
-
+	private async loadTaskFileNameEntries(taskPrefix: string): Promise<BranchTaskStateEntry[]> {
 		const backlogDir = await this.getBacklogDirectoryName();
-		const entries: BranchTaskStateEntry[] = [];
+		const projectRoot = this.fs.rootDir;
+		// This project is always read: outside a Git repository there is no worktree list to find it in.
+		const entries = await this.loadTaskFileNameEntriesFromProject(projectRoot, backlogDir, taskPrefix, projectRoot);
+
+		const [repoRoot, worktreeRoots] = await Promise.all([this.git.getRepositoryRoot(), this.git.listWorktreePaths()]);
+		if (!repoRoot) {
+			return entries;
+		}
+		const projectRelativePath = relative(repoRoot, projectRoot);
+		if (projectRelativePath.startsWith("..") || isAbsolute(projectRelativePath)) {
+			return entries;
+		}
+
 		for (const worktreeRoot of worktreeRoots) {
-			const projectRoot = projectRelativePath ? join(worktreeRoot, projectRelativePath) : worktreeRoot;
-			entries.push(...(await this.loadTaskStateEntriesFromWorktree(projectRoot, backlogDir, taskPrefix, worktreeRoot)));
+			const worktreeProjectRoot = projectRelativePath ? join(worktreeRoot, projectRelativePath) : worktreeRoot;
+			if (worktreeProjectRoot === projectRoot) continue;
+			entries.push(
+				...(await this.loadTaskFileNameEntriesFromProject(worktreeProjectRoot, backlogDir, taskPrefix, worktreeRoot)),
+			);
 		}
 
 		return entries;
 	}
 
-	private async loadTaskStateEntriesFromWorktree(
+	/**
+	 * Task files found by name under one project root: this project, or the same project in another
+	 * worktree. `worktreeRoot` labels the entries with the place they were found in.
+	 */
+	private async loadTaskFileNameEntriesFromProject(
 		projectRoot: string,
 		backlogDir: string,
 		taskPrefix: string,
 		worktreeRoot: string,
 	): Promise<BranchTaskStateEntry[]> {
-		const idRegex = buildIdRegex(taskPrefix);
 		const globPattern = buildGlobPattern(taskPrefix.toLowerCase());
 		const directories: Array<{ path: string; type: "task" | "completed" }> = [
 			{ path: join(projectRoot, backlogDir, DEFAULT_DIRECTORIES.TASKS), type: "task" },
@@ -1588,13 +1592,13 @@ export class Core {
 			}
 
 			for (const file of files) {
-				const match = file.match(idRegex);
-				if (!match?.[1]) continue;
+				const id = extractIdFromFilename(file, taskPrefix);
+				if (!id) continue;
 
 				const filePath = join(path, file);
 				const stats = await stat(filePath).catch(() => null);
 				entries.push({
-					id: normalizeId(match[1], taskPrefix),
+					id,
 					type,
 					branch: `worktree:${worktreeRoot}`,
 					path: filePath,
@@ -1606,6 +1610,12 @@ export class Core {
 		return entries;
 	}
 
+	/**
+	 * Gets all task IDs that are in use (active or completed) across all branches.
+	 * Respects cross-branch config settings. Archived IDs are excluded (can be reused).
+	 *
+	 * This is used for ID generation to determine the next available ID.
+	 */
 	private async getActiveAndCompletedTaskIds(): Promise<string[]> {
 		const snapshot = await this.loadTasksWithStableBranchSnapshot({
 			includeCompleted: false,
@@ -1617,12 +1627,12 @@ export class Core {
 		const taskPrefix = config?.prefixes?.task ?? "task";
 		if (!snapshot.identityIndex) throw new Error("Task corpus identity index was not initialized");
 
-		// Same-repository worktrees share the task ID namespace even before their
-		// task files are committed, so include their filesystem state for allocation.
-		const worktreeEntries = await this.loadWorktreeTaskStateEntries(taskPrefix);
+		// The identity index holds the IDs stored in frontmatter. A number is also taken when a file
+		// name claims it, in this project or in a worktree of the same repository.
+		const fileNameEntries = await this.loadTaskFileNameEntries(taskPrefix);
 		const occupiedIds = new Set(snapshot.identityIndex.getOccupiedIds());
 		for (const task of completedTasks) occupiedIds.add(task.id);
-		for (const entry of worktreeEntries) {
+		for (const entry of fileNameEntries) {
 			if (entry.type === "task" || entry.type === "completed") occupiedIds.add(entry.id);
 		}
 		return [...occupiedIds];
@@ -1643,10 +1653,7 @@ export class Core {
 				return this.getActiveAndCompletedTaskIds();
 			}
 			case EntityType.Draft: {
-				// Occupancy includes filename-derived ids: an unparsable file still reserves its
-				// numeric id, so allocation can never reuse what it cannot parse.
-				const [drafts, occupiedFileIds] = await Promise.all([this.fs.listDrafts(), this.fs.listOccupiedDraftFileIds()]);
-				return [...drafts.map((d) => d.id), ...occupiedFileIds];
+				return this.fs.listOccupiedDraftIds();
 			}
 			case EntityType.Document: {
 				const documents = await this.fs.listDocuments();
@@ -1700,8 +1707,7 @@ export class Core {
 		return savedTask;
 	}
 
-	private async readFileIfPresent(filePath: string | null): Promise<Buffer | null> {
-		if (!filePath) return null;
+	private async readFileIfPresent(filePath: string): Promise<Buffer | null> {
 		try {
 			return await readFile(filePath);
 		} catch (error) {
@@ -1720,34 +1726,16 @@ export class Core {
 			);
 		}
 
+		// A create adds one new file and touches no other, so undoing it means removing that file.
+		// A file that no longer holds what the create wrote is left for the user.
 		const currentContent = await this.readFileIfPresent(write.filePath);
 		const stillOwnsCreatedPath = currentContent?.equals(write.createdContent) ?? false;
 		let workingPathRestored = false;
 		if (currentContent === null) {
-			if (write.previousPath === write.filePath && write.previousContent) {
-				try {
-					await writeFile(write.filePath, write.previousContent, { flag: "wx" });
-					workingPathRestored = true;
-				} catch (error) {
-					if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
-				}
-			} else {
-				workingPathRestored = true;
-			}
-		} else if (stillOwnsCreatedPath && indexRestored) {
-			if (write.previousPath === write.filePath && write.previousContent) {
-				await writeFile(write.filePath, write.previousContent);
-			} else {
-				await unlink(write.filePath);
-			}
 			workingPathRestored = true;
-		}
-
-		if (write.previousPath && write.previousPath !== write.filePath && write.previousContent) {
-			const currentPreviousContent = await this.readFileIfPresent(write.previousPath);
-			if (currentPreviousContent === null) {
-				await writeFile(write.previousPath, write.previousContent);
-			}
+		} else if (stillOwnsCreatedPath && indexRestored) {
+			await unlink(write.filePath);
+			workingPathRestored = true;
 		}
 
 		if (this.contentStore) {
@@ -1876,21 +1864,13 @@ export class Core {
 				...(definitionOfDoneItems && definitionOfDoneItems.length > 0 && { definitionOfDoneItems }),
 			};
 
-			const resolvedPreviousPath = isDraft
-				? await this.fs.resolveDraftFilePath(task.id)
-				: await getTaskPath(task.id, this);
 			const targetPath = await this.fs.getTaskWritePath(task, isDraft);
-			const targetContent = await this.readFileIfPresent(targetPath);
-			const previousPath = targetContent ? targetPath : resolvedPreviousPath;
-			const previousContent = targetContent ?? (await this.readFileIfPresent(resolvedPreviousPath));
 			const previousIndexEntries = autoCommitEnabled ? await this.git.getIndexEntries(targetPath) : undefined;
 			const filePath = await this.writePreparedTask(task, isDraft);
 			const createdContent = await readFile(filePath);
 			const write: CreatedTaskWrite = {
 				filePath,
 				createdContent,
-				previousPath,
-				previousContent,
 				previousIndexEntries,
 			};
 			return {
@@ -2758,6 +2738,8 @@ export class Core {
 					...draft,
 					id: newTaskId,
 					status: canonicalStatus,
+					// The path must be cleared so the save writes a new file. Left set, the save would take
+					// over the source file, and removing the source afterwards would delete the only copy.
 					filePath: undefined,
 					...(mutated || draft.status !== canonicalStatus
 						? { updatedDate: new Date().toISOString().slice(0, 16).replace("T", " ") }
@@ -2831,6 +2813,8 @@ export class Core {
 					...vacating,
 					id: newDraftId,
 					status: "Draft",
+					// The path must be cleared so the save writes a new file. Left set, the save would take
+					// over the source file, and removing the source afterwards would delete the only copy.
 					filePath: undefined,
 					...(mutated || current.status !== "Draft"
 						? { updatedDate: new Date().toISOString().slice(0, 16).replace("T", " ") }
@@ -3542,46 +3526,41 @@ export class Core {
 		// Hold the draft lock across the read-unlink span so a concurrent edit cannot be omitted
 		// from the promoted task or leave both records on disk. Draft lock first, create lock
 		// second: nothing acquires them in the opposite order, so this cannot deadlock.
+		// "false" means there is no draft to promote: no file, or a file that cannot be read as a
+		// draft. Every other failure, such as a write that is refused because the new task's path is
+		// taken, reaches the caller with its own message.
 		return await this.fs.withDraftLock({ filePath: sourcePath, canonicalId }, async () => {
-			let moved: { previousPath: string; savedPath: string } | null = null;
-			try {
-				moved = await this.withCreateLock(async () => {
-					const draft = await this.fs.loadDraftFromFile(sourcePath);
-					if (!draft) return null;
+			const moved = await this.withCreateLock(async () => {
+				const draft = await this.fs.loadDraftFromFile(sourcePath);
+				if (!draft) return null;
 
-					const config = await this.fs.loadConfig();
-					const newTaskId = await this.generateNextId(EntityType.Task, draft.parentTaskId);
-					const promotedStatus =
-						!draft.status || draft.status.trim().toLowerCase() === "draft"
-							? config?.defaultStatus || FALLBACK_STATUS
-							: draft.status;
+				const config = await this.fs.loadConfig();
+				const newTaskId = await this.generateNextId(EntityType.Task, draft.parentTaskId);
+				const promotedStatus =
+					!draft.status || draft.status.trim().toLowerCase() === "draft"
+						? config?.defaultStatus || FALLBACK_STATUS
+						: draft.status;
 
-					const promotedTask: Task = {
-						...draft,
-						id: newTaskId,
-						status: promotedStatus,
-						filePath: undefined,
-					};
+				const promotedTask: Task = {
+					...draft,
+					id: newTaskId,
+					status: promotedStatus,
+					// The path must be cleared so the save writes a new file. Left set, the save would take
+					// over the source file, and removing the source afterwards would delete the only copy.
+					filePath: undefined,
+				};
 
-					normalizeAssignee(promotedTask);
-					const savedPath = await this.fs.saveTask(promotedTask);
-					await unlink(sourcePath);
+				normalizeAssignee(promotedTask);
+				const savedPath = await this.fs.saveTask(promotedTask);
+				await unlink(sourcePath);
 
-					const savedTask = await this.fs.loadTask(promotedTask.id);
-					if (this.contentStore && savedTask) {
-						this.contentStore.upsertTask(savedTask);
-					}
-
-					return { previousPath: sourcePath, savedPath };
-				});
-			} catch (error) {
-				// A missing draft is the only thing "false" may mean here; a config value Backlog refuses to
-				// read must not be reported as a draft that does not exist.
-				if (isCreateLockError(error) || isConfigValueError(error)) {
-					throw error;
+				const savedTask = await this.fs.loadTask(promotedTask.id);
+				if (this.contentStore && savedTask) {
+					this.contentStore.upsertTask(savedTask);
 				}
-				return false;
-			}
+
+				return { previousPath: sourcePath, savedPath };
+			});
 
 			if (moved && (await this.shouldAutoCommit(autoCommit))) {
 				await this.commitWrittenFile(
@@ -3805,10 +3784,10 @@ export class Core {
 	}
 
 	async createDecision(decision: Decision, autoCommit?: boolean): Promise<void> {
-		const { filepath, removedFilepaths } = await this.fs.saveDecision(decision);
+		const { filepath, movedFrom } = await this.fs.saveDecision(decision);
 
 		if (await this.shouldAutoCommit(autoCommit)) {
-			await this.commitWrittenFile(`backlog: Add decision ${decision.id}`, removedFilepaths, filepath);
+			await this.commitWrittenFile(`backlog: Add decision ${decision.id}`, movedFrom ? [movedFrom] : [], filepath);
 		}
 	}
 
@@ -3860,13 +3839,13 @@ export class Core {
 	}
 
 	async createDocument(doc: Document, autoCommit?: boolean, subPath = ""): Promise<void> {
-		const { relativePath, removedFilepaths } = await this.fs.saveDocument(doc, normalizeDocumentSubPath(subPath));
+		const { relativePath, movedFrom } = await this.fs.saveDocument(doc, normalizeDocumentSubPath(subPath));
 		doc.path = relativePath;
 
 		if (await this.shouldAutoCommit(autoCommit)) {
 			const docsDir = this.fs.docsDir;
 			const absolutePath = join(docsDir, ...relativePath.split("/"));
-			await this.commitWrittenFile(`backlog: Add document ${doc.id}`, removedFilepaths, absolutePath);
+			await this.commitWrittenFile(`backlog: Add document ${doc.id}`, movedFrom ? [movedFrom] : [], absolutePath);
 		}
 	}
 

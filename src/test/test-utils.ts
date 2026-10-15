@@ -5,8 +5,9 @@
 
 import type { ChildProcess } from "node:child_process";
 import { randomUUID } from "node:crypto";
-import { chmod, copyFile, mkdir, rm, writeFile } from "node:fs/promises";
+import { chmod, copyFile, mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import net from "node:net";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { $ } from "bun";
 import type { Core } from "../core/backlog.ts";
@@ -23,6 +24,15 @@ export function createUniqueTestDir(prefix: string): string {
 	const timestamp = Date.now().toString(36); // Base36 timestamp
 	const pid = process.pid.toString(36); // Process ID for additional uniqueness
 	return join(process.cwd(), "tmp", `${prefix}-${timestamp}-${pid}-${uuid}`);
+}
+
+/**
+ * Creates a test project directory outside the repository, for tests that run destructive CLI
+ * commands. The CLI finds its project by walking up from the working directory, so a command that
+ * outlives a directory under the repository's own tmp/ would act on the repository's backlog.
+ */
+export async function createTestDirOutsideRepository(prefix: string): Promise<string> {
+	return await mkdtemp(join(tmpdir(), `${prefix}-`));
 }
 
 export async function commitSamePathBranchTaskVariant(
