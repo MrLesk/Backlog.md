@@ -3,9 +3,9 @@ id: BACK-731
 title: Restore archived tasks to the board
 status: Done
 assignee:
-  - '@claude'
+  - '@codex-731'
 created_date: '2026-10-11 13:02'
-updated_date: '2026-10-11 20:17'
+updated_date: '2026-10-15 21:05'
 labels:
   - enhancement
 dependencies:
@@ -15,6 +15,7 @@ references:
   - core
   - commands
   - mcp-tools
+  - src/core/content-store.ts
 modified_files:
   - src/cli.ts
   - src/core/archived-task-move.ts
@@ -38,6 +39,8 @@ modified_files:
   - src/test/server-cleanup-endpoint.test.ts
   - src/test/tui-task-lifecycle.test.ts
   - src/test/cli-task-restore.test.ts
+  - src/test/content-store.test.ts
+  - src/core/content-store.ts
 priority: high
 type: enhancement
 ordinal: 349000
@@ -74,23 +77,14 @@ Depends on BACK-730: the lifecycle change is delivered in order, first the singl
 ## Implementation Plan
 
 <!-- SECTION:PLAN:BEGIN -->
-Layer 3 of the stack (branch tasks/back-731-task-restore on top of BACK-730). The MCP tool is confirmed by the maintainer and is built like the MCP delete tool.
+Repair plan after approved architecture review (2026-10-15):
+1. Integrate exact repaired BACK-730 parent 5cdbc0a7 while retaining its deletion locks through commit, preflight, applied-change errors, MCP translation, and earlier archive/exclusive-create repairs.
+2. Make ContentStore.transitionTask accept the complete resulting active or archived task, or no task for removal. Clear the identity from both corpora, install the result in the correct corpus, rebuild identity/visible tasks, and publish once. Keep refreshArchivedTask path-based so contested identities remain contested.
+3. Replace restoreTask removal plus upsert with one transition carrying the restored local task. Keep existing archive/delete call semantics and accepted move, refusal, link, and commit behavior.
+4. Add a regression using Core.restoreTask with an initialized store. Check every published snapshot, active/archived membership, identity resolution, and one publication. Retain archive/delete and contested archived-file coverage.
+5. Run focused restore, content-store, identity/cache, read-only, delete/autocommit, and MCP checks with Bun 1.4.3 and Biome 2.5.15, canonical type/lint commands, build, and compiled CLI/MCP smoke. Review the task diff for simpler code and unrelated changes. Hold In Progress without final repair commit or push for a full-context architecture review.
 
-1. Core (src/core/backlog.ts): one operation, `Core.restoreTask(taskId, autoCommit?)`.
-   - It loads the archived record with the same archived-only loader delete uses, so an ID that more than one record claims fails closed as ambiguous, a task that is already on the board throws the typed `TaskNotArchivedError`, and an unknown ID reports not found.
-   - Under the task lock it re-reads the record and moves the file from the folder it is archived in (`archive/tasks` or a leftover `completed/`) to the tasks folder under the same file name, with the no-replace move layer 1 built for `doctor --fix` (a hard link or a recreated symlink, then unlink), so an existing board file is never overwritten and a symlinked task file stays a link to the same target. The file content is not rewritten: the task keeps its ID and the status it had.
-   - Auto-commit follows the project setting, like archive.
-   - `TaskArchivedError`, the one message every surface shows when a change targets an archived task, now names the restore command.
-
-2. CLI (src/cli.ts): `backlog task restore <taskId>` with no options, built like `task archive` and `task delete`. The `doctor` advice for self-referential and cyclic dependencies on archived tasks points at restore instead of editing the file by hand.
-
-3. MCP (src/mcp/tools/tasks/*): a `task_restore` tool with the one-ID input, calling the same core operation and translating the typed refusal.
-
-4. Guides and docs: the CLI and MCP guides, agent-guidelines, the project-manager guideline, README and CLI-INSTRUCTIONS say how to bring archived work back to the board and that an archived task must be restored before it can be changed.
-
-5. Tests through the public surfaces: CLI (restore keeps ID and status, list shows it and edit changes it, edit on an archived task names restore, restore on a board task and on an unknown ID fails and changes nothing, ambiguous ID fails closed, never replaces an existing board file, leftover `completed/` folder, symlinked archived file, auto-commit) and MCP (`task_restore` under the same rules), plus the tool list, guides and help.
-
-6. Verification: scoped tests, `bunx tsc --noEmit`, `bun run check .`, and a scripted end-to-end run of every acceptance criterion against a binary built from this layer in a private mktemp project.
+6. Architecture review accepted the repair unchanged. Record objective evidence, finalize the verified task, commit the reviewed files, and push the final head with an explicit remote-head lease.
 <!-- SECTION:PLAN:END -->
 
 ## Implementation Notes
@@ -113,26 +107,24 @@ Verification: `bunx tsc --noEmit` clean; `bun run check .` clean (435 files); sc
 Review round: TaskNotArchivedError takes the operation (delete or restore) and holds both sentences itself. Archive and restore move the task file through one private helper, moveTaskFile, which uses the shared no-replace move and throws the typed TaskFileExistsError for either direction ('...cannot be archived: the archive already has a file named...' or '...cannot be restored: the board already has a file named...'). Restore resolves a task that exists only on another branch to the same typed refusal as archive and delete. All typed refusals extend TaskRefusedError, so the MCP restore handler is the same three lines as delete, and its tool is declared beside the delete tool above the registration block. commitFailedAfter documents when to use it and when to tag the error instead.
 
 Third review round: an ID that several records claim on another branch fails closed as ambiguous for restore too; a test calls Core.restoreTask directly for that case. Every acceptance criterion was re-run end to end against a binary built from this layer's tip (CLI and MCP over stdio) in private mktemp projects.
+
+Final repair verification (2026-10-15):
+- Integrated exact repaired BACK-730 parent 5cdbc0a7 at merge commit ac252cbd. The deletion body matches the parent apart from the loader operation argument required by restore. Its lock span, auto-commit preflight, deletionApplied tracking, phase errors, TaskDeletionAppliedError, and MCP translation are preserved. The earlier archive and exclusive-create repairs are retained.
+- ContentStore.transitionTask now installs the complete resulting active or archived task, or removes the identity when no task remains. Core.restoreTask publishes the restored local task through one transition. refreshArchivedTask remains path-based and preserves contested identities.
+- The real Core restore regression failed with two publications before the repair. It passes with one complete publication afterward, checking the visible snapshot, active corpus, empty archived corpus, and read/mutation identity results.
+- AC 1-3: cli-task-restore tests and the compiled CLI smoke verify byte-preserving restore with the same ID/status/name, normal list/edit after restore, and the archived read-only refusal naming restore. The suite also covers ambiguity, destination conflicts, linked files, legacy completed folders, and auto-commit.
+- AC 4: mcp-tasks and mcp-server tests plus a compiled MCP stdio smoke verify the existing task_restore tool and task_view after restore.
+- AC 5: cli-guidance, cli-doctor, and mcp-server tests verify help, shipped lifecycle guidance, and restore advice.
+- 358 tests passed across 21 focused suites, including content-store, restore, archive/delete, identity/cache, read-only, commit scope, vacated references, MCP, and exclusive creation. Bun 1.4.3; Biome 2.5.15. Canonical bun run check:types, bun run check ., and bun run build passed. The existing literal TypeScript Definition of Done also passed with the installed compiler via bunx --no-install tsc --noEmit.
+- Task-scoped subtraction and the full-context architecture review are complete: keep the repair, no blocker, no further simplification, and no new product decision.
 <!-- SECTION:NOTES:END -->
 
 ## Final Summary
 
 <!-- SECTION:FINAL_SUMMARY:BEGIN -->
-`backlog task restore <id>` moves an archived task back to the board with the same ID and the status it had. Archived tasks stay read-only, and the message a refused change gets now names the restore command, so archived work is no longer a dead end (issue #1064).
+backlog task restore <id> returns an archived task to the board with the same ID, status, filename, and file bytes. Restored tasks can be listed and edited; archived edits remain refused with the restore command. Existing CLI and MCP restore behavior, move conflicts, linked-file handling, and scoped auto-commit behavior are preserved.
 
-What changed
-- One core operation, `Core.restoreTask`. It moves the file from the folder it is archived in (`archive/tasks` or a leftover `completed/`) to the tasks folder under the same name and does not rewrite it. A task that is already on the board is refused with "Task X is not archived. It is already on the board.", a task that exists only on another branch is refused as read-only, and an ID that more than one record claims fails closed as ambiguous.
-- Archive and restore move the task file through one helper built on the shared no-replace move. A file of the same name in the destination is never replaced; the operation is refused with a typed error and changes nothing. A symlinked task file stays a link to the same target.
-- `TaskArchivedError`, the one message every interface shows when a change targets an archived task, reads "Task X is archived. Archived tasks are read-only. Restore it to the board first: backlog task restore X".
-- `backlog task restore <taskId>` has no options. The MCP server offers the same operation as `task_restore`. The TUI and the browser get no restore control.
-- `backlog doctor` tells users to restore an archived task before rewriting its dependencies, instead of editing the file directly.
-- Help, the CLI and MCP guides, README and CLI-INSTRUCTIONS say how archived work comes back to the board.
+Restore now publishes one complete active state through ContentStore.transitionTask. Subscribers no longer receive a temporary snapshot where the restored task is absent. Archive/delete transitions and path-based archived refresh retain their separate meanings, including contested identity handling.
 
-Verification
-- `bunx tsc --noEmit` and `bun run check .` are clean; the scoped tests pass, including src/test/cli-task-restore.test.ts, which drives the CLI for every acceptance criterion, and the MCP tests for `task_restore`.
-- A scripted end-to-end run against a binary built from this layer covered every acceptance criterion through the CLI and through MCP over stdio.
-
-Choices to confirm
-- The MCP `task_restore` tool is included, as ruled by the maintainer.
-- The archived message names the CLI command on every interface, including MCP and HTTP.
+Verified with a regression that reproduced two publications before the repair and one complete publication afterward; 358 focused tests across 21 suites; canonical type/lint/build checks; the installed tsc check; and compiled CLI/MCP smoke. The repaired parent deletion boundary and earlier archive/exclusive-create repairs are retained. Architecture review found no blocker or further simplification. Hosted PR checks remain separate from this local verification.
 <!-- SECTION:FINAL_SUMMARY:END -->

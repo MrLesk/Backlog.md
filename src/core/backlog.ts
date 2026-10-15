@@ -3650,8 +3650,7 @@ export class Core {
 			if (!current || !fromPath) return false;
 			const toPath = join(this.fs.tasksDir, basename(fromPath));
 			await this.moveTaskFile(current.id, "restore", fromPath, toPath);
-			this.contentStore?.transitionTask(current.id);
-			this.contentStore?.upsertTask({ ...current, filePath: toPath, source: "local" });
+			this.contentStore?.transitionTask(current.id, { ...current, filePath: toPath, source: "local" });
 
 			try {
 				if (await this.shouldAutoCommit(autoCommit)) {
