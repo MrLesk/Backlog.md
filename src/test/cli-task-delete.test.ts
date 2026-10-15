@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import { lstat, mkdir, readdir, rename, symlink } from "node:fs/promises";
 import { join } from "node:path";
 import { $ } from "bun";
+import { CREATE_LOCK_ERROR_MESSAGE } from "../file-system/operations.ts";
 import { Core } from "../index.ts";
 import { serializeTask } from "../markdown/serializer.ts";
 import { getTestCliPath } from "./test-cli.ts";
@@ -297,6 +298,101 @@ describe("backlog task delete with auto-commit", () => {
 			"M\tbacklog/tasks/task-2 - Depends-on-the-target.md",
 		]);
 		expect((await $`git status --porcelain`.cwd(TEST_DIR).text()).trim()).toBe("");
+	});
+
+	it.each(["staging", "committing"])("keeps a concurrent create out of the delete commit while %s", async (step) => {
+		const core = new Core(TEST_DIR);
+		const { task: target } = await core.createTaskFromInput({ title: "Same name" }, false);
+		await core.archiveTask(target.id, false);
+		await $`git add -A`.cwd(TEST_DIR).quiet();
+		await $`git commit -m "Archive the race target"`.cwd(TEST_DIR).quiet();
+		const archivedPath = join(core.filesystem.archiveTasksDir, "task-3 - Same-name.md");
+		const creator = new Core(TEST_DIR);
+		// Fail immediately on contention, so the attempted create runs at this exact boundary.
+		creator.withCreateLock = (run) => creator.filesystem.withCreateLock(run, { timeoutMs: 0 });
+		let createError: unknown;
+		const attemptCreate = async () => {
+			try {
+				await creator.createTaskFromInput({ title: target.title }, false);
+			} catch (error) {
+				createError = error;
+			}
+		};
+		const originalAdd = core.gitOps.addFile.bind(core.gitOps);
+		const originalCommit = core.gitOps.commitFiles.bind(core.gitOps);
+		core.gitOps.addFile = async (path, ...args) => {
+			if (step === "staging" && path === archivedPath) await attemptCreate();
+			await originalAdd(path, ...args);
+		};
+		core.gitOps.commitFiles = async (...args) => {
+			if (step === "committing") await attemptCreate();
+			await originalCommit(...args);
+		};
+
+		try {
+			expect(await core.deleteTask(target.id, true)).toEqual({ success: true, cleanedTaskIds: [] });
+		} finally {
+			core.gitOps.addFile = originalAdd;
+			core.gitOps.commitFiles = originalCommit;
+		}
+
+		expect(await lastCommit()).toBe("backlog: Delete task TASK-3");
+		expect((await $`git show --name-status --format= HEAD`.cwd(TEST_DIR).text()).trim()).toBe(
+			"D\tbacklog/archive/tasks/task-3 - Same-name.md",
+		);
+		expect(createError).toBeInstanceOf(Error);
+		expect((createError as Error).message).toContain(CREATE_LOCK_ERROR_MESSAGE);
+		expect((await task("view", target.id, "--plain")).exitCode).toBe(1);
+		// Once deletion has finished, the same ID and filename can be reused outside its commit.
+		const created = await creator.createTaskFromInput({ title: target.title }, false);
+		expect(created.task.id).toBe(target.id);
+		expect(created.task.filePath).toBe(target.filePath);
+		expect((await $`git ls-tree -r --name-only HEAD backlog/tasks`.cwd(TEST_DIR).text()).trim()).not.toContain(
+			"task-3 - Same-name.md",
+		);
+	});
+
+	it.each([false, true])("reports deletion when releasing a lock fails, with auto-commit %s", async (autoCommit) => {
+		const core = new Core(TEST_DIR);
+		const { task: target } = await core.createTaskFromInput({ title: "Release failure" }, false);
+		await core.archiveTask(target.id, false);
+		await $`git add -A`.cwd(TEST_DIR).quiet();
+		await $`git commit -m "Archive before release failure"`.cwd(TEST_DIR).quiet();
+		const original = core.filesystem.withTaskLocks.bind(core.filesystem);
+		core.filesystem.withTaskLocks = async (tasks, run) => {
+			await original(tasks, run);
+			throw new Error("task lock release failed");
+		};
+
+		try {
+			await expect(core.deleteTask(target.id, autoCommit)).rejects.toThrow(
+				"Task TASK-3 was deleted, but releasing deletion locks failed: task lock release failed",
+			);
+		} finally {
+			core.filesystem.withTaskLocks = original;
+		}
+
+		const view = await task("view", target.id, "--plain");
+		expect(view.exitCode).toBe(1);
+		expect(view.stderr).toContain(`Task ${target.id} not found.`);
+		expect(await lastCommit()).toBe(autoCommit ? "backlog: Delete task TASK-3" : "Archive before release failure");
+		if (autoCommit) {
+			expect((await $`git show --name-status --format= HEAD`.cwd(TEST_DIR).text()).trim()).toBe(
+				"D\tbacklog/archive/tasks/task-3 - Release-failure.md",
+			);
+			expect((await $`git status --porcelain`.cwd(TEST_DIR).text()).trim()).toBe("");
+		}
+	});
+
+	it("reads the auto-commit setting before deleting anything", async () => {
+		const core = new Core(TEST_DIR);
+		core.shouldAutoCommit = async () => {
+			throw new Error("Cannot read auto-commit setting");
+		};
+		await expect(core.deleteTask("TASK-1")).rejects.toThrow("Cannot read auto-commit setting");
+		expect(await taskFiles("archive/tasks")).toEqual(["task-1 - Target.md"]);
+		expect((await core.filesystem.loadTask("TASK-2"))?.dependencies).toEqual(["task-1"]);
+		expect(await lastCommit()).toBe("Set up the project");
 	});
 
 	it("commits a draft it cleaned, also when the save gives the draft file a new name", async () => {

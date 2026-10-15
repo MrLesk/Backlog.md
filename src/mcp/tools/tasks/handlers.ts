@@ -1,4 +1,4 @@
-import { TaskRefusedError, type VacatedTaskResult } from "../../../core/backlog.ts";
+import { TaskDeletionAppliedError, TaskRefusedError, type VacatedTaskResult } from "../../../core/backlog.ts";
 import { findLocalDuplicateTaskIds } from "../../../core/duplicate-task-repair.ts";
 import { loadTaskDetail, loadTaskListItems } from "../../../core/task-detail.ts";
 import { isCreateLockError, isTaskLockError } from "../../../file-system/operations.ts";
@@ -111,13 +111,16 @@ export class TaskHandlers {
 		return task;
 	}
 
-	/** Run a core lifecycle operation. A refusal from core is the caller's answer, in core's words. */
+	/** Report known lifecycle outcomes in core's words, including a deletion whose later step failed. */
 	private async runLifecycleOperation<T>(operation: () => Promise<T>): Promise<T> {
 		try {
 			return await operation();
 		} catch (error) {
 			if (error instanceof TaskRefusedError) {
 				throw new BacklogToolError(error.message, "VALIDATION_ERROR");
+			}
+			if (error instanceof TaskDeletionAppliedError) {
+				throw new BacklogToolError(error.message, "OPERATION_FAILED");
 			}
 			throw error;
 		}
