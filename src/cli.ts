@@ -3889,6 +3889,34 @@ addHelpSchema(taskCmd.command("archive <taskId>"), {
 		console.log(`Archived task ${task.id}`);
 	});
 
+addHelpSchema(taskCmd.command("delete <taskId>"), {
+	required: [{ name: "taskId", type: "Task ID", description: "Archived task to delete" }],
+	optional: [],
+	writes:
+		"Permanently removes an archived task. Its ID is released once no other branch or worktree still holds the task. Dependencies and references that other tasks and drafts hold to it are removed. A task must be archived first (backlog task archive), and a task whose subtasks still exist, as tasks or as drafts, is not deleted. There is no prompt.",
+	output: "Delete confirmation text, followed by the tasks and drafts that lost a dependency or reference",
+	examples: ["backlog task archive {{TASK_ID:1}}", "backlog task delete {{TASK_ID:1}}"],
+})
+	.description(
+		"permanently delete an archived task and release its ID once no other branch or worktree still holds the task",
+	)
+	.action(async (taskId: string) => {
+		const cwd = await requireProjectRoot();
+		const core = new Core(cwd);
+		const task = await core.loadTaskById(taskId, { includeCrossBranch: false });
+		const deletion = task ? await core.deleteTask(task.id, undefined, { includeCrossBranch: false }) : null;
+		if (!task || !deletion?.success) {
+			console.error(`${taskNotFoundMessage(taskId)} ${LOCAL_TASK_LOOKUP_HINT}`);
+			process.exitCode = 1;
+			return;
+		}
+		console.log(`Deleted task ${task.id}`);
+		const cleanupMessage = formatDependencyCleanupMessage(task.id, deletion.cleanedTaskIds);
+		if (cleanupMessage) {
+			console.log(cleanupMessage);
+		}
+	});
+
 // A removal notice, not a command: `task complete` was replaced by `task archive`. The entry only
 // answers people and scripts that still call it. It is hidden from help and completion, accepts
 // whatever follows its name, changes nothing and exits non-zero. With `--json` the task-level
@@ -3938,7 +3966,7 @@ taskCmd
 		const core = new Core(cwd);
 
 		// Don't handle commands that should be handled by specific command handlers
-		const reservedCommands = ["create", "list", "edit", "view", "archive", "demote"];
+		const reservedCommands = ["create", "list", "edit", "view", "archive", "delete", "demote"];
 		if (taskId && reservedCommands.includes(taskId)) {
 			console.error(`Unknown command: ${taskId}`);
 			taskCmd.help();

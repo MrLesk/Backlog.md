@@ -15,6 +15,8 @@ Leave finished tasks on the board until periodic cleanup. Archive (`backlog task
 
 Archive also takes canceled, duplicate, or invalid work off the board. Archived tasks are read-only, so finish notes and the final summary before archiving.
 
+To remove a task for good, archive it and then delete it with `backlog task delete {{TASK_ID:123}}`. Delete releases the ID once no other branch or worktree still holds the task, and removes the links other tasks and drafts hold to the task, so use it only for work that should leave no record.
+
 ### Follow-up Work
 
 Do not create or start follow-up tasks without user approval. For subtasks, verify each separately and finish the parent only when all are complete, unless instructed otherwise. Continue to the next subtask only when the user already assigned the full series; otherwise ask first.

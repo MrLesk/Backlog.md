@@ -162,6 +162,26 @@ describe("McpServer bootstrap", () => {
 		);
 	});
 
+	it("workflow guides describe deleting a task as archive first, then delete", () => {
+		TEST_DIR = createUniqueTestDir("mcp-server-guides");
+
+		for (const guide of [MCP_WORKFLOW_OVERVIEW, MCP_WORKFLOW_OVERVIEW_TOOLS]) {
+			expect(guide).toContain(
+				"- `task_delete` — permanently delete an archived task and release its ID once no other branch or worktree still holds the task.",
+			);
+			expect(guide).toContain("Deleting takes two steps: `task_archive`, then `task_delete`.");
+			expect(guide).toContain(
+				"It removes the dependencies and references other tasks and drafts hold to the task and names the tasks and drafts it changed.",
+			);
+			expect(guide).not.toContain("held by drafts");
+			expect(guide).toContain("or whose subtasks still exist as tasks or as drafts, is not deleted.");
+		}
+		expect(MCP_TASK_FINALIZATION_GUIDE).toContain("archive it and then call `task_delete`");
+		expect(MCP_TASK_FINALIZATION_GUIDE).toContain(
+			"Delete releases the ID once no other branch or worktree still holds the task, and removes the links other tasks and drafts hold to the task",
+		);
+	});
+
 	it("task creation guide keeps parent task IDs distinct from milestone IDs", () => {
 		TEST_DIR = createUniqueTestDir("mcp-server-guides");
 
@@ -286,6 +306,7 @@ describe("McpServer bootstrap", () => {
 			"task_edit",
 			"task_view",
 			"task_archive",
+			"task_delete",
 			"milestone_list",
 			"milestone_add",
 			"milestone_rename",

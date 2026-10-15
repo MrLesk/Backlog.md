@@ -770,6 +770,21 @@ export class FileSystem {
 		return await acquire(0);
 	}
 
+	/** Draft counterpart of {@link withTaskLocks}: every draft lock is held, in a stable order, before `fn` runs. */
+	async withDraftLocks<T>(references: DraftFileReference[], fn: () => Promise<T>): Promise<T> {
+		const ordered = Array.from(new Map(references.map((reference) => [reference.filePath, reference])).values()).sort(
+			(left, right) => left.canonicalId.localeCompare(right.canonicalId),
+		);
+
+		const acquire = async (index: number): Promise<T> => {
+			const reference = ordered[index];
+			if (!reference) return await fn();
+			return await this.withDraftLock(reference, async () => await acquire(index + 1));
+		};
+
+		return await acquire(0);
+	}
+
 	private async withLockTarget<T>(
 		targetPath: string,
 		lockDir: string,
@@ -1225,50 +1240,49 @@ export class FileSystem {
 		}
 	}
 
+	// Core's vacated-ID cleanup owns the task, draft and allocator locks for this move and its cleanup.
 	async demoteTask(taskId: string, onMoved?: (fromPath: string, toPath: string) => void): Promise<boolean> {
-		return await this.withCreateLock(async () => {
-			// Load the task. A missing task is the only false result; filesystem failures must reach
-			// callers so the Web API can distinguish an operational failure from a 404.
-			const task = await this.loadTask(taskId);
-			if (!task?.filePath) return false;
+		// Load the task. A missing task is the only false result; filesystem failures must reach
+		// callers so the Web API can distinguish an operational failure from a 404.
+		const task = await this.loadTask(taskId);
+		if (!task?.filePath) return false;
 
-			// Generate new draft ID
-			// Draft prefix is always "draft" (not configurable like task prefix)
-			const config = await this.loadConfig();
-			const newDraftId = generateNextId(await this.listOccupiedDraftIds(), "draft", config?.zeroPaddedIds);
+		// Generate new draft ID
+		// Draft prefix is always "draft" (not configurable like task prefix)
+		const config = await this.loadConfig();
+		const newDraftId = generateNextId(await this.listOccupiedDraftIds(), "draft", config?.zeroPaddedIds);
 
-			// Update task with new draft ID and save as draft. The record's own links are cleaned of
-			// the task ID it vacates here: carried into the draft, such a link would rebind to
-			// whatever task is allocated that ID next.
-			const demotedDraft: Task = {
-				...(withoutVacatedTaskLinks(task, task.id) ?? task),
-				id: newDraftId,
-				// The path must be cleared so the save writes a new file. Left set, the save would take
-				// over the source file, and removing the source afterwards would delete the only copy.
-				filePath: undefined,
-			};
+		// Update task with new draft ID and save as draft. The record's own links are cleaned of
+		// the task ID it vacates here: carried into the draft, such a link would rebind to
+		// whatever task is allocated that ID next.
+		const demotedDraft: Task = {
+			...(withoutVacatedTaskLinks(task, task.id) ?? task),
+			id: newDraftId,
+			// The path must be cleared so the save writes a new file. Left set, the save would take
+			// over the source file, and removing the source afterwards would delete the only copy.
+			filePath: undefined,
+		};
 
-			const savedPath = await this.saveDraft(demotedDraft);
+		const savedPath = await this.saveDraft(demotedDraft);
 
-			// Delete old task file. If that fails, remove the newly written draft so a retry cannot
-			// encounter two copies of the task.
+		// Delete old task file. If that fails, remove the newly written draft so a retry cannot
+		// encounter two copies of the task.
+		try {
+			await unlink(task.filePath);
+		} catch (error) {
 			try {
-				await unlink(task.filePath);
-			} catch (error) {
-				try {
-					await unlink(savedPath);
-				} catch (cleanupError) {
-					const failure = error instanceof Error ? error : new Error(String(error));
-					(failure as Error & { demotionState?: string }).demotionState = "partial";
-					failure.cause = cleanupError;
-					throw failure;
-				}
-				throw error;
+				await unlink(savedPath);
+			} catch (cleanupError) {
+				const failure = error instanceof Error ? error : new Error(String(error));
+				(failure as Error & { demotionState?: string }).demotionState = "partial";
+				failure.cause = cleanupError;
+				throw failure;
 			}
-			onMoved?.(task.filePath, savedPath);
+			throw error;
+		}
+		onMoved?.(task.filePath, savedPath);
 
-			return true;
-		});
+		return true;
 	}
 
 	// Draft operations

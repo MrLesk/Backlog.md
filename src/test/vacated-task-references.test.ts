@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import { mkdir } from "node:fs/promises";
-import { basename, join } from "node:path";
+import { basename, dirname, join } from "node:path";
 import { $ } from "bun";
 import { Core } from "../core/backlog.ts";
 import { loadTaskDetail } from "../core/task-detail.ts";
@@ -216,6 +216,63 @@ describe("references to an archived or vacated task ID", () => {
 		expect(updatedDependent?.references ?? []).toEqual([]);
 	});
 
+	it.each(["demote", "edit"])(
+		"cleans late-created task and draft links when %s acquires the allocator",
+		async (operation) => {
+			const { task: anchor } = await core.createTaskFromInput({ title: "Stable parent" }, false);
+			const { task: target } = await core.createTaskFromInput({ title: "Vacated target" }, false);
+			const creator = new Core(testDir);
+			const original = core.filesystem.withCreateLock.bind(core.filesystem);
+			let created = false;
+			core.filesystem.withCreateLock = async (run, options) => {
+				if (!created) {
+					created = true;
+					await creator.createTaskFromInput(
+						{
+							title: "Late task",
+							parentTaskId: anchor.id,
+							dependencies: [target.id],
+							references: [target.id],
+						},
+						false,
+					);
+					await creator.createTaskFromInput(
+						{
+							title: "Late draft",
+							status: "Draft",
+							dependencies: [target.id],
+							references: [target.id],
+						},
+						false,
+					);
+				}
+				return await original(run, options);
+			};
+
+			try {
+				const result =
+					operation === "demote"
+						? await core.demoteTask(target.id, false)
+						: await core.editTaskOrDraft(target.id, { status: "Draft", labels: ["edited"] }, false);
+				expect(result.cleanedTaskIds).toEqual([`${anchor.id}.1`, "DRAFT-1"]);
+			} finally {
+				core.filesystem.withCreateLock = original;
+				await creator.disposeContentStore();
+			}
+
+			expect((await core.createTaskFromInput({ title: "Unrelated replacement" }, false)).task.id).toBe(target.id);
+			const lateTask = await core.filesystem.loadTask(`${anchor.id}.1`);
+			expect(lateTask?.dependencies ?? []).toEqual([]);
+			expect(lateTask?.references ?? []).toEqual([]);
+			expect(await dependencyTitles(lateTask)).toEqual([]);
+			const drafts = await core.filesystem.listDrafts();
+			expect(drafts.map((draft) => draft.id)).toEqual(["DRAFT-1", "DRAFT-2"]);
+			expect(drafts[0]?.dependencies ?? []).toEqual([]);
+			expect(drafts[0]?.references ?? []).toEqual([]);
+			if (operation === "edit") expect(drafts[1]?.labels).toEqual(["edited"]);
+		},
+	);
+
 	it("removes demoted references from the archived corpus and the working copy alike", async () => {
 		const { task: activeDependent } = await core.createTaskFromInput({ title: "Active dependent" });
 		const { task: archivedDependent } = await core.createTaskFromInput({ title: "Archived dependent" });
@@ -279,6 +336,124 @@ describe("references to an archived or vacated task ID", () => {
 		const updated = await core.filesystem.loadTask(late.id);
 		expect(updated?.dependencies ?? []).toEqual([]);
 		expect(await dependencyTitles(updated)).toEqual([]);
+	});
+
+	describe("drafts that link to the vacated ID", () => {
+		/** DRAFT-1, written to disk the way a draft is saved, with the links it is given. */
+		const saveDraft = async (links: string[]) => {
+			const path = await core.filesystem.saveDraft({
+				id: "draft-1",
+				title: "Linked draft",
+				status: "Draft",
+				assignee: [],
+				createdDate: "2025-01-01",
+				labels: [],
+				dependencies: links,
+				references: links,
+			});
+			return await core.filesystem.draftReferenceFromPath(path);
+		};
+		const draftLinks = async () => {
+			const draft = await core.filesystem.loadDraft("draft-1");
+			return { dependencies: draft?.dependencies ?? [], references: draft?.references ?? [] };
+		};
+
+		it("keeps a draft edit made between the cleanup scan and the locks", async () => {
+			const { task: target } = await core.createTaskFromInput({ title: "Demote target" });
+			const draft = await saveDraft([target.id]);
+
+			const editor = new Core(testDir);
+			const restore = interleaveAtLockAcquisition(async () => {
+				await editor.updateDraftFromInput(draft, { labels: ["edited-while-demoting"] }, false);
+			});
+
+			try {
+				const demotion = await core.demoteTask(target.id, false);
+				expect(demotion.success).toBe(true);
+				expect(demotion.cleanedTaskIds).toEqual(["DRAFT-1"]);
+			} finally {
+				restore();
+			}
+
+			// A snapshot taken before the locks would have rewritten the file from pre-edit content.
+			expect((await core.filesystem.loadDraft("draft-1"))?.labels).toEqual(["edited-while-demoting"]);
+			expect(await draftLinks()).toEqual({ dependencies: [], references: [] });
+			// The draft is still one file, next to the draft the demoted task became.
+			expect((await core.filesystem.listDrafts()).map((listed) => listed.id)).toEqual(["DRAFT-1", "DRAFT-2"]);
+		});
+
+		it("cleans a draft that starts linking to the ID between the scan and the locks", async () => {
+			const { task: target } = await core.createTaskFromInput({ title: "Demote target" });
+			const draft = await saveDraft([]);
+
+			const editor = new Core(testDir);
+			const restore = interleaveAtLockAcquisition(async () => {
+				await editor.updateDraftFromInput(draft, { dependencies: [target.id], references: [target.id] }, false);
+			});
+
+			try {
+				const demotion = await core.demoteTask(target.id, false);
+				expect(demotion.cleanedTaskIds).toEqual(["DRAFT-1"]);
+			} finally {
+				restore();
+			}
+
+			expect(await draftLinks()).toEqual({ dependencies: [], references: [] });
+		});
+
+		it("fails and changes nothing when a linked draft is renamed between the scan and the locks", async () => {
+			const { task: target } = await core.createTaskFromInput({ title: "Demote target" });
+			const draft = await saveDraft([target.id]);
+
+			// A new title gives the draft file a new name, so the file that was scanned is gone.
+			const editor = new Core(testDir);
+			const restore = interleaveAtLockAcquisition(async () => {
+				await editor.updateDraftFromInput(draft, { title: "Renamed while demoting" }, false);
+			});
+
+			try {
+				await expect(core.demoteTask(target.id, false)).rejects.toThrow(
+					"DRAFT-1 was moved or removed by another process",
+				);
+			} finally {
+				restore();
+			}
+
+			expect((await core.filesystem.loadTask(target.id))?.title).toBe("Demote target");
+			expect(await draftLinks()).toEqual({ dependencies: [target.id], references: [target.id] });
+			// Running the demotion again finds the draft under its new name.
+			expect((await core.demoteTask(target.id, false)).cleanedTaskIds).toEqual(["DRAFT-1"]);
+			expect(await draftLinks()).toEqual({ dependencies: [], references: [] });
+		});
+
+		it("fails and changes nothing while a draft that links to the task is being edited", async () => {
+			const { task: target } = await core.createTaskFromInput({ title: "Delete target" });
+			const draft = await saveDraft([target.id]);
+			expect(await core.archiveTask(target.id, false)).toBe(true);
+			const before = await Bun.file(draft.filePath).text();
+
+			// Another editor holds the draft's lock, as a draft edit does for its read-modify-write.
+			await core.filesystem.withDraftLock(draft, async () => {
+				await expect(core.deleteTask(target.id, false)).rejects.toThrow("DRAFT-1 is being modified by another process");
+			});
+
+			expect(await loadArchived(target.id)).toBeDefined();
+			expect(await Bun.file(draft.filePath).text()).toBe(before);
+		});
+
+		it("leaves a draft alone when another file claims its ID, and the delete still succeeds", async () => {
+			const { task: target } = await core.createTaskFromInput({ title: "Delete target" });
+			const draft = await saveDraft([target.id]);
+			const twinPath = join(dirname(draft.filePath), "draft-01 - Twin.md");
+			await Bun.write(twinPath, (await Bun.file(draft.filePath).text()).replace("Linked draft", "Twin"));
+			expect(await core.archiveTask(target.id, false)).toBe(true);
+			const before = [await Bun.file(draft.filePath).text(), await Bun.file(twinPath).text()];
+
+			// A draft edit refuses an ID that two files claim, and so does the cleanup: neither is rewritten.
+			expect(await core.deleteTask(target.id, false)).toEqual({ success: true, cleanedTaskIds: [] });
+
+			expect([await Bun.file(draft.filePath).text(), await Bun.file(twinPath).text()]).toEqual(before);
+		});
 	});
 
 	it("reports a demotion whose cleanup write failed as already moved", async () => {

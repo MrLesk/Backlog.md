@@ -312,7 +312,7 @@ describe("MCP task tools (MVP)", () => {
 		expect(toolNames.filter((name) => name.includes("complete"))).toEqual([]);
 	});
 
-	it("answers an archive of a task that exists only on another branch with core's read-only refusal", async () => {
+	it("answers a lifecycle call on a task that exists only on another branch with core's read-only refusal", async () => {
 		await enableGitTestProject();
 		const config = await loadConfig(mcpServer);
 		await mcpServer.filesystem.saveConfig({ ...config, checkActiveBranches: true, remoteOperations: false });
@@ -349,11 +349,13 @@ describe("MCP task tools (MVP)", () => {
 			expect(view.isError).not.toBe(true);
 			expect(getText(view.content)).toContain(`Task TASK-${id} - ${title}`);
 
-			const archive = await call("task_archive", { id: `task-${id}` });
-			expect(archive.isError).toBe(true);
-			expect(getText(archive.content)).toBe(
-				`Task TASK-${id} exists only on branch "feature" and is read-only here. Switch to that branch to change it.`,
-			);
+			for (const operation of ["task_archive", "task_delete"]) {
+				const refused = await call(operation, { id: `task-${id}` });
+				expect(refused.isError).toBe(true);
+				expect(getText(refused.content)).toBe(
+					`Task TASK-${id} exists only on branch "feature" and is read-only here. Switch to that branch to change it.`,
+				);
+			}
 		}
 
 		const unknown = await call("task_archive", { id: "task-9" });
@@ -365,9 +367,120 @@ describe("MCP task tools (MVP)", () => {
 		expect(contested.isError).toBe(true);
 		expect(getText(contested.content)).toContain("is ambiguous");
 		await expect(mcpServer.archiveTask("task-4")).rejects.toThrow("is ambiguous");
+		await expect(mcpServer.deleteTask("task-4")).rejects.toThrow("is ambiguous");
 
 		expect((await mcpServer.filesystem.listTasks()).map((task) => task.id)).toEqual(["TASK-1"]);
 		expect(await mcpServer.filesystem.listArchivedTasks()).toEqual([]);
+	});
+
+	it("deletes an archived task under the same rules as the CLI", async () => {
+		const call = async (name: string, args: Record<string, unknown>) =>
+			await mcpServer.testInterface.callTool({ params: { name, arguments: args } });
+		await call("task_create", { title: "Target" });
+		await call("task_create", { title: "Dependent", dependencies: ["task-1"] });
+		await call("task_create", { title: "Parent" });
+		await call("task_create", { title: "Child", parentTaskId: "task-3" });
+		await call("task_create", { title: "Draft dependent", status: "Draft", dependencies: ["task-1"] });
+
+		const notArchived = await call("task_delete", { id: "task-1" });
+		expect(notArchived.isError).toBe(true);
+		expect(getText(notArchived.content)).toContain(
+			"Task TASK-1 is not archived. A task must be archived before it can be deleted.",
+		);
+		expect((await mcpServer.filesystem.loadTask("task-1"))?.title).toBe("Target");
+
+		await call("task_archive", { id: "task-3" });
+		const withSubtasks = await call("task_delete", { id: "task-3" });
+		expect(withSubtasks.isError).toBe(true);
+		expect(getText(withSubtasks.content)).toContain(
+			"Task TASK-3 cannot be deleted while its subtasks exist: TASK-3.1.",
+		);
+		expect((await mcpServer.filesystem.listArchivedTasks()).map((task) => task.id)).toEqual(["TASK-3"]);
+
+		await call("task_archive", { id: "task-1" });
+		const deleted = await call("task_delete", { id: "task-1" });
+		expect(deleted.isError).not.toBe(true);
+		// The cleaned draft is named with the cleaned task, in the same line.
+		expect(getText(deleted.content)).toBe("Deleted task TASK-1.\nRemoved references to TASK-1 from TASK-2, DRAFT-1.");
+		expect((await mcpServer.filesystem.loadTask("task-2"))?.dependencies).toEqual([]);
+		expect((await mcpServer.filesystem.loadDraft("draft-1"))?.dependencies).toEqual([]);
+		for (const name of ["task_view", "task_delete"]) {
+			const gone = await call(name, { id: "task-1" });
+			expect(gone.isError).toBe(true);
+			expect(getText(gone.content)).toContain("Task task-1 not found.");
+		}
+
+		// The deleted ID is released: the highest ID is handed out again once its task is deleted.
+		expect(getText((await call("task_create", { title: "Last" })).content)).toContain("Task TASK-4 - Last");
+		await call("task_archive", { id: "task-4" });
+		expect(getText((await call("task_create", { title: "While archived" })).content)).toContain("Task TASK-5 - ");
+		await call("task_archive", { id: "task-5" });
+		await call("task_delete", { id: "task-5" });
+		await call("task_delete", { id: "task-4" });
+		expect(getText((await call("task_create", { title: "After delete" })).content)).toContain(
+			"Task TASK-4 - After delete",
+		);
+
+		const tools = (await mcpServer.testInterface.listTools()).tools;
+		const deleteTool = tools.find((tool) => tool.name === "task_delete");
+		expect(deleteTool?.description).toContain("release its ID once no other branch or worktree still holds the task");
+		expect(deleteTool?.description).toContain(
+			"removes the dependencies and references other tasks and drafts hold to it",
+		);
+		expect(deleteTool?.description).toContain("must have no subtasks, as tasks or as drafts");
+		// One task ID and nothing else: no confirmation argument.
+		expect(deleteTool?.inputSchema).toMatchObject({
+			properties: { id: { type: "string" } },
+			required: ["id"],
+			additionalProperties: false,
+		});
+	});
+
+	it.each(["commit", "lock release"])("reports an applied deletion when %s fails", async (failedStep) => {
+		await enableGitTestProject();
+		await $`git config user.name "Test User"`.cwd(TEST_DIR).quiet();
+		await $`git config user.email test@example.com`.cwd(TEST_DIR).quiet();
+		const call = async (name: string, args: Record<string, unknown>) =>
+			await mcpServer.testInterface.callTool({ params: { name, arguments: args } });
+		await call("task_create", { title: "Delete failure target" });
+		await call("task_archive", { id: "TASK-1" });
+		await $`git add -A`.cwd(TEST_DIR).quiet();
+		await $`git commit -m "Archive before deletion failure"`.cwd(TEST_DIR).quiet();
+		const config = await loadConfig(mcpServer);
+		await mcpServer.filesystem.saveConfig({ ...config, autoCommit: true });
+
+		const originalLock = mcpServer.filesystem.withCreateLock.bind(mcpServer.filesystem);
+		const failure =
+			failedStep === "commit"
+				? spyOn(mcpServer.gitOps, "commitFiles").mockRejectedValue(new Error("commit hook failed"))
+				: spyOn(mcpServer.filesystem, "withCreateLock").mockImplementation(async (run, options) => {
+						await originalLock(run, options);
+						throw new Error("allocator lock release failed");
+					});
+		try {
+			const result = await call("task_delete", { id: "TASK-1" });
+			expect(result.isError).toBe(true);
+			expect(result.structuredContent).toMatchObject({ code: "OPERATION_FAILED" });
+			expect(getText(result.content)).toBe(
+				failedStep === "commit"
+					? "Task TASK-1 was deleted, but committing the change failed: commit hook failed"
+					: "Task TASK-1 was deleted, but releasing deletion locks failed: allocator lock release failed",
+			);
+		} finally {
+			failure.mockRestore();
+		}
+
+		const view = await call("task_view", { id: "TASK-1" });
+		expect(view.isError).toBe(true);
+		expect(getText(view.content)).toBe("Task TASK-1 not found.");
+		expect((await $`git log -1 --format=%s`.cwd(TEST_DIR).text()).trim()).toBe(
+			failedStep === "commit" ? "Archive before deletion failure" : "backlog: Delete task TASK-1",
+		);
+		if (failedStep === "lock release") {
+			expect((await $`git show --name-status --format= HEAD`.cwd(TEST_DIR).text()).trim()).toBe(
+				"D\tbacklog/archive/tasks/task-1 - Delete-failure-target.md",
+			);
+		}
 	});
 
 	it("archives the local task when merge policy selects a same-path padded ID variant", async () => {

@@ -261,7 +261,7 @@ describe("CLI Integration", () => {
 			}
 		}, 10_000);
 
-		it("explains the single archive flow in workflow guidance and names no command that does not exist", async () => {
+		it("explains archive and the two-step delete in workflow guidance and names no command that does not exist", async () => {
 			for (const name of ["overview", "task-finalization"]) {
 				const guide = await $`bun ${CLI_PATH} instructions ${name}`.cwd(TEST_DIR).text();
 				expect(guide).toContain("periodic cleanup");
@@ -269,7 +269,13 @@ describe("CLI Integration", () => {
 				expect(guide).toContain("canceled, duplicate, or invalid work");
 				expect(guide).toContain("read-only");
 				expect(guide).toMatch(/keep(s|ing) (its|their) ID/);
-				for (const absentCommand of ["task complete", "task delete", "task restore"]) {
+				// Deleting is described as archive first, then delete.
+				expect(guide).toMatch(/archive it(,| and) then (run|delete it with) `backlog task delete/);
+				expect(guide).toMatch(/other tasks and drafts hold to (it|the task)/);
+				expect(guide).not.toContain("held by drafts");
+				// The ID is not free while another branch or worktree still has the task.
+				expect(guide).toMatch(/releases (its|the) ID once no other branch or worktree still holds the task/);
+				for (const absentCommand of ["task complete", "task restore"]) {
 					expect(guide).not.toContain(absentCommand);
 				}
 			}
@@ -375,7 +381,20 @@ describe("CLI Integration", () => {
 			expect(archiveHelp).toContain("Its ID stays reserved");
 			expect(archiveHelp).toContain("no other task is changed");
 			expect(taskHelp).toContain("archive <taskId>");
-			for (const absentCommand of ["complete", "delete", "restore"]) {
+			expect(taskHelp).toContain("delete <taskId>");
+			expect(taskHelp.replace(/\s+/g, " ")).toContain(
+				"permanently delete an archived task and release its ID once no other branch or worktree still holds the task",
+			);
+			const deleteHelp = await $`bun ${CLI_PATH} task delete --help`.cwd(TEST_DIR).text();
+			expect(deleteHelp).toContain("taskId: Task ID - Archived task to delete");
+			expect(deleteHelp).toContain("Its ID is released once no other branch or worktree still holds the task.");
+			expect(deleteHelp).toContain("A task must be archived first (backlog task archive)");
+			expect(deleteHelp).toContain("a task whose subtasks still exist, as tasks or as drafts, is not deleted.");
+			expect(deleteHelp).toContain("There is no prompt.");
+			expect(deleteHelp).toContain("Dependencies and references that other tasks and drafts hold to it are removed.");
+			expect(deleteHelp).toContain("followed by the tasks and drafts that lost a dependency or reference");
+			expect(deleteHelp).not.toContain("held by drafts");
+			for (const absentCommand of ["complete", "restore"]) {
 				expect(taskHelp).not.toContain(absentCommand);
 			}
 		});

@@ -32,9 +32,9 @@ export function isExactTaskReference(reference: string, taskId: string): boolean
  * The task with every dependency and reference naming `vacatedTaskId` removed, or `null` when it
  * named the ID nowhere.
  *
- * Demoting hands the ID back to the allocator, so a reference kept anywhere - on another task, or
- * on the demoted record itself, which keeps its old links under a new identity - rebinds to
- * whatever task is created next.
+ * Demoting or deleting a task hands its ID back to the allocator, so a reference kept anywhere -
+ * on another task, or on a demoted record itself, which keeps its old links under a new identity -
+ * rebinds to whatever task is created next.
  */
 export function withoutVacatedTaskLinks(task: Task, vacatedTaskId: string): Task | null {
 	const dependencies = task.dependencies ?? [];
