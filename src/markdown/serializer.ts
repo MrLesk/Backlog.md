@@ -74,11 +74,7 @@ export function serializeTask(task: Task): string {
 
 	let contentBody = task.rawContent ?? "";
 	const rawContent = task.rawContent ?? "";
-	if (
-		typeof task.description === "string" &&
-		task.description.trim() !== "" &&
-		sectionChanged(rawContent, "description", task.description)
-	) {
+	if (typeof task.description === "string" && sectionChanged(rawContent, "description", task.description)) {
 		contentBody = updateTaskDescription(contentBody, task.description);
 	}
 	if (Array.isArray(task.acceptanceCriteriaItems)) {

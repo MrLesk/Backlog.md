@@ -2334,7 +2334,7 @@ export class Core {
 
 		if (input.clearImplementationPlan) {
 			if (task.implementationPlan !== undefined) {
-				delete task.implementationPlan;
+				task.implementationPlan = "";
 				mutated = true;
 			}
 		}
@@ -2354,7 +2354,7 @@ export class Core {
 
 		if (input.clearImplementationNotes) {
 			if (task.implementationNotes !== undefined) {
-				delete task.implementationNotes;
+				task.implementationNotes = "";
 				mutated = true;
 			}
 		}

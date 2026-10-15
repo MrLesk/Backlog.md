@@ -22,6 +22,7 @@ const sections = [
 		marker: "DESCRIPTION",
 		flag: "description",
 		mcp: "description",
+		clear: { description: "" },
 		update: updateTaskDescription,
 	},
 	{
@@ -30,6 +31,7 @@ const sections = [
 		marker: "PLAN",
 		flag: "plan",
 		mcp: "implementationPlan",
+		clear: { planClear: true },
 		update: updateTaskImplementationPlan,
 	},
 	{
@@ -38,6 +40,7 @@ const sections = [
 		marker: "NOTES",
 		flag: "notes",
 		mcp: "notesSet",
+		clear: { notesClear: true },
 		update: updateTaskImplementationNotes,
 	},
 	{
@@ -46,6 +49,7 @@ const sections = [
 		marker: "FINAL_SUMMARY",
 		flag: "final-summary",
 		mcp: "finalSummary",
+		clear: { finalSummaryClear: true },
 		update: updateTaskFinalSummary,
 	},
 ] as const;
@@ -89,6 +93,15 @@ describe("legacy structured section replacement (issue #1110)", () => {
 			}
 			expect(section.update(sectionBlock(section, "Old content"), "New content")).toContain("New content");
 		});
+
+		it(`protects indented headings in legacy ${section.title}`, () => {
+			for (const indent of [" ", "  ", "   "]) {
+				const body = `Old content\n\n${indent}${extraSection}`;
+				for (const replacement of ["New content", ""]) {
+					expect(() => section.update(sectionBlock(section, body), replacement)).toThrow("## Verification");
+				}
+			}
+		});
 	}
 
 	it("ignores heading-shaped text inside code, HTML, and lower-level headings", () => {
@@ -100,6 +113,9 @@ describe("legacy structured section replacement (issue #1110)", () => {
 			"<!--\n## Example\n-->",
 			"<pre>\n## Example\n</pre>",
 			"<div>\n## Example\n</div>",
+			'<widget label=">">\n## Example\n</widget>',
+			"<widget label='>'>\n## Example\n</widget>",
+			`<widget label='a <b> "c"' enabled>\n## Example\n</widget>`,
 			"    ## Indented code\n\n### Subheading\n\nInline ## Example",
 		]) {
 			expect(updateTaskImplementationNotes(sectionBlock(sections[2], body), "New content")).toContain("New content");
@@ -107,10 +123,23 @@ describe("legacy structured section replacement (issue #1110)", () => {
 	});
 
 	it("still refuses a real heading after a code or HTML example", () => {
-		for (const example of ["```\n## Example\n```", "<!--\n## Example\n-->", "<div>\n## Example\n</div>"]) {
+		for (const example of [
+			"```\n## Example\n```",
+			"<!--\n## Example\n-->",
+			"<div>\n## Example\n</div>",
+			'<widget label=">">\n## Example\n</widget>',
+		]) {
 			expect(() =>
 				updateTaskImplementationNotes(sectionBlock(sections[2], `${example}\n\n${extraSection}`), "New content"),
 			).toThrow('"## Verification"');
+		}
+	});
+
+	it("does not hide headings after an invalid custom HTML tag", () => {
+		for (const tag of ['<widget label="unterminated>', '<widget 1invalid="value">']) {
+			expect(() =>
+				updateTaskImplementationNotes(sectionBlock(sections[2], `${tag}\n${extraSection}`), "New notes"),
+			).toThrow("## Verification");
 		}
 	});
 
@@ -185,7 +214,50 @@ describe("legacy section refusals before persistence", () => {
 				await server.stop();
 			}
 		});
+
+		it(`MCP clearing ${section.title} refuses ambiguous content before saving other fields`, async () => {
+			const original = taskMarkdown(sectionBlock(section, legacyBody));
+			await Bun.write(taskPath, original);
+			const server = new McpServer(testDir, "Test instructions");
+			try {
+				await expect(
+					new TaskHandlers(server).editTask({ id: "TASK-1", ...section.clear, title: "Must not be saved" }),
+				).rejects.toThrow(`Cannot replace ${section.title} without section markers`);
+				expect(await Bun.file(taskPath).text()).toBe(original);
+				expect(await readdir(core.fs.tasksDir)).toEqual(["task-1 - Legacy-task.md"]);
+			} finally {
+				await server.stop();
+			}
+		});
+
+		it(`MCP clearing ${section.title} removes marked and unambiguous legacy bodies`, async () => {
+			for (const marked of [true, false]) {
+				await Bun.write(taskPath, taskMarkdown(sectionBlock(section, "Old content", marked)));
+				const server = new McpServer(testDir, "Test instructions");
+				try {
+					await new TaskHandlers(server).editTask({ id: "TASK-1", ...section.clear });
+					const updated = await Bun.file(taskPath).text();
+					expect(updated).not.toContain(`## ${section.title}`);
+					expect(updated).not.toContain("Old content");
+					expect(updated).toContain(criteria);
+				} finally {
+					await server.stop();
+				}
+			}
+		});
 	}
+
+	it("CLI empty description refuses ambiguous content without applying a combined edit", async () => {
+		const original = taskMarkdown(sectionBlock(sections[0], legacyBody));
+		await Bun.write(taskPath, original);
+		const result =
+			await $`${process.execPath} ${getTestCliPath()} task edit TASK-1 --description ${""} --title "Must not be saved"`
+				.cwd(testDir)
+				.quiet()
+				.nothrow();
+		expect(result.exitCode).toBe(1);
+		expect(await Bun.file(taskPath).text()).toBe(original);
+	});
 
 	it("refuses --clear-final-summary without saving combined edits", async () => {
 		const original = taskMarkdown(sectionBlock(sections[3], legacyBody));

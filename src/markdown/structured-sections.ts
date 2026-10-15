@@ -95,7 +95,8 @@ const HTML_PROCESSING_INSTRUCTION_OPENING_REGEX = /^ {0,3}<\?/;
 const HTML_DECLARATION_OPENING_REGEX = /^ {0,3}<![a-zA-Z]/;
 const HTML_CDATA_OPENING_REGEX = /^ {0,3}<!\[CDATA\[/;
 const HTML_BLOCK_TAG_OPENING_REGEX = new RegExp(`^ {0,3}</?(?:${HTML_BLOCK_TAG_NAMES})(?=[\t />]|$)`, "i");
-const HTML_COMPLETE_TAG_LINE_REGEX = /^ {0,3}<\/?[a-zA-Z][a-zA-Z0-9-]*(?:[\t ][^<>]*)?\/?>[\t ]*$/;
+const HTML_COMPLETE_TAG_LINE_REGEX =
+	/^ {0,3}(?:<[a-zA-Z][a-zA-Z0-9-]*(?:[\t ]+[a-zA-Z_:][a-zA-Z0-9_.:-]*(?:[\t ]*=[\t ]*(?:[^\t\f "'=<>`]+|'[^']*'|"[^"]*"))?)*[\t ]*\/?>|<\/[a-zA-Z][a-zA-Z0-9-]*[\t ]*>)[\t ]*$/;
 
 interface FenceSpec {
 	character: string;
@@ -797,7 +798,7 @@ function assertLegacySectionReplacementSafe(key: StructuredSectionKey, body: str
 	// cannot tell an owned subheading from a separate, user-written section.
 	if (nextBody.startsWith(body.trim())) return;
 	for (const { line } of proseLines(body)) {
-		if (!/^##[\t ]+\S/.test(line)) continue;
+		if (!/^ {0,3}##[\t ]+\S/.test(line)) continue;
 		const { title } = getConfig(key);
 		throw new Error(
 			`Cannot replace ${title} without section markers: "${line.trimEnd()}" may be a separate section. ` +
