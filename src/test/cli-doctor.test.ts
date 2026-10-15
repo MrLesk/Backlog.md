@@ -384,6 +384,35 @@ describe("archived tasks stored outside the archive folder", () => {
 				reportEnd,
 			]);
 		});
+
+		it("names the linked archive parent destination in the doctor report and moves the task there", async () => {
+			await removeDuplicateTasks();
+			const outside = join(testDir, "shared-archive");
+			await mkdir(outside, { recursive: true });
+			const archiveParent = join(core.filesystem.backlogDir, "archive");
+			await safeCleanup(archiveParent);
+			await symlink(outside, archiveParent, "junction");
+			await writeCompletedTask(fileName, makeTask("TASK-7", "Finished"));
+			const source = join(completedFolder(), fileName);
+			const content = await Bun.file(source).text();
+			const destination = join(await realpath(outside), "tasks");
+			expect(await readdir(outside)).toEqual([]);
+
+			expect(await reportLines()).toEqual([
+				...reportStart,
+				`backlog/archive/tasks is a link to ${destination}, outside the backlog directory. The files are moved into that folder.`,
+				reportEnd,
+			]);
+			expect(await Bun.file(source).text()).toBe(content);
+
+			const fixed = await $`bun ${cliPath} doctor --fix --yes`.cwd(testDir).quiet().nothrow();
+			expect(fixed.exitCode).toBe(0);
+			expect(`${fixed.stdout}`).toContain(`backlog/archive/tasks is a link to ${destination}`);
+			expect(`${fixed.stdout}`).toContain("Moved 1 archived task file into backlog/archive/tasks.");
+			expect(await Bun.file(join(destination, fileName)).text()).toBe(content);
+			expect(await Bun.file(source).exists()).toBe(false);
+			expect((await core.filesystem.listArchivedTasks()).map((task) => task.id)).toEqual(["TASK-7"]);
+		});
 	});
 
 	it("repairs duplicate IDs first, keeps the ID on the completed-folder record, then moves it", async () => {

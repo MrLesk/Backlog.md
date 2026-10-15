@@ -22,15 +22,6 @@ export interface TaskStatistics {
 }
 
 /**
- * The tasks statistics count: every task on the board, plus archived tasks in the final status.
- * Archived work in any other status was set aside rather than finished, so it counts as neither
- * open nor done.
- */
-export function selectStatisticsTasks(tasks: Task[], statuses: readonly string[]): Task[] {
-	return tasks.filter((task) => task.source !== "archived" || isTerminalStatus(task.status, statuses));
-}
-
-/**
  * Calculate comprehensive task statistics for the overview
  */
 export function getTaskStatistics(
@@ -65,8 +56,9 @@ export function getTaskStatistics(
 	let totalAge = 0;
 	let taskCount = 0;
 
-	// Process each task
-	for (const task of tasks) {
+	// Count board tasks and archived final-status work. Dependencies still use the full corpus.
+	const countedTasks = tasks.filter((task) => task.source !== "archived" || isTerminalStatus(task.status, statuses));
+	for (const task of countedTasks) {
 		// Skip tasks with empty or undefined status
 		if (!task.status || task.status === "") {
 			continue;
