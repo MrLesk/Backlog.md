@@ -12,7 +12,7 @@ import { createTestDirOutsideRepository, initializeTestProject, safeCleanup } fr
 
 /**
  * A change that is on disk while its commit failed is reported in one sentence, by every interface
- * and for tasks and documents alike: "<record> was <archived|restored|deleted>, but committing the
+ * and for tasks, documents and decisions alike: "<record> was <archived|restored|deleted>, but committing the
  * change failed: <reason>". Nobody is told that nothing happened, and nobody is told only that Git
  * failed.
  */
@@ -39,14 +39,17 @@ beforeEach(async () => {
 	const config = await core.filesystem.loadConfig();
 	if (!config) throw new Error("Expected the project config");
 	await core.filesystem.saveConfig({ ...config, autoCommit: true, remoteOperations: false });
-	// A task on the board and one in the archive, a document in the docs folder and one in the
-	// archive, all committed.
+	// A task on the board and one in the archive, a document and a decision in their folders and one
+	// of each in the archive, all committed.
 	await core.createTaskFromInput({ title: "On the board" });
 	await core.createTaskFromInput({ title: "In the archive" });
 	expect(await core.archiveTask("TASK-2")).toBe(true);
 	await core.createDocumentFromInput({ title: "A document", content: "" });
 	await core.createDocumentFromInput({ title: "An archived document", content: "" });
-	expect(await core.archiveDocument("doc-2")).not.toBeNull();
+	expect(await core.archiveContentRecord("document", "doc-2")).not.toBeNull();
+	await core.createDecisionWithTitle("A decision");
+	await core.createDecisionWithTitle("An archived decision");
+	expect(await core.archiveContentRecord("decision", "decision-2")).not.toBeNull();
 	await $`git add -A`.cwd(TEST_DIR).quiet();
 	await $`git commit -m "Set up the project"`.cwd(TEST_DIR).quiet().nothrow();
 });
@@ -63,6 +66,9 @@ describe("a change whose commit failed, on the CLI", () => {
 		[["doc", "archive", "doc-1"], "Document doc-1 was archived"],
 		[["doc", "restore", "doc-2"], "Document doc-2 was restored"],
 		[["doc", "delete", "doc-2"], "Document doc-2 was deleted"],
+		[["decision", "archive", "decision-1"], "Decision decision-1 was archived"],
+		[["decision", "restore", "decision-2"], "Decision decision-2 was restored"],
+		[["decision", "delete", "decision-2"], "Decision decision-2 was deleted"],
 	])("backlog %j says %s and that committing failed", async (command, change) => {
 		await lockIndex();
 
@@ -125,7 +131,7 @@ describe("a change whose commit failed, in core and over HTTP", () => {
 
 		await unlockIndex();
 		await lockIndex();
-		const document = await core.archiveDocument("doc-1").catch((error: unknown) => error);
+		const document = await core.archiveContentRecord("document", "doc-1").catch((error: unknown) => error);
 		expect(document).toBeInstanceOf(ChangeNotCommittedError);
 		expect((document as Error).message).toStartWith(`Document doc-1 was archived, ${COMMIT_FAILED}`);
 	});

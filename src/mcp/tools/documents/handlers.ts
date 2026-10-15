@@ -1,8 +1,7 @@
-import type { DocumentChangeResult } from "../../../core/backlog.ts";
+import { type ContentRecordChangeResult, describeContentRecordChange } from "../../../core/backlog.ts";
 import type { Document, DocumentSearchResult } from "../../../types/index.ts";
 import { documentNotFoundMessage } from "../../../utils/document-id.ts";
 import { isAmbiguousIdError } from "../../../utils/entity-id.ts";
-import { formatDocumentationReferencesMessage } from "../../../utils/task-links.ts";
 import { formatUtcDateForDisplay } from "../../../utils/utc-date-display.ts";
 import { BacklogToolError, runCoreOperation } from "../../errors/mcp-errors.ts";
 import type { McpServer } from "../../server.ts";
@@ -170,35 +169,40 @@ export class DocumentHandlers {
 	}
 
 	async archiveDocument(args: DocumentViewArgs): Promise<CallToolResult> {
-		const result = await this.changeDocument("Failed to archive document", () => this.core.archiveDocument(args.id));
-		return this.reportDocumentChange(args.id, "Archived", result);
+		const result = await this.changeDocument("Failed to archive document", () =>
+			this.core.archiveContentRecord("document", args.id),
+		);
+		return this.reportDocumentChange("archive", args.id, result);
 	}
 
 	async restoreDocument(args: DocumentViewArgs): Promise<CallToolResult> {
-		const result = await this.changeDocument("Failed to restore document", () => this.core.restoreDocument(args.id));
-		return this.reportDocumentChange(args.id, "Restored", result);
+		const result = await this.changeDocument("Failed to restore document", () =>
+			this.core.restoreContentRecord("document", args.id),
+		);
+		return this.reportDocumentChange("restore", args.id, result);
 	}
 
 	async deleteDocument(args: DocumentViewArgs): Promise<CallToolResult> {
-		const result = await this.changeDocument("Failed to delete document", () => this.core.deleteDocument(args.id));
-		return this.reportDocumentChange(args.id, "Deleted", result);
+		const result = await this.changeDocument("Failed to delete document", () =>
+			this.core.deleteContentRecord("document", args.id),
+		);
+		return this.reportDocumentChange("delete", args.id, result);
 	}
 
 	/**
-	 * What `document_archive`, `document_restore` and `document_delete` return: the confirmation,
-	 * then the tasks and drafts whose documentation list names a path the file is no longer at.
-	 * `result` is null when no document claims the ID.
+	 * What `document_archive`, `document_restore` and `document_delete` return: the lines core
+	 * describes for the change, each closed with a period as the task tools do. `result` is null when
+	 * no document claims the ID. MCP offers these operations for documents only.
 	 */
 	private reportDocumentChange(
+		operation: "archive" | "restore" | "delete",
 		id: string,
-		done: "Archived" | "Restored" | "Deleted",
-		result: DocumentChangeResult | null,
+		result: ContentRecordChangeResult | null,
 	): CallToolResult {
 		if (!result) {
 			throw new BacklogToolError(documentNotFoundMessage(id), "DOCUMENT_NOT_FOUND");
 		}
-		const referencesMessage = formatDocumentationReferencesMessage(result.listedAsDocumentationBy);
-		const lines = [`${done} document ${result.documentId}.`, ...(referencesMessage ? [`${referencesMessage}.`] : [])];
+		const lines = describeContentRecordChange("document", operation, result).map((line) => `${line}.`);
 		return { content: [{ type: "text", text: lines.join("\n") }] };
 	}
 

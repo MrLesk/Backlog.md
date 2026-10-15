@@ -23,7 +23,7 @@ import { pickTaskForEditWizard, runTaskCreateWizard, runTaskEditWizard } from ".
 import { watchJson } from "./commands/watch-json.ts";
 import { DEFAULT_DIRECTORIES, DEFAULT_FILES, DEFAULT_STATUSES } from "./constants/index.ts";
 import { type ArchivedTaskMovePlan, moveArchivedTasks, previewArchivedTaskMove } from "./core/archived-task-move.ts";
-import { type DocumentChangeResult, formatCleanupResult } from "./core/backlog.ts";
+import { CONTENT_RECORD_WORDS, describeContentRecordChange, formatCleanupResult } from "./core/backlog.ts";
 import { type DuplicateRepairPlan, findLocalDuplicateTaskIds } from "./core/duplicate-task-repair.ts";
 import { initializeProject } from "./core/init.ts";
 import { buildMilestoneBuckets, collectArchivedMilestoneKeys, milestoneKey } from "./core/milestones.ts";
@@ -55,6 +55,7 @@ import { MilestoneHandlers, type MilestoneRemoveArgs } from "./mcp/tools/milesto
 import type { CallToolResult } from "./mcp/types.ts";
 import {
 	type BacklogConfig,
+	type ContentRecordKind,
 	type Decision,
 	DOCUMENT_TYPE_VALUES,
 	type Document as DocType,
@@ -137,7 +138,6 @@ import {
 	toStringArray,
 } from "./utils/task-builders.ts";
 import { buildTaskUpdateInput } from "./utils/task-edit-builder.ts";
-import { formatDocumentationReferencesMessage } from "./utils/task-links.ts";
 import {
 	AmbiguousTaskIdError,
 	canonicalTaskId,
@@ -4753,22 +4753,27 @@ addHelpSchema(docCmd.command("update <docId>"), {
 	});
 
 /**
- * What `doc archive`, `doc restore` and `doc delete` print: the confirmation, then the tasks and
- * drafts whose documentation list names a path the file is no longer at. `result` is null when no
- * document claims the ID.
+ * The action of `doc archive|restore|delete` and `decision archive|restore|delete`: runs the core
+ * operation for the kind and prints the lines core describes for the change. An ID that no record
+ * of the kind claims is answered with the kind's not-found message.
  */
-function reportDocumentChange(
-	docId: string,
-	done: "Archived" | "Restored" | "Deleted",
-	result: DocumentChangeResult | null,
-): void {
+async function changeContentRecord(
+	kind: ContentRecordKind,
+	operation: "archive" | "restore" | "delete",
+	id: string,
+): Promise<void> {
+	const core = new Core(await requireProjectRoot());
+	const operations = {
+		archive: () => core.archiveContentRecord(kind, id),
+		restore: () => core.restoreContentRecord(kind, id),
+		delete: () => core.deleteContentRecord(kind, id),
+	};
+	const result = await operations[operation]();
 	if (!result) {
-		throw new Error(documentNotFoundMessage(docId));
+		throw new Error(CONTENT_RECORD_WORDS[kind].notFound(id));
 	}
-	console.log(`${done} document ${result.documentId}`);
-	const referencesMessage = formatDocumentationReferencesMessage(result.listedAsDocumentationBy);
-	if (referencesMessage) {
-		console.log(referencesMessage);
+	for (const line of describeContentRecordChange(kind, operation, result)) {
+		console.log(line);
 	}
 }
 
@@ -4781,10 +4786,7 @@ addHelpSchema(docCmd.command("archive <docId>"), {
 	examples: ["backlog doc archive doc-1"],
 })
 	.description("move a document into the archive, keeping its ID reserved")
-	.action(async (docId: string) => {
-		const core = new Core(await requireProjectRoot());
-		reportDocumentChange(docId, "Archived", await core.archiveDocument(docId));
-	});
+	.action((docId: string) => changeContentRecord("document", "archive", docId));
 
 addHelpSchema(docCmd.command("restore <docId>"), {
 	required: [{ name: "docId", type: "Document ID", description: "Archived document to restore" }],
@@ -4796,10 +4798,7 @@ addHelpSchema(docCmd.command("restore <docId>"), {
 	examples: ["backlog doc restore doc-1"],
 })
 	.description("move an archived document back to the docs folder")
-	.action(async (docId: string) => {
-		const core = new Core(await requireProjectRoot());
-		reportDocumentChange(docId, "Restored", await core.restoreDocument(docId));
-	});
+	.action((docId: string) => changeContentRecord("document", "restore", docId));
 
 addHelpSchema(docCmd.command("delete <docId>"), {
 	required: [{ name: "docId", type: "Document ID", description: "Archived document to delete" }],
@@ -4811,10 +4810,7 @@ addHelpSchema(docCmd.command("delete <docId>"), {
 	examples: ["backlog doc archive doc-1", "backlog doc delete doc-1"],
 })
 	.description("permanently delete an archived document, releasing its ID")
-	.action(async (docId: string) => {
-		const core = new Core(await requireProjectRoot());
-		reportDocumentChange(docId, "Deleted", await core.deleteDocument(docId));
-	});
+	.action((docId: string) => changeContentRecord("document", "delete", docId));
 
 const docListCommand = addHelpSchema(docCmd.command("list"), {
 	reads: "Documents under the configured docs directory",
@@ -4992,6 +4988,41 @@ addHelpSchema(decisionCmd.command("create <title>"), {
 		await core.createDecision(decision);
 		console.log(`Created decision ${id}`);
 	});
+
+addHelpSchema(decisionCmd.command("archive <decisionId>"), {
+	required: [{ name: "decisionId", type: "Decision ID", description: "Decision to archive" }],
+	optional: [],
+	writes:
+		"Moves the decision's file, unchanged and under the same name, to backlog/archive/decisions. Its ID stays reserved. The decision becomes read-only and leaves decision list and search. No task or draft is changed.",
+	output: "Archive confirmation text, followed by the tasks and drafts whose documentation list names the moved file",
+	examples: ["backlog decision archive decision-1"],
+})
+	.description("move a decision into the archive, keeping its ID reserved")
+	.action((decisionId: string) => changeContentRecord("decision", "archive", decisionId));
+
+addHelpSchema(decisionCmd.command("restore <decisionId>"), {
+	required: [{ name: "decisionId", type: "Decision ID", description: "Archived decision to restore" }],
+	optional: [],
+	writes:
+		"Moves an archived decision's file, unchanged and under the same name, from backlog/archive/decisions back to backlog/decisions. It keeps its ID and is listed again. A file of that name already in backlog/decisions is never replaced. No task or draft is changed.",
+	output:
+		"Restore confirmation text, followed by the tasks and drafts whose documentation list names the archive path the file left",
+	examples: ["backlog decision restore decision-1"],
+})
+	.description("move an archived decision back to the decisions folder")
+	.action((decisionId: string) => changeContentRecord("decision", "restore", decisionId));
+
+addHelpSchema(decisionCmd.command("delete <decisionId>"), {
+	required: [{ name: "decisionId", type: "Decision ID", description: "Archived decision to delete" }],
+	optional: [],
+	writes:
+		"Permanently removes an archived decision's file from backlog/archive/decisions; a file that is a symbolic link is removed as a link. A decision must be archived first (backlog decision archive). There is no prompt. Its ID is released once no other file and no committed file on any branch still uses the number. No task or draft is changed.",
+	output:
+		"Delete confirmation text, followed by the tasks and drafts whose documentation list names the removed file, by its archive path or by the path it had before it was archived",
+	examples: ["backlog decision archive decision-1", "backlog decision delete decision-1"],
+})
+	.description("permanently delete an archived decision, releasing its ID")
+	.action((decisionId: string) => changeContentRecord("decision", "delete", decisionId));
 
 const decisionListCommand = addHelpSchema(decisionCmd.command("list"), {
 	reads: "Decisions under the configured decisions directory",

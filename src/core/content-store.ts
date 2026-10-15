@@ -1058,7 +1058,21 @@ export class ContentStore {
 		this.notify("decisions");
 	}
 
-	private removeWatchedDecision(id: string): void {
+	/**
+	 * Puts a decision whose file just arrived in the decisions folder into the store, so lists and
+	 * search show it at once. Core calls it when it restores a decision, so that change does not wait
+	 * for a watcher event. When the event arrives, the watcher publishes the same file again.
+	 */
+	addDecision(decision: Decision): void {
+		this.publishWatchedDecision(decision);
+	}
+
+	/**
+	 * Takes the decision with this ID out of the store, so lists and search stop showing it. Called
+	 * when its file left the decisions folder: by the file watcher for a removed file, and by core
+	 * when it archives a decision, so that change does not wait for a watcher event.
+	 */
+	removeDecision(id: string): void {
 		if (!this.decisions.delete(id)) return;
 		this.nextContentItemGeneration("decisions", id);
 		this.nextContentItemVersion("decisions", id, this.currentRoot());
@@ -1208,14 +1222,14 @@ export class ContentStore {
 						current: () => this.decisions.get(id),
 						hasChanged: (previous, next) => this.hasDecisionChanged(previous, next),
 						publish: (decision) => this.publishWatchedDecision(decision),
-						remove: () => this.removeWatchedDecision(id),
+						remove: () => this.removeDecision(id),
 					});
 					return;
 				}
 
 				await this.reconcileOrSchedule(`decision:${id}`, epoch, async () => {
 					if (!(await Bun.file(fullPath).exists())) {
-						this.removeWatchedDecision(id);
+						this.removeDecision(id);
 						return false;
 					}
 					try {

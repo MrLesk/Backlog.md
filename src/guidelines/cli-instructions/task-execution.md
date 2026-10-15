@@ -78,6 +78,7 @@ Use CLI commands for Backlog changes:
 - Archive docs: `backlog doc archive doc-1` moves the file to `backlog/archive/docs/`. The ID stays reserved. The document stays viewable with `backlog doc view` and is read-only. Tasks and drafts whose documentation names the file are printed, not changed.
 - Restore docs: `backlog doc restore doc-1` moves an archived document back to `backlog/docs/` with the same ID.
 - Delete docs: archive first, then `backlog doc delete doc-1`. Delete asks no question, removes the file and releases the ID. Tasks and drafts whose documentation names the file are printed, not changed.
+- Decisions follow the same steps: `backlog decision archive decision-1` moves the file to `backlog/archive/decisions/`, keeps the ID reserved and makes the decision read-only; `backlog decision restore decision-1` brings it back; `backlog decision delete decision-1` removes an archived decision without a question and releases the ID. Tasks and drafts whose documentation names the file are printed, not changed.
 
 For programmatic reads, `task list`, `task view`, `task <id>`, and `search` accept `--json`. JSON mode is noninteractive, versioned, and cannot be combined with `--plain`.
 

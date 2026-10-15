@@ -149,7 +149,7 @@ describe("task and document ID completion", () => {
 		expect(await core.archiveTask("task-2", false)).toBe(true);
 		await core.createDocumentFromInput({ title: "In the docs folder", content: "Body" }, false);
 		await core.createDocumentFromInput({ title: "In the archive", content: "Body" }, false);
-		expect(await core.archiveDocument("doc-2", false)).not.toBeNull();
+		expect(await core.archiveContentRecord("document", "doc-2", false)).not.toBeNull();
 		// Completion finds its project the way every command does.
 		process.env.BACKLOG_CWD = projectDir;
 	});

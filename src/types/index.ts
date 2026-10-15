@@ -220,7 +220,14 @@ export interface Decision {
 	consequences: string;
 	alternatives?: string;
 	readonly rawContent: string; // Raw markdown content without frontmatter
-	path?: string; // Decisions-relative file path, set when listed from disk
+	/**
+	 * The file name, set when listed from disk. Decisions are stored flat, so this is a file name
+	 * directly inside the decisions folder, or inside the archive folder for decisions when
+	 * `archived` is set.
+	 */
+	path?: string;
+	/** True when the decision's file is in the archive folder for decisions. An archived decision is read-only. */
+	archived?: boolean;
 }
 
 export interface Milestone {
@@ -229,6 +236,24 @@ export interface Milestone {
 	dueDate?: string;
 	description: string;
 	readonly rawContent: string; // Raw markdown content without frontmatter
+}
+
+/**
+ * The record kinds that are files of their own folder, with an archive folder beside it: documents
+ * and decisions. Archive, restore and delete are written once for them, keyed by this kind; tasks
+ * and drafts have their own operations. A new kind needs an entry in `CONTENT_RECORD_WORDS` and a
+ * case in `Core.contentRecords` (both in src/core/backlog.ts) and in
+ * `FileSystem.contentRecordStorage`.
+ */
+export type ContentRecordKind = "document" | "decision";
+
+/** The fields of a document or a decision that its archive, restore and delete read. */
+export interface ContentRecord {
+	id: string;
+	/** Where the file is under its folder: a relative path for a document, a file name for a decision. */
+	path?: string;
+	/** True when the file is in the archive folder of its kind. */
+	archived?: boolean;
 }
 
 export const DOCUMENT_TYPE_VALUES = ["readme", "guide", "specification", "other"] as const;
