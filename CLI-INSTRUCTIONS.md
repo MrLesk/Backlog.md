@@ -162,10 +162,12 @@ Absent scalar fields are `null`, and absent collections are `[]`. Date-only valu
 
 Replacing or clearing an old description, plan, notes, or final summary can be refused when it has no section markers
 and contains another `##` heading. That heading might belong to the section or start a separate section, so Backlog.md
-leaves the file unchanged instead of guessing. Unchanged content and appends remain supported.
+leaves the file unchanged instead of guessing. Unchanged content and appends remain supported and keep an ambiguous
+section unmarked, so a later replacement still requires a person to choose its boundary.
 
-For this file-format repair, open the task or draft Markdown file in an editor and add the markers named in the error
-around the intended body. For example, to replace notes while preserving a separate Verification section:
+Agents must stop and ask the user to repair the boundary; they must not edit task or draft files directly. A person
+can add the markers named in the error around the intended body. For example, to replace notes while preserving a
+separate Verification section:
 
 ```markdown
 ## Implementation Notes

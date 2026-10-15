@@ -1,3 +1,4 @@
+import { fromMarkdown } from "mdast-util-from-markdown";
 import type { AcceptanceCriterion, TaskComment } from "../types/index.ts";
 import { getStructuredSectionTitles } from "./section-titles.ts";
 
@@ -86,7 +87,6 @@ function restoreLineEndings(text: string, useCRLF: boolean): string {
 const FENCE_OPENING_REGEX = /^(`{3,}|~{3,})(.*)$/;
 const SECTION_SENTINEL_LINE_REGEX = /^<!-- SECTION:[A-Z][A-Z0-9_]*:(BEGIN|END) -->$/;
 const LIST_ITEM_MARKER_REGEX = /^( *)([-+*]|\d{1,9}[.)])(?:[\t ]+|$)/;
-const THEMATIC_BREAK_REGEX = /^ {0,3}(?:(?:\*[\t ]*){3,}|(?:_[\t ]*){3,}|(?:-[\t ]*){3,})$/;
 const HTML_BLOCK_TAG_NAMES =
 	"address|article|aside|base|basefont|blockquote|body|caption|center|col|colgroup|dd|details|dialog|dir|div|dl|dt|fieldset|figcaption|figure|footer|form|frame|frameset|h[1-6]|head|header|hr|html|iframe|legend|li|link|main|menu|menuitem|nav|noframes|ol|optgroup|option|p|param|search|section|summary|table|tbody|td|tfoot|th|thead|title|tr|track|ul";
 const HTML_TYPE1_OPENING_REGEX = /^ {0,3}<(script|pre|style|textarea)(?=[\t />]|$)/i;
@@ -96,19 +96,16 @@ const HTML_PROCESSING_INSTRUCTION_OPENING_REGEX = /^ {0,3}<\?/;
 const HTML_DECLARATION_OPENING_REGEX = /^ {0,3}<![a-zA-Z]/;
 const HTML_CDATA_OPENING_REGEX = /^ {0,3}<!\[CDATA\[/;
 const HTML_BLOCK_TAG_OPENING_REGEX = new RegExp(`^ {0,3}</?(?:${HTML_BLOCK_TAG_NAMES})(?=[\t />]|$)`, "i");
-const HTML_COMPLETE_TAG_LINE_REGEX =
-	/^ {0,3}(?:<[a-zA-Z][a-zA-Z0-9-]*(?:[\t ]+[a-zA-Z_:][a-zA-Z0-9_.:-]*(?:[\t ]*=[\t ]*(?:[^\t\f "'=<>`]+|'[^']*'|"[^"]*"))?)*[\t ]*\/?>|<\/[a-zA-Z][a-zA-Z0-9-]*[\t ]*>)[\t ]*$/;
+const HTML_COMPLETE_TAG_LINE_REGEX = /^ {0,3}<\/?[a-zA-Z][a-zA-Z0-9-]*(?:[\t ][^<>]*)?\/?>[\t ]*$/;
 
 interface FenceSpec {
 	character: string;
 	minLength: number;
-	containerColumn: number;
 }
 
 interface HtmlBlockState {
 	endRegex?: RegExp;
 	endsOnBlankLine: boolean;
-	containerColumn: number;
 }
 
 /**
@@ -129,7 +126,6 @@ function collapseBlankLines(text: string): string {
 	let htmlBlock: HtmlBlockState | undefined;
 	const containerColumns: number[] = [];
 	for (const line of text.split("\n")) {
-		if (fence && !continuesBlockContainer(line, fence)) fence = undefined;
 		if (fence) {
 			lines.push(line);
 			if (closesFence(line, fence, containerColumns)) fence = undefined;
@@ -149,15 +145,13 @@ function collapseBlankLines(text: string): string {
 			pendingBlankLines = 0;
 		}
 		lines.push(line);
-		if (htmlBlock && !continuesBlockContainer(line, htmlBlock)) htmlBlock = undefined;
 		if (htmlBlock) {
 			if (htmlBlock.endRegex?.test(line)) htmlBlock = undefined;
 			continue;
 		}
-		const blockLine = updateListContainers(line, containerColumns);
-		fence = matchFenceOpener(blockLine, containerColumns);
-		if (!fence) htmlBlock = matchHtmlBlockStart(blockLine, containerColumns);
-		if (htmlBlock?.endRegex?.test(blockLine)) htmlBlock = undefined;
+		updateListContainers(line, containerColumns);
+		fence = matchFenceOpener(line, containerColumns);
+		if (!fence) htmlBlock = matchHtmlBlockStart(line, containerColumns);
 	}
 	if (pendingBlankLines > 0) lines.push("");
 	return lines.join("\n");
@@ -178,33 +172,11 @@ function listItemContentColumn(line: string): number | undefined {
 	return markerIndent + marker.length + trailingWhitespace;
 }
 
-function updateListContainers(line: string, containerColumns: number[], paragraphOpen = false): string {
+function updateListContainers(line: string, containerColumns: number[]): void {
 	while ((containerColumns.at(-1) ?? 0) > leadingSpaceCount(line)) containerColumns.pop();
-	if (THEMATIC_BREAK_REGEX.test(line.slice(containerColumns.at(-1) ?? 0))) return line;
-	const marker = LIST_ITEM_MARKER_REGEX.exec(line);
-	if (paragraphOpen && marker) {
-		const listMarker = marker[2] ?? "";
-		if (
-			(/^\d/.test(listMarker) && Number.parseInt(listMarker, 10) !== 1) ||
-			line.slice(marker[0].length).trim() === ""
-		) {
-			return line;
-		}
-	}
-	let content = line;
-	let column = 0;
-	for (;;) {
-		const nextColumn = listItemContentColumn(content);
-		if (nextColumn === undefined) break;
-		column += nextColumn;
-		containerColumns.push(column);
-		content = content.slice(nextColumn);
-	}
-	return column > 0 ? `${" ".repeat(column)}${content}` : line;
-}
-
-function continuesBlockContainer(line: string, block: { containerColumn: number }): boolean {
-	return line.trim() === "" || leadingSpaceCount(line) >= block.containerColumn;
+	const column = listItemContentColumn(line);
+	if (column === undefined) return;
+	containerColumns.push(column);
 }
 
 function isWithinContainerIndent(indent: number, containerColumns: number[]): boolean {
@@ -219,7 +191,7 @@ function matchFenceOpener(line: string, containerColumns: number[]): FenceSpec |
 	const run = opening?.[1] ?? "";
 	const info = opening?.[2] ?? "";
 	if (!run || (run.charAt(0) === "`" && info.includes("`"))) return undefined;
-	return { character: run.charAt(0), minLength: run.length, containerColumn: containerColumns.at(-1) ?? 0 };
+	return { character: run.charAt(0), minLength: run.length };
 }
 
 function closesFence(line: string, fence: FenceSpec, containerColumns: number[]): boolean {
@@ -231,35 +203,30 @@ function closesFence(line: string, fence: FenceSpec, containerColumns: number[])
 	return runLength >= fence.minLength && /^[\t ]*$/.test(remainder.slice(runLength));
 }
 
-function matchHtmlBlockStart(
-	line: string,
-	containerColumns: number[],
-	allowCompleteTag = true,
-): HtmlBlockState | undefined {
+function matchHtmlBlockStart(line: string, containerColumns: number[]): HtmlBlockState | undefined {
 	const base = containerColumns.at(-1) ?? 0;
 	const relative = base > 0 && leadingSpaceCount(line) >= base ? line.slice(base) : line;
 	const type1Match = HTML_TYPE1_OPENING_REGEX.exec(relative);
-	if (type1Match && relative[type1Match[0].length] !== "/") {
-		const endRegex = /<\/(?:script|pre|style|textarea)>/i;
-		return { endRegex, endsOnBlankLine: false, containerColumn: base };
+	if (type1Match) {
+		const endRegex = new RegExp(`</${type1Match[1]}>`, "i");
+		return endRegex.test(relative) ? undefined : { endRegex, endsOnBlankLine: false };
 	}
 	if (HTML_COMMENT_OPENING_REGEX.test(relative)) {
-		return { endRegex: HTML_COMMENT_END_REGEX, endsOnBlankLine: false, containerColumn: base };
+		return HTML_COMMENT_END_REGEX.test(relative)
+			? undefined
+			: { endRegex: HTML_COMMENT_END_REGEX, endsOnBlankLine: false };
 	}
 	if (HTML_PROCESSING_INSTRUCTION_OPENING_REGEX.test(relative)) {
-		return { endRegex: /\?>/, endsOnBlankLine: false, containerColumn: base };
+		return relative.includes("?>") ? undefined : { endRegex: /\?>/, endsOnBlankLine: false };
 	}
 	if (HTML_DECLARATION_OPENING_REGEX.test(relative)) {
-		return { endRegex: />/, endsOnBlankLine: false, containerColumn: base };
+		return relative.includes(">") ? undefined : { endRegex: />/, endsOnBlankLine: false };
 	}
 	if (HTML_CDATA_OPENING_REGEX.test(relative)) {
-		return { endRegex: /\]\]>/, endsOnBlankLine: false, containerColumn: base };
+		return relative.includes("]]>") ? undefined : { endRegex: /\]\]>/, endsOnBlankLine: false };
 	}
-	if (
-		HTML_BLOCK_TAG_OPENING_REGEX.test(relative) ||
-		(allowCompleteTag && !type1Match && HTML_COMPLETE_TAG_LINE_REGEX.test(relative))
-	) {
-		return { endsOnBlankLine: true, containerColumn: base };
+	if (HTML_BLOCK_TAG_OPENING_REGEX.test(relative) || HTML_COMPLETE_TAG_LINE_REGEX.test(relative)) {
+		return { endsOnBlankLine: true };
 	}
 	return undefined;
 }
@@ -280,12 +247,13 @@ function getEndMarker(key: StructuredSectionKey): string {
 	return `<!-- SECTION:${getConfig(key).markerId}:END -->`;
 }
 
-function buildSectionBlock(key: StructuredSectionKey, body: string): string {
+function buildSectionBlock(key: StructuredSectionKey, body: string, legacy = false): string {
 	const { title } = getConfig(key);
 	const begin = getBeginMarker(key);
 	const end = getEndMarker(key);
 	const normalized = collapseBlankLines(body.replace(/\r\n/g, "\n").replace(/\s+$/g, ""));
 	const content = normalized ? `${normalized}\n` : "";
+	if (legacy) return `## ${title}\n\n${normalized}`;
 	return `## ${title}\n\n${begin}\n${content}${end}`;
 }
 
@@ -752,8 +720,13 @@ function findChecklistSectionRanges(
 	return ranges.sort((left, right) => left.start - right.start);
 }
 
-function stripSectionInstances(content: string, key: StructuredSectionKey, nextBody: string): string {
+function stripSectionInstances(
+	content: string,
+	key: StructuredSectionKey,
+	nextBody: string,
+): { content: string; preserveLegacy: boolean } {
 	let stripped = content;
+	let preserveLegacy = false;
 	for (const block of findSentinelBlocks(content, key).sort((left, right) => right.start - left.start)) {
 		stripped = `${stripped.slice(0, block.start)}${stripped.slice(block.end)}`;
 	}
@@ -762,12 +735,12 @@ function stripSectionInstances(content: string, key: StructuredSectionKey, nextB
 	const protectedRanges = resolveKnownSentinelRanges(tokenizeKnownSentinels(stripped));
 	stripped = stripped.replace(legacyRegex, (_: string, prefix: string, body: string, offset: number) => {
 		if (!isIndexWithinRanges(offset + prefix.length, protectedRanges)) {
-			assertLegacySectionReplacementSafe(key, body, nextBody);
+			preserveLegacy = mustKeepLegacySection(key, body, nextBody) || preserveLegacy;
 		}
 		return "\n";
 	});
 
-	return collapseBlankLines(stripped).trimEnd();
+	return { content: collapseBlankLines(stripped).trimEnd(), preserveLegacy };
 }
 
 function insertAfterSection(content: string, title: string, block: string): { inserted: boolean; content: string } {
@@ -826,27 +799,34 @@ export interface StructuredSectionValues {
 
 interface SectionValues extends StructuredSectionValues {}
 
-function assertLegacySectionReplacementSafe(key: StructuredSectionKey, body: string, nextBody: string): void {
-	// Unchanged bodies and appends retain every legacy heading. Replacements
-	// cannot tell an owned subheading from a separate, user-written section.
-	if (nextBody.startsWith(body.trim())) return;
-	for (const { line } of proseLines(body)) {
-		if (!/^ {0,3}##(?:[\t ]|$)/.test(line)) continue;
-		const { title } = getConfig(key);
-		throw new Error(
-			`Cannot replace ${title} without section markers: "${line.trimEnd()}" may be a separate section. ` +
-				`In the Markdown file, put ${getBeginMarker(key)} after "## ${title}" and ` +
-				`${getEndMarker(key)} after the intended body, then retry.`,
-		);
-	}
+function mustKeepLegacySection(key: StructuredSectionKey, body: string, nextBody: string): boolean {
+	// CommonMark excludes these raw-text names from complete-tag HTML blocks.
+	// The parser accepts their self-closing forms, so mask the opening delimiter
+	// without changing offsets, lines, or any enclosing code/HTML block.
+	const markdown = body.replace(/^ {0,3}<(?:pre|script|style|textarea)\/>[\t ]*$/gim, (line) => line.replace("<", "x"));
+	const heading = fromMarkdown(markdown).children.find((node) => node.type === "heading" && node.depth === 2);
+	if (!heading) return false;
+	// Retaining the body is safe, but must not turn an uncertain legacy boundary
+	// into generated markers that would authorize a later destructive edit.
+	if (nextBody.startsWith(body.trim())) return true;
+	const headingText = body.slice(heading.position?.start.offset, heading.position?.end.offset).split("\n")[0];
+	const { title } = getConfig(key);
+	throw new Error(
+		`Cannot replace ${title} without section markers: "${headingText?.trimEnd()}" may be a separate section. ` +
+			`Ask the user to put ${getBeginMarker(key)} after "## ${title}" and ` +
+			`${getEndMarker(key)} after the intended body in the Markdown file, then retry.`,
+	);
 }
 
 export function updateStructuredSections(content: string, sections: SectionValues): string {
 	const { text: src, useCRLF } = normalizeToLF(content);
 
 	let working = src;
+	const legacySections = new Set<StructuredSectionKey>();
 	for (const key of SECTION_INSERTION_ORDER) {
-		working = stripSectionInstances(working, key, (sections[key] ?? "").replace(/\r\n/g, "\n").trim());
+		const result = stripSectionInstances(working, key, (sections[key] ?? "").replace(/\r\n/g, "\n").trim());
+		working = result.content;
+		if (result.preserveLegacy) legacySections.add(key);
 	}
 	working = working.trim();
 
@@ -858,7 +838,7 @@ export function updateStructuredSections(content: string, sections: SectionValue
 	let tail = working;
 
 	if (plan) {
-		const planBlock = buildSectionBlock("implementationPlan", plan);
+		const planBlock = buildSectionBlock("implementationPlan", plan, legacySections.has("implementationPlan"));
 		let res = insertAfterSection(tail, DEFINITION_OF_DONE_TITLE, planBlock);
 		if (!res.inserted) {
 			res = insertAfterSection(tail, ACCEPTANCE_CRITERIA_TITLE, planBlock);
@@ -874,7 +854,7 @@ export function updateStructuredSections(content: string, sections: SectionValue
 	}
 
 	if (notes) {
-		const notesBlock = buildSectionBlock("implementationNotes", notes);
+		const notesBlock = buildSectionBlock("implementationNotes", notes, legacySections.has("implementationNotes"));
 		let res = insertAfterSection(tail, getConfig("implementationPlan").title, notesBlock);
 		if (!res.inserted) {
 			res = insertAfterSection(tail, DEFINITION_OF_DONE_TITLE, notesBlock);
@@ -896,7 +876,7 @@ export function updateStructuredSections(content: string, sections: SectionValue
 	}
 
 	if (finalSummary) {
-		const finalBlock = buildSectionBlock("finalSummary", finalSummary);
+		const finalBlock = buildSectionBlock("finalSummary", finalSummary, legacySections.has("finalSummary"));
 		let res = insertAfterSection(tail, COMMENTS_TITLE, finalBlock);
 		if (!res.inserted) {
 			res = insertAfterSection(tail, getConfig("implementationNotes").title, finalBlock);
@@ -919,7 +899,7 @@ export function updateStructuredSections(content: string, sections: SectionValue
 
 	let output = tail;
 	if (description) {
-		const descriptionBlock = buildSectionBlock("description", description);
+		const descriptionBlock = buildSectionBlock("description", description, legacySections.has("description"));
 		output = insertAtStart(tail, descriptionBlock);
 	}
 
@@ -1108,67 +1088,36 @@ function parseAllChecklistItems(content: string, definition: ChecklistSectionDef
 	return marked.length > 0 ? marked : legacy;
 }
 
-function* proseLines(content: string, maskedRanges: TextRange[] = []): Generator<{ line: string; start: number }> {
-	let fence: FenceSpec | undefined;
-	let htmlBlock: HtmlBlockState | undefined;
-	let paragraphOpen = false;
-	let paragraphColumn = 0;
-	const containerColumns: number[] = [];
-	let offset = 0;
-
-	for (const line of content.split("\n")) {
-		const start = offset;
-		offset += line.length + 1;
-		if (isIndexWithinRanges(start, maskedRanges)) continue;
-		if (fence && !continuesBlockContainer(line, fence)) fence = undefined;
-		if (fence) {
-			if (closesFence(line, fence, containerColumns)) fence = undefined;
-			continue;
-		}
-		if (htmlBlock && !continuesBlockContainer(line, htmlBlock)) htmlBlock = undefined;
-		if (htmlBlock) {
-			if (htmlBlock.endRegex?.test(line) || (htmlBlock.endsOnBlankLine && line.trim() === "")) {
-				htmlBlock = undefined;
-			}
-			continue;
-		}
-		if (line.trim() === "") {
-			paragraphOpen = false;
-			continue;
-		}
-		if (leadingSpaceCount(line) < paragraphColumn) paragraphOpen = false;
-		const blockLine = updateListContainers(line, containerColumns, paragraphOpen);
-		if (blockLine !== line) paragraphOpen = false;
-		fence = matchFenceOpener(blockLine, containerColumns);
-		const htmlStart = fence ? undefined : matchHtmlBlockStart(blockLine, containerColumns, !paragraphOpen);
-		htmlBlock = htmlStart?.endRegex?.test(blockLine) ? undefined : htmlStart;
-		if (fence || htmlStart) {
-			paragraphOpen = false;
-			continue;
-		}
-		const relative = blockLine.slice(containerColumns.at(-1) ?? 0);
-		if (
-			/^ {0,3}#{1,6}(?:[\t ]|$)/.test(relative) ||
-			/^ {0,3}(?:=+|-+)[\t ]*$/.test(relative) ||
-			THEMATIC_BREAK_REGEX.test(relative)
-		) {
-			paragraphOpen = false;
-		} else if (paragraphOpen || leadingSpaceCount(relative) <= 3) {
-			paragraphOpen = true;
-			paragraphColumn = containerColumns.at(-1) ?? 0;
-		}
-		yield { line, start };
-	}
-}
-
 export function assertValidChecklistMarks(content: string, family: "AC" | "DOD"): void {
 	const definition = family === "AC" ? ACCEPTANCE_CRITERIA_DEFINITION : DEFINITION_OF_DONE_DEFINITION;
 	const src = content.replace(/\r\n/g, "\n");
 	const resolution = resolveChecklistSentinels(src, definition);
 	const ranges = findChecklistSectionRanges(src, definition, resolution);
 	if (ranges.length === 0) return;
-	for (const { line, start } of proseLines(src, resolution.foreignRanges)) {
-		if (!isIndexWithinRanges(start, ranges)) continue;
+	let fence: FenceSpec | undefined;
+	let htmlBlock: HtmlBlockState | undefined;
+	const containerColumns: number[] = [];
+	let offset = 0;
+
+	for (const line of src.split("\n")) {
+		const start = offset;
+		offset += line.length + 1;
+		if (isIndexWithinRanges(start, resolution.foreignRanges)) continue;
+		if (fence) {
+			if (closesFence(line, fence, containerColumns)) fence = undefined;
+			continue;
+		}
+		if (htmlBlock) {
+			if (htmlBlock.endRegex?.test(line) || (htmlBlock.endsOnBlankLine && line.trim() === "")) {
+				htmlBlock = undefined;
+			}
+			continue;
+		}
+		updateListContainers(line, containerColumns);
+		fence = matchFenceOpener(line, containerColumns);
+		if (fence) continue;
+		htmlBlock = matchHtmlBlockStart(line, containerColumns);
+		if (htmlBlock || !isIndexWithinRanges(start, ranges)) continue;
 
 		const match = /^- \[([^\]\r\n])\] (.+)$/.exec(line);
 		if (match && match[1] !== " " && match[1] !== "x") {

@@ -47,10 +47,11 @@ Work in short loops:
 Use `backlog task edit {{TASK_ID:123}} --help` before changing unfamiliar fields.
 
 Replacing or clearing a legacy description, plan, notes, or final summary without section markers is refused if another
-`##` heading makes its boundary ambiguous. The file stays unchanged. For this file-format repair, open the task or draft
-Markdown file in an editor, add the BEGIN and END markers named in the error around the intended section body without
-removing any content, and retry. Place the END marker before a separate section, or after headings that belong to the
-body. Appends remain supported and keep the existing body.
+level-two heading makes its boundary ambiguous. The file stays unchanged. Stop and ask the user to add the BEGIN and
+END markers named in the error around the intended section body without removing any content. Do not edit task or
+draft files directly. The user should place the END marker before a separate section, or after headings that belong
+to the body. Retry the CLI edit after the user repairs the boundary. Appends remain supported and keep ambiguous
+sections unmarked, so later replacements remain protected.
 
 Do not check acceptance criteria, write the final summary, or move the task to the terminal status from this guide alone. When implementation appears complete, read the finalization guide and verify each acceptance criterion with objective evidence before checking it.
 

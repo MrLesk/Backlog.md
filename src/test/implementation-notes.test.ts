@@ -304,7 +304,7 @@ Technical decisions:
 			expect(updatedTask?.rawContent).not.toContain("## Implementation Notes");
 		});
 
-		it("preserves nested H2 headings when migrating legacy implementation notes", async () => {
+		it("preserves ambiguous H2 headings without marking legacy implementation notes", async () => {
 			const core = new Core(TEST_DIR);
 			const task: Task = {
 				id: "task-7",
@@ -328,7 +328,7 @@ Technical decisions:
 			const updated = await core.filesystem.loadTask("task-7");
 			expect(updated).not.toBeNull();
 			const body = updated?.rawContent || "";
-			expect(body).toContain("<!-- SECTION:NOTES:BEGIN -->");
+			expect(body).not.toContain("<!-- SECTION:NOTES:BEGIN -->");
 			const notesContent = extractStructuredSection(body, "implementationNotes") || "";
 			expect(notesContent).toContain("## Follow-up");
 			expect(notesContent).toContain("Summary of work");

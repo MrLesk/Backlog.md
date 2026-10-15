@@ -85,6 +85,10 @@ describe("legacy structured section replacement (issue #1110)", () => {
 		it(`keeps ${section.title} append and explicit-marker behavior`, () => {
 			const appended = section.update(sectionBlock(section, legacyBody), `${legacyBody}\n\nAppended`);
 			expect(extractStructuredSection(appended, section.key)).toBe(`${legacyBody}\n\nAppended`);
+			expect(appended).not.toContain(`<!-- SECTION:${section.marker}:BEGIN -->`);
+			for (const replacement of ["New content", ""]) {
+				expect(() => section.update(appended, replacement)).toThrow("## Verification");
+			}
 			const marked = `${sectionBlock(section, "Old content", true)}\n\n${extraSection}`;
 			for (const replacement of ["New content", ""]) {
 				const updated = section.update(marked, replacement);
@@ -189,6 +193,66 @@ describe("legacy structured section replacement (issue #1110)", () => {
 			expect(updateTaskImplementationNotes(sectionBlock(sections[2], `<${tag} />\n## Example`), "New notes")).toContain(
 				"New notes",
 			);
+		}
+	});
+
+	it("accepts custom HTML blocks after a quoted heading or fenced block", () => {
+		for (const quote of ["> # Quoted heading", "> ```\n> quoted code\n> ```", "> > # Nested heading"]) {
+			const body = `${quote}\n<widget>\n## Example\n</widget>`;
+			expect(updateTaskImplementationNotes(sectionBlock(sections[2], body), "New notes")).toContain("New notes");
+		}
+	});
+
+	it("requires a closing angle bracket after a block-tag slash", () => {
+		for (const tag of ["div", "section", "table"]) {
+			for (const opening of [`<${tag}/garbage`, `</${tag}/garbage`, `<${tag}/`]) {
+				expect(() =>
+					updateTaskImplementationNotes(sectionBlock(sections[2], `${opening}\n${extraSection}`), "New notes"),
+				).toThrow("## Verification");
+			}
+			expect(updateTaskImplementationNotes(sectionBlock(sections[2], `<${tag}/>\n## Example`), "New notes")).toContain(
+				"New notes",
+			);
+		}
+	});
+
+	it("uses visual tab columns when a heading exits a list-contained HTML block", () => {
+		for (const marker of ["-\t", "1.\t", "  -\t"]) {
+			expect(() =>
+				updateTaskImplementationNotes(sectionBlock(sections[2], `${marker}<widget>\n   ${extraSection}`), "New notes"),
+			).toThrow("## Verification");
+		}
+		expect(
+			updateTaskImplementationNotes(sectionBlock(sections[2], "-\t<widget>\n\t## Example"), "New notes"),
+		).toContain("New notes");
+	});
+
+	it("keeps HTML comments open until the literal closing delimiter", () => {
+		const body = "<!--\n--!>\n## Example\n-->";
+		expect(updateTaskImplementationNotes(sectionBlock(sections[2], body), "New notes")).toContain("New notes");
+		expect(() =>
+			updateTaskImplementationNotes(sectionBlock(sections[2], `${body}\n${extraSection}`), "New notes"),
+		).toThrow("## Verification");
+	});
+
+	it("protects level-two Setext headings", () => {
+		for (const section of sections) {
+			for (const replacement of ["New content", ""]) {
+				expect(() =>
+					section.update(sectionBlock(section, "Old content\n\nVerification\n---\n\nPROOF-LINE"), replacement),
+				).toThrow("Verification");
+			}
+		}
+	});
+
+	it("keeps ambiguous legacy sections unmarked when another structured section changes", () => {
+		for (const section of sections) {
+			const other = section.key === "description" ? sections[2] : sections[0];
+			const original = `${sectionBlock(section, legacyBody)}\n\n${sectionBlock(other, "Other content", true)}`;
+			const updated = other.update(original, "Updated content");
+			expect(updated).toContain(extraSection);
+			expect(updated).not.toContain(`<!-- SECTION:${section.marker}:BEGIN -->`);
+			expect(() => section.update(updated, "New content")).toThrow("## Verification");
 		}
 	});
 
@@ -335,6 +399,8 @@ describe("legacy section refusals before persistence", () => {
 			"Old content\n##\nPROOF-LINE",
 			`<pre>\nexample\n</script>\n${extraSection}`,
 			`<pre/>\n${extraSection}`,
+			`<div/garbage\n${extraSection}`,
+			`-\t<widget>\n   ${extraSection}`,
 		]) {
 			const original = taskMarkdown(sectionBlock(sections[2], body));
 			await Bun.write(taskPath, original);
@@ -367,6 +433,51 @@ describe("legacy section refusals before persistence", () => {
 				.nothrow();
 		expect(result.exitCode).toBe(1);
 		expect(await Bun.file(taskPath).text()).toBe(original);
+	});
+
+	it("CLI and MCP keep later replacements protected after appends and unrelated edits", async () => {
+		for (const surface of ["cli", "mcp"]) {
+			await Bun.write(
+				taskPath,
+				taskMarkdown(
+					`${sectionBlock(sections[0], "Old description", true)}\n\n${sectionBlock(sections[2], legacyBody)}`,
+				),
+			);
+			const server = new McpServer(testDir, "Test instructions");
+			try {
+				const handlers = new TaskHandlers(server);
+				if (surface === "cli") {
+					const result =
+						await $`${process.execPath} ${getTestCliPath()} task edit TASK-1 --append-notes "Appended" --description "Updated description"`
+							.cwd(testDir)
+							.quiet()
+							.nothrow();
+					expect(result.exitCode).toBe(0);
+				} else {
+					await handlers.editTask({ id: "TASK-1", notesAppend: ["Appended"], description: "Updated description" });
+				}
+				const appended = await Bun.file(taskPath).text();
+				expect(appended).toContain(extraSection);
+				expect(appended).toContain("Appended");
+				expect(appended).toContain("Updated description");
+				expect(appended).not.toContain("<!-- SECTION:NOTES:BEGIN -->");
+				if (surface === "cli") {
+					const result =
+						await $`${process.execPath} ${getTestCliPath()} task edit TASK-1 --notes "New notes" --title "Must not be saved"`
+							.cwd(testDir)
+							.quiet()
+							.nothrow();
+					expect(result.exitCode).toBe(1);
+				} else {
+					await expect(
+						handlers.editTask({ id: "TASK-1", notesSet: "New notes", title: "Must not be saved" }),
+					).rejects.toThrow("## Verification");
+				}
+				expect(await Bun.file(taskPath).text()).toBe(appended);
+			} finally {
+				await server.stop();
+			}
+		}
 	});
 
 	it("protects draft edits too", async () => {

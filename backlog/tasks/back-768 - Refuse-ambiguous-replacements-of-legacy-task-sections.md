@@ -5,7 +5,7 @@ status: Done
 assignee:
   - '@codex'
 created_date: '2026-10-15 20:59'
-updated_date: '2026-10-15 21:56'
+updated_date: '2026-10-15 22:11'
 labels: []
 dependencies: []
 references:
@@ -18,6 +18,9 @@ modified_files:
   - src/guidelines/cli-instructions/task-execution.md
   - src/core/backlog.ts
   - src/markdown/serializer.ts
+  - package.json
+  - bun.lock
+  - src/test/implementation-notes.test.ts
 priority: high
 type: bug
 ordinal: 388000
@@ -55,6 +58,8 @@ Issue #1110 shows that replacing a marker-less description, plan, notes or final
 6. Address the second Codex review: track paragraph state before starting a custom-tag HTML block, recognize empty level-two headings as ambiguous, and parse block openers directly after list markers. Reuse the existing shared scan, test both refusal and valid fenced/HTML examples, and request another review of the final commit.
 
 7. Verify raw-text HTML block endings against CommonMark: any permitted closing raw-text tag ends the block, while a self-closing raw-text tag without intervening whitespace does not start one. Add refusal and valid-example coverage before the final review.
+
+8. Evaluate the latest Codex findings with regressions. Keep ambiguous legacy sections unmarked across unchanged edits and appends, so later replacements remain protected. Correct HTML delimiter, tab-column and blockquote handling, preferably by reusing a complete Markdown parser already available in the runtime. Reconcile recovery documentation with the CLI-only agent workflow. Validate, resolve each review thread and request review of the new head.
 <!-- SECTION:PLAN:END -->
 
 ## Implementation Notes
@@ -71,10 +76,14 @@ Addressed all three Codex findings: indented level-two headings now trigger the 
 Addressed the second Codex review: paragraph state prevents complete custom HTML tags from hiding real headings; empty ATX level-two headings now trigger refusal; block openers directly after list markers are recognized. The scan also ends fenced and HTML blocks when their list container ends, retains list context across blank lines, and applies the ordered-list paragraph-interruption rule. Reproduced an additional ordered-list/custom-tag data-loss case before fixing it. Added CLI/MCP byte-preservation and valid-example regressions, for 46 tests in the new regression file. Final validation: 165 focused section/CLI tests, 64 core tests, 39 MCP tests (268 total), type checks, Biome and build all pass. The solution reuses existing block state and helpers and adds no public API or parser dependency.
 
 Additional HTML verification found two data-loss gaps in the existing raw-text scan: a closing raw-text tag may end a different raw-text opening tag, and a directly self-closing raw-text tag does not start an HTML block. Both cases now refuse unsafe replacements. Added coverage for all raw-text tag pairs and whitespace distinctions, plus CLI/MCP byte preservation. Final validation: 167 focused section/CLI tests, 64 core tests and 39 MCP tests (270 total), type checks, Biome and compiled build pass. The regression file contains 48 tests. Final simplification review reuses the shared HTML block matcher; no new dependency or exported helper is needed.
+
+The third review exposed valid Markdown cases and an append-then-replace data-loss path. Replaced the new custom prose scanner with mdast-util-from-markdown, already present through the browser Markdown stack, and declared its existing pinned version directly. The parser handles blockquotes, tab columns, exact HTML delimiters, Setext headings and prior review examples. A narrow offset-preserving mask covers the raw-text self-closing tag exclusion that both tested parsers miss. Ambiguous legacy sections now stay unmarked through appends and unrelated structured edits, preserving protection on later writes. Recovery instructions tell agents to ask the user for marker repair instead of editing record files. Eleven new/expanded regression cases failed before the changes.
+
+Final third-review validation: 174 focused Markdown/CLI/section tests, 64 core tests and 39 MCP tests (277 total) pass; the new file contains 55 regressions. Type checks, Biome, compiled build and compiled CLI/browser/MCP smoke checks pass. Regenerating bun.nix into a temporary file produces identical output. Final simplification replaces more than one hundred lines of new scanner state with the existing CommonMark parser and keeps checklist/whitespace scanners unchanged. CLI and MCP append-plus-unrelated-edit regressions verify that later replacement is refused with byte-identical files.
 <!-- SECTION:NOTES:END -->
 
 ## Final Summary
 
 <!-- SECTION:FINAL_SUMMARY:BEGIN -->
-Protected ambiguous legacy structured sections across replacement and explicit clearing, with marker recovery instructions. Added 48 regressions for headings, paragraph/list boundaries, fenced code, raw HTML, MCP clears, drafts and LF/CRLF byte preservation. Validated 270 targeted tests, type checks, lint and compiled build. Initial shared-process suite limitations remain documented. All findings from the first two Codex rounds are fixed and resolved; the final head will receive another review before merge.
+Refuse ambiguous legacy section replacements and explicit clears before persistence across CLI and MCP. Keep ambiguous appends and unchanged sections unmarked so later replacements remain protected. Use the existing CommonMark parser for real top-level headings, preserve Markdown examples, and ask the user to repair marker ownership when necessary. Added 55 regressions and validated 277 related tests, type checks, Biome, build and compiled CLI/browser/MCP smoke checks. The Nix dependency file is unchanged. Initial shared-process suite limitations remain disclosed in the PR.
 <!-- SECTION:FINAL_SUMMARY:END -->
