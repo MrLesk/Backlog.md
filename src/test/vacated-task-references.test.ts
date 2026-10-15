@@ -216,6 +216,63 @@ describe("references to an archived or vacated task ID", () => {
 		expect(updatedDependent?.references ?? []).toEqual([]);
 	});
 
+	it.each(["demote", "edit"])(
+		"cleans late-created task and draft links when %s acquires the allocator",
+		async (operation) => {
+			const { task: anchor } = await core.createTaskFromInput({ title: "Stable parent" }, false);
+			const { task: target } = await core.createTaskFromInput({ title: "Vacated target" }, false);
+			const creator = new Core(testDir);
+			const original = core.filesystem.withCreateLock.bind(core.filesystem);
+			let created = false;
+			core.filesystem.withCreateLock = async (run, options) => {
+				if (!created) {
+					created = true;
+					await creator.createTaskFromInput(
+						{
+							title: "Late task",
+							parentTaskId: anchor.id,
+							dependencies: [target.id],
+							references: [target.id],
+						},
+						false,
+					);
+					await creator.createTaskFromInput(
+						{
+							title: "Late draft",
+							status: "Draft",
+							dependencies: [target.id],
+							references: [target.id],
+						},
+						false,
+					);
+				}
+				return await original(run, options);
+			};
+
+			try {
+				const result =
+					operation === "demote"
+						? await core.demoteTask(target.id, false)
+						: await core.editTaskOrDraft(target.id, { status: "Draft", labels: ["edited"] }, false);
+				expect(result.cleanedTaskIds).toEqual([`${anchor.id}.1`, "DRAFT-1"]);
+			} finally {
+				core.filesystem.withCreateLock = original;
+				await creator.disposeContentStore();
+			}
+
+			expect((await core.createTaskFromInput({ title: "Unrelated replacement" }, false)).task.id).toBe(target.id);
+			const lateTask = await core.filesystem.loadTask(`${anchor.id}.1`);
+			expect(lateTask?.dependencies ?? []).toEqual([]);
+			expect(lateTask?.references ?? []).toEqual([]);
+			expect(await dependencyTitles(lateTask)).toEqual([]);
+			const drafts = await core.filesystem.listDrafts();
+			expect(drafts.map((draft) => draft.id)).toEqual(["DRAFT-1", "DRAFT-2"]);
+			expect(drafts[0]?.dependencies ?? []).toEqual([]);
+			expect(drafts[0]?.references ?? []).toEqual([]);
+			if (operation === "edit") expect(drafts[1]?.labels).toEqual(["edited"]);
+		},
+	);
+
 	it("removes demoted references from the archived corpus and the working copy alike", async () => {
 		const { task: activeDependent } = await core.createTaskFromInput({ title: "Active dependent" });
 		const { task: archivedDependent } = await core.createTaskFromInput({ title: "Archived dependent" });
