@@ -1,11 +1,11 @@
 ---
 id: BACK-719
 title: Replace task completion with one archive flow
-status: Done
+status: In Progress
 assignee:
-  - '@claude'
+  - '@codex-719'
 created_date: '2026-10-11 10:42'
-updated_date: '2026-10-14 18:06'
+updated_date: '2026-10-15 20:40'
 labels:
   - bug
 dependencies: []
@@ -21,6 +21,9 @@ references:
   - web-server
   - task-details
   - terminal-board
+  - src/core/archived-task-move.ts
+  - src/web/components/TaskDetailsModal.tsx
+  - src/core/statistics.ts
 modified_files:
   - src/constants/index.ts
   - src/file-system/operations.ts
@@ -201,6 +204,13 @@ Design in one sentence: Archive takes over the mechanics completed storage had (
 9. Tests: delete the completion suites, rewrite the lifecycle suites, rename completed-corpus fixtures, and add coverage for archive in every status with the ID kept (working copy, worktree, branch), the read-only error, the leftover `completed/` folder including symlinked files, symlinked folders and a symlink cycle, the doctor move including an identical filename in both folders, and a legacy archived record that collides with an active ID.
 
 10. Verification: simplification pass, `bunx tsc --noEmit`, `bun run check .`, `bun run test`, a scripted end-to-end run of every acceptance criterion against the CLI built from this branch in a private scratch directory, and a real exercise of the changed TUI and browser controls.
+
+Approved PR repair plan (2026-10-15):
+1. Integrate current main, including BACK-732 creation safety and the Bun 1.4.3 toolchain, while preserving the existing archive behavior and prior commits.
+2. Keep archived-folder enumeration as existing read sources. Resolve the doctor move destination from its nearest existing ancestor and missing suffix inside the existing move preview owner.
+3. Disable acceptance-criteria and Definition of Done preview checkboxes using the existing isReadOnly value. Keep the core refusal.
+4. Select counted records inside getTaskStatistics while resolving dependencies from the full identity corpus; remove caller selection. Preserve literal Done behavior for custom final statuses.
+5. Extend existing regressions for all three public flows, run relevant CLI/MCP/browser tests, canonical types, Biome and justified build/smoke checks. Review scope and simplify, record honest evidence, push the existing PR for CI without merging. At most two substantive review/fix cycles before reconsidering.
 <!-- SECTION:PLAN:END -->
 
 ## Implementation Notes
