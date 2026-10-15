@@ -39,6 +39,7 @@
     "install": "0.13.0",
     "jsdom": "30.1.2",
     "lint-staged": "17.6.0",
+    "mdast-util-from-markdown": "2.1.0",
     "mermaid": "12.1.0",
     "neo-neo-bblessed": "1.0.10",
     "picocolors": "1.1.1",
