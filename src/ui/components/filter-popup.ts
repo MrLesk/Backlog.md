@@ -53,7 +53,9 @@ function resolvePosition(value: string | number, total: number, size: number): n
 		return value;
 	}
 	if (value === "center") {
-		return Math.max(0, Math.floor((total - size) / 2));
+		// Match blessed's own "center" (half the parent, minus half the element, each floored) so
+		// the backdrop lines up with the popup when one size is odd and the other even.
+		return Math.max(0, Math.floor(total / 2) - Math.floor(size / 2));
 	}
 	if (value.endsWith("%")) {
 		const percent = Number.parseFloat(value.slice(0, -1));

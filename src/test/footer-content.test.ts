@@ -54,6 +54,16 @@ describe("TUI footer filter hint", () => {
 	});
 });
 
+describe("TUI comment shortcut", () => {
+	it("is listed in both footers and as its own help row", () => {
+		expect(getBoardFooterContent()).toContain("{cyan-fg}[E/O/M/C/A]{/} Edit/Comment/Move/Comp/Arch");
+		expect(getTaskListFooterContent()).toContain("{cyan-fg}[E/O/C/A]{/} Edit/Comment/Comp/Arch");
+		for (const context of ["board", "task-list"] as const) {
+			expect(getHelpShortcuts(context)).toContainEqual({ key: "O", desc: "Comment on task" });
+		}
+	});
+});
+
 describe("formatFooterContent", () => {
 	it("keeps footer on one line when terminal width is sufficient", () => {
 		const content = " {cyan-fg}[Tab]{/} Switch View | {cyan-fg}[/]{/} Search | {cyan-fg}[q/Esc]{/} Quit";
