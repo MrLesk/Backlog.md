@@ -1,5 +1,17 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
-import { lstat, mkdir, readdir, readFile, readlink, realpath, rename, rm, symlink, writeFile } from "node:fs/promises";
+import {
+	lstat,
+	mkdir,
+	readdir,
+	readFile,
+	readlink,
+	realpath,
+	rename,
+	rm,
+	rmdir,
+	symlink,
+	writeFile,
+} from "node:fs/promises";
 import { dirname, join, relative } from "node:path";
 import { $ } from "bun";
 import { AGENT_GUIDELINES } from "../guidelines/index.ts";
@@ -387,7 +399,7 @@ describe.skipIf(isWindows())("backlog doc restore and delete with symbolic links
 describe("backlog doc restore and delete in a Git repository", () => {
 	const NAME = "doc-1 - API-Guidelines.md";
 
-	async function setUpRepository(autoCommit: boolean): Promise<void> {
+	async function setUpRepository(autoCommit: boolean, subPath = "guides"): Promise<void> {
 		await $`git init -b main`.cwd(TEST_DIR).quiet();
 		await $`git config user.name "Test User"`.cwd(TEST_DIR).quiet();
 		await $`git config user.email test@example.com`.cwd(TEST_DIR).quiet();
@@ -396,7 +408,7 @@ describe("backlog doc restore and delete in a Git repository", () => {
 		const config = await core.filesystem.loadConfig();
 		if (!config) throw new Error("Expected the project config");
 		await core.filesystem.saveConfig({ ...config, autoCommit, remoteOperations: false });
-		expect(await createDocument("API Guidelines", "guides")).toBe(NAME);
+		expect(await createDocument("API Guidelines", subPath)).toBe(NAME);
 		await core.archiveContentRecord("document", "doc-1", false);
 		await git("add", "-A");
 		await git("commit", "-m", "Set up the project");
@@ -437,22 +449,32 @@ describe("backlog doc restore and delete in a Git repository", () => {
 		expect(await git("status", "--porcelain")).toBe("A  staged.txt\n?? untracked.txt");
 	});
 
-	it.each([false, true])(
-		"commits both record paths after an uncommitted archive (archive staged: %s)",
-		async (stageArchive) => {
-			await setUpRepository(false);
+	it.each([
+		[false, 0],
+		[true, 0],
+		[false, 1],
+		[true, 1],
+		[false, 3],
+		[true, 3],
+	] as const)(
+		"commits both record paths after an uncommitted archive (archive staged: %s, removed parents: %s)",
+		async (stageArchive, removedParents) => {
+			await setUpRepository(false, "guides/http/api");
 			expect((await backlog("doc", "restore", "doc-1")).exitCode).toBe(0);
 			await writeFile(join(TEST_DIR, "unstaged.txt"), "original\n");
 			await git("add", "-A");
 			await git("commit", "-m", "Track the active document");
-			const activePath = `backlog/docs/guides/${NAME}`;
-			const archivedPath = `backlog/archive/docs/guides/${NAME}`;
+			const activePath = `backlog/docs/guides/http/api/${NAME}`;
+			const archivedPath = `backlog/archive/docs/guides/http/api/${NAME}`;
 			const headBefore = await git("rev-parse", "HEAD");
 
 			expect((await backlog("doc", "archive", "doc-1")).exitCode).toBe(0);
 			expect(await git("rev-parse", "HEAD")).toBe(headBefore);
 			expect(await git("diff", "--cached", "--name-only")).toBe("");
 			if (stageArchive) await git("add", "--", activePath, archivedPath);
+			for (const folder of ["guides/http/api", "guides/http", "guides"].slice(0, removedParents)) {
+				await rmdir(docsPath(folder));
+			}
 			expect((await backlog("config", "set", "autoCommit", "true")).exitCode).toBe(0);
 			await startOtherWork();
 			await writeFile(join(TEST_DIR, "staged.txt"), "unstaged edit of staged work\n");
@@ -471,8 +493,8 @@ describe("backlog doc restore and delete in a Git repository", () => {
 			expect(await git("diff", "--cached", "--", ...unrelatedPaths)).toBe(stagedBefore);
 			expect(await git("diff", "--", ...unrelatedPaths)).toBe(unstagedBefore);
 			expect(await readFile(join(TEST_DIR, "untracked.txt"), "utf8")).toBe("not staged\n");
-			expect(await exists(docsPath("guides", NAME))).toBe(false);
-			expect(await exists(archivePath("guides", NAME))).toBe(false);
+			expect(await exists(docsPath("guides/http/api", NAME))).toBe(false);
+			expect(await exists(archivePath("guides/http/api", NAME))).toBe(false);
 			expect((await backlog("doc", "create", "Created after mixed auto-commit")).stdout).toContain(
 				"Created document doc-1\n",
 			);
