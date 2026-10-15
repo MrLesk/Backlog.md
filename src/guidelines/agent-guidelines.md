@@ -785,6 +785,7 @@ backlog doc view doc-1
 | Filter by status   | `backlog task list -s "In Progress" --plain` |
 | Filter by assignee | `backlog task list -a @sara --plain`         |
 | Archive task       | `backlog task archive 42`                    |
+| Restore archived task | `backlog task restore 42`                 |
 | Delete archived task | `backlog task delete 42`                   |
 | Demote to draft    | `backlog task demote 42`                     |
 

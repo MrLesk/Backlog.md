@@ -125,10 +125,11 @@ describe("TUI task lifecycle", () => {
 		expect(result).toEqual({
 			archived: false,
 			reason: "failed",
-			error: "Task TASK-1 is archived. Archived tasks are read-only.",
+			error:
+				"Task TASK-1 is archived. Archived tasks are read-only. Restore it to the board first: backlog task restore TASK-1",
 		});
 		expect(formatArchiveNotice(stale, result)).toBe(
-			" {red-fg}Error archiving task: Task TASK-1 is archived. Archived tasks are read-only.{/}",
+			" {red-fg}Error archiving task: Task TASK-1 is archived. Archived tasks are read-only. Restore it to the board first: backlog task restore TASK-1{/}",
 		);
 	});
 

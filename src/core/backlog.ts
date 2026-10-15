@@ -417,10 +417,15 @@ function assertSectionInputsSafe(input: {
  */
 export class TaskRefusedError extends Error {}
 
-/** A mutation targeted a task that exists only in the archive, where tasks are read-only. */
+/**
+ * A change targeted a task that exists only in the archive, where tasks are read-only. Restoring
+ * the task is the way to change it, so the message names the command.
+ */
 export class TaskArchivedError extends TaskRefusedError {
 	constructor(taskId: string) {
-		super(`Task ${taskId} is archived. Archived tasks are read-only.`);
+		super(
+			`Task ${taskId} is archived. Archived tasks are read-only. Restore it to the board first: backlog task restore ${taskId}`,
+		);
 		this.name = "TaskArchivedError";
 	}
 }
@@ -434,20 +439,38 @@ export class TaskOnOtherBranchError extends TaskRefusedError {
 	}
 }
 
-/** Archiving found a file with the task file's name already in the archive. Nothing was changed. */
+/** Archive or restore found a file with the task file's name already in the destination. Nothing was changed. */
 export class TaskFileExistsError extends TaskRefusedError {
-	constructor(taskId: string, fileName: string) {
-		super(`Task ${taskId} cannot be archived: the archive already has a file named ${fileName}.`);
+	constructor(taskId: string, operation: "archive" | "restore", fileName: string) {
+		super(
+			operation === "archive"
+				? `Task ${taskId} cannot be archived: the archive already has a file named ${fileName}.`
+				: `Task ${taskId} cannot be restored: the board already has a file named ${fileName}.`,
+		);
 		this.name = "TaskFileExistsError";
 	}
 }
 
-/** Delete targeted a task that is still on the board; archiving is the step that comes first. */
+/** Delete or restore targeted a task that is on the board; both act on archived tasks only. */
 export class TaskNotArchivedError extends TaskRefusedError {
-	constructor(taskId: string) {
-		super(`Task ${taskId} is not archived. A task must be archived before it can be deleted.`);
+	constructor(taskId: string, operation: "delete" | "restore") {
+		super(
+			operation === "delete"
+				? `Task ${taskId} is not archived. A task must be archived before it can be deleted.`
+				: `Task ${taskId} is not archived. It is already on the board.`,
+		);
 		this.name = "TaskNotArchivedError";
 	}
+}
+
+/**
+ * A change is on disk and only its commit failed. The message says both, so nobody runs the change
+ * again. Use it for an operation the browser does not call. Where an endpoint must tell the browser
+ * to refresh after such a failure, tag the error with `markRecordAlreadyMoved` instead.
+ */
+function commitFailedAfter(change: string, error: unknown): Error {
+	const reason = error instanceof Error ? error.message : String(error);
+	return new Error(`${change}, but committing the change failed: ${reason}`);
 }
 
 /**
@@ -1000,7 +1023,7 @@ export class Core {
 	 * them and runs again over the wider set. Widening only ever adds records, and the locks are
 	 * always taken through {@link FileSystem.withTaskLocks} and then
 	 * {@link FileSystem.withDraftLocks}, which sort them. The allocator lock comes last and covers
-	 * the final scan and `run`, excluding creates and archive membership moves throughout that span.
+	 * the final scan and `run`, excluding creates and archive/restore membership moves throughout that span.
 	 * Widening exits all three lock wrappers before retrying; it never takes more task or draft locks
 	 * while holding the allocator.
 	 *
@@ -1347,14 +1370,19 @@ export class Core {
 	}
 
 	/**
-	 * Load the archived task that delete targets, from the working copy. A task on the board throws
-	 * `TaskNotArchivedError`, a task that exists only on another branch throws
-	 * `TaskOnOtherBranchError`, an ambiguous ID throws, and null means no record claims the ID.
+	 * Load the archived task that delete or restore targets, from the working copy. A task on the
+	 * board throws `TaskNotArchivedError` for that operation, a task that exists only on another
+	 * branch throws `TaskOnOtherBranchError`, an ambiguous ID throws, and null means no record
+	 * claims the ID.
 	 */
-	private async loadArchivedTask(taskId: string, options: TaskReadOptions): Promise<Task | null> {
+	private async loadArchivedTask(
+		taskId: string,
+		operation: "delete" | "restore",
+		options: TaskReadOptions,
+	): Promise<Task | null> {
 		const task = await this.loadWorkingCopyTask(taskId, false);
 		if (!task) await this.refuseTaskOnOtherBranch(taskId, options);
-		if (task && task.source !== "archived") throw new TaskNotArchivedError(task.id);
+		if (task && task.source !== "archived") throw new TaskNotArchivedError(task.id, operation);
 		return task;
 	}
 
@@ -3480,6 +3508,22 @@ export class Core {
 		return { movedTasks, changedTasks, failures };
 	}
 
+	/** Move a task file between the board and the archive. A file already under that name stops the move. */
+	private async moveTaskFile(
+		taskId: string,
+		operation: "archive" | "restore",
+		fromPath: string,
+		toPath: string,
+	): Promise<void> {
+		await mkdir(dirname(toPath), { recursive: true });
+		try {
+			await moveWithoutReplacing(fromPath, toPath);
+		} catch (error) {
+			if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
+			throw new TaskFileExistsError(taskId, operation, basename(toPath));
+		}
+	}
+
 	/**
 	 * Move a task off the board into the archive. Any status can be archived. The record keeps its
 	 * ID, its status and every link other tasks hold to it, and no other record is rewritten.
@@ -3504,13 +3548,7 @@ export class Core {
 				if (!current || !fromPath) return false;
 				const toPath = join(await this.fs.getArchiveTasksDir(), basename(fromPath));
 
-				await mkdir(dirname(toPath), { recursive: true });
-				try {
-					await moveWithoutReplacing(fromPath, toPath);
-				} catch (error) {
-					if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
-					throw new TaskFileExistsError(current.id, basename(toPath));
-				}
+				await this.moveTaskFile(current.id, "archive", fromPath, toPath);
 				this.contentStore?.transitionTask(current.id, { ...current, filePath: toPath, source: "archived" });
 
 				// The file is in the archive from here on. A commit that fails after this point says so,
@@ -3539,7 +3577,7 @@ export class Core {
 	 * file is removed. A failure after removal reports that deletion already happened.
 	 */
 	async deleteTask(taskId: string, autoCommit?: boolean, options: TaskReadOptions = {}): Promise<VacatedTaskResult> {
-		const task = await this.loadArchivedTask(taskId, options);
+		const task = await this.loadArchivedTask(taskId, "delete", options);
 		if (!task) return { success: false, cleanedTaskIds: [] };
 		const autoCommitEnabled = await this.shouldAutoCommit(autoCommit);
 		let deletionApplied = false;
@@ -3550,7 +3588,7 @@ export class Core {
 				// The cleanup owner holds the allocator through staging and commit, so a create
 				// cannot reuse the ID and matching board path before the deletion is committed.
 				// Another process may have deleted the record before these locks were held.
-				const current = await this.loadArchivedTask(task.id, options);
+				const current = await this.loadArchivedTask(task.id, "delete", options);
 				if (!current?.filePath) return { success: false, cleanedTaskIds: [] };
 				// A subtask that was demoted is a draft that still names this task as its parent. Drafts are
 				// read file by file, as the link cleanup reads them: one damaged draft must not hide the rest.
@@ -3591,6 +3629,41 @@ export class Core {
 			const reason = error instanceof Error ? error.message : String(error);
 			throw new TaskDeletionAppliedError(`Task ${task.id} was deleted, but ${failureStep} failed: ${reason}`);
 		}
+	}
+
+	/**
+	 * Move an archived task back to the board. The file returns to the tasks folder under the same
+	 * name and is not rewritten, so the task keeps its ID and the status it had.
+	 *
+	 * Returns false when no record claims the ID. Every refusal is a `TaskRefusedError`: the task is
+	 * already on the board, it exists only on another branch, or the board has a file of its name.
+	 */
+	async restoreTask(taskId: string, autoCommit?: boolean, options: TaskReadOptions = {}): Promise<boolean> {
+		const task = await this.loadArchivedTask(taskId, "restore", options);
+		if (!task) return false;
+
+		return await this.fs.withTaskLock(task, () =>
+			this.withCreateLock(async () => {
+				// Like archive, restore cannot cross a vacated-ID scan between its corpus enumerations.
+				// Another process may have restored or deleted the record before these locks were held.
+				const current = await this.loadArchivedTask(task.id, "restore", options);
+				const fromPath = current?.filePath;
+				if (!current || !fromPath) return false;
+				const toPath = join(this.fs.tasksDir, basename(fromPath));
+				await this.moveTaskFile(current.id, "restore", fromPath, toPath);
+				this.contentStore?.transitionTask(current.id, { ...current, filePath: toPath, source: "local" });
+
+				try {
+					if (await this.shouldAutoCommit(autoCommit)) {
+						const repoRoot = await this.git.stageFileMove(fromPath, toPath);
+						await this.git.commitFiles(`backlog: Restore task ${current.id}`, [fromPath, toPath], repoRoot);
+					}
+				} catch (error) {
+					throw commitFailedAfter(`Task ${current.id} was restored`, error);
+				}
+				return true;
+			}),
+		);
 	}
 
 	async archiveMilestone(

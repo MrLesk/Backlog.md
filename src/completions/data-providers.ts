@@ -23,11 +23,21 @@ function getDefaultStatuses(): string[] {
 }
 
 /**
- * Get all task IDs from the backlog
+ * Get the IDs of the tasks on the board
  */
 export async function getTaskIds(): Promise<string[]> {
 	return await withCore(async (core) => {
 		const tasks = await core.filesystem.listTasks();
+		return tasks.map((task) => task.id).sort();
+	}, []);
+}
+
+/**
+ * Get the IDs of the archived tasks, for the commands that act only on the archive
+ */
+export async function getArchivedTaskIds(): Promise<string[]> {
+	return await withCore(async (core) => {
+		const tasks = await core.filesystem.listArchivedTasks();
 		return tasks.map((task) => task.id).sort();
 	}, []);
 }

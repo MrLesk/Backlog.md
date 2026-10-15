@@ -304,7 +304,9 @@ describe("MCP task tools (MVP)", () => {
 		] as const) {
 			const refused = await call(name, args);
 			expect(refused.isError).toBe(true);
-			expect(getText(refused.content)).toContain("Task TASK-2 is archived. Archived tasks are read-only.");
+			expect(getText(refused.content)).toContain(
+				"Task TASK-2 is archived. Archived tasks are read-only. Restore it to the board first: backlog task restore TASK-2",
+			);
 		}
 
 		const toolNames = (await mcpServer.testInterface.listTools()).tools.map((tool) => tool.name);
@@ -349,7 +351,7 @@ describe("MCP task tools (MVP)", () => {
 			expect(view.isError).not.toBe(true);
 			expect(getText(view.content)).toContain(`Task TASK-${id} - ${title}`);
 
-			for (const operation of ["task_archive", "task_delete"]) {
+			for (const operation of ["task_archive", "task_delete", "task_restore"]) {
 				const refused = await call(operation, { id: `task-${id}` });
 				expect(refused.isError).toBe(true);
 				expect(getText(refused.content)).toBe(
@@ -368,9 +370,50 @@ describe("MCP task tools (MVP)", () => {
 		expect(getText(contested.content)).toContain("is ambiguous");
 		await expect(mcpServer.archiveTask("task-4")).rejects.toThrow("is ambiguous");
 		await expect(mcpServer.deleteTask("task-4")).rejects.toThrow("is ambiguous");
+		await expect(mcpServer.restoreTask("task-4")).rejects.toThrow("is ambiguous");
 
 		expect((await mcpServer.filesystem.listTasks()).map((task) => task.id)).toEqual(["TASK-1"]);
 		expect(await mcpServer.filesystem.listArchivedTasks()).toEqual([]);
+	});
+
+	it("restores an archived task to the board under the same rules as the CLI", async () => {
+		const call = async (name: string, args: Record<string, unknown>) =>
+			await mcpServer.testInterface.callTool({ params: { name, arguments: args } });
+		await call("task_create", { title: "Comes back", status: "In Progress" });
+		await call("task_create", { title: "Stays on the board" });
+		await call("task_archive", { id: "task-1" });
+
+		const restored = await call("task_restore", { id: "task-1" });
+		expect(restored.isError).not.toBe(true);
+		const text = getText(restored.content);
+		expect(text).toContain("Restored task TASK-1.");
+		expect(text).toContain("Task TASK-1 - Comes back");
+		expect(text).toContain("In Progress");
+		expect(text).not.toContain("(archived)");
+		expect((await mcpServer.filesystem.listTasks()).map((task) => task.id)).toEqual(["TASK-1", "TASK-2"]);
+		expect(await mcpServer.filesystem.listArchivedTasks()).toEqual([]);
+
+		// Back on the board it is an ordinary task again.
+		const edited = await call("task_edit", { id: "task-1", notesAppend: ["Back on the board"] });
+		expect(edited.isError).not.toBe(true);
+		// task_list returns one text item per status; the restored task is in its own status group.
+		const listed = ((await call("task_list", {})).content ?? []).map((_item, index, items) => getText(items, index));
+		expect(listed.join("\n")).toContain("In Progress:\n  TASK-1 - Comes back");
+
+		const onBoard = await call("task_restore", { id: "task-2" });
+		expect(onBoard.isError).toBe(true);
+		expect(getText(onBoard.content)).toContain("Task TASK-2 is not archived. It is already on the board.");
+		const unknown = await call("task_restore", { id: "task-99" });
+		expect(unknown.isError).toBe(true);
+		expect(getText(unknown.content)).toContain("Task task-99 not found.");
+		expect((await mcpServer.filesystem.listTasks()).map((task) => task.id)).toEqual(["TASK-1", "TASK-2"]);
+
+		const restoreTool = (await mcpServer.testInterface.listTools()).tools.find((tool) => tool.name === "task_restore");
+		expect(restoreTool?.inputSchema).toMatchObject({
+			properties: { id: { type: "string" } },
+			required: ["id"],
+			additionalProperties: false,
+		});
 	});
 
 	it("deletes an archived task under the same rules as the CLI", async () => {

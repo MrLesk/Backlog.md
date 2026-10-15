@@ -89,9 +89,12 @@ Humans and agents can run `backlog instructions` for workflow guides and `backlo
 | Set due date | `backlog task edit 7 --due-date 2026-08-10` |
 | Clear due date | `backlog task edit 7 --clear-due-date` |
 | Archive     | `backlog task archive 7` (move a task in any status off the board) |
+| Restore     | `backlog task restore 7` (move an archived task back to the board) |
 | Delete      | `backlog task delete 7` (permanently remove an archived task and release its ID once no other branch or worktree still holds the task) |
 
 Mark finished work Done (or the configured final status). During periodic cleanup, Archive moves it off the board; Archive also takes canceled, duplicate, or invalid work off the board at any time. An archived task keeps its ID, its record, and every dependency and reference to it. It stays readable with `backlog task view`, where its status line ends in `(archived)`, and it is read-only. A dependency on an archived task counts as satisfied only when that task is in the final status.
+
+`backlog task restore` moves an archived task back to the board with the same ID and the status it had. Archived tasks cannot be edited: `backlog task edit` on one fails and names the restore command, so restore the task first.
 
 Deleting a task takes two steps: archive it, then run `backlog task delete`. Delete permanently removes the archived task and releases its ID once no other branch or worktree still holds the task, so a later task can receive it. It removes the dependencies and references other tasks and drafts hold to the deleted task and prints the tasks and drafts it changed. It asks no question, because archiving is the confirming step. A task that is not archived is not deleted, and neither is a task whose subtasks still exist, as tasks or as drafts.
 

@@ -23,6 +23,7 @@ Mark finished work Done (or the configured final status) and leave it on the boa
 - `get_backlog_instructions`
 - `task_list`, `task_search`, `task_view`, `task_create`, `task_edit`
 - `task_archive` — move a task in any status off the board into the archive; keeps its ID, record, dependencies, and references. Archived tasks are read-only, stay viewable with `task_view`, and are marked `archived` in `task_search` results. A dependency on an archived task counts as satisfied only when that task is in the final status.
+- `task_restore` — move an archived task back to the board with the same ID and the status it had. Restore a task before changing it: `task_edit` on an archived task fails.
 - `task_delete` — permanently delete an archived task and release its ID once no other branch or worktree still holds the task. Deleting takes two steps: `task_archive`, then `task_delete`. It removes the dependencies and references other tasks and drafts hold to the task and names the tasks and drafts it changed. A task that is not archived, or whose subtasks still exist as tasks or as drafts, is not deleted.
 - `task_list` and `task_search` accept configured task types with OR semantics; `task_search` also accepts `modifiedFiles` for case-insensitive substring filtering against project-root-relative modified file paths
 - `task_list` and `task_search` also accept configured `project` values with OR semantics for monorepo-style backlogs; the field is absent from both tool schemas when no `projects:` list is configured

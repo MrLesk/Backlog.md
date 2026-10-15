@@ -275,9 +275,10 @@ describe("CLI Integration", () => {
 				expect(guide).not.toContain("held by drafts");
 				// The ID is not free while another branch or worktree still has the task.
 				expect(guide).toMatch(/releases (its|the) ID once no other branch or worktree still holds the task/);
-				for (const absentCommand of ["task complete", "task restore"]) {
-					expect(guide).not.toContain(absentCommand);
-				}
+				// Archived work comes back with restore, which is also the way to change it.
+				expect(guide).toContain("backlog task restore");
+				expect(guide).toMatch(/keeps its ID and status|same ID and the status it had/);
+				expect(guide).not.toContain("task complete");
 			}
 			const overview = await $`bun ${CLI_PATH} instructions overview`.cwd(TEST_DIR).text();
 			expect(overview).toContain("counts as satisfied only when that task is in the final status");
@@ -394,9 +395,14 @@ describe("CLI Integration", () => {
 			expect(deleteHelp).toContain("Dependencies and references that other tasks and drafts hold to it are removed.");
 			expect(deleteHelp).toContain("followed by the tasks and drafts that lost a dependency or reference");
 			expect(deleteHelp).not.toContain("held by drafts");
-			for (const absentCommand of ["complete", "restore"]) {
-				expect(taskHelp).not.toContain(absentCommand);
-			}
+			expect(taskHelp).toContain("restore <taskId>");
+			expect(taskHelp.replace(/\s+/g, " ")).toContain(
+				"move an archived task back to the board, keeping its ID and status",
+			);
+			const restoreHelp = await $`bun ${CLI_PATH} task restore --help`.cwd(TEST_DIR).text();
+			expect(restoreHelp).toContain("taskId: Task ID - Archived task to restore");
+			expect(restoreHelp).toContain("Archived tasks are read-only, so restore a task before editing it.");
+			expect(taskHelp).not.toContain("complete");
 		});
 
 		it("documents real-newline handling once for every multiline Markdown flag", async () => {

@@ -471,6 +471,16 @@ export class TaskHandlers {
 		return { content: [{ type: "text", text: lines.join("\n") }] };
 	}
 
+	async restoreTask(args: { id: string }): Promise<CallToolResult> {
+		const task = await this.loadTaskOrThrow(args.id);
+		if (!(await this.runLifecycleOperation(() => this.core.restoreTask(task.id)))) {
+			throw new BacklogToolError(taskNotFoundMessage(args.id), "TASK_NOT_FOUND");
+		}
+
+		const refreshed = (await this.core.getTask(task.id)) ?? task;
+		return await formatTaskCallResult(await loadTaskDetail(this.core, refreshed), [`Restored task ${task.id}.`]);
+	}
+
 	async demoteTask(args: { id: string }): Promise<CallToolResult> {
 		const task = await this.loadTaskOrThrow(args.id);
 		let demotion: VacatedTaskResult;

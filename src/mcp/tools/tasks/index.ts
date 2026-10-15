@@ -10,7 +10,7 @@ import {
 import { createSimpleValidatedTool } from "../../validation/tool-wrapper.ts";
 import type { TaskCreateArgs, TaskEditRequest, TaskListArgs, TaskSearchArgs } from "./handlers.ts";
 import { TaskHandlers } from "./handlers.ts";
-import { taskArchiveSchema, taskDeleteSchema, taskViewSchema } from "./schemas.ts";
+import { taskArchiveSchema, taskDeleteSchema, taskRestoreSchema, taskViewSchema } from "./schemas.ts";
 
 export function registerTaskTools(server: McpServer, config: BacklogConfig): void {
 	const handlers = new TaskHandlers(server);
@@ -101,6 +101,18 @@ export function registerTaskTools(server: McpServer, config: BacklogConfig): voi
 		async (input) => handlers.deleteTask(input as { id: string }),
 	);
 
+	const restoreTaskTool: McpToolHandler = createSimpleValidatedTool(
+		{
+			name: "task_restore",
+			description:
+				"Move an archived task back to the board with the same ID and the status it had; archived tasks are read-only until restored",
+			inputSchema: taskRestoreSchema,
+			annotations: { title: "Restore Task", destructiveHint: false },
+		},
+		taskRestoreSchema,
+		async (input) => handlers.restoreTask(input as { id: string }),
+	);
+
 	server.addTool(createTaskTool);
 	server.addTool(listTaskTool);
 	server.addTool(searchTaskTool);
@@ -108,6 +120,7 @@ export function registerTaskTools(server: McpServer, config: BacklogConfig): voi
 	server.addTool(viewTaskTool);
 	server.addTool(archiveTaskTool);
 	server.addTool(deleteTaskTool);
+	server.addTool(restoreTaskTool);
 }
 
 export type { TaskCreateArgs, TaskEditArgs, TaskListArgs, TaskSearchArgs } from "./handlers.ts";
