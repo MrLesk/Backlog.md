@@ -10,6 +10,7 @@ import { SuccessToast } from './SuccessToast';
 import { useTheme } from '../contexts/ThemeContext';
 import { sanitizeUrlTitle } from '../utils/urlHelpers';
 import StoredDate from './StoredDate';
+import { decisionIdKey } from '../../utils/decision-id';
 import { ArchiveButton, ArchivedLabel, ArchiveRefusal, useRecordArchive } from './RecordArchive';
 
 // Utility function for ID transformations
@@ -90,17 +91,21 @@ export default function DecisionDetail({ decisions, onRefreshData, dateFormat }:
 	const [isNewDecision, setIsNewDecision] = useState(false);
 	const [showSaveSuccess, setShowSaveSuccess] = useState(false);
 	// An archived decision is read-only: it shows the Archived label and no Archive button.
-	const isArchived = decision?.archived === true;
+	const routeIdentity = id && id !== 'new' ? decisionIdKey(id) : null;
+	const currentDecision = decision && routeIdentity && decisionIdKey(decision.id) === routeIdentity ? decision : null;
+	const isArchived = currentDecision?.archived === true;
 	// The editor opens on request (the Edit button, `?edit=true` in the URL, the new page), but never
 	// for an archived decision: the request can come before or after the record has loaded.
 	const isEditing = editRequested && !isArchived;
 	const { archive, isArchiving, archiveError, dismissArchiveError } = useRecordArchive(
 		'decision',
-		decision && !isNewDecision ? { id: decision.id, title: decision.title } : null,
+		currentDecision && !isLoading && !isNewDecision ? { id: currentDecision.id, title: currentDecision.title } : null,
+		routeIdentity,
 		onRefreshData,
 	);
 
 	useEffect(() => {
+		let active = true;
 		if (id === 'new') {
 			// Handle new decision creation
 			setIsNewDecision(true);
@@ -117,8 +122,9 @@ export default function DecisionDetail({ decisions, onRefreshData, dateFormat }:
 		} else if (id) {
 			setIsNewDecision(false);
 			setEditRequested(false); // Ensure we start in preview mode for existing decisions
-			loadDecisionContent();
+			void loadDecisionContent(() => active);
 		}
+		return () => { active = false; };
 	}, [id, decisions]);
 
 	// Check for edit query parameter to start in edit mode
@@ -133,20 +139,24 @@ export default function DecisionDetail({ decisions, onRefreshData, dateFormat }:
 		}
 	}, [searchParams, setSearchParams]);
 
-	const loadDecisionContent = async () => {
-		if (!id) return;
+	const loadDecisionContent = async (isCurrent: () => boolean) => {
+		if (!routeIdentity) return;
 		
 		try {
 			setIsLoading(true);
 			setError(null);
-			// Find decision from props
-			const prefixedId = addDecisionPrefix(id);
-			const decision = decisions.find(d => d.id === prefixedId);
+			setDecision(null);
+			setContent('');
+			setOriginalContent('');
+			// Find decision from props using the same identity as the route.
+			const prefixedId = routeIdentity;
+			const decision = decisions.find(d => decisionIdKey(d.id) === routeIdentity);
 			
 			// Always try to fetch the decision from API, whether we found it in decisions or not
 			// This ensures deep linking works even before the parent component loads the decisions array
 			try {
 				const fullDecision = await apiClient.fetchDecision(prefixedId);
+				if (!isCurrent()) return;
 				setContent(fullDecision.rawContent || '');
 				setOriginalContent(fullDecision.rawContent || '');
 				setDecisionTitle(fullDecision.title || '');
@@ -154,6 +164,7 @@ export default function DecisionDetail({ decisions, onRefreshData, dateFormat }:
 				// Update decision state with full data
 				setDecision(fullDecision);
 			} catch (fetchError) {
+				if (!isCurrent()) return;
 				// Never fall back to the cached list entry when the ID is ambiguous: that entry is
 				// one of the candidates, and showing it would silently pick a winner.
 				if (isAmbiguousIdConflict(fetchError)) {
@@ -171,9 +182,10 @@ export default function DecisionDetail({ decisions, onRefreshData, dateFormat }:
 				}
 			}
 		} catch (error) {
+			if (!isCurrent()) return;
 			console.error('Failed to load decision:', error);
 		} finally {
-			setIsLoading(false);
+			if (isCurrent()) setIsLoading(false);
 		}
 	};
 
@@ -344,7 +356,7 @@ export default function DecisionDetail({ decisions, onRefreshData, dateFormat }:
 										Edit
 								</button>
 							) : null}
-							{decision && !isNewDecision && !isEditing && !isArchived && (
+							{currentDecision && !isNewDecision && !isEditing && !isArchived && (
 								<ArchiveButton onClick={archive} disabled={isArchiving} />
 							)}
 							{isEditing && (

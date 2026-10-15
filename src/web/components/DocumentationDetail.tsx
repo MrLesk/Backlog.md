@@ -10,6 +10,7 @@ import {SuccessToast} from './SuccessToast';
 import { useTheme } from '../contexts/ThemeContext';
 import { sanitizeUrlTitle } from '../utils/urlHelpers';
 import StoredDate from './StoredDate';
+import { documentIdKey } from '../../utils/document-id';
 import { ArchiveButton, ArchivedLabel, ArchiveRefusal, useRecordArchive } from './RecordArchive';
 
 // Custom MDEditor wrapper for proper height handling
@@ -94,17 +95,21 @@ export default function DocumentationDetail({docs, onRefreshData, dateFormat}: D
     const [isNewDocument, setIsNewDocument] = useState(false);
     const [showSaveSuccess, setShowSaveSuccess] = useState(false);
     // An archived document is read-only: it shows the Archived label and neither Edit nor Archive.
-    const isArchived = document?.archived === true;
+    const routeIdentity = id && id !== 'new' ? documentIdKey(id) : null;
+    const currentDocument = document && routeIdentity && documentIdKey(document.id) === routeIdentity ? document : null;
+    const isArchived = currentDocument?.archived === true;
     // The editor opens on request (the Edit button, `?edit=true` in the URL, the new page), but never
     // for an archived document: the request can come before or after the record has loaded.
     const isEditing = editRequested && !isArchived;
     const {archive, isArchiving, archiveError, dismissArchiveError} = useRecordArchive(
         'document',
-        document && !isNewDocument ? {id: document.id, title: document.title} : null,
+        currentDocument && !isLoading && !isNewDocument ? {id: currentDocument.id, title: currentDocument.title} : null,
+        routeIdentity,
         onRefreshData,
     );
 
     useEffect(() => {
+        let active = true;
         if (id === 'new') {
             // Handle new document creation
             setIsNewDocument(true);
@@ -123,8 +128,9 @@ export default function DocumentationDetail({docs, onRefreshData, dateFormat}: D
         } else if (id) {
             setIsNewDocument(false);
             setEditRequested(false); // Ensure we start in preview mode for existing documents
-            loadDocContent();
+            void loadDocContent(() => active);
         }
+        return () => { active = false; };
     }, [id, docs]);
 
     // Check for edit query parameter to start in edit mode
@@ -139,20 +145,24 @@ export default function DocumentationDetail({docs, onRefreshData, dateFormat}: D
         }
     }, [searchParams, setSearchParams]);
 
-    const loadDocContent = useCallback(async () => {
-        if (!id) return;
+    const loadDocContent = useCallback(async (isCurrent: () => boolean) => {
+        if (!routeIdentity) return;
 
         try {
             setIsLoading(true);
             setError(null);
-            // Find document from props
-            const prefixedId = addDocPrefix(id);
-            const doc = docs.find(d => d.id === prefixedId);
+            setDocument(null);
+            setContent('');
+            setOriginalContent('');
+            // Find document from props using the same identity as the route.
+            const prefixedId = routeIdentity;
+            const doc = docs.find(d => documentIdKey(d.id) === routeIdentity);
             
             // Always try to fetch the document from API, whether we found it in docs or not
             // This ensures deep linking works even before the parent component loads the docs array
             try {
                 const fullDoc = await apiClient.fetchDoc(prefixedId);
+                if (!isCurrent()) return;
                 setContent(fullDoc.rawContent || '');
                 setOriginalContent(fullDoc.rawContent || '');
                 setDocTitle(fullDoc.title || '');
@@ -162,6 +172,7 @@ export default function DocumentationDetail({docs, onRefreshData, dateFormat}: D
                 // Update document state with full data
                 setDocument(fullDoc);
             } catch (fetchError) {
+                if (!isCurrent()) return;
                 // Never fall back to the cached list entry when the ID is ambiguous: that entry is
                 // one of the candidates, and showing it would silently pick a winner.
                 if (isAmbiguousIdConflict(fetchError)) {
@@ -182,13 +193,14 @@ export default function DocumentationDetail({docs, onRefreshData, dateFormat}: D
                 }
             }
         } catch (err) {
+            if (!isCurrent()) return;
             const error = err instanceof Error ? err : new Error('Failed to load document');
             setError(error);
             console.error('Failed to load document:', error);
         } finally {
-            setIsLoading(false);
+            if (isCurrent()) setIsLoading(false);
         }
-    }, [id, docs]);
+    }, [routeIdentity, docs]);
 
     const handleSave = useCallback(async () => {
         if (!docTitle.trim()) {
@@ -395,7 +407,7 @@ export default function DocumentationDetail({docs, onRefreshData, dateFormat}: D
                                         </svg>
                                         Edit
                                     </button>
-                                    {document && !isNewDocument && (
+                                    {currentDocument && !isNewDocument && (
                                         <ArchiveButton onClick={archive} disabled={isArchiving} />
                                     )}
                                     </>

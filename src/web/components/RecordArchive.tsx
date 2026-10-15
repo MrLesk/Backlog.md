@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { apiClient, readMovedFailureState } from '../lib/api';
 
@@ -39,57 +39,72 @@ export type ArchivablePageKind = keyof typeof ARCHIVABLE_PAGES;
 export function useRecordArchive(
 	kind: ArchivablePageKind,
 	record: { id: string; title: string } | null,
+	routeIdentity: string | null,
 	onRefreshData: () => Promise<void>,
 ) {
 	const navigate = useNavigate();
 	const [isArchiving, setIsArchiving] = useState(false);
-	const [archiveError, setArchiveError] = useState<string | null>(null);
+	const route = useMemo(() => ({ identity: routeIdentity }), [routeIdentity]);
+	const currentRoute = useRef<typeof route | null>(route);
+	const [refusal, setRefusal] = useState<{ route: typeof route; message: string } | null>(null);
 	// A ref as well as the state: two clicks in one render both see the state as it was.
 	const requestRunning = useRef(false);
 
-	// A refusal belongs to the record it was about, so it goes when the page shows another record.
-	useEffect(() => {
-		setArchiveError(null);
-	}, [record?.id]);
+	// Route ownership changes before async completions can act, and ends on unmount.
+	useLayoutEffect(() => {
+		currentRoute.current = route;
+		return () => {
+			currentRoute.current = null;
+		};
+	}, [route]);
 
 	const archive = useCallback(async () => {
-		if (!record || requestRunning.current) return;
+		if (!record || !route.identity || currentRoute.current !== route || requestRunning.current) return;
 		const page = ARCHIVABLE_PAGES[kind];
 		const question = `Archive "${record.title}"? It leaves the sidebar and search. Restore it from the CLI with: ${page.restoreCommand} ${record.id}`;
 		if (!window.confirm(question)) return;
 
 		requestRunning.current = true;
 		setIsArchiving(true);
-		setArchiveError(null);
+		setRefusal(null);
 		try {
 			try {
 				await page.archive(record.id);
 			} catch (error) {
 				if (!readMovedFailureState(error, 'archiveState')) {
 					// Refused: the record is where it was, and the server's message is the answer.
-					setArchiveError(error instanceof Error ? error.message : String(error));
+					if (currentRoute.current === route) {
+						setRefusal({ route, message: error instanceof Error ? error.message : String(error) });
+					}
 					return;
 				}
 				// The record reached the archive and only the commit failed. Say so as the task details view
 				// does, and leave the page: a page left open on an archived record invites a second archive.
 				// The server logs the Git error.
 				try {
-					window.alert(
-						`The ${page.noun} was archived, but committing the change failed. Check the repository before retrying.`,
-					);
+					if (currentRoute.current === route) {
+						window.alert(
+							`The ${page.noun} was archived, but committing the change failed. Check the repository before retrying.`,
+						);
+					}
 				} catch {
 					// A blocked dialog must not keep the page on the archived record.
 				}
 			}
 			await onRefreshData();
-			navigate(page.listPath);
+			if (currentRoute.current === route) navigate(page.listPath);
 		} finally {
 			requestRunning.current = false;
 			setIsArchiving(false);
 		}
-	}, [kind, record, onRefreshData, navigate]);
+	}, [kind, record, route, onRefreshData, navigate]);
 
-	return { archive, isArchiving, archiveError, dismissArchiveError: () => setArchiveError(null) };
+	return {
+		archive,
+		isArchiving,
+		archiveError: refusal?.route === route ? refusal.message : null,
+		dismissArchiveError: () => setRefusal(null),
+	};
 }
 
 /** The header button. It looks like the other header buttons, in the red of the task Archive button. */

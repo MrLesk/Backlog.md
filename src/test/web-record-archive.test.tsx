@@ -11,7 +11,14 @@ import { ThemeProvider } from "../web/contexts/ThemeContext.tsx";
 let activeRoot: Root | null = null;
 const originalFetch = globalThis.fetch;
 
-type ArchiveAnswer = { status: number; body: Record<string, unknown> } | "pending";
+type Answer = { status: number; body: Record<string, unknown> };
+type ArchiveAnswer = Answer | "pending";
+
+function deferred<T>() {
+	let resolve!: (value: T) => void;
+	const promise = new Promise<T>((complete) => { resolve = complete; });
+	return { promise, resolve };
+}
 
 /** The two pages with the Archive button, and the record each one shows. */
 const PAGES = [
@@ -45,8 +52,8 @@ const PAGES = [
 			rawContent: "Current steps.",
 			path: "doc-2 - Current-runbook.md",
 		}),
-		render: (onRefreshData: () => Promise<void>) => (
-			<DocumentationDetail docs={[]} onRefreshData={onRefreshData} />
+		render: (onRefreshData: () => Promise<void>, cached = false) => (
+			<DocumentationDetail docs={cached ? [PAGES[0].record(false)] : []} onRefreshData={onRefreshData} />
 		),
 	},
 	{
@@ -83,8 +90,8 @@ const PAGES = [
 			consequences: "",
 			rawContent: "Current steps.",
 		}),
-		render: (onRefreshData: () => Promise<void>) => (
-			<DecisionDetail decisions={[]} onRefreshData={onRefreshData} />
+		render: (onRefreshData: () => Promise<void>, cached = false) => (
+			<DecisionDetail decisions={cached ? [PAGES[1].record(false)] : []} onRefreshData={onRefreshData} />
 		),
 	},
 ] as const;
@@ -100,7 +107,10 @@ interface Session {
 	alerts: string[];
 	/** Moves the router inside the app, as a link would. */
 	navigate: NavigateFunction;
-	resolveArchive: (answer: { status: number; body: Record<string, unknown> }) => void;
+	resolveArchive: (answer: Answer) => void;
+	resolveLoad: (body: unknown, status?: number) => void;
+	resolveOtherLoad: (body?: unknown) => void;
+	resolveRefresh: () => void;
 }
 
 function setupDom(): HTMLElement {
@@ -121,9 +131,7 @@ function setupDom(): HTMLElement {
 }
 
 async function flush(): Promise<void> {
-	await act(async () => {
-		for (let round = 0; round < 5; round += 1) await new Promise((resolve) => setTimeout(resolve, 0));
-	});
+	await act(async () => {});
 }
 
 /**
@@ -133,9 +141,25 @@ async function flush(): Promise<void> {
  */
 async function open(
 	page: Page,
-	options: { path?: string; pattern?: string; archived?: boolean; confirm?: boolean; archive?: ArchiveAnswer },
+	options: {
+		path?: string;
+		pattern?: string;
+		archived?: boolean;
+		confirm?: boolean;
+		archive?: ArchiveAnswer;
+		load?: "pending";
+		otherLoad?: "pending";
+		refresh?: "pending";
+		cached?: boolean;
+	},
 ): Promise<Session> {
+	if (activeRoot) act(() => activeRoot?.unmount());
 	const container = setupDom();
+	const load = deferred<Response>();
+	const otherLoad = deferred<Response>();
+	const refresh = deferred<void>();
+	const json = (status: number, body: unknown) =>
+		new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } });
 	const session: Session = {
 		container,
 		requests: [],
@@ -144,6 +168,9 @@ async function open(
 		alerts: [],
 		navigate: () => {},
 		resolveArchive: () => {},
+		resolveLoad: (body, status = 200) => load.resolve(json(status, body)),
+		resolveOtherLoad: (body = page.otherRecord()) => otherLoad.resolve(json(200, body)),
+		resolveRefresh: () => refresh.resolve(),
 	};
 	window.confirm = (message?: string) => {
 		session.confirmations.push(String(message));
@@ -152,8 +179,6 @@ async function open(
 	window.alert = (message?: string) => {
 		session.alerts.push(String(message));
 	};
-	const json = (status: number, body: unknown) =>
-		new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } });
 	globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) => {
 		const url = new URL(String(input), "http://localhost");
 		session.requests.push(`${init?.method ?? "GET"} ${url.pathname}`);
@@ -166,13 +191,19 @@ async function open(
 			}
 			return json(answer.status, answer.body);
 		}
-		if (url.pathname === page.recordPath) return json(200, page.record(options.archived ?? false));
-		if (url.pathname === page.otherRecordPath) return json(200, page.otherRecord());
+		if (url.pathname === page.recordPath) {
+			return options.load === "pending" ? load.promise : json(200, page.record(options.archived ?? false));
+		}
+		if (url.pathname === page.otherRecordPath) {
+			return options.otherLoad === "pending" ? otherLoad.promise : json(200, page.otherRecord());
+		}
+		if (url.pathname === `${page.otherRecordPath}/archive`) return json(200, { success: true });
 		return json(404, { error: "Not found" });
 	}) as unknown as typeof globalThis.fetch;
 
 	const onRefreshData = async () => {
 		session.refreshes += 1;
+		if (options.refresh === "pending") await refresh.promise;
 	};
 	activeRoot = createRoot(container);
 	await act(async () => {
@@ -185,7 +216,8 @@ async function open(
 						}}
 					/>
 					<Routes>
-						<Route path={options.pattern ?? page.detailPattern} element={page.render(onRefreshData)} />
+						<Route path={options.pattern ?? page.detailPattern} element={page.render(onRefreshData, options.cached)} />
+						{!options.pattern && <Route path={page.newPattern} element={page.render(onRefreshData, options.cached)} />}
 						<Route path={page.listPath} element={<div data-testid="list-page">List</div>} />
 					</Routes>
 				</MemoryRouter>
@@ -226,6 +258,118 @@ afterEach(() => {
 });
 
 describe.each([...PAGES])("the $kind page", (page) => {
+	const expectCurrentRecord = (session: Session) => {
+		expect(session.container.querySelector("h1")?.textContent).toBe("Current runbook");
+		expect(session.container.textContent).toContain("Current steps.");
+		expect(session.container.textContent).not.toContain("Runbook steps.");
+		expect(session.container.querySelector('[role="alert"]')).toBeNull();
+		expect(session.container.querySelector('[data-testid="list-page"]')).toBeNull();
+		expect(session.alerts).toEqual([]);
+	};
+
+	describe.each([
+		{ name: "success", status: 200, cached: false },
+		{ name: "not found", status: 404, cached: false },
+		{ name: "cached fallback", status: 404, cached: true },
+		{ name: "ambiguity", status: 409, cached: true },
+	])("late load $name", ({ status, cached }) => {
+		it.each([{ name: "loading", pending: true }, { name: "loaded", pending: false }])("cannot replace B while B is $name", async ({ pending }) => {
+			const session = await open(page, { load: "pending", otherLoad: pending ? "pending" : undefined, cached });
+			expect(buttonNamed(session.container, "Archive")).toBeUndefined();
+			await act(async () => session.navigate(page.otherDetailPath));
+			await act(async () => {
+				session.resolveLoad(status === 200 ? page.record(false) : { error: "Old record failed." }, status);
+			});
+			if (pending) {
+				expect(session.container.textContent).toContain("Loading...");
+				expect(buttonNamed(session.container, "Archive")).toBeUndefined();
+				await act(async () => session.resolveOtherLoad());
+			}
+			expectCurrentRecord(session);
+			await click(buttonNamed(session.container, "Archive"));
+			expect(session.requests.filter((request) => request.startsWith("POST "))).toEqual([
+				`POST ${page.otherRecordPath}/archive`,
+			]);
+		});
+	});
+
+	it("offers no Archive when the loaded record does not match the current route", async () => {
+		const session = await open(page, { otherLoad: "pending" });
+		await act(async () => session.navigate(page.otherDetailPath));
+		await act(async () => session.resolveOtherLoad(page.record(false)));
+		expect(buttonNamed(session.container, "Archive")).toBeUndefined();
+		expect(session.requests.filter((request) => request.startsWith("POST "))).toEqual([]);
+	});
+
+	const completedArchives = [
+		{ name: "success", status: 200, body: { success: true } },
+		{ name: "moved commit failure", status: 500, body: { error: "Old commit failed.", archiveState: "moved" } },
+	] as const;
+
+	it.each([
+		{ name: "refusal", status: 400, body: { error: "Old record refused." }, refreshes: 0 },
+		...completedArchives.map((answer) => ({ ...answer, refreshes: 1 })),
+	])("ignores late archive $name after moving from A to B", async (answer) => {
+		const session = await open(page, { archive: "pending" });
+		await click(buttonNamed(session.container, "Archive"));
+		await act(async () => session.navigate(page.otherDetailPath));
+		expectCurrentRecord(session);
+		expect(buttonNamed(session.container, "Archive")?.disabled).toBe(true);
+		await click(buttonNamed(session.container, "Archive"));
+		expect(session.requests.filter((request) => request.startsWith("POST "))).toEqual([`POST ${page.archivePath}`]);
+		await act(async () => session.resolveArchive(answer));
+		expectCurrentRecord(session);
+		expect(session.refreshes).toBe(answer.refreshes);
+		expect(buttonNamed(session.container, "Archive")?.disabled).toBe(false);
+	});
+
+	it.each([...completedArchives])("rechecks route ownership after refresh waits ($name)", async (answer) => {
+		const session = await open(page, { archive: "pending", refresh: "pending" });
+		await click(buttonNamed(session.container, "Archive"));
+		await act(async () => session.resolveArchive(answer));
+		expect(session.refreshes).toBe(1);
+		const alertsOnA = [...session.alerts];
+		await act(async () => session.navigate(page.otherDetailPath));
+		await act(async () => session.resolveRefresh());
+		expect(session.container.querySelector("h1")?.textContent).toBe("Current runbook");
+		expect(session.container.querySelector('[data-testid="list-page"]')).toBeNull();
+		expect(session.container.querySelector('[role="alert"]')).toBeNull();
+		expect(session.alerts).toEqual(alertsOnA);
+	});
+
+	it("accepts normalized route aliases while the current archive is pending", async () => {
+		const prefix = page.kind === "document" ? "DOC" : "DECISION";
+		const alias = `${page.listPath}/${prefix}-0001/retired-runbook`;
+		const session = await open(page, { path: alias, archive: "pending" });
+		expect(buttonNamed(session.container, "Archive")?.disabled).toBe(false);
+		await click(buttonNamed(session.container, "Archive"));
+		await act(async () => session.navigate(page.detailPath));
+		await act(async () => session.resolveArchive({ status: 200, body: { success: true } }));
+		expect(archiveRequests(session, page)).toHaveLength(1);
+		expect(session.refreshes).toBe(1);
+		expect(session.container.querySelector('[data-testid="list-page"]')).toBeTruthy();
+	});
+
+	it("keeps the new editor when a previous record finishes loading", async () => {
+		const session = await open(page, { load: "pending" });
+		await act(async () => session.navigate(page.newPath));
+		await act(async () => session.resolveLoad(page.record(true)));
+		expect(session.container.querySelector('input[type="text"]')).toBeTruthy();
+		expect(buttonNamed(session.container, "Save")).toBeTruthy();
+		expect(buttonNamed(session.container, "Archive")).toBeUndefined();
+		expect(session.container.textContent).not.toContain("Archived");
+	});
+
+	it("ignores an archive completion after leaving the detail page", async () => {
+		const session = await open(page, { archive: "pending" });
+		await click(buttonNamed(session.container, "Archive"));
+		await act(async () => session.navigate(page.listPath));
+		await act(async () => session.resolveArchive(completedArchives[1]));
+		expect(session.alerts).toEqual([]);
+		expect(session.refreshes).toBe(1);
+		expect(session.container.querySelector('[data-testid="list-page"]')).toBeTruthy();
+	});
+
 	it("shows Archive in the header of a saved record in view mode, and not on the new page", async () => {
 		const saved = await open(page, {});
 		expect(buttonNamed(saved.container, "Archive")).toBeTruthy();
@@ -313,7 +457,10 @@ describe.each([...PAGES])("the $kind page", (page) => {
 		const session = await open(page, { archive: "pending" });
 		const button = buttonNamed(session.container, "Archive");
 
-		await click(button);
+		await act(async () => {
+			button?.dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
+			button?.dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
+		});
 		await click(button);
 
 		expect(archiveRequests(session, page)).toHaveLength(1);

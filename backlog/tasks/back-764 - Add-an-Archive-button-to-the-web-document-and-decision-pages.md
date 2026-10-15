@@ -3,9 +3,9 @@ id: BACK-764
 title: Add an Archive button to the web document and decision pages
 status: Done
 assignee:
-  - '@claude'
+  - '@codex-764'
 created_date: '2026-10-13 18:47'
-updated_date: '2026-10-14 06:55'
+updated_date: '2026-10-15 22:58'
 labels:
   - enhancement
 dependencies:
@@ -14,6 +14,10 @@ references:
   - 'https://github.com/MrLesk/Backlog.md/issues/1101'
   - core
   - web-server
+  - src/web/components/RecordArchive.tsx
+  - src/web/components/DocumentationDetail.tsx
+  - src/web/components/DecisionDetail.tsx
+  - src/test/web-record-archive.test.tsx
 modified_files:
   - src/core/backlog.ts
   - src/server/index.ts
@@ -86,6 +90,13 @@ This is the last of four stacked tasks for issue #1101. Each is one branch and o
 4. Pages: the document page and the decision page show Archive in the header in view mode for a saved record, hide it while editing, on the new page and for an archived record; an archived record shows the Archived label and no Edit. A refusal is shown with the server's message and the page stays.
 5. Tests: the two routes (success with the result on disk and in the lists, not found, ambiguous, refused, moved with a failed commit), and the two pages in JSDOM (visibility in each state, cancel, confirm with navigation, refusal, moved with a failed commit, one request at a time, archived record by URL).
 6. Check the running browser UI at desktop and narrow width, in light and dark theme, with the keyboard, and save screenshots to the scratchpad.
+
+Repair plan approved by Alex (2026-10-16):
+1. Merge repaired BACK-763 head 27030c6a527a623cd08efeb8043651461d794ad2 and verified origin/main 230b9e7e17548e068d73e6f041522f04008bf80a into the existing branch, preserving feature history and main legacy-section safety.
+2. Use existing normalized document/decision identity keys for route ownership. Guard each loader lifetime through success, fallback, error, and finally; only pass a loaded record matching the route to Archive.
+3. Keep one shared useRecordArchive owner. Capture the submitted route identity and suppress late refusal/alert/navigation on another route, including after awaited global refresh. Keep one request at a time and refresh app data for completed archives.
+4. Add deterministic deferred-promise regressions for both pages covering stale loads, archive refusal/success/moved failures, and route change while refresh waits; preserve normal, alias, editor, new, and archived behavior.
+5. Run focused route/archive/server/lifecycle/Git/link/commit/lock and inherited legacy-section checks, canonical type/lint/build checks, compiled CLI/MCP smoke, and the running browser flow. Leave source and task In Progress for full-context final architecture review; do not finalize, commit the repair, push, comment publicly, or resolve review threads.
 <!-- SECTION:PLAN:END -->
 
 ## Implementation Notes
@@ -104,16 +115,30 @@ Header wrap (base change, both pages): found in the browser check. The metadata 
 Browser check (criterion 15), against a binary built from the branch in a mktemp project: 1280, 920 with the sidebar open, 768 and 375 wide; light and dark; Tab from the title reaches Archive with a focus ring and Enter archives (decision-1 left the sidebar, the page went to /decisions, commit 'backlog: Archive decision decision-1', R100). Refusal for doc-3 shows core's message; archived doc-2 and decision-2 by URL show the Archived label and no buttons; edit mode at 375 fits. The browser pane dismisses native dialogs on its own, so window.confirm was replaced by a function that records its text and answers yes; the native dialog's look was not seen. Screenshots: scratchpad/back-764/ (01 to 28). HTTP and CLI transcript: scratchpad/back-764/http-transcript.txt.
 
 Review fixes. A: `?edit=true` opened the editor of an archived record (the document page then showed it without Save or Cancel). Both pages now keep the request in `editRequested` and derive `isEditing = editRequested && !isArchived`. A line in the loader (the reviewer's suggestion) would miss a URL that asks again while the record is open, because no new load runs; the page test shows it, failing on that second request. B: the alert for a record that moved while only the commit failed is now the task button's short sentence with the record noun; the Git error stays in the server log.
+
+Repair verification (2026-10-16), source held stable for full-context review:
+- Integrated exact repaired BACK-763 parent 27030c6a527a623cd08efeb8043651461d794ad2 (merge 59c74c23) and freshly verified origin/main 230b9e7e17548e068d73e6f041522f04008bf80a (merge dc0b70f3). Current main legacy-section safety and already-merged BACK-767 CI changes are preserved; local BACK-767 a017677fbb65daf954f9453b1320926d70604a25 is untouched. Modified-file attribution remains the original BACK-764 paths plus its repair; unrelated inherited main/parent paths are not attributed to this task.
+- Both detail loaders now guard their request lifetime through success, fallback, error, and finally. Existing documentIdKey/decisionIdKey define route identity; only a loaded record matching that route can Archive. One shared archive hook owns submitted-route completions. A late refusal or moved-commit alert cannot affect the new route. Completed archives still refresh global lists; navigation rechecks route ownership after that refresh. A route-owned refusal replaces clear-on-record effects. Current-record behavior and header markup/copy are preserved.
+- Deterministic controlled-promise React regressions: 54 archive cases pass; combined archive/ambiguous-ID/API/refresh/route suite98 passes. Covers both pages, late load success/not-found/cached-fallback/ambiguity while B loads or is loaded, wrong loaded ID, late archive refusal/success/moved-commit failure, route changes while global refresh waits, normalized aliases, new/read-only/editor states, unmount, and same-render double submission. Removed arbitrary timer flushes.
+- Subtraction proof in isolated temporary source copies: removing loader guards causes14 failures; removing archive guards causes14; removing the post-refresh navigation guard causes8. Repository source did not change during subtraction or final architecture review. Evidence: /private/tmp/back-764-subtraction-cykpdmot.
+- Broad inherited lifecycle/server/document/decision/Git/link/commit/error/atomic/publication/lock/legacy/instruction coverage:623 cases verified. Initial run622 passed and only the unchanged document interactive-viewer spacing assertion failed under NO_COLOR. Inspected it, then reran the affected file with env -u NO_COLOR TERM=xterm-256color:37/37 pass. Unchanged viewer suites also24/24 pass with that environment. Logs: /private/tmp/back-764-integration-tests.log, /private/tmp/back-764-doc-viewer-source.log, /private/tmp/back-764-viewer-tests.log.
+- Canonical Bun1.4.3 type check, Biome2.5.15 check, and bytecode build pass. Compiled executable lifecycle plus inherited legacy-section regression coverage168 cases verified; the same single viewer environment assertion was corrected by the narrow37/37 proper-env rerun. Compiled MCP stdio smoke15 tool calls passes document archive/read-only/restore/delete/ID reuse and task archive/restore/delete/ID reuse. Logs: /private/tmp/back-764-compiled-cli-tests.log, /private/tmp/back-764-doc-viewer-compiled.log, /private/tmp/back-764-compiled-mcp-smoke.log.
+- Current browser proof used the built executable in an isolated CLI-created temporary project: live document Archive/Edit controls and the native confirmation title, sidebar/search text, restore command, and confirm-dialog type were observed. Capturing the open native dialog stalled the provider; bounded recovery found the browser unavailable. Current manual cancel/success navigation was therefore not completed and is covered by deterministic React/server tests. Original width/theme/keyboard evidence carries because markup is unchanged; do not treat this as a fresh successful manual flow. Temporary browser provider disconnected; the temporary server was stopped.
+- Full-context architecture review from the coordinator is KEEP with no blocker or added scope. Final task status, summary, repair commit, and push remain on hold for coordinator authorization.
+
+Coordinator authorized finalization after stable KEEP review and completed checks, with the browser limitation above disclosed. Server81705 confirmed stopped; the browser provider is unavailable. Final reviewed source/test hashes and task modified-file attribution are unchanged. Final diff/type/Biome checks pass; the expected remote BACK-764 head59efc56bfa94c6a297115e1c6f5fdfdf1e656d80 and main230b9e7e17548e068d73e6f041522f04008bf80a were verified before protected publication.
 <!-- SECTION:NOTES:END -->
 
 ## Final Summary
 
 <!-- SECTION:FINAL_SUMMARY:BEGIN -->
-The document page and the decision page have an `Archive` button. It extends the Archive flow of the task details view: a native confirmation that names the title, says the record leaves the sidebar and search, and gives the CLI restore command; one request at a time, without retry; core's message shown under the header when the archive is refused, with the page staying; and a record that moved while only the commit failed treated as archived, with the task button's sentence for that case ("The document was archived, but committing the change failed. Check the repository before retrying."), a refresh and the list page. An archived record opened by URL shows an `Archived` label and neither Edit nor Archive, and it never opens the editor, even when `?edit=true` asks for it. The web has no delete or restore control and no route for them.
+The document and decision detail pages share one Archive flow: native confirmation, one request at a time, core refusal messages, global list refresh, and navigation after a completed archive. Archived records remain read-only. The server routes remain thin Core adapters and the web still has no delete or restore controls.
 
-The server has two thin routes, `POST /api/docs/<id>/archive` and `POST /api/decisions/<id>/archive`, with one handler that calls `Core.archiveContentRecord` with the kind and maps its answer as the task archive route does (404, 409, 400 with core's message, 500 with `archiveState: "moved"`). Core changed in one place: the commit failure of an archive is tagged for the browser, as task archive's is. Both pages share `src/web/components/RecordArchive.tsx`.
+The repair ties loads and archive completions to the current normalized route identity using existing document/decision ID keys. Late load success, fallback, errors, and finally cannot replace a newer record or end its loading state. Archive receives only a loaded record matching the route. Late refusal/alert/navigation cannot affect another route, and navigation is checked again after the awaited global refresh. Completed old archives may still refresh app data. Original header markup and copy are preserved.
 
-Base code of both pages changed in two places. The header row and its metadata row wrap, because Archive was cut off at common window widths. Edit mode is derived as `editRequested && !isArchived`, so no request (the Edit button, `?edit=true`, before or after the record loads) opens the editor of an archived record.
+Verification:54 archive React cases and98 combined web cases pass;623 inherited integration cases verified after the one unchanged viewer environment case passes in its37-case rerun with env -u NO_COLOR TERM=xterm-256color;24 other viewer cases pass. Compiled CLI lifecycle and legacy-section coverage168 cases verified after the same narrow viewer rerun; compiled MCP stdio lifecycle smoke15 calls passes. Bun1.4.3 type check, Biome2.5.15 check, bytecode build, and diff checks pass. Subtraction proof in isolated copies produces14 loader-guard failures,14 archive-guard failures, and8 failures when the final navigation check is removed.
 
-Verification: `bunx tsc --noEmit` and `bun run check .` clean; `web-record-archive` 18 and `server-content-record-archive` 16 tests pass, with the archive, server and web test files of the stack. The new edit-mode test fails on both pages without the derived value, and on the second request with a line in the loader instead. Checked in the running browser against a built binary at 1280, 920, 768 and 375 pixels wide, in light and dark, with the keyboard (Tab to Archive, Enter archives with the confirmation answering yes). The browser pane dismisses native dialogs, so the dialog itself was not seen; its text was recorded from the page.
+Current browser proof observed the built binary showing live Archive/Edit controls and the correct native confirmation. Capturing its open native dialog stalled and disconnected the browser provider. A fresh manual cancel/success navigation flow was not completed; deterministic React/server tests cover it. Original width/theme/keyboard evidence carries because markup is unchanged. Temporary resources are stopped.
+
+The existing branch preserves the exact repaired BACK-763 parent and verified main230b9e7, including the separate BACK-768 legacy-section safety fix and already-merged BACK-767 workflow changes. Local BACK-767 remains untouched. Full-context final architecture review is KEEP. No PR merge, public comment, or review-thread resolution is part of this repair.
 <!-- SECTION:FINAL_SUMMARY:END -->
