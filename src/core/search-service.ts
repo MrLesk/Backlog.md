@@ -15,6 +15,7 @@ import {
 	type TaskSearchFields,
 } from "../utils/task-search.ts";
 import type { ContentStore, ContentStoreEvent } from "./content-store.ts";
+import { type TaskCorpus, withReadiness } from "./task-detail.ts";
 
 /**
  * Documents and decisions are indexed with the same Fuse keys as tasks, so they expose the task
@@ -156,7 +157,21 @@ export class SearchService {
 	}
 
 	private applySnapshot(tasks: Task[], documents: Document[], decisions: Decision[]): void {
-		this.tasks = tasks.map((task) => ({
+		let taskItems: Task[] = tasks;
+		try {
+			const corpusSnapshot = this.store.getTaskCorpusSnapshot();
+			const corpus: TaskCorpus = {
+				tasks: corpusSnapshot.activeTasks,
+				completedTasks: corpusSnapshot.completedTasks,
+				statuses: corpusSnapshot.config?.statuses,
+				ambiguousIds: corpusSnapshot.identityIndex?.getContestedIds(),
+			};
+			taskItems = withReadiness(tasks, corpus);
+		} catch {
+			// If corpus is not yet ready or store throws, fallback to original tasks
+		}
+
+		this.tasks = taskItems.map((task) => ({
 			...buildTaskSearchFields(task),
 			type: "task",
 			task,
