@@ -203,7 +203,7 @@ describe("filters mean the same thing with and without a query", () => {
 	it("keeps dependency readiness meaning the same with and without a query", () => {
 		// Readiness is no longer a filter predicate: it is derived over whatever the other filters
 		// left, against the whole corpus. A query must not change which rows come back ready.
-		const corpus = { tasks: milestoneTasks, completedTasks: [], statuses: ["To Do", "In Progress", "Done"] };
+		const corpus = { tasks: milestoneTasks, archivedTasks: [], statuses: ["To Do", "In Progress", "Done"] };
 		const readyIds = (options: TaskFilterOptions) =>
 			withReadiness(applyTaskFilters(milestoneTasks, options), corpus)
 				.filter((row) => row.isReady)

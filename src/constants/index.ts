@@ -10,8 +10,6 @@ export const DEFAULT_DIRECTORIES = {
 	TASKS: "tasks",
 	/** Draft tasks directory */
 	DRAFTS: "drafts",
-	/** Completed tasks directory */
-	COMPLETED: "completed",
 	/** Archive root directory */
 	ARCHIVE: "archive",
 	/** Archived tasks directory */
@@ -27,6 +25,14 @@ export const DEFAULT_DIRECTORIES = {
 	/** Milestones directory */
 	MILESTONES: "milestones",
 } as const;
+
+/**
+ * Every directory archived tasks are read from, relative to the backlog directory.
+ *
+ * Archiving writes to the first. The second is a folder older projects can still hold archived
+ * tasks in; they are read like any other archived task until `backlog doctor --fix` moves them.
+ */
+export const ARCHIVED_TASK_DIRECTORIES = [DEFAULT_DIRECTORIES.ARCHIVE_TASKS, "completed"] as const;
 
 /**
  * Default configuration file names

@@ -222,7 +222,7 @@ describe("Task Dependencies", () => {
 		expect(loadedTask?.dependencies).toEqual([]);
 	});
 
-	test("should sanitize archived task dependencies across the working copy and the completed corpus", async () => {
+	test("keeps every dependency on an archived task, in the working copy and in the archive", async () => {
 		const archivedTarget: Task = {
 			id: "task-1",
 			title: "Archive target",
@@ -245,15 +245,15 @@ describe("Task Dependencies", () => {
 			description: "Depends on archive target",
 		};
 
-		const completedDependent: Task = {
+		const archivedDependent: Task = {
 			id: "task-3",
-			title: "Completed dependent task",
+			title: "Archived dependent task",
 			status: "Done",
 			assignee: [],
 			createdDate: "2024-01-01",
 			labels: [],
 			dependencies: ["task-1"],
-			description: "A completed record still resolves the ID, so it is cleaned too",
+			description: "An archived record keeps resolving the ID too",
 		};
 
 		const childTask: Task = {
@@ -265,31 +265,29 @@ describe("Task Dependencies", () => {
 			labels: [],
 			dependencies: ["task-1"],
 			parentTaskId: "task-1",
-			description: "Parent relationship is out of scope for archive sanitization",
+			description: "The parent relationship is kept as well",
 		};
 
 		await core.createTask(archivedTarget, false);
 		await core.createTask(activeDependent, false);
-		await core.createTask(completedDependent, false);
+		await core.createTask(archivedDependent, false);
 		await core.createTask(childTask, false);
-		await core.completeTask("task-3", false);
+		await core.archiveTask("task-3", false);
 
-		const archived = await core.archiveTask("task-1", false);
-		expect(archived.success).toBe(true);
-		expect(archived.cleanedTaskIds).toEqual(["TASK-2", "TASK-4", "TASK-3"]);
+		expect(await core.archiveTask("task-1", false)).toBe(true);
 
-		const updatedActive = await core.filesystem.loadTask("task-2");
-		const updatedChild = await core.filesystem.loadTask("task-4");
-		const completedTasks = await core.filesystem.listCompletedTasks();
-		const completed = completedTasks.find((task) => task.id === "TASK-3");
+		const activeAfter = await core.filesystem.loadTask("task-2");
+		const childAfter = await core.filesystem.loadTask("task-4");
+		const archivedTasks = await core.filesystem.listArchivedTasks();
+		const archivedAfter = archivedTasks.find((task) => task.id === "TASK-3");
 
-		expect(updatedActive?.dependencies).toEqual([]);
-		expect(updatedChild?.dependencies).toEqual([]);
-		expect(updatedChild?.parentTaskId).toBe("TASK-1");
-		expect(completed?.dependencies).toEqual([]);
+		expect(activeAfter?.dependencies).toEqual(["TASK-1", "task-1"]);
+		expect(childAfter?.dependencies).toEqual(["task-1"]);
+		expect(childAfter?.parentTaskId).toBe("TASK-1");
+		expect(archivedAfter?.dependencies).toEqual(["task-1"]);
 	});
 
-	test("should sanitize archive links when archiving by numeric id with custom task prefix", async () => {
+	test("archives by numeric id with a custom task prefix and keeps the dependency on it", async () => {
 		const config = await core.filesystem.loadConfig();
 		expect(config).not.toBeNull();
 		if (!config) {
@@ -306,33 +304,16 @@ describe("Task Dependencies", () => {
 			dependencies: [archiveTarget.id],
 		});
 
-		const archived = await core.archiveTask("1", false);
-		expect(archived.success).toBe(true);
+		expect(await core.archiveTask("1", false)).toBe(true);
 
-		const updatedDependent = await core.filesystem.loadTask(dependentTask.id);
-		expect(updatedDependent?.dependencies).toEqual([]);
-	});
-
-	test("accepts a completed task as a dependency at create and edit time", async () => {
-		const { task: predecessor } = await core.createTaskFromInput({ title: "Finished predecessor", status: "Done" });
-		expect(await core.completeTask(predecessor.id, false)).toBe(true);
-
-		const { task: created } = await core.createTaskFromInput({
-			title: "Created after completion",
-			dependencies: [predecessor.id],
-		});
-		expect(created.dependencies).toEqual([predecessor.id]);
-
-		const { task: edited } = await core.createTaskFromInput({ title: "Edited after completion" });
-		await core.updateTaskFromInput(edited.id, { dependencies: [predecessor.id] }, false);
-		expect((await core.filesystem.loadTask(edited.id))?.dependencies).toEqual([predecessor.id]);
+		const dependentAfter = await core.filesystem.loadTask(dependentTask.id);
+		expect(dependentAfter?.dependencies).toEqual([archiveTarget.id]);
 	});
 
 	test("accepts an archived task as a dependency at create and edit time", async () => {
-		const { task: predecessor } = await core.createTaskFromInput({ title: "Archived predecessor" });
-		// Keep an active task with a higher ID so the allocator does not reuse the archived ID.
+		const { task: predecessor } = await core.createTaskFromInput({ title: "Archived predecessor", status: "Done" });
 		const { task: edited } = await core.createTaskFromInput({ title: "Edited after archive" });
-		expect((await core.archiveTask(predecessor.id, false)).success).toBe(true);
+		expect(await core.archiveTask(predecessor.id, false)).toBe(true);
 
 		const { task: created } = await core.createTaskFromInput({
 			title: "Created after archive",
@@ -352,7 +333,7 @@ describe("Task Dependencies", () => {
 			dependencies: [predecessor.id],
 		});
 
-		expect(await core.completeTask(predecessor.id, false)).toBe(true);
+		expect(await core.archiveTask(predecessor.id, false)).toBe(true);
 
 		// --depends-on replaces the whole list, so the existing completed entry must revalidate too.
 		await core.updateTaskFromInput(dependent.id, { dependencies: [predecessor.id, other.id] }, false);
@@ -374,10 +355,10 @@ describe("Task Dependencies", () => {
 	test("fails closed when a completed task and an active file claim the same identity", async () => {
 		const { task: predecessor } = await core.createTaskFromInput({ title: "Predecessor", status: "Done" });
 		const { task: dependent } = await core.createTaskFromInput({ title: "Dependent" });
-		expect(await core.completeTask(predecessor.id, false)).toBe(true);
+		expect(await core.archiveTask(predecessor.id, false)).toBe(true);
 
 		// Recreate the completed task's file in the active tasks directory so two files claim its ID.
-		const completed = (await core.filesystem.listCompletedTasks()).find((task) => task.id === predecessor.id);
+		const completed = (await core.filesystem.listArchivedTasks()).find((task) => task.id === predecessor.id);
 		expect(completed?.filePath).toBeDefined();
 		if (!completed?.filePath) return;
 		const duplicatePath = join(core.filesystem.tasksDir, "task-1 - Duplicate.md");
@@ -546,8 +527,8 @@ describe("Self-referential and cyclic dependencies", () => {
 		// Two records claim TASK-3 across stores: one completed, one active. The graph refuses to
 		// traverse the contested identity, so the return path behind it must fail the edit closed.
 		await core.createTask({ ...record("task-3", "Contested", ["task-1"]), status: "Done" }, false);
-		expect(await core.completeTask("task-3", false)).toBe(true);
-		const completed = (await core.filesystem.listCompletedTasks()).find((task) => taskIdsEqual(task.id, "task-3"));
+		expect(await core.archiveTask("task-3", false)).toBe(true);
+		const completed = (await core.filesystem.listArchivedTasks()).find((task) => taskIdsEqual(task.id, "task-3"));
 		expect(completed?.filePath).toBeDefined();
 		if (!completed?.filePath) return;
 		await Bun.write(

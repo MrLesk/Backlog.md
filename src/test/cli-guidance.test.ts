@@ -261,15 +261,20 @@ describe("CLI Integration", () => {
 			}
 		}, 10_000);
 
-		it("explains completion as periodic cleanup in workflow guidance", async () => {
+		it("explains the single archive flow in workflow guidance and names no command that does not exist", async () => {
 			for (const name of ["overview", "task-finalization"]) {
 				const guide = await $`bun ${CLI_PATH} instructions ${name}`.cwd(TEST_DIR).text();
 				expect(guide).toContain("periodic cleanup");
-				expect(guide).toContain("backlog task complete");
-				expect(guide).toContain("record and dependency links");
+				expect(guide).toContain("backlog task archive");
 				expect(guide).toContain("canceled, duplicate, or invalid work");
-				expect(guide).toContain("incoming dependencies and task references");
+				expect(guide).toContain("read-only");
+				expect(guide).toMatch(/keep(s|ing) (its|their) ID/);
+				for (const absentCommand of ["task complete", "task delete", "task restore"]) {
+					expect(guide).not.toContain(absentCommand);
+				}
 			}
+			const overview = await $`bun ${CLI_PATH} instructions overview`.cwd(TEST_DIR).text();
+			expect(overview).toContain("counts as satisfied only when that task is in the final status");
 			expect(CLI_AGENT_NUDGE).not.toContain("task complete");
 		});
 
@@ -309,7 +314,8 @@ describe("CLI Integration", () => {
 			const editHelp = await $`bun ${CLI_PATH} task edit --help`.cwd(TEST_DIR).text();
 			const createHelpCompact = createHelp.replace(/\s+/g, " ");
 			const editHelpCompact = editHelp.replace(/\s+/g, " ");
-			const completeHelp = await $`bun ${CLI_PATH} task complete --help`.cwd(TEST_DIR).text();
+			const archiveHelp = (await $`bun ${CLI_PATH} task archive --help`.cwd(TEST_DIR).text()).replace(/\s+/g, " ");
+			const taskHelp = await $`bun ${CLI_PATH} task --help`.cwd(TEST_DIR).text();
 
 			expect(createHelp).toContain("title: String");
 			expect(createHelp).toContain("description: Markdown");
@@ -364,10 +370,14 @@ describe("CLI Integration", () => {
 			expect(editHelpCompact).toContain("remove all task labels");
 			expect(editHelp).toContain("plan: Markdown");
 			expect(editHelp).toContain("Writes:");
-			expect(completeHelp).toContain("During periodic cleanup");
-			expect(completeHelp).toContain("off the board to completed storage");
-			expect(completeHelp).toContain("preserving its record and dependency links");
-			expect(completeHelp).not.toContain("cleanup/archive");
+			expect(archiveHelp).toContain("move a task off the board into the archive, keeping its ID and links");
+			expect(archiveHelp).toContain("taskId: Task ID - Task to archive, in any status");
+			expect(archiveHelp).toContain("Its ID stays reserved");
+			expect(archiveHelp).toContain("no other task is changed");
+			expect(taskHelp).toContain("archive <taskId>");
+			for (const absentCommand of ["complete", "delete", "restore"]) {
+				expect(taskHelp).not.toContain(absentCommand);
+			}
 		});
 
 		it("documents real-newline handling once for every multiline Markdown flag", async () => {

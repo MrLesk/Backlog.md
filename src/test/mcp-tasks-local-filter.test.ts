@@ -25,15 +25,15 @@ const remoteTask: Task = {
 	source: "remote",
 };
 
-const completedTask: Task = {
+const archivedTask: Task = {
 	id: "task-3",
-	title: "Completed task",
+	title: "Archived task",
 	status: "Done",
 	assignee: [],
 	createdDate: "2025-12-03",
 	labels: [],
 	dependencies: [],
-	source: "completed",
+	source: "archived",
 };
 
 describe("MCP task tools local filtering", () => {
@@ -56,19 +56,19 @@ describe("MCP task tools local filtering", () => {
 		expect(text).not.toContain("task-2 - Remote task");
 	});
 
-	it("searches active and completed working-copy tasks without loading branches", async () => {
+	it("searches active and archived working-copy tasks without loading branches", async () => {
 		let crossBranchLoads = 0;
-		let includeCompleted = false;
+		let includeArchived = false;
 		const laterActiveTask = { ...localTask, id: "task-20" };
-		const earlierCompletedTask = { ...completedTask, id: "task-1" };
+		const earlierArchivedTask = { ...archivedTask, id: "task-1" };
 		const handlers = new TaskHandlers({
 			loadTasks: async () => {
 				crossBranchLoads++;
 				return [localTask, remoteTask];
 			},
-			loadWorkingCopyTasks: async (requestedIncludeCompleted = false) => {
-				includeCompleted = requestedIncludeCompleted;
-				return [earlierCompletedTask, laterActiveTask];
+			loadWorkingCopyTasks: async (requestedIncludeArchived = false) => {
+				includeArchived = requestedIncludeArchived;
+				return [earlierArchivedTask, laterActiveTask];
 			},
 		} as unknown as McpServer);
 
@@ -79,7 +79,7 @@ describe("MCP task tools local filtering", () => {
 
 		for (const text of texts) {
 			expect(text).toContain("task-20 - Local task");
-			expect(text).toContain("task-1 - Completed task");
+			expect(text).toContain("task-1 - Archived task");
 			expect(text).not.toContain("task-2 - Remote task");
 		}
 
@@ -87,9 +87,9 @@ describe("MCP task tools local filtering", () => {
 		const limitedText = (limitedResult.content ?? [])
 			.map((c) => (typeof c === "object" && c && "text" in c ? c.text : ""))
 			.join("\n");
-		expect(limitedText).toContain("task-1 - Completed task");
+		expect(limitedText).toContain("task-1 - Archived task");
 		expect(limitedText).not.toContain("task-20 - Local task");
 		expect(crossBranchLoads).toBe(0);
-		expect(includeCompleted).toBe(true);
+		expect(includeArchived).toBe(true);
 	});
 });

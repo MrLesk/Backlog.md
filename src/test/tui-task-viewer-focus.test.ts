@@ -70,7 +70,7 @@ async function withTaskViewer(
 			filesystem: {
 				listMilestones: async () => [],
 				listArchivedMilestones: async () => [],
-				listCompletedTasks: async () => [],
+				listArchivedTasks: async () => [],
 				loadConfig: async () => null,
 			},
 			getTaskWithSubtasks: async () => null,

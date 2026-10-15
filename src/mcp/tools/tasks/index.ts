@@ -10,7 +10,7 @@ import {
 import { createSimpleValidatedTool } from "../../validation/tool-wrapper.ts";
 import type { TaskCreateArgs, TaskEditRequest, TaskListArgs, TaskSearchArgs } from "./handlers.ts";
 import { TaskHandlers } from "./handlers.ts";
-import { taskArchiveSchema, taskCompleteSchema, taskViewSchema } from "./schemas.ts";
+import { taskArchiveSchema, taskViewSchema } from "./schemas.ts";
 
 export function registerTaskTools(server: McpServer, config: BacklogConfig): void {
 	const handlers = new TaskHandlers(server);
@@ -80,24 +80,13 @@ export function registerTaskTools(server: McpServer, config: BacklogConfig): voi
 	const archiveTaskTool: McpToolHandler = createSimpleValidatedTool(
 		{
 			name: "task_archive",
-			description: "Archive canceled, duplicate, or invalid work; removes incoming dependencies and task references",
+			description:
+				"Move a task in any status off the board into the archive; keeps its ID, record, dependencies, and references",
 			inputSchema: taskArchiveSchema,
 			annotations: { title: "Archive Task", destructiveHint: true },
 		},
 		taskArchiveSchema,
 		async (input) => handlers.archiveTask(input as { id: string }),
-	);
-
-	const completeTaskTool: McpToolHandler = createSimpleValidatedTool(
-		{
-			name: "task_complete",
-			description:
-				"Move a finished task in the configured final status off the board to completed storage during periodic cleanup; preserves its record and dependency links",
-			inputSchema: taskCompleteSchema,
-			annotations: { title: "Complete Task", destructiveHint: true },
-		},
-		taskCompleteSchema,
-		async (input) => handlers.completeTask(input as { id: string }),
 	);
 
 	server.addTool(createTaskTool);
@@ -106,13 +95,11 @@ export function registerTaskTools(server: McpServer, config: BacklogConfig): voi
 	server.addTool(editTaskTool);
 	server.addTool(viewTaskTool);
 	server.addTool(archiveTaskTool);
-	server.addTool(completeTaskTool);
 }
 
 export type { TaskCreateArgs, TaskEditArgs, TaskListArgs, TaskSearchArgs } from "./handlers.ts";
 export {
 	taskArchiveSchema,
-	taskCompleteSchema,
 	taskListSchema,
 	taskSearchSchema,
 	taskViewSchema,

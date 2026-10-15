@@ -546,7 +546,7 @@ describe("unified view filter state", () => {
 		const displayCandidates = [activeTask];
 		const readyFiltered = withReadiness(displayCandidates, {
 			tasks: [activeTask],
-			completedTasks: [completedDep],
+			archivedTasks: [completedDep],
 			statuses: undefined,
 		}).filter((task) => task.isReady);
 

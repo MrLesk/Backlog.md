@@ -5,13 +5,14 @@
 
 import type { ChildProcess } from "node:child_process";
 import { randomUUID } from "node:crypto";
-import { chmod, copyFile, mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { chmod, copyFile, mkdir, mkdtemp, rename, rm, writeFile } from "node:fs/promises";
 import net from "node:net";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { basename, join } from "node:path";
 import { $ } from "bun";
 import type { Core } from "../core/backlog.ts";
 import { initializeProject as initializeProjectShared } from "../core/init.ts";
+import type { FileSystem } from "../file-system/operations.ts";
 import { serializeTask } from "../markdown/serializer.ts";
 import type { Task } from "../types/index.ts";
 
@@ -176,6 +177,15 @@ export async function retry<T>(fn: () => Promise<T>, maxAttempts = 3, delay = 10
 	}
 
 	throw lastError || new Error("Retry failed");
+}
+
+/** Move a task file into the archive folder directly, for a test that has a FileSystem but no Core. */
+export async function archiveTaskFile(filesystem: FileSystem, taskId: string): Promise<boolean> {
+	const task = await filesystem.loadTask(taskId);
+	if (!task?.filePath) return false;
+	await mkdir(filesystem.archiveTasksDir, { recursive: true });
+	await rename(task.filePath, join(filesystem.archiveTasksDir, basename(task.filePath)));
+	return true;
 }
 
 /**

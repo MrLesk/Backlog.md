@@ -57,11 +57,7 @@ import { createLoadingScreen } from "./loading.ts";
 import { formatPriorityMarker } from "./priority-marker.ts";
 import { formatProjectBadge } from "./project.ts";
 import { formatStatusWithIcon, getStatusColor, getStatusIcon, wrapStatusColor } from "./status-icon.ts";
-import {
-	completeTaskFromTui,
-	formatTaskArchivedMessage,
-	formatTaskCompletionBlockedMessage,
-} from "./task-lifecycle.ts";
+import { archiveTaskFromTui, formatArchiveNotice, formatReadOnlyNotice } from "./task-lifecycle.ts";
 import { formatTaskTypeBadge } from "./task-type.ts";
 import { addScrollKeys, createScreen, formatTuiTitle } from "./tui.ts";
 
@@ -305,12 +301,12 @@ export async function viewTaskEnhanced(
 	let configuredProjects = getProjectValues();
 	let availableLabels: string[] = [];
 	let contentStore: Awaited<ReturnType<typeof core.getContentStore>> | null = null;
-	// Completed tasks are loaded alongside the milestone metadata so dependency readiness can
+	// Archived tasks are loaded alongside the milestone metadata so dependency readiness can
 	// resolve dependencies that already left the active corpus, without a second full task load.
-	const [milestoneEntities, archivedMilestones, completedTasks] = await Promise.all([
+	const [milestoneEntities, archivedMilestones, archivedTasks] = await Promise.all([
 		core.filesystem.listMilestones(),
 		core.filesystem.listArchivedMilestones(),
-		core.filesystem.listCompletedTasks(),
+		core.filesystem.listArchivedTasks(),
 	]);
 	const { availableMilestoneTitles, resolveMilestoneLabel } = buildTaskViewerMilestoneFilterModel(
 		milestoneEntities,
@@ -366,9 +362,9 @@ export async function viewTaskEnhanced(
 
 	// Dependency readiness must resolve against the whole corpus, not the filtered display list, so
 	// it uses the unfiltered snapshot when the caller narrowed what is shown. Both sides stay
-	// mutable because completing a task from this view moves it between them.
+	// mutable because archiving a task from this view moves it between them.
 	let readinessSnapshot = options.readinessTasks ? [...options.readinessTasks] : null;
-	const readinessCompletedTasks = [...completedTasks];
+	const readinessArchivedTasks = [...archivedTasks];
 	// The corpus that both readiness and the dependency graph resolve against, so the two never
 	// disagree about which records this view can see.
 	const resolveDependencyCorpus = (): TaskCorpus => {
@@ -376,7 +372,7 @@ export async function viewTaskEnhanced(
 		if (readinessSnapshot) {
 			tasks = mergeDependencyCorpusTasks(readinessSnapshot, allTasks);
 		}
-		return { tasks, completedTasks: readinessCompletedTasks, statuses };
+		return { tasks, archivedTasks: readinessArchivedTasks, statuses };
 	};
 
 	// State for filtering - normalize filters to match configured values
@@ -1292,8 +1288,7 @@ export async function viewTaskEnhanced(
 		try {
 			const result = await core.editTaskInTui(selectedTask.id, screen, selectedTask);
 			if (result.reason === "read_only") {
-				const branchInfo = result.task?.branch ? ` in branch ${result.task.branch}` : "";
-				showTransientHelp(` {red-fg}Task is read-only${branchInfo}.{/}`);
+				showTransientHelp(formatReadOnlyNotice(result.task ?? selectedTask));
 				return;
 			}
 			if (result.reason === "editor_failed") {
@@ -1382,54 +1377,19 @@ export async function viewTaskEnhanced(
 		}
 	};
 
-	const applyTaskLifecycleShortcut = async (task: Task, action: "complete" | "archive") => {
-		if (task.branch) {
-			const verb = action === "complete" ? "complete" : "archive";
-			showTransientHelp(` {red-fg}Cannot ${verb} task from branch "${task.branch}".{/}`);
-			return;
-		}
-
-		const confirmed = await runWithModalGuard(() =>
-			openConfirmPopup({
-				screen,
-				title: action === "complete" ? "Move to Completed" : "Archive Task",
-				message:
-					action === "complete"
-						? `Move {bold}${task.id}{/bold} to completed?\nRemoves from board; keeps record\nand dependency links.`
-						: `Archive {bold}${task.id}{/bold}?\nCanceled, duplicate, or invalid work.\nRemoves incoming task links.`,
-			}),
+	const archiveCurrentTask = async (task: Task) => {
+		const result = await archiveTaskFromTui(core, task, (popup) =>
+			runWithModalGuard(() => openConfirmPopup({ screen, ...popup })),
 		);
-
-		if (!confirmed) {
-			return;
+		if (result.archived) {
+			// The record leaves the active graph and joins the archived one, where the tasks that
+			// depend on it keep resolving it.
+			readinessSnapshot = readinessSnapshot?.filter((candidate) => !taskIdsEqual(candidate.id, task.id)) ?? null;
+			readinessArchivedTasks.push(task);
+			removeTaskFromCurrentView(task.id);
 		}
-
-		try {
-			const config = action === "archive" ? await core.fs.loadConfig() : null;
-			const archived = action === "archive" ? await core.archiveTask(task.id, config?.autoCommit ?? false) : undefined;
-			const result = archived ? { ...archived, reason: "failed" as const } : await completeTaskFromTui(core, task);
-
-			if (result.success) {
-				// Drop the record from the active graph; completed work remains completion evidence.
-				readinessSnapshot = readinessSnapshot?.filter((candidate) => !taskIdsEqual(candidate.id, task.id)) ?? null;
-				if (action === "complete") {
-					readinessCompletedTasks.push(task);
-				}
-				removeTaskFromCurrentView(task.id);
-				const message = archived
-					? formatTaskArchivedMessage(task.id, archived.cleanedTaskIds)
-					: `Moved ${task.id} to completed`;
-				showTransientHelp(` {green-fg}${message}{/}`);
-			} else if (action === "complete" && result.reason === "not-terminal") {
-				showTransientHelp(` {red-fg}${formatTaskCompletionBlockedMessage(task.id, result.terminalStatus)}{/}`);
-			} else {
-				const verb = action === "complete" ? "complete" : "archive";
-				showTransientHelp(` {red-fg}Failed to ${verb} ${task.id}{/}`);
-			}
-		} catch (error) {
-			const verb = action === "complete" ? "completing" : "archiving";
-			showTransientHelp(` {red-fg}Error ${verb} task: ${error instanceof Error ? error.message : "Unknown error"}{/}`);
-		}
+		const notice = formatArchiveNotice(task, result);
+		if (notice) showTransientHelp(notice);
 	};
 
 	// Handle resize
@@ -1503,18 +1463,11 @@ export async function viewTaskEnhanced(
 		}
 	});
 
-	screen.key(["c", "C"], async () => {
-		if (modalOpen || filterPopupOpen || currentFocus === "filters") return;
-		const task = getCurrentShortcutTask();
-		if (!task) return;
-		await applyTaskLifecycleShortcut(task, "complete");
-	});
-
 	screen.key(["a", "A"], async () => {
 		if (modalOpen || filterPopupOpen || currentFocus === "filters") return;
 		const task = getCurrentShortcutTask();
 		if (!task) return;
-		await applyTaskLifecycleShortcut(task, "archive");
+		await archiveCurrentTask(task);
 	});
 
 	screen.key(["?"], async () => {
@@ -1661,6 +1614,10 @@ export function generateDetailContent(
 		headerContent.push(
 			` {yellow-fg}⚠ Read-only:{/} This task exists in branch {green-fg}${branchName}{/}. Switch to that branch to edit it.`,
 		);
+	}
+
+	if (task.source === "archived") {
+		headerContent.push(" {yellow-fg}⚠ Read-only:{/} This task is archived.");
 	}
 
 	const bodyContent: string[] = [];

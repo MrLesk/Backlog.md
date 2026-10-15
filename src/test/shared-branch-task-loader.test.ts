@@ -63,7 +63,7 @@ describe("shared immutable branch task loading", () => {
 			filePath: "/tmp/working-copy-task-corpus-test/backlog/completed/task-1 - Shared.md",
 		};
 		core.fs.listTasks = async () => [active];
-		core.fs.listCompletedTasks = async () => [completed];
+		core.fs.listArchivedTasks = async () => [completed];
 		core.fs.loadConfig = async () => config;
 
 		expect((await core.loadWorkingCopyTasks(true)).map((task) => task.title)).toEqual(["Active lifecycle"]);
@@ -163,7 +163,7 @@ describe("shared immutable branch task loading", () => {
 			await initializeFilesystemTestProject(core, "Working-copy branch fallback");
 			core.fs.loadConfig = async () => ({ ...config, remoteOperations: false });
 			core.fs.listTasks = async () => workingCopyTasks;
-			core.fs.listCompletedTasks = async () => [];
+			core.fs.listArchivedTasks = async () => [];
 			core.listTasksWithMetadata = async () => workingCopyTasks;
 			core.git.listRecentBranchTips = async () => [
 				{ name: "main", commit: "0".repeat(40), current: true },
@@ -219,7 +219,7 @@ describe("shared immutable branch task loading", () => {
 			await initializeFilesystemTestProject(core, "Incomplete branch generation retry");
 			core.fs.loadConfig = async () => ({ ...config, remoteOperations: false });
 			core.fs.listTasks = async () => [];
-			core.fs.listCompletedTasks = async () => [];
+			core.fs.listArchivedTasks = async () => [];
 			core.listTasksWithMetadata = async () => [];
 			core.git.listRecentBranchTips = async () => [
 				{ name: "main", commit: "0".repeat(40), current: true },
@@ -506,7 +506,7 @@ describe("shared immutable branch task loading", () => {
 		let localLoads = 0;
 		let tipCalls = 0;
 		core.fs.loadConfig = async () => ({ ...config, remoteOperations: false });
-		core.fs.listCompletedTasks = async () => [];
+		core.fs.listArchivedTasks = async () => [];
 		core.listTasksWithMetadata = async () => (localLoads++ === 0 ? [oldTask] : [newTask]);
 		core.git.listRecentBranchTips = async () => {
 			tipCalls += 1;
@@ -540,7 +540,7 @@ describe("shared immutable branch task loading", () => {
 		};
 		let configLoads = 0;
 		core.fs.loadConfig = async () => (configLoads++ === 0 ? oldConfig : newConfig);
-		core.fs.listCompletedTasks = async () => [];
+		core.fs.listArchivedTasks = async () => [];
 		core.fs.listDrafts = async () => [];
 		core.listTasksWithMetadata = async () => [];
 		core.git.getRepositoryRoot = async () => null;
@@ -647,7 +647,7 @@ describe("shared immutable branch task loading", () => {
 				},
 			];
 		};
-		oldFilesystem.listCompletedTasks = async () => [];
+		oldFilesystem.listArchivedTasks = async () => [];
 		oldFilesystem.loadConfig = async () => ({ ...config, checkActiveBranches: false });
 		const loading = core.loadWorkingCopyTasks(true);
 		await oldTasksStarted;
@@ -664,7 +664,7 @@ describe("shared immutable branch task loading", () => {
 				dependencies: [],
 			},
 		];
-		core.fs.listCompletedTasks = async () => [];
+		core.fs.listArchivedTasks = async () => [];
 		core.fs.loadConfig = async () => ({ ...config, checkActiveBranches: false });
 		releaseOldTasks();
 
@@ -703,7 +703,7 @@ describe("shared immutable branch task loading", () => {
 				}
 				return [newTask];
 			};
-			filesystem.listCompletedTasks = async () => [];
+			filesystem.listArchivedTasks = async () => [];
 			filesystem.loadConfig = async () => ({ ...config, checkActiveBranches: false });
 
 			const loading =
@@ -819,7 +819,7 @@ describe("shared immutable branch task loading", () => {
 			filePath: "/tmp/hidden-local-completed/backlog/completed/task-1 - Shared.md",
 		};
 		core.fs.loadConfig = async () => ({ ...config, remoteOperations: false });
-		core.fs.listCompletedTasks = async () => [completedTask];
+		core.fs.listArchivedTasks = async () => [completedTask];
 		core.listTasksWithMetadata = async () => [];
 		core.git.listRecentBranchTips = async () => [
 			{ name: "main", commit: "0".repeat(40), current: true },
@@ -831,9 +831,9 @@ describe("shared immutable branch task loading", () => {
 		core.git.getRepositoryRoot = async () => null;
 
 		expect(await core.loadTasks()).toEqual([]);
-		const included = await core.loadTasks(undefined, undefined, { includeCompleted: true });
+		const included = await core.loadTasks(undefined, undefined, { includeArchived: true });
 		expect(included.map((task) => ({ source: task.source, status: task.status, title: task.title }))).toEqual([
-			{ source: "completed", status: "Done", title: "Completed locally" },
+			{ source: "archived", status: "Done", title: "Completed locally" },
 		]);
 	});
 
@@ -1085,7 +1085,7 @@ describe("shared immutable branch task loading", () => {
 		const showCalls = new Map<string, number>();
 
 		core.fs.loadConfig = async () => config;
-		core.fs.listCompletedTasks = async () => [];
+		core.fs.listArchivedTasks = async () => [];
 		core.listTasksWithMetadata = async () => [];
 		core.git.fetch = async () => {
 			fetchCalls += 1;

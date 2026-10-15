@@ -30,8 +30,8 @@ Use `backlog <command> --help` before unfamiliar operations. Help describes fiel
 
 ### Task Lifecycle
 
-Mark finished work Done (or the configured final status). During periodic cleanup, use Complete (`backlog task complete {{TASK_ID:123}}`) to move it off the board while preserving its record and dependency links.
+Mark finished work Done (or the configured final status) and leave it on the board until periodic cleanup.
 
-Use Archive (`backlog task archive {{TASK_ID:123}}`) for canceled, duplicate, or invalid work. Archiving removes incoming dependencies and task references.
+Archive (`backlog task archive {{TASK_ID:123}}`) moves a task in any status off the board: finished work during cleanup, and canceled, duplicate, or invalid work at any time. An archived task keeps its ID, its record, and every dependency and reference to it. It stays readable with `backlog task view` and is read-only. A dependency on an archived task counts as satisfied only when that task is in the final status.
 
 Use the CLI for Backlog changes. Never edit task, draft, document, decision, or milestone markdown files directly; commands preserve metadata, relationships, and history.
