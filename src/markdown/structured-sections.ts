@@ -86,6 +86,7 @@ function restoreLineEndings(text: string, useCRLF: boolean): string {
 const FENCE_OPENING_REGEX = /^(`{3,}|~{3,})(.*)$/;
 const SECTION_SENTINEL_LINE_REGEX = /^<!-- SECTION:[A-Z][A-Z0-9_]*:(BEGIN|END) -->$/;
 const LIST_ITEM_MARKER_REGEX = /^( *)([-+*]|\d{1,9}[.)])(?:[\t ]+|$)/;
+const THEMATIC_BREAK_REGEX = /^ {0,3}(?:(?:\*[\t ]*){3,}|(?:_[\t ]*){3,}|(?:-[\t ]*){3,})$/;
 const HTML_BLOCK_TAG_NAMES =
 	"address|article|aside|base|basefont|blockquote|body|caption|center|col|colgroup|dd|details|dialog|dir|div|dl|dt|fieldset|figcaption|figure|footer|form|frame|frameset|h[1-6]|head|header|hr|html|iframe|legend|li|link|main|menu|menuitem|nav|noframes|ol|optgroup|option|p|param|search|section|summary|table|tbody|td|tfoot|th|thead|title|tr|track|ul";
 const HTML_TYPE1_OPENING_REGEX = /^ {0,3}<(script|pre|style|textarea)(?=[\t />]|$)/i;
@@ -101,11 +102,13 @@ const HTML_COMPLETE_TAG_LINE_REGEX =
 interface FenceSpec {
 	character: string;
 	minLength: number;
+	containerColumn: number;
 }
 
 interface HtmlBlockState {
 	endRegex?: RegExp;
 	endsOnBlankLine: boolean;
+	containerColumn: number;
 }
 
 /**
@@ -126,6 +129,7 @@ function collapseBlankLines(text: string): string {
 	let htmlBlock: HtmlBlockState | undefined;
 	const containerColumns: number[] = [];
 	for (const line of text.split("\n")) {
+		if (fence && !continuesBlockContainer(line, fence)) fence = undefined;
 		if (fence) {
 			lines.push(line);
 			if (closesFence(line, fence, containerColumns)) fence = undefined;
@@ -145,13 +149,15 @@ function collapseBlankLines(text: string): string {
 			pendingBlankLines = 0;
 		}
 		lines.push(line);
+		if (htmlBlock && !continuesBlockContainer(line, htmlBlock)) htmlBlock = undefined;
 		if (htmlBlock) {
 			if (htmlBlock.endRegex?.test(line)) htmlBlock = undefined;
 			continue;
 		}
-		updateListContainers(line, containerColumns);
-		fence = matchFenceOpener(line, containerColumns);
-		if (!fence) htmlBlock = matchHtmlBlockStart(line, containerColumns);
+		const blockLine = updateListContainers(line, containerColumns);
+		fence = matchFenceOpener(blockLine, containerColumns);
+		if (!fence) htmlBlock = matchHtmlBlockStart(blockLine, containerColumns);
+		if (htmlBlock?.endRegex?.test(blockLine)) htmlBlock = undefined;
 	}
 	if (pendingBlankLines > 0) lines.push("");
 	return lines.join("\n");
@@ -172,11 +178,33 @@ function listItemContentColumn(line: string): number | undefined {
 	return markerIndent + marker.length + trailingWhitespace;
 }
 
-function updateListContainers(line: string, containerColumns: number[]): void {
+function updateListContainers(line: string, containerColumns: number[], paragraphOpen = false): string {
 	while ((containerColumns.at(-1) ?? 0) > leadingSpaceCount(line)) containerColumns.pop();
-	const column = listItemContentColumn(line);
-	if (column === undefined) return;
-	containerColumns.push(column);
+	if (THEMATIC_BREAK_REGEX.test(line.slice(containerColumns.at(-1) ?? 0))) return line;
+	const marker = LIST_ITEM_MARKER_REGEX.exec(line);
+	if (paragraphOpen && marker) {
+		const listMarker = marker[2] ?? "";
+		if (
+			(/^\d/.test(listMarker) && Number.parseInt(listMarker, 10) !== 1) ||
+			line.slice(marker[0].length).trim() === ""
+		) {
+			return line;
+		}
+	}
+	let content = line;
+	let column = 0;
+	for (;;) {
+		const nextColumn = listItemContentColumn(content);
+		if (nextColumn === undefined) break;
+		column += nextColumn;
+		containerColumns.push(column);
+		content = content.slice(nextColumn);
+	}
+	return column > 0 ? `${" ".repeat(column)}${content}` : line;
+}
+
+function continuesBlockContainer(line: string, block: { containerColumn: number }): boolean {
+	return line.trim() === "" || leadingSpaceCount(line) >= block.containerColumn;
 }
 
 function isWithinContainerIndent(indent: number, containerColumns: number[]): boolean {
@@ -191,7 +219,7 @@ function matchFenceOpener(line: string, containerColumns: number[]): FenceSpec |
 	const run = opening?.[1] ?? "";
 	const info = opening?.[2] ?? "";
 	if (!run || (run.charAt(0) === "`" && info.includes("`"))) return undefined;
-	return { character: run.charAt(0), minLength: run.length };
+	return { character: run.charAt(0), minLength: run.length, containerColumn: containerColumns.at(-1) ?? 0 };
 }
 
 function closesFence(line: string, fence: FenceSpec, containerColumns: number[]): boolean {
@@ -203,30 +231,35 @@ function closesFence(line: string, fence: FenceSpec, containerColumns: number[])
 	return runLength >= fence.minLength && /^[\t ]*$/.test(remainder.slice(runLength));
 }
 
-function matchHtmlBlockStart(line: string, containerColumns: number[]): HtmlBlockState | undefined {
+function matchHtmlBlockStart(
+	line: string,
+	containerColumns: number[],
+	allowCompleteTag = true,
+): HtmlBlockState | undefined {
 	const base = containerColumns.at(-1) ?? 0;
 	const relative = base > 0 && leadingSpaceCount(line) >= base ? line.slice(base) : line;
 	const type1Match = HTML_TYPE1_OPENING_REGEX.exec(relative);
 	if (type1Match) {
 		const endRegex = new RegExp(`</${type1Match[1]}>`, "i");
-		return endRegex.test(relative) ? undefined : { endRegex, endsOnBlankLine: false };
+		return { endRegex, endsOnBlankLine: false, containerColumn: base };
 	}
 	if (HTML_COMMENT_OPENING_REGEX.test(relative)) {
-		return HTML_COMMENT_END_REGEX.test(relative)
-			? undefined
-			: { endRegex: HTML_COMMENT_END_REGEX, endsOnBlankLine: false };
+		return { endRegex: HTML_COMMENT_END_REGEX, endsOnBlankLine: false, containerColumn: base };
 	}
 	if (HTML_PROCESSING_INSTRUCTION_OPENING_REGEX.test(relative)) {
-		return relative.includes("?>") ? undefined : { endRegex: /\?>/, endsOnBlankLine: false };
+		return { endRegex: /\?>/, endsOnBlankLine: false, containerColumn: base };
 	}
 	if (HTML_DECLARATION_OPENING_REGEX.test(relative)) {
-		return relative.includes(">") ? undefined : { endRegex: />/, endsOnBlankLine: false };
+		return { endRegex: />/, endsOnBlankLine: false, containerColumn: base };
 	}
 	if (HTML_CDATA_OPENING_REGEX.test(relative)) {
-		return relative.includes("]]>") ? undefined : { endRegex: /\]\]>/, endsOnBlankLine: false };
+		return { endRegex: /\]\]>/, endsOnBlankLine: false, containerColumn: base };
 	}
-	if (HTML_BLOCK_TAG_OPENING_REGEX.test(relative) || HTML_COMPLETE_TAG_LINE_REGEX.test(relative)) {
-		return { endsOnBlankLine: true };
+	if (
+		HTML_BLOCK_TAG_OPENING_REGEX.test(relative) ||
+		(allowCompleteTag && HTML_COMPLETE_TAG_LINE_REGEX.test(relative))
+	) {
+		return { endsOnBlankLine: true, containerColumn: base };
 	}
 	return undefined;
 }
@@ -798,7 +831,7 @@ function assertLegacySectionReplacementSafe(key: StructuredSectionKey, body: str
 	// cannot tell an owned subheading from a separate, user-written section.
 	if (nextBody.startsWith(body.trim())) return;
 	for (const { line } of proseLines(body)) {
-		if (!/^ {0,3}##[\t ]+\S/.test(line)) continue;
+		if (!/^ {0,3}##(?:[\t ]|$)/.test(line)) continue;
 		const { title } = getConfig(key);
 		throw new Error(
 			`Cannot replace ${title} without section markers: "${line.trimEnd()}" may be a separate section. ` +
@@ -1078,6 +1111,8 @@ function parseAllChecklistItems(content: string, definition: ChecklistSectionDef
 function* proseLines(content: string, maskedRanges: TextRange[] = []): Generator<{ line: string; start: number }> {
 	let fence: FenceSpec | undefined;
 	let htmlBlock: HtmlBlockState | undefined;
+	let paragraphOpen = false;
+	let paragraphColumn = 0;
 	const containerColumns: number[] = [];
 	let offset = 0;
 
@@ -1085,21 +1120,44 @@ function* proseLines(content: string, maskedRanges: TextRange[] = []): Generator
 		const start = offset;
 		offset += line.length + 1;
 		if (isIndexWithinRanges(start, maskedRanges)) continue;
+		if (fence && !continuesBlockContainer(line, fence)) fence = undefined;
 		if (fence) {
 			if (closesFence(line, fence, containerColumns)) fence = undefined;
 			continue;
 		}
+		if (htmlBlock && !continuesBlockContainer(line, htmlBlock)) htmlBlock = undefined;
 		if (htmlBlock) {
 			if (htmlBlock.endRegex?.test(line) || (htmlBlock.endsOnBlankLine && line.trim() === "")) {
 				htmlBlock = undefined;
 			}
 			continue;
 		}
-		updateListContainers(line, containerColumns);
-		fence = matchFenceOpener(line, containerColumns);
-		if (fence) continue;
-		htmlBlock = matchHtmlBlockStart(line, containerColumns);
-		if (!htmlBlock) yield { line, start };
+		if (line.trim() === "") {
+			paragraphOpen = false;
+			continue;
+		}
+		if (leadingSpaceCount(line) < paragraphColumn) paragraphOpen = false;
+		const blockLine = updateListContainers(line, containerColumns, paragraphOpen);
+		if (blockLine !== line) paragraphOpen = false;
+		fence = matchFenceOpener(blockLine, containerColumns);
+		const htmlStart = fence ? undefined : matchHtmlBlockStart(blockLine, containerColumns, !paragraphOpen);
+		htmlBlock = htmlStart?.endRegex?.test(blockLine) ? undefined : htmlStart;
+		if (fence || htmlStart) {
+			paragraphOpen = false;
+			continue;
+		}
+		const relative = blockLine.slice(containerColumns.at(-1) ?? 0);
+		if (
+			/^ {0,3}#{1,6}(?:[\t ]|$)/.test(relative) ||
+			/^ {0,3}(?:=+|-+)[\t ]*$/.test(relative) ||
+			THEMATIC_BREAK_REGEX.test(relative)
+		) {
+			paragraphOpen = false;
+		} else if (paragraphOpen || leadingSpaceCount(relative) <= 3) {
+			paragraphOpen = true;
+			paragraphColumn = containerColumns.at(-1) ?? 0;
+		}
+		yield { line, start };
 	}
 }
 

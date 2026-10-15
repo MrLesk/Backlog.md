@@ -102,6 +102,16 @@ describe("legacy structured section replacement (issue #1110)", () => {
 				}
 			}
 		});
+
+		it(`protects empty level-two headings in legacy ${section.title}`, () => {
+			for (const heading of ["##", "## ", "   ##\t"]) {
+				for (const replacement of ["New content", ""]) {
+					expect(() =>
+						section.update(sectionBlock(section, `Old content\n${heading}\nPROOF-LINE`), replacement),
+					).toThrow("may be a separate section");
+				}
+			}
+		});
 	}
 
 	it("ignores heading-shaped text inside code, HTML, and lower-level headings", () => {
@@ -116,9 +126,47 @@ describe("legacy structured section replacement (issue #1110)", () => {
 			'<widget label=">">\n## Example\n</widget>',
 			"<widget label='>'>\n## Example\n</widget>",
 			`<widget label='a <b> "c"' enabled>\n## Example\n</widget>`,
+			"- ```markdown\n  ## Example\n  ```",
+			"1. ~~~markdown\n   ## Example\n   ~~~",
+			"2. ```markdown\n   ## Example\n   ```",
+			"- - ```markdown\n    ## Example\n    ```",
+			"- item\n\n  ```markdown\n  ## Example\n  ```",
 			"    ## Indented code\n\n### Subheading\n\nInline ## Example",
 		]) {
 			expect(updateTaskImplementationNotes(sectionBlock(sections[2], body), "New content")).toContain("New content");
+		}
+	});
+
+	it("does not let a custom HTML tag interrupt paragraph text and hide a real heading", () => {
+		for (const tag of ["<widget>", '<widget label=">">', "</widget>"]) {
+			for (const replacement of ["New content", ""]) {
+				expect(() =>
+					updateTaskImplementationNotes(sectionBlock(sections[2], `Old content\n${tag}\n${extraSection}`), replacement),
+				).toThrow("## Verification");
+			}
+		}
+		for (const body of [
+			`Old content\n2. <widget>\n   ${extraSection}`,
+			`Old content\n2. \n<widget>\n${extraSection}`,
+		]) {
+			expect(() => updateTaskImplementationNotes(sectionBlock(sections[2], body), "New notes")).toThrow(
+				"## Verification",
+			);
+		}
+	});
+
+	it("permits custom HTML blocks after blank lines and other completed blocks", () => {
+		for (const prefix of ["Paragraph\n\n", "### Heading\n", "```\ncode\n```\n", "---\n", "<!-- comment -->\n"]) {
+			const body = `${prefix}<widget>\n## Example\n</widget>`;
+			expect(updateTaskImplementationNotes(sectionBlock(sections[2], body), "New content")).toContain("New content");
+		}
+	});
+
+	it("does not hide real headings after leaving a list's fenced or HTML block", () => {
+		for (const prefix of ["- ```markdown\n  code", "- <widget>\n  text", "- <pre>\n  text"]) {
+			expect(() =>
+				updateTaskImplementationNotes(sectionBlock(sections[2], `${prefix}\n${extraSection}`), "New notes"),
+			).toThrow("## Verification");
 		}
 	});
 
@@ -257,6 +305,29 @@ describe("legacy section refusals before persistence", () => {
 				.nothrow();
 		expect(result.exitCode).toBe(1);
 		expect(await Bun.file(taskPath).text()).toBe(original);
+	});
+
+	it("CLI and MCP preserve bytes for paragraph-interrupting tags and empty headings", async () => {
+		for (const body of [`Old content\n<widget>\n${extraSection}`, "Old content\n##\nPROOF-LINE"]) {
+			const original = taskMarkdown(sectionBlock(sections[2], body));
+			await Bun.write(taskPath, original);
+			const result =
+				await $`${process.execPath} ${getTestCliPath()} task edit TASK-1 --notes "New notes" --title "Must not be saved"`
+					.cwd(testDir)
+					.quiet()
+					.nothrow();
+			expect(result.exitCode).toBe(1);
+			expect(await Bun.file(taskPath).text()).toBe(original);
+			const server = new McpServer(testDir, "Test instructions");
+			try {
+				await expect(
+					new TaskHandlers(server).editTask({ id: "TASK-1", notesSet: "New notes", title: "Must not be saved" }),
+				).rejects.toThrow("may be a separate section");
+				expect(await Bun.file(taskPath).text()).toBe(original);
+			} finally {
+				await server.stop();
+			}
+		}
 	});
 
 	it("refuses --clear-final-summary without saving combined edits", async () => {
