@@ -465,12 +465,20 @@ export class TaskNotArchivedError extends TaskRefusedError {
 
 /**
  * A change is on disk and only its commit failed. The message says both, so nobody runs the change
- * again. Use it for an operation the browser does not call. Where an endpoint must tell the browser
- * to refresh after such a failure, tag the error with `markRecordAlreadyMoved` instead.
+ * again: "Task TASK-1 was archived, but committing the change failed: <reason>". Task archive,
+ * restore and delete throw this one error for that case, and every interface reports the message
+ * as it is.
+ *
+ * `change` is the part before the comma, for example `Task TASK-1 was archived`. Where the browser
+ * calls the operation, core tags the error with `markRecordAlreadyMoved` as well, so that the page
+ * refreshes instead of offering the change again.
  */
-function commitFailedAfter(change: string, error: unknown): Error {
-	const reason = error instanceof Error ? error.message : String(error);
-	return new Error(`${change}, but committing the change failed: ${reason}`);
+export class ChangeNotCommittedError extends Error {
+	constructor(change: string, cause: unknown) {
+		const reason = cause instanceof Error ? cause.message : String(cause);
+		super(`${change}, but committing the change failed: ${reason}`);
+		this.name = "ChangeNotCommittedError";
+	}
 }
 
 /**
@@ -3560,7 +3568,11 @@ export class Core {
 						await this.git.commitFiles(`backlog: Archive task ${current.id}`, [fromPath, toPath], repoRoot);
 					}
 				} catch (error) {
-					throw markRecordAlreadyMoved(error, "archiveState");
+					// The tag is for the browser, which refreshes instead of offering the archive again.
+					throw markRecordAlreadyMoved(
+						new ChangeNotCommittedError(`Task ${current.id} was archived`, error),
+						"archiveState",
+					);
 				}
 				return true;
 			}),
@@ -3626,6 +3638,9 @@ export class Core {
 			});
 		} catch (error) {
 			if (!deletionApplied) throw error;
+			if (failureStep === "committing the change") {
+				throw new ChangeNotCommittedError(`Task ${task.id} was deleted`, error);
+			}
 			const reason = error instanceof Error ? error.message : String(error);
 			throw new TaskDeletionAppliedError(`Task ${task.id} was deleted, but ${failureStep} failed: ${reason}`);
 		}
@@ -3659,7 +3674,7 @@ export class Core {
 						await this.git.commitFiles(`backlog: Restore task ${current.id}`, [fromPath, toPath], repoRoot);
 					}
 				} catch (error) {
-					throw commitFailedAfter(`Task ${current.id} was restored`, error);
+					throw new ChangeNotCommittedError(`Task ${current.id} was restored`, error);
 				}
 				return true;
 			}),

@@ -1,4 +1,4 @@
-import { mkdtemp, realpath, rm, stat, writeFile } from "node:fs/promises";
+import { lstat, mkdtemp, realpath, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { basename, dirname, isAbsolute, join, relative, resolve } from "node:path";
 import { $ } from "bun";
@@ -253,6 +253,9 @@ export class GitOperations {
 				});
 				const commitId = commitOutput.trim();
 
+				// The last lookup of each path in this commit, so it stays before update-ref: once HEAD
+				// holds a link committed here, its path resolves to the file it points to. See
+				// changedFileLinkPath.
 				for (const relativePath of uniqueRelativePaths) {
 					const reconciled = await this.restoreIndexEntriesIfMatches(
 						join(resolvedRepoRoot, relativePath),
@@ -1195,7 +1198,7 @@ export class GitOperations {
 
 	private async getPathContext(targetPath: string): Promise<GitPathContext | null> {
 		const absolutePath = isAbsolute(targetPath) ? targetPath : join(this.projectRoot, targetPath);
-		const resolvedPath = await realpath(absolutePath).catch(() => null);
+		const resolvedPath = await this.resolveExistingPath(absolutePath);
 		if (resolvedPath) {
 			return this.buildContext(resolvedPath);
 		}
@@ -1208,8 +1211,8 @@ export class GitOperations {
 
 	private async getRelativePathForRepo(targetPath: string, repoRoot: string): Promise<string | null> {
 		const absolutePath = isAbsolute(targetPath) ? targetPath : join(this.projectRoot, targetPath);
-		const resolvedPath = await realpath(absolutePath).catch(() => null);
-		const pathForRelative = resolvedPath ?? (await this.resolveMissingPath(absolutePath));
+		const resolvedPath = await this.resolveExistingPath(absolutePath);
+		const pathForRelative = resolvedPath ?? (await this.withResolvedFolder(absolutePath));
 		if (!pathForRelative) return null;
 
 		const relativePath = this.normalizeGitPath(relative(repoRoot, pathForRelative));
@@ -1231,10 +1234,63 @@ export class GitOperations {
 		}
 	}
 
-	private async resolveMissingPath(absolutePath: string): Promise<string | null> {
+	/** The path with its folder resolved and its last component kept as it is named. */
+	private async withResolvedFolder(absolutePath: string): Promise<string | null> {
 		const resolvedDir = await realpath(dirname(absolutePath)).catch(() => null);
 		if (!resolvedDir) return null;
 		return join(resolvedDir, basename(absolutePath));
+	}
+
+	/**
+	 * The real location of an existing path, which is the path Git has to be given. Null when the
+	 * path does not exist; the caller then resolves the folder and keeps the name.
+	 *
+	 * Every folder on the way is resolved. The backlog folder or one of its subfolders may be a link,
+	 * into this repository or into another one, and Git cannot stage a path beyond a link.
+	 *
+	 * The last component is resolved too, with one exception: a symbolic link to a file whose own
+	 * path is new or changed in Git. See {@link changedFileLinkPath}.
+	 */
+	private async resolveExistingPath(absolutePath: string): Promise<string | null> {
+		return (await this.changedFileLinkPath(absolutePath)) ?? (await realpath(absolutePath).catch(() => null));
+	}
+
+	/**
+	 * The path Git tracks a file link under, when that link is what has to be staged. Null for
+	 * anything else.
+	 *
+	 * A file that is a symbolic link is two paths to Git: the link, tracked under the link's own
+	 * name, and the file it points to. Which one a caller means shows in Git itself.
+	 * - The link is new or changed (untracked, staged or modified). A record file that is a link and
+	 *   was just archived or restored is a new link at its new path, and that link has to be staged.
+	 *   Resolved, the move would stage the unchanged file it points to and the link would be lost.
+	 * - The link is unchanged. An edit written through it changed the file it points to, so the
+	 *   path is resolved and that file is staged.
+	 *
+	 * The answer depends on the Git index and HEAD at the time of the call. Once a commit holds the
+	 * new link, the link is unchanged and the same path resolves to the file it points to. So within
+	 * one commit, every lookup of a path has to happen before HEAD moves; `commitFiles` makes its last
+	 * lookup just before `update-ref`.
+	 */
+	private async changedFileLinkPath(absolutePath: string): Promise<string | null> {
+		const link = await lstat(absolutePath).catch(() => null);
+		if (!link?.isSymbolicLink()) return null;
+		// A link to a folder is resolved like any other folder on the way.
+		if ((await stat(absolutePath).catch(() => null))?.isDirectory()) return null;
+
+		const linkPath = await this.withResolvedFolder(absolutePath);
+		const repoRoot = linkPath ? await this.resolveRepoRoot(dirname(linkPath)) : null;
+		if (!linkPath || !repoRoot) return null;
+		try {
+			const { stdout } = await this.execGit(
+				["status", "--porcelain", "--untracked-files=all", "--", this.normalizeGitPath(relative(repoRoot, linkPath))],
+				// The name is one file, not a pattern, whatever characters it holds.
+				{ cwd: repoRoot, readOnly: true, env: { GIT_LITERAL_PATHSPECS: "1" } },
+			);
+			return stdout.trim().length > 0 ? linkPath : null;
+		} catch {
+			return null;
+		}
 	}
 
 	private async buildContext(resolvedPath: string, resolvedDirHint?: string): Promise<GitPathContext | null> {

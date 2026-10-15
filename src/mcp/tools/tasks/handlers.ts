@@ -1,4 +1,4 @@
-import { TaskDeletionAppliedError, TaskRefusedError, type VacatedTaskResult } from "../../../core/backlog.ts";
+import type { VacatedTaskResult } from "../../../core/backlog.ts";
 import { findLocalDuplicateTaskIds } from "../../../core/duplicate-task-repair.ts";
 import { loadTaskDetail, loadTaskListItems } from "../../../core/task-detail.ts";
 import { isCreateLockError, isTaskLockError } from "../../../file-system/operations.ts";
@@ -17,7 +17,7 @@ import { taskNotFoundMessage } from "../../../utils/task-path.ts";
 import { applyTaskFilters, createTaskSearchIndex } from "../../../utils/task-search.ts";
 import { sectionTasks, sortTasks } from "../../../utils/task-sorting.ts";
 import { formatUtcDateForDisplay } from "../../../utils/utc-date-display.ts";
-import { BacklogToolError } from "../../errors/mcp-errors.ts";
+import { BacklogToolError, runCoreOperation } from "../../errors/mcp-errors.ts";
 import type { McpServer } from "../../server.ts";
 import type { CallToolResult } from "../../types.ts";
 import { formatTaskCallResult } from "../../utils/task-response.ts";
@@ -109,21 +109,6 @@ export class TaskHandlers {
 			throw new BacklogToolError(taskNotFoundMessage(id), "TASK_NOT_FOUND");
 		}
 		return task;
-	}
-
-	/** Report known lifecycle outcomes in core's words, including a deletion whose later step failed. */
-	private async runLifecycleOperation<T>(operation: () => Promise<T>): Promise<T> {
-		try {
-			return await operation();
-		} catch (error) {
-			if (error instanceof TaskRefusedError) {
-				throw new BacklogToolError(error.message, "VALIDATION_ERROR");
-			}
-			if (error instanceof TaskDeletionAppliedError) {
-				throw new BacklogToolError(error.message, "OPERATION_FAILED");
-			}
-			throw error;
-		}
 	}
 
 	async createTask(args: TaskCreateArgs): Promise<CallToolResult> {
@@ -451,7 +436,7 @@ export class TaskHandlers {
 		}
 
 		const task = await this.loadTaskOrThrow(args.id);
-		if (!(await this.runLifecycleOperation(() => this.core.archiveTask(task.id)))) {
+		if (!(await runCoreOperation(() => this.core.archiveTask(task.id)))) {
 			throw new BacklogToolError(taskNotFoundMessage(args.id), "TASK_NOT_FOUND");
 		}
 
@@ -461,7 +446,7 @@ export class TaskHandlers {
 
 	async deleteTask(args: { id: string }): Promise<CallToolResult> {
 		const task = await this.loadTaskOrThrow(args.id);
-		const deletion = await this.runLifecycleOperation(() => this.core.deleteTask(task.id));
+		const deletion = await runCoreOperation(() => this.core.deleteTask(task.id));
 		if (!deletion.success) {
 			throw new BacklogToolError(taskNotFoundMessage(args.id), "TASK_NOT_FOUND");
 		}
@@ -473,7 +458,7 @@ export class TaskHandlers {
 
 	async restoreTask(args: { id: string }): Promise<CallToolResult> {
 		const task = await this.loadTaskOrThrow(args.id);
-		if (!(await this.runLifecycleOperation(() => this.core.restoreTask(task.id)))) {
+		if (!(await runCoreOperation(() => this.core.restoreTask(task.id)))) {
 			throw new BacklogToolError(taskNotFoundMessage(args.id), "TASK_NOT_FOUND");
 		}
 
