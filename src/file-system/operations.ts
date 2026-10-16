@@ -409,7 +409,8 @@ function replaceDecisionStatus(content: string, status: string): string | null {
 	// closingIndex is then -1, no index is below -1, so no status line is found and the edit is refused.
 	const closingIndex = lines.findIndex((line, index) => index > 0 && line.startsWith("---"));
 	const statusIndex = lines.findIndex((line, index) => index < closingIndex && /^status\s*:/.test(line));
-	if (statusIndex === -1) return null;
+	const prefix = lines[statusIndex]?.match(/^status\s*:[ \t]*/)?.[0];
+	if (!prefix) return null;
 
 	// A long or multi-line status continues on indented lines, which belong to the entry.
 	let entryEnd = statusIndex + 1;
@@ -421,7 +422,12 @@ function replaceDecisionStatus(content: string, status: string): string | null {
 	// and `slice(1, -1)` drops exactly the two `---` lines only once that blank line is gone. Without
 	// `trimEnd` the closing `---` would be written into the file as part of the entry, and the
 	// read-back check below would not notice when the status is the last frontmatter key.
-	const entry = stringifyFrontmatter("", { status }).trimEnd().split("\n").slice(1, -1);
+	// Keep the original key and separator bytes; only the serialized value replaces the old entry.
+	const entry = stringifyFrontmatter("", { status })
+		.replace(/^status: /m, prefix)
+		.trimEnd()
+		.split("\n")
+		.slice(1, -1);
 	const newline = lines[0]?.endsWith("\r\n") ? "\r\n" : "\n";
 	lines.splice(statusIndex, entryEnd - statusIndex, ...entry.map((line) => line + newline));
 	const updated = lines.join("");

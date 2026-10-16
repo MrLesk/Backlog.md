@@ -76,6 +76,16 @@ const replacedCases = [
 		after: decisionWith("status: superseded"),
 	},
 	{
+		name: "space before the status separator",
+		before: decisionWith("status : accepted"),
+		after: decisionWith("status : superseded"),
+	},
+	{
+		name: "extra spaces after the status separator",
+		before: decisionWith("status:   accepted"),
+		after: decisionWith("status:   superseded"),
+	},
+	{
 		name: "a comment on the status line, which is replaced with the line",
 		before: decisionWith("status: accepted # agreed in review"),
 		after: decisionWith("status: superseded"),
@@ -189,6 +199,7 @@ describe("changing a decision's status from the CLI", () => {
 
 		expect(result.exitCode).toBe(0);
 		expect((await readFile(filepath)).toString()).toBe(after);
+		expect((await cli("decision", "list", "--plain")).stdout.toString()).toBe("decision-1 - Case (superseded)\n");
 	});
 
 	it("takes a free-form status and the ID forms other decision lookups take", async () => {
