@@ -227,15 +227,17 @@ const TaskCard: React.FC<TaskCardProps> = ({
           </div>
         )}
 
-        {/* Header row with task metadata */}
-        <div className="flex items-center justify-between gap-2 mb-1.5">
+        {/* Header row with task metadata. It wraps like the footer: when the id, the badges and the
+            ring and priority group do not fit on one line, the group moves to a second line, still
+            flush right, so the badges are not squeezed to make room for it. */}
+        <div className="flex flex-wrap items-center gap-x-2 gap-y-1 mb-1.5">
           <div className="flex min-w-0 items-center gap-2">
             <span className="shrink-0 text-xs text-gray-400 dark:text-gray-500 font-mono transition-colors duration-200">{task.id}</span>
             <TaskTypeBadge type={task.type} availableTypes={availableTypes} className="min-w-0" />
             <ProjectBadge project={task.project} availableProjects={availableProjects} className="min-w-0" />
           </div>
           {(acceptanceCriteriaProgress || priorityBadge) && (
-            <div className="flex shrink-0 items-center gap-2">
+            <div className="ml-auto flex shrink-0 items-center gap-2">
               <AcceptanceCriteriaProgress task={task} density="card" />
               {priorityBadge && (
                 <span className={`px-1.5 py-0.5 text-[10px] font-semibold rounded ${priorityBadge.bg} ${priorityBadge.text} transition-colors duration-200`}>
