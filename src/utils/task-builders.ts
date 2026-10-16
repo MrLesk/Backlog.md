@@ -38,10 +38,9 @@ function resolveUniqueDependency(dependency: string, matches: Task[]): string | 
 /**
  * Validate that all dependencies exist in the working copy.
  *
- * The corpus spans working-copy tasks, drafts, completed, and archived records: Done is the normal
- * end state of a predecessor, so a task whose target moved to completed/ or the archive must keep a
- * valid, editable dependency list. Only validation resolves these targets; readiness and graph
- * semantics are unchanged.
+ * The corpus spans working-copy tasks, drafts, and archived records: a predecessor normally ends
+ * up archived, so a task whose target has left the board must keep a valid, editable dependency
+ * list.
  *
  * Inputs are matched by task identity, so bare numeric IDs resolve under any configured prefix, and
  * identity fails closed exactly as it does for the task a command targets. That takes two checks,
@@ -75,7 +74,7 @@ export async function validateDependencies(
 		return { valid, invalid };
 	}
 	const corpus = await loadDependencyCorpus(core);
-	const known = [...corpus.tasks, ...corpus.drafts, ...corpus.completed, ...corpus.archived];
+	const known = [...corpus.tasks, ...corpus.drafts, ...corpus.archived];
 	for (const dependency of dependencies) {
 		const resolved = resolveUniqueDependency(
 			dependency,
@@ -94,8 +93,8 @@ export async function validateDependencies(
 			throw new Error(`Task ${target.id} cannot depend on itself ("${dependency.trim()}" names this task).`);
 		}
 		// Called for its ambiguity check: it raises AmbiguousTaskIdError when several working-copy
-		// files (active or completed) claim this ID. Drafts and archived tasks resolve to null here
-		// and rely on the corpus check above.
+		// files (active or archived) claim this ID. Drafts resolve to null here and rely on the
+		// corpus check above.
 		await core.loadTaskById(resolved, { includeCrossBranch: false });
 		// Equivalent spellings of one task (1 and BACK-1) must not persist twice.
 		if (!valid.some((existing) => taskIdsEqual(existing, resolved))) {
@@ -114,7 +113,7 @@ export async function validateDependencies(
 			{ ...target, dependencies: valid },
 			{
 				tasks: graphCorpus.tasks.filter((task) => !taskIdsEqual(task.id, target.id)),
-				completedTasks: graphCorpus.completedTasks.filter((task) => !taskIdsEqual(task.id, target.id)),
+				archivedTasks: graphCorpus.archivedTasks.filter((task) => !taskIdsEqual(task.id, target.id)),
 			},
 		);
 		const cycle = findCycleThroughRoot(graph);
@@ -137,23 +136,21 @@ export async function validateDependencies(
 interface DependencyCorpus {
 	tasks: Task[];
 	drafts: Task[];
-	completed: Task[];
 	archived: Task[];
 }
 
 async function loadDependencyCorpus(core: Core): Promise<DependencyCorpus> {
-	const [tasks, drafts, completed, archived] = await Promise.all([
+	const [tasks, drafts, archived] = await Promise.all([
 		core.queryTasks({ includeCrossBranch: false }),
 		core.filesystem.listDrafts(),
-		core.filesystem.listCompletedTasks(),
 		core.filesystem.listArchivedTasks(),
 	]);
-	return { tasks, drafts, completed, archived };
+	return { tasks, drafts, archived };
 }
 
-/** Arrange the corpus for the dependency graph, whose only split is completed versus not. */
-function dependencyGraphCorpus(corpus: DependencyCorpus): { tasks: Task[]; completedTasks: Task[] } {
-	return { tasks: [...corpus.tasks, ...corpus.drafts, ...corpus.archived], completedTasks: corpus.completed };
+/** Arrange the corpus for the dependency graph, whose only split is archived versus not. */
+function dependencyGraphCorpus(corpus: DependencyCorpus): { tasks: Task[]; archivedTasks: Task[] } {
+	return { tasks: [...corpus.tasks, ...corpus.drafts], archivedTasks: corpus.archived };
 }
 
 export interface DependencyDefects {
@@ -179,7 +176,7 @@ export async function findDependencyDefects(core: Core): Promise<DependencyDefec
 	const selfDependencies: DependencyDefects["selfDependencies"] = [];
 	const cycles: string[][] = [];
 	const seen = new Set<string>();
-	for (const task of [...corpus.tasks, ...corpus.drafts, ...corpus.completed]) {
+	for (const task of [...corpus.tasks, ...corpus.drafts, ...corpus.archived]) {
 		const dependencies = task.dependencies ?? [];
 		for (const dependency of dependencies) {
 			if (taskIdsEqual(dependency, task.id)) {

@@ -14,7 +14,7 @@ type ServerInternals = {
 		loadTasks: (
 			progressCallback?: (message: string) => void,
 			abortSignal?: AbortSignal,
-			options?: { includeCompleted?: boolean },
+			options?: { includeArchived?: boolean },
 		) => Promise<Task[]>;
 	};
 };

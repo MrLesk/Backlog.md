@@ -26,8 +26,11 @@ export function needsDraftPrefixMigration(config: BacklogConfig | null): boolean
  * Migrate draft files from task-*.md to draft-*.md format.
  * This is a one-time migration that runs when prefixes section is missing.
  *
+ * The prefixes section is added only when every file was converted. If a file could not be
+ * converted it stays where it is, the config is left unchanged so the migration runs again, and
+ * the error thrown names each such file with the reason.
+ *
  * @param fs - FileSystem instance to use for file operations
- * @returns Updated config with prefixes section added
  */
 export async function migrateDraftPrefixes(fs: FileSystem): Promise<void> {
 	const draftsDir = await fs.getDraftsDir();
@@ -48,10 +51,10 @@ export async function migrateDraftPrefixes(fs: FileSystem): Promise<void> {
 	}
 
 	// Get existing draft IDs to generate unique new IDs
-	const existingDrafts = await fs.listDrafts();
-	const existingDraftIds = existingDrafts.map((d) => d.id);
+	const existingDraftIds = await fs.listOccupiedDraftIds();
 
 	// Migrate each task-*.md file
+	const failures: string[] = [];
 	for (const file of taskFiles) {
 		const filePath = join(draftsDir, file);
 
@@ -71,11 +74,31 @@ export async function migrateDraftPrefixes(fs: FileSystem): Promise<void> {
 			};
 
 			// Save with new draft- filename
-			await fs.saveDraft(migratedTask);
+			const savedPath = await fs.saveDraft(migratedTask);
 
-			// Delete old task- file
-			await unlink(filePath);
-		} catch {}
+			// Delete old task- file. If that fails, remove the new draft: the next run converts this
+			// file again and must not find an earlier copy of it.
+			try {
+				await unlink(filePath);
+			} catch (error) {
+				await unlink(savedPath);
+				throw error;
+			}
+		} catch (error) {
+			failures.push(`${file}: ${error instanceof Error ? error.message : String(error)}`);
+		}
+	}
+
+	// The migration is complete only when every file was converted. Until then the config is left
+	// as it was, so the next run tries the remaining files again instead of leaving them behind.
+	if (failures.length > 0) {
+		throw new Error(
+			[
+				"The draft prefix migration could not convert every file in the drafts folder. Left as they were:",
+				...failures.map((failure) => `  - ${failure}`),
+				"The migration runs again the next time Backlog starts.",
+			].join("\n"),
+		);
 	}
 
 	// Update config with prefixes section

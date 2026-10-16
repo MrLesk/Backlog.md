@@ -33,11 +33,13 @@ describe("React DOM test preload", () => {
 			DOM_GLOBALS.map((name) => [name, Object.getOwnPropertyDescriptor(globalThis, name)] as const),
 		);
 		const loadError = new Error("React DOM import failed");
-		let temporaryWindow: Window | undefined;
+		let timerFired = false;
 
 		await expect(
 			initializeReactDomForTests(async () => {
-				temporaryWindow = globalThis.window;
+				globalThis.window.setTimeout(() => {
+					timerFired = true;
+				}, 0);
 				throw loadError;
 			}),
 		).rejects.toBe(loadError);
@@ -45,6 +47,8 @@ describe("React DOM test preload", () => {
 		for (const name of DOM_GLOBALS) {
 			expect(Object.getOwnPropertyDescriptor(globalThis, name)).toEqual(descriptors.get(name));
 		}
-		expect(temporaryWindow?.document).toBeUndefined();
+		// JSDOM 30 keeps document accessible after close; pending timers must still stop.
+		await Bun.sleep(10);
+		expect(timerFired).toBe(false);
 	});
 });

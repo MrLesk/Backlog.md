@@ -8,7 +8,7 @@ import type {
 } from "../../types";
 import { DEFAULT_STATUSES } from "../../constants/index.ts";
 import { collectAvailableLabels } from "../../utils/label-filter.ts";
-import { compareTaskIds, compareTaskIdsDescending } from "../../utils/task-sorting.ts";
+import { compareTaskIds, compareTaskIdsDescending, sortTasks } from "../../utils/task-sorting.ts";
 import { isTerminalStatus } from "../../utils/terminal-status.ts";
 import { collectArchivedMilestoneKeys, getMilestoneLabel, milestoneKey } from "../utils/milestones";
 import { parseStoredUtcDate } from "../utils/date-display";
@@ -41,6 +41,15 @@ interface TaskListProps {
 
 type TaskSortColumn = "id" | "title" | "status" | "priority" | "ordinal" | "milestone" | "created";
 type SortDirection = "asc" | "desc";
+
+// The table sorts that `backlog task list --sort` also has, with the `--sort` value each one is.
+// Their order comes from sortTasks, so the table and the CLI agree. Every other column and
+// direction is a sort only this table has.
+const SHARED_SORTS: Partial<Record<`${TaskSortColumn}:${SortDirection}`, string>> = {
+	"id:asc": "id",
+	"priority:desc": "priority",
+	"ordinal:asc": "ordinal",
+};
 
 // Column widths in rem, in render order: ID, Title, Status, Priority, Ordinal, Labels,
 // Assignee, Milestone, Created. Each metadata column is sized to the wider of its header
@@ -518,9 +527,9 @@ const TaskList: React.FC<TaskListProps> = ({
 		setError(null);
 	};
 
-	const handleCleanupSuccess = async (movedCount: number) => {
+	const handleCleanupSuccess = async (message: string) => {
 		setShowCleanupModal(false);
-		setCleanupSuccessMessage(`Successfully moved ${movedCount} task${movedCount !== 1 ? 's' : ''} to completed folder`);
+		setCleanupSuccessMessage(message);
 
 		// Refresh the data - existing effects will handle re-filtering automatically
 		if (onRefreshData) {
@@ -613,6 +622,11 @@ const TaskList: React.FC<TaskListProps> = ({
 	);
 
 	const sortedDisplayTasks = useMemo(() => {
+		const sharedSort = SHARED_SORTS[`${sortColumn}:${sortDirection}`];
+		if (sharedSort) {
+			return sortTasks(displayTasks, sharedSort, availablePriorities);
+		}
+
 		const collator = new Intl.Collator(undefined, { sensitivity: "base", numeric: true });
 		const compareText = (a: string, b: string) => collator.compare(a, b);
 		const withDirection = (value: number) => (sortDirection === "asc" ? value : -value);
@@ -621,8 +635,7 @@ const TaskList: React.FC<TaskListProps> = ({
 			let result = 0;
 			switch (sortColumn) {
 				case "id": {
-					result =
-						sortDirection === "asc" ? compareTaskIdsAscending(a, b) : compareTaskIdsDescending(a.id, b.id);
+					result = compareTaskIdsDescending(a.id, b.id);
 					break;
 				}
 				case "title": {

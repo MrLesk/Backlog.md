@@ -115,24 +115,26 @@ jobs:
     steps:
       - uses: actions/checkout@v7.0.1
 
-      - name: Build the current architecture map
-        uses: MrLesk/groma.md-action@v1
-        with:
-          groma-version: '0.6.6'
-          output: site
-          theme: ${{ env.GROMA_THEME }}
+      # Keep generated HTML outside the source scan; each step writes its own subtree.
+      - parallel:
+          - name: Build the current architecture map
+            uses: MrLesk/groma.md-action@v1
+            with:
+              groma-version: '0.6.6'
+              output: ${{ runner.temp }}/groma-site
+              theme: ${{ env.GROMA_THEME }}
 
-      - name: Add the pull request comparisons
-        if: needs.compare.result == 'success' || needs.compare.result == 'failure'
-        uses: actions/download-artifact@v4
-        with:
-          pattern: groma-comparison-*
-          merge-multiple: true
-          path: ./site
+          - name: Add the pull request comparisons
+            if: needs.compare.result == 'success' || needs.compare.result == 'failure'
+            uses: actions/download-artifact@v4
+            with:
+              pattern: groma-comparison-*
+              merge-multiple: true
+              path: ${{ runner.temp }}/groma-site
 
       - uses: actions/upload-pages-artifact@v5.0.0
         with:
-          path: ./site
+          path: ${{ runner.temp }}/groma-site
 
   deploy:
     needs: build

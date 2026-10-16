@@ -61,7 +61,6 @@ describe("Missing git remote preflight", () => {
 		};
 
 		await mkdir(join(tempDir, "backlog", "tasks"), { recursive: true });
-		await mkdir(join(tempDir, "backlog", "completed"), { recursive: true });
 		const core = new Core(tempDir, { enableWatchers: false });
 		await core.filesystem.saveConfig(config);
 
