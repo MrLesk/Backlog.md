@@ -105,7 +105,7 @@ describe("Core shared task corpus regressions", () => {
 	it("publishes changed completed branch content at the same path after its ref moves", async () => {
 		await $`git switch -c feature-completed`.cwd(testDir).quiet();
 		const completedPath = await writeTask(
-			core.filesystem.completedDir,
+			core.filesystem.archiveTasksDir,
 			"task-1 - Completed.md",
 			task("TASK-1", "Before ref move", "Done"),
 		);
@@ -137,7 +137,7 @@ describe("Core shared task corpus regressions", () => {
 		expect(
 			store
 				.getTaskCorpusSnapshot()
-				.branchStateEntries?.find((entry) => entry.id === "TASK-1" && entry.type === "completed")?.task?.title,
+				.branchStateEntries?.find((entry) => entry.id === "TASK-1" && entry.type === "archived")?.task?.title,
 		).toBe("After ref move");
 	});
 
@@ -149,7 +149,7 @@ describe("Core shared task corpus regressions", () => {
 		await commit("Add root task", recentCommitDate(2));
 		await $`git switch -c feature-completed-dependency`.cwd(testDir).quiet();
 		await writeTask(
-			core.filesystem.completedDir,
+			core.filesystem.archiveTasksDir,
 			"task-1 - Completed elsewhere.md",
 			task("TASK-1", "Completed elsewhere", "Done"),
 		);
@@ -157,7 +157,7 @@ describe("Core shared task corpus regressions", () => {
 		await $`git switch main`.cwd(testDir).quiet();
 
 		const corpus = await loadTaskCorpus(core, { includeCrossBranch: true });
-		expect(corpus.completedTasks.some((candidate) => candidate.id === "TASK-1")).toBe(true);
+		expect(corpus.archivedTasks.some((candidate) => candidate.id === "TASK-1")).toBe(true);
 
 		const root = corpus.tasks.find((candidate) => candidate.id === "TASK-2");
 		expect(root).toBeDefined();
@@ -172,11 +172,11 @@ describe("Core shared task corpus regressions", () => {
 			...task("TASK-2", "Root task"),
 			dependencies: ["TASK-1"],
 		});
-		await writeTask(core.filesystem.completedDir, "task-1 - Completed here.md", task("TASK-1", "Local", "Done"));
+		await writeTask(core.filesystem.archiveTasksDir, "task-1 - Completed here.md", task("TASK-1", "Local", "Done"));
 		await commit("Add root task and local completed dependency", recentCommitDate(2));
 		await $`git switch -c feature-colliding-completed`.cwd(testDir).quiet();
 		await writeTask(
-			core.filesystem.completedDir,
+			core.filesystem.archiveTasksDir,
 			"task-1 - Completed elsewhere.md",
 			task("TASK-1", "Branch claimant", "Done"),
 		);
@@ -219,7 +219,7 @@ describe("Core shared task corpus regressions", () => {
 	it("allocates through one shared branch snapshot without hydrating completed task blobs", async () => {
 		await $`git switch -c feature-completed-id`.cwd(testDir).quiet();
 		await writeTask(
-			core.filesystem.completedDir,
+			core.filesystem.archiveTasksDir,
 			"task-41 - Completed.md",
 			task("TASK-41", "Completed branch reservation", "Done"),
 		);

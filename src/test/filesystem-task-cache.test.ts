@@ -57,36 +57,33 @@ describe("FileSystem task parse cache", () => {
 		await safeCleanup(testDir);
 	});
 
-	it("reuses exact active and completed contents without sharing mutable parse results", async () => {
+	it("reuses exact active and archived contents without sharing mutable parse results", async () => {
 		await filesystem.saveTask(task("TASK-1", "Active task"));
 		await Bun.write(
-			join(filesystem.completedDir, "task-2 - Completed task.md"),
-			serializeTask({ ...task("TASK-2", "Completed task"), status: "Done" }),
+			join(filesystem.archiveTasksDir, "task-2 - Archived task.md"),
+			serializeTask({ ...task("TASK-2", "Archived task"), status: "Done" }),
 		);
 		const parseSpy = spyOn(markdownParser, "parseTask");
 
 		try {
-			const [firstActive, firstCompleted] = await Promise.all([
-				filesystem.listTasks(),
-				filesystem.listCompletedTasks(),
-			]);
+			const [firstActive, firstArchived] = await Promise.all([filesystem.listTasks(), filesystem.listArchivedTasks()]);
 			expect(parseSpy).toHaveBeenCalledTimes(2);
 
 			firstActive[0]?.labels.push("mutated");
 			if (firstActive[0]?.acceptanceCriteriaItems?.[0]) {
 				firstActive[0].acceptanceCriteriaItems[0].text = "Mutated criterion";
 			}
-			firstCompleted[0]?.assignee.push("@mutated");
+			firstArchived[0]?.assignee.push("@mutated");
 
-			const [secondActive, secondCompleted] = await Promise.all([
+			const [secondActive, secondArchived] = await Promise.all([
 				filesystem.listTasks(),
-				filesystem.listCompletedTasks(),
+				filesystem.listArchivedTasks(),
 			]);
 			expect(parseSpy).toHaveBeenCalledTimes(2);
 			expect(secondActive[0]).not.toBe(firstActive[0]);
 			expect(secondActive[0]?.labels).toEqual(["cache"]);
 			expect(secondActive[0]?.acceptanceCriteriaItems?.[0]?.text).toBe("Stay independent");
-			expect(secondCompleted[0]?.assignee).toEqual(["@owner"]);
+			expect(secondArchived[0]?.assignee).toEqual(["@owner"]);
 		} finally {
 			parseSpy.mockRestore();
 		}
@@ -301,9 +298,9 @@ describe("FileSystem task parse cache", () => {
 					{ normalizeIdentity: true, debugLabel: "task file" },
 				),
 				harness.readTaskFiles(
-					filesystem.completedDir,
-					Array.from({ length: 32 }, (_, index) => `task-${index + 32} - Completed.md`),
-					{ normalizeIdentity: false, debugLabel: "completed task file" },
+					filesystem.archiveTasksDir,
+					Array.from({ length: 32 }, (_, index) => `task-${index + 32} - Archived.md`),
+					{ normalizeIdentity: false, debugLabel: "archived task file" },
 				),
 			]);
 
@@ -322,9 +319,9 @@ describe("FileSystem task parse cache", () => {
 			}
 			expect(maximumActive).toBeLessThanOrEqual(32);
 			for (const pending of pendingReads) pending.resolve();
-			const [activeTasks, completedTasks] = await reads;
+			const [activeTasks, archivedTasks] = await reads;
 			expect(activeTasks).toHaveLength(32);
-			expect(completedTasks).toHaveLength(32);
+			expect(archivedTasks).toHaveLength(32);
 		} finally {
 			fileSpy.mockRestore();
 		}

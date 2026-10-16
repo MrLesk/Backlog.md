@@ -7,9 +7,10 @@ import { createUniqueTestDir, initializeFilesystemTestProject, safeCleanup, with
 
 const CLI = getTestCliPath();
 const directory = createUniqueTestDir("cli-pipe-output");
+// Each case names the last task its output lists. The window holds the first 20 of the 24 tasks in sort order.
 const cases = [
-	{ name: "grouped plain with its window footer", args: ["--plain", "--max-count", "20"] },
-	{ name: "priority-sorted plain", args: ["--plain", "--sort", "priority"] },
+	{ name: "grouped plain with its window footer", args: ["--plain", "--max-count", "20"], lastTaskId: "TASK-20" },
+	{ name: "priority-sorted plain", args: ["--plain", "--sort", "priority"], lastTaskId: "TASK-24" },
 ];
 
 describe("finite CLI output to a delayed pipe reader", () => {
@@ -41,7 +42,7 @@ describe("finite CLI output to a delayed pipe reader", () => {
 		await safeCleanup(directory);
 	});
 
-	it.each(cases)("preserves complete $name output", async ({ name, args }) => {
+	it.each(cases)("preserves complete $name output", async ({ name, args, lastTaskId }) => {
 		const outputPath = join(directory, `${name}.txt`);
 		const fileWriter = Bun.spawn(["bun", CLI, "task", "list", ...args], {
 			cwd: directory,
@@ -62,7 +63,7 @@ describe("finite CLI output to a delayed pipe reader", () => {
 			await fileWriter.exited;
 		}
 		const expected = await readFile(outputPath);
-		expect(expected.toString()).toContain("TASK-24");
+		expect(expected.toString()).toContain(lastTaskId);
 		if (args.includes("--max-count")) expect(expected.toString()).toContain("Showing 1-20 of 24 items.");
 
 		const child = Bun.spawn(["bun", CLI, "task", "list", ...args], {

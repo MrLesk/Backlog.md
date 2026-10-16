@@ -385,6 +385,128 @@ exit $exit_code
 	return { transcriptPath };
 }
 
+/**
+ * Edits a task from the task list twice in a row and checks after each editor session that the
+ * list still answers j and k.
+ *
+ * The script reads the selection from the terminal title, which names the selected task and is
+ * written whole every time the detail pane is drawn. The viewer writes nothing while the editor
+ * owns the terminal, so a title seen after the editor's marker means the viewer is back.
+ */
+async function runNavigationAfterEditScenario(): Promise<{ transcriptPath: string }> {
+	const scenario = "navigation-after-edit";
+	const testDir = createUniqueTestDir(`test-tui-interactive-${scenario}`);
+	await mkdir(testDir, { recursive: true });
+	await mkdir(TRANSCRIPT_DIR, { recursive: true });
+	const transcriptPath = join(TRANSCRIPT_DIR, `${scenario}-${Date.now()}.log`);
+	const editorScriptPath = join(testDir, `${scenario}-editor.cjs`);
+	const expectScriptPath = join(testDir, `${scenario}.expect`);
+
+	// Stands in for a terminal editor: it takes over the terminal, changes the file and exits.
+	await writeFile(
+		editorScriptPath,
+		`require("node:fs").appendFileSync(process.argv[2], "\\nEdited in interactive TUI test\\n");
+process.stdout.write("__EDITOR_READY__\\n");
+setTimeout(() => process.exit(0), 300);
+`,
+	);
+
+	await $`git init -b main`.cwd(testDir).quiet();
+	const core = new Core(testDir);
+	await initializeTestProject(core, "Interactive navigation after edit");
+	const config = await core.filesystem.loadConfig();
+	if (!config) throw new Error("Failed to load navigation after edit config");
+	await core.filesystem.saveConfig({ ...config, remoteOperations: false, checkActiveBranches: false });
+	const createdDate = new Date().toISOString().slice(0, 16).replace("T", " ");
+	for (const [id, title] of [
+		["task-1", "First row"],
+		["task-2", "Second row"],
+		["task-3", "Third row"],
+	] as const) {
+		await core.createTask(
+			{ id, title, status: "To Do", assignee: [], createdDate, labels: [], dependencies: [], description: title },
+			false,
+		);
+	}
+
+	await writeFile(
+		expectScriptPath,
+		`#!/usr/bin/expect -f
+set timeout 10
+log_user 0
+log_file -a {${transcriptPath}}
+set env(TERM) {xterm-256color}
+set env(COLUMNS) {120}
+set env(LINES) {40}
+set env(NO_COLOR) {1}
+set env(EDITOR) {node ${editorScriptPath}}
+set stty_init {rows 40 columns 120}
+${buildSpawnCommand(["task", "list"])}
+expect {
+	-re {Task TASK-1 - First row} {}
+	timeout { exit 91 }
+}
+send -- "E"
+expect {
+	-re {__EDITOR_READY__} {}
+	timeout { exit 92 }
+}
+expect {
+	-re {Task TASK-1 - First row} {}
+	timeout { exit 93 }
+}
+send -- "j"
+expect {
+	-re {Task TASK-2 - Second row} {}
+	timeout { exit 94 }
+}
+send -- "E"
+expect {
+	-re {__EDITOR_READY__} {}
+	timeout { exit 95 }
+}
+expect {
+	-re {Task TASK-2 - Second row} {}
+	timeout { exit 96 }
+}
+send -- "k"
+expect {
+	-re {Task TASK-1 - First row} {}
+	timeout { exit 97 }
+}
+send -- "q"
+expect {
+	eof {}
+	timeout { exit 98 }
+}
+set wait_status [wait]
+set exit_code [lindex $wait_status 3]
+exit $exit_code
+`,
+	);
+
+	const child = Bun.spawn(["expect", "-f", expectScriptPath], {
+		cwd: testDir,
+		stdout: "pipe",
+		stderr: "pipe",
+	});
+	const stdoutPromise = child.stdout ? new Response(child.stdout).text() : Promise.resolve("");
+	const stderrPromise = child.stderr ? new Response(child.stderr).text() : Promise.resolve("");
+	const exitCode = await child.exited;
+	const [stdout, stderr] = await Promise.all([stdoutPromise, stderrPromise]);
+	const transcript = await Bun.file(transcriptPath)
+		.text()
+		.catch(() => "(no transcript captured)");
+	await safeCleanup(testDir);
+
+	if (![0, 130].includes(exitCode)) {
+		throw new Error(
+			`Interactive navigation after edit failed.\nExit code: ${exitCode}\nSTDOUT:\n${stdout}\nSTDERR:\n${stderr}\nTranscript: ${transcriptPath}\nTranscript contents:\n${transcript}\n`,
+		);
+	}
+	return { transcriptPath };
+}
+
 describe("interactive TUI editor handoff", () => {
 	itInteractive("shows a CLI mutation in the open board within a bounded time", async () => {
 		const result = await runLiveRefreshScenario();
@@ -428,4 +550,13 @@ describe("interactive TUI editor handoff", () => {
 		expect(result.taskContent).toContain("Edited in interactive TUI test");
 		expect(result.transcriptPath).toContain("tui-interactive-transcripts");
 	});
+
+	itInteractive(
+		"keeps j and k moving the task list selection after each of two editor sessions",
+		async () => {
+			const result = await runNavigationAfterEditScenario();
+			expect(result.transcriptPath).toContain("tui-interactive-transcripts");
+		},
+		30_000,
+	);
 });

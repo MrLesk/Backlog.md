@@ -1,13 +1,14 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
-import { readdir } from "node:fs/promises";
+import { readdir, readlink, symlink, unlink } from "node:fs/promises";
 import { join } from "node:path";
 import { migrateDraftPrefixes, needsDraftPrefixMigration } from "../core/prefix-migration.ts";
 import { FileSystem } from "../file-system/operations.ts";
 import { serializeTask } from "../markdown/serializer.ts";
 import type { BacklogConfig, Task } from "../types/index.ts";
-import { createUniqueTestDir, safeCleanup } from "./test-utils.ts";
+import { createUniqueTestDir, isWindows, safeCleanup } from "./test-utils.ts";
 
 let TEST_DIR: string;
+const itIfSymlinks = isWindows() ? it.skip : it;
 
 describe("Draft Prefix Migration", () => {
 	let filesystem: FileSystem;
@@ -289,5 +290,64 @@ describe("Draft Prefix Migration", () => {
 			expect(drafts.length).toBe(2);
 			expect(drafts.map((d) => d.id).sort()).toEqual(["DRAFT-1", "DRAFT-2"]);
 		});
+
+		itIfSymlinks(
+			"leaves a file it cannot convert in place and records the prefixes only once every file is converted",
+			async () => {
+				await filesystem.saveConfig({
+					projectName: "Test Project",
+					statuses: ["To Do", "In Progress", "Done"],
+					labels: [],
+					milestones: [],
+					dateFormat: "YYYY-MM-DD",
+				});
+				const draftsDir = await filesystem.getDraftsDir();
+				const legacyDraft = (id: string, title: string): string =>
+					serializeTask({
+						id,
+						title,
+						status: "Draft",
+						assignee: [],
+						createdDate: new Date().toISOString().slice(0, 10),
+						labels: [],
+						dependencies: [],
+					});
+				const beta = legacyDraft("task-2", "Beta");
+				await Bun.write(join(draftsDir, "task-1 - Alpha.md"), legacyDraft("task-1", "Alpha"));
+				await Bun.write(join(draftsDir, "task-2 - Beta.md"), beta);
+				// Whichever number Beta is given, the path of its draft file is taken by a link whose target
+				// is missing. No draft listing returns such a link, so its number is handed out.
+				const missingTarget = join(TEST_DIR, "never-created.md");
+				const blockers = ["draft-1 - Beta.md", "draft-2 - Beta.md"];
+				for (const blocker of blockers) {
+					await symlink(missingTarget, join(draftsDir, blocker));
+				}
+
+				await expect(migrateDraftPrefixes(filesystem)).rejects.toThrow(
+					/task-2 - Beta\.md: Cannot write .*another file already exists at that path and was left unchanged/,
+				);
+
+				const afterFirstRun = await readdir(draftsDir);
+				expect(afterFirstRun.filter((name) => /^draft-\d+ - Alpha\.md$/.test(name))).toHaveLength(1);
+				expect(afterFirstRun).not.toContain("task-1 - Alpha.md");
+				expect(await Bun.file(join(draftsDir, "task-2 - Beta.md")).text()).toBe(beta);
+				for (const blocker of blockers) {
+					expect(await readlink(join(draftsDir, blocker))).toBe(missingTarget);
+				}
+				expect(await Bun.file(missingTarget).exists()).toBe(false);
+				expect((await new FileSystem(TEST_DIR).loadConfig())?.prefixes).toBeUndefined();
+
+				// With the obstacle gone, the next run converts the remaining file and finishes.
+				for (const blocker of blockers) {
+					await unlink(join(draftsDir, blocker));
+				}
+				await migrateDraftPrefixes(filesystem);
+
+				const afterSecondRun = await readdir(draftsDir);
+				expect(afterSecondRun.filter((name) => name.startsWith("task-"))).toEqual([]);
+				expect(afterSecondRun.filter((name) => /^draft-\d+ - (Alpha|Beta)\.md$/.test(name))).toHaveLength(2);
+				expect((await new FileSystem(TEST_DIR).loadConfig())?.prefixes).toEqual({ task: "task" });
+			},
+		);
 	});
 });

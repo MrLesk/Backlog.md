@@ -9,7 +9,6 @@ import { watchConfig } from "../utils/config-watcher.ts";
 import { formatDuplicateTaskIdSummary } from "../utils/duplicate-detection.ts";
 import { collectAvailableLabels } from "../utils/label-filter.ts";
 import { hasAnyPrefix } from "../utils/prefix-config.ts";
-import { applyTaskFilters, createTaskSearchIndex } from "../utils/task-search.ts";
 import { type TaskWatcherCallbacks, watchTasks } from "../utils/task-watcher.ts";
 import { renderBoardTui } from "./board.ts";
 import { createLoadingScreen } from "./loading.ts";
@@ -149,42 +148,6 @@ export function createKanbanSharedFilters(filters: UnifiedViewFilters): KanbanSh
 		milestoneFilter: filters.milestoneFilter,
 		limit: filters.limit,
 	};
-}
-
-export function filterTasksForKanban(
-	tasks: Task[],
-	filters: KanbanSharedFilters,
-	resolveMilestoneLabel?: (milestone: string) => string,
-): Task[] {
-	if (
-		!filters.searchQuery.trim() &&
-		filters.excludeStatus.length === 0 &&
-		(filters.typeFilter?.length ?? 0) === 0 &&
-		(filters.projectFilter?.length ?? 0) === 0 &&
-		!filters.priorityFilter &&
-		filters.labelFilter.length === 0 &&
-		!filters.milestoneFilter
-	) {
-		return filters.limit !== undefined ? tasks.slice(0, filters.limit) : [...tasks];
-	}
-
-	const searchIndex = createTaskSearchIndex(tasks);
-	const filteredTasks = applyTaskFilters(
-		tasks,
-		{
-			query: filters.searchQuery,
-			excludeStatus: filters.excludeStatus,
-			type: filters.typeFilter,
-			project: filters.projectFilter,
-			priority: filters.priorityFilter || undefined,
-			labels: filters.labelFilter,
-			labelMatch: filters.labelMatch ?? "any",
-			milestone: filters.milestoneFilter || undefined,
-			resolveMilestoneLabel,
-		},
-		searchIndex,
-	);
-	return filters.limit !== undefined ? filteredTasks.slice(0, filters.limit) : filteredTasks;
 }
 
 export function createUnifiedViewFilters(filter: UnifiedViewOptions["filter"] | undefined): UnifiedViewFilters {
@@ -402,14 +365,10 @@ export async function runUnifiedView(options: UnifiedViewOptions): Promise<void>
 				return "exit";
 			}
 
-			// Find the task to view - if selectedTask has an ID, find it in available tasks
-			let taskToView: Task | undefined;
-			if (selectedTask?.id) {
-				const foundTask = availableTasks.find((t) => t.id === selectedTask?.id);
-				taskToView = foundTask || availableTasks[0];
-			} else {
-				taskToView = availableTasks[0];
-			}
+			// Without a chosen task the list starts on its first row. The viewer still needs a task
+			// to open with, and only it knows the order of its rows.
+			const chosenTask = selectedTask?.id ? availableTasks.find((t) => t.id === selectedTask?.id) : undefined;
+			const taskToView = chosenTask ?? availableTasks[0];
 
 			if (!taskToView) {
 				console.log("No task selected.");
@@ -448,6 +407,8 @@ export async function runUnifiedView(options: UnifiedViewOptions): Promise<void>
 					readyFilter: options.filter?.ready,
 					readinessTasks: loadedReadinessTasks,
 					limit: currentFilters.limit,
+					sort: options.filter?.sort,
+					startOnFirstRow: !chosenTask,
 					startWithDetailFocus: currentView === "task-detail",
 					startWithSearchFocus: shouldFocusSearch,
 					startupWarning,
@@ -526,6 +487,7 @@ export async function runUnifiedView(options: UnifiedViewOptions): Promise<void>
 					dateFormat: config?.dateFormat,
 					projectName: config?.projectName,
 					priorities: config?.priorities,
+					sort: options.filter?.sort,
 					types: config?.types,
 					projects: config?.projects,
 					hideEmptyColumns: config?.hideEmptyColumns ?? false,

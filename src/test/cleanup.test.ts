@@ -1,8 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
-import { mkdir } from "node:fs/promises";
+import { mkdir, stat } from "node:fs/promises";
 import { join } from "node:path";
 import { $ } from "bun";
-import { Core } from "../core/backlog.ts";
+import { Core, formatCleanupResult } from "../core/backlog.ts";
+import { serializeTask } from "../markdown/serializer.ts";
 import type { Task } from "../types/index.ts";
 import { createUniqueTestDir, initializeTestProject, safeCleanup } from "./test-utils.ts";
 
@@ -40,12 +41,14 @@ describe("Cleanup functionality", () => {
 	});
 
 	describe("Core functionality", () => {
-		it("should create completed directory in backlog structure", async () => {
+		it("creates the archive folder, and no completed folder, in the backlog structure", async () => {
 			await core.filesystem.ensureBacklogStructure();
-			expect(core.filesystem.completedDir).toBe(join(TEST_DIR, "backlog", "completed"));
+			expect(core.filesystem.archiveTasksDir).toBe(join(TEST_DIR, "backlog", "archive", "tasks"));
+			expect((await stat(core.filesystem.archiveTasksDir)).isDirectory()).toBe(true);
+			expect(await stat(join(TEST_DIR, "backlog", "completed")).catch(() => null)).toBeNull();
 		});
 
-		it("should move Done task to completed folder", async () => {
+		it("should move a Done task into the archive", async () => {
 			// Create a task
 			await core.createTask(sampleTask, false);
 
@@ -54,22 +57,21 @@ describe("Cleanup functionality", () => {
 			expect(activeTasks).toHaveLength(1);
 			expect(activeTasks[0]?.id).toBe("TASK-1");
 
-			// Move to completed
-			const success = await core.completeTask("task-1", false);
+			const success = await core.archiveTask("task-1", false);
 			expect(success).toBe(true);
 
 			// Verify task is no longer in active tasks
 			const activeTasksAfter = await core.filesystem.listTasks();
 			expect(activeTasksAfter).toHaveLength(0);
 
-			// Verify task is in completed tasks
-			const completedTasks = await core.filesystem.listCompletedTasks();
-			expect(completedTasks).toHaveLength(1);
-			expect(completedTasks[0]?.id).toBe("TASK-1");
-			expect(completedTasks[0]?.title).toBe("Test Task");
+			// Verify task is in the archive, with its ID
+			const archivedTasks = await core.filesystem.listArchivedTasks();
+			expect(archivedTasks).toHaveLength(1);
+			expect(archivedTasks[0]?.id).toBe("TASK-1");
+			expect(archivedTasks[0]?.title).toBe("Test Task");
 		});
 
-		it("allows core completion callers to move active tasks into completed", async () => {
+		it("archives a task that is not in the final status", async () => {
 			await core.createTask(
 				{
 					...sampleTask,
@@ -80,14 +82,14 @@ describe("Cleanup functionality", () => {
 				false,
 			);
 
-			const success = await core.completeTask("task-2", false);
+			const success = await core.archiveTask("task-2", false);
 			expect(success).toBe(true);
 			expect(await core.filesystem.loadTask("task-2")).toBeNull();
 
-			const completedTasks = await core.filesystem.listCompletedTasks();
-			expect(completedTasks).toHaveLength(1);
-			expect(completedTasks[0]?.id).toBe("TASK-2");
-			expect(completedTasks[0]?.status).toBe("Not Done");
+			const archivedTasks = await core.filesystem.listArchivedTasks();
+			expect(archivedTasks).toHaveLength(1);
+			expect(archivedTasks[0]?.id).toBe("TASK-2");
+			expect(archivedTasks[0]?.status).toBe("Not Done");
 		});
 	});
 
@@ -292,15 +294,119 @@ describe("Cleanup functionality", () => {
 		});
 	});
 
+	describe("archiveTerminalStatusTasks", () => {
+		const daysAgo = (days: number): string => {
+			const date = new Date();
+			date.setDate(date.getDate() - days);
+			return date.toISOString().split("T")[0] as string;
+		};
+		const finished = (id: string, title: string, days: number): Task => ({
+			...sampleTask,
+			id,
+			title,
+			createdDate: daysAgo(days),
+			updatedDate: daysAgo(days),
+		});
+		/** What a caller shows the user before it asks for confirmation. */
+		const selectOlderThan = async (days: number) =>
+			(await core.getTerminalStatusTasksByAge(days)).map((task) => task.id);
+		const boardIds = async () => (await core.filesystem.listTasks()).map((task) => task.id);
+		const archivedIds = async () => (await core.filesystem.listArchivedTasks()).map((task) => task.id);
+
+		it("archives the selected tasks and leaves the rest on the board", async () => {
+			await core.createTask(finished("task-1", "Old finished", 7), false);
+			await core.createTask(finished("task-2", "Recent finished", 1), false);
+			await core.createTask({ ...finished("task-3", "Old unfinished", 7), status: "In Progress" }, false);
+
+			const result = await core.archiveTerminalStatusTasks(await selectOlderThan(3));
+
+			expect(result).toEqual({ archivedTaskIds: ["TASK-1"], skipped: [], failures: [] });
+			expect(await boardIds()).toEqual(["TASK-2", "TASK-3"]);
+			expect(await archivedIds()).toEqual(["TASK-1"]);
+		});
+
+		it("does not archive a task that became eligible after the selection", async () => {
+			await core.createTask(finished("task-1", "Shown and confirmed", 7), false);
+			const selected = await selectOlderThan(3);
+			// A second finished task of the same age appears while the confirmation is open.
+			await core.createTask(finished("task-2", "Appeared later", 7), false);
+			expect(await selectOlderThan(3)).toEqual(["TASK-1", "TASK-2"]);
+
+			const result = await core.archiveTerminalStatusTasks(selected);
+
+			expect(result).toEqual({ archivedTaskIds: ["TASK-1"], skipped: [], failures: [] });
+			expect(await boardIds()).toEqual(["TASK-2"]);
+			expect(await archivedIds()).toEqual(["TASK-1"]);
+		});
+
+		it("skips a selected task that has left the final status or the board, with the reason", async () => {
+			await core.createTask(finished("task-1", "Reopened", 7), false);
+			await core.createTask(finished("task-2", "Archived meanwhile", 7), false);
+			await core.createTask(finished("task-3", "Still finished", 7), false);
+			const selected = await selectOlderThan(3);
+			await core.updateTaskFromInput("task-1", { status: "In Progress" }, false);
+			await core.archiveTask("task-2", false);
+
+			const result = await core.archiveTerminalStatusTasks(selected);
+
+			expect(result).toEqual({
+				archivedTaskIds: ["TASK-3"],
+				skipped: [
+					{ taskId: "TASK-1", reason: "its status is now In Progress" },
+					{ taskId: "TASK-2", reason: "it is no longer on the board" },
+				],
+				failures: [],
+			});
+			expect(await boardIds()).toEqual(["TASK-1"]);
+			expect(await archivedIds()).toEqual(["TASK-2", "TASK-3"]);
+		});
+
+		it("reports a task that cannot be archived with the reason and still archives the others", async () => {
+			await core.createTask(finished("task-1", "Contested", 7), false);
+			await core.createTask(finished("task-2", "Old finished", 7), false);
+			const selected = await selectOlderThan(3);
+			// A second record claims TASK-1, so archiving it fails closed.
+			await Bun.write(
+				join(core.filesystem.archiveTasksDir, "task-01 - Other claimant.md"),
+				serializeTask({ ...finished("TASK-01", "Other claimant", 30) }),
+			);
+
+			const result = await core.archiveTerminalStatusTasks(selected);
+
+			expect(result.archivedTaskIds).toEqual(["TASK-2"]);
+			expect(result.skipped).toEqual([]);
+			expect(result.failures.map((failure) => failure.taskId)).toEqual(["TASK-1"]);
+			expect(result.failures[0]?.reason).toContain("ambiguous");
+			expect(await boardIds()).toEqual(["TASK-1"]);
+		});
+
+		it("words the result in the lines `backlog cleanup` and the browser both show", () => {
+			const lines = formatCleanupResult(
+				{
+					archivedTaskIds: ["TASK-3"],
+					skipped: [{ taskId: "TASK-1", reason: "its status is now In Progress" }],
+					failures: [{ taskId: "TASK-2", reason: "permission denied" }],
+				},
+				3,
+			);
+
+			expect(lines).toEqual({
+				skipped: ["Skipped task TASK-1: its status is now In Progress"],
+				failed: ["Failed to archive task TASK-2: permission denied"],
+				summary: "Successfully archived 1 of 3 tasks.",
+			});
+		});
+	});
+
 	describe("Error handling", () => {
 		it("should handle non-existent task gracefully", async () => {
-			const success = await core.completeTask("non-existent", false);
+			const success = await core.archiveTask("non-existent", false);
 			expect(success).toBe(false);
 		});
 
-		it("should return empty array for listCompletedTasks when no completed tasks exist", async () => {
-			const completedTasks = await core.filesystem.listCompletedTasks();
-			expect(completedTasks).toHaveLength(0);
+		it("should return empty array for listArchivedTasks when no archived tasks exist", async () => {
+			const archivedTasks = await core.filesystem.listArchivedTasks();
+			expect(archivedTasks).toHaveLength(0);
 		});
 	});
 });

@@ -121,7 +121,7 @@ describe("Web task demotion", () => {
 		const container = setupDom();
 		const inapplicable: Array<{ task: Task; isDraftMode?: boolean }> = [
 			{ task: { ...localTask, id: "DRAFT-1", status: "Draft" }, isDraftMode: true },
-			{ task: { ...localTask, source: "completed" } },
+			{ task: { ...localTask, source: "archived" } },
 			{ task: { ...localTask, source: "local-branch", branch: "tasks/elsewhere" } },
 		];
 

@@ -182,45 +182,58 @@ describe("Web task popup keyboard shortcuts", () => {
 		expect(findButton(container, "Edit")).toBeTruthy();
 	});
 
-	it.each(["Done", "Closed"])("keeps completion active for the configured final status %s", async (status) => {
-		const originalCompleteTask = apiClient.completeTask.bind(apiClient);
-		const completedTaskIds: string[] = [];
-		apiClient.completeTask = async (taskId) => {
-			completedTaskIds.push(taskId);
-		};
-		try {
-			const container = await mountModal({ ...task, status }, true, { availableStatuses: ["To Do", status] });
-			expect(findButton(container, "Move to completed")).toBeTruthy();
-			window.confirm = (message) => {
-				expect(message).toContain("off the board to completed storage");
-				expect(message).toContain("record and dependency links will be preserved");
-				return true;
-			};
-			const dialog = container.querySelector("[role='dialog']");
-			expect(dialog).toBeTruthy();
+	it.each(["Done", "Closed"])("offers no complete action or shortcut in the final status %s", async (status) => {
+		const container = await mountModal({ ...task, status }, true, { availableStatuses: ["To Do", status] });
 
-			const event = await press(dialog as Element, "c");
-			await waitFor(() => completedTaskIds.length > 0);
-
-			expect(event.defaultPrevented).toBe(true);
-			expect(completedTaskIds).toEqual(["BACK-558"]);
-		} finally {
-			apiClient.completeTask = originalCompleteTask;
-		}
-	});
-
-	it("does not offer completion for a nonfinal status containing Done", async () => {
-		const container = await mountModal({ ...task, status: "Not Done" }, true, {
-			availableStatuses: ["Not Done", "Closed"],
-		});
 		expect(findButton(container, "Move to completed")).toBeUndefined();
+		expect(findButton(container, "Complete")).toBeUndefined();
 		const event = await press(container.querySelector("[role='dialog']") as Element, "c");
 		expect(event.defaultPrevented).toBe(false);
 	});
 
-	it("explains archive purpose and link removal before running the action", async () => {
+	it.each([
+		["an archived task", { status: "Done", source: "archived" } as const, "Read-only: This task is archived."],
+		[
+			"a task from another branch",
+			{ source: "local-branch", branch: "feature" } as const,
+			"Read-only: This task exists in the feature branch. Switch to that branch to edit it.",
+		],
+	])("shows %s read-only: one banner, no edit, archive or demote control, no edit shortcut", async (_name, overrides, banner) => {
 		let archives = 0;
-		const container = await mountModal(task, true, {
+		const container = await mountModal({
+			...task,
+			...overrides,
+			acceptanceCriteriaItems: [{ index: 1, text: "Acceptance criterion", checked: false }],
+			definitionOfDoneItems: [{ index: 1, text: "Done item", checked: true }],
+		}, true, {
+			onArchive: () => {
+				archives += 1;
+			},
+		});
+
+		expect(container.textContent).toContain(banner);
+		expect(container.textContent?.split("Read-only:")).toHaveLength(2);
+		expect(container.textContent).not.toContain("Toggle to update");
+		expect(findButton(container, "Edit")).toBeUndefined();
+		expect(findButton(container, "Archive Task")).toBeUndefined();
+		expect(findButton(container, "Demote")).toBeUndefined();
+		const event = await press(container.querySelector("[role='dialog']") as Element, "e");
+		expect(event.defaultPrevented).toBe(false);
+		expect(findButton(container, "Save")).toBeUndefined();
+		expect(archives).toBe(0);
+		const checkboxes = Array.from(container.querySelectorAll<HTMLInputElement>("input[type='checkbox']"));
+		expect(checkboxes).toHaveLength(2);
+		for (const checkbox of checkboxes) {
+			expect(checkbox.disabled).toBe(true);
+			const checked = checkbox.checked;
+			await act(async () => checkbox.click());
+			expect(checkbox.checked).toBe(checked);
+		}
+	});
+
+	it("says what archive keeps before running the action, in any status", async () => {
+		let archives = 0;
+		const container = await mountModal({ ...task, status: "Done" }, true, {
 			onArchive: () => {
 				archives += 1;
 			},
@@ -228,8 +241,8 @@ describe("Web task popup keyboard shortcuts", () => {
 		const archive = findButton(container, "Archive Task");
 		expect(archive).toBeTruthy();
 		window.confirm = (message) => {
-			expect(message).toContain("canceled, duplicate, or invalid work");
-			expect(message).toContain("Incoming dependencies and task references will be removed");
+			expect(message).toContain("It moves off the board.");
+			expect(message).toContain("Its ID, record, dependencies, and references are kept.");
 			return false;
 		};
 		await click(archive as HTMLButtonElement);

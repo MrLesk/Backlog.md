@@ -28,6 +28,14 @@ export const documentViewSchema: JsonSchema = {
 	additionalProperties: false,
 };
 
+/**
+ * Archive, restore and delete take the same input as view: the ID of one document. Unknown fields
+ * are rejected, so there is no confirmation field.
+ */
+export const documentArchiveSchema: JsonSchema = documentViewSchema;
+export const documentRestoreSchema: JsonSchema = documentViewSchema;
+export const documentDeleteSchema: JsonSchema = documentViewSchema;
+
 export const documentCreateSchema: JsonSchema = {
 	type: "object",
 	properties: {

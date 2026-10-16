@@ -5,6 +5,12 @@ import { createRoot, type Root } from "react-dom/client";
 import { MemoryRouter, useLocation } from "react-router-dom";
 import type { Task } from "../types/index.ts";
 import TaskList from "../web/components/TaskList.tsx";
+import {
+	ORDER_FIXTURE_ORDERS,
+	ORDER_FIXTURE_PRIORITIES,
+	ORDER_FIXTURE_TASKS,
+	taskIds,
+} from "./task-list-order-fixture.ts";
 
 const createTask = (overrides: Partial<Task>): Task => ({
 	id: "task-1",
@@ -283,6 +289,37 @@ describe("TaskList labels filter menu", () => {
 
 		expect(getRenderedTaskIds(container)).toEqual(["task-2", "task-4", "task-3", "task-1"]);
 		expect(container.querySelector("th[aria-sort='descending']")?.textContent).toContain("Ordinal");
+	});
+
+	it("sorts by ID, priority and ordinal in the order the CLI lists the same tasks", async () => {
+		const container = renderTaskList(undefined, {
+			tasks: ORDER_FIXTURE_TASKS,
+			availablePriorities: ORDER_FIXTURE_PRIORITIES,
+		});
+		const clickHeader = async (column: string) => {
+			const header = Array.from(container.querySelectorAll("th button")).find((button) =>
+				button.textContent?.includes(column),
+			);
+			expect(header).toBeTruthy();
+			await clickElement(header as HTMLButtonElement);
+		};
+
+		// The table keeps its own default order: newest first.
+		expect(getRenderedTaskIds(container)).toEqual(taskIds([6, 5, 4, 3, 2, 1]));
+
+		await clickHeader("ID");
+		expect(getRenderedTaskIds(container)).toEqual(taskIds(ORDER_FIXTURE_ORDERS.id));
+
+		await clickHeader("Ordinal");
+		expect(getRenderedTaskIds(container)).toEqual(taskIds(ORDER_FIXTURE_ORDERS.ordinal));
+
+		// Lowest priority first is a sort only the table has; it keeps breaking ties by newest ID.
+		await clickHeader("Priority");
+		expect(getRenderedTaskIds(container)).toEqual(taskIds([5, 1, 6, 4, 3, 2]));
+
+		await clickHeader("Priority");
+		expect(container.querySelector("th[aria-sort='descending']")?.textContent).toContain("Priority");
+		expect(getRenderedTaskIds(container)).toEqual(taskIds(ORDER_FIXTURE_ORDERS.priority));
 	});
 
 	it("renders the labels menu above the sticky table header", async () => {

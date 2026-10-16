@@ -3,6 +3,7 @@
  * Determines the latest state of tasks across all git branches
  */
 
+import { ARCHIVED_TASK_DIRECTORIES } from "../constants/index.ts";
 import type { FileSystem } from "../file-system/operations.ts";
 import type { GitOperations as GitOps } from "../git/operations.ts";
 import type { Task } from "../types/index.ts";
@@ -11,7 +12,7 @@ import { buildPathIdRegex, normalizeId } from "../utils/prefix-config.ts";
 /** Default prefix for tasks */
 const DEFAULT_TASK_PREFIX = "task";
 
-export type TaskDirectoryType = "task" | "draft" | "archived" | "completed";
+export type TaskDirectoryType = "task" | "draft" | "archived";
 
 export interface TaskDirectoryInfo {
 	taskId: string;
@@ -85,8 +86,10 @@ export async function getLatestTaskStatesForIds(
 		const directoryChecks: Array<{ path: string; type: TaskDirectoryType }> = [
 			{ path: `${backlogDir}/tasks`, type: "task" },
 			{ path: `${backlogDir}/drafts`, type: "draft" },
-			{ path: `${backlogDir}/archive/tasks`, type: "archived" },
-			{ path: `${backlogDir}/completed`, type: "completed" },
+			...ARCHIVED_TASK_DIRECTORIES.map((directory) => ({
+				path: `${backlogDir}/${directory}`,
+				type: "archived" as const,
+			})),
 		];
 
 		// For better performance, prioritize checking current branch and main branch first
@@ -240,7 +243,7 @@ export async function getLatestTaskStatesForIds(
 
 /**
  * Filter tasks based on their latest directory location across all branches
- * Only returns tasks whose latest directory type is "task" (not draft, archived, or completed)
+ * Only returns tasks whose latest directory type is "task" (not draft or archived)
  */
 export function filterTasksByLatestState(tasks: Task[], latestDirectories: Map<string, TaskDirectoryInfo>): Task[] {
 	return tasks.filter((task) => {
@@ -252,7 +255,7 @@ export function filterTasksByLatestState(tasks: Task[], latestDirectories: Map<s
 		}
 
 		// Only show tasks whose latest directory type is "task"
-		// Completed, archived, and draft tasks should not appear on the main board
+		// Archived and draft tasks should not appear on the main board
 		return latestDirectory.type === "task";
 	});
 }

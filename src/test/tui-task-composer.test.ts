@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
-import { appendFile, chmod, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { appendFile, chmod, mkdir, mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { $ } from "bun";
@@ -963,79 +963,60 @@ describe("TUI task composer canonical persistence", () => {
 		}
 	});
 
-	it("restores pre-existing bytes when a failed create temporarily reuses their path", async () => {
-		await initializeGitRepository(testDir);
-		const preExistingPath = join(testDir, "backlog", "tasks", "task-1 - Preexisting.md");
-		const preExistingContent = "This is not a parseable task and must be restored.\n";
-
-		await afterNextIdGenerated(
-			async (id) => {
-				expect(id).toBe("TASK-1");
-				await writeFile(preExistingPath, preExistingContent);
-				await installFailingHook(testDir);
-			},
-			async () => await expect(core.createTaskFromInput({ title: "Preexisting" }, true)).rejects.toThrow(),
-		);
-
-		expect(await readFile(preExistingPath, "utf8")).toBe(preExistingContent);
-		expect((await $`git diff --cached --name-only`.cwd(testDir).text()).trim()).toBe("");
-	});
-
 	for (const status of ["To Do", "Draft"] as const) {
-		it(`restores prior same-path index and worktree bytes after failed ${status === "Draft" ? "draft" : "task"} creation`, async () => {
-			await initializeGitRepository(testDir);
-			const title = status === "Draft" ? "Preexisting Draft" : "Preexisting Task";
-			const relativePath = `backlog/${status === "Draft" ? "drafts/draft" : "tasks/task"}-1 - ${title.replaceAll(" ", "-")}.md`;
-			const targetPath = join(testDir, relativePath);
-			const baselineContent = "HEAD baseline bytes.\n";
-			const stagedContent = "Prior staged user bytes.\n";
-			const worktreeContent = "Prior unstaged user bytes.\n";
+		const kind = status === "Draft" ? "draft" : "task";
+		const folder = status === "Draft" ? "drafts" : "tasks";
+		const firstId = status === "Draft" ? "DRAFT-1" : "TASK-1";
+
+		it(`refuses to create a ${kind} over a file that appears at its path after the ID is chosen`, async () => {
+			const fileName = `${kind}-1 - Preexisting.md`;
+			const preExistingPath = join(testDir, "backlog", folder, fileName);
+			const preExistingContent = "This is not a parseable record and must stay as it is.\n";
+
 			await afterNextIdGenerated(
 				async (id) => {
-					expect(id).toBe(status === "Draft" ? "DRAFT-1" : "TASK-1");
-					await writeFile(targetPath, baselineContent);
-					await $`git add ${relativePath}`.cwd(testDir).quiet();
-					await $`git commit -m "add prior target"`.cwd(testDir).quiet();
-					await writeFile(targetPath, stagedContent);
-					await $`git add ${relativePath}`.cwd(testDir).quiet();
-					await writeFile(targetPath, worktreeContent);
-					await installFailingHook(testDir);
+					expect(id).toBe(firstId);
+					await writeFile(preExistingPath, preExistingContent);
 				},
-				async () => await expect(core.createTaskFromInput({ title, status }, true)).rejects.toThrow(),
+				async () =>
+					await expect(core.createTaskFromInput({ title: "Preexisting", status }, false)).rejects.toThrow(
+						`${fileName}: another file already exists at that path`,
+					),
 			);
 
-			expect(await readFile(targetPath, "utf8")).toBe(worktreeContent);
-			expect(await $`git show :${relativePath}`.cwd(testDir).text()).toBe(stagedContent);
-			expect(await $`git show HEAD:${relativePath}`.cwd(testDir).text()).toBe(baselineContent);
-			expect((await $`git diff --cached --name-only`.cwd(testDir).text()).trim()).toBe(relativePath);
-			expect((await $`git diff --name-only`.cwd(testDir).text()).trim()).toBe(relativePath);
+			expect(await readFile(preExistingPath, "utf8")).toBe(preExistingContent);
+			expect(await readdir(join(testDir, "backlog", folder))).toEqual([fileName]);
 		});
 
-		it(`restores prior same-path bytes when a failing hook deletes the generated ${status === "Draft" ? "draft" : "task"}`, async () => {
+		it(`leaves the file and the Git index untouched when a ${kind} create is refused`, async () => {
 			await initializeGitRepository(testDir);
-			const title = status === "Draft" ? "Deleted Draft" : "Deleted Task";
-			const relativePath = `backlog/${status === "Draft" ? "drafts/draft" : "tasks/task"}-1 - ${title.replaceAll(" ", "-")}.md`;
+			const relativePath = `backlog/${folder}/${kind}-1 - Preexisting.md`;
 			const targetPath = join(testDir, relativePath);
 			const baselineContent = "HEAD baseline bytes.\n";
 			const stagedContent = "Prior staged user bytes.\n";
 			const worktreeContent = "Prior unstaged user bytes.\n";
+			let headBefore = "";
 			await afterNextIdGenerated(
 				async (id) => {
-					expect(id).toBe(status === "Draft" ? "DRAFT-1" : "TASK-1");
+					expect(id).toBe(firstId);
 					await writeFile(targetPath, baselineContent);
 					await $`git add ${relativePath}`.cwd(testDir).quiet();
 					await $`git commit -m "add prior target"`.cwd(testDir).quiet();
 					await writeFile(targetPath, stagedContent);
 					await $`git add ${relativePath}`.cwd(testDir).quiet();
 					await writeFile(targetPath, worktreeContent);
-					await installFailingHook(testDir, `rm "${targetPath}"\nexit 1`);
+					headBefore = (await $`git rev-parse HEAD`.cwd(testDir).text()).trim();
 				},
-				async () => await expect(core.createTaskFromInput({ title, status }, true)).rejects.toThrow(),
+				async () =>
+					await expect(core.createTaskFromInput({ title: "Preexisting", status }, true)).rejects.toThrow(
+						"another file already exists at that path",
+					),
 			);
 
 			expect(await readFile(targetPath, "utf8")).toBe(worktreeContent);
 			expect(await $`git show :${relativePath}`.cwd(testDir).text()).toBe(stagedContent);
 			expect(await $`git show HEAD:${relativePath}`.cwd(testDir).text()).toBe(baselineContent);
+			expect((await $`git rev-parse HEAD`.cwd(testDir).text()).trim()).toBe(headBefore);
 			expect((await $`git diff --cached --name-only`.cwd(testDir).text()).trim()).toBe(relativePath);
 			expect((await $`git diff --name-only`.cwd(testDir).text()).trim()).toBe(relativePath);
 		});

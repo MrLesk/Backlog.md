@@ -4,8 +4,11 @@ title: Make frontmatter preprocessing robust to valid YAML shapes
 status: To Do
 assignee: []
 created_date: '2026-09-02 20:31'
+updated_date: '2026-10-07 12:46'
 labels: []
 dependencies: []
+references:
+  - src/markdown/parser.ts
 ordinal: 314000
 ---
 

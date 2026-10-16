@@ -32,6 +32,9 @@ Humans and agents can run `backlog instructions` for workflow guides and `backlo
 - Use `backlog doc create "New Guide" -p guides` to create a document in a docs subdirectory. The created output includes the persisted docs-relative file path, such as `backlog/docs/guides/doc-1 - New-Guide.md`.
 - Use `backlog doc update doc-1 --content "Updated markdown"` to update document content. Add `--title`, `-t/--type`, `--tags`, or `-p/--path` to update metadata or move the document while preserving omitted fields.
 - Use `backlog doc search "query"` for scoped document search with plain text output that includes document IDs and follow-up `backlog doc view <docId>` commands. Use `--limit <number>` to cap results.
+- Use `backlog doc archive doc-1` to archive a document you no longer need. Its file moves unchanged to the same relative path under `backlog/archive/docs/`, and its ID stays reserved, so no new document receives it. An archived document leaves `backlog doc list` and search, stays viewable with `backlog doc view <docId>`, and is read-only: `backlog doc update` on it fails until it is restored. Archiving changes no task. The command prints the tasks and drafts whose documentation list names the moved file, so you can update them.
+- Use `backlog doc restore doc-1` to bring an archived document back. Its file moves unchanged to the same relative path under `backlog/docs/`, and it keeps its ID and can be updated again. A file already at that path is never replaced.
+- Removing a document takes two steps: `backlog doc archive doc-1`, then `backlog doc delete doc-1`. Delete works only on an archived document and asks no question. It removes the file from `backlog/archive/docs/` (a file that is a symbolic link is removed as a link) and releases the ID once no other file and no committed file on any branch uses the number. Delete changes no task: it prints the tasks and drafts whose documentation list names the removed file, by its archive path or by the path it had before it was archived.
 - Document paths are always relative to the docs directory. Absolute paths and traversal segments such as `..` are rejected.
 
 ## Task Management
@@ -92,14 +95,25 @@ Humans and agents can run `backlog instructions` for workflow guides and `backlo
 | Add deps    | `backlog task edit 7 --dep task-1 --dep task-2`     |
 | Set due date | `backlog task edit 7 --due-date 2026-08-10` |
 | Clear due date | `backlog task edit 7 --clear-due-date` |
-| Complete    | `backlog task complete 7` (move finished work to completed storage) |
-| Archive     | `backlog task archive 7` (canceled, duplicate, or invalid work) |
+| Archive     | `backlog task archive 7` (move a task in any status off the board) |
+| Restore     | `backlog task restore 7` (move an archived task back to the board) |
+| Delete      | `backlog task delete 7` (permanently remove an archived task and release its ID once no other branch or worktree still holds the task) |
 
-Mark finished work Done (or the configured final status). During periodic cleanup, use Complete to move it off the board while preserving its record and dependency links. Archive removes incoming dependencies and task references.
+Mark finished work Done (or the configured final status). During periodic cleanup, Archive moves it off the board; Archive also takes canceled, duplicate, or invalid work off the board at any time. An archived task keeps its ID, its record, and every dependency and reference to it. It stays readable with `backlog task view`, where its status line ends in `(archived)`, and it is read-only. A dependency on an archived task counts as satisfied only when that task is in the final status.
+
+`backlog task restore` moves an archived task back to the board with the same ID and the status it had. Archived tasks cannot be edited: `backlog task edit` on one fails and names the restore command, so restore the task first.
+
+Deleting a task takes two steps: archive it, then run `backlog task delete`. Delete permanently removes the archived task and releases its ID once no other branch or worktree still holds the task, so a later task can receive it. It removes the dependencies and references other tasks and drafts hold to the deleted task and prints the tasks and drafts it changed. It asks no question, because archiving is the confirming step. A task that is not archived is not deleted, and neither is a task whose subtasks still exist, as tasks or as drafts.
+
+Projects that still hold tasks in a `completed` folder keep working: those tasks are read as archived tasks. `backlog doctor` reports them, and `backlog doctor --fix` moves them into `archive/tasks` without changing file names or IDs. If two records claim one task ID, `backlog doctor` reports the pair and `--fix` gives one of them a new ID; a task on the board always keeps its ID.
+
+### Task list order
+
+Without `--sort`, `task list` orders tasks by ordinal, then priority, then ID: tasks that have an ordinal come first, lowest ordinal first, and priorities rank in the configured order. `--sort priority`, `--sort id`, and `--sort ordinal` order by that field and then by ID. Plain output groups the ordered tasks by status in the configured status order, except that `--sort priority` prints one flat list; `--json` returns the ordered tasks as one flat array. The interactive list shows the same tasks in the same order and status groups as `--plain` for the same options, and MCP `task_list`, which has no sort option, uses the order without `--sort`.
 
 ### Paging long lists
 
-`task list`, `search`, `draft list`, `milestone list`, `doc list`, `doc search`, and `decision list` print every match by default. `--max-count <n>` prints at most `n` items and `--skip <n>` leaves out the first `n`, as in `git log`. Both apply after filtering, sorting, and `--limit`, in the order the output prints: `task list` groups by status unless `--sort priority` prints one flat list, plain `search` prints tasks, then documents, then decisions, and `milestone list` prints active milestones before completed ones. Each list has a stable order: tasks, drafts, and decisions break ties by ID, documents sort by title and then path, search results by score and then corpus order, and milestones follow their files and then the tasks that name them. So consecutive windows of an unchanged backlog join into the complete output without overlapping or leaving items out. With `--json`, `task list` windows its flat `tasks` array in sort order without status groups and `search` windows its results in relevance order, so read all windows of a list in one output mode. The options print text instead of opening an interactive view.
+`task list`, `search`, `draft list`, `milestone list`, `doc list`, `doc search`, and `decision list` print every match by default. `--max-count <n>` prints at most `n` items and `--skip <n>` leaves out the first `n`, as in `git log`. Both apply after filtering, sorting, and `--limit`. `task list` takes the window from the sorted list, so `--plain` and `--json` select the same tasks; plain output then groups only those tasks by status, as it does for `--limit`, unless `--sort priority` prints one flat list. The other lists take the window in the order their output prints: plain `search` prints tasks, then documents, then decisions, and `milestone list` prints active milestones before completed ones. Each list has a stable order: tasks, drafts, and decisions break ties by ID, documents sort by title and then path, search results by score and then corpus order, and milestones follow their files and then the tasks that name them. So consecutive windows of an unchanged backlog neither overlap nor leave items out. With `--json`, `search` windows its results in relevance order, so read all windows of a search in one output mode. The options print text instead of opening an interactive view.
 
 Output cut by a window ends with the shown range, the total, and the command that prints the following items:
 
@@ -130,7 +144,7 @@ Use `backlog task list --json --watch` to receive the full matching list immedia
 backlog task list --json --watch | jq --unbuffered -c '.tasks'
 ```
 
-Each response replaces the subscriber's previous list, including an empty `tasks` array. Filters, sorting, limits, and local editable task scope are unchanged; completed storage, archives, drafts, and other branches are not added to the list. Dependency and configuration changes can update derived fields or which tasks match. Unchanged results are suppressed, and rapid edits or slow consumers may coalesce intermediate states. The command reconciles periodically as well as on file notifications; this is a current-state subscription, not an edit history. Restart it to receive a fresh full list.
+Each response replaces the subscriber's previous list, including an empty `tasks` array. Filters, sorting, limits, and local editable task scope are unchanged; archived tasks, drafts, and other branches are not added to the list. Dependency and configuration changes can update derived fields or which tasks match. Unchanged results are suppressed, and rapid edits or slow consumers may coalesce intermediate states. The command reconciles periodically as well as on file notifications; this is a current-state subscription, not an edit history. Restart it to receive a fresh full list.
 
 `--watch` requires `--json` and cannot be combined with `--plain`. Stop it with Ctrl+C or terminate the process; closing the output pipe also stops it. It also ends when the process that started it ends. A failure after earlier responses writes a diagnostic to stderr and exits nonzero without emitting a replacement for that failed read.
 
@@ -142,9 +156,9 @@ Each successful response is one pretty-printed JSON document followed by a newli
 | `task view <id> --json` and `task <id> --json` | `{ "schemaVersion": 1, "kind": "task-view", "task": {...} }` |
 | `search [query] --json` | `{ "schemaVersion": 1, "kind": "search", "results": [...] }` |
 
-Task list and task search results use these compact fields: `id`, `title`, `status`, `type`, `priority`, `project`, `assignees`, `reporter`, `labels`, `milestone`, `parentTaskId`, `acceptanceCriteriaCompleted`, `acceptanceCriteriaCount`, `references`, `modifiedFiles`, `ordinal`, `createdAt`, `updatedAt`, `dueDate`, and `isReady`. `acceptanceCriteriaCompleted` is the number of checked acceptance criteria and `acceptanceCriteriaCount` is the total; both are `0` when the task has no acceptance criteria. `project` reports the task's `project:` frontmatter and is `null` when the task has none. Setting or filtering by it requires a `projects:` list in the project config. `isReady` is derived from the whole visible corpus at read time and never stored: it is `true` when the task is unfinished and every dependency it names resolved to a completed task, and `false` for a finished task or one whose dependencies are unfinished, unknown, or ambiguous. It is the same verdict `task list --ready` filters on.
+Task list and task search results use these compact fields: `id`, `title`, `status`, `archived`, `type`, `priority`, `project`, `assignees`, `reporter`, `labels`, `milestone`, `parentTaskId`, `acceptanceCriteriaCompleted`, `acceptanceCriteriaCount`, `references`, `modifiedFiles`, `ordinal`, `createdAt`, `updatedAt`, `dueDate`, and `isReady`. `archived` is `true` for a task in the archive, which is read-only, and `false` for a task on the board. `acceptanceCriteriaCompleted` is the number of checked acceptance criteria and `acceptanceCriteriaCount` is the total; both are `0` when the task has no acceptance criteria. `project` reports the task's `project:` frontmatter and is `null` when the task has none. Setting or filtering by it requires a `projects:` list in the project config. `isReady` is derived from the whole visible corpus at read time and never stored: it is `true` when the task is unfinished and every dependency it names resolved to a completed task, and `false` for a finished task or one whose dependencies are unfinished, unknown, or ambiguous. It is the same verdict `task list --ready` filters on.
 
-Task view includes the same progress counts alongside the full checklist and adds `path`, `description`, `dependencies`, `dependencyGraph`, `readiness`, `references`, `documentation`, `modifiedFiles`, `subtasks`, `acceptanceCriteria`, `definitionOfDone`, `implementationPlan`, `implementationNotes`, `comments`, and `finalSummary`. `path` is relative to the project root. Checklist entries contain `index`, `text`, and `checked`. Comment entries contain `index`, `body`, `createdAt`, and `author`.
+Task view includes the same progress counts and `archived` alongside the full checklist and adds `path`, `description`, `dependencies`, `dependencyGraph`, `readiness`, `references`, `documentation`, `modifiedFiles`, `subtasks`, `acceptanceCriteria`, `definitionOfDone`, `implementationPlan`, `implementationNotes`, `comments`, and `finalSummary`. `path` is relative to the project root. Checklist entries contain `index`, `text`, and `checked`. Comment entries contain `index`, `body`, `createdAt`, and `author`.
 
 Task view also carries `dependencyGraph`, a property of the task detail that is derived from the whole visible corpus at read time and never stored in the Markdown file. `task.dependencies` stays the task's own list of direct dependency IDs, unchanged. `task.dependencyGraph` contains `root` (the selected task's ID), `nodes`, and `edges`. Each edge is `{ "from": ..., "to": ... }` and always points from the task that declares the dependency to the task it depends on, so `to` blocks `from`. Each node contains `id`, `title`, `status`, `state`, `completed`, `dependencyDepth`, and `dependentDepth`. The two depths are the shortest hop counts from the root: `0` is the root itself, `1` is a direct relationship, anything higher is transitive, and `null` means the node is not reachable in that direction. Nodes are listed root first and then by task ID, edges by `from` and then `to`. See "Dependency Management" for what the graph covers and how it reports identities it cannot resolve.
 
@@ -157,6 +171,33 @@ When `--max-count` or `--skip` cuts a `task list`, `search`, or `decision list` 
 Absent scalar fields are `null`, and absent collections are `[]`. Date-only values remain `YYYY-MM-DD`; UTC date-times use RFC 3339. Internal fields, absolute paths, raw Markdown source objects, branch metadata, and search implementation details are not exposed.
 
 `--json` and `--plain` are mutually exclusive. Explicit JSON mode is always noninteractive, including in a terminal. Without `--json`, existing interactive, explicit plain, and automatic non-TTY plain behavior is unchanged. One-shot errors leave stdout empty, write a concise message to stderr, and exit nonzero. Version 1 may gain backward-compatible fields, but removing, renaming, retyping, or changing documented field semantics requires a new `schemaVersion`.
+
+### Replacing legacy sections without markers
+
+Replacing or clearing an old description, plan, notes, or final summary can be refused when it has no section markers
+and contains another `##` heading. That heading might belong to the section or start a separate section, so Backlog.md
+leaves the file unchanged instead of guessing. Unchanged content and appends remain supported and keep an ambiguous
+section unmarked, so a later replacement still requires a person to choose its boundary.
+
+Agents must stop and ask the user to repair the boundary; they must not edit task or draft files directly. A person
+can add the markers named in the error around the intended body. For example, to replace notes while preserving a
+separate Verification section:
+
+```markdown
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+Old notes
+<!-- SECTION:NOTES:END -->
+
+## Verification
+
+Evidence to keep
+```
+
+Put the end marker after any headings that belong to the notes, or before a heading that starts a separate section.
+Keep all existing content while adding the markers, then retry the edit. The other marker IDs are `DESCRIPTION`,
+`PLAN`, and `FINAL_SUMMARY`.
 
 ### Multi-line input (description/plan/notes/comments/final summary)
 
@@ -303,7 +344,7 @@ Dependents (2 direct, 2 total):
 - **Edge direction.** A dependency edge points from the task that declares it to the task it depends on, so the task it points at blocks the task it comes from.
 - **Direct versus transitive.** `Depends on` lists everything the selected task transitively depends on; `Dependents` lists everything that transitively depends on it. Nesting shows the distance: the outermost entries are direct relationships and everything indented below them is transitive. The heading counts both, as `N direct, M total`.
 - **Dependents.** "Dependents" means the tasks this one blocks. It is the reverse of the task's own dependency list, and nothing on it is editable from here; change it on the task that declares it.
-- **Visibility.** The graph resolves against exactly what task detail can already see: the current checkout plus completed tasks for the CLI, TUI, and MCP, and the configured cross-branch corpus in the browser. Archiving a task takes it out of every one of those, so an archived ID stops resolving instead of coming back.
+- **Visibility.** The graph resolves against exactly what task detail can already see: the current checkout including archived tasks for the CLI, TUI, and MCP, and the configured cross-branch corpus in the browser. An archived task keeps its ID, so a dependency on it keeps resolving; it reads as `[completed]` only when it is in the final status and keeps blocking otherwise.
 - **Cycles and repeats.** Every task appears once. A relationship that points back into the branch above it is marked `(cycle)`, and a task already shown elsewhere in the same section is marked `(shown above)` rather than being expanded again.
 - **Unresolved identities.** `unknown task ID` means no visible task claims that ID. `ambiguous task ID` means more than one record claims it, so nothing is chosen. Neither is ever treated as satisfied, and the graph never traverses past one, so anything behind it is left out rather than reported as resolved. Diagnose and repair duplicate IDs with `backlog doctor` before trusting a graph that reports one.
 
@@ -344,6 +385,9 @@ To keep the Web UI running in the background with auto-start on boot, see [Runni
 | List docs | `backlog doc list` |
 | Search docs | `backlog doc search "architecture" --limit 5` |
 | View doc | `backlog doc view doc-1` |
+| Archive doc | `backlog doc archive doc-1` (move the document to `backlog/archive/docs/`; its ID stays reserved and it becomes read-only) |
+| Restore doc | `backlog doc restore doc-1` (move an archived document back to `backlog/docs/` with the same ID) |
+| Delete doc | `backlog doc delete doc-1` (archived documents only; no prompt; removes the file and releases the ID) |
 
 ## Decisions
 
@@ -351,6 +395,14 @@ To keep the Web UI running in the background with auto-start on boot, see [Runni
 |-------------|------------------------------------------------------|
 | Create decision | `backlog decision create "Use PostgreSQL for primary database"` |
 | Create with status | `backlog decision create "Migrate to TypeScript" -s proposed` |
+| Change status | `backlog decision edit decision-1 -s superseded` (the status is free-form; the rest of the decision file stays as it is) |
+| Archive decision | `backlog decision archive decision-1` (move the decision to `backlog/archive/decisions/`; its ID stays reserved and it becomes read-only) |
+| Restore decision | `backlog decision restore decision-1` (move an archived decision back to `backlog/decisions/` with the same ID) |
+| Delete decision | `backlog decision delete decision-1` (archived decisions only; no prompt; removes the file and releases the ID) |
+
+- Use `backlog decision archive decision-1` to archive a decision that is no longer wanted. Its file moves unchanged, under the same name, to `backlog/archive/decisions/`, and its ID stays reserved, so no new decision receives it. An archived decision leaves `backlog decision list` and search and is read-only until it is restored. No command prints a single decision yet, so an archived decision is read by restoring it. Archiving changes no task: the command prints the tasks and drafts whose documentation list names the moved file.
+- Use `backlog decision restore decision-1` to bring an archived decision back to `backlog/decisions/` with the same ID. A file of that name already there is never replaced.
+- Removing a decision takes two steps: `backlog decision archive decision-1`, then `backlog decision delete decision-1`. Delete works only on an archived decision and asks no question. It removes the file from `backlog/archive/decisions/` (a file that is a symbolic link is removed as a link) and releases the ID once no other file and no committed file on any branch uses the number. Delete changes no task: it prints the tasks and drafts whose documentation list names the removed file, by its archive path or by the path it had before it was archived.
 
 ## Agent Instructions
 
@@ -366,7 +418,7 @@ To keep the Web UI running in the background with auto-start on boot, see [Runni
 
 | Action      | Example                                                                                      |
 |-------------|----------------------------------------------------------------------------------------------|
-| Cleanup done tasks | `backlog cleanup` (move old completed tasks to completed folder to cleanup the kanban board) |
+| Cleanup done tasks | `backlog cleanup` (archive old finished tasks to clean up the kanban board; asks for an age, so its input and its output must both be an interactive terminal) |
 
 Full help: `backlog --help`
 

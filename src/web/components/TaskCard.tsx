@@ -142,22 +142,6 @@ const TaskCard: React.FC<TaskCardProps> = ({
     }
   };
 
-  const formatRelativeDate = (dateStr: string) => {
-    // Handle both date-only and datetime formats
-    const hasTime = dateStr.includes(" ") || dateStr.includes("T");
-    const date = new Date(dateStr.replace(" ", "T") + (hasTime ? ":00Z" : "T00:00:00Z"));
-    const now = new Date();
-    const diffMs = now.getTime() - date.getTime();
-    const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
-
-    if (diffDays === 0) return 'today';
-    if (diffDays === 1) return 'yesterday';
-    if (diffDays < 7) return `${diffDays}d ago`;
-    if (diffDays < 30) return `${Math.floor(diffDays / 7)}w ago`;
-    if (diffDays < 365) return `${Math.floor(diffDays / 30)}mo ago`;
-    return `${Math.floor(diffDays / 365)}y ago`;
-  };
-
   const getPriorityBadge = (priority?: string) => {
     switch (priority) {
       case 'high': return { bg: 'bg-red-100 dark:bg-red-900/40', text: 'text-red-700 dark:text-red-300', label: 'High' };
@@ -243,15 +227,17 @@ const TaskCard: React.FC<TaskCardProps> = ({
           </div>
         )}
 
-        {/* Header row with task metadata */}
-        <div className="flex items-center justify-between gap-2 mb-1.5">
+        {/* Header row with task metadata. It wraps like the footer: when the id, the badges and the
+            ring and priority group do not fit on one line, the group moves to a second line, still
+            flush right, so the badges are not squeezed to make room for it. */}
+        <div className="flex flex-wrap items-center gap-x-2 gap-y-1 mb-1.5">
           <div className="flex min-w-0 items-center gap-2">
             <span className="shrink-0 text-xs text-gray-400 dark:text-gray-500 font-mono transition-colors duration-200">{task.id}</span>
             <TaskTypeBadge type={task.type} availableTypes={availableTypes} className="min-w-0" />
             <ProjectBadge project={task.project} availableProjects={availableProjects} className="min-w-0" />
           </div>
           {(acceptanceCriteriaProgress || priorityBadge) && (
-            <div className="flex shrink-0 items-center gap-2">
+            <div className="ml-auto flex shrink-0 items-center gap-2">
               <AcceptanceCriteriaProgress task={task} density="card" />
               {priorityBadge && (
                 <span className={`px-1.5 py-0.5 text-[10px] font-semibold rounded ${priorityBadge.bg} ${priorityBadge.text} transition-colors duration-200`}>
@@ -290,9 +276,15 @@ const TaskCard: React.FC<TaskCardProps> = ({
           </div>
         )}
 
-        {/* Footer with date */}
+        {/* Footer with dates and assignee */}
         <div className="flex flex-wrap items-center justify-between gap-x-2 gap-y-1 text-[10px] text-gray-400 dark:text-gray-500 mt-2 pt-1.5 border-t border-gray-100 dark:border-gray-600/50 transition-colors duration-200">
-          <span>{formatRelativeDate(task.createdDate)}</span>
+          {/* Grouped so the updated date sits beside the created date on every card, whatever else the footer shows.
+              The group uses the same gaps as the footer row (gap-x-2 gap-y-1), so change the two together.
+              A new labelled date in the compact style belongs inside this group. */}
+          <span className="flex flex-wrap gap-x-2 gap-y-1">
+            <StoredDate value={task.createdDate} dateFormat={dateFormat} compact />
+            {task.updatedDate && <span>Updated: <StoredDate value={task.updatedDate} dateFormat={dateFormat} compact /></span>}
+          </span>
           {task.dueDate && <span>Due: <StoredDate value={task.dueDate} dateFormat={dateFormat} /></span>}
           {task.assignee.length > 0 && (
             <span className="truncate max-w-[80px]" title={task.assignee.join(', ')}>

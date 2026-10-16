@@ -1,6 +1,8 @@
 declare module "neo-neo-bblessed" {
 	export interface ProgramInterface {
 		destroy(): void;
+		/** True while the terminal is reporting mouse events to the program. */
+		mouseEnabled?: boolean;
 		disableMouse(): void;
 		enableMouse(): void;
 		hideCursor(): void;
@@ -27,6 +29,8 @@ declare module "neo-neo-bblessed" {
 
 	export interface ScreenInterface {
 		program: ProgramInterface;
+		/** The widget that receives key presses, if any widget has focus. */
+		focused?: ElementInterface;
 		key(keys: string | string[], callback: (...args: unknown[]) => void): void;
 		unkey(keys: string | string[], callback: (...args: unknown[]) => void): void;
 		on(event: string, callback: (...args: unknown[]) => void): void;

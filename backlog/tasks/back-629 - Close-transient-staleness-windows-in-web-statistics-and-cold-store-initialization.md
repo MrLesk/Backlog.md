@@ -6,8 +6,12 @@ title: >-
 status: To Do
 assignee: []
 created_date: '2026-08-10 07:04'
+updated_date: '2026-10-07 12:46'
 labels: []
 dependencies: []
+references:
+  - src/server/index.ts
+  - src/core/backlog.ts
 priority: low
 ordinal: 265000
 ---
