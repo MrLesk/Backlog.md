@@ -1,11 +1,11 @@
 ---
 id: BACK-727
 title: Change a decision's status from the CLI
-status: Done
+status: In Progress
 assignee:
-  - '@claude'
+  - '@codex-727'
 created_date: '2026-10-11 10:43'
-updated_date: '2026-10-11 11:39'
+updated_date: '2026-10-16 06:11'
 labels:
   - enhancement
 dependencies: []
@@ -81,6 +81,13 @@ Implementation
 6. Verify: `bun test --timeout=10000 src/test/cli-decision-status.test.ts`, `bunx tsc --noEmit`, `bun run check .`.
 
 Out of scope: superseded-by links, editing title or content, MCP tools, web UI and HTTP API, and the existing web save path.
+
+Current-main integration repair (2026-10-16):
+1. Merge origin/main into the existing PR ancestry and preserve both status editing and the new decision archive/restore/delete CLI and documentation.
+2. Resolve status-edit IDs through Core.getDecision, reject archived decisions with the current shared error, and pass the resolved record to the byte-preserving storage writer using contentRecordFilePath. Do not add locking or change the accepted plain-status/UTF-8 refusal boundary.
+3. Add focused CLI proof for archived read-only behavior and active/archive ID ambiguity. Keep existing byte-preservation, listing, refusal, symlink, and scoped auto-commit proof.
+4. Run focused and related tests, type checks, repository checks, build, and compiled CLI smoke. Inspect the final diff and simplify before handing stable source/test hashes to the coordinator for architecture review.
+5. Wait for review KEEP before finalization, a scoped task-record commit, and a protected push to the existing PR branch.
 <!-- SECTION:PLAN:END -->
 
 ## Implementation Notes
