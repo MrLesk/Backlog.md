@@ -5,7 +5,7 @@ status: Done
 assignee:
   - '@codex-727'
 created_date: '2026-10-11 10:43'
-updated_date: '2026-10-16 06:29'
+updated_date: '2026-10-16 06:39'
 labels:
   - enhancement
 dependencies: []
@@ -14,12 +14,14 @@ references:
   - src/cli.ts
   - src/core/backlog.ts
   - src/file-system/operations.ts
+  - src/guidelines/agent-guidelines.md
 modified_files:
   - src/file-system/operations.ts
   - src/core/backlog.ts
   - src/cli.ts
   - CLI-INSTRUCTIONS.md
   - src/test/cli-decision-status.test.ts
+  - src/guidelines/agent-guidelines.md
 type: enhancement
 ordinal: 345000
 ---
@@ -50,11 +52,12 @@ A decision's content stays immutable; only its status changes. The exact command
 ## Implementation Plan
 
 <!-- SECTION:PLAN:BEGIN -->
-1. Keep backlog decision edit <id> -s/--status <free-form status>, its required non-empty value, --plain output, help, and shipped example.
-2. Preserve the merged current-main ancestry and shared Core.getDecision identity/archive authority, ContentRecordArchivedError, guarded contentRecordFilePath, direct byte write, and scoped auto-commit.
-3. Replace only the already-supported plain status value and its continuations/comments. Preserve the original key/separator prefix, unknown frontmatter, other body content, BOM, and line endings; retain semantic frontmatter read-back, UTF-8 and plain-entry refusal boundaries and all current failure wording.
-4. Prove the separator regression red/green, retain the focused status/archive/ambiguity/refusal/link cases, and run proportionate archive/identity checks, current type checks, Biome, build, and compiled byte/listing/refusal/archive/link smoke. Keep this round and previous-round test counts separate.
-5. After contextual review KEEP on exact hashes, finalize task proof and Done, make one scoped commit, verify hooks preserve reviewed bytes, and push only the existing PR branch while requiring its exact current remote head. Return the shared checkout to clean main. Stop further patch rounds unless a verified pre-change regression remains.
+1. Keep the approved status-only CLI command, merged current-main ancestry, shared identity/archive authority, guarded file path, failure wording, and scoped commits.
+2. Preserve supported status key/separator bytes while replacing the status value and entry continuations/comments; keep unknown frontmatter, body content, BOM, line endings, semantic read-back, and existing refusal boundaries.
+3. Retain both completed substantive review rounds and their separate proof: earlier 180 distinct integration cases; second round 22 status + 23 archive/identity cases, types/Biome/build and compiled smokes.
+4. Align the existing AGENT_GUIDELINES source-reference Decision Management paragraph and one example with approved status-only editing. Keep lifecycle/read-only guidance and all reviewed runtime/test/docs bytes unchanged.
+5. Verify the source import and narrow doc diff, retain build proof, and record honestly that init generates short nudges and the full source guide is not embedded in the compiled binary. No runtime consumer or generator change.
+6. After reviewer KEEP, finalize proof and Done before one guide+task commit, verify exact hashes, and push only the existing PR branch while requiring d0bb2db as the current remote head. Return clean main; no later bookkeeping-only head.
 <!-- SECTION:PLAN:END -->
 
 ## Implementation Notes
@@ -109,6 +112,15 @@ Second-round proof (2026-10-16):
 - Subtraction review: only operations.ts, cli-decision-status.test.ts, and this task changed from published a743fcb. Core, CLI and shipped documentation are byte-identical to the reviewed published head. Full reviewed diff: /private/tmp/back-727-round2-reviewed.diff SHA-256 d4329834dd42e5975e4692ca338aea8bb70ad90d15e50fc2f23ead42866d4f50. Correction-only diff: /private/tmp/back-727-round2-correction.diff SHA-256 e5ef029bcd1f10173315dc00551c7a7726c7af85e7bd11438987784999d32a1f. Waiting for contextual review and authorization before finalization or push.
 
 Second contextual review returned KEEP on exact round-two source/test/docs hashes with no new product choice or source recommendation. Both compiled smokes passed, all subprocesses completed, and temporary smoke projects were cleaned up. AC #2 now also has red/green proof for the existing spaced separator forms and compiled equality outside the intended value/continuation replacement; AC #1/#3/#4 remain proven by the focused help/list/missing-ID cases and compiled smoke. This round is 45 passing cases (22 status + 23 archive/identity), separate from the earlier 180 distinct integration cases; counts are not summed across overlapping rounds. Finalization and protected push were authorized against a743fcb52933329665d64a0f80b65a1eeba69c29.
+
+Mechanical source-reference guidance proof (2026-10-16):
+- Updated only the existing Decision Management paragraph and added one short backlog decision edit decision-1 -s superseded example. All create/list/archive/restore/delete examples and archived read-only rules remain.
+- Direct AGENT_GUIDELINES import contains the exact new status-only sentence and example, all lifecycle commands, and archived read-only guidance. bun run build passed. No broad local test suite was repeated for this Markdown-only change.
+- Distribution limitation: compiled init --defaults --no-git --agent-instructions agents --integration-mode cli exited 0 and generated the current short CLI nudge in AGENTS.md, without a Decision Management section or the new example. src/agent-instructions.ts maps these files to CLI_AGENT_NUDGE; the MCP path uses MCP_AGENT_NUDGE. The full-guide sentence is not present in the compiled binary. The review finding distribution premise was not verified; importing the source text does not establish a compiled or generated consumer.
+- Coordinator accepted source-reference alignment, exact unchanged runtime proof, and build as sufficient. No runtime/test code, consumer, generator, or product behavior changed.
+- Narrow doc diff: /private/tmp/back-727-guidance-reviewed.diff SHA-256 85023be94b2a3acc2432f45f30fb47246957e865e817039304a37f6ab7ef0f2f. Guide SHA-256 2815a7458dff0305581acd3ccea5cd740f5e99e078e857f103c963a4f7918250. All five previously reviewed runtime/test/docs hashes remain unchanged. Waiting for the same reviewer KEEP before finalization or push.
+
+Mechanical guidance review returned KEEP on exact guide/diff hashes; prior whole-feature KEEP remains valid with no new decision. Source-import validation and build proof are accepted with the recorded distribution limitation. Temporary CLI-init smoke project was cleaned up; all tool subprocesses completed. AC #1 now includes the source-reference command/example alignment; all runtime AC/DoD proof from the two completed rounds remains unchanged. Finalization and protected push were authorized against d0bb2dbf9cf1a87d67b3b237408d62bd95d6d68d.
 <!-- SECTION:NOTES:END -->
 
 ## Final Summary
@@ -119,4 +131,6 @@ Prepared PR #1088 against current main and repaired the verified separator-byte 
 Current identity/archive checks, shared guarded path, semantic frontmatter read-back, UTF-8/plain-entry refusals, failure wording, direct writes, symbolic links, and scoped commit behavior are preserved. No new YAML formats, locks, APIs, configuration, content editing, MCP tools, or web changes were added.
 
 Second-round verification: the two new separator cases failed before the correction; 22 status and 23 archive/identity cases passed after it. Current type checks, Biome, build, compiled byte/listing/refusal/archive smoke, and compiled linked-file scoped-commit smoke passed. Three compiled fixtures preserved all bytes outside the intended replacement. Earlier integration proof covered 180 distinct cases and is recorded separately. Both contextual reviews returned KEEP on their exact reviewed hashes.
+
+Mechanical guidance alignment: the existing AGENT_GUIDELINES source-reference Decision Management paragraph now describes status-only editing and includes backlog decision edit decision-1 -s superseded. Lifecycle and archived read-only guidance remain. The source import and build pass; all five reviewed runtime/test/docs hashes are unchanged. Current init writes the existing short nudge, and the full guide text is not embedded in the compiled binary; the finding distribution premise was not verified. The coordinator accepted this documentation-only scope and validation, and the narrow guidance review returned KEEP.
 <!-- SECTION:FINAL_SUMMARY:END -->
