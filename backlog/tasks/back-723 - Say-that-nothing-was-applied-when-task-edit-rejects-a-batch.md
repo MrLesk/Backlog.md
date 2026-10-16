@@ -3,9 +3,9 @@ id: BACK-723
 title: Say that nothing was applied when task edit rejects a batch
 status: Done
 assignee:
-  - '@claude'
+  - '@codex-723'
 created_date: '2026-10-11 10:43'
-updated_date: '2026-10-11 11:25'
+updated_date: '2026-10-16 06:03'
 labels:
   - bug
 dependencies: []
@@ -47,55 +47,32 @@ Edits stay all-or-nothing. Applying the valid parts of a rejected edit, and a `-
 ## Implementation Plan
 
 <!-- SECTION:PLAN:BEGIN -->
-1. Reproduce issue #1061 on origin/main through the CLI for each kind of rejection (out-of-range --check-ac and --check-dod, unknown option, comment with a reserved delimiter line, invalid status, conflicting flags, unknown task ID). Confirmed before coding: every case already exits 1 and leaves the task file byte-identical, but nothing in the output says so.
-2. Print one sentence, 'No changes were applied.', from one place: runEditCommand in src/cli.ts, which task edit and draft edit share for one or several IDs. The current body moves unchanged into an inner function; the wrapper prints the sentence after the reason when the command ended with a failing exit code and no file was changed. A validation added later only has to fail the way the existing ones do.
-3. Keep the sentence true. Research showed an edit can fail after its file was saved (auto-commit on and the commit fails: exit 1, file changed). The wrapper therefore routes every update through one tracked call that compares the file bytes before and after, and stays silent whenever a file changed or a listed task was updated.
-4. Commander rejects an unknown option or a missing option value before the action runs. Give the two edit commands the same sentence through their Commander error output, set where their shared options are added, and report the parent-level 'task --json edit' rejection through the subcommand so it takes the same path.
-5. Remove the per-message 'The edit was not applied.' wording from the malformed-marker error, which the shared sentence makes redundant, and update its test.
-6. Tests through the public CLI in a new src/test/cli-edit-not-applied.test.ts: exit code, output, and a byte-identical file for each rejection kind on task edit and draft edit; a successful edit prints exactly what it printed before; an edit saved but not committed does not print the sentence; a multi-ID edit with one failing ID keeps today's output.
-7. Run the scoped edit test files, bunx tsc --noEmit and bun run check .; simplify; record notes.
-Not decided here, to be reported: what a multi-ID edit should print when some IDs are updated and others fail. That output is left as it is.
+1. Merge current origin/main into the existing PR ancestry and preserve task identity, locks, archived records, and marked Markdown sections.
+2. Keep one shared task/draft edit rejection wrapper and parser error output. Retain CLI-only byte comparison and preserve Core, MCP, and HTTP failure messages.
+3. Verify all-or-nothing rejections, unchanged success output, task saves and draft renames followed by commit failure, and both orders of partial multi-ID success.
+4. Run related CLI, lock, identity and lifecycle tests; type checks; Biome; build; and compiled CLI smoke. Compare the final diff with main and simplify comments.
+5. Complete contextual architecture review on stable source/test hashes, record proof, and publish the reviewed existing PR head.
 <!-- SECTION:PLAN:END -->
 
 ## Implementation Notes
 
 <!-- SECTION:NOTES:BEGIN -->
-Implemented on branch tasks/back-723-edit-nothing-applied.
+PR #1086 was integrated with origin/main 71f7d3e through merge ec7badec, preserving the original PR head bf3dfe65 as a parent. The existing registered worktree and its local branch remain unchanged.
 
-What changed
-- src/cli.ts: runEditCommand (shared by task edit and draft edit, one or several IDs, flags or wizard) now wraps the unchanged edit logic, which moved to performEdit. After the reason for a failure it prints 'No changes were applied.' when the command ended with a failing exit code and no update took effect. Errors thrown by the edit are reported there too, with the same text as before.
-- The sentence is checked: every update goes through one tracked call that compares the file bytes before and after a failed update, and a successful update or a changed file suppresses the sentence.
-- Two rules keep it true and are stated on runEditCommand: a failure inside performEdit sets process.exitCode or throws and never calls process.exit(), and target.update is the only way performEdit writes.
-- Whatever Commander rejects before the action runs (unknown option, option without its value, excess arguments) gets the sentence through the edit commands' error output. addEditFieldOptions was renamed configureEditCommand because it now sets that output as well as the shared options. The 'task --json edit' rejection is raised on the subcommand so it takes the same path; its text is unchanged for every other subcommand.
-- Removed 'The edit was not applied.' from the malformed-marker message, now covered by the shared sentence; src/test/acceptance-criteria.test.ts expects the shared sentence.
-- New src/test/cli-edit-not-applied.test.ts: 24 tests through the CLI.
+Implementation: one shared CLI wrapper prints No changes were applied. once after a rejected task or draft edit when no update took effect. Shared parser output covers errors before the action runs. A successful update or changed file suppresses the sentence, including an edit saved before its commit fails. The edit body moved into performEdit is byte-identical to current main (SHA256 3348993a8d9e30268dcd481cd1ac154764233a5afdab87eabd8626c50ceed09c). Core, MCP and HTTP error behavior is unchanged.
 
-Findings
-- Before the change every rejection already exited 1 and left the task file byte-identical; only the statement was missing.
-- An edit can fail after its file was saved: with auto-commit on and a commit that fails (pre-commit hook), task edit exits 1 with the notes already on disk. The sentence is not printed there, and a test pins it. The command still gives no hint that the file was saved; that is existing behavior and outside this task.
-- draft edit shares the whole path and behaves the same.
-- Several IDs: a rejection before any task is updated, and a run where every listed task fails, print the sentence once at the end. A run where some IDs are updated and others fail prints exactly what it printed before.
-- MCP has its own error reporting and is untouched.
-- 'No Backlog.md project found' exits from a shared helper before the edit starts and does not get the sentence.
+Proof for AC 1-4: 16 task rejection and 3 draft rejection cases assert the reason, the sentence exactly once, nonzero exit, empty stdout, and identical bytes for every task and draft file. Cases include invalid checklist indexes, reserved comment delimiters, unknown or missing options, invalid configured fields, conflicting flags, missing IDs, and batch-wide failures. The existing malformed-marker suite also passes.
+Proof for AC 5: task and draft success output matches the previous exact output; plain output has no rejection sentence. Partial multi-ID success has the existing per-task output in both ID orders. Saved task changes and saved draft rename remain on disk after a failed commit and never receive the sentence.
 
-Verification
-- AC 1 and 4: 16 task edit and 3 draft edit rejections each print their reason and the sentence exactly once (out-of-range and non-numeric checklist indexes, reserved delimiter line in a comment, unknown option, option without its value, --json on the parent command, invalid status, priority and type, conflicting flags, unknown and missing task ID, several IDs). 19 of the new tests fail on the previous CLI.
-- AC 2 and 3: the same tests assert a non-zero exit code, empty stdout, and that every task and draft file has the same bytes as before.
-- AC 5: a successful task edit prints exactly 'Updated task TASK-1' and a successful draft edit 'Updated draft DRAFT-1', with empty stderr; these tests pass on the previous CLI too.
-- bun test --timeout=10000 src/test/cli-edit-not-applied.test.ts: 24 pass. Scoped edit test files: 203 pass with 1 existing skip across 13 files, and 254 pass across 23 files. bunx tsc --noEmit and bun run check . pass.
-- The thrown-error path is reachable only with a terminal attached (wizard with an ambiguous ID) and was checked by hand through a pseudo-terminal.
+Verification: 26 focused tests pass. Related suite: 307 pass, 1 existing skip, 0 fail across 20 files. Combined: 333 pass, 1 skip, 0 fail. The related suite required local server access; a sandbox port-0 bind failed, the same bind passed with that access, and the full related suite then passed. bun run check:types (563 files), bunx tsc --noEmit, bun run check . (458 files), and bun run build pass. The compiled CLI passed 10 smoke checks for task/draft rejection and success, archived read-only behavior, partial multi-ID success, and saved changes with failed commits.
+
+Simplification review shortened the original wrapper comments without adding a new layer or shared error framework. Full-context architecture review returned KEEP on the stable source/test hashes with no material recommendation.
+
+Limits: the byte reads run outside core locks and can conservatively suppress the sentence if another process changes the same file. No-project failure still exits before the edit begins. The default task-edit status list does not accept Draft, so no unsupported demotion flow was added.
 <!-- SECTION:NOTES:END -->
 
 ## Final Summary
 
 <!-- SECTION:FINAL_SUMMARY:BEGIN -->
-The task edit and draft edit commands now end a failed edit with 'No changes were applied.' whenever nothing was written, so a caller no longer has to notice that the 'Updated task <id>' line is missing (issue #1061). Edits stay all-or-nothing. Exit codes and file contents were already correct and are unchanged; only the message is new.
-
-How: runEditCommand in src/cli.ts wraps the edit (performEdit) and prints the sentence after the reason when the command fails and no update took effect. Whatever Commander rejects before the edit runs (unknown option, missing value, excess arguments) gets the same sentence through the edit commands' error output in configureEditCommand. The sentence is withheld when a failure happens after the file was saved, for example auto-commit with a failing hook; that is detected by comparing the file bytes around a failed update.
-
-Verification: new src/test/cli-edit-not-applied.test.ts with 24 tests through the CLI (exit code, output and byte-identical files for 16 task edit and 3 draft edit rejections, unchanged success output, the saved-but-not-committed case, mixed multi-ID output). The scoped edit test files, bunx tsc --noEmit and bun run check . pass.
-
-Choices to confirm in review: with several task IDs the sentence is printed once when every ID fails, and the output is unchanged when some succeed and some fail; the wording has no 'to the task' so it stays accurate for drafts, several IDs and parser errors; 'No Backlog.md project found' exits before the edit starts and does not get the sentence.
-
-Possible follow-up, not started: an edit whose file was saved but whose auto-commit failed still reports only the commit failure.
+Task edit and draft edit now say No changes were applied. exactly once when an edit is rejected before any change. Successful output and all-or-nothing edits are preserved. The sentence is suppressed after a saved change with failed commit and after partial multi-ID success. Current main is merged without changing the shared edit body. Verification: 333 tests pass, 1 existing skip, type checks, Biome, build, and 10 compiled CLI smoke checks pass. Contextual architecture review kept the existing CLI-only design.
 <!-- SECTION:FINAL_SUMMARY:END -->

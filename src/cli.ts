@@ -3123,32 +3123,13 @@ const draftEditTarget: EditCommandTarget = {
 	notFoundMessage: (id) => `Draft ${id} not found.`,
 };
 
-/**
- * Printed after the reason when `task edit` or `draft edit` fails and no update took effect.
- * `runEditCommand` prints it for a failure of the edit itself, `configureEditCommand` for anything
- * Commander rejects before the edit runs.
- */
 const NO_CHANGES_APPLIED = "No changes were applied.";
 
 /**
- * Runs `task edit` or `draft edit` and says when a failed edit applied nothing. The edit of a task
- * is all-or-nothing, so the sentence follows the reason for every failure, whatever rejected the
- * edit. Two rules in `performEdit` keep that true:
- *
- * - A failure prints its reason and sets `process.exitCode`, as the existing ones do, or throws. It
- *   must not call `process.exit()`: the process would end before the sentence is printed. The one
- *   exception is `requireProjectRoot`, which exits when there is no project to edit.
- * - `target.update` is the only way to write. A write made any other way is not tracked, so the
- *   sentence would follow a failure although a file changed.
- *
- * The sentence is checked, not assumed. An update can fail after saving its file, as when the
- * auto-commit fails, and with several IDs some can be updated before another fails. So every
- * update goes through the tracked call below, and one that succeeded or changed its file
- * suppresses the sentence.
- *
- * Known limit: the before and after comparison runs outside core's task lock, so another process
- * writing the same task at that moment can suppress the sentence, which is the safe direction
- * because the sentence is only ever withheld and never printed after a write.
+ * Share rejection output across task and draft edits. performEdit must write through target.update
+ * and report failures by throwing or setting exitCode, so this wrapper can finish the message.
+ * A successful update or changed file suppresses it, including saves followed by commit failure.
+ * Reads outside core's lock can observe another writer and conservatively suppress the sentence.
  */
 async function runEditCommand(target: EditCommandTarget, requestedIds: string[] | undefined, options: OptionValues) {
 	const read = (filePath: string | undefined) => (filePath ? readFile(filePath).catch(() => null) : null);
@@ -3178,7 +3159,6 @@ async function runEditCommand(target: EditCommandTarget, requestedIds: string[] 
 		console.error(error instanceof Error ? error.message : String(error));
 		process.exitCode = 1;
 	}
-	// Every failure ends with a failing exit code, set by the edit itself or by the catch above.
 	if (process.exitCode && !changesMayBeApplied) {
 		console.error(NO_CHANGES_APPLIED);
 	}
@@ -3644,9 +3624,7 @@ async function performEdit(target: EditCommandTarget, requestedIds: string[] | u
 
 /** Gives `task edit` and `draft edit` the field options they share and their error output. */
 function configureEditCommand(cmd: Command) {
-	// Whatever Commander rejects itself, such as an unknown option, a missing option value or excess
-	// arguments, is rejected before the action runs and so before anything is written. Its error
-	// output therefore carries the same sentence.
+	// Parser errors happen before the action can write, so they always get the sentence.
 	cmd.configureOutput({ outputError: (text, write) => write(`${text}${NO_CHANGES_APPLIED}\n`) });
 	return cmd
 		.option("-t, --title <title>")

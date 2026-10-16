@@ -205,8 +205,11 @@ describe("an edit that is not applied", () => {
 		expect(result.stdout).not.toContain(NOT_APPLIED);
 	});
 
-	it("keeps the per-task output when one of several task IDs fails and another is updated", async () => {
-		const result = await runCli(["task", "edit", "1", "999", "-s", "In Progress"]);
+	it.each([
+		["1", "999"],
+		["999", "1"],
+	])("keeps the per-task output when editing %s then %s partly succeeds", async (firstId, secondId) => {
+		const result = await runCli(["task", "edit", firstId, secondId, "-s", "In Progress"]);
 
 		expect(result.exitCode).not.toBe(0);
 		expect(result.stdout).toBe("Updated task TASK-1\n");
@@ -218,6 +221,7 @@ describe("an edit that is not applied", () => {
 
 describe("an edit that is saved but fails afterwards", () => {
 	let taskFilePath: string;
+	let draftFilePath: string;
 
 	beforeEach(async () => {
 		TEST_DIR = createUniqueTestDir("test-cli-edit-saved-not-committed");
@@ -231,6 +235,9 @@ describe("an edit that is saved but fails afterwards", () => {
 		const { filePath } = await core.createTaskFromInput({ title: "Saved task" }, false);
 		if (!filePath) throw new Error("Expected the created task file path");
 		taskFilePath = filePath;
+		const draft = await core.createTaskFromInput({ title: "Saved draft", status: "Draft" }, false);
+		if (!draft.filePath) throw new Error("Expected the created draft file path");
+		draftFilePath = draft.filePath;
 		await $`git add -A`.cwd(TEST_DIR).quiet();
 		await $`git commit -m baseline`.cwd(TEST_DIR).quiet();
 
@@ -257,5 +264,17 @@ describe("an edit that is saved but fails afterwards", () => {
 		const after = await readFile(taskFilePath);
 		expect(after.equals(before)).toBe(false);
 		expect(after.toString()).toContain("saved but not committed");
+	});
+
+	it("does not say that no changes were applied after a draft rename", async () => {
+		const result = await runCli(["draft", "edit", "DRAFT-1", "--title", "Renamed draft"]);
+
+		expect(result.exitCode).not.toBe(0);
+		expect(result.stdout).toBe("");
+		expect(result.stderr).not.toContain(NOT_APPLIED);
+		const draft = await new Core(TEST_DIR).filesystem.loadDraft("DRAFT-1");
+		expect(draft?.title).toBe("Renamed draft");
+		expect(draft?.filePath).not.toBe(draftFilePath);
+		expect(await Bun.file(draftFilePath).exists()).toBe(false);
 	});
 });
