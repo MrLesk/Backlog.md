@@ -5035,6 +5035,34 @@ addHelpSchema(decisionCmd.command("create <title>"), {
 		console.log(`Created decision ${id}`);
 	});
 
+addHelpSchema(decisionCmd.command("edit <decisionId>"), {
+	required: [
+		{ name: "decisionId", type: "Decision ID", description: "Decision to update" },
+		{ name: "status", type: "String", description: "New decision status; free-form" },
+	],
+	optional: [{ name: "plain", type: "Boolean", description: "Use plain text output" }],
+	writes: "Replaces the status line in the decision's frontmatter; the rest of the file stays as it is",
+	output: "Updated decision ID",
+	examples: ["backlog decision edit decision-1 -s superseded"],
+})
+	.description("change the status of a decision")
+	.option("-s, --status <status>", "set decision status (free-form)")
+	// Accepted so agent guidance that always passes --plain works; edit output is already plain text.
+	.option("--plain", "use plain text output")
+	.action(async (decisionId: string, options) => {
+		if (!options.status) {
+			console.error(
+				"Status is required. Provide non-empty text, for example: backlog decision edit decision-1 -s superseded",
+			);
+			process.exitCode = 1;
+			return;
+		}
+		const cwd = await requireProjectRoot();
+		const core = new Core(cwd);
+		const id = await core.updateDecisionStatus(decisionId, options.status);
+		console.log(`Updated decision ${id}`);
+	});
+
 addHelpSchema(decisionCmd.command("archive <decisionId>"), {
 	required: [{ name: "decisionId", type: "Decision ID", description: "Decision to archive" }],
 	optional: [],

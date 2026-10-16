@@ -391,6 +391,7 @@ To keep the Web UI running in the background with auto-start on boot, see [Runni
 |-------------|------------------------------------------------------|
 | Create decision | `backlog decision create "Use PostgreSQL for primary database"` |
 | Create with status | `backlog decision create "Migrate to TypeScript" -s proposed` |
+| Change status | `backlog decision edit decision-1 -s superseded` (the status is free-form; the rest of the decision file stays as it is) |
 | Archive decision | `backlog decision archive decision-1` (move the decision to `backlog/archive/decisions/`; its ID stays reserved and it becomes read-only) |
 | Restore decision | `backlog decision restore decision-1` (move an archived decision back to `backlog/decisions/` with the same ID) |
 | Delete decision | `backlog decision delete decision-1` (archived decisions only; no prompt; removes the file and releases the ID) |

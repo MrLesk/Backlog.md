@@ -790,12 +790,15 @@ backlog doc delete doc-1
 
 ### Decision Management
 
-Decisions are records of choices, kept in `backlog/decisions/`. The CLI creates, lists, archives, restores, and deletes them; MCP has no decision tools.
+Decisions are records of choices, kept in `backlog/decisions/`. The CLI creates and lists decisions, changes only their status, and archives, restores, and deletes them; MCP has no decision tools.
 
 ```bash
 # Create a decision and list the decisions
 backlog decision create "Use PostgreSQL" -s accepted
 backlog decision list --plain
+
+# Change only a decision's status
+backlog decision edit decision-1 -s superseded
 
 # Archive a decision that is no longer wanted (its file moves to backlog/archive/decisions/)
 backlog decision archive decision-1
