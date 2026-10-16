@@ -1306,7 +1306,7 @@ function formatCommentBlock(comment: TaskComment): string {
 	if (createdDate) {
 		lines.push(`created: ${createdDate}`);
 	}
-	lines.push(COMMENT_DELIMITER, body, COMMENT_DELIMITER);
+	lines.push("", COMMENT_DELIMITER, "", body, "", COMMENT_DELIMITER);
 	return lines.join("\n");
 }
 
