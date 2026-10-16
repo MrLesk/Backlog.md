@@ -83,6 +83,25 @@ describe("renderMermaidIn", () => {
 		expect(mermaidDiv?.innerHTML).toContain("rendered");
 	});
 
+	it("hands tag-like text to mermaid as text instead of HTML", async () => {
+		let received = "";
+		// biome-ignore lint/suspicious/noExplicitAny: Mock needed for testing
+		(globalThis as any).__MERMAID_MOCK__ = {
+			default: {
+				// biome-ignore lint/suspicious/noExplicitAny: Mock signature flexibility
+				run: async ({ nodes }: any) => {
+					received = nodes[0].textContent;
+				},
+				initialize: () => {},
+			},
+		};
+
+		const { container } = createContainerWithMermaid('graph TD\nA["<img src=x onerror=alert(1)> view <id>"] --> B');
+		await renderMermaidIn(container as HTMLElement);
+
+		expect(received).toBe('graph TD\nA["&lt;img src=x onerror=alert(1)> view &lt;id>"] --> B');
+	});
+
 	it("does not throw when mermaid is missing", async () => {
 		const { container } = createContainerWithMermaid();
 		await expect(renderMermaidIn(container as HTMLElement)).resolves.toBeUndefined();

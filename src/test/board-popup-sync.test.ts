@@ -4,7 +4,7 @@ import type { Core, TuiTaskEditResult } from "../core/backlog.ts";
 import type { Task } from "../types/index.ts";
 import { renderBoardTui } from "../ui/board.ts";
 import { createScreen } from "../ui/tui.ts";
-import { withTimeout } from "./test-utils.ts";
+import { waitUntil, withTimeout } from "./test-utils.ts";
 
 type EmittingWidget = {
 	emit: (event: string, ch?: string, key?: { name: string; full: string; shift?: boolean }) => boolean;
@@ -185,24 +185,89 @@ describe("board task popup stays in sync with live task state", () => {
 
 	it("defers the rebuild while a confirmation dialog is stacked on the popup", async () => {
 		await withBoardPopup({}, async ({ publishTasks, popupBody, text, focused }) => {
-			pressKey(focused(), "c");
+			pressKey(focused(), "a");
 			await Bun.sleep(30);
 			const dialog = focused();
-			expect(text()).toContain("as completed?");
+			expect(text()).toContain("Moves it off the board");
 
 			// An external edit lands while the user is still answering the dialog.
 			await publishTasks([createTask({ title: "Renamed by CLI", description: "UPDATED-BODY" }), OTHER_TASK]);
 
 			// The dialog must keep both the screen and the keyboard until it is answered.
-			expect(text()).toContain("as completed?");
+			expect(text()).toContain("Moves it off the board");
 			expect(focused()).toBe(dialog);
 
 			// Answering it still works, and the deferred refresh lands afterwards.
 			pressKey(focused(), "escape");
 			await Bun.sleep(40);
-			expect(text()).not.toContain("as completed?");
+			expect(text()).not.toContain("Moves it off the board");
 			expect(popupBody()?.getContent?.()).toContain("UPDATED-BODY");
 		});
+	});
+
+	it("says what archive keeps before confirmation, and no longer binds a complete key", async () => {
+		await withBoardPopup({}, async ({ text, focused, popupBody }) => {
+			// The footer names the keys that exist, and C opens nothing.
+			expect(text()).toContain("Edit/Move/Arch");
+			expect(text()).not.toContain("Comp");
+			pressKey(focused(), "c");
+			await Bun.sleep(30);
+			expect(text()).not.toContain("Moves it off the board");
+			expect(text()).not.toContain("completed");
+
+			pressKey(focused(), "a");
+			await Bun.sleep(30);
+			expect(text()).toContain("Moves it off the board and keeps");
+			expect(text()).toContain("its ID, record, and links.");
+			pressKey(focused(), "escape");
+			await Bun.sleep(30);
+			expect(popupBody()).toBeDefined();
+			expect(text()).not.toContain("Moves it off the board");
+		});
+	});
+
+	it.each([
+		[
+			"a task from another branch",
+			{ source: "local-branch", branch: "feature" } as const,
+			"Task is read-only in branch feature.",
+		],
+		["an archived task", { source: "archived" } as const, "Task is read-only."],
+	])("refuses the archive key on %s without asking, in the popup and on the column", async (_name, overrides, line) => {
+		await withBoardPopup(
+			{ tasks: [createTask(overrides), OTHER_TASK] },
+			async ({ screen, text, focused, popupBody }) => {
+				pressKey(focused(), "a");
+				// The refusal is the first thing the key does, so once its line shows no question was asked.
+				await waitUntil(() => text().includes(line), "the read-only line from the popup");
+				expect(text()).not.toContain("Moves it off the board");
+				expect(popupBody()).toBeDefined();
+
+				pressKey(focused(), "escape");
+				await waitUntil(() => popupBody() === undefined, "the popup to close");
+				// Y replaces the footer line, so the next read-only line can only come from the column key.
+				pressKey(screen, "y");
+				await waitUntil(() => !text().includes(line), "the footer to change");
+				pressKey(screen, "a");
+				await waitUntil(() => text().includes(line), "the read-only line from the column");
+				expect(text()).not.toContain("Moves it off the board");
+			},
+		);
+	});
+
+	it("words the edit key's refusal of a read-only task like the archive key's", async () => {
+		const fromBranch = createTask({ source: "local-branch", branch: "feature" });
+		await withBoardPopup(
+			{
+				tasks: [fromBranch, OTHER_TASK],
+				editTaskInTui: async () => ({ changed: false, task: fromBranch, reason: "read_only" }),
+			},
+			async ({ text, focused }) => {
+				pressKey(focused(), "e");
+				await waitUntil(() => text().includes("Task is read-only in branch feature."), "the read-only line");
+				expect(text()).not.toContain("Cannot edit task");
+			},
+		);
 	});
 
 	it("restores focus to a real column when the board loses columns as the task disappears", async () => {

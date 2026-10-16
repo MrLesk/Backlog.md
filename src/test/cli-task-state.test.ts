@@ -35,10 +35,10 @@ describe("CLI Integration", () => {
 				{
 					id: "task-1",
 					title: "Archive Test Task",
-					status: "Done",
+					status: "To Do",
 					assignee: [],
 					createdDate: "2025-06-08",
-					labels: ["completed"],
+					labels: ["canceled"],
 					dependencies: [],
 					rawContent: "Task ready for archiving",
 				},
@@ -46,8 +46,7 @@ describe("CLI Integration", () => {
 			);
 
 			// Archive the task
-			const { success } = await core.archiveTask("task-1", false);
-			expect(success).toBe(true);
+			expect(await core.archiveTask("task-1", false)).toBe(true);
 
 			// Verify task is no longer in tasks directory
 			const task = await core.filesystem.loadTask("task-1");
@@ -62,11 +61,10 @@ describe("CLI Integration", () => {
 		it("should handle archiving non-existent task", async () => {
 			const core = new Core(TEST_DIR);
 
-			const { success } = await core.archiveTask("task-999", false);
-			expect(success).toBe(false);
+			expect(await core.archiveTask("task-999", false)).toBe(false);
 		});
 
-		it("refuses to archive a Done task through the CLI archive command", async () => {
+		it("archives a Done task through the CLI and keeps its ID reserved", async () => {
 			const core = new Core(TEST_DIR);
 
 			await core.createTask(
@@ -78,7 +76,7 @@ describe("CLI Integration", () => {
 					createdDate: "2025-06-08",
 					labels: ["archive"],
 					dependencies: [],
-					rawContent: "Terminal-status task should be completed, not archived",
+					rawContent: "Finished work leaves the board through archive",
 				},
 				false,
 			);
@@ -86,72 +84,93 @@ describe("CLI Integration", () => {
 			const result = await $`bun ${CLI_PATH} task archive task-5`.cwd(TEST_DIR).nothrow().quiet();
 			const output = result.stdout.toString() + result.stderr.toString();
 
-			expect(result.exitCode).not.toBe(0);
-			expect(output).toContain("Task TASK-5 is Done.");
-			expect(output).toContain("Use: backlog task complete TASK-5");
-			expect(await core.filesystem.loadTask("task-5")).not.toBeNull();
+			expect(result.exitCode).toBe(0);
+			expect(output).toContain("Archived task TASK-5");
+			expect(await core.filesystem.loadTask("task-5")).toBeNull();
 
 			const archivedTasks = await core.filesystem.listArchivedTasks();
-			expect(archivedTasks.some((task) => task.id === "TASK-5")).toBe(false);
+			expect(archivedTasks.map((task) => [task.id, task.status])).toEqual([["TASK-5", "Done"]]);
+
+			const view = await $`bun ${CLI_PATH} task view task-5 --plain`.cwd(TEST_DIR).nothrow().quiet();
+			expect(view.exitCode).toBe(0);
+			expect(view.stdout.toString()).toContain(join("backlog", "archive", "tasks"));
+			expect(view.stdout.toString()).toContain("Status: ✔ Done (archived)");
+
+			const created = await $`bun ${CLI_PATH} task create "After archive" --plain`.cwd(TEST_DIR).nothrow().quiet();
+			expect(created.exitCode).toBe(0);
+			expect(created.stdout.toString()).toContain("Task TASK-6 - After archive");
 		});
 
-		it("completes a Done task through the CLI cleanup command", async () => {
+		it("answers the removed complete command with one line that names archive, and changes nothing", async () => {
 			const core = new Core(TEST_DIR);
 
 			await core.createTask(
 				{
 					id: "task-3",
-					title: "Complete CLI Test Task",
+					title: "Finished CLI Test Task",
 					status: "Done",
 					assignee: [],
 					createdDate: "2025-06-08",
 					labels: ["cleanup"],
 					dependencies: [],
-					rawContent: "Task ready for cleanup completion",
+					rawContent: "A finished task on the board",
 				},
 				false,
 			);
+			const before = await Bun.file((await core.filesystem.loadTask("task-3"))?.filePath ?? "").text();
 
-			const result = await $`bun ${CLI_PATH} task complete task-3`.cwd(TEST_DIR).nothrow().quiet();
-			const output = result.stdout.toString() + result.stderr.toString();
+			// Whatever follows the name, the answer is the notice: it is not a command with arguments.
+			for (const args of [["task-3"], [], ["task-3", "--plain"], ["--help"]]) {
+				const result = await $`bun ${[CLI_PATH, "task", "complete", ...args]}`.cwd(TEST_DIR).nothrow().quiet();
 
-			expect(result.exitCode).toBe(0);
-			expect(output).toContain("Completed task TASK-3.");
-			expect(output).toContain(join(TEST_DIR, "backlog", "completed"));
-			expect(await core.filesystem.loadTask("task-3")).toBeNull();
+				expect(result.exitCode).toBe(1);
+				expect(result.stderr.toString()).toBe("backlog task complete was removed. Use backlog task archive <id>.\n");
+				expect(result.stdout.toString()).toBe("");
+			}
+			const task = await core.filesystem.loadTask("task-3");
+			expect(task?.status).toBe("Done");
+			expect(await Bun.file(task?.filePath ?? "").text()).toBe(before);
+			expect(await core.filesystem.listArchivedTasks()).toEqual([]);
 
-			const completedTasks = await core.filesystem.listCompletedTasks();
-			expect(completedTasks.some((task) => task.id === "TASK-3")).toBe(true);
+			const help = await $`bun ${CLI_PATH} task --help`.cwd(TEST_DIR).nothrow().quiet();
+			expect(help.stdout.toString()).toContain("archive <taskId>");
+			expect(help.stdout.toString()).not.toContain("complete");
 		});
 
-		it("refuses to complete a non-Done task through the CLI cleanup command", async () => {
+		it("refuses to change an archived task and says that it is archived", async () => {
 			const core = new Core(TEST_DIR);
 
 			await core.createTask(
 				{
 					id: "task-4",
-					title: "Not Done CLI Test Task",
+					title: "Archived CLI Test Task",
 					status: "Not Done",
 					assignee: [],
 					createdDate: "2025-06-08",
 					labels: ["cleanup"],
 					dependencies: [],
-					rawContent: "Task not ready for cleanup completion",
+					rawContent: "Work that was set aside",
 				},
 				false,
 			);
+			expect(await core.archiveTask("task-4", false)).toBe(true);
+			const archivedPath = (await core.filesystem.listArchivedTasks())[0]?.filePath ?? "";
+			const before = await Bun.file(archivedPath).text();
 
-			const result = await $`bun ${CLI_PATH} task complete task-4`.cwd(TEST_DIR).nothrow().quiet();
-			const output = result.stdout.toString() + result.stderr.toString();
+			for (const command of [
+				["task", "edit", "task-4", "--append-notes", "late note"],
+				["task", "edit", "task-4", "-s", "Done"],
+				["task", "archive", "task-4"],
+				["task", "demote", "task-4"],
+			]) {
+				const result = await $`bun ${CLI_PATH} ${command}`.cwd(TEST_DIR).nothrow().quiet();
+				const output = result.stdout.toString() + result.stderr.toString();
 
-			expect(result.exitCode).not.toBe(0);
-			expect(output).toContain("Task TASK-4 is not Done.");
-			expect(output).toContain('backlog task edit TASK-4 -s "Done"');
-			expect(output).toContain("before cleanup");
-			expect((await core.filesystem.loadTask("task-4"))?.status).toBe("Not Done");
-
-			const completedTasks = await core.filesystem.listCompletedTasks();
-			expect(completedTasks.some((task) => task.id === "TASK-4")).toBe(false);
+				expect(result.exitCode).not.toBe(0);
+				expect(output).toContain("Task TASK-4 is archived. Archived tasks are read-only.");
+				expect(output).not.toContain("not found");
+			}
+			expect(await Bun.file(archivedPath).text()).toBe(before);
 		});
 
 		it("should demote task to drafts", async () => {
@@ -279,7 +298,7 @@ describe("CLI Integration", () => {
 				{
 					id: "task-5",
 					title: "Commit Archive Test",
-					status: "Done",
+					status: "To Do",
 					assignee: [],
 					createdDate: "2025-06-08",
 					labels: [],
@@ -289,8 +308,7 @@ describe("CLI Integration", () => {
 				false,
 			);
 
-			const { success } = await core.archiveTask("task-5", true); // autoCommit = true
-			expect(success).toBe(true);
+			expect(await core.archiveTask("task-5", true)).toBe(true); // autoCommit = true
 
 			// Verify operation completed successfully
 			const task = await core.filesystem.loadTask("task-5");

@@ -6,7 +6,8 @@ import type { ContentStore } from "../core/content-store.ts";
 import { FileSystem } from "../file-system/operations.ts";
 import { BacklogServer } from "../server/index.ts";
 import type { Task } from "../types/index.ts";
-import { createUniqueTestDir, safeCleanup } from "./test-utils.ts";
+import { getTestCliPath } from "./test-cli.ts";
+import { archiveTaskFile, createUniqueTestDir, safeCleanup } from "./test-utils.ts";
 
 let testDir: string;
 let filesystem: FileSystem;
@@ -112,8 +113,8 @@ describe("BacklogServer statistics endpoint", () => {
 		});
 
 		await filesystem.saveTask(createTask({ priority: "Urgent" }));
-		await filesystem.saveTask(createTask({ id: "TASK-2", title: "Completed task", status: "Done", priority: "Low" }));
-		expect(await filesystem.completeTask("TASK-2")).toBe(true);
+		await filesystem.saveTask(createTask({ id: "TASK-2", title: "Archived task", status: "Done", priority: "Low" }));
+		expect(await archiveTaskFile(filesystem, "TASK-2")).toBe(true);
 		await filesystem.saveDraft(createTask({ id: "DRAFT-1", title: "Draft task", status: "Draft" }));
 
 		await startStatisticsServer();
@@ -134,19 +135,19 @@ describe("BacklogServer statistics endpoint", () => {
 		if (!server) throw new Error("Server not started");
 		const core = (server as unknown as { core: Core }).core;
 		const originalListTasks = core.filesystem.listTasks.bind(core.filesystem);
-		const originalListCompletedTasks = core.filesystem.listCompletedTasks.bind(core.filesystem);
+		const originalListArchivedTasks = core.filesystem.listArchivedTasks.bind(core.filesystem);
 		const originalStatisticsLoader = core.loadAllTasksForStatistics;
 		let activeCorpusLoads = 0;
-		let completedCorpusLoads = 0;
+		let archivedCorpusLoads = 0;
 		let legacyStatisticsLoads = 0;
 
 		core.filesystem.listTasks = async (...args) => {
 			activeCorpusLoads += 1;
 			return await originalListTasks(...args);
 		};
-		core.filesystem.listCompletedTasks = async (...args) => {
-			completedCorpusLoads += 1;
-			return await originalListCompletedTasks(...args);
+		core.filesystem.listArchivedTasks = async (...args) => {
+			archivedCorpusLoads += 1;
+			return await originalListArchivedTasks(...args);
 		};
 		core.loadAllTasksForStatistics = async (progressCallback) => {
 			legacyStatisticsLoads += 1;
@@ -168,15 +169,40 @@ describe("BacklogServer statistics endpoint", () => {
 			expect(second).toMatchObject({ totalTasks: 2, completedTasks: 1, draftCount: 1 });
 		} finally {
 			core.filesystem.listTasks = originalListTasks;
-			core.filesystem.listCompletedTasks = originalListCompletedTasks;
+			core.filesystem.listArchivedTasks = originalListArchivedTasks;
 			core.loadAllTasksForStatistics = originalStatisticsLoader;
 		}
 
 		// The second warm request performs one exact-content working-copy reconciliation.
 		// Branch state remains in the initialized ContentStore and the legacy global loader is unused.
 		expect(activeCorpusLoads).toBe(2);
-		expect(completedCorpusLoads).toBe(2);
+		expect(archivedCorpusLoads).toBe(2);
 		expect(legacyStatisticsLoads).toBe(0);
+	});
+
+	it("keeps board work blocked by an unfinished archived dependency without counting that dependency", async () => {
+		await filesystem.saveTask(createTask({ id: "TASK-3", title: "Set aside", priority: "Urgent" }));
+		expect(await archiveTaskFile(filesystem, "TASK-3")).toBe(true);
+		const active = await filesystem.loadTask("TASK-1");
+		if (!active) throw new Error("Expected active task");
+		await filesystem.saveTask({ ...active, dependencies: ["TASK-3"] });
+
+		const stats = await requestStatistics();
+		expect(stats).toMatchObject({
+			totalTasks: 2,
+			completedTasks: 1,
+			completionPercentage: 50,
+			statusCounts: { "To Do": 1, "In Progress": 0, Done: 1 },
+			priorityCounts: { urgent: 1, low: 1 },
+			projectHealth: { blockedTasks: [expect.objectContaining({ id: "TASK-1", dependencies: ["TASK-3"] })] },
+		});
+
+		const overview = await $`bun ${getTestCliPath()} overview`.cwd(testDir).quiet().nothrow();
+		expect(overview.exitCode).toBe(0);
+		const output = overview.stdout.toString();
+		expect(output).toContain("Total Tasks: 2");
+		expect(output).toContain("Completion: 50%");
+		expect(output.split("Blocked Tasks (waiting on dependencies):")[1]?.trim()).toBe("TASK-1 - Statistics task");
 	});
 
 	it("uses fresh priorities without rebuilding the task corpus", async () => {
@@ -222,50 +248,27 @@ describe("BacklogServer statistics endpoint", () => {
 		await rootB.saveTask(createTask({ id: "TASK-10", title: "Root B queued", status: "Queued" }));
 		await rootB.saveTask(createTask({ id: "TASK-11", title: "Root B queued too", status: "Queued" }));
 		await rootB.saveTask(createTask({ id: "TASK-12", title: "Root B done", status: "Done" }));
-		expect(await rootB.completeTask("TASK-12")).toBe(true);
+		expect(await archiveTaskFile(rootB, "TASK-12")).toBe(true);
 		await rootB.saveDraft(createTask({ id: "DRAFT-10", title: "Root B draft", status: "Draft" }));
 		await rootB.saveDraft(createTask({ id: "DRAFT-11", title: "Root B draft too", status: "Draft" }));
 
 		const core = (server as unknown as { core: Core }).core;
-		const originalListTasks = core.filesystem.listTasks.bind(core.filesystem);
-		const originalListCompletedTasks = core.filesystem.listCompletedTasks.bind(core.filesystem);
-		let activeCorpusLoads = 0;
-		let completedCorpusLoads = 0;
-		core.filesystem.listTasks = async (...args) => {
-			activeCorpusLoads += 1;
-			return await originalListTasks(...args);
-		};
-		core.filesystem.listCompletedTasks = async (...args) => {
-			completedCorpusLoads += 1;
-			return await originalListCompletedTasks(...args);
-		};
+		await Bun.write(join(testDir, "backlog.config.yml"), rootConfig("Root B", "root-b"));
+		core.filesystem.invalidateConfigCache();
+		expect(core.filesystem.backlogDirName).toBe("root-b");
 
-		try {
-			await Bun.write(join(testDir, "backlog.config.yml"), rootConfig("Root B", "root-b"));
-			core.filesystem.invalidateConfigCache();
-			expect(core.filesystem.backlogDirName).toBe("root-b");
+		const first = await requestStatistics();
+		expect(first).toMatchObject({
+			totalTasks: 3,
+			completedTasks: 1,
+			completionPercentage: 33,
+			draftCount: 2,
+			statusCounts: { Queued: 2, Done: 1 },
+		});
+		expect(first.statusCounts).toEqual({ Queued: 2, Done: 1 });
 
-			const first = await requestStatistics();
-			expect(first).toMatchObject({
-				totalTasks: 3,
-				completedTasks: 1,
-				completionPercentage: 33,
-				draftCount: 2,
-				statusCounts: { Queued: 2, Done: 1 },
-			});
-			expect(first.statusCounts).toEqual({ Queued: 2, Done: 1 });
-
-			const second = await requestStatistics();
-			expect(second.statusCounts).toEqual({ Queued: 2, Done: 1 });
-		} finally {
-			core.filesystem.listTasks = originalListTasks;
-			core.filesystem.listCompletedTasks = originalListCompletedTasks;
-		}
-
-		// Root rebinding and branch-fingerprint reconciliation each publish the new root once;
-		// the second request then performs the normal cached working-copy reconciliation.
-		expect(activeCorpusLoads).toBe(3);
-		expect(completedCorpusLoads).toBe(3);
+		const second = await requestStatistics();
+		expect(second.statusCounts).toEqual({ Queued: 2, Done: 1 });
 	});
 
 	it("refreshes statistics after an active branch ref moves", async () => {

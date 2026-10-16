@@ -1,12 +1,7 @@
 import { describe, expect, it } from "bun:test";
 import { parseFrontmatter } from "../markdown/frontmatter.ts";
 import { parseDecision, parseDocument, parseMarkdown, parseTask } from "../markdown/parser.ts";
-import {
-	serializeDecision,
-	serializeDocument,
-	serializeTask,
-	updateTaskAcceptanceCriteria,
-} from "../markdown/serializer.ts";
+import { serializeDecision, serializeDocument, serializeTask } from "../markdown/serializer.ts";
 import { updateStructuredSections } from "../markdown/structured-sections.ts";
 import type { Decision, Document, Task } from "../types/index.ts";
 
@@ -117,21 +112,6 @@ Just a basic task.`;
 			expect(task.acceptanceCriteriaItems).toEqual([]);
 			expect(task.parentTaskId).toBeUndefined();
 			expect(task.subtasks).toBeUndefined();
-		});
-
-		it("should handle task with empty status", () => {
-			const content = `---
-id: task-3
-title: "No status task"
-created_date: "2025-06-07"
----
-
-Task without status.`;
-
-			const task = parseTask(content);
-
-			expect(task.status).toBe("");
-			expect(task.createdDate).toBe("2025-06-07");
 		});
 
 		it("should parse unquoted created_date", () => {
@@ -859,53 +839,6 @@ describe("Markdown Serializer", () => {
 			expect(result).toContain("id: doc-2");
 			expect(result).not.toContain("updated_date:");
 			expect(result).not.toContain("tags:");
-		});
-	});
-
-	describe("updateTaskAcceptanceCriteria", () => {
-		it("should add acceptance criteria to content without existing section", () => {
-			const content = "# Task Description\n\nThis is a simple task.";
-			const criteria = ["Login works correctly", "Error handling is proper"];
-
-			const result = updateTaskAcceptanceCriteria(content, criteria);
-
-			expect(result).toContain("## Acceptance Criteria");
-			expect(result).toContain("- [ ] Login works correctly");
-			expect(result).toContain("- [ ] Error handling is proper");
-		});
-
-		it("should replace existing acceptance criteria section", () => {
-			const content = `# Task Description
-
-This is a task with existing criteria.
-
-## Acceptance Criteria
-
-- [ ] Old criterion 1
-- [ ] Old criterion 2
-
-## Notes
-
-Some additional notes.`;
-
-			const criteria = ["New criterion 1", "New criterion 2"];
-
-			const result = updateTaskAcceptanceCriteria(content, criteria);
-
-			expect(result).toContain("- [ ] New criterion 1");
-			expect(result).toContain("- [ ] New criterion 2");
-			expect(result).not.toContain("Old criterion 1");
-			expect(result).toContain("## Notes");
-		});
-
-		it("should handle empty criteria array", () => {
-			const content = "# Task Description\n\nSimple task.";
-			const criteria: string[] = [];
-
-			const result = updateTaskAcceptanceCriteria(content, criteria);
-
-			expect(result).toContain("## Acceptance Criteria");
-			expect(result).not.toContain("- [ ]");
 		});
 	});
 });

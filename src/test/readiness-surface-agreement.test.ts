@@ -72,7 +72,7 @@ describe("readiness agreement across surfaces", () => {
 
 		// The dependency leaves the active corpus: only its location in backlog/completed still says
 		// the work is finished.
-		expect(await core.completeTask("task-1", false)).toBe(true);
+		expect(await core.archiveTask("task-1", false)).toBe(true);
 
 		mcpServer = new McpServer(testDir, "Test instructions");
 		const mcpConfig = await mcpServer.filesystem.loadConfig();
@@ -98,7 +98,7 @@ describe("readiness agreement across surfaces", () => {
 		// The corpus the interactive task list resolves against: the working copy it displays plus
 		// the completed records it loads alongside the milestone metadata.
 		tasks: await core.queryTasks({ includeCrossBranch: false }),
-		completedTasks: await core.filesystem.listCompletedTasks(),
+		archivedTasks: await core.filesystem.listArchivedTasks(),
 		statuses: (await core.filesystem.loadConfig())?.statuses,
 	});
 
@@ -268,7 +268,7 @@ describe("search JSON readiness for a contested identity", () => {
 		const readyClaimant = makeRecord("TASK-2", "Contested copy");
 		const rows = withReadiness([blockedClaimant, readyClaimant], {
 			tasks: [blocker, blockedClaimant, readyClaimant],
-			completedTasks: [],
+			archivedTasks: [],
 			statuses: ["To Do", "In Progress", "Done"],
 		});
 		// The two claimants genuinely differ: one waits on unfinished work, the other on nothing.

@@ -57,7 +57,11 @@ const setupDom = () => {
 	htmlElementPrototype.detachEvent = () => {};
 };
 
-const mountModal = async (modalTask: Task = task, isOpen = true): Promise<HTMLElement> => {
+const mountModal = async (
+	modalTask: Task = task,
+	isOpen = true,
+	props: { availableStatuses?: string[]; onArchive?: () => void } = {},
+): Promise<HTMLElement> => {
 	setupDom();
 	const container = document.getElementById("root");
 	expect(container).toBeTruthy();
@@ -65,7 +69,7 @@ const mountModal = async (modalTask: Task = task, isOpen = true): Promise<HTMLEl
 	await act(async () => {
 		activeRoot?.render(
 			<ThemeProvider>
-				<TaskDetailsModal task={modalTask} isOpen={isOpen} onClose={() => {}} />
+				<TaskDetailsModal task={modalTask} isOpen={isOpen} onClose={() => {}} {...props} />
 			</ThemeProvider>,
 		);
 		await Promise.resolve();
@@ -178,26 +182,74 @@ describe("Web task popup keyboard shortcuts", () => {
 		expect(findButton(container, "Edit")).toBeTruthy();
 	});
 
-	it("keeps c completion active outside editable controls", async () => {
-		const originalCompleteTask = apiClient.completeTask.bind(apiClient);
-		const completedTaskIds: string[] = [];
-		apiClient.completeTask = async (taskId) => {
-			completedTaskIds.push(taskId);
-		};
-		try {
-			const container = await mountModal({ ...task, status: "Done" });
-			window.confirm = () => true;
-			const dialog = container.querySelector("[role='dialog']");
-			expect(dialog).toBeTruthy();
+	it.each(["Done", "Closed"])("offers no complete action or shortcut in the final status %s", async (status) => {
+		const container = await mountModal({ ...task, status }, true, { availableStatuses: ["To Do", status] });
 
-			const event = await press(dialog as Element, "c");
-			await waitFor(() => completedTaskIds.length > 0);
+		expect(findButton(container, "Move to completed")).toBeUndefined();
+		expect(findButton(container, "Complete")).toBeUndefined();
+		const event = await press(container.querySelector("[role='dialog']") as Element, "c");
+		expect(event.defaultPrevented).toBe(false);
+	});
 
-			expect(event.defaultPrevented).toBe(true);
-			expect(completedTaskIds).toEqual(["BACK-558"]);
-		} finally {
-			apiClient.completeTask = originalCompleteTask;
+	it.each([
+		["an archived task", { status: "Done", source: "archived" } as const, "Read-only: This task is archived."],
+		[
+			"a task from another branch",
+			{ source: "local-branch", branch: "feature" } as const,
+			"Read-only: This task exists in the feature branch. Switch to that branch to edit it.",
+		],
+	])("shows %s read-only: one banner, no edit, archive or demote control, no edit shortcut", async (_name, overrides, banner) => {
+		let archives = 0;
+		const container = await mountModal({
+			...task,
+			...overrides,
+			acceptanceCriteriaItems: [{ index: 1, text: "Acceptance criterion", checked: false }],
+			definitionOfDoneItems: [{ index: 1, text: "Done item", checked: true }],
+		}, true, {
+			onArchive: () => {
+				archives += 1;
+			},
+		});
+
+		expect(container.textContent).toContain(banner);
+		expect(container.textContent?.split("Read-only:")).toHaveLength(2);
+		expect(container.textContent).not.toContain("Toggle to update");
+		expect(findButton(container, "Edit")).toBeUndefined();
+		expect(findButton(container, "Archive Task")).toBeUndefined();
+		expect(findButton(container, "Demote")).toBeUndefined();
+		const event = await press(container.querySelector("[role='dialog']") as Element, "e");
+		expect(event.defaultPrevented).toBe(false);
+		expect(findButton(container, "Save")).toBeUndefined();
+		expect(archives).toBe(0);
+		const checkboxes = Array.from(container.querySelectorAll<HTMLInputElement>("input[type='checkbox']"));
+		expect(checkboxes).toHaveLength(2);
+		for (const checkbox of checkboxes) {
+			expect(checkbox.disabled).toBe(true);
+			const checked = checkbox.checked;
+			await act(async () => checkbox.click());
+			expect(checkbox.checked).toBe(checked);
 		}
+	});
+
+	it("says what archive keeps before running the action, in any status", async () => {
+		let archives = 0;
+		const container = await mountModal({ ...task, status: "Done" }, true, {
+			onArchive: () => {
+				archives += 1;
+			},
+		});
+		const archive = findButton(container, "Archive Task");
+		expect(archive).toBeTruthy();
+		window.confirm = (message) => {
+			expect(message).toContain("It moves off the board.");
+			expect(message).toContain("Its ID, record, dependencies, and references are kept.");
+			return false;
+		};
+		await click(archive as HTMLButtonElement);
+		expect(archives).toBe(0);
+		window.confirm = () => true;
+		await click(archive as HTMLButtonElement);
+		expect(archives).toBe(1);
 	});
 
 	it("keeps e and E shortcuts active outside editable controls", async () => {

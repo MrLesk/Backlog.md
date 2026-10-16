@@ -8,7 +8,7 @@ import type { Core } from "./backlog.ts";
 import type { TaskCorpusSnapshot } from "./content-store.ts";
 import type { BranchTaskStateEntry } from "./task-loader.ts";
 
-export type DuplicateTaskLocation = "active" | "completed";
+export type DuplicateTaskLocation = "active" | "archived";
 
 export interface DuplicateRepairChange {
 	sourcePath: string;
@@ -30,7 +30,7 @@ export interface DuplicateReferenceReview {
 export interface CrossBranchDuplicateLocation {
 	branch: string;
 	path: string;
-	state: "active" | "completed";
+	state: "active" | "archived";
 }
 
 export interface CrossBranchDuplicateFinding {
@@ -87,17 +87,17 @@ function withLocation(task: Task, location: DuplicateTaskLocation, rootDir: stri
 	return {
 		...task,
 		filePath: task.filePath ? normalizeRelativePath(rootDir, task.filePath) : undefined,
-		source: location === "completed" ? "completed" : "local",
+		source: location === "archived" ? "archived" : "local",
 	};
 }
 
 export async function findLocalDuplicateTaskIds(core: Core, snapshot?: TaskCorpusSnapshot): Promise<DuplicateGroup[]> {
-	const [activeTasks, completedTasks] = snapshot
-		? [snapshot.activeTasks, snapshot.completedTasks]
-		: await Promise.all([core.filesystem.listTasks(), core.filesystem.listCompletedTasks()]);
+	const [activeTasks, archivedTasks] = snapshot
+		? [snapshot.activeTasks, snapshot.archivedTasks]
+		: await Promise.all([core.filesystem.listTasks(), core.filesystem.listArchivedTasks()]);
 	return detectDuplicateTaskIds([
 		...activeTasks.map((task) => withLocation(task, "active", core.filesystem.rootDir)),
-		...completedTasks.map((task) => withLocation(task, "completed", core.filesystem.rootDir)),
+		...archivedTasks.map((task) => withLocation(task, "archived", core.filesystem.rootDir)),
 	]);
 }
 
@@ -115,7 +115,7 @@ export async function findCrossBranchDuplicateTaskIds(
 	const corpus = snapshot ?? (await core.getContentStore()).getTaskCorpusSnapshot();
 	const config = corpus.config ?? (await core.filesystem.loadConfig());
 	if (config?.checkActiveBranches === false) return [];
-	const { activeTasks, completedTasks } = corpus;
+	const { activeTasks, archivedTasks } = corpus;
 	const currentBranch = await core.gitOps.getCurrentBranch();
 	const stateEntries: BranchTaskStateEntry[] = corpus.branchStateEntries?.slice() ?? [];
 
@@ -130,11 +130,11 @@ export async function findCrossBranchDuplicateTaskIds(
 			lastModified: task.updatedDate ? new Date(task.updatedDate) : new Date(0),
 		});
 	}
-	for (const task of completedTasks) {
+	for (const task of archivedTasks) {
 		if (!task.filePath) continue;
 		stateEntries.push({
 			id: task.id,
-			type: "completed",
+			type: "archived",
 			branch: current,
 			path: normalizeRelativePath(core.filesystem.rootDir, task.filePath),
 			lastModified: task.updatedDate ? new Date(task.updatedDate) : new Date(0),
@@ -143,7 +143,7 @@ export async function findCrossBranchDuplicateTaskIds(
 
 	const byId = new Map<string, BranchTaskStateEntry[]>();
 	for (const entry of stateEntries) {
-		if (entry.type !== "task" && entry.type !== "completed") continue;
+		if (entry.type !== "task" && entry.type !== "archived") continue;
 		const id = canonicalTaskId(entry.id);
 		const entries = byId.get(id) ?? [];
 		entries.push(entry);
@@ -159,7 +159,7 @@ export async function findCrossBranchDuplicateTaskIds(
 			.map((entry) => ({
 				branch: entry.branch,
 				path: entry.path.split(sep).join("/"),
-				state: entry.type === "completed" ? ("completed" as const) : ("active" as const),
+				state: entry.type === "archived" ? ("archived" as const) : ("active" as const),
 			}))
 			.sort((left, right) => `${left.branch}:${left.path}`.localeCompare(`${right.branch}:${right.path}`));
 		findings.push({ id, locations });
@@ -168,7 +168,7 @@ export async function findCrossBranchDuplicateTaskIds(
 }
 
 function getTaskLocation(task: Task): DuplicateTaskLocation {
-	return task.source === "completed" ? "completed" : "active";
+	return task.source === "archived" ? "archived" : "active";
 }
 
 function matchesConfiguredPadding(taskId: string, zeroPaddedIds?: number): boolean {
@@ -181,11 +181,26 @@ function matchesConfiguredPadding(taskId: string, zeroPaddedIds?: number): boole
 	return segments.every((segment) => (segment.replace(/^0+/, "") || "0") === segment);
 }
 
-function sortGroupTasks(tasks: Task[], zeroPaddedIds?: number): Task[] {
+/**
+ * How strongly a record holds a contested ID; the lowest keeps it and the others are renumbered.
+ *
+ * A task on the board comes first. Among archived records, one stored outside the archive folder
+ * comes next: those folders always reserved their IDs, while a record already in the archive
+ * folder can date from when archiving released the ID, which is how the collision arose.
+ */
+function idPriority(task: Task, archiveDirectory: string): number {
+	if (getTaskLocation(task) === "active") return 0;
+	return dirname(task.filePath ?? "")
+		.split(sep)
+		.join("/") === archiveDirectory
+		? 2
+		: 1;
+}
+
+function sortGroupTasks(tasks: Task[], archiveDirectory: string, zeroPaddedIds?: number): Task[] {
 	return [...tasks].sort((left, right) => {
-		const locationOrder =
-			getTaskLocation(left) === getTaskLocation(right) ? 0 : getTaskLocation(left) === "active" ? -1 : 1;
-		if (locationOrder !== 0) return locationOrder;
+		const priorityOrder = idPriority(left, archiveDirectory) - idPriority(right, archiveDirectory);
+		if (priorityOrder !== 0) return priorityOrder;
 		const leftMatchesPadding = matchesConfiguredPadding(left.id, zeroPaddedIds);
 		const rightMatchesPadding = matchesConfiguredPadding(right.id, zeroPaddedIds);
 		if (leftMatchesPadding !== rightMatchesPadding) return leftMatchesPadding ? -1 : 1;
@@ -378,16 +393,17 @@ export async function previewDuplicateTaskIdRepair(
 	const crossBranchFindings = options.includeBranches ? await findCrossBranchDuplicateTaskIds(core, snapshot) : [];
 	const blockedReasons: string[] = [];
 	const changes: DuplicateRepairChange[] = [];
-	const [activeTasks, completedTasks, config] = await Promise.all([
+	const [activeTasks, archivedTasks, config] = await Promise.all([
 		snapshot ? Promise.resolve(snapshot.activeTasks) : core.filesystem.listTasks(),
-		snapshot ? Promise.resolve(snapshot.completedTasks) : core.filesystem.listCompletedTasks(),
+		snapshot ? Promise.resolve(snapshot.archivedTasks) : core.filesystem.listArchivedTasks(),
 		core.filesystem.loadConfig(),
 	]);
-	const existingIds = [...activeTasks, ...completedTasks].map((task) => task.id);
+	const existingIds = [...activeTasks, ...archivedTasks].map((task) => task.id);
 	const plannedIds: string[] = [];
+	const archiveDirectory = normalizeRelativePath(core.filesystem.rootDir, core.filesystem.archiveTasksDir);
 
 	for (const group of groups) {
-		const tasks = sortGroupTasks(group.tasks, config?.zeroPaddedIds);
+		const tasks = sortGroupTasks(group.tasks, archiveDirectory, config?.zeroPaddedIds);
 		const parentValidation = validateGroupParent(group);
 		if (parentValidation.blockedReasons.length > 0) {
 			blockedReasons.push(...parentValidation.blockedReasons);
@@ -487,11 +503,12 @@ async function removeIfPresent(path: string): Promise<void> {
 	}
 }
 
-/** @internal Installs a staged file without replacing an existing destination. */
-export async function installFileNoReplace(stagedPath: string, targetPath: string): Promise<void> {
-	// Staged and target files share a directory, so a hard link atomically claims
-	// the destination name and fails with EEXIST if an external writer won.
-	await link(stagedPath, targetPath);
+/** @internal Installs a file under a new name without replacing an existing destination. */
+export async function installFileNoReplace(sourcePath: string, targetPath: string): Promise<void> {
+	// A hard link atomically claims the destination name and fails with EEXIST if an external
+	// writer won. Repair stages its files in the target's directory, so its links stay on one
+	// filesystem.
+	await link(sourcePath, targetPath);
 }
 
 interface InstalledRepairFile {

@@ -1,13 +1,26 @@
 ---
 id: BACK-683
 title: Render TUI acceptance-criteria progress as a pie glyph
-status: In Progress
+status: Done
 assignee:
-  - '@claude'
+  - '@codex'
 created_date: '2026-09-02 21:40'
-updated_date: '2026-09-02 23:00'
+updated_date: '2026-10-16 07:27'
 labels: []
 dependencies: []
+references:
+  - src/ui/acceptance-criteria-progress.ts
+  - src/ui/task-row-prefix.ts
+  - src/ui/board.ts
+  - src/ui/task-viewer-with-search.ts
+modified_files:
+  - src/ui/acceptance-criteria-progress.ts
+  - src/ui/task-row-prefix.ts
+  - src/ui/board.ts
+  - src/ui/task-viewer-with-search.ts
+  - src/test/tui-acceptance-criteria-progress.test.ts
+  - src/test/tui-task-project.test.ts
+  - src/test/tui-priority-marker.test.ts
 ordinal: 315000
 ---
 
@@ -30,21 +43,19 @@ Replace the bar with a single pie glyph from the same Unicode block as the shape
 
 ## Definition of Done
 <!-- DOD:BEGIN -->
-- [x] #1 bunx tsc --noEmit passes when TypeScript touched
-- [x] #2 bun run check . passes when formatting/linting touched
-- [x] #3 bun test (or scoped test) passes
+- [x] #1 bun run check . passes when formatting/linting touched
+- [x] #2 bun test (or scoped test) passes
+- [x] #3 bun run check:types passes when TypeScript touched
 <!-- DOD:END -->
 
 ## Implementation Plan
 
 <!-- SECTION:PLAN:BEGIN -->
-1. Replace the ASCII bar in src/ui/acceptance-criteria-progress.ts with a single pie glyph (U+25CB/25D4/25D1/25D5/25CF) plus the checked/total count. Glyph thresholds: nothing checked -> circle, <= 1/3 -> quarter, <= 2/3 -> half, above that but incomplete -> three-quarter, all checked -> full. Keep the existing wrapStatusColor semantics (green complete, yellow underway, red at a third or fewer). No Block Elements.
-2. Turn the formatter into a fixed-width column that every row gets, including the separator before the task id: blanks when a row shows no progress. Drop the wide/compact variants and the now-unused availableWidth plumbing from both row formatters.
-3. Board (src/ui/board.ts formatTaskListItem): prefix every row with the reserved column so ids line up across rows and columns; verify the moving marker and cross-branch dimming still compose.
-4. Task list (src/ui/task-viewer-with-search.ts formatTaskViewerListItem): use the same reserved column; make the status segment a uniform-width icon so ids actually line up (the BACK-551 conditional swapped between icon-only and icon+status-word, which is variable width).
-5. Verify the five glyphs measure one cell in the patched neo-neo-bblessed width table using the same unicode.strWidth infrastructure as src/test/tui-emoji-width.test.ts.
-6. Rewrite src/test/tui-acceptance-criteria-progress.test.ts for the new output: each glyph threshold, the color at each threshold, id alignment between a row with progress and a row without, and cell width. Leave the plain/MCP suffix test untouched.
-7. Gates: bunx tsc --noEmit, bun run check ., bun run test.
+1. Integrate current origin/main into existing PR head e656730 without rewriting its ancestry; preserve the current priority marker, task sections, filtering, archive behavior and visible status labels.
+2. Keep one shared measured row prefix for status and pie progress. Repair only bounded integration issues needed by the five accepted criteria.
+3. Verify glyph thresholds/colors, mixed-row ID alignment, custom labels, counts above 100 and row highlighting with focused tests and compiled real PTY output. Confirm plain/MCP progress behavior stays unchanged.
+4. Run bun run check:types, bun run check . and bun run build; perform a task-scoped simplification pass.
+5. Stop with the integrated uncommitted result for the coordinator full-context review. Finalize the CLI task record, commit and push only after approval.
 <!-- SECTION:PLAN:END -->
 
 ## Implementation Notes
@@ -73,10 +84,24 @@ acceptance-criteria-progress.ts is back to formatAcceptanceCriteriaProgress(task
 The board formatter and the task-list formatter take the prefix builder as a last parameter, defaulting to a single-row builder so standalone calls still render sensibly. The task list rebuilds it wherever filteredTasks is assigned, so the render stays O(n).
 
 Verified: 13 tests in src/test/tui-acceptance-criteria-progress.test.ts, including a render mixing custom statuses, 100/100, 10/100 and rows without progress that asserts one id column for all of them, a test that Ready and Waiting stay distinguishable, a test that an all-queued board column spends zero prefix width, and cell-width checks on the composed prefix. PTY QA at 150x40 on a project configured with To Do / Ready / In Progress / Waiting / Done and a 100-criterion task. bunx tsc --noEmit and bun run check . pass; bun run test is 2860 pass / 8 skip / 1 fail, matching a clean origin/main baseline run (2859 / 8 / 1) that fails the same ContentStore test.
+
+2026-10-16 merge preparation: reassigned to @codex. Earlier completion evidence remains historical; the current integrated result requires fresh checks and full-context review before finalization. Main-side task changes added only an updated date and the acceptance-criteria-progress source reference; preserved the reference through CLI.
+
+Integrated current main. Kept archive/read-only flow, sorted and sectioned list rows, filter refresh, and priority markers. Adapted the priority-marker test calls to the simplified row formatter signature; extended existing alignment checks to cover wide custom labels and three-digit board counts.
+
+2026-10-16 current-main verification: 34 focused tests across progress/project/priority/width/tag files pass, plus 109 separate related flow/plain/MCP tests across seven files. The compiled task-list order PTY suite has four distinct scenarios: three pass under restriction; the watcher-order scenario could not launch its Tcl exec edit because Tcl reported "could not create error file for command: not owner". Unchanged main reproduced the same scenario failure. One justified rerun of only that scenario with needed access passed. No ordering, timing, fixture, or CI behavior was changed. Counts total 147 distinct passing scenarios across 13 files; the repeated 13 progress tests and scoped PTY rerun are not additional tests.
+
+Compiled custom PTY QA: five captured terminal frames at 151x40 with To Do / Ready / In Progress / Waiting / Done, 12 tasks, empty criteria rows, and counts up to 120/120. Replayed real ANSI output with the existing xterm headless dependency: all list IDs occupy cell 26; active board IDs occupy cell 72; ○ ◔ ◑ ◕ ● are one cell; unselected progress colors are red/yellow/green; custom labels, current priority arrows, selection inverse style and move-row highlighting remain visible. Current column widths still truncate long titles. UTF-8 and font support match the existing status glyphs. Plain/MCP criteria suffix tests pass; their shared formatter body is unchanged.
+
+Simplification pass: kept the single measured prefix shared by board and task list, dropped the old wide/compact ASCII constants and unused width plumbing, and added no parallel formatter, cache, service or compatibility API. The current-main list computes widths after its final sorted/limited/sectioned rows on initialization and filter refresh. bun run check:types passes (565 files); bun run check . passes (460 files); bun run build and git diff --check pass. The result remains detached and uncommitted for full-context review; original PR completion fields will be refreshed only after review approval.
+
+Finalization evidence for AC 1-4: 13 progress tests prove the five glyph thresholds, colors, one-cell widths and mixed-row alignment, including custom wide labels and three-digit counts. Compiled PTY captures verify the actual board/list output with 120 criteria and row selection/move styles. AC 5: unchanged summary suffix body and passing cli-task-list/mcp-tasks criteria tests prove plain/MCP output. All three current DoD checks passed. Full-context review returned KEEP for all seven frozen source/test hashes. Corrected the stale type-check DoD to the current canonical bun run check:types command. Historical notes above describe earlier implementation stages and checks; this final summary records the integrated result. For precision, the exact restricted Tcl error was: couldn’t create error file for command: not owner.
 <!-- SECTION:NOTES:END -->
 
 ## Final Summary
 
 <!-- SECTION:FINAL_SUMMARY:BEGIN -->
-Replaced the TUI's ASCII acceptance-criteria bar with a single pie glyph plus the live checked/total count (○ ◔ ◑ ◕ ●, green/yellow/red unchanged), and moved column reservation into src/ui/task-row-prefix.ts, which sizes the status and progress columns per render from the rows actually on screen. Task ids line up on the board and in the task list, custom status labels are preserved, counts of any length fit, and a render pays only for columns something on it fills. The prefix is emitted before the row-level move and cross-branch tags so those colors survive the whole row. Verified with 13 unit tests covering the glyph thresholds, the color at each threshold, id alignment across custom statuses / three-digit counts / rows without progress, zero prefix width for an all-queued board column, and cell widths on the composed prefix; plus PTY renders at 150x40 with a five-status workflow and a 100-criterion task. Plain and MCP output untouched. bunx tsc --noEmit and bun run check . pass; bun run test is 2860/8/1, matching a clean origin/main baseline that fails the same ContentStore flake. PR #996.
+In Progress rows with criteria now show one pie glyph and the live checked/total count on the TUI board and task list. One shared measured prefix aligns task IDs across mixed rows, custom status labels and three-digit counts. Status words remain visible; progress colors, move highlighting, cross-branch dimming, current task ordering and priority markers are preserved. Plain and MCP list output is unchanged.
+
+Verification: 147 distinct passing scenarios across 13 files, including four compiled task-list PTY scenarios. The restricted watcher-order run could not start its Tcl edit; unchanged main reproduced that environment failure, and one scoped rerun with the needed access passed. Five custom compiled PTY frames cover 12 tasks, five statuses and 120 criteria, confirming ID alignment, single-cell glyphs, colors and highlighting. bun run check:types, bun run check ., bun run build and git diff --check pass. The simplification pass kept one prefix implementation and removed obsolete width modes. Full-context review approved the exact source and test hashes. Long titles still truncate at existing column widths; Unicode support matches the existing status icons. PR #996.
 <!-- SECTION:FINAL_SUMMARY:END -->

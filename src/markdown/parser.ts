@@ -162,8 +162,30 @@ export function parseMarkdown(content: string): ParsedMarkdown {
 	};
 }
 
+export class TaskDependenciesParseError extends Error {
+	constructor(taskId: string, entryIndex?: number) {
+		const location = entryIndex === undefined ? "the field" : `entry ${entryIndex + 1}`;
+		super(
+			`Invalid dependencies in task ${taskId || "(missing id)"}: ${location} contains a mapping or nested list. Use a list of task IDs in the task Markdown.`,
+		);
+		this.name = "TaskDependenciesParseError";
+	}
+}
+
+function isStructuredDependency(value: unknown): boolean {
+	return Array.isArray(value) || Object.prototype.toString.call(value) === "[object Object]";
+}
+
 export function parseTask(content: string): Task {
 	const { frontmatter, content: rawContent } = parseMarkdown(content);
+	const id = String(frontmatter.id || "");
+	const dependencies = frontmatter.dependencies;
+	if (Array.isArray(dependencies)) {
+		const invalidIndex = dependencies.findIndex(isStructuredDependency);
+		if (invalidIndex !== -1) throw new TaskDependenciesParseError(id, invalidIndex);
+	} else if (isStructuredDependency(dependencies)) {
+		throw new TaskDependenciesParseError(id);
+	}
 
 	const priority = normalizePriorityValue(frontmatter.priority ? String(frontmatter.priority) : undefined);
 
@@ -179,7 +201,7 @@ export function parseTask(content: string): Task {
 	const finalSummarySection = extractStructuredSection(rawContent, STRUCTURED_SECTION_KEYS.finalSummary) || undefined;
 
 	return {
-		id: String(frontmatter.id || ""),
+		id,
 		title: String(frontmatter.title || ""),
 		status: String(frontmatter.status || ""),
 		assignee: Array.isArray(frontmatter.assignee)
@@ -193,7 +215,7 @@ export function parseTask(content: string): Task {
 		dueDate: normalizeDueDate(frontmatter.due_date, "due_date"),
 		labels: Array.isArray(frontmatter.labels) ? frontmatter.labels.map(String) : [],
 		milestone: frontmatter.milestone ? String(frontmatter.milestone) : undefined,
-		dependencies: Array.isArray(frontmatter.dependencies) ? frontmatter.dependencies.map(String) : [],
+		dependencies: Array.isArray(dependencies) ? dependencies.map(String) : [],
 		references: Array.isArray(frontmatter.references) ? frontmatter.references.map(String) : [],
 		documentation: Array.isArray(frontmatter.documentation) ? frontmatter.documentation.map(String) : [],
 		modifiedFiles: Array.isArray(frontmatter.modified_files) ? frontmatter.modified_files.map(String) : [],

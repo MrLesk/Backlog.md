@@ -51,7 +51,7 @@ beforeEach(async () => {
 	await Bun.write(join(setupCore.filesystem.tasksDir, "task-1 - Alpha.md"), serializeTask(makeTask("TASK-1", "Alpha")));
 	await Bun.write(join(setupCore.filesystem.tasksDir, "task-01 - Beta.md"), serializeTask(makeTask("TASK-01", "Beta")));
 	await Bun.write(
-		join(setupCore.filesystem.completedDir, "task-001 - Gamma.md"),
+		join(setupCore.filesystem.archiveTasksDir, "task-001 - Gamma.md"),
 		serializeTask(makeTask("TASK-001", "Gamma")),
 	);
 
@@ -141,19 +141,19 @@ describe("duplicate repair server boundary", () => {
 		}
 	});
 
-	it("builds one preview from one Core-owned active and completed snapshot", async () => {
+	it("builds one preview from one Core-owned active and archived snapshot", async () => {
 		const serverCore = (server as unknown as { core: Core }).core;
 		const originalListTasks = serverCore.filesystem.listTasks.bind(serverCore.filesystem);
-		const originalListCompletedTasks = serverCore.filesystem.listCompletedTasks.bind(serverCore.filesystem);
+		const originalListArchivedTasks = serverCore.filesystem.listArchivedTasks.bind(serverCore.filesystem);
 		let activeLoads = 0;
-		let completedLoads = 0;
+		let archivedLoads = 0;
 		serverCore.filesystem.listTasks = async (...args) => {
 			activeLoads += 1;
 			return await originalListTasks(...args);
 		};
-		serverCore.filesystem.listCompletedTasks = async (...args) => {
-			completedLoads += 1;
-			return await originalListCompletedTasks(...args);
+		serverCore.filesystem.listArchivedTasks = async (...args) => {
+			archivedLoads += 1;
+			return await originalListArchivedTasks(...args);
 		};
 
 		try {
@@ -162,11 +162,11 @@ describe("duplicate repair server boundary", () => {
 			expect(((await response.json()) as DuplicateRepairPlan).groups).toHaveLength(1);
 		} finally {
 			serverCore.filesystem.listTasks = originalListTasks;
-			serverCore.filesystem.listCompletedTasks = originalListCompletedTasks;
+			serverCore.filesystem.listArchivedTasks = originalListArchivedTasks;
 		}
 
 		expect(activeLoads).toBe(1);
-		expect(completedLoads).toBe(1);
+		expect(archivedLoads).toBe(1);
 	});
 
 	it("returns the shared preview and applies it with the preview fingerprint", async () => {

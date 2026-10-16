@@ -133,15 +133,26 @@ describe("CLI dependency graph", () => {
 		]);
 	});
 
-	it("names a completed dependency and keeps it resolved", async () => {
+	it("names an archived finished dependency as completed and keeps it resolved", async () => {
 		await addTask("task-1", "Finished");
 		await addTask("task-2", "Selected", ["task-1"]);
 		expect((await runCli(["task", "edit", "1", "-s", "Done"])).exitCode).toBe(0);
-		expect((await runCli(["task", "complete", "1"])).exitCode).toBe(0);
+		expect((await runCli(["task", "archive", "1"])).exitCode).toBe(0);
 
 		expect(graphSection((await runCli(["task", "view", "2", "--plain"])).stdout.toString())).toEqual([
 			"Depends on (1 direct, 1 total):",
 			"└─ TASK-1 - Finished [completed]",
+		]);
+	});
+
+	it("keeps an archived unfinished dependency resolved under its own status", async () => {
+		await addTask("task-1", "Set aside");
+		await addTask("task-2", "Selected", ["task-1"]);
+		expect((await runCli(["task", "archive", "1"])).exitCode).toBe(0);
+
+		expect(graphSection((await runCli(["task", "view", "2", "--plain"])).stdout.toString())).toEqual([
+			"Depends on (1 direct, 1 total):",
+			"└─ TASK-1 - Set aside [To Do]",
 		]);
 	});
 

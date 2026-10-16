@@ -43,7 +43,7 @@ const idColumn = (row: string) => unicode.strWidth(rendered(row).split("BACK-")[
 
 function renderList(tasks: Task[]): string[] {
 	const formatPrefix = createTaskRowPrefix(tasks, { showStatus: true });
-	return tasks.map((task) => formatTaskViewerListItem(task, undefined, undefined, formatPrefix));
+	return tasks.map((task) => formatTaskViewerListItem(task, undefined, undefined, undefined, formatPrefix));
 }
 
 function renderBoardColumn(tasks: Task[]): string[] {
@@ -103,6 +103,7 @@ describe("TUI acceptance-criteria progress", () => {
 			makeTask({ id: "BACK-5", status: "Waiting" }),
 			makeTask({ id: "BACK-6", status: "Ready" }),
 			makeTask({ id: "BACK-7", status: "Done" }),
+			makeTask({ id: "BACK-8", status: "待機" }),
 		]);
 
 		expect(new Set(rows.map(idColumn)).size).toBe(1);
@@ -140,6 +141,13 @@ describe("TUI acceptance-criteria progress", () => {
 		expect(rendered(active[0] ?? "")).toBe("◑ 4/7 BACK-1 - Show progress");
 		expect(rendered(active[1] ?? "")).toBe("      BACK-2 - Show progress");
 		expect(new Set(active.map(idColumn)).size).toBe(1);
+
+		const large = renderBoardColumn([
+			withCriteria(100, 100, { id: "BACK-1" }),
+			makeTask({ id: "BACK-2", acceptanceCriteriaItems: [] }),
+			withCriteria(100, 10, { id: "BACK-3" }),
+		]);
+		expect(new Set(large.map(idColumn))).toEqual(new Set([10]));
 	});
 
 	it("keeps the move marker and cross-branch dim outside the prefix", () => {

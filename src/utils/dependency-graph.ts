@@ -21,7 +21,7 @@ export interface DependencyGraphNode {
 	title: string | null;
 	status: string | null;
 	state: DependencyNodeState;
-	/** The record is in the completed corpus or holds the terminal status. Never true when unresolved. */
+	/** The record holds the terminal status. Never true when unresolved. */
 	completed: boolean;
 	/** Hops along dependency edges from the root: 0 root, 1 direct, higher transitive, null unreachable. */
 	dependencyDepth: number | null;
@@ -66,10 +66,9 @@ export function nodesInDirection(graph: DependencyGraph, direction: DependencyDi
  * Resolve the complete dependency context around one task, on demand.
  *
  * The caller supplies the corpus, which is what keeps graph resolution inside the same visibility
- * the surface already uses for task detail: the CLI and TUI pass the current checkout plus the
- * completed records, the browser passes its configured cross-branch corpus. Archived records are
- * not part of any of those corpora, so an archived ID resolves as missing instead of being
- * resurrected after archiving released its identity.
+ * the surface already uses for task detail: the CLI and TUI pass the current checkout including
+ * its archived records, the browser passes its configured cross-branch corpus. An archived record
+ * keeps its ID, so a dependency on one keeps resolving to it.
  *
  * Both traversals are breadth-first over canonical identities, so every reached identity becomes
  * exactly one node carrying its shortest distance from the root, and chains, branches, diamonds,
@@ -82,7 +81,7 @@ export function buildDependencyGraph(
 	root: Task,
 	options: {
 		tasks: Task[];
-		completedTasks?: Task[];
+		archivedTasks?: Task[];
 		statuses?: readonly string[];
 		ambiguousIds?: ReadonlySet<string>;
 	},
@@ -101,7 +100,7 @@ export function buildDependencyGraph(
 			status: root.status,
 			state: "resolved",
 			completed: index.isFinished(
-				rootRecord !== undefined && rootRecord !== "ambiguous" ? rootRecord : { task: root, completedRecord: false },
+				rootRecord !== undefined && rootRecord !== "ambiguous" ? rootRecord : { task: root, archived: false },
 			),
 			dependencyDepth: 0,
 			dependentDepth: 0,
@@ -327,9 +326,9 @@ export function buildDependencyTree(graph: DependencyGraph, direction: Dependenc
 }
 
 /**
- * One line naming the records that lost a stored reference when a task ID was vacated by
- * archiving or demoting. Every surface says it in the same words, and says nothing when the
- * operation changed no other record.
+ * One line naming the records that lost a stored reference when a task ID was vacated.
+ * Every surface says it in the same words, and says nothing when the operation changed no other
+ * record.
  */
 export function formatDependencyCleanupMessage(
 	vacatedTaskId: string,

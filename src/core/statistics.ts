@@ -1,5 +1,6 @@
 import type { Task } from "../types/index.ts";
 import { getPriorityValues, normalizePriorityValue } from "../utils/priority-config.ts";
+import { isTerminalStatus } from "../utils/terminal-status.ts";
 
 export interface TaskStatistics {
 	statusCounts: Map<string, number>;
@@ -55,8 +56,9 @@ export function getTaskStatistics(
 	let totalAge = 0;
 	let taskCount = 0;
 
-	// Process each task
-	for (const task of tasks) {
+	// Count board tasks and archived final-status work. Dependencies still use the full corpus.
+	const countedTasks = tasks.filter((task) => task.source !== "archived" || isTerminalStatus(task.status, statuses));
+	for (const task of countedTasks) {
 		// Skip tasks with empty or undefined status
 		if (!task.status || task.status === "") {
 			continue;

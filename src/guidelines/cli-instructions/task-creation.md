@@ -15,7 +15,7 @@ Recommended CLI commands:
 - `backlog task list --type {{TASK_TYPE:1}} --plain`
 - `backlog task list --search "desktop app" --labels frontend,bug --limit 20 --plain`
 
-Avoid broad unfiltered listing when the project may have many tasks. Use `--status`, `--exclude-status`, `--type`, `--project`, `--assignee`, `--unassigned`, `--parent`, `--priority`, `--labels`, `--search`, or `--limit` where applicable. Repeat `--exclude-status` or pass comma-separated configured statuses to exclude multiple states. Repeat `--type` or pass comma-separated configured task types to include multiple types. Repeat `--project` or pass comma-separated configured projects to include multiple projects.
+Avoid broad unfiltered listing when the project may have many tasks. Use `--status`, `--exclude-status`, `--type`, `--project`, `--assignee`, `--unassigned`, `--parent`, `--priority`, `--labels`, `--search`, or `--limit` where applicable. Check the size with `--count`, and read a long list in windows with `--max-count` and `--skip`; cut output ends with the command for the next window. Repeat `--exclude-status` or pass comma-separated configured statuses to exclude multiple states. Repeat `--type` or pass comma-separated configured task types to include multiple types. Repeat `--project` or pass comma-separated configured projects to include multiple projects.
 
 Use `backlog task view {{TASK_ID:123}} --plain` to read full context for likely matches.
 

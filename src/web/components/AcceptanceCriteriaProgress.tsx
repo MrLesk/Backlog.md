@@ -1,18 +1,19 @@
 import type { Task } from "../../types";
 
 interface AcceptanceCriteriaProgressProps {
-	task: Pick<Task, "status" | "acceptanceCriteriaItems">;
+	task: Pick<Task, "acceptanceCriteriaItems">;
 	density: "card" | "list";
-	className?: string;
 }
 
-const normalizeStatus = (status: string) => status.trim().toLowerCase().replace(/\s+/g, "");
-
+/**
+ * The one rule for showing the ring, in every web placement and every status: a task with
+ * at least one acceptance criterion has counts; a task with none gets null and no ring.
+ */
 export function getAcceptanceCriteriaProgressCounts(
-	task: Pick<Task, "status" | "acceptanceCriteriaItems">,
+	task: Pick<Task, "acceptanceCriteriaItems">,
 ): { checked: number; total: number } | null {
 	const criteria = task.acceptanceCriteriaItems ?? [];
-	if (normalizeStatus(task.status) !== "inprogress" || criteria.length === 0) return null;
+	if (criteria.length === 0) return null;
 
 	return {
 		checked: criteria.reduce((total, criterion) => total + Number(criterion.checked), 0),
@@ -23,11 +24,7 @@ export function getAcceptanceCriteriaProgressCounts(
 const RING_RADIUS = 5;
 const RING_CIRCUMFERENCE = 2 * Math.PI * RING_RADIUS;
 
-export default function AcceptanceCriteriaProgress({
-	task,
-	density,
-	className = "",
-}: AcceptanceCriteriaProgressProps) {
+export default function AcceptanceCriteriaProgress({ task, density }: AcceptanceCriteriaProgressProps) {
 	const progress = getAcceptanceCriteriaProgressCounts(task);
 	if (!progress) return null;
 
@@ -35,7 +32,7 @@ export default function AcceptanceCriteriaProgress({
 
 	return (
 		<span
-			className={`inline-flex items-center gap-1 whitespace-nowrap text-[10px] font-medium tabular-nums text-blue-600 dark:text-blue-300 ${className}`}
+			className="inline-flex items-center gap-1 whitespace-nowrap text-[10px] font-medium tabular-nums text-blue-600 dark:text-blue-300"
 			data-acceptance-criteria-progress
 			data-density={density}
 			role="progressbar"

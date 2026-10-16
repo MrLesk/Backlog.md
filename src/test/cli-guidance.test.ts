@@ -51,17 +51,12 @@ describe("CLI Integration", () => {
 			expect(output).toContain("init-required");
 			expect(output).toContain("How to verify, summarize, and finish work");
 			expect(output).not.toContain("mark work Done");
-			expect(output).toContain("    'backlog instructions overview'");
-			expect(output).toContain("      -> Required first read before answering any user request");
 			expect(output).not.toContain("--plain");
 			expect(output).not.toContain("\u001B[");
 			expect(output).not.toContain("MCP Tools Quick Reference");
 			expect(output).not.toContain("task_search");
 			expect(output).not.toContain("backlog://workflow/");
 			expect(output).not.toContain("Always operate through MCP tools");
-			expect(output).not.toContain("bundled");
-			expect(output).not.toContain("binary");
-			expect(output).not.toContain("No network documentation");
 		});
 
 		it("lists available instruction guides", async () => {
@@ -86,30 +81,27 @@ describe("CLI Integration", () => {
 			const initRequired = normalizeCliOutput(await $`bun ${CLI_PATH} instructions init-required`.cwd(TEST_DIR).text());
 
 			expect(overview).toContain("## Backlog.md Overview (CLI)");
-			expect(overview).toContain("### Start Every Request Here");
-			expect(overview).toContain("Use this overview to decide what to read or run next.");
+			expect(overview).toContain("### Find and Read Work");
 			expect(overview).not.toContain("The detailed guides contain the procedure");
 			expect(overview).toContain('backlog search "query" --plain');
 			expect(overview).toContain('backlog task list --search "login" --labels frontend,bug --limit 20 --plain');
 			expect(overview).toContain("backlog task view BACK-123 --plain");
 			expect(overview).toContain(
-				"**Required: read the matching guide below before creating, executing, or finalizing tasks. Do not rely on this overview alone for these actions.** The overview only tells you when to act; the guides define the required procedure, and skipping them produces inconsistent tasks and metadata.",
+				"Read the matching guide before taking these actions; this overview does not replace it:",
+			);
+			expect(overview).toContain("`backlog instructions task-creation` — before creating or splitting tasks");
+			expect(overview).toContain(
+				"`backlog instructions task-execution` — before planning, changing status or assignee, adding notes, or implementing",
 			);
 			expect(overview).toContain(
-				"`backlog instructions task-creation`\n  -> Read before creating tasks: how to search, scope, and create tasks",
-			);
-			expect(overview).toContain(
-				"`backlog instructions task-execution`\n  -> Read before planning or updating task work: how to plan, update, and work through tasks",
-			);
-			expect(overview).toContain(
-				"`backlog instructions task-finalization`\n  -> Read before finishing tasks: how to verify, summarize, and finish tasks",
+				"`backlog instructions task-finalization` — before checking acceptance criteria, writing final summaries, or marking work finished",
 			);
 			expect(overview).not.toContain('backlog task create "Title"');
 			expect(overview).not.toContain("backlog task edit BACK-123 --plan");
 			expect(overview).not.toContain("backlog task edit BACK-123 --check-ac 1");
 			expect(overview).not.toContain("backlog task edit BACK-123 -s Done");
 			expect(overview).toContain(
-				"Important: Do not edit Backlog task, draft, document, decision, or milestone markdown files directly. Use Backlog commands so automatic metadata stays complete.",
+				"Never edit task, draft, document, decision, or milestone markdown files directly; commands preserve metadata, relationships, and history.",
 			);
 			expect(overview).not.toContain("MCP Tools Quick Reference");
 			expect(overview).not.toContain("backlog://workflow/");
@@ -183,16 +175,16 @@ describe("CLI Integration", () => {
 				"Do not check acceptance criteria, write the final summary, or move the task to the terminal status from this guide alone.",
 			);
 			expect(taskExecution).toContain("verify each acceptance criterion with objective evidence before checking it");
-			expect(taskFinalization).toContain("configured terminal status");
-			expect(taskFinalization).toContain("Inspect accepted statuses if needed: `backlog task edit BACK-123 --help`");
+			expect(taskFinalization).toContain("configured final status");
+			expect(taskFinalization).toContain("Check accepted statuses with `backlog task edit --help`");
 			expect(taskFinalization).toContain('backlog task edit BACK-123 -s "<terminal status>"');
 			expect(taskFinalization).not.toContain("backlog task edit BACK-123 -s Done");
-			expect(taskFinalization).toContain("Run objective verification before checking acceptance criteria.");
+			expect(taskFinalization).toContain("Check only proven items");
 			expect(taskFinalization).toContain(
-				"For UI or interactive work, exercise the behavior through a browser, DOM script, test runner, or documented manual interaction result.",
+				"For UI or interactive work, exercise the behavior through a browser, DOM script, test runner, or documented manual interaction.",
 			);
 			expect(taskFinalization).toContain(
-				"Do not check acceptance criteria from code presence, grep output, or implementation intent alone.",
+				"Code presence, grep output, and implementation intent are not verification evidence.",
 			);
 			expect(taskCreation).not.toContain("task_create");
 			expect(taskCreation).not.toContain("task_search");
@@ -269,17 +261,28 @@ describe("CLI Integration", () => {
 			}
 		}, 10_000);
 
-		it("does not recommend task complete in CLI workflow guides or agent nudge", async () => {
-			const overview = await $`bun ${CLI_PATH} instructions overview`.cwd(TEST_DIR).text();
-			const taskCreation = await $`bun ${CLI_PATH} instructions task-creation`.cwd(TEST_DIR).text();
-			const taskExecution = await $`bun ${CLI_PATH} instructions task-execution`.cwd(TEST_DIR).text();
-			const taskFinalization = await $`bun ${CLI_PATH} instructions task-finalization`.cwd(TEST_DIR).text();
-
-			for (const guide of [overview, taskCreation, taskExecution, taskFinalization, CLI_AGENT_NUDGE]) {
-				expect(guide).not.toContain("backlog task complete");
+		it("explains archive and the two-step delete in workflow guidance and names no command that does not exist", async () => {
+			for (const name of ["overview", "task-finalization"]) {
+				const guide = await $`bun ${CLI_PATH} instructions ${name}`.cwd(TEST_DIR).text();
+				expect(guide).toContain("periodic cleanup");
+				expect(guide).toContain("backlog task archive");
+				expect(guide).toContain("canceled, duplicate, or invalid work");
+				expect(guide).toContain("read-only");
+				expect(guide).toMatch(/keep(s|ing) (its|their) ID/);
+				// Deleting is described as archive first, then delete.
+				expect(guide).toMatch(/archive it(,| and) then (run|delete it with) `backlog task delete/);
+				expect(guide).toMatch(/other tasks and drafts hold to (it|the task)/);
+				expect(guide).not.toContain("held by drafts");
+				// The ID is not free while another branch or worktree still has the task.
+				expect(guide).toMatch(/releases (its|the) ID once no other branch or worktree still holds the task/);
+				// Archived work comes back with restore, which is also the way to change it.
+				expect(guide).toContain("backlog task restore");
+				expect(guide).toMatch(/keeps its ID and status|same ID and the status it had/);
 				expect(guide).not.toContain("task complete");
-				expect(guide).not.toContain("task_complete");
 			}
+			const overview = await $`bun ${CLI_PATH} instructions overview`.cwd(TEST_DIR).text();
+			expect(overview).toContain("counts as satisfied only when that task is in the final status");
+			expect(CLI_AGENT_NUDGE).not.toContain("task complete");
 		});
 
 		it("rejects unknown instruction guides with valid options", async () => {
@@ -318,7 +321,8 @@ describe("CLI Integration", () => {
 			const editHelp = await $`bun ${CLI_PATH} task edit --help`.cwd(TEST_DIR).text();
 			const createHelpCompact = createHelp.replace(/\s+/g, " ");
 			const editHelpCompact = editHelp.replace(/\s+/g, " ");
-			const completeHelp = await $`bun ${CLI_PATH} task complete --help`.cwd(TEST_DIR).text();
+			const archiveHelp = (await $`bun ${CLI_PATH} task archive --help`.cwd(TEST_DIR).text()).replace(/\s+/g, " ");
+			const taskHelp = await $`bun ${CLI_PATH} task --help`.cwd(TEST_DIR).text();
 
 			expect(createHelp).toContain("title: String");
 			expect(createHelp).toContain("description: Markdown");
@@ -373,9 +377,32 @@ describe("CLI Integration", () => {
 			expect(editHelpCompact).toContain("remove all task labels");
 			expect(editHelp).toContain("plan: Markdown");
 			expect(editHelp).toContain("Writes:");
-			expect(completeHelp).toContain("cleanup procedure");
-			expect(completeHelp).toContain("disappear from the active Kanban board");
-			expect(completeHelp).toContain("cleanup/archive purposes");
+			expect(archiveHelp).toContain("move a task off the board into the archive, keeping its ID and links");
+			expect(archiveHelp).toContain("taskId: Task ID - Task to archive, in any status");
+			expect(archiveHelp).toContain("Its ID stays reserved");
+			expect(archiveHelp).toContain("no other task is changed");
+			expect(taskHelp).toContain("archive <taskId>");
+			expect(taskHelp).toContain("delete <taskId>");
+			expect(taskHelp.replace(/\s+/g, " ")).toContain(
+				"permanently delete an archived task and release its ID once no other branch or worktree still holds the task",
+			);
+			const deleteHelp = await $`bun ${CLI_PATH} task delete --help`.cwd(TEST_DIR).text();
+			expect(deleteHelp).toContain("taskId: Task ID - Archived task to delete");
+			expect(deleteHelp).toContain("Its ID is released once no other branch or worktree still holds the task.");
+			expect(deleteHelp).toContain("A task must be archived first (backlog task archive)");
+			expect(deleteHelp).toContain("a task whose subtasks still exist, as tasks or as drafts, is not deleted.");
+			expect(deleteHelp).toContain("There is no prompt.");
+			expect(deleteHelp).toContain("Dependencies and references that other tasks and drafts hold to it are removed.");
+			expect(deleteHelp).toContain("followed by the tasks and drafts that lost a dependency or reference");
+			expect(deleteHelp).not.toContain("held by drafts");
+			expect(taskHelp).toContain("restore <taskId>");
+			expect(taskHelp.replace(/\s+/g, " ")).toContain(
+				"move an archived task back to the board, keeping its ID and status",
+			);
+			const restoreHelp = await $`bun ${CLI_PATH} task restore --help`.cwd(TEST_DIR).text();
+			expect(restoreHelp).toContain("taskId: Task ID - Archived task to restore");
+			expect(restoreHelp).toContain("Archived tasks are read-only, so restore a task before editing it.");
+			expect(taskHelp).not.toContain("complete");
 		});
 
 		it("documents real-newline handling once for every multiline Markdown flag", async () => {

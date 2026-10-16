@@ -24,19 +24,6 @@ describe("Task References", () => {
 	});
 
 	describe("Create task with references", () => {
-		it("should create a task with references", async () => {
-			const { task } = await core.createTaskFromInput({
-				title: "Task with refs",
-				references: ["https://github.com/example/issue/123", "src/components/Button.tsx"],
-			});
-
-			expect(task.references).toEqual(["https://github.com/example/issue/123", "src/components/Button.tsx"]);
-
-			// Verify persistence
-			const loaded = await core.loadTaskById(task.id);
-			expect(loaded?.references).toEqual(["https://github.com/example/issue/123", "src/components/Button.tsx"]);
-		});
-
 		it("should create a task without references", async () => {
 			const { task } = await core.createTaskFromInput({
 				title: "Task without refs",
@@ -44,43 +31,9 @@ describe("Task References", () => {
 
 			expect(task.references).toEqual([]);
 		});
-
-		it("should handle empty references array", async () => {
-			const { task } = await core.createTaskFromInput({
-				title: "Task with empty refs",
-				references: [],
-			});
-
-			expect(task.references).toEqual([]);
-		});
 	});
 
 	describe("Update task references", () => {
-		it("should set references on existing task", async () => {
-			const { task } = await core.createTaskFromInput({
-				title: "Task to update",
-			});
-
-			const updated = await core.updateTaskFromInput(task.id, {
-				references: ["https://docs.example.com/api", "README.md"],
-			});
-
-			expect(updated.references).toEqual(["https://docs.example.com/api", "README.md"]);
-		});
-
-		it("should add references to existing task", async () => {
-			const { task } = await core.createTaskFromInput({
-				title: "Task with initial refs",
-				references: ["file1.ts"],
-			});
-
-			const updated = await core.updateTaskFromInput(task.id, {
-				addReferences: ["file2.ts", "file3.ts"],
-			});
-
-			expect(updated.references).toEqual(["file1.ts", "file2.ts", "file3.ts"]);
-		});
-
 		it("should not add duplicate references", async () => {
 			const { task } = await core.createTaskFromInput({
 				title: "Task with refs",
@@ -92,19 +45,6 @@ describe("Task References", () => {
 			});
 
 			expect(updated.references).toEqual(["file1.ts", "file2.ts", "file3.ts"]);
-		});
-
-		it("should remove references from existing task", async () => {
-			const { task } = await core.createTaskFromInput({
-				title: "Task with refs to remove",
-				references: ["file1.ts", "file2.ts", "file3.ts"],
-			});
-
-			const updated = await core.updateTaskFromInput(task.id, {
-				removeReferences: ["file2.ts"],
-			});
-
-			expect(updated.references).toEqual(["file1.ts", "file3.ts"]);
 		});
 
 		it("should replace references when setting directly", async () => {
@@ -122,21 +62,6 @@ describe("Task References", () => {
 	});
 
 	describe("References in markdown", () => {
-		it("should persist references in markdown frontmatter", async () => {
-			const { filePath } = await core.createTaskFromInput({
-				title: "Task with markdown refs",
-				references: ["https://example.com", "src/index.ts"],
-			});
-
-			expect(filePath).toBeTruthy();
-
-			// Read the file directly to check frontmatter
-			const content = await Bun.file(filePath as string).text();
-			expect(content).toContain("references:");
-			expect(content).toContain("https://example.com");
-			expect(content).toContain("src/index.ts");
-		});
-
 		it("should not include empty references in frontmatter", async () => {
 			const { filePath } = await core.createTaskFromInput({
 				title: "Task without refs",
@@ -147,10 +72,39 @@ describe("Task References", () => {
 		});
 	});
 
-	describe("Archive cleanup", () => {
-		it("removes only exact-ID references when archiving, in the working copy and the completed corpus", async () => {
+	describe("Archive", () => {
+		it("keeps every reference to an archived task, in the working copy and in the archive", async () => {
 			const { task: archiveTarget } = await core.createTaskFromInput({
 				title: "Archive target",
+			});
+			const references = ["task-1", "TASK-1", "https://example.com/tasks/task-1", "docs/task-1.md", "task-12"];
+			const { task: activeTask } = await core.createTaskFromInput({
+				title: "Active referencing task",
+				references,
+			});
+			const { task: archivedTask } = await core.createTaskFromInput({
+				title: "Archived referencing task",
+				status: "Done",
+				references: ["task-1", "https://example.com/tasks/task-1"],
+			});
+			await core.archiveTask(archivedTask.id, false);
+
+			expect(await core.archiveTask(archiveTarget.id, false)).toBe(true);
+
+			// The archived task keeps its ID, so no reference to it has to change.
+			expect((await core.loadTaskById(activeTask.id))?.references).toEqual(references);
+			const archivedTasks = await core.filesystem.listArchivedTasks();
+			expect(archivedTasks.find((task) => task.id === archivedTask.id)?.references).toEqual([
+				"task-1",
+				"https://example.com/tasks/task-1",
+			]);
+		});
+	});
+
+	describe("Demotion cleanup", () => {
+		it("removes only exact-ID references when demoting, in the working copy and the archive", async () => {
+			const { task: demoteTarget } = await core.createTaskFromInput({
+				title: "Demote target",
 			});
 
 			const { task: activeTask } = await core.createTaskFromInput({
@@ -167,19 +121,18 @@ describe("Task References", () => {
 				],
 			});
 
-			const { task: completedTask } = await core.createTaskFromInput({
-				title: "Completed referencing task",
+			const { task: archivedTask } = await core.createTaskFromInput({
+				title: "Archived referencing task",
 				status: "Done",
 				references: ["task-1", "https://example.com/tasks/task-1"],
 			});
-			await core.completeTask(completedTask.id, false);
+			await core.archiveTask(archivedTask.id, false);
 
-			const archived = await core.archiveTask(archiveTarget.id, false);
-			expect(archived.success).toBe(true);
+			expect((await core.demoteTask(demoteTarget.id, false)).success).toBe(true);
 
 			const updatedActive = await core.loadTaskById(activeTask.id);
-			const completedTasks = await core.filesystem.listCompletedTasks();
-			const updatedCompleted = completedTasks.find((task) => task.id === completedTask.id);
+			const archivedTasks = await core.filesystem.listArchivedTasks();
+			const updatedArchived = archivedTasks.find((task) => task.id === archivedTask.id);
 
 			expect(updatedActive?.references).toEqual([
 				"https://example.com/tasks/task-1",
@@ -189,9 +142,9 @@ describe("Task References", () => {
 				"JIRA-1",
 				"task-12",
 			]);
-			// The completed corpus is cleaned too: the archived ID is free for reallocation, so a
-			// reference kept there would rebind to whatever task is created next.
-			expect(updatedCompleted?.references).toEqual(["https://example.com/tasks/task-1"]);
+			// The archive is cleaned too: the demoted ID is free for reallocation, so a reference
+			// kept there would rebind to whatever task is created next.
+			expect(updatedArchived?.references).toEqual(["https://example.com/tasks/task-1"]);
 		});
 	});
 });

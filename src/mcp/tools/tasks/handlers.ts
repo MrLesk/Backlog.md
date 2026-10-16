@@ -1,15 +1,8 @@
-import { basename, join } from "node:path";
-import { DEFAULT_STATUSES } from "../../../constants/index.ts";
 import type { VacatedTaskResult } from "../../../core/backlog.ts";
 import { findLocalDuplicateTaskIds } from "../../../core/duplicate-task-repair.ts";
 import { loadTaskDetail, loadTaskListItems } from "../../../core/task-detail.ts";
 import { isCreateLockError, isTaskLockError } from "../../../file-system/operations.ts";
-import {
-	isLocalEditableTask,
-	type SearchPriorityFilter,
-	type Task,
-	type TaskListFilter,
-} from "../../../types/index.ts";
+import { isWorkingCopyTask, type SearchPriorityFilter, type Task, type TaskListFilter } from "../../../types/index.ts";
 import type { TaskEditArgs, TaskEditRequest } from "../../../types/task-edit-args.ts";
 import { formatAcceptanceCriteriaSummarySuffix } from "../../../ui/acceptance-criteria-progress.ts";
 import { formatDependencyCleanupMessage } from "../../../utils/dependency-graph.ts";
@@ -20,11 +13,11 @@ import {
 } from "../../../utils/milestone-filter.ts";
 import { resolveMilestoneInputForStorage } from "../../../utils/milestone-storage.ts";
 import { buildTaskUpdateInput } from "../../../utils/task-edit-builder.ts";
+import { taskNotFoundMessage } from "../../../utils/task-path.ts";
 import { applyTaskFilters, createTaskSearchIndex } from "../../../utils/task-search.ts";
-import { sortByOrdinalAndPriority } from "../../../utils/task-sorting.ts";
-import { getTerminalStatus, isTerminalStatus } from "../../../utils/terminal-status.ts";
+import { sectionTasks, sortTasks } from "../../../utils/task-sorting.ts";
 import { formatUtcDateForDisplay } from "../../../utils/utc-date-display.ts";
-import { BacklogToolError } from "../../errors/mcp-errors.ts";
+import { BacklogToolError, runCoreOperation } from "../../errors/mcp-errors.ts";
 import type { McpServer } from "../../server.ts";
 import type { CallToolResult } from "../../types.ts";
 import { formatTaskCallResult } from "../../utils/task-response.ts";
@@ -94,11 +87,6 @@ export class TaskHandlers {
 		return createMilestoneFilterValueResolver([...activeMilestones, ...archivedMilestones]);
 	}
 
-	private async getConfiguredStatuses(): Promise<string[]> {
-		const config = await this.core.filesystem.loadConfig();
-		return config?.statuses ?? [...DEFAULT_STATUSES];
-	}
-
 	private isDraftStatus(status?: string | null): boolean {
 		return (status ?? "").trim().toLowerCase() === "draft";
 	}
@@ -107,8 +95,9 @@ export class TaskHandlers {
 		const priorityIndicator = task.priority ? `[${task.priority.toUpperCase()}] ` : "";
 		const typeIndicator = task.type ? `[${task.type}] ` : "";
 		const projectIndicator = task.project ? `[${task.project}] ` : "";
-		const status = task.status || (task.source === "completed" ? "Done" : "");
-		const statusText = options.includeStatus && status ? ` (${status})` : "";
+		// An archived task is off the board whatever its status says, so its line says so.
+		const statusParts = [task.status, task.source === "archived" ? "archived" : ""].filter(Boolean);
+		const statusText = options.includeStatus && statusParts.length > 0 ? ` (${statusParts.join(", ")})` : "";
 		const acceptanceCriteria = formatAcceptanceCriteriaSummarySuffix(task);
 		const dueDate = task.dueDate ? ` (due ${formatUtcDateForDisplay(task.dueDate)})` : "";
 		return `  ${priorityIndicator}${typeIndicator}${projectIndicator}${task.id} - ${task.title}${statusText}${acceptanceCriteria}${dueDate}`;
@@ -117,7 +106,7 @@ export class TaskHandlers {
 	private async loadTaskOrThrow(id: string): Promise<Task> {
 		const task = await this.core.getTask(id);
 		if (!task) {
-			throw new BacklogToolError(`Task not found: ${id}`, "TASK_NOT_FOUND");
+			throw new BacklogToolError(taskNotFoundMessage(id), "TASK_NOT_FOUND");
 		}
 		return task;
 	}
@@ -208,7 +197,7 @@ export class TaskHandlers {
 				};
 			}
 
-			let sortedDrafts = sortByOrdinalAndPriority(drafts, priorities);
+			let sortedDrafts = sortTasks(drafts, undefined, priorities);
 			if (typeof args.limit === "number" && args.limit >= 0) {
 				sortedDrafts = sortedDrafts.slice(0, args.limit);
 			}
@@ -263,7 +252,7 @@ export class TaskHandlers {
 			tasks = (await loadTaskListItems(this.core, tasks)).filter((task) => task.isReady);
 		}
 
-		const filteredByLabels = tasks.filter((task) => isLocalEditableTask(task));
+		const filteredByLabels = tasks.filter((task) => isWorkingCopyTask(task));
 
 		if (filteredByLabels.length === 0) {
 			return {
@@ -276,42 +265,26 @@ export class TaskHandlers {
 			};
 		}
 
-		const statuses = config?.statuses ?? [];
-
-		const canonicalByLower = new Map<string, string>();
-		for (const status of statuses) {
-			canonicalByLower.set(status.toLowerCase(), status);
-		}
-
-		const grouped = new Map<string, Task[]>();
-		for (const task of filteredByLabels) {
-			const rawStatus = (task.status ?? "").trim();
-			const canonicalStatus = canonicalByLower.get(rawStatus.toLowerCase()) ?? rawStatus;
-			const bucketKey = canonicalStatus || "";
-			const existing = grouped.get(bucketKey) ?? [];
-			existing.push(task);
-			grouped.set(bucketKey, existing);
-		}
-
-		const orderedStatuses = [
-			...statuses.filter((status) => grouped.has(status)),
-			...Array.from(grouped.keys()).filter((status) => !statuses.includes(status)),
-		];
+		// The list has no sort option, so it is in the default order of a task list and always in
+		// status sections. `limit` counts rows in the order the sections print them.
+		const sections = sectionTasks(
+			sortTasks(filteredByLabels, undefined, priorities),
+			undefined,
+			config?.statuses ?? [],
+		);
 
 		const contentItems: Array<{ type: "text"; text: string }> = [];
 		let remaining = typeof args.limit === "number" && args.limit >= 0 ? args.limit : undefined;
-		for (const status of orderedStatuses) {
-			const bucket = grouped.get(status) ?? [];
-			const sortedBucket = sortByOrdinalAndPriority(bucket, priorities);
-			const limitedBucket = remaining !== undefined ? sortedBucket.slice(0, remaining) : sortedBucket;
+		for (const section of sections) {
+			const limitedTasks = remaining !== undefined ? section.tasks.slice(0, remaining) : section.tasks;
 			if (remaining !== undefined) {
-				remaining -= limitedBucket.length;
+				remaining -= limitedTasks.length;
 			}
-			if (limitedBucket.length === 0) {
+			if (limitedTasks.length === 0) {
 				continue;
 			}
-			const sectionLines: string[] = [`${status || "No Status"}:`];
-			for (const task of limitedBucket) {
+			const sectionLines: string[] = [`${section.status || "No Status"}:`];
+			for (const task of limitedTasks) {
 				sectionLines.push(this.formatTaskSummaryLine(task));
 			}
 			contentItems.push({
@@ -409,7 +382,7 @@ export class TaskHandlers {
 			taskMatches = taskMatches.slice(0, args.limit);
 		}
 
-		const taskResults = taskMatches.filter((task) => isLocalEditableTask(task));
+		const taskResults = taskMatches.filter((task) => isWorkingCopyTask(task));
 		if (taskResults.length === 0) {
 			return {
 				content: [
@@ -444,7 +417,7 @@ export class TaskHandlers {
 
 		const task = await this.core.getTaskWithSubtasks(args.id);
 		if (!task) {
-			throw new BacklogToolError(`Task not found: ${args.id}`, "TASK_NOT_FOUND");
+			throw new BacklogToolError(taskNotFoundMessage(args.id), "TASK_NOT_FOUND");
 		}
 		// Task detail is the only MCP result read through the detail path, so it is the only one that
 		// carries the graph. The edit and lifecycle confirmations stay as short as they were.
@@ -463,60 +436,34 @@ export class TaskHandlers {
 		}
 
 		const task = await this.loadTaskOrThrow(args.id);
-
-		if (!isLocalEditableTask(task)) {
-			throw new BacklogToolError(`Cannot archive task from another branch: ${task.id}`, "VALIDATION_ERROR");
-		}
-
-		const statuses = await this.getConfiguredStatuses();
-		const terminalStatus = getTerminalStatus(statuses) ?? "Done";
-		if (isTerminalStatus(task.status, statuses)) {
-			throw new BacklogToolError(
-				`Task ${task.id} is ${terminalStatus}. ${terminalStatus} tasks should be completed (moved to the completed folder), not archived. Use task_complete instead.`,
-				"VALIDATION_ERROR",
-			);
-		}
-
-		const { success, cleanedTaskIds } = await this.core.archiveTask(task.id);
-		if (!success) {
-			throw new BacklogToolError(`Failed to archive task: ${args.id}`, "OPERATION_FAILED");
+		if (!(await runCoreOperation(() => this.core.archiveTask(task.id)))) {
+			throw new BacklogToolError(taskNotFoundMessage(args.id), "TASK_NOT_FOUND");
 		}
 
 		const refreshed = (await this.core.getTask(task.id)) ?? task;
-		const cleanupMessage = formatDependencyCleanupMessage(task.id, cleanedTaskIds);
-		return await formatTaskCallResult(
-			await loadTaskDetail(this.core, refreshed),
-			cleanupMessage ? [`${cleanupMessage}.`] : undefined,
-		);
+		return await formatTaskCallResult(await loadTaskDetail(this.core, refreshed), [`Archived task ${task.id}.`]);
 	}
 
-	async completeTask(args: { id: string }): Promise<CallToolResult> {
+	async deleteTask(args: { id: string }): Promise<CallToolResult> {
 		const task = await this.loadTaskOrThrow(args.id);
-
-		if (!isLocalEditableTask(task)) {
-			throw new BacklogToolError(`Cannot complete task from another branch: ${task.id}`, "VALIDATION_ERROR");
+		const deletion = await runCoreOperation(() => this.core.deleteTask(task.id));
+		if (!deletion.success) {
+			throw new BacklogToolError(taskNotFoundMessage(args.id), "TASK_NOT_FOUND");
 		}
 
-		const statuses = await this.getConfiguredStatuses();
-		const terminalStatus = getTerminalStatus(statuses) ?? "Done";
-		if (!isTerminalStatus(task.status, statuses)) {
-			throw new BacklogToolError(
-				`Task ${task.id} is not ${terminalStatus}. Set status to "${terminalStatus}" with task_edit before completing it.`,
-				"VALIDATION_ERROR",
-			);
+		const cleanupMessage = formatDependencyCleanupMessage(task.id, deletion.cleanedTaskIds);
+		const lines = [`Deleted task ${task.id}.`, ...(cleanupMessage ? [`${cleanupMessage}.`] : [])];
+		return { content: [{ type: "text", text: lines.join("\n") }] };
+	}
+
+	async restoreTask(args: { id: string }): Promise<CallToolResult> {
+		const task = await this.loadTaskOrThrow(args.id);
+		if (!(await runCoreOperation(() => this.core.restoreTask(task.id)))) {
+			throw new BacklogToolError(taskNotFoundMessage(args.id), "TASK_NOT_FOUND");
 		}
 
-		const filePath = task.filePath ?? null;
-		const completedFilePath = filePath ? join(this.core.filesystem.completedDir, basename(filePath)) : undefined;
-
-		const success = await this.core.completeTask(task.id);
-		if (!success) {
-			throw new BacklogToolError(`Failed to complete task: ${args.id}`, "OPERATION_FAILED");
-		}
-
-		return await formatTaskCallResult(await loadTaskDetail(this.core, task), [`Completed task ${task.id}.`], {
-			filePathOverride: completedFilePath,
-		});
+		const refreshed = (await this.core.getTask(task.id)) ?? task;
+		return await formatTaskCallResult(await loadTaskDetail(this.core, refreshed), [`Restored task ${task.id}.`]);
 	}
 
 	async demoteTask(args: { id: string }): Promise<CallToolResult> {

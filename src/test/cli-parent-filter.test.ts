@@ -131,7 +131,7 @@ describe("CLI parent task filtering", () => {
 	it("keeps the parent filter, task view, and create --parent in agreement about a completed parent", async () => {
 		const core = new Core(TEST_DIR);
 		await core.editTask("task-1", { status: "Done" }, false);
-		expect(await core.completeTask("task-1", false)).toBe(true);
+		expect(await core.archiveTask("task-1", false)).toBe(true);
 
 		const view = await $`bun ${cliPath} task view 1 --plain`.cwd(TEST_DIR).nothrow().quiet();
 		expect(view.exitCode).toBe(0);

@@ -29,10 +29,10 @@ function task(id: string, dependencies: string[] = [], overrides: Partial<Task> 
 	};
 }
 
-function graphFor(rootId: string, tasks: Task[], completedTasks: Task[] = []): DependencyGraph {
-	const root = [...tasks, ...completedTasks].find((candidate) => candidate.id === rootId);
+function graphFor(rootId: string, tasks: Task[], archivedTasks: Task[] = []): DependencyGraph {
+	const root = [...tasks, ...archivedTasks].find((candidate) => candidate.id === rootId);
 	if (!root) throw new Error(`missing root ${rootId}`);
-	return buildDependencyGraph(root, { tasks, completedTasks, statuses: STATUSES });
+	return buildDependencyGraph(root, { tasks, archivedTasks, statuses: STATUSES });
 }
 
 function nodeIds(graph: DependencyGraph, direction: "dependencies" | "dependents"): string[] {
@@ -177,13 +177,20 @@ describe("buildDependencyGraph", () => {
 		expect(dependents[0]?.children[0]?.children).toEqual([]);
 	});
 
-	it("keeps a completed record visible as a resolved dependency", () => {
-		const graph = graphFor("task-1", [task("task-1", ["task-2"])], [task("task-2", [], { status: "In Progress" })]);
+	it("keeps an archived record visible as a resolved dependency, finished only in the final status", () => {
+		const graph = graphFor(
+			"task-1",
+			[task("task-1", ["task-2", "task-3"])],
+			[task("task-2", [], { status: "In Progress" }), task("task-3", [], { status: "Done" })],
+		);
 
-		const dependency = graph.nodes.find((node) => node.id === "task-2");
-		// The record lives in the completed corpus, so its location settles completion whatever its
-		// status string says.
-		expect(dependency).toMatchObject({ state: "resolved", completed: true, status: "In Progress" });
+		// Being archived keeps the record resolvable; only its status says whether it was finished.
+		expect(graph.nodes.find((node) => node.id === "task-2")).toMatchObject({
+			state: "resolved",
+			completed: false,
+			status: "In Progress",
+		});
+		expect(graph.nodes.find((node) => node.id === "task-3")).toMatchObject({ state: "resolved", completed: true });
 	});
 
 	it("resolves a cross-branch record supplied by the caller's corpus", () => {
@@ -245,15 +252,15 @@ describe("buildDependencyGraph", () => {
 		expect(nodesInDirection(graph, "dependents")).toHaveLength(200);
 	});
 
-	it("keeps one file supplied twice resolved, with its completion evidence", () => {
-		// `task view <completed-id>` hands the viewer the completed record to display while the viewer
-		// also loads the completed corpus, so the same file arrives in both lists. Poisoning that
-		// identity would lose the completion evidence and could show a stale non-terminal status.
-		const completed = task("task-1", [], { status: "In Progress", filePath: "/p/backlog/completed/task-1 - Done.md" });
+	it("keeps one file supplied twice resolved instead of treating it as two claimants", () => {
+		// `task view <archived-id>` hands the viewer the archived record to display while the viewer
+		// also loads the archived corpus, so the same file arrives in both lists. That is one record,
+		// not two records claiming one identity.
+		const completed = task("task-1", [], { status: "Done", filePath: "/p/backlog/archive/tasks/task-1 - Done.md" });
 		const dependent = task("task-2", ["task-1"], { filePath: "/p/backlog/tasks/task-2 - Next.md" });
 		const graph = buildDependencyGraph(completed, {
 			tasks: [dependent, completed],
-			completedTasks: [completed],
+			archivedTasks: [completed],
 			statuses: STATUSES,
 		});
 
@@ -263,14 +270,14 @@ describe("buildDependencyGraph", () => {
 
 		const readinessGraph = createReadinessGraph({
 			tasks: [dependent, completed],
-			completedTasks: [completed],
+			archivedTasks: [completed],
 			statuses: STATUSES,
 		});
 		// The dependent resolves it as satisfied rather than as an ambiguous identity.
 		expect(getTaskReadiness(dependent, readinessGraph)).toMatchObject({ isReady: true, missingDependencies: [] });
 		// And the completed record keeps its completion evidence, so it is neither ready nor blocked.
 		// Losing it makes an already-finished task render a readiness verdict in the detail view.
-		expect(readinessGraph.isCompletedRecord("task-1")).toBe(true);
+		expect(readinessGraph.isArchivedRecord("task-1")).toBe(true);
 		expect(getTaskReadiness(completed, readinessGraph)).toMatchObject({ isReady: false, isBlocked: false });
 	});
 
@@ -314,12 +321,17 @@ describe("dependency graph text", () => {
 		]);
 	});
 
-	it("renders a completed dependency as completed rather than as its stored status", () => {
-		const graph = graphFor("task-1", [task("task-1", ["task-2"])], [task("task-2", [], { status: "In Progress" })]);
+	it("renders a finished dependency as completed and an unfinished archived one under its status", () => {
+		const graph = graphFor(
+			"task-1",
+			[task("task-1", ["task-2", "task-3"])],
+			[task("task-2", [], { status: "Done" }), task("task-3", [], { status: "In Progress" })],
+		);
 
 		expect(formatDependencyGraphSection(graph, "dependencies")).toEqual([
-			"Depends on (1 direct, 1 total):",
-			"└─ task-2 - Title task-2 [completed]",
+			"Depends on (2 direct, 2 total):",
+			"├─ task-2 - Title task-2 [completed]",
+			"└─ task-3 - Title task-3 [In Progress]",
 		]);
 	});
 
@@ -345,7 +357,7 @@ describe("dependency graph text", () => {
 		const graph = graphFor(
 			"task-2",
 			[task("task-2", ["task-1", "task-404"]), task("task-3", ["task-2"])],
-			[task("task-1")],
+			[task("task-1", [], { status: "Done" })],
 		);
 		const entries = formatDependencyGraphEntries(graph);
 

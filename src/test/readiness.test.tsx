@@ -28,7 +28,7 @@ function makeTask(id: string, status: string, dependencies: string[] = []): Task
 
 /** An active-only corpus with the default statuses. */
 function corpusOf(tasks: Task[], graphStatuses: readonly string[] = statuses): TaskCorpus {
-	return { tasks, completedTasks: [], statuses: graphStatuses };
+	return { tasks, archivedTasks: [], statuses: graphStatuses };
 }
 
 /** Readiness against an active-only corpus with the default statuses. */
@@ -126,24 +126,38 @@ describe("getTaskReadiness", () => {
 		}
 	});
 
-	it("treats a record in the completed corpus as completed whatever its status string says", () => {
-		// The terminal status was renamed to Shipped, so the archived record's "Done" is not terminal.
-		const renamedStatuses = ["To Do", "In Progress", "Shipped"];
-		const completedDep = makeTask("BACK-1", "Done");
-		const task = makeTask("BACK-2", "To Do", ["BACK-1"]);
+	it("satisfies a dependency on an archived task only when that task is in the final status", () => {
+		const task = makeTask("BACK-3", "To Do", ["BACK-1", "BACK-2"]);
+		const archivedFinished = makeTask("BACK-1", "Done");
+		const archivedUnfinished = makeTask("BACK-2", "In Progress");
 
-		const graph = createReadinessGraph({ tasks: [task], completedTasks: [completedDep], statuses: renamedStatuses });
+		const graph = createReadinessGraph({
+			tasks: [task],
+			archivedTasks: [archivedFinished, archivedUnfinished],
+			statuses,
+		});
 		const readiness = getTaskReadiness(task, graph);
-		expect(readiness.isReady).toBe(true);
-		expect(readiness.isBlocked).toBe(false);
 
-		// The same record left in the active corpus is genuinely unfinished under that configuration.
-		expect(readinessOf(task, [completedDep, task], renamedStatuses).blockingDependencies).toEqual(["BACK-1"]);
+		// Being archived is not evidence of being finished: canceled work is archived too.
+		expect(readiness.isReady).toBe(false);
+		expect(readiness.blockingDependencies).toEqual(["BACK-2"]);
+		expect(readiness.missingDependencies).toEqual([]);
 	});
 
-	it("treats a task whose own record is in the completed corpus as not actionable", () => {
+	it("reads an archived record's status exactly as it reads a board task's status", () => {
+		// The final status was renamed to Shipped, so an archived record still saying Done is unfinished.
+		const renamedStatuses = ["To Do", "In Progress", "Shipped"];
+		const archivedDep = makeTask("BACK-1", "Done");
+		const task = makeTask("BACK-2", "To Do", ["BACK-1"]);
+
+		const graph = createReadinessGraph({ tasks: [task], archivedTasks: [archivedDep], statuses: renamedStatuses });
+		expect(getTaskReadiness(task, graph).blockingDependencies).toEqual(["BACK-1"]);
+		expect(readinessOf(task, [archivedDep, task], renamedStatuses).blockingDependencies).toEqual(["BACK-1"]);
+	});
+
+	it("treats a task whose own record is archived as not actionable", () => {
 		const completedTask = makeTask("BACK-1", "To Do", ["BACK-2"]);
-		const graph = createReadinessGraph({ tasks: [], completedTasks: [completedTask], statuses });
+		const graph = createReadinessGraph({ tasks: [], archivedTasks: [completedTask], statuses });
 
 		const readiness = getTaskReadiness(completedTask, graph);
 		expect(readiness.isReady).toBe(false);
@@ -313,13 +327,13 @@ describe("rendered readiness guidance", () => {
 
 		// The modal renders the detail read it was handed, exactly as the browser receives it from
 		// GET /api/task/:id, so the badge can only say what core derived.
-		const renderModal = (task: Task, completedTasks: Task[] = []) =>
+		const renderModal = (task: Task, archivedTasks: Task[] = []) =>
 			renderToString(
 				<MemoryRouter initialEntries={[`/tasks/${task.id}`]}>
 					<ThemeProvider>
 						<TaskIdIndexProvider tasks={availableTasks}>
 							<TaskDetailsModal
-								task={toTaskDetail(task, { tasks: availableTasks, completedTasks, statuses })}
+								task={toTaskDetail(task, { tasks: availableTasks, archivedTasks, statuses })}
 								availableTasks={availableTasks}
 								availableStatuses={statuses}
 								isOpen={true}
@@ -338,13 +352,12 @@ describe("rendered readiness guidance", () => {
 		expect(renderModal(noDepsTask)).not.toContain("Ready to start");
 		expect(renderModal(doneDep)).not.toContain("Ready to start");
 
-		// A direct link can open a completed task whose historical status is no longer the configured
-		// terminal one. Its location in the completed corpus still means the work is finished, so the
-		// modal must not offer it as ready to start.
-		const routedCompletedTask: Task = {
+		// A direct link can open an archived task whose status is not the final one. It is off the
+		// board, so the modal must not offer it as ready to start.
+		const routedArchivedTask: Task = {
 			...makeTask("BACK-7", "Shipped", ["BACK-1"]),
-			source: "completed",
+			source: "archived",
 		};
-		expect(renderModal(routedCompletedTask, [routedCompletedTask])).not.toContain("Ready to start");
+		expect(renderModal(routedArchivedTask, [routedArchivedTask])).not.toContain("Ready to start");
 	});
 });
