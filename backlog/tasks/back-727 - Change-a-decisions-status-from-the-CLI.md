@@ -1,11 +1,11 @@
 ---
 id: BACK-727
 title: Change a decision's status from the CLI
-status: In Progress
+status: Done
 assignee:
   - '@codex-727'
 created_date: '2026-10-11 10:43'
-updated_date: '2026-10-16 06:11'
+updated_date: '2026-10-16 06:18'
 labels:
   - enhancement
 dependencies: []
@@ -50,44 +50,11 @@ A decision's content stays immutable; only its status changes. The exact command
 ## Implementation Plan
 
 <!-- SECTION:PLAN:BEGIN -->
-Command shape (accepted in review; the final call belongs to the maintainer, on the PR)
-
-Chosen: `backlog decision edit <decisionId> -s, --status <status>`
-- `edit <id> -s <status>` is how a status already changes on tasks and drafts (`task edit BACK-1 -s "Done"`, `draft edit`), and `-s, --status` is the flag `decision create` and `task create` already use, so there is no new verb and no new flag style. It is also what the reporter of #1068 typed first.
-- The status is required and free-form, exactly as `decision create -s` takes it: no vocabulary, no validation. An empty value counts as not given, as `-s ""` already does on `task edit` and `decision create`, so it is refused instead of writing an empty status.
-- `--plain` is accepted like on `decision create` and `decision list`; output is one plain line, `Updated decision <id>`.
-
-Rejected:
-- `decision status <id> <status>` (the proposal in the issue): a verb no other record has, and a positional status where every other command passes it with `-s`.
-- `decision update <id> -s <status>`: `update` is the document verb and documents have no status; the status idiom users and the shipped guides already know is `edit -s`.
-- `decision supersede <old> --by <new>` and `--superseded-by`: a relationship between decisions, which is a non-goal.
-- A positional status on `edit`: would stop `edit` from ever taking a second field.
-
-The shape lives in one place: the command registration in src/cli.ts (name, flag, help, the missing-status message). Core and storage names and error messages do not mention the command or flag. Tests spell the command and flag in two constants.
-
-Implementation
-
-1. src/file-system/operations.ts, next to saveDecision/loadDecision: `FileSystem.updateDecisionStatus(decisionId, status)`.
-   - Resolves the record with the existing `loadDecision` (frontmatter identity; fails closed with AmbiguousIdError when several files claim the ID) and returns null when no decision has the ID. It writes to the file it read, never to a path rebuilt from the ID and title.
-   - Reads the file as bytes and refuses it when the bytes do not round-trip as UTF-8. `Bun.file().text()` is not used because it drops a byte-order mark.
-   - Never parses and re-serializes: `serializeDecision` writes only the keys and sections it knows and drops everything else (#1008, #1010, #1065). The module-private helper `replaceDecisionStatus` works in six steps: split the text keeping each line break; find the closing `---` line the way the reader does; find the plain `status:` line and refuse when there is none; take its indented continuation lines (a long status is stored folded over several lines); splice in the new entry, spelled by the serializer `decision create` uses and ended with the newline style of the file; read the result back with `parseMarkdown` and require its frontmatter to equal the old one apart from the status.
-   - The whole status entry is replaced, so a comment on the status line goes with it. A decision without a plain `status:` line is refused and left unchanged; no entry is appended.
-   - Any refusal throws one message that names the file and asks for UTF-8 text with one plain `status: value` line; nothing is written.
-   - Locking and write: same as the other decision, document and milestone writes: no per-record lock and a plain `Bun.write` (only tasks and drafts lock). The write goes through a symlink instead of replacing it.
-2. src/core/backlog.ts: `Core.updateDecisionStatus(decisionId, status, autoCommit?)` calls the storage method, throws `Decision <id> not found` on null, passes on the ambiguity and refusal errors, and auto-commits just that file like `createDecision` does (`backlog: Update decision <id>`). Placed after `createDecisionWithTitle` to stay clear of contributor PR #1018, which edits `updateDecisionFromContent`; the web save path is not touched.
-3. src/cli.ts: thin `decision edit` adapter with the same help schema structure as `decision create`. Its `Writes:` line says the status line is replaced. Errors reach the top-level handler, which prints the message and exits 1.
-4. CLI-INSTRUCTIONS.md: one row in the Decisions table. The CLI instruction guides under src/guidelines list no decision commands, so they stay as they are.
-5. Tests, all through the CLI, in src/test/cli-decision-status.test.ts: the #1068 scenario in `decision list --plain`; byte-for-byte preservation of a file with an unrecognised section, a nested heading and an extra frontmatter key; one `it.each` over files whose status line is replaced with every other byte kept (CRLF with a byte-order mark and no final newline, a multi-line status, a trailing comment, look-alike status lines); one `it.each` over refused files that stay unchanged (no status line, a quoted key, flow-style frontmatter, a blank line inside the value, invalid UTF-8); free-form and long statuses; unknown and ambiguous ID; missing status; symlinked file; auto-commit scope; help output. Dates come from the run clock.
-6. Verify: `bun test --timeout=10000 src/test/cli-decision-status.test.ts`, `bunx tsc --noEmit`, `bun run check .`.
-
-Out of scope: superseded-by links, editing title or content, MCP tools, web UI and HTTP API, and the existing web save path.
-
-Current-main integration repair (2026-10-16):
-1. Merge origin/main into the existing PR ancestry and preserve both status editing and the new decision archive/restore/delete CLI and documentation.
-2. Resolve status-edit IDs through Core.getDecision, reject archived decisions with the current shared error, and pass the resolved record to the byte-preserving storage writer using contentRecordFilePath. Do not add locking or change the accepted plain-status/UTF-8 refusal boundary.
-3. Add focused CLI proof for archived read-only behavior and active/archive ID ambiguity. Keep existing byte-preservation, listing, refusal, symlink, and scoped auto-commit proof.
-4. Run focused and related tests, type checks, repository checks, build, and compiled CLI smoke. Inspect the final diff and simplify before handing stable source/test hashes to the coordinator for architecture review.
-5. Wait for review KEEP before finalization, a scoped task-record commit, and a protected push to the existing PR branch.
+1. Keep backlog decision edit <decisionId> -s/--status <free-form status>, its required non-empty status, --plain output, documented help, and the Decisions table example.
+2. Merge current main into the existing PR ancestry, preserving every unrelated command and guide. Resolve the decision once through Core.getDecision across active and archived records; reject archived decisions with ContentRecordArchivedError.
+3. Pass the resolved active Decision to FileSystem.updateDecisionStatus. Derive its path through contentRecordFilePath, read UTF-8 bytes, replace only the plain status entry, and compare frontmatter before writing. Preserve the original helper, refusal boundary, direct write, symbolic links, and scoped auto-commit behavior.
+4. Verify the existing status tests and two archive integration tests; run related decision/storage/identity/commit tests, current type and formatting checks, build, and compiled CLI byte-preservation, refusal, listing, and linked-file commit smoke. Review subtraction and exact hashes.
+5. After coordinator review KEEP, record AC/DoD proof and Done, make one scoped final commit, verify hooks preserve reviewed bytes, and push only the existing PR branch with its old remote head protected. Return the shared checkout to clean main.
 <!-- SECTION:PLAN:END -->
 
 ## Implementation Notes
@@ -117,35 +84,26 @@ Open choices for review on the PR:
 2. The refusal message asks for a hand edit, which the shipped guidance otherwise forbids for decision files.
 3. An indented line directly under the status line counts as part of the status entry, so an indented comment placed there is replaced with it.
 4. A malformed decision file is skipped by the existing listing, so its ID reports as not found here too.
+
+Current-main integration proof (2026-10-16):
+- Merged main a854082e6607a802aa4a02349429c3916c435781 into original PR head 0d65e2768dacc36bd2a671b0d35e1e228729f726 without rewriting either ancestry. Kept decision archive/restore/delete commands and documentation.
+- Added two focused cases before the repair. They reproduced an archived ID incorrectly reporting not found and an active/archive duplicate being edited. Core now resolves once through getDecision, raises ContentRecordArchivedError, and passes that resolved record to the status writer. Storage uses contentRecordFilePath and returns only the written path.
+- Existing status replacement helper and CLI adapter are byte-identical to the original PR. Existing missing-ID wording, free-form status, UTF-8/plain-entry refusal boundary, direct write, and link behavior stay as accepted. No new locking or recovery guarantee.
+- 20 focused status cases passed. Seven focused/related files passed 127 tests; filesystem.test.ts passed all 53 cases on an isolated allowed-access rerun. The initial sandboxed run had five unrelated draft-promotion timeouts; direct diagnosis showed EPERM at .git/backlog.md/locks/create. No source change was needed for that environment failure.
+- bun run check:types passed (564 files); bun run check . passed (459 files); bun run build passed. A formatter line-wrap failure was fixed before the clean check.
+- Compiled dist/backlog smoke passed status update/listing, BOM and CRLF preservation with unknown frontmatter and nested/body sections, missing ID/status, archived read-only and restore-then-edit, active/archive ambiguity, missing plain entry, invalid UTF-8, and help. The unchanged bytes outside the status entry had SHA-256 87725db3869e2d98075f2e9e08fb5d75fc1d6d09df9ca66582b7eb56470172f8 before and after. An initial incompatible init flag combination was corrected in the smoke invocation only.
+- Compiled linked-file smoke kept the symbolic link, committed only notes/decision.md after status editing through it, and left unrelated.txt staged.
+- Subtraction review: only the five expected source/test/docs paths and this task differ from main. Original status helper and CLI text are unchanged; no extra abstraction is needed. Both PR and current main remain ancestors. Stable review diff is /private/tmp/back-727-reviewed.diff (SHA-256 4b271f181a50e3f0b261facc1c4134d967ad65f056aefea3808fa1f59e4b620b). Waiting for coordinator architecture review before finalization or push.
+
+Final review: coordinator returned KEEP on exact reviewed source/test/docs hashes with no new recommendation or product decision. All tool subprocesses completed and the allocator lock was released. AC evidence: #1 source and compiled CLI help plus shipped Decisions table; #2 exact bytes in 20 focused cases and compiled BOM/CRLF fixture with unchanged outside-status hash; #3 focused and compiled issue scenario lists decision-1 as superseded and decision-2 as accepted; #4 focused and compiled missing-ID cases exit 1 without changes. DoD evidence: current canonical bun run check:types passed, bun run check . passed, 180 distinct focused/related cases passed after the diagnosed sandbox-only filesystem rerun. Build and both compiled smokes passed.
 <!-- SECTION:NOTES:END -->
 
 ## Final Summary
 
 <!-- SECTION:FINAL_SUMMARY:BEGIN -->
-Added `backlog decision edit <decisionId> -s <status>`, so a decision that has been replaced can be marked superseded from the CLI and no longer lists as accepted (issue #1068).
+Prepared PR #1088 against current main while keeping backlog decision edit <id> -s/--status <free-form status>. The command changes only the status entry and keeps unknown frontmatter, body sections, BOM, and line endings. Missing, ambiguous, and unrepresentable inputs fail before writing.
 
-What changed
-- src/cli.ts: the `decision edit` command with the same help structure as `decision create`. The status is required and free-form; `--plain` is accepted.
-- src/core/backlog.ts: `Core.updateDecisionStatus` reports an unknown ID, passes on storage errors and auto-commits only the decision file when auto-commit is on.
-- src/file-system/operations.ts: `FileSystem.updateDecisionStatus` and the private helper `replaceDecisionStatus`. The status line is replaced as text, because the decision serializer writes only the keys and sections it knows and would drop the rest. The edited text is read back and the write is refused unless the frontmatter is unchanged apart from the status. The file is read as bytes, so a byte-order mark and line endings are kept and text that is not valid UTF-8 is refused.
-- CLI-INSTRUCTIONS.md: one row in the Decisions table.
-- src/test/cli-decision-status.test.ts: 18 tests through the CLI.
+The integration repair uses current core identity resolution across active and archived decisions. Archived decisions receive the shared read-only message; active/archive duplicates fail closed. Storage receives the resolved record, uses the shared guarded path, and returns only that path. The original replacement helper, CLI adapter, refusal wording, direct write, and scoped commit path are preserved.
 
-Behavior
-- Only the status line changes. On a decision with extra frontmatter keys, a nested heading and an unrecognised section, the diff is the status line alone and every other byte is identical.
-- Unknown ID, an ID several files claim, a file without one plain `status: value` line, and a missing status all exit 1 with a message and change no file.
-
-Verification
-- `bun test --timeout=10000 src/test/cli-decision-status.test.ts`: 18 pass, 0 fail.
-- `bunx tsc --noEmit`: clean. `bun run check .`: clean.
-- Issue scenario by hand: before, `decision edit` was an unknown command and both decisions listed as accepted; after, decision-1 lists as superseded.
-
-Choices left for the maintainer to confirm on the pull request
-- The command shape `decision edit -s`; it is registered in one place, so a rename is a one-place change.
-- A comment on the status line, or an indented comment directly under it, is replaced along with the entry.
-- A file without one plain `status: value` line is refused, and the message asks for a hand fix.
-- No lock and a direct write, as decision create, the web decision save, document update and milestone rename do today.
-- Setting the status a decision already has still rewrites the entry.
-
-Not included: a superseded-by link, editing decision content or title, MCP tools, web changes.
+Verification: 20 status tests and 160 related cases passed (filesystem fixtures required an allowed-access rerun after a diagnosed .git allocator-lock permission error). Current type checks, Biome, build, compiled status/listing/byte/refusal smoke, and compiled linked-file commit smoke passed. Full-context review returned KEEP on exact hashes. No new locks, recovery guarantees, decision relationships, configuration, content editing, MCP tools, or web changes.
 <!-- SECTION:FINAL_SUMMARY:END -->

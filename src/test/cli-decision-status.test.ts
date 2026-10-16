@@ -36,10 +36,10 @@ async function writeDecisionFile(filename: string, content: string | Uint8Array)
 }
 
 /** Every file in the decisions directory with its exact bytes, to prove a refused command wrote nothing. */
-async function snapshotDecisions(): Promise<Record<string, string>> {
+async function snapshotDecisions(directory = decisionsDir): Promise<Record<string, string>> {
 	const snapshot: Record<string, string> = {};
-	for (const name of (await readdir(decisionsDir)).sort()) {
-		snapshot[name] = (await readFile(join(decisionsDir, name))).toString("hex");
+	for (const name of (await readdir(directory)).sort()) {
+		snapshot[name] = (await readFile(join(directory, name))).toString("hex");
 	}
 	return snapshot;
 }
@@ -241,6 +241,57 @@ describe("changing a decision's status from the CLI", () => {
 		expect(stderr).toContain("decision-2 - Gamma.md");
 		expect(stderr).toContain("decision-002 - Delta.md");
 		expect(await snapshotDecisions()).toEqual(before);
+	});
+
+	it("refuses an archived decision until it is restored and keeps its bytes unchanged", async () => {
+		const filename = "decision-1 - Case.md";
+		const original = asWrittenOnWindows(decisionWith("status: accepted"));
+		await writeDecisionFile(filename, original);
+		expect((await cli("decision", "archive", "decision-1")).exitCode).toBe(0);
+		const archiveDir = join(TEST_DIR, "backlog", "archive", "decisions");
+		const archived = await snapshotDecisions(archiveDir);
+		const active = await snapshotDecisions();
+
+		const result = await changeStatus("DECISION-001", "superseded");
+
+		expect(result.exitCode).toBe(1);
+		expect(result.stdout.toString()).toBe("");
+		expect(result.stderr.toString()).toBe(
+			"Decision decision-1 is archived. Archived decisions are read-only. Restore it first: backlog decision restore decision-1\n",
+		);
+		expect(await snapshotDecisions(archiveDir)).toEqual(archived);
+		expect(await snapshotDecisions()).toEqual(active);
+
+		expect((await cli("decision", "restore", "decision-1")).exitCode).toBe(0);
+		expect((await changeStatus("decision-1", "superseded")).exitCode).toBe(0);
+		expect(await readFile(join(decisionsDir, filename), "utf8")).toBe(
+			original.replace("status: accepted", "status: superseded"),
+		);
+	});
+
+	it("refuses an ID claimed by both an active and archived decision without changing either", async () => {
+		await writeDecisionFile(
+			"decision-2 - Active.md",
+			decisionWith("status: accepted").replace("decision-1", "decision-2"),
+		);
+		const archiveDir = join(TEST_DIR, "backlog", "archive", "decisions");
+		await mkdir(archiveDir, { recursive: true });
+		await writeFile(
+			join(archiveDir, "decision-002 - Archived.md"),
+			decisionWith("status: accepted").replace("decision-1", "decision-002"),
+		);
+		const active = await snapshotDecisions();
+		const archived = await snapshotDecisions(archiveDir);
+
+		const result = await changeStatus("decision-2", "superseded");
+
+		expect(result.exitCode).toBe(1);
+		expect(result.stdout.toString()).toBe("");
+		expect(result.stderr.toString()).toContain("Decision ID decision-2 is ambiguous; 2 files match:");
+		expect(result.stderr.toString()).toContain("backlog/decisions/decision-2 - Active.md");
+		expect(result.stderr.toString()).toContain("backlog/archive/decisions/decision-002 - Archived.md");
+		expect(await snapshotDecisions()).toEqual(active);
+		expect(await snapshotDecisions(archiveDir)).toEqual(archived);
 	});
 
 	it.each(refusedCases)("refuses a decision with $name and changes no file", async ({ content }) => {

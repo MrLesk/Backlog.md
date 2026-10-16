@@ -4400,20 +4400,23 @@ export class Core {
 
 	/**
 	 * Changes the status of an existing decision and leaves the rest of its file as it is. Returns the
-	 * decision's ID. Throws when no decision has the given ID, and passes on the errors storage raises
-	 * when several files claim the ID or the status cannot be replaced safely, so callers only need to
-	 * report the message.
+	 * decision's ID. Resolves active and archived IDs together; archived decisions are read-only.
+	 * Storage refuses a status that cannot be replaced without changing other content.
 	 */
 	async updateDecisionStatus(decisionId: string, status: string, autoCommit?: boolean): Promise<string> {
-		const updated = await this.fs.updateDecisionStatus(decisionId, status);
-		if (!updated) {
+		const decision = await this.getDecision(decisionId);
+		if (!decision) {
 			throw new Error(`Decision ${decisionId} not found`);
 		}
+		if (decision.archived) {
+			throw new ContentRecordArchivedError("decision", decision.id);
+		}
+		const filepath = await this.fs.updateDecisionStatus(decision, status);
 
 		if (await this.shouldAutoCommit(autoCommit)) {
-			await this.commitWrittenFile(`backlog: Update decision ${updated.id}`, [], updated.filepath);
+			await this.commitWrittenFile(`backlog: Update decision ${decision.id}`, [], filepath);
 		}
-		return updated.id;
+		return decision.id;
 	}
 
 	async createDocument(doc: Document, autoCommit?: boolean, subPath = ""): Promise<void> {

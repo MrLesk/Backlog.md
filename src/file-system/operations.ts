@@ -1596,15 +1596,14 @@ export class FileSystem {
 	}
 
 	/**
-	 * Replaces the status line of one decision and leaves the rest of its file as it is. Returns the
-	 * decision's ID and file path, or null when no decision has this ID. Throws when several files
-	 * claim the ID, and when the status cannot be replaced without changing other content; nothing is
-	 * written then.
+	 * Replaces the status entry of the decision resolved by core and returns its file path. Refuses
+	 * archived decisions and entries that cannot be replaced without changing other content.
 	 */
-	async updateDecisionStatus(decisionId: string, status: string): Promise<{ id: string; filepath: string } | null> {
-		const decision = await this.loadDecision(decisionId);
-		if (!decision?.path) return null;
-		const filepath = join(await this.getDecisionsDir(), decision.path);
+	async updateDecisionStatus(decision: Decision, status: string): Promise<string> {
+		if (decision.archived) {
+			throw new Error(`Cannot save decision ${decision.id}: it is archived, and archived decisions are read-only.`);
+		}
+		const filepath = this.contentRecordFilePath("decision", decision);
 
 		// Bun.file().text() drops a leading byte-order mark, and decoding invalid UTF-8 is lossy.
 		// Read the bytes, and only edit text that writes back to exactly the bytes that were read.
@@ -1618,7 +1617,7 @@ export class FileSystem {
 		}
 
 		await Bun.write(filepath, updated);
-		return { id: decision.id, filepath };
+		return filepath;
 	}
 
 	// Document operations
