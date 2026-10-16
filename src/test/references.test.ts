@@ -72,10 +72,39 @@ describe("Task References", () => {
 		});
 	});
 
-	describe("Archive cleanup", () => {
-		it("removes only exact-ID references when archiving, in the working copy and the completed corpus", async () => {
+	describe("Archive", () => {
+		it("keeps every reference to an archived task, in the working copy and in the archive", async () => {
 			const { task: archiveTarget } = await core.createTaskFromInput({
 				title: "Archive target",
+			});
+			const references = ["task-1", "TASK-1", "https://example.com/tasks/task-1", "docs/task-1.md", "task-12"];
+			const { task: activeTask } = await core.createTaskFromInput({
+				title: "Active referencing task",
+				references,
+			});
+			const { task: archivedTask } = await core.createTaskFromInput({
+				title: "Archived referencing task",
+				status: "Done",
+				references: ["task-1", "https://example.com/tasks/task-1"],
+			});
+			await core.archiveTask(archivedTask.id, false);
+
+			expect(await core.archiveTask(archiveTarget.id, false)).toBe(true);
+
+			// The archived task keeps its ID, so no reference to it has to change.
+			expect((await core.loadTaskById(activeTask.id))?.references).toEqual(references);
+			const archivedTasks = await core.filesystem.listArchivedTasks();
+			expect(archivedTasks.find((task) => task.id === archivedTask.id)?.references).toEqual([
+				"task-1",
+				"https://example.com/tasks/task-1",
+			]);
+		});
+	});
+
+	describe("Demotion cleanup", () => {
+		it("removes only exact-ID references when demoting, in the working copy and the archive", async () => {
+			const { task: demoteTarget } = await core.createTaskFromInput({
+				title: "Demote target",
 			});
 
 			const { task: activeTask } = await core.createTaskFromInput({
@@ -92,19 +121,18 @@ describe("Task References", () => {
 				],
 			});
 
-			const { task: completedTask } = await core.createTaskFromInput({
-				title: "Completed referencing task",
+			const { task: archivedTask } = await core.createTaskFromInput({
+				title: "Archived referencing task",
 				status: "Done",
 				references: ["task-1", "https://example.com/tasks/task-1"],
 			});
-			await core.completeTask(completedTask.id, false);
+			await core.archiveTask(archivedTask.id, false);
 
-			const archived = await core.archiveTask(archiveTarget.id, false);
-			expect(archived.success).toBe(true);
+			expect((await core.demoteTask(demoteTarget.id, false)).success).toBe(true);
 
 			const updatedActive = await core.loadTaskById(activeTask.id);
-			const completedTasks = await core.filesystem.listCompletedTasks();
-			const updatedCompleted = completedTasks.find((task) => task.id === completedTask.id);
+			const archivedTasks = await core.filesystem.listArchivedTasks();
+			const updatedArchived = archivedTasks.find((task) => task.id === archivedTask.id);
 
 			expect(updatedActive?.references).toEqual([
 				"https://example.com/tasks/task-1",
@@ -114,9 +142,9 @@ describe("Task References", () => {
 				"JIRA-1",
 				"task-12",
 			]);
-			// The completed corpus is cleaned too: the archived ID is free for reallocation, so a
-			// reference kept there would rebind to whatever task is created next.
-			expect(updatedCompleted?.references).toEqual(["https://example.com/tasks/task-1"]);
+			// The archive is cleaned too: the demoted ID is free for reallocation, so a reference
+			// kept there would rebind to whatever task is created next.
+			expect(updatedArchived?.references).toEqual(["https://example.com/tasks/task-1"]);
 		});
 	});
 });

@@ -4,7 +4,6 @@ import type { Task } from "../types/index.ts";
 import {
 	createKanbanSharedFilters,
 	createUnifiedViewFilters,
-	filterTasksForKanban,
 	mergeUnifiedViewFilters,
 	type UnifiedViewFilters,
 } from "../ui/unified-view.ts";
@@ -12,7 +11,7 @@ import { NO_MILESTONE_FILTER_VALUE } from "../utils/milestone-filter.ts";
 import { applyTaskFilters } from "../utils/task-search.ts";
 
 describe("unified view filter state", () => {
-	it("carries task type filters into kanban and applies them to typed tasks only", () => {
+	it("carries task type filters into the kanban shared filters, and the task filter honours them", () => {
 		const tasks: Task[] = [
 			{
 				id: "task-1",
@@ -49,10 +48,10 @@ describe("unified view filter state", () => {
 
 		expect(unified.typeFilter).toEqual(["Epic"]);
 		expect(shared.typeFilter).toEqual(["Epic"]);
-		expect(filterTasksForKanban(tasks, shared).map((task) => task.id)).toEqual(["task-1"]);
+		expect(applyTaskFilters(tasks, { type: shared.typeFilter }).map((task) => task.id)).toEqual(["task-1"]);
 	});
 
-	it("carries project filters into kanban and applies them to projected tasks only", () => {
+	it("carries project filters into the kanban shared filters, and the task filter honours them", () => {
 		const tasks: Task[] = [
 			{
 				id: "task-1",
@@ -89,7 +88,7 @@ describe("unified view filter state", () => {
 
 		expect(unified.projectFilter).toEqual(["Web"]);
 		expect(shared.projectFilter).toEqual(["Web"]);
-		expect(filterTasksForKanban(tasks, shared).map((task) => task.id)).toEqual(["task-1"]);
+		expect(applyTaskFilters(tasks, { project: shared.projectFilter }).map((task) => task.id)).toEqual(["task-1"]);
 	});
 
 	it("initializes milestone filter from options", () => {
@@ -313,7 +312,9 @@ describe("unified view filter state", () => {
 		});
 
 		const shared = createKanbanSharedFilters(unified);
-		const results = filterTasksForKanban(tasks, shared).map((task) => task.id);
+		const results = applyTaskFilters(tasks, { labels: shared.labelFilter, labelMatch: shared.labelMatch }).map(
+			(task) => task.id,
+		);
 
 		expect(shared.labelMatch).toBe("all");
 		expect(results).toEqual(["task-1"]);
@@ -342,88 +343,11 @@ describe("unified view filter state", () => {
 		];
 		const shared = createKanbanSharedFilters(createUnifiedViewFilters({ excludeStatus: ["Done"] }));
 
-		const kanbanResults = filterTasksForKanban(tasks, shared).map((task) => task.id);
+		const kanbanResults = applyTaskFilters(tasks, { excludeStatus: shared.excludeStatus }).map((task) => task.id);
 		const listResults = applyTaskFilters(tasks, { excludeStatus: ["Done"] }).map((task) => task.id);
 
 		expect(kanbanResults).toEqual(["task-1"]);
 		expect(listResults).toEqual(["task-1"]);
-	});
-
-	it("applies kanban shared limit without dropping seeded label filters", () => {
-		const tasks: Task[] = [
-			{
-				id: "task-1",
-				title: "Frontend bug",
-				status: "To Do",
-				labels: ["frontend", "bug"],
-				assignee: [],
-				createdDate: "2026-01-01",
-				dependencies: [],
-			},
-			{
-				id: "task-2",
-				title: "Frontend bug 2",
-				status: "Done",
-				labels: ["frontend", "bug"],
-				assignee: [],
-				createdDate: "2026-01-02",
-				dependencies: [],
-			},
-			{
-				id: "task-3",
-				title: "Frontend only",
-				status: "To Do",
-				labels: ["frontend"],
-				assignee: [],
-				createdDate: "2026-01-03",
-				dependencies: [],
-			},
-		];
-		const shared = createKanbanSharedFilters(
-			createUnifiedViewFilters({
-				labels: ["frontend", "bug"],
-				labelMatch: "all",
-				limit: 1,
-			}),
-		);
-
-		const results = filterTasksForKanban(tasks, shared).map((task) => task.id);
-
-		expect(results).toEqual(["task-1"]);
-	});
-
-	it("applies kanban shared limit when it is the only seeded filter", () => {
-		const tasks: Task[] = [
-			{
-				id: "task-1",
-				title: "First",
-				status: "To Do",
-				labels: [],
-				assignee: [],
-				createdDate: "2026-01-01",
-				dependencies: [],
-			},
-			{
-				id: "task-2",
-				title: "Second",
-				status: "Done",
-				labels: [],
-				assignee: [],
-				createdDate: "2026-01-02",
-				dependencies: [],
-			},
-		];
-
-		const results = filterTasksForKanban(tasks, {
-			searchQuery: "",
-			excludeStatus: [],
-			priorityFilter: "",
-			labelFilter: [],
-			milestoneFilter: "",
-			limit: 1,
-		}).map((task) => task.id);
-
-		expect(results).toEqual(["task-1"]);
 	});
 
 	it("matches any selected status case-insensitively in the task list", () => {
@@ -514,7 +438,12 @@ describe("unified view filter state", () => {
 			milestoneFilter: "Sprint 1",
 		};
 
-		const kanbanResults = filterTasksForKanban(tasks, sharedFilters, resolveMilestoneLabel).map((task) => task.id);
+		const kanbanResults = applyTaskFilters(tasks, {
+			priority: sharedFilters.priorityFilter,
+			labels: sharedFilters.labelFilter,
+			milestone: sharedFilters.milestoneFilter,
+			resolveMilestoneLabel,
+		}).map((task) => task.id);
 		const listSharedResults = applyTaskFilters(tasks, {
 			priority: "high",
 			labels: ["ui"],
@@ -585,7 +514,7 @@ describe("unified view filter state", () => {
 			milestoneFilter: NO_MILESTONE_FILTER_VALUE,
 		};
 
-		const kanbanResults = filterTasksForKanban(tasks, sharedFilters).map((task) => task.id);
+		const kanbanResults = applyTaskFilters(tasks, { milestone: sharedFilters.milestoneFilter }).map((task) => task.id);
 		const listResults = applyTaskFilters(tasks, { milestone: NO_MILESTONE_FILTER_VALUE }).map((task) => task.id);
 		const literalMilestoneResults = applyTaskFilters(tasks, { milestone: "__none" }).map((task) => task.id);
 
@@ -617,7 +546,7 @@ describe("unified view filter state", () => {
 		const displayCandidates = [activeTask];
 		const readyFiltered = withReadiness(displayCandidates, {
 			tasks: [activeTask],
-			completedTasks: [completedDep],
+			archivedTasks: [completedDep],
 			statuses: undefined,
 		}).filter((task) => task.isReady);
 

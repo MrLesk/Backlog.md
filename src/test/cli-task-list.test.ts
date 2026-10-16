@@ -9,6 +9,33 @@ import { createUniqueTestDir, initializeTestProject, safeCleanup } from "./test-
 let TEST_DIR: string;
 const CLI_PATH = getTestCliPath();
 
+/**
+ * An archived record that cannot be parsed is never cached, so the reader reads it again and logs
+ * it again under DEBUG every time the archived corpus is loaded. Counting those lines counts the
+ * corpus reads one command makes.
+ */
+async function writeUnparseableArchivedTask(): Promise<void> {
+	await writeFile(
+		join(TEST_DIR, "backlog", "archive", "tasks", "task-99 - Broken.md"),
+		"---\nid: TASK-99\ntitle: [unclosed\nstatus: Done\n---\n\nbroken\n",
+	);
+}
+
+async function listCountingArchiveReads(args: string[]): Promise<{ stdout: string; archiveReads: number }> {
+	const result = await $`bun ${[CLI_PATH, "task", "list", ...args]}`
+		.cwd(TEST_DIR)
+		.env({ ...process.env, DEBUG: "1" })
+		.quiet();
+	expect(result.exitCode).toBe(0);
+	return {
+		stdout: result.stdout.toString(),
+		archiveReads: result.stderr
+			.toString()
+			.split("\n")
+			.filter((line) => line.startsWith("Failed to parse archived task file")).length,
+	};
+}
+
 describe("CLI Integration", () => {
 	beforeEach(async () => {
 		TEST_DIR = createUniqueTestDir("test-cli");
@@ -667,7 +694,7 @@ describe("CLI Integration", () => {
 				},
 				false,
 			);
-			expect(await core.completeTask("task-1", false)).toBe(true);
+			expect(await core.archiveTask("task-1", false)).toBe(true);
 
 			const result = await $`bun ${CLI_PATH} task list --plain --ready`.cwd(TEST_DIR).quiet();
 			const out = result.stdout.toString();
@@ -692,33 +719,16 @@ describe("CLI Integration", () => {
 				},
 				false,
 			);
-			// A completed record that cannot be parsed is re-read and re-logged under DEBUG on every
-			// load of the completed corpus, so these counts are the corpus reads one command makes.
-			await mkdir(join(TEST_DIR, "backlog", "completed"), { recursive: true });
-			await writeFile(
-				join(TEST_DIR, "backlog", "completed", "task-99 - Broken.md"),
-				"---\nid: TASK-99\ntitle: [unclosed\nstatus: Done\n---\n\nbroken\n",
-			);
-			const corpusReads = async (args: string[]) => {
-				const result = await $`bun ${[CLI_PATH, "task", "list", ...args]}`
-					.cwd(TEST_DIR)
-					.env({ ...process.env, DEBUG: "1" })
-					.quiet();
-				expect(result.exitCode).toBe(0);
-				return {
-					stdout: result.stdout.toString(),
-					reads: result.stderr
-						.toString()
-						.split("\n")
-						.filter((line) => line.startsWith("Failed to parse completed task file")).length,
-				};
-			};
+			await writeUnparseableArchivedTask();
 
-			const empty = await corpusReads(["--json", "--assignee", "@nobody"]);
-			const baseline = await corpusReads(["--plain", "--assignee", "@nobody"]);
+			const empty = await listCountingArchiveReads(["--json", "--assignee", "@nobody"]);
+			const baseline = await listCountingArchiveReads(["--plain", "--assignee", "@nobody"]);
+			const withVerdicts = await listCountingArchiveReads(["--json"]);
 			expect(JSON.parse(empty.stdout).tasks).toEqual([]);
-			// Nothing will carry a verdict, so nothing loads the corpus it would come from.
-			expect(empty.reads).toBe(baseline.reads);
+			// Nothing will carry a verdict, so the corpus gets no read beyond the identity index's own.
+			expect(empty.archiveReads).toBe(baseline.archiveReads);
+			// The counter does count: rows that carry a verdict cost a read the empty result did not.
+			expect(withVerdicts.archiveReads).toBeGreaterThan(empty.archiveReads);
 		});
 
 		it("serializes --ready --json from the readiness pass the filter used", async () => {
@@ -751,36 +761,15 @@ describe("CLI Integration", () => {
 				false,
 			);
 
-			// A completed record that cannot be parsed is never cached, so it is re-read and re-logged
-			// under DEBUG every time the completed corpus is loaded. Counting those lines counts the
-			// corpus reads one command makes, which is the difference between deriving readiness once
-			// and deriving it again to serialize the same rows.
-			await mkdir(join(TEST_DIR, "backlog", "completed"), { recursive: true });
-			await writeFile(
-				join(TEST_DIR, "backlog", "completed", "task-99 - Broken.md"),
-				"---\nid: TASK-99\ntitle: [unclosed\nstatus: Done\n---\n\nbroken\n",
-			);
+			await writeUnparseableArchivedTask();
 
-			const runCounting = async (args: string[]) => {
-				const result = await $`bun ${[CLI_PATH, "task", "list", ...args]}`
-					.cwd(TEST_DIR)
-					.env({ ...process.env, DEBUG: "1" })
-					.quiet();
-				expect(result.exitCode).toBe(0);
-				return {
-					stdout: result.stdout.toString(),
-					corpusReads: result.stderr
-						.toString()
-						.split("\n")
-						.filter((line) => line.startsWith("Failed to parse completed task file")).length,
-				};
-			};
+			const plainReady = await listCountingArchiveReads(["--plain", "--ready"]);
+			const jsonReady = await listCountingArchiveReads(["--json", "--ready"]);
 
-			const plainReady = await runCounting(["--plain", "--ready"]);
-			const jsonReady = await runCounting(["--json", "--ready"]);
-
+			// Readiness needs the archived corpus, so the filter reads it at least once.
+			expect(plainReady.archiveReads).toBeGreaterThan(0);
 			// Publishing the verdict must not cost a second read of the corpus it came from.
-			expect(jsonReady.corpusReads).toBe(plainReady.corpusReads);
+			expect(jsonReady.archiveReads).toBe(plainReady.archiveReads);
 
 			const rows = JSON.parse(jsonReady.stdout).tasks as Array<{ id: string; isReady: boolean }>;
 			expect(rows.map((row) => row.id)).toEqual(["TASK-1"]);

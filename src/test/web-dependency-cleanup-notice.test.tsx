@@ -8,9 +8,9 @@ import App from "../web/App.tsx";
 import { HealthCheckProvider } from "../web/contexts/HealthCheckContext.tsx";
 
 /**
- * Archiving rewrites other tasks, so the web UI reports which ones lost a reference. The report is
- * the only trace a viewer gets, so it must survive a slow refresh and must not be cut short by the
- * previous report's expiry.
+ * Demoting a task rewrites other tasks, so the web UI reports which ones lost a reference. The
+ * report is the only trace a viewer gets, so it must survive a slow refresh and must not be cut
+ * short by the previous report's expiry. Archiving rewrites no other task and reports nothing.
  */
 
 /** The notice's display window, and the only delay this file takes control of. */
@@ -48,11 +48,13 @@ const emptyDuplicatePlan = (): DuplicateRepairPlan => ({
 });
 
 let tasks: Task[] = [];
-/** Cleaned IDs the archive endpoint reports, per archived task. */
+/** Cleaned IDs the demote endpoint reports, per demoted task. */
 let cleanedTaskIds: Record<string, string[]> = {};
 /** Held open to keep a refresh in flight while the test inspects the page. */
 let searchHold: Promise<void> | null = null;
 let reportArchiveMoved = false;
+/** When set, the archive endpoint refuses with this message, as core does for a task it will not archive. */
+let archiveRefusal: string | null = null;
 let failRefreshSearch = false;
 let archiveRecoveryEvents: string[] = [];
 
@@ -103,7 +105,9 @@ const respond = async (url: URL, init?: RequestInit): Promise<Response> => {
 	if (url.pathname === "/api/search") {
 		if (failRefreshSearch) {
 			archiveRecoveryEvents.push("refresh");
-			throw new Error("Search network failure");
+			// A client error is not retried, so the failed refresh is over before the test is: a
+			// retry left waiting on its backoff would wake up inside a later test.
+			return json({ error: "Search failed" }, 400);
 		}
 		if (searchHold) await searchHold;
 		return json(tasks.map((task) => ({ type: "task", task, score: 1 })) satisfies SearchResult[]);
@@ -116,16 +120,20 @@ const respond = async (url: URL, init?: RequestInit): Promise<Response> => {
 		const task = tasks.find((candidate) => candidate.id === id);
 		return task ? json(task) : json({ error: `Task ${id} not found` }, 404);
 	}
-	if (url.pathname.startsWith("/api/tasks/") && init?.method === "DELETE") {
-		const id = decodeURIComponent(url.pathname.slice("/api/tasks/".length));
-		tasks = tasks.filter((task) => task.id !== id);
-		if (reportArchiveMoved) {
-			return json(
-				{ error: "dependent cleanup failed", archiveState: "moved" },
-				500,
-			);
+	const lifecycleRoute = init?.method === "POST" ? url.pathname.match(/^\/api\/tasks\/([^/]+)\/(archive|demote)$/) : null;
+	if (lifecycleRoute) {
+		const id = decodeURIComponent(lifecycleRoute[1] ?? "");
+		if (lifecycleRoute[2] === "archive" && archiveRefusal) {
+			return json({ error: archiveRefusal }, 400);
 		}
-		return json({ success: true, cleanedTaskIds: cleanedTaskIds[id] ?? [] });
+		tasks = tasks.filter((task) => task.id !== id);
+		if (lifecycleRoute[2] === "demote") {
+			return json({ success: true, cleanedTaskIds: cleanedTaskIds[id] ?? [] });
+		}
+		if (reportArchiveMoved) {
+			return json({ error: "commit failed", archiveState: "moved" }, 500);
+		}
+		return json({ success: true });
 	}
 	return json([]);
 };
@@ -248,18 +256,35 @@ const findButton = (container: HTMLElement, matches: (text: string) => boolean):
 };
 
 /** Open a task's details from the list and press its archive action. */
-const archiveFromModal = async (container: HTMLElement, title: string) => {
+const openTaskModal = async (container: HTMLElement, title: string) => {
 	await waitFor(() => (container.textContent ?? "").includes(title), `${title} in the list`);
 	await click(findButton(container, (text) => text === title));
 	await waitFor(() => container.querySelector("[role='dialog']") !== null, `${title} details modal`);
-	await click(findButton(container, (text) => text.includes("Archive Task")));
-	// Closing the modal pops the history entry the task route pushed, so the list is only ready
-	// for the next open once that has landed.
+};
+
+// Closing the modal pops the history entry the task route pushed, so the list is only ready for
+// the next open once that has landed.
+const waitForModalClosed = async (container: HTMLElement, title: string) => {
 	await waitFor(
 		() => container.querySelector("[role='dialog']") === null && window.location.pathname === "/tasks",
 		`${title} details modal closed`,
 	);
 	await settle();
+};
+
+const archiveFromModal = async (container: HTMLElement, title: string) => {
+	await openTaskModal(container, title);
+	await click(findButton(container, (text) => text.includes("Archive Task")));
+	await waitForModalClosed(container, title);
+};
+
+/** Starts the demotion; the modal stays open until the refresh that follows it has landed. */
+const demoteFromModal = async (container: HTMLElement, title: string, beforeDemote: () => void = () => {}) => {
+	await openTaskModal(container, title);
+	// Let the detail read land first, as it has by the time a person reaches for the button.
+	await settle();
+	beforeDemote();
+	await click(findButton(container, (text) => text.includes("Demote to draft")));
 };
 
 afterEach(() => {
@@ -285,6 +310,7 @@ afterEach(() => {
 	cleanedTaskIds = {};
 	searchHold = null;
 	reportArchiveMoved = false;
+	archiveRefusal = null;
 	failRefreshSearch = false;
 	archiveRecoveryEvents = [];
 	noticeTimers = [];
@@ -292,18 +318,18 @@ afterEach(() => {
 
 describe("dependency cleanup notice", () => {
 	it("reports the cleaned tasks while the refresh is still in flight", async () => {
-		tasks = [makeTask("TASK-1", "Archive target"), makeTask("TASK-2", "Dependent one")];
+		tasks = [makeTask("TASK-1", "Demote target"), makeTask("TASK-2", "Dependent one")];
 		cleanedTaskIds = { "TASK-1": ["TASK-2"] };
 		const container = await renderTaskList();
 
-		// The refresh that follows the archive never resolves during this check, so the notice can
-		// only be on screen if it was recorded from the archive response itself.
+		// The refresh that follows the demotion never resolves during this check, so the notice can
+		// only be on screen if it was recorded from the demote response itself.
 		let releaseSearch = () => {};
-		searchHold = new Promise<void>((resolve) => {
-			releaseSearch = resolve;
+		await demoteFromModal(container, "Demote target", () => {
+			searchHold = new Promise<void>((resolve) => {
+				releaseSearch = resolve;
+			});
 		});
-
-		await archiveFromModal(container, "Archive target");
 		await waitFor(
 			() => (container.textContent ?? "").includes("Removed references to TASK-1 from TASK-2"),
 			"cleanup notice while the refresh is pending",
@@ -311,7 +337,7 @@ describe("dependency cleanup notice", () => {
 
 		searchHold = null;
 		releaseSearch();
-		await settle();
+		await waitForModalClosed(container, "Demote target");
 		expect(container.textContent).toContain("Removed references to TASK-1 from TASK-2");
 	});
 
@@ -322,17 +348,19 @@ describe("dependency cleanup notice", () => {
 
 		captureNoticeTimers();
 
-		await archiveFromModal(container, "First target");
+		await demoteFromModal(container, "First target");
 		await waitFor(
 			() => (container.textContent ?? "").includes("Removed references to TASK-1 from TASK-3"),
 			"first cleanup notice",
 		);
+		await waitForModalClosed(container, "First target");
 
-		await archiveFromModal(container, "Second target");
+		await demoteFromModal(container, "Second target");
 		await waitFor(
 			() => (container.textContent ?? "").includes("Removed references to TASK-2 from TASK-4"),
 			"second cleanup notice",
 		);
+		await waitForModalClosed(container, "Second target");
 
 		// Exactly one expiry per notice, and the first one now falls due.
 		expect(noticeTimers).toHaveLength(2);
@@ -343,6 +371,42 @@ describe("dependency cleanup notice", () => {
 		});
 
 		expect(container.textContent).toContain("Removed references to TASK-2 from TASK-4");
+	});
+
+	it("archives without rewriting other tasks, so it shows no cleanup notice", async () => {
+		tasks = [makeTask("TASK-1", "Archive target"), makeTask("TASK-2", "Dependent one")];
+		cleanedTaskIds = { "TASK-1": ["TASK-2"] };
+		const container = await renderTaskList();
+
+		await archiveFromModal(container, "Archive target");
+
+		expect(container.textContent).not.toContain("Archive target");
+		expect(container.textContent).toContain("Dependent one");
+		expect(container.textContent).not.toContain("Removed references");
+	});
+
+	it("shows core's refusal in the task dialog when the archive endpoint answers 400", async () => {
+		tasks = [makeTask("TASK-1", "Archive target")];
+		const container = await renderTaskList();
+		archiveRefusal =
+			"Task TASK-1 cannot be archived: the archive already has a file named task-1 - Archive-target.md.";
+		const originalConsoleError = console.error;
+		console.error = () => {};
+
+		try {
+			await openTaskModal(container, "Archive target");
+			await click(findButton(container, (text) => text.includes("Archive Task")));
+			await waitFor(
+				() => container.querySelector("[role='dialog'] [role='alert']")?.textContent === archiveRefusal,
+				"the refusal in the dialog's alert",
+			);
+		} finally {
+			console.error = originalConsoleError;
+		}
+
+		// Nothing was archived, so the dialog stays open on the task the refusal is about.
+		expect(container.querySelector("[role='dialog']")?.textContent).toContain("Archive target");
+		expect(tasks.map((task) => task.id)).toEqual(["TASK-1"]);
 	});
 
 	it("warns that an archive moved before starting a refresh that can fail", async () => {
@@ -361,11 +425,12 @@ describe("dependency cleanup notice", () => {
 		try {
 			await archiveFromModal(container, "Archive target");
 			await waitFor(() => archiveRecoveryEvents.includes("alert"), "archive recovery warning");
+			await settle();
 		} finally {
 			console.error = originalConsoleError;
 		}
 
-		expect(alertMessage).toContain("references may be stale");
+		expect(alertMessage).toContain("The task was archived, but committing the change failed");
 		expect(archiveRecoveryEvents[0]).toBe("alert");
 	});
 });

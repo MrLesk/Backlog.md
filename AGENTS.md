@@ -39,7 +39,7 @@ is necessary to prevent misunderstanding or error, and never use it to restate t
 ### Development
 
 - `bun i` - Install dependencies
-- `bunx tsc --noEmit` - Type-check code
+- `bun run check:types` - Type-check code with Bun
 - `bun run check .` - Run all Biome checks (format + lint)
 - `bun run build` - Build the CLI tool
 - `bun run cli` - Uses the CLI tool directly
@@ -85,7 +85,7 @@ is necessary to prevent misunderstanding or error, and never use it to restate t
 
 ## Code Standards
 
-- **Runtime**: Bun with TypeScript 5
+- **Runtime**: Bun with TypeScript
 - **Formatting**: Biome with tab indentation and double quotes
 - **Linting**: Biome recommended rules
 - **Testing**: Bun's built-in test runner

@@ -11,9 +11,11 @@ Use this guide when implementation is complete and ready for review.
 
 ### Task Lifecycle
 
-Leave finished tasks on the board until periodic cleanup. `task_complete` moves them to completed storage while preserving their record and dependency links.
+Leave finished tasks on the board until periodic cleanup. `task_archive` then moves them off the board while keeping their ID, record, and dependency links.
 
-Use `task_archive` only for canceled, duplicate, or invalid work. Archiving removes incoming dependencies and task references.
+`task_archive` also takes canceled, duplicate, or invalid work off the board. Archived tasks are read-only, so finish notes and the final summary before archiving. To change an archived task or work on it again, bring it back to the board with `task_restore`; it keeps its ID and status.
+
+To remove a task for good, archive it and then call `task_delete`. Delete releases the ID once no other branch or worktree still holds the task, and removes the links other tasks and drafts hold to the task, so use it only for work that should leave no record.
 
 ### Follow-up Work
 

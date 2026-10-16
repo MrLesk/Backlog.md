@@ -100,17 +100,8 @@ describe("core auto-commit scoping", () => {
 		const { task } = await core.createTaskFromInput({ title: "Archive task", status: "To Do", description: "d" }, true);
 		await seedUnrelatedDirtyState();
 
-		expect((await core.archiveTask(task.id, true)).success).toBe(true);
+		expect(await core.archiveTask(task.id, true)).toBe(true);
 
 		await expectOwnedCommit("backlog/tasks/", "backlog/archive/tasks/");
-	});
-
-	it("task completion commits both sides of its move and nothing else", async () => {
-		const { task } = await core.createTaskFromInput({ title: "Complete task", status: "Done", description: "d" }, true);
-		await seedUnrelatedDirtyState();
-
-		expect(await core.completeTask(task.id, true)).toBe(true);
-
-		await expectOwnedCommit("backlog/tasks/", "backlog/completed/");
 	});
 });

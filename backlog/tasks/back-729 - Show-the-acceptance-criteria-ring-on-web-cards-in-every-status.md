@@ -3,9 +3,9 @@ id: BACK-729
 title: Show the acceptance-criteria ring on web cards in every status
 status: Done
 assignee:
-  - '@claude'
+  - '@codex-729'
 created_date: '2026-10-11 10:43'
-updated_date: '2026-10-12 06:12'
+updated_date: '2026-10-16 07:08'
 labels:
   - enhancement
 dependencies: []
@@ -26,9 +26,11 @@ ordinal: 347000
 ## Description
 
 <!-- SECTION:DESCRIPTION:BEGIN -->
-Web board cards show the acceptance-criteria ring only while a task is In Progress. Projects with custom statuses, for example an Awaiting test column where a reviewer ticks criteria one by one, never see progress on those cards, even at 4 of 6 checked (issue #1072, 1.53.0).
+Web cards show the acceptance-criteria ring only while a task is In Progress. Projects with custom statuses, for example an Awaiting test column where a reviewer ticks criteria one by one, never see progress on those cards, even at 4 of 6 checked (issue #1072, 1.53.0).
 
-The issue proposes showing the ring in every status except the final one, or making the set of statuses configurable. The maintainer's direction is simpler: show the ring in any status. A config option is not part of this task. This task covers web board cards only; whether the TUI progress indicator follows the same rule is not decided here.
+Show the ring whenever a task has at least one acceptance criterion, in every web status, including the first, custom, and final statuses. Board cards and All Tasks rows share this rule. In All Tasks, show the ring inline before the title without adding row height, and reserve the ring slot across mixed lists so titles stay aligned. Let board headers wrap the ring and priority group when needed so type and project badges stay readable. Keep the existing ring style and count.
+
+No status configuration, TUI progress behavior, CLI/MCP progress behavior, or ring redesign is part of this task.
 <!-- SECTION:DESCRIPTION:END -->
 
 ## Acceptance Criteria
@@ -58,6 +60,14 @@ The issue proposes showing the ring in every status except the final one, or mak
 5. Tests in `src/test/web-task-acceptance-progress.test.tsx`, through rendered output: a board card and an All Tasks row with criteria in the first status, a custom middle status (Awaiting test) and the final status each show the ring with its own count; a task with no criteria shows no ring; the list ring is on the title line before the title; a mixed list reserves the slot on every row and a list without rings reserves none; the card header can wrap and its right group stays flush right.
 6. Verify: scoped test files one at a time, `bunx tsc --noEmit`, `bun run check .`, then measure row heights and badge widths in a browser at the minimum column width, a normal width and the milestone lane grid, before and after.
 7. Out of scope, reported only: TUI bar, --plain and MCP list suffix keep their current behavior. No config option, no ring redesign.
+
+Current-main repair (2026-10-16, @codex-729):
+1. Preserve original PR head e2c504e4b24725315daa9bf281ea8602a828d4ec and integrate origin/main 9c0db268894c60ce125458796c2f116468e22b8b by merge, leaving the occupied PR worktree and protected BACK-767 branch untouched.
+2. Keep the single shared ring rule and all six current PR acceptance criteria. Match the description to the existing board and All Tasks scope. Inspect the merge and make only a verified in-scope repair; report any material layout or workflow choice before changing it. Assess mixed-list alignment for supported three-digit counts.
+3. Run existing rendered-output and related web card/list tests, type checking, repository checks, build, and compiled HTTP/browser smoke. Seek bounded current narrow/wide and light/dark layout evidence. Retain original measured evidence only for unchanged markup/style bytes and report browser access limits honestly.
+4. Review the main-relative change and original feature patch for scope and simplification. Provide stable source/test hashes and evidence for contextual architecture review before final task proof, commit, or protected publication.
+
+Routine AC5 repair approved for implementation: derive the largest criteria-total digit count from sortedDisplayTasks using the existing shared visibility/count function. Every visible row receives one common slot width, keeping 3rem exactly through two digits and adding two tabular digit widths per extra digit. Keep the counter font, inline placement, filtering behavior, and board markup unchanged. Add rendered regression coverage for mixed counts and the return to existing small-count slot width after the larger row is removed, then measure actual title positions at narrow/wide widths with three- and four-digit valid criteria counts.
 <!-- SECTION:PLAN:END -->
 
 ## Implementation Notes
@@ -98,29 +108,36 @@ Checks: `bunx tsc --noEmit` exit 0; `bun run check .` clean. Biome's `files.incl
 Other surfaces, unchanged:
 - TUI bar: still In Progress only. `src/ui/acceptance-criteria-progress.ts:47` returns '' unless `isInProgress` (line 17, exact 'in progress' after trim and lowercase); used by the TUI board (`src/ui/board.ts:175`) and task list (`src/ui/task-viewer-with-search.ts:85`).
 - `task list --plain` and MCP list/search lines: ' (ac: checked/total)' in every status, no status check (`src/ui/acceptance-criteria-progress.ts:31`, called from `src/cli.ts:321` and `src/mcp/tools/tasks/handlers.ts:112`).
+
+Current-main repair: origin/main 9c0db268894c60ce125458796c2f116468e22b8b merged without conflicts into exact PR head e2c504e4b24725315daa9bf281ea8602a828d4ec. The task description now matches the existing six accepted web criteria. No manual source repair has been made.
+
+Current-main verification (2026-10-16): 88 focused web tests across 9 files pass; check:types checks 564 files without errors; bun run check . checks 459 files without fixes; bun run build passes. Original feature source/test patch-id remains af3bf33656dbc7c64fe309a9096509afcf9266e5. Compiled HTTP smoke returns 200 for /board, /tasks, /api/tasks, /api/statuses and embedded CSS/JS. The current hidden in-app browser works. Valid 100/100 criteria expose an existing AC5 defect: slot width is 60.59375px and title x=513.59375, while 99/99 and no-criteria rows reserve 48px and title x=501. The 12.59375px difference is the same at 1024px and 1920px in light and dark. AC5 is unchecked until repaired. No manual source change has been made; bounded shared-slot repair plan has been returned for review.
+
+AC5 repair proof (2026-10-16): TaskList now derives the largest visible criteria-total digit count from sortedDisplayTasks through the same shared count function and gives every visible row one width. The slot keeps 3rem (48px at the default font size) through 99/99 and adds room for both counter numbers for larger totals, using the existing 10px medium tabular-number font. No state, effect, exported helper, new column, count limit, or board change was added.
+
+89 distinct focused tests across 9 files pass: progress 21, list width 4, card dates 5, task types 11, projects 9, readiness 1, list labels/filter/sorting 19, column sorting 7, board filters 12. The three changed-list-related files were rerun after the repair (44 tests); the six other files passed on the unchanged merged board source. The new rendered-output regression covers mixed no-criteria, small, 99/99, 100/100 and 1000/1000 rows, correct counts, shared slot widths and restoration of the small-count width when the wider row leaves. It does not duplicate the sizing formula in its expectations.
+
+Final checks: bun run check:types passes for 564 files; bun run check . passes for 459 files with no fixes; bun run build passes; main-relative git diff --check is clean. Biome still does not include TSX files under the repository config. Fresh compiled HTTP smoke returns 200 for /board, /tasks, /api/tasks, /api/statuses and the embedded CSS/JS. Task API counts match all fixture counts through 1000/1000.
+
+Fresh compiled browser measurements at 1024px and 1920px, light and dark: all nine mixed rows, including 100/100 and 1000/1000, reserve 73.921875px and start titles at x=526.921875; the largest ring is 73.6875px and fits. A supported status filter that removes the larger rows while retaining 99/99 restores all three visible rows to exactly 48px and title x=501. Rings remain inline, with no additional line. Existing board header and ring markup/style bytes are preserved from the original PR, so its recorded narrow/wide/theme board layout evidence remains applicable. The current compiled board also shows the first/custom/final status counts and no ring for zero criteria. Hidden in-app browser checks succeeded; its viewport override was reset and temporary tab closed.
+
+Subtraction review: relative to current main, only the original four web source/test files and this task record change. Integration keeps main sorting, dates, lifecycle, archive and metadata behavior. Relative to the original feature, only TaskList shared slot sizing and one regression/helper change were added. A smaller implementation would either leave valid larger-count rows misaligned or change the accepted placements. The current implementation uses derived presentation values in the existing list and retains one shared ring visibility/count rule. Task finalization and publication await contextual KEEP.
+
+Final full-context architecture review: KEEP on the exact reviewed source/test hashes, with no further source change or material decision. All six acceptance criteria and all three Definition of Done items are supported by the recorded rendered-output, related web, build, HTTP and browser evidence. Source/test bytes are frozen for the merge commit and protected publication.
 <!-- SECTION:NOTES:END -->
 
 ## Final Summary
 
 <!-- SECTION:FINAL_SUMMARY:BEGIN -->
-The web UI now shows the acceptance-criteria ring for any task that has at least one acceptance criterion, in every status. A task with no criteria shows no ring. Before, the ring appeared only while a task was In Progress, so projects with custom statuses such as Awaiting test never saw progress on those cards (issue #1072).
+The web UI shows the acceptance-criteria ring whenever a task has at least one criterion, in every status, including the first, custom and final statuses. Tasks without criteria show no ring. Board cards and All Tasks rows share one visibility/count rule, and the ring style and counts stay the same.
 
-What changed:
-- `getAcceptanceCriteriaProgressCounts` in `src/web/components/AcceptanceCriteriaProgress.tsx` is the one place that decides whether the ring shows. It no longer reads the task status. The status helper, the `status` field in the component's types and its unused `className` prop are gone.
-- Scope is wider than the original task text. The task said web board cards, but the All Tasks list rows use the same component, so they are covered too: every row with criteria shows the ring.
-- All Tasks rows: the ring sits inline at the start of the title cell, before the title, so a row with a ring is the same height as a row without one. While any visible row has a ring, every row reserves the same 48px slot, so titles stay aligned in a mixed list; a list with no rings reserves nothing.
-- Board cards: the header row can wrap. When the id, the type and project badges, the ring and the priority badge do not fit on one line, the ring and priority group moves to a second header line, flush right, instead of squeezing the badges. Cards that fit on one line are unchanged. Board cards also include the progress in their accessible name in every status.
-- No config option was added and the ring itself looks and counts as before.
+All Tasks places the ring inline before the title without adding a line. Every visible row reserves one shared slot while any row has a ring. The slot stays exactly 48px at the default font size through 99/99 and grows for larger visible counts. Filtering out the larger rows restores the small-count width. This repairs the original PR alignment gap for valid 100/100 and larger counts without adding state, effects, a new column, a count limit or an exported helper.
 
-Verification:
-- `bun test --timeout=10000 src/test/web-task-acceptance-progress.test.tsx`: 20 pass. Rendered-output cases cover a card and a list row in the first status, a custom middle status and the final status, the ring's place on the title line, the slot in mixed and ring-free lists, and the wrapping header; the unchanged In Progress cases still pass.
-- `bunx tsc --noEmit` and `bun run check .` pass. Biome does not cover `.tsx` files today, so it does not read the changed web files.
-- Measured in a browser at the minimum column width, a wide viewport, the milestone lane grid and phone width, in both themes.
+Board headers wrap the ring and priority group when needed to keep type and project badges readable; headers that fit remain on one line. The original ring and board header markup/style bytes are preserved. Current main was integrated without conflicts, retaining its date, sorting, lifecycle and metadata behavior. The description now matches the existing six web criteria. No status configuration, ring redesign or TUI/CLI/MCP progress change was added.
 
-Visible consequences:
-- All Tasks rows with a ring are 46px tall, the same as rows without one (65px while the ring had its own line). On a copy of this repository's 105 tasks the table body is 4777px, the same as with no rings.
-- When any visible row has a ring, titles start 56px further right. At the minimum table width the title text has 112px instead of 168px and truncates sooner.
-- A card whose header wraps is 23px taller. At the minimum column width (card 222px) that is any card with a ring, a priority and a long type badge or both badges; their badges are now readable in full, except that an id with two long badges is still wider than the header and truncates slightly. A card without a ring whose badges were truncated by the priority badge wraps in the same way.
+Verification: 89 distinct focused tests pass across 9 files, including 21 progress tests and a rendered regression for mixed counts through 1000/1000 and restoration after the larger task leaves. The three list-related files were rerun after the repair (44 tests). Type checking passes for 564 files; repository checks pass for 459 files; build and main-relative diff checks pass. Biome does not include TSX files under the current repository config. Rebuilt compiled HTTP checks return 200 for board/tasks routes, task/status APIs and embedded CSS/JS.
 
-Not changed: the TUI bar still shows progress for In Progress tasks only. Plain and MCP task lists already show the count in every status.
+Fresh compiled browser checks at 1024px and 1920px in light and dark show every mixed-list title at the same x position with 100/100 and 1000/1000 counts. Filtering to smaller counts restores the exact 48px slot and matching title positions. The current compiled board shows rings in first/custom/final statuses and none for zero criteria. The unchanged board/header/ring bytes retain the original recorded narrow/wide/theme layout evidence and its stated very-narrow milestone-grid limitation. Temporary browser and server resources were cleaned up.
+
+Full-context review returned KEEP on the exact source/test hashes with no further source change requested.
 <!-- SECTION:FINAL_SUMMARY:END -->

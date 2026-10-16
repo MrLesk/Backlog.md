@@ -14,11 +14,11 @@ const task = (id: string, status: string, source?: Task["source"]): Task => ({
 });
 
 describe("Kanban task presentation", () => {
-	it("keeps active Done tasks while excluding completed corpus entries", () => {
+	it("keeps active Done tasks while excluding archived tasks", () => {
 		const tasks = [
 			task("BACK-1", "To Do", "local"),
 			task("BACK-2", "Done", "local"),
-			task("BACK-3", "Done", "completed"),
+			task("BACK-3", "Done", "archived"),
 		];
 
 		expect(filterKanbanTasks(tasks).map((candidate) => candidate.id)).toEqual(["BACK-1", "BACK-2"]);

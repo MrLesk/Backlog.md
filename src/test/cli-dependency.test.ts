@@ -188,9 +188,9 @@ describe("CLI dependency options", () => {
 		expect(result.stdout.toString()).toContain("--clear-deps");
 	});
 
-	it("accepts a completed task as a dependency at create and edit time", async () => {
+	it("accepts an archived task as a dependency at create and edit time", async () => {
 		await $`bun ${CLI_PATH} task create "Done predecessor" -s Done`.cwd(testDir).quiet();
-		await $`bun ${CLI_PATH} task complete 1`.cwd(testDir).quiet();
+		await $`bun ${CLI_PATH} task archive 1`.cwd(testDir).quiet();
 
 		const created = await $`bun ${CLI_PATH} task create "Dependent task" --dep TASK-1`.cwd(testDir).quiet().nothrow();
 		expect(created.exitCode).toBe(0);

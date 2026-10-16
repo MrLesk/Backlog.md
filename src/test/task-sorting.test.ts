@@ -3,9 +3,11 @@ import {
 	compareTaskIds,
 	compareTaskIdsDescending,
 	parseTaskId,
+	sectionTasks,
 	sortByPriority,
 	sortByTaskId,
 	sortTasks,
+	TASK_SORT_FIELDS,
 } from "../utils/task-sorting.ts";
 
 describe("parseTaskId", () => {
@@ -247,17 +249,57 @@ describe("sortTasks", () => {
 		expect(sorted.map((t) => t.priority)).toEqual(["high", "low"]);
 	});
 
-	test("defaults to ID sorting for unknown fields", () => {
-		const tasks = [{ id: "task-10" }, { id: "task-2" }, { id: "task-1" }];
-
-		const sorted = sortTasks(tasks, "unknown");
-		expect(sorted.map((t) => t.id)).toEqual(["task-1", "task-2", "task-10"]);
+	test("lists the sort fields the CLI accepts", () => {
+		expect(TASK_SORT_FIELDS).toEqual(["priority", "id", "ordinal"]);
 	});
 
-	test("defaults to ID sorting for empty field", () => {
-		const tasks = [{ id: "task-10" }, { id: "task-2" }];
+	const mixedTasks = [
+		{ id: "task-1", priority: "high" },
+		{ id: "task-2", priority: "low", ordinal: 20 },
+		{ id: "task-3", ordinal: 10 },
+		{ id: "task-4", priority: "high", ordinal: 20 },
+		{ id: "task-5" },
+	];
+	const defaultOrder = ["task-3", "task-4", "task-2", "task-1", "task-5"];
 
-		const sorted = sortTasks(tasks, "");
-		expect(sorted.map((t) => t.id)).toEqual(["task-2", "task-10"]);
+	test("orders by ordinal, then priority, then ID without a sort field", () => {
+		expect(sortTasks(mixedTasks).map((t) => t.id)).toEqual(defaultOrder);
+	});
+
+	test("uses the default order for a name that is not a sort field", () => {
+		expect(sortTasks(mixedTasks, "unknown").map((t) => t.id)).toEqual(defaultOrder);
+		expect(sortTasks(mixedTasks, "").map((t) => t.id)).toEqual(defaultOrder);
+	});
+});
+
+describe("sectionTasks", () => {
+	const tasks = [
+		{ id: "task-1", status: "Done" },
+		{ id: "task-2", status: "Blocked" },
+		{ id: "task-3", status: "to do" },
+		{ id: "task-4", status: "Done" },
+		{ id: "task-5", status: "To Do" },
+	];
+	const statuses = ["To Do", "In Progress", "Done"];
+	const sectionIds = (sortField?: string) =>
+		sectionTasks(tasks, sortField, statuses).map((section) => [section.status, section.tasks.map((t) => t.id)]);
+
+	test("puts configured statuses first in their order and keeps the order of the tasks", () => {
+		const byStatus = [
+			["To Do", ["task-3", "task-5"]],
+			["Done", ["task-1", "task-4"]],
+			["Blocked", ["task-2"]],
+		];
+
+		expect(sectionIds()).toEqual(byStatus);
+		expect(sectionIds("id")).toEqual(byStatus);
+		expect(sectionIds("ordinal")).toEqual(byStatus);
+	});
+
+	test("keeps an explicit priority sort as one flat section without a status", () => {
+		const flat = [[null, ["task-1", "task-2", "task-3", "task-4", "task-5"]]];
+
+		expect(sectionIds("priority")).toEqual(flat);
+		expect(sectionIds("PRIORITY")).toEqual(flat);
 	});
 });

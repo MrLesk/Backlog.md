@@ -37,6 +37,15 @@ function taskLinks(html: string): string[] {
 	return Array.from(rendered.querySelectorAll('a[href^="/tasks/"]')).map((link) => link.getAttribute("href") ?? "");
 }
 
+/** The preview parsed into a DOM, so assertions read what the browser shows rather than the markup. */
+function renderDocument(source: string): Document {
+	return new JSDOM(renderMarkdown(source)).window.document;
+}
+
+function textOf(rendered: Document, selector: string): string[] {
+	return Array.from(rendered.querySelectorAll(selector), (element) => element.textContent ?? "");
+}
+
 describe("MermaidMarkdown", () => {
 	it("renders angle-bracket type strings without throwing", () => {
 		const source =
@@ -56,12 +65,49 @@ describe("MermaidMarkdown", () => {
 		expect(html).toContain("<strong>markdown</strong>");
 	});
 
-	it("preserves non-http autolinks and email autolinks", () => {
-		const source = "Links: <ftp://example.com/file> and <foo@example.com>";
-		const html = renderToString(<MermaidMarkdown source={source} />);
+	it("shows angle brackets inside inline code as written", () => {
+		const rendered = renderDocument("Inline `<repo>`, `</repo>` and `&lt;mode&gt;`.");
 
-		expect(html).toContain('href="ftp://example.com/file"');
-		expect(html).toContain('href="mailto:foo@example.com"');
+		expect(textOf(rendered, "code")).toEqual(["<repo>", "</repo>", "&lt;mode&gt;"]);
+	});
+
+	it("shows angle brackets inside fenced code blocks as written", () => {
+		const rendered = renderDocument('```\n<mode>\n<repo>\n```\n\n```html\n<div class="x">hi</div>\n```');
+
+		expect(textOf(rendered, "pre code")).toEqual(["<mode>\n<repo>\n", '<div class="x">hi</div>\n']);
+	});
+
+	it("shows angle brackets in prose as written and keeps the Markdown around them", () => {
+		const rendered = renderDocument("<title> is **required**; use <repo>name</repo> when a < b and c > d.");
+
+		expect(textOf(rendered, "p")).toEqual(["<title> is required; use <repo>name</repo> when a < b and c > d."]);
+		expect(textOf(rendered, "p strong")).toEqual(["required"]);
+	});
+
+	it("renders URI and email autolinks as links", () => {
+		const rendered = renderDocument("Links: <https://example.com>, <ftp://example.com/file> and <user@example.com>");
+		const hrefs = Array.from(rendered.querySelectorAll("p a"), (link) => link.getAttribute("href"));
+
+		expect(hrefs).toEqual(["https://example.com", "ftp://example.com/file", "mailto:user@example.com"]);
+	});
+
+	it("shows HTML in Markdown as inert text instead of rendering it", () => {
+		const unsafeHtml = [
+			"<script>alert(1)</script>",
+			'<img src="x" onerror="alert(1)">',
+			'<a href="javascript:alert(1)">link</a>',
+			'<iframe srcdoc="<script>alert(1)</script>"></iframe>',
+			'<div onclick="alert(1)">\nclick\n</div>',
+			"Inline <img src=x onerror=alert(1)> in a sentence.",
+		];
+		const rendered = renderDocument(unsafeHtml.join("\n\n"));
+		const elements = Array.from(rendered.body.querySelectorAll("*"));
+		const eventHandlers = elements.flatMap((element) => element.getAttributeNames()).filter((name) => name.startsWith("on"));
+
+		// Each snippet is one paragraph of text, and nothing but the preview's wrappers and paragraphs exists.
+		expect(textOf(rendered, "p")).toEqual(unsafeHtml);
+		expect(new Set(elements.map((element) => element.localName))).toEqual(new Set(["div", "p"]));
+		expect(eventHandlers).toEqual([]);
 	});
 
 	it("keeps hash-only markdown links on the current route when a base href is present", () => {

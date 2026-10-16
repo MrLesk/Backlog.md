@@ -1,36 +1,53 @@
-import { DEFAULT_STATUSES } from "../constants/index.ts";
 import type { Core } from "../core/backlog.ts";
-import type { Task } from "../types/index.ts";
-import { formatDependencyCleanupMessage } from "../utils/dependency-graph.ts";
-import { getTerminalStatus, isTerminalStatus } from "../utils/terminal-status.ts";
+import { isReadOnlyTask, type Task } from "../types/index.ts";
+import { taskNotFoundMessage } from "../utils/task-path.ts";
 
-export type CompleteTaskFromTuiResult =
-	| { success: true }
-	| { success: false; reason: "not-terminal"; terminalStatus: string }
-	| { success: false; reason: "failed" };
+/** The archive confirmation every TUI view shows. Three short lines, to fit the confirm popup. */
+export function formatArchiveConfirmation(taskId: string): string {
+	return `Archive {bold}${taskId}{/bold}?\nMoves it off the board and keeps\nits ID, record, and links.`;
+}
+
+/** The footer line every TUI view shows when a key would change a read-only task. */
+export function formatReadOnlyNotice(task: Task): string {
+	return ` {red-fg}Task is read-only${task.branch ? ` in branch ${task.branch}` : ""}.{/}`;
+}
+
+export interface TuiArchiveResult {
+	archived: boolean;
+	reason?: "read_only" | "cancelled" | "failed";
+	/** Why core refused or failed, when it said so. */
+	error?: string;
+}
 
 /**
- * Transient TUI line for a finished archive: the confirmation, plus the shared cleanup report
- * when other records lost a reference to the archived ID.
+ * Run the archive key for one task. A read-only task is refused before `confirm` is called, so a
+ * view asks its question only when core will accept the answer. The archive itself, including
+ * whether it is committed, is core's.
  */
-export function formatTaskArchivedMessage(taskId: string, cleanedTaskIds: readonly string[]): string {
-	const cleanup = formatDependencyCleanupMessage(taskId, cleanedTaskIds);
-	return `Archived ${taskId}${cleanup ? `. ${cleanup}` : ""}`;
-}
-
-export function formatTaskCompletionBlockedMessage(taskId: string, terminalStatus: string): string {
-	return `Task ${taskId} is not ${terminalStatus}. Set status to "${terminalStatus}" before completing it.`;
-}
-
-export async function completeTaskFromTui(core: Core, task: Task): Promise<CompleteTaskFromTuiResult> {
-	const config = await core.filesystem.loadConfig();
-	const statuses = config?.statuses ?? [...DEFAULT_STATUSES];
-	const terminalStatus = getTerminalStatus(statuses) ?? "Done";
-
-	if (!isTerminalStatus(task.status, statuses)) {
-		return { success: false, reason: "not-terminal", terminalStatus };
+export async function archiveTaskFromTui(
+	core: Core,
+	task: Task,
+	confirm: (popup: { title: string; message: string }) => Promise<boolean>,
+): Promise<TuiArchiveResult> {
+	if (isReadOnlyTask(task)) return { archived: false, reason: "read_only" };
+	if (!(await confirm({ title: "Archive Task", message: formatArchiveConfirmation(task.id) }))) {
+		return { archived: false, reason: "cancelled" };
 	}
+	try {
+		const archived = await core.archiveTask(task.id);
+		return archived ? { archived } : { archived, reason: "failed" };
+	} catch (error) {
+		return { archived: false, reason: "failed", error: error instanceof Error ? error.message : "Unknown error" };
+	}
+}
 
-	const success = await core.completeTask(task.id, config?.autoCommit ?? false);
-	return success ? { success: true } : { success: false, reason: "failed" };
+/** The footer line for the outcome of the archive key, or null when the user said no. */
+export function formatArchiveNotice(task: Task, result: TuiArchiveResult): string | null {
+	if (result.archived) return ` {green-fg}Archived ${task.id}{/}`;
+	if (result.reason === "read_only") return formatReadOnlyNotice(task);
+	if (result.reason === "cancelled") return null;
+	// Core refused or failed after the view's snapshot went stale, so its own reason is shown.
+	return result.error
+		? ` {red-fg}Error archiving task: ${result.error}{/}`
+		: ` {red-fg}${taskNotFoundMessage(task.id)}{/}`;
 }

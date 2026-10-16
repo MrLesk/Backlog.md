@@ -22,6 +22,14 @@ export interface OptionInfo {
 }
 
 /**
+ * The subcommands help lists. A hidden command still answers when typed, but it is never offered.
+ */
+function visibleSubcommands(command: Command): Command[] {
+	const listedInHelp = new Set(command.createHelp().visibleCommands(command));
+	return command.commands.filter((cmd) => listedInHelp.has(cmd));
+}
+
+/**
  * Extract command structure from a Commander.js program
  */
 export function extractCommandStructure(program: Command): CommandInfo {
@@ -29,7 +37,7 @@ export function extractCommandStructure(program: Command): CommandInfo {
 		name: program.name(),
 		aliases: program.aliases(),
 		arguments: extractArguments(program),
-		subcommands: program.commands.map((cmd) => extractCommandInfo(cmd)),
+		subcommands: visibleSubcommands(program).map((cmd) => extractCommandInfo(cmd)),
 		options: program.options.map((opt) => extractOptionInfo(opt)),
 	};
 }
@@ -42,7 +50,7 @@ function extractCommandInfo(command: Command): CommandInfo {
 		name: command.name(),
 		aliases: command.aliases(),
 		arguments: extractArguments(command),
-		subcommands: command.commands.map((cmd) => extractCommandInfo(cmd)),
+		subcommands: visibleSubcommands(command).map((cmd) => extractCommandInfo(cmd)),
 		options: command.options.map((opt) => extractOptionInfo(opt)),
 	};
 }

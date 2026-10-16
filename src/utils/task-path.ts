@@ -2,7 +2,7 @@ import { basename, join } from "node:path";
 import { type Core, createRuntimeCore } from "../core/backlog.ts";
 import type { Task } from "../types/index.ts";
 import { AmbiguousIdError } from "./entity-id.ts";
-import { buildFilenameIdRegex, buildGlobPattern, escapeRegex, extractAnyPrefix, normalizeId } from "./prefix-config.ts";
+import { buildGlobPattern, escapeRegex, extractAnyPrefix, extractIdFromFilename } from "./prefix-config.ts";
 import { canonicalTaskId, normalizeTaskId, taskIdsEqual } from "./task-id.ts";
 
 export { canonicalTaskId, normalizeTaskId, taskIdsEqual } from "./task-id.ts";
@@ -11,7 +11,8 @@ export { canonicalTaskId, normalizeTaskId, taskIdsEqual } from "./task-id.ts";
 interface TaskPathContext {
 	filesystem: {
 		tasksDir: string;
-		completedDir?: string;
+		/** Directories archived tasks are read from; omit to resolve against active tasks only. */
+		archivedTaskDirs?: string[];
 	};
 }
 
@@ -30,6 +31,14 @@ export function normalizeTaskIdentity(task: Task): Task {
 		id: normalizedId,
 		parentTaskId: normalizedParent,
 	};
+}
+
+/**
+ * The sentence every interface uses when no record claims a task ID. The CLI, which reads the
+ * working copy only, appends {@link LOCAL_TASK_LOOKUP_HINT}.
+ */
+export function taskNotFoundMessage(taskId: string): string {
+	return `Task ${taskId} not found.`;
 }
 
 /**
@@ -79,12 +88,14 @@ export function extractTaskIdFromFilename(filename: string): string | null {
  * For numeric-only IDs, automatically detects the prefix from existing files.
  */
 export async function getTaskPath(taskId: string, core?: Core | TaskPathContext): Promise<string | null> {
-	const coreInstance = core || (await createRuntimeCore());
-	const activeMatches = await findMatchingTaskPaths(coreInstance.filesystem.tasksDir, taskId);
-	const completedMatches = coreInstance.filesystem.completedDir
-		? await findMatchingTaskPaths(coreInstance.filesystem.completedDir, taskId)
-		: [];
-	const allMatches = [...activeMatches, ...completedMatches];
+	const filesystem = (core ?? (await createRuntimeCore())).filesystem;
+	const archivedTaskDirs =
+		"getArchivedTaskDirs" in filesystem ? await filesystem.getArchivedTaskDirs() : (filesystem.archivedTaskDirs ?? []);
+	const activeMatches = await findMatchingTaskPaths(filesystem.tasksDir, taskId);
+	const archivedMatches = (
+		await Promise.all(archivedTaskDirs.map((directory) => findMatchingTaskPaths(directory, taskId)))
+	).flat();
+	const allMatches = [...activeMatches, ...archivedMatches];
 	if (allMatches.length > 1) {
 		throw new AmbiguousTaskIdError(taskId, allMatches);
 	}
@@ -118,13 +129,6 @@ async function findMatchingTaskPaths(directory: string, taskId: string): Promise
 const DEFAULT_DRAFT_PREFIX = "draft";
 
 /**
- * Normalize a draft ID by ensuring the draft prefix is present (uppercase).
- */
-function normalizeDraftId(draftId: string): string {
-	return normalizeId(draftId, DEFAULT_DRAFT_PREFIX);
-}
-
-/**
  * Checks if an input ID matches a filename loosely for drafts.
  * Loose means case-insensitive with leading zeros ignored, the same rule
  * used to collect filename-derived draft identity candidates.
@@ -139,10 +143,7 @@ export function draftIdsMatchLoosely(inputId: string, filename: string): boolean
  * Extracts the draft ID from a filename.
  */
 export function extractDraftIdFromFilename(filename: string): string | null {
-	const regex = buildFilenameIdRegex(DEFAULT_DRAFT_PREFIX);
-	const match = filename.match(regex);
-	if (!match?.[1]) return null;
-	return normalizeDraftId(`${DEFAULT_DRAFT_PREFIX}-${match[1]}`);
+	return extractIdFromFilename(filename, DEFAULT_DRAFT_PREFIX);
 }
 
 /**

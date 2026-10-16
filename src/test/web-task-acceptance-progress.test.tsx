@@ -63,8 +63,7 @@ const renderCard = (task: Task): HTMLElement => {
 	return container;
 };
 
-const renderList = (...tasks: Task[]): HTMLElement => {
-	const container = setupDom();
+const rerenderList = (...tasks: Task[]) => {
 	act(() => {
 		activeRoot?.render(
 			<MemoryRouter>
@@ -81,6 +80,11 @@ const renderList = (...tasks: Task[]): HTMLElement => {
 			</MemoryRouter>,
 		);
 	});
+};
+
+const renderList = (...tasks: Task[]): HTMLElement => {
+	const container = setupDom();
+	rerenderList(...tasks);
 	return container;
 };
 
@@ -254,6 +258,37 @@ describe("browser task acceptance criteria progress", () => {
 		expect(slotWithRing?.className).toContain("min-w-12");
 		expect(slotWithoutRing?.className).toBe(slotWithRing?.className);
 		expect(slotWithoutRing?.childElementCount).toBe(0);
+	});
+
+	it("shares enough ring space for larger counts and restores small-count spacing when they leave", () => {
+		const smallTasks = [
+			createTask({ id: "task-1", acceptanceCriteriaItems: createCriteria(1, 2) }),
+			createTask({ id: "task-2", acceptanceCriteriaItems: createCriteria(99, 99) }),
+			createTask({ id: "task-3" }),
+		];
+		const container = renderList(...smallTasks);
+		const getSlot = (id: string) => getListTitle(container, id).previousElementSibling as HTMLElement;
+		const smallWidth = getSlot("task-1").style.width;
+		expect(smallWidth).not.toBe("");
+
+		for (const total of [100, 1000]) {
+			rerenderList(...smallTasks, createTask({ id: "task-4", acceptanceCriteriaItems: createCriteria(total, total) }));
+			const wideWidth = getSlot("task-4").style.width;
+			expect(wideWidth).not.toBe(smallWidth);
+			for (const id of ["task-1", "task-2", "task-3", "task-4"]) {
+				expect(getSlot(id).style.width).toBe(wideWidth);
+			}
+			expectRing(getSlot("task-1").querySelector("[data-acceptance-criteria-progress]"), 1, 2);
+			expectRing(getSlot("task-2").querySelector("[data-acceptance-criteria-progress]"), 99, 99);
+			expect(getSlot("task-3").childElementCount).toBe(0);
+			expectRing(getSlot("task-4").querySelector("[data-acceptance-criteria-progress]"), total, total);
+
+			rerenderList(...smallTasks);
+			expect(container.querySelector('button[aria-label^="Open task-4:"]')).toBeNull();
+			for (const task of smallTasks) {
+				expect(getSlot(task.id).style.width).toBe(smallWidth);
+			}
+		}
 	});
 
 	it("keeps an all-checked task visibly In Progress in the wide list summary", () => {

@@ -98,10 +98,10 @@ const idCommandCases: IdCommandCase[] = [
 		expected: "Archived task BACK-1",
 	},
 	{
-		name: "task complete",
-		args: (id) => ["task", "complete", id],
+		name: "task archive in the final status",
+		args: (id) => ["task", "archive", id],
 		setup: async (core) => createTask(core, "BACK-1", "Target task", { status: "Done" }),
-		expected: "Completed task BACK-1.",
+		expected: "Archived task BACK-1",
 	},
 	{
 		name: "task demote",
@@ -510,7 +510,6 @@ describe("CLI task ID resolution with a custom ID prefix", () => {
 			["task", "view", "1", "--plain"],
 			["task", "edit", "1", "-s", "In Progress"],
 			["task", "archive", "1"],
-			["task", "complete", "1"],
 			["task", "demote", "1"],
 		]) {
 			const result = await $`bun ${CLI_PATH} ${args}`.cwd(TEST_DIR).nothrow().quiet();

@@ -22,13 +22,12 @@ type DependencyResolution =
 /**
  * An index over the task graph readiness resolves dependencies against.
  *
- * Built once per evaluation so filtering a large list stays linear, and it is what makes the
- * two completion signals explicit: a record's location in the completed corpus, and its status.
+ * Built once per evaluation so filtering a large list stays linear.
  */
 export interface ReadinessGraph {
 	resolveDependency(dependencyId: string): DependencyResolution;
-	/** True when this task's own record lives in the completed corpus. */
-	isCompletedRecord(taskId: string): boolean;
+	/** True when this task's own record lives in the archive. */
+	isArchivedRecord(taskId: string): boolean;
 	/** Configured statuses with the project default applied, so an empty config still resolves. */
 	readonly statuses: readonly string[];
 }
@@ -36,13 +35,14 @@ export interface ReadinessGraph {
 /**
  * Build the readiness index over the corpus this read is allowed to see.
  *
- * Identity, ambiguity, and completion evidence come from the shared task record index, so readiness
- * and the dependency graph never disagree about which record an ID means. An identity claimed by
- * more than one record resolves as unresolved rather than picking a winner by insertion order.
+ * Identity, ambiguity, and whether a record is finished come from the shared task record index, so
+ * readiness and the dependency graph never disagree about which record an ID means. An identity
+ * claimed by more than one record resolves as unresolved rather than picking a winner by insertion
+ * order. An archived dependency resolves like any other: it is satisfied only in the final status.
  */
 export function createReadinessGraph(options: {
 	tasks: Task[];
-	completedTasks?: Task[];
+	archivedTasks?: Task[];
 	statuses?: readonly string[];
 	ambiguousIds?: ReadonlySet<string>;
 }): ReadinessGraph {
@@ -50,9 +50,9 @@ export function createReadinessGraph(options: {
 
 	return {
 		statuses: index.statuses,
-		isCompletedRecord(taskId) {
+		isArchivedRecord(taskId) {
 			const record = index.lookup(taskId);
-			return record !== undefined && record !== "ambiguous" && record.completedRecord;
+			return record !== undefined && record !== "ambiguous" && record.archived;
 		},
 		resolveDependency(dependencyId) {
 			const record = index.lookup(dependencyId);
@@ -79,8 +79,8 @@ export function getTaskReadiness(task: Task, graph: ReadinessGraph): TaskReadine
 		missingDependencies: [],
 	};
 
-	// A task that is already completed is neither ready to start nor blocked.
-	if (graph.isCompletedRecord(task.id) || isTerminalStatus(task.status, graph.statuses)) {
+	// A task that is finished or off the board is neither ready to start nor blocked.
+	if (graph.isArchivedRecord(task.id) || isTerminalStatus(task.status, graph.statuses)) {
 		return notActionable;
 	}
 

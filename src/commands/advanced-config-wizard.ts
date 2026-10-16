@@ -212,8 +212,11 @@ export async function runAdvancedConfigWizard({
 	let bypassGitHooks = config?.bypassGitHooks ?? false;
 	let autoCommit = config?.autoCommit ?? false;
 	let zeroPaddedIds = config?.zeroPaddedIds;
-	let defaultEditor: string | undefined =
-		config?.defaultEditor ?? process.env.EDITOR ?? process.env.VISUAL ?? resolveEditor(null);
+	// A project that already has a config starts from its own choice, including no editor. Only a
+	// project without one is offered the environment's editor or the platform default.
+	let defaultEditor: string | undefined = config
+		? config.defaultEditor
+		: (process.env.EDITOR ?? process.env.VISUAL ?? resolveEditor(null));
 	let defaultPort = config?.defaultPort ?? 6420;
 	let autoOpenBrowser = config?.autoOpenBrowser ?? true;
 	let definitionOfDone = normalizeDefinitionOfDoneItems(config?.definitionOfDone);

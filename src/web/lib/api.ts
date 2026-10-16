@@ -65,7 +65,7 @@ export function readDemotionFailureCause(error: unknown): "cleanup" | "commit" |
 	return cause === "cleanup" || cause === "commit" ? cause : null;
 }
 
-/** Archiving and demoting vacate a task ID: `cleanedTaskIds` names the records that lost a reference to it. */
+/** Demoting vacates a task ID: `cleanedTaskIds` names the records that lost a reference to it. */
 export interface TaskVacancyResponse {
 	success: boolean;
 	cleanedTaskIds: string[];
@@ -361,15 +361,8 @@ export class ApiClient {
 
 	// Not retried, for the same reason demote is not: the second attempt would target a task the
 	// first attempt already archived, and its "not found" would replace the real outcome.
-	async archiveTask(id: string): Promise<TaskVacancyResponse> {
-		const response = await this.fetchWithoutRetry(`${API_BASE}/tasks/${id}`, {
-			method: "DELETE",
-		});
-		return response.json();
-	}
-
-	async completeTask(id: string): Promise<void> {
-		await this.fetchWithRetry(`${API_BASE}/tasks/${id}/complete`, {
+	async archiveTask(id: string): Promise<void> {
+		await this.fetchWithoutRetry(`${API_BASE}/tasks/${encodeURIComponent(id)}/archive`, {
 			method: "POST",
 		});
 	}
@@ -391,8 +384,12 @@ export class ApiClient {
 		}>(`${API_BASE}/tasks/cleanup?age=${age}`);
 	}
 
+	/**
+	 * Archive the tasks a cleanup preview showed, and only those. The server skips a task that has left
+	 * the board or the final status since the preview.
+	 */
 	async executeCleanup(
-		age: number,
+		taskIds: string[],
 	): Promise<{ success: boolean; movedCount: number; totalCount: number; message: string; failedTasks?: string[] }> {
 		return this.fetchJson<{
 			success: boolean;
@@ -402,7 +399,7 @@ export class ApiClient {
 			failedTasks?: string[];
 		}>(`${API_BASE}/tasks/cleanup/execute`, {
 			method: "POST",
-			body: JSON.stringify({ age }),
+			body: JSON.stringify({ taskIds }),
 		});
 	}
 
@@ -509,6 +506,16 @@ export class ApiClient {
 			throw new Error("Failed to create document");
 		}
 		return response.json();
+	}
+
+	// Archive is not retried, for the reason task archive is not: the second attempt would target a
+	// record the first attempt already archived, and its refusal would replace the real outcome.
+	async archiveDoc(id: string): Promise<void> {
+		await this.fetchWithoutRetry(`${API_BASE}/docs/${encodeURIComponent(id)}/archive`, { method: "POST" });
+	}
+
+	async archiveDecision(id: string): Promise<void> {
+		await this.fetchWithoutRetry(`${API_BASE}/decisions/${encodeURIComponent(id)}/archive`, { method: "POST" });
 	}
 
 	async fetchDecisions(): Promise<Decision[]> {
