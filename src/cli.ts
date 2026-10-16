@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 
+import { readFile } from "node:fs/promises";
 import { dirname, isAbsolute, join } from "node:path";
 import { stdin as input } from "node:process";
 import { createInterface } from "node:readline/promises";
@@ -304,7 +305,7 @@ function formatTaskEditError(error: unknown, taskId: string, commandKind = "task
 		message.startsWith("Malformed Acceptance Criteria markers:") ||
 		message.startsWith("Malformed Definition of Done markers:")
 	) {
-		return `${message}\nThe edit was not applied. Run 'backlog ${commandKind} view ${taskId} --plain' to locate the ${commandKind} file, repair or remove the malformed marker block in that Markdown file, then rerun the edit.`;
+		return `${message}\nRun 'backlog ${commandKind} view ${taskId} --plain' to locate the ${commandKind} file, repair or remove the malformed marker block in that Markdown file, then rerun the edit.`;
 	}
 	if (message.startsWith("Invalid index:")) {
 		return `${message} Try 'backlog ${commandKind} edit ${taskId} --help' for index options.`;
@@ -1933,7 +1934,8 @@ function getTaskReadOutputMode(options: ReadOutputOptions): ReadOutputMode | nul
 
 taskCmd.hook("preSubcommand", (command, subcommand) => {
 	if (command.opts().json && !["list", "view"].includes(subcommand.name())) {
-		command.error("error: unknown option '--json'", { code: "commander.unknownOption", exitCode: 1 });
+		// Reported by the subcommand, like any other option it does not accept.
+		subcommand.error("error: unknown option '--json'", { code: "commander.unknownOption", exitCode: 1 });
 	}
 });
 
@@ -3121,7 +3123,48 @@ const draftEditTarget: EditCommandTarget = {
 	notFoundMessage: (id) => `Draft ${id} not found.`,
 };
 
+const NO_CHANGES_APPLIED = "No changes were applied.";
+
+/**
+ * Share rejection output across task and draft edits. performEdit must write through target.update
+ * and report failures by throwing or setting exitCode, so this wrapper can finish the message.
+ * A successful update or changed file suppresses it, including saves followed by commit failure.
+ * Reads outside core's lock can observe another writer and conservatively suppress the sentence.
+ */
 async function runEditCommand(target: EditCommandTarget, requestedIds: string[] | undefined, options: OptionValues) {
+	const read = (filePath: string | undefined) => (filePath ? readFile(filePath).catch(() => null) : null);
+	let changesMayBeApplied = false;
+	const trackedTarget: EditCommandTarget = {
+		...target,
+		async update(core, existing, input) {
+			const before = await read(existing.filePath);
+			try {
+				const updated = await target.update(core, existing, input);
+				changesMayBeApplied = true;
+				return updated;
+			} catch (error) {
+				const after = await read(existing.filePath);
+				// A file that cannot be read counts as changed, so the sentence is never a guess.
+				if (!before || !after || !before.equals(after)) {
+					changesMayBeApplied = true;
+				}
+				throw error;
+			}
+		},
+	};
+
+	try {
+		await performEdit(trackedTarget, requestedIds, options);
+	} catch (error) {
+		console.error(error instanceof Error ? error.message : String(error));
+		process.exitCode = 1;
+	}
+	if (process.exitCode && !changesMayBeApplied) {
+		console.error(NO_CHANGES_APPLIED);
+	}
+}
+
+async function performEdit(target: EditCommandTarget, requestedIds: string[] | undefined, options: OptionValues) {
 	// Listing the same task twice is a slip, not a request to edit it twice, so identities that
 	// compare equal collapse to the first spelling the user typed. Canonical identity keeps a bare
 	// number on the default prefix, so "7" cannot swallow an explicit "JIRA-7".
@@ -3579,7 +3622,10 @@ async function runEditCommand(target: EditCommandTarget, requestedIds: string[] 
 	}
 }
 
-function addEditFieldOptions(cmd: Command) {
+/** Gives `task edit` and `draft edit` the field options they share and their error output. */
+function configureEditCommand(cmd: Command) {
+	// Parser errors happen before the action can write, so they always get the sentence.
+	cmd.configureOutput({ outputError: (text, write) => write(`${text}${NO_CHANGES_APPLIED}\n`) });
 	return cmd
 		.option("-t, --title <title>")
 		.option("-d, --description <text>", "task description")
@@ -3819,7 +3865,7 @@ const taskEditCommand = addHelpSchema(taskCmd.command("edit [taskIds...]"), {
 		'backlog task edit {{TASK_ID:1}} {{TASK_ID:2}} --status "<active status>"',
 	],
 }).description("edit an existing task");
-addEditFieldOptions(taskEditCommand).action(async (taskIds: string[] | undefined, options) => {
+configureEditCommand(taskEditCommand).action(async (taskIds: string[] | undefined, options) => {
 	await runEditCommand(taskEditTarget, taskIds, options);
 });
 
@@ -4211,7 +4257,7 @@ const draftEditCommand = addHelpSchema(draftCmd.command("edit [taskId]"), {
 	output: "Updated draft details; use --plain for text output",
 	examples: ['backlog draft edit DRAFT-1 -t "Renamed draft"', "backlog draft edit DRAFT-1 --check-ac 1"],
 }).description("edit an existing draft");
-addEditFieldOptions(draftEditCommand).action(async (taskId: string | undefined, options) => {
+configureEditCommand(draftEditCommand).action(async (taskId: string | undefined, options) => {
 	await runEditCommand(draftEditTarget, taskId ? [taskId] : [], options);
 });
 

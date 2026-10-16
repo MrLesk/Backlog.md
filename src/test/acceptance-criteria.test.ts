@@ -240,7 +240,7 @@ describe("Acceptance Criteria CLI", () => {
 					expect(stdout).not.toContain("Updated task");
 					expect(stderr).toContain(`Malformed ${target.title} markers:`);
 					expect(stderr).toContain(invalid.detail);
-					expect(stderr).toContain("The edit was not applied.");
+					expect(stderr).toContain("No changes were applied.");
 					expect(stderr).toContain("backlog task view TASK-1 --plain");
 					expect(stderr).toContain("repair or remove the malformed marker block");
 					expect(await Bun.file(task.filePath).text()).toBe(before);
