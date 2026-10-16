@@ -41,10 +41,10 @@ describe("TUI priority marker", () => {
 	});
 
 	it("takes the place of the dash before the title on a task list row", () => {
-		expect(formatTaskViewerListItem(createTask({ priority: "later" }), 80, undefined, undefined, priorities)).toContain(
+		expect(formatTaskViewerListItem(createTask({ priority: "later" }), undefined, undefined, priorities)).toContain(
 			"{bold}TASK-1{/bold} {green-fg}↓{/green-fg} Marked task",
 		);
-		expect(formatTaskViewerListItem(createTask(), 80, undefined, undefined, priorities)).toContain(
+		expect(formatTaskViewerListItem(createTask(), undefined, undefined, priorities)).toContain(
 			"{bold}TASK-1{/bold} - Marked task",
 		);
 	});
