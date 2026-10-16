@@ -37,12 +37,12 @@ describe("buildMilestoneBuckets", () => {
 	});
 
 	it("marks milestones completed when all tasks are done", () => {
-		const completedTasks = [
+		const doneTasks = [
 			makeTask({ id: "task-1", milestone: "M1", status: "Done" }),
 			makeTask({ id: "task-2", milestone: "M1", status: "Done" }),
 		];
 		const milestones: Milestone[] = [{ id: "M1", title: "M1", description: "", rawContent: "" }];
-		const buckets = buildMilestoneBuckets(completedTasks, milestones, ["To Do", "In Progress", "Done"]);
+		const buckets = buildMilestoneBuckets(doneTasks, milestones, ["To Do", "In Progress", "Done"]);
 		const m1 = buckets.find((b) => b.label === "M1");
 		expect(m1?.isCompleted).toBe(true);
 	});

@@ -4,47 +4,17 @@ import { $ } from "bun";
 import { Core } from "../core/backlog.ts";
 import { extractStructuredSection } from "../markdown/structured-sections.ts";
 import { getTestCliPath } from "./test-cli.ts";
-import { createUniqueTestDir, initializeFilesystemTestProject, safeCleanup } from "./test-utils.ts";
+import {
+	createUniqueTestDir,
+	HAS_PSEUDO_TERMINAL,
+	initializeFilesystemTestProject,
+	runCliInPseudoTerminal,
+	safeCleanup,
+} from "./test-utils.ts";
 
 let TEST_DIR: string;
 const CLI_PATH = getTestCliPath();
-const SCRIPT_PATH = Bun.which("script");
-const itPty = process.platform === "win32" || !SCRIPT_PATH ? it.skip : it;
-
-function shellQuote(value: string): string {
-	return `'${value.replaceAll("'", `'\\''`)}'`;
-}
-
-async function runCliInPty(args: string[]): Promise<{ exitCode: number; output: string; timedOut: boolean }> {
-	if (!SCRIPT_PATH) {
-		throw new Error("script is required for PTY tests");
-	}
-
-	const bunPath = Bun.which("bun") ?? "bun";
-	const command = [bunPath, CLI_PATH, ...args];
-	const scriptArgs =
-		process.platform === "darwin"
-			? [SCRIPT_PATH, "-q", "/dev/null", ...command]
-			: [SCRIPT_PATH, "-q", "-e", "-c", command.map(shellQuote).join(" "), "/dev/null"];
-	const child = Bun.spawn(scriptArgs, {
-		cwd: TEST_DIR,
-		stdin: "ignore",
-		stdout: "pipe",
-		stderr: "pipe",
-	});
-	let timedOut = false;
-	const timeout = setTimeout(() => {
-		timedOut = true;
-		child.kill();
-	}, 5_000);
-	const [exitCode, stdout, stderr] = await Promise.all([
-		child.exited,
-		child.stdout ? new Response(child.stdout).text() : Promise.resolve(""),
-		child.stderr ? new Response(child.stderr).text() : Promise.resolve(""),
-	]);
-	clearTimeout(timeout);
-	return { exitCode, output: `${stdout}${stderr}`, timedOut };
-}
+const itPty = HAS_PSEUDO_TERMINAL ? it : it.skip;
 
 describe("Append Implementation Plan via task edit --append-plan", () => {
 	beforeEach(async () => {
@@ -245,7 +215,11 @@ describe("Append Implementation Plan via task edit --append-plan", () => {
 			false,
 		);
 
-		const result = await runCliInPty(["task", "edit", "7", "--append-plan", "PTY addition"]);
+		const result = await runCliInPseudoTerminal(
+			CLI_PATH,
+			["task", "edit", "7", "--append-plan", "PTY addition"],
+			TEST_DIR,
+		);
 		expect(result.timedOut).toBe(false);
 		expect(result.exitCode, result.output).toBe(0);
 		expect(extractStructuredSection((await core.getTaskContent("task-7")) ?? "", "implementationPlan")).toBe(

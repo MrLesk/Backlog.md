@@ -7,7 +7,7 @@ import { FileSystem } from "../file-system/operations.ts";
 import { serializeTask } from "../markdown/serializer.ts";
 import { BacklogServer } from "../server/index.ts";
 import type { BacklogConfig, Task } from "../types/index.ts";
-import { createUniqueTestDir, retry, safeCleanup } from "./test-utils.ts";
+import { archiveTaskFile, createUniqueTestDir, retry, safeCleanup } from "./test-utils.ts";
 
 let TEST_DIR: string;
 let filesystem: FileSystem;
@@ -306,7 +306,7 @@ describe("BacklogServer task SPA fallback", () => {
 		const directCalls: string[] = [];
 		const originals = {
 			listTasks: taskFilesystem.listTasks.bind(taskFilesystem),
-			listCompletedTasks: taskFilesystem.listCompletedTasks.bind(taskFilesystem),
+			listArchivedTasks: taskFilesystem.listArchivedTasks.bind(taskFilesystem),
 			loadTask: taskFilesystem.loadTask.bind(taskFilesystem),
 			saveTask: taskFilesystem.saveTask.bind(taskFilesystem),
 		};
@@ -320,9 +320,9 @@ describe("BacklogServer task SPA fallback", () => {
 			recordDirectServerCall("listTasks");
 			return await originals.listTasks(...args);
 		};
-		taskFilesystem.listCompletedTasks = async (...args) => {
-			recordDirectServerCall("listCompletedTasks");
-			return await originals.listCompletedTasks(...args);
+		taskFilesystem.listArchivedTasks = async (...args) => {
+			recordDirectServerCall("listArchivedTasks");
+			return await originals.listArchivedTasks(...args);
 		};
 		taskFilesystem.loadTask = async (...args) => {
 			recordDirectServerCall("loadTask");
@@ -359,10 +359,10 @@ describe("BacklogServer task SPA fallback", () => {
 					})
 				).status,
 			).toBe(200);
-			expect((await request(`/api/tasks/${routedTask.id}/complete`, { method: "POST" })).status).toBe(200);
+			expect((await request(`/api/tasks/${routedTask.id}/archive`, { method: "POST" })).status).toBe(200);
 		} finally {
 			taskFilesystem.listTasks = originals.listTasks;
-			taskFilesystem.listCompletedTasks = originals.listCompletedTasks;
+			taskFilesystem.listArchivedTasks = originals.listArchivedTasks;
 			taskFilesystem.loadTask = originals.loadTask;
 			taskFilesystem.saveTask = originals.saveTask;
 		}
@@ -370,15 +370,15 @@ describe("BacklogServer task SPA fallback", () => {
 		expect(directCalls).toEqual([]);
 	});
 
-	it("serves completed-only task details through Core", async () => {
-		expect(await filesystem.completeTask(routedTask.id)).toBe(true);
+	it("serves archived task details through Core", async () => {
+		expect(await archiveTaskFile(filesystem, routedTask.id)).toBe(true);
 
 		const response = await request(`/api/task/${routedTask.id}`);
 
 		expect(response.status).toBe(200);
 		const task = (await response.json()) as Task;
 		expect(task.id).toBe(routedTask.id);
-		expect(task.source).toBe("completed");
+		expect(task.source).toBe("archived");
 	});
 
 	it("returns conflict after a frontmatter ID collision appears under an unchanged filename", async () => {
@@ -398,7 +398,8 @@ describe("BacklogServer task SPA fallback", () => {
 			server as unknown as { getContentStoreInstance: () => Promise<ContentStore> }
 		).getContentStoreInstance();
 		const originalGetTasks = contentStore.getTasks.bind(contentStore);
-		const liveTask = { ...routedTask, title: "Live current-worktree title" };
+		const storedTask = await filesystem.loadTask(routedTask.id);
+		const liveTask = { ...routedTask, filePath: storedTask?.filePath, title: "Live current-worktree title" };
 		await filesystem.saveTask(liveTask);
 		contentStore.getTasks = () => [{ ...routedTask, title: "Stale cached title" }];
 

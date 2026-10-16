@@ -1,3 +1,4 @@
+import { fromMarkdown } from "mdast-util-from-markdown";
 import type { AcceptanceCriterion, TaskComment } from "../types/index.ts";
 import { getStructuredSectionTitles } from "./section-titles.ts";
 
@@ -246,12 +247,13 @@ function getEndMarker(key: StructuredSectionKey): string {
 	return `<!-- SECTION:${getConfig(key).markerId}:END -->`;
 }
 
-function buildSectionBlock(key: StructuredSectionKey, body: string): string {
+function buildSectionBlock(key: StructuredSectionKey, body: string, legacy = false): string {
 	const { title } = getConfig(key);
 	const begin = getBeginMarker(key);
 	const end = getEndMarker(key);
 	const normalized = collapseBlankLines(body.replace(/\r\n/g, "\n").replace(/\s+$/g, ""));
 	const content = normalized ? `${normalized}\n` : "";
+	if (legacy) return `## ${title}\n\n${normalized}`;
 	return `## ${title}\n\n${begin}\n${content}${end}`;
 }
 
@@ -718,16 +720,27 @@ function findChecklistSectionRanges(
 	return ranges.sort((left, right) => left.start - right.start);
 }
 
-function stripSectionInstances(content: string, key: StructuredSectionKey): string {
+function stripSectionInstances(
+	content: string,
+	key: StructuredSectionKey,
+	nextBody: string,
+): { content: string; preserveLegacy: boolean } {
 	let stripped = content;
+	let preserveLegacy = false;
 	for (const block of findSentinelBlocks(content, key).sort((left, right) => right.start - left.start)) {
 		stripped = `${stripped.slice(0, block.start)}${stripped.slice(block.end)}`;
 	}
 
 	const legacyRegex = legacySectionRegex(getConfig(key).title, "gi");
-	stripped = stripped.replace(legacyRegex, "\n");
+	const protectedRanges = resolveKnownSentinelRanges(tokenizeKnownSentinels(stripped));
+	stripped = stripped.replace(legacyRegex, (_: string, prefix: string, body: string, offset: number) => {
+		if (!isIndexWithinRanges(offset + prefix.length, protectedRanges)) {
+			preserveLegacy = mustKeepLegacySection(key, body, nextBody) || preserveLegacy;
+		}
+		return "\n";
+	});
 
-	return collapseBlankLines(stripped).trimEnd();
+	return { content: collapseBlankLines(stripped).trimEnd(), preserveLegacy };
 }
 
 function insertAfterSection(content: string, title: string, block: string): { inserted: boolean; content: string } {
@@ -786,12 +799,36 @@ export interface StructuredSectionValues {
 
 interface SectionValues extends StructuredSectionValues {}
 
+function mustKeepLegacySection(key: StructuredSectionKey, body: string, nextBody: string): boolean {
+	// CommonMark excludes these raw-text names from complete-tag HTML blocks.
+	// The parser accepts their self-closing forms, so mask the opening delimiter
+	// without changing offsets, lines, or any enclosing code/HTML block.
+	const markdown = body.replace(/^ {0,3}<(?:pre|script|style|textarea)\/>[\t ]*$/gim, (line) =>
+		line.replaceAll("<", "x"),
+	);
+	const heading = fromMarkdown(markdown).children.find((node) => node.type === "heading" && node.depth === 2);
+	if (!heading) return false;
+	// Retaining the body is safe, but must not turn an uncertain legacy boundary
+	// into generated markers that would authorize a later destructive edit.
+	if (collapseBlankLines(nextBody).startsWith(collapseBlankLines(body.trim()))) return true;
+	const headingText = body.slice(heading.position?.start.offset, heading.position?.end.offset).split("\n")[0];
+	const { title } = getConfig(key);
+	throw new Error(
+		`Cannot replace ${title} without section markers: "${headingText?.trimEnd()}" may be a separate section. ` +
+			`Ask the user to put ${getBeginMarker(key)} after "## ${title}" and ` +
+			`${getEndMarker(key)} after the intended body in the Markdown file, then retry.`,
+	);
+}
+
 export function updateStructuredSections(content: string, sections: SectionValues): string {
 	const { text: src, useCRLF } = normalizeToLF(content);
 
 	let working = src;
+	const legacySections = new Set<StructuredSectionKey>();
 	for (const key of SECTION_INSERTION_ORDER) {
-		working = stripSectionInstances(working, key);
+		const result = stripSectionInstances(working, key, (sections[key] ?? "").replace(/\r\n/g, "\n").trim());
+		working = result.content;
+		if (result.preserveLegacy) legacySections.add(key);
 	}
 	working = working.trim();
 
@@ -803,7 +840,7 @@ export function updateStructuredSections(content: string, sections: SectionValue
 	let tail = working;
 
 	if (plan) {
-		const planBlock = buildSectionBlock("implementationPlan", plan);
+		const planBlock = buildSectionBlock("implementationPlan", plan, legacySections.has("implementationPlan"));
 		let res = insertAfterSection(tail, DEFINITION_OF_DONE_TITLE, planBlock);
 		if (!res.inserted) {
 			res = insertAfterSection(tail, ACCEPTANCE_CRITERIA_TITLE, planBlock);
@@ -819,7 +856,7 @@ export function updateStructuredSections(content: string, sections: SectionValue
 	}
 
 	if (notes) {
-		const notesBlock = buildSectionBlock("implementationNotes", notes);
+		const notesBlock = buildSectionBlock("implementationNotes", notes, legacySections.has("implementationNotes"));
 		let res = insertAfterSection(tail, getConfig("implementationPlan").title, notesBlock);
 		if (!res.inserted) {
 			res = insertAfterSection(tail, DEFINITION_OF_DONE_TITLE, notesBlock);
@@ -841,7 +878,7 @@ export function updateStructuredSections(content: string, sections: SectionValue
 	}
 
 	if (finalSummary) {
-		const finalBlock = buildSectionBlock("finalSummary", finalSummary);
+		const finalBlock = buildSectionBlock("finalSummary", finalSummary, legacySections.has("finalSummary"));
 		let res = insertAfterSection(tail, COMMENTS_TITLE, finalBlock);
 		if (!res.inserted) {
 			res = insertAfterSection(tail, getConfig("implementationNotes").title, finalBlock);
@@ -864,7 +901,7 @@ export function updateStructuredSections(content: string, sections: SectionValue
 
 	let output = tail;
 	if (description) {
-		const descriptionBlock = buildSectionBlock("description", description);
+		const descriptionBlock = buildSectionBlock("description", description, legacySections.has("description"));
 		output = insertAtStart(tail, descriptionBlock);
 	}
 

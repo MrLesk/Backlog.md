@@ -21,9 +21,9 @@ const UNRESOLVED_LABELS: Record<Exclude<DependencyGraphNode["state"], "resolved"
 /**
  * One line describing a node.
  *
- * A finished record reads as `completed` rather than as its stored status, because a record can sit
- * in the completed corpus while its status string predates the current configuration. Unresolved
- * identities say so instead of borrowing a title they do not have.
+ * A finished record reads as `completed`, the one word every surface uses for finished work,
+ * whatever the project calls its final status. Unresolved identities say so instead of borrowing
+ * a title they do not have.
  */
 export function formatDependencyNodeLabel(node: DependencyGraphNode): string {
 	if (node.state !== "resolved") {

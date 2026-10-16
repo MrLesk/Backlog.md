@@ -35,6 +35,7 @@ import { getProjectValues, resolveProjectValues } from "../utils/project-config.
 import { formatReadinessBlockers } from "../utils/readiness.ts";
 import { canonicalTaskId, taskIdsEqual } from "../utils/task-id.ts";
 import { applyTaskFilters, createTaskSearchIndex } from "../utils/task-search.ts";
+import { sectionTasks, sortTasks } from "../utils/task-sorting.ts";
 import { attachSubtaskSummaries } from "../utils/task-subtasks.ts";
 import { getTaskTypeValues, resolveTaskTypeValues } from "../utils/task-type-config.ts";
 import { formatAcceptanceCriteriaProgress } from "./acceptance-criteria-progress.ts";
@@ -53,34 +54,19 @@ import { openHelpPopup } from "./components/help-popup.ts";
 import { formatFooterContent, getTaskListFooterContent } from "./footer-content.ts";
 import { formatHeading } from "./heading.ts";
 import { createLoadingScreen } from "./loading.ts";
+import { formatPriorityMarker } from "./priority-marker.ts";
 import { formatProjectBadge } from "./project.ts";
 import { formatStatusWithIcon, getStatusColor, getStatusIcon, wrapStatusColor } from "./status-icon.ts";
-import {
-	completeTaskFromTui,
-	formatTaskArchivedMessage,
-	formatTaskCompletionBlockedMessage,
-} from "./task-lifecycle.ts";
+import { archiveTaskFromTui, formatArchiveNotice, formatReadOnlyNotice } from "./task-lifecycle.ts";
 import { formatTaskTypeBadge } from "./task-type.ts";
 import { addScrollKeys, createScreen, formatTuiTitle } from "./tui.ts";
-
-function getPriorityDisplay(priority?: string): string {
-	switch (normalizePriorityValue(priority)) {
-		case "high":
-			return " {red-fg}●{/}";
-		case "medium":
-			return " {yellow-fg}●{/}";
-		case "low":
-			return " {green-fg}●{/}";
-		default:
-			return "";
-	}
-}
 
 export function formatTaskViewerListItem(
 	task: Task,
 	availableWidth = Number.POSITIVE_INFINITY,
 	dateFormat?: string,
 	configuredProjects?: string[],
+	configuredPriorities?: readonly string[],
 ): string {
 	const progress = formatAcceptanceCriteriaProgress(task, availableWidth);
 	// The compact status icon keeps task identity visible beside the progress indicator. Its
@@ -95,13 +81,15 @@ export function formatTaskViewerListItem(
 	const typeText = typeBadge ? ` ${typeBadge}` : "";
 	const projectBadge = formatProjectBadge(task.project, configuredProjects);
 	const projectText = projectBadge ? ` ${projectBadge}` : "";
-	const priorityText = getPriorityDisplay(task.priority);
+	// The priority marker takes the place of the dash between ID and title, so it adds no columns
+	// and cannot push the title out of a narrow list.
+	const titleSeparator = formatPriorityMarker(task.priority, configuredPriorities) || "-";
 	const dueDateText = task.dueDate ? ` {gray-fg}(due ${formatDateForDisplay(task.dueDate, { dateFormat })}){/}` : "";
 	const isCrossBranch = Boolean((task as Task & { branch?: string }).branch);
 	const branchText = isCrossBranch ? ` {green-fg}(${(task as Task & { branch?: string }).branch}){/}` : "";
 	const progressText = progress ? ` ${progress}` : "";
 
-	const content = `${wrapStatusColor(status, statusColor)}${progressText} {bold}${task.id}{/bold}${typeText}${projectText}${dueDateText} - ${task.title}${priorityText}${assigneeText}${labelsText}${branchText}`;
+	const content = `${wrapStatusColor(status, statusColor)}${progressText} {bold}${task.id}{/bold}${typeText}${projectText}${dueDateText} ${titleSeparator} ${task.title}${assigneeText}${labelsText}${branchText}`;
 	return isCrossBranch ? `{gray-fg}${content}{/}` : content;
 }
 
@@ -253,6 +241,8 @@ export async function viewTaskEnhanced(
 	options: {
 		tasks?: Task[];
 		core?: Core;
+		/** Screen to draw on. Tests pass their own; by default the viewer creates one. */
+		screen?: ScreenInterface;
 		title?: string;
 		filterDescription?: string;
 		searchQuery?: string;
@@ -268,6 +258,10 @@ export async function viewTaskEnhanced(
 		/** Unfiltered corpus for dependency readiness; defaults to the tasks being displayed. */
 		readinessTasks?: Task[];
 		limit?: number;
+		/** The `--sort` value the list was opened with. Without one the list is in the default order. */
+		sort?: string;
+		/** Start on the first listed row instead of on `task`, for a list opened without a chosen task. */
+		startOnFirstRow?: boolean;
 		startWithDetailFocus?: boolean;
 		startWithSearchFocus?: boolean;
 		startupWarning?: string;
@@ -307,12 +301,12 @@ export async function viewTaskEnhanced(
 	let configuredProjects = getProjectValues();
 	let availableLabels: string[] = [];
 	let contentStore: Awaited<ReturnType<typeof core.getContentStore>> | null = null;
-	// Completed tasks are loaded alongside the milestone metadata so dependency readiness can
+	// Archived tasks are loaded alongside the milestone metadata so dependency readiness can
 	// resolve dependencies that already left the active corpus, without a second full task load.
-	const [milestoneEntities, archivedMilestones, completedTasks] = await Promise.all([
+	const [milestoneEntities, archivedMilestones, archivedTasks] = await Promise.all([
 		core.filesystem.listMilestones(),
 		core.filesystem.listArchivedMilestones(),
-		core.filesystem.listCompletedTasks(),
+		core.filesystem.listArchivedTasks(),
 	]);
 	const { availableMilestoneTitles, resolveMilestoneLabel } = buildTaskViewerMilestoneFilterModel(
 		milestoneEntities,
@@ -361,15 +355,16 @@ export async function viewTaskEnhanced(
 	// One shared index over the loaded corpus, however that corpus arrived. Searching exactly the
 	// tasks this list renders is what keeps its results identical to the other surfaces'.
 	let taskSearchIndex = createTaskSearchIndex(allTasks);
+	const priorityOrder = priorityOptions.map((priority) => priority.value);
 
 	// Collect available labels from config, tasks, and CLI-provided filters.
 	availableLabels = collectAvailableLabels(allTasks, [...labels, ...(options.labelFilter ?? [])]);
 
 	// Dependency readiness must resolve against the whole corpus, not the filtered display list, so
 	// it uses the unfiltered snapshot when the caller narrowed what is shown. Both sides stay
-	// mutable because completing a task from this view moves it between them.
+	// mutable because archiving a task from this view moves it between them.
 	let readinessSnapshot = options.readinessTasks ? [...options.readinessTasks] : null;
-	const readinessCompletedTasks = [...completedTasks];
+	const readinessArchivedTasks = [...archivedTasks];
 	// The corpus that both readiness and the dependency graph resolve against, so the two never
 	// disagree about which records this view can see.
 	const resolveDependencyCorpus = (): TaskCorpus => {
@@ -377,7 +372,7 @@ export async function viewTaskEnhanced(
 		if (readinessSnapshot) {
 			tasks = mergeDependencyCorpusTasks(readinessSnapshot, allTasks);
 		}
-		return { tasks, completedTasks: readinessCompletedTasks, statuses };
+		return { tasks, archivedTasks: readinessArchivedTasks, statuses };
 	};
 
 	// State for filtering - normalize filters to match configured values
@@ -402,16 +397,15 @@ export async function viewTaskEnhanced(
 	let milestoneFilter = options.milestoneFilter || "";
 	let labelMatch: LabelMatchMode = options.labelMatch ?? "any";
 	const taskLimit = options.limit;
-	let filteredTasks = [...allTasks];
 
 	if (options.labelFilter && options.labelFilter.length > 0) {
 		const availableSet = new Set(availableLabels.map((label) => label.toLowerCase()));
 		labelFilter = options.labelFilter.filter((label) => availableSet.has(label.toLowerCase()));
 	}
 
-	// Decides whether the first render goes through applyFilters(). Every filter that narrows the
-	// list has to be listed here, or the flag that set it silently does nothing until something
-	// else triggers a refilter.
+	// A list that opens narrowed starts on its first row, because `task` may not be among its
+	// rows. Every filter that narrows the list has to be listed here, or the first render keeps
+	// showing `task` although the filter left it out.
 	const filtersActive = Boolean(
 		searchQuery ||
 			statusFilter.length > 0 ||
@@ -424,7 +418,7 @@ export async function viewTaskEnhanced(
 			options.readyFilter ||
 			taskLimit !== undefined,
 	);
-	let requireInitialFilterSelection = filtersActive;
+	let startOnFirstRow = filtersActive || Boolean(options.startOnFirstRow);
 
 	const enrichTask = (candidate: Task | null): Task | null => {
 		if (!candidate) return null;
@@ -437,7 +431,7 @@ export async function viewTaskEnhanced(
 	let noResultsMessage: string | null = null;
 
 	const screenTitle = formatTuiTitle(options.title || "Tasks", projectName);
-	const screen = createScreen({ title: screenTitle });
+	const screen = options.screen ?? createScreen({ title: screenTitle });
 
 	// Main container
 	const container = box({
@@ -681,7 +675,9 @@ export async function viewTaskEnhanced(
 		height: `100%-${getHeaderHeight() + 1}`,
 		border: { type: "line" },
 		style: { border: { fg: "gray" } },
-		label: `\u00A0Tasks (${filteredTasks.length})\u00A0`,
+		// Every task is listed until a filter or a limit narrows the list; applyFilters() then sets
+		// the count of the rows that are left.
+		label: `\u00A0Tasks (${allTasks.length})\u00A0`,
 	});
 
 	// Detail pane - use right: 0 to ensure it extends to window edge
@@ -808,8 +804,9 @@ export async function viewTaskEnhanced(
 		}
 	}
 
-	// Function to apply filters and refresh the task list
-	function applyFilters() {
+	// The rows of the list: the tasks `task list --plain` prints for the same filters, sort and
+	// limit, in the order it prints them. Every render of the list takes its rows from here.
+	function listRows(): Task[] {
 		// An unset filter contributes no check, so this covers the no-filters case too.
 		const nextFilteredTasks = applyTaskFilters(
 			allTasks,
@@ -832,7 +829,16 @@ export async function viewTaskEnhanced(
 		const readyFilteredTasks = options.readyFilter
 			? withReadiness(nextFilteredTasks, resolveDependencyCorpus()).filter((task) => task.isReady)
 			: nextFilteredTasks;
-		filteredTasks = taskLimit !== undefined ? readyFilteredTasks.slice(0, taskLimit) : readyFilteredTasks;
+		// Sorted, cut by the limit, then section after section.
+		const sortedTasks = sortTasks(readyFilteredTasks, options.sort, priorityOrder);
+		const limitedTasks = taskLimit !== undefined ? sortedTasks.slice(0, taskLimit) : sortedTasks;
+		return sectionTasks(limitedTasks, options.sort, statuses).flatMap((section) => section.tasks);
+	}
+
+	// Recomputes the rows and refreshes the task list, keeping the selection on the same task. When
+	// that task is no longer among the rows, the selection moves to the first row.
+	function applyFilters() {
+		filteredTasks = listRows();
 
 		// Update the task list label
 		if (taskListPane.setLabel) {
@@ -840,10 +846,7 @@ export async function viewTaskEnhanced(
 		}
 
 		if (filteredTasks.length === 0) {
-			if (taskList) {
-				taskList.destroy();
-				taskList = null;
-			}
+			replaceTaskList();
 			const activeFilters: string[] = [];
 			const trimmedQuery = searchQuery.trim();
 			if (trimmedQuery) {
@@ -890,14 +893,9 @@ export async function viewTaskEnhanced(
 		noResultsMessage = null;
 		hideListEmptyState();
 
-		if (taskList) {
-			taskList.destroy();
-			taskList = null;
-		}
-		const listController = createTaskList();
-		taskList = listController;
+		const listController = replaceTaskList();
 		if (listController) {
-			const forceFirst = requireInitialFilterSelection;
+			const forceFirst = startOnFirstRow;
 			let desiredIndex = filteredTasks.findIndex((t) => t.id === currentSelectedTask.id);
 			if (forceFirst || desiredIndex < 0) {
 				desiredIndex = 0;
@@ -912,7 +910,7 @@ export async function viewTaskEnhanced(
 			if (forceFirst || currentIndex !== desiredIndex) {
 				listController.setSelectedIndex(desiredIndex);
 			}
-			requireInitialFilterSelection = false;
+			startOnFirstRow = false;
 		}
 
 		// Ensure detail pane is refreshed when transitioning from no-results to results
@@ -970,13 +968,14 @@ export async function viewTaskEnhanced(
 		screen.render();
 	}
 
-	function createTaskList(): GenericList<Task> | null {
+	// To rebuild the list call replaceTaskList() instead: it also keeps focus and removes the list this replaces.
+	function createTaskList(): GenericList<Task> {
 		const initialIndex = Math.max(
 			0,
 			filteredTasks.findIndex((t) => t.id === currentSelectedTask.id),
 		);
 
-		taskList = createGenericList<Task>({
+		const list = createGenericList<Task>({
 			parent: taskListPane,
 			title: "",
 			items: filteredTasks,
@@ -988,7 +987,7 @@ export async function viewTaskEnhanced(
 			width: "100%-4",
 			height: "100%-3",
 			itemRenderer: (task: Task) =>
-				formatTaskViewerListItem(task, getTaskListSummaryWidth(), dateFormat, configuredProjects),
+				formatTaskViewerListItem(task, getTaskListSummaryWidth(), dateFormat, configuredProjects, priorityOrder),
 			onSelect: (selected: Task | Task[]) => {
 				const selectedTask = Array.isArray(selected) ? selected[0] : selected;
 				void applySelection(selectedTask || null);
@@ -1012,37 +1011,69 @@ export async function viewTaskEnhanced(
 		});
 
 		// Focus handler for task list
-		if (taskList) {
-			const listBox = taskList.getListBox();
-			listBox.on("focus", () => {
-				currentFocus = "list";
-				setActivePane("list");
-				screen.render();
-				updateHelpBar();
-			});
-			listBox.on("blur", () => {
-				setActivePane("none");
-				screen.render();
-			});
-			listBox.key(["right", "l"], () => {
-				focusDetailPane();
-				return false;
-			});
-		}
+		const listBox = list.getListBox();
+		listBox.on("focus", () => {
+			currentFocus = "list";
+			setActivePane("list");
+			screen.render();
+			updateHelpBar();
+		});
+		listBox.on("blur", () => {
+			setActivePane("none");
+			screen.render();
+		});
+		listBox.key(["right", "l"], () => {
+			focusDetailPane();
+			return false;
+		});
 
+		return list;
+	}
+
+	/**
+	 * Swaps the list widget for one built from the current `filteredTasks`, or for none when there
+	 * is nothing to list. Every list rebuild goes through here so the list keeps keyboard focus.
+	 *
+	 * blessed gives the focus of a destroyed widget to whichever widget held it before (the search
+	 * input, or nothing at all), never to the widget built in its place. So the replacement takes
+	 * focus first, through the same focusTaskList() every other path uses, and only then is the
+	 * old widget destroyed.
+	 */
+	function replaceTaskList(): GenericList<Task> | null {
+		const previousList = taskList;
+		const listHadFocus = previousList !== null && screen.focused === previousList.getListBox();
+		taskList = filteredTasks.length > 0 ? createTaskList() : null;
+		if (listHadFocus) {
+			// With no list left, focusTaskList() moves to the detail pane.
+			focusTaskList();
+		}
+		previousList?.destroy();
 		return taskList;
 	}
 
-	// Detail pane refresh function
+	// Detail pane widgets, replaced together by refreshDetailPane()
 	let headerDetailBox: BoxInterface | undefined;
 	let divider: LineInterface | undefined;
 	let descriptionBox: ScrollableTextInterface | undefined;
 
+	/**
+	 * Rebuilds the detail pane for the current selection. It keeps keyboard focus the same way
+	 * replaceTaskList() does: the new widgets take focus before the old ones are destroyed.
+	 */
 	function refreshDetailPane() {
-		if (headerDetailBox) headerDetailBox.destroy();
-		if (divider) divider.destroy();
-		if (descriptionBox) descriptionBox.destroy();
+		const previousWidgets = [headerDetailBox, divider, descriptionBox];
+		const detailHadFocus = descriptionBox !== undefined && screen.focused === descriptionBox;
+		buildDetailPane();
+		if (detailHadFocus) {
+			focusDetailPane();
+		}
+		for (const widget of previousWidgets) {
+			widget?.destroy();
+		}
+	}
 
+	// Call refreshDetailPane() instead: it also removes the widgets these replace.
+	function buildDetailPane() {
 		const configureDetailBox = (boxInstance: ScrollableTextInterface) => {
 			descriptionBox = boxInstance;
 			const scrollable = boxInstance as unknown as {
@@ -1116,9 +1147,6 @@ export async function viewTaskEnhanced(
 				focusTaskList();
 				return false;
 			});
-			if (currentFocus === "detail") {
-				setImmediate(() => boxInstance.focus());
-			}
 		};
 
 		if (noResultsMessage) {
@@ -1165,6 +1193,7 @@ export async function viewTaskEnhanced(
 			resolveMilestoneLabel,
 			dateFormat,
 			configuredProjects,
+			configuredPriorities: priorityOrder,
 		});
 
 		// Calculate header height based on content and available width
@@ -1259,8 +1288,7 @@ export async function viewTaskEnhanced(
 		try {
 			const result = await core.editTaskInTui(selectedTask.id, screen, selectedTask);
 			if (result.reason === "read_only") {
-				const branchInfo = result.task?.branch ? ` in branch ${result.task.branch}` : "";
-				showTransientHelp(` {red-fg}Task is read-only${branchInfo}.{/}`);
+				showTransientHelp(formatReadOnlyNotice(result.task ?? selectedTask));
 				return;
 			}
 			if (result.reason === "editor_failed") {
@@ -1349,54 +1377,19 @@ export async function viewTaskEnhanced(
 		}
 	};
 
-	const applyTaskLifecycleShortcut = async (task: Task, action: "complete" | "archive") => {
-		if (task.branch) {
-			const verb = action === "complete" ? "complete" : "archive";
-			showTransientHelp(` {red-fg}Cannot ${verb} task from branch "${task.branch}".{/}`);
-			return;
-		}
-
-		const confirmed = await runWithModalGuard(() =>
-			openConfirmPopup({
-				screen,
-				title: action === "complete" ? "Move to Completed" : "Archive Task",
-				message:
-					action === "complete"
-						? `Move {bold}${task.id}{/bold} to completed?\nRemoves from board; keeps record\nand dependency links.`
-						: `Archive {bold}${task.id}{/bold}?\nCanceled, duplicate, or invalid work.\nRemoves incoming task links.`,
-			}),
+	const archiveCurrentTask = async (task: Task) => {
+		const result = await archiveTaskFromTui(core, task, (popup) =>
+			runWithModalGuard(() => openConfirmPopup({ screen, ...popup })),
 		);
-
-		if (!confirmed) {
-			return;
+		if (result.archived) {
+			// The record leaves the active graph and joins the archived one, where the tasks that
+			// depend on it keep resolving it.
+			readinessSnapshot = readinessSnapshot?.filter((candidate) => !taskIdsEqual(candidate.id, task.id)) ?? null;
+			readinessArchivedTasks.push(task);
+			removeTaskFromCurrentView(task.id);
 		}
-
-		try {
-			const config = action === "archive" ? await core.fs.loadConfig() : null;
-			const archived = action === "archive" ? await core.archiveTask(task.id, config?.autoCommit ?? false) : undefined;
-			const result = archived ? { ...archived, reason: "failed" as const } : await completeTaskFromTui(core, task);
-
-			if (result.success) {
-				// Drop the record from the active graph; completed work remains completion evidence.
-				readinessSnapshot = readinessSnapshot?.filter((candidate) => !taskIdsEqual(candidate.id, task.id)) ?? null;
-				if (action === "complete") {
-					readinessCompletedTasks.push(task);
-				}
-				removeTaskFromCurrentView(task.id);
-				const message = archived
-					? formatTaskArchivedMessage(task.id, archived.cleanedTaskIds)
-					: `Moved ${task.id} to completed`;
-				showTransientHelp(` {green-fg}${message}{/}`);
-			} else if (action === "complete" && result.reason === "not-terminal") {
-				showTransientHelp(` {red-fg}${formatTaskCompletionBlockedMessage(task.id, result.terminalStatus)}{/}`);
-			} else {
-				const verb = action === "complete" ? "complete" : "archive";
-				showTransientHelp(` {red-fg}Failed to ${verb} ${task.id}{/}`);
-			}
-		} catch (error) {
-			const verb = action === "complete" ? "completing" : "archiving";
-			showTransientHelp(` {red-fg}Error ${verb} task: ${error instanceof Error ? error.message : "Unknown error"}{/}`);
-		}
+		const notice = formatArchiveNotice(task, result);
+		if (notice) showTransientHelp(notice);
 	};
 
 	// Handle resize
@@ -1470,18 +1463,11 @@ export async function viewTaskEnhanced(
 		}
 	});
 
-	screen.key(["c", "C"], async () => {
-		if (modalOpen || filterPopupOpen || currentFocus === "filters") return;
-		const task = getCurrentShortcutTask();
-		if (!task) return;
-		await applyTaskLifecycleShortcut(task, "complete");
-	});
-
 	screen.key(["a", "A"], async () => {
 		if (modalOpen || filterPopupOpen || currentFocus === "filters") return;
 		const task = getCurrentShortcutTask();
 		if (!task) return;
-		await applyTaskLifecycleShortcut(task, "archive");
+		await archiveCurrentTask(task);
 	});
 
 	screen.key(["?"], async () => {
@@ -1545,8 +1531,13 @@ export async function viewTaskEnhanced(
 	// Initial setup
 	updateHelpBar();
 
-	// Apply filters first if any are set
-	if (filtersActive) {
+	// The rows the list shows. applyFilters() replaces them whenever the tasks or the filters change.
+	let filteredTasks = listRows();
+
+	// A list opened on a chosen task keeps showing that task's details even when the list has no
+	// rows (a draft opened in a project without tasks, for example). Otherwise it starts on its
+	// first row.
+	if (startOnFirstRow) {
 		applyFilters();
 	} else {
 		taskList = createTaskList();
@@ -1603,13 +1594,15 @@ export interface TaskDetailContentOptions {
 	resolveMilestoneLabel?: (milestone: string) => string;
 	dateFormat?: string;
 	configuredProjects?: string[];
+	/** The configured priorities, highest first. The priority marker takes its direction from them. */
+	configuredPriorities?: readonly string[];
 }
 
 export function generateDetailContent(
 	task: Task | TaskDetail,
 	options: TaskDetailContentOptions = {},
 ): { headerContent: string[]; bodyContent: string[] } {
-	const { resolveMilestoneLabel, dateFormat, configuredProjects } = options;
+	const { resolveMilestoneLabel, dateFormat, configuredProjects, configuredPriorities } = options;
 	const headerContent = [
 		` ${wrapStatusColor(formatStatusWithIcon(task.status), getStatusColor(task.status))} {bold}{blue-fg}${task.id}{/blue-fg}{/bold} - ${task.title}`,
 	];
@@ -1621,6 +1614,10 @@ export function generateDetailContent(
 		headerContent.push(
 			` {yellow-fg}⚠ Read-only:{/} This task exists in branch {green-fg}${branchName}{/}. Switch to that branch to edit it.`,
 		);
+	}
+
+	if (task.source === "archived") {
+		headerContent.push(" {yellow-fg}⚠ Read-only:{/} This task is archived.");
 	}
 
 	const bodyContent: string[] = [];
@@ -1635,9 +1632,9 @@ export function generateDetailContent(
 		metadata.push(`{bold}Due:{/bold} ${formatDateForDisplay(task.dueDate, { dateFormat })}`);
 	}
 	if (task.priority) {
-		const priorityDisplay = getPriorityDisplay(task.priority);
+		const priorityMarker = formatPriorityMarker(task.priority, configuredPriorities);
 		const priorityText = formatPriorityLabel(task.priority);
-		metadata.push(`{bold}Priority:{/bold} ${priorityText}${priorityDisplay}`);
+		metadata.push(`{bold}Priority:{/bold} ${priorityText}${priorityMarker ? ` ${priorityMarker}` : ""}`);
 	}
 	if (task.type) {
 		metadata.push(`{bold}Type:{/bold} ${formatTaskTypeBadge(task.type)}`);
@@ -1823,6 +1820,7 @@ export async function createTaskPopup(
 	resolveMilestoneLabel?: (milestone: string) => string,
 	dateFormat?: string,
 	configuredProjects?: string[],
+	configuredPriorities?: readonly string[],
 ): Promise<{
 	background: BoxInterface;
 	popup: BoxInterface;
@@ -1863,6 +1861,7 @@ export async function createTaskPopup(
 		resolveMilestoneLabel,
 		dateFormat,
 		configuredProjects,
+		configuredPriorities,
 	});
 
 	// Calculate header height based on content and available width

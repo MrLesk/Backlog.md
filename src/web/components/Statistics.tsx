@@ -46,7 +46,7 @@ const Statistics: React.FC<StatisticsProps> = ({
 				const loadingMessages = [
 					'Building statistics...',
 					'Loading local tasks...',
-					'Loading completed tasks...',
+					'Loading archived tasks...',
 					'Merging tasks...',
 					'Checking task states across branches...',
 					'Loading drafts...',

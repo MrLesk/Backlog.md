@@ -205,7 +205,7 @@ describe("Auto-commit configuration", () => {
 			expect(isClean).toBe(false);
 		});
 
-		it("should auto-commit archive cleanup updates when archiving a task", async () => {
+		it("auto-commits an archive without rewriting the task that links to it", async () => {
 			const archiveTarget: Task = {
 				id: "task-7",
 				title: "Archive target",
@@ -233,9 +233,9 @@ describe("Auto-commit configuration", () => {
 			await core.createTask(dependentTask);
 			await core.archiveTask("task-7");
 
-			const updatedTask = await core.filesystem.loadTask("task-8");
-			expect(updatedTask?.dependencies).toEqual([]);
-			expect(updatedTask?.references).toEqual(["https://example.com/tasks/task-7"]);
+			const dependentAfter = await core.filesystem.loadTask("task-8");
+			expect(dependentAfter?.dependencies).toEqual(["task-7"]);
+			expect(dependentAfter?.references).toEqual(["TASK-7", "https://example.com/tasks/task-7"]);
 
 			const git = await core.getGitOps();
 			const isClean = await git.isClean();

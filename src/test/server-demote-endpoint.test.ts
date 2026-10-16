@@ -87,7 +87,7 @@ describe("BacklogServer demote endpoint", () => {
 		});
 
 		expect(response.status).toBe(404);
-		expect(await response.json()).toEqual({ error: "Task not found" });
+		expect(await response.json()).toEqual({ error: "Task TASK-999 not found." });
 		expect(await core.filesystem.listDrafts()).toEqual(before);
 		expect(await core.filesystem.loadTask("TASK-1")).not.toBeNull();
 	});

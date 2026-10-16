@@ -29,6 +29,8 @@ const result = await Bun.build({
 	...(outdir
 		? { outdir }
 		: {
+				format: "esm",
+				bytecode: true,
 				compile: {
 					outfile,
 					...(target ? { target: target as Bun.Build.CompileTarget } : {}),

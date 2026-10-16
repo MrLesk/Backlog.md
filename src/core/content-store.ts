@@ -17,13 +17,14 @@ import {
 	normalizeTaskLifecyclePath,
 	type TaskIdentityIndex,
 	type TaskIdentityResolution,
+	type TaskMutationResolution,
 } from "./task-identity-index.ts";
 import type { BranchTaskStateEntry } from "./task-loader.ts";
 
 export interface TaskCorpusSnapshot {
 	tasks: Task[];
 	activeTasks: Task[];
-	completedTasks: Task[];
+	archivedTasks: Task[];
 	identityIndex?: TaskIdentityIndex;
 	branchStateEntries?: BranchTaskStateEntry[];
 	config?: BacklogConfig | null;
@@ -115,7 +116,7 @@ export class ContentStore {
 
 	private cachedTasks: Task[] = [];
 	private activeTasks: Task[] = [];
-	private completedTasks: Task[] = [];
+	private archivedTasks: Task[] = [];
 	private taskIdentityIndex?: TaskIdentityIndex;
 	private branchTaskStateEntries: BranchTaskStateEntry[] = [];
 	private taskCorpusConfig: BacklogConfig | null | undefined;
@@ -239,9 +240,9 @@ export class ContentStore {
 				const targetRoot = this.currentRoot();
 				const generation = this.nextContentRefreshGeneration("tasks");
 				const versionsBeforeLoad = new Map(this.contentItemVersions.tasks);
-				const [activeTasks, completedTasks] = await Promise.all([
+				const [activeTasks, archivedTasks] = await Promise.all([
 					this.filesystem.listTasks(),
-					this.filesystem.listCompletedTasks(),
+					this.filesystem.listArchivedTasks(),
 				]);
 				if (
 					!this.isRootWatcherCurrent(epoch) ||
@@ -256,24 +257,21 @@ export class ContentStore {
 					versionsBeforeLoad,
 					targetRoot,
 				);
-				const mergedCompletedTasks = this.mergeConcurrentTaskCorpus(
-					completedTasks,
-					this.completedTasks,
+				const mergedArchivedTasks = this.mergeConcurrentTaskCorpus(
+					archivedTasks,
+					this.archivedTasks,
 					versionsBeforeLoad,
 					targetRoot,
 				);
-				if (this.needsBranchFallbackHydration(mergedActiveTasks, mergedCompletedTasks)) {
+				if (this.needsBranchFallbackHydration(mergedActiveTasks, mergedArchivedTasks)) {
 					await this.refreshTasksFromDisk(undefined, epoch);
 					return;
 				}
 				const previousFingerprint = this.taskIdentityIndex?.getFingerprint();
 				this.activeTasks = mergedActiveTasks;
-				this.completedTasks = mergedCompletedTasks;
+				this.archivedTasks = mergedArchivedTasks;
 				if (this.taskIdentityIndex) {
-					this.taskIdentityIndex = this.taskIdentityIndex.withWorkingCopyCorpus(
-						mergedActiveTasks,
-						mergedCompletedTasks,
-					);
+					this.taskIdentityIndex = this.taskIdentityIndex.withWorkingCopyCorpus(mergedActiveTasks, mergedArchivedTasks);
 					const tasks = this.taskIdentityIndex.getTasks(false);
 					const changed = this.hasTaskCollectionChanged(tasks);
 					const identityChanged = previousFingerprint !== this.taskIdentityIndex.getFingerprint();
@@ -341,7 +339,7 @@ export class ContentStore {
 		return {
 			tasks: this.cachedTasks.slice(),
 			activeTasks: this.activeTasks.slice(),
-			completedTasks: this.completedTasks.slice(),
+			archivedTasks: this.archivedTasks.slice(),
 			identityIndex: this.taskIdentityIndex,
 			branchStateEntries: this.branchTaskStateEntries.slice(),
 			config: this.taskCorpusConfig,
@@ -355,7 +353,7 @@ export class ContentStore {
 		return task ? { status: "found", task } : { status: "not-found" };
 	}
 
-	resolveTaskForMutation(taskId: string): TaskIdentityResolution {
+	resolveTaskForMutation(taskId: string): TaskMutationResolution {
 		if (!this.initialized) throw new Error("ContentStore not initialized. Call ensureInitialized() first.");
 		if (this.taskIdentityIndex) return this.taskIdentityIndex.resolveForMutation(taskId);
 		const task = this.cachedTasks.find((candidate) => taskIdsEqual(candidate.id, taskId));
@@ -411,7 +409,7 @@ export class ContentStore {
 		);
 		this.activeTasks.push(task);
 		if (this.taskIdentityIndex) {
-			this.taskIdentityIndex = this.taskIdentityIndex.withWorkingCopyCorpus(this.activeTasks, this.completedTasks);
+			this.taskIdentityIndex = this.taskIdentityIndex.withWorkingCopyCorpus(this.activeTasks, this.archivedTasks);
 			this.replaceVisibleTasks(this.taskIdentityIndex.getTasks(false));
 		} else {
 			this.tasks.set(task.id, task);
@@ -439,23 +437,27 @@ export class ContentStore {
 		else this.notify("tasks");
 	}
 
-	transitionTask(taskId: string, completedTask?: Task): void {
+	/** Publish the complete result of a lifecycle move, or remove the identity when no task remains. */
+	transitionTask(taskId: string, resultingTask?: Task): void {
 		const activeTasks = this.activeTasks.filter((task) => !taskIdsEqual(task.id, taskId));
-		const completedTasks = this.completedTasks.filter((task) => !taskIdsEqual(task.id, taskId));
-		if (completedTask) completedTasks.push({ ...completedTask, source: "completed" });
+		const archivedTasks = this.archivedTasks.filter((task) => !taskIdsEqual(task.id, taskId));
+		if (resultingTask) {
+			const targetTasks = resultingTask.source === "archived" ? archivedTasks : activeTasks;
+			targetTasks.push(resultingTask);
+		}
 		if (
 			activeTasks.length === this.activeTasks.length &&
-			completedTasks.length === this.completedTasks.length &&
-			!completedTask
+			archivedTasks.length === this.archivedTasks.length &&
+			!resultingTask
 		)
 			return;
 		const normalizedId = normalizeTaskId(taskId);
 		this.nextContentItemGeneration("tasks", normalizedId);
 		this.nextContentItemVersion("tasks", normalizedId, this.currentRoot());
 		this.activeTasks = activeTasks;
-		this.completedTasks = completedTasks;
+		this.archivedTasks = archivedTasks;
 		if (this.taskIdentityIndex) {
-			this.taskIdentityIndex = this.taskIdentityIndex.withWorkingCopyCorpus(this.activeTasks, this.completedTasks);
+			this.taskIdentityIndex = this.taskIdentityIndex.withWorkingCopyCorpus(this.activeTasks, this.archivedTasks);
 			this.replaceVisibleTasks(this.taskIdentityIndex.getTasks(false));
 		} else {
 			this.replaceVisibleTasks(this.activeTasks);
@@ -464,30 +466,30 @@ export class ContentStore {
 	}
 
 	/**
-	 * Republish one record that stays in the completed corpus, keyed by its file path.
+	 * Republish one record that stays in the archived corpus, keyed by its file path.
 	 *
 	 * Not {@link transitionTask}: that one clears an identity out of both corpora, which is right
-	 * for a record that just left the active one, but here it would also evict a *different* file
+	 * for archive, restore or removal, but here it would also evict a *different* file
 	 * claiming the same ID. A contested identity must stay contested - dissolving it would let a
 	 * later read report one of the claimants as simply missing - so this touches only the entries
 	 * holding this path, including the active copy the shared save publication writes for any file.
 	 */
-	refreshCompletedTask(task: Task): void {
+	refreshArchivedTask(task: Task): void {
 		if (!this.canPublishContent()) return;
 		const filePath = task.filePath;
 		if (!filePath) return;
 
 		const activeTasks = this.activeTasks.filter((candidate) => candidate.filePath !== filePath);
-		const completedTasks = this.completedTasks.filter((candidate) => candidate.filePath !== filePath);
-		completedTasks.push({ ...task, source: "completed" });
+		const archivedTasks = this.archivedTasks.filter((candidate) => candidate.filePath !== filePath);
+		archivedTasks.push({ ...task, source: "archived" });
 
 		const normalizedId = normalizeTaskId(task.id);
 		this.nextContentItemGeneration("tasks", normalizedId);
 		this.nextContentItemVersion("tasks", normalizedId, this.currentRoot());
 		this.activeTasks = activeTasks;
-		this.completedTasks = completedTasks;
+		this.archivedTasks = archivedTasks;
 		if (this.taskIdentityIndex) {
-			this.taskIdentityIndex = this.taskIdentityIndex.withWorkingCopyCorpus(this.activeTasks, this.completedTasks);
+			this.taskIdentityIndex = this.taskIdentityIndex.withWorkingCopyCorpus(this.activeTasks, this.archivedTasks);
 			this.replaceVisibleTasks(this.taskIdentityIndex.getTasks(false));
 		} else {
 			this.replaceVisibleTasks(this.activeTasks);
@@ -779,7 +781,7 @@ export class ContentStore {
 		if (this.closed || epoch !== this.rootWatcherEpoch || this.rootWatchersInitialized) return;
 		const created: WatchHandle[] = [];
 		try {
-			created.push(this.createTaskWatcher(epoch));
+			created.push(await this.createTaskWatcher(epoch));
 			created.push(this.createDecisionWatcher(epoch));
 			created.push(await this.createDocumentWatcher(epoch));
 			if (!this.isRootWatcherCurrent(epoch)) {
@@ -963,7 +965,7 @@ export class ContentStore {
 		);
 		this.activeTasks.push(task);
 		if (this.taskIdentityIndex) {
-			this.taskIdentityIndex = this.taskIdentityIndex.withWorkingCopyCorpus(this.activeTasks, this.completedTasks);
+			this.taskIdentityIndex = this.taskIdentityIndex.withWorkingCopyCorpus(this.activeTasks, this.archivedTasks);
 			this.replaceVisibleTasks(this.taskIdentityIndex.getTasks(false));
 		} else this.replaceVisibleTasks(this.activeTasks);
 		this.notify("tasks");
@@ -983,7 +985,7 @@ export class ContentStore {
 			this.nextContentItemVersion("tasks", removedId, this.currentRoot());
 		}
 		if (this.taskIdentityIndex) {
-			this.taskIdentityIndex = this.taskIdentityIndex.withWorkingCopyCorpus(this.activeTasks, this.completedTasks);
+			this.taskIdentityIndex = this.taskIdentityIndex.withWorkingCopyCorpus(this.activeTasks, this.archivedTasks);
 			this.replaceVisibleTasks(this.taskIdentityIndex.getTasks(false));
 		} else this.replaceVisibleTasks(this.activeTasks);
 		this.notify("tasks");
@@ -1027,7 +1029,21 @@ export class ContentStore {
 		);
 	}
 
-	private removeWatchedDocument(path: string): void {
+	/**
+	 * Puts a document whose file just arrived in the docs folder into the store, so lists and search
+	 * show it at once. Core calls it when it restores a document, so that change does not wait for a
+	 * watcher event. When the event arrives, the watcher publishes the same file again.
+	 */
+	addDocument(document: Document): void {
+		this.publishWatchedDocument(document);
+	}
+
+	/**
+	 * Takes the document stored at a docs-relative path out of the store, so lists and search stop
+	 * showing it. Called when its file left the docs folder: by the file watcher for a removed file,
+	 * and by core when it archives a document, so that change does not wait for a watcher event.
+	 */
+	removeDocument(path: string): void {
 		const existing = this.findWatchedDocumentByPath(path);
 		if (!existing || !this.dropWatchedDocument(existing)) return;
 		this.cachedDocuments = [...this.documents.values()].sort((a, b) => a.title.localeCompare(b.title));
@@ -1042,7 +1058,21 @@ export class ContentStore {
 		this.notify("decisions");
 	}
 
-	private removeWatchedDecision(id: string): void {
+	/**
+	 * Puts a decision whose file just arrived in the decisions folder into the store, so lists and
+	 * search show it at once. Core calls it when it restores a decision, so that change does not wait
+	 * for a watcher event. When the event arrives, the watcher publishes the same file again.
+	 */
+	addDecision(decision: Decision): void {
+		this.publishWatchedDecision(decision);
+	}
+
+	/**
+	 * Takes the decision with this ID out of the store, so lists and search stop showing it. Called
+	 * when its file left the decisions folder: by the file watcher for a removed file, and by core
+	 * when it archives a decision, so that change does not wait for a watcher event.
+	 */
+	removeDecision(id: string): void {
 		if (!this.decisions.delete(id)) return;
 		this.nextContentItemGeneration("decisions", id);
 		this.nextContentItemVersion("decisions", id, this.currentRoot());
@@ -1050,8 +1080,10 @@ export class ContentStore {
 		this.notify("decisions");
 	}
 
-	private createTaskWatcher(epoch: number): WatchHandle {
+	private async createTaskWatcher(epoch: number): Promise<WatchHandle> {
 		const tasksDir = this.filesystem.tasksDir;
+		// Listed before the first watcher opens, so a failure here leaves nothing to close.
+		const archivedTaskDirs = await this.filesystem.getArchivedTaskDirs();
 		const watcher: FSWatcher = watch(tasksDir, { recursive: false }, (eventType, filename) => {
 			const file = this.normalizeFilename(filename);
 			if (!file || !/^[a-zA-Z]+-/.test(file) || !file.endsWith(".md")) {
@@ -1134,14 +1166,18 @@ export class ContentStore {
 			});
 		});
 		this.attachWatcherErrorHandler(watcher, "tasks");
-		const completedWatcher = watch(this.filesystem.completedDir, { recursive: false }, () => {
-			void this.enqueueRoot(epoch, async () => this.refreshTasksFromDisk(undefined, epoch));
-		});
-		this.attachWatcherErrorHandler(completedWatcher, "completed tasks");
+		// Any change in a directory archived tasks are read from reloads the task corpus.
+		const watchers = [watcher];
+		for (const directory of archivedTaskDirs) {
+			const archivedWatcher = watch(directory, { recursive: false }, () => {
+				void this.enqueueRoot(epoch, async () => this.refreshTasksFromDisk(undefined, epoch));
+			});
+			this.attachWatcherErrorHandler(archivedWatcher, "archived tasks");
+			watchers.push(archivedWatcher);
+		}
 		return {
 			stop: () => {
-				watcher.close();
-				completedWatcher.close();
+				for (const opened of watchers) opened.close();
 			},
 		};
 	}
@@ -1186,14 +1222,14 @@ export class ContentStore {
 						current: () => this.decisions.get(id),
 						hasChanged: (previous, next) => this.hasDecisionChanged(previous, next),
 						publish: (decision) => this.publishWatchedDecision(decision),
-						remove: () => this.removeWatchedDecision(id),
+						remove: () => this.removeDecision(id),
 					});
 					return;
 				}
 
 				await this.reconcileOrSchedule(`decision:${id}`, epoch, async () => {
 					if (!(await Bun.file(fullPath).exists())) {
-						this.removeWatchedDecision(id);
+						this.removeDecision(id);
 						return false;
 					}
 					try {
@@ -1262,7 +1298,7 @@ export class ContentStore {
 					publish: (document) => {
 						strandedEquivalent = this.publishWatchedDocument(document, eventPath);
 					},
-					remove: () => this.removeWatchedDocument(eventPath),
+					remove: () => this.removeDocument(eventPath),
 				});
 				if (strandedEquivalent) await this.refreshDocumentsFromDisk(undefined, epoch);
 				return;
@@ -1270,7 +1306,7 @@ export class ContentStore {
 
 			await this.reconcileOrSchedule(`document:${id}`, epoch, async () => {
 				if (!(await Bun.file(absolutePath).exists())) {
-					this.removeWatchedDocument(eventPath);
+					this.removeDocument(eventPath);
 					return false;
 				}
 				try {
@@ -1349,13 +1385,13 @@ export class ContentStore {
 	}
 
 	private asTaskCorpus(tasks: Task[]): TaskCorpusSnapshot {
-		return { tasks, activeTasks: tasks, completedTasks: [] };
+		return { tasks, activeTasks: tasks, archivedTasks: [] };
 	}
 
 	private installTaskCorpus(corpus: TaskCorpusSnapshot, visibleTasks = corpus.tasks): void {
 		this.invalidateContentItemGenerations("tasks");
 		this.activeTasks = corpus.activeTasks.slice();
-		this.completedTasks = corpus.completedTasks.slice();
+		this.archivedTasks = corpus.archivedTasks.slice();
 		this.taskIdentityIndex = corpus.identityIndex;
 		this.branchTaskStateEntries = corpus.branchStateEntries?.slice() ?? [];
 		this.taskCorpusConfig = corpus.config;
@@ -1404,9 +1440,7 @@ export class ContentStore {
 			return result;
 		}) as FileSystem["saveDocument"];
 
-		this.filesystem.saveDecision = (async (
-			decision: Decision,
-		): Promise<{ filepath: string; removedFilepaths: string[] }> => {
+		this.filesystem.saveDecision = (async (decision: Decision) => {
 			const owner: PublicationOwner = { root: this.currentRoot() };
 			const result = await originalSaveDecision.call(this.filesystem, decision);
 			await this.handleDecisionWrite(decision.id, owner);
@@ -1636,7 +1670,7 @@ export class ContentStore {
 				this.taskIdentityIndex?.getFingerprint() !== reconciledCorpus.identityIndex?.getFingerprint();
 			const corpusChanged =
 				this.hasTaskListChanged(this.activeTasks, reconciledCorpus.activeTasks) ||
-				this.hasTaskListChanged(this.completedTasks, reconciledCorpus.completedTasks) ||
+				this.hasTaskListChanged(this.archivedTasks, reconciledCorpus.archivedTasks) ||
 				this.hasBranchTaskStateChanged(reconciledCorpus.branchStateEntries ?? []) ||
 				JSON.stringify(this.taskCorpusConfig) !== JSON.stringify(reconciledCorpus.config);
 			if (!visibleChanged && !identityChanged && !corpusChanged) return false;
@@ -1744,17 +1778,17 @@ export class ContentStore {
 		beforeVersions: ReadonlyMap<string, number>,
 		targetRoot: string,
 	): TaskCorpusSnapshot {
-		const { activeTasks, completedTasks } = this.mergeConcurrentWorkingCopyTasks(
+		const { activeTasks, archivedTasks } = this.mergeConcurrentWorkingCopyTasks(
 			loaded.activeTasks,
-			loaded.completedTasks,
+			loaded.archivedTasks,
 			beforeVersions,
 			targetRoot,
 		);
-		const identityIndex = loaded.identityIndex?.withWorkingCopyCorpus(activeTasks, completedTasks);
+		const identityIndex = loaded.identityIndex?.withWorkingCopyCorpus(activeTasks, archivedTasks);
 		return {
 			...loaded,
 			activeTasks,
-			completedTasks,
+			archivedTasks,
 			identityIndex,
 			tasks: identityIndex ? identityIndex.getTasks(false) : activeTasks,
 		};
@@ -1762,18 +1796,18 @@ export class ContentStore {
 
 	private mergeConcurrentWorkingCopyTasks(
 		loadedActiveTasks: Task[],
-		loadedCompletedTasks: Task[],
+		loadedArchivedTasks: Task[],
 		beforeVersions: ReadonlyMap<string, number>,
 		targetRoot: string,
-	): { activeTasks: Task[]; completedTasks: Task[] } {
+	): { activeTasks: Task[]; archivedTasks: Task[] } {
 		const activeTasks = this.mergeConcurrentTaskCorpus(loadedActiveTasks, this.activeTasks, beforeVersions, targetRoot);
-		const completedTasks = this.mergeConcurrentTaskCorpus(
-			loadedCompletedTasks,
-			this.completedTasks,
+		const archivedTasks = this.mergeConcurrentTaskCorpus(
+			loadedArchivedTasks,
+			this.archivedTasks,
 			beforeVersions,
 			targetRoot,
 		);
-		return { activeTasks, completedTasks };
+		return { activeTasks, archivedTasks };
 	}
 
 	private mergeConcurrentChanges<T>(
@@ -1831,7 +1865,7 @@ export class ContentStore {
 		});
 	}
 
-	private needsBranchFallbackHydration(activeTasks: Task[], completedTasks: Task[]): boolean {
+	private needsBranchFallbackHydration(activeTasks: Task[], archivedTasks: Task[]): boolean {
 		if (!this.taskLoader || this.branchTaskStateEntries.length === 0) return false;
 		const identity = (id: string, path: string | undefined): string | null => {
 			if (!path) return null;
@@ -1842,20 +1876,20 @@ export class ContentStore {
 			)}`;
 		};
 		const nextIdentities = new Set(
-			[...activeTasks, ...completedTasks].flatMap((task) => {
+			[...activeTasks, ...archivedTasks].flatMap((task) => {
 				const value = identity(task.id, task.filePath);
 				return value ? [value] : [];
 			}),
 		);
 		const removedIdentities = new Set(
-			[...this.activeTasks, ...this.completedTasks].flatMap((task) => {
+			[...this.activeTasks, ...this.archivedTasks].flatMap((task) => {
 				const value = identity(task.id, task.filePath);
 				return value && !nextIdentities.has(value) ? [value] : [];
 			}),
 		);
 		if (removedIdentities.size === 0) return false;
 		return this.branchTaskStateEntries.some((entry) => {
-			if (entry.task || (entry.type !== "task" && entry.type !== "completed")) return false;
+			if (entry.task || (entry.type !== "task" && entry.type !== "archived")) return false;
 			const value = identity(entry.id, entry.path);
 			return value !== null && removedIdentities.has(value);
 		});

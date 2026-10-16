@@ -147,9 +147,9 @@ export function sortByOrdinal<T extends { id: string; ordinal?: number }>(items:
 
 /**
  * Sort an array of tasks considering ordinal first, then priority, then ID.
- * This is the default sorting for the board view.
+ * This is the default order of a task list.
  */
-export function sortByOrdinalAndPriority<T extends { id: string; ordinal?: number; priority?: string }>(
+function sortByOrdinalAndPriority<T extends { id: string; ordinal?: number; priority?: string }>(
 	items: T[],
 	priorityOrder?: readonly string[],
 ): T[] {
@@ -182,24 +182,72 @@ export function sortByOrdinalAndPriority<T extends { id: string; ordinal?: numbe
 	});
 }
 
+type SortableTask = { id: string; priority?: string; ordinal?: number };
+type TaskSorter = <T extends SortableTask>(items: T[], priorityOrder?: readonly string[]) => T[];
+
 /**
- * Sort tasks by a specified field with fallback to task ID sorting.
- * Supported fields: 'priority', 'id', 'ordinal'
+ * The named orders of a task list. Their names are the values `--sort` accepts, so adding an
+ * entry here is all a new `--sort` value needs.
  */
-export function sortTasks<T extends { id: string; priority?: string; ordinal?: number }>(
+const TASK_SORTERS = new Map<string, TaskSorter>([
+	["priority", sortByPriority],
+	["id", sortByTaskId],
+	["ordinal", sortByOrdinal],
+]);
+
+export const TASK_SORT_FIELDS = [...TASK_SORTERS.keys()];
+
+/**
+ * Orders a task list for the plain, JSON, MCP and TUI lists. The browser's All Tasks table calls
+ * it for the three sorts it shares with `--sort`; its other column sorts, and the column order of
+ * both boards, are decided where they are drawn.
+ *
+ * `sortField` is one of TASK_SORT_FIELDS in any letter case. Without one the list is in its
+ * default order: ordinal, then priority, then ID. A name that is not in TASK_SORT_FIELDS also
+ * gives the default order; the CLI rejects such a name before it reads any task.
+ */
+export function sortTasks<T extends SortableTask>(
 	items: T[],
-	sortField: string,
+	sortField?: string,
 	priorityOrder?: readonly string[],
 ): T[] {
-	switch (sortField?.toLowerCase()) {
-		case "priority":
-			return sortByPriority(items, priorityOrder);
-		case "id":
-			return sortByTaskId(items);
-		case "ordinal":
-			return sortByOrdinal(items);
-		default:
-			// Default to ordinal + priority sorting for board view
-			return sortByOrdinalAndPriority(items, priorityOrder);
+	const sorter = TASK_SORTERS.get(sortField?.toLowerCase() ?? "") ?? sortByOrdinalAndPriority;
+	return sorter(items, priorityOrder);
+}
+
+/**
+ * Splits an ordered task list into the sections the plain, MCP and TUI lists show it in.
+ *
+ * A list with an explicit `priority` sort is flat: one section whose status is null. Every other
+ * order, the default included, has one section per status: configured statuses first, then any
+ * other status, each section keeping the order of `tasks`.
+ */
+export function sectionTasks<T extends { status: string }>(
+	tasks: T[],
+	sortField: string | undefined,
+	statuses: string[],
+): Array<{ status: string | null; tasks: T[] }> {
+	if (sortField?.toLowerCase() === "priority") {
+		return [{ status: null, tasks }];
 	}
+
+	const canonicalByLower = new Map<string, string>();
+	for (const status of statuses) {
+		canonicalByLower.set(status.toLowerCase(), status);
+	}
+
+	const groups = new Map<string, T[]>();
+	for (const task of tasks) {
+		const rawStatus = (task.status || "").trim();
+		const canonicalStatus = canonicalByLower.get(rawStatus.toLowerCase()) || rawStatus;
+		const list = groups.get(canonicalStatus) || [];
+		list.push(task);
+		groups.set(canonicalStatus, list);
+	}
+
+	const orderedStatuses = [
+		...statuses.filter((status) => groups.has(status)),
+		...Array.from(groups.keys()).filter((status) => !statuses.includes(status)),
+	];
+	return orderedStatuses.map((status) => ({ status, tasks: groups.get(status) ?? [] }));
 }
