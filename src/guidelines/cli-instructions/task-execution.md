@@ -80,6 +80,10 @@ Use CLI commands for Backlog changes:
 - Delete docs: archive first, then `backlog doc delete doc-1`. Delete asks no question, removes the file and releases the ID. Tasks and drafts whose documentation names the file are printed, not changed.
 - Decisions follow the same steps: `backlog decision archive decision-1` moves the file to `backlog/archive/decisions/`, keeps the ID reserved and makes the decision read-only; `backlog decision restore decision-1` brings it back; `backlog decision delete decision-1` removes an archived decision without a question and releases the ID. Tasks and drafts whose documentation names the file are printed, not changed.
 
+For documentation links on tasks or drafts, `task edit` and `draft edit` use `--doc` to replace the full list. Use
+`--add-doc` or `--remove-doc` to change individual entries; both accept repeated flags or comma-separated values.
+Use `--clear-docs` to remove all entries. Do not combine replacement or clear flags with add/remove flags.
+
 For programmatic reads, `task list`, `task view`, `task <id>`, and `search` accept `--json`. JSON mode is noninteractive, versioned, and cannot be combined with `--plain`.
 
 Do not edit Backlog markdown files directly. The CLI preserves metadata, IDs, filenames, relationships, and structured sections.
