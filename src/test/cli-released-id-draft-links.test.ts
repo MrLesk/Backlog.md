@@ -73,23 +73,20 @@ describe("drafts that link to a task whose ID is released", () => {
 			},
 		],
 		["demote", "Demoted task TASK-1", async () => await task("demote", "1")],
-	])(
-		"%s removes the draft's dependency and reference, names the draft, and the reused ID is not linked",
-		async (_operation, confirmation, release) => {
-			expect(await linksOf("draft-1")).toEqual({ dependencies: ["TASK-1"], references: ["TASK-1", URL_WITH_THE_ID] });
-			const urlDraftBefore = await Bun.file(urlDraftPath).text();
+	])("%s removes the draft's dependency and reference, names the draft, and the reused ID is not linked", async (_operation, confirmation, release) => {
+		expect(await linksOf("draft-1")).toEqual({ dependencies: ["TASK-1"], references: ["TASK-1", URL_WITH_THE_ID] });
+		const urlDraftBefore = await Bun.file(urlDraftPath).text();
 
-			const released = await release();
+		const released = await release();
 
-			expect(released.exitCode).toBe(0);
-			expect(released.stdout).toBe(`${confirmation}\nRemoved references to TASK-1 from DRAFT-1\n`);
-			expect(await linksOf("draft-1")).toEqual({ dependencies: [], references: [URL_WITH_THE_ID] });
-			expect(await Bun.file(urlDraftPath).text()).toBe(urlDraftBefore);
+		expect(released.exitCode).toBe(0);
+		expect(released.stdout).toBe(`${confirmation}\nRemoved references to TASK-1 from DRAFT-1\n`);
+		expect(await linksOf("draft-1")).toEqual({ dependencies: [], references: [URL_WITH_THE_ID] });
+		expect(await Bun.file(urlDraftPath).text()).toBe(urlDraftBefore);
 
-			// The next created task receives the released ID, and the draft does not link to it.
-			const created = await task("create", "Reuses the ID", "--plain");
-			expect(created.stdout).toContain("Task TASK-1 - Reuses the ID");
-			expect(await linksOf("draft-1")).toEqual({ dependencies: [], references: [URL_WITH_THE_ID] });
-		},
-	);
+		// The next created task receives the released ID, and the draft does not link to it.
+		const created = await task("create", "Reuses the ID", "--plain");
+		expect(created.stdout).toContain("Task TASK-1 - Reuses the ID");
+		expect(await linksOf("draft-1")).toEqual({ dependencies: [], references: [URL_WITH_THE_ID] });
+	});
 });

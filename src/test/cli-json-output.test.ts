@@ -168,6 +168,53 @@ describe("CLI JSON output", () => {
 		expect(result.stdout.toString()).not.toContain("Publish curated fields");
 	});
 
+	it("returns a versioned draft-list envelope in the plain output order", async () => {
+		const empty = await runCli(["draft", "list", "--json"]);
+		expect(empty.exitCode).toBe(0);
+		expect(JSON.parse(empty.stdout.toString())).toEqual({ schemaVersion: 1, kind: "draft-list", drafts: [] });
+
+		const core = new Core(TEST_DIR);
+		for (const [id, title, priority] of [
+			["DRAFT-1", "Low draft", "low"],
+			["DRAFT-2", "High draft", "high"],
+		] as const) {
+			await core.filesystem.saveDraft({
+				id,
+				title,
+				status: "Draft",
+				priority,
+				assignee: [],
+				labels: [],
+				dependencies: [],
+				createdDate: "2026-08-08",
+				rawContent: "secret body",
+			});
+		}
+
+		const result = await runCli(["draft", "list", "--json"]);
+		expect(result.exitCode).toBe(0);
+		expect(result.stderr.toString()).toBe("");
+		const output = JSON.parse(result.stdout.toString());
+		expect(output.kind).toBe("draft-list");
+		const jsonIds = output.drafts.map((draft: { id: string }) => draft.id);
+		expect(jsonIds).toEqual(["DRAFT-2", "DRAFT-1"]);
+		const plain = await runCli(["draft", "list", "--plain"]);
+		expect(plain.stdout.toString().match(/DRAFT-\d+/g)).toEqual(jsonIds);
+		expect(output.drafts[0]).toMatchObject({ title: "High draft", status: "Draft", priority: "high" });
+		// Readiness is derived against tasks only, so a draft entry never carries it.
+		for (const draft of output.drafts) expect(draft).not.toHaveProperty("isReady");
+		expect(result.stdout.toString()).not.toContain("secret body");
+
+		const byId = await runCli(["draft", "list", "--json", "--sort", "id"]);
+		expect(JSON.parse(byId.stdout.toString()).drafts.map((draft: { id: string }) => draft.id)).toEqual([
+			"DRAFT-1",
+			"DRAFT-2",
+		]);
+		const invalid = await runCli(["draft", "list", "--json", "--sort", "nope"]);
+		expect(invalid.exitCode).toBe(1);
+		expect(invalid.stdout.toString()).toBe("");
+	});
+
 	it("returns curated task details for view and shorthand", async () => {
 		for (const args of [
 			["task", "view", "1", "--json"],
@@ -416,6 +463,7 @@ describe("CLI JSON output", () => {
 			["task", "1", "--json", "--plain"],
 			["search", "JSON", "--json", "--plain"],
 			["decision", "list", "--json", "--plain"],
+			["draft", "list", "--json", "--plain"],
 		]) {
 			const result = await runCli(args);
 			expect(result.exitCode).toBe(1);
@@ -479,6 +527,7 @@ describe("CLI JSON output", () => {
 			["task", "--help"],
 			["search", "--help"],
 			["decision", "list", "--help"],
+			["draft", "list", "--help"],
 		]) {
 			const result = await runCli(args);
 			expect(result.exitCode).toBe(0);

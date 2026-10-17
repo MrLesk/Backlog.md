@@ -54,27 +54,27 @@ describe("CLI mutations with missing storage directories", () => {
 		expect(decision?.status).toBe("accepted");
 	});
 
-	it.each(["To Do", "Done"])(
-		"archive creates its destination and preserves the content of a %s task",
-		async (status) => {
-			const { task } = await core.createTaskFromInput({
-				title: "Move this task",
-				status,
-				description: "Keep this body",
-			});
-			const { task: dependent } = await core.createTaskFromInput({ title: "Dependent task", dependencies: [task.id] });
-			if (!task.filePath) throw new Error("Expected the created task path");
-			const content = await Bun.file(task.filePath).text();
-			const destinationDir = join(testDir, "backlog", "archive", "tasks");
-			expect(existsSync(destinationDir)).toBe(false);
+	it.each([
+		"To Do",
+		"Done",
+	])("archive creates its destination and preserves the content of a %s task", async (status) => {
+		const { task } = await core.createTaskFromInput({
+			title: "Move this task",
+			status,
+			description: "Keep this body",
+		});
+		const { task: dependent } = await core.createTaskFromInput({ title: "Dependent task", dependencies: [task.id] });
+		if (!task.filePath) throw new Error("Expected the created task path");
+		const content = await Bun.file(task.filePath).text();
+		const destinationDir = join(testDir, "backlog", "archive", "tasks");
+		expect(existsSync(destinationDir)).toBe(false);
 
-			const result = await $`bun ${cliPath} task archive ${task.id}`.cwd(testDir).nothrow().quiet();
-			expect(result.exitCode).toBe(0);
-			expect(await Bun.file(task.filePath).exists()).toBe(false);
-			expect(await Bun.file(join(destinationDir, basename(task.filePath))).text()).toBe(content);
-			expect((await core.filesystem.loadTask(dependent.id))?.dependencies).toEqual([task.id]);
-		},
-	);
+		const result = await $`bun ${cliPath} task archive ${task.id}`.cwd(testDir).nothrow().quiet();
+		expect(result.exitCode).toBe(0);
+		expect(await Bun.file(task.filePath).exists()).toBe(false);
+		expect(await Bun.file(join(destinationDir, basename(task.filePath))).text()).toBe(content);
+		expect((await core.filesystem.loadTask(dependent.id))?.dependencies).toEqual([task.id]);
+	});
 
 	it("demotes a task when the drafts directory is absent", async () => {
 		const { task } = await core.createTaskFromInput({

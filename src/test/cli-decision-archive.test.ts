@@ -215,44 +215,46 @@ describe("backlog decision archive, restore and delete", () => {
 		expect(await backlogSnapshot()).toEqual(before);
 	});
 
-	it.each(["archive", "restore", "delete"])(
-		"decision %s answers not found for an ID no decision claims",
-		async (command) => {
-			await createArchivedDecision("Exists");
-			const before = await backlogSnapshot();
+	it.each([
+		"archive",
+		"restore",
+		"delete",
+	])("decision %s answers not found for an ID no decision claims", async (command) => {
+		await createArchivedDecision("Exists");
+		const before = await backlogSnapshot();
 
-			const missing = await backlog("decision", command, "decision-42");
+		const missing = await backlog("decision", command, "decision-42");
 
-			expect(missing.exitCode).toBe(1);
-			expect(missing.stderr).toBe("Decision not found: decision-42\n");
-			expect(await backlogSnapshot()).toEqual(before);
-		},
-	);
+		expect(missing.exitCode).toBe(1);
+		expect(missing.stderr).toBe("Decision not found: decision-42\n");
+		expect(await backlogSnapshot()).toEqual(before);
+	});
 
-	it.each(["archive", "restore", "delete"])(
-		"decision %s fails closed for an ID claimed in both folders",
-		async (command) => {
-			const name = await createArchivedDecision("Claimed twice");
-			await writeFile(decisionsPath(name), await readFile(archivePath(name)));
-			const before = await backlogSnapshot();
+	it.each([
+		"archive",
+		"restore",
+		"delete",
+	])("decision %s fails closed for an ID claimed in both folders", async (command) => {
+		const name = await createArchivedDecision("Claimed twice");
+		await writeFile(decisionsPath(name), await readFile(archivePath(name)));
+		const before = await backlogSnapshot();
 
-			const ambiguous = await backlog("decision", command, "decision-1");
+		const ambiguous = await backlog("decision", command, "decision-1");
 
-			expect(ambiguous.exitCode).toBe(1);
-			expect(ambiguous.stdout).toBe("");
-			// Each file is named with its folder, so the two files of one name can be told apart.
-			expect(ambiguous.stderr).toBe(
-				[
-					"Decision ID decision-1 is ambiguous; 2 files match:",
-					`  - backlog/archive/decisions/${name}`,
-					`  - backlog/decisions/${name}`,
-					"Run 'backlog doctor' to review the conflicting files.",
-					"",
-				].join("\n"),
-			);
-			expect(await backlogSnapshot()).toEqual(before);
-		},
-	);
+		expect(ambiguous.exitCode).toBe(1);
+		expect(ambiguous.stdout).toBe("");
+		// Each file is named with its folder, so the two files of one name can be told apart.
+		expect(ambiguous.stderr).toBe(
+			[
+				"Decision ID decision-1 is ambiguous; 2 files match:",
+				`  - backlog/archive/decisions/${name}`,
+				`  - backlog/decisions/${name}`,
+				"Run 'backlog doctor' to review the conflicting files.",
+				"",
+			].join("\n"),
+		);
+		expect(await backlogSnapshot()).toEqual(before);
+	});
 
 	it("has doctor report an ID claimed in both folders as a duplicate decision ID", async () => {
 		const name = await createArchivedDecision("Claimed twice");
@@ -395,27 +397,24 @@ describe.skipIf(isWindows())("backlog decision archive, restore and delete with 
 	it.each([
 		["a relative link to a file inside the project", true, () => join(TEST_DIR, "notes", "decision.md")],
 		["an absolute link to a file outside the project", false, () => join(OUTSIDE_DIR, "decision.md")],
-	])(
-		"archives and restores %s as a link to the same file, and deletes only the link",
-		async (_kind, relativeLink, target) => {
-			const targetPath = target();
-			const name = await makeLink(relativeLink, targetPath);
-			const content = await readFile(targetPath, "utf8");
+	])("archives and restores %s as a link to the same file, and deletes only the link", async (_kind, relativeLink, target) => {
+		const targetPath = target();
+		const name = await makeLink(relativeLink, targetPath);
+		const content = await readFile(targetPath, "utf8");
 
-			expect((await backlog("decision", "archive", "decision-1")).exitCode).toBe(0);
-			expect((await lstat(archivePath(name))).isSymbolicLink()).toBe(true);
-			expect(await realpath(archivePath(name))).toBe(targetPath);
+		expect((await backlog("decision", "archive", "decision-1")).exitCode).toBe(0);
+		expect((await lstat(archivePath(name))).isSymbolicLink()).toBe(true);
+		expect(await realpath(archivePath(name))).toBe(targetPath);
 
-			expect((await backlog("decision", "restore", "decision-1")).exitCode).toBe(0);
-			expect((await lstat(decisionsPath(name))).isSymbolicLink()).toBe(true);
-			expect(await realpath(decisionsPath(name))).toBe(targetPath);
+		expect((await backlog("decision", "restore", "decision-1")).exitCode).toBe(0);
+		expect((await lstat(decisionsPath(name))).isSymbolicLink()).toBe(true);
+		expect(await realpath(decisionsPath(name))).toBe(targetPath);
 
-			expect((await backlog("decision", "archive", "decision-1")).exitCode).toBe(0);
-			expect((await backlog("decision", "delete", "decision-1")).exitCode).toBe(0);
-			expect(await exists(archivePath(name))).toBe(false);
-			expect(await readFile(targetPath, "utf8")).toBe(content);
-		},
-	);
+		expect((await backlog("decision", "archive", "decision-1")).exitCode).toBe(0);
+		expect((await backlog("decision", "delete", "decision-1")).exitCode).toBe(0);
+		expect(await exists(archivePath(name))).toBe(false);
+		expect(await readFile(targetPath, "utf8")).toBe(content);
+	});
 });
 
 describe("backlog decision archive, restore and delete in a Git repository", () => {
@@ -464,48 +463,48 @@ describe("backlog decision archive, restore and delete in a Git repository", () 
 		expect(await git("status", "--porcelain")).toBe("A  staged.txt\n?? untracked.txt");
 	});
 
-	it.each([false, true])(
-		"commits both record paths after an uncommitted archive (archive staged: %s)",
-		async (stageArchive) => {
-			await setUpRepository(false);
-			await writeFile(join(TEST_DIR, "unstaged.txt"), "original\n");
-			await git("add", "unstaged.txt");
-			await git("commit", "-m", "Track unrelated work");
-			const activePath = `backlog/decisions/${NAME}`;
-			const archivedPath = `backlog/archive/decisions/${NAME}`;
-			const headBefore = await git("rev-parse", "HEAD");
+	it.each([
+		false,
+		true,
+	])("commits both record paths after an uncommitted archive (archive staged: %s)", async (stageArchive) => {
+		await setUpRepository(false);
+		await writeFile(join(TEST_DIR, "unstaged.txt"), "original\n");
+		await git("add", "unstaged.txt");
+		await git("commit", "-m", "Track unrelated work");
+		const activePath = `backlog/decisions/${NAME}`;
+		const archivedPath = `backlog/archive/decisions/${NAME}`;
+		const headBefore = await git("rev-parse", "HEAD");
 
-			expect((await backlog("decision", "archive", "decision-1")).exitCode).toBe(0);
-			expect(await git("rev-parse", "HEAD")).toBe(headBefore);
-			expect(await git("diff", "--cached", "--name-only")).toBe("");
-			if (stageArchive) await git("add", "--", activePath, archivedPath);
-			expect((await backlog("config", "set", "autoCommit", "true")).exitCode).toBe(0);
-			await writeFile(join(TEST_DIR, "staged.txt"), "staged by the user\n");
-			await git("add", "staged.txt");
-			await writeFile(join(TEST_DIR, "staged.txt"), "unstaged edit of staged work\n");
-			await writeFile(join(TEST_DIR, "unstaged.txt"), "user edit\n");
-			await writeFile(join(TEST_DIR, "untracked.txt"), "not staged\n");
-			const unrelatedPaths = ["staged.txt", "unstaged.txt", "backlog/config.yml"];
-			const stagedBefore = await git("diff", "--cached", "--", ...unrelatedPaths);
-			const unstagedBefore = await git("diff", "--", ...unrelatedPaths);
-			const commitsBefore = Number(await git("rev-list", "--count", "HEAD"));
+		expect((await backlog("decision", "archive", "decision-1")).exitCode).toBe(0);
+		expect(await git("rev-parse", "HEAD")).toBe(headBefore);
+		expect(await git("diff", "--cached", "--name-only")).toBe("");
+		if (stageArchive) await git("add", "--", activePath, archivedPath);
+		expect((await backlog("config", "set", "autoCommit", "true")).exitCode).toBe(0);
+		await writeFile(join(TEST_DIR, "staged.txt"), "staged by the user\n");
+		await git("add", "staged.txt");
+		await writeFile(join(TEST_DIR, "staged.txt"), "unstaged edit of staged work\n");
+		await writeFile(join(TEST_DIR, "unstaged.txt"), "user edit\n");
+		await writeFile(join(TEST_DIR, "untracked.txt"), "not staged\n");
+		const unrelatedPaths = ["staged.txt", "unstaged.txt", "backlog/config.yml"];
+		const stagedBefore = await git("diff", "--cached", "--", ...unrelatedPaths);
+		const unstagedBefore = await git("diff", "--", ...unrelatedPaths);
+		const commitsBefore = Number(await git("rev-list", "--count", "HEAD"));
 
-			const deleted = await backlog("decision", "delete", "decision-1");
+		const deleted = await backlog("decision", "delete", "decision-1");
 
-			expect(deleted).toEqual({ exitCode: 0, stdout: "Deleted decision decision-1\n", stderr: "" });
-			expect(Number(await git("rev-list", "--count", "HEAD"))).toBe(commitsBefore + 1);
-			expect(await git("ls-tree", "-r", "--name-only", "HEAD", "--", activePath, archivedPath)).toBe("");
-			expect(await git("show", "--name-status", "--format=", "HEAD")).toBe(`D\t${activePath}`);
-			expect(await git("diff", "--cached", "--", ...unrelatedPaths)).toBe(stagedBefore);
-			expect(await git("diff", "--", ...unrelatedPaths)).toBe(unstagedBefore);
-			expect(await readFile(join(TEST_DIR, "untracked.txt"), "utf8")).toBe("not staged\n");
-			expect(await exists(decisionsPath(NAME))).toBe(false);
-			expect(await exists(archivePath(NAME))).toBe(false);
-			expect((await backlog("decision", "create", "Created after mixed auto-commit")).stdout).toBe(
-				"Created decision decision-1\n",
-			);
-		},
-	);
+		expect(deleted).toEqual({ exitCode: 0, stdout: "Deleted decision decision-1\n", stderr: "" });
+		expect(Number(await git("rev-list", "--count", "HEAD"))).toBe(commitsBefore + 1);
+		expect(await git("ls-tree", "-r", "--name-only", "HEAD", "--", activePath, archivedPath)).toBe("");
+		expect(await git("show", "--name-status", "--format=", "HEAD")).toBe(`D\t${activePath}`);
+		expect(await git("diff", "--cached", "--", ...unrelatedPaths)).toBe(stagedBefore);
+		expect(await git("diff", "--", ...unrelatedPaths)).toBe(unstagedBefore);
+		expect(await readFile(join(TEST_DIR, "untracked.txt"), "utf8")).toBe("not staged\n");
+		expect(await exists(decisionsPath(NAME))).toBe(false);
+		expect(await exists(archivePath(NAME))).toBe(false);
+		expect((await backlog("decision", "create", "Created after mixed auto-commit")).stdout).toBe(
+			"Created decision decision-1\n",
+		);
+	});
 
 	it("makes no commit and stages nothing when auto-commit is off", async () => {
 		await setUpRepository(false);
